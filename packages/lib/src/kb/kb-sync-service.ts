@@ -10,6 +10,7 @@ import { DocumentProcessor } from '../datasets/workers/document-processor'
 import { KBService } from './kb-service'
 import { articleToMarkdown } from './markdown/article-to-markdown'
 import { computeContentHash } from './markdown/hash'
+import type { ArticleNodeJSON } from './markdown/types'
 
 const logger = createScopedLogger('kb-sync-service')
 
@@ -97,7 +98,10 @@ export class KBSyncService {
 
     // Build the indexed markdown — title prepended for recall.
     const body = articleToMarkdown(
-      { title: revision.title, contentJson: revision.contentJson },
+      {
+        title: revision.title,
+        contentJson: revision.contentJson as ArticleNodeJSON[] | null,
+      },
       { placeholders: 'literal' }
     )
     const md = `# ${revision.title}\n\n${body}`.trim()

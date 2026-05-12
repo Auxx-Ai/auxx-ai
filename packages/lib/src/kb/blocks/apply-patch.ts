@@ -144,14 +144,15 @@ function applyDelete(content: ArticleNodeJSON[], blockIds: string[]): ApplyPatch
       return true
     })
   })
-  // Top-level delete: blocks may live directly in `content` (mixed array).
+  // Top-level delete: leaf blocks and containers may both live directly in
+  // `content`. Containers (table/tabs/accordion) carry their id on `attrs.id`
+  // the same way leaf blocks do.
   let topLevelDeleted = next
   const idsLeft = new Set([...idSet].filter((id) => !removed.has(id)))
   if (idsLeft.size > 0) {
     topLevelDeleted = next.filter((node) => {
-      if (node.type !== 'block') return true
-      const id = node.attrs.id ?? ''
-      if (idsLeft.has(id)) {
+      const id = topLevelNodeId(node)
+      if (id && idsLeft.has(id)) {
         removed.add(id)
         return false
       }
@@ -174,7 +175,7 @@ function applyMove(
     return { content, effect: { op: 'move', blockIds: [] } }
   }
   const idSet = new Set(blockIds)
-  const plucked = new Map<string, BlockJSON>()
+  const plucked = new Map<string, ArticleNodeJSON>()
   const sansNested = mapBlockArrays(content, (arr) => {
     if (!arr.some((b) => idSet.has(b.attrs.id ?? ''))) return arr
     const keep: BlockJSON[] = []
@@ -186,9 +187,8 @@ function applyMove(
     return keep
   })
   const sansTopLevel = sansNested.filter((node) => {
-    if (node.type !== 'block') return true
-    const id = node.attrs.id ?? ''
-    if (idSet.has(id)) {
+    const id = topLevelNodeId(node)
+    if (id && idSet.has(id)) {
       plucked.set(id, node)
       return false
     }
@@ -199,8 +199,39 @@ function applyMove(
     throw new PatchError(`blocks not found: ${missing.join(', ')}`, 'block_not_found')
   }
   const orderedBlocks = blockIds.map((id) => plucked.get(id)!)
+  // Containers can only land at the top level. Reject if the resolved
+  // anchor would put them inside a panel or table cell.
+  const hasContainer = orderedBlocks.some((n) => n.type !== 'block')
+  if (hasContainer) {
+    assertContainerCompatibleAnchor(content, anchor)
+  }
   const next = spliceAtAnchor(sansTopLevel, anchor, orderedBlocks)
   return { content: next, effect: { op: 'move', blockIds: [...blockIds] } }
+}
+
+function assertContainerCompatibleAnchor(content: ArticleNodeJSON[], anchor: BlockAnchor): void {
+  if (anchor.at === 'start' || anchor.at === 'end') return
+  if (anchor.at === 'startOf' || anchor.at === 'endOf') {
+    throw new PatchError(
+      `containers cannot move into a panel — '${anchor.at}' anchors only accept leaf blocks`,
+      'invalid_anchor'
+    )
+  }
+  // before/after — make sure the target id is a top-level node.
+  const target = anchor.blockId
+  const topMatch = content.some((n) => topLevelNodeId(n) === target)
+  if (!topMatch) {
+    throw new PatchError(
+      `containers can only move at the top level — anchor '${target}' is nested in a panel or table cell`,
+      'invalid_anchor'
+    )
+  }
+}
+
+/** Id for a node sitting in the top-level mixed `content` array. */
+function topLevelNodeId(node: ArticleNodeJSON): string | undefined {
+  if (node.type === 'block') return node.attrs.id ?? undefined
+  return node.attrs?.id ?? undefined
 }
 
 // ─── splice helpers ──────────────────────────────────────────────────
@@ -220,8 +251,8 @@ function spliceAtAnchor(
     const target = anchor.blockId
     const offset = anchor.at === 'before' ? 0 : 1
 
-    // Try top-level first.
-    const topIdx = content.findIndex((n) => n.type === 'block' && n.attrs.id === target)
+    // Try top-level first — leaf blocks and containers both live here.
+    const topIdx = content.findIndex((n) => topLevelNodeId(n) === target)
     if (topIdx >= 0) {
       const at = topIdx + offset
       return [...content.slice(0, at), ...freshBlocks, ...content.slice(at)]

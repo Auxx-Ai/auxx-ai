@@ -37,11 +37,11 @@ export function createUpdateBlockTextTool(getDeps: GetToolDeps): AgentToolDefini
       const toolDeps = getDeps()
       const blockId = args.blockId as string
       const markdown = args.markdown as string
-      const doc = mdToBlocks(markdown)
-      // Take inline content from the first block of the parsed doc; if
+      const nodes = mdToBlocks(markdown)
+      // Take inline content from the first block of the parsed nodes; if
       // the markdown produces multiple blocks, the agent should use
       // replace_block / insert_blocks instead.
-      const first = doc.content.find((n) => n.type === 'block')
+      const first = nodes.find((n) => n.type === 'block')
       const inline = (first && first.type === 'block' ? first.content : []) as InlineJSON[]
       const result = await runBlockCrudOp({
         agentDeps,

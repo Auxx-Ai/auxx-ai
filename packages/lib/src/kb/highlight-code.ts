@@ -45,11 +45,6 @@ interface InlineNode {
   text?: string
 }
 
-interface DocLike {
-  type?: string
-  content?: BlockNode[]
-}
-
 function nodeText(content: InlineNode[] | undefined): string {
   if (!content) return ''
   return content.map((n) => (typeof n.text === 'string' ? n.text : '')).join('')
@@ -61,23 +56,21 @@ function pickLanguage(raw: unknown): ShikiLanguage | 'plaintext' {
 }
 
 /**
- * Walk a KB article doc, rebuild every codeBlock's `codeHighlightedHtml` with
- * Shiki output. Mutates a shallow copy and returns it. Non-code blocks are
- * passed through unchanged.
+ * Walk a KB article body, rebuild every codeBlock's `codeHighlightedHtml`
+ * with Shiki output. Returns a new array — non-code blocks are passed
+ * through unchanged.
  *
- * Returns the input untouched if the doc has no codeBlock children — avoids
- * loading the highlighter for articles that don't need it.
+ * Returns the input untouched if the body has no codeBlock children —
+ * avoids loading the highlighter for articles that don't need it.
  */
-export async function enrichDocWithHighlighting<T extends DocLike>(doc: T): Promise<T> {
-  if (!doc || typeof doc !== 'object') return doc
-  const blocks = Array.isArray(doc.content) ? doc.content : null
-  if (!blocks) return doc
+export async function enrichDocWithHighlighting<T extends BlockNode>(blocks: T[]): Promise<T[]> {
+  if (!Array.isArray(blocks)) return blocks
 
   const codeIndices: number[] = []
   blocks.forEach((node, idx) => {
     if (node?.attrs?.blockType === 'codeBlock') codeIndices.push(idx)
   })
-  if (codeIndices.length === 0) return doc
+  if (codeIndices.length === 0) return blocks
 
   const highlighter = await getHighlighterCached()
   const nextBlocks = blocks.slice()
@@ -100,8 +93,8 @@ export async function enrichDocWithHighlighting<T extends DocLike>(doc: T): Prom
         codeLanguage: language,
         codeHighlightedHtml: html,
       },
-    }
+    } as T
   }
 
-  return { ...doc, content: nextBlocks }
+  return nextBlocks
 }

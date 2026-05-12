@@ -34,7 +34,11 @@ export function ArticleCoverStrip({ article, knowledgeBaseId }: ArticleCoverStri
   const { resource: tagResource } = useResource('tag')
   const tagEntityDefId = tagResource?.entityDefinitionId
 
-  const coverImage = draftCoverImage ?? article.coverImage
+  // Server resolves a fresh URL on every read, keyed off coverImageId. The
+  // store's stringly-typed `article.coverImage` is no longer a valid fallback
+  // (it can hold an expired presigned URL), so we drive purely off the
+  // getArticleById-derived draftCoverImage.
+  const coverImage = draftCoverImage
 
   const fileSelect = useFileSelect({
     entityType: 'ARTICLE',
@@ -51,11 +55,8 @@ export function ArticleCoverStrip({ article, knowledgeBaseId }: ArticleCoverStri
     },
     onUploadComplete: (files) => {
       const f = files?.[0]
-      if (!f?.url) return
-      void updateArticleCover(article.id, {
-        coverImage: f.url,
-        coverImageId: f.serverFileId ?? null,
-      })
+      if (!f?.serverFileId) return
+      void updateArticleCover(article.id, { coverImageId: f.serverFileId })
     },
     onError: (error) => {
       toastError({ title: 'Failed to upload cover', description: error })
@@ -72,7 +73,7 @@ export function ArticleCoverStrip({ article, knowledgeBaseId }: ArticleCoverStri
       cancelText: 'Cancel',
     })
     if (!ok) return
-    void updateArticleCover(article.id, { coverImage: null, coverImageId: null })
+    void updateArticleCover(article.id, { coverImageId: null })
   }
 
   const tagChips = selectedTags.length > 0 && (
@@ -132,7 +133,7 @@ export function ArticleCoverStrip({ article, knowledgeBaseId }: ArticleCoverStri
           {tagChips}
         </div>
         {tagPicker}
-        {ConfirmDialog}
+        <ConfirmDialog />
       </>
     )
   }

@@ -20,7 +20,7 @@ import { LinkContextMenu, type LinkContextMenuTarget } from './link-context-menu
 import { useKBArticleEditor } from './use-kb-article-editor'
 
 interface KBArticleEditorProps {
-  initialContent: JSONContent | null
+  initialContent: JSONContent[] | null
   onChange: (content: { json: JSONContent; html: string }) => void
   /** Knowledge base id — scopes the article-link picker to a single KB by default. */
   knowledgeBaseId?: string

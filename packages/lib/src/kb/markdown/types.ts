@@ -88,13 +88,13 @@ export interface PanelJSON {
 
 export interface TabsJSON {
   type: 'tabs'
-  attrs: { activeTab?: string | null }
+  attrs: { id?: string | null; activeTab?: string | null }
   content: PanelJSON[]
 }
 
 export interface AccordionJSON {
   type: 'accordion'
-  attrs: { allowMultiple: boolean }
+  attrs: { id?: string | null; allowMultiple: boolean }
   content: PanelJSON[]
 }
 
@@ -115,7 +115,7 @@ export interface TableRowJSON {
 
 export interface TableJSON {
   type: 'table'
-  attrs?: Record<string, never>
+  attrs?: { id?: string | null }
   content: TableRowJSON[]
 }
 

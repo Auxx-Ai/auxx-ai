@@ -45,8 +45,8 @@ export function expandBlockInputs(inputs: BlockInput[]): ArticleNodeJSON[] {
   const out: ArticleNodeJSON[] = []
   for (const input of inputs) {
     if (input.kind === 'markdown') {
-      const doc = mdToBlocks(input.markdown)
-      for (const node of doc.content) out.push(node)
+      const nodes = mdToBlocks(input.markdown)
+      for (const node of nodes) out.push(node)
       continue
     }
     // Stamp ids on agent-supplied node (recurses into panels / table cells).

@@ -3,6 +3,7 @@
 
 import { ArticleKind, ArticleStatus } from '@auxx/database/enums'
 import type { ArticleKind as ArticleKindType } from '@auxx/database/types'
+import type { ArticleNodeJSON } from '@auxx/ui/components/kb'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { generateId } from '@auxx/utils'
 import { useCallback } from 'react'
@@ -44,7 +45,7 @@ interface CreateArticleInput {
   articleKind?: ArticleKindType
   emoji?: string | null
   content?: string | null
-  contentJson?: unknown
+  contentJson?: ArticleNodeJSON[] | null
   excerpt?: string | null
   description?: string | null
 }
@@ -61,11 +62,8 @@ export interface UseArticleMutationsResult {
       emoji?: string | null
     }
   ) => Promise<void>
-  /** Update the cover image URL + linked MediaAsset id on the draft revision. */
-  updateArticleCover: (
-    id: string,
-    data: { coverImage: string | null; coverImageId: string | null }
-  ) => Promise<void>
+  /** Update the linked cover MediaAsset id on the draft revision. */
+  updateArticleCover: (id: string, data: { coverImageId: string | null }) => Promise<void>
   /** Update structural fields (slug, parentId, aiEnabled). */
   updateArticleStructure: (
     id: string,
@@ -74,7 +72,7 @@ export interface UseArticleMutationsResult {
   /** Save heavy content to the draft revision (no optimistic store update). */
   updateArticleContent: (
     id: string,
-    data: { content?: string; contentJson?: unknown }
+    data: { content?: string; contentJson?: ArticleNodeJSON[] | null }
   ) => Promise<void>
   deleteArticle: (id: string) => Promise<void>
   publishArticle: (id: string, ancestorIds?: string[]) => Promise<void>
@@ -196,16 +194,19 @@ export function useArticleMutations(knowledgeBaseId: string): UseArticleMutation
 
   const updateArticleCover = useCallback<UseArticleMutationsResult['updateArticleCover']>(
     async (id, data) => {
-      const store = getArticleStoreState()
-      // coverImage lives on ArticleMeta — flip it optimistically. coverImageId
-      // is editor-view only; it round-trips via the getArticleById invalidate.
-      store.setArticleOptimistic(id, { coverImage: data.coverImage })
+      // Drive the editor's <img> off the getArticleById query cache directly:
+      // clearing coverImage there avoids a published-revision fallback flicker
+      // while the server resolves the new draft URL. The article-store
+      // coverImage column is filled from the server response.
+      utils.kb.getArticleById.setData({ id, knowledgeBaseId }, (prev) =>
+        prev ? { ...prev, coverImage: null, coverImageId: data.coverImageId } : prev
+      )
       try {
         const server = await updateDraftMutation.mutateAsync({ id, data, knowledgeBaseId })
-        store.confirmUpdate(id, normalizeServerArticle(server))
+        getArticleStoreState().applyArticleMetadataFromServer(id, normalizeServerArticle(server))
         utils.kb.getArticleById.invalidate({ id, knowledgeBaseId })
       } catch (error) {
-        store.rollbackUpdate(id)
+        utils.kb.getArticleById.invalidate({ id, knowledgeBaseId })
         toastError({
           title: 'Failed to update cover',
           description: error instanceof Error ? error.message : 'Unknown error occurred',
@@ -247,7 +248,7 @@ export function useArticleMutations(knowledgeBaseId: string): UseArticleMutation
       try {
         const server = await updateDraftMutation.mutateAsync({
           id,
-          data: data as { content?: string; contentJson?: unknown },
+          data,
           knowledgeBaseId,
         })
         // Reflect the server's authoritative metadata (e.g. hasUnpublishedChanges)

@@ -1,7 +1,7 @@
 // apps/web/src/components/kb/hooks/use-article-content.ts
 'use client'
 
-import type { JSONContent } from '@tiptap/core'
+import type { ArticleNodeJSON } from '@auxx/ui/components/kb'
 import { api } from '~/trpc/react'
 
 /**
@@ -16,7 +16,7 @@ export type PreviewMode = 'draft' | 'live' | { versionNumber: number }
 interface UseArticleContentResult {
   /** Draft revision content (what the editor writes to). */
   draftContent: string | null
-  draftContentJson: JSONContent | null
+  draftContentJson: ArticleNodeJSON[] | null
   draftTitle: string | null
   draftDescription: string | null
   draftExcerpt: string | null
@@ -27,7 +27,7 @@ interface UseArticleContentResult {
   /** Last published version (null if never published). */
   publishedTitle: string | null
   publishedContent: string | null
-  publishedContentJson: JSONContent | null
+  publishedContentJson: ArticleNodeJSON[] | null
   publishedCoverImage: string | null
   hasPublishedVersion: boolean
   hasUnpublishedChanges: boolean
@@ -37,7 +37,7 @@ interface UseArticleContentResult {
   previewExcerpt: string | null
   previewEmoji: string | null
   previewContent: string | null
-  previewContentJson: JSONContent | null
+  previewContentJson: ArticleNodeJSON[] | null
   previewCoverImage: string | null
   /** Resolved version number when mode is `'live'` or historical; null otherwise. */
   previewVersionNumber: number | null
@@ -83,7 +83,7 @@ export function useArticleContent(
 
   const data = baseQuery.data
   const draftContent = data?.content ?? null
-  const draftContentJson = (data?.contentJson as JSONContent | null | undefined) ?? null
+  const draftContentJson = (data?.contentJson as ArticleNodeJSON[] | null | undefined) ?? null
   const draftTitle = data?.title ?? null
   const draftDescription = data?.description ?? null
   const draftExcerpt = data?.excerpt ?? null
@@ -93,7 +93,7 @@ export function useArticleContent(
   const publishedTitle = data?.publishedTitle ?? null
   const publishedContent = data?.publishedContent ?? null
   const publishedContentJson =
-    (data?.publishedContentJson as JSONContent | null | undefined) ?? null
+    (data?.publishedContentJson as ArticleNodeJSON[] | null | undefined) ?? null
   const publishedCoverImage = data?.publishedCoverImage ?? null
   const hasPublishedVersion = !!data?.hasPublishedVersion
 
@@ -102,8 +102,12 @@ export function useArticleContent(
   let previewExcerpt: string | null = draftExcerpt
   let previewEmoji: string | null = draftEmoji
   let previewContent: string | null = draftContent
-  let previewContentJson: JSONContent | null = draftContentJson
-  let previewCoverImage: string | null = draftCoverImage
+  let previewContentJson: ArticleNodeJSON[] | null = draftContentJson
+  // In historical mode the version query is separate from the base query, so
+  // it lags one render behind when the user switches versions. Defaulting to
+  // the draft cover here causes a flicker where the draft image flashes
+  // before the version's image takes over — start at null instead.
+  let previewCoverImage: string | null = isHistorical ? null : draftCoverImage
   let previewVersionNumber: number | null = null
   let fellBackToDraft = false
 
@@ -131,8 +135,10 @@ export function useArticleContent(
       previewEmoji = v.selectedEmoji ?? draftEmoji
       previewContent = v.selectedContent ?? draftContent
       previewContentJson =
-        (v.selectedContentJson as JSONContent | null | undefined) ?? draftContentJson
-      previewCoverImage = v.selectedCoverImage ?? draftCoverImage
+        (v.selectedContentJson as ArticleNodeJSON[] | null | undefined) ?? draftContentJson
+      // No draft fallback for cover — if the historical snapshot has no cover,
+      // show no cover. Inheriting from the draft would misrepresent the version.
+      previewCoverImage = v.selectedCoverImage ?? null
       previewVersionNumber = v.selectedVersionNumber ?? requestedVersion ?? null
     }
   }

@@ -3,7 +3,8 @@
 import { Article, ArticleRevision, database, KnowledgeBase, Organization } from '@auxx/database'
 import type { ArticleKind } from '@auxx/database/types'
 import { isOrgMember } from '@auxx/lib/cache'
-import type { DocJSON, KBLayoutKB } from '@auxx/ui/components/kb'
+import { MediaAssetService } from '@auxx/lib/files/server'
+import type { ArticleNodeJSON, KBLayoutKB } from '@auxx/ui/components/kb'
 import { and, eq } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 
@@ -23,7 +24,7 @@ export interface PublicArticleListItem {
 
 export interface PublicArticleFull extends PublicArticleListItem {
   content: string
-  contentJson: DocJSON | null
+  contentJson: ArticleNodeJSON[] | null
   coverImage: string | null
   publishedAt: Date | null
   updatedAt: Date
@@ -205,11 +206,28 @@ export async function loadKBPayloadWithContent(
       pubExcerpt: pub.excerpt,
       pubContent: pub.content,
       pubContentJson: pub.contentJson,
-      pubCoverImage: pub.coverImage,
+      pubCoverImageId: pub.coverImageId,
     })
     .from(Article)
     .innerJoin(pub, eq(pub.id, Article.publishedRevisionId))
     .where(and(eq(Article.knowledgeBaseId, kb.id), eq(Article.isPublished, true)))
+
+  // Resolve cover URLs in a single fan-out so the SSR pass makes
+  // O(unique-covers) S3 round-trips instead of O(articles).
+  const assetService = new MediaAssetService(kb.organizationId)
+  const uniqueCoverIds = Array.from(
+    new Set(rows.map((r) => r.pubCoverImageId).filter((id): id is string => !!id))
+  )
+  const coverUrlEntries = await Promise.all(
+    uniqueCoverIds.map(async (id) => {
+      try {
+        return [id, await assetService.getDownloadUrl(id)] as const
+      } catch {
+        return [id, null] as const
+      }
+    })
+  )
+  const coverUrlMap = new Map(coverUrlEntries)
 
   const fullArticles: PublicArticleFull[] = rows.map((r) => ({
     id: r.article.id,
@@ -224,8 +242,8 @@ export async function loadKBPayloadWithContent(
     description: r.pubDescription,
     excerpt: r.pubExcerpt,
     content: r.pubContent,
-    contentJson: (r.pubContentJson as DocJSON | null) ?? null,
-    coverImage: r.pubCoverImage,
+    contentJson: (r.pubContentJson as ArticleNodeJSON[] | null) ?? null,
+    coverImage: r.pubCoverImageId ? (coverUrlMap.get(r.pubCoverImageId) ?? null) : null,
     publishedAt: r.article.publishedAt,
     updatedAt: r.article.updatedAt,
   }))

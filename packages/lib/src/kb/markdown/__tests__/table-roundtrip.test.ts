@@ -5,6 +5,8 @@ import { blocksToMd } from '../blocks-to-md'
 import { mdToBlocks } from '../md-to-blocks'
 import type { DocJSON, TableJSON } from '../types'
 
+const mdToDoc = (md: string): DocJSON => ({ type: 'doc', content: mdToBlocks(md) })
+
 function makeSimpleTableDoc(): DocJSON {
   return {
     type: 'doc',
@@ -79,7 +81,7 @@ describe('table markdown serialization', () => {
   it('round-trips a simple table', () => {
     const original = makeSimpleTableDoc()
     const md = blocksToMd(original)
-    const reparsed = mdToBlocks(md)
+    const reparsed = mdToDoc(md)
     const table = reparsed.content[0] as TableJSON
     expect(table.type).toBe('table')
     expect(table.content).toHaveLength(2)
@@ -135,7 +137,7 @@ describe('table markdown serialization', () => {
       ],
     }
     const md = blocksToMd(original)
-    const reparsed = mdToBlocks(md)
+    const reparsed = mdToDoc(md)
     const table = reparsed.content[0] as TableJSON
     const cell = table.content[1].content[0]
     const inline = cell.content[0].content ?? []
@@ -186,7 +188,7 @@ describe('table markdown serialization', () => {
     }
     const md = blocksToMd(original)
     expect(md).toContain('A \\| B')
-    const reparsed = mdToBlocks(md)
+    const reparsed = mdToDoc(md)
     const table = reparsed.content[0] as TableJSON
     expect(table.content[1].content[0].content[0].content?.[0]?.text).toBe('A | B')
   })

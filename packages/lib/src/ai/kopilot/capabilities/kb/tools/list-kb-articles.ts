@@ -4,6 +4,7 @@ import { KBService } from '../../../../../kb/kb-service'
 import { parseStringArg } from '../../../../agent-framework/tool-inputs'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
 import type { GetToolDeps } from '../../types'
+import { getArticleEntityDefinitionId } from '../snapshot-pipeline'
 
 const DEFAULT_LIMIT = 50
 const MAX_LIMIT = 200
@@ -60,7 +61,10 @@ export function createListKbArticlesTool(getDeps: GetToolDeps): AgentToolDefinit
       const limit = Math.min((args.limit as number) || DEFAULT_LIMIT, MAX_LIMIT)
 
       const kb = new KBService(db, agentDeps.organizationId)
-      const all = await kb.getArticles(knowledgeBaseId, { includeUnpublished })
+      const [all, articleEntityDefinitionId] = await Promise.all([
+        kb.getArticles(knowledgeBaseId, { includeUnpublished }),
+        getArticleEntityDefinitionId(db, agentDeps.organizationId),
+      ])
 
       let filtered = all
       if (parentId !== undefined) {
@@ -76,6 +80,12 @@ export function createListKbArticlesTool(getDeps: GetToolDeps): AgentToolDefinit
         output: {
           articles: trimmed.map((a) => ({
             id: a.id,
+            recordId: articleEntityDefinitionId
+              ? `${articleEntityDefinitionId}:${a.id}`
+              : `article:${a.id}`,
+            displayName: a.title || a.slug,
+            secondaryInfo: a.slug,
+            knowledgeBaseId,
             slug: a.slug,
             title: a.title,
             status: a.status,

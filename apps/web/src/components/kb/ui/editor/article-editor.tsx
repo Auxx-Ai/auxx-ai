@@ -17,10 +17,7 @@ import { ArticleEditorFooter } from './article-editor-footer'
 import { ArticleEditorHeader } from './article-editor-header'
 import { ArticleEditorTop } from './article-editor-top'
 
-const emptyContent: JSONContent = {
-  type: 'doc',
-  content: [{ type: 'block', attrs: { blockType: 'text' }, content: [] }],
-}
+const emptyContent: JSONContent[] = [{ type: 'block', attrs: { blockType: 'text' }, content: [] }]
 
 interface ArticleEditorProps {
   article: ArticleMeta
@@ -60,12 +57,13 @@ export function ArticleEditor({ article, knowledgeBaseId }: ArticleEditorProps) 
 
   const persist = useCallback(
     async (payload: { json: JSONContent; html: string }) => {
-      const hash = JSON.stringify(payload.json)
+      const body = (payload.json.content ?? []) as JSONContent[]
+      const hash = JSON.stringify(body)
       if (hash === lastSavedHash.current) return
       lastSavedHash.current = hash
       await updateArticleContent(article.id, {
         content: payload.html,
-        contentJson: payload.json,
+        contentJson: body,
       })
     },
     [article.id, updateArticleContent]

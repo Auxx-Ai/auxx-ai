@@ -124,7 +124,9 @@ export function KBFullscreenPreview({ knowledgeBaseId, slugPath, mode }: KBFulls
   if (!knowledgeBase) return null
 
   const basePath = `/preview/kb/${knowledgeBaseId}`
-  const docJson = (previewContentJson ?? null) as DocJSON | null
+  const docJson: DocJSON | null = previewContentJson
+    ? { type: 'doc', content: previewContentJson }
+    : null
   const { prev, next } = articleId
     ? getArticleNeighbours(articles, articleId)
     : { prev: undefined, next: undefined }
@@ -180,21 +182,14 @@ export function KBFullscreenPreview({ knowledgeBaseId, slugPath, mode }: KBFulls
         : 'Viewing the live version'
       bannerBody = ''
     }
-    bannerAction = (
-      <>
-        {articleId ? (
-          <PreviewVersionPicker
-            articleId={articleId}
-            mode={mode}
-            hasPublishedVersion={hasPublishedVersion}
-            onModeChange={handleModeChange}
-          />
-        ) : null}
-        <Button variant='outline' size='xs' onClick={handleSwitchToDraft}>
-          Switch to draft
-        </Button>
-      </>
-    )
+    bannerAction = articleId ? (
+      <PreviewVersionPicker
+        articleId={articleId}
+        mode={mode}
+        hasPublishedVersion={hasPublishedVersion}
+        onModeChange={handleModeChange}
+      />
+    ) : null
   } else {
     const v = mode.versionNumber
     const labelSuffix = historicalVersion?.label ? ` — “${historicalVersion.label}”` : ''
@@ -216,9 +211,6 @@ export function KBFullscreenPreview({ knowledgeBaseId, slugPath, mode }: KBFulls
             onModeChange={handleModeChange}
           />
         ) : null}
-        <Button variant='outline' size='xs' onClick={handleSwitchToDraft}>
-          Switch to draft
-        </Button>
         {historicalVersion ? (
           <Button variant='outline' size='xs' onClick={handleRestoreFromBanner}>
             <Undo2 /> Restore as draft
@@ -247,7 +239,7 @@ export function KBFullscreenPreview({ knowledgeBaseId, slugPath, mode }: KBFulls
               title={previewTitle ?? activeArticle?.title}
               emoji={previewEmoji ?? activeArticle?.emoji}
               description={previewDescription ?? activeArticle?.description}
-              coverImage={previewCoverImage ?? activeArticle?.coverImage}
+              coverImage={previewCoverImage}
               parent={parent}
               resolveAuxxHref={(id) => `/preview/kb/${knowledgeBaseId}/r/${id}`}
               copyMenu={

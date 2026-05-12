@@ -1,6 +1,6 @@
 // packages/ui/src/components/kb/utils/inline-text.ts
 
-import type { BlockJSON, DocJSON, InlineJSON } from '../article/types'
+import type { ArticleNodeJSON, BlockJSON, InlineJSON } from '../article/types'
 
 /** Walk inline content (text + marks + placeholders) into a plain string. */
 export function walkInlineToText(nodes: InlineJSON[] | undefined): string {
@@ -17,13 +17,13 @@ export function walkInlineToText(nodes: InlineJSON[] | undefined): string {
   return out
 }
 
-/** Plain-text dump of every block in the doc, including container panels.
- * Used for search snippets — recursing into tabs/accordion bodies keeps
- * panel content searchable. */
-export function extractPlainText(doc: DocJSON | null | undefined): string {
-  if (!doc || !doc.content) return ''
+/** Plain-text dump of every block in the article body, including
+ * container panels. Used for search snippets — recursing into
+ * tabs/accordion bodies keeps panel content searchable. */
+export function extractPlainText(content: ArticleNodeJSON[] | null | undefined): string {
+  if (!content) return ''
   const parts: string[] = []
-  for (const node of doc.content) {
+  for (const node of content) {
     if (node.type === 'block') {
       const text = walkInlineToText(node.content)
       if (text) parts.push(text)
@@ -52,10 +52,10 @@ export function extractPlainText(doc: DocJSON | null | undefined): string {
 /** Pull every heading's text out for search facet weighting. Container
  * blocks (tabs/accordion) don't contribute headings; their panel labels
  * are searchable via extractPlainText instead. */
-export function extractHeadings(doc: DocJSON | null | undefined): string[] {
-  if (!doc || !doc.content) return []
+export function extractHeadings(content: ArticleNodeJSON[] | null | undefined): string[] {
+  if (!content) return []
   const out: string[] = []
-  for (const node of doc.content) {
+  for (const node of content) {
     if (node.type !== 'block') continue
     if (isHeadingBlock(node)) {
       const text = walkInlineToText(node.content)

@@ -5,6 +5,8 @@ import { blocksToMd } from '../blocks-to-md'
 import { mdToBlocks } from '../md-to-blocks'
 import type { DocJSON } from '../types'
 
+const mdToDoc = (md: string): DocJSON => ({ type: 'doc', content: mdToBlocks(md) })
+
 describe('cards markdown serialization', () => {
   it('renders a cards block to :::cards / ::card directives', () => {
     const doc: DocJSON = {
@@ -50,7 +52,7 @@ describe('cards markdown serialization', () => {
 ::card{title="Reference" href="auxx://kb/article/xyz"}
 :::
 `
-    const doc = mdToBlocks(md)
+    const doc = mdToDoc(md)
     const block = doc.content[0]
     expect(block?.attrs.blockType).toBe('cards')
     const cards = block?.attrs.cards ?? []
@@ -89,7 +91,7 @@ describe('cards markdown serialization', () => {
       ],
     }
     const md = blocksToMd(original)
-    const reparsed = mdToBlocks(md)
+    const reparsed = mdToDoc(md)
     const card = reparsed.content[0]?.attrs.cards?.[0]
     expect(card?.title).toBe('Foo')
     expect(card?.href).toBe('auxx://kb/article/abc')

@@ -3,14 +3,15 @@
 import { generateId } from '@auxx/utils'
 import { Plugin, PluginKey } from '@tiptap/pm/state'
 
-const STAMPED_NODES: ReadonlySet<string> = new Set(['block', 'panel'])
+const STAMPED_NODES: ReadonlySet<string> = new Set(['block', 'panel', 'tabs', 'accordion', 'table'])
 
 /**
- * Auto-stamp every `block` and `panel` node with a stable id on doc init
- * and on any transaction that introduces a node without one. Ids are the
- * stable handle Kopilot tools use to address blocks; we want the
- * invariant "every persisted block has an id" to hold without callers
- * having to remember.
+ * Auto-stamp every addressable node (`block`, `panel`, and the
+ * top-level containers `tabs` / `accordion` / `table`) with a stable id
+ * on doc init and on any transaction that introduces a node without
+ * one. Ids are the stable handle Kopilot tools use to address blocks
+ * and containers; we want the invariant "every persisted block or
+ * container has an id" to hold without callers having to remember.
  */
 export const blockIdPlugin = (): Plugin => {
   const pluginKey = new PluginKey('blockId')

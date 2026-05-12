@@ -16,7 +16,6 @@ import type {
   BlockType,
   CalloutVariant,
   CardData,
-  DocJSON,
   EmbedAspect,
   EmbedProvider,
   ImageAlign,
@@ -36,9 +35,9 @@ const HEADING_MAX_LEVEL = 3
 
 const parser = unified().use(remarkParse).use(remarkGfm).use(remarkDirective)
 
-export function mdToBlocks(markdown: string): DocJSON {
+export function mdToBlocks(markdown: string): ArticleNodeJSON[] {
   const cleaned = stripFrontmatter(markdown ?? '')
-  if (!cleaned.trim()) return emptyDoc()
+  if (!cleaned.trim()) return emptyContent()
 
   const tree = parser.parse(cleaned) as MdastRoot
   const ctx: ParseCtx = { nodes: [] }
@@ -74,19 +73,16 @@ export function mdToBlocks(markdown: string): DocJSON {
     walkBlock(child, ctx, 1)
   }
   flushDetails()
-  if (ctx.nodes.length === 0) return emptyDoc()
-  return { type: 'doc', content: ctx.nodes }
+  if (ctx.nodes.length === 0) return emptyContent()
+  return ctx.nodes
 }
 
 interface ParseCtx {
   nodes: ArticleNodeJSON[]
 }
 
-function emptyDoc(): DocJSON {
-  return {
-    type: 'doc',
-    content: [{ type: 'block', attrs: { id: generateId(), blockType: 'text' }, content: [] }],
-  }
+function emptyContent(): ArticleNodeJSON[] {
+  return [{ type: 'block', attrs: { id: generateId(), blockType: 'text' }, content: [] }]
 }
 
 // ─── frontmatter ─────────────────────────────────────────────────────
@@ -816,7 +812,7 @@ function parseTableRowHtml(
     let cellContent: BlockJSON[] = []
     if (trimmed) {
       const sub = mdToBlocks(trimmed)
-      cellContent = sub.content.filter((n): n is BlockJSON => n.type === 'block')
+      cellContent = sub.filter((n): n is BlockJSON => n.type === 'block')
     }
     if (cellContent.length === 0) {
       cellContent = [{ type: 'block', attrs: { id: generateId(), blockType: 'text' }, content: [] }]
@@ -843,7 +839,7 @@ function tryParseDetailsHtml(raw: string): PanelJSON | null {
   let panelContent: BlockJSON[] = []
   if (body) {
     const sub = mdToBlocks(body)
-    panelContent = sub.content.filter((n): n is BlockJSON => n.type === 'block')
+    panelContent = sub.filter((n): n is BlockJSON => n.type === 'block')
   }
   if (panelContent.length === 0) {
     panelContent = [{ type: 'block', attrs: { id: generateId(), blockType: 'text' }, content: [] }]

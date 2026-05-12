@@ -46,11 +46,17 @@ export function stampBlockIds(content: ArticleNodeJSON[]): {
   }
 
   const stampContainer = (node: ContainerBlockJSON): ContainerBlockJSON => {
+    const id = ensureId(node.attrs?.id)
+    const idChanged = id !== node.attrs?.id
     if (node.type === 'tabs' || node.type === 'accordion') {
       const stampedPanels = node.content.map(stampPanel)
       const panelsChanged = stampedPanels.some((p, i) => p !== node.content[i])
-      if (!panelsChanged) return node
-      return { ...node, content: stampedPanels } as ContainerBlockJSON
+      if (!idChanged && !panelsChanged) return node
+      return {
+        ...node,
+        attrs: { ...node.attrs, id },
+        content: stampedPanels,
+      } as ContainerBlockJSON
     }
     // table
     const stampedRows = node.content.map((row) => ({
@@ -60,7 +66,7 @@ export function stampBlockIds(content: ArticleNodeJSON[]): {
         content: cell.content.map(stampBlock),
       })),
     }))
-    return { ...node, content: stampedRows }
+    return { ...node, attrs: { ...node.attrs, id }, content: stampedRows }
   }
 
   const out = content.map((node): ArticleNodeJSON => {

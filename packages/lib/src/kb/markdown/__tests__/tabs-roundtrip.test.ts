@@ -5,6 +5,8 @@ import { blocksToMd } from '../blocks-to-md'
 import { mdToBlocks } from '../md-to-blocks'
 import type { DocJSON, TabsJSON } from '../types'
 
+const mdToDoc = (md: string): DocJSON => ({ type: 'doc', content: mdToBlocks(md) })
+
 function makeTabsDoc(): DocJSON {
   return {
     type: 'doc',
@@ -60,7 +62,7 @@ describe('tabs markdown serialization', () => {
   it('round-trips structure with mixed block types per panel', () => {
     const original = makeTabsDoc()
     const md = blocksToMd(original)
-    const reparsed = mdToBlocks(md)
+    const reparsed = mdToDoc(md)
     const tabs = reparsed.content[0] as TabsJSON
     expect(tabs.type).toBe('tabs')
     expect(tabs.content).toHaveLength(2)
@@ -79,7 +81,7 @@ describe('tabs markdown serialization', () => {
   it('regenerates panel ids on import (Q6c)', () => {
     const original = makeTabsDoc()
     const md = blocksToMd(original)
-    const reparsed = mdToBlocks(md)
+    const reparsed = mdToDoc(md)
     const tabs = reparsed.content[0] as TabsJSON
     expect(tabs.content[0].attrs.id).not.toBe('p1')
     expect(tabs.content[1].attrs.id).not.toBe('p2')

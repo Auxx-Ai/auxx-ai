@@ -12,6 +12,11 @@ export const Accordion = Node.create({
 
   addAttributes() {
     return {
+      id: {
+        default: null,
+        parseHTML: (el) => el.getAttribute('data-id'),
+        renderHTML: (attrs) => (attrs.id ? { 'data-id': attrs.id } : {}),
+      },
       allowMultiple: {
         default: true,
         parseHTML: (el) => el.getAttribute('data-allow-multiple') !== 'false',

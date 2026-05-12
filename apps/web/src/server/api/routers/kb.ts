@@ -67,8 +67,7 @@ const articleDraftFieldsSchema = z.object({
   excerpt: z.string().nullish(),
   emoji: z.string().nullish(),
   content: z.string().optional(),
-  contentJson: z.any().nullish(),
-  coverImage: z.string().nullish(),
+  contentJson: z.array(z.unknown()).nullish(),
   coverImageId: z.string().nullish(),
 })
 
@@ -90,10 +89,9 @@ const articleCreateSchema = z.object({
   description: z.string().nullish(),
   slug: z.string().optional(),
   content: z.string().optional(),
-  contentJson: z.any().nullish(),
+  contentJson: z.array(z.unknown()).nullish(),
   excerpt: z.string().nullish(),
   emoji: z.string().nullish(),
-  coverImage: z.string().nullish(),
   coverImageId: z.string().nullish(),
   articleKind: articleKindSchema.optional(),
   parentId: z.string().nullish(),
@@ -258,7 +256,7 @@ export const knowledgeBaseRouter = createTRPCRouter({
       const { knowledgeBaseId, adjacentTo, position, ...articleData } = input
       const result = await getKBService(ctx).createArticle(
         knowledgeBaseId,
-        articleData,
+        articleData as Parameters<ReturnType<typeof getKBService>['createArticle']>[1],
         ctx.session.user.id,
         adjacentTo && position ? { adjacentId: adjacentTo, position } : undefined
       )
@@ -282,7 +280,7 @@ export const knowledgeBaseRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       return await getKBService(ctx).updateArticleDraft(
         input.id,
-        input.data,
+        input.data as Parameters<ReturnType<typeof getKBService>['updateArticleDraft']>[1],
         ctx.session.user.id,
         input.knowledgeBaseId
       )
@@ -449,7 +447,10 @@ export const knowledgeBaseRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      return await getKBService(ctx).updateArticlesBatch(input.knowledgeBaseId, input.articles)
+      return await getKBService(ctx).updateArticlesBatch(
+        input.knowledgeBaseId,
+        input.articles as Parameters<ReturnType<typeof getKBService>['updateArticlesBatch']>[1]
+      )
     }),
 
   deleteArticle: protectedProcedure

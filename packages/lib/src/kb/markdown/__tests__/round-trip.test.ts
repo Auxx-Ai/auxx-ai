@@ -5,6 +5,8 @@ import { blocksToMd } from '../blocks-to-md'
 import { mdToBlocks, parseFrontmatter } from '../md-to-blocks'
 import type { DocJSON } from '../types'
 
+const mdToDoc = (md: string): DocJSON => ({ type: 'doc', content: mdToBlocks(md) })
+
 function block(
   blockType: string,
   attrs: Record<string, unknown> = {},
@@ -18,7 +20,7 @@ const text = (s: string, marks?: unknown[]) =>
 
 describe('mdToBlocks — basic blocks', () => {
   it('parses headings (clamps to 3)', () => {
-    const doc = mdToBlocks('# H1\n\n## H2\n\n### H3\n\n#### H4')
+    const doc = mdToDoc('# H1\n\n## H2\n\n### H3\n\n#### H4')
     expect(doc.content.map((b) => b.attrs.blockType)).toEqual([
       'heading',
       'heading',
@@ -29,7 +31,7 @@ describe('mdToBlocks — basic blocks', () => {
   })
 
   it('parses paragraphs as text blocks', () => {
-    const doc = mdToBlocks('Hello world.\n\nSecond para.')
+    const doc = mdToDoc('Hello world.\n\nSecond para.')
     expect(doc.content).toHaveLength(2)
     expect(doc.content[0]).toMatchObject({ attrs: { blockType: 'text' } })
     expect(doc.content[1]).toMatchObject({ attrs: { blockType: 'text' } })
@@ -37,7 +39,7 @@ describe('mdToBlocks — basic blocks', () => {
 
   it('parses bullet, numbered, and task lists', () => {
     const md = '- one\n- two\n\n1. first\n2. second\n\n- [ ] open\n- [x] done'
-    const doc = mdToBlocks(md)
+    const doc = mdToDoc(md)
     const types = doc.content.map((b) => b.attrs.blockType)
     expect(types).toEqual([
       'bulletListItem',
@@ -53,47 +55,45 @@ describe('mdToBlocks — basic blocks', () => {
 
   it('parses nested lists with level attribute', () => {
     const md = '- one\n  - nested\n  - also nested\n- two'
-    const doc = mdToBlocks(md)
+    const doc = mdToDoc(md)
     expect(doc.content.map((b) => b.attrs.level)).toEqual([1, 2, 2, 1])
   })
 
   it('parses code fences with language', () => {
     const md = '```ts\nconst x = 1\n```'
-    const doc = mdToBlocks(md)
+    const doc = mdToDoc(md)
     expect(doc.content[0]?.attrs.blockType).toBe('codeBlock')
     expect(doc.content[0]?.attrs.codeLanguage).toBe('ts')
     expect(doc.content[0]?.content?.[0]).toEqual({ type: 'text', text: 'const x = 1' })
   })
 
   it('parses blockquotes and dividers', () => {
-    const doc = mdToBlocks('> quoted\n\n---\n\ntrailing')
+    const doc = mdToDoc('> quoted\n\n---\n\ntrailing')
     expect(doc.content.map((b) => b.attrs.blockType)).toEqual(['quote', 'divider', 'text'])
   })
 })
 
 describe('mdToBlocks — directives', () => {
   it('parses callout container directives', () => {
-    const doc = mdToBlocks(':::tip\nBe kind.\n:::')
+    const doc = mdToDoc(':::tip\nBe kind.\n:::')
     expect(doc.content[0]?.attrs.blockType).toBe('callout')
     expect(doc.content[0]?.attrs.calloutVariant).toBe('tip')
   })
 
   it('aliases note → info, warning → warn, danger → error', () => {
-    const doc = mdToBlocks(':::note\nA\n:::\n\n:::warning\nB\n:::\n\n:::danger\nC\n:::')
+    const doc = mdToDoc(':::note\nA\n:::\n\n:::warning\nB\n:::\n\n:::danger\nC\n:::')
     expect(doc.content.map((b) => b.attrs.calloutVariant)).toEqual(['info', 'warn', 'error'])
   })
 
   it('parses embed leaf directives', () => {
-    const doc = mdToBlocks(
-      '::embed{url="https://www.youtube.com/watch?v=abcdefg" provider="youtube"}'
-    )
+    const doc = mdToDoc('::embed{url="https://www.youtube.com/watch?v=abcdefg" provider="youtube"}')
     expect(doc.content[0]).toMatchObject({
       attrs: { blockType: 'embed', embedUrl: 'https://www.youtube.com/watch?v=abcdefg' },
     })
   })
 
   it('promotes a bare YouTube URL line to an embed', () => {
-    const doc = mdToBlocks('https://www.youtube.com/watch?v=abcdefg')
+    const doc = mdToDoc('https://www.youtube.com/watch?v=abcdefg')
     expect(doc.content[0]?.attrs.blockType).toBe('embed')
     expect(doc.content[0]?.attrs.embedProvider).toBe('youtube')
   })
@@ -101,7 +101,7 @@ describe('mdToBlocks — directives', () => {
 
 describe('mdToBlocks — inline marks', () => {
   it('parses bold, italic, strike, code', () => {
-    const doc = mdToBlocks('**bold** *italic* ~~strike~~ `code`')
+    const doc = mdToDoc('**bold** *italic* ~~strike~~ `code`')
     const inline = doc.content[0]?.content ?? []
     const marksOf = (i: number) => (inline[i] as { marks?: { type: string }[] }).marks?.[0]?.type
     expect(marksOf(0)).toBe('bold')
@@ -111,7 +111,7 @@ describe('mdToBlocks — inline marks', () => {
   })
 
   it('parses links with href attr', () => {
-    const doc = mdToBlocks('[click](https://example.com)')
+    const doc = mdToDoc('[click](https://example.com)')
     const inline = doc.content[0]?.content?.[0] as {
       type: string
       marks?: { type: string; attrs?: Record<string, unknown> }[]
@@ -121,7 +121,7 @@ describe('mdToBlocks — inline marks', () => {
   })
 
   it('parses <u> as underline mark', () => {
-    const doc = mdToBlocks('plain <u>emphasized</u>.')
+    const doc = mdToDoc('plain <u>emphasized</u>.')
     const inline = doc.content[0]?.content ?? []
     const u = inline.find((n) =>
       (n as { marks?: { type: string }[] }).marks?.some((m) => m.type === 'underline')
@@ -130,7 +130,7 @@ describe('mdToBlocks — inline marks', () => {
   })
 
   it('extracts {{placeholder}} syntax', () => {
-    const doc = mdToBlocks('Hi {{first_name}}, welcome.')
+    const doc = mdToDoc('Hi {{first_name}}, welcome.')
     const inline = doc.content[0]?.content ?? []
     expect(inline[1]).toEqual({ type: 'placeholder', attrs: { id: 'first_name' } })
   })
@@ -138,7 +138,7 @@ describe('mdToBlocks — inline marks', () => {
   it('emits code mark exclusively (no bold+code combos that the schema rejects)', () => {
     // ProseMirror's `code` mark excludes all others. If the converter combined
     // it with bold/italic, the editor would throw "Invalid collection of marks".
-    const doc = mdToBlocks('**before `inside` after**')
+    const doc = mdToDoc('**before `inside` after**')
     const inline = doc.content[0]?.content ?? []
     for (const node of inline) {
       const marks = (node as { marks?: { type: string }[] }).marks ?? []
@@ -160,7 +160,7 @@ describe('mdToBlocks — frontmatter', () => {
 
   it('strips frontmatter when parsing', () => {
     const md = '---\ntitle: x\n---\n\n# Body'
-    const doc = mdToBlocks(md)
+    const doc = mdToDoc(md)
     expect(doc.content[0]?.attrs.blockType).toBe('heading')
   })
 })
@@ -227,7 +227,7 @@ describe('round-trip', () => {
     }
 
     const md = blocksToMd(original)
-    const reparsed = mdToBlocks(md)
+    const reparsed = mdToDoc(md)
 
     const types = (d: DocJSON) => d.content.map((b) => b.attrs.blockType)
     expect(types(reparsed)).toEqual(types(original))
@@ -235,7 +235,7 @@ describe('round-trip', () => {
 
   it('preserves placeholders across the round-trip', () => {
     const md = 'Hi {{first_name}}, your order is ready.'
-    const doc = mdToBlocks(md)
+    const doc = mdToDoc(md)
     const out = blocksToMd(doc)
     expect(out).toContain('{{first_name}}')
   })

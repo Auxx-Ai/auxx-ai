@@ -55,14 +55,14 @@ export function KBArticlesHeaderActions({ knowledgeBaseId }: KBArticlesHeaderAct
         try {
           const text = await file.text()
           const { fields } = parseFrontmatter(text)
-          const doc = mdToBlocks(text)
+          const nodes = mdToBlocks(text)
           const inferredTitle =
-            fields.title ?? extractFirstHeading(doc) ?? file.name.replace(/\.md$/i, '')
+            fields.title ?? extractFirstHeading(nodes) ?? file.name.replace(/\.md$/i, '')
           await createArticle({
             title: inferredTitle,
             slug: fields.slug,
             description: fields.description,
-            contentJson: doc,
+            contentJson: nodes,
             parentId: activeTabId,
           })
         } catch (error) {
@@ -134,12 +134,14 @@ export function KBArticlesHeaderActions({ knowledgeBaseId }: KBArticlesHeaderAct
   )
 }
 
-interface MaybeDoc {
-  content?: { attrs?: { blockType?: string }; content?: { type: string; text?: string }[] }[]
+interface MaybeBlock {
+  type?: string
+  attrs?: { blockType?: string }
+  content?: { type: string; text?: string }[]
 }
 
-function extractFirstHeading(doc: MaybeDoc): string | undefined {
-  for (const block of doc.content ?? []) {
+function extractFirstHeading(nodes: MaybeBlock[]): string | undefined {
+  for (const block of nodes) {
     if (block?.attrs?.blockType !== 'heading') continue
     const text = (block.content ?? [])
       .filter((c) => c.type === 'text')

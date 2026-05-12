@@ -15,6 +15,8 @@ export const entitySnapshotSchema = z.object({
   entityDefinitionId: z.string(),
   displayName: z.string(),
   summary: z.string().optional(),
+  /** Resource-specific hints for renderers (e.g. article slug + knowledgeBaseId for deep links). */
+  extras: z.record(z.string(), z.string()).optional(),
 })
 
 export const threadSnapshotSchema = z.object({

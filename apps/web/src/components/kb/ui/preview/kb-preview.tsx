@@ -66,7 +66,9 @@ function KBPreviewInner({ kbId, activeSlugPath }: { kbId: string; activeSlugPath
 
   if (!knowledgeBase) return null
 
-  const docJson = (previewContentJson ?? null) as DocJSON | null
+  const docJson: DocJSON | null = previewContentJson
+    ? { type: 'doc', content: previewContentJson }
+    : null
   const { prev, next } = articleId
     ? getArticleNeighbours(articles, articleId)
     : { prev: undefined, next: undefined }
@@ -106,7 +108,7 @@ function KBPreviewInner({ kbId, activeSlugPath }: { kbId: string; activeSlugPath
                 articles.find((a) => a.id === articleId)?.emoji
               }
               description={previewDescription ?? activeArticle?.description}
-              coverImage={previewCoverImage ?? activeArticle?.coverImage}
+              coverImage={previewCoverImage}
               parent={parent}
               resolveAuxxHref={(id) => `/preview/kb/${kbId}/r/${id}`}
             />

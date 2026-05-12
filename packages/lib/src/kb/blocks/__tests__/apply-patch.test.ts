@@ -416,3 +416,125 @@ describe('applyPatch — top-level + container interleaving', () => {
     expect(ids).toEqual(['a', '[tabs]', 'new', 'b'])
   })
 })
+
+const tableNode = (id: string): ArticleNodeJSON => ({
+  type: 'table',
+  attrs: { id },
+  content: [
+    {
+      type: 'tableRow',
+      content: [{ type: 'tableCell', content: [block(`${id}-c1`, 'cell')] }],
+    },
+  ],
+})
+
+const tabsNode = (id: string, panelId = `${id}-p1`): ArticleNodeJSON => ({
+  type: 'tabs',
+  attrs: { id, activeTab: null },
+  content: [
+    { type: 'panel', attrs: { id: panelId, label: 'Tab 1' }, content: [block(`${panelId}-b`)] },
+  ],
+})
+
+const accordionNode = (id: string, panelId = `${id}-p1`): ArticleNodeJSON => ({
+  type: 'accordion',
+  attrs: { id, allowMultiple: true },
+  content: [
+    { type: 'panel', attrs: { id: panelId, label: 'Section' }, content: [block(`${panelId}-b`)] },
+  ],
+})
+
+describe('applyPatch — containers', () => {
+  it('deletes a top-level table by id', () => {
+    const doc: ArticleNodeJSON[] = [block('a'), tableNode('t1'), block('b')]
+    const out = applyPatch(doc, { op: 'delete', blockIds: ['t1'] })
+    const types = out.content.map((n) => (n.type === 'block' ? n.attrs.id : n.type))
+    expect(types).toEqual(['a', 'b'])
+    expect(out.effect).toEqual({ op: 'delete', blockIds: ['t1'] })
+  })
+
+  it('deletes a top-level tabs by id', () => {
+    const doc: ArticleNodeJSON[] = [tabsNode('tabs1'), block('a')]
+    const out = applyPatch(doc, { op: 'delete', blockIds: ['tabs1'] })
+    expect(out.content.map((n) => (n.type === 'block' ? n.attrs.id : n.type))).toEqual(['a'])
+  })
+
+  it('deletes a top-level accordion by id', () => {
+    const doc: ArticleNodeJSON[] = [accordionNode('ac1'), block('a')]
+    const out = applyPatch(doc, { op: 'delete', blockIds: ['ac1'] })
+    expect(out.content.map((n) => (n.type === 'block' ? n.attrs.id : n.type))).toEqual(['a'])
+  })
+
+  it('deletes a mix of containers and leaf blocks in one call', () => {
+    const doc: ArticleNodeJSON[] = [block('a'), tableNode('t1'), block('b'), tabsNode('tabs1')]
+    const out = applyPatch(doc, { op: 'delete', blockIds: ['t1', 'b', 'tabs1'] })
+    expect(out.content.map((n) => (n.type === 'block' ? n.attrs.id : n.type))).toEqual(['a'])
+    expect(new Set(out.effect.blockIds)).toEqual(new Set(['t1', 'b', 'tabs1']))
+  })
+
+  it('moves a top-level table to start', () => {
+    const doc: ArticleNodeJSON[] = [block('a'), block('b'), tableNode('t1')]
+    const out = applyPatch(doc, {
+      op: 'move',
+      blockIds: ['t1'],
+      anchor: { at: 'start' },
+    })
+    expect(out.content.map((n) => (n.type === 'block' ? n.attrs.id : n.type))).toEqual([
+      'table',
+      'a',
+      'b',
+    ])
+  })
+
+  it('moves a table before a leaf block at the top level', () => {
+    const doc: ArticleNodeJSON[] = [block('a'), block('b'), tableNode('t1')]
+    const out = applyPatch(doc, {
+      op: 'move',
+      blockIds: ['t1'],
+      anchor: { at: 'before', blockId: 'b' },
+    })
+    expect(out.content.map((n) => (n.type === 'block' ? n.attrs.id : n.type))).toEqual([
+      'a',
+      'table',
+      'b',
+    ])
+  })
+
+  it('rejects moving a container into a panel', () => {
+    const doc: ArticleNodeJSON[] = [tabsNode('tabs1', 'p1'), tableNode('t1')]
+    expect(() =>
+      applyPatch(doc, {
+        op: 'move',
+        blockIds: ['t1'],
+        anchor: { at: 'startOf', containerId: 'p1' },
+      })
+    ).toThrow(PatchError)
+  })
+
+  it('rejects moving a container before a nested leaf id', () => {
+    // The nested leaf 'p1-p1-b' lives inside the panel, not at top level.
+    const doc: ArticleNodeJSON[] = [tabsNode('tabs1', 'p1'), tableNode('t1')]
+    expect(() =>
+      applyPatch(doc, {
+        op: 'move',
+        blockIds: ['t1'],
+        anchor: { at: 'before', blockId: 'p1-b' },
+      })
+    ).toThrow(PatchError)
+  })
+
+  it('inserts a leaf before a top-level container id', () => {
+    const doc: ArticleNodeJSON[] = [block('a'), tableNode('t1'), block('b')]
+    const out = applyPatch(doc, {
+      op: 'insert',
+      anchor: { at: 'before', blockId: 't1' },
+      blocks: [block('new')],
+    })
+    expect(out.content.map((n) => (n.type === 'block' ? n.attrs.id : n.type))).toEqual([
+      'a',
+      'new',
+      'table',
+      'b',
+    ])
+  })
+})

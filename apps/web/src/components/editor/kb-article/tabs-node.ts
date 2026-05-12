@@ -12,6 +12,11 @@ export const Tabs = Node.create({
 
   addAttributes() {
     return {
+      id: {
+        default: null,
+        parseHTML: (el) => el.getAttribute('data-id'),
+        renderHTML: (attrs) => (attrs.id ? { 'data-id': attrs.id } : {}),
+      },
       activeTab: {
         default: null,
         parseHTML: (el) => el.getAttribute('data-active-tab'),

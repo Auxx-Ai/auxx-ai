@@ -27,7 +27,16 @@ export function EntityCardItem({ recordId, snapshot, selectable }: EntityCardIte
   const { record, isNotFound, hasLoadedOnce } = useRecord({ recordId })
   const entityDefId = getDefinitionId(recordId)
   const { resource } = useResource(entityDefId)
-  const href = useRecordLink(recordId)
+  const recordLink = useRecordLink(recordId)
+  // Articles don't have a /app/articles/<id> page — they live in the KB editor.
+  // The snapshot walker carries `slug` + `knowledgeBaseId` in `extras` for us.
+  const articleHref =
+    resource?.entityType === 'article' &&
+    snapshot?.extras?.knowledgeBaseId &&
+    snapshot?.extras?.slug
+      ? `/app/kb/${snapshot.extras.knowledgeBaseId}/editor/${snapshot.extras.slug}`
+      : null
+  const href = articleHref ?? recordLink
 
   // Ignore snapshot.displayName when it equals the recordId — a legacy
   // fallback from older turns poisoned snapshots with the raw id.

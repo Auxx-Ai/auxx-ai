@@ -8,16 +8,17 @@ import type { BlockType } from './block-node'
  * bulletList, codeBlock, …) to the new block-editor schema (a single `block`
  * node with a `blockType` attribute).
  *
- * Returns the input unchanged when no legacy nodes are detected, so editor
- * round-trips on already-migrated content are zero-cost.
+ * Operates on the canonical `ArticleNodeJSON[]` body shape. Returns the
+ * input unchanged when no legacy nodes are detected.
  */
-export function migrateLegacyContent(input: JSONContent | null | undefined): JSONContent | null {
+export function migrateLegacyContent(
+  input: JSONContent[] | null | undefined
+): JSONContent[] | null {
   if (!input) return null
-  if (input.type !== 'doc') return input
-  if (!hasLegacyNodes(input)) return input
+  if (!hasLegacyNodesIn(input)) return input
 
   const blocks: JSONContent[] = []
-  for (const child of input.content ?? []) {
+  for (const child of input) {
     appendAsBlocks(child, blocks, 1)
   }
 
@@ -25,7 +26,7 @@ export function migrateLegacyContent(input: JSONContent | null | undefined): JSO
     blocks.push(makeBlock('text', [], { level: null }))
   }
 
-  return { type: 'doc', content: blocks }
+  return blocks
 }
 
 const LEGACY_NODE_TYPES = new Set([
@@ -48,6 +49,13 @@ function hasLegacyNodes(node: JSONContent): boolean {
   if (node.type && LEGACY_NODE_TYPES.has(node.type)) return true
   for (const child of node.content ?? []) {
     if (hasLegacyNodes(child)) return true
+  }
+  return false
+}
+
+function hasLegacyNodesIn(nodes: JSONContent[]): boolean {
+  for (const n of nodes) {
+    if (hasLegacyNodes(n)) return true
   }
   return false
 }
