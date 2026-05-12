@@ -32,8 +32,15 @@ export function AlignSection({ editor }: AlignSectionProps) {
   const current = useEditorState({
     editor,
     selector: ({ editor }): Align => {
-      for (const opt of OPTIONS) {
-        if (editor.isActive({ textAlign: opt.id })) return opt.id
+      // Read the actual textAlign attribute on the current block. Falling
+      // back to scanning isActive() across every option made the dropdown
+      // pick whichever option happened to match a non-default value first,
+      // which surfaced as "always Right" once any block in the doc carried
+      // textAlign: 'right'.
+      const attrs = editor.getAttributes('block') as { textAlign?: string | null }
+      const value = attrs.textAlign
+      if (value === 'left' || value === 'center' || value === 'right' || value === 'justify') {
+        return value
       }
       return 'left'
     },

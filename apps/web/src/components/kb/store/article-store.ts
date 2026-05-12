@@ -9,12 +9,25 @@ import { subscribeWithSelector } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
 
 /**
+ * Lightweight metadata for one revision (draft or published). Mirrors
+ * `ArticleRevisionMeta` from kb-service so the server payload maps 1:1.
+ */
+export interface ArticleRevisionMeta {
+  title: string
+  description: string | null
+  excerpt: string | null
+  emoji: string | null
+  coverImage: string | null
+  coverImageId: string | null
+}
+
+/**
  * ArticleMeta — flat metadata for an article. Content/contentJson are NOT stored
  * here; the editor fetches them directly per-article via tRPC.
  *
- * title/emoji/description/excerpt come from the joined revision row:
- *   - published revision when the article has been published at least once
- *   - draft revision otherwise
+ * Top-level display fields (title/emoji/description/excerpt/coverImage) mirror
+ * `draft.*` — the sidebar reflects the current working state. Consumers that
+ * need the published copy specifically read it off `published`.
  */
 export interface ArticleMeta {
   id: string
@@ -35,6 +48,8 @@ export interface ArticleMeta {
   publishedAt: Date | null
   publishedRevisionId: string | null
   draftRevisionId: string | null
+  draft: ArticleRevisionMeta
+  published: ArticleRevisionMeta | null
   /** Tag RecordIds applied to this article. Empty array if untagged. */
   tagIds: RecordId[]
 }
@@ -89,6 +104,13 @@ interface ArticleStoreState {
   applyArticleMetadataFromServer: (id: string, fields: Partial<ArticleMeta>) => void
 
   setArticleOptimistic: (id: string, updates: Partial<ArticleMeta>) => void
+  /**
+   * Optimistically patch the draft revision envelope and mirror the patched
+   * fields onto the top-level display copy. Mutations that write to the draft
+   * (title/emoji/coverImage/description/excerpt) should go through this
+   * helper so the sidebar entry and the editor reads stay in sync.
+   */
+  patchDraft: (id: string, fields: Partial<ArticleRevisionMeta>) => void
   confirmUpdate: (id: string, server?: ArticleMeta) => void
   rollbackUpdate: (id: string) => void
 
@@ -239,6 +261,21 @@ export const useArticleStore = create<ArticleStoreState>()(
             original: existing?.original ?? server,
           }
         })
+      },
+
+      patchDraft: (id, fields) => {
+        const server = get().articles.get(id) ?? get().optimisticNewArticles[id]
+        if (!server) return
+        const nextDraft: ArticleRevisionMeta = { ...server.draft, ...fields }
+        // Mirror the patched fields onto the top-level display copy so
+        // the sidebar entry updates without waiting for a server roundtrip.
+        const mirrored: Partial<ArticleMeta> = { draft: nextDraft }
+        if (fields.title !== undefined) mirrored.title = nextDraft.title
+        if (fields.emoji !== undefined) mirrored.emoji = nextDraft.emoji
+        if (fields.description !== undefined) mirrored.description = nextDraft.description
+        if (fields.excerpt !== undefined) mirrored.excerpt = nextDraft.excerpt
+        if (fields.coverImage !== undefined) mirrored.coverImage = nextDraft.coverImage
+        get().setArticleOptimistic(id, mirrored)
       },
 
       confirmUpdate: (id, server) => {

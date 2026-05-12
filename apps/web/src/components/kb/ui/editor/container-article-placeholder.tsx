@@ -17,11 +17,13 @@ import { getFullSlugPath } from '@auxx/ui/components/kb/utils'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { ExternalLink, FileText, FolderClosed, Heading, Link2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-import { useMemo } from 'react'
+import { useCallback, useMemo, useRef } from 'react'
 import { useArticleList } from '../../hooks/use-article-list'
 import { useArticleMutations } from '../../hooks/use-article-mutations'
 import type { ArticleMeta } from '../../store/article-store'
 import { usePendingInsertStore } from '../../store/pending-insert-store'
+import { ArticleEditorHeader } from './article-editor-header'
+import { ArticleEditorTop } from './article-editor-top'
 
 interface ContainerArticlePlaceholderProps {
   article: ArticleMeta
@@ -49,11 +51,12 @@ const HEADER_OPTIONS: QuickCreateOption[] = [
 
 /**
  * Rendered in the right pane when the URL resolves to a structural
- * container (`tab`, `header`, or `link`) — these kinds have no body of
- * their own, so we show an empty-state with quick-create actions for
- * the children the container can legally hold instead of mounting the
- * Tiptap article editor. Categories keep their normal editor since
- * they carry both a body and children.
+ * container (`tab`, `header`, or `link`). Reuses the article editor's
+ * header + top blocks so the surface matches a real article — same
+ * page-settings cluster, same icon/title/description chrome — then
+ * swaps the body for a quick-create Command list (tab/header) or an
+ * Open-link CTA (link). `ArticleCoverStrip` self-gates for these
+ * kinds, so the cover slot is hidden automatically.
  */
 export function ContainerArticlePlaceholder({
   article,
@@ -61,8 +64,10 @@ export function ContainerArticlePlaceholder({
 }: ContainerArticlePlaceholderProps) {
   const router = useRouter()
   const articles = useArticleList(knowledgeBaseId)
-  const { isCreating } = useArticleMutations(knowledgeBaseId)
+  const { isCreating, updateArticleDraft } = useArticleMutations(knowledgeBaseId)
   const setPending = usePendingInsertStore((s) => s.setPending)
+  const commandWrapperRef = useRef<HTMLDivElement>(null)
+  const linkButtonRef = useRef<HTMLAnchorElement>(null)
 
   const children = useMemo(
     () =>
@@ -71,9 +76,15 @@ export function ContainerArticlePlaceholder({
         .sort((a, b) => (a.sortOrder < b.sortOrder ? -1 : a.sortOrder > b.sortOrder ? 1 : 0)),
     [articles, article.id]
   )
-  const childCount = children.length
 
   const basePath = `/app/kb/${knowledgeBaseId}`
+  const isLink = article.articleKind === ArticleKind.link
+  const options =
+    article.articleKind === ArticleKind.tab
+      ? TAB_OPTIONS
+      : article.articleKind === ArticleKind.header
+        ? HEADER_OPTIONS
+        : null
 
   const handleOpenChild = (child: ArticleMeta) => {
     if (child.articleKind === ArticleKind.link) {
@@ -101,114 +112,105 @@ export function ContainerArticlePlaceholder({
     return <FileText className='size-4 text-muted-foreground' />
   }
 
-  const kindLabel =
-    article.articleKind === ArticleKind.tab
-      ? 'Tab'
-      : article.articleKind === ArticleKind.header
-        ? 'Section header'
-        : 'Link'
+  const handleMetadataUpdate = useCallback(
+    async (changes: { title?: string; description?: string }) => {
+      await updateArticleDraft(article.id, changes)
+    },
+    [article.id, updateArticleDraft]
+  )
 
-  const subtitle =
-    article.articleKind === ArticleKind.link
-      ? 'External link'
-      : `${kindLabel} · ${childCount} ${childCount === 1 ? 'item' : 'items'} inside`
-
-  const hasCustomIcon = !!article.emoji && !!getIcon(article.emoji)
-  const fallbackIcon =
-    article.articleKind === ArticleKind.link ? (
-      <Link2 className='size-7 text-muted-foreground' />
-    ) : article.articleKind === ArticleKind.header ? (
-      <Heading className='size-7 text-muted-foreground' />
-    ) : (
-      <FolderClosed className='size-7 text-muted-foreground' />
-    )
-
-  const linkUrl =
-    article.articleKind === ArticleKind.link &&
-    article.slug &&
-    /^[a-z][a-z0-9+.-]*:/i.test(article.slug)
-      ? article.slug
-      : null
+  const focusContent = useCallback(() => {
+    if (isLink) {
+      linkButtonRef.current?.focus()
+      return
+    }
+    const first = commandWrapperRef.current?.querySelector<HTMLElement>('[cmdk-item]')
+    first?.focus()
+  }, [isLink])
 
   const handleCreate = (kind: ArticleKindType) => {
-    // No `adjacentTo` / `position` → ArticleTreeSection treats this as an
-    // append, putting the new child at the bottom of the container.
     setPending({ articleKind: kind, parentId: article.id })
   }
 
-  const options =
-    article.articleKind === ArticleKind.tab
-      ? TAB_OPTIONS
-      : article.articleKind === ArticleKind.header
-        ? HEADER_OPTIONS
-        : null
+  const linkUrl =
+    isLink && article.slug && /^[a-z][a-z0-9+.-]*:/i.test(article.slug) ? article.slug : null
 
   return (
     <div className='flex min-h-0 flex-1 flex-col'>
+      <ArticleEditorHeader article={article} knowledgeBaseId={knowledgeBaseId} />
       <ScrollArea className='flex-1'>
-        <div className='mx-auto flex w-full max-w-md flex-col items-center px-7 py-16 text-center'>
-          <div className='mb-4'>
-            {hasCustomIcon ? (
-              <EntityIcon iconId={article.emoji as string} variant='bare' size='lg' />
-            ) : (
-              fallbackIcon
-            )}
-          </div>
-          <h1 className='text-2xl font-semibold'>{article.title || 'Untitled'}</h1>
-          <p className='mt-1 text-sm text-muted-foreground'>{subtitle}</p>
-
-          {article.articleKind === ArticleKind.link ? (
-            <div className='mt-8 w-full'>
-              {linkUrl ? (
-                <Button asChild variant='outline' className='w-full'>
-                  <a href={linkUrl} target='_blank' rel='noopener noreferrer'>
-                    <ExternalLink /> Open link
-                  </a>
-                </Button>
-              ) : (
-                <p className='text-sm text-muted-foreground'>
-                  This link doesn't have a URL yet. Set one from the sidebar.
-                </p>
-              )}
-            </div>
-          ) : options ? (
-            <div className='mt-8 w-full text-left'>
-              <Command className='rounded-md border bg-background'>
-                <CommandList>
-                  <CommandGroup>
-                    <CommandGroupLabel>Add to this {kindLabel.toLowerCase()}</CommandGroupLabel>
-                    {options.map(({ kind, label, Icon }) => (
-                      <CommandItem
-                        key={kind}
-                        value={`create-${kind}`}
-                        disabled={isCreating}
-                        onSelect={() => handleCreate(kind)}>
-                        <Icon className='size-4 text-muted-foreground' />
-                        <span>{label}</span>
-                      </CommandItem>
-                    ))}
-                  </CommandGroup>
-                  {children.length > 0 && (
-                    <>
-                      <CommandSeparator />
+        <div className='flex min-h-min flex-1 flex-col'>
+          <div className='relative mx-auto flex h-full w-full max-w-3xl flex-1 flex-col px-7'>
+            <div className='flex min-h-0 flex-1 flex-col pb-10'>
+              <div aria-hidden className='h-11 pt-4' />
+              <ArticleEditorTop
+                article={article}
+                knowledgeBaseId={knowledgeBaseId}
+                onUpdateMetadata={handleMetadataUpdate}
+                onAdvanceToContent={focusContent}
+              />
+              {isLink ? (
+                <div className='mx-auto mt-4 w-full max-w-md'>
+                  {linkUrl ? (
+                    <Button asChild variant='outline' className='w-full'>
+                      <a
+                        ref={linkButtonRef}
+                        href={linkUrl}
+                        target='_blank'
+                        rel='noopener noreferrer'>
+                        <ExternalLink /> Open link
+                      </a>
+                    </Button>
+                  ) : (
+                    <p className='text-center text-muted-foreground text-sm'>
+                      This link doesn't have a URL yet. Set one from page settings.
+                    </p>
+                  )}
+                </div>
+              ) : options ? (
+                <div ref={commandWrapperRef} className='mt-4 w-full text-left'>
+                  <Command className='overflow-hidden rounded-xl border'>
+                    <CommandList>
                       <CommandGroup>
-                        <CommandGroupLabel>Inside</CommandGroupLabel>
-                        {children.map((child) => (
+                        <CommandGroupLabel>
+                          {article.articleKind === ArticleKind.tab
+                            ? 'Add to this tab'
+                            : 'Add to this section header'}
+                        </CommandGroupLabel>
+                        {options.map(({ kind, label, Icon }) => (
                           <CommandItem
-                            key={child.id}
-                            value={`open-${child.id}`}
-                            onSelect={() => handleOpenChild(child)}>
-                            {childIcon(child)}
-                            <span className='truncate'>{child.title || 'Untitled'}</span>
+                            key={kind}
+                            value={`create-${kind}`}
+                            disabled={isCreating}
+                            onSelect={() => handleCreate(kind)}>
+                            <Icon className='size-4 text-muted-foreground' />
+                            <span>{label}</span>
                           </CommandItem>
                         ))}
                       </CommandGroup>
-                    </>
-                  )}
-                </CommandList>
-              </Command>
+                      {children.length > 0 && (
+                        <>
+                          <CommandSeparator />
+                          <CommandGroup>
+                            <CommandGroupLabel>Inside</CommandGroupLabel>
+                            {children.map((child) => (
+                              <CommandItem
+                                key={child.id}
+                                value={`open-${child.id}`}
+                                onSelect={() => handleOpenChild(child)}>
+                                {childIcon(child)}
+                                <span className='truncate'>{child.title || 'Untitled'}</span>
+                              </CommandItem>
+                            ))}
+                          </CommandGroup>
+                        </>
+                      )}
+                    </CommandList>
+                  </Command>
+                </div>
+              ) : null}
             </div>
-          ) : null}
+          </div>
         </div>
       </ScrollArea>
     </div>

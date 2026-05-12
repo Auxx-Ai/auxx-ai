@@ -10,14 +10,19 @@ import Placeholder from '@tiptap/extension-placeholder'
 import TextAlign from '@tiptap/extension-text-align'
 import TextStyle from '@tiptap/extension-text-style'
 import Underline from '@tiptap/extension-underline'
-import { EditorContent, useEditor } from '@tiptap/react'
+import { type Editor, EditorContent, useEditor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
-import { useEffect, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
 import '~/styles/prosemirror.css'
 import { useEditorContext } from './editor-context'
 import { FontSize } from './extensions'
 import { Indent } from './extensions/indent'
-import { createPlaceholderNode, InlinePickerPopover, PlaceholderBadge } from './inline-picker'
+import {
+  createPlaceholderNode,
+  InlinePickerPopover,
+  PlaceholderBadge,
+  useExternalContentSync,
+} from './inline-picker'
 import { useSlashCommand } from './inline-picker/hooks/use-slash-command'
 import { SlashCommandPicker } from './slash-command-picker'
 
@@ -41,6 +46,9 @@ const TiptapEditor = ({
 }: TiptapEditorProps) => {
   const { setEditor } = useEditorContext()
   const slashCommand = useSlashCommand()
+  const externalSyncRef = useRef<{ markLocalEdit: (key: string) => void }>({
+    markLocalEdit: () => {},
+  })
 
   const placeholderNodeExtension = useMemo(
     () => createPlaceholderNode((badgeProps) => <PlaceholderBadge {...badgeProps} />),
@@ -97,32 +105,40 @@ const TiptapEditor = ({
         // before deciding whether to propagate the change.
         const html = editor.getHTML()
         setTimeout(() => {
-          if (!slashCommand.isOpenRef.current) {
-            onChange(html)
-          }
+          if (slashCommand.isOpenRef.current) return
+          externalSyncRef.current.markLocalEdit(html)
+          onChange(html)
         }, 0)
       },
     },
     []
   )
 
-  // Synchronize external content changes
-  useEffect(() => {
-    if (!editorInstance || editorInstance.isDestroyed) return
-
-    const editorHTML = editorInstance.getHTML()
-    if (content !== editorHTML) {
-      const { from, to } = editorInstance.state.selection
-      editorInstance.commands.setContent(content, false)
-      try {
-        editorInstance.commands.setTextSelection({ from, to })
-      } catch {
-        editorInstance.commands.focus('end')
-      }
+  const applyContent = useCallback((instance: Editor, next: string) => {
+    // Skip when the editor already matches — useEditor initialized with
+    // the same HTML, so a redundant setContent here would trigger
+    // TipTap's React adapters to flushSync during commit.
+    if (instance.getHTML() === next) return
+    const { from, to } = instance.state.selection
+    instance.commands.setContent(next, false)
+    try {
+      instance.commands.setTextSelection({ from, to })
+    } catch {
+      instance.commands.focus('end')
     }
-  }, [content, editorInstance])
+  }, [])
+  const canonicalKey = useCallback((html: string) => html, [])
 
-  // Flush deferred content change when slash command picker closes
+  const syncHandle = useExternalContentSync<string>({
+    editor: editorInstance,
+    incoming: content,
+    isPickerOpen: slashCommand.suggestionState.isOpen,
+    applyContent,
+    canonicalKey,
+  })
+  externalSyncRef.current = syncHandle.current
+
+  // Flush deferred outbound onChange when the slash picker closes.
   const prevSlashOpen = useRef(false)
   useEffect(() => {
     if (prevSlashOpen.current && !slashCommand.suggestionState.isOpen && editorInstance) {

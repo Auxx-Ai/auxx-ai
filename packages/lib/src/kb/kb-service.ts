@@ -31,6 +31,20 @@ const logger = createScopedLogger('kb-service')
 
 // ─── Public shapes (flattened) ───────────────────────────────────────────
 
+/**
+ * Lightweight metadata for a single revision (draft or published).
+ * Keeps cover URLs resolved server-side so consumers don't need a follow-up
+ * roundtrip per id.
+ */
+export interface ArticleRevisionMeta {
+  title: string
+  description: string | null
+  excerpt: string | null
+  emoji: string | null
+  coverImage: string | null
+  coverImageId: string | null
+}
+
 export interface ArticleListItem {
   id: string
   knowledgeBaseId: string
@@ -46,12 +60,20 @@ export interface ArticleListItem {
   publishedAt: Date | null
   publishedRevisionId: string | null
   draftRevisionId: string | null
-  // From the joined revision (published if exists, else draft)
+  // Display fields — derived from the draft revision (current working state).
   title: string
   emoji: string | null
   description: string | null
   excerpt: string | null
   coverImage: string | null
+  /**
+   * Per-revision envelopes so consumers (editor, preview) can read the
+   * exact revision they need without an extra async fetch. `draft` is
+   * always present (every article has a draft); `published` is null
+   * until the article has been published at least once.
+   */
+  draft: ArticleRevisionMeta
+  published: ArticleRevisionMeta | null
   /** Tag RecordIds (`entityDefinitionId:tagId`) attached to this article. */
   tagIds: RecordId[]
 }
@@ -60,6 +82,8 @@ export interface ArticleEditorView extends ArticleListItem {
   // Always the draft fields, plus the heavy content
   content: string
   contentJson: ArticleNodeJSON[] | null
+  /** Hash of `contentJson` — the editor uses it to dedupe inbound syncs. */
+  draftContentHash: string
   coverImageId: string | null
   hasPublishedVersion: boolean
   publishedTitle: string | null
@@ -74,6 +98,7 @@ export interface ArticleEditorView extends ArticleListItem {
   selectedEmoji: string | null
   selectedContent: string | null
   selectedContentJson: ArticleNodeJSON[] | null
+  selectedContentHash: string | null
   selectedCoverImage: string | null
   selectedCoverImageId: string | null
 }
@@ -495,8 +520,12 @@ export class KBService {
         this.organizationId
       )
       // Batch-resolve every cover URL in one parallel fan-out so an N-article
-      // KB makes O(unique-asset-count) round-trips, not O(N).
-      const urlMap = await this.resolveCoverUrls(articles.map((a) => this.listCoverImageId(a)))
+      // KB makes O(unique-asset-count) round-trips, not O(N). resolveCoverUrls
+      // de-dupes by id, so passing draft + published per article costs nothing
+      // when they share the same asset (the common case).
+      const urlMap = await this.resolveCoverUrls(
+        articles.flatMap((a) => this.coverIdsForArticle(a))
+      )
       return await Promise.all(
         articles.map((a) =>
           this.flattenForList(a, (tagIdMap.get(a.id) ?? []) as RecordId[], urlMap)
@@ -757,8 +786,12 @@ export class KBService {
     fields: ArticleDraftFields,
     editorId: string,
     knowledgeBaseId?: string,
-    options: { bypassSnapshotClear?: boolean; suppressResyncEvent?: boolean } = {}
-  ): Promise<ArticleListItem> {
+    options: {
+      bypassSnapshotClear?: boolean
+      suppressResyncEvent?: boolean
+      originatorSessionId?: string
+    } = {}
+  ): Promise<ArticleEditorView> {
     try {
       const article = await this.db.query.Article.findFirst({
         where: and(
@@ -840,14 +873,22 @@ export class KBService {
             contentJson: draftJson,
             contentHash: computeArticleJsonHash(draftJson),
             cause: { kind: 'manual' },
+            originatorSessionId: options.originatorSessionId,
           })
         }
       }
 
-      return await this.flattenForList(
-        reloaded ?? { ...updated, publishedRevision: null, draftRevision: null },
-        tagIds
-      )
+      // Return the editor-shaped view (content + contentJson + draftContentHash)
+      // so the client's optimistic `setData` merge can refresh the cached doc.
+      // Without these fields the cache keeps the load-time content, and a
+      // navigate-away-and-back within the query staleTime renders stale content.
+      if (!reloaded) {
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: `Article ${id} disappeared during update`,
+        })
+      }
+      return await this.flattenForEditor(reloaded, null, tagIds)
     } catch (error) {
       return this.handleError(error, 'Error updating article draft', { articleId: id })
     }
@@ -980,7 +1021,7 @@ export class KBService {
         this.organizationId
       )
       const urlMap = await this.resolveCoverUrls(
-        reloadedArticles.map((a) => this.listCoverImageId(a))
+        reloadedArticles.flatMap((a) => this.coverIdsForArticle(a))
       )
       return await Promise.all(
         reloadedArticles.map((a) =>
@@ -1565,12 +1606,41 @@ export class KBService {
   // ─── Internal helpers ───────────────────────────────────────────────
 
   /**
-   * Pick the coverImageId to render in list views: prefer the published
-   * revision's link (mirroring the rest of the display fallback), fall back
-   * to the draft. Mirrors {@link flattenForList}'s title/emoji preference.
+   * Cover ids touched by a single article — both draft and published.
+   * Used to prime the batch URL map so a single fan-out resolves every
+   * cover the list payload needs.
    */
-  private listCoverImageId(a: any): string | null {
-    return a.publishedRevision?.coverImageId ?? a.draftRevision?.coverImageId ?? null
+  private coverIdsForArticle(a: any): Array<string | null | undefined> {
+    return [a.draftRevision?.coverImageId, a.publishedRevision?.coverImageId]
+  }
+
+  /**
+   * Build a per-revision envelope (title/emoji/cover…) used by both the
+   * sidebar payload and the editor view so draft and published metadata
+   * stay structurally identical.
+   */
+  private buildRevisionMeta(
+    rev:
+      | {
+          title: string | null
+          description: string | null
+          excerpt: string | null
+          emoji: string | null
+          coverImageId: string | null
+        }
+      | null
+      | undefined,
+    urlMap?: Map<string, string | null>
+  ): ArticleRevisionMeta | null {
+    if (!rev) return null
+    return {
+      title: rev.title ?? '',
+      description: rev.description ?? null,
+      excerpt: rev.excerpt ?? null,
+      emoji: rev.emoji ?? null,
+      coverImageId: rev.coverImageId ?? null,
+      coverImage: rev.coverImageId ? (urlMap?.get(rev.coverImageId) ?? null) : null,
+    }
   }
 
   private async flattenForList(
@@ -1578,11 +1648,19 @@ export class KBService {
     tagIds: RecordId[] = [],
     urlMap?: Map<string, string | null>
   ): Promise<ArticleListItem> {
-    const display = a.publishedRevision ?? a.draftRevision ?? {}
-    const coverImageId = this.listCoverImageId(a)
-    const coverImage = coverImageId
-      ? (urlMap?.get(coverImageId) ?? (await this.resolveCoverUrl(coverImageId)))
-      : null
+    // resolveCoverUrls de-dupes by id, so passing both draft and published
+    // (when present) costs nothing extra for the common case where they
+    // share the same asset.
+    const resolved = urlMap ?? (await this.resolveCoverUrls(this.coverIdsForArticle(a)))
+    const draft = this.buildRevisionMeta(a.draftRevision, resolved) ?? {
+      title: '',
+      description: null,
+      excerpt: null,
+      emoji: null,
+      coverImage: null,
+      coverImageId: null,
+    }
+    const published = this.buildRevisionMeta(a.publishedRevision, resolved)
     return {
       id: a.id,
       knowledgeBaseId: a.knowledgeBaseId,
@@ -1598,11 +1676,14 @@ export class KBService {
       publishedAt: a.publishedAt,
       publishedRevisionId: a.publishedRevisionId,
       draftRevisionId: a.draftRevisionId,
-      title: display.title ?? '',
-      emoji: display.emoji ?? null,
-      description: display.description ?? null,
-      excerpt: display.excerpt ?? null,
-      coverImage,
+      // Sidebar reflects the current working state — always the draft.
+      title: draft.title,
+      emoji: draft.emoji,
+      description: draft.description,
+      excerpt: draft.excerpt,
+      coverImage: draft.coverImage,
+      draft,
+      published,
       tagIds,
     }
   }
@@ -1625,6 +1706,8 @@ export class KBService {
       pub?.coverImageId,
       selected?.coverImageId,
     ])
+    const draftMeta = this.buildRevisionMeta(draft, urlMap)!
+    const publishedMeta = this.buildRevisionMeta(pub, urlMap)
     return {
       id: a.id,
       knowledgeBaseId: a.knowledgeBaseId,
@@ -1640,15 +1723,20 @@ export class KBService {
       publishedAt: a.publishedAt,
       publishedRevisionId: a.publishedRevisionId,
       draftRevisionId: a.draftRevisionId,
-      title: draft.title ?? '',
-      emoji: draft.emoji ?? null,
-      description: draft.description ?? null,
-      excerpt: draft.excerpt ?? null,
-      coverImage: draft.coverImageId ? (urlMap.get(draft.coverImageId) ?? null) : null,
-      coverImageId: draft.coverImageId ?? null,
+      title: draftMeta.title,
+      emoji: draftMeta.emoji,
+      description: draftMeta.description,
+      excerpt: draftMeta.excerpt,
+      coverImage: draftMeta.coverImage,
+      coverImageId: draftMeta.coverImageId,
+      draft: draftMeta,
+      published: publishedMeta,
       tagIds,
       content: draft.content ?? '',
       contentJson: (draft.contentJson as ArticleNodeJSON[] | null) ?? null,
+      draftContentHash: computeArticleJsonHash(
+        (draft.contentJson as ArticleNodeJSON[] | null) ?? null
+      ),
       hasPublishedVersion: !!pub,
       publishedTitle: pub?.title ?? null,
       publishedContent: pub?.content ?? null,
@@ -1661,6 +1749,9 @@ export class KBService {
       selectedEmoji: selected?.emoji ?? null,
       selectedContent: selected?.content ?? null,
       selectedContentJson: (selected?.contentJson as ArticleNodeJSON[] | null) ?? null,
+      selectedContentHash: selected
+        ? computeArticleJsonHash((selected.contentJson as ArticleNodeJSON[] | null) ?? null)
+        : null,
       selectedCoverImage: selected?.coverImageId
         ? (urlMap.get(selected.coverImageId) ?? null)
         : null,

@@ -24,6 +24,7 @@ import { flushSync } from 'react-dom'
 import { useDropzone } from 'react-dropzone'
 import { EditorToolbar } from '~/components/editor/editor-button'
 import { EditorProvider, useEditorContext } from '~/components/editor/editor-context'
+import { type ContentApplier, makeContentApplier } from '~/components/editor/inline-picker'
 import { useFileSelect } from '~/components/file-select/hooks/use-file-select'
 import { useCountUpdates } from '~/components/mail/hooks'
 import { useComposeStore } from '~/components/mail/store/compose-store'
@@ -515,11 +516,31 @@ function ReplyComposeEditorComponent({
     }))
     setIsDraftSaved(false)
   }, [])
+  // Imperative content writes (AI tools, undo/redo) route through this
+  // applier so a duplicate write is a no-op. The handler below stamps the
+  // applier with every user edit so subsequent imperative writes of the
+  // same HTML short-circuit.
+  const contentApplier = useMemo<ContentApplier<string | object>>(
+    () =>
+      makeContentApplier<string | object>(
+        editor,
+        (e, content) => {
+          e.commands.setContent(content as Parameters<typeof e.commands.setContent>[0])
+        },
+        (content) => (typeof content === 'string' ? content : JSON.stringify(content))
+      ),
+    [editor]
+  )
+
   // Handlers
-  const handleContentChange = useCallback((newContent: string) => {
-    setContent((prev) => (prev === newContent ? prev : newContent))
-    setIsDraftSaved(false)
-  }, [])
+  const handleContentChange = useCallback(
+    (newContent: string) => {
+      setContent((prev) => (prev === newContent ? prev : newContent))
+      contentApplier.markLocalEdit(newContent)
+      setIsDraftSaved(false)
+    },
+    [contentApplier]
+  )
   const handleSubjectChange = useCallback(
     (subject: string) => {
       setState((prev) => ({ ...prev, subject }))
@@ -608,15 +629,16 @@ function ReplyComposeEditorComponent({
   const processAI = api.aiFeature.compose.useMutation({
     onSuccess: (response) => {
       if (!editor) return
-      // Apply new content based on format
+      // Apply new content based on format — routed through the applier so a
+      // duplicate write (same HTML as the user already has) no-ops.
       if (response.format === OUTPUT_FORMAT.EDITOR) {
         const tiptapContent = JSON.parse(response.content)
-        editor.commands.setContent(tiptapContent)
+        contentApplier.apply(tiptapContent)
       } else if (response.format === OUTPUT_FORMAT.HTML) {
-        editor.commands.setContent(response.content)
+        contentApplier.apply(response.content)
       } else {
         // Plain text - wrap in paragraph
-        editor.commands.setContent(`<p>${response.content}</p>`)
+        contentApplier.apply(`<p>${response.content}</p>`)
       }
       // Sync React content state — setContent doesn't emit onUpdate by default
       handleContentChange(editor.getHTML())

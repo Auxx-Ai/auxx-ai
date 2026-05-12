@@ -24,7 +24,7 @@ import {
 } from 'lucide-react'
 import { useKbPublicUrl } from '~/components/kb/hooks/use-kb-public-url'
 import { api } from '~/trpc/react'
-import { useArticleContent } from '../../hooks/use-article-content'
+import { useArticleStore } from '../../store/article-store'
 import { type Device, type Theme, usePreview } from './preview-context'
 import { PreviewVersionPicker } from './preview-version-picker'
 
@@ -62,10 +62,12 @@ export function KBPreviewTopBar({ kbId, activeSlugPath, articleId }: KBPreviewTo
       ? `/${activeSlugPath.map(encodeURIComponent).join('/')}`
       : ''
   const publicUrl = useKbPublicUrl(kb?.slug)
-  const { hasPublishedVersion, publishedRevisionId, hasUnpublishedChanges } = useArticleContent(
-    articleId ?? null,
-    kbId
-  )
+  // Read version metadata straight off the article store — no async dep,
+  // so the version picker reflects the latest mutation immediately.
+  const article = useArticleStore((s) => (articleId ? s.articles.get(articleId) : undefined))
+  const hasPublishedVersion = !!article?.published
+  const publishedRevisionId = article?.publishedRevisionId ?? null
+  const hasUnpublishedChanges = !!article?.hasUnpublishedChanges
 
   const isPublished = kb?.publishStatus === 'PUBLISHED'
   const isUnlisted = kb?.publishStatus === 'UNLISTED'

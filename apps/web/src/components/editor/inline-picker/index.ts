@@ -5,6 +5,13 @@ export { createInlineNodeView } from './core/inline-node-view'
 // Core factories
 export { createInlinePickerExtension } from './core/inline-picker-extension'
 // Hooks
+export {
+  type ContentApplier,
+  type ExternalContentSyncHandle,
+  makeContentApplier,
+  stableStringify,
+  useExternalContentSync,
+} from './hooks/use-external-content-sync'
 export { useInlinePicker } from './hooks/use-inline-picker'
 export { useMentionEditor } from './hooks/use-mention-editor'
 export { useRecordLinkEditor } from './hooks/use-record-link-editor'

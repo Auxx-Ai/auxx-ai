@@ -275,6 +275,7 @@ export const knowledgeBaseRouter = createTRPCRouter({
         id: z.string(),
         data: articleDraftFieldsSchema,
         knowledgeBaseId: z.string().optional(),
+        originatorSessionId: z.string().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -282,7 +283,8 @@ export const knowledgeBaseRouter = createTRPCRouter({
         input.id,
         input.data as Parameters<ReturnType<typeof getKBService>['updateArticleDraft']>[1],
         ctx.session.user.id,
-        input.knowledgeBaseId
+        input.knowledgeBaseId,
+        { originatorSessionId: input.originatorSessionId }
       )
     }),
 

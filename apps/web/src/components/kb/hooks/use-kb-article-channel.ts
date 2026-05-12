@@ -4,6 +4,7 @@
 import type { KbArticleEvent } from '@auxx/lib/kb'
 import { createScopedLogger } from '@auxx/logger'
 import { useCallback, useMemo, useState } from 'react'
+import { getClientSessionId } from '~/components/editor/utils/client-session-id'
 import { useSSE } from '~/hooks/use-sse'
 import { api } from '~/trpc/react'
 
@@ -54,7 +55,16 @@ export function useKbArticleChannel({
 
       if (eventType === 'kb-article-resync') {
         if (!articleId || !knowledgeBaseId) return
+        const evt = event as Extract<KbArticleEvent, { type: 'kb-article-resync' }>
+        // The originating tab applied this content optimistically via
+        // setData. Refetching here would clobber any keystrokes the user
+        // typed between save-fired and resync-arrived — drop our own echo.
+        if (evt.originatorSessionId === getClientSessionId()) return
         void utils.kb.getArticleById.invalidate({ id: articleId, knowledgeBaseId })
+        // Refresh the list so the article store picks up any draft metadata
+        // changes (title, emoji, cover) the other tab made — these don't
+        // travel on the realtime event, only the content body does.
+        void utils.kb.getArticles.invalidate({ knowledgeBaseId })
         return
       }
 
@@ -75,7 +85,7 @@ export function useKbArticleChannel({
 
       logger.debug('Unhandled KB article event', { eventType })
     },
-    [articleId, knowledgeBaseId, utils.kb.getArticleById]
+    [articleId, knowledgeBaseId, utils.kb.getArticleById, utils.kb.getArticles]
   )
 
   useSSE(config, onEvent)
