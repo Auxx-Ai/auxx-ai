@@ -10,7 +10,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
-import { findFirstNavigableUnder, getFullSlugPath } from '@auxx/ui/components/kb/utils'
+import { getFullSlugPath } from '@auxx/ui/components/kb/utils'
 import { cn } from '@auxx/ui/lib/utils'
 import { DndContext, DragOverlay } from '@dnd-kit/core'
 import { restrictToVerticalAxis, restrictToWindowEdges } from '@dnd-kit/modifiers'
@@ -177,11 +177,10 @@ export function KBArticlesPanel({ knowledgeBaseId }: KBArticlesPanelProps) {
   const handleTabChange = useCallback(
     (tabId: string) => {
       setPendingTabId(tabId)
-      const firstChild = findFirstNavigableUnder(tabId, articles)
-      if (firstChild) {
-        const slug = getFullSlugPath(firstChild, articles)
-        router.push(`${basePath}/editor/~/${slug}?panel=articles`)
-      }
+      const tab = articles.find((a) => a.id === tabId)
+      if (!tab) return
+      const slug = getFullSlugPath(tab, articles)
+      router.push(`${basePath}/editor/~/${slug}?panel=articles`)
     },
     [articles, basePath, router]
   )

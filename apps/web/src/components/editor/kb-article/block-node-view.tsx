@@ -20,6 +20,7 @@ import { parseEmbedUrl } from '@auxx/ui/components/kb/utils'
 import type { NodeViewProps } from '@tiptap/react'
 import { NodeViewContent, NodeViewWrapper } from '@tiptap/react'
 import { Check, ChevronDown } from 'lucide-react'
+import type React from 'react'
 import { useState } from 'react'
 import styles from './block-node-view.module.css'
 import { CardsBlockView } from './cards-block-view'
@@ -52,9 +53,33 @@ const CODE_LANGUAGES = [
 
 const EMBED_ASPECTS: EmbedAspect[] = ['16:9', '4:3', '1:1']
 
-function formatBullet(depth: number): string {
-  const bullets = ['•', '◦', '▪']
-  return bullets[depth % bullets.length] ?? '•'
+type BulletListStyle = 'disc' | 'circle' | 'square'
+type NumberedListStyle = '1' | 'a' | 'A' | 'i' | 'I'
+
+const BULLET_GLYPHS: Record<BulletListStyle, string> = {
+  disc: '•',
+  circle: '◦',
+  square: '▪',
+}
+
+function formatBullet(depth: number, override: BulletListStyle | null): string {
+  if (override) return BULLET_GLYPHS[override]
+  // Default cycle by depth — preserves prior behavior for blocks without a
+  // chosen listStyle.
+  const cycle: BulletListStyle[] = ['disc', 'circle', 'square']
+  return BULLET_GLYPHS[cycle[depth % cycle.length] ?? 'disc']
+}
+
+function toAlpha(n: number, upper: boolean): string {
+  // 1 → a, 2 → b, ..., 26 → z, 27 → aa
+  let value = n
+  let result = ''
+  while (value > 0) {
+    const rem = (value - 1) % 26
+    result = String.fromCharCode((upper ? 65 : 97) + rem) + result
+    value = Math.floor((value - 1) / 26)
+  }
+  return result || (upper ? 'A' : 'a')
 }
 
 function toRoman(n: number): string {
@@ -84,11 +109,25 @@ function toRoman(n: number): string {
   return result
 }
 
-function formatNumber(index: number, depth: number): string {
+function formatNumber(index: number, depth: number, override: NumberedListStyle | null): string {
+  if (override === '1') return `${index}.`
+  if (override === 'a') return `${toAlpha(index, false)}.`
+  if (override === 'A') return `${toAlpha(index, true)}.`
+  if (override === 'i') return `${toRoman(index)}.`
+  if (override === 'I') return `${toRoman(index).toUpperCase()}.`
+  // Default cycle by depth.
   const level = depth % 3
   if (level === 0) return `${index}.`
-  if (level === 1) return `${String.fromCharCode(96 + index)}.`
+  if (level === 1) return `${toAlpha(index, false)}.`
   return `${toRoman(index)}.`
+}
+
+function isBulletStyle(v: unknown): v is BulletListStyle {
+  return v === 'disc' || v === 'circle' || v === 'square'
+}
+
+function isNumberedStyle(v: unknown): v is NumberedListStyle {
+  return v === '1' || v === 'a' || v === 'A' || v === 'i' || v === 'I'
 }
 
 export function BlockNodeView({ node, updateAttributes, editor, getPos }: NodeViewProps) {
@@ -103,6 +142,8 @@ export function BlockNodeView({ node, updateAttributes, editor, getPos }: NodeVi
     codeLanguage,
     embedUrl,
     embedAspect,
+    listStyle,
+    textAlign,
   } = node.attrs as {
     blockType?: string
     level?: number | null
@@ -115,7 +156,12 @@ export function BlockNodeView({ node, updateAttributes, editor, getPos }: NodeVi
     embedUrl?: string | null
     embedProvider?: EmbedProvider
     embedAspect?: EmbedAspect
+    listStyle?: string | null
+    textAlign?: string | null
   }
+
+  const bulletOverride = isBulletStyle(listStyle) ? listStyle : null
+  const numberedOverride = isNumberedStyle(listStyle) ? listStyle : null
 
   const [embedDraft, setEmbedDraft] = useState('')
   const [embedError, setEmbedError] = useState<string | null>(null)
@@ -275,16 +321,21 @@ export function BlockNodeView({ node, updateAttributes, editor, getPos }: NodeVi
           <div className={`${styles.lineNumber} text-xs tabular-nums`}>{lineNumber ?? ''}</div>
         </div>
 
-        <div className={contentWrapperClasses} data-content-wrapper>
+        <div
+          className={contentWrapperClasses}
+          data-content-wrapper
+          style={
+            textAlign ? { textAlign: textAlign as React.CSSProperties['textAlign'] } : undefined
+          }>
           {blockType === 'bulletListItem' && (
             <span className={styles.bulletIndicator} contentEditable={false}>
-              {formatBullet(indentLevel)}
+              {formatBullet(indentLevel, bulletOverride)}
             </span>
           )}
 
           {blockType === 'numberedListItem' && (
             <span className={styles.numberIndicator} contentEditable={false}>
-              {formatNumber(numberedIndex, indentLevel)}
+              {formatNumber(numberedIndex, indentLevel, numberedOverride)}
             </span>
           )}
 

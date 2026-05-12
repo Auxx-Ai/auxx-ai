@@ -136,7 +136,7 @@ export function ArticleSidebarItem({
 
   const basePath = `/app/kb/${knowledgeBaseId}`
   const slugPaths = useMemo(() => getArticleSlugPaths(articles), [articles])
-  const isActive = !isHeader && isArticleActive(article, pathname, basePath, slugPaths)
+  const isActive = isArticleActive(article, pathname, basePath, slugPaths)
 
   const { attributes, listeners, setNodeRef, transform, transition, isDragging, over, active } =
     useSortable({
@@ -406,7 +406,7 @@ export function ArticleSidebarItem({
                 if (linkUrl) window.open(linkUrl, '_blank', 'noopener,noreferrer')
                 return
               }
-              if (isHeader || isLink) return
+              if (isLink) return
               if (isRenaming) return
               if (isDragging) {
                 e.preventDefault()
@@ -437,7 +437,8 @@ export function ArticleSidebarItem({
               'focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring',
               !isHeader && 'rounded-md px-2 py-2 text-sm',
               !isHeader && isActive && 'font-medium text-accent-foreground',
-              isHeader && 'cursor-text',
+              isHeader && !isRenaming && 'cursor-pointer',
+              isHeader && isRenaming && 'cursor-text',
               isDragging && 'pointer-events-none'
             )}>
             <div className='flex flex-1 items-center'>
@@ -460,7 +461,10 @@ export function ArticleSidebarItem({
                   className={cn(
                     'truncate',
                     isHeader &&
-                      'text-xs font-semibold uppercase tracking-wide text-muted-foreground'
+                      cn(
+                        'text-xs font-semibold uppercase tracking-wide',
+                        isActive ? 'text-foreground' : 'text-muted-foreground'
+                      )
                   )}>
                   {displayName || (isHeader ? 'Untitled' : '')}
                 </span>

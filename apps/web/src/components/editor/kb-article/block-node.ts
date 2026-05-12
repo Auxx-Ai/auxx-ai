@@ -169,6 +169,14 @@ export const Block = Node.create({
             ? { 'data-cards': JSON.stringify(attrs.cards) }
             : {},
       },
+      // Marker style for list items. `disc | circle | square` for bullets,
+      // `1 | a | A | i | I` for numbered. `null` = use the default. Honored
+      // by BlockNodeView when it renders the bullet/number glyph.
+      listStyle: {
+        default: null,
+        parseHTML: (el) => el.getAttribute('data-list-style'),
+        renderHTML: (attrs) => (attrs.listStyle ? { 'data-list-style': attrs.listStyle } : {}),
+      },
     }
   },
 
