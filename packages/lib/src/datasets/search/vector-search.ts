@@ -137,35 +137,66 @@ export class VectorSearchService {
       return []
     }
 
-    // 1. Group datasets by dimension
-    const byDimension = new Map<number, DatasetConfig[]>()
+    // 1. Group datasets by (embeddingModel, vectorDimension). Each group needs
+    //    its own query embedding produced by the matching model — embedding a
+    //    query with the wrong model yields a vector that lives in a different
+    //    semantic space, and asking the wrong model for a dimension it can't
+    //    produce throws (e.g. text-embedding-3-small max 1536 vs requested 3072).
+    const byModelDim = new Map<
+      string,
+      { model: string; dimension: number; datasets: DatasetConfig[] }
+    >()
     for (const dataset of datasetConfigs) {
-      const dim = dataset.vectorDimension || 1536
-      if (!byDimension.has(dim)) {
-        byDimension.set(dim, [])
+      if (!dataset.embeddingModel) {
+        throw new VectorSearchError(
+          `Dataset ${dataset.id} is missing embeddingModel — cannot run vector search`,
+          { datasetId: dataset.id }
+        )
       }
-      byDimension.get(dim)!.push(dataset)
+      if (!dataset.vectorDimension) {
+        throw new VectorSearchError(
+          `Dataset ${dataset.id} is missing vectorDimension — cannot run vector search`,
+          { datasetId: dataset.id }
+        )
+      }
+      const key = `${dataset.embeddingModel}@${dataset.vectorDimension}`
+      const group = byModelDim.get(key)
+      if (group) {
+        group.datasets.push(dataset)
+      } else {
+        byModelDim.set(key, {
+          model: dataset.embeddingModel,
+          dimension: dataset.vectorDimension,
+          datasets: [dataset],
+        })
+      }
     }
 
-    // 2. Generate query embeddings for each unique dimension (parallel)
-    const dimensions = Array.from(byDimension.keys())
+    // 2. One embedding per (model, dimension) pair, in parallel
+    const groups = Array.from(byModelDim.values())
     const embeddingService = new EmbeddingService(db, organizationId, userId)
 
     const embeddings = await Promise.all(
-      dimensions.map((dim) => embeddingService.generateSingle(query, { dimensions: dim }))
+      groups.map((g) =>
+        embeddingService.generateSingle(query, {
+          modelId: g.model,
+          dimensions: g.dimension,
+        })
+      )
     )
-    const embeddingByDim = new Map(dimensions.map((dim, i) => [dim, embeddings[i]]))
 
-    // 3. Search each dimension group in parallel
-    const searchPromises = Array.from(byDimension.entries()).map(async ([dimension, datasets]) => {
-      const datasetIds = datasets.map((d) => d.id)
-      const queryVector = embeddingByDim.get(dimension)!
-
-      return PostgreSQLVectorDB.searchByVectorMultiDataset(queryVector, datasetIds, dimension, {
-        topK: options.maxResults || 20,
-        scoreThreshold: options.similarityThreshold || 0.0,
-        includeMetadata: options.includeMetadata !== false,
-      })
+    // 3. Search each group in parallel against its own pgvector dimension column
+    const searchPromises = groups.map(async (g, i) => {
+      return PostgreSQLVectorDB.searchByVectorMultiDataset(
+        embeddings[i],
+        g.datasets.map((d) => d.id),
+        g.dimension,
+        {
+          topK: options.maxResults || 20,
+          scoreThreshold: options.similarityThreshold || 0.0,
+          includeMetadata: options.includeMetadata !== false,
+        }
+      )
     })
 
     const resultGroups = await Promise.all(searchPromises)

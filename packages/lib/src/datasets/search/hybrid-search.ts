@@ -118,6 +118,18 @@ export class HybridSearchService {
         totalTime,
         resultsCount: filteredResults.length,
         cacheHit: vectorMetrics?.cacheHit || textMetrics?.cacheHit || false,
+        vectorFailed:
+          vectorResult.status === 'rejected'
+            ? vectorResult.reason instanceof Error
+              ? vectorResult.reason.message
+              : String(vectorResult.reason)
+            : undefined,
+        textFailed:
+          textResult.status === 'rejected'
+            ? textResult.reason instanceof Error
+              ? textResult.reason.message
+              : String(textResult.reason)
+            : undefined,
       }
 
       logger.info('Hybrid search completed', {
@@ -233,18 +245,19 @@ export class HybridSearchService {
     // Use the result that exists, prefer vector result for metadata
     const baseResult = vectorResult || textResult!
 
-    // Calculate combined score
-    let combinedScore = 0
-    let highlights: string[] = []
+    // Re-normalize weights against the sides that actually returned a result.
+    // Without this, a text-only hit gets `0.4 * raw` and looks weak even when
+    // it's a perfect match — and a vector-only hit gets `0.6 * raw`. Keeping
+    // scores on the same scale regardless of which side fires lets downstream
+    // consumers (and the agent) trust the absolute score.
+    const effectiveVW = vectorResult ? vectorWeight : 0
+    const effectiveTW = textResult ? textWeight : 0
+    const totalWeight = effectiveVW + effectiveTW || 1
+    const combinedScore =
+      ((vectorResult?.score ?? 0) * effectiveVW + (textResult?.score ?? 0) * effectiveTW) /
+      totalWeight
 
-    if (vectorResult) {
-      combinedScore += (vectorResult.score || 0) * vectorWeight
-    }
-
-    if (textResult) {
-      combinedScore += (textResult.score || 0) * textWeight
-      highlights = textResult.highlights || []
-    }
+    const highlights = textResult?.highlights ?? []
 
     return {
       ...baseResult,

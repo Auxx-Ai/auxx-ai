@@ -133,14 +133,30 @@ export function createSearchKnowledgeTool(getDeps: GetToolDeps): AgentToolDefini
 
         const trimmed = filtered.slice(0, limit)
 
+        // Hybrid runs vector + text in parallel via Promise.allSettled. If one
+        // side throws (e.g. embedding-model mismatch), results may be missing
+        // semantic matches or exact-text matches — surface that so the agent
+        // can adjust its strategy instead of silently rephrasing forever.
+        const warnings: string[] = []
+        if (response.metrics?.vectorFailed) {
+          warnings.push(
+            `Semantic (vector) search unavailable: ${response.metrics.vectorFailed}. Results are text-only and may miss paraphrased matches.`
+          )
+        }
+        if (response.metrics?.textFailed) {
+          warnings.push(
+            `Keyword (text) search unavailable: ${response.metrics.textFailed}. Results are vector-only.`
+          )
+        }
+
         if (trimmed.length === 0) {
+          const message =
+            warnings.length > 0
+              ? `No matching results. ${warnings.join(' ')}`
+              : 'No matching results. Try rephrasing the query.'
           return {
             success: true,
-            output: {
-              results: [],
-              count: 0,
-              message: 'No matching results. Try rephrasing the query.',
-            },
+            output: { results: [], count: 0, message, ...(warnings.length ? { warnings } : {}) },
           }
         }
 
@@ -191,6 +207,7 @@ export function createSearchKnowledgeTool(getDeps: GetToolDeps): AgentToolDefini
             count: results.length,
             total: response.total,
             docs: dedupedDocs,
+            ...(warnings.length ? { warnings } : {}),
           },
         }
       } catch (error) {

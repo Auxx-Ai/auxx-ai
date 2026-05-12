@@ -82,6 +82,8 @@ export interface SearchResponse {
   suggestions?: string[]
   hasMore?: boolean
   nextOffset?: number
+  /** Performance + partial-failure signals. Always set for hybrid; optional for single-strategy. */
+  metrics?: SearchPerformanceMetrics
 }
 
 /**
@@ -257,6 +259,10 @@ export interface SearchPerformanceMetrics {
   totalTime: number
   resultsCount: number
   cacheHit: boolean
+  /** When set, vector search threw and only text-side results contributed. */
+  vectorFailed?: string
+  /** When set, full-text search threw and only vector-side results contributed. */
+  textFailed?: string
 }
 
 /**

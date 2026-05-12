@@ -402,4 +402,7 @@ main()
   })
   .finally(async () => {
     await closePools()
+    // SystemUserService opens a Redis client we can't easily close from here.
+    // Force exit so the script terminates instead of hanging on Redis sockets.
+    process.exit(process.exitCode ?? 0)
   })
