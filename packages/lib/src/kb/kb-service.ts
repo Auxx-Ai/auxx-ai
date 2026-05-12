@@ -59,12 +59,12 @@ export interface ArticleListItem {
 export interface ArticleEditorView extends ArticleListItem {
   // Always the draft fields, plus the heavy content
   content: string
-  contentJson: unknown
+  contentJson: ArticleNodeJSON[] | null
   coverImageId: string | null
   hasPublishedVersion: boolean
   publishedTitle: string | null
   publishedContent: string | null
-  publishedContentJson: unknown
+  publishedContentJson: ArticleNodeJSON[] | null
   publishedCoverImage: string | null
   // Populated only when getArticleById is called with a versionNumber.
   selectedVersionNumber: number | null
@@ -73,7 +73,7 @@ export interface ArticleEditorView extends ArticleListItem {
   selectedExcerpt: string | null
   selectedEmoji: string | null
   selectedContent: string | null
-  selectedContentJson: unknown
+  selectedContentJson: ArticleNodeJSON[] | null
   selectedCoverImage: string | null
   selectedCoverImageId: string | null
 }
@@ -138,10 +138,9 @@ export interface ArticleCreateInput {
   description?: string | null
   slug?: string
   content?: string
-  contentJson?: unknown
+  contentJson?: ArticleNodeJSON[] | null
   excerpt?: string | null
   emoji?: string | null
-  coverImage?: string | null
   coverImageId?: string | null
   articleKind?: ArticleKindType
   parentId?: string | null
@@ -153,8 +152,7 @@ export interface ArticleDraftFields {
   excerpt?: string | null
   emoji?: string | null
   content?: string
-  contentJson?: unknown
-  coverImage?: string | null
+  contentJson?: ArticleNodeJSON[] | null
   coverImageId?: string | null
 }
 
@@ -186,9 +184,53 @@ export interface ArticleListOptions {
 export class KBService {
   private db: Database
   private readonly organizationId: string
+  private _assetService: { getDownloadUrl: (id: string) => Promise<string | null> } | null = null
   constructor(db: Database, organizationId: string) {
     this.db = db
     this.organizationId = organizationId
+  }
+
+  /**
+   * Lazily construct (and memoize) a MediaAssetService for resolving cover
+   * image URLs. Imported dynamically so client-bundled call sites of the kb
+   * module don't pull in server-only deps.
+   */
+  private async getAssetService() {
+    if (this._assetService) return this._assetService
+    const { MediaAssetService } = await import('../files/server')
+    this._assetService = new MediaAssetService(this.organizationId, undefined, this.db)
+    return this._assetService
+  }
+
+  /**
+   * Resolve a cover MediaAsset id to a URL fresh on every read. Public assets
+   * return their durable externalUrl; private assets return a freshly-signed
+   * presigned URL. Returns null when the id is null/missing or the asset has
+   * been deleted.
+   */
+  private async resolveCoverUrl(coverImageId: string | null | undefined): Promise<string | null> {
+    if (!coverImageId) return null
+    try {
+      const assetService = await this.getAssetService()
+      return await assetService.getDownloadUrl(coverImageId)
+    } catch {
+      return null
+    }
+  }
+
+  /**
+   * Batch-resolve cover URLs for a list of ids. De-duplicates ids and returns
+   * a Map keyed by id so a single asset shared across draft+published renders
+   * to one resolution.
+   */
+  private async resolveCoverUrls(
+    ids: Array<string | null | undefined>
+  ): Promise<Map<string, string | null>> {
+    const unique = Array.from(new Set(ids.filter((id): id is string => !!id)))
+    const entries = await Promise.all(
+      unique.map(async (id) => [id, await this.resolveCoverUrl(id)] as const)
+    )
+    return new Map(entries)
   }
 
   // ─── KB CRUD ────────────────────────────────────────────────────────
@@ -452,7 +494,14 @@ export class KBService {
         articles.map((a) => a.id),
         this.organizationId
       )
-      return articles.map((a) => this.flattenForList(a, (tagIdMap.get(a.id) ?? []) as RecordId[]))
+      // Batch-resolve every cover URL in one parallel fan-out so an N-article
+      // KB makes O(unique-asset-count) round-trips, not O(N).
+      const urlMap = await this.resolveCoverUrls(articles.map((a) => this.listCoverImageId(a)))
+      return await Promise.all(
+        articles.map((a) =>
+          this.flattenForList(a, (tagIdMap.get(a.id) ?? []) as RecordId[], urlMap)
+        )
+      )
     } catch (error) {
       return this.handleError(error, 'Error fetching knowledge base articles', { knowledgeBaseId })
     }
@@ -494,7 +543,7 @@ export class KBService {
         selected = revision
       }
       const tagIds = await this.loadArticleTagRecordIds(id)
-      return this.flattenForEditor(article, selected, tagIds)
+      return await this.flattenForEditor(article, selected, tagIds)
     } catch (error) {
       return this.handleError(error, 'Error fetching article', { articleId: id })
     }
@@ -512,7 +561,7 @@ export class KBService {
       })
       if (!article) throw this.createNotFoundError(`Article with slug '${slug}' not found`)
       const tagIds = await this.loadArticleTagRecordIds(article.id)
-      return this.flattenForEditor(article, null, tagIds)
+      return await this.flattenForEditor(article, null, tagIds)
     } catch (error) {
       return this.handleError(error, 'Error fetching article by slug', { slug, knowledgeBaseId })
     }
@@ -631,9 +680,9 @@ export class KBService {
         )
       }
 
-      const seededContentJson = Array.isArray(articleInput.contentJson)
-        ? stampBlockIds(articleInput.contentJson as ArticleNodeJSON[]).content
-        : (articleInput.contentJson ?? null)
+      const seededContentJson = articleInput.contentJson
+        ? stampBlockIds(articleInput.contentJson).content
+        : null
 
       const result = await this.db.transaction(async (tx) => {
         // 1. Insert Article with NULL revision pointers (FKs are nullable)
@@ -667,7 +716,6 @@ export class KBService {
             emoji: articleInput.emoji ?? null,
             content: articleInput.content ?? '',
             contentJson: seededContentJson,
-            coverImage: articleInput.coverImage ?? null,
             coverImageId: articleInput.coverImageId ?? null,
             editorId: authorId,
           })
@@ -682,7 +730,7 @@ export class KBService {
         return { article: withPointer, draftRevision: newRevision }
       })
 
-      return this.flattenForList({
+      return await this.flattenForList({
         ...result.article,
         publishedRevision: null,
         draftRevision: result.draftRevision,
@@ -743,17 +791,10 @@ export class KBService {
       if (fields.emoji !== undefined) draftUpdate.emoji = fields.emoji
       if (fields.content !== undefined) draftUpdate.content = fields.content
       if (fields.contentJson !== undefined) {
-        const stamped = Array.isArray(fields.contentJson)
-          ? stampBlockIds(fields.contentJson as ArticleNodeJSON[]).content
-          : fields.contentJson
-        const enriched = stamped
-          ? await enrichDocWithHighlighting(
-              stamped as Parameters<typeof enrichDocWithHighlighting>[0]
-            )
-          : stamped
+        const stamped = fields.contentJson ? stampBlockIds(fields.contentJson).content : null
+        const enriched = stamped ? await enrichDocWithHighlighting(stamped) : null
         draftUpdate.contentJson = enriched as ArticleRevision['contentJson']
       }
-      if (fields.coverImage !== undefined) draftUpdate.coverImage = fields.coverImage
       if (fields.coverImageId !== undefined) draftUpdate.coverImageId = fields.coverImageId
 
       const updated = await this.db.transaction(async (tx) => {
@@ -803,7 +844,7 @@ export class KBService {
         }
       }
 
-      return this.flattenForList(
+      return await this.flattenForList(
         reloaded ?? { ...updated, publishedRevision: null, draftRevision: null },
         tagIds
       )
@@ -881,7 +922,7 @@ export class KBService {
         })
       }
       const tagIds = await this.loadArticleTagRecordIds(id)
-      return this.flattenForList(reloaded, tagIds)
+      return await this.flattenForList(reloaded, tagIds)
     } catch (error) {
       return this.handleError(error, 'Error updating article structure', { articleId: id })
     }
@@ -938,8 +979,13 @@ export class KBService {
         reloadedArticles.map((a) => a.id),
         this.organizationId
       )
-      return reloadedArticles.map((a) =>
-        this.flattenForList(a, (tagIdMap.get(a.id) ?? []) as RecordId[])
+      const urlMap = await this.resolveCoverUrls(
+        reloadedArticles.map((a) => this.listCoverImageId(a))
+      )
+      return await Promise.all(
+        reloadedArticles.map((a) =>
+          this.flattenForList(a, (tagIdMap.get(a.id) ?? []) as RecordId[], urlMap)
+        )
       )
     } catch (error) {
       return this.handleError(error, 'Error updating articles batch', {
@@ -1087,7 +1133,7 @@ export class KBService {
         with: { publishedRevision: true, draftRevision: true },
       })
       const tagIds = await this.loadArticleTagRecordIds(id)
-      const flat = this.flattenForList(
+      const flat = await this.flattenForList(
         reloaded ?? {
           ...result.article,
           publishedRevision: null,
@@ -1518,8 +1564,25 @@ export class KBService {
 
   // ─── Internal helpers ───────────────────────────────────────────────
 
-  private flattenForList(a: any, tagIds: RecordId[] = []): ArticleListItem {
+  /**
+   * Pick the coverImageId to render in list views: prefer the published
+   * revision's link (mirroring the rest of the display fallback), fall back
+   * to the draft. Mirrors {@link flattenForList}'s title/emoji preference.
+   */
+  private listCoverImageId(a: any): string | null {
+    return a.publishedRevision?.coverImageId ?? a.draftRevision?.coverImageId ?? null
+  }
+
+  private async flattenForList(
+    a: any,
+    tagIds: RecordId[] = [],
+    urlMap?: Map<string, string | null>
+  ): Promise<ArticleListItem> {
     const display = a.publishedRevision ?? a.draftRevision ?? {}
+    const coverImageId = this.listCoverImageId(a)
+    const coverImage = coverImageId
+      ? (urlMap?.get(coverImageId) ?? (await this.resolveCoverUrl(coverImageId)))
+      : null
     return {
       id: a.id,
       knowledgeBaseId: a.knowledgeBaseId,
@@ -1539,16 +1602,16 @@ export class KBService {
       emoji: display.emoji ?? null,
       description: display.description ?? null,
       excerpt: display.excerpt ?? null,
-      coverImage: display.coverImage ?? null,
+      coverImage,
       tagIds,
     }
   }
 
-  private flattenForEditor(
+  private async flattenForEditor(
     a: any,
     selected: ArticleRevision | null = null,
     tagIds: RecordId[] = []
-  ): ArticleEditorView {
+  ): Promise<ArticleEditorView> {
     const draft = a.draftRevision
     const pub = a.publishedRevision
     if (!draft) {
@@ -1557,6 +1620,11 @@ export class KBService {
         message: `Article ${a.id} has no draft revision`,
       })
     }
+    const urlMap = await this.resolveCoverUrls([
+      draft.coverImageId,
+      pub?.coverImageId,
+      selected?.coverImageId,
+    ])
     return {
       id: a.id,
       knowledgeBaseId: a.knowledgeBaseId,
@@ -1576,24 +1644,26 @@ export class KBService {
       emoji: draft.emoji ?? null,
       description: draft.description ?? null,
       excerpt: draft.excerpt ?? null,
-      coverImage: draft.coverImage ?? null,
+      coverImage: draft.coverImageId ? (urlMap.get(draft.coverImageId) ?? null) : null,
       coverImageId: draft.coverImageId ?? null,
       tagIds,
       content: draft.content ?? '',
-      contentJson: draft.contentJson ?? null,
+      contentJson: (draft.contentJson as ArticleNodeJSON[] | null) ?? null,
       hasPublishedVersion: !!pub,
       publishedTitle: pub?.title ?? null,
       publishedContent: pub?.content ?? null,
-      publishedContentJson: pub?.contentJson ?? null,
-      publishedCoverImage: pub?.coverImage ?? null,
+      publishedContentJson: (pub?.contentJson as ArticleNodeJSON[] | null) ?? null,
+      publishedCoverImage: pub?.coverImageId ? (urlMap.get(pub.coverImageId) ?? null) : null,
       selectedVersionNumber: selected?.versionNumber ?? null,
       selectedTitle: selected?.title ?? null,
       selectedDescription: selected?.description ?? null,
       selectedExcerpt: selected?.excerpt ?? null,
       selectedEmoji: selected?.emoji ?? null,
       selectedContent: selected?.content ?? null,
-      selectedContentJson: selected?.contentJson ?? null,
-      selectedCoverImage: selected?.coverImage ?? null,
+      selectedContentJson: (selected?.contentJson as ArticleNodeJSON[] | null) ?? null,
+      selectedCoverImage: selected?.coverImageId
+        ? (urlMap.get(selected.coverImageId) ?? null)
+        : null,
       selectedCoverImageId: selected?.coverImageId ?? null,
     }
   }
@@ -1605,7 +1675,7 @@ export class KBService {
     })
     if (!reloaded) throw this.createNotFoundError(`Article with ID '${id}' not found`)
     const tagIds = await this.loadArticleTagRecordIds(id)
-    return this.flattenForList(reloaded, tagIds)
+    return await this.flattenForList(reloaded, tagIds)
   }
 
   /**

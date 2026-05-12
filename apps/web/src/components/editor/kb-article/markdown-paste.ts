@@ -101,7 +101,7 @@ export const MarkdownPaste = Extension.create({
 })
 
 async function importAndInsert(editor: Editor, text: string): Promise<void> {
-  let parsed: { content: unknown[] } | null = null
+  let parsed: unknown[] | null = null
   try {
     const { mdToBlocks } = await import('@auxx/lib/kb/markdown')
     parsed = mdToBlocks(text)
@@ -111,7 +111,7 @@ async function importAndInsert(editor: Editor, text: string): Promise<void> {
     return
   }
 
-  if (!parsed || !parsed.content?.length) {
+  if (!parsed || parsed.length === 0) {
     insertPlainText(editor, text)
     return
   }
@@ -120,7 +120,7 @@ async function importAndInsert(editor: Editor, text: string): Promise<void> {
     editor
       .chain()
       .focus()
-      .insertContent(parsed.content as never[])
+      .insertContent(parsed as never[])
       .run()
   } catch (error) {
     console.error('Markdown insert failed; falling back to plain text paste', error)

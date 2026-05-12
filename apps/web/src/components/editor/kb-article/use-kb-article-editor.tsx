@@ -53,23 +53,21 @@ const FocusClasses = Extension.create({
   },
 })
 
-const emptyDoc: JSONContent = {
-  type: 'doc',
-  content: [{ type: 'block', attrs: { blockType: 'text' }, content: [] }],
-}
+const emptyBody: JSONContent[] = [{ type: 'block', attrs: { blockType: 'text' }, content: [] }]
 
 interface UseKBArticleEditorOptions {
-  initialContent: JSONContent | null
+  initialContent: JSONContent[] | null
   onChange: (content: { json: JSONContent; html: string }) => void
 }
 
 export function useKBArticleEditor({ initialContent, onChange }: UseKBArticleEditorOptions) {
   const slashCommand = useSlashCommand()
 
-  const normalizedInitialContent = useMemo(
-    () => migrateLegacyContent(initialContent) ?? emptyDoc,
-    [initialContent]
-  )
+  const normalizedInitialContent = useMemo<JSONContent>(() => {
+    const migrated = migrateLegacyContent(initialContent)
+    const content = migrated && migrated.length > 0 ? migrated : emptyBody
+    return { type: 'doc', content }
+  }, [initialContent])
 
   const placeholderNodeExtension = useMemo(
     () => createPlaceholderNode((p) => <PlaceholderBadge {...p} />),

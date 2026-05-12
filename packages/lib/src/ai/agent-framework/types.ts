@@ -206,6 +206,13 @@ export interface EntitySnapshot {
   entityDefinitionId: string
   displayName: string
   summary?: string
+  /**
+   * Free-form per-resource hints captured from the tool output. Used by
+   * resource types that don't fit the generic `<defId>:<instId>` detail-page
+   * pattern (e.g. articles, which live at /app/kb/<kbId>/editor/<slug>).
+   * Renderers may read known keys to derive deep links.
+   */
+  extras?: Record<string, string>
 }
 
 /** Minimal thread snapshot written by the tool */

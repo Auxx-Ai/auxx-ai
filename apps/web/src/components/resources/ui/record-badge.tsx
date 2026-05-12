@@ -11,6 +11,7 @@ import { Skeleton } from '@auxx/ui/components/skeleton'
 import { cn } from '@auxx/ui/lib/utils'
 // External libraries
 import { cva, type VariantProps } from 'class-variance-authority'
+import { X } from 'lucide-react'
 import Link from 'next/link'
 
 // Hook imports
@@ -49,12 +50,14 @@ export const recordBadgeVariants = cva(
           '[&_[data-slot=avatar-fallback]]:text-[10px]',
           '[&_[data-slot=skeleton]:first-child]:size-4 [&_[data-slot=skeleton]:first-child]:rounded-full',
           '[&_[data-slot=skeleton]:last-child]:h-4 [&_[data-slot=skeleton]:last-child]:w-20 [&_[data-slot=skeleton]:last-child]:rounded-full',
+          '[&_[data-slot=record-remove]]:size-4 [&_[data-slot=record-remove]]:-me-1 [&_[data-slot=record-remove]]:inline-flex [&_[data-slot=record-remove]]:items-center [&_[data-slot=record-remove]]:justify-center [&_[data-slot=record-remove]]:rounded-[3px] [&_[data-slot=record-remove]]:text-neutral-500 hover:[&_[data-slot=record-remove]]:bg-neutral-200 dark:hover:[&_[data-slot=record-remove]]:bg-neutral-700 [&_[data-slot=record-remove]_svg]:size-3',
         ].join(' '),
         sm: [
           'h-4 gap-1 ps-0.5 pe-1 text-xs',
           '[&_[data-slot=avatar-fallback]]:text-[8px]',
           '[&_[data-slot=skeleton]:first-child]:size-3 [&_[data-slot=skeleton]:first-child]:rounded-full',
           '[&_[data-slot=skeleton]:last-child]:h-3 [&_[data-slot=skeleton]:last-child]:w-14 [&_[data-slot=skeleton]:last-child]:rounded-full',
+          '[&_[data-slot=record-remove]]:size-3 [&_[data-slot=record-remove]]:-me-0.5 [&_[data-slot=record-remove]]:inline-flex [&_[data-slot=record-remove]]:items-center [&_[data-slot=record-remove]]:justify-center [&_[data-slot=record-remove]]:rounded-[2px] [&_[data-slot=record-remove]]:text-neutral-500 hover:[&_[data-slot=record-remove]]:bg-neutral-200 dark:hover:[&_[data-slot=record-remove]]:bg-neutral-700 [&_[data-slot=record-remove]_svg]:size-2.5',
         ].join(' '),
       },
     },
@@ -79,6 +82,8 @@ interface RecordBadgeProps extends VariantProps<typeof recordBadgeVariants> {
   link?: boolean | GetRecordLinkOptions
   /** When set, wraps the badge in a `RecordHoverCard` for the same recordId. */
   hoverCard?: boolean | RecordBadgeHoverCardConfig
+  /** When set, renders a trailing X button that fires this handler on click. */
+  onRemove?: () => void
 }
 
 /**
@@ -119,6 +124,7 @@ export function RecordBadge({
   size,
   link,
   hoverCard = true,
+  onRemove,
   ...props
 }: RecordBadgeProps) {
   // Fetch record data (displayName, avatarUrl)
@@ -175,6 +181,19 @@ export function RecordBadge({
           <span data-slot='record-display' className='truncate'>
             {displayName}
           </span>
+          {onRemove && (
+            <button
+              type='button'
+              data-slot='record-remove'
+              aria-label='Remove'
+              onClick={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                onRemove()
+              }}>
+              <X />
+            </button>
+          )}
         </>
       )}
     </Comp>

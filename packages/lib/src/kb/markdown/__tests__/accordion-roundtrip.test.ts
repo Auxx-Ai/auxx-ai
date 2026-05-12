@@ -5,6 +5,8 @@ import { blocksToMd } from '../blocks-to-md'
 import { mdToBlocks } from '../md-to-blocks'
 import type { AccordionJSON, DocJSON } from '../types'
 
+const mdToDoc = (md: string): DocJSON => ({ type: 'doc', content: mdToBlocks(md) })
+
 function makeAccordionDoc(allowMultiple = true): DocJSON {
   return {
     type: 'doc',
@@ -62,7 +64,7 @@ describe('accordion markdown serialization', () => {
 
   it('round-trips allowMultiple=false', () => {
     const md = blocksToMd(makeAccordionDoc(false))
-    const reparsed = mdToBlocks(md)
+    const reparsed = mdToDoc(md)
     const accordion = reparsed.content[0] as AccordionJSON
     expect(accordion.type).toBe('accordion')
     expect(accordion.attrs.allowMultiple).toBe(false)
@@ -75,7 +77,7 @@ describe('accordion markdown serialization', () => {
 describe('details HTML import alias (Q6d)', () => {
   it('converts a single <details>/<summary> into an accordion', () => {
     const md = '<details><summary>Why?</summary>Because.</details>\n'
-    const doc = mdToBlocks(md)
+    const doc = mdToDoc(md)
     const node = doc.content[0] as AccordionJSON
     expect(node.type).toBe('accordion')
     expect(node.attrs.allowMultiple).toBe(true)
@@ -88,7 +90,7 @@ describe('details HTML import alias (Q6d)', () => {
 
 <details><summary>Q2</summary>A2</details>
 `
-    const doc = mdToBlocks(md)
+    const doc = mdToDoc(md)
     expect(doc.content).toHaveLength(1)
     const node = doc.content[0] as AccordionJSON
     expect(node.type).toBe('accordion')
@@ -99,7 +101,7 @@ describe('details HTML import alias (Q6d)', () => {
 
   it('serializer never re-emits <details> — converted accordion uses :::accordion', () => {
     const md = '<details><summary>Q</summary>A</details>\n'
-    const doc = mdToBlocks(md)
+    const doc = mdToDoc(md)
     const out = blocksToMd(doc)
     expect(out).toContain('::::accordion')
     expect(out).not.toContain('<details>')

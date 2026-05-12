@@ -33,7 +33,18 @@ export { createEmptyTurnSnapshots }
  */
 
 const WALKER_MAX_DEPTH = 3
-const CONTAINER_KEYS = ['items', 'threads', 'thread', 'tasks', 'drafts', 'results'] as const
+const CONTAINER_KEYS = [
+  'items',
+  'threads',
+  'thread',
+  'tasks',
+  'drafts',
+  'results',
+  'articles',
+] as const
+
+/** Keys on a tool-output item to lift into `EntitySnapshot.extras` for renderers. */
+const ENTITY_EXTRA_KEYS = ['slug', 'knowledgeBaseId'] as const
 
 export function runSnapshotWalker(output: unknown, target: TurnSnapshots): void {
   walk(output, target, 0)
@@ -106,6 +117,12 @@ function addEntitySnapshot(target: TurnSnapshots, item: Record<string, unknown>)
 
   const snap: EntitySnapshot = { recordId, entityDefinitionId, displayName }
   if (summary) snap.summary = summary
+  const extras: Record<string, string> = {}
+  for (const key of ENTITY_EXTRA_KEYS) {
+    const value = asString(item[key])
+    if (value) extras[key] = value
+  }
+  if (Object.keys(extras).length > 0) snap.extras = extras
   target.records[recordId] = snap
 }
 

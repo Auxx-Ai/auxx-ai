@@ -70,9 +70,20 @@
   padding-bottom: 2.5em;
 }
 
-/* The header already owns its spacing — collapse the first content block's
-   top margin so a leading heading doesn't add to it. */
-.header + * {
+/* Collapse the top margin on a leading heading so it hugs the article top
+   (or the preceding header/cover, both of which own their own spacing).
+   Selectors are scoped to `.article >` so specificity beats the `.h1`/`.h2`/`.h3`
+   rules defined later in this file. */
+.article > .header + *,
+.article > .header + .h1,
+.article > .header + .h2,
+.article > .header + .h3,
+.article > .h1:first-child,
+.article > .h2:first-child,
+.article > .h3:first-child,
+.article > .cover + .h1,
+.article > .cover + .h2,
+.article > .cover + .h3 {
   margin-top: 0;
 }
 

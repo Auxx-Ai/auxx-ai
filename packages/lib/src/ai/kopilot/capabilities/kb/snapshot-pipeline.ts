@@ -5,7 +5,14 @@ import { KBService } from '../../../../kb/kb-service'
 import { articleToMarkdown } from '../../../../kb/markdown/article-to-markdown'
 import { computeArticleJsonHash } from '../../../../kb/markdown/hash'
 import { stampBlockIds } from '../../../../kb/markdown/stamp-ids'
-import type { ArticleNodeJSON, BlockJSON, PanelJSON } from '../../../../kb/markdown/types'
+import type {
+  AccordionJSON,
+  ArticleNodeJSON,
+  BlockJSON,
+  PanelJSON,
+  TableJSON,
+  TabsJSON,
+} from '../../../../kb/markdown/types'
 
 const TRUNCATION_CHAR_CAP = 32_000
 
@@ -16,9 +23,17 @@ export interface BlockOutlineEntry {
   preview: string
   containerId?: string
   containerKind?: 'tabs' | 'accordion' | 'panel' | 'tableCell'
+  /** For container rows (table/tabs/accordion): row × col for tables, panel count for tabs/accordion. */
+  size?: { rows: number; cols: number } | { panels: number }
 }
 
 export interface ActiveArticleSnapshot {
+  /** `<articleEntityDefinitionId>:<articleId>` — copy verbatim into entity-card fences. */
+  recordId: string
+  /** Human-readable name for entity-card rendering (title or slug fallback). */
+  displayName: string
+  /** Secondary line for entity-card rendering (slug). */
+  secondaryInfo: string
   articleId: string
   knowledgeBaseId: string
   title: string
@@ -30,6 +45,24 @@ export interface ActiveArticleSnapshot {
   bodyMarkdown: string
   bodyTruncated: boolean
   outline: BlockOutlineEntry[]
+}
+
+/**
+ * Resolves the EntityDefinition.id for the `article` system entity in the
+ * given organization. Articles are registered with `entityType: 'article'`
+ * (see seed/entity-seeder/constants.ts) and get a real EntityDefinition row
+ * even though their data lives in the Article table.
+ */
+export async function getArticleEntityDefinitionId(
+  db: Database,
+  organizationId: string
+): Promise<string | null> {
+  const row = await db.query.EntityDefinition.findFirst({
+    where: (d, { and, eq, isNull }) =>
+      and(eq(d.organizationId, organizationId), eq(d.entityType, 'article'), isNull(d.archivedAt)),
+    columns: { id: true },
+  })
+  return row?.id ?? null
 }
 
 /**
@@ -79,10 +112,19 @@ export async function buildActiveArticleSnapshot(args: {
   const fullMarkdown = articleToMarkdown({ contentJson })
   const { body, truncated } = truncateBody(fullMarkdown, outline)
 
+  const articleEntityDefinitionId = await getArticleEntityDefinitionId(db, organizationId)
+  const title = draft.title ?? ''
+  const displayName = title || article.slug
+
   return {
+    recordId: articleEntityDefinitionId
+      ? `${articleEntityDefinitionId}:${article.id}`
+      : `article:${article.id}`,
+    displayName,
+    secondaryInfo: article.slug,
     articleId: article.id,
     knowledgeBaseId: article.knowledgeBaseId,
-    title: draft.title ?? '',
+    title,
     slug: article.slug,
     description: draft.description ?? null,
     status: article.status as 'DRAFT' | 'PUBLISHED' | 'UNLISTED',
@@ -111,17 +153,50 @@ function buildOutline(content: ArticleNodeJSON[]): BlockOutlineEntry[] {
       ...(containerId ? { containerId } : {}),
     })
   }
-  const pushPanel = (panel: PanelJSON, kind: 'tabs' | 'accordion') => {
+  const pushPanel = (panel: PanelJSON, kind: 'tabs' | 'accordion', containerId?: string) => {
     if (!panel.attrs.id) return
     out.push({
       id: panel.attrs.id,
       type: 'panel',
       preview: panel.attrs.label?.slice(0, 80) ?? '',
       containerKind: kind,
+      ...(containerId ? { containerId } : {}),
     })
     for (const child of panel.content) {
       pushBlock(child, 'panel', panel.attrs.id)
     }
+  }
+  const pushTabsOrAccordion = (node: TabsJSON | AccordionJSON) => {
+    if (!node.attrs.id) return
+    const labels = node.content
+      .map((p) => p.attrs.label ?? '')
+      .filter(Boolean)
+      .join(' | ')
+    out.push({
+      id: node.attrs.id,
+      type: node.type,
+      preview: `${node.type}: ${labels}`.slice(0, 80),
+      size: { panels: node.content.length },
+    })
+  }
+  const pushTable = (node: TableJSON) => {
+    if (!node.attrs?.id) return
+    const rows = node.content.length
+    const cols = node.content[0]?.content.length ?? 0
+    const firstCellPreview =
+      node.content[0]?.content[0]?.content[0]?.content
+        ?.map((n) => (n.type === 'text' ? (n.text ?? '') : ''))
+        .join('')
+        .trim() ?? ''
+    out.push({
+      id: node.attrs.id,
+      type: 'table',
+      preview: `${rows}×${cols} table${firstCellPreview ? `: ${firstCellPreview}` : ''}`.slice(
+        0,
+        80
+      ),
+      size: { rows, cols },
+    })
   }
 
   for (const node of content) {
@@ -130,13 +205,15 @@ function buildOutline(content: ArticleNodeJSON[]): BlockOutlineEntry[] {
       continue
     }
     if (node.type === 'tabs' || node.type === 'accordion') {
-      for (const panel of node.content) pushPanel(panel, node.type)
+      pushTabsOrAccordion(node)
+      for (const panel of node.content) pushPanel(panel, node.type, node.attrs.id ?? undefined)
       continue
     }
     if (node.type === 'table') {
+      pushTable(node)
       for (const row of node.content) {
         for (const cell of row.content) {
-          for (const block of cell.content) pushBlock(block, 'tableCell')
+          for (const block of cell.content) pushBlock(block, 'tableCell', node.attrs?.id)
         }
       }
     }

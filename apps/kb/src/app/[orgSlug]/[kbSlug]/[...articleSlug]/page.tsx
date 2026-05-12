@@ -193,11 +193,14 @@ function ArticleBodyContent({
   const parent = getArticleParentLink(article, articles, basePath)
   const fullSlug = getFullSlugPath(article, articles)
   const markdownHref = `${basePath}/${fullSlug}.md`
+  const articleDoc = article.contentJson
+    ? { type: 'doc' as const, content: article.contentJson }
+    : null
 
   return (
     <div className='flex min-w-0 flex-1 flex-col'>
       <KBArticleWithToc
-        doc={article.contentJson}
+        doc={articleDoc}
         title={article.title}
         emoji={article.emoji}
         description={article.description}
@@ -205,11 +208,7 @@ function ArticleBodyContent({
         updatedAt={article.updatedAt}
         parent={parent}
         copyMenu={
-          <ArticleMarkdownCopy
-            doc={article.contentJson}
-            title={article.title}
-            markdownHref={markdownHref}
-          />
+          <ArticleMarkdownCopy doc={articleDoc} title={article.title} markdownHref={markdownHref} />
         }
       />
       <div className='mt-auto w-full max-w-3xl px-6'>

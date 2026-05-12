@@ -1,11 +1,11 @@
 // packages/lib/src/kb/markdown/article-to-markdown.ts
 
 import { type BlocksToMdOptions, blocksToMd } from './blocks-to-md'
-import type { DocJSON } from './types'
+import type { ArticleNodeJSON } from './types'
 
 interface ArticleLike {
   title?: string | null
-  contentJson?: unknown
+  contentJson?: ArticleNodeJSON[] | null
 }
 
 /**
@@ -18,5 +18,5 @@ interface ArticleLike {
  */
 export function articleToMarkdown(article: ArticleLike, opts: BlocksToMdOptions = {}): string {
   if (!article || !article.contentJson) return ''
-  return blocksToMd(article.contentJson as DocJSON, opts)
+  return blocksToMd({ type: 'doc', content: article.contentJson }, opts)
 }

@@ -1,6 +1,6 @@
 // packages/ui/src/components/kb/search/build-search-index.ts
 
-import type { DocJSON } from '../article/types'
+import type { ArticleNodeJSON } from '../article/types'
 import { extractHeadings, extractPlainText } from '../utils/inline-text'
 
 export interface KBSearchDoc {
@@ -19,7 +19,7 @@ export interface KBSearchInputArticle {
   slug: string
   title: string
   description?: string | null
-  contentJson: DocJSON | null | undefined
+  contentJson: ArticleNodeJSON[] | null | undefined
   isPublished: boolean
   articleKind?: 'page' | 'category' | 'header' | 'tab' | 'link'
   parentId: string | null

@@ -32,7 +32,7 @@ export function ArticleEditorTop({
   // the query loads.
   const { draftEmoji, draftCoverImage } = useArticleContent(article.id, knowledgeBaseId)
   const effectiveEmoji = draftEmoji ?? article.emoji
-  const hasCover = !!(draftCoverImage ?? article.coverImage)
+  const hasCover = !!draftCoverImage
 
   const [pickedEmoji, setPickedEmoji] = useState<string | null>(effectiveEmoji)
   useEffect(() => {
