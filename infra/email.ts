@@ -6,7 +6,7 @@ import { emailDomain } from './dns'
 
 /**
  * Email configuration for Auxx.ai
- * Only provisions AWS SES when EMAIL_PROVIDER === 'ses'.
+ * Only provisions AWS SES when EMAIL_PROVIDER === ' ses'.
  */
 const EMAIL_PROVIDER = process.env.EMAIL_PROVIDER || 'mailgun'
 const useSes = EMAIL_PROVIDER === 'ses' && shouldDeployEmailInfrastructure($app.stage)
