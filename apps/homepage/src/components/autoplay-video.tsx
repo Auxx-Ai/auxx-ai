@@ -25,10 +25,9 @@ export function AutoplayVideo({ playOnView = true, ...props }: AutoplayVideoProp
     const video = videoRef.current
     if (!video) return
 
-    // Fix: React's muted JSX prop doesn't reliably set the DOM attribute on iOS Safari
-    if (muted) {
-      video.muted = true
-    }
+    // Fix: React's muted JSX prop doesn't reliably set the DOM attribute on iOS Safari.
+    // Sync both directions so parent-controlled toggles work.
+    video.muted = !!muted
 
     if (!playOnView) {
       // For user-triggered videos (e.g. modal), just play immediately

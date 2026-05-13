@@ -3,10 +3,10 @@
 
 import { Check, Clock, Zap } from 'lucide-react'
 import Link from 'next/link'
-import MessagingFeatures from '@/app/platform/messaging/_components/messaging-features'
 import { Button } from '~/components/ui/button'
 import { useConfig } from '~/lib/config-context'
 import { AnnouncementBadge } from './announcement-badge'
+import { HeroIllustration } from './hero-illustration'
 
 function SocialProofBanner() {
   return (
@@ -96,7 +96,7 @@ export default function HeroSection() {
 
         {/* <SocialProofBanner /> */}
       </section>
-      <MessagingFeatures />
+      <HeroIllustration />
     </main>
   )
 }
