@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.147](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.146...auxx-v0.1.147) (2026-05-13)
+
+
+### Features
+
+* **kb:** short-circuit DB calls for cacheComponents build stub ([86ae218](https://github.com/Auxx-Ai/auxx-ai/commit/86ae21898f743c58323283463df22d75faadc5ad))
+
 ## [0.1.146](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.145...auxx-v0.1.146) (2026-05-13)
 
 
