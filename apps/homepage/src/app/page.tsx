@@ -7,11 +7,14 @@ import FooterSection from './_components/main/footer-section'
 import Header from './_components/main/header'
 import HeroSection from './_components/sections/hero-section'
 import IntegrationSection from './_components/sections/integration-section'
+import KopilotHomeSection from './_components/sections/kopilot-home-section'
 import StatsSection from './_components/sections/stats-section'
 import TestimonialsSection from './_components/sections/testimonials-section'
 import WorkflowAnimationSection from './_components/sections/workflow-animation/workflow-animation-section'
+import KopilotAgentsCta from './platform/ai/kopilot/_components/kopilot-agents-cta'
 import CrmHero from './platform/crm/_components/crm-hero'
 import DataModelWallHero from './platform/data-model/_components/data-model-wall-hero'
+import IngestionFlowSection from './platform/data-model/_components/ingestion-flow-section'
 import WorkflowContent from './platform/workflow/_components/workflow-content'
 
 export const metadata: Metadata = {
@@ -67,11 +70,14 @@ export default function MainPage() {
       <WorkflowContent />
 
       <DataModelWallHero as='h2' />
+      <IngestionFlowSection />
       <CrmHero as='h2' />
+      <KopilotHomeSection />
       {/* <ProblemSolutionSection /> */}
       <StatsSection />
       <IntegrationSection />
       <TestimonialsSection />
+      <KopilotAgentsCta />
       <FooterSection />
     </div>
   )
