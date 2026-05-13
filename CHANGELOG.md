@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.145](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.144...auxx-v0.1.145) (2026-05-13)
+
+
+### Features
+
+* update page ([3d8ff6c](https://github.com/Auxx-Ai/auxx-ai/commit/3d8ff6c31267dac22af14d5a7fa394bd188c85b9))
+
 ## [0.1.144](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.143...auxx-v0.1.144) (2026-05-13)
 
 
