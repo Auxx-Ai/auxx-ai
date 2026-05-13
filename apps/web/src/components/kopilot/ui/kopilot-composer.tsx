@@ -4,7 +4,6 @@
 
 import { ModelType } from '@auxx/lib/ai/providers/types'
 import type { PromptTemplateItem } from '@auxx/lib/prompt-templates'
-import type { RecordId } from '@auxx/lib/resources/client'
 import { Button } from '@auxx/ui/components/button'
 import { cn } from '@auxx/ui/lib/utils'
 import { generateId } from '@auxx/utils/generateId'
@@ -28,6 +27,7 @@ import {
 } from '~/components/pickers/reference-picker/reference-picker-content'
 import { api } from '~/trpc/react'
 import { KopilotContextChipStrip } from '../context/kopilot-context-chip-strip'
+import type { SessionRef, SessionRefKind } from '../context/types'
 import type { KopilotRequest } from '../hooks/use-kopilot-sse'
 import { usePromptTemplates } from '../hooks/use-prompt-templates'
 import type { KopilotMessage } from '../stores/kopilot-store'
@@ -74,14 +74,27 @@ const PROMPT_BADGE_REGEX =
 const REFERENCE_BADGE_REGEX =
   /<span[^>]*data-type="reference"[^>]*data-id="([^"]+)"[^>]*>[^<]*<\/span>/g
 
-function extractReferences(html: string): RecordId[] {
-  const ids: RecordId[] = []
+/**
+ * Derive a `SessionRefKind` from a reference id prefix. Mirrors the
+ * `renderReferenceBadge` heuristic in `use-reference-picker-editor.tsx` so
+ * the extractor and the badge renderer agree on what a given id means.
+ */
+function kindFromMentionId(id: string): SessionRefKind {
+  if (id.startsWith('user:') || id.startsWith('group:')) return 'actor'
+  if (id.startsWith('thread:') || id.startsWith('draft:')) return 'thread'
+  if (id.startsWith('article:')) return 'article'
+  return 'record'
+}
+
+function extractMentionRefs(html: string): SessionRef[] {
+  const refs: SessionRef[] = []
   let match: RegExpExecArray | null
   REFERENCE_BADGE_REGEX.lastIndex = 0
   while ((match = REFERENCE_BADGE_REGEX.exec(html)) !== null) {
-    ids.push(match[1] as RecordId)
+    const id = match[1]!
+    refs.push({ kind: kindFromMentionId(id), id, origin: 'mention' })
   }
-  return ids
+  return refs
 }
 
 /**
@@ -248,8 +261,8 @@ export function KopilotComposer({ ref, page, onSend, contentClassName }: Kopilot
     // Resolve prompt template badges to full prompt text
     const resolvedHtml = resolvePromptBadges(html, templateMap)
 
-    // Extract RecordId references from the original HTML before flattening
-    const references = extractReferences(html)
+    // Extract `@`-mentioned references from the original HTML before flattening
+    const mentionRefs = extractMentionRefs(html)
 
     // Get plain text from resolved content for the API
     // Create a temp element to extract text from resolved HTML
@@ -279,19 +292,26 @@ export function KopilotComposer({ ref, page, onSend, contentClassName }: Kopilot
     // Snapshot the merged context at submit time, strip dismissed chips, then
     // reset dismissals so the chip reappears next turn.
     const store = useKopilotStore.getState()
-    const merged = applyChipDismissals(
+    const surfaceContext = applyChipDismissals(
       selectMergedContext(store.contextSlices),
       store.dismissedChipKeys
     )
     store.clearDismissedChips()
 
+    // Merge surface refs (page-derived) with editor `@`-mention refs.
+    const surfaceRefs = surfaceContext.references ?? []
+    const combinedRefs = mentionRefs.length === 0 ? surfaceRefs : [...surfaceRefs, ...mentionRefs]
+    const mergedContext = {
+      ...surfaceContext,
+      ...(combinedRefs.length > 0 ? { references: combinedRefs } : {}),
+    }
+
     onSend({
       sessionId: activeSessionId ?? undefined,
       message: text.trim(),
       type: 'message',
-      page: merged.page ?? page,
-      context: merged,
-      references,
+      page: surfaceContext.page ?? page,
+      context: mergedContext,
       modelId: selectedModelId ?? undefined,
     })
 

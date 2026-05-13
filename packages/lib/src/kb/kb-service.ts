@@ -538,6 +538,44 @@ export class KBService {
   }
 
   /**
+   * Return every article in the org, across all knowledge bases. Same row
+   * shape as {@link getArticles}; `knowledgeBaseId` on each row is how the
+   * caller disambiguates. Used by global tools that operate across KBs
+   * when the user isn't focused on one in particular.
+   */
+  async getAllArticles(options: ArticleListOptions = {}): Promise<ArticleListItem[]> {
+    try {
+      const articles = await this.db.query.Article.findMany({
+        where: and(
+          eq(schema.Article.organizationId, this.organizationId),
+          options.includeUnpublished ? undefined : eq(schema.Article.isPublished, true)
+        ),
+        orderBy: [
+          asc(schema.Article.knowledgeBaseId),
+          asc(schema.Article.parentId),
+          asc(schema.Article.sortOrder),
+        ],
+        with: { publishedRevision: true, draftRevision: true },
+      })
+      const tagIdMap = await batchGetArticleTagIds(
+        this.db,
+        articles.map((a) => a.id),
+        this.organizationId
+      )
+      const urlMap = await this.resolveCoverUrls(
+        articles.flatMap((a) => this.coverIdsForArticle(a))
+      )
+      return await Promise.all(
+        articles.map((a) =>
+          this.flattenForList(a, (tagIdMap.get(a.id) ?? []) as RecordId[], urlMap)
+        )
+      )
+    } catch (error) {
+      return this.handleError(error, 'Error fetching all articles')
+    }
+  }
+
+  /**
    * Editor view: returns the article with its draft revision content + a hint
    * of the published revision content for "discard draft" previews. Pass
    * `versionNumber` to additionally include the content of an immutable

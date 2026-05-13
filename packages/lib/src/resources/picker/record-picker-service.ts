@@ -485,12 +485,22 @@ export class RecordPickerService {
 
     const avatarUrl = displayConfig.avatarFieldId ? row[displayConfig.avatarFieldId] : undefined
 
+    const iconId = displayConfig.iconFieldId
+      ? (row[displayConfig.iconFieldId] ?? undefined)
+      : undefined
+
+    const color = displayConfig.colorFieldId
+      ? (row[displayConfig.colorFieldId] ?? undefined)
+      : undefined
+
     return {
       id: row.id,
       recordId: toRecordId(tableId, entityInstanceId),
       displayName,
       secondaryInfo,
       avatarUrl,
+      iconId,
+      color,
       data: row,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,

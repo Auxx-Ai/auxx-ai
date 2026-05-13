@@ -5,6 +5,7 @@ import { and, eq } from 'drizzle-orm'
 import type { ArticleNodeJSON, BlockJSON } from '../../../../../kb/markdown/types'
 import { parseStringArg } from '../../../../agent-framework/tool-inputs'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
+import { findRef } from '../../../context-refs'
 import type { GetToolDeps } from '../../types'
 
 /**
@@ -36,7 +37,7 @@ export function createResolveBlockByHeadingTool(getDeps: GetToolDeps): AgentTool
     },
     execute: async (args, agentDeps) => {
       const { db, sessionContext } = getDeps()
-      const articleId = sessionContext.activeArticleId
+      const articleId = findRef(sessionContext, 'article')?.id
       if (!articleId) {
         return { success: false, output: null, error: 'no active article' }
       }

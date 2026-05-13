@@ -56,10 +56,21 @@ export async function getKnownDefIds(orgId: string): Promise<KnownDefIds> {
  * Trim + length-bound a string-typed argument. `name` is included in error
  * messages so the LLM knows which arg to fix. `required: false` (default)
  * means an undefined / empty input returns `ok: true, value: undefined`.
+ *
+ * `stripPrefix` removes a leading prefix from the value if present (after
+ * trim). Useful when an LLM passes a RecordId-shaped value (`thread:<id>`)
+ * where the tool expects the bare instance id. A single string or an array
+ * of acceptable prefixes is accepted; only the first match is stripped.
  */
 export function parseStringArg(
   input: unknown,
-  opts: { name: string; max?: number; required?: boolean; min?: number }
+  opts: {
+    name: string
+    max?: number
+    required?: boolean
+    min?: number
+    stripPrefix?: string | string[]
+  }
 ): ParseResult<string | undefined> {
   if (input === undefined || input === null || input === '') {
     if (opts.required) {
@@ -73,7 +84,16 @@ export function parseStringArg(
       error: `${opts.name} must be a string; got ${typeof input}.`,
     }
   }
-  const trimmed = input.trim()
+  let trimmed = input.trim()
+  if (opts.stripPrefix) {
+    const prefixes = Array.isArray(opts.stripPrefix) ? opts.stripPrefix : [opts.stripPrefix]
+    for (const prefix of prefixes) {
+      if (prefix && trimmed.startsWith(prefix)) {
+        trimmed = trimmed.slice(prefix.length)
+        break
+      }
+    }
+  }
   if (opts.required && trimmed.length === 0) {
     return { ok: false, error: `${opts.name} is required.` }
   }
@@ -301,6 +321,72 @@ export function parseDeadlineArg(
     return { ok: true, value: { type: 'static', value: resolved } satisfies AbsoluteDate }
   }
   return { ok: true, value: result.duration satisfies RelativeDate }
+}
+
+/**
+ * Parse a single article-id argument. Accepts a bare articleId or an
+ * `article:<id>` / `<articleEntityDefinitionId>:<id>` RecordId form — both
+ * collapse to the bare `articleId`. The entityDefinitionId form is accepted
+ * because the LLM can paste it verbatim from the `## Active references`
+ * block or from any tool result that emits a `recordId`.
+ */
+export function parseArticleIdArg(
+  input: unknown,
+  ctx: { name?: string; required?: boolean } = {}
+): ParseResult<string | undefined> {
+  const argName = ctx.name ?? 'articleId'
+  if (input === undefined || input === null || input === '') {
+    if (ctx.required) return { ok: false, error: `${argName} is required.` }
+    return { ok: true, value: undefined }
+  }
+  if (typeof input !== 'string') {
+    return { ok: false, error: `${argName} must be a string; got ${typeof input}.` }
+  }
+  const trimmed = input.trim()
+  if (trimmed.length === 0) {
+    if (ctx.required) return { ok: false, error: `${argName} is required.` }
+    return { ok: true, value: undefined }
+  }
+  const parts = trimmed.split(':')
+  if (parts.length === 1) return { ok: true, value: parts[0] }
+  if (parts.length === 2) {
+    const [_prefix, id] = parts
+    if (!id) {
+      return {
+        ok: false,
+        error: `${argName} '${trimmed}' is malformed. Expected a bare id or '<prefix>:<id>'.`,
+      }
+    }
+    return { ok: true, value: id }
+  }
+  return {
+    ok: false,
+    error: `${argName} '${trimmed}' has ${parts.length} colon-separated parts; expected a bare id or '<prefix>:<id>'.`,
+  }
+}
+
+/**
+ * Parse an array of article-id arguments. Per-item validation; the first
+ * invalid item short-circuits.
+ */
+export function parseArticleIdArrayArg(
+  input: unknown,
+  ctx: { name?: string } = {}
+): ParseResult<string[]> {
+  const argName = ctx.name ?? 'articleIds'
+  if (input === undefined || input === null) {
+    return { ok: true, value: [] }
+  }
+  if (!Array.isArray(input)) {
+    return { ok: false, error: `${argName} must be an array; got ${typeof input}.` }
+  }
+  const value: string[] = []
+  for (let i = 0; i < input.length; i++) {
+    const r = parseArticleIdArg(input[i], { name: `${argName}[${i}]`, required: true })
+    if (!r.ok) return r
+    if (r.value) value.push(r.value)
+  }
+  return { ok: true, value }
 }
 
 /**

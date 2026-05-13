@@ -145,7 +145,10 @@ export function ReferencePickerContent({
           </button>
         ))}
       </div>
-      <div className='max-h-[300px] overflow-y-auto'>
+      {/* Pin the inner CommandList to a fixed height so the popover stays the same
+          size across tabs and as items load/filter. Targets the `data-slot` on the
+          scroll-area Root inside CommandList. */}
+      <div className='[&_[data-slot=command-list]]:h-[288px]'>
         {tab === 'people' && (
           <ActorPickerContent
             value={emptyValue as unknown as never[]}
@@ -154,6 +157,7 @@ export function ReferencePickerContent({
             multi={false}
             onSelectSingle={(actorId) => onSelect(actorId as unknown as RecordId)}
             externalSearch={query}
+            showInput={false}
             placeholder='Search people...'
           />
         )}
@@ -164,6 +168,7 @@ export function ReferencePickerContent({
             multi={false}
             onSelectSingle={(id) => onSelect(id)}
             externalSearch={query}
+            showInput={false}
             placeholder='Search records...'
           />
         )}
@@ -174,6 +179,7 @@ export function ReferencePickerContent({
             multi={false}
             onSelectSingle={(id) => onSelect(id)}
             externalSearch={query}
+            showInput={false}
           />
         )}
         {tab === 'articles' && (
@@ -183,6 +189,7 @@ export function ReferencePickerContent({
             multi={false}
             onSelectSingle={(id) => onSelect(id)}
             externalSearch={query}
+            showInput={false}
           />
         )}
       </div>

@@ -2,4 +2,10 @@
 
 export { KopilotContext } from './kopilot-context'
 export { KopilotContextChipStrip } from './kopilot-context-chip-strip'
-export type { ContextChip, ContextChipIcon, ContextSlice, SessionContext } from './types'
+export type {
+  ContextChipIcon,
+  ContextSlice,
+  SessionContext,
+  SessionRef,
+  SessionRefKind,
+} from './types'

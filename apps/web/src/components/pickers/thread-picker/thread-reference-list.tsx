@@ -34,6 +34,7 @@ export function ThreadReferenceList({
   multi = false,
   onSelectSingle,
   externalSearch,
+  showInput = true,
   onCaptureChange,
   placeholder = 'Search threads...',
   disabled = false,
@@ -43,7 +44,6 @@ export function ThreadReferenceList({
   const search = externalSearch ?? internalSearch
   const setSearch = externalSearch !== undefined ? () => {} : setInternalSearch
   const [debouncedSearch] = useDebouncedValue(search, 200)
-  const useExternalSearch = externalSearch !== undefined
 
   useEffect(() => {
     onCaptureChange?.(true)
@@ -71,7 +71,7 @@ export function ThreadReferenceList({
   const items = useMemo(() => {
     if (hasQuery) return searchData?.items ?? []
     // Map ThreadMeta → RecordPickerItem-shaped row for RecordItem rendering.
-    return threads.slice(0, 10).map((t) => ({
+    return threads.slice(0, 8).map((t) => ({
       id: t.id,
       recordId: `thread:${t.id}` as RecordId,
       displayName: t.subject || '(no subject)',
@@ -101,12 +101,12 @@ export function ThreadReferenceList({
   const isLoading = hasQuery ? isSearching : isThreadListLoading
   const isDebouncePending = search !== debouncedSearch
   const showPlaceholder =
-    useExternalSearch && hasQuery && (isSearching || isDebouncePending) && items.length === 0
+    !showInput && hasQuery && (isSearching || isDebouncePending) && items.length === 0
   const showEmpty = !showPlaceholder && !isLoading && items.length === 0
 
   return (
     <Command shouldFilter={false} className={cn('rounded-lg', className)}>
-      {!useExternalSearch && (
+      {showInput && (
         <CommandInput
           placeholder={placeholder}
           value={search}

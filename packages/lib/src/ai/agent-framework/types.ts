@@ -453,12 +453,34 @@ export interface AgentDomainConfig<TDomainState = Record<string, unknown>> {
     state: AgentState
   ) => AgentToolResult | undefined
   /**
+   * Optional hook called before a tool's `validateInputs` / `execute` runs.
+   * Lets a domain inject defaults into tool-call arguments (e.g. pre-fill
+   * `threadId` from the user's active thread reference). Pure transform of
+   * `args` against `state`; do not mutate either. Return the rewritten
+   * args object — or just return the input untouched if no change applies.
+   *
+   * Runs in both the live tool-call path and the approval-resume path.
+   */
+  transformToolInput?: (
+    toolName: string,
+    args: Record<string, unknown>,
+    state: AgentState
+  ) => Record<string, unknown>
+  /**
    * Optional hook called on the responder's final content string before it is
    * persisted as the assistant's final message. Kopilot uses this to inject
    * snapshots into `auxx:*` fences and build the per-message `linkSnapshots`
    * lookup table for inline `auxx://` chips.
    */
   postProcessFinalContent?: (content: string, state: AgentState) => PostProcessResult
+  /**
+   * Optional hook for the engine's `Turn submitted` log entry. Lets a domain
+   * surface debug-relevant context fields (refs, page, …) without the
+   * framework knowing the shape. Return value is serialized into the log line.
+   */
+  summarizeContext?: (
+    context: Record<string, unknown> | undefined
+  ) => Record<string, unknown> | undefined
 }
 
 /** Return shape from `postProcessFinalContent`. */

@@ -3,7 +3,7 @@
 'use client'
 
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import type { ReactNode } from 'react'
 import type { ApprovalCardProps } from './approval-card-registry'
 import { BlockCard, type BlockCardAction, StatusIndicator } from './block-card'
@@ -19,6 +19,7 @@ export function DraftApprovalCard({
 }: ApprovalCardProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
+  const pathname = usePathname()
 
   // Prefer the post-execution digest values when present (subject/body can be
   // edited at approval time and the digest reflects what was actually sent).
@@ -45,10 +46,34 @@ export function DraftApprovalCard({
     d.recipients ?? resolvedRecipients?.map((r) => r.displayName ?? r.identifier)
 
   const handleEditInThread = () => {
-    if (!threadId) return
-    const params = new URLSearchParams(searchParams.toString())
-    params.set('threadId', threadId)
-    router.push(`?${params.toString()}`)
+    const currentSearch = searchParams.toString()
+    console.log('[DraftApprovalCard] edit-in-thread clicked', {
+      threadId,
+      digestThreadId: d.threadId,
+      argsThreadId: args.threadId,
+      status,
+      pathname,
+      currentSearch,
+    })
+    if (!threadId) {
+      console.warn('[DraftApprovalCard] edit-in-thread aborted: no threadId', {
+        digest: d,
+        args,
+      })
+      return
+    }
+    const onMailRoute = pathname?.startsWith('/app/mail/') ?? false
+    const basePath = onMailRoute ? pathname : '/app/mail/inboxes/all/unassigned'
+    const params = new URLSearchParams(onMailRoute ? currentSearch : '')
+    params.set('tid', threadId)
+    const target = `${basePath}?${params.toString()}`
+    console.log('[DraftApprovalCard] edit-in-thread navigating', {
+      from: `${pathname}${currentSearch ? `?${currentSearch}` : ''}`,
+      to: target,
+      threadId,
+      onMailRoute,
+    })
+    router.push(target)
   }
 
   const isPending = status === 'pending'

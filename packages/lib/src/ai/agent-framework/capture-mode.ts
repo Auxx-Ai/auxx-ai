@@ -39,7 +39,8 @@ export async function processCaptureToolCalls(
   agentName: string,
   ctx: ToolContext,
   idempotentCache: Map<string, ToolExecResult>,
-  existingCaptures: CapturedAction[]
+  existingCaptures: CapturedAction[],
+  transformInput?: (toolName: string, args: Record<string, unknown>) => Record<string, unknown>
 ): Promise<{
   events: AgentEvent[]
   results: CaptureExecResult[]
@@ -55,6 +56,7 @@ export async function processCaptureToolCalls(
     const toolName = toolCall.function.name
     const tool = toolMap.get(toolName)
     let args = parseToolArgs(toolCall)
+    if (transformInput) args = transformInput(toolName, args)
 
     if (!tool) {
       events.push({

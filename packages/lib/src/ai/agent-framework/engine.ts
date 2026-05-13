@@ -100,6 +100,8 @@ export class AgentEngine {
       sessionId: this.config.sessionId,
       messageLength: userMessage.length,
       totalMessages: this.state.messages.length,
+      contextKeys: context ? Object.keys(context) : [],
+      contextSummary: this.config.domainConfig.summarizeContext?.(context),
     })
 
     this.abortController = new AbortController()

@@ -66,6 +66,7 @@ export function createUpdateThreadTool(getDeps: GetToolDeps): AgentToolDefinitio
         name: 'threadId',
         required: true,
         max: 200,
+        stripPrefix: 'thread:',
       })
       if (!threadId.ok) return { ok: false, error: threadId.error }
       return { ok: true, args: { ...args, threadId: threadId.value } }

@@ -18,6 +18,7 @@ import {
   createCapabilityRegistry,
   createEntityCapabilities,
   createKbCapabilities,
+  createKbReadCapabilities,
   createKnowledgeCapabilities,
   createKopilotCapabilities,
   createKopilotDomainConfig,
@@ -43,6 +44,28 @@ import { auth } from '~/auth/server'
 
 const logger = createScopedLogger('kopilot-stream')
 
+interface SessionRefLike {
+  kind?: string
+  id?: string
+  origin?: string
+}
+
+/**
+ * Pull the active article id out of the raw request context. Mirrors the
+ * server-side `findRef(ctx, 'article')` precedence (mention wins) without
+ * dragging the kopilot lib types into the route handler.
+ */
+function findActiveArticleIdInContext(
+  context: Record<string, unknown> | undefined
+): string | undefined {
+  const refs = (context as { references?: SessionRefLike[] } | undefined)?.references
+  if (!Array.isArray(refs)) return undefined
+  const mention = refs.find((r) => r?.kind === 'article' && r?.origin === 'mention')
+  if (mention?.id) return mention.id
+  const any = refs.find((r) => r?.kind === 'article')
+  return any?.id
+}
+
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
@@ -58,8 +81,6 @@ interface KopilotStreamRequest {
   inputAmendment?: Record<string, unknown>
   /** Model override in "provider:model" format — omit to use system default */
   modelId?: string
-  /** Structured RecordId references parsed from editor `@`-mentions */
-  references?: string[]
 }
 
 /**
@@ -111,7 +132,7 @@ export async function POST(request: NextRequest) {
     return new Response('Message is required', { status: 400 })
   }
 
-  const { message, type = 'message', page, context, references } = body
+  const { message, type = 'message', page, context } = body
 
   const stream = new ReadableStream({
     async start(controller) {
@@ -193,6 +214,19 @@ export async function POST(request: NextRequest) {
           })
         }
 
+        logger.info('Kopilot turn context', {
+          sessionId,
+          page,
+          references: (context as { references?: SessionRefLike[] } | undefined)?.references?.map(
+            (r) => ({
+              kind: r?.kind,
+              id: r?.id,
+              origin: r?.origin,
+              label: (r as { label?: string } | undefined)?.label ?? null,
+            })
+          ),
+        })
+
         const runPath = shouldUseWorker()
           ? () =>
               runWorkerPath({
@@ -203,7 +237,6 @@ export async function POST(request: NextRequest) {
                 type,
                 page,
                 context,
-                references,
                 approvalAction: body.approvalAction,
                 inputAmendment: body.inputAmendment,
                 modelId: body.modelId,
@@ -220,7 +253,6 @@ export async function POST(request: NextRequest) {
                 type,
                 page,
                 context,
-                references,
                 approvalAction: body.approvalAction,
                 inputAmendment: body.inputAmendment,
                 modelId: body.modelId,
@@ -243,8 +275,7 @@ export async function POST(request: NextRequest) {
         // article (a pre-turn snapshot exists in Redis), release the lock
         // so the editor goes editable again. The snapshot stays for the
         // user to click Undo.
-        const activeArticleId = (context as { activeArticleId?: string } | undefined)
-          ?.activeArticleId
+        const activeArticleId = findActiveArticleIdInContext(context)
         if (activeArticleId && page === 'kb') {
           const { finalizeKopilotKbTurn } = await import(
             '@auxx/lib/ai/kopilot/capabilities/kb/tools/write-helpers'
@@ -261,8 +292,7 @@ export async function POST(request: NextRequest) {
         // Auto-revert on agent failure: half-applied state is hostile.
         // If the turn captured a snapshot, restore it before the editor
         // releases its lock.
-        const activeArticleId = (context as { activeArticleId?: string } | undefined)
-          ?.activeArticleId
+        const activeArticleId = findActiveArticleIdInContext(context)
         if (activeArticleId && page === 'kb') {
           try {
             const { revertKopilotKbTurn } = await import(
@@ -319,7 +349,6 @@ async function runInProcessPath(params: {
   type: 'message' | 'approval'
   page?: string
   context?: Record<string, unknown>
-  references?: string[]
   approvalAction?: 'approve' | 'reject'
   inputAmendment?: Record<string, unknown>
   modelId?: string
@@ -338,7 +367,6 @@ async function runInProcessPath(params: {
     type,
     page,
     context,
-    references,
     approvalAction,
     inputAmendment,
     modelId,
@@ -376,6 +404,7 @@ async function runInProcessPath(params: {
   registry.register(createActorCapabilities(getToolDeps))
   registry.register(createTaskCapabilities(getToolDeps))
   registry.register(createKopilotCapabilities(getToolDeps))
+  registry.register(createKbReadCapabilities(getToolDeps))
   registry.register(createKbCapabilities(getToolDeps))
 
   // Resolve model: for approvals, always reuse the stored modelId — approvals
@@ -492,7 +521,7 @@ async function runInProcessPath(params: {
   })
 
   // Build session context from request
-  const sessionContext = { page, ...context, references }
+  const sessionContext = { page, ...context }
 
   // Run the engine
   const generator =
@@ -595,7 +624,6 @@ async function runWorkerPath(params: {
   type: 'message' | 'approval'
   page?: string
   context?: Record<string, unknown>
-  references?: string[]
   approvalAction?: 'approve' | 'reject'
   inputAmendment?: Record<string, unknown>
   modelId?: string
@@ -603,18 +631,7 @@ async function runWorkerPath(params: {
   cleanup: () => void
   request: NextRequest
 }) {
-  const {
-    sessionId,
-    organizationId,
-    userId,
-    message,
-    type,
-    page,
-    context,
-    references: _references,
-    send,
-    request,
-  } = params
+  const { sessionId, organizationId, userId, message, type, page, context, send, request } = params
 
   // TODO: Add model-switch detection when worker path is enabled
   // TODO(kopilot-worker-title): the worker path does not emit `session-created`

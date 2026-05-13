@@ -42,6 +42,8 @@ export const Article = pgTable(
     viewsCount: integer().default(0).notNull(),
     title: text(),
     excerpt: text(),
+    emoji: text(),
+    color: text(),
     knowledgeBaseId: text()
       .notNull()
       .references((): AnyPgColumn => KnowledgeBase.id, {

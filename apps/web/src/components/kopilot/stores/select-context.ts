@@ -1,55 +1,64 @@
 // apps/web/src/components/kopilot/stores/select-context.ts
 
-import { useShallow } from 'zustand/react/shallow'
-import type { ContextChip, ContextSlice, SessionContext } from '../context/types'
+import { useMemo } from 'react'
+import type { ContextSlice, SessionContext, SessionRef } from '../context/types'
 import { useKopilotStore } from './kopilot-store'
 
 /**
- * Merge all registered slices into a single SessionContext for the LLM.
- * Last-write-wins on key collisions (deterministic enough for our needs;
- * a context field should be owned by exactly one mount).
+ * Merge all registered slices into a single `SessionContext` for the LLM.
+ * `page` follows last-write-wins (only one mount should own it);
+ * `references` are concatenated in registration order.
  */
 export function selectMergedContext(slices: Record<string, ContextSlice>): SessionContext {
   const merged: SessionContext = {}
+  const references: SessionRef[] = []
   for (const slice of Object.values(slices)) {
-    Object.assign(merged, slice.data)
+    if (slice.page !== undefined) merged.page = slice.page
+    if (slice.references.length > 0) references.push(...slice.references)
   }
+  if (references.length > 0) merged.references = references
   return merged
 }
 
-/** Flatten chips across all slices in registration order. */
-export function selectMergedChips(slices: Record<string, ContextSlice>): ContextChip[] {
-  return Object.values(slices).flatMap((s) => s.chips)
+/** Flatten surface refs across all slices in registration order. */
+export function selectMergedRefs(slices: Record<string, ContextSlice>): SessionRef[] {
+  return Object.values(slices).flatMap((s) => s.references)
 }
 
 /**
- * Strip dismissed chips from a merged SessionContext payload. Used at submit
- * time so the LLM doesn't see ids the user × dismissed for this turn.
+ * Strip dismissed surface refs from a merged SessionContext payload. Used at
+ * submit time so the LLM doesn't see ids the user × dismissed for this turn.
  *
- * Drops the field by name. Two slices contributing the same field is an
- * out-of-spec mount-tree bug, not a case we need to handle here.
+ * Dismissal keys are `<kind>:<id>`. Mention refs aren't chipped, so this only
+ * affects surface refs in practice.
  */
 export function applyChipDismissals(
   merged: SessionContext,
   dismissedKeys: Set<string>
 ): SessionContext {
-  if (dismissedKeys.size === 0) return merged
+  if (dismissedKeys.size === 0 || !merged.references) return merged
+  const filtered = merged.references.filter((r) => !dismissedKeys.has(`${r.kind}:${r.id}`))
+  if (filtered.length === merged.references.length) return merged
   const next: SessionContext = { ...merged }
-  for (const key of dismissedKeys) {
-    const sep = key.indexOf(':')
-    if (sep < 0) continue
-    const field = key.slice(0, sep) as keyof SessionContext
-    delete next[field]
+  if (filtered.length > 0) {
+    next.references = filtered
+  } else {
+    delete next.references
   }
   return next
 }
 
-// `useShallow` is required: the selectors below build a fresh object/array on
-// every call. Zustand v5 (built on `useSyncExternalStore`) requires snapshot
-// stability — without `useShallow`, React throws "The result of getServerSnapshot
-// should be cached to avoid an infinite loop."
-export const useMergedKopilotContext = () =>
-  useKopilotStore(useShallow((s) => selectMergedContext(s.contextSlices)))
+// Select the raw `contextSlices` map (its reference is stable until
+// `setContextSlice` / `clearContextSlice` fires) and memoize the merge.
+// `useShallow` on the merged result doesn't work here: `references` is a
+// freshly built array each call, so shallow equality always fails and
+// `useSyncExternalStore` falls into "snapshot not cached" → update loop.
+export const useMergedKopilotContext = () => {
+  const slices = useKopilotStore((s) => s.contextSlices)
+  return useMemo(() => selectMergedContext(slices), [slices])
+}
 
-export const useKopilotContextChips = () =>
-  useKopilotStore(useShallow((s) => selectMergedChips(s.contextSlices)))
+export const useKopilotSurfaceRefs = () => {
+  const slices = useKopilotStore((s) => s.contextSlices)
+  return useMemo(() => selectMergedRefs(slices), [slices])
+}
