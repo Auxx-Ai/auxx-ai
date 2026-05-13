@@ -52,12 +52,12 @@ export function ArticlePublishCluster({ article, knowledgeBaseId }: ArticlePubli
   const noun = kindNoun(article.articleKind)
 
   const dotClass = isArchived
-    ? 'bg-muted-foreground'
+    ? 'bg-red-500'
     : isPublished
       ? hasUnsaved
         ? 'bg-amber-500'
         : 'bg-emerald-500'
-      : 'bg-muted-foreground'
+      : 'bg-slate-400'
   const pillLabel = isArchived ? 'Archived' : isPublished ? 'Live' : 'Draft'
 
   const handlePublishChanges = async () => {
