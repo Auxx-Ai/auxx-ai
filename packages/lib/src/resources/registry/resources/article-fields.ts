@@ -9,7 +9,7 @@ import type { ResourceField } from '../field-types'
 /**
  * Field definitions for the Article resource.
  *
- * Articles are backed by the dedicated `Article` table (not EntityInstance), so
+ * Articles are backed by the dedicated `Article` table (not EntityInstance ), so
  * scalar fields use `dbColumn` while the `tags` relationship is FieldValue-backed.
  */
 export const ARTICLE_FIELDS: Record<string, ResourceField> = {
