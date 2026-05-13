@@ -81,7 +81,6 @@ export function ColorPickerSection({ editor }: ColorPickerSectionProps) {
           <PopoverTrigger asChild>
             <BubbleToggleButton
               aria-label='Text and highlight color'
-              className='gap-0.5 px-1.5'
               active={!!state.activeColor || !!state.activeHighlight}>
               <span
                 className='flex size-4 items-center justify-center rounded-sm text-[11px] font-semibold leading-none'
@@ -91,7 +90,6 @@ export function ColorPickerSection({ editor }: ColorPickerSectionProps) {
                 }}>
                 A
               </span>
-              <ChevronDown className='size-3 opacity-60' />
             </BubbleToggleButton>
           </PopoverTrigger>
         </TooltipTrigger>

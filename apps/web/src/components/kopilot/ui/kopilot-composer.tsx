@@ -4,6 +4,7 @@
 
 import { ModelType } from '@auxx/lib/ai/providers/types'
 import type { PromptTemplateItem } from '@auxx/lib/prompt-templates'
+import type { RecordId } from '@auxx/lib/resources/client'
 import { Button } from '@auxx/ui/components/button'
 import { cn } from '@auxx/ui/lib/utils'
 import { generateId } from '@auxx/utils/generateId'
@@ -14,13 +15,17 @@ import {
   createPromptNode,
   InlinePickerPopover,
   PromptTemplateBadge,
-  useMentionEditor,
+  useActivePicker,
+  useReferencePickerEditor,
   useSlashCommand,
 } from '~/components/editor/inline-picker'
 import { SubmitOnEnter } from '~/components/global/comments/comment-composer'
 import { Tooltip } from '~/components/global/tooltip'
-import { ActorPickerContent } from '~/components/pickers/actor-picker/actor-picker-content'
 import { AiModelPicker, type ModelPickerItem } from '~/components/pickers/ai-model-picker'
+import {
+  ReferencePickerContent,
+  type ReferencePickerHandle,
+} from '~/components/pickers/reference-picker/reference-picker-content'
 import { api } from '~/trpc/react'
 import { KopilotContextChipStrip } from '../context/kopilot-context-chip-strip'
 import type { KopilotRequest } from '../hooks/use-kopilot-sse'
@@ -65,6 +70,19 @@ function isEmptyContent(html: string): boolean {
 
 const PROMPT_BADGE_REGEX =
   /<span[^>]*data-type="promptTemplate"[^>]*data-id="([^"]*)"[^>]*>[^<]*<\/span>/g
+
+const REFERENCE_BADGE_REGEX =
+  /<span[^>]*data-type="reference"[^>]*data-id="([^"]+)"[^>]*>[^<]*<\/span>/g
+
+function extractReferences(html: string): RecordId[] {
+  const ids: RecordId[] = []
+  let match: RegExpExecArray | null
+  REFERENCE_BADGE_REGEX.lastIndex = 0
+  while ((match = REFERENCE_BADGE_REGEX.exec(html)) !== null) {
+    ids.push(match[1] as RecordId)
+  }
+  return ids
+}
 
 /**
  * Resolve prompt template badges in HTML to their full prompt text for the API.
@@ -164,7 +182,11 @@ export function KopilotComposer({ ref, page, onSend, contentClassName }: Kopilot
     []
   )
 
-  const mentionEditor = useMentionEditor({
+  // Ref to the picker UI so the editor chip's Enter/Arrow handlers can call
+  // back into the active list. Wired below via `useReferencePickerEditor`.
+  const referencePickerRef = useRef<ReferencePickerHandle | null>(null)
+
+  const { editor, confirmReference, closePicker } = useReferencePickerEditor({
     placeholder: 'Ask Kopilot...',
     editable: true,
     className: cn('prose prose-sm prose-p:my-0 focus:outline-hidden max-w-none dark:prose-invert'),
@@ -172,6 +194,8 @@ export function KopilotComposer({ ref, page, onSend, contentClassName }: Kopilot
       const empty = isEmptyContent(html)
       setIsEmpty((prev) => (prev === empty ? prev : empty))
     },
+    onPickerEnter: () => referencePickerRef.current?.confirmHighlighted() ?? false,
+    onPickerArrowVertical: (dir) => referencePickerRef.current?.moveHighlight(dir) ?? false,
     extensions: [
       SubmitOnEnter.configure({
         isExpanded: () => false,
@@ -186,7 +210,7 @@ export function KopilotComposer({ ref, page, onSend, contentClassName }: Kopilot
     ],
   })
 
-  const { editor, suggestionState, insertMention, closePicker } = mentionEditor
+  const activePicker = useActivePicker(editor)
 
   // Wire slash command to editor once created
   useEffect(() => {
@@ -214,11 +238,18 @@ export function KopilotComposer({ ref, page, onSend, contentClassName }: Kopilot
   const handleSend = useCallback(() => {
     if (!editor || isStreaming) return
 
+    // Collapse any open picker chip to plain `@<query>` text so the chip's
+    // transient markup never reaches storage / the LLM.
+    editor.commands.closeReferencePicker({ keepText: true })
+
     const html = editor.getHTML()
     if (isEmptyContent(html)) return
 
     // Resolve prompt template badges to full prompt text
     const resolvedHtml = resolvePromptBadges(html, templateMap)
+
+    // Extract RecordId references from the original HTML before flattening
+    const references = extractReferences(html)
 
     // Get plain text from resolved content for the API
     // Create a temp element to extract text from resolved HTML
@@ -260,6 +291,7 @@ export function KopilotComposer({ ref, page, onSend, contentClassName }: Kopilot
       type: 'message',
       page: merged.page ?? page,
       context: merged,
+      references,
       modelId: selectedModelId ?? undefined,
     })
 
@@ -335,19 +367,36 @@ export function KopilotComposer({ ref, page, onSend, contentClassName }: Kopilot
             editor={editor}
             className={cn('w-full flex flex-col px-3 py-2 text-sm flex-1 [&>.prose]:flex-1')}
           />
-          {/* Mention picker (@) */}
+          {/* Reference picker (@) — tabbed people/records/messages/articles */}
           <InlinePickerPopover
-            state={suggestionState}
+            state={{
+              isOpen: !!activePicker,
+              query: activePicker?.query ?? '',
+              range: null,
+              clientRect: activePicker?.clientRect ?? null,
+            }}
             containerRef={containerRef}
-            width={280}
-            onClose={closePicker}>
-            <ActorPickerContent
-              value={[]}
-              onChange={() => {}}
-              target='user'
-              multi={false}
-              onSelectSingle={(actorId) => insertMention(actorId)}
-              placeholder='Search team members...'
+            width={360}
+            side='top'
+            align='start'
+            autoFocus={false}
+            onInteractOutside={(e) => {
+              // Clicking the chip itself must not close the picker — the
+              // user is editing the query inline. Without this, Radix sees
+              // the click as outside the popover and triggers onClose,
+              // collapsing the chip to plain `@<query>` text.
+              const target = e.target as HTMLElement | null
+              if (target?.closest('[data-type="reference-picker"]')) {
+                e.preventDefault()
+              }
+            }}
+            onClose={() => closePicker({ keepText: true })}>
+            <ReferencePickerContent
+              ref={referencePickerRef}
+              tab={activePicker?.tab ?? 'people'}
+              query={activePicker?.query ?? ''}
+              onSelect={(id) => confirmReference(id)}
+              onTabChange={(tab) => editor?.commands.setReferencePickerTab(tab)}
             />
           </InlinePickerPopover>
           {/* Slash command picker (/) */}

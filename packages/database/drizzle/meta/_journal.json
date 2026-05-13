@@ -1030,6 +1030,13 @@
       "when": 1778283805026,
       "tag": "0146_article_ai_enabled_and_revision_cover",
       "breakpoints": true
+    },
+    {
+      "idx": 147,
+      "version": "7",
+      "when": 1778627920843,
+      "tag": "0147_article_denorm_title_excerpt_archived",
+      "breakpoints": true
     }
   ]
 }

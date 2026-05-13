@@ -1,5 +1,6 @@
 // apps/web/src/components/kopilot/hooks/use-kopilot-sse.ts
 
+import type { RecordId } from '@auxx/lib/resources/client'
 import { generateId } from '@auxx/utils/generateId'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { type SSEConfig, useSSE } from '~/hooks/use-sse'
@@ -19,6 +20,8 @@ export interface KopilotRequest {
   inputAmendment?: Record<string, unknown>
   /** Model override in "provider:model" format — omit to use system default */
   modelId?: string
+  /** Structured RecordId references parsed from `@`-mentions in the editor */
+  references?: RecordId[]
 }
 
 interface UseKopilotSSEOptions {

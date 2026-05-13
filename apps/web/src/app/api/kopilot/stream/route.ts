@@ -58,6 +58,8 @@ interface KopilotStreamRequest {
   inputAmendment?: Record<string, unknown>
   /** Model override in "provider:model" format — omit to use system default */
   modelId?: string
+  /** Structured RecordId references parsed from editor `@`-mentions */
+  references?: string[]
 }
 
 /**
@@ -109,7 +111,7 @@ export async function POST(request: NextRequest) {
     return new Response('Message is required', { status: 400 })
   }
 
-  const { message, type = 'message', page, context } = body
+  const { message, type = 'message', page, context, references } = body
 
   const stream = new ReadableStream({
     async start(controller) {
@@ -201,6 +203,7 @@ export async function POST(request: NextRequest) {
                 type,
                 page,
                 context,
+                references,
                 approvalAction: body.approvalAction,
                 inputAmendment: body.inputAmendment,
                 modelId: body.modelId,
@@ -217,6 +220,7 @@ export async function POST(request: NextRequest) {
                 type,
                 page,
                 context,
+                references,
                 approvalAction: body.approvalAction,
                 inputAmendment: body.inputAmendment,
                 modelId: body.modelId,
@@ -315,6 +319,7 @@ async function runInProcessPath(params: {
   type: 'message' | 'approval'
   page?: string
   context?: Record<string, unknown>
+  references?: string[]
   approvalAction?: 'approve' | 'reject'
   inputAmendment?: Record<string, unknown>
   modelId?: string
@@ -333,6 +338,7 @@ async function runInProcessPath(params: {
     type,
     page,
     context,
+    references,
     approvalAction,
     inputAmendment,
     modelId,
@@ -486,7 +492,7 @@ async function runInProcessPath(params: {
   })
 
   // Build session context from request
-  const sessionContext = { page, ...context }
+  const sessionContext = { page, ...context, references }
 
   // Run the engine
   const generator =
@@ -589,6 +595,7 @@ async function runWorkerPath(params: {
   type: 'message' | 'approval'
   page?: string
   context?: Record<string, unknown>
+  references?: string[]
   approvalAction?: 'approve' | 'reject'
   inputAmendment?: Record<string, unknown>
   modelId?: string
@@ -596,7 +603,18 @@ async function runWorkerPath(params: {
   cleanup: () => void
   request: NextRequest
 }) {
-  const { sessionId, organizationId, userId, message, type, page, context, send, request } = params
+  const {
+    sessionId,
+    organizationId,
+    userId,
+    message,
+    type,
+    page,
+    context,
+    references: _references,
+    send,
+    request,
+  } = params
 
   // TODO: Add model-switch detection when worker path is enabled
   // TODO(kopilot-worker-title): the worker path does not emit `session-created`

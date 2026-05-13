@@ -9,7 +9,6 @@ import {
   type CustomResource,
   isCustomResource,
   isCustomResourceId,
-  isSystemResourceId,
   RESOURCE_DISPLAY_CONFIG,
   RESOURCE_TABLE_MAP,
   type ResourceDisplayConfig,
@@ -749,6 +748,13 @@ export class RecordPickerService {
 
     const trimmedQuery = query.trim()
 
+    // Global union mode: no scope passed → union system tables + EntityInstance.
+    // Unpaginated in v1; each kind contributes up to perKindCap items merge-sorted
+    // by updatedAt desc.
+    if (!entityDefinitionId && (!entityDefinitionIds || entityDefinitionIds.length === 0)) {
+      return this.searchGlobalUnion(trimmedQuery, limit, startTime)
+    }
+
     // Build entity definition filter
     let entityDefFilter = sql``
     if (entityDefinitionId) {
@@ -1036,5 +1042,190 @@ export class RecordPickerService {
       processingTimeMs,
       query: '',
     }
+  }
+
+  /**
+   * Global union search across system tables + EntityInstance.
+   * Each kind contributes up to perKindCap items (capped at limit overall).
+   * Merge-sorted by updatedAt desc. Unpaginated in v1.
+   */
+  private async searchGlobalUnion(
+    trimmedQuery: string,
+    limit: number,
+    startTime: number
+  ): Promise<GlobalSearchResult> {
+    const tableIds = Object.keys(RESOURCE_TABLE_MAP) as TableId[]
+    const kindCount = tableIds.length + 1 // +1 for EntityInstance bucket
+    const perKindCap = Math.max(1, Math.ceil(limit / kindCount))
+
+    // System tables: use their existing direct-fetch path (respects display config).
+    const systemPromises = tableIds.map(async (tableId) => {
+      try {
+        const result = await this.fetchResourcesFromDb(
+          tableId,
+          perKindCap,
+          null,
+          trimmedQuery || undefined,
+          undefined
+        )
+        return result.items
+      } catch (err) {
+        logger.warn('searchGlobalUnion: per-kind fetch failed', {
+          tableId,
+          error: (err as Error).message,
+        })
+        return [] as RecordPickerItem[]
+      }
+    })
+
+    // EntityInstance bucket via existing scoped search path (recursive call,
+    // but with entityDefinitionIds=[] still ambiguous; pass an empty list of
+    // ed IDs via the underlying SQL path by stripping the union guard).
+    const eiPromise = (async (): Promise<RecordPickerItem[]> => {
+      try {
+        const eiResult = await this.searchEntityInstancesOnly(trimmedQuery, perKindCap)
+        return eiResult
+      } catch (err) {
+        logger.warn('searchGlobalUnion: EntityInstance fetch failed', {
+          error: (err as Error).message,
+        })
+        return []
+      }
+    })()
+
+    const buckets = await Promise.all([...systemPromises, eiPromise])
+    const merged = buckets.flat()
+
+    // Sort by updatedAt desc, fall back to createdAt, then id.
+    merged.sort((a, b) => {
+      const aTime = new Date(a.updatedAt ?? a.createdAt).getTime()
+      const bTime = new Date(b.updatedAt ?? b.createdAt).getTime()
+      if (bTime !== aTime) return bTime - aTime
+      return b.id.localeCompare(a.id)
+    })
+
+    const items = merged.slice(0, limit)
+    const processingTimeMs = performance.now() - startTime
+
+    logger.debug('Global union search completed', {
+      query: trimmedQuery,
+      organizationId: this.organizationId,
+      kindCount,
+      perKindCap,
+      resultsCount: items.length,
+      processingTimeMs,
+    })
+
+    return {
+      items,
+      nextCursor: null,
+      hasMore: false,
+      processingTimeMs,
+      query: trimmedQuery,
+    }
+  }
+
+  /**
+   * EntityInstance-only search slice. Mirrors `search()` but unconditionally
+   * scopes to EntityInstance, used by `searchGlobalUnion` for the EntityInstance
+   * bucket without re-entering the union branch.
+   */
+  private async searchEntityInstancesOnly(
+    trimmedQuery: string,
+    limit: number
+  ): Promise<RecordPickerItem[]> {
+    if (!trimmedQuery) {
+      const recent = (
+        await this.db.execute(sql`
+          SELECT
+            ei.id,
+            ei."entityDefinitionId",
+            ei."displayName",
+            ei."secondaryDisplayValue",
+            ei."avatarUrl",
+            ei."createdAt",
+            ei."updatedAt"
+          FROM "EntityInstance" ei
+          WHERE ei."organizationId" = ${this.organizationId}
+            AND ei."archivedAt" IS NULL
+          ORDER BY ei."updatedAt" DESC, ei.id DESC
+          LIMIT ${limit}
+        `)
+      ).rows as Array<{
+        id: string
+        entityDefinitionId: string
+        displayName: string | null
+        secondaryDisplayValue: string | null
+        avatarUrl: string | null
+        createdAt: string
+        updatedAt: string
+      }>
+      return recent.map((row) => {
+        const { displayName, secondaryInfo } = resolveEntityDisplay(
+          row.displayName,
+          row.secondaryDisplayValue,
+          row.id
+        )
+        return {
+          id: row.id,
+          recordId: toRecordId(row.entityDefinitionId, row.id),
+          displayName,
+          secondaryInfo,
+          avatarUrl: row.avatarUrl || undefined,
+          data: row,
+          createdAt: row.createdAt,
+          updatedAt: row.updatedAt,
+        }
+      })
+    }
+
+    const results = (
+      await this.db.execute(sql`
+        SELECT
+          ei.id,
+          ei."entityDefinitionId",
+          ei."displayName",
+          ei."secondaryDisplayValue",
+          ei."avatarUrl",
+          ei."createdAt",
+          ei."updatedAt"
+        FROM "EntityInstance" ei
+        WHERE ei."organizationId" = ${this.organizationId}
+          AND ei."archivedAt" IS NULL
+          AND (
+            to_tsvector('english', COALESCE(ei."searchText", '')) @@ plainto_tsquery('english', ${trimmedQuery})
+            OR similarity(ei."displayName", ${trimmedQuery}) > 0.3
+            OR ei."displayName" ILIKE ${`%${trimmedQuery}%`}
+            OR ei."secondaryDisplayValue" ILIKE ${`%${trimmedQuery}%`}
+          )
+        ORDER BY ei."updatedAt" DESC, ei.id DESC
+        LIMIT ${limit}
+      `)
+    ).rows as Array<{
+      id: string
+      entityDefinitionId: string
+      displayName: string | null
+      secondaryDisplayValue: string | null
+      avatarUrl: string | null
+      createdAt: string
+      updatedAt: string
+    }>
+    return results.map((row) => {
+      const { displayName, secondaryInfo } = resolveEntityDisplay(
+        row.displayName,
+        row.secondaryDisplayValue,
+        row.id
+      )
+      return {
+        id: row.id,
+        recordId: toRecordId(row.entityDefinitionId, row.id),
+        displayName,
+        secondaryInfo,
+        avatarUrl: row.avatarUrl || undefined,
+        data: row,
+        createdAt: row.createdAt,
+        updatedAt: row.updatedAt,
+      }
+    })
   }
 }
