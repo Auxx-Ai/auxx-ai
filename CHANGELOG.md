@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.146](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.145...auxx-v0.1.146) (2026-05-13)
+
+
+### Features
+
+* **kb:** add tailwind v4 postcss setup so docker build succeeds ([7d23f3e](https://github.com/Auxx-Ai/auxx-ai/commit/7d23f3e18b28a83f73a9a03528abf0bc0ffe68b5))
+
 ## [0.1.145](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.144...auxx-v0.1.145) (2026-05-13)
 
 
