@@ -803,6 +803,9 @@ importers:
       postcss:
         specifier: 'catalog:'
         version: 8.5.6
+      prettier:
+        specifier: ^3.8.1
+        version: 3.8.1
       rimraf:
         specifier: 'catalog:'
         version: 5.0.10

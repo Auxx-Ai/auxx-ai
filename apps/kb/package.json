@@ -33,6 +33,7 @@
     "@tailwindcss/postcss": "catalog:",
     "@types/node": "catalog:",
     "postcss": "catalog:",
+    "prettier": "^3.8.1",
     "rimraf": "catalog:",
     "tailwindcss": "catalog:",
     "typescript": "catalog:"
