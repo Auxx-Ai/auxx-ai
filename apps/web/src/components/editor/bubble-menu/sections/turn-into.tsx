@@ -168,9 +168,8 @@ export function TurnIntoSection({ editor }: TurnIntoSectionProps) {
     <BubbleSection>
       <DropdownMenu onOpenChange={onOpenChange}>
         <DropdownMenuTrigger asChild>
-          <BubbleToggleButton aria-label='Turn into' className='gap-1 px-2'>
+          <BubbleToggleButton aria-label='Turn into'>
             <span className='max-w-24 truncate'>{selection.label}</span>
-            <ChevronDown className='size-3 opacity-60' />
           </BubbleToggleButton>
         </DropdownMenuTrigger>
         <DropdownMenuContent align='start' className='max-h-72 w-48 overflow-y-auto'>

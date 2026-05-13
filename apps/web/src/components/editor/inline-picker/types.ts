@@ -171,22 +171,36 @@ export interface UseInlinePickerReturn {
   setContent: (content: string | JSONContent) => void
 }
 
+import type { PopoverContentDialogAware } from '@auxx/ui/components/popover'
+
 /**
  * Props for the InlinePickerPopover component.
+ *
+ * Extends `PopoverContentDialogAware` props, so any Radix content prop
+ * (`side`, `align`, `sideOffset`, `collisionPadding`, `avoidCollisions`, etc.)
+ * forwards through to the underlying popover content.
  */
-export interface InlinePickerPopoverProps {
+export interface InlinePickerPopoverProps
+  extends Omit<React.ComponentProps<typeof PopoverContentDialogAware>, 'children'> {
   /** Current suggestion state */
   state: InlinePickerState
   /** @deprecated No longer used - popover uses fixed positioning via portal */
   containerRef?: React.RefObject<HTMLElement | null>
   /** Picker content to render */
   children: React.ReactNode
-  /** Additional class names */
-  className?: string
   /** Width of the popover (default: 280) */
   width?: number | 'auto'
   /** Called when picker should close (Escape pressed) */
   onClose?: () => void
   /** Auto-focus the search input when opened (default: true) */
   autoFocus?: boolean
+  /**
+   * Tab / Shift+Tab pressed inside the popover. Receives +1 / -1.
+   * Intercepted before cmdk so arrow nav doesn't swallow the event.
+   */
+  onTabKey?: (direction: 1 | -1) => void
+  /**
+   * Cmd/Ctrl+1..N pressed inside the popover. Receives a 0-based index.
+   */
+  onTabJump?: (index: number) => void
 }

@@ -84,6 +84,13 @@ export interface ActorPickerContentProps {
    * semantics. Only intended for filter-builder contexts (tables, mail views).
    */
   allowCurrentUser?: boolean
+
+  /**
+   * When defined, hide the internal CommandInput and consume this externally
+   * controlled query value. Used by ReferencePickerContent to share one
+   * search input across multiple tabbed picker contents.
+   */
+  externalSearch?: string
 }
 
 /**
@@ -110,8 +117,12 @@ export function ActorPickerContent({
   className,
   excludeIds = EMPTY_EXCLUDE_IDS,
   allowCurrentUser = false,
+  externalSearch,
 }: ActorPickerContentProps) {
-  const [search, setSearch] = useState('')
+  const [internalSearch, setInternalSearch] = useState('')
+  const search = externalSearch !== undefined ? externalSearch : internalSearch
+  const setSearch = setInternalSearch
+  const useExternalSearch = externalSearch !== undefined
 
   // Notify parent about capture state on mount/unmount
   useEffect(() => {
@@ -232,14 +243,16 @@ export function ActorPickerContent({
 
   return (
     <Command shouldFilter={false} className={cn('rounded-lg', className)}>
-      <CommandInput
-        placeholder={placeholder}
-        value={search}
-        onValueChange={setSearch}
-        disabled={disabled}
-        loading={isLoading}
-        autoFocus
-      />
+      {!useExternalSearch && (
+        <CommandInput
+          placeholder={placeholder}
+          value={search}
+          onValueChange={setSearch}
+          disabled={disabled}
+          loading={isLoading}
+          autoFocus
+        />
+      )}
       <CommandList>
         <CommandEmpty>No results found</CommandEmpty>
 

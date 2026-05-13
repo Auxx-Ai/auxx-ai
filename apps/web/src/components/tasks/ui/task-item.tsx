@@ -4,7 +4,6 @@
 
 import type { TaskWithRelations } from '@auxx/lib/tasks'
 import type { ActorId } from '@auxx/types/actor'
-import { Separator } from '@auxx/ui/components/separator'
 import { cn } from '@auxx/ui/lib/utils'
 import { ParsedText } from '~/components/editor/parsed-text'
 import { ActorBadge } from '~/components/resources/ui/actor-badge'
@@ -79,36 +78,42 @@ export function TaskItem({ task, onClick, showEntityReferences = false }: TaskIt
           <div className='flex-1 min-w-0'>
             <div
               className={cn(
-                'text-sm text-primary-600 dark:text-primary-400',
+                'text-sm text-primary-600 dark:text-primary-400 leading-6',
                 isCompleted && 'line-through'
               )}>
               <ParsedText>{task.title}</ParsedText>
-            </div>
-            <div className='flex flex-wrap gap-2 mt-1 items-center'>
-              {/* Entity References (shown in global mode) */}
+              <span className='inline-block w-2' />
+
               {hasReferences && (
                 <ItemsListView
-                  className='w-auto'
+                  inline
+                  className='ms-1'
                   items={task.references}
                   renderItem={(recordId) => (
-                    <RecordBadge recordId={recordId as string} showIcon variant='default' />
+                    <RecordBadge
+                      recordId={recordId as string}
+                      showIcon
+                      variant='default'
+                      size='sm'
+                    />
                   )}
                   maxDisplay={3}
                 />
               )}
 
-              {/* Assignees (shown when there are assignees) */}
-              {hasAssignments && hasReferences ? (
-                <Separator orientation='vertical' className='h-4' />
-              ) : null}
-              {hasAssignments ? (
+              {hasReferences && hasAssignments && (
+                <span className='inline-flex align-middle mx-1 h-4 w-px bg-border' />
+              )}
+
+              {hasAssignments && (
                 <ItemsListView
-                  className='w-auto'
+                  inline
+                  className='ms-1'
                   items={task.assignments}
-                  renderItem={(actorId) => <ActorBadge actorId={actorId as ActorId} />}
+                  renderItem={(actorId) => <ActorBadge actorId={actorId as ActorId} size='sm' />}
                   maxDisplay={2}
                 />
-              ) : null}
+              )}
             </div>
           </div>
 

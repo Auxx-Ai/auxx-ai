@@ -26,14 +26,22 @@ export function InlinePickerPopover({
   width = 280,
   onClose,
   autoFocus = true,
+  onTabKey,
+  onTabJump,
+  containerRef: _containerRef,
+  style,
+  ...rest
 }: InlinePickerPopoverProps) {
   const contentRef = useRef<HTMLDivElement>(null)
-  // Cache the last valid clientRect to prevent position jump on close
-  const lastRectRef = useRef<DOMRect>(new DOMRect())
+  // Cache the last valid clientRect to prevent position jump on close.
+  // `DOMRect` doesn't exist on the server — lazy-init on first client paint.
+  const lastRectRef = useRef<DOMRect | null>(null)
 
   // Update cached rect when we have a valid one
   if (state.clientRect) {
     lastRectRef.current = state.clientRect
+  } else if (!lastRectRef.current && typeof DOMRect !== 'undefined') {
+    lastRectRef.current = new DOMRect()
   }
 
   // Virtual anchor ref that returns cursor position
@@ -63,12 +71,26 @@ export function InlinePickerPopover({
     }
   }
 
-  // Handle escape key within content
+  // Handle escape, Tab cycling, Cmd/Ctrl+N tab jumps within content.
+  // These are intercepted before cmdk so it doesn't swallow Tab.
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Escape') {
       e.preventDefault()
       e.stopPropagation()
       onClose?.()
+      return
+    }
+    if (onTabKey && e.key === 'Tab') {
+      e.preventDefault()
+      e.stopPropagation()
+      onTabKey(e.shiftKey ? -1 : 1)
+      return
+    }
+    if (onTabJump && (e.metaKey || e.ctrlKey) && /^[1-9]$/.test(e.key)) {
+      e.preventDefault()
+      e.stopPropagation()
+      onTabJump(Number(e.key) - 1)
+      return
     }
   }
 
@@ -78,12 +100,11 @@ export function InlinePickerPopover({
       <PopoverAnchor virtualRef={virtualRef} />
 
       <PopoverContentDialogAware
+        sideOffset={4}
+        {...rest}
         ref={contentRef}
         className={cn('p-0 overflow-hidden', className)}
-        style={{ width: width === 'auto' ? 'auto' : width }}
-        side='bottom'
-        align='start'
-        sideOffset={4}
+        style={{ width: width === 'auto' ? 'auto' : width, ...style }}
         onOpenAutoFocus={handleOpenAutoFocus}
         onCloseAutoFocus={(e) => {
           // Prevent focus returning to trigger (there is no trigger)

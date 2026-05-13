@@ -53,9 +53,8 @@ export function AlignSection({ editor }: AlignSectionProps) {
       <Tooltip>
         <TooltipTrigger asChild>
           <DropdownMenuTrigger asChild>
-            <BubbleToggleButton aria-label='Text alignment' className='gap-0.5 px-1.5'>
+            <BubbleToggleButton aria-label='Text alignment'>
               <ActiveIcon />
-              <ChevronDown className='size-3 opacity-60' />
             </BubbleToggleButton>
           </DropdownMenuTrigger>
         </TooltipTrigger>

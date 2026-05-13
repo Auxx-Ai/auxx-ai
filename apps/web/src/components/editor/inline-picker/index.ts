@@ -4,6 +4,7 @@ export { createInlineNode } from './core/inline-node'
 export { createInlineNodeView } from './core/inline-node-view'
 // Core factories
 export { createInlinePickerExtension } from './core/inline-picker-extension'
+export { type ActivePickerState, useActivePicker } from './hooks/use-active-picker'
 // Hooks
 export {
   type ContentApplier,
@@ -15,12 +16,21 @@ export {
 export { useInlinePicker } from './hooks/use-inline-picker'
 export { useMentionEditor } from './hooks/use-mention-editor'
 export { useRecordLinkEditor } from './hooks/use-record-link-editor'
+export { useReferenceEditor } from './hooks/use-reference-editor'
+export { useReferencePickerEditor } from './hooks/use-reference-picker-editor'
 export { useSlashCommand } from './hooks/use-slash-command'
 export { PlaceholderBadge } from './nodes/placeholder-badge'
 // Nodes
 export { createPlaceholderNode } from './nodes/placeholder-node'
 export { createPromptNode } from './nodes/prompt-node'
 export { PromptTemplateBadge } from './nodes/prompt-node-view'
+export {
+  REFERENCE_PICKER_NODE,
+  ReferencePickerNode,
+  type ReferenceTab,
+  TAB_LABEL,
+  TAB_ORDER,
+} from './nodes/reference-picker-node'
 // Types
 export type {
   InlineNodeBadgeProps,

@@ -203,7 +203,8 @@ export const RESOURCE_DISPLAY_CONFIG: Record<TableId, SystemResourceDisplayConfi
   article: {
     identifierField: 'id',
     primaryDisplayFieldId: 'title',
-    searchFields: ['slug'],
+    secondaryDisplayFieldId: 'excerpt',
+    searchFields: ['title', 'excerpt'],
     defaultSortField: 'updatedAt',
     defaultSortDirection: 'desc',
     orgScopingStrategy: 'direct',

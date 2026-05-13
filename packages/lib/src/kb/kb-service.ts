@@ -20,6 +20,7 @@ import { computeArticleJsonHash } from './markdown/hash'
 import { stampBlockIds } from './markdown/stamp-ids'
 import type { ArticleNodeJSON } from './markdown/types'
 import { publishKbArticleEvent } from './realtime'
+import { syncArticleDenormalizedFields } from './sync-article-denormalized-fields'
 
 // Local model types inferred from Drizzle schema
 type KnowledgeBase = typeof schema.KnowledgeBase.$inferSelect
@@ -756,6 +757,7 @@ export class KBService {
           .set({ draftRevisionId: newRevision.id })
           .where(eq(schema.Article.id, newArticle.id))
           .returning()
+        await syncArticleDenormalizedFields(newArticle.id, tx)
         return { article: withPointer, draftRevision: newRevision }
       })
 
@@ -840,6 +842,7 @@ export class KBService {
           .set({ hasUnpublishedChanges: true, updatedAt: new Date() })
           .where(eq(schema.Article.id, id))
           .returning()
+        await syncArticleDenormalizedFields(id, tx)
         return next
       })
 
@@ -1163,6 +1166,7 @@ export class KBService {
           }
           const version = await this.publishArticleInTx(tx, row, editorId)
           if (articleId === id) leafVersion = version
+          await syncArticleDenormalizedFields(articleId, tx)
         }
 
         const [updated] = await tx.select().from(schema.Article).where(eq(schema.Article.id, id))
@@ -1329,6 +1333,7 @@ export class KBService {
           updatedAt: new Date(),
         })
         .where(eq(schema.Article.id, article.id))
+      await syncArticleDenormalizedFields(id, this.db)
       void enqueueKBSync({
         type: 'unpublish',
         articleId: id,
@@ -1423,6 +1428,7 @@ export class KBService {
           .update(schema.Article)
           .set({ hasUnpublishedChanges: false, updatedAt: new Date() })
           .where(eq(schema.Article.id, id))
+        await syncArticleDenormalizedFields(id, tx)
       })
       void clearKopilotSnapshot(id)
       return await this.reloadFlat(id)
@@ -1479,6 +1485,7 @@ export class KBService {
           .update(schema.Article)
           .set({ hasUnpublishedChanges: true, updatedAt: new Date() })
           .where(eq(schema.Article.id, article.id))
+        await syncArticleDenormalizedFields(article.id, tx)
       })
       void clearKopilotSnapshot(article.id)
       return await this.reloadFlat(article.id)

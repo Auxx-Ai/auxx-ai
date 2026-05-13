@@ -37,8 +37,11 @@ export const Article = pgTable(
     status: articleStatus().default('DRAFT').notNull(),
     createdAt: timestamp({ precision: 3 }).defaultNow().notNull(),
     updatedAt: timestamp({ precision: 3 }).notNull(),
+    archivedAt: timestamp('archived_at', { precision: 3, withTimezone: true }),
     lastReviewedAt: timestamp({ precision: 3 }),
     viewsCount: integer().default(0).notNull(),
+    title: text(),
+    excerpt: text(),
     knowledgeBaseId: text()
       .notNull()
       .references((): AnyPgColumn => KnowledgeBase.id, {
@@ -80,5 +83,7 @@ export const Article = pgTable(
       table.parentId.asc().nullsLast(),
       table.sortOrder.asc().nullsLast()
     ),
+    index('Article_title_idx').using('btree', table.title.asc().nullsLast()),
+    index('Article_archived_at_idx').using('btree', table.archivedAt.asc().nullsLast()),
   ]
 )

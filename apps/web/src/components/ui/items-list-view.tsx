@@ -40,6 +40,11 @@ export interface ItemsListViewProps<T extends ItemsListItem> {
   maxDisplay?: number
   /** Callback when "more" button is clicked */
   onShowMore?: () => void
+  /**
+   * Render items inline (as a Fragment of inline-flex elements) so they flow
+   * and wrap with surrounding text. When false, renders inside a flex container.
+   */
+  inline?: boolean
 }
 
 /**
@@ -96,6 +101,7 @@ export function ItemsListView<T extends ItemsListItem>({
   className,
   maxDisplay,
   onShowMore,
+  inline = false,
 }: ItemsListViewProps<T>) {
   if (items.length === 0) {
     return emptyContent
@@ -103,6 +109,26 @@ export function ItemsListView<T extends ItemsListItem>({
 
   const displayItems = maxDisplay != null ? items.slice(0, maxDisplay) : items
   const remainingCount = maxDisplay != null ? items.length - maxDisplay : 0
+
+  if (inline) {
+    return (
+      <>
+        {displayItems.map((item, index) => (
+          <span key={getItemKey(item)} className={cn('inline-flex align-middle', className)}>
+            {renderItem(item, index)}
+          </span>
+        ))}
+        {remainingCount > 0 && (
+          <button
+            type='button'
+            onClick={onShowMore}
+            className='inline-flex align-middle text-xs text-muted-foreground hover:text-foreground transition-colors'>
+            +{remainingCount} more
+          </button>
+        )}
+      </>
+    )
+  }
 
   return (
     <div className={cn('relative w-full flex items-center', className)}>
