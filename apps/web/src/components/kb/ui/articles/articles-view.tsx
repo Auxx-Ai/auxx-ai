@@ -19,11 +19,12 @@ import { DropdownMenuItem, DropdownMenuSeparator } from '@auxx/ui/components/dro
 import {
   MainPage,
   MainPageBreadcrumb,
+  MainPageBreadcrumbDropdown,
   MainPageBreadcrumbItem,
   MainPageHeader,
 } from '@auxx/ui/components/main-page'
 import { toastError } from '@auxx/ui/components/toast'
-import { Archive, FileText, Globe, GlobeLock, Plus, Trash2 } from 'lucide-react'
+import { Archive, Book, FileText, Globe, GlobeLock, Plus, Trash2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { CellSelectionConfig } from '~/components/dynamic-table'
@@ -51,6 +52,7 @@ import {
   KnowledgeBaseDialog,
   type KnowledgeBaseFormValues,
 } from '../dialogs/kb-knowledge-base-dialog'
+import { KBSwitcherDropdownContent } from '../sidebar/kb-switcher'
 
 /** The resource slug + (system) tableId for articles. */
 const ARTICLE_SLUG = 'article'
@@ -427,7 +429,18 @@ export function ArticlesView() {
             </Button>
           }>
           <MainPageBreadcrumb>
-            <MainPageBreadcrumbItem title='Knowledge Base' href='/app/kb' last />
+            <MainPageBreadcrumbItem
+              title='Knowledge Bases'
+              href='/app/kb'
+              className='hidden sm:inline-flex'
+            />
+            <MainPageBreadcrumbDropdown
+              label='Open a knowledge base'
+              icon={<Book className='size-3.5' />}
+              last
+              contentClassName='w-72'>
+              <KBSwitcherDropdownContent />
+            </MainPageBreadcrumbDropdown>
           </MainPageBreadcrumb>
         </MainPageHeader>
         <DynamicResourceView<ArticleRow>

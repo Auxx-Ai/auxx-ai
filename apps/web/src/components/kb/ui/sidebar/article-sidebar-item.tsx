@@ -44,6 +44,7 @@ import {
 } from 'lucide-react'
 import { usePathname, useRouter } from 'next/navigation'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { Tooltip } from '~/components/global/tooltip'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
 import { useArticleList } from '../../hooks/use-article-list'
@@ -54,6 +55,45 @@ import { usePendingInsertStore } from '../../store/pending-insert-store'
 import { ArticleSettingsDialog } from '../editor/article-settings-dialog'
 import { ArticleInsertLine } from './article-insert-line'
 import { RenameInput } from './rename-input'
+
+function StatusDot({
+  isPublished,
+  hasUnpublishedChanges,
+  isArchived,
+  withTooltip = true,
+}: {
+  isPublished: boolean
+  hasUnpublishedChanges: boolean
+  isArchived: boolean
+  withTooltip?: boolean
+}) {
+  const { color, label } = isArchived
+    ? { color: 'bg-red-500', label: 'Archived' }
+    : !isPublished
+      ? { color: 'bg-slate-400', label: 'Draft' }
+      : hasUnpublishedChanges
+        ? { color: 'bg-amber-500', label: 'Unpublished changes' }
+        : { color: 'bg-emerald-500', label: 'Live' }
+
+  if (!withTooltip) {
+    return (
+      <span
+        className={cn('ml-1.5 inline-block size-1.5 shrink-0 rounded-full', color)}
+        aria-label={label}
+      />
+    )
+  }
+
+  return (
+    <Tooltip content={label}>
+      <span
+        className='ml-0.5 inline-flex shrink-0 cursor-default items-center justify-center p-1.5'
+        aria-label={label}>
+        <span className={cn('inline-block size-1.5 rounded-full', color)} />
+      </span>
+    </Tooltip>
+  )
+}
 
 interface ArticleSidebarItemProps {
   article: ArticleTreeNode
@@ -469,10 +509,11 @@ export function ArticleSidebarItem({
                   {displayName || (isHeader ? 'Untitled' : '')}
                 </span>
               )}
-              {article.hasUnpublishedChanges && article.isPublished && (
-                <span
-                  className='ml-1.5 inline-block size-1.5 shrink-0 rounded-full bg-amber-500'
-                  title='Unsaved changes'
+              {!isHeader && !isLink && (
+                <StatusDot
+                  isPublished={article.isPublished}
+                  hasUnpublishedChanges={article.hasUnpublishedChanges}
+                  isArchived={isArchived}
                 />
               )}
               {!isHeader && isCategory && (
@@ -625,10 +666,12 @@ export function ArticleSidebarItemPreview({
       <span className={cn('truncate', isCategory && 'font-medium text-foreground')}>
         {article.title || 'Untitled'}
       </span>
-      {article.hasUnpublishedChanges && article.isPublished && (
-        <span
-          className='ml-1.5 inline-block size-1.5 shrink-0 rounded-full bg-amber-500'
-          title='Unsaved changes'
+      {!isLinkPreview && (
+        <StatusDot
+          isPublished={article.isPublished}
+          hasUnpublishedChanges={article.hasUnpublishedChanges}
+          isArchived={isArchived}
+          withTooltip={false}
         />
       )}
       {isArchived ? (
