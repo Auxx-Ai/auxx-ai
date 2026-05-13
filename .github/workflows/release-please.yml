@@ -58,6 +58,9 @@ jobs:
           - name: docs
             file: apps/docs/Dockerfile
             image: ghcr.io/auxx-ai/docs
+          - name: kb
+            file: apps/kb/Dockerfile
+            image: ghcr.io/auxx-ai/kb
     steps:
       - name: Free disk space
         run: |
