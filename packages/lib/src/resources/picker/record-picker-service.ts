@@ -4,7 +4,7 @@ import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { isEntityDefinitionType, type RecordId } from '@auxx/types/resource'
 import { and, asc, desc, eq, ilike, inArray, or, type SQL, sql } from 'drizzle-orm'
-import { getCachedEntityDefId, getCachedResource } from '../../cache'
+import { getCachedEntityDefId, getCachedResource, getOrgCache } from '../../cache'
 import {
   type CustomResource,
   isCustomResource,
@@ -666,6 +666,28 @@ export class RecordPickerService {
           // Custom entity - fetch EntityInstances by IDs
           const resource = await getCachedResource(this.organizationId, resolvedId)
           if (!resource) {
+            // Reverse-lookup: a UUID prefix that doesn't resolve through the
+            // resource cache may still belong to a system-table-backed
+            // EntityDefinition (e.g. article — its EntityDefinition row is
+            // filtered out of the resource cache because the data lives in a
+            // dedicated table). Check the entityDefs cache for an entityType
+            // that matches a TableId in RESOURCE_TABLE_MAP.
+            const tableId = await this.reverseEntityDefToTableId(resolvedId)
+            if (tableId) {
+              const { items: fetched } = await this.fetchResourcesFromDb(
+                tableId,
+                ids.length,
+                null,
+                undefined,
+                { id: ids }
+              )
+              for (const item of fetched) {
+                // Re-key to caller's UUID prefix so the result map lookup matches.
+                const key = toRecordId(originalKey, item.id) as RecordId
+                result[key] = { ...item, recordId: key }
+              }
+              return
+            }
             logger.warn('Resource not found in cache for getResourcesByIds', {
               organizationId: this.organizationId,
               resolvedId,
@@ -704,6 +726,22 @@ export class RecordPickerService {
     )
 
     return result
+  }
+
+  /**
+   * Reverse-resolve an EntityDefinition UUID to a system TableId via the
+   * entityDefs org cache. Returns undefined if no entityType matches a known
+   * TableId (i.e. the UUID belongs to a custom EntityInstance-backed entity).
+   */
+  private async reverseEntityDefToTableId(
+    entityDefinitionId: string
+  ): Promise<TableId | undefined> {
+    const entityDefs = await getOrgCache().get(this.organizationId, 'entityDefs')
+    const entityType = Object.entries(entityDefs).find(
+      ([, defId]) => defId === entityDefinitionId
+    )?.[0]
+    if (!entityType) return undefined
+    return RESOURCE_TABLE_MAP[entityType as TableId] ? (entityType as TableId) : undefined
   }
 
   /**

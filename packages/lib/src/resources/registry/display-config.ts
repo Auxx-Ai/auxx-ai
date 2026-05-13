@@ -217,4 +217,14 @@ export const RESOURCE_DISPLAY_CONFIG: Record<TableId, SystemResourceDisplayConfi
     defaultSortDirection: 'desc',
     orgScopingStrategy: 'direct',
   },
+
+  kb: {
+    identifierField: 'id',
+    primaryDisplayFieldId: 'name',
+    secondaryDisplayFieldId: 'slug',
+    searchFields: ['name', 'slug', 'description'],
+    defaultSortField: 'updatedAt',
+    defaultSortDirection: 'desc',
+    orgScopingStrategy: 'direct',
+  },
 }

@@ -9,6 +9,7 @@ import { COMPANY_FIELDS } from './resources/company-fields'
 import { CONTACT_FIELDS } from './resources/contact-fields'
 import { DATASET_FIELDS } from './resources/dataset-fields'
 import { INBOX_FIELDS } from './resources/inbox-fields'
+import { KB_FIELDS } from './resources/kb-fields'
 import { MEETING_FIELDS } from './resources/meeting-fields'
 import { MESSAGE_FIELDS } from './resources/message-fields'
 import { PART_FIELDS } from './resources/part-fields'
@@ -106,6 +107,7 @@ export const RESOURCE_FIELD_REGISTRY: ResourceFieldRegistry = {
   company: COMPANY_FIELDS,
   meeting: MEETING_FIELDS,
   article: ARTICLE_FIELDS,
+  kb: KB_FIELDS,
 }
 
 /**

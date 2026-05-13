@@ -274,6 +274,38 @@ export const ArticleKind = {
 } as const
 
 /**
+ * KB Publish Status Enum
+ * Source: packages/database/src/db/schema/_shared.ts (kbPublishStatus)
+ * Database enum: kbPublishStatus
+ */
+export const KbPublishStatus = {
+  DRAFT: 'DRAFT',
+  PUBLISHED: 'PUBLISHED',
+  UNLISTED: 'UNLISTED',
+
+  values: [
+    { value: 'DRAFT', label: 'Draft', color: 'gray' },
+    { value: 'PUBLISHED', label: 'Published', color: 'green' },
+    { value: 'UNLISTED', label: 'Unlisted', color: 'amber' },
+  ] satisfies FieldOptionItem[],
+} as const
+
+/**
+ * KB Visibility Enum
+ * Source: packages/database/src/db/schema/_shared.ts (kbVisibility)
+ * Database enum: kbVisibility
+ */
+export const KbVisibility = {
+  PUBLIC: 'PUBLIC',
+  INTERNAL: 'INTERNAL',
+
+  values: [
+    { value: 'PUBLIC', label: 'Public', color: 'green' },
+    { value: 'INTERNAL', label: 'Internal', color: 'blue' },
+  ] satisfies FieldOptionItem[],
+} as const
+
+/**
  * Dataset Status Enum
  * Source: packages/database/src/db/schema/_shared.ts:91
  * Database enum: datasetStatus

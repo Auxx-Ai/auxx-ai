@@ -255,22 +255,32 @@ export class SystemConditionBuilder extends BaseConditionBuilder<TableId> {
       }
 
       // ===== EXISTENCE =====
+      // Only string-like columns can hold ''. Comparing date/number/boolean
+      // columns to '' makes Drizzle call .toISOString()/Number()/etc. on the
+      // empty string and blow up — so for those types check NULL only.
       case 'empty': {
-        return this.combineColumnPredicates(columns, (col) => or(isNull(col), eq(col, '')), 'and')
+        const isStringLike = normalizedType === 'string' || normalizedType === 'enum'
+        return this.combineColumnPredicates(
+          columns,
+          (col) => (isStringLike ? or(isNull(col), eq(col, '')) : isNull(col)),
+          'and'
+        )
       }
 
       case 'not empty': {
+        const isStringLike = normalizedType === 'string' || normalizedType === 'enum'
         return this.combineColumnPredicates(
           columns,
-          (col) => and(isNotNull(col), not(eq(col, ''))),
+          (col) => (isStringLike ? and(isNotNull(col), not(eq(col, ''))) : isNotNull(col)),
           'and'
         )
       }
 
       case 'exists': {
+        const isStringLike = normalizedType === 'string' || normalizedType === 'enum'
         return this.combineColumnPredicates(
           columns,
-          (col) => and(isNotNull(col), not(eq(col, ''))),
+          (col) => (isStringLike ? and(isNotNull(col), not(eq(col, ''))) : isNotNull(col)),
           'and'
         )
       }
