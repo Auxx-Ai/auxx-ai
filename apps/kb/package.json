@@ -30,8 +30,11 @@
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
     "@auxx/typescript-config": "workspace:*",
+    "@tailwindcss/postcss": "catalog:",
     "@types/node": "catalog:",
+    "postcss": "catalog:",
     "rimraf": "catalog:",
+    "tailwindcss": "catalog:",
     "typescript": "catalog:"
   }
 }
