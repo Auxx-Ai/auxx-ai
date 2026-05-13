@@ -40,6 +40,7 @@ export const ArticleRevision = pgTable(
     description: text(),
     excerpt: text(),
     emoji: text(),
+    color: text(),
     content: text().notNull(),
     contentJson: jsonb(),
     coverImage: text(),

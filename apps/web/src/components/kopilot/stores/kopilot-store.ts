@@ -174,7 +174,7 @@ interface KopilotState {
   /**
    * Page context — distributed mount-time registration. Each `<KopilotContext>`
    * component writes one slice keyed by its `useId()`. Consumers read the
-   * merged view via `selectMergedContext` / `selectMergedChips`.
+   * merged view via `selectMergedContext` / `useKopilotSurfaceRefs`.
    */
   contextSlices: Record<string, ContextSlice>
   setContextSlice: (id: string, slice: ContextSlice) => void
@@ -190,7 +190,7 @@ interface KopilotState {
   clearSuggestionSlice: (id: string) => void
 
   /**
-   * Per-turn chip dismissals. Keyed as `field:value` (e.g. `activeThreadId:abc`).
+   * Per-turn chip dismissals. Keyed as `<kind>:<id>` (e.g. `thread:abc`).
    * Cleared after each submit so the chip reappears next turn.
    */
   dismissedChipKeys: Set<string>

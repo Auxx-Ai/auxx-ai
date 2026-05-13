@@ -45,6 +45,12 @@ export interface SystemResourceDisplayConfig {
   /** Optional field ID for avatar field */
   avatarFieldId?: string
 
+  /** Optional field key on the row to use as a per-record icon (e.g. emoji). */
+  iconFieldId?: string
+
+  /** Optional field key on the row to use as a per-record color tint. */
+  colorFieldId?: string
+
   /** Field keys to search across (supports ilike) */
   searchFields: string[]
 
@@ -204,6 +210,8 @@ export const RESOURCE_DISPLAY_CONFIG: Record<TableId, SystemResourceDisplayConfi
     identifierField: 'id',
     primaryDisplayFieldId: 'title',
     secondaryDisplayFieldId: 'excerpt',
+    iconFieldId: 'emoji',
+    colorFieldId: 'color',
     searchFields: ['title', 'excerpt'],
     defaultSortField: 'updatedAt',
     defaultSortDirection: 'desc',

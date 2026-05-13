@@ -77,8 +77,12 @@ export interface RecordPickerContentProps {
   /** Called with full item data on single-select (alternative to onSelectSingle) */
   onSelectItem?: (item: RecordPickerItem) => void
 
-  /** External search value — hides internal CommandInput when provided */
+  /** Externally controlled search string. Pair with `showInput={false}` to share a single
+   *  search input across tabbed pickers (e.g. ReferencePickerContent). */
   externalSearch?: string
+
+  /** Whether to render the internal search input. Default: true. */
+  showInput?: boolean
 
   /** RecordIds that should render in the Selected section even if not in the mount snapshot.
    *  Use this for items added to `value` while the picker is open (e.g. inline create) that
@@ -118,6 +122,7 @@ export function RecordPickerContent({
   excludeFilter,
   onSelectItem,
   externalSearch,
+  showInput = true,
   pinnedSelectedIds,
   showSecondary = true,
 }: RecordPickerContentProps) {
@@ -155,12 +160,14 @@ export function RecordPickerContent({
 
   // Build search query params
   const searchParams = useMemo(() => {
+    // Mention mode (no internal input) caps to 8 — matches the visible row count.
+    const limit = showInput ? 20 : 8
     if (entityDefinitionIds && entityDefinitionIds.length > 0) {
       // Multi-entity search mode - use global search with filter
       return {
         query: debouncedSearch,
         entityDefinitionIds,
-        limit: 20,
+        limit,
       }
     }
     if (entityDefinitionId) {
@@ -168,19 +175,20 @@ export function RecordPickerContent({
       return {
         entityDefinitionId,
         query: debouncedSearch,
-        limit: 20,
+        limit,
       }
     }
     // Global search mode
     return {
       query: debouncedSearch,
-      limit: 20,
+      limit,
     }
-  }, [entityDefinitionId, entityDefinitionIds, debouncedSearch])
+  }, [entityDefinitionId, entityDefinitionIds, debouncedSearch, showInput])
 
-  // Search query
+  // Search query — in mention mode (input hidden), always fire so the
+  // empty-query state shows recent records instead of blank.
   const { data: searchResults, isLoading: isSearching } = api.record.search.useQuery(searchParams, {
-    enabled: externalSearch === undefined || debouncedSearch.trim().length > 0,
+    enabled: !showInput || debouncedSearch.trim().length > 0,
     staleTime: 30_000,
     placeholderData: keepPreviousData,
   })
@@ -309,13 +317,12 @@ export function RecordPickerContent({
   const hasResultsSection = availableItems.length > 0
   const showEntityType = isGlobalSearch || isMultiEntitySearch
 
-  // In external-search mode, show a "Searching..." placeholder while the query is in
-  // flight or the debounce is still catching up — otherwise the popover collapses
-  // to an empty box on the first keystrokes before results arrive.
-  const isExternalMode = externalSearch !== undefined
+  // In mention mode (input hidden), show a "Searching..." placeholder while the query is
+  // in flight or the debounce is still catching up — otherwise the popover collapses to
+  // an empty box on the first keystrokes before results arrive.
   const isDebouncePending = search !== debouncedSearch
   const showSearchingPlaceholder =
-    isExternalMode &&
+    !showInput &&
     search.trim().length > 0 &&
     (isSearching || isDebouncePending) &&
     !hasSelectedSection &&
@@ -323,7 +330,7 @@ export function RecordPickerContent({
 
   return (
     <Command shouldFilter={false} className={cn('rounded-lg', className)}>
-      {externalSearch === undefined && (
+      {showInput && (
         <CommandInput
           placeholder={placeholder}
           value={search}

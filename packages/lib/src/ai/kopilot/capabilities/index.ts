@@ -3,7 +3,7 @@
 export { createActorCapabilities } from './actors'
 export { createToolDepsFactory } from './create-deps'
 export { createEntityCapabilities } from './entities'
-export { createKbCapabilities, KB_PAGE } from './kb'
+export { createKbCapabilities, createKbReadCapabilities, KB_PAGE } from './kb'
 export { createKnowledgeCapabilities } from './knowledge'
 export { createKopilotCapabilities } from './kopilot'
 export { createMailCapabilities } from './mail'

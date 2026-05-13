@@ -251,7 +251,11 @@ export async function* agentQueryLoop(
         agent.name,
         ctx,
         idempotentCache,
-        currentState.capturedActions ?? []
+        currentState.capturedActions ?? [],
+        config.domainConfig.transformToolInput
+          ? (toolName, args) =>
+              config.domainConfig.transformToolInput!(toolName, args, currentState)
+          : undefined
       )
       for (const event of captureRun.events) yield event
 
@@ -308,6 +312,13 @@ export async function* agentQueryLoop(
     const approvalTool = findApprovalTool(toolCalls, agent.tools)
     if (approvalTool) {
       let approvalArgs = parseToolArgs(approvalTool)
+      if (config.domainConfig.transformToolInput) {
+        approvalArgs = config.domainConfig.transformToolInput(
+          approvalTool.function.name,
+          approvalArgs,
+          currentState
+        )
+      }
       const toolDef = agent.tools.find((t) => t.name === approvalTool.function.name)
       const missingParams = validateRequiredParams(toolDef, approvalArgs)
 
@@ -456,7 +467,10 @@ export async function* agentQueryLoop(
       agent.tools,
       agent.name,
       ctx,
-      idempotentCache
+      idempotentCache,
+      config.domainConfig.transformToolInput
+        ? (toolName, args) => config.domainConfig.transformToolInput!(toolName, args, currentState)
+        : undefined
     )
     for (const event of toolResults.events) {
       yield event
@@ -566,7 +580,8 @@ async function executeToolCalls(
   agentTools: AgentToolDefinition[],
   agentName: string,
   ctx: ToolContext,
-  idempotentCache: Map<string, ToolExecResult>
+  idempotentCache: Map<string, ToolExecResult>,
+  transformInput?: (toolName: string, args: Record<string, unknown>) => Record<string, unknown>
 ): Promise<{ events: AgentEvent[]; results: ToolExecResult[] }> {
   const toolMap = new Map(agentTools.map((t) => [t.name, t]))
   const events: AgentEvent[] = []
@@ -576,6 +591,7 @@ async function executeToolCalls(
     const toolName = toolCall.function.name
     const tool = toolMap.get(toolName)
     let args = parseToolArgs(toolCall)
+    if (transformInput) args = transformInput(toolName, args)
 
     if (!tool) {
       events.push({ type: 'tool-started', agent: agentName, tool: toolName, args })

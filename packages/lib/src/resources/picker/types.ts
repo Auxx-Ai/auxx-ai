@@ -45,6 +45,16 @@ export interface RecordPickerItem {
   /** Optional avatar URL */
   avatarUrl?: string
 
+  /** Optional per-record icon hint (e.g. article emoji). Falls back to entity-definition icon. */
+  iconId?: string
+
+  /**
+   * Optional per-record color hint. Reserved for future per-row tint; no
+   * consumer reads this today, but the picker plumbs it end-to-end so a
+   * future caller only has to wire the render side.
+   */
+  color?: string
+
   /** Full row data (for custom rendering) */
   data: Record<string, unknown>
 

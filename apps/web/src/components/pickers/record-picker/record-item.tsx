@@ -53,9 +53,10 @@ export function RecordItem({
       value={item.id}
       onSelect={handleSelect}
       className='flex items-center gap-2'>
+      {/* item.color is plumbed but not yet rendered — swap into `color` when a per-row tint consumer arrives. */}
       <RecordIcon
         avatarUrl={item.avatarUrl}
-        iconId={resource?.icon ?? 'circle'}
+        iconId={item.iconId ?? resource?.icon ?? 'circle'}
         color={iconColor ?? 'gray'}
         size='sm'
         inverse

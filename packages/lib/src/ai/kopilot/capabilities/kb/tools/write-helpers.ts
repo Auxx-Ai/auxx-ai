@@ -16,6 +16,7 @@ import { stampBlockIds } from '../../../../../kb/markdown/stamp-ids'
 import type { ArticleNodeJSON, BlockJSON, PanelJSON } from '../../../../../kb/markdown/types'
 import { publishKbArticleEvent } from '../../../../../kb/realtime'
 import type { AgentDeps, AgentToolResult } from '../../../../agent-framework/types'
+import { findRef } from '../../../context-refs'
 import type { ToolDeps } from '../../types'
 
 const logger = createScopedLogger('kb-write-helpers')
@@ -90,7 +91,7 @@ export async function runBlockCrudOp(args: {
   | { ok: false; error: string }
 > {
   const { agentDeps, toolDeps, patch, opIndex } = args
-  const articleId = toolDeps.sessionContext.activeArticleId
+  const articleId = findRef(toolDeps.sessionContext, 'article')?.id
   if (!articleId) {
     return { ok: false, error: 'no active article' }
   }

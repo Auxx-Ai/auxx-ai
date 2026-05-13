@@ -6,6 +6,7 @@ export {
   createCapabilityRegistry,
   createEntityCapabilities,
   createKbCapabilities,
+  createKbReadCapabilities,
   createKnowledgeCapabilities,
   createKopilotCapabilities,
   createMailCapabilities,
@@ -13,6 +14,7 @@ export {
   createToolDepsFactory,
   KB_PAGE,
 } from './capabilities'
+export { applyContextDefaults, findAllRefs, findRef } from './context-refs'
 export type { KopilotDomainConfigOptions } from './domain-config'
 export { createKopilotDomainConfig } from './domain-config'
 export { generateSessionTitle } from './session-title'
@@ -22,4 +24,6 @@ export type {
   PlanStep,
   PlanStepStatus,
   SessionContext,
+  SessionRef,
+  SessionRefKind,
 } from './types'

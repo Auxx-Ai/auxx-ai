@@ -1,27 +1,48 @@
 // packages/lib/src/ai/kopilot/types.ts
 
+/**
+ * Kind discriminator for references the user has in focus during a turn.
+ *
+ * Surfaces contribute these via `<KopilotContext>` and the editor `@`-mention
+ * picker contributes them via `extractMentionRefs`. The kind set is small on
+ * purpose — new kinds appear only when a real caller emits one.
+ */
+export type SessionRefKind =
+  | 'thread' // mail thread id
+  | 'record' // any RecordId — `contact:<id>`, `<defId>:<id>`, etc. Contacts are records.
+  | 'kb' // knowledge base id
+  | 'article' // article id
+  | 'actor' // `user:<id>` or `group:<id>`
+
+/**
+ * A single thing the user has in focus this turn — either because a page
+ * surface declared it (chip-strip) or because the user `@`-mentioned it in
+ * the composer.
+ */
+export interface SessionRef {
+  kind: SessionRefKind
+  id: string
+  /** Display label rendered in the chip / prompt line. */
+  label?: string
+  /**
+   * Provenance — drives prompt phrasing ("explicitly mentioned" vs "currently
+   * open on the page"), chip rendering (mentions don't chip — they're already
+   * inline badges in the prose), and engine-side default-injection
+   * precedence (mention wins over surface).
+   */
+  origin: 'surface' | 'mention'
+}
+
 /** Open-ended UI context bag. Known fields provide autocomplete; any key is valid. */
 export interface SessionContext extends Record<string, unknown> {
   /** Current page the user is viewing (e.g. 'mail', 'contacts', 'workflows') */
   page?: string
-  /** Active thread the user has open, if any */
-  activeThreadId?: string
-  /** Active contact the user has open, if any */
-  activeContactId?: string
-  /** Active record (generic) the user has open, if any */
-  activeRecordId?: string
-  /** Active meeting (EntityInstance) the user has open, if any */
-  activeMeetingId?: string
-  /** Active call recording the user has open, if any */
-  activeCallRecordingId?: string
-  /** Active transcript-selection (e.g. user has highlighted a span on a transcript) */
-  activeTranscriptSelection?: { callRecordingId: string; startMs: number; endMs: number }
-  /** Active filter payload the user has applied to the current page */
-  activeFilters?: Record<string, unknown>
-  /** Active knowledge base the user is editing in, if any (KB editor surfaces) */
-  activeKnowledgeBaseId?: string
-  /** Active KB article the user has open, if any */
-  activeArticleId?: string
+  /**
+   * Active references the user has in focus this turn — concat of page-surface
+   * refs and editor `@`-mentions. Rendered into the agent prompt's `## Active
+   * references` block and consumed by `findRef` / `applyContextDefaults`.
+   */
+  references?: SessionRef[]
 }
 
 /** Status of a single plan step — drives the icon and color in the auxx:plan-steps fence renderer. */

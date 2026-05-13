@@ -1037,6 +1037,13 @@
       "when": 1778627920843,
       "tag": "0147_article_denorm_title_excerpt_archived",
       "breakpoints": true
+    },
+    {
+      "idx": 148,
+      "version": "7",
+      "when": 1778649364457,
+      "tag": "0148_article_denorm_emoji_color",
+      "breakpoints": true
     }
   ]
 }

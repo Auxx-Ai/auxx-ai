@@ -18,9 +18,11 @@ export interface SharedPickerContentProps {
   onSelectSingle?: (id: RecordId) => void
   /** Forwarded by ReferencePickerContent; the upstream query string */
   externalSearch?: string
+  /** Whether to render the internal search input. Default: true. */
+  showInput?: boolean
   /** Capture state for arrow-key wiring */
   onCaptureChange?: (capturing: boolean) => void
-  /** Search placeholder (only used when externalSearch is undefined) */
+  /** Search placeholder (only shown when showInput is true) */
   placeholder?: string
   /** Disabled */
   disabled?: boolean

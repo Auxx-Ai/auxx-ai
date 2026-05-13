@@ -399,8 +399,13 @@ function CommandInput({
 }
 
 function CommandList({ className, ...props }: React.ComponentProps<typeof CommandPrimitive.List>) {
+  // `data-slot='command-list'` is on the outer scroll-area Root so a parent can
+  // target it from a Tailwind className with a descendant selector, e.g.
+  // `[&_[data-slot=command-list]]:h-[288px]` to pin the list to a fixed height.
   return (
-    <BaseScrollArea.Root className='relative max-h-[300px] overflow-hidden'>
+    <BaseScrollArea.Root
+      data-slot='command-list'
+      className='relative max-h-[300px] overflow-hidden'>
       <BaseScrollArea.Viewport
         className='h-full max-h-[300px] w-full overscroll-contain scroll-area-fade outline-none'
         style={{ overflowX: 'hidden' }}>

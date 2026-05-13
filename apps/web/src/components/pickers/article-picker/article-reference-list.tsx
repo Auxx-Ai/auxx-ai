@@ -30,6 +30,7 @@ export function ArticleReferenceList({
   multi = false,
   onSelectSingle,
   externalSearch,
+  showInput = true,
   onCaptureChange,
   placeholder = 'Search articles...',
   disabled = false,
@@ -39,7 +40,6 @@ export function ArticleReferenceList({
   const search = externalSearch ?? internalSearch
   const setSearch = externalSearch !== undefined ? () => {} : setInternalSearch
   const [debouncedSearch] = useDebouncedValue(search, 200)
-  const useExternalSearch = externalSearch !== undefined
 
   useEffect(() => {
     onCaptureChange?.(true)
@@ -47,9 +47,11 @@ export function ArticleReferenceList({
   }, [onCaptureChange])
 
   const { data, isLoading: isSearching } = api.record.search.useQuery(
-    { entityDefinitionId: 'article', query: debouncedSearch, limit: 20 },
+    { entityDefinitionId: 'article', query: debouncedSearch, limit: !showInput ? 8 : 20 },
     {
-      enabled: debouncedSearch.trim().length > 0 || !useExternalSearch,
+      // In external-search (mention) mode, always fire so the empty-query state
+      // shows recent articles instead of a "Type to search" prompt.
+      enabled: !showInput || debouncedSearch.trim().length > 0,
       staleTime: 30_000,
       placeholderData: keepPreviousData,
     }
@@ -74,13 +76,17 @@ export function ArticleReferenceList({
 
   const isDebouncePending = search !== debouncedSearch
   const showPlaceholder =
-    useExternalSearch && search.trim().length > 0 && (isSearching || isDebouncePending)
-  const showEmpty = !showPlaceholder && !isSearching && debouncedSearch.trim() && items.length === 0
-  const showPromptEmpty = useExternalSearch && search.trim().length === 0
+    !showInput &&
+    search.trim().length > 0 &&
+    (isSearching || isDebouncePending) &&
+    items.length === 0
+  const showEmpty = !showPlaceholder && !isSearching && items.length === 0 && debouncedSearch.trim()
+  const showEmptyInitial =
+    !showInput && !isSearching && items.length === 0 && !debouncedSearch.trim()
 
   return (
     <Command shouldFilter={false} className={cn('rounded-lg', className)}>
-      {!useExternalSearch && (
+      {showInput && (
         <CommandInput
           placeholder={placeholder}
           value={search}
@@ -91,8 +97,8 @@ export function ArticleReferenceList({
       )}
       <CommandList>
         {showPlaceholder && <CommandPlaceholder>Searching...</CommandPlaceholder>}
-        {showPromptEmpty && <CommandPlaceholder>Type to search articles</CommandPlaceholder>}
         {showEmpty && <CommandPlaceholder>No articles found</CommandPlaceholder>}
+        {showEmptyInitial && <CommandPlaceholder>No articles yet</CommandPlaceholder>}
         {items.length > 0 && (
           <CommandGroup aria-label='Articles'>
             {items.map((item) => (

@@ -244,6 +244,6 @@ function truncateBody(
   const lastNewline = slice.lastIndexOf('\n')
   const cut = lastNewline > 0 ? slice.slice(0, lastNewline) : slice
   const elidedChars = markdown.length - cut.length
-  const body = `${cut}\n\n[… ${elidedChars} chars elided — call \`get_article_section\` for the rest]`
+  const body = `${cut}\n\n[… ${elidedChars} chars elided — call \`get_article_section\` for the rest (KB editor only)]`
   return { body, truncated: true }
 }

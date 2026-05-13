@@ -14,7 +14,8 @@ import { extractLinkSnapshots } from './blocks/extract-link-snapshots'
 import { injectSnapshotsIntoFinal } from './blocks/inject-snapshots'
 import { createEmptyTurnSnapshots, runSnapshotWalker } from './blocks/snapshot-walker'
 import type { CapabilityRegistry } from './capabilities/types'
-import type { KopilotDomainState, PlanState, PlanStepStatus } from './types'
+import { applyContextDefaults } from './context-refs'
+import type { KopilotDomainState, PlanState, PlanStepStatus, SessionRef } from './types'
 
 const logger = createScopedLogger('kopilot-domain-config')
 
@@ -92,6 +93,15 @@ export function createKopilotDomainConfig(
     },
     applyContext(state: KopilotDomainState, context: Record<string, unknown>): KopilotDomainState {
       return { ...state, context }
+    },
+    transformToolInput(
+      _toolName: string,
+      args: Record<string, unknown>,
+      state
+    ): Record<string, unknown> {
+      const ctx = (state.domainState as KopilotDomainState | undefined)?.context
+      if (!ctx) return args
+      return applyContextDefaults(args, ctx)
     },
     onToolResult(toolName: string, result: AgentToolResult, state: AgentState): AgentState {
       const snapshots: TurnSnapshots = state.turnSnapshots ?? createEmptyTurnSnapshots()
@@ -181,6 +191,23 @@ export function createKopilotDomainConfig(
         return { success: true, output: { plan: ds.plan } }
       }
       return undefined
+    },
+    summarizeContext(context: Record<string, unknown> | undefined) {
+      if (!context) return undefined
+      const page = (context as { page?: unknown }).page
+      const refs = (context as { references?: unknown }).references
+      const references = Array.isArray(refs)
+        ? (refs as SessionRef[]).map((r) => ({
+            kind: r?.kind,
+            id: r?.id,
+            origin: r?.origin,
+            label: r?.label ?? null,
+          }))
+        : undefined
+      return {
+        ...(typeof page === 'string' ? { page } : {}),
+        ...(references ? { references } : {}),
+      }
     },
     postProcessFinalContent(content: string, state: AgentState): PostProcessResult {
       const snapshots = state.turnSnapshots ?? createEmptyTurnSnapshots()
