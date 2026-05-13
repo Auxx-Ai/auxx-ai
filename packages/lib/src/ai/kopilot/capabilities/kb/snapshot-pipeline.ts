@@ -1,6 +1,7 @@
 // packages/lib/src/ai/kopilot/capabilities/kb/snapshot-pipeline.ts
 
 import type { Database } from '@auxx/database'
+import { getCachedEntityDefId } from '../../../../cache'
 import { KBService } from '../../../../kb/kb-service'
 import { articleToMarkdown } from '../../../../kb/markdown/article-to-markdown'
 import { computeArticleJsonHash } from '../../../../kb/markdown/hash'
@@ -45,24 +46,6 @@ export interface ActiveArticleSnapshot {
   bodyMarkdown: string
   bodyTruncated: boolean
   outline: BlockOutlineEntry[]
-}
-
-/**
- * Resolves the EntityDefinition.id for the `article` system entity in the
- * given organization. Articles are registered with `entityType: 'article'`
- * (see seed/entity-seeder/constants.ts) and get a real EntityDefinition row
- * even though their data lives in the Article table.
- */
-export async function getArticleEntityDefinitionId(
-  db: Database,
-  organizationId: string
-): Promise<string | null> {
-  const row = await db.query.EntityDefinition.findFirst({
-    where: (d, { and, eq, isNull }) =>
-      and(eq(d.organizationId, organizationId), eq(d.entityType, 'article'), isNull(d.archivedAt)),
-    columns: { id: true },
-  })
-  return row?.id ?? null
 }
 
 /**
@@ -112,7 +95,7 @@ export async function buildActiveArticleSnapshot(args: {
   const fullMarkdown = articleToMarkdown({ contentJson })
   const { body, truncated } = truncateBody(fullMarkdown, outline)
 
-  const articleEntityDefinitionId = await getArticleEntityDefinitionId(db, organizationId)
+  const articleEntityDefinitionId = await getCachedEntityDefId(organizationId, 'article')
   const title = draft.title ?? ''
   const displayName = title || article.slug
 

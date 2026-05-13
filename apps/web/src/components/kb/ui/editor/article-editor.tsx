@@ -2,6 +2,8 @@
 'use client'
 
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
+import { toastSuccess } from '@auxx/ui/components/toast'
+import { useHotkey } from '@tanstack/react-hotkeys'
 import type { JSONContent } from '@tiptap/core'
 import type { Editor } from '@tiptap/react'
 import { useCallback, useRef } from 'react'
@@ -59,6 +61,10 @@ export function ArticleEditor({ article, knowledgeBaseId }: ArticleEditorProps) 
   )
 
   const debouncedPersist = useDebounceCallback(persist, 1500)
+
+  useHotkey('Mod+S', () => {
+    toastSuccess({ title: 'Auto-saved', description: 'Your changes are saved automatically.' })
+  })
 
   const handleMetadataUpdate = async (changes: { title?: string; description?: string }) => {
     await updateArticleDraft(article.id, changes)

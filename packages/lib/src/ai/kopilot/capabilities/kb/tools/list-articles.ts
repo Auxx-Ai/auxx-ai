@@ -2,6 +2,7 @@
 
 import { schema } from '@auxx/database'
 import { and, eq, inArray } from 'drizzle-orm'
+import { getCachedEntityDefId } from '../../../../../cache'
 import { KBService } from '../../../../../kb/kb-service'
 import { articleToMarkdown } from '../../../../../kb/markdown/article-to-markdown'
 import type { ArticleNodeJSON } from '../../../../../kb/markdown/types'
@@ -9,7 +10,6 @@ import { parseArticleIdArrayArg, parseStringArg } from '../../../../agent-framew
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
 import { findRef } from '../../../context-refs'
 import type { GetToolDeps } from '../../types'
-import { getArticleEntityDefinitionId } from '../snapshot-pipeline'
 
 const DEFAULT_LIMIT = 50
 const MAX_LIMIT = 200
@@ -91,7 +91,7 @@ export function createListArticlesTool(getDeps: GetToolDeps): AgentToolDefinitio
         scopeKbId
           ? kb.getArticles(scopeKbId, { includeUnpublished })
           : kb.getAllArticles({ includeUnpublished }),
-        getArticleEntityDefinitionId(db, agentDeps.organizationId),
+        getCachedEntityDefId(agentDeps.organizationId, 'article'),
       ])
 
       let filtered = all

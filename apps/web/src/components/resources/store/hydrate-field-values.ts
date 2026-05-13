@@ -7,8 +7,26 @@ import {
   isComputedField,
   type RecordId,
   type Resource,
+  type ResourceField,
 } from '@auxx/lib/resources/client'
+import { parseResourceFieldId, type ResourceFieldId } from '@auxx/types/field'
 import { buildFieldValueKey, type StoredFieldValue, useFieldValueStore } from './field-value-store'
+
+/**
+ * Derive the target entityDefinitionId for a RELATIONSHIP field so the
+ * converter can build a RecordId from a raw FK string (e.g. Article.parentId).
+ * Without this, hydration of relationship columns from picker rows returns null
+ * and the cell stays empty.
+ */
+function getRelatedEntityDefinitionId(field: ResourceField): string | undefined {
+  const inverse = field.relationship?.inverseResourceFieldId
+  if (!inverse) return undefined
+  try {
+    return parseResourceFieldId(inverse as ResourceFieldId).entityDefinitionId
+  } catch {
+    return undefined
+  }
+}
 
 interface HydrationOptions {
   resource: Resource
@@ -61,6 +79,7 @@ export function hydrateFieldValues({ resource, recordId, recordData }: Hydration
     // Convert to TypedFieldValue using the converter
     const typedValue = formatToTypedInput(rawValue, field.fieldType as FieldType, {
       selectOptions: field.options?.options,
+      relatedEntityDefinitionId: getRelatedEntityDefinitionId(field),
     })
 
     if (typedValue !== null) {
@@ -119,6 +138,7 @@ export function hydrateMultipleRecords(
 
       const typedValue = formatToTypedInput(rawValue, field.fieldType as FieldType, {
         selectOptions: field.options?.options,
+        relatedEntityDefinitionId: getRelatedEntityDefinitionId(field),
       })
 
       if (typedValue !== null) {

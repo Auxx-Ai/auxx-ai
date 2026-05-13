@@ -22,30 +22,22 @@ import {
 } from '@auxx/ui/components/main-page'
 import { Archive, Combine, Database, FileText, Play, Plus, SquarePen, Trash2 } from 'lucide-react'
 import { parseAsBoolean, parseAsString, useQueryState } from 'nuqs'
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import { BulkUpdateEntityInstanceDialog } from '~/components/custom-fields/ui/bulk-update-entity-instance-dialog'
 import { EntityInstanceDialog } from '~/components/custom-fields/ui/entity-instance-dialog'
-import type { CellSelectionConfig, ExtendedColumnDef } from '~/components/dynamic-table'
+import type { CellSelectionConfig } from '~/components/dynamic-table'
+import { PrimaryFieldCell } from '~/components/dynamic-table'
 import {
-  CustomFieldCell,
-  DynamicTableFooter,
-  DynamicView,
-  PrimaryFieldCell,
-} from '~/components/dynamic-table'
-import { getIconForFieldType } from '~/components/dynamic-table/custom-field-column-factory'
-import {
-  useColumnVisibility,
-  useTableFilters,
-  useTableSorting,
-} from '~/components/dynamic-table/stores/store-selectors'
+  DynamicResourceView,
+  type DynamicResourceViewHandle,
+} from '~/components/dynamic-table/dynamic-resource-view'
 import { decodeColumnId } from '~/components/dynamic-table/utils/column-id'
 import { FavoriteToggleMenuItem } from '~/components/favorites/ui/favorite-toggle-menu-item'
 import { EmptyState } from '~/components/global/empty-state'
 import { getCreateHotkey } from '~/components/global-create/system-hotkeys'
 import { MergeDialog } from '~/components/merge'
-import { type RecordMeta, toRecordId, useRecordList, useResource } from '~/components/resources'
+import { type RecordMeta, toRecordId, useResource } from '~/components/resources'
 import { useRunAiBulkGenerate } from '~/components/resources/hooks/run-ai-bulk-generate'
-import { useFieldValueSyncer } from '~/components/resources/hooks/use-field-value-syncer'
 import { useSaveFieldValue } from '~/components/resources/hooks/use-save-field-value'
 import { useActorStore } from '~/components/resources/store/actor-store'
 import { useRelationshipStore } from '~/components/resources/store/relationship-store'
@@ -57,9 +49,6 @@ import { useDockStore } from '~/stores/dock-store'
 import { RecordDrawer } from './record-drawer'
 import { searchConditionsToGroup, useRecordsSearchStore } from './records-search-store'
 import { RecordsSearchBar } from './records-searchbar'
-
-/** Page size for infinite query */
-const PAGE_SIZE = 100
 
 /**
  * Entity row type extending RecordMeta for type alignment with useRecordList
@@ -89,7 +78,8 @@ interface RecordsViewProps {
 
 /**
  * RecordsView component
- * Displays the table of entity instances using data from context
+ * Composes DynamicResourceView with the records-specific primary cell,
+ * bulk-action set, paste/fill/AI cell selection config, and dialogs.
  */
 export function RecordsView({
   slug,
@@ -107,21 +97,16 @@ export function RecordsView({
   const minWidth = useDockStore((state) => state.minWidth)
   const maxWidth = useDockStore((state) => state.maxWidth)
 
-  // Get resource with fields
+  // Resource is needed in this scope for header/breadcrumb labels and to
+  // build the cellSelection config. DynamicResourceView resolves its own
+  // copy from the same store — both share the same subscription.
   const { resource, isLoading } = useResource(slug)
-
-  // Derive custom fields from resource.fields (filter to fields with id = custom fields only).
-  // Hidden fields are excluded from every table surface — no column, no chooser entry.
-  const customFields = useMemo(
-    () =>
-      resource?.fields.filter(
-        (f): f is ResourceField & { id: string } => !!f.id && !f.capabilities.hidden
-      ) ?? [],
-    [resource?.fields]
-  )
-
   const entityDefinitionId = resource?.id
   const createHotkey = getCreateHotkey(resource?.apiSlug)
+
+  // Imperative handle into DynamicResourceView for refresh + field-value reads
+  // (paste/fill needs getValue from the inner syncer).
+  const viewRef = useRef<DynamicResourceViewHandle | null>(null)
 
   // Create dialog state — synced with ?create URL param for external triggers (e.g. layout header button)
   const [createParam, setCreateParam] = useQueryState('create', parseAsBoolean.withDefault(false))
@@ -140,7 +125,7 @@ export function RecordsView({
     [createParam, setCreateParam, renderCreateDialog]
   )
 
-  // State
+  // Local state
   const [editingInstance, setEditingInstance] = useState<EntityRow | null>(null)
   const [selectedRowIds, setSelectedRowIds] = useState<Set<string>>(new Set())
 
@@ -154,74 +139,20 @@ export function RecordsView({
   // Kanban card selection state (lives here to persist across drawer open/close)
   const [selectedKanbanCardIds, setSelectedKanbanCardIds] = useState<Set<string>>(new Set())
 
-  // Bulk update dialog state
+  // Dialog state
   const [isBulkUpdateDialogOpen, setIsBulkUpdateDialogOpen] = useState(false)
-
-  // Workflow dialog state
   const [isWorkflowDialogOpen, setIsWorkflowDialogOpen] = useState(false)
-
-  // Merge dialog state
   const [isMergeDialogOpen, setIsMergeDialogOpen] = useState(false)
 
-  // ══════════════════════════════════════════════════════════════════════════
-  // VIEW STORE INTEGRATION
-  // ══════════════════════════════════════════════════════════════════════════
-
-  // View store integration - tableId must match DynamicView
-  const tableId = `entity-${entityDefinitionId}`
-
-  // Get filters and sorting directly from store (already merged saved + pending)
-  const viewFilters = useTableFilters(tableId)
-  const viewSorting = useTableSorting(tableId)
-  const storeColumnVisibility = useColumnVisibility(tableId)
-
-  // Get fieldMap from resource store for field lookups across all entities
-  const fieldMap = useResourceStore((state) => state.fieldMap)
-
-  // Search conditions → ConditionGroup merge
+  // Search bar conditions are records-specific (one global store).
+  // DynamicResourceView can't import this store; we feed it the merged
+  // ConditionGroup as a baselineFilter on every render.
   const searchConditions = useRecordsSearchStore((s) => s.conditions)
   const searchGroup = useMemo(() => searchConditionsToGroup(searchConditions), [searchConditions])
 
-  // Convert to formats expected by useRecordList
-  const filtersForQuery = useMemo(() => {
-    const groups = [...viewFilters]
-    if (searchGroup) groups.push(searchGroup)
-    return groups.length > 0 ? groups : undefined
-  }, [viewFilters, searchGroup])
-  const sortingForQuery = viewSorting.length > 0 ? viewSorting : undefined
+  const fieldMap = useResourceStore((state) => state.fieldMap)
 
-  // Check if store config is initialized (undefined = not ready yet)
-  const isConfigReady = storeColumnVisibility !== undefined
-
-  // ══════════════════════════════════════════════════════════════════════════
-  // DATA FETCHING
-  // ══════════════════════════════════════════════════════════════════════════
-
-  // Query entity instances using unified record list
-  const {
-    records,
-    isLoading: instancesLoading,
-    isLoadingRecords,
-    isFetchingNextPage,
-    hasNextPage,
-    fetchNextPage,
-    refresh,
-  } = useRecordList<EntityRow>({
-    entityDefinitionId: entityDefinitionId ?? '',
-    filters: filtersForQuery,
-    sorting: sortingForQuery,
-    limit: PAGE_SIZE,
-    enabled: !!entityDefinitionId && isConfigReady,
-  })
-
-  // Handle scroll to bottom - load more data
-  const handleScrollToBottom = useCallback(() => {
-    if (hasNextPage && !isFetchingNextPage && !instancesLoading) {
-      fetchNextPage()
-    }
-  }, [hasNextPage, isFetchingNextPage, instancesLoading, fetchNextPage])
-
-  // Memoized callbacks for operations hook (must be stable to prevent infinite loops)
+  // Stable callbacks shared with the operations hook
   const handleOperationsDrawerClose = useCallback(() => {
     setSelectedInstanceId(null)
   }, [setSelectedInstanceId])
@@ -230,7 +161,10 @@ export function RecordsView({
     setSelectedRowIds(new Set())
   }, [])
 
-  // Entity instance operations hook (mutations only)
+  const refresh = useCallback(() => {
+    viewRef.current?.refresh()
+  }, [])
+
   const {
     handleArchive,
     handleDelete,
@@ -248,41 +182,6 @@ export function RecordsView({
     onRefetch: refresh,
   })
 
-  // Convert to RecordIds for syncer
-  const recordIds = useMemo(
-    () => (entityDefinitionId ? records.map((i) => toRecordId(entityDefinitionId, i.id)) : []),
-    [records, entityDefinitionId]
-  )
-
-  // Build column IDs in ResourceFieldId format (includes path columns from store)
-  const columnIds = useMemo(() => {
-    // Direct field column IDs from customFields
-    const directFieldIds = customFields.map((field) => field.resourceFieldId!)
-
-    // Path columns from store visibility (path columns contain '::')
-    const pathColumnIds = storeColumnVisibility
-      ? Object.keys(storeColumnVisibility).filter((key) => key.includes('::'))
-      : []
-
-    return [...directFieldIds, ...pathColumnIds]
-  }, [customFields, storeColumnVisibility])
-
-  // Field value syncer - reads from store for reactive updates
-  const { getValue, isValueLoading } = useFieldValueSyncer({
-    recordIds,
-    columnVisibility: storeColumnVisibility ?? {},
-    resourceFieldIds: columnIds,
-    enabled: !!entityDefinitionId && columnIds.length > 0 && isConfigReady,
-  })
-
-  // Note: Store hydration is handled by useFieldValueSyncer
-  // which calls batchGetValues and returns properly formatted TypedFieldValue.
-  // This eliminates the need for manual row-to-TypedFieldValue conversion here.
-  // Cell value saving is handled internally by PropertyProvider via storeConfig.
-
-  /**
-   * Handle opening drawer from primary display cell
-   */
   const handleOpenDrawer = useCallback(
     (row: EntityRow) => {
       setSelectedInstanceId(row.id)
@@ -290,9 +189,6 @@ export function RecordsView({
     [setSelectedInstanceId]
   )
 
-  /**
-   * Handle opening edit dialog from primary display cell
-   */
   const handleOpenEditDialog = useCallback(
     (row: EntityRow) => {
       if (onEditRecord && entityDefinitionId) {
@@ -305,9 +201,6 @@ export function RecordsView({
     [setIsCreateDialogOpen, onEditRecord, entityDefinitionId]
   )
 
-  /**
-   * Handle drawer close
-   */
   const handleDrawerOpenChange = useCallback(
     (open: boolean) => {
       if (!open) setSelectedInstanceId(null)
@@ -315,24 +208,15 @@ export function RecordsView({
     [setSelectedInstanceId]
   )
 
-  /**
-   * Handle row selection change
-   */
   const handleRowSelectionChange = useCallback((selectedRows: Set<string>) => {
     setSelectedRowIds(selectedRows)
   }, [])
 
-  /**
-   * Handle dialog save
-   */
   const handleDialogSaved = useCallback(() => {
     setEditingInstance(null)
     refresh()
   }, [refresh])
 
-  /**
-   * Handle dialog open change
-   */
   const handleDialogOpenChange = useCallback(
     (open: boolean) => {
       setIsCreateDialogOpen(open)
@@ -343,122 +227,54 @@ export function RecordsView({
     [setIsCreateDialogOpen]
   )
 
-  /**
-   * Create column for entity instance field
-   * Uses CustomFieldCell for direct store subscription and reactive updates
-   */
-  const createEntityFieldColumn = useCallback(
-    (field: (typeof customFields)[0]): ExtendedColumnDef<EntityRow> => {
-      // Generate ResourceFieldId format: entityDefinitionId:fieldId
-      const resourceFieldId = toResourceFieldId(entityDefinitionId!, toFieldId(field.id))
-      const columnId = resourceFieldId // Use ResourceFieldId as column ID directly
+  // Primary cell renderer — title + Edit / Favorite / Archive / Delete dropdown.
+  const primaryFieldId = resource?.display.primaryDisplayField?.id ?? resource?.fields[0]?.id
+  const primaryResourceFieldId = useMemo(() => {
+    if (!entityDefinitionId || !primaryFieldId) return null
+    return toResourceFieldId(entityDefinitionId, toFieldId(primaryFieldId))
+  }, [entityDefinitionId, primaryFieldId])
 
-      return {
-        id: columnId,
-        accessorFn: () => undefined, // Not used for display - cells read from store
-        header: field.name ?? field.label,
-        fieldType: field.fieldType as FieldType,
-        defaultVisible: field.showInPanel !== false,
-        icon: getIconForFieldType(field.fieldType!),
-        enableSorting: field.fieldType !== 'RELATIONSHIP' && field.capabilities.sortable !== false,
-        enableFiltering:
-          field.fieldType !== 'RELATIONSHIP' && field.capabilities.filterable !== false,
-        enableResizing: true,
-        minSize: 100,
-        size: field.fieldType === 'RELATIONSHIP' ? 180 : 150,
-        cell: ({ row }) => (
-          <CustomFieldCell
-            recordId={toRecordId(entityDefinitionId!, row.original.id)}
-            columnId={columnId}
+  const primaryCellRender = useCallback(
+    (row: EntityRow) => {
+      if (!entityDefinitionId || !primaryResourceFieldId) return null
+      return (
+        <PrimaryFieldCell
+          resourceFieldId={primaryResourceFieldId}
+          rowId={row.id}
+          onTitleClick={() => handleOpenDrawer(row)}>
+          <DropdownMenuItem onClick={() => handleOpenEditDialog(row)}>
+            <SquarePen />
+            Edit
+          </DropdownMenuItem>
+          <FavoriteToggleMenuItem
+            targetType='ENTITY_INSTANCE'
+            targetIds={{
+              entityDefinitionId,
+              entityInstanceId: row.id,
+            }}
           />
-        ),
-      }
+          <DropdownMenuItem onClick={() => handleArchive(row.id)}>
+            <Archive />
+            Archive
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem variant='destructive' onClick={() => handleDelete(row.id)}>
+            <Trash2 />
+            Delete
+          </DropdownMenuItem>
+        </PrimaryFieldCell>
+      )
     },
-    [entityDefinitionId]
+    [
+      entityDefinitionId,
+      primaryResourceFieldId,
+      handleOpenDrawer,
+      handleOpenEditDialog,
+      handleArchive,
+      handleDelete,
+    ]
   )
 
-  /**
-   * Generate columns from custom field definitions
-   * Primary display column is first with integrated actions
-   */
-  const columns: ExtendedColumnDef<EntityRow>[] = useMemo(() => {
-    // Fields arrive pre-sorted from ResourceRegistryService (sortOrder + metadata-last)
-    const sortedFields = customFields.filter((f) => f.active !== false)
-
-    // Find primary display field (only available on custom resources)
-    const primaryFieldId = resource?.display.primaryDisplayField?.id
-    const primaryField = primaryFieldId
-      ? sortedFields.find((f) => f.id === primaryFieldId)
-      : sortedFields[0] // Fallback to first field
-
-    // Create primary display column with integrated actions
-    // Uses PrimaryFieldCell for reactive store subscription
-    const primaryColumn: ExtendedColumnDef<EntityRow> | null = primaryField
-      ? {
-          id: toResourceFieldId(entityDefinitionId!, toFieldId(primaryField.id)),
-          accessorFn: () => undefined, // Not used - PrimaryFieldCell reads from store
-          header: primaryField.name,
-          primaryCell: true,
-          fieldType: primaryField.fieldType,
-          icon: getIconForFieldType(primaryField.fieldType!),
-          enableSorting: true,
-          enableResizing: true,
-          enableHiding: false, // Primary column cannot be hidden
-          minSize: 200,
-          size: 300,
-          cell: ({ row }) => (
-            <PrimaryFieldCell
-              resourceFieldId={toResourceFieldId(entityDefinitionId!, toFieldId(primaryField.id))}
-              rowId={row.original.id}
-              onTitleClick={() => handleOpenDrawer(row.original)}>
-              <DropdownMenuItem onClick={() => handleOpenEditDialog(row.original)}>
-                <SquarePen />
-                Edit
-              </DropdownMenuItem>
-              {entityDefinitionId && (
-                <FavoriteToggleMenuItem
-                  targetType='ENTITY_INSTANCE'
-                  targetIds={{
-                    entityDefinitionId,
-                    entityInstanceId: row.original.id,
-                  }}
-                />
-              )}
-              <DropdownMenuItem onClick={() => handleArchive(row.original.id)}>
-                <Archive />
-                Archive
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem variant='destructive' onClick={() => handleDelete(row.original.id)}>
-                <Trash2 />
-                Delete
-              </DropdownMenuItem>
-            </PrimaryFieldCell>
-          ),
-        }
-      : null
-
-    // Create columns for other fields (excluding primary)
-    const otherColumns = sortedFields
-      .filter((f) => f.id !== primaryField?.id)
-      .map(createEntityFieldColumn)
-
-    return primaryColumn ? [primaryColumn, ...otherColumns] : otherColumns
-  }, [
-    customFields,
-    resource,
-    createEntityFieldColumn,
-    handleOpenDrawer,
-    handleOpenEditDialog,
-    handleArchive,
-    handleDelete,
-    entityDefinitionId,
-  ])
-
-  /**
-   * Define bulk actions for DynamicTable
-   * Note: actions receive selected rows from FloatingBulkActionBar (works for both table and kanban)
-   */
   const bulkActions = useMemo(
     () => [
       {
@@ -504,16 +320,18 @@ export function RecordsView({
     [handleBulkArchive, handleBulkDelete]
   )
 
-  /** Bulk writer used by range delete / paste (Phase 2). */
   const { saveBulkMultipleFields } = useSaveFieldValue()
   const runAiBulkGenerate = useRunAiBulkGenerate()
 
   /**
-   * Cell selection configuration for inline editing
-   * Uses getValue from syncer for consistent value reads
-   * Uses getResourceId for optimistic updates via PropertyProvider
+   * Cell selection configuration for inline editing.
+   * `getValue` is sourced from the inner syncer via `viewRef.current.getValue`;
+   * it's read at call-time so a null ref during first render is safe.
    */
   const cellSelectionConfig: CellSelectionConfig = useMemo(() => {
+    const readValue = (recordId: RecordId, columnId: string) =>
+      viewRef.current?.getValue(recordId, columnId)
+
     const resolveField = (columnId: string): ResourceField | null => {
       if (columnId.startsWith('_')) return null
       const decoded = decodeColumnId(columnId)
@@ -530,17 +348,12 @@ export function RecordsView({
       getCellValue: (rowId: string, columnId: string) => {
         if (columnId.startsWith('_')) return undefined
         if (!entityDefinitionId) return undefined
-        return getValue(toRecordId(entityDefinitionId, rowId), columnId)
+        return readValue(toRecordId(entityDefinitionId, rowId), columnId)
       },
       getRecordId: (rowId: string) => {
         if (!entityDefinitionId) return null as unknown as RecordId
         return toRecordId(entityDefinitionId, rowId)
       },
-      /**
-       * Format a cell for copy: display string for TSV output + raw primitive
-       * for the JSON sidecar. Relationship cells resolve primary display from
-       * the already-hydrated relationship store — no network call.
-       */
       formatCellForCopy: (rowId, columnId) => {
         if (!entityDefinitionId) return null
         if (columnId.startsWith('_')) return null
@@ -549,7 +362,7 @@ export function RecordsView({
         const fieldType = field.fieldType as FieldType | undefined
         if (!fieldType) return null
 
-        const raw = getValue(toRecordId(entityDefinitionId, rowId), columnId)
+        const raw = readValue(toRecordId(entityDefinitionId, rowId), columnId)
         if (raw === null || raw === undefined) {
           return { display: '', fieldType }
         }
@@ -590,8 +403,6 @@ export function RecordsView({
         }
 
         // Actor: display is the user/group name from the actor store.
-        // Raw is the ActorId string ("user:id" / "group:id") — matches what
-        // actorConverter.toTypedInput accepts on the paste side.
         if (fieldType === 'ACTOR') {
           const actors = useActorStore.getState().actors
           const resolve = (v: unknown): { actorId: string | null; display: string } => {
@@ -628,7 +439,6 @@ export function RecordsView({
           }
         }
 
-        // Everything else: use converter display + raw.
         if (Array.isArray(raw)) {
           const displays = raw
             .map((v) => String(converter.toDisplayValue(v, field.options) ?? ''))
@@ -649,13 +459,6 @@ export function RecordsView({
           fieldType,
         }
       },
-      /**
-       * Resolve a relationship target by display name against already-hydrated
-       * records in the relationship store. Case-insensitive exact match on
-       * `displayName`, scoped to the target column's `relatedEntityDefinitionId`.
-       * Sync only — no network lookup. If the user pastes a record that's not
-       * currently loaded, paste skips with "no matching record".
-       */
       resolveRelationshipByDisplay: (columnId, query) => {
         const field = resolveField(columnId)
         if (!field) return null
@@ -671,12 +474,6 @@ export function RecordsView({
         }
         return null
       },
-      /**
-       * Resolve an actor target by display name against the actor store.
-       * Case-insensitive exact match on `name`. Respects the field's `target`
-       * constraint ('user' | 'group' | 'both') so pasting a group name into a
-       * user-only actor column skips.
-       */
       resolveActorByDisplay: (columnId, query) => {
         const field = resolveField(columnId)
         if (!field) return null
@@ -691,12 +488,6 @@ export function RecordsView({
         }
         return null
       },
-      /**
-       * Range delete — every (row × column) inside the range gets null.
-       * Cells form a rectangle, so a single cartesian setBulk handles it:
-       *   recordIds = unique rowIds, values = unique writable fieldIds → null
-       * Read-only fields are filtered out of `values`.
-       */
       clearCells: async (cells) => {
         if (!entityDefinitionId || cells.length === 0) return { skipped: 0 }
 
@@ -730,11 +521,6 @@ export function RecordsView({
         saveBulkMultipleFields(recordIds, fieldValues)
         return { skipped }
       },
-      /**
-       * Per-cell write (used by paste). Groups by value-tuple so rows that share
-       * the same {field → value} payload coalesce into one setBulk call. Worst
-       * case: N calls for N rows of all-distinct data.
-       */
       saveCells: async (updates) => {
         if (!entityDefinitionId || updates.length === 0) return { skipped: 0 }
 
@@ -750,7 +536,6 @@ export function RecordsView({
         }
         if (allowed.length === 0) return { skipped }
 
-        // Bucket: signature (sorted "fieldId|value" tuples) → row ids + field/value list
         type Bucket = {
           recordIds: RecordId[]
           fieldValues: Array<{ fieldId: string; value: unknown; fieldType: FieldType }>
@@ -785,11 +570,6 @@ export function RecordsView({
         }
         return { skipped }
       },
-      /**
-       * Fill-handle gate: is this column an AI-enabled custom field? Drag
-       * across the fill-handle routes through `saveAiCells` for these
-       * columns rather than coercing the source value.
-       */
       isAiField: (columnId) => {
         const field = resolveField(columnId)
         if (!field?.fieldType) return false
@@ -797,12 +577,6 @@ export function RecordsView({
         const ai = (field.options as { ai?: AiOptions } | null | undefined)?.ai
         return ai?.enabled === true
       },
-      /**
-       * Kick stage-1 AI autofill for the given (row, column) targets.
-       * Grouped by column so each AI column fires one `setBulk` with
-       * `ai: true`; server fans out to per-cell `setValueWithBuiltIn`
-       * short-circuits that enqueue BullMQ jobs.
-       */
       saveAiCells: async (cells) => {
         if (!entityDefinitionId || cells.length === 0) return { skipped: 0 }
 
@@ -834,11 +608,16 @@ export function RecordsView({
         return { skipped }
       },
     }
-  }, [getValue, entityDefinitionId, fieldMap, saveBulkMultipleFields, runAiBulkGenerate])
+  }, [entityDefinitionId, fieldMap, saveBulkMultipleFields, runAiBulkGenerate])
 
-  /**
-   * Empty state component
-   */
+  const renderSearchBar = useCallback(
+    () =>
+      entityDefinitionId && resource ? (
+        <RecordsSearchBar entityDefinitionId={entityDefinitionId} fields={resource.fields} />
+      ) : null,
+    [entityDefinitionId, resource]
+  )
+
   const EmptyStateComponent = useCallback(
     () => (
       <div className='flex h-full items-center justify-center'>
@@ -861,10 +640,9 @@ export function RecordsView({
         />
       </div>
     ),
-    [resource?.plural, resource?.label]
+    [resource?.plural, resource?.label, createHotkey, setIsCreateDialogOpen]
   )
 
-  // Build docked panels (must be before early returns to satisfy Rules of Hooks)
   const dockedPanels = useMemo<DockedPanelConfig[]>(() => {
     if (!isDocked || !isDrawerOpen || !selectedInstanceId || !entityDefinitionId) return []
     return [
@@ -905,7 +683,6 @@ export function RecordsView({
       <MainPageContent>
         <div className='flex h-full items-center justify-center'>
           <Loader size='sm' title='Loading records...' subtitle='Please wait' />
-          {/* <div className='h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent' /> */}
         </div>
       </MainPageContent>
     )
@@ -948,55 +725,26 @@ export function RecordsView({
     )
   }
 
-  // Main content (table + footer)
   const mainContent = (
-    <MainPageContent dockedPanels={dockedPanels}>
-      <div className='flex-1 overflow-hidden rounded-lg bg-primary-50 dark:bg-background flex-col flex'>
-        <DynamicView
-          data={records}
-          className='h-full flex-1'
-          tableId={`entity-${entityDefinitionId}`}
-          bulkActions={bulkActions}
-          renderSearch={() => (
-            <RecordsSearchBar entityDefinitionId={entityDefinitionId!} fields={resource.fields} />
-          )}
-          columns={columns}
-          enableSorting
-          enableFiltering
-          isLoading={instancesLoading || isLoadingRecords}
-          onRowSelectionChange={handleRowSelectionChange}
-          showRowNumbers={false}
-          importHref={`${resolvedBasePath}/import`}
-          onScrollToBottom={handleScrollToBottom}
-          emptyState={<EmptyStateComponent />}
-          cellSelection={cellSelectionConfig}
-          entityLabel={resource?.label}
-          onAddNew={() => setIsCreateDialogOpen(true)}
-          onCardClick={handleOpenDrawer}
-          onAddCard={() => setIsCreateDialogOpen(true)}
-          entityDefinitionId={entityDefinitionId}
-          selectedKanbanCardIds={selectedKanbanCardIds}
-          onSelectedKanbanCardIdsChange={setSelectedKanbanCardIds}>
-          <DynamicTableFooter>
-            <div className='flex items-center justify-between px-4 py-2 text-sm'>
-              <div>
-                {records.length}{' '}
-                {records.length === 1
-                  ? resource.label.toLowerCase()
-                  : resource.plural.toLowerCase()}
-                {hasNextPage && <span className='ml-2'>(more available)</span>}
-              </div>
-              {isFetchingNextPage && (
-                <div className='flex items-center gap-2'>
-                  <div className='h-3 w-3 animate-spin rounded-full border-2 border-primary border-t-transparent' />
-                  <span>Loading more...</span>
-                </div>
-              )}
-            </div>
-          </DynamicTableFooter>
-        </DynamicView>
-      </div>
-    </MainPageContent>
+    <DynamicResourceView<EntityRow>
+      viewRef={viewRef}
+      slug={slug}
+      baselineFilter={searchGroup ?? undefined}
+      primaryCellRender={primaryCellRender}
+      cellSelection={cellSelectionConfig}
+      bulkActions={bulkActions}
+      renderSearchBar={renderSearchBar}
+      emptyState={<EmptyStateComponent />}
+      dockedPanels={dockedPanels}
+      onRowSelectionChange={handleRowSelectionChange}
+      onAddNew={() => setIsCreateDialogOpen(true)}
+      entityLabel={resource.label}
+      onCardClick={handleOpenDrawer}
+      onAddCard={() => setIsCreateDialogOpen(true)}
+      selectedKanbanCardIds={selectedKanbanCardIds}
+      onSelectedKanbanCardIdsChange={setSelectedKanbanCardIds}
+      importHref={`${resolvedBasePath}/import`}
+    />
   )
 
   return (

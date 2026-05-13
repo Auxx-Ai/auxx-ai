@@ -313,6 +313,8 @@ export function getTableSchema(tableId: TableId) {
     Message: schema.Message,
     Participant: schema.Participant,
     Dataset: schema.Dataset,
+    Article: schema.Article,
+    KnowledgeBase: schema.KnowledgeBase,
   }
 
   return tableMap[tableInfo.dbName]

@@ -253,7 +253,11 @@ export const ARTICLE_FIELDS: Record<string, ResourceField> = {
       updatable: false,
       configurable: false,
     },
-    // No registered inverse — KB isn't an EntityDefinition-backed type yet.
+    relationship: {
+      inverseResourceFieldId: 'kb:kb_articles' as ResourceFieldId,
+      relationshipType: 'belongs_to',
+      isInverse: true,
+    },
     description: 'Knowledge base this article belongs to',
   },
 
@@ -274,6 +278,13 @@ export const ARTICLE_FIELDS: Record<string, ResourceField> = {
       creatable: false,
       updatable: false,
       configurable: false,
+    },
+    // Self-referential — points back into the same article table. Hydration
+    // uses this to build a RecordId from the raw parentId column.
+    relationship: {
+      inverseResourceFieldId: 'article:children' as ResourceFieldId,
+      relationshipType: 'belongs_to',
+      isInverse: false,
     },
     description: 'Parent article (self-referential)',
   },

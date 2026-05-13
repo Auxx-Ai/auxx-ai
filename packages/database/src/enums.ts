@@ -115,6 +115,7 @@ export const ModelTypeValues = [
   'company',
   'meeting',
   'article',
+  'kb',
 ] as const
 
 /**
@@ -145,6 +146,7 @@ export const ModelTypes = {
   COMPANY: 'company',
   MEETING: 'meeting',
   ARTICLE: 'article',
+  KB: 'kb',
 } as const
 
 /**
@@ -281,6 +283,14 @@ export const ModelTypeMeta: Record<
     color: 'cyan',
     apiSlug: 'articles',
     dbTable: 'Article',
+  },
+  kb: {
+    label: 'Knowledge Base',
+    plural: 'Knowledge Bases',
+    icon: 'book-open',
+    color: 'violet',
+    apiSlug: 'knowledge-bases',
+    dbTable: 'KnowledgeBase',
   },
 }
 
