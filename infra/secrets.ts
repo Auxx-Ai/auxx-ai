@@ -52,6 +52,20 @@ export const secretsConfig = {
     description: 'HMAC secret for apps/kb local session cookies',
   },
 
+  // Recall.ai (meeting bot)
+  RECALL_AI_API_KEY: {
+    secret: new sst.Secret('RECALL_AI_API_KEY'),
+    description: 'Recall.ai API key for meeting bot provider',
+  },
+  RECALL_AI_WEBHOOK_SECRET: {
+    secret: new sst.Secret('RECALL_AI_WEBHOOK_SECRET'),
+    description: 'Recall.ai webhook signing secret',
+  },
+  RECALL_AI_REGION: {
+    secret: new sst.Secret('RECALL_AI_REGION'),
+    description: 'Recall.ai API region (e.g. us-west-2)',
+  },
+
   // OAuth - GitHub
   AUTH_GITHUB_ID: {
     secret: new sst.Secret('AUTH_GITHUB_ID'),
