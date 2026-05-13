@@ -48,6 +48,13 @@ export interface KBVisibilityInfo {
   publishStatus: 'DRAFT' | 'PUBLISHED' | 'UNLISTED'
 }
 
+// Sentinel used by `generateStaticParams` to satisfy cacheComponents' need for at
+// least one stub. The Docker image builds without a database, so any DB call
+// during that prerender pass fails with ECONNREFUSED. Short-circuit it here.
+const BUILD_STUB = '__build__'
+const isBuildStub = (orgSlug: string, kbSlug: string): boolean =>
+  orgSlug === BUILD_STUB || kbSlug === BUILD_STUB
+
 /**
  * Lightweight metadata-only lookup for the layout to decide between the
  * cached public path and the auth-gated internal path before doing full
@@ -58,6 +65,7 @@ export async function getKBVisibility(
   orgSlug: string,
   kbSlug: string
 ): Promise<KBVisibilityInfo | null> {
+  if (isBuildStub(orgSlug, kbSlug)) return null
   const [row] = await database
     .select({
       id: KnowledgeBase.id,
@@ -103,6 +111,7 @@ export async function loadKBPayload(
   articles: PublicArticleListItem[]
   accessDenied?: AccessDenied
 }> {
+  if (isBuildStub(orgSlug, kbSlug)) return { kb: null, articles: [] }
   const rows = await database
     .select({
       kb: KnowledgeBase,
