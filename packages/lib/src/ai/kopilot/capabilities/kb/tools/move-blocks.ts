@@ -8,6 +8,7 @@ import { buildOpToolResult, runBlockCrudOp } from './write-helpers'
 export function createMoveBlocksTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'move_blocks',
+    toolsetSlug: 'kb.editor',
     description:
       'Move one or more blocks (by id) to a new anchor. Plucks the blocks from wherever they are (top-level, panels, or cells) and inserts them at the anchor in the requested order. Anchor shape matches insert_blocks.',
     parameters: {

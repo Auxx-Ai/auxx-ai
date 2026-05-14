@@ -34,6 +34,7 @@ const ReplyAmendmentSchema = z.object({
 export function createReplyToThreadTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'reply_to_thread',
+    toolsetSlug: 'mail.compose',
     requiresApproval: true,
     inputAmendmentSchema: ReplyAmendmentSchema,
     outputDigestSchema: EmailWriteDigest,

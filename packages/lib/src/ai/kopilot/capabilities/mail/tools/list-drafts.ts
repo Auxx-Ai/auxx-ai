@@ -55,6 +55,7 @@ function buildDraftConditions(args: Record<string, unknown>): ConditionGroup[] {
 export function createListDraftsTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'list_drafts',
+    toolsetSlug: 'mail.drafts',
     idempotent: true,
     outputDigestSchema: ListDraftsDigest,
     buildDigest: (output) => {

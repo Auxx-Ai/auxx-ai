@@ -47,6 +47,7 @@ type QueryWarning =
 export function createQueryRecordsTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'query_records',
+    toolsetSlug: 'entities.search',
     idempotent: true,
     outputDigestSchema: QueryRecordsDigest,
     buildDigest: (output) => {

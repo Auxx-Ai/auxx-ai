@@ -73,6 +73,7 @@ function snapshotItemToDisplay(snap: TimelineFieldChangeSnapshot): string {
 export function createListFieldChangesTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'list_field_changes',
+    toolsetSlug: 'entities.search',
     outputDigestSchema: ListFieldChangesDigest,
     buildDigest: (output) => {
       const out = (output ?? {}) as {
