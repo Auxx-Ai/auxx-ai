@@ -3,7 +3,7 @@
 import {
   agentExistsInOrg,
   batchUpdateAgentToolsets,
-  listAgentToolsets,
+  getOrgToolsetCatalog,
   updateAgentToolset,
 } from '@auxx/lib/agents'
 import { createScopedLogger } from '@auxx/logger'
@@ -33,9 +33,12 @@ async function ensureAgentInOrg(organizationId: string, agentId: string): Promis
  * just validates input, enforces org scope via the cache, and delegates.
  */
 export const agentToolsetRouter = createTRPCRouter({
-  list: adminProcedure.input(z.object({ agentId: z.string() })).query(async ({ ctx, input }) => {
-    await ensureAgentInOrg(ctx.session.organizationId, input.agentId)
-    return listAgentToolsets(input.agentId)
+  /**
+   * Org-wide toolset catalog — every available toolset slug and its tools.
+   * Per-agent enabled state lives on `agent.getById.toolsets`.
+   */
+  list: adminProcedure.query(async ({ ctx }) => {
+    return getOrgToolsetCatalog(ctx.session.organizationId)
   }),
 
   update: adminProcedure

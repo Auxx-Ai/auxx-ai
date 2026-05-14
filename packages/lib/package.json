@@ -28,6 +28,12 @@
       "import": "./dist/agents/index.mjs",
       "default": "./src/agents/index.ts"
     },
+    "./agents/client": {
+      "types": "./src/agents/client.ts",
+      "source": "./src/agents/client.ts",
+      "import": "./dist/agents/client.mjs",
+      "default": "./src/agents/client.ts"
+    },
     "./ai": {
       "types": "./src/ai/index.ts",
       "source": "./src/ai/index.ts",
@@ -573,12 +579,6 @@
       "source": "./src/recording/client/index.ts",
       "import": "./dist/recording/client/index.mjs",
       "default": "./src/recording/client/index.ts"
-    },
-    "./references": {
-      "types": "./src/references/index.ts",
-      "source": "./src/references/index.ts",
-      "import": "./dist/references/index.mjs",
-      "default": "./src/references/index.ts"
     },
     "./resource-access": {
       "types": "./src/resource-access/index.ts",

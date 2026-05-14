@@ -1,10 +1,15 @@
 // apps/web/src/components/agents/ui/detail/tabs/tools-tab-placeholder.tsx
 'use client'
 
-export function ToolsSectionContent() {
-  return (
-    <div className='py-4 text-sm text-muted-foreground'>
-      Tool selection lands in phase-1-ui-tab-tools.md.
-    </div>
-  )
+import type { AgentDetail } from '../../../store/agent-store'
+import type { AutosaveState } from '../../shared/autosave-indicator'
+import { ToolsSectionContent as ToolsContent } from '../tools/tools-section-content'
+
+interface ToolsSectionContentProps {
+  agent: AgentDetail
+  onAutosaveChange?: (state: AutosaveState) => void
+}
+
+export function ToolsSectionContent(props: ToolsSectionContentProps) {
+  return <ToolsContent {...props} />
 }
