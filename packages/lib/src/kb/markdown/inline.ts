@@ -17,6 +17,13 @@ const MARK_ORDER: MarkJSON['type'][] = [
 
 interface SerializeOpts {
   placeholders: 'literal' | ((id: string) => string)
+  /**
+   * Optional resolver for inline `reference` nodes. Receives the `RecordId`
+   * (e.g. `'article:abc'`, `'agent:abc'`, `'user:abc'`) and returns the
+   * markdown to emit. When unset, references render as `[reference](id)` —
+   * round-trippable via the inline-node paste rule.
+   */
+  references?: (id: string) => string
 }
 
 export function inlineToMd(content: InlineJSON[] | undefined, opts: SerializeOpts): string {
@@ -26,6 +33,12 @@ export function inlineToMd(content: InlineJSON[] | undefined, opts: SerializeOpt
     if (node.type === 'placeholder') {
       const id = typeof node.attrs?.id === 'string' ? (node.attrs.id as string) : ''
       out += renderPlaceholder(id, opts)
+      continue
+    }
+    if (node.type === 'reference') {
+      const id = typeof node.attrs?.id === 'string' ? (node.attrs.id as string) : ''
+      if (!id) continue
+      out += renderReference(id, opts)
       continue
     }
     if (node.type === 'hardBreak') {
@@ -40,6 +53,11 @@ export function inlineToMd(content: InlineJSON[] | undefined, opts: SerializeOpt
 function renderPlaceholder(id: string, opts: SerializeOpts): string {
   if (typeof opts.placeholders === 'function') return opts.placeholders(id)
   return `{{${id}}}`
+}
+
+function renderReference(id: string, opts: SerializeOpts): string {
+  if (typeof opts.references === 'function') return opts.references(id)
+  return `[reference](${id})`
 }
 
 function renderTextNode(node: InlineJSON): string {

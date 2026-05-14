@@ -64,7 +64,7 @@ export interface MarkJSON {
 }
 
 export interface InlineJSON {
-  type: 'text' | 'placeholder' | 'hardBreak'
+  type: 'text' | 'placeholder' | 'hardBreak' | 'reference'
   text?: string
   marks?: MarkJSON[]
   attrs?: Record<string, unknown>

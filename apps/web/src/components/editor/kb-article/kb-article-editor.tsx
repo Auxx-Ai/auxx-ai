@@ -6,7 +6,11 @@ import { getMarkRange } from '@tiptap/core'
 import type { Editor } from '@tiptap/react'
 import { EditorContent } from '@tiptap/react'
 import type { CSSProperties } from 'react'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import {
+  ReferencePickerContent,
+  type ReferencePickerHandle,
+} from '~/components/pickers/reference-picker/reference-picker-content'
 import {
   AISlotPlaceholder,
   AlignSection,
@@ -18,7 +22,7 @@ import {
   MoreMenuSection,
   TurnIntoSection,
 } from '../bubble-menu'
-import { InlinePickerPopover } from '../inline-picker'
+import { InlinePickerPopover, useActivePicker } from '../inline-picker'
 import {
   type ArticleLinkEditMode,
   type ArticleLinkPick,
@@ -61,10 +65,24 @@ export function KBArticleEditor({
   onReady,
   readOnly,
 }: KBArticleEditorProps) {
+  const wrapperRef = useRef<HTMLDivElement>(null)
+  const referencePickerRef = useRef<ReferencePickerHandle | null>(null)
+  const onPickerEnter = useCallback(
+    () => referencePickerRef.current?.confirmHighlighted() ?? false,
+    []
+  )
+  const onPickerArrowVertical = useCallback(
+    (dir: 1 | -1) => referencePickerRef.current?.moveHighlight(dir) ?? false,
+    []
+  )
+
   const { editor, gutterCharWidth, slashCommand } = useKBArticleEditor({
     initialContent,
     onChange,
+    onPickerEnter,
+    onPickerArrowVertical,
   })
+  const activePicker = useActivePicker(editor)
   const [linkPopover, setLinkPopover] = useState<LinkPopoverState | null>(null)
   const [linkMenu, setLinkMenu] = useState<LinkMenuState | null>(null)
 
@@ -207,6 +225,7 @@ export function KBArticleEditor({
   return (
     <KBEditorContextProvider knowledgeBaseId={knowledgeBaseId}>
       <div
+        ref={wrapperRef}
         className={styles.editorWrapper}
         onMouseDown={handleWrapperMouseDown}
         onContextMenu={handleContextMenu}
@@ -237,6 +256,37 @@ export function KBArticleEditor({
             onClose={slashCommand.closePicker}
             onLinkArticle={handleLinkArticle}
             editor={editor}
+          />
+        </InlinePickerPopover>
+        <InlinePickerPopover
+          state={{
+            isOpen: !!activePicker,
+            query: activePicker?.query ?? '',
+            range: null,
+            clientRect: activePicker?.clientRect ?? null,
+          }}
+          containerRef={wrapperRef}
+          width={360}
+          side='bottom'
+          align='start'
+          autoFocus={false}
+          onInteractOutside={(e) => {
+            // Clicking the chip itself must not close the picker — the user
+            // is editing the query inline. Without this, Radix sees the click
+            // as outside the popover and triggers onClose, collapsing the
+            // chip to plain `@<query>` text.
+            const target = e.target as HTMLElement | null
+            if (target?.closest('[data-type="reference-picker"]')) {
+              e.preventDefault()
+            }
+          }}
+          onClose={() => editor?.commands.closeReferencePicker({ keepText: true })}>
+          <ReferencePickerContent
+            ref={referencePickerRef}
+            tab={activePicker?.tab ?? 'people'}
+            query={activePicker?.query ?? ''}
+            onSelect={(id) => editor?.commands.confirmReferencePicker(id)}
+            onTabChange={(tab) => editor?.commands.setReferencePickerTab(tab)}
           />
         </InlinePickerPopover>
         <ArticleLinkPopover
