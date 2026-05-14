@@ -2,11 +2,13 @@
 'use client'
 
 import type { FavoriteEntity } from '@auxx/lib/favorites/client'
+import { ArticleItem } from './items/article-item'
 import { DatasetItem } from './items/dataset-item'
 import { DocumentItem } from './items/document-item'
 import { EntityInstanceItem } from './items/entity-instance-item'
 import { FileItem } from './items/file-item'
 import { FolderItem } from './items/folder-item'
+import { KnowledgeBaseItem } from './items/knowledge-base-item'
 import { SnippetItem } from './items/snippet-item'
 import { TableViewItem } from './items/table-view-item'
 import { WorkflowItem } from './items/workflow-item'
@@ -34,6 +36,10 @@ export function FavoriteItemDispatch({ favorite }: { favorite: FavoriteEntity })
       return <DatasetItem favorite={favorite as FavoriteEntity<'DATASET'>} />
     case 'DOCUMENT':
       return <DocumentItem favorite={favorite as FavoriteEntity<'DOCUMENT'>} />
+    case 'ARTICLE':
+      return <ArticleItem favorite={favorite as FavoriteEntity<'ARTICLE'>} />
+    case 'KNOWLEDGE_BASE':
+      return <KnowledgeBaseItem favorite={favorite as FavoriteEntity<'KNOWLEDGE_BASE'>} />
     default:
       return null
   }

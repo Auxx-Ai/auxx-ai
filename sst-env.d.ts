@@ -30,44 +30,9 @@ declare module "sst" {
       "type": "sst.sst.Secret"
       "value": string
     }
-    "AuxxAiDocs": {
-      "type": "sst.aws.Nextjs"
-      "url": string
-    }
-    "AuxxAiHomepage": {
-      "type": "sst.aws.Nextjs"
-      "url": string
-    }
-    "AuxxAiRdsV2": {
-      "database": string
-      "host": string
-      "password": string
-      "port": number
-      "type": "sst.aws.Postgres"
-      "username": string
-    }
-    "AuxxAiRedisV2": {
-      "host": string
-      "password": string
-      "port": number
-      "type": "sst.aws.Redis"
-      "username": string
-    }
-    "AuxxAiRouter": {
-      "type": "sst.aws.Router"
-      "url": string
-    }
-    "AuxxAiVpc": {
-      "bastion": string
-      "type": "sst.aws.Vpc"
-    }
     "AuxxAiVpcV2": {
       "bastion": string
       "type": "sst.aws.Vpc"
-    }
-    "AuxxAiWeb": {
-      "type": "sst.aws.Nextjs"
-      "url": string
     }
     "AuxxAiWorker": {
       "service": string
@@ -85,6 +50,10 @@ declare module "sst" {
       "type": "sst.sst.Secret"
       "value": string
     }
+    "BUILD_SESSION_SECRET": {
+      "type": "sst.sst.Secret"
+      "value": string
+    }
     "DROPBOX_CLIENT_ID": {
       "type": "sst.sst.Secret"
       "value": string
@@ -93,10 +62,9 @@ declare module "sst" {
       "type": "sst.sst.Secret"
       "value": string
     }
-    "DatabaseDeployFunction": {
-      "name": string
-      "type": "sst.aws.Function"
-      "url": string
+    "EMAIL_PROVIDER": {
+      "type": "sst.sst.Secret"
+      "value": string
     }
     "FACEBOOK_APP_ID": {
       "type": "sst.sst.Secret"
@@ -146,15 +114,27 @@ declare module "sst" {
       "type": "sst.sst.Secret"
       "value": string
     }
+    "InboundEmailBucket": {
+      "name": string
+      "type": "sst.aws.Bucket"
+    }
+    "KB_SESSION_SECRET": {
+      "type": "sst.sst.Secret"
+      "value": string
+    }
+    "LAMBDA_INVOKE_SECRET": {
+      "type": "sst.sst.Secret"
+      "value": string
+    }
+    "LOGIN_TOKEN_PRIVATE_KEY": {
+      "type": "sst.sst.Secret"
+      "value": string
+    }
+    "LOGIN_TOKEN_PUBLIC_KEY": {
+      "type": "sst.sst.Secret"
+      "value": string
+    }
     "MAILGUN_API_KEY": {
-      "type": "sst.sst.Secret"
-      "value": string
-    }
-    "NEXT_PUBLIC_POSTHOG_KEY": {
-      "type": "sst.sst.Secret"
-      "value": string
-    }
-    "NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY": {
       "type": "sst.sst.Secret"
       "value": string
     }
@@ -171,6 +151,14 @@ declare module "sst" {
       "value": string
     }
     "OUTLOOK_WEBHOOK_SECRET": {
+      "type": "sst.sst.Secret"
+      "value": string
+    }
+    "POSTHOG_KEY": {
+      "type": "sst.sst.Secret"
+      "value": string
+    }
+    "PUBLIC_WORKFLOW_JWT_SECRET": {
       "type": "sst.sst.Secret"
       "value": string
     }
@@ -194,11 +182,51 @@ declare module "sst" {
       "name": string
       "type": "sst.aws.Bucket"
     }
+    "RECALL_AI_API_KEY": {
+      "type": "sst.sst.Secret"
+      "value": string
+    }
+    "RECALL_AI_REGION": {
+      "type": "sst.sst.Secret"
+      "value": string
+    }
+    "RECALL_AI_WEBHOOK_SECRET": {
+      "type": "sst.sst.Secret"
+      "value": string
+    }
+    "SDK_CLIENT_SECRET": {
+      "type": "sst.sst.Secret"
+      "value": string
+    }
     "SHOPIFY_API_KEY": {
       "type": "sst.sst.Secret"
       "value": string
     }
     "SHOPIFY_API_SECRET": {
+      "type": "sst.sst.Secret"
+      "value": string
+    }
+    "SMTP_HOST": {
+      "type": "sst.sst.Secret"
+      "value": string
+    }
+    "SMTP_PASS": {
+      "type": "sst.sst.Secret"
+      "value": string
+    }
+    "SMTP_PORT": {
+      "type": "sst.sst.Secret"
+      "value": string
+    }
+    "SMTP_SECURE": {
+      "type": "sst.sst.Secret"
+      "value": string
+    }
+    "SMTP_USER": {
+      "type": "sst.sst.Secret"
+      "value": string
+    }
+    "STRIPE_PUBLISHABLE_KEY": {
       "type": "sst.sst.Secret"
       "value": string
     }
@@ -218,6 +246,18 @@ declare module "sst" {
       "name": string
       "type": "sst.aws.Function"
       "url": string
+    }
+    "SesInboundReceiver": {
+      "name": string
+      "type": "sst.aws.Function"
+    }
+    "TURNSTILE_SECRET_KEY": {
+      "type": "sst.sst.Secret"
+      "value": string
+    }
+    "WORKFLOW_CREDENTIAL_ENCRYPTION_KEY": {
+      "type": "sst.sst.Secret"
+      "value": string
     }
   }
 }

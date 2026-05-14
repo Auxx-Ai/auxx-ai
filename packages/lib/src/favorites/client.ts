@@ -11,6 +11,8 @@ export const FAVORITE_TARGET_TYPES = [
   'FOLDER',
   'DATASET',
   'DOCUMENT',
+  'ARTICLE',
+  'KNOWLEDGE_BASE',
 ] as const
 
 export type FavoriteTargetType = (typeof FAVORITE_TARGET_TYPES)[number]
@@ -27,6 +29,8 @@ export interface FavoriteTargetIdsMap {
   FOLDER: { folderId: string }
   DATASET: { datasetId: string }
   DOCUMENT: { documentId: string; datasetId: string }
+  ARTICLE: { articleId: string; knowledgeBaseId: string }
+  KNOWLEDGE_BASE: { knowledgeBaseId: string }
 }
 
 export type FavoriteTargetIds<T extends FavoriteTargetType = FavoriteTargetType> =

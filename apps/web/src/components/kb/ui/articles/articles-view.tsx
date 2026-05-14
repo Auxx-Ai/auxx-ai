@@ -1,9 +1,8 @@
 // apps/web/src/components/kb/ui/articles/articles-view.tsx
 //
 // Articles table at /app/kb — composes DynamicResourceView with a non-removable
-// baseline filter, article-specific primary cell + dropdown, and a tags-only
-// cellSelection. No drawer, no create dialog, no global search bar — Phase 5
-// owns route/sidebar wiring and Phase 6 wires the bulk-action handlers.
+// baseline filter, article-specific primary cell + dropdown, a tags-only
+// cellSelection, and the shared records search bar.
 //
 // tableId is intentionally `resource-article` (not `entity-<id>`) so that
 // saved-view state doesn't collide with a hypothetical RecordsView mounted
@@ -26,7 +25,7 @@ import {
 import { toastError } from '@auxx/ui/components/toast'
 import { Archive, Book, FileText, Globe, GlobeLock, Plus, Trash2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import type { CellSelectionConfig } from '~/components/dynamic-table'
 import { PrimaryFieldCell } from '~/components/dynamic-table'
 import {
@@ -35,19 +34,20 @@ import {
 } from '~/components/dynamic-table/dynamic-resource-view'
 import type { ExtendedColumnDef } from '~/components/dynamic-table/types'
 import { decodeColumnId } from '~/components/dynamic-table/utils/column-id'
+import { FavoriteToggleMenuItem } from '~/components/favorites/ui/favorite-toggle-menu-item'
 import { EmptyState } from '~/components/global/empty-state'
-import { type RecordMeta, toRecordId } from '~/components/resources'
+import {
+  searchConditionsToGroup,
+  useRecordsSearchStore,
+} from '~/components/records/records-search-store'
+import { RecordsSearchBar } from '~/components/records/records-searchbar'
+import { type RecordMeta, toRecordId, useResource } from '~/components/resources'
 import { useSaveFieldValue } from '~/components/resources/hooks/use-save-field-value'
 import { useRelationshipStore } from '~/components/resources/store/relationship-store'
 import { useResourceStore } from '~/components/resources/store/resource-store'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
 import { useKnowledgeBaseMutations } from '../../hooks/use-knowledge-base-mutations'
-import {
-  getKnowledgeBaseStoreState,
-  type KnowledgeBase,
-  useKnowledgeBaseStore,
-} from '../../store/knowledge-base-store'
 import {
   KnowledgeBaseDialog,
   type KnowledgeBaseFormValues,
@@ -101,7 +101,7 @@ const ARTICLES_BASELINE_FILTER: ConditionGroup = {
 }
 
 /** Fields hidden by default. Other fields fall back to the registry's showInPanel. */
-const HIDDEN_BY_DEFAULT = new Set<string>(['parent', 'publishedAt', 'createdAt', 'excerpt'])
+const HIDDEN_BY_DEFAULT = new Set<string>(['parent', 'publishedAt', 'createdAt', 'excerpt', 'kind'])
 
 export function ArticlesView() {
   const router = useRouter()
@@ -109,17 +109,25 @@ export function ArticlesView() {
   const fieldMap = useResourceStore((state) => state.fieldMap)
   const { saveBulkMultipleFields } = useSaveFieldValue()
   const utils = api.useUtils()
+  const { resource } = useResource(ARTICLE_SLUG)
 
-  // Hydrate the KB store from api.kb.list — needed so the KB column can
-  // render KB names by id. The dedicated KB layout's KnowledgeBaseProvider
-  // doesn't mount on /app/kb, so we do this here.
-  const kbListQuery = api.kb.list.useQuery(undefined, { staleTime: 5 * 60 * 1000 })
-  useEffect(() => {
-    if (kbListQuery.data) {
-      getKnowledgeBaseStoreState().setKnowledgeBases(kbListQuery.data as KnowledgeBase[])
+  // Search-bar conditions are shared with RecordsView's search store; the
+  // store auto-resets via setContext(entityDefinitionId) on mount, so
+  // switching between pages clears stale filters.
+  const searchConditions = useRecordsSearchStore((s) => s.conditions)
+  const searchGroup = useMemo(() => searchConditionsToGroup(searchConditions), [searchConditions])
+
+  // ARTICLES_BASELINE_FILTER pins kind/archivedAt; the searchGroup adds
+  // user filters. Both are AND, so we flatten their conditions into one
+  // group (ConditionGroup.conditions is Condition[], not nested groups).
+  const baselineFilter = useMemo<ConditionGroup>(() => {
+    if (!searchGroup) return ARTICLES_BASELINE_FILTER
+    return {
+      id: 'articles-baseline-with-search',
+      logicalOperator: 'AND',
+      conditions: [...ARTICLES_BASELINE_FILTER.conditions, ...searchGroup.conditions],
     }
-  }, [kbListQuery.data])
-  const knowledgeBasesById = useKnowledgeBaseStore((s) => s.knowledgeBasesById)
+  }, [searchGroup])
 
   const [confirm, ConfirmDialog] = useConfirm()
   const [isCreateKBOpen, setIsCreateKBOpen] = useState(false)
@@ -220,6 +228,13 @@ export function ArticlesView() {
             if (!canOpenEditor) return
             router.push(`/app/kb/${row.knowledgeBaseId}/editor/${row.slug}`)
           }}>
+          {row.knowledgeBaseId &&
+            (row.articleKind === 'page' || row.articleKind === 'category') && (
+              <FavoriteToggleMenuItem
+                targetType='ARTICLE'
+                targetIds={{ articleId: row.id, knowledgeBaseId: row.knowledgeBaseId }}
+              />
+            )}
           <DropdownMenuItem onSelect={() => handlePublishToggle(row)}>
             {row.isPublished ? <GlobeLock /> : <Globe />}
             {row.isPublished ? 'Unpublish' : 'Publish'}
@@ -239,26 +254,21 @@ export function ArticlesView() {
     [router, handlePublishToggle, handleArchive, handleDelete]
   )
 
-  // Hide non-default scalar columns. The `knowledgeBase` field is a
-  // RELATIONSHIP without an inverse resource (KB isn't registered as a
-  // resource), so the generic CustomFieldCell can't resolve it — render
-  // the KB name directly from the article row + KB store instead.
+  // Hide non-default scalar columns; KB is registered as a system resource,
+  // so the generic CustomFieldCell renders `knowledgeBase` as a RecordBadge.
   const columnOverrides = useCallback(
     (field: ResourceField & { id: string }): Partial<ExtendedColumnDef<ArticleRow>> | undefined => {
-      if (field.key === 'knowledgeBase') {
-        return {
-          enableSorting: false,
-          enableFiltering: false,
-          cell: ({ row }) => {
-            const kbId = row.original.knowledgeBaseId
-            const name = kbId ? knowledgeBasesById[kbId]?.name : undefined
-            return <div className='px-3 truncate text-muted-foreground'>{name ?? kbId ?? ''}</div>
-          },
-        }
-      }
       return HIDDEN_BY_DEFAULT.has(field.key) ? { defaultVisible: false } : undefined
     },
-    [knowledgeBasesById]
+    []
+  )
+
+  const renderSearchBar = useCallback(
+    () =>
+      resource ? (
+        <RecordsSearchBar entityDefinitionId={resource.id} fields={resource.fields} />
+      ) : null,
+    [resource]
   )
 
   // Tags-only cellSelection. Mirrors the records-view config but only the
@@ -447,11 +457,12 @@ export function ArticlesView() {
           viewRef={viewRef}
           slug={ARTICLE_SLUG}
           tableId={ARTICLE_TABLE_ID}
-          baselineFilter={ARTICLES_BASELINE_FILTER}
+          baselineFilter={baselineFilter}
           primaryCellRender={primaryCellRender}
           columnOverrides={columnOverrides}
           cellSelection={cellSelectionConfig}
           bulkActions={[]}
+          renderSearchBar={renderSearchBar}
           emptyState={emptyState}
         />
       </MainPage>
