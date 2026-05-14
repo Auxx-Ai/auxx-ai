@@ -1,5 +1,6 @@
 // packages/lib/src/cache/org-cache-keys.ts
 
+import type { PinnedRecord } from '@auxx/database'
 import type {
   CustomFieldEntity,
   OrganizationMemberInfo,
@@ -94,6 +95,7 @@ export interface DehydratedOrgProfile {
 export interface CachedAgent {
   id: string
   userId: string
+  createdById: string
   name: string
   slug: string
   description: string | null
@@ -101,10 +103,14 @@ export interface CachedAgent {
   mentionable: boolean
   /** Tiptap doc; empty object when no prompt has been authored. */
   prompt: Record<string, unknown>
+  /** Manual + mention-sourced records pinned to this agent. */
+  pinnedRecords: PinnedRecord[]
   /** Per-agent model override in `provider:model` format; null = inherit. */
   modelId: string | null
   /** ISO string when archived; null when active. */
   archivedAt: string | null
+  createdAt: string
+  updatedAt: string
 }
 
 /** Dehydrated group instance for cache (JSON-serializable) */

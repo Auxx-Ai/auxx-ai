@@ -23,12 +23,16 @@ export const agentsProvider: CacheProvider<CachedAgent[]> = {
       .select({
         id: schema.Agent.id,
         userId: schema.Agent.userId,
+        createdById: schema.Agent.createdById,
         slug: schema.Agent.slug,
         description: schema.Agent.description,
         prompt: schema.Agent.prompt,
+        pinnedRecords: schema.Agent.pinnedRecords,
         modelId: schema.Agent.modelId,
         mentionable: schema.Agent.mentionable,
         archivedAt: schema.Agent.archivedAt,
+        createdAt: schema.Agent.createdAt,
+        updatedAt: schema.Agent.updatedAt,
         userName: schema.User.name,
         avatarAssetId: schema.User.avatarAssetId,
       })
@@ -53,14 +57,18 @@ export const agentsProvider: CacheProvider<CachedAgent[]> = {
         return {
           id: row.id,
           userId: row.userId,
+          createdById: row.createdById,
           name: row.userName ?? '',
           slug: row.slug,
           description: row.description ?? null,
           avatarUrl,
           prompt: (row.prompt ?? {}) as Record<string, unknown>,
+          pinnedRecords: row.pinnedRecords ?? [],
           modelId: row.modelId ?? null,
           mentionable: row.mentionable,
           archivedAt: row.archivedAt ? row.archivedAt.toISOString() : null,
+          createdAt: row.createdAt.toISOString(),
+          updatedAt: row.updatedAt.toISOString(),
         }
       })
     )

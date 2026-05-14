@@ -113,6 +113,7 @@ const BOOLEAN_GATES = {
     realtimeSync: true,
     callRecordings: false,
     todayInbox: false,
+    agents: true,
   },
   free: {
     knowledgeBase: false,
@@ -130,6 +131,7 @@ const BOOLEAN_GATES = {
     realtimeSync: true,
     callRecordings: false,
     todayInbox: false,
+    agents: true,
   },
   starter: {
     knowledgeBase: false,
@@ -147,6 +149,7 @@ const BOOLEAN_GATES = {
     realtimeSync: true,
     callRecordings: false,
     todayInbox: false,
+    agents: true,
   },
   growth: {
     knowledgeBase: false,
@@ -164,6 +167,7 @@ const BOOLEAN_GATES = {
     realtimeSync: true,
     callRecordings: false,
     todayInbox: false,
+    agents: true,
   },
   enterprise: {
     knowledgeBase: false,
@@ -181,6 +185,7 @@ const BOOLEAN_GATES = {
     realtimeSync: true,
     callRecordings: false,
     todayInbox: false,
+    agents: true,
   },
 } as const
 

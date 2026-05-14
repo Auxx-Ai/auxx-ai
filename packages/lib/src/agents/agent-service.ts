@@ -1,9 +1,17 @@
 // packages/lib/src/agents/agent-service.ts
 
-import { type Database, database as defaultDb, schema } from '@auxx/database'
+import {
+  type AgentResourceScopeEntity,
+  type AgentToolsetEntity,
+  type Database,
+  database as defaultDb,
+  type PinnedRecord,
+  schema,
+} from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { eq } from 'drizzle-orm'
-import { onCacheEvent } from '../cache'
+import { and, eq } from 'drizzle-orm'
+import { getAllCachedAgents, getCachedAgentById, getCachedAgents, onCacheEvent } from '../cache'
+import { resolveDefaultToolsets } from './default-toolsets'
 
 const logger = createScopedLogger('agent-service')
 
@@ -18,11 +26,21 @@ export interface CreateAgentInput {
   prompt?: Record<string, unknown>
   modelId?: string | null
   mentionable?: boolean
+  /**
+   * Initial toolset slugs to enable. When omitted, defaults from
+   * `resolveDefaultToolsets(orgId)` are inserted with `source='auto_default'`.
+   * When provided, caller-supplied slugs are inserted with `source='manual'`.
+   */
+  toolsetSlugs?: string[]
 }
 
 export interface CreatedAgent {
   agentId: string
   userId: string
+  /** Toolset slugs inserted alongside the agent. */
+  toolsetSlugs: string[]
+  /** Source applied to the toolset rows (manual vs auto_default). */
+  toolsetSource: 'manual' | 'auto_default'
 }
 
 /**
@@ -64,6 +82,8 @@ export async function createAgent(
   } = input
 
   const now = new Date()
+  const toolsetSource: 'manual' | 'auto_default' = input.toolsetSlugs ? 'manual' : 'auto_default'
+  const toolsetSlugs = input.toolsetSlugs ?? (await resolveDefaultToolsets(organizationId))
 
   const { agentId, userId } = await db.transaction(async (tx) => {
     // 1. Insert the synthetic User. emailVerified: true skips any
@@ -119,6 +139,21 @@ export async function createAgent(
       updatedAt: now,
     })
 
+    // 5. AgentToolset rows. Auto-defaults when caller omitted toolsetSlugs;
+    //    explicit choices land as `manual`.
+    if (toolsetSlugs.length > 0) {
+      await tx.insert(schema.AgentToolset).values(
+        toolsetSlugs.map((toolsetSlug) => ({
+          agentId: agent.id,
+          toolsetSlug,
+          source: toolsetSource,
+          enabled: true,
+          config: {},
+          updatedAt: now,
+        }))
+      )
+    }
+
     return { agentId: agent.id, userId: user.id }
   })
 
@@ -134,7 +169,7 @@ export async function createAgent(
     })
   }
 
-  return { agentId, userId }
+  return { agentId, userId, toolsetSlugs, toolsetSource }
 }
 
 export interface UpdateAgentInput {
@@ -225,4 +260,149 @@ export async function archiveAgent(
   db: Database = defaultDb as Database
 ): Promise<void> {
   await updateAgent(agentId, organizationId, { archivedAt: new Date() }, db)
+}
+
+/**
+ * Summary row for admin listings. Sourced entirely from the org cache.
+ */
+export interface AgentSummary {
+  id: string
+  userId: string
+  createdById: string
+  name: string
+  slug: string
+  description: string | null
+  avatarUrl: string | null
+  mentionable: boolean
+  modelId: string | null
+  archivedAt: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+/**
+ * List agents for the admin UI. Read flows entirely through the org cache;
+ * pass `includeArchived: true` to include soft-deleted rows.
+ */
+export async function listAgents(
+  organizationId: string,
+  options: { includeArchived?: boolean } = {}
+): Promise<AgentSummary[]> {
+  const all = options.includeArchived
+    ? await getAllCachedAgents(organizationId)
+    : await getCachedAgents(organizationId)
+  return all.map(toAgentSummary)
+}
+
+function toAgentSummary(a: {
+  id: string
+  userId: string
+  createdById: string
+  name: string
+  slug: string
+  description: string | null
+  avatarUrl: string | null
+  mentionable: boolean
+  modelId: string | null
+  archivedAt: string | null
+  createdAt: string
+  updatedAt: string
+}): AgentSummary {
+  return {
+    id: a.id,
+    userId: a.userId,
+    createdById: a.createdById,
+    name: a.name,
+    slug: a.slug,
+    description: a.description,
+    avatarUrl: a.avatarUrl,
+    mentionable: a.mentionable,
+    modelId: a.modelId,
+    archivedAt: a.archivedAt,
+    createdAt: a.createdAt,
+    updatedAt: a.updatedAt,
+  }
+}
+
+/**
+ * Full admin-detail view of one agent. Combines the cached agent row with
+ * (uncached) toolset + resource-scope rows read in one DB round trip each.
+ * Returns `null` when the agent does not exist for this org.
+ */
+export interface AgentDetail extends AgentSummary {
+  organizationId: string
+  prompt: Record<string, unknown>
+  pinnedRecords: PinnedRecord[]
+  toolsets: AgentToolsetEntity[]
+  resourceScopes: AgentResourceScopeEntity[]
+}
+
+/**
+ * Resolve an agent by id or slug, returning the full admin-detail view.
+ *
+ * Lookup flows through the org agents cache (which contains every agent in
+ * the org, including archived rows), so a single network roundtrip resolves
+ * either identifier. Returns `null` when neither identifier matches.
+ */
+export async function getAgentDetailByIdOrSlug(
+  organizationId: string,
+  idOrSlug: string,
+  db: Database = defaultDb as Database
+): Promise<AgentDetail | null> {
+  const all = await getAllCachedAgents(organizationId)
+  const match = all.find((a) => a.id === idOrSlug || a.slug === idOrSlug)
+  if (!match) return null
+  return getAgentDetail(organizationId, match.id, db)
+}
+
+export async function getAgentDetail(
+  organizationId: string,
+  agentId: string,
+  db: Database = defaultDb as Database
+): Promise<AgentDetail | null> {
+  const cached = await getCachedAgentById(organizationId, agentId)
+  if (!cached) return null
+
+  const [toolsets, resourceScopes] = await Promise.all([
+    db.select().from(schema.AgentToolset).where(eq(schema.AgentToolset.agentId, agentId)),
+    db
+      .select()
+      .from(schema.AgentResourceScope)
+      .where(
+        and(
+          eq(schema.AgentResourceScope.agentId, agentId),
+          eq(schema.AgentResourceScope.organizationId, organizationId)
+        )
+      ),
+  ])
+
+  return {
+    ...toAgentSummary(cached),
+    organizationId,
+    prompt: cached.prompt,
+    pinnedRecords: cached.pinnedRecords,
+    toolsets,
+    resourceScopes,
+  }
+}
+
+/**
+ * Returns true when an active or archived agent owns the given slug in this
+ * org. Optionally excludes one agent (used by `update`-style slug checks).
+ */
+export async function isAgentSlugTaken(
+  organizationId: string,
+  slug: string,
+  options: { excludeAgentId?: string } = {}
+): Promise<boolean> {
+  const all = await getAllCachedAgents(organizationId)
+  return all.some((a) => a.slug === slug && a.id !== options.excludeAgentId)
+}
+
+/**
+ * Cache-backed existence guard. Use in routers to keep org-scope enforcement
+ * out of raw SQL. Includes archived agents so callers can act on them.
+ */
+export async function agentExistsInOrg(organizationId: string, agentId: string): Promise<boolean> {
+  return (await getCachedAgentById(organizationId, agentId)) !== null
 }

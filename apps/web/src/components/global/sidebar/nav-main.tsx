@@ -11,6 +11,7 @@ import {
 import { usePathname } from 'next/navigation'
 import type * as React from 'react'
 import type { SidebarProps } from '~/constants/menu'
+import { useUser } from '~/hooks/use-user'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { CollapsibleSidebarSection } from './collapsible-sidebar-section'
 import { SidebarGroupHeader } from './sidebar-group-header'
@@ -27,6 +28,7 @@ export function NavMain({ menu, itemActions }: Props) {
   const pathname = usePathname()
   const { getGroupOpen, toggleGroup } = useSidebarStateContext()
   const { hasAccess } = useFeatureFlags()
+  const { isAdminOrOwner } = useUser()
   const isOpen = getGroupOpen('configurations')
 
   /** Toggle the Configurations group open/closed state */
@@ -45,12 +47,15 @@ export function NavMain({ menu, itemActions }: Props) {
     return fullUrl
   }
 
-  // Filter items by feature access
+  // Filter items by feature access (and admin-only gates for top-level entries)
   const filteredItems = menu.items
     .filter((item) => !item.featureKey || hasAccess(item.featureKey))
+    .filter((item) => !item.adminOnly || isAdminOrOwner)
     .map((item) => ({
       ...item,
-      items: item.items?.filter((sub) => !sub.featureKey || hasAccess(sub.featureKey)),
+      items: item.items
+        ?.filter((sub) => !sub.featureKey || hasAccess(sub.featureKey))
+        .filter((sub) => !sub.adminOnly || isAdminOrOwner),
     }))
     .filter((item) => !item.items || item.items.length > 0)
 

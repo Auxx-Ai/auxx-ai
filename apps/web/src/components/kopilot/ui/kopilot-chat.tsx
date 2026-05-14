@@ -27,6 +27,12 @@ export interface KopilotChatProps {
   initialSessionId?: string | null
   /** Class applied to inner content areas (message list, composer) for centering/width constraints */
   contentClassName?: string
+  /**
+   * Target a specific user-authored agent. When set, outgoing requests carry
+   * `agentId` so newly-created sessions are bound to that agent and the engine
+   * resolves its toolset / prompt config. Ignored on existing sessions.
+   */
+  agentId?: string | null
 }
 
 export function KopilotChat({
@@ -34,6 +40,7 @@ export function KopilotChat({
   onSessionChange,
   initialSessionId,
   contentClassName,
+  agentId,
 }: KopilotChatProps) {
   const activeSessionId = useKopilotStore((s) => s.activeSessionId)
   const setEditingMessage = useKopilotStore((s) => s.setEditingMessage)
@@ -103,9 +110,12 @@ export function KopilotChat({
     [activeSessionId, messageMap, setMessageFeedback, rateMessage]
   )
 
-  const handleSend = useCallback((request: KopilotRequest) => {
-    setPendingRequest(request)
-  }, [])
+  const handleSend = useCallback(
+    (request: KopilotRequest) => {
+      setPendingRequest(agentId ? { ...request, agentId } : request)
+    },
+    [agentId]
+  )
 
   const handleSuggestionClick = useCallback(
     (text: string, autoSubmit: boolean) => {
@@ -132,14 +142,18 @@ export function KopilotChat({
         type: 'message',
         page: merged.page ?? page,
         context: merged,
+        ...(agentId ? { agentId } : {}),
       })
     },
-    [addMessage, messages, activeSessionId, page]
+    [addMessage, messages, activeSessionId, page, agentId]
   )
 
-  const handleApprovalAction = useCallback((request: KopilotRequest) => {
-    setPendingRequest(request)
-  }, [])
+  const handleApprovalAction = useCallback(
+    (request: KopilotRequest) => {
+      setPendingRequest(agentId ? { ...request, agentId } : request)
+    },
+    [agentId]
+  )
 
   const handleEditMessage = useCallback(
     (messageId: string) => {
@@ -167,9 +181,10 @@ export function KopilotChat({
         type: 'message',
         page: merged.page ?? page,
         context: merged,
+        ...(agentId ? { agentId } : {}),
       })
     },
-    [messageMap, activeSessionId, page]
+    [messageMap, activeSessionId, page, agentId]
   )
 
   return (
