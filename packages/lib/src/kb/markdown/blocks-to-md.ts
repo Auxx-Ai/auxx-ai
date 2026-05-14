@@ -26,12 +26,18 @@ import { CALLOUT_VARIANTS } from './types'
 export interface BlocksToMdOptions {
   /** How to render placeholder inline nodes. `'literal'` writes `{{id}}`. */
   placeholders?: 'literal' | ((id: string) => string)
+  /**
+   * Optional resolver for inline `reference` nodes. Receives the `RecordId`
+   * and returns the markdown to emit (typically `[Title](recordId)`). When
+   * unset, references render as `[reference](id)`.
+   */
+  references?: (id: string) => string
 }
 
 export function blocksToMd(doc: DocJSON | null | undefined, opts: BlocksToMdOptions = {}): string {
   if (!doc || doc.type !== 'doc' || !Array.isArray(doc.content)) return ''
   const placeholders = opts.placeholders ?? 'literal'
-  const ctx = { placeholders }
+  const ctx: RenderCtx = { placeholders, references: opts.references }
 
   const lines = renderNodes(doc.content, ctx)
 
@@ -70,6 +76,7 @@ function renderArticleNode(node: ArticleNodeJSON, ctx: RenderCtx): string[] {
 
 interface RenderCtx {
   placeholders: 'literal' | ((id: string) => string)
+  references?: (id: string) => string
 }
 
 function renderBlock(block: BlockJSON, ctx: RenderCtx): string[] {

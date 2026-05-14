@@ -574,6 +574,12 @@
       "import": "./dist/recording/client/index.mjs",
       "default": "./src/recording/client/index.ts"
     },
+    "./references": {
+      "types": "./src/references/index.ts",
+      "source": "./src/references/index.ts",
+      "import": "./dist/references/index.mjs",
+      "default": "./src/references/index.ts"
+    },
     "./resource-access": {
       "types": "./src/resource-access/index.ts",
       "source": "./src/resource-access/index.ts",

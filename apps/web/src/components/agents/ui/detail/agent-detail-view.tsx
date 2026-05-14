@@ -72,7 +72,7 @@ export function AgentDetailView({ agent }: AgentDetailViewProps) {
               ]
             : []
         }>
-        <AgentDetailTabs agent={agent} />
+        <AgentDetailTabs agent={agent} onAutosaveChange={setAutosave} />
       </MainPageContent>
     </MainPage>
   )

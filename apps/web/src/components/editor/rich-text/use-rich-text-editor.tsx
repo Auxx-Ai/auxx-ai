@@ -1,0 +1,256 @@
+// apps/web/src/components/editor/rich-text/use-rich-text-editor.tsx
+
+'use client'
+
+import type { JSONContent } from '@tiptap/core'
+import { Extension, Node } from '@tiptap/core'
+import Color from '@tiptap/extension-color'
+import Highlight from '@tiptap/extension-highlight'
+import Link from '@tiptap/extension-link'
+import TextAlign from '@tiptap/extension-text-align'
+import TextStyle from '@tiptap/extension-text-style'
+import Underline from '@tiptap/extension-underline'
+import { Plugin, PluginKey } from '@tiptap/pm/state'
+import { Decoration, DecorationSet } from '@tiptap/pm/view'
+import { useEditor, useEditorState } from '@tiptap/react'
+import StarterKit from '@tiptap/starter-kit'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { Table, TableCell, TableHeader, TableRow } from '../extensions/table'
+import {
+  createPlaceholderNode,
+  PlaceholderBadge,
+  stableStringify,
+  useExternalContentSync,
+  type useSlashCommand,
+} from '../inline-picker'
+import { Accordion } from '../kb-article/accordion-node'
+import { Block } from '../kb-article/block-node'
+import { MarkdownInputRules } from '../kb-article/markdown-input-rules'
+import { MarkdownPaste } from '../kb-article/markdown-paste'
+import { migrateLegacyContent } from '../kb-article/migrate-legacy-content'
+import { Panel } from '../kb-article/panel-node'
+import { Tabs } from '../kb-article/tabs-node'
+import { buildReferencePickerExtensions } from './reference-picker-extensions'
+
+const Doc = Node.create({
+  name: 'doc',
+  topNode: true,
+  // PM resolves a bare `block` token to the NODE named `block` (which we have),
+  // not the group. So we have to list `table` explicitly even though it's in
+  // `group: 'block'` — node-name resolution takes precedence over group.
+  content: '(block | containerBlock | table)+',
+})
+
+const FocusClasses = Extension.create({
+  name: 'focus-classes',
+  addProseMirrorPlugins() {
+    return [
+      new Plugin({
+        key: new PluginKey('focus-classes'),
+        props: {
+          decorations: ({ doc, selection }) => {
+            const decorations: Decoration[] = []
+            doc.descendants((node, pos) => {
+              if (node.isBlock && pos <= selection.from && pos + node.nodeSize >= selection.to) {
+                decorations.push(Decoration.node(pos, pos + node.nodeSize, { class: 'has-focus' }))
+              }
+              return true
+            })
+            return DecorationSet.create(doc, decorations)
+          },
+        },
+      }),
+    ]
+  },
+})
+
+const emptyBody: JSONContent[] = [{ type: 'block', attrs: { blockType: 'text' }, content: [] }]
+
+export interface UseRichTextEditorOptions {
+  initialContent: JSONContent[] | null
+  onChange: (content: { json: JSONContent; html: string }) => void
+  /**
+   * Optional slash-command bundle from `useSlashCommand()`. When set, mounts
+   * the slash extension and wires open-state guards into onUpdate so typing
+   * inside the slash picker doesn't fire onChange.
+   */
+  slashCommand?: ReturnType<typeof useSlashCommand>
+  /**
+   * Default `true`. When set, mounts the `@`-mention picker extensions
+   * (referenceBadgeNode + ReferencePickerNode). The consumer mounts the
+   * popover separately via `useActivePicker(editor)` + `InlinePickerPopover`.
+   */
+  enableReferencePicker?: boolean
+  /** Forwarded to the reference picker chip. */
+  onPickerEnter?: () => boolean
+  /** Forwarded to the reference picker chip. */
+  onPickerArrowVertical?: (direction: 1 | -1) => boolean
+}
+
+/**
+ * Generic rich-text editor hook for the KB block schema. Used by:
+ * - `useKBArticleEditor` (thin shim — adds KB-specific picker / link popover)
+ * - `PersonaEditor` (agent persona prompt, no slash menu)
+ *
+ * Mounts the full block set (StarterKit + Block / Panel / Tabs / Accordion /
+ * Table), the markdown input/paste rules, the focus decoration plugin, and —
+ * by default — the inline reference picker. Slash command is opt-in.
+ */
+export function useRichTextEditor({
+  initialContent,
+  onChange,
+  slashCommand,
+  enableReferencePicker = true,
+  onPickerEnter,
+  onPickerArrowVertical,
+}: UseRichTextEditorOptions) {
+  const normalizedInitialContent = useMemo<JSONContent>(() => {
+    const migrated = migrateLegacyContent(initialContent)
+    const content = migrated && migrated.length > 0 ? migrated : emptyBody
+    return { type: 'doc', content }
+  }, [initialContent])
+
+  const placeholderNodeExtension = useMemo(
+    () => createPlaceholderNode((p) => <PlaceholderBadge {...p} />),
+    []
+  )
+
+  const referencePickerExtensions = useMemo(
+    () =>
+      enableReferencePicker
+        ? buildReferencePickerExtensions({ onPickerEnter, onPickerArrowVertical })
+        : [],
+    [enableReferencePicker, onPickerEnter, onPickerArrowVertical]
+  )
+
+  const onChangeRef = useRef(onChange)
+  useEffect(() => {
+    onChangeRef.current = onChange
+  }, [onChange])
+
+  const externalSyncRef = useRef<{ markLocalEdit: (key: string) => void }>({
+    markLocalEdit: () => {},
+  })
+
+  const slashCommandRef = useRef(slashCommand)
+  slashCommandRef.current = slashCommand
+
+  const editor = useEditor(
+    {
+      immediatelyRender: false,
+      extensions: [
+        Doc,
+        StarterKit.configure({
+          document: false,
+          heading: false,
+          paragraph: false,
+          bulletList: false,
+          orderedList: false,
+          listItem: false,
+          blockquote: false,
+          codeBlock: false,
+          horizontalRule: false,
+          history: undefined,
+          // Marks stay enabled (bold, italic, strike, code).
+        }),
+        Block,
+        Panel,
+        Tabs,
+        Accordion,
+        MarkdownInputRules,
+        MarkdownPaste,
+        // Column resizing is disabled — the React NodeView (TableNodeView)
+        // owns the table chrome and column resize is a follow-up. Reorder +
+        // add/remove are handled via table-helpers.ts.
+        Table,
+        TableRow,
+        TableHeader,
+        TableCell,
+        Underline,
+        TextStyle,
+        Color,
+        TextAlign.configure({ types: ['block'] }),
+        Highlight.configure({ multicolor: true }),
+        Link.configure({ openOnClick: false, autolink: true, defaultProtocol: 'https' }),
+        FocusClasses,
+        // Placeholder renders as a real DOM sibling inside BlockNodeView, not
+        // via the Placeholder extension's CSS pseudo-element (which would
+        // overlap the line gutter). See block-node-view.tsx `showPlaceholder`.
+        ...(slashCommand ? [slashCommand.slashCommandExtension] : []),
+        ...referencePickerExtensions,
+        placeholderNodeExtension,
+      ],
+      content: normalizedInitialContent,
+      shouldRerenderOnTransaction: false,
+      onCreate: ({ editor }) => {
+        slashCommandRef.current?.setEditor(editor)
+      },
+      onDestroy: () => {
+        slashCommandRef.current?.setEditor(null)
+      },
+      onUpdate: ({ editor, transaction }) => {
+        if (!transaction.docChanged) return
+        if (slashCommandRef.current?.isOpenRef.current) return
+        const json = editor.getJSON()
+        const html = editor.getHTML()
+        // Defer one tick so Suggestion plugin's onStart can mark isOpenRef
+        // before we propagate the change.
+        setTimeout(() => {
+          if (slashCommandRef.current?.isOpenRef.current) return
+          externalSyncRef.current.markLocalEdit(stableStringify(json))
+          onChangeRef.current({ json, html })
+        }, 0)
+      },
+    },
+    []
+  )
+
+  const gutterCharWidth = useEditorState({
+    editor,
+    selector: ({ editor }) =>
+      editor ? Math.max(2, String(editor.state.doc.content.childCount).length) : 2,
+  })
+
+  const applyContent = useCallback((instance: NonNullable<typeof editor>, content: JSONContent) => {
+    // Skip when the editor is already at the incoming doc — happens on
+    // mount because `useEditor` initialized it with the same content, and
+    // a redundant `setContent` here triggers TipTap's React node views to
+    // flushSync mid-commit ("flushSync was called from inside a lifecycle
+    // method" warning). Uses stableStringify so server-side JSONB key
+    // reordering doesn't make a same-content doc look different.
+    if (stableStringify(instance.getJSON()) === stableStringify(content)) return
+    const { from, to } = instance.state.selection
+    instance.commands.setContent(content, false)
+    try {
+      instance.commands.setTextSelection({ from, to })
+    } catch {
+      instance.commands.focus('end')
+    }
+  }, [])
+
+  const canonicalKey = useCallback((content: JSONContent) => stableStringify(content), [])
+
+  const syncHandle = useExternalContentSync<JSONContent>({
+    editor,
+    incoming: normalizedInitialContent,
+    isPickerOpen: slashCommand?.suggestionState.isOpen ?? false,
+    applyContent,
+    canonicalKey,
+  })
+
+  // Wire the imperative handle into the editor's onUpdate closure.
+  externalSyncRef.current = syncHandle.current
+
+  // Flush deferred onChange when the slash picker closes — the hook handles
+  // the *inbound* flush; this handles the *outbound* one.
+  const prevOpen = useRef(false)
+  useEffect(() => {
+    const isOpen = slashCommand?.suggestionState.isOpen ?? false
+    if (prevOpen.current && !isOpen && editor) {
+      onChangeRef.current({ json: editor.getJSON(), html: editor.getHTML() })
+    }
+    prevOpen.current = isOpen
+  }, [slashCommand?.suggestionState.isOpen, editor])
+
+  return { editor, gutterCharWidth: gutterCharWidth ?? 2 }
+}

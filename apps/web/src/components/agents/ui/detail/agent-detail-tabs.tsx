@@ -8,6 +8,7 @@ import { useQueryState } from 'nuqs'
 import { useCallback, useEffect, useRef } from 'react'
 import { AGENT_TABS, type AgentTab, DEFAULT_AGENT_TAB } from '../../constant'
 import type { AgentDetail } from '../../store/agent-store'
+import type { AutosaveState } from '../shared/autosave-indicator'
 import { AgentHero } from './agent-hero'
 import { KnowledgeSectionContent } from './tabs/knowledge-tab-placeholder'
 import { PromptSectionContent } from './tabs/prompt-tab-placeholder'
@@ -30,6 +31,8 @@ const STICKY_OFFSET = 56
 
 interface AgentDetailTabsProps {
   agent: AgentDetail
+  /** Lifted autosave state — feeds the page-header `AutosaveIndicator`. */
+  onAutosaveChange?: (state: AutosaveState) => void
 }
 
 /**
@@ -37,7 +40,7 @@ interface AgentDetailTabsProps {
  * tab strip on top. Clicking a tab scrolls the matching section into view;
  * scrolling updates the active tab.
  */
-export function AgentDetailTabs({ agent }: AgentDetailTabsProps) {
+export function AgentDetailTabs({ agent, onAutosaveChange }: AgentDetailTabsProps) {
   const [tab, setTab] = useQueryState('tab', { defaultValue: DEFAULT_AGENT_TAB })
   const scrollContainerRef = useRef<HTMLDivElement | null>(null)
   const sectionRefs = useRef<Record<AgentTab, HTMLDivElement | null>>({
@@ -138,7 +141,7 @@ export function AgentDetailTabs({ agent }: AgentDetailTabsProps) {
             icon={<FileText className='size-4' />}
             initialOpen
             collapsible={false}>
-            <PromptSectionContent />
+            <PromptSectionContent agent={agent} onAutosaveChange={onAutosaveChange} />
           </Section>
         </div>
 

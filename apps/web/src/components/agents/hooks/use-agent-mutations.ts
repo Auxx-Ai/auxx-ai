@@ -18,6 +18,8 @@ interface UpdateAgentInput {
   modelId?: string | null
   mentionable?: boolean
   archivedAt?: Date | null
+  /** Persona Tiptap doc (`{ type: 'doc', content: [...] }`). */
+  prompt?: Record<string, unknown>
 }
 
 interface UseAgentMutationsResult {
