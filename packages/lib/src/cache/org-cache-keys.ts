@@ -90,6 +90,19 @@ export interface DehydratedOrgProfile {
   demoExpiresAt: string | null
 }
 
+/** Cached agent (JSON-serializable) */
+export interface CachedAgent {
+  id: string
+  userId: string
+  name: string
+  slug: string
+  description: string | null
+  avatarUrl: string | null
+  mentionable: boolean
+  /** ISO string when archived; null when active. */
+  archivedAt: string | null
+}
+
 /** Dehydrated group instance for cache (JSON-serializable) */
 export interface CachedGroup {
   id: string
@@ -168,6 +181,7 @@ export interface OrgCacheDataMap {
   resources: Resource[]
   customFields: Record<string, CustomFieldEntity[]> // entityDefId → fields
   groups: CachedGroup[] // all entity_group instances
+  agents: CachedAgent[] // all Agent rows (active + archived); consumers filter archivedAt
   inboxes: Inbox[]
   integrations: CachedIntegration[]
   overages: Overage[]
@@ -208,6 +222,7 @@ export const ORG_CACHE_KEY_CONFIG: Record<
   resources: { prefix: 'org:resources', ttlSeconds: ONE_DAY },
   customFields: { prefix: 'org:custom-fields', ttlSeconds: ONE_DAY },
   groups: { prefix: 'org:groups', ttlSeconds: ONE_DAY },
+  agents: { prefix: 'org:agents', ttlSeconds: ONE_DAY },
   inboxes: { prefix: 'org:inboxes', ttlSeconds: ONE_DAY },
   integrations: { prefix: 'org:integrations', ttlSeconds: ONE_DAY },
   overages: { prefix: 'org:overages', ttlSeconds: 900 },

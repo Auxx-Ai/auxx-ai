@@ -48,6 +48,8 @@ export type { CacheEvent } from './invalidation-graph'
 export {
   findCachedResource,
   getAllCachedCustomFields,
+  getCachedAgents,
+  getCachedAgentsByUserIds,
   getCachedCustomFields,
   getCachedDefaultModel,
   getCachedEntityDefId,
@@ -58,10 +60,12 @@ export {
   getCachedResource,
   getCachedResourceFields,
   getCachedResources,
+  isAgentUser,
   isOrgMember,
   requireCachedEntityDefId,
 } from './org-cache-helpers'
 export type {
+  CachedAgent,
   CachedGroup,
   CachedInstalledApp,
   CachedSubscription,

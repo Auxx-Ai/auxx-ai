@@ -29,7 +29,8 @@ export function ActorItem({ actor, isSelected, onToggle, multi = true }: ActorIt
   const handleSelect = () => {
     onToggle(actor.actorId)
   }
-  const iconId = actor.type === 'user' ? 'user' : 'group'
+  const iconId =
+    actor.type === 'user' || actor.type === 'agent' || actor.type === 'system' ? 'user' : 'group'
 
   return (
     <CommandItem

@@ -8,7 +8,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { cn } from '@auxx/ui/lib/utils'
 import { cva, type VariantProps } from 'class-variance-authority'
-import { Cog, User, Users, X } from 'lucide-react'
+import { Bot, Cog, User, Users, X } from 'lucide-react'
 
 import { useActor } from '~/components/resources/hooks/use-actor'
 
@@ -129,6 +129,8 @@ export function ActorBadge({
                   <Cog data-slot='actor-fallback-icon' />
                 ) : type === 'group' ? (
                   <Users data-slot='actor-fallback-icon' />
+                ) : type === 'agent' ? (
+                  <Bot data-slot='actor-fallback-icon' />
                 ) : (
                   <User data-slot='actor-fallback-icon' />
                 )}

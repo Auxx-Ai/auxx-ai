@@ -46,6 +46,11 @@ export const INVALIDATION_GRAPH: Record<string, InvalidationMapping> = {
   'group.deleted': ['groups'],
   'group.members.changed': ['groups'],
 
+  'agent.created': ['agents'],
+  'agent.updated': ['agents'],
+  'agent.archived': ['agents'],
+  'agent.deleted': ['agents'],
+
   'inbox.created': ['inboxes'],
   'inbox.updated': ['inboxes'],
   'inbox.deleted': ['inboxes'],

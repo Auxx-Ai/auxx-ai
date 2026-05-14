@@ -3,7 +3,7 @@
 import type { CustomFieldEntity } from '@auxx/database/types'
 import type { ResourceField } from '../resources/registry/field-types'
 import type { Resource } from '../resources/registry/types'
-import type { CachedGroup, OrgMemberInfo } from './org-cache-keys'
+import type { CachedAgent, CachedGroup, OrgMemberInfo } from './org-cache-keys'
 import { getOrgCache } from './singletons'
 
 /**
@@ -161,4 +161,35 @@ export async function isOrgMember(orgId: string, userId: string): Promise<boolea
  */
 export async function getCachedGroups(orgId: string): Promise<CachedGroup[]> {
   return getOrgCache().get(orgId, 'groups')
+}
+
+// ── Agent cache helpers ──
+
+/**
+ * Get all cached agents for an organization (active only by default — filters archivedAt).
+ */
+export async function getCachedAgents(orgId: string): Promise<CachedAgent[]> {
+  const agents = await getOrgCache().get(orgId, 'agents')
+  return agents.filter((a) => !a.archivedAt)
+}
+
+/**
+ * Get cached agents matching the given backing-user IDs.
+ * Includes archived agents so historical attributions resolve correctly.
+ */
+export async function getCachedAgentsByUserIds(
+  orgId: string,
+  userIds: string[]
+): Promise<CachedAgent[]> {
+  const agents = await getOrgCache().get(orgId, 'agents')
+  const idSet = new Set(userIds)
+  return agents.filter((a) => idSet.has(a.userId))
+}
+
+/**
+ * Check whether the given user id is the synthetic user of an agent in this org.
+ */
+export async function isAgentUser(orgId: string, userId: string): Promise<boolean> {
+  const agents = await getOrgCache().get(orgId, 'agents')
+  return agents.some((a) => a.userId === userId)
 }

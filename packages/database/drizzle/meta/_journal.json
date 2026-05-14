@@ -1044,6 +1044,13 @@
       "when": 1778649364457,
       "tag": "0148_article_denorm_emoji_color",
       "breakpoints": true
+    },
+    {
+      "idx": 149,
+      "version": "7",
+      "when": 1778728566549,
+      "tag": "0149_agents_v1_scope_and_pins",
+      "breakpoints": true
     }
   ]
 }
