@@ -34,6 +34,8 @@ const targetIdsByType: {
   FOLDER: z.object({ folderId: z.string() }),
   DATASET: z.object({ datasetId: z.string() }),
   DOCUMENT: z.object({ documentId: z.string(), datasetId: z.string() }),
+  ARTICLE: z.object({ articleId: z.string(), knowledgeBaseId: z.string() }),
+  KNOWLEDGE_BASE: z.object({ knowledgeBaseId: z.string() }),
 }
 
 const addInput = z.discriminatedUnion('targetType', [
@@ -48,6 +50,11 @@ const addInput = z.discriminatedUnion('targetType', [
   z.object({ targetType: z.literal('FOLDER'), targetIds: targetIdsByType.FOLDER }),
   z.object({ targetType: z.literal('DATASET'), targetIds: targetIdsByType.DATASET }),
   z.object({ targetType: z.literal('DOCUMENT'), targetIds: targetIdsByType.DOCUMENT }),
+  z.object({ targetType: z.literal('ARTICLE'), targetIds: targetIdsByType.ARTICLE }),
+  z.object({
+    targetType: z.literal('KNOWLEDGE_BASE'),
+    targetIds: targetIdsByType.KNOWLEDGE_BASE,
+  }),
 ])
 
 const reorderInput = z.object({

@@ -44,6 +44,7 @@ import {
 } from 'lucide-react'
 import { usePathname, useRouter } from 'next/navigation'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { FavoriteToggleMenuItem } from '~/components/favorites/ui/favorite-toggle-menu-item'
 import { Tooltip } from '~/components/global/tooltip'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
@@ -318,6 +319,12 @@ export function ArticleSidebarItem({
         <DropdownMenuItem onClick={() => duplicateArticle(article)}>
           <BookCopy /> Duplicate
         </DropdownMenuItem>
+        {(article.articleKind === 'page' || article.articleKind === 'category') && (
+          <FavoriteToggleMenuItem
+            targetType='ARTICLE'
+            targetIds={{ articleId: article.id, knowledgeBaseId }}
+          />
+        )}
       </DropdownMenuGroup>
       {!isHeader && !isLink && (
         <>
