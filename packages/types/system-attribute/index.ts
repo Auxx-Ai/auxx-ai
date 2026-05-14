@@ -77,10 +77,18 @@ export const SYSTEM_ATTRIBUTES = [
 
   // ─── Article fields ─────────────────────────────────────────────
   'article_title',
+  'article_slug',
+  'article_excerpt',
+  'article_emoji',
+  'article_color',
+  'article_archived_at',
+  'article_is_published',
+  'article_has_unpublished_changes',
   'article_status',
   'article_kind',
   'article_kb',
   'article_parent',
+  'article_children',
   'article_published_at',
   'article_views_count',
   'article_tags',
