@@ -35,6 +35,7 @@ deno compile \
   --allow-env \
   --allow-read \
   --allow-write=/tmp \
+  --allow-sys \
   --output "$DIST_DIR/bootstrap" \
   "$BUILD_DIR/src/lambda-runtime.ts"
 

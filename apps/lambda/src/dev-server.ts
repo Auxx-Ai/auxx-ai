@@ -13,6 +13,7 @@
 
 import { serve } from 'https://deno.land/std@0.224.0/http/server.ts'
 import { handler } from './index.ts'
+import { streamingProbe } from './test-handlers/streaming-probe.ts'
 import type { LambdaEvent } from './types.ts'
 
 const PORT = parseInt(Deno.env.get('PORT') || '3008', 10)
@@ -29,6 +30,42 @@ async function handleRequest(req: Request): Promise<Response> {
     return new Response(JSON.stringify({ status: 'ok', port: PORT }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
+    })
+  }
+
+  // SPIKE: streaming response probe — yields SSE events for cadence testing.
+  // See plans/kopilot/apps/lambda-streaming-spike.md
+  if (url.pathname === '/stream-probe' && req.method === 'POST') {
+    let opts: { steps?: number; intervalMs?: number } = {}
+    try {
+      const text = await req.text()
+      if (text) opts = JSON.parse(text)
+    } catch {
+      // empty/invalid body → defaults
+    }
+
+    const encoder = new TextEncoder()
+    const stream = new ReadableStream<Uint8Array>({
+      async start(controller) {
+        try {
+          for await (const ev of streamingProbe(opts)) {
+            const chunk = `event: ${ev.event}\ndata: ${JSON.stringify(ev.data)}\n\n`
+            controller.enqueue(encoder.encode(chunk))
+          }
+        } finally {
+          controller.close()
+        }
+      },
+    })
+
+    return new Response(stream, {
+      status: 200,
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache, no-transform',
+        Connection: 'keep-alive',
+        'X-Accel-Buffering': 'no',
+      },
     })
   }
 
