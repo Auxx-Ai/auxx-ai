@@ -16,7 +16,7 @@ import type {
  * Create a new agent session
  */
 export async function createSession(input: CreateSessionInput) {
-  const { organizationId, userId, type, title, modelId, messages, domainState } = input
+  const { organizationId, userId, type, title, modelId, messages, domainState, agentId } = input
 
   const result = await fromDatabase(
     database
@@ -27,6 +27,7 @@ export async function createSession(input: CreateSessionInput) {
         type,
         title,
         modelId: modelId ?? null,
+        agentId: agentId ?? null,
         messages: messages ?? [],
         domainState: domainState ?? {},
         updatedAt: new Date(),

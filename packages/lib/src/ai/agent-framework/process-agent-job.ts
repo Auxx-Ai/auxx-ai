@@ -3,6 +3,7 @@
 import { database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { getSessionById, saveSessionMessages, updateSessionDomainState } from '@auxx/services'
+import { filterToolsByToolsets, resolveAgentConfig } from '../../agents'
 import type { JobContext } from '../../jobs/types'
 import {
   createCapabilityRegistry,
@@ -55,6 +56,11 @@ async function processAgentMessageInternal(ctx: JobContext<AgentJobPayload>) {
   }
   const session = sessionResult.value
 
+  // Prefer the agentId persisted on the session row; the job payload's
+  // `agentId` is only authoritative on the very first turn before the row
+  // is read back.
+  const agentId = session.agentId ?? data.agentId ?? null
+
   // 2. Build domain config based on domain type
   const domainConfig = await buildDomainConfig(domain, {
     organizationId,
@@ -64,6 +70,7 @@ async function processAgentMessageInternal(ctx: JobContext<AgentJobPayload>) {
     context,
     signal,
     modelId,
+    agentId,
   })
 
   // 3. Create LLM adapter
@@ -204,6 +211,7 @@ async function buildDomainConfig(
     context?: Record<string, unknown>
     signal?: AbortSignal
     modelId?: string
+    agentId: string | null
   }
 ) {
   switch (domain) {
@@ -237,11 +245,17 @@ async function buildDomainConfig(
         }
       }
 
+      const agentConfig = await resolveAgentConfig(params.organizationId, params.agentId)
+      const resolvedPage = params.page ?? '__none__'
+      const filteredTools = filterToolsByToolsets(registry.getTools(resolvedPage), agentConfig)
+
       return createKopilotDomainConfig({
         capabilityRegistry: registry,
-        page: params.page,
+        page: resolvedPage,
+        tools: filteredTools,
         defaultModel,
         defaultProvider,
+        agentConfig,
         // Long-running plans (≥30 steps × ~1–2 LLM rounds each) need
         // headroom past the framework's small-loop default.
         maxIterations: 30,

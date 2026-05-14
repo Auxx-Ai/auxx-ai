@@ -22,7 +22,7 @@ import { buildActiveArticleSnapshot } from '../snapshot-pipeline'
 export function createGetArticleTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'get_article',
-    toolsetSlug: 'knowledge',
+    toolsetSlug: 'kb.read',
     idempotent: true,
     description:
       'Read a KB article — title, body markdown, outline, hash, recordId. Three lookup modes: (1) pass `articleId` (bare or `article:<id>` recordId form), (2) pass `slug` (optionally with `knowledgeBaseId`), or (3) pass nothing to load the article currently in focus (from a `@`-mention or the active KB editor). Use this first whenever the user references "this article", "the article", or `@`-mentions one.',

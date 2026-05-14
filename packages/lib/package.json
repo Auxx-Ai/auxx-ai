@@ -22,6 +22,12 @@
       "import": "./dist/admin/index.mjs",
       "default": "./src/admin/index.ts"
     },
+    "./agents": {
+      "types": "./src/agents/index.ts",
+      "source": "./src/agents/index.ts",
+      "import": "./dist/agents/index.mjs",
+      "default": "./src/agents/index.ts"
+    },
     "./ai": {
       "types": "./src/ai/index.ts",
       "source": "./src/ai/index.ts",

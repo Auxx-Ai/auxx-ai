@@ -11,10 +11,10 @@ export interface CreateAgentInput {
   organizationId: string
   /** The human creating this agent. */
   createdById: string
+  /** Written to the backing User row; reads also flow through User. */
   name: string
   slug: string
   description?: string | null
-  avatar?: string | null
   prompt?: Record<string, unknown>
   modelId?: string | null
   mentionable?: boolean
@@ -58,7 +58,6 @@ export async function createAgent(
     name,
     slug,
     description = null,
-    avatar = null,
     prompt = {},
     modelId = null,
     mentionable = true,
@@ -77,7 +76,6 @@ export async function createAgent(
         // email gets backfilled below once we know the agent id (need a
         // deterministic, unique sentinel keyed by agentId)
         email: null,
-        image: avatar,
         userType: 'AGENT',
         emailVerified: true,
         updatedAt: now,
@@ -86,17 +84,16 @@ export async function createAgent(
 
     if (!user) throw new Error('Failed to insert agent User row')
 
-    // 2. Insert the Agent row.
+    // 2. Insert the Agent row. Name/avatar are not stored here — they live
+    //    on the backing User row (User.name, User.avatarAssetId).
     const [agent] = await tx
       .insert(schema.Agent)
       .values({
         organizationId,
         userId: user.id,
         createdById,
-        name,
         slug,
         description,
-        avatar,
         prompt,
         modelId,
         mentionable,
@@ -141,16 +138,24 @@ export async function createAgent(
 }
 
 export interface UpdateAgentInput {
+  /** Routed to the backing User row, not stored on Agent. */
   name?: string
   description?: string | null
-  avatar?: string | null
   prompt?: Record<string, unknown>
   modelId?: string | null
   mentionable?: boolean
+  /**
+   * Archive transition. `Date` archives the agent (soft-delete + bans the
+   * backing User); `null` unarchives (clears `archivedAt`, unbans User). When
+   * omitted, the archive state is left untouched.
+   */
+  archivedAt?: Date | null
 }
 
 /**
- * Update an agent. Mirrors name/avatar back to the User row in the same tx.
+ * Update an agent. Name updates route to the backing User row; avatar changes
+ * go through the standard user-avatar upload flow against `agent.userId` (not
+ * this function). Archive transitions also toggle the User's banned state.
  */
 export async function updateAgent(
   agentId: string,
@@ -159,22 +164,38 @@ export async function updateAgent(
   db: Database = defaultDb as Database
 ): Promise<void> {
   const now = new Date()
+  const archiveTransition = 'archivedAt' in input
 
   await db.transaction(async (tx) => {
+    const { name: _name, ...agentPatch } = input
+
     const [agent] = await tx
       .update(schema.Agent)
-      .set({ ...input, updatedAt: now })
+      .set({ ...agentPatch, updatedAt: now })
       .where(eq(schema.Agent.id, agentId))
       .returning({ userId: schema.Agent.userId })
 
     if (!agent) throw new Error(`Agent not found: ${agentId}`)
 
-    // Mirror name/avatar to backing User row.
-    const userPatch: { name?: string; image?: string | null; updatedAt: Date } = {
-      updatedAt: now,
-    }
+    const userPatch: {
+      name?: string
+      banned?: boolean
+      bannedReason?: string | null
+      bannedAt?: Date | null
+      updatedAt: Date
+    } = { updatedAt: now }
     if (input.name !== undefined) userPatch.name = input.name
-    if (input.avatar !== undefined) userPatch.image = input.avatar
+    if (archiveTransition) {
+      if (input.archivedAt) {
+        userPatch.banned = true
+        userPatch.bannedReason = 'agent_archived'
+        userPatch.bannedAt = input.archivedAt
+      } else {
+        userPatch.banned = false
+        userPatch.bannedReason = null
+        userPatch.bannedAt = null
+      }
+    }
 
     if (Object.keys(userPatch).length > 1) {
       await tx.update(schema.User).set(userPatch).where(eq(schema.User.id, agent.userId))
@@ -182,7 +203,8 @@ export async function updateAgent(
   })
 
   try {
-    await onCacheEvent('agent.updated', { orgId: organizationId })
+    const event = archiveTransition && input.archivedAt ? 'agent.archived' : 'agent.updated'
+    await onCacheEvent(event, { orgId: organizationId })
   } catch (err) {
     logger.warn('Failed to invalidate caches after agent update', {
       organizationId,
@@ -193,44 +215,14 @@ export async function updateAgent(
 }
 
 /**
- * Archive an agent (soft delete). Bans the backing User so any auth-leak path
- * also rejects, but leaves OrganizationMember intact so historical
- * attributions still resolve.
+ * Archive an agent (soft delete). Thin wrapper around `updateAgent` for
+ * non-router callers; the tRPC layer drives archive via `updateAgent`
+ * directly.
  */
 export async function archiveAgent(
   agentId: string,
   organizationId: string,
   db: Database = defaultDb as Database
 ): Promise<void> {
-  const now = new Date()
-
-  await db.transaction(async (tx) => {
-    const [agent] = await tx
-      .update(schema.Agent)
-      .set({ archivedAt: now, updatedAt: now })
-      .where(eq(schema.Agent.id, agentId))
-      .returning({ userId: schema.Agent.userId })
-
-    if (!agent) throw new Error(`Agent not found: ${agentId}`)
-
-    await tx
-      .update(schema.User)
-      .set({
-        banned: true,
-        bannedReason: 'agent_archived',
-        bannedAt: now,
-        updatedAt: now,
-      })
-      .where(eq(schema.User.id, agent.userId))
-  })
-
-  try {
-    await onCacheEvent('agent.archived', { orgId: organizationId })
-  } catch (err) {
-    logger.warn('Failed to invalidate caches after agent archive', {
-      organizationId,
-      agentId,
-      error: err instanceof Error ? err.message : String(err),
-    })
-  }
+  await updateAgent(agentId, organizationId, { archivedAt: new Date() }, db)
 }

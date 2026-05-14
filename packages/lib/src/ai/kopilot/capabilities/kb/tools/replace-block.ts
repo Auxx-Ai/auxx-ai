@@ -8,7 +8,7 @@ import { buildOpToolResult, parseSingleBlock, runBlockCrudOp } from './write-hel
 export function createReplaceBlockTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'replace_block',
-    toolsetSlug: 'kb.editor',
+    toolsetSlug: 'kb.write',
     description:
       'Replace a single block by id. The id is preserved on the new block (the agent does not need to repeat it). Use this when fully rewriting a block — for text-only edits, prefer update_block_text; for attribute changes, prefer update_block_attrs.',
     parameters: {

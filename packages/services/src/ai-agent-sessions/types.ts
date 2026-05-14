@@ -17,6 +17,10 @@ export interface CreateSessionInput extends SessionContext {
   modelId?: string | null
   messages?: Record<string, unknown>[]
   domainState?: Record<string, unknown>
+  /**
+   * User-authored agent the session targets. Null/omitted = master Kopilot.
+   */
+  agentId?: string | null
 }
 
 /**

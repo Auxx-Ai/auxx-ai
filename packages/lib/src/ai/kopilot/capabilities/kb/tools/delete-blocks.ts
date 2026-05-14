@@ -7,7 +7,7 @@ import { buildOpToolResult, runBlockCrudOp } from './write-helpers'
 export function createDeleteBlocksTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'delete_blocks',
-    toolsetSlug: 'kb.editor',
+    toolsetSlug: 'kb.write',
     description:
       'Delete one or more blocks by id. Operates wherever each block lives (top-level, inside a panel, or inside a table cell). Throws if any id is missing — partial deletes never happen.',
     parameters: {

@@ -1,0 +1,87 @@
+// packages/lib/src/agents/__tests__/filter-tools.test.ts
+
+import { describe, expect, it } from 'vitest'
+import type { AgentToolDefinition } from '../../ai/agent-framework/types'
+import { filterToolsByToolsets } from '../filter-tools'
+import type { ResolvedAgentConfig } from '../resolve-agent-config'
+
+function tool(name: string, slug?: string): AgentToolDefinition {
+  return {
+    name,
+    description: `${name} description`,
+    parameters: { type: 'object', properties: {} },
+    execute: async () => ({ success: true, output: {} }),
+    ...(slug ? { toolsetSlug: slug } : {}),
+  }
+}
+
+const master: ResolvedAgentConfig = {
+  agentId: null,
+  name: 'Kopilot',
+  userId: null,
+  prompt: null,
+  description: null,
+  toolsets: [],
+  modelId: null,
+}
+
+function agent(toolsets: Array<{ slug: string; disabledTools?: string[] }>): ResolvedAgentConfig {
+  return {
+    agentId: 'agent_1',
+    name: 'Test Agent',
+    userId: 'user_1',
+    prompt: {},
+    description: null,
+    toolsets: toolsets.map((t) => ({
+      slug: t.slug,
+      disabledTools: new Set(t.disabledTools ?? []),
+    })),
+    modelId: null,
+  }
+}
+
+describe('filterToolsByToolsets', () => {
+  const findThreads = tool('find_threads', 'mail.threads')
+  const getThread = tool('get_thread_detail', 'mail.threads')
+  const replyToThread = tool('reply_to_thread', 'mail.compose')
+  const planCreate = tool('plan_create')
+
+  it('returns input unchanged for undefined config', () => {
+    const tools = [findThreads, replyToThread]
+    expect(filterToolsByToolsets(tools, undefined)).toBe(tools)
+  })
+
+  it('returns input unchanged for master sentinel', () => {
+    const tools = [findThreads, replyToThread]
+    expect(filterToolsByToolsets(tools, master)).toBe(tools)
+  })
+
+  it('drops tools whose slug is not enabled', () => {
+    const result = filterToolsByToolsets(
+      [findThreads, replyToThread, planCreate],
+      agent([{ slug: 'mail.threads' }])
+    )
+    expect(result.map((t) => t.name)).toEqual(['find_threads', 'plan_create'])
+  })
+
+  it('keeps always-on (untagged) tools regardless of enabled toolsets', () => {
+    const result = filterToolsByToolsets([planCreate], agent([]))
+    expect(result.map((t) => t.name)).toEqual(['plan_create'])
+  })
+
+  it('honors per-tool disable inside an enabled toolset', () => {
+    const result = filterToolsByToolsets(
+      [findThreads, getThread],
+      agent([{ slug: 'mail.threads', disabledTools: ['find_threads'] }])
+    )
+    expect(result.map((t) => t.name)).toEqual(['get_thread_detail'])
+  })
+
+  it('silently ignores unknown slugs in config', () => {
+    const result = filterToolsByToolsets(
+      [findThreads],
+      agent([{ slug: 'mail.threads' }, { slug: 'nonexistent.slug' }])
+    )
+    expect(result.map((t) => t.name)).toEqual(['find_threads'])
+  })
+})

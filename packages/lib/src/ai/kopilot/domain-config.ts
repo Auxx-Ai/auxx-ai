@@ -1,6 +1,7 @@
 // packages/lib/src/ai/kopilot/domain-config.ts
 
 import { createScopedLogger } from '@auxx/logger'
+import type { ResolvedAgentConfig } from '../../agents'
 import type {
   AgentDomainConfig,
   AgentState,
@@ -20,7 +21,14 @@ import type { KopilotDomainState, PlanState, PlanStepStatus, SessionRef } from '
 const logger = createScopedLogger('kopilot-domain-config')
 
 export interface KopilotDomainConfigOptions {
-  /** Tools available to the agent (manual injection; merged with registry tools) */
+  /**
+   * Tools available to the agent. When provided, REPLACES the
+   * `capabilityRegistry.getTools(page)` read — callers that want runtime
+   * filtering (per-agent toolsets, invoker-scope, approval-mode) resolve
+   * tools themselves, run them through `filterToolsByToolsets` (and future
+   * predicates), and hand the result here. When omitted, falls back to the
+   * registry read so master Kopilot's master-session path is unchanged.
+   */
   tools?: AgentToolDefinition[]
   /** Page capability registry for page-scoped tool resolution */
   capabilityRegistry?: CapabilityRegistry
@@ -32,6 +40,13 @@ export interface KopilotDomainConfigOptions {
   defaultProvider?: string
   /** Max tool-use iterations before forcing a stop (default: 30) */
   maxIterations?: number
+  /**
+   * Per-session resolved agent configuration. Threaded into `createKopilotAgent`
+   * so the persona slot in the system prompt branches on master vs
+   * user-authored agent. Tool filtering happens at the call site before this
+   * config is built — see `filterToolsByToolsets` in `@auxx/lib/agents`.
+   */
+  agentConfig?: ResolvedAgentConfig
 }
 
 /**
@@ -46,27 +61,27 @@ export function createKopilotDomainConfig(
   options: KopilotDomainConfigOptions = {}
 ): AgentDomainConfig<KopilotDomainState> {
   const {
-    tools = [],
+    tools,
     capabilityRegistry,
     page,
     defaultModel = 'gpt-5.4-nano',
     defaultProvider = 'openai',
     maxIterations = 30,
+    agentConfig,
   } = options
 
-  // Resolve tools: registry (page-scoped) + manual, deduplicated by name
-  const registryTools = capabilityRegistry && page ? capabilityRegistry.getTools(page) : []
-  const toolMap = new Map<string, AgentToolDefinition>()
-  for (const tool of registryTools) toolMap.set(tool.name, tool)
-  for (const tool of tools) {
-    if (!toolMap.has(tool.name)) toolMap.set(tool.name, tool)
-  }
-  const resolvedTools = [...toolMap.values()]
+  // Resolve tools: if the caller passed `tools`, use them verbatim (pre-filtered
+  // path). Otherwise fall back to the registry's page-scoped tools so the
+  // master-session default is byte-equivalent to today.
+  const resolvedTools: AgentToolDefinition[] = tools
+    ? [...new Map(tools.map((t) => [t.name, t])).values()]
+    : capabilityRegistry && page
+      ? capabilityRegistry.getTools(page)
+      : []
 
   logger.info('Resolved tools', {
     page,
-    registryToolCount: registryTools.length,
-    manualToolCount: tools.length,
+    source: tools ? 'caller' : 'registry',
     resolvedToolCount: resolvedTools.length,
     toolNames: resolvedTools.map((t) => t.name),
   })
@@ -79,6 +94,7 @@ export function createKopilotDomainConfig(
     capabilities,
     maxIterations,
     toolsetPromptAdditions,
+    agentConfig,
   })
 
   return {

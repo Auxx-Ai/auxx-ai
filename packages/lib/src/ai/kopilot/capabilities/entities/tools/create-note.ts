@@ -14,7 +14,7 @@ import type { GetToolDeps } from '../../types'
 export function createCreateNoteTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'create_note',
-    toolsetSlug: 'entities.search',
+    toolsetSlug: 'entities.write',
     outputDigestSchema: CreateNoteDigest,
     buildDigest: (output) => {
       const out = (output ?? {}) as { commentId?: string; recordId?: string }

@@ -2,6 +2,7 @@
 
 import { createScopedLogger } from '@auxx/logger'
 import { toActorId } from '@auxx/types/actor'
+import type { ResolvedAgentConfig } from '../../../agents'
 import { getCachedIntegrationCatalog } from '../../../cache/integration-catalog'
 import { getCachedMembersByUserIds, getCachedResources } from '../../../cache/org-cache-helpers'
 import type {
@@ -12,7 +13,7 @@ import type {
 } from '../../agent-framework/types'
 import type { Message, ToolCall } from '../../clients/base/types'
 import { transformAssistantContentForLLM } from '../blocks/transform-for-llm'
-import { buildKopilotMasterPrompt } from '../prompts/build-kopilot-prompt'
+import { buildKopilotPrompt } from '../prompts/build-kopilot-prompt'
 import type { CurrentUserInfo } from '../prompts/shared-types'
 import type { KopilotDomainState } from '../types'
 
@@ -32,6 +33,12 @@ export interface CreateKopilotAgentOptions {
    * capability declares an addition.
    */
   toolsetPromptAdditions?: string
+  /**
+   * Per-session resolved agent configuration. Undefined or master sentinel
+   * (`agentId === null`) renders the master Kopilot persona; a user-authored
+   * agent renders its persona from `prompt` / `name` / `description`.
+   */
+  agentConfig?: ResolvedAgentConfig
 }
 
 /**
@@ -44,7 +51,13 @@ export interface CreateKopilotAgentOptions {
 export function createKopilotAgent(
   options: CreateKopilotAgentOptions
 ): AgentDefinition<KopilotDomainState> {
-  const { tools, capabilities = [], maxIterations = 15, toolsetPromptAdditions = '' } = options
+  const {
+    tools,
+    capabilities = [],
+    maxIterations = 15,
+    toolsetPromptAdditions = '',
+    agentConfig,
+  } = options
 
   const agentTools: AgentToolDefinition[] = tools
 
@@ -70,7 +83,7 @@ export function createKopilotAgent(
           entityDefinitionId: r.entityDefinitionId ?? r.id,
         }))
 
-      const systemPrompt = buildKopilotMasterPrompt({
+      const systemPrompt = buildKopilotPrompt({
         domainState: state.domainState,
         entityCatalog,
         capabilities,
@@ -78,6 +91,7 @@ export function createKopilotAgent(
         currentUser,
         integrations,
         toolsetPromptAdditions,
+        agentConfig,
       })
 
       // Full conversation for tool-loop continuity.

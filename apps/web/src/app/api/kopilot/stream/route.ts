@@ -1,6 +1,7 @@
 // apps/web/src/app/api/kopilot/stream/route.ts
 
 import { database as db } from '@auxx/database'
+import { filterToolsByToolsets, resolveAgentConfig } from '@auxx/lib/agents'
 import { type UsageTrackingRequest, UsageTrackingService } from '@auxx/lib/ai'
 import {
   AgentEngine,
@@ -81,6 +82,8 @@ interface KopilotStreamRequest {
   inputAmendment?: Record<string, unknown>
   /** Model override in "provider:model" format — omit to use system default */
   modelId?: string
+  /** Target a user-authored agent on session create; ignored on existing sessions. */
+  agentId?: string | null
 }
 
 /**
@@ -180,6 +183,7 @@ export async function POST(request: NextRequest) {
         let savedMessages: Record<string, unknown>[] = []
         let savedDomainState: Record<string, unknown> = {}
         let storedModelId: string | null = null
+        let sessionAgentId: string | null = null
 
         if (sessionId) {
           const sessionResult = await getSessionById({ sessionId, organizationId })
@@ -191,13 +195,16 @@ export async function POST(request: NextRequest) {
           savedMessages = (sessionResult.value.messages ?? []) as Record<string, unknown>[]
           savedDomainState = (sessionResult.value.domainState ?? {}) as Record<string, unknown>
           storedModelId = sessionResult.value.modelId ?? null
+          sessionAgentId = sessionResult.value.agentId ?? null
         } else {
           const placeholderTitle = message.slice(0, 100)
+          sessionAgentId = body.agentId ?? null
           const createResult = await createSession({
             organizationId,
             userId,
             type: 'kopilot',
             title: placeholderTitle,
+            agentId: sessionAgentId,
           })
           if (createResult.isErr()) {
             send({ type: 'error', error: createResult.error.message })
@@ -240,6 +247,7 @@ export async function POST(request: NextRequest) {
                 approvalAction: body.approvalAction,
                 inputAmendment: body.inputAmendment,
                 modelId: body.modelId,
+                agentId: sessionAgentId,
                 send,
                 cleanup,
                 request,
@@ -256,6 +264,7 @@ export async function POST(request: NextRequest) {
                 approvalAction: body.approvalAction,
                 inputAmendment: body.inputAmendment,
                 modelId: body.modelId,
+                agentId: sessionAgentId,
                 savedMessages,
                 savedDomainState,
                 storedModelId,
@@ -352,6 +361,7 @@ async function runInProcessPath(params: {
   approvalAction?: 'approve' | 'reject'
   inputAmendment?: Record<string, unknown>
   modelId?: string
+  agentId: string | null
   savedMessages: Record<string, unknown>[]
   savedDomainState: Record<string, unknown>
   storedModelId: string | null
@@ -370,6 +380,7 @@ async function runInProcessPath(params: {
     approvalAction,
     inputAmendment,
     modelId,
+    agentId,
     savedMessages,
     savedDomainState,
     storedModelId,
@@ -469,15 +480,24 @@ async function runInProcessPath(params: {
     }
   }
 
+  const agentConfig = await resolveAgentConfig(organizationId, agentId)
+  const resolvedPage = page ?? '__none__'
+  // Pre-filter tools by the agent's enabled toolsets before handing them to
+  // the domain config. Master sessions pass through untouched. Future filter
+  // predicates (invoker-scope, approval-mode) compose at this seam.
+  const filteredTools = filterToolsByToolsets(registry.getTools(resolvedPage), agentConfig)
+
   const domainConfig = createKopilotDomainConfig({
     capabilityRegistry: registry,
     // Surfaces that don't pass an explicit `page` get only `__global__`
     // tools — no page-scoped surface defaults silently. Mail callers
     // always send `page: 'mail'`.
-    page: page ?? '__none__',
+    page: resolvedPage,
+    tools: filteredTools,
     defaultModel,
     defaultProvider,
     maxIterations: 30,
+    agentConfig,
   })
 
   // Create LLM adapter
@@ -627,6 +647,7 @@ async function runWorkerPath(params: {
   approvalAction?: 'approve' | 'reject'
   inputAmendment?: Record<string, unknown>
   modelId?: string
+  agentId: string | null
   send: (event: AgentEvent | { type: string; [key: string]: unknown }) => void
   cleanup: () => void
   request: NextRequest
@@ -673,6 +694,7 @@ async function runWorkerPath(params: {
     approvalAction: params.approvalAction,
     inputAmendment: params.inputAmendment,
     modelId: params.modelId,
+    agentId: params.agentId,
   })
 
   // 3. Wait for terminal event or disconnect
