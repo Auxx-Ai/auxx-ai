@@ -19,6 +19,8 @@ export interface KopilotRequest {
   inputAmendment?: Record<string, unknown>
   /** Model override in "provider:model" format — omit to use system default */
   modelId?: string
+  /** Target a user-authored agent on session create; ignored on existing sessions. */
+  agentId?: string | null
 }
 
 interface UseKopilotSSEOptions {

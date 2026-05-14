@@ -44,6 +44,7 @@ export enum FeatureKey {
   realtimeMail = 'realtimeMail',
   callRecordings = 'callRecordings',
   todayInbox = 'todayInbox',
+  agents = 'agents',
 
   // ── Static limits (count of things, not time-based) ──
   teammates = 'teammates',
@@ -146,6 +147,13 @@ export const FEATURE_REGISTRY: FeatureMetadata[] = [
     type: 'boolean',
     label: 'Today Inbox',
     description: 'AI suggestion bundles for stale records, surfaced in /app/today.',
+    group: 'AI',
+  },
+  {
+    key: FeatureKey.agents,
+    type: 'boolean',
+    label: 'Agents',
+    description: 'User-authored Kopilot agents (CRUD + runtime targeting).',
     group: 'AI',
   },
 

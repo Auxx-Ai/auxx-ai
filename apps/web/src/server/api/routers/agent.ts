@@ -1,14 +1,15 @@
 // apps/web/src/server/api/routers/agent.ts
 
-import { schema } from '@auxx/database'
 import {
+  agentExistsInOrg,
   createAgent as createAgentService,
-  resolveDefaultToolsets,
+  getAgentDetailByIdOrSlug,
+  isAgentSlugTaken,
+  listAgents,
   updateAgent as updateAgentService,
 } from '@auxx/lib/agents'
 import { createScopedLogger } from '@auxx/logger'
 import { TRPCError } from '@trpc/server'
-import { and, eq, ne } from 'drizzle-orm'
 import { z } from 'zod'
 import { adminProcedure, createTRPCRouter } from '../trpc'
 
@@ -20,103 +21,32 @@ const promptSchema = z.record(z.string(), z.unknown())
  * Admin-only CRUD for user-authored Kopilot agents. Toolset rows are managed
  * via the sibling `agentToolset.*` router. Archive is driven through `update`
  * (`archivedAt: Date | null`) per plans/kopilot/agents/phase-1-engine-and-api.md
- * §3.2.
+ * §3.2. Reads flow through the org agents cache; writes go through
+ * `@auxx/lib/agents` service functions — no raw SQL lives in this router.
  */
 export const agentRouter = createTRPCRouter({
   list: adminProcedure
     .input(z.object({ includeArchived: z.boolean().optional() }).optional())
-    .query(async ({ ctx, input }) => {
-      const { organizationId } = ctx.session
-      const includeArchived = input?.includeArchived ?? false
-
-      // getCachedAgents already filters out archivedAt; bypass for archived
-      // visibility by reading the raw cache key.
-      const all = await ctx.db
-        .select({
-          id: schema.Agent.id,
-          userId: schema.Agent.userId,
-          name: schema.User.name,
-          slug: schema.Agent.slug,
-          description: schema.Agent.description,
-          avatarAssetId: schema.User.avatarAssetId,
-          mentionable: schema.Agent.mentionable,
-          modelId: schema.Agent.modelId,
-          archivedAt: schema.Agent.archivedAt,
-          createdAt: schema.Agent.createdAt,
-          updatedAt: schema.Agent.updatedAt,
-        })
-        .from(schema.Agent)
-        .innerJoin(schema.User, eq(schema.User.id, schema.Agent.userId))
-        .where(eq(schema.Agent.organizationId, organizationId))
-
-      const rows = includeArchived ? all : all.filter((r) => !r.archivedAt)
-      return rows.map((r) => ({
-        ...r,
-        archivedAt: r.archivedAt ? r.archivedAt.toISOString() : null,
-        createdAt: r.createdAt.toISOString(),
-        updatedAt: r.updatedAt.toISOString(),
-      }))
-    }),
-
-  getById: adminProcedure.input(z.object({ agentId: z.string() })).query(async ({ ctx, input }) => {
-    const { organizationId } = ctx.session
-
-    const [row] = await ctx.db
-      .select({
-        agent: schema.Agent,
-        userName: schema.User.name,
-        avatarAssetId: schema.User.avatarAssetId,
+    .query(({ ctx, input }) =>
+      listAgents(ctx.session.organizationId, {
+        includeArchived: input?.includeArchived ?? false,
       })
-      .from(schema.Agent)
-      .innerJoin(schema.User, eq(schema.User.id, schema.Agent.userId))
-      .where(
-        and(eq(schema.Agent.id, input.agentId), eq(schema.Agent.organizationId, organizationId))
-      )
-      .limit(1)
+    ),
 
-    if (!row) {
-      throw new TRPCError({ code: 'NOT_FOUND', message: 'Agent not found' })
-    }
-
-    const { agent } = row
-
-    const toolsets = await ctx.db
-      .select()
-      .from(schema.AgentToolset)
-      .where(eq(schema.AgentToolset.agentId, agent.id))
-
-    const resourceScopes = await ctx.db
-      .select()
-      .from(schema.AgentResourceScope)
-      .where(eq(schema.AgentResourceScope.agentId, agent.id))
-
-    return {
-      id: agent.id,
-      organizationId: agent.organizationId,
-      userId: agent.userId,
-      createdById: agent.createdById,
-      name: row.userName,
-      slug: agent.slug,
-      description: agent.description,
-      avatarAssetId: row.avatarAssetId,
-      prompt: agent.prompt,
-      pinnedRecords: agent.pinnedRecords,
-      mentionable: agent.mentionable,
-      modelId: agent.modelId,
-      archivedAt: agent.archivedAt ? agent.archivedAt.toISOString() : null,
-      createdAt: agent.createdAt.toISOString(),
-      updatedAt: agent.updatedAt.toISOString(),
-      toolsets: toolsets.map((t) => ({
-        id: t.id,
-        slug: t.toolsetSlug,
-        appInstallationId: t.appInstallationId,
-        config: t.config,
-        source: t.source,
-        enabled: t.enabled,
-      })),
-      resourceScopes,
-    }
-  }),
+  /**
+   * Resolve an agent by id or slug. The input field is named `agentId` for
+   * backward compatibility with existing callers, but accepts either form —
+   * the service helper checks both columns against the org agents cache.
+   */
+  getById: adminProcedure
+    .input(z.object({ agentId: z.string().min(1) }))
+    .query(async ({ ctx, input }) => {
+      const detail = await getAgentDetailByIdOrSlug(ctx.session.organizationId, input.agentId)
+      if (!detail) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Agent not found' })
+      }
+      return detail
+    }),
 
   create: adminProcedure
     .input(
@@ -132,10 +62,9 @@ export const agentRouter = createTRPCRouter({
         modelId: z.string().max(120).optional().nullable(),
         mentionable: z.boolean().optional(),
         /**
-         * Initial toolset slugs to enable. When omitted, defaults to
-         * `resolveDefaultToolsets(orgId)` and rows are tagged
-         * `source='auto_default'`. When provided, caller-supplied slugs are
-         * tagged `source='manual'`.
+         * Initial toolset slugs to enable. When omitted, `createAgent`
+         * resolves defaults and tags the rows `source='auto_default'`. When
+         * provided, every slug lands as `source='manual'`.
          */
         toolsetSlugs: z.array(z.string().min(1).max(120)).optional(),
       })
@@ -143,14 +72,7 @@ export const agentRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const { organizationId, userId } = ctx.session
 
-      const [conflict] = await ctx.db
-        .select({ id: schema.Agent.id })
-        .from(schema.Agent)
-        .where(
-          and(eq(schema.Agent.organizationId, organizationId), eq(schema.Agent.slug, input.slug))
-        )
-        .limit(1)
-      if (conflict) {
+      if (await isAgentSlugTaken(organizationId, input.slug)) {
         throw new TRPCError({ code: 'CONFLICT', message: 'Slug already in use' })
       }
 
@@ -163,33 +85,17 @@ export const agentRouter = createTRPCRouter({
         prompt: input.prompt,
         modelId: input.modelId ?? null,
         mentionable: input.mentionable ?? true,
+        toolsetSlugs: input.toolsetSlugs,
       })
-
-      const slugs = input.toolsetSlugs ?? (await resolveDefaultToolsets(organizationId))
-      const source: 'manual' | 'auto_default' = input.toolsetSlugs ? 'manual' : 'auto_default'
-      const now = new Date()
-
-      if (slugs.length > 0) {
-        await ctx.db.insert(schema.AgentToolset).values(
-          slugs.map((slug) => ({
-            agentId: created.agentId,
-            toolsetSlug: slug,
-            source,
-            enabled: true,
-            config: {},
-            updatedAt: now,
-          }))
-        )
-      }
 
       logger.info('Agent created', {
         organizationId,
         agentId: created.agentId,
-        toolsetCount: slugs.length,
-        source,
+        toolsetCount: created.toolsetSlugs.length,
+        source: created.toolsetSource,
       })
 
-      return created
+      return { agentId: created.agentId, userId: created.userId }
     }),
 
   update: adminProcedure
@@ -209,12 +115,7 @@ export const agentRouter = createTRPCRouter({
       const { organizationId } = ctx.session
       const { agentId, ...patch } = input
 
-      const [existing] = await ctx.db
-        .select({ id: schema.Agent.id })
-        .from(schema.Agent)
-        .where(and(eq(schema.Agent.id, agentId), eq(schema.Agent.organizationId, organizationId)))
-        .limit(1)
-      if (!existing) {
+      if (!(await agentExistsInOrg(organizationId, agentId))) {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Agent not found' })
       }
 
@@ -232,20 +133,9 @@ export const agentRouter = createTRPCRouter({
   checkSlug: adminProcedure
     .input(z.object({ slug: z.string().min(1).max(60), excludeAgentId: z.string().optional() }))
     .query(async ({ ctx, input }) => {
-      const { organizationId } = ctx.session
-      const conditions = [
-        eq(schema.Agent.organizationId, organizationId),
-        eq(schema.Agent.slug, input.slug),
-      ]
-      if (input.excludeAgentId) {
-        conditions.push(ne(schema.Agent.id, input.excludeAgentId))
-      }
-      const [row] = await ctx.db
-        .select({ id: schema.Agent.id })
-        .from(schema.Agent)
-        .where(and(...conditions))
-        .limit(1)
-
-      return { available: !row }
+      const taken = await isAgentSlugTaken(ctx.session.organizationId, input.slug, {
+        excludeAgentId: input.excludeAgentId,
+      })
+      return { available: !taken }
     }),
 })

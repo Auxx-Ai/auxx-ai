@@ -50,6 +50,8 @@ export type SidebarProps = {
   cloudOnly?: boolean
   /** Feature key required for this menu item to be visible */
   featureKey?: string
+  /** When true, only admins/owners see this item */
+  adminOnly?: boolean
 } & FieldProps
 
 import type * as React from 'react'
@@ -84,6 +86,14 @@ export const SIDEBAR_MENU: SidebarProps[] = [
     slug: 'kopilot/new',
     icon: <MessagesSquare />,
     featureKey: 'kopilot',
+  },
+  {
+    id: 'agents',
+    label: 'Agents',
+    slug: 'agents',
+    icon: <Bot />,
+    featureKey: 'agents',
+    adminOnly: true,
   },
   {
     id: 'calls',

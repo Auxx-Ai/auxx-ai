@@ -174,6 +174,26 @@ export async function getCachedAgents(orgId: string): Promise<CachedAgent[]> {
 }
 
 /**
+ * Get every cached agent for an organization, including archived rows.
+ * Use when admin tooling needs to surface archived agents.
+ */
+export async function getAllCachedAgents(orgId: string): Promise<CachedAgent[]> {
+  return getOrgCache().get(orgId, 'agents')
+}
+
+/**
+ * Find a single cached agent by id within an org, including archived rows.
+ * Returns null when the agent does not belong to the org or does not exist.
+ */
+export async function getCachedAgentById(
+  orgId: string,
+  agentId: string
+): Promise<CachedAgent | null> {
+  const agents = await getOrgCache().get(orgId, 'agents')
+  return agents.find((a) => a.id === agentId) ?? null
+}
+
+/**
  * Get cached agents matching the given backing-user IDs.
  * Includes archived agents so historical attributions resolve correctly.
  */

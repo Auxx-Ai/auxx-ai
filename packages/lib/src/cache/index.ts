@@ -47,7 +47,9 @@ export type { CacheEvent } from './invalidation-graph'
 // ── Cache Helpers ──
 export {
   findCachedResource,
+  getAllCachedAgents,
   getAllCachedCustomFields,
+  getCachedAgentById,
   getCachedAgents,
   getCachedAgentsByUserIds,
   getCachedCustomFields,
