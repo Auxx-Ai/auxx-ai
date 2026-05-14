@@ -151,7 +151,7 @@ export function AgentDetailTabs({ agent, onAutosaveChange }: AgentDetailTabsProp
             icon={<Wrench className='size-4' />}
             initialOpen
             collapsible={false}>
-            <ToolsSectionContent />
+            <ToolsSectionContent agent={agent} onAutosaveChange={onAutosaveChange} />
           </Section>
         </div>
 
@@ -161,7 +161,7 @@ export function AgentDetailTabs({ agent, onAutosaveChange }: AgentDetailTabsProp
             icon={<BookOpen className='size-4' />}
             initialOpen
             collapsible={false}>
-            <KnowledgeSectionContent />
+            <KnowledgeSectionContent agent={agent} onAutosaveChange={onAutosaveChange} />
           </Section>
         </div>
 

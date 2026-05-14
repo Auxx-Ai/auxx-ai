@@ -1,10 +1,15 @@
 // apps/web/src/components/agents/ui/detail/tabs/knowledge-tab-placeholder.tsx
 'use client'
 
-export function KnowledgeSectionContent() {
-  return (
-    <div className='py-4 text-sm text-muted-foreground'>
-      Knowledge pinning lands in phase-1-ui-tab-knowledge.md.
-    </div>
-  )
+import type { AgentDetail } from '../../../store/agent-store'
+import type { AutosaveState } from '../../shared/autosave-indicator'
+import { KnowledgeSectionContent as KnowledgeContent } from '../knowledge/knowledge-section-content'
+
+interface KnowledgeSectionContentProps {
+  agent: AgentDetail
+  onAutosaveChange?: (state: AutosaveState) => void
+}
+
+export function KnowledgeSectionContent(props: KnowledgeSectionContentProps) {
+  return <KnowledgeContent {...props} />
 }
