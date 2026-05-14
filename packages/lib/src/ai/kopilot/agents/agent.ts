@@ -12,7 +12,8 @@ import type {
 } from '../../agent-framework/types'
 import type { Message, ToolCall } from '../../clients/base/types'
 import { transformAssistantContentForLLM } from '../blocks/transform-for-llm'
-import { buildAgentSystemPrompt, type CurrentUserInfo } from '../prompts/agent-prompt'
+import { buildKopilotMasterPrompt } from '../prompts/build-kopilot-prompt'
+import type { CurrentUserInfo } from '../prompts/shared-types'
 import type { KopilotDomainState } from '../types'
 
 const logger = createScopedLogger('kopilot-agent')
@@ -24,6 +25,13 @@ export interface CreateKopilotAgentOptions {
   capabilities?: string[]
   /** Max tool-use iterations before forcing a stop (default: 15) */
   maxIterations?: number
+  /**
+   * Concatenated `systemPromptAddition` strings from the active capabilities
+   * on the current page, resolved by the caller via
+   * `CapabilityRegistry.getSystemPromptAddition(page)`. Empty string when no
+   * capability declares an addition.
+   */
+  toolsetPromptAdditions?: string
 }
 
 /**
@@ -36,7 +44,7 @@ export interface CreateKopilotAgentOptions {
 export function createKopilotAgent(
   options: CreateKopilotAgentOptions
 ): AgentDefinition<KopilotDomainState> {
-  const { tools, capabilities = [], maxIterations = 15 } = options
+  const { tools, capabilities = [], maxIterations = 15, toolsetPromptAdditions = '' } = options
 
   const agentTools: AgentToolDefinition[] = tools
 
@@ -62,14 +70,15 @@ export function createKopilotAgent(
           entityDefinitionId: r.entityDefinitionId ?? r.id,
         }))
 
-      const systemPrompt = buildAgentSystemPrompt(
-        state.domainState,
+      const systemPrompt = buildKopilotMasterPrompt({
+        domainState: state.domainState,
         entityCatalog,
         capabilities,
-        agentTools,
+        tools: agentTools,
         currentUser,
-        integrations
-      )
+        integrations,
+        toolsetPromptAdditions,
+      })
 
       // Full conversation for tool-loop continuity.
       // Final-prose assistant messages run through transformAssistantContentForLLM

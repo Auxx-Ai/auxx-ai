@@ -85,6 +85,7 @@ function buildThreadConditions(args: Record<string, unknown>): ConditionGroup[] 
 export function createFindThreadsTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'find_threads',
+    toolsetSlug: 'mail.threads',
     idempotent: true,
     outputDigestSchema: FindThreadsDigest,
     buildDigest: (output) => {

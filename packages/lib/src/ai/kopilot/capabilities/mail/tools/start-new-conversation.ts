@@ -34,6 +34,7 @@ const StartAmendmentSchema = z.object({
 export function createStartNewConversationTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'start_new_conversation',
+    toolsetSlug: 'mail.compose',
     requiresApproval: true,
     inputAmendmentSchema: StartAmendmentSchema,
     outputDigestSchema: EmailWriteDigest,

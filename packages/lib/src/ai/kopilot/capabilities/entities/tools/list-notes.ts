@@ -28,6 +28,7 @@ function truncate(text: string, max: number): string {
 export function createListNotesTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'list_notes',
+    toolsetSlug: 'entities.search',
     idempotent: true,
     outputDigestSchema: ListNotesDigest,
     buildDigest: (output) => {

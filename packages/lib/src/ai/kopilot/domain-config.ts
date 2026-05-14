@@ -72,7 +72,14 @@ export function createKopilotDomainConfig(
   })
 
   const capabilities = capabilityRegistry?.getCapabilitiesSummary() ?? []
-  const agent = createKopilotAgent({ tools: resolvedTools, capabilities, maxIterations })
+  const toolsetPromptAdditions =
+    capabilityRegistry && page ? (capabilityRegistry.getSystemPromptAddition(page) ?? '') : ''
+  const agent = createKopilotAgent({
+    tools: resolvedTools,
+    capabilities,
+    maxIterations,
+    toolsetPromptAdditions,
+  })
 
   return {
     type: 'kopilot',

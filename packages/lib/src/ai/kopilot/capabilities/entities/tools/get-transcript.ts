@@ -13,6 +13,7 @@ const CHARS_PER_TOKEN = 4
 export function createGetTranscriptTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'get_transcript',
+    toolsetSlug: 'entities.search',
     idempotent: true,
     outputDigestSchema: GetTranscriptDigest,
     buildDigest: (output) => {

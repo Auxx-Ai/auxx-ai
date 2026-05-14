@@ -20,6 +20,7 @@ function truncate(text: string | null | undefined, maxLen: number): string {
 export function createGetThreadDetailTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'get_thread_detail',
+    toolsetSlug: 'mail.threads',
     idempotent: true,
     outputDigestSchema: GetThreadDetailDigest,
     buildDigest: (output) => {

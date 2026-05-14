@@ -16,6 +16,7 @@ const MAX_RESULTS = 25
 export function createSearchEntitiesTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'search_entities',
+    toolsetSlug: 'entities.search',
     idempotent: true,
     outputDigestSchema: SearchEntitiesDigest,
     buildDigest: (output) => {

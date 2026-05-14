@@ -8,6 +8,7 @@ import type { GetToolDeps } from '../../types'
 export function createListTasksTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'list_tasks',
+    toolsetSlug: 'tasks',
     idempotent: true,
     outputDigestSchema: ListTasksDigest,
     buildDigest: (output) => {

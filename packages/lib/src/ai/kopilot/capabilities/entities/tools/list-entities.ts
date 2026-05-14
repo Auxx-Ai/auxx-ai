@@ -8,6 +8,7 @@ import type { GetToolDeps } from '../../types'
 export function createListEntitiesTool(_getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'list_entities',
+    toolsetSlug: 'entities.search',
     idempotent: true,
     outputDigestSchema: ListEntitiesDigest,
     buildDigest: (output) => {

@@ -166,6 +166,16 @@ export interface AgentToolDefinition {
    */
   usageNotes?: string
   /**
+   * Slug grouping this tool into a toolset for per-agent enablement.
+   * Phase 1+ uses this to filter `tools` by an agent's enabled toolsets at
+   * session-init time. Tools without a slug are treated as core/always-on
+   * (plan tools, future `search_records` / `load_records`, etc.).
+   *
+   * Format: `<domain>.<group>` — kebab segments. App-provided tools will
+   * use the `app:<app-id>:<group>` shape.
+   */
+  toolsetSlug?: string
+  /**
    * Capture-mode hook: predict the tool's output without executing.
    *
    * When the engine runs in `approvalMode: 'capture'`, approval-required tools
