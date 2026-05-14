@@ -19,7 +19,7 @@ import type { GetToolDeps } from '../../types'
 export function createGetArticleSectionTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'get_article_section',
-    toolsetSlug: 'kb.editor',
+    toolsetSlug: 'kb.read',
     idempotent: true,
     description:
       'Returns the markdown for one section of the active article identified by its heading text. Use after get_article reports the body was truncated. Section boundaries: from the heading text (case-insensitive prefix match) to the next heading at the same-or-shallower level, or end of doc.',

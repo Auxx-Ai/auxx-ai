@@ -66,10 +66,8 @@ export const Agent = pgTable(
         onDelete: 'restrict',
       }),
 
-    name: text().notNull(),
     slug: text().notNull(),
     description: text(),
-    avatar: text(),
 
     prompt: jsonb().$type<Record<string, unknown>>().default({}).notNull(),
 

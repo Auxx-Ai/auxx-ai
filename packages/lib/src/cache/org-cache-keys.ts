@@ -99,6 +99,10 @@ export interface CachedAgent {
   description: string | null
   avatarUrl: string | null
   mentionable: boolean
+  /** Tiptap doc; empty object when no prompt has been authored. */
+  prompt: Record<string, unknown>
+  /** Per-agent model override in `provider:model` format; null = inherit. */
+  modelId: string | null
   /** ISO string when archived; null when active. */
   archivedAt: string | null
 }

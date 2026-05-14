@@ -20,6 +20,11 @@ export interface AgentJobPayload {
   inputAmendment?: Record<string, unknown>
   /** Model override in "provider:model" format — omit to use system default */
   modelId?: string
+  /**
+   * User-authored agent the session targets. Null/omitted = master Kopilot.
+   * Read by the worker to resolve per-agent toolsets + persona at session-init.
+   */
+  agentId?: string | null
 }
 
 /**

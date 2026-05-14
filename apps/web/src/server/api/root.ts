@@ -2,6 +2,8 @@ import type { inferRouterOutputs } from '@trpc/server'
 import { createCallerFactory, createTRPCRouter } from '~/server/api/trpc'
 import { actorRouter } from './routers/actor'
 import { adminRouter } from './routers/admin'
+import { agentRouter } from './routers/agent'
+import { agentToolsetRouter } from './routers/agent-toolset'
 import { aiFeatureRouter } from './routers/aiFeature'
 import { aiIntegrationRouter } from './routers/aiIntegration'
 import { apiKeyRouter } from './routers/apiKey'
@@ -83,6 +85,8 @@ import { workflowRouter } from './routers/workflow'
 export const appRouter = createTRPCRouter({
   actor: actorRouter,
   admin: adminRouter,
+  agent: agentRouter,
+  agentToolset: agentToolsetRouter,
   aiFeature: aiFeatureRouter,
   aiIntegration: aiIntegrationRouter,
   apiKey: apiKeyRouter,
