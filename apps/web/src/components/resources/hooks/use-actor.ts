@@ -114,12 +114,18 @@ export function useActors(actorIds: ActorId[]): Map<ActorId, Actor> {
 // ============================================================================
 
 interface UseAvailableActorsOptions {
-  /** Filter to specific target: 'user', 'group', or 'both' */
-  target?: 'user' | 'group' | 'both'
+  /**
+   * Filter to specific target.
+   * 'both' = users + groups (humans only, agents excluded unless includeAgents).
+   * 'all'  = users + agents + groups.
+   */
+  target?: 'user' | 'group' | 'agent' | 'both' | 'all'
   /** Filter users by role */
   roles?: ('OWNER' | 'ADMIN' | 'USER')[]
   /** Filter to specific group IDs */
   groupIds?: string[]
+  /** When target === 'both', also include agents alongside humans. */
+  includeAgents?: boolean
 }
 
 /**
@@ -131,16 +137,28 @@ interface UseAvailableActorsOptions {
  * const actors = useAvailableActors({ target: 'both', roles: ['ADMIN'] })
  */
 export function useAvailableActors(options: UseAvailableActorsOptions = {}): Actor[] {
-  const { target, roles, groupIds } = options
+  const { target, roles, groupIds, includeAgents } = options
 
   return useActorStore(
     useShallow((state) => {
       let actors = Array.from(state.actors.values())
 
       // Filter by target
-      if (target && target !== 'both') {
-        actors = actors.filter((a) => a.type === target)
+      if (target === 'user') {
+        actors = actors.filter((a) => a.type === 'user')
+      } else if (target === 'group') {
+        actors = actors.filter((a) => a.type === 'group')
+      } else if (target === 'agent') {
+        actors = actors.filter((a) => a.type === 'agent')
+      } else if (target === 'both' || !target) {
+        // users + groups; agents only if includeAgents
+        actors = actors.filter((a) => {
+          if (a.type === 'user' || a.type === 'group') return true
+          if (a.type === 'agent') return includeAgents ?? false
+          return false
+        })
       }
+      // target === 'all' → no filter; all types pass through
 
       // Filter by role (users only)
       if (roles?.length) {

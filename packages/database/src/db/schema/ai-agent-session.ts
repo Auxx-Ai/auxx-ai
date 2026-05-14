@@ -2,6 +2,7 @@
 
 import { createId } from '@paralleldrive/cuid2'
 import { type AnyPgColumn, index, jsonb, pgTable, text, timestamp } from './_shared'
+import { Agent } from './agent'
 import { Organization } from './organization'
 import { User } from './user'
 
@@ -36,6 +37,11 @@ export const AiAgentSession = pgTable(
         onUpdate: 'cascade',
         onDelete: 'cascade',
       }),
+    /** Optional agent ref. Null = master Kopilot session (no per-agent overlay). */
+    agentId: text().references((): AnyPgColumn => Agent.id, {
+      onUpdate: 'cascade',
+      onDelete: 'set null',
+    }),
   },
   (table) => [
     index('AiAgentSession_organizationId_userId_type_idx').using(
@@ -48,6 +54,11 @@ export const AiAgentSession = pgTable(
       'btree',
       table.userId.asc().nullsLast(),
       table.type.asc().nullsLast(),
+      table.updatedAt.desc().nullsLast()
+    ),
+    index('AiAgentSession_agentId_updatedAt_idx').using(
+      'btree',
+      table.agentId.asc().nullsLast(),
       table.updatedAt.desc().nullsLast()
     ),
   ]

@@ -48,8 +48,14 @@ export interface ActorPickerContentProps {
   /** Called when selection changes */
   onChange: (selected: ActorId[]) => void
 
-  /** Actor target: 'user', 'group', or 'both' (default: 'both') */
-  target?: 'user' | 'group' | 'both'
+  /** Actor target: 'user', 'group', 'agent', 'both', or 'all' (default: 'both') */
+  target?: 'user' | 'group' | 'agent' | 'both' | 'all'
+
+  /**
+   * When `target === 'both'`, include agents in the user/agent sections.
+   * Default false — most pickers want humans only.
+   */
+  includeAgents?: boolean
 
   /** Filter by roles (for users) */
   roles?: string[]
@@ -110,6 +116,7 @@ export function ActorPickerContent({
   value,
   onChange,
   target = 'both',
+  includeAgents,
   roles,
   multi = true,
   onSelectSingle,
@@ -199,8 +206,9 @@ export function ActorPickerContent({
   // Group available items by type
   const groupedAvailable = useMemo(() => {
     const users = availableItems.filter((a) => a.type === 'user')
+    const agents = availableItems.filter((a) => a.type === 'agent')
     const groups = availableItems.filter((a) => a.type === 'group')
-    return { users, groups }
+    return { users, agents, groups }
   }, [availableItems])
 
   /**
@@ -238,11 +246,16 @@ export function ActorPickerContent({
   const isLoading = externalLoading || isSearching
   const hasSelectedSection = filteredSelectedItems.length > 0
   const hasUsersSection =
-    (target === 'user' || target === 'both') && groupedAvailable.users.length > 0
+    (target === 'user' || target === 'both' || target === 'all') &&
+    groupedAvailable.users.length > 0
+  const hasAgentsSection =
+    (target === 'agent' || target === 'all' || (target === 'both' && (includeAgents ?? false))) &&
+    groupedAvailable.agents.length > 0
   const hasGroupsSection =
-    (target === 'group' || target === 'both') && groupedAvailable.groups.length > 0
-  const hasResultsSection = hasUsersSection || hasGroupsSection
-  const showGroupHeadings = target === 'both'
+    (target === 'group' || target === 'both' || target === 'all') &&
+    groupedAvailable.groups.length > 0
+  const hasResultsSection = hasUsersSection || hasAgentsSection || hasGroupsSection
+  const showGroupHeadings = target === 'both' || target === 'all'
 
   return (
     <Command shouldFilter={false} className={cn('rounded-lg', className)}>
@@ -295,6 +308,21 @@ export function ActorPickerContent({
         {hasUsersSection && (
           <CommandGroup heading={showGroupHeadings ? 'Users' : undefined} aria-label='Users'>
             {groupedAvailable.users.map((actor) => (
+              <ActorItem
+                key={actor.actorId}
+                actor={actor}
+                isSelected={isSelected(actor.actorId)}
+                onToggle={handleToggle}
+                multi={multi}
+              />
+            ))}
+          </CommandGroup>
+        )}
+
+        {/* Agents Section */}
+        {hasAgentsSection && (
+          <CommandGroup heading={showGroupHeadings ? 'Agents' : undefined} aria-label='Agents'>
+            {groupedAvailable.agents.map((actor) => (
               <ActorItem
                 key={actor.actorId}
                 actor={actor}

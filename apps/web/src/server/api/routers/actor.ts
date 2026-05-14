@@ -38,9 +38,10 @@ export const actorRouter = createTRPCRouter({
     .input(
       z
         .object({
-          target: z.enum(['user', 'group', 'both']).optional(),
+          target: z.enum(['user', 'group', 'agent', 'both', 'all']).optional(),
           roles: z.array(z.enum(['OWNER', 'ADMIN', 'USER'])).optional(),
           groupIds: z.array(z.string()).optional(),
+          includeAgents: z.boolean().optional(),
         })
         .optional()
     )
@@ -75,9 +76,10 @@ export const actorRouter = createTRPCRouter({
     .input(
       z.object({
         query: z.string().min(1),
-        target: z.enum(['user', 'group', 'both']).optional(),
+        target: z.enum(['user', 'group', 'agent', 'both', 'all']).optional(),
         roles: z.array(z.enum(['OWNER', 'ADMIN', 'USER'])).optional(),
         groupIds: z.array(z.string()).optional(),
+        includeAgents: z.boolean().optional(),
         limit: z.number().min(1).max(50).optional(),
       })
     )
@@ -112,10 +114,13 @@ export const actorRouter = createTRPCRouter({
     .input(
       z.object({
         actorIds: z.array(z.string()),
+        includeAgents: z.boolean().optional(),
       })
     )
     .query(async ({ ctx, input }) => {
       const service = new GroupMemberService(toActorContext(ctx))
-      return service.expandToUsers(input.actorIds as ActorId[])
+      return service.expandToUsers(input.actorIds as ActorId[], {
+        includeAgents: input.includeAgents ?? false,
+      })
     }),
 })

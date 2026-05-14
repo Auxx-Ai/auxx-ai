@@ -5,7 +5,7 @@ import { database as db, schema } from '@auxx/database'
 import { ApprovalStatus } from '@auxx/database/enums'
 import { createScopedLogger } from '@auxx/logger'
 import type { Job } from 'bullmq'
-import { eq, inArray } from 'drizzle-orm'
+import { and, eq, inArray } from 'drizzle-orm'
 import { NotificationService } from '../../notifications/notification-service'
 import { enqueueEmailJob } from '../email'
 
@@ -158,7 +158,7 @@ async function sendEmailReminders(
   reminderNumber: number,
   timeRemaining: string
 ): Promise<void> {
-  // Get user details
+  // Get user details — exclude agents (synthetic users) from email fan-out.
   const users = await db
     .select({
       id: schema.User.id,
@@ -166,7 +166,7 @@ async function sendEmailReminders(
       name: schema.User.name,
     })
     .from(schema.User)
-    .where(inArray(schema.User.id, userIds))
+    .where(and(inArray(schema.User.id, userIds), eq(schema.User.userType, 'USER')))
   // Generate approval URL
   const approvalUrl = `${WEBAPP_URL}/workflows/${approvalRequest.workflowId}/approval/${approvalRequest.id}`
   for (const user of users) {

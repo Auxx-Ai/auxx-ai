@@ -18,10 +18,11 @@ export type ActorIdType = 'user' | 'group'
 
 /**
  * Type discriminator for resolved Actor objects.
- * Widened with `'system'` so callers can distinguish automated/system actors from real users.
- * The ActorId format stays `user:<id>` — only the resolved `.type` field differs.
+ * Widened with `'system'` and `'agent'` so callers can distinguish automated/system actors,
+ * Kopilot agents, and real users. The ActorId format stays `user:<id>` for both
+ * — only the resolved `.type` field differs.
  */
-export type ActorType = 'user' | 'group' | 'system'
+export type ActorType = 'user' | 'group' | 'system' | 'agent'
 
 /**
  * Parse ActorId into its components.
@@ -121,8 +122,23 @@ export interface SystemActor extends BaseActor {
   type: 'system'
 }
 
+/**
+ * Agent actor — Auxx-AI configurable agent surfaced as a workspace user.
+ * Backed by a synthetic User row with userType = 'AGENT'. The ActorId
+ * still uses the `user:<id>` prefix for storage compatibility.
+ */
+export interface AgentActor extends BaseActor {
+  type: 'agent'
+  /** The Agent row id (different from BaseActor.actorId, which is user:<userId>). */
+  agentId: string
+  /** Agent slug for routing. */
+  slug: string
+  /** Whether this agent is @-mentionable / assignable. */
+  mentionable: boolean
+}
+
 /** Union type for any actor */
-export type Actor = UserActor | GroupActor | SystemActor
+export type Actor = UserActor | GroupActor | SystemActor | AgentActor
 
 // ============================================================================
 // Actor Context (for services)
@@ -159,4 +175,11 @@ export function isGroupActor(actor: Actor): actor is GroupActor {
  */
 export function isSystemActor(actor: Actor): actor is SystemActor {
   return actor.type === 'system'
+}
+
+/**
+ * Check if an actor is an agent actor.
+ */
+export function isAgentActor(actor: Actor): actor is AgentActor {
+  return actor.type === 'agent'
 }

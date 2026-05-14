@@ -70,6 +70,35 @@ const DEMO_BLOCKED_AUTH_PATHS = new Set([
   '/two-factor/get-totp-uri',
 ])
 
+/**
+ * Auth paths that must always be rejected for AGENT users.
+ * Agents never log in. Any path that could mutate auth state for an
+ * agent is blocked here as a defense-in-depth measure on top of the
+ * customSession + databaseHooks rejections below.
+ */
+const AGENT_BLOCKED_AUTH_PATHS = new Set([
+  '/sign-in',
+  '/sign-in/email',
+  '/sign-in/social',
+  '/sign-up',
+  '/sign-up/email',
+  '/forget-password',
+  '/reset-password',
+  '/change-password',
+  '/change-email',
+  '/send-verification-email',
+  '/verify-email',
+  '/passkey/generate-register-options',
+  '/passkey/verify-registration',
+  '/passkey/delete-passkey',
+  '/two-factor/enable',
+  '/two-factor/disable',
+  '/two-factor/verify-totp',
+  '/two-factor/get-totp-uri',
+  '/phone-number/send-otp',
+  '/phone-number/verify',
+])
+
 // export auth.api
 export const auth = betterAuth({
   database: drizzleAdapter(database, { provider: 'pg', schema }), // use your dialect
@@ -78,6 +107,27 @@ export const auth = betterAuth({
   trustedOrigins,
   hooks: {
     before: createAuthMiddleware(async (ctx) => {
+      // Agent guard: if a request resolves to an AGENT user OR targets a
+      // path that mutates auth state, look up the resolved user and reject.
+      if (AGENT_BLOCKED_AUTH_PATHS.has(ctx.path)) {
+        const session = await auth.api.getSession({ headers: ctx.request.headers })
+        const sessionUser = session?.user as
+          | (typeof session extends null ? never : { id: string })
+          | undefined
+        if (sessionUser?.id) {
+          const dbUser = await getUserById(sessionUser.id)
+          if (dbUser && (dbUser as { userType?: string }).userType === 'AGENT') {
+            logger.info('[agent-guard] Rejecting auth path for AGENT user', {
+              path: ctx.path,
+              userId: dbUser.id,
+            })
+            throw new APIError('FORBIDDEN', {
+              message: 'Agents cannot perform authentication actions.',
+            })
+          }
+        }
+      }
+
       if (!DEMO_BLOCKED_AUTH_PATHS.has(ctx.path)) return
 
       // Session isn't resolved yet in before hooks — resolve from request headers
@@ -108,6 +158,14 @@ export const auth = betterAuth({
     user: {
       create: {
         before: async (user) => {
+          // Reject if a caller tries to create an AGENT user via the auth API.
+          // Agents must be created exclusively via createAgent() in @auxx/lib/agents.
+          if ((user as { userType?: string }).userType === 'AGENT') {
+            logger.warn('Rejecting AGENT user creation via auth API', { email: user.email })
+            throw new APIError('FORBIDDEN', {
+              message: 'Agent users cannot be created via the authentication API.',
+            })
+          }
           // Modify the user object before it is created
           logger.info('Creating user', { userId: user.id })
           return {
@@ -134,6 +192,15 @@ export const auth = betterAuth({
             provider: account.providerId,
           })
           const user = await getUserById(account.userId)
+          if (user && (user as { userType?: string }).userType === 'AGENT') {
+            logger.warn('Refusing to attach Account to AGENT user', {
+              userId: account.userId,
+              provider: account.providerId,
+            })
+            throw new APIError('FORBIDDEN', {
+              message: 'Agent users cannot link authentication accounts.',
+            })
+          }
           if (user?.defaultOrganizationId) {
             await onCacheEvent('user.updated', {
               orgId: user.defaultOrganizationId,
@@ -150,6 +217,12 @@ export const auth = betterAuth({
     // disableSignUp: false,
     minPasswordLength: 8,
     sendResetPassword: async ({ user, url, token }, request) => {
+      if ((user as { userType?: string }).userType === 'AGENT') {
+        logger.warn('Refusing password reset for AGENT user', { userId: user.id })
+        throw new APIError('FORBIDDEN', {
+          message: 'Password reset is not available for this account.',
+        })
+      }
       logger.info('Sending password reset email', { userId: user.id })
       await enqueueEmailJob('reset-password', {
         recipient: { email: user.email!, name: user.name || 'User' },
@@ -252,6 +325,12 @@ export const auth = betterAuth({
     changeEmail: {
       enabled: true,
       sendChangeEmailVerification: async ({ user, newEmail, url, token }, request) => {
+        if ((user as { userType?: string }).userType === 'AGENT') {
+          logger.warn('Refusing email change for AGENT user', { userId: user.id })
+          throw new APIError('FORBIDDEN', {
+            message: 'Email change is not available for this account.',
+          })
+        }
         logger.info('Sending email change verification', { userId: user.id })
         await enqueueEmailJob('email-change-verification', {
           recipient: { email: user.email!, name: user.name || 'User' },
@@ -346,6 +425,15 @@ export const auth = betterAuth({
       const dbUser = await getUserById(extendedUser.id)
       if (!dbUser) {
         logger.warn('Session references non-existent user, invalidating', {
+          userId: extendedUser.id,
+        })
+        return null
+      }
+
+      // Agents never have sessions. If a session was somehow created against
+      // an AGENT user, invalidate it.
+      if ((dbUser as { userType?: string }).userType === 'AGENT') {
+        logger.warn('Session references AGENT user, invalidating', {
           userId: extendedUser.id,
         })
         return null

@@ -3,6 +3,7 @@
 import type { AppCacheService } from './app-cache-service'
 import type { BuildUserCacheService } from './build-user-cache-service'
 import type { OrganizationCacheService } from './org-cache-service'
+import { agentsProvider } from './providers/agents-provider'
 import { aiCredentialsProvider } from './providers/ai-credentials-provider'
 import { aiDefaultModelsProvider } from './providers/ai-default-models-provider'
 import { aiProviderConfigsProvider } from './providers/ai-provider-configs-provider'
@@ -64,6 +65,7 @@ export function registerAllProviders(
   orgCache.register('resources', resourcesProvider)
   orgCache.register('customFields', customFieldsProvider)
   orgCache.register('groups', groupsProvider)
+  orgCache.register('agents', agentsProvider)
   orgCache.register('inboxes', inboxesProvider)
   orgCache.register('integrations', integrationsProvider)
   orgCache.register('overages', overagesProvider)

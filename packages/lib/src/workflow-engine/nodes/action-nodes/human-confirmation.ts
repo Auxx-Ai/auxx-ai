@@ -4,7 +4,7 @@ import { WEBAPP_URL } from '@auxx/config/server'
 import { type Database, database, schema } from '@auxx/database'
 import { ApprovalStatus } from '@auxx/database/enums'
 import { type ActorId, parseActorId } from '@auxx/types/actor'
-import { eq, inArray } from 'drizzle-orm'
+import { and, eq, inArray } from 'drizzle-orm'
 import { v4 as uuidv4 } from 'uuid'
 import { getCachedWorkflowApp } from '../../../cache/workflow-app-queries'
 import { publisher } from '../../../events/publisher'
@@ -479,7 +479,15 @@ export class HumanConfirmationProcessor extends BaseNodeProcessor {
         .where(eq(schema.OrganizationMember.organizationId, organizationId))
       groupMembers.forEach((member) => allUserIds.add(member.userId))
     }
-    return Array.from(allUserIds)
+    if (allUserIds.size === 0) return []
+
+    // Exclude agent (synthetic) users — approval notifications must never
+    // fan out to an agent's sentinel email.
+    const humans = await db
+      .select({ id: schema.User.id })
+      .from(schema.User)
+      .where(and(inArray(schema.User.id, Array.from(allUserIds)), eq(schema.User.userType, 'USER')))
+    return humans.map((u) => u.id)
   }
   private async scheduleTimeout(
     approvalRequestId: string,

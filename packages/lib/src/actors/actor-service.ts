@@ -4,13 +4,17 @@ import type {
   Actor,
   ActorContext,
   ActorId,
+  AgentActor,
   GroupActor,
   SystemActor,
   UserActor,
 } from '@auxx/types/actor'
 import { parseActorId, toActorId } from '@auxx/types/actor'
 import {
+  type CachedAgent,
   type CachedGroup,
+  getCachedAgents,
+  getCachedAgentsByUserIds,
   getCachedGroups,
   getCachedMembers,
   getCachedMembersByUserIds,
@@ -24,14 +28,26 @@ import { SystemUserService } from '../users/system-user-service'
 
 /** Options for listing actors */
 export interface ListActorsOptions {
-  /** Filter to specific target: 'user', 'group', or 'both' (default: 'both') */
-  target?: 'user' | 'group' | 'both'
+  /**
+   * Filter to specific target.
+   * - 'user': humans only
+   * - 'group': groups only
+   * - 'agent': agents only
+   * - 'both': humans + groups (default; agents excluded unless includeAgents is true)
+   * - 'all': humans + groups + agents
+   */
+  target?: 'user' | 'group' | 'agent' | 'both' | 'all'
   /** Filter users by role */
   roles?: ('OWNER' | 'ADMIN' | 'USER')[]
   /** Filter to specific group IDs */
   groupIds?: string[]
   /** Include only groups user can access (default: true) */
   accessibleGroupsOnly?: boolean
+  /**
+   * When target is 'both', include agents alongside humans.
+   * Default: false. Set automatically when target is 'agent' or 'all'.
+   */
+  includeAgents?: boolean
 }
 
 /** Options for searching actors */
@@ -47,7 +63,7 @@ export interface SearchActorsOptions extends ListActorsOptions {
 // ============================================================================
 
 /**
- * Service for resolving and listing actors (users and groups).
+ * Service for resolving and listing actors (users, groups, agents, system).
  * Provides methods to list, search, and batch resolve actors.
  */
 export class ActorService {
@@ -67,14 +83,20 @@ export class ActorService {
    */
   async listActors(options: ListActorsOptions = {}): Promise<Actor[]> {
     const target = options.target ?? 'both'
+    const includeAgents = options.includeAgents ?? (target === 'agent' || target === 'all')
     const results: Actor[] = []
 
-    if (target === 'user' || target === 'both') {
+    if (target === 'user' || target === 'both' || target === 'all') {
       const users = await this.listUsers(options.roles)
       results.push(...users)
     }
 
-    if (target === 'group' || target === 'both') {
+    if (target === 'agent' || target === 'all' || (target === 'both' && includeAgents)) {
+      const agents = await this.listAgents()
+      results.push(...agents)
+    }
+
+    if (target === 'group' || target === 'both' || target === 'all') {
       const groups = await this.listGroups(options)
       results.push(...groups)
     }
@@ -108,7 +130,7 @@ export class ActorService {
       groupIds.length > 0 ? this.fetchGroups(groupIds) : [],
     ])
 
-    // Map results
+    // Map user/group results
     for (const user of users) {
       result.set(user.actorId, user)
     }
@@ -116,15 +138,22 @@ export class ActorService {
       result.set(group.actorId, group)
     }
 
-    // Fallback: any unresolved user id may be the org's system user (not an org member)
+    // Resolve any unresolved user:<id> as agent rows first, then fall through to system user
     const unresolvedUserIds = userIds.filter((id) => !result.has(toActorId('user', id)))
     if (unresolvedUserIds.length > 0) {
-      const systemActor = await this.fetchSystemUser()
+      const agents = await getCachedAgentsByUserIds(this.organizationId, unresolvedUserIds)
+      for (const a of agents) {
+        result.set(toActorId('user', a.userId), this.toAgentActor(a))
+      }
 
-      if (systemActor) {
-        for (const id of unresolvedUserIds) {
-          if (toActorId('user', id) === systemActor.actorId) {
-            result.set(systemActor.actorId, systemActor)
+      const stillUnresolved = unresolvedUserIds.filter((id) => !result.has(toActorId('user', id)))
+      if (stillUnresolved.length > 0) {
+        const systemActor = await this.fetchSystemUser()
+        if (systemActor) {
+          for (const id of stillUnresolved) {
+            if (toActorId('user', id) === systemActor.actorId) {
+              result.set(systemActor.actorId, systemActor)
+            }
           }
         }
       }
@@ -142,7 +171,10 @@ export class ActorService {
     if (type === 'user') {
       const users = await this.fetchUsers([id])
       if (users[0]) return users[0]
-      // Fall back to system user lookup (system users are not org members)
+      // Then check agent
+      const agents = await getCachedAgentsByUserIds(this.organizationId, [id])
+      if (agents[0]) return this.toAgentActor(agents[0])
+      // Then system user
       const systemActor = await this.fetchSystemUser()
       if (systemActor && systemActor.actorId === actorId) return systemActor
       return null
@@ -157,15 +189,21 @@ export class ActorService {
    */
   async searchActors(options: SearchActorsOptions): Promise<Actor[]> {
     const { query, limit = 20, target = 'both' } = options
+    const includeAgents = options.includeAgents ?? (target === 'agent' || target === 'all')
     const results: Actor[] = []
     const searchPattern = `%${query}%`
 
-    if (target === 'user' || target === 'both') {
+    if (target === 'user' || target === 'both' || target === 'all') {
       const users = await this.searchUsers(searchPattern, options.roles, limit)
       results.push(...users)
     }
 
-    if (target === 'group' || target === 'both') {
+    if (target === 'agent' || target === 'all' || (target === 'both' && includeAgents)) {
+      const agents = await this.searchAgents(searchPattern, limit)
+      results.push(...agents)
+    }
+
+    if (target === 'group' || target === 'both' || target === 'all') {
       const groups = await this.searchGroups(searchPattern, options, limit)
       results.push(...groups)
     }
@@ -191,12 +229,16 @@ export class ActorService {
       status: 'ACTIVE',
       roles: roles?.length ? roles : undefined,
     })
-    return members.filter((m) => m.user).map((m) => this.toUserActorFromCache(m))
+    return members
+      .filter((m) => m.user && m.user.userType === 'USER')
+      .map((m) => this.toUserActorFromCache(m))
   }
 
   private async fetchUsers(userIds: string[]): Promise<UserActor[]> {
     const members = await getCachedMembersByUserIds(this.organizationId, userIds)
-    return members.filter((m) => m.user).map((m) => this.toUserActorFromCache(m))
+    return members
+      .filter((m) => m.user && m.user.userType === 'USER')
+      .map((m) => this.toUserActorFromCache(m))
   }
 
   private async searchUsers(
@@ -214,6 +256,7 @@ export class ActorService {
       .filter(
         (m) =>
           m.user &&
+          m.user.userType === 'USER' &&
           (m.user.name?.toLowerCase().includes(searchTerm) ||
             m.user.email?.toLowerCase().includes(searchTerm))
       )
@@ -244,6 +287,39 @@ export class ActorService {
       type: 'system',
       name: 'Auxx.ai',
       avatarUrl: user.image ?? null,
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────
+  // Private: Agent Operations
+  // ─────────────────────────────────────────────────────────────────
+
+  private async listAgents(): Promise<AgentActor[]> {
+    const agents = await getCachedAgents(this.organizationId)
+    return agents.map((a) => this.toAgentActor(a))
+  }
+
+  private async searchAgents(pattern: string, limit?: number): Promise<AgentActor[]> {
+    const agents = await getCachedAgents(this.organizationId)
+    const searchTerm = pattern.replace(/%/g, '').toLowerCase()
+    return agents
+      .filter(
+        (a) =>
+          a.name.toLowerCase().includes(searchTerm) || a.slug.toLowerCase().includes(searchTerm)
+      )
+      .map((a) => this.toAgentActor(a))
+      .slice(0, limit ?? 50)
+  }
+
+  private toAgentActor(agent: CachedAgent): AgentActor {
+    return {
+      actorId: toActorId('user', agent.userId),
+      type: 'agent',
+      name: agent.name,
+      avatarUrl: agent.avatarUrl ?? null,
+      agentId: agent.id,
+      slug: agent.slug,
+      mentionable: agent.mentionable,
     }
   }
 

@@ -214,13 +214,17 @@ export class OverageDetectionService {
   private async getResourceCount(organizationId: string, featureKey: string): Promise<number> {
     switch (featureKey) {
       case FeatureKey.teammates: {
+        // Only count human members — agents (userType='AGENT') and system users
+        // must not consume paid seats.
         const [result] = await this.db
           .select({ value: count() })
           .from(schema.OrganizationMember)
+          .innerJoin(schema.User, eq(schema.User.id, schema.OrganizationMember.userId))
           .where(
             and(
               eq(schema.OrganizationMember.organizationId, organizationId),
-              eq(schema.OrganizationMember.status, 'ACTIVE')
+              eq(schema.OrganizationMember.status, 'ACTIVE'),
+              eq(schema.User.userType, 'USER')
             )
           )
         return result?.value ?? 0
