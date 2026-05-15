@@ -84,6 +84,12 @@ interface KopilotStreamRequest {
   modelId?: string
   /** Target a user-authored agent on session create; ignored on existing sessions. */
   agentId?: string | null
+  /**
+   * Session-domain discriminator for newly-created sessions. 'builder' is used
+   * when the agent detail page hosts the chat; 'kopilot' is the default.
+   * Ignored when sessionId is provided (existing session keeps its type).
+   */
+  sessionType?: 'kopilot' | 'builder'
 }
 
 /**
@@ -202,7 +208,7 @@ export async function POST(request: NextRequest) {
           const createResult = await createSession({
             organizationId,
             userId,
-            type: 'kopilot',
+            type: body.sessionType ?? 'kopilot',
             title: placeholderTitle,
             agentId: sessionAgentId,
           })
@@ -216,6 +222,7 @@ export async function POST(request: NextRequest) {
           send({
             type: 'session-created',
             sessionId,
+            sessionType: createResult.value.type,
             title: placeholderTitle,
             createdAt: createResult.value.createdAt.toISOString(),
           })

@@ -21,6 +21,8 @@ export interface KopilotRequest {
   modelId?: string
   /** Target a user-authored agent on session create; ignored on existing sessions. */
   agentId?: string | null
+  /** Session-domain discriminator on session create. Defaults to 'kopilot' server-side. */
+  sessionType?: 'kopilot' | 'builder'
 }
 
 interface UseKopilotSSEOptions {
@@ -83,6 +85,7 @@ export function useKopilotSSE({ pendingRequest, onRequestSent }: UseKopilotSSEOp
           upsertSessionInListCache(utils, {
             sessionId: data.sessionId,
             title: data.title ?? '',
+            sessionType: data.sessionType,
             createdAt: data.createdAt,
           })
           break

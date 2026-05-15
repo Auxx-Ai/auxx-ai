@@ -14,15 +14,20 @@ type TrpcUtils = ReturnType<typeof api.useUtils>
  */
 export function upsertSessionInListCache(
   utils: TrpcUtils,
-  input: { sessionId: string; title: string; createdAt?: string }
+  input: { sessionId: string; title: string; sessionType?: string; createdAt?: string }
 ) {
   const createdAt = input.createdAt ? new Date(input.createdAt) : new Date()
+  const sessionType = input.sessionType ?? 'kopilot'
+
+  // Builder sessions aren't shown in the master Kopilot sidebar, so we don't
+  // patch a list cache they don't belong to.
+  if (sessionType !== 'kopilot') return
 
   utils.kopilot.listSessions.setData(KOPILOT_SESSIONS_QUERY_INPUT, (old) => {
     const newRow = {
       id: input.sessionId,
       title: input.title,
-      type: 'kopilot' as const,
+      type: sessionType,
       createdAt,
       updatedAt: createdAt,
     }

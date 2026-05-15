@@ -23,7 +23,7 @@ interface KnowledgeSubTabProps {
  * through `useScopeMutations`.
  */
 export function KnowledgeSubTab({ agent, onSavingChange }: KnowledgeSubTabProps) {
-  const { setMode, setPin } = useScopeMutations(agent.id, onSavingChange)
+  const { setMode, setPin } = useScopeMutations(agent.id, agent.slug, onSavingChange)
   const { recordIds: kbIds, isLoading } = useRecordList({
     entityDefinitionId: 'kb',
     limit: 100,

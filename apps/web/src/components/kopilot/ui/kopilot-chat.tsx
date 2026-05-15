@@ -33,6 +33,11 @@ export interface KopilotChatProps {
    * resolves its toolset / prompt config. Ignored on existing sessions.
    */
   agentId?: string | null
+  /**
+   * Session-domain discriminator for newly-created sessions ('kopilot' default,
+   * 'builder' when this chat configures an agent). Ignored on existing sessions.
+   */
+  sessionType?: 'kopilot' | 'builder'
 }
 
 export function KopilotChat({
@@ -41,6 +46,7 @@ export function KopilotChat({
   initialSessionId,
   contentClassName,
   agentId,
+  sessionType,
 }: KopilotChatProps) {
   const activeSessionId = useKopilotStore((s) => s.activeSessionId)
   const setEditingMessage = useKopilotStore((s) => s.setEditingMessage)
@@ -48,6 +54,7 @@ export function KopilotChat({
   const messages = useKopilotStore((s) => s.messages)
   const setMessageFeedback = useKopilotStore((s) => s.setMessageFeedback)
   const addMessage = useKopilotStore((s) => s.addMessage)
+  const startNewSession = useKopilotStore((s) => s.startNewSession)
 
   const composerRef = useRef<KopilotComposerHandle>(null)
   const messageListRef = useRef<KopilotMessageListHandle>(null)
@@ -67,14 +74,24 @@ export function KopilotChat({
   useEffect(() => {
     if (hasLoadedInitialRef.current) return
 
-    // If an explicit initialSessionId is provided, load it — unless the store
-    // already has it loaded. Skip only when the id matches AND we have
-    // messages: this is the post-SSE case where /new flipped to /[sessionId]
-    // via history.replaceState and reloading would clobber the in-flight
-    // stream. After a cold refresh the id is rehydrated from localStorage
-    // but messages aren't persisted, so we must still load.
-    if (initialSessionId) {
+    // When `initialSessionId` is passed explicitly (even as null), it overrides
+    // any persisted activeSessionId in the store. This prevents the agent
+    // builder surface from rehydrating the last master-Kopilot session.
+    if (initialSessionId !== undefined) {
       hasLoadedInitialRef.current = true
+      if (initialSessionId === null) {
+        // Explicit "start fresh" — clear any state left over from another
+        // surface so old messages don't render before the user types.
+        if (activeSessionId !== null || messages.length > 0) {
+          startNewSession()
+        }
+        return
+      }
+      // Skip reload when the store already holds this session AND has
+      // messages: post-SSE `/new` → `/[sessionId]` via history.replaceState
+      // would otherwise clobber the in-flight stream. After a cold refresh
+      // the id is rehydrated from localStorage but messages aren't persisted,
+      // so we must still load.
       const alreadyLoaded = initialSessionId === activeSessionId && messages.length > 0
       if (!alreadyLoaded) {
         loadSession(initialSessionId)
@@ -82,12 +99,12 @@ export function KopilotChat({
       return
     }
 
-    // Otherwise, load persisted session if messages are empty
+    // No prop provided → load persisted session if messages are empty.
     if (activeSessionId && messages.length === 0) {
       hasLoadedInitialRef.current = true
       loadSession(activeSessionId)
     }
-  }, [initialSessionId, activeSessionId, messages.length, loadSession])
+  }, [initialSessionId, activeSessionId, messages.length, loadSession, startNewSession])
 
   // Feedback
   const rateMessage = api.kopilot.rateMessage.useMutation()
@@ -110,11 +127,20 @@ export function KopilotChat({
     [activeSessionId, messageMap, setMessageFeedback, rateMessage]
   )
 
+  const augmentRequest = useCallback(
+    (request: KopilotRequest): KopilotRequest => ({
+      ...request,
+      ...(agentId ? { agentId } : {}),
+      ...(sessionType ? { sessionType } : {}),
+    }),
+    [agentId, sessionType]
+  )
+
   const handleSend = useCallback(
     (request: KopilotRequest) => {
-      setPendingRequest(agentId ? { ...request, agentId } : request)
+      setPendingRequest(augmentRequest(request))
     },
-    [agentId]
+    [augmentRequest]
   )
 
   const handleSuggestionClick = useCallback(
@@ -136,23 +162,24 @@ export function KopilotChat({
         store.dismissedChipKeys
       )
       store.clearDismissedChips()
-      setPendingRequest({
-        sessionId: activeSessionId ?? undefined,
-        message: text,
-        type: 'message',
-        page: merged.page ?? page,
-        context: merged,
-        ...(agentId ? { agentId } : {}),
-      })
+      setPendingRequest(
+        augmentRequest({
+          sessionId: activeSessionId ?? undefined,
+          message: text,
+          type: 'message',
+          page: merged.page ?? page,
+          context: merged,
+        })
+      )
     },
-    [addMessage, messages, activeSessionId, page, agentId]
+    [addMessage, messages, activeSessionId, page, augmentRequest]
   )
 
   const handleApprovalAction = useCallback(
     (request: KopilotRequest) => {
-      setPendingRequest(agentId ? { ...request, agentId } : request)
+      setPendingRequest(augmentRequest(request))
     },
-    [agentId]
+    [augmentRequest]
   )
 
   const handleEditMessage = useCallback(
@@ -175,16 +202,17 @@ export function KopilotChat({
       )
       store.clearDismissedChips()
 
-      setPendingRequest({
-        sessionId: activeSessionId ?? undefined,
-        message: text,
-        type: 'message',
-        page: merged.page ?? page,
-        context: merged,
-        ...(agentId ? { agentId } : {}),
-      })
+      setPendingRequest(
+        augmentRequest({
+          sessionId: activeSessionId ?? undefined,
+          message: text,
+          type: 'message',
+          page: merged.page ?? page,
+          context: merged,
+        })
+      )
     },
-    [messageMap, activeSessionId, page, agentId]
+    [messageMap, activeSessionId, page, augmentRequest]
   )
 
   return (

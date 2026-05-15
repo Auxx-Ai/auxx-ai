@@ -10,9 +10,9 @@ import { AGENT_TABS, type AgentTab, DEFAULT_AGENT_TAB } from '../../constant'
 import type { AgentDetail } from '../../store/agent-store'
 import type { AutosaveState } from '../shared/autosave-indicator'
 import { AgentHero } from './agent-hero'
-import { KnowledgeSectionContent } from './tabs/knowledge-tab-placeholder'
-import { PromptSectionContent } from './tabs/prompt-tab-placeholder'
-import { ToolsSectionContent } from './tabs/tools-tab-placeholder'
+import { KnowledgeSectionContent } from './knowledge/knowledge-section-content'
+import { PersonaEditor } from './prompt/persona-editor'
+import { ToolsSectionContent } from './tools/tools-section-content'
 
 const SECTION_ICONS: Record<AgentTab, React.ComponentType<{ className?: string }>> = {
   prompt: FileText,
@@ -141,7 +141,7 @@ export function AgentDetailTabs({ agent, onAutosaveChange }: AgentDetailTabsProp
             icon={<FileText className='size-4' />}
             initialOpen
             collapsible={false}>
-            <PromptSectionContent agent={agent} onAutosaveChange={onAutosaveChange} />
+            <PersonaEditor agent={agent} onAutosaveChange={onAutosaveChange} />
           </Section>
         </div>
 
@@ -149,6 +149,7 @@ export function AgentDetailTabs({ agent, onAutosaveChange }: AgentDetailTabsProp
           <Section
             title='Tools'
             icon={<Wrench className='size-4' />}
+            className='[&>[data-slot=section]>[data-slot=section-content]]:-mx-3'
             initialOpen
             collapsible={false}>
             <ToolsSectionContent agent={agent} onAutosaveChange={onAutosaveChange} />

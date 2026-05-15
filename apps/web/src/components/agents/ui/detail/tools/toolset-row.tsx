@@ -3,11 +3,10 @@
 
 import type { ToolCatalogEntry } from '@auxx/lib/agents/client'
 import { Badge } from '@auxx/ui/components/badge'
-import { Checkbox } from '@auxx/ui/components/checkbox'
-import { Field } from '@auxx/ui/components/section'
 import { Switch } from '@auxx/ui/components/switch'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@auxx/ui/components/tooltip'
-import { cn } from '@auxx/ui/lib/utils'
+import { TreeRow } from '@auxx/ui/components/tree-row'
+import { Wrench } from 'lucide-react'
+import { useEffect, useState } from 'react'
 
 export interface ToolsetRowProps {
   slug: string
@@ -21,9 +20,10 @@ export interface ToolsetRowProps {
 }
 
 /**
- * One row per toolset: title + enable switch + (when enabled) per-tool
- * checkboxes. Mention-sourced rows show a badge and disable the switch —
- * the prompt reconciler owns them.
+ * One toolset rendered as a TreeRow with per-tool TreeRow subitems beneath.
+ * The toolset Switch lives in the trailing slot; per-tool Switches do the
+ * same at depth 1. Rows start collapsed — admins click the chevron to reveal
+ * the tool list. Mention-sourced rows show a badge and disable the switch.
  */
 export function ToolsetRow({
   slug,
@@ -35,77 +35,76 @@ export function ToolsetRow({
   onToolsetToggle,
   onToolToggle,
 }: ToolsetRowProps) {
-  const disabledSet = new Set(disabledTools)
+  const [isExpanded, setIsExpanded] = useState(false)
+
+  // Local state for instant switch feedback. Syncs back to server truth when
+  // the parent prop changes (after optimistic update + cache reconciliation).
+  const [localEnabled, setLocalEnabled] = useState(enabled)
+  const [localDisabled, setLocalDisabled] = useState<Set<string>>(() => new Set(disabledTools))
+
+  useEffect(() => {
+    setLocalEnabled(enabled)
+  }, [enabled])
+  useEffect(() => {
+    setLocalDisabled(new Set(disabledTools))
+  }, [disabledTools])
+
   const enabledCount =
-    tools.length - disabledTools.filter((d) => tools.some((t) => t.name === d)).length
+    tools.length - [...localDisabled].filter((d) => tools.some((t) => t.name === d)).length
 
   return (
-    <div className='py-2'>
-      <Field
-        title={label}
-        description={`Slug: ${slug}`}
-        actions={
-          <div className='flex items-center gap-2'>
-            {enabled && (
-              <span className='text-xs text-muted-foreground'>
-                {enabledCount}/{tools.length} tools
-              </span>
-            )}
-            {source === 'mention' && <Badge variant='secondary'>Pinned by mention</Badge>}
-            {source === 'auto_default' && <Badge variant='outline'>Default</Badge>}
-            <Switch
-              size='sm'
-              checked={enabled}
-              disabled={source === 'mention'}
-              onCheckedChange={(checked) => onToolsetToggle(slug, checked)}
-            />
-          </div>
-        }>
-        {enabled && tools.length > 0 && (
-          <div className='mt-1 ml-3 space-y-1.5'>
-            {tools.map((tool) => (
-              <ToolCheckbox
-                key={tool.name}
-                tool={tool}
-                checked={!disabledSet.has(tool.name)}
-                onChange={(checked) => onToolToggle(slug, tool.name, checked)}
+    <TreeRow
+      icon={<Wrench className='size-4' />}
+      title={label}
+      description={`Slug: ${slug}`}
+      expandable={localEnabled && tools.length > 0}
+      isOpen={isExpanded}
+      onToggleOpen={() => setIsExpanded((v) => !v)}
+      actions={
+        <>
+          {localEnabled && (
+            <span className='text-xs text-muted-foreground'>
+              {enabledCount}/{tools.length} tools
+            </span>
+          )}
+          {source === 'mention' && <Badge variant='secondary'>Pinned by mention</Badge>}
+          {source === 'auto_default' && <Badge variant='outline'>Default</Badge>}
+          <Switch
+            size='sm'
+            checked={localEnabled}
+            disabled={source === 'mention'}
+            onCheckedChange={(checked) => {
+              setLocalEnabled(checked)
+              onToolsetToggle(slug, checked)
+            }}
+          />
+        </>
+      }>
+      {tools.map((tool) => {
+        const checked = !localDisabled.has(tool.name)
+        return (
+          <TreeRow
+            key={tool.name}
+            depth={1}
+            title={<span className='font-mono text-xs'>{tool.name}</span>}
+            description={tool.description}
+            actions={
+              <Switch
+                size='sm'
+                checked={checked}
+                onCheckedChange={(value) => {
+                  setLocalDisabled((prev) => {
+                    const next = new Set(prev)
+                    value ? next.delete(tool.name) : next.add(tool.name)
+                    return next
+                  })
+                  onToolToggle(slug, tool.name, value)
+                }}
               />
-            ))}
-          </div>
-        )}
-      </Field>
-    </div>
-  )
-}
-
-interface ToolCheckboxProps {
-  tool: ToolCatalogEntry
-  checked: boolean
-  onChange: (checked: boolean) => void
-}
-
-function ToolCheckbox({ tool, checked, onChange }: ToolCheckboxProps) {
-  return (
-    <div className={cn('flex items-center gap-2 text-sm')}>
-      <Checkbox
-        id={`tool-${tool.name}`}
-        checked={checked}
-        onCheckedChange={(value) => onChange(value === true)}
-      />
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <label
-            htmlFor={`tool-${tool.name}`}
-            className='font-mono text-xs cursor-pointer text-foreground hover:underline'>
-            {tool.name}
-          </label>
-        </TooltipTrigger>
-        {tool.description && (
-          <TooltipContent side='right' className='max-w-xs'>
-            {tool.description}
-          </TooltipContent>
-        )}
-      </Tooltip>
-    </div>
+            }
+          />
+        )
+      })}
+    </TreeRow>
   )
 }

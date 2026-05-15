@@ -2,23 +2,37 @@
 'use client'
 
 import { KopilotChat } from '~/components/kopilot/ui/kopilot-chat'
+import { api } from '~/trpc/react'
 
 interface AgentDockedChatProps {
   agentId: string
 }
 
 /**
- * Docked Kopilot chat scoped to one agent. New sessions created from this
- * surface carry `agentId` so the engine resolves the agent's toolset / prompt
- * config end-to-end (see /api/kopilot/stream + process-agent-job).
- *
- * v1 always starts a fresh session — no session history is surfaced. Admins
- * who want chat history can still visit /app/kopilot directly.
+ * Docked Kopilot chat scoped to one agent. The session is bound to
+ * `(userId, agentId, type='builder')` — each admin gets their own persistent
+ * builder thread per agent. On mount we look up the most recent builder
+ * session and load it; if none exists, the chat starts fresh and the first
+ * message creates a new builder-tagged session.
  */
 export function AgentDockedChat({ agentId }: AgentDockedChatProps) {
+  const { data, isLoading } = api.kopilot.listSessions.useQuery(
+    { type: 'builder', agentId, limit: 1 },
+    { staleTime: 30_000 }
+  )
+
+  if (isLoading) return <div className='h-full' />
+
+  const initialSessionId = data?.items[0]?.id ?? null
+
   return (
     <div className='h-full flex flex-col'>
-      <KopilotChat page='agent-detail' agentId={agentId} initialSessionId={null} />
+      <KopilotChat
+        page='agents.builder'
+        agentId={agentId}
+        sessionType='builder'
+        initialSessionId={initialSessionId}
+      />
     </div>
   )
 }

@@ -17,6 +17,8 @@ interface UseReferencePickerEditorOptions {
   editable?: boolean
   extensions?: unknown[]
   className?: string
+  /** Mount the `@`-mention reference picker. Default: true. */
+  enableReferencePicker?: boolean
   /** Called when Enter is pressed inside the open picker chip. */
   onPickerEnter?: () => boolean
   /** Called when ArrowUp/Down is pressed inside the open picker chip. */
@@ -43,13 +45,17 @@ export function useReferencePickerEditor(options: UseReferencePickerEditorOption
     editable = true,
     extensions = [],
     className,
+    enableReferencePicker = true,
     onPickerEnter,
     onPickerArrowVertical,
   } = options
 
   const referencePickerExtensions = useMemo(
-    () => buildReferencePickerExtensions({ onPickerEnter, onPickerArrowVertical }),
-    [onPickerEnter, onPickerArrowVertical]
+    () =>
+      enableReferencePicker
+        ? buildReferencePickerExtensions({ onPickerEnter, onPickerArrowVertical })
+        : [],
+    [enableReferencePicker, onPickerEnter, onPickerArrowVertical]
   )
 
   const editor = useEditor({

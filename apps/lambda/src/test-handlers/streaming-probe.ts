@@ -10,7 +10,15 @@
  * once the spike verdict is in.
  */
 
-import type { StreamEvent } from '../runtime/stream-response.ts'
+type StreamEvent =
+  | {
+      event: 'progress'
+      data: { step: number; total: number; elapsedMs: number; emittedAt: number }
+    }
+  | {
+      event: 'result'
+      data: { ok: true; steps: number; totalElapsedMs: number; emittedAt: number }
+    }
 
 export async function* streamingProbe(opts: {
   steps?: number

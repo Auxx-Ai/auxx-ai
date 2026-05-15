@@ -25,6 +25,8 @@ export const kopilotRouter = createTRPCRouter({
   listSessions: protectedProcedure
     .input(
       z.object({
+        type: z.enum(['kopilot', 'builder']).default('kopilot'),
+        agentId: z.string().optional(),
         limit: z.number().int().min(1).max(100).default(50),
         cursor: z.string().optional(),
       })
@@ -35,7 +37,8 @@ export const kopilotRouter = createTRPCRouter({
       const result = await findSessionsByType({
         organizationId: ctx.session.organizationId,
         userId: ctx.session.userId,
-        type: 'kopilot',
+        type: input.type,
+        agentId: input.agentId,
         limit: input.limit,
         cursor: input.cursor,
       })

@@ -30,6 +30,7 @@ import { KopilotContextChipStrip } from '../context/kopilot-context-chip-strip'
 import type { SessionRef, SessionRefKind } from '../context/types'
 import type { KopilotRequest } from '../hooks/use-kopilot-sse'
 import { usePromptTemplates } from '../hooks/use-prompt-templates'
+import { useKopilotChatOptions } from '../options'
 import type { KopilotMessage } from '../stores/kopilot-store'
 import { useKopilotStore } from '../stores/kopilot-store'
 import { applyChipDismissals, selectMergedContext } from '../stores/select-context'
@@ -126,6 +127,9 @@ export function KopilotComposer({ ref, page, onSend, contentClassName }: Kopilot
   const containerRef = useRef<HTMLDivElement>(null)
   const handleSendRef = useRef<() => void>(() => {})
 
+  const { placeholder, allowModelPicker, allowSlashCommands, allowReferencePicker } =
+    useKopilotChatOptions()
+
   const isStreaming = useKopilotStore((s) => s.isStreaming)
   const activeSessionId = useKopilotStore((s) => s.activeSessionId)
   const addMessage = useKopilotStore((s) => s.addMessage)
@@ -200,8 +204,9 @@ export function KopilotComposer({ ref, page, onSend, contentClassName }: Kopilot
   const referencePickerRef = useRef<ReferencePickerHandle | null>(null)
 
   const { editor, confirmReference, closePicker } = useReferencePickerEditor({
-    placeholder: 'Ask Kopilot...',
+    placeholder: placeholder ?? 'Ask Kopilot...',
     editable: true,
+    enableReferencePicker: allowReferencePicker,
     className: cn('prose prose-sm prose-p:my-0 focus:outline-hidden max-w-none dark:prose-invert'),
     onUpdate: (html) => {
       const empty = isEmptyContent(html)
@@ -218,7 +223,7 @@ export function KopilotComposer({ ref, page, onSend, contentClassName }: Kopilot
           handleSendRef.current()
         },
       }),
-      slashCommandExtension,
+      ...(allowSlashCommands ? [slashCommandExtension] : []),
       promptNodeExtension,
     ],
   })
@@ -253,7 +258,9 @@ export function KopilotComposer({ ref, page, onSend, contentClassName }: Kopilot
 
     // Collapse any open picker chip to plain `@<query>` text so the chip's
     // transient markup never reaches storage / the LLM.
-    editor.commands.closeReferencePicker({ keepText: true })
+    if (allowReferencePicker) {
+      editor.commands.closeReferencePicker({ keepText: true })
+    }
 
     const html = editor.getHTML()
     if (isEmptyContent(html)) return
@@ -334,6 +341,7 @@ export function KopilotComposer({ ref, page, onSend, contentClassName }: Kopilot
     templateMap,
     templateDisplayMap,
     selectedModelId,
+    allowReferencePicker,
   ])
 
   // Keep ref in sync
@@ -388,96 +396,104 @@ export function KopilotComposer({ ref, page, onSend, contentClassName }: Kopilot
             className={cn('w-full flex flex-col px-3 py-2 text-sm flex-1 [&>.prose]:flex-1')}
           />
           {/* Reference picker (@) — tabbed people/records/messages/articles */}
-          <InlinePickerPopover
-            state={{
-              isOpen: !!activePicker,
-              query: activePicker?.query ?? '',
-              range: null,
-              clientRect: activePicker?.clientRect ?? null,
-            }}
-            containerRef={containerRef}
-            width={360}
-            side='top'
-            align='start'
-            autoFocus={false}
-            onInteractOutside={(e) => {
-              // Clicking the chip itself must not close the picker — the
-              // user is editing the query inline. Without this, Radix sees
-              // the click as outside the popover and triggers onClose,
-              // collapsing the chip to plain `@<query>` text.
-              const target = e.target as HTMLElement | null
-              if (target?.closest('[data-type="reference-picker"]')) {
-                e.preventDefault()
-              }
-            }}
-            onClose={() => closePicker({ keepText: true })}>
-            <ReferencePickerContent
-              ref={referencePickerRef}
-              tab={activePicker?.tab ?? 'people'}
-              query={activePicker?.query ?? ''}
-              onSelect={(id) => confirmReference(id)}
-              onTabChange={(tab) => editor?.commands.setReferencePickerTab(tab)}
-            />
-          </InlinePickerPopover>
+          {allowReferencePicker && (
+            <InlinePickerPopover
+              state={{
+                isOpen: !!activePicker,
+                query: activePicker?.query ?? '',
+                range: null,
+                clientRect: activePicker?.clientRect ?? null,
+              }}
+              containerRef={containerRef}
+              width={360}
+              side='top'
+              align='start'
+              autoFocus={false}
+              onInteractOutside={(e) => {
+                // Clicking the chip itself must not close the picker — the
+                // user is editing the query inline. Without this, Radix sees
+                // the click as outside the popover and triggers onClose,
+                // collapsing the chip to plain `@<query>` text.
+                const target = e.target as HTMLElement | null
+                if (target?.closest('[data-type="reference-picker"]')) {
+                  e.preventDefault()
+                }
+              }}
+              onClose={() => closePicker({ keepText: true })}>
+              <ReferencePickerContent
+                ref={referencePickerRef}
+                tab={activePicker?.tab ?? 'people'}
+                query={activePicker?.query ?? ''}
+                onSelect={(id) => confirmReference(id)}
+                onTabChange={(tab) => editor?.commands.setReferencePickerTab(tab)}
+              />
+            </InlinePickerPopover>
+          )}
           {/* Slash command picker (/) */}
-          <InlinePickerPopover
-            state={slashSuggestionState}
-            containerRef={containerRef}
-            width={280}
-            onClose={slashClosePicker}>
-            <PromptTemplatePickerContent
-              onClose={slashClosePicker}
-              onSelect={(template) => {
-                slashExecuteCommand((editor, range) => {
-                  editor
-                    .chain()
-                    .focus()
-                    .deleteRange(range)
-                    .insertContent({
-                      type: 'promptTemplate',
-                      attrs: { id: template.id },
-                    })
-                    .insertContent(' ')
-                    .run()
-                })
-              }}
-              onCreateRequest={() => setPromptDialogOpen(true)}
-              onEditRequest={setEditingTemplate}
-              onBrowseRequest={() => {
-                slashClosePicker()
-                setBrowseDialogOpen(true)
-              }}
+          {allowSlashCommands && (
+            <InlinePickerPopover
+              state={slashSuggestionState}
+              containerRef={containerRef}
+              width={280}
+              onClose={slashClosePicker}>
+              <PromptTemplatePickerContent
+                onClose={slashClosePicker}
+                onSelect={(template) => {
+                  slashExecuteCommand((editor, range) => {
+                    editor
+                      .chain()
+                      .focus()
+                      .deleteRange(range)
+                      .insertContent({
+                        type: 'promptTemplate',
+                        attrs: { id: template.id },
+                      })
+                      .insertContent(' ')
+                      .run()
+                  })
+                }}
+                onCreateRequest={() => setPromptDialogOpen(true)}
+                onEditRequest={setEditingTemplate}
+                onBrowseRequest={() => {
+                  slashClosePicker()
+                  setBrowseDialogOpen(true)
+                }}
+              />
+            </InlinePickerPopover>
+          )}
+        </div>
+        {allowModelPicker && (
+          <div className='absolute bottom-1 left-1'>
+            <AiModelPicker
+              value={selectedModelId ?? systemLlmDefault}
+              onChange={handleModelFilter}
+              modelTypes={[ModelType.LLM]}
+              triggerVariant='transparent'
+              triggerClassName='h-7 text-xs text-muted-foreground'
+              compact
+              skipDeprecated
             />
-          </InlinePickerPopover>
-        </div>
-        <div className='absolute bottom-1 left-1'>
-          <AiModelPicker
-            value={selectedModelId ?? systemLlmDefault}
-            onChange={handleModelFilter}
-            modelTypes={[ModelType.LLM]}
-            triggerVariant='transparent'
-            triggerClassName='h-7 text-xs text-muted-foreground'
-            compact
-            skipDeprecated
-          />
-        </div>
+          </div>
+        )}
         <div className='absolute bottom-1 right-1 flex items-center gap-0.5'>
-          <Tooltip content='Insert prompt template' shortcut='/' allowInteraction>
-            <Button
-              size='icon-sm'
-              variant='ghost'
-              className='shrink-0'
-              onMouseDown={(e) => {
-                // Prevent editor blur — keeps the Suggestion plugin state
-                // alive so inserting "/" opens the picker.
-                e.preventDefault()
-                handleInsertSlash()
-              }}
-              disabled={isStreaming}
-              title='Insert prompt template'>
-              <SquareSlash />
-            </Button>
-          </Tooltip>
+          {allowSlashCommands && (
+            <Tooltip content='Insert prompt template' shortcut='/' allowInteraction>
+              <Button
+                size='icon-sm'
+                variant='ghost'
+                className='shrink-0'
+                onMouseDown={(e) => {
+                  // Prevent editor blur — keeps the Suggestion plugin state
+                  // alive so inserting "/" opens the picker.
+                  e.preventDefault()
+                  handleInsertSlash()
+                }}
+                disabled={isStreaming}
+                title='Insert prompt template'>
+                <SquareSlash />
+              </Button>
+            </Tooltip>
+          )}
           <Tooltip content='Send message' shortcut={<CornerDownLeft className='size-4' />}>
             <Button
               size='icon-sm'

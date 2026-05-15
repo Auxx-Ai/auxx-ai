@@ -20,6 +20,7 @@ import {
 } from 'lucide-react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { useMemo } from 'react'
+import { useKopilotChatOptions } from '../options/kopilot-chat-provider'
 import { useKopilotSuggestions } from '../stores/select-suggestions'
 import type { SuggestionIcon, SuggestionSlice } from '../suggestions/types'
 
@@ -74,6 +75,7 @@ interface KopilotEmptyStateProps {
 }
 
 export function KopilotEmptyState({ onSuggestionClick }: KopilotEmptyStateProps) {
+  const { hideSuggestions, emptyStateDescription } = useKopilotChatOptions()
   const registered = useKopilotSuggestions()
   const prefersReducedMotion = useReducedMotion()
 
@@ -117,48 +119,56 @@ export function KopilotEmptyState({ onSuggestionClick }: KopilotEmptyStateProps)
         </div>
         <div className='space-y-1'>
           <p className='text-sm font-medium'>Kopilot</p>
-          <p className='text-xs text-muted-foreground max-w-[200px]'>
-            Ask about tickets, contacts, or anything in your inbox.
+          <p data-slot='description' className='text-xs text-muted-foreground max-w-[200px]'>
+            {emptyStateDescription ?? 'Ask about tickets, contacts, or anything in your inbox.'}
           </p>
         </div>
       </div>
 
       {/* Suggestions column */}
-      <div className='flex w-full max-w-xs flex-col gap-1'>
-        <AnimatePresence initial={true}>
-          {visible.map((s, i) => {
-            const Icon = s.icon ? ICONS[s.icon] : Sparkles
-            return (
-              <motion.button
-                type='button'
-                key={s.id}
-                layout
-                initial={
-                  prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: 8, filter: 'blur(3px)' }
-                }
-                animate={
-                  prefersReducedMotion ? { opacity: 1 } : { opacity: 1, y: 0, filter: 'blur(0px)' }
-                }
-                exit={
-                  prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: 4, filter: 'blur(3px)' }
-                }
-                transition={
-                  prefersReducedMotion ? { duration: 0.12 } : { ...SPRING, delay: i * 0.04 }
-                }
-                onClick={() => onSuggestionClick?.(s.text, s.autoSubmit)}
-                className={cn(
-                  'flex w-full items-center gap-2 rounded-lg border bg-background',
-                  'px-3 py-2 text-left text-xs text-muted-foreground',
-                  'hover:border-purple-500/40 hover:text-foreground',
-                  'transition-colors cursor-pointer'
-                )}>
-                <Icon className='size-3.5 shrink-0' />
-                <span className='flex-1 truncate'>{s.text}</span>
-              </motion.button>
-            )
-          })}
-        </AnimatePresence>
-      </div>
+      {!hideSuggestions && (
+        <div className='flex w-full max-w-xs flex-col gap-1'>
+          <AnimatePresence initial={true}>
+            {visible.map((s, i) => {
+              const Icon = s.icon ? ICONS[s.icon] : Sparkles
+              return (
+                <motion.button
+                  type='button'
+                  key={s.id}
+                  layout
+                  initial={
+                    prefersReducedMotion
+                      ? { opacity: 0 }
+                      : { opacity: 0, y: 8, filter: 'blur(3px)' }
+                  }
+                  animate={
+                    prefersReducedMotion
+                      ? { opacity: 1 }
+                      : { opacity: 1, y: 0, filter: 'blur(0px)' }
+                  }
+                  exit={
+                    prefersReducedMotion
+                      ? { opacity: 0 }
+                      : { opacity: 0, y: 4, filter: 'blur(3px)' }
+                  }
+                  transition={
+                    prefersReducedMotion ? { duration: 0.12 } : { ...SPRING, delay: i * 0.04 }
+                  }
+                  onClick={() => onSuggestionClick?.(s.text, s.autoSubmit)}
+                  className={cn(
+                    'flex w-full items-center gap-2 rounded-lg border bg-background',
+                    'px-3 py-2 text-left text-xs text-muted-foreground',
+                    'hover:border-purple-500/40 hover:text-foreground',
+                    'transition-colors cursor-pointer'
+                  )}>
+                  <Icon className='size-3.5 shrink-0' />
+                  <span className='flex-1 truncate'>{s.text}</span>
+                </motion.button>
+              )
+            })}
+          </AnimatePresence>
+        </div>
+      )}
     </div>
   )
 }

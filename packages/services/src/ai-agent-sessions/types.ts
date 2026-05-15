@@ -46,6 +46,8 @@ export interface UpdateDomainStateInput {
  */
 export interface ListSessionsInput extends SessionContext {
   type: string
+  /** Optional agent filter — when set, only sessions bound to this agent are returned. */
+  agentId?: string
   limit?: number
   cursor?: string
 }

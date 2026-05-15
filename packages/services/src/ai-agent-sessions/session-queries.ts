@@ -80,7 +80,7 @@ export async function getSessionById(params: { sessionId: string; organizationId
  * Find sessions by type for a user (most recent first)
  */
 export async function findSessionsByType(input: ListSessionsInput) {
-  const { organizationId, userId, type, limit = 50, cursor } = input
+  const { organizationId, userId, type, agentId, limit = 50, cursor } = input
   const take = limit + 1
 
   const conditions = [
@@ -88,6 +88,10 @@ export async function findSessionsByType(input: ListSessionsInput) {
     eq(schema.AiAgentSession.userId, userId),
     eq(schema.AiAgentSession.type, type),
   ]
+
+  if (agentId) {
+    conditions.push(eq(schema.AiAgentSession.agentId, agentId))
+  }
 
   if (cursor) {
     const [timestamp, id] = cursor.split('|')

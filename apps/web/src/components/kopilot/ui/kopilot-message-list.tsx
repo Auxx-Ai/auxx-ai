@@ -17,6 +17,7 @@ import {
   useState,
 } from 'react'
 import type { KopilotRequest } from '../hooks/use-kopilot-sse'
+import { useKopilotChatOptions } from '../options'
 import { type KopilotMessage, useKopilotStore } from '../stores/kopilot-store'
 import { getApprovalCard } from './blocks/approval-card-registry'
 import { GenericApprovalCard } from './blocks/generic-approval-card'
@@ -87,6 +88,7 @@ export function KopilotMessageList({
   onSuggestionClick,
   contentClassName,
 }: KopilotMessageListProps) {
+  const { renderEmptyState } = useKopilotChatOptions()
   const messages = useKopilotStore((s) => s.messages)
   const editingMessageId = useKopilotStore((s) => s.editingMessageId)
   const streamingContent = useKopilotStore((s) => s.stream.streamingContent)
@@ -388,6 +390,9 @@ export function KopilotMessageList({
   }
 
   if (showEmptyState) {
+    if (renderEmptyState) {
+      return <>{renderEmptyState({ onSuggestionClick })}</>
+    }
     return <KopilotEmptyState onSuggestionClick={onSuggestionClick} />
   }
 
