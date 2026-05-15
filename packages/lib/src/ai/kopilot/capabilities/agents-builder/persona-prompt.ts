@@ -39,8 +39,15 @@ Most admins fall into one of two flows:
    - **Personalization** — name, description, avatar, tone.
    - **Onboarding** — toolsets, knowledge scope, any starting persona text.
 
+   As the LAST step of Onboarding — once the agent has a real name, a
+   non-empty persona prompt, and at least one toolset enabled — call
+   \`complete_agent_setup\`. That flips the detail-page rail from the setup
+   carousel to the live editing tabs. Do NOT call it earlier; do NOT skip it.
+
 2. **Existing agent**. Skip the interview entirely. Edit in place; act on the
-   admin's explicit request and call setter tools eagerly.
+   admin's explicit request and call setter tools eagerly. Never call
+   \`complete_agent_setup\` on an already-completed agent (it's idempotent
+   server-side but signals nothing meaningful).
 
 In either flow:
 - One clarifying question per turn — not three.

@@ -2,7 +2,10 @@
 
 import {
   agentExistsInOrg,
+  agentSlugSchema,
+  completeAgentSetup,
   createAgent as createAgentService,
+  deleteDraftAgent,
   getAgentDetailByIdOrSlug,
   isAgentSlugTaken,
   listAgents,
@@ -50,42 +53,46 @@ export const agentRouter = createTRPCRouter({
 
   create: adminProcedure
     .input(
-      z.object({
-        name: z.string().min(1).max(120),
-        slug: z
-          .string()
-          .min(1)
-          .max(60)
-          .regex(/^[a-z0-9-]+$/, 'Slug must be lowercase letters, digits, and dashes'),
-        description: z.string().max(500).optional().nullable(),
-        prompt: promptSchema.optional(),
-        modelId: z.string().max(120).optional().nullable(),
-        mentionable: z.boolean().optional(),
-        /**
-         * Initial toolset slugs to enable. When omitted, `createAgent`
-         * resolves defaults and tags the rows `source='auto_default'`. When
-         * provided, every slug lands as `source='manual'`.
-         */
-        toolsetSlugs: z.array(z.string().min(1).max(120)).optional(),
-      })
+      z
+        .object({
+          /** Omit for chat-driven creation; backing User.name stays null. */
+          name: z.string().min(1).max(120).optional(),
+          /**
+           * Omit for chat-driven creation; the service writes `slug = id`
+           * so the (orgId, slug) unique index holds without slug-generation.
+           */
+          slug: agentSlugSchema.optional(),
+          description: z.string().max(500).optional().nullable(),
+          prompt: promptSchema.optional(),
+          modelId: z.string().max(120).optional().nullable(),
+          mentionable: z.boolean().optional(),
+          /**
+           * Initial toolset slugs to enable. When omitted, `createAgent`
+           * resolves defaults and tags the rows `source='auto_default'`. When
+           * provided, every slug lands as `source='manual'`.
+           */
+          toolsetSlugs: z.array(z.string().min(1).max(120)).optional(),
+        })
+        .optional()
     )
     .mutation(async ({ ctx, input }) => {
       const { organizationId, userId } = ctx.session
+      const args = input ?? {}
 
-      if (await isAgentSlugTaken(organizationId, input.slug)) {
+      if (args.slug && (await isAgentSlugTaken(organizationId, args.slug))) {
         throw new TRPCError({ code: 'CONFLICT', message: 'Slug already in use' })
       }
 
       const created = await createAgentService({
         organizationId,
         createdById: userId,
-        name: input.name,
-        slug: input.slug,
-        description: input.description ?? null,
-        prompt: input.prompt,
-        modelId: input.modelId ?? null,
-        mentionable: input.mentionable ?? true,
-        toolsetSlugs: input.toolsetSlugs,
+        name: args.name,
+        slug: args.slug,
+        description: args.description ?? null,
+        prompt: args.prompt,
+        modelId: args.modelId ?? null,
+        mentionable: args.mentionable ?? true,
+        toolsetSlugs: args.toolsetSlugs,
       })
 
       logger.info('Agent created', {
@@ -98,11 +105,45 @@ export const agentRouter = createTRPCRouter({
       return { agentId: created.agentId, userId: created.userId }
     }),
 
+  /**
+   * Flip an agent from setup mode → live tabs. Idempotent: re-calls on an
+   * already-completed agent no-op. Called by the `complete_agent_setup`
+   * builder tool and the rail's "Mark setup complete" escape hatch.
+   */
+  completeSetup: adminProcedure
+    .input(z.object({ agentId: z.string().min(1) }))
+    .mutation(async ({ ctx, input }) => {
+      const { organizationId } = ctx.session
+      if (!(await agentExistsInOrg(organizationId, input.agentId))) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Agent not found' })
+      }
+      await completeAgentSetup(input.agentId, organizationId)
+    }),
+
+  /**
+   * Hard-delete a draft agent (`setupCompletedAt IS NULL`). Powers the
+   * agents-list "Discard draft" overflow item. Refuses to touch completed
+   * agents — use the archive path for those.
+   */
+  deleteDraft: adminProcedure
+    .input(z.object({ agentId: z.string().min(1) }))
+    .mutation(async ({ ctx, input }) => {
+      const { organizationId } = ctx.session
+      const result = await deleteDraftAgent(input.agentId, organizationId)
+      if (!result.deleted) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'Agent is not a draft or does not exist',
+        })
+      }
+    }),
+
   update: adminProcedure
     .input(
       z.object({
         agentId: z.string(),
         name: z.string().min(1).max(120).optional(),
+        slug: agentSlugSchema.optional(),
         description: z.string().max(500).optional().nullable(),
         prompt: promptSchema.optional(),
         modelId: z.string().max(120).optional().nullable(),
@@ -119,8 +160,18 @@ export const agentRouter = createTRPCRouter({
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Agent not found' })
       }
 
+      if (patch.slug !== undefined) {
+        const taken = await isAgentSlugTaken(organizationId, patch.slug, {
+          excludeAgentId: agentId,
+        })
+        if (taken) {
+          throw new TRPCError({ code: 'CONFLICT', message: 'Slug already in use' })
+        }
+      }
+
       const updatePayload: Parameters<typeof updateAgentService>[2] = {}
       if (patch.name !== undefined) updatePayload.name = patch.name
+      if (patch.slug !== undefined) updatePayload.slug = patch.slug
       if (patch.description !== undefined) updatePayload.description = patch.description
       if (patch.prompt !== undefined) updatePayload.prompt = patch.prompt
       if (patch.modelId !== undefined) updatePayload.modelId = patch.modelId
@@ -131,7 +182,7 @@ export const agentRouter = createTRPCRouter({
     }),
 
   checkSlug: adminProcedure
-    .input(z.object({ slug: z.string().min(1).max(60), excludeAgentId: z.string().optional() }))
+    .input(z.object({ slug: agentSlugSchema, excludeAgentId: z.string().optional() }))
     .query(async ({ ctx, input }) => {
       const taken = await isAgentSlugTaken(ctx.session.organizationId, input.slug, {
         excludeAgentId: input.excludeAgentId,

@@ -28,7 +28,7 @@ export function AgentArchiveButton({ agent, onSavingChange, onSaved }: AgentArch
     }
     const ok = await confirm({
       title: 'Archive agent?',
-      description: `"${agent.name}" will stop responding to mentions and triggers.`,
+      description: `"${agent.name ?? 'Untitled agent'}" will stop responding to mentions and triggers.`,
       confirmText: 'Archive',
       cancelText: 'Cancel',
       destructive: false,

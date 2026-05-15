@@ -9,7 +9,8 @@ import {
   schema,
 } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { and, eq } from 'drizzle-orm'
+import { generateId } from '@auxx/utils'
+import { and, eq, isNull } from 'drizzle-orm'
 import { getAllCachedAgents, getCachedAgentById, getCachedAgents, onCacheEvent } from '../cache'
 import { resolveDefaultToolsets } from './default-toolsets'
 
@@ -19,9 +20,18 @@ export interface CreateAgentInput {
   organizationId: string
   /** The human creating this agent. */
   createdById: string
-  /** Written to the backing User row; reads also flow through User. */
-  name: string
-  slug: string
+  /**
+   * Written to the backing User row. Omit to leave `User.name = null` —
+   * setup-mode drafts start nameless and the builder fills it in via
+   * `update_agent_identity`. UI sites fall back to "Untitled agent".
+   */
+  name?: string | null
+  /**
+   * URL/mention slug. Omit during chat-driven creation; the service writes
+   * `slug = agentId` so the row satisfies the unique (orgId, slug) index
+   * without any slug-generation concern.
+   */
+  slug?: string
   description?: string | null
   prompt?: Record<string, unknown>
   modelId?: string | null
@@ -73,8 +83,7 @@ export async function createAgent(
   const {
     organizationId,
     createdById,
-    name,
-    slug,
+    name = null,
     description = null,
     prompt = {},
     modelId = null,
@@ -105,14 +114,19 @@ export async function createAgent(
     if (!user) throw new Error('Failed to insert agent User row')
 
     // 2. Insert the Agent row. Name/avatar are not stored here — they live
-    //    on the backing User row (User.name, User.avatarAssetId).
+    //    on the backing User row (User.name, User.avatarAssetId). When the
+    //    caller omits `slug`, insert with a unique placeholder and back-
+    //    fill `slug = id` post-insert so the (organizationId, slug)
+    //    unique index is satisfied trivially without an extra round trip
+    //    for id pre-generation.
+    const slugPlaceholder = input.slug ?? `_pending_${generateId()}`
     const [agent] = await tx
       .insert(schema.Agent)
       .values({
         organizationId,
         userId: user.id,
         createdById,
-        slug,
+        slug: slugPlaceholder,
         description,
         prompt,
         modelId,
@@ -121,6 +135,13 @@ export async function createAgent(
       .returning()
 
     if (!agent) throw new Error('Failed to insert Agent row')
+
+    if (!input.slug) {
+      await tx
+        .update(schema.Agent)
+        .set({ slug: agent.id, updatedAt: now })
+        .where(eq(schema.Agent.id, agent.id))
+    }
 
     // 3. Back-fill the User email with the sentinel now that we have agentId.
     await tx
@@ -175,6 +196,8 @@ export async function createAgent(
 export interface UpdateAgentInput {
   /** Routed to the backing User row, not stored on Agent. */
   name?: string
+  /** URL/mention slug. Caller must enforce uniqueness via `isAgentSlugTaken`. */
+  slug?: string
   description?: string | null
   prompt?: Record<string, unknown>
   modelId?: string | null
@@ -250,6 +273,90 @@ export async function updateAgent(
 }
 
 /**
+ * Mark an agent's chat-driven setup mode as complete. Idempotent — no-ops on
+ * an already-completed agent. Flips the rail UI from the setup carousel to
+ * the Prompt/Tools/Knowledge tabs. The agent is functionally live throughout
+ * setup; this only gates the UI surface.
+ */
+export async function completeAgentSetup(
+  agentId: string,
+  organizationId: string,
+  db: Database = defaultDb as Database
+): Promise<void> {
+  const result = await db
+    .update(schema.Agent)
+    .set({ setupCompletedAt: new Date(), updatedAt: new Date() })
+    .where(
+      and(
+        eq(schema.Agent.id, agentId),
+        eq(schema.Agent.organizationId, organizationId),
+        isNull(schema.Agent.setupCompletedAt)
+      )
+    )
+    .returning({ id: schema.Agent.id })
+
+  if (result.length === 0) return
+
+  try {
+    await onCacheEvent('agent.updated', { orgId: organizationId })
+  } catch (err) {
+    logger.warn('Failed to invalidate caches after agent setup complete', {
+      organizationId,
+      agentId,
+      error: err instanceof Error ? err.message : String(err),
+    })
+  }
+}
+
+/**
+ * Hard-delete a draft agent (one with `setupCompletedAt IS NULL`). Used by
+ * the agents-list "Discard draft" overflow item. Completed agents take the
+ * archive path instead; this helper refuses to touch them so a stray call
+ * cannot wipe production agents.
+ */
+export async function deleteDraftAgent(
+  agentId: string,
+  organizationId: string,
+  db: Database = defaultDb as Database
+): Promise<{ deleted: boolean }> {
+  const deleted = await db.transaction(async (tx) => {
+    const [agent] = await tx
+      .select({
+        id: schema.Agent.id,
+        userId: schema.Agent.userId,
+        setupCompletedAt: schema.Agent.setupCompletedAt,
+      })
+      .from(schema.Agent)
+      .where(and(eq(schema.Agent.id, agentId), eq(schema.Agent.organizationId, organizationId)))
+      .limit(1)
+    if (!agent) return false
+    if (agent.setupCompletedAt) return false
+
+    // Cascades from Agent → AgentToolset / AgentResourceScope take care of
+    // their rows. OrganizationMember rows fan-cascade off User. We delete
+    // the Agent first to drop those, then drop the synthetic User.
+    await tx.delete(schema.Agent).where(eq(schema.Agent.id, agentId))
+    await tx.delete(schema.User).where(eq(schema.User.id, agent.userId))
+    return true
+  })
+
+  if (!deleted) return { deleted: false }
+
+  try {
+    await onCacheEvent('member.removed', { orgId: organizationId })
+    await onCacheEvent('agent.archived', { orgId: organizationId })
+  } catch (err) {
+    logger.warn('Failed to invalidate caches after draft delete', {
+      organizationId,
+      agentId,
+      error: err instanceof Error ? err.message : String(err),
+    })
+  }
+
+  return { deleted: true }
+}
+
+/**
  * Archive an agent (soft delete). Thin wrapper around `updateAgent` for
  * non-router callers; the tRPC layer drives archive via `updateAgent`
  * directly.
@@ -269,12 +376,15 @@ export interface AgentSummary {
   id: string
   userId: string
   createdById: string
-  name: string
+  /** `null` until the builder writes a real one via `update_agent_identity`. */
+  name: string | null
   slug: string
   description: string | null
   avatarUrl: string | null
   mentionable: boolean
   modelId: string | null
+  /** ISO string when chat-driven setup completed; null while in setup mode. */
+  setupCompletedAt: string | null
   archivedAt: string | null
   createdAt: string
   updatedAt: string
@@ -298,12 +408,13 @@ function toAgentSummary(a: {
   id: string
   userId: string
   createdById: string
-  name: string
+  name: string | null
   slug: string
   description: string | null
   avatarUrl: string | null
   mentionable: boolean
   modelId: string | null
+  setupCompletedAt: string | null
   archivedAt: string | null
   createdAt: string
   updatedAt: string
@@ -312,12 +423,13 @@ function toAgentSummary(a: {
     id: a.id,
     userId: a.userId,
     createdById: a.createdById,
-    name: a.name,
+    name: a.name && a.name.length > 0 ? a.name : null,
     slug: a.slug,
     description: a.description,
     avatarUrl: a.avatarUrl,
     mentionable: a.mentionable,
     modelId: a.modelId,
+    setupCompletedAt: a.setupCompletedAt,
     archivedAt: a.archivedAt,
     createdAt: a.createdAt,
     updatedAt: a.updatedAt,

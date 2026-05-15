@@ -1067,6 +1067,13 @@
       "breakpoints": true
     },
     {
+      "idx": 152,
+      "version": "7",
+      "when": 1778875118519,
+      "tag": "0152_agent_setup_completed_at",
+      "breakpoints": true
+    },
+    {
       "idx": 153,
       "version": "7",
       "when": 1778875337572,

@@ -82,7 +82,10 @@ export async function resolveAgentConfig(
 
   return {
     agentId: agent.id,
-    name: agent.name,
+    // Setup-mode drafts may have a null name; the engine just needs *something*
+    // for log lines and turn breadcrumbs. The UI's placeholder string is the
+    // honest fallback.
+    name: agent.name ?? 'Untitled agent',
     userId: agent.userId,
     prompt: agent.prompt,
     description: agent.description,
