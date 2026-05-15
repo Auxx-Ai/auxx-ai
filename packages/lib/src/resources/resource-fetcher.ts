@@ -284,22 +284,6 @@ function addContactVirtualFields(contact: any): any {
 }
 
 /**
- * Extract resource type from event type
- * e.g., 'contact:created' → 'contact'
- */
-export function getResourceTypeFromEvent(eventType: string): TableId | null {
-  const parts = eventType.split(':')
-  const resourceType = parts[0]!
-
-  // Check if the resourceType exists in RESOURCE_TABLE_MAP
-  if (resourceType in RESOURCE_TABLE_MAP) {
-    return resourceType as TableId
-  }
-
-  return null
-}
-
-/**
  * Get the ID field name for an event type
  * Maps event data field names to record ID field names
  */

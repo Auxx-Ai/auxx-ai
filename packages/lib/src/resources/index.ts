@@ -105,5 +105,4 @@ export {
   executeResourceQuery,
   fetchResourceById,
   getRecordIdField,
-  getResourceTypeFromEvent,
 } from './resource-fetcher'
