@@ -334,7 +334,7 @@ export async function executePollingTrigger(job: Job<PollingTriggerJobData>) {
         ? `poll-${triggerId}-${(event as any).eventId}`
         : `poll-${triggerId}-${Date.now()}-${Math.random().toString(36).slice(2)}`
 
-      await appTriggerQueue.add('dispatchAppTrigger', {
+      const payload = {
         appInstallationId: installationId,
         appId,
         triggerId,
@@ -342,7 +342,9 @@ export async function executePollingTrigger(job: Job<PollingTriggerJobData>) {
         triggerData: event,
         eventId,
         organizationId,
-      })
+      }
+      await appTriggerQueue.add('dispatchAppTrigger', payload)
+      await appTriggerQueue.add('dispatchAppTriggerToAgents', payload)
     }
   }
 

@@ -45,3 +45,13 @@ export const NATIVE_GROUP_CATALOG: Record<string, ToolsetGroupCatalog> = {
   Docs: { name: 'Docs', iconId: 'help-circle', color: 'gray' },
   Members: { name: 'Members', iconId: 'users', color: 'pink' },
 }
+
+export { getTriggerLabel } from './agent-trigger-label'
+
+export const ALLOWED_DIRECT_EVENT_TYPES = [
+  'ticket:assignee:added',
+  'ticket:assignee:removed',
+  'ticket:status:changed',
+  'ticket:reply:created',
+] as const
+export type AllowedDirectEventType = (typeof ALLOWED_DIRECT_EVENT_TYPES)[number]

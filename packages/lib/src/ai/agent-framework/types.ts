@@ -538,8 +538,12 @@ export interface AgentEngineConfig {
    *   by the tool's `captureMint`), and the loop continues until the model
    *   returns no tool calls. Read-only tools execute normally in either mode.
    *   Used by the headless kopilot runner.
+   * - `'auto'`: the loop never pauses and approval-required tools execute
+   *   like any other tool. Used by autonomous agent triggers — the agent's
+   *   toolset is the capability boundary, so wiring the tool onto the agent
+   *   IS the authorization. There is no human in the loop to ask.
    */
-  approvalMode?: 'pause' | 'capture'
+  approvalMode?: 'pause' | 'capture' | 'auto'
 }
 
 // ===== AGENT DEPENDENCIES =====

@@ -8,6 +8,22 @@ export {
 } from '../mail-schedule'
 // Usage
 export { type RecordUsageEventJobData, recordUsageEventJob } from '../usage'
+export {
+  type AgentAppTriggerDispatchJobData,
+  dispatchAppTriggerToAgents,
+} from './agent/app-trigger-dispatch-job'
+export {
+  type AgentAppTriggerJobData,
+  executeAgentAppTrigger,
+} from './agent/app-trigger-job'
+export {
+  type AgentEventTriggerJobData,
+  executeAgentEventTrigger,
+} from './agent/event-trigger-job'
+export {
+  type AgentScheduledTriggerJobData,
+  executeAgentScheduledTrigger,
+} from './agent/scheduled-trigger-job'
 // AI autofill
 export { type AiAutofillJobData, aiAutofillJob } from './ai-autofill/ai-autofill-job'
 // AI suggestion scanner

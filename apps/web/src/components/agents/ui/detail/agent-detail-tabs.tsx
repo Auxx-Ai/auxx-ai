@@ -1,12 +1,13 @@
 // apps/web/src/components/agents/ui/detail/agent-detail-tabs.tsx
 'use client'
 
+import { Button } from '@auxx/ui/components/button'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Section } from '@auxx/ui/components/section'
 import { Tabs, TabsList, TabsTrigger } from '@auxx/ui/components/tabs'
-import { BookOpen, FileText, Wrench } from 'lucide-react'
+import { BookOpen, FileText, Plus, Wrench, Zap } from 'lucide-react'
 import { useQueryState } from 'nuqs'
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { AGENT_TABS, type AgentTab, DEFAULT_AGENT_TAB } from '../../constant'
 import type { AgentDetail } from '../../store/agent-store'
 import type { AutosaveState } from '../shared/autosave-indicator'
@@ -14,17 +15,20 @@ import { AgentHero } from './agent-hero'
 import { KnowledgeSectionContent } from './knowledge/knowledge-section-content'
 import { PersonaEditor } from './prompt/persona-editor'
 import { ToolsSectionContent } from './tools/tools-section-content'
+import { TriggersSectionContent } from './triggers/triggers-section-content'
 
 const SECTION_ICONS: Record<AgentTab, React.ComponentType<{ className?: string }>> = {
   prompt: FileText,
   tools: Wrench,
   knowledge: BookOpen,
+  triggers: Zap,
 }
 
 const SECTION_LABELS: Record<AgentTab, string> = {
   prompt: 'Prompt',
   tools: 'Tools',
   knowledge: 'Knowledge',
+  triggers: 'Triggers',
 }
 
 // Sticky tab strip height + small buffer — used as the scroll-spy activation point.
@@ -43,11 +47,13 @@ interface AgentDetailTabsProps {
  */
 export function AgentDetailTabs({ agent, onAutosaveChange }: AgentDetailTabsProps) {
   const [tab, setTab] = useQueryState('tab', { defaultValue: DEFAULT_AGENT_TAB })
+  const [addingTrigger, setAddingTrigger] = useState(false)
   const scrollContainerRef = useRef<HTMLDivElement | null>(null)
   const sectionRefs = useRef<Record<AgentTab, HTMLDivElement | null>>({
     prompt: null,
     tools: null,
     knowledge: null,
+    triggers: null,
   })
   const isProgrammaticScrollRef = useRef(false)
 
@@ -172,6 +178,26 @@ export function AgentDetailTabs({ agent, onAutosaveChange }: AgentDetailTabsProp
             initialOpen
             collapsible={false}>
             <KnowledgeSectionContent agent={agent} onAutosaveChange={onAutosaveChange} />
+          </Section>
+        </div>
+
+        <div ref={assignRef('triggers')}>
+          <Section
+            title='Triggers'
+            icon={<Zap className='size-4' />}
+            initialOpen
+            collapsible={false}
+            actions={
+              <Button variant='ghost' size='xs' onClick={() => setAddingTrigger((v) => !v)}>
+                <Plus />
+                Add trigger
+              </Button>
+            }>
+            <TriggersSectionContent
+              agent={agent}
+              adding={addingTrigger}
+              onAddingChange={setAddingTrigger}
+            />
           </Section>
         </div>
 

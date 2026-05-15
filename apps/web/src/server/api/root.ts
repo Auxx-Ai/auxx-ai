@@ -5,6 +5,7 @@ import { adminRouter } from './routers/admin'
 import { agentRouter } from './routers/agent'
 import { agentScopeRouter } from './routers/agent-scope'
 import { agentToolsetRouter } from './routers/agent-toolset'
+import { agentTriggerRouter } from './routers/agent-trigger'
 import { aiFeatureRouter } from './routers/aiFeature'
 import { aiIntegrationRouter } from './routers/aiIntegration'
 import { apiKeyRouter } from './routers/apiKey'
@@ -89,6 +90,7 @@ export const appRouter = createTRPCRouter({
   agent: agentRouter,
   agentScope: agentScopeRouter,
   agentToolset: agentToolsetRouter,
+  agentTrigger: agentTriggerRouter,
   aiFeature: aiFeatureRouter,
   aiIntegration: aiIntegrationRouter,
   apiKey: apiKeyRouter,

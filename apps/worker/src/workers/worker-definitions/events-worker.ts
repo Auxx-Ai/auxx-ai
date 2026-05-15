@@ -6,6 +6,7 @@ import {
   publishEventJob,
   publishToAnalyticsJob,
   sendInvitationUserJob,
+  triggerAgents,
   triggerResourceWorkflows,
   updateWebhookLastTriggeredAt,
 } from '@auxx/lib/events/handlers'
@@ -25,6 +26,7 @@ const eventHandlersJobMappings = {
   updateWebhookLastTriggeredAt,
   createTimelineEvent,
   triggerResourceWorkflows,
+  triggerAgents,
   handleFieldTriggerJob,
   handleEntityTriggers,
 }

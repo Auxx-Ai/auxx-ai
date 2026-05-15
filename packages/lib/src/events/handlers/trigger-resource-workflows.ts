@@ -10,15 +10,16 @@ import type { AuxxEvent } from '../types'
 
 const logger = createScopedLogger('trigger-resource-workflows')
 
-type TriggerType = 'created' | 'updated' | 'deleted'
+export type ResourceTriggerType = 'created' | 'updated' | 'deleted'
 
-type TriggerMatch = {
-  triggerType: TriggerType
+export type ResourceTriggerMatch = {
+  triggerType: ResourceTriggerType
   entityDefinitionId: string
 }
 
 /**
- * Resolve which workflow trigger this event maps to.
+ * Resolve which resource CRUD trigger this event maps to. Shared with the
+ * agent-trigger dispatcher (see `./trigger-agents.ts`).
  *
  * Modern-shape events (emitted from unified-handler-mutations) carry
  * `entityDefinitionId` directly in the payload — including custom-entity
@@ -27,7 +28,7 @@ type TriggerMatch = {
  *
  * Returns null when the event is not a resource CRUD trigger.
  */
-function getResourceTriggerMatch(event: AuxxEvent): TriggerMatch | null {
+export function getResourceTriggerMatch(event: AuxxEvent): ResourceTriggerMatch | null {
   const payload = event.data as Record<string, unknown>
   const payloadEntityDefinitionId =
     typeof payload.entityDefinitionId === 'string' ? payload.entityDefinitionId : undefined
@@ -81,7 +82,7 @@ function getResourceTriggerMatch(event: AuxxEvent): TriggerMatch | null {
  * construct it from the per-event id field (`ticketId`, `contactId`) and
  * the matched entityDefinitionId.
  */
-function getEventRecordId(event: AuxxEvent, match: TriggerMatch): RecordId | null {
+export function getEventRecordId(event: AuxxEvent, match: ResourceTriggerMatch): RecordId | null {
   const payload = event.data as Record<string, unknown>
 
   if (typeof payload.recordId === 'string' && payload.recordId.includes(':')) {

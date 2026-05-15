@@ -3,22 +3,16 @@
 import { getQueue, Queues } from '../jobs/queues'
 import { createScopedLogger } from '../logger'
 import { WorkflowNodeType, WorkflowTriggerType } from '../workflow-engine/core/types'
+import {
+  type ScheduledTriggerConfig,
+  convertToCronPattern as sharedConvertToCronPattern,
+  intervalToCron as sharedIntervalToCron,
+} from './cron-pattern'
 import type { WorkflowApp } from './types'
 
 const logger = createScopedLogger('scheduled-trigger-service')
 
-export interface ScheduledTriggerConfig {
-  triggerInterval: 'minutes' | 'hours' | 'days' | 'weeks' | 'custom'
-  timeBetweenTriggers: {
-    minutes?: number | string
-    hours?: number | string
-    days?: number | string
-    weeks?: number | string
-    isConstant?: boolean
-  }
-  customCron?: string
-  timezone?: string
-}
+export type { ScheduledTriggerConfig }
 
 export class ScheduledTriggerService {
   private _scheduledTriggerQueue: ReturnType<typeof getQueue> | null = null
@@ -217,68 +211,13 @@ export class ScheduledTriggerService {
     return `workflow-${workflowAppId}-scheduled`
   }
 
-  /**
-   * Convert trigger config to cron pattern
-   */
+  /** Thin wrapper preserved for backcompat — see ./cron-pattern.ts. */
   private convertToCronPattern(config: ScheduledTriggerConfig): string {
-    if (config.triggerInterval === 'custom') {
-      if (!config.customCron) {
-        throw new Error('Custom cron expression is required when using custom interval')
-      }
-      return config.customCron
-    }
-
-    // Convert interval to cron pattern
-    const intervalValue = config.timeBetweenTriggers[config.triggerInterval]
-    const isConstant = config.timeBetweenTriggers.isConstant ?? true
-
-    if (!isConstant) {
-      throw new Error(
-        'Variable-based intervals not supported for scheduling - values must be constants'
-      )
-    }
-
-    if (typeof intervalValue === 'string') {
-      throw new Error(
-        'String values not supported for scheduling - values must be numeric constants'
-      )
-    }
-
-    if (!intervalValue || typeof intervalValue !== 'number' || intervalValue <= 0) {
-      throw new Error(`Invalid ${config.triggerInterval} value: ${intervalValue}`)
-    }
-
-    return this.intervalToCron(config.triggerInterval, intervalValue)
+    return sharedConvertToCronPattern(config)
   }
 
-  /**
-   * Convert interval values to cron expressions
-   */
+  /** Thin wrapper preserved for backcompat — see ./cron-pattern.ts. */
   private intervalToCron(interval: string, value: number): string {
-    switch (interval) {
-      case 'minutes':
-        if (value >= 60) {
-          throw new Error('Minutes interval must be less than 60')
-        }
-        return `0 */${value} * * * *`
-      case 'hours':
-        if (value >= 24) {
-          throw new Error('Hours interval must be less than 24')
-        }
-        return `0 0 */${value} * * *`
-      case 'days':
-        if (value >= 31) {
-          throw new Error('Days interval must be less than 31')
-        }
-        return `0 0 0 */${value} * *`
-      case 'weeks':
-        if (value >= 52) {
-          throw new Error('Weeks interval must be less than 52')
-        }
-        // For weeks, use day-of-week scheduling
-        return value === 1 ? '0 0 0 * * 0' : `0 0 0 * * */${value * 7}`
-      default:
-        throw new Error(`Unsupported interval: ${interval}`)
-    }
+    return sharedIntervalToCron(interval, value)
   }
 }
