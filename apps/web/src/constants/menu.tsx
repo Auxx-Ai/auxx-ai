@@ -207,12 +207,12 @@ export const SETTINGS_MENU: SidebarProps[] = [
       },
     ],
   },
-  // Channels
+  // Channels — header is member-visible so Apps is reachable. Per-item admin
+  // gates below still keep the admin-only entries hidden from members.
   {
     id: 'channels',
     label: 'Channels',
     type: 'header',
-    access: 'ADMIN',
     items: [
       {
         id: 'settings-channels',

@@ -169,12 +169,24 @@ export interface CachedInstalledApp {
     createdAt: string // ISO string — rehydrate to Date before returning
   } | null
 
-  /** Full ConnectionDefinitionSummary shape including oauth2Features */
-  connectionDefinition?: {
-    label: string | null
-    global: boolean | null
-    connectionType: string
-    oauth2Features: Record<string, unknown> | null
+  /**
+   * Connection definitions split by scope. Either, both, or neither may be
+   * present per app. Each entry mirrors `ConnectionDefinitionSummary`
+   * (including oauth2Features).
+   */
+  connectionDefinitions: {
+    user?: {
+      label: string | null
+      global: boolean | null
+      connectionType: string
+      oauth2Features: Record<string, unknown> | null
+    }
+    organization?: {
+      label: string | null
+      global: boolean | null
+      connectionType: string
+      oauth2Features: Record<string, unknown> | null
+    }
   }
 
   /**
@@ -278,7 +290,8 @@ export const ORG_CACHE_KEY_CONFIG: Record<
   integrations: { prefix: 'org:integrations', ttlSeconds: ONE_DAY },
   overages: { prefix: 'org:overages', ttlSeconds: 900 },
   orgSettings: { prefix: 'org:settings', ttlSeconds: ONE_DAY },
-  installedApps: { prefix: 'org:installed-apps', ttlSeconds: 900 },
+  // v2: connectionDefinition (singular) → connectionDefinitions (pair). Bump on shape changes.
+  installedApps: { prefix: 'org:installed-apps:v2', ttlSeconds: 900 },
   workflowApps: { prefix: 'org:workflow-apps', ttlSeconds: ONE_DAY },
 
   // AI provider data (15-min TTL)

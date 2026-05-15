@@ -45,8 +45,11 @@ export interface InstalledApp {
     createdAt: Date
   } | null
 
-  // Connection definition
-  connectionDefinition?: ConnectionDefinitionSummary
+  // Connection definitions, split by scope. Either, both, or neither may be present.
+  connectionDefinitions: {
+    user?: ConnectionDefinitionSummary
+    organization?: ConnectionDefinitionSummary
+  }
 }
 
 /**
@@ -101,20 +104,14 @@ export async function getInstalledApps(input: GetInstalledAppsInput) {
   const installations: InstalledApp[] = []
 
   for (const installation of installationsResult.value) {
-    // Get connection definition for this app
-    let connectionDefinition: ConnectionDefinitionSummary | undefined
+    const [userConnDefResult, orgConnDefResult] = await Promise.all([
+      getAppConnectionDefinition(installation.app.id, false),
+      getAppConnectionDefinition(installation.app.id, true),
+    ])
 
-    // Try user-scoped connection first
-    const userConnDefResult = await getAppConnectionDefinition(installation.app.id, false)
-
-    if (userConnDefResult.isOk() && userConnDefResult.value) {
-      connectionDefinition = userConnDefResult.value
-    } else {
-      // Try organization-scoped
-      const organizationConnDefResult = await getAppConnectionDefinition(installation.app.id, true)
-      if (organizationConnDefResult.isOk() && organizationConnDefResult.value) {
-        connectionDefinition = organizationConnDefResult.value
-      }
+    const connectionDefinitions: InstalledApp['connectionDefinitions'] = {
+      user: userConnDefResult.isOk() ? (userConnDefResult.value ?? undefined) : undefined,
+      organization: orgConnDefResult.isOk() ? (orgConnDefResult.value ?? undefined) : undefined,
     }
 
     installations.push({
@@ -139,7 +136,7 @@ export async function getInstalledApps(input: GetInstalledAppsInput) {
             createdAt: installation.currentDeployment.createdAt,
           }
         : null,
-      connectionDefinition,
+      connectionDefinitions,
     })
   }
 

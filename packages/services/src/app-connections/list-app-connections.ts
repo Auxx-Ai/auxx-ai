@@ -136,6 +136,7 @@ export async function listAppConnections(organizationId: string, userId?: string
       connectedAt: cred.createdAt,
       expiresAt,
       global: !cred.userId, // If no userId, it's organization-scoped
+      userId: cred.userId,
     }
   })
 

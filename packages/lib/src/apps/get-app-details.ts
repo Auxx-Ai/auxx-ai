@@ -51,7 +51,10 @@ export interface AppWithStatusOutput {
     installationType?: 'development' | 'production'
     installedAt?: Date
     currentDeploymentId?: string
-    connectionDefinition?: ConnectionDefinitionSummary
+    connectionDefinitions: {
+      user?: ConnectionDefinitionSummary
+      organization?: ConnectionDefinitionSummary
+    }
   }
   availableDeployments: Array<{
     id: string
@@ -132,17 +135,16 @@ export async function getAppWithInstallationStatus(
     columns: { title: true, logoUrl: true },
   })
 
-  // Fetch connection definition if app is installed
-  let connectionDefinition: ConnectionDefinitionSummary | undefined
+  // Fetch connection definitions (both scopes) if app is installed
+  const connectionDefinitions: AppWithStatusOutput['installation']['connectionDefinitions'] = {}
   if (installation) {
-    const userConnDef = await getAppConnectionDefinition(cachedApp.id, false)
-    if (userConnDef.isOk()) {
-      connectionDefinition = userConnDef.value
-    } else {
-      const orgConnDef = await getAppConnectionDefinition(cachedApp.id, true)
-      if (orgConnDef.isOk()) {
-        connectionDefinition = orgConnDef.value
-      }
+    const [userConnDef, orgConnDef] = await Promise.all([
+      getAppConnectionDefinition(cachedApp.id, false),
+      getAppConnectionDefinition(cachedApp.id, true),
+    ])
+    if (userConnDef.isOk() && userConnDef.value) connectionDefinitions.user = userConnDef.value
+    if (orgConnDef.isOk() && orgConnDef.value) {
+      connectionDefinitions.organization = orgConnDef.value
     }
   }
 
@@ -182,7 +184,7 @@ export async function getAppWithInstallationStatus(
           | undefined,
         installedAt: installation?.installedAt,
         currentDeploymentId: installation?.currentDeploymentId ?? undefined,
-        connectionDefinition,
+        connectionDefinitions,
       },
       availableDeployments: deployments.map((d) => ({
         id: d.id,
