@@ -4,7 +4,7 @@
 
 import type { ConnectionVariable, OAuth2Features } from '@auxx/database'
 import { Button } from '@auxx/ui/components/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@auxx/ui/components/card'
+import { Card, CardContent } from '@auxx/ui/components/card'
 import {
   Dialog,
   DialogContent,
@@ -35,6 +35,8 @@ import {
   Pencil,
   Plus,
   Unplug,
+  User,
+  Users,
   X,
   XCircle,
 } from 'lucide-react'
@@ -42,19 +44,150 @@ import { useSearchParams } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { SecretConnectionDialogContent } from '~/components/apps/app-connection-status'
 import { useConfirm } from '~/hooks/use-confirm'
+import { useUser } from '~/hooks/use-user'
 import type { RouterOutputs } from '~/trpc/react'
 import { api } from '~/trpc/react'
 
+type AppData = RouterOutputs['apps']['getBySlug']
+type ConnectionRow = RouterOutputs['apps']['listConnections'][number]
+type ConnectionDefinition = NonNullable<AppData['installation']['connectionDefinitions']['user']>
+type Scope = 'user' | 'organization'
+
 type Props = {
-  app: RouterOutputs['apps']['getBySlug']
+  app: AppData
   returnTo?: string
+  /** If set, render only the matching section. Otherwise render both (gated on definitions). */
+  scope?: Scope
 }
 
-function AppConnections({ app, returnTo }: Props) {
+function AppConnections({ app, returnTo, scope }: Props) {
   const searchParams = useSearchParams()
   const success = searchParams.get('success') || searchParams.get('oauth_success')
-  const utils = api.useUtils()
+  const { userId, isAdminOrOwner } = useUser()
   const [confirm, ConfirmDialog] = useConfirm()
+
+  const {
+    data: connectionsResult,
+    refetch: refetchConnections,
+    isLoading: isLoadingConnections,
+  } = api.apps.listConnections.useQuery()
+
+  useEffect(() => {
+    if (success === 'true') {
+      void refetchConnections()
+    }
+  }, [success, refetchConnections])
+
+  if (!app.installation.isInstalled) {
+    return (
+      <div className='flex-1 flex-col space-y-6 px-6 py-6'>
+        <div className='border bg-primary-50 w-full p-6 rounded-2xl text-center'>
+          <div className='text-base font-medium mb-2'>App not installed</div>
+          <div className='text-sm text-muted-foreground'>This app needs to be installed first</div>
+        </div>
+      </div>
+    )
+  }
+
+  const { user: userDef, organization: orgDef } = app.installation.connectionDefinitions ?? {}
+  const showPersonal = !!userDef && (scope === undefined || scope === 'user')
+  const showWorkspace = !!orgDef && (scope === undefined || scope === 'organization')
+
+  if (!showPersonal && !showWorkspace) {
+    return (
+      <div className='flex-1 flex-col space-y-6 px-6 py-6'>
+        <div className='border bg-primary-50 w-full p-6 rounded-2xl text-center'>
+          <div className='text-base font-medium mb-2'>No connection required</div>
+          <div className='text-sm text-muted-foreground'>
+            {app.app.title} does not require any external connections
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  const allConnections = connectionsResult ?? []
+  const installationId = app.installation.id!
+
+  const personalRows = allConnections.filter(
+    (conn) =>
+      conn.appId === app.app.id &&
+      conn.appInstallationId === installationId &&
+      conn.global === false &&
+      conn.userId === userId
+  )
+  const workspaceRows = allConnections.filter(
+    (conn) =>
+      conn.appId === app.app.id && conn.appInstallationId === installationId && conn.global === true
+  )
+
+  return (
+    <div className='flex-1 flex-col space-y-6 px-6 py-6'>
+      {showPersonal && userDef && (
+        <ConnectionSection
+          app={app}
+          installationId={installationId}
+          definition={userDef}
+          scope='user'
+          rows={personalRows}
+          returnTo={returnTo}
+          canEdit
+          icon={<User className='size-4' />}
+          title='Personal'
+          confirm={confirm}
+          isLoading={isLoadingConnections}
+        />
+      )}
+      {showWorkspace && orgDef && (
+        <ConnectionSection
+          app={app}
+          installationId={installationId}
+          definition={orgDef}
+          scope='organization'
+          rows={workspaceRows}
+          returnTo={returnTo}
+          canEdit={isAdminOrOwner}
+          icon={<Users className='size-4' />}
+          title='Workspace'
+          confirm={confirm}
+          isLoading={isLoadingConnections}
+        />
+      )}
+      <ConfirmDialog />
+    </div>
+  )
+}
+
+export default AppConnections
+
+type ConnectionSectionProps = {
+  app: AppData
+  installationId: string
+  definition: ConnectionDefinition
+  scope: Scope
+  rows: ConnectionRow[]
+  returnTo?: string
+  canEdit: boolean
+  icon: React.ReactNode
+  title: string
+  confirm: ReturnType<typeof useConfirm>[0]
+  isLoading: boolean
+}
+
+function ConnectionSection({
+  app,
+  installationId,
+  definition,
+  scope,
+  rows,
+  returnTo,
+  canEdit,
+  icon,
+  title,
+  confirm,
+  isLoading,
+}: ConnectionSectionProps) {
+  const utils = api.useUtils()
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editLabel, setEditLabel] = useState('')
   const [secretDialogOpen, setSecretDialogOpen] = useState(false)
@@ -64,18 +197,10 @@ function AppConnections({ app, returnTo }: Props) {
   const [variableValues, setVariableValues] = useState<Record<string, string>>({})
   const [reconnectConnectionId, setReconnectConnectionId] = useState<string | null>(null)
 
-  const { data: connectionsResult, refetch: refetchConnections } =
-    api.apps.listConnections.useQuery()
-
-  useEffect(() => {
-    if (success === 'true') {
-      void refetchConnections()
-    }
-  }, [success, refetchConnections])
-
-  const allConnections = connectionsResult ?? []
-  const connectionDefinition = app.installation.connectionDefinition
-  const installationId = app.installation.id!
+  const isOAuth = definition.connectionType === 'oauth2-code'
+  const isSecret = definition.connectionType === 'secret'
+  const connectionVarDefs: ConnectionVariable[] =
+    (definition.oauth2Features as OAuth2Features | null)?.connectionVariables ?? []
 
   const deleteConnection = api.apps.deleteConnection.useMutation({
     onSuccess: () => {
@@ -109,39 +234,10 @@ function AppConnections({ app, returnTo }: Props) {
     },
   })
 
-  if (!app.installation.isInstalled) {
-    return (
-      <div className='flex-1 flex-col space-y-6 px-6 py-6'>
-        <div className='border bg-primary-50 w-full p-6 rounded-2xl text-center'>
-          <div className='text-base font-medium mb-2'>App not installed</div>
-          <div className='text-sm text-muted-foreground'>This app needs to be installed first</div>
-        </div>
-      </div>
-    )
-  }
-
-  if (!connectionDefinition) {
-    return (
-      <div className='flex-1 flex-col space-y-6 px-6 py-6'>
-        <div className='border bg-primary-50 w-full p-6 rounded-2xl text-center'>
-          <div className='text-base font-medium mb-2'>No connection required</div>
-          <div className='text-sm text-muted-foreground'>
-            {app.app.title} does not require any external connections
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  // Filter connections for this app + installation (org-scoped only)
-  const appConnections = allConnections.filter(
-    (conn) => conn.appId === app.app.id && conn.appInstallationId === installationId && conn.global
-  )
-
-  const connectionType = connectionDefinition.global ? 'organization' : 'user'
-  const isOAuth = connectionDefinition.connectionType === 'oauth2-code'
-  const connectionVarDefs: ConnectionVariable[] =
-    (connectionDefinition.oauth2Features as OAuth2Features | null)?.connectionVariables ?? []
+  const returnToParam = returnTo ? `&returnTo=${encodeURIComponent(returnTo)}` : ''
+  const addConnectionUrl = isOAuth
+    ? `/api/apps/${app.app.slug}/oauth2/authorize?installation=${installationId}&type=${scope}${returnToParam}`
+    : null
 
   const handleAddConnection = () => {
     if (connectionVarDefs.length > 0) {
@@ -159,13 +255,11 @@ function AppConnections({ app, returnTo }: Props) {
       setVariableValues({})
       setVariableDialogOpen(true)
     } else {
-      const returnToParam = returnTo ? `&returnTo=${encodeURIComponent(returnTo)}` : ''
-      window.location.href = `/api/apps/${app.app.slug}/oauth2/authorize?installation=${installationId}&type=${connectionType}&connectionId=${connectionId}${returnToParam}`
+      window.location.href = `/api/apps/${app.app.slug}/oauth2/authorize?installation=${installationId}&type=${scope}&connectionId=${connectionId}${returnToParam}`
     }
   }
 
   const handleVariableSubmit = () => {
-    // Validate required variables
     for (const varDef of connectionVarDefs) {
       if (varDef.required !== false && !variableValues[varDef.key]?.trim()) {
         toastError({
@@ -178,10 +272,8 @@ function AppConnections({ app, returnTo }: Props) {
 
     const params = new URLSearchParams()
     params.set('installation', installationId)
-    params.set('type', connectionType)
-    if (reconnectConnectionId) {
-      params.set('connectionId', reconnectConnectionId)
-    }
+    params.set('type', scope)
+    if (reconnectConnectionId) params.set('connectionId', reconnectConnectionId)
     if (returnTo) params.set('returnTo', returnTo)
     for (const [key, value] of Object.entries(variableValues)) {
       if (value) params.set(`var_${key}`, value)
@@ -218,7 +310,7 @@ function AppConnections({ app, returnTo }: Props) {
       appId: app.app.id,
       installationId: installationId,
       appName: app.app.title,
-      connectionType,
+      connectionType: scope,
       secret: secret.trim(),
     })
   }
@@ -228,51 +320,38 @@ function AppConnections({ app, returnTo }: Props) {
     setEditLabel(currentLabel || '')
   }
 
-  // Build "Add Connection" URL (new flow — no connectionId)
-  const returnToParam = returnTo ? `&returnTo=${encodeURIComponent(returnTo)}` : ''
-  const addConnectionUrl = isOAuth
-    ? `/api/apps/${app.app.slug}/oauth2/authorize?installation=${installationId}&type=${connectionType}${returnToParam}`
-    : null
-
-  const StatusIcon = ({ status }: { status: string }) => {
-    if (status === 'connected') return <CheckCircle className='h-4 w-4 text-green-500' />
-    if (status === 'expired') return <Clock className='h-4 w-4 text-yellow-500' />
-    return <XCircle className='h-4 w-4 text-gray-400' />
+  const showAddButton = canEdit && (isOAuth || isSecret)
+  const onAddClick = () => {
+    if (isOAuth) handleAddConnection()
+    else if (isSecret) setSecretDialogOpen(true)
   }
 
   return (
-    <div className='flex-1 flex-col space-y-6 px-6 py-6'>
+    <div className='space-y-2'>
+      <div className='flex items-end justify-between'>
+        <div className='flex items-center gap-2 tracking-tight font-semibold text-foreground text-base'>
+          {icon}
+          {title}
+        </div>
+        {showAddButton && (
+          <Button variant='outline' size='sm' onClick={onAddClick}>
+            <Plus />
+            Add Connection
+          </Button>
+        )}
+      </div>
       <Card>
-        <CardHeader className='flex-row items-center justify-between'>
-          <div>
-            <CardTitle>Connections</CardTitle>
-            <CardDescription>
-              Manage connections for {app.app.title}. Each connection can be used by different
-              workflows.
-            </CardDescription>
-          </div>
-          {addConnectionUrl ? (
-            <Button variant='outline' size='sm' onClick={handleAddConnection}>
-              <Plus />
-              Add Connection
-            </Button>
-          ) : (
-            connectionDefinition.connectionType === 'secret' && (
-              <Button variant='outline' size='sm' onClick={() => setSecretDialogOpen(true)}>
-                <Plus />
-                Add Connection
-              </Button>
-            )
-          )}
-        </CardHeader>
-        <CardContent>
-          {appConnections.length === 0 ? (
+        <CardContent className='space-y-3 pt-3'>
+          {isLoading ? (
+            <div className='text-sm text-muted-foreground py-4 text-center'>Loading…</div>
+          ) : rows.length === 0 ? (
             <div className='text-sm text-muted-foreground py-4 text-center'>
-              No connections yet. Add a connection to get started.
+              No connections yet.
+              {canEdit ? ' Add a connection to get started.' : ' Ask an admin to connect.'}
             </div>
           ) : (
             <div className='divide-y'>
-              {appConnections.map((conn) => (
+              {rows.map((conn) => (
                 <div
                   key={conn.id}
                   className='flex items-center justify-between py-3 first:pt-0 last:pb-0'>
@@ -328,32 +407,34 @@ function AppConnections({ app, returnTo }: Props) {
                       </div>
                     </div>
                   </div>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant='ghost' size='icon-sm'>
-                        <MoreHorizontal />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align='end'>
-                      <DropdownMenuItem onClick={() => handleStartEdit(conn.id, conn.label)}>
-                        <Pencil />
-                        Rename
-                      </DropdownMenuItem>
-                      {(conn.connectionStatus === 'expired' ||
-                        conn.connectionStatus === 'connected') &&
-                        isOAuth && (
-                          <DropdownMenuItem onClick={() => handleReconnect(conn.id)}>
-                            Reconnect
-                          </DropdownMenuItem>
-                        )}
-                      <DropdownMenuItem
-                        variant='destructive'
-                        onClick={() => handleDisconnect(conn.id, conn.label)}>
-                        <Unplug />
-                        Disconnect
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                  {canEdit && (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant='ghost' size='icon-sm'>
+                          <MoreHorizontal />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align='end'>
+                        <DropdownMenuItem onClick={() => handleStartEdit(conn.id, conn.label)}>
+                          <Pencil />
+                          Rename
+                        </DropdownMenuItem>
+                        {(conn.connectionStatus === 'expired' ||
+                          conn.connectionStatus === 'connected') &&
+                          isOAuth && (
+                            <DropdownMenuItem onClick={() => handleReconnect(conn.id)}>
+                              Reconnect
+                            </DropdownMenuItem>
+                          )}
+                        <DropdownMenuItem
+                          variant='destructive'
+                          onClick={() => handleDisconnect(conn.id, conn.label)}>
+                          <Unplug />
+                          Disconnect
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  )}
                 </div>
               ))}
             </div>
@@ -364,7 +445,7 @@ function AppConnections({ app, returnTo }: Props) {
         <DialogContent>
           <SecretConnectionDialogContent
             connectionLabel={app.app.title}
-            connectionType={connectionType}
+            connectionType={scope}
             secret={secret}
             setSecret={setSecret}
             showSecret={showSecret}
@@ -410,9 +491,12 @@ function AppConnections({ app, returnTo }: Props) {
           </div>
         </DialogContent>
       </Dialog>
-      <ConfirmDialog />
     </div>
   )
 }
 
-export default AppConnections
+function StatusIcon({ status }: { status: string }) {
+  if (status === 'connected') return <CheckCircle className='h-4 w-4 text-green-500' />
+  if (status === 'expired') return <Clock className='h-4 w-4 text-yellow-500' />
+  return <XCircle className='h-4 w-4 text-gray-400' />
+}

@@ -103,7 +103,9 @@ function AppSettingsTrigger({
   const { appInstallations, appConnections } = useExtensionsContext()
 
   const installation = appInstallations.find((i) => i.app.id === appId)
-  const hasConnectionDef = !!installation?.connectionDefinition
+  const hasConnectionDef = !!(
+    installation?.connectionDefinitions?.user || installation?.connectionDefinitions?.organization
+  )
 
   const connection = appConnections.find((c) => c.appId === appId)
   const status = connection?.connectionStatus ?? 'not_connected'

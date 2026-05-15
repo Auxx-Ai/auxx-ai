@@ -148,7 +148,10 @@ export function ExtensionsProvider({ children }: ExtensionsProviderProps) {
                       appTitle={installation.app.title}
                       organizationId={organizationId}
                       clientBundleSha={installation.currentDeployment!.clientBundleSha}
-                      connectionDefinition={installation.connectionDefinition}
+                      connectionDefinition={
+                        installation.connectionDefinitions?.user ??
+                        installation.connectionDefinitions?.organization
+                      }
                     />
 
                     {/* 2. Set up data handlers for this extension (Plan 4) */}

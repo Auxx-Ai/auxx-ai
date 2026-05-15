@@ -71,14 +71,16 @@ export const installedAppsProvider: CacheProvider<CachedInstalledApp[]> = {
       orgConnByAppId.set(row.appId, { present: true, expiresAt: row.expiresAt })
     }
 
-    // Index by appId (prefer user-scoped over org-scoped, matching getInstalledApps logic)
-    const connDefMap = new Map<string, (typeof connectionDefs)[0]>()
+    // Index by appId, keeping both scopes. global === false → user, global === true → organization.
+    const connDefsByAppId = new Map<
+      string,
+      { user?: (typeof connectionDefs)[0]; organization?: (typeof connectionDefs)[0] }
+    >()
     for (const def of connectionDefs) {
-      const existing = connDefMap.get(def.appId)
-      // Prefer non-global (user-scoped) — same priority as getInstalledApps
-      if (!existing || (existing.global && !def.global)) {
-        connDefMap.set(def.appId, def)
-      }
+      const existing = connDefsByAppId.get(def.appId) ?? {}
+      if (def.global) existing.organization = def
+      else existing.user = def
+      connDefsByAppId.set(def.appId, existing)
     }
 
     // 3. Build serializable output
@@ -105,14 +107,20 @@ export const installedAppsProvider: CacheProvider<CachedInstalledApp[]> = {
             createdAt: inst.currentDeployment.createdAt.toISOString(),
           }
         : null,
-      connectionDefinition: (() => {
-        const def = connDefMap.get(inst.app.id)
-        if (!def) return undefined
+      connectionDefinitions: (() => {
+        const defs = connDefsByAppId.get(inst.app.id) ?? {}
+        const toCached = (def: (typeof connectionDefs)[0] | undefined) =>
+          def
+            ? {
+                label: def.label,
+                global: def.global,
+                connectionType: def.connectionType,
+                oauth2Features: def.oauth2Features as Record<string, unknown> | null,
+              }
+            : undefined
         return {
-          label: def.label,
-          global: def.global,
-          connectionType: def.connectionType,
-          oauth2Features: def.oauth2Features as Record<string, unknown> | null,
+          user: toCached(defs.user),
+          organization: toCached(defs.organization),
         }
       })(),
       aiTools: inst.currentDeployment?.aiTools?.tools ?? undefined,

@@ -87,6 +87,7 @@ export type ConnectionDefinitionSummary = UnwrapOk<ReturnType<typeof getAppConne
  * @property {Date} [connectedAt] - Timestamp when the connection was created.
  * @property {Date} [expiresAt] - Timestamp when the connection expires (for OAuth2 connections).
  * @property {boolean} global - Whether this is an organization-scoped (true) or user-scoped (false) connection.
+ * @property {string | null} userId - The user id this connection belongs to (null for org-scoped rows).
  */
 export interface AppConnection {
   id: string
@@ -99,6 +100,7 @@ export interface AppConnection {
   connectedAt?: Date
   expiresAt?: Date
   global: boolean
+  userId: string | null
 }
 
 /**

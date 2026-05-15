@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useSelectedLayoutSegment } from 'next/navigation'
 // apps/web/src/components/apps/installed-app-tabs.tsx
 import type React from 'react'
+import { useUser } from '~/hooks/use-user'
 
 /**
  * Props for InstalledAppTabs component
@@ -19,6 +20,7 @@ type Props = {
  */
 export function InstalledAppTabs({ slug, children }: Props) {
   const segment = useSelectedLayoutSegment()
+  const { isAdminOrOwner } = useUser()
 
   const tabs = [
     { label: 'About', value: 'about', href: `/app/settings/apps/installed/${slug}/about` },
@@ -27,11 +29,15 @@ export function InstalledAppTabs({ slug, children }: Props) {
       value: 'connections',
       href: `/app/settings/apps/installed/${slug}/connections`,
     },
-    {
-      label: 'Settings',
-      value: 'settings',
-      href: `/app/settings/apps/installed/${slug}/settings`,
-    },
+    ...(isAdminOrOwner
+      ? [
+          {
+            label: 'Settings',
+            value: 'settings',
+            href: `/app/settings/apps/installed/${slug}/settings`,
+          },
+        ]
+      : []),
   ]
 
   const activeTab = segment || 'about'

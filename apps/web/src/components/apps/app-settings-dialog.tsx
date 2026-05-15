@@ -17,6 +17,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@auxx/ui/components/ta
 import { toastError } from '@auxx/ui/components/toast'
 import { Code, Globe, LucideGitGraph, Mail } from 'lucide-react'
 import { type ReactNode, Suspense, useMemo, useState } from 'react'
+import { useUser } from '~/hooks/use-user'
 import { useExtensionsContext } from '~/providers/extensions/extensions-context'
 import { api } from '~/trpc/react'
 import AppConnections from './app-connections'
@@ -44,6 +45,7 @@ export function AppSettingsDialog({
 }: AppSettingsDialogProps) {
   const [open, setOpen] = useState(false)
   const [activeTab, setActiveTab] = useState('about')
+  const { isAdminOrOwner } = useUser()
 
   const { appInstallations } = useExtensionsContext()
 
@@ -58,7 +60,9 @@ export function AppSettingsDialog({
 
   if (!installation) return null
 
-  const hasConnectionDefinition = !!installation.connectionDefinition
+  const hasConnectionDefinition = !!(
+    installation.connectionDefinitions?.user || installation.connectionDefinitions?.organization
+  )
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -90,9 +94,11 @@ export function AppSettingsDialog({
                 Connections
               </TabsTrigger>
             )}
-            <TabsTrigger value='settings' variant='outline' size='sm'>
-              Settings
-            </TabsTrigger>
+            {isAdminOrOwner && (
+              <TabsTrigger value='settings' variant='outline' size='sm'>
+                Settings
+              </TabsTrigger>
+            )}
           </TabsList>
 
           <div className='flex-1 overflow-y-auto'>
@@ -106,13 +112,15 @@ export function AppSettingsDialog({
               </TabsContent>
             )}
 
-            <TabsContent value='settings' className='mt-0'>
-              <SettingsTab
-                appSlug={appSlug}
-                installationType={installationType}
-                active={activeTab === 'settings'}
-              />
-            </TabsContent>
+            {isAdminOrOwner && (
+              <TabsContent value='settings' className='mt-0'>
+                <SettingsTab
+                  appSlug={appSlug}
+                  installationType={installationType}
+                  active={activeTab === 'settings'}
+                />
+              </TabsContent>
+            )}
           </div>
         </Tabs>
       </DialogContent>
