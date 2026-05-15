@@ -16,8 +16,32 @@ export interface ToolCatalogEntry {
 export interface ToolsetCatalogEntry {
   slug: string
   label: string
+  shortLabel: string
   group: 'native' | 'app'
+  parentGroup: string
+  iconId: string
+  color: string
   appId?: string
   isDefault: boolean
   tools: ToolCatalogEntry[]
+}
+
+export interface ToolsetGroupCatalog {
+  name: string
+  iconId: string
+  color: string
+}
+
+/**
+ * Display metadata for native parent groups, mirrored from
+ * `toolset-catalog.ts` so the client can render group headers without a
+ * server round-trip.
+ */
+export const NATIVE_GROUP_CATALOG: Record<string, ToolsetGroupCatalog> = {
+  Mail: { name: 'Mail', iconId: 'mail', color: 'blue' },
+  Tasks: { name: 'Tasks', iconId: 'check-circle', color: 'green' },
+  Entities: { name: 'Entities', iconId: 'boxes', color: 'purple' },
+  Knowledge: { name: 'Knowledge', iconId: 'book-open', color: 'orange' },
+  Docs: { name: 'Docs', iconId: 'help-circle', color: 'gray' },
+  Members: { name: 'Members', iconId: 'users', color: 'pink' },
 }

@@ -25,7 +25,7 @@ const MAX_RESULTS = 10
 export function createSearchDocsTool(_getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'search_docs',
-    toolsetSlug: 'knowledge',
+    toolsetSlug: 'docs',
     idempotent: true,
     outputDigestSchema: ArticleSearchDigest,
     buildDigest: (output) => {

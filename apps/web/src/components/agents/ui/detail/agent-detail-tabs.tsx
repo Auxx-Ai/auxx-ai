@@ -160,6 +160,7 @@ export function AgentDetailTabs({ agent, onAutosaveChange }: AgentDetailTabsProp
           <Section
             title='Knowledge'
             icon={<BookOpen className='size-4' />}
+            className='[&>[data-slot=section]>[data-slot=section-content]]:-mx-3'
             initialOpen
             collapsible={false}>
             <KnowledgeSectionContent agent={agent} onAutosaveChange={onAutosaveChange} />

@@ -1,6 +1,7 @@
 // apps/web/src/components/agents/ui/detail/agent-docked-chat.tsx
 'use client'
 
+import { KopilotChatProvider } from '~/components/kopilot/options'
 import { KopilotChat } from '~/components/kopilot/ui/kopilot-chat'
 import { api } from '~/trpc/react'
 
@@ -26,13 +27,19 @@ export function AgentDockedChat({ agentId }: AgentDockedChatProps) {
   const initialSessionId = data?.items[0]?.id ?? null
 
   return (
-    <div className='h-full flex flex-col'>
-      <KopilotChat
-        page='agents.builder'
-        agentId={agentId}
-        sessionType='builder'
-        initialSessionId={initialSessionId}
-      />
-    </div>
+    <KopilotChatProvider
+      options={{
+        hideSuggestions: true,
+        emptyStateDescription: 'Send a message to test this agent.',
+      }}>
+      <div className='h-full flex flex-col'>
+        <KopilotChat
+          page='agents.builder'
+          agentId={agentId}
+          sessionType='builder'
+          initialSessionId={initialSessionId}
+        />
+      </div>
+    </KopilotChatProvider>
   )
 }

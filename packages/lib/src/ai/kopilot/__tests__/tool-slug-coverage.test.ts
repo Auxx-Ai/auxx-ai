@@ -24,8 +24,8 @@ const KNOWN_SLUGS = new Set<string>([
   'tasks.read',
   'tasks.write',
   'knowledge',
-  'kb.read',
   'kb.write',
+  'docs',
   'actors',
 ])
 

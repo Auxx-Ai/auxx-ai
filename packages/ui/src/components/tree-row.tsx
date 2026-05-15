@@ -79,10 +79,19 @@ export function TreeRow({
         'truncate px-1 py-1.5 text-foreground text-sm',
         onTitleClick && 'cursor-pointer'
       )}
-      onClick={onTitleClick}>
+      onClick={
+        onTitleClick
+          ? (e) => {
+              e.stopPropagation()
+              onTitleClick()
+            }
+          : undefined
+      }>
       {title}
     </span>
   )
+
+  const stopPropagation = (e: React.MouseEvent) => e.stopPropagation()
 
   return (
     <div className={cn('relative', className)} style={{ paddingLeft: `${paddingLeftRem}rem` }}>
@@ -90,9 +99,11 @@ export function TreeRow({
         className={cn(
           'group/tree-row flex items-center justify-between rounded-md text-sm px-1',
           'text-muted-foreground hover:bg-background',
+          expandable && 'cursor-pointer',
           dimmed && 'opacity-60',
           rowClassName
-        )}>
+        )}
+        onClick={expandable ? onToggleOpen : undefined}>
         <div className='flex items-center flex-1 min-w-0'>
           {icon !== undefined && (
             <span className='flex items-center justify-center px-1 size-7 text-muted-foreground'>
@@ -106,7 +117,10 @@ export function TreeRow({
           {expandable && (
             <button
               type='button'
-              onClick={onToggleOpen}
+              onClick={(e) => {
+                e.stopPropagation()
+                onToggleOpen?.()
+              }}
               className='p-1 rounded-md hover:bg-primary/5'
               aria-label={isOpen ? 'Collapse' : 'Expand'}>
               <ChevronRight
@@ -119,7 +133,15 @@ export function TreeRow({
           )}
         </div>
 
-        {trailing ?? (actions && <div className='flex items-center gap-2'>{actions}</div>)}
+        {trailing ? (
+          <div onClick={stopPropagation}>{trailing}</div>
+        ) : (
+          actions && (
+            <div className='flex items-center gap-2' onClick={stopPropagation}>
+              {actions}
+            </div>
+          )
+        )}
       </div>
 
       <AnimatePresence initial={false}>

@@ -15,6 +15,7 @@ export const NATIVE_DEFAULT_TOOLSETS: ReadonlyArray<string> = [
   'mail.threads',
   'mail.compose',
   'knowledge',
+  'docs',
   'actors',
 ]
 
