@@ -26,10 +26,35 @@ export interface ToolCatalogEntry {
 export interface ToolsetCatalogEntry {
   slug: string
   label: string
+  shortLabel: string
   group: 'native' | 'app'
+  parentGroup: string
+  /** EntityIcon id (e.g. `'mail'`, `'send'`). */
+  iconId: string
+  /** EntityIcon color id (e.g. `'blue'`, `'green'`). */
+  color: string
   appId?: string
   isDefault: boolean
   tools: ToolCatalogEntry[]
+}
+
+export interface ToolsetGroupCatalog {
+  name: string
+  iconId: string
+  color: string
+}
+
+/**
+ * Display metadata for parent groups — group header icon + color. App groups
+ * (Phase 3) provide their own metadata via the app catalog.
+ */
+export const NATIVE_GROUP_CATALOG: Record<string, ToolsetGroupCatalog> = {
+  Mail: { name: 'Mail', iconId: 'mail', color: 'blue' },
+  Tasks: { name: 'Tasks', iconId: 'check-circle', color: 'green' },
+  Entities: { name: 'Entities', iconId: 'boxes', color: 'purple' },
+  Knowledge: { name: 'Knowledge', iconId: 'book-open', color: 'orange' },
+  Docs: { name: 'Docs', iconId: 'help-circle', color: 'gray' },
+  Members: { name: 'Members', iconId: 'users', color: 'pink' },
 }
 
 /**
@@ -42,12 +67,86 @@ export const NATIVE_TOOLSET_LABELS: Record<string, string> = {
   'mail.drafts': 'Mail — Drafts',
   'entities.search': 'Entities — Search',
   'entities.write': 'Entities — Write',
-  knowledge: 'Knowledge search',
-  'kb.read': 'Knowledge base — Read',
-  'kb.write': 'Knowledge base — Write',
-  'tasks.read': 'Tasks — Read',
+  knowledge: 'Knowledge — Read',
+  'kb.write': 'Knowledge — Write',
+  'tasks.read': 'Tasks — Search',
   'tasks.write': 'Tasks — Write',
+  docs: 'Docs — Search',
   actors: 'Members & actors',
+}
+
+/**
+ * Parent group display names for native toolset slugs. Unknown slugs fall
+ * back to `'Other'` (rendered in a trailing group at the bottom of the tab).
+ * App toolsets use `app.displayName` as their parent group instead.
+ */
+export const NATIVE_TOOLSET_PARENT_GROUPS: Record<string, string> = {
+  'mail.threads': 'Mail',
+  'mail.compose': 'Mail',
+  'mail.drafts': 'Mail',
+  'entities.search': 'Entities',
+  'entities.write': 'Entities',
+  knowledge: 'Knowledge',
+  'kb.write': 'Knowledge',
+  'tasks.read': 'Tasks',
+  'tasks.write': 'Tasks',
+  docs: 'Docs',
+  actors: 'Members',
+}
+
+/**
+ * Short labels used inside a parent group — strip the redundant prefix that
+ * the group header already provides.
+ */
+export const NATIVE_TOOLSET_SHORT_LABELS: Record<string, string> = {
+  'mail.threads': 'Threads',
+  'mail.compose': 'Compose',
+  'mail.drafts': 'Drafts',
+  'entities.search': 'Search',
+  'entities.write': 'Write',
+  knowledge: 'Read',
+  'kb.write': 'Write',
+  'tasks.read': 'Search',
+  'tasks.write': 'Write',
+  docs: 'Search',
+  actors: 'Members & actors',
+}
+
+/**
+ * EntityIcon `iconId` per native toolset slug. Falls back to a generic
+ * `'wrench'` for unknown slugs (e.g. future app toolsets that haven't
+ * supplied their own icon).
+ */
+export const NATIVE_TOOLSET_ICONS: Record<string, string> = {
+  'mail.threads': 'mails',
+  'mail.compose': 'send',
+  'mail.drafts': 'file-text',
+  'entities.search': 'search',
+  'entities.write': 'edit',
+  knowledge: 'book-open',
+  'kb.write': 'edit',
+  'tasks.read': 'search',
+  'tasks.write': 'check-circle',
+  docs: 'help-circle',
+  actors: 'users',
+}
+
+/**
+ * EntityIcon color per native toolset slug — picked to match the parent
+ * group's color so a group reads as one visual cluster.
+ */
+export const NATIVE_TOOLSET_COLORS: Record<string, string> = {
+  'mail.threads': 'blue',
+  'mail.compose': 'blue',
+  'mail.drafts': 'blue',
+  'entities.search': 'purple',
+  'entities.write': 'purple',
+  knowledge: 'orange',
+  'kb.write': 'orange',
+  'tasks.read': 'green',
+  'tasks.write': 'green',
+  docs: 'gray',
+  actors: 'pink',
 }
 
 const DEFAULT_SLUGS = new Set<string>(NATIVE_DEFAULT_TOOLSETS)
@@ -108,10 +207,15 @@ export async function getOrgToolsetCatalog(
 
   const entries: ToolsetCatalogEntry[] = []
   for (const [slug, { tools }] of bySlug) {
+    const label = NATIVE_TOOLSET_LABELS[slug] ?? slug
     entries.push({
       slug,
-      label: NATIVE_TOOLSET_LABELS[slug] ?? slug,
+      label,
+      shortLabel: NATIVE_TOOLSET_SHORT_LABELS[slug] ?? label,
       group: 'native',
+      parentGroup: NATIVE_TOOLSET_PARENT_GROUPS[slug] ?? 'Other',
+      iconId: NATIVE_TOOLSET_ICONS[slug] ?? 'wrench',
+      color: NATIVE_TOOLSET_COLORS[slug] ?? 'gray',
       isDefault: DEFAULT_SLUGS.has(slug),
       tools: [...tools.values()].sort((a, b) => a.name.localeCompare(b.name)),
     })

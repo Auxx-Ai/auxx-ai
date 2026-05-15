@@ -6,22 +6,15 @@ import { useCallback, useRef } from 'react'
 import { api } from '~/trpc/react'
 import type { AgentDetail } from '../../../store/agent-store'
 
-interface ToolsetPatch {
-  enabled?: boolean
-  disabledTools?: string[]
-}
-
 interface UseToolsetMutationsReturn {
   toggleToolset: (slug: string, enabled: boolean) => Promise<void>
-  toggleTool: (slug: string, toolName: string, enabled: boolean) => Promise<void>
   isPending: boolean
 }
 
 /**
  * Per-agent toolset mutations with optimistic updates against the
- * `agent.getById` cache. Both toggles fire `api.agentToolset.update` and
- * reconcile by invalidating the detail query on success / rolling back on
- * error.
+ * `agent.getById` cache. Fires `api.agentToolset.update` and reconciles by
+ * invalidating the detail query on success / rolling back on error.
  *
  * The `agentSlug` param is required because `AgentDetailLoader` subscribes to
  * `agent.getById` by slug (from the URL), so optimistic writes must target
@@ -36,8 +29,8 @@ export function useToolsetMutations(
   const update = api.agentToolset.update.useMutation()
   const savingTimerRef = useRef<ReturnType<typeof setTimeout>>()
 
-  const applyPatch = useCallback(
-    async (slug: string, patch: ToolsetPatch) => {
+  const toggleToolset = useCallback(
+    async (slug: string, enabled: boolean) => {
       // Show "Saving…" only if the mutation is still in-flight after 400 ms.
       savingTimerRef.current = setTimeout(() => onSavingChange?.(true), 400)
 
@@ -50,14 +43,9 @@ export function useToolsetMutations(
         if (idx >= 0) {
           const current = toolsets[idx]
           if (!current) return old
-          const nextConfig = { ...(current.config ?? {}) }
-          if (patch.disabledTools !== undefined) {
-            nextConfig.disabledTools = patch.disabledTools
-          }
           toolsets[idx] = {
             ...current,
-            enabled: patch.enabled ?? current.enabled,
-            config: nextConfig,
+            enabled,
             source: current.source === 'auto_default' ? 'manual' : current.source,
           }
         } else {
@@ -65,9 +53,9 @@ export function useToolsetMutations(
             id: `optimistic-${slug}`,
             agentId,
             toolsetSlug: slug,
-            enabled: patch.enabled ?? true,
+            enabled,
             source: 'manual',
-            config: patch.disabledTools !== undefined ? { disabledTools: patch.disabledTools } : {},
+            config: {},
             createdAt: new Date(),
             updatedAt: new Date(),
           } as AgentDetail['toolsets'][number])
@@ -76,7 +64,7 @@ export function useToolsetMutations(
       })
 
       try {
-        await update.mutateAsync({ agentId, slug, ...patch })
+        await update.mutateAsync({ agentId, slug, enabled })
         // Invalidate without a key so both slug-keyed and id-keyed entries refetch.
         await utils.agent.getById.invalidate()
       } catch (err) {
@@ -93,25 +81,5 @@ export function useToolsetMutations(
     [agentId, agentSlug, onSavingChange, update, utils.agent.getById]
   )
 
-  const toggleToolset = useCallback(
-    (slug: string, enabled: boolean) => applyPatch(slug, { enabled }),
-    [applyPatch]
-  )
-
-  const toggleTool = useCallback(
-    async (slug: string, toolName: string, enabled: boolean) => {
-      const current = utils.agent.getById.getData({ agentId: agentSlug })
-      const existing = current?.toolsets.find((t) => t.toolsetSlug === slug)
-      const currentDisabled = new Set<string>((existing?.config?.disabledTools as string[]) ?? [])
-      if (enabled) {
-        currentDisabled.delete(toolName)
-      } else {
-        currentDisabled.add(toolName)
-      }
-      await applyPatch(slug, { disabledTools: [...currentDisabled] })
-    },
-    [agentSlug, applyPatch, utils.agent.getById]
-  )
-
-  return { toggleToolset, toggleTool, isPending: update.isPending }
+  return { toggleToolset, isPending: update.isPending }
 }
