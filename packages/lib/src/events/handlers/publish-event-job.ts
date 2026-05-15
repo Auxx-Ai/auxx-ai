@@ -85,25 +85,25 @@ export const EventHandlers: IEventsHandlers = {
   'comment:deleted': [createTimelineEvent],
   'comment:replied': [createTimelineEvent],
 
-  // Entity instance events → CREATE TIMELINE + ENTITY TRIGGERS
-  'entity:created': [createTimelineEvent, handleEntityTriggers],
-  'entity:updated': [createTimelineEvent],
-  'entity:deleted': [createTimelineEvent, handleEntityTriggers],
+  // Entity instance events → CREATE TIMELINE + ENTITY TRIGGERS + WORKFLOWS
+  'entity:created': [createTimelineEvent, handleEntityTriggers, triggerResourceWorkflows],
+  'entity:updated': [createTimelineEvent, triggerResourceWorkflows],
+  'entity:deleted': [createTimelineEvent, handleEntityTriggers, triggerResourceWorkflows],
   'entity:field:updated': [createTimelineEvent],
 
-  // Stock movement events → ENTITY TRIGGERS (inventory QoH recalculation)
-  'stock_movement:created': [handleEntityTriggers],
-  'stock_movement:deleted': [handleEntityTriggers],
+  // Stock movement events → ENTITY TRIGGERS (inventory QoH recalculation) + WORKFLOWS
+  'stock_movement:created': [handleEntityTriggers, triggerResourceWorkflows],
+  'stock_movement:deleted': [handleEntityTriggers, triggerResourceWorkflows],
 
-  // Vendor part / subpart events → ENTITY TRIGGERS (BOM cost recalculation)
-  'vendor_part:created': [handleEntityTriggers],
-  'vendor_part:deleted': [handleEntityTriggers],
-  'subpart:created': [handleEntityTriggers],
-  'subpart:deleted': [handleEntityTriggers],
+  // Vendor part / subpart events → ENTITY TRIGGERS (BOM cost recalculation) + WORKFLOWS
+  'vendor_part:created': [handleEntityTriggers, triggerResourceWorkflows],
+  'vendor_part:deleted': [handleEntityTriggers, triggerResourceWorkflows],
+  'subpart:created': [handleEntityTriggers, triggerResourceWorkflows],
+  'subpart:deleted': [handleEntityTriggers, triggerResourceWorkflows],
 
-  // Company events → TIMELINE + ENTITY TRIGGERS (website enrichment on create)
-  'company:created': [createTimelineEvent, handleEntityTriggers],
-  'company:deleted': [createTimelineEvent, handleEntityTriggers],
+  // Company events → TIMELINE + ENTITY TRIGGERS (website enrichment on create) + WORKFLOWS
+  'company:created': [createTimelineEvent, handleEntityTriggers, triggerResourceWorkflows],
+  'company:deleted': [createTimelineEvent, handleEntityTriggers, triggerResourceWorkflows],
 
   // Field trigger events → FIELD TRIGGER HANDLERS
   'field:trigger': [handleFieldTriggerJob],

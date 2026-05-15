@@ -1,48 +1,112 @@
 // packages/lib/src/events/handlers/trigger-resource-workflows.ts
 
 import { createScopedLogger } from '@auxx/logger'
-import { toRecordId } from '@auxx/types/resource'
+import { type RecordId, toRecordId } from '@auxx/types/resource'
 import { getCachedWorkflowAppsByTrigger } from '../../cache'
 import { getQueue } from '../../jobs/queues'
 import { Queues } from '../../jobs/queues/types'
-import {
-  fetchResourceById,
-  getRecordIdField,
-  getResourceTypeFromEvent,
-} from '../../resources/resource-fetcher'
+import { fetchResourceById, getRecordIdField } from '../../resources/resource-fetcher'
 import type { AuxxEvent } from '../types'
 
 const logger = createScopedLogger('trigger-resource-workflows')
 
-/**
- * Event to workflow trigger type and entity mapping
- */
-const EVENT_TO_WORKFLOW_MAP: Record<string, { triggerType: string; entityDefinitionId: string }> = {
-  'contact:created': { triggerType: 'created', entityDefinitionId: 'contact' },
-  'contact:updated': { triggerType: 'updated', entityDefinitionId: 'contact' },
-  'contact:deleted': { triggerType: 'deleted', entityDefinitionId: 'contact' },
-  'ticket:created': { triggerType: 'created', entityDefinitionId: 'ticket' },
-  'ticket:updated': { triggerType: 'updated', entityDefinitionId: 'ticket' },
-  'ticket:deleted': { triggerType: 'deleted', entityDefinitionId: 'ticket' },
-  'thread:created': { triggerType: 'created', entityDefinitionId: 'thread' },
-  'thread:updated': { triggerType: 'updated', entityDefinitionId: 'thread' },
-  'thread:deleted': { triggerType: 'deleted', entityDefinitionId: 'thread' },
-  // Add more as needed
+type TriggerType = 'created' | 'updated' | 'deleted'
+
+type TriggerMatch = {
+  triggerType: TriggerType
+  entityDefinitionId: string
 }
 
 /**
- * Event handler that triggers workflows when resource events occur
- * Fetches matching workflows and queues execution jobs
+ * Resolve which workflow trigger this event maps to.
+ *
+ * Modern-shape events (emitted from unified-handler-mutations) carry
+ * `entityDefinitionId` directly in the payload — including custom-entity
+ * cuids. Legacy-shape events (ticket/contact emitters) don't carry it,
+ * so the entity is derived from the event-type prefix.
+ *
+ * Returns null when the event is not a resource CRUD trigger.
+ */
+function getResourceTriggerMatch(event: AuxxEvent): TriggerMatch | null {
+  const payload = event.data as Record<string, unknown>
+  const payloadEntityDefinitionId =
+    typeof payload.entityDefinitionId === 'string' ? payload.entityDefinitionId : undefined
+
+  switch (event.type) {
+    // Modern shape — entityDefinitionId on payload
+    case 'entity:created':
+    case 'company:created':
+    case 'stock_movement:created':
+    case 'vendor_part:created':
+    case 'subpart:created':
+      return payloadEntityDefinitionId
+        ? { triggerType: 'created', entityDefinitionId: payloadEntityDefinitionId }
+        : null
+    case 'entity:updated':
+      return payloadEntityDefinitionId
+        ? { triggerType: 'updated', entityDefinitionId: payloadEntityDefinitionId }
+        : null
+    case 'entity:deleted':
+    case 'company:deleted':
+    case 'stock_movement:deleted':
+    case 'vendor_part:deleted':
+    case 'subpart:deleted':
+      return payloadEntityDefinitionId
+        ? { triggerType: 'deleted', entityDefinitionId: payloadEntityDefinitionId }
+        : null
+
+    // Legacy shape — entity comes from event-type prefix
+    case 'ticket:created':
+      return { triggerType: 'created', entityDefinitionId: 'ticket' }
+    case 'ticket:updated':
+      return { triggerType: 'updated', entityDefinitionId: 'ticket' }
+    case 'ticket:deleted':
+      return { triggerType: 'deleted', entityDefinitionId: 'ticket' }
+    case 'contact:created':
+      return { triggerType: 'created', entityDefinitionId: 'contact' }
+    case 'contact:updated':
+      return { triggerType: 'updated', entityDefinitionId: 'contact' }
+    case 'contact:deleted':
+      return { triggerType: 'deleted', entityDefinitionId: 'contact' }
+
+    default:
+      return null
+  }
+}
+
+/**
+ * Resolve the RecordId for the event's subject resource.
+ *
+ * Modern-shape events already carry `recordId`. Legacy events don't —
+ * construct it from the per-event id field (`ticketId`, `contactId`) and
+ * the matched entityDefinitionId.
+ */
+function getEventRecordId(event: AuxxEvent, match: TriggerMatch): RecordId | null {
+  const payload = event.data as Record<string, unknown>
+
+  if (typeof payload.recordId === 'string' && payload.recordId.includes(':')) {
+    return payload.recordId as RecordId
+  }
+
+  const idField = getRecordIdField(event.type)
+  if (!idField) return null
+  const instanceId = payload[idField]
+  if (typeof instanceId !== 'string' || !instanceId) return null
+  return toRecordId(match.entityDefinitionId, instanceId)
+}
+
+/**
+ * Event handler that triggers workflows when resource events occur.
+ * Fetches matching workflows and queues execution jobs.
  */
 export const triggerResourceWorkflows = async ({ data: event }: { data: AuxxEvent }) => {
-  // 1. Map event type to workflow trigger criteria
-  const mapping = EVENT_TO_WORKFLOW_MAP[event.type]
-  if (!mapping) {
+  // 1. Map event to workflow trigger criteria
+  const match = getResourceTriggerMatch(event)
+  if (!match) {
     logger.debug('No workflow trigger mapping for event', { eventType: event.type })
     return
   }
-
-  const { triggerType, entityDefinitionId } = mapping
+  const { triggerType, entityDefinitionId } = match
 
   // 2. Query workflows via org cache
   const matchingApps = await getCachedWorkflowAppsByTrigger({
@@ -64,22 +128,19 @@ export const triggerResourceWorkflows = async ({ data: event }: { data: AuxxEven
   }
 
   // 3. Fetch complete resource data
-  const resourceType = getResourceTypeFromEvent(event.type)
-  const recordIdField = getRecordIdField(event.type)
-
-  if (!resourceType || !recordIdField) {
-    logger.error('Invalid event type mapping', { eventType: event.type })
+  const recordId = getEventRecordId(event, match)
+  if (!recordId) {
+    logger.error('Could not resolve recordId for event', {
+      eventType: event.type,
+      entityDefinitionId,
+    })
     return
   }
 
-  const resourceInstanceId = (event.data as any)[recordIdField] as string
-  const fullRecordId = toRecordId(resourceType, resourceInstanceId)
-  const resourceData = await fetchResourceById(fullRecordId, event.data.organizationId)
-
+  const resourceData = await fetchResourceById(recordId, event.data.organizationId)
   if (!resourceData) {
     logger.warn('Resource not found, skipping workflows', {
-      resourceType,
-      resourceId: resourceInstanceId,
+      recordId,
       eventType: event.type,
     })
     return
@@ -93,7 +154,7 @@ export const triggerResourceWorkflows = async ({ data: event }: { data: AuxxEven
       workflowAppId: workflow.workflowApp.id,
       workflowId: workflow.publishedWorkflow.id,
       organizationId: event.data.organizationId,
-      entityDefinitionId, // NEW: pass entityDefinitionId instead of resourceType
+      entityDefinitionId,
       resourceData,
       triggerType,
       triggeredAt: new Date().toISOString(),
@@ -105,6 +166,6 @@ export const triggerResourceWorkflows = async ({ data: event }: { data: AuxxEven
     workflowCount: matchingWorkflows.length,
     triggerType,
     entityDefinitionId,
-    resourceId: resourceInstanceId,
+    recordId,
   })
 }
