@@ -242,6 +242,71 @@ export async function setAgentPin(
   await fireAgentUpdated(organizationId, input.agentId)
 }
 
+/**
+ * Replace the agent's full set of manual scope rows in one transaction.
+ *
+ * Diffs `inputs` against the existing rows for this agent. Behavior:
+ * - rows in `inputs` but not in DB → insert (`source='manual'`)
+ * - rows in both → update mode (and promote to `manual` if previously not)
+ * - rows in DB but not in `inputs` → delete UNLESS `source='mention'` (mention
+ *   rows are owned by the prompt reconciler and are preserved across calls)
+ *
+ * Returns the count of rows applied to the DB (insert + update + delete).
+ */
+export async function batchSetAgentResourceScopes(
+  organizationId: string,
+  agentId: string,
+  inputs: Array<{ recordId: string; mode: AgentScopeMode }>,
+  db: Database = defaultDb as Database
+): Promise<{ applied: number }> {
+  const desired = new Map(inputs.map((row) => [normalizeRecordId(row.recordId), row.mode]))
+
+  await db.transaction(async (tx) => {
+    const existing = await tx
+      .select()
+      .from(schema.AgentResourceScope)
+      .where(
+        and(
+          eq(schema.AgentResourceScope.organizationId, organizationId),
+          eq(schema.AgentResourceScope.agentId, agentId)
+        )
+      )
+
+    const existingByKey = new Map<string, AgentResourceScopeEntity>()
+    for (const row of existing) {
+      const key = serializeScopeKey(row.entityDefinitionId, row.entityInstanceId)
+      existingByKey.set(key, row)
+    }
+
+    for (const [key, mode] of desired) {
+      const { recordId } = deserializeScopeKey(key)
+      await upsertScopeRowInTx(tx, organizationId, agentId, recordId, mode)
+    }
+
+    for (const [key, row] of existingByKey) {
+      if (desired.has(key)) continue
+      if (row.source === 'mention') continue
+      await tx.delete(schema.AgentResourceScope).where(eq(schema.AgentResourceScope.id, row.id))
+    }
+  })
+
+  await fireAgentUpdated(organizationId, agentId)
+  return { applied: desired.size }
+}
+
+function normalizeRecordId(recordId: string): string {
+  const { entityDefinitionId, entityInstanceId } = parseRecordIdForScope(recordId)
+  return serializeScopeKey(entityDefinitionId, entityInstanceId)
+}
+
+function serializeScopeKey(defId: string, instanceId: string | null): string {
+  return instanceId === null ? defId : `${defId}:${instanceId}`
+}
+
+function deserializeScopeKey(key: string): { recordId: string } {
+  return { recordId: key }
+}
+
 async function fireAgentUpdated(organizationId: string, agentId: string): Promise<void> {
   try {
     await onCacheEvent('agent.updated', { orgId: organizationId })

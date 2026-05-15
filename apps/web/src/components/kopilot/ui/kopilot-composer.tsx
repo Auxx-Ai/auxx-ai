@@ -36,6 +36,7 @@ import { useKopilotStore } from '../stores/kopilot-store'
 import { applyChipDismissals, selectMergedContext } from '../stores/select-context'
 import { PromptFormDialog } from './dialogs/prompt-form-dialog'
 import { PromptTemplateDialog } from './dialogs/prompt-template-dialog'
+import { KopilotReplyChipStrip } from './kopilot-reply-chip-strip'
 import { PromptTemplatePickerContent } from './pickers/prompt-template-picker/prompt-template-picker-content'
 
 interface KopilotComposerProps {
@@ -304,6 +305,7 @@ export function KopilotComposer({ ref, page, onSend, contentClassName }: Kopilot
       store.dismissedChipKeys
     )
     store.clearDismissedChips()
+    store.clearPendingChipPrompts()
 
     // Merge surface refs (page-derived) with editor `@`-mention refs.
     const surfaceRefs = surfaceContext.references ?? []
@@ -380,6 +382,13 @@ export function KopilotComposer({ ref, page, onSend, contentClassName }: Kopilot
 
   return (
     <div ref={containerRef} className={cn('p-3', contentClassName)}>
+      <KopilotReplyChipStrip
+        onSelect={(label) => {
+          if (!editor) return
+          editor.commands.setContent(`<p>${label}</p>`)
+          handleSendRef.current()
+        }}
+      />
       <KopilotContextChipStrip />
       <div className='relative flex flex-row items-end rounded-xl border min-h-[120px] bg-primary-150  focus-within:border-info'>
         <div className='relative flex flex-1 flex-col self-stretch'>

@@ -8,7 +8,13 @@ import { Tooltip } from '~/components/global/tooltip'
 
 interface PersonaEditorHeaderProps {
   title: string
-  characterCount: number
+  /**
+   * Character-count slot — rendered as-is between the title and the
+   * action buttons. Passed in by the parent (typically `PersonaCharacterCount`)
+   * so the count can update via direct DOM mutation without re-rendering
+   * this header on every keystroke.
+   */
+  countSlot?: React.ReactNode
   isExpanded: boolean
   setExpanded: (expanded: boolean) => void
   isCopied: boolean
@@ -37,9 +43,9 @@ const ActionButton = React.forwardRef<
 ))
 ActionButton.displayName = 'ActionButton'
 
-export function PersonaEditorHeader({
+export const PersonaEditorHeader = React.memo(function PersonaEditorHeader({
   title,
-  characterCount,
+  countSlot,
   isExpanded,
   setExpanded,
   isCopied,
@@ -65,7 +71,7 @@ export function PersonaEditorHeader({
       </div>
 
       <div className='flex items-center'>
-        <div className='text-xs font-medium leading-[18px] text-primary-500'>{characterCount}</div>
+        {countSlot}
 
         <div className='mx-2 h-3 w-px bg-primary-200' />
 
@@ -85,4 +91,4 @@ export function PersonaEditorHeader({
       </div>
     </div>
   )
-}
+})

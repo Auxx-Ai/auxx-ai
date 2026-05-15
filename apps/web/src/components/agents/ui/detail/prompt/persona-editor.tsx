@@ -12,6 +12,7 @@ import type { ReferencePickerHandle } from '~/components/pickers/reference-picke
 import { useAgentAutosave } from '../../../hooks/use-agent-autosave'
 import type { AgentDetail } from '../../../store/agent-store'
 import type { AutosaveState } from '../../shared/autosave-indicator'
+import { PersonaCharacterCount } from './persona-character-count'
 import { PersonaEditorContent } from './persona-editor-content'
 import { PersonaEditorHeader } from './persona-editor-header'
 
@@ -21,7 +22,7 @@ interface PersonaEditorProps {
   onAutosaveChange?: (state: AutosaveState) => void
 }
 
-const MIN_HEIGHT = 240
+const COLLAPSED_MIN_HEIGHT = 120
 
 function readPromptContent(
   prompt: Record<string, unknown> | null | undefined
@@ -46,8 +47,7 @@ export function PersonaEditor({ agent, onAutosaveChange }: PersonaEditorProps) {
 
   const [isExpanded, setExpanded] = useState(false)
   const [isFocused, setFocused] = useState(false)
-  const [contentHeight, setContentHeight] = useState(MIN_HEIGHT)
-  const [characterCount, setCharacterCount] = useState(0)
+  const [isCollapsed, setCollapsed] = useState(true)
   const [isCopied, setIsCopied] = useState(false)
 
   const initialContent = useMemo(() => readPromptContent(agent.prompt), [agent.prompt])
@@ -63,7 +63,10 @@ export function PersonaEditor({ agent, onAutosaveChange }: PersonaEditorProps) {
 
   const handleChange = useCallback(
     ({ json }: { json: JSONContent; html: string }) => {
-      patch({ prompt: json as Record<string, unknown> }, { debounceMs: 800 })
+      // 1500ms matches the KB article editor's autosave window. Pairs with
+      // the prompt-only fast path in `useAgentMutations.updateAgent` that
+      // splices the cache instead of invalidating, so each flush is cheap.
+      patch({ prompt: json as Record<string, unknown> }, { debounceMs: 1500 })
     },
     [patch]
   )
@@ -80,19 +83,10 @@ export function PersonaEditor({ agent, onAutosaveChange }: PersonaEditorProps) {
 
   useEffect(() => {
     if (!editor) return
-    const update = () => setCharacterCount(editor.getText().length)
-    update()
-    editor.on('update', update)
-    editor.on('create', update)
-    return () => {
-      editor.off('update', update)
-      editor.off('create', update)
+    const onFocusEvt = () => {
+      setFocused(true)
+      setCollapsed(false)
     }
-  }, [editor])
-
-  useEffect(() => {
-    if (!editor) return
-    const onFocusEvt = () => setFocused(true)
     const onBlurEvt = () => setFocused(false)
     editor.on('focus', onFocusEvt)
     editor.on('blur', onBlurEvt)
@@ -112,10 +106,14 @@ export function PersonaEditor({ agent, onAutosaveChange }: PersonaEditorProps) {
     setTimeout(() => setIsCopied(false), 2000)
   }, [editor])
 
+  // Stable element so the memoized header doesn't see a new `countSlot`
+  // prop every time PersonaEditor re-renders (focus/blur, autosave state).
+  const countSlot = useMemo(() => <PersonaCharacterCount editor={editor} />, [editor])
+
   const header = (
     <PersonaEditorHeader
       title='Persona'
-      characterCount={characterCount}
+      countSlot={countSlot}
       isExpanded={isExpanded}
       setExpanded={setExpanded}
       isCopied={isCopied}
@@ -127,9 +125,9 @@ export function PersonaEditor({ agent, onAutosaveChange }: PersonaEditorProps) {
     <PersonaEditorContent
       editor={editor}
       isExpanded={isExpanded}
-      contentHeight={contentHeight}
-      setContentHeight={setContentHeight}
-      minHeight={MIN_HEIGHT}
+      collapsedMinHeight={COLLAPSED_MIN_HEIGHT}
+      isCollapsed={isCollapsed}
+      setCollapsed={setCollapsed}
       activePicker={activePicker}
       referencePickerRef={referencePickerRef}
     />
@@ -142,11 +140,7 @@ export function PersonaEditor({ agent, onAutosaveChange }: PersonaEditorProps) {
           isFocused ? 'bg-gradient-to-r from-[#0ba5ec] to-[#155aef]' : 'bg-transparent',
           '!rounded-[9px] p-0.5 w-full'
         )}>
-        <div
-          className={cn(
-            isFocused ? 'bg-background' : 'bg-primary-200/30',
-            'pb-2 rounded-lg border'
-          )}>
+        <div className={cn(isFocused ? 'bg-background' : 'bg-primary-200/30', 'rounded-lg border')}>
           {header}
           {!isExpanded && content}
         </div>

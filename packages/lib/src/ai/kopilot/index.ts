@@ -2,7 +2,10 @@
 
 export type { CapabilityRegistry, GetToolDeps, PageCapability, ToolDeps } from './capabilities'
 export {
+  AGENTS_BUILDER_PAGE,
+  buildBuilderPersonaPrompt,
   createActorCapabilities,
+  createAgentsBuilderCapabilities,
   createCapabilityRegistry,
   createEntityCapabilities,
   createKbCapabilities,
@@ -10,6 +13,7 @@ export {
   createKnowledgeCapabilities,
   createKopilotCapabilities,
   createMailCapabilities,
+  createSuggestRepliesGlobalCapability,
   createTaskCapabilities,
   createToolDepsFactory,
   KB_PAGE,

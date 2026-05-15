@@ -4,7 +4,7 @@
 import { toastError } from '@auxx/ui/components/toast'
 import { useCallback } from 'react'
 import { api } from '~/trpc/react'
-import { getAgentStoreState } from '../store/agent-store'
+import { type AgentDetail, getAgentStoreState } from '../store/agent-store'
 
 interface CreateAgentInput {
   name: string
@@ -65,7 +65,46 @@ export function useAgentMutations(): UseAgentMutationsResult {
   const updateAgent = useCallback<UseAgentMutationsResult['updateAgent']>(
     async (id, patch) => {
       const store = getAgentStoreState()
-      // Only flat scalars belong in the optimistic patch — keep TS happy.
+      // The persona editor flushes ~1.5s after each typing burst. The
+      // `prompt` field isn't surfaced anywhere outside the editor itself
+      // (no list column, no header, no breadcrumb), and the editor is
+      // authoritative for the live doc. So a `prompt`-only patch skips
+      // both the optimistic store path and `getById.invalidate()` — that
+      // invalidate was the headline cause of typing lag in PersonaEditor
+      // because it refetched the page-driving query and re-rendered the
+      // detail subtree on every save. We splice `prompt` into the
+      // `getById` cache so a fresh mount sees the saved doc.
+      const isPromptOnly =
+        patch.prompt !== undefined &&
+        patch.name === undefined &&
+        patch.description === undefined &&
+        patch.modelId === undefined &&
+        patch.mentionable === undefined &&
+        patch.archivedAt === undefined
+
+      if (isPromptOnly) {
+        try {
+          await updateMutation.mutateAsync({ agentId: id, ...patch })
+          const stored = store.agentsById[id]
+          const slug = stored?.slug
+          const splice = (prev: AgentDetail | undefined): AgentDetail | undefined =>
+            prev ? { ...prev, prompt: patch.prompt as AgentDetail['prompt'] } : prev
+          utils.agent.getById.setData({ agentId: id }, splice)
+          if (slug && slug !== id) {
+            utils.agent.getById.setData({ agentId: slug }, splice)
+          }
+          return true
+        } catch (error) {
+          toastError({
+            title: 'Failed to update agent',
+            description: error instanceof Error ? error.message : 'Unknown error occurred',
+          })
+          return false
+        }
+      }
+
+      // Scalar / mixed patches keep the optimistic store path so the
+      // sidebar / breadcrumb switcher react instantly.
       const optimistic: Record<string, unknown> = {}
       if (patch.name !== undefined) optimistic.name = patch.name
       if (patch.description !== undefined) optimistic.description = patch.description

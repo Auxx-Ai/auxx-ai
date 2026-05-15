@@ -4,32 +4,30 @@
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import type { Editor } from '@tiptap/react'
 import { EditorContent } from '@tiptap/react'
-import { useRef } from 'react'
+import { memo, useRef } from 'react'
 import { type ActivePickerState, InlinePickerPopover } from '~/components/editor/inline-picker'
 import {
   ReferencePickerContent,
   type ReferencePickerHandle,
 } from '~/components/pickers/reference-picker/reference-picker-content'
-import EditorHeightResizeWrap from '~/components/workflow/ui/editor-height-resize-wrap'
-
-const HEADER_HEIGHT_OFFSET = 28
+import CollapseWrap from '~/components/workflow/ui/collapse-wrap'
 
 interface PersonaEditorContentProps {
   editor: Editor | null
   isExpanded: boolean
-  contentHeight: number
-  setContentHeight: (height: number) => void
-  minHeight: number
+  collapsedMinHeight: number
+  isCollapsed: boolean
+  setCollapsed: (collapsed: boolean) => void
   activePicker: ActivePickerState | null
   referencePickerRef: React.RefObject<ReferencePickerHandle | null>
 }
 
-export function PersonaEditorContent({
+export const PersonaEditorContent = memo(function PersonaEditorContent({
   editor,
   isExpanded,
-  contentHeight,
-  setContentHeight,
-  minHeight,
+  collapsedMinHeight,
+  isCollapsed,
+  setCollapsed,
   activePicker,
   referencePickerRef,
 }: PersonaEditorContentProps) {
@@ -85,15 +83,14 @@ export function PersonaEditorContent({
     )
   }
 
-  const editorContentMinHeight = minHeight - HEADER_HEIGHT_OFFSET
-
   return (
-    <EditorHeightResizeWrap
-      height={contentHeight}
-      minHeight={editorContentMinHeight}
-      onHeightChange={setContentHeight}
-      hideResize={false}>
-      <div className='relative  pb-2 flex min-h-0 flex-1 w-full'>{editorNode}</div>
-    </EditorHeightResizeWrap>
+    <CollapseWrap
+      minHeight={collapsedMinHeight}
+      isCollapsed={isCollapsed}
+      onCollapsedChange={setCollapsed}
+      className='px-3'
+      gradientClassName='from-primary-200/30 dark:from-primary-900/30'>
+      <div className='relative flex w-full'>{editorNode}</div>
+    </CollapseWrap>
   )
-}
+})

@@ -80,6 +80,7 @@ const REF_KIND_LABEL: Record<SessionRefKind, string> = {
   kb: 'knowledge base',
   article: 'article',
   actor: 'actor',
+  agent: 'agent',
 }
 
 function buildActiveRefsSection(refs: SessionRef[] | undefined): string {
