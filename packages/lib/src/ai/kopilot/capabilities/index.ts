@@ -1,6 +1,12 @@
 // packages/lib/src/ai/kopilot/capabilities/index.ts
 
 export { createActorCapabilities } from './actors'
+export {
+  AGENTS_BUILDER_PAGE,
+  buildBuilderPersonaPrompt,
+  createAgentsBuilderCapabilities,
+  createSuggestRepliesGlobalCapability,
+} from './agents-builder'
 export { createToolDepsFactory } from './create-deps'
 export { createEntityCapabilities } from './entities'
 export { createKbCapabilities, createKbReadCapabilities, KB_PAGE } from './kb'

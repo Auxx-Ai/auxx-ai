@@ -197,6 +197,14 @@ interface KopilotState {
   dismissChip: (key: string) => void
   clearDismissedChips: () => void
 
+  /**
+   * Suggested-reply chips emitted by the `suggest_replies` tool. Rendered
+   * above the composer; cleared on the next user submit.
+   */
+  pendingChipPrompts: Array<{ id: string; label: string }>
+  setPendingChipPrompts: (prompts: Array<{ id: string; label: string }>) => void
+  clearPendingChipPrompts: () => void
+
   // Session — null means "new session" (not yet created on server)
   activeSessionId: string | null
   setActiveSessionId: (id: string | null) => void
@@ -331,6 +339,12 @@ export const useKopilotStore = create<KopilotState>()(
         }),
       clearDismissedChips: () =>
         set((s) => (s.dismissedChipKeys.size === 0 ? s : { dismissedChipKeys: new Set() })),
+
+      // Suggested-reply chips emitted by `suggest_replies`
+      pendingChipPrompts: [],
+      setPendingChipPrompts: (pendingChipPrompts) => set({ pendingChipPrompts }),
+      clearPendingChipPrompts: () =>
+        set((s) => (s.pendingChipPrompts.length === 0 ? s : { pendingChipPrompts: [] })),
 
       // Session
       activeSessionId: null,

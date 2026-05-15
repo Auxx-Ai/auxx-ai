@@ -10,6 +10,8 @@ interface CollapseWrapProps {
   minHeight: number
   children: React.ReactNode
   className?: string
+  /** Override classes for the gradient mask (e.g. to change `from-*` color) */
+  gradientClassName?: string
   /** Controlled collapsed state */
   isCollapsed?: boolean
   /** Callback when collapsed state changes */
@@ -24,6 +26,7 @@ const CollapseWrap: React.FC<CollapseWrapProps> = ({
   minHeight,
   children,
   className,
+  gradientClassName,
   isCollapsed: controlledCollapsed,
   onCollapsedChange,
 }) => {
@@ -78,9 +81,11 @@ const CollapseWrap: React.FC<CollapseWrapProps> = ({
 
         {/* Gradient mask overlay when collapsed */}
         <div
+          data-slot='collapse-gradient'
           className={cn(
-            'pointer-events-none absolute inset-x-0 bottom-0 h-4 bg-gradient-to-t from-white/80 dark:from-black/20 to-transparent transition-opacity duration-500',
-            isCollapsed && showButton ? 'opacity-100' : 'opacity-0'
+            'pointer-events-none absolute inset-x-0 bottom-0 h-4 bg-linear-to-t from-white/80 dark:from-black/20 to-transparent transition-opacity duration-500',
+            isCollapsed && showButton ? 'opacity-100' : 'opacity-0',
+            gradientClassName
           )}
         />
       </div>

@@ -4,7 +4,7 @@
 
 import { cn } from '@auxx/ui/lib/utils'
 import { useHotkey } from '@tanstack/react-hotkeys'
-import { Book, Building2, FileText, Inbox, Mail, User, X } from 'lucide-react'
+import { Book, Bot, Building2, FileText, Inbox, Mail, User, X } from 'lucide-react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { useEffect, useRef, useState } from 'react'
 import { recordBadgeVariants } from '~/components/resources/ui/record-badge'
@@ -18,6 +18,7 @@ const KIND_ICONS: Record<SessionRefKind, typeof Mail> = {
   kb: Book,
   article: FileText,
   actor: User,
+  agent: Bot,
 }
 
 const SPRING = { type: 'spring', stiffness: 220, damping: 26 } as const

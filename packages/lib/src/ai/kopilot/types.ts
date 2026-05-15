@@ -13,6 +13,7 @@ export type SessionRefKind =
   | 'kb' // knowledge base id
   | 'article' // article id
   | 'actor' // `user:<id>` or `group:<id>`
+  | 'agent' // user-authored agent id — present on the builder page
 
 /**
  * A single thing the user has in focus this turn — either because a page

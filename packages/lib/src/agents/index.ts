@@ -5,6 +5,7 @@ export {
   type AgentScopeMode,
   type AgentScopeRemoveInput,
   type AgentScopeUpsertInput,
+  batchSetAgentResourceScopes,
   PIN_HARD_CAP,
   PinLimitExceededError,
   parseRecordIdForScope,

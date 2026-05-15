@@ -24,6 +24,9 @@ interface KopilotContextProps {
 
   activeArticleId?: string
   activeArticleLabel?: string
+
+  activeAgentId?: string
+  activeAgentLabel?: string
 }
 
 /**
@@ -56,6 +59,8 @@ export function KopilotContext(props: KopilotContextProps): null {
     activeKnowledgeBaseLabel,
     activeArticleId,
     activeArticleLabel,
+    activeAgentId,
+    activeAgentLabel,
   } = props
 
   useEffect(() => {
@@ -66,6 +71,7 @@ export function KopilotContext(props: KopilotContextProps): null {
     pushSurfaceRef(references, 'record', activeRecordId, activeRecordLabel)
     pushSurfaceRef(references, 'kb', activeKnowledgeBaseId, activeKnowledgeBaseLabel)
     pushSurfaceRef(references, 'article', activeArticleId, activeArticleLabel)
+    pushSurfaceRef(references, 'agent', activeAgentId, activeAgentLabel)
 
     const slice: ContextSlice = { references, ...(page !== undefined ? { page } : {}) }
     setSlice(id, slice)
@@ -83,6 +89,8 @@ export function KopilotContext(props: KopilotContextProps): null {
     activeKnowledgeBaseLabel,
     activeArticleId,
     activeArticleLabel,
+    activeAgentId,
+    activeAgentLabel,
     setSlice,
     clearSlice,
   ])
