@@ -1,11 +1,19 @@
 // apps/worker/src/workers/worker-definitions/scheduled-trigger-worker.ts
 
-import { executeScheduledTrigger } from '@auxx/lib/jobs'
+import {
+  executeAgentAppTrigger,
+  executeAgentEventTrigger,
+  executeAgentScheduledTrigger,
+  executeScheduledTrigger,
+} from '@auxx/lib/jobs'
 import { Queues } from '@auxx/lib/jobs/queues'
 import { createWorker } from '../utils/createWorker'
 
 const jobMappings = {
   executeScheduledTrigger,
+  executeAgentScheduledTrigger,
+  executeAgentEventTrigger,
+  executeAgentAppTrigger,
 }
 
 export function startScheduledTriggerWorker() {

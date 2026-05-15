@@ -1,11 +1,12 @@
 // apps/worker/src/workers/worker-definitions/app-trigger-worker.ts
 
-import { dispatchAppTrigger } from '@auxx/lib/jobs'
+import { dispatchAppTrigger, dispatchAppTriggerToAgents } from '@auxx/lib/jobs'
 import { Queues } from '@auxx/lib/jobs/queues'
 import { createWorker } from '../utils/createWorker'
 
 const jobMappings = {
   dispatchAppTrigger,
+  dispatchAppTriggerToAgents,
 }
 
 export function startAppTriggerWorker() {

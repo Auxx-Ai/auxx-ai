@@ -21,6 +21,16 @@ export interface CreateSessionInput extends SessionContext {
    * User-authored agent the session targets. Null/omitted = master Kopilot.
    */
   agentId?: string | null
+  /**
+   * Trigger row that kicked off this session. Drives the "Recent runs for
+   * this trigger" view in the agent detail UI.
+   */
+  agentTriggerId?: string | null
+  /**
+   * Kind-specific context captured at fire time. Shape per kind documented
+   * on the `AiAgentSession.triggerContext` column.
+   */
+  triggerContext?: Record<string, unknown> | null
 }
 
 /**

@@ -1065,6 +1065,13 @@
       "when": 1778824099582,
       "tag": "0151_kopilot_ai_tools_wedge_a",
       "breakpoints": true
+    },
+    {
+      "idx": 153,
+      "version": "7",
+      "when": 1778875337572,
+      "tag": "0153_add_agent_trigger",
+      "breakpoints": true
     }
   ]
 }

@@ -3,6 +3,7 @@
 import { createId } from '@paralleldrive/cuid2'
 import { type AnyPgColumn, index, jsonb, pgTable, text, timestamp } from './_shared'
 import { Agent } from './agent'
+import { AgentTrigger } from './agent-trigger'
 import { Organization } from './organization'
 import { User } from './user'
 
@@ -42,6 +43,21 @@ export const AiAgentSession = pgTable(
       onUpdate: 'cascade',
       onDelete: 'set null',
     }),
+    /**
+     * Set when the session was kicked off by an autonomous trigger. Drives
+     * the "Recent runs for this trigger" view in the agent detail UI.
+     */
+    agentTriggerId: text().references((): AnyPgColumn => AgentTrigger.id, {
+      onUpdate: 'cascade',
+      onDelete: 'set null',
+    }),
+    /**
+     * Kind-specific context captured at fire time. Shapes:
+     *   scheduled: { kind: 'scheduled', firedAt, schedulerId }
+     *   event:     { kind: 'event', eventType, recordId, firedAt }
+     *   app:       { kind: 'app', appId, triggerId, installationId, eventId, firedAt }
+     */
+    triggerContext: jsonb().$type<Record<string, unknown>>(),
   },
   (table) => [
     index('AiAgentSession_organizationId_userId_type_idx').using(
@@ -59,6 +75,11 @@ export const AiAgentSession = pgTable(
     index('AiAgentSession_agentId_updatedAt_idx').using(
       'btree',
       table.agentId.asc().nullsLast(),
+      table.updatedAt.desc().nullsLast()
+    ),
+    index('AiAgentSession_agentTriggerId_updatedAt_idx').using(
+      'btree',
+      table.agentTriggerId.asc().nullsLast(),
       table.updatedAt.desc().nullsLast()
     ),
   ]

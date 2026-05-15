@@ -31,12 +31,32 @@ const logger = createScopedLogger('agent-job')
  * Runs the AgentEngine and publishes events to Redis for SSE relay.
  */
 export async function processAgentMessage(ctx: JobContext<AgentJobPayload>) {
-  const { data, signal } = ctx
-  const { sessionId, organizationId, userId, message, type, domain, page, context } = data
+  const { data } = ctx
+  const { sessionId, domain, type } = data
 
   logger.info('Processing agent message', { sessionId, domain, type })
 
-  const run = () => processAgentMessageInternal(ctx)
+  const run = async () => {
+    try {
+      return await processAgentMessageInternal(ctx)
+    } catch (err) {
+      if (data.agentTriggerId) {
+        try {
+          const { AgentTriggerService } = await import('../../agents/agent-trigger-service')
+          await new AgentTriggerService().recordError(
+            data.agentTriggerId,
+            err instanceof Error ? err.message : String(err)
+          )
+        } catch (recordErr) {
+          logger.warn('Failed to record agent trigger error', {
+            agentTriggerId: data.agentTriggerId,
+            error: recordErr instanceof Error ? recordErr.message : String(recordErr),
+          })
+        }
+      }
+      throw err
+    }
+  }
 
   // Dev only: tee agent-relevant logs to a per-session file
   if (process.env.NODE_ENV === 'development') {
@@ -95,6 +115,7 @@ async function processAgentMessageInternal(ctx: JobContext<AgentJobPayload>) {
     // (one per ticket reply, etc.) and need iteration headroom for plan
     // step churn. Other domains stay on framework defaults.
     ...(domain === 'kopilot' ? { maxTotalIterations: 100, maxApprovalsPerTurn: 50 } : {}),
+    ...(data.approvalMode ? { approvalMode: data.approvalMode } : {}),
   }
 
   const engine = new AgentEngine(engineConfig, {
@@ -195,6 +216,19 @@ async function processAgentMessageInternal(ctx: JobContext<AgentJobPayload>) {
 
   // 9. Publish terminal event
   await publisher.publish({ type: 'done' })
+
+  // 10. If this run was kicked off by a trigger, record a fire on the row.
+  if (data.agentTriggerId) {
+    try {
+      const { AgentTriggerService } = await import('../../agents/agent-trigger-service')
+      await new AgentTriggerService().recordFire(data.agentTriggerId)
+    } catch (err) {
+      logger.warn('Failed to record agent trigger fire', {
+        agentTriggerId: data.agentTriggerId,
+        error: err instanceof Error ? err.message : String(err),
+      })
+    }
+  }
 
   logger.info('Agent message processed', { sessionId, domain })
 }

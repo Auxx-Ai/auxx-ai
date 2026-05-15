@@ -309,7 +309,11 @@ export async function* agentQueryLoop(
     // assistant message with tool_calls, then the approval-required event, and
     // stop the loop — waiting for engine.resume() to continue. We do NOT write
     // a fake "awaiting_approval" tool result message (fixes F7, F23).
-    const approvalTool = findApprovalTool(toolCalls, agent.tools)
+    //
+    // `approvalMode: 'auto'` skips this block: autonomous agent triggers have
+    // no human to ask. The agent's toolset is the capability boundary.
+    const approvalTool =
+      config.approvalMode === 'auto' ? undefined : findApprovalTool(toolCalls, agent.tools)
     if (approvalTool) {
       let approvalArgs = parseToolArgs(approvalTool)
       if (config.domainConfig.transformToolInput) {

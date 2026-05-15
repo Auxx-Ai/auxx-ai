@@ -25,6 +25,17 @@ export interface AgentJobPayload {
    * Read by the worker to resolve per-agent toolsets + persona at session-init.
    */
   agentId?: string | null
+  /**
+   * Approval handling mode for the engine — defaults to 'pause' (chat
+   * behavior). Autonomous agent triggers pass 'auto' so the loop never
+   * stops to ask. See AgentEngineConfig.approvalMode.
+   */
+  approvalMode?: 'pause' | 'capture' | 'auto'
+  /**
+   * Trigger row that kicked off this run. The worker uses it to update
+   * `lastFiredAt` / `lastError` after the engine finishes.
+   */
+  agentTriggerId?: string | null
 }
 
 /**
