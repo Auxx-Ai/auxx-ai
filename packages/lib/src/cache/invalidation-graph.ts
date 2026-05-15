@@ -67,6 +67,11 @@ export const INVALIDATION_GRAPH: Record<string, InvalidationMapping> = {
   'app.uninstalled': ['installedApps'],
   'app.deployment.changed': ['installedApps'],
   'app.connection-def.changed': ['installedApps'],
+  // App connection (credential) lifecycle — bust the catalog cache because
+  // `installedAppsProvider` denormalizes org-scope presence (decision B2 / G2).
+  'app-connection.created': ['installedApps'],
+  'app-connection.deleted': ['installedApps'],
+  'app-connection.refreshed': ['installedApps'],
 
   // ── AI provider events ──
   'ai-provider.configured': ['aiProviderConfigs', 'aiCredentials'],

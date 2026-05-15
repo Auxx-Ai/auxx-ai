@@ -17,6 +17,7 @@ import bundleAssets from './routes/bundle-assets'
 import sdkBundles from './routes/bundles'
 import deployments from './routes/deployments'
 import developers from './routes/developers'
+import entitiesFindByIntegrationId from './routes/entities/find-by-integration-id'
 import freeToolLeads from './routes/free-tool-leads'
 // Routes
 import health from './routes/health'
@@ -73,6 +74,7 @@ async function main() {
   app.route('/api/v1/app-runtime', appRuntime) // Platform runtime files (shared by all extensions)
   app.route('/api/v1/sdk/webhooks', webhookHandlers) // SDK callback: Lambda → API
   app.route('/api/v1/sdk/settings', settings) // SDK callback: Lambda → API
+  app.route('/api/v1/sdk/entities', entitiesFindByIntegrationId) // SDK callback: Lambda → API (AI tools)
   app.route('/api/v1/workflows', workflows) // Workflow execution routes
   app.route('/api/v1/public/free-tool-leads', freeToolLeads) // Public lead capture from /free-tools/*
   app.route('/webhooks/recording', recordingWebhooks) // Recording bot provider webhooks (before generic /webhooks to avoid param collision)

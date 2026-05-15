@@ -84,6 +84,21 @@ export const EntityInstance = pgTable(
      * activity"). Replaces v2's NOOP-row mechanism.
      */
     lastSuggestionScanAt: timestamp({ precision: 3 }),
+
+    /**
+     * Denormalized integration source for fast lookup by external id.
+     * Powers `ctx.entities.findByIntegrationId` from AI-tool lambdas.
+     * Free-form string (e.g. 'shopify', 'hubspot'). Null when not imported
+     * from an external integration. See plans/kopilot/apps/credentials.md §3.7.
+     */
+    integrationSource: text(),
+
+    /**
+     * External id within the integration source (e.g. Shopify GID,
+     * HubSpot contact id). Lookup is keyed on
+     * (organizationId, entityDefinitionId, integrationSource, externalId).
+     */
+    externalId: text(),
   },
   (table) => [
     // Index for entity definition lookups
@@ -112,6 +127,15 @@ export const EntityInstance = pgTable(
       table.organizationId.asc().nullsLast(),
       table.entityDefinitionId.asc().nullsLast(),
       table.lastActivityAt.asc().nullsLast()
+    ),
+    // Integration-id lookup for AI tool refs.entity(...) resolution.
+    // Composite index on (organizationId, entityDefinitionId, integrationSource, externalId).
+    // See plans/kopilot/apps/credentials.md §3.7 (Q1).
+    index('EntityInstance_integrationLookup_idx').on(
+      table.organizationId,
+      table.entityDefinitionId,
+      table.integrationSource,
+      table.externalId
     ),
     // AI suggestion scanner candidate query (Phase 3c): non-archived rows
     // ordered by activity & last-scan, scoped per (org, entity definition).

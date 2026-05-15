@@ -160,6 +160,12 @@ export interface CachedInstalledApp {
     deploymentType: string
     status: string
     clientBundleSha: string
+    /**
+     * Denormalized server bundle sha — needed by the AI tool bridge to build
+     * the lambda payload without an extra join. See
+     * plans/kopilot/agents/tool-loading-and-execution.md §3 (decision B2).
+     */
+    serverBundleSha: string
     createdAt: string // ISO string — rehydrate to Date before returning
   } | null
 
@@ -170,6 +176,41 @@ export interface CachedInstalledApp {
     connectionType: string
     oauth2Features: Record<string, unknown> | null
   }
+
+  /**
+   * AI tool catalog materialized at publish (decision A1). Mirrors the JSONB
+   * column on `AppDeployment.aiTools`. See plans/kopilot/apps/README.md §5.
+   */
+  aiTools?: Array<{
+    id: string
+    name: string
+    description: string
+    inputsJsonSchema: Record<string, unknown>
+    outputsJsonSchema: Record<string, unknown>
+    requiresConnection: boolean
+    connectionScope: 'user' | 'organization' | null
+    requiresApproval: boolean | { predicate: string }
+    timeoutMs: number
+    streaming: boolean
+    toolsetSlug: string
+    refs: Array<{ path: string[]; kind: string }>
+  }>
+
+  aiToolsets?: Array<{
+    slug: string
+    name: string
+    description: string
+    iconKey: string | null
+    isDefault: boolean
+  }>
+
+  /**
+   * Org-scope connection presence + expiry (decision G2 split path).
+   * Populated via LEFT JOIN on `WorkflowCredentials WHERE userId IS NULL`.
+   * User-scope presence is a per-request direct DB hit.
+   */
+  orgConnectionPresent: boolean
+  orgConnectionExpiresAt: string | null
 }
 
 /** All org-scoped cache keys and their data types */

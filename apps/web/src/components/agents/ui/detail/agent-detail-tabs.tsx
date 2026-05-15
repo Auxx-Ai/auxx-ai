@@ -1,6 +1,7 @@
 // apps/web/src/components/agents/ui/detail/agent-detail-tabs.tsx
 'use client'
 
+import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Section } from '@auxx/ui/components/section'
 import { Tabs, TabsList, TabsTrigger } from '@auxx/ui/components/tabs'
 import { BookOpen, FileText, Wrench } from 'lucide-react'
@@ -116,23 +117,30 @@ export function AgentDetailTabs({ agent, onAutosaveChange }: AgentDetailTabsProp
 
   return (
     <div className='flex flex-col flex-1 min-h-0'>
-      <div ref={scrollContainerRef} className='flex-1 overflow-y-auto'>
+      <ScrollArea
+        viewportRef={scrollContainerRef}
+        className='flex-1 min-h-0'
+        scrollbarClassName='w-1.5 z-20'
+        noFade>
         <AgentHero agent={agent} />
 
-        <div className='sticky top-0 z-10 bg-background border-b'>
-          <Tabs value={tab} onValueChange={handleTabChange}>
-            <TabsList className='w-full justify-start rounded-none bg-primary-150 px-2'>
-              {AGENT_TABS.map((value) => {
-                const Icon = SECTION_ICONS[value]
-                return (
-                  <TabsTrigger key={value} value={value} variant='outline'>
-                    <Icon />
-                    {SECTION_LABELS[value]}
-                  </TabsTrigger>
-                )
-              })}
-            </TabsList>
-          </Tabs>
+        <div className='sticky top-0 z-10'>
+          <div className='bg-background border-b'>
+            <Tabs value={tab} onValueChange={handleTabChange}>
+              <TabsList className='w-full justify-start rounded-none bg-primary-150 px-2'>
+                {AGENT_TABS.map((value) => {
+                  const Icon = SECTION_ICONS[value]
+                  return (
+                    <TabsTrigger key={value} value={value} variant='outline'>
+                      <Icon />
+                      {SECTION_LABELS[value]}
+                    </TabsTrigger>
+                  )
+                })}
+              </TabsList>
+            </Tabs>
+          </div>
+          <div className='pointer-events-none h-3 bg-gradient-to-b from-background to-transparent' />
         </div>
 
         <div ref={assignRef('prompt')}>
@@ -169,7 +177,7 @@ export function AgentDetailTabs({ agent, onAutosaveChange }: AgentDetailTabsProp
 
         {/* Spacer so the last section can scroll up to the activation line. */}
         <div className='h-[40vh]' />
-      </div>
+      </ScrollArea>
     </div>
   )
 }

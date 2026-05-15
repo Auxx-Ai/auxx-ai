@@ -18,6 +18,16 @@ export type {
   WorkflowInput,
   WorkflowOutput,
 } from '../server/workflow/index.js'
+export type {
+  AiTool,
+  AiToolConfig,
+  AiToolExecuteContext,
+  AiToolset,
+  AuxxRefMeta,
+  EntityRefKind,
+} from './ai/index.js'
+// AI tools surface — `import { defineAiTool, refs, z } from '@auxx/sdk/ai'`
+export { defineAiTool, refs, z } from './ai/index.js'
 export type { App, AppSettings, Permission } from './app.js'
 export type {
   QuickAction,

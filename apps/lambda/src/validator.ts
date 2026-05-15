@@ -32,6 +32,10 @@ export const ExecutionContextSchema = z.object({
     .object({
       webhooks: z.string(),
       settings: z.string(),
+      // AI tool executions get an additional `entities` scope used by
+      // `ctx.entities.findByIntegrationId`. See
+      // plans/kopilot/apps/credentials.md §3.6.
+      entities: z.string().optional(),
     })
     .optional(),
 })
@@ -51,6 +55,7 @@ const BaseLambdaEventSchema = z.object({
     'polling-trigger',
     'code',
     'quick-action',
+    'ai-tool',
   ]),
 
   // Common limits with defaults
@@ -157,6 +162,33 @@ const QuickActionExecutionSchema = AppEventSchema.extend({
   timeout: z.number().min(1000).max(30000).default(30000),
 })
 
+/**
+ * AI tool execution schema — extends AppEventSchema.
+ *
+ * Dispatched by the Kopilot bridge when the LLM calls an app-backed AI tool.
+ * The executor (`apps/lambda/src/executors/ai-tool-executor.ts`) loads the
+ * tool from `__AUXX_AI_TOOLS__` and runs `execute(input, ctx)`.
+ *
+ * See plans/kopilot/apps/README.md §6.1 and
+ * plans/kopilot/agents/tool-loading-and-execution.md §6.
+ */
+const AiToolExecutionSchema = AppEventSchema.extend({
+  type: z.literal('ai-tool'),
+  toolId: z.string().regex(/^[a-zA-Z0-9_-]{1,64}$/),
+  toolInput: z.record(z.string(), z.unknown()),
+  // AI tool timeout is bounded — 15s default, 30s hard cap (plans §10).
+  timeout: z.number().min(1000).max(30000).default(15000),
+  // Optional Kopilot-specific context — Wedge A passes session/agent ids.
+  kopilotContext: z
+    .object({
+      sessionId: z.string().optional(),
+      agentId: z.string().nullish(),
+      triggerId: z.string().nullish(),
+      page: z.string().optional(),
+    })
+    .optional(),
+})
+
 // ============================================================================
 // EXPORTED TYPES
 // ============================================================================
@@ -169,6 +201,7 @@ export type WebhookExecutionEvent = z.infer<typeof WebhookExecutionSchema>
 export type WorkflowBlockExecutionEvent = z.infer<typeof WorkflowBlockExecutionSchema>
 export type PollingTriggerExecutionEvent = z.infer<typeof PollingTriggerExecutionSchema>
 export type QuickActionExecutionEvent = z.infer<typeof QuickActionExecutionSchema>
+export type AiToolExecutionEvent = z.infer<typeof AiToolExecutionSchema>
 
 /** Type-safe union of all validated events */
 export type ValidatedLambdaEvent =
@@ -179,6 +212,7 @@ export type ValidatedLambdaEvent =
   | WorkflowBlockExecutionEvent
   | PollingTriggerExecutionEvent
   | QuickActionExecutionEvent
+  | AiToolExecutionEvent
 
 /** Keep existing exports */
 export type ValidatedExecutionContext = z.infer<typeof ExecutionContextSchema>
@@ -217,6 +251,8 @@ export function validateLambdaEvent(event: unknown) {
       return PollingTriggerExecutionSchema.safeParse(event)
     case 'quick-action':
       return QuickActionExecutionSchema.safeParse(event)
+    case 'ai-tool':
+      return AiToolExecutionSchema.safeParse(event)
     default:
       // Return error in Zod format for unknown type
       return {

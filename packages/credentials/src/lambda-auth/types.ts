@@ -15,8 +15,12 @@ export interface InboundAuthHeaders {
 /**
  * Scopes available for callback tokens.
  * Each scope restricts the token to specific API callback routes.
+ *
+ * `entities` is minted only for AI tool invocations and authorizes the
+ * `find-by-integration-id` lookup. See
+ * plans/kopilot/apps/credentials.md §3.6.
  */
-export type CallbackScope = 'webhooks' | 'settings'
+export type CallbackScope = 'webhooks' | 'settings' | 'entities'
 
 /**
  * Result of verifying an inbound request signature.

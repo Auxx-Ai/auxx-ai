@@ -17,6 +17,7 @@ import type {
 import type { Message } from '../ai/clients/base/types'
 import {
   createActorCapabilities,
+  createAppCapabilities,
   createCapabilityRegistry,
   createEntityCapabilities,
   createKnowledgeCapabilities,
@@ -113,6 +114,17 @@ export async function runHeadlessSuggestion(
   registry.register(createMailCapabilities(getDeps))
   registry.register(createActorCapabilities(getDeps))
   registry.register(createTaskCapabilities(getDeps))
+  registry.register(
+    await createAppCapabilities({
+      organizationId: input.organizationId,
+      // Headless runs are autonomous — userId=null hides user-scope app tools.
+      userId: null,
+      agentId: null,
+      triggerId: null,
+      sessionId: headlessTraceId,
+      getToolDeps: getDeps,
+    })
+  )
   const tools = registry.getTools('mail')
 
   // 3. Build the prompt — entity fields, tasks, sanitized event payload.

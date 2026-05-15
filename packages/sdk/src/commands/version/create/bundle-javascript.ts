@@ -1,4 +1,8 @@
 import { complete, errored, isErrored } from '../../../errors.js'
+import {
+  type AiToolCatalogPayload,
+  compileAndExtractAiTools,
+} from '../../../util/compile-and-extract-ai-tools.js'
 import { compileAndExtractSettingsSchema } from '../../../util/compile-and-extract-settings.js'
 import type { SettingsSchema } from '../../../util/extract-settings-schema.js'
 import { prepareBuildContext } from '../../dev/prepare-build-context.js'
@@ -9,6 +13,7 @@ import { prepareBuildContext } from '../../dev/prepare-build-context.js'
 export type BundleResult = {
   bundles: [string, string]
   settingsSchema?: SettingsSchema
+  aiTools?: AiToolCatalogPayload
 }
 
 export async function bundleJavaScript() {
@@ -39,8 +44,13 @@ export async function bundleJavaScript() {
   // Extract settings schema after successful build
   const settingsSchema = await compileAndExtractSettingsSchema()
 
+  // Extract AI tool catalog (publish-time materialization — plans/kopilot/apps/README.md §5)
+  const aiToolsResult = await compileAndExtractAiTools()
+  const aiTools = isErrored(aiToolsResult) ? undefined : aiToolsResult.value
+
   return complete({
     bundles: [builds.client.outputFiles[0].text, builds.server.outputFiles[0].text],
     settingsSchema,
+    aiTools,
   })
 }

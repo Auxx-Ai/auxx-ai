@@ -7,6 +7,8 @@ export {
   createAgentsBuilderCapabilities,
   createSuggestRepliesGlobalCapability,
 } from './agents-builder'
+export { createAppCapabilities } from './apps'
+export { getAppConnectionPresence } from './apps/connection-resolver'
 export { createToolDepsFactory } from './create-deps'
 export { createEntityCapabilities } from './entities'
 export { createKbCapabilities, createKbReadCapabilities, KB_PAGE } from './kb'
