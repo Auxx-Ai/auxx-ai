@@ -34,6 +34,34 @@ export const AppDeployment = pgTable(
       user?: Record<string, any>
     }>(),
 
+    // AI tool catalog — converted at publish time by the SDK build step.
+    // Read by the Kopilot bridge at session-init to register tools with the LLM
+    // without evaluating bundle code. See plans/kopilot/apps/README.md §5 + §11
+    // and plans/kopilot/agents/tool-loading-and-execution.md §2 (decision A1).
+    aiTools: jsonb().$type<{
+      tools: Array<{
+        id: string
+        name: string
+        description: string
+        inputsJsonSchema: Record<string, unknown>
+        outputsJsonSchema: Record<string, unknown>
+        requiresConnection: boolean
+        connectionScope: 'user' | 'organization' | null
+        requiresApproval: boolean | { predicate: string }
+        timeoutMs: number
+        streaming: boolean
+        toolsetSlug: string
+        refs: Array<{ path: string[]; kind: string }>
+      }>
+      toolsets: Array<{
+        slug: string
+        name: string
+        description: string
+        iconKey: string | null
+        isDefault: boolean
+      }>
+    }>(),
+
     // Dev-only fields
     targetOrganizationId: text().references((): AnyPgColumn => Organization.id, {
       onUpdate: 'cascade',

@@ -1058,6 +1058,13 @@
       "when": 1778734938798,
       "tag": "0150_drop_agent_name_avatar",
       "breakpoints": true
+    },
+    {
+      "idx": 151,
+      "version": "7",
+      "when": 1778824099582,
+      "tag": "0151_kopilot_ai_tools_wedge_a",
+      "breakpoints": true
     }
   ]
 }

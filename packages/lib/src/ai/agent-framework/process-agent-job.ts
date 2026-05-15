@@ -6,6 +6,7 @@ import { getSessionById, saveSessionMessages, updateSessionDomainState } from '@
 import { filterToolsByToolsets, resolveAgentConfig } from '../../agents'
 import type { JobContext } from '../../jobs/types'
 import {
+  createAppCapabilities,
   createCapabilityRegistry,
   createEntityCapabilities,
   createKopilotCapabilities,
@@ -227,6 +228,18 @@ async function buildDomainConfig(
       registry.register(createEntityCapabilities(getToolDeps))
       registry.register(createMailCapabilities(getToolDeps))
       registry.register(createKopilotCapabilities(getToolDeps))
+      registry.register(
+        await createAppCapabilities({
+          organizationId: params.organizationId,
+          // Background agent jobs run autonomously — no human in the loop.
+          // User-scope tools are hidden by the bridge (decision A2).
+          userId: null,
+          agentId: params.agentId,
+          triggerId: null,
+          sessionId: params.sessionId,
+          getToolDeps,
+        })
+      )
 
       // Resolve model: explicit override → system default → hardcoded fallback
       let defaultModel: string | undefined

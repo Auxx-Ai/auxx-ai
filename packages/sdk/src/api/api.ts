@@ -251,6 +251,7 @@ class ApiImpl {
     serverBundleSha,
     deploymentType,
     settingsSchema,
+    aiTools,
     targetOrganizationId,
     environmentVariables,
     version,
@@ -261,6 +262,7 @@ class ApiImpl {
     serverBundleSha: string
     deploymentType: 'development' | 'production'
     settingsSchema?: { organization?: Record<string, unknown>; user?: Record<string, unknown> }
+    aiTools?: unknown
     targetOrganizationId?: string
     environmentVariables?: Record<string, string>
     version?: string
@@ -273,6 +275,7 @@ class ApiImpl {
         serverBundleSha,
         deploymentType,
         settingsSchema,
+        aiTools,
         targetOrganizationId,
         environmentVariables,
         version,

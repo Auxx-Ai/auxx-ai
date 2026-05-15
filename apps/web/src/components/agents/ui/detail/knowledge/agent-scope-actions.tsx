@@ -1,18 +1,9 @@
 // apps/web/src/components/agents/ui/detail/knowledge/agent-scope-actions.tsx
 'use client'
 
-import { Button } from '@auxx/ui/components/button'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@auxx/ui/components/dropdown-menu'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@auxx/ui/components/tooltip'
 import { cn } from '@auxx/ui/lib/utils'
-import { MoreVertical, Pin, Star } from 'lucide-react'
+import { Ban, Check, Pin, Star, Trash2 } from 'lucide-react'
+import { Tooltip } from '~/components/global/tooltip'
 import type { EffectiveScopeMode } from './derive-scope-mode'
 
 export interface AgentScopeActionsProps {
@@ -24,23 +15,10 @@ export interface AgentScopeActionsProps {
   onTogglePin: () => void
 }
 
-const MODE_LABELS_CONTAINER: Record<EffectiveScopeMode, string> = {
-  include_descendants: 'Whole',
-  include_one: 'Container only',
-  exclude: 'Excluded',
-  none: '',
-}
-
-const MODE_LABELS_LEAF: Record<EffectiveScopeMode, string> = {
-  include_descendants: 'Included',
-  include_one: 'Included',
-  exclude: 'Excluded',
-  none: '',
-}
-
 /**
- * Trailing-slot cluster for an agent scope row: effective-mode label, pin
- * star, and the mode dropdown. Slots into `TreeRow`'s `actions` prop.
+ * Trailing-slot cluster for an agent scope row: include/exclude toggle, pin
+ * star, and a trash button to clear the rule. Slots into `TreeRow`'s
+ * `actions` prop.
  */
 export function AgentScopeActions({
   kind,
@@ -52,128 +30,76 @@ export function AgentScopeActions({
 }: AgentScopeActionsProps) {
   const isContainer = kind === 'container'
   const isMentionPin = pinReason === 'mention'
-  const modeLabel = isContainer
-    ? MODE_LABELS_CONTAINER[effectiveMode]
-    : MODE_LABELS_LEAF[effectiveMode]
+  const includeMode: EffectiveScopeMode = isContainer ? 'include_descendants' : 'include_one'
+  const isExcluded = effectiveMode === 'exclude'
+  const isIncluded = effectiveMode === 'include_descendants' || effectiveMode === 'include_one'
 
   return (
     <>
-      {modeLabel && <span className='text-xs text-muted-foreground/70'>{modeLabel}</span>}
+      <Tooltip
+        side='left'
+        content={
+          isIncluded
+            ? 'Included — click to exclude'
+            : isExcluded
+              ? 'Excluded — click to include'
+              : 'Not set — click to include'
+        }>
+        <button
+          type='button'
+          onClick={() => onSetMode(isIncluded ? 'exclude' : includeMode)}
+          className='p-1 rounded-md hover:bg-primary/5'
+          aria-label={isIncluded ? 'Exclude' : 'Include'}>
+          {isExcluded ? (
+            <Ban className='size-4 text-destructive' />
+          ) : isIncluded ? (
+            <Check className='size-4 text-emerald-600' />
+          ) : (
+            <Check className='size-4 opacity-40 group-hover/tree-row:opacity-100' />
+          )}
+        </button>
+      </Tooltip>
 
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <button
-            type='button'
-            onClick={onTogglePin}
-            disabled={isMentionPin}
-            className={cn(
-              'p-1 rounded-md hover:bg-primary/5 disabled:cursor-not-allowed',
-              isMentionPin && 'opacity-100'
-            )}
-            aria-label={isPinned ? 'Unpin' : 'Pin'}>
-            {isMentionPin ? (
-              <Pin className='size-4 text-primary' />
-            ) : isPinned ? (
-              <Star className='size-4 text-amber-500 fill-amber-500' />
-            ) : (
-              <Star className='size-4 opacity-40 group-hover/tree-row:opacity-100' />
-            )}
-          </button>
-        </TooltipTrigger>
-        <TooltipContent side='left'>
-          {isMentionPin
+      <Tooltip
+        side='left'
+        content={
+          isMentionPin
             ? 'Pinned by mention in instructions'
             : isPinned
               ? 'Unpin from agent'
-              : 'Pin to agent'}
-        </TooltipContent>
+              : 'Pin to agent'
+        }>
+        <button
+          type='button'
+          onClick={onTogglePin}
+          disabled={isMentionPin}
+          className={cn(
+            'p-1 rounded-md hover:bg-primary/5 disabled:cursor-not-allowed',
+            isMentionPin && 'opacity-100'
+          )}
+          aria-label={isPinned ? 'Unpin' : 'Pin'}>
+          {isMentionPin ? (
+            <Pin className='size-4 text-primary' />
+          ) : isPinned ? (
+            <Star className='size-4 text-amber-500 fill-amber-500' />
+          ) : (
+            <Star className='size-4 opacity-40 group-hover/tree-row:opacity-100' />
+          )}
+        </button>
       </Tooltip>
 
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button
-            variant='ghost'
-            size='icon'
-            className='size-7 opacity-0 group-hover/tree-row:opacity-100 data-[state=open]:opacity-100'>
-            <MoreVertical className='size-4' />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align='end' className='w-48'>
-          <DropdownMenuLabel>Access</DropdownMenuLabel>
-          {isContainer ? (
-            <>
-              <ModeItem
-                current={effectiveMode}
-                value='include_descendants'
-                label='Whole'
-                onSelect={() => onSetMode('include_descendants')}
-              />
-              <ModeItem
-                current={effectiveMode}
-                value='include_one'
-                label='Container only'
-                onSelect={() => onSetMode('include_one')}
-              />
-              <ModeItem
-                current={effectiveMode}
-                value='exclude'
-                label='Exclude'
-                onSelect={() => onSetMode('exclude')}
-              />
-              <DropdownMenuSeparator />
-              <ModeItem
-                current={effectiveMode}
-                value='none'
-                label='None'
-                onSelect={() => onSetMode('none')}
-              />
-            </>
-          ) : (
-            <>
-              <ModeItem
-                current={effectiveMode}
-                value='include_one'
-                label='Include'
-                onSelect={() => onSetMode('include_one')}
-              />
-              <ModeItem
-                current={effectiveMode}
-                value='exclude'
-                label='Exclude'
-                onSelect={() => onSetMode('exclude')}
-              />
-              <DropdownMenuSeparator />
-              <ModeItem
-                current={effectiveMode}
-                value='none'
-                label='None'
-                onSelect={() => onSetMode('none')}
-              />
-            </>
+      <Tooltip side='left' content='Remove rule'>
+        <button
+          type='button'
+          onClick={() => onSetMode('none')}
+          className={cn(
+            'p-1 rounded-md hover:bg-destructive/10 opacity-0 group-hover/tree-row:opacity-100',
+            effectiveMode === 'none' && 'invisible pointer-events-none'
           )}
-        </DropdownMenuContent>
-      </DropdownMenu>
+          aria-label='Remove rule'>
+          <Trash2 className='size-4 text-muted-foreground hover:text-destructive' />
+        </button>
+      </Tooltip>
     </>
-  )
-}
-
-interface ModeItemProps {
-  current: EffectiveScopeMode
-  value: EffectiveScopeMode
-  label: string
-  onSelect: () => void
-}
-
-function ModeItem({ current, value, label, onSelect }: ModeItemProps) {
-  return (
-    <DropdownMenuItem
-      onSelect={(e) => {
-        e.preventDefault()
-        onSelect()
-      }}
-      className={cn(current === value && 'bg-accent')}>
-      {label}
-      {current === value && <span className='ml-auto text-xs'>✓</span>}
-    </DropdownMenuItem>
   )
 }

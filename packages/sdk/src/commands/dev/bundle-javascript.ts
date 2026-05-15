@@ -1,7 +1,12 @@
 // packages/sdk/src/commands/dev/bundle-javascript.ts
 
+import chalk from 'chalk'
 import chokidar from 'chokidar'
 import { complete, type Fetchable, isComplete, isErrored } from '../../errors.js'
+import {
+  type AiToolCatalogPayload,
+  compileAndExtractAiTools,
+} from '../../util/compile-and-extract-ai-tools.js'
 import { compileAndExtractSettingsSchema } from '../../util/compile-and-extract-settings.js'
 import type { SettingsSchema } from '../../util/extract-settings-schema.js'
 import { type BuildContextError, prepareBuildContext } from './prepare-build-context.js'
@@ -51,7 +56,11 @@ type BuildContext = {
  * ```
  */
 export function bundleJavaScript(
-  onSuccess?: (bundles: [string, string], settingsSchema?: SettingsSchema) => Promise<void> | void,
+  onSuccess?: (
+    bundles: [string, string],
+    settingsSchema?: SettingsSchema,
+    aiTools?: AiToolCatalogPayload
+  ) => Promise<void> | void,
   onError?: (error: BuildContextError) => void
 ): () => Promise<void> {
   // Watch all JS/TS files in src directory
@@ -111,9 +120,33 @@ export function bundleJavaScript(
       // Compile and extract settings schema if enabled
       const settingsSchema = await compileAndExtractSettingsSchema()
 
+      // Compile and extract AI tool catalog (plans/kopilot/apps/dev-upload-ai-tools.md §3.1).
+      // On failure, emit a yellow warning and pass undefined — the upload will
+      // wipe any prior catalog row (Option 1 tombstone policy). Acceptable for
+      // v1; revisit if mid-edit failures cost too much.
+      const aiToolsResult = await compileAndExtractAiTools()
+      let aiTools: AiToolCatalogPayload | undefined
+      if (isErrored(aiToolsResult)) {
+        const err = aiToolsResult.error
+        const detail =
+          'error' in err && err.error instanceof Error
+            ? `\n    ${err.error.message}`
+            : 'message' in err
+              ? `\n    ${err.message}`
+              : ''
+        process.stderr.write(
+          chalk.yellow(
+            `⚠ AI tool catalog extraction failed (${err.code}) — deployment will ship with no AI tools${detail}\n`
+          )
+        )
+      } else {
+        aiTools = aiToolsResult.value
+      }
+
       await onSuccess?.(
         [results.client.outputFiles[0].text, results.server.outputFiles[0].text],
-        settingsSchema
+        settingsSchema,
+        aiTools
       )
       isBuilding = false
       if (buildQueued && !isDisposing) {

@@ -6,6 +6,7 @@ export {
   buildBuilderPersonaPrompt,
   createActorCapabilities,
   createAgentsBuilderCapabilities,
+  createAppCapabilities,
   createCapabilityRegistry,
   createEntityCapabilities,
   createKbCapabilities,

@@ -10,6 +10,7 @@
 import { verifyInboundRequest } from './auth/verify-inbound.ts'
 import { loadBundle } from './bundle-loader.ts'
 import { createRuntimeContext } from './context-provider.ts'
+import { executeAiTool } from './executors/ai-tool-executor.ts'
 import { executeCode } from './executors/code-executor.ts'
 import { executeEventHandler } from './executors/event-executor.ts'
 import { executePollingTrigger } from './executors/polling-trigger-executor.ts'
@@ -74,6 +75,10 @@ async function executeAppEvent(validatedEvent: ValidatedLambdaEvent) {
       const { context: _, serverBundleSha: __, ...eventData } = validatedEvent
       return executeQuickAction({ ...eventData, bundleCode, context })
     }
+    case 'ai-tool': {
+      const { context: _, serverBundleSha: __, ...eventData } = validatedEvent
+      return executeAiTool({ ...eventData, bundleCode, context })
+    }
   }
 }
 
@@ -99,6 +104,9 @@ const CALLER_TYPE_ALLOWLIST: Record<string, string[]> = {
   'workflow-engine': ['workflow-block', 'code'],
   worker: ['workflow-block', 'code', 'event', 'polling-trigger'],
   'quick-action': ['quick-action'],
+  // Kopilot bridge is the only caller permitted to dispatch AI tool runs.
+  // See plans/kopilot/agents/tool-loading-and-execution.md §6 (decision E1).
+  kopilot: ['ai-tool'],
 }
 
 /** Maximum payload size (5 MB) */

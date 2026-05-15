@@ -17,6 +17,8 @@ interface ScrollAreaProps {
   scrollbarClassName?: string
   /** Custom fade classes applied to root pseudo-elements. When set, uses absolute-positioned gradient overlays instead of the default mask-image fade. */
   fadeClassName?: string
+  /** Disable both default mask-image fade and custom overlay fade. Use when sticky elements live inside the viewport. */
+  noFade?: boolean
   /** Allow scroll chaining to parent scroll containers. Disables overscroll-contain so events propagate when at scroll boundaries. */
   allowScrollChaining?: boolean
 }
@@ -28,6 +30,7 @@ function ScrollArea({
   className,
   scrollbarClassName,
   fadeClassName,
+  noFade,
   allowScrollChaining,
 }: ScrollAreaProps) {
   const showVertical = orientation === 'vertical' || orientation === 'both'
@@ -37,8 +40,8 @@ function ScrollArea({
     <BaseScrollArea.Root
       className={cn(
         'relative box-border overflow-hidden',
-        fadeClassName && 'scroll-area-fade-custom',
-        fadeClassName,
+        !noFade && fadeClassName && 'scroll-area-fade-custom',
+        !noFade && fadeClassName,
         className
       )}>
       <BaseScrollArea.Viewport
@@ -47,7 +50,7 @@ function ScrollArea({
         className={cn(
           'h-full w-full outline-none',
           !allowScrollChaining && 'overscroll-contain',
-          !fadeClassName && 'scroll-area-fade'
+          !noFade && !fadeClassName && 'scroll-area-fade'
         )}
         style={
           orientation !== 'both'

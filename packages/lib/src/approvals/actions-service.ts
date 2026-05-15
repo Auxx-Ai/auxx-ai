@@ -10,6 +10,7 @@ import type { ToolContext } from '../ai/agent-framework/tool-context'
 import type { AgentToolDefinition } from '../ai/agent-framework/types'
 import {
   createActorCapabilities,
+  createAppCapabilities,
   createCapabilityRegistry,
   createEntityCapabilities,
   createKnowledgeCapabilities,
@@ -95,7 +96,7 @@ export async function approveBundle(
     userId: args.userId,
     traceId: bundle.id,
   })
-  const tools = buildKopilotToolMap(ctx)
+  const tools = await buildKopilotToolMap(ctx)
 
   // 5. Walk actions in topological order.
   const substitutions = new Map<string, string>()
@@ -408,7 +409,7 @@ export function buildApprovalToolContext(args: {
   }
 }
 
-function buildKopilotToolMap(ctx: ToolContext): Map<string, AgentToolDefinition> {
+async function buildKopilotToolMap(ctx: ToolContext): Promise<Map<string, AgentToolDefinition>> {
   const getDeps: GetToolDeps = () => ({
     db: ctx.db,
     organizationId: ctx.organizationId,
@@ -423,6 +424,16 @@ function buildKopilotToolMap(ctx: ToolContext): Map<string, AgentToolDefinition>
   registry.register(createMailCapabilities(getDeps))
   registry.register(createActorCapabilities(getDeps))
   registry.register(createTaskCapabilities(getDeps))
+  registry.register(
+    await createAppCapabilities({
+      organizationId: ctx.organizationId,
+      userId: ctx.userId,
+      agentId: null,
+      triggerId: null,
+      sessionId: ctx.sessionId ?? ctx.traceId ?? 'approval',
+      getToolDeps: getDeps,
+    })
+  )
   return new Map(registry.getTools('mail').map((t) => [t.name, t]))
 }
 

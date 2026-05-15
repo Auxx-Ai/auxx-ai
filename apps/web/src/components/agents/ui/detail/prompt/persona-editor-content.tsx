@@ -89,7 +89,7 @@ export const PersonaEditorContent = memo(function PersonaEditorContent({
       isCollapsed={isCollapsed}
       onCollapsedChange={setCollapsed}
       className='px-3'
-      gradientClassName='from-primary-200/30 dark:from-primary-900/30'>
+      gradientClassName='from-primary-200/30 dark:from-primary-200/30'>
       <div className='relative flex w-full'>{editorNode}</div>
     </CollapseWrap>
   )

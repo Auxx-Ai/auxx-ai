@@ -19,7 +19,7 @@ export interface TreeRowProps {
   /** Escape hatch — full custom trailing content; if set, replaces `actions` + chevron. */
   trailing?: React.ReactNode
 
-  /** 0-based indent. Each step adds ~1.125rem of paddingLeft. */
+  /** 0-based indent. Each step adds ~1.5rem of paddingLeft. */
   depth?: number
 
   /** Show a right-side chevron that rotates with `isOpen`. */
@@ -46,7 +46,7 @@ export interface TreeRowProps {
   rowClassName?: string
 }
 
-const INDENT_REM = 1.125
+const INDENT_REM = 1.5
 
 /**
  * Outline-style single-line row with an indent, optional chevron, and an
@@ -71,6 +71,11 @@ export function TreeRow({
   rowClassName,
 }: TreeRowProps) {
   const paddingLeftRem = 0.5 + depth * INDENT_REM
+  // Connector sits on this row's icon center: paddingLeft + row px-1 (0.25rem) +
+  // half of size-7 (0.875rem) = paddingLeft + 1.125rem. Child rows are one
+  // INDENT_REM further in, so the gap between connector and child row is
+  // INDENT_REM - 1.125 — consistent at every depth.
+  const connectorLeftRem = paddingLeftRem + 1.125
   const showChildren = expandable ? !!isOpen : (isOpen ?? children !== undefined)
 
   const titleNode = (
@@ -94,54 +99,56 @@ export function TreeRow({
   const stopPropagation = (e: React.MouseEvent) => e.stopPropagation()
 
   return (
-    <div className={cn('relative', className)} style={{ paddingLeft: `${paddingLeftRem}rem` }}>
-      <div
-        className={cn(
-          'group/tree-row flex items-center justify-between rounded-md text-sm px-1',
-          'text-muted-foreground hover:bg-background',
-          expandable && 'cursor-pointer',
-          dimmed && 'opacity-60',
-          rowClassName
-        )}
-        onClick={expandable ? onToggleOpen : undefined}>
-        <div className='flex items-center flex-1 min-w-0'>
-          {icon !== undefined && (
-            <span className='flex items-center justify-center px-1 size-7 text-muted-foreground'>
-              {icon}
-            </span>
+    <div className={cn('relative', className)}>
+      <div style={{ paddingLeft: `${paddingLeftRem}rem` }}>
+        <div
+          className={cn(
+            'group/tree-row flex items-center justify-between rounded-md text-sm px-1',
+            'text-muted-foreground hover:bg-background',
+            expandable && 'cursor-pointer',
+            dimmed && 'opacity-60',
+            rowClassName
           )}
+          onClick={expandable ? onToggleOpen : undefined}>
+          <div className='flex items-center flex-1 min-w-0'>
+            {icon !== undefined && (
+              <span className='flex items-center justify-center px-1 size-7 text-muted-foreground'>
+                {icon}
+              </span>
+            )}
 
-          {titleNode}
-          {description && <TooltipExplanation text={description} className='text-primary-400' />}
+            {titleNode}
+            {description && <TooltipExplanation text={description} className='text-primary-400' />}
 
-          {expandable && (
-            <button
-              type='button'
-              onClick={(e) => {
-                e.stopPropagation()
-                onToggleOpen?.()
-              }}
-              className='p-1 rounded-md hover:bg-primary/5'
-              aria-label={isOpen ? 'Collapse' : 'Expand'}>
-              <ChevronRight
-                className={cn(
-                  'size-3.5 text-muted-foreground transition-transform',
-                  isOpen && 'rotate-90'
-                )}
-              />
-            </button>
+            {expandable && (
+              <button
+                type='button'
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onToggleOpen?.()
+                }}
+                className='p-1 rounded-md hover:bg-primary/5'
+                aria-label={isOpen ? 'Collapse' : 'Expand'}>
+                <ChevronRight
+                  className={cn(
+                    'size-3.5 text-muted-foreground transition-transform',
+                    isOpen && 'rotate-90'
+                  )}
+                />
+              </button>
+            )}
+          </div>
+
+          {trailing ? (
+            <div onClick={stopPropagation}>{trailing}</div>
+          ) : (
+            actions && (
+              <div className='flex items-center' onClick={stopPropagation}>
+                {actions}
+              </div>
+            )
           )}
         </div>
-
-        {trailing ? (
-          <div onClick={stopPropagation}>{trailing}</div>
-        ) : (
-          actions && (
-            <div className='flex items-center gap-2' onClick={stopPropagation}>
-              {actions}
-            </div>
-          )
-        )}
       </div>
 
       <AnimatePresence initial={false}>
@@ -158,7 +165,10 @@ export function TreeRow({
             exit={{ height: 0, opacity: 0, filter: 'blur(3px)', overflow: 'hidden' }}
             transition={{ type: 'spring', stiffness: 300, damping: 30 }}
             className='relative flex flex-col'>
-            <div className='absolute bottom-0 left-[1.125rem] top-0 z-0 w-px bg-border' />
+            <div
+              className='absolute bottom-0 top-0 z-0 w-px bg-border'
+              style={{ left: `${connectorLeftRem}rem` }}
+            />
             {children}
           </motion.div>
         )}

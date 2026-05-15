@@ -23,13 +23,21 @@ export function prepareLambdaContext(params: {
   userName: string | null
   userConnection?: any
   organizationConnection?: any
+  /**
+   * Set true for AI tool invocations to mint an additional `entities`
+   * callback token that authorizes `ctx.entities.findByIntegrationId`.
+   * See plans/kopilot/apps/credentials.md §3.6.
+   */
+  includeEntitiesScope?: boolean
 }) {
   // Generate scoped callback tokens for SDK → API authentication
   const secret = process.env.LAMBDA_INVOKE_SECRET
   let callbackTokens: Record<CallbackScope, string> | undefined
 
   if (secret) {
-    const scopes: CallbackScope[] = ['webhooks', 'settings']
+    const scopes: CallbackScope[] = params.includeEntitiesScope
+      ? ['webhooks', 'settings', 'entities']
+      : ['webhooks', 'settings']
     callbackTokens = {} as Record<CallbackScope, string>
     for (const scope of scopes) {
       callbackTokens[scope] = createCallbackToken({
