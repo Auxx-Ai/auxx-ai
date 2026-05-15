@@ -1,0 +1,1 @@
+ALTER TABLE "Agent" ADD COLUMN "setupCompletedAt" timestamp (3);

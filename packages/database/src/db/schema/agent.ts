@@ -84,6 +84,14 @@ export const Agent = pgTable(
 
     modelId: text(),
 
+    /**
+     * `null` while the agent is mid-build via the chat-driven setup flow;
+     * timestamp when the builder fires `complete_agent_setup` (or the admin
+     * clicks the rail escape hatch). The rail UI swaps the setup carousel for
+     * the Prompt/Tools/Knowledge tabs when this flips.
+     */
+    setupCompletedAt: timestamp({ precision: 3 }),
+
     archivedAt: timestamp({ precision: 3 }),
 
     createdAt: timestamp({ precision: 3 }).defaultNow().notNull(),

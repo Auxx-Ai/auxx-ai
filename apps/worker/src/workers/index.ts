@@ -421,6 +421,24 @@ export async function setupSchedules() {
     }
   )
 
+  // Every day at 6 AM - Archive stale builder drafts (no chat activity, >7d).
+  // Soft path; users can still recover via the archived filter. The
+  // user-driven "Discard draft" overflow item does the hard-delete instead.
+  await maintenanceQueue.upsertJobScheduler(
+    'agentDraftCleanupJob',
+    { pattern: '0 6 * * *' },
+    {
+      data: { staleDays: 7, batchSize: 100, dryRun: false },
+      opts: {
+        attempts: 2,
+        backoff: { type: 'exponential', delay: 60000 },
+        priority: 10,
+        removeOnComplete: { count: 14 },
+        removeOnFail: { count: 30 },
+      },
+    }
+  )
+
   // Dataset maintenance schedules
 
   // Every day at 3 AM - Clean up orphaned dataset data

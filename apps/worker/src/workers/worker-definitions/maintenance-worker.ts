@@ -6,6 +6,7 @@ import {
   storageQuotaCheckJob,
 } from '@auxx/lib/files'
 import {
+  agentDraftCleanupJob,
   applyScheduledSubscriptionChangesJob,
   channelTokenRefreshJob,
   channelTokenRefreshScannerJob,
@@ -140,6 +141,9 @@ const jobMappings = {
   // AI suggestion stale scanner (every 5 minutes via upsertJobScheduler;
   // sweeps deals/leads/tickets and produces FRESH bundles for Today UI)
   nextActionStaleScannerJob,
+
+  // Agent draft cleanup (daily; archives stale builder drafts with no chat)
+  agentDraftCleanupJob,
 }
 
 export function startMaintenanceWorker() {

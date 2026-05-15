@@ -96,7 +96,8 @@ export interface CachedAgent {
   id: string
   userId: string
   createdById: string
-  name: string
+  /** `null` while the builder hasn't named the agent yet. */
+  name: string | null
   slug: string
   description: string | null
   avatarUrl: string | null
@@ -107,6 +108,8 @@ export interface CachedAgent {
   pinnedRecords: PinnedRecord[]
   /** Per-agent model override in `provider:model` format; null = inherit. */
   modelId: string | null
+  /** ISO string when chat-driven setup completed; null while in setup mode. */
+  setupCompletedAt: string | null
   /** ISO string when archived; null when active. */
   archivedAt: string | null
   createdAt: string

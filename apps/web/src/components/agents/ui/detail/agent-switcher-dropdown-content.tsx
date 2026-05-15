@@ -55,7 +55,7 @@ export function AgentSwitcherDropdownContent({ activeAgentId }: AgentSwitcherDro
             <div className='flex items-center justify-between w-full'>
               <div className='flex items-center gap-2 min-w-0'>
                 <AgentAvatar agent={agent} size={5} />
-                <span className='truncate'>{agent.name || agent.slug}</span>
+                <span className='truncate'>{agent.name ?? 'Untitled agent'}</span>
               </div>
               {agent.id === activeAgentId ? <Check className='size-3.5' /> : null}
             </div>

@@ -36,9 +36,12 @@ export function AgentDockedChat({ agentId }: AgentDockedChatProps) {
 
   const initialSessionId = data?.items[0]?.id ?? null
 
-  const promptDoc = detail?.prompt as { content?: unknown[] } | undefined
-  const promptEmpty = !promptDoc?.content || promptDoc.content.length === 0
-  const isFreshAgent = promptEmpty && (detail?.toolsets?.length ?? 0) === 0
+  // Show seed-prompt chips while the agent is mid-setup — drafts created
+  // through the new "Create agent" button start with auto-default toolsets
+  // (which used to defeat the fresh-agent check), but `setupCompletedAt`
+  // null is the authoritative signal that the admin hasn't finished
+  // chatting through the build yet.
+  const isFreshAgent = detail?.setupCompletedAt == null
 
   return (
     <KopilotChatProvider
@@ -51,7 +54,7 @@ export function AgentDockedChat({ agentId }: AgentDockedChatProps) {
       <KopilotContext
         page='agents.builder'
         activeAgentId={agentId}
-        activeAgentLabel={agent?.name}
+        activeAgentLabel={agent?.name ?? 'Untitled agent'}
       />
       {isFreshAgent && (
         <>

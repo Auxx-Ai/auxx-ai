@@ -7,13 +7,16 @@ import { api } from '~/trpc/react'
 import { type AgentDetail, getAgentStoreState } from '../store/agent-store'
 
 interface CreateAgentInput {
-  name: string
-  slug: string
+  /** Omit for chat-driven creation; backing User.name stays null. */
+  name?: string
+  /** Omit to let the server default `slug = id`. */
+  slug?: string
   description?: string | null
 }
 
 interface UpdateAgentInput {
   name?: string
+  slug?: string
   description?: string | null
   modelId?: string | null
   mentionable?: boolean
@@ -23,10 +26,11 @@ interface UpdateAgentInput {
 }
 
 interface UseAgentMutationsResult {
-  createAgent: (input: CreateAgentInput) => Promise<{ agentId: string; slug: string } | undefined>
+  createAgent: (input?: CreateAgentInput) => Promise<{ agentId: string; slug: string } | undefined>
   updateAgent: (id: string, patch: UpdateAgentInput) => Promise<boolean>
   archiveAgent: (id: string) => Promise<boolean>
   unarchiveAgent: (id: string) => Promise<boolean>
+  discardDraft: (id: string) => Promise<boolean>
   isCreating: boolean
   isUpdating: boolean
 }
@@ -40,17 +44,22 @@ export function useAgentMutations(): UseAgentMutationsResult {
   const utils = api.useUtils()
   const createMutation = api.agent.create.useMutation()
   const updateMutation = api.agent.update.useMutation()
+  const discardDraftMutation = api.agent.deleteDraft.useMutation()
 
   const createAgent = useCallback<UseAgentMutationsResult['createAgent']>(
     async (input) => {
       try {
         const result = await createMutation.mutateAsync({
-          name: input.name,
-          slug: input.slug,
-          description: input.description ?? undefined,
+          name: input?.name,
+          slug: input?.slug,
+          description: input?.description ?? undefined,
         })
-        await utils.agent.list.invalidate()
-        return { agentId: result.agentId, slug: input.slug }
+        // Skip pre-redirect list invalidate so the agents grid below the
+        // create button doesn't pop in a "Setting up" card before navigation
+        // commits. The list refetches on remount when the user comes back.
+        // Server defaults slug to id when omitted; use whichever the
+        // caller passed, falling back to the returned id.
+        return { agentId: result.agentId, slug: input?.slug ?? result.agentId }
       } catch (error) {
         toastError({
           title: 'Failed to create agent',
@@ -59,7 +68,7 @@ export function useAgentMutations(): UseAgentMutationsResult {
         return undefined
       }
     },
-    [createMutation, utils.agent.list]
+    [createMutation]
   )
 
   const updateAgent = useCallback<UseAgentMutationsResult['updateAgent']>(
@@ -77,6 +86,7 @@ export function useAgentMutations(): UseAgentMutationsResult {
       const isPromptOnly =
         patch.prompt !== undefined &&
         patch.name === undefined &&
+        patch.slug === undefined &&
         patch.description === undefined &&
         patch.modelId === undefined &&
         patch.mentionable === undefined &&
@@ -107,6 +117,7 @@ export function useAgentMutations(): UseAgentMutationsResult {
       // sidebar / breadcrumb switcher react instantly.
       const optimistic: Record<string, unknown> = {}
       if (patch.name !== undefined) optimistic.name = patch.name
+      if (patch.slug !== undefined) optimistic.slug = patch.slug
       if (patch.description !== undefined) optimistic.description = patch.description
       if (patch.modelId !== undefined) optimistic.modelId = patch.modelId
       if (patch.mentionable !== undefined) optimistic.mentionable = patch.mentionable
@@ -148,11 +159,29 @@ export function useAgentMutations(): UseAgentMutationsResult {
     [updateAgent]
   )
 
+  const discardDraft = useCallback<UseAgentMutationsResult['discardDraft']>(
+    async (id) => {
+      try {
+        await discardDraftMutation.mutateAsync({ agentId: id })
+        await utils.agent.list.invalidate()
+        return true
+      } catch (error) {
+        toastError({
+          title: 'Failed to discard draft',
+          description: error instanceof Error ? error.message : 'Unknown error occurred',
+        })
+        return false
+      }
+    },
+    [discardDraftMutation, utils.agent.list]
+  )
+
   return {
     createAgent,
     updateAgent,
     archiveAgent,
     unarchiveAgent,
+    discardDraft,
     isCreating: createMutation.isPending,
     isUpdating: updateMutation.isPending,
   }

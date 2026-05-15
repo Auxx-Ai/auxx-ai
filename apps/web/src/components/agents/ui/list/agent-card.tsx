@@ -10,7 +10,7 @@ import {
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
 import { LastUpdated } from '@auxx/ui/components/last-updated'
-import { Archive, ArchiveRestore, MoreVertical, Pencil } from 'lucide-react'
+import { Archive, ArchiveRestore, MoreVertical, Pencil, Trash2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { Tooltip } from '~/components/global/tooltip'
 import { useConfirm } from '~/hooks/use-confirm'
@@ -24,12 +24,14 @@ interface AgentCardProps {
 
 export function AgentCard({ agent }: AgentCardProps) {
   const router = useRouter()
-  const { archiveAgent, unarchiveAgent } = useAgentMutations()
+  const { archiveAgent, unarchiveAgent, discardDraft } = useAgentMutations()
   const [confirm, ConfirmDialog] = useConfirm()
 
   const archived = agent.archivedAt != null
+  const isDraft = agent.setupCompletedAt == null && !archived
   const statusColor = archived ? 'bg-muted-foreground/40' : 'bg-good-500'
   const statusLabel = archived ? 'Archived' : 'Active'
+  const displayName = agent.name ?? 'Untitled agent'
 
   const stop = (e: React.MouseEvent) => e.stopPropagation()
   const wrap = (fn: () => void | Promise<void>) => (e: React.MouseEvent) => {
@@ -42,12 +44,23 @@ export function AgentCard({ agent }: AgentCardProps) {
   const handleArchive = async () => {
     const ok = await confirm({
       title: 'Archive agent?',
-      description: `"${agent.name}" will stop responding to mentions and triggers.`,
+      description: `"${displayName}" will stop responding to mentions and triggers.`,
       confirmText: 'Archive',
       cancelText: 'Cancel',
       destructive: false,
     })
     if (ok) await archiveAgent(agent.id)
+  }
+
+  const handleDiscardDraft = async () => {
+    const ok = await confirm({
+      title: 'Discard draft?',
+      description: `"${displayName}" hasn't been finished. This permanently deletes it.`,
+      confirmText: 'Discard',
+      cancelText: 'Cancel',
+      destructive: true,
+    })
+    if (ok) await discardDraft(agent.id)
   }
 
   return (
@@ -69,9 +82,17 @@ export function AgentCard({ agent }: AgentCardProps) {
 
           <div className='flex flex-col flex-1 min-w-0'>
             <div className='flex flex-row justify-between items-start gap-1'>
-              <p className='text-sm font-semibold line-clamp-1 group-hover/agent-card:text-info'>
-                {agent.name || agent.slug}
+              <p
+                className={`text-sm line-clamp-1 group-hover/agent-card:text-info ${
+                  agent.name ? 'font-semibold' : 'font-medium italic text-muted-foreground'
+                }`}>
+                {displayName}
               </p>
+              {isDraft ? (
+                <Badge variant='outline' size='sm' className='shrink-0'>
+                  Setting up
+                </Badge>
+              ) : null}
             </div>
             <LastUpdated
               timestamp={agent.updatedAt}
@@ -103,9 +124,14 @@ export function AgentCard({ agent }: AgentCardProps) {
             <DropdownMenuContent align='end' onClick={stop}>
               <DropdownMenuItem onClick={wrap(handleNavigate)}>
                 <Pencil />
-                Edit
+                {isDraft ? 'Continue setup' : 'Edit'}
               </DropdownMenuItem>
-              {archived ? (
+              {isDraft ? (
+                <DropdownMenuItem onClick={wrap(handleDiscardDraft)}>
+                  <Trash2 />
+                  Discard draft
+                </DropdownMenuItem>
+              ) : archived ? (
                 <DropdownMenuItem onClick={wrap(() => unarchiveAgent(agent.id))}>
                   <ArchiveRestore />
                   Unarchive

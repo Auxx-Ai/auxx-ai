@@ -8,19 +8,16 @@ import {
   MainPageContent,
   MainPageHeader,
 } from '@auxx/ui/components/main-page'
-import { useRouter } from 'next/navigation'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useMedia } from '~/hooks/use-media'
 import { useDockStore } from '~/stores/dock-store'
-import { api } from '~/trpc/react'
-import { useAgentMutations } from '../../hooks/use-agent-mutations'
 import type { AgentDetail } from '../../store/agent-store'
-import { AgentGeneralDialog, type AgentGeneralFormValues } from '../dialogs/agent-general-dialog'
 import { AutosaveIndicator, type AutosaveState } from '../shared/autosave-indicator'
 import { AgentArchiveButton } from './agent-archive-button'
 import { AgentBreadcrumbSwitcher } from './agent-breadcrumb-switcher'
 import { AgentDetailTabs } from './agent-detail-tabs'
 import { AgentDockedChat } from './agent-docked-chat'
+import { AgentSetupMode } from './setup/agent-setup-mode'
 
 interface AgentDetailViewProps {
   agent: AgentDetail
@@ -72,61 +69,11 @@ export function AgentDetailView({ agent }: AgentDetailViewProps) {
               ]
             : []
         }>
-        <AgentDetailTabs agent={agent} onAutosaveChange={setAutosave} />
-      </MainPageContent>
-    </MainPage>
-  )
-}
-
-interface AgentDetailNewViewProps {
-  onCreated: (slug: string) => void
-}
-
-/**
- * "New agent" surface — opens the general-edit dialog by default. On submit,
- * creates the agent and hands off to the parent for navigation. On cancel,
- * routes back to the list.
- */
-export function AgentDetailNewView({ onCreated }: AgentDetailNewViewProps) {
-  const router = useRouter()
-  const [open, setOpen] = useState(true)
-  const { createAgent, isCreating } = useAgentMutations()
-  const utils = api.useUtils()
-
-  useEffect(() => {
-    if (!open) router.push('/app/agents')
-  }, [open, router])
-
-  const handleSubmit = async (values: AgentGeneralFormValues) => {
-    const created = await createAgent({
-      name: values.name,
-      slug: values.slug,
-      description: values.description || null,
-    })
-    if (!created) return
-    await utils.agent.list.invalidate()
-    setOpen(false)
-    onCreated(created.slug)
-  }
-
-  return (
-    <MainPage>
-      <MainPageHeader>
-        <MainPageBreadcrumb>
-          <MainPageBreadcrumbItem title='Kopilot' href='/app/kopilot/new' />
-          <MainPageBreadcrumbItem title='Agents' href='/app/agents' />
-          <MainPageBreadcrumbItem title='New' last />
-        </MainPageBreadcrumb>
-      </MainPageHeader>
-      <MainPageContent>
-        <div className='p-6 text-sm text-muted-foreground'>Creating new agent…</div>
-        <AgentGeneralDialog
-          open={open}
-          onOpenChange={setOpen}
-          mode='create'
-          isSubmitting={isCreating}
-          onSubmit={handleSubmit}
-        />
+        {agent.setupCompletedAt == null ? (
+          <AgentSetupMode agent={agent} />
+        ) : (
+          <AgentDetailTabs agent={agent} onAutosaveChange={setAutosave} />
+        )}
       </MainPageContent>
     </MainPage>
   )

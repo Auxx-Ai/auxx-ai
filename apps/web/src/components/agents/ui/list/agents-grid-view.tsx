@@ -12,7 +12,20 @@ export function AgentsGridView() {
   const { agents, hasLoadedOnce } = useAgents()
   const { search } = useAgentSearch()
 
-  const filtered = useMemo(() => filterAgents(agents, search), [agents, search])
+  // Drafts (`setupCompletedAt == null`) bubble to the top by `createdAt desc`
+  // so resuming the last build is the obvious first action. Everything else
+  // keeps the agents-list default order from the store.
+  const filtered = useMemo(() => {
+    const matched = filterAgents(agents, search)
+    const drafts: typeof matched = []
+    const rest: typeof matched = []
+    for (const a of matched) {
+      if (a.setupCompletedAt == null && a.archivedAt == null) drafts.push(a)
+      else rest.push(a)
+    }
+    drafts.sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0))
+    return [...drafts, ...rest]
+  }, [agents, search])
 
   if (!hasLoadedOnce) {
     return <div className='p-6 text-sm text-muted-foreground'>Loading agents…</div>

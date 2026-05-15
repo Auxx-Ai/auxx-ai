@@ -3,6 +3,7 @@ import { database as db, schema } from '@auxx/database'
 import type { MediaAsset } from '@auxx/database/types'
 import { and, desc, eq, isNull } from 'drizzle-orm'
 import { getOrgCache } from '../../../cache'
+import { isAdminOrOwner } from '../../../members/member-queries'
 import { MemberService } from '../../../members/member-service'
 import { ensureThumbnailPresets } from '../../core/thumbnail-batch'
 import type { ThumbnailSource } from '../../core/thumbnail-types'
@@ -160,14 +161,31 @@ export class UserProfileProcessor extends BaseAssetProcessor {
     organizationId: string,
     userId: string
   ): Promise<void> {
-    // Users can only upload to their own profile
-    if (entityId !== userId) {
+    // Self-upload: classic profile flow.
+    if (entityId === userId) {
+      const isMember = await MemberService.isMember(userId, organizationId)
+      if (!isMember) {
+        throw new Error('User not found in organization')
+      }
+      return
+    }
+    // Cross-user upload is allowed only when the target is the synthetic
+    // User backing an Agent in this org and the caller is an org admin
+    // (owner or admin role). This is what powers the agent-avatar uploader
+    // in the agent hero — agents share the User.avatarAssetId pipeline.
+    const [agent] = await db
+      .select({ id: schema.Agent.id })
+      .from(schema.Agent)
+      .where(
+        and(eq(schema.Agent.userId, entityId), eq(schema.Agent.organizationId, organizationId))
+      )
+      .limit(1)
+    if (!agent) {
       throw new Error("Cannot upload to another user's profile")
     }
-    // MemberService
-    const isMember = await MemberService.isMember(userId, organizationId)
-    if (!isMember) {
-      throw new Error('User not found in organization')
+    const callerIsAdmin = await isAdminOrOwner(organizationId, userId)
+    if (!callerIsAdmin) {
+      throw new Error('Admin required to update agent avatars')
     }
   }
   protected async postCreateAsset(

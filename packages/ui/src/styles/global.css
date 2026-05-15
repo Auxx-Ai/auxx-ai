@@ -807,6 +807,7 @@
 @theme inline {
   --animate-hue-rotate: hue-rotate 4s infinite;
   --animate-scan: scan 3s infinite;
+  --animate-scan-x: scan-x 4s ease-in-out infinite;
 
   @keyframes hue-rotate {
     from {
@@ -826,6 +827,18 @@
     }
     to {
       transform: translateY(0);
+    }
+  }
+
+  @keyframes scan-x {
+    from {
+      transform: translateX(-30%);
+    }
+    50% {
+      transform: translateX(30%);
+    }
+    to {
+      transform: translateX(-30%);
     }
   }
 }

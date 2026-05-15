@@ -13,7 +13,7 @@ interface AgentBreadcrumbSwitcherProps {
 export function AgentBreadcrumbSwitcher({ activeAgent }: AgentBreadcrumbSwitcherProps) {
   return (
     <MainPageBreadcrumbDropdown
-      label={activeAgent.name || activeAgent.slug}
+      label={activeAgent.name ?? 'Untitled agent'}
       icon={<AgentAvatar agent={activeAgent} size={5} className='mr-1' />}
       last>
       <AgentSwitcherDropdownContent activeAgentId={activeAgent.id} />

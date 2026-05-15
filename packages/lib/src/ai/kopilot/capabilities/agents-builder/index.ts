@@ -3,6 +3,7 @@
 import { getOrgToolsetCatalog } from '../../../../agents/toolset-catalog'
 import type { GetToolDeps, PageCapability } from '../types'
 import { buildBuilderPersonaPrompt } from './persona-prompt'
+import { createCompleteAgentSetupTool } from './tools/complete-agent-setup'
 import { createSetAgentPromptTool } from './tools/set-agent-prompt'
 import { createSetAgentResourceScopeTool } from './tools/set-agent-resource-scope'
 import { createSetAgentToolsetsTool } from './tools/set-agent-toolsets'
@@ -34,6 +35,7 @@ export async function createAgentsBuilderCapabilities(
       createSetAgentPromptTool(getDeps),
       createSetAgentToolsetsTool(getDeps),
       createSetAgentResourceScopeTool(getDeps),
+      createCompleteAgentSetupTool(getDeps),
     ],
     systemPromptAddition: buildBuilderPersonaPrompt({ catalog }),
     capabilities: ['Edit one agent in this workspace — name, prompt, tools, knowledge scope'],

@@ -1,6 +1,7 @@
 // apps/web/src/components/agents/ui/dialogs/agent-general-dialog.tsx
 'use client'
 
+import { AGENT_SLUG_REGEX } from '@auxx/lib/agents/client'
 import { Button } from '@auxx/ui/components/button'
 import {
   Dialog,
@@ -31,6 +32,7 @@ import { Check, X } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { useDebouncedCallback } from '~/hooks/use-debounced-value'
 import { api } from '~/trpc/react'
+import { toSlug } from '../../utils/agent-slug'
 import { AgentAvatar } from '../shared/agent-avatar'
 
 export interface AgentGeneralFormValues {
@@ -42,31 +44,23 @@ export interface AgentGeneralFormValues {
 interface AgentGeneralDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  mode: 'create' | 'edit'
+  /**
+   * Retained for backcompat with the small handful of call sites. Only `edit`
+   * is wired today — creation now happens via a direct mutate from the
+   * agents list ("Create agent" button) with no dialog.
+   */
+  mode?: 'edit'
   initialValues?: Partial<AgentGeneralFormValues>
-  /** Lock slug field after create — slugs are immutable post-create in v1. */
+  /** Always true in edit mode — slugs are immutable post-create. */
   lockSlug?: boolean
   isSubmitting?: boolean
   onSubmit: (values: AgentGeneralFormValues) => Promise<void> | void
   onCancel?: () => void
 }
 
-const SLUG_REGEX = /^[a-z0-9-]+$/
-
-function toSlug(str: string): string {
-  return str
-    .toLowerCase()
-    .trim()
-    .replace(/[^\w\s-]/g, '')
-    .replace(/[\s_-]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 60)
-}
-
 export function AgentGeneralDialog({
   open,
   onOpenChange,
-  mode,
   initialValues,
   lockSlug,
   isSubmitting,
@@ -79,7 +73,8 @@ export function AgentGeneralDialog({
   const [touchedSlug, setTouchedSlug] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // Slug availability state
+  // Slug availability state — unused in edit mode (slug locked); kept for
+  // backcompat with the prop surface.
   const [slugAvailable, setSlugAvailable] = useState<boolean | null>(null)
   const [isCheckingSlug, setIsCheckingSlug] = useState(false)
 
@@ -97,7 +92,7 @@ export function AgentGeneralDialog({
   }, [open, initialValues])
 
   const checkSlug = useDebouncedCallback(async (slugToCheck: string) => {
-    if (!slugToCheck || !SLUG_REGEX.test(slugToCheck)) {
+    if (!slugToCheck || !AGENT_SLUG_REGEX.test(slugToCheck)) {
       setSlugAvailable(null)
       setIsCheckingSlug(false)
       return
@@ -112,18 +107,7 @@ export function AgentGeneralDialog({
     }
   }, 300)
 
-  // Auto-derive slug from name when user hasn't manually edited it (create mode only)
-  useEffect(() => {
-    if (mode !== 'create' || touchedSlug) return
-    const derived = toSlug(name)
-    setSlug(derived)
-    if (derived) {
-      setIsCheckingSlug(true)
-      checkSlug(derived)
-    } else {
-      setSlugAvailable(null)
-    }
-  }, [name, mode, touchedSlug, checkSlug])
+  // Edit-mode only; slug is locked and never auto-derived.
 
   const handleSlugChange = useCallback(
     (value: string) => {
@@ -155,7 +139,7 @@ export function AgentGeneralDialog({
       setError('Slug is required')
       return
     }
-    if (!SLUG_REGEX.test(slug)) {
+    if (!AGENT_SLUG_REGEX.test(slug)) {
       setError('Slug may only contain lowercase letters, digits, and dashes')
       return
     }
@@ -175,24 +159,15 @@ export function AgentGeneralDialog({
     onOpenChange(next)
   }
 
-  const isCreate = mode === 'create'
-  const slugLocked = !!lockSlug || !isCreate
-  const isValid =
-    name.trim().length > 0 &&
-    slug.trim().length > 0 &&
-    SLUG_REGEX.test(slug) &&
-    (slugLocked || slugAvailable === true)
+  const slugLocked = true
+  const isValid = name.trim().length > 0 && slug.trim().length > 0 && AGENT_SLUG_REGEX.test(slug)
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent size='sm' position='tc'>
         <DialogHeader>
-          <DialogTitle>{isCreate ? 'Create agent' : 'Edit agent'}</DialogTitle>
-          <DialogDescription>
-            {isCreate
-              ? 'Give your agent a name and slug. You can refine prompt, tools, and knowledge after.'
-              : 'Update the agent name and description.'}
-          </DialogDescription>
+          <DialogTitle>Edit agent</DialogTitle>
+          <DialogDescription>Update the agent name and description.</DialogDescription>
         </DialogHeader>
 
         <form onSubmit={handleSubmit}>
@@ -279,7 +254,7 @@ export function AgentGeneralDialog({
               loading={isSubmitting}
               loadingText='Saving…'
               disabled={!isValid || isSubmitting}>
-              {isCreate ? 'Create agent' : 'Save'} <KbdSubmit variant='outline' size='sm' />
+              Save <KbdSubmit variant='outline' size='sm' />
             </Button>
           </DialogFooter>
         </form>

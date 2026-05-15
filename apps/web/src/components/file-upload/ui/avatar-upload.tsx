@@ -18,6 +18,12 @@ import { useFileUpload } from '../hooks/use-file-upload'
 interface AvatarUploadProps {
   /** Current avatar URL to display */
   currentAvatarUrl?: string
+  /**
+   * When set, upload/remove targets this user's profile (e.g. an agent's
+   * synthetic backing user) instead of the authenticated user. Caller must
+   * be an org admin/owner; the server enforces it.
+   */
+  targetUserId?: string
   /** Callback when upload completes successfully */
   onUploadComplete?: (assetId: string, url: string) => void
   /** Callback when upload starts */
@@ -27,17 +33,33 @@ interface AvatarUploadProps {
   /** Additional CSS classes */
   className?: string
   /** Avatar size variant */
-  size?: 'sm' | 'md' | 'lg'
+  size?: 'xs' | 'sm' | 'md' | 'lg'
   /** Visual style variant */
   variant?: 'default' | 'translucent'
   /** Disable the component */
   disabled?: boolean
+  /**
+   * Compact mode — render only the clickable avatar tile (no Upload/Remove
+   * buttons, no helper text, no progress bar). Hover overlay still triggers
+   * the file picker; drag-and-drop still works. Use for tight headers where
+   * the avatar is sized like a regular icon (e.g. the agent hero).
+   */
+  compact?: boolean
+  /** Tile shape — `square` uses `rounded-xl` to match `AgentAvatar`. */
+  shape?: 'round' | 'square'
+  /** Custom fallback node rendered when no avatar is set. */
+  fallback?: React.ReactNode
 }
 
 /**
  * Size configurations for different avatar sizes
  */
 const sizeConfig = {
+  xs: {
+    avatar: 'size-12',
+    uploadText: 'text-xs',
+    buttonSize: 'sm' as const,
+  },
   sm: {
     avatar: 'size-16',
     uploadText: 'text-xs',
@@ -61,6 +83,7 @@ const sizeConfig = {
  */
 export function AvatarUpload({
   currentAvatarUrl,
+  targetUserId,
   onUploadComplete,
   onUploadStart,
   onError,
@@ -68,6 +91,9 @@ export function AvatarUpload({
   size = 'md',
   variant = 'default',
   disabled = false,
+  compact = false,
+  shape = 'round',
+  fallback,
 }: AvatarUploadProps): JSX.Element {
   const [confirm, ConfirmDialog] = useConfirm()
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
@@ -80,7 +106,10 @@ export function AvatarUpload({
   // Configure useFileUpload for avatar uploads
   const fileUpload = useFileUpload({
     entityType: 'USER_PROFILE',
-    // entityId will be automatically set to authenticated user ID by backend
+    // entityId defaults to the authenticated user ID server-side. Pass it
+    // explicitly when targeting a different user (e.g. an agent's backing
+    // user); the server's UserProfileProcessor authorizes it.
+    entityId: targetUserId,
     config: {
       maxFileSize: 5 * 1024 * 1024, // 5MB
       allowedTypes: ['image/jpeg', 'image/png', 'image/webp', 'image/gif'],
@@ -196,7 +225,7 @@ export function AvatarUpload({
       // For now, just clear the preview and call the callback
       setPreviewUrl(null)
       onUploadComplete?.('', '') // Empty values to indicate removal
-      await removeAvatar.mutateAsync()
+      await removeAvatar.mutateAsync(targetUserId ? { targetUserId } : undefined)
 
       toastSuccess({
         title: 'Avatar removed',
@@ -208,50 +237,77 @@ export function AvatarUpload({
     } finally {
       setIsRemoving(false)
     }
-  }, [currentAvatarUrl, previewUrl, confirm, onUploadComplete])
+  }, [currentAvatarUrl, previewUrl, confirm, onUploadComplete, targetUserId])
 
   const displayUrl = previewUrl || currentAvatarUrl
   const isUploading = fileUpload.isUploading
   const hasAvatar = Boolean(displayUrl)
+  const isSquare = shape === 'square'
+  const tileRadius = isSquare ? 'rounded-xl' : 'rounded-full'
+  const overlayRadius = isSquare ? 'rounded-xl' : 'rounded-full'
+  const fallbackNode = fallback ?? <User className='size-6' />
+
+  const tile = (
+    <div
+      className={cn(
+        'relative group cursor-pointer transition-opacity',
+        config.avatar,
+        disabled && 'opacity-50 cursor-not-allowed'
+      )}
+      onDrop={disabled ? undefined : handleDrop}
+      onDragOver={disabled ? undefined : handleDragOver}
+      onClick={
+        disabled ? undefined : () => document.getElementById('avatar-upload-input')?.click()
+      }>
+      <Avatar
+        className={cn(
+          config.avatar,
+          tileRadius,
+          'border-2 border-dashed border-transparent transition-colors',
+          variant === 'translucent' ? 'group-hover:border-white/30' : 'group-hover:border-border'
+        )}>
+        {hasAvatar && <AvatarImage src={displayUrl} alt='Profile' />}
+        <AvatarFallback
+          className={cn(
+            tileRadius,
+            variant === 'translucent' ? 'bg-[#0519453d] text-white/60' : ''
+          )}>
+          {isUploading ? <Loader2 className='size-6 animate-spin' /> : fallbackNode}
+        </AvatarFallback>
+      </Avatar>
+
+      {/* Upload overlay */}
+      {!disabled && (
+        <div
+          className={cn(
+            'absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center',
+            overlayRadius
+          )}>
+          <Upload className='size-4 text-white' />
+        </div>
+      )}
+    </div>
+  )
+
+  if (compact) {
+    return (
+      <div className={cn('inline-flex', className)}>
+        {tile}
+        <input
+          id='avatar-upload-input'
+          type='file'
+          accept='image/jpeg,image/png,image/webp,image/gif'
+          className='hidden'
+          onChange={handleInputChange}
+          disabled={disabled}
+        />
+      </div>
+    )
+  }
 
   return (
     <div className={cn('flex items-center gap-4', className)}>
-      {/* Avatar with drag and drop */}
-      <div
-        className={cn(
-          'relative group cursor-pointer transition-opacity',
-          config.avatar,
-          disabled && 'opacity-50 cursor-not-allowed'
-        )}
-        onDrop={disabled ? undefined : handleDrop}
-        onDragOver={disabled ? undefined : handleDragOver}
-        onClick={
-          disabled ? undefined : () => document.getElementById('avatar-upload-input')?.click()
-        }>
-        <Avatar
-          className={cn(
-            config.avatar,
-            'border-2 border-dashed border-transparent transition-colors',
-            variant === 'translucent' ? 'group-hover:border-white/30' : 'group-hover:border-border'
-          )}>
-          {hasAvatar && <AvatarImage src={displayUrl} alt='Profile' />}
-          <AvatarFallback
-            className={variant === 'translucent' ? 'bg-[#0519453d] text-white/60' : ''}>
-            {isUploading ? (
-              <Loader2 className='size-6 animate-spin' />
-            ) : (
-              <User className='size-6' />
-            )}
-          </AvatarFallback>
-        </Avatar>
-
-        {/* Upload overlay */}
-        {!disabled && (
-          <div className='absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity rounded-full flex items-center justify-center'>
-            <Upload className='size-4 text-white' />
-          </div>
-        )}
-      </div>
+      {tile}
 
       {/* Controls */}
       <div className='flex flex-col gap-2 flex-1'>

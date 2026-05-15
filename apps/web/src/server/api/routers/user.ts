@@ -1,6 +1,7 @@
 import { database as db, schema } from '@auxx/database'
 import { getUserCache, onCacheEvent } from '@auxx/lib/cache'
 import { MediaAssetService } from '@auxx/lib/files'
+import { isAdminOrOwner } from '@auxx/lib/members'
 import { FeaturePermissionService } from '@auxx/lib/permissions'
 import { UserSettingsService } from '@auxx/lib/settings'
 import { autoSyncShopify } from '@auxx/lib/shopify'
@@ -185,34 +186,72 @@ export const userRouter = createTRPCRouter({
       }
     }),
 
-  removeAvatar: protectedProcedure.mutation(async ({ ctx }) => {
-    const { userId, organizationId } = ctx.session
+  removeAvatar: protectedProcedure
+    .input(
+      z
+        .object({
+          /**
+           * When set, target the synthetic User backing an Agent in this org
+           * instead of the calling user. Requires the caller to be an org
+           * admin/owner — same authorization shape as the upload path in
+           * `UserProfileProcessor.validateEntityAccess`.
+           */
+          targetUserId: z.string().optional(),
+        })
+        .optional()
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { userId, organizationId } = ctx.session
+      const targetUserId = input?.targetUserId ?? userId
 
-    // Get current user to check if they have an avatar
-    const [user] = await db
-      .select({ avatarAssetId: schema.User.avatarAssetId })
-      .from(schema.User)
-      .where(eq(schema.User.id, userId))
-      .limit(1)
+      if (targetUserId !== userId) {
+        const [agent] = await db
+          .select({ id: schema.Agent.id })
+          .from(schema.Agent)
+          .where(
+            and(
+              eq(schema.Agent.userId, targetUserId),
+              eq(schema.Agent.organizationId, organizationId)
+            )
+          )
+          .limit(1)
+        if (!agent) {
+          throw new TRPCError({
+            code: 'FORBIDDEN',
+            message: "Cannot remove another user's avatar",
+          })
+        }
+        const callerIsAdmin = await isAdminOrOwner(organizationId, userId)
+        if (!callerIsAdmin) {
+          throw new TRPCError({
+            code: 'FORBIDDEN',
+            message: 'Admin required to update agent avatars',
+          })
+        }
+      }
 
-    if (!user?.avatarAssetId) {
-      throw new TRPCError({ code: 'NOT_FOUND', message: 'No avatar to remove' })
-    }
+      const [user] = await db
+        .select({ avatarAssetId: schema.User.avatarAssetId })
+        .from(schema.User)
+        .where(eq(schema.User.id, targetUserId))
+        .limit(1)
 
-    // Use MediaAssetService to delete the avatar asset
-    const mediaAssetService = new MediaAssetService(organizationId, userId, db)
-    await mediaAssetService.delete(user.avatarAssetId)
+      if (!user?.avatarAssetId) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'No avatar to remove' })
+      }
 
-    // Clear the avatarAssetId reference from the user
-    await db
-      .update(schema.User)
-      .set({ avatarAssetId: null, updatedAt: new Date() })
-      .where(eq(schema.User.id, userId))
+      const mediaAssetService = new MediaAssetService(organizationId, userId, db)
+      await mediaAssetService.delete(user.avatarAssetId)
 
-    await onCacheEvent('user.updated', { orgId: ctx.session.organizationId, userId })
+      await db
+        .update(schema.User)
+        .set({ avatarAssetId: null, updatedAt: new Date() })
+        .where(eq(schema.User.id, targetUserId))
 
-    return { success: true }
-  }),
+      await onCacheEvent('user.updated', { orgId: organizationId, userId: targetUserId })
+
+      return { success: true }
+    }),
 
   updateTimezone: protectedProcedure
     .input(

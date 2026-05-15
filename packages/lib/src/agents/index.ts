@@ -22,7 +22,9 @@ export {
   archiveAgent,
   type CreateAgentInput,
   type CreatedAgent,
+  completeAgentSetup,
   createAgent,
+  deleteDraftAgent,
   getAgentDetail,
   getAgentDetailByIdOrSlug,
   isAgentSlugTaken,
@@ -61,6 +63,7 @@ export {
 export { NATIVE_DEFAULT_TOOLSETS, resolveDefaultToolsets } from './default-toolsets'
 export { filterToolsByToolsets } from './filter-tools'
 export { type ResolvedAgentConfig, resolveAgentConfig } from './resolve-agent-config'
+export { AGENT_SLUG_MAX, AGENT_SLUG_REGEX, agentSlugSchema } from './slug-schema'
 export {
   getOrgToolsetCatalog,
   NATIVE_TOOLSET_LABELS,
