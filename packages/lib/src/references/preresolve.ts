@@ -1,40 +1,7 @@
 // packages/lib/src/references/preresolve.ts
 
 import type { RecordId } from '../resources/client'
-
-interface TiptapNode {
-  type?: string
-  attrs?: Record<string, unknown>
-  content?: TiptapNode[]
-}
-
-/**
- * Walk a Tiptap doc and collect every inline `reference` node's `RecordId`,
- * de-duplicated and in document order. Tolerant of malformed input —
- * unrecognized shapes yield an empty array.
- */
-export function collectReferenceIds(doc: unknown): RecordId[] {
-  if (!doc || typeof doc !== 'object') return []
-  const seen = new Set<string>()
-  const out: RecordId[] = []
-  walk(doc as TiptapNode, (id) => {
-    if (seen.has(id)) return
-    seen.add(id)
-    out.push(id as RecordId)
-  })
-  return out
-}
-
-function walk(node: TiptapNode, visit: (id: string) => void): void {
-  if (node.type === 'reference') {
-    const id = typeof node.attrs?.id === 'string' ? (node.attrs.id as string) : ''
-    if (id) visit(id)
-    return
-  }
-  if (Array.isArray(node.content)) {
-    for (const child of node.content) walk(child, visit)
-  }
-}
+import { collectReferenceIds } from '../tiptap'
 
 export interface PreresolvedReferences {
   /** De-duped record ids in document order. */
@@ -42,7 +9,7 @@ export interface PreresolvedReferences {
   /** Title map keyed by record id. Missing entries fall back to bare ids. */
   titles: Map<RecordId, string>
   /**
-   * Inline renderer to pass into `tiptapDocToPlainText({ references })` or
+   * Inline renderer to pass into `docToText({ references })` or
    * `blocksToMd({ references })`. Returns `[Title](id)` when a title is
    * resolved, `[reference](id)` otherwise.
    */
@@ -51,11 +18,11 @@ export interface PreresolvedReferences {
 
 /**
  * Walk the doc, fetch titles for each unique reference in one batch, and
- * return an inline renderer the caller hands to `tiptapDocToPlainText` /
- * `blocksToMd`. The `resolveTitles` callback is supplied by the caller
- * because record-title shape varies per resource (agent.name vs
- * article.title vs contact.firstName/lastName etc.) — keeping the lookup
- * pluggable avoids dragging the resource layer into this module.
+ * return an inline renderer the caller hands to `docToText` / `blocksToMd`.
+ * The `resolveTitles` callback is supplied by the caller because record-
+ * title shape varies per resource (agent.name vs article.title vs
+ * contact.firstName/lastName etc.) — keeping the lookup pluggable avoids
+ * dragging the resource layer into this module.
  */
 export async function preresolveReferences(
   doc: unknown,

@@ -7,6 +7,7 @@ import type {
   TimelineFieldChangeSnapshot,
   TimelineFieldChangeSnapshotValue,
 } from '../../../../../timeline/field-change-snapshot'
+import { docToText } from '../../../../../tiptap'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
 import { GetEntityHistoryDigest } from '../../../digests'
 import type { GetToolDeps } from '../../types'
@@ -355,7 +356,7 @@ async function loadComments(
   const rows = await db
     .select({
       id: schema.Comment.id,
-      content: schema.Comment.content,
+      contentJson: schema.Comment.contentJson,
       createdAt: schema.Comment.createdAt,
       parentId: schema.Comment.parentId,
       createdById: schema.Comment.createdById,
@@ -371,15 +372,17 @@ async function loadComments(
     .orderBy(desc(schema.Comment.createdAt))
     .limit(cap + 1)
   if (rows.length > cap) truncated.comments = true
-  return rows.slice(0, cap).map((r) => ({
-    id: r.id,
-    content:
-      r.content.length > COMMENT_CHARS ? `${r.content.slice(0, COMMENT_CHARS)}...` : r.content,
-    by: null as string | null, // filled in by the caller after batch resolve
-    byUserId: r.createdById,
-    at: r.createdAt.toISOString(),
-    parentId: r.parentId,
-  }))
+  return rows.slice(0, cap).map((r) => {
+    const text = docToText(r.contentJson)
+    return {
+      id: r.id,
+      content: text.length > COMMENT_CHARS ? `${text.slice(0, COMMENT_CHARS)}...` : text,
+      by: null as string | null, // filled in by the caller after batch resolve
+      byUserId: r.createdById,
+      at: r.createdAt.toISOString(),
+      parentId: r.parentId,
+    }
+  })
 }
 
 async function loadTimeline(

@@ -1,6 +1,7 @@
 // server/api/routers/comment.ts
 
 import { CommentService } from '@auxx/lib/comments'
+import { isNonEmptyDoc } from '@auxx/lib/tiptap'
 import { createScopedLogger } from '@auxx/logger'
 import { recordIdSchema } from '@auxx/types'
 import { type ActorId, toActorId } from '@auxx/types/actor'
@@ -50,23 +51,20 @@ const fileAttachmentSchema = z.object({
   type: z.enum(['file', 'asset']),
 })
 
-// Updated to use RecordId format
+const contentJsonSchema = z
+  .unknown()
+  .refine((v): v is Record<string, unknown> => isNonEmptyDoc(v), 'Comment content cannot be empty')
+
 const createCommentSchema = z.object({
-  content: z.string().min(1, 'Comment content cannot be empty'),
+  contentJson: contentJsonSchema,
   recordId: recordIdSchema,
   parentId: z.string().nullable().optional(),
   fileAttachments: z.array(fileAttachmentSchema).optional(),
 })
 
-const createReplySchema = z.object({
-  content: z.string().min(1, 'Comment content cannot be empty'),
-  parentId: z.string(),
-  fileAttachments: z.array(fileAttachmentSchema).optional(),
-})
-
 const updateCommentSchema = z.object({
   id: z.string(),
-  content: z.string().min(1, 'Comment content cannot be empty'),
+  contentJson: contentJsonSchema,
   fileAttachments: z.array(fileAttachmentSchema).optional(),
 })
 
@@ -76,19 +74,15 @@ export const commentRouter = createTRPCRouter({
     try {
       const { userId, organizationId } = ctx.session
       const commentService = new CommentService(organizationId, userId, ctx.db)
-      const { content, recordId, parentId, fileAttachments } = input
-
-      // Parse out mentions from content (if @username exists)
-      const mentionedUserIds = await commentService.parseMentions(content, organizationId)
+      const { contentJson, recordId, parentId, fileAttachments } = input
 
       // Create the comment
       const comment = await commentService.createComment({
-        content,
+        contentJson: contentJson as Record<string, unknown>,
         recordId,
         createdById: userId,
         parentId,
         fileAttachments,
-        mentions: mentionedUserIds,
       })
 
       return transformCommentResponse(comment)
@@ -112,20 +106,13 @@ export const commentRouter = createTRPCRouter({
     try {
       const { userId, organizationId } = ctx.session
       const commentService = new CommentService(organizationId, userId, ctx.db)
-      const { id, content, fileAttachments } = input
-
-      // Parse out mentions if content provided
-      let mentionedUserIds: string[] | undefined
-      if (content) {
-        mentionedUserIds = await commentService.parseMentions(content, organizationId)
-      }
+      const { id, contentJson, fileAttachments } = input
 
       // Update the comment
       const updatedComment = await commentService.updateComment({
         id,
-        content,
+        contentJson: contentJson as Record<string, unknown>,
         fileAttachments,
-        mentions: mentionedUserIds,
       })
 
       return updatedComment

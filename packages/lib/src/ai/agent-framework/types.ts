@@ -96,8 +96,18 @@ export interface AgentToolDefinition {
    * Execute the tool and return a result. The second argument is a caller-
    * agnostic `ToolContext` (see ./tool-context.ts) — same shape whether the
    * tool was invoked from chat, the headless runner, or apply-time.
+   *
+   * Streaming variant: returning an `AsyncGenerator<ToolProgressPayload, AgentToolResult>`
+   * lets the tool emit progress updates during a long-running call. The query
+   * loop forwards each yielded payload as a `tool-progress` agent event, and
+   * the generator's return value becomes the final tool result. App-backed AI
+   * tools opt into this via `defineAiTool({ config: { streaming: true } })`;
+   * native capabilities are buffered today.
    */
-  execute: (args: Record<string, unknown>, ctx: ToolContext) => Promise<AgentToolResult>
+  execute: (
+    args: Record<string, unknown>,
+    ctx: ToolContext
+  ) => Promise<AgentToolResult> | AsyncGenerator<ToolProgressPayload, AgentToolResult, void>
   /**
    * Whether this tool requires human approval before execution. Pass a boolean
    * for static gating, or a predicate to gate per-call based on the call's args
@@ -206,6 +216,17 @@ export interface AgentToolResult {
   success: boolean
   output: unknown
   error?: string
+}
+
+/**
+ * Payload yielded by a streaming tool. The shape is intentionally loose —
+ * each tool decides what to put in `data`; the digest / UI layer is
+ * responsible for rendering. `kind` is an optional hint (e.g. 'phase',
+ * 'partial', 'count') for renderers that want to dispatch on type.
+ */
+export interface ToolProgressPayload {
+  kind?: string
+  data: unknown
 }
 
 // ===== REFERENCE BLOCK SNAPSHOTS =====
@@ -602,6 +623,19 @@ export type AgentEvent = { turnId?: string } & (
       tool: string
       toolCallId?: string
       args: Record<string, unknown>
+    }
+  | {
+      /**
+       * Streaming tools emit one or more progress updates between
+       * `tool-started` and `tool-completed`. The `data` is the payload
+       * yielded by the tool's `execute` async generator.
+       */
+      type: 'tool-progress'
+      agent: string
+      tool: string
+      toolCallId?: string
+      kind?: string
+      data: unknown
     }
   | {
       type: 'tool-completed'

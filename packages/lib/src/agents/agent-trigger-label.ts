@@ -18,8 +18,7 @@ export function getTriggerLabel(trigger: {
   triggerAppTriggerId: string | null
   config: Record<string, unknown>
 }): string {
-  const base = baseLabel(trigger)
-  return trigger.enabled ? base : `${base} (paused)`
+  return baseLabel(trigger)
 }
 
 function baseLabel(trigger: {
@@ -45,6 +44,10 @@ function baseLabel(trigger: {
         return `${trigger.triggerAppId} · ${trigger.triggerAppTriggerId}`
       }
       return 'App trigger'
+    case 'mention':
+      return 'Mention'
+    case 'assignment':
+      return 'Assignment'
     default:
       return trigger.kind
   }

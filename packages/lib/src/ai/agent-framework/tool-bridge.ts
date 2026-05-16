@@ -8,6 +8,7 @@ import type { ToolDefinition } from '../../workflow-engine/core/tool-registry'
 import { ToolRegistry } from '../../workflow-engine/core/tool-registry'
 import type { ToolContext } from './tool-context'
 import type { AgentToolDefinition, AgentToolResult } from './types'
+import { executeToolWithProgress } from './utils'
 
 export interface ToolBridgeConfig {
   /** Node processor registry for workflow node execution */
@@ -50,7 +51,10 @@ export async function executeToolCall(
   if (!tool) {
     return { success: false, output: null, error: `Unknown tool: ${toolName}` }
   }
-  return tool.execute(args, ctx)
+  // Streaming tools (AsyncGenerator return) drain silently here — this entry
+  // point doesn't carry a progress channel; callers that want progress events
+  // should go through the agent query loop.
+  return executeToolWithProgress(tool, args, ctx)
 }
 
 // ===== INTERNAL =====

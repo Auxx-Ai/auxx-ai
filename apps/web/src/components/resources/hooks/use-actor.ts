@@ -16,7 +16,7 @@ const EMPTY_MEMBERS: GroupMember[] = []
 // ============================================================================
 
 interface UseActorOptions {
-  /** ActorId to fetch (e.g., 'user:abc123' or 'group:xyz789') */
+  /** ActorId to fetch (e.g., 'user:abc123', 'group:xyz789', or 'agent:agt789'). */
   actorId: ActorId | null | undefined
   /** Enable/disable the hook */
   enabled?: boolean
@@ -37,6 +37,7 @@ interface UseActorResult {
  * @example
  * const { actor } = useActor({ actorId: 'user:abc123' })
  * const { actor } = useActor({ actorId: 'group:xyz789' })
+ * const { actor } = useActor({ actorId: 'agent:agt789' })
  */
 export function useActor({ actorId, enabled = true }: UseActorOptions): UseActorResult {
   // Subscribe to actor (primitive selector - returns same reference if actor unchanged)

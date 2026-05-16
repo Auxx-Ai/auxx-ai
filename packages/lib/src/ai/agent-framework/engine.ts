@@ -16,7 +16,7 @@ import {
   type TurnBudget,
   type TurnUsageSummary,
 } from './types'
-import { buildToolDigest } from './utils'
+import { buildToolDigest, executeToolWithProgress } from './utils'
 
 const logger = createScopedLogger('agent-engine')
 const DEFAULT_MAX_TOTAL_ITERATIONS = 50
@@ -465,7 +465,10 @@ export class AgentEngine {
       })
 
       try {
-        const result = await tool.execute(finalArgs, ctx)
+        // Approval-required tools are usually buffered (a click → a single
+        // action). Streaming approval tools would need a `tool-progress`
+        // forwarder here; deferred until a real one lands.
+        const result = await executeToolWithProgress(tool, finalArgs, ctx)
         const digest = result.success ? buildToolDigest(tool, result.output, logger) : undefined
         yield this.tagEvent({
           type: 'tool-completed',

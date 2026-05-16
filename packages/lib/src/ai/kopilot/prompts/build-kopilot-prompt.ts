@@ -2,19 +2,21 @@
 
 import type { ResolvedAgentConfig } from '../../../agents'
 import type { IntegrationCatalogEntry } from '../../../cache/integration-catalog'
+import { docToText } from '../../../tiptap'
 import type { AgentToolDefinition } from '../../agent-framework/types'
-import { tiptapDocToPlainText } from '../blocks/tiptap-to-plain-text'
 import type { KopilotDomainState } from '../types'
 import { buildAgentPersonaPrompt } from './agent-persona-prompt'
 import { buildCoreRuntimePrompt } from './core-runtime-prompt'
 import { buildKopilotMasterPersona } from './kopilot-master-persona'
 import type { CurrentUserInfo, EntityCatalogEntry } from './shared-types'
+import { renderTriggerSection, type TriggerContext } from './trigger-context'
 
 /**
  * Compose the full system prompt for a Kopilot turn.
  *
- * Order: persona (master identity OR user-authored agent persona) → core
- * runtime (job statement, context, refs, catalogs, tool block, blocks/approval
+ * Order: persona (master identity OR user-authored agent persona) →
+ * trigger-run section (only on autonomous runs) → core runtime (job
+ * statement, context, refs, catalogs, tool block, blocks/approval
  * mechanism, instructions, toolset prompt additions).
  *
  * The persona slot branches on whether the session is master Kopilot
@@ -25,6 +27,11 @@ import type { CurrentUserInfo, EntityCatalogEntry } from './shared-types'
  * active on the current page — Hard rules from mail, When to plan from
  * kopilot, Cross-cutting flows from entities, etc. Resolved by the
  * caller against the capability registry.
+ *
+ * `triggerContext` (optional) is set when the run was kicked off by an
+ * AgentTrigger. Renders the kind-specific context block, the operator's
+ * trigger instructions, and the autonomous run-mode banner. See
+ * `./trigger-context.ts` and plans/kopilot/agents/trigger-instructions.md.
  */
 export function buildKopilotPrompt(args: {
   domainState: KopilotDomainState
@@ -36,15 +43,18 @@ export function buildKopilotPrompt(args: {
   toolsetPromptAdditions: string
   /** Master sentinel or undefined → master persona; agent → agent persona. */
   agentConfig?: ResolvedAgentConfig
+  /** Present iff this run was fired by an AgentTrigger. */
+  triggerContext?: TriggerContext
 }): string {
   const persona =
     args.agentConfig && args.agentConfig.agentId !== null
       ? buildAgentPersonaPrompt({
           agentName: args.agentConfig.name,
           description: args.agentConfig.description ?? undefined,
-          instructions: tiptapDocToPlainText(args.agentConfig.prompt),
+          instructions: docToText(args.agentConfig.prompt),
         })
       : buildKopilotMasterPersona({ capabilities: args.capabilities })
+  const triggerSection = renderTriggerSection(args.triggerContext)
   const core = buildCoreRuntimePrompt({
     domainState: args.domainState,
     entityCatalog: args.entityCatalog,
@@ -53,7 +63,7 @@ export function buildKopilotPrompt(args: {
     integrations: args.integrations,
     toolsetPromptAdditions: args.toolsetPromptAdditions,
   })
-  return `${persona}\n\n${core}`
+  return `${persona}${triggerSection}\n\n${core}`
 }
 
 /**

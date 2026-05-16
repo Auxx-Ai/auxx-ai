@@ -7,6 +7,7 @@ import type { LLMInvocationRequest } from '../../ai/orchestrator/types'
 import { UsageTrackingService } from '../../ai/usage/usage-tracking-service'
 import { createScopedLogger } from '../../logger'
 import { MessageQueryService } from '../../messages/message-query.service'
+import { htmlToDoc, stripHtml } from '../../tiptap'
 import { formatThreadContext, getPrompt } from './prompts'
 import {
   AI_OPERATION,
@@ -16,7 +17,6 @@ import {
   OUTPUT_FORMAT,
   type OutputFormat,
 } from './types'
-import { convertHtmlToTiptap, stripHtml } from './utils'
 
 const logger = createScopedLogger('ai-compose-service')
 
@@ -318,7 +318,7 @@ export class AIComposeService {
       case OUTPUT_FORMAT.EDITOR: {
         // Convert to TipTap JSON format
         const htmlContent = await this.formatOutput(content, OUTPUT_FORMAT.HTML)
-        return JSON.stringify(convertHtmlToTiptap(htmlContent))
+        return JSON.stringify(htmlToDoc(htmlContent))
       }
 
       default:

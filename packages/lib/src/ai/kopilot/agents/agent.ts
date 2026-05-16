@@ -15,6 +15,7 @@ import type { Message, ToolCall } from '../../clients/base/types'
 import { transformAssistantContentForLLM } from '../blocks/transform-for-llm'
 import { buildKopilotPrompt } from '../prompts/build-kopilot-prompt'
 import type { CurrentUserInfo } from '../prompts/shared-types'
+import type { TriggerContext } from '../prompts/trigger-context'
 import type { KopilotDomainState } from '../types'
 
 const logger = createScopedLogger('kopilot-agent')
@@ -39,6 +40,12 @@ export interface CreateKopilotAgentOptions {
    * agent renders its persona from `prompt` / `name` / `description`.
    */
   agentConfig?: ResolvedAgentConfig
+  /**
+   * Present iff this run was kicked off by an AgentTrigger. Threads the
+   * autonomous-run prompt section through `buildKopilotPrompt`. Chat runs
+   * (master or user agent) leave this undefined.
+   */
+  triggerContext?: TriggerContext
 }
 
 /**
@@ -57,6 +64,7 @@ export function createKopilotAgent(
     maxIterations = 15,
     toolsetPromptAdditions = '',
     agentConfig,
+    triggerContext,
   } = options
 
   const agentTools: AgentToolDefinition[] = tools
@@ -92,6 +100,7 @@ export function createKopilotAgent(
         integrations,
         toolsetPromptAdditions,
         agentConfig,
+        triggerContext,
       })
 
       // Full conversation for tool-loop continuity.

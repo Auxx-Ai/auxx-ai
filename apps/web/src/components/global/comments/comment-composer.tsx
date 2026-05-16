@@ -4,20 +4,28 @@
 
 import type { RecordId } from '@auxx/lib/field-values/client'
 import { ENTITY_TYPES } from '@auxx/lib/files/types'
+import { collectReferenceIds, isNonEmptyDoc, trimTrailingEmptyParagraphs } from '@auxx/lib/tiptap'
 import { Button } from '@auxx/ui/components/button'
 import { EmojiPicker } from '@auxx/ui/components/emoji-picker'
 import { cn } from '@auxx/ui/lib/utils'
 import { generateId } from '@auxx/utils/generateId'
 import type { Editor } from '@tiptap/core'
 import { Extension } from '@tiptap/core'
-import { EditorContent } from '@tiptap/react'
+import { EditorContent, type JSONContent } from '@tiptap/react'
 import { AtSign, CornerDownLeft, Maximize2, Minimize2, Paperclip, Send, Smile } from 'lucide-react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useDropzone } from 'react-dropzone'
-import { InlinePickerPopover, useMentionEditor } from '~/components/editor/inline-picker'
+import {
+  InlinePickerPopover,
+  useActivePicker,
+  useReferencePickerEditor,
+} from '~/components/editor/inline-picker'
 import { useFileSelect } from '~/components/file-select/hooks/use-file-select'
-import { ActorPickerContent } from '~/components/pickers/actor-picker/actor-picker-content'
 import { FileSelectPicker } from '~/components/pickers/file-select-picker'
+import {
+  ReferencePickerContent,
+  type ReferencePickerHandle,
+} from '~/components/pickers/reference-picker'
 import { MetaIcon } from '~/constants/icons'
 import {
   type CommentAttachmentInfo,
@@ -45,7 +53,8 @@ interface CommentComposerProps {
   onCancel?: () => void
   placeholder?: string
   commentId?: string
-  initialContent?: string
+  /** Tiptap doc JSON. Tiptap's `content` prop accepts JSON natively. */
+  initialContent?: JSONContent | string
   initialAttachments?: CommentAttachmentInfo[]
   autoFocus?: boolean
   expanded?: boolean
@@ -94,6 +103,7 @@ const transformAttachmentsToFileSelectItems = (attachments: CommentAttachmentInf
 const isEmptyContent = (html: string) => {
   return stripParagraphTags(html).trim() === ''
 }
+
 export interface SubmitOnEnterOptions {
   /**
    * Function to call when Enter is pressed and isExpanded returns false
@@ -170,7 +180,14 @@ const CommentComposer = ({
   const isExpandedRef = useRef(isExpanded)
   isExpandedRef.current = isExpanded
   const handleSubmitRef = useRef<(editor: Editor | null) => void>(() => {})
-  const [placeholderVisible, setPlaceholderVisible] = useState(isEmptyContent(initialContent))
+  const initialIsEmpty = useMemo(() => {
+    if (typeof initialContent === 'string') return isEmptyContent(initialContent)
+    return !isNonEmptyDoc(initialContent)
+  }, [initialContent])
+  const [placeholderVisible, setPlaceholderVisible] = useState(initialIsEmpty)
+  const [currentDoc, setCurrentDoc] = useState<JSONContent | null>(
+    typeof initialContent === 'object' && initialContent ? (initialContent as JSONContent) : null
+  )
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [pickerOpen, setPickerOpen] = useState(false)
 
@@ -200,9 +217,16 @@ const CommentComposer = ({
     isCreatingReply,
   } = useComments(commentOptions)
 
-  // Initialize mention editor using the inline-picker system
-  const mentionEditor = useMentionEditor({
-    initialContent,
+  // Picker handle for keyboard-forwarding from the editor chip to the
+  // active tab's list (arrow keys + Enter).
+  const referencePickerRef = useRef<ReferencePickerHandle | null>(null)
+
+  // Initialize reference editor — emits inline `reference` nodes (any
+  // RecordId, including agents) so the server can extract them via
+  // `collectReferenceIds` and fire mention triggers. Tabbed picker:
+  // people / records / messages / articles.
+  const { editor, confirmReference, closePicker } = useReferencePickerEditor({
+    initialContent: typeof initialContent === 'string' ? initialContent : '',
     placeholder,
     editable: true,
     className: cn(
@@ -212,21 +236,38 @@ const CommentComposer = ({
     onUpdate: (html) => {
       setPlaceholderVisible(isEmptyContent(html))
     },
+    onJsonUpdate: (json) => {
+      setCurrentDoc(json)
+      setPlaceholderVisible(!isNonEmptyDoc(json))
+    },
+    onPickerEnter: () => referencePickerRef.current?.confirmHighlighted() ?? false,
+    onPickerArrowVertical: (dir) => referencePickerRef.current?.moveHighlight(dir) ?? false,
     extensions: [
       SubmitOnEnter.configure({
         isExpanded: () => isExpandedRef.current,
         onSubmit: (editor) => {
-          console.log('SubmitOnEnter onSubmit called', {
-            isExpanded: isExpandedRef.current,
-            hasEditor: !!editor,
-          })
           handleSubmitRef.current(editor)
         },
       }),
     ],
   })
 
-  const { editor, suggestionState, insertMention, closePicker } = mentionEditor
+  const activePicker = useActivePicker(editor)
+
+  // Hydrate from JSON `initialContent` once the editor is ready.
+  useEffect(() => {
+    if (!editor) return
+    if (typeof initialContent === 'object' && initialContent) {
+      editor.commands.setContent(initialContent as JSONContent)
+      setCurrentDoc(initialContent as JSONContent)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editor])
+
+  // Agents referenced in the current doc — used to render the hint chip below.
+  const referencedAgentIds = useMemo(() => {
+    return collectReferenceIds(currentDoc).filter((id) => id.startsWith('agent:'))
+  }, [currentDoc])
   const focusEditor = useCallback(() => {
     if (editor) {
       editor.commands.focus()
@@ -312,17 +353,11 @@ const CommentComposer = ({
 
   const handleSubmit = useCallback(
     async (editor: Editor | null) => {
-      console.log('handleSubmit called', { hasEditor: !!editor })
       if (editor && !isSubmitting) {
-        const content = editor.getHTML()
-        // showPlaceholder()
-        console.log('content', content)
-        // console.log('content', content)
-        if (isEmptyContent(content)) {
+        const contentJson = trimTrailingEmptyParagraphs(editor.getJSON())
+        if (!isNonEmptyDoc(contentJson)) {
           return
         }
-        // if (!content || content === '<p></p>' || content === '<p></p><p></p>')
-        //   return
 
         setIsSubmitting(true)
 
@@ -341,11 +376,11 @@ const CommentComposer = ({
             // For existing attachments, use the original attachment data
             if ((item as any).isExistingAttachment) {
               return {
-                id: (item as any).originalAttachmentId, // Use original attachment ID
+                id: (item as any).originalAttachmentId,
                 name: item.name,
                 size: item.displaySize,
                 mimeType: item.mimeType || undefined,
-                type: (item as any).attachmentType || 'file', // Use stored original type
+                type: (item as any).attachmentType || 'file',
               }
             }
 
@@ -359,24 +394,17 @@ const CommentComposer = ({
             }
           })
 
-          // Submit the comment with typed attachments
           if (commentId) {
-            console.log('handleUpdateComment')
-            // Always send fileAttachments for updates to handle removal of all attachments
-            await handleUpdateComment(commentId, content, fileAttachments)
+            await handleUpdateComment(commentId, contentJson, fileAttachments)
           } else if (parentId) {
-            // Only send attachments if there are any for new replies
-            console.log('handleCreateReply')
             await handleCreateReply(
-              content,
+              contentJson,
               parentId,
               fileAttachments.length > 0 ? fileAttachments : undefined
             )
           } else {
-            console.log('new comment')
-            // Only send attachments if there are any for new comments
             await handleCreateComment(
-              content,
+              contentJson,
               fileAttachments.length > 0 ? fileAttachments : undefined
             )
           }
@@ -384,7 +412,6 @@ const CommentComposer = ({
           // Reset the editor and files
           editor.commands.clearContent()
           fileSelect.clearItems()
-          // Reset to initial expanded state instead of always collapsing
           setIsExpanded(initialExpanded || false)
 
           if (onSubmitted) {
@@ -481,17 +508,45 @@ const CommentComposer = ({
                 style={isExpanded ? { minHeight: expandHeight } : {}}
               />
 
-              {/* Mention Picker Popover */}
-              <InlinePickerPopover state={suggestionState} width={280} onClose={closePicker}>
-                <ActorPickerContent
-                  value={[]}
-                  onChange={() => {}}
-                  target='user'
-                  multi={false}
-                  onSelectSingle={(actorId) => insertMention(actorId)}
-                  placeholder='Search team members...'
+              {/* Reference Picker Popover — tabbed people/records/messages/articles.
+                  Emits `reference` nodes for any RecordId. Server
+                  `collectReferenceIds` extracts agents to fire mention triggers;
+                  users to send notifications. */}
+              <InlinePickerPopover
+                state={{
+                  isOpen: !!activePicker,
+                  query: activePicker?.query ?? '',
+                  range: null,
+                  clientRect: activePicker?.clientRect ?? null,
+                }}
+                width={360}
+                side='top'
+                align='start'
+                autoFocus={false}
+                onInteractOutside={(e) => {
+                  // Clicking the chip itself must not close the picker — the
+                  // user is editing the query inline.
+                  const target = e.target as HTMLElement | null
+                  if (target?.closest('[data-type="reference-picker"]')) {
+                    e.preventDefault()
+                  }
+                }}
+                onClose={() => closePicker({ keepText: true })}>
+                <ReferencePickerContent
+                  ref={referencePickerRef}
+                  tab={activePicker?.tab ?? 'people'}
+                  query={activePicker?.query ?? ''}
+                  onSelect={(id) => confirmReference(id)}
+                  onTabChange={(tab) => editor?.commands.setReferencePickerTab(tab)}
                 />
               </InlinePickerPopover>
+              {referencedAgentIds.length > 0 && (
+                <div className='px-3 pb-1 text-[11px] text-info'>
+                  {referencedAgentIds.length === 1
+                    ? 'Agent will respond when you post this comment.'
+                    : `${referencedAgentIds.length} agents will respond when you post this comment.`}
+                </div>
+              )}
             </div>
           </div>
 

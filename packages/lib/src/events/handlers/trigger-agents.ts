@@ -1,14 +1,19 @@
 // packages/lib/src/events/handlers/trigger-agents.ts
 
+import { database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
+import { and, eq } from 'drizzle-orm'
 import {
+  getAgentTriggersByAssignment,
   getAgentTriggersByCrudEvent,
   getAgentTriggersByDirectEvent,
+  getAgentTriggersByMention,
   matchesFilter,
 } from '../../agents/agent-trigger-queries'
 import { getQueue } from '../../jobs/queues'
 import { Queues } from '../../jobs/queues/types'
 import { fetchResourceById } from '../../resources/resource-fetcher'
+import { parseRecordId } from '../../resources/resource-id'
 import type { AuxxEvent } from '../types'
 import { getEventRecordId, getResourceTriggerMatch } from './trigger-resource-workflows'
 
@@ -90,6 +95,69 @@ export const triggerAgents = async ({ data: event }: { data: AuxxEvent }) => {
         firedAt: new Date().toISOString(),
       })
       totalFired++
+    }
+  }
+
+  // Mention branch — fires for the referenced agent. Agent references use
+  // the `agent:<agentId>` ActorId prefix (Agent.id, not the synthetic User row).
+  if (event.type === 'comment:referenced') {
+    const { referencedRecordId, mentionerUserId, commentId, parentRecordId, siblingReferences } =
+      event.data
+    const { entityDefinitionId, entityInstanceId } = parseRecordId(referencedRecordId)
+    if (entityDefinitionId === 'agent') {
+      const agentId = entityInstanceId
+      const mentionTriggers = await getAgentTriggersByMention({ organizationId, agentId })
+      for (const trigger of mentionTriggers) {
+        await queue.add('executeAgentMentionTrigger', {
+          agentTriggerId: trigger.id,
+          agentId,
+          organizationId,
+          commentId,
+          mentionerUserId,
+          parentRecordId,
+          siblingReferences,
+          firedAt: new Date().toISOString(),
+        })
+        totalFired++
+      }
+    }
+  }
+
+  // Assignment branch — fires when an agent is the new assignee on a ticket.
+  if (event.type === 'ticket:assignee:added') {
+    const data = event.data as Record<string, unknown>
+    const assigneeIds = Array.isArray(data.assigneeIds) ? (data.assigneeIds as string[]) : []
+    const assignerUserId = (data.userId as string | undefined) ?? null
+    const ticketId = (data.ticketId as string | undefined) ?? null
+    const threadRecordId = ticketId ? `ticket:${ticketId}` : null
+
+    for (const assigneeId of assigneeIds) {
+      // Look up the agent backing this assignee user id. AGENT user rows
+      // have userType='AGENT' and a single Agent row pointing at them.
+      const [agent] = await database
+        .select({ id: schema.Agent.id })
+        .from(schema.Agent)
+        .where(
+          and(eq(schema.Agent.userId, assigneeId), eq(schema.Agent.organizationId, organizationId))
+        )
+        .limit(1)
+      if (!agent) continue
+
+      const assignmentTriggers = await getAgentTriggersByAssignment({
+        organizationId,
+        agentId: agent.id,
+      })
+      for (const trigger of assignmentTriggers) {
+        await queue.add('executeAgentAssignmentTrigger', {
+          agentTriggerId: trigger.id,
+          agentId: agent.id,
+          organizationId,
+          threadRecordId,
+          assignerUserId,
+          firedAt: new Date().toISOString(),
+        })
+        totalFired++
+      }
     }
   }
 

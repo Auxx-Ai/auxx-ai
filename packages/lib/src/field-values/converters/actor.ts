@@ -13,9 +13,10 @@ import type { FieldOptions, FieldValueConverter } from './index'
 /**
  * Converter for ACTOR field type.
  *
- * ACTOR fields reference a user or group (entity group).
- * - For 'user' type: stores in actorId column (references User.id)
- * - For 'group' type: stores in relatedEntityId/relatedEntityDefinitionId columns
+ * ACTOR fields reference a user, group, or agent.
+ * - 'user'  → stores User.id in `actorId`.
+ * - 'agent' → stores Agent.id in `actorId` + marker `'agent'` in `relatedEntityDefinitionId`.
+ * - 'group' → stores in `relatedEntityId` / `relatedEntityDefinitionId`.
  */
 export const actorConverter: FieldValueConverter = {
   /**
@@ -50,7 +51,7 @@ export const actorConverter: FieldValueConverter = {
       const obj = value as Record<string, unknown>
 
       // Check for actorType or type property
-      const actorType = (obj.actorType ?? obj.type) as 'user' | 'group' | undefined
+      const actorType = (obj.actorType ?? obj.type) as 'user' | 'group' | 'agent' | undefined
       const id = obj.id as string | undefined
 
       if (id) {
@@ -109,13 +110,13 @@ export const actorConverter: FieldValueConverter = {
     if (typeof value === 'object' && value !== null) {
       const obj = value as Record<string, unknown>
       if ('actorType' in obj && 'id' in obj) {
-        const actorType = obj.actorType as 'user' | 'group'
+        const actorType = obj.actorType as 'user' | 'group' | 'agent'
         const id = obj.id as string
         const actorId = obj.actorId ?? toActorId(actorType, id)
         return { actorType, id, actorId }
       }
       if ('type' in obj && 'id' in obj) {
-        const actorType = obj.type as 'user' | 'group'
+        const actorType = obj.type as 'user' | 'group' | 'agent'
         const id = obj.id as string
         const actorId = obj.actorId ?? toActorId(actorType, id)
         return { actorType, id, actorId }

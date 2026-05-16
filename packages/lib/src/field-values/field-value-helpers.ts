@@ -333,8 +333,18 @@ export function rowToTypedValue(row: FieldValueRow, fieldType: FieldType): Typed
             : ('' as RecordId),
       }
     case 'actor':
-      // Actor can be stored as actorId (for users) or relatedEntityId (for groups)
+      // Actor storage: actorId column for users + agents (agents marked by
+      // relatedEntityDefinitionId='agent'); relatedEntityId for groups.
       if (row.actorId) {
+        if (row.relatedEntityDefinitionId === 'agent') {
+          return {
+            ...base,
+            type: 'actor',
+            actorType: 'agent',
+            id: row.actorId,
+            actorId: toActorId('agent', row.actorId),
+          }
+        }
         return {
           ...base,
           type: 'actor',
@@ -658,7 +668,7 @@ export async function validateSingleValue(
       }
       if (typeof value === 'object' && value !== null) {
         const obj = value as Record<string, unknown>
-        const actorType = (obj.actorType ?? obj.type ?? 'user') as 'user' | 'group'
+        const actorType = (obj.actorType ?? obj.type ?? 'user') as 'user' | 'group' | 'agent'
         const id = obj.id as string
         if (!id) {
           throwValidationError({

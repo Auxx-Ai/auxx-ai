@@ -7,6 +7,7 @@ import type { Job } from 'bullmq'
 import { and, eq } from 'drizzle-orm'
 import { AgentTriggerService } from '../../agents/agent-trigger-service'
 import { enqueueAgentJob } from '../../ai/agent-framework/enqueue-agent-job'
+import { buildTriggerSeedMessage } from '../../ai/agent-framework/trigger-seed-message'
 
 const logger = createScopedLogger('agent-scheduled-trigger-job')
 
@@ -15,8 +16,6 @@ export interface AgentScheduledTriggerJobData {
   agentId: string
   organizationId: string
 }
-
-const DEFAULT_MESSAGE = 'Scheduled trigger fired. Run the trigger instructions.'
 
 /**
  * Worker handler for autonomous scheduled triggers on `AgentTrigger`.
@@ -83,7 +82,7 @@ export async function executeAgentScheduledTrigger(job: Job<AgentScheduledTrigge
   }
 
   const session = sessionResult.value
-  const message = buildSeedMessage(trigger.instructions, DEFAULT_MESSAGE)
+  const message = buildTriggerSeedMessage()
 
   await enqueueAgentJob({
     sessionId: session.id,
@@ -105,30 +104,4 @@ export async function executeAgentScheduledTrigger(job: Job<AgentScheduledTrigge
   })
 
   return { success: true, sessionId: session.id }
-}
-
-/**
- * Turn the per-trigger instructions (Tiptap doc or plain text) into a
- * single seed message string. Falls back to a generic prompt when none
- * are configured — the agent's base prompt still does the heavy lifting.
- */
-function buildSeedMessage(
-  instructions: Record<string, unknown> | null | undefined,
-  fallback: string
-): string {
-  if (!instructions) return fallback
-  if (typeof instructions === 'string') return instructions || fallback
-  const text = extractTiptapText(instructions)
-  return text || fallback
-}
-
-function extractTiptapText(node: unknown): string {
-  if (!node || typeof node !== 'object') return ''
-  const obj = node as Record<string, unknown>
-  if (typeof obj.text === 'string') return obj.text
-  const content = obj.content
-  if (Array.isArray(content)) {
-    return content.map(extractTiptapText).join(' ').trim()
-  }
-  return ''
 }

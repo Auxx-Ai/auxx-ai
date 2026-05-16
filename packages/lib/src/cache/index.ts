@@ -51,6 +51,7 @@ export {
   getAllCachedCustomFields,
   getCachedAgentById,
   getCachedAgents,
+  getCachedAgentsByIds,
   getCachedAgentsByUserIds,
   getCachedCustomFields,
   getCachedDefaultModel,

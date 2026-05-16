@@ -176,6 +176,31 @@ export async function createAgent(
       )
     }
 
+    // 6. Auto-create mention + assignment triggers (enabled by default).
+    //    Phase 1.5: every agent fires when @-mentioned in a comment or
+    //    assigned to a ticket. Cascade on agentId cleans these up when the
+    //    agent is archived/deleted.
+    await tx.insert(schema.AgentTrigger).values([
+      {
+        agentId: agent.id,
+        organizationId,
+        kind: 'mention',
+        enabled: true,
+        config: {},
+        createdById,
+        updatedAt: now,
+      },
+      {
+        agentId: agent.id,
+        organizationId,
+        kind: 'assignment',
+        enabled: true,
+        config: {},
+        createdById,
+        updatedAt: now,
+      },
+    ])
+
     return { agentId: agent.id, userId: user.id }
   })
 

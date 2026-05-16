@@ -17,9 +17,17 @@ export {
   executeAgentAppTrigger,
 } from './agent/app-trigger-job'
 export {
+  type AgentAssignmentTriggerJobData,
+  executeAgentAssignmentTrigger,
+} from './agent/assignment-trigger-job'
+export {
   type AgentEventTriggerJobData,
   executeAgentEventTrigger,
 } from './agent/event-trigger-job'
+export {
+  type AgentMentionTriggerJobData,
+  executeAgentMentionTrigger,
+} from './agent/mention-trigger-job'
 export {
   type AgentScheduledTriggerJobData,
   executeAgentScheduledTrigger,

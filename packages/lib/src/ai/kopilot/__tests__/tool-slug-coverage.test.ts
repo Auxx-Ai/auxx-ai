@@ -21,6 +21,8 @@ const KNOWN_SLUGS = new Set<string>([
   'mail.drafts',
   'entities.search',
   'entities.write',
+  'comments.read',
+  'comments.write',
   'tasks.read',
   'tasks.write',
   'knowledge',

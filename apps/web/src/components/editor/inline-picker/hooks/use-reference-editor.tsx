@@ -44,7 +44,7 @@ export function useReferenceEditor(options: UseReferenceEditorOptions = {}) {
       selected && 'ring-2 ring-primary ring-offset-1'
     )
 
-    if (id.startsWith('user:') || id.startsWith('group:')) {
+    if (id.startsWith('user:') || id.startsWith('group:') || id.startsWith('agent:')) {
       return <ActorBadge actorId={id as ActorId} className={ringCls} />
     }
     if (id.startsWith('thread:') || id.startsWith('draft:')) {

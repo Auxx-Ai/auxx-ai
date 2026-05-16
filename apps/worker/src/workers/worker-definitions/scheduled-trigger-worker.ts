@@ -2,7 +2,9 @@
 
 import {
   executeAgentAppTrigger,
+  executeAgentAssignmentTrigger,
   executeAgentEventTrigger,
+  executeAgentMentionTrigger,
   executeAgentScheduledTrigger,
   executeScheduledTrigger,
 } from '@auxx/lib/jobs'
@@ -14,6 +16,8 @@ const jobMappings = {
   executeAgentScheduledTrigger,
   executeAgentEventTrigger,
   executeAgentAppTrigger,
+  executeAgentMentionTrigger,
+  executeAgentAssignmentTrigger,
 }
 
 export function startScheduledTriggerWorker() {

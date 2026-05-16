@@ -1,9 +1,17 @@
 // packages/lib/src/ai/kopilot/capabilities/apps/index.ts
 
 import { resolveAppConnectionForRuntime } from '@auxx/services/app-connections'
-import { invokeLambdaExecutor, prepareLambdaContext } from '@auxx/services/lambda-execution'
+import {
+  invokeLambdaExecutor,
+  invokeLambdaExecutorStreaming,
+  prepareLambdaContext,
+} from '@auxx/services/lambda-execution'
 import { getOrgCache } from '../../../../cache'
-import type { AgentToolDefinition, AgentToolResult } from '../../../agent-framework/types'
+import type {
+  AgentToolDefinition,
+  AgentToolResult,
+  ToolProgressPayload,
+} from '../../../agent-framework/types'
 import type { GetToolDeps, PageCapability } from '../types'
 import { getAppConnectionPresence } from './connection-resolver'
 import { buildAppToolDigest } from './digest'
@@ -83,8 +91,62 @@ export async function createAppCapabilities(deps: {
       const refDescriptors = tool.refs ?? []
       const toolId = tool.id
       const timeoutMs = tool.timeoutMs
+      const isStreaming = tool.streaming === true
 
-      tools.push({
+      // Both buffered + streaming closures share the same connection-resolution
+      // and lambda-context shape — extracted so we don't fork the prep code.
+      const prepareLambdaCall = async (args: Record<string, unknown>) => {
+        const connections = userId
+          ? await resolveAppConnectionForRuntime({
+              appId,
+              organizationId,
+              userId,
+            })
+          : ({
+              isErr: () => true as const,
+              error: { code: 'NO_USER', message: 'autonomous run' },
+            } as const)
+
+        if ('isErr' in connections && connections.isErr()) {
+          return {
+            ok: false as const,
+            error: 'CONNECTION_REQUIRED: No credential resolved for AI tool',
+          }
+        }
+
+        const resolved = (connections as { value: any }).value
+        const context = prepareLambdaContext({
+          appId,
+          installationId,
+          organizationId,
+          organizationHandle,
+          userId: userId ?? undefined,
+          userEmail: null,
+          userName: organizationName,
+          userConnection: resolved.userConnection,
+          organizationConnection: resolved.organizationConnection,
+          includeEntitiesScope: true,
+        })
+
+        return {
+          ok: true as const,
+          payload: {
+            type: 'ai-tool' as const,
+            serverBundleSha,
+            toolId,
+            toolInput: args,
+            context,
+            timeout: timeoutMs,
+            kopilotContext: {
+              sessionId,
+              agentId: agentId ?? null,
+              triggerId: triggerId ?? null,
+            },
+          },
+        }
+      }
+
+      const buildAgentTool = (execute: AgentToolDefinition['execute']): AgentToolDefinition => ({
         name: registeredName,
         description: tool.description,
         parameters: tool.inputsJsonSchema,
@@ -93,66 +155,112 @@ export async function createAppCapabilities(deps: {
         toolsetSlug: tool.toolsetSlug,
         buildDigest: (output: unknown) =>
           buildAppToolDigest(output, { appSlug, toolId }, refDescriptors),
-        execute: async (args, _ctx): Promise<AgentToolResult> => {
-          try {
-            // At execute() we have a real call, so this is the spot to
-            // decrypt the connection (plans/kopilot/apps/credentials.md §8.3).
-            // Decryption stays in `resolveAppConnectionForRuntime` — same
-            // path workflow blocks use.
-            //
-            // For org-scope-only tools without a user, pass a sentinel userId
-            // so the resolver can still find the org credential (its filter
-            // is per-scope, not "must have user").
-            const connections = userId
-              ? await resolveAppConnectionForRuntime({
-                  appId,
-                  organizationId,
-                  userId,
-                })
-              : {
-                  isErr: () => true as const,
-                  error: { code: 'NO_USER', message: 'autonomous run' },
-                }
+        execute,
+      })
 
-            // resolveAppConnectionForRuntime requires userId. For autonomous
-            // runs we'd need a userId-less variant — out of Wedge A scope.
-            if ('isErr' in connections && connections.isErr()) {
-              return {
-                success: false,
-                output: null,
-                error: 'CONNECTION_REQUIRED: No credential resolved for AI tool',
+      if (isStreaming) {
+        // Streaming closure: wraps `invokeLambdaExecutorStreaming` with a
+        // queue so each progress frame surfaces as a `tool-progress` agent
+        // event in the chat SSE channel. Per plans/kopilot/apps/README.md
+        // §6.2, autonomous / triggered runs without a chat consumer simply
+        // see no `tool-progress` events flowing through (the bridge still
+        // yields them — the upstream consumer ignores them). The terminal
+        // result is taken from the streaming caller's `Result`, not from
+        // the in-stream `event: result` frame, so error mapping flows
+        // through the same code path as the buffered caller.
+        tools.push(
+          buildAgentTool(async function* execute(args): AsyncGenerator<
+            ToolProgressPayload,
+            AgentToolResult,
+            void
+          > {
+            const prep = await prepareLambdaCall(args)
+            if (!prep.ok) {
+              return { success: false, output: null, error: prep.error }
+            }
+
+            type QueueItem =
+              | { kind: 'progress'; data: unknown }
+              | { kind: 'done'; result: AgentToolResult }
+            const queue: QueueItem[] = []
+            let waiter: (() => void) | null = null
+            const wake = () => {
+              if (waiter) {
+                const w = waiter
+                waiter = null
+                w()
               }
             }
 
-            const resolved = (connections as { value: any }).value
-            const context = prepareLambdaContext({
-              appId,
-              installationId,
-              organizationId,
-              organizationHandle,
-              userId: userId ?? undefined,
-              userEmail: null,
-              userName: organizationName,
-              userConnection: resolved.userConnection,
-              organizationConnection: resolved.organizationConnection,
-              includeEntitiesScope: true,
+            const fetchTask = invokeLambdaExecutorStreaming({
+              caller: 'kopilot',
+              payload: prep.payload,
+              onEvent: (ev) => {
+                if (ev.event === 'progress') {
+                  queue.push({ kind: 'progress', data: ev.data })
+                  wake()
+                }
+                // `result` and `error` frames are folded into the awaited
+                // Result below — we don't push them through the queue.
+              },
             })
+              .then((res) => {
+                let final: AgentToolResult
+                if (res.isErr()) {
+                  final = {
+                    success: false,
+                    output: null,
+                    error: `${res.error.code}: ${res.error.message}`,
+                  }
+                } else {
+                  final = { success: true, output: res.value.finalResult }
+                }
+                queue.push({ kind: 'done', result: final })
+                wake()
+              })
+              .catch((error) => {
+                queue.push({
+                  kind: 'done',
+                  result: {
+                    success: false,
+                    output: null,
+                    error: `STREAM_TASK_ERROR: ${error instanceof Error ? error.message : String(error)}`,
+                  },
+                })
+                wake()
+              })
+
+            try {
+              while (true) {
+                while (queue.length > 0) {
+                  const item = queue.shift()!
+                  if (item.kind === 'done') return item.result
+                  yield { data: item.data }
+                }
+                await new Promise<void>((resolve) => {
+                  waiter = resolve
+                })
+              }
+            } finally {
+              // Make sure we don't leak the streaming task on early loop exits.
+              await fetchTask.catch(() => {})
+            }
+          })
+        )
+        continue
+      }
+
+      tools.push(
+        buildAgentTool(async (args, _ctx): Promise<AgentToolResult> => {
+          try {
+            const prep = await prepareLambdaCall(args)
+            if (!prep.ok) {
+              return { success: false, output: null, error: prep.error }
+            }
 
             const lambdaResult = await invokeLambdaExecutor({
               caller: 'kopilot',
-              payload: {
-                type: 'ai-tool',
-                serverBundleSha,
-                toolId,
-                toolInput: args,
-                context,
-                timeout: timeoutMs,
-                kopilotContext: {
-                  sessionId,
-                  agentId: agentId ?? null,
-                  triggerId: triggerId ?? null,
-                },
-              },
+              payload: prep.payload,
             })
 
             if (lambdaResult.isErr()) {
@@ -183,8 +291,8 @@ export async function createAppCapabilities(deps: {
               error: `EXECUTION_ERROR: ${error instanceof Error ? error.message : String(error)}`,
             }
           }
-        },
-      })
+        })
+      )
     }
   }
 

@@ -29,7 +29,7 @@ type ToolsetRowState = {
  * toolsets, or stale slugs without a registered group) sort after these,
  * alphabetically.
  */
-const NATIVE_GROUP_ORDER = ['Mail', 'Tasks', 'Entities', 'Knowledge', 'Docs', 'Members']
+const NATIVE_GROUP_ORDER = ['Mail', 'Tasks', 'Entities', 'Comments', 'Knowledge', 'Docs', 'Members']
 
 /**
  * The Tools tab body. Renders the org toolset catalog as collapsible group

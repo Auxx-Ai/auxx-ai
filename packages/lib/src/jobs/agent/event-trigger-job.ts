@@ -6,6 +6,7 @@ import { createSession } from '@auxx/services'
 import type { Job } from 'bullmq'
 import { and, eq } from 'drizzle-orm'
 import { enqueueAgentJob } from '../../ai/agent-framework/enqueue-agent-job'
+import { buildTriggerSeedMessage } from '../../ai/agent-framework/trigger-seed-message'
 
 const logger = createScopedLogger('agent-event-trigger-job')
 
@@ -79,7 +80,7 @@ export async function executeAgentEventTrigger(job: Job<AgentEventTriggerJobData
   }
 
   const session = sessionResult.value
-  const message = buildSeedMessage(trigger.instructions, eventType, recordId)
+  const message = buildTriggerSeedMessage()
 
   await enqueueAgentJob({
     sessionId: session.id,
@@ -102,31 +103,4 @@ export async function executeAgentEventTrigger(job: Job<AgentEventTriggerJobData
   })
 
   return { success: true as const, sessionId: session.id }
-}
-
-function buildSeedMessage(
-  instructions: Record<string, unknown> | null | undefined,
-  eventType: string,
-  recordId: string | null
-): string {
-  if (instructions) {
-    if (typeof instructions === 'string' && instructions.length > 0) return instructions
-    const text = extractTiptapText(instructions)
-    if (text) return text
-  }
-  if (recordId) {
-    return `Event \`${eventType}\` fired for record ${recordId}. The triggering resource is in domain state under \`triggerResource\`. Run the trigger instructions.`
-  }
-  return `Event \`${eventType}\` fired. The payload is in domain state under \`triggerResource\`. Run the trigger instructions.`
-}
-
-function extractTiptapText(node: unknown): string {
-  if (!node || typeof node !== 'object') return ''
-  const obj = node as Record<string, unknown>
-  if (typeof obj.text === 'string') return obj.text
-  const content = obj.content
-  if (Array.isArray(content)) {
-    return content.map(extractTiptapText).join(' ').trim()
-  }
-  return ''
 }

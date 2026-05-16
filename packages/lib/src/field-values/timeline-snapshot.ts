@@ -8,7 +8,9 @@ import type { TypedFieldValue } from '@auxx/types/field-value'
 import { parseRecordId, type RecordId } from '@auxx/types/resource'
 import { and, eq, inArray } from 'drizzle-orm'
 import {
+  type CachedAgent,
   type CachedGroup,
+  getCachedAgents,
   getCachedGroups,
   getCachedMembersByUserIds,
   getCachedResources,
@@ -237,6 +239,8 @@ interface ResolvedLookups {
   users: Map<string, { displayName: string | null; avatarUrl: string | null }>
   /** groupInstanceId → CachedGroup for actor group resolution. */
   groups: Map<string, CachedGroup>
+  /** agentId → CachedAgent for actor agent resolution. */
+  agents: Map<string, CachedAgent>
 }
 
 const EMPTY_LOOKUPS: ResolvedLookups = {
@@ -244,6 +248,7 @@ const EMPTY_LOOKUPS: ResolvedLookups = {
   resourcesById: new Map(),
   users: new Map(),
   groups: new Map(),
+  agents: new Map(),
 }
 
 async function collectAndResolveRefs(
@@ -259,6 +264,7 @@ async function collectAndResolveRefs(
   const unresolvedRecordIds = new Set<RecordId>()
   const unresolvedUserIds = new Set<string>()
   const unresolvedGroupIds = new Set<string>()
+  const unresolvedAgentIds = new Set<string>()
   // Distinct entityDefIds (for relationship entityType lookup), even when
   // the value carries a denormalized displayName.
   const allEntityDefIds = new Set<string>()
@@ -285,6 +291,7 @@ async function collectAndResolveRefs(
           if (!single.displayName) {
             if (single.actorType === 'user') unresolvedUserIds.add(single.id)
             else if (single.actorType === 'group') unresolvedGroupIds.add(single.id)
+            else if (single.actorType === 'agent') unresolvedAgentIds.add(single.id)
           }
         }
       }
@@ -322,7 +329,13 @@ async function collectAndResolveRefs(
       ? new Map((await getCachedGroups(ctx.organizationId)).map((g) => [g.id, g]))
       : new Map<string, CachedGroup>())
 
-  return { relatedDisplayNames, resourcesById, users, groups }
+  // Agent actor resolution: cache only.
+  const agents =
+    unresolvedAgentIds.size > 0
+      ? new Map((await getCachedAgents(ctx.organizationId)).map((a) => [a.id, a]))
+      : new Map<string, CachedAgent>()
+
+  return { relatedDisplayNames, resourcesById, users, groups, agents }
 }
 
 async function batchFetchRelatedDisplayNames(
@@ -548,6 +561,12 @@ function buildSnapshotSingle(
         if (g) {
           resolvedLabel = g.displayName
           avatarUrl = g.avatarUrl
+        }
+      } else if (value.actorType === 'agent') {
+        const a = lookups.agents.get(value.id)
+        if (a) {
+          resolvedLabel = a.name
+          avatarUrl = a.avatarUrl ?? null
         }
       }
       const labelRaw = denormalized ?? resolvedLabel ?? value.id

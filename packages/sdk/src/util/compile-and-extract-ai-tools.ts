@@ -193,6 +193,7 @@ export async function compileAndExtractAiTools(): Promise<
       connectionScope?: 'user' | 'organization'
       requiresApproval?: boolean | ((args: unknown) => boolean)
       timeout?: number
+      streaming?: boolean
     }
   }>
   const toolsetsArr = (app.ai.toolsets ?? []) as Array<{
@@ -245,7 +246,7 @@ export async function compileAndExtractAiTools(): Promise<
       connectionScope: tool.config?.connectionScope ?? null,
       requiresApproval,
       timeoutMs: tool.config?.timeout ?? 15000,
-      streaming: false,
+      streaming: Boolean(tool.config?.streaming),
       toolsetSlug: slugByToolId.get(tool.id) ?? `app:unknown:default`,
       refs: outputs.refs,
     })

@@ -2,7 +2,8 @@
 
 import { getCachedMembersByUserIds } from '../../../../../cache/org-cache-helpers'
 import { CommentService } from '../../../../../comments'
-import { isRecordId, type RecordId } from '../../../../../resources/resource-id'
+import type { RecordId } from '../../../../../resources/resource-id'
+import { getKnownDefIds, normalizeRecordIdArg } from '../../../../agent-framework/tool-inputs'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
 import { ListNotesDigest } from '../../../digests'
 import type { GetToolDeps } from '../../types'
@@ -28,7 +29,7 @@ function truncate(text: string, max: number): string {
 export function createListNotesTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'list_notes',
-    toolsetSlug: 'entities.search',
+    toolsetSlug: 'comments.read',
     idempotent: true,
     outputDigestSchema: ListNotesDigest,
     buildDigest: (output) => {
@@ -56,26 +57,31 @@ export function createListNotesTool(getDeps: GetToolDeps): AgentToolDefinition {
       required: ['recordId'],
       additionalProperties: false,
     },
+    validateInputs: async (args, ctx) => {
+      const known = await getKnownDefIds(ctx.organizationId)
+      const recordId = normalizeRecordIdArg(args.recordId, {
+        knownDefIds: known,
+        argName: 'recordId',
+      })
+      if (!recordId.ok) return { ok: false, error: recordId.error }
+      return {
+        ok: true,
+        args: { ...args, recordId: recordId.value },
+        warnings: recordId.warnings,
+      }
+    },
     execute: async (args, agentDeps) => {
       const { db } = getDeps()
-      const recordId = args.recordId as string
+      const recordId = args.recordId as RecordId
       const limit = Math.min((args.limit as number) ?? 20, MAX_LIMIT)
       const includeReplies = (args.includeReplies as boolean | undefined) ?? true
-
-      if (!isRecordId(recordId)) {
-        return {
-          success: false,
-          output: null,
-          error: `Invalid recordId "${recordId}". Expected "entityDefinitionId:entityInstanceId".`,
-        }
-      }
 
       const service = new CommentService(agentDeps.organizationId, agentDeps.userId, db)
 
       let comments
       try {
         // Fetch limit + 1 so we can compute hasMore.
-        comments = await service.getCommentsByRecordId(recordId as RecordId, {
+        comments = await service.getCommentsByRecordId(recordId, {
           includeReplies,
           page: 1,
           limit: limit + 1,

@@ -47,8 +47,13 @@ export function typedColumnMatch(value: TypedFieldValueInput): TypedColumnMatch 
       return { column: 'relatedEntityId', value: entityInstanceId }
     }
     case 'actor':
-      return value.actorType === 'user'
-        ? { column: 'actorId', value: value.id }
-        : { column: 'relatedEntityId', value: value.id }
+      // Users + agents both live in actorId column (agent disambiguated by
+      // relatedEntityDefinitionId='agent' at the row level). Groups live in
+      // relatedEntityId. For equality match here, the column choice is the
+      // same for user/agent — the actor row's id is what gets compared.
+      if (value.actorType === 'user' || value.actorType === 'agent') {
+        return { column: 'actorId', value: value.id }
+      }
+      return { column: 'relatedEntityId', value: value.id }
   }
 }

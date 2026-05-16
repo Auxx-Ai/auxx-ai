@@ -207,6 +207,19 @@ export async function getCachedAgentsByUserIds(
 }
 
 /**
+ * Get cached agents by `Agent.id`. Includes archived rows so historical
+ * actor references (e.g. `agent:<id>` stored in a comment) still resolve.
+ */
+export async function getCachedAgentsByIds(
+  orgId: string,
+  agentIds: string[]
+): Promise<CachedAgent[]> {
+  const agents = await getOrgCache().get(orgId, 'agents')
+  const idSet = new Set(agentIds)
+  return agents.filter((a) => idSet.has(a.id))
+}
+
+/**
  * Check whether the given user id is the synthetic user of an agent in this org.
  */
 export async function isAgentUser(orgId: string, userId: string): Promise<boolean> {

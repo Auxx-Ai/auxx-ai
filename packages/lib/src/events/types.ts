@@ -57,6 +57,7 @@ export type Events =
   | 'comment:updated'
   | 'comment:deleted'
   | 'comment:replied'
+  | 'comment:referenced'
   | 'entity:created'
   | 'entity:updated'
   | 'entity:deleted'
@@ -560,6 +561,25 @@ export type CommentRepliedEvent = AuxxEventGeneric<
   }
 >
 
+/**
+ * Fires once per `CommentReference` row when a comment is created.
+ * The dispatcher uses this to enqueue agent mention triggers.
+ */
+export type CommentReferencedEvent = AuxxEventGeneric<
+  'comment:referenced',
+  {
+    commentId: string
+    organizationId: string
+    mentionerUserId: string
+    /** The entity the comment is attached to. */
+    parentRecordId: RecordId
+    /** The reference this event is for. */
+    referencedRecordId: RecordId
+    /** All other RecordIds referenced in the same comment. */
+    siblingReferences: RecordId[]
+  }
+>
+
 // Entity Instance Created Event
 export type EntityInstanceCreatedEvent = AuxxEventGeneric<
   'entity:created',
@@ -857,6 +877,7 @@ export type AuxxEvent =
   | CommentUpdatedEvent
   | CommentDeletedEvent
   | CommentRepliedEvent
+  | CommentReferencedEvent
   | EntityInstanceCreatedEvent
   | EntityInstanceUpdatedEvent
   | EntityInstanceDeletedEvent
@@ -930,6 +951,7 @@ export interface IEventsHandlers {
   'comment:updated': EventHandler<CommentUpdatedEvent>[]
   'comment:deleted': EventHandler<CommentDeletedEvent>[]
   'comment:replied': EventHandler<CommentRepliedEvent>[]
+  'comment:referenced': EventHandler<CommentReferencedEvent>[]
   'entity:created': EventHandler<EntityInstanceCreatedEvent>[]
   'entity:updated': EventHandler<EntityInstanceUpdatedEvent>[]
   'entity:deleted': EventHandler<EntityInstanceDeletedEvent>[]

@@ -6,12 +6,13 @@ import type {
 } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
 import { TRPCError } from '@trpc/server'
-import { and, desc, eq, inArray, isNull } from 'drizzle-orm'
+import { and, desc, eq, isNull } from 'drizzle-orm'
 import { touchActivityForThreadLinks, touchEntityActivity } from '../entity-instances/activity'
 import { publisher } from '../events'
 import type {
   CommentCreatedEvent,
   CommentDeletedEvent,
+  CommentReferencedEvent,
   CommentRepliedEvent,
   CommentUpdatedEvent,
 } from '../events/types'
@@ -19,7 +20,9 @@ import { AttachmentService, type GroupedAttachmentInfo } from '../files/core/att
 import { MediaAssetService } from '../files/core/media-asset-service'
 import { isAdminOrOwner } from '../members/member-queries'
 import { NotificationService } from '../notifications/notification-service'
+import { collectReferenceIds } from '../references'
 import { parseRecordId, type RecordId, toRecordId } from '../resources/resource-id'
+import { docToText } from '../tiptap'
 
 // Define reaction types
 export type ReactionType = 'like' | 'emoji'
@@ -40,20 +43,19 @@ export interface CommentWithAttachments extends Comment {
 }
 // Define interface for creating a comment
 export interface CreateCommentInput {
-  content: string
+  /** Tiptap doc JSON — single source of truth for the comment body. */
+  contentJson: Record<string, unknown>
   recordId: RecordId
   createdById: string
   organizationId?: string
   parentId?: string | null
   fileAttachments?: FileAttachment[]
-  mentions?: string[] // Array of user IDs to mention
 }
 // Define interface for updating a comment
 export interface UpdateCommentInput {
   id: string
-  content?: string
-  fileAttachments?: FileAttachment[] // New typed file attachments
-  mentions?: string[] // New mentions to add
+  contentJson?: Record<string, unknown>
+  fileAttachments?: FileAttachment[]
 }
 // Define interface for adding a reaction
 export interface AddReactionInput {
@@ -165,7 +167,11 @@ export class CommentService {
       if (data.fileAttachments && data.fileAttachments.length > 0) {
         await this.verifyFileAttachments(data.fileAttachments)
       }
-      const { content, createdById, organizationId, parentId, fileAttachments, mentions } = data
+      const { contentJson, createdById, organizationId, parentId, fileAttachments } = data
+
+      // Extract inline references from the Tiptap doc — drives both notifications
+      // (for user references) and agent mention triggers (for agent references).
+      const recordIds = collectReferenceIds(contentJson)
 
       // Use transaction to ensure data consistency
       const result = await this.db.transaction(async (tx) => {
@@ -173,7 +179,7 @@ export class CommentService {
         const [comment] = await tx
           .insert(schema.Comment)
           .values({
-            content,
+            contentJson,
             entityId,
             entityDefinitionId: entityType,
             createdById,
@@ -187,9 +193,19 @@ export class CommentService {
         if (fileAttachments && fileAttachments.length > 0) {
           await this.addAttachmentsToComment(comment!.id, fileAttachments, tx)
         }
-        // Process mentions if provided
-        if (mentions && mentions.length > 0) {
-          await this.addMentionsToComment(comment!.id, mentions, tx)
+        // Persist references
+        if (recordIds.length > 0) {
+          await tx.insert(schema.CommentReference).values(
+            recordIds.map((recordId) => {
+              const { entityDefinitionId: defId, entityInstanceId: instId } =
+                parseRecordId(recordId)
+              return {
+                commentId: comment!.id,
+                entityDefinitionId: defId,
+                entityInstanceId: instId,
+              }
+            })
+          )
         }
 
         // Update Thread.latestCommentId if this is a thread comment
@@ -207,9 +223,13 @@ export class CommentService {
 
         return comment
       })
-      // Trigger notifications outside the transaction
+
+      if (!result) {
+        throw new Error('Failed to create comment')
+      }
+
+      // Trigger reply notification outside the transaction
       if (data.parentId) {
-        // Notify parent comment creator about the reply
         const parentComment = await this.db.query.Comment.findFirst({
           where: eq(schema.Comment.id, data.parentId),
           columns: { createdById: true },
@@ -218,33 +238,31 @@ export class CommentService {
           await this.notificationService.sendNotification({
             type: 'COMMENT_REPLY',
             userId: parentComment.createdById,
-            entityId: result!.id,
+            entityId: result.id,
             entityType: 'Comment',
             message: 'Someone replied to your comment',
             actorId: this.userId,
           })
         }
       }
-      // Notify mentioned users
-      if (mentions && mentions.length > 0) {
-        await Promise.all(
-          mentions.map((userId) => {
-            if (userId !== this.userId) {
-              return this.notificationService.sendNotification({
-                type: 'COMMENT_MENTION',
-                userId,
-                entityId: result!.id,
-                entityType: 'Comment',
-                message: 'You were mentioned in a comment',
-                actorId: this.userId,
-              })
-            }
+
+      // Notify mentioned users — agents fire triggers, not notifications.
+      for (const recordId of recordIds) {
+        const { entityDefinitionId: defId, entityInstanceId: instId } = parseRecordId(recordId)
+        if (defId === 'user' && instId !== this.userId) {
+          await this.notificationService.sendNotification({
+            type: 'COMMENT_MENTION',
+            userId: instId,
+            entityId: result.id,
+            entityType: 'Comment',
+            message: 'You were mentioned in a comment',
+            actorId: this.userId,
           })
-        )
+        }
       }
-      if (!result) {
-        throw new Error('Failed to create comment')
-      }
+
+      const previewText = docToText(contentJson).slice(0, 150)
+
       // Publish timeline event for whichever entity the comment is attached
       // to (thread / ticket / contact / custom entity).
       await publisher.publishLater({
@@ -254,7 +272,7 @@ export class CommentService {
           organizationId: this.organizationId,
           createdById: this.userId,
           recordId: data.recordId,
-          content: data.content.substring(0, 150),
+          content: previewText,
           hasAttachments: (data.fileAttachments?.length || 0) > 0,
         },
       } as CommentCreatedEvent)
@@ -268,9 +286,25 @@ export class CommentService {
             createdById: this.userId,
             recordId: data.recordId,
             parentCommentId: data.parentId,
-            content: data.content.substring(0, 150),
+            content: previewText,
           },
         } as CommentRepliedEvent)
+      }
+
+      // Fan out one comment:referenced event per reference row so the agent
+      // dispatcher can route each (def, inst) pair independently.
+      for (const recordId of recordIds) {
+        await publisher.publishLater({
+          type: 'comment:referenced',
+          data: {
+            commentId: result.id,
+            organizationId: this.organizationId,
+            mentionerUserId: this.userId,
+            parentRecordId: data.recordId,
+            referencedRecordId: recordId,
+            siblingReferences: recordIds.filter((r) => r !== recordId),
+          },
+        } as CommentReferencedEvent)
       }
 
       return result
@@ -285,18 +319,43 @@ export class CommentService {
    */
   async updateComment(data: UpdateCommentInput): Promise<Comment> {
     try {
-      const { id, content, fileAttachments, mentions } = data
+      const { id, contentJson, fileAttachments } = data
       await this.assertCanModifyComment(id, `You don't have permission to update this comment`)
       // Verify file access if provided
       if (fileAttachments && fileAttachments.length > 0) {
         await this.verifyFileAttachments(fileAttachments)
       }
+
+      // Diff references for newly-mentioned users (notification fan-out).
+      let newUserMentions: string[] = []
+      if (contentJson) {
+        const recordIds = collectReferenceIds(contentJson)
+        const existing = await this.db
+          .select({
+            entityDefinitionId: schema.CommentReference.entityDefinitionId,
+            entityInstanceId: schema.CommentReference.entityInstanceId,
+          })
+          .from(schema.CommentReference)
+          .where(eq(schema.CommentReference.commentId, id))
+        const existingKeys = new Set(
+          existing.map((r) => `${r.entityDefinitionId}:${r.entityInstanceId}`)
+        )
+        newUserMentions = recordIds
+          .filter((rid) => !existingKeys.has(rid))
+          .map((rid) => parseRecordId(rid))
+          .filter((p) => p.entityDefinitionId === 'user')
+          .map((p) => p.entityInstanceId)
+      }
+
       // Use transaction for data consistency
       const result = await this.db.transaction(async (tx) => {
-        // First update the basic comment data
+        // Update the comment body
         const [comment] = await tx
           .update(schema.Comment)
-          .set({ content: content ? content : undefined, updatedAt: new Date() })
+          .set({
+            ...(contentJson ? { contentJson } : {}),
+            updatedAt: new Date(),
+          })
           .where(eq(schema.Comment.id, id))
           .returning()
         // Handle file attachments if provided (replaces existing attachments)
@@ -317,29 +376,31 @@ export class CommentService {
             await this.addAttachmentsToComment(id, fileAttachments, tx)
           }
         }
-        // Handle mentions if provided
-        if (mentions && mentions.length > 0) {
-          // Get existing mentions to compare
-          const existingMentions = await tx.query.CommentMention.findMany({
-            where: eq(schema.CommentMention.commentId, id),
-            columns: { userId: true },
-          })
-          const existingUserIds = existingMentions.map((mention) => mention.userId)
-          // Find new mentions for notifications
-          const newMentions = mentions.filter((userId) => !existingUserIds.includes(userId))
-          // First delete existing mentions
-          await tx.delete(schema.CommentMention).where(eq(schema.CommentMention.commentId, id))
-          // Then add new mentions
-          await this.addMentionsToComment(id, mentions, tx)
-          // Store new mentions for notifications
-          return { comment, newMentions }
+        // Replace references when contentJson changes.
+        if (contentJson) {
+          const recordIds = collectReferenceIds(contentJson)
+          await tx.delete(schema.CommentReference).where(eq(schema.CommentReference.commentId, id))
+          if (recordIds.length > 0) {
+            await tx.insert(schema.CommentReference).values(
+              recordIds.map((recordId) => {
+                const { entityDefinitionId: defId, entityInstanceId: instId } =
+                  parseRecordId(recordId)
+                return {
+                  commentId: id,
+                  entityDefinitionId: defId,
+                  entityInstanceId: instId,
+                }
+              })
+            )
+          }
         }
-        return { comment, newMentions: [] }
+        return { comment }
       })
+
       // Notify newly mentioned users
-      if (result.newMentions && result.newMentions.length > 0) {
+      if (newUserMentions.length > 0) {
         await Promise.all(
-          result.newMentions.map((userId) => {
+          newUserMentions.map((userId) => {
             if (userId !== this.userId) {
               return this.notificationService.sendNotification({
                 type: 'COMMENT_MENTION',
@@ -360,6 +421,7 @@ export class CommentService {
       })
 
       if (comment) {
+        const previewText = docToText(contentJson ?? comment.contentJson).slice(0, 150)
         await publisher.publishLater({
           type: 'comment:updated',
           data: {
@@ -367,7 +429,7 @@ export class CommentService {
             organizationId: this.organizationId,
             createdById: this.userId,
             recordId: toRecordId(comment.entityDefinitionId, comment.entityId),
-            content: (content || comment.content).substring(0, 150),
+            content: previewText,
           },
         } as CommentUpdatedEvent)
       }
@@ -485,26 +547,14 @@ export class CommentService {
           isNull(schema.Comment.deletedAt) // Exclude soft-deleted comments
         ),
         with: {
-          mentions: {
-            with: {
-              user: {
-                columns: { id: true, name: true },
-              },
-            },
-          },
+          references: true,
           reactions: true, // Include all reactions for processing
           ...(includeReplies
             ? {
                 replies: {
                   where: isNull(schema.Comment.deletedAt), // Exclude soft-deleted replies
                   with: {
-                    mentions: {
-                      with: {
-                        user: {
-                          columns: { id: true, name: true },
-                        },
-                      },
-                    },
+                    references: true,
                     reactions: true, // Include all reactions for processing
                   },
                 },
@@ -555,24 +605,12 @@ export class CommentService {
           isNull(schema.Comment.deletedAt) // Exclude soft-deleted comments
         ),
         with: {
-          mentions: {
-            with: {
-              user: {
-                columns: { id: true, name: true },
-              },
-            },
-          },
+          references: true,
           reactions: true, // Include all reactions for processing
           replies: {
             where: isNull(schema.Comment.deletedAt), // Exclude soft-deleted replies
             with: {
-              mentions: {
-                with: {
-                  user: {
-                    columns: { id: true, name: true },
-                  },
-                },
-              },
+              references: true,
               reactions: true, // Include all reactions for processing
             },
           },
@@ -741,36 +779,6 @@ export class CommentService {
     }
   }
   /**
-   * Parse comment content to extract mentions
-   * This is useful when creating/updating comments with @username syntax
-   */
-  async parseMentions(content: string, organizationId: string): Promise<string[]> {
-    try {
-      // Extract all potential @mentions from content
-      const mentionRegex = /@(\w+)/g
-      const matches = content.match(mentionRegex) || []
-      logger.info('Mentions found', { matches })
-      // Extract usernames without the @ symbol
-      const usernames = matches.map((match) => match.substring(1))
-      logger.info('usernames found', { usernames })
-      if (usernames.length === 0) return []
-      // Look up users by their names in the organization
-      const users = await this.db.query.User.findMany({
-        where: and(
-          inArray(schema.User.name, usernames)
-          // TODO: Add membership filter when schema is available
-        ),
-        columns: { id: true },
-      })
-      // Return array of user IDs
-      logger.info('User IDs returned', { userIds: users.map((user) => user.id) })
-      return users.map((user) => user.id)
-    } catch (error) {
-      logger.error('Error parsing mentions', { error, content })
-      return []
-    }
-  }
-  /**
    * Fetch and group attachments for multiple comments using AttachmentService
    */
   private async fetchAttachmentsForComments(
@@ -830,19 +838,6 @@ export class CommentService {
     return ids
   }
 
-  private async addMentionsToComment(
-    commentId: string,
-    userIds: string[],
-    tx: Database | Transaction
-  ): Promise<void> {
-    try {
-      const createData = userIds.map((userId) => ({ commentId, userId, updatedAt: new Date() }))
-      await tx.insert(schema.CommentMention).values(createData)
-    } catch (error) {
-      logger.error('Error adding mentions to comment', { error, commentId, userIds })
-      throw error
-    }
-  }
   /**
    * Aggregate reactions for optimized output
    */

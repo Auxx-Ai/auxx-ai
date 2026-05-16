@@ -6,6 +6,7 @@ import type { ToolContext } from './tool-context'
 import type { AgentEvent, AgentToolDefinition, CapturedAction } from './types'
 import {
   buildToolDigest,
+  executeToolWithProgress,
   needsApproval,
   parseToolArgs,
   previewValue,
@@ -312,7 +313,10 @@ export async function processCaptureToolCalls(
     })
 
     try {
-      const result = await tool.execute(args, ctx)
+      // Capture mode is the headless / autonomous path — there's no chat
+      // consumer for `tool-progress` events, so we silently drain streaming
+      // tools via `executeToolWithProgress` without a progress callback.
+      const result = await executeToolWithProgress(tool, args, ctx)
       const digest = result.success ? buildToolDigest(tool, result.output, logger) : undefined
       events.push({
         type: 'tool-completed',

@@ -2734,16 +2734,15 @@ function buildInsertData(
     }
     case 'actor': {
       if (value.actorType === 'user') {
-        // User actor - store in actorId column
         return { actorId: value.id }
-      } else {
-        // Group actor - store in relatedEntityId/relatedEntityDefinitionId
-        // Note: entityDefinitionId for groups should be passed in field options
-        return {
-          relatedEntityId: value.id,
-          // relatedEntityDefinitionId will be set from field options if needed
-        }
       }
+      if (value.actorType === 'agent') {
+        // Agent actor — Agent.id in actorId, 'agent' marker in relatedEntityDefinitionId
+        // so reads can disambiguate from human users.
+        return { actorId: value.id, relatedEntityDefinitionId: 'agent' }
+      }
+      // Group actor — relatedEntityId; relatedEntityDefinitionId set from field options.
+      return { relatedEntityId: value.id }
     }
   }
 }
@@ -2789,14 +2788,12 @@ function buildUpdateData(value: TypedFieldValueInput): {
     }
     case 'actor': {
       if (value.actorType === 'user') {
-        // User actor - store in actorId column
         return { actorId: value.id }
-      } else {
-        // Group actor - store in relatedEntityId/relatedEntityDefinitionId
-        return {
-          relatedEntityId: value.id,
-        }
       }
+      if (value.actorType === 'agent') {
+        return { actorId: value.id, relatedEntityDefinitionId: 'agent' }
+      }
+      return { relatedEntityId: value.id }
     }
   }
 }
@@ -2861,12 +2858,12 @@ export function buildFieldValueRow(params: {
     }
     case 'actor': {
       if (value.actorType === 'user') {
-        // User actor - store in actorId column
         return { ...base, actorId: value.id }
-      } else {
-        // Group actor - store in relatedEntityId
-        return { ...base, relatedEntityId: value.id }
       }
+      if (value.actorType === 'agent') {
+        return { ...base, actorId: value.id, relatedEntityDefinitionId: 'agent' }
+      }
+      return { ...base, relatedEntityId: value.id }
     }
   }
 }

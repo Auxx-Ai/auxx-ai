@@ -14,6 +14,7 @@ import {
   type CachedAgent,
   type CachedGroup,
   getCachedAgents,
+  getCachedAgentsByIds,
   getCachedAgentsByUserIds,
   getCachedGroups,
   getCachedMembers,
@@ -115,35 +116,48 @@ export class ActorService {
     // Partition by type
     const userIds: string[] = []
     const groupIds: string[] = []
+    const agentIds: string[] = []
 
     for (const actorId of actorIds) {
       try {
         const { type, id } = parseActorId(actorId)
         if (type === 'user') userIds.push(id)
-        else groupIds.push(id)
+        else if (type === 'group') groupIds.push(id)
+        else if (type === 'agent') agentIds.push(id)
       } catch {}
     }
 
     // Batch fetch
-    const [users, groups] = await Promise.all([
+    const [users, groups, agents] = await Promise.all([
       userIds.length > 0 ? this.fetchUsers(userIds) : [],
       groupIds.length > 0 ? this.fetchGroups(groupIds) : [],
+      agentIds.length > 0 ? getCachedAgentsByIds(this.organizationId, agentIds) : [],
     ])
 
-    // Map user/group results
     for (const user of users) {
       result.set(user.actorId, user)
     }
     for (const group of groups) {
       result.set(group.actorId, group)
     }
+    for (const agent of agents) {
+      const actor = this.toAgentActor(agent)
+      result.set(actor.actorId, actor)
+    }
 
-    // Resolve any unresolved user:<id> as agent rows first, then fall through to system user
+    // Compatibility shim: many legacy code paths (Thread.assigneeIds,
+    // Task.assignedToUserId, ACTOR field rows, attributions, etc.) store an
+    // agent reference as the synthetic user id and address it via
+    // `user:<userId>`. Resolve those to the canonical AgentActor so display
+    // works regardless of which spelling the caller used. The Actor's primary
+    // `actorId` stays `agent:<id>` — we just stamp the legacy key in the map.
     const unresolvedUserIds = userIds.filter((id) => !result.has(toActorId('user', id)))
     if (unresolvedUserIds.length > 0) {
-      const agents = await getCachedAgentsByUserIds(this.organizationId, unresolvedUserIds)
-      for (const a of agents) {
-        result.set(toActorId('user', a.userId), this.toAgentActor(a))
+      const agentsByUser = await getCachedAgentsByUserIds(this.organizationId, unresolvedUserIds)
+      for (const a of agentsByUser) {
+        const actor = this.toAgentActor(a)
+        result.set(toActorId('user', a.userId), actor)
+        result.set(actor.actorId, actor)
       }
 
       const stillUnresolved = unresolvedUserIds.filter((id) => !result.has(toActorId('user', id)))
@@ -168,20 +182,28 @@ export class ActorService {
   async getById(actorId: ActorId): Promise<Actor | null> {
     const { type, id } = parseActorId(actorId)
 
+    if (type === 'agent') {
+      const agents = await getCachedAgentsByIds(this.organizationId, [id])
+      if (agents[0]) return this.toAgentActor(agents[0])
+      return null
+    }
+
     if (type === 'user') {
       const users = await this.fetchUsers([id])
       if (users[0]) return users[0]
-      // Then check agent
+      // Compatibility shim: legacy callsites still address an agent via the
+      // synthetic user id (Thread.assigneeIds, Task assignees, field-value
+      // ACTOR rows). Resolve those to the canonical AgentActor.
       const agents = await getCachedAgentsByUserIds(this.organizationId, [id])
       if (agents[0]) return this.toAgentActor(agents[0])
-      // Then system user
+      // Org's own system user.
       const systemActor = await this.fetchSystemUser()
       if (systemActor && systemActor.actorId === actorId) return systemActor
       return null
-    } else {
-      const groups = await this.fetchGroups([id])
-      return groups[0] ?? null
     }
+
+    const groups = await this.fetchGroups([id])
+    return groups[0] ?? null
   }
 
   /**
@@ -313,11 +335,12 @@ export class ActorService {
 
   private toAgentActor(agent: CachedAgent): AgentActor {
     return {
-      actorId: toActorId('user', agent.userId),
+      actorId: toActorId('agent', agent.id),
       type: 'agent',
       name: agent.name,
       avatarUrl: agent.avatarUrl ?? null,
       agentId: agent.id,
+      userId: agent.userId,
       slug: agent.slug,
       mentionable: agent.mentionable,
     }
