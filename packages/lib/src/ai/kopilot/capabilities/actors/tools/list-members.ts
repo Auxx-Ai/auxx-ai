@@ -8,6 +8,7 @@ import type { GetToolDeps } from '../../types'
 export function createListMembersTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'list_members',
+    displayName: 'List members',
     toolsetSlug: 'actors',
     idempotent: true,
     outputDigestSchema: ListMembersDigest,

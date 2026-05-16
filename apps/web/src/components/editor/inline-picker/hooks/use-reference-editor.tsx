@@ -45,17 +45,17 @@ export function useReferenceEditor(options: UseReferenceEditorOptions = {}) {
     )
 
     if (id.startsWith('user:') || id.startsWith('group:') || id.startsWith('agent:')) {
-      return <ActorBadge actorId={id as ActorId} className={ringCls} />
+      return <ActorBadge actorId={id as ActorId} className={ringCls} size='sm' />
     }
     if (id.startsWith('thread:') || id.startsWith('draft:')) {
       try {
         const { entityInstanceId } = parseRecordId(id as RecordId)
-        return <ThreadBadge threadId={entityInstanceId} className={ringCls} />
+        return <ThreadBadge threadId={entityInstanceId} className={ringCls} size='sm' />
       } catch {
-        return <RecordBadge recordId={id as RecordId} className={ringCls} />
+        return <RecordBadge recordId={id as RecordId} className={ringCls} size='sm' />
       }
     }
-    return <RecordBadge recordId={id as RecordId} className={ringCls} />
+    return <RecordBadge recordId={id as RecordId} className={ringCls} size='sm' />
   }, [])
 
   const picker = useInlinePicker({

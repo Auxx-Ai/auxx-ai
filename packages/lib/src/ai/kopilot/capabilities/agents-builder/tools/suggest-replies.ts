@@ -16,6 +16,7 @@ const LABEL_MAX = 80
 export function createSuggestRepliesTool(_getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'suggest_replies',
+    displayName: 'Suggest replies',
     description: `Suggest 2–4 short reply chips for the user.
 
 The client renders these above the composer; tapping a chip sends \`label\`

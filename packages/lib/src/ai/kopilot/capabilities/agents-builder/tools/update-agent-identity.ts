@@ -22,6 +22,7 @@ const DESCRIPTION_MAX = 280
 export function createUpdateAgentIdentityTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'update_agent_identity',
+    displayName: 'Update agent identity',
     description: `Update the agent's identity — any subset of name, description, avatarSlug.
 
 Provide ONLY the fields you want to change; omitted fields are left alone. At

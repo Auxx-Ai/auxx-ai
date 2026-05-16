@@ -89,6 +89,36 @@ describe('renderTriggerSection', () => {
     expect(out).toContain('Assigner: `user:u_42`')
   })
 
+  it('renders the Acting as line when agentUserId is provided', () => {
+    const out = renderTriggerSection(
+      {
+        kind: 'mention',
+        instructions: 'Take ownership.',
+        payload: {
+          kind: 'mention',
+          commentId: 'cmt_1',
+          parentRecordId: 'ticket:t_1',
+          mentionerUserId: 'u_42',
+        },
+      },
+      { agentUserId: 'agent_user_99' }
+    )
+    expect(out).toContain('## Acting as')
+    expect(out).toContain('actor:user:agent_user_99')
+  })
+
+  it('omits the Acting as line when agentUserId is null', () => {
+    const out = renderTriggerSection(
+      {
+        kind: 'scheduled',
+        instructions: null,
+        payload: { kind: 'scheduled', firedAt: '2026-05-15T10:00:00.000Z' },
+      },
+      { agentUserId: null }
+    )
+    expect(out).not.toContain('## Acting as')
+  })
+
   it('renders the app block', () => {
     const out = renderTriggerSection({
       kind: 'app',

@@ -17,6 +17,7 @@ const logger = createScopedLogger('kopilot-get-entity')
 export function createGetEntityTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'get_entity',
+    displayName: 'Get record',
     toolsetSlug: 'entities.search',
     idempotent: true,
     outputDigestSchema: GetEntityDigest,

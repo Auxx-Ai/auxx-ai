@@ -39,15 +39,14 @@ export function createCallModel(config: LLMAdapterConfig) {
       hasResponseFormat: !!responseFormat,
     })
 
-    // Log messages for debugging (truncate long content)
-    logger.debug('LLM messages', {
+    // Full message contents — info so they land in the per-session run log.
+    logger.info('LLM messages', {
       model,
       messages: messages.map((m, i) => ({
         index: i,
         role: m.role,
         contentLength: m.content?.length ?? 0,
-        contentPreview:
-          typeof m.content === 'string' ? m.content.slice(0, 200) : '[non-string content]',
+        content: typeof m.content === 'string' ? m.content : '[non-string content]',
       })),
     })
 

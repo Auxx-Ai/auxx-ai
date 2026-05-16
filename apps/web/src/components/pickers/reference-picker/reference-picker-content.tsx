@@ -14,7 +14,7 @@ import { ActorPickerContent } from '../actor-picker/actor-picker-content'
 import { ArticleReferenceList } from '../article-picker/article-reference-list'
 import { RecordPickerContent } from '../record-picker/record-picker-content'
 import { ThreadReferenceList } from '../thread-picker/thread-reference-list'
-import { ToolsetReferenceList } from '../toolset-picker/toolset-reference-list'
+import { ToolReferenceList } from '../tool-picker/tool-reference-list'
 
 export type { ReferenceTab }
 
@@ -203,7 +203,7 @@ export function ReferencePickerContent({
           />
         )}
         {tab === 'tools' && (
-          <ToolsetReferenceList
+          <ToolReferenceList
             externalSearch={query}
             onSelectSingle={(id) => onSelect(id as unknown as RecordId)}
           />

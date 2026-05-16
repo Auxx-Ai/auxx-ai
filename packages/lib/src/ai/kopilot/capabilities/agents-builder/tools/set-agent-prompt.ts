@@ -20,6 +20,7 @@ const MARKDOWN_MAX_BYTES = 20_000
 export function createSetAgentPromptTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'set_agent_prompt',
+    displayName: 'Set agent prompt',
     description: `Replace the agent's persona prompt with a markdown document.
 
 The persona prompt is the agent's instructions: tone, role, constraints,

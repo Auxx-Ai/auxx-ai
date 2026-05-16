@@ -16,6 +16,7 @@ import type { GetToolDeps } from '../../types'
 export function createResolveBlockByHeadingTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'resolve_block_by_heading',
+    displayName: 'Find article section',
     toolsetSlug: 'knowledge',
     idempotent: true,
     description:

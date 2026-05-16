@@ -1,10 +1,29 @@
 // packages/lib/src/ai/kopilot/capabilities/registry.ts
 
 import type { AgentToolDefinition } from '../../agent-framework/types'
-import type { CapabilityRegistry, PageCapability } from './types'
+import type { CapabilityRegistry, PageCapability, SystemPromptAdditionContext } from './types'
 
 /** Registration key meaning "applies to every page". */
 const GLOBAL_PAGE = '__global__'
+
+type AdditionFragment = NonNullable<PageCapability['systemPromptAddition']>
+
+interface StoredPage {
+  page: string
+  tools: AgentToolDefinition[]
+  /**
+   * Fragments are stored in registration order and resolved lazily at read
+   * time. A functional fragment can return different prose depending on
+   * which tools survived runtime filtering, so it can't be pre-concatenated
+   * with neighbouring fragments at register time.
+   */
+  additions: AdditionFragment[]
+  capabilities?: string[]
+}
+
+function resolveAddition(fragment: AdditionFragment, ctx: SystemPromptAdditionContext): string {
+  return typeof fragment === 'function' ? fragment(ctx) : fragment
+}
 
 /**
  * Create a capability registry that maps pages to their tool sets.
@@ -18,7 +37,7 @@ const GLOBAL_PAGE = '__global__'
  * spend context on irrelevant tool descriptions, and violate F20.
  */
 export function createCapabilityRegistry(): CapabilityRegistry {
-  const pages = new Map<string, PageCapability>()
+  const pages = new Map<string, StoredPage>()
 
   return {
     getTools(page: string): AgentToolDefinition[] {
@@ -37,13 +56,23 @@ export function createCapabilityRegistry(): CapabilityRegistry {
       return [...pages.keys()]
     },
 
-    getSystemPromptAddition(page: string): string | undefined {
-      const additions: string[] = []
+    getSystemPromptAddition(page: string, ctx: SystemPromptAdditionContext): string | undefined {
+      const rendered: string[] = []
       const global = pages.get(GLOBAL_PAGE)
-      if (global?.systemPromptAddition) additions.push(global.systemPromptAddition)
+      if (global) {
+        for (const fragment of global.additions) {
+          const text = resolveAddition(fragment, ctx).trim()
+          if (text) rendered.push(text)
+        }
+      }
       const scoped = pages.get(page)
-      if (scoped?.systemPromptAddition) additions.push(scoped.systemPromptAddition)
-      return additions.length > 0 ? additions.join('\n\n') : undefined
+      if (scoped) {
+        for (const fragment of scoped.additions) {
+          const text = resolveAddition(fragment, ctx).trim()
+          if (text) rendered.push(text)
+        }
+      }
+      return rendered.length > 0 ? rendered.join('\n\n') : undefined
     },
 
     getCapabilitiesSummary(): string[] {
@@ -59,15 +88,18 @@ export function createCapabilityRegistry(): CapabilityRegistry {
       if (existing) {
         existing.tools.push(...capability.tools)
         if (capability.systemPromptAddition) {
-          existing.systemPromptAddition = existing.systemPromptAddition
-            ? `${existing.systemPromptAddition}\n\n${capability.systemPromptAddition}`
-            : capability.systemPromptAddition
+          existing.additions.push(capability.systemPromptAddition)
         }
         if (capability.capabilities) {
           existing.capabilities = [...(existing.capabilities ?? []), ...capability.capabilities]
         }
       } else {
-        pages.set(capability.page, { ...capability })
+        pages.set(capability.page, {
+          page: capability.page,
+          tools: [...capability.tools],
+          additions: capability.systemPromptAddition ? [capability.systemPromptAddition] : [],
+          capabilities: capability.capabilities ? [...capability.capabilities] : undefined,
+        })
       }
     },
   }

@@ -17,6 +17,7 @@ import { formatActorResolutionError, resolveActorValues } from './resolve-actor-
 export function createUpdateEntityTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'update_entity',
+    displayName: 'Update record',
     toolsetSlug: 'entities.write',
     outputDigestSchema: UpdateEntityDigest,
     buildDigest: (output) => {

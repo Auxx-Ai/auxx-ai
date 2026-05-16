@@ -22,11 +22,30 @@ export interface TriggerContext {
   payload: Record<string, unknown>
 }
 
-export function renderTriggerSection(triggerContext: TriggerContext | undefined): string {
+export interface RenderTriggerSectionOptions {
+  /**
+   * Backing User row id of the agent that is running. When present, surfaced
+   * as `Acting as: actor:user:<id>` so the model can self-identify on
+   * ACTOR-typed fields (assignees, owners) without the chat "caller"
+   * preamble that interactive runs use.
+   */
+  agentUserId?: string | null
+}
+
+export function renderTriggerSection(
+  triggerContext: TriggerContext | undefined,
+  options: RenderTriggerSectionOptions = {}
+): string {
   if (!triggerContext) return ''
 
   const blocks: string[] = []
   blocks.push(renderKindBlock(triggerContext))
+
+  if (options.agentUserId) {
+    blocks.push(
+      `## Acting as\n\nactor:user:${options.agentUserId} — use this id on ACTOR-typed fields (assignee, owner, ownership-style custom fields) when the trigger instructions tell you to take ownership or self-assign.`
+    )
+  }
 
   if (triggerContext.instructions?.trim()) {
     blocks.push(`## Trigger instructions\n\n${triggerContext.instructions.trim()}`)

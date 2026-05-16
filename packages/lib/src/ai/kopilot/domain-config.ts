@@ -95,8 +95,11 @@ export function createKopilotDomainConfig(
   })
 
   const capabilities = capabilityRegistry?.getCapabilitiesSummary() ?? []
+  const resolvedToolNames = new Set(resolvedTools.map((t) => t.name))
   const toolsetPromptAdditions =
-    capabilityRegistry && page ? (capabilityRegistry.getSystemPromptAddition(page) ?? '') : ''
+    capabilityRegistry && page
+      ? (capabilityRegistry.getSystemPromptAddition(page, { toolNames: resolvedToolNames }) ?? '')
+      : ''
   const agent = createKopilotAgent({
     tools: resolvedTools,
     capabilities,

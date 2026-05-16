@@ -45,16 +45,34 @@ export function buildKopilotPrompt(args: {
   agentConfig?: ResolvedAgentConfig
   /** Present iff this run was fired by an AgentTrigger. */
   triggerContext?: TriggerContext
+  /**
+   * Optional resolver for inline `reference` chips inside the agent's
+   * persona prompt (`tool:<name>`, `toolset:<slug>`, etc.). When omitted,
+   * chips fall back to the default `[reference](id)` form — fine for
+   * personas that never embed references.
+   */
+  instructionsReferences?: (id: string) => string
 }): string {
+  // Autonomous runs are always backed by a user-authored agent; the master
+  // Kopilot never runs on a trigger. If this ever flips, the trigger
+  // banner and persona will contradict each other — fail fast instead.
+  if (args.triggerContext && (!args.agentConfig || args.agentConfig.agentId === null)) {
+    throw new Error('buildKopilotPrompt: triggerContext set without a user-authored agentConfig')
+  }
+  const runMode: 'interactive' | 'autonomous' = args.triggerContext ? 'autonomous' : 'interactive'
   const persona =
     args.agentConfig && args.agentConfig.agentId !== null
       ? buildAgentPersonaPrompt({
           agentName: args.agentConfig.name,
           description: args.agentConfig.description ?? undefined,
-          instructions: docToText(args.agentConfig.prompt),
+          instructions: docToText(args.agentConfig.prompt, {
+            references: args.instructionsReferences,
+          }),
         })
       : buildKopilotMasterPersona({ capabilities: args.capabilities })
-  const triggerSection = renderTriggerSection(args.triggerContext)
+  const triggerSection = renderTriggerSection(args.triggerContext, {
+    agentUserId: args.agentConfig?.userId ?? null,
+  })
   const core = buildCoreRuntimePrompt({
     domainState: args.domainState,
     entityCatalog: args.entityCatalog,
@@ -62,6 +80,7 @@ export function buildKopilotPrompt(args: {
     currentUser: args.currentUser,
     integrations: args.integrations,
     toolsetPromptAdditions: args.toolsetPromptAdditions,
+    runMode,
   })
   return `${persona}${triggerSection}\n\n${core}`
 }

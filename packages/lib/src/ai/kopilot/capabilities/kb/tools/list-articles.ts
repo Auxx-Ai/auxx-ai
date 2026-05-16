@@ -19,6 +19,7 @@ const PREVIEW_CHARS = 4_000
 export function createListArticlesTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'list_articles',
+    displayName: 'List articles',
     toolsetSlug: 'knowledge',
     idempotent: true,
     description:

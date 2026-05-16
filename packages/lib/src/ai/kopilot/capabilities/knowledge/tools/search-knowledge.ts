@@ -22,6 +22,7 @@ type Source = 'kb' | 'rag' | 'both'
 export function createSearchKnowledgeTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'search_knowledge',
+    displayName: 'Search knowledge',
     toolsetSlug: 'knowledge',
     idempotent: true,
     outputDigestSchema: ArticleSearchDigest,

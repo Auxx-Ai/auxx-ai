@@ -148,6 +148,7 @@ export async function createAppCapabilities(deps: {
 
       const buildAgentTool = (execute: AgentToolDefinition['execute']): AgentToolDefinition => ({
         name: registeredName,
+        displayName: tool.name || registeredName,
         description: tool.description,
         parameters: tool.inputsJsonSchema,
         requiresApproval:

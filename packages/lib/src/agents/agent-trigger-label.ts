@@ -1,5 +1,6 @@
 // packages/lib/src/agents/agent-trigger-label.ts
 
+import cronstrue from 'cronstrue'
 import type { ScheduledTriggerConfig } from '../workflows/cron-pattern'
 
 /**
@@ -55,7 +56,8 @@ function baseLabel(trigger: {
 
 function scheduledLabel(config: ScheduledTriggerConfig): string {
   if (config.triggerInterval === 'custom') {
-    return config.customCron ? `Custom (${config.customCron})` : 'Custom schedule'
+    if (!config.customCron) return 'Custom schedule'
+    return humanizeCron(config.customCron)
   }
   const value = config.timeBetweenTriggers[config.triggerInterval]
   if (typeof value !== 'number' || value <= 0) {
@@ -63,4 +65,20 @@ function scheduledLabel(config: ScheduledTriggerConfig): string {
   }
   const unit = value === 1 ? config.triggerInterval.replace(/s$/, '') : config.triggerInterval
   return `Every ${value} ${unit}`
+}
+
+/**
+ * Cron expressions in our system can be 5-field (standard) or 6-field
+ * (BullMQ, with leading seconds). cronstrue only parses 5-field reliably,
+ * so we strip the seconds slot when present before describing.
+ */
+function humanizeCron(expr: string): string {
+  const trimmed = expr.trim()
+  const fields = trimmed.split(/\s+/)
+  const fiveField = fields.length === 6 ? fields.slice(1).join(' ') : trimmed
+  try {
+    return cronstrue.toString(fiveField, { verbose: false, use24HourTimeFormat: false })
+  } catch {
+    return `Custom (${expr})`
+  }
 }

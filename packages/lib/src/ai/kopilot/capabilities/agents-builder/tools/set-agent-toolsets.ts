@@ -20,6 +20,7 @@ const MAX_TOOLSETS = 50
 export function createSetAgentToolsetsTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'set_agent_toolsets',
+    displayName: 'Set agent toolsets',
     description: `Update the agent's toolset configuration.
 
 Each row patches the agent's record for one toolset slug:

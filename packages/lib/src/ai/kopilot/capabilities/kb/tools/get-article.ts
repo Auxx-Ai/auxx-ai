@@ -22,6 +22,7 @@ import { buildActiveArticleSnapshot } from '../snapshot-pipeline'
 export function createGetArticleTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'get_article',
+    displayName: 'Get article',
     toolsetSlug: 'knowledge',
     idempotent: true,
     description:

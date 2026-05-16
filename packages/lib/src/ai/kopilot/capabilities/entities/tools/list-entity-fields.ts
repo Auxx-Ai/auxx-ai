@@ -9,6 +9,7 @@ import { buildListEntityFieldsOutput } from './list-entity-fields-output'
 export function createListEntityFieldsTool(_getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'list_entity_fields',
+    displayName: 'List entity fields',
     toolsetSlug: 'entities.search',
     idempotent: true,
     outputDigestSchema: ListEntityFieldsDigest,

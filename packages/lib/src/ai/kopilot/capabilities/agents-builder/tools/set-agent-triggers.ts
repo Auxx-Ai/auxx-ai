@@ -53,6 +53,7 @@ type ParsedTrigger = ParsedScheduledTrigger | ParsedEventTrigger
 export function createSetAgentTriggersTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'set_agent_triggers',
+    displayName: 'Set agent triggers',
     description: `Replace the agent's trigger set with the provided list.
 
 Triggers tell the agent when to run autonomously. Default: no triggers — the
