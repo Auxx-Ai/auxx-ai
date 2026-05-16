@@ -4,7 +4,9 @@
 import { NATIVE_GROUP_CATALOG, type ToolsetCatalogEntry } from '@auxx/lib/agents/client'
 import { EntityIcon } from '@auxx/ui/components/icons'
 import { Skeleton } from '@auxx/ui/components/skeleton'
+import { Switch } from '@auxx/ui/components/switch'
 import { TreeRow } from '@auxx/ui/components/tree-row'
+import { pluralize } from '@auxx/utils/strings'
 import { useCallback, useMemo, useState } from 'react'
 import { api } from '~/trpc/react'
 import type { AgentDetail } from '../../../store/agent-store'
@@ -47,7 +49,11 @@ export function ToolsSectionContent({ agent, onAutosaveChange }: ToolsSectionCon
     [onAutosaveChange]
   )
 
-  const { toggleToolset } = useToolsetMutations(agent.id, agent.slug, handleSavingChange)
+  const { toggleToolset, toggleToolsets } = useToolsetMutations(
+    agent.id,
+    agent.slug,
+    handleSavingChange
+  )
 
   const stateBySlug = useMemo<Map<string, ToolsetRowState>>(() => {
     const map = new Map<string, ToolsetRowState>()
@@ -83,18 +89,45 @@ export function ToolsSectionContent({ agent, onAutosaveChange }: ToolsSectionCon
     })
   }, [])
 
+  const toggleGroupEnabled = useCallback(
+    async (group: string, entries: ToolsetCatalogEntry[], nextEnabled: boolean) => {
+      const targets = entries.filter((entry) => {
+        const state = stateBySlug.get(entry.slug)
+        const source = state?.source ?? 'manual'
+        if (source === 'mention') return false
+        return (state?.enabled ?? false) !== nextEnabled
+      })
+      if (targets.length === 0) return
+      if (!nextEnabled) {
+        setCollapsed((prev) => {
+          if (prev.has(group)) return prev
+          const next = new Set(prev)
+          next.add(group)
+          return next
+        })
+      }
+      await toggleToolsets(targets.map((entry) => ({ slug: entry.slug, enabled: nextEnabled })))
+    },
+    [stateBySlug, toggleToolsets]
+  )
+
   if (catalogQuery.isLoading || !catalogQuery.data) {
     return (
-      <div className='px-3 pb-6 space-y-3'>
-        <Skeleton className='h-12 w-full' />
-        <Skeleton className='h-12 w-full' />
-        <Skeleton className='h-12 w-full' />
+      <div className='flex flex-col pe-4'>
+        {[0, 1, 2].map((i) => (
+          <div key={i} className='ps-2'>
+            <div className='flex items-center gap-2 px-1 h-9'>
+              <Skeleton className='size-5 rounded-md' />
+              <Skeleton className='h-4 w-32' />
+            </div>
+          </div>
+        ))}
       </div>
     )
   }
 
   return (
-    <div className='flex flex-col pe-3'>
+    <div className='flex flex-col pe-4'>
       {grouped.map(([group, entries]) => {
         const meta = NATIVE_GROUP_CATALOG[group]
         const isOpen = !collapsed.has(group)
@@ -102,6 +135,11 @@ export function ToolsSectionContent({ agent, onAutosaveChange }: ToolsSectionCon
           (acc, e) => acc + (stateBySlug.get(e.slug)?.enabled ? 1 : 0),
           0
         )
+        const toggleableCount = entries.reduce(
+          (acc, e) => acc + ((stateBySlug.get(e.slug)?.source ?? 'manual') !== 'mention' ? 1 : 0),
+          0
+        )
+        const groupEnabled = enabledCount > 0
         return (
           <TreeRow
             key={group}
@@ -113,9 +151,19 @@ export function ToolsSectionContent({ agent, onAutosaveChange }: ToolsSectionCon
             isOpen={isOpen}
             onToggleOpen={() => toggleGroup(group)}
             actions={
-              <span className='text-xs text-muted-foreground'>
-                {enabledCount}/{entries.length}
-              </span>
+              <div className='flex items-center gap-2'>
+                <span className='text-xs text-muted-foreground'>
+                  {enabledCount}/{entries.length} {pluralize(entries.length, 'tool')}
+                </span>
+                <Switch
+                  size='xs'
+                  checked={groupEnabled}
+                  disabled={toggleableCount === 0}
+                  onCheckedChange={(checked) => {
+                    void toggleGroupEnabled(group, entries, checked)
+                  }}
+                />
+              </div>
             }>
             {entries.map((entry) => {
               const state = stateBySlug.get(entry.slug) ?? {

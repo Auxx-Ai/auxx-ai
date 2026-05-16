@@ -185,10 +185,11 @@ export function RecordPickerContent({
     }
   }, [entityDefinitionId, entityDefinitionIds, debouncedSearch, showInput])
 
-  // Search query — in mention mode (input hidden), always fire so the
-  // empty-query state shows recent records instead of blank.
+  // Search query — fire on open (empty query → recent records) when the picker owns its input
+  // or in mention mode (input hidden). Only gate on a typed query when the search box is
+  // controlled externally (e.g. recipient-input shares its own input).
   const { data: searchResults, isLoading: isSearching } = api.record.search.useQuery(searchParams, {
-    enabled: !showInput || debouncedSearch.trim().length > 0,
+    enabled: !showInput || externalSearch === undefined || debouncedSearch.trim().length > 0,
     staleTime: 30_000,
     placeholderData: keepPreviousData,
   })

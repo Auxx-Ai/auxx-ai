@@ -6,14 +6,15 @@ import type { RecordId } from '@auxx/lib/resources/client'
 import { cn } from '@auxx/ui/lib/utils'
 import { useEffect, useImperativeHandle, useMemo, useRef } from 'react'
 import {
+  DEFAULT_TABS,
   type ReferenceTab,
   TAB_LABEL,
-  TAB_ORDER,
 } from '~/components/editor/inline-picker/nodes/reference-picker-node'
 import { ActorPickerContent } from '../actor-picker/actor-picker-content'
 import { ArticleReferenceList } from '../article-picker/article-reference-list'
 import { RecordPickerContent } from '../record-picker/record-picker-content'
 import { ThreadReferenceList } from '../thread-picker/thread-reference-list'
+import { ToolsetReferenceList } from '../toolset-picker/toolset-reference-list'
 
 export type { ReferenceTab }
 
@@ -37,6 +38,14 @@ export interface ReferencePickerContentProps {
   ref?: React.Ref<ReferencePickerHandle>
   /** Optional className for the outer Command shell */
   className?: string
+  /**
+   * Tabs to render. Defaults to `DEFAULT_TABS` (the four legacy tabs). Pass
+   * `[...DEFAULT_TABS, 'tools']` on admin-facing surfaces (persona editor)
+   * to opt into the tools tab. Must match the `tabs` option passed to the
+   * paired `ReferencePickerNode` so digit shortcuts / Tab cycling stay in
+   * sync with the visible strip.
+   */
+  tabs?: ReferenceTab[]
 }
 
 /**
@@ -51,6 +60,7 @@ export function ReferencePickerContent({
   onTabChange,
   ref,
   className,
+  tabs = DEFAULT_TABS,
 }: ReferencePickerContentProps) {
   const noop = useMemo(() => () => {}, [])
   const containerRef = useRef<HTMLDivElement>(null)
@@ -126,7 +136,7 @@ export function ReferencePickerContent({
   return (
     <div ref={containerRef} className={cn('rounded-lg', className)}>
       <div className='flex items-center gap-0 border-b px-1 shrink-0' role='tablist'>
-        {TAB_ORDER.map((t, idx) => (
+        {tabs.map((t, idx) => (
           <button
             key={t}
             type='button'
@@ -190,6 +200,12 @@ export function ReferencePickerContent({
             onSelectSingle={(id) => onSelect(id)}
             externalSearch={query}
             showInput={false}
+          />
+        )}
+        {tab === 'tools' && (
+          <ToolsetReferenceList
+            externalSearch={query}
+            onSelectSingle={(id) => onSelect(id as unknown as RecordId)}
           />
         )}
       </div>

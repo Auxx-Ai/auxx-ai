@@ -99,7 +99,6 @@ function RecordLeafRow({ recordId, agent, mutations, depth }: RecordLeafRowProps
       icon={<FileText className='size-4' />}
       title={title || (isLoading ? '…' : 'Untitled')}
       depth={depth}
-      dimmed={effectiveMode === 'exclude'}
       actions={
         <AgentScopeActions
           kind='leaf'

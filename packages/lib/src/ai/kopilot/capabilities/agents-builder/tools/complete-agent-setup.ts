@@ -41,7 +41,18 @@ finalization signal. No arguments — operates on the agent in session context.`
         }
       }
 
-      await completeAgentSetup(agentRef.id, agentDeps.organizationId)
+      try {
+        await completeAgentSetup(agentRef.id, agentDeps.organizationId)
+      } catch (err) {
+        // Surface server-side preconditions (empty prompt / missing toolset
+        // / missing name) as a tool error so the model can fix the gap
+        // instead of erroring out the turn.
+        return {
+          success: false,
+          output: null,
+          error: err instanceof Error ? err.message : String(err),
+        }
+      }
 
       return {
         success: true,

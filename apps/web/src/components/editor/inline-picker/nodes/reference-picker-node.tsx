@@ -30,23 +30,30 @@ function pickerQueryText(node: import('@tiptap/pm/model').Node): string {
   return node.textContent.replace(/​/g, '')
 }
 
-export type ReferenceTab = 'people' | 'records' | 'messages' | 'articles'
+export type ReferenceTab = 'people' | 'records' | 'messages' | 'articles' | 'tools'
 
-export const TAB_ORDER: ReferenceTab[] = ['people', 'records', 'messages', 'articles']
+/**
+ * Default tab set rendered by `@`-pickers. Opt-in tabs (currently just
+ * `'tools'`) are NOT included here — they ship only in admin-facing surfaces
+ * that explicitly pass `tabs: [...DEFAULT_TABS, 'tools']`. Opt-in defaults
+ * keep tabs like `tools` from accidentally appearing in customer-facing
+ * editors (mail composer, KB articles).
+ */
+export const DEFAULT_TABS: ReferenceTab[] = ['people', 'records', 'messages', 'articles']
 
 export const TAB_LABEL: Record<ReferenceTab, string> = {
   people: 'People',
   records: 'Records',
   messages: 'Messages',
   articles: 'Articles',
+  tools: 'Tools',
 }
 
-/** Digit → tab. `@2foo` switches to Records before search begins. */
-const DIGIT_TAB: Partial<Record<string, ReferenceTab>> = {
-  '1': 'people',
-  '2': 'records',
-  '3': 'messages',
-  '4': 'articles',
+/** Resolve digit (1–9) → tab from the configured tab list. */
+function digitToTab(digit: string, tabs: readonly ReferenceTab[]): ReferenceTab | null {
+  const idx = Number.parseInt(digit, 10)
+  if (!Number.isFinite(idx) || idx < 1 || idx > tabs.length) return null
+  return tabs[idx - 1] ?? null
 }
 
 const pickerPluginKey = new PluginKey('reference-picker-keys')
@@ -64,6 +71,14 @@ interface ReferencePickerOptions {
    * stops the event so it doesn't move the document cursor.
    */
   onArrowVertical?: (direction: 1 | -1) => boolean
+  /**
+   * Tabs this picker exposes. Drives the initial chip tab, digit shortcuts
+   * (1–N), and Tab/Shift+Tab cycling. The popover (`ReferencePickerContent`)
+   * must be passed the same list — they're paired but not auto-synced
+   * because the popover lives in React and this node lives in ProseMirror.
+   * Defaults to `DEFAULT_TABS`.
+   */
+  tabs?: ReferenceTab[]
 }
 
 function findPickerNode(state: import('@tiptap/pm/state').EditorState) {
@@ -191,6 +206,7 @@ export const ReferencePickerNode = Node.create<ReferencePickerOptions>({
     return {
       onEnter: undefined,
       onArrowVertical: undefined,
+      tabs: DEFAULT_TABS,
     }
   },
 
@@ -217,6 +233,7 @@ export const ReferencePickerNode = Node.create<ReferencePickerOptions>({
   },
 
   addInputRules() {
+    const options = this.options
     return [
       new InputRule({
         // `@` at start-of-block or after whitespace. Capture preceding char so
@@ -250,7 +267,8 @@ export const ReferencePickerNode = Node.create<ReferencePickerOptions>({
           // browser produces no `beforeinput` events when the user types →
           // PM never dispatches a textInput transaction → keystrokes are
           // silently dropped (confirmed via diagnostic logs).
-          const node = nodeType.create({ tab: 'people' }, state.schema.text(ZWSP))
+          const initialTab = options.tabs?.[0] ?? 'people'
+          const node = nodeType.create({ tab: initialTab }, state.schema.text(ZWSP))
           tr.replaceRangeWith(atFrom, atTo, node)
           // Place the cursor after the seed ZWSP (inside the chip, offset 2:
           // 1 to enter the chip + 1 to skip the ZWSP).
@@ -493,8 +511,9 @@ export const ReferencePickerNode = Node.create<ReferencePickerOptions>({
               return false
             }
 
-            // --- Digit 1–4: tab quick-access ---
-            const digitTab = DIGIT_TAB[event.key]
+            // --- Digit 1–N: tab quick-access (where N = configured tabs) ---
+            const tabs = options.tabs ?? DEFAULT_TABS
+            const digitTab = digitToTab(event.key, tabs)
             if (digitTab) {
               const canSwitch = isNodeSelected || realQueryLen === 0
               if (canSwitch) {
@@ -514,9 +533,10 @@ export const ReferencePickerNode = Node.create<ReferencePickerOptions>({
             // --- Tab / Shift+Tab: cycle tabs ---
             if (event.key === 'Tab') {
               event.preventDefault()
-              const idx = TAB_ORDER.indexOf((pickerNode.attrs.tab ?? 'people') as ReferenceTab)
+              const currentTab = (pickerNode.attrs.tab ?? tabs[0] ?? 'people') as ReferenceTab
+              const idx = Math.max(0, tabs.indexOf(currentTab))
               const dir = event.shiftKey ? -1 : 1
-              const next = TAB_ORDER[(idx + dir + TAB_ORDER.length) % TAB_ORDER.length]!
+              const next = tabs[(idx + dir + tabs.length) % tabs.length]!
               const tr = state.tr.setNodeMarkup(chipFrom, undefined, {
                 ...pickerNode.attrs,
                 tab: next,

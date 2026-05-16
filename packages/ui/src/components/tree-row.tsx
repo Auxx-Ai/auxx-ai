@@ -38,8 +38,6 @@ export interface TreeRowProps {
    */
   children?: React.ReactNode
 
-  /** Dimmed/exclude visual state. */
-  dimmed?: boolean
   /** Class for the outer container. */
   className?: string
   /** Class for the single-line row itself. */
@@ -66,7 +64,6 @@ export function TreeRow({
   onToggleOpen,
   onTitleClick,
   children,
-  dimmed,
   className,
   rowClassName,
 }: TreeRowProps) {
@@ -106,7 +103,6 @@ export function TreeRow({
             'group/tree-row flex items-center justify-between rounded-md text-sm px-1',
             'text-muted-foreground hover:bg-background',
             expandable && 'cursor-pointer',
-            dimmed && 'opacity-60',
             rowClassName
           )}
           onClick={expandable ? onToggleOpen : undefined}>

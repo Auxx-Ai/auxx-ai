@@ -1,7 +1,10 @@
 // apps/web/src/components/editor/rich-text/reference-picker-extensions.ts
 
 import { createInlineNode } from '../inline-picker/core/inline-node'
-import { ReferencePickerNode } from '../inline-picker/nodes/reference-picker-node'
+import {
+  ReferencePickerNode,
+  type ReferenceTab,
+} from '../inline-picker/nodes/reference-picker-node'
 import { renderReferenceBadge } from './render-reference-badge'
 
 export interface BuildReferencePickerExtensionsOptions {
@@ -9,6 +12,13 @@ export interface BuildReferencePickerExtensionsOptions {
   onPickerEnter?: () => boolean
   /** Called when ArrowUp/Down is pressed inside the open picker chip. */
   onPickerArrowVertical?: (direction: 1 | -1) => boolean
+  /**
+   * Tabs the picker exposes. Defaults to `DEFAULT_TABS`. Pass
+   * `[...DEFAULT_TABS, 'tools']` on admin-facing surfaces (persona editor) to
+   * opt in to the Tools tab. The matching `<ReferencePickerContent>` mount
+   * must be passed the same list.
+   */
+  referenceTabs?: ReferenceTab[]
 }
 
 /**
@@ -51,6 +61,7 @@ export function buildReferencePickerExtensions(
     ReferencePickerNode.configure({
       onEnter: options.onPickerEnter,
       onArrowVertical: options.onPickerArrowVertical,
+      ...(options.referenceTabs ? { tabs: options.referenceTabs } : {}),
     }),
   ]
 }

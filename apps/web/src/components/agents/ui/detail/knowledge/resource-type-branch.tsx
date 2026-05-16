@@ -59,7 +59,6 @@ export function ResourceTypeBranch({ resource, agent, mutations }: ResourceTypeB
       expandable
       isOpen={isOpen}
       onToggleOpen={() => setIsOpen((o) => !o)}
-      dimmed={effectiveMode === 'exclude'}
       actions={
         <AgentScopeActions
           kind='container'

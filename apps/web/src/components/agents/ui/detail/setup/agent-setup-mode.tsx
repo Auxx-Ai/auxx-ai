@@ -39,7 +39,7 @@ export function AgentSetupMode({ agent }: AgentSetupModeProps) {
 
   const step = deriveSetupStep(agent)
   const completeness = computeCompleteness(agent)
-  console.log({ step, completeness })
+
   return (
     <ScrollArea className='flex-1 min-h-0'>
       <div className='mx-auto flex-1 flex max-w-2xl flex-col items-center justify-between gap-8 px-6 pt-12 pb-6 text-center'>
