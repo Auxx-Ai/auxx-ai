@@ -49,6 +49,16 @@ export interface LLMInvocationRequest {
   // Tool execution
   toolExecutor?: ToolExecutor
   callbacks?: AICallbacks
+
+  /**
+   * When true, ignore the org's provider-type preference and always
+   * use the platform's SYSTEM credentials for this call. The org is
+   * still billed (Tier-1 credit deduction runs unconditionally) and
+   * still subject to the Tier-2 abuse rate limit. Used by the agent
+   * builder, which must pin its model regardless of whether the org
+   * is on SYSTEM or CUSTOM provider type.
+   */
+  forceSystem?: boolean
 }
 
 export interface LLMInvocationResponse extends LLMResponse {

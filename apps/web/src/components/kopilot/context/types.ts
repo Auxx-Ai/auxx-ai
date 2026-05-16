@@ -13,6 +13,14 @@ export interface SessionRef {
   id: string
   label?: string
   origin: 'surface' | 'mention'
+  /**
+   * UI-only: when true the chip in `KopilotContextChipStrip` renders
+   * without the dismiss affordance and is not selectable for keyboard
+   * delete. Has no effect on the LLM payload — the backend mirror of
+   * `SessionRef` (in @auxx/lib/ai/kopilot/types) does NOT need this
+   * field; strip before serializing.
+   */
+  pinned?: boolean
 }
 
 /**

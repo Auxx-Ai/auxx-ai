@@ -49,12 +49,12 @@ export function ToolsetRow({
       icon={<EntityIcon iconId={iconId} color={color} size='sm' />}
       title={label}
       actions={
-        <>
+        <div className='flex items-center gap-2'>
           <span className='text-xs text-muted-foreground'>
             {toolCount} {toolCount === 1 ? 'tool' : 'tools'}
           </span>
-          {source === 'mention' && <Badge variant='secondary'>Pinned by mention</Badge>}
-          {source === 'auto_default' && <Badge variant='outline'>Default</Badge>}
+          {/* {source === 'mention' && <Badge variant='secondary'>Pinned by mention</Badge>} */}
+          {/* {source === 'auto_default' && <Badge variant='outline'>Default</Badge>} */}
           <Switch
             size='sm'
             checked={localEnabled}
@@ -64,7 +64,7 @@ export function ToolsetRow({
               onToolsetToggle(slug, checked)
             }}
           />
-        </>
+        </div>
       }
     />
   )

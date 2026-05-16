@@ -1,12 +1,7 @@
 // apps/web/src/server/api/routers/agent-trigger.ts
 
 import { database, schema } from '@auxx/database'
-import {
-  type AgentTriggerInput,
-  AgentTriggerService,
-  ALLOWED_DIRECT_EVENT_TYPES,
-  agentExistsInOrg,
-} from '@auxx/lib/agents'
+import { type AgentTriggerInput, AgentTriggerService, agentExistsInOrg } from '@auxx/lib/agents'
 import { enqueueAgentJob } from '@auxx/lib/ai/agent-framework'
 import { createScopedLogger } from '@auxx/logger'
 import { createSession } from '@auxx/services'
@@ -42,12 +37,6 @@ const crudEventInputSchema = z.object({
   filter: z.record(z.unknown()).optional(),
 })
 
-const directEventInputSchema = z.object({
-  kind: z.literal('event'),
-  eventType: z.enum(ALLOWED_DIRECT_EVENT_TYPES),
-  filter: z.record(z.unknown()).optional(),
-})
-
 const appInputSchema = z.object({
   kind: z.literal('app'),
   triggerAppId: z.string().min(1),
@@ -65,12 +54,7 @@ const appInputSchema = z.object({
     .optional(),
 })
 
-const triggerInputSchema = z.union([
-  scheduledInputSchema,
-  crudEventInputSchema,
-  directEventInputSchema,
-  appInputSchema,
-])
+const triggerInputSchema = z.union([scheduledInputSchema, crudEventInputSchema, appInputSchema])
 
 async function ensureAgentInOrg(organizationId: string, agentId: string): Promise<void> {
   if (!(await agentExistsInOrg(organizationId, agentId))) {

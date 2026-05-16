@@ -17,6 +17,8 @@ export interface LLMAdapterConfig {
   /** Source label for usage tracking (default: 'agent') */
   source?: string
   sourceId?: string
+  /** Default false. Forwarded to LLMInvocationRequest.forceSystem. */
+  forceSystem?: boolean
 }
 
 /**
@@ -65,6 +67,7 @@ export function createCallModel(config: LLMAdapterConfig) {
       structuredOutput: responseFormat
         ? { enabled: true, schema: responseFormat.jsonSchema as Record<string, unknown> }
         : undefined,
+      forceSystem: config.forceSystem ?? false,
     }
 
     // Accumulated state across chunks

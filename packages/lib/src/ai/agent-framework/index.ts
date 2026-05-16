@@ -1,7 +1,7 @@
 // packages/lib/src/ai/agent-framework/index.ts
 
+export { BUILDER_MODEL } from './builder-model'
 export type { ContextManagerConfig } from './context-manager'
-
 export { estimateMessageTokens, manageContext } from './context-manager'
 export { AgentEngine } from './engine'
 export type { AgentJobPayload } from './enqueue-agent-job'

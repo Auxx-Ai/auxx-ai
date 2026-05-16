@@ -40,12 +40,6 @@ export interface CrudEventTriggerInput {
   filter?: Record<string, unknown>
 }
 
-export interface DirectEventTriggerInput {
-  kind: 'event'
-  eventType: AllowedDirectEventType
-  filter?: Record<string, unknown>
-}
-
 export interface AppTriggerInput {
   kind: 'app'
   triggerAppId: string
@@ -61,11 +55,7 @@ export interface AppTriggerInput {
   }
 }
 
-export type AgentTriggerInput =
-  | ScheduledTriggerInput
-  | CrudEventTriggerInput
-  | DirectEventTriggerInput
-  | AppTriggerInput
+export type AgentTriggerInput = ScheduledTriggerInput | CrudEventTriggerInput | AppTriggerInput
 
 export interface CreateAgentTriggerInput {
   agentId: string
@@ -131,20 +121,13 @@ function partitionTriggerInput(trigger: AgentTriggerInput): {
   }
 
   if (trigger.kind === 'event') {
-    if ('entityDefinitionId' in trigger) {
-      return {
-        kind: 'event',
-        columns: {
-          ...empty,
-          triggerType: trigger.triggerType,
-          entityDefinitionId: trigger.entityDefinitionId,
-        },
-        config: trigger.filter ? { filter: trigger.filter } : {},
-      }
-    }
     return {
       kind: 'event',
-      columns: { ...empty, eventType: trigger.eventType },
+      columns: {
+        ...empty,
+        triggerType: trigger.triggerType,
+        entityDefinitionId: trigger.entityDefinitionId,
+      },
       config: trigger.filter ? { filter: trigger.filter } : {},
     }
   }

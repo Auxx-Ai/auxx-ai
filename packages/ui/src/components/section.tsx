@@ -3,6 +3,7 @@
 'use client'
 
 import { Collapsible, CollapsibleTrigger } from '@auxx/ui/components/collapsible'
+import { Spinner } from '@auxx/ui/components/spinner'
 import { Switch } from '@auxx/ui/components/switch'
 import { TooltipExplanation } from '@auxx/ui/components/tooltip'
 import { cn } from '@auxx/ui/lib/utils'
@@ -206,6 +207,61 @@ export function Field({
         <div className='flex flex-row gap-1'>{actions && actions}</div>
       </div>
       {children && <div className={cn('mt-1 flex flex-col', wrapperClassName)}>{children}</div>}
+    </div>
+  )
+}
+
+/**
+ * Props for EmptySection component
+ */
+export interface EmptySectionProps {
+  className?: string
+  /** Icon rendered above the title */
+  icon?: React.ReactNode
+  title: React.ReactNode
+  description?: React.ReactNode
+  /** When true, replaces icon/title/description with a centered spinner */
+  loading?: boolean
+}
+
+/**
+ * Empty state placeholder for a Section's body — centered icon, title, and
+ * description inside a dashed/muted card. Pass `loading` to show a spinner
+ * instead of the empty content.
+ */
+export function EmptySection({
+  className,
+  icon,
+  title,
+  description,
+  loading = false,
+}: EmptySectionProps) {
+  return (
+    <div
+      data-slot='empty-section'
+      className={cn(
+        'flex h-24 flex-col items-center justify-center rounded-lg border bg-muted/30 text-center',
+        className
+      )}>
+      {loading ? (
+        <Spinner data-slot='empty-section-spinner' className='size-5 text-muted-foreground' />
+      ) : (
+        <>
+          {icon && (
+            <div data-slot='empty-section-icon' className='mb-2 text-muted-foreground'>
+              {icon}
+            </div>
+          )}
+          <p data-slot='empty-section-title' className='text-sm text-muted-foreground'>
+            {title}
+          </p>
+          {description && (
+            <p data-slot='empty-section-description' className='text-xs text-muted-foreground'>
+              {description}
+            </p>
+          )}
+        </>
+      )}
     </div>
   )
 }

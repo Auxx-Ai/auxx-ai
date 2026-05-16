@@ -124,6 +124,30 @@ export class ProviderManager {
   }
 
   /**
+   * Always returns the platform-managed (SYSTEM) credentials for the
+   * provider, ignoring the org's provider-type preference. Used by
+   * callers that need to pin a model regardless of org configuration
+   * (agent builder, etc.). Throws if SYSTEM credentials aren't
+   * configured for this provider — there is no BYO fallback by design.
+   */
+  async getSystemCredentials(provider: string): Promise<CredentialsResponse> {
+    const config = await this.getProviderConfiguration(provider)
+    const credentials = config.systemConfiguration.credentials
+    if (!credentials || Object.keys(credentials).length === 0) {
+      throw new ProviderConfigurationError(
+        `No platform (SYSTEM) credentials configured for provider '${provider}'`,
+        provider,
+        'SYSTEM_CREDENTIALS_MISSING'
+      )
+    }
+    return {
+      credentials,
+      providerType: 'SYSTEM',
+      credentialSource: 'SYSTEM',
+    }
+  }
+
+  /**
    * Apply credential obfuscation using provider's credential schema.
    * Returns a new CredentialsResponse with sensitive values replaced by __HIDDEN__.
    */

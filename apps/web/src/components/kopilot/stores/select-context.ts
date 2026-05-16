@@ -14,7 +14,14 @@ export function selectMergedContext(slices: Record<string, ContextSlice>): Sessi
   const references: SessionRef[] = []
   for (const slice of Object.values(slices)) {
     if (slice.page !== undefined) merged.page = slice.page
-    if (slice.references.length > 0) references.push(...slice.references)
+    if (slice.references.length > 0) {
+      // Strip the UI-only `pinned` flag — the lib `SessionRef` doesn't
+      // declare it and a strict tRPC schema would reject the extra field.
+      for (const ref of slice.references) {
+        const { pinned: _pinned, ...rest } = ref
+        references.push(rest)
+      }
+    }
   }
   if (references.length > 0) merged.references = references
   return merged

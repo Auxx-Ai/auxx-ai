@@ -48,11 +48,3 @@ export const NATIVE_GROUP_CATALOG: Record<string, ToolsetGroupCatalog> = {
 
 export { getTriggerLabel } from './agent-trigger-label'
 export { AGENT_SLUG_MAX, AGENT_SLUG_REGEX, agentSlugSchema } from './slug-schema'
-
-export const ALLOWED_DIRECT_EVENT_TYPES = [
-  'ticket:assignee:added',
-  'ticket:assignee:removed',
-  'ticket:status:changed',
-  'ticket:reply:created',
-] as const
-export type AllowedDirectEventType = (typeof ALLOWED_DIRECT_EVENT_TYPES)[number]
