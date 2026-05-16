@@ -229,7 +229,9 @@ export function KBArticleEditor({
         className={styles.editorWrapper}
         onMouseDown={handleWrapperMouseDown}
         onContextMenu={handleContextMenu}
-        style={{ '--gutter-min-width': `calc(${gutterCharWidth}ch + 1rem)` } as CSSProperties}>
+        style={
+          { '--editor-gutter-min-width': `calc(${gutterCharWidth}ch + 1rem)` } as CSSProperties
+        }>
         <div className={styles.editorContainer}>
           <EditorContent editor={editor} className={styles.editorContent} />
         </div>

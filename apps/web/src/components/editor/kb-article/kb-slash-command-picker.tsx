@@ -2,13 +2,7 @@
 'use client'
 
 import {
-  Command,
   CommandBreadcrumb,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
   CommandNavigation,
   useCommandNavigation,
 } from '@auxx/ui/components/command'
@@ -16,9 +10,18 @@ import { EntityIcon } from '@auxx/ui/components/icons'
 import { generateId } from '@auxx/utils'
 import { TextSelection } from '@tiptap/pm/state'
 import type { Editor } from '@tiptap/react'
-import { ChevronRight } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { PlaceholderPickerContent } from '~/components/editor/placeholders/placeholder-picker-content'
+import {
+  BASIC_BLOCK_COMMANDS,
+  type BlockCommandDef,
+  runBlockCommand,
+} from '~/components/editor/slash-commands/block-commands'
+import {
+  type SlashCommandItem,
+  SlashCommandPicker,
+  type SlashCommandSection,
+} from '~/components/editor/slash-commands/slash-command-picker'
 import { api } from '~/trpc/react'
 
 type Range = { from: number; to: number }
@@ -35,147 +38,9 @@ interface KBSlashCommandPickerProps {
   editor?: Editor | null
 }
 
-interface BlockCommandSpec {
-  blockType:
-    | 'text'
-    | 'heading'
-    | 'bulletListItem'
-    | 'numberedListItem'
-    | 'todoListItem'
-    | 'quote'
-    | 'codeBlock'
-    | 'divider'
-    | 'callout'
-    | 'embed'
-  level?: number | null
-  checked?: boolean
-  calloutVariant?: 'info' | 'tip' | 'warn' | 'error' | 'success'
-}
+// --- KB-only block commands -----------------------------------------------
 
-interface CommandItemDef {
-  id: string
-  title: string
-  description: string
-  keywords: string[]
-  iconId: string
-  drillDown?: boolean
-  spec?: BlockCommandSpec
-  custom?: (editor: Editor, range: Range) => void
-}
-
-const BASE_COMMANDS: CommandItemDef[] = [
-  {
-    id: 'snippet',
-    title: 'Insert snippet',
-    description: 'Search and insert reusable content',
-    keywords: ['template', 'canned', 'saved', 'reusable'],
-    iconId: 'folder',
-    drillDown: true,
-  },
-  {
-    id: 'placeholder',
-    title: 'Insert placeholder',
-    description: 'Insert a dynamic field value',
-    keywords: ['variable', 'token', 'dynamic', 'merge', 'field'],
-    iconId: 'braces',
-    drillDown: true,
-  },
-  {
-    id: 'article-link',
-    title: 'Link to article',
-    description: 'Insert a link to another KB article',
-    keywords: ['link', 'article', 'reference', 'href', 'url'],
-    iconId: 'link',
-  },
-  {
-    id: 'text',
-    title: 'Text',
-    description: 'Plain text block',
-    keywords: ['p', 'paragraph'],
-    iconId: 'text',
-    spec: { blockType: 'text', level: null },
-  },
-  {
-    id: 'h1',
-    title: 'Heading 1',
-    description: 'Big section heading',
-    keywords: ['h1', 'title', 'large'],
-    iconId: 'heading-1',
-    spec: { blockType: 'heading', level: 1 },
-  },
-  {
-    id: 'h2',
-    title: 'Heading 2',
-    description: 'Medium section heading',
-    keywords: ['h2', 'subtitle'],
-    iconId: 'heading-2',
-    spec: { blockType: 'heading', level: 2 },
-  },
-  {
-    id: 'h3',
-    title: 'Heading 3',
-    description: 'Small section heading',
-    keywords: ['h3', 'subheading'],
-    iconId: 'heading-3',
-    spec: { blockType: 'heading', level: 3 },
-  },
-  {
-    id: 'bullet',
-    title: 'Bullet list',
-    description: 'Create a bullet list',
-    keywords: ['ul', 'unordered', 'bullets', 'points'],
-    iconId: 'list',
-    spec: { blockType: 'bulletListItem', level: 1 },
-  },
-  {
-    id: 'numbered',
-    title: 'Numbered list',
-    description: 'Create a numbered list',
-    keywords: ['ol', 'ordered', 'numbers', 'steps'],
-    iconId: 'list-ordered',
-    spec: { blockType: 'numberedListItem', level: 1 },
-  },
-  {
-    id: 'todo',
-    title: 'To-do list',
-    description: 'Track tasks with checkboxes',
-    keywords: ['todo', 'task', 'check', 'checkbox'],
-    iconId: 'check-square',
-    spec: { blockType: 'todoListItem', checked: false },
-  },
-  {
-    id: 'quote',
-    title: 'Quote',
-    description: 'Capture a quote',
-    keywords: ['blockquote', 'cite'],
-    iconId: 'quote',
-    spec: { blockType: 'quote' },
-  },
-  {
-    id: 'code',
-    title: 'Code',
-    description: 'Capture a code block',
-    keywords: ['codeblock', 'code'],
-    iconId: 'code',
-    spec: { blockType: 'codeBlock' },
-  },
-  {
-    id: 'divider',
-    title: 'Divider',
-    description: 'Visual separator',
-    keywords: ['hr', 'horizontal', 'rule', 'line'],
-    iconId: 'minus',
-    custom: (editor, range) => {
-      editor
-        .chain()
-        .focus()
-        .deleteRange(range)
-        .updateAttributes('block', { blockType: 'divider', level: null, checked: false })
-        .splitBlock()
-        .updateAttributes('block', { blockType: 'text', level: null, checked: false })
-        .run()
-    },
-  },
+const KB_BLOCK_COMMANDS: BlockCommandDef[] = [
   {
     id: 'image',
     title: 'Image',
@@ -359,6 +224,36 @@ const BASE_COMMANDS: CommandItemDef[] = [
   },
 ]
 
+// --- KB-only tool items ---------------------------------------------------
+
+const TOOL_COMMANDS: SlashCommandItem[] = [
+  {
+    id: 'snippet',
+    title: 'Insert snippet',
+    description: 'Search and insert reusable content',
+    keywords: ['template', 'canned', 'saved', 'reusable'],
+    iconId: 'folder',
+    drillDown: true,
+  },
+  {
+    id: 'placeholder',
+    title: 'Insert placeholder',
+    description: 'Insert a dynamic field value',
+    keywords: ['variable', 'token', 'dynamic', 'merge', 'field'],
+    iconId: 'braces',
+    drillDown: true,
+  },
+  {
+    id: 'article-link',
+    title: 'Link to article',
+    description: 'Insert a link to another KB article',
+    keywords: ['link', 'article', 'reference', 'href', 'url'],
+    iconId: 'link',
+  },
+]
+
+const TOOL_IDS = new Set(TOOL_COMMANDS.map((t) => t.id))
+
 function makeEmptyPanelJSON(label: string) {
   return {
     type: 'panel' as const,
@@ -408,6 +303,13 @@ interface SlashCommandNavItem {
   id: string
   label: string
   type: 'snippets' | 'folder'
+}
+
+// Snippet-mode items reuse `SlashCommandItem` plus a `kind` tag so the
+// section's `onSelect` / `onArrowRight` can dispatch without scanning data.
+interface SnippetItem extends SlashCommandItem {
+  kind: 'folder' | 'snippet'
+  folderCount?: number
 }
 
 export function KBSlashCommandPicker(props: KBSlashCommandPickerProps) {
@@ -464,7 +366,6 @@ function KBSlashCommandPickerContent({
   onEnterPlaceholderMode: () => void
 }) {
   const { push, pop, isAtRoot, current, stack } = useCommandNavigation<SlashCommandNavItem>()
-  const inputRef = useRef<HTMLInputElement>(null)
 
   const isInSnippets = stack.length > 0
   const currentFolderId = current?.type === 'folder' ? current.id : null
@@ -484,6 +385,10 @@ function KBSlashCommandPickerContent({
   })
   const allFolders = foldersData?.folders ?? []
 
+  // Mirror the external query into the local controlled input *only at root*.
+  // While drilled into a snippets folder the input doubles as a folder
+  // search field and we don't want the picker plugin (which still receives
+  // typed characters from outside the input) to clobber it.
   useEffect(() => {
     if (isAtRoot) setSearchQuery(query)
   }, [query, isAtRoot, setSearchQuery])
@@ -510,257 +415,230 @@ function KBSlashCommandPickerContent({
     [allFolders, currentFolderId, q]
   )
 
+  // Root-level snippet *search* (cross-folder hits when typing at root) —
+  // rendered as its own section below the suggestions group.
   const rootSnippetResults = useMemo(() => {
     if (!isAtRoot || !q) return []
     return allSnippets.filter((s) => s.title.toLowerCase().includes(q))
   }, [isAtRoot, allSnippets, q])
 
-  const filteredCommands = useMemo(() => {
+  // Build the merged default-mode "Suggestions" list — tools first, then
+  // basic blocks, then KB-only blocks. Preserves the pre-refactor ordering
+  // and rendering as a single CommandGroup.
+  const suggestionItems: SlashCommandItem[] = useMemo(() => {
     if (isInSnippets) return []
-    let base = onLinkArticle ? BASE_COMMANDS : BASE_COMMANDS.filter((c) => c.id !== 'article-link')
-    // Q1b: containers (tabs/accordion/table) cannot be nested inside a panel.
-    // ProseMirror's schema enforces this structurally; filtering here
-    // just keeps the menu clean.
+    const tools = onLinkArticle
+      ? TOOL_COMMANDS
+      : TOOL_COMMANDS.filter((c) => c.id !== 'article-link')
+    let blocks: BlockCommandDef[] = [...BASIC_BLOCK_COMMANDS, ...KB_BLOCK_COMMANDS]
+    // Containers can't nest inside a panel — ProseMirror's schema would
+    // reject the insert, but hiding from the menu keeps it tidy.
     if (editor && selectionIsInsidePanel(editor)) {
-      base = base.filter((c) => !PANEL_RESTRICTED_COMMAND_IDS.has(c.id))
+      blocks = blocks.filter((c) => !PANEL_RESTRICTED_COMMAND_IDS.has(c.id))
     }
-    // Cells reject containers structurally (containerBlock is not in the
-    // `block` group that cells accept) and cards are visually awkward in a
-    // table cell — hide both from the slash menu inside cells.
+    // Cells reject containers structurally and visually push cards around;
+    // hide both inside cells.
     if (editor && selectionIsInsideTableCell(editor)) {
-      base = base.filter((c) => !CELL_RESTRICTED_COMMAND_IDS.has(c.id))
+      blocks = blocks.filter((c) => !CELL_RESTRICTED_COMMAND_IDS.has(c.id))
     }
-    return base.filter(
-      (item) =>
-        item.title.toLowerCase().includes(q) ||
-        item.description.toLowerCase().includes(q) ||
-        item.keywords.some((kw) => kw.includes(q))
-    )
-  }, [isInSnippets, q, onLinkArticle, editor])
+    return [...tools, ...blocks]
+  }, [isInSnippets, onLinkArticle, editor])
 
-  const runBlockSpec = useCallback(
-    (spec: BlockCommandSpec) => {
-      onExecute((editor, range) => {
-        const attrs: Record<string, unknown> = {
-          blockType: spec.blockType,
-          level: spec.level ?? null,
-        }
-        if (spec.blockType === 'todoListItem') attrs.checked = spec.checked ?? false
-        if (spec.blockType === 'callout') attrs.calloutVariant = spec.calloutVariant ?? 'info'
-        editor.chain().focus().deleteRange(range).updateAttributes('block', attrs).run()
-      })
+  const enterSnippetsDrillDown = useCallback(() => {
+    push({ id: 'snippets', label: 'Snippets', type: 'snippets' })
+    setSearchQuery('')
+  }, [push, setSearchQuery])
+
+  const enterFolder = useCallback(
+    (id: string, label: string) => {
+      push({ id, label, type: 'folder' })
+      setSearchQuery('')
     },
-    [onExecute]
+    [push, setSearchQuery]
   )
 
-  const handleSelect = useCallback(
-    (itemId: string) => {
-      if (itemId === 'snippet') {
-        push({ id: 'snippets', label: 'Snippets', type: 'snippets' })
-        setSearchQuery('')
+  const insertSnippet = useCallback(
+    (snippetId: string) => {
+      const snippet = allSnippets.find((s) => s.id === snippetId)
+      if (!snippet) return
+      onExecute((editor, range) => {
+        editor
+          .chain()
+          .focus()
+          .deleteRange(range)
+          .insertContent(snippet.contentHtml || snippet.content, {
+            parseOptions: { preserveWhitespace: 'full' },
+          })
+          .run()
+      })
+      incrementUsage.mutate({ id: snippet.id })
+    },
+    [allSnippets, onExecute, incrementUsage]
+  )
+
+  const handleSuggestionSelect = useCallback(
+    (item: SlashCommandItem) => {
+      if (item.id === 'snippet') {
+        enterSnippetsDrillDown()
         return
       }
-      if (itemId === 'placeholder') {
+      if (item.id === 'placeholder') {
         onEnterPlaceholderMode()
         return
       }
-      if (itemId === 'article-link' && onLinkArticle) {
+      if (item.id === 'article-link' && onLinkArticle) {
         onExecute((editor, range) => {
           editor.chain().focus().deleteRange(range).run()
           onLinkArticle(editor, range.from)
         })
         return
       }
-
-      const cmd = BASE_COMMANDS.find((c) => c.id === itemId)
-      if (cmd) {
-        if (cmd.custom) {
-          onExecute(cmd.custom)
-          return
-        }
-        if (cmd.spec) {
-          runBlockSpec(cmd.spec)
-          return
-        }
-      }
-
-      const snippet = allSnippets.find((s) => s.id === itemId)
-      if (snippet) {
-        onExecute((editor, range) => {
-          editor
-            .chain()
-            .focus()
-            .deleteRange(range)
-            .insertContent(snippet.contentHtml || snippet.content, {
-              parseOptions: { preserveWhitespace: 'full' },
-            })
-            .run()
-        })
-        incrementUsage.mutate({ id: snippet.id })
-      }
+      // Anything left is a block command.
+      if (TOOL_IDS.has(item.id)) return
+      onExecute(runBlockCommand(item as BlockCommandDef))
     },
-    [
-      allSnippets,
-      onExecute,
-      runBlockSpec,
-      incrementUsage,
-      push,
-      setSearchQuery,
-      onEnterPlaceholderMode,
-    ]
+    [enterSnippetsDrillDown, onEnterPlaceholderMode, onLinkArticle, onExecute]
   )
 
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.preventDefault()
-        e.stopPropagation()
-        onClose()
-        return
+  const handleSuggestionArrowRight = useCallback(
+    (item: SlashCommandItem) => {
+      if (item.id === 'snippet') {
+        enterSnippetsDrillDown()
+        return true
       }
-      if ((e.key === 'Backspace' || e.key === 'ArrowLeft') && !searchQuery) {
-        if (!isAtRoot) {
-          e.preventDefault()
-          pop()
-          return
-        }
-        if (e.key === 'Backspace') {
-          e.preventDefault()
-          onClose()
-          return
-        }
+      if (item.id === 'placeholder') {
+        onEnterPlaceholderMode()
+        return true
       }
-      if (e.key === 'ArrowRight') {
-        const selected = (e.currentTarget as HTMLElement).querySelector<HTMLElement>(
-          '[cmdk-item][data-selected="true"]'
-        )
-        const value = selected?.getAttribute('data-value')
-        if (!value) return
+      return false
+    },
+    [enterSnippetsDrillDown, onEnterPlaceholderMode]
+  )
 
-        if (isAtRoot && value.toLowerCase() === 'insert snippet') {
-          e.preventDefault()
-          push({ id: 'snippets', label: 'Snippets', type: 'snippets' })
-          setSearchQuery('')
-          return
-        }
-        if (isAtRoot && value.toLowerCase() === 'insert placeholder') {
-          e.preventDefault()
-          onEnterPlaceholderMode()
-          return
-        }
-        if (isInSnippets) {
-          const folder = currentFolders.find((f) => f.name.toLowerCase() === value.toLowerCase())
-          if (folder) {
-            e.preventDefault()
-            push({ id: folder.id, label: folder.name, type: 'folder' })
-            setSearchQuery('')
+  const sections: SlashCommandSection<SlashCommandItem>[] = useMemo(() => {
+    if (isInSnippets) {
+      const snippetItems: SnippetItem[] = [
+        ...currentFolders.map<SnippetItem>((f) => ({
+          id: `folder-${f.id}`,
+          title: f.name,
+          drillDown: true,
+          kind: 'folder',
+          folderCount: f._count.snippets,
+        })),
+        ...currentSnippets.map<SnippetItem>((s) => ({
+          id: `snippet-${s.id}`,
+          title: s.title,
+          kind: 'snippet',
+        })),
+      ]
+      const snippetsSection: SlashCommandSection<SnippetItem> = {
+        id: 'snippets',
+        heading: current?.type === 'folder' ? current.label : 'Snippets',
+        items: snippetItems,
+        onSelect: (item) => {
+          if (item.kind === 'folder') {
+            const folderId = item.id.replace(/^folder-/, '')
+            enterFolder(folderId, item.title)
+            return
           }
-        }
+          insertSnippet(item.id.replace(/^snippet-/, ''))
+        },
+        onArrowRight: (item) => {
+          if (item.kind === 'folder') {
+            const folderId = item.id.replace(/^folder-/, '')
+            enterFolder(folderId, item.title)
+            return true
+          }
+          return false
+        },
+        itemValue: (item) => item.id,
+        renderItem: (item) => (
+          <div className='flex items-center gap-2'>
+            <EntityIcon
+              iconId={item.kind === 'folder' ? 'folder' : 'file-text'}
+              size='xs'
+              className='text-muted-foreground'
+            />
+            <span>{item.title}</span>
+            {item.kind === 'folder' && item.folderCount !== undefined && item.folderCount > 0 && (
+              <span className='text-muted-foreground text-xs'>{item.folderCount}</span>
+            )}
+          </div>
+        ),
       }
-    },
-    [
-      isAtRoot,
-      isInSnippets,
-      searchQuery,
-      onClose,
-      pop,
-      push,
-      setSearchQuery,
-      currentFolders,
-      onEnterPlaceholderMode,
-    ]
-  )
+      return [snippetsSection as unknown as SlashCommandSection<SlashCommandItem>]
+    }
+
+    const suggestionsSection: SlashCommandSection<SlashCommandItem> = {
+      id: 'suggestions',
+      heading: 'Suggestions',
+      items: suggestionItems,
+      onSelect: handleSuggestionSelect,
+      onArrowRight: handleSuggestionArrowRight,
+    }
+
+    const out: SlashCommandSection<SlashCommandItem>[] = [suggestionsSection]
+
+    if (rootSnippetResults.length > 0) {
+      const rootSnippetsSection: SlashCommandSection<SnippetItem> = {
+        id: 'root-snippets',
+        heading: 'Snippets',
+        items: rootSnippetResults.map<SnippetItem>((s) => ({
+          id: `snippet-${s.id}`,
+          title: s.title,
+          kind: 'snippet',
+        })),
+        onSelect: (item) => insertSnippet(item.id.replace(/^snippet-/, '')),
+        itemValue: (item) => item.id,
+        renderItem: (item) => (
+          <div className='flex items-center gap-2'>
+            <EntityIcon iconId='file-text' size='xs' className='text-muted-foreground' />
+            <span>{item.title}</span>
+          </div>
+        ),
+      }
+      out.push(rootSnippetsSection as unknown as SlashCommandSection<SlashCommandItem>)
+    }
+
+    return out
+  }, [
+    isInSnippets,
+    currentFolders,
+    currentSnippets,
+    current,
+    suggestionItems,
+    handleSuggestionSelect,
+    handleSuggestionArrowRight,
+    rootSnippetResults,
+    enterFolder,
+    insertSnippet,
+  ])
+
+  const onBackspaceEmpty = useCallback(() => {
+    if (isAtRoot) return false
+    pop()
+    return true
+  }, [isAtRoot, pop])
+
+  const onArrowLeftEmpty = useCallback(() => {
+    if (isAtRoot) return false
+    pop()
+    return true
+  }, [isAtRoot, pop])
 
   return (
-    <Command className='w-72 overflow-hidden' shouldFilter={false} onKeyDown={handleKeyDown}>
-      <CommandBreadcrumb rootLabel='Commands' />
-      <CommandInput
-        ref={inputRef}
-        placeholder={isInSnippets ? 'Search snippets...' : 'Type a command or search...'}
-        value={searchQuery}
-        onValueChange={setSearchQuery}
-      />
-      <CommandList>
-        {snippetsLoading && <CommandEmpty>Loading...</CommandEmpty>}
-        {!snippetsLoading &&
-          !isInSnippets &&
-          filteredCommands.length === 0 &&
-          rootSnippetResults.length === 0 && <CommandEmpty>No results found.</CommandEmpty>}
-        {!snippetsLoading &&
-          isInSnippets &&
-          currentFolders.length === 0 &&
-          currentSnippets.length === 0 && <CommandEmpty>No snippets found.</CommandEmpty>}
-
-        {!isInSnippets && filteredCommands.length > 0 && (
-          <CommandGroup heading='Suggestions'>
-            {filteredCommands.map((item) => (
-              <CommandItem
-                key={item.id}
-                onSelect={() => handleSelect(item.id)}
-                value={item.title}
-                className='flex items-center justify-between'>
-                <div className='flex items-center gap-2'>
-                  <EntityIcon iconId={item.iconId} size='xs' className='text-muted-foreground' />
-                  <span>{item.title}</span>
-                </div>
-                {item.drillDown && <ChevronRight className='size-4 opacity-50' />}
-              </CommandItem>
-            ))}
-          </CommandGroup>
-        )}
-
-        {!isInSnippets && rootSnippetResults.length > 0 && (
-          <CommandGroup heading='Snippets'>
-            {rootSnippetResults.map((snippet) => (
-              <CommandItem
-                key={snippet.id}
-                value={`snippet-${snippet.id}`}
-                onSelect={() => handleSelect(snippet.id)}>
-                <div className='flex items-center gap-2'>
-                  <EntityIcon iconId='file-text' size='xs' className='text-muted-foreground' />
-                  <span>{snippet.title}</span>
-                </div>
-              </CommandItem>
-            ))}
-          </CommandGroup>
-        )}
-
-        {isInSnippets && (
-          <CommandGroup heading={current?.type === 'folder' ? current.label : 'Snippets'}>
-            {currentFolders.map((folder) => (
-              <CommandItem
-                key={folder.id}
-                value={folder.name}
-                onSelect={() => {
-                  push({ id: folder.id, label: folder.name, type: 'folder' })
-                  setSearchQuery('')
-                }}
-                className='flex items-center justify-between'>
-                <div className='flex items-center gap-2'>
-                  <EntityIcon iconId='folder' size='xs' className='text-muted-foreground' />
-                  <span>{folder.name}</span>
-                  {folder._count.snippets > 0 && (
-                    <span className='text-muted-foreground text-xs'>{folder._count.snippets}</span>
-                  )}
-                </div>
-                <ChevronRight className='size-4 opacity-50' />
-              </CommandItem>
-            ))}
-
-            {currentSnippets.map((snippet) => (
-              <CommandItem
-                key={snippet.id}
-                value={`snippet-${snippet.id}`}
-                onSelect={() => handleSelect(snippet.id)}>
-                <div className='flex items-center gap-2'>
-                  <EntityIcon iconId='file-text' size='xs' className='text-muted-foreground' />
-                  <span>{snippet.title}</span>
-                </div>
-              </CommandItem>
-            ))}
-          </CommandGroup>
-        )}
-      </CommandList>
-    </Command>
+    <SlashCommandPicker
+      query={query}
+      searchQuery={searchQuery}
+      setSearchQuery={setSearchQuery}
+      onClose={onClose}
+      sections={sections}
+      header={<CommandBreadcrumb rootLabel='Commands' />}
+      placeholder={isInSnippets ? 'Search snippets...' : 'Type a command or search...'}
+      emptyMessage={isInSnippets ? 'No snippets found.' : 'No results found.'}
+      onBackspaceEmpty={onBackspaceEmpty}
+      onArrowLeftEmpty={onArrowLeftEmpty}
+      loading={snippetsLoading}
+    />
   )
 }
