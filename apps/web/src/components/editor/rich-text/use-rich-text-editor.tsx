@@ -23,6 +23,7 @@ import {
   useExternalContentSync,
   type useSlashCommand,
 } from '../inline-picker'
+import type { ReferenceTab } from '../inline-picker/nodes/reference-picker-node'
 import { Accordion } from '../kb-article/accordion-node'
 import { Block } from '../kb-article/block-node'
 import { MarkdownInputRules } from '../kb-article/markdown-input-rules'
@@ -85,6 +86,13 @@ export interface UseRichTextEditorOptions {
   onPickerEnter?: () => boolean
   /** Forwarded to the reference picker chip. */
   onPickerArrowVertical?: (direction: 1 | -1) => boolean
+  /**
+   * Tabs the reference picker exposes. Defaults to `DEFAULT_TABS`. Pass
+   * `[...DEFAULT_TABS, 'tools']` on admin-facing surfaces (persona editor)
+   * to opt into the Tools tab. The matching `<ReferencePickerContent>` mount
+   * must be passed the same list.
+   */
+  referenceTabs?: ReferenceTab[]
 }
 
 /**
@@ -103,6 +111,7 @@ export function useRichTextEditor({
   enableReferencePicker = true,
   onPickerEnter,
   onPickerArrowVertical,
+  referenceTabs,
 }: UseRichTextEditorOptions) {
   const normalizedInitialContent = useMemo<JSONContent>(() => {
     const migrated = migrateLegacyContent(initialContent)
@@ -118,9 +127,13 @@ export function useRichTextEditor({
   const referencePickerExtensions = useMemo(
     () =>
       enableReferencePicker
-        ? buildReferencePickerExtensions({ onPickerEnter, onPickerArrowVertical })
+        ? buildReferencePickerExtensions({
+            onPickerEnter,
+            onPickerArrowVertical,
+            referenceTabs,
+          })
         : [],
-    [enableReferencePicker, onPickerEnter, onPickerArrowVertical]
+    [enableReferencePicker, onPickerEnter, onPickerArrowVertical, referenceTabs]
   )
 
   const onChangeRef = useRef(onChange)

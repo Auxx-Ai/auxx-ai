@@ -12,6 +12,7 @@ import { createScopedLogger } from '@auxx/logger'
 import { generateId } from '@auxx/utils'
 import { and, eq, isNull } from 'drizzle-orm'
 import { getAllCachedAgents, getCachedAgentById, getCachedAgents, onCacheEvent } from '../cache'
+import { BadRequestError } from '../errors'
 import { resolveDefaultToolsets } from './default-toolsets'
 
 const logger = createScopedLogger('agent-service')
@@ -273,16 +274,38 @@ export async function updateAgent(
 }
 
 /**
- * Mark an agent's chat-driven setup mode as complete. Idempotent — no-ops on
- * an already-completed agent. Flips the rail UI from the setup carousel to
- * the Prompt/Tools/Knowledge tabs. The agent is functionally live throughout
+ * Mark an agent's chat-driven setup mode as complete. Idempotent on
+ * already-completed agents. Flips the rail UI from the setup carousel to the
+ * Prompt/Tools/Knowledge tabs. The agent is functionally live throughout
  * setup; this only gates the UI surface.
+ *
+ * Rejects with `BadRequestError` if the agent does not yet have the minimum
+ * configuration the carousel was meant to enforce: a non-empty persona
+ * prompt, at least one toolset, and a name. Guards both the chat-builder
+ * tool and the rail's "Mark setup complete" escape hatch from shipping a
+ * half-built agent past the carousel.
  */
 export async function completeAgentSetup(
   agentId: string,
   organizationId: string,
   db: Database = defaultDb as Database
 ): Promise<void> {
+  const detail = await getAgentDetail(organizationId, agentId, db)
+  if (!detail) throw new BadRequestError(`Agent not found: ${agentId}`)
+
+  // Already complete — preserve previous idempotent behavior.
+  if (detail.setupCompletedAt) return
+
+  if (isEmptyPromptDoc(detail.prompt)) {
+    throw new BadRequestError('Add a persona prompt before completing setup.')
+  }
+  if ((detail.toolsets ?? []).length === 0) {
+    throw new BadRequestError('Enable at least one toolset before completing setup.')
+  }
+  if (!detail.name || detail.name.trim() === '') {
+    throw new BadRequestError('Give the agent a name before completing setup.')
+  }
+
   const result = await db
     .update(schema.Agent)
     .set({ setupCompletedAt: new Date(), updatedAt: new Date() })
@@ -306,6 +329,27 @@ export async function completeAgentSetup(
       error: err instanceof Error ? err.message : String(err),
     })
   }
+}
+
+/**
+ * True when the prompt doc has no real content. Mirrors the client-side
+ * `isEmptyTiptapDoc` check in `derive-setup-step.ts` and also accepts the
+ * KB block shape (`{ blockType: 'text' }` with an empty `content` array)
+ * the persona editor uses today.
+ */
+function isEmptyPromptDoc(doc: Record<string, unknown> | null | undefined): boolean {
+  if (!doc) return true
+  const content = (doc as { content?: unknown[] }).content
+  if (!Array.isArray(content) || content.length === 0) return true
+  if (content.length === 1) {
+    const node = content[0] as { type?: string; content?: unknown[] }
+    if (!node) return true
+    // Empty Tiptap paragraph.
+    if (node.type === 'paragraph' && (!node.content || node.content.length === 0)) return true
+    // Empty KB-block placeholder (`mdToBlocks` emits this for empty input).
+    if (node.type === 'block' && (!node.content || node.content.length === 0)) return true
+  }
+  return false
 }
 
 /**

@@ -94,7 +94,7 @@ export function TriggersSectionContent({
           className='mx-3'
         />
       ) : (
-        <div className='flex flex-col pe-3'>
+        <div className='flex flex-col pe-4'>
           {rows.map((row) => {
             const meta = KIND_META[row.kind as TriggerKind]
             const lastFiredLabel = row.lastFiredAt
@@ -159,7 +159,7 @@ export function TriggersSectionContent({
                       </button>
                     </Tooltip>
                     <Switch
-                      size='sm'
+                      size='xs'
                       className='ml-1'
                       checked={row.enabled}
                       onCheckedChange={(checked) =>

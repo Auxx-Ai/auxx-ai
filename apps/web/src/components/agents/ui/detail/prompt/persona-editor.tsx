@@ -6,7 +6,8 @@ import { VisuallyHidden } from '@auxx/ui/components/visually-hidden'
 import { cn } from '@auxx/ui/lib/utils'
 import type { JSONContent } from '@tiptap/core'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useActivePicker } from '~/components/editor/inline-picker'
+import { DEFAULT_TABS, useActivePicker } from '~/components/editor/inline-picker'
+import type { ReferenceTab } from '~/components/editor/inline-picker/nodes/reference-picker-node'
 import { useRichTextEditor } from '~/components/editor/rich-text/use-rich-text-editor'
 import type { ReferencePickerHandle } from '~/components/pickers/reference-picker/reference-picker-content'
 import { useAgentAutosave } from '../../../hooks/use-agent-autosave'
@@ -23,6 +24,11 @@ interface PersonaEditorProps {
 }
 
 const COLLAPSED_MIN_HEIGHT = 120
+
+// Persona editor is the one surface that opts into the Tools tab — admins
+// reference toolsets they want pinned to the agent's prompt. Customer-facing
+// editors (mail composer, KB articles) stay on `DEFAULT_TABS` by design.
+const PERSONA_REFERENCE_TABS: ReferenceTab[] = [...DEFAULT_TABS, 'tools']
 
 function readPromptContent(
   prompt: Record<string, unknown> | null | undefined
@@ -77,6 +83,7 @@ export function PersonaEditor({ agent, onAutosaveChange }: PersonaEditorProps) {
     enableReferencePicker: true,
     onPickerEnter,
     onPickerArrowVertical,
+    referenceTabs: PERSONA_REFERENCE_TABS,
   })
 
   const activePicker = useActivePicker(editor)
@@ -130,6 +137,7 @@ export function PersonaEditor({ agent, onAutosaveChange }: PersonaEditorProps) {
       setCollapsed={setCollapsed}
       activePicker={activePicker}
       referencePickerRef={referencePickerRef}
+      referenceTabs={PERSONA_REFERENCE_TABS}
     />
   )
 
@@ -137,8 +145,9 @@ export function PersonaEditor({ agent, onAutosaveChange }: PersonaEditorProps) {
     <>
       <div
         className={cn(
+          'me-1',
           isFocused ? 'bg-gradient-to-r from-[#0ba5ec] to-[#155aef]' : 'bg-transparent',
-          '!rounded-[9px] p-0.5 w-full'
+          '!rounded-[9px] p-0.5'
         )}>
         <div className={cn(isFocused ? 'bg-background' : 'bg-primary-200/30', 'rounded-lg border')}>
           {header}

@@ -30,8 +30,47 @@ import type {
 import { CALLOUT_VARIANTS, EMBED_ASPECTS, EMBED_PROVIDERS, IMAGE_ALIGNS } from './types'
 
 const PLACEHOLDER_RE = /\{\{([a-zA-Z0-9_.-]+)\}\}/g
+const REFERENCE_AT_RE = /@\[([a-zA-Z][a-zA-Z0-9_-]*:[\w.-]+)\]/g
 const IMAGE_ATTR_TRAILER_RE = /^\{([^{}\n]*)\}/
 const HEADING_MAX_LEVEL = 3
+
+// `<entityDefinitionId>:<entityInstanceId>` — matches `RecordId`'s structural
+// shape (the brand in `@auxx/types`). Used to detect link URLs that the LLM
+// (or markdown-paste flow) means as `reference` inline nodes, not real URLs.
+const RECORD_ID_RE = /^[a-zA-Z][a-zA-Z0-9_-]*:[\w.-]+$/
+
+// `@[id]` tokens need to round-trip through remark untouched. Remark-directive
+// treats `:` as the textDirective sigil, so `@[user:abc]` would parse as
+// `@[user` + directive(:abc) + `]`. Pre-substitute references with a Private
+// Use Area token, run remark, then resolve tokens back to reference nodes in
+// `pushTextSplit`. PUA chars (U+E000..U+F8FF) are guaranteed-opaque text.
+const REF_TOKEN_OPEN = ''
+const REF_TOKEN_CLOSE = ''
+const REF_TOKEN_RE = new RegExp(`${REF_TOKEN_OPEN}(\\d+)${REF_TOKEN_CLOSE}`, 'g')
+
+// URL schemes that look RecordId-shaped but are real protocols. Keep in sync
+// with anything else the markdown surface needs to accept verbatim.
+const REAL_URL_SCHEMES = new Set([
+  'http',
+  'https',
+  'mailto',
+  'ftp',
+  'tel',
+  'sms',
+  'data',
+  'blob',
+  'file',
+  'ws',
+  'wss',
+  'chrome',
+  'about',
+])
+
+function isReferenceUrl(url: string): boolean {
+  if (!RECORD_ID_RE.test(url)) return false
+  const scheme = url.slice(0, url.indexOf(':')).toLowerCase()
+  return !REAL_URL_SCHEMES.has(scheme)
+}
 
 const parser = unified().use(remarkParse).use(remarkGfm).use(remarkDirective)
 
@@ -39,7 +78,9 @@ export function mdToBlocks(markdown: string): ArticleNodeJSON[] {
   const cleaned = stripFrontmatter(markdown ?? '')
   if (!cleaned.trim()) return emptyContent()
 
-  const tree = parser.parse(cleaned) as MdastRoot
+  const { source, references } = preExtractReferences(cleaned)
+
+  const tree = parser.parse(source) as MdastRoot
   const ctx: ParseCtx = { nodes: [] }
   // Buffer for consecutive `<details>` HTML siblings so we can merge them
   // into a single accordion block (Q6d).
@@ -74,7 +115,66 @@ export function mdToBlocks(markdown: string): ArticleNodeJSON[] {
   }
   flushDetails()
   if (ctx.nodes.length === 0) return emptyContent()
+  if (references.length > 0) substituteReferences(ctx.nodes, references)
   return ctx.nodes
+}
+
+// ─── reference pre-substitution ──────────────────────────────────────
+
+function preExtractReferences(markdown: string): { source: string; references: string[] } {
+  const references: string[] = []
+  const source = markdown.replace(REFERENCE_AT_RE, (_match, id: string) => {
+    const idx = references.length
+    references.push(id)
+    return `${REF_TOKEN_OPEN}${idx}${REF_TOKEN_CLOSE}`
+  })
+  return { source, references }
+}
+
+function substituteReferences(nodes: ArticleNodeJSON[], pool: string[]): void {
+  for (const node of nodes) {
+    if (node.type === 'block') {
+      node.content = expandReferencesInInline(node.content ?? [], pool)
+    } else if (node.type === 'table') {
+      for (const row of node.content) {
+        for (const cell of row.content) substituteReferences(cell.content, pool)
+      }
+    } else if (node.type === 'tabs' || node.type === 'accordion') {
+      for (const panel of node.content) substituteReferences(panel.content, pool)
+    }
+  }
+}
+
+function expandReferencesInInline(inline: InlineJSON[], pool: string[]): InlineJSON[] {
+  const out: InlineJSON[] = []
+  for (const node of inline) {
+    if (node.type !== 'text' || typeof node.text !== 'string') {
+      out.push(node)
+      continue
+    }
+    if (!node.text.includes(REF_TOKEN_OPEN)) {
+      out.push(node)
+      continue
+    }
+    const marks = node.marks ?? []
+    const re = new RegExp(REF_TOKEN_RE.source, 'g')
+    let lastIndex = 0
+    let match: RegExpExecArray | null = re.exec(node.text)
+    while (match) {
+      if (match.index > lastIndex) {
+        out.push(makeText(node.text.slice(lastIndex, match.index), marks))
+      }
+      const idx = Number.parseInt(match[1], 10)
+      const id = pool[idx]
+      if (id) out.push({ type: 'reference', attrs: { id } })
+      lastIndex = match.index + match[0].length
+      match = re.exec(node.text)
+    }
+    if (lastIndex < node.text.length) {
+      out.push(makeText(node.text.slice(lastIndex), marks))
+    }
+  }
+  return out
 }
 
 interface ParseCtx {
@@ -381,7 +481,16 @@ function walkInline(node: MdastNode, marks: MarkJSON[], out: InlineJSON[]): void
       return
     }
     case 'link': {
-      const linkMark: MarkJSON = { type: 'link', attrs: { href: node.url ?? '' } }
+      const url = node.url ?? ''
+      // Links whose href is a `RecordId` (e.g. `[Settings](user:abc)`) are
+      // collapsed into a single `reference` inline node — the editor renders
+      // a chip and the round-trip from `blocksToMd` already emits this shape.
+      // Real-looking URLs (http(s), mailto, etc.) keep the link mark.
+      if (isReferenceUrl(url)) {
+        out.push({ type: 'reference', attrs: { id: url } })
+        return
+      }
+      const linkMark: MarkJSON = { type: 'link', attrs: { href: url } }
       for (const c of node.children ?? []) walkInline(c, addMark(marks, linkMark), out)
       return
     }
@@ -424,7 +533,10 @@ function walkInline(node: MdastNode, marks: MarkJSON[], out: InlineJSON[]): void
 
 function pushTextSplit(text: string, marks: MarkJSON[], out: InlineJSON[]): void {
   if (!text) return
-  // Split out {{placeholder}} segments.
+  // Split out {{placeholder}} segments. `@[id]` reference tokens are
+  // pre-substituted to PUA markers in `mdToBlocks` and expanded back in a
+  // post-pass (`substituteReferences`) — they pass through here as opaque
+  // text.
   let lastIndex = 0
   const re = new RegExp(PLACEHOLDER_RE.source, 'g')
   let match: RegExpExecArray | null = re.exec(text)

@@ -25,11 +25,11 @@ export { createPlaceholderNode } from './nodes/placeholder-node'
 export { createPromptNode } from './nodes/prompt-node'
 export { PromptTemplateBadge } from './nodes/prompt-node-view'
 export {
+  DEFAULT_TABS,
   REFERENCE_PICKER_NODE,
   ReferencePickerNode,
   type ReferenceTab,
   TAB_LABEL,
-  TAB_ORDER,
 } from './nodes/reference-picker-node'
 // Types
 export type {

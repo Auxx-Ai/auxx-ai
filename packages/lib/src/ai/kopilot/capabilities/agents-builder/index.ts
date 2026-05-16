@@ -7,6 +7,7 @@ import { createCompleteAgentSetupTool } from './tools/complete-agent-setup'
 import { createSetAgentPromptTool } from './tools/set-agent-prompt'
 import { createSetAgentResourceScopeTool } from './tools/set-agent-resource-scope'
 import { createSetAgentToolsetsTool } from './tools/set-agent-toolsets'
+import { createSetAgentTriggersTool } from './tools/set-agent-triggers'
 import { createSuggestRepliesTool } from './tools/suggest-replies'
 import { createUpdateAgentIdentityTool } from './tools/update-agent-identity'
 
@@ -35,6 +36,7 @@ export async function createAgentsBuilderCapabilities(
       createSetAgentPromptTool(getDeps),
       createSetAgentToolsetsTool(getDeps),
       createSetAgentResourceScopeTool(getDeps),
+      createSetAgentTriggersTool(getDeps),
       createCompleteAgentSetupTool(getDeps),
     ],
     systemPromptAddition: buildBuilderPersonaPrompt({ catalog }),

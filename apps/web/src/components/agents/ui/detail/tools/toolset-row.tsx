@@ -56,7 +56,7 @@ export function ToolsetRow({
           {/* {source === 'mention' && <Badge variant='secondary'>Pinned by mention</Badge>} */}
           {/* {source === 'auto_default' && <Badge variant='outline'>Default</Badge>} */}
           <Switch
-            size='sm'
+            size='xs'
             checked={localEnabled}
             disabled={source === 'mention'}
             onCheckedChange={(checked) => {

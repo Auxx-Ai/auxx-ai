@@ -2,7 +2,7 @@
 
 import type { AgentDetail } from '../../../store/agent-store'
 
-export type SetupStep = 'alignment' | 'personalization' | 'onboarding'
+export type SetupStep = 'alignment' | 'onboarding' | 'personalization'
 
 export interface SetupCopy {
   step: SetupStep
@@ -20,19 +20,19 @@ const COPY: Record<SetupStep, SetupCopy> = {
     subtitle: 'Agent Alignment',
     description: 'Learning about your use case and setting objectives.',
   },
-  personalization: {
-    step: 'personalization',
-    index: 2,
-    title: 'Personalization',
-    subtitle: 'Agent Personalization',
-    description: 'Tailoring capabilities to fit your needs.',
-  },
   onboarding: {
     step: 'onboarding',
-    index: 3,
+    index: 2,
     title: 'Onboarding',
     subtitle: 'Agent Onboarding',
-    description: 'Finalizing setup and preparing to assist you.',
+    description: 'Wiring up toolsets, knowledge, and the persona prompt.',
+  },
+  personalization: {
+    step: 'personalization',
+    index: 3,
+    title: 'Personalization',
+    subtitle: 'Agent Personalization',
+    description: 'Finalizing name, avatar, and tone.',
   },
 }
 
@@ -40,23 +40,28 @@ function isEmptyTiptapDoc(doc: Record<string, unknown> | null | undefined): bool
   if (!doc) return true
   const content = (doc as { content?: unknown[] }).content
   if (!content || !Array.isArray(content) || content.length === 0) return true
-  // A Tiptap "doc" with a single empty paragraph is also "empty".
   if (content.length === 1) {
     const node = content[0] as { type?: string; content?: unknown[] }
-    if (node?.type === 'paragraph' && (!node.content || node.content.length === 0)) return true
+    if (!node) return true
+    // Empty Tiptap paragraph or empty KB-block placeholder.
+    if (node.type === 'paragraph' && (!node.content || node.content.length === 0)) return true
+    if (node.type === 'block' && (!node.content || node.content.length === 0)) return true
   }
   return false
 }
 
 /**
- * Derive the current setup step from agent shape. The builder persona's three
- * phases (alignment → personalization → onboarding) line up with prompt /
- * toolsets / wrap-up, so derivation works without a sync channel.
+ * Derive the current setup step from agent shape. Mirrors the persona's
+ * three phases (alignment → onboarding → personalization) — the prompt and
+ * toolsets are the Onboarding deliverable, the name is the Personalization
+ * deliverable.
  */
 export function deriveSetupStep(agent: AgentDetail): SetupCopy {
-  if (isEmptyTiptapDoc(agent.prompt)) return COPY.alignment
-  if ((agent.toolsets ?? []).length === 0) return COPY.personalization
-  return COPY.onboarding
+  if (isEmptyTiptapDoc(agent.prompt) || (agent.toolsets ?? []).length === 0) {
+    return COPY.alignment
+  }
+  if (!agent.name || agent.name.trim() === '') return COPY.onboarding
+  return COPY.personalization
 }
 
 /**

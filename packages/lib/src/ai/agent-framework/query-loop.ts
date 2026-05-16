@@ -25,6 +25,11 @@ import {
 
 const logger = createScopedLogger('agent-query-loop')
 const DEFAULT_MAX_ITERATIONS = 10
+// Number of consecutive iterations in which the same tool fails (and only
+// that tool runs) before we bail out of the turn. Without this, a model
+// stuck on a malformed tool input can burn the full iteration budget
+// silently — see plans/kopilot/agents/builder/builder-failure-diagnosis.md §3.5.
+const SAME_TOOL_FAILURE_LIMIT = 3
 
 /**
  * Core agent query loop — standalone async generator.
@@ -61,6 +66,8 @@ export async function* agentQueryLoop(
   let currentState = state
   let iteration = 0
   let totalToolCallCount = 0
+  let failingToolName: string | null = null
+  let failingToolStreak = 0
 
   /**
    * Per-turn cache of idempotent tool results. Keyed by "toolName::sortedArgsJson".
@@ -546,6 +553,41 @@ export async function* agentQueryLoop(
 
     // Let the agent process intermediate results
     currentState = await agent.processResult(content, toolCalls, currentState, ctx)
+
+    // Same-tool failure streak detector. If every tool call in this iteration
+    // failed AND they all reference the same tool name, track the streak.
+    // Three in a row bails the turn — the model is stuck on a malformed
+    // input (e.g. an empty `{}` to a tool whose schema it can't satisfy).
+    const allFailed = toolResults.results.length > 0 && toolResults.results.every((r) => !r.success)
+    const distinctNames = new Set(toolResults.results.map((r) => r.toolName))
+    if (allFailed && distinctNames.size === 1) {
+      const onlyName = [...distinctNames][0]
+      if (failingToolName === onlyName) {
+        failingToolStreak++
+      } else {
+        failingToolName = onlyName
+        failingToolStreak = 1
+      }
+      if (failingToolStreak >= SAME_TOOL_FAILURE_LIMIT) {
+        const lastError = toolResults.results.find((r) => !r.success)?.error ?? 'unknown error'
+        logger.warn('Same-tool failure streak — aborting turn', {
+          turnId,
+          agent: agent.name,
+          tool: onlyName,
+          streak: failingToolStreak,
+          iteration,
+          lastError,
+        })
+        yield {
+          type: 'turn-error',
+          error: `Tool \`${onlyName}\` failed ${failingToolStreak} times in a row: ${lastError}`,
+        }
+        break
+      }
+    } else {
+      failingToolName = null
+      failingToolStreak = 0
+    }
   }
 
   yield { type: 'agent-completed', agent: agent.name }

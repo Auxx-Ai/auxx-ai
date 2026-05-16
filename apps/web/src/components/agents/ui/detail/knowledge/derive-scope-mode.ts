@@ -2,7 +2,21 @@
 
 import type { AgentDetail } from '../../../store/agent-store'
 
-export type EffectiveScopeMode = 'include_descendants' | 'include_one' | 'exclude' | 'none'
+export type EffectiveScopeMode =
+  | 'include_descendants'
+  | 'include_one'
+  | 'exclude'
+  | 'inherited_include_descendants'
+  | 'inherited_exclude'
+  | 'none'
+
+export interface AncestorContext {
+  /**
+   * Ordered nearest-first. Each entry is a recordId string like `'kb:abc'` or
+   * `'article:xyz'`. The closest ancestor with an inheritable rule wins.
+   */
+  ancestorRecordIds: string[]
+}
 
 interface ScopeRow {
   entityDefinitionId: string
@@ -12,8 +26,8 @@ interface ScopeRow {
 
 /**
  * Find the stored mode for a single `recordId` (instance or definition). When
- * no row exists, returns `'none'`. Matches the planned client-side resolver
- * approximation — strict per-row lookup, no inheritance flattening yet.
+ * no row exists, returns `'none'`. Strict per-row lookup — does not walk
+ * ancestors. Use {@link deriveEffectiveMode} when you need inheritance.
  *
  * @param recordId  `'article:abc'` for instance, `'article'` for definition-level
  */
@@ -29,36 +43,36 @@ export function findStoredMode(
 }
 
 /**
- * Derive the *effective* mode for a record by walking definition-level then
- * instance-level rules in order. Instance rules win over definition rules.
+ * Derive the *effective* mode for a record. Order of precedence:
+ *
+ *   1. An explicit row on this exact recordId.
+ *   2. The closest ancestor (nearest-first) whose row is `include_descendants`
+ *      or `exclude` — both flagged as `inherited_*` in the result. `include_one`
+ *      on an ancestor does NOT inherit (it only covers the ancestor itself).
+ *   3. A definition-level row (`entityDefinitionId` with null instance) —
+ *      flagged as inherited.
+ *   4. `'none'`.
  */
 export function deriveEffectiveMode(
   scopes: AgentDetail['resourceScopes'],
-  recordId: string
+  recordId: string,
+  ancestors?: AncestorContext
 ): EffectiveScopeMode {
-  const { entityDefinitionId, entityInstanceId } = splitRecordId(recordId)
+  const own = findStoredMode(scopes, recordId)
+  if (own !== 'none') return own
 
-  let mode: EffectiveScopeMode = 'none'
-
-  // Apply definition-level rule first.
-  const defRow = scopes.find(
-    (s) => s.entityDefinitionId === entityDefinitionId && s.entityInstanceId === null
-  )
-  if (defRow) {
-    if (defRow.mode === 'include_descendants') mode = 'include_descendants'
-    else if (defRow.mode === 'exclude') mode = 'exclude'
-    else if (defRow.mode === 'include_one') mode = 'include_one'
+  for (const ancestorId of ancestors?.ancestorRecordIds ?? []) {
+    const m = findStoredMode(scopes, ancestorId)
+    if (m === 'include_descendants') return 'inherited_include_descendants'
+    if (m === 'exclude') return 'inherited_exclude'
   }
 
-  // Instance-level rule wins if present.
-  if (entityInstanceId !== null) {
-    const instanceRow = scopes.find(
-      (s) => s.entityDefinitionId === entityDefinitionId && s.entityInstanceId === entityInstanceId
-    )
-    if (instanceRow) mode = instanceRow.mode
-  }
+  const { entityDefinitionId } = splitRecordId(recordId)
+  const defMode = findStoredMode(scopes, entityDefinitionId)
+  if (defMode === 'include_descendants') return 'inherited_include_descendants'
+  if (defMode === 'exclude') return 'inherited_exclude'
 
-  return mode
+  return 'none'
 }
 
 function splitRecordId(recordId: string): {

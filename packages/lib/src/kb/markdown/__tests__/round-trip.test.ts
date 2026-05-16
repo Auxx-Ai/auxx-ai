@@ -240,3 +240,94 @@ describe('round-trip', () => {
     expect(out).toContain('{{first_name}}')
   })
 })
+
+describe('mdToBlocks — inline references', () => {
+  it('parses @[id] into a reference inline node', () => {
+    const doc = mdToDoc('See @[user:abc] for context.')
+    const inline = doc.content[0]?.content ?? []
+    expect(inline).toEqual([
+      { type: 'text', text: 'See ' },
+      { type: 'reference', attrs: { id: 'user:abc' } },
+      { type: 'text', text: ' for context.' },
+    ])
+  })
+
+  it('parses RecordId-shaped [Title](id) links as references', () => {
+    const doc = mdToDoc('Open [Settings](user:abc) to continue.')
+    const inline = doc.content[0]?.content ?? []
+    expect(inline).toEqual([
+      { type: 'text', text: 'Open ' },
+      { type: 'reference', attrs: { id: 'user:abc' } },
+      { type: 'text', text: ' to continue.' },
+    ])
+  })
+
+  it('keeps http(s) links as ordinary link marks', () => {
+    const doc = mdToDoc('[Docs](https://example.com) here.')
+    const inline = doc.content[0]?.content ?? []
+    const link = inline[0] as {
+      type: string
+      marks?: { type: string; attrs?: { href?: string } }[]
+    }
+    expect(link.type).toBe('text')
+    expect(link.marks?.[0]?.type).toBe('link')
+    expect(link.marks?.[0]?.attrs?.href).toBe('https://example.com')
+  })
+
+  it('keeps mailto/tel links as ordinary link marks', () => {
+    const doc = mdToDoc('[email](mailto:a@b.com) [phone](tel:+1-555-0100)')
+    const inline = doc.content[0]?.content ?? []
+    for (const node of inline) {
+      if ((node as { type?: string }).type !== 'text') continue
+      const marks = (node as { marks?: { type: string }[] }).marks ?? []
+      // Reference nodes won't have a `link` mark; ordinary text won't either.
+      // Anything that DOES have a link mark must be the mailto/tel.
+      const link = marks.find((m) => m.type === 'link')
+      if (link) {
+        const href = (link as { attrs?: { href?: string } }).attrs?.href ?? ''
+        expect(/^(mailto|tel):/.test(href)).toBe(true)
+      }
+    }
+    // No reference node leaked in.
+    expect(inline.some((n) => (n as { type?: string }).type === 'reference')).toBe(false)
+  })
+
+  it('round-trips a doc with a reference back to the same node', () => {
+    const original: DocJSON = {
+      type: 'doc',
+      content: [
+        block('text', {}, [
+          text('See '),
+          { type: 'reference', attrs: { id: 'user:abc' } },
+          text(' first.'),
+        ]),
+      ] as never,
+    }
+    const md = blocksToMd(original)
+    const reparsed = mdToDoc(md)
+    const inline = reparsed.content[0]?.content ?? []
+    expect(inline).toEqual([
+      { type: 'text', text: 'See ' },
+      { type: 'reference', attrs: { id: 'user:abc' } },
+      { type: 'text', text: ' first.' },
+    ])
+  })
+
+  it('handles two references in the same paragraph', () => {
+    const doc = mdToDoc('Both @[user:a] and @[toolset:mail] are involved.')
+    const inline = doc.content[0]?.content ?? []
+    expect(inline).toEqual([
+      { type: 'text', text: 'Both ' },
+      { type: 'reference', attrs: { id: 'user:a' } },
+      { type: 'text', text: ' and ' },
+      { type: 'reference', attrs: { id: 'toolset:mail' } },
+      { type: 'text', text: ' are involved.' },
+    ])
+  })
+
+  it('ignores @[…] that does not look like a RecordId', () => {
+    const doc = mdToDoc('Plain @[not a record] should stay text.')
+    const inline = doc.content[0]?.content ?? []
+    expect(inline.some((n) => (n as { type?: string }).type === 'reference')).toBe(false)
+  })
+})

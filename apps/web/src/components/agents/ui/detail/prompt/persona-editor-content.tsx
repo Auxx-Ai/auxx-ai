@@ -6,6 +6,7 @@ import type { Editor } from '@tiptap/react'
 import { EditorContent } from '@tiptap/react'
 import { memo, useRef } from 'react'
 import { type ActivePickerState, InlinePickerPopover } from '~/components/editor/inline-picker'
+import type { ReferenceTab } from '~/components/editor/inline-picker/nodes/reference-picker-node'
 import {
   ReferencePickerContent,
   type ReferencePickerHandle,
@@ -20,6 +21,12 @@ interface PersonaEditorContentProps {
   setCollapsed: (collapsed: boolean) => void
   activePicker: ActivePickerState | null
   referencePickerRef: React.RefObject<ReferencePickerHandle | null>
+  /**
+   * Tabs the picker exposes — must match the `referenceTabs` passed to the
+   * paired `useRichTextEditor` so digit shortcuts and Tab cycling stay in
+   * sync with the visible strip.
+   */
+  referenceTabs?: ReferenceTab[]
 }
 
 export const PersonaEditorContent = memo(function PersonaEditorContent({
@@ -30,6 +37,7 @@ export const PersonaEditorContent = memo(function PersonaEditorContent({
   setCollapsed,
   activePicker,
   referencePickerRef,
+  referenceTabs,
 }: PersonaEditorContentProps) {
   const containerRef = useRef<HTMLDivElement>(null)
 
@@ -64,6 +72,7 @@ export const PersonaEditorContent = memo(function PersonaEditorContent({
           query={activePicker?.query ?? ''}
           onSelect={(id) => editor?.commands.confirmReferencePicker(id)}
           onTabChange={(tab) => editor?.commands.setReferencePickerTab(tab)}
+          tabs={referenceTabs}
         />
       </InlinePickerPopover>
     </div>
