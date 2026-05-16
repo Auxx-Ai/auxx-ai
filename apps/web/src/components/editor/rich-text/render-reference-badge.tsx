@@ -19,7 +19,7 @@ const referenceBadgeRing = 'transition-all inline-flex'
  */
 export function renderReferenceBadge({ id, selected }: { id: string; selected: boolean }) {
   const ring = cn(referenceBadgeRing, selected && 'ring-2 ring-primary ring-offset-1')
-  if (id.startsWith('user:') || id.startsWith('group:')) {
+  if (id.startsWith('user:') || id.startsWith('group:') || id.startsWith('agent:')) {
     return <ActorBadge actorId={id as ActorId} className={ring} />
   }
   if (id.startsWith('thread:') || id.startsWith('draft:')) {

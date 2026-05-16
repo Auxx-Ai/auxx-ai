@@ -19,7 +19,6 @@ import {
   ChatSession,
   ChatWidget,
   Comment,
-  CommentMention,
   CommentReaction,
   CustomField,
   Dataset,
@@ -152,7 +151,6 @@ export const userRelations = relations(User, ({ one, many }) => ({
   pinned: many(Comment, {
     relationName: 'comment_pinnedById_user_id',
   }),
-  mentions: many(CommentMention),
   reactions: many(CommentReaction),
   mailViews: many(MailView),
   chatSessionsClosed: many(ChatSession),

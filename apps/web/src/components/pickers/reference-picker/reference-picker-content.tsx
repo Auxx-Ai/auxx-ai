@@ -163,7 +163,7 @@ export function ReferencePickerContent({
           <ActorPickerContent
             value={emptyValue as unknown as never[]}
             onChange={noop}
-            target='both'
+            target='all'
             multi={false}
             onSelectSingle={(actorId) => onSelect(actorId as unknown as RecordId)}
             externalSearch={query}

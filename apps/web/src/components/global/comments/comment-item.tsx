@@ -16,7 +16,7 @@ import { type Comment as CommentType, useComments } from '~/hooks/use-comments'
 import { useConfirm } from '~/hooks/use-confirm'
 import { Tooltip } from '../tooltip'
 import CommentComposer from './comment-composer'
-import { ParsedCommentContent } from './parsed-comment-content'
+import { CommentContent } from './comment-content'
 
 /** Helper to convert userId to ActorId format */
 const toUserActorId = (userId: string): ActorId => `user:${userId}` as ActorId
@@ -182,7 +182,7 @@ export function CommentItem({
                 <CommentComposer
                   recordId={recordId!}
                   commentId={comment.id}
-                  initialContent={comment.content}
+                  initialContent={comment.contentJson}
                   initialAttachments={comment.attachments || []}
                   onSubmitted={
                     () => {
@@ -199,7 +199,7 @@ export function CommentItem({
             {!isEditing && (
               <div className='block h-full w-fit max-w-full rounded-[15px] bg-primary-200 text-sm font-normal text-foreground'>
                 <div className='cursor-text select-text px-3 py-1 leading-[22px]'>
-                  <ParsedCommentContent>{comment.content}</ParsedCommentContent>
+                  <CommentContent doc={comment.contentJson} />
                 </div>
 
                 {/* Attachment display with download functionality */}

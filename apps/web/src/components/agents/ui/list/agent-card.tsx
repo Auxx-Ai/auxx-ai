@@ -41,6 +41,13 @@ export function AgentCard({ agent }: AgentCardProps) {
 
   const handleNavigate = () => router.push(`/app/agents/${agent.slug}`)
 
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault()
+      handleNavigate()
+    }
+  }
+
   const handleArchive = async () => {
     const ok = await confirm({
       title: 'Archive agent?',
@@ -66,10 +73,12 @@ export function AgentCard({ agent }: AgentCardProps) {
   return (
     <>
       <ConfirmDialog />
-      <button
-        type='button'
+      <div
+        role='button'
+        tabIndex={0}
         onClick={handleNavigate}
-        className='text-left rounded-2xl bg-background dark:bg-primary-50 hover:bg-primary-50/50 hover:outline-5 dark:hover:outline-primary-50/50 hover:outline-primary-100 flex flex-col p-3 gap-2 border cursor-pointer group/agent-card relative'>
+        onKeyDown={handleKeyDown}
+        className='text-left rounded-2xl bg-background dark:bg-primary-50 hover:bg-primary-50/50 hover:outline-5 dark:hover:outline-primary-50/50 hover:outline-primary-100 flex flex-col p-3 gap-2 border cursor-pointer group/agent-card relative focus-visible:outline-2 focus-visible:outline-info'>
         <div className='flex flex-row items-start gap-2 w-full'>
           <div className='relative shrink-0'>
             <AgentAvatar agent={agent} size={8} />
@@ -145,7 +154,7 @@ export function AgentCard({ agent }: AgentCardProps) {
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
-      </button>
+      </div>
     </>
   )
 }

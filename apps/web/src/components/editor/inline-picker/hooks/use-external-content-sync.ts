@@ -31,6 +31,14 @@ export interface ExternalContentSyncHandle {
   markLocalEdit: (key: string) => void
 }
 
+// Echo-detection window. Each local edit's canonical key goes into a bounded
+// ring, so when the server-saved content (or any other parent-driven
+// `incoming` reflecting a recent local edit) shows up later, we recognize it
+// as our own echo and skip — even when the editor has already typed past it.
+// Without this, a stale echo overwrites the user's live edits with an older
+// doc (cursor jumps, reference-picker chip vanishes and re-mounts).
+const LOCAL_EDIT_RING_SIZE = 64
+
 /**
  * Gate that prevents the editor's content-sync effect from clobbering the
  * live document when the server echoes back content we just sent. The hook
@@ -38,6 +46,9 @@ export interface ExternalContentSyncHandle {
  *
  * - A `lastAppliedKey` ref updated on every inbound apply and on every
  *   outbound local edit (via the returned handle).
+ * - A bounded ring of recent local-edit keys so an out-of-order or
+ *   typed-past server echo is recognized and skipped, not just the most
+ *   recent one.
  * - A `pending` ref that stashes incoming content while a slash/inline
  *   picker is open and flushes it the moment the picker closes.
  *
@@ -53,9 +64,23 @@ export function useExternalContentSync<TContent>({
 }: UseExternalContentSyncArgs<TContent>): RefObject<ExternalContentSyncHandle> {
   const lastAppliedKeyRef = useRef<string | null>(null)
   const pendingRef = useRef<TContent | null>(null)
+  // Bounded ring of recent locally-marked keys (most recent first). `Set`
+  // wrapping a `string[]` so we get O(1) hit-tests without unbounded growth.
+  const localEditRingRef = useRef<string[]>([])
+  const localEditSetRef = useRef<Set<string>>(new Set())
+  const recordLocalEdit = (key: string) => {
+    if (localEditSetRef.current.has(key)) return
+    localEditRingRef.current.unshift(key)
+    localEditSetRef.current.add(key)
+    if (localEditRingRef.current.length > LOCAL_EDIT_RING_SIZE) {
+      const evicted = localEditRingRef.current.pop()
+      if (evicted !== undefined) localEditSetRef.current.delete(evicted)
+    }
+  }
   const handleRef = useRef<ExternalContentSyncHandle>({
     markLocalEdit: (key) => {
       lastAppliedKeyRef.current = key
+      recordLocalEdit(key)
       // A local edit supersedes anything stashed while the picker is open —
       // flushing the stash on picker-close would otherwise clobber the fresh
       // edit (e.g. slash-command insertions while a save is in flight).
@@ -76,6 +101,9 @@ export function useExternalContentSync<TContent>({
     if (!editor || editor.isDestroyed) return
     const key = canonicalKey(incoming)
     if (key === lastAppliedKeyRef.current) return
+    // Echo of one of our own recent edits — the editor has typed past this
+    // version, so applying it would revert live edits. Trust the editor.
+    if (localEditSetRef.current.has(key)) return
     if (isPickerOpenRef.current) {
       pendingRef.current = incoming
       return
@@ -90,7 +118,7 @@ export function useExternalContentSync<TContent>({
     if (prevOpen.current && !isPickerOpen && editor && pendingRef.current) {
       const pending = pendingRef.current
       const key = canonicalKey(pending)
-      if (key !== lastAppliedKeyRef.current) {
+      if (key !== lastAppliedKeyRef.current && !localEditSetRef.current.has(key)) {
         applyContent(editor, pending)
         lastAppliedKeyRef.current = key
       }

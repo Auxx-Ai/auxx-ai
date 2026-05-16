@@ -88,6 +88,46 @@ export async function getAgentTriggersByApp(params: {
     )
 }
 
+/** Mention-trigger lookup. Hits `AgentTrigger_orgId_kind_enabled_idx` + `AgentTrigger_agentId_idx`. */
+export async function getAgentTriggersByMention(params: {
+  organizationId: string
+  agentId: string
+  db?: typeof defaultDb
+}): Promise<AgentTriggerEntity[]> {
+  const db = params.db ?? defaultDb
+  return db
+    .select()
+    .from(schema.AgentTrigger)
+    .where(
+      and(
+        eq(schema.AgentTrigger.organizationId, params.organizationId),
+        eq(schema.AgentTrigger.agentId, params.agentId),
+        eq(schema.AgentTrigger.kind, 'mention'),
+        eq(schema.AgentTrigger.enabled, true)
+      )
+    )
+}
+
+/** Assignment-trigger lookup. */
+export async function getAgentTriggersByAssignment(params: {
+  organizationId: string
+  agentId: string
+  db?: typeof defaultDb
+}): Promise<AgentTriggerEntity[]> {
+  const db = params.db ?? defaultDb
+  return db
+    .select()
+    .from(schema.AgentTrigger)
+    .where(
+      and(
+        eq(schema.AgentTrigger.organizationId, params.organizationId),
+        eq(schema.AgentTrigger.agentId, params.agentId),
+        eq(schema.AgentTrigger.kind, 'assignment'),
+        eq(schema.AgentTrigger.enabled, true)
+      )
+    )
+}
+
 /**
  * Flat key/value `filter` evaluator. The Phase 2 spec keeps filters
  * primitive — exact-match on top-level keys of the resource payload.

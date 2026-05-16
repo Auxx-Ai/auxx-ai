@@ -1,10 +1,12 @@
 // packages/lib/src/ai/agent-framework/process-agent-job.ts
 
-import { database } from '@auxx/database'
+import { database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { getSessionById, saveSessionMessages, updateSessionDomainState } from '@auxx/services'
+import { and, eq } from 'drizzle-orm'
 import { filterToolsByToolsets, resolveAgentConfig } from '../../agents'
 import type { JobContext } from '../../jobs/types'
+import { docToText } from '../../tiptap'
 import {
   createAppCapabilities,
   createCapabilityRegistry,
@@ -14,6 +16,7 @@ import {
   createMailCapabilities,
   createToolDepsFactory,
 } from '../kopilot'
+import type { TriggerContext, TriggerKind } from '../kopilot/prompts/trigger-context'
 import type { UsageTrackingRequest } from '../orchestrator/types'
 import { getModelCreditMultiplier } from '../quota/credit-multiplier'
 import { UsageTrackingService } from '../usage/usage-tracking-service'
@@ -59,8 +62,10 @@ export async function processAgentMessage(ctx: JobContext<AgentJobPayload>) {
     }
   }
 
-  // Dev only: tee agent-relevant logs to a per-session file
-  if (process.env.NODE_ENV === 'development') {
+  // Dev only: tee agent-relevant logs to a per-session file. Gated on
+  // `!== 'production'` so the worker dev script (which doesn't set NODE_ENV)
+  // still gets traces — same convention as `apps/worker/src/server.ts`.
+  if (process.env.NODE_ENV !== 'production') {
     return withAgentRunLog(sessionId, run)
   }
 
@@ -83,6 +88,15 @@ async function processAgentMessageInternal(ctx: JobContext<AgentJobPayload>) {
   // is read back.
   const agentId = session.agentId ?? data.agentId ?? null
 
+  // 1b. Resolve trigger context for autonomous runs. The trigger row is
+  // re-fetched (not passed via the job payload) so operator edits to
+  // `instructions` between enqueue and execution are picked up.
+  const triggerContext = await resolveTriggerContext({
+    organizationId,
+    agentTriggerId: session.agentTriggerId ?? data.agentTriggerId ?? null,
+    sessionTriggerContext: session.triggerContext as Record<string, unknown> | null,
+  })
+
   // 2. Build domain config based on domain type
   const domainConfig = await buildDomainConfig(domain, {
     organizationId,
@@ -93,6 +107,7 @@ async function processAgentMessageInternal(ctx: JobContext<AgentJobPayload>) {
     signal,
     modelId,
     agentId,
+    triggerContext,
   })
 
   // 3. Create LLM adapter
@@ -249,6 +264,7 @@ async function buildDomainConfig(
     signal?: AbortSignal
     modelId?: string
     agentId: string | null
+    triggerContext: TriggerContext | undefined
   }
 ) {
   switch (domain) {
@@ -297,6 +313,7 @@ async function buildKopilotShapedConfig(
     page?: string
     signal?: AbortSignal
     agentId: string | null
+    triggerContext: TriggerContext | undefined
   },
   defaults: { provider: string | undefined; model: string | undefined }
 ) {
@@ -335,8 +352,66 @@ async function buildKopilotShapedConfig(
     defaultModel: defaults.model,
     defaultProvider: defaults.provider,
     agentConfig,
+    triggerContext: params.triggerContext,
     // Long-running plans (≥30 steps × ~1–2 LLM rounds each) need
     // headroom past the framework's small-loop default.
     maxIterations: 30,
   })
+}
+
+/**
+ * Re-loads the AgentTrigger row when the session was kicked off by a trigger
+ * and shapes a `TriggerContext` for the prompt builder. Returns undefined for
+ * chat runs (no trigger) so the prompt renders identically to today.
+ */
+async function resolveTriggerContext(params: {
+  organizationId: string
+  agentTriggerId: string | null | undefined
+  sessionTriggerContext: Record<string, unknown> | null
+}): Promise<TriggerContext | undefined> {
+  const { organizationId, agentTriggerId, sessionTriggerContext } = params
+  if (!agentTriggerId) return undefined
+
+  const [trigger] = await database
+    .select({
+      kind: schema.AgentTrigger.kind,
+      instructions: schema.AgentTrigger.instructions,
+    })
+    .from(schema.AgentTrigger)
+    .where(
+      and(
+        eq(schema.AgentTrigger.id, agentTriggerId),
+        eq(schema.AgentTrigger.organizationId, organizationId)
+      )
+    )
+    .limit(1)
+
+  if (!trigger) return undefined
+
+  // The session's triggerContext JSONB carries the `kind` discriminator and
+  // the kind-specific payload (e.g. `commentId`, `parentRecordId` for mention).
+  // Falling back to `trigger.kind` keeps the renderer working even if the
+  // session row was created without a triggerContext (legacy / forward-compat).
+  const payload = sessionTriggerContext ?? {}
+  const kind = (asKind(payload.kind) ?? asKind(trigger.kind)) as TriggerKind | null
+  if (!kind) return undefined
+
+  const instructions = renderInstructionsAsText(trigger.instructions)
+
+  return { kind, instructions, payload }
+}
+
+function renderInstructionsAsText(
+  instructions: Record<string, unknown> | null | undefined
+): string | null {
+  if (!instructions) return null
+  if (typeof instructions === 'string') return instructions.length > 0 ? instructions : null
+  const text = docToText(instructions)
+  return text.length > 0 ? text : null
+}
+
+function asKind(value: unknown): TriggerKind | null {
+  if (value === 'scheduled' || value === 'event' || value === 'app') return value
+  if (value === 'mention' || value === 'assignment') return value
+  return null
 }

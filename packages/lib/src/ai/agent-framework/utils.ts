@@ -1,7 +1,8 @@
 // packages/lib/src/ai/agent-framework/utils.ts
 
 import type { ToolCall } from '../clients/base/types'
-import type { AgentToolDefinition } from './types'
+import type { ToolContext } from './tool-context'
+import type { AgentToolDefinition, AgentToolResult, ToolProgressPayload } from './types'
 
 /**
  * Result of executing (or synthesizing) a single tool call inside the query
@@ -127,6 +128,47 @@ export function needsApproval(tool: AgentToolDefinition, args: Record<string, un
     }
   }
   return !!gate
+}
+
+/**
+ * Type guard for a tool's `execute` return — true when the value is an
+ * async generator (streaming tool), false when it's a Promise (buffered).
+ */
+function isAsyncGenerator(
+  value: unknown
+): value is AsyncGenerator<ToolProgressPayload, AgentToolResult, void> {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    typeof (value as AsyncIterator<unknown>)[Symbol.asyncIterator as keyof object] === 'function' &&
+    typeof (value as AsyncIterator<unknown>).next === 'function'
+  )
+}
+
+/**
+ * Run a tool's `execute` and surface progress events when the tool is
+ * streaming. For buffered tools, equivalent to `await tool.execute(args, ctx)`.
+ * For streaming tools, drains the async generator: each yielded payload
+ * triggers `onProgress`, the generator's return value becomes the result.
+ *
+ * `onProgress` is optional — autonomous / capture-mode runs pass `undefined`
+ * and silently drain the generator (per plans/kopilot/apps/README.md §6.2).
+ */
+export async function executeToolWithProgress(
+  tool: AgentToolDefinition,
+  args: Record<string, unknown>,
+  ctx: ToolContext,
+  onProgress?: (payload: ToolProgressPayload) => void
+): Promise<AgentToolResult> {
+  const exec = tool.execute(args, ctx)
+  if (isAsyncGenerator(exec)) {
+    while (true) {
+      const next = await exec.next()
+      if (next.done) return next.value
+      if (onProgress) onProgress(next.value)
+    }
+  }
+  return exec
 }
 
 /**

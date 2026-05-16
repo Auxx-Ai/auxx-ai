@@ -1,6 +1,7 @@
 // apps/web/src/components/agents/ui/detail/triggers/agent-trigger-dialog.tsx
 'use client'
 
+import { docToText, textToDoc } from '@auxx/lib/tiptap'
 import { Button } from '@auxx/ui/components/button'
 import {
   Dialog,
@@ -34,7 +35,7 @@ import { type Interval, TriggerIntervalSelector } from './trigger-interval-selec
 
 type Trigger = RouterOutputs['agentTrigger']['list'][number]
 
-type Kind = 'scheduled' | 'event'
+type Kind = 'scheduled' | 'event' | 'mention' | 'assignment'
 type ScheduledMode = 'simple' | 'cron'
 type CrudTriggerType = 'created' | 'updated' | 'deleted'
 
@@ -124,10 +125,15 @@ export function AgentTriggerDialog({
   const isEditMode = !!trigger
   const isAppKind = trigger?.kind === 'app'
   const effectiveKind: Kind = isEditMode
-    ? (trigger?.kind as Kind | 'app') === 'event'
+    ? trigger?.kind === 'event'
       ? 'event'
-      : 'scheduled'
+      : trigger?.kind === 'mention'
+        ? 'mention'
+        : trigger?.kind === 'assignment'
+          ? 'assignment'
+          : 'scheduled'
     : kind
+  const isInstructionsOnly = effectiveKind === 'mention' || effectiveKind === 'assignment'
 
   const { resources } = useResources()
   const fallbackEntityId = resources[0]?.id ?? 'ticket'
@@ -135,6 +141,7 @@ export function AgentTriggerDialog({
   const [confirm, ConfirmDialog] = useConfirm()
   const [scheduledState, setScheduledState] = useState<ScheduledState>(DEFAULT_SCHEDULED_STATE)
   const [eventState, setEventState] = useState<EventState>(DEFAULT_EVENT_STATE)
+  const [instructionsText, setInstructionsText] = useState<string>('')
 
   useEffect(() => {
     if (!open) return
@@ -145,6 +152,15 @@ export function AgentTriggerDialog({
     } else {
       setScheduledState(DEFAULT_SCHEDULED_STATE)
       setEventState({ ...DEFAULT_EVENT_STATE, entityDefinitionId: fallbackEntityId })
+    }
+    // Hydrate Instructions from the JSONB column (string or Tiptap doc).
+    const raw = trigger?.instructions as unknown
+    if (typeof raw === 'string') {
+      setInstructionsText(raw)
+    } else if (raw && typeof raw === 'object') {
+      setInstructionsText(docToText(raw))
+    } else {
+      setInstructionsText('')
     }
   }, [open, trigger, fallbackEntityId])
 
@@ -224,6 +240,13 @@ export function AgentTriggerDialog({
       }
     }
 
+    if (effectiveKind === 'mention') {
+      return { kind: 'mention' as const }
+    }
+    if (effectiveKind === 'assignment') {
+      return { kind: 'assignment' as const }
+    }
+
     if (!eventState.entityDefinitionId) {
       toastError({ title: 'Pick a resource' })
       return null
@@ -240,12 +263,24 @@ export function AgentTriggerDialog({
     const triggerInput = buildTriggerInput()
     if (!triggerInput) return
 
+    const trimmedInstructions = instructionsText.trim()
+    const instructions =
+      isInstructionsOnly && trimmedInstructions ? textToDoc(trimmedInstructions) : undefined
+
     if (isEditMode && trigger) {
-      update.mutate({ id: trigger.id, trigger: triggerInput })
+      update.mutate({
+        id: trigger.id,
+        trigger: triggerInput,
+        ...(isInstructionsOnly ? { instructions } : {}),
+      })
       return
     }
 
-    create.mutate({ agentId, trigger: triggerInput })
+    create.mutate({
+      agentId,
+      trigger: triggerInput,
+      ...(isInstructionsOnly && instructions ? { instructions } : {}),
+    })
   }
 
   return (
@@ -259,13 +294,30 @@ export function AgentTriggerDialog({
             <DialogDescription>
               {effectiveKind === 'scheduled'
                 ? 'Fire this agent on a recurring schedule.'
-                : 'Fire this agent when a resource is created, updated, or deleted.'}
+                : effectiveKind === 'mention'
+                  ? 'Fire this agent when it is mentioned in a comment.'
+                  : effectiveKind === 'assignment'
+                    ? 'Fire this agent when it is assigned to a ticket.'
+                    : 'Fire this agent when a resource is created, updated, or deleted.'}
             </DialogDescription>
           </DialogHeader>
 
           {isAppKind ? (
             <div className='rounded-md border bg-muted/30 p-4 text-sm text-muted-foreground'>
               App triggers can't be edited here. Manage them from the app catalog.
+            </div>
+          ) : isInstructionsOnly ? (
+            <div className='space-y-2'>
+              <Field orientation='vertical'>
+                <FieldLabel>Instructions</FieldLabel>
+                <textarea
+                  value={instructionsText}
+                  onChange={(e) => setInstructionsText(e.target.value)}
+                  rows={6}
+                  placeholder='Optional. Layered on top of the agent prompt when this trigger fires.'
+                  className='w-full resize-y rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
+                />
+              </Field>
             </div>
           ) : effectiveKind === 'scheduled' ? (
             <div className='space-y-4'>
@@ -338,7 +390,7 @@ export function AgentTriggerDialog({
           )}
 
           <DialogFooter className='flex sm:justify-between!'>
-            {isEditMode ? (
+            {isEditMode && !isInstructionsOnly ? (
               <Button
                 type='button'
                 size='sm'

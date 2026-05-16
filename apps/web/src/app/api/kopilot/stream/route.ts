@@ -288,8 +288,8 @@ export async function POST(request: NextRequest) {
                 isNewSession,
               })
 
-        // Dev only: tee agent-relevant logs to a per-session file
-        if (process.env.NODE_ENV === 'development') {
+        // Dev only: tee agent-relevant logs to a per-session file.
+        if (process.env.NODE_ENV !== 'production') {
           await withAgentRunLog(sessionId, runPath)
         } else {
           await runPath()

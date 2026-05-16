@@ -1,7 +1,4 @@
 // packages/lib/src/references/index.ts
 
-export {
-  collectReferenceIds,
-  type PreresolvedReferences,
-  preresolveReferences,
-} from './preresolve'
+export { collectReferenceIds } from '../tiptap'
+export { type PreresolvedReferences, preresolveReferences } from './preresolve'

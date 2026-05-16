@@ -159,14 +159,14 @@ export interface RelationshipFieldValue extends BaseFieldValue {
   displayName?: string
 }
 
-/** Actor value for ACTOR fields - references a user or group */
+/** Actor value for ACTOR fields - references a user, group, or agent */
 export interface ActorFieldValue extends BaseFieldValue {
   type: 'actor'
-  /** Type of actor: 'user' or 'group' */
-  actorType: 'user' | 'group'
-  /** The actor's ID (User.id for 'user', EntityGroup instance ID for 'group') */
+  /** Type of actor: 'user', 'group', or 'agent'. */
+  actorType: 'user' | 'group' | 'agent'
+  /** The actor's ID (User.id for 'user', EntityGroup instance ID for 'group', Agent.id for 'agent'). */
   id: string
-  /** Full ActorId in format "user:xxx" or "group:xxx" */
+  /** Full ActorId in format "user:xxx", "group:xxx", or "agent:xxx". */
   actorId: ActorId
   /** Denormalized for display */
   displayName?: string
@@ -233,9 +233,9 @@ export interface RelationshipFieldValueInput {
 /** Actor value input */
 export interface ActorFieldValueInput {
   type: 'actor'
-  /** Type of actor: 'user' or 'group' */
-  actorType: 'user' | 'group'
-  /** The actor's ID (User.id for 'user', EntityGroup instance ID for 'group') */
+  /** Type of actor: 'user', 'group', or 'agent'. */
+  actorType: 'user' | 'group' | 'agent'
+  /** The actor's ID (User.id for 'user', EntityGroup instance ID for 'group', Agent.id for 'agent'). */
   id: string
 }
 
@@ -299,7 +299,7 @@ export const relationshipFieldValueInputSchema = z.object({
 /** Schema for actor value input */
 export const actorFieldValueInputSchema = z.object({
   type: z.literal('actor'),
-  actorType: z.enum(['user', 'group']),
+  actorType: z.enum(['user', 'group', 'agent']),
   id: z.string(),
 })
 

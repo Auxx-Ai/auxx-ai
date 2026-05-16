@@ -85,6 +85,8 @@ export const EventHandlers: IEventsHandlers = {
   'comment:updated': [createTimelineEvent],
   'comment:deleted': [createTimelineEvent],
   'comment:replied': [createTimelineEvent],
+  // Mention/agent reference → AGENT TRIGGERS (no timeline; reference is implicit in the comment).
+  'comment:referenced': [triggerAgents],
 
   // Entity instance events → CREATE TIMELINE + ENTITY TRIGGERS + WORKFLOWS
   'entity:created': [

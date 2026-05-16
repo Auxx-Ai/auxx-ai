@@ -1,13 +1,18 @@
 // packages/services/src/lambda-execution/invoke-lambda-executor-streaming.ts
 
 /**
- * SPIKE: streaming-aware lambda invocation.
+ * Streaming-aware lambda invocation. Mirrors `invokeLambdaExecutor` but reads
+ * the response body as a chunked SSE stream and forwards each event via
+ * `onEvent`. Default target is `/ai-tool/stream` on the lambda-server (Railway
+ * `lambda-server` container) — see plans/kopilot/apps/README.md §6.2.
  *
- * Mirrors `invokeLambdaExecutor` but reads the response body as a chunked
- * SSE stream and forwards each event via `onEvent`. Used to verify that
- * AWS Lambda `RESPONSE_STREAM` mode delivers chunks on cadence end-to-end.
+ * Wire format (per the lambda-server's streaming endpoint):
+ *   event: progress  → tool emitted a `ToolProgressPayload` yield
+ *   event: result    → tool returned its final value (terminal frame)
+ *   event: error     → tool threw before completing
  *
- * See plans/kopilot/apps/lambda-streaming-spike.md
+ * The Kopilot apps bridge wraps this caller to expose progress events as
+ * `tool-progress` agent events on the SSE channel.
  */
 
 import { INTERNAL_LAMBDA_URL } from '@auxx/config/server'
@@ -73,7 +78,7 @@ function parseSseFrames(buffer: string): {
 export async function invokeLambdaExecutorStreaming(params: {
   payload: any
   caller: string
-  /** Optional path on the lambda-server (default `/stream-probe` for the spike). */
+  /** Optional path on the lambda-server (default `/ai-tool/stream`). */
   path?: string
   lambdaUrl?: string
   onEvent: (ev: StreamEvent) => void
@@ -81,7 +86,7 @@ export async function invokeLambdaExecutorStreaming(params: {
   const {
     payload,
     caller,
-    path = '/stream-probe',
+    path = '/ai-tool/stream',
     lambdaUrl = INTERNAL_LAMBDA_URL,
     onEvent,
   } = params
@@ -120,6 +125,7 @@ export async function invokeLambdaExecutorStreaming(params: {
     let ttfbMs: number | null = null
     let eventCount = 0
     let finalResult: unknown = null
+    let streamError: { message?: string; code?: string } | null = null
 
     while (true) {
       const { done, value } = await reader.read()
@@ -135,6 +141,9 @@ export async function invokeLambdaExecutorStreaming(params: {
         const wrapped: StreamEvent = { ...ev, receivedAt: Date.now() }
         onEvent(wrapped)
         if (ev.event === 'result') finalResult = ev.data
+        if (ev.event === 'error' && ev.data && typeof ev.data === 'object') {
+          streamError = ev.data as { message?: string; code?: string }
+        }
       }
     }
 
@@ -145,7 +154,23 @@ export async function invokeLambdaExecutorStreaming(params: {
         eventCount += 1
         onEvent({ ...ev, receivedAt: Date.now() })
         if (ev.event === 'result') finalResult = ev.data
+        if (ev.event === 'error' && ev.data && typeof ev.data === 'object') {
+          streamError = ev.data as { message?: string; code?: string }
+        }
       }
+    }
+
+    // Map mid-stream `event: error` frames into a typed error result so the
+    // bridge surfaces them the same way buffered `invokeLambdaExecutor` does.
+    if (streamError) {
+      const code = streamError.code ?? 'EXECUTION_ERROR'
+      const message = streamError.message ?? 'Streaming AI tool failed'
+      const isConnectionError = code === 'CONNECTION_NOT_FOUND' || code === 'CONNECTION_EXPIRED'
+      return err({
+        code: isConnectionError ? 'CONNECTION_REQUIRED' : code,
+        message,
+        statusCode: isConnectionError ? 403 : 500,
+      })
     }
 
     return ok({

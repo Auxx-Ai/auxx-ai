@@ -13,8 +13,8 @@ import { convertToCronPattern, type ScheduledTriggerConfig } from '../workflows/
 
 const logger = createScopedLogger('agent-trigger-service')
 
-/** Trigger kinds. Phase 1.5 adds 'mention' | 'assignment'. */
-export type AgentTriggerKind = 'scheduled' | 'event' | 'app'
+/** Trigger kinds. */
+export type AgentTriggerKind = 'scheduled' | 'event' | 'app' | 'mention' | 'assignment'
 
 /** CRUD-mode event triggerType. */
 export type AgentEventTriggerType = 'created' | 'updated' | 'deleted'
@@ -55,7 +55,22 @@ export interface AppTriggerInput {
   }
 }
 
-export type AgentTriggerInput = ScheduledTriggerInput | CrudEventTriggerInput | AppTriggerInput
+/** Phase 1.5: fires when this agent is referenced in a comment. */
+export interface MentionTriggerInput {
+  kind: 'mention'
+}
+
+/** Phase 1.5: fires when this agent is assigned to a ticket. */
+export interface AssignmentTriggerInput {
+  kind: 'assignment'
+}
+
+export type AgentTriggerInput =
+  | ScheduledTriggerInput
+  | CrudEventTriggerInput
+  | AppTriggerInput
+  | MentionTriggerInput
+  | AssignmentTriggerInput
 
 export interface CreateAgentTriggerInput {
   agentId: string
@@ -129,6 +144,14 @@ function partitionTriggerInput(trigger: AgentTriggerInput): {
         entityDefinitionId: trigger.entityDefinitionId,
       },
       config: trigger.filter ? { filter: trigger.filter } : {},
+    }
+  }
+
+  if (trigger.kind === 'mention' || trigger.kind === 'assignment') {
+    return {
+      kind: trigger.kind,
+      columns: { ...empty },
+      config: {},
     }
   }
 

@@ -16,6 +16,7 @@ import { injectSnapshotsIntoFinal } from './blocks/inject-snapshots'
 import { createEmptyTurnSnapshots, runSnapshotWalker } from './blocks/snapshot-walker'
 import type { CapabilityRegistry } from './capabilities/types'
 import { applyContextDefaults } from './context-refs'
+import type { TriggerContext } from './prompts/trigger-context'
 import type { KopilotDomainState, PlanState, PlanStepStatus, SessionRef } from './types'
 
 const logger = createScopedLogger('kopilot-domain-config')
@@ -47,6 +48,12 @@ export interface KopilotDomainConfigOptions {
    * config is built — see `filterToolsByToolsets` in `@auxx/lib/agents`.
    */
   agentConfig?: ResolvedAgentConfig
+  /**
+   * Present iff this run was kicked off by an AgentTrigger. Threaded into
+   * `createKopilotAgent` so the autonomous-run section renders in the system
+   * prompt. Chat runs leave this undefined.
+   */
+  triggerContext?: TriggerContext
 }
 
 /**
@@ -68,6 +75,7 @@ export function createKopilotDomainConfig(
     defaultProvider = 'openai',
     maxIterations = 30,
     agentConfig,
+    triggerContext,
   } = options
 
   // Resolve tools: if the caller passed `tools`, use them verbatim (pre-filtered
@@ -95,6 +103,7 @@ export function createKopilotDomainConfig(
     maxIterations,
     toolsetPromptAdditions,
     agentConfig,
+    triggerContext,
   })
 
   return {

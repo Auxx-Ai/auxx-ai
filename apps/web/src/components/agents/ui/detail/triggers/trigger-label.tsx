@@ -21,7 +21,7 @@ export function TriggerLabel({ row }: { row: Trigger }) {
     const base = resource?.label
       ? `On ${resource.label} ${row.triggerType}`
       : `On ${row.entityDefinitionId}:${row.triggerType}`
-    return <span>{row.enabled ? base : `${base} (paused)`}</span>
+    return <span>{base}</span>
   }
 
   return <span>{getTriggerLabel(row)}</span>

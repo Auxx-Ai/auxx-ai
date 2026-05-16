@@ -54,7 +54,16 @@ const appInputSchema = z.object({
     .optional(),
 })
 
-const triggerInputSchema = z.union([scheduledInputSchema, crudEventInputSchema, appInputSchema])
+const mentionInputSchema = z.object({ kind: z.literal('mention') })
+const assignmentInputSchema = z.object({ kind: z.literal('assignment') })
+
+const triggerInputSchema = z.union([
+  scheduledInputSchema,
+  crudEventInputSchema,
+  appInputSchema,
+  mentionInputSchema,
+  assignmentInputSchema,
+])
 
 async function ensureAgentInOrg(organizationId: string, agentId: string): Promise<void> {
   if (!(await agentExistsInOrg(organizationId, agentId))) {

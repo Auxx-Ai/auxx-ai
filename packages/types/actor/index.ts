@@ -12,9 +12,14 @@ export type ActorId = string & { readonly __brand: 'ActorId' }
 
 /**
  * Type discriminator for ActorId prefix.
- * System users share the `user:` ID prefix since they are stored in the User table.
+ *
+ * - `user:` — real users + system users (system users are stored in the User table).
+ * - `group:` — actor groups.
+ * - `agent:` — Kopilot agents. The id half is the `Agent.id`, not the underlying
+ *   `User.id` (agents are backed by a synthetic User row, but the actor system
+ *   addresses them by their Agent row directly).
  */
-export type ActorIdType = 'user' | 'group'
+export type ActorIdType = 'user' | 'group' | 'agent'
 
 /**
  * Type discriminator for resolved Actor objects.
@@ -41,7 +46,7 @@ export function parseActorId(actorId: ActorId): { type: ActorIdType; id: string 
   const type = actorId.slice(0, colonIndex) as ActorIdType
   const id = actorId.slice(colonIndex + 1)
 
-  if (!type || !id || !['user', 'group'].includes(type)) {
+  if (!type || !id || !['user', 'group', 'agent'].includes(type)) {
     throw new Error(`Invalid ActorId: ${actorId}`)
   }
 
@@ -61,7 +66,7 @@ export function toActorId(type: ActorIdType, id: string): ActorId {
 export function isActorId(value: unknown): value is ActorId {
   if (typeof value !== 'string') return false
   const parts = value.split(':')
-  return parts.length === 2 && ['user', 'group'].includes(parts[0]!)
+  return parts.length === 2 && ['user', 'group', 'agent'].includes(parts[0]!)
 }
 
 /**
@@ -125,12 +130,17 @@ export interface SystemActor extends BaseActor {
 /**
  * Agent actor — Auxx-AI configurable agent surfaced as a workspace user.
  * Backed by a synthetic User row with userType = 'AGENT'. The ActorId
- * still uses the `user:<id>` prefix for storage compatibility.
+ * uses the `agent:<agentId>` prefix — `agentId` is the `Agent.id`, not
+ * the underlying `User.id`. Callers that need the synthetic user row id
+ * for storage (e.g. `Thread.assigneeIds`) should look it up via the
+ * actor service.
  */
 export interface AgentActor extends BaseActor {
   type: 'agent'
-  /** The Agent row id (different from BaseActor.actorId, which is user:<userId>). */
+  /** The Agent row id. Mirrors the id half of `actorId` (`agent:<agentId>`). */
   agentId: string
+  /** The underlying User row id (for legacy assignee storage / session attribution). */
+  userId: string
   /** Agent slug for routing. */
   slug: string
   /** Whether this agent is @-mentionable / assignable. */

@@ -39,11 +39,27 @@ export interface AiToolConfig {
    */
   readonly requiresApproval?: boolean | ((args: Record<string, unknown>) => boolean)
 
-  /** Default 15000ms. Hard cap 30000ms enforced server-side. */
+  /**
+   * Default 15000ms. Hard cap 30000ms for buffered tools, 120000ms for
+   * streaming tools (see plans/kopilot/apps/README.md §10).
+   */
   readonly timeout?: number
 
   /** Read-only tools can opt-in. Bridge passes through to AgentToolDefinition. */
   readonly idempotent?: boolean
+
+  /**
+   * Author opt-in: this tool's `execute` returns an `AsyncGenerator` and
+   * should be invoked through the streaming lambda endpoint
+   * (`/ai-tool/stream`). Yields are forwarded as `tool-progress` agent
+   * events; the generator's return value becomes the tool result.
+   *
+   * The runtime can also detect a generator return at execution time, but
+   * the platform bridge needs to know at registration time which caller
+   * (`invokeLambdaExecutor` vs `invokeLambdaExecutorStreaming`) to use, so
+   * authors must declare it explicitly. See plans/kopilot/apps/README.md §6.
+   */
+  readonly streaming?: boolean
 }
 
 /**

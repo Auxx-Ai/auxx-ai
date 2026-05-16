@@ -6,8 +6,8 @@ import {
   Article,
   ArticleRevision,
   Comment,
-  CommentMention,
   CommentReaction,
+  CommentReference,
   Dataset,
   File,
   KnowledgeBase,
@@ -160,18 +160,14 @@ export const commentRelations = relations(Comment, ({ one, many }) => ({
     references: [User.id],
     relationName: 'comment_pinnedById_user_id',
   }),
-  mentions: many(CommentMention),
+  references: many(CommentReference),
   reactions: many(CommentReaction),
 }))
 
-export const commentMentionRelations = relations(CommentMention, ({ one }) => ({
+export const commentReferenceRelations = relations(CommentReference, ({ one }) => ({
   comment: one(Comment, {
-    fields: [CommentMention.commentId],
+    fields: [CommentReference.commentId],
     references: [Comment.id],
-  }),
-  user: one(User, {
-    fields: [CommentMention.userId],
-    references: [User.id],
   }),
 }))
 

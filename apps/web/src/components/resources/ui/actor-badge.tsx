@@ -53,7 +53,7 @@ export const actorBadgeVariants = cva(
  * Props for the ActorBadge component.
  */
 interface ActorBadgeProps extends VariantProps<typeof actorBadgeVariants> {
-  /** ActorId in format "user:userId" or "group:groupId" - optional, shows loading when undefined */
+  /** ActorId — `user:userId`, `group:groupId`, or `agent:agentId`. Optional; shows loading when undefined. */
   actorId?: ActorId
   /** Whether to show avatar icon (default: true) */
   showIcon?: boolean
@@ -67,7 +67,7 @@ interface ActorBadgeProps extends VariantProps<typeof actorBadgeVariants> {
  * A reusable badge component that displays an actor (user or group) with avatar and name.
  * Fetches data using the actor store hooks and shows appropriate loading states.
  *
- * @param actorId - ActorId in format "user:userId" or "group:groupId"
+ * @param actorId - ActorId in format "user:userId", "group:groupId", or "agent:agentId"
  * @param showIcon - Whether to show avatar (default: true)
  * @param className - Additional CSS classes
  * @param variant - Visual variant (default | link)

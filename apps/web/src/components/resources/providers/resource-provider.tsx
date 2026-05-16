@@ -78,11 +78,14 @@ export function ResourceProvider({ children }: { children: React.ReactNode }) {
     })
   }, [fieldValueBatchGet])
 
-  // === PRELOADED: ACTORS (users + groups) ===
-  const actorsQuery = api.actor.list.useQuery(undefined, {
-    staleTime: 5 * 60 * 1000,
-    refetchOnWindowFocus: false,
-  })
+  // === PRELOADED: ACTORS (users + groups + agents) ===
+  const actorsQuery = api.actor.list.useQuery(
+    { target: 'all' },
+    {
+      staleTime: 5 * 60 * 1000,
+      refetchOnWindowFocus: false,
+    }
+  )
 
   // Sync actors to store
   useEffect(() => {

@@ -41,6 +41,7 @@ export const NATIVE_GROUP_CATALOG: Record<string, ToolsetGroupCatalog> = {
   Mail: { name: 'Mail', iconId: 'mail', color: 'blue' },
   Tasks: { name: 'Tasks', iconId: 'check-circle', color: 'green' },
   Entities: { name: 'Entities', iconId: 'boxes', color: 'purple' },
+  Comments: { name: 'Comments', iconId: 'message-square', color: 'teal' },
   Knowledge: { name: 'Knowledge', iconId: 'book-open', color: 'orange' },
   Docs: { name: 'Docs', iconId: 'help-circle', color: 'gray' },
   Members: { name: 'Members', iconId: 'users', color: 'pink' },

@@ -1,6 +1,8 @@
-// packages/lib/src/ai/kopilot/blocks/tiptap-to-plain-text.ts
+// packages/lib/src/tiptap/doc-to-text.ts
 
-interface TiptapToPlainTextOptions {
+import type { TiptapNode } from './types'
+
+interface DocToTextOptions {
   /**
    * Optional resolver for inline `reference` nodes. Receives the `RecordId`
    * and returns the markdown text to inline (typically `[Title](recordId)`).
@@ -27,16 +29,9 @@ interface TiptapToPlainTextOptions {
  * Tolerant of malformed input: anything that's not the expected shape
  * yields an empty string rather than throwing.
  */
-export function tiptapDocToPlainText(doc: unknown, options: TiptapToPlainTextOptions = {}): string {
+export function docToText(doc: unknown, options: DocToTextOptions = {}): string {
   if (!doc || typeof doc !== 'object') return ''
   return walkNode(doc as TiptapNode, options).trim()
-}
-
-interface TiptapNode {
-  type?: string
-  text?: string
-  attrs?: Record<string, unknown>
-  content?: TiptapNode[]
 }
 
 const BLOCK_TYPES = new Set([
@@ -54,7 +49,7 @@ const BLOCK_TYPES = new Set([
   'block',
 ])
 
-function walkNode(node: TiptapNode, options: TiptapToPlainTextOptions): string {
+function walkNode(node: TiptapNode, options: DocToTextOptions): string {
   if (typeof node.text === 'string') return node.text
   if (node.type === 'mention' || node.type === 'mentionRecord' || node.type === 'mentionAgent') {
     const label = (node.attrs?.label as string | undefined) ?? ''

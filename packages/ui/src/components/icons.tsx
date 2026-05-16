@@ -17,6 +17,7 @@ import {
   ArrowRight,
   ArrowUp,
   ArrowUpDown,
+  AtSign,
   Award,
   Ban,
   // Data/Charts
@@ -146,6 +147,7 @@ import {
   Phone,
   PieChart,
   Play,
+  Plug,
   Plus,
   Power,
   Printer,
@@ -394,6 +396,7 @@ export const ICON_DATA: IconItem[] = [
   { id: 'send', label: 'Send', icon: Send },
   { id: 'inbox', label: 'Inbox', icon: Inbox },
   { id: 'mails', label: 'Mails', icon: Mails },
+  { id: 'at-sign', label: 'At Sign', icon: AtSign },
   // User/Profile
   { id: 'user', label: 'User', icon: User },
   { id: 'users', label: 'Users', icon: Users },
@@ -482,6 +485,7 @@ export const ICON_DATA: IconItem[] = [
   { id: 'shield', label: 'Shield', icon: Shield },
   { id: 'shield-check', label: 'Shield Check', icon: ShieldCheck },
   { id: 'zap', label: 'Zap', icon: Zap },
+  { id: 'plug', label: 'Plug', icon: Plug },
   { id: 'lightbulb', label: 'Lightbulb', icon: Lightbulb },
   // Navigation
   { id: 'compass', label: 'Compass', icon: Compass },

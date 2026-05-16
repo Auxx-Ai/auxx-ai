@@ -15,6 +15,7 @@ import type {
 } from './types'
 import {
   buildToolDigest,
+  executeToolWithProgress,
   needsApproval,
   parseToolArgs,
   previewValue,
@@ -472,8 +473,11 @@ export async function* agentQueryLoop(
       break
     }
 
-    // Execute non-approval tool calls
-    const toolResults = await executeToolCalls(
+    // Execute non-approval tool calls. `executeToolCalls` is an async
+    // generator so streaming tools' `tool-progress` events surface live —
+    // buffered tools still produce the same `tool-started` / `tool-completed`
+    // pair as before, just yielded one-at-a-time instead of in a batch.
+    const toolCallGen = executeToolCalls(
       toolCalls,
       agent.tools,
       agent.name,
@@ -483,9 +487,16 @@ export async function* agentQueryLoop(
         ? (toolName, args) => config.domainConfig.transformToolInput!(toolName, args, currentState)
         : undefined
     )
-    for (const event of toolResults.events) {
-      yield event
+    let collectedToolResults: ToolExecResult[] = []
+    while (true) {
+      const next = await toolCallGen.next()
+      if (next.done) {
+        collectedToolResults = next.value
+        break
+      }
+      yield next.value
     }
+    const toolResults = { results: collectedToolResults }
 
     // Let the domain mine each tool result for state updates (e.g. snapshot extraction)
     if (config.domainConfig.onToolResult) {
@@ -621,16 +632,23 @@ function findApprovalTool(
   })
 }
 
-async function executeToolCalls(
+/**
+ * Async-generator dispatcher: yields `AgentEvent`s as each tool runs and
+ * returns the per-call results array when the batch is done. Streaming tools
+ * (those whose `execute` returns an `AsyncGenerator`) emit one `tool-progress`
+ * event per yield between `tool-started` and `tool-completed`; buffered tools
+ * emit no progress events. Live yielding matters for streaming — collecting
+ * into an array first would defeat the purpose.
+ */
+async function* executeToolCalls(
   toolCalls: ToolCall[],
   agentTools: AgentToolDefinition[],
   agentName: string,
   ctx: ToolContext,
   idempotentCache: Map<string, ToolExecResult>,
   transformInput?: (toolName: string, args: Record<string, unknown>) => Record<string, unknown>
-): Promise<{ events: AgentEvent[]; results: ToolExecResult[] }> {
+): AsyncGenerator<AgentEvent, ToolExecResult[]> {
   const toolMap = new Map(agentTools.map((t) => [t.name, t]))
-  const events: AgentEvent[] = []
   const results: ToolExecResult[] = []
 
   for (const toolCall of toolCalls) {
@@ -640,9 +658,9 @@ async function executeToolCalls(
     if (transformInput) args = transformInput(toolName, args)
 
     if (!tool) {
-      events.push({ type: 'tool-started', agent: agentName, tool: toolName, args })
+      yield { type: 'tool-started', agent: agentName, tool: toolName, args }
       const errorMsg = `Unknown tool: ${toolName}`
-      events.push({ type: 'tool-error', agent: agentName, tool: toolName, error: errorMsg })
+      yield { type: 'tool-error', agent: agentName, tool: toolName, error: errorMsg }
       results.push({
         toolCallId: toolCall.id,
         toolName,
@@ -665,21 +683,21 @@ async function executeToolCalls(
     if (tool.validateInputs) {
       const v = await tool.validateInputs(args, ctx)
       if (!v.ok) {
-        events.push({
+        yield {
           type: 'tool-started',
           agent: agentName,
           tool: toolName,
           toolCallId: toolCall.id,
           args,
-        })
+        }
         const errResult = { success: false, output: null, error: v.error }
-        events.push({
+        yield {
           type: 'tool-completed',
           agent: agentName,
           tool: toolName,
           toolCallId: toolCall.id,
           result: errResult,
-        })
+        }
         logger.info('validateInputs rejected', { agent: agentName, tool: toolName, error: v.error })
         results.push({
           toolCallId: toolCall.id,
@@ -704,14 +722,14 @@ async function executeToolCalls(
     if (cacheKey) {
       const cached = idempotentCache.get(cacheKey)
       if (cached) {
-        events.push({
+        yield {
           type: 'tool-started',
           agent: agentName,
           tool: toolName,
           toolCallId: toolCall.id,
           args,
-        })
-        events.push({
+        }
+        yield {
           type: 'tool-completed',
           agent: agentName,
           tool: toolName,
@@ -722,7 +740,7 @@ async function executeToolCalls(
             error: cached.error,
           },
           digest: cached.digest,
-        })
+        }
         results.push({
           toolCallId: toolCall.id,
           toolName,
@@ -735,25 +753,59 @@ async function executeToolCalls(
       }
     }
 
-    events.push({
+    yield {
       type: 'tool-started',
       agent: agentName,
       tool: toolName,
       toolCallId: toolCall.id,
       args,
-    })
+    }
 
     try {
-      const result = await tool.execute(args, ctx)
+      // Detect streaming tools inline so each progress yield surfaces on the
+      // wire as the generator emits it — going through `executeToolWithProgress`'s
+      // callback would buffer until the await resolves, defeating live cadence.
+      const exec = tool.execute(args, ctx)
+      let result: AgentToolResult
+      if (
+        typeof exec === 'object' &&
+        exec !== null &&
+        typeof (exec as AsyncIterator<unknown>).next === 'function' &&
+        typeof (exec as AsyncIterator<unknown>)[Symbol.asyncIterator as keyof object] === 'function'
+      ) {
+        const gen = exec as AsyncGenerator<
+          import('./types').ToolProgressPayload,
+          AgentToolResult,
+          void
+        >
+        while (true) {
+          const next = await gen.next()
+          if (next.done) {
+            result = next.value
+            break
+          }
+          yield {
+            type: 'tool-progress',
+            agent: agentName,
+            tool: toolName,
+            toolCallId: toolCall.id,
+            ...(next.value.kind ? { kind: next.value.kind } : {}),
+            data: next.value.data,
+          }
+        }
+      } else {
+        result = await (exec as Promise<AgentToolResult>)
+      }
+
       const digest = result.success ? buildToolDigest(tool, result.output, logger) : undefined
-      events.push({
+      yield {
         type: 'tool-completed',
         agent: agentName,
         tool: toolName,
         toolCallId: toolCall.id,
         result,
         digest,
-      })
+      }
       logger.info('Tool result', {
         agent: agentName,
         tool: toolName,
@@ -773,13 +825,13 @@ async function executeToolCalls(
       if (cacheKey && result.success) idempotentCache.set(cacheKey, execResult)
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error)
-      events.push({
+      yield {
         type: 'tool-error',
         agent: agentName,
         tool: toolName,
         toolCallId: toolCall.id,
         error: errorMsg,
-      })
+      }
       logger.error('Tool threw', {
         agent: agentName,
         tool: toolName,
@@ -796,5 +848,5 @@ async function executeToolCalls(
     }
   }
 
-  return { events, results }
+  return results
 }

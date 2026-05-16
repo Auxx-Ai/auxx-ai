@@ -12,6 +12,8 @@
 export const NATIVE_DEFAULT_TOOLSETS: ReadonlyArray<string> = [
   'entities.search',
   'entities.write',
+  'comments.read',
+  'comments.write',
   'mail.threads',
   'mail.compose',
   'knowledge',

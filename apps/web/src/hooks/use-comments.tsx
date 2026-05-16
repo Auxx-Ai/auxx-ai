@@ -1,6 +1,7 @@
 'use client'
 import type { RecordId } from '@auxx/lib/field-values/client'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
+import type { JSONContent } from '@tiptap/react'
 // hooks/useComments.ts
 import { useState } from 'react'
 import { api } from '~/trpc/react'
@@ -35,10 +36,10 @@ export type AggregatedReactions = {
   emojis: { [emoji: string]: { count: number; userReacted: boolean } }
 }
 
-export type CommentMention = {
+export type CommentReference = {
   id: string
-  userId: string
-  user: { id: string; name: string | null }
+  entityDefinitionId: string
+  entityInstanceId: string
 }
 
 // Comment attachment info for display
@@ -57,7 +58,7 @@ export type CommentAttachmentInfo = {
 
 export type Comment = {
   id: string
-  content: string
+  contentJson: JSONContent
   recordId: string
   createdAt: Date
   updatedAt: Date
@@ -66,7 +67,7 @@ export type Comment = {
   pinnedById?: string | null // User ID - use useActor to resolve user info
   pinnedAt?: Date | null
   attachments?: CommentAttachmentInfo[]
-  mentions: CommentMention[]
+  references: CommentReference[]
   reactions: AggregatedReactions
   replies?: Comment[]
   parentId?: string | null
@@ -234,31 +235,31 @@ export function useComments({
   })
 
   // Action handlers
-  const handleCreateComment = async (content: string, fileAttachments?: FileAttachment[]) => {
-    console.log('handleCreateComment', recordId)
-    if (!content.trim() || !recordId) return
+  const handleCreateComment = async (
+    contentJson: JSONContent,
+    fileAttachments?: FileAttachment[]
+  ) => {
+    if (!recordId) return
 
-    await createComment.mutateAsync({ content, recordId, fileAttachments })
+    await createComment.mutateAsync({ contentJson, recordId, fileAttachments })
   }
 
   const handleCreateReply = async (
-    content: string,
+    contentJson: JSONContent,
     parentId: string,
     fileAttachments?: FileAttachment[]
   ) => {
-    if (!content.trim() || !recordId) return
+    if (!recordId) return
 
-    await createReply.mutateAsync({ content, recordId, parentId, fileAttachments })
+    await createReply.mutateAsync({ contentJson, recordId, parentId, fileAttachments })
   }
 
   const handleUpdateComment = async (
     commentId: string,
-    content: string,
+    contentJson: JSONContent,
     fileAttachments?: FileAttachment[]
   ) => {
-    if (!content.trim()) return
-
-    await updateComment.mutateAsync({ id: commentId, content, fileAttachments })
+    await updateComment.mutateAsync({ id: commentId, contentJson, fileAttachments })
   }
 
   const handleDeleteComment = async (commentId: string) => {

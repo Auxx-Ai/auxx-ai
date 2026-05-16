@@ -688,6 +688,12 @@
       "import": "./dist/timeline/client.mjs",
       "default": "./src/timeline/client.ts"
     },
+    "./tiptap": {
+      "types": "./src/tiptap/index.ts",
+      "source": "./src/tiptap/index.ts",
+      "import": "./dist/tiptap/index.mjs",
+      "default": "./src/tiptap/index.ts"
+    },
     "./types": {
       "types": "./src/types.ts",
       "source": "./src/types.ts",

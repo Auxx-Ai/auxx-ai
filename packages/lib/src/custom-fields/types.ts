@@ -396,7 +396,13 @@ export type CalcFieldOptions = z.infer<typeof calcFieldOptionsSchema>
 export const actorFieldOptionsSchema = baseFieldOptionsSchema.extend({
   actor: z
     .object({
-      target: z.enum(['user', 'group', 'both']),
+      /**
+       * Who this ACTOR field can reference.
+       * - `user`  / `group` / `agent` — single bucket.
+       * - `both` — users + groups (humans only; legacy default).
+       * - `all`  — users + groups + agents.
+       */
+      target: z.enum(['user', 'group', 'agent', 'both', 'all']),
       multiple: z.boolean(),
       roles: z.array(z.enum(['OWNER', 'ADMIN', 'USER'])).optional(),
       groupIds: z.array(z.string()).optional(),

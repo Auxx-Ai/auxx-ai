@@ -2,6 +2,7 @@
 
 import { CommentService } from '../../../../../comments'
 import type { RecordId } from '../../../../../resources/resource-id'
+import { textToDoc } from '../../../../../tiptap'
 import {
   getKnownDefIds,
   normalizeRecordIdArg,
@@ -14,7 +15,7 @@ import type { GetToolDeps } from '../../types'
 export function createCreateNoteTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'create_note',
-    toolsetSlug: 'entities.write',
+    toolsetSlug: 'comments.write',
     outputDigestSchema: CreateNoteDigest,
     buildDigest: (output) => {
       const out = (output ?? {}) as { commentId?: string; recordId?: string }
@@ -24,7 +25,7 @@ export function createCreateNoteTool(getDeps: GetToolDeps): AgentToolDefinition 
       }
     },
     description:
-      "Add a new internal note (a.k.a. comment) to a record. Use whenever the user asks to leave a note, add a comment, drop a remark, or annotate a record. Mentions of the form '@username' in content are auto-resolved.",
+      'Add a new internal note (a.k.a. comment) to a record. Use whenever the user asks to leave a note, add a comment, drop a remark, or annotate a record. To mention a record (user, agent, contact, ticket, etc.), embed `@[<recordId>]` in the content — e.g. `@[user:abc123]` or `@[agent:my-agent]`. The recordId form is `<entityDefinitionId>:<entityInstanceId>`, the same shape returned by `search_entities`, `list_entities`, etc. User and agent mentions auto-fire the appropriate notification or trigger.',
     parameters: {
       type: 'object',
       properties: {
@@ -34,7 +35,8 @@ export function createCreateNoteTool(getDeps: GetToolDeps): AgentToolDefinition 
         },
         content: {
           type: 'string',
-          description: 'Note body. Markdown allowed. @username mentions are auto-resolved.',
+          description:
+            'Note body in plain text. Use `@[<recordId>]` to mention a record (the same recordId form returned by search/list tools). Paragraphs split on blank lines.',
         },
       },
       required: ['recordId', 'content'],
@@ -65,14 +67,13 @@ export function createCreateNoteTool(getDeps: GetToolDeps): AgentToolDefinition 
       const content = args.content as string
 
       const service = new CommentService(agentDeps.organizationId, agentDeps.userId, db)
+      const contentJson = textToDoc(content, { parseReferences: true })
 
       try {
-        const mentions = await service.parseMentions(content, agentDeps.organizationId)
         const comment = await service.createComment({
           recordId: recordId as RecordId,
-          content,
+          contentJson,
           createdById: agentDeps.userId,
-          mentions,
         })
         return {
           success: true,
