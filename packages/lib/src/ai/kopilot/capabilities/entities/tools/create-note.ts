@@ -15,6 +15,7 @@ import type { GetToolDeps } from '../../types'
 export function createCreateNoteTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'create_note',
+    displayName: 'Add note',
     toolsetSlug: 'comments.write',
     outputDigestSchema: CreateNoteDigest,
     buildDigest: (output) => {

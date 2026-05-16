@@ -15,6 +15,7 @@ import { buildAgentRailUpdate } from '../snapshot'
 export function createCompleteAgentSetupTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'complete_agent_setup',
+    displayName: 'Complete agent setup',
     description: `Mark this agent's chat-driven setup as complete.
 
 Call this as the LAST step of the three-phase build, after:

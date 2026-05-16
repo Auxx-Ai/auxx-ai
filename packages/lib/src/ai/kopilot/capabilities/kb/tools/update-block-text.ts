@@ -15,6 +15,7 @@ import { buildOpToolResult, runBlockCrudOp } from './write-helpers'
 export function createUpdateBlockTextTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'update_block_text',
+    displayName: 'Update article text',
     toolsetSlug: 'kb.write',
     description:
       'Replace the inline content of a block by id while preserving its type/attrs. Pass markdown — the server parses it and uses just the inline portion. Best for typo fixes, rewrites, or changing the prose of a heading/paragraph/list-item without changing its kind. For richer rewrites use replace_block.',

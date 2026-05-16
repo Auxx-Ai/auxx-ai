@@ -64,6 +64,8 @@ export { filterToolsByToolsets } from './filter-tools'
 export { type ResolvedAgentConfig, resolveAgentConfig } from './resolve-agent-config'
 export { AGENT_SLUG_MAX, AGENT_SLUG_REGEX, agentSlugSchema } from './slug-schema'
 export {
+  type FlatToolCatalogEntry,
+  getOrgToolCatalog,
   getOrgToolsetCatalog,
   NATIVE_TOOLSET_LABELS,
   type ToolCatalogEntry,

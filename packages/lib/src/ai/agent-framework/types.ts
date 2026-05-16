@@ -88,6 +88,8 @@ export type LLMStreamEvent =
 export interface AgentToolDefinition {
   /** Unique tool name (e.g. 'find_threads', 'reply_to_thread') */
   name: string
+  /** Short, human-friendly label for chips, pickers, and audit UI (e.g. 'Reply to thread'). */
+  displayName: string
   /** Human-readable description for the LLM */
   description: string
   /** JSON Schema for the tool's parameters */

@@ -19,6 +19,7 @@ const VALID_STATUSES: PlanStepStatus[] = ['pending', 'running', 'completed', 'fa
 export function createPlanUpdateStepTool(_getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'plan_update_step',
+    displayName: 'Update plan step',
     description:
       'Update the status (and optional one-line detail) of a single plan step. Use to mark a step running before you start it, completed when done, or failed if it hit a blocker. Returns the full updated plan.',
     parameters: {

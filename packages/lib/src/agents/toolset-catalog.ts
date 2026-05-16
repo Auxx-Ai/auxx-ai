@@ -20,7 +20,25 @@ import { NATIVE_DEFAULT_TOOLSETS } from './default-toolsets'
  */
 export interface ToolCatalogEntry {
   name: string
+  /** Short, human-friendly label for chips, pickers, and audit UI. */
+  displayName: string
   description: string
+}
+
+/**
+ * Flat tool catalog entry — every tool exposed by the org, paired with its
+ * parent toolset's display metadata so a picker can render a one-line item
+ * without joining tables.
+ */
+export interface FlatToolCatalogEntry {
+  name: string
+  displayName: string
+  description: string
+  toolsetSlug: string
+  toolsetLabel: string
+  toolsetIconId: string
+  toolsetColor: string
+  toolsetParentGroup: string
 }
 
 export interface ToolsetCatalogEntry {
@@ -184,6 +202,34 @@ function collectNativeCapabilities(): PageCapability[] {
 }
 
 /**
+ * In-process catalog cache. Catalogs only change on admin actions (toolset
+ * enable/disable, app deploy) which are rare relative to the per-turn render
+ * path — a short TTL keeps hot turns from re-walking every capability factory
+ * while still picking up admin edits within ~30 s.
+ */
+const CATALOG_CACHE_TTL_MS = 30_000
+const toolsetCatalogCache = new Map<string, { value: ToolsetCatalogEntry[]; expiresAt: number }>()
+const flatToolCatalogCache = new Map<string, { value: FlatToolCatalogEntry[]; expiresAt: number }>()
+
+function readCache<T>(cache: Map<string, { value: T; expiresAt: number }>, key: string): T | null {
+  const entry = cache.get(key)
+  if (!entry) return null
+  if (entry.expiresAt < Date.now()) {
+    cache.delete(key)
+    return null
+  }
+  return entry.value
+}
+
+function writeCache<T>(
+  cache: Map<string, { value: T; expiresAt: number }>,
+  key: string,
+  value: T
+): void {
+  cache.set(key, { value, expiresAt: Date.now() + CATALOG_CACHE_TTL_MS })
+}
+
+/**
  * Walk every registered native capability, group tools by `toolsetSlug`, and
  * return one `ToolsetCatalogEntry` per slug. Tools without a `toolsetSlug`
  * (plan tools) are excluded — they're always-on per README §6.5.
@@ -191,9 +237,15 @@ function collectNativeCapabilities(): PageCapability[] {
  * v1 returns only `group='native'`. The `app` group slot is reserved for the
  * apps track and stays empty until that catalog provider lands.
  */
-export async function getOrgToolsetCatalog(
-  _organizationId: string
-): Promise<ToolsetCatalogEntry[]> {
+export async function getOrgToolsetCatalog(organizationId: string): Promise<ToolsetCatalogEntry[]> {
+  const cached = readCache(toolsetCatalogCache, organizationId)
+  if (cached) return cached
+  const value = await buildOrgToolsetCatalog(organizationId)
+  writeCache(toolsetCatalogCache, organizationId, value)
+  return value
+}
+
+async function buildOrgToolsetCatalog(_organizationId: string): Promise<ToolsetCatalogEntry[]> {
   const bySlug = new Map<string, { tools: Map<string, ToolCatalogEntry> }>()
 
   for (const capability of collectNativeCapabilities()) {
@@ -210,6 +262,7 @@ export async function getOrgToolsetCatalog(
       if (!bucket.tools.has(tool.name)) {
         bucket.tools.set(tool.name, {
           name: tool.name,
+          displayName: tool.displayName,
           description: shortDescription(tool.description),
         })
       }
@@ -238,6 +291,43 @@ export async function getOrgToolsetCatalog(
   })
 
   return entries
+}
+
+/**
+ * Flat per-tool catalog. Returns one entry per tool across every toolset,
+ * with the parent toolset's label / icon / color denormalized in so a
+ * picker can render a one-line item without an additional join.
+ *
+ * Backed by `getOrgToolsetCatalog` so it picks up the same caching and
+ * apps-track expansion when that lands.
+ */
+export async function getOrgToolCatalog(organizationId: string): Promise<FlatToolCatalogEntry[]> {
+  const cached = readCache(flatToolCatalogCache, organizationId)
+  if (cached) return cached
+  const value = await buildOrgToolCatalog(organizationId)
+  writeCache(flatToolCatalogCache, organizationId, value)
+  return value
+}
+
+async function buildOrgToolCatalog(organizationId: string): Promise<FlatToolCatalogEntry[]> {
+  const toolsets = await getOrgToolsetCatalog(organizationId)
+  const flat: FlatToolCatalogEntry[] = []
+  for (const ts of toolsets) {
+    for (const tool of ts.tools) {
+      flat.push({
+        name: tool.name,
+        displayName: tool.displayName,
+        description: tool.description,
+        toolsetSlug: ts.slug,
+        toolsetLabel: ts.label,
+        toolsetIconId: ts.iconId,
+        toolsetColor: ts.color,
+        toolsetParentGroup: ts.parentGroup,
+      })
+    }
+  }
+  flat.sort((a, b) => a.displayName.localeCompare(b.displayName))
+  return flat
 }
 
 /**

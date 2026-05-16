@@ -19,6 +19,7 @@ import type { GetToolDeps } from '../../types'
 export function createGetArticleSectionTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'get_article_section',
+    displayName: 'Get article section',
     toolsetSlug: 'knowledge',
     idempotent: true,
     description:

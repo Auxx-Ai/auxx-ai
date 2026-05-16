@@ -11,6 +11,7 @@ import type { GetToolDeps } from '../../types'
 export function createUpdateThreadTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'update_thread',
+    displayName: 'Update thread',
     toolsetSlug: 'mail.threads',
     outputDigestSchema: UpdateThreadDigest,
     buildDigest: (output) => {

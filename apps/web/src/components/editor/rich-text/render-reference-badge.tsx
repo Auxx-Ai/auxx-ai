@@ -5,6 +5,7 @@
 import { parseRecordId, type RecordId } from '@auxx/lib/resources/client'
 import type { ActorId } from '@auxx/types/actor'
 import { cn } from '@auxx/ui/lib/utils'
+import { ToolBadge } from '~/components/pickers/tool-picker/tool-badge'
 import { ToolsetBadge } from '~/components/pickers/toolset-picker/toolset-badge'
 import { ActorBadge } from '~/components/resources/ui/actor-badge'
 import { RecordBadge } from '~/components/resources/ui/record-badge'
@@ -30,8 +31,11 @@ export function renderReferenceBadge({ id, selected }: { id: string; selected: b
       return <RecordBadge recordId={id as RecordId} className={ring} />
     }
   }
-  // Admin-surface ids — toolset (and stub tool:<name>) for the persona prompt
-  // Tools tab. Resolved against the org toolset catalog, not the record cache.
+  // Admin-surface ids — `tool:<name>` is the new picker output; `toolset:<slug>`
+  // remains for backward compatibility with existing prompts.
+  if (id.startsWith('tool:')) {
+    return <ToolBadge name={id.slice('tool:'.length)} className={ring} />
+  }
   if (id.startsWith('toolset:')) {
     return <ToolsetBadge slug={id.slice('toolset:'.length)} className={ring} />
   }

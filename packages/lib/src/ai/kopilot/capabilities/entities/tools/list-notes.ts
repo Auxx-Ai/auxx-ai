@@ -3,6 +3,7 @@
 import { getCachedMembersByUserIds } from '../../../../../cache/org-cache-helpers'
 import { CommentService } from '../../../../../comments'
 import type { RecordId } from '../../../../../resources/resource-id'
+import { docToText } from '../../../../../tiptap'
 import { getKnownDefIds, normalizeRecordIdArg } from '../../../../agent-framework/tool-inputs'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
 import { ListNotesDigest } from '../../../digests'
@@ -22,13 +23,15 @@ interface NoteDigest {
   replies?: NoteDigest[]
 }
 
-function truncate(text: string, max: number): string {
+function truncate(text: string | null | undefined, max: number): string {
+  if (!text) return ''
   return text.length > max ? `${text.slice(0, max)}...` : text
 }
 
 export function createListNotesTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'list_notes',
+    displayName: 'List notes',
     toolsetSlug: 'comments.read',
     idempotent: true,
     outputDigestSchema: ListNotesDigest,
@@ -114,7 +117,7 @@ export function createListNotesTool(getDeps: GetToolDeps): AgentToolDefinition {
 
       const toDigest = (c: any): NoteDigest => ({
         id: c.id,
-        content: truncate(c.content, MAX_CONTENT_LENGTH),
+        content: truncate(docToText(c.contentJson ?? {}), MAX_CONTENT_LENGTH),
         by: { userId: c.createdById, name: nameByUserId.get(c.createdById) ?? null },
         at: c.createdAt instanceof Date ? c.createdAt.toISOString() : String(c.createdAt),
         parentId: c.parentId ?? null,

@@ -2,7 +2,7 @@
 
 import { createScopedLogger } from '@auxx/logger'
 import { toActorId } from '@auxx/types/actor'
-import type { ResolvedAgentConfig } from '../../../agents'
+import { getOrgToolCatalog, getOrgToolsetCatalog, type ResolvedAgentConfig } from '../../../agents'
 import { getCachedIntegrationCatalog } from '../../../cache/integration-catalog'
 import { getCachedMembersByUserIds, getCachedResources } from '../../../cache/org-cache-helpers'
 import type {
@@ -14,6 +14,7 @@ import type {
 import type { Message, ToolCall } from '../../clients/base/types'
 import { transformAssistantContentForLLM } from '../blocks/transform-for-llm'
 import { buildKopilotPrompt } from '../prompts/build-kopilot-prompt'
+import { buildInstructionReferenceResolver } from '../prompts/resolve-instruction-references'
 import type { CurrentUserInfo } from '../prompts/shared-types'
 import type { TriggerContext } from '../prompts/trigger-context'
 import type { KopilotDomainState } from '../types'
@@ -76,11 +77,18 @@ export function createKopilotAgent(
       state: AgentState<KopilotDomainState>,
       deps: AgentDeps
     ): Promise<Message[]> {
-      const [resources, currentUser, integrations] = await Promise.all([
-        getCachedResources(deps.organizationId),
-        hydrateCurrentUser(deps.organizationId, deps.userId),
-        getCachedIntegrationCatalog(deps.organizationId),
-      ])
+      // Only fetch the chip-resolution catalogs when the run actually has
+      // an agent persona to render — master Kopilot doesn't reference chips.
+      const hasAgentPersona = Boolean(agentConfig && agentConfig.agentId !== null)
+      const [resources, currentUser, integrations, toolCatalog, toolsetCatalog] = await Promise.all(
+        [
+          getCachedResources(deps.organizationId),
+          hydrateCurrentUser(deps.organizationId, deps.userId),
+          getCachedIntegrationCatalog(deps.organizationId),
+          hasAgentPersona ? getOrgToolCatalog(deps.organizationId) : Promise.resolve(undefined),
+          hasAgentPersona ? getOrgToolsetCatalog(deps.organizationId) : Promise.resolve(undefined),
+        ]
+      )
 
       const entityCatalog = resources
         .filter((r) => r.isVisible !== false)
@@ -90,6 +98,10 @@ export function createKopilotAgent(
           plural: r.plural,
           entityDefinitionId: r.entityDefinitionId ?? r.id,
         }))
+
+      const instructionsReferences = hasAgentPersona
+        ? buildInstructionReferenceResolver({ toolCatalog, toolsetCatalog })
+        : undefined
 
       const systemPrompt = buildKopilotPrompt({
         domainState: state.domainState,
@@ -101,6 +113,7 @@ export function createKopilotAgent(
         toolsetPromptAdditions,
         agentConfig,
         triggerContext,
+        instructionsReferences,
       })
 
       // Full conversation for tool-loop continuity.

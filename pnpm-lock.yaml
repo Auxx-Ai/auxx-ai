@@ -1817,6 +1817,9 @@ importers:
       commander:
         specifier: ^12.0.0
         version: 12.1.0
+      cronstrue:
+        specifier: ^3.14.0
+        version: 3.14.0
       csv-parser:
         specifier: ^3.2.0
         version: 3.2.0
@@ -9208,6 +9211,10 @@ packages:
   croner@9.1.0:
     resolution: {integrity: sha512-p9nwwR4qyT5W996vBZhdvBCnMhicY5ytZkR4D1Xj0wuTDEiMnjwR57Q3RXYY/s0EpX6Ay3vgIcfaR+ewGHsi+g==}
     engines: {node: '>=18.0'}
+
+  cronstrue@3.14.0:
+    resolution: {integrity: sha512-XnW4vuK/jPJjmTyDWiej1Zq36Od7ITwxaV2O1pzHZuyMVvdy7NAvyvIBzybt+idqSpfqYuoDG7uf/ocGtJVWxA==}
+    hasBin: true
 
   cross-fetch@3.2.0:
     resolution: {integrity: sha512-Q+xVJLoGOeIMXZmbUK4HYk+69cQH6LudR0Vu/pRm2YlU/hDV9CiS0gKUMaWY5f2NeUH9C1nV3bsTlCo0FsTV1Q==}
@@ -22159,6 +22166,8 @@ snapshots:
       luxon: 3.7.2
 
   croner@9.1.0: {}
+
+  cronstrue@3.14.0: {}
 
   cross-fetch@3.2.0:
     dependencies:

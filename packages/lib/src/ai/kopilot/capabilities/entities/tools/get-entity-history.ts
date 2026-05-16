@@ -81,6 +81,7 @@ function snapshotItemToDisplay(snap: TimelineFieldChangeSnapshot): string | null
 export function createGetEntityHistoryTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'get_entity_history',
+    displayName: 'Get record history',
     toolsetSlug: 'entities.search',
     idempotent: true,
     outputDigestSchema: GetEntityHistoryDigest,

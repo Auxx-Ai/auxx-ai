@@ -1,6 +1,38 @@
 // packages/lib/src/ai/kopilot/prompts/block-catalog.ts
 
-export const BLOCK_CATALOG = `
+/**
+ * Build the rich-block catalog section against the runtime tool set. Block
+ * schemas whose IDs are sourced from a specific tool (e.g. `auxx:draft-list`
+ * needs `list_drafts`; `auxx://doc/<slug>` needs `search_docs`/`search_knowledge`)
+ * are dropped when those tools aren't resolved for this turn — otherwise the
+ * model is invited to emit blocks it can't populate.
+ */
+export function buildBlockCatalog(args: { toolNames: Set<string> }): string {
+  const has = (name: string) => args.toolNames.has(name)
+  const hasDrafts = has('list_drafts')
+  const hasDocs = has('search_docs') || has('search_knowledge')
+
+  const draftListSchema = hasDrafts
+    ? `
+
+#### \`auxx:draft-list\`
+\\\`\\\`\\\`auxx:draft-list
+{"draftIds": ["thread:<threadId>", "draft:<draftId>"]}
+\\\`\\\`\\\`
+- Source IDs from \`list_drafts\` only — copy each \`id\` field verbatim, including the \`thread:\` or \`draft:\` prefix.
+- Reply rows (\`thread:...\`) click through to the thread; standalone rows (\`draft:...\`) open the floating composer.`
+    : ''
+
+  const docInlineExample = hasDocs ? `\n  [Connect Gmail](auxx://doc/<slug>)` : ''
+  const docInlineGuidance = hasDocs
+    ? ` For docs, the \`slug\` from \`search_docs\`\nresults or the \`docSlug\` from \`search_knowledge\`. Copy verbatim —\nnever construct.`
+    : ` Copy verbatim — never construct.`
+
+  const draftListFenceMention = hasDrafts
+    ? `, \`auxx:thread-list\`, \`auxx:task-list\`, \`auxx:draft-list\``
+    : `, \`auxx:thread-list\`, \`auxx:task-list\``
+
+  return `
 ## Rich Blocks
 
 Inside your final reply, embed rich UI cards by writing fenced code blocks
@@ -55,14 +87,7 @@ verbatim from tool results — never construct them.
 #### \`auxx:task-list\`
 \\\`\\\`\\\`auxx:task-list
 {"taskIds": ["<taskId>", "<taskId>"]}
-\\\`\\\`\\\`
-
-#### \`auxx:draft-list\`
-\\\`\\\`\\\`auxx:draft-list
-{"draftIds": ["thread:<threadId>", "draft:<draftId>"]}
-\\\`\\\`\\\`
-- Source IDs from \`list_drafts\` only — copy each \`id\` field verbatim, including the \`thread:\` or \`draft:\` prefix.
-- Reply rows (\`thread:...\`) click through to the thread; standalone rows (\`draft:...\`) open the floating composer.
+\\\`\\\`\\\`${draftListSchema}
 
 #### \`auxx:plan-steps\`
 \\\`\\\`\\\`auxx:plan-steps
@@ -113,17 +138,14 @@ with hover-card previews and click-through:
   [Markus Klooth](auxx://actor/user:<userId>)
   [Support Team](auxx://actor/group:<groupId>)
   [Re: Quick question](auxx://thread/<threadId>)
-  [Follow up Friday](auxx://task/<taskId>)
-  [Connect Gmail](auxx://doc/<slug>)
+  [Follow up Friday](auxx://task/<taskId>)${docInlineExample}
 
 The IDs are the **same verbatim values** you would put in a fence — for
 records, the colon-joined \`<defId>:<instId>\` recordId from a tool result.
 For actors, the verbatim \`actorId\` (\`user:<id>\` or \`group:<id>\`) from
 any tool result that mentions an actor (Owner / Assignee / createdBy
 fields, \`list_members\` / \`list_groups\` results). For threads and
-tasks, the opaque id string. For docs, the \`slug\` from \`search_docs\`
-results or the \`docSlug\` from \`search_knowledge\`. Copy verbatim —
-never construct.
+tasks, the opaque id string.${docInlineGuidance}
 
 **Actor (\`auxx://actor/...\`) vs record (\`auxx://record/...\`).**
 - \`actor\` is for **workspace members and groups** — people who use Auxx
@@ -135,9 +157,10 @@ never construct.
 
 **When to use inline links vs fences:**
 - Mentioning a single record/thread/task **by name in running prose** → inline link.
-- Listing 2+ records/threads/tasks/drafts → use a fence (\`auxx:entity-list\`, \`auxx:thread-list\`, \`auxx:task-list\`, \`auxx:draft-list\`).
+- Listing 2+ records/threads/tasks/drafts → use a fence (\`auxx:entity-list\`${draftListFenceMention}).
 - Single record where the user wants a full preview card → \`auxx:entity-card\` fence.
 
 Inline links read naturally:
 "I drafted a reply to [Robert Miller](auxx://record/i5aezsg4bc6n8gof2uan3wcf:lk6jz2jsyiqwusswhrf187du) on the [pricing thread](auxx://thread/abc123); assigned the follow-up to [Markus](auxx://actor/user:JR28eYz582CHqZN5SFlVrEnXErXmunaj)."
 `
+}

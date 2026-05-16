@@ -18,14 +18,30 @@ export interface ToolDeps extends AgentDeps {
 /** Factory function that provides ToolDeps at execution time */
 export type GetToolDeps = () => ToolDeps
 
+/**
+ * Context passed to functional `systemPromptAddition` values so a capability
+ * can emit different prose depending on which of its tools survived runtime
+ * filtering (per-agent toolsets, invoker-scope, approval-mode). The set is
+ * the same one used to build the LLM tool block — see
+ * `kopilot-domain-config: Resolved tools`.
+ */
+export interface SystemPromptAdditionContext {
+  toolNames: Set<string>
+}
+
 /** A page capability set — tools available on a specific page */
 export interface PageCapability {
   /** Page identifier (e.g. 'mail', 'contacts', 'workflows') */
   page: string
   /** Tools available on this page */
   tools: AgentToolDefinition[]
-  /** Optional system prompt addition for this page's context */
-  systemPromptAddition?: string
+  /**
+   * Optional system prompt addition for this page's context. Pass a function
+   * when the prose mentions specific tools that might be filtered out at
+   * runtime — the resolved tool name set is passed in so fragments can be
+   * gated. Static strings are still fine for prose that's tool-agnostic.
+   */
+  systemPromptAddition?: string | ((ctx: SystemPromptAdditionContext) => string)
   /** Human-friendly capability descriptions (e.g. "Search & find contacts, companies, and tickets") */
   capabilities?: string[]
 }
@@ -36,8 +52,8 @@ export interface CapabilityRegistry {
   getTools(page: string): AgentToolDefinition[]
   /** Get all registered pages */
   getPages(): string[]
-  /** Get system prompt addition for a page */
-  getSystemPromptAddition(page: string): string | undefined
+  /** Get system prompt addition for a page, resolving any functional additions against the runtime tool set */
+  getSystemPromptAddition(page: string, ctx: SystemPromptAdditionContext): string | undefined
   /** Get a combined human-friendly capabilities summary for the user */
   getCapabilitiesSummary(): string[]
   /** Register a page's capabilities */

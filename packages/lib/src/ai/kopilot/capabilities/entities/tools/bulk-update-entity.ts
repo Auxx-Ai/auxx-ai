@@ -17,6 +17,7 @@ import { formatActorResolutionError, resolveActorValuesFlat } from './resolve-ac
 export function createBulkUpdateEntityTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'bulk_update_entity',
+    displayName: 'Bulk update records',
     toolsetSlug: 'entities.write',
     outputDigestSchema: BulkUpdateEntityDigest,
     buildDigest: (output) => {

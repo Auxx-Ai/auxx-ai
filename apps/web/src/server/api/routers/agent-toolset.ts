@@ -3,6 +3,7 @@
 import {
   agentExistsInOrg,
   batchUpdateAgentToolsets,
+  getOrgToolCatalog,
   getOrgToolsetCatalog,
   updateAgentToolset,
 } from '@auxx/lib/agents'
@@ -39,6 +40,14 @@ export const agentToolsetRouter = createTRPCRouter({
    */
   list: adminProcedure.query(async ({ ctx }) => {
     return getOrgToolsetCatalog(ctx.session.organizationId)
+  }),
+
+  /**
+   * Flat per-tool catalog — every tool exposed by the org, paired with its
+   * parent toolset's display metadata. Backs the ReferencePicker Tools tab.
+   */
+  listTools: adminProcedure.query(async ({ ctx }) => {
+    return getOrgToolCatalog(ctx.session.organizationId)
   }),
 
   update: adminProcedure

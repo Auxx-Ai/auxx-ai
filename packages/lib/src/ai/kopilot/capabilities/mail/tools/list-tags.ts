@@ -11,6 +11,7 @@ const MAX_LIMIT = 200
 export function createListTagsTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'list_tags',
+    displayName: 'List tags',
     toolsetSlug: 'mail.threads',
     idempotent: true,
     outputDigestSchema: ListTagsDigest,

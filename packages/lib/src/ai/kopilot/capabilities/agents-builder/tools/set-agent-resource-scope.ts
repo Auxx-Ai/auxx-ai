@@ -24,6 +24,7 @@ const RECORD_ID_MAX = 180
 export function createSetAgentResourceScopeTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'set_agent_resource_scope',
+    displayName: 'Set agent resource scope',
     description: `Update the agent's resource-scope rows (which records / entity types it can read).
 
 Pass the FULL desired set of scopes. Rows in the DB that aren't in this list

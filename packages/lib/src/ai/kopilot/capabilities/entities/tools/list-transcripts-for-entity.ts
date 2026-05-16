@@ -12,6 +12,7 @@ const SNIPPET_LENGTH = 100
 export function createListTranscriptsForEntityTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'list_transcripts_for_entity',
+    displayName: 'List transcripts',
     toolsetSlug: 'entities.search',
     idempotent: true,
     outputDigestSchema: ListTranscriptsForEntityDigest,

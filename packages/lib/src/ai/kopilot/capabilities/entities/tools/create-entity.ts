@@ -13,6 +13,7 @@ import { formatActorResolutionError, resolveActorValues } from './resolve-actor-
 export function createCreateEntityTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'create_entity',
+    displayName: 'Create record',
     toolsetSlug: 'entities.write',
     outputDigestSchema: CreateEntityDigest,
     buildDigest: (output) => {

@@ -4,7 +4,12 @@ import { database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { getSessionById, saveSessionMessages, updateSessionDomainState } from '@auxx/services'
 import { and, eq } from 'drizzle-orm'
-import { filterToolsByToolsets, resolveAgentConfig } from '../../agents'
+import {
+  filterToolsByToolsets,
+  getOrgToolCatalog,
+  getOrgToolsetCatalog,
+  resolveAgentConfig,
+} from '../../agents'
 import type { JobContext } from '../../jobs/types'
 import { docToText } from '../../tiptap'
 import {
@@ -16,6 +21,7 @@ import {
   createMailCapabilities,
   createToolDepsFactory,
 } from '../kopilot'
+import { buildInstructionReferenceResolver } from '../kopilot/prompts/resolve-instruction-references'
 import type { TriggerContext, TriggerKind } from '../kopilot/prompts/trigger-context'
 import type { UsageTrackingRequest } from '../orchestrator/types'
 import { getModelCreditMultiplier } from '../quota/credit-multiplier'
@@ -396,17 +402,23 @@ async function resolveTriggerContext(params: {
   const kind = (asKind(payload.kind) ?? asKind(trigger.kind)) as TriggerKind | null
   if (!kind) return undefined
 
-  const instructions = renderInstructionsAsText(trigger.instructions)
+  const [toolCatalog, toolsetCatalog] = await Promise.all([
+    getOrgToolCatalog(organizationId),
+    getOrgToolsetCatalog(organizationId),
+  ])
+  const references = buildInstructionReferenceResolver({ toolCatalog, toolsetCatalog })
+  const instructions = renderInstructionsAsText(trigger.instructions, references)
 
   return { kind, instructions, payload }
 }
 
 function renderInstructionsAsText(
-  instructions: Record<string, unknown> | null | undefined
+  instructions: Record<string, unknown> | null | undefined,
+  references: (id: string) => string
 ): string | null {
   if (!instructions) return null
   if (typeof instructions === 'string') return instructions.length > 0 ? instructions : null
-  const text = docToText(instructions)
+  const text = docToText(instructions, { references })
   return text.length > 0 ? text : null
 }
 

@@ -59,12 +59,19 @@ export async function executeToolCall(
 
 // ===== INTERNAL =====
 
+function humanizeToolName(name: string): string {
+  const spaced = name.replace(/[_-]+/g, ' ').trim()
+  if (!spaced) return name
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1)
+}
+
 function toolDefinitionToAgentTool(
   def: ToolDefinition,
   bridgeConfig: ToolBridgeConfig
 ): AgentToolDefinition {
   return {
     name: def.name,
+    displayName: humanizeToolName(def.name),
     description: def.description,
     parameters: def.inputSchema as Record<string, unknown>,
     execute: async (args: Record<string, unknown>, ctx: ToolContext): Promise<AgentToolResult> => {
