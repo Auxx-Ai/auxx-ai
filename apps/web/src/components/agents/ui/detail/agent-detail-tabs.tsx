@@ -2,10 +2,16 @@
 'use client'
 
 import { Button } from '@auxx/ui/components/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@auxx/ui/components/dropdown-menu'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Section } from '@auxx/ui/components/section'
 import { Tabs, TabsList, TabsTrigger } from '@auxx/ui/components/tabs'
-import { BookOpen, FileText, Plus, Wrench, Zap } from 'lucide-react'
+import { BookOpen, Clock, FileText, Plus, Wrench, Zap } from 'lucide-react'
 import { useQueryState } from 'nuqs'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { AGENT_TABS, type AgentTab, DEFAULT_AGENT_TAB } from '../../constant'
@@ -47,7 +53,7 @@ interface AgentDetailTabsProps {
  */
 export function AgentDetailTabs({ agent, onAutosaveChange }: AgentDetailTabsProps) {
   const [tab, setTab] = useQueryState('tab', { defaultValue: DEFAULT_AGENT_TAB })
-  const [addingTrigger, setAddingTrigger] = useState(false)
+  const [addingKind, setAddingKind] = useState<'scheduled' | 'event' | null>(null)
   const scrollContainerRef = useRef<HTMLDivElement | null>(null)
   const sectionRefs = useRef<Record<AgentTab, HTMLDivElement | null>>({
     prompt: null,
@@ -185,18 +191,34 @@ export function AgentDetailTabs({ agent, onAutosaveChange }: AgentDetailTabsProp
           <Section
             title='Triggers'
             icon={<Zap className='size-4' />}
+            className='[&>[data-slot=section]>[data-slot=section-content]]:-mx-3'
             initialOpen
+            description='Autonomous triggers fire this agent on a schedule, on a record event, or on an app event.'
             collapsible={false}
             actions={
-              <Button variant='ghost' size='xs' onClick={() => setAddingTrigger((v) => !v)}>
-                <Plus />
-                Add trigger
-              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant='ghost' size='xs'>
+                    <Plus />
+                    Add trigger
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align='end'>
+                  <DropdownMenuItem onClick={() => setAddingKind('scheduled')}>
+                    <Clock />
+                    Scheduled
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setAddingKind('event')}>
+                    <Zap />
+                    Event
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             }>
             <TriggersSectionContent
               agent={agent}
-              adding={addingTrigger}
-              onAddingChange={setAddingTrigger}
+              addingKind={addingKind}
+              onAddingKindChange={setAddingKind}
             />
           </Section>
         </div>

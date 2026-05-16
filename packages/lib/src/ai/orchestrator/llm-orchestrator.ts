@@ -87,7 +87,9 @@ export class LLMOrchestrator {
         client: llmClient,
         providerType,
         credentialSource,
-      } = await this.enforceQuotaGate(provider, model, organizationId, userId)
+      } = await this.enforceQuotaGate(provider, model, organizationId, userId, {
+        forceSystem: request.forceSystem ?? false,
+      })
 
       // Execute callbacks - beforeInvoke
       await this.triggerBeforeCallback(request.callbacks, {
@@ -250,7 +252,9 @@ export class LLMOrchestrator {
       client: llmClient,
       providerType,
       credentialSource,
-    } = await this.enforceQuotaGate(provider, model, organizationId, userId)
+    } = await this.enforceQuotaGate(provider, model, organizationId, userId, {
+      forceSystem: request.forceSystem ?? false,
+    })
 
     try {
       // Build invocation parameters
@@ -363,7 +367,8 @@ export class LLMOrchestrator {
     provider: string,
     model: string,
     organizationId: string,
-    userId: string
+    userId: string,
+    options: { forceSystem?: boolean } = {}
   ): Promise<{
     client: LLMClient
     providerType: 'SYSTEM' | 'CUSTOM'
@@ -371,12 +376,14 @@ export class LLMOrchestrator {
   }> {
     const providerManager = new ProviderManager(this.db!, organizationId, userId)
 
-    const credentials = await providerManager.getCurrentCredentials(
-      provider,
-      model,
-      ModelType.LLM,
-      false // Don't obfuscate - we need real credentials
-    )
+    const credentials = options.forceSystem
+      ? await providerManager.getSystemCredentials(provider)
+      : await providerManager.getCurrentCredentials(
+          provider,
+          model,
+          ModelType.LLM,
+          false // Don't obfuscate - we need real credentials
+        )
 
     // Create specialized LLM client
     const providerClient = await ProviderRegistry.createClient(provider, organizationId, userId)
@@ -559,18 +566,23 @@ export class LLMOrchestrator {
     provider: string,
     model: string,
     organizationId: string,
-    userId: string
+    userId: string,
+    options: { forceSystem?: boolean } = {}
   ): Promise<{
     client: LLMClient
     providerType: 'SYSTEM' | 'CUSTOM'
     credentialSource: 'SYSTEM' | 'CUSTOM' | 'MODEL_SPECIFIC' | 'LOAD_BALANCED'
   }> {
-    const clientMeta = await this.getClientWithMetadata(provider, model, organizationId, userId)
+    const clientMeta = await this.getClientWithMetadata(provider, model, organizationId, userId, {
+      forceSystem: options.forceSystem,
+    })
 
     if (!this.config.enableQuotaEnforcement || !this.db) return clientMeta
 
-    // Tier 1: SYSTEM credit quota.
-    if (clientMeta.providerType === 'SYSTEM') {
+    // Tier 1: SYSTEM credit quota. Runs when forceSystem (we just forced
+    // SYSTEM creds, so the org owes credits for the call) OR when the
+    // org is naturally on SYSTEM tier.
+    if (options.forceSystem || clientMeta.providerType === 'SYSTEM') {
       const quota = new QuotaService(this.db, organizationId)
       const status = await quota.getQuotaStatus()
       if (status && status.isExceeded) {

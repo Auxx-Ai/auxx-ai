@@ -17,6 +17,7 @@ import {
 import type { UsageTrackingRequest } from '../orchestrator/types'
 import { getModelCreditMultiplier } from '../quota/credit-multiplier'
 import { UsageTrackingService } from '../usage/usage-tracking-service'
+import { BUILDER_MODEL } from './builder-model'
 import { AgentEngine } from './engine'
 import type { AgentJobPayload } from './enqueue-agent-job'
 import { createAgentEventPublisher } from './event-publisher'
@@ -100,6 +101,7 @@ async function processAgentMessageInternal(ctx: JobContext<AgentJobPayload>) {
     userId,
     source: domain,
     sourceId: sessionId,
+    forceSystem: domain === 'builder',
   })
 
   // 4. Create engine with saved state
@@ -251,30 +253,6 @@ async function buildDomainConfig(
 ) {
   switch (domain) {
     case 'kopilot': {
-      const getToolDeps = createToolDepsFactory({
-        organizationId: params.organizationId,
-        userId: params.userId,
-        sessionId: params.sessionId,
-        signal: params.signal,
-      })
-
-      const registry = createCapabilityRegistry()
-      registry.register(createEntityCapabilities(getToolDeps))
-      registry.register(createMailCapabilities(getToolDeps))
-      registry.register(createKopilotCapabilities(getToolDeps))
-      registry.register(
-        await createAppCapabilities({
-          organizationId: params.organizationId,
-          // Background agent jobs run autonomously — no human in the loop.
-          // User-scope tools are hidden by the bridge (decision A2).
-          userId: null,
-          agentId: params.agentId,
-          triggerId: null,
-          sessionId: params.sessionId,
-          getToolDeps,
-        })
-      )
-
       // Resolve model: explicit override → system default → hardcoded fallback
       let defaultModel: string | undefined
       let defaultProvider: string | undefined
@@ -292,23 +270,73 @@ async function buildDomainConfig(
         }
       }
 
-      const agentConfig = await resolveAgentConfig(params.organizationId, params.agentId)
-      const resolvedPage = params.page ?? '__none__'
-      const filteredTools = filterToolsByToolsets(registry.getTools(resolvedPage), agentConfig)
-
-      return createKopilotDomainConfig({
-        capabilityRegistry: registry,
-        page: resolvedPage,
-        tools: filteredTools,
-        defaultModel,
-        defaultProvider,
-        agentConfig,
-        // Long-running plans (≥30 steps × ~1–2 LLM rounds each) need
-        // headroom past the framework's small-loop default.
-        maxIterations: 30,
+      return buildKopilotShapedConfig(params, {
+        provider: defaultProvider,
+        model: defaultModel,
+      })
+    }
+    case 'builder': {
+      // Builder pins BUILDER_MODEL and ignores params.modelId — paired with
+      // forceSystem on the call-model side so SYSTEM credentials are used
+      // regardless of the org's provider-type preference.
+      return buildKopilotShapedConfig(params, {
+        provider: BUILDER_MODEL.provider,
+        model: BUILDER_MODEL.model,
       })
     }
     default:
       throw new Error(`Unknown agent domain: ${domain}`)
   }
+}
+
+async function buildKopilotShapedConfig(
+  params: {
+    organizationId: string
+    userId: string
+    sessionId: string
+    page?: string
+    signal?: AbortSignal
+    agentId: string | null
+  },
+  defaults: { provider: string | undefined; model: string | undefined }
+) {
+  const getToolDeps = createToolDepsFactory({
+    organizationId: params.organizationId,
+    userId: params.userId,
+    sessionId: params.sessionId,
+    signal: params.signal,
+  })
+
+  const registry = createCapabilityRegistry()
+  registry.register(createEntityCapabilities(getToolDeps))
+  registry.register(createMailCapabilities(getToolDeps))
+  registry.register(createKopilotCapabilities(getToolDeps))
+  registry.register(
+    await createAppCapabilities({
+      organizationId: params.organizationId,
+      // Background agent jobs run autonomously — no human in the loop.
+      // User-scope tools are hidden by the bridge (decision A2).
+      userId: null,
+      agentId: params.agentId,
+      triggerId: null,
+      sessionId: params.sessionId,
+      getToolDeps,
+    })
+  )
+
+  const agentConfig = await resolveAgentConfig(params.organizationId, params.agentId)
+  const resolvedPage = params.page ?? '__none__'
+  const filteredTools = filterToolsByToolsets(registry.getTools(resolvedPage), agentConfig)
+
+  return createKopilotDomainConfig({
+    capabilityRegistry: registry,
+    page: resolvedPage,
+    tools: filteredTools,
+    defaultModel: defaults.model,
+    defaultProvider: defaults.provider,
+    agentConfig,
+    // Long-running plans (≥30 steps × ~1–2 LLM rounds each) need
+    // headroom past the framework's small-loop default.
+    maxIterations: 30,
+  })
 }

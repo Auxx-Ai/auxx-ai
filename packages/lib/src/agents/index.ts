@@ -56,7 +56,6 @@ export {
   type AppTriggerInput,
   type CreateAgentTriggerInput,
   type CrudEventTriggerInput,
-  type DirectEventTriggerInput,
   type ScheduledTriggerInput,
   type UpdateAgentTriggerInput,
 } from './agent-trigger-service'

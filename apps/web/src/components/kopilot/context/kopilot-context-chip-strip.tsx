@@ -6,7 +6,7 @@ import { cn } from '@auxx/ui/lib/utils'
 import { useHotkey } from '@tanstack/react-hotkeys'
 import { Book, Bot, Building2, FileText, Inbox, Mail, User, X } from 'lucide-react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
-import { useEffect, useRef, useState } from 'react'
+import { type KeyboardEvent, useEffect, useRef, useState } from 'react'
 import { recordBadgeVariants } from '~/components/resources/ui/record-badge'
 import { useKopilotStore } from '../stores/kopilot-store'
 import { useKopilotSurfaceRefs } from '../stores/select-context'
@@ -43,7 +43,9 @@ export function KopilotContextChipStrip() {
   const [isAnimating, setIsAnimating] = useState(true)
   const stripRef = useRef<HTMLDivElement>(null)
 
-  const visible = refs.filter((r) => !dismissed.has(refKey(r)))
+  // Pinned refs always render — `dismissed` is ignored for them, so a
+  // stale dismissal from a prior session can't hide the agent chip.
+  const visible = refs.filter((r) => r.pinned || !dismissed.has(refKey(r)))
   const showStrip = !isStreaming && visible.length > 0
 
   const transition = prefersReducedMotion ? REDUCED : SPRING
@@ -67,6 +69,8 @@ export function KopilotContextChipStrip() {
 
   const handleDelete = () => {
     if (!selectedKey) return
+    const target = visible.find((r) => refKey(r) === selectedKey)
+    if (target?.pinned) return
     dismiss(selectedKey)
     setSelectedKey(null)
   }
@@ -96,10 +100,28 @@ export function KopilotContextChipStrip() {
               {visible.map((ref, i) => {
                 const Icon = pickIcon(ref)
                 const key = refKey(ref)
-                const selected = selectedKey === key
+                const isPinned = !!ref.pinned
+                const selected = !isPinned && selectedKey === key
                 const chipTransition = prefersReducedMotion
                   ? REDUCED
                   : { ...SPRING, delay: i * 0.04 }
+                const interactionProps = isPinned
+                  ? {
+                      'aria-label': ref.label ?? ref.id,
+                    }
+                  : {
+                      role: 'button' as const,
+                      tabIndex: 0,
+                      'aria-pressed': selected,
+                      'aria-label': `${ref.label ?? ref.id} — press Delete to remove`,
+                      onClick: () => setSelectedKey(key),
+                      onKeyDown: (e: KeyboardEvent) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault()
+                          setSelectedKey(key)
+                        }
+                      },
+                    }
                 return (
                   <motion.span
                     key={key}
@@ -120,37 +142,29 @@ export function KopilotContextChipStrip() {
                         : { opacity: 0, y: 4, filter: 'blur(3px)' }
                     }
                     transition={chipTransition}
-                    role='button'
-                    tabIndex={0}
-                    aria-pressed={selected}
-                    aria-label={`${ref.label ?? ref.id} — press Delete to remove`}
-                    onClick={() => setSelectedKey(key)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault()
-                        setSelectedKey(key)
-                      }
-                    }}
+                    {...interactionProps}
                     className={cn(
                       recordBadgeVariants({ variant: 'default', size: 'default' }),
-                      'cursor-pointer focus-visible:ring-2 focus-visible:ring-info',
+                      !isPinned && 'cursor-pointer focus-visible:ring-2 focus-visible:ring-info',
                       selected && 'ring-2 ring-info'
                     )}>
                     <Icon className='size-3 shrink-0' />
                     <span data-slot='record-display' className='max-w-[160px] truncate'>
                       {ref.label ?? ref.id}
                     </span>
-                    <button
-                      type='button'
-                      data-slot='record-remove'
-                      aria-label='Remove from Kopilot context'
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        dismiss(key)
-                        if (selectedKey === key) setSelectedKey(null)
-                      }}>
-                      <X />
-                    </button>
+                    {!isPinned && (
+                      <button
+                        type='button'
+                        data-slot='record-remove'
+                        aria-label='Remove from Kopilot context'
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          dismiss(key)
+                          if (selectedKey === key) setSelectedKey(null)
+                        }}>
+                        <X />
+                      </button>
+                    )}
                   </motion.span>
                 )
               })}

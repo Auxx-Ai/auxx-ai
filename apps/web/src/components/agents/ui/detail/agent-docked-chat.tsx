@@ -46,6 +46,8 @@ export function AgentDockedChat({ agentId }: AgentDockedChatProps) {
   return (
     <KopilotChatProvider
       options={{
+        allowModelPicker: false,
+        allowSlashCommands: false,
         hideSuggestions: !isFreshAgent,
         emptyStateDescription: isFreshAgent
           ? 'Tell me what this agent should do, or pick one below.'

@@ -1,40 +1,48 @@
 // apps/web/src/components/agents/ui/detail/triggers/triggers-section-content.tsx
 'use client'
 
-import { getTriggerLabel } from '@auxx/lib/agents/client'
-import { Button } from '@auxx/ui/components/button'
+import { EntityIcon } from '@auxx/ui/components/icons'
+import { EmptySection } from '@auxx/ui/components/section'
 import { Switch } from '@auxx/ui/components/switch'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@auxx/ui/components/table'
 import { toastError } from '@auxx/ui/components/toast'
-import { AlertTriangle, Play, Trash2 } from 'lucide-react'
+import { TreeRow } from '@auxx/ui/components/tree-row'
+import { AlertTriangle, Pencil, Trash2, Zap } from 'lucide-react'
+import { useState } from 'react'
+import { Tooltip } from '~/components/global/tooltip'
 import { useConfirm } from '~/hooks/use-confirm'
-import { api } from '~/trpc/react'
+import { api, type RouterOutputs } from '~/trpc/react'
 import type { AgentDetail } from '../../../store/agent-store'
-import { TriggerCreateForm } from './trigger-create-form'
+import { AgentTriggerDialog } from './agent-trigger-dialog'
+import { TriggerLabel } from './trigger-label'
+
+type Trigger = RouterOutputs['agentTrigger']['list'][number]
+
+type TriggerKind = 'scheduled' | 'event' | 'app'
+
+const KIND_META: Record<TriggerKind, { label: string; iconId: string; color: string }> = {
+  scheduled: { label: 'Scheduled', iconId: 'clock', color: 'blue' },
+  event: { label: 'Event', iconId: 'zap', color: 'amber' },
+  app: { label: 'App', iconId: 'plug', color: 'violet' },
+}
 
 interface TriggersSectionContentProps {
   agent: AgentDetail
-  adding: boolean
-  onAddingChange: (adding: boolean) => void
+  addingKind: 'scheduled' | 'event' | null
+  onAddingKindChange: (kind: 'scheduled' | 'event' | null) => void
 }
 
 /**
- * Triggers tab body — table of agent triggers + inline create form. Scheduled
- * is the v1 kind shipped here; event and app kinds land in PR-3 / PR-4.
+ * Triggers tab body — list of agent triggers + create/edit dialog. The
+ * parent owns the "adding" state so the kind dropdown in the section header
+ * can open this dialog in the right mode.
  */
 export function TriggersSectionContent({
   agent,
-  adding,
-  onAddingChange,
+  addingKind,
+  onAddingKindChange,
 }: TriggersSectionContentProps) {
   const [confirm, ConfirmDialog] = useConfirm()
+  const [editingTrigger, setEditingTrigger] = useState<Trigger | null>(null)
   const utils = api.useUtils()
 
   const triggers = api.agentTrigger.list.useQuery({ agentId: agent.id })
@@ -49,103 +57,121 @@ export function TriggersSectionContent({
     onError: (err) => toastError({ title: 'Failed to delete trigger', description: err.message }),
   })
 
-  const runNow = api.agentTrigger.runNow.useMutation({
-    onError: (err) => toastError({ title: 'Run-now failed', description: err.message }),
-  })
-
   const rows = triggers.data ?? []
 
-  return (
-    <div className='space-y-4 px-3'>
-      <p className='text-sm text-muted-foreground'>
-        Autonomous triggers fire this agent on a schedule, on a record event, or on an app event.
-      </p>
+  const isDialogOpen = !!addingKind || !!editingTrigger
+  const dialogKind: 'scheduled' | 'event' =
+    editingTrigger?.kind === 'event'
+      ? 'event'
+      : editingTrigger?.kind === 'scheduled'
+        ? 'scheduled'
+        : (addingKind ?? 'scheduled')
 
-      {adding ? (
-        <TriggerCreateForm
-          agentId={agent.id}
-          onDone={() => {
-            onAddingChange(false)
-            utils.agentTrigger.list.invalidate({ agentId: agent.id })
-          }}
-        />
-      ) : null}
+  const handleDialogOpenChange = (open: boolean) => {
+    if (open) return
+    onAddingKindChange(null)
+    setEditingTrigger(null)
+  }
+
+  return (
+    <div className='space-y-4'>
+      <AgentTriggerDialog
+        open={isDialogOpen}
+        onOpenChange={handleDialogOpenChange}
+        agentId={agent.id}
+        kind={dialogKind}
+        trigger={editingTrigger ?? undefined}
+        onSuccess={() => utils.agentTrigger.list.invalidate({ agentId: agent.id })}
+      />
 
       {triggers.isLoading ? (
-        <div className='text-sm text-muted-foreground'>Loading triggers…</div>
+        <EmptySection loading className='mx-3' />
       ) : rows.length === 0 ? (
-        <div className='rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground'>
-          No triggers yet. Add one to fire this agent autonomously.
-        </div>
+        <EmptySection
+          icon={<Zap className='size-4' />}
+          title='No triggers yet'
+          description='Add one to fire this agent autonomously.'
+          className='mx-3'
+        />
       ) : (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Label</TableHead>
-              <TableHead>Kind</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Last fired</TableHead>
-              <TableHead className='text-right'>Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {rows.map((row) => (
-              <TableRow key={row.id}>
-                <TableCell className='font-medium'>
-                  <div className='flex flex-col'>
-                    <span>{getTriggerLabel(row)}</span>
-                    {row.lastError ? (
-                      <span className='flex items-center gap-1 text-xs text-destructive'>
-                        <AlertTriangle className='size-3' />
-                        {row.lastError.slice(0, 80)}
-                      </span>
+        <div className='flex flex-col pe-3'>
+          {rows.map((row) => {
+            const meta = KIND_META[row.kind as TriggerKind]
+            const lastFiredLabel = row.lastFiredAt
+              ? `Last run ${new Date(row.lastFiredAt).toLocaleString()}`
+              : 'Never run'
+            const isDirectEventRow =
+              row.kind === 'event' && !row.entityDefinitionId && !!row.eventType
+            const isEditable = row.kind !== 'app' && !isDirectEventRow
+            return (
+              <TreeRow
+                key={row.id}
+                icon={
+                  <Tooltip content={meta.label}>
+                    <span className='inline-flex'>
+                      <EntityIcon
+                        iconId={meta.iconId}
+                        color={meta.color}
+                        size='sm'
+                        inverse
+                        className='inset-shadow-xs inset-shadow-black/20'
+                      />
+                    </span>
+                  </Tooltip>
+                }
+                title={
+                  <Tooltip content={lastFiredLabel}>
+                    <span className='inline-flex items-center gap-1'>
+                      <TriggerLabel row={row} />
+                      {row.lastError ? <AlertTriangle className='size-3 text-destructive' /> : null}
+                    </span>
+                  </Tooltip>
+                }
+                actions={
+                  <>
+                    {isEditable ? (
+                      <Tooltip side='left' content='Edit trigger'>
+                        <button
+                          type='button'
+                          onClick={() => setEditingTrigger(row)}
+                          className='p-1 rounded-md hover:bg-primary/5 opacity-0 group-hover/tree-row:opacity-100'
+                          aria-label='Edit trigger'>
+                          <Pencil className='size-4 text-muted-foreground' />
+                        </button>
+                      </Tooltip>
                     ) : null}
-                  </div>
-                </TableCell>
-                <TableCell className='capitalize'>{row.kind}</TableCell>
-                <TableCell>
-                  <Switch
-                    checked={row.enabled}
-                    onCheckedChange={(checked) =>
-                      updateTrigger.mutate({ id: row.id, enabled: checked })
-                    }
-                  />
-                </TableCell>
-                <TableCell className='text-xs text-muted-foreground'>
-                  {row.lastFiredAt ? new Date(row.lastFiredAt).toLocaleString() : '—'}
-                </TableCell>
-                <TableCell className='text-right'>
-                  <div className='flex justify-end gap-1'>
-                    <Button
-                      variant='ghost'
+                    <Tooltip side='left' content='Delete trigger'>
+                      <button
+                        type='button'
+                        onClick={async () => {
+                          const confirmed = await confirm({
+                            title: 'Delete trigger?',
+                            description: 'This action cannot be undone.',
+                            confirmText: 'Delete',
+                            cancelText: 'Cancel',
+                            destructive: true,
+                          })
+                          if (confirmed) deleteTrigger.mutate({ id: row.id })
+                        }}
+                        className='p-1 rounded-md hover:bg-destructive/10 opacity-0 group-hover/tree-row:opacity-100'
+                        aria-label='Delete trigger'>
+                        <Trash2 className='size-4 text-muted-foreground hover:text-destructive' />
+                      </button>
+                    </Tooltip>
+                    <Switch
                       size='sm'
-                      loading={runNow.isPending && runNow.variables?.id === row.id}
-                      onClick={() => runNow.mutate({ id: row.id })}
-                      title='Run now'>
-                      <Play />
-                    </Button>
-                    <Button
-                      variant='ghost'
-                      size='sm'
-                      onClick={async () => {
-                        const confirmed = await confirm({
-                          title: 'Delete trigger?',
-                          description: 'This action cannot be undone.',
-                          confirmText: 'Delete',
-                          cancelText: 'Cancel',
-                          destructive: true,
-                        })
-                        if (confirmed) deleteTrigger.mutate({ id: row.id })
-                      }}
-                      title='Delete'>
-                      <Trash2 />
-                    </Button>
-                  </div>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+                      className='ml-1'
+                      checked={row.enabled}
+                      onCheckedChange={(checked) =>
+                        updateTrigger.mutate({ id: row.id, enabled: checked })
+                      }
+                    />
+                  </>
+                }
+              />
+            )
+          })}
+        </div>
       )}
 
       <ConfirmDialog />
