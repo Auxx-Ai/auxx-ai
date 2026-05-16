@@ -1,52 +1,203 @@
 // apps/web/src/components/agents/ui/detail/prompt/persona-editor-content.tsx
 'use client'
 
-import { ScrollArea } from '@auxx/ui/components/scroll-area'
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupButton,
+  InputGroupInput,
+} from '@auxx/ui/components/input-group'
+import { Popover, PopoverAnchor, PopoverContentDialogAware } from '@auxx/ui/components/popover'
+import type { JSONContent } from '@tiptap/core'
 import type { Editor } from '@tiptap/react'
 import { EditorContent } from '@tiptap/react'
-import { memo, useRef } from 'react'
-import { type ActivePickerState, InlinePickerPopover } from '~/components/editor/inline-picker'
-import type { ReferenceTab } from '~/components/editor/inline-picker/nodes/reference-picker-node'
+import { Link as LinkIcon } from 'lucide-react'
+import { memo, useCallback, useEffect, useRef, useState } from 'react'
 import {
-  ReferencePickerContent,
-  type ReferencePickerHandle,
-} from '~/components/pickers/reference-picker/reference-picker-content'
-import CollapseWrap from '~/components/workflow/ui/collapse-wrap'
+  EditorBubbleMenu,
+  InlineMarksSection,
+  KBBlockSection,
+  LinkButton,
+  TurnIntoSection,
+} from '~/components/editor/bubble-menu'
+import {
+  InlinePickerPopover,
+  useActivePicker,
+  useSlashCommand,
+} from '~/components/editor/inline-picker'
+import type { ReferenceTab } from '~/components/editor/inline-picker/nodes/reference-picker-node'
+import { useRichTextEditor } from '~/components/editor/rich-text/use-rich-text-editor'
+import { BasicSlashCommandPicker } from '~/components/editor/slash-commands/basic-slash-command-picker'
+import type { ReferencePickerHandle } from '~/components/pickers/reference-picker/reference-picker-content'
+import { ReferencePickerContent } from '~/components/pickers/reference-picker/reference-picker-content'
+import styles from './persona-editor.module.css'
 
 interface PersonaEditorContentProps {
-  editor: Editor | null
-  isExpanded: boolean
-  collapsedMinHeight: number
-  isCollapsed: boolean
-  setCollapsed: (collapsed: boolean) => void
-  activePicker: ActivePickerState | null
-  referencePickerRef: React.RefObject<ReferencePickerHandle | null>
+  /** Snapshot read on mount. Subsequent `agent.prompt` changes don't re-init the editor. */
+  initialContent: JSONContent[] | null
+  onChange: (content: { json: JSONContent; html: string }) => void
   /**
-   * Tabs the picker exposes — must match the `referenceTabs` passed to the
-   * paired `useRichTextEditor` so digit shortcuts and Tab cycling stay in
-   * sync with the visible strip.
+   * Fired with the new editor on mount and `null` on unmount. The parent
+   * uses this to drive header widgets (character count, copy) and to keep
+   * focus state in sync with whichever editor is currently active.
    */
+  onEditorReady: (editor: Editor | null) => void
+  onFocusChange: (focused: boolean) => void
+  /** Called on focus — parent uses this to expand the collapsed card. */
+  onUserActivity?: () => void
+  /** Shared across instances so the same picker handle can drive arrow keys. */
+  referencePickerRef: React.RefObject<ReferencePickerHandle | null>
   referenceTabs?: ReferenceTab[]
 }
 
+interface LinkPopoverState {
+  rect: DOMRect
+  range: { from: number; to: number }
+  initialHref: string
+  selectedText: string
+}
+
+/**
+ * Owns a single TipTap editor instance. The parent (`PersonaEditor`)
+ * mounts one of these in the card and a separate one in the expanded
+ * dialog — never both at once. Each mount creates a fresh editor from
+ * `initialContent`; the parent keeps the latest doc in state so the
+ * next mount picks up where the previous left off.
+ *
+ * This mirrors the workflow `PromptEditor` pattern. Trying to share one
+ * editor instance across two render locations breaks TipTap (its
+ * `EditorContent` calls `flushSync` from `componentDidMount`, which
+ * fires again when React reparents the subtree).
+ */
 export const PersonaEditorContent = memo(function PersonaEditorContent({
-  editor,
-  isExpanded,
-  collapsedMinHeight,
-  isCollapsed,
-  setCollapsed,
-  activePicker,
+  initialContent,
+  onChange,
+  onEditorReady,
+  onFocusChange,
+  onUserActivity,
   referencePickerRef,
   referenceTabs,
 }: PersonaEditorContentProps) {
   const containerRef = useRef<HTMLDivElement>(null)
+  const [linkPopover, setLinkPopover] = useState<LinkPopoverState | null>(null)
 
-  const editorNode = (
-    <div ref={containerRef} className='relative flex-1 min-h-0 flex w-full'>
+  const slashCommand = useSlashCommand()
+
+  const onPickerEnter = useCallback(
+    () => referencePickerRef.current?.confirmHighlighted() ?? false,
+    [referencePickerRef]
+  )
+  const onPickerArrowVertical = useCallback(
+    (dir: 1 | -1) => referencePickerRef.current?.moveHighlight(dir) ?? false,
+    [referencePickerRef]
+  )
+
+  const { editor } = useRichTextEditor({
+    initialContent,
+    onChange,
+    slashCommand,
+    enableReferencePicker: true,
+    onPickerEnter,
+    onPickerArrowVertical,
+    referenceTabs,
+  })
+
+  const activePicker = useActivePicker(editor)
+
+  // Surface the editor instance to the parent so header widgets (character
+  // count, copy button) track whichever instance is currently mounted.
+  useEffect(() => {
+    onEditorReady(editor)
+    return () => onEditorReady(null)
+  }, [editor, onEditorReady])
+
+  useEffect(() => {
+    if (!editor) return
+    const onFocusEvt = () => {
+      onFocusChange(true)
+      onUserActivity?.()
+    }
+    const onBlurEvt = () => onFocusChange(false)
+    editor.on('focus', onFocusEvt)
+    editor.on('blur', onBlurEvt)
+    return () => {
+      editor.off('focus', onFocusEvt)
+      editor.off('blur', onBlurEvt)
+    }
+  }, [editor, onFocusChange, onUserActivity])
+
+  const handlePersonaLinkRequest = useCallback(() => {
+    if (!editor) return
+    const { from, to } = editor.state.selection
+    if (from === to) return
+    const selectedText = editor.state.doc.textBetween(from, to, ' ')
+    const linkType = editor.schema.marks.link
+    const existing = linkType ? editor.getAttributes('link') : null
+    const existingHref = typeof existing?.href === 'string' ? existing.href : ''
+    const start = editor.view.coordsAtPos(from)
+    const end = editor.view.coordsAtPos(to)
+    const rect = new DOMRect(
+      Math.min(start.left, end.left),
+      Math.min(start.top, end.top),
+      Math.max(1, Math.max(start.right, end.right) - Math.min(start.left, end.left)),
+      Math.max(1, Math.max(start.bottom, end.bottom) - Math.min(start.top, end.top))
+    )
+    setLinkPopover({
+      rect,
+      range: { from, to },
+      initialHref: existingHref,
+      selectedText,
+    })
+  }, [editor])
+
+  const handleApplyLink = useCallback(
+    (href: string) => {
+      if (!editor || !linkPopover) return
+      const trimmed = href.trim()
+      if (!trimmed) return
+      const mark = { type: 'link', attrs: { href: trimmed, target: '_blank' } }
+      const text = linkPopover.selectedText || trimmed
+      const node = { type: 'text', text, marks: [mark] }
+      editor
+        .chain()
+        .focus()
+        .insertContentAt(linkPopover.range, node)
+        // Strip the stored link mark so the next typed character isn't linked.
+        .command(({ tr }) => {
+          tr.removeStoredMark(editor.schema.marks.link)
+          return true
+        })
+        .run()
+      setLinkPopover(null)
+    },
+    [editor, linkPopover]
+  )
+
+  return (
+    <div ref={containerRef} className={`${styles.editor} relative flex-1 min-h-0 flex w-full`}>
       <EditorContent
         editor={editor}
         className='prose prose-sm max-w-none dark:prose-invert w-full [&_.ProseMirror]:outline-none [&_.ProseMirror]:focus:outline-none [&_.ProseMirror-focused]:outline-none focus:outline-none'
       />
+      <EditorBubbleMenu
+        editor={editor}
+        renderBlockSection={({ editor }) => <KBBlockSection editor={editor} />}
+        renderTurnInto={({ editor }) => <TurnIntoSection editor={editor} />}
+        renderInlineMarks={({ editor }) => <InlineMarksSection editor={editor} />}
+        renderLink={({ editor }) => (
+          <LinkButton editor={editor} onRequest={handlePersonaLinkRequest} />
+        )}
+      />
+      <InlinePickerPopover
+        state={slashCommand.suggestionState}
+        onClose={slashCommand.closePicker}
+        width={288}>
+        <BasicSlashCommandPicker
+          query={slashCommand.suggestionState.query}
+          onExecute={slashCommand.executeCommand}
+          onClose={slashCommand.closePicker}
+        />
+      </InlinePickerPopover>
       <InlinePickerPopover
         state={{
           isOpen: !!activePicker,
@@ -75,31 +226,75 @@ export const PersonaEditorContent = memo(function PersonaEditorContent({
           tabs={referenceTabs}
         />
       </InlinePickerPopover>
+      <PersonaLinkPopover
+        open={linkPopover !== null}
+        anchorRect={linkPopover?.rect ?? null}
+        initialHref={linkPopover?.initialHref ?? ''}
+        onApply={handleApplyLink}
+        onClose={() => setLinkPopover(null)}
+      />
     </div>
   )
+})
 
-  if (isExpanded) {
-    return (
-      <div className='h-full pb-0'>
-        <ScrollArea
-          className='relative h-full min-h-0 px-3 flex-1 flex'
-          fadeClassName=''
-          allowScrollChaining
-          scrollbarClassName='w-1 mr-0.5 data-[hovering]:opacity-0 hover:!opacity-100'>
-          {editorNode}
-        </ScrollArea>
-      </div>
-    )
-  }
+// Minimal URL-only link popover for persona — no internal article search,
+// admins either paste a URL or cancel. Modeled on `ArticleLinkPopover` for
+// the virtual-anchor + dialog-aware portal behavior.
+function PersonaLinkPopover({
+  open,
+  anchorRect,
+  initialHref,
+  onApply,
+  onClose,
+}: {
+  open: boolean
+  anchorRect: DOMRect | null
+  initialHref: string
+  onApply: (href: string) => void
+  onClose: () => void
+}) {
+  const virtualRef = useRef<{ getBoundingClientRect: () => DOMRect }>({
+    getBoundingClientRect: () => anchorRect ?? new DOMRect(),
+  })
+  virtualRef.current.getBoundingClientRect = () => anchorRect ?? new DOMRect()
+
+  const [draft, setDraft] = useState(initialHref)
+
+  useEffect(() => {
+    if (open) setDraft(initialHref)
+  }, [open, initialHref])
 
   return (
-    <CollapseWrap
-      minHeight={collapsedMinHeight}
-      isCollapsed={isCollapsed}
-      onCollapsedChange={setCollapsed}
-      className='px-3'
-      gradientClassName='from-primary-200/30 dark:from-primary-200/30'>
-      <div className='relative flex w-full'>{editorNode}</div>
-    </CollapseWrap>
+    <Popover open={open} onOpenChange={(o) => !o && onClose()}>
+      <PopoverAnchor virtualRef={virtualRef} />
+      <PopoverContentDialogAware side='bottom' align='start' sideOffset={6} className='w-80 p-2'>
+        <InputGroup>
+          <InputGroupAddon align='inline-start'>
+            <LinkIcon />
+          </InputGroupAddon>
+          <InputGroupInput
+            autoFocus
+            placeholder='https://example.com'
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault()
+                onApply(draft)
+              }
+              if (e.key === 'Escape') {
+                e.preventDefault()
+                onClose()
+              }
+            }}
+          />
+          <InputGroupAddon align='inline-end'>
+            <InputGroupButton size='xs' onClick={() => onApply(draft)} disabled={!draft.trim()}>
+              Apply
+            </InputGroupButton>
+          </InputGroupAddon>
+        </InputGroup>
+      </PopoverContentDialogAware>
+    </Popover>
   )
-})
+}

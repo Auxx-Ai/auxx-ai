@@ -57,8 +57,12 @@
      padding. We intentionally leave the gutter's margin-right (0.75rem) in
      positive space — that becomes the visual breathing room between the
      numbers and the content column, and lines the content up with the title
-     above. */
-  margin-left: calc(var(--gutter-min-width, 24px) * -1);
+     above. Persona/other consumers can zero this out via
+     `--editor-gutter-pull-left: 0` without also resetting the gutter width. */
+  margin-left: var(
+    --editor-gutter-pull-left,
+    calc(var(--editor-gutter-min-width, 24px) * -1)
+  );
 }
 
 .editorContainer {

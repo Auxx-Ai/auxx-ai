@@ -2,14 +2,16 @@
 'use client'
 
 import { Dialog, DialogContent, DialogTitle } from '@auxx/ui/components/dialog'
+import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { VisuallyHidden } from '@auxx/ui/components/visually-hidden'
 import { cn } from '@auxx/ui/lib/utils'
 import type { JSONContent } from '@tiptap/core'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { DEFAULT_TABS, useActivePicker } from '~/components/editor/inline-picker'
+import type { Editor } from '@tiptap/react'
+import { useCallback, useMemo, useRef, useState } from 'react'
+import { DEFAULT_TABS } from '~/components/editor/inline-picker'
 import type { ReferenceTab } from '~/components/editor/inline-picker/nodes/reference-picker-node'
-import { useRichTextEditor } from '~/components/editor/rich-text/use-rich-text-editor'
 import type { ReferencePickerHandle } from '~/components/pickers/reference-picker/reference-picker-content'
+import CollapseWrap from '~/components/workflow/ui/collapse-wrap'
 import { useAgentAutosave } from '../../../hooks/use-agent-autosave'
 import type { AgentDetail } from '../../../store/agent-store'
 import type { AutosaveState } from '../../shared/autosave-indicator'
@@ -42,10 +44,19 @@ function readPromptContent(
 /**
  * Persona prompt editor for the agent detail page. Visual structure mirrors
  * the workflow `PromptEditor` (focus-gradient border, header with copy +
- * expand actions, resizable content, expand-to-dialog). Mounts
- * `useRichTextEditor` with the inline `@`-mention picker so admins can drop
- * references to records, actors, threads, and KB articles inline in the
- * persona doc.
+ * expand actions, resizable content, expand-to-dialog).
+ *
+ * Two-editor pattern: the card and the expanded dialog each mount their own
+ * `PersonaEditorContent` (with its own `useRichTextEditor` call). Only one
+ * is mounted at a time — toggling `isExpanded` unmounts one and mounts the
+ * other. `currentDocRef` holds the live document so the next editor inits
+ * from where the previous left off (the autosave debounce window is too
+ * long to rely on `agent.prompt` for cross-mount handoff).
+ *
+ * A single editor instance does not work here — TipTap's `EditorContent`
+ * runs `flushSync` in `componentDidMount`, which React re-fires whenever
+ * the subtree's host changes (portal target swap or simple reparenting),
+ * leaving the view DOM in a broken state.
  */
 export function PersonaEditor({ agent, onAutosaveChange }: PersonaEditorProps) {
   const referencePickerRef = useRef<ReferencePickerHandle | null>(null)
@@ -56,19 +67,19 @@ export function PersonaEditor({ agent, onAutosaveChange }: PersonaEditorProps) {
   const [isCollapsed, setCollapsed] = useState(true)
   const [isCopied, setIsCopied] = useState(false)
 
+  // The doc each child editor reads on mount. We keep it in a ref so live
+  // edits don't cause `PersonaEditorContent` to re-render with a new prop
+  // (TipTap's `useEditor` reads `initialContent` once, but changing the
+  // prop identity would still re-render the wrapper unnecessarily).
   const initialContent = useMemo(() => readPromptContent(agent.prompt), [agent.prompt])
+  const currentDocRef = useRef<JSONContent[] | null>(initialContent)
 
-  const onPickerEnter = useCallback(
-    () => referencePickerRef.current?.confirmHighlighted() ?? false,
-    []
-  )
-  const onPickerArrowVertical = useCallback(
-    (dir: 1 | -1) => referencePickerRef.current?.moveHighlight(dir) ?? false,
-    []
-  )
+  const [activeEditor, setActiveEditor] = useState<Editor | null>(null)
 
   const handleChange = useCallback(
     ({ json }: { json: JSONContent; html: string }) => {
+      const content = Array.isArray(json.content) ? (json.content as JSONContent[]) : null
+      currentDocRef.current = content
       // 1500ms matches the KB article editor's autosave window. Pairs with
       // the prompt-only fast path in `useAgentMutations.updateAgent` that
       // splices the cache instead of invalidating, so each flush is cheap.
@@ -77,45 +88,27 @@ export function PersonaEditor({ agent, onAutosaveChange }: PersonaEditorProps) {
     [patch]
   )
 
-  const { editor } = useRichTextEditor({
-    initialContent,
-    onChange: handleChange,
-    enableReferencePicker: true,
-    onPickerEnter,
-    onPickerArrowVertical,
-    referenceTabs: PERSONA_REFERENCE_TABS,
-  })
+  const handleEditorReady = useCallback((editor: Editor | null) => {
+    setActiveEditor(editor)
+  }, [])
 
-  const activePicker = useActivePicker(editor)
-
-  useEffect(() => {
-    if (!editor) return
-    const onFocusEvt = () => {
-      setFocused(true)
-      setCollapsed(false)
-    }
-    const onBlurEvt = () => setFocused(false)
-    editor.on('focus', onFocusEvt)
-    editor.on('blur', onBlurEvt)
-    return () => {
-      editor.off('focus', onFocusEvt)
-      editor.off('blur', onBlurEvt)
-    }
-  }, [editor])
+  const handleUserActivity = useCallback(() => {
+    setCollapsed(false)
+  }, [])
 
   const handleCopy = useCallback(() => {
-    if (!editor) return
-    const text = editor.getText()
+    if (!activeEditor) return
+    const text = activeEditor.getText()
     if (navigator.clipboard) {
       navigator.clipboard.writeText(text)
     }
     setIsCopied(true)
     setTimeout(() => setIsCopied(false), 2000)
-  }, [editor])
+  }, [activeEditor])
 
   // Stable element so the memoized header doesn't see a new `countSlot`
   // prop every time PersonaEditor re-renders (focus/blur, autosave state).
-  const countSlot = useMemo(() => <PersonaCharacterCount editor={editor} />, [editor])
+  const countSlot = useMemo(() => <PersonaCharacterCount editor={activeEditor} />, [activeEditor])
 
   const header = (
     <PersonaEditorHeader
@@ -128,30 +121,38 @@ export function PersonaEditor({ agent, onAutosaveChange }: PersonaEditorProps) {
     />
   )
 
-  const content = (
-    <PersonaEditorContent
-      editor={editor}
-      isExpanded={isExpanded}
-      collapsedMinHeight={COLLAPSED_MIN_HEIGHT}
-      isCollapsed={isCollapsed}
-      setCollapsed={setCollapsed}
-      activePicker={activePicker}
-      referencePickerRef={referencePickerRef}
-      referenceTabs={PERSONA_REFERENCE_TABS}
-    />
-  )
-
   return (
     <>
       <div
         className={cn(
           'me-1',
-          isFocused ? 'bg-gradient-to-r from-[#0ba5ec] to-[#155aef]' : 'bg-transparent',
+          isFocused && !isExpanded
+            ? 'bg-gradient-to-r from-[#0ba5ec] to-[#155aef]'
+            : 'bg-transparent',
           '!rounded-[9px] p-0.5'
         )}>
         <div className={cn(isFocused ? 'bg-background' : 'bg-primary-200/30', 'rounded-lg border')}>
           {header}
-          {!isExpanded && content}
+          {!isExpanded && (
+            <CollapseWrap
+              minHeight={COLLAPSED_MIN_HEIGHT}
+              isCollapsed={isCollapsed}
+              onCollapsedChange={setCollapsed}
+              className='px-3'
+              gradientClassName='from-primary-200/30 dark:from-primary-200/30'>
+              <div className='relative flex w-full'>
+                <PersonaEditorContent
+                  initialContent={currentDocRef.current}
+                  onChange={handleChange}
+                  onEditorReady={handleEditorReady}
+                  onFocusChange={setFocused}
+                  onUserActivity={handleUserActivity}
+                  referencePickerRef={referencePickerRef}
+                  referenceTabs={PERSONA_REFERENCE_TABS}
+                />
+              </div>
+            </CollapseWrap>
+          )}
         </div>
       </div>
 
@@ -161,7 +162,25 @@ export function PersonaEditor({ agent, onAutosaveChange }: PersonaEditorProps) {
             <DialogTitle>Persona</DialogTitle>
           </VisuallyHidden>
           <div className='shrink-0 border-b'>{header}</div>
-          <div className='flex-1 min-h-0 overflow-hidden'>{content}</div>
+          <div className='flex-1 min-h-0 overflow-hidden'>
+            <ScrollArea
+              className='relative h-full min-h-0 px-3 flex-1 flex'
+              fadeClassName=''
+              allowScrollChaining
+              scrollbarClassName='w-1 mr-0.5 data-[hovering]:opacity-0 hover:!opacity-100'>
+              {isExpanded && (
+                <PersonaEditorContent
+                  initialContent={currentDocRef.current}
+                  onChange={handleChange}
+                  onEditorReady={handleEditorReady}
+                  onFocusChange={setFocused}
+                  onUserActivity={handleUserActivity}
+                  referencePickerRef={referencePickerRef}
+                  referenceTabs={PERSONA_REFERENCE_TABS}
+                />
+              )}
+            </ScrollArea>
+          </div>
         </DialogContent>
       </Dialog>
     </>
