@@ -21,7 +21,7 @@ export function createGetThreadDetailTool(getDeps: GetToolDeps): AgentToolDefini
   return {
     name: 'get_thread_detail',
     displayName: 'Read thread',
-    toolsetSlug: 'mail.threads',
+    toolsetSlug: 'auxx:mail:threads',
     idempotent: true,
     outputDigestSchema: GetThreadDetailDigest,
     buildDigest: (output) => {

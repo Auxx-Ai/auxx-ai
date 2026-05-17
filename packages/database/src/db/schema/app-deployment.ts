@@ -59,6 +59,7 @@ export const AppDeployment = pgTable(
         description: string
         iconKey: string | null
         isDefault: boolean
+        subGroup: string | null
       }>
     }>(),
 

@@ -32,6 +32,7 @@ export interface AiToolCatalogPayload {
     description: string
     iconKey: string | null
     isDefault: boolean
+    subGroup: string | null
   }>
 }
 
@@ -203,6 +204,7 @@ export async function compileAndExtractAiTools(): Promise<
     icon?: unknown
     tools?: ReadonlyArray<string>
     isDefault?: boolean
+    subGroup?: string
   }>
 
   const slugByToolId = new Map<string, string>()
@@ -215,6 +217,7 @@ export async function compileAndExtractAiTools(): Promise<
       description: ts.description,
       iconKey: null,
       isDefault: Boolean(ts.isDefault),
+      subGroup: ts.subGroup ?? null,
     })
     for (const toolId of ts.tools ?? []) {
       slugByToolId.set(toolId, slug)

@@ -1,35 +1,30 @@
 // packages/lib/src/agents/default-toolsets.ts
 
-/**
- * Native default toolset slugs. Each agent created without an explicit
- * `toolsetSlugs` payload gets one `AgentToolset` row per slug with
- * `source = 'auto_default'`.
- *
- * Read/write parity matches phase-1-engine-and-api §1.1: search + write for
- * entities, threads + compose for mail, knowledge lookups, actors. KB and
- * task tools are excluded — opt-in per agent.
- */
-export const NATIVE_DEFAULT_TOOLSETS: ReadonlyArray<string> = [
-  'entities.search',
-  'entities.write',
-  'comments.read',
-  'comments.write',
-  'mail.threads',
-  'mail.compose',
-  'knowledge',
-  'docs',
-  'actors',
-]
+import { BUILTIN_APP, BUILTIN_TOOLSETS } from './builtin-app'
+import { getOrgToolsetCatalog } from './toolset-catalog'
 
 /**
- * Resolve the default-on toolset slugs for a new agent in this org.
- *
- * Today: returns the native default set verbatim. Apps-track will merge in
- * app-declared `isDefault: true` toolsets from `getCachedAppAiTools(orgId)`
- * once that catalog provider lands (see `plans/kopilot/apps/README.md` §4.4
- * and `plans/kopilot/agents/tool-loading-and-execution.md` §3 B1).
+ * Built-in default toolset slugs — every `BUILTIN_TOOLSETS` row with
+ * `isDefault: true`. Each agent created without an explicit `toolsetSlugs`
+ * payload gets one `Agent.toolsets[]` entry per slug with
+ * `source = 'auto_default'`.
  */
-export async function resolveDefaultToolsets(_orgId: string): Promise<string[]> {
-  // TODO(apps): merge in app-declared defaults once appAiToolsProvider exists.
-  return [...NATIVE_DEFAULT_TOOLSETS]
+export const BUILTIN_DEFAULT_TOOLSETS: ReadonlyArray<string> = BUILTIN_TOOLSETS.filter(
+  (t) => t.isDefault
+).map((t) => t.slug)
+
+/**
+ * Resolve the default-on toolset slugs for a new agent in this org. Returns
+ * the built-in defaults plus any installed-app toolsets that opt in via
+ * `isDefault: true`. App-side defaults are read through the cached toolset
+ * catalog so install/uninstall events refresh them automatically.
+ */
+export async function resolveDefaultToolsets(orgId: string): Promise<string[]> {
+  const builtin = [...BUILTIN_DEFAULT_TOOLSETS]
+  const catalog = await getOrgToolsetCatalog(orgId)
+  const appDefaults = catalog
+    .filter((entry) => entry.appId !== BUILTIN_APP.id && entry.isDefault)
+    .map((entry) => entry.slug)
+  // Dedupe defensively — a slug should only ever come from one source.
+  return Array.from(new Set([...builtin, ...appDefaults]))
 }

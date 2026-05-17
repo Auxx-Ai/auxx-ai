@@ -20,7 +20,7 @@ export function createGetArticleSectionTool(getDeps: GetToolDeps): AgentToolDefi
   return {
     name: 'get_article_section',
     displayName: 'Get article section',
-    toolsetSlug: 'knowledge',
+    toolsetSlug: 'auxx:knowledge',
     idempotent: true,
     description:
       'Returns the markdown for one section of the active article identified by its heading text. Use after get_article reports the body was truncated. Section boundaries: from the heading text (case-insensitive prefix match) to the next heading at the same-or-shallower level, or end of doc.',

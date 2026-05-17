@@ -9,7 +9,7 @@ export function createListEntitiesTool(_getDeps: GetToolDeps): AgentToolDefiniti
   return {
     name: 'list_entities',
     displayName: 'List entity types',
-    toolsetSlug: 'entities.search',
+    toolsetSlug: 'auxx:entities:search',
     idempotent: true,
     outputDigestSchema: ListEntitiesDigest,
     buildDigest: (output) => {

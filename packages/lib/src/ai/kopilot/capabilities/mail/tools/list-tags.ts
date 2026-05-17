@@ -12,7 +12,7 @@ export function createListTagsTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'list_tags',
     displayName: 'List tags',
-    toolsetSlug: 'mail.threads',
+    toolsetSlug: 'auxx:mail:threads',
     idempotent: true,
     outputDigestSchema: ListTagsDigest,
     buildDigest: (output) => {

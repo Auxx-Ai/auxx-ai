@@ -36,8 +36,9 @@ const HAS_DESCENDANTS = new Set<string>(['kb'])
 export function ResourceTypeBranch({ resource, agent, mutations }: ResourceTypeBranchProps) {
   const recordId = resource.id
   const [isOpen, setIsOpen] = useState(false)
-  const effectiveMode = deriveEffectiveMode(agent.resourceScopes, recordId)
-  const pin = agent.pinnedRecords.find((p) => p.recordId === recordId)
+  const effectiveMode = deriveEffectiveMode(agent.knowledge, recordId)
+  const entry = agent.knowledge.find((k) => k.recordId === recordId)
+  const isMentionLocked = entry?.source === 'mention'
 
   const defaultAddMode: EffectiveScopeMode = HAS_DESCENDANTS.has(resource.id)
     ? 'include_descendants'
@@ -63,10 +64,8 @@ export function ResourceTypeBranch({ resource, agent, mutations }: ResourceTypeB
         <AgentScopeActions
           kind='container'
           effectiveMode={effectiveMode}
-          isPinned={!!pin}
-          pinReason={pin?.pinReason ?? null}
+          isMentionLocked={isMentionLocked}
           onSetMode={(mode) => mutations.setMode(recordId, mode)}
-          onTogglePin={() => mutations.setPin(recordId, !pin)}
         />
       }>
       {resource.id === 'kb' ? (

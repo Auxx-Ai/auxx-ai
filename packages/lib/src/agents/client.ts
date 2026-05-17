@@ -10,41 +10,104 @@ export type AgentScopeMode = 'include_descendants' | 'include_one' | 'exclude'
 
 export interface ToolCatalogEntry {
   name: string
+  /** Short, human-friendly label for chips, pickers, and audit UI. */
+  displayName: string
   description: string
 }
 
-export interface ToolsetCatalogEntry {
-  slug: string
+/**
+ * Recursive catalog node mirrored from the server. App, sub-group, and toolset
+ * all share this shape; `kind` discriminates visual treatment. See
+ * `toolset-catalog.ts` for the canonical shape and
+ * `plans/kopilot/agents/tools/recursive-catalog-node.md` for the model.
+ */
+export type CatalogNode = CatalogContainerNode | CatalogToolsetNode
+
+interface CatalogNodeBase {
+  id: string
   label: string
-  shortLabel: string
-  group: 'native' | 'app'
-  parentGroup: string
-  iconId: string
-  color: string
-  appId?: string
+  iconId: string | null
+  color: string | null
+}
+
+export interface CatalogContainerNode extends CatalogNodeBase {
+  kind: 'app' | 'subGroup'
+  children: CatalogNode[]
+}
+
+export interface CatalogToolsetNode extends CatalogNodeBase {
+  kind: 'toolset'
+  /** Runtime slug — join key against `Agent.toolsets[*].slug`. */
+  slug: string
+  /** Long-form label for picker chips / reference badges. */
+  fullLabel: string
+  /** One-line tooltip copy shown on the leaf row's help icon. */
+  description: string
   isDefault: boolean
   tools: ToolCatalogEntry[]
 }
 
-export interface ToolsetGroupCatalog {
-  name: string
+/**
+ * Flat per-toolset projection mirrored from the server. Used by picker
+ * components that need slug-keyed lookups; the Tools tab consumes `CatalogNode`.
+ */
+export interface FlatToolsetCatalogEntry {
+  /** Toolset slug — picker chip id is `toolset:<slug>`. */
+  slug: string
+  /** Header text (short form). */
+  label: string
+  /** Long-form label for chips and references. */
+  fullLabel: string
+  /** One-line tooltip copy. */
+  description: string
+  /** Already-resolved icon (toolset's own iconId, falling back to ancestor's). */
   iconId: string
+  /** Already-resolved color or empty string. */
   color: string
+  /** Ordered ancestor labels, top-down. */
+  path: string[]
+  tools: ToolCatalogEntry[]
 }
 
 /**
- * Display metadata for native parent groups, mirrored from
- * `toolset-catalog.ts` so the client can render group headers without a
- * server round-trip.
+ * Flatten a catalog tree to one row per toolset, threading inherited
+ * iconId/color down the recursion and recording the ancestor labels as
+ * `path`. Pickers use this; the Tools tab walks the tree directly.
  */
-export const NATIVE_GROUP_CATALOG: Record<string, ToolsetGroupCatalog> = {
-  Mail: { name: 'Mail', iconId: 'mail', color: 'blue' },
-  Tasks: { name: 'Tasks', iconId: 'check-circle', color: 'green' },
-  Entities: { name: 'Entities', iconId: 'boxes', color: 'purple' },
-  Comments: { name: 'Comments', iconId: 'message-square', color: 'teal' },
-  Knowledge: { name: 'Knowledge', iconId: 'book-open', color: 'orange' },
-  Docs: { name: 'Docs', iconId: 'help-circle', color: 'gray' },
-  Members: { name: 'Members', iconId: 'users', color: 'pink' },
+export function flattenCatalogToToolsets(roots: CatalogNode[]): FlatToolsetCatalogEntry[] {
+  const flat: FlatToolsetCatalogEntry[] = []
+
+  function visit(
+    node: CatalogNode,
+    pathLabels: string[],
+    inheritedIconId: string,
+    inheritedColor: string
+  ) {
+    const iconId = node.iconId ?? inheritedIconId
+    const color = node.color ?? inheritedColor
+
+    if (node.kind === 'toolset') {
+      flat.push({
+        slug: node.slug,
+        label: node.label,
+        fullLabel: node.fullLabel,
+        description: node.description,
+        iconId,
+        color,
+        path: pathLabels,
+        tools: node.tools,
+      })
+      return
+    }
+    for (const child of node.children) {
+      visit(child, [...pathLabels, node.label], iconId, color)
+    }
+  }
+
+  for (const root of roots) {
+    visit(root, [], root.iconId ?? 'wrench', root.color ?? '')
+  }
+  return flat
 }
 
 export { getTriggerLabel } from './agent-trigger-label'

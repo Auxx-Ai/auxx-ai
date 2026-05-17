@@ -1086,6 +1086,20 @@
       "when": 1778902066824,
       "tag": "0154_comment_json_and_references",
       "breakpoints": true
+    },
+    {
+      "idx": 155,
+      "version": "7",
+      "when": 1778972367080,
+      "tag": "0155_single_row_agent",
+      "breakpoints": true
+    },
+    {
+      "idx": 156,
+      "version": "7",
+      "when": 1779000000000,
+      "tag": "0156_unify_native_toolset_slugs",
+      "breakpoints": true
     }
   ]
 }

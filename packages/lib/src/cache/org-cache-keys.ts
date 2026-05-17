@@ -1,6 +1,6 @@
 // packages/lib/src/cache/org-cache-keys.ts
 
-import type { PinnedRecord } from '@auxx/database'
+import type { KnowledgeEntry, ToolsetEntry } from '@auxx/database'
 import type {
   CustomFieldEntity,
   OrganizationMemberInfo,
@@ -104,8 +104,10 @@ export interface CachedAgent {
   mentionable: boolean
   /** Tiptap doc; empty object when no prompt has been authored. */
   prompt: Record<string, unknown>
-  /** Manual + mention-sourced records pinned to this agent. */
-  pinnedRecords: PinnedRecord[]
+  /** Per-agent toolset configuration. Mention-sourced entries are reconciled from the prompt. */
+  toolsets: ToolsetEntry[]
+  /** Per-agent knowledge access rules. Mention-sourced entries are reconciled from the prompt. */
+  knowledge: KnowledgeEntry[]
   /** Per-agent model override in `provider:model` format; null = inherit. */
   modelId: string | null
   /** ISO string when chat-driven setup completed; null while in setup mode. */
@@ -217,6 +219,7 @@ export interface CachedInstalledApp {
     description: string
     iconKey: string | null
     isDefault: boolean
+    subGroup: string | null
   }>
 
   /**

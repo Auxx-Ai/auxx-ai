@@ -1,7 +1,7 @@
 // packages/lib/src/agents/resolve-agent-config.ts
 
-import { type Database, database as defaultDb, schema } from '@auxx/database'
-import { and, eq } from 'drizzle-orm'
+import type { Database } from '@auxx/database'
+import { database as defaultDb } from '@auxx/database'
 import { getCachedAgents } from '../cache/org-cache-helpers'
 import type { AgentToolsetConfig } from './agent-toolset-types'
 
@@ -44,16 +44,15 @@ const MASTER_SENTINEL: ResolvedAgentConfig = {
 
 /**
  * Resolve the per-session agent configuration. Master sessions return a
- * sentinel without touching the DB. Agent sessions read the cached Agent row
- * (modelId/prompt included) plus a fresh DB read of `AgentToolset` rows
- * (no cache today; row count per agent is O(10)).
+ * sentinel without touching the DB. Agent sessions read the cached Agent row;
+ * toolsets live on the row itself (no DB round trip).
  *
  * Throws if the agent does not exist in the org, or if it has been archived.
  */
 export async function resolveAgentConfig(
   orgId: string,
   agentId: string | null,
-  db: Database = defaultDb as Database
+  _db: Database = defaultDb as Database
 ): Promise<ResolvedAgentConfig> {
   if (agentId === null) return MASTER_SENTINEL
 
@@ -63,22 +62,16 @@ export async function resolveAgentConfig(
     throw new Error(`Agent not found in org ${orgId}: ${agentId}`)
   }
 
-  const toolsetRows = await db
-    .select({
-      slug: schema.AgentToolset.toolsetSlug,
-      config: schema.AgentToolset.config,
+  const toolsets = agent.toolsets
+    .filter((t) => t.enabled)
+    .map((t) => {
+      const config = (t.config ?? {}) as AgentToolsetConfig
+      const disabled = Array.isArray(config.disabledTools) ? config.disabledTools : []
+      return {
+        slug: t.slug,
+        disabledTools: new Set(disabled) as ReadonlySet<string>,
+      }
     })
-    .from(schema.AgentToolset)
-    .where(and(eq(schema.AgentToolset.agentId, agentId), eq(schema.AgentToolset.enabled, true)))
-
-  const toolsets = toolsetRows.map((row) => {
-    const config = (row.config ?? {}) as AgentToolsetConfig
-    const disabled = Array.isArray(config.disabledTools) ? config.disabledTools : []
-    return {
-      slug: row.slug,
-      disabledTools: new Set(disabled) as ReadonlySet<string>,
-    }
-  })
 
   return {
     agentId: agent.id,

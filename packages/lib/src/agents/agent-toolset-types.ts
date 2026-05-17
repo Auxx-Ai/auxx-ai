@@ -1,7 +1,7 @@
 // packages/lib/src/agents/agent-toolset-types.ts
 
 /**
- * Shape of `AgentToolset.config` (jsonb). Stored as `{}` by default; reader
+ * Shape of `Agent.toolsets[].config` (jsonb). Stored as `{}` by default; reader
  * tolerates extra/unknown keys. Single source of truth for writers + readers.
  */
 export interface AgentToolsetConfig {

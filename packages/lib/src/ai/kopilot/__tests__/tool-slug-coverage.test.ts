@@ -16,19 +16,19 @@ import { describe, expect, it } from 'vitest'
  */
 
 const KNOWN_SLUGS = new Set<string>([
-  'mail.threads',
-  'mail.compose',
-  'mail.drafts',
-  'entities.search',
-  'entities.write',
-  'comments.read',
-  'comments.write',
-  'tasks.read',
-  'tasks.write',
-  'knowledge',
-  'kb.write',
-  'docs',
-  'actors',
+  'auxx:mail:threads',
+  'auxx:mail:compose',
+  'auxx:mail:drafts',
+  'auxx:entities:search',
+  'auxx:entities:write',
+  'auxx:comments:read',
+  'auxx:comments:write',
+  'auxx:tasks:read',
+  'auxx:tasks:write',
+  'auxx:knowledge',
+  'auxx:kb:write',
+  'auxx:docs',
+  'auxx:actors',
 ])
 
 const ALWAYS_ON_TOOLS = new Set<string>(['plan_create', 'plan_update_step'])

@@ -9,7 +9,7 @@ export function createListMembersTool(getDeps: GetToolDeps): AgentToolDefinition
   return {
     name: 'list_members',
     displayName: 'List members',
-    toolsetSlug: 'actors',
+    toolsetSlug: 'auxx:actors',
     idempotent: true,
     outputDigestSchema: ListMembersDigest,
     buildDigest: (output) => {

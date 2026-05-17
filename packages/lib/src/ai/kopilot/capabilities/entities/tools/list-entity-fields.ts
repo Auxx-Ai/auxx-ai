@@ -10,7 +10,7 @@ export function createListEntityFieldsTool(_getDeps: GetToolDeps): AgentToolDefi
   return {
     name: 'list_entity_fields',
     displayName: 'List entity fields',
-    toolsetSlug: 'entities.search',
+    toolsetSlug: 'auxx:entities:search',
     idempotent: true,
     outputDigestSchema: ListEntityFieldsDigest,
     buildDigest: (output) => {

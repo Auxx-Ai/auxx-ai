@@ -1,12 +1,11 @@
 // packages/lib/src/agents/agent-service.ts
 
 import {
-  type AgentResourceScopeEntity,
-  type AgentToolsetEntity,
   type Database,
   database as defaultDb,
-  type PinnedRecord,
+  type KnowledgeEntry,
   schema,
+  type ToolsetEntry,
 } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { generateId } from '@auxx/utils'
@@ -14,6 +13,8 @@ import { and, eq, isNull } from 'drizzle-orm'
 import { getAllCachedAgents, getCachedAgentById, getCachedAgents, onCacheEvent } from '../cache'
 import { BadRequestError } from '../errors'
 import { resolveDefaultToolsets } from './default-toolsets'
+import { reconcilePromptMentions, type ToolsetSource } from './prompt-mention-reconciler'
+import { getOrgToolCatalog } from './toolset-catalog'
 
 const logger = createScopedLogger('agent-service')
 
@@ -92,8 +93,14 @@ export async function createAgent(
   } = input
 
   const now = new Date()
-  const toolsetSource: 'manual' | 'auto_default' = input.toolsetSlugs ? 'manual' : 'auto_default'
+  const toolsetSource: ToolsetSource = input.toolsetSlugs ? 'manual' : 'auto_default'
   const toolsetSlugs = input.toolsetSlugs ?? (await resolveDefaultToolsets(organizationId))
+  const toolsetEntries: ToolsetEntry[] = toolsetSlugs.map((slug) => ({
+    slug,
+    config: {},
+    enabled: true,
+    source: toolsetSource,
+  }))
 
   const { agentId, userId } = await db.transaction(async (tx) => {
     // 1. Insert the synthetic User. emailVerified: true skips any
@@ -130,6 +137,8 @@ export async function createAgent(
         slug: slugPlaceholder,
         description,
         prompt,
+        toolsets: toolsetEntries,
+        knowledge: [],
         modelId,
         mentionable,
       })
@@ -161,22 +170,7 @@ export async function createAgent(
       updatedAt: now,
     })
 
-    // 5. AgentToolset rows. Auto-defaults when caller omitted toolsetSlugs;
-    //    explicit choices land as `manual`.
-    if (toolsetSlugs.length > 0) {
-      await tx.insert(schema.AgentToolset).values(
-        toolsetSlugs.map((toolsetSlug) => ({
-          agentId: agent.id,
-          toolsetSlug,
-          source: toolsetSource,
-          enabled: true,
-          config: {},
-          updatedAt: now,
-        }))
-      )
-    }
-
-    // 6. Auto-create mention + assignment triggers (enabled by default).
+    // 5. Auto-create mention + assignment triggers (enabled by default).
     //    Phase 1.5: every agent fires when @-mentioned in a comment or
     //    assigned to a ticket. Cascade on agentId cleans these up when the
     //    agent is archived/deleted.
@@ -250,12 +244,36 @@ export async function updateAgent(
   const now = new Date()
   const archiveTransition = 'archivedAt' in input
 
+  // When the prompt changes, also reconcile `Agent.toolsets` /
+  // `Agent.knowledge` from the Tiptap doc so mention-sourced entries stay in
+  // sync with what's actually referenced in the prompt. Catalog lookup happens
+  // outside the tx; the tx takes a row lock so concurrent autosaves serialize.
+  const toolCatalog = input.prompt !== undefined ? await getOrgToolCatalog(organizationId) : null
+
   await db.transaction(async (tx) => {
     const { name: _name, ...agentPatch } = input
+    const patch: Record<string, unknown> = { ...agentPatch, updatedAt: now }
+
+    if (input.prompt !== undefined && toolCatalog) {
+      const [current] = await tx
+        .select({ toolsets: schema.Agent.toolsets, knowledge: schema.Agent.knowledge })
+        .from(schema.Agent)
+        .where(eq(schema.Agent.id, agentId))
+        .for('update')
+        .limit(1)
+      if (!current) throw new Error(`Agent not found: ${agentId}`)
+      const reconciled = reconcilePromptMentions({
+        prompt: input.prompt,
+        current: { toolsets: current.toolsets ?? [], knowledge: current.knowledge ?? [] },
+        toolCatalog,
+      })
+      patch.toolsets = reconciled.toolsets
+      patch.knowledge = reconciled.knowledge
+    }
 
     const [agent] = await tx
       .update(schema.Agent)
-      .set({ ...agentPatch, updatedAt: now })
+      .set(patch)
       .where(eq(schema.Agent.id, agentId))
       .returning({ userId: schema.Agent.userId })
 
@@ -401,9 +419,9 @@ export async function deleteDraftAgent(
     if (!agent) return false
     if (agent.setupCompletedAt) return false
 
-    // Cascades from Agent → AgentToolset / AgentResourceScope take care of
-    // their rows. OrganizationMember rows fan-cascade off User. We delete
-    // the Agent first to drop those, then drop the synthetic User.
+    // OrganizationMember rows fan-cascade off User. Toolsets/knowledge live
+    // on the Agent row itself, so deleting the Agent drops them. We delete
+    // the Agent first, then the synthetic User.
     await tx.delete(schema.Agent).where(eq(schema.Agent.id, agentId))
     await tx.delete(schema.User).where(eq(schema.User.id, agent.userId))
     return true
@@ -513,9 +531,8 @@ function toAgentSummary(a: {
 export interface AgentDetail extends AgentSummary {
   organizationId: string
   prompt: Record<string, unknown>
-  pinnedRecords: PinnedRecord[]
-  toolsets: AgentToolsetEntity[]
-  resourceScopes: AgentResourceScopeEntity[]
+  toolsets: ToolsetEntry[]
+  knowledge: KnowledgeEntry[]
 }
 
 /**
@@ -539,31 +556,17 @@ export async function getAgentDetailByIdOrSlug(
 export async function getAgentDetail(
   organizationId: string,
   agentId: string,
-  db: Database = defaultDb as Database
+  _db: Database = defaultDb as Database
 ): Promise<AgentDetail | null> {
   const cached = await getCachedAgentById(organizationId, agentId)
   if (!cached) return null
-
-  const [toolsets, resourceScopes] = await Promise.all([
-    db.select().from(schema.AgentToolset).where(eq(schema.AgentToolset.agentId, agentId)),
-    db
-      .select()
-      .from(schema.AgentResourceScope)
-      .where(
-        and(
-          eq(schema.AgentResourceScope.agentId, agentId),
-          eq(schema.AgentResourceScope.organizationId, organizationId)
-        )
-      ),
-  ])
 
   return {
     ...toAgentSummary(cached),
     organizationId,
     prompt: cached.prompt,
-    pinnedRecords: cached.pinnedRecords,
-    toolsets,
-    resourceScopes,
+    toolsets: cached.toolsets,
+    knowledge: cached.knowledge,
   }
 }
 

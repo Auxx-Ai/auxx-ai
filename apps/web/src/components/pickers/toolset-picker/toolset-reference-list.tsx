@@ -2,7 +2,7 @@
 
 'use client'
 
-import type { ToolsetCatalogEntry } from '@auxx/lib/agents'
+import { type FlatToolsetCatalogEntry, flattenCatalogToToolsets } from '@auxx/lib/agents/client'
 import {
   Command,
   CommandGroup,
@@ -10,9 +10,9 @@ import {
   CommandList,
   CommandPlaceholder,
 } from '@auxx/ui/components/command'
-import { EntityIcon } from '@auxx/ui/components/icons'
 import { cn } from '@auxx/ui/lib/utils'
 import { useMemo } from 'react'
+import { AppIcon } from '~/components/workflow/ui/app-icon'
 import { api } from '~/trpc/react'
 
 export interface ToolsetReferenceListProps {
@@ -26,7 +26,8 @@ export interface ToolsetReferenceListProps {
 /**
  * Flat single-list search component for the ReferencePicker Tools tab.
  *
- * Backed by `api.agentToolset.list` (org-wide toolset catalog). The "Tools"
+ * Backed by `api.agentToolset.list` which returns the org catalog tree; this
+ * component flattens it to one row per toolset for the picker. The "Tools"
  * tab is one of intentionally-coarse granularity: an admin pins a whole
  * toolset to the persona prompt and the agent gets all of its tools.
  * Individual tool pinning (`tool:<name>`) is not exposed in v1 — the catalog
@@ -42,21 +43,25 @@ export function ToolsetReferenceList({
     staleTime: 60_000,
   })
 
-  const filtered = useMemo<ToolsetCatalogEntry[]>(() => {
-    const items = catalogQuery.data ?? []
+  const flat = useMemo<FlatToolsetCatalogEntry[]>(
+    () => (catalogQuery.data ? flattenCatalogToToolsets(catalogQuery.data) : []),
+    [catalogQuery.data]
+  )
+
+  const filtered = useMemo<FlatToolsetCatalogEntry[]>(() => {
     const q = externalSearch.trim().toLowerCase()
-    if (!q) return items
-    return items.filter((entry) => {
+    if (!q) return flat
+    return flat.filter((entry) => {
       if (entry.slug.toLowerCase().includes(q)) return true
       if (entry.label.toLowerCase().includes(q)) return true
-      if (entry.shortLabel.toLowerCase().includes(q)) return true
+      if (entry.fullLabel.toLowerCase().includes(q)) return true
       return entry.tools.some((t) => t.name.toLowerCase().includes(q))
     })
-  }, [catalogQuery.data, externalSearch])
+  }, [flat, externalSearch])
 
   const isLoading = catalogQuery.isLoading
-  const showEmpty = !isLoading && filtered.length === 0 && (catalogQuery.data?.length ?? 0) > 0
-  const showEmptyInitial = !isLoading && (catalogQuery.data?.length ?? 0) === 0
+  const showEmpty = !isLoading && filtered.length === 0 && flat.length > 0
+  const showEmptyInitial = !isLoading && flat.length === 0
 
   return (
     <Command shouldFilter={false} className={cn('rounded-lg', className)}>
@@ -74,12 +79,12 @@ export function ToolsetReferenceList({
                   value={id}
                   onSelect={() => onSelectSingle(id)}
                   className='flex items-center gap-2'>
-                  <EntityIcon iconId={entry.iconId ?? 'wrench'} color={entry.color} size='sm' />
+                  <AppIcon iconId={entry.iconId} color={entry.color || undefined} size='sm' />
                   <div className='flex min-w-0 flex-col'>
-                    <span className='text-sm truncate'>{entry.label}</span>
+                    <span className='text-sm truncate'>{entry.fullLabel}</span>
                     <span className='text-[10px] text-muted-foreground'>
                       {entry.tools.length} {entry.tools.length === 1 ? 'tool' : 'tools'} ·{' '}
-                      {entry.parentGroup}
+                      {entry.path.join(' · ')}
                     </span>
                   </div>
                 </CommandItem>

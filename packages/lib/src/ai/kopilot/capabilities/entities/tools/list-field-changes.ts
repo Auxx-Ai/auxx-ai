@@ -74,7 +74,7 @@ export function createListFieldChangesTool(getDeps: GetToolDeps): AgentToolDefin
   return {
     name: 'list_field_changes',
     displayName: 'List field changes',
-    toolsetSlug: 'entities.search',
+    toolsetSlug: 'auxx:entities:search',
     outputDigestSchema: ListFieldChangesDigest,
     buildDigest: (output) => {
       const out = (output ?? {}) as {

@@ -2,39 +2,38 @@
 'use client'
 
 import { cn } from '@auxx/ui/lib/utils'
-import { Ban, Check, Pin, Star, Trash2 } from 'lucide-react'
+import { Ban, Check, Trash2 } from 'lucide-react'
 import { Tooltip } from '~/components/global/tooltip'
 import type { EffectiveScopeMode } from './derive-scope-mode'
 
 export interface AgentScopeActionsProps {
   kind: 'container' | 'leaf'
   effectiveMode: EffectiveScopeMode
-  isPinned: boolean
-  pinReason: 'manual' | 'mention' | null
+  /** `true` when a `source='mention'` knowledge entry covers this record. */
+  isMentionLocked: boolean
   onSetMode: (mode: EffectiveScopeMode) => void
-  onTogglePin: () => void
 }
 
 /**
- * Trailing-slot cluster for an agent scope row: include/exclude toggle, pin
- * star, and a trash button to clear the rule. Slots into `TreeRow`'s
- * `actions` prop.
+ * Trailing-slot cluster for an agent scope row: include/exclude toggle plus a
+ * trash button to clear the rule. Slots into `TreeRow`'s `actions` prop.
  *
  * When `effectiveMode` is an `inherited_*` variant the row has no explicit
  * stored rule of its own — the include/exclude icon renders without color to
  * signal that, the trash button hides (nothing to remove), and clicking the
  * toggle writes a *new* explicit row that overrides the inherited state.
+ *
+ * When `isMentionLocked` is true the row is referenced by an @-mention in the
+ * agent's prompt — the toggle disables and the trash hides; the user must
+ * remove the mention in the prompt instead.
  */
 export function AgentScopeActions({
   kind,
   effectiveMode,
-  isPinned,
-  pinReason,
+  isMentionLocked,
   onSetMode,
-  onTogglePin,
 }: AgentScopeActionsProps) {
   const isContainer = kind === 'container'
-  const isMentionPin = pinReason === 'mention'
   const includeMode: EffectiveScopeMode = isContainer ? 'include_descendants' : 'include_one'
 
   const isExplicitExcluded = effectiveMode === 'exclude'
@@ -48,23 +47,32 @@ export function AgentScopeActions({
   const isInherited = isInheritedIncluded || isInheritedExcluded
   const hasExplicitRule = isExplicitExcluded || isExplicitIncluded
 
-  const tooltipContent = isInheritedIncluded
-    ? 'Included (inherited) — click to exclude'
-    : isInheritedExcluded
-      ? 'Excluded (inherited) — click to include'
-      : isExplicitIncluded
-        ? 'Included — click to exclude'
-        : isExplicitExcluded
-          ? 'Excluded — click to include'
-          : 'Not set — click to include'
+  const tooltipContent = isMentionLocked
+    ? 'Included by mention in instructions. Remove the @-mention to change.'
+    : isInheritedIncluded
+      ? 'Included (inherited) — click to exclude'
+      : isInheritedExcluded
+        ? 'Excluded (inherited) — click to include'
+        : isExplicitIncluded
+          ? 'Included — click to exclude'
+          : isExplicitExcluded
+            ? 'Excluded — click to include'
+            : 'Not set — click to include'
 
   return (
     <>
       <Tooltip side='left' content={tooltipContent}>
         <button
           type='button'
-          onClick={() => onSetMode(isIncluded ? 'exclude' : includeMode)}
-          className='p-1 rounded-md hover:bg-primary/5'
+          onClick={() => {
+            if (isMentionLocked) return
+            onSetMode(isIncluded ? 'exclude' : includeMode)
+          }}
+          disabled={isMentionLocked}
+          className={cn(
+            'p-1 rounded-md hover:bg-primary/5 disabled:cursor-not-allowed disabled:hover:bg-transparent',
+            isMentionLocked && 'opacity-70'
+          )}
           aria-label={isIncluded ? 'Exclude' : 'Include'}>
           {isExcluded ? (
             <Ban
@@ -90,46 +98,20 @@ export function AgentScopeActions({
         </button>
       </Tooltip>
 
-      <Tooltip
-        side='left'
-        content={
-          isMentionPin
-            ? 'Pinned by mention in instructions'
-            : isPinned
-              ? 'Unpin from agent'
-              : 'Pin to agent'
-        }>
-        <button
-          type='button'
-          onClick={onTogglePin}
-          disabled={isMentionPin}
-          className={cn(
-            'p-1 rounded-md hover:bg-primary/5 disabled:cursor-not-allowed',
-            isMentionPin && 'opacity-100'
-          )}
-          aria-label={isPinned ? 'Unpin' : 'Pin'}>
-          {isMentionPin ? (
-            <Pin className='size-4 text-primary' />
-          ) : isPinned ? (
-            <Star className='size-4 text-amber-500 fill-amber-500' />
-          ) : (
-            <Star className='size-4 opacity-40 group-hover/tree-row:opacity-100' />
-          )}
-        </button>
-      </Tooltip>
-
-      <Tooltip side='left' content={isInherited ? 'Reset to inherited' : 'Remove rule'}>
-        <button
-          type='button'
-          onClick={() => onSetMode('none')}
-          className={cn(
-            'p-1 rounded-md hover:bg-destructive/10 opacity-0 group-hover/tree-row:opacity-100',
-            !hasExplicitRule && 'invisible pointer-events-none'
-          )}
-          aria-label='Remove rule'>
-          <Trash2 className='size-4 text-muted-foreground hover:text-destructive' />
-        </button>
-      </Tooltip>
+      {!isMentionLocked && (
+        <Tooltip side='left' content={isInherited ? 'Reset to inherited' : 'Remove rule'}>
+          <button
+            type='button'
+            onClick={() => onSetMode('none')}
+            className={cn(
+              'p-1 rounded-md hover:bg-destructive/10 opacity-0 group-hover/tree-row:opacity-100',
+              !hasExplicitRule && 'invisible pointer-events-none'
+            )}
+            aria-label='Remove rule'>
+            <Trash2 className='size-4 text-muted-foreground hover:text-destructive' />
+          </button>
+        </Tooltip>
+      )}
     </>
   )
 }

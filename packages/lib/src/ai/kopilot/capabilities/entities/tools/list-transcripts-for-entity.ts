@@ -13,7 +13,7 @@ export function createListTranscriptsForEntityTool(getDeps: GetToolDeps): AgentT
   return {
     name: 'list_transcripts_for_entity',
     displayName: 'List transcripts',
-    toolsetSlug: 'entities.search',
+    toolsetSlug: 'auxx:entities:search',
     idempotent: true,
     outputDigestSchema: ListTranscriptsForEntityDigest,
     buildDigest: (output) => {

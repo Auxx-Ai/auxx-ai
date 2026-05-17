@@ -18,7 +18,7 @@ export function createUpdateEntityTool(getDeps: GetToolDeps): AgentToolDefinitio
   return {
     name: 'update_entity',
     displayName: 'Update record',
-    toolsetSlug: 'entities.write',
+    toolsetSlug: 'auxx:entities:write',
     outputDigestSchema: UpdateEntityDigest,
     buildDigest: (output) => {
       const out = (output ?? {}) as { recordId?: string; updatedFields?: string[] }

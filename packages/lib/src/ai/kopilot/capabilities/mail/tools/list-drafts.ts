@@ -56,7 +56,7 @@ export function createListDraftsTool(getDeps: GetToolDeps): AgentToolDefinition 
   return {
     name: 'list_drafts',
     displayName: 'List drafts',
-    toolsetSlug: 'mail.drafts',
+    toolsetSlug: 'auxx:mail:drafts',
     idempotent: true,
     outputDigestSchema: ListDraftsDigest,
     buildDigest: (output) => {

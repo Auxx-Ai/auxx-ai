@@ -19,8 +19,7 @@ export interface AncestorContext {
 }
 
 interface ScopeRow {
-  entityDefinitionId: string
-  entityInstanceId: string | null
+  recordId: string
   mode: 'include_descendants' | 'include_one' | 'exclude'
 }
 
@@ -35,10 +34,7 @@ export function findStoredMode(
   scopes: ReadonlyArray<ScopeRow>,
   recordId: string
 ): EffectiveScopeMode {
-  const { entityDefinitionId, entityInstanceId } = splitRecordId(recordId)
-  const row = scopes.find(
-    (s) => s.entityDefinitionId === entityDefinitionId && s.entityInstanceId === entityInstanceId
-  )
+  const row = scopes.find((s) => s.recordId === recordId)
   return row?.mode ?? 'none'
 }
 
@@ -49,12 +45,12 @@ export function findStoredMode(
  *   2. The closest ancestor (nearest-first) whose row is `include_descendants`
  *      or `exclude` — both flagged as `inherited_*` in the result. `include_one`
  *      on an ancestor does NOT inherit (it only covers the ancestor itself).
- *   3. A definition-level row (`entityDefinitionId` with null instance) —
+ *   3. A definition-level row (entityDefinitionId without instance) —
  *      flagged as inherited.
  *   4. `'none'`.
  */
 export function deriveEffectiveMode(
-  scopes: AgentDetail['resourceScopes'],
+  scopes: AgentDetail['knowledge'],
   recordId: string,
   ancestors?: AncestorContext
 ): EffectiveScopeMode {
@@ -67,21 +63,13 @@ export function deriveEffectiveMode(
     if (m === 'exclude') return 'inherited_exclude'
   }
 
-  const { entityDefinitionId } = splitRecordId(recordId)
-  const defMode = findStoredMode(scopes, entityDefinitionId)
-  if (defMode === 'include_descendants') return 'inherited_include_descendants'
-  if (defMode === 'exclude') return 'inherited_exclude'
+  const colon = recordId.indexOf(':')
+  const entityDefinitionId = colon === -1 ? recordId : recordId.slice(0, colon)
+  if (entityDefinitionId !== recordId) {
+    const defMode = findStoredMode(scopes, entityDefinitionId)
+    if (defMode === 'include_descendants') return 'inherited_include_descendants'
+    if (defMode === 'exclude') return 'inherited_exclude'
+  }
 
   return 'none'
-}
-
-function splitRecordId(recordId: string): {
-  entityDefinitionId: string
-  entityInstanceId: string | null
-} {
-  const colon = recordId.indexOf(':')
-  if (colon === -1) return { entityDefinitionId: recordId, entityInstanceId: null }
-  const def = recordId.slice(0, colon)
-  const instance = recordId.slice(colon + 1)
-  return { entityDefinitionId: def, entityInstanceId: instance.length > 0 ? instance : null }
 }

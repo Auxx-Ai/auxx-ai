@@ -35,7 +35,7 @@ export function createReplyToThreadTool(getDeps: GetToolDeps): AgentToolDefiniti
   return {
     name: 'reply_to_thread',
     displayName: 'Reply to thread',
-    toolsetSlug: 'mail.compose',
+    toolsetSlug: 'auxx:mail:compose',
     requiresApproval: true,
     inputAmendmentSchema: ReplyAmendmentSchema,
     outputDigestSchema: EmailWriteDigest,

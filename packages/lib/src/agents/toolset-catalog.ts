@@ -11,7 +11,8 @@ import {
   createMailCapabilities,
   createTaskCapabilities,
 } from '../ai/kopilot/capabilities'
-import { NATIVE_DEFAULT_TOOLSETS } from './default-toolsets'
+import { getOrgCache } from '../cache'
+import { BUILTIN_APP, BUILTIN_TOOLSETS } from './builtin-app'
 
 /**
  * Catalog entry describing a toolset and the tools it exposes. Read by the
@@ -26,9 +27,10 @@ export interface ToolCatalogEntry {
 }
 
 /**
- * Flat tool catalog entry — every tool exposed by the org, paired with its
- * parent toolset's display metadata so a picker can render a one-line item
- * without joining tables.
+ * Flat per-tool catalog entry — every tool exposed by the org, paired with the
+ * parent toolset's resolved display metadata and the path of container labels
+ * (`['Auxx.ai', 'Mail']`) so a picker can render a one-line item without
+ * walking the tree.
  */
 export interface FlatToolCatalogEntry {
   name: string
@@ -36,149 +38,71 @@ export interface FlatToolCatalogEntry {
   description: string
   toolsetSlug: string
   toolsetLabel: string
+  /** Already-resolved icon (toolset's own iconId, falling back to ancestor's). */
   toolsetIconId: string
+  /** Already-resolved color (toolset's own color, falling back to ancestor's). */
   toolsetColor: string
-  toolsetParentGroup: string
+  /**
+   * Ordered labels of the toolset's ancestor containers, top-down. For a
+   * built-in nested under a sub-group this is `['Auxx.ai', 'Mail']`; for a
+   * flat third-party toolset it's `['Google Calendar']`.
+   */
+  path: string[]
 }
 
+/**
+ * Flat per-toolset projection of the catalog tree. Backend callers
+ * (persona-prompt rendering, set-agent-toolsets validation, default-toolsets
+ * resolution, prompt-mention reconciler) consume this slug-keyed shape;
+ * client renderers use `CatalogNode` instead. See
+ * `plans/kopilot/agents/tools/recursive-catalog-node.md`.
+ */
 export interface ToolsetCatalogEntry {
   slug: string
   label: string
-  shortLabel: string
-  group: 'native' | 'app'
-  parentGroup: string
-  /** EntityIcon id (e.g. `'mail'`, `'send'`). */
-  iconId: string
-  /** EntityIcon color id (e.g. `'blue'`, `'green'`). */
-  color: string
-  appId?: string
+  appId: string
   isDefault: boolean
   tools: ToolCatalogEntry[]
 }
 
-export interface ToolsetGroupCatalog {
-  name: string
-  iconId: string
-  color: string
-}
-
 /**
- * Display metadata for parent groups — group header icon + color. App groups
- * (Phase 3) provide their own metadata via the app catalog.
+ * Recursive catalog node. App, sub-group, and toolset all share this shape —
+ * `kind` discriminates visual treatment; `children` vs `tools` discriminates
+ * container vs leaf. See `plans/kopilot/agents/tools/recursive-catalog-node.md`.
  */
-export const NATIVE_GROUP_CATALOG: Record<string, ToolsetGroupCatalog> = {
-  Mail: { name: 'Mail', iconId: 'mail', color: 'blue' },
-  Tasks: { name: 'Tasks', iconId: 'check-circle', color: 'green' },
-  Entities: { name: 'Entities', iconId: 'boxes', color: 'purple' },
-  Comments: { name: 'Comments', iconId: 'message-square', color: 'teal' },
-  Knowledge: { name: 'Knowledge', iconId: 'book-open', color: 'orange' },
-  Docs: { name: 'Docs', iconId: 'help-circle', color: 'gray' },
-  Members: { name: 'Members', iconId: 'users', color: 'pink' },
+export type CatalogNode = CatalogContainerNode | CatalogToolsetNode
+
+interface CatalogNodeBase {
+  /**
+   * Stable id for React keys and cascade walks. App = `'app:<appId>'`,
+   * sub-group = `'sub:<appId>:<subGroupName>'`, toolset = the runtime
+   * `slug` (`'auxx:mail:threads'` | `'app:gog-calendar:availability'`).
+   */
+  id: string
+  /** Header text. App.title | sub-group name | toolset shortLabel. */
+  label: string
+  /** Same shape as `<AppIcon>` iconId (Lucide id / URL / base64 / emoji). */
+  iconId: string | null
+  /** Tailwind-ish color key consumed by `<AppIcon color>` and badges. */
+  color: string | null
 }
 
-/**
- * Human-readable labels for native toolset slugs. Unknown slugs fall back to
- * the slug itself — matches phase-1-ui-tabs.md §1.1.
- */
-export const NATIVE_TOOLSET_LABELS: Record<string, string> = {
-  'mail.threads': 'Mail — Threads',
-  'mail.compose': 'Mail — Compose',
-  'mail.drafts': 'Mail — Drafts',
-  'entities.search': 'Entities — Search',
-  'entities.write': 'Entities — Write',
-  'comments.read': 'Comments — Read',
-  'comments.write': 'Comments — Write',
-  knowledge: 'Knowledge — Read',
-  'kb.write': 'Knowledge — Write',
-  'tasks.read': 'Tasks — Search',
-  'tasks.write': 'Tasks — Write',
-  docs: 'Docs — Search',
-  actors: 'Members & actors',
+export interface CatalogContainerNode extends CatalogNodeBase {
+  kind: 'app' | 'subGroup'
+  children: CatalogNode[]
 }
 
-/**
- * Parent group display names for native toolset slugs. Unknown slugs fall
- * back to `'Other'` (rendered in a trailing group at the bottom of the tab).
- * App toolsets use `app.displayName` as their parent group instead.
- */
-export const NATIVE_TOOLSET_PARENT_GROUPS: Record<string, string> = {
-  'mail.threads': 'Mail',
-  'mail.compose': 'Mail',
-  'mail.drafts': 'Mail',
-  'entities.search': 'Entities',
-  'entities.write': 'Entities',
-  'comments.read': 'Comments',
-  'comments.write': 'Comments',
-  knowledge: 'Knowledge',
-  'kb.write': 'Knowledge',
-  'tasks.read': 'Tasks',
-  'tasks.write': 'Tasks',
-  docs: 'Docs',
-  actors: 'Members',
+export interface CatalogToolsetNode extends CatalogNodeBase {
+  kind: 'toolset'
+  /** Runtime slug — join key against `Agent.toolsets[*].slug`. */
+  slug: string
+  /** Long-form label for picker chips / reference badges. */
+  fullLabel: string
+  /** One-line tooltip copy shown on the leaf row's help icon. */
+  description: string
+  isDefault: boolean
+  tools: ToolCatalogEntry[]
 }
-
-/**
- * Short labels used inside a parent group — strip the redundant prefix that
- * the group header already provides.
- */
-export const NATIVE_TOOLSET_SHORT_LABELS: Record<string, string> = {
-  'mail.threads': 'Threads',
-  'mail.compose': 'Compose',
-  'mail.drafts': 'Drafts',
-  'entities.search': 'Search',
-  'entities.write': 'Write',
-  'comments.read': 'Read',
-  'comments.write': 'Write',
-  knowledge: 'Read',
-  'kb.write': 'Write',
-  'tasks.read': 'Search',
-  'tasks.write': 'Write',
-  docs: 'Search',
-  actors: 'Members & actors',
-}
-
-/**
- * EntityIcon `iconId` per native toolset slug. Falls back to a generic
- * `'wrench'` for unknown slugs (e.g. future app toolsets that haven't
- * supplied their own icon).
- */
-export const NATIVE_TOOLSET_ICONS: Record<string, string> = {
-  'mail.threads': 'mails',
-  'mail.compose': 'send',
-  'mail.drafts': 'file-text',
-  'entities.search': 'search',
-  'entities.write': 'edit',
-  'comments.read': 'search',
-  'comments.write': 'message-square',
-  knowledge: 'book-open',
-  'kb.write': 'edit',
-  'tasks.read': 'search',
-  'tasks.write': 'check-circle',
-  docs: 'help-circle',
-  actors: 'users',
-}
-
-/**
- * EntityIcon color per native toolset slug — picked to match the parent
- * group's color so a group reads as one visual cluster.
- */
-export const NATIVE_TOOLSET_COLORS: Record<string, string> = {
-  'mail.threads': 'blue',
-  'mail.compose': 'blue',
-  'mail.drafts': 'blue',
-  'entities.search': 'purple',
-  'entities.write': 'purple',
-  'comments.read': 'teal',
-  'comments.write': 'teal',
-  knowledge: 'orange',
-  'kb.write': 'orange',
-  'tasks.read': 'green',
-  'tasks.write': 'green',
-  docs: 'gray',
-  actors: 'pink',
-}
-
-const DEFAULT_SLUGS = new Set<string>(NATIVE_DEFAULT_TOOLSETS)
 
 /**
  * Stub `getDeps` for catalog enumeration. Tool factories capture `getDeps` in
@@ -202,14 +126,15 @@ function collectNativeCapabilities(): PageCapability[] {
 }
 
 /**
- * In-process catalog cache. Catalogs only change on admin actions (toolset
- * enable/disable, app deploy) which are rare relative to the per-turn render
- * path — a short TTL keeps hot turns from re-walking every capability factory
- * while still picking up admin edits within ~30 s.
+ * In-process catalog cache. The built-in portion is invariant per process; the
+ * app portion is rebuilt from the already-cached `installedApps` row in
+ * <5 ms, so this TTL only debounces repeat `agentToolset.list` queries within
+ * a single turn. App install/uninstall/deploy events bust `installedApps`
+ * which is the upstream source — admins can also call
+ * `invalidateToolsetCatalog` for an immediate bust.
  */
-const CATALOG_CACHE_TTL_MS = 30_000
-const toolsetCatalogCache = new Map<string, { value: ToolsetCatalogEntry[]; expiresAt: number }>()
-const flatToolCatalogCache = new Map<string, { value: FlatToolCatalogEntry[]; expiresAt: number }>()
+const CATALOG_CACHE_TTL_MS = 1_000
+const catalogTreeCache = new Map<string, { value: CatalogNode[]; expiresAt: number }>()
 
 function readCache<T>(cache: Map<string, { value: T; expiresAt: number }>, key: string): T | null {
   const entry = cache.get(key)
@@ -230,37 +155,57 @@ function writeCache<T>(
 }
 
 /**
- * Walk every registered native capability, group tools by `toolsetSlug`, and
- * return one `ToolsetCatalogEntry` per slug. Tools without a `toolsetSlug`
- * (plan tools) are excluded — they're always-on per README §6.5.
- *
- * v1 returns only `group='native'`. The `app` group slot is reserved for the
- * apps track and stays empty until that catalog provider lands.
+ * Bust this org's cached catalog tree. Call after admin actions that change
+ * the installed-apps catalog (app install / uninstall / deploy).
  */
-export async function getOrgToolsetCatalog(organizationId: string): Promise<ToolsetCatalogEntry[]> {
-  const cached = readCache(toolsetCatalogCache, organizationId)
+export function invalidateToolsetCatalog(orgId: string): void {
+  catalogTreeCache.delete(orgId)
+}
+
+/**
+ * Recursive catalog tree — one `CatalogNode` per app at the root. The Tools
+ * tab and the toolset/tool pickers all consume this shape; backend callers
+ * use `getOrgToolsetCatalog` / `getOrgToolCatalog` which derive flat
+ * projections from this tree.
+ */
+export async function getOrgCatalogTree(organizationId: string): Promise<CatalogNode[]> {
+  const cached = readCache(catalogTreeCache, organizationId)
   if (cached) return cached
-  const value = await buildOrgToolsetCatalog(organizationId)
-  writeCache(toolsetCatalogCache, organizationId, value)
+  const value = await buildOrgCatalogTree(organizationId)
+  writeCache(catalogTreeCache, organizationId, value)
   return value
 }
 
-async function buildOrgToolsetCatalog(_organizationId: string): Promise<ToolsetCatalogEntry[]> {
-  const bySlug = new Map<string, { tools: Map<string, ToolCatalogEntry> }>()
+interface ToolsetInput {
+  slug: string
+  fullLabel: string
+  shortLabel: string
+  iconId: string | null
+  color: string | null
+  isDefault: boolean
+  description: string
+  subGroup: string | null
+  /** Sub-group header icon; first non-null across same-subGroup rows wins. */
+  subGroupIconId: string | null
+  /** Sub-group header color; first non-null across same-subGroup rows wins. */
+  subGroupColor: string | null
+  tools: ToolCatalogEntry[]
+}
 
+async function buildOrgCatalogTree(organizationId: string): Promise<CatalogNode[]> {
+  // 1. Group native tools by their `toolsetSlug` tag.
+  const nativeToolsBySlug = new Map<string, Map<string, ToolCatalogEntry>>()
   for (const capability of collectNativeCapabilities()) {
     for (const tool of capability.tools as AgentToolDefinition[]) {
       const slug = tool.toolsetSlug
       if (!slug) continue
-      let bucket = bySlug.get(slug)
+      let bucket = nativeToolsBySlug.get(slug)
       if (!bucket) {
-        bucket = { tools: new Map() }
-        bySlug.set(slug, bucket)
+        bucket = new Map()
+        nativeToolsBySlug.set(slug, bucket)
       }
-      // Dedupe by tool name — a tool registered against more than one page
-      // (rare, but possible) should still appear once per slug.
-      if (!bucket.tools.has(tool.name)) {
-        bucket.tools.set(tool.name, {
+      if (!bucket.has(tool.name)) {
+        bucket.set(tool.name, {
           name: tool.name,
           displayName: tool.displayName,
           description: shortDescription(tool.description),
@@ -269,62 +214,249 @@ async function buildOrgToolsetCatalog(_organizationId: string): Promise<ToolsetC
     }
   }
 
-  const entries: ToolsetCatalogEntry[] = []
-  for (const [slug, { tools }] of bySlug) {
-    const label = NATIVE_TOOLSET_LABELS[slug] ?? slug
-    entries.push({
-      slug,
-      label,
-      shortLabel: NATIVE_TOOLSET_SHORT_LABELS[slug] ?? label,
-      group: 'native',
-      parentGroup: NATIVE_TOOLSET_PARENT_GROUPS[slug] ?? 'Other',
-      iconId: NATIVE_TOOLSET_ICONS[slug] ?? 'wrench',
-      color: NATIVE_TOOLSET_COLORS[slug] ?? 'gray',
-      isDefault: DEFAULT_SLUGS.has(slug),
-      tools: [...tools.values()].sort((a, b) => a.name.localeCompare(b.name)),
+  const apps: CatalogContainerNode[] = []
+
+  // 2. Built-in `auxx` app.
+  apps.push(
+    buildAppNode({
+      id: BUILTIN_APP.id,
+      title: BUILTIN_APP.title,
+      iconId: BUILTIN_APP.iconId,
+      color: null,
+      toolsets: BUILTIN_TOOLSETS.map((meta) => ({
+        slug: meta.slug,
+        fullLabel: meta.label,
+        shortLabel: meta.shortLabel,
+        iconId: meta.iconId,
+        color: meta.color,
+        isDefault: meta.isDefault,
+        description: meta.description,
+        subGroup: meta.subGroup,
+        subGroupIconId: meta.subGroupIconId,
+        subGroupColor: meta.subGroupColor,
+        tools: nativeToolsBySlug.get(meta.slug)
+          ? [...nativeToolsBySlug.get(meta.slug)!.values()]
+          : [],
+      })),
     })
+  )
+
+  // 3. Installed apps — same producer fn, different source.
+  const installedApps = await getOrgCache().get(organizationId, 'installedApps')
+  for (const inst of installedApps) {
+    const aiTools = inst.aiTools ?? []
+    const aiToolsets = inst.aiToolsets ?? []
+    if (aiToolsets.length === 0) continue
+
+    const appToolsBySlug = new Map<string, ToolCatalogEntry[]>()
+    for (const tool of aiTools) {
+      const arr = appToolsBySlug.get(tool.toolsetSlug) ?? []
+      arr.push({
+        name: tool.id,
+        displayName: tool.name,
+        description: shortDescription(tool.description),
+      })
+      appToolsBySlug.set(tool.toolsetSlug, arr)
+    }
+
+    // Apps store an avatar URL on the App row. Pass it through verbatim to
+    // <AppIcon> — parseIconString routes `https://...` through the <img> branch.
+    // Lucide fallback when an app row has no avatarUrl.
+    const appIconId = inst.app.avatarUrl ?? 'package'
+
+    apps.push(
+      buildAppNode({
+        id: inst.app.id,
+        title: inst.app.title,
+        iconId: appIconId,
+        color: null,
+        toolsets: aiToolsets.map((ts) => ({
+          slug: ts.slug,
+          fullLabel: ts.name,
+          shortLabel: ts.name,
+          iconId: ts.iconKey ?? null,
+          color: null,
+          isDefault: ts.isDefault,
+          description: ts.description ?? '',
+          subGroup: ts.subGroup ?? null,
+          // App-side sub-group icon/color stays inherited from the app row.
+          // SDK exposure of these fields is deferred to a future iteration
+          // (see plans/kopilot/agents/tools/recursive-catalog-node.md PR 3).
+          subGroupIconId: null,
+          subGroupColor: null,
+          tools: appToolsBySlug.get(ts.slug) ?? [],
+        })),
+      })
+    )
   }
 
-  entries.sort((a, b) => {
-    if (a.isDefault !== b.isDefault) return a.isDefault ? -1 : 1
-    return a.label.localeCompare(b.label)
-  })
+  apps.sort(compareAppNodes)
+  return apps
+}
 
-  return entries
+function buildAppNode(args: {
+  id: string
+  title: string
+  iconId: string
+  color: string | null
+  toolsets: ToolsetInput[]
+}): CatalogContainerNode {
+  const bySubGroup = new Map<string | null, ToolsetInput[]>()
+  // First non-null per (icon, color) wins. Walk the toolset list once;
+  // siblings update the meta as they're seen.
+  const subGroupMeta = new Map<string, { iconId: string | null; color: string | null }>()
+  for (const ts of args.toolsets) {
+    const key = ts.subGroup
+    const list = bySubGroup.get(key) ?? []
+    list.push(ts)
+    bySubGroup.set(key, list)
+
+    if (ts.subGroup) {
+      const prev = subGroupMeta.get(ts.subGroup)
+      if (!prev) {
+        subGroupMeta.set(ts.subGroup, {
+          iconId: ts.subGroupIconId,
+          color: ts.subGroupColor,
+        })
+      } else {
+        if (!prev.iconId && ts.subGroupIconId) prev.iconId = ts.subGroupIconId
+        if (!prev.color && ts.subGroupColor) prev.color = ts.subGroupColor
+      }
+    }
+  }
+
+  const subGroupChildren: CatalogContainerNode[] = []
+  const flatChildren: CatalogToolsetNode[] = []
+  for (const [subGroup, list] of bySubGroup.entries()) {
+    if (subGroup === null) {
+      for (const ts of list) flatChildren.push(toToolsetNode(ts))
+    } else {
+      const meta = subGroupMeta.get(subGroup)
+      subGroupChildren.push({
+        kind: 'subGroup',
+        id: `sub:${args.id}:${subGroup}`,
+        label: subGroup,
+        iconId: meta?.iconId ?? null,
+        color: meta?.color ?? null,
+        children: list.map(toToolsetNode).sort(compareLeaves),
+      })
+    }
+  }
+
+  subGroupChildren.sort((a, b) => a.label.localeCompare(b.label))
+  flatChildren.sort(compareLeaves)
+
+  return {
+    kind: 'app',
+    id: `app:${args.id}`,
+    label: args.title,
+    iconId: args.iconId,
+    color: args.color,
+    children: [...subGroupChildren, ...flatChildren],
+  }
+}
+
+function toToolsetNode(ts: ToolsetInput): CatalogToolsetNode {
+  return {
+    kind: 'toolset',
+    id: ts.slug,
+    slug: ts.slug,
+    label: ts.shortLabel,
+    fullLabel: ts.fullLabel,
+    iconId: ts.iconId,
+    color: ts.color,
+    description: ts.description,
+    isDefault: ts.isDefault,
+    tools: [...ts.tools].sort((a, b) => a.name.localeCompare(b.name)),
+  }
+}
+
+function compareLeaves(a: CatalogToolsetNode, b: CatalogToolsetNode): number {
+  if (a.isDefault !== b.isDefault) return a.isDefault ? -1 : 1
+  return a.label.localeCompare(b.label)
+}
+
+function compareAppNodes(a: CatalogContainerNode, b: CatalogContainerNode): number {
+  if (a.id === `app:${BUILTIN_APP.id}`) return -1
+  if (b.id === `app:${BUILTIN_APP.id}`) return 1
+  return a.label.localeCompare(b.label)
 }
 
 /**
- * Flat per-tool catalog. Returns one entry per tool across every toolset,
- * with the parent toolset's label / icon / color denormalized in so a
- * picker can render a one-line item without an additional join.
- *
- * Backed by `getOrgToolsetCatalog` so it picks up the same caching and
- * apps-track expansion when that lands.
+ * Flat per-toolset projection of the catalog tree. Backend consumers
+ * (persona-prompt rendering, set-agent-toolsets validation, default-toolsets
+ * resolution) use this slug-keyed shape; renderers use `getOrgCatalogTree`.
  */
-export async function getOrgToolCatalog(organizationId: string): Promise<FlatToolCatalogEntry[]> {
-  const cached = readCache(flatToolCatalogCache, organizationId)
-  if (cached) return cached
-  const value = await buildOrgToolCatalog(organizationId)
-  writeCache(flatToolCatalogCache, organizationId, value)
-  return value
+export async function getOrgToolsetCatalog(organizationId: string): Promise<ToolsetCatalogEntry[]> {
+  const tree = await getOrgCatalogTree(organizationId)
+  return flattenToolsets(tree)
 }
 
-async function buildOrgToolCatalog(organizationId: string): Promise<FlatToolCatalogEntry[]> {
-  const toolsets = await getOrgToolsetCatalog(organizationId)
-  const flat: FlatToolCatalogEntry[] = []
-  for (const ts of toolsets) {
-    for (const tool of ts.tools) {
+function flattenToolsets(roots: CatalogNode[]): ToolsetCatalogEntry[] {
+  const flat: ToolsetCatalogEntry[] = []
+  function visit(node: CatalogNode, appId: string) {
+    if (node.kind === 'toolset') {
       flat.push({
-        name: tool.name,
-        displayName: tool.displayName,
-        description: tool.description,
-        toolsetSlug: ts.slug,
-        toolsetLabel: ts.label,
-        toolsetIconId: ts.iconId,
-        toolsetColor: ts.color,
-        toolsetParentGroup: ts.parentGroup,
+        slug: node.slug,
+        label: node.fullLabel,
+        appId,
+        isDefault: node.isDefault,
+        tools: node.tools,
       })
+      return
     }
+    for (const child of node.children) visit(child, appId)
+  }
+  for (const root of roots) {
+    // Strip the `app:` prefix so callers get the raw app id they expect.
+    const appId = root.id.startsWith('app:') ? root.id.slice('app:'.length) : root.id
+    for (const child of root.children) visit(child, appId)
+  }
+  return flat
+}
+
+/**
+ * Flat per-tool catalog — one row per tool exposed by the org, with the
+ * parent toolset's resolved icon/color and ancestor labels.
+ */
+export async function getOrgToolCatalog(organizationId: string): Promise<FlatToolCatalogEntry[]> {
+  const roots = await getOrgCatalogTree(organizationId)
+  const flat: FlatToolCatalogEntry[] = []
+
+  // Thread inherited icon/color down the recursion — mirrors the render-side
+  // fallback so flat consumers (pickers, badges) get a resolved iconId
+  // instead of a bare `null`.
+  function visit(
+    node: CatalogNode,
+    pathLabels: string[],
+    inheritedIconId: string,
+    inheritedColor: string
+  ) {
+    const iconId = node.iconId ?? inheritedIconId
+    const color = node.color ?? inheritedColor
+
+    if (node.kind === 'toolset') {
+      for (const tool of node.tools) {
+        flat.push({
+          name: tool.name,
+          displayName: tool.displayName,
+          description: tool.description,
+          toolsetSlug: node.slug,
+          toolsetLabel: node.fullLabel,
+          toolsetIconId: iconId,
+          toolsetColor: color,
+          path: pathLabels,
+        })
+      }
+      return
+    }
+    for (const child of node.children) {
+      visit(child, [...pathLabels, node.label], iconId, color)
+    }
+  }
+
+  for (const root of roots) {
+    visit(root, [], root.iconId ?? 'package', root.color ?? '')
   }
   flat.sort((a, b) => a.displayName.localeCompare(b.displayName))
   return flat

@@ -10,34 +10,26 @@ const toolCatalog: FlatToolCatalogEntry[] = [
     name: 'create_note',
     displayName: 'Add note',
     description: 'Add an internal note.',
-    toolsetSlug: 'comments.write',
+    toolsetSlug: 'auxx:comments:write',
     toolsetLabel: 'Comments — Write',
     toolsetIconId: 'message-square',
     toolsetColor: 'teal',
-    toolsetParentGroup: 'Comments',
+    path: ['Auxx.ai', 'Comments'],
   },
 ]
 
 const toolsetCatalog: ToolsetCatalogEntry[] = [
   {
-    slug: 'comments.write',
+    slug: 'auxx:comments:write',
     label: 'Comments — Write',
-    shortLabel: 'Write',
-    group: 'native',
-    parentGroup: 'Comments',
-    iconId: 'message-square',
-    color: 'teal',
+    appId: 'auxx',
     isDefault: false,
     tools: [{ name: 'create_note', displayName: 'Add note', description: 'Add a note.' }],
   },
   {
-    slug: 'mail.compose',
+    slug: 'auxx:mail:compose',
     label: 'Mail — Compose',
-    shortLabel: 'Compose',
-    group: 'native',
-    parentGroup: 'Mail',
-    iconId: 'send',
-    color: 'blue',
+    appId: 'auxx',
     isDefault: false,
     tools: [
       { name: 'reply_to_thread', displayName: 'Reply to thread', description: 'Reply.' },
@@ -58,12 +50,12 @@ describe('buildInstructionReferenceResolver', () => {
 
   it('resolves single-tool toolset: chips to a single backtick-quoted name (legacy)', () => {
     const resolve = buildInstructionReferenceResolver({ toolCatalog, toolsetCatalog })
-    expect(resolve('toolset:comments.write')).toBe('`create_note`')
+    expect(resolve('toolset:auxx:comments:write')).toBe('`create_note`')
   })
 
   it('resolves multi-tool toolset: chips to a comma-joined list (legacy)', () => {
     const resolve = buildInstructionReferenceResolver({ toolCatalog, toolsetCatalog })
-    expect(resolve('toolset:mail.compose')).toBe('`reply_to_thread`, `start_new_conversation`')
+    expect(resolve('toolset:auxx:mail:compose')).toBe('`reply_to_thread`, `start_new_conversation`')
   })
 
   it('falls back to the raw slug when the toolset is unknown', () => {
@@ -112,7 +104,7 @@ describe('buildInstructionReferenceResolver', () => {
           type: 'paragraph',
           content: [
             { type: 'text', text: 'Use ' },
-            { type: 'reference', attrs: { id: 'toolset:mail.compose' } },
+            { type: 'reference', attrs: { id: 'toolset:auxx:mail:compose' } },
             { type: 'text', text: ' to message them.' },
           ],
         },

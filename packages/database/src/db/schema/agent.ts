@@ -16,17 +16,31 @@ import { Organization } from './organization'
 import { User } from './user'
 
 /**
- * A record pinned to an agent. Surfaced in the system prompt as an
- * id-pointer (title + type label + optional note) — bodies are never
- * injected. The agent fetches content on demand via load_records /
- * per-type get_* tools. See plans/kopilot/agents/knowledge-access.md §2.2 / §4.
+ * One entry inside `Agent.toolsets`. Replaces the old `AgentToolset` join
+ * table. See plans/kopilot/agents/ui/single-row-agent.md §1.
  */
-export interface PinnedRecord {
-  /** `${entityDefinitionId}:${entityInstanceId}` — see @auxx/types RecordId. */
+export interface ToolsetEntry {
+  slug: string
+  /** Optional AppInstallation id for app toolsets. Null/absent for native toolsets. */
+  appInstallationId?: string | null
+  /** Toolset-shaped overrides — `{ disabledTools?: string[] }`. */
+  config: Record<string, unknown>
+  enabled: boolean
+  source: 'manual' | 'mention' | 'auto_default'
+}
+
+/**
+ * One entry inside `Agent.knowledge`. Replaces the old `AgentResourceScope`
+ * table.
+ *
+ * `recordId` is `${entityDefinitionId}:${entityInstanceId}` for instance-level
+ * rules, or just `${entityDefinitionId}` (no colon) for definition-level rules
+ * ("every record under this definition"). See plans/kopilot/agents/ui/single-row-agent.md §1.
+ */
+export interface KnowledgeEntry {
   recordId: string
-  pinReason: 'manual' | 'mention'
-  /** Manual pins only — one-liner from the admin about when to use this record. */
-  note?: string
+  mode: 'include_descendants' | 'include_one' | 'exclude'
+  source: 'manual' | 'mention'
 }
 
 /**
@@ -72,13 +86,18 @@ export const Agent = pgTable(
     prompt: jsonb().$type<Record<string, unknown>>().default({}).notNull(),
 
     /**
-     * Records pinned to this agent — surfaced as id-pointers in the system
-     * prompt at session-init. Reconciled atomically with `prompt` on save:
-     * `pinReason='mention'` entries are rebuilt from the Tiptap doc walk,
-     * `pinReason='manual'` entries are admin-set. Hard cap 50 (Q-K2).
-     * See plans/kopilot/agents/knowledge-access.md §3.2.
+     * Per-agent toolset configuration. One entry per slug enabled on the
+     * agent. Replaces the old `AgentToolset` join table. See
+     * plans/kopilot/agents/ui/single-row-agent.md.
      */
-    pinnedRecords: jsonb().$type<PinnedRecord[]>().default(sql`'[]'::jsonb`).notNull(),
+    toolsets: jsonb().$type<ToolsetEntry[]>().default(sql`'[]'::jsonb`).notNull(),
+
+    /**
+     * Per-agent knowledge access rules. One entry per `recordId`. Replaces
+     * the old `AgentResourceScope` table. See
+     * plans/kopilot/agents/ui/single-row-agent.md.
+     */
+    knowledge: jsonb().$type<KnowledgeEntry[]>().default(sql`'[]'::jsonb`).notNull(),
 
     mentionable: boolean().default(true).notNull(),
 

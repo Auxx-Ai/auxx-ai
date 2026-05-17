@@ -17,7 +17,7 @@ export function createSearchEntitiesTool(getDeps: GetToolDeps): AgentToolDefinit
   return {
     name: 'search_entities',
     displayName: 'Search records',
-    toolsetSlug: 'entities.search',
+    toolsetSlug: 'auxx:entities:search',
     idempotent: true,
     outputDigestSchema: SearchEntitiesDigest,
     buildDigest: (output) => {

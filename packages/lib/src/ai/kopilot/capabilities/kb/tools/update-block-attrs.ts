@@ -9,7 +9,7 @@ export function createUpdateBlockAttrsTool(getDeps: GetToolDeps): AgentToolDefin
   return {
     name: 'update_block_attrs',
     displayName: 'Update article attrs',
-    toolsetSlug: 'kb.write',
+    toolsetSlug: 'auxx:kb:write',
     description:
       "Merge a partial attrs object into a block by id. Use to flip calloutVariant ('info'/'warn'/'error'/'tip'/'success'), set heading level, change codeLanguage, swap embed url, etc. The block's id is never overwritten.",
     parameters: {
