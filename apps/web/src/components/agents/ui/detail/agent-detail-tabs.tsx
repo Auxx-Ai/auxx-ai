@@ -20,6 +20,7 @@ import type { AutosaveState } from '../shared/autosave-indicator'
 import { AgentHero } from './agent-hero'
 import { KnowledgeSectionContent } from './knowledge/knowledge-section-content'
 import { PersonaEditor } from './prompt/persona-editor'
+import { ToolSelectDialog } from './tools/tool-select-dialog'
 import { ToolsSectionContent } from './tools/tools-section-content'
 import { TriggersSectionContent } from './triggers/triggers-section-content'
 
@@ -166,14 +167,7 @@ export function AgentDetailTabs({ agent, onAutosaveChange }: AgentDetailTabsProp
         </div>
 
         <div ref={assignRef('tools')}>
-          <Section
-            title='Tools'
-            icon={<Wrench className='size-4' />}
-            className='[&>[data-slot=section]>[data-slot=section-content]]:-mx-3'
-            initialOpen
-            collapsible={false}>
-            <ToolsSectionContent agent={agent} onAutosaveChange={onAutosaveChange} />
-          </Section>
+          <ToolsSection agent={agent} onAutosaveChange={onAutosaveChange} />
         </div>
 
         <div ref={assignRef('knowledge')}>
@@ -227,5 +221,63 @@ export function AgentDetailTabs({ agent, onAutosaveChange }: AgentDetailTabsProp
         <div className='h-[40vh]' />
       </ScrollArea>
     </div>
+  )
+}
+
+interface ToolsSectionProps {
+  agent: AgentDetail
+  onAutosaveChange?: (state: AutosaveState) => void
+}
+
+/**
+ * Tools tab wrapper. Owns the `ToolSelectDialog` state so the "Add tools"
+ * trigger can sit in `<Section actions>` while the dialog renders alongside
+ * the installed-tools list.
+ */
+function ToolsSection({ agent, onAutosaveChange }: ToolsSectionProps) {
+  const [dialogOpen, setDialogOpen] = useState(false)
+  const [pendingAppId, setPendingAppId] = useState<string | null>(null)
+  return (
+    <>
+      <Section
+        title='Tools'
+        icon={<Wrench className='size-4' />}
+        className='[&>[data-slot=section]>[data-slot=section-content]]:-mx-3'
+        initialOpen
+        collapsible={false}
+        actions={
+          <Button
+            size='xs'
+            variant='ghost'
+            onClick={() => {
+              setPendingAppId(null)
+              setDialogOpen(true)
+            }}>
+            <Plus />
+            Add tools
+          </Button>
+        }>
+        <ToolsSectionContent
+          agent={agent}
+          onAutosaveChange={onAutosaveChange}
+          onAddToApp={(appId) => {
+            setPendingAppId(appId)
+            setDialogOpen(true)
+          }}
+        />
+      </Section>
+      <ToolSelectDialog
+        agent={agent}
+        open={dialogOpen}
+        onOpenChange={(next) => {
+          setDialogOpen(next)
+          if (!next) setPendingAppId(null)
+        }}
+        initialAppId={pendingAppId ?? undefined}
+        onSavingChange={(saving) =>
+          onAutosaveChange?.(saving ? { kind: 'saving' } : { kind: 'saved', at: Date.now() })
+        }
+      />
+    </>
   )
 }

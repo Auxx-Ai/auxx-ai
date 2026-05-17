@@ -1,0 +1,492 @@
+// apps/web/src/components/agents/ui/detail/tools/tool-select-dialog.tsx
+'use client'
+
+import type { CatalogContainerNode, CatalogNode } from '@auxx/lib/agents/client'
+import { flattenCatalogToToolsets } from '@auxx/lib/agents/client'
+import { Button } from '@auxx/ui/components/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@auxx/ui/components/dialog'
+import { InputSearch } from '@auxx/ui/components/input-search'
+import { ScrollArea } from '@auxx/ui/components/scroll-area'
+import { Separator } from '@auxx/ui/components/separator'
+import { Skeleton } from '@auxx/ui/components/skeleton'
+import { Tabs, TabsList, TabsTrigger } from '@auxx/ui/components/tabs'
+import { pluralize } from '@auxx/utils/strings'
+import { ChevronLeft } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { api } from '~/trpc/react'
+import type { AgentDetail } from '../../../store/agent-store'
+import { ToolSelectRow, toolCountBadge } from './tool-select-row'
+import { useToolsetMutations } from './use-toolset-mutations'
+
+interface ToolSelectDialogProps {
+  agent: AgentDetail
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  /** Optional save-state hook — wires the agent autosave indicator. */
+  onSavingChange?: (saving: boolean) => void
+  /**
+   * When set + the dialog is opened, jumps straight to the App-detail view
+   * for this app id. The Back button still returns to the Apps list.
+   */
+  initialAppId?: string
+}
+
+type ViewMode = 'list' | 'app-detail'
+type ListTab = 'all' | 'apps'
+
+interface InstalledState {
+  enabled: boolean
+  source: 'manual' | 'mention' | 'auto_default'
+}
+
+/**
+ * Multi-view dialog used to add toolsets to an agent. Three surfaces:
+ *
+ *  - List / All: flat picker grouped into Popular + All tools.
+ *  - List / Apps: one row per app, navigates to App-detail on click.
+ *  - App-detail: leaves of the selected app with an "Add all tools" button.
+ *
+ * Clicking a row toggles its enabled flag via `useToolsetMutations` — the
+ * dialog stays open so the user can add several toolsets in a row.
+ */
+export function ToolSelectDialog({
+  agent,
+  open,
+  onOpenChange,
+  onSavingChange,
+  initialAppId,
+}: ToolSelectDialogProps) {
+  const catalogQuery = api.agentToolset.list.useQuery(undefined, { staleTime: 60_000 })
+  const { toggleToolset, toggleToolsets } = useToolsetMutations(
+    agent.id,
+    agent.slug,
+    onSavingChange
+  )
+
+  const [viewMode, setViewMode] = useState<ViewMode>('list')
+  const [tab, setTab] = useState<ListTab>('all')
+  const [selectedAppId, setSelectedAppId] = useState<string | null>(null)
+  const [search, setSearch] = useState('')
+  const searchInputRef = useRef<HTMLInputElement>(null)
+
+  // On open: jump to App-detail when `initialAppId` is provided, else show the list.
+  // On close: reset to the default view.
+  useEffect(() => {
+    if (open) {
+      if (initialAppId) {
+        setViewMode('app-detail')
+        setSelectedAppId(initialAppId)
+      } else {
+        setViewMode('list')
+        setTab('all')
+        setSelectedAppId(null)
+      }
+      setSearch('')
+    } else {
+      setViewMode('list')
+      setTab('all')
+      setSelectedAppId(null)
+      setSearch('')
+    }
+    // Only react to `open` flips — `initialAppId` is read at open time.
+    // biome-ignore lint/correctness/useExhaustiveDependencies: see comment above
+  }, [open])
+
+  const installedState = useMemo<Map<string, InstalledState>>(() => {
+    const map = new Map<string, InstalledState>()
+    for (const row of agent.toolsets) {
+      map.set(row.slug, { enabled: row.enabled, source: row.source })
+    }
+    return map
+  }, [agent.toolsets])
+
+  const catalog = catalogQuery.data
+  const flat = useMemo(() => (catalog ? flattenCatalogToToolsets(catalog) : []), [catalog])
+
+  const selectedApp = useMemo(() => {
+    if (!catalog || !selectedAppId) return null
+    return catalog.find((root) => root.id === selectedAppId) ?? null
+  }, [catalog, selectedAppId])
+
+  function isInstalled(slug: string): boolean {
+    const state = installedState.get(slug)
+    if (!state) return false
+    return state.enabled || state.source === 'mention'
+  }
+
+  function sourceOf(slug: string): InstalledState['source'] | undefined {
+    return installedState.get(slug)?.source
+  }
+
+  const handleToolsetClick = (slug: string) => {
+    const installed = isInstalled(slug)
+    const source = sourceOf(slug)
+    // Locked rows: clicking is a no-op (the row still shows the green check).
+    if (installed && source && source !== 'manual') return
+    void toggleToolset(slug, !installed)
+  }
+
+  const handleRemove = (slug: string) => {
+    const source = sourceOf(slug)
+    if (source && source !== 'manual') return
+    void toggleToolset(slug, false)
+  }
+
+  const handleOpenApp = (appNode: CatalogContainerNode) => {
+    setSelectedAppId(appNode.id)
+    setViewMode('app-detail')
+    setSearch('')
+  }
+
+  const handleBack = () => {
+    setViewMode('list')
+    setTab('apps')
+    setSelectedAppId(null)
+    setSearch('')
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent
+        className='h-dvh sm:h-[600px]'
+        innerClassName='p-0'
+        position='tc'
+        size='lg'
+        onOpenAutoFocus={(e) => {
+          e.preventDefault()
+          searchInputRef.current?.focus()
+        }}>
+        <div className='flex flex-1 flex-col min-h-0'>
+          {viewMode === 'list' ? (
+            <ListView
+              tab={tab}
+              onTabChange={setTab}
+              search={search}
+              onSearchChange={setSearch}
+              searchInputRef={searchInputRef}
+              catalog={catalog}
+              flat={flat}
+              isLoading={catalogQuery.isLoading}
+              isInstalled={isInstalled}
+              sourceOf={sourceOf}
+              onToggle={handleToolsetClick}
+              onRemove={handleRemove}
+              onOpenApp={handleOpenApp}
+            />
+          ) : selectedApp ? (
+            <AppDetailView
+              app={selectedApp}
+              onBack={handleBack}
+              isInstalled={isInstalled}
+              sourceOf={sourceOf}
+              onToggle={handleToolsetClick}
+              onRemove={handleRemove}
+              onAddAll={(slugs) => {
+                if (slugs.length === 0) return
+                void toggleToolsets(slugs.map((slug) => ({ slug, enabled: true })))
+              }}
+            />
+          ) : (
+            <div className='flex flex-1 items-center justify-center p-8'>
+              <Skeleton className='h-12 w-full max-w-sm rounded-lg' />
+            </div>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+interface ListViewProps {
+  tab: ListTab
+  onTabChange: (tab: ListTab) => void
+  search: string
+  onSearchChange: (q: string) => void
+  searchInputRef: React.RefObject<HTMLInputElement>
+  catalog: CatalogNode[] | undefined
+  flat: ReturnType<typeof flattenCatalogToToolsets>
+  isLoading: boolean
+  isInstalled: (slug: string) => boolean
+  sourceOf: (slug: string) => InstalledState['source'] | undefined
+  onToggle: (slug: string) => void
+  onRemove: (slug: string) => void
+  onOpenApp: (appNode: CatalogContainerNode) => void
+}
+
+function ListView({
+  tab,
+  onTabChange,
+  search,
+  onSearchChange,
+  searchInputRef,
+  catalog,
+  flat,
+  isLoading,
+  isInstalled,
+  sourceOf,
+  onToggle,
+  onRemove,
+  onOpenApp,
+}: ListViewProps) {
+  const filteredFlat = useMemo(() => {
+    if (!search.trim()) return flat
+    const q = search.trim().toLowerCase()
+    return flat.filter(
+      (e) =>
+        e.label.toLowerCase().includes(q) ||
+        e.fullLabel.toLowerCase().includes(q) ||
+        e.description.toLowerCase().includes(q) ||
+        e.path.join(' ').toLowerCase().includes(q)
+    )
+  }, [flat, search])
+
+  const popular = filteredFlat.filter((e) => e.isPopular)
+  const all = filteredFlat
+
+  const apps = useMemo<CatalogContainerNode[]>(() => {
+    if (!catalog) return []
+    const roots = catalog.filter((n): n is CatalogContainerNode => n.kind !== 'toolset')
+    if (!search.trim()) return roots
+    const q = search.trim().toLowerCase()
+    return roots.filter((r) => r.label.toLowerCase().includes(q))
+  }, [catalog, search])
+
+  return (
+    <>
+      <DialogHeader className='mb-0 flex h-10 flex-row items-center justify-between border-b px-3'>
+        <div>
+          <Button variant='ghost' size='sm'>
+            Add tools
+          </Button>
+          <DialogTitle className='sr-only'>Add tools</DialogTitle>
+          <DialogDescription className='sr-only'>
+            Browse the toolset catalog and add tools to this agent.
+          </DialogDescription>
+        </div>
+      </DialogHeader>
+
+      <div className='flex items-center justify-between gap-2 border-b px-3 py-2'>
+        <Tabs value={tab} onValueChange={(v) => onTabChange(v as ListTab)}>
+          <TabsList>
+            <TabsTrigger value='all'>All</TabsTrigger>
+            <TabsTrigger value='apps'>Apps</TabsTrigger>
+          </TabsList>
+        </Tabs>
+        <div className='flex-1 max-w-xs'>
+          <InputSearch
+            ref={searchInputRef}
+            placeholder='Search tools...'
+            value={search}
+            onChange={(e) => onSearchChange(e.target.value)}
+            onClear={() => onSearchChange('')}
+          />
+        </div>
+      </div>
+
+      <ScrollArea className='flex-1' scrollbarClassName='w-1!'>
+        <div className='py-3 px-3'>
+          {isLoading ? (
+            <div className='space-y-2'>
+              {[0, 1, 2].map((i) => (
+                <Skeleton key={i} className='h-12 w-full rounded-lg' />
+              ))}
+            </div>
+          ) : tab === 'all' ? (
+            filteredFlat.length === 0 ? (
+              <EmptySearchResult search={search} />
+            ) : (
+              <div className='space-y-4'>
+                {popular.length > 0 && (
+                  <Section title='Popular tools'>
+                    <div className='grid grid-cols-1 gap-1 sm:grid-cols-2'>
+                      {popular.map((entry) => (
+                        <ToolSelectRow
+                          key={entry.slug}
+                          id={entry.slug}
+                          iconId={entry.iconId}
+                          color={entry.color || null}
+                          label={entry.fullLabel}
+                          description={entry.description || undefined}
+                          badge={toolCountBadge(entry.tools.length) ?? undefined}
+                          toolNames={entry.tools.map((t) => t.displayName)}
+                          installed={isInstalled(entry.slug)}
+                          source={sourceOf(entry.slug)}
+                          onSelect={() => onToggle(entry.slug)}
+                          onRemove={() => onRemove(entry.slug)}
+                        />
+                      ))}
+                    </div>
+                  </Section>
+                )}
+                {all.length > 0 && (
+                  <Section title='All tools'>
+                    {all.map((entry) => (
+                      <ToolSelectRow
+                        key={entry.slug}
+                        id={entry.slug}
+                        iconId={entry.iconId}
+                        color={entry.color || null}
+                        label={entry.fullLabel}
+                        description={entry.description || undefined}
+                        badge={toolCountBadge(entry.tools.length) ?? undefined}
+                        toolNames={entry.tools.map((t) => t.displayName)}
+                        installed={isInstalled(entry.slug)}
+                        source={sourceOf(entry.slug)}
+                        onSelect={() => onToggle(entry.slug)}
+                        onRemove={() => onRemove(entry.slug)}
+                      />
+                    ))}
+                  </Section>
+                )}
+              </div>
+            )
+          ) : apps.length === 0 ? (
+            <EmptySearchResult search={search} />
+          ) : (
+            <div className='space-y-1'>
+              {apps.map((appNode) => {
+                const counts = countLeaves(appNode, isInstalled)
+                return (
+                  <ToolSelectRow
+                    key={appNode.id}
+                    id={appNode.id}
+                    iconId={appNode.iconId ?? 'package'}
+                    color={appNode.color}
+                    label={appNode.label}
+                    subtitle={`${counts.installed}/${counts.total} ${pluralize(counts.total, 'tool')} installed`}
+                    installed={false}
+                    onSelect={() => onOpenApp(appNode)}
+                  />
+                )
+              })}
+            </div>
+          )}
+        </div>
+      </ScrollArea>
+    </>
+  )
+}
+
+interface AppDetailViewProps {
+  app: CatalogContainerNode
+  onBack: () => void
+  isInstalled: (slug: string) => boolean
+  sourceOf: (slug: string) => InstalledState['source'] | undefined
+  onToggle: (slug: string) => void
+  onRemove: (slug: string) => void
+  onAddAll: (slugs: string[]) => void
+}
+
+function AppDetailView({
+  app,
+  onBack,
+  isInstalled,
+  sourceOf,
+  onToggle,
+  onRemove,
+  onAddAll,
+}: AppDetailViewProps) {
+  const leaves = useMemo(() => flattenCatalogToToolsets([app]), [app])
+  const installedCount = leaves.reduce((n, l) => (isInstalled(l.slug) ? n + 1 : n), 0)
+  const total = leaves.length
+  const allInstalled = installedCount === total && total > 0
+
+  return (
+    <>
+      <DialogHeader className='mb-0 flex h-10 flex-row items-center border-b px-3'>
+        <div className='flex items-center gap-1'>
+          <Button variant='ghost' size='sm' onClick={onBack}>
+            <ChevronLeft />
+            Back
+          </Button>
+          <Separator orientation='vertical' className='h-5' />
+          <Button variant='ghost' size='sm'>
+            {app.label}
+          </Button>
+          <DialogTitle className='sr-only'>{app.label}</DialogTitle>
+          <DialogDescription className='sr-only'>
+            Toolsets exposed by {app.label}.
+          </DialogDescription>
+        </div>
+      </DialogHeader>
+
+      <div className='flex items-center justify-between border-b ps-3 pe-2 py-1'>
+        <span className='text-xs text-muted-foreground'>
+          {installedCount}/{total} {pluralize(total, 'tool')} installed
+        </span>
+        <Button
+          size='sm'
+          variant='ghost'
+          disabled={allInstalled}
+          onClick={() => onAddAll(leaves.map((l) => l.slug))}>
+          {allInstalled ? 'All installed' : 'Add all tools'}
+        </Button>
+      </div>
+
+      <ScrollArea className='flex-1' scrollbarClassName='w-1!'>
+        <div className='p-3'>
+          {leaves.map((entry) => (
+            <ToolSelectRow
+              key={entry.slug}
+              id={entry.slug}
+              iconId={entry.iconId}
+              color={entry.color || null}
+              label={entry.fullLabel}
+              description={entry.description || undefined}
+              badge={toolCountBadge(entry.tools.length) ?? undefined}
+              toolNames={entry.tools.map((t) => t.displayName)}
+              installed={isInstalled(entry.slug)}
+              source={sourceOf(entry.slug)}
+              onSelect={() => onToggle(entry.slug)}
+              onRemove={() => onRemove(entry.slug)}
+            />
+          ))}
+        </div>
+      </ScrollArea>
+    </>
+  )
+}
+
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <h3 className='mb-1 px-2 text-xs font-medium uppercase tracking-wide text-muted-foreground'>
+        {title}
+      </h3>
+      <div className=''>{children}</div>
+    </div>
+  )
+}
+
+function EmptySearchResult({ search }: { search: string }) {
+  return (
+    <div className='flex flex-col items-center justify-center py-12 text-center'>
+      <p className='text-sm text-muted-foreground'>
+        {search.trim() ? `No tools match "${search}".` : 'No tools available.'}
+      </p>
+    </div>
+  )
+}
+
+function countLeaves(
+  node: CatalogNode,
+  isInstalled: (slug: string) => boolean
+): { total: number; installed: number } {
+  if (node.kind === 'toolset') {
+    return { total: 1, installed: isInstalled(node.slug) ? 1 : 0 }
+  }
+  let total = 0
+  let installed = 0
+  for (const child of node.children) {
+    const sub = countLeaves(child, isInstalled)
+    total += sub.total
+    installed += sub.installed
+  }
+  return { total, installed }
+}

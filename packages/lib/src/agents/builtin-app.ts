@@ -28,6 +28,12 @@ export interface BuiltinToolsetMeta {
   iconId: string
   color: string
   isDefault: boolean
+  /**
+   * Curated for the Tool-Select dialog's "Popular tools" group. Independent of
+   * `isDefault` (which controls auto-enable for new agents) so the curation
+   * set can grow beyond the auto-enable set.
+   */
+  isPopular: boolean
   /** One-line tooltip copy shown on the leaf row's help icon. */
   description: string
   /**
@@ -48,6 +54,7 @@ export const BUILTIN_TOOLSETS: ReadonlyArray<BuiltinToolsetMeta> = [
     iconId: 'mails',
     color: 'blue',
     isDefault: true,
+    isPopular: true,
     description: 'Read mail threads, list inbox folders, and search across messages.',
     subGroupIconId: 'mails',
     subGroupColor: 'blue',
@@ -60,6 +67,7 @@ export const BUILTIN_TOOLSETS: ReadonlyArray<BuiltinToolsetMeta> = [
     iconId: 'send',
     color: 'blue',
     isDefault: true,
+    isPopular: true,
     description: 'Send new mail and reply to existing threads on behalf of the user.',
     subGroupIconId: null,
     subGroupColor: null,
@@ -72,6 +80,7 @@ export const BUILTIN_TOOLSETS: ReadonlyArray<BuiltinToolsetMeta> = [
     iconId: 'file-text',
     color: 'blue',
     isDefault: false,
+    isPopular: true,
     description: 'Create, update, and discard draft messages.',
     subGroupIconId: null,
     subGroupColor: null,
@@ -84,6 +93,7 @@ export const BUILTIN_TOOLSETS: ReadonlyArray<BuiltinToolsetMeta> = [
     iconId: 'search',
     color: 'purple',
     isDefault: true,
+    isPopular: true,
     description: 'Search and list entity records across every domain.',
     subGroupIconId: 'database',
     subGroupColor: 'purple',
@@ -96,6 +106,7 @@ export const BUILTIN_TOOLSETS: ReadonlyArray<BuiltinToolsetMeta> = [
     iconId: 'edit',
     color: 'purple',
     isDefault: true,
+    isPopular: false,
     description: 'Create, update, and annotate entity records.',
     subGroupIconId: null,
     subGroupColor: null,
@@ -108,6 +119,7 @@ export const BUILTIN_TOOLSETS: ReadonlyArray<BuiltinToolsetMeta> = [
     iconId: 'search',
     color: 'teal',
     isDefault: true,
+    isPopular: false,
     description: 'Read ticket comments and look up activity threads.',
     subGroupIconId: 'message-square',
     subGroupColor: 'teal',
@@ -120,6 +132,7 @@ export const BUILTIN_TOOLSETS: ReadonlyArray<BuiltinToolsetMeta> = [
     iconId: 'message-square',
     color: 'teal',
     isDefault: true,
+    isPopular: true,
     description: 'Post comments, reply to threads, and mention teammates.',
     subGroupIconId: null,
     subGroupColor: null,
@@ -132,6 +145,7 @@ export const BUILTIN_TOOLSETS: ReadonlyArray<BuiltinToolsetMeta> = [
     iconId: 'book-open',
     color: 'orange',
     isDefault: true,
+    isPopular: true,
     description: 'Search the knowledge base and retrieve published articles.',
     subGroupIconId: 'book-open',
     subGroupColor: 'orange',
@@ -144,6 +158,7 @@ export const BUILTIN_TOOLSETS: ReadonlyArray<BuiltinToolsetMeta> = [
     iconId: 'edit',
     color: 'orange',
     isDefault: false,
+    isPopular: false,
     description: 'Author, update, and publish knowledge-base articles.',
     subGroupIconId: null,
     subGroupColor: null,
@@ -156,6 +171,7 @@ export const BUILTIN_TOOLSETS: ReadonlyArray<BuiltinToolsetMeta> = [
     iconId: 'search',
     color: 'green',
     isDefault: false,
+    isPopular: false,
     description: 'Search and list tasks across assignees and queues.',
     subGroupIconId: 'list-checks',
     subGroupColor: 'green',
@@ -168,6 +184,7 @@ export const BUILTIN_TOOLSETS: ReadonlyArray<BuiltinToolsetMeta> = [
     iconId: 'check-circle',
     color: 'green',
     isDefault: false,
+    isPopular: true,
     description: 'Create, update, and resolve tasks.',
     subGroupIconId: null,
     subGroupColor: null,
@@ -180,6 +197,7 @@ export const BUILTIN_TOOLSETS: ReadonlyArray<BuiltinToolsetMeta> = [
     iconId: 'help-circle',
     color: 'gray',
     isDefault: true,
+    isPopular: false,
     description: 'Search internal product docs and runbooks.',
     subGroupIconId: 'help-circle',
     subGroupColor: 'gray',
@@ -192,6 +210,7 @@ export const BUILTIN_TOOLSETS: ReadonlyArray<BuiltinToolsetMeta> = [
     iconId: 'users',
     color: 'pink',
     isDefault: true,
+    isPopular: false,
     description: 'Look up workspace members, teams, and bot actors.',
     subGroupIconId: null,
     subGroupColor: null,

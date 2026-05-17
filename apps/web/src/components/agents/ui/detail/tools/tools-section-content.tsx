@@ -2,26 +2,36 @@
 'use client'
 
 import type { CatalogNode } from '@auxx/lib/agents/client'
+import { EmptySection } from '@auxx/ui/components/section'
 import { Skeleton } from '@auxx/ui/components/skeleton'
+import { Wrench } from 'lucide-react'
 import { useCallback, useMemo, useState } from 'react'
 import { api } from '~/trpc/react'
 import type { AgentDetail } from '../../../store/agent-store'
 import type { AutosaveState } from '../../shared/autosave-indicator'
-import { CatalogNodeRow, collectToggleable, type ToolsetRowState } from './catalog-node-row'
+import { CatalogNodeRow, pruneToInstalled, type ToolsetRowState } from './catalog-node-row'
 import { useToolsetMutations } from './use-toolset-mutations'
 
 interface ToolsSectionContentProps {
   agent: AgentDetail
   onAutosaveChange?: (state: AutosaveState) => void
+  /** Invoked when a top-level app row's "Add" button is clicked. */
+  onAddToApp?: (appId: string) => void
 }
 
 /**
- * The Tools tab body. Renders the org catalog tree as a recursive `TreeRow`:
- * App → (optional Sub-group) → Toolset. Switches cascade — toggling an app
- * row toggles every toolset under it (respecting mention locks); same for
- * sub-group rows. See `plans/kopilot/agents/tools/recursive-catalog-node.md`.
+ * Tools tab body — renders only the toolsets currently installed on the
+ * agent, as a pruned App → SubGroup → Toolset tree. The catalog browser and
+ * the "Add tools" trigger live one level up in `ToolsSection`
+ * (`agent-detail-tabs.tsx`); this component intentionally has no header so
+ * the action sits inside `<Section actions>`. See
+ * `plans/kopilot/agents/tools/tool-select-dialog.md`.
  */
-export function ToolsSectionContent({ agent, onAutosaveChange }: ToolsSectionContentProps) {
+export function ToolsSectionContent({
+  agent,
+  onAutosaveChange,
+  onAddToApp,
+}: ToolsSectionContentProps) {
   const catalogQuery = api.agentToolset.list.useQuery(undefined, {
     staleTime: 60_000,
   })
@@ -33,11 +43,7 @@ export function ToolsSectionContent({ agent, onAutosaveChange }: ToolsSectionCon
     [onAutosaveChange]
   )
 
-  const { toggleToolset, toggleToolsets } = useToolsetMutations(
-    agent.id,
-    agent.slug,
-    handleSavingChange
-  )
+  const { toggleToolset } = useToolsetMutations(agent.id, agent.slug, handleSavingChange)
 
   const stateBySlug = useMemo<Map<string, ToolsetRowState>>(() => {
     const map = new Map<string, ToolsetRowState>()
@@ -47,25 +53,47 @@ export function ToolsSectionContent({ agent, onAutosaveChange }: ToolsSectionCon
     return map
   }, [agent.toolsets])
 
-  // One Set for every container id in the tree; presence = collapsed.
-  // Defaults to empty (everything expanded — matches the pre-refactor UX).
-  const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set())
+  const installedTree = useMemo(
+    () => (catalogQuery.data ? pruneToInstalled(catalogQuery.data, stateBySlug) : []),
+    [catalogQuery.data, stateBySlug]
+  )
 
-  const toggleCollapsed = useCallback((id: string) => {
-    setCollapsed((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
-  }, [])
+  // Default = every container id collapsed. Derived synchronously from
+  // `installedTree` so the first render is already in the closed state — no
+  // open/close flash. Once the user toggles a row, `collapsed` becomes their
+  // explicit set and stays that way.
+  const defaultCollapsed = useMemo(() => {
+    const ids = new Set<string>()
+    const walk = (n: CatalogNode) => {
+      if (n.kind === 'toolset') return
+      ids.add(n.id)
+      n.children.forEach(walk)
+    }
+    installedTree.forEach(walk)
+    return ids
+  }, [installedTree])
 
-  const onCascadeToggle = useCallback(
-    (node: CatalogNode, nextEnabled: boolean) => {
-      const targets = collectToggleable(node, stateBySlug, nextEnabled)
-      if (targets.length > 0) void toggleToolsets(targets)
+  const [collapsedOverride, setCollapsedOverride] = useState<Set<string> | null>(null)
+  const collapsed = collapsedOverride ?? defaultCollapsed
+
+  const toggleCollapsed = useCallback(
+    (id: string) => {
+      setCollapsedOverride((prev) => {
+        const base = prev ?? defaultCollapsed
+        const next = new Set(base)
+        if (next.has(id)) next.delete(id)
+        else next.add(id)
+        return next
+      })
     },
-    [stateBySlug, toggleToolsets]
+    [defaultCollapsed]
+  )
+
+  const handleRemove = useCallback(
+    (slug: string) => {
+      void toggleToolset(slug, false)
+    },
+    [toggleToolset]
   )
 
   if (catalogQuery.isLoading || !catalogQuery.data) {
@@ -83,9 +111,21 @@ export function ToolsSectionContent({ agent, onAutosaveChange }: ToolsSectionCon
     )
   }
 
+  if (installedTree.length === 0) {
+    return (
+      <div className='px-3 py-2'>
+        <EmptySection
+          icon={<Wrench className='size-5' />}
+          title='No tools yet'
+          description='Add tools to give this agent capabilities.'
+        />
+      </div>
+    )
+  }
+
   return (
     <div className='flex flex-col pe-4'>
-      {catalogQuery.data.map((root) => (
+      {installedTree.map((root) => (
         <CatalogNodeRow
           key={root.id}
           node={root}
@@ -95,8 +135,9 @@ export function ToolsSectionContent({ agent, onAutosaveChange }: ToolsSectionCon
           stateBySlug={stateBySlug}
           collapsed={collapsed}
           onToggleCollapsed={toggleCollapsed}
-          onCascadeToggle={onCascadeToggle}
-          onLeafToggle={toggleToolset}
+          variant='installed'
+          onLeafRemove={handleRemove}
+          onAddToApp={onAddToApp}
         />
       ))}
     </div>
