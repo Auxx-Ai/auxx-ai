@@ -20,7 +20,7 @@ export function createListArticlesTool(getDeps: GetToolDeps): AgentToolDefinitio
   return {
     name: 'list_articles',
     displayName: 'List articles',
-    toolsetSlug: 'knowledge',
+    toolsetSlug: 'auxx:knowledge',
     idempotent: true,
     description:
       'List KB articles. Always returns id, recordId, slug, title, excerpt, status, parentId, knowledgeBaseId, isPublished, hasUnpublishedChanges. Set `includeContent: true` to also attach a 4K-char `bodyMarkdown` preview per row (capped at limit ≤ 10 when on). Filter by `articleIds`, `knowledgeBaseId` (defaults to active KB; if none, lists across all KBs), substring `query` on title, `parentId`, or `includeUnpublished`. For the full untruncated body of a specific article, use `get_article`.',

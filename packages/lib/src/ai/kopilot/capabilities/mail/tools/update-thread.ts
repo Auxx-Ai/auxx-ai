@@ -12,7 +12,7 @@ export function createUpdateThreadTool(getDeps: GetToolDeps): AgentToolDefinitio
   return {
     name: 'update_thread',
     displayName: 'Update thread',
-    toolsetSlug: 'mail.threads',
+    toolsetSlug: 'auxx:mail:threads',
     outputDigestSchema: UpdateThreadDigest,
     buildDigest: (output) => {
       const out = (output ?? {}) as { threadId?: string; changes?: Record<string, unknown> }

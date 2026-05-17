@@ -59,16 +59,13 @@ export function KbBranch({ agent, mutations, depth }: KbBranchProps) {
 function useAddedKbInstanceIds(agent: AgentDetail): string[] {
   return useMemo(() => {
     const ids = new Set<string>()
-    for (const s of agent.resourceScopes) {
-      if (s.entityDefinitionId === 'kb' && s.entityInstanceId) ids.add(s.entityInstanceId)
-    }
-    for (const p of agent.pinnedRecords) {
-      const colon = p.recordId.indexOf(':')
+    for (const k of agent.knowledge) {
+      const colon = k.recordId.indexOf(':')
       if (colon === -1) continue
-      if (p.recordId.slice(0, colon) === 'kb') ids.add(p.recordId.slice(colon + 1))
+      if (k.recordId.slice(0, colon) === 'kb') ids.add(k.recordId.slice(colon + 1))
     }
     return Array.from(ids)
-  }, [agent.resourceScopes, agent.pinnedRecords])
+  }, [agent.knowledge])
 }
 
 interface KbContainerRowProps {
@@ -82,8 +79,9 @@ function KbContainerRow({ kbId, agent, mutations, depth }: KbContainerRowProps) 
   const recordId = toRecordId('kb', kbId)
   const [isOpen, setIsOpen] = useState(false)
   const { record } = useRecord({ recordId })
-  const effectiveMode = deriveEffectiveMode(agent.resourceScopes, recordId)
-  const pin = agent.pinnedRecords.find((p) => p.recordId === recordId)
+  const effectiveMode = deriveEffectiveMode(agent.knowledge, recordId)
+  const entry = agent.knowledge.find((k) => k.recordId === recordId)
+  const isMentionLocked = entry?.source === 'mention'
   const title = (record?.displayName as string) ?? (record?.title as string) ?? 'Untitled'
 
   return (
@@ -98,10 +96,8 @@ function KbContainerRow({ kbId, agent, mutations, depth }: KbContainerRowProps) 
         <AgentScopeActions
           kind='container'
           effectiveMode={effectiveMode}
-          isPinned={!!pin}
-          pinReason={pin?.pinReason ?? null}
+          isMentionLocked={isMentionLocked}
           onSetMode={(mode) => mutations.setMode(recordId, mode)}
-          onTogglePin={() => mutations.setPin(recordId, !pin)}
         />
       }>
       <KbArticles
@@ -187,10 +183,11 @@ interface ArticleTreeRowProps {
 function ArticleTreeRow({ node, agent, mutations, depth, ancestorRecordIds }: ArticleTreeRowProps) {
   const recordId = toRecordId('article', node.id)
   const [isOpen, setIsOpen] = useState(false)
-  const effectiveMode = deriveEffectiveMode(agent.resourceScopes, recordId, {
+  const effectiveMode = deriveEffectiveMode(agent.knowledge, recordId, {
     ancestorRecordIds,
   })
-  const pin = agent.pinnedRecords.find((p) => p.recordId === recordId)
+  const entry = agent.knowledge.find((k) => k.recordId === recordId)
+  const isMentionLocked = entry?.source === 'mention'
   const title = node.title || 'Untitled'
 
   const hasChildren = node.children.length > 0
@@ -218,10 +215,8 @@ function ArticleTreeRow({ node, agent, mutations, depth, ancestorRecordIds }: Ar
           <AgentScopeActions
             kind={isContainer ? 'container' : 'leaf'}
             effectiveMode={effectiveMode}
-            isPinned={!!pin}
-            pinReason={pin?.pinReason ?? null}
+            isMentionLocked={isMentionLocked}
             onSetMode={(mode) => mutations.setMode(recordId, mode)}
-            onTogglePin={() => mutations.setPin(recordId, !pin)}
           />
         )
       }>

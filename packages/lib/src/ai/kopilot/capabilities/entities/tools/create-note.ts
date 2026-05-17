@@ -16,7 +16,7 @@ export function createCreateNoteTool(getDeps: GetToolDeps): AgentToolDefinition 
   return {
     name: 'create_note',
     displayName: 'Add note',
-    toolsetSlug: 'comments.write',
+    toolsetSlug: 'auxx:comments:write',
     outputDigestSchema: CreateNoteDigest,
     buildDigest: (output) => {
       const out = (output ?? {}) as { commentId?: string; recordId?: string }

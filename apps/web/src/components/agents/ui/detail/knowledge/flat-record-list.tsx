@@ -1,8 +1,7 @@
 // apps/web/src/components/agents/ui/detail/knowledge/flat-record-list.tsx
 'use client'
 
-import type { Resource } from '@auxx/lib/resources/client'
-import { type RecordId, toRecordId } from '@auxx/lib/resources/client'
+import type { RecordId, Resource } from '@auxx/lib/resources/client'
 import { TreeRow } from '@auxx/ui/components/tree-row'
 import { FileText, Plus } from 'lucide-react'
 import { useMemo } from 'react'
@@ -60,25 +59,20 @@ export function FlatRecordList({
 }
 
 /**
- * Union of scope-row record ids and pinned record ids for one resource type.
- * Definition-level entries (`entityInstanceId === null`) are excluded — those
- * are owned by the depth-0 container row.
+ * Knowledge-entry record ids scoped to one resource type. Definition-level
+ * entries (no `:instanceId` suffix) are excluded — those are owned by the
+ * depth-0 container row.
  */
 function useAddedRecordIds(entityDefinitionId: string, agent: AgentDetail): string[] {
   return useMemo(() => {
     const ids = new Set<string>()
-    for (const s of agent.resourceScopes) {
-      if (s.entityDefinitionId === entityDefinitionId && s.entityInstanceId) {
-        ids.add(toRecordId(entityDefinitionId, s.entityInstanceId))
-      }
-    }
-    for (const p of agent.pinnedRecords) {
-      const colon = p.recordId.indexOf(':')
+    for (const k of agent.knowledge) {
+      const colon = k.recordId.indexOf(':')
       if (colon === -1) continue
-      if (p.recordId.slice(0, colon) === entityDefinitionId) ids.add(p.recordId)
+      if (k.recordId.slice(0, colon) === entityDefinitionId) ids.add(k.recordId)
     }
     return Array.from(ids)
-  }, [agent.resourceScopes, agent.pinnedRecords, entityDefinitionId])
+  }, [agent.knowledge, entityDefinitionId])
 }
 
 interface RecordLeafRowProps {
@@ -90,8 +84,9 @@ interface RecordLeafRowProps {
 
 function RecordLeafRow({ recordId, agent, mutations, depth }: RecordLeafRowProps) {
   const { record, isLoading } = useRecord({ recordId: recordId as RecordId })
-  const effectiveMode = deriveEffectiveMode(agent.resourceScopes, recordId)
-  const pin = agent.pinnedRecords.find((p) => p.recordId === recordId)
+  const effectiveMode = deriveEffectiveMode(agent.knowledge, recordId)
+  const entry = agent.knowledge.find((k) => k.recordId === recordId)
+  const isMentionLocked = entry?.source === 'mention'
   const title = (record?.displayName as string) ?? (record?.title as string) ?? ''
 
   return (
@@ -103,10 +98,8 @@ function RecordLeafRow({ recordId, agent, mutations, depth }: RecordLeafRowProps
         <AgentScopeActions
           kind='leaf'
           effectiveMode={effectiveMode}
-          isPinned={!!pin}
-          pinReason={pin?.pinReason ?? null}
+          isMentionLocked={isMentionLocked}
           onSetMode={(mode) => mutations.setMode(recordId, mode)}
-          onTogglePin={() => mutations.setPin(recordId, !pin)}
         />
       }
     />

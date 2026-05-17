@@ -9,7 +9,7 @@ export function createReplaceBlockTool(getDeps: GetToolDeps): AgentToolDefinitio
   return {
     name: 'replace_block',
     displayName: 'Replace article block',
-    toolsetSlug: 'kb.write',
+    toolsetSlug: 'auxx:kb:write',
     description:
       'Replace a single block by id. The id is preserved on the new block (the agent does not need to repeat it). Use this when fully rewriting a block — for text-only edits, prefer update_block_text; for attribute changes, prefer update_block_attrs.',
     parameters: {

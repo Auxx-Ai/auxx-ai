@@ -31,6 +31,34 @@ export function useToolsetMutations(
   const update = api.agentToolset.update.useMutation()
   const savingTimerRef = useRef<ReturnType<typeof setTimeout>>()
 
+  const applyOptimisticChange = (
+    toolsets: AgentDetail['toolsets'],
+    slug: string,
+    enabled: boolean
+  ): AgentDetail['toolsets'] => {
+    const idx = toolsets.findIndex((t) => t.slug === slug)
+    if (idx >= 0) {
+      const current = toolsets[idx]
+      if (!current) return toolsets
+      const next = [...toolsets]
+      next[idx] = {
+        ...current,
+        enabled,
+        source: current.source === 'auto_default' ? 'manual' : current.source,
+      }
+      return next
+    }
+    return [
+      ...toolsets,
+      {
+        slug,
+        enabled,
+        source: 'manual',
+        config: {},
+      },
+    ]
+  }
+
   const toggleToolset = useCallback(
     async (slug: string, enabled: boolean) => {
       // Show "Saving…" only if the mutation is still in-flight after 400 ms.
@@ -40,29 +68,7 @@ export function useToolsetMutations(
 
       utils.agent.getById.setData({ agentId: agentSlug }, (old) => {
         if (!old) return old
-        const toolsets = [...old.toolsets]
-        const idx = toolsets.findIndex((t) => t.toolsetSlug === slug)
-        if (idx >= 0) {
-          const current = toolsets[idx]
-          if (!current) return old
-          toolsets[idx] = {
-            ...current,
-            enabled,
-            source: current.source === 'auto_default' ? 'manual' : current.source,
-          }
-        } else {
-          toolsets.push({
-            id: `optimistic-${slug}`,
-            agentId,
-            toolsetSlug: slug,
-            enabled,
-            source: 'manual',
-            config: {},
-            createdAt: new Date(),
-            updatedAt: new Date(),
-          } as AgentDetail['toolsets'][number])
-        }
-        return { ...old, toolsets }
+        return { ...old, toolsets: applyOptimisticChange(old.toolsets, slug, enabled) }
       })
 
       try {
@@ -95,29 +101,9 @@ export function useToolsetMutations(
 
       utils.agent.getById.setData({ agentId: agentSlug }, (old) => {
         if (!old) return old
-        const toolsets = [...old.toolsets]
+        let toolsets = old.toolsets
         for (const { slug, enabled } of changes) {
-          const idx = toolsets.findIndex((t) => t.toolsetSlug === slug)
-          if (idx >= 0) {
-            const current = toolsets[idx]
-            if (!current) continue
-            toolsets[idx] = {
-              ...current,
-              enabled,
-              source: current.source === 'auto_default' ? 'manual' : current.source,
-            }
-          } else {
-            toolsets.push({
-              id: `optimistic-${slug}`,
-              agentId,
-              toolsetSlug: slug,
-              enabled,
-              source: 'manual',
-              config: {},
-              createdAt: new Date(),
-              updatedAt: new Date(),
-            } as AgentDetail['toolsets'][number])
-          }
+          toolsets = applyOptimisticChange(toolsets, slug, enabled)
         }
         return { ...old, toolsets }
       })

@@ -495,21 +495,6 @@ export const trialConversionStatus = pgEnum('TrialConversionStatus', [
   'MANUAL_CONVERSION',
 ])
 export const userType = pgEnum('UserType', ['USER', 'SYSTEM', 'AGENT'])
-export const agentToolsetSource = pgEnum('AgentToolsetSource', [
-  'manual',
-  'mention',
-  'auto_default',
-])
-export const agentResourceScopeMode = pgEnum('AgentResourceScopeMode', [
-  'include_descendants',
-  'include_one',
-  'exclude',
-])
-export const agentResourceScopeSource = pgEnum('AgentResourceScopeSource', [
-  'manual',
-  'mention',
-  'auto_default',
-])
 export const vectorDbType = pgEnum('VectorDbType', [
   'POSTGRESQL',
   'CHROMA',

@@ -14,7 +14,7 @@ export function createGetTranscriptTool(getDeps: GetToolDeps): AgentToolDefiniti
   return {
     name: 'get_transcript',
     displayName: 'Get transcript',
-    toolsetSlug: 'entities.search',
+    toolsetSlug: 'auxx:entities:search',
     idempotent: true,
     outputDigestSchema: GetTranscriptDigest,
     buildDigest: (output) => {

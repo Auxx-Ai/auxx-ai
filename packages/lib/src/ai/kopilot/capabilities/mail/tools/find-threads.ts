@@ -86,7 +86,7 @@ export function createFindThreadsTool(getDeps: GetToolDeps): AgentToolDefinition
   return {
     name: 'find_threads',
     displayName: 'Find threads',
-    toolsetSlug: 'mail.threads',
+    toolsetSlug: 'auxx:mail:threads',
     idempotent: true,
     outputDigestSchema: FindThreadsDigest,
     buildDigest: (output) => {

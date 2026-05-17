@@ -35,7 +35,7 @@ export function createStartNewConversationTool(getDeps: GetToolDeps): AgentToolD
   return {
     name: 'start_new_conversation',
     displayName: 'Start new conversation',
-    toolsetSlug: 'mail.compose',
+    toolsetSlug: 'auxx:mail:compose',
     requiresApproval: true,
     inputAmendmentSchema: StartAmendmentSchema,
     outputDigestSchema: EmailWriteDigest,

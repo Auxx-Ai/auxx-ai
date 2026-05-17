@@ -10,9 +10,9 @@ import {
   CommandList,
   CommandPlaceholder,
 } from '@auxx/ui/components/command'
-import { EntityIcon } from '@auxx/ui/components/icons'
 import { cn } from '@auxx/ui/lib/utils'
 import { useMemo } from 'react'
+import { AppIcon } from '~/components/workflow/ui/app-icon'
 import { api } from '~/trpc/react'
 
 export interface ToolReferenceListProps {
@@ -72,15 +72,15 @@ export function ToolReferenceList({
                   value={id}
                   onSelect={() => onSelectSingle(id)}
                   className='flex items-center gap-2'>
-                  <EntityIcon
-                    iconId={entry.toolsetIconId ?? 'wrench'}
-                    color={entry.toolsetColor}
+                  <AppIcon
+                    iconId={entry.toolsetIconId || 'wrench'}
+                    color={entry.toolsetColor || undefined}
                     size='sm'
                   />
                   <div className='flex min-w-0 flex-col'>
                     <span className='text-sm truncate'>{entry.displayName}</span>
                     <span className='text-[10px] text-muted-foreground'>
-                      {entry.toolsetLabel} · {entry.name}
+                      {[...entry.path, entry.toolsetLabel].join(' · ')} · {entry.name}
                     </span>
                   </div>
                 </CommandItem>

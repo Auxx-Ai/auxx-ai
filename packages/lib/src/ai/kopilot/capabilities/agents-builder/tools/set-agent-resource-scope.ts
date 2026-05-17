@@ -3,7 +3,6 @@
 import {
   type AgentScopeMode,
   batchSetAgentResourceScopes,
-  parseRecordIdForScope,
 } from '../../../../../agents/agent-scope-service'
 import { findCachedResource } from '../../../../../cache/org-cache-helpers'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
@@ -97,7 +96,8 @@ before guessing recordIds.`,
             error: `mode must be one of: ${VALID_MODES.join(', ')}`,
           }
         }
-        const { entityDefinitionId } = parseRecordIdForScope(row.recordId)
+        const colon = row.recordId.indexOf(':')
+        const entityDefinitionId = colon === -1 ? row.recordId : row.recordId.slice(0, colon)
         const def = await findCachedResource(agentDeps.organizationId, entityDefinitionId)
         if (!def) {
           return {

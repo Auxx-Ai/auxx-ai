@@ -3,8 +3,8 @@
 import {
   agentExistsInOrg,
   batchUpdateAgentToolsets,
+  getOrgCatalogTree,
   getOrgToolCatalog,
-  getOrgToolsetCatalog,
   updateAgentToolset,
 } from '@auxx/lib/agents'
 import { createScopedLogger } from '@auxx/logger'
@@ -35,11 +35,13 @@ async function ensureAgentInOrg(organizationId: string, agentId: string): Promis
  */
 export const agentToolsetRouter = createTRPCRouter({
   /**
-   * Org-wide toolset catalog — every available toolset slug and its tools.
-   * Per-agent enabled state lives on `agent.getById.toolsets`.
+   * Org-wide catalog tree — one `CatalogNode` per app at the root, with
+   * sub-group / toolset descendants. Tools tab walks the tree directly;
+   * pickers flatten it via `flattenCatalogToToolsets`. Per-agent enabled
+   * state lives on `agent.getById.toolsets`.
    */
   list: adminProcedure.query(async ({ ctx }) => {
-    return getOrgToolsetCatalog(ctx.session.organizationId)
+    return getOrgCatalogTree(ctx.session.organizationId)
   }),
 
   /**

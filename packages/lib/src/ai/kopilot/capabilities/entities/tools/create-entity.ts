@@ -14,7 +14,7 @@ export function createCreateEntityTool(getDeps: GetToolDeps): AgentToolDefinitio
   return {
     name: 'create_entity',
     displayName: 'Create record',
-    toolsetSlug: 'entities.write',
+    toolsetSlug: 'auxx:entities:write',
     outputDigestSchema: CreateEntityDigest,
     buildDigest: (output) => {
       const out = (output ?? {}) as { recordId?: string }

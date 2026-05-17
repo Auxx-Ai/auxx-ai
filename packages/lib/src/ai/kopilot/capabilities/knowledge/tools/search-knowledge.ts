@@ -23,7 +23,7 @@ export function createSearchKnowledgeTool(getDeps: GetToolDeps): AgentToolDefini
   return {
     name: 'search_knowledge',
     displayName: 'Search knowledge',
-    toolsetSlug: 'knowledge',
+    toolsetSlug: 'auxx:knowledge',
     idempotent: true,
     outputDigestSchema: ArticleSearchDigest,
     buildDigest: (output) => {

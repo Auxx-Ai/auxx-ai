@@ -32,7 +32,7 @@ export function createListNotesTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'list_notes',
     displayName: 'List notes',
-    toolsetSlug: 'comments.read',
+    toolsetSlug: 'auxx:comments:read',
     idempotent: true,
     outputDigestSchema: ListNotesDigest,
     buildDigest: (output) => {

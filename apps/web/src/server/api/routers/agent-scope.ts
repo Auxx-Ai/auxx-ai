@@ -2,10 +2,8 @@
 
 import {
   agentExistsInOrg,
-  PinLimitExceededError,
   removeAgentScopeRow,
   ScopeRowImmutableError,
-  setAgentPin,
   upsertAgentScopeRow,
 } from '@auxx/lib/agents'
 import { createScopedLogger } from '@auxx/logger'
@@ -25,9 +23,6 @@ async function ensureAgentInOrg(organizationId: string, agentId: string): Promis
 }
 
 function mapServiceError(err: unknown): TRPCError {
-  if (err instanceof PinLimitExceededError) {
-    return new TRPCError({ code: 'BAD_REQUEST', message: err.message })
-  }
   if (err instanceof ScopeRowImmutableError) {
     return new TRPCError({ code: 'CONFLICT', message: err.message })
   }
@@ -38,9 +33,8 @@ function mapServiceError(err: unknown): TRPCError {
 }
 
 /**
- * Per-agent resource scope + pinned-records mutations. Reads come from
- * `agent.getById.resourceScopes` and `agent.getById.pinnedRecords`.
- * Mention-sourced rows are owned by the prompt reconciler and are rejected
+ * Per-agent knowledge entry mutations. Reads come from `agent.getById.knowledge`.
+ * Mention-sourced entries are owned by the prompt reconciler and are rejected
  * here; admin edits write `manual`.
  */
 export const agentScopeRouter = createTRPCRouter({
@@ -60,7 +54,7 @@ export const agentScopeRouter = createTRPCRouter({
       } catch (err) {
         throw mapServiceError(err)
       }
-      logger.info('Agent scope row upserted', {
+      logger.info('Agent knowledge entry upserted', {
         organizationId,
         agentId: input.agentId,
         recordId: input.recordId,
@@ -83,35 +77,10 @@ export const agentScopeRouter = createTRPCRouter({
       } catch (err) {
         throw mapServiceError(err)
       }
-      logger.info('Agent scope row removed', {
+      logger.info('Agent knowledge entry removed', {
         organizationId,
         agentId: input.agentId,
         recordId: input.recordId,
-      })
-    }),
-
-  setPin: adminProcedure
-    .input(
-      z.object({
-        agentId: z.string(),
-        recordId: recordIdSchema,
-        pinned: z.boolean(),
-        note: z.string().max(280).nullable().optional(),
-      })
-    )
-    .mutation(async ({ ctx, input }) => {
-      const { organizationId } = ctx.session
-      await ensureAgentInOrg(organizationId, input.agentId)
-      try {
-        await setAgentPin(organizationId, input)
-      } catch (err) {
-        throw mapServiceError(err)
-      }
-      logger.info('Agent pin toggled', {
-        organizationId,
-        agentId: input.agentId,
-        recordId: input.recordId,
-        pinned: input.pinned,
       })
     }),
 })

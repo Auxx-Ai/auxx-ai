@@ -26,7 +26,7 @@ export function createSearchDocsTool(_getDeps: GetToolDeps): AgentToolDefinition
   return {
     name: 'search_docs',
     displayName: 'Search docs',
-    toolsetSlug: 'docs',
+    toolsetSlug: 'auxx:docs',
     idempotent: true,
     outputDigestSchema: ArticleSearchDigest,
     buildDigest: (output) => {

@@ -1,17 +1,21 @@
 // apps/web/src/components/agents/ui/detail/tools/toolset-row.tsx
 'use client'
 
-import { Badge } from '@auxx/ui/components/badge'
-import { EntityIcon } from '@auxx/ui/components/icons'
 import { Switch } from '@auxx/ui/components/switch'
 import { TreeRow } from '@auxx/ui/components/tree-row'
+import { Lock } from 'lucide-react'
 import { useEffect, useState } from 'react'
+import { Tooltip } from '~/components/global/tooltip'
+import { AppIcon } from '~/components/workflow/ui/app-icon'
 
 export interface ToolsetRowProps {
   slug: string
   label: string
   iconId: string
-  color: string
+  /** `null` = inherit / neutral. */
+  color: string | null
+  /** Optional one-line tooltip; rendered by `<TreeRow>` as a help-icon. */
+  description?: string
   toolCount: number
   enabled: boolean
   source: 'manual' | 'mention' | 'auto_default'
@@ -30,6 +34,7 @@ export function ToolsetRow({
   label,
   iconId,
   color,
+  description,
   toolCount,
   enabled,
   source,
@@ -43,27 +48,52 @@ export function ToolsetRow({
     setLocalEnabled(enabled)
   }, [enabled])
 
+  const isMention = source === 'mention'
+  const isAutoDefault = source === 'auto_default'
+
   return (
     <TreeRow
       depth={depth}
-      icon={<EntityIcon iconId={iconId} color={color} size='sm' />}
+      icon={<AppIcon iconId={iconId} color={color ?? undefined} size='sm' />}
       title={label}
+      description={description || undefined}
       actions={
         <div className='flex items-center gap-2'>
           <span className='text-xs text-muted-foreground'>
             {toolCount} {toolCount === 1 ? 'tool' : 'tools'}
           </span>
-          {/* {source === 'mention' && <Badge variant='secondary'>Pinned by mention</Badge>} */}
-          {/* {source === 'auto_default' && <Badge variant='outline'>Default</Badge>} */}
-          <Switch
-            size='xs'
-            checked={localEnabled}
-            disabled={source === 'mention'}
-            onCheckedChange={(checked) => {
-              setLocalEnabled(checked)
-              onToolsetToggle(slug, checked)
-            }}
-          />
+          {isAutoDefault && (
+            <span className='text-[10px] uppercase tracking-wide text-muted-foreground/70'>
+              default
+            </span>
+          )}
+          {isMention && (
+            <Tooltip
+              side='left'
+              content='Referenced in instructions. Remove the @-mention to unlock.'>
+              <span
+                className='flex items-center text-muted-foreground hover:text-primary'
+                aria-label='Locked by mention in instructions'>
+                <Lock className='size-3.5' />
+              </span>
+            </Tooltip>
+          )}
+          {isMention ? (
+            <Tooltip side='left' content='Locked — referenced in instructions.'>
+              <span className='inline-flex opacity-60'>
+                <Switch size='xs' checked={localEnabled} disabled />
+              </span>
+            </Tooltip>
+          ) : (
+            <Switch
+              size='xs'
+              checked={localEnabled}
+              onCheckedChange={(checked) => {
+                setLocalEnabled(checked)
+                onToolsetToggle(slug, checked)
+              }}
+            />
+          )}
         </div>
       }
     />

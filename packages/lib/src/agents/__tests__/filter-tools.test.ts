@@ -41,9 +41,9 @@ function agent(toolsets: Array<{ slug: string; disabledTools?: string[] }>): Res
 }
 
 describe('filterToolsByToolsets', () => {
-  const findThreads = tool('find_threads', 'mail.threads')
-  const getThread = tool('get_thread_detail', 'mail.threads')
-  const replyToThread = tool('reply_to_thread', 'mail.compose')
+  const findThreads = tool('find_threads', 'auxx:mail:threads')
+  const getThread = tool('get_thread_detail', 'auxx:mail:threads')
+  const replyToThread = tool('reply_to_thread', 'auxx:mail:compose')
   const planCreate = tool('plan_create')
 
   it('returns input unchanged for undefined config', () => {
@@ -59,7 +59,7 @@ describe('filterToolsByToolsets', () => {
   it('drops tools whose slug is not enabled', () => {
     const result = filterToolsByToolsets(
       [findThreads, replyToThread, planCreate],
-      agent([{ slug: 'mail.threads' }])
+      agent([{ slug: 'auxx:mail:threads' }])
     )
     expect(result.map((t) => t.name)).toEqual(['find_threads', 'plan_create'])
   })
@@ -72,7 +72,7 @@ describe('filterToolsByToolsets', () => {
   it('honors per-tool disable inside an enabled toolset', () => {
     const result = filterToolsByToolsets(
       [findThreads, getThread],
-      agent([{ slug: 'mail.threads', disabledTools: ['find_threads'] }])
+      agent([{ slug: 'auxx:mail:threads', disabledTools: ['find_threads'] }])
     )
     expect(result.map((t) => t.name)).toEqual(['get_thread_detail'])
   })
@@ -80,7 +80,7 @@ describe('filterToolsByToolsets', () => {
   it('silently ignores unknown slugs in config', () => {
     const result = filterToolsByToolsets(
       [findThreads],
-      agent([{ slug: 'mail.threads' }, { slug: 'nonexistent.slug' }])
+      agent([{ slug: 'auxx:mail:threads' }, { slug: 'nonexistent.slug' }])
     )
     expect(result.map((t) => t.name)).toEqual(['find_threads'])
   })

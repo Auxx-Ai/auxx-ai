@@ -1,18 +1,13 @@
 // packages/lib/src/agents/index.ts
 
 export {
-  type AgentPinInput,
   type AgentScopeMode,
   type AgentScopeRemoveInput,
   type AgentScopeUpsertInput,
   batchSetAgentResourceScopes,
-  PIN_HARD_CAP,
-  PinLimitExceededError,
-  parseRecordIdForScope,
   recordMatchesScopeRow,
   removeAgentScopeRow,
   ScopeRowImmutableError,
-  setAgentPin,
   upsertAgentScopeRow,
 } from './agent-scope-service'
 export {
@@ -34,6 +29,7 @@ export {
 } from './agent-service'
 export {
   type AgentToolsetPatch,
+  applyToolsetPatch,
   batchUpdateAgentToolsets,
   listAgentToolsets,
   updateAgentToolset,
@@ -59,15 +55,31 @@ export {
   type ScheduledTriggerInput,
   type UpdateAgentTriggerInput,
 } from './agent-trigger-service'
-export { NATIVE_DEFAULT_TOOLSETS, resolveDefaultToolsets } from './default-toolsets'
+export { BUILTIN_APP, BUILTIN_TOOLSETS, getBuiltinToolset } from './builtin-app'
+export { BUILTIN_DEFAULT_TOOLSETS, resolveDefaultToolsets } from './default-toolsets'
 export { filterToolsByToolsets } from './filter-tools'
+export {
+  type KnowledgeEntry,
+  type KnowledgeMode,
+  type KnowledgeSource,
+  reconcileKnowledge,
+  reconcilePromptMentions,
+  reconcileToolsets,
+  type ToolsetEntry,
+  type ToolsetSource,
+  walkPromptDoc,
+} from './prompt-mention-reconciler'
 export { type ResolvedAgentConfig, resolveAgentConfig } from './resolve-agent-config'
 export { AGENT_SLUG_MAX, AGENT_SLUG_REGEX, agentSlugSchema } from './slug-schema'
 export {
+  type CatalogContainerNode,
+  type CatalogNode,
+  type CatalogToolsetNode,
   type FlatToolCatalogEntry,
+  getOrgCatalogTree,
   getOrgToolCatalog,
   getOrgToolsetCatalog,
-  NATIVE_TOOLSET_LABELS,
+  invalidateToolsetCatalog,
   type ToolCatalogEntry,
   type ToolsetCatalogEntry,
 } from './toolset-catalog'

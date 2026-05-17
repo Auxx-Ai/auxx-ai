@@ -120,6 +120,12 @@ export interface AiToolset {
   readonly tools: readonly string[]
   /** Included in master-Kopilot auto-on when true. */
   readonly isDefault?: boolean
+  /**
+   * Optional grouping under the app row in the Tools tab. Free-form string —
+   * toolsets sharing the same `subGroup` render under a collapsible header.
+   * Omitted/null means the toolset hangs directly under the app row.
+   */
+  readonly subGroup?: string
 }
 
 /**
