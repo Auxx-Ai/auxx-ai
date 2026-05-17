@@ -519,19 +519,20 @@ export class AnthropicLLMClient extends LLMClient {
       messages: anthropicMessages,
     }
 
-    // Add system message if present. Emit as an array block with an ephemeral
-    // prompt-cache breakpoint so Anthropic caches the tools + system prompt
-    // for the TTL window (reused across iterations within a turn and across
-    // nearby turns). Everything after the system (messages/tool results) is
-    // not cached — only the static preamble.
+    // Add system message if present. Emit as an array of text blocks with
+    // up-to-N ephemeral cache breakpoints so Anthropic caches the longest
+    // common prefix across calls.
+    //
+    // If the system message contains `<!--auxx:cache-break-->` sentinels
+    // (produced by the Kopilot prompt builder), each sentinel marks a tier
+    // boundary — the block immediately BEFORE the sentinel gets a
+    // `cache_control: ephemeral` marker. This buys multi-tier caching
+    // (e.g. tier-1 static + tier-2 per-org) on the same prefix.
+    //
+    // If the system message has no sentinels, fall back to the legacy
+    // single-block-with-single-breakpoint behaviour.
     if (systemMessage) {
-      anthropicParams.system = [
-        {
-          type: 'text',
-          text: systemMessage,
-          cache_control: { type: 'ephemeral' },
-        },
-      ]
+      anthropicParams.system = buildSystemBlocks(systemMessage)
     }
 
     // Add optional parameters
@@ -1081,4 +1082,59 @@ export class AnthropicLLMClient extends LLMClient {
 
     return types
   }
+}
+
+/**
+ * Sentinel used by the Kopilot prompt builder to mark tier boundaries
+ * inside a single system-message string. Kept verbatim here (not
+ * imported) to avoid a downstream dependency from the Anthropic client
+ * on Kopilot-specific code — any caller can use this string to signal
+ * "split here and put a cache_control marker on the preceding block".
+ *
+ * Keep in sync with `packages/lib/src/ai/kopilot/prompts/sections/render.ts`.
+ */
+const CACHE_BREAK_SENTINEL = '<!--auxx:cache-break-->'
+
+/** Anthropic allows up to 4 cache_control breakpoints per request. */
+const MAX_CACHE_BREAKPOINTS = 4
+
+/**
+ * Convert a (possibly sentinel-bearing) system-message string into the
+ * `system: [...]` array Anthropic expects.
+ *
+ * Without sentinels: one block, one cache breakpoint at the end (legacy
+ * behaviour — caches the entire prompt).
+ *
+ * With sentinels: the sentinel count equals the desired number of cache
+ * breakpoints. Segments are produced by splitting on the sentinel pattern;
+ * the leading `min(sentinelCount, segments)` segments are marked with
+ * `cache_control: ephemeral`. Anthropic caps total markers at 4.
+ */
+export function buildSystemBlocks(systemMessage: string): Array<{
+  type: 'text'
+  text: string
+  cache_control?: { type: 'ephemeral' }
+}> {
+  if (!systemMessage.includes(CACHE_BREAK_SENTINEL)) {
+    return [{ type: 'text', text: systemMessage, cache_control: { type: 'ephemeral' } }]
+  }
+
+  const sentinelCount = (
+    systemMessage.match(new RegExp(escapeRegExp(CACHE_BREAK_SENTINEL), 'g')) ?? []
+  ).length
+  const segments = systemMessage
+    .split(`\n\n${CACHE_BREAK_SENTINEL}\n\n`)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0)
+
+  const markerCount = Math.min(sentinelCount, segments.length, MAX_CACHE_BREAKPOINTS)
+  return segments.map((text, i) => ({
+    type: 'text' as const,
+    text,
+    cache_control: i < markerCount ? { type: 'ephemeral' as const } : undefined,
+  }))
+}
+
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }

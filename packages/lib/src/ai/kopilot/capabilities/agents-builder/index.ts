@@ -39,10 +39,44 @@ export async function createAgentsBuilderCapabilities(
       createSetAgentTriggersTool(getDeps),
       createCompleteAgentSetupTool(getDeps),
     ],
+    excludeGlobalTools: BUILDER_GLOBAL_TOOL_EXCLUDES,
     systemPromptAddition: buildBuilderPersonaPrompt({ catalog }),
     capabilities: ['Edit one agent in this workspace — name, prompt, tools, knowledge scope'],
   }
 }
+
+/**
+ * Global tools the builder doesn't need. Keeps the page focused on authoring
+ * the agent in session refs — read-only lookups (`search_entities`,
+ * `query_records`, `search_knowledge`, `list_members`, etc.) are intentionally
+ * NOT excluded so the persona can inline real names in clarifying questions.
+ */
+const BUILDER_GLOBAL_TOOL_EXCLUDES: string[] = [
+  // Inbox / messaging
+  'find_threads',
+  'get_thread_detail',
+  'list_drafts',
+  'list_tags',
+  'reply_to_thread',
+  'start_new_conversation',
+  'update_thread',
+  // Tasks
+  'create_task',
+  'list_tasks',
+  // Entity writes + history
+  'create_entity',
+  'update_entity',
+  'bulk_update_entity',
+  'create_note',
+  'list_notes',
+  'list_field_changes',
+  'get_entity_history',
+  'list_transcripts_for_entity',
+  'get_transcript',
+  // KB authoring / reads (builder authors prompts, not KB articles)
+  'get_article',
+  'list_articles',
+]
 
 /**
  * Global capability for `suggest_replies`. Registered separately so master

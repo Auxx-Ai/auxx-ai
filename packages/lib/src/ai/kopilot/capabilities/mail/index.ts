@@ -28,15 +28,32 @@ export function createMailCapabilities(getDeps: GetToolDeps): PageCapability {
       createUpdateThreadTool(getDeps),
     ],
     systemPromptAddition: (ctx: SystemPromptAdditionContext) => buildMailSystemPrompt(ctx),
-    capabilities: [
-      'Search threads and read messages across email and messaging channels',
-      'Draft or send replies on existing threads',
-      'Start brand-new conversations on integrations that support new outbound',
-      'List unsent drafts — in-progress replies and standalone compositions',
-      'List and search workspace tags by name',
-      'Manage thread status, tags, and assignment',
-    ],
+    capabilities: (ctx) => buildMailCapabilities(ctx),
   }
+}
+
+function buildMailCapabilities({ toolNames }: SystemPromptAdditionContext): string[] {
+  const has = (name: string) => toolNames.has(name)
+  const bullets: string[] = []
+  if (has('find_threads') || has('get_thread_detail')) {
+    bullets.push('Search threads and read messages across email and messaging channels')
+  }
+  if (has('reply_to_thread')) {
+    bullets.push('Draft or send replies on existing threads')
+  }
+  if (has('start_new_conversation')) {
+    bullets.push('Start brand-new conversations on integrations that support new outbound')
+  }
+  if (has('list_drafts')) {
+    bullets.push('List unsent drafts — in-progress replies and standalone compositions')
+  }
+  if (has('list_tags')) {
+    bullets.push('List and search workspace tags by name')
+  }
+  if (has('update_thread')) {
+    bullets.push('Manage thread status, tags, and assignment')
+  }
+  return bullets
 }
 
 /**
@@ -66,16 +83,12 @@ function buildMailSystemPrompt({ toolNames }: SystemPromptAdditionContext): stri
     : ''
   sections.push(`${intro}${tagsClause}`)
 
-  // Hard rules are about *sending* — only render when at least one outbound
-  // tool is registered. Otherwise the model is being warned about behaviour
-  // it can't perform.
+  // Sending hard rule — only render when at least one outbound tool is
+  // registered. Otherwise we're warning about behaviour the model can't perform.
   if (has('reply_to_thread') || has('start_new_conversation')) {
-    sections.push(`## Hard rules — read these first
-
-1. **Sending a message means CALLING a tool, not writing prose.** When the user asks you to email/message/text/SMS/DM/contact a person, your job is to call \`start_new_conversation\` (or \`reply_to_thread\` if there's an existing thread) — NEVER write the message body in chat. The chat reply must be ≤2 sentences and contain ZERO message content. The body lives inside the tool call's \`body\` argument; the user reviews it in the approval card, not in chat.
-2. **Do NOT pass a \`mode\` argument and do NOT ask "save or send?" in prose.** The approval card always shows "Save as Draft" and "Send" — the user picks. Just call the tool.
-3. **Do NOT paste the would-be message body as a fallback when something's missing.** If a recipient identifier is missing, reply with one short sentence asking for it ("I don't see an email for Carolin — what address should I use?") and stop. No body, no subject, no greeting.
-4. The chat reply for a send/draft action is one short sentence ("Drafted a reply." / "Composed a message to Carolin.") — the approval card carries the actual content and outcome.`)
+    sections.push(
+      `**Sending a message = calling a tool.** Never write the body in chat. The chat reply is ≤2 sentences with zero message content — body goes in the tool's \`body\` argument, user reviews in the approval card. If a recipient identifier is missing, ask in one sentence ("I don't see an email for X — what address?") and stop. Don't paste the body as a fallback.`
+    )
   }
 
   const workflowBullets: string[] = []

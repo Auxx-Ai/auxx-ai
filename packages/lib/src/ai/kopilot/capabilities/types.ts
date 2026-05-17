@@ -42,8 +42,21 @@ export interface PageCapability {
    * gated. Static strings are still fine for prose that's tool-agnostic.
    */
   systemPromptAddition?: string | ((ctx: SystemPromptAdditionContext) => string)
-  /** Human-friendly capability descriptions (e.g. "Search & find contacts, companies, and tickets") */
-  capabilities?: string[]
+  /**
+   * Human-friendly capability descriptions (e.g.
+   * "Search & find contacts, companies, and tickets"). Pass a function when
+   * the bullets name specific tools that might be filtered out at runtime —
+   * the resolved tool name set is passed in so each bullet can be gated.
+   */
+  capabilities?: string[] | ((ctx: SystemPromptAdditionContext) => string[])
+  /**
+   * Tool names (or a predicate) to remove from the global pool when this
+   * page is active. Page-local tools are never filtered. Use to keep a
+   * focused page (e.g. `agents.builder`) from inheriting irrelevant
+   * globals like mail/tasks/entity-writes. String entries may end with
+   * `*` for prefix match (e.g. `'mail_*'`).
+   */
+  excludeGlobalTools?: string[] | ((toolName: string) => boolean)
 }
 
 /** Registry mapping pages to their capabilities */
@@ -54,8 +67,14 @@ export interface CapabilityRegistry {
   getPages(): string[]
   /** Get system prompt addition for a page, resolving any functional additions against the runtime tool set */
   getSystemPromptAddition(page: string, ctx: SystemPromptAdditionContext): string | undefined
-  /** Get a combined human-friendly capabilities summary for the user */
-  getCapabilitiesSummary(): string[]
+  /**
+   * Get a combined human-friendly capabilities summary for the user.
+   * Pass the resolved tool name set so functional `capabilities` arrays can
+   * gate bullets on tool survival.
+   */
+  getCapabilitiesSummary(ctx?: SystemPromptAdditionContext): string[]
+  /** Names of global tools the page chose to exclude — for debugging / logging */
+  getExcludedGlobalToolNames(page: string): string[]
   /** Register a page's capabilities */
   register(capability: PageCapability): void
 }

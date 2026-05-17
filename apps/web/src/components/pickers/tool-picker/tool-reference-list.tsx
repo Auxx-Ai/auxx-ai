@@ -79,9 +79,6 @@ export function ToolReferenceList({
                   />
                   <div className='flex min-w-0 flex-col'>
                     <span className='text-sm truncate'>{entry.displayName}</span>
-                    <span className='text-[10px] text-muted-foreground'>
-                      {[...entry.path, entry.toolsetLabel].join(' · ')} · {entry.name}
-                    </span>
                   </div>
                 </CommandItem>
               )

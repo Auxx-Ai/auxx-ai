@@ -143,6 +143,7 @@ export function useLoadSession() {
       // the persisted array is always provider-valid), so we re-emit the
       // assistant bubble here, followed by the approval card.
       const domainState = (data as any).domainState as Record<string, unknown> | undefined
+      let approvalAnchorId: string | null = null
       if (domainState?._waitingForApproval && domainState?._pendingToolCall) {
         const ptc = domainState._pendingToolCall as {
           toolCallId: string
@@ -175,8 +176,9 @@ export function useLoadSession() {
           }
         }
 
+        approvalAnchorId = generateId()
         visibleMessages.push({
-          id: generateId(),
+          id: approvalAnchorId,
           role: 'system',
           content: `Approval needed: ${ptc.toolName}`,
           timestamp: Date.now(),
@@ -198,7 +200,28 @@ export function useLoadSession() {
         }
       }
       setMessages(visibleMessages)
-      reconstructThinkingGroups(messages)
+
+      // Reconstruct from the raw persisted list (which still includes executor
+      // assistants — they carry the thinking text). When the turn paused at an
+      // approval gate, append a synthetic non-executor assistant marker
+      // carrying the approval bubble's id so the in-flight thinking group
+      // attaches to it; the message-list then renders the pill above the
+      // approval card.
+      const messagesForReconstruction =
+        approvalAnchorId !== null
+          ? [
+              ...messages,
+              {
+                id: approvalAnchorId,
+                role: 'assistant',
+                content: '',
+                timestamp: Date.now(),
+                parentId: null,
+                metadata: { final: true },
+              } satisfies KopilotMessage,
+            ]
+          : messages
+      reconstructThinkingGroups(messagesForReconstruction)
 
       // Hydrate feedback from server
       const feedbackMap = await utils.kopilot.getSessionFeedback.fetch({ sessionId })

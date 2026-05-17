@@ -1,6 +1,6 @@
 // packages/lib/src/ai/kopilot/capabilities/kb/index.ts
 
-import type { GetToolDeps, PageCapability } from '../types'
+import type { GetToolDeps, PageCapability, SystemPromptAdditionContext } from '../types'
 import { createDeleteBlocksTool } from './tools/delete-blocks'
 import { createGetArticleTool } from './tools/get-article'
 import { createGetArticleSectionTool } from './tools/get-article-section'
@@ -51,10 +51,28 @@ export function createKbReadCapabilities(getDeps: GetToolDeps): PageCapability {
   return {
     page: GLOBAL_PAGE,
     tools: [createGetArticleTool(getDeps), createListArticlesTool(getDeps)],
-    systemPromptAddition: [
-      'Article tool results include a `recordId` (format `<entityDefinitionId>:<articleId>`). To reference an article by name in your reply, emit `auxx:entity-card` with that recordId for a single article, or `auxx:entity-list` for two or more. Copy the recordId verbatim — never construct it.',
-      'For articles, follow `search_entities` with `get_article` to read body content; `get_entity` only returns metadata for articles. When the user `@`-mentions an article or refers to "this article", call `get_article` first to load its body.',
-    ].join('\n\n'),
-    capabilities: ['Browse and read knowledge-base articles'],
+    systemPromptAddition: (ctx) => buildKbReadPrompt(ctx),
+    capabilities: ({ toolNames }) =>
+      toolNames.has('get_article') || toolNames.has('list_articles')
+        ? ['Browse and read knowledge-base articles']
+        : [],
   }
+}
+
+function buildKbReadPrompt({ toolNames }: SystemPromptAdditionContext): string {
+  const hasGet = toolNames.has('get_article')
+  const hasList = toolNames.has('list_articles')
+  if (!hasGet && !hasList) return ''
+  const sections: string[] = []
+  if (hasGet || hasList) {
+    sections.push(
+      'Article tool results include a `recordId` (format `<entityDefinitionId>:<articleId>`). To reference an article by name in your reply, emit `auxx:entity-card` with that recordId for a single article, or `auxx:entity-list` for two or more. Copy the recordId verbatim — never construct it.'
+    )
+  }
+  if (hasGet) {
+    sections.push(
+      'For articles, follow `search_entities` with `get_article` to read body content; `get_entity` only returns metadata for articles. When the user `@`-mentions an article or refers to "this article", call `get_article` first to load its body.'
+    )
+  }
+  return sections.join('\n\n')
 }

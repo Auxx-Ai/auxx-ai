@@ -27,9 +27,9 @@ describe('buildCoreRuntimePrompt — autonomous mode', () => {
     expect(out).not.toContain('auxx:plan-steps')
   })
 
-  it('omits the How blocks work section', () => {
+  it('omits the Rich Blocks section', () => {
     const out = buildCoreRuntimePrompt({ ...baseArgs, runMode: 'autonomous' })
-    expect(out).not.toContain('## How blocks work')
+    expect(out).not.toContain('## Rich Blocks')
   })
 
   it('omits the Approval-protected tools section', () => {
@@ -50,7 +50,7 @@ describe('buildCoreRuntimePrompt — autonomous mode', () => {
       },
     })
     expect(out).not.toContain("## Who you're helping")
-    expect(out).not.toContain('the **caller**')
+    expect(out).not.toContain('**caller**')
   })
 
   it('uses the audit-trail job statement, not the chat one', () => {
@@ -82,7 +82,6 @@ describe('buildCoreRuntimePrompt — interactive mode', () => {
   it('includes the block catalog and approval section', () => {
     const out = buildCoreRuntimePrompt({ ...baseArgs, runMode: 'interactive' })
     expect(out).toContain('## Rich Blocks')
-    expect(out).toContain('## How blocks work')
     expect(out).toContain('## Approval-protected tools')
   })
 
@@ -100,7 +99,7 @@ describe('buildCoreRuntimePrompt — interactive mode', () => {
     })
     expect(out).toContain("## Who you're helping")
     expect(out).toContain('Markus')
-    expect(out).toContain('the **caller**')
+    expect(out).toContain('**caller**')
   })
 
   it('uses the chat job statement', () => {

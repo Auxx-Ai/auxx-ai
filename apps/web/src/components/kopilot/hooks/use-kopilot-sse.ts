@@ -109,24 +109,26 @@ export function useKopilotSSE({ pendingRequest, onRequestSent }: UseKopilotSSEOp
           break
         }
         case 'final-message': {
-          // Close out the thinking group, then commit the assistant prose.
+          // Close out the thinking group, then commit the assistant anchor.
+          // Empty content is valid (silent termination — model finished with
+          // no prose after a run of tool calls). We still commit a placeholder
+          // assistant message so the thinking group has something to attach
+          // to and the turn has a stable responder anchor on refresh.
           finalizeThinkingGroup()
           const store = useKopilotStore.getState()
           const content = data.content || store.stream.streamingContent
           const leafId = getCurrentLeafId()
-          if (content) {
-            const msgId = streamingMessageIdRef.current || generateId()
-            addMessage({
-              id: msgId,
-              role: 'assistant',
-              content,
-              timestamp: Date.now(),
-              parentId: leafId,
-              ...(data.linkSnapshots ? { linkSnapshots: data.linkSnapshots } : {}),
-            })
-            attachThinkingGroupToMessage(msgId)
-            responderCommittedRef.current = true
-          }
+          const msgId = streamingMessageIdRef.current || generateId()
+          addMessage({
+            id: msgId,
+            role: 'assistant',
+            content,
+            timestamp: Date.now(),
+            parentId: leafId,
+            ...(data.linkSnapshots ? { linkSnapshots: data.linkSnapshots } : {}),
+          })
+          attachThinkingGroupToMessage(msgId)
+          responderCommittedRef.current = true
           streamingMessageIdRef.current = null
           clearStream()
           break
@@ -273,12 +275,17 @@ export function useKopilotSSE({ pendingRequest, onRequestSent }: UseKopilotSSEOp
           break
         }
         case 'approval-required': {
-          // Finalize the thinking group and clear it so the active tool steps
-          // don't flash before the approval card renders.
+          // Finalize the in-flight thinking group and attach it to the
+          // approval system message we're about to render. Using the real
+          // approval message id (not the dead `'_approval_'` sentinel) lets
+          // the pill render next to the approval card via the same
+          // group.messageId lookup the rest of the renderer uses, and lets
+          // `reconstructThinkingGroups` re-attach it on refresh.
+          const approvalMsgId = generateId()
           finalizeThinkingGroup()
-          attachThinkingGroupToMessage('_approval_') // clears activeThinkingGroupId
+          attachThinkingGroupToMessage(approvalMsgId)
           addMessage({
-            id: generateId(),
+            id: approvalMsgId,
             role: 'system',
             content: `Approval needed: ${data.tool}`,
             timestamp: Date.now(),
@@ -317,6 +324,12 @@ export function useKopilotSSE({ pendingRequest, onRequestSent }: UseKopilotSSEOp
           break
         }
         case 'turn-error': {
+          // Finalize the in-flight thinking group BEFORE attaching it to the
+          // error bubble. `attachThinkingGroupToMessage` only stamps the
+          // messageId; without `finalizeThinkingGroup` first, `group.status`
+          // stays `'running'` and the pill renders `Working… (X/Y)` forever
+          // alongside a "Something went wrong" alert.
+          finalizeThinkingGroup()
           const leafId = getCurrentLeafId()
           const errorMsgId = generateId()
           addMessage({
@@ -328,11 +341,35 @@ export function useKopilotSSE({ pendingRequest, onRequestSent }: UseKopilotSSEOp
             error: data.error,
           })
           attachThinkingGroupToMessage(errorMsgId)
+          responderCommittedRef.current = true
           setIsStreaming(false)
           clearStream()
           break
         }
         case 'done': {
+          // Rescue an orphaned thinking group: when the model returns no
+          // content and no tool calls, the backend never emits `final-message`,
+          // so the active group never gets attached to a message and the
+          // "N steps completed" pill vanishes once isStreaming flips off.
+          // Attach it to a placeholder empty assistant message so the steps
+          // pill stays visible.
+          if (!responderCommittedRef.current) {
+            const store = useKopilotStore.getState()
+            if (store.activeThinkingGroupId) {
+              const leafId = getCurrentLeafId()
+              const msgId = generateId()
+              finalizeThinkingGroup()
+              addMessage({
+                id: msgId,
+                role: 'assistant',
+                content: '',
+                timestamp: Date.now(),
+                parentId: leafId,
+              })
+              attachThinkingGroupToMessage(msgId)
+              responderCommittedRef.current = true
+            }
+          }
           setIsStreaming(false)
           clearStream()
           break
@@ -365,6 +402,10 @@ export function useKopilotSSE({ pendingRequest, onRequestSent }: UseKopilotSSEOp
 
   const handleError = useCallback(
     (error: Error) => {
+      // Finalize and attach the in-flight group so the pill stops saying
+      // `Working…` once the connection drops mid-stream. Mirror the
+      // `turn-error` handler's shape.
+      finalizeThinkingGroup()
       const leafId = getCurrentLeafId()
       const errorMsgId = generateId()
       addMessage({
@@ -375,10 +416,19 @@ export function useKopilotSSE({ pendingRequest, onRequestSent }: UseKopilotSSEOp
         parentId: leafId,
         error: error.message,
       })
+      attachThinkingGroupToMessage(errorMsgId)
+      responderCommittedRef.current = true
       setIsStreaming(false)
       clearStream()
     },
-    [addMessage, getCurrentLeafId, setIsStreaming, clearStream]
+    [
+      addMessage,
+      getCurrentLeafId,
+      setIsStreaming,
+      clearStream,
+      finalizeThinkingGroup,
+      attachThinkingGroupToMessage,
+    ]
   )
 
   // When pendingRequest is set, build SSE config to trigger connection

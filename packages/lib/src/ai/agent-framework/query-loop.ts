@@ -233,6 +233,30 @@ export async function* agentQueryLoop(
         }
         currentState = await agent.processResult(finalContent, toolCalls, currentState, ctx)
       } else {
+        // Silent termination — model returned no content and no tool calls.
+        // Still emit `final-message` and persist a `metadata.final: true`
+        // responder anchor so the turn has a stable target for thinking-group
+        // attachment, refresh hydration, and feedback. Without this, the only
+        // assistant messages in the persisted array are executor messages
+        // (those carry tool_calls) and get filtered out by isExecutorAssistant.
+        yield { type: 'final-message', agent: agent.name, content: '' }
+        currentState = {
+          ...currentState,
+          messages: [
+            ...currentState.messages,
+            {
+              role: 'assistant' as const,
+              content: '',
+              reasoning_content: reasoningContent || undefined,
+              timestamp: Date.now(),
+              metadata: {
+                agent: agent.name,
+                modelId: `${callParams.provider}:${callParams.model}`,
+                final: true,
+              },
+            },
+          ],
+        }
         currentState = await agent.processResult(content, toolCalls, currentState, ctx)
       }
       break

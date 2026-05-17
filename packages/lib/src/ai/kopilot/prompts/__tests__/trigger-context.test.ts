@@ -57,6 +57,17 @@ describe('renderTriggerSection', () => {
     expect(out).toContain('Fired at: 2026-05-15T10:00:00.000Z')
   })
 
+  it('renders scheduled instructions when set', () => {
+    const out = renderTriggerSection({
+      kind: 'scheduled',
+      instructions: 'Post the digest to #support.',
+      payload: { kind: 'scheduled', firedAt: '2026-05-15T10:00:00.000Z' },
+    })
+    expect(out).toContain('Kind: `scheduled`')
+    expect(out).toContain('## Trigger instructions')
+    expect(out).toContain('Post the digest to #support.')
+  })
+
   it('renders the event block with record id', () => {
     const out = renderTriggerSection({
       kind: 'event',
@@ -72,6 +83,22 @@ describe('renderTriggerSection', () => {
     expect(out).toContain('Event type: `thread.created`')
     expect(out).toContain('Triggering record: `thread:th_9`')
     expect(out).toContain('domain state under `triggerResource`')
+  })
+
+  it('renders event instructions when set', () => {
+    const out = renderTriggerSection({
+      kind: 'event',
+      instructions: 'Draft a reply using the customer order history.',
+      payload: {
+        kind: 'event',
+        eventType: 'thread.created',
+        recordId: 'thread:th_9',
+        firedAt: '2026-05-15T10:00:00.000Z',
+      },
+    })
+    expect(out).toContain('Kind: `event`')
+    expect(out).toContain('## Trigger instructions')
+    expect(out).toContain('Draft a reply using the customer order history.')
   })
 
   it('renders the assignment block with thread record id', () => {

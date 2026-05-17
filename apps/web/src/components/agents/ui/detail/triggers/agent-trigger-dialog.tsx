@@ -102,6 +102,19 @@ function scheduledFromTrigger(trigger: Trigger): ScheduledState {
   }
 }
 
+function instructionsPlaceholder(kind: Kind): string {
+  switch (kind) {
+    case 'scheduled':
+      return 'e.g. "Summarize new tickets received since the last run and post to #support."'
+    case 'event':
+      return 'e.g. "When this resource is created, draft a reply using the customer\'s order history."'
+    case 'mention':
+      return 'e.g. "When @mentioned, draft a reply that matches the requested tone."'
+    case 'assignment':
+      return 'e.g. "When assigned, triage and answer or escalate to the right team."'
+  }
+}
+
 function eventStateFromTrigger(trigger: Trigger, fallbackEntityId: string): EventState {
   return {
     triggerType: (trigger.triggerType as CrudTriggerType) ?? 'created',
@@ -133,7 +146,7 @@ export function AgentTriggerDialog({
           ? 'assignment'
           : 'scheduled'
     : kind
-  const isInstructionsOnly = effectiveKind === 'mention' || effectiveKind === 'assignment'
+  const isBuiltinKind = effectiveKind === 'mention' || effectiveKind === 'assignment'
 
   const { resources } = useResources()
   const fallbackEntityId = resources[0]?.id ?? 'ticket'
@@ -264,14 +277,13 @@ export function AgentTriggerDialog({
     if (!triggerInput) return
 
     const trimmedInstructions = instructionsText.trim()
-    const instructions =
-      isInstructionsOnly && trimmedInstructions ? textToDoc(trimmedInstructions) : undefined
+    const instructions = trimmedInstructions ? textToDoc(trimmedInstructions) : null
 
     if (isEditMode && trigger) {
       update.mutate({
         id: trigger.id,
         trigger: triggerInput,
-        ...(isInstructionsOnly ? { instructions } : {}),
+        instructions,
       })
       return
     }
@@ -279,7 +291,7 @@ export function AgentTriggerDialog({
     create.mutate({
       agentId,
       trigger: triggerInput,
-      ...(isInstructionsOnly && instructions ? { instructions } : {}),
+      ...(instructions ? { instructions } : {}),
     })
   }
 
@@ -306,91 +318,97 @@ export function AgentTriggerDialog({
             <div className='rounded-md border bg-muted/30 p-4 text-sm text-muted-foreground'>
               App triggers can't be edited here. Manage them from the app catalog.
             </div>
-          ) : isInstructionsOnly ? (
-            <div className='space-y-2'>
+          ) : (
+            <div className='space-y-4'>
+              {effectiveKind === 'scheduled' ? (
+                <>
+                  <Field orientation='horizontal'>
+                    <FieldLabel>Mode</FieldLabel>
+                    <RadioTab
+                      value={scheduledState.mode}
+                      onValueChange={(v) => setScheduledMode(v as ScheduledMode)}
+                      size='sm'>
+                      <RadioTabItem value='simple' size='sm'>
+                        Simple
+                      </RadioTabItem>
+                      <RadioTabItem value='cron' size='sm'>
+                        Cron
+                      </RadioTabItem>
+                    </RadioTab>
+                  </Field>
+
+                  {scheduledState.mode === 'cron' ? (
+                    <TriggerCronEditor
+                      value={scheduledState.customCron}
+                      onChange={(customCron) =>
+                        setScheduledState((prev) => ({ ...prev, customCron }))
+                      }
+                    />
+                  ) : (
+                    <TriggerIntervalSelector
+                      interval={scheduledState.interval}
+                      value={scheduledState.value}
+                      onIntervalChange={(interval) =>
+                        setScheduledState((prev) => ({ ...prev, interval }))
+                      }
+                      onValueChange={(value) => setScheduledState((prev) => ({ ...prev, value }))}
+                    />
+                  )}
+                </>
+              ) : effectiveKind === 'event' ? (
+                <ResourceField
+                  title='Resource'
+                  description='Select the operation and type of resource for this trigger'>
+                  <VarEditorField className='px-0.5'>
+                    <div className='flex flex-row'>
+                      <div>
+                        <Select
+                          value={eventState.triggerType}
+                          onValueChange={(v) => setEventField('triggerType', v as CrudTriggerType)}>
+                          <SelectTrigger variant='outline' size='xs'>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {Object.entries(RESOURCE_OPERATIONS).map(([key, config]) => (
+                              <SelectItem key={key} value={key}>
+                                {config.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className='flex-1'>
+                        <ResourcePicker
+                          value={
+                            eventState.entityDefinitionId ? [eventState.entityDefinitionId] : []
+                          }
+                          onChange={(selected) =>
+                            setEventField('entityDefinitionId', selected[0] ?? '')
+                          }
+                          triggerProps={{ variant: 'transparent', className: 'w-full h-6 pe-2' }}
+                          emptyLabel='Select resource...'
+                        />
+                      </div>
+                    </div>
+                  </VarEditorField>
+                </ResourceField>
+              ) : null}
+
               <Field orientation='vertical'>
                 <FieldLabel>Instructions</FieldLabel>
                 <textarea
                   value={instructionsText}
                   onChange={(e) => setInstructionsText(e.target.value)}
                   rows={6}
-                  placeholder='Optional. Layered on top of the agent prompt when this trigger fires.'
+                  placeholder={instructionsPlaceholder(effectiveKind)}
                   className='w-full resize-y rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
                 />
               </Field>
             </div>
-          ) : effectiveKind === 'scheduled' ? (
-            <div className='space-y-4'>
-              <Field orientation='horizontal'>
-                <FieldLabel>Mode</FieldLabel>
-                <RadioTab
-                  value={scheduledState.mode}
-                  onValueChange={(v) => setScheduledMode(v as ScheduledMode)}
-                  size='sm'>
-                  <RadioTabItem value='simple' size='sm'>
-                    Simple
-                  </RadioTabItem>
-                  <RadioTabItem value='cron' size='sm'>
-                    Cron
-                  </RadioTabItem>
-                </RadioTab>
-              </Field>
-
-              {scheduledState.mode === 'cron' ? (
-                <TriggerCronEditor
-                  value={scheduledState.customCron}
-                  onChange={(customCron) => setScheduledState((prev) => ({ ...prev, customCron }))}
-                />
-              ) : (
-                <TriggerIntervalSelector
-                  interval={scheduledState.interval}
-                  value={scheduledState.value}
-                  onIntervalChange={(interval) =>
-                    setScheduledState((prev) => ({ ...prev, interval }))
-                  }
-                  onValueChange={(value) => setScheduledState((prev) => ({ ...prev, value }))}
-                />
-              )}
-            </div>
-          ) : (
-            <ResourceField
-              title='Resource'
-              description='Select the operation and type of resource for this trigger'>
-              <VarEditorField className='px-0.5'>
-                <div className='flex flex-row'>
-                  <div>
-                    <Select
-                      value={eventState.triggerType}
-                      onValueChange={(v) => setEventField('triggerType', v as CrudTriggerType)}>
-                      <SelectTrigger variant='outline' size='xs'>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {Object.entries(RESOURCE_OPERATIONS).map(([key, config]) => (
-                          <SelectItem key={key} value={key}>
-                            {config.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className='flex-1'>
-                    <ResourcePicker
-                      value={eventState.entityDefinitionId ? [eventState.entityDefinitionId] : []}
-                      onChange={(selected) =>
-                        setEventField('entityDefinitionId', selected[0] ?? '')
-                      }
-                      triggerProps={{ variant: 'transparent', className: 'w-full h-6 pe-2' }}
-                      emptyLabel='Select resource...'
-                    />
-                  </div>
-                </div>
-              </VarEditorField>
-            </ResourceField>
           )}
 
           <DialogFooter className='flex sm:justify-between!'>
-            {isEditMode && !isInstructionsOnly ? (
+            {isEditMode && !isBuiltinKind ? (
               <Button
                 type='button'
                 size='sm'
