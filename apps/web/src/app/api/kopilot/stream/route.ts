@@ -522,7 +522,11 @@ async function runInProcessPath(params: {
     }
   }
 
-  const agentConfig = await resolveAgentConfig(organizationId, agentId)
+  // Builder sessions run as master Kopilot with the agents-builder persona
+  // addition — the target agent is the subject of editing (passed via the
+  // `agent` active reference), not the persona to adopt. Passing its real
+  // agentConfig would render two competing "You are X." personas.
+  const agentConfig = await resolveAgentConfig(organizationId, isBuilder ? null : agentId)
   const resolvedPage = page ?? '__none__'
   // Pre-filter tools by the agent's enabled toolsets before handing them to
   // the domain config. Master sessions pass through untouched. Future filter

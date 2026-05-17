@@ -5,13 +5,9 @@
  * and the author-authored instructions body, and emits the persona slot
  * of the system prompt.
  *
- * No default scope-guard is injected — if the prompt author wants "only
- * help with X", they write it themselves. This keeps Phase 1 from having
- * to undo policy baked in here.
- *
- * Phase 0 ships this module with no live caller (master Kopilot uses
- * `buildKopilotMasterPersona` instead). Phase 1 wires it up against
- * `AgentConfig`.
+ * The shared `## House rules` scope guard (in `sections/house-rules.ts`)
+ * runs ahead of every agent — master and user-authored — so author-written
+ * guards stack on top of the house rules, not in place of them.
  */
 export function buildAgentPersonaPrompt(args: {
   agentName: string
@@ -21,7 +17,7 @@ export function buildAgentPersonaPrompt(args: {
 }): string {
   const { agentName, description, instructions } = args
   const descriptionLine = description?.trim() ? ` ${description.trim()}` : ''
-  return `You are ${agentName}.${descriptionLine}
-
-${instructions.trim()}`
+  const header = `You are ${agentName}.${descriptionLine}`
+  const body = instructions.trim()
+  return body ? `${header}\n\n${body}` : header
 }

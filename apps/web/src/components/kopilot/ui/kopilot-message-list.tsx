@@ -329,21 +329,36 @@ export function KopilotMessageList({
       // state ("Sent" / "Draft saved") without DOM swaps.
       const toolCallId = message.approval.toolCallId
       const matchingTool = messages.find((m) => m.tool?.callId === toolCallId)?.tool
+      // Thinking steps that ran before the approval gate fired get attached
+      // to this approval message id (see use-kopilot-sse.ts approval-required
+      // handler). Render the pill above the card so the user can see what
+      // led up to the approval request.
+      const attachedGroup = Object.values(thinkingGroups).find((g) => g.messageId === message.id)
       messageEl = (
-        <motion.div
-          initial={{ opacity: 0, scale: 0.95, y: 8 }}
-          animate={{ opacity: 1, scale: 1, y: 0 }}
-          transition={{ type: 'spring', stiffness: 400, damping: 25 }}>
-          <ApprovalCard
-            toolName={message.approval.toolName}
-            toolCallId={toolCallId}
-            args={message.approval.args}
-            status={message.approval.status}
-            digest={matchingTool?.digest}
-            onApprove={(inputAmendment) => handleApproval(message.id, 'approved', inputAmendment)}
-            onReject={() => handleApproval(message.id, 'rejected')}
-          />
-        </motion.div>
+        <div className='space-y-2'>
+          {attachedGroup && attachedGroup.steps.length > 0 && (
+            <div className='flex gap-2'>
+              <SparkleIcon />
+              <div className='min-w-0 flex-1'>
+                <ThinkingSteps group={attachedGroup} />
+              </div>
+            </div>
+          )}
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95, y: 8 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            transition={{ type: 'spring', stiffness: 400, damping: 25 }}>
+            <ApprovalCard
+              toolName={message.approval.toolName}
+              toolCallId={toolCallId}
+              args={message.approval.args}
+              status={message.approval.status}
+              digest={matchingTool?.digest}
+              onApprove={(inputAmendment) => handleApproval(message.id, 'approved', inputAmendment)}
+              onReject={() => handleApproval(message.id, 'rejected')}
+            />
+          </motion.div>
+        </div>
       )
     } else {
       switch (message.role) {

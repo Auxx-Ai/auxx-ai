@@ -591,11 +591,11 @@ export const entityIconVariants = cva('flex items-center justify-center shrink-0
       bare: 'text-current',
     },
     size: {
-      xs: 'size-4 [&_svg]:size-2.5!',
-      sm: 'size-5 [&_svg]:size-3.5!',
-      default: 'size-6 [&_svg]:size-4!',
-      lg: 'size-8 [&_svg]:size-4',
-      xl: 'size-10 [&_svg]:size-5',
+      xs: 'size-4 [&_svg]:size-2.5! [&_img]:size-2.5! [&_>span]:text-[10px]',
+      sm: 'size-5 [&_svg]:size-3.5! [&_img]:size-3.5! [&_>span]:text-[14px]',
+      default: 'size-6 [&_svg]:size-4! [&_img]:size-4! [&_>span]:text-[16px]',
+      lg: 'size-8 [&_svg]:size-4 [&_img]:size-4 [&_>span]:text-[16px]',
+      xl: 'size-10 [&_svg]:size-5 [&_img]:size-5 [&_>span]:text-[20px]',
     },
   },
   defaultVariants: {

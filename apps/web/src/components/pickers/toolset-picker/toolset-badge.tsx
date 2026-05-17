@@ -5,11 +5,13 @@
 import { flattenCatalogToToolsets } from '@auxx/lib/agents/client'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { cn } from '@auxx/ui/lib/utils'
+import type { VariantProps } from 'class-variance-authority'
 import { useMemo } from 'react'
+import { recordBadgeVariants } from '~/components/resources/ui/record-badge'
 import { AppIcon } from '~/components/workflow/ui/app-icon'
 import { api } from '~/trpc/react'
 
-interface ToolsetBadgeProps {
+interface ToolsetBadgeProps extends VariantProps<typeof recordBadgeVariants> {
   slug: string
   className?: string
 }
@@ -20,7 +22,7 @@ interface ToolsetBadgeProps {
  * tab). Falls back to the raw slug if the catalog hasn't loaded or the slug
  * is no longer in the catalog.
  */
-export function ToolsetBadge({ slug, className }: ToolsetBadgeProps) {
+export function ToolsetBadge({ slug, className, variant, size }: ToolsetBadgeProps) {
   const catalogQuery = api.agentToolset.list.useQuery(undefined, {
     staleTime: 60_000,
   })
@@ -35,16 +37,15 @@ export function ToolsetBadge({ slug, className }: ToolsetBadgeProps) {
 
   return (
     <span
-      className={cn(
-        'inline-flex items-center gap-1 rounded-[5px] bg-neutral-100 px-1 py-0 h-5 text-sm text-neutral-600 ring-1 ring-neutral-300 dark:bg-muted dark:text-neutral-100 dark:ring-neutral-800',
-        className
-      )}
-      data-slot='toolset-badge'>
-      <AppIcon iconId={iconId} color={color} size='sm' />
+      data-slot='toolset-badge'
+      className={cn(recordBadgeVariants({ variant, size }), className)}>
+      <AppIcon iconId={iconId} color={color} size='xs' />
       {catalogQuery.isLoading && !entry ? (
-        <Skeleton className='h-3 w-14 rounded-full' />
+        <Skeleton />
       ) : (
-        <span className='truncate max-w-[160px]'>{label}</span>
+        <span data-slot='record-display' className='truncate max-w-[160px]'>
+          {label}
+        </span>
       )}
     </span>
   )

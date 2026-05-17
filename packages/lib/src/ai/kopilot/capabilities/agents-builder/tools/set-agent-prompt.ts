@@ -24,20 +24,30 @@ export function createSetAgentPromptTool(getDeps: GetToolDeps): AgentToolDefinit
     description: `Replace the agent's persona prompt with a markdown document.
 
 The persona prompt is the agent's instructions: tone, role, constraints,
-escalation rules, and any \`@\`-references to toolsets / records / KB articles
-that seed its knowledge scope. The doc is shown to admins in the Prompt tab.
+escalation rules, and any \`@\`-references to tools / KB articles / people /
+records that seed its knowledge scope. The doc is shown to admins in the
+Prompt tab.
 
 Use standard markdown — headings, paragraphs, bullet / numbered lists,
-blockquotes, code fences, dividers. Inline \`@[<RecordId>]\` syntax embeds a
-reference chip (e.g. \`@[toolset:mail]\`, \`@[article:abc123]\`,
-\`@[user:def456]\`). The previous prompt is replaced wholesale.`,
+blockquotes, code fences, dividers. Inline \`@[<id>]\` syntax embeds a
+reference chip. Supported ids:
+  - \`@[tool:<name>]\` — a specific tool (e.g. \`@[tool:reply_to_thread]\`).
+    Use these EAGERLY — referencing a tool by name in the prompt makes the
+    chip render in the editor, and the runtime expands it to a backtick-quoted
+    tool name when this agent runs.
+  - \`@[article:<recordId>]\` — KB article.
+  - \`@[agent:<agentId>]\` — another agent in this workspace.
+  - \`@[user:<userId>]\` — a workspace teammate (not the agent itself).
+  - \`@[<defId>:<instId>]\` — any CRM record by its colon-joined recordId.
+
+The previous prompt is replaced wholesale.`,
     parameters: {
       type: 'object',
       properties: {
         markdown: {
           type: 'string',
           description:
-            'Full persona prompt as markdown. Headings, paragraphs, lists, blockquotes, code fences, and inline `@[<RecordId>]` references are supported. Replaces the previous prompt wholesale.',
+            'Full persona prompt as markdown. Headings, paragraphs, lists, blockquotes, code fences, and inline `@[<id>]` references (`tool:`, `article:`, `agent:`, `user:`, or a raw `<defId>:<instId>` record id) are supported. Replaces the previous prompt wholesale.',
           minLength: 1,
           maxLength: MARKDOWN_MAX_BYTES,
         },

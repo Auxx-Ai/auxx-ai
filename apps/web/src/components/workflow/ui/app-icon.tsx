@@ -82,7 +82,7 @@ export function AppIcon({
   if (parsed.type === 'url' || parsed.type === 'base64') {
     return (
       <div className={wrapperClassName} style={style} {...props}>
-        <img src={parsed.value} alt='' className='size-full object-contain' draggable={false} />
+        <img src={parsed.value} alt='' className='object-contain' draggable={false} />
       </div>
     )
   }

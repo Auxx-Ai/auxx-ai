@@ -13,7 +13,7 @@ import type {
 } from '../../agent-framework/types'
 import type { Message, ToolCall } from '../../clients/base/types'
 import { transformAssistantContentForLLM } from '../blocks/transform-for-llm'
-import { buildKopilotPrompt } from '../prompts/build-kopilot-prompt'
+import { buildKopilotPromptSerialized } from '../prompts/build-kopilot-prompt'
 import { buildInstructionReferenceResolver } from '../prompts/resolve-instruction-references'
 import type { CurrentUserInfo } from '../prompts/shared-types'
 import type { TriggerContext } from '../prompts/trigger-context'
@@ -103,7 +103,7 @@ export function createKopilotAgent(
         ? buildInstructionReferenceResolver({ toolCatalog, toolsetCatalog })
         : undefined
 
-      const systemPrompt = buildKopilotPrompt({
+      const systemPrompt = buildKopilotPromptSerialized({
         domainState: state.domainState,
         entityCatalog,
         capabilities,

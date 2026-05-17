@@ -39,24 +39,23 @@ export function renderTriggerSection(
   if (!triggerContext) return ''
 
   const blocks: string[] = []
-  blocks.push(renderKindBlock(triggerContext))
+  blocks.push(renderTriggerKindBlock(triggerContext))
 
   if (options.agentUserId) {
-    blocks.push(
-      `## Acting as\n\nactor:user:${options.agentUserId} — use this id on ACTOR-typed fields (assignee, owner, ownership-style custom fields) when the trigger instructions tell you to take ownership or self-assign.`
-    )
+    blocks.push(renderTriggerActingAs(options.agentUserId))
   }
 
   if (triggerContext.instructions?.trim()) {
-    blocks.push(`## Trigger instructions\n\n${triggerContext.instructions.trim()}`)
+    blocks.push(renderTriggerInstructions(triggerContext.instructions))
   }
 
-  blocks.push(renderRunModeBanner(triggerContext.kind))
+  blocks.push(renderTriggerRunModeBanner(triggerContext.kind))
 
   return `\n${blocks.join('\n\n')}\n`
 }
 
-function renderKindBlock(triggerContext: TriggerContext): string {
+/** "## Trigger fired" block — per-turn payload (timestamps, ids). */
+export function renderTriggerKindBlock(triggerContext: TriggerContext): string {
   const { kind, payload } = triggerContext
   switch (kind) {
     case 'scheduled':
@@ -159,7 +158,18 @@ function renderAssignmentBlock(payload: Record<string, unknown>): string {
   return lines.join('\n')
 }
 
-function renderRunModeBanner(kind: TriggerKind): string {
+/** "## Acting as" block — per-agent, identifies the actor used on write tools. */
+export function renderTriggerActingAs(agentUserId: string): string {
+  return `## Acting as\n\nactor:user:${agentUserId} — use this id on ACTOR-typed fields (assignee, owner, ownership-style custom fields) when the trigger instructions tell you to take ownership or self-assign.`
+}
+
+/** "## Trigger instructions" block — per-agent, the operator's authored instructions. */
+export function renderTriggerInstructions(instructions: string): string {
+  return `## Trigger instructions\n\n${instructions.trim()}`
+}
+
+/** "## Run mode" block — per-trigger-kind banner; static prose per kind. */
+export function renderTriggerRunModeBanner(kind: TriggerKind): string {
   return `## Run mode
 
 You are running autonomously, fired by a \`${kind}\` trigger. No human is reading this turn. The user message ("Trigger fired. Follow your trigger instructions.") is a system nudge — your real intent is the **Trigger instructions** section above (or, if none were configured, infer from the **Trigger fired** context).

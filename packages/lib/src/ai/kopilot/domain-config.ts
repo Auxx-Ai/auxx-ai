@@ -87,15 +87,21 @@ export function createKopilotDomainConfig(
       ? capabilityRegistry.getTools(page)
       : []
 
+  const excludedGlobalTools =
+    !tools && capabilityRegistry && page ? capabilityRegistry.getExcludedGlobalToolNames(page) : []
+
   logger.info('Resolved tools', {
     page,
     source: tools ? 'caller' : 'registry',
     resolvedToolCount: resolvedTools.length,
     toolNames: resolvedTools.map((t) => t.name),
+    excludedGlobalToolCount: excludedGlobalTools.length,
+    excludedGlobalTools,
   })
 
-  const capabilities = capabilityRegistry?.getCapabilitiesSummary() ?? []
   const resolvedToolNames = new Set(resolvedTools.map((t) => t.name))
+  const capabilities =
+    capabilityRegistry?.getCapabilitiesSummary({ toolNames: resolvedToolNames }) ?? []
   const toolsetPromptAdditions =
     capabilityRegistry && page
       ? (capabilityRegistry.getSystemPromptAddition(page, { toolNames: resolvedToolNames }) ?? '')
