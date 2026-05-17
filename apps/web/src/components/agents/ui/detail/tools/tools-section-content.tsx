@@ -9,7 +9,12 @@ import { useCallback, useMemo, useState } from 'react'
 import { api } from '~/trpc/react'
 import type { AgentDetail } from '../../../store/agent-store'
 import type { AutosaveState } from '../../shared/autosave-indicator'
-import { CatalogNodeRow, pruneToInstalled, type ToolsetRowState } from './catalog-node-row'
+import {
+  CatalogNodeRow,
+  collectLeaves,
+  pruneToInstalled,
+  type ToolsetRowState,
+} from './catalog-node-row'
 import { useToolsetMutations } from './use-toolset-mutations'
 
 interface ToolsSectionContentProps {
@@ -43,7 +48,11 @@ export function ToolsSectionContent({
     [onAutosaveChange]
   )
 
-  const { toggleToolset } = useToolsetMutations(agent.id, agent.slug, handleSavingChange)
+  const { toggleToolset, toggleToolsets } = useToolsetMutations(
+    agent.id,
+    agent.slug,
+    handleSavingChange
+  )
 
   const stateBySlug = useMemo<Map<string, ToolsetRowState>>(() => {
     const map = new Map<string, ToolsetRowState>()
@@ -90,10 +99,22 @@ export function ToolsSectionContent({
   )
 
   const handleRemove = useCallback(
-    (slug: string) => {
-      void toggleToolset(slug, false)
+    (node: CatalogNode) => {
+      const changes: Array<{ slug: string; enabled: boolean }> = []
+      for (const leaf of collectLeaves(node)) {
+        const state = stateBySlug.get(leaf.slug)
+        if ((state?.source ?? 'manual') !== 'manual') continue
+        if (!state?.enabled) continue
+        changes.push({ slug: leaf.slug, enabled: false })
+      }
+      if (changes.length === 0) return
+      if (changes.length === 1) {
+        void toggleToolset(changes[0].slug, false)
+        return
+      }
+      void toggleToolsets(changes)
     },
-    [toggleToolset]
+    [stateBySlug, toggleToolset, toggleToolsets]
   )
 
   if (catalogQuery.isLoading || !catalogQuery.data) {
@@ -135,8 +156,7 @@ export function ToolsSectionContent({
           stateBySlug={stateBySlug}
           collapsed={collapsed}
           onToggleCollapsed={toggleCollapsed}
-          variant='installed'
-          onLeafRemove={handleRemove}
+          onRemove={handleRemove}
           onAddToApp={onAddToApp}
         />
       ))}

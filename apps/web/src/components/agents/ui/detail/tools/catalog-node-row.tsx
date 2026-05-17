@@ -2,28 +2,18 @@
 'use client'
 
 import type { CatalogNode, CatalogToolsetNode } from '@auxx/lib/agents/client'
-import { Button } from '@auxx/ui/components/button'
-import { Switch } from '@auxx/ui/components/switch'
 import { TreeRow } from '@auxx/ui/components/tree-row'
 import { pluralize } from '@auxx/utils/strings'
 import { Lock, Plus } from 'lucide-react'
 import { Tooltip } from '~/components/global/tooltip'
 import { AppIcon } from '~/components/workflow/ui/app-icon'
+import { RemoveButton } from './remove-button'
 import { ToolsetRow } from './toolset-row'
 
 export type ToolsetRowState = {
   enabled: boolean
   source: 'manual' | 'mention' | 'auto_default'
 }
-
-/**
- * `'editor'` shows cascading Switches on containers and per-toolset Switches
- * on leaves — used by the Tool-Select dialog when we want a one-step add/remove
- * surface. `'installed'` shows a `{n} tools` chip on containers (no cascade
- * Switch) and a Trash button on leaves — used by the installed-tools section
- * where the Add-tools dialog is the source of additions.
- */
-export type CatalogNodeVariant = 'editor' | 'installed'
 
 interface CatalogNodeRowProps {
   node: CatalogNode
@@ -36,24 +26,23 @@ interface CatalogNodeRowProps {
   /** Presence = collapsed. Stable Set instance — child reads `.has()`. */
   collapsed: Set<string>
   onToggleCollapsed: (id: string) => void
-  variant?: CatalogNodeVariant
-  /** Required when `variant === 'editor'`. */
-  onCascadeToggle?: (node: CatalogNode, nextEnabled: boolean) => void
-  /** Required when `variant === 'editor'`. */
-  onLeafToggle?: (slug: string, enabled: boolean) => void
-  /** Required when `variant === 'installed'`. */
-  onLeafRemove?: (slug: string) => void
   /**
-   * Optional — when supplied + `variant === 'installed'`, app-kind rows render
-   * an "Add" button next to their tools count that invokes this with the app's
-   * node id.
+   * Trash handler. For a toolset leaf, called with the leaf; for a container,
+   * called with the container (the consumer is expected to bulk-remove every
+   * removable descendant). Container trash auto-disables when any descendant
+   * is locked.
+   */
+  onRemove?: (node: CatalogNode) => void
+  /**
+   * Optional — when supplied, app-kind container rows render an "Add" button
+   * next to their tools count that invokes this with the app's node id.
    */
   onAddToApp?: (appId: string) => void
 }
 
 /**
- * One row of the Tools tab tree. Recursive — apps and sub-groups render the
- * same way and recurse into `children`; toolsets render via `ToolsetRow`.
+ * One row of the installed-tools tree. Recursive — apps and sub-groups render
+ * the same way and recurse into `children`; toolsets render via `ToolsetRow`.
  * Inherited icon/color cascades down the tree so a toolset without its own
  * iconId picks up the app's. See
  * `plans/kopilot/agents/tools/recursive-catalog-node.md`.
@@ -66,10 +55,7 @@ export function CatalogNodeRow({
   stateBySlug,
   collapsed,
   onToggleCollapsed,
-  variant = 'editor',
-  onCascadeToggle,
-  onLeafToggle,
-  onLeafRemove,
+  onRemove,
   onAddToApp,
 }: CatalogNodeRowProps) {
   const iconId = node.iconId ?? inheritedIconId
@@ -80,17 +66,13 @@ export function CatalogNodeRow({
     return (
       <ToolsetRow
         depth={depth}
-        slug={node.slug}
         label={node.label}
         iconId={iconId}
         color={color}
         description={node.description}
         toolCount={node.tools.length}
-        enabled={state.enabled}
         source={state.source}
-        variant={variant}
-        onToolsetToggle={onLeafToggle}
-        onToolsetRemove={onLeafRemove}
+        onRemove={onRemove ? () => onRemove(node) : undefined}
       />
     )
   }
@@ -103,26 +85,16 @@ export function CatalogNodeRow({
       depth={depth}
       icon={<AppIcon iconId={iconId} color={color ?? undefined} size='sm' />}
       title={node.label}
+      secondary={`${stats.enabled} ${pluralize(stats.enabled, 'tool')}`}
       expandable
       isOpen={isOpen}
       onToggleOpen={() => onToggleCollapsed(node.id)}
       actions={
-        variant === 'editor' ? (
-          <ContainerEditorActions
-            stats={stats}
-            onToggle={(next) => onCascadeToggle?.(node, next)}
-            lockedMessage={
-              node.kind === 'app'
-                ? 'Locked — every toolset in this app is referenced in instructions.'
-                : 'Locked — every toolset in this sub-group is referenced in instructions.'
-            }
-          />
-        ) : (
-          <ContainerInstalledStats
-            stats={stats}
-            onAdd={node.kind === 'app' && onAddToApp ? () => onAddToApp(node.id) : undefined}
-          />
-        )
+        <ContainerInstalledStats
+          stats={stats}
+          onAdd={node.kind === 'app' && onAddToApp ? () => onAddToApp(node.id) : undefined}
+          onRemove={onRemove ? () => onRemove(node) : undefined}
+        />
       }>
       {node.children.map((child) => (
         <CatalogNodeRow
@@ -134,10 +106,7 @@ export function CatalogNodeRow({
           stateBySlug={stateBySlug}
           collapsed={collapsed}
           onToggleCollapsed={onToggleCollapsed}
-          variant={variant}
-          onCascadeToggle={onCascadeToggle}
-          onLeafToggle={onLeafToggle}
-          onLeafRemove={onLeafRemove}
+          onRemove={onRemove}
           onAddToApp={onAddToApp}
         />
       ))}
@@ -148,8 +117,15 @@ export function CatalogNodeRow({
 interface ContainerStats {
   total: number
   enabled: number
-  toggleable: number
+  /** Count of `source === 'manual'` leaves — the only ones that can be removed. */
+  removable: number
+  /** Count of `source === 'mention'` leaves — locked by prompt @-mentions. */
   locked: number
+  /**
+   * Dominant lock kind to surface in the disabled-trash tooltip. `mention`
+   * wins over `auto_default` so the user sees the more actionable message.
+   */
+  lockKind: 'mention' | 'auto_default' | null
 }
 
 function summarizeContainer(
@@ -158,42 +134,37 @@ function summarizeContainer(
 ): ContainerStats {
   let total = 0
   let enabled = 0
-  let toggleable = 0
+  let removable = 0
+  let locked = 0
+  let hasMention = false
+  let hasAutoDefault = false
   for (const leaf of collectLeaves(node)) {
     total++
     const state = stateBySlug.get(leaf.slug)
+    const source = state?.source ?? 'manual'
     if (state?.enabled) enabled++
-    if ((state?.source ?? 'manual') !== 'mention') toggleable++
+    if (source === 'manual') removable++
+    if (source === 'mention') {
+      locked++
+      hasMention = true
+    }
+    if (source === 'auto_default') hasAutoDefault = true
   }
-  return { total, enabled, toggleable, locked: total - toggleable }
+  return {
+    total,
+    enabled,
+    removable,
+    locked,
+    lockKind: hasMention ? 'mention' : hasAutoDefault ? 'auto_default' : null,
+  }
 }
 
-function* collectLeaves(node: CatalogNode): IterableIterator<CatalogToolsetNode> {
+export function* collectLeaves(node: CatalogNode): IterableIterator<CatalogToolsetNode> {
   if (node.kind === 'toolset') {
     yield node
     return
   }
   for (const child of node.children) yield* collectLeaves(child)
-}
-
-/**
- * Walk the subtree and return the toolset toggles that would change as a
- * result of cascading `nextEnabled`. Skips mention-locked rows and rows that
- * already match the desired state.
- */
-export function collectToggleable(
-  node: CatalogNode,
-  stateBySlug: Map<string, ToolsetRowState>,
-  nextEnabled: boolean
-): Array<{ slug: string; enabled: boolean }> {
-  const targets: Array<{ slug: string; enabled: boolean }> = []
-  for (const leaf of collectLeaves(node)) {
-    const state = stateBySlug.get(leaf.slug)
-    if ((state?.source ?? 'manual') === 'mention') continue
-    if ((state?.enabled ?? false) === nextEnabled) continue
-    targets.push({ slug: leaf.slug, enabled: nextEnabled })
-  }
-  return targets
 }
 
 /**
@@ -241,77 +212,53 @@ function pruneNode(
   return { ...node, children }
 }
 
-function ContainerEditorActions({
+function ContainerInstalledStats({
   stats,
-  onToggle,
-  lockedMessage,
+  onAdd,
+  onRemove,
 }: {
   stats: ContainerStats
-  onToggle: (next: boolean) => void
-  lockedMessage: string
+  onAdd?: () => void
+  onRemove?: () => void
 }) {
-  const allLocked = stats.locked > 0 && stats.toggleable === 0
-  const groupSwitch = (
-    <Switch
-      size='xs'
-      checked={stats.enabled > 0}
-      disabled={stats.toggleable === 0}
-      onCheckedChange={(checked) => onToggle(checked)}
-    />
-  )
-  return (
-    <div className='flex items-center gap-2'>
-      <span className='text-xs text-muted-foreground'>
-        {stats.enabled}/{stats.total} {pluralize(stats.total, 'tool')}
-      </span>
-      {stats.locked > 0 && (
-        <Tooltip
-          side='left'
-          content={`${stats.locked} locked by ${pluralize(stats.locked, 'mention')} in instructions.`}>
-          <span className='inline-flex items-center gap-0.5 text-[11px] text-muted-foreground'>
-            <Lock className='size-3' />
-            {stats.locked}
-          </span>
-        </Tooltip>
-      )}
-      {allLocked ? (
-        <Tooltip side='left' content={lockedMessage}>
-          <span className='inline-flex opacity-60'>{groupSwitch}</span>
-        </Tooltip>
-      ) : (
-        groupSwitch
-      )}
-    </div>
-  )
-}
+  const allRemovable = stats.total > 0 && stats.removable === stats.total
+  const lockedTooltip =
+    stats.lockKind === 'mention'
+      ? 'Locked — referenced in instructions. Remove the @-mention to unlock.'
+      : 'Default toolset — always available.'
 
-function ContainerInstalledStats({ stats, onAdd }: { stats: ContainerStats; onAdd?: () => void }) {
   return (
-    <div className='flex items-center gap-2'>
-      <span className='text-xs text-muted-foreground'>
-        {stats.enabled} {pluralize(stats.enabled, 'tool')}
-      </span>
+    <div className='flex items-center'>
       {stats.locked > 0 && (
         <Tooltip
           side='left'
           content={`${stats.locked} locked by ${pluralize(stats.locked, 'mention')} in instructions.`}>
-          <span className='inline-flex items-center gap-0.5 text-[11px] text-muted-foreground'>
+          <span className='inline-flex items-center gap-0.5 text-[11px] text-muted-foreground me-2'>
             <Lock className='size-3' />
             {stats.locked}
           </span>
         </Tooltip>
       )}
       {onAdd && (
-        <Button
-          size='icon-xs'
-          variant='ghost'
-          aria-label='Add tools to this app'
-          onClick={(e) => {
-            e.stopPropagation()
-            onAdd()
-          }}>
-          <Plus />
-        </Button>
+        <Tooltip side='left' content='Add tools to this app'>
+          <button
+            type='button'
+            onClick={(e) => {
+              e.stopPropagation()
+              onAdd()
+            }}
+            className='p-1 rounded-md hover:bg-primary-100 opacity-0 group-hover/tree-row:opacity-100'
+            aria-label='Add tools to this app'>
+            <Plus className='size-4 text-muted-foreground hover:text-foreground' />
+          </button>
+        </Tooltip>
+      )}
+      {onRemove && (
+        <RemoveButton
+          enabled={allRemovable}
+          tooltip={allRemovable ? 'Remove all tools' : lockedTooltip}
+          onClick={onRemove}
+        />
       )}
     </div>
   )

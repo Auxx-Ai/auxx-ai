@@ -14,6 +14,8 @@ export interface TreeRowProps {
   title: React.ReactNode
   /** Help-icon tooltip rendered next to the title (e.g. a slug or tool description). */
   description?: string
+  /** Secondary text rendered to the right of the description. */
+  secondary?: React.ReactNode
   /** Right-side slot — switch, badge cluster, count text, etc. */
   actions?: React.ReactNode
   /** Escape hatch — full custom trailing content; if set, replaces `actions` + chevron. */
@@ -56,6 +58,7 @@ export function TreeRow({
   icon,
   title,
   description,
+  secondary,
   actions,
   trailing,
   depth = 0,
@@ -115,6 +118,9 @@ export function TreeRow({
 
             {titleNode}
             {description && <TooltipExplanation text={description} className='text-primary-400' />}
+            {secondary && (
+              <span className='ml-1 truncate text-primary-400 text-sm'>{secondary}</span>
+            )}
 
             {expandable && (
               <button
