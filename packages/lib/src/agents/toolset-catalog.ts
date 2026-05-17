@@ -101,6 +101,8 @@ export interface CatalogToolsetNode extends CatalogNodeBase {
   /** One-line tooltip copy shown on the leaf row's help icon. */
   description: string
   isDefault: boolean
+  /** Curated for the Tool-Select dialog's "Popular tools" group. */
+  isPopular: boolean
   tools: ToolCatalogEntry[]
 }
 
@@ -183,6 +185,7 @@ interface ToolsetInput {
   iconId: string | null
   color: string | null
   isDefault: boolean
+  isPopular: boolean
   description: string
   subGroup: string | null
   /** Sub-group header icon; first non-null across same-subGroup rows wins. */
@@ -230,6 +233,7 @@ async function buildOrgCatalogTree(organizationId: string): Promise<CatalogNode[
         iconId: meta.iconId,
         color: meta.color,
         isDefault: meta.isDefault,
+        isPopular: meta.isPopular,
         description: meta.description,
         subGroup: meta.subGroup,
         subGroupIconId: meta.subGroupIconId,
@@ -277,6 +281,9 @@ async function buildOrgCatalogTree(organizationId: string): Promise<CatalogNode[
           iconId: ts.iconKey ?? null,
           color: null,
           isDefault: ts.isDefault,
+          // SDK doesn't expose `isPopular` yet — third-party toolsets default
+          // to false. Deferred to a future SDK-side iteration.
+          isPopular: false,
           description: ts.description ?? '',
           subGroup: ts.subGroup ?? null,
           // App-side sub-group icon/color stays inherited from the app row.
@@ -367,6 +374,7 @@ function toToolsetNode(ts: ToolsetInput): CatalogToolsetNode {
     color: ts.color,
     description: ts.description,
     isDefault: ts.isDefault,
+    isPopular: ts.isPopular,
     tools: [...ts.tools].sort((a, b) => a.name.localeCompare(b.name)),
   }
 }

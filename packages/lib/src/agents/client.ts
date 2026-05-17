@@ -44,6 +44,8 @@ export interface CatalogToolsetNode extends CatalogNodeBase {
   /** One-line tooltip copy shown on the leaf row's help icon. */
   description: string
   isDefault: boolean
+  /** Curated for the Tool-Select dialog's "Popular tools" group. */
+  isPopular: boolean
   tools: ToolCatalogEntry[]
 }
 
@@ -66,6 +68,9 @@ export interface FlatToolsetCatalogEntry {
   color: string
   /** Ordered ancestor labels, top-down. */
   path: string[]
+  isDefault: boolean
+  /** Curated for the Tool-Select dialog's "Popular tools" group. */
+  isPopular: boolean
   tools: ToolCatalogEntry[]
 }
 
@@ -95,6 +100,8 @@ export function flattenCatalogToToolsets(roots: CatalogNode[]): FlatToolsetCatal
         iconId,
         color,
         path: pathLabels,
+        isDefault: node.isDefault,
+        isPopular: node.isPopular,
         tools: node.tools,
       })
       return
