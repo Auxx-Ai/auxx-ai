@@ -2,7 +2,7 @@
 import { database as db, schema } from '@auxx/database'
 import type { MediaAsset } from '@auxx/database/types'
 import { and, desc, eq, isNull } from 'drizzle-orm'
-import { getOrgCache } from '../../../cache'
+import { getOrgCache, isAgentUser } from '../../../cache'
 import { isAdminOrOwner } from '../../../members/member-queries'
 import { MemberService } from '../../../members/member-service'
 import { ensureThumbnailPresets } from '../../core/thumbnail-batch'
@@ -173,14 +173,7 @@ export class UserProfileProcessor extends BaseAssetProcessor {
     // User backing an Agent in this org and the caller is an org admin
     // (owner or admin role). This is what powers the agent-avatar uploader
     // in the agent hero — agents share the User.avatarAssetId pipeline.
-    const [agent] = await db
-      .select({ id: schema.Agent.id })
-      .from(schema.Agent)
-      .where(
-        and(eq(schema.Agent.userId, entityId), eq(schema.Agent.organizationId, organizationId))
-      )
-      .limit(1)
-    if (!agent) {
+    if (!(await isAgentUser(organizationId, entityId))) {
       throw new Error("Cannot upload to another user's profile")
     }
     const callerIsAdmin = await isAdminOrOwner(organizationId, userId)

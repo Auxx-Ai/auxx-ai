@@ -91,6 +91,27 @@ export interface DehydratedOrgProfile {
   demoExpiresAt: string | null
 }
 
+/** Cached AgentTrigger row (JSON-serializable). Mirrors the dispatch-relevant
+ * columns from `AgentTrigger`. Fields that change on every fire
+ * (`lastFiredAt`, `lastErrorAt`, `lastError`, `updatedAt`) are intentionally
+ * omitted so `recordFire`/`recordError` writes never need to bust the cache.
+ *
+ * When adding new dispatch-relevant columns to the schema, mirror them here. */
+export interface CachedAgentTrigger {
+  id: string
+  kind: 'scheduled' | 'event' | 'app' | 'mention' | 'assignment' | 'dm'
+  enabled: boolean
+  triggerType: 'created' | 'updated' | 'deleted' | null
+  entityDefinitionId: string | null
+  eventType: string | null
+  triggerAppId: string | null
+  triggerAppTriggerId: string | null
+  triggerInstallationId: string | null
+  triggerConnectionId: string | null
+  config: Record<string, unknown> | null
+  instructions: Record<string, unknown> | null
+}
+
 /** Cached agent (JSON-serializable) */
 export interface CachedAgent {
   id: string
@@ -119,11 +140,13 @@ export interface CachedAgent {
   setupCompletedAt: string | null
   /** ISO string when archived; null when active. */
   archivedAt: string | null
-  /** Whether direct messages to this agent are enabled. Mirrors the `dm` AgentTrigger row. */
+  /** All AgentTrigger rows owned by this agent (active + disabled). Consumers filter. */
+  triggers: CachedAgentTrigger[]
+  /** Derived from triggers — whether direct messages to this agent are enabled. */
   dmEnabled: boolean
-  /** Per-DM trigger instructions (Tiptap doc); null when the `dm` row has no addendum. */
+  /** Derived from triggers — DM trigger instructions (Tiptap doc); null if no addendum. */
   dmInstructions: Record<string, unknown> | null
-  /** AgentTrigger.id for the `dm` row; null only if the row is missing (pre-existing dev agent). */
+  /** Derived from triggers — AgentTrigger.id for the `dm` row; null only if the row is missing. */
   dmTriggerId: string | null
   /**
    * Optional identity/presentation bag — see `AgentConfig`. During draft

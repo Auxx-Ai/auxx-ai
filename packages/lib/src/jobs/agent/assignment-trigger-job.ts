@@ -1,12 +1,11 @@
 // packages/lib/src/jobs/agent/assignment-trigger-job.ts
 
-import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { createSession } from '@auxx/services'
 import type { Job } from 'bullmq'
-import { and, eq } from 'drizzle-orm'
 import { enqueueAgentJob } from '../../ai/agent-framework/enqueue-agent-job'
 import { buildTriggerSeedMessage } from '../../ai/agent-framework/trigger-seed-message'
+import { getCachedAgentById } from '../../cache'
 
 const logger = createScopedLogger('agent-assignment-trigger-job')
 
@@ -29,38 +28,23 @@ export async function executeAgentAssignmentTrigger(job: Job<AgentAssignmentTrig
   const { agentTriggerId, agentId, organizationId, threadRecordId, assignerUserId, firedAt } =
     job.data
 
-  const [trigger] = await db
-    .select()
-    .from(schema.AgentTrigger)
-    .where(
-      and(
-        eq(schema.AgentTrigger.id, agentTriggerId),
-        eq(schema.AgentTrigger.organizationId, organizationId)
-      )
-    )
-    .limit(1)
+  const agent = await getCachedAgentById(organizationId, agentId)
+  if (!agent || agent.archivedAt) {
+    logger.warn('Agent missing or archived for assignment trigger', { agentTriggerId })
+    return { skipped: true as const, reason: 'agent-missing' as const }
+  }
+  if (!agent.userId) {
+    logger.warn('Agent has not completed setup — skipping assignment trigger', { agentTriggerId })
+    return { skipped: true as const, reason: 'agent-not-ready' as const }
+  }
 
+  const trigger = agent.triggers.find((t) => t.id === agentTriggerId)
   if (!trigger || !trigger.enabled || trigger.kind !== 'assignment') {
     logger.warn('Stale agent assignment trigger — skipping', {
       agentTriggerId,
       reason: !trigger ? 'missing' : !trigger.enabled ? 'disabled' : 'wrong-kind',
     })
     return { skipped: true as const, reason: 'invalid-trigger' as const }
-  }
-
-  const [agent] = await db
-    .select({ id: schema.Agent.id, userId: schema.Agent.userId, modelId: schema.Agent.modelId })
-    .from(schema.Agent)
-    .where(and(eq(schema.Agent.id, agentId), eq(schema.Agent.organizationId, organizationId)))
-    .limit(1)
-
-  if (!agent) {
-    logger.warn('Agent missing for assignment trigger', { agentTriggerId })
-    return { skipped: true as const, reason: 'agent-missing' as const }
-  }
-  if (!agent.userId) {
-    logger.warn('Agent has not completed setup — skipping assignment trigger', { agentTriggerId })
-    return { skipped: true as const, reason: 'agent-not-ready' as const }
   }
 
   const sessionResult = await createSession({

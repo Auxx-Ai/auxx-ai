@@ -36,12 +36,7 @@ export {
 } from './agent-toolset-service'
 export type { AgentToolsetConfig } from './agent-toolset-types'
 export { getTriggerLabel } from './agent-trigger-label'
-export {
-  getAgentTriggersByApp,
-  getAgentTriggersByCrudEvent,
-  getAgentTriggersByDirectEvent,
-  matchesFilter,
-} from './agent-trigger-queries'
+export { matchesFilter } from './agent-trigger-queries'
 export {
   type AgentEventTriggerType,
   type AgentTriggerInput,

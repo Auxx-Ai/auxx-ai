@@ -1,15 +1,8 @@
 // packages/lib/src/events/handlers/trigger-agents.ts
 
-import { database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { and, eq } from 'drizzle-orm'
-import {
-  getAgentTriggersByAssignment,
-  getAgentTriggersByCrudEvent,
-  getAgentTriggersByDirectEvent,
-  getAgentTriggersByMention,
-  matchesFilter,
-} from '../../agents/agent-trigger-queries'
+import { matchesFilter } from '../../agents/agent-trigger-queries'
+import { getCachedAgents } from '../../cache'
 import { getQueue } from '../../jobs/queues'
 import { Queues } from '../../jobs/queues/types'
 import { fetchResourceById } from '../../resources/resource-fetcher'
@@ -25,11 +18,14 @@ const logger = createScopedLogger('trigger-agents')
  * and enqueue an autonomous agent run for each.
  *
  * Two independent branches:
- *   1. CRUD: reuse `getResourceTriggerMatch` and query by `{triggerType, entityDefinitionId}`.
- *   2. Direct: query by `eventType` literal.
+ *   1. CRUD: reuse `getResourceTriggerMatch` and match by `{triggerType, entityDefinitionId}`.
+ *   2. Direct: match by `eventType` literal.
  *
  * The two branches are independent; one event may match both kinds of
  * triggers, but a single row only ever hits one branch (column-driven mode).
+ *
+ * All trigger reads come from the org `agents` cache — see
+ * plans/kopilot/agents/cache/plan.md.
  */
 export const triggerAgents = async ({ data: event }: { data: AuxxEvent }) => {
   const organizationId = (event.data as { organizationId?: string }).organizationId
@@ -38,30 +34,41 @@ export const triggerAgents = async ({ data: event }: { data: AuxxEvent }) => {
     return
   }
 
+  const agents = await getCachedAgents(organizationId)
   const queue = getQueue(Queues.scheduledTriggerQueue)
   let totalFired = 0
 
   // CRUD branch
   const match = getResourceTriggerMatch(event)
   if (match) {
-    const crudTriggers = await getAgentTriggersByCrudEvent({
-      organizationId,
-      triggerType: match.triggerType,
-      entityDefinitionId: match.entityDefinitionId,
-    })
+    const crudMatches: Array<{
+      agentId: string
+      triggerId: string
+      filter: Record<string, unknown> | undefined
+    }> = []
+    for (const agent of agents) {
+      for (const trigger of agent.triggers) {
+        if (trigger.kind !== 'event' || !trigger.enabled) continue
+        if (trigger.triggerType !== match.triggerType) continue
+        if (trigger.entityDefinitionId !== match.entityDefinitionId) continue
+        crudMatches.push({
+          agentId: agent.id,
+          triggerId: trigger.id,
+          filter: (trigger.config as { filter?: Record<string, unknown> } | null)?.filter,
+        })
+      }
+    }
 
-    if (crudTriggers.length > 0) {
+    if (crudMatches.length > 0) {
       const recordId = getEventRecordId(event, match)
       const resourceData = recordId ? await fetchResourceById(recordId, organizationId) : null
       const payload = (resourceData ?? event.data) as Record<string, unknown>
 
-      for (const trigger of crudTriggers) {
-        const filter = (trigger.config as { filter?: Record<string, unknown> }).filter
-        if (!matchesFilter(filter, payload)) continue
-
+      for (const m of crudMatches) {
+        if (!matchesFilter(m.filter, payload)) continue
         await queue.add('executeAgentEventTrigger', {
-          agentTriggerId: trigger.id,
-          agentId: trigger.agentId,
+          agentTriggerId: m.triggerId,
+          agentId: m.agentId,
           organizationId,
           eventType: event.type,
           recordId,
@@ -74,20 +81,30 @@ export const triggerAgents = async ({ data: event }: { data: AuxxEvent }) => {
   }
 
   // Direct-match branch
-  const directTriggers = await getAgentTriggersByDirectEvent({
-    organizationId,
-    eventType: event.type,
-  })
+  const directMatches: Array<{
+    agentId: string
+    triggerId: string
+    filter: Record<string, unknown> | undefined
+  }> = []
+  for (const agent of agents) {
+    for (const trigger of agent.triggers) {
+      if (trigger.kind !== 'event' || !trigger.enabled) continue
+      if (trigger.eventType !== event.type) continue
+      directMatches.push({
+        agentId: agent.id,
+        triggerId: trigger.id,
+        filter: (trigger.config as { filter?: Record<string, unknown> } | null)?.filter,
+      })
+    }
+  }
 
-  if (directTriggers.length > 0) {
+  if (directMatches.length > 0) {
     const payload = event.data as Record<string, unknown>
-    for (const trigger of directTriggers) {
-      const filter = (trigger.config as { filter?: Record<string, unknown> }).filter
-      if (!matchesFilter(filter, payload)) continue
-
+    for (const m of directMatches) {
+      if (!matchesFilter(m.filter, payload)) continue
       await queue.add('executeAgentEventTrigger', {
-        agentTriggerId: trigger.id,
-        agentId: trigger.agentId,
+        agentTriggerId: m.triggerId,
+        agentId: m.agentId,
         organizationId,
         eventType: event.type,
         recordId: (payload.recordId as string | undefined) ?? null,
@@ -106,19 +123,22 @@ export const triggerAgents = async ({ data: event }: { data: AuxxEvent }) => {
     const { entityDefinitionId, entityInstanceId } = parseRecordId(referencedRecordId)
     if (entityDefinitionId === 'agent') {
       const agentId = entityInstanceId
-      const mentionTriggers = await getAgentTriggersByMention({ organizationId, agentId })
-      for (const trigger of mentionTriggers) {
-        await queue.add('executeAgentMentionTrigger', {
-          agentTriggerId: trigger.id,
-          agentId,
-          organizationId,
-          commentId,
-          mentionerUserId,
-          parentRecordId,
-          siblingReferences,
-          firedAt: new Date().toISOString(),
-        })
-        totalFired++
+      const referencedAgent = agents.find((a) => a.id === agentId)
+      if (referencedAgent) {
+        for (const trigger of referencedAgent.triggers) {
+          if (trigger.kind !== 'mention' || !trigger.enabled) continue
+          await queue.add('executeAgentMentionTrigger', {
+            agentTriggerId: trigger.id,
+            agentId,
+            organizationId,
+            commentId,
+            mentionerUserId,
+            parentRecordId,
+            siblingReferences,
+            firedAt: new Date().toISOString(),
+          })
+          totalFired++
+        }
       }
     }
   }
@@ -131,32 +151,24 @@ export const triggerAgents = async ({ data: event }: { data: AuxxEvent }) => {
     const ticketId = (data.ticketId as string | undefined) ?? null
     const threadRecordId = ticketId ? `ticket:${ticketId}` : null
 
-    for (const assigneeId of assigneeIds) {
-      // Look up the agent backing this assignee user id. AGENT user rows
-      // have userType='AGENT' and a single Agent row pointing at them.
-      const [agent] = await database
-        .select({ id: schema.Agent.id })
-        .from(schema.Agent)
-        .where(
-          and(eq(schema.Agent.userId, assigneeId), eq(schema.Agent.organizationId, organizationId))
-        )
-        .limit(1)
-      if (!agent) continue
-
-      const assignmentTriggers = await getAgentTriggersByAssignment({
-        organizationId,
-        agentId: agent.id,
-      })
-      for (const trigger of assignmentTriggers) {
-        await queue.add('executeAgentAssignmentTrigger', {
-          agentTriggerId: trigger.id,
-          agentId: agent.id,
-          organizationId,
-          threadRecordId,
-          assignerUserId,
-          firedAt: new Date().toISOString(),
-        })
-        totalFired++
+    if (assigneeIds.length > 0) {
+      // Look up agents backing the assignee user ids. AGENT user rows have
+      // userType='AGENT' and a single Agent row pointing at them.
+      const assigneeSet = new Set(assigneeIds)
+      const assigneeAgents = agents.filter((a) => a.userId && assigneeSet.has(a.userId))
+      for (const agent of assigneeAgents) {
+        for (const trigger of agent.triggers) {
+          if (trigger.kind !== 'assignment' || !trigger.enabled) continue
+          await queue.add('executeAgentAssignmentTrigger', {
+            agentTriggerId: trigger.id,
+            agentId: agent.id,
+            organizationId,
+            threadRecordId,
+            assignerUserId,
+            firedAt: new Date().toISOString(),
+          })
+          totalFired++
+        }
       }
     }
   }

@@ -1,5 +1,5 @@
 import { database as db, schema } from '@auxx/database'
-import { getUserCache, onCacheEvent } from '@auxx/lib/cache'
+import { getUserCache, isAgentUser, onCacheEvent } from '@auxx/lib/cache'
 import { MediaAssetService } from '@auxx/lib/files'
 import { isAdminOrOwner } from '@auxx/lib/members'
 import { FeaturePermissionService } from '@auxx/lib/permissions'
@@ -205,17 +205,8 @@ export const userRouter = createTRPCRouter({
       const targetUserId = input?.targetUserId ?? userId
 
       if (targetUserId !== userId) {
-        const [agent] = await db
-          .select({ id: schema.Agent.id })
-          .from(schema.Agent)
-          .where(
-            and(
-              eq(schema.Agent.userId, targetUserId),
-              eq(schema.Agent.organizationId, organizationId)
-            )
-          )
-          .limit(1)
-        if (!agent) {
+        const isAgent = await isAgentUser(organizationId, targetUserId)
+        if (!isAgent) {
           throw new TRPCError({
             code: 'FORBIDDEN',
             message: "Cannot remove another user's avatar",
