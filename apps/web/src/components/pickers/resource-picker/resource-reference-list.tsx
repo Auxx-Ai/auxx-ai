@@ -11,15 +11,15 @@ import { ResourceItem } from './resource-item'
 export interface ResourceReferenceListProps {
   /** Search query forwarded from the picker chip. */
   externalSearch?: string
-  /** Selection callback — receives the chip id (`resource:<entityDefinitionId>`). */
+  /** Selection callback — receives the chip id (`entity:<entityDefinitionId>`). */
   onSelectSingle: (id: string) => void
   className?: string
 }
 
 /**
  * Flat single-list search component for the ReferencePicker Resources tab.
- * Backed by the resource store (`useResources`). Selections produce a
- * `resource:<entityDefinitionId>` chip id which the renderer maps to
+ * Backed by the resource store (`useResources`). Selections produce an
+ * `entity:<entityDefinitionId>` chip id which the renderer maps to
  * `ResourceBadge`.
  */
 export function ResourceReferenceList({
@@ -51,7 +51,7 @@ export function ResourceReferenceList({
                 key={resource.id}
                 resource={resource}
                 isSelected={false}
-                onToggle={(id) => onSelectSingle(`resource:${id}`)}
+                onToggle={(id) => onSelectSingle(`entity:${id}`)}
                 multi={false}
               />
             ))}

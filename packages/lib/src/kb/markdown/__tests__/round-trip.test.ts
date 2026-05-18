@@ -330,4 +330,66 @@ describe('mdToBlocks — inline references', () => {
     const inline = doc.content[0]?.content ?? []
     expect(inline.some((n) => (n as { type?: string }).type === 'reference')).toBe(false)
   })
+
+  it('parses simple field chips (id contains a second colon)', () => {
+    const doc = mdToDoc('Read @[field:ticket:status] before replying.')
+    const inline = doc.content[0]?.content ?? []
+    expect(inline).toEqual([
+      { type: 'text', text: 'Read ' },
+      { type: 'reference', attrs: { id: 'field:ticket:status' } },
+      { type: 'text', text: ' before replying.' },
+    ])
+  })
+
+  it('parses relationship-path field chips (`::` separator)', () => {
+    const doc = mdToDoc('Look at @[field:ticket:assignee::user:name] for ownership.')
+    const inline = doc.content[0]?.content ?? []
+    expect(inline).toEqual([
+      { type: 'text', text: 'Look at ' },
+      { type: 'reference', attrs: { id: 'field:ticket:assignee::user:name' } },
+      { type: 'text', text: ' for ownership.' },
+    ])
+  })
+
+  it('round-trips a field-chip reference through blocksToMd/mdToBlocks', () => {
+    const original: DocJSON = {
+      type: 'doc',
+      content: [
+        block('text', {}, [
+          text('Set '),
+          { type: 'reference', attrs: { id: 'field:ticket:status' } },
+          text(' to closed.'),
+        ]),
+      ] as never,
+    }
+    const md = blocksToMd(original)
+    const reparsed = mdToDoc(md)
+    const inline = reparsed.content[0]?.content ?? []
+    expect(inline).toEqual([
+      { type: 'text', text: 'Set ' },
+      { type: 'reference', attrs: { id: 'field:ticket:status' } },
+      { type: 'text', text: ' to closed.' },
+    ])
+  })
+
+  it('round-trips a path-form field chip through blocksToMd/mdToBlocks', () => {
+    const original: DocJSON = {
+      type: 'doc',
+      content: [
+        block('text', {}, [
+          text('Owner is '),
+          { type: 'reference', attrs: { id: 'field:ticket:assignee::user:name' } },
+          text('.'),
+        ]),
+      ] as never,
+    }
+    const md = blocksToMd(original)
+    const reparsed = mdToDoc(md)
+    const inline = reparsed.content[0]?.content ?? []
+    expect(inline).toEqual([
+      { type: 'text', text: 'Owner is ' },
+      { type: 'reference', attrs: { id: 'field:ticket:assignee::user:name' } },
+      { type: 'text', text: '.' },
+    ])
+  })
 })

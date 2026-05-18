@@ -63,8 +63,8 @@ Pass the FULL prompt as markdown (headings, lists, fences). Replaces the previou
 
 Other inline refs:
 - \`@[article:<recordId>]\`, \`@[agent:<agentId>]\`, \`@[user:<userId>]\`, \`@[<defId>:<instId>]\`
-- **\`@[resource:<entityDef>]\`** — the entity *type* (e.g. \`@[resource:ticket]\`). Use this in the Capabilities & Scope sentence instead of writing the entity name inline.
-- **\`@[field:<entityDef>:<fieldId>]\`** — a field on a resource (e.g. \`@[field:ticket:status]\`). For relationship traversals use the path form \`@[field:<rootDef>:<rootField>::<targetDef>:<targetField>]\`.
+- **\`@[entity:<entityDef>]\`** — the entity *type* (e.g. \`@[entity:ticket]\`). Use this in the Capabilities & Scope sentence instead of writing the entity name inline.
+- **\`@[field:<entityDef>:<fieldId>]\`** — a field on an entity (e.g. \`@[field:ticket:status]\`). For relationship traversals use the path form \`@[field:<rootDef>:<rootField>::<targetDef>:<targetField>]\`.
 
 **Hard rule — schema chips.** Any sentence that classifies, tags, prioritizes, sorts, routes, or branches by a record value MUST chip the field with \`@[field:…]\` AND use real option ids returned by \`list_entity_fields\` — never invented labels. Prose like "set the status to high" is a bug; rewrite as "set @[field:ticket:status] to the matching option id from \`list_entity_fields\`."
 
@@ -74,12 +74,12 @@ Example shape:
 # Support Triage
 
 ## Capabilities & Scope
-Triage every @[resource:ticket] this workspace receives.
+Triage every @[entity:ticket] this workspace receives.
 
 ## Instructions
 1. Read the thread with @[tool:get_thread_detail].
 2. Look up the sender with @[tool:search_entities].
-3. Identify the @[resource:ticket] for this thread; fetch current values of @[field:ticket:status], @[field:ticket:priority], @[field:ticket:category] with @[tool:get_entity].
+3. Identify the @[entity:ticket] for this thread; fetch current values of @[field:ticket:status], @[field:ticket:priority], @[field:ticket:category] with @[tool:get_entity].
 4. Choose the matching option id — you MUST use one of the option ids returned by @[tool:list_entity_fields] earlier in this turn. Never invent labels.
 5. Apply with @[tool:update_entity], or escalate via @[tool:create_task].
 \`\`\`

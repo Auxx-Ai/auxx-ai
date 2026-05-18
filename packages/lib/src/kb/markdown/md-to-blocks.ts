@@ -30,14 +30,22 @@ import type {
 import { CALLOUT_VARIANTS, EMBED_ASPECTS, EMBED_PROVIDERS, IMAGE_ALIGNS } from './types'
 
 const PLACEHOLDER_RE = /\{\{([a-zA-Z0-9_.-]+)\}\}/g
-const REFERENCE_AT_RE = /@\[([a-zA-Z][a-zA-Z0-9_-]*:[\w.-]+)\]/g
+// The id half allows `:` so field chips parse as a single reference:
+//   `@[field:ticket:status]`                           → simple field
+//   `@[field:ticket:assignee::user:name]`              → relationship path (`::` separator)
+// Without `:` in the id char class the parser stops at the second colon and
+// silently drops the chip — see plans/kopilot/templates/template-overhaul-with-references.md §3.2.
+const REFERENCE_AT_RE = /@\[([a-zA-Z][a-zA-Z0-9_-]*:[\w.:-]+)\]/g
 const IMAGE_ATTR_TRAILER_RE = /^\{([^{}\n]*)\}/
 const HEADING_MAX_LEVEL = 3
 
 // `<entityDefinitionId>:<entityInstanceId>` — matches `RecordId`'s structural
 // shape (the brand in `@auxx/types`). Used to detect link URLs that the LLM
 // (or markdown-paste flow) means as `reference` inline nodes, not real URLs.
-const RECORD_ID_RE = /^[a-zA-Z][a-zA-Z0-9_-]*:[\w.-]+$/
+// The id half includes `:` so multi-colon chip ids (field chips like
+// `field:ticket:status` and path chips like `field:ticket:assignee::user:name`)
+// resolve as references when written in `[Foo](id)` paste form.
+const RECORD_ID_RE = /^[a-zA-Z][a-zA-Z0-9_-]*:[\w.:-]+$/
 
 // `@[id]` tokens need to round-trip through remark untouched. Remark-directive
 // treats `:` as the textDirective sigil, so `@[user:abc]` would parse as

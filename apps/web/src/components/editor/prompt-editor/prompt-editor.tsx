@@ -24,6 +24,12 @@ export interface PromptEditorProps {
   /** Fires on TipTap focus/blur. */
   onFocusChange?: (focused: boolean) => void
   className?: string
+  /**
+   * When `false`, renders the prompt with the same TipTap extensions
+   * (badges, blocks) but disables typing — for read-only previews like
+   * the template gallery detail view.
+   */
+  editable?: boolean
 }
 
 /**
@@ -46,6 +52,7 @@ export function PromptEditor({
   onEditorReady,
   onFocusChange,
   className,
+  editable = true,
 }: PromptEditorProps) {
   const referencePickerRef = useRef<ReferencePickerHandle | null>(null)
   const [, setFocused] = useState(false)
@@ -74,6 +81,7 @@ export function PromptEditor({
         onFocusChange={handleFocusChange}
         referencePickerRef={referencePickerRef}
         referenceTabs={referenceTabs}
+        editable={editable}
       />
     </div>
   )

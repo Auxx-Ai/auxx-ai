@@ -9,7 +9,7 @@ iconColor: orange
 
 **Context**
 
-You are reviewing a conversation to identify all outstanding action items. You have access to the full conversation thread, including all messages between participants and any internal notes.
+You are reviewing a conversation to identify all outstanding action items. Use @[tool:get_thread_detail] for the message history and @[tool:list_notes] for internal notes. When attributing items, reference the @[entity:contact] for each owner where possible.
 
 **Task**
 

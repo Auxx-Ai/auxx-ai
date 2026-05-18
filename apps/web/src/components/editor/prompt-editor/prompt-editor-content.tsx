@@ -48,6 +48,12 @@ interface PromptEditorContentProps {
   /** Shared across instances so the same picker handle can drive arrow keys. */
   referencePickerRef: React.RefObject<ReferencePickerHandle | null>
   referenceTabs?: ReferenceTab[]
+  /**
+   * When `false`, mounts the editor in read-only mode — same TipTap
+   * instance, same reference badge rendering, but typing / paste / slash /
+   * `@`-picker are inert. Used by the template gallery preview.
+   */
+  editable?: boolean
 }
 
 interface LinkPopoverState {
@@ -77,6 +83,7 @@ export const PromptEditorContent = memo(function PromptEditorContent({
   onUserActivity,
   referencePickerRef,
   referenceTabs,
+  editable = true,
 }: PromptEditorContentProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [linkPopover, setLinkPopover] = useState<LinkPopoverState | null>(null)
@@ -100,6 +107,7 @@ export const PromptEditorContent = memo(function PromptEditorContent({
     onPickerEnter,
     onPickerArrowVertical,
     referenceTabs,
+    editable,
   })
 
   const activePicker = useActivePicker(editor)

@@ -37,10 +37,10 @@ reference chip. Supported ids:
     Use these EAGERLY — referencing a tool by name in the prompt makes the
     chip render in the editor, and the runtime expands it to a backtick-quoted
     tool name when this agent runs.
-  - \`@[resource:<entityDef>]\` — the entity *type* (e.g. \`@[resource:ticket]\`).
+  - \`@[entity:<entityDef>]\` — the entity *type* (e.g. \`@[entity:ticket]\`).
     Use in the Capabilities & Scope sentence instead of writing the entity name
     inline. Validated server-side; unknown entityDefs are rejected.
-  - \`@[field:<entityDef>:<fieldId>]\` — a field on a resource (e.g.
+  - \`@[field:<entityDef>:<fieldId>]\` — a field on an entity (e.g.
     \`@[field:ticket:status]\`). Use whenever the prompt classifies, tags,
     routes, or branches by a record value. Validated server-side; unknown
     fields are rejected.
@@ -56,7 +56,7 @@ The previous prompt is replaced wholesale.`,
         markdown: {
           type: 'string',
           description:
-            'Full persona prompt as markdown. Headings, paragraphs, lists, blockquotes, code fences, and inline `@[<id>]` references (`tool:`, `resource:`, `field:`, `article:`, `agent:`, `user:`, or a raw `<defId>:<instId>` record id) are supported. Replaces the previous prompt wholesale.',
+            'Full persona prompt as markdown. Headings, paragraphs, lists, blockquotes, code fences, and inline `@[<id>]` references (`tool:`, `entity:`, `field:`, `article:`, `agent:`, `user:`, or a raw `<defId>:<instId>` record id) are supported. Replaces the previous prompt wholesale.',
           minLength: 1,
           maxLength: MARKDOWN_MAX_BYTES,
         },
@@ -111,7 +111,7 @@ The previous prompt is replaced wholesale.`,
 
       const doc = { type: 'doc', content: blocks } as Record<string, unknown>
 
-      // Validate schema chips (`resource:` / `field:`) BEFORE persisting so the
+      // Validate schema chips (`entity:` / `field:`) BEFORE persisting so the
       // model sees the failure in the next turn instead of saving a broken
       // prompt the admin can't run. Tools chips are validated by the toolset
       // reconciler — separate path.
@@ -207,11 +207,11 @@ interface SchemaValidationResult {
 }
 
 /**
- * Validate `resource:` / `field:` reference chips against the org's cached
+ * Validate `entity:` / `field:` reference chips against the org's cached
  * schema. Returns:
  *   - `unresolvedReferences`: chip ids that don't resolve (rejection condition)
  *   - `warnings`: non-blocking advisories (e.g. a field-bearing entity is
- *     mentioned in prose with zero `@[resource:…]` chips)
+ *     mentioned in prose with zero `@[entity:…]` chips)
  *
  * Resource lookup matches `findCachedResource` (id / entityType / apiSlug).
  * Field lookup verifies the field exists on its declared entity by `id` or
@@ -223,7 +223,7 @@ async function validateSchemaReferences(
   organizationId: string
 ): Promise<SchemaValidationResult> {
   const ids = collectReferenceIds(doc)
-  const resourceChips = ids.filter((id) => id.startsWith('resource:'))
+  const entityChips = ids.filter((id) => id.startsWith('entity:'))
   const fieldChips = ids.filter((id) => id.startsWith('field:'))
 
   const unresolved: string[] = []
@@ -231,7 +231,7 @@ async function validateSchemaReferences(
 
   // Resolve unique entityDef keys once.
   const entityKeys = new Set<string>()
-  for (const chip of resourceChips) entityKeys.add(chip.slice('resource:'.length))
+  for (const chip of entityChips) entityKeys.add(chip.slice('entity:'.length))
   for (const chip of fieldChips) {
     const payload = chip.slice('field:'.length)
     const head = payload.split('::')[0] ?? payload
@@ -244,8 +244,8 @@ async function validateSchemaReferences(
     resolvedByKey.set(key, await findCachedResource(organizationId, key))
   }
 
-  for (const chip of resourceChips) {
-    const key = chip.slice('resource:'.length)
+  for (const chip of entityChips) {
+    const key = chip.slice('entity:'.length)
     if (!resolvedByKey.get(key)) {
       unresolved.push(chip)
     }
@@ -272,13 +272,13 @@ async function validateSchemaReferences(
     if (!found) unresolved.push(chip)
   }
 
-  // Warning: field-bearing entity mentioned in prose, no @[resource:…] chip.
+  // Warning: field-bearing entity mentioned in prose, no @[entity:…] chip.
   // Match resource labels (and plurals where available) case-insensitively
-  // against the doc's plain text. Skip when a `@[resource:<id>]` chip is
+  // against the doc's plain text. Skip when an `@[entity:<id>]` chip is
   // already present for that entity.
   const chippedEntityKeys = new Set<string>()
-  for (const chip of resourceChips) {
-    const key = chip.slice('resource:'.length)
+  for (const chip of entityChips) {
+    const key = chip.slice('entity:'.length)
     const resolved = resolvedByKey.get(key)
     if (resolved) {
       chippedEntityKeys.add(resolved.id)
@@ -305,7 +305,7 @@ async function validateSchemaReferences(
   }
   if (mentionedWithoutChip.length > 0) {
     warnings.push(
-      `Prose mentions ${mentionedWithoutChip.map((l) => `"${l}"`).join(', ')} but no \`@[resource:…]\` chip is present. Wrap the entity noun with \`@[resource:<apiSlug>]\` so admins can audit scope at a glance.`
+      `Prose mentions ${mentionedWithoutChip.map((l) => `"${l}"`).join(', ')} but no \`@[entity:…]\` chip is present. Wrap the entity noun with \`@[entity:<apiSlug>]\` so admins can audit scope at a glance.`
     )
   }
 
@@ -314,7 +314,7 @@ async function validateSchemaReferences(
   }
 
   const slugList = allResources.map((r) => r.apiSlug).join(', ')
-  const errorMessage = `Rejected — ${unresolved.length} unresolved schema chip(s): ${unresolved.map((c) => `\`${c}\``).join(', ')}. For \`@[resource:<key>]\` chips, key must be one of the apiSlugs: ${slugList}. For \`@[field:<entityDef>:<fieldId>]\` chips, call \`list_entity_fields\` on the entityDef first and use a real field id from the response. Fix and retry.`
+  const errorMessage = `Rejected — ${unresolved.length} unresolved schema chip(s): ${unresolved.map((c) => `\`${c}\``).join(', ')}. For \`@[entity:<key>]\` chips, key must be one of the apiSlugs: ${slugList}. For \`@[field:<entityDef>:<fieldId>]\` chips, call \`list_entity_fields\` on the entityDef first and use a real field id from the response. Fix and retry.`
 
   return { unresolvedReferences: unresolved, warnings, errorMessage }
 }

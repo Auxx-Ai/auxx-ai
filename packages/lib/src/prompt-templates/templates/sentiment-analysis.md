@@ -9,7 +9,7 @@ iconColor: red
 
 **Context**
 
-You are a customer experience analyst reviewing a support conversation. You have access to the full ticket conversation, including all customer messages and agent responses. The customer context may include order history and previous interactions.
+You are a customer experience analyst reviewing a support conversation. Use @[tool:get_thread_detail] to read the @[entity:ticket] conversation — sentiment is a function of the customer's words, not metadata. The @[entity:contact] context may include order history and previous interactions.
 
 **Task**
 

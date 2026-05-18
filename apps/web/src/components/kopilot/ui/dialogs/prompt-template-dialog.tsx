@@ -5,7 +5,6 @@
 import { constants } from '@auxx/config/client'
 import type { DocJSON } from '@auxx/lib/kb/markdown'
 import type { SystemTemplateGalleryItem } from '@auxx/lib/prompt-templates'
-import { docToText } from '@auxx/lib/tiptap'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import {
@@ -374,9 +373,13 @@ export function PromptTemplateDialog({ open, onOpenChange }: PromptTemplateDialo
                           </div>
                         ) : (
                           <div className='rounded-xl border bg-muted/30 p-4'>
-                            <p className='text-sm text-muted-foreground whitespace-pre-wrap leading-relaxed'>
-                              {docToText(selectedTemplate.prompt)}
-                            </p>
+                            <PromptEditor
+                              key={`preview-${selectedTemplate.id}`}
+                              initialContent={selectedTemplate.prompt.content as never}
+                              onChange={() => {}}
+                              editable={false}
+                              referenceTabs={TEMPLATE_REFERENCE_TABS}
+                            />
                           </div>
                         )}
                       </div>
