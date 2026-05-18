@@ -23,6 +23,12 @@ export interface KopilotRequest {
   agentId?: string | null
   /** Session-domain discriminator on session create. Defaults to 'kopilot' server-side. */
   sessionType?: 'kopilot' | 'builder'
+  /**
+   * Trigger discriminator. 'dm' means the request originated from the agent
+   * Chat tab or the composer sender picker; the SSE route gates the agent's
+   * `dm` AgentTrigger and layers DM trigger-instructions into the prompt.
+   */
+  triggerKind?: 'dm'
 }
 
 interface UseKopilotSSEOptions {

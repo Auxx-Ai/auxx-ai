@@ -14,7 +14,7 @@ import { convertToCronPattern, type ScheduledTriggerConfig } from '../workflows/
 const logger = createScopedLogger('agent-trigger-service')
 
 /** Trigger kinds. */
-export type AgentTriggerKind = 'scheduled' | 'event' | 'app' | 'mention' | 'assignment'
+export type AgentTriggerKind = 'scheduled' | 'event' | 'app' | 'mention' | 'assignment' | 'dm'
 
 /** CRUD-mode event triggerType. */
 export type AgentEventTriggerType = 'created' | 'updated' | 'deleted'
@@ -65,12 +65,18 @@ export interface AssignmentTriggerInput {
   kind: 'assignment'
 }
 
+/** Phase 2: fires when a user direct-messages this agent (Chat tab, composer sender picker). */
+export interface DmTriggerInput {
+  kind: 'dm'
+}
+
 export type AgentTriggerInput =
   | ScheduledTriggerInput
   | CrudEventTriggerInput
   | AppTriggerInput
   | MentionTriggerInput
   | AssignmentTriggerInput
+  | DmTriggerInput
 
 export interface CreateAgentTriggerInput {
   agentId: string
@@ -147,7 +153,7 @@ function partitionTriggerInput(trigger: AgentTriggerInput): {
     }
   }
 
-  if (trigger.kind === 'mention' || trigger.kind === 'assignment') {
+  if (trigger.kind === 'mention' || trigger.kind === 'assignment' || trigger.kind === 'dm') {
     return {
       kind: trigger.kind,
       columns: { ...empty },

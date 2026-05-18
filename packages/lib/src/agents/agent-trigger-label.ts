@@ -49,6 +49,8 @@ function baseLabel(trigger: {
       return 'Mention'
     case 'assignment':
       return 'Assignment'
+    case 'dm':
+      return 'Direct message'
     default:
       return trigger.kind
   }

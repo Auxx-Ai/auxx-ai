@@ -19,6 +19,13 @@ export interface KopilotChatOptions {
   allowModelPicker?: boolean
 
   /**
+   * Show the sender picker (pick which agent responds) in the composer
+   * toolbar. Default: true on master Kopilot. The agent Chat tab and the
+   * Build tab pass `false` — they already pin the responder upstream.
+   */
+  allowSenderPicker?: boolean
+
+  /**
    * Allow the `/` slash-command picker (prompt templates) in the composer.
    * Default: true.
    */

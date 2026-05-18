@@ -38,6 +38,13 @@ export interface KopilotChatProps {
    */
   sessionType?: 'kopilot' | 'builder'
   /**
+   * Trigger discriminator for the run. 'dm' means the chat surface is the
+   * agent Chat tab (or, indirectly, the composer sender picker). The SSE
+   * route uses this to gate the agent's `dm` AgentTrigger and layer in DM
+   * trigger-instructions.
+   */
+  triggerKind?: 'dm'
+  /**
    * If set AND `initialSessionId` is null, this text is auto-submitted as the
    * first user turn after mount — same path as clicking an `autoSubmit`
    * suggestion chip, no chip rendered. Used by the agent builder to fire a
@@ -53,6 +60,7 @@ export function KopilotChat({
   contentClassName,
   agentId,
   sessionType,
+  triggerKind,
   initialMessage,
 }: KopilotChatProps) {
   const activeSessionId = useKopilotStore((s) => s.activeSessionId)
@@ -139,8 +147,9 @@ export function KopilotChat({
       ...request,
       ...(agentId ? { agentId } : {}),
       ...(sessionType ? { sessionType } : {}),
+      ...(triggerKind ? { triggerKind } : {}),
     }),
-    [agentId, sessionType]
+    [agentId, sessionType, triggerKind]
   )
 
   const handleSend = useCallback(

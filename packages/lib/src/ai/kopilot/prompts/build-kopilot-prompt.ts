@@ -84,11 +84,15 @@ export function buildKopilotPromptSerialized(args: BuildKopilotPromptArgs): stri
 }
 
 function buildPromptCtx(args: BuildKopilotPromptArgs): PromptCtx {
-  const runMode: RunMode = args.triggerContext ? 'autonomous' : 'interactive'
+  // DM is an interactive trigger — a human is in the loop, just authored on a
+  // specific agent's surface. All other trigger kinds run autonomously.
+  const isDmTrigger = args.triggerContext?.kind === 'dm'
+  const runMode: RunMode = args.triggerContext && !isDmTrigger ? 'autonomous' : 'interactive'
 
-  // Autonomous runs are always backed by a user-authored agent; the master
-  // Kopilot never runs on a trigger. Fail fast if they ever contradict.
-  if (runMode === 'autonomous' && (!args.agentConfig || args.agentConfig.agentId === null)) {
+  // Any triggerContext (autonomous or DM) is always backed by a user-authored
+  // agent; the master Kopilot never runs on a trigger. Fail fast if they ever
+  // contradict.
+  if (args.triggerContext && (!args.agentConfig || args.agentConfig.agentId === null)) {
     throw new Error('buildKopilotPrompt: triggerContext set without a user-authored agentConfig')
   }
 

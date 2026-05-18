@@ -11,6 +11,7 @@ const DEFAULTS: Required<
   Pick<
     KopilotChatOptions,
     | 'allowModelPicker'
+    | 'allowSenderPicker'
     | 'allowSlashCommands'
     | 'allowReferencePicker'
     | 'showSessionPicker'
@@ -19,6 +20,7 @@ const DEFAULTS: Required<
   >
 > = {
   allowModelPicker: true,
+  allowSenderPicker: true,
   allowSlashCommands: true,
   allowReferencePicker: true,
   showSessionPicker: true,
@@ -35,6 +37,7 @@ export function KopilotChatProvider({ children, options }: KopilotChatProviderPr
   const {
     placeholder,
     allowModelPicker,
+    allowSenderPicker,
     allowSlashCommands,
     allowReferencePicker,
     renderEmptyState,
@@ -50,6 +53,7 @@ export function KopilotChatProvider({ children, options }: KopilotChatProviderPr
       ...DEFAULTS,
       placeholder,
       ...(allowModelPicker !== undefined && { allowModelPicker }),
+      ...(allowSenderPicker !== undefined && { allowSenderPicker }),
       ...(allowSlashCommands !== undefined && { allowSlashCommands }),
       ...(allowReferencePicker !== undefined && { allowReferencePicker }),
       renderEmptyState,
@@ -61,6 +65,7 @@ export function KopilotChatProvider({ children, options }: KopilotChatProviderPr
     [
       placeholder,
       allowModelPicker,
+      allowSenderPicker,
       allowSlashCommands,
       allowReferencePicker,
       renderEmptyState,

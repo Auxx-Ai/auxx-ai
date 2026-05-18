@@ -72,36 +72,45 @@ export function useLoadSession() {
   const utils = api.useUtils()
   const setMessages = useKopilotStore((s) => s.setMessages)
   const setActiveSessionId = useKopilotStore((s) => s.setActiveSessionId)
+  const setActiveSessionAgentId = useKopilotStore((s) => s.setActiveSessionAgentId)
   const setMessageFeedback = useKopilotStore((s) => s.setMessageFeedback)
   const setSelectedModelId = useKopilotStore((s) => s.setSelectedModelId)
+  const startNewSession = useKopilotStore((s) => s.startNewSession)
 
   return async (sessionId: string) => {
+    // Wipe per-session ephemera before the fetch so old messages, reply
+    // chips, dismissals, and edit state don't leak across a session swap.
+    startNewSession()
     setActiveSessionId(sessionId)
     const data = await utils.kopilot.getSession.fetch({ sessionId })
 
     // Restore model picker to the session's last-used model
     setSelectedModelId((data as any)?.modelId ?? null)
+    // Hydrate sender-picker lock state — once a session has an agentId
+    // (set when the user picked an agent on the first send), the composer
+    // renders the sender chip non-interactive.
+    setActiveSessionAgentId((data as any)?.agentId ?? null)
 
-    if (data?.messages) {
-      const raw = data.messages as PersistedMessage[]
+    const raw = (data?.messages ?? []) as PersistedMessage[]
 
-      // Persisted shape == render-ready shape. No filter, no reparent loop,
-      // no _pendingToolCall re-emit, no reconstructThinkingGroups.
-      const hydrated: KopilotMessage[] = raw.map((m, i) => ({
-        id: m.id,
-        role: m.role,
-        ...(m.content !== undefined ? { content: m.content } : {}),
-        ...(m.parts ? { parts: m.parts } : {}),
-        timestamp: m.timestamp ?? Date.now(),
-        parentId: m.parentId ?? (i > 0 ? (raw[i - 1]!.id ?? null) : null),
-        metadata: m.metadata as KopilotMessage['metadata'],
-        ...(m.approval ? { approval: m.approval } : {}),
-        ...(m.linkSnapshots ? { linkSnapshots: m.linkSnapshots } : {}),
-        ...(m.error ? { error: m.error } : {}),
-      }))
+    // Persisted shape == render-ready shape. No filter, no reparent loop,
+    // no _pendingToolCall re-emit, no reconstructThinkingGroups.
+    const hydrated: KopilotMessage[] = raw.map((m, i) => ({
+      id: m.id,
+      role: m.role,
+      ...(m.content !== undefined ? { content: m.content } : {}),
+      ...(m.parts ? { parts: m.parts } : {}),
+      timestamp: m.timestamp ?? Date.now(),
+      parentId: m.parentId ?? (i > 0 ? (raw[i - 1]!.id ?? null) : null),
+      metadata: m.metadata as KopilotMessage['metadata'],
+      ...(m.approval ? { approval: m.approval } : {}),
+      ...(m.linkSnapshots ? { linkSnapshots: m.linkSnapshots } : {}),
+      ...(m.error ? { error: m.error } : {}),
+    }))
 
-      setMessages(hydrated)
+    setMessages(hydrated)
 
+    if (hydrated.length > 0) {
       // Hydrate feedback from server
       const feedbackMap = await utils.kopilot.getSessionFeedback.fetch({ sessionId })
       for (const [messageId, isPositive] of Object.entries(feedbackMap)) {

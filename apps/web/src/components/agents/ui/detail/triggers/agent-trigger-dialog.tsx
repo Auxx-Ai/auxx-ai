@@ -35,7 +35,7 @@ import { type Interval, TriggerIntervalSelector } from './trigger-interval-selec
 
 type Trigger = RouterOutputs['agentTrigger']['list'][number]
 
-type Kind = 'scheduled' | 'event' | 'mention' | 'assignment'
+type Kind = 'scheduled' | 'event' | 'mention' | 'assignment' | 'dm'
 type ScheduledMode = 'simple' | 'cron'
 type CrudTriggerType = 'created' | 'updated' | 'deleted'
 
@@ -112,6 +112,8 @@ function instructionsPlaceholder(kind: Kind): string {
       return 'e.g. "When @mentioned, draft a reply that matches the requested tone."'
     case 'assignment':
       return 'e.g. "When assigned, triage and answer or escalate to the right team."'
+    case 'dm':
+      return 'e.g. "Greet the user, then help them debug their integration step by step."'
   }
 }
 
@@ -144,9 +146,12 @@ export function AgentTriggerDialog({
         ? 'mention'
         : trigger?.kind === 'assignment'
           ? 'assignment'
-          : 'scheduled'
+          : trigger?.kind === 'dm'
+            ? 'dm'
+            : 'scheduled'
     : kind
-  const isBuiltinKind = effectiveKind === 'mention' || effectiveKind === 'assignment'
+  const isBuiltinKind =
+    effectiveKind === 'mention' || effectiveKind === 'assignment' || effectiveKind === 'dm'
 
   const { resources } = useResources()
   const fallbackEntityId = resources[0]?.id ?? 'ticket'
@@ -259,6 +264,9 @@ export function AgentTriggerDialog({
     if (effectiveKind === 'assignment') {
       return { kind: 'assignment' as const }
     }
+    if (effectiveKind === 'dm') {
+      return { kind: 'dm' as const }
+    }
 
     if (!eventState.entityDefinitionId) {
       toastError({ title: 'Pick a resource' })
@@ -310,7 +318,9 @@ export function AgentTriggerDialog({
                   ? 'Fire this agent when it is mentioned in a comment.'
                   : effectiveKind === 'assignment'
                     ? 'Fire this agent when it is assigned to a ticket.'
-                    : 'Fire this agent when a resource is created, updated, or deleted.'}
+                    : effectiveKind === 'dm'
+                      ? 'Fire this agent when a user direct-messages it.'
+                      : 'Fire this agent when a resource is created, updated, or deleted.'}
             </DialogDescription>
           </DialogHeader>
 

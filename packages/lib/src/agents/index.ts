@@ -50,11 +50,19 @@ export {
   ALLOWED_DIRECT_EVENT_TYPES,
   type AllowedDirectEventType,
   type AppTriggerInput,
+  type AssignmentTriggerInput,
   type CreateAgentTriggerInput,
   type CrudEventTriggerInput,
+  type DmTriggerInput,
+  type MentionTriggerInput,
   type ScheduledTriggerInput,
   type UpdateAgentTriggerInput,
 } from './agent-trigger-service'
+export {
+  type BuildDmTriggerContextResult,
+  buildDmTriggerContext,
+  type DmTriggerContext,
+} from './build-dm-trigger-context'
 export { BUILTIN_APP, BUILTIN_TOOLSETS, getBuiltinToolset } from './builtin-app'
 export { BUILTIN_DEFAULT_TOOLSETS, resolveDefaultToolsets } from './default-toolsets'
 export { filterToolsByToolsets } from './filter-tools'
