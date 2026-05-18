@@ -16,5 +16,6 @@ export default defineConfig({
   platform: 'node',
   unbundle: true,
   dts: false,
+  loader: { '.md': 'text' },
   tsconfig: 'tsconfig.build.json',
 })

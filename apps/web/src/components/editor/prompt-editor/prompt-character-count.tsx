@@ -1,21 +1,21 @@
-// apps/web/src/components/agents/ui/detail/prompt/persona-character-count.tsx
+// apps/web/src/components/editor/prompt-editor/prompt-character-count.tsx
 'use client'
 
 import type { Editor } from '@tiptap/react'
 import { useEffect, useRef } from 'react'
 
-interface PersonaCharacterCountProps {
+interface PromptCharacterCountProps {
   editor: Editor | null
 }
 
 /**
- * Renders the persona doc's plain-text character count without forcing the
- * surrounding `PersonaEditor` to re-render per keystroke. Subscribes to the
+ * Renders the prompt doc's plain-text character count without forcing the
+ * surrounding editor to re-render per keystroke. Subscribes to the
  * editor's `update` event and writes directly to its own DOM node — React
  * never sees the count change, so the parent's render tree (header,
  * `EditorContent`, picker popovers) stays mounted untouched while typing.
  */
-export function PersonaCharacterCount({ editor }: PersonaCharacterCountProps) {
+export function PromptCharacterCount({ editor }: PromptCharacterCountProps) {
   const ref = useRef<HTMLSpanElement>(null)
 
   useEffect(() => {

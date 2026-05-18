@@ -17,7 +17,8 @@ import type { BlockRendererProps } from './block-registry'
 import type { DraftListData, DraftSnapshotData } from './block-schemas'
 
 export function DraftListBlock({ data, skipEntrance }: BlockRendererProps<DraftListData>) {
-  const { draftIds, snapshot } = data
+  const draftIds = data.draftIds ?? []
+  const snapshot = data.snapshot
 
   return (
     <div className='not-prose my-2'>

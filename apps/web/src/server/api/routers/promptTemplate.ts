@@ -1,12 +1,21 @@
 // apps/web/src/server/api/routers/promptTemplate.ts
 
 import { schema } from '@auxx/database'
+import type { DocJSON } from '@auxx/lib/kb/markdown'
 import type { PromptTemplateItem, SystemTemplateGalleryItem } from '@auxx/lib/prompt-templates'
 import { getPromptTemplateById, listPromptTemplates } from '@auxx/lib/prompt-templates'
 import { TRPCError } from '@trpc/server'
 import { and, desc, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure } from '../trpc'
+
+// Structural validation only — the deep walk happens inside the editor /
+// `docToText`. Anything beyond `{ type: 'doc', content: [...] }` is opaque
+// to the server.
+const promptDocSchema = z.object({
+  type: z.literal('doc'),
+  content: z.array(z.unknown()).min(1, 'Prompt is required'),
+})
 
 export const promptTemplateRouter = createTRPCRouter({
   /**
@@ -25,7 +34,7 @@ export const promptTemplateRouter = createTRPCRouter({
       id: t.id,
       name: t.name,
       description: t.description,
-      prompt: t.prompt,
+      prompt: t.prompt as DocJSON,
       categories: t.categories,
       icon: t.icon,
       type: 'user',
@@ -56,13 +65,13 @@ export const promptTemplateRouter = createTRPCRouter({
 
   /**
    * Install a system template — copies it to the DB as a user template for the org.
-   * Optionally accepts a custom prompt override (for editing before install).
+   * Optionally accepts a custom prompt doc (for editing before install).
    */
   install: protectedProcedure
     .input(
       z.object({
         systemTemplateId: z.string(),
-        prompt: z.string().optional(),
+        prompt: promptDocSchema.optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -78,7 +87,7 @@ export const promptTemplateRouter = createTRPCRouter({
         .values({
           name: systemTemplate.name,
           description: systemTemplate.description,
-          prompt: input.prompt ?? systemTemplate.prompt,
+          prompt: (input.prompt ?? systemTemplate.prompt) as { type: 'doc'; content: unknown[] },
           categories: systemTemplate.categories,
           icon: systemTemplate.icon,
           organizationId,
@@ -95,7 +104,7 @@ export const promptTemplateRouter = createTRPCRouter({
       z.object({
         name: z.string().min(1, 'Name is required'),
         description: z.string().min(1, 'Description is required'),
-        prompt: z.string().min(1, 'Prompt is required'),
+        prompt: promptDocSchema,
         categories: z.array(z.string()).default([]),
         icon: z.object({ iconId: z.string(), color: z.string() }).optional(),
       })
@@ -108,7 +117,7 @@ export const promptTemplateRouter = createTRPCRouter({
         .values({
           name: input.name.trim(),
           description: input.description.trim(),
-          prompt: input.prompt.trim(),
+          prompt: input.prompt as { type: 'doc'; content: unknown[] },
           categories: input.categories,
           icon: input.icon,
           organizationId,
@@ -126,7 +135,7 @@ export const promptTemplateRouter = createTRPCRouter({
         id: z.string(),
         name: z.string().min(1).optional(),
         description: z.string().min(1).optional(),
-        prompt: z.string().min(1).optional(),
+        prompt: promptDocSchema.optional(),
         categories: z.array(z.string()).optional(),
         icon: z.object({ iconId: z.string(), color: z.string() }).optional(),
       })
@@ -151,7 +160,7 @@ export const promptTemplateRouter = createTRPCRouter({
       const updateData: Record<string, unknown> = {}
       if (input.name !== undefined) updateData.name = input.name.trim()
       if (input.description !== undefined) updateData.description = input.description.trim()
-      if (input.prompt !== undefined) updateData.prompt = input.prompt.trim()
+      if (input.prompt !== undefined) updateData.prompt = input.prompt
       if (input.categories !== undefined) updateData.categories = input.categories
       if (input.icon !== undefined) updateData.icon = input.icon
 

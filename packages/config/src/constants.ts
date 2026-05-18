@@ -63,6 +63,15 @@ export const constants = {
     { value: 'support', label: 'Support', icon: 'Headphones' },
   ] as const,
 
+  /** Agent template categories shown in the "Create from template" dialog */
+  agentTemplateCategories: [
+    { value: 'all', label: 'All Templates', icon: 'LayoutGrid' },
+    { value: 'support', label: 'Support', icon: 'Headphones' },
+    { value: 'sales', label: 'Sales', icon: 'Handshake' },
+    { value: 'operations', label: 'Operations', icon: 'Settings' },
+    { value: 'internal', label: 'Internal', icon: 'Building2' },
+  ] as const,
+
   PRIVACY_URL: `${HOMEPAGE_URL}/privacy-policy`,
   IMPRINT_URL: `${HOMEPAGE_URL}/imprint`,
   TOS_URL: `${HOMEPAGE_URL}/terms-of-service`,

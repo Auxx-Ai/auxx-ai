@@ -1,16 +1,34 @@
 // packages/lib/vitest.config.ts
 
+import { readFileSync } from 'node:fs'
 import path from 'path'
-import { loadEnv } from 'vite'
+import { loadEnv, type Plugin } from 'vite'
 import tsconfigPaths from 'vite-tsconfig-paths'
 import { defineConfig } from 'vitest/config'
+
+/**
+ * Loads `.md` imports as default-exported strings so source-level imports
+ * in `src/prompt-templates/template-registry.ts` resolve under Vitest the
+ * same way tsdown's `loader: { '.md': 'text' }` resolves them at build time.
+ */
+function markdownAsText(): Plugin {
+  return {
+    name: 'auxx:markdown-as-text',
+    enforce: 'pre',
+    load(id) {
+      if (!id.endsWith('.md')) return null
+      const source = readFileSync(id, 'utf8')
+      return `export default ${JSON.stringify(source)}`
+    },
+  }
+}
 
 export default defineConfig(({ mode }) => {
   const monorepoRoot = path.resolve(__dirname, '../..')
   const env = { ...loadEnv(mode, monorepoRoot, ''), ...loadEnv(mode, process.cwd(), '') }
 
   return {
-    plugins: [tsconfigPaths()],
+    plugins: [markdownAsText(), tsconfigPaths()],
 
     test: {
       name: 'lib',

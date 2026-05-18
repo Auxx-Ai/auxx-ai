@@ -1,4 +1,4 @@
-// apps/web/src/components/agents/ui/detail/prompt/persona-editor-header.tsx
+// apps/web/src/components/editor/prompt-editor/prompt-editor-header.tsx
 'use client'
 
 import { cn } from '@auxx/ui/lib/utils'
@@ -6,11 +6,11 @@ import { Clipboard, ClipboardCheck, Maximize2, Minimize2 } from 'lucide-react'
 import React from 'react'
 import { Tooltip } from '~/components/global/tooltip'
 
-interface PersonaEditorHeaderProps {
+interface PromptEditorHeaderProps {
   title: string
   /**
    * Character-count slot — rendered as-is between the title and the
-   * action buttons. Passed in by the parent (typically `PersonaCharacterCount`)
+   * action buttons. Passed in by the parent (typically `PromptCharacterCount`)
    * so the count can update via direct DOM mutation without re-rendering
    * this header on every keystroke.
    */
@@ -43,7 +43,7 @@ const ActionButton = React.forwardRef<
 ))
 ActionButton.displayName = 'ActionButton'
 
-export const PersonaEditorHeader = React.memo(function PersonaEditorHeader({
+export const PromptEditorHeader = React.memo(function PromptEditorHeader({
   title,
   countSlot,
   isExpanded,
@@ -52,7 +52,7 @@ export const PersonaEditorHeader = React.memo(function PersonaEditorHeader({
   onCopy,
   headerClassName,
   titleClassName,
-}: PersonaEditorHeaderProps) {
+}: PromptEditorHeaderProps) {
   return (
     <div
       className={cn(

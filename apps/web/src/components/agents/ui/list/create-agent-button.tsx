@@ -1,23 +1,35 @@
 // apps/web/src/components/agents/ui/list/create-agent-button.tsx
 'use client'
 
+import { AnimatedGradientText } from '@auxx/ui/components/animated-gradient-text'
 import { Button } from '@auxx/ui/components/button'
-import { Plus } from 'lucide-react'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@auxx/ui/components/dropdown-menu'
+import { Bot, LayoutTemplate, Plus } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useCallback, useState } from 'react'
 import { useAgentMutations } from '../../hooks/use-agent-mutations'
+import { AgentTemplateDialog } from '../dialogs/agent-template-dialog'
 
 /**
- * Creates a draft agent immediately and routes into setup mode. No dialog —
- * name + description are set by the builder chat. The agent row gets
- * `slug = id` and `User.name = null` server-side.
+ * Dropdown trigger for creating an agent: scratch (immediate draft + route) or
+ * template (opens the template dialog). Mirrors `CreateWorkflowButton`'s
+ * pattern — gradient styling on the "Create from template" item to nudge
+ * admins toward starter prompts.
  */
 export function CreateAgentButton() {
   const router = useRouter()
   const { createAgent, isCreating } = useAgentMutations()
   const [isRedirecting, setIsRedirecting] = useState(false)
+  const [templateDialogOpen, setTemplateDialogOpen] = useState(false)
 
-  const handleClick = useCallback(async () => {
+  const isBusy = isCreating || isRedirecting
+
+  const handleCreateFromScratch = useCallback(async () => {
     setIsRedirecting(true)
     const created = await createAgent()
     if (!created) {
@@ -31,13 +43,30 @@ export function CreateAgentButton() {
   }, [createAgent, router])
 
   return (
-    <Button
-      size='sm'
-      onClick={handleClick}
-      loading={isCreating || isRedirecting}
-      loadingText='Creating…'>
-      <Plus />
-      Create agent
-    </Button>
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button size='sm' loading={isBusy} loadingText='Creating…'>
+            <Plus />
+            Create agent
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align='end' className='w-50'>
+          <DropdownMenuItem onClick={handleCreateFromScratch} disabled={isBusy}>
+            <Bot />
+            Create from scratch
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onClick={() => setTemplateDialogOpen(true)}
+            disabled={isBusy}
+            className='data-highlighted:bg-[#ffaa40]/10'>
+            <LayoutTemplate className='text-[#ffaa40]' />
+            <AnimatedGradientText>Create from template</AnimatedGradientText>
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      <AgentTemplateDialog open={templateDialogOpen} onOpenChange={setTemplateDialogOpen} />
+    </>
   )
 }

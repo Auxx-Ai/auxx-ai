@@ -1,4 +1,4 @@
-// apps/web/src/components/agents/ui/detail/prompt/persona-editor-content.tsx
+// apps/web/src/components/editor/prompt-editor/prompt-editor-content.tsx
 'use client'
 
 import {
@@ -30,9 +30,9 @@ import { useRichTextEditor } from '~/components/editor/rich-text/use-rich-text-e
 import { BasicSlashCommandPicker } from '~/components/editor/slash-commands/basic-slash-command-picker'
 import type { ReferencePickerHandle } from '~/components/pickers/reference-picker/reference-picker-content'
 import { ReferencePickerContent } from '~/components/pickers/reference-picker/reference-picker-content'
-import styles from './persona-editor.module.css'
+import styles from './prompt-editor.module.css'
 
-interface PersonaEditorContentProps {
+interface PromptEditorContentProps {
   /** Snapshot read on mount. Subsequent `agent.prompt` changes don't re-init the editor. */
   initialContent: JSONContent[] | null
   onChange: (content: { json: JSONContent; html: string }) => void
@@ -69,7 +69,7 @@ interface LinkPopoverState {
  * `EditorContent` calls `flushSync` from `componentDidMount`, which
  * fires again when React reparents the subtree).
  */
-export const PersonaEditorContent = memo(function PersonaEditorContent({
+export const PromptEditorContent = memo(function PromptEditorContent({
   initialContent,
   onChange,
   onEditorReady,
@@ -77,7 +77,7 @@ export const PersonaEditorContent = memo(function PersonaEditorContent({
   onUserActivity,
   referencePickerRef,
   referenceTabs,
-}: PersonaEditorContentProps) {
+}: PromptEditorContentProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [linkPopover, setLinkPopover] = useState<LinkPopoverState | null>(null)
 
@@ -126,7 +126,7 @@ export const PersonaEditorContent = memo(function PersonaEditorContent({
     }
   }, [editor, onFocusChange, onUserActivity])
 
-  const handlePersonaLinkRequest = useCallback(() => {
+  const handleLinkRequest = useCallback(() => {
     if (!editor) return
     const { from, to } = editor.state.selection
     if (from === to) return
@@ -184,9 +184,7 @@ export const PersonaEditorContent = memo(function PersonaEditorContent({
         renderBlockSection={({ editor }) => <KBBlockSection editor={editor} />}
         renderTurnInto={({ editor }) => <TurnIntoSection editor={editor} />}
         renderInlineMarks={({ editor }) => <InlineMarksSection editor={editor} />}
-        renderLink={({ editor }) => (
-          <LinkButton editor={editor} onRequest={handlePersonaLinkRequest} />
-        )}
+        renderLink={({ editor }) => <LinkButton editor={editor} onRequest={handleLinkRequest} />}
       />
       <InlinePickerPopover
         state={slashCommand.suggestionState}
@@ -226,7 +224,7 @@ export const PersonaEditorContent = memo(function PersonaEditorContent({
           tabs={referenceTabs}
         />
       </InlinePickerPopover>
-      <PersonaLinkPopover
+      <PromptLinkPopover
         open={linkPopover !== null}
         anchorRect={linkPopover?.rect ?? null}
         initialHref={linkPopover?.initialHref ?? ''}
@@ -237,10 +235,10 @@ export const PersonaEditorContent = memo(function PersonaEditorContent({
   )
 })
 
-// Minimal URL-only link popover for persona — no internal article search,
-// admins either paste a URL or cancel. Modeled on `ArticleLinkPopover` for
-// the virtual-anchor + dialog-aware portal behavior.
-function PersonaLinkPopover({
+// Minimal URL-only link popover — no internal article search, admins
+// either paste a URL or cancel. Modeled on `ArticleLinkPopover` for the
+// virtual-anchor + dialog-aware portal behavior.
+function PromptLinkPopover({
   open,
   anchorRect,
   initialHref,

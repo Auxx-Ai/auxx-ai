@@ -14,7 +14,8 @@ import type { BlockRendererProps } from './block-registry'
 import type { ThreadListData, ThreadSnapshotData } from './block-schemas'
 
 export function ThreadListBlock({ data, skipEntrance }: BlockRendererProps<ThreadListData>) {
-  const { threadIds, snapshot } = data
+  const threadIds = data.threadIds ?? []
+  const snapshot = data.snapshot
 
   return (
     <div className='not-prose my-2'>

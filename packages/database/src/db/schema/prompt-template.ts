@@ -25,8 +25,12 @@ export const PromptTemplate = pgTable(
     /** Short description of what the template does */
     description: text().notNull(),
 
-    /** The actual prompt content that gets sent to Kopilot */
-    prompt: text().notNull(),
+    /**
+     * Prompt body as a Tiptap doc (KB block schema —
+     * `{ type: 'doc', content: ArticleNodeJSON[] }`). Flattened to text at
+     * send time by the composer via `docToText({ references })`.
+     */
+    prompt: jsonb().$type<{ type: 'doc'; content: unknown[] }>().notNull(),
 
     /** Categories for filtering (e.g., ["customer-support", "shopify"]) */
     categories: jsonb().$type<string[]>().notNull().default(sql`'[]'::jsonb`),

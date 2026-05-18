@@ -142,4 +142,9 @@ export {
   walkPromptDoc,
 } from './prompt-mention-reconciler'
 export { AGENT_SLUG_MAX, AGENT_SLUG_REGEX, agentSlugSchema } from './slug-schema'
+export {
+  type AgentTemplate,
+  type AgentTemplateCategory,
+  agentTemplates,
+} from './templates'
 export type { FlatToolCatalogEntry } from './toolset-catalog'

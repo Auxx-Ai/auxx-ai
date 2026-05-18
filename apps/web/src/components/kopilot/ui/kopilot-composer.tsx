@@ -3,7 +3,9 @@
 'use client'
 
 import { ModelType } from '@auxx/lib/ai/providers/types'
+import type { DocJSON } from '@auxx/lib/kb/markdown'
 import type { PromptTemplateItem } from '@auxx/lib/prompt-templates'
+import { docToText } from '@auxx/lib/tiptap'
 import { Button } from '@auxx/ui/components/button'
 import { cn } from '@auxx/ui/lib/utils'
 import { generateId } from '@auxx/utils/generateId'
@@ -101,9 +103,16 @@ function extractMentionRefs(html: string): SessionRef[] {
 
 /**
  * Resolve prompt template badges in HTML to their full prompt text for the API.
+ * Each badge's `DocJSON` body is flattened via `docToText` — inline reference
+ * chips inside the template inline as `[reference](id)` so the model sees a
+ * coherent natural-language prompt with id-bearing tags.
  */
-function resolvePromptBadges(html: string, templateMap: Map<string, string>): string {
-  return html.replace(PROMPT_BADGE_REGEX, (_match, id: string) => templateMap.get(id) ?? '')
+function resolvePromptBadges(html: string, templateMap: Map<string, DocJSON>): string {
+  return html.replace(PROMPT_BADGE_REGEX, (_match, id: string) => {
+    const doc = templateMap.get(id)
+    if (!doc) return ''
+    return docToText(doc)
+  })
 }
 
 /**

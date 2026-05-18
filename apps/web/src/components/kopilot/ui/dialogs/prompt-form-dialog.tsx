@@ -2,6 +2,7 @@
 
 'use client'
 
+import { isNonEmptyDoc } from '@auxx/lib/tiptap'
 import { Button } from '@auxx/ui/components/button'
 import {
   Dialog,
@@ -15,13 +16,21 @@ import { IconPicker, type IconPickerValue } from '@auxx/ui/components/icon-picke
 import { InputGroup, InputGroupAddon, InputGroupInput } from '@auxx/ui/components/input-group'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { Label } from '@auxx/ui/components/label'
-import { Textarea } from '@auxx/ui/components/textarea'
 import { toastError } from '@auxx/ui/components/toast'
+import type { JSONContent } from '@tiptap/core'
 import { Trash2 } from 'lucide-react'
 import type React from 'react'
 import { useEffect, useRef, useState } from 'react'
+import { DEFAULT_TABS } from '~/components/editor/inline-picker'
+import type { ReferenceTab } from '~/components/editor/inline-picker/nodes/reference-picker-node'
+import { PromptEditor } from '~/components/editor/prompt-editor'
 import { useConfirm } from '~/hooks/use-confirm'
 import { usePromptTemplateMutations } from '../../hooks/use-prompt-template-mutations'
+
+interface PromptDoc {
+  type: 'doc'
+  content: JSONContent[]
+}
 
 type PromptFormDialogProps =
   | {
@@ -38,7 +47,7 @@ type PromptFormDialogProps =
         id: string
         name: string
         description: string
-        prompt: string
+        prompt: PromptDoc
         icon?: { iconId: string; color: string } | null
       }
       onDeleted?: () => void
@@ -46,12 +55,32 @@ type PromptFormDialogProps =
 
 const DEFAULT_ICON: IconPickerValue = { icon: 'sparkles', color: 'violet' }
 
+// Templates share the persona editor's admin-only reference tabs — authors
+// want to drop tool / record / field chips into the prompt body.
+const TEMPLATE_REFERENCE_TABS: ReferenceTab[] = [...DEFAULT_TABS, 'tools', 'resources', 'fields']
+
+function emptyPromptDoc(): PromptDoc {
+  return {
+    type: 'doc',
+    content: [{ type: 'block', attrs: { blockType: 'text' }, content: [] }],
+  }
+}
+
+function readPromptContent(doc: PromptDoc | null | undefined): JSONContent[] | null {
+  if (!doc) return null
+  if (!Array.isArray(doc.content)) return null
+  return doc.content
+}
+
 export function PromptFormDialog(props: PromptFormDialogProps) {
   const { open, onOpenChange } = props
   const nameInputRef = useRef<HTMLInputElement>(null)
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
-  const [prompt, setPrompt] = useState('')
+  const [prompt, setPrompt] = useState<PromptDoc>(emptyPromptDoc)
+  // Editor instance lifecycle drives initial-content re-read. Bumping this
+  // key on dialog open remounts `PromptEditor` so the new template loads.
+  const [editorKey, setEditorKey] = useState(0)
   const [iconValue, setIconValue] = useState<IconPickerValue>(DEFAULT_ICON)
 
   const { create, update, remove } = usePromptTemplateMutations()
@@ -63,7 +92,7 @@ export function PromptFormDialog(props: PromptFormDialogProps) {
       if (props.mode === 'edit') {
         setName(props.promptTemplate.name)
         setDescription(props.promptTemplate.description)
-        setPrompt(props.promptTemplate.prompt)
+        setPrompt(props.promptTemplate.prompt ?? emptyPromptDoc())
         setIconValue(
           props.promptTemplate.icon
             ? { icon: props.promptTemplate.icon.iconId, color: props.promptTemplate.icon.color }
@@ -72,9 +101,10 @@ export function PromptFormDialog(props: PromptFormDialogProps) {
       } else {
         setName('')
         setDescription('')
-        setPrompt('')
+        setPrompt(emptyPromptDoc())
         setIconValue(DEFAULT_ICON)
       }
+      setEditorKey((k) => k + 1)
     }
   }, [open, props.mode])
 
@@ -86,7 +116,7 @@ export function PromptFormDialog(props: PromptFormDialogProps) {
       return
     }
 
-    if (!prompt.trim()) {
+    if (!isNonEmptyDoc(prompt)) {
       toastError({ title: 'Prompt required', description: 'Please enter the prompt content' })
       return
     }
@@ -97,7 +127,7 @@ export function PromptFormDialog(props: PromptFormDialogProps) {
       const result = await create.mutateAsync({
         name: name.trim(),
         description: description.trim() || name.trim(),
-        prompt: prompt.trim(),
+        prompt,
         icon: iconData,
       })
       onOpenChange(false)
@@ -109,7 +139,7 @@ export function PromptFormDialog(props: PromptFormDialogProps) {
         id: props.promptTemplate.id,
         name: name.trim(),
         description: description.trim(),
-        prompt: prompt.trim(),
+        prompt,
         icon: iconData,
       })
       onOpenChange(false)
@@ -147,7 +177,7 @@ export function PromptFormDialog(props: PromptFormDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className='sm:max-w-[500px]'
+        className='sm:max-w-[600px]'
         position='tc'
         onOpenAutoFocus={(e) => {
           e.preventDefault()
@@ -185,15 +215,14 @@ export function PromptFormDialog(props: PromptFormDialogProps) {
             </div>
             <div className='grid gap-2'>
               <Label htmlFor='prompt-content'>Prompt</Label>
-              <Textarea
-                id='prompt-content'
-                value={prompt}
-                onChange={(e) => setPrompt(e.target.value)}
-                placeholder='Enter the prompt content that will be sent to Kopilot...'
-                className='min-h-[200px]'
-                disabled={isPending}
-                required
-              />
+              <div className='rounded-md border bg-background min-h-[200px] px-3 py-2'>
+                <PromptEditor
+                  key={editorKey}
+                  initialContent={readPromptContent(prompt)}
+                  onChange={({ json }) => setPrompt(json as PromptDoc)}
+                  referenceTabs={TEMPLATE_REFERENCE_TABS}
+                />
+              </div>
             </div>
           </div>
 

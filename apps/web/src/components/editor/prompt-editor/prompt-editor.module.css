@@ -1,10 +1,11 @@
-/* apps/web/src/components/agents/ui/detail/prompt/persona-editor.module.css */
+/* apps/web/src/components/editor/prompt-editor/prompt-editor.module.css */
 
 /*
- * Persona-editor density overrides. The block renderer
+ * Prompt-editor density overrides. The block renderer
  * (`components/editor/kb-article/block-node-view.module.css`) reads
  * `--editor-*` variables with inline defaults; setting them here
- * retones the persona editor without forking the renderer.
+ * retones the persona / template prompt editors without forking the
+ * renderer.
  */
 
 .editor {

@@ -1107,6 +1107,13 @@
       "when": 1779100000000,
       "tag": "0157_content_block_wipe",
       "breakpoints": true
+    },
+    {
+      "idx": 158,
+      "version": "7",
+      "when": 1779125898416,
+      "tag": "0158_prompt_template_prompt_to_jsonb",
+      "breakpoints": true
     }
   ]
 }

@@ -1,38 +1,39 @@
 // packages/lib/src/prompt-templates/template-registry.ts
 
-import accountResearch from './templates/account-research.json'
-import dealBrief from './templates/deal-brief.json'
-import draftReply from './templates/draft-reply.json'
-import escalationAssessment from './templates/escalation-assessment.json'
-import extractActionItems from './templates/extract-action-items.json'
-import orderStatusLookup from './templates/order-status-lookup.json'
-import refundPolicyResponse from './templates/refund-policy-response.json'
-import salesCoach from './templates/sales-coach.json'
-import sentimentAnalysis from './templates/sentiment-analysis.json'
-import shippingInquiry from './templates/shipping-inquiry.json'
-import summarizeThread from './templates/summarize-thread.json'
-import summarizeTicket from './templates/summarize-ticket.json'
-import translateMessage from './templates/translate-message.json'
+import { compileMdTemplate } from './compile-md-template'
+import accountResearchMd from './templates/account-research.md'
+import dealBriefMd from './templates/deal-brief.md'
+import draftReplyMd from './templates/draft-reply.md'
+import escalationAssessmentMd from './templates/escalation-assessment.md'
+import extractActionItemsMd from './templates/extract-action-items.md'
+import orderStatusLookupMd from './templates/order-status-lookup.md'
+import refundPolicyResponseMd from './templates/refund-policy-response.md'
+import salesCoachMd from './templates/sales-coach.md'
+import sentimentAnalysisMd from './templates/sentiment-analysis.md'
+import shippingInquiryMd from './templates/shipping-inquiry.md'
+import summarizeThreadMd from './templates/summarize-thread.md'
+import summarizeTicketMd from './templates/summarize-ticket.md'
+import translateMessageMd from './templates/translate-message.md'
 import type { PromptTemplateDefinition } from './types'
 
 const allTemplates: PromptTemplateDefinition[] = [
   // Customer Support
-  summarizeTicket,
-  draftReply,
-  escalationAssessment,
-  sentimentAnalysis,
+  compileMdTemplate(summarizeTicketMd),
+  compileMdTemplate(draftReplyMd),
+  compileMdTemplate(escalationAssessmentMd),
+  compileMdTemplate(sentimentAnalysisMd),
   // Shopify
-  orderStatusLookup,
-  refundPolicyResponse,
-  shippingInquiry,
+  compileMdTemplate(orderStatusLookupMd),
+  compileMdTemplate(refundPolicyResponseMd),
+  compileMdTemplate(shippingInquiryMd),
   // Sales
-  salesCoach,
-  accountResearch,
-  dealBrief,
+  compileMdTemplate(salesCoachMd),
+  compileMdTemplate(accountResearchMd),
+  compileMdTemplate(dealBriefMd),
   // General
-  summarizeThread,
-  translateMessage,
-  extractActionItems,
+  compileMdTemplate(summarizeThreadMd),
+  compileMdTemplate(translateMessageMd),
+  compileMdTemplate(extractActionItemsMd),
 ]
 
 const templateMap = new Map<string, PromptTemplateDefinition>(allTemplates.map((t) => [t.id, t]))

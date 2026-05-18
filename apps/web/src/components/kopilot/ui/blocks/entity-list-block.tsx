@@ -11,7 +11,8 @@ import type { EntityListData } from './block-schemas'
 import { EntityCardItem } from './entity-card-item'
 
 export function EntityListBlock({ data, skipEntrance }: BlockRendererProps<EntityListData>) {
-  const { recordIds, snapshot } = data
+  const recordIds = data.recordIds ?? []
+  const snapshot = data.snapshot
   const firstId = recordIds[0]
   const entityDefId = firstId ? getDefinitionId(firstId) : null
   const { resource } = useResource(entityDefId)
