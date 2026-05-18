@@ -50,7 +50,9 @@ import {
   type ListFilteredResult,
   listAll as listAllQuery,
   queryEntityInstanceIds,
+  queryEntityInstanceIdsPaged,
   querySystemResourceIds,
+  querySystemResourceIdsPaged,
   resolveEntityIdFromCache,
 } from './unified-handler-queries'
 
@@ -620,15 +622,59 @@ export class UnifiedCrudHandler {
     filters?: ConditionGroup[]
     sorting?: Array<{ id: string; desc: boolean }>
     limit?: number
+    /** Pagination offset — honored in oneshot mode (snapshot mode uses cursor.offset). */
+    offset?: number
     cursor?: { snapshotId: string; offset: number }
+    /**
+     * Query mode:
+     * - 'snapshot' (default): cache the full filtered id list, slice for pagination.
+     * - 'oneshot': bypass Redis, run a paged SQL query + parallel COUNT(*). Use for
+     *   one-shot callers (agents) that don't benefit from a stable snapshot.
+     */
+    mode?: 'snapshot' | 'oneshot'
   }): Promise<ListFilteredResult> {
-    const { entityDefinitionId, sorting = [], limit = 100, cursor } = params
+    const { entityDefinitionId, sorting = [], limit = 100, cursor, mode = 'snapshot' } = params
 
     // Resolve valueSource placeholders (e.g. currentUser) before any cache key
     // is computed so snapshots are isolated per viewer.
     const filters = resolveConditionContext(params.filters ?? [], {
       currentUserId: this.userId,
     })
+
+    // Oneshot mode: bypass snapshot, run paged SQL + COUNT in parallel.
+    if (mode === 'oneshot') {
+      const offset = Math.max(params.offset ?? 0, 0)
+
+      const { ids, total } = isSystemResource(entityDefinitionId)
+        ? await querySystemResourceIdsPaged({
+            db: this.db,
+            tableId: entityDefinitionId as TableId,
+            organizationId: this.organizationId,
+            filters: filters as ConditionGroup[],
+            sorting,
+            limit,
+            offset,
+          })
+        : await queryEntityInstanceIdsPaged({
+            db: this.db,
+            entityDefinitionId: isEntityDefinitionType(entityDefinitionId)
+              ? (await this.resolveEntityDefinition(entityDefinitionId)).id
+              : entityDefinitionId,
+            organizationId: this.organizationId,
+            filters: filters as ConditionGroup[],
+            sorting,
+            limit,
+            offset,
+          })
+
+      return {
+        snapshotId: '',
+        ids,
+        total,
+        hasMore: offset + ids.length < total,
+        fromCache: false,
+      }
+    }
 
     // Extract pagination from cursor if provided
     const snapshotId = cursor?.snapshotId
