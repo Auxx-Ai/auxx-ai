@@ -1,6 +1,6 @@
 // packages/lib/src/cache/org-cache-keys.ts
 
-import type { KnowledgeEntry, ToolsetEntry } from '@auxx/database'
+import type { AgentConfig, KnowledgeEntry, ToolsetEntry } from '@auxx/database'
 import type {
   CustomFieldEntity,
   OrganizationMemberInfo,
@@ -94,7 +94,12 @@ export interface DehydratedOrgProfile {
 /** Cached agent (JSON-serializable) */
 export interface CachedAgent {
   id: string
-  userId: string
+  /**
+   * `null` while the agent is a draft. The backing User row is materialized
+   * by `completeAgentSetup`. See
+   * plans/kopilot/agents/dm/option-d-defer-user-plan.md.
+   */
+  userId: string | null
   createdById: string
   /** `null` while the builder hasn't named the agent yet. */
   name: string | null
@@ -120,6 +125,13 @@ export interface CachedAgent {
   dmInstructions: Record<string, unknown> | null
   /** AgentTrigger.id for the `dm` row; null only if the row is missing (pre-existing dev agent). */
   dmTriggerId: string | null
+  /**
+   * Optional identity/presentation bag — see `AgentConfig`. During draft
+   * this is the only source for `name`/`avatarAssetId`; post-setup it
+   * remains as the home for `color`/`iconId`. `null` when no field has
+   * been set on Agent.
+   */
+  config: AgentConfig | null
   createdAt: string
   updatedAt: string
 }

@@ -59,6 +59,10 @@ export async function executeAgentScheduledTrigger(job: Job<AgentScheduledTrigge
     await service.removeScheduledScheduler(agentTriggerId)
     return { skipped: true, reason: 'agent-missing' as const }
   }
+  if (!agent.userId) {
+    logger.warn('Agent has not completed setup — skipping scheduled trigger', { agentTriggerId })
+    return { skipped: true, reason: 'agent-not-ready' as const }
+  }
 
   const firedAt = new Date().toISOString()
   const triggerContext = {

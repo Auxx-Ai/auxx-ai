@@ -47,7 +47,7 @@ export function AgentHero({ agent }: AgentHeroProps) {
       <div className='relative shrink-0'>
         <AvatarUpload
           currentAvatarUrl={agent.avatarUrl ?? undefined}
-          targetUserId={agent.userId}
+          targetUserId={agent.userId ?? undefined}
           size='xs'
           compact
           shape='square'

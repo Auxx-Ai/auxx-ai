@@ -1,6 +1,6 @@
 // packages/lib/src/cache/providers/agents-provider.ts
 
-import { schema } from '@auxx/database'
+import { type AgentConfig, schema } from '@auxx/database'
 import { and, eq } from 'drizzle-orm'
 import { MediaAssetService } from '../../files'
 import { createScopedLogger } from '../../logger'
@@ -12,10 +12,15 @@ const logger = createScopedLogger('agents-provider')
 /**
  * Computes all agents for an organization (including archived; consumers filter).
  *
- * `name` and the avatar URL are pulled from the backing User row — agents don't
- * store those columns themselves. Avatars use the standard MediaAsset pipeline
- * (`User.avatarAssetId` → `MediaAssetService.getDownloadUrl`), the same path
- * humans go through.
+ * Under Option D draft agents have no backing User row — the join is a
+ * LEFT JOIN and the presentation fields fall back to `Agent.config`:
+ *
+ *   - `name`:           `User.name ?? Agent.config.name ?? null`
+ *   - `avatarAssetId`:  `User.avatarAssetId ?? Agent.config.avatarAssetId ?? null`
+ *     (then resolved to a URL via the standard MediaAsset pipeline).
+ *
+ * Non-User-owned config keys (`color`, `iconId`) live only on `Agent.config`.
+ * See plans/kopilot/agents/dm/option-d-defer-user-plan.md.
  */
 export const agentsProvider: CacheProvider<CachedAgent[]> = {
   async compute(orgId, db) {
@@ -33,16 +38,17 @@ export const agentsProvider: CacheProvider<CachedAgent[]> = {
         mentionable: schema.Agent.mentionable,
         setupCompletedAt: schema.Agent.setupCompletedAt,
         archivedAt: schema.Agent.archivedAt,
+        config: schema.Agent.config,
         createdAt: schema.Agent.createdAt,
         updatedAt: schema.Agent.updatedAt,
         userName: schema.User.name,
-        avatarAssetId: schema.User.avatarAssetId,
+        userAvatarAssetId: schema.User.avatarAssetId,
         dmTriggerId: schema.AgentTrigger.id,
         dmEnabled: schema.AgentTrigger.enabled,
         dmInstructions: schema.AgentTrigger.instructions,
       })
       .from(schema.Agent)
-      .innerJoin(schema.User, eq(schema.User.id, schema.Agent.userId))
+      .leftJoin(schema.User, eq(schema.User.id, schema.Agent.userId))
       .leftJoin(
         schema.AgentTrigger,
         and(eq(schema.AgentTrigger.agentId, schema.Agent.id), eq(schema.AgentTrigger.kind, 'dm'))
@@ -51,11 +57,22 @@ export const agentsProvider: CacheProvider<CachedAgent[]> = {
 
     return Promise.all(
       rows.map(async (row): Promise<CachedAgent> => {
+        const config = (row.config ?? {}) as AgentConfig
+        const name = row.userName ?? config.name ?? null
+        const avatarAssetId = row.userAvatarAssetId ?? config.avatarAssetId ?? null
+
         let avatarUrl: string | null = null
-        if (row.avatarAssetId) {
-          const mediaAssetService = new MediaAssetService(orgId, row.userId, db)
+        if (avatarAssetId) {
+          // MediaAssetService scopes uploads under the owning user; for User-
+          // owned assets we use `Agent.userId`. For config-only assets (draft)
+          // we currently have no such writer (the v1 builder pool has assetId
+          // null), so this branch is effectively unreachable until curated
+          // illustrations land. Fall back to `row.userId` when set; otherwise
+          // pass the orgId as the owner (the asset is org-scoped).
+          const ownerId = row.userId ?? orgId
+          const mediaAssetService = new MediaAssetService(orgId, ownerId, db)
           try {
-            avatarUrl = await mediaAssetService.getDownloadUrl(row.avatarAssetId)
+            avatarUrl = await mediaAssetService.getDownloadUrl(avatarAssetId)
           } catch (error) {
             logger.warn(`Failed to fetch avatar URL for agent ${row.id}`, {
               error: error instanceof Error ? error.message : String(error),
@@ -67,7 +84,7 @@ export const agentsProvider: CacheProvider<CachedAgent[]> = {
           id: row.id,
           userId: row.userId,
           createdById: row.createdById,
-          name: row.userName ?? null,
+          name,
           slug: row.slug,
           description: row.description ?? null,
           avatarUrl,
@@ -81,6 +98,7 @@ export const agentsProvider: CacheProvider<CachedAgent[]> = {
           dmEnabled: row.dmEnabled ?? false,
           dmInstructions: (row.dmInstructions ?? null) as Record<string, unknown> | null,
           dmTriggerId: row.dmTriggerId ?? null,
+          config: row.config ?? null,
           createdAt: row.createdAt.toISOString(),
           updatedAt: row.updatedAt.toISOString(),
         }

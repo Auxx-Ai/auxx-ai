@@ -44,6 +44,27 @@ export interface KnowledgeEntry {
 }
 
 /**
+ * Optional identity/presentation bag stored on the Agent row itself.
+ *
+ * During draft (`Agent.userId IS NULL`) this is the **only** source of these
+ * fields — no backing User exists yet to hold them. After
+ * `completeAgentSetup` runs, User-owned fields (`name`, `avatarAssetId`)
+ * are mirrored onto the synthetic User row and the User value wins on
+ * read; non-User-owned fields (`color`, `iconId`) keep `config` as their
+ * canonical home.
+ *
+ * Read priority for User-owned fields: `User.<field> ?? Agent.config.<field> ?? null`.
+ *
+ * See plans/kopilot/agents/dm/option-d-defer-user-plan.md §3.
+ */
+export interface AgentConfig {
+  name?: string
+  avatarAssetId?: string
+  color?: string
+  iconId?: string
+}
+
+/**
  * A user-authored Kopilot agent. Backed by a synthetic User row
  * (userType = 'AGENT'). Optional configuration layer on top of the
  * master Kopilot runtime.
@@ -63,9 +84,14 @@ export const Agent = pgTable(
         onDelete: 'cascade',
       }),
 
-    /** The synthetic User row backing this agent. 1:1. */
+    /**
+     * The synthetic User row backing this agent. 1:1 when set.
+     *
+     * `null` while the agent is mid-build (no User row exists yet). The User
+     * is materialized inside `completeAgentSetup`. See
+     * plans/kopilot/agents/dm/option-d-defer-user-plan.md §1.
+     */
     userId: text()
-      .notNull()
       .unique()
       .references((): AnyPgColumn => User.id, {
         onUpdate: 'cascade',
@@ -102,6 +128,15 @@ export const Agent = pgTable(
     mentionable: boolean().default(true).notNull(),
 
     modelId: text(),
+
+    /**
+     * Optional identity/presentation bag — see `AgentConfig` above. Holds
+     * fields that don't live on User (`color`, `iconId`) plus pre-setup
+     * values for fields that eventually move to User (`name`,
+     * `avatarAssetId`). Readers fall back to `config` when User is null
+     * (draft) or doesn't own the field.
+     */
+    config: jsonb().$type<AgentConfig | null>(),
 
     /**
      * `null` while the agent is mid-build via the chat-driven setup flow;

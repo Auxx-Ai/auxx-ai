@@ -71,6 +71,10 @@ export async function executeAgentAppTrigger(job: Job<AgentAppTriggerJobData>) {
     logger.warn('Agent missing for app trigger', { agentTriggerId })
     return { skipped: true as const, reason: 'agent-missing' as const }
   }
+  if (!agent.userId) {
+    logger.warn('Agent has not completed setup — skipping app trigger', { agentTriggerId })
+    return { skipped: true as const, reason: 'agent-not-ready' as const }
+  }
 
   const sessionResult = await createSession({
     organizationId,

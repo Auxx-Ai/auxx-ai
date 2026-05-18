@@ -1,6 +1,6 @@
 // packages/lib/src/ai/kopilot/capabilities/agents-builder/tools/update-agent-identity.ts
 
-import { schema } from '@auxx/database'
+import { type AgentConfig, schema } from '@auxx/database'
 import { eq } from 'drizzle-orm'
 import { updateAgent } from '../../../../../agents/agent-service'
 import { resolveBuilderAvatar } from '../../../../../agents/builder-avatars'
@@ -170,15 +170,32 @@ async function writeAgentAvatar(params: {
 }): Promise<void> {
   const { db } = params.getDeps()
   const [agent] = await db
-    .select({ userId: schema.Agent.userId })
+    .select({ userId: schema.Agent.userId, config: schema.Agent.config })
     .from(schema.Agent)
     .where(eq(schema.Agent.id, params.agentId))
     .limit(1)
   if (!agent) return
-  await db
-    .update(schema.User)
-    .set({ avatarAssetId: params.avatarAssetId, updatedAt: new Date() })
-    .where(eq(schema.User.id, agent.userId))
+
+  if (agent.userId) {
+    await db
+      .update(schema.User)
+      .set({ avatarAssetId: params.avatarAssetId, updatedAt: new Date() })
+      .where(eq(schema.User.id, agent.userId))
+  } else {
+    // Draft (Option D): no backing User yet. Stash the chosen assetId on
+    // Agent.config so the cache provider's fallback picks it up; on
+    // completeAgentSetup the value is mirrored onto User.avatarAssetId.
+    // When the v1 builder pool resolves to assetId=null this is a true
+    // no-op (we don't bother writing the empty key).
+    const current = (agent.config ?? {}) as AgentConfig
+    const next: AgentConfig = { ...current }
+    if (params.avatarAssetId) next.avatarAssetId = params.avatarAssetId
+    else delete next.avatarAssetId
+    await db
+      .update(schema.Agent)
+      .set({ config: next, updatedAt: new Date() })
+      .where(eq(schema.Agent.id, params.agentId))
+  }
 
   await onCacheEvent('agent.updated', { orgId: params.organizationId })
 }

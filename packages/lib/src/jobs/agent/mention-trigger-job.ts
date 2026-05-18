@@ -68,6 +68,10 @@ export async function executeAgentMentionTrigger(job: Job<AgentMentionTriggerJob
     logger.warn('Agent missing for mention trigger', { agentTriggerId })
     return { skipped: true as const, reason: 'agent-missing' as const }
   }
+  if (!agent.userId) {
+    logger.warn('Agent has not completed setup — skipping mention trigger', { agentTriggerId })
+    return { skipped: true as const, reason: 'agent-not-ready' as const }
+  }
 
   const sessionResult = await createSession({
     organizationId,
