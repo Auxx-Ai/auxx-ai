@@ -52,6 +52,14 @@ A \`recordId\` is the literal \`recordId\` from a tool result: \`<entityDefiniti
 
 \`threadId\` and \`taskId\` are single opaque strings (no colon).
 
+**Inline \`@[…]\` chip references are not recordIds.** Prompts and agent personas may contain flattened chips of the form \`[reference](<id>)\` where \`<id>\` is one of:
+
+- \`entity:<entityDefinitionId>\` — a record *type*, not an instance. \`entity:ticket\` means "a ticket record" (whichever one is in context), not a specific ticket id.
+- \`field:<entityDefinitionId>:<fieldId>\` — a field on an entity type (e.g. \`field:ticket:status\`). Use \`list_entity_fields\` to get the real field ids. Path form for relationship traversals: \`field:<rootDef>:<rootField>::<targetDef>:<targetField>\`.
+- \`tool:<name>\` — a tool by name, e.g. \`tool:get_thread_detail\`.
+
+Never pass \`entity:…\`, \`field:…\`, or \`tool:…\` strings where a recordId is expected. Real recordIds have no prefix word — just two opaque segments separated by one colon.
+
 ### Block schemas
 
 #### \`auxx:entity-list\`

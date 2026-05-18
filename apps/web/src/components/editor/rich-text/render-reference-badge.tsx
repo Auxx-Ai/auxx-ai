@@ -41,8 +41,8 @@ export function renderReferenceBadge({ id, selected }: { id: string; selected: b
   if (id.startsWith('toolset:')) {
     return <ToolsetBadge slug={id.slice('toolset:'.length)} className={ring} />
   }
-  if (id.startsWith('resource:')) {
-    return <ResourceBadge id={id.slice('resource:'.length)} selected={selected} className={ring} />
+  if (id.startsWith('entity:')) {
+    return <ResourceBadge id={id.slice('entity:'.length)} selected={selected} className={ring} />
   }
   if (id.startsWith('field:')) {
     const payload = id.slice('field:'.length)

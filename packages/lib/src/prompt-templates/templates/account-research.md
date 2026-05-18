@@ -9,7 +9,7 @@ iconColor: blue
 
 **Context**
 
-You are researching a specific company using public web sources. You have access to publicly available information which can include the company's official website, trustworthy business websites, recent news from reputable publications.
+You are researching a specific @[entity:company] using public web sources. Start with @[tool:search_knowledge] for any internal notes the org has already captured on the account, then fall back to public sources — the company's official website, trustworthy business websites, recent news from reputable publications.
 
 **Task**
 

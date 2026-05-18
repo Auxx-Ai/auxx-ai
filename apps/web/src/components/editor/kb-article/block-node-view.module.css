@@ -100,6 +100,30 @@
   margin-left: 0;
 }
 
+/* Read-only mode — TipTap sets `contenteditable="false"` on the root
+   `.ProseMirror` element when `editor.setEditable(false)` is in effect.
+   Suppress the gutter (line number + drag handle), the selection outline,
+   and the text cursor so the editor reads as a static preview.
+
+   Used by the system-template gallery preview; the same TipTap instance
+   stays mounted so badge rendering and block layout match the customize
+   view byte-for-byte. */
+:global(.ProseMirror[contenteditable='false']) .lineGutter {
+  display: none;
+}
+
+:global(.ProseMirror[contenteditable='false']) .blockContainer {
+  margin-left: 0;
+}
+
+:global(.ProseMirror[contenteditable='false']) .blockWrapper:global(.ProseMirror-selectednode) {
+  outline: none;
+}
+
+:global(.ProseMirror[contenteditable='false']) .blockContent {
+  cursor: default;
+}
+
 /* ============================================
    Line number — subtle, appears on hover/focus
    ============================================ */

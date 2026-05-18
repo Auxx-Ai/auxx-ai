@@ -9,7 +9,7 @@ iconColor: indigo
 
 **Context**
 
-You are reviewing a conversation thread. You have access to all messages in the thread, including any internal notes, linked records, and participant information. The thread may be a support ticket, an internal discussion, or a customer interaction.
+You are reviewing a conversation thread. Use @[tool:get_thread_detail] to read the full message list and @[tool:list_notes] for internal notes. Linked records may include a @[entity:ticket] or a @[entity:contact] participant. The thread may be a support ticket, an internal discussion, or a customer interaction.
 
 **Task**
 

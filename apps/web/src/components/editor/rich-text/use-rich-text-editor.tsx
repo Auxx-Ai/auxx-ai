@@ -93,6 +93,13 @@ export interface UseRichTextEditorOptions {
    * must be passed the same list.
    */
   referenceTabs?: ReferenceTab[]
+  /**
+   * Forwarded to TipTap's `useEditor({ editable })`. Defaults to `true`.
+   * When `false`, the editor renders its content with the same block / badge
+   * extensions but disables typing — used for read-only previews (system
+   * template gallery, etc.).
+   */
+  editable?: boolean
 }
 
 /**
@@ -112,6 +119,7 @@ export function useRichTextEditor({
   onPickerEnter,
   onPickerArrowVertical,
   referenceTabs,
+  editable = true,
 }: UseRichTextEditorOptions) {
   const normalizedInitialContent = useMemo<JSONContent>(() => {
     const migrated = migrateLegacyContent(initialContent)
@@ -151,6 +159,7 @@ export function useRichTextEditor({
   const editor = useEditor(
     {
       immediatelyRender: false,
+      editable,
       extensions: [
         Doc,
         StarterKit.configure({
@@ -217,6 +226,14 @@ export function useRichTextEditor({
     },
     []
   )
+
+  // `useEditor` is created once with `editable` from the first render. Sync
+  // subsequent toggles via `setEditable` so a "View ↔ Customize" swap on the
+  // same editor instance flips read-only state without remounting.
+  useEffect(() => {
+    if (!editor) return
+    if (editor.isEditable !== editable) editor.setEditable(editable)
+  }, [editor, editable])
 
   const gutterCharWidth = useEditorState({
     editor,
