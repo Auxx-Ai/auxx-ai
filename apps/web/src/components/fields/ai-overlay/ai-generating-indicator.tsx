@@ -4,7 +4,7 @@
 
 import { TextShimmer } from '@auxx/ui/components/text-shimmer'
 import { cn } from '@auxx/ui/lib/utils'
-import { AnimatedDots } from '~/components/kopilot/ui/kopilot-status-bar'
+import { AnimatedDots } from '~/components/kopilot/ui/messages/assistant-thinking-status'
 
 /**
  * Shimmer + animated dots used while an AI value is being generated. One

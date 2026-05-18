@@ -354,7 +354,7 @@ export function KopilotComposer({ ref, page, onSend, contentClassName }: Kopilot
     if (editingMessageId && editor) {
       const msg = messages.find((m) => m.id === editingMessageId)
       if (msg) {
-        editor.commands.setContent(msg.content)
+        editor.commands.setContent(msg.content ?? '')
         editor.commands.focus('end')
       }
     }

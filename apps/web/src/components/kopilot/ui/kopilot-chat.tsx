@@ -12,7 +12,6 @@ import './blocks/register-blocks'
 import { api } from '~/trpc/react'
 import { KopilotComposer, type KopilotComposerHandle } from './kopilot-composer'
 import { KopilotMessageList, type KopilotMessageListHandle } from './kopilot-message-list'
-import { KopilotStatusBar } from './kopilot-status-bar'
 
 export interface KopilotChatProps {
   /**
@@ -226,7 +225,6 @@ export function KopilotChat({
         onFeedback={handleFeedback}
         onSuggestionClick={handleSuggestionClick}
       />
-      <KopilotStatusBar contentClassName={contentClassName} />
       <KopilotComposer
         ref={composerRef}
         page={page}

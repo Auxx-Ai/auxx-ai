@@ -3,7 +3,7 @@
 'use client'
 
 import { cn } from '@auxx/ui/lib/utils'
-import { AnimatedDots } from '~/components/kopilot/ui/kopilot-status-bar'
+import { AnimatedDots } from '~/components/kopilot/ui/messages/assistant-thinking-status'
 
 /**
  * Pure-CSS twin of `AiGeneratingIndicator`. Same visual design — shimmering

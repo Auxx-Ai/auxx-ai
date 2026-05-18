@@ -8,9 +8,26 @@ import type {
   AgentDomainConfig,
   AgentEngineConfig,
   AgentEvent,
+  AssistantSessionMessage,
   LLMCallParams,
   LLMStreamEvent,
+  SessionMessage,
+  ToolCallPart,
 } from '../types'
+
+function findToolCallPart(
+  messages: SessionMessage[],
+  toolCallId: string
+): ToolCallPart | undefined {
+  for (const msg of messages) {
+    if (msg.role !== 'assistant') continue
+    const m = msg as AssistantSessionMessage
+    for (const p of m.parts ?? []) {
+      if (p.type === 'tool_call' && p.toolCallId === toolCallId) return p
+    }
+  }
+  return undefined
+}
 
 const ZERO_USAGE: UsageMetrics = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 }
 
@@ -94,18 +111,23 @@ describe('validateInputs wiring — non-approval (read) tool', () => {
 
     expect(executeCalls).toBe(0)
 
-    const completed = events.find((e) => e.type === 'tool-completed' && e.toolCallId === 'call_1')
-    expect(completed).toBeDefined()
-    if (completed?.type === 'tool-completed') {
-      expect(completed.result.success).toBe(false)
-      expect(completed.result.error).toContain('must be 2-part')
+    // Validation failure → `tool-call-failed` is emitted against the message's
+    // tool_call part. No `tool-call-completed` is emitted for this call.
+    const failed = events.find((e) => e.type === 'tool-call-failed' && e.toolCallId === 'call_1')
+    expect(failed).toBeDefined()
+    if (failed?.type === 'tool-call-failed') {
+      expect(failed.error).toContain('must be 2-part')
     }
+    const completed = events.find(
+      (e) => e.type === 'tool-call-completed' && e.toolCallId === 'call_1'
+    )
+    expect(completed).toBeUndefined()
 
     const state = engine.getState()
-    const toolMsg = state.messages.find((m) => m.role === 'tool' && m.toolCallId === 'call_1')
-    expect(toolMsg).toBeDefined()
-    const parsed = JSON.parse(toolMsg?.content ?? '{}')
-    expect(parsed.error).toContain('must be 2-part')
+    const part = findToolCallPart(state.messages, 'call_1')
+    expect(part).toBeDefined()
+    expect(part?.status).toBe('error')
+    expect(part?.error).toContain('must be 2-part')
   })
 
   it('rewrites args before execute when validateInputs returns ok with new args', async () => {
@@ -248,13 +270,14 @@ describe('validateInputs wiring — approval-required tool, pre-pause', () => {
     const approval = events.find((e) => e.type === 'approval-required')
     expect(approval).toBeUndefined()
 
-    // Synthetic tool message persisted, ready for the LLM's retry on the
-    // next iteration.
+    // Synthetic error on the tool_call part is persisted, ready for the LLM's
+    // retry on the next iteration. The wire-format converter will surface it
+    // to the model as a tool result with an error payload.
     const state = engine.getState()
-    const toolMsg = state.messages.find((m) => m.role === 'tool' && m.toolCallId === 'call_1')
-    expect(toolMsg).toBeDefined()
-    const parsed = JSON.parse(toolMsg?.content ?? '{}')
-    expect(parsed.error).toContain('must be 2-part')
+    const part = findToolCallPart(state.messages, 'call_1')
+    expect(part).toBeDefined()
+    expect(part?.status).toBe('error')
+    expect(part?.error).toContain('must be 2-part')
 
     // Engine is not stuck waiting for approval.
     expect(state.waitingForApproval).toBeFalsy()

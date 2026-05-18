@@ -18,12 +18,13 @@ interface UserMessageProps {
 }
 
 export function UserMessage({ message, onEdit, onRetry }: UserMessageProps) {
+  const content = message.content ?? ''
   return (
     <div className='group/message flex flex-col items-end gap-1'>
       <div className='bg-illustration text-muted-foreground max-w-4/5 ring-border-illustration shadow-black/6.5 ml-auto w-fit rounded-l-xl rounded-br rounded-tr-xl px-3 py-2 text-sm/5 shadow ring-1'>
-        <UserMessageContent html={message.content} />
+        <UserMessageContent html={content} />
       </div>
-      <MessageActions role='user' content={message.content} onEdit={onEdit} onRetry={onRetry} />
+      <MessageActions role='user' content={content} onEdit={onEdit} onRetry={onRetry} />
     </div>
   )
 }

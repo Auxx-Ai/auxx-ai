@@ -14,6 +14,7 @@ import type {
   LLMCallParams,
   LLMStreamEvent,
 } from '../ai/agent-framework/types'
+import { sessionMessagesToWire } from '../ai/agent-framework/utils'
 import type { Message } from '../ai/clients/base/types'
 import {
   createActorCapabilities,
@@ -170,8 +171,11 @@ export async function runHeadlessSuggestion(
   let finalText = ''
   try {
     for await (const event of engine.submitMessage('begin headless run')) {
-      if (event.type === 'final-message') {
-        finalText = event.content
+      if (event.type === 'assistant-message-finished') {
+        finalText = event.parts
+          .filter((p): p is Extract<typeof p, { type: 'text' }> => p.type === 'text')
+          .map((p) => p.text)
+          .join('')
       }
       if (event.type === 'turn-error') {
         logger.error('Headless run errored', {
@@ -395,31 +399,16 @@ function buildHeadlessAgent(opts: {
     tools: opts.tools,
     maxIterations: 10,
     async buildMessages(state: AgentState): Promise<Message[]> {
-      const messages: Message[] = state.messages
-        .filter((m) => m.role !== 'system')
-        .map((m) => {
-          const msg: Message = {
-            role: m.role as 'user' | 'assistant' | 'tool',
-            content: m.content,
-          }
-          if (m.toolCallId) msg.tool_call_id = m.toolCallId
-          if (m.role === 'assistant' && m.toolCalls?.length) {
-            msg.tool_calls = m.toolCalls.map((tc) => ({
-              id: tc.id,
-              type: 'function' as const,
-              function: { name: tc.function.name, arguments: tc.function.arguments },
-            }))
-          }
-          return msg
-        })
-      const systemPrompt = `${HEADLESS_SYSTEM_PROMPT_ADDITION}\n\n${opts.prompt}`
+      const filtered = state.messages.filter((m) => m.role !== 'system')
+      const wire = sessionMessagesToWire(filtered)
       // Replace the synthetic "begin headless run" user message with the real
       // prompt — the engine requires a user message to kick off, but the model
       // shouldn't see our internal kickoff string.
-      if (messages.length > 0 && messages[0]?.role === 'user') {
-        messages[0] = { role: 'user', content: opts.prompt }
+      if (wire.length > 0 && wire[0]?.role === 'user') {
+        wire[0] = { role: 'user', content: opts.prompt }
       }
-      return [{ role: 'system', content: systemPrompt }, ...messages]
+      const systemPrompt = `${HEADLESS_SYSTEM_PROMPT_ADDITION}\n\n${opts.prompt}`
+      return [{ role: 'system', content: systemPrompt }, ...wire]
     },
     async processResult(_c, _tc, state) {
       return state

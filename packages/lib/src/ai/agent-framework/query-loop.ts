@@ -1,7 +1,8 @@
 // packages/lib/src/ai/agent-framework/query-loop.ts
 
 import { createScopedLogger } from '@auxx/logger'
-import type { ToolCall } from '../clients/base/types'
+import { generateId } from '@auxx/utils/generateId'
+import type { ToolCall, UsageMetrics } from '../clients/base/types'
 import { processCaptureToolCalls } from './capture-mode'
 import type { ToolContext } from './tool-context'
 import type {
@@ -11,11 +12,17 @@ import type {
   AgentState,
   AgentToolDefinition,
   AgentToolResult,
+  AssistantSessionMessage,
+  ContentPart,
+  IterationUsage,
   LLMCallParams,
+  PostProcessResult,
+  TextPart,
+  ThinkingPart,
+  ToolCallPart,
 } from './types'
 import {
   buildToolDigest,
-  executeToolWithProgress,
   needsApproval,
   parseToolArgs,
   previewValue,
@@ -27,29 +34,46 @@ import {
 const logger = createScopedLogger('agent-query-loop')
 const DEFAULT_MAX_ITERATIONS = 10
 // Number of consecutive iterations in which the same tool fails (and only
-// that tool runs) before we bail out of the turn. Without this, a model
-// stuck on a malformed tool input can burn the full iteration budget
-// silently — see plans/kopilot/agents/builder/builder-failure-diagnosis.md §3.5.
+// that tool runs) before we bail out of the turn.
 const SAME_TOOL_FAILURE_LIMIT = 3
 
 /**
- * Core agent query loop — standalone async generator.
+ * Core agent query loop — emits one assistant message per turn with a
+ * `parts[]` array that interleaves `text`, `thinking`, and `tool_call` parts.
  *
- * Calls agent.buildMessages() → callModel() → collect tool calls → execute → loop.
- * Yields AgentEvent for every phase: llm-stream, tool-started, tool-completed, tool-error.
- *
- * One-shot agents (tools=[], maxIterations=1) and looping agents use the same code path.
- *
- * Termination: the loop exits when the LLM returns a response with no tool
- * calls — that response's content becomes the turn's final answer (post-
- * processed via `domainConfig.postProcessFinalContent` and emitted as a
- * `final-message` event).
+ * Lifecycle:
+ * 1. Emit `assistant-message-started` with a fresh `messageId`.
+ * 2. For each LLM iteration: stream text/thinking deltas (extending the
+ *    current open text/thinking part), execute tool calls, mutate the parts
+ *    array in place, yield per-event SSE events scoped to `messageId`/`partIndex`.
+ * 3. On no-tool-call termination, run `postProcessFinalContent` on the
+ *    joined-text projection of all text parts. If the rewrite differs from
+ *    the joined input, collapse every text part into a single `text` part
+ *    at the position of the first text part, splicing out the rest.
+ * 4. Emit `assistant-message-finished` with the FULL final parts array,
+ *    `linkSnapshots`, and turn-total usage. This is the "checksum" that
+ *    kills streaming/refresh divergence by construction.
  */
+/**
+ * Hint passed by the engine when continuing a paused assistant message —
+ * skip the open-message events, append new parts to the existing message id,
+ * and seed turn-cumulative counters so the message's metadata stays whole
+ * across the pause boundary.
+ */
+export interface AgentQueryResumeHint {
+  messageId: string
+  parts: ContentPart[]
+  turnUsage: UsageMetrics
+  /** Iterations executed before the pause; preserved for message metadata. */
+  iterations: IterationUsage[]
+}
+
 export async function* agentQueryLoop(
   agent: AgentDefinition,
   state: AgentState,
   config: AgentEngineConfig,
-  turnId?: string
+  turnId?: string,
+  resumeFrom?: AgentQueryResumeHint
 ): AsyncGenerator<AgentEvent, AgentState> {
   const maxIterations = agent.maxIterations ?? DEFAULT_MAX_ITERATIONS
   const ctx: ToolContext = {
@@ -70,21 +94,76 @@ export async function* agentQueryLoop(
   let failingToolName: string | null = null
   let failingToolStreak = 0
 
-  /**
-   * Per-turn cache of idempotent tool results. Keyed by "toolName::sortedArgsJson".
-   * Prevents the LLM from paying twice to re-run the same read-only lookup
-   * within a single agent loop (e.g. calling search_entities with the same
-   * query on two consecutive iterations).
-   */
+  /** Per-turn cache of idempotent tool results. */
   const idempotentCache = new Map<string, ToolExecResult>()
 
-  yield { type: 'agent-started', agent: agent.name }
-  logger.info('Agent started', {
-    turnId,
-    agent: agent.name,
-    maxIterations,
-    toolCount: agent.tools.length,
-  })
+  // Open a single assistant message for this entire agent run — or reuse
+  // the paused message's id when resuming, so the frontend appends parts to
+  // the existing bubble rather than rendering a new one.
+  const messageId = resumeFrom?.messageId ?? generateId('msg')
+  const parts: ContentPart[] = resumeFrom ? [...resumeFrom.parts] : []
+  // Turn-total usage accumulator (rolled up onto the message metadata). On
+  // resume we seed from the paused message's persisted usage so the metadata
+  // stays cumulative across the pause boundary.
+  const turnUsage: UsageMetrics = resumeFrom
+    ? { ...resumeFrom.turnUsage }
+    : { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 }
+  // Per-LLM-call billing records, kept whole-turn for message metadata.
+  const turnIterations: IterationUsage[] = resumeFrom ? [...resumeFrom.iterations] : []
+  // Iterations executed in THIS segment only — what billing consumers drain
+  // on the next `paused` / `finished` event. Reset across pause/resume so we
+  // never double-charge for the pre-pause iterations.
+  const segmentIterations: IterationUsage[] = []
+  let lastModelId: string | undefined
+  let truncated = false
+
+  if (resumeFrom) {
+    yield { type: 'assistant-message-resumed', messageId, agent: agent.name }
+    logger.info('Agent resumed', {
+      turnId,
+      agent: agent.name,
+      messageId,
+      partsCarried: parts.length,
+      maxIterations,
+      toolCount: agent.tools.length,
+    })
+  } else {
+    yield { type: 'agent-started', agent: agent.name }
+    yield { type: 'assistant-message-started', messageId, agent: agent.name }
+    logger.info('Agent started', {
+      turnId,
+      agent: agent.name,
+      messageId,
+      maxIterations,
+      toolCount: agent.tools.length,
+    })
+  }
+
+  /**
+   * Commit the current parts into a draft assistant message so subsequent
+   * `agent.buildMessages` calls see them — the wire-format helper expands
+   * tool_call parts back into assistant+tool messages for the LLM.
+   */
+  const upsertAssistantMessage = (extra?: Partial<AssistantSessionMessage>): AgentState => {
+    const draft: AssistantSessionMessage = {
+      id: messageId,
+      role: 'assistant',
+      v: 1,
+      parts: parts.map((p) => ({ ...p })),
+      timestamp: Date.now(),
+      metadata: {
+        agent: agent.name,
+        modelId: lastModelId,
+      },
+      ...extra,
+    }
+    const existing = currentState.messages.findIndex((m) => m.id === messageId)
+    const next =
+      existing === -1
+        ? [...currentState.messages, draft]
+        : currentState.messages.map((m) => (m.id === messageId ? draft : m))
+    return { ...currentState, messages: next }
+  }
 
   while (iteration < maxIterations) {
     if (config.signal?.aborted) {
@@ -94,7 +173,10 @@ export async function* agentQueryLoop(
 
     iteration++
 
-    // Build messages from current state
+    // Push the in-progress assistant message into state so buildMessages
+    // sees the prior parts of this same turn (multi-iteration tool chains).
+    currentState = upsertAssistantMessage()
+
     const messages = await agent.buildMessages(currentState, ctx)
     logger.debug('LLM call', {
       turnId,
@@ -112,37 +194,117 @@ export async function* agentQueryLoop(
       responseFormat: agent.responseFormat,
       signal: config.signal,
     }
+    lastModelId = `${callParams.provider}:${callParams.model}`
 
+    // Per-iteration: open positions for text/thinking parts will be allocated
+    // lazily on the first delta of each type.
+    let openTextIdx = -1
+    let openThinkingIdx = -1
+    // Snapshot whether any thinking deltas streamed during this iteration —
+    // governs the "trust deltas; fall back to terminal reasoning_content"
+    // rule from §A.3.
+    let sawThinkingDelta = false
     let content = ''
     let toolCalls: ToolCall[] = []
     let reasoningContent: string | undefined
+    let iterUsage: UsageMetrics | undefined
+    let finishReason: string | undefined
 
     try {
       for await (const event of config.callModel(callParams)) {
         switch (event.type) {
-          case 'text-delta':
-            yield { type: 'llm-stream', agent: agent.name, delta: event.delta }
+          case 'text-delta': {
+            if (openTextIdx === -1 || parts[openTextIdx]?.type !== 'text') {
+              const newPart: TextPart = {
+                type: 'text',
+                text: '',
+                agent: agent.name,
+              }
+              parts.push(newPart)
+              openTextIdx = parts.length - 1
+            }
+            const tp = parts[openTextIdx] as TextPart
+            tp.text += event.delta
+            yield {
+              type: 'text-delta',
+              messageId,
+              partIndex: openTextIdx,
+              delta: event.delta,
+            }
             break
-          case 'reasoning-delta':
-            yield { type: 'llm-reasoning-stream', agent: agent.name, delta: event.delta }
+          }
+          case 'reasoning-delta': {
+            sawThinkingDelta = true
+            if (openThinkingIdx === -1 || parts[openThinkingIdx]?.type !== 'thinking') {
+              const newPart: ThinkingPart = {
+                type: 'thinking',
+                text: '',
+                agent: agent.name,
+              }
+              parts.push(newPart)
+              openThinkingIdx = parts.length - 1
+            }
+            const tp = parts[openThinkingIdx] as ThinkingPart
+            tp.text += event.delta
+            yield {
+              type: 'thinking-delta',
+              messageId,
+              partIndex: openThinkingIdx,
+              delta: event.delta,
+            }
             break
+          }
           case 'tool-call':
-            break
           case 'usage':
             break
           case 'done':
             content = event.content
             toolCalls = event.toolCalls
             reasoningContent = event.reasoning_content
-            yield {
-              type: 'llm-complete',
-              agent: agent.name,
-              content: event.content,
-              usage: event.usage,
-              provider: callParams.provider,
-              model: callParams.model,
-              providerType: event.providerType,
-              credentialSource: event.credentialSource,
+            iterUsage = event.usage
+            finishReason = event.finishReason
+            // Capture per-call billing context. providerType / credentialSource
+            // come from llm-adapter (set per-call by the underlying client).
+            // Skip zero-usage iterations (cached / no-token calls).
+            if (event.usage && (event.usage.total_tokens ?? 0) > 0) {
+              const record: IterationUsage = {
+                iteration,
+                provider: callParams.provider,
+                model: callParams.model,
+                providerType: event.providerType as IterationUsage['providerType'],
+                credentialSource: event.credentialSource as IterationUsage['credentialSource'],
+                usage: event.usage,
+                ...(event.finishReason ? { finishReason: event.finishReason } : {}),
+              }
+              turnIterations.push(record)
+              segmentIterations.push(record)
+            }
+            // Provider-faithful: if content arrived only on `done` (no
+            // streaming deltas), open a text part to carry it. Most
+            // streaming providers will already have emitted text-deltas, so
+            // this is the "buffered completion" fallback.
+            if (
+              event.content &&
+              event.content.length > 0 &&
+              (openTextIdx === -1 ||
+                (parts[openTextIdx] as TextPart).text.length !== event.content.length)
+            ) {
+              if (openTextIdx === -1 || parts[openTextIdx]?.type !== 'text') {
+                parts.push({ type: 'text', text: event.content, agent: agent.name })
+                openTextIdx = parts.length - 1
+              }
+              // If the streamed deltas under-shot the final content (some
+              // providers re-emit a fuller `done.content` than the deltas),
+              // replace the part with the canonical full text. We do NOT
+              // append, since the deltas were already a prefix of `content`.
+              else if ((parts[openTextIdx] as TextPart).text.length < event.content.length) {
+                ;(parts[openTextIdx] as TextPart).text = event.content
+              }
+            }
+            // Reasoning fallback: trust streamed deltas; only fall back to
+            // terminal `reasoning_content` when no thinking-delta arrived.
+            if (!sawThinkingDelta && reasoningContent && reasoningContent.length > 0) {
+              parts.push({ type: 'thinking', text: reasoningContent, agent: agent.name })
             }
             break
         }
@@ -150,11 +312,22 @@ export async function* agentQueryLoop(
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error)
       logger.error('LLM error', { turnId, agent: agent.name, iteration, error: errorMessage })
-      yield { type: 'turn-error', error: `LLM error in ${agent.name}: ${errorMessage}` }
-      break
+      yield {
+        type: 'turn-error',
+        messageId,
+        error: `LLM error in ${agent.name}: ${errorMessage}`,
+      }
+      // Flip any still-running tool_call parts to error so the persisted
+      // shape doesn't carry zombies.
+      markRunningPartsAsError(parts, 'LLM error mid-iteration')
+      currentState = upsertAssistantMessage()
+      return currentState
     }
 
-    // No tool calls — one-shot or final response
+    if (iterUsage) accumulateUsage(turnUsage, iterUsage)
+    if (finishReason === 'length') truncated = true
+
+    // No tool calls — one-shot or final response.
     if (toolCalls.length === 0) {
       if (totalToolCallCount < minToolCalls && iteration < maxIterations) {
         logger.warn('Agent returned text without meeting minimum tool calls, nudging', {
@@ -164,22 +337,16 @@ export async function* agentQueryLoop(
           actualToolCalls: totalToolCallCount,
           iteration,
         })
+        // Persist current assistant state, then append a synthetic user nudge
+        // so the next iteration re-prompts the model.
+        currentState = upsertAssistantMessage()
         currentState = {
           ...currentState,
           messages: [
             ...currentState.messages,
             {
-              role: 'assistant' as const,
-              content,
-              reasoning_content: reasoningContent || undefined,
-              timestamp: Date.now(),
-              metadata: {
-                agent: agent.name,
-                modelId: `${callParams.provider}:${callParams.model}`,
-              },
-            },
-            {
-              role: 'user' as const,
+              id: generateId('msg'),
+              role: 'user',
               content:
                 'You must use tools to complete this task. Do not write the result as text — call the appropriate tool now.',
               timestamp: Date.now(),
@@ -187,81 +354,61 @@ export async function* agentQueryLoop(
             },
           ],
         }
+        // Reset open positions so next iteration opens fresh parts.
+        openTextIdx = -1
+        openThinkingIdx = -1
         continue
       }
 
-      logger.debug('Agent one-shot result', {
+      logger.debug('Agent terminal iteration (no tool calls)', {
         turnId,
         agent: agent.name,
         contentLength: content.length,
       })
 
-      // The LLM stopped calling tools — that's the turn's terminator. Run the
-      // domain post-process (snapshot injection, link-snapshot extraction) and
-      // persist + emit a final-message event so the frontend commits the
-      // canonical content.
-      if (content.length > 0) {
-        const processed = config.domainConfig.postProcessFinalContent
-          ? config.domainConfig.postProcessFinalContent(content, currentState)
-          : { content }
-        const finalContent = processed.content
+      // The LLM stopped calling tools — finalize the turn. Run the domain
+      // post-process on the joined text projection, collapse all text parts
+      // into a single canonical text part if the rewrite differs.
+      const joinedText = parts
+        .filter((p): p is TextPart => p.type === 'text')
+        .map((p) => p.text)
+        .join('')
 
-        yield {
-          type: 'final-message',
+      let postProcessed: PostProcessResult | undefined
+      if (config.domainConfig.postProcessFinalContent && joinedText.length > 0) {
+        postProcessed = config.domainConfig.postProcessFinalContent(joinedText, currentState)
+      }
+      const finalText = postProcessed?.content ?? joinedText
+      if (postProcessed && postProcessed.content !== joinedText) {
+        collapseTextParts(parts, postProcessed.content, agent.name)
+      }
+
+      currentState = upsertAssistantMessage({
+        linkSnapshots: postProcessed?.linkSnapshots,
+        metadata: {
           agent: agent.name,
-          content: finalContent,
-          ...(processed.linkSnapshots ? { linkSnapshots: processed.linkSnapshots } : {}),
-        }
+          modelId: lastModelId,
+          usage: turnUsage,
+          ...(truncated ? { truncated: true } : {}),
+          ...(turnIterations.length > 0 ? { iterations: [...turnIterations] } : {}),
+        },
+      })
+      currentState = await agent.processResult(finalText, toolCalls, currentState, ctx)
 
-        currentState = {
-          ...currentState,
-          messages: [
-            ...currentState.messages,
-            {
-              role: 'assistant' as const,
-              content: finalContent,
-              reasoning_content: reasoningContent || undefined,
-              timestamp: Date.now(),
-              metadata: {
-                agent: agent.name,
-                modelId: `${callParams.provider}:${callParams.model}`,
-                final: true,
-              },
-              ...(processed.linkSnapshots ? { linkSnapshots: processed.linkSnapshots } : {}),
-            },
-          ],
-        }
-        currentState = await agent.processResult(finalContent, toolCalls, currentState, ctx)
-      } else {
-        // Silent termination — model returned no content and no tool calls.
-        // Still emit `final-message` and persist a `metadata.final: true`
-        // responder anchor so the turn has a stable target for thinking-group
-        // attachment, refresh hydration, and feedback. Without this, the only
-        // assistant messages in the persisted array are executor messages
-        // (those carry tool_calls) and get filtered out by isExecutorAssistant.
-        yield { type: 'final-message', agent: agent.name, content: '' }
-        currentState = {
-          ...currentState,
-          messages: [
-            ...currentState.messages,
-            {
-              role: 'assistant' as const,
-              content: '',
-              reasoning_content: reasoningContent || undefined,
-              timestamp: Date.now(),
-              metadata: {
-                agent: agent.name,
-                modelId: `${callParams.provider}:${callParams.model}`,
-                final: true,
-              },
-            },
-          ],
-        }
-        currentState = await agent.processResult(content, toolCalls, currentState, ctx)
+      yield {
+        type: 'assistant-message-finished',
+        messageId,
+        agent: agent.name,
+        parts: parts.map((p) => ({ ...p })),
+        ...(postProcessed?.linkSnapshots ? { linkSnapshots: postProcessed.linkSnapshots } : {}),
+        usage: turnUsage,
+        ...(truncated ? { truncated: true } : {}),
+        ...(segmentIterations.length > 0 ? { iterations: [...segmentIterations] } : {}),
       }
       break
     }
 
+    // Tool calls present — handle approval / capture / normal dispatch.
     totalToolCallCount += toolCalls.length
     logger.info('Executing tools', {
       turnId,
@@ -272,10 +419,43 @@ export async function* agentQueryLoop(
       })),
     })
 
-    // Capture mode (headless kopilot): never pause. Approval-required tools
-    // are recorded into state.capturedActions with a synthetic `_captured: true`
-    // result, and the loop continues until the model returns no tool calls.
-    // Read-only tools execute normally.
+    // Allocate a tool_call part for each tool call BEFORE dispatch so we
+    // can address them by `partIndex` in events.
+    const toolPartIndexes: number[] = []
+    for (const tc of toolCalls) {
+      const args = parseToolArgs(tc)
+      const part: ToolCallPart = {
+        type: 'tool_call',
+        toolCallId: tc.id,
+        name: tc.function.name,
+        args,
+        status: 'running',
+        agent: agent.name,
+        ...(iterUsage ? { iterationUsage: iterUsage } : {}),
+      }
+      parts.push(part)
+      toolPartIndexes.push(parts.length - 1)
+    }
+
+    // Emit tool-call-started for each.
+    for (let k = 0; k < toolCalls.length; k++) {
+      const tc = toolCalls[k]!
+      const idx = toolPartIndexes[k]!
+      const part = parts[idx] as ToolCallPart
+      yield {
+        type: 'tool-call-started',
+        messageId,
+        partIndex: idx,
+        toolCallId: part.toolCallId,
+        name: part.name,
+        agent: agent.name,
+        args: part.args,
+      }
+      // Mark unused
+      void tc
+    }
+
+    // ===== CAPTURE MODE =====
     if (config.approvalMode === 'capture') {
       const captureRun = await processCaptureToolCalls(
         toolCalls,
@@ -289,8 +469,15 @@ export async function* agentQueryLoop(
               config.domainConfig.transformToolInput!(toolName, args, currentState)
           : undefined
       )
-      for (const event of captureRun.events) yield event
+      // Forward each event mapped onto the appropriate tool_call part.
+      for (const ev of captureRun.events) {
+        // Capture-mode emits framework-internal events; translate to
+        // message-scoped variants.
+        const mapped = translateCaptureEvent(ev, messageId, toolPartIndexes, toolCalls, agent.name)
+        if (mapped) yield mapped
+      }
 
+      // Mine state updates.
       if (config.domainConfig.onToolResult) {
         for (const r of captureRun.results) {
           if (!r.success || r.captured) continue
@@ -303,50 +490,38 @@ export async function* agentQueryLoop(
         }
       }
 
-      const toolResultMessages = captureRun.results.map((r) => ({
-        role: 'tool' as const,
-        content: JSON.stringify(
-          r.success ? r.output : { error: r.error ?? 'Unknown error', output: r.output }
-        ),
-        toolCallId: r.toolCallId,
-        timestamp: Date.now(),
-        metadata: { agent: agent.name, ...(r.captured ? { captured: true } : {}) },
-        toolStatus: (r.success ? 'completed' : 'error') as 'completed' | 'error',
-        ...(r.digest !== undefined ? { digest: r.digest } : {}),
-      }))
-
-      const assistantMessage = {
-        role: 'assistant' as const,
-        content,
-        toolCalls,
-        reasoning_content: reasoningContent || undefined,
-        timestamp: Date.now(),
-        metadata: {
-          agent: agent.name,
-          modelId: `${callParams.provider}:${callParams.model}`,
-        },
+      // Update each tool_call part with the result.
+      for (let k = 0; k < captureRun.results.length; k++) {
+        const r = captureRun.results[k]!
+        const idx = toolPartIndexes[k]!
+        const part = parts[idx] as ToolCallPart
+        if (r.success) {
+          part.status = 'completed'
+          part.output = r.output
+          if (r.digest !== undefined) part.digest = r.digest
+          if (r.captured) part.captured = true
+        } else {
+          part.status = 'error'
+          part.error = r.error ?? 'Unknown error'
+          if (r.output !== undefined) part.output = r.output
+        }
       }
 
       currentState = {
         ...currentState,
-        messages: [...currentState.messages, assistantMessage, ...toolResultMessages],
         capturedActions: [...(currentState.capturedActions ?? []), ...captureRun.capturedActions],
       }
-
+      currentState = upsertAssistantMessage()
       currentState = await agent.processResult(content, toolCalls, currentState, ctx)
       continue
     }
 
-    // Before executing, check if any tool requires approval. If so, we emit the
-    // assistant message with tool_calls, then the approval-required event, and
-    // stop the loop — waiting for engine.resume() to continue. We do NOT write
-    // a fake "awaiting_approval" tool result message (fixes F7, F23).
-    //
-    // `approvalMode: 'auto'` skips this block: autonomous agent triggers have
-    // no human to ask. The agent's toolset is the capability boundary.
+    // ===== APPROVAL CHECK (pause mode) =====
     const approvalTool =
       config.approvalMode === 'auto' ? undefined : findApprovalTool(toolCalls, agent.tools)
     if (approvalTool) {
+      const approvalIdx = toolCalls.findIndex((tc) => tc.id === approvalTool.id)
+      const approvalPartIndex = toolPartIndexes[approvalIdx]!
       let approvalArgs = parseToolArgs(approvalTool)
       if (config.domainConfig.transformToolInput) {
         approvalArgs = config.domainConfig.transformToolInput(
@@ -355,56 +530,60 @@ export async function* agentQueryLoop(
           currentState
         )
       }
+      ;(parts[approvalPartIndex] as ToolCallPart).args = approvalArgs
+
       const toolDef = agent.tools.find((t) => t.name === approvalTool.function.name)
       const missingParams = validateRequiredParams(toolDef, approvalArgs)
 
       if (missingParams.length > 0) {
+        const errorMessage = `Missing required parameters: ${missingParams.join(
+          ', '
+        )}. Please provide all required parameters.`
         logger.warn('Approval tool missing required params, returning error to LLM', {
           turnId,
           agent: agent.name,
           tool: approvalTool.function.name,
           missingParams,
         })
-        // Persist the assistant message + synthetic error tool result so the LLM
-        // can retry with complete args on the next iteration. toolCalls is
-        // rewritten to [approvalTool] so sibling auto-tool calls in the same
-        // response can't dangle (we only synthesize a result for approvalTool).
-        const errorContent = JSON.stringify({
-          error: `Missing required parameters: ${missingParams.join(', ')}. Please provide all required parameters.`,
-          output: null,
-        })
-        currentState = {
-          ...currentState,
-          messages: [
-            ...currentState.messages,
-            {
-              role: 'assistant' as const,
-              content,
-              toolCalls: [approvalTool],
-              reasoning_content: reasoningContent || undefined,
-              timestamp: Date.now(),
-              metadata: {
-                agent: agent.name,
-                modelId: `${callParams.provider}:${callParams.model}`,
-              },
-            },
-            {
-              role: 'tool' as const,
-              content: errorContent,
-              toolCallId: approvalTool.id,
-              timestamp: Date.now(),
-              metadata: { agent: agent.name, validationError: true },
-            },
-          ],
+        // Flip the approval part to error so the LLM can retry. Other
+        // tool_call parts in this iteration also need to be flipped — the
+        // LLM only gets to retry once we have results for ALL of them.
+        ;(parts[approvalPartIndex] as ToolCallPart).status = 'error'
+        ;(parts[approvalPartIndex] as ToolCallPart).error = errorMessage
+        yield {
+          type: 'tool-call-failed',
+          messageId,
+          partIndex: approvalPartIndex,
+          toolCallId: approvalTool.id,
+          agent: agent.name,
+          error: errorMessage,
         }
+        // Flip every OTHER tool call to error too so the wire-format produces
+        // a complete tool-result for each id. We treat them as "skipped due
+        // to upstream validation failure" — matches old loop's behavior of
+        // synthesizing a single error result and continuing.
+        for (let k = 0; k < toolPartIndexes.length; k++) {
+          if (k === approvalIdx) continue
+          const idx = toolPartIndexes[k]!
+          const p = parts[idx] as ToolCallPart
+          if (p.status === 'running') {
+            p.status = 'error'
+            p.error = 'Skipped — upstream tool failed validation'
+            yield {
+              type: 'tool-call-failed',
+              messageId,
+              partIndex: idx,
+              toolCallId: p.toolCallId,
+              agent: agent.name,
+              error: p.error,
+            }
+          }
+        }
+        currentState = upsertAssistantMessage()
         continue
       }
 
-      // Pre-pause input validation. If the args are recoverable, the
-      // validator rewrites them and the user sees a clean approval card. If
-      // they're not, we surface a synthetic error tool message and let the
-      // LLM retry without bothering the user — same shape as the
-      // missing-params branch above.
+      // Pre-pause input validation.
       if (toolDef?.validateInputs) {
         const v = await toolDef.validateInputs(approvalArgs, ctx)
         if (!v.ok) {
@@ -414,31 +593,34 @@ export async function* agentQueryLoop(
             tool: approvalTool.function.name,
             error: v.error,
           })
-          const errorContent = JSON.stringify({ error: v.error, output: null })
-          currentState = {
-            ...currentState,
-            messages: [
-              ...currentState.messages,
-              {
-                role: 'assistant' as const,
-                content,
-                toolCalls: [approvalTool],
-                reasoning_content: reasoningContent || undefined,
-                timestamp: Date.now(),
-                metadata: {
-                  agent: agent.name,
-                  modelId: `${callParams.provider}:${callParams.model}`,
-                },
-              },
-              {
-                role: 'tool' as const,
-                content: errorContent,
-                toolCallId: approvalTool.id,
-                timestamp: Date.now(),
-                metadata: { agent: agent.name, validationError: true },
-              },
-            ],
+          ;(parts[approvalPartIndex] as ToolCallPart).status = 'error'
+          ;(parts[approvalPartIndex] as ToolCallPart).error = v.error
+          yield {
+            type: 'tool-call-failed',
+            messageId,
+            partIndex: approvalPartIndex,
+            toolCallId: approvalTool.id,
+            agent: agent.name,
+            error: v.error,
           }
+          for (let k = 0; k < toolPartIndexes.length; k++) {
+            if (k === approvalIdx) continue
+            const idx = toolPartIndexes[k]!
+            const p = parts[idx] as ToolCallPart
+            if (p.status === 'running') {
+              p.status = 'error'
+              p.error = 'Skipped — upstream tool failed validation'
+              yield {
+                type: 'tool-call-failed',
+                messageId,
+                partIndex: idx,
+                toolCallId: p.toolCallId,
+                agent: agent.name,
+                error: p.error,
+              }
+            }
+          }
+          currentState = upsertAssistantMessage()
           continue
         }
         if (v.warnings?.length) {
@@ -448,6 +630,7 @@ export async function* agentQueryLoop(
           })
         }
         approvalArgs = v.args
+        ;(parts[approvalPartIndex] as ToolCallPart).args = approvalArgs
       }
 
       logger.info('Approval required', {
@@ -456,55 +639,127 @@ export async function* agentQueryLoop(
         tool: approvalTool.function.name,
       })
 
-      // Hold the assistant message on pendingToolCall instead of pushing it
-      // into state.messages. The engine re-appends it atomically with the
-      // tool result on resume, so state.messages is always provider-valid.
-      // toolCalls is rewritten to [approvalTool] because the loop never
-      // executes sibling auto-tool calls in the same response — including
-      // them would create dangling tool_call_ids on resume.
-      const assistantMessage = {
-        role: 'assistant' as const,
-        content,
-        toolCalls: [approvalTool],
-        reasoning_content: reasoningContent || undefined,
-        timestamp: Date.now(),
-        metadata: {
-          agent: agent.name,
-          modelId: `${callParams.provider}:${callParams.model}`,
-        },
+      // Flip the approval part to awaiting-approval. Flip any sibling
+      // tool_calls in the same iteration to error — the loop has never
+      // executed sibling auto-tool-calls alongside an approval call.
+      ;(parts[approvalPartIndex] as ToolCallPart).status = 'awaiting-approval'
+      for (let k = 0; k < toolPartIndexes.length; k++) {
+        if (k === approvalIdx) continue
+        const idx = toolPartIndexes[k]!
+        const p = parts[idx] as ToolCallPart
+        if (p.status === 'running') {
+          p.status = 'error'
+          p.error = 'Skipped — paused on sibling approval'
+          yield {
+            type: 'tool-call-failed',
+            messageId,
+            partIndex: idx,
+            toolCallId: p.toolCallId,
+            agent: agent.name,
+            error: p.error,
+          }
+        }
       }
 
+      // Compute digest from args for the approval card (some tools want
+      // to surface a preview before execution).
+      const approvalDigest = toolDef?.buildDigest
+        ? buildToolDigest(toolDef, approvalArgs, logger)
+        : undefined
+      if (approvalDigest !== undefined) {
+        ;(parts[approvalPartIndex] as ToolCallPart).digest = approvalDigest
+      }
+
+      // Persist the approval card as its own system message alongside the
+      // paused assistant message. Refresh-from-persistence and live-streaming
+      // both render from this same record — the card no longer disappears on
+      // F5. The client uses the same `approvalMessageId` when synthesizing
+      // the card in its store from the SSE event.
+      const approvalMessageId = generateId('msg')
       yield {
         type: 'approval-required',
-        agent: agent.name,
-        tool: approvalTool.function.name,
+        messageId,
+        partIndex: approvalPartIndex,
         toolCallId: approvalTool.id,
+        toolName: approvalTool.function.name,
+        agent: agent.name,
         args: approvalArgs,
+        approvalMessageId,
+        ...(approvalDigest !== undefined ? { digest: approvalDigest } : {}),
+      }
+      yield {
+        type: 'tool-call-status',
+        messageId,
+        partIndex: approvalPartIndex,
+        toolCallId: approvalTool.id,
+        agent: agent.name,
+        status: 'awaiting-approval',
+        ...(approvalDigest !== undefined ? { digest: approvalDigest } : {}),
       }
 
+      // Pause-time persistence: carry billing context onto the paused message
+      // so the iteration that proposed the approval is already accounted for
+      // (resume runs in a separate query-loop with its own iterations).
+      currentState = upsertAssistantMessage({
+        metadata: {
+          agent: agent.name,
+          modelId: lastModelId,
+          usage: turnUsage,
+          ...(truncated ? { truncated: true } : {}),
+          ...(turnIterations.length > 0 ? { iterations: [...turnIterations] } : {}),
+        },
+      })
       currentState = await agent.processResult(content, toolCalls, currentState, ctx)
       currentState = {
         ...currentState,
+        messages: [
+          ...currentState.messages,
+          {
+            id: approvalMessageId,
+            role: 'system',
+            content: `Approval needed: ${approvalTool.function.name}`,
+            timestamp: Date.now(),
+            parentId: messageId,
+            approval: {
+              toolName: approvalTool.function.name,
+              toolCallId: approvalTool.id,
+              args: approvalArgs,
+              status: 'pending',
+            },
+          },
+        ],
         waitingForApproval: true,
         pendingToolCall: {
+          messageId,
+          partIndex: approvalPartIndex,
           toolCallId: approvalTool.id,
           toolName: approvalTool.function.name,
           agentName: agent.name,
           args: approvalArgs,
-          assistantMessage,
         },
       }
-      break
+      // Suspend the message but keep it open — resume runs the same agent
+      // loop with a `resumeFrom` hint, appending more parts to this same
+      // `messageId`. Billing consumers drain `iterations` here for the
+      // pre-pause LLM calls; the resumed loop emits its own segment on the
+      // next `finished` / `paused`.
+      yield {
+        type: 'assistant-message-paused',
+        messageId,
+        agent: agent.name,
+        ...(segmentIterations.length > 0 ? { iterations: [...segmentIterations] } : {}),
+      }
+      return currentState
     }
 
-    // Execute non-approval tool calls. `executeToolCalls` is an async
-    // generator so streaming tools' `tool-progress` events surface live —
-    // buffered tools still produce the same `tool-started` / `tool-completed`
-    // pair as before, just yielded one-at-a-time instead of in a batch.
+    // ===== NORMAL TOOL EXECUTION =====
     const toolCallGen = executeToolCalls(
       toolCalls,
+      toolPartIndexes,
+      parts,
       agent.tools,
       agent.name,
+      messageId,
       ctx,
       idempotentCache,
       config.domainConfig.transformToolInput
@@ -522,7 +777,7 @@ export async function* agentQueryLoop(
     }
     const toolResults = { results: collectedToolResults }
 
-    // Let the domain mine each tool result for state updates (e.g. snapshot extraction)
+    // Domain `onToolResult` hook (state mining).
     if (config.domainConfig.onToolResult) {
       for (const r of toolResults.results) {
         if (!r.success) continue
@@ -535,10 +790,7 @@ export async function* agentQueryLoop(
       }
     }
 
-    // Transform pass — rewrite the LLM-visible payload after state mining,
-    // mutating `r.output` in place so the message-build below stays untouched.
-    // Lets a domain expand a sentinel/delta into the canonical shape the model
-    // should see (e.g. plan_update_step's `_planPatch` → `{ plan: <canonical> }`).
+    // Domain `transformToolResult` hook (rewrite LLM-visible payload).
     if (config.domainConfig.transformToolResult) {
       for (const r of toolResults.results) {
         if (!r.success) continue
@@ -557,42 +809,26 @@ export async function* agentQueryLoop(
       }
     }
 
-    const toolResultMessages = toolResults.results.map((r) => ({
-      role: 'tool' as const,
-      content: JSON.stringify(
-        r.success ? r.output : { error: r.error ?? 'Unknown error', output: r.output }
-      ),
-      toolCallId: r.toolCallId,
-      timestamp: Date.now(),
-      metadata: { agent: agent.name },
-      toolStatus: (r.success ? 'completed' : 'error') as 'completed' | 'error',
-      ...(r.digest !== undefined ? { digest: r.digest } : {}),
-    }))
-
-    const assistantMessage = {
-      role: 'assistant' as const,
-      content,
-      toolCalls,
-      reasoning_content: reasoningContent || undefined,
-      timestamp: Date.now(),
-      metadata: {
-        agent: agent.name,
-        modelId: `${callParams.provider}:${callParams.model}`,
-      },
+    // Stamp each tool_call part with the final result.
+    for (let k = 0; k < toolResults.results.length; k++) {
+      const r = toolResults.results[k]!
+      const idx = toolPartIndexes[k]!
+      const part = parts[idx] as ToolCallPart
+      if (r.success) {
+        part.status = 'completed'
+        part.output = r.output
+        if (r.digest !== undefined) part.digest = r.digest
+      } else {
+        part.status = 'error'
+        part.error = r.error ?? 'Unknown error'
+        if (r.output !== undefined) part.output = r.output
+      }
     }
 
-    currentState = {
-      ...currentState,
-      messages: [...currentState.messages, assistantMessage, ...toolResultMessages],
-    }
-
-    // Let the agent process intermediate results
+    currentState = upsertAssistantMessage()
     currentState = await agent.processResult(content, toolCalls, currentState, ctx)
 
-    // Same-tool failure streak detector. If every tool call in this iteration
-    // failed AND they all reference the same tool name, track the streak.
-    // Three in a row bails the turn — the model is stuck on a malformed
-    // input (e.g. an empty `{}` to a tool whose schema it can't satisfy).
+    // Same-tool failure streak detector.
     const allFailed = toolResults.results.length > 0 && toolResults.results.every((r) => !r.success)
     const distinctNames = new Set(toolResults.results.map((r) => r.toolName))
     if (allFailed && distinctNames.size === 1) {
@@ -615,9 +851,12 @@ export async function* agentQueryLoop(
         })
         yield {
           type: 'turn-error',
+          messageId,
           error: `Tool \`${onlyName}\` failed ${failingToolStreak} times in a row: ${lastError}`,
         }
-        break
+        markRunningPartsAsError(parts, 'Same-tool failure streak')
+        currentState = upsertAssistantMessage()
+        return currentState
       }
     } else {
       failingToolName = null
@@ -625,7 +864,23 @@ export async function* agentQueryLoop(
     }
   }
 
-  yield { type: 'agent-completed', agent: agent.name }
+  // Loop exit (max iterations hit without natural termination, or aborted).
+  // Make sure the persisted message reflects whatever we built; if no
+  // assistant-message-finished was emitted yet, this is an abnormal exit —
+  // mark any running parts as error, then commit.
+  if (parts.some((p) => p.type === 'tool_call' && (p as ToolCallPart).status === 'running')) {
+    markRunningPartsAsError(parts, 'Turn ended before tool completed')
+  }
+  currentState = upsertAssistantMessage({
+    metadata: {
+      agent: agent.name,
+      modelId: lastModelId,
+      usage: turnUsage,
+      ...(truncated ? { truncated: true } : {}),
+      ...(turnIterations.length > 0 ? { iterations: [...turnIterations] } : {}),
+    },
+  })
+
   logger.info('Agent completed', { turnId, agent: agent.name, iterations: iteration })
 
   return currentState
@@ -656,18 +911,92 @@ function findApprovalTool(
   })
 }
 
+function accumulateUsage(target: UsageMetrics, src: UsageMetrics): void {
+  target.prompt_tokens = (target.prompt_tokens ?? 0) + (src.prompt_tokens ?? 0)
+  target.completion_tokens = (target.completion_tokens ?? 0) + (src.completion_tokens ?? 0)
+  target.total_tokens =
+    (target.total_tokens ?? 0) +
+    (src.total_tokens ?? (src.prompt_tokens ?? 0) + (src.completion_tokens ?? 0))
+}
+
+function markRunningPartsAsError(parts: ContentPart[], reason: string): void {
+  for (const p of parts) {
+    if (p.type === 'tool_call' && p.status === 'running') {
+      p.status = 'error'
+      p.error = reason
+    }
+  }
+}
+
 /**
- * Async-generator dispatcher: yields `AgentEvent`s as each tool runs and
- * returns the per-call results array when the batch is done. Streaming tools
- * (those whose `execute` returns an `AsyncGenerator`) emit one `tool-progress`
- * event per yield between `tool-started` and `tool-completed`; buffered tools
- * emit no progress events. Live yielding matters for streaming — collecting
- * into an array first would defeat the purpose.
+ * Collapse every `text` part into a single canonical `text` part holding
+ * the post-processed content. Placed at the index of the first text part;
+ * subsequent text parts are removed. Tool_call and thinking parts are
+ * preserved in order.
+ */
+function collapseTextParts(parts: ContentPart[], finalText: string, agentName: string): void {
+  const firstTextIdx = parts.findIndex((p) => p.type === 'text')
+  if (firstTextIdx === -1) {
+    parts.push({ type: 'text', text: finalText, agent: agentName })
+    return
+  }
+  // Replace the first text part with the canonical text.
+  ;(parts[firstTextIdx] as TextPart).text = finalText
+  // Remove every other text part.
+  for (let i = parts.length - 1; i > firstTextIdx; i--) {
+    if (parts[i]!.type === 'text') {
+      parts.splice(i, 1)
+    }
+  }
+}
+
+/**
+ * Translate a capture-mode internal `AgentEvent` (carries `tool`, `toolCallId`,
+ * etc. — see capture-mode.ts) to the new message-scoped event variant.
+ *
+ * Capture-mode is a tier below query-loop. It doesn't know about messageId/
+ * partIndex; query-loop owns that mapping.
+ */
+function translateCaptureEvent(
+  ev: AgentEvent,
+  messageId: string,
+  toolPartIndexes: number[],
+  toolCalls: ToolCall[],
+  agentName: string
+): AgentEvent | null {
+  // We already emitted `tool-call-started` for every tool BEFORE calling
+  // processCaptureToolCalls (query-loop owns part allocation), so drop the
+  // duplicate `tool-call-started` events from capture mode.
+  if (ev.type === 'tool-call-started') return null
+
+  // The remaining capture-mode events use the new event shape with placeholder
+  // (messageId='', partIndex=-1). Patch them based on toolCallId order.
+  if (
+    ev.type === 'tool-call-completed' ||
+    ev.type === 'tool-call-failed' ||
+    ev.type === 'tool-call-status' ||
+    ev.type === 'tool-progress'
+  ) {
+    const toolCallId = (ev as { toolCallId?: string }).toolCallId
+    if (!toolCallId) return ev
+    const callIdx = toolCalls.findIndex((tc) => tc.id === toolCallId)
+    const partIndex = callIdx >= 0 ? toolPartIndexes[callIdx]! : -1
+    return { ...ev, messageId, partIndex, agent: agentName } as AgentEvent
+  }
+  return ev
+}
+
+/**
+ * Async-generator tool dispatcher (message-scoped). Yields per-tool events
+ * keyed by `messageId` + `partIndex` and returns the per-call results.
  */
 async function* executeToolCalls(
   toolCalls: ToolCall[],
+  toolPartIndexes: number[],
+  parts: ContentPart[],
   agentTools: AgentToolDefinition[],
   agentName: string,
+  messageId: string,
   ctx: ToolContext,
   idempotentCache: Map<string, ToolExecResult>,
   transformInput?: (toolName: string, args: Record<string, unknown>) => Record<string, unknown>
@@ -675,16 +1004,25 @@ async function* executeToolCalls(
   const toolMap = new Map(agentTools.map((t) => [t.name, t]))
   const results: ToolExecResult[] = []
 
-  for (const toolCall of toolCalls) {
+  for (let i = 0; i < toolCalls.length; i++) {
+    const toolCall = toolCalls[i]!
+    const partIndex = toolPartIndexes[i]!
     const toolName = toolCall.function.name
     const tool = toolMap.get(toolName)
     let args = parseToolArgs(toolCall)
     if (transformInput) args = transformInput(toolName, args)
+    ;(parts[partIndex] as ToolCallPart).args = args
 
     if (!tool) {
-      yield { type: 'tool-started', agent: agentName, tool: toolName, args }
       const errorMsg = `Unknown tool: ${toolName}`
-      yield { type: 'tool-error', agent: agentName, tool: toolName, error: errorMsg }
+      yield {
+        type: 'tool-call-failed',
+        messageId,
+        partIndex,
+        toolCallId: toolCall.id,
+        agent: agentName,
+        error: errorMsg,
+      }
       results.push({
         toolCallId: toolCall.id,
         toolName,
@@ -695,32 +1033,20 @@ async function* executeToolCalls(
       continue
     }
 
-    // Approval-required tools should never reach this executor — the loop handles
-    // them before calling executeToolCalls. Guard just in case.
-    if (needsApproval(tool, args)) {
-      continue
-    }
+    // Approval-required tools never reach here.
+    if (needsApproval(tool, args)) continue
 
-    // Input validation + normalization. Runs before the idempotent cache
-    // lookup so two LLM calls passing equivalent-but-different input shapes
-    // (e.g. raw vs. over-prefixed recordId) collapse to a single cache hit.
+    // Input validation + normalization.
     if (tool.validateInputs) {
       const v = await tool.validateInputs(args, ctx)
       if (!v.ok) {
         yield {
-          type: 'tool-started',
-          agent: agentName,
-          tool: toolName,
+          type: 'tool-call-failed',
+          messageId,
+          partIndex,
           toolCallId: toolCall.id,
-          args,
-        }
-        const errResult = { success: false, output: null, error: v.error }
-        yield {
-          type: 'tool-completed',
           agent: agentName,
-          tool: toolName,
-          toolCallId: toolCall.id,
-          result: errResult,
+          error: v.error,
         }
         logger.info('validateInputs rejected', { agent: agentName, tool: toolName, error: v.error })
         results.push({
@@ -740,6 +1066,7 @@ async function* executeToolCalls(
         })
       }
       args = v.args
+      ;(parts[partIndex] as ToolCallPart).args = args
     }
 
     const cacheKey = tool.idempotent ? `${toolName}::${stableStringify(args)}` : null
@@ -747,23 +1074,13 @@ async function* executeToolCalls(
       const cached = idempotentCache.get(cacheKey)
       if (cached) {
         yield {
-          type: 'tool-started',
-          agent: agentName,
-          tool: toolName,
+          type: 'tool-call-completed',
+          messageId,
+          partIndex,
           toolCallId: toolCall.id,
-          args,
-        }
-        yield {
-          type: 'tool-completed',
           agent: agentName,
-          tool: toolName,
-          toolCallId: toolCall.id,
-          result: {
-            success: cached.success,
-            output: cached.output,
-            error: cached.error,
-          },
-          digest: cached.digest,
+          output: cached.output,
+          ...(cached.digest !== undefined ? { digest: cached.digest } : {}),
         }
         results.push({
           toolCallId: toolCall.id,
@@ -777,18 +1094,7 @@ async function* executeToolCalls(
       }
     }
 
-    yield {
-      type: 'tool-started',
-      agent: agentName,
-      tool: toolName,
-      toolCallId: toolCall.id,
-      args,
-    }
-
     try {
-      // Detect streaming tools inline so each progress yield surfaces on the
-      // wire as the generator emits it — going through `executeToolWithProgress`'s
-      // callback would buffer until the await resolves, defeating live cadence.
       const exec = tool.execute(args, ctx)
       let result: AgentToolResult
       if (
@@ -810,9 +1116,10 @@ async function* executeToolCalls(
           }
           yield {
             type: 'tool-progress',
-            agent: agentName,
-            tool: toolName,
+            messageId,
+            partIndex,
             toolCallId: toolCall.id,
+            agent: agentName,
             ...(next.value.kind ? { kind: next.value.kind } : {}),
             data: next.value.data,
           }
@@ -822,14 +1129,27 @@ async function* executeToolCalls(
       }
 
       const digest = result.success ? buildToolDigest(tool, result.output, logger) : undefined
-      yield {
-        type: 'tool-completed',
-        agent: agentName,
-        tool: toolName,
-        toolCallId: toolCall.id,
-        result,
-        digest,
+      if (result.success) {
+        yield {
+          type: 'tool-call-completed',
+          messageId,
+          partIndex,
+          toolCallId: toolCall.id,
+          agent: agentName,
+          output: result.output,
+          ...(digest !== undefined ? { digest } : {}),
+        }
+      } else {
+        yield {
+          type: 'tool-call-failed',
+          messageId,
+          partIndex,
+          toolCallId: toolCall.id,
+          agent: agentName,
+          error: result.error ?? 'Unknown error',
+        }
       }
+
       logger.info('Tool result', {
         agent: agentName,
         tool: toolName,
@@ -850,10 +1170,11 @@ async function* executeToolCalls(
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error)
       yield {
-        type: 'tool-error',
-        agent: agentName,
-        tool: toolName,
+        type: 'tool-call-failed',
+        messageId,
+        partIndex,
         toolCallId: toolCall.id,
+        agent: agentName,
         error: errorMsg,
       }
       logger.error('Tool threw', {

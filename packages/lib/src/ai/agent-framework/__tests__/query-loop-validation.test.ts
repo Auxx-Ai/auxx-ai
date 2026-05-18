@@ -8,8 +8,10 @@ import type {
   AgentDomainConfig,
   AgentEngineConfig,
   AgentEvent,
+  AssistantSessionMessage,
   LLMCallParams,
   LLMStreamEvent,
+  ToolCallPart,
 } from '../types'
 
 const ZERO_USAGE: UsageMetrics = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 }
@@ -98,29 +100,26 @@ describe('query-loop validation-error branch — sibling tool_call orphan regres
     const state = engine.getState()
 
     // The persisted assistant message from the validation-error branch must
-    // carry toolCalls=[approvalTool] only — the sibling auto-tool was dropped.
-    const persistedAssistant = state.messages.find(
-      (m) => m.role === 'assistant' && m.toolCalls && m.toolCalls.length > 0
-    )
-    expect(persistedAssistant).toBeDefined()
-    expect(persistedAssistant?.toolCalls).toHaveLength(1)
-    expect(persistedAssistant?.toolCalls?.[0]?.id).toBe('call_appr')
-    expect(persistedAssistant?.toolCalls?.[0]?.function.name).toBe('risky_tool')
+    // carry exactly one `tool_call` part (the approval tool, with its
+    // synthetic error output) — the sibling auto-tool was dropped.
+    const allToolCallParts: ToolCallPart[] = []
+    for (const msg of state.messages) {
+      if (msg.role !== 'assistant') continue
+      const m = msg as AssistantSessionMessage
+      for (const p of m.parts ?? []) {
+        if (p.type === 'tool_call') allToolCallParts.push(p)
+      }
+    }
+    expect(allToolCallParts).toHaveLength(1)
+    expect(allToolCallParts[0]?.toolCallId).toBe('call_appr')
+    expect(allToolCallParts[0]?.name).toBe('risky_tool')
+    expect(allToolCallParts[0]?.status).toBe('error')
+    expect(allToolCallParts[0]?.error).toMatch(/Missing required parameters: target/)
 
-    // The synthetic tool result must match the only persisted tool_call.
-    const toolMsg = state.messages.find((m) => m.role === 'tool' && m.toolCallId === 'call_appr')
-    expect(toolMsg).toBeDefined()
-    const parsed = JSON.parse(toolMsg?.content ?? '{}')
-    expect(parsed.error).toMatch(/Missing required parameters: target/)
-
-    // Critically: NO tool message exists for the dropped sibling tool_call_id,
-    // and NO assistant message references call_auto. Together these mean the
-    // next LLM call will not see a dangling tool_call_id.
-    const orphanRefs = state.messages.filter(
-      (m) =>
-        (m.role === 'tool' && m.toolCallId === 'call_auto') ||
-        (m.role === 'assistant' && m.toolCalls?.some((c) => c.id === 'call_auto'))
-    )
+    // Critically: NO tool_call part references the dropped sibling
+    // `call_auto`. The wire-format converter would otherwise emit a
+    // dangling tool_call_id on the next LLM call.
+    const orphanRefs = allToolCallParts.filter((p) => p.toolCallId === 'call_auto')
     expect(orphanRefs).toHaveLength(0)
   })
 })

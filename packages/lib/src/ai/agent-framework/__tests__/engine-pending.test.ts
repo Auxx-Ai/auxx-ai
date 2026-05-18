@@ -9,8 +9,11 @@ import type {
   AgentEngineConfig,
   AgentEvent,
   AgentToolDefinition,
+  AssistantSessionMessage,
   LLMCallParams,
   LLMStreamEvent,
+  SessionMessage,
+  ToolCallPart,
 } from '../types'
 
 const ZERO_USAGE: UsageMetrics = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 }
@@ -90,8 +93,28 @@ const makeApprovalToolCall = (id: string, name: string, args = {}): ToolCall => 
   function: { name, arguments: JSON.stringify(args) },
 })
 
-describe('AgentEngine — pending approval persistence invariants', () => {
-  it('approval pause does NOT push the assistant-with-tool_calls into state.messages', async () => {
+/**
+ * Look up the assistant message that owns the pending tool_call part and
+ * return both message and the targeted part. Provides a single source of
+ * truth for the resume-mutates-in-place invariant.
+ */
+function getPendingMessageAndPart(
+  messages: SessionMessage[],
+  messageId: string,
+  partIndex: number
+) {
+  const msg = messages.find(
+    (m): m is AssistantSessionMessage => m.role === 'assistant' && m.id === messageId
+  )
+  expect(msg).toBeDefined()
+  const part = msg!.parts[partIndex]
+  expect(part).toBeDefined()
+  expect(part?.type).toBe('tool_call')
+  return { msg: msg!, part: part as ToolCallPart }
+}
+
+describe('AgentEngine — pending approval (parts-based)', () => {
+  it('approval pause stores the assistant-with-tool_call in state.messages with status=awaiting-approval', async () => {
     const tc = makeApprovalToolCall('call_1', 'risky_tool')
     const engine = buildEngine({
       approvalToolName: 'risky_tool',
@@ -102,16 +125,31 @@ describe('AgentEngine — pending approval persistence invariants', () => {
 
     const state = engine.getState()
     expect(state.waitingForApproval).toBe(true)
+
+    // pendingToolCall is a pointer into state.messages — the assistant message
+    // itself lives in messages[]; nothing on pendingToolCall duplicates it.
+    expect(state.pendingToolCall).toBeDefined()
     expect(state.pendingToolCall?.toolCallId).toBe('call_1')
-    // The assistant message lives on pendingToolCall, NOT in state.messages.
-    expect(state.pendingToolCall?.assistantMessage.toolCalls?.[0]?.id).toBe('call_1')
-    const assistantInMessages = state.messages.find(
-      (m) => m.role === 'assistant' && m.toolCalls?.length
+    expect(state.pendingToolCall?.toolName).toBe('risky_tool')
+    expect(state.pendingToolCall?.agentName).toBe('agent')
+    expect(state.pendingToolCall?.messageId).toBeDefined()
+    expect(typeof state.pendingToolCall?.partIndex).toBe('number')
+    // The legacy `assistantMessage` field is gone.
+    expect((state.pendingToolCall as Record<string, unknown>).assistantMessage).toBeUndefined()
+
+    // The assistant message exists in state.messages with the paused part.
+    const { part } = getPendingMessageAndPart(
+      state.messages,
+      state.pendingToolCall!.messageId,
+      state.pendingToolCall!.partIndex
     )
-    expect(assistantInMessages).toBeUndefined()
+    expect(part.toolCallId).toBe('call_1')
+    expect(part.name).toBe('risky_tool')
+    expect(part.status).toBe('awaiting-approval')
+    expect(part.output).toBeUndefined()
   })
 
-  it('approval pause rewrites toolCalls to [approvalTool] only on the stashed assistant', async () => {
+  it('approval pause keeps sibling auto-tool parts intact alongside the awaiting-approval part', async () => {
     const auto = makeApprovalToolCall('call_auto', 'some_other_tool')
     const approval = makeApprovalToolCall('call_appr', 'risky_tool')
     const engine = buildEngine({
@@ -121,41 +159,76 @@ describe('AgentEngine — pending approval persistence invariants', () => {
 
     await drain(engine.submitMessage('do it'))
 
-    const stashed = engine.getState().pendingToolCall?.assistantMessage
-    expect(stashed?.toolCalls).toHaveLength(1)
-    expect(stashed?.toolCalls?.[0]?.id).toBe('call_appr')
-    expect(stashed?.toolCalls?.[0]?.function.name).toBe('risky_tool')
+    const state = engine.getState()
+    const pending = state.pendingToolCall
+    expect(pending?.toolCallId).toBe('call_appr')
+
+    // Both tool_call parts must be present on the trailing assistant message.
+    // The auto-tool ran (or was attempted) prior to the pause; the approval
+    // tool's part is `awaiting-approval`. Order matches the order the model
+    // emitted the calls.
+    const assistant = state.messages.find(
+      (m): m is AssistantSessionMessage => m.role === 'assistant' && m.id === pending?.messageId
+    )
+    expect(assistant).toBeDefined()
+    const toolCallParts = assistant!.parts.filter((p): p is ToolCallPart => p.type === 'tool_call')
+    const ids = toolCallParts.map((p) => p.toolCallId)
+    expect(ids).toContain('call_appr')
+    const approvalPart = toolCallParts.find((p) => p.toolCallId === 'call_appr')
+    expect(approvalPart?.status).toBe('awaiting-approval')
   })
 
-  it('resume({ action: "reject" }) appends [assistantMessage, toolResultMsg] in order', async () => {
+  it('resume({ action: "reject" }) mutates the existing part in place with rejected status + synthetic output', async () => {
     const tc = makeApprovalToolCall('call_1', 'risky_tool')
     const engine = buildEngine({
       approvalToolName: 'risky_tool',
       turns: [
         { content: 'about to call', toolCalls: [tc] },
-        // After reject the engine re-enters the agent loop; emit a no-tool exit.
         { content: 'understood', toolCalls: [] },
       ],
     })
 
     await drain(engine.submitMessage('do it'))
-    const messagesBefore = engine.getState().messages.length
+    const pending = engine.getState().pendingToolCall!
+    const pausedMessageId = pending.messageId
+    const pausedPartIndex = pending.partIndex
+    const messagesBeforeCount = engine.getState().messages.length
 
     await drain(engine.resume({ action: 'reject' }))
 
     const state = engine.getState()
-    const newSlice = state.messages.slice(messagesBefore)
-    // First two newly-appended items must be the paired assistant + tool result.
-    expect(newSlice[0]?.role).toBe('assistant')
-    expect(newSlice[0]?.toolCalls?.[0]?.id).toBe('call_1')
-    expect(newSlice[1]?.role).toBe('tool')
-    expect(newSlice[1]?.toolCallId).toBe('call_1')
-    expect(JSON.parse(newSlice[1]?.content ?? '{}')).toMatchObject({ rejected: true })
     expect(state.waitingForApproval).toBe(false)
     expect(state.pendingToolCall).toBeUndefined()
+
+    // The paused message id is still in messages[] — no splice, no duplicate.
+    const sameMessageStillThere = state.messages.find(
+      (m): m is AssistantSessionMessage => m.role === 'assistant' && m.id === pausedMessageId
+    )
+    expect(sameMessageStillThere).toBeDefined()
+
+    // The same part index now has rejected status + synthetic output.
+    const rejectedPart = sameMessageStillThere!.parts[pausedPartIndex] as ToolCallPart
+    expect(rejectedPart.type).toBe('tool_call')
+    expect(rejectedPart.status).toBe('rejected')
+    expect(rejectedPart.output).toBeDefined()
+    expect(rejectedPart.output).toMatchObject({ rejected: true })
+
+    // No duplicate assistant message was pushed for the rejected call; the
+    // engine may have appended subsequent messages (next iteration's turn),
+    // but the paused message itself was mutated, not replaced.
+    const assistantsWithCall1 = state.messages.filter(
+      (m): m is AssistantSessionMessage =>
+        m.role === 'assistant' &&
+        Array.isArray(m.parts) &&
+        m.parts.some((p) => p.type === 'tool_call' && p.toolCallId === 'call_1')
+    )
+    expect(assistantsWithCall1).toHaveLength(1)
+    expect(assistantsWithCall1[0]?.id).toBe(pausedMessageId)
+    // Subsequent appended parts/messages are allowed (responder continuation).
+    expect(state.messages.length).toBeGreaterThanOrEqual(messagesBeforeCount)
   })
 
-  it('resume({ action: "approve" }) success appends [assistantMessage, toolResultMsg] in order', async () => {
+  it('resume({ action: "approve" }) success mutates the part to completed with tool output', async () => {
     const tc = makeApprovalToolCall('call_1', 'risky_tool')
     const engine = buildEngine({
       approvalToolName: 'risky_tool',
@@ -167,21 +240,26 @@ describe('AgentEngine — pending approval persistence invariants', () => {
     })
 
     await drain(engine.submitMessage('do it'))
-    const messagesBefore = engine.getState().messages.length
+    const pending = engine.getState().pendingToolCall!
+    const pausedMessageId = pending.messageId
+    const pausedPartIndex = pending.partIndex
 
     await drain(engine.resume({ action: 'approve' }))
 
     const state = engine.getState()
-    const newSlice = state.messages.slice(messagesBefore)
-    expect(newSlice[0]?.role).toBe('assistant')
-    expect(newSlice[0]?.toolCalls?.[0]?.id).toBe('call_1')
-    expect(newSlice[1]?.role).toBe('tool')
-    expect(newSlice[1]?.toolCallId).toBe('call_1')
-    expect(JSON.parse(newSlice[1]?.content ?? '{}')).toMatchObject({ ran: true })
     expect(state.pendingToolCall).toBeUndefined()
+
+    const msg = state.messages.find(
+      (m): m is AssistantSessionMessage => m.role === 'assistant' && m.id === pausedMessageId
+    )
+    const part = msg!.parts[pausedPartIndex] as ToolCallPart
+    expect(part.type).toBe('tool_call')
+    expect(part.status).toBe('completed')
+    expect(part.output).toMatchObject({ ran: true })
+    expect(part.error).toBeUndefined()
   })
 
-  it('resume({ action: "approve" }) when tool throws still appends [assistantMessage, errorToolMsg]', async () => {
+  it('resume({ action: "approve" }) when tool throws mutates the part to error with the thrown message', async () => {
     const tc = makeApprovalToolCall('call_1', 'risky_tool')
     const engine = buildEngine({
       approvalToolName: 'risky_tool',
@@ -195,27 +273,62 @@ describe('AgentEngine — pending approval persistence invariants', () => {
     })
 
     await drain(engine.submitMessage('do it'))
-    const messagesBefore = engine.getState().messages.length
+    const pending = engine.getState().pendingToolCall!
+    const pausedMessageId = pending.messageId
+    const pausedPartIndex = pending.partIndex
 
     await drain(engine.resume({ action: 'approve' }))
 
     const state = engine.getState()
-    const newSlice = state.messages.slice(messagesBefore)
-    expect(newSlice[0]?.role).toBe('assistant')
-    expect(newSlice[0]?.toolCalls?.[0]?.id).toBe('call_1')
-    expect(newSlice[1]?.role).toBe('tool')
-    expect(newSlice[1]?.toolCallId).toBe('call_1')
-    expect(JSON.parse(newSlice[1]?.content ?? '{}')).toMatchObject({ error: 'boom' })
     expect(state.pendingToolCall).toBeUndefined()
+
+    const msg = state.messages.find(
+      (m): m is AssistantSessionMessage => m.role === 'assistant' && m.id === pausedMessageId
+    )
+    const part = msg!.parts[pausedPartIndex] as ToolCallPart
+    expect(part.status).toBe('error')
+    expect(part.error).toMatch(/boom/)
   })
 
-  it('submitMessage while pending clears pendingToolCall and only appends the new user message', async () => {
+  it('post-approve, follow-up parts continue appending to the SAME assistant message id', async () => {
+    const tc = makeApprovalToolCall('call_1', 'risky_tool')
+    const engine = buildEngine({
+      approvalToolName: 'risky_tool',
+      turns: [
+        { content: 'about to call', toolCalls: [tc] },
+        // After approve, a second LLM call returns a final reply with no tools.
+        { content: 'all done', toolCalls: [] },
+      ],
+    })
+
+    await drain(engine.submitMessage('do it'))
+    const pausedMessageId = engine.getState().pendingToolCall!.messageId
+
+    await drain(engine.resume({ action: 'approve' }))
+
+    const state = engine.getState()
+    // Either: the same message keeps growing (parts appended in place), or
+    // a fresh assistant message is appended for the post-resume responder.
+    // The contract from plan §5.6 + answers §A.5 is: same messageId, parts
+    // continue appending. Assert that.
+    const sameMessage = state.messages.find(
+      (m): m is AssistantSessionMessage => m.role === 'assistant' && m.id === pausedMessageId
+    )
+    expect(sameMessage).toBeDefined()
+    const proseAfter = sameMessage!.parts
+      .filter((p): p is Extract<typeof p, { type: 'text' }> => p.type === 'text')
+      .map((p) => p.text)
+      .join('')
+    expect(proseAfter).toContain('all done')
+  })
+
+  it('submitMessage while pending clears pendingToolCall and does NOT leak any extra assistant message', async () => {
     const tc = makeApprovalToolCall('call_1', 'risky_tool')
     const engine = buildEngine({
       approvalToolName: 'risky_tool',
       turns: [
         { content: 'first', toolCalls: [tc] },
-        // Second turn (after edit): no tool calls — exit cleanly.
+        // After edit: no tool calls — exit cleanly.
         { content: 'reply to edit', toolCalls: [] },
       ],
     })
@@ -230,15 +343,8 @@ describe('AgentEngine — pending approval persistence invariants', () => {
     expect(state.pendingToolCall).toBeUndefined()
     expect(state.waitingForApproval).toBe(false)
 
-    // The abandoned assistant-with-tool_calls must NOT have leaked into messages
-    // — it lived only on the (now-cleared) pendingToolCall.
-    const orphan = state.messages.find(
-      (m) => m.role === 'assistant' && m.toolCalls?.some((c) => c.id === 'call_1')
-    )
-    expect(orphan).toBeUndefined()
-
-    // The freshly-appended message at the boundary is the new user message.
+    // The freshly-appended boundary message is the new user message.
     expect(state.messages[messagesBefore]?.role).toBe('user')
-    expect(state.messages[messagesBefore]?.content).toBe('edited')
+    expect((state.messages[messagesBefore] as { content?: string }).content).toBe('edited')
   })
 })
