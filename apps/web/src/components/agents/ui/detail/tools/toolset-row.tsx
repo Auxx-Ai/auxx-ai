@@ -38,8 +38,8 @@ export function ToolsetRow({
   const tooltip = removable
     ? 'Remove toolset'
     : source === 'mention'
-      ? 'Locked — referenced in instructions. Remove the @-mention to unlock.'
-      : 'Default toolset — always available.'
+      ? "This tool is referenced in your agent's prompt. To remove it, first edit your prompt."
+      : 'Required'
 
   return (
     <TreeRow

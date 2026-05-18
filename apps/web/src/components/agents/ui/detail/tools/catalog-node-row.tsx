@@ -224,8 +224,8 @@ function ContainerInstalledStats({
   const allRemovable = stats.total > 0 && stats.removable === stats.total
   const lockedTooltip =
     stats.lockKind === 'mention'
-      ? 'Locked — referenced in instructions. Remove the @-mention to unlock.'
-      : 'Default toolset — always available.'
+      ? "This tool is referenced in your agent's prompt. To remove it, first edit your prompt."
+      : 'Required'
 
   return (
     <div className='flex items-center'>

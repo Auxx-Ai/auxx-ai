@@ -62,8 +62,8 @@ export function ToolSelectRow({
   const removable = source === undefined || source === 'manual'
   const lockedTooltip =
     source === 'mention'
-      ? 'Locked — referenced in instructions. Remove the @-mention to unlock.'
-      : 'Default toolset — always available.'
+      ? "This tool is referenced in your agent's prompt. To remove it, first edit your prompt."
+      : 'Required'
 
   return (
     <button
