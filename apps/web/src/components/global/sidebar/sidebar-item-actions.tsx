@@ -3,9 +3,12 @@
 
 import { AnimatedGradientText } from '@auxx/ui/components/animated-gradient-text'
 import { DropdownMenuItem } from '@auxx/ui/components/dropdown-menu'
-import { CheckSquare, LayoutTemplate, Workflow } from 'lucide-react'
+import { Bot, CheckSquare, LayoutTemplate, Workflow } from 'lucide-react'
+import { useRouter } from 'next/navigation'
 import type { ReactNode } from 'react'
 import { useState } from 'react'
+import { useAgentMutations } from '~/components/agents/hooks/use-agent-mutations'
+import { AgentTemplateDialog } from '~/components/agents/ui/dialogs/agent-template-dialog'
 import { useCreateTaskStore } from '~/components/tasks/stores/create-task-store'
 import { WorkflowFormDialog } from '~/components/workflow/dialogs/workflow-form-dialog'
 import { WorkflowTemplateDialog } from '~/components/workflow/dialogs/workflow-template-dialog'
@@ -25,10 +28,40 @@ type SidebarItemActionsResult = {
 export function useSidebarItemActions(): SidebarItemActionsResult {
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
   const [templateDialogOpen, setTemplateDialogOpen] = useState(false)
+  const [agentTemplateDialogOpen, setAgentTemplateDialogOpen] = useState(false)
   const currentOrganization = useOrganization()
+  const router = useRouter()
+  const { createAgent, isCreating } = useAgentMutations()
+
+  async function handleCreateAgentFromScratch() {
+    const created = await createAgent()
+    if (created) router.push(`/app/agents/${created.slug}`)
+  }
 
   return {
     editItems: {
+      agents: () => (
+        <>
+          <DropdownMenuItem
+            disabled={isCreating}
+            onClick={(e) => {
+              e.stopPropagation()
+              void handleCreateAgentFromScratch()
+            }}>
+            <Bot /> Create blank
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            disabled={isCreating}
+            onClick={(e) => {
+              e.stopPropagation()
+              setAgentTemplateDialogOpen(true)
+            }}
+            className='data-highlighted:bg-[#ffaa40]/10'>
+            <LayoutTemplate className='text-[#ffaa40]' />{' '}
+            <AnimatedGradientText>Create from template</AnimatedGradientText>
+          </DropdownMenuItem>
+        </>
+      ),
       workflows: () => (
         <>
           <DropdownMenuItem
@@ -73,6 +106,12 @@ export function useSidebarItemActions(): SidebarItemActionsResult {
             open={templateDialogOpen}
             onOpenChange={setTemplateDialogOpen}
             organizationId={currentOrganization?.id ?? ''}
+          />
+        )}
+        {agentTemplateDialogOpen && (
+          <AgentTemplateDialog
+            open={agentTemplateDialogOpen}
+            onOpenChange={setAgentTemplateDialogOpen}
           />
         )}
       </>

@@ -16,43 +16,52 @@ const STATUS_ICONS = {
 } as const
 
 export function PlanStepsBlock({ data, skipEntrance }: BlockRendererProps<PlanStepsData>) {
+  const steps = data.steps ?? []
   return (
     <div className='not-prose my-2'>
       <BlockCard data-slot='plan-steps-block' primaryText='Plan' hasFooter={false}>
         <div className='space-y-1.5'>
-          {data.steps.map((step, i) => (
-            <motion.div
-              key={i}
-              className='flex items-start gap-2 text-sm'
-              initial={skipEntrance ? false : { opacity: 0, x: -8, filter: 'blur(3px)' }}
-              animate={{ opacity: 1, x: 0, filter: 'blur(0px)' }}
-              transition={{
-                type: 'spring',
-                stiffness: 400,
-                damping: 22,
-                delay: skipEntrance ? 0 : Math.min(i * 0.05, 0.3),
-              }}>
-              <AnimatePresence mode='wait'>
-                <motion.span
-                  key={step.status}
-                  className='mt-0.5 shrink-0'
-                  initial={{ scale: 0.5, opacity: 0 }}
-                  animate={{ scale: 1, opacity: 1 }}
-                  exit={{ scale: 0.5, opacity: 0 }}
-                  transition={{ type: 'spring', stiffness: 500, damping: 20 }}>
-                  {STATUS_ICONS[step.status]}
-                </motion.span>
-              </AnimatePresence>
-              <div className='min-w-0'>
-                <span className={step.status === 'pending' ? 'text-muted-foreground' : ''}>
-                  {step.label}
-                </span>
-                {step.detail && (
-                  <span className='ml-1 text-xs text-muted-foreground'>— {step.detail}</span>
-                )}
-              </div>
-            </motion.div>
-          ))}
+          {steps.map((step, i) => {
+            // While streaming, a step may exist in the array before its label
+            // has arrived. Skip rendering until we have something to show —
+            // index keys stay stable so steps below don't re-mount when the
+            // label finally lands.
+            if (!step.label) return null
+            const status = step.status ?? 'pending'
+            return (
+              <motion.div
+                key={i}
+                className='flex items-start gap-2 text-sm'
+                initial={skipEntrance ? false : { opacity: 0, x: -8, filter: 'blur(3px)' }}
+                animate={{ opacity: 1, x: 0, filter: 'blur(0px)' }}
+                transition={{
+                  type: 'spring',
+                  stiffness: 400,
+                  damping: 22,
+                  delay: skipEntrance ? 0 : Math.min(i * 0.05, 0.3),
+                }}>
+                <AnimatePresence mode='wait'>
+                  <motion.span
+                    key={status}
+                    className='mt-0.5 shrink-0'
+                    initial={{ scale: 0.5, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    exit={{ scale: 0.5, opacity: 0 }}
+                    transition={{ type: 'spring', stiffness: 500, damping: 20 }}>
+                    {STATUS_ICONS[status]}
+                  </motion.span>
+                </AnimatePresence>
+                <div className='min-w-0'>
+                  <span className={status === 'pending' ? 'text-muted-foreground' : ''}>
+                    {step.label}
+                  </span>
+                  {step.detail && (
+                    <span className='ml-1 text-xs text-muted-foreground'>— {step.detail}</span>
+                  )}
+                </div>
+              </motion.div>
+            )
+          })}
         </div>
       </BlockCard>
     </div>

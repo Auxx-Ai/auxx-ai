@@ -3,8 +3,9 @@
 'use client'
 
 import { constants } from '@auxx/config/client'
+import type { DocJSON } from '@auxx/lib/kb/markdown'
 import type { SystemTemplateGalleryItem } from '@auxx/lib/prompt-templates'
-import { AutosizeTextarea } from '@auxx/ui/components/autosize-textarea'
+import { docToText } from '@auxx/lib/tiptap'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import {
@@ -39,8 +40,24 @@ import {
   Sparkles,
 } from 'lucide-react'
 import { useCallback, useMemo, useRef, useState } from 'react'
+import { DEFAULT_TABS } from '~/components/editor/inline-picker'
+import type { ReferenceTab } from '~/components/editor/inline-picker/nodes/reference-picker-node'
+import { PromptEditor } from '~/components/editor/prompt-editor'
 import { usePromptTemplateMutations } from '../../hooks/use-prompt-template-mutations'
 import { useSystemTemplates } from '../../hooks/use-prompt-templates'
+
+const TEMPLATE_REFERENCE_TABS: ReferenceTab[] = [...DEFAULT_TABS, 'tools', 'resources', 'fields']
+
+function emptyPromptDoc(): DocJSON {
+  return {
+    type: 'doc',
+    content: [{ type: 'block', attrs: { blockType: 'text' }, content: [] }],
+  }
+}
+
+function deepEqualDoc(a: DocJSON, b: DocJSON): boolean {
+  return JSON.stringify(a) === JSON.stringify(b)
+}
 
 /** Map icon names from constants to Lucide components */
 const categoryIcons: Record<string, LucideIcon> = {
@@ -67,7 +84,8 @@ export function PromptTemplateDialog({ open, onOpenChange }: PromptTemplateDialo
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedCategory, setSelectedCategory] = useState<PromptCategory>('all')
   const [selectedTemplate, setSelectedTemplate] = useState<SystemTemplateGalleryItem | null>(null)
-  const [editedPrompt, setEditedPrompt] = useState('')
+  const [editedPrompt, setEditedPrompt] = useState<DocJSON>(emptyPromptDoc)
+  const [editorKey, setEditorKey] = useState(0)
   const [isCustomizing, setIsCustomizing] = useState(false)
 
   const filteredTemplates = useMemo(() => {
@@ -90,6 +108,7 @@ export function PromptTemplateDialog({ open, onOpenChange }: PromptTemplateDialo
   const handleSelectTemplate = useCallback((template: SystemTemplateGalleryItem) => {
     setSelectedTemplate(template)
     setEditedPrompt(template.prompt)
+    setEditorKey((k) => k + 1)
     setViewMode('detail')
   }, [])
 
@@ -99,13 +118,13 @@ export function PromptTemplateDialog({ open, onOpenChange }: PromptTemplateDialo
     install.mutate(
       {
         systemTemplateId: selectedTemplate.id,
-        prompt: editedPrompt !== selectedTemplate.prompt ? editedPrompt : undefined,
+        prompt: deepEqualDoc(editedPrompt, selectedTemplate.prompt) ? undefined : editedPrompt,
       },
       {
         onSuccess: () => {
           setViewMode('list')
           setSelectedTemplate(null)
-          setEditedPrompt('')
+          setEditedPrompt(emptyPromptDoc())
           setIsCustomizing(false)
         },
       }
@@ -115,7 +134,7 @@ export function PromptTemplateDialog({ open, onOpenChange }: PromptTemplateDialo
   const handleBack = useCallback(() => {
     setViewMode('list')
     setSelectedTemplate(null)
-    setEditedPrompt('')
+    setEditedPrompt(emptyPromptDoc())
     setIsCustomizing(false)
   }, [])
 
@@ -334,8 +353,10 @@ export function PromptTemplateDialog({ open, onOpenChange }: PromptTemplateDialo
                                 if (isCustomizing) {
                                   setIsCustomizing(false)
                                   setEditedPrompt(selectedTemplate.prompt)
+                                  setEditorKey((k) => k + 1)
                                 } else {
                                   setIsCustomizing(true)
+                                  setEditorKey((k) => k + 1)
                                 }
                               }}>
                               {isCustomizing ? 'Cancel' : 'Customize'}
@@ -343,19 +364,18 @@ export function PromptTemplateDialog({ open, onOpenChange }: PromptTemplateDialo
                           )}
                         </div>
                         {isCustomizing ? (
-                          <div className='px-0.5 pb-0.5'>
-                            <AutosizeTextarea
-                              value={editedPrompt}
-                              onChange={(e) => setEditedPrompt(e.target.value)}
-                              minHeight={200}
-                              className='text-sm rounded-xl bg-muted/30 ps-[14px]! p-4 leading-relaxed'
-                              autoFocus
+                          <div className='rounded-xl border bg-background p-4'>
+                            <PromptEditor
+                              key={editorKey}
+                              initialContent={selectedTemplate.prompt.content as never}
+                              onChange={({ json }) => setEditedPrompt(json as DocJSON)}
+                              referenceTabs={TEMPLATE_REFERENCE_TABS}
                             />
                           </div>
                         ) : (
                           <div className='rounded-xl border bg-muted/30 p-4'>
                             <p className='text-sm text-muted-foreground whitespace-pre-wrap leading-relaxed'>
-                              {selectedTemplate.prompt}
+                              {docToText(selectedTemplate.prompt)}
                             </p>
                           </div>
                         )}

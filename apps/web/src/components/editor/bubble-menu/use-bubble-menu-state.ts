@@ -24,7 +24,11 @@ interface UseBubbleMenuStateOptions {
   forceOpen?: boolean
 }
 
-const EMPTY_RECT = new DOMRect()
+let emptyRect: DOMRect | null = null
+function getEmptyRect(): DOMRect {
+  if (!emptyRect) emptyRect = new DOMRect()
+  return emptyRect
+}
 
 function computeSelectionRect(editor: Editor): DOMRect | null {
   const domSel = typeof window !== 'undefined' ? window.getSelection() : null
@@ -124,5 +128,5 @@ export function useBubbleMenuState({
   }
   // Avoid returning a null rect downstream — keeps Radix happy when the menu
   // is transitioning closed.
-  return state.rect ? state : { ...state, rect: EMPTY_RECT }
+  return state.rect ? state : { ...state, rect: getEmptyRect() }
 }

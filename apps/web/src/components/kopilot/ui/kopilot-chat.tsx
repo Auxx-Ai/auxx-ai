@@ -37,6 +37,13 @@ export interface KopilotChatProps {
    * 'builder' when this chat configures an agent). Ignored on existing sessions.
    */
   sessionType?: 'kopilot' | 'builder'
+  /**
+   * If set AND `initialSessionId` is null, this text is auto-submitted as the
+   * first user turn after mount — same path as clicking an `autoSubmit`
+   * suggestion chip, no chip rendered. Used by the agent builder to fire a
+   * template's seed prompt directly. Guarded by a ref so it only fires once.
+   */
+  initialMessage?: string | null
 }
 
 export function KopilotChat({
@@ -46,6 +53,7 @@ export function KopilotChat({
   contentClassName,
   agentId,
   sessionType,
+  initialMessage,
 }: KopilotChatProps) {
   const activeSessionId = useKopilotStore((s) => s.activeSessionId)
   const setEditingMessage = useKopilotStore((s) => s.setEditingMessage)
@@ -173,6 +181,19 @@ export function KopilotChat({
     },
     [addMessage, messages, activeSessionId, page, augmentRequest]
   )
+
+  // Auto-submit `initialMessage` once on mount when no existing session.
+  // Fires the same path as an autoSubmit suggestion chip, without rendering
+  // one. The ref guard makes it idempotent across re-renders and prevents
+  // a refresh from re-submitting.
+  const hasAutoSubmittedRef = useRef(false)
+  useEffect(() => {
+    if (hasAutoSubmittedRef.current) return
+    if (!initialMessage) return
+    if (initialSessionId) return
+    hasAutoSubmittedRef.current = true
+    handleSuggestionClick(initialMessage, true)
+  }, [initialMessage, initialSessionId, handleSuggestionClick])
 
   const handleApprovalAction = useCallback(
     (request: KopilotRequest) => {

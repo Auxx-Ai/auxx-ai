@@ -10,15 +10,17 @@ import type { Editor } from '@tiptap/react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { DEFAULT_TABS } from '~/components/editor/inline-picker'
 import type { ReferenceTab } from '~/components/editor/inline-picker/nodes/reference-picker-node'
+import {
+  PromptCharacterCount,
+  PromptEditorContent,
+  PromptEditorHeader,
+} from '~/components/editor/prompt-editor'
 import type { ReferencePickerHandle } from '~/components/pickers/reference-picker/reference-picker-content'
 import CollapseWrap from '~/components/workflow/ui/collapse-wrap'
 import { api } from '~/trpc/react'
 import { useAgentAutosave } from '../../../hooks/use-agent-autosave'
 import type { AgentDetail } from '../../../store/agent-store'
 import type { AutosaveState } from '../../shared/autosave-indicator'
-import { PersonaCharacterCount } from './persona-character-count'
-import { PersonaEditorContent } from './persona-editor-content'
-import { PersonaEditorHeader } from './persona-editor-header'
 
 interface PersonaEditorProps {
   agent: AgentDetail
@@ -50,7 +52,7 @@ function readPromptContent(
  * expand actions, resizable content, expand-to-dialog).
  *
  * Two-editor pattern: the card and the expanded dialog each mount their own
- * `PersonaEditorContent` (with its own `useRichTextEditor` call). Only one
+ * `PromptEditorContent` (with its own `useRichTextEditor` call). Only one
  * is mounted at a time — toggling `isExpanded` unmounts one and mounts the
  * other. `currentDocRef` holds the live document so the next editor inits
  * from where the previous left off (the autosave debounce window is too
@@ -81,7 +83,7 @@ export function PersonaEditor({ agent, onAutosaveChange }: PersonaEditorProps) {
   const [isCopied, setIsCopied] = useState(false)
 
   // The doc each child editor reads on mount. We keep it in a ref so live
-  // edits don't cause `PersonaEditorContent` to re-render with a new prop
+  // edits don't cause `PromptEditorContent` to re-render with a new prop
   // (TipTap's `useEditor` reads `initialContent` once, but changing the
   // prop identity would still re-render the wrapper unnecessarily).
   const initialContent = useMemo(() => readPromptContent(agent.prompt), [agent.prompt])
@@ -121,10 +123,10 @@ export function PersonaEditor({ agent, onAutosaveChange }: PersonaEditorProps) {
 
   // Stable element so the memoized header doesn't see a new `countSlot`
   // prop every time PersonaEditor re-renders (focus/blur, autosave state).
-  const countSlot = useMemo(() => <PersonaCharacterCount editor={activeEditor} />, [activeEditor])
+  const countSlot = useMemo(() => <PromptCharacterCount editor={activeEditor} />, [activeEditor])
 
   const header = (
-    <PersonaEditorHeader
+    <PromptEditorHeader
       title='Persona'
       countSlot={countSlot}
       isExpanded={isExpanded}
@@ -154,7 +156,7 @@ export function PersonaEditor({ agent, onAutosaveChange }: PersonaEditorProps) {
               className='px-3'
               gradientClassName='from-primary-200/30 dark:from-primary-200/30'>
               <div className='relative flex w-full'>
-                <PersonaEditorContent
+                <PromptEditorContent
                   initialContent={currentDocRef.current}
                   onChange={handleChange}
                   onEditorReady={handleEditorReady}
@@ -182,7 +184,7 @@ export function PersonaEditor({ agent, onAutosaveChange }: PersonaEditorProps) {
               allowScrollChaining
               scrollbarClassName='w-1 mr-0.5 data-[hovering]:opacity-0 hover:!opacity-100'>
               {isExpanded && (
-                <PersonaEditorContent
+                <PromptEditorContent
                   initialContent={currentDocRef.current}
                   onChange={handleChange}
                   onEditorReady={handleEditorReady}

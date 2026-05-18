@@ -17,7 +17,8 @@ import { TaskItemSkeleton, TaskRowLoading, TaskRowUnavailable } from './task-ite
 
 export function TaskListBlock({ data, skipEntrance }: BlockRendererProps<TaskListData>) {
   const router = useRouter()
-  const { taskIds, snapshot } = data
+  const taskIds = data.taskIds ?? []
+  const snapshot = data.snapshot
   const { tasksByKey, notFoundIds } = useTasksByIds({ taskIds, enabled: taskIds.length > 0 })
   const notFoundSet = useMemo(() => new Set(notFoundIds), [notFoundIds])
 

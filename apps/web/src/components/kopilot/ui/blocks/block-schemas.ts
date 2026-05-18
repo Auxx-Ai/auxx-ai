@@ -47,34 +47,39 @@ export const draftSnapshotSchema = z.object({
 
 // ─── Reference block payloads (LLM writes ids; server injects snapshots) ───
 
+// All `<X>Id(s)` fields are `.optional()` and arrays default to an empty list
+// in the renderers. This keeps the partial-JSON output produced mid-stream
+// validatable from the very first delta, so the block stays mounted instead
+// of flipping to `FallbackBlock` and re-running entrance animations.
+
 export const entityCardSchema = z.object({
-  recordId: z.string(),
+  recordId: z.string().optional(),
   snapshot: entitySnapshotSchema.optional(),
 })
 
 export const entityListSchema = z.object({
-  recordIds: z.array(z.string()),
+  recordIds: z.array(z.string()).optional(),
   snapshot: z.record(z.string(), entitySnapshotSchema).optional(),
 })
 
 export const threadListSchema = z.object({
-  threadIds: z.array(z.string()),
+  threadIds: z.array(z.string()).optional(),
   snapshot: z.record(z.string(), threadSnapshotSchema).optional(),
 })
 
 export const taskListSchema = z.object({
-  taskIds: z.array(z.string()),
+  taskIds: z.array(z.string()).optional(),
   snapshot: z.record(z.string(), taskSnapshotSchema).optional(),
 })
 
 export const draftListSchema = z.object({
-  draftIds: z.array(z.string()),
+  draftIds: z.array(z.string()).optional(),
   snapshot: z.record(z.string(), draftSnapshotSchema).optional(),
 })
 
 export const entityDefinitionFieldSchema = z.object({
-  id: z.string(),
-  label: z.string(),
+  id: z.string().optional(),
+  label: z.string().optional(),
   fieldType: z.string().optional(),
   systemAttribute: z.string().nullable().optional(),
   options: z.array(z.object({ value: z.string(), label: z.string() })).optional(),
@@ -86,20 +91,36 @@ export const entityDefinitionFieldSchema = z.object({
     .optional(),
 })
 
+// A malformed field is coerced to a blank entry rather than rejecting the
+// whole block — mirrors how the table tolerates partial cells.
+const entityDefinitionFieldPartialSafe = entityDefinitionFieldSchema.catch({})
+
 export const entityDefinitionSchema = z.object({
-  entityDefinitionId: z.string(),
+  entityDefinitionId: z.string().optional(),
   label: z.string().optional(),
-  fields: z.array(entityDefinitionFieldSchema),
+  fields: z.array(entityDefinitionFieldPartialSafe).optional(),
 })
 
+/**
+ * Permissive plan-steps schema. While the LLM is mid-stream, the partial-JSON
+ * parser produces steps that are missing fields (e.g. `status` hasn't arrived
+ * yet). Keeping every field optional lets validation pass continuously instead
+ * of flipping pass → fail → pass on each step boundary, which would otherwise
+ * remount the block and re-run every step's entrance animation.
+ *
+ * The renderer fills in defaults (status → 'pending') and skips steps that
+ * haven't yet streamed a label.
+ */
+const planStepPartialSafe = z
+  .object({
+    label: z.string().optional(),
+    status: z.enum(['pending', 'running', 'completed', 'failed']).optional(),
+    detail: z.string().optional(),
+  })
+  .catch({})
+
 export const planStepsSchema = z.object({
-  steps: z.array(
-    z.object({
-      label: z.string(),
-      status: z.enum(['pending', 'running', 'completed', 'failed']),
-      detail: z.string().optional(),
-    })
-  ),
+  steps: z.array(planStepPartialSafe).optional(),
 })
 
 const CELL_TYPE_VALUES = ['actor', 'date', 'tags', 'email', 'phone', 'currency', 'number'] as const
@@ -165,7 +186,11 @@ export const tableColumnSchema = z.object({
  * placeholder so the rest of the table renders progressively.
  */
 const tableColumnPartialSafe = tableColumnSchema.catch({ label: '' })
-const tableCellPartialSafe = tableCellSchema.catch({ text: '' })
+const tableCellPartialSafe = tableCellSchema.catch({
+  text: '',
+  type: undefined,
+  href: undefined,
+})
 
 export const tableBlockSchema = z.object({
   columns: z.array(tableColumnPartialSafe).optional(),
