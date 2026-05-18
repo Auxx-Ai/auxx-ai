@@ -47,6 +47,8 @@ interface BlockCardProps {
   actions?: BlockCardAction[]
   /** Debug slot identifier */
   'data-slot'?: string
+  /** Extra classes for the outer wrapper. Use `[&_[data-slot=block-card-body]]:p-0` etc. to target inner slots. */
+  className?: string
 }
 
 export function BlockCard({
@@ -59,13 +61,17 @@ export function BlockCard({
   actionLabel,
   actions,
   'data-slot': dataSlot,
+  className,
 }: BlockCardProps) {
   const showFooter = hasFooter && (actionLabel || (actions && actions.length > 0))
 
   return (
     <div
       data-slot={dataSlot}
-      className='rounded-3xl bg-card/25 p-2 shadow-lg shadow-black/[.065] ring-1 ring-border-illustration'>
+      className={cn(
+        'rounded-3xl bg-card/25 p-2 shadow-lg shadow-black/[.065] ring-1 ring-border-illustration',
+        className
+      )}>
       {hasHeader && (
         <div className='flex items-start justify-between px-2 pt-1'>
           <div className='flex items-center gap-2'>
@@ -80,6 +86,7 @@ export function BlockCard({
 
       {children && (
         <div
+          data-slot='block-card-body'
           className={cn(
             'rounded-2xl bg-illustration p-2 ring-1 ring-border-illustration',
             hasHeader ? 'mb-2 mt-2' : 'mt-0',

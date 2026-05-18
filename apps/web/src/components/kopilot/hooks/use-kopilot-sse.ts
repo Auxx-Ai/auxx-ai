@@ -32,6 +32,11 @@ interface UseKopilotSSEOptions {
   onRequestSent: () => void
 }
 
+/**
+ * Thin event-mirror handler. Each server event projects directly onto a
+ * single store mutation — no derivation, no fallbacks, no rescue paths. The
+ * persisted shape and the streamed shape match by construction.
+ */
 export function useKopilotSSE({ pendingRequest, onRequestSent }: UseKopilotSSEOptions) {
   const [sseConfig, setSSEConfig] = useState<SSEConfig | null>(null)
 
@@ -41,7 +46,6 @@ export function useKopilotSSE({ pendingRequest, onRequestSent }: UseKopilotSSEOp
   const setCurrentRoute = useKopilotStore((s) => s.setCurrentRoute)
   const setIsStreaming = useKopilotStore((s) => s.setIsStreaming)
   const setCurrentAgent = useKopilotStore((s) => s.setCurrentAgent)
-  const appendStreamDelta = useKopilotStore((s) => s.appendStreamDelta)
   const clearStream = useKopilotStore((s) => s.clearStream)
   const addMessage = useKopilotStore((s) => s.addMessage)
   const updateMessage = useKopilotStore((s) => s.updateMessage)
@@ -49,28 +53,18 @@ export function useKopilotSSE({ pendingRequest, onRequestSent }: UseKopilotSSEOp
   const removeActiveTool = useKopilotStore((s) => s.removeActiveTool)
   const setPendingChipPrompts = useKopilotStore((s) => s.setPendingChipPrompts)
 
-  // Thinking step actions
-  const beginThinkingGroup = useKopilotStore((s) => s.beginThinkingGroup)
-  const appendThinkingText = useKopilotStore((s) => s.appendThinkingText)
-  const commitThinkingText = useKopilotStore((s) => s.commitThinkingText)
-  const addThinkingToolStep = useKopilotStore((s) => s.addThinkingToolStep)
-  const completeThinkingToolStep = useKopilotStore((s) => s.completeThinkingToolStep)
-  const failThinkingToolStep = useKopilotStore((s) => s.failThinkingToolStep)
-  const finalizeThinkingGroup = useKopilotStore((s) => s.finalizeThinkingGroup)
-  const attachThinkingGroupToMessage = useKopilotStore((s) => s.attachThinkingGroupToMessage)
+  // Parts actions
+  const appendTextDelta = useKopilotStore((s) => s.appendTextDelta)
+  const appendThinkingDelta = useKopilotStore((s) => s.appendThinkingDelta)
+  const addToolCallPart = useKopilotStore((s) => s.addToolCallPart)
+  const updateToolCallPart = useKopilotStore((s) => s.updateToolCallPart)
+  const finalizeMessage = useKopilotStore((s) => s.finalizeMessage)
 
   // Stable ref for onRequestSent to avoid re-triggering effects
   const onRequestSentRef = useRef(onRequestSent)
   useEffect(() => {
     onRequestSentRef.current = onRequestSent
   }, [onRequestSent])
-
-  // Track the current streaming message ID so llm-complete can commit it
-  const streamingMessageIdRef = useRef<string | null>(null)
-
-  // Track whether the responder committed a message in this pipeline run.
-  // When false, the `message` event acts as a fallback to commit the response.
-  const responderCommittedRef = useRef(false)
 
   /** Get the ID of the last visible message (current leaf of the active branch) */
   const getCurrentLeafId = useCallback((): string | null => {
@@ -101,109 +95,81 @@ export function useKopilotSSE({ pendingRequest, onRequestSent }: UseKopilotSSEOp
         case 'turn-started': {
           setCurrentRoute(data.route)
           setIsStreaming(true)
-          responderCommittedRef.current = false
-          break
-        }
-        case 'turn-completed': {
-          // Finalize streaming state; `done` still handles cleanup.
-          break
-        }
-        case 'final-message': {
-          // Close out the thinking group, then commit the assistant anchor.
-          // Empty content is valid (silent termination — model finished with
-          // no prose after a run of tool calls). We still commit a placeholder
-          // assistant message so the thinking group has something to attach
-          // to and the turn has a stable responder anchor on refresh.
-          finalizeThinkingGroup()
-          const store = useKopilotStore.getState()
-          const content = data.content || store.stream.streamingContent
-          const leafId = getCurrentLeafId()
-          const msgId = streamingMessageIdRef.current || generateId()
-          addMessage({
-            id: msgId,
-            role: 'assistant',
-            content,
-            timestamp: Date.now(),
-            parentId: leafId,
-            ...(data.linkSnapshots ? { linkSnapshots: data.linkSnapshots } : {}),
-          })
-          attachThinkingGroupToMessage(msgId)
-          responderCommittedRef.current = true
-          streamingMessageIdRef.current = null
-          clearStream()
           break
         }
         case 'agent-started': {
           setCurrentAgent(data.agent)
-          // Solo agent: open a thinking group on the first agent-started.
-          // (The group is finalized when the final message arrives.)
-          beginThinkingGroup()
           break
         }
-        case 'llm-stream': {
-          // Stream every text-delta into the main message buffer so the final
-          // answer waterfalls character-by-character. Interstitial prose between
-          // tool calls accumulates here too — `final-message` overwrites with the
-          // post-processed canonical content (snapshot injection, link snapshots)
-          // when the turn ends.
-          appendStreamDelta(data.delta)
-          break
-        }
-        case 'llm-reasoning-stream': {
-          // Reasoning content from thinking-enabled models (Kimi, DeepSeek, Qwen)
-          // flows into the thinking buffer.
-          appendThinkingText(data.delta)
-          break
-        }
-        case 'llm-complete': {
-          commitThinkingText()
-          break
-        }
-        case 'tool-started': {
-          const toolMsgId = generateId()
-          addActiveTool(data.tool, data.agent)
-          addThinkingToolStep(data.tool, data.args ?? {})
-          // Still store tool message for persistence
+        case 'assistant-message-started': {
+          // Open a new assistant bubble; all subsequent text/thinking/tool_call
+          // events target this messageId until `assistant-message-finished`.
           addMessage({
-            id: toolMsgId,
-            role: 'tool',
-            content: '',
+            id: data.messageId,
+            role: 'assistant',
+            parts: [],
             timestamp: Date.now(),
             parentId: getCurrentLeafId(),
-            tool: {
-              name: data.tool,
-              callId: data.toolCallId,
-              args: data.args ?? {},
-              status: 'running',
-            },
+            metadata: data.agent ? { agent: data.agent } : undefined,
           })
           break
         }
-        case 'tool-completed': {
-          removeActiveTool(data.tool)
-          completeThinkingToolStep(data.tool, data.result?.output, data.digest)
-          // Still update tool message for persistence
+        case 'text-delta': {
+          appendTextDelta(data.messageId, data.partIndex, data.delta)
+          break
+        }
+        case 'thinking-delta': {
+          appendThinkingDelta(data.messageId, data.partIndex, data.delta)
+          break
+        }
+        case 'tool-call-started': {
+          addActiveTool(data.name, data.agent)
+          addToolCallPart(data.messageId, data.partIndex, {
+            toolCallId: data.toolCallId,
+            name: data.name,
+            args: data.args ?? {},
+            agent: data.agent,
+          })
+          break
+        }
+        case 'tool-call-status': {
+          // Lifecycle transition without an output payload — awaiting-approval,
+          // executing (running), rejected. The producer is authoritative.
+          updateToolCallPart(data.messageId, data.partIndex, {
+            status: data.status,
+            ...(data.digest !== undefined ? { digest: data.digest } : {}),
+          })
+          // Mirror onto a matching approval system message if present.
           const store = useKopilotStore.getState()
-          const toolMsg = data.toolCallId
-            ? Object.values(store.messageMap).find((m) => m.tool?.callId === data.toolCallId)
-            : Object.values(store.messageMap)
-                .reverse()
-                .find((m) => m.tool?.name === data.tool && m.tool?.status === 'running')
-          if (toolMsg) {
-            updateMessage(toolMsg.id, {
-              tool: {
-                ...toolMsg.tool!,
-                status: 'completed',
-                result: data.result?.output,
-                digest: data.digest,
-              },
+          const approvalMsg = Object.values(store.messageMap).find(
+            (m) => m.approval?.toolCallId === data.toolCallId
+          )
+          if (approvalMsg?.approval) {
+            const nextApprovalStatus =
+              data.status === 'rejected'
+                ? 'rejected'
+                : data.status === 'completed' || data.status === 'running'
+                  ? 'approved'
+                  : approvalMsg.approval.status
+            updateMessage(approvalMsg.id, {
+              approval: { ...approvalMsg.approval, status: nextApprovalStatus },
             })
           }
+          break
+        }
+        case 'tool-call-completed': {
+          removeActiveTool(data.name ?? '')
+          updateToolCallPart(data.messageId, data.partIndex, {
+            status: 'completed',
+            output: data.output,
+            ...(data.digest !== undefined ? { digest: data.digest } : {}),
+            ...(data.captured ? { captured: true } : {}),
+          })
           // Side-channel snapshots embedded in tool output:
           // - `_suggestReplies` → render chips above the composer
           // - `_railUpdate` → invalidate the affected agent's detail query so
-          //   the rail re-renders. Cheap; one cache invalidation per write.
-          const output = (data.result?.output ?? null) as {
+          //   the rail re-renders.
+          const output = (data.output ?? null) as {
             _suggestReplies?: { version?: string; prompts?: Array<{ id: string; label: string }> }
             _railUpdate?: { agentId?: string }
           } | null
@@ -215,161 +181,107 @@ export function useKopilotSSE({ pendingRequest, onRequestSent }: UseKopilotSSEOp
             void utils.agent.getById.invalidate({ agentId })
             void utils.agent.list.invalidate()
           }
-          break
-        }
-        case 'tool-error': {
-          removeActiveTool(data.tool)
-          failThinkingToolStep(data.tool, data.error)
+          // Also mark a matching approval system message as approved on
+          // completion — the tool actually ran.
           const store = useKopilotStore.getState()
-          const errToolMsg = data.toolCallId
-            ? Object.values(store.messageMap).find((m) => m.tool?.callId === data.toolCallId)
-            : Object.values(store.messageMap)
-                .reverse()
-                .find((m) => m.tool?.name === data.tool && m.tool?.status === 'running')
-          if (errToolMsg) {
-            updateMessage(errToolMsg.id, {
-              tool: { ...errToolMsg.tool!, status: 'error', result: data.error },
-            })
-          }
-          break
-        }
-        case 'tool-status-changed': {
-          // In-place lifecycle transition for the existing tool message, used
-          // by approval-flow tools to morph preview → executing → completed.
-          const store = useKopilotStore.getState()
-          const target = Object.values(store.messageMap).find(
-            (m) => m.tool?.callId === data.toolCallId
-          )
-          if (target?.tool) {
-            const nextStatus =
-              data.status === 'awaiting-approval' || data.status === 'rejected'
-                ? target.tool.status
-                : data.status === 'executing'
-                  ? 'running'
-                  : data.status === 'completed'
-                    ? 'completed'
-                    : 'error'
-            updateMessage(target.id, {
-              tool: {
-                ...target.tool,
-                status: nextStatus,
-                ...(data.digest !== undefined ? { digest: data.digest } : {}),
-              },
-            })
-          }
-          // Also update the matching approval message's status, if any.
           const approvalMsg = Object.values(store.messageMap).find(
             (m) => m.approval?.toolCallId === data.toolCallId
           )
-          if (approvalMsg?.approval) {
-            const nextApprovalStatus =
-              data.status === 'rejected'
-                ? 'rejected'
-                : data.status === 'completed' || data.status === 'executing'
-                  ? 'approved'
-                  : approvalMsg.approval.status
+          if (approvalMsg?.approval && approvalMsg.approval.status === 'pending') {
             updateMessage(approvalMsg.id, {
-              approval: { ...approvalMsg.approval, status: nextApprovalStatus },
+              approval: { ...approvalMsg.approval, status: 'approved' },
             })
           }
+          break
+        }
+        case 'tool-call-failed': {
+          removeActiveTool(data.name ?? '')
+          updateToolCallPart(data.messageId, data.partIndex, {
+            status: 'error',
+            error: data.error,
+          })
           break
         }
         case 'approval-required': {
-          // Finalize the in-flight thinking group and attach it to the
-          // approval system message we're about to render. Using the real
-          // approval message id (not the dead `'_approval_'` sentinel) lets
-          // the pill render next to the approval card via the same
-          // group.messageId lookup the rest of the renderer uses, and lets
-          // `reconstructThinkingGroups` re-attach it on refresh.
-          const approvalMsgId = generateId()
-          finalizeThinkingGroup()
-          attachThinkingGroupToMessage(approvalMsgId)
-          addMessage({
-            id: approvalMsgId,
-            role: 'system',
-            content: `Approval needed: ${data.tool}`,
-            timestamp: Date.now(),
-            parentId: getCurrentLeafId(),
-            approval: {
-              toolName: data.tool,
-              toolCallId: data.toolCallId,
-              args: data.args ?? {},
-              status: 'pending',
-            },
+          // Flip the tool_call part to awaiting-approval and mirror the
+          // server-persisted system approval message into the store using
+          // the same id. Server is the source of truth — if the message
+          // already exists (e.g. from hydration), skip the duplicate add.
+          updateToolCallPart(data.messageId, data.partIndex, {
+            status: 'awaiting-approval',
+            ...(data.digest !== undefined ? { digest: data.digest } : {}),
           })
+          const approvalMsgId = data.approvalMessageId ?? generateId()
+          const store = useKopilotStore.getState()
+          if (!store.messageMap[approvalMsgId]) {
+            addMessage({
+              id: approvalMsgId,
+              role: 'system',
+              content: `Approval needed: ${data.toolName}`,
+              timestamp: Date.now(),
+              parentId: data.messageId,
+              approval: {
+                toolName: data.toolName,
+                toolCallId: data.toolCallId,
+                args: data.args ?? {},
+                status: 'pending',
+              },
+            })
+          }
           setIsStreaming(false)
           break
         }
-        case 'tool-rejected': {
-          // Tool was rejected — nothing to update, the approval card already shows 'rejected'
+        case 'assistant-message-finished': {
+          // Canonical commit — replace parts wholesale so streaming + refresh
+          // render from the same data.
+          finalizeMessage(data.messageId, {
+            parts: data.parts,
+            linkSnapshots: data.linkSnapshots,
+            usage: data.usage,
+            truncated: data.truncated,
+          })
           break
         }
-        case 'message': {
-          // Fallback: if the responder never ran (e.g. executor hit max iterations
-          // or pipeline errored), this event carries the final assistant content.
-          if (!responderCommittedRef.current && data.content) {
-            const msgId = generateId()
-            finalizeThinkingGroup()
-            addMessage({
-              id: msgId,
-              role: 'assistant',
-              content: data.content,
-              timestamp: Date.now(),
-              parentId: getCurrentLeafId(),
-            })
-            attachThinkingGroupToMessage(msgId)
-            responderCommittedRef.current = true
-            clearStream()
-          }
+        case 'assistant-message-paused': {
+          // Approval pause — the message stays open server-side and the same
+          // `messageId` will resume appending parts after the user decides.
+          // The frontend already flipped isStreaming off in `approval-required`;
+          // nothing to do here beyond letting the event flow through (billing
+          // collectors upstream drain `iterations` on this event).
+          break
+        }
+        case 'assistant-message-resumed': {
+          // Continuation of the previously-paused message. The bubble keyed by
+          // `data.messageId` already exists — no addMessage. Re-engage the
+          // streaming UI so smooth-stream kicks in on subsequent deltas.
+          setIsStreaming(true)
+          if (data.agent) setCurrentAgent(data.agent)
+          break
+        }
+        case 'turn-completed': {
+          setIsStreaming(false)
+          clearStream()
           break
         }
         case 'turn-error': {
-          // Finalize the in-flight thinking group BEFORE attaching it to the
-          // error bubble. `attachThinkingGroupToMessage` only stamps the
-          // messageId; without `finalizeThinkingGroup` first, `group.status`
-          // stays `'running'` and the pill renders `Working… (X/Y)` forever
-          // alongside a "Something went wrong" alert.
-          finalizeThinkingGroup()
-          const leafId = getCurrentLeafId()
-          const errorMsgId = generateId()
-          addMessage({
-            id: errorMsgId,
-            role: 'assistant',
-            content: '',
-            timestamp: Date.now(),
-            parentId: leafId,
-            error: data.error,
-          })
-          attachThinkingGroupToMessage(errorMsgId)
-          responderCommittedRef.current = true
+          if (data.messageId) {
+            updateMessage(data.messageId, { error: data.error })
+          } else {
+            addMessage({
+              id: generateId(),
+              role: 'assistant',
+              parts: [],
+              timestamp: Date.now(),
+              parentId: getCurrentLeafId(),
+              error: data.error,
+            })
+          }
           setIsStreaming(false)
           clearStream()
           break
         }
         case 'done': {
-          // Rescue an orphaned thinking group: when the model returns no
-          // content and no tool calls, the backend never emits `final-message`,
-          // so the active group never gets attached to a message and the
-          // "N steps completed" pill vanishes once isStreaming flips off.
-          // Attach it to a placeholder empty assistant message so the steps
-          // pill stays visible.
-          if (!responderCommittedRef.current) {
-            const store = useKopilotStore.getState()
-            if (store.activeThinkingGroupId) {
-              const leafId = getCurrentLeafId()
-              const msgId = generateId()
-              finalizeThinkingGroup()
-              addMessage({
-                id: msgId,
-                role: 'assistant',
-                content: '',
-                timestamp: Date.now(),
-                parentId: leafId,
-              })
-              attachThinkingGroupToMessage(msgId)
-              responderCommittedRef.current = true
-            }
-          }
+          // Terminal sentinel — defensive cleanup if turn-completed didn't fire.
           setIsStreaming(false)
           clearStream()
           break
@@ -382,56 +294,49 @@ export function useKopilotSSE({ pendingRequest, onRequestSent }: UseKopilotSSEOp
       setCurrentRoute,
       setIsStreaming,
       setCurrentAgent,
-      appendStreamDelta,
       clearStream,
       addMessage,
       updateMessage,
       addActiveTool,
       removeActiveTool,
+      setPendingChipPrompts,
       getCurrentLeafId,
-      beginThinkingGroup,
-      appendThinkingText,
-      commitThinkingText,
-      addThinkingToolStep,
-      completeThinkingToolStep,
-      failThinkingToolStep,
-      finalizeThinkingGroup,
-      attachThinkingGroupToMessage,
+      appendTextDelta,
+      appendThinkingDelta,
+      addToolCallPart,
+      updateToolCallPart,
+      finalizeMessage,
     ]
   )
 
   const handleError = useCallback(
     (error: Error) => {
-      // Finalize and attach the in-flight group so the pill stops saying
-      // `Working…` once the connection drops mid-stream. Mirror the
-      // `turn-error` handler's shape.
-      finalizeThinkingGroup()
-      const leafId = getCurrentLeafId()
-      const errorMsgId = generateId()
-      addMessage({
-        id: errorMsgId,
-        role: 'assistant',
-        content: '',
-        timestamp: Date.now(),
-        parentId: leafId,
-        error: error.message,
-      })
-      attachThinkingGroupToMessage(errorMsgId)
-      responderCommittedRef.current = true
+      // Attach error to the trailing assistant message if one is in flight;
+      // otherwise drop an empty error bubble so the user sees something.
+      const { messages } = useKopilotStore.getState()
+      const tail = messages[messages.length - 1]
+      if (tail && tail.role === 'assistant' && !tail.error) {
+        updateMessage(tail.id, { error: error.message })
+      } else {
+        addMessage({
+          id: generateId(),
+          role: 'assistant',
+          parts: [],
+          timestamp: Date.now(),
+          parentId: getCurrentLeafId(),
+          error: error.message,
+        })
+      }
       setIsStreaming(false)
       clearStream()
     },
-    [
-      addMessage,
-      getCurrentLeafId,
-      setIsStreaming,
-      clearStream,
-      finalizeThinkingGroup,
-      attachThinkingGroupToMessage,
-    ]
+    [addMessage, updateMessage, getCurrentLeafId, setIsStreaming, clearStream]
   )
 
-  // When pendingRequest is set, build SSE config to trigger connection
+  // When pendingRequest is set, build SSE config to trigger connection.
+  // `setIsStreaming` is a stable Zustand setter — exclude it from deps so the
+  // effect only re-runs on `pendingRequest` change.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: stable store setter
   useEffect(() => {
     if (!pendingRequest) {
       setSSEConfig(null)

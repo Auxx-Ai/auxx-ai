@@ -5,17 +5,18 @@ import { useMemo } from 'react'
 import Markdown, { type Components, defaultUrlTransform, type UrlTransform } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { Tooltip } from '~/components/global/tooltip'
-import type { KopilotMessage, LinkSnapshot, ThinkingGroup } from '../../stores/kopilot-store'
-import { useKopilotStore } from '../../stores/kopilot-store'
+import type { ContentPart, KopilotMessage, LinkSnapshot } from '../../stores/kopilot-store'
+import type { InlineApprovalHandler } from './thinking-steps'
 import '../../styles/kopilot-prose.css'
 import { parse as partialJsonParse } from '../../utils/partial-json'
 import { AuxxBlock } from '../blocks/auxx-block'
 import { REFERENCE_BLOCK_TYPES } from '../blocks/block-schemas'
 import { SparkleIcon } from '../sparkle-icon'
+import { AssistantThinkingStatus } from './assistant-thinking-status'
 import { AuxxInlineLink } from './auxx-inline-link'
 import { MessageActions } from './message-actions'
 import { StreamingText } from './streaming-text'
-import { ThinkingSteps } from './thinking-steps'
+import { type ThinkingPillStep, ThinkingSteps } from './thinking-steps'
 
 const REFERENCE_BLOCK_SET = new Set<string>(REFERENCE_BLOCK_TYPES)
 
@@ -105,77 +106,190 @@ function buildMarkdownComponents(
   }
 }
 
+/**
+ * One run produced by walking `parts[]`. Contiguous tool_call parts collapse
+ * into a single 'tool_calls' run; contiguous text parts collapse into a
+ * single 'text' run; thinking parts attach to the next tool_calls run as
+ * `precedingThinking` on the FIRST step (matching today's UX).
+ */
+type Run =
+  | { kind: 'text'; text: string }
+  | {
+      kind: 'tool_calls'
+      steps: ThinkingPillStep[]
+      /** True while at least one step is still running / awaiting approval. */
+      isRunning: boolean
+    }
+
+/**
+ * Partition the message parts into render runs. Walks parts once, threads
+ * each `thinking` part into the next `tool_call` step. Pure projection — no
+ * state, no fallbacks. Same data path for streaming and refresh.
+ */
+function groupRuns(parts: ContentPart[]): Run[] {
+  const runs: Run[] = []
+  let pendingThinking = ''
+  let currentToolRun: Extract<Run, { kind: 'tool_calls' }> | null = null
+  let currentTextRun: Extract<Run, { kind: 'text' }> | null = null
+
+  for (const p of parts) {
+    if (p.type === 'thinking') {
+      pendingThinking += pendingThinking ? `\n\n${p.text}` : p.text
+      continue
+    }
+    if (p.type === 'tool_call') {
+      // Close any in-flight text run.
+      currentTextRun = null
+      if (!currentToolRun) {
+        currentToolRun = { kind: 'tool_calls', steps: [], isRunning: false }
+        runs.push(currentToolRun)
+      }
+      currentToolRun.steps.push({
+        id: p.toolCallId,
+        toolCall: p,
+        thinking: pendingThinking.trim() || undefined,
+      })
+      pendingThinking = ''
+      if (p.status === 'running' || p.status === 'awaiting-approval') {
+        currentToolRun.isRunning = true
+      }
+      continue
+    }
+    if (p.type === 'text') {
+      // Close any in-flight tool run.
+      currentToolRun = null
+      if (!currentTextRun) {
+        currentTextRun = { kind: 'text', text: '' }
+        runs.push(currentTextRun)
+      }
+      currentTextRun.text += p.text
+    }
+  }
+
+  // Trailing thinking with no tool to attach to — surface it as its own
+  // tool-less pill so the user can still see what the model was reasoning
+  // about. Empty toolCall list + pendingThinking makes the pill render the
+  // italic text under a "Thinking…" header.
+  if (pendingThinking.trim() && !runs.some((r) => r.kind === 'tool_calls')) {
+    runs.push({
+      kind: 'tool_calls',
+      steps: [],
+      isRunning: true,
+    })
+  }
+
+  return runs
+}
+
+/**
+ * Whether `runIndex` is the trailing text run. Used to gate the smooth-stream
+ * wrapper: only the latest text run (the one currently growing from
+ * `text-delta` events) gets word-by-word reveal; earlier text runs render as
+ * settled markdown.
+ */
+function isLastTextRun(runIndex: number, runs: Run[]): boolean {
+  for (let i = runIndex + 1; i < runs.length; i++) {
+    if (runs[i]!.kind === 'tool_calls') return false
+  }
+  return true
+}
+
+/**
+ * Lookup that returns the persisted approval system message for a given
+ * `toolCallId`, or undefined if there is no approval associated with that
+ * call. Used by `ThinkingSteps` to render the approval card inline at the
+ * tool_call's position rather than as a standalone sibling.
+ */
+export type InlineApprovalLookup = (toolCallId: string) => KopilotMessage | undefined
+
 interface AssistantMessageProps {
-  message?: KopilotMessage
-  /** When streaming, render this content instead of message.content */
-  streamingContent?: string
+  message: KopilotMessage
+  isStreaming?: boolean
   onThumbsUp?: () => void
   onThumbsDown?: () => void
   feedback?: { isPositive: boolean }
+  approvalForToolCall?: InlineApprovalLookup
+  onApproval?: InlineApprovalHandler
 }
 
 export function AssistantMessage({
   message,
-  streamingContent,
+  isStreaming = false,
   onThumbsUp,
   onThumbsDown,
   feedback,
+  approvalForToolCall,
+  onApproval,
 }: AssistantMessageProps) {
-  const isStreaming = streamingContent !== undefined
-  const content = isStreaming ? streamingContent : (message?.content ?? '')
-
-  const linkSnapshots = message?.linkSnapshots
+  const linkSnapshots = message.linkSnapshots
   const markdownComponents = useMemo(() => buildMarkdownComponents(linkSnapshots), [linkSnapshots])
 
-  const thinkingGroups = useKopilotStore((s) => s.thinkingGroups)
-  const activeThinkingGroupId = useKopilotStore((s) => s.activeThinkingGroupId)
+  const parts = message.parts ?? []
+  const runs = useMemo(() => groupRuns(parts), [parts])
 
-  // Find the thinking group attached to this message
-  const thinkingGroup = message?.id
-    ? Object.values(thinkingGroups).find((g) => g.messageId === message.id)
-    : undefined
-  // While streaming (no message yet), show the active thinking group
-  const activeGroup =
-    streamingContent !== undefined && activeThinkingGroupId
-      ? thinkingGroups[activeThinkingGroupId]
-      : undefined
-  const group: ThinkingGroup | undefined = thinkingGroup ?? activeGroup
+  // Concatenate all text runs for the copy/regenerate actions row.
+  const proseForActions = useMemo(
+    () =>
+      runs
+        .filter((r): r is Extract<Run, { kind: 'text' }> => r.kind === 'text')
+        .map((r) => r.text)
+        .join('\n\n'),
+    [runs]
+  )
 
   return (
     <div className='group/message flex gap-2'>
       <SparkleIcon />
       <div className='min-w-0 flex-1 space-y-1'>
-        {group && <ThinkingSteps group={group} />}
-        {message?.error ? (
+        {message.error ? (
           <Tooltip content={message.error}>
             <div className='ml-2 inline-flex items-center gap-1.5 rounded-lg border border-destructive/30 bg-destructive/5 px-2 py-1 text-xs'>
               <AlertTriangle className='size-3 shrink-0 text-destructive' />
               <span className='font-medium text-destructive shrink-0'>Something went wrong</span>
             </div>
           </Tooltip>
+        ) : runs.length === 0 && isStreaming ? (
+          <AssistantThinkingStatus />
         ) : (
-          <div className='kopilot-prose'>
-            {isStreaming ? (
-              <StreamingText
-                raw={content}
-                isStreaming
-                markdownComponents={markdownComponents}
-                urlTransform={auxxUrlTransform}
-              />
-            ) : (
-              <Markdown
-                remarkPlugins={[remarkGfm]}
-                components={markdownComponents}
-                urlTransform={auxxUrlTransform}>
-                {content}
-              </Markdown>
-            )}
-          </div>
+          runs.map((run, i) => {
+            if (run.kind === 'tool_calls') {
+              return (
+                <ThinkingSteps
+                  key={`tools-${i}`}
+                  steps={run.steps}
+                  isRunning={isStreaming && run.isRunning}
+                  approvalForToolCall={approvalForToolCall}
+                  onApproval={onApproval}
+                />
+              )
+            }
+            // Text run.
+            const useSmoothStream = isStreaming && isLastTextRun(i, runs)
+            return (
+              <div key={`text-${i}`} className='kopilot-prose'>
+                {useSmoothStream ? (
+                  <StreamingText
+                    raw={run.text}
+                    isStreaming
+                    markdownComponents={markdownComponents}
+                    urlTransform={auxxUrlTransform}
+                  />
+                ) : (
+                  <Markdown
+                    remarkPlugins={[remarkGfm]}
+                    components={markdownComponents}
+                    urlTransform={auxxUrlTransform}>
+                    {run.text}
+                  </Markdown>
+                )}
+              </div>
+            )
+          })
         )}
-        {!isStreaming && message && !message.error && (
+        {!isStreaming && !message.error && (
           <MessageActions
             role='assistant'
-            content={content}
+            content={proseForActions}
             feedback={feedback}
             onThumbsUp={onThumbsUp}
             onThumbsDown={onThumbsDown}

@@ -7,7 +7,10 @@ import { formatDistanceToNowStrict } from 'date-fns'
 import { Clock, FileEdit } from 'lucide-react'
 import { motion } from 'motion/react'
 import { useSearchParams } from 'next/navigation'
-import type { DraftMessageType } from '~/components/mail/email-editor/types'
+import { useDraft } from '~/components/mail/email-editor/hooks'
+import type { DraftMessage, DraftMessageType } from '~/components/mail/email-editor/types'
+import { useThread } from '~/components/threads/hooks'
+import type { ThreadMeta } from '~/components/threads/store'
 import { useCompose } from '~/hooks/use-compose'
 import { BlockCard } from './block-card'
 import type { BlockRendererProps } from './block-registry'
@@ -20,6 +23,7 @@ export function DraftListBlock({ data, skipEntrance }: BlockRendererProps<DraftL
     <div className='not-prose my-2'>
       <BlockCard
         data-slot='draft-list-block'
+        className='[&_[data-slot=block-card-body]]:p-0'
         indicator={<FileEdit className='size-3 text-muted-foreground' />}
         primaryText='Drafts'
         secondaryText={<span className='text-xs text-muted-foreground'>{draftIds.length}</span>}
@@ -50,11 +54,23 @@ interface DraftListRowProps {
   snapshot?: DraftSnapshotData
 }
 
-function DraftListRow({ id, snapshot }: DraftListRowProps) {
+function DraftListRow({ id, snapshot: serverSnapshot }: DraftListRowProps) {
   const searchParams = useSearchParams()
   const { openDraft } = useCompose()
+  const { snapshot, isLoading } = useResolvedDraftSnapshot(id, serverSnapshot)
 
   if (!snapshot) {
+    if (isLoading) {
+      return (
+        <div className='flex items-center gap-3 px-2 py-2'>
+          <span className='mt-1.5 size-2 shrink-0 rounded-full bg-muted' />
+          <div className='flex-1 space-y-1.5'>
+            <div className='h-3 w-1/3 animate-pulse rounded bg-muted' />
+            <div className='h-2.5 w-1/2 animate-pulse rounded bg-muted/70' />
+          </div>
+        </div>
+      )
+    }
     return (
       <div className='px-2 py-2 text-xs text-muted-foreground'>
         Draft unavailable — <span className='font-mono'>{id}</span>
@@ -139,4 +155,76 @@ function DraftListRow({ id, snapshot }: DraftListRowProps) {
       </div>
     </button>
   )
+}
+
+/**
+ * Fall back to client-side hydration when the server snapshot is missing.
+ * Reuses the existing `useDraft` (standalone) and `useThread` (reply) caches.
+ */
+function useResolvedDraftSnapshot(
+  id: string,
+  serverSnapshot: DraftSnapshotData | undefined
+): { snapshot: DraftSnapshotData | undefined; isLoading: boolean } {
+  const parsed = parseDraftId(id)
+  const needsDraft = !serverSnapshot && parsed.kind === 'standalone'
+  const needsThread = !serverSnapshot && parsed.kind === 'reply'
+
+  const { draft, isLoading: isDraftLoading } = useDraft({
+    draftId: parsed.rawId,
+    enabled: needsDraft,
+  })
+  const { thread, isLoading: isThreadLoading } = useThread({
+    threadId: parsed.rawId,
+    enabled: needsThread,
+  })
+
+  if (serverSnapshot) return { snapshot: serverSnapshot, isLoading: false }
+  if (parsed.kind === 'standalone') {
+    return {
+      snapshot: draft ? buildStandaloneSnapshot(id, draft) : undefined,
+      isLoading: isDraftLoading,
+    }
+  }
+  if (parsed.kind === 'reply') {
+    return {
+      snapshot: thread ? buildReplySnapshot(id, thread) : undefined,
+      isLoading: isThreadLoading,
+    }
+  }
+  return { snapshot: undefined, isLoading: false }
+}
+
+function parseDraftId(id: string): { kind: 'standalone' | 'reply' | 'unknown'; rawId: string } {
+  if (id.startsWith('draft:')) return { kind: 'standalone', rawId: id.slice('draft:'.length) }
+  if (id.startsWith('thread:')) return { kind: 'reply', rawId: id.slice('thread:'.length) }
+  return { kind: 'unknown', rawId: id }
+}
+
+function buildStandaloneSnapshot(id: string, draft: DraftMessage): DraftSnapshotData {
+  const to = draft.participants.find((p) => p.role === 'TO')?.participant
+  const recipientSummary = to ? to.name || to.identifier : null
+  const snippet = draft.textPlain ? draft.textPlain.slice(0, 100) : null
+  return {
+    id,
+    kind: 'standalone',
+    subject: draft.subject || null,
+    recipientSummary,
+    snippet,
+    updatedAt: draft.updatedAt,
+    scheduledAt: null,
+    threadId: null,
+  }
+}
+
+function buildReplySnapshot(id: string, thread: ThreadMeta): DraftSnapshotData {
+  return {
+    id,
+    kind: 'reply',
+    subject: thread.subject || null,
+    recipientSummary: null,
+    snippet: null,
+    updatedAt: thread.lastMessageAt,
+    scheduledAt: null,
+    threadId: thread.id,
+  }
 }

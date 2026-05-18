@@ -11,6 +11,7 @@ import type {
   AgentState,
   AgentToolDefinition,
 } from '../../agent-framework/types'
+import { sessionMessagesToWire } from '../../agent-framework/utils'
 import type { Message, ToolCall } from '../../clients/base/types'
 import { transformAssistantContentForLLM } from '../blocks/transform-for-llm'
 import { buildKopilotPromptSerialized } from '../prompts/build-kopilot-prompt'
@@ -116,36 +117,23 @@ export function createKopilotAgent(
         instructionsReferences,
       })
 
-      // Full conversation for tool-loop continuity.
-      // Final-prose assistant messages run through transformAssistantContentForLLM
-      // so `auxx:*` reference fences become numbered text the model can index by
-      // ordinal (e.g. "delete the second one"). Persisted content is unchanged —
-      // this is a per-call view transform.
-      const rawMessages: Message[] = state.messages
-        .filter((m) => m.role !== 'system')
-        .map((m) => {
-          const isAssistantWithTools = m.role === 'assistant' && m.toolCalls?.length
-          const isAssistantFinal = m.role === 'assistant' && !m.toolCalls?.length
-          const content = isAssistantWithTools
-            ? m.content || null
-            : isAssistantFinal
-              ? transformAssistantContentForLLM(m.content || '')
-              : m.content || ''
-          const msg: Message = {
-            role: m.role as 'user' | 'assistant' | 'tool',
-            content,
-            tool_call_id: m.toolCallId,
-            reasoning_content: m.reasoning_content,
-          }
-          if (m.role === 'assistant' && m.toolCalls?.length) {
-            msg.tool_calls = m.toolCalls.map((tc) => ({
-              id: tc.id,
-              type: 'function' as const,
-              function: { name: tc.function.name, arguments: tc.function.arguments },
-            }))
-          }
-          return msg
-        })
+      // Full conversation for tool-loop continuity. Each persisted assistant
+      // message is one *turn* with a `parts[]` array; expand back into
+      // OpenAI/Anthropic wire format (one assistant + N tool messages per
+      // turn) via `sessionMessagesToWire`.
+      //
+      // Final-prose assistant messages run through `transformAssistantContentForLLM`
+      // so `auxx:*` reference fences become numbered text the model can index
+      // by ordinal ("delete the second one"). Persisted content is unchanged —
+      // this is a per-call view transform applied to the last assistant turn
+      // that has no tool_call parts.
+      // Drop ALL persisted system messages — the live system prompt is
+      // prepended below. Approval-card system messages are pure UI markers
+      // and aren't part of the LLM's view either.
+      const filtered = state.messages.filter((m) => m.role !== 'system')
+      const rawMessages = sessionMessagesToWire(filtered, {
+        finalAssistantTextTransform: (text) => transformAssistantContentForLLM(text),
+      })
 
       return [{ role: 'system', content: systemPrompt }, ...rawMessages]
     },

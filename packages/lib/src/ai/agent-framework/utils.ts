@@ -1,9 +1,16 @@
 // packages/lib/src/ai/agent-framework/utils.ts
 
 import { createScopedLogger } from '@auxx/logger'
-import type { ToolCall } from '../clients/base/types'
+import type { Message, ToolCall } from '../clients/base/types'
 import type { ToolContext } from './tool-context'
-import type { AgentToolDefinition, AgentToolResult, ToolProgressPayload } from './types'
+import type {
+  AgentToolDefinition,
+  AgentToolResult,
+  AssistantSessionMessage,
+  ContentPart,
+  SessionMessage,
+  ToolProgressPayload,
+} from './types'
 
 const utilsLogger = createScopedLogger('agent-utils')
 
@@ -185,6 +192,136 @@ export async function executeToolWithProgress(
     }
   }
   return exec
+}
+
+/**
+ * Convert an assistant message's `parts[]` into the OpenAI/Anthropic wire
+ * format the LLM expects — one assistant `Message` plus one `tool` `Message`
+ * per `tool_call` part (linked by `tool_call_id`).
+ *
+ * Rules:
+ * - All `text` parts concatenate into the assistant message's `content`.
+ * - `thinking` parts become the assistant message's `reasoning_content`
+ *   (concatenated). Most providers re-strip stale reasoning; we still surface
+ *   it so a single open turn can carry chain-of-thought across iterations.
+ * - Every `tool_call` part:
+ *   - Appended to the assistant message's `tool_calls[]`.
+ *   - Produces a `tool` Message right after the assistant, whose `content`
+ *     stringifies the tool's `output` (or `{ error, output }` on failure).
+ *   - Skipped entirely if `status === 'awaiting-approval'` — no tool result
+ *     yet, but the assistant's tool_calls[] still references it. This is
+ *     what providers see while a turn is paused.
+ *
+ * The returned array is a flat sequence: `[assistant, tool, tool, ...]`. Caller
+ * splices it into the message list in place of the source assistant.
+ */
+export function partsToWireFormat(parts: ContentPart[]): Message[] {
+  let textContent = ''
+  const reasoningChunks: string[] = []
+  const toolCalls: ToolCall[] = []
+  const toolMessages: Message[] = []
+
+  for (const part of parts) {
+    if (part.type === 'text') {
+      textContent += part.text
+      continue
+    }
+    if (part.type === 'thinking') {
+      reasoningChunks.push(part.text)
+      continue
+    }
+    if (part.type === 'tool_call') {
+      toolCalls.push({
+        id: part.toolCallId,
+        type: 'function',
+        function: {
+          name: part.name,
+          arguments: typeof part.args === 'string' ? part.args : JSON.stringify(part.args),
+        },
+      })
+      // Skip emitting a tool message when there's no result yet (running /
+      // awaiting-approval). The assistant's tool_calls[] still references the
+      // id; on resume we splice the tool message in.
+      if (part.status === 'completed' || part.status === 'error' || part.status === 'rejected') {
+        const toolContent =
+          part.status === 'completed'
+            ? JSON.stringify(part.output ?? null)
+            : JSON.stringify({
+                error: part.error ?? 'Unknown error',
+                output: part.output ?? null,
+              })
+        toolMessages.push({
+          role: 'tool',
+          content: toolContent,
+          tool_call_id: part.toolCallId,
+        })
+      }
+    }
+  }
+
+  const assistant: Message = {
+    role: 'assistant',
+    content: textContent.length > 0 ? textContent : toolCalls.length > 0 ? null : '',
+  }
+  if (toolCalls.length > 0) assistant.tool_calls = toolCalls
+  if (reasoningChunks.length > 0) assistant.reasoning_content = reasoningChunks.join('')
+
+  return [assistant, ...toolMessages]
+}
+
+/**
+ * Walk session messages and emit the OpenAI/Anthropic wire format. Assistant
+ * messages expand into `assistant + tool*` via `partsToWireFormat`; user and
+ * system messages pass through (with their `content` string).
+ *
+ * `assistantTextTransform` lets the caller transform a final/responder text
+ * payload right before it goes on the wire — used by Kopilot to rewrite
+ * `auxx:*` fences into ordinal-numbered prose for model consumption.
+ */
+export function sessionMessagesToWire(
+  messages: SessionMessage[],
+  opts?: {
+    /** Transform applied to the joined-text content of the LAST assistant message that has no tool_call parts (the "final" assistant). */
+    finalAssistantTextTransform?: (text: string) => string
+  }
+): Message[] {
+  const out: Message[] = []
+  const lastFinalIdx = findLastFinalAssistantIdx(messages)
+  for (let i = 0; i < messages.length; i++) {
+    const m = messages[i]!
+    if (m.role === 'user') {
+      out.push({ role: 'user', content: m.content })
+      continue
+    }
+    if (m.role === 'system') {
+      // Approval-card system messages don't have prompt content for the LLM —
+      // skip them; the assistant's awaiting-approval tool_call part is enough.
+      if (m.approval) continue
+      out.push({ role: 'system', content: m.content })
+      continue
+    }
+    // Assistant — expand parts
+    const wire = partsToWireFormat((m as AssistantSessionMessage).parts)
+    if (i === lastFinalIdx && opts?.finalAssistantTextTransform) {
+      const first = wire[0]
+      if (first && typeof first.content === 'string' && first.content.length > 0) {
+        first.content = opts.finalAssistantTextTransform(first.content)
+      }
+    }
+    for (const w of wire) out.push(w)
+  }
+  return out
+}
+
+function findLastFinalAssistantIdx(messages: SessionMessage[]): number {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i]!
+    if (m.role !== 'assistant') continue
+    const a = m as AssistantSessionMessage
+    const hasToolCalls = a.parts.some((p) => p.type === 'tool_call')
+    if (!hasToolCalls) return i
+  }
+  return -1
 }
 
 /**

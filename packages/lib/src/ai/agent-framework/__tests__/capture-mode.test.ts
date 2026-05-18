@@ -9,9 +9,31 @@ import type {
   AgentEngineConfig,
   AgentEvent,
   AgentToolDefinition,
+  AssistantSessionMessage,
   LLMCallParams,
   LLMStreamEvent,
+  ToolCallPart,
 } from '../types'
+
+/**
+ * Locate a tool_call part across the assistant messages by toolCallId.
+ * In the parts-based model, tool outputs live on the assistant's tool_call part
+ * (no separate tool message).
+ */
+function findToolCallPart(
+  messages: AssistantSessionMessage[] | ReadonlyArray<{ role: string }>,
+  toolCallId: string
+): ToolCallPart | undefined {
+  for (const msg of messages) {
+    if (msg.role !== 'assistant') continue
+    const m = msg as AssistantSessionMessage
+    if (!Array.isArray(m.parts)) continue
+    for (const p of m.parts) {
+      if (p.type === 'tool_call' && p.toolCallId === toolCallId) return p
+    }
+  }
+  return undefined
+}
 
 const ZERO_USAGE: UsageMetrics = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 }
 
@@ -192,16 +214,18 @@ describe('AgentEngine — capture mode', () => {
     expect(state.capturedActions?.[0]?.toolName).toBe('create_task')
 
     // Conversation history must contain a real tool result for the read tool
-    // AND a synthetic _captured: true result for the approval tool.
-    const readMsg = state.messages.find((m) => m.role === 'tool' && m.toolCallId === 'r')
-    const captureMsg = state.messages.find((m) => m.role === 'tool' && m.toolCallId === 'c')
-    expect(readMsg).toBeDefined()
-    expect(captureMsg).toBeDefined()
-    expect(JSON.parse(readMsg?.content ?? '{}')).toMatchObject({ matches: [] })
-    expect(JSON.parse(captureMsg?.content ?? '{}')).toMatchObject({
+    // AND a synthetic _captured: true result for the approval tool — both
+    // expressed as `tool_call` parts on the assistant message that emitted them.
+    const readPart = findToolCallPart(state.messages, 'r')
+    const capturePart = findToolCallPart(state.messages, 'c')
+    expect(readPart).toBeDefined()
+    expect(capturePart).toBeDefined()
+    expect(readPart?.output).toMatchObject({ matches: [] })
+    expect(capturePart?.output).toMatchObject({
       _captured: true,
       status: 'queued_for_approval',
     })
+    expect(capturePart?.captured).toBe(true)
   })
 
   it('mixed turn (1 approval + 2 reads) — reads execute, approval captures, loop continues', async () => {
@@ -256,9 +280,17 @@ describe('AgentEngine — capture mode', () => {
     const state = engine.getState()
     expect(state.capturedActions).toHaveLength(1)
     expect(state.capturedActions?.[0]?.localIndex).toBe(0)
-    // All three tool result messages exist and are in original order.
-    const toolMsgs = state.messages.filter((m) => m.role === 'tool')
-    expect(toolMsgs.map((m) => m.toolCallId)).toEqual(['r1', 'c1', 'r2'])
+    // All three tool_call parts exist in original order across the assistant
+    // messages produced this turn.
+    const toolCallIds: string[] = []
+    for (const msg of state.messages) {
+      if (msg.role !== 'assistant') continue
+      const m = msg as AssistantSessionMessage
+      for (const p of m.parts ?? []) {
+        if (p.type === 'tool_call') toolCallIds.push(p.toolCallId)
+      }
+    }
+    expect(toolCallIds).toEqual(['r1', 'c1', 'r2'])
   })
 
   it('captureMint predicted output is what the model sees', async () => {
@@ -298,12 +330,13 @@ describe('AgentEngine — capture mode', () => {
       id: 'temp_0',
       title: 'review draft',
     })
-    const toolMsg = state.messages.find((m) => m.role === 'tool' && m.toolCallId === 'c1')
-    expect(JSON.parse(toolMsg?.content ?? '{}')).toEqual({
+    const part = findToolCallPart(state.messages, 'c1')
+    expect(part?.output).toEqual({
       _captured: true,
       id: 'temp_0',
       title: 'review draft',
     })
+    expect(part?.captured).toBe(true)
   })
 
   it('no captureMint falls back to placeholder', async () => {
@@ -430,11 +463,10 @@ describe('AgentEngine — capture mode', () => {
     expect(state.capturedActions).toHaveLength(1)
     expect(state.capturedActions?.[0]?.toolCallId).toBe('c2')
 
-    const errorMsg = state.messages.find((m) => m.role === 'tool' && m.toolCallId === 'c1')
-    expect(errorMsg).toBeDefined()
-    expect(JSON.parse(errorMsg?.content ?? '{}')).toMatchObject({
-      error: expect.stringMatching(/Missing required parameters: title/),
-    })
+    const errorPart = findToolCallPart(state.messages, 'c1')
+    expect(errorPart).toBeDefined()
+    expect(errorPart?.status).toBe('error')
+    expect(errorPart?.error).toMatch(/Missing required parameters: title/)
   })
 
   it('capture-mode terminates cleanly when the responder stops calling tools', async () => {
@@ -465,9 +497,18 @@ describe('AgentEngine — capture mode', () => {
     expect(state.capturedActions).toHaveLength(1)
     expect(state.waitingForApproval).toBeFalsy()
     expect(state.pendingToolCall).toBeUndefined()
-    const finalEvt = events.find((e) => e.type === 'final-message')
+    // Final assistant message commits via `assistant-message-finished`. The
+    // event carries the full final parts[] — concat text parts to recover the
+    // settled responder prose.
+    const finalEvt = events.find((e) => e.type === 'assistant-message-finished')
     expect(finalEvt).toBeDefined()
-    expect((finalEvt as { content?: string }).content).toBe('all set')
+    if (finalEvt && finalEvt.type === 'assistant-message-finished') {
+      const proseFromParts = finalEvt.parts
+        .filter((p): p is Extract<typeof p, { type: 'text' }> => p.type === 'text')
+        .map((p) => p.text)
+        .join('')
+      expect(proseFromParts).toBe('all set')
+    }
   })
 
   it('captureMint that throws falls back to placeholder (best-effort)', async () => {

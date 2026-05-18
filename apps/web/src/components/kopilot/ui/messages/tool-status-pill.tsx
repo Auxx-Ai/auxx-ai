@@ -25,8 +25,23 @@ import {
   X,
 } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
-import type { ThinkingStep } from '../../stores/kopilot-store'
 import { getToolPillConfig } from './tool-status-pill-config'
+
+/**
+ * Local mirror of the legacy `ThinkingStep` shape that this pill consumes.
+ * Callers (the thinking-steps renderer) project ToolCallParts onto this shape
+ * before rendering; the pill itself doesn't know about ContentPart.
+ */
+interface ThinkingStep {
+  id: string
+  tool?: {
+    name: string
+    args: Record<string, unknown>
+    status: 'running' | 'completed' | 'error'
+    summary?: string
+    entities?: Array<{ recordId: string }>
+  }
+}
 
 const iconMap: Record<string, LucideIcon> = {
   Mail,

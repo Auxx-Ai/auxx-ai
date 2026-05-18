@@ -5,48 +5,147 @@ import type { z } from 'zod'
 import type { Message, ModelParameters, Tool, ToolCall, UsageMetrics } from '../clients/base/types'
 import type { ToolContext } from './tool-context'
 
+// ===== CONTENT PARTS =====
+
+/**
+ * Discriminated content part on an assistant message. Persisted shape is identical
+ * to streamed shape — `text` and `tool_call` parts interleave in order.
+ */
+export type ContentPart = TextPart | ThinkingPart | ToolCallPart
+
+export interface TextPart {
+  type: 'text'
+  text: string
+  /** Which agent produced this part (omitted when same as previous part). */
+  agent?: string
+}
+
+export interface ThinkingPart {
+  type: 'thinking'
+  text: string
+  agent?: string
+}
+
+export type ToolCallStatus = 'running' | 'awaiting-approval' | 'completed' | 'error' | 'rejected'
+
+export interface ToolCallPart {
+  type: 'tool_call'
+  toolCallId: string
+  name: string
+  args: Record<string, unknown>
+  status: ToolCallStatus
+  /** Raw tool output once execution completes. */
+  output?: unknown
+  /** Display projection of `output` produced by the tool's `buildDigest`. */
+  digest?: unknown
+  /** Error message when status === 'error'. */
+  error?: string
+  agent?: string
+  /**
+   * True when the result was synthesized by capture-mode (no real execution).
+   * Drives the "captured" badge in the UI.
+   */
+  captured?: true
+  /** Per-iteration usage metrics (one LLM call produced this tool call). */
+  iterationUsage?: UsageMetrics
+  /** Input amendment applied at approval time, if any. */
+  inputAmendment?: Record<string, unknown>
+}
+
 // ===== SESSION & MESSAGE TYPES =====
 
-/** Persisted message in an agent session */
-export interface SessionMessage {
-  role: 'system' | 'user' | 'assistant' | 'tool'
-  content: string
-  /** Tool call ID for tool-result messages */
-  toolCallId?: string
-  /** Tool calls the assistant wants to make */
-  toolCalls?: ToolCall[]
-  /** Reasoning content from thinking-enabled models (DeepSeek, Kimi, Qwen) */
-  reasoning_content?: string
-  /** Timestamp when this message was added */
+interface BaseSessionMessage {
+  /** Stable id — assigned on creation; used for parentId chains, feedback refs, streaming targets. */
+  id: string
   timestamp: number
-  /** Parent message ID for conversation tree branching (null = root) */
+  /** Parent message ID for conversation tree branching (null = root). */
   parentId?: string | null
-  /** Optional metadata (e.g. which agent produced this) */
   metadata?: Record<string, unknown>
-  /**
-   * On role:'tool' messages, persist the digest produced by the source tool's
-   * `buildDigest`. Frontend reads this on session reload to re-render pills +
-   * cards without re-fetching.
-   */
-  digest?: unknown
-  /**
-   * On role:'tool' messages — current lifecycle status. Replaces the implicit
-   * "tool completed = result present" check.
-   */
-  toolStatus?: 'awaiting-approval' | 'executing' | 'completed' | 'error' | 'rejected'
-  /**
-   * Input amendment applied at approval time, if any. Shallow-merged into the
-   * original args before execution.
-   */
-  inputAmendment?: Record<string, unknown>
-  /**
-   * On role:'assistant' final messages, the per-message lookup table for
-   * inline `auxx://` link chips. Keyed by the full `auxx://...` href; values
-   * are the snapshot the frontend renders in the hover card. Populated at
-   * serialize time; reload-safe.
-   */
-  linkSnapshots?: Record<string, LinkSnapshot>
 }
+
+/** User-authored message. */
+export interface UserSessionMessage extends BaseSessionMessage {
+  role: 'user'
+  content: string
+}
+
+/**
+ * System message. Used for the LLM system prompt (transient) AND for
+ * approval-card system messages that live alongside assistant messages in
+ * the persisted history.
+ */
+export interface SystemSessionMessage extends BaseSessionMessage {
+  role: 'system'
+  content: string
+  /**
+   * When this system message represents a tool approval request, the
+   * approval card binds to the assistant message's `tool_call` part with
+   * matching `toolCallId`.
+   */
+  approval?: {
+    toolName: string
+    toolCallId: string
+    args: Record<string, unknown>
+    status: 'pending' | 'approved' | 'rejected'
+  }
+}
+
+/**
+ * One LLM call's billing context, persisted per assistant message.
+ *
+ * A turn may contain multiple LLM calls (one per agent iteration). Each
+ * call produces one entry. Billing consumers iterate this array to push
+ * usage records with correct SYSTEM-vs-CUSTOM credit gating.
+ */
+export interface IterationUsage {
+  /** 1-based iteration number within the turn. */
+  iteration: number
+  /** Provider id from `callParams.provider` (e.g. 'anthropic', 'openai'). */
+  provider: string
+  /** Model id from `callParams.model`. */
+  model: string
+  /** 'SYSTEM' (auxx-supplied keys) or 'CUSTOM' (BYOK). Drives credit gating. */
+  providerType?: 'SYSTEM' | 'CUSTOM'
+  /** 'SYSTEM' | 'CUSTOM' | 'MODEL_SPECIFIC' | 'LOAD_BALANCED' — for analytics. */
+  credentialSource?: 'SYSTEM' | 'CUSTOM' | 'MODEL_SPECIFIC' | 'LOAD_BALANCED'
+  /** Token totals for this call. */
+  usage: UsageMetrics
+  /** Optional finish reason — useful for diagnosing length-truncated turns. */
+  finishReason?: string
+}
+
+/** Per-turn metadata persisted on an assistant message. */
+export interface AssistantMessageMetadata {
+  /** Last agent that produced parts on this turn (responder, by convention). */
+  agent?: string
+  modelId?: string
+  /** Turn-total usage metrics (canonical billing record). */
+  usage?: UsageMetrics
+  /** True if max_tokens/length stopped the turn. */
+  truncated?: boolean
+  /** True if any captured tool participated in this turn. */
+  captured?: boolean
+  /** Per-LLM-call billing breakdown. One entry per agent iteration. */
+  iterations?: IterationUsage[]
+}
+
+/**
+ * Assistant message — one per turn, holding all text/thinking/tool_call parts
+ * produced by the agent across all iterations of the LLM loop.
+ */
+export interface AssistantSessionMessage extends BaseSessionMessage {
+  role: 'assistant'
+  /** Schema version. 1 = parts-based content blocks. */
+  v?: 1
+  parts: ContentPart[]
+  /** Per-message lookup table for inline `auxx://` link chips. */
+  linkSnapshots?: Record<string, LinkSnapshot>
+  metadata?: AssistantMessageMetadata
+  /** Set when the turn ended in an error. */
+  error?: string
+}
+
+export type SessionMessage = UserSessionMessage | SystemSessionMessage | AssistantSessionMessage
 
 /** Discriminated session type — each domain registers its own */
 export type AgentSessionType = 'kopilot' | 'builder'
@@ -77,7 +176,9 @@ export type LLMStreamEvent =
       content: string
       toolCalls: ToolCall[]
       usage: UsageMetrics
+      /** Cast to `IterationUsage['providerType']` at the consumer site. */
       providerType?: string
+      /** Cast to `IterationUsage['credentialSource']` at the consumer site. */
       credentialSource?: string
       reasoning_content?: string
       /**
@@ -163,7 +264,7 @@ export interface AgentToolDefinition {
    * inputs with an LLM-actionable error message.
    *
    * - `{ ok: false, error }` short-circuits the call: the engine emits a
-   *   `tool-completed` event with `success: false` + the error, and skips
+   *   `tool-call-completed` event with `success: false` + the error, and skips
    *   `execute()` / `captureMint`. Counts as one tool-loop iteration.
    * - `{ ok: true, args, warnings? }` lets the tool rewrite args before
    *   `execute()` sees them. Warnings are logged at info level only — not
@@ -345,19 +446,20 @@ export interface CapturedAction {
   predictedOutput: unknown
 }
 
-/** Stored tool call awaiting human approval — executed directly on resume */
+/**
+ * Pointer to a tool_call part awaiting approval. The assistant message that
+ * owns the paused part already lives in `state.messages` with the part in
+ * `status: 'awaiting-approval'` — resume mutates that part in place.
+ */
 export interface PendingToolCall {
+  /** Assistant message that owns the paused tool_call part. */
+  messageId: string
+  /** Index of the tool_call part within `parts[]`. */
+  partIndex: number
   toolCallId: string
   toolName: string
   agentName: string
   args: Record<string, unknown>
-  /**
-   * The assistant message that emitted this tool_call. Held here (NOT in
-   * state.messages) until the approval resolves, so the persisted messages
-   * array can never contain a dangling assistant tool_call. On resume, the
-   * engine appends this together with the tool result as one atomic pair.
-   */
-  assistantMessage: SessionMessage
 }
 
 /** Runtime state passed through the agent pipeline */
@@ -608,92 +710,134 @@ export interface TurnUsageSummary {
 /**
  * Events emitted by the engine during turn execution — streamed to the frontend.
  * Every event (except `done`) carries a `turnId` tying it to a single user request.
+ *
+ * All assistant-content events carry `messageId` (the assistant message they
+ * mutate) and, where applicable, `partIndex` (the part within that message).
+ * The frontend mirrors them as direct mutations to `messages[messageId].parts[partIndex]` —
+ * no derivation, no fallbacks.
  */
 export type AgentEvent = { turnId?: string } & (
   | { type: 'turn-started'; route: string; agents: string[]; budget: TurnBudget }
   | { type: 'turn-completed'; route: string; usage: TurnUsageSummary }
-  | { type: 'turn-error'; error: string }
+  | { type: 'turn-error'; error: string; messageId?: string }
   | { type: 'agent-started'; agent: string }
-  | { type: 'llm-stream'; agent: string; delta: string }
-  | { type: 'llm-reasoning-stream'; agent: string; delta: string }
+  /** Opens a new assistant message. The frontend appends an empty bubble keyed by `messageId`. */
+  | { type: 'assistant-message-started'; messageId: string; agent: string }
+  /** Extend a text part at `partIndex`. The first text-delta for a fresh part also creates the part. */
+  | { type: 'text-delta'; messageId: string; partIndex: number; delta: string }
+  /** Extend a thinking part at `partIndex` (reasoning content). */
+  | { type: 'thinking-delta'; messageId: string; partIndex: number; delta: string }
   | {
-      type: 'llm-complete'
+      type: 'tool-call-started'
+      messageId: string
+      partIndex: number
+      toolCallId: string
+      name: string
       agent: string
-      content: string
-      usage: UsageMetrics
-      provider: string
-      model: string
-      providerType?: string
-      credentialSource?: string
+      args: Record<string, unknown>
     }
   | {
-      type: 'tool-started'
+      type: 'tool-call-status'
+      messageId: string
+      partIndex: number
+      toolCallId: string
       agent: string
-      tool: string
-      toolCallId?: string
-      args: Record<string, unknown>
+      status: ToolCallStatus
+      digest?: unknown
+    }
+  | {
+      type: 'tool-call-completed'
+      messageId: string
+      partIndex: number
+      toolCallId: string
+      agent: string
+      output: unknown
+      digest?: unknown
+      captured?: true
+    }
+  | {
+      type: 'tool-call-failed'
+      messageId: string
+      partIndex: number
+      toolCallId: string
+      agent: string
+      error: string
     }
   | {
       /**
        * Streaming tools emit one or more progress updates between
-       * `tool-started` and `tool-completed`. The `data` is the payload
-       * yielded by the tool's `execute` async generator.
+       * `tool-call-started` and `tool-call-completed`.
        */
       type: 'tool-progress'
+      messageId: string
+      partIndex: number
+      toolCallId: string
       agent: string
-      tool: string
-      toolCallId?: string
       kind?: string
       data: unknown
     }
   | {
-      type: 'tool-completed'
-      agent: string
-      tool: string
-      toolCallId?: string
-      result: AgentToolResult
-      /** Typed display projection of the tool's output (matches `outputDigestSchema`). */
-      digest?: unknown
-    }
-  | {
-      type: 'tool-error'
-      agent: string
-      tool: string
-      toolCallId?: string
-      error: string
-    }
-  | { type: 'agent-completed'; agent: string }
-  | {
       type: 'approval-required'
-      agent: string
-      tool: string
+      messageId: string
+      partIndex: number
       toolCallId: string
+      toolName: string
+      agent: string
       args: Record<string, unknown>
-      /** Preview projection (e.g. for an email body). Matches the tool's `outputDigestSchema`. */
       digest?: unknown
-    }
-  | { type: 'tool-rejected'; agent: string; tool: string; toolCallId: string }
-  | {
       /**
-       * In-place lifecycle transition for an existing tool call. Lets approval
-       * cards morph preview → executing → completed without DOM swaps.
+       * ID of the system approval-card message the server pushed into
+       * `state.messages` alongside the paused assistant message. The client
+       * uses this id when synthesizing the card in its local store so
+       * refresh-from-persistence and live-streaming render the same message.
        */
-      type: 'tool-status-changed'
-      agent: string
-      tool: string
-      toolCallId: string
-      status: 'awaiting-approval' | 'executing' | 'completed' | 'error' | 'rejected'
-      digest?: unknown
+      approvalMessageId: string
     }
-  /** Commits the final assistant prose message for the turn */
+  /**
+   * Commits the canonical final state of an assistant message. Carries the
+   * full final parts array (post link-snapshot rewrite, post-processed) plus
+   * `linkSnapshots` and turn-total `usage`. The frontend's `finalizeMessage`
+   * replaces the in-store message wholesale — streaming + refresh both render
+   * from the same data.
+   */
   | {
-      type: 'final-message'
+      type: 'assistant-message-finished'
+      messageId: string
       agent: string
-      content: string
-      /** Per-message lookup table for inline `auxx://` link chips (G phase). */
+      parts: ContentPart[]
       linkSnapshots?: Record<string, LinkSnapshot>
+      usage?: UsageMetrics
+      truncated?: boolean
+      /**
+       * Per-LLM-call billing breakdown for this turn. Consumers iterate this
+       * to push usage records with correct SYSTEM-vs-CUSTOM credit gating.
+       * Mirrors `message.metadata.iterations`.
+       *
+       * Contains only the iterations executed since the last `started`/`resumed`
+       * bracket — not the whole turn's history. Billing collectors drain on
+       * both `paused` and `finished` for full coverage across pause boundaries.
+       */
+      iterations?: IterationUsage[]
     }
-  | { type: 'message'; role: 'assistant'; content: string }
+  /**
+   * Suspends streaming on an assistant message that is paused for approval.
+   * The message stays open server-side; the same `messageId` will resume
+   * appending parts after `engine.resume()` runs. Carries per-LLM-call
+   * billing for the iterations that ran in this segment so consumers can
+   * push usage records before suspension.
+   */
+  | {
+      type: 'assistant-message-paused'
+      messageId: string
+      agent: string
+      iterations?: IterationUsage[]
+    }
+  /**
+   * Re-opens streaming on a previously-paused assistant message. The
+   * frontend uses this to flip `isStreaming` back on for the existing
+   * bubble keyed by `messageId` — no new bubble is created.
+   */
+  | { type: 'assistant-message-resumed'; messageId: string; agent: string }
   | { type: 'session-created'; sessionId: string; title: string; createdAt: string }
   | { type: 'session-title-updated'; sessionId: string; title: string }
   | { type: 'done' }

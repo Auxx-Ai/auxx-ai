@@ -605,29 +605,30 @@ async function runInProcessPath(params: {
   for await (const event of generator) {
     if (request.signal.aborted) break
 
-    // Accumulate usage from LLM completions for batch tracking
-    if (event.type === 'llm-complete') {
-      usageEntries.push({
-        organizationId,
-        userId,
-        provider: event.provider,
-        model: event.model,
-        usage: event.usage,
-        timestamp: new Date(),
-        source: 'agent',
-        sourceId: sessionId,
-        providerType: event.providerType as 'SYSTEM' | 'CUSTOM' | undefined,
-        credentialSource: event.credentialSource as
-          | 'SYSTEM'
-          | 'CUSTOM'
-          | 'MODEL_SPECIFIC'
-          | 'LOAD_BALANCED'
-          | undefined,
-        creditsUsed:
-          event.providerType === 'SYSTEM'
-            ? getModelCreditMultiplier(event.provider, event.model)
-            : 0,
-      })
+    // Per-LLM-call billing breakdown. One entry per agent iteration; restored
+    // SYSTEM-vs-CUSTOM credit gating means BYOK customers consume no credits.
+    // Drain on both `paused` and `finished` — see process-agent-job.ts for
+    // the symmetric worker-path version.
+    if (
+      (event.type === 'assistant-message-finished' || event.type === 'assistant-message-paused') &&
+      event.iterations?.length
+    ) {
+      for (const it of event.iterations) {
+        usageEntries.push({
+          organizationId,
+          userId,
+          provider: it.provider,
+          model: it.model,
+          usage: it.usage,
+          timestamp: new Date(),
+          source: 'agent',
+          sourceId: sessionId,
+          providerType: it.providerType,
+          credentialSource: it.credentialSource,
+          creditsUsed:
+            it.providerType === 'SYSTEM' ? getModelCreditMultiplier(it.provider, it.model) : 0,
+        })
+      }
     }
 
     send(event)

@@ -6,7 +6,6 @@ import { Button } from '@auxx/ui/components/button'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { cn } from '@auxx/ui/lib/utils'
 import { ArrowDown } from 'lucide-react'
-import { motion } from 'motion/react'
 import {
   useCallback,
   useEffect,
@@ -19,12 +18,10 @@ import {
 import type { KopilotRequest } from '../hooks/use-kopilot-sse'
 import { useKopilotChatOptions } from '../options'
 import { type KopilotMessage, useKopilotStore } from '../stores/kopilot-store'
-import { getApprovalCard } from './blocks/approval-card-registry'
-import { GenericApprovalCard } from './blocks/generic-approval-card'
 import { KopilotEmptyState } from './kopilot-empty-state'
-import { AssistantMessage } from './messages/assistant-message'
+import { AssistantMessage, type InlineApprovalLookup } from './messages/assistant-message'
+import { AssistantThinkingStatus } from './messages/assistant-thinking-status'
 import { BranchNavigator } from './messages/branch-navigator'
-import { ThinkingSteps } from './messages/thinking-steps'
 import { UserMessage } from './messages/user-message'
 import { SparkleIcon } from './sparkle-icon'
 
@@ -91,15 +88,11 @@ export function KopilotMessageList({
   const { renderEmptyState } = useKopilotChatOptions()
   const messages = useKopilotStore((s) => s.messages)
   const editingMessageId = useKopilotStore((s) => s.editingMessageId)
-  const streamingContent = useKopilotStore((s) => s.stream.streamingContent)
   const isStreaming = useKopilotStore((s) => s.isStreaming)
   const activeSessionId = useKopilotStore((s) => s.activeSessionId)
   const updateMessage = useKopilotStore((s) => s.updateMessage)
   const childrenMap = useKopilotStore((s) => s.childrenMap)
   const setActiveBranch = useKopilotStore((s) => s.setActiveBranch)
-  const thinkingGroups = useKopilotStore((s) => s.thinkingGroups)
-  const activeThinkingGroupId = useKopilotStore((s) => s.activeThinkingGroupId)
-  const activeThinkingGroup = activeThinkingGroupId ? thinkingGroups[activeThinkingGroupId] : null
 
   const [viewportEl, setViewportElState] = useState<HTMLDivElement | null>(null)
   const isAtBottom = useRef(true)
@@ -137,6 +130,26 @@ export function KopilotMessageList({
 
   const groups = useMemo(() => groupTurns(visibleMessages), [visibleMessages])
   const showEmptyState = messages.length === 0 && !isStreaming
+
+  // Phase A: streaming has started but the server hasn't opened the assistant
+  // bubble yet (no `assistant-message-started` event). Render a placeholder
+  // sparkle-bubble so the inline thinking status shows immediately.
+  const trailing = visibleMessages[visibleMessages.length - 1]
+  const showPlaceholder = isStreaming && (!trailing || trailing.role !== 'assistant')
+
+  // Build a toolCallId → approval system message lookup so assistant bubbles
+  // can render the approval card inline at the tool_call position. The system
+  // message itself still lives in `messages` for persistence/refresh, but it
+  // is skipped from the standalone render path below.
+  const approvalByToolCallId = useMemo<InlineApprovalLookup>(() => {
+    const map = new Map<string, KopilotMessage>()
+    for (const m of visibleMessages) {
+      if (m.role === 'system' && m.approval) {
+        map.set(m.approval.toolCallId, m)
+      }
+    }
+    return (toolCallId: string) => map.get(toolCallId)
+  }, [visibleMessages])
 
   /**
    * Distance from the viewport bottom to the sentinel placed at the end of
@@ -201,7 +214,7 @@ export function KopilotMessageList({
   }, [viewportEl, updateBottomState])
 
   // Follow the stream: stay pinned to bottom while content grows, if user was at bottom.
-  // messages/streamingContent are trigger-only deps — we don't read them inside.
+  // `messages` is a trigger-only dep — text/tool deltas mutate visible messages in place.
   // biome-ignore lint/correctness/useExhaustiveDependencies: trigger-only deps
   useEffect(() => {
     if (!viewportEl) return
@@ -212,7 +225,7 @@ export function KopilotMessageList({
       viewportEl.scrollTop = viewportEl.scrollHeight
     }
     updateBottomState()
-  }, [messages, streamingContent, viewportEl, updateBottomState])
+  }, [messages, viewportEl, updateBottomState])
 
   // Deflate when switching sessions (not on initial mount). activeSessionId
   // is intentionally a trigger-only dep — we don't read it inside the effect.
@@ -320,72 +333,37 @@ export function KopilotMessageList({
     const siblings = childrenMap[parentKey] ?? []
     const hasBranches = siblings.length > 1
 
+    // System approval messages persist for refresh but render inline within
+    // the assistant bubble that owns the tool_call — skip them here.
+    if (message.role === 'system' && message.approval) return null
+
     let messageEl: React.ReactNode = null
 
-    if (message.approval) {
-      const ApprovalCard = getApprovalCard(message.approval.toolName) ?? GenericApprovalCard
-      // Once the tool runs (post-approval), its digest lives on the matching
-      // tool message — pull it so the card can morph in place to a completed
-      // state ("Sent" / "Draft saved") without DOM swaps.
-      const toolCallId = message.approval.toolCallId
-      const matchingTool = messages.find((m) => m.tool?.callId === toolCallId)?.tool
-      // Thinking steps that ran before the approval gate fired get attached
-      // to this approval message id (see use-kopilot-sse.ts approval-required
-      // handler). Render the pill above the card so the user can see what
-      // led up to the approval request.
-      const attachedGroup = Object.values(thinkingGroups).find((g) => g.messageId === message.id)
-      messageEl = (
-        <div className='space-y-2'>
-          {attachedGroup && attachedGroup.steps.length > 0 && (
-            <div className='flex gap-2'>
-              <SparkleIcon />
-              <div className='min-w-0 flex-1'>
-                <ThinkingSteps group={attachedGroup} />
-              </div>
-            </div>
-          )}
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95, y: 8 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            transition={{ type: 'spring', stiffness: 400, damping: 25 }}>
-            <ApprovalCard
-              toolName={message.approval.toolName}
-              toolCallId={toolCallId}
-              args={message.approval.args}
-              status={message.approval.status}
-              digest={matchingTool?.digest}
-              onApprove={(inputAmendment) => handleApproval(message.id, 'approved', inputAmendment)}
-              onReject={() => handleApproval(message.id, 'rejected')}
-            />
-          </motion.div>
-        </div>
-      )
-    } else {
-      switch (message.role) {
-        case 'user':
-          messageEl = (
-            <UserMessage
-              message={message}
-              onEdit={onEditMessage ? () => onEditMessage(message.id) : undefined}
-              onRetry={onRetryMessage ? () => onRetryMessage(message.id) : undefined}
-            />
-          )
-          break
-        case 'assistant':
-          messageEl = (
-            <AssistantMessage
-              message={message}
-              feedback={message.feedback}
-              onThumbsUp={onFeedback ? () => onFeedback(message.id, true) : undefined}
-              onThumbsDown={onFeedback ? () => onFeedback(message.id, false) : undefined}
-            />
-          )
-          break
-        case 'tool':
-          return null
-        default:
-          break
-      }
+    switch (message.role) {
+      case 'user':
+        messageEl = (
+          <UserMessage
+            message={message}
+            onEdit={onEditMessage ? () => onEditMessage(message.id) : undefined}
+            onRetry={onRetryMessage ? () => onRetryMessage(message.id) : undefined}
+          />
+        )
+        break
+      case 'assistant':
+        messageEl = (
+          <AssistantMessage
+            message={message}
+            isStreaming={isStreaming && message.id === messages[messages.length - 1]?.id}
+            feedback={message.feedback}
+            onThumbsUp={onFeedback ? () => onFeedback(message.id, true) : undefined}
+            onThumbsDown={onFeedback ? () => onFeedback(message.id, false) : undefined}
+            approvalForToolCall={approvalByToolCallId}
+            onApproval={handleApproval}
+          />
+        )
+        break
+      default:
+        break
     }
 
     if (!messageEl) return null
@@ -411,8 +389,6 @@ export function KopilotMessageList({
     return <KopilotEmptyState onSuggestionClick={onSuggestionClick} />
   }
 
-  const showOrphanStreaming = groups.length === 0 && isStreaming
-
   return (
     <div className='relative flex min-h-0 flex-1 flex-col'>
       <ScrollArea viewportRef={setViewportRef} className='min-h-0 flex-1'>
@@ -429,45 +405,18 @@ export function KopilotMessageList({
                 className='flex flex-col gap-3'
                 style={minH ? { minHeight: minH } : undefined}>
                 {group.messages.map((m) => renderMessage(m))}
-                {isLast &&
-                  isStreaming &&
-                  !streamingContent &&
-                  activeThinkingGroup &&
-                  activeThinkingGroup.steps.length > 0 && (
-                    <div className='flex gap-2'>
-                      <SparkleIcon />
-                      <div className='min-w-0 flex-1'>
-                        <ThinkingSteps group={activeThinkingGroup} />
-                      </div>
+                {isLast && showPlaceholder && (
+                  <div className='group/message flex gap-2'>
+                    <SparkleIcon />
+                    <div className='min-w-0 flex-1 space-y-1'>
+                      <AssistantThinkingStatus />
                     </div>
-                  )}
-                {isLast && isStreaming && streamingContent && (
-                  <AssistantMessage streamingContent={streamingContent} />
+                  </div>
                 )}
                 {isLast && <div ref={contentEndRef} aria-hidden className='h-0 w-0' />}
               </div>
             )
           })}
-          {showOrphanStreaming && (
-            <div
-              className='flex flex-col gap-3'
-              style={
-                inflateLast && viewportPx !== null
-                  ? { minHeight: `${viewportPx - PIN_INFLATE_OFFSET}px` }
-                  : undefined
-              }>
-              {!streamingContent && activeThinkingGroup && activeThinkingGroup.steps.length > 0 && (
-                <div className='flex gap-2'>
-                  <SparkleIcon />
-                  <div className='min-w-0 flex-1'>
-                    <ThinkingSteps group={activeThinkingGroup} />
-                  </div>
-                </div>
-              )}
-              {streamingContent && <AssistantMessage streamingContent={streamingContent} />}
-              <div ref={contentEndRef} aria-hidden className='h-0 w-0' />
-            </div>
-          )}
         </div>
       </ScrollArea>
 

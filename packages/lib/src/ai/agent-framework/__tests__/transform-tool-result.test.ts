@@ -10,9 +10,48 @@ import type {
   AgentEvent,
   AgentToolDefinition,
   AgentToolResult,
+  AssistantSessionMessage,
   LLMCallParams,
   LLMStreamEvent,
+  SessionMessage,
+  ToolCallPart,
 } from '../types'
+
+/**
+ * Return the first tool_call part for the given toolCallId across all
+ * assistant messages. In the parts-based model, tool output lives on the
+ * assistant's tool_call part — no separate tool message.
+ */
+function findToolCallPart(
+  messages: SessionMessage[],
+  toolCallId: string
+): ToolCallPart | undefined {
+  for (const msg of messages) {
+    if (msg.role !== 'assistant') continue
+    const m = msg as AssistantSessionMessage
+    for (const p of m.parts ?? []) {
+      if (p.type === 'tool_call' && p.toolCallId === toolCallId) return p
+    }
+  }
+  return undefined
+}
+
+/** Return the most-recent tool_call part with matching toolCallId. */
+function findLastToolCallPart(
+  messages: SessionMessage[],
+  toolCallId: string
+): ToolCallPart | undefined {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i]
+    if (!msg || msg.role !== 'assistant') continue
+    const m = msg as AssistantSessionMessage
+    for (let j = (m.parts?.length ?? 0) - 1; j >= 0; j--) {
+      const p = m.parts[j]
+      if (p?.type === 'tool_call' && p.toolCallId === toolCallId) return p
+    }
+  }
+  return undefined
+}
 
 const ZERO_USAGE: UsageMetrics = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 }
 
@@ -113,12 +152,12 @@ describe('AgentDomainConfig.transformToolResult — live tool-call path', () => 
 
     await drain(engine.submitMessage('go'))
 
-    const toolMsg = engine.getState().messages.find((m) => m.role === 'tool')
-    expect(toolMsg).toBeDefined()
-    // The persisted tool message should carry the rewritten payload, not the
-    // raw `_patch` sentinel — proving transformToolResult ran before message
-    // build.
-    expect(JSON.parse(toolMsg!.content)).toEqual({ canonical: 84 })
+    const part = findToolCallPart(engine.getState().messages, 'c1')
+    expect(part).toBeDefined()
+    // The persisted tool_call part should carry the rewritten output, not the
+    // raw `_patch` sentinel — proving transformToolResult ran before the part
+    // was finalized.
+    expect(part?.output).toEqual({ canonical: 84 })
   })
 
   it('runs after onToolResult, with state mining already applied', async () => {
@@ -147,9 +186,9 @@ describe('AgentDomainConfig.transformToolResult — live tool-call path', () => 
 
     await drain(engine.submitMessage('go'))
 
-    const toolMsg = engine.getState().messages.find((m) => m.role === 'tool')
+    const part = findToolCallPart(engine.getState().messages, 'c1')
     // The transform sees the post-onToolResult state — counter is already 7.
-    expect(JSON.parse(toolMsg!.content)).toEqual({ counter: 7 })
+    expect(part?.output).toEqual({ counter: 7 })
   })
 
   it('flips success → false when the transform returns a recoverable error', async () => {
@@ -175,11 +214,10 @@ describe('AgentDomainConfig.transformToolResult — live tool-call path', () => 
 
     await drain(engine.submitMessage('go'))
 
-    const toolMsg = engine.getState().messages.find((m) => m.role === 'tool')
-    expect(toolMsg?.toolStatus).toBe('error')
-    const parsed = JSON.parse(toolMsg!.content) as { error: string; output: unknown }
-    expect(parsed.error).toMatch(/no active plan/i)
-    expect(parsed.output).toEqual({ plan: null })
+    const part = findToolCallPart(engine.getState().messages, 'c1')
+    expect(part?.status).toBe('error')
+    expect(part?.error).toMatch(/no active plan/i)
+    expect(part?.output).toEqual({ plan: null })
   })
 })
 
@@ -211,11 +249,10 @@ describe('AgentDomainConfig.transformToolResult — approval resume path', () =>
 
     await drain(engine.resume({ action: 'approve' }))
 
-    const toolMsg = [...engine.getState().messages]
-      .reverse()
-      .find((m) => m.role === 'tool' && m.toolCallId === 'c1')
-    expect(toolMsg).toBeDefined()
-    expect(JSON.parse(toolMsg!.content)).toEqual({ canonical: 'FOO' })
+    const part = findLastToolCallPart(engine.getState().messages, 'c1')
+    expect(part).toBeDefined()
+    expect(part?.status).toBe('completed')
+    expect(part?.output).toEqual({ canonical: 'FOO' })
   })
 })
 

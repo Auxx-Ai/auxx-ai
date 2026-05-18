@@ -1,11 +1,9 @@
 // apps/web/src/components/kopilot/stores/kopilot-store.ts
 
-import { generateId } from '@auxx/utils/generateId'
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { ContextSlice } from '../context/types'
 import type { SuggestionSlice } from '../suggestions/types'
-import { summarizeToolResult } from '../ui/blocks/summarize-tool-result'
 
 /**
  * Mirror of `LinkSnapshot` from `@auxx/lib/ai/agent-framework/types`. Inlined
@@ -24,56 +22,55 @@ export type LinkSnapshot =
   | { taskId: string; title: string; deadline: string | null; completedAt: string | null }
   | { slug: string; title: string; description?: string; url?: string }
 
-/** A single step within a thinking group */
-export interface ThinkingStep {
-  id: string
-  /** Executor's reasoning text before/during this step */
-  thinking?: string
-  /** Tool call info (absent for pure-thinking steps) */
-  tool?: {
-    name: string
-    /** Human-readable one-liner */
-    summary?: string
-    args: Record<string, unknown>
-    status: 'running' | 'completed' | 'error'
-    /** Optional entity references for inline badges */
-    entities?: Array<{ recordId: string }>
-  }
-}
+/**
+ * Mirror of the lib's `ToolCallStatus`. Inlined for the same reason as
+ * `LinkSnapshot` — this is client-side and the lib subpath drags in server
+ * deps.
+ */
+export type ToolCallStatus = 'running' | 'awaiting-approval' | 'completed' | 'error' | 'rejected'
 
-/** A group of thinking steps for one pipeline run */
-export interface ThinkingGroup {
-  id: string
-  steps: ThinkingStep[]
-  status: 'running' | 'completed' | 'error'
-  /** Accumulated executor text that hasn't been attached to a step yet */
-  pendingThinking: string
-  /** The assistant message ID this group is attached to (set when responder commits) */
-  messageId?: string
-}
+/**
+ * Mirror of the lib's `ContentPart`. Discriminated union — every part on an
+ * assistant message is one of these. Order is preserved; the renderer walks
+ * `parts` left → right and groups runs of contiguous tool_call parts into a
+ * single thinking pill.
+ */
+export type ContentPart =
+  | { type: 'text'; text: string; agent?: string }
+  | { type: 'thinking'; text: string; agent?: string }
+  | {
+      type: 'tool_call'
+      toolCallId: string
+      name: string
+      args: Record<string, unknown>
+      status: ToolCallStatus
+      output?: unknown
+      digest?: unknown
+      error?: string
+      agent?: string
+      captured?: true
+    }
 
+export type ToolCallPart = Extract<ContentPart, { type: 'tool_call' }>
+
+/**
+ * Kopilot message — discriminated by role. Assistant messages carry `parts[]`
+ * (the canonical content-block shape); user/system messages carry a single
+ * `content` string. The renderer reads `parts` for assistant bubbles and
+ * `content` for everything else.
+ */
 export interface KopilotMessage {
   id: string
-  role: 'user' | 'assistant' | 'tool' | 'system'
-  content: string
+  role: 'user' | 'assistant' | 'system'
+  /** User + system messages keep a single string. Assistant messages use `parts`. */
+  content?: string
+  /** Assistant content blocks — one entry per text run, thinking run, or tool call. */
+  parts?: ContentPart[]
   timestamp: number
   /** Parent message ID — null for root messages */
   parentId: string | null
-  /** Agent metadata — identifies which agent produced this message */
-  metadata?: { agent?: string }
-  /** Tool calls on assistant messages (used for tool call lookup + executor detection) */
-  toolCalls?: Array<{ id: string; function: { name: string; arguments: unknown } }>
-  /** Tool call metadata (for tool messages) */
-  tool?: {
-    name: string
-    /** Provider-emitted tool_call_id — stable across the lifecycle of a single call. */
-    callId?: string
-    args: Record<string, unknown>
-    result?: unknown
-    /** Display projection of `result` produced by the tool's `buildDigest`. */
-    digest?: unknown
-    status: 'running' | 'completed' | 'error'
-  }
+  /** Agent metadata — last agent that contributed to this turn. */
+  metadata?: { agent?: string; modelId?: string }
   /** Approval state — present when this message represents a tool approval request */
   approval?: {
     toolName: string
@@ -89,14 +86,12 @@ export interface KopilotMessage {
   error?: string
   /**
    * Per-message lookup table for inline `auxx://` link chips, keyed by the
-   * full href. Set on assistant final messages.
+   * full href. Set on assistant messages at finalize time.
    */
   linkSnapshots?: Record<string, LinkSnapshot>
 }
 
 export interface KopilotStreamState {
-  /** Currently streaming text (accumulated deltas) */
-  streamingContent: string
   /** Which agent is currently active */
   currentAgent: string | null
   /** Current route being executed */
@@ -229,10 +224,49 @@ interface KopilotState {
   setActiveBranch: (parentId: string, childId: string) => void
   setMessageFeedback: (messageId: string, isPositive: boolean | null) => void
 
+  /**
+   * Append `delta` to the text part at `partIndex` of the assistant message.
+   * If the part doesn't exist yet (first delta), create it. If a different
+   * part type exists at that index, this is a no-op (the SSE producer is
+   * responsible for keeping partIndex in lockstep with the part type).
+   */
+  appendTextDelta: (messageId: string, partIndex: number, delta: string) => void
+  /** Same as `appendTextDelta` but for thinking parts. */
+  appendThinkingDelta: (messageId: string, partIndex: number, delta: string) => void
+  /**
+   * Insert a tool_call part at `partIndex` on the assistant message. Called
+   * once per tool call on the `tool-call-started` event; subsequent updates
+   * flow through `updateToolCallPart`.
+   */
+  addToolCallPart: (
+    messageId: string,
+    partIndex: number,
+    toolCall: { toolCallId: string; name: string; args: Record<string, unknown>; agent?: string }
+  ) => void
+  /** Patch the tool_call part at `partIndex` (status, output, digest, error, captured). */
+  updateToolCallPart: (
+    messageId: string,
+    partIndex: number,
+    patch: Partial<Omit<ToolCallPart, 'type' | 'toolCallId' | 'name'>>
+  ) => void
+  /**
+   * Replace the assistant message's parts wholesale with the canonical final
+   * state from `assistant-message-finished`. Also applies linkSnapshots,
+   * usage, and truncated metadata. This is the streaming/refresh checksum:
+   * after finalize the in-store shape matches what `getSession` returns on F5.
+   */
+  finalizeMessage: (
+    messageId: string,
+    final: {
+      parts: ContentPart[]
+      linkSnapshots?: Record<string, LinkSnapshot>
+      usage?: unknown
+      truncated?: boolean
+    }
+  ) => void
+
   // Streaming
   stream: KopilotStreamState
-  setStreamingContent: (content: string) => void
-  appendStreamDelta: (delta: string) => void
   setCurrentAgent: (agent: string | null) => void
   setCurrentRoute: (route: string | null) => void
   addActiveTool: (tool: string, agent: string) => void
@@ -243,19 +277,6 @@ interface KopilotState {
   editingMessageId: string | null
   setEditingMessage: (messageId: string | null) => void
 
-  // Thinking steps
-  activeThinkingGroupId: string | null
-  thinkingGroups: Record<string, ThinkingGroup>
-  beginThinkingGroup: () => void
-  appendThinkingText: (delta: string) => void
-  commitThinkingText: () => void
-  addThinkingToolStep: (tool: string, args: Record<string, unknown>) => void
-  completeThinkingToolStep: (tool: string, result: unknown, digest?: unknown) => void
-  failThinkingToolStep: (tool: string, error: string) => void
-  finalizeThinkingGroup: () => void
-  attachThinkingGroupToMessage: (messageId: string) => void
-  reconstructThinkingGroups: (messages: KopilotMessage[]) => void
-
   // Status
   isStreaming: boolean
   setIsStreaming: (streaming: boolean) => void
@@ -265,26 +286,9 @@ interface KopilotState {
 }
 
 const initialStreamState: KopilotStreamState = {
-  streamingContent: '',
   currentAgent: null,
   currentRoute: null,
   activeTools: [],
-}
-
-/**
- * Detect intermediate assistant messages that carried tool calls — these should
- * be hidden from the visible message list and used only for thinking-step
- * reconstruction. The final prose message is the one without toolCalls (or with
- * `metadata.final === true`).
- */
-export function isExecutorAssistant(m: KopilotMessage): boolean {
-  if (m.role !== 'assistant') return false
-  if (m.metadata?.final === true) return false
-  // Solo agent intermediate message — carries toolCalls
-  if (m.toolCalls && m.toolCalls.length > 0) return true
-  // Legacy tagging from the old executor pipeline
-  if (m.metadata?.agent === 'executor') return true
-  return false
 }
 
 const emptyTreeState = {
@@ -356,8 +360,6 @@ export const useKopilotStore = create<KopilotState>()(
           stream: { ...initialStreamState },
           isStreaming: false,
           editingMessageId: null,
-          activeThinkingGroupId: null,
-          thinkingGroups: {},
         }),
 
       // Model override
@@ -430,14 +432,108 @@ export const useKopilotStore = create<KopilotState>()(
           }
         }),
 
+      appendTextDelta: (messageId, partIndex, delta) =>
+        set((s) => {
+          const existing = s.messageMap[messageId]
+          if (!existing) return s
+          const parts = [...(existing.parts ?? [])]
+          const current = parts[partIndex]
+          if (current && current.type === 'text') {
+            parts[partIndex] = { ...current, text: current.text + delta }
+          } else if (!current) {
+            // Pad with empty text parts if needed (rare; partIndex should track length)
+            while (parts.length < partIndex) parts.push({ type: 'text', text: '' })
+            parts[partIndex] = { type: 'text', text: delta }
+          } else {
+            // Mismatch: producer pointed partIndex at a non-text part. Skip.
+            return s
+          }
+          const updated = { ...existing, parts }
+          const newMessageMap = { ...s.messageMap, [messageId]: updated }
+          return {
+            messageMap: newMessageMap,
+            messages: computeVisibleMessages(newMessageMap, s.childrenMap, s.activeBranch),
+          }
+        }),
+
+      appendThinkingDelta: (messageId, partIndex, delta) =>
+        set((s) => {
+          const existing = s.messageMap[messageId]
+          if (!existing) return s
+          const parts = [...(existing.parts ?? [])]
+          const current = parts[partIndex]
+          if (current && current.type === 'thinking') {
+            parts[partIndex] = { ...current, text: current.text + delta }
+          } else if (!current) {
+            while (parts.length < partIndex) parts.push({ type: 'text', text: '' })
+            parts[partIndex] = { type: 'thinking', text: delta }
+          } else {
+            return s
+          }
+          const updated = { ...existing, parts }
+          const newMessageMap = { ...s.messageMap, [messageId]: updated }
+          return {
+            messageMap: newMessageMap,
+            messages: computeVisibleMessages(newMessageMap, s.childrenMap, s.activeBranch),
+          }
+        }),
+
+      addToolCallPart: (messageId, partIndex, toolCall) =>
+        set((s) => {
+          const existing = s.messageMap[messageId]
+          if (!existing) return s
+          const parts = [...(existing.parts ?? [])]
+          while (parts.length < partIndex) parts.push({ type: 'text', text: '' })
+          parts[partIndex] = {
+            type: 'tool_call',
+            toolCallId: toolCall.toolCallId,
+            name: toolCall.name,
+            args: toolCall.args,
+            status: 'running',
+            ...(toolCall.agent ? { agent: toolCall.agent } : {}),
+          }
+          const updated = { ...existing, parts }
+          const newMessageMap = { ...s.messageMap, [messageId]: updated }
+          return {
+            messageMap: newMessageMap,
+            messages: computeVisibleMessages(newMessageMap, s.childrenMap, s.activeBranch),
+          }
+        }),
+
+      updateToolCallPart: (messageId, partIndex, patch) =>
+        set((s) => {
+          const existing = s.messageMap[messageId]
+          if (!existing) return s
+          const parts = [...(existing.parts ?? [])]
+          const current = parts[partIndex]
+          if (!current || current.type !== 'tool_call') return s
+          parts[partIndex] = { ...current, ...patch }
+          const updated = { ...existing, parts }
+          const newMessageMap = { ...s.messageMap, [messageId]: updated }
+          return {
+            messageMap: newMessageMap,
+            messages: computeVisibleMessages(newMessageMap, s.childrenMap, s.activeBranch),
+          }
+        }),
+
+      finalizeMessage: (messageId, final) =>
+        set((s) => {
+          const existing = s.messageMap[messageId]
+          if (!existing) return s
+          const updated: KopilotMessage = {
+            ...existing,
+            parts: final.parts,
+            ...(final.linkSnapshots ? { linkSnapshots: final.linkSnapshots } : {}),
+          }
+          const newMessageMap = { ...s.messageMap, [messageId]: updated }
+          return {
+            messageMap: newMessageMap,
+            messages: computeVisibleMessages(newMessageMap, s.childrenMap, s.activeBranch),
+          }
+        }),
+
       // Streaming
       stream: { ...initialStreamState },
-      setStreamingContent: (streamingContent) =>
-        set((s) => ({ stream: { ...s.stream, streamingContent } })),
-      appendStreamDelta: (delta) =>
-        set((s) => ({
-          stream: { ...s.stream, streamingContent: s.stream.streamingContent + delta },
-        })),
       setCurrentAgent: (currentAgent) => set((s) => ({ stream: { ...s.stream, currentAgent } })),
       setCurrentRoute: (currentRoute) => set((s) => ({ stream: { ...s.stream, currentRoute } })),
       addActiveTool: (tool, agent) =>
@@ -457,250 +553,6 @@ export const useKopilotStore = create<KopilotState>()(
       editingMessageId: null,
       setEditingMessage: (editingMessageId) => set({ editingMessageId }),
 
-      // Thinking steps
-      activeThinkingGroupId: null,
-      thinkingGroups: {},
-
-      beginThinkingGroup: () =>
-        set((s) => {
-          const id = generateId()
-          const group: ThinkingGroup = {
-            id,
-            steps: [],
-            status: 'running',
-            pendingThinking: '',
-          }
-          return {
-            activeThinkingGroupId: id,
-            thinkingGroups: { ...s.thinkingGroups, [id]: group },
-          }
-        }),
-
-      appendThinkingText: (delta) =>
-        set((s) => {
-          const gid = s.activeThinkingGroupId
-          if (!gid) return s
-          const group = s.thinkingGroups[gid]
-          if (!group) return s
-          return {
-            thinkingGroups: {
-              ...s.thinkingGroups,
-              [gid]: { ...group, pendingThinking: group.pendingThinking + delta },
-            },
-          }
-        }),
-
-      commitThinkingText: () =>
-        set((s) => {
-          const gid = s.activeThinkingGroupId
-          if (!gid) return s
-          const group = s.thinkingGroups[gid]
-          if (!group || !group.pendingThinking.trim()) return s
-          const text = group.pendingThinking.trim()
-          const steps = [...group.steps]
-          const last = steps[steps.length - 1]
-          // If the last step is a pure-thinking step (no tool), append to it
-          if (last && !last.tool) {
-            steps[steps.length - 1] = {
-              ...last,
-              thinking: (last.thinking ? `${last.thinking}\n\n` : '') + text,
-            }
-          } else {
-            steps.push({ id: generateId(), thinking: text })
-          }
-          return {
-            thinkingGroups: {
-              ...s.thinkingGroups,
-              [gid]: { ...group, steps, pendingThinking: '' },
-            },
-          }
-        }),
-
-      addThinkingToolStep: (tool, args) =>
-        set((s) => {
-          const gid = s.activeThinkingGroupId
-          if (!gid) return s
-          const group = s.thinkingGroups[gid]
-          if (!group) return s
-          // Commit any pending thinking text, then attach it to the tool step
-          const pendingText = group.pendingThinking.trim()
-          const step: ThinkingStep = {
-            id: generateId(),
-            thinking: pendingText || undefined,
-            tool: { name: tool, args, status: 'running' },
-          }
-          return {
-            thinkingGroups: {
-              ...s.thinkingGroups,
-              [gid]: {
-                ...group,
-                steps: [...group.steps, step],
-                pendingThinking: '',
-              },
-            },
-          }
-        }),
-
-      completeThinkingToolStep: (tool, result, digest) =>
-        set((s) => {
-          const gid = s.activeThinkingGroupId
-          if (!gid) return s
-          const group = s.thinkingGroups[gid]
-          if (!group) return s
-          const steps = [...group.steps]
-          // Find the last running step for this tool
-          for (let i = steps.length - 1; i >= 0; i--) {
-            const step = steps[i]!
-            if (step.tool?.name === tool && step.tool.status === 'running') {
-              const { summary, entities } = summarizeToolResult(tool, result, digest)
-              steps[i] = {
-                ...step,
-                tool: { ...step.tool, status: 'completed', summary, entities },
-              }
-              break
-            }
-          }
-          return {
-            thinkingGroups: { ...s.thinkingGroups, [gid]: { ...group, steps } },
-          }
-        }),
-
-      failThinkingToolStep: (tool, error) =>
-        set((s) => {
-          const gid = s.activeThinkingGroupId
-          if (!gid) return s
-          const group = s.thinkingGroups[gid]
-          if (!group) return s
-          const steps = [...group.steps]
-          for (let i = steps.length - 1; i >= 0; i--) {
-            const step = steps[i]!
-            if (step.tool?.name === tool && step.tool.status === 'running') {
-              steps[i] = {
-                ...step,
-                tool: { ...step.tool, status: 'error', summary: error },
-              }
-              break
-            }
-          }
-          return {
-            thinkingGroups: { ...s.thinkingGroups, [gid]: { ...group, steps } },
-          }
-        }),
-
-      finalizeThinkingGroup: () =>
-        set((s) => {
-          const gid = s.activeThinkingGroupId
-          if (!gid) return s
-          const group = s.thinkingGroups[gid]
-          if (!group) return s
-          const hasError = group.steps.some((step) => step.tool?.status === 'error')
-          return {
-            thinkingGroups: {
-              ...s.thinkingGroups,
-              [gid]: { ...group, status: hasError ? 'error' : 'completed' },
-            },
-          }
-        }),
-
-      attachThinkingGroupToMessage: (messageId) =>
-        set((s) => {
-          const gid = s.activeThinkingGroupId
-          if (!gid) return s
-          const group = s.thinkingGroups[gid]
-          if (!group) return s
-          return {
-            activeThinkingGroupId: null,
-            thinkingGroups: {
-              ...s.thinkingGroups,
-              [gid]: { ...group, messageId },
-            },
-          }
-        }),
-
-      reconstructThinkingGroups: (allMessages) =>
-        set(() => {
-          const groups: Record<string, ThinkingGroup> = {}
-          let currentGroup: ThinkingGroup | null = null
-          let pendingThinking = ''
-
-          for (const msg of allMessages) {
-            if (msg.role === 'user') {
-              currentGroup = null
-              pendingThinking = ''
-              continue
-            }
-
-            // Executor assistant message — extract thinking text
-            if (isExecutorAssistant(msg)) {
-              if (!currentGroup) {
-                currentGroup = {
-                  id: generateId(),
-                  steps: [],
-                  status: 'completed',
-                  pendingThinking: '',
-                }
-              }
-              if (msg.content?.trim()) {
-                pendingThinking = msg.content.trim()
-              }
-              continue
-            }
-
-            // Tool message — add as a step
-            if (msg.role === 'tool' && msg.tool) {
-              if (!currentGroup) {
-                currentGroup = {
-                  id: generateId(),
-                  steps: [],
-                  status: 'completed',
-                  pendingThinking: '',
-                }
-              }
-              const { summary, entities } = summarizeToolResult(
-                msg.tool.name,
-                msg.tool.result,
-                msg.tool.digest
-              )
-              currentGroup.steps.push({
-                id: generateId(),
-                thinking: pendingThinking || undefined,
-                tool: {
-                  name: msg.tool.name,
-                  args: msg.tool.args,
-                  status: msg.tool.status === 'error' ? 'error' : 'completed',
-                  summary,
-                  entities,
-                },
-              })
-              pendingThinking = ''
-              continue
-            }
-
-            // Responder assistant message — attach group and finalize
-            if (msg.role === 'assistant' && !isExecutorAssistant(msg)) {
-              if (currentGroup && currentGroup.steps.length > 0) {
-                // Attach any trailing thinking text (from the final executor message
-                // after all tool calls) to the last tool step
-                if (pendingThinking) {
-                  const lastStep = currentGroup.steps[currentGroup.steps.length - 1]!
-                  currentGroup.steps[currentGroup.steps.length - 1] = {
-                    ...lastStep,
-                    thinking: lastStep.thinking
-                      ? `${lastStep.thinking}\n\n${pendingThinking}`
-                      : pendingThinking,
-                  }
-                }
-                currentGroup.messageId = msg.id
-                groups[currentGroup.id] = currentGroup
-              }
-              currentGroup = null
-              pendingThinking = ''
-            }
-          }
-
-          return { thinkingGroups: groups, activeThinkingGroupId: null }
-        }),
-
       // Status
       isStreaming: false,
       setIsStreaming: (isStreaming) => set({ isStreaming }),
@@ -713,8 +565,6 @@ export const useKopilotStore = create<KopilotState>()(
           stream: { ...initialStreamState },
           isStreaming: false,
           editingMessageId: null,
-          activeThinkingGroupId: null,
-          thinkingGroups: {},
         }),
     }),
     {

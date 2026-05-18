@@ -3,16 +3,20 @@
 import { createScopedLogger } from '@auxx/logger'
 import { generateId } from '@auxx/utils/generateId'
 import { manageContext } from './context-manager'
-import { agentQueryLoop } from './query-loop'
+import { type AgentQueryResumeHint, agentQueryLoop } from './query-loop'
 import {
   type AgentDefinition,
   type AgentEngineConfig,
   type AgentEvent,
   type AgentState,
+  type AssistantSessionMessage,
+  type ContentPart,
   createEmptyTurnSnapshots,
   type ResumeOptions,
   type Route,
   type SessionMessage,
+  type SystemSessionMessage,
+  type ToolCallPart,
   type TurnBudget,
   type TurnUsageSummary,
 } from './types'
@@ -26,14 +30,9 @@ const DEFAULT_MAX_APPROVALS_PER_TURN = 5
 /**
  * AgentEngine — session owner and turn orchestrator.
  *
- * Owns the runtime state for a single session. On each submitMessage:
- * 1. Generates a `turnId` tagged on every event and log line for the turn
- * 2. Applies fresh UI context to domain state
- * 3. Runs the supervisor (if configured) to pick a route, otherwise enters route[0]
- * 4. Executes agents in the chosen route sequentially
- * 5. Enforces a per-turn token budget and iteration cap
- * 6. Yields AgentEvents throughout for real-time streaming
- * 7. Detects HITL (approval-required) and pauses
+ * One assistant message per turn; the engine owns the runtime state for a
+ * single session and drives the per-turn query loop, resume, and budget
+ * enforcement.
  */
 export class AgentEngine {
   private config: AgentEngineConfig
@@ -69,7 +68,6 @@ export class AgentEngine {
     this.turnId = generateId('turn')
     this.resetTurnUsage()
 
-    // Refresh domain state with latest UI context
     if (context && this.config.domainConfig.applyContext) {
       this.state = {
         ...this.state,
@@ -78,13 +76,15 @@ export class AgentEngine {
     }
 
     const userMsg: SessionMessage = {
+      id: generateId('msg'),
       role: 'user',
       content: userMessage,
       timestamp: Date.now(),
     }
     // A fresh user message means the user is abandoning whatever was paused.
-    // Drop pendingToolCall (and its assistantMessage) — that branch never
-    // landed in state.messages, so there's nothing else to clean up.
+    // Drop pendingToolCall (the paused message already lives in state.messages
+    // with a tool_call part at 'awaiting-approval'; the LLM will see it on
+    // the next call. Frontend treats abandonment as the user moving on).
     this.state = {
       ...this.state,
       messages: [...this.state.messages, userMsg],
@@ -120,26 +120,22 @@ export class AgentEngine {
   /**
    * Resume a paused session after the user approves or rejects a tool call.
    *
-   * On **approve**: executes the stored `pendingToolCall` directly (no LLM re-call),
-   * appends the real tool result to state.messages, then re-enters the same agent's
-   * query loop so it can decide whether to request more approvals or wrap up
-   * with a final reply.
+   * On **approve**: executes the pending tool, mutates the tool_call part in
+   * place (status: 'completed' / 'error' + output / digest), then re-enters
+   * the same agent's query loop so it can append more parts (text, more
+   * tool_calls) to the SAME assistant message.
    *
-   * On **reject**: appends `{ rejected: true, reason }` as the tool result and
-   * re-enters the same agent's loop so it can respond to the rejection.
+   * On **reject**: mutates the part to `status: 'rejected'` with a synthetic
+   * `{ rejected: true, reason }` output and re-enters the loop.
    */
   async *resume(opts: ResumeOptions): AsyncGenerator<AgentEvent> {
     if (opts.resumeState) {
       this.state = opts.resumeState
     }
 
-    // Keep the prior turnId if the paused state has one on it; otherwise mint one
-    // so resume events are still tied together. In practice we just mint a fresh
-    // turnId for each resume — the SSE stream opens a new turn section anyway.
     this.turnId = generateId('turn')
     this.resetTurnUsage()
 
-    // Refresh domain state with latest UI context
     if (opts.context && this.config.domainConfig.applyContext) {
       this.state = {
         ...this.state,
@@ -179,7 +175,6 @@ export class AgentEngine {
     const { domainConfig } = config
     const budget = this.buildTurnBudget(config)
 
-    // Context management — compress if over budget
     this.state = {
       ...this.state,
       messages: await manageContext(this.state.messages, config),
@@ -190,7 +185,6 @@ export class AgentEngine {
       messageCount: this.state.messages.length,
     })
 
-    // Route selection: supervisor (if configured) picks a route; otherwise use route[0]
     let route: Route | undefined
     if (domainConfig.supervisorAgent) {
       const supervisor = domainConfig.agents[domainConfig.supervisorAgent]
@@ -207,7 +201,6 @@ export class AgentEngine {
       logger.info('Route selected', { turnId: this.turnId, route: routeName })
       route = domainConfig.routes.find((r) => r.name === routeName) ?? domainConfig.routes[0]
     } else {
-      // Solo-agent domain: no classification needed
       route = domainConfig.routes[0]
       this.state = { ...this.state, currentRoute: route?.name }
     }
@@ -263,12 +256,12 @@ export class AgentEngine {
         return
       }
 
-      let iterCount = 0
       for await (const event of this.runAgentAndUpdateState(agent, config)) {
         yield event
         if (event.type === 'turn-error') return
-        if (event.type === 'llm-complete') {
-          iterCount++
+        // Roll up usage from each assistant message finish for budget enforcement.
+        if (event.type === 'assistant-message-finished' && event.usage) {
+          totalIterations++
           this.accumulateUsage(event.usage)
           if (this.turnTokensUsed >= budget.maxTokensPerTurn) {
             yield this.tagEvent({
@@ -279,7 +272,6 @@ export class AgentEngine {
           }
         }
       }
-      totalIterations += iterCount
 
       if (this.state.waitingForApproval) {
         logger.info('Turn paused for approval', { turnId: this.turnId })
@@ -287,8 +279,12 @@ export class AgentEngine {
       }
     }
 
-    const legacyMessage = this.emitFinalMessageFromState()
-    if (legacyMessage) yield legacyMessage
+    // Defensive sweep: flip any tool_call parts left in 'running' state.
+    // Normal completion paths in query-loop already do this; this catches
+    // abnormal exits where the engine returns control without query-loop
+    // settling.
+    this.sweepRunningToolParts('Turn ended before tool completed')
+
     yield this.tagEvent({
       type: 'turn-completed',
       route: route.name,
@@ -314,41 +310,40 @@ export class AgentEngine {
 
     yield this.tagEvent({ type: 'turn-started', route, agents: [pending.agentName], budget })
 
-    // Apply the tool result (approve → execute tool; reject → synthetic rejection)
-    if (opts.action === 'reject') {
+    // Locate the paused tool_call part. The assistant message is already in
+    // state.messages (it was persisted when the part flipped to
+    // 'awaiting-approval'); we mutate the part in place.
+    const lookup = this.findPendingPart(pending.messageId, pending.partIndex, pending.toolCallId)
+    if (!lookup) {
       yield this.tagEvent({
-        type: 'tool-rejected',
-        agent: pending.agentName,
-        tool: pending.toolName,
-        toolCallId: pending.toolCallId,
+        type: 'turn-error',
+        error: `Paused tool_call part not found (messageId=${pending.messageId}, partIndex=${pending.partIndex})`,
       })
+      return
+    }
+
+    if (opts.action === 'reject') {
+      const rejectionOutput = { rejected: true, reason: 'User declined the action' }
+      this.mutatePart(pending.messageId, pending.partIndex, (p) => {
+        const tc = p as ToolCallPart
+        tc.status = 'rejected'
+        tc.output = rejectionOutput
+      })
+      this.updateApprovalMessageStatus(pending.toolCallId, 'rejected')
       yield this.tagEvent({
-        type: 'tool-status-changed',
-        agent: pending.agentName,
-        tool: pending.toolName,
+        type: 'tool-call-status',
+        messageId: pending.messageId,
+        partIndex: pending.partIndex,
         toolCallId: pending.toolCallId,
+        agent: pending.agentName,
         status: 'rejected',
       })
-      const rejectionResult = { rejected: true, reason: 'User declined the action' }
       this.state = {
         ...this.state,
         waitingForApproval: false,
         pendingToolCall: undefined,
-        messages: [
-          ...this.state.messages,
-          pending.assistantMessage,
-          {
-            role: 'tool' as const,
-            content: JSON.stringify(rejectionResult),
-            toolCallId: pending.toolCallId,
-            timestamp: Date.now(),
-            metadata: { agent: pending.agentName, rejected: true },
-            toolStatus: 'rejected' as const,
-          },
-        ],
       }
     } else {
-      // Approve: execute the pending tool
       const agent = config.domainConfig.agents[pending.agentName]
       const tool = agent?.tools.find((t) => t.name === pending.toolName)
       if (!tool) {
@@ -359,9 +354,7 @@ export class AgentEngine {
         return
       }
 
-      // Validate input amendment against the tool's schema (when defined).
-      // Rejection here surfaces as a turn-error so the frontend can show a clear
-      // message rather than silently sending malformed data through to execute.
+      // Validate input amendment.
       if (opts.inputAmendment && tool.inputAmendmentSchema) {
         const parsed = tool.inputAmendmentSchema.safeParse(opts.inputAmendment)
         if (!parsed.success) {
@@ -390,11 +383,7 @@ export class AgentEngine {
         traceId: this.turnId ?? undefined,
       }
 
-      // Re-run input validation on the merged args. The pre-pause validator
-      // (in query-loop) already saw `pending.args`; an inputAmendment may have
-      // mutated fields it cared about, so we revalidate here. A failure at
-      // this point is surfaced as a tool error — the user already approved,
-      // so we cannot pause again; the LLM gets the error and retries.
+      // Re-run input validation on merged args.
       if (tool.validateInputs) {
         const v = await tool.validateInputs(finalArgs, ctx)
         if (!v.ok) {
@@ -403,37 +392,25 @@ export class AgentEngine {
             tool: pending.toolName,
             error: v.error,
           })
-          yield this.tagEvent({
-            type: 'tool-error',
-            agent: pending.agentName,
-            tool: pending.toolName,
-            toolCallId: pending.toolCallId,
-            error: v.error,
+          this.mutatePart(pending.messageId, pending.partIndex, (p) => {
+            const tc = p as ToolCallPart
+            tc.status = 'error'
+            tc.error = v.error
+            tc.args = finalArgs
+            if (opts.inputAmendment) tc.inputAmendment = opts.inputAmendment
           })
           yield this.tagEvent({
-            type: 'tool-status-changed',
-            agent: pending.agentName,
-            tool: pending.toolName,
+            type: 'tool-call-failed',
+            messageId: pending.messageId,
+            partIndex: pending.partIndex,
             toolCallId: pending.toolCallId,
-            status: 'error',
+            agent: pending.agentName,
+            error: v.error,
           })
           this.state = {
             ...this.state,
             waitingForApproval: false,
             pendingToolCall: undefined,
-            messages: [
-              ...this.state.messages,
-              pending.assistantMessage,
-              {
-                role: 'tool' as const,
-                content: JSON.stringify({ error: v.error, output: null }),
-                toolCallId: pending.toolCallId,
-                timestamp: Date.now(),
-                metadata: { agent: pending.agentName, validationError: true },
-                toolStatus: 'error' as const,
-                ...(opts.inputAmendment ? { inputAmendment: opts.inputAmendment } : {}),
-              },
-            ],
           }
           return
         }
@@ -446,53 +423,32 @@ export class AgentEngine {
         finalArgs = v.args
       }
 
-      yield this.tagEvent({
-        type: 'tool-started',
-        agent: pending.agentName,
-        tool: pending.toolName,
-        toolCallId: pending.toolCallId,
-        args: finalArgs,
+      // Switch the part to running so the UI can morph the approval card.
+      this.mutatePart(pending.messageId, pending.partIndex, (p) => {
+        const tc = p as ToolCallPart
+        tc.status = 'running'
+        tc.args = finalArgs
+        if (opts.inputAmendment) tc.inputAmendment = opts.inputAmendment
       })
-
-      // Notify the frontend that the approval card should switch from
-      // 'awaiting-approval' to 'executing' so the UI can morph in place.
+      this.updateApprovalMessageStatus(pending.toolCallId, 'approved')
       yield this.tagEvent({
-        type: 'tool-status-changed',
-        agent: pending.agentName,
-        tool: pending.toolName,
+        type: 'tool-call-status',
+        messageId: pending.messageId,
+        partIndex: pending.partIndex,
         toolCallId: pending.toolCallId,
-        status: 'executing',
+        agent: pending.agentName,
+        status: 'running',
       })
 
       try {
-        // Approval-required tools are usually buffered (a click → a single
-        // action). Streaming approval tools would need a `tool-progress`
-        // forwarder here; deferred until a real one lands.
         const result = await executeToolWithProgress(tool, finalArgs, ctx)
         const digest = result.success ? buildToolDigest(tool, result.output, logger) : undefined
-        yield this.tagEvent({
-          type: 'tool-completed',
-          agent: pending.agentName,
-          tool: pending.toolName,
-          toolCallId: pending.toolCallId,
-          result,
-          digest,
-        })
-        yield this.tagEvent({
-          type: 'tool-status-changed',
-          agent: pending.agentName,
-          tool: pending.toolName,
-          toolCallId: pending.toolCallId,
-          status: result.success ? 'completed' : 'error',
-          digest,
-        })
-        // Give the domain a chance to mine the post-approval result for snapshots.
+
+        // Domain state mining + transform.
         let postHookState = this.state
         if (result.success && config.domainConfig.onToolResult) {
           postHookState = config.domainConfig.onToolResult(pending.toolName, result, this.state)
         }
-        // Transform pass — rewrite the LLM-visible payload after state mining,
-        // before the tool message is built. Same contract as the live loop.
         let llmFacingResult = result
         if (result.success && config.domainConfig.transformToolResult) {
           const transformed = config.domainConfig.transformToolResult(
@@ -502,32 +458,49 @@ export class AgentEngine {
           )
           if (transformed) llmFacingResult = transformed
         }
-        const toolResultContent = JSON.stringify(
-          llmFacingResult.success
-            ? llmFacingResult.output
-            : { error: llmFacingResult.error ?? 'Unknown error', output: llmFacingResult.output }
-        )
+
+        this.state = postHookState
+
+        // Mutate the part in place.
+        this.mutatePart(pending.messageId, pending.partIndex, (p) => {
+          const tc = p as ToolCallPart
+          if (llmFacingResult.success) {
+            tc.status = 'completed'
+            tc.output = llmFacingResult.output
+            if (digest !== undefined) tc.digest = digest
+          } else {
+            tc.status = 'error'
+            tc.error = llmFacingResult.error ?? 'Unknown error'
+            tc.output = llmFacingResult.output
+          }
+        })
+
+        if (llmFacingResult.success) {
+          yield this.tagEvent({
+            type: 'tool-call-completed',
+            messageId: pending.messageId,
+            partIndex: pending.partIndex,
+            toolCallId: pending.toolCallId,
+            agent: pending.agentName,
+            output: llmFacingResult.output,
+            ...(digest !== undefined ? { digest } : {}),
+          })
+        } else {
+          yield this.tagEvent({
+            type: 'tool-call-failed',
+            messageId: pending.messageId,
+            partIndex: pending.partIndex,
+            toolCallId: pending.toolCallId,
+            agent: pending.agentName,
+            error: llmFacingResult.error ?? 'Unknown error',
+          })
+        }
+
         this.state = {
-          ...postHookState,
+          ...this.state,
           waitingForApproval: false,
           pendingToolCall: undefined,
           approvalsThisTurn: (this.state.approvalsThisTurn ?? 0) + 1,
-          messages: [
-            ...postHookState.messages,
-            pending.assistantMessage,
-            {
-              role: 'tool' as const,
-              content: toolResultContent,
-              toolCallId: pending.toolCallId,
-              timestamp: Date.now(),
-              metadata: { agent: pending.agentName, approved: true },
-              toolStatus: (llmFacingResult.success ? 'completed' : 'error') as
-                | 'completed'
-                | 'error',
-              ...(digest !== undefined ? { digest } : {}),
-              ...(opts.inputAmendment ? { inputAmendment: opts.inputAmendment } : {}),
-            },
-          ],
         }
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error)
@@ -536,42 +509,28 @@ export class AgentEngine {
           tool: pending.toolName,
           error: errorMessage,
         })
-        yield this.tagEvent({
-          type: 'tool-error',
-          agent: pending.agentName,
-          tool: pending.toolName,
-          toolCallId: pending.toolCallId,
-          error: errorMessage,
+        this.mutatePart(pending.messageId, pending.partIndex, (p) => {
+          const tc = p as ToolCallPart
+          tc.status = 'error'
+          tc.error = errorMessage
         })
         yield this.tagEvent({
-          type: 'tool-status-changed',
-          agent: pending.agentName,
-          tool: pending.toolName,
+          type: 'tool-call-failed',
+          messageId: pending.messageId,
+          partIndex: pending.partIndex,
           toolCallId: pending.toolCallId,
-          status: 'error',
+          agent: pending.agentName,
+          error: errorMessage,
         })
         this.state = {
           ...this.state,
           waitingForApproval: false,
           pendingToolCall: undefined,
-          messages: [
-            ...this.state.messages,
-            pending.assistantMessage,
-            {
-              role: 'tool' as const,
-              content: JSON.stringify({ error: errorMessage, output: null }),
-              toolCallId: pending.toolCallId,
-              timestamp: Date.now(),
-              metadata: { agent: pending.agentName, failed: true },
-              toolStatus: 'error' as const,
-              ...(opts.inputAmendment ? { inputAmendment: opts.inputAmendment } : {}),
-            },
-          ],
         }
       }
     }
 
-    // Enforce max-approvals cap before looping back into the same agent
+    // Enforce max-approvals cap.
     if ((this.state.approvalsThisTurn ?? 0) > budget.maxApprovalsPerTurn) {
       yield this.tagEvent({
         type: 'turn-error',
@@ -580,8 +539,10 @@ export class AgentEngine {
       return
     }
 
-    // Re-enter the SAME agent's query loop so it can request more approvals or
-    // wrap up with a final reply.
+    // Re-enter the SAME agent's query loop, telling it to continue appending
+    // parts to the paused message (same `messageId`, parts carried). The
+    // resumed loop emits `assistant-message-resumed` instead of `-started`,
+    // so the frontend keeps its existing bubble open.
     const agent = config.domainConfig.agents[pending.agentName]
     if (!agent) {
       yield this.tagEvent({
@@ -591,10 +552,26 @@ export class AgentEngine {
       return
     }
 
-    for await (const event of this.runAgentAndUpdateState(agent, config)) {
+    const pausedMsg = this.state.messages.find(
+      (m) => m.id === pending.messageId && m.role === 'assistant'
+    ) as AssistantSessionMessage | undefined
+    const resumeFrom: AgentQueryResumeHint | undefined = pausedMsg
+      ? {
+          messageId: pausedMsg.id,
+          parts: pausedMsg.parts,
+          turnUsage: pausedMsg.metadata?.usage ?? {
+            prompt_tokens: 0,
+            completion_tokens: 0,
+            total_tokens: 0,
+          },
+          iterations: pausedMsg.metadata?.iterations ?? [],
+        }
+      : undefined
+
+    for await (const event of this.runAgentAndUpdateState(agent, config, resumeFrom)) {
       yield event
       if (event.type === 'turn-error') return
-      if (event.type === 'llm-complete') {
+      if (event.type === 'assistant-message-finished' && event.usage) {
         this.accumulateUsage(event.usage)
         if (this.turnTokensUsed >= budget.maxTokensPerTurn) {
           yield this.tagEvent({
@@ -611,8 +588,8 @@ export class AgentEngine {
       return
     }
 
-    const legacyMessage = this.emitFinalMessageFromState()
-    if (legacyMessage) yield legacyMessage
+    this.sweepRunningToolParts('Turn ended before tool completed')
+
     yield this.tagEvent({
       type: 'turn-completed',
       route,
@@ -672,27 +649,18 @@ export class AgentEngine {
   }
 
   /**
-   * Emit the legacy `message` event for consumers that listen on it. Returns null
-   * if the final message was already delivered via `final-message` (the
-   * implicit-termination path in the query loop) so we don't double-fire.
-   */
-  private emitFinalMessageFromState(): AgentEvent | null {
-    const lastMessage = this.state.messages[this.state.messages.length - 1]
-    if (!lastMessage || lastMessage.role !== 'assistant' || !lastMessage.content) return null
-    if ((lastMessage.metadata as Record<string, unknown> | undefined)?.final === true) return null
-    return this.tagEvent({ type: 'message', role: 'assistant', content: lastMessage.content })
-  }
-
-  /**
    * Run a single agent, yield its events, and update this.state with the return value.
-   * Uses manual iteration to capture the generator's return value (AgentState).
+   * On resume after an approval pause, the engine passes `resumeFrom` so the
+   * agent loop continues appending parts to the existing message instead of
+   * minting a new one — see plan §5.6 ("same `messageId` across resume").
    */
   private async *runAgentAndUpdateState(
     agent: AgentDefinition,
-    config: AgentEngineConfig
+    config: AgentEngineConfig,
+    resumeFrom?: AgentQueryResumeHint
   ): AsyncGenerator<AgentEvent> {
     const depsTurnId = this.turnId ?? undefined
-    const gen = agentQueryLoop(agent, this.state, config, depsTurnId)
+    const gen = agentQueryLoop(agent, this.state, config, depsTurnId, resumeFrom)
 
     while (true) {
       const { value, done } = await gen.next()
@@ -704,5 +672,93 @@ export class AgentEngine {
       }
       yield this.tagEvent(value as AgentEvent)
     }
+  }
+
+  /**
+   * Locate the paused tool_call part by (messageId, partIndex). Returns
+   * `null` when the message isn't found or the part isn't a tool_call.
+   */
+  private findPendingPart(
+    messageId: string,
+    partIndex: number,
+    toolCallId: string
+  ): { msgIdx: number; part: ToolCallPart } | null {
+    const msgIdx = this.state.messages.findIndex((m) => m.id === messageId)
+    if (msgIdx === -1) return null
+    const msg = this.state.messages[msgIdx]
+    if (!msg || msg.role !== 'assistant') return null
+    const part = (msg as AssistantSessionMessage).parts[partIndex]
+    if (!part || part.type !== 'tool_call') return null
+    if (part.toolCallId !== toolCallId) return null
+    return { msgIdx, part }
+  }
+
+  /**
+   * Flip the persisted approval system message's `approval.status` so refresh
+   * shows the same state as the live session. Matched by `toolCallId` — the
+   * card lives as a sibling `system` message with `approval.toolCallId` equal
+   * to the tool_call part's id.
+   */
+  private updateApprovalMessageStatus(toolCallId: string, status: 'approved' | 'rejected'): void {
+    let dirty = false
+    const newMessages = this.state.messages.map((m) => {
+      if (m.role !== 'system') return m
+      const s = m as SystemSessionMessage
+      if (!s.approval || s.approval.toolCallId !== toolCallId) return m
+      if (s.approval.status === status) return m
+      dirty = true
+      return { ...s, approval: { ...s.approval, status } }
+    })
+    if (dirty) this.state = { ...this.state, messages: newMessages }
+  }
+
+  /**
+   * Immutably-ish mutate a single part on an assistant message. Replaces
+   * the message reference (and its parts array) so React refs / shallow
+   * comparisons notice the change.
+   */
+  private mutatePart(
+    messageId: string,
+    partIndex: number,
+    mutator: (part: ContentPart) => void
+  ): void {
+    const msgIdx = this.state.messages.findIndex((m) => m.id === messageId)
+    if (msgIdx === -1) return
+    const oldMsg = this.state.messages[msgIdx] as AssistantSessionMessage
+    const newParts = oldMsg.parts.map((p, i) => {
+      if (i !== partIndex) return p
+      const clone = { ...p }
+      mutator(clone)
+      return clone
+    })
+    const newMsg: AssistantSessionMessage = { ...oldMsg, parts: newParts }
+    this.state = {
+      ...this.state,
+      messages: this.state.messages.map((m, i) => (i === msgIdx ? newMsg : m)),
+    }
+  }
+
+  /**
+   * Flip any `running` tool_call parts to `error`. Defensive guard for abnormal
+   * exits (abort, connection drop). Per answers §C.2: one place to enforce
+   * the invariant.
+   */
+  private sweepRunningToolParts(reason: string): void {
+    let dirty = false
+    const newMessages = this.state.messages.map((m) => {
+      if (m.role !== 'assistant') return m
+      const a = m as AssistantSessionMessage
+      let msgDirty = false
+      const newParts = a.parts.map((p) => {
+        if (p.type === 'tool_call' && p.status === 'running') {
+          msgDirty = true
+          dirty = true
+          return { ...p, status: 'error' as const, error: reason }
+        }
+        return p
+      })
+      return msgDirty ? { ...a, parts: newParts } : a
+    })
+    if (dirty) this.state = { ...this.state, messages: newMessages }
   }
 }

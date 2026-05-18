@@ -168,49 +168,46 @@ async function processAgentMessageInternal(ctx: JobContext<AgentJobPayload>) {
       break
     }
 
-    // Accumulate usage from LLM completions for batch tracking
-    if (event.type === 'llm-complete') {
-      usageEntries.push({
-        organizationId,
-        userId,
-        provider: event.provider,
-        model: event.model,
-        usage: event.usage,
-        timestamp: new Date(),
-        source: 'agent',
-        sourceId: sessionId,
-        providerType: event.providerType as 'SYSTEM' | 'CUSTOM' | undefined,
-        credentialSource: event.credentialSource as
-          | 'SYSTEM'
-          | 'CUSTOM'
-          | 'MODEL_SPECIFIC'
-          | 'LOAD_BALANCED'
-          | undefined,
-        creditsUsed:
-          event.providerType === 'SYSTEM'
-            ? getModelCreditMultiplier(event.provider, event.model)
-            : 0,
-      })
+    // Per-LLM-call billing breakdown lives on `event.iterations` (one entry
+    // per agent iteration). Iterate to push one usage record per call with
+    // correct SYSTEM-vs-CUSTOM credit gating — BYOK customers consume no
+    // credits. Drain on both `paused` and `finished`: pre-pause iterations
+    // ride on `paused`, post-resume iterations on `finished`. Each event
+    // carries only segment-fresh iterations so no double-billing.
+    if (
+      (event.type === 'assistant-message-finished' || event.type === 'assistant-message-paused') &&
+      event.iterations?.length
+    ) {
+      for (const it of event.iterations) {
+        usageEntries.push({
+          organizationId,
+          userId,
+          provider: it.provider,
+          model: it.model,
+          usage: it.usage,
+          timestamp: new Date(),
+          source: 'agent',
+          sourceId: sessionId,
+          providerType: it.providerType,
+          credentialSource: it.credentialSource,
+          creditsUsed:
+            it.providerType === 'SYSTEM' ? getModelCreditMultiplier(it.provider, it.model) : 0,
+        })
+      }
     }
 
     await publisher.publish(event)
   }
 
-  // 7. Save final state to DB — strip reasoning_content to avoid bloating storage.
-  // It's ephemeral (only needed within the current tool-calling cycle) and providers
-  // re-strip or re-generate it on subsequent API calls anyway.
+  // 7. Save final state to DB. Strip `thinking` parts on stored messages
+  // except the most recent one — reasoning is turn-specific and the cached
+  // tail is enough for the next iteration to chain off.
   const finalState = engine.getState()
-  const messagesForStorage = finalState.messages.map((m) => {
-    if (m.reasoning_content) {
-      const { reasoning_content, ...rest } = m
-      return rest
-    }
-    return m
-  })
+  const messagesForStorage = stripStaleThinkingForStorage(finalState.messages)
   await saveSessionMessages({
     sessionId,
     organizationId,
-    messages: messagesForStorage as Record<string, unknown>[],
+    messages: messagesForStorage as unknown as Record<string, unknown>[],
   })
   await updateSessionDomainState({
     sessionId,
@@ -426,4 +423,21 @@ function asKind(value: unknown): TriggerKind | null {
   if (value === 'scheduled' || value === 'event' || value === 'app') return value
   if (value === 'mention' || value === 'assignment') return value
   return null
+}
+
+/**
+ * Strip `thinking` parts on every assistant message except the most recent
+ * with thinking. Cuts persisted storage size — reasoning is turn-specific
+ * and the tail is enough for the next iteration's chain-of-thought to land.
+ */
+function stripStaleThinkingForStorage(messages: SessionMessage[]): SessionMessage[] {
+  const lastIdx = messages.findLastIndex(
+    (m) => m.role === 'assistant' && m.parts.some((p) => p.type === 'thinking')
+  )
+  if (lastIdx === -1) return messages
+  return messages.map((m, i) => {
+    if (i >= lastIdx || m.role !== 'assistant') return m
+    if (!m.parts.some((p) => p.type === 'thinking')) return m
+    return { ...m, parts: m.parts.filter((p) => p.type !== 'thinking') }
+  })
 }

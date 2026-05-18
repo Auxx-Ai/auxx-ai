@@ -1,11 +1,10 @@
 // apps/web/src/components/kopilot/hooks/use-kopilot-sessions.ts
 
 import type { SelectOption } from '@auxx/types/custom-field'
-import { generateId } from '@auxx/utils/generateId'
 import { useMemo } from 'react'
 import { api } from '~/trpc/react'
-import type { KopilotMessage } from '../stores/kopilot-store'
-import { isExecutorAssistant, useKopilotStore } from '../stores/kopilot-store'
+import type { ContentPart, KopilotMessage } from '../stores/kopilot-store'
+import { useKopilotStore } from '../stores/kopilot-store'
 
 /**
  * Shared input for the listSessions query — used by the hook AND any code
@@ -47,6 +46,25 @@ export function useKopilotSessions() {
 }
 
 /**
+ * Persisted message shape — already in the parts-based content-block model.
+ * Projects directly onto KopilotMessage with no synthesis or reconstruction:
+ * assistant messages carry `parts[]`; user/system messages carry `content`;
+ * approval cards are their own system messages with `approval` data.
+ */
+interface PersistedMessage {
+  id: string
+  role: 'user' | 'assistant' | 'system'
+  content?: string
+  parts?: ContentPart[]
+  timestamp?: number
+  parentId?: string | null
+  metadata?: Record<string, unknown>
+  approval?: KopilotMessage['approval']
+  linkSnapshots?: KopilotMessage['linkSnapshots']
+  error?: string
+}
+
+/**
  * Load a session's messages into the kopilot store.
  * Returns a stable callback that fetches the session and sets messages.
  */
@@ -56,7 +74,6 @@ export function useLoadSession() {
   const setActiveSessionId = useKopilotStore((s) => s.setActiveSessionId)
   const setMessageFeedback = useKopilotStore((s) => s.setMessageFeedback)
   const setSelectedModelId = useKopilotStore((s) => s.setSelectedModelId)
-  const reconstructThinkingGroups = useKopilotStore((s) => s.reconstructThinkingGroups)
 
   return async (sessionId: string) => {
     setActiveSessionId(sessionId)
@@ -66,162 +83,24 @@ export function useLoadSession() {
     setSelectedModelId((data as any)?.modelId ?? null)
 
     if (data?.messages) {
-      const raw = data.messages as any[]
+      const raw = data.messages as PersistedMessage[]
 
-      // Build a lookup from toolCallId → { name, args } by scanning assistant message toolCalls
-      const toolCallLookup = new Map<string, { name: string; args: Record<string, unknown> }>()
-      for (const m of raw) {
-        if (m.role === 'assistant' && m.toolCalls) {
-          for (const tc of m.toolCalls) {
-            let args: Record<string, unknown> = {}
-            if (typeof tc.function?.arguments === 'string') {
-              try {
-                args = JSON.parse(tc.function.arguments)
-              } catch {
-                /* ignore */
-              }
-            } else if (tc.function?.arguments) {
-              args = tc.function.arguments
-            }
-            toolCallLookup.set(tc.id, { name: tc.function?.name ?? 'unknown', args })
-          }
-        }
-      }
+      // Persisted shape == render-ready shape. No filter, no reparent loop,
+      // no _pendingToolCall re-emit, no reconstructThinkingGroups.
+      const hydrated: KopilotMessage[] = raw.map((m, i) => ({
+        id: m.id,
+        role: m.role,
+        ...(m.content !== undefined ? { content: m.content } : {}),
+        ...(m.parts ? { parts: m.parts } : {}),
+        timestamp: m.timestamp ?? Date.now(),
+        parentId: m.parentId ?? (i > 0 ? (raw[i - 1]!.id ?? null) : null),
+        metadata: m.metadata as KopilotMessage['metadata'],
+        ...(m.approval ? { approval: m.approval } : {}),
+        ...(m.linkSnapshots ? { linkSnapshots: m.linkSnapshots } : {}),
+        ...(m.error ? { error: m.error } : {}),
+      }))
 
-      const messages = raw.flatMap((m, i): KopilotMessage[] => {
-        const id = m.toolCallId || `loaded-${i}`
-        const msg: KopilotMessage = {
-          id,
-          role: m.role,
-          content: m.content,
-          timestamp: m.timestamp || Date.now(),
-          parentId: m.parentId ?? (i > 0 ? raw[i - 1].toolCallId || `loaded-${i - 1}` : null),
-          metadata: m.metadata,
-          toolCalls: m.toolCalls,
-          ...(m.linkSnapshots ? { linkSnapshots: m.linkSnapshots } : {}),
-        }
-
-        // Reconstruct tool metadata for tool messages
-        if (m.role === 'tool' && m.toolCallId) {
-          const tc = toolCallLookup.get(m.toolCallId)
-          if (tc) {
-            let result: unknown
-            if (m.content) {
-              try {
-                result = JSON.parse(m.content)
-              } catch {
-                result = m.content
-              }
-            }
-            const status: 'running' | 'completed' | 'error' =
-              m.toolStatus === 'error'
-                ? 'error'
-                : m.toolStatus === 'rejected'
-                  ? 'completed'
-                  : 'completed'
-            msg.tool = {
-              name: tc.name,
-              callId: m.toolCallId,
-              args: tc.args,
-              result,
-              digest: m.digest,
-              status,
-            }
-          }
-        }
-
-        return [msg]
-      })
-      // Split: visible messages go to the store, all messages go to reconstruction.
-      // After filtering out executor assistant messages, reparent so the chain
-      // stays contiguous — each visible message's parent is the previous visible message.
-      const visibleMessages = messages.filter((m) => !isExecutorAssistant(m))
-
-      // Reconstruct the pending-approval state from persisted domainState. The
-      // engine no longer stores the assistant-with-tool_calls message in
-      // messages[] while paused (kept on _pendingToolCall.assistantMessage so
-      // the persisted array is always provider-valid), so we re-emit the
-      // assistant bubble here, followed by the approval card.
-      const domainState = (data as any).domainState as Record<string, unknown> | undefined
-      let approvalAnchorId: string | null = null
-      if (domainState?._waitingForApproval && domainState?._pendingToolCall) {
-        const ptc = domainState._pendingToolCall as {
-          toolCallId: string
-          toolName: string
-          agentName: string
-          args: Record<string, unknown>
-          assistantMessage?: {
-            content?: string
-            toolCalls?: unknown[]
-            reasoning_content?: string
-            timestamp?: number
-            metadata?: Record<string, unknown>
-          }
-        }
-
-        if (ptc.assistantMessage) {
-          const am = ptc.assistantMessage
-          const assistantBubble: KopilotMessage = {
-            id: generateId(),
-            role: 'assistant',
-            content: am.content ?? '',
-            timestamp: am.timestamp ?? Date.now(),
-            parentId:
-              visibleMessages.length > 0 ? visibleMessages[visibleMessages.length - 1]!.id : null,
-            metadata: am.metadata,
-            toolCalls: am.toolCalls as KopilotMessage['toolCalls'],
-          }
-          if (!isExecutorAssistant(assistantBubble)) {
-            visibleMessages.push(assistantBubble)
-          }
-        }
-
-        approvalAnchorId = generateId()
-        visibleMessages.push({
-          id: approvalAnchorId,
-          role: 'system',
-          content: `Approval needed: ${ptc.toolName}`,
-          timestamp: Date.now(),
-          parentId:
-            visibleMessages.length > 0 ? visibleMessages[visibleMessages.length - 1]!.id : null,
-          approval: {
-            toolName: ptc.toolName,
-            toolCallId: ptc.toolCallId,
-            args: ptc.args ?? {},
-            status: 'pending',
-          },
-        })
-      }
-
-      for (let i = 0; i < visibleMessages.length; i++) {
-        visibleMessages[i] = {
-          ...visibleMessages[i]!,
-          parentId: i > 0 ? visibleMessages[i - 1]!.id : null,
-        }
-      }
-      setMessages(visibleMessages)
-
-      // Reconstruct from the raw persisted list (which still includes executor
-      // assistants — they carry the thinking text). When the turn paused at an
-      // approval gate, append a synthetic non-executor assistant marker
-      // carrying the approval bubble's id so the in-flight thinking group
-      // attaches to it; the message-list then renders the pill above the
-      // approval card.
-      const messagesForReconstruction =
-        approvalAnchorId !== null
-          ? [
-              ...messages,
-              {
-                id: approvalAnchorId,
-                role: 'assistant',
-                content: '',
-                timestamp: Date.now(),
-                parentId: null,
-                metadata: { final: true },
-              } satisfies KopilotMessage,
-            ]
-          : messages
-      reconstructThinkingGroups(messagesForReconstruction)
+      setMessages(hydrated)
 
       // Hydrate feedback from server
       const feedbackMap = await utils.kopilot.getSessionFeedback.fetch({ sessionId })

@@ -26,13 +26,16 @@ export interface CaptureExecResult extends ToolExecResult {
  * Capture-mode tool dispatcher. For each tool call in order:
  * - Approval-required → call `captureMint(args)` (or fall back to a placeholder),
  *   record a `CapturedAction`, and synthesize a `_captured: true` tool result
- *   message so the conversation history stays valid for subsequent turns AND
+ *   so the conversation history stays valid for subsequent turns AND
  *   the model can reference predicted IDs in chained captured calls.
  * - Non-approval → execute normally, identical semantics to `executeToolCalls`.
  *
- * `localIndex` is monotonic across the entire engine run (continues from the
- * length of the existing `capturedActions` list passed in), so chained captured
- * calls in a multi-turn capture run never collide on temp IDs.
+ * Events emitted here use the new message-scoped variants (`tool-call-started`,
+ * `tool-call-completed`, `tool-call-failed`). `messageId` / `partIndex` are
+ * placeholders (`''` / `-1`) — `query-loop` patches them in based on the
+ * tool call index in `toolCalls[]` before forwarding to the consumer.
+ *
+ * `localIndex` is monotonic across the entire engine run.
  */
 export async function processCaptureToolCalls(
   toolCalls: ToolCall[],
@@ -60,21 +63,9 @@ export async function processCaptureToolCalls(
     if (transformInput) args = transformInput(toolName, args)
 
     if (!tool) {
-      events.push({
-        type: 'tool-started',
-        agent: agentName,
-        tool: toolName,
-        toolCallId: toolCall.id,
-        args,
-      })
+      events.push(toolStartedEvent(toolCall.id, toolName, agentName, args))
       const errorMsg = `Unknown tool: ${toolName}`
-      events.push({
-        type: 'tool-error',
-        agent: agentName,
-        tool: toolName,
-        toolCallId: toolCall.id,
-        error: errorMsg,
-      })
+      events.push(toolFailedEvent(toolCall.id, agentName, errorMsg))
       results.push({
         toolCallId: toolCall.id,
         toolName,
@@ -87,26 +78,12 @@ export async function processCaptureToolCalls(
     }
 
     if (needsApproval(tool, args)) {
-      // Validate required params first. Capture should reflect "intent to
-      // execute on approval" — bad args wouldn't execute regardless, so we
-      // emit a tool-error result and let the model retry instead of capturing.
+      // Validate required params first.
       const missing = validateRequiredParams(tool, args)
       if (missing.length > 0) {
         const errMsg = `Missing required parameters: ${missing.join(', ')}. Please provide all required parameters.`
-        events.push({
-          type: 'tool-started',
-          agent: agentName,
-          tool: toolName,
-          toolCallId: toolCall.id,
-          args,
-        })
-        events.push({
-          type: 'tool-error',
-          agent: agentName,
-          tool: toolName,
-          toolCallId: toolCall.id,
-          error: errMsg,
-        })
+        events.push(toolStartedEvent(toolCall.id, toolName, agentName, args))
+        events.push(toolFailedEvent(toolCall.id, agentName, errMsg))
         results.push({
           toolCallId: toolCall.id,
           toolName,
@@ -118,27 +95,11 @@ export async function processCaptureToolCalls(
         continue
       }
 
-      // Same input-validation pass as pause mode. Capture mints a synthetic
-      // result the model chains on — running the tool-defined validator
-      // here keeps the captured args in canonical form so apply-time has
-      // less reshape work to do.
       if (tool.validateInputs) {
         const v = await tool.validateInputs(args, ctx)
         if (!v.ok) {
-          events.push({
-            type: 'tool-started',
-            agent: agentName,
-            tool: toolName,
-            toolCallId: toolCall.id,
-            args,
-          })
-          events.push({
-            type: 'tool-error',
-            agent: agentName,
-            tool: toolName,
-            toolCallId: toolCall.id,
-            error: v.error,
-          })
+          events.push(toolStartedEvent(toolCall.id, toolName, agentName, args))
+          events.push(toolFailedEvent(toolCall.id, agentName, v.error))
           logger.info('validateInputs rejected (capture, approval-required)', {
             agent: agentName,
             tool: toolName,
@@ -194,19 +155,15 @@ export async function processCaptureToolCalls(
         predictedOutput,
       })
 
+      events.push(toolStartedEvent(toolCall.id, toolName, agentName, args))
       events.push({
-        type: 'tool-started',
-        agent: agentName,
-        tool: toolName,
+        type: 'tool-call-completed',
+        messageId: '',
+        partIndex: -1,
         toolCallId: toolCall.id,
-        args,
-      })
-      events.push({
-        type: 'tool-completed',
         agent: agentName,
-        tool: toolName,
-        toolCallId: toolCall.id,
-        result: { success: true, output: predictedOutput },
+        output: predictedOutput,
+        captured: true,
       })
       logger.info('Tool captured (no execute)', {
         agent: agentName,
@@ -225,24 +182,12 @@ export async function processCaptureToolCalls(
       continue
     }
 
-    // Non-approval tool — execute normally, mirroring executeToolCalls.
+    // Non-approval tool — execute normally.
     if (tool.validateInputs) {
       const v = await tool.validateInputs(args, ctx)
       if (!v.ok) {
-        events.push({
-          type: 'tool-started',
-          agent: agentName,
-          tool: toolName,
-          toolCallId: toolCall.id,
-          args,
-        })
-        events.push({
-          type: 'tool-completed',
-          agent: agentName,
-          tool: toolName,
-          toolCallId: toolCall.id,
-          result: { success: false, output: null, error: v.error },
-        })
+        events.push(toolStartedEvent(toolCall.id, toolName, agentName, args))
+        events.push(toolFailedEvent(toolCall.id, agentName, v.error))
         logger.info('validateInputs rejected (capture, non-approval)', {
           agent: agentName,
           tool: toolName,
@@ -272,25 +217,20 @@ export async function processCaptureToolCalls(
     if (cacheKey) {
       const cached = idempotentCache.get(cacheKey)
       if (cached) {
-        events.push({
-          type: 'tool-started',
-          agent: agentName,
-          tool: toolName,
-          toolCallId: toolCall.id,
-          args,
-        })
-        events.push({
-          type: 'tool-completed',
-          agent: agentName,
-          tool: toolName,
-          toolCallId: toolCall.id,
-          result: {
-            success: cached.success,
+        events.push(toolStartedEvent(toolCall.id, toolName, agentName, args))
+        if (cached.success) {
+          events.push({
+            type: 'tool-call-completed',
+            messageId: '',
+            partIndex: -1,
+            toolCallId: toolCall.id,
+            agent: agentName,
             output: cached.output,
-            error: cached.error,
-          },
-          digest: cached.digest,
-        })
+            ...(cached.digest !== undefined ? { digest: cached.digest } : {}),
+          })
+        } else {
+          events.push(toolFailedEvent(toolCall.id, agentName, cached.error ?? 'Unknown error'))
+        }
         results.push({
           toolCallId: toolCall.id,
           toolName,
@@ -304,28 +244,26 @@ export async function processCaptureToolCalls(
       }
     }
 
-    events.push({
-      type: 'tool-started',
-      agent: agentName,
-      tool: toolName,
-      toolCallId: toolCall.id,
-      args,
-    })
+    events.push(toolStartedEvent(toolCall.id, toolName, agentName, args))
 
     try {
-      // Capture mode is the headless / autonomous path — there's no chat
-      // consumer for `tool-progress` events, so we silently drain streaming
-      // tools via `executeToolWithProgress` without a progress callback.
+      // Capture mode is the headless / autonomous path — silently drain
+      // streaming tools (no progress consumer).
       const result = await executeToolWithProgress(tool, args, ctx)
       const digest = result.success ? buildToolDigest(tool, result.output, logger) : undefined
-      events.push({
-        type: 'tool-completed',
-        agent: agentName,
-        tool: toolName,
-        toolCallId: toolCall.id,
-        result,
-        digest,
-      })
+      if (result.success) {
+        events.push({
+          type: 'tool-call-completed',
+          messageId: '',
+          partIndex: -1,
+          toolCallId: toolCall.id,
+          agent: agentName,
+          output: result.output,
+          ...(digest !== undefined ? { digest } : {}),
+        })
+      } else {
+        events.push(toolFailedEvent(toolCall.id, agentName, result.error ?? 'Unknown error'))
+      }
       logger.info('Tool result (capture)', {
         agent: agentName,
         tool: toolName,
@@ -346,13 +284,7 @@ export async function processCaptureToolCalls(
       if (cacheKey && result.success) idempotentCache.set(cacheKey, execResult)
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error)
-      events.push({
-        type: 'tool-error',
-        agent: agentName,
-        tool: toolName,
-        toolCallId: toolCall.id,
-        error: errorMsg,
-      })
+      events.push(toolFailedEvent(toolCall.id, agentName, errorMsg))
       results.push({
         toolCallId: toolCall.id,
         toolName,
@@ -365,6 +297,34 @@ export async function processCaptureToolCalls(
   }
 
   return { events, results, capturedActions }
+}
+
+function toolStartedEvent(
+  toolCallId: string,
+  name: string,
+  agentName: string,
+  args: Record<string, unknown>
+): AgentEvent {
+  return {
+    type: 'tool-call-started',
+    messageId: '',
+    partIndex: -1,
+    toolCallId,
+    name,
+    agent: agentName,
+    args,
+  }
+}
+
+function toolFailedEvent(toolCallId: string, agentName: string, error: string): AgentEvent {
+  return {
+    type: 'tool-call-failed',
+    messageId: '',
+    partIndex: -1,
+    toolCallId,
+    agent: agentName,
+    error,
+  }
 }
 
 function safeSummary(tool: AgentToolDefinition, args: Record<string, unknown>): string {

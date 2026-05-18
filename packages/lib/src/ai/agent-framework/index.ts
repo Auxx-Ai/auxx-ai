@@ -2,7 +2,11 @@
 
 export { BUILDER_MODEL } from './builder-model'
 export type { ContextManagerConfig } from './context-manager'
-export { estimateMessageTokens, manageContext } from './context-manager'
+export {
+  estimateMessageTokens,
+  manageContext,
+  stripStaleThinkingParts,
+} from './context-manager'
 export { AgentEngine } from './engine'
 export type { AgentJobPayload } from './enqueue-agent-job'
 export { enqueueAgentJob } from './enqueue-agent-job'
@@ -31,11 +35,22 @@ export type {
   AgentState,
   AgentToolDefinition,
   AgentToolResult,
+  AssistantMessageMetadata,
+  AssistantSessionMessage,
   CapturedAction,
+  ContentPart,
   LLMCallParams,
   LLMStreamEvent,
   PendingToolCall,
   ResumeOptions,
   Route,
   SessionMessage,
+  SystemSessionMessage,
+  TextPart,
+  ThinkingPart,
+  ToolCallPart,
+  ToolCallStatus,
+  UserSessionMessage,
 } from './types'
+
+export { partsToWireFormat, sessionMessagesToWire } from './utils'
