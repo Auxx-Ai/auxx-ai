@@ -18,7 +18,7 @@ export const HeroIllustration = () => {
 
   return (
     <>
-      <div className='@container perspective-dramatic pb-20 lg:pb-32'>
+      <div className='@container perspective-dramatic overflow-x-clip pb-20 lg:pb-32'>
         <div className='rotate-x-[0.125deg] before:z-1 before:bg-linear-to-b relative mx-auto max-w-6xl px-3 before:absolute before:inset-0 before:inset-x-4 before:top-0 before:rounded-2xl before:from-blue-950 before:opacity-20 before:mix-blend-color lg:px-12 lg:before:inset-x-12'>
           <div className='bg-linear-to-b from-foreground rotate-66 absolute inset-0 z-10 mx-auto w-8 -translate-y-44 rounded-full opacity-5 blur-xl' />
           <div className='bg-linear-to-b from-foreground rotate-66 absolute inset-0 z-10 mx-auto w-16 -translate-y-32 translate-x-44 rounded-full opacity-20 blur-2xl' />
