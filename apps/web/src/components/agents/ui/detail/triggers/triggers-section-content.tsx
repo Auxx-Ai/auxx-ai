@@ -18,10 +18,10 @@ import { TriggerLabel } from './trigger-label'
 
 type Trigger = RouterOutputs['agentTrigger']['list'][number]
 
-type TriggerKind = 'scheduled' | 'event' | 'app' | 'mention' | 'assignment'
-type BuiltinKind = 'mention' | 'assignment'
+type TriggerKind = 'scheduled' | 'event' | 'app' | 'mention' | 'assignment' | 'dm'
+type BuiltinKind = 'mention' | 'assignment' | 'dm'
 
-const BUILTIN_KINDS: BuiltinKind[] = ['mention', 'assignment']
+const BUILTIN_KINDS: BuiltinKind[] = ['mention', 'assignment', 'dm']
 
 const KIND_META: Record<
   TriggerKind,
@@ -41,6 +41,12 @@ const KIND_META: Record<
     iconId: 'user-plus',
     color: 'sky',
     description: 'Fires whenever this agent is assigned to a ticket.',
+  },
+  dm: {
+    label: 'Direct message',
+    iconId: 'message-circle',
+    color: 'rose',
+    description: 'Fires whenever a user direct-messages this agent.',
   },
 }
 
@@ -93,11 +99,14 @@ export function TriggersSectionContent({
   const builtinByKind: Record<BuiltinKind, Trigger | undefined> = {
     mention: rows.find((r) => r.kind === 'mention'),
     assignment: rows.find((r) => r.kind === 'assignment'),
+    dm: rows.find((r) => r.kind === 'dm'),
   }
-  const customRows = rows.filter((r) => r.kind !== 'mention' && r.kind !== 'assignment')
+  const customRows = rows.filter(
+    (r) => r.kind !== 'mention' && r.kind !== 'assignment' && r.kind !== 'dm'
+  )
 
   const isDialogOpen = !!addingKind || !!editingTrigger || !!creatingBuiltinKind
-  const dialogKind: 'scheduled' | 'event' | 'mention' | 'assignment' =
+  const dialogKind: 'scheduled' | 'event' | 'mention' | 'assignment' | 'dm' =
     editingTrigger?.kind === 'event'
       ? 'event'
       : editingTrigger?.kind === 'scheduled'
@@ -106,7 +115,9 @@ export function TriggersSectionContent({
           ? 'mention'
           : editingTrigger?.kind === 'assignment'
             ? 'assignment'
-            : (creatingBuiltinKind ?? addingKind ?? 'scheduled')
+            : editingTrigger?.kind === 'dm'
+              ? 'dm'
+              : (creatingBuiltinKind ?? addingKind ?? 'scheduled')
 
   const handleDialogOpenChange = (open: boolean) => {
     if (open) return

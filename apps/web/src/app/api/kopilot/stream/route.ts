@@ -1,7 +1,7 @@
 // apps/web/src/app/api/kopilot/stream/route.ts
 
 import { database as db } from '@auxx/database'
-import { filterToolsByToolsets, resolveAgentConfig } from '@auxx/lib/agents'
+import { buildDmTriggerContext, filterToolsByToolsets, resolveAgentConfig } from '@auxx/lib/agents'
 import { type UsageTrackingRequest, UsageTrackingService } from '@auxx/lib/ai'
 import {
   AgentEngine,
@@ -14,6 +14,7 @@ import {
   subscribeToAgentEvents,
   withAgentRunLog,
 } from '@auxx/lib/ai/agent-framework'
+import type { TriggerContext } from '@auxx/lib/ai/kopilot'
 import {
   createActorCapabilities,
   createAgentsBuilderCapabilities,
@@ -32,7 +33,10 @@ import {
 } from '@auxx/lib/ai/kopilot'
 import { createToolDepsFactory } from '@auxx/lib/ai/kopilot/capabilities'
 import { getModelCreditMultiplier } from '@auxx/lib/ai/quota'
+import { getCachedAgentById } from '@auxx/lib/cache'
+import { ForbiddenError } from '@auxx/lib/errors'
 import { FeatureKey, FeaturePermissionService } from '@auxx/lib/permissions'
+import { docToText } from '@auxx/lib/tiptap'
 import { createScopedLogger } from '@auxx/logger'
 import {
   createSession,
@@ -52,6 +56,21 @@ interface SessionRefLike {
   kind?: string
   id?: string
   origin?: string
+}
+
+/**
+ * Convert the DM trigger's Tiptap instructions doc into plain text for the
+ * system prompt. Mirrors the worker-path conversion in
+ * `process-agent-job.ts:resolveTriggerContext` but kept inline to avoid
+ * pulling the heavier reference-resolver dependency on every DM send.
+ */
+function renderDmInstructions(instructions: Record<string, unknown> | null): string | null {
+  if (!instructions) return null
+  if (typeof instructions === 'string') {
+    return instructions.length > 0 ? instructions : null
+  }
+  const text = docToText(instructions, {})
+  return text.length > 0 ? text : null
 }
 
 /**
@@ -93,6 +112,13 @@ interface KopilotStreamRequest {
    * Ignored when sessionId is provided (existing session keeps its type).
    */
   sessionType?: 'kopilot' | 'builder'
+  /**
+   * Trigger discriminator for the run. 'dm' means the request originated
+   * from the agent Chat tab or the composer sender picker; the route
+   * resolves the agent's `dm` AgentTrigger gating (enabled? instructions?)
+   * and layers the DM trigger-instructions slot into the system prompt.
+   */
+  triggerKind?: 'dm'
 }
 
 /**
@@ -194,6 +220,11 @@ export async function POST(request: NextRequest) {
         let storedModelId: string | null = null
         let sessionAgentId: string | null = null
         let sessionType: 'kopilot' | 'builder' = 'kopilot'
+        let resolvedPage: string | undefined = page
+        // Computed when body.triggerKind === 'dm'. Threaded to the engine so the
+        // system prompt's trigger-instructions slot renders. Gate is re-run on
+        // every send so disabling DM mid-thread surfaces a 403.
+        let inProcessTriggerContext: TriggerContext | undefined
 
         if (sessionId) {
           const sessionResult = await getSessionById({ sessionId, organizationId })
@@ -211,12 +242,50 @@ export async function POST(request: NextRequest) {
           const placeholderTitle = message.slice(0, 100)
           sessionAgentId = body.agentId ?? null
           sessionType = body.sessionType ?? 'kopilot'
+
+          // DM sessions get tagged with the dm AgentTrigger + a triggerContext
+          // payload so the worker path (`resolveTriggerContext`) can recover
+          // the DM kind on subsequent sends without re-reading the agent.
+          let createAgentTriggerId: string | null = null
+          let createTriggerContext: Record<string, unknown> | null = null
+          if (body.triggerKind === 'dm' && sessionAgentId) {
+            const cachedAgent = await getCachedAgentById(organizationId, sessionAgentId)
+            if (!cachedAgent) {
+              send({ type: 'turn-error', error: 'Agent not found', code: 'not_found' })
+              cleanup()
+              return
+            }
+            try {
+              const dm = buildDmTriggerContext({ agent: cachedAgent })
+              createAgentTriggerId = dm.triggerContext.triggerId
+              createTriggerContext = {
+                kind: dm.triggerContext.kind,
+                firedAt: dm.triggerContext.firedAt,
+              }
+              inProcessTriggerContext = {
+                kind: 'dm',
+                instructions: renderDmInstructions(dm.triggerInstructions),
+                payload: { firedAt: dm.triggerContext.firedAt },
+              }
+              resolvedPage = 'agents.dm'
+            } catch (err) {
+              if (err instanceof ForbiddenError) {
+                send({ type: 'turn-error', error: err.message, code: 'forbidden' })
+                cleanup()
+                return
+              }
+              throw err
+            }
+          }
+
           const createResult = await createSession({
             organizationId,
             userId,
             type: sessionType,
             title: placeholderTitle,
             agentId: sessionAgentId,
+            agentTriggerId: createAgentTriggerId,
+            triggerContext: createTriggerContext,
           })
           if (createResult.isErr()) {
             send({ type: 'error', error: createResult.error.message })
@@ -232,6 +301,33 @@ export async function POST(request: NextRequest) {
             title: placeholderTitle,
             createdAt: createResult.value.createdAt.toISOString(),
           })
+        }
+
+        // Existing-session DM gate: re-resolve the cached agent on every send
+        // so disabling DM mid-thread surfaces a fresh 403, not a stale OK.
+        if (body.triggerKind === 'dm' && sessionAgentId && !inProcessTriggerContext) {
+          const cachedAgent = await getCachedAgentById(organizationId, sessionAgentId)
+          if (!cachedAgent) {
+            send({ type: 'turn-error', error: 'Agent not found', code: 'not_found' })
+            cleanup()
+            return
+          }
+          try {
+            const dm = buildDmTriggerContext({ agent: cachedAgent })
+            inProcessTriggerContext = {
+              kind: 'dm',
+              instructions: renderDmInstructions(dm.triggerInstructions),
+              payload: { firedAt: dm.triggerContext.firedAt },
+            }
+            resolvedPage = 'agents.dm'
+          } catch (err) {
+            if (err instanceof ForbiddenError) {
+              send({ type: 'turn-error', error: err.message, code: 'forbidden' })
+              cleanup()
+              return
+            }
+            throw err
+          }
         }
 
         logger.info('Kopilot turn context', {
@@ -255,13 +351,14 @@ export async function POST(request: NextRequest) {
                 userId,
                 message,
                 type,
-                page,
+                page: resolvedPage,
                 context,
                 approvalAction: body.approvalAction,
                 inputAmendment: body.inputAmendment,
                 modelId: body.modelId,
                 agentId: sessionAgentId,
                 sessionType,
+                triggerKind: body.triggerKind,
                 send,
                 cleanup,
                 request,
@@ -273,13 +370,14 @@ export async function POST(request: NextRequest) {
                 userId,
                 message,
                 type,
-                page,
+                page: resolvedPage,
                 context,
                 approvalAction: body.approvalAction,
                 inputAmendment: body.inputAmendment,
                 modelId: body.modelId,
                 agentId: sessionAgentId,
                 sessionType,
+                triggerContext: inProcessTriggerContext,
                 savedMessages,
                 savedDomainState,
                 storedModelId,
@@ -378,6 +476,7 @@ async function runInProcessPath(params: {
   modelId?: string
   agentId: string | null
   sessionType: 'kopilot' | 'builder'
+  triggerContext?: TriggerContext
   savedMessages: Record<string, unknown>[]
   savedDomainState: Record<string, unknown>
   storedModelId: string | null
@@ -398,6 +497,7 @@ async function runInProcessPath(params: {
     modelId,
     agentId,
     sessionType,
+    triggerContext,
     savedMessages,
     savedDomainState,
     storedModelId,
@@ -544,6 +644,7 @@ async function runInProcessPath(params: {
     defaultProvider,
     maxIterations: 30,
     agentConfig,
+    triggerContext,
   })
 
   // Create LLM adapter
@@ -697,6 +798,13 @@ async function runWorkerPath(params: {
   modelId?: string
   agentId: string | null
   sessionType: 'kopilot' | 'builder'
+  /**
+   * Set when the request originated from the agent Chat tab or composer
+   * sender picker. The worker re-resolves the trigger context from the
+   * session's `agentTriggerId` (set at session-create time for DM); this
+   * field is forwarded mainly for downstream analytics / future routing.
+   */
+  triggerKind?: 'dm'
   send: (event: AgentEvent | { type: string; [key: string]: unknown }) => void
   cleanup: () => void
   request: NextRequest
@@ -741,7 +849,10 @@ async function runWorkerPath(params: {
     resolveCompletion()
   })
 
-  // 2. Enqueue the job
+  // 2. Enqueue the job. The worker reads `agentTriggerId` off the session
+  // row (set at session-create time for DM), so the job payload doesn't
+  // need to carry the trigger id explicitly — `triggerKind` is forwarded
+  // for analytics and future routing only.
   await enqueueAgentJob({
     sessionId,
     organizationId,
@@ -755,6 +866,7 @@ async function runWorkerPath(params: {
     inputAmendment: params.inputAmendment,
     modelId: params.modelId,
     agentId: params.agentId,
+    triggerKind: params.triggerKind,
   })
 
   // 3. Wait for terminal event or disconnect

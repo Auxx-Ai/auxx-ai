@@ -3,6 +3,7 @@
 import { database, schema } from '@auxx/database'
 import { type AgentTriggerInput, AgentTriggerService, agentExistsInOrg } from '@auxx/lib/agents'
 import { enqueueAgentJob } from '@auxx/lib/ai/agent-framework'
+import { onCacheEvent } from '@auxx/lib/cache'
 import { createScopedLogger } from '@auxx/logger'
 import { createSession } from '@auxx/services'
 import { TRPCError } from '@trpc/server'
@@ -56,6 +57,7 @@ const appInputSchema = z.object({
 
 const mentionInputSchema = z.object({ kind: z.literal('mention') })
 const assignmentInputSchema = z.object({ kind: z.literal('assignment') })
+const dmInputSchema = z.object({ kind: z.literal('dm') })
 
 const triggerInputSchema = z.union([
   scheduledInputSchema,
@@ -63,6 +65,7 @@ const triggerInputSchema = z.union([
   appInputSchema,
   mentionInputSchema,
   assignmentInputSchema,
+  dmInputSchema,
 ])
 
 async function ensureAgentInOrg(organizationId: string, agentId: string): Promise<void> {
@@ -128,6 +131,12 @@ export const agentTriggerRouter = createTRPCRouter({
         trigger: input.trigger as AgentTriggerInput,
       })
 
+      // DM state lives on the cached agent — invalidate so subsequent
+      // sends pick up the new enabled/instructions/triggerId.
+      if (row.kind === 'dm') {
+        await onCacheEvent('agent.updated', { orgId: organizationId })
+      }
+
       logger.info('Agent trigger created', {
         organizationId,
         agentId: input.agentId,
@@ -154,6 +163,9 @@ export const agentTriggerRouter = createTRPCRouter({
         instructions: input.instructions,
         trigger: input.trigger as AgentTriggerInput | undefined,
       })
+      if (row.kind === 'dm') {
+        await onCacheEvent('agent.updated', { orgId: organizationId })
+      }
       return rowToDto(row)
     }),
 
@@ -161,7 +173,12 @@ export const agentTriggerRouter = createTRPCRouter({
     .input(z.object({ id: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
-      await new AgentTriggerService().deleteTrigger(input.id, organizationId)
+      const service = new AgentTriggerService()
+      const existing = await service.getTrigger(input.id, organizationId)
+      await service.deleteTrigger(input.id, organizationId)
+      if (existing?.kind === 'dm') {
+        await onCacheEvent('agent.updated', { orgId: organizationId })
+      }
       return { ok: true as const }
     }),
 

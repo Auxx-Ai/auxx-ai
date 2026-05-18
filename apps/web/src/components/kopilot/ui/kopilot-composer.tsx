@@ -6,11 +6,15 @@ import { ModelType } from '@auxx/lib/ai/providers/types'
 import type { DocJSON } from '@auxx/lib/kb/markdown'
 import type { PromptTemplateItem } from '@auxx/lib/prompt-templates'
 import { docToText } from '@auxx/lib/tiptap'
+import { type ActorId, parseActorId } from '@auxx/types/actor'
+import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
 import { Button } from '@auxx/ui/components/button'
+import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { cn } from '@auxx/ui/lib/utils'
 import { generateId } from '@auxx/utils/generateId'
+import { Extension } from '@tiptap/core'
 import { EditorContent } from '@tiptap/react'
-import { CornerDownLeft, Send, SquareSlash, X } from 'lucide-react'
+import { Bot, ChevronsUpDown, CornerDownLeft, Send, SquareSlash, X } from 'lucide-react'
 import { useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
 import {
   createPromptNode,
@@ -22,11 +26,13 @@ import {
 } from '~/components/editor/inline-picker'
 import { SubmitOnEnter } from '~/components/global/comments/comment-composer'
 import { Tooltip } from '~/components/global/tooltip'
+import { ActorPickerContent } from '~/components/pickers/actor-picker/actor-picker-content'
 import { AiModelPicker, type ModelPickerItem } from '~/components/pickers/ai-model-picker'
 import {
   ReferencePickerContent,
   type ReferencePickerHandle,
 } from '~/components/pickers/reference-picker/reference-picker-content'
+import { useActor } from '~/components/resources/hooks/use-actor'
 import { api } from '~/trpc/react'
 import { KopilotContextChipStrip } from '../context/kopilot-context-chip-strip'
 import type { SessionRef, SessionRefKind } from '../context/types'
@@ -133,15 +139,48 @@ function formatPromptBadgesForDisplay(
   })
 }
 
+interface SenderHotkeyOptions {
+  /**
+   * Called when `#` (Shift+3) is pressed. Return `true` to consume the
+   * keystroke (the `#` character is not inserted). Return `false` to let
+   * the character pass through to normal text input — used in the locked
+   * state where the session is pinned to one agent.
+   */
+  onTrigger: () => boolean
+}
+
+/**
+ * Tiptap extension that intercepts `#` (Shift+3) to open the composer's
+ * sender picker. Mirrors the slash-command picker's `/` hotkey but
+ * targets a different surface — see plans/kopilot/agents/dm/plan.md.
+ */
+const SenderHotkey = Extension.create<SenderHotkeyOptions>({
+  name: 'senderHotkey',
+  addOptions() {
+    return { onTrigger: () => false }
+  },
+  addKeyboardShortcuts() {
+    return {
+      'Shift-3': () => this.options.onTrigger(),
+    }
+  },
+})
+
 export function KopilotComposer({ ref, page, onSend, contentClassName }: KopilotComposerProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const handleSendRef = useRef<() => void>(() => {})
 
-  const { placeholder, allowModelPicker, allowSlashCommands, allowReferencePicker } =
-    useKopilotChatOptions()
+  const {
+    placeholder,
+    allowModelPicker,
+    allowSenderPicker,
+    allowSlashCommands,
+    allowReferencePicker,
+  } = useKopilotChatOptions()
 
   const isStreaming = useKopilotStore((s) => s.isStreaming)
   const activeSessionId = useKopilotStore((s) => s.activeSessionId)
+  const activeSessionAgentId = useKopilotStore((s) => s.activeSessionAgentId)
   const addMessage = useKopilotStore((s) => s.addMessage)
   const messages = useKopilotStore((s) => s.messages)
   const editingMessageId = useKopilotStore((s) => s.editingMessageId)
@@ -149,6 +188,17 @@ export function KopilotComposer({ ref, page, onSend, contentClassName }: Kopilot
   const messageMap = useKopilotStore((s) => s.messageMap)
   const selectedModelId = useKopilotStore((s) => s.selectedModelId)
   const setSelectedModelId = useKopilotStore((s) => s.setSelectedModelId)
+
+  // Sender picker — pre-send selection (post-send, the active session's
+  // agentId locks the chip). Master Kopilot only; the agent Chat tab / Build
+  // tab opt out via `allowSenderPicker: false`.
+  const [selectedAgentActorId, setSelectedAgentActorId] = useState<ActorId | null>(null)
+  const [isSenderPickerOpen, setIsSenderPickerOpen] = useState(false)
+  const lockedActorId: ActorId | null = activeSessionAgentId
+    ? (`agent:${activeSessionAgentId}` as ActorId)
+    : null
+  const displayActorId: ActorId | null = lockedActorId ?? selectedAgentActorId
+  const isSenderLocked = lockedActorId !== null
 
   // Resolve system LLM default to show in picker when no override is selected
   const { data: systemDefaults } = api.aiIntegration.getSystemModelDefaults.useQuery(undefined, {
@@ -213,6 +263,13 @@ export function KopilotComposer({ ref, page, onSend, contentClassName }: Kopilot
   // back into the active list. Wired below via `useReferencePickerEditor`.
   const referencePickerRef = useRef<ReferencePickerHandle | null>(null)
 
+  // Refs so the SenderHotkey extension (constructed once) can read the
+  // current open/locked state without re-instantiating the editor.
+  const senderHotkeyOpenRef = useRef<() => void>(() => {})
+  const senderHotkeyLockedRef = useRef<boolean>(false)
+  senderHotkeyLockedRef.current = isSenderLocked
+  senderHotkeyOpenRef.current = () => setIsSenderPickerOpen(true)
+
   const { editor, confirmReference, closePicker } = useReferencePickerEditor({
     placeholder: placeholder ?? 'Ask Kopilot...',
     editable: true,
@@ -234,6 +291,18 @@ export function KopilotComposer({ ref, page, onSend, contentClassName }: Kopilot
         },
       }),
       ...(allowSlashCommands ? [slashCommandExtension] : []),
+      ...(allowSenderPicker
+        ? [
+            SenderHotkey.configure({
+              onTrigger: () => {
+                // Locked state: let `#` fall through to normal text input.
+                if (senderHotkeyLockedRef.current) return false
+                senderHotkeyOpenRef.current()
+                return true
+              },
+            }),
+          ]
+        : []),
       promptNodeExtension,
     ],
   })
@@ -324,6 +393,10 @@ export function KopilotComposer({ ref, page, onSend, contentClassName }: Kopilot
       ...(combinedRefs.length > 0 ? { references: combinedRefs } : {}),
     }
 
+    // Sender pick — lock takes precedence over in-flight selection. Master
+    // Kopilot leaves both null and sends without `agentId` / `triggerKind`.
+    const senderAgentId = displayActorId ? parseActorId(displayActorId).id : null
+
     onSend({
       sessionId: activeSessionId ?? undefined,
       message: text.trim(),
@@ -331,6 +404,7 @@ export function KopilotComposer({ ref, page, onSend, contentClassName }: Kopilot
       page: surfaceContext.page ?? page,
       context: mergedContext,
       modelId: selectedModelId ?? undefined,
+      ...(senderAgentId ? { agentId: senderAgentId, triggerKind: 'dm' as const } : {}),
     })
 
     // Clear edit state and editor
@@ -353,6 +427,7 @@ export function KopilotComposer({ ref, page, onSend, contentClassName }: Kopilot
     templateDisplayMap,
     selectedModelId,
     allowReferencePicker,
+    displayActorId,
   ])
 
   // Keep ref in sync
@@ -480,8 +555,8 @@ export function KopilotComposer({ ref, page, onSend, contentClassName }: Kopilot
             </InlinePickerPopover>
           )}
         </div>
-        {allowModelPicker && (
-          <div className='absolute bottom-1 left-1'>
+        <div className='absolute bottom-1 left-1 flex items-center gap-0.5'>
+          {allowModelPicker && (
             <AiModelPicker
               value={selectedModelId ?? systemLlmDefault}
               onChange={handleModelFilter}
@@ -491,8 +566,21 @@ export function KopilotComposer({ ref, page, onSend, contentClassName }: Kopilot
               compact
               skipDeprecated
             />
-          </div>
-        )}
+          )}
+          {allowSenderPicker && (
+            <SenderPicker
+              displayActorId={displayActorId}
+              isLocked={isSenderLocked}
+              open={isSenderPickerOpen}
+              onOpenChange={setIsSenderPickerOpen}
+              onSelect={(actorId) => {
+                setSelectedAgentActorId(actorId)
+                setIsSenderPickerOpen(false)
+              }}
+              onClear={() => setSelectedAgentActorId(null)}
+            />
+          )}
+        </div>
         <div className='absolute bottom-1 right-1 flex items-center gap-0.5'>
           {allowSlashCommands && (
             <Tooltip content='Insert prompt template' shortcut='/' allowInteraction>
@@ -545,5 +633,111 @@ export function KopilotComposer({ ref, page, onSend, contentClassName }: Kopilot
         <PromptTemplateDialog open={browseDialogOpen} onOpenChange={setBrowseDialogOpen} />
       )}
     </div>
+  )
+}
+
+// ── Sender picker ──────────────────────────────────────────────────────────
+
+interface SenderPickerProps {
+  displayActorId: ActorId | null
+  isLocked: boolean
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  onSelect: (actorId: ActorId) => void
+  onClear: () => void
+}
+
+/**
+ * "Who's responding" chip + popover. Lives in the composer's bottom-left
+ * cluster next to the model picker. Master Kopilot is the default state
+ * (no selection — no chip clear); selecting an agent flips outgoing
+ * requests to `triggerKind: 'dm'` and binds the new session to that agent.
+ *
+ * Locked state: once the active session has an `agentId`, the chip
+ * renders read-only — the responder is pinned for the rest of the
+ * thread. The "Start new chat" affordance lands later.
+ */
+function SenderPicker({
+  displayActorId,
+  isLocked,
+  open,
+  onOpenChange,
+  onSelect,
+  onClear,
+}: SenderPickerProps) {
+  // Resolve the selected agent's display name + avatar from the actor store.
+  // Skipped entirely when nothing is picked — the null state renders a
+  // hardcoded "Kopilot" + bot icon (no fetch).
+  const { actor } = useActor({ actorId: displayActorId, enabled: !!displayActorId })
+
+  const label = displayActorId ? (actor?.name ?? 'Loading…') : 'Kopilot'
+  const avatarUrl = displayActorId ? actor?.avatarUrl : null
+
+  const chipBody = (
+    <span className='flex items-center gap-1.5'>
+      {avatarUrl ? (
+        <Avatar className='size-4'>
+          <AvatarImage src={avatarUrl} alt={label} />
+          <AvatarFallback className='text-[10px]'>{label.slice(0, 1)}</AvatarFallback>
+        </Avatar>
+      ) : (
+        <Bot className='size-3.5 opacity-70' />
+      )}
+      <span className='truncate max-w-[120px]'>{label}</span>
+    </span>
+  )
+
+  if (isLocked) {
+    // Post-send / hydrated lock — no chevron, no X, no popover.
+    return (
+      <div
+        className='flex items-center gap-1 h-7 px-2 text-xs text-muted-foreground opacity-70 pointer-events-none rounded-md'
+        aria-label={`Responding as ${label}`}>
+        {chipBody}
+      </div>
+    )
+  }
+
+  const showClear = displayActorId !== null
+
+  return (
+    <Popover open={open} onOpenChange={onOpenChange}>
+      <PopoverTrigger asChild>
+        <Button
+          variant='ghost'
+          size='sm'
+          className='h-7 px-2 text-xs text-muted-foreground gap-1'
+          aria-label='Pick who responds'>
+          {chipBody}
+          {showClear ? (
+            <span
+              role='button'
+              tabIndex={-1}
+              className='ml-0.5 inline-flex items-center justify-center rounded hover:bg-primary-200/70 p-0.5'
+              onClick={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                onClear()
+              }}
+              aria-label='Clear sender — return to Kopilot'>
+              <X className='size-3' />
+            </span>
+          ) : (
+            <ChevronsUpDown className='size-3 opacity-50' />
+          )}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className='p-0 w-72' align='start' side='top'>
+        <ActorPickerContent
+          target='agent'
+          multi={false}
+          value={displayActorId ? [displayActorId] : []}
+          onChange={() => {
+            // Single-select path is handled by onSelectSingle.
+          }}
+          onSelectSingle={(actorId) => onSelect(actorId)}
+        />
+      </PopoverContent>
+    </Popover>
   )
 }

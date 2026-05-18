@@ -205,6 +205,16 @@ interface KopilotState {
   setActiveSessionId: (id: string | null) => void
   startNewSession: () => void
 
+  /**
+   * Agent the active session is bound to (post-create), if any. Master Kopilot
+   * sessions leave this null. Hydrated from the server when `loadSession`
+   * runs; cleared on `startNewSession`. The composer's sender picker reads
+   * this for the locked-chip render — once a session has an agentId, the
+   * picker becomes non-interactive.
+   */
+  activeSessionAgentId: string | null
+  setActiveSessionAgentId: (id: string | null) => void
+
   // Model override — null means "use system default"
   selectedModelId: string | null
   setSelectedModelId: (modelId: string | null) => void
@@ -353,13 +363,18 @@ export const useKopilotStore = create<KopilotState>()(
       // Session
       activeSessionId: null,
       setActiveSessionId: (activeSessionId) => set({ activeSessionId }),
+      activeSessionAgentId: null,
+      setActiveSessionAgentId: (activeSessionAgentId) => set({ activeSessionAgentId }),
       startNewSession: () =>
         set({
           activeSessionId: null,
+          activeSessionAgentId: null,
           ...emptyTreeState,
           stream: { ...initialStreamState },
           isStreaming: false,
           editingMessageId: null,
+          pendingChipPrompts: [],
+          dismissedChipKeys: new Set<string>(),
         }),
 
       // Model override
@@ -561,10 +576,13 @@ export const useKopilotStore = create<KopilotState>()(
       reset: () =>
         set({
           activeSessionId: null,
+          activeSessionAgentId: null,
           ...emptyTreeState,
           stream: { ...initialStreamState },
           isStreaming: false,
           editingMessageId: null,
+          pendingChipPrompts: [],
+          dismissedChipKeys: new Set<string>(),
         }),
     }),
     {

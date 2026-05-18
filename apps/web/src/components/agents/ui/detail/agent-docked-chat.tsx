@@ -2,7 +2,10 @@
 'use client'
 
 import { agentTemplates } from '@auxx/lib/agents/client'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@auxx/ui/components/tabs'
+import { MessageSquareOff, Settings2 } from 'lucide-react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
+import { parseAsStringLiteral, useQueryState } from 'nuqs'
 import { useEffect, useState } from 'react'
 import { KopilotContext } from '~/components/kopilot/context'
 import { KopilotChatProvider } from '~/components/kopilot/options'
@@ -15,54 +18,90 @@ interface AgentDockedChatProps {
   agentId: string
 }
 
+type Panel = 'build' | 'chat'
+const PANELS: readonly Panel[] = ['build', 'chat'] as const
+
 /**
- * Docked Kopilot chat scoped to one agent. The session is bound to
- * `(userId, agentId, type='builder')` — each admin gets their own persistent
- * builder thread per agent. On mount we look up the most recent builder
- * session and load it; if none exists, the chat starts fresh and the first
- * message creates a new builder-tagged session.
+ * Docked Kopilot chat scoped to one agent. Two tabs:
+ * - **Build** — the agent builder thread (session `(userId, agentId,
+ *   type='builder')`, builder persona + tools). This is the configuration
+ *   surface.
+ * - **Chat** — a direct-message thread with the agent itself (session
+ *   `(userId, agentId, type='kopilot')` plus `triggerKind='dm'` so the
+ *   DM AgentTrigger gates the run and layers in DM trigger-instructions).
  *
- * Fresh agents (no prompt body, no enabled toolsets) get two seed-prompt
- * chips in the empty state — the builder persona expects the admin to either
- * pick one or describe what they want, and these chips make the first turn
- * trivial. Populated agents hide the chips entirely; the chat reads as edit-
- * in-place.
+ * Default tab follows `setupCompletedAt`: agents that finished setup land
+ * on Chat (first instinct is to test); agents mid-setup land on Build.
+ * The current panel is persisted in `?panel=` so a refresh round-trips.
  *
- * If the URL carries `?template=<id>`, the templated prompt is submitted
- * directly as the first user turn (no chip rendered). The capture is frozen
- * at mount so the param-strip can't change the message after the chat has
- * already dispatched it.
+ * Build-tab specifics (preserved from the pre-tabs implementation):
+ * fresh agents get two seed-prompt suggestion chips, and a templated
+ * prompt (`?template=<id>`) is auto-submitted as the first user turn.
  */
 export function AgentDockedChat({ agentId }: AgentDockedChatProps) {
+  const { agent, detail } = useAgent(agentId)
+
+  const isFreshAgent = detail?.setupCompletedAt == null
+  const defaultPanel: Panel = isFreshAgent ? 'build' : 'chat'
+
+  const [panel, setPanel] = useQueryState(
+    'panel',
+    parseAsStringLiteral(PANELS).withDefault(defaultPanel)
+  )
+
+  return (
+    <Tabs
+      value={panel}
+      onValueChange={(v) => setPanel(v as Panel)}
+      className='flex h-full flex-col'>
+      <TabsList variant='outline'>
+        <TabsTrigger value='build' variant='outline'>
+          Build
+        </TabsTrigger>
+        <TabsTrigger value='chat' variant='outline'>
+          Chat
+        </TabsTrigger>
+      </TabsList>
+      <TabsContent value='build' className='flex-1 overflow-hidden'>
+        <BuildPanel agentId={agentId} isFreshAgent={isFreshAgent} agentName={agent?.name ?? null} />
+      </TabsContent>
+      <TabsContent value='chat' className='flex-1 overflow-hidden'>
+        <ChatPanel
+          agentId={agentId}
+          agentName={agent?.name ?? null}
+          agentDescription={detail?.description ?? null}
+          isFreshAgent={isFreshAgent}
+          onJumpToBuild={() => setPanel('build')}
+        />
+      </TabsContent>
+    </Tabs>
+  )
+}
+
+// ── Build tab ──────────────────────────────────────────────────────────────
+
+interface BuildPanelProps {
+  agentId: string
+  isFreshAgent: boolean
+  agentName: string | null
+}
+
+function BuildPanel({ agentId, isFreshAgent, agentName }: BuildPanelProps) {
   const { data, isLoading } = api.kopilot.listSessions.useQuery(
     { type: 'builder', agentId, limit: 1 },
     { staleTime: 30_000 }
   )
-  const { agent, detail } = useAgent(agentId)
 
   const searchParams = useSearchParams()
   const router = useRouter()
   const pathname = usePathname()
 
-  // Show seed-prompt chips while the agent is mid-setup — drafts created
-  // through the new "Create agent" button start with auto-default toolsets
-  // (which used to defeat the fresh-agent check), but `setupCompletedAt`
-  // null is the authoritative signal that the admin hasn't finished
-  // chatting through the build yet.
-  const isFreshAgent = detail?.setupCompletedAt == null
-
-  // Freeze the template at first render. Subsequent param changes are
-  // ignored, so the param-strip effect below can't yank the suggestion
-  // before autoSubmit runs. Stale ids resolve to null → falls through to
-  // the default chips silently.
   const [capturedTemplate] = useState(() => {
     const templateId = searchParams.get('template')
     if (!templateId) return null
     return agentTemplates.find((t) => t.id === templateId) ?? null
   })
 
-  // Strip `?template=<id>` after capture so a refresh doesn't fire the
-  // prompt twice. Runs once on mount.
   useEffect(() => {
     if (searchParams.get('template')) {
       router.replace(pathname, { scroll: false })
@@ -79,6 +118,7 @@ export function AgentDockedChat({ agentId }: AgentDockedChatProps) {
       options={{
         allowModelPicker: false,
         allowSlashCommands: false,
+        allowSenderPicker: false,
         hideSuggestions: !isFreshAgent,
         emptyStateDescription: isFreshAgent
           ? 'Tell me what this agent should do, or pick one below.'
@@ -87,7 +127,7 @@ export function AgentDockedChat({ agentId }: AgentDockedChatProps) {
       <KopilotContext
         page='agents.builder'
         activeAgentId={agentId}
-        activeAgentLabel={agent?.name ?? 'Untitled agent'}
+        activeAgentLabel={agentName ?? 'Untitled agent'}
       />
       {isFreshAgent && !hasTemplate && (
         <>
@@ -115,5 +155,119 @@ export function AgentDockedChat({ agentId }: AgentDockedChatProps) {
         />
       </div>
     </KopilotChatProvider>
+  )
+}
+
+// ── Chat tab ───────────────────────────────────────────────────────────────
+
+interface ChatPanelProps {
+  agentId: string
+  agentName: string | null
+  agentDescription: string | null
+  isFreshAgent: boolean
+  onJumpToBuild: () => void
+}
+
+function ChatPanel({
+  agentId,
+  agentName,
+  agentDescription,
+  isFreshAgent,
+  onJumpToBuild,
+}: ChatPanelProps) {
+  // The DM session is a kopilot session bound to (user, agent). One rolling
+  // thread per pair in v1; "Start new chat" lands later.
+  const sessionsQuery = api.kopilot.listSessions.useQuery(
+    { type: 'kopilot', agentId, limit: 1 },
+    { staleTime: 30_000, enabled: !isFreshAgent }
+  )
+  const triggersQuery = api.agentTrigger.list.useQuery(
+    { agentId },
+    { staleTime: 30_000, enabled: !isFreshAgent }
+  )
+
+  if (isFreshAgent) {
+    return (
+      <EmptyChatState
+        icon={<Settings2 className='size-6' />}
+        title='Save your agent first'
+        description='Complete setup before chatting — testing now would mean testing a half-configured agent.'
+        ctaLabel='Finish setup'
+        onCta={onJumpToBuild}
+      />
+    )
+  }
+
+  if (sessionsQuery.isLoading || triggersQuery.isLoading) {
+    return <div className='h-full' />
+  }
+
+  const dmTrigger = triggersQuery.data?.find((t) => t.kind === 'dm')
+  if (!dmTrigger?.enabled) {
+    return (
+      <EmptyChatState
+        icon={<MessageSquareOff className='size-6' />}
+        title='Direct messages are disabled'
+        description='Enable them on the Triggers tab to start chatting with this agent.'
+      />
+    )
+  }
+
+  const initialSessionId = sessionsQuery.data?.items[0]?.id ?? null
+
+  return (
+    <KopilotChatProvider
+      options={{
+        allowModelPicker: false,
+        allowSlashCommands: false,
+        allowSenderPicker: false,
+        hideSuggestions: true,
+        emptyStateDescription:
+          agentDescription ??
+          (agentName
+            ? `Say hi to ${agentName} — they have their own toolset and persona.`
+            : 'Say hi to this agent.'),
+      }}>
+      <KopilotContext
+        page='agents.dm'
+        activeAgentId={agentId}
+        activeAgentLabel={agentName ?? 'Untitled agent'}
+      />
+      <div className='h-full flex flex-col'>
+        <KopilotChat
+          page='agents.dm'
+          agentId={agentId}
+          sessionType='kopilot'
+          triggerKind='dm'
+          initialSessionId={initialSessionId}
+        />
+      </div>
+    </KopilotChatProvider>
+  )
+}
+
+interface EmptyChatStateProps {
+  icon: React.ReactNode
+  title: string
+  description: string
+  ctaLabel?: string
+  onCta?: () => void
+}
+
+function EmptyChatState({ icon, title, description, ctaLabel, onCta }: EmptyChatStateProps) {
+  return (
+    <div className='flex h-full flex-col items-center justify-center px-6 text-center'>
+      <div className='text-muted-foreground mb-3'>{icon}</div>
+      <p className='text-sm font-medium text-foreground'>{title}</p>
+      <p className='mt-1 text-xs text-muted-foreground max-w-xs'>{description}</p>
+      {ctaLabel && onCta ? (
+        <button
+          type='button'
+          className='mt-4 text-xs font-medium text-primary underline-offset-4 hover:underline'
+          onClick={onCta}>
+          {ctaLabel}
+        </button>
+      ) : null}
+    </div>
   )
 }

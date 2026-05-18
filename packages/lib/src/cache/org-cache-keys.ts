@@ -114,6 +114,12 @@ export interface CachedAgent {
   setupCompletedAt: string | null
   /** ISO string when archived; null when active. */
   archivedAt: string | null
+  /** Whether direct messages to this agent are enabled. Mirrors the `dm` AgentTrigger row. */
+  dmEnabled: boolean
+  /** Per-DM trigger instructions (Tiptap doc); null when the `dm` row has no addendum. */
+  dmInstructions: Record<string, unknown> | null
+  /** AgentTrigger.id for the `dm` row; null only if the row is missing (pre-existing dev agent). */
+  dmTriggerId: string | null
   createdAt: string
   updatedAt: string
 }

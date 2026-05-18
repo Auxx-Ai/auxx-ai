@@ -421,7 +421,7 @@ function renderInstructionsAsText(
 
 function asKind(value: unknown): TriggerKind | null {
   if (value === 'scheduled' || value === 'event' || value === 'app') return value
-  if (value === 'mention' || value === 'assignment') return value
+  if (value === 'mention' || value === 'assignment' || value === 'dm') return value
   return null
 }
 

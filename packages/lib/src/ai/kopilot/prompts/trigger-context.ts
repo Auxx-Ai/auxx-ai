@@ -12,7 +12,7 @@
  * See plans/kopilot/agents/trigger-instructions.md for the design.
  */
 
-export type TriggerKind = 'scheduled' | 'event' | 'app' | 'mention' | 'assignment'
+export type TriggerKind = 'scheduled' | 'event' | 'app' | 'mention' | 'assignment' | 'dm'
 
 export interface TriggerContext {
   kind: TriggerKind
@@ -68,6 +68,8 @@ export function renderTriggerKindBlock(triggerContext: TriggerContext): string {
       return renderMentionBlock(payload)
     case 'assignment':
       return renderAssignmentBlock(payload)
+    case 'dm':
+      return renderDmBlock(payload)
   }
 }
 
@@ -137,6 +139,19 @@ function renderMentionBlock(payload: Record<string, unknown>): string {
     'Sibling references and the full mention payload are in domain state under `mention`.',
     '',
     'Copy the `Mentioned in:` id verbatim when calling tools that take a recordId — do not prepend an entity slug or guess a prefix.',
+  ].filter(Boolean)
+  return lines.join('\n')
+}
+
+function renderDmBlock(payload: Record<string, unknown>): string {
+  const firedAt = asString(payload.firedAt) ?? new Date().toISOString()
+  const lines = [
+    '## Trigger fired',
+    '',
+    'Kind: `dm`',
+    `Fired at: ${firedAt}`,
+    '',
+    'A user is direct-messaging you in an interactive chat. The user message in this turn is the human-authored prompt — respond to them directly.',
   ].filter(Boolean)
   return lines.join('\n')
 }

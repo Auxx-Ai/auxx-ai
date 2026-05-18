@@ -1,7 +1,7 @@
 // packages/lib/src/cache/providers/agents-provider.ts
 
 import { schema } from '@auxx/database'
-import { eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { MediaAssetService } from '../../files'
 import { createScopedLogger } from '../../logger'
 import type { CachedAgent } from '../org-cache-keys'
@@ -37,9 +37,16 @@ export const agentsProvider: CacheProvider<CachedAgent[]> = {
         updatedAt: schema.Agent.updatedAt,
         userName: schema.User.name,
         avatarAssetId: schema.User.avatarAssetId,
+        dmTriggerId: schema.AgentTrigger.id,
+        dmEnabled: schema.AgentTrigger.enabled,
+        dmInstructions: schema.AgentTrigger.instructions,
       })
       .from(schema.Agent)
       .innerJoin(schema.User, eq(schema.User.id, schema.Agent.userId))
+      .leftJoin(
+        schema.AgentTrigger,
+        and(eq(schema.AgentTrigger.agentId, schema.Agent.id), eq(schema.AgentTrigger.kind, 'dm'))
+      )
       .where(eq(schema.Agent.organizationId, orgId))
 
     return Promise.all(
@@ -71,6 +78,9 @@ export const agentsProvider: CacheProvider<CachedAgent[]> = {
           mentionable: row.mentionable,
           setupCompletedAt: row.setupCompletedAt ? row.setupCompletedAt.toISOString() : null,
           archivedAt: row.archivedAt ? row.archivedAt.toISOString() : null,
+          dmEnabled: row.dmEnabled ?? false,
+          dmInstructions: (row.dmInstructions ?? null) as Record<string, unknown> | null,
+          dmTriggerId: row.dmTriggerId ?? null,
           createdAt: row.createdAt.toISOString(),
           updatedAt: row.updatedAt.toISOString(),
         }

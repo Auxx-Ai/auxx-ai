@@ -36,6 +36,13 @@ export interface AgentJobPayload {
    * `lastFiredAt` / `lastError` after the engine finishes.
    */
   agentTriggerId?: string | null
+  /**
+   * Trigger discriminator for the run. 'dm' means the request originated
+   * from the agent Chat tab or composer sender picker. Forwarded for
+   * analytics / future routing — the worker re-resolves the trigger
+   * context from `session.agentTriggerId` regardless.
+   */
+  triggerKind?: 'dm'
 }
 
 /**
