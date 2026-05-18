@@ -208,7 +208,10 @@ function ExpandButton({
 }
 
 export function TableBlock({ data }: BlockRendererProps<TableBlockData>) {
-  const { columns, rows } = data
+  // Default to empty arrays so partial streaming data (or a partial-JSON parse
+  // result without `columns`/`rows`) renders an empty table instead of crashing.
+  const columns = data.columns ?? []
+  const rows = data.rows ?? []
   const [isExpanded, setIsExpanded] = useState(false)
 
   return (

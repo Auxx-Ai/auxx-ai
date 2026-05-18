@@ -3,10 +3,21 @@
 'use client'
 
 import { Badge } from '@auxx/ui/components/badge'
+import { Skeleton } from '@auxx/ui/components/skeleton'
 import { cn } from '@auxx/ui/lib/utils'
 import { format } from 'date-fns'
 import { Check, CircleDashed } from 'lucide-react'
 import type { TaskSnapshotData } from './block-schemas'
+
+/**
+ * Shared wrapper classes — must mirror TaskItem (apps/web/src/components/tasks/ui/task-item.tsx)
+ * so loading / snapshot / live rows all occupy the same vertical footprint.
+ */
+const TASK_ROW_WRAPPER = cn(
+  'relative flex gap-2 ps-1 pe-2 py-1.5',
+  'bg-illustration ring-border-illustration rounded-xl border border-transparent',
+  'shadow shadow-black/10 ring-1'
+)
 
 interface TaskItemSkeletonProps {
   snapshot: TaskSnapshotData
@@ -21,33 +32,71 @@ interface TaskItemSkeletonProps {
 export function TaskItemSkeleton({ snapshot, isDeleted }: TaskItemSkeletonProps) {
   const isCompleted = !!snapshot.completedAt
   return (
-    <div className='flex items-start gap-2 px-2 py-2 text-sm'>
+    <div className={cn(TASK_ROW_WRAPPER, (isCompleted || isDeleted) && 'opacity-60')}>
       {isCompleted ? (
-        <Check className='mt-0.5 size-4 shrink-0 text-muted-foreground' />
+        <Check className='mt-1 size-4 shrink-0 text-muted-foreground' />
       ) : (
-        <CircleDashed className='mt-0.5 size-4 shrink-0 text-muted-foreground' />
+        <CircleDashed className='mt-1 size-4 shrink-0 text-muted-foreground' />
       )}
       <div className='min-w-0 flex-1'>
-        <div className='flex items-center gap-2'>
+        <div className='flex items-start justify-between gap-2'>
           <span
             className={cn(
-              'truncate',
-              isCompleted && 'text-muted-foreground line-through',
+              'flex-1 truncate text-sm leading-6',
+              isCompleted && 'line-through text-muted-foreground',
               isDeleted && 'text-muted-foreground'
             )}>
             {snapshot.title}
           </span>
-          {isDeleted && (
-            <Badge variant='outline' className='shrink-0 text-[10px] uppercase'>
-              Deleted
-            </Badge>
+          {snapshot.deadline && (
+            <span className='flex-shrink-0 text-xs leading-6 text-muted-foreground'>
+              {format(new Date(snapshot.deadline), 'MMM d, yyyy')}
+            </span>
           )}
         </div>
-        {snapshot.deadline && (
-          <div className='mt-0.5 text-xs text-muted-foreground'>
-            {format(new Date(snapshot.deadline), 'MMM d, yyyy')}
+        {isDeleted && (
+          <div className='mt-0.5'>
+            <Badge variant='outline' className='text-[10px] uppercase'>
+              Deleted
+            </Badge>
           </div>
         )}
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Pure loading placeholder — same outer dimensions as TaskItem, no content.
+ * Used when neither a live task nor a snapshot is available yet.
+ */
+export function TaskRowLoading() {
+  return (
+    <div className={TASK_ROW_WRAPPER}>
+      <CircleDashed className='mt-1 size-4 shrink-0 text-muted-foreground/40' />
+      <div className='min-w-0 flex-1'>
+        <div className='flex items-center justify-between gap-2'>
+          <Skeleton className='my-1 h-4 w-2/3' />
+          <Skeleton className='my-1 h-3 w-16 shrink-0' />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Row-shaped placeholder for tasks the server confirmed do not exist.
+ * Same outer chrome as TaskItem so the list does not reflow.
+ */
+export function TaskRowUnavailable({ taskId }: { taskId: string }) {
+  return (
+    <div className={cn(TASK_ROW_WRAPPER, 'opacity-60')}>
+      <CircleDashed className='mt-1 size-4 shrink-0 text-muted-foreground' />
+      <div className='min-w-0 flex-1'>
+        <div className='flex items-center gap-2 text-sm leading-6 text-muted-foreground'>
+          <span className='shrink-0'>Task unavailable</span>
+          <span className='truncate font-mono text-[10px] opacity-70'>{taskId}</span>
+        </div>
       </div>
     </div>
   )

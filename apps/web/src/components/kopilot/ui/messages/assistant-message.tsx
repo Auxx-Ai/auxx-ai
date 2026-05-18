@@ -8,11 +8,13 @@ import { Tooltip } from '~/components/global/tooltip'
 import type { KopilotMessage, LinkSnapshot, ThinkingGroup } from '../../stores/kopilot-store'
 import { useKopilotStore } from '../../stores/kopilot-store'
 import '../../styles/kopilot-prose.css'
+import { parse as partialJsonParse } from '../../utils/partial-json'
 import { AuxxBlock } from '../blocks/auxx-block'
 import { REFERENCE_BLOCK_TYPES } from '../blocks/block-schemas'
 import { SparkleIcon } from '../sparkle-icon'
 import { AuxxInlineLink } from './auxx-inline-link'
 import { MessageActions } from './message-actions'
+import { StreamingText } from './streaming-text'
 import { ThinkingSteps } from './thinking-steps'
 
 const REFERENCE_BLOCK_SET = new Set<string>(REFERENCE_BLOCK_TYPES)
@@ -52,22 +54,25 @@ function buildMarkdownComponents(
 
       const raw = String(children ?? '').trim()
       if (!raw) {
-        return (
-          <pre className='not-prose'>
-            <code>{String(children ?? '')}</code>
-          </pre>
-        )
+        // Render the block shell with empty data so the chrome appears as soon
+        // as the fence opens, instead of flashing a code-block placeholder.
+        return <AuxxBlock type={auxxType} data={{}} />
       }
       let data: unknown
       try {
         data = JSON.parse(raw)
       } catch {
-        // Keep the fence visible as code while streaming / if JSON is malformed
-        return (
-          <pre className='not-prose'>
-            <code>{String(children ?? '')}</code>
-          </pre>
-        )
+        // Streaming / malformed: best-effort parse so users see the table fill
+        // in row-by-row instead of raw JSON.
+        try {
+          data = partialJsonParse(raw)
+        } catch {
+          return (
+            <pre className='not-prose'>
+              <code>{String(children ?? '')}</code>
+            </pre>
+          )
+        }
       }
       return <AuxxBlock type={auxxType} data={data} />
     },
@@ -150,12 +155,21 @@ export function AssistantMessage({
           </Tooltip>
         ) : (
           <div className='kopilot-prose'>
-            <Markdown
-              remarkPlugins={[remarkGfm]}
-              components={markdownComponents}
-              urlTransform={auxxUrlTransform}>
-              {isStreaming ? `${content}\u258C` : content}
-            </Markdown>
+            {isStreaming ? (
+              <StreamingText
+                raw={content}
+                isStreaming
+                markdownComponents={markdownComponents}
+                urlTransform={auxxUrlTransform}
+              />
+            ) : (
+              <Markdown
+                remarkPlugins={[remarkGfm]}
+                components={markdownComponents}
+                urlTransform={auxxUrlTransform}>
+                {content}
+              </Markdown>
+            )}
           </div>
         )}
         {!isStreaming && message && !message.error && (

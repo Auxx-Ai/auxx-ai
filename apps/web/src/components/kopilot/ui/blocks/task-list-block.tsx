@@ -13,7 +13,7 @@ import { TaskItem } from '~/components/tasks/ui/task-item'
 import { BlockCard } from './block-card'
 import type { BlockRendererProps } from './block-registry'
 import type { TaskListData } from './block-schemas'
-import { TaskItemSkeleton } from './task-item-skeleton'
+import { TaskItemSkeleton, TaskRowLoading, TaskRowUnavailable } from './task-item-skeleton'
 
 export function TaskListBlock({ data, skipEntrance }: BlockRendererProps<TaskListData>) {
   const router = useRouter()
@@ -63,11 +63,9 @@ export function TaskListBlock({ data, skipEntrance }: BlockRendererProps<TaskLis
                 ) : snap ? (
                   <TaskItemSkeleton snapshot={snap} isDeleted={isDeleted} />
                 ) : isDeleted ? (
-                  <div className='px-2 py-2 text-xs text-muted-foreground'>
-                    Task unavailable — <span className='font-mono'>{taskId}</span>
-                  </div>
+                  <TaskRowUnavailable taskId={taskId} />
                 ) : (
-                  <div className='px-2 py-2 text-xs text-muted-foreground'>Loading…</div>
+                  <TaskRowLoading />
                 )}
               </motion.div>
             )

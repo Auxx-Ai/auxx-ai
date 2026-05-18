@@ -3,6 +3,7 @@
 'use client'
 
 import { Badge } from '@auxx/ui/components/badge'
+import { Skeleton } from '@auxx/ui/components/skeleton'
 import { formatDistanceToNowStrict } from 'date-fns'
 import { Mail } from 'lucide-react'
 import { motion } from 'motion/react'
@@ -71,15 +72,11 @@ function ThreadListRow({ threadId, snapshot }: ThreadListRowProps) {
   const showDeleted = !thread && !!snapshot && isNotFound
 
   if (!thread && !snapshot && isLoading) {
-    return <div className='px-2 py-2 text-xs text-muted-foreground'>Loading…</div>
+    return <ThreadRowSkeleton />
   }
 
   if (!thread && !snapshot && isNotFound) {
-    return (
-      <div className='px-2 py-2 text-xs text-muted-foreground'>
-        Thread unavailable — <span className='font-mono'>{threadId}</span>
-      </div>
-    )
+    return <ThreadRowUnavailable threadId={threadId} />
   }
 
   return (
@@ -125,5 +122,40 @@ function ThreadListRow({ threadId, snapshot }: ThreadListRowProps) {
         </div>
       </div>
     </button>
+  )
+}
+
+/**
+ * Loading placeholder — matches ThreadListRow's wrapper so the list does not
+ * reflow when threads hydrate.
+ */
+function ThreadRowSkeleton() {
+  return (
+    <div className='flex w-full items-start gap-3 px-2 py-2 text-sm'>
+      <span className='mt-1.5 size-2 shrink-0 rounded-full bg-muted' />
+      <div className='min-w-0 flex-1'>
+        <Skeleton className='my-0.5 h-4 w-2/3' />
+        <Skeleton className='mt-1 h-3 w-1/3' />
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Same row footprint as the loaded thread, used when the server confirms the
+ * thread no longer exists. Disabled visual treatment to match the deleted
+ * branch in the live button.
+ */
+function ThreadRowUnavailable({ threadId }: { threadId: string }) {
+  return (
+    <div className='flex w-full items-start gap-3 px-2 py-2 text-sm text-muted-foreground'>
+      <span className='mt-1.5 size-2 shrink-0 rounded-full bg-transparent' />
+      <div className='min-w-0 flex-1'>
+        <div className='flex items-center gap-2'>
+          <span className='truncate'>Thread unavailable</span>
+        </div>
+        <div className='mt-0.5 truncate font-mono text-[10px] opacity-70'>{threadId}</div>
+      </div>
+    </div>
   )
 }
