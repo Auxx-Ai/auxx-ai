@@ -88,7 +88,7 @@ const maxOutputTokensRule = {
   type: 'int' as const,
   label: 'Max Output Tokens',
   help: 'Maximum number of tokens to generate.',
-  default: 8192,
+  default: 32000,
   min: 1,
   max: 65536,
   precision: 0,

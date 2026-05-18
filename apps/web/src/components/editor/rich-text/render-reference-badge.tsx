@@ -8,7 +8,9 @@ import { cn } from '@auxx/ui/lib/utils'
 import { ToolBadge } from '~/components/pickers/tool-picker/tool-badge'
 import { ToolsetBadge } from '~/components/pickers/toolset-picker/toolset-badge'
 import { ActorBadge } from '~/components/resources/ui/actor-badge'
+import { FieldBadge } from '~/components/resources/ui/field-badge'
 import { RecordBadge } from '~/components/resources/ui/record-badge'
+import { ResourceBadge } from '~/components/resources/ui/resource-badge'
 import { ThreadBadge } from '~/components/threads/ui/thread-badge'
 
 const referenceBadgeRing = 'transition-all inline-flex'
@@ -38,6 +40,24 @@ export function renderReferenceBadge({ id, selected }: { id: string; selected: b
   }
   if (id.startsWith('toolset:')) {
     return <ToolsetBadge slug={id.slice('toolset:'.length)} className={ring} />
+  }
+  if (id.startsWith('resource:')) {
+    return <ResourceBadge id={id.slice('resource:'.length)} selected={selected} className={ring} />
+  }
+  if (id.startsWith('field:')) {
+    const payload = id.slice('field:'.length)
+    // Plain `entityDef:fieldId` or path key `a:b::c:d` — derive root entity
+    // from the head segment in either case.
+    const head = payload.split('::')[0] ?? payload
+    const entityDefinitionId = head.split(':')[0] ?? ''
+    return (
+      <FieldBadge
+        id={payload}
+        entityDefinitionId={entityDefinitionId}
+        selected={selected}
+        className={ring}
+      />
+    )
   }
   return <RecordBadge recordId={id as RecordId} className={ring} />
 }

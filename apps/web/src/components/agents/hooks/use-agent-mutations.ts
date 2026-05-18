@@ -1,6 +1,7 @@
 // apps/web/src/components/agents/hooks/use-agent-mutations.ts
 'use client'
 
+import { type FlatToolCatalogEntry, reconcilePromptMentions } from '@auxx/lib/agents/client'
 import { toastError } from '@auxx/ui/components/toast'
 import { useCallback } from 'react'
 import { api } from '~/trpc/react'
@@ -93,16 +94,39 @@ export function useAgentMutations(): UseAgentMutationsResult {
         patch.archivedAt === undefined
 
       if (isPromptOnly) {
+        // Mirror the server-side reconciler client-side, optimistically. The
+        // server runs `reconcilePromptMentions` on flush; we run the same
+        // pure function here against the cached tool catalog so the Lock
+        // badge on `tool:<name>` chips lights up the same keystroke they
+        // land — instead of waiting for the 1.5s autosave round-trip.
+        const toolCatalog =
+          (utils.agentToolset.listTools.getData() as FlatToolCatalogEntry[] | undefined) ?? []
+        const stored = store.agentsById[id]
+        const slug = stored?.slug
+        const splice = (prev: AgentDetail | undefined): AgentDetail | undefined => {
+          if (!prev) return prev
+          const reconciled = reconcilePromptMentions({
+            prompt: patch.prompt as Record<string, unknown>,
+            current: { toolsets: prev.toolsets, knowledge: prev.knowledge },
+            toolCatalog,
+          })
+          return {
+            ...prev,
+            prompt: patch.prompt as AgentDetail['prompt'],
+            toolsets: reconciled.toolsets,
+            knowledge: reconciled.knowledge,
+          }
+        }
+        // Splice BEFORE awaiting — the whole point is to take the autosave
+        // round-trip out of the perceived latency. No rollback on failure:
+        // the next successful save (or any non-prompt-only mutation, which
+        // invalidates getById below) re-reconciles authoritatively.
+        utils.agent.getById.setData({ agentId: id }, splice)
+        if (slug && slug !== id) {
+          utils.agent.getById.setData({ agentId: slug }, splice)
+        }
         try {
           await updateMutation.mutateAsync({ agentId: id, ...patch })
-          const stored = store.agentsById[id]
-          const slug = stored?.slug
-          const splice = (prev: AgentDetail | undefined): AgentDetail | undefined =>
-            prev ? { ...prev, prompt: patch.prompt as AgentDetail['prompt'] } : prev
-          utils.agent.getById.setData({ agentId: id }, splice)
-          if (slug && slug !== id) {
-            utils.agent.getById.setData({ agentId: slug }, splice)
-          }
           return true
         } catch (error) {
           toastError({
@@ -139,7 +163,7 @@ export function useAgentMutations(): UseAgentMutationsResult {
         return false
       }
     },
-    [updateMutation, utils.agent.list, utils.agent.getById]
+    [updateMutation, utils.agent.list, utils.agent.getById, utils.agentToolset.listTools]
   )
 
   const archiveAgent = useCallback<UseAgentMutationsResult['archiveAgent']>(

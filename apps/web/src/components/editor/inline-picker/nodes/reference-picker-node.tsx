@@ -30,7 +30,14 @@ function pickerQueryText(node: import('@tiptap/pm/model').Node): string {
   return node.textContent.replace(/​/g, '')
 }
 
-export type ReferenceTab = 'people' | 'records' | 'messages' | 'articles' | 'tools'
+export type ReferenceTab =
+  | 'people'
+  | 'records'
+  | 'messages'
+  | 'articles'
+  | 'tools'
+  | 'resources'
+  | 'fields'
 
 /**
  * Default tab set rendered by `@`-pickers. Opt-in tabs (currently just
@@ -47,6 +54,8 @@ export const TAB_LABEL: Record<ReferenceTab, string> = {
   messages: 'Messages',
   articles: 'Articles',
   tools: 'Tools',
+  resources: 'Resources',
+  fields: 'Fields',
 }
 
 /** Resolve digit (1–9) → tab from the configured tab list. */

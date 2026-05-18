@@ -12,7 +12,9 @@ import {
 } from '~/components/editor/inline-picker/nodes/reference-picker-node'
 import { ActorPickerContent } from '../actor-picker/actor-picker-content'
 import { ArticleReferenceList } from '../article-picker/article-reference-list'
+import { FieldReferenceList } from '../field-picker/field-reference-list'
 import { RecordPickerContent } from '../record-picker/record-picker-content'
+import { ResourceReferenceList } from '../resource-picker/resource-reference-list'
 import { ThreadReferenceList } from '../thread-picker/thread-reference-list'
 import { ToolReferenceList } from '../tool-picker/tool-reference-list'
 
@@ -204,6 +206,18 @@ export function ReferencePickerContent({
         )}
         {tab === 'tools' && (
           <ToolReferenceList
+            externalSearch={query}
+            onSelectSingle={(id) => onSelect(id as unknown as RecordId)}
+          />
+        )}
+        {tab === 'resources' && (
+          <ResourceReferenceList
+            externalSearch={query}
+            onSelectSingle={(id) => onSelect(id as unknown as RecordId)}
+          />
+        )}
+        {tab === 'fields' && (
+          <FieldReferenceList
             externalSearch={query}
             onSelectSingle={(id) => onSelect(id as unknown as RecordId)}
           />

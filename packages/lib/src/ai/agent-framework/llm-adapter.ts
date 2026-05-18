@@ -76,6 +76,8 @@ export function createCallModel(config: LLMAdapterConfig) {
     let lastProviderType: string | undefined
     let lastCredentialSource: string | undefined
     let lastReasoningContent: string | undefined
+    let lastFinishReason: string | undefined
+    let lastStopReason: string | undefined
 
     const stream = orchestrator.streamInvoke(request)
 
@@ -147,6 +149,10 @@ export function createCallModel(config: LLMAdapterConfig) {
             lastProviderType = response.providerType ?? lastProviderType
             lastCredentialSource = response.credentialSource ?? lastCredentialSource
             lastReasoningContent = response.reasoning_content ?? lastReasoningContent
+            const meta = (response as { metadata?: Record<string, unknown> }).metadata
+            if (meta && typeof meta.stopReason === 'string') {
+              lastStopReason = meta.stopReason
+            }
           }
           break
         }
@@ -191,6 +197,16 @@ export function createCallModel(config: LLMAdapterConfig) {
         if (chunk.usage) {
           lastUsage = chunk.usage
         }
+
+        // Capture finishReason / stopReason from the terminal chunk so downstream
+        // consumers can detect truncation (`length` / `max_tokens`).
+        if (chunk.finishReason) {
+          lastFinishReason = chunk.finishReason
+        }
+        const chunkMeta = chunk.metadata as { stopReason?: unknown } | undefined
+        if (chunkMeta && typeof chunkMeta.stopReason === 'string') {
+          lastStopReason = chunkMeta.stopReason
+        }
       }
     } catch (error) {
       logger.error('LLM stream error', {
@@ -210,6 +226,8 @@ export function createCallModel(config: LLMAdapterConfig) {
       yield { type: 'text-delta' as const, delta: pendingDeltas.shift()! }
     }
 
+    const truncated = lastFinishReason === 'length' || lastStopReason === 'max_tokens'
+
     logger.info('LLM complete', {
       model,
       contentLength: fullContent.length,
@@ -217,7 +235,32 @@ export function createCallModel(config: LLMAdapterConfig) {
       hasContent: fullContent.length > 0,
       contentPreview: fullContent.slice(0, 500),
       usage: lastUsage,
+      finishReason: lastFinishReason,
+      stopReason: lastStopReason,
+      truncated,
     })
+
+    if (truncated) {
+      logger.warn('LLM response was truncated by max_tokens — tool_use input may be incomplete', {
+        model,
+        provider,
+        outputTokens: lastUsage.completion_tokens,
+        contentLength: fullContent.length,
+        toolCallCount: lastToolCalls.length,
+        truncatedToolNames: lastToolCalls
+          .filter((tc) => {
+            const args = tc.function.arguments
+            if (typeof args !== 'string' || args.length === 0) return true
+            try {
+              JSON.parse(args)
+              return false
+            } catch {
+              return true
+            }
+          })
+          .map((tc) => tc.function.name),
+      })
+    }
 
     if (fullContent.length === 0 && lastToolCalls.length === 0) {
       logger.warn('LLM returned empty response with no tool calls', {
@@ -247,6 +290,7 @@ export function createCallModel(config: LLMAdapterConfig) {
       providerType: lastProviderType,
       credentialSource: lastCredentialSource,
       reasoning_content: lastReasoningContent,
+      finishReason: lastFinishReason,
     }
   }
 }
