@@ -2,7 +2,8 @@
 
 import { getRedisClient } from '@auxx/redis'
 import type { Job } from 'bullmq'
-import { getAgentTriggersByApp, matchesFilter } from '../../agents/agent-trigger-queries'
+import { matchesFilter } from '../../agents/agent-trigger-queries'
+import { getCachedAgents } from '../../cache'
 import { createScopedLogger } from '../../logger'
 import { getQueue, Queues } from '../queues'
 
@@ -53,15 +54,32 @@ export async function dispatchAppTriggerToAgents(job: Job<AgentAppTriggerDispatc
     })
   }
 
-  const triggers = await getAgentTriggersByApp({
-    organizationId,
-    appId,
-    triggerId,
-    installationId: appInstallationId,
-    connectionId,
-  })
+  // Loose connection match: a NULL `triggerConnectionId` matches any incoming
+  // connectionId; otherwise it must equal exactly. Mirrors the SQL filter in
+  // the old `getAgentTriggersByApp` helper.
+  const agents = await getCachedAgents(organizationId)
+  const matches: Array<{
+    agentId: string
+    triggerId: string
+    config: Record<string, unknown> | null
+  }> = []
+  for (const agent of agents) {
+    for (const trigger of agent.triggers) {
+      if (trigger.kind !== 'app' || !trigger.enabled) continue
+      if (trigger.triggerAppId !== appId) continue
+      if (trigger.triggerAppTriggerId !== triggerId) continue
+      if (trigger.triggerInstallationId !== appInstallationId) continue
+      if (
+        trigger.triggerConnectionId !== null &&
+        trigger.triggerConnectionId !== (connectionId ?? null)
+      ) {
+        continue
+      }
+      matches.push({ agentId: agent.id, triggerId: trigger.id, config: trigger.config })
+    }
+  }
 
-  if (triggers.length === 0) {
+  if (matches.length === 0) {
     logger.debug('No matching agent triggers for app event', {
       appId,
       triggerId,
@@ -72,13 +90,13 @@ export async function dispatchAppTriggerToAgents(job: Job<AgentAppTriggerDispatc
 
   const queue = getQueue(Queues.scheduledTriggerQueue)
   let enqueued = 0
-  for (const trigger of triggers) {
-    const filter = (trigger.config as { filter?: Record<string, unknown> }).filter
+  for (const match of matches) {
+    const filter = (match.config as { filter?: Record<string, unknown> } | null)?.filter
     if (!matchesFilter(filter, triggerData)) continue
 
     await queue.add('executeAgentAppTrigger', {
-      agentTriggerId: trigger.id,
-      agentId: trigger.agentId,
+      agentTriggerId: match.triggerId,
+      agentId: match.agentId,
       organizationId,
       appId,
       triggerId,
@@ -95,7 +113,7 @@ export async function dispatchAppTriggerToAgents(job: Job<AgentAppTriggerDispatc
     appId,
     triggerId,
     installationId: appInstallationId,
-    matched: triggers.length,
+    matched: matches.length,
     enqueued,
   })
 

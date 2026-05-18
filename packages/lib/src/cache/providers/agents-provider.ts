@@ -1,10 +1,10 @@
 // packages/lib/src/cache/providers/agents-provider.ts
 
 import { type AgentConfig, schema } from '@auxx/database'
-import { and, eq } from 'drizzle-orm'
+import { eq } from 'drizzle-orm'
 import { MediaAssetService } from '../../files'
 import { createScopedLogger } from '../../logger'
-import type { CachedAgent } from '../org-cache-keys'
+import type { CachedAgent, CachedAgentTrigger } from '../org-cache-keys'
 import type { CacheProvider } from '../org-cache-provider'
 
 const logger = createScopedLogger('agents-provider')
@@ -21,42 +21,81 @@ const logger = createScopedLogger('agents-provider')
  *
  * Non-User-owned config keys (`color`, `iconId`) live only on `Agent.config`.
  * See plans/kopilot/agents/dm/option-d-defer-user-plan.md.
+ *
+ * Trigger rows are loaded in a second query and attached as `agent.triggers`;
+ * the DM-derived fields (`dmEnabled`/`dmInstructions`/`dmTriggerId`) are
+ * computed from that list. Hot-path consumers (worker dispatchers, jobs)
+ * read triggers off the cached agent — see
+ * plans/kopilot/agents/cache/plan.md.
  */
 export const agentsProvider: CacheProvider<CachedAgent[]> = {
   async compute(orgId, db) {
-    const rows = await db
-      .select({
-        id: schema.Agent.id,
-        userId: schema.Agent.userId,
-        createdById: schema.Agent.createdById,
-        slug: schema.Agent.slug,
-        description: schema.Agent.description,
-        prompt: schema.Agent.prompt,
-        toolsets: schema.Agent.toolsets,
-        knowledge: schema.Agent.knowledge,
-        modelId: schema.Agent.modelId,
-        mentionable: schema.Agent.mentionable,
-        setupCompletedAt: schema.Agent.setupCompletedAt,
-        archivedAt: schema.Agent.archivedAt,
-        config: schema.Agent.config,
-        createdAt: schema.Agent.createdAt,
-        updatedAt: schema.Agent.updatedAt,
-        userName: schema.User.name,
-        userAvatarAssetId: schema.User.avatarAssetId,
-        dmTriggerId: schema.AgentTrigger.id,
-        dmEnabled: schema.AgentTrigger.enabled,
-        dmInstructions: schema.AgentTrigger.instructions,
+    const [agents, triggers] = await Promise.all([
+      db
+        .select({
+          id: schema.Agent.id,
+          userId: schema.Agent.userId,
+          createdById: schema.Agent.createdById,
+          slug: schema.Agent.slug,
+          description: schema.Agent.description,
+          prompt: schema.Agent.prompt,
+          toolsets: schema.Agent.toolsets,
+          knowledge: schema.Agent.knowledge,
+          modelId: schema.Agent.modelId,
+          mentionable: schema.Agent.mentionable,
+          setupCompletedAt: schema.Agent.setupCompletedAt,
+          archivedAt: schema.Agent.archivedAt,
+          config: schema.Agent.config,
+          createdAt: schema.Agent.createdAt,
+          updatedAt: schema.Agent.updatedAt,
+          userName: schema.User.name,
+          userAvatarAssetId: schema.User.avatarAssetId,
+        })
+        .from(schema.Agent)
+        .leftJoin(schema.User, eq(schema.User.id, schema.Agent.userId))
+        .where(eq(schema.Agent.organizationId, orgId)),
+      db
+        .select({
+          id: schema.AgentTrigger.id,
+          agentId: schema.AgentTrigger.agentId,
+          kind: schema.AgentTrigger.kind,
+          enabled: schema.AgentTrigger.enabled,
+          triggerType: schema.AgentTrigger.triggerType,
+          entityDefinitionId: schema.AgentTrigger.entityDefinitionId,
+          eventType: schema.AgentTrigger.eventType,
+          triggerAppId: schema.AgentTrigger.triggerAppId,
+          triggerAppTriggerId: schema.AgentTrigger.triggerAppTriggerId,
+          triggerInstallationId: schema.AgentTrigger.triggerInstallationId,
+          triggerConnectionId: schema.AgentTrigger.triggerConnectionId,
+          config: schema.AgentTrigger.config,
+          instructions: schema.AgentTrigger.instructions,
+        })
+        .from(schema.AgentTrigger)
+        .where(eq(schema.AgentTrigger.organizationId, orgId)),
+    ])
+
+    const triggersByAgent = new Map<string, CachedAgentTrigger[]>()
+    for (const t of triggers) {
+      const list = triggersByAgent.get(t.agentId) ?? []
+      list.push({
+        id: t.id,
+        kind: t.kind as CachedAgentTrigger['kind'],
+        enabled: t.enabled,
+        triggerType: t.triggerType as CachedAgentTrigger['triggerType'],
+        entityDefinitionId: t.entityDefinitionId,
+        eventType: t.eventType,
+        triggerAppId: t.triggerAppId,
+        triggerAppTriggerId: t.triggerAppTriggerId,
+        triggerInstallationId: t.triggerInstallationId,
+        triggerConnectionId: t.triggerConnectionId,
+        config: (t.config ?? null) as Record<string, unknown> | null,
+        instructions: (t.instructions ?? null) as Record<string, unknown> | null,
       })
-      .from(schema.Agent)
-      .leftJoin(schema.User, eq(schema.User.id, schema.Agent.userId))
-      .leftJoin(
-        schema.AgentTrigger,
-        and(eq(schema.AgentTrigger.agentId, schema.Agent.id), eq(schema.AgentTrigger.kind, 'dm'))
-      )
-      .where(eq(schema.Agent.organizationId, orgId))
+      triggersByAgent.set(t.agentId, list)
+    }
 
     return Promise.all(
-      rows.map(async (row): Promise<CachedAgent> => {
+      agents.map(async (row): Promise<CachedAgent> => {
         const config = (row.config ?? {}) as AgentConfig
         const name = row.userName ?? config.name ?? null
         const avatarAssetId = row.userAvatarAssetId ?? config.avatarAssetId ?? null
@@ -80,6 +119,9 @@ export const agentsProvider: CacheProvider<CachedAgent[]> = {
           }
         }
 
+        const agentTriggers = triggersByAgent.get(row.id) ?? []
+        const dm = agentTriggers.find((t) => t.kind === 'dm')
+
         return {
           id: row.id,
           userId: row.userId,
@@ -95,9 +137,10 @@ export const agentsProvider: CacheProvider<CachedAgent[]> = {
           mentionable: row.mentionable,
           setupCompletedAt: row.setupCompletedAt ? row.setupCompletedAt.toISOString() : null,
           archivedAt: row.archivedAt ? row.archivedAt.toISOString() : null,
-          dmEnabled: row.dmEnabled ?? false,
-          dmInstructions: (row.dmInstructions ?? null) as Record<string, unknown> | null,
-          dmTriggerId: row.dmTriggerId ?? null,
+          triggers: agentTriggers,
+          dmEnabled: dm?.enabled ?? false,
+          dmInstructions: dm?.instructions ?? null,
+          dmTriggerId: dm?.id ?? null,
           config: row.config ?? null,
           createdAt: row.createdAt.toISOString(),
           updatedAt: row.updatedAt.toISOString(),

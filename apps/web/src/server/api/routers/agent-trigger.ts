@@ -3,7 +3,7 @@
 import { database, schema } from '@auxx/database'
 import { type AgentTriggerInput, AgentTriggerService, agentExistsInOrg } from '@auxx/lib/agents'
 import { enqueueAgentJob } from '@auxx/lib/ai/agent-framework'
-import { onCacheEvent } from '@auxx/lib/cache'
+import { getCachedAgentById, onCacheEvent } from '@auxx/lib/cache'
 import { createScopedLogger } from '@auxx/logger'
 import { createSession } from '@auxx/services'
 import { TRPCError } from '@trpc/server'
@@ -131,11 +131,9 @@ export const agentTriggerRouter = createTRPCRouter({
         trigger: input.trigger as AgentTriggerInput,
       })
 
-      // DM state lives on the cached agent — invalidate so subsequent
-      // sends pick up the new enabled/instructions/triggerId.
-      if (row.kind === 'dm') {
-        await onCacheEvent('agent.updated', { orgId: organizationId })
-      }
+      // All triggers live on the cached agent — invalidate so dispatchers
+      // and per-trigger jobs pick up the new state.
+      await onCacheEvent('agent.updated', { orgId: organizationId })
 
       logger.info('Agent trigger created', {
         organizationId,
@@ -163,9 +161,7 @@ export const agentTriggerRouter = createTRPCRouter({
         instructions: input.instructions,
         trigger: input.trigger as AgentTriggerInput | undefined,
       })
-      if (row.kind === 'dm') {
-        await onCacheEvent('agent.updated', { orgId: organizationId })
-      }
+      await onCacheEvent('agent.updated', { orgId: organizationId })
       return rowToDto(row)
     }),
 
@@ -174,11 +170,8 @@ export const agentTriggerRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
       const service = new AgentTriggerService()
-      const existing = await service.getTrigger(input.id, organizationId)
       await service.deleteTrigger(input.id, organizationId)
-      if (existing?.kind === 'dm') {
-        await onCacheEvent('agent.updated', { orgId: organizationId })
-      }
+      await onCacheEvent('agent.updated', { orgId: organizationId })
       return { ok: true as const }
     }),
 
@@ -192,19 +185,8 @@ export const agentTriggerRouter = createTRPCRouter({
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Trigger not found' })
       }
 
-      const [agent] = await database
-        .select({
-          id: schema.Agent.id,
-          userId: schema.Agent.userId,
-          modelId: schema.Agent.modelId,
-        })
-        .from(schema.Agent)
-        .where(
-          and(eq(schema.Agent.id, trigger.agentId), eq(schema.Agent.organizationId, organizationId))
-        )
-        .limit(1)
-
-      if (!agent) {
+      const agent = await getCachedAgentById(organizationId, trigger.agentId)
+      if (!agent || agent.archivedAt) {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Agent not found' })
       }
       if (!agent.userId) {

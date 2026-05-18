@@ -6,6 +6,7 @@ import {
   type CrudEventTriggerInput,
   type ScheduledTriggerInput,
 } from '../../../../../agents/agent-trigger-service'
+import { onCacheEvent } from '../../../../../cache'
 import { findCachedResource } from '../../../../../cache/org-cache-helpers'
 import { mdToBlocks } from '../../../../../kb/markdown'
 import type { ScheduledTriggerConfig } from '../../../../../workflows/cron-pattern'
@@ -179,6 +180,8 @@ has two, send all three in the call.`,
         })
         created.push(row.id)
       }
+
+      await onCacheEvent('agent.updated', { orgId: agentDeps.organizationId })
 
       return {
         success: true,
