@@ -155,9 +155,21 @@ export const tableColumnSchema = z.object({
   align: z.enum(['left', 'center', 'right']).optional(),
 })
 
+/**
+ * `columns` / `rows` are optional so the schema also accepts the best-effort
+ * output of the partial-JSON parser during streaming — the renderer defaults
+ * both to `[]` and grows the table as more data arrives.
+ *
+ * `.catch()` on each element keeps a single malformed cell/column from
+ * rejecting the whole table: the offending entry is coerced to a blank
+ * placeholder so the rest of the table renders progressively.
+ */
+const tableColumnPartialSafe = tableColumnSchema.catch({ label: '' })
+const tableCellPartialSafe = tableCellSchema.catch({ text: '' })
+
 export const tableBlockSchema = z.object({
-  columns: z.array(tableColumnSchema),
-  rows: z.array(z.array(tableCellSchema)),
+  columns: z.array(tableColumnPartialSafe).optional(),
+  rows: z.array(z.array(tableCellPartialSafe)).optional(),
 })
 
 /** Registry of block type → Zod schema */

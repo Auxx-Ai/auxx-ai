@@ -109,7 +109,7 @@ export function EntityCardItem({ recordId, snapshot, selectable }: EntityCardIte
 
 function EntityCardItemSkeleton() {
   return (
-    <div className='flex items-center gap-3 rounded-lg bg-background p-3 shadow-sm ring-1 ring-border'>
+    <div className='flex items-center gap-3 rounded-2xl bg-background p-1 shadow-sm ring-1 ring-border'>
       <Skeleton className='size-8 rounded-full' />
       <div className='min-w-0 flex-1 space-y-1.5'>
         <Skeleton className='h-4 w-32' />
