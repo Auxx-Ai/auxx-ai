@@ -21,6 +21,14 @@ import { ProviderRegistry } from '../provider-registry'
 import { ANTHROPIC_MODELS } from './anthropic-defaults'
 
 /**
+ * Runtime default output cap applied when a caller doesn't set max_tokens.
+ * 32K is the halfway mark for Sonnet 4.6 (64K ceiling) — enough headroom for
+ * persona authoring + parallel tool_use turns, low enough to keep cost
+ * predictable. Clamped per-model in transformParameters.
+ */
+const DEFAULT_MAX_OUTPUT_TOKENS = 32000
+
+/**
  * Anthropic specialized LLM client implementation
  * Supports Claude models with streaming, tool calling, and vision capabilities
  */
@@ -104,6 +112,7 @@ export class AnthropicLLMClient extends LLMClient {
     let chunkCount = 0
     const toolCalls: ToolCall[] = []
     let finalUsage: UsageMetrics | undefined
+    let stopReason: string | undefined
 
     try {
       const anthropicParams = this.buildAnthropicParams(processedParams, true)
@@ -173,7 +182,9 @@ export class AnthropicLLMClient extends LLMClient {
             break
 
           case 'message_delta':
-            // message_delta only carries output_tokens — merge with input_tokens from message_start
+            // message_delta carries output_tokens AND stop_reason. Capture both so
+            // truncation (`stop_reason === 'max_tokens'`) is visible downstream —
+            // otherwise a mid-stream tool_use cut-off surfaces as silent empty args.
             if (event.usage) {
               const outputTokens = event.usage.output_tokens || 0
               finalUsage = {
@@ -181,6 +192,9 @@ export class AnthropicLLMClient extends LLMClient {
                 completion_tokens: outputTokens,
                 total_tokens: inputTokens + outputTokens,
               }
+            }
+            if (event.delta?.stop_reason) {
+              stopReason = event.delta.stop_reason
             }
             break
 
@@ -190,9 +204,30 @@ export class AnthropicLLMClient extends LLMClient {
         }
       }
 
+      // Warn when the response was truncated by the output cap. This is the
+      // failure mode that turns a streamed `tool_use` into corrupt input_json
+      // and surfaces downstream as empty args. Logging at warn so it's visible
+      // without combing through delta events.
+      if (stopReason === 'max_tokens') {
+        const truncatedToolNames = toolCalls
+          .filter((tc) => !isValidJson(tc.function.arguments))
+          .map((tc) => tc.function.name)
+        this.logger.warn('Anthropic stream truncated by max_tokens', {
+          model: params.model,
+          requestedMaxTokens: (processedParams.parameters as any)?.max_tokens,
+          outputTokens: finalUsage?.completion_tokens,
+          contentLength: fullContent.length,
+          toolCallCount: toolCalls.length,
+          truncatedToolCalls: truncatedToolNames,
+        })
+      }
+
       // Yield a final chunk with tool calls and/or usage so for-await consumers
       // (e.g. the orchestrator) can see them — matching OpenAI client behavior.
-      const finishReason = toolCalls.length > 0 ? 'tool_calls' : 'stop'
+      // finishReason mirrors Anthropic's stop_reason when available so callers
+      // can detect truncation (`length` = OpenAI parlance for max_tokens hit).
+      const finishReason =
+        stopReason === 'max_tokens' ? 'length' : toolCalls.length > 0 ? 'tool_calls' : 'stop'
       yield {
         id: `anthropic_${Date.now()}_final`,
         model: params.model,
@@ -205,6 +240,7 @@ export class AnthropicLLMClient extends LLMClient {
           chunkIndex: ++chunkCount,
           totalLength: fullContent.length,
           eventType: toolCalls.length > 0 ? 'tool_calls_complete' : 'stream_complete',
+          stopReason,
         },
       }
 
@@ -217,6 +253,7 @@ export class AnthropicLLMClient extends LLMClient {
           chunkCount,
           totalLength: fullContent.length,
           streamingCompleted: true,
+          stopReason,
         },
       }
     } catch (error) {
@@ -238,15 +275,16 @@ export class AnthropicLLMClient extends LLMClient {
   transformParameters(params: LLMInvokeParams, model: string): LLMInvokeParams {
     const processed = { ...params }
 
-    // Ensure max_tokens is set (required by Anthropic)
+    // Ensure max_tokens is set (required by Anthropic). Default to 32K (half of
+    // Sonnet 4.6's 64K ceiling), clamped at each model's actual maxTokens. The
+    // previous hardcoded 1024 floor truncated streamed tool_use input mid-JSON
+    // and surfaced downstream as empty args / "non-empty string" errors.
+    const maxTokensForModel = this.getMaxTokensForModel(model)
+    const runtimeDefault = Math.min(maxTokensForModel, DEFAULT_MAX_OUTPUT_TOKENS)
     if (!processed.parameters?.max_tokens) {
       processed.parameters = processed.parameters || {}
-      processed.parameters.max_tokens = 1024
-    }
-
-    // Limit max_tokens based on model capabilities
-    const maxTokensForModel = this.getMaxTokensForModel(model)
-    if (processed.parameters.max_tokens > maxTokensForModel) {
+      processed.parameters.max_tokens = runtimeDefault
+    } else if (processed.parameters.max_tokens > maxTokensForModel) {
       processed.parameters.max_tokens = maxTokensForModel
     }
 
@@ -1137,4 +1175,16 @@ export function buildSystemBlocks(systemMessage: string): Array<{
 
 function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+/** Returns true iff `s` parses as JSON. Used to flag tool_use input that the
+ * stream truncated mid-payload. */
+function isValidJson(s: string): boolean {
+  if (!s) return false
+  try {
+    JSON.parse(s)
+    return true
+  } catch {
+    return false
+  }
 }

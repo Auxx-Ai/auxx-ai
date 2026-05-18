@@ -7,11 +7,12 @@ import { VisuallyHidden } from '@auxx/ui/components/visually-hidden'
 import { cn } from '@auxx/ui/lib/utils'
 import type { JSONContent } from '@tiptap/core'
 import type { Editor } from '@tiptap/react'
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { DEFAULT_TABS } from '~/components/editor/inline-picker'
 import type { ReferenceTab } from '~/components/editor/inline-picker/nodes/reference-picker-node'
 import type { ReferencePickerHandle } from '~/components/pickers/reference-picker/reference-picker-content'
 import CollapseWrap from '~/components/workflow/ui/collapse-wrap'
+import { api } from '~/trpc/react'
 import { useAgentAutosave } from '../../../hooks/use-agent-autosave'
 import type { AgentDetail } from '../../../store/agent-store'
 import type { AutosaveState } from '../../shared/autosave-indicator'
@@ -27,10 +28,12 @@ interface PersonaEditorProps {
 
 const COLLAPSED_MIN_HEIGHT = 120
 
-// Persona editor is the one surface that opts into the Tools tab — admins
-// reference toolsets they want pinned to the agent's prompt. Customer-facing
-// editors (mail composer, KB articles) stay on `DEFAULT_TABS` by design.
-const PERSONA_REFERENCE_TABS: ReferenceTab[] = [...DEFAULT_TABS, 'tools']
+// Persona editor opts into the admin-only tabs (Tools, Resources, Fields) —
+// admins reference toolsets they want pinned, and schema objects (entities /
+// fields) so the builder can chip status/priority/category values instead of
+// ad-libbing prose. Customer-facing editors (mail composer, KB articles)
+// stay on `DEFAULT_TABS` by design.
+const PERSONA_REFERENCE_TABS: ReferenceTab[] = [...DEFAULT_TABS, 'tools', 'resources', 'fields']
 
 function readPromptContent(
   prompt: Record<string, unknown> | null | undefined
@@ -61,6 +64,16 @@ function readPromptContent(
 export function PersonaEditor({ agent, onAutosaveChange }: PersonaEditorProps) {
   const referencePickerRef = useRef<ReferencePickerHandle | null>(null)
   const { patch } = useAgentAutosave(agent.id, { onStateChange: onAutosaveChange })
+  const utils = api.useUtils()
+
+  // Warm the org-wide tool catalog so the client-side mention reconciler
+  // (in `useAgentMutations`) has it on hand the very first time a user
+  // types a `tool:<name>` chip. The ReferencePicker prefetches on its own,
+  // but only after the user opens the Tools tab — too late to make the
+  // first chip's Lock badge appear synchronously.
+  useEffect(() => {
+    void utils.agentToolset.listTools.prefetch()
+  }, [utils.agentToolset.listTools])
 
   const [isExpanded, setExpanded] = useState(false)
   const [isFocused, setFocused] = useState(false)

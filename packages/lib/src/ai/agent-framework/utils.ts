@@ -1,8 +1,11 @@
 // packages/lib/src/ai/agent-framework/utils.ts
 
+import { createScopedLogger } from '@auxx/logger'
 import type { ToolCall } from '../clients/base/types'
 import type { ToolContext } from './tool-context'
 import type { AgentToolDefinition, AgentToolResult, ToolProgressPayload } from './types'
+
+const utilsLogger = createScopedLogger('agent-utils')
 
 /**
  * Result of executing (or synthesizing) a single tool call inside the query
@@ -59,14 +62,27 @@ export function buildToolDigest(
 /**
  * Parse a `ToolCall.function.arguments` payload (provider-dependent — string or
  * already-parsed object) into a `Record<string, unknown>`. Returns an empty
- * object on malformed JSON so the caller can decide how to react.
+ * object on malformed JSON and logs the failure with a raw-string preview so
+ * mid-stream truncation (the typical cause) isn't silently swallowed.
  */
 export function parseToolArgs(toolCall: ToolCall): Record<string, unknown> {
   const raw = toolCall.function.arguments
   if (typeof raw === 'string') {
     try {
       return JSON.parse(raw)
-    } catch {
+    } catch (err) {
+      utilsLogger.warn('Failed to parse tool args — returning empty object', {
+        toolCallId: toolCall.id,
+        toolName: toolCall.function.name,
+        rawLength: raw.length,
+        rawPreview: raw.slice(0, 200),
+        rawTail: raw.length > 200 ? raw.slice(-100) : undefined,
+        error: err instanceof Error ? err.message : String(err),
+        hint:
+          raw.length === 0
+            ? 'empty string — provider returned no args, likely max_tokens truncation before any input_json_delta'
+            : 'non-empty but invalid JSON — likely truncated mid-stream',
+      })
       return {}
     }
   }

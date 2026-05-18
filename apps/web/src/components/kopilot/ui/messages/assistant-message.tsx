@@ -1,10 +1,10 @@
 // apps/web/src/components/kopilot/ui/messages/assistant-message.tsx
 
-import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
 import { AlertTriangle } from 'lucide-react'
 import { useMemo } from 'react'
 import Markdown, { type Components, defaultUrlTransform, type UrlTransform } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { Tooltip } from '~/components/global/tooltip'
 import type { KopilotMessage, LinkSnapshot, ThinkingGroup } from '../../stores/kopilot-store'
 import { useKopilotStore } from '../../stores/kopilot-store'
 import '../../styles/kopilot-prose.css'
@@ -142,13 +142,12 @@ export function AssistantMessage({
       <div className='min-w-0 flex-1 space-y-1'>
         {group && <ThinkingSteps group={group} />}
         {message?.error ? (
-          <Alert variant='destructive' className='bg-background'>
-            <AlertTriangle className='size-4' />
-            <AlertTitle>Something went wrong</AlertTitle>
-            <AlertDescription>
-              <span className='text-muted-foreground text-xs'>{message.error}</span>
-            </AlertDescription>
-          </Alert>
+          <Tooltip content={message.error}>
+            <div className='ml-2 inline-flex items-center gap-1.5 rounded-lg border border-destructive/30 bg-destructive/5 px-2 py-1 text-xs'>
+              <AlertTriangle className='size-3 shrink-0 text-destructive' />
+              <span className='font-medium text-destructive shrink-0'>Something went wrong</span>
+            </div>
+          </Tooltip>
         ) : (
           <div className='kopilot-prose'>
             <Markdown

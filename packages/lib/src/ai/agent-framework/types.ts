@@ -80,6 +80,13 @@ export type LLMStreamEvent =
       providerType?: string
       credentialSource?: string
       reasoning_content?: string
+      /**
+       * Provider-reported reason the response ended. Normalized: `length` means
+       * the output cap was hit (Anthropic `max_tokens`, OpenAI `length`). Used
+       * to detect truncated tool_use input and warn before falling into the
+       * empty-args trap.
+       */
+      finishReason?: string
     }
 
 // ===== TOOL TYPES =====

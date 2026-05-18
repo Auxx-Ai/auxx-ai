@@ -118,4 +118,28 @@ export function flattenCatalogToToolsets(roots: CatalogNode[]): FlatToolsetCatal
 }
 
 export { getTriggerLabel } from './agent-trigger-label'
+export type {
+  KnowledgeEntry,
+  KnowledgeMode,
+  KnowledgeSource,
+  ReconcileMentionsInput,
+  ReconcileMentionsOutput,
+  ToolsetEntry,
+  ToolsetSource,
+} from './prompt-mention-reconciler'
+
+/**
+ * Re-exports of the pure prompt → toolsets/knowledge reconciler. These run
+ * client-side from the prompt-only autosave fast path so the Lock badge lights
+ * up the same keystroke a `tool:<name>` chip lands, instead of waiting for the
+ * server round-trip + cache invalidate. Server-side `updateAgent` runs the
+ * same functions on flush, so client and server agree by construction.
+ */
+export {
+  reconcileKnowledge,
+  reconcilePromptMentions,
+  reconcileToolsets,
+  walkPromptDoc,
+} from './prompt-mention-reconciler'
 export { AGENT_SLUG_MAX, AGENT_SLUG_REGEX, agentSlugSchema } from './slug-schema'
+export type { FlatToolCatalogEntry } from './toolset-catalog'

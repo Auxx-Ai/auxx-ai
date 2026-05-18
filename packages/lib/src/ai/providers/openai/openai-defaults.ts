@@ -108,8 +108,19 @@ const VERBOSITY_RULE: ParameterRule = {
   options: ['low', 'medium', 'high'],
 }
 
+/**
+ * Default output cap when a caller doesn't override it. 32K matches Anthropic's
+ * runtime default — generous enough that long tool_use input or persona
+ * authoring won't truncate, low enough to keep cost predictable. Clamped at
+ * each model's actual ceiling via `Math.min` in the factories.
+ */
+const DEFAULT_MAX_OUTPUT_TOKENS = 32000
+
 /** Max completion tokens rule factory */
-function maxCompletionTokensRule(max: number, defaultVal = 8192): ParameterRule {
+function maxCompletionTokensRule(
+  max: number,
+  defaultVal = Math.min(max, DEFAULT_MAX_OUTPUT_TOKENS)
+): ParameterRule {
   return {
     name: 'max_completion_tokens',
     type: 'int',
@@ -125,7 +136,10 @@ function maxCompletionTokensRule(max: number, defaultVal = 8192): ParameterRule 
 }
 
 /** GPT-5.2+ parameter rules (sampling params included for UI but conditional on effort level) */
-function gpt5Params(maxTokens: number, defaultTokens = 8192): ParameterRule[] {
+function gpt5Params(
+  maxTokens: number,
+  defaultTokens = Math.min(maxTokens, DEFAULT_MAX_OUTPUT_TOKENS)
+): ParameterRule[] {
   return [
     GPT5_REASONING_EFFORT,
     VERBOSITY_RULE,
@@ -138,7 +152,10 @@ function gpt5Params(maxTokens: number, defaultTokens = 8192): ParameterRule[] {
 }
 
 /** O-series reasoning parameter rules (no sampling params) */
-function oSeriesParams(maxTokens: number, defaultTokens = 8192): ParameterRule[] {
+function oSeriesParams(
+  maxTokens: number,
+  defaultTokens = Math.min(maxTokens, DEFAULT_MAX_OUTPUT_TOKENS)
+): ParameterRule[] {
   return [O_SERIES_REASONING_EFFORT, maxCompletionTokensRule(maxTokens, defaultTokens)]
 }
 
