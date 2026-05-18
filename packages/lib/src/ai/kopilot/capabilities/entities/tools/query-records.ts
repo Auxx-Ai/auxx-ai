@@ -9,7 +9,13 @@ import {
   OPERATOR_DEFINITIONS,
   type Operator,
 } from '../../../../../conditions/operator-definitions'
-import { UnifiedCrudHandler } from '../../../../../resources/crud'
+import {
+  countEntityInstances,
+  countSystemResource,
+  isSystemResource,
+  UnifiedCrudHandler,
+} from '../../../../../resources/crud'
+import type { TableId } from '../../../../../resources/registry/field-registry'
 import { getFieldOptions } from '../../../../../resources/registry/option-helpers'
 import type { Resource } from '../../../../../resources/registry/types'
 import { toRecordId } from '../../../../../resources/resource-id'
@@ -172,7 +178,7 @@ Examples:
       const logicalOperator = (args.logicalOperator as 'AND' | 'OR') ?? 'AND'
       const sort = args.sort as { field: string; direction: 'asc' | 'desc' } | undefined
       const countOnly = args.countOnly === true
-      const limit = countOnly ? 0 : Math.min((args.limit as number) || 25, 100)
+      const limit = Math.min((args.limit as number) || 25, 100)
       const offset = Math.max((args.offset as number) || 0, 0)
 
       const warnings: QueryWarning[] = []
@@ -224,30 +230,47 @@ Examples:
 
       // Convert simplified filters → ConditionGroup[]
       const conditionGroup = convertToConditionGroup(validFilters, resource, logicalOperator)
+      const conditionGroups = conditionGroup ? [conditionGroup] : []
 
-      // Build sorting
-      const sorting = sort ? [{ id: sort.field, desc: sort.direction === 'desc' }] : []
-
-      // Query filtered IDs
-      const filtered = await handler.listFiltered({
-        entityDefinitionId: entityDefId,
-        filters: conditionGroup ? [conditionGroup] : [],
-        sorting,
-        limit,
-        cursor: offset > 0 ? { snapshotId: '', offset } : undefined,
-      })
-
-      // Count-only mode — return just the total, skip hydration
+      // Count-only mode — short-circuit: run just `SELECT COUNT(*)`, skip id fetch + hydration.
       if (countOnly) {
+        const total = isSystemResource(entityDefId)
+          ? await countSystemResource({
+              db,
+              tableId: entityDefId as TableId,
+              organizationId: agentDeps.organizationId,
+              filters: conditionGroups,
+            })
+          : await countEntityInstances({
+              db,
+              entityDefinitionId: entityDefId,
+              organizationId: agentDeps.organizationId,
+              filters: conditionGroups,
+            })
+
         return {
           success: true,
           output: {
             entityType: resource.label,
-            total_matching: filtered.total,
+            total_matching: total,
             warnings: warnings.length > 0 ? warnings : undefined,
           },
         }
       }
+
+      // Build sorting
+      const sorting = sort ? [{ id: sort.field, desc: sort.direction === 'desc' }] : []
+
+      // Query filtered IDs — oneshot mode: paged SQL + parallel COUNT(*), no Redis snapshot
+      // (kopilot doesn't benefit from snapshot reuse since each tool call is independent).
+      const filtered = await handler.listFiltered({
+        entityDefinitionId: entityDefId,
+        filters: conditionGroups,
+        sorting,
+        limit,
+        offset,
+        mode: 'oneshot',
+      })
 
       // Hydrate results with display data
       const recordIds = filtered.ids.map((id) => toRecordId(entityDefId, id))

@@ -192,13 +192,16 @@ function TableContent({ columns, rows }: { columns: TableColumnData[]; rows: Tab
 function ExpandButton({
   isExpanded,
   onExpandChange,
+  insetHeader,
 }: {
   isExpanded: boolean
   onExpandChange: (expanded: boolean) => void
+  /** Pull button into the card's p-2 padding when used in BlockCard headerActions. */
+  insetHeader?: boolean
 }) {
   return (
     <Tooltip content={isExpanded ? 'Close' : 'Expand'}>
-      <div>
+      <div className={insetHeader ? '-my-1 -mr-1' : undefined}>
         <ActionButton onClick={() => onExpandChange(!isExpanded)}>
           {isExpanded ? <Minimize2 className='size-3.5' /> : <Maximize2 className='size-3.5' />}
         </ActionButton>
@@ -221,12 +224,12 @@ export function TableBlock({ data }: BlockRendererProps<TableBlockData>) {
         primaryText='Table'
         hasFooter={false}
         secondaryText={
-          <span className='flex items-center gap-1.5'>
-            <span className='text-xs text-muted-foreground'>
-              {rows.length} {rows.length === 1 ? 'row' : 'rows'}
-            </span>
-            <ExpandButton isExpanded={false} onExpandChange={setIsExpanded} />
+          <span className='text-xs text-muted-foreground'>
+            {rows.length} {rows.length === 1 ? 'row' : 'rows'}
           </span>
+        }
+        headerActions={
+          <ExpandButton isExpanded={false} onExpandChange={setIsExpanded} insetHeader />
         }>
         <ScrollArea
           orientation='horizontal'

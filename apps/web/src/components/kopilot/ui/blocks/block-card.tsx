@@ -3,8 +3,11 @@
 'use client'
 
 import { cn } from '@auxx/ui/lib/utils'
-import type { ReactNode } from 'react'
+import { Maximize2, Minimize2 } from 'lucide-react'
+import { AnimatePresence, motion } from 'motion/react'
+import { type ReactNode, useState } from 'react'
 import { Tooltip } from '~/components/global/tooltip'
+import { ActionButton } from '~/components/workflow/ui/action-button'
 
 const STATUS_CONFIG = {
   pending: { color: 'bg-amber-500', label: 'Pending Approval' },
@@ -49,6 +52,29 @@ interface BlockCardProps {
   'data-slot'?: string
   /** Extra classes for the outer wrapper. Use `[&_[data-slot=block-card-body]]:p-0` etc. to target inner slots. */
   className?: string
+  /** Render a Maximize/Minimize toggle in the header and collapse the body. */
+  collapsible?: boolean
+  /** Initial collapsed state when `collapsible`. Default: false. */
+  defaultCollapsed?: boolean
+  /**
+   * Extra header-right slot — rendered between `secondaryText` and the
+   * built-in collapse toggle. Lets callers add their own icon buttons
+   * (e.g. table-block's expand-to-dialog) without forking the layout.
+   * Use `ActionButton` for visual consistency.
+   */
+  headerActions?: ReactNode
+}
+
+function CollapseToggle({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => void }) {
+  return (
+    <Tooltip content={collapsed ? 'Expand' : 'Collapse'}>
+      <div className='-my-1 -mr-1'>
+        <ActionButton onClick={onToggle}>
+          {collapsed ? <Maximize2 className='size-3.5' /> : <Minimize2 className='size-3.5' />}
+        </ActionButton>
+      </div>
+    </Tooltip>
+  )
 }
 
 export function BlockCard({
@@ -62,28 +88,15 @@ export function BlockCard({
   actions,
   'data-slot': dataSlot,
   className,
+  collapsible,
+  defaultCollapsed = false,
+  headerActions,
 }: BlockCardProps) {
   const showFooter = hasFooter && (actionLabel || (actions && actions.length > 0))
+  const [collapsed, setCollapsed] = useState(defaultCollapsed)
 
-  return (
-    <div
-      data-slot={dataSlot}
-      className={cn(
-        'rounded-3xl bg-card/25 p-2 shadow-lg shadow-black/[.065] ring-1 ring-border-illustration',
-        className
-      )}>
-      {hasHeader && (
-        <div className='flex items-start justify-between px-2 pt-1'>
-          <div className='flex items-center gap-2'>
-            {indicator}
-            {primaryText && (
-              <span className='text-xs font-semibold text-foreground/90'>{primaryText}</span>
-            )}
-          </div>
-          {secondaryText && <div className='text-sm text-foreground/50'>{secondaryText}</div>}
-        </div>
-      )}
-
+  const body = (
+    <>
       {children && (
         <div
           data-slot='block-card-body'
@@ -118,6 +131,50 @@ export function BlockCard({
             ))}
           </div>
         </div>
+      )}
+    </>
+  )
+
+  return (
+    <div
+      data-slot={dataSlot}
+      className={cn(
+        'rounded-3xl bg-card/25 p-2 shadow-lg shadow-black/[.065] ring-1 ring-border-illustration',
+        className
+      )}>
+      {hasHeader && (
+        <div className='flex items-start justify-between px-2 pt-1'>
+          <div className='flex items-center gap-2'>
+            {indicator}
+            {primaryText && (
+              <span className='text-xs font-semibold text-foreground/90'>{primaryText}</span>
+            )}
+          </div>
+          <div className='flex items-center gap-1.5'>
+            {secondaryText && <div className='text-sm text-foreground/50'>{secondaryText}</div>}
+            {headerActions}
+            {collapsible && (
+              <CollapseToggle collapsed={collapsed} onToggle={() => setCollapsed((v) => !v)} />
+            )}
+          </div>
+        </div>
+      )}
+
+      {collapsible ? (
+        <AnimatePresence initial={false}>
+          {!collapsed && (
+            <motion.div
+              initial={{ height: 0, opacity: 0, filter: 'blur(3px)' }}
+              animate={{ height: 'auto', opacity: 1, filter: 'blur(0px)' }}
+              exit={{ height: 0, opacity: 0, filter: 'blur(3px)' }}
+              transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+              style={{ overflow: 'hidden' }}>
+              {body}
+            </motion.div>
+          )}
+        </AnimatePresence>
+      ) : (
+        body
       )}
     </div>
   )

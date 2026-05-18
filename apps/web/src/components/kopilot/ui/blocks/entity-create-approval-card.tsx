@@ -36,7 +36,9 @@ export function EntityCreateApprovalCard({ args, status, onApprove, onReject }: 
       primaryText={`Create ${resource?.label ?? 'Record'}`}
       hasFooter={isPending}
       actionLabel={isPending ? 'Create record?' : undefined}
-      actions={actions}>
+      actions={actions}
+      collapsible={status === 'rejected'}
+      defaultCollapsed={status === 'rejected'}>
       {entries.length > 0 ? (
         <div>
           {entries.map(([key, value]) => (

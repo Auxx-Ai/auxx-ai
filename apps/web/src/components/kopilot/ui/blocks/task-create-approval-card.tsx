@@ -54,7 +54,9 @@ export function TaskCreateApprovalCard({ args, status, onApprove, onReject }: Ap
       primaryText='Create Task'
       hasFooter={isPending}
       actionLabel={isPending ? 'Create this task?' : undefined}
-      actions={actions}>
+      actions={actions}
+      collapsible={status === 'rejected'}
+      defaultCollapsed={status === 'rejected'}>
       <div className='space-y-2'>
         {/* Title */}
         <div className='flex items-start gap-2'>

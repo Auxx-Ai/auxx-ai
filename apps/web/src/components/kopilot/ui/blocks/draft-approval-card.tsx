@@ -149,7 +149,9 @@ export function DraftApprovalCard({
       secondaryText={secondaryText}
       actionLabel={isPending ? 'Send message?' : undefined}
       hasFooter={actions.length > 0}
-      actions={actions}>
+      actions={actions}
+      collapsible={isRejected}
+      defaultCollapsed={isRejected}>
       <div className='h-40'>
         <ScrollArea
           className='h-full'

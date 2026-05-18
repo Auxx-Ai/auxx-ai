@@ -27,12 +27,16 @@ export type {
 } from './unified-handler-queries'
 // Query utilities
 export {
+  countEntityInstances,
+  countSystemResource,
   extractRequiredRelatedEntities,
   getTableSchema,
   isSystemResource,
   listAll,
   queryEntityInstanceIds,
+  queryEntityInstanceIdsPaged,
   querySystemResourceIds,
+  querySystemResourceIdsPaged,
   resolveEntityId,
   resolveEntityIdFromCache,
 } from './unified-handler-queries'
