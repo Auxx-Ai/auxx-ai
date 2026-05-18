@@ -32,7 +32,9 @@ export function EntityUpdateApprovalCard({ args, status, onApprove, onReject }: 
       primaryText={`Update ${resource?.label ?? 'Record'}${record?.displayName ? `: ${record.displayName}` : ''}`}
       hasFooter={isPending}
       actionLabel={isPending ? 'Apply changes?' : undefined}
-      actions={actions}>
+      actions={actions}
+      collapsible={status === 'rejected'}
+      defaultCollapsed={status === 'rejected'}>
       <div>
         {Object.entries(values).map(([key, value]) => (
           <KopilotFieldRow

@@ -58,7 +58,9 @@ export function BulkUpdateApprovalCard({ args, status, onApprove, onReject }: Ap
             ? 'Rejected'
             : undefined
       }
-      actions={actions}>
+      actions={actions}
+      collapsible={status === 'rejected'}
+      defaultCollapsed={status === 'rejected'}>
       {values.length > 0 && (
         <div className='mb-2 border-b pb-2'>
           {values.map((v) => (

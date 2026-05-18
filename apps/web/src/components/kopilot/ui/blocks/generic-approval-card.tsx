@@ -30,7 +30,9 @@ export function GenericApprovalCard({
       primaryText='Approval required'
       secondaryText={<span className='font-mono text-xs'>{toolName}</span>}
       hasFooter={isPending}
-      actions={actions}>
+      actions={actions}
+      collapsible={status === 'rejected'}
+      defaultCollapsed={status === 'rejected'}>
       {argEntries.length > 0 && (
         <div className='space-y-1.5'>
           {argEntries.map(([key, value]) => {
