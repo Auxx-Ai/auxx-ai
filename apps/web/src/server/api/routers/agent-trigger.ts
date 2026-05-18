@@ -207,6 +207,13 @@ export const agentTriggerRouter = createTRPCRouter({
       if (!agent) {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Agent not found' })
       }
+      if (!agent.userId) {
+        // Draft agent: no synthetic User, can't run.
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'Complete agent setup before firing a manual run.',
+        })
+      }
 
       const firedAt = new Date().toISOString()
       const sessionResult = await createSession({

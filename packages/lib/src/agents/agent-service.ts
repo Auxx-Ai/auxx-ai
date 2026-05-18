@@ -1,6 +1,7 @@
 // packages/lib/src/agents/agent-service.ts
 
 import {
+  type AgentConfig,
   type Database,
   database as defaultDb,
   type KnowledgeEntry,
@@ -23,8 +24,9 @@ export interface CreateAgentInput {
   /** The human creating this agent. */
   createdById: string
   /**
-   * Written to the backing User row. Omit to leave `User.name = null` —
-   * setup-mode drafts start nameless and the builder fills it in via
+   * Stored on `Agent.config.name` during draft. When the agent later
+   * completes setup the value is mirrored onto the synthetic User row.
+   * Omit to start the draft nameless — the builder fills it in via
    * `update_agent_identity`. UI sites fall back to "Untitled agent".
    */
   name?: string | null
@@ -48,7 +50,12 @@ export interface CreateAgentInput {
 
 export interface CreatedAgent {
   agentId: string
-  userId: string
+  /**
+   * Always `null` on creation under Option D — the synthetic User row is
+   * materialized inside `completeAgentSetup`. See
+   * plans/kopilot/agents/dm/option-d-defer-user-plan.md.
+   */
+  userId: null
   /** Toolset slugs inserted alongside the agent. */
   toolsetSlugs: string[]
   /** Source applied to the toolset rows (manual vs auto_default). */
@@ -67,16 +74,18 @@ function agentSentinelEmail(agentId: string): string {
 /**
  * Create an agent.
  *
- * Inserts a synthetic User (userType='AGENT'), an OrganizationMember row, and
- * the Agent row in a single transaction. Critically:
+ * Under Option D the draft Agent row is the **only** row that exists during
+ * setup — no synthetic User, no OrganizationMember. Those are materialized
+ * inside `completeAgentSetup`. Identity fields the builder receives during
+ * setup (`name`, eventually `avatarAssetId`) land on `Agent.config` and are
+ * mirrored onto the User on completion.
  *
- *   - Does NOT increment PlanSubscription.seats (agents don't consume seats)
- *   - Does NOT push to Stripe
- *   - Does NOT send any invite / join-organization email
- *   - Does NOT set User.defaultOrganizationId
+ * Three `AgentTrigger` rows (mention/assignment/dm) are still inserted
+ * here — they reference `agentId` only and are dormant until setup
+ * completes (runtime gates on the agent having a backing User).
  *
- * Fires `member.added` so the members cache picks up the new row, and
- * `agent.created` so the agents cache picks it up too.
+ * Fires `agent.created` so the agents cache picks the draft up. The
+ * `member.added` event is deferred to `completeAgentSetup`.
  */
 export async function createAgent(
   input: CreateAgentInput,
@@ -102,37 +111,20 @@ export async function createAgent(
     source: toolsetSource,
   }))
 
-  const { agentId, userId } = await db.transaction(async (tx) => {
-    // 1. Insert the synthetic User. emailVerified: true skips any
-    //    email-verification trigger; banned: false so we can still join
-    //    org-member queries (logon paths reject AGENT users separately).
-    const [user] = await tx
-      .insert(schema.User)
-      .values({
-        name,
-        // email gets backfilled below once we know the agent id (need a
-        // deterministic, unique sentinel keyed by agentId)
-        email: null,
-        userType: 'AGENT',
-        emailVerified: true,
-        updatedAt: now,
-      })
-      .returning()
+  const config: AgentConfig | null = name ? { name } : null
 
-    if (!user) throw new Error('Failed to insert agent User row')
-
-    // 2. Insert the Agent row. Name/avatar are not stored here — they live
-    //    on the backing User row (User.name, User.avatarAssetId). When the
-    //    caller omits `slug`, insert with a unique placeholder and back-
-    //    fill `slug = id` post-insert so the (organizationId, slug)
-    //    unique index is satisfied trivially without an extra round trip
-    //    for id pre-generation.
+  const { agentId } = await db.transaction(async (tx) => {
+    // 1. Insert the Agent row with `userId: null`. The synthetic User is
+    //    deferred to `completeAgentSetup`. When the caller omits `slug`,
+    //    insert with a unique placeholder and back-fill `slug = id` post-
+    //    insert so the (organizationId, slug) unique index is satisfied
+    //    trivially without pre-generating an id.
     const slugPlaceholder = input.slug ?? `_pending_${generateId()}`
     const [agent] = await tx
       .insert(schema.Agent)
       .values({
         organizationId,
-        userId: user.id,
+        userId: null,
         createdById,
         slug: slugPlaceholder,
         description,
@@ -141,6 +133,7 @@ export async function createAgent(
         knowledge: [],
         modelId,
         mentionable,
+        config,
       })
       .returning()
 
@@ -153,28 +146,12 @@ export async function createAgent(
         .where(eq(schema.Agent.id, agent.id))
     }
 
-    // 3. Back-fill the User email with the sentinel now that we have agentId.
-    await tx
-      .update(schema.User)
-      .set({ email: agentSentinelEmail(agent.id), updatedAt: now })
-      .where(eq(schema.User.id, user.id))
-
-    // 4. OrganizationMember row — role='USER', status='ACTIVE'.
-    //    DO NOT increment PlanSubscription.seats. DO NOT push Stripe.
-    //    DO NOT send invite/join emails.
-    await tx.insert(schema.OrganizationMember).values({
-      userId: user.id,
-      organizationId,
-      role: 'USER',
-      status: 'ACTIVE',
-      updatedAt: now,
-    })
-
-    // 5. Auto-create mention + assignment + dm triggers (enabled by default).
+    // 2. Auto-create mention + assignment + dm triggers (enabled by default).
     //    Phase 1.5 / 2: every agent fires when @-mentioned in a comment,
     //    assigned to a ticket, or direct-messaged via the Chat tab /
     //    composer sender picker. Cascade on agentId cleans these up when
-    //    the agent is archived/deleted.
+    //    the agent is archived/deleted. Dormant until setup completes —
+    //    runtime gates on the agent having a backing User.
     await tx.insert(schema.AgentTrigger).values([
       {
         agentId: agent.id,
@@ -205,12 +182,10 @@ export async function createAgent(
       },
     ])
 
-    return { agentId: agent.id, userId: user.id }
+    return { agentId: agent.id }
   })
 
-  // Invalidate caches outside the tx so retries don't double-fire.
   try {
-    await onCacheEvent('member.added', { orgId: organizationId })
     await onCacheEvent('agent.created', { orgId: organizationId })
   } catch (err) {
     logger.warn('Failed to invalidate caches after agent create', {
@@ -220,7 +195,7 @@ export async function createAgent(
     })
   }
 
-  return { agentId, userId, toolsetSlugs, toolsetSource }
+  return { agentId, userId: null, toolsetSlugs, toolsetSource }
 }
 
 export interface UpdateAgentInput {
@@ -241,9 +216,11 @@ export interface UpdateAgentInput {
 }
 
 /**
- * Update an agent. Name updates route to the backing User row; avatar changes
- * go through the standard user-avatar upload flow against `agent.userId` (not
- * this function). Archive transitions also toggle the User's banned state.
+ * Update an agent. Name updates route to the backing User row when one
+ * exists (post-setup); otherwise they merge into `Agent.config.name`.
+ * Avatar changes go through the standard user-avatar upload flow against
+ * `agent.userId` (not this function). Archive transitions also toggle the
+ * backing User's banned state — only valid on completed agents.
  */
 export async function updateAgent(
   agentId: string,
@@ -264,14 +241,20 @@ export async function updateAgent(
     const { name: _name, ...agentPatch } = input
     const patch: Record<string, unknown> = { ...agentPatch, updatedAt: now }
 
+    const [current] = await tx
+      .select({
+        userId: schema.Agent.userId,
+        toolsets: schema.Agent.toolsets,
+        knowledge: schema.Agent.knowledge,
+        config: schema.Agent.config,
+      })
+      .from(schema.Agent)
+      .where(eq(schema.Agent.id, agentId))
+      .for('update')
+      .limit(1)
+    if (!current) throw new Error(`Agent not found: ${agentId}`)
+
     if (input.prompt !== undefined && toolCatalog) {
-      const [current] = await tx
-        .select({ toolsets: schema.Agent.toolsets, knowledge: schema.Agent.knowledge })
-        .from(schema.Agent)
-        .where(eq(schema.Agent.id, agentId))
-        .for('update')
-        .limit(1)
-      if (!current) throw new Error(`Agent not found: ${agentId}`)
       const reconciled = reconcilePromptMentions({
         prompt: input.prompt,
         current: { toolsets: current.toolsets ?? [], knowledge: current.knowledge ?? [] },
@@ -281,13 +264,24 @@ export async function updateAgent(
       patch.knowledge = reconciled.knowledge
     }
 
-    const [agent] = await tx
-      .update(schema.Agent)
-      .set(patch)
-      .where(eq(schema.Agent.id, agentId))
-      .returning({ userId: schema.Agent.userId })
+    if (input.name !== undefined && !current.userId) {
+      // Pre-setup: stash the name on Agent.config. After completion the
+      // builder/admin paths write through to User.name and the read path
+      // prefers User over config.
+      patch.config = { ...(current.config ?? {}), name: input.name }
+    }
 
-    if (!agent) throw new Error(`Agent not found: ${agentId}`)
+    if (archiveTransition && !current.userId) {
+      // Archiving an agent that never completed setup is meaningless —
+      // there is no User to ban and no consumer that surfaces it. The
+      // admin path uses `deleteDraftAgent` for drafts; defend against
+      // mis-routed calls so we don't trip the User update below.
+      throw new BadRequestError('Cannot archive an agent that has not completed setup.')
+    }
+
+    await tx.update(schema.Agent).set(patch).where(eq(schema.Agent.id, agentId))
+
+    if (!current.userId) return
 
     const userPatch: {
       name?: string
@@ -310,7 +304,7 @@ export async function updateAgent(
     }
 
     if (Object.keys(userPatch).length > 1) {
-      await tx.update(schema.User).set(userPatch).where(eq(schema.User.id, agent.userId))
+      await tx.update(schema.User).set(userPatch).where(eq(schema.User.id, current.userId))
     }
   })
 
@@ -329,8 +323,13 @@ export async function updateAgent(
 /**
  * Mark an agent's chat-driven setup mode as complete. Idempotent on
  * already-completed agents. Flips the rail UI from the setup carousel to the
- * Prompt/Tools/Knowledge tabs. The agent is functionally live throughout
- * setup; this only gates the UI surface.
+ * Prompt/Tools/Knowledge tabs.
+ *
+ * Under Option D this is also where the **synthetic User + OrganizationMember
+ * rows are materialized** — the draft Agent has `userId IS NULL` until this
+ * function runs. The User row mirrors the User-owned keys from
+ * `Agent.config` (currently `name`, `avatarAssetId`); non-User-owned keys
+ * (`color`, `iconId`) stay on `config`.
  *
  * Rejects with `BadRequestError` if the agent does not yet have the minimum
  * configuration the carousel was meant to enforce: a non-empty persona
@@ -346,7 +345,7 @@ export async function completeAgentSetup(
   const detail = await getAgentDetail(organizationId, agentId, db)
   if (!detail) throw new BadRequestError(`Agent not found: ${agentId}`)
 
-  // Already complete — preserve previous idempotent behavior.
+  // Already complete — preserve idempotent behavior.
   if (detail.setupCompletedAt) return
 
   if (isEmptyPromptDoc(detail.prompt)) {
@@ -359,21 +358,74 @@ export async function completeAgentSetup(
     throw new BadRequestError('Give the agent a name before completing setup.')
   }
 
-  const result = await db
-    .update(schema.Agent)
-    .set({ setupCompletedAt: new Date(), updatedAt: new Date() })
-    .where(
-      and(
-        eq(schema.Agent.id, agentId),
-        eq(schema.Agent.organizationId, organizationId),
-        isNull(schema.Agent.setupCompletedAt)
-      )
-    )
-    .returning({ id: schema.Agent.id })
+  const name = detail.name.trim()
+  const now = new Date()
 
-  if (result.length === 0) return
+  const completed = await db.transaction(async (tx) => {
+    // Re-read the row inside the txn to fetch `config` + `userId` under a
+    // lock. Skip if another writer beat us to it (idempotency).
+    const [row] = await tx
+      .select({
+        userId: schema.Agent.userId,
+        config: schema.Agent.config,
+        setupCompletedAt: schema.Agent.setupCompletedAt,
+      })
+      .from(schema.Agent)
+      .where(and(eq(schema.Agent.id, agentId), eq(schema.Agent.organizationId, organizationId)))
+      .for('update')
+      .limit(1)
+    if (!row) return false
+    if (row.setupCompletedAt) return false
+
+    // If a User already exists (legacy pre-D draft) just flip the flag.
+    if (row.userId) {
+      await tx
+        .update(schema.Agent)
+        .set({ setupCompletedAt: now, updatedAt: now })
+        .where(eq(schema.Agent.id, agentId))
+      return true
+    }
+
+    const config = (row.config ?? {}) as AgentConfig
+    const avatarAssetId = config.avatarAssetId ?? null
+
+    // Insert the synthetic User. emailVerified: true skips any
+    // email-verification trigger. The sentinel email is non-routable.
+    const [user] = await tx
+      .insert(schema.User)
+      .values({
+        name,
+        email: agentSentinelEmail(agentId),
+        userType: 'AGENT',
+        emailVerified: true,
+        avatarAssetId,
+        updatedAt: now,
+      })
+      .returning()
+    if (!user) throw new Error('Failed to insert agent User row')
+
+    // OrganizationMember — role='USER', status='ACTIVE'. DO NOT increment
+    // PlanSubscription.seats, DO NOT push Stripe, DO NOT send invite emails.
+    await tx.insert(schema.OrganizationMember).values({
+      userId: user.id,
+      organizationId,
+      role: 'USER',
+      status: 'ACTIVE',
+      updatedAt: now,
+    })
+
+    await tx
+      .update(schema.Agent)
+      .set({ userId: user.id, setupCompletedAt: now, updatedAt: now })
+      .where(eq(schema.Agent.id, agentId))
+
+    return true
+  })
+
+  if (!completed) return
 
   try {
+    await onCacheEvent('member.added', { orgId: organizationId })
     await onCacheEvent('agent.updated', { orgId: organizationId })
   } catch (err) {
     logger.warn('Failed to invalidate caches after agent setup complete', {
@@ -416,7 +468,7 @@ export async function deleteDraftAgent(
   organizationId: string,
   db: Database = defaultDb as Database
 ): Promise<{ deleted: boolean }> {
-  const deleted = await db.transaction(async (tx) => {
+  const result = await db.transaction(async (tx) => {
     const [agent] = await tx
       .select({
         id: schema.Agent.id,
@@ -426,21 +478,27 @@ export async function deleteDraftAgent(
       .from(schema.Agent)
       .where(and(eq(schema.Agent.id, agentId), eq(schema.Agent.organizationId, organizationId)))
       .limit(1)
-    if (!agent) return false
-    if (agent.setupCompletedAt) return false
+    if (!agent) return { deleted: false, hadUser: false }
+    if (agent.setupCompletedAt) return { deleted: false, hadUser: false }
 
-    // OrganizationMember rows fan-cascade off User. Toolsets/knowledge live
-    // on the Agent row itself, so deleting the Agent drops them. We delete
-    // the Agent first, then the synthetic User.
+    // AgentTrigger rows cascade off the Agent. Toolsets/knowledge live on
+    // the row itself, so deleting the Agent drops them. The synthetic
+    // User exists only for pre-D drafts (and any test fixtures); under
+    // Option D a draft has `userId IS NULL` and there is no User to
+    // clean up.
     await tx.delete(schema.Agent).where(eq(schema.Agent.id, agentId))
-    await tx.delete(schema.User).where(eq(schema.User.id, agent.userId))
-    return true
+    if (agent.userId) {
+      await tx.delete(schema.User).where(eq(schema.User.id, agent.userId))
+    }
+    return { deleted: true, hadUser: agent.userId !== null }
   })
 
-  if (!deleted) return { deleted: false }
+  if (!result.deleted) return { deleted: false }
 
   try {
-    await onCacheEvent('member.removed', { orgId: organizationId })
+    if (result.hadUser) {
+      await onCacheEvent('member.removed', { orgId: organizationId })
+    }
     await onCacheEvent('agent.archived', { orgId: organizationId })
   } catch (err) {
     logger.warn('Failed to invalidate caches after draft delete', {
@@ -471,7 +529,8 @@ export async function archiveAgent(
  */
 export interface AgentSummary {
   id: string
-  userId: string
+  /** `null` while the agent is a draft (pre-`completeAgentSetup`). */
+  userId: string | null
   createdById: string
   /** `null` until the builder writes a real one via `update_agent_identity`. */
   name: string | null
@@ -503,7 +562,7 @@ export async function listAgents(
 
 function toAgentSummary(a: {
   id: string
-  userId: string
+  userId: string | null
   createdById: string
   name: string | null
   slug: string

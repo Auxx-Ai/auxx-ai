@@ -80,16 +80,18 @@ export class GroupMemberService {
       .map((m) => m.memberRefId)
 
     const agents = await getCachedAgentsByUserIds(this.organizationId, candidateIds)
-    return agents.map((a) => ({
-      actorId: toActorId('agent', a.id),
-      type: 'agent' as const,
-      name: a.name,
-      avatarUrl: a.avatarUrl ?? null,
-      agentId: a.id,
-      userId: a.userId,
-      slug: a.slug,
-      mentionable: a.mentionable,
-    }))
+    return agents
+      .filter((a) => a.userId !== null)
+      .map((a) => ({
+        actorId: toActorId('agent', a.id),
+        type: 'agent' as const,
+        name: a.name ?? 'Untitled agent',
+        avatarUrl: a.avatarUrl ?? null,
+        agentId: a.id,
+        userId: a.userId as string,
+        slug: a.slug,
+        mentionable: a.mentionable,
+      }))
   }
 
   /**
@@ -137,9 +139,12 @@ export class GroupMemberService {
     const userIds = new Set<string>()
 
     // Index agents by id so `agent:<id>` actors expand to their backing user id.
+    // Drafts have no backing user — skip them by filtering on userId.
     const agents = await getCachedAgents(this.organizationId)
-    const agentById = new Map(agents.map((a) => [a.id, a]))
-    const agentUserIdSet = new Set(agents.map((a) => a.userId))
+    const agentById = new Map(agents.filter((a) => a.userId !== null).map((a) => [a.id, a]))
+    const agentUserIdSet = new Set(
+      agents.map((a) => a.userId).filter((id): id is string => id !== null)
+    )
 
     for (const actorId of actorIds) {
       try {
@@ -154,7 +159,7 @@ export class GroupMemberService {
         } else if (type === 'agent') {
           if (!includeAgents) continue
           const agent = agentById.get(id)
-          if (agent) userIds.add(agent.userId)
+          if (agent?.userId) userIds.add(agent.userId)
         } else if (type === 'group') {
           const members = includeAgents
             ? await this.getAllMemberActors(id)
@@ -165,7 +170,7 @@ export class GroupMemberService {
               userIds.add(parsed.id)
             } else if (parsed.type === 'agent') {
               const agent = agentById.get(parsed.id)
-              if (agent) userIds.add(agent.userId)
+              if (agent?.userId) userIds.add(agent.userId)
             }
           }
         }

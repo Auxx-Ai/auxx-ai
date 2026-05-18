@@ -141,6 +141,7 @@ export class ActorService {
       result.set(group.actorId, group)
     }
     for (const agent of agents) {
+      if (!agent.userId) continue // draft — no actor identity yet
       const actor = this.toAgentActor(agent)
       result.set(actor.actorId, actor)
     }
@@ -155,6 +156,7 @@ export class ActorService {
     if (unresolvedUserIds.length > 0) {
       const agentsByUser = await getCachedAgentsByUserIds(this.organizationId, unresolvedUserIds)
       for (const a of agentsByUser) {
+        if (!a.userId) continue
         const actor = this.toAgentActor(a)
         result.set(toActorId('user', a.userId), actor)
         result.set(actor.actorId, actor)
@@ -184,7 +186,7 @@ export class ActorService {
 
     if (type === 'agent') {
       const agents = await getCachedAgentsByIds(this.organizationId, [id])
-      if (agents[0]) return this.toAgentActor(agents[0])
+      if (agents[0] && agents[0].userId) return this.toAgentActor(agents[0])
       return null
     }
 
@@ -195,7 +197,7 @@ export class ActorService {
       // synthetic user id (Thread.assigneeIds, Task assignees, field-value
       // ACTOR rows). Resolve those to the canonical AgentActor.
       const agents = await getCachedAgentsByUserIds(this.organizationId, [id])
-      if (agents[0]) return this.toAgentActor(agents[0])
+      if (agents[0] && agents[0].userId) return this.toAgentActor(agents[0])
       // Org's own system user.
       const systemActor = await this.fetchSystemUser()
       if (systemActor && systemActor.actorId === actorId) return systemActor
@@ -318,7 +320,7 @@ export class ActorService {
 
   private async listAgents(): Promise<AgentActor[]> {
     const agents = await getCachedAgents(this.organizationId)
-    return agents.map((a) => this.toAgentActor(a))
+    return agents.filter((a) => a.userId !== null).map((a) => this.toAgentActor(a))
   }
 
   private async searchAgents(pattern: string, limit?: number): Promise<AgentActor[]> {
@@ -327,17 +329,27 @@ export class ActorService {
     return agents
       .filter(
         (a) =>
-          a.name.toLowerCase().includes(searchTerm) || a.slug.toLowerCase().includes(searchTerm)
+          a.userId !== null &&
+          ((a.name ?? '').toLowerCase().includes(searchTerm) ||
+            a.slug.toLowerCase().includes(searchTerm))
       )
       .map((a) => this.toAgentActor(a))
       .slice(0, limit ?? 50)
   }
 
+  /**
+   * Resolve a cached agent to an `AgentActor`. Caller must ensure
+   * `agent.userId` is non-null (drafts have no actor identity); this is
+   * enforced at every site in this file via a `userId !== null` guard.
+   */
   private toAgentActor(agent: CachedAgent): AgentActor {
+    if (!agent.userId) {
+      throw new Error(`Cannot build AgentActor for draft agent ${agent.id} (no userId)`)
+    }
     return {
       actorId: toActorId('agent', agent.id),
       type: 'agent',
-      name: agent.name,
+      name: agent.name ?? 'Untitled agent',
       avatarUrl: agent.avatarUrl ?? null,
       agentId: agent.id,
       userId: agent.userId,
