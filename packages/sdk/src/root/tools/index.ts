@@ -29,6 +29,8 @@ export { defineTool } from './define-tool.js'
 export { type AuxxRefMeta, refs } from './refs.js'
 export type {
   EntityRefKind,
+  ToolActionSurface,
+  ToolAgentSurface,
   ToolConfig,
   ToolDefinition,
   ToolExecuteContext,

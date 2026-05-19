@@ -20,10 +20,8 @@ export type {
 } from '../server/workflow/index.js'
 export type { App, AppSettings, Permission } from './app.js'
 export type {
-  QuickAction,
   QuickActionContext,
   QuickActionEntity,
-  QuickActionFormProps,
   QuickActionParticipant,
 } from './quick-actions/index.js'
 export { Settings } from './settings/index.js'
@@ -46,6 +44,8 @@ export type {
 export type {
   AuxxRefMeta,
   EntityRefKind,
+  ToolActionSurface,
+  ToolAgentSurface,
   ToolConfig,
   ToolDefinition,
   ToolExecuteContext,
@@ -68,6 +68,9 @@ export type {
   // Input field options
   StringInputOptions,
   StructInputOptions,
+  Trigger,
+  TriggerAgentSurface,
+  TriggerWorkflowSurface,
   WorkflowArrayNode,
   WorkflowBlock,
   WorkflowBlockConfig,
@@ -87,8 +90,7 @@ export type {
   WorkflowSelectNode,
   WorkflowStringNode,
   WorkflowStructNode,
-  WorkflowTrigger,
   WorkflowUser,
 } from './workflow/index.js'
 // Export workflow namespace and types
-export { Workflow } from './workflow/index.js'
+export { defineTrigger, Workflow } from './workflow/index.js'

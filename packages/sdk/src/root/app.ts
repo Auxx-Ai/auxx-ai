@@ -1,11 +1,9 @@
 // packages/sdk/src/root/app.ts
 
 import type { BulkRecordAction, RecordAction, RecordWidget } from '../client/record-actions.js'
-// import type { WorkflowStepBlock, WorkflowTriggerBlock } from '../server/workflow/index.js'
-import type { QuickAction } from './quick-actions/types.js'
 import type { ScopedSettingsSchema } from './settings/settings-schema.js'
 import type { ToolDefinition, Toolset } from './tools/types.js'
-import type { WorkflowBlock, WorkflowTrigger } from './workflow/types.js'
+import type { Trigger, WorkflowBlock } from './workflow/types.js'
 /**
  * Permission definition for app access control
  */
@@ -89,28 +87,23 @@ export interface App {
   }
 
   readonly workflow?: {
-    /** New workflow blocks using schema-based API */
+    /** Workflow blocks — composite UI containers that dispatch to tools. */
     readonly blocks?: WorkflowBlock[]
-    /** New workflow triggers using schema-based API */
-    readonly triggers?: WorkflowTrigger[]
+    /** Triggers with a `workflow` surface key. */
+    readonly triggers?: Trigger[]
   }
 
   /**
-   * Tools exposed to Kopilot. The platform converts the zod schemas to
-   * provider JSON Schema at publish time and registers tools with the LLM at
-   * session-init. Execute runs in the lambda runtime, like workflow blocks.
-   * See plans/kopilot/apps/README.md.
+   * Atomic units of behavior. Each tool opts into agent / action surfaces
+   * via the corresponding key on its definition. Tools without any surface
+   * key are internal (invocable from block dispatchers only).
    */
   readonly tools?: ReadonlyArray<ToolDefinition>
 
   /**
-   * Toolsets that group `tools` for agent-side enablement filters. See
-   * plans/kopilot/apps/README.md §4.4.
+   * Toolsets that group `tools` for agent-side enablement filters.
    */
   readonly toolsets?: ReadonlyArray<Toolset>
-
-  /** Quick actions available in the email editor's action panel */
-  readonly quickActions?: ReadonlyArray<QuickAction>
 
   readonly settings?: {
     readonly organization?: ScopedSettingsSchema

@@ -1,14 +1,9 @@
 // packages/sdk/src/root/workflow/utils.ts
 
-import type {
-  InferWorkflowInput,
-  InferWorkflowOutput,
-  WorkflowBlock,
-  WorkflowTrigger,
-} from './types.js'
+import type { InferWorkflowInput, InferWorkflowOutput, Trigger, WorkflowBlock } from './types.js'
 
 /**
- * Extract the schema type from a WorkflowBlock or WorkflowTrigger
+ * Extract the schema type from a WorkflowBlock or Trigger
  *
  * @example
  * ```typescript
@@ -22,12 +17,12 @@ import type {
 export type SchemaOf<T> =
   T extends WorkflowBlock<infer TSchema>
     ? TSchema
-    : T extends WorkflowTrigger<infer TSchema>
+    : T extends Trigger<infer TSchema>
       ? TSchema
       : never
 
 /**
- * Extract the input type from a WorkflowBlock or WorkflowTrigger
+ * Extract the input type from a WorkflowBlock or Trigger
  *
  * @example
  * ```typescript
@@ -41,12 +36,12 @@ export type SchemaOf<T> =
 export type InputOf<T> =
   T extends WorkflowBlock<infer TSchema>
     ? InferWorkflowInput<TSchema>
-    : T extends WorkflowTrigger<infer TSchema>
+    : T extends Trigger<infer TSchema>
       ? InferWorkflowInput<TSchema>
       : never
 
 /**
- * Extract the output type from a WorkflowBlock or WorkflowTrigger
+ * Extract the output type from a WorkflowBlock or Trigger
  *
  * @example
  * ```typescript
@@ -60,6 +55,6 @@ export type InputOf<T> =
 export type OutputOf<T> =
   T extends WorkflowBlock<infer TSchema>
     ? InferWorkflowOutput<TSchema>
-    : T extends WorkflowTrigger<infer TSchema>
+    : T extends Trigger<infer TSchema>
       ? InferWorkflowOutput<TSchema>
       : never

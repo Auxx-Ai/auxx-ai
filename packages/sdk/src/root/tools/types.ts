@@ -2,6 +2,7 @@
 
 import type { ComponentType } from 'react'
 import type { z } from 'zod/v4'
+import type { QuickActionContext } from '../quick-actions/types.js'
 
 /**
  * Entity ref kinds for fence-resolvable id fields in tool outputs.
@@ -49,7 +50,47 @@ export interface ToolConfig {
 }
 
 /**
+ * Agent-surface projection of a tool — opt in by setting `tool.agent = {…}`.
+ * Presence of this key exposes the tool to the LLM as a callable function.
+ */
+export interface ToolAgentSurface {
+  /** LLM-facing name (snake_case convention, e.g. `send_whatsapp_text`). */
+  readonly name?: string
+  /** LLM-facing description — hint-style, written for model consumption. */
+  readonly description?: string
+  /** Toolset for agent-side enablement grouping. */
+  readonly toolsetSlug?: string
+  /** Author opt-in: execute returns AsyncGenerator. */
+  readonly streaming?: boolean
+  /** LLM hint for read-only tools. */
+  readonly idempotent?: boolean
+}
+
+/**
+ * Action-surface projection of a tool — opt in by setting `tool.action = {…}`.
+ * Presence of this key exposes the tool as a quick-action button in the
+ * ticket / email-editor context.
+ */
+export interface ToolActionSurface {
+  /** Display label shown on the action chip. */
+  readonly label: string
+  readonly description?: string
+  readonly icon?: string | ComponentType
+  readonly color?: string
+  readonly surface: 'ticket-header' | 'email-editor'
+  readonly requiresConfirmation?: boolean
+  readonly confirmationMessage?: string
+  readonly shouldShow?: (ctx: QuickActionContext) => boolean
+  readonly getDefaults?: (ctx: QuickActionContext) => Record<string, unknown>
+}
+
+/**
  * Tool definition. Authors produce this via `defineTool({...})`.
+ *
+ * A tool is the atomic unit of behavior. It opts into being surfaced via
+ * explicit keys — `agent` (LLM-callable) and `action` (quick-action button).
+ * A tool with no surface key is internal — invocable only from a workflow
+ * block's dispatcher.
  *
  * The build scanner walks `app.tools[].execute` to extract a module
  * reference (must be a default import from a `.tool.server.ts` file) — same
@@ -89,6 +130,12 @@ export interface ToolDefinition<
     input: z.input<TInput>,
     ctx: ToolExecuteContext
   ) => Promise<z.output<TOutput>> | AsyncGenerator<unknown, z.output<TOutput>>
+
+  /** Surface key — exposes the tool to the LLM as a callable function. */
+  readonly agent?: ToolAgentSurface
+
+  /** Surface key — exposes the tool as a quick-action button. */
+  readonly action?: ToolActionSurface
 }
 
 /**
