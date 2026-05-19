@@ -137,7 +137,9 @@ export function ReferencePickerContent({
 
   return (
     <div ref={containerRef} className={cn('rounded-lg', className)}>
-      <div className='flex items-center gap-0 border-b px-1 shrink-0' role='tablist'>
+      <div
+        className='flex items-center gap-0 border-b px-1 shrink-0 no-scrollbar overflow-x-auto'
+        role='tablist'>
         {tabs.map((t, idx) => (
           <button
             key={t}
@@ -149,7 +151,7 @@ export function ReferencePickerContent({
               onTabChange?.(t)
             }}
             className={cn(
-              'px-2.5 py-1.5 text-xs font-medium rounded-sm transition-colors',
+              'px-2.5 py-1.5 text-xs font-medium rounded-sm transition-colors shrink-0',
               tab === t ? 'text-foreground bg-muted' : 'text-muted-foreground hover:text-foreground'
             )}>
             {TAB_LABEL[t]}

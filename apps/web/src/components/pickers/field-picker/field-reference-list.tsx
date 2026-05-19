@@ -74,7 +74,7 @@ export function FieldReferenceList({
 
   return (
     <div className={cn('flex flex-col', className)}>
-      <div className='flex gap-1 overflow-x-auto border-b px-2 py-1.5 shrink-0'>
+      <div className='flex gap-1 overflow-x-auto no-scrollbar border-b px-2 py-1.5 shrink-0'>
         {orderedResources.map((r) => (
           <button
             key={r.id}

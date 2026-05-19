@@ -30,6 +30,8 @@ export interface PromptEditorProps {
    * the template gallery detail view.
    */
   editable?: boolean
+  /** Overrides the default-branch empty-block placeholder hint. */
+  placeholderText?: string
 }
 
 /**
@@ -53,6 +55,7 @@ export function PromptEditor({
   onFocusChange,
   className,
   editable = true,
+  placeholderText,
 }: PromptEditorProps) {
   const referencePickerRef = useRef<ReferencePickerHandle | null>(null)
   const [, setFocused] = useState(false)
@@ -73,7 +76,7 @@ export function PromptEditor({
   )
 
   return (
-    <div className={cn('relative flex w-full', className)}>
+    <div className={cn('relative flex w-full flex-1', className)}>
       <PromptEditorContent
         initialContent={initialContent}
         onChange={onChange}
@@ -82,6 +85,7 @@ export function PromptEditor({
         referencePickerRef={referencePickerRef}
         referenceTabs={referenceTabs}
         editable={editable}
+        placeholderText={placeholderText}
       />
     </div>
   )

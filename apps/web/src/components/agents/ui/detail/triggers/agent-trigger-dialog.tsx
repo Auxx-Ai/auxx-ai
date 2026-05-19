@@ -1,7 +1,7 @@
 // apps/web/src/components/agents/ui/detail/triggers/agent-trigger-dialog.tsx
 'use client'
 
-import { docToText, textToDoc } from '@auxx/lib/tiptap'
+import { isNonEmptyDoc, type TiptapDoc } from '@auxx/lib/tiptap'
 import { Button } from '@auxx/ui/components/button'
 import {
   Dialog,
@@ -23,8 +23,12 @@ import {
   SelectValue,
 } from '@auxx/ui/components/select'
 import { toastError } from '@auxx/ui/components/toast'
+import type { JSONContent } from '@tiptap/core'
 import { Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
+import { DEFAULT_TABS } from '~/components/editor/inline-picker'
+import type { ReferenceTab } from '~/components/editor/inline-picker/nodes/reference-picker-node'
+import { PromptEditor } from '~/components/editor/prompt-editor'
 import { ResourcePicker } from '~/components/pickers/resource-picker'
 import { useResources } from '~/components/resources/hooks/use-resources'
 import { VarEditorField } from '~/components/workflow/ui/input-editor/var-editor'
@@ -32,6 +36,39 @@ import { useConfirm } from '~/hooks/use-confirm'
 import { api, type RouterOutputs } from '~/trpc/react'
 import { TriggerCronEditor } from './trigger-cron-editor'
 import { type Interval, TriggerIntervalSelector } from './trigger-interval-selector'
+
+const TEMPLATE_REFERENCE_TABS: ReferenceTab[] = [...DEFAULT_TABS, 'tools', 'resources', 'fields']
+
+const KIND_COPY: Record<Kind, { label: string; description: string }> = {
+  scheduled: {
+    label: 'scheduled',
+    description: 'Fire this agent on a recurring schedule.',
+  },
+  event: {
+    label: 'event',
+    description: 'Fire this agent when a resource is created, updated, or deleted.',
+  },
+  mention: {
+    label: 'mention',
+    description: 'Fire this agent when it is mentioned in a comment.',
+  },
+  assignment: {
+    label: 'assignment',
+    description: 'Fire this agent when it is assigned to a ticket.',
+  },
+  dm: {
+    label: 'DM',
+    description: 'Fire this agent when a user direct-messages it.',
+  },
+}
+
+function emptyPromptDoc(): TiptapDoc {
+  return { type: 'doc', content: [{ type: 'block', attrs: { blockType: 'text' }, content: [] }] }
+}
+
+function readPromptContent(doc: TiptapDoc | null | undefined): JSONContent[] | null {
+  return (doc?.content as JSONContent[] | undefined) ?? null
+}
 
 type Trigger = RouterOutputs['agentTrigger']['list'][number]
 
@@ -102,21 +139,6 @@ function scheduledFromTrigger(trigger: Trigger): ScheduledState {
   }
 }
 
-function instructionsPlaceholder(kind: Kind): string {
-  switch (kind) {
-    case 'scheduled':
-      return 'e.g. "Summarize new tickets received since the last run and post to #support."'
-    case 'event':
-      return 'e.g. "When this resource is created, draft a reply using the customer\'s order history."'
-    case 'mention':
-      return 'e.g. "When @mentioned, draft a reply that matches the requested tone."'
-    case 'assignment':
-      return 'e.g. "When assigned, triage and answer or escalate to the right team."'
-    case 'dm':
-      return 'e.g. "Greet the user, then help them debug their integration step by step."'
-  }
-}
-
 function eventStateFromTrigger(trigger: Trigger, fallbackEntityId: string): EventState {
   return {
     triggerType: (trigger.triggerType as CrudTriggerType) ?? 'created',
@@ -139,17 +161,9 @@ export function AgentTriggerDialog({
 }: AgentTriggerDialogProps) {
   const isEditMode = !!trigger
   const isAppKind = trigger?.kind === 'app'
-  const effectiveKind: Kind = isEditMode
-    ? trigger?.kind === 'event'
-      ? 'event'
-      : trigger?.kind === 'mention'
-        ? 'mention'
-        : trigger?.kind === 'assignment'
-          ? 'assignment'
-          : trigger?.kind === 'dm'
-            ? 'dm'
-            : 'scheduled'
-    : kind
+  const effectiveKind: Kind =
+    isEditMode && trigger && trigger.kind !== 'app' ? (trigger.kind as Kind) : kind
+  const kindCopy = KIND_COPY[effectiveKind]
   const isBuiltinKind =
     effectiveKind === 'mention' || effectiveKind === 'assignment' || effectiveKind === 'dm'
 
@@ -159,7 +173,8 @@ export function AgentTriggerDialog({
   const [confirm, ConfirmDialog] = useConfirm()
   const [scheduledState, setScheduledState] = useState<ScheduledState>(DEFAULT_SCHEDULED_STATE)
   const [eventState, setEventState] = useState<EventState>(DEFAULT_EVENT_STATE)
-  const [instructionsText, setInstructionsText] = useState<string>('')
+  const [instructions, setInstructions] = useState<TiptapDoc>(emptyPromptDoc)
+  const [editorKey, setEditorKey] = useState(0)
 
   useEffect(() => {
     if (!open) return
@@ -171,15 +186,13 @@ export function AgentTriggerDialog({
       setScheduledState(DEFAULT_SCHEDULED_STATE)
       setEventState({ ...DEFAULT_EVENT_STATE, entityDefinitionId: fallbackEntityId })
     }
-    // Hydrate Instructions from the JSONB column (string or Tiptap doc).
     const raw = trigger?.instructions as unknown
-    if (typeof raw === 'string') {
-      setInstructionsText(raw)
-    } else if (raw && typeof raw === 'object') {
-      setInstructionsText(docToText(raw))
+    if (raw && typeof raw === 'object' && Array.isArray((raw as TiptapDoc).content)) {
+      setInstructions(raw as TiptapDoc)
     } else {
-      setInstructionsText('')
+      setInstructions(emptyPromptDoc())
     }
+    setEditorKey((k) => k + 1)
   }, [open, trigger, fallbackEntityId])
 
   const setScheduledMode = (mode: ScheduledMode) =>
@@ -284,14 +297,13 @@ export function AgentTriggerDialog({
     const triggerInput = buildTriggerInput()
     if (!triggerInput) return
 
-    const trimmedInstructions = instructionsText.trim()
-    const instructions = trimmedInstructions ? textToDoc(trimmedInstructions) : null
+    const instructionsPayload = isNonEmptyDoc(instructions) ? instructions : null
 
     if (isEditMode && trigger) {
       update.mutate({
         id: trigger.id,
         trigger: triggerInput,
-        instructions,
+        instructions: instructionsPayload,
       })
       return
     }
@@ -299,7 +311,7 @@ export function AgentTriggerDialog({
     create.mutate({
       agentId,
       trigger: triggerInput,
-      ...(instructions ? { instructions } : {}),
+      instructions: instructionsPayload,
     })
   }
 
@@ -309,19 +321,9 @@ export function AgentTriggerDialog({
         <DialogContent className='sm:max-w-[500px]' position='tc'>
           <DialogHeader>
             <DialogTitle>
-              {isEditMode ? `Edit ${effectiveKind} trigger` : `Add ${effectiveKind} trigger`}
+              {isEditMode ? `Edit ${kindCopy.label} trigger` : `Add ${kindCopy.label} trigger`}
             </DialogTitle>
-            <DialogDescription>
-              {effectiveKind === 'scheduled'
-                ? 'Fire this agent on a recurring schedule.'
-                : effectiveKind === 'mention'
-                  ? 'Fire this agent when it is mentioned in a comment.'
-                  : effectiveKind === 'assignment'
-                    ? 'Fire this agent when it is assigned to a ticket.'
-                    : effectiveKind === 'dm'
-                      ? 'Fire this agent when a user direct-messages it.'
-                      : 'Fire this agent when a resource is created, updated, or deleted.'}
-            </DialogDescription>
+            <DialogDescription>{kindCopy.description}</DialogDescription>
           </DialogHeader>
 
           {isAppKind ? (
@@ -406,13 +408,19 @@ export function AgentTriggerDialog({
 
               <Field orientation='vertical'>
                 <FieldLabel>Instructions</FieldLabel>
-                <textarea
-                  value={instructionsText}
-                  onChange={(e) => setInstructionsText(e.target.value)}
-                  rows={6}
-                  placeholder={instructionsPlaceholder(effectiveKind)}
-                  className='w-full resize-y rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
-                />
+                <div className='rounded-md flex flex-col border bg-background min-h-[160px] px-3 py-2'>
+                  <PromptEditor
+                    key={editorKey}
+                    initialContent={readPromptContent(instructions)}
+                    onChange={({ json }) => setInstructions(json as TiptapDoc)}
+                    referenceTabs={TEMPLATE_REFERENCE_TABS}
+                    placeholderText='Write your instructions here'
+                  />
+                  <div className='flex text-sm gap-1 text-muted-foreground mt-2'>
+                    Type <Kbd variant='outline'>@</Kbd> to specify tools or{' '}
+                    <Kbd variant='outline'>/</Kbd> for formatting.
+                  </div>
+                </div>
               </Field>
             </div>
           )}

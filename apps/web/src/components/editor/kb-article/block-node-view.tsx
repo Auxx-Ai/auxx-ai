@@ -22,6 +22,7 @@ import { NodeViewContent, NodeViewWrapper } from '@tiptap/react'
 import { Check, ChevronDown } from 'lucide-react'
 import type React from 'react'
 import { useState } from 'react'
+import type { BlockOptions } from './block-node'
 import styles from './block-node-view.module.css'
 import { CardsBlockView } from './cards-block-view'
 
@@ -130,7 +131,13 @@ function isNumberedStyle(v: unknown): v is NumberedListStyle {
   return v === '1' || v === 'a' || v === 'A' || v === 'i' || v === 'I'
 }
 
-export function BlockNodeView({ node, updateAttributes, editor, getPos }: NodeViewProps) {
+export function BlockNodeView({
+  node,
+  updateAttributes,
+  editor,
+  getPos,
+  extension,
+}: NodeViewProps) {
   const {
     blockType = 'text',
     level,
@@ -240,7 +247,7 @@ export function BlockNodeView({ node, updateAttributes, editor, getPos }: NodeVi
     ? "Press '/'"
     : blockType === 'heading'
       ? `Heading ${level ?? 1}`
-      : "Press '/' for commands"
+      : (extension.options as BlockOptions).placeholderText
 
   const submitEmbed = (raw: string) => {
     const trimmed = raw.trim()
