@@ -1,7 +1,13 @@
 // apps/web/src/components/apps/ui/app-account-picker.tsx
 'use client'
 
-import { Command, CommandGroup, CommandItem, CommandList } from '@auxx/ui/components/command'
+import {
+  Command,
+  CommandGroup,
+  CommandItem,
+  CommandList,
+  CommandSeparator,
+} from '@auxx/ui/components/command'
 import { Check, User as UserIcon, Users } from 'lucide-react'
 import { useMemo } from 'react'
 import { useUser } from '~/hooks/use-user'
@@ -90,7 +96,7 @@ export function AppAccountPicker({ appId, value, onPick, onConnected }: AppAccou
               ))}
             </CommandGroup>
           )}
-
+          <CommandSeparator />
           <CommandGroup>
             {userDef && target && (
               <CommandItem
@@ -143,7 +149,7 @@ function AccountRow({
       value={cred.label ?? cred.appName ?? cred.id}
       onSelect={onSelect}
       className='cursor-pointer h-7.5'>
-      <AppIcon iconId={avatarUrl ?? 'package'} size='xs' />
+      <AppIcon iconId={avatarUrl ?? 'package'} size='sm' />
       <span className='truncate'>{cred.label ?? cred.appName}</span>
       {selected && (
         <div className='ml-auto rounded-full size-4 bg-info flex items-center justify-center border border-blue-800'>

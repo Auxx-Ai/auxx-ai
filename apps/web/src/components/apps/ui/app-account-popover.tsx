@@ -66,7 +66,7 @@ export function AppAccountPopover({
           <span className='truncate'>{triggerLabel}</span>
         </PickerTrigger>
       </PopoverTrigger>
-      <PopoverContentDialogAware className='w-72 p-0' align='start'>
+      <PopoverContentDialogAware className='p-0' align='start'>
         <AppAccountPicker
           appId={appId}
           value={value}

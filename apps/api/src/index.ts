@@ -18,6 +18,8 @@ import sdkBundles from './routes/bundles'
 import deployments from './routes/deployments'
 import developers from './routes/developers'
 import entitiesFindByIntegrationId from './routes/entities/find-by-integration-id'
+import entitiesFindContactByEmail from './routes/entities/find-contact-by-email'
+import entitiesFindContactByPhone from './routes/entities/find-contact-by-phone'
 import freeToolLeads from './routes/free-tool-leads'
 // Routes
 import health from './routes/health'
@@ -75,6 +77,8 @@ async function main() {
   app.route('/api/v1/sdk/webhooks', webhookHandlers) // SDK callback: Lambda → API
   app.route('/api/v1/sdk/settings', settings) // SDK callback: Lambda → API
   app.route('/api/v1/sdk/entities', entitiesFindByIntegrationId) // SDK callback: Lambda → API (AI tools)
+  app.route('/api/v1/sdk/entities', entitiesFindContactByEmail) // SDK callback: Lambda → API (AI tools, slack)
+  app.route('/api/v1/sdk/entities', entitiesFindContactByPhone) // SDK callback: Lambda → API (AI tools, whatsapp)
   app.route('/api/v1/workflows', workflows) // Workflow execution routes
   app.route('/api/v1/public/free-tool-leads', freeToolLeads) // Public lead capture from /free-tools/*
   app.route('/webhooks/recording', recordingWebhooks) // Recording bot provider webhooks (before generic /webhooks to avoid param collision)

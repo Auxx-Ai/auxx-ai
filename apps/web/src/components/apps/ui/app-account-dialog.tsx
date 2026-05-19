@@ -73,7 +73,7 @@ export function AppAccountDialog({
 
   return (
     <Dialog open={open && !!appId} onOpenChange={onOpenChange}>
-      <DialogContent size='md' position='tc'>
+      <DialogContent size='sm' position='tc'>
         <DialogHeader>
           <div className='flex items-center gap-2'>
             {avatarUrl && <AppIcon iconId={avatarUrl} size='sm' />}

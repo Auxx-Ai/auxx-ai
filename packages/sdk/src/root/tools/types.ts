@@ -140,5 +140,23 @@ export interface ToolExecuteContext {
       source: string
       externalId: string
     }) => Promise<{ recordId: string; displayName: string | null } | null>
+    /**
+     * Lookup helper for `refs.entity('contact')` resolution by primary email.
+     * Used by integrations that don't have a contact-import source path
+     * (e.g. Slack, Gmail). See plans/kopilot/apps/slack-overhaul.md §6 and
+     * refs.md §9.
+     */
+    findContactByEmail: (input: {
+      email: string
+    }) => Promise<{ recordId: string; displayName: string | null } | null>
+    /**
+     * Lookup helper for `refs.entity('contact')` resolution by primary phone.
+     * Input is normalized to E.164 server-side and matched against any
+     * PHONE_INTL-type contact field. Used by phone-keyed integrations
+     * (WhatsApp, Twilio). See plans/kopilot/apps/whatsapp-overhaul.md §6.
+     */
+    findContactByPhone: (input: {
+      phone: string
+    }) => Promise<{ recordId: string; displayName: string | null } | null>
   }
 }
