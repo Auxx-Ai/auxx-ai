@@ -26,3 +26,6 @@ coverage/
 # Temporary
 tmp/
 temp/
+
+# Catalog-extraction scratch dir produced by compile-and-extract-catalog
+__fixtures__/**/.auxx/

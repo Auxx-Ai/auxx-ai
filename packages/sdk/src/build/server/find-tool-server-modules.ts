@@ -14,10 +14,10 @@ import { getAppEntryPoint } from '../../util/get-app-entry-point.js'
  * and enforces that executors are default-imported from a `.server.ts` file.
  *
  * Produces a `ToolModule` map keyed by tool id, consumed by
- * `generate-server-entry.ts` to emit the `__AUXX_AI_TOOLS__` registry the
- * lambda's `ai-tool-executor.ts` looks up at run time.
+ * `generate-server-entry.ts` to emit the `__AUXX_TOOLS__` registry the
+ * lambda's unified `tool-executor.ts` looks up at run time.
  *
- * See plans/kopilot/apps/README.md §5.
+ * See plans/kopilot/agents/triggers/app-surface-implementation-plan.md §5.2.
  */
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
