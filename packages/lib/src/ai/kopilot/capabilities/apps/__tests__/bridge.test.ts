@@ -3,7 +3,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { buildAppToolDigest } from '../digest'
 
-vi.mock('../../../../cache', () => ({
+vi.mock('../../../../../cache', () => ({
   getOrgCache: () => ({
     get: vi.fn(async (_orgId: string, key: string) => {
       if (key === 'orgProfile') {
@@ -41,6 +41,8 @@ const SAMPLE_TOOL = {
   id: 'check_calendar_availability',
   name: 'Check calendar availability',
   description: 'Find free slots.',
+  agentName: 'check_calendar_availability',
+  agentDescription: 'Find free slots.',
   inputsJsonSchema: { type: 'object', properties: {} },
   outputsJsonSchema: { type: 'object', properties: {} },
   requiresConnection: true,
@@ -72,8 +74,8 @@ function buildInstallation(overrides: Partial<any> = {}) {
       serverBundleSha: 'ssha',
       createdAt: new Date().toISOString(),
     },
-    aiTools: [SAMPLE_TOOL],
-    aiToolsets: [],
+    agentTools: [SAMPLE_TOOL],
+    agentToolsets: [],
     orgConnectionPresent: false,
     orgConnectionExpiresAt: null,
     ...overrides,
@@ -120,7 +122,7 @@ describe('createAppCapabilities — registration filter (master Kopilot)', () =>
   })
 })
 
-describe('createAppCapabilities — execute() posts ai-tool to lambda', () => {
+describe('createAppCapabilities — execute() posts tool event to lambda', () => {
   it('forwards args + serverBundleSha + caller=kopilot to invokeLambdaExecutor', async () => {
     MOCK_INSTALLED_APPS = [buildInstallation()]
     MOCK_ORG_SETTINGS = { 'kopilot.appAccounts': { 'app-1': { credId: 'cred-1' } } }
@@ -139,19 +141,24 @@ describe('createAppCapabilities — execute() posts ai-tool to lambda', () => {
       sessionId: 'sess-1',
     })
 
-    const result = await capability.tools[0]!.execute(
-      { timeMin: '2026-05-14T00:00:00Z', timeMax: '2026-05-14T23:59:00Z' },
-      {} as never
-    )
+    const args = { timeMin: '2026-05-14T00:00:00Z', timeMax: '2026-05-14T23:59:00Z' }
+    const result = await capability.tools[0]!.execute(args, {} as never)
 
     expect(result.success).toBe(true)
     expect(invokeLambdaExecutor).toHaveBeenCalledWith(
       expect.objectContaining({
         caller: 'kopilot',
         payload: expect.objectContaining({
-          type: 'ai-tool',
+          type: 'tool',
           toolId: 'check_calendar_availability',
           serverBundleSha: 'ssha',
+          inputs: args,
+          invocationContext: expect.objectContaining({
+            kind: 'agent',
+            sessionId: 'sess-1',
+            agentId: null,
+            triggerId: null,
+          }),
         }),
       })
     )
