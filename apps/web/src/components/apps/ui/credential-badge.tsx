@@ -7,7 +7,7 @@ import {
   useBoundCredential,
 } from '~/components/apps/hooks/use-bound-credential'
 import { Tooltip } from '~/components/global/tooltip'
-import { getConnectionStatusColor } from './app-with-status-icon'
+import { appConnectionStatusOptions } from './app-with-status-icon'
 
 interface CredentialBadgeProps {
   credId: string | undefined | null
@@ -27,7 +27,8 @@ interface CredentialBadgeProps {
 export function CredentialBadge({ credId, onPick }: CredentialBadgeProps) {
   const bound = useBoundCredential(credId)
   const { status } = bound
-  const dotColor = getConnectionStatusColor(status === 'none' ? 'unbound' : status) ?? 'bg-muted'
+  const dotColor =
+    appConnectionStatusOptions[status === 'none' ? 'unbound' : status].color ?? 'bg-muted'
 
   const label = renderLabel(bound.status, bound.label)
   const tooltip = renderTooltip(bound)

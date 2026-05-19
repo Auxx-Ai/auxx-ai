@@ -433,15 +433,6 @@ function AppDetailView({
         </Button>
       </div>
 
-      {!hasBoundAccount && (
-        <div className='flex items-start gap-2 border-b bg-amber-50 px-3 py-2 text-amber-900'>
-          <AlertCircle className='mt-0.5 size-4 shrink-0' />
-          <p className='text-xs'>
-            This app needs an account. Close this dialog and use the cog on the {app.label} row to
-            pick one.
-          </p>
-        </div>
-      )}
       <ScrollArea className='flex-1' scrollbarClassName='w-1!'>
         <div className='p-3'>
           {leaves.map((entry) => (

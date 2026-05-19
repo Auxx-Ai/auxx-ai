@@ -2,7 +2,7 @@
 'use client'
 
 import { cn } from '@auxx/ui/lib/utils'
-import { Check } from 'lucide-react'
+import { Check, Clock, type LucideIcon, Minus, Plug, X } from 'lucide-react'
 import { AppIcon, type AppIconProps } from '~/components/apps/ui/app-icon'
 
 /**
@@ -19,26 +19,26 @@ export type AppConnectionStatus =
   | 'unbound'
   | 'none'
 
+export interface AppConnectionStatusOption {
+  label: string
+  /** Tailwind background class for the dot, or `null` to skip the overlay. */
+  color: string | null
+  icon: LucideIcon
+}
+
 /**
- * Color class for the small status dot, keyed by a credential's resolved
- * state. `none` returns `null` so the wrapper can skip the overlay entirely.
- * Co-located so other surfaces that already render their own pill
- * (`AppSettingsTrigger`) can adopt the same mapping incrementally.
+ * Status metadata keyed by a credential's resolved state. `none` has a
+ * `null` color so wrappers can skip the overlay entirely. Co-located so
+ * other surfaces that already render their own pill (`AppSettingsTrigger`)
+ * can adopt the same mapping incrementally.
  */
-export function getConnectionStatusColor(status: AppConnectionStatus): string | null {
-  switch (status) {
-    case 'connected':
-      return 'bg-green-500'
-    case 'expired':
-      return 'bg-amber-500'
-    case 'unbound':
-      return 'bg-amber-500'
-    case 'gone':
-    case 'not_connected':
-      return 'bg-red-500'
-    case 'none':
-      return null
-  }
+export const appConnectionStatusOptions: Record<AppConnectionStatus, AppConnectionStatusOption> = {
+  connected: { label: 'Connected', color: 'bg-green-500', icon: Check },
+  expired: { label: 'Expired', color: 'bg-amber-500', icon: Clock },
+  unbound: { label: 'Not set', color: 'bg-amber-500', icon: Minus },
+  gone: { label: 'Disconnected', color: 'bg-red-500', icon: X },
+  not_connected: { label: 'Disconnected', color: 'bg-red-500', icon: Plug },
+  none: { label: '', color: null, icon: Minus },
 }
 
 interface AppWithStatusIconProps extends AppIconProps {
@@ -52,17 +52,17 @@ export function AppWithStatusIcon({
   wrapperClassName,
   ...iconProps
 }: AppWithStatusIconProps) {
-  const dotColor = getConnectionStatusColor(status)
+  const { color, icon: StatusIcon } = appConnectionStatusOptions[status]
   return (
     <div className={cn('relative inline-flex shrink-0', wrapperClassName)}>
       <AppIcon {...iconProps} />
-      {dotColor && (
+      {color && (
         <span
           className={cn(
-            'absolute -top-0.5 -right-0.5 inline-flex size-2.5 items-center justify-center rounded-full ring-1 ring-background',
-            dotColor
+            'absolute top-0 right-0 inline-flex size-2 items-center justify-center rounded-full ring-1 ring-background',
+            color
           )}>
-          {status === 'connected' && <Check className='size-2 text-white' strokeWidth={3} />}
+          {status === 'connected' && <StatusIcon className='size-2 text-white' />}
         </span>
       )}
     </div>

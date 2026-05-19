@@ -43,7 +43,7 @@ interface CatalogNodeRowProps {
   onAddToApp?: (appId: string) => void
   /**
    * Optional — when supplied, app-kind container rows render a cog button
-   * that opens the credential picker for that app.
+   * that opens the credential picker dialog for that app.
    */
   onOpenAccountPicker?: (appId: string) => void
   /**
@@ -285,7 +285,7 @@ function ContainerInstalledStats({
         <Tooltip
           side='left'
           content={`${stats.locked} locked by ${pluralize(stats.locked, 'mention')} in instructions.`}>
-          <span className='inline-flex items-center gap-0.5 text-[11px] text-muted-foreground me-2'>
+          <span className='inline-flex items-center gap-0.5 text-[11px] text-muted-foreground me-2 opacity-0 group-hover/tree-row:opacity-100'>
             <Lock className='size-3' />
             {stats.locked}
           </span>
