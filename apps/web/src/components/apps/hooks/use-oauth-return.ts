@@ -1,4 +1,4 @@
-// apps/web/src/components/apps/use-oauth-return.ts
+// apps/web/src/components/apps/hooks/use-oauth-return.ts
 
 'use client'
 

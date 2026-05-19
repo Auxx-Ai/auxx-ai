@@ -150,6 +150,14 @@ export const agentRouter = createTRPCRouter({
         mentionable: z.boolean().optional(),
         /** Date archives; null unarchives; omit to leave unchanged. */
         archivedAt: z.date().nullable().optional(),
+        /**
+         * Per-app account bindings keyed by app id. Each entry is merged
+         * into `Agent.appAccounts` — pass `null` for an entry to clear it.
+         * See plans/kopilot/apps/agent-credentials.md §5.5.
+         */
+        appAccounts: z
+          .record(z.string().min(1), z.object({ credId: z.string().min(1) }).nullable())
+          .optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -177,6 +185,7 @@ export const agentRouter = createTRPCRouter({
       if (patch.modelId !== undefined) updatePayload.modelId = patch.modelId
       if (patch.mentionable !== undefined) updatePayload.mentionable = patch.mentionable
       if (patch.archivedAt !== undefined) updatePayload.archivedAt = patch.archivedAt
+      if (patch.appAccounts !== undefined) updatePayload.appAccounts = patch.appAccounts
 
       await updateAgentService(agentId, organizationId, updatePayload)
     }),

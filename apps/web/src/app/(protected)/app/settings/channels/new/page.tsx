@@ -5,7 +5,7 @@
 import { Button } from '@auxx/ui/components/button'
 import { ArrowLeft, Mail, MessageSquare } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-import { AppListCard } from '~/components/apps/app-list-card'
+import { AppListCard } from '~/components/apps/ui/app-list-card'
 import SettingsPage from '~/components/global/settings-page'
 import { getIntegrationProviderIcon } from '../_components/integration-table'
 

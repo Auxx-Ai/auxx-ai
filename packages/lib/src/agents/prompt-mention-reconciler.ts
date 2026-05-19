@@ -86,15 +86,21 @@ export function walkPromptDoc(
  * Reconcile `Agent.toolsets` against the set of mentioned toolset slugs.
  *
  * - Stale `mention` rows (slug no longer mentioned) are dropped.
+ * - When a slug is mentioned, the row is promoted to `source: 'mention'` and
+ *   `enabled: true`, regardless of whether a prior manual / auto_default row
+ *   existed (including one left at `enabled: false` from a previous trash).
+ *   This makes "mentioned in prompt = locked" hold unconditionally.
  * - New mention rows are inserted when no row covers the slug.
- * - Manual / auto_default rows are left untouched — they win on collision and
- *   suppress the duplicate mention row.
  */
 export function reconcileToolsets(
   current: ToolsetEntry[],
   mentionedSlugs: Set<string>
 ): ToolsetEntry[] {
-  const kept = current.filter((t) => t.source !== 'mention' || mentionedSlugs.has(t.slug))
+  const kept = current
+    .filter((t) => t.source !== 'mention' || mentionedSlugs.has(t.slug))
+    .map((t) =>
+      mentionedSlugs.has(t.slug) ? { ...t, source: 'mention' as const, enabled: true } : t
+    )
   const known = new Set(kept.map((t) => t.slug))
   const added: ToolsetEntry[] = []
   for (const slug of mentionedSlugs) {

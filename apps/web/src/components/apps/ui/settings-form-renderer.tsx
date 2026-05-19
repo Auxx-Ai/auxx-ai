@@ -1,4 +1,4 @@
-// apps/web/src/components/apps/settings-form-renderer.tsx
+// apps/web/src/components/apps/ui/settings-form-renderer.tsx
 'use client'
 
 import { type SettingsSchemaField, schemaToZod } from '@auxx/services/app-settings/client'

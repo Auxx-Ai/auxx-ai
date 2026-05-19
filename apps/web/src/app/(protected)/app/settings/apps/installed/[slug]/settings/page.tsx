@@ -1,4 +1,4 @@
-import AppSettings from '~/components/apps/app-settings'
+import AppSettings from '~/components/apps/ui/app-settings'
 import { api } from '~/trpc/server'
 
 /**

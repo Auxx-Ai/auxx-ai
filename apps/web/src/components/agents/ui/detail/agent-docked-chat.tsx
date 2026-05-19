@@ -54,14 +54,16 @@ export function AgentDockedChat({ agentId }: AgentDockedChatProps) {
       value={panel}
       onValueChange={(v) => setPanel(v as Panel)}
       className='flex h-full flex-col'>
-      <TabsList variant='outline'>
-        <TabsTrigger value='build' variant='outline'>
-          Build
-        </TabsTrigger>
-        <TabsTrigger value='chat' variant='outline'>
-          Chat
-        </TabsTrigger>
-      </TabsList>
+      {!isFreshAgent && (
+        <TabsList variant='outline'>
+          <TabsTrigger value='build' variant='outline'>
+            Build
+          </TabsTrigger>
+          <TabsTrigger value='chat' variant='outline'>
+            Chat
+          </TabsTrigger>
+        </TabsList>
+      )}
       <TabsContent value='build' className='flex-1 overflow-hidden'>
         <BuildPanel agentId={agentId} isFreshAgent={isFreshAgent} agentName={agent?.name ?? null} />
       </TabsContent>

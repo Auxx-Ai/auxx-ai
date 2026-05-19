@@ -6,7 +6,7 @@ import {
   invokeLambdaExecutorStreaming,
   prepareLambdaContext,
 } from '@auxx/services/lambda-execution'
-import { getOrgCache } from '../../../../cache'
+import { getCachedAgentById, getOrgCache } from '../../../../cache'
 import type {
   AgentToolDefinition,
   AgentToolResult,
@@ -54,6 +54,12 @@ export async function createAppCapabilities(deps: {
   const organizationHandle = orgProfile?.handle ?? null
   const organizationName = orgProfile?.name ?? organizationHandle
 
+  // Per plans/kopilot/apps/agent-credentials.md §3.5 — when an agent is
+  // active, registration is gated on `Agent.appAccounts[appId].credId`. The
+  // master Kopilot path (no agent) keeps its today behavior.
+  const agent = agentId ? await getCachedAgentById(organizationId, agentId) : null
+  const appAccounts = agent?.appAccounts ?? {}
+
   const tools: AgentToolDefinition[] = []
 
   for (const installation of installedApps) {
@@ -69,22 +75,38 @@ export async function createAppCapabilities(deps: {
     // name regex `^[a-zA-Z0-9_-]{1,64}$` is honored cleanly.
     const slugPrefix = appSlug.replace(/-/g, '_')
 
+    // Per plans/kopilot/apps/agent-credentials.md §3.5 — when there is an
+    // active agent, the bound credId from `Agent.appAccounts[appId]` wins
+    // over the legacy per-scope presence check. During transition (no
+    // binding yet) we fall back to a workspace cred if one exists so
+    // existing agents keep working until they're explicitly bound.
+    const binding = appAccounts[appId]
+    const boundCredId: string | null = binding?.credId ?? null
+
     for (const tool of catalogTools) {
       // Connection-presence gate (decision A4).
       if (tool.requiresConnection) {
-        let present = false
-        if (tool.connectionScope === 'organization') {
-          present = installation.orgConnectionPresent
-        } else if (tool.connectionScope === 'user') {
-          const result = await getAppConnectionPresence({
-            orgId: organizationId,
-            userId,
-            appId,
-            scope: 'user',
-          })
-          present = result.present
+        if (agent) {
+          // Agent run: require an explicit binding OR a workspace cred
+          // fallback. User-scope tools are no longer special-cased — the
+          // creator's pick (workspace or personal) is the binding.
+          if (!boundCredId && !installation.orgConnectionPresent) continue
+        } else {
+          // Master Kopilot: today's behavior.
+          let present = false
+          if (tool.connectionScope === 'organization') {
+            present = installation.orgConnectionPresent
+          } else if (tool.connectionScope === 'user') {
+            const result = await getAppConnectionPresence({
+              orgId: organizationId,
+              userId,
+              appId,
+              scope: 'user',
+            })
+            present = result.present
+          }
+          if (!present) continue
         }
-        if (!present) continue
       }
 
       const registeredName = `${slugPrefix}_${tool.id}`
@@ -96,25 +118,35 @@ export async function createAppCapabilities(deps: {
       // Both buffered + streaming closures share the same connection-resolution
       // and lambda-context shape — extracted so we don't fork the prep code.
       const prepareLambdaCall = async (args: Record<string, unknown>) => {
-        const connections = userId
-          ? await resolveAppConnectionForRuntime({
-              appId,
-              organizationId,
-              userId,
-            })
-          : ({
-              isErr: () => true as const,
-              error: { code: 'NO_USER', message: 'autonomous run' },
-            } as const)
+        // Resolution priority:
+        //  1. Agent run with explicit binding → resolve by credId.
+        //  2. Agent run, no binding → resolve any workspace cred (transition).
+        //  3. Master Kopilot → today's user-scoped resolution.
+        const resolveInput: Parameters<typeof resolveAppConnectionForRuntime>[0] | null = agent
+          ? boundCredId
+            ? { appId, organizationId, userId: userId ?? '', connectionId: boundCredId }
+            : { appId, organizationId, userId: userId ?? '' }
+          : userId
+            ? { appId, organizationId, userId }
+            : null
 
-        if ('isErr' in connections && connections.isErr()) {
+        if (!resolveInput) {
           return {
             ok: false as const,
             error: 'CONNECTION_REQUIRED: No credential resolved for AI tool',
           }
         }
 
-        const resolved = (connections as { value: any }).value
+        const connections = await resolveAppConnectionForRuntime(resolveInput)
+
+        if (connections.isErr()) {
+          return {
+            ok: false as const,
+            error: 'CONNECTION_REQUIRED: No credential resolved for AI tool',
+          }
+        }
+
+        const resolved = connections.value
         const context = prepareLambdaContext({
           appId,
           installationId,

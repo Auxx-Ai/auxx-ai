@@ -4,6 +4,7 @@
 import type { DehydratedOrganization } from '@auxx/lib/dehydration'
 import { BLOCKED_SUBSCRIPTION_STATUSES } from '@auxx/types/billing'
 import type { ReactNode } from 'react'
+import { useOAuthReturn } from '~/components/apps/hooks/use-oauth-return'
 import { ChannelProvider } from '~/components/channels/providers/channel-provider'
 import { ViewStoreProvider } from '~/components/dynamic-table/context/view-store-provider'
 import { AuxxAppProviders } from '~/components/global/auxx-app-providers'
@@ -45,6 +46,14 @@ export function AppLayoutWrapper({ children, user }: AppLayoutWrapperProps) {
   const organizations = useDehydratedOrganizations()
   const { organizationId: currentOrgId } = useOrganizationIdContext()
   const selfHosted = useIsSelfHosted()
+
+  // Global popup-blocker fallback: when an OAuth connect falls back to
+  // window.location.href, the callback redirect lands with oauth_success /
+  // oauth_error params that need a toast + connection-list invalidation
+  // regardless of which surface kicked the flow. Hoisting it here covers
+  // the workflow editor, agent editor, and installed-apps settings page
+  // with a single mount.
+  useOAuthReturn()
 
   const currentOrg = organizations.find((org) => org.id === currentOrgId)
 

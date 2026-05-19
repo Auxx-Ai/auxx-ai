@@ -4,8 +4,8 @@ import { getIcon as getIconData } from '@auxx/ui/components/icons'
 import { cn } from '@auxx/ui/lib/utils'
 import { Circle } from 'lucide-react'
 import type React from 'react'
+import { parseIconString } from '~/components/apps/ui/app-icon'
 import { BaseType } from '../types/unified-types'
-import { parseIconString } from '../ui/app-icon'
 
 /**
  * Get an icon component by name.

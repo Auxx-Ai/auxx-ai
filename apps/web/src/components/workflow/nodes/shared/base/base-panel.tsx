@@ -41,7 +41,9 @@ import React, {
   useRef,
   useState,
 } from 'react'
-import { AppSettingsDialog } from '~/components/apps/app-settings-dialog'
+import { AppIcon } from '~/components/apps/ui/app-icon'
+import { AppSettingsDialog } from '~/components/apps/ui/app-settings-dialog'
+import { AppWithStatusIcon } from '~/components/apps/ui/app-with-status-icon'
 import { DockToggleButton } from '~/components/global/dock-toggle-button'
 import { Tooltip } from '~/components/global/tooltip'
 // Hooks
@@ -58,7 +60,6 @@ import {
 import { usePanelStore } from '~/components/workflow/store/panel-store'
 // types
 import { NodeType } from '~/components/workflow/types'
-import { AppIcon } from '~/components/workflow/ui/app-icon'
 import { BlockSelector } from '~/components/workflow/ui/block-selector'
 import CollapseWrap from '~/components/workflow/ui/collapse-wrap'
 import NextStep from '~/components/workflow/ui/next-step'
@@ -93,6 +94,29 @@ interface BasePanelProps {
 const KeyboardShortcut = ({ shortcut }: { shortcut: string }) => (
   <span className='ml-auto pl-2 text-xs text-muted-foreground'>{shortcut}</span>
 )
+
+/**
+ * Drawer-header icon for app nodes. Pulls connection presence/status from
+ * the same source `AppSettingsTrigger` already uses so the header icon and
+ * the trigger button never disagree. See
+ * plans/kopilot/apps/agent-credentials.md §5.9.
+ */
+function AppPanelIcon({ appId, iconId, color }: { appId: string; iconId: string; color: string }) {
+  const { appConnections } = useExtensionsContext()
+  const connection = appConnections.find((c) => c.appId === appId)
+  const status = connection
+    ? ((connection.connectionStatus as 'connected' | 'expired' | 'not_connected') ??
+      'not_connected')
+    : 'not_connected'
+  return (
+    <AppWithStatusIcon
+      iconId={iconId}
+      status={status}
+      className='size-6 text-white'
+      style={{ backgroundColor: color }}
+    />
+  )
+}
 
 function AppSettingsTrigger({
   appId,
@@ -338,11 +362,15 @@ export const BasePanel = memo<BasePanelProps>(
         scrollbarClassName='w-1 mr-0.5 data-[hovering]:opacity-0 hover:!opacity-100'>
         <DrawerHeader
           icon={
-            <AppIcon
-              iconId={nodeIconName}
-              className='size-6 text-white'
-              style={{ backgroundColor: nodeColor }}
-            />
+            appContext ? (
+              <AppPanelIcon appId={appContext.appId} iconId={nodeIconName} color={nodeColor} />
+            ) : (
+              <AppIcon
+                iconId={nodeIconName}
+                className='size-6 text-white'
+                style={{ backgroundColor: nodeColor }}
+              />
+            )
           }
           title={
             <div className='relative flex-1'>

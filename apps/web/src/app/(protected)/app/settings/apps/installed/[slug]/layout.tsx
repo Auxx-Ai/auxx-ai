@@ -2,10 +2,10 @@
 
 import { Globe } from 'lucide-react'
 import type React from 'react'
-import AppInstallButton from '~/components/apps/app-install-button'
-import { InstalledAppTabs } from '~/components/apps/installed-app-tabs'
+import { AppIcon } from '~/components/apps/ui/app-icon'
+import AppInstallButton from '~/components/apps/ui/app-install-button'
+import { InstalledAppTabs } from '~/components/apps/ui/installed-app-tabs'
 import SettingsPage from '~/components/global/settings-page'
-import { AppIcon } from '~/components/workflow/ui/app-icon'
 import { api } from '~/trpc/server'
 
 /**

@@ -1,4 +1,4 @@
-// apps/web/src/components/apps/app-about.tsx
+// apps/web/src/components/apps/ui/app-about.tsx
 
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'

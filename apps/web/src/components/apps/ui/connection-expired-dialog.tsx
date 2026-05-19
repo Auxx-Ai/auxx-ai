@@ -1,4 +1,4 @@
-// apps/web/src/components/apps/connection-expired-dialog.tsx
+// apps/web/src/components/apps/ui/connection-expired-dialog.tsx
 
 'use client'
 

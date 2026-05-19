@@ -2,10 +2,10 @@
 
 import { Globe } from 'lucide-react'
 import { redirect } from 'next/navigation'
-import AppAbout from '~/components/apps/app-about'
-import AppInstallButton from '~/components/apps/app-install-button'
+import AppAbout from '~/components/apps/ui/app-about'
+import { AppIcon } from '~/components/apps/ui/app-icon'
+import AppInstallButton from '~/components/apps/ui/app-install-button'
 import SettingsPage from '~/components/global/settings-page'
-import { AppIcon } from '~/components/workflow/ui/app-icon'
 import { api } from '~/trpc/server'
 
 type Props = { params: Promise<{ slug: string }> }

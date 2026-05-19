@@ -114,20 +114,28 @@ describe('reconcileToolsets', () => {
     expect(next).toEqual([])
   })
 
-  it('keeps manual rows untouched and does not insert a duplicate', () => {
+  it('promotes a manual row to mention when its slug is mentioned', () => {
     const next = reconcileToolsets(
       [ts('auxx:mail:threads', 'manual')],
       new Set(['auxx:mail:threads'])
     )
-    expect(next).toEqual([ts('auxx:mail:threads', 'manual')])
+    expect(next).toEqual([ts('auxx:mail:threads', 'mention')])
   })
 
-  it('keeps auto_default rows untouched and does not insert a duplicate', () => {
+  it('promotes an auto_default row to mention when its slug is mentioned', () => {
     const next = reconcileToolsets(
       [ts('auxx:mail:threads', 'auto_default')],
       new Set(['auxx:mail:threads'])
     )
-    expect(next).toEqual([ts('auxx:mail:threads', 'auto_default')])
+    expect(next).toEqual([ts('auxx:mail:threads', 'mention')])
+  })
+
+  it('re-enables a disabled manual row when its slug is mentioned', () => {
+    const next = reconcileToolsets(
+      [{ slug: 'auxx:mail:threads', config: {}, enabled: false, source: 'manual' }],
+      new Set(['auxx:mail:threads'])
+    )
+    expect(next).toEqual([ts('auxx:mail:threads', 'mention')])
   })
 
   it('handles a mention→remove cycle', () => {

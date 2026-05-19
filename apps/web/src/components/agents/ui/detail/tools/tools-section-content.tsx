@@ -6,6 +6,7 @@ import { EmptySection } from '@auxx/ui/components/section'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { Wrench } from 'lucide-react'
 import { useCallback, useMemo, useState } from 'react'
+import { AppAccountPicker } from '~/components/apps/ui/app-account-picker'
 import { api } from '~/trpc/react'
 import type { AgentDetail } from '../../../store/agent-store'
 import type { AutosaveState } from '../../shared/autosave-indicator'
@@ -85,6 +86,19 @@ export function ToolsSectionContent({
   const [collapsedOverride, setCollapsedOverride] = useState<Set<string> | null>(null)
   const collapsed = collapsedOverride ?? defaultCollapsed
 
+  // Map each appId → bound credId so child rows render the right badge
+  // without re-reading the agent on every row. Derived from
+  // `agent.appAccounts`.
+  const boundCredIdByApp = useMemo<Record<string, string | undefined>>(() => {
+    const map: Record<string, string | undefined> = {}
+    for (const [appId, entry] of Object.entries(agent.appAccounts ?? {})) {
+      map[appId] = entry?.credId
+    }
+    return map
+  }, [agent.appAccounts])
+
+  const [accountPickerAppId, setAccountPickerAppId] = useState<string | null>(null)
+
   const toggleCollapsed = useCallback(
     (id: string) => {
       setCollapsedOverride((prev) => {
@@ -103,7 +117,7 @@ export function ToolsSectionContent({
       const changes: Array<{ slug: string; enabled: boolean }> = []
       for (const leaf of collectLeaves(node)) {
         const state = stateBySlug.get(leaf.slug)
-        if ((state?.source ?? 'manual') !== 'manual') continue
+        if (state?.source === 'mention') continue
         if (!state?.enabled) continue
         changes.push({ slug: leaf.slug, enabled: false })
       }
@@ -158,8 +172,20 @@ export function ToolsSectionContent({
           onToggleCollapsed={toggleCollapsed}
           onRemove={handleRemove}
           onAddToApp={onAddToApp}
+          onOpenAccountPicker={setAccountPickerAppId}
+          boundCredIdByApp={boundCredIdByApp}
         />
       ))}
+      <AppAccountPicker
+        appId={accountPickerAppId}
+        agentId={agent.id}
+        agentSlug={agent.slug}
+        boundCredId={accountPickerAppId ? boundCredIdByApp[accountPickerAppId] : undefined}
+        open={accountPickerAppId !== null}
+        onOpenChange={(open) => {
+          if (!open) setAccountPickerAppId(null)
+        }}
+      />
     </div>
   )
 }

@@ -165,14 +165,20 @@ export function KopilotChat({
         composerRef.current?.populate(text)
         return
       }
+      // Read fresh state — `messages` / `activeSessionId` in closure can be
+      // pre-`startNewSession` when the auto-submit effect fires right after
+      // the load-initial effect clears state. Using the closure value would
+      // orphan the new message under a stale parentId (invisible in the
+      // tree) and send the SSE to the previous session id.
+      const store = useKopilotStore.getState()
+      const freshMessages = store.messages
       addMessage({
         id: generateId(),
         role: 'user',
         content: `<p>${text}</p>`,
         timestamp: Date.now(),
-        parentId: messages.length > 0 ? messages[messages.length - 1]!.id : null,
+        parentId: freshMessages.length > 0 ? freshMessages[freshMessages.length - 1]!.id : null,
       })
-      const store = useKopilotStore.getState()
       const merged = applyChipDismissals(
         selectMergedContext(store.contextSlices),
         store.dismissedChipKeys
@@ -180,7 +186,7 @@ export function KopilotChat({
       store.clearDismissedChips()
       setPendingRequest(
         augmentRequest({
-          sessionId: activeSessionId ?? undefined,
+          sessionId: store.activeSessionId ?? undefined,
           message: text,
           type: 'message',
           page: merged.page ?? page,
@@ -188,7 +194,7 @@ export function KopilotChat({
         })
       )
     },
-    [addMessage, messages, activeSessionId, page, augmentRequest]
+    [addMessage, page, augmentRequest]
   )
 
   // Auto-submit `initialMessage` once on mount when no existing session.

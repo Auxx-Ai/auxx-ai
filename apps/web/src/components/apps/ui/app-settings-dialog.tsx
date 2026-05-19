@@ -1,4 +1,4 @@
-// apps/web/src/components/apps/app-settings-dialog.tsx
+// apps/web/src/components/apps/ui/app-settings-dialog.tsx
 
 'use client'
 
@@ -23,6 +23,9 @@ import { api } from '~/trpc/react'
 import AppConnections from './app-connections'
 import { SettingsFormRenderer } from './settings-form-renderer'
 
+type Tab = 'about' | 'connections' | 'settings'
+type Scope = 'user' | 'organization'
+
 interface AppSettingsDialogProps {
   appSlug: string
   /** Required for settings tab queries (getSettingsSchema, getSettings) */
@@ -31,6 +34,19 @@ interface AppSettingsDialogProps {
   returnTo?: string
   /** Caller provides the trigger button */
   trigger: ReactNode
+  /** Open on a specific tab (defaults to `'about'`). */
+  initialTab?: Tab
+  /**
+   * Currently unused. Reserved for highlighting the matching connection
+   * section when the dialog opens from the picker. See
+   * plans/kopilot/apps/app-settings-dialog-refactor.md §7.3.
+   */
+  initialScope?: Scope
+  /**
+   * Fired when the embedded connections tab produces a new credId. Pickers
+   * use this to auto-bind without waiting for the user to close the dialog.
+   */
+  onConnectionCreated?: (credId: string, scope: Scope) => void
 }
 
 /**
@@ -42,9 +58,12 @@ export function AppSettingsDialog({
   installationType,
   returnTo,
   trigger,
+  initialTab = 'about',
+  initialScope,
+  onConnectionCreated,
 }: AppSettingsDialogProps) {
   const [open, setOpen] = useState(false)
-  const [activeTab, setActiveTab] = useState('about')
+  const [activeTab, setActiveTab] = useState<Tab>(initialTab)
   const { isAdminOrOwner } = useUser()
 
   const { appInstallations } = useExtensionsContext()
@@ -83,7 +102,7 @@ export function AppSettingsDialog({
 
         <Tabs
           value={activeTab}
-          onValueChange={setActiveTab}
+          onValueChange={(v) => setActiveTab(v as Tab)}
           className='flex-1 flex flex-col min-h-0'>
           <TabsList variant='outline'>
             <TabsTrigger value='about' variant='outline' size='sm'>
@@ -108,7 +127,11 @@ export function AppSettingsDialog({
 
             {hasConnectionDefinition && (
               <TabsContent value='connections' className='mt-0'>
-                <ConnectionsTab appSlug={appSlug} returnTo={returnTo} />
+                <ConnectionsTab
+                  appSlug={appSlug}
+                  returnTo={returnTo}
+                  onConnectionCreated={onConnectionCreated}
+                />
               </TabsContent>
             )}
 
@@ -242,7 +265,15 @@ function AboutTab({ appSlug }: { appSlug: string }) {
 /**
  * Connections tab — uses the same AppConnections component as the installed apps settings page
  */
-function ConnectionsTab({ appSlug, returnTo }: { appSlug: string; returnTo?: string }) {
+function ConnectionsTab({
+  appSlug,
+  returnTo,
+  onConnectionCreated,
+}: {
+  appSlug: string
+  returnTo?: string
+  onConnectionCreated?: (credId: string, scope: Scope) => void
+}) {
   const { data: app, isLoading } = api.apps.getBySlug.useQuery({ appSlug })
 
   if (isLoading) {
@@ -255,7 +286,7 @@ function ConnectionsTab({ appSlug, returnTo }: { appSlug: string; returnTo?: str
 
   return (
     <Suspense fallback={<div className='p-6 text-sm text-muted-foreground'>Loading...</div>}>
-      <AppConnections app={app} returnTo={returnTo} />
+      <AppConnections app={app} returnTo={returnTo} onConnectionCreated={onConnectionCreated} />
     </Suspense>
   )
 }

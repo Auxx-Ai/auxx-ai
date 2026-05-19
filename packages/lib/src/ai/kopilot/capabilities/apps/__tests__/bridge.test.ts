@@ -13,6 +13,10 @@ vi.mock('../../../../cache', () => ({
       return null
     }),
   }),
+  // Per plans/kopilot/apps/agent-credentials.md the bridge now also reads
+  // the agent's appAccounts via getCachedAgentById. Tests don't exercise
+  // the agent path (no agentId passed), but the import must resolve.
+  getCachedAgentById: vi.fn(async () => null),
 }))
 
 vi.mock('@auxx/services/app-connections', () => ({

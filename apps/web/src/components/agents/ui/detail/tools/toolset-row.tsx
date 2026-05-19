@@ -2,7 +2,7 @@
 'use client'
 
 import { TreeRow } from '@auxx/ui/components/tree-row'
-import { AppIcon } from '~/components/workflow/ui/app-icon'
+import { AppIcon } from '~/components/apps/ui/app-icon'
 import { RemoveButton } from './remove-button'
 
 export interface ToolsetRowProps {
@@ -20,9 +20,9 @@ export interface ToolsetRowProps {
 
 /**
  * One toolset rendered as a single-line TreeRow: icon + short label + tool
- * count + trash button. Mention-locked and auto_default rows show a disabled
- * trash with a tooltip explaining the lock. The toolset is the atomic unit of
- * control — there are no per-tool sub-rows.
+ * count + trash button. Only mention-locked rows render a disabled trash;
+ * `manual` and `auto_default` are both freely removable. The toolset is the
+ * atomic unit of control — there are no per-tool sub-rows.
  */
 export function ToolsetRow({
   label,
@@ -34,12 +34,10 @@ export function ToolsetRow({
   depth = 0,
   onRemove,
 }: ToolsetRowProps) {
-  const removable = source === 'manual'
+  const removable = source !== 'mention'
   const tooltip = removable
     ? 'Remove toolset'
-    : source === 'mention'
-      ? "This tool is referenced in your agent's prompt. To remove it, first edit your prompt."
-      : 'Required'
+    : "This tool is referenced in your agent's prompt. To remove it, first edit your prompt."
 
   return (
     <TreeRow

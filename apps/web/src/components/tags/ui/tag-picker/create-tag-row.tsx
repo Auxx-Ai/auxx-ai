@@ -15,7 +15,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/pop
 import { cn } from '@auxx/ui/lib/utils'
 import { ArrowRight, FolderTree } from 'lucide-react'
 import { useMemo, useState } from 'react'
-import { AppIcon } from '~/components/workflow/ui/app-icon'
+import { AppIcon } from '~/components/apps/ui/app-icon'
 import type { Tag } from './types'
 
 interface CreateTagRowProps {

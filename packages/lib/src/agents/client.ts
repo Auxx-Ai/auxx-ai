@@ -33,6 +33,12 @@ interface CatalogNodeBase {
 export interface CatalogContainerNode extends CatalogNodeBase {
   kind: 'app' | 'subGroup'
   children: CatalogNode[]
+  /**
+   * True only for the synthetic `Auxx.ai` app at the catalog root. Lets the
+   * Tools tab suppress credential / account-picker affordances that don't
+   * apply to built-in toolsets.
+   */
+  isBuiltin?: boolean
 }
 
 export interface CatalogToolsetNode extends CatalogNodeBase {

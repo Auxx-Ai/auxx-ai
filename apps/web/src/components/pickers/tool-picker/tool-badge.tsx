@@ -6,8 +6,8 @@ import { Skeleton } from '@auxx/ui/components/skeleton'
 import { cn } from '@auxx/ui/lib/utils'
 import type { VariantProps } from 'class-variance-authority'
 import { useMemo } from 'react'
+import { AppIcon } from '~/components/apps/ui/app-icon'
 import { recordBadgeVariants } from '~/components/resources/ui/record-badge'
-import { AppIcon } from '~/components/workflow/ui/app-icon'
 import { api } from '~/trpc/react'
 
 interface ToolBadgeProps extends VariantProps<typeof recordBadgeVariants> {

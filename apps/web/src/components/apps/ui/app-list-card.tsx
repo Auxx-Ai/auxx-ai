@@ -1,4 +1,4 @@
-// apps/web/src/components/apps/app-list-card.tsx
+// apps/web/src/components/apps/ui/app-list-card.tsx
 
 'use client'
 
