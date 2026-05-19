@@ -2,9 +2,9 @@
 
 import type { BulkRecordAction, RecordAction, RecordWidget } from '../client/record-actions.js'
 // import type { WorkflowStepBlock, WorkflowTriggerBlock } from '../server/workflow/index.js'
-import type { AiTool, AiToolset } from './ai/types.js'
 import type { QuickAction } from './quick-actions/types.js'
 import type { ScopedSettingsSchema } from './settings/settings-schema.js'
+import type { ToolDefinition, Toolset } from './tools/types.js'
 import type { WorkflowBlock, WorkflowTrigger } from './workflow/types.js'
 /**
  * Permission definition for app access control
@@ -96,15 +96,18 @@ export interface App {
   }
 
   /**
-   * AI tools exposed to Kopilot. The platform converts the zod schemas to
+   * Tools exposed to Kopilot. The platform converts the zod schemas to
    * provider JSON Schema at publish time and registers tools with the LLM at
    * session-init. Execute runs in the lambda runtime, like workflow blocks.
    * See plans/kopilot/apps/README.md.
    */
-  readonly ai?: {
-    readonly tools?: ReadonlyArray<AiTool>
-    readonly toolsets?: ReadonlyArray<AiToolset>
-  }
+  readonly tools?: ReadonlyArray<ToolDefinition>
+
+  /**
+   * Toolsets that group `tools` for agent-side enablement filters. See
+   * plans/kopilot/apps/README.md §4.4.
+   */
+  readonly toolsets?: ReadonlyArray<Toolset>
 
   /** Quick actions available in the email editor's action panel */
   readonly quickActions?: ReadonlyArray<QuickAction>

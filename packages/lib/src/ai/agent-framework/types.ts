@@ -210,8 +210,8 @@ export interface AgentToolDefinition {
    * Streaming variant: returning an `AsyncGenerator<ToolProgressPayload, AgentToolResult>`
    * lets the tool emit progress updates during a long-running call. The query
    * loop forwards each yielded payload as a `tool-progress` agent event, and
-   * the generator's return value becomes the final tool result. App-backed AI
-   * tools opt into this via `defineAiTool({ config: { streaming: true } })`;
+   * the generator's return value becomes the final tool result. App-backed
+   * tools opt into this via `defineTool({ config: { streaming: true } })`;
    * native capabilities are buffered today.
    */
   execute: (

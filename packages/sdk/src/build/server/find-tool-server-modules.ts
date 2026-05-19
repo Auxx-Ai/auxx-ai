@@ -1,4 +1,4 @@
-// packages/sdk/src/build/server/find-ai-tool-server-modules.ts
+// packages/sdk/src/build/server/find-tool-server-modules.ts
 
 import fs from 'node:fs'
 import { parse } from '@typescript-eslint/parser'
@@ -9,11 +9,11 @@ import { complete, errored } from '../../errors.js'
 import { getAppEntryPoint } from '../../util/get-app-entry-point.js'
 
 /**
- * Build-time scanner for AI tool server modules — mirrors
- * `find-workflow-block-server-modules.ts`. Walks `app.ai.tools[].execute`
+ * Build-time scanner for tool server modules — mirrors
+ * `find-workflow-block-server-modules.ts`. Walks `app.tools[].execute`
  * and enforces that executors are default-imported from a `.server.ts` file.
  *
- * Produces an `AiToolModule` map keyed by tool id, consumed by
+ * Produces a `ToolModule` map keyed by tool id, consumed by
  * `generate-server-entry.ts` to emit the `__AUXX_AI_TOOLS__` registry the
  * lambda's `ai-tool-executor.ts` looks up at run time.
  *
@@ -28,7 +28,7 @@ interface HandlerRef {
   export: string
 }
 
-export interface AiToolModule {
+export interface ToolModule {
   execute?: HandlerRef | null
 }
 
@@ -192,7 +192,7 @@ function captureExecuteRef(
   let importValue: ASTNode | ImportBinding | null =
     node.type === 'Identifier' ? resolveIdentifierToValue(node, scope) : node
   if (!importValue) {
-    throw new Error(`AI tool '${toolId}': unable to resolve 'execute'`)
+    throw new Error(`Tool '${toolId}': unable to resolve 'execute'`)
   }
   importValue = unwrapTypeAnnotations(importValue)
 
@@ -203,14 +203,14 @@ function captureExecuteRef(
 
   if (isInlineFunction) {
     throw new Error(
-      `AI tool '${toolId}': 'execute' must be imported from a separate .server.ts file. ` +
+      `Tool '${toolId}': 'execute' must be imported from a separate .server.ts file. ` +
         `Inline server functions are not allowed.`
     )
   }
 
   if (importValue.type !== 'ImportBinding' && importValue.type !== 'ExportNamedDeclaration') {
     throw new Error(
-      `AI tool '${toolId}': 'execute' must be imported from another file. Found ${importValue.type}.`
+      `Tool '${toolId}': 'execute' must be imported from another file. Found ${importValue.type}.`
     )
   }
 
@@ -225,7 +225,7 @@ function captureExecuteRef(
 
   if (!isServerFile) {
     throw new Error(
-      `AI tool '${toolId}': 'execute' must be imported from a .server.ts file (got '${sourcePath}').`
+      `Tool '${toolId}': 'execute' must be imported from a .server.ts file (got '${sourcePath}').`
     )
   }
 
@@ -235,7 +235,7 @@ function captureExecuteRef(
     )
     if (specifier && specifier.type !== 'ImportDefaultSpecifier') {
       throw new Error(
-        `AI tool '${toolId}': 'execute' must be imported as a default export from '${sourcePath}'.`
+        `Tool '${toolId}': 'execute' must be imported as a default export from '${sourcePath}'.`
       )
     }
   }
@@ -248,7 +248,7 @@ function captureExecuteRef(
 function visitTool(
   node: ASTNode,
   scope: Scope,
-  result: Map<string, AiToolModule>,
+  result: Map<string, ToolModule>,
   currPath: string,
   helpers: Helpers
 ): void {
@@ -276,20 +276,20 @@ function visitTool(
     value = value ? unwrapTypeAnnotations(value) : null
 
     if (!value) {
-      throw new Error(`AI tool ${node.name}: expected initializer`)
+      throw new Error(`Tool ${node.name}: expected initializer`)
     }
-    // `defineAiTool({...})` call expressions resolve to their argument.
+    // `defineTool({...})` call expressions resolve to their argument.
     if (value.type === 'CallExpression') {
       visitTool(value.arguments[0], targetScope, result, targetPath, helpers)
       return
     }
     if (value.type !== 'ObjectExpression') {
-      throw new Error(`AI tool ${node.name}: expected ObjectExpression, got ${value.type}`)
+      throw new Error(`Tool ${node.name}: expected ObjectExpression, got ${value.type}`)
     }
     visitTool(value, targetScope, result, targetPath, helpers)
     return
   }
-  // `defineAiTool({...})` — unwrap to its first argument.
+  // `defineTool({...})` — unwrap to its first argument.
   if (node.type === 'CallExpression') {
     visitTool(node.arguments[0], scope, result, currPath, helpers)
     return
@@ -302,15 +302,15 @@ function visitTool(
       const name = property.key.name
       if (name === 'id') {
         if (property.value.type !== 'Literal' || typeof property.value.value !== 'string') {
-          throw new Error(`AI tool: 'id' must be a string literal`)
+          throw new Error(`Tool: 'id' must be a string literal`)
         }
         id = property.value.value
       } else if (name === 'execute') {
         execute = captureExecuteRef(id ?? '<unknown>', property.value, scope, currPath, helpers)
       }
     }
-    if (!id) throw new Error(`AI tool: missing 'id'`)
-    if (!execute) throw new Error(`AI tool '${id}': missing 'execute'`)
+    if (!id) throw new Error(`Tool: missing 'id'`)
+    if (!execute) throw new Error(`Tool '${id}': missing 'execute'`)
     result.set(id, { execute })
   }
 }
@@ -329,11 +329,11 @@ function findProperty(obj: ASTNode, name: string, scope: Scope): ASTNode | null 
 }
 
 /**
- * Parse the app entry source and extract `app.ai.tools[].execute` module
- * references. Returns a map of toolId → AiToolModule.
+ * Parse the app entry source and extract `app.tools[].execute` module
+ * references. Returns a map of toolId → ToolModule.
  */
-export function findAiToolModulesFromSource(source: string, currPath: string, helpers: Helpers) {
-  const result = new Map<string, AiToolModule>()
+export function findToolModulesFromSource(source: string, currPath: string, helpers: Helpers) {
+  const result = new Map<string, ToolModule>()
   try {
     const ast = parse(source, { range: true, jsx: true })
     const scopeManager = analyze(ast, { sourceType: 'module' })
@@ -350,10 +350,7 @@ export function findAiToolModulesFromSource(source: string, currPath: string, he
         const appValue = declaration.init
         if (!appValue || appValue.type !== 'ObjectExpression') return
 
-        const ai = findProperty(appValue, 'ai', moduleScope)
-        if (ai?.type !== 'ObjectExpression') return
-
-        const tools = findProperty(ai, 'tools', moduleScope)
+        const tools = findProperty(appValue, 'tools', moduleScope)
         if (tools?.type !== 'ArrayExpression') return
 
         for (const element of tools.elements) {
@@ -363,20 +360,20 @@ export function findAiToolModulesFromSource(source: string, currPath: string, he
     })
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
-    return errored({ code: 'AI_TOOL_RESOLUTION_FAILED', message })
+    return errored({ code: 'TOOL_RESOLUTION_FAILED', message })
   }
   return complete(result)
 }
 
 /**
- * Discover and parse AI tool modules from the app source directory.
+ * Discover and parse tool modules from the app source directory.
  */
-export async function findAiToolModules(srcDirAbsolute: string) {
+export async function findToolModules(srcDirAbsolute: string) {
   const appEntryPoint = await getAppEntryPoint(srcDirAbsolute)
   if (!appEntryPoint) {
-    return complete(new Map<string, AiToolModule>())
+    return complete(new Map<string, ToolModule>())
   }
-  return findAiToolModulesFromSource(appEntryPoint.content, appEntryPoint.path, {
+  return findToolModulesFromSource(appEntryPoint.content, appEntryPoint.path, {
     getModuleSource: (p) => fs.readFileSync(p, 'utf-8'),
     doesModuleExist: (p) => fs.existsSync(p),
     modules: new Map<string, ModuleInfo>(),

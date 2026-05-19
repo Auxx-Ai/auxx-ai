@@ -75,17 +75,17 @@ export const versionCreate = new Command('create')
       process.exit(1)
     }
 
-    // Destructure bundles, settings schema, and AI tool catalog from result
-    const { bundles, settingsSchema, aiTools } = bundleResult.value
+    // Destructure bundles, settings schema, and tool catalog from result
+    const { bundles, settingsSchema, tools } = bundleResult.value
     const [clientBundle, serverBundle] = bundles
 
     // Log success if settings schema is included
     if (settingsSchema) {
       process.stdout.write(`${chalk.green('✓ ')}Settings schema extracted\n`)
     }
-    if (aiTools && (aiTools.tools.length || aiTools.toolsets.length)) {
+    if (tools && (tools.tools.length || tools.toolsets.length)) {
       process.stdout.write(
-        `${chalk.green('✓ ')}AI tools catalogued (${aiTools.tools.length} tools, ${aiTools.toolsets.length} toolsets)\n`
+        `${chalk.green('✓ ')}Tools catalogued (${tools.tools.length} tools, ${tools.toolsets.length} toolsets)\n`
       )
     }
 
@@ -142,7 +142,7 @@ export const versionCreate = new Command('create')
         serverBundleSha: serverSha,
         deploymentType: 'production',
         settingsSchema,
-        aiTools,
+        aiTools: tools,
         metadata: { cliVersion },
       })
       if (isErrored(result)) {

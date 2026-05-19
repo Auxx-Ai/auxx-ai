@@ -47,8 +47,6 @@ const SAMPLE_TOOL = {
   inputsJsonSchema: { type: 'object', properties: {} },
   outputsJsonSchema: { type: 'object', properties: {} },
   requiresConnection: true,
-  connectionScope: 'user' as const,
-  requiresApproval: false,
   timeoutMs: 15000,
   streaming: false,
   toolsetSlug: 'app:gog-calendar:availability',

@@ -3,11 +3,11 @@
 import chalk from 'chalk'
 import chokidar from 'chokidar'
 import { complete, type Fetchable, isComplete, isErrored } from '../../errors.js'
-import {
-  type AiToolCatalogPayload,
-  compileAndExtractAiTools,
-} from '../../util/compile-and-extract-ai-tools.js'
 import { compileAndExtractSettingsSchema } from '../../util/compile-and-extract-settings.js'
+import {
+  compileAndExtractTools,
+  type ToolCatalogPayload,
+} from '../../util/compile-and-extract-tools.js'
 import type { SettingsSchema } from '../../util/extract-settings-schema.js'
 import { type BuildContextError, prepareBuildContext } from './prepare-build-context.js'
 
@@ -59,7 +59,7 @@ export function bundleJavaScript(
   onSuccess?: (
     bundles: [string, string],
     settingsSchema?: SettingsSchema,
-    aiTools?: AiToolCatalogPayload
+    tools?: ToolCatalogPayload
   ) => Promise<void> | void,
   onError?: (error: BuildContextError) => void
 ): () => Promise<void> {
@@ -120,14 +120,14 @@ export function bundleJavaScript(
       // Compile and extract settings schema if enabled
       const settingsSchema = await compileAndExtractSettingsSchema()
 
-      // Compile and extract AI tool catalog (plans/kopilot/apps/dev-upload-ai-tools.md §3.1).
+      // Compile and extract tool catalog (plans/kopilot/apps/dev-upload-ai-tools.md §3.1).
       // On failure, emit a yellow warning and pass undefined — the upload will
       // wipe any prior catalog row (Option 1 tombstone policy). Acceptable for
       // v1; revisit if mid-edit failures cost too much.
-      const aiToolsResult = await compileAndExtractAiTools()
-      let aiTools: AiToolCatalogPayload | undefined
-      if (isErrored(aiToolsResult)) {
-        const err = aiToolsResult.error
+      const toolsResult = await compileAndExtractTools()
+      let tools: ToolCatalogPayload | undefined
+      if (isErrored(toolsResult)) {
+        const err = toolsResult.error
         const detail =
           'error' in err && err.error instanceof Error
             ? `\n    ${err.error.message}`
@@ -136,17 +136,17 @@ export function bundleJavaScript(
               : ''
         process.stderr.write(
           chalk.yellow(
-            `⚠ AI tool catalog extraction failed (${err.code}) — deployment will ship with no AI tools${detail}\n`
+            `⚠ Tool catalog extraction failed (${err.code}) — deployment will ship with no tools${detail}\n`
           )
         )
       } else {
-        aiTools = aiToolsResult.value
+        tools = toolsResult.value
       }
 
       await onSuccess?.(
         [results.client.outputFiles[0].text, results.server.outputFiles[0].text],
         settingsSchema,
-        aiTools
+        tools
       )
       isBuilding = false
       if (buildQueued && !isDisposing) {

@@ -1,11 +1,11 @@
-// packages/sdk/src/root/ai/refs.ts
+// packages/sdk/src/root/tools/refs.ts
 
 import { z } from 'zod/v4'
 import type { EntityRefKind } from './types.js'
 
 /**
  * `auxxRef` markers attach to string nodes via zod's `.meta()`. The marker is
- * preserved into the published AI tool catalog (so the snapshot walker can
+ * preserved into the published tool catalog (so the snapshot walker can
  * mine ids out of tool outputs) and is stripped from the LLM-facing JSON
  * Schema by the converter — the LLM doesn't need to see internal metadata.
  *

@@ -141,6 +141,7 @@ export interface ServerSDK {
   workflow: Record<string, unknown>
   getUserConnection: () => Connection | undefined
   getOrganizationConnection: () => Connection | undefined
+  getConnection: () => Connection | undefined
   createWebhookHandler: (options: {
     fileName: string
     triggerId?: string
@@ -472,6 +473,39 @@ export function createServerSDK(context: RuntimeContext): ServerSDK {
         expiresAt: context.organizationConnection.expiresAt
           ? new Date(context.organizationConnection.expiresAt)
           : undefined,
+      }
+    },
+
+    /**
+     * Get the connection bound to this invocation, regardless of scope. The
+     * platform decides whether to inject the workspace cred or the user cred
+     * (e.g. via an agent's `appAccounts[appId].credId` binding) before
+     * calling into the lambda. Tool authors should prefer this over the
+     * split helpers — see plans/kopilot/apps/agent-credentials.md §6.2.
+     */
+    getConnection: (): Connection | undefined => {
+      console.log('[ServerSDK] getConnection')
+      const conn = context.organizationConnection ?? context.userConnection
+      if (!conn) return undefined
+
+      if (conn.expiresAt) {
+        const expiresAt = new Date(conn.expiresAt)
+        if (expiresAt < new Date()) {
+          const error = new Error(
+            'Connection token expired. Please reconnect your account.'
+          ) as Error & { code: string; scope: string }
+          error.code = 'CONNECTION_EXPIRED'
+          error.scope = context.organizationConnection ? 'organization' : 'user'
+          throw error
+        }
+      }
+
+      return {
+        id: conn.id,
+        type: conn.type,
+        value: conn.value,
+        metadata: conn.metadata,
+        expiresAt: conn.expiresAt ? new Date(conn.expiresAt) : undefined,
       }
     },
 

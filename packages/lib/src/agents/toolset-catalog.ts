@@ -287,7 +287,9 @@ async function buildOrgCatalogTree(organizationId: string): Promise<CatalogNode[
           shortLabel: ts.name,
           iconId: ts.iconKey ?? null,
           color: null,
-          isDefault: ts.isDefault,
+          // App toolsets are never defaulted (per plans/kopilot/apps/gog-calendar-overhaul.md §0);
+          // admins pick each one deliberately, which doubles as the write-approval gate.
+          isDefault: false,
           // SDK doesn't expose `isPopular` yet — third-party toolsets default
           // to false. Deferred to a future SDK-side iteration.
           isPopular: false,

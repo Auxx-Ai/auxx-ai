@@ -170,7 +170,7 @@ export const dev = new Command('dev')
       // cleanupFunctions.push(cleanupGraphqlCodeGen)
       let haveBundlingErrors = false
       const cleanupJs = bundleJavaScript(
-        async (contents, settingsSchema, aiTools) => {
+        async (contents, settingsSchema, tools) => {
           if (haveBundlingErrors) {
             process.stdout.write(`${chalk.green('✓')} Bundling errors fixed\n`)
             haveBundlingErrors = false
@@ -182,7 +182,7 @@ export const dev = new Command('dev')
             environmentVariables,
             cliVersion,
             settingsSchema,
-            aiTools,
+            tools,
           })
           if (isErrored(uploadResult)) {
             printUploadError(uploadResult)
