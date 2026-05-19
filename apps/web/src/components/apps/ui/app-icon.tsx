@@ -1,4 +1,4 @@
-// apps/web/src/components/workflow/ui/app-icon.tsx
+// apps/web/src/components/apps/ui/app-icon.tsx
 
 'use client'
 

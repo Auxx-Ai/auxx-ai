@@ -12,7 +12,7 @@ import {
 } from '@auxx/ui/components/command'
 import { cn } from '@auxx/ui/lib/utils'
 import { useMemo } from 'react'
-import { AppIcon } from '~/components/workflow/ui/app-icon'
+import { AppIcon } from '~/components/apps/ui/app-icon'
 import { api } from '~/trpc/react'
 
 export interface ToolReferenceListProps {

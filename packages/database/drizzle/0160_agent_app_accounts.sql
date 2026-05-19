@@ -1,0 +1,1 @@
+ALTER TABLE "Agent" ADD COLUMN "appAccounts" jsonb DEFAULT '{}'::jsonb NOT NULL;

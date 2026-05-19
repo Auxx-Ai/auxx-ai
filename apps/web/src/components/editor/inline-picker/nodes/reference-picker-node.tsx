@@ -164,26 +164,32 @@ function ReferencePickerNodeView({ selected, editor, getPos }: NodeViewProps) {
         {TAB_LABEL[tab]}
       </button>
       {/*
-       * Placeholder is a React-controlled absolutely-positioned sibling, not
-       * a CSS `:before`. The global `.ProseMirror .is-empty::before` rule in
-       * prosemirror.css fights the Tailwind arbitrary `data-[empty]:before`
-       * approach, and the ZWSP seed means `:empty` selectors don't match
-       * either. Owning the placeholder in React sidesteps all of that.
+       * Placeholder is a React-controlled sibling, not a CSS `:before`. The
+       * global `.ProseMirror .is-empty::before` rule in prosemirror.css fights
+       * the Tailwind arbitrary `data-[empty]:before` approach, and the ZWSP
+       * seed means `:empty` selectors don't match either.
+       *
+       * Layout: a 1x1 inline grid stacks the placeholder and NodeViewContent
+       * in the same cell — the wider child drives the track size, so the chip
+       * pill expands to fit "Search…" when empty and shrinks to the typed
+       * query once the user types. Prior absolute positioning collapsed the
+       * containing block to 1ch and the inherited `word-break: break-word`
+       * from `.blockContent` then broke the placeholder one letter per line.
        */}
-      <span className='relative inline-flex items-baseline'>
+      <span className='relative inline-grid items-baseline [&>*]:[grid-area:1/1]'>
+        <NodeViewContent
+          as='span'
+          data-slot='reference-picker-query'
+          className='min-w-[1ch] outline-none'
+        />
         {isEmpty && (
           <span
             contentEditable={false}
             aria-hidden='true'
-            className='pointer-events-none absolute left-0 top-0 select-none whitespace-nowrap text-muted-foreground/60'>
+            className='pointer-events-none select-none whitespace-nowrap text-muted-foreground/60'>
             Search…
           </span>
         )}
-        <NodeViewContent
-          as='span'
-          data-slot='reference-picker-query'
-          className='inline-block min-w-[1ch] outline-none'
-        />
       </span>
     </NodeViewWrapper>
   )

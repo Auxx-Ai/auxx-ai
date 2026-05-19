@@ -51,9 +51,26 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const connectionType = searchParams.get('type') // 'user' or 'organization'
   const connectionId = searchParams.get('connectionId') // reconnect mode
   const returnTo = searchParams.get('returnTo')
+  const mode = searchParams.get('mode') === 'popup' ? 'popup' : 'redirect'
 
   // Validate returnTo: must be relative path starting with /, not protocol-relative
   const validReturnTo = returnTo?.startsWith('/') && !returnTo.startsWith('//') ? returnTo : null
+
+  // Capture opener origin for popup-mode postMessage target.
+  // Trust only Origin/Referer headers, never client-controlled params.
+  const reqHeaders = await headers()
+  let originOfOpener: string = WEBAPP_URL
+  const originHeader = reqHeaders.get('origin')
+  const referer = reqHeaders.get('referer')
+  if (originHeader) {
+    originOfOpener = originHeader
+  } else if (referer) {
+    try {
+      originOfOpener = new URL(referer).origin
+    } catch {
+      // keep WEBAPP_URL fallback
+    }
+  }
 
   if (!installationId || !connectionType) {
     return NextResponse.json(
@@ -150,6 +167,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         ...(codeVerifier && { codeVerifier }),
         ...(validReturnTo && { returnTo: validReturnTo }),
         ...(Object.keys(connectionVariables).length > 0 && { connectionVariables }),
+        mode,
+        originOfOpener,
       })
     )
 

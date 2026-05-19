@@ -1,4 +1,4 @@
-import AppAbout from '~/components/apps/app-about'
+import AppAbout from '~/components/apps/ui/app-about'
 import { api } from '~/trpc/server'
 
 /**

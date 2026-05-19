@@ -28,6 +28,61 @@ function isValidReturnTo(value: string | undefined | null): value is string {
 }
 
 /**
+ * Render the popup-mode termination page. Posts a payload to the parent via
+ * postMessage (targeted at the stored opener origin) AND BroadcastChannel,
+ * then closes itself. Values are JSON-stringified so they cannot break out
+ * of the script context.
+ */
+function renderPopupTerminationPage(payload: {
+  ok: boolean
+  credId?: string | null
+  appId?: string | null
+  error?: string | null
+  originOfOpener: string
+}): NextResponse {
+  const message = {
+    type: 'oauth_done',
+    ok: payload.ok,
+    credId: payload.credId ?? null,
+    appId: payload.appId ?? null,
+    error: payload.error ?? null,
+  }
+  const serializedMessage = JSON.stringify(message).replace(/</g, '\\u003c')
+  const serializedOrigin = JSON.stringify(payload.originOfOpener).replace(/</g, '\\u003c')
+  const heading = payload.ok ? 'Connected' : 'Connection failed'
+  const body = payload.ok
+    ? 'You can close this window.'
+    : `Something went wrong: ${payload.error ?? 'Unknown error'}. You can close this window.`
+
+  const html = `<!doctype html>
+<html>
+  <head><title>${heading}</title></head>
+  <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; padding: 2rem; text-align: center;">
+    <h1>${heading}</h1>
+    <p>${body}</p>
+    <script>
+      (function () {
+        var payload = ${serializedMessage};
+        var origin = ${serializedOrigin};
+        try { if (window.opener) { window.opener.postMessage(payload, origin); } } catch (_) {}
+        try {
+          var bc = new BroadcastChannel('oauth-app-connect');
+          bc.postMessage(payload);
+          bc.close();
+        } catch (_) {}
+        try { window.close(); } catch (_) {}
+      })();
+    </script>
+  </body>
+</html>`
+
+  return new NextResponse(html, {
+    status: payload.ok ? 200 : 400,
+    headers: { 'Content-Type': 'text/html' },
+  })
+}
+
+/**
  * OAuth Callback Route
  * GET /api/apps/:slug/oauth2/callback
  *
@@ -40,9 +95,44 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const error = searchParams.get('error')
   const { slug } = await params
 
+  // Peek at stored state metadata up-front so every termination branch
+  // (provider error, success, callback error) can decide whether to render
+  // the popup HTML page vs. a redirect. The state token is deleted in the
+  // success path of the main try block below.
+  let metadata: any = null
+  if (state) {
+    try {
+      const redis = await getRedisClient()
+      if (redis) {
+        const stateData = await redis.get(`oauth:app-connection:${state}`)
+        if (stateData) metadata = JSON.parse(stateData)
+      }
+    } catch {
+      // ignore — fall through to normal validation below
+    }
+  }
+  const isPopup = metadata?.mode === 'popup'
+  const originOfOpener: string = metadata?.originOfOpener || WEBAPP_URL
+
   // Handle OAuth errors (provider-side, e.g. user denied)
   if (error) {
     logger.error('OAuth provider returned error', { error, slug })
+
+    if (isPopup) {
+      // Best-effort delete the state token now that we've consumed it.
+      if (state) {
+        try {
+          const redis = await getRedisClient()
+          await redis?.del(`oauth:app-connection:${state}`)
+        } catch {}
+      }
+      return renderPopupTerminationPage({
+        ok: false,
+        appId: metadata?.appId ?? null,
+        error,
+        originOfOpener,
+      })
+    }
 
     // Check cookie fallback for returnTo (state may not be available on provider errors)
     const cookieReturnTo = request.cookies.get('oauth_return_to')?.value
@@ -86,18 +176,16 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       return new NextResponse('App not found', { status: 404 })
     }
 
-    // Validate state and retrieve metadata
+    // Validate state — metadata was already loaded above; just delete the token.
     const redis = await getRedisClient()
     if (!redis) {
       throw new Error('Redis client unavailable')
     }
 
-    const stateData = await redis.get(`oauth:app-connection:${state}`)
-    if (!stateData) {
+    if (!metadata) {
       return new NextResponse('Invalid or expired state token', { status: 400 })
     }
 
-    const metadata = JSON.parse(stateData)
     await redis.del(`oauth:app-connection:${state}`)
 
     // Verify appId matches stored state
@@ -268,6 +356,17 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       credentialId: result.value,
     })
 
+    if (isPopup) {
+      const popupResponse = renderPopupTerminationPage({
+        ok: true,
+        credId: result.value,
+        appId: metadata.appId,
+        originOfOpener,
+      })
+      popupResponse.cookies.delete('oauth_return_to')
+      return popupResponse
+    }
+
     // Redirect back — use returnTo from state if available, else default to app connections page
     const successPath = metadata.returnTo || `/app/settings/apps/installed/${slug}/connections`
     const redirectUrl = buildRedirectUrl(successPath, { oauth_success: 'true' })
@@ -279,6 +378,15 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       error: error instanceof Error ? error.message : String(error),
       slug,
     })
+
+    if (isPopup) {
+      return renderPopupTerminationPage({
+        ok: false,
+        appId: metadata?.appId ?? null,
+        error: error instanceof Error ? error.message : 'Unknown error',
+        originOfOpener,
+      })
+    }
 
     // Try cookie fallback for returnTo on error
     const cookieReturnTo = request.cookies.get('oauth_return_to')?.value

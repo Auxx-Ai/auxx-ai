@@ -1,4 +1,4 @@
-// apps/web/src/components/apps/app-install-button.tsx
+// apps/web/src/components/apps/ui/app-install-button.tsx
 
 'use client'
 

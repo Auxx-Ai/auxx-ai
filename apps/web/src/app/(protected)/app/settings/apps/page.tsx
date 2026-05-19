@@ -17,9 +17,9 @@ import {
 import Link from 'next/link'
 // ~/app/(protected)/app/settings/integrations/_components/integration-list.tsx
 import { useLayoutEffect, useRef, useState } from 'react'
-import { AppListCard } from '~/components/apps/app-list-card'
+import { AppIcon } from '~/components/apps/ui/app-icon'
+import { AppListCard } from '~/components/apps/ui/app-list-card'
 import SettingsPage from '~/components/global/settings-page'
-import { AppIcon } from '~/components/workflow/ui/app-icon'
 import { useUser } from '~/hooks/use-user'
 import { api } from '~/trpc/react'
 

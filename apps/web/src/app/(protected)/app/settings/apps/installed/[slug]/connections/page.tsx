@@ -1,4 +1,4 @@
-import AppConnections from '~/components/apps/app-connections'
+import AppConnections from '~/components/apps/ui/app-connections'
 import { api } from '~/trpc/server'
 
 /**

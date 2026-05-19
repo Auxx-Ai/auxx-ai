@@ -4,9 +4,12 @@
 import type { CatalogNode, CatalogToolsetNode } from '@auxx/lib/agents/client'
 import { TreeRow } from '@auxx/ui/components/tree-row'
 import { pluralize } from '@auxx/utils/strings'
-import { Lock, Plus } from 'lucide-react'
+import { Lock, Plus, Settings } from 'lucide-react'
+import { useBoundCredential } from '~/components/apps/hooks/use-bound-credential'
+import { AppIcon } from '~/components/apps/ui/app-icon'
+import { AppWithStatusIcon } from '~/components/apps/ui/app-with-status-icon'
+import { CredentialBadge } from '~/components/apps/ui/credential-badge'
 import { Tooltip } from '~/components/global/tooltip'
-import { AppIcon } from '~/components/workflow/ui/app-icon'
 import { RemoveButton } from './remove-button'
 import { ToolsetRow } from './toolset-row'
 
@@ -38,6 +41,17 @@ interface CatalogNodeRowProps {
    * next to their tools count that invokes this with the app's node id.
    */
   onAddToApp?: (appId: string) => void
+  /**
+   * Optional — when supplied, app-kind container rows render a cog button
+   * that opens the credential picker for that app.
+   */
+  onOpenAccountPicker?: (appId: string) => void
+  /**
+   * Per-app credId bindings from the agent. Used to render the credential
+   * badge in the row's `secondary` slot and to color the status dot on
+   * `AppWithStatusIcon`. See plans/kopilot/apps/agent-credentials.md §5.6.
+   */
+  boundCredIdByApp?: Record<string, string | undefined>
 }
 
 /**
@@ -57,6 +71,8 @@ export function CatalogNodeRow({
   onToggleCollapsed,
   onRemove,
   onAddToApp,
+  onOpenAccountPicker,
+  boundCredIdByApp,
 }: CatalogNodeRowProps) {
   const iconId = node.iconId ?? inheritedIconId
   const color = node.color ?? inheritedColor
@@ -79,20 +95,51 @@ export function CatalogNodeRow({
 
   const isOpen = !collapsed.has(node.id)
   const stats = summarizeContainer(node, stateBySlug)
+  const isApp = node.kind === 'app'
+  const isInstalledApp = isApp && !node.isBuiltin
+  // App container nodes carry the prefixed id `app:<appId>` so the tree can
+  // disambiguate app vs. subGroup ids. Strip the prefix when handing the id
+  // off to anything keyed by raw appId (bound-cred lookup, picker, etc.).
+  const rawAppId = isApp ? node.id.replace(/^app:/, '') : node.id
+  const boundCredId = isInstalledApp ? boundCredIdByApp?.[rawAppId] : undefined
 
   return (
     <TreeRow
       depth={depth}
-      icon={<AppIcon iconId={iconId} color={color ?? undefined} size='sm' />}
+      icon={
+        isInstalledApp ? (
+          <AppRowIcon iconId={iconId} color={color} credId={boundCredId} />
+        ) : (
+          <AppIcon iconId={iconId} color={color ?? undefined} size='sm' />
+        )
+      }
       title={node.label}
-      secondary={`${stats.enabled} ${pluralize(stats.enabled, 'tool')}`}
+      secondary={
+        isInstalledApp ? (
+          <span className='inline-flex items-center gap-2'>
+            <span>
+              {stats.enabled} {pluralize(stats.enabled, 'tool')}
+            </span>
+            <span className='text-muted-foreground'>·</span>
+            <CredentialBadge
+              credId={boundCredId}
+              onPick={onOpenAccountPicker ? () => onOpenAccountPicker(rawAppId) : undefined}
+            />
+          </span>
+        ) : (
+          `${stats.enabled} ${pluralize(stats.enabled, 'tool')}`
+        )
+      }
       expandable
       isOpen={isOpen}
       onToggleOpen={() => onToggleCollapsed(node.id)}
       actions={
         <ContainerInstalledStats
           stats={stats}
-          onAdd={node.kind === 'app' && onAddToApp ? () => onAddToApp(node.id) : undefined}
+          onAdd={isApp && onAddToApp ? () => onAddToApp(node.id) : undefined}
+          onOpenAccountPicker={
+            isInstalledApp && onOpenAccountPicker ? () => onOpenAccountPicker(rawAppId) : undefined
+          }
           onRemove={onRemove ? () => onRemove(node) : undefined}
         />
       }>
@@ -108,24 +155,41 @@ export function CatalogNodeRow({
           onToggleCollapsed={onToggleCollapsed}
           onRemove={onRemove}
           onAddToApp={onAddToApp}
+          onOpenAccountPicker={onOpenAccountPicker}
+          boundCredIdByApp={boundCredIdByApp}
         />
       ))}
     </TreeRow>
   )
 }
 
+/**
+ * App-row icon variant with a status dot overlay. Looks up the credential
+ * state via the same hook the badge uses so the dot and the inline label
+ * never disagree.
+ */
+function AppRowIcon({
+  iconId,
+  color,
+  credId,
+}: {
+  iconId: string
+  color: string | null
+  credId: string | undefined
+}) {
+  const bound = useBoundCredential(credId)
+  return (
+    <AppWithStatusIcon iconId={iconId} color={color ?? undefined} size='sm' status={bound.status} />
+  )
+}
+
 interface ContainerStats {
   total: number
   enabled: number
-  /** Count of `source === 'manual'` leaves — the only ones that can be removed. */
+  /** Count of leaves not pinned by a prompt @-mention — these can be removed. */
   removable: number
   /** Count of `source === 'mention'` leaves — locked by prompt @-mentions. */
   locked: number
-  /**
-   * Dominant lock kind to surface in the disabled-trash tooltip. `mention`
-   * wins over `auto_default` so the user sees the more actionable message.
-   */
-  lockKind: 'mention' | 'auto_default' | null
 }
 
 function summarizeContainer(
@@ -136,27 +200,15 @@ function summarizeContainer(
   let enabled = 0
   let removable = 0
   let locked = 0
-  let hasMention = false
-  let hasAutoDefault = false
   for (const leaf of collectLeaves(node)) {
     total++
     const state = stateBySlug.get(leaf.slug)
     const source = state?.source ?? 'manual'
     if (state?.enabled) enabled++
-    if (source === 'manual') removable++
-    if (source === 'mention') {
-      locked++
-      hasMention = true
-    }
-    if (source === 'auto_default') hasAutoDefault = true
+    if (source === 'mention') locked++
+    else removable++
   }
-  return {
-    total,
-    enabled,
-    removable,
-    locked,
-    lockKind: hasMention ? 'mention' : hasAutoDefault ? 'auto_default' : null,
-  }
+  return { total, enabled, removable, locked }
 }
 
 export function* collectLeaves(node: CatalogNode): IterableIterator<CatalogToolsetNode> {
@@ -215,17 +267,17 @@ function pruneNode(
 function ContainerInstalledStats({
   stats,
   onAdd,
+  onOpenAccountPicker,
   onRemove,
 }: {
   stats: ContainerStats
   onAdd?: () => void
+  onOpenAccountPicker?: () => void
   onRemove?: () => void
 }) {
   const allRemovable = stats.total > 0 && stats.removable === stats.total
   const lockedTooltip =
-    stats.lockKind === 'mention'
-      ? "This tool is referenced in your agent's prompt. To remove it, first edit your prompt."
-      : 'Required'
+    "This tool is referenced in your agent's prompt. To remove it, first edit your prompt."
 
   return (
     <div className='flex items-center'>
@@ -239,8 +291,22 @@ function ContainerInstalledStats({
           </span>
         </Tooltip>
       )}
+      {onOpenAccountPicker && (
+        <Tooltip side='left' content='Choose account for this app' allowInteraction>
+          <button
+            type='button'
+            onClick={(e) => {
+              e.stopPropagation()
+              onOpenAccountPicker()
+            }}
+            className='p-1 rounded-md hover:bg-primary-100 opacity-0 group-hover/tree-row:opacity-100'
+            aria-label='Choose account for this app'>
+            <Settings className='size-4 text-muted-foreground hover:text-foreground' />
+          </button>
+        </Tooltip>
+      )}
       {onAdd && (
-        <Tooltip side='left' content='Add tools to this app'>
+        <Tooltip side='left' content='Add tools to this app' allowInteraction>
           <button
             type='button'
             onClick={(e) => {

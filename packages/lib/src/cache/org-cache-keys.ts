@@ -1,6 +1,6 @@
 // packages/lib/src/cache/org-cache-keys.ts
 
-import type { AgentConfig, KnowledgeEntry, ToolsetEntry } from '@auxx/database'
+import type { AgentConfig, AppAccountBinding, KnowledgeEntry, ToolsetEntry } from '@auxx/database'
 import type {
   CustomFieldEntity,
   OrganizationMemberInfo,
@@ -134,6 +134,9 @@ export interface CachedAgent {
   toolsets: ToolsetEntry[]
   /** Per-agent knowledge access rules. Mention-sourced entries are reconciled from the prompt. */
   knowledge: KnowledgeEntry[]
+  /** Per-agent app account bindings keyed by app id (slug). See plans/kopilot/apps/agent-credentials.md §2. */
+  appAccounts: Record<string, AppAccountBinding>
+
   /** Per-agent model override in `provider:model` format; null = inherit. */
   modelId: string | null
   /** ISO string when chat-driven setup completed; null while in setup mode. */

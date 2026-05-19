@@ -4,7 +4,7 @@
 import { toastError } from '@auxx/ui/components/toast'
 import { usePathname } from 'next/navigation'
 import { Fragment, type ReactNode, Suspense, useCallback, useEffect, useState } from 'react'
-import { ConnectionExpiredDialog } from '~/components/apps/connection-expired-dialog'
+import { ConnectionExpiredDialog } from '~/components/apps/ui/connection-expired-dialog'
 import { AssetsDataHandler } from '~/components/extensions/data-handlers/assets-data-handler'
 import { DialogDataHandler } from '~/components/extensions/data-handlers/dialog-data-handler'
 import { RenderDataHandler } from '~/components/extensions/data-handlers/render-data-handler'

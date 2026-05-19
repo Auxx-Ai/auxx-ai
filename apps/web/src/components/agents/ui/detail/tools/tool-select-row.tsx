@@ -4,8 +4,8 @@
 import { Badge } from '@auxx/ui/components/badge'
 import { pluralize } from '@auxx/utils/strings'
 import { Check, Trash2 } from 'lucide-react'
+import { AppIcon } from '~/components/apps/ui/app-icon'
 import { Tooltip } from '~/components/global/tooltip'
-import { AppIcon } from '~/components/workflow/ui/app-icon'
 
 export interface ToolSelectRowProps {
   /** Either a toolset slug or an app id — opaque to the row. */

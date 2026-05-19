@@ -1,6 +1,7 @@
 // apps/web/src/components/agents/ui/detail/tools/remove-button.tsx
 'use client'
 
+import { cn } from '@auxx/ui/lib/utils'
 import { Trash2 } from 'lucide-react'
 import { Tooltip } from '~/components/global/tooltip'
 
@@ -17,7 +18,7 @@ interface RemoveButtonProps {
  */
 export function RemoveButton({ enabled, tooltip, onClick }: RemoveButtonProps) {
   return (
-    <Tooltip side='left' content={tooltip}>
+    <Tooltip side='left' content={tooltip} allowInteraction>
       <button
         type='button'
         disabled={!enabled}
@@ -25,11 +26,11 @@ export function RemoveButton({ enabled, tooltip, onClick }: RemoveButtonProps) {
           e.stopPropagation()
           onClick()
         }}
-        className='p-1 rounded-md opacity-0 group-hover/tree-row:opacity-100 enabled:hover:bg-destructive/10 disabled:cursor-not-allowed'
+        className={cn(
+          'p-1 rounded-md opacity-0 group-hover/tree-row:opacity-100 enabled:hover:bg-destructive/10 disabled:cursor-not-allowed text-muted-foreground enabled:hover:text-destructive'
+        )}
         aria-label={enabled ? 'Remove' : 'Cannot remove — locked'}>
-        <Trash2
-          className={`size-4 text-muted-foreground ${enabled ? 'hover:text-destructive' : ''}`}
-        />
+        <Trash2 className='size-4' />
       </button>
     </Tooltip>
   )

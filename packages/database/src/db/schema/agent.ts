@@ -44,6 +44,16 @@ export interface KnowledgeEntry {
 }
 
 /**
+ * One entry inside `Agent.appAccounts`. Pins the agent's execution to a
+ * specific `WorkflowCredentials.id` (workspace or personal — doesn't
+ * matter; the resolver doesn't branch). Keyed by app id (slug). See
+ * plans/kopilot/apps/agent-credentials.md §2.
+ */
+export interface AppAccountBinding {
+  credId: string
+}
+
+/**
  * Optional identity/presentation bag stored on the Agent row itself.
  *
  * During draft (`Agent.userId IS NULL`) this is the **only** source of these
@@ -124,6 +134,17 @@ export const Agent = pgTable(
      * plans/kopilot/agents/ui/single-row-agent.md.
      */
     knowledge: jsonb().$type<KnowledgeEntry[]>().default(sql`'[]'::jsonb`).notNull(),
+
+    /**
+     * Per-agent app account bindings. One entry per app id (slug). Each
+     * entry pins the agent's execution to a specific WorkflowCredentials
+     * row (workspace or personal). See
+     * plans/kopilot/apps/agent-credentials.md §2.
+     */
+    appAccounts: jsonb()
+      .$type<Record<string, AppAccountBinding>>()
+      .default(sql`'{}'::jsonb`)
+      .notNull(),
 
     mentionable: boolean().default(true).notNull(),
 

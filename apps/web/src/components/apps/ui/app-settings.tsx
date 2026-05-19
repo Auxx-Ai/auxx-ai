@@ -1,4 +1,4 @@
-// apps/web/src/components/apps/app-settings.tsx
+// apps/web/src/components/apps/ui/app-settings.tsx
 'use client'
 
 import type { SettingsSchemaField } from '@auxx/services/app-settings/client'

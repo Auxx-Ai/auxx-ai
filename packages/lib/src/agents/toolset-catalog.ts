@@ -90,6 +90,12 @@ interface CatalogNodeBase {
 export interface CatalogContainerNode extends CatalogNodeBase {
   kind: 'app' | 'subGroup'
   children: CatalogNode[]
+  /**
+   * True only for the synthetic `Auxx.ai` app at the catalog root. Lets the
+   * Tools tab suppress credential / account-picker affordances that don't
+   * apply to built-in toolsets. See `builtin-app.ts`.
+   */
+  isBuiltin?: boolean
 }
 
 export interface CatalogToolsetNode extends CatalogNodeBase {
@@ -226,6 +232,7 @@ async function buildOrgCatalogTree(organizationId: string): Promise<CatalogNode[
       title: BUILTIN_APP.title,
       iconId: BUILTIN_APP.iconId,
       color: null,
+      isBuiltin: true,
       toolsets: BUILTIN_TOOLSETS.map((meta) => ({
         slug: meta.slug,
         fullLabel: meta.label,
@@ -306,6 +313,7 @@ function buildAppNode(args: {
   title: string
   iconId: string
   color: string | null
+  isBuiltin?: boolean
   toolsets: ToolsetInput[]
 }): CatalogContainerNode {
   const bySubGroup = new Map<string | null, ToolsetInput[]>()
@@ -359,6 +367,7 @@ function buildAppNode(args: {
     label: args.title,
     iconId: args.iconId,
     color: args.color,
+    isBuiltin: args.isBuiltin,
     children: [...subGroupChildren, ...flatChildren],
   }
 }
@@ -416,6 +425,7 @@ function flattenToolsets(roots: CatalogNode[]): ToolsetCatalogEntry[] {
     for (const child of node.children) visit(child, appId)
   }
   for (const root of roots) {
+    if (root.kind === 'toolset') continue
     // Strip the `app:` prefix so callers get the raw app id they expect.
     const appId = root.id.startsWith('app:') ? root.id.slice('app:'.length) : root.id
     for (const child of root.children) visit(child, appId)

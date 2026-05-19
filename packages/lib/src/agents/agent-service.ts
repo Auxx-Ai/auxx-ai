@@ -2,6 +2,7 @@
 
 import {
   type AgentConfig,
+  type AppAccountBinding,
   type Database,
   database as defaultDb,
   type KnowledgeEntry,
@@ -10,9 +11,9 @@ import {
 } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { generateId } from '@auxx/utils'
-import { and, eq, isNull } from 'drizzle-orm'
+import { and, eq, inArray, isNull, or } from 'drizzle-orm'
 import { getAllCachedAgents, getCachedAgentById, getCachedAgents, onCacheEvent } from '../cache'
-import { BadRequestError } from '../errors'
+import { BadRequestError, ForbiddenError } from '../errors'
 import { resolveDefaultToolsets } from './default-toolsets'
 import { reconcilePromptMentions, type ToolsetSource } from './prompt-mention-reconciler'
 import { getOrgToolCatalog } from './toolset-catalog'
@@ -213,6 +214,14 @@ export interface UpdateAgentInput {
    * omitted, the archive state is left untouched.
    */
   archivedAt?: Date | null
+  /**
+   * Per-app credential bindings. Each entry is merged into
+   * `Agent.appAccounts`; pass `null` for an app id to clear that binding.
+   * Service validates each credId belongs to `organizationId` and is either
+   * a workspace cred or owned by `Agent.createdById`. See
+   * plans/kopilot/apps/agent-credentials.md §5.5.
+   */
+  appAccounts?: Record<string, AppAccountBinding | null>
 }
 
 /**
@@ -237,8 +246,15 @@ export async function updateAgent(
   // outside the tx; the tx takes a row lock so concurrent autosaves serialize.
   const toolCatalog = input.prompt !== undefined ? await getOrgToolCatalog(organizationId) : null
 
+  // appAccounts validation runs outside the tx — we only need to know each
+  // credId is visible to the agent's creator (workspace cred, or personal
+  // cred owned by createdById). Done before the tx so we fail fast.
+  if (input.appAccounts !== undefined) {
+    await validateAppAccountBindings(agentId, organizationId, input.appAccounts, db)
+  }
+
   await db.transaction(async (tx) => {
-    const { name: _name, ...agentPatch } = input
+    const { name: _name, appAccounts: _appAccounts, ...agentPatch } = input
     const patch: Record<string, unknown> = { ...agentPatch, updatedAt: now }
 
     const [current] = await tx
@@ -246,6 +262,7 @@ export async function updateAgent(
         userId: schema.Agent.userId,
         toolsets: schema.Agent.toolsets,
         knowledge: schema.Agent.knowledge,
+        appAccounts: schema.Agent.appAccounts,
         config: schema.Agent.config,
       })
       .from(schema.Agent)
@@ -253,6 +270,15 @@ export async function updateAgent(
       .for('update')
       .limit(1)
     if (!current) throw new Error(`Agent not found: ${agentId}`)
+
+    if (input.appAccounts !== undefined) {
+      const next: Record<string, AppAccountBinding> = { ...(current.appAccounts ?? {}) }
+      for (const [appId, entry] of Object.entries(input.appAccounts)) {
+        if (entry === null) delete next[appId]
+        else next[appId] = entry
+      }
+      patch.appAccounts = next
+    }
 
     if (input.prompt !== undefined && toolCatalog) {
       const reconciled = reconcilePromptMentions({
@@ -602,6 +628,7 @@ export interface AgentDetail extends AgentSummary {
   prompt: Record<string, unknown>
   toolsets: ToolsetEntry[]
   knowledge: KnowledgeEntry[]
+  appAccounts: Record<string, AppAccountBinding>
 }
 
 /**
@@ -636,6 +663,7 @@ export async function getAgentDetail(
     prompt: cached.prompt,
     toolsets: cached.toolsets,
     knowledge: cached.knowledge,
+    appAccounts: cached.appAccounts,
   }
 }
 
@@ -658,4 +686,52 @@ export async function isAgentSlugTaken(
  */
 export async function agentExistsInOrg(organizationId: string, agentId: string): Promise<boolean> {
   return (await getCachedAgentById(organizationId, agentId)) !== null
+}
+
+/**
+ * Verify each non-null appAccounts entry's `credId` resolves to a
+ * `WorkflowCredentials` row in this org that is either workspace-scoped
+ * (`userId IS NULL`) or owned by the agent's creator. Rejects with
+ * `ForbiddenError` for any cred pointing at a different teammate's
+ * personal cred (or at a row in another org). See
+ * plans/kopilot/apps/agent-credentials.md §5.5.
+ */
+async function validateAppAccountBindings(
+  agentId: string,
+  organizationId: string,
+  bindings: Record<string, AppAccountBinding | null>,
+  db: Database
+): Promise<void> {
+  const credIds = Object.values(bindings)
+    .filter((b): b is AppAccountBinding => b !== null)
+    .map((b) => b.credId)
+  if (credIds.length === 0) return
+
+  const cached = await getCachedAgentById(organizationId, agentId)
+  if (!cached) throw new BadRequestError(`Agent not found: ${agentId}`)
+  const createdById = cached.createdById
+
+  const rows = await db
+    .select({
+      id: schema.WorkflowCredentials.id,
+      userId: schema.WorkflowCredentials.userId,
+    })
+    .from(schema.WorkflowCredentials)
+    .where(
+      and(
+        eq(schema.WorkflowCredentials.organizationId, organizationId),
+        eq(schema.WorkflowCredentials.type, 'app-connection'),
+        inArray(schema.WorkflowCredentials.id, credIds),
+        or(
+          isNull(schema.WorkflowCredentials.userId),
+          eq(schema.WorkflowCredentials.userId, createdById)
+        )
+      )
+    )
+  const visible = new Set(rows.map((r) => r.id))
+  for (const credId of credIds) {
+    if (!visible.has(credId)) {
+      throw new ForbiddenError(`Credential ${credId} is not available to this agent`)
+    }
+  }
 }

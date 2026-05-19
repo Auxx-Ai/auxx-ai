@@ -17,7 +17,7 @@ import { Separator } from '@auxx/ui/components/separator'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { Tabs, TabsList, TabsTrigger } from '@auxx/ui/components/tabs'
 import { pluralize } from '@auxx/utils/strings'
-import { ChevronLeft } from 'lucide-react'
+import { AlertCircle, ChevronLeft } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '~/trpc/react'
 import type { AgentDetail } from '../../../store/agent-store'
@@ -191,6 +191,7 @@ export function ToolSelectDialog({
                 if (slugs.length === 0) return
                 void toggleToolsets(slugs.map((slug) => ({ slug, enabled: true })))
               }}
+              hasBoundAccount={!!agent.appAccounts?.[selectedApp.id]}
             />
           ) : (
             <div className='flex flex-1 items-center justify-center p-8'>
@@ -381,6 +382,8 @@ interface AppDetailViewProps {
   onToggle: (slug: string) => void
   onRemove: (slug: string) => void
   onAddAll: (slugs: string[]) => void
+  /** When false, an inline hint appears prompting the admin to pick a credential. */
+  hasBoundAccount: boolean
 }
 
 function AppDetailView({
@@ -391,6 +394,7 @@ function AppDetailView({
   onToggle,
   onRemove,
   onAddAll,
+  hasBoundAccount,
 }: AppDetailViewProps) {
   const leaves = useMemo(() => flattenCatalogToToolsets([app]), [app])
   const installedCount = leaves.reduce((n, l) => (isInstalled(l.slug) ? n + 1 : n), 0)
@@ -429,6 +433,15 @@ function AppDetailView({
         </Button>
       </div>
 
+      {!hasBoundAccount && (
+        <div className='flex items-start gap-2 border-b bg-amber-50 px-3 py-2 text-amber-900'>
+          <AlertCircle className='mt-0.5 size-4 shrink-0' />
+          <p className='text-xs'>
+            This app needs an account. Close this dialog and use the cog on the {app.label} row to
+            pick one.
+          </p>
+        </div>
+      )}
       <ScrollArea className='flex-1' scrollbarClassName='w-1!'>
         <div className='p-3'>
           {leaves.map((entry) => (

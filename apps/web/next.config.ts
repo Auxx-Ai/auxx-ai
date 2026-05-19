@@ -86,6 +86,14 @@ const nextConfig = {
         key: 'Permissions-Policy',
         value: 'camera=(), microphone=(self), geolocation=(), interest-cohort=()',
       },
+      // OAuth-popup flows (see use-connect-flow.tsx) need the opener to
+      // keep its handle on the popup it opened, even when the popup
+      // navigates cross-origin to a provider. `same-origin-allow-popups`
+      // is the standard COOP for that pattern — Stripe, Google, Auth0,
+      // etc. all use it. Without it, Chrome logs "Cross-Origin-Opener-
+      // Policy policy would block the window.closed call" on every
+      // `popup.closed` read in our 500ms popup-watch interval.
+      { key: 'Cross-Origin-Opener-Policy', value: 'same-origin-allow-popups' },
     ]
     return [
       // Everything except /embed/* gets the strict no-framing policy.

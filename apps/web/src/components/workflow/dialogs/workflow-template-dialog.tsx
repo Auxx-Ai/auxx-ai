@@ -46,7 +46,7 @@ import { useRouter } from 'next/navigation'
 import { useTheme } from 'next-themes'
 import { useCallback, useMemo, useRef, useState } from 'react'
 
-import { InlineAppInstallButton } from '~/components/apps/app-install-button'
+import { InlineAppInstallButton } from '~/components/apps/ui/app-install-button'
 import { useResources } from '~/components/resources/hooks'
 import type { WorkflowViewerData } from '~/components/workflow/viewer/hooks/use-workflow-viewer'
 import { WorkflowViewer } from '~/components/workflow/viewer/workflow-viewer'
