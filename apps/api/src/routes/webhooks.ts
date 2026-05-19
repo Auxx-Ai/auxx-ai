@@ -143,19 +143,24 @@ async function handleWebhookRequest(c: any) {
       handlerId,
     })
 
-    // 7. If handler returned trigger data and handler has a triggerId, enqueue dispatch job
+    // 7. If handler returned trigger data and handler has a triggerId, enqueue
+    //    dispatch jobs. One emit → two consumers (workflows + agents). Mirrors
+    //    the polling-trigger-job side; see plans/kopilot/apps/app-triggers-brainstorm.md §2.
     if (handlerExecutionResult.triggerData && handler.triggerId) {
+      const dispatchPayload = {
+        appInstallationId: installationId,
+        appId: installation.appId,
+        triggerId: handler.triggerId,
+        connectionId: handler.connectionId ?? undefined,
+        triggerData: handlerExecutionResult.triggerData,
+        eventId: handlerExecutionResult.eventId || randomUUID(),
+        organizationId: installation.organizationId,
+      }
+
       try {
         const appTriggerQueue = getQueue(Queues.appTriggerQueue)
-        await appTriggerQueue.add('dispatchAppTrigger', {
-          appInstallationId: installationId,
-          appId: installation.appId,
-          triggerId: handler.triggerId,
-          connectionId: handler.connectionId ?? undefined,
-          triggerData: handlerExecutionResult.triggerData,
-          eventId: handlerExecutionResult.eventId || randomUUID(),
-          organizationId: installation.organizationId,
-        })
+        await appTriggerQueue.add('dispatchAppTrigger', dispatchPayload)
+        await appTriggerQueue.add('dispatchAppTriggerToAgents', dispatchPayload)
 
         log.info('Enqueued app trigger dispatch', {
           installationId,

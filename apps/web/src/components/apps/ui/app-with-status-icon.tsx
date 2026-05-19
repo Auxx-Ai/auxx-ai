@@ -23,6 +23,8 @@ export interface AppConnectionStatusOption {
   label: string
   /** Tailwind background class for the dot, or `null` to skip the overlay. */
   color: string | null
+  /** Tailwind text color class for inline labels referencing this status. */
+  textColor?: string
   icon: LucideIcon
 }
 
@@ -34,10 +36,15 @@ export interface AppConnectionStatusOption {
  */
 export const appConnectionStatusOptions: Record<AppConnectionStatus, AppConnectionStatusOption> = {
   connected: { label: 'Connected', color: 'bg-green-500', icon: Check },
-  expired: { label: 'Expired', color: 'bg-amber-500', icon: Clock },
-  unbound: { label: 'Not set', color: 'bg-amber-500', icon: Minus },
-  gone: { label: 'Disconnected', color: 'bg-red-500', icon: X },
-  not_connected: { label: 'Disconnected', color: 'bg-red-500', icon: Plug },
+  expired: { label: 'Expired', color: 'bg-amber-500', textColor: 'text-amber-600', icon: Clock },
+  unbound: { label: 'Not set', color: 'bg-amber-500', textColor: 'text-amber-600', icon: Minus },
+  gone: { label: 'Disconnected', color: 'bg-red-500', textColor: 'text-red-600', icon: X },
+  not_connected: {
+    label: 'Disconnected',
+    color: 'bg-red-500',
+    textColor: 'text-red-600',
+    icon: Plug,
+  },
   none: { label: '', color: null, icon: Minus },
 }
 

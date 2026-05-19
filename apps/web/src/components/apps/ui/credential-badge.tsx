@@ -27,8 +27,9 @@ interface CredentialBadgeProps {
 export function CredentialBadge({ credId, onPick }: CredentialBadgeProps) {
   const bound = useBoundCredential(credId)
   const { status } = bound
-  const dotColor =
-    appConnectionStatusOptions[status === 'none' ? 'unbound' : status].color ?? 'bg-muted'
+  const textColor =
+    appConnectionStatusOptions[status === 'none' ? 'unbound' : status].textColor ??
+    'text-muted-foreground'
 
   const label = renderLabel(bound.status, bound.label)
   const tooltip = renderTooltip(bound)
@@ -48,8 +49,15 @@ export function CredentialBadge({ credId, onPick }: CredentialBadgeProps) {
             }
           : undefined
       }>
-      <span className={cn('inline-block size-1.5 rounded-full', dotColor)} />
-      <span className='truncate max-w-[160px]'>{label}</span>
+      {/* <span className={cn('inline-block size-1.5 rounded-full', dotColor)} /> */}
+      <span
+        className={cn(
+          'text-sm  truncate max-w-[160px]',
+          textColor,
+          interactive && 'hover:underline'
+        )}>
+        {label}
+      </span>
     </span>
   )
 
@@ -71,7 +79,7 @@ function renderLabel(status: BoundCredentialStatus, label: string | null): strin
     case 'not_connected':
       return 'Disconnected'
     case 'unbound':
-      return 'Not set'
+      return 'Make connection'
   }
 }
 
