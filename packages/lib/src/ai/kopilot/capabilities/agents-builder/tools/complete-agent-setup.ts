@@ -4,7 +4,6 @@ import { completeAgentSetup } from '../../../../../agents/agent-service'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
 import { findRef } from '../../../context-refs'
 import type { GetToolDeps } from '../../types'
-import { buildAgentRailUpdate } from '../snapshot'
 
 /**
  * Flip the agent's `setupCompletedAt` from null → now. Idempotent. The rail
@@ -59,11 +58,6 @@ finalization signal. No arguments — operates on the agent in session context.`
         success: true,
         output: {
           agentId: agentRef.id,
-          ...buildAgentRailUpdate({
-            agentId: agentRef.id,
-            changed: ['identity'],
-            summary: 'setup complete',
-          }),
         },
       }
     },

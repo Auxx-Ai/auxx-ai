@@ -280,3 +280,29 @@ export async function flushMailBatch(
   }
   await Promise.allSettled(promises)
 }
+
+// ════════════════════════════════════════════════════════════════════════════
+// Agent admin helpers — gated on `realtimeSync` feature flag
+// ════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Publish `agent:updated` on the org channel. Fires from every server-side
+ * agent write so the detail-page rail invalidates `api.agent.getById` /
+ * `api.agent.list` without any tool-output side channel.
+ *
+ * Gated on `realtimeSync` — orgs without realtime fall back to React Query's
+ * stale-time / focus-refetch behavior. Fire-and-forget: errors are swallowed
+ * so a Pusher hiccup never blocks the underlying agent mutation.
+ */
+export async function publishAgentUpdated(
+  realtimeService: RealtimeService,
+  organizationId: string,
+  args: { agentId: string },
+  options?: { excludeSocketId?: string }
+) {
+  const { features } = await getOrgCache().getOrRecompute(organizationId, ['features'])
+  if (!features?.realtimeSync) return
+  await realtimeService
+    .sendToOrganization(organizationId, 'agent:updated', { agentId: args.agentId }, options)
+    .catch(() => {})
+}

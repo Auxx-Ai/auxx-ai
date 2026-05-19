@@ -9,11 +9,11 @@ import {
 import { onCacheEvent } from '../../../../../cache'
 import { findCachedResource } from '../../../../../cache/org-cache-helpers'
 import { mdToBlocks } from '../../../../../kb/markdown'
+import { getRealtimeService, publishAgentUpdated } from '../../../../../realtime'
 import type { ScheduledTriggerConfig } from '../../../../../workflows/cron-pattern'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
 import { findRef } from '../../../context-refs'
 import type { GetToolDeps } from '../../types'
-import { buildAgentRailUpdate } from '../snapshot'
 
 const MAX_TRIGGERS = 10
 const INSTRUCTIONS_MAX = 2000
@@ -182,6 +182,9 @@ has two, send all three in the call.`,
       }
 
       await onCacheEvent('agent.updated', { orgId: agentDeps.organizationId })
+      await publishAgentUpdated(getRealtimeService(), agentDeps.organizationId, {
+        agentId: agentRef.id,
+      })
 
       return {
         success: true,
@@ -189,11 +192,6 @@ has two, send all three in the call.`,
           agentId: agentRef.id,
           triggerIds: created,
           removed: existing.length,
-          ...buildAgentRailUpdate({
-            agentId: agentRef.id,
-            changed: ['identity'],
-            summary: `${created.length} trigger${created.length === 1 ? '' : 's'} set (${existing.length} removed)`,
-          }),
         },
       }
     },

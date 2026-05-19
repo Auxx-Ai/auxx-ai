@@ -14,6 +14,7 @@ export function getRealtimeService(): RealtimeService {
 }
 
 export type {
+  AgentUpdatedEvent,
   AiStatus,
   AiValueMetadata,
   FieldValuesUpdatedEvent,
@@ -40,6 +41,7 @@ export type {
 } from './events'
 export {
   flushMailBatch,
+  publishAgentUpdated,
   publishFieldValueUpdates,
   publishMessageCreated,
   publishMessageDeleted,

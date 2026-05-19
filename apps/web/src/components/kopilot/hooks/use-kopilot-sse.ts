@@ -171,21 +171,13 @@ export function useKopilotSSE({ pendingRequest, onRequestSent }: UseKopilotSSEOp
             ...(data.digest !== undefined ? { digest: data.digest } : {}),
             ...(data.captured ? { captured: true } : {}),
           })
-          // Side-channel snapshots embedded in tool output:
+          // Side-channel snapshot embedded in tool output:
           // - `_suggestReplies` → render chips above the composer
-          // - `_railUpdate` → invalidate the affected agent's detail query so
-          //   the rail re-renders.
           const output = (data.output ?? null) as {
             _suggestReplies?: { version?: string; prompts?: Array<{ id: string; label: string }> }
-            _railUpdate?: { agentId?: string }
           } | null
           if (output?._suggestReplies?.prompts) {
             setPendingChipPrompts(output._suggestReplies.prompts)
-          }
-          if (output?._railUpdate?.agentId) {
-            const agentId = output._railUpdate.agentId
-            void utils.agent.getById.invalidate({ agentId })
-            void utils.agent.list.invalidate()
           }
           // Also mark a matching approval system message as approved on
           // completion — the tool actually ran.

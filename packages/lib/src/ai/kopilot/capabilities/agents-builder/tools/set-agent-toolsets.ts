@@ -8,7 +8,6 @@ import {
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
 import { findRef } from '../../../context-refs'
 import type { GetToolDeps } from '../../types'
-import { buildAgentRailUpdate } from '../snapshot'
 
 const MAX_TOOLSETS = 50
 
@@ -131,11 +130,6 @@ to change; omitted slugs are left alone.`,
           agentId: agentRef.id,
           enabledCount,
           totalToolsAvailable,
-          ...buildAgentRailUpdate({
-            agentId: agentRef.id,
-            changed: ['toolsets'],
-            summary: `${enabledCount} toolsets configured`,
-          }),
         },
       }
     },

@@ -7,7 +7,6 @@ import type { Resource } from '../../../../../resources/registry/types'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
 import { findRef } from '../../../context-refs'
 import type { GetToolDeps } from '../../types'
-import { buildAgentRailUpdate } from '../snapshot'
 
 const MARKDOWN_MAX_BYTES = 20_000
 
@@ -139,11 +138,6 @@ The previous prompt is replaced wholesale.`,
           byteLength,
           referenceCount,
           warnings: validation.warnings,
-          ...buildAgentRailUpdate({
-            agentId: agentRef.id,
-            changed: ['prompt'],
-            summary: `prompt replaced (${byteLength} bytes, ${referenceCount} refs)`,
-          }),
         },
       }
     },

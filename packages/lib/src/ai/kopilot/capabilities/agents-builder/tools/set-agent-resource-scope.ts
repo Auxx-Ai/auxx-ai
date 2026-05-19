@@ -8,7 +8,6 @@ import { findCachedResource } from '../../../../../cache/org-cache-helpers'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
 import { findRef } from '../../../context-refs'
 import type { GetToolDeps } from '../../types'
-import { buildAgentRailUpdate } from '../snapshot'
 
 const MAX_SCOPES = 200
 const VALID_MODES: AgentScopeMode[] = ['include_descendants', 'include_one', 'exclude']
@@ -119,11 +118,6 @@ before guessing recordIds.`,
         output: {
           agentId: agentRef.id,
           scopesApplied: applied,
-          ...buildAgentRailUpdate({
-            agentId: agentRef.id,
-            changed: ['scope'],
-            summary: `${applied} scope rows applied`,
-          }),
         },
       }
     },

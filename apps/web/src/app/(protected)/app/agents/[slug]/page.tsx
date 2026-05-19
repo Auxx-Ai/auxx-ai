@@ -13,6 +13,7 @@ import { Lock } from 'lucide-react'
 import { useParams } from 'next/navigation'
 import { AgentsProvider } from '~/components/agents'
 import { useAgent } from '~/components/agents/hooks/use-agent'
+import { useAgentRealtime } from '~/components/agents/hooks/use-agent-realtime'
 import { AgentDetailView } from '~/components/agents/ui/detail/agent-detail-view'
 import { EmptyState } from '~/components/global/empty-state'
 import { LoadingSpinner } from '~/components/global/loading-content'
@@ -21,6 +22,7 @@ import { useFeatureFlags } from '~/providers/feature-flag-provider'
 
 function AgentDetailLoader({ slug }: { slug: string }) {
   const { detail, isLoading } = useAgent(slug)
+  useAgentRealtime()
 
   if (isLoading && !detail) {
     return (
