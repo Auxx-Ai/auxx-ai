@@ -58,6 +58,7 @@ export async function promoteToProduction(params: {
         clientBundleId: source.clientBundleId,
         serverBundleId: source.serverBundleId,
         settingsSchema: source.settingsSchema,
+        catalog: source.catalog,
         targetOrganizationId: null,
         environmentVariables: null,
         version: resolvedVersion,
