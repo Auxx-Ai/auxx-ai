@@ -1,4 +1,4 @@
-// packages/sdk/src/util/compile-and-extract-ai-tools.ts
+// packages/sdk/src/util/compile-and-extract-tools.ts
 
 import * as esbuild from 'esbuild'
 import fs from 'fs/promises'
@@ -11,7 +11,7 @@ const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 const SDK_ROOT = path.resolve(__dirname, '..', '..')
 
-export interface AiToolCatalogPayload {
+export interface ToolCatalogPayload {
   tools: Array<{
     id: string
     name: string
@@ -19,8 +19,6 @@ export interface AiToolCatalogPayload {
     inputsJsonSchema: Record<string, unknown>
     outputsJsonSchema: Record<string, unknown>
     requiresConnection: boolean
-    connectionScope: 'user' | 'organization' | null
-    requiresApproval: boolean | { predicate: string }
     timeoutMs: number
     streaming: boolean
     toolsetSlug: string
@@ -31,20 +29,19 @@ export interface AiToolCatalogPayload {
     name: string
     description: string
     iconKey: string | null
-    isDefault: boolean
     subGroup: string | null
   }>
 }
 
-export type CompileAndExtractAiToolsError =
+export type CompileAndExtractToolsError =
   | { code: 'APP_ENTRY_NOT_FOUND' }
-  | { code: 'AI_TOOLS_COMPILE_FAILED'; error: Error }
-  | { code: 'AI_TOOLS_LOAD_FAILED'; error: Error }
-  | { code: 'AI_TOOLS_VALIDATION_FAILED'; message: string }
+  | { code: 'TOOLS_COMPILE_FAILED'; error: Error }
+  | { code: 'TOOLS_LOAD_FAILED'; error: Error }
+  | { code: 'TOOLS_VALIDATION_FAILED'; message: string }
 
 /**
  * Compile the app entry point in catalog-extraction mode and read
- * `app.ai.{tools,toolsets}` to produce the publish-time catalog payload.
+ * `app.{tools,toolsets}` to produce the publish-time catalog payload.
  *
  * `.server.ts(x)` imports are stubbed (their default export is a `() => {}`
  * placeholder) so the bundle can be imported in plain Node without invoking
@@ -53,8 +50,8 @@ export type CompileAndExtractAiToolsError =
  * The resulting payload is shipped through `createDeployment` and persisted
  * onto `AppDeployment.aiTools`. See plans/kopilot/apps/README.md §5.
  */
-export async function compileAndExtractAiTools(): Promise<
-  Result<AiToolCatalogPayload | undefined, CompileAndExtractAiToolsError>
+export async function compileAndExtractTools(): Promise<
+  Result<ToolCatalogPayload | undefined, CompileAndExtractToolsError>
 > {
   const srcDirAbsolute = path.resolve('src')
   // Try common entry points
@@ -97,17 +94,17 @@ export async function compileAndExtractAiTools(): Promise<
   // Resolver for `@auxx/sdk` and subpaths. The published package's exports
   // map most subpaths to types-only (e.g. `@auxx/sdk/client`, `@auxx/sdk/server`),
   // so there's no runtime file to load. We resolve the two real entry points
-  // we need (bare + `/ai`) and stub the rest with an empty module — the
-  // catalog extractor only reads `app.ai.{tools,toolsets}`, so other surfaces
+  // we need (bare + `/tools`) and stub the rest with an empty module — the
+  // catalog extractor only reads `app.{tools,toolsets}`, so other surfaces
   // don't need real runtime.
   const SDK_REAL_BARE = path.join(SDK_ROOT, 'lib', 'root', 'index.js')
-  const SDK_REAL_AI = path.join(SDK_ROOT, 'lib', 'root', 'ai', 'index.js')
+  const SDK_REAL_TOOLS = path.join(SDK_ROOT, 'lib', 'root', 'tools', 'index.js')
   const stubSdkSubpaths: esbuild.Plugin = {
     name: 'auxx-stub-sdk-subpaths',
     setup(build) {
       build.onResolve({ filter: /^@auxx\/sdk(\/.*)?$/ }, (args) => {
         if (args.path === '@auxx/sdk') return { path: SDK_REAL_BARE }
-        if (args.path === '@auxx/sdk/ai') return { path: SDK_REAL_AI }
+        if (args.path === '@auxx/sdk/tools') return { path: SDK_REAL_TOOLS }
         return { path: args.path, namespace: 'auxx-sdk-stub' }
       })
       // CJS module shape with a Proxy: any named import becomes a no-op
@@ -152,7 +149,7 @@ export async function compileAndExtractAiTools(): Promise<
     })
   } catch (error) {
     return errored({
-      code: 'AI_TOOLS_COMPILE_FAILED',
+      code: 'TOOLS_COMPILE_FAILED',
       error: error instanceof Error ? error : new Error(String(error)),
     })
   }
@@ -163,27 +160,25 @@ export async function compileAndExtractAiTools(): Promise<
     appModule = await import(`${fileUrl}?t=${Date.now()}`)
   } catch (error) {
     return errored({
-      code: 'AI_TOOLS_LOAD_FAILED',
+      code: 'TOOLS_LOAD_FAILED',
       error: error instanceof Error ? error : new Error(String(error)),
     })
   }
 
   const app = appModule.app as
     | {
-        ai?: {
-          tools?: ReadonlyArray<unknown>
-          toolsets?: ReadonlyArray<unknown>
-        }
+        tools?: ReadonlyArray<unknown>
+        toolsets?: ReadonlyArray<unknown>
       }
     | undefined
-  if (!app?.ai || (!app.ai.tools?.length && !app.ai.toolsets?.length)) {
+  if (!app || (!app.tools?.length && !app.toolsets?.length)) {
     return complete(undefined)
   }
 
-  // Lazy import the converter — keeps it out of bundle path when no AI tools.
+  // Lazy import the converter — keeps it out of bundle path when no tools.
   const { zodToProviderToolSchema } = await import('../build/server/zod-to-provider-tool-schema.js')
 
-  const toolsArr = (app.ai.tools ?? []) as Array<{
+  const toolsArr = (app.tools ?? []) as Array<{
     id: string
     name: string
     description: string
@@ -191,24 +186,21 @@ export async function compileAndExtractAiTools(): Promise<
     outputs: unknown
     config?: {
       requiresConnection?: boolean
-      connectionScope?: 'user' | 'organization'
-      requiresApproval?: boolean | ((args: unknown) => boolean)
       timeout?: number
       streaming?: boolean
     }
   }>
-  const toolsetsArr = (app.ai.toolsets ?? []) as Array<{
+  const toolsetsArr = (app.toolsets ?? []) as Array<{
     id: string
     name: string
     description: string
     icon?: unknown
     tools?: ReadonlyArray<string>
-    isDefault?: boolean
     subGroup?: string
   }>
 
   const slugByToolId = new Map<string, string>()
-  const cataloguedToolsets: AiToolCatalogPayload['toolsets'] = []
+  const cataloguedToolsets: ToolCatalogPayload['toolsets'] = []
   for (const ts of toolsetsArr) {
     const slug = `app:${ts.id.replace('.', ':')}`
     cataloguedToolsets.push({
@@ -216,7 +208,6 @@ export async function compileAndExtractAiTools(): Promise<
       name: ts.name,
       description: ts.description,
       iconKey: null,
-      isDefault: Boolean(ts.isDefault),
       subGroup: ts.subGroup ?? null,
     })
     for (const toolId of ts.tools ?? []) {
@@ -224,20 +215,16 @@ export async function compileAndExtractAiTools(): Promise<
     }
   }
 
-  const cataloguedTools: AiToolCatalogPayload['tools'] = []
+  const cataloguedTools: ToolCatalogPayload['tools'] = []
   for (const tool of toolsArr) {
     if (!tool?.id) {
       return errored({
-        code: 'AI_TOOLS_VALIDATION_FAILED',
-        message: 'AI tool is missing an id',
+        code: 'TOOLS_VALIDATION_FAILED',
+        message: 'Tool is missing an id',
       })
     }
     const inputs = zodToProviderToolSchema(tool.inputs as never)
     const outputs = zodToProviderToolSchema(tool.outputs as never)
-    const requiresApproval =
-      typeof tool.config?.requiresApproval === 'function'
-        ? { predicate: tool.config.requiresApproval.toString() }
-        : Boolean(tool.config?.requiresApproval ?? false)
 
     cataloguedTools.push({
       id: tool.id,
@@ -246,8 +233,6 @@ export async function compileAndExtractAiTools(): Promise<
       inputsJsonSchema: inputs.jsonSchema,
       outputsJsonSchema: outputs.jsonSchema,
       requiresConnection: Boolean(tool.config?.requiresConnection),
-      connectionScope: tool.config?.connectionScope ?? null,
-      requiresApproval,
       timeoutMs: tool.config?.timeout ?? 15000,
       streaming: Boolean(tool.config?.streaming),
       toolsetSlug: slugByToolId.get(tool.id) ?? `app:unknown:default`,

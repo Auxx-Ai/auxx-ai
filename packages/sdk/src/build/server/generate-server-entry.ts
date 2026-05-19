@@ -23,9 +23,9 @@ type WorkflowBlockModules = Map<string, Record<string, WorkflowHandlerData | und
 type QuickActionModules = Map<string, Record<string, WorkflowHandlerData | undefined>>
 
 /**
- * Map of AI tool handlers — `{ execute: WorkflowHandlerData }` per toolId.
+ * Map of tool handlers — `{ execute: WorkflowHandlerData }` per toolId.
  */
-type AiToolModules = Map<string, { execute?: WorkflowHandlerData | null }>
+type ToolModules = Map<string, { execute?: WorkflowHandlerData | null }>
 
 /**
  * Logger function
@@ -182,7 +182,7 @@ export async function generateServerEntry({
   eventDirAbsolute,
   workflowBlockModules,
   quickActionModules = new Map(),
-  aiToolModules = new Map(),
+  toolModules = new Map(),
   log,
 }: {
   appDirAbsolute: string
@@ -191,7 +191,7 @@ export async function generateServerEntry({
   eventDirAbsolute: string
   workflowBlockModules: WorkflowBlockModules
   quickActionModules?: QuickActionModules
-  aiToolModules?: AiToolModules
+  toolModules?: ToolModules
   log?: LogFunction
 }) {
   const pathsResult = await combineAsync({
@@ -319,12 +319,12 @@ export async function generateServerEntry({
           )
           .join('\n')}
 
-        // AI tool module registry
-        const aiToolModulesMap = new Map()
+        // Tool module registry
+        const toolModulesMap = new Map()
 
-        ${[...aiToolModules.entries()]
+        ${[...toolModules.entries()]
           .map(
-            ([toolId, handlers]) => `aiToolModulesMap.set(
+            ([toolId, handlers]) => `toolModulesMap.set(
                         ${JSON.stringify(toolId)},
                         {
                         ${[...Object.entries(handlers)]
@@ -342,25 +342,25 @@ export async function generateServerEntry({
           )
           .join('\n')}
 
-        // Build __AUXX_AI_TOOLS__ for Lambda ai-tool executor.
+        // Build __AUXX_AI_TOOLS__ for Lambda tool executor.
         // Mirrors __AUXX_WORKFLOW_BLOCKS__ — the executor reads execute(input, ctx)
         // off this global. See plans/kopilot/apps/README.md §5.
         const __AUXX_AI_TOOLS__ = {};
 
-        for (const [toolId, handlers] of aiToolModulesMap.entries()) {
+        for (const [toolId, handlers] of toolModulesMap.entries()) {
             __AUXX_AI_TOOLS__[toolId] = {
                 execute: async (...args) => {
                     const executeHandler = handlers.execute;
                     if (!executeHandler) {
-                        throw new Error(\`No execute handler for AI tool \${toolId}\`);
+                        throw new Error(\`No execute handler for tool \${toolId}\`);
                     }
                     const module = await executeHandler.module();
                     const func = module[executeHandler.export];
                     if (!func) {
-                        throw new Error(\`Execute export not found in AI tool \${toolId}\`);
+                        throw new Error(\`Execute export not found in tool \${toolId}\`);
                     }
                     if (typeof func !== "function") {
-                        throw new Error(\`Execute export in AI tool \${toolId} is not a function\`);
+                        throw new Error(\`Execute export in tool \${toolId} is not a function\`);
                     }
                     return await func(...args);
                 }

@@ -249,8 +249,6 @@ export interface CachedInstalledApp {
     inputsJsonSchema: Record<string, unknown>
     outputsJsonSchema: Record<string, unknown>
     requiresConnection: boolean
-    connectionScope: 'user' | 'organization' | null
-    requiresApproval: boolean | { predicate: string }
     timeoutMs: number
     streaming: boolean
     toolsetSlug: string
@@ -262,7 +260,6 @@ export interface CachedInstalledApp {
     name: string
     description: string
     iconKey: string | null
-    isDefault: boolean
     subGroup: string | null
   }>
 

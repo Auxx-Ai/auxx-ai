@@ -23,7 +23,8 @@ import { buildAppToolDigest } from './digest'
  *   1. Pull installed apps from the org cache (decision B2 — installedApps
  *      now carries the AI tool catalog + org-scope connection presence).
  *   2. For each installation × published tool:
- *      - resolve connection presence per `connectionScope`
+ *      - resolve connection presence per the agent's `appAccounts` binding
+ *        (agent runs) or workspace-then-user fallback (master Kopilot)
  *      - skip when `requiresConnection: true && !present` (decision A4 —
  *        hidden when no connection)
  *      - else wrap as `AgentToolDefinition` with a `<appSlug>_<toolId>`
@@ -92,11 +93,11 @@ export async function createAppCapabilities(deps: {
           // creator's pick (workspace or personal) is the binding.
           if (!boundCredId && !installation.orgConnectionPresent) continue
         } else {
-          // Master Kopilot: today's behavior.
-          let present = false
-          if (tool.connectionScope === 'organization') {
-            present = installation.orgConnectionPresent
-          } else if (tool.connectionScope === 'user') {
+          // Master Kopilot (no `connectionScope` on tools): try workspace
+          // first, then the chatting user's personal cred. See
+          // plans/kopilot/apps/agent-credentials.md §3.6.
+          let present = installation.orgConnectionPresent
+          if (!present && userId) {
             const result = await getAppConnectionPresence({
               orgId: organizationId,
               userId,
@@ -183,8 +184,11 @@ export async function createAppCapabilities(deps: {
         displayName: tool.name || registeredName,
         description: tool.description,
         parameters: tool.inputsJsonSchema,
-        requiresApproval:
-          typeof tool.requiresApproval === 'object' ? true : Boolean(tool.requiresApproval),
+        // App-backed tools never require per-call approval — toolset enablement
+        // at agent-creation time is the approval gate. See
+        // plans/kopilot/apps/gog-calendar-overhaul.md §3 decision #3 and
+        // plans/kopilot/agents/README.md §2 decision #12.
+        requiresApproval: false,
         toolsetSlug: tool.toolsetSlug,
         buildDigest: (output: unknown) =>
           buildAppToolDigest(output, { appSlug, toolId }, refDescriptors),

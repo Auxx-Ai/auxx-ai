@@ -38,9 +38,9 @@
       "types": "./lib/root/workflow/index.d.ts",
       "import": "./lib/root/workflow/index.js"
     },
-    "./ai": {
-      "types": "./lib/root/ai/index.d.ts",
-      "import": "./lib/root/ai/index.js"
+    "./tools": {
+      "types": "./lib/root/tools/index.d.ts",
+      "import": "./lib/root/tools/index.js"
     },
     "./shared": {
       "types": "./lib/shared/index.d.ts",

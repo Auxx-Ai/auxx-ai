@@ -1,22 +1,22 @@
-// packages/sdk/src/root/ai/index.ts
+// packages/sdk/src/root/tools/index.ts
 
 /**
- * @auxx/sdk/ai — author surface for app-backed AI tools.
+ * @auxx/sdk/tools — author surface for app-backed tools (consumed by Kopilot).
  *
  * See plans/kopilot/apps/README.md (parent plan) and §4 (SDK additions).
  *
  * Usage:
  * ```ts
- * import { defineAiTool, refs, z } from '@auxx/sdk/ai'
- * import execute from './check-availability.ai.server'
+ * import { defineTool, refs, z } from '@auxx/sdk/tools'
+ * import execute from './check-availability.tool.server'
  *
- * export const checkAvailability = defineAiTool({
+ * export const checkAvailability = defineTool({
  *   id: 'check_calendar_availability',
  *   name: 'Check calendar availability',
  *   description: 'Find available meeting times.',
  *   inputs:  z.object({ timeMin: z.string(), timeMax: z.string() }),
  *   outputs: z.object({ busy: z.array(z.object({ start: z.string(), end: z.string() })) }),
- *   config:  { requiresConnection: true, connectionScope: 'user', timeout: 15000 },
+ *   config:  { requiresConnection: true, timeout: 15000 },
  *   execute,
  * })
  * ```
@@ -25,12 +25,12 @@
  */
 
 export { z } from 'zod/v4'
-export { defineAiTool } from './define-ai-tool.js'
+export { defineTool } from './define-tool.js'
 export { type AuxxRefMeta, refs } from './refs.js'
 export type {
-  AiTool,
-  AiToolConfig,
-  AiToolExecuteContext,
-  AiToolset,
   EntityRefKind,
+  ToolConfig,
+  ToolDefinition,
+  ToolExecuteContext,
+  Toolset,
 } from './types.js'

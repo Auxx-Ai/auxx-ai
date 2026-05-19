@@ -7,7 +7,7 @@
 
 import chalk from 'chalk'
 import path from 'path'
-import { findAiToolModules } from '../../build/server/find-ai-tool-server-modules.js'
+import { findToolModules } from '../../build/server/find-tool-server-modules.js'
 import { findWorkflowBlockModules } from '../../build/server/find-workflow-block-server-modules.js'
 import {
   combine,
@@ -47,8 +47,8 @@ export type BuildContextError =
   | { code: 'ERROR_FINDING_SERVER_FUNCTION_MODULES'; cause: Error }
   /** Failed to resolve workflow block modules */
   | { code: 'WORKFLOW_BLOCK_RESOLUTION_FAILED'; message: string }
-  /** Failed to resolve AI tool modules */
-  | { code: 'AI_TOOL_RESOLUTION_FAILED'; message: string }
+  /** Failed to resolve tool modules */
+  | { code: 'TOOL_RESOLUTION_FAILED'; message: string }
   | { code: 'BUILD_JAVASCRIPT_ERROR'; message: string; errors: []; warnings: [] }
 
 /**
@@ -117,16 +117,16 @@ export async function prepareBuildContext(
       if (isErrored(workflowBlockModulesResult)) {
         return workflowBlockModulesResult
       }
-      const aiToolModulesResult = await findAiToolModules(srcDir)
-      if (isErrored(aiToolModulesResult)) {
-        return aiToolModulesResult
+      const toolModulesResult = await findToolModules(srcDir)
+      if (isErrored(toolModulesResult)) {
+        return toolModulesResult
       }
       const { blocks: workflowBlockModules, quickActions: quickActionModules } =
         workflowBlockModulesResult.value
-      const aiToolModules = aiToolModulesResult.value
+      const toolModules = toolModulesResult.value
       return combineAsync({
         client: client.rebuild({ workflowBlockModules, quickActionModules }),
-        server: server.rebuild({ workflowBlockModules, quickActionModules, aiToolModules }),
+        server: server.rebuild({ workflowBlockModules, quickActionModules, toolModules }),
       })
       // return complete({})
     },
@@ -189,8 +189,8 @@ export function printBuildContextError(error: BuildContextError): void {
         `${chalk.red('✖ ')}Failed to build workflow block(s): ${error.message}\n`
       )
       break
-    case 'AI_TOOL_RESOLUTION_FAILED':
-      process.stderr.write(`${chalk.red('✖ ')}Failed to resolve AI tool(s): ${error.message}\n`)
+    case 'TOOL_RESOLUTION_FAILED':
+      process.stderr.write(`${chalk.red('✖ ')}Failed to resolve tool(s): ${error.message}\n`)
       break
   }
 }

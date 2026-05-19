@@ -1,4 +1,4 @@
-// packages/sdk/src/root/ai/types.ts
+// packages/sdk/src/root/tools/types.ts
 
 import type { ComponentType } from 'react'
 import type { z } from 'zod/v4'
@@ -21,23 +21,9 @@ export type EntityRefKind =
 /**
  * Per-tool configuration. See plans/kopilot/apps/README.md §4.2.
  */
-export interface AiToolConfig {
+export interface ToolConfig {
   /** When true, the tool is hidden from registration if no connection exists. */
   readonly requiresConnection?: boolean
-
-  /**
-   * Required when requiresConnection is true and the parent app has both user
-   * and organization ConnectionDefinitions. Optional when the app has exactly
-   * one — the build scanner infers from the app declaration in that case.
-   */
-  readonly connectionScope?: 'user' | 'organization'
-
-  /**
-   * Default false. Authors opt in for sensitive writes. A predicate variant
-   * (e.g. `(args) => args.send !== false`) is allowed but in v1 it's serialized
-   * by the build step into a catalog string and re-evaluated bridge-side.
-   */
-  readonly requiresApproval?: boolean | ((args: Record<string, unknown>) => boolean)
 
   /**
    * Default 15000ms. Hard cap 30000ms for buffered tools, 120000ms for
@@ -63,13 +49,13 @@ export interface AiToolConfig {
 }
 
 /**
- * AI tool definition. Authors produce this via `defineAiTool({...})`.
+ * Tool definition. Authors produce this via `defineTool({...})`.
  *
- * The build scanner walks `app.ai.tools[].execute` to extract a module
- * reference (must be a default import from a `.server.ts` file) — same
+ * The build scanner walks `app.tools[].execute` to extract a module
+ * reference (must be a default import from a `.tool.server.ts` file) — same
  * rule as workflow blocks.
  */
-export interface AiTool<
+export interface ToolDefinition<
   TInput extends z.ZodTypeAny = z.ZodTypeAny,
   TOutput extends z.ZodTypeAny = z.ZodTypeAny,
 > {
@@ -92,16 +78,16 @@ export interface AiTool<
   readonly outputs: TOutput
 
   /** Runtime/auth configuration. */
-  readonly config?: AiToolConfig
+  readonly config?: ToolConfig
 
   /**
-   * Server-side executor. MUST be imported from a `.server.ts(x)` module
+   * Server-side executor. MUST be imported from a `.tool.server.ts(x)` module
    * (enforced by the build scanner). The compiler infers `input` from
    * `inputs` and checks the return against `outputs`.
    */
   readonly execute: (
     input: z.input<TInput>,
-    ctx: AiToolExecuteContext
+    ctx: ToolExecuteContext
   ) => Promise<z.output<TOutput>> | AsyncGenerator<unknown, z.output<TOutput>>
 }
 
@@ -109,8 +95,12 @@ export interface AiTool<
  * Toolset declaration — groups tools for agent-side enablement filters.
  * The platform projects `<appSlug>.<localId>` into the runtime slug namespace
  * as `app:<appSlug>:<localId>`. See plans/kopilot/apps/README.md §4.4.
+ *
+ * No `isDefault` flag — admins pick every toolset deliberately at
+ * agent-creation time, which doubles as the write-approval gate.
+ * See plans/kopilot/apps/gog-calendar-overhaul.md §0.
  */
-export interface AiToolset {
+export interface Toolset {
   /** `<appSlug>.<localId>` convention; runtime slug is `app:<appSlug>:<localId>`. */
   readonly id: string
   readonly name: string
@@ -118,8 +108,6 @@ export interface AiToolset {
   readonly icon?: string | ComponentType
   /** Tool ids belonging to this toolset. */
   readonly tools: readonly string[]
-  /** Included in master-Kopilot auto-on when true. */
-  readonly isDefault?: boolean
   /**
    * Optional grouping under the app row in the Tools tab. Free-form string —
    * toolsets sharing the same `subGroup` render under a collapsible header.
@@ -129,12 +117,12 @@ export interface AiToolset {
 }
 
 /**
- * Lambda-side execution context for AI tools. The full surface lives in
+ * Lambda-side execution context for tools. The full surface lives in
  * the lambda runtime SDK (auth, fetch, connections, entities). This type
  * is intentionally permissive at the SDK layer — runtime injects the real
  * implementations. See plans/kopilot/agents/tool-loading-and-execution.md §7.
  */
-export interface AiToolExecuteContext {
+export interface ToolExecuteContext {
   readonly organizationId: string
   readonly userId: string | null
   readonly appInstallationId: string

@@ -46,30 +46,52 @@ export class ConnectionNotFoundError extends Error {
 }
 
 /**
+ * Get the connection bound to the current tool/block invocation, regardless
+ * of scope. The platform resolves which credential to inject (workspace or
+ * personal) — for tools, that's the agent creator's `appAccounts[appId]`
+ * binding; for workflow blocks, the workflow's `accountId`.
+ *
+ * Tool authors should prefer this over `getUserConnection` /
+ * `getOrganizationConnection` — see
+ * plans/kopilot/apps/agent-credentials.md §6.2.
+ *
+ * Throws ConnectionNotFoundError if no connection is available.
+ */
+export function getConnection(): Connection {
+  if (typeof (global as any).AUXX_SERVER_SDK !== 'undefined') {
+    const sdk = (global as any).AUXX_SERVER_SDK
+    if (typeof sdk.getConnection === 'function') {
+      return sdk.getConnection()
+    }
+    // Fallback for older runtimes that only expose the split helpers.
+    if (typeof sdk.getUserConnection === 'function') {
+      try {
+        return sdk.getUserConnection()
+      } catch {
+        // try org
+      }
+    }
+    if (typeof sdk.getOrganizationConnection === 'function') {
+      return sdk.getOrganizationConnection()
+    }
+  }
+
+  throw new Error(
+    '[auxx/server] Server SDK not available. ' +
+      'This code must run in the Auxx server environment.'
+  )
+}
+
+/**
  * Get the current user's connection to an external service.
  *
  * Throws ConnectionNotFoundError if user is not connected.
  * Platform catches this error and prompts user to authenticate.
  *
+ * @deprecated Use `getConnection()` for tool authors. Workflow blocks may
+ * still use this when they specifically need user-scope credentials.
+ *
  * @returns User's connection credentials
- *
- * @example
- * ```typescript
- * import { getUserConnection } from '@auxx/sdk/server'
- *
- * export default async function syncOrders() {
- *   // Get user's Shopify connection
- *   const connection = getUserConnection()
- *
- *   const response = await fetch('https://api.shopify.com/orders', {
- *     headers: {
- *       'Authorization': `Bearer ${connection.value}`
- *     }
- *   })
- *
- *   return await response.json()
- * }
- * ```
  */
 export function getUserConnection(): Connection {
   // Runtime injection (similar to other SDK functions)
