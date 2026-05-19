@@ -1,5 +1,60 @@
 # Changelog
 
+## [0.1.148](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.147...auxx-v0.1.148) (2026-05-19)
+
+
+### Features
+
+* **agents:** autonomous agent triggers (scheduled, event, app) ([#601](https://github.com/Auxx-Ai/auxx-ai/issues/601)) ([f3e9ebe](https://github.com/Auxx-Ai/auxx-ai/commit/f3e9ebe8ec84f2cad989b1aab1984af7f9ce8d8f))
+* **agents:** builder chat capabilities + suggest-replies chips ([#597](https://github.com/Auxx-Ai/auxx-ai/issues/597)) ([92d8138](https://github.com/Auxx-Ai/auxx-ai/commit/92d8138debe2a79dc17b471486a43b772ed01c47))
+* **agents:** builder domain pins SYSTEM model + trigger dialog rewrite ([#603](https://github.com/Auxx-Ai/auxx-ai/issues/603)) ([90519d9](https://github.com/Auxx-Ai/auxx-ai/commit/90519d96d7f5557a99e994bf82ff377c953e1a46))
+* **agents:** builder kopilot — markdown prompts, triggers tool, server-side setup guard ([#604](https://github.com/Auxx-Ai/auxx-ai/issues/604)) ([f50ca33](https://github.com/Auxx-Ai/auxx-ai/commit/f50ca332b1a7ee09fca3fa93424c4efd7ae6258a))
+* **agents:** chat-driven setup mode + slug rename + draft cleanup ([#602](https://github.com/Auxx-Ai/auxx-ai/issues/602)) ([0a4051b](https://github.com/Auxx-Ai/auxx-ai/commit/0a4051b8cabe20812cd737401a3348258b7e605d))
+* **agents:** command-based app account picker + orphan binding cleanup ([#624](https://github.com/Auxx-Ai/auxx-ai/issues/624)) ([36c74b9](https://github.com/Auxx-Ai/auxx-ai/commit/36c74b9d3f39d2e51e1df5805898b5aff9620d19))
+* **agents:** contact lookup SDK callbacks + agent trigger fanout ([#627](https://github.com/Auxx-Ai/auxx-ai/issues/627)) ([3ded443](https://github.com/Auxx-Ai/auxx-ai/commit/3ded443e3f072619c6a5d4896b7995cd3c2a2d47))
+* **agents:** defer synthetic User row until setup completes ([#620](https://github.com/Auxx-Ai/auxx-ai/issues/620)) ([19dccc0](https://github.com/Auxx-Ai/auxx-ai/commit/19dccc0af9365caf20c9c06ab5d71c20aab3f156))
+* **agents:** dispatch triggers from org cache instead of DB ([#621](https://github.com/Auxx-Ai/auxx-ai/issues/621)) ([9ab76e0](https://github.com/Auxx-Ai/auxx-ai/commit/9ab76e0aca53c9a46ff4d7b1f402879aecef0039))
+* **agents:** dm trigger kind + Chat tab + composer sender picker ([#619](https://github.com/Auxx-Ai/auxx-ai/issues/619)) ([76e78c1](https://github.com/Auxx-Ai/auxx-ai/commit/76e78c14f3fea56de39e43aaf9d7fddd9fca0a6a))
+* **agents:** grouped tools tab + unified knowledge scope tree ([#596](https://github.com/Auxx-Ai/auxx-ai/issues/596)) ([05efa74](https://github.com/Auxx-Ai/auxx-ai/commit/05efa749170f981b3ee3b515e0f91a91c19a7ba0))
+* **agents:** hover-revealed trash for installed tools tree ([#610](https://github.com/Auxx-Ai/auxx-ai/issues/610)) ([2034b25](https://github.com/Auxx-Ai/auxx-ai/commit/2034b257f8f9c4939518ce642ce86a0b9828849c))
+* **agents:** per-agent app account bindings + apps refactor ([#622](https://github.com/Auxx-Ai/auxx-ai/issues/622)) ([6bbf8d7](https://github.com/Auxx-Ai/auxx-ai/commit/6bbf8d7f8258dff1554f87931d2932bd55a95e00))
+* **agents:** persona editor with shared rich-text + inline references ([#593](https://github.com/Auxx-Ai/auxx-ai/issues/593)) ([ecdf341](https://github.com/Auxx-Ai/auxx-ai/commit/ecdf3413972825e5c98d035f0c3a0ee99e33cadb))
+* **agents:** phase 1 CRUD routers, toolset resolution, runtime wiring ([#591](https://github.com/Auxx-Ai/auxx-ai/issues/591)) ([52994a9](https://github.com/Auxx-Ai/auxx-ai/commit/52994a9cda5b05ad31dd34338e45994362f75462))
+* **agents:** phase 1 UI — tools + knowledge tabs ([#595](https://github.com/Auxx-Ai/auxx-ai/issues/595)) ([87e61b9](https://github.com/Auxx-Ai/auxx-ai/commit/87e61b92e00b6a75981edcddd19e2180716bf4b7))
+* **agents:** phase 2 admin UI + service-layer refactor ([#592](https://github.com/Auxx-Ai/auxx-ai/issues/592)) ([de50e2e](https://github.com/Auxx-Ai/auxx-ai/commit/de50e2ecb34a0f73b80de5338ed616f4e6edcbc1))
+* **agents:** phase 2 UI — builder chat, toolset tree, persona editor polish ([9e423d0](https://github.com/Auxx-Ai/auxx-ai/commit/9e423d06ec364b420b2225124740c7439477f228))
+* **agents:** realtime agent:updated event replaces tool-output rail signal ([#625](https://github.com/Auxx-Ai/auxx-ai/issues/625)) ([e67a874](https://github.com/Auxx-Ai/auxx-ai/commit/e67a874732087084bbf0450e3a8f67fa4a18e88d))
+* **agents:** rich-text instructions in trigger dialog ([#623](https://github.com/Auxx-Ai/auxx-ai/issues/623)) ([ee523ce](https://github.com/Auxx-Ai/auxx-ai/commit/ee523ce537f8fff078fe075b93d1281e0b14b891))
+* **agents:** schema chips in personas + 32K output-token defaults ([#612](https://github.com/Auxx-Ai/auxx-ai/issues/612)) ([a3604a3](https://github.com/Auxx-Ai/auxx-ai/commit/a3604a34433a67ec0561922e42371f8205563dca))
+* **agents:** single-row agent + unified app catalog ([#608](https://github.com/Auxx-Ai/auxx-ai/issues/608)) ([05a101d](https://github.com/Auxx-Ai/auxx-ai/commit/05a101d3f117fff27e4d25e2238078e81244cf57))
+* **agents:** tool refs in personas + autonomous-run prompt + dynamic capability gating ([#606](https://github.com/Auxx-Ai/auxx-ai/issues/606)) ([5cc829d](https://github.com/Auxx-Ai/auxx-ai/commit/5cc829d4d35f4cc64bef5a93df23fea01f5bfd50))
+* **agents:** tool-select dialog with popular curation ([#609](https://github.com/Auxx-Ai/auxx-ai/issues/609)) ([60ea108](https://github.com/Auxx-Ai/auxx-ai/commit/60ea1087d1fee6f987a6041d00768ea08ab052d3))
+* **agents:** v1 schema, services, and actor integration ([#589](https://github.com/Auxx-Ai/auxx-ai/issues/589)) ([685af7b](https://github.com/Auxx-Ai/auxx-ai/commit/685af7b3a9a2fd50152deea5b2ba6ffdf62ab61b))
+* **apps:** personal + workspace connection scopes, member visibility ([#599](https://github.com/Auxx-Ai/auxx-ai/issues/599)) ([645a5d0](https://github.com/Auxx-Ai/auxx-ai/commit/645a5d0058ff896e1c455fcdb608da059f40493e))
+* **apps:** rename SDK ai surface to tools + drop per-call approval ([#626](https://github.com/Auxx-Ai/auxx-ai/issues/626)) ([5aedfad](https://github.com/Auxx-Ai/auxx-ai/commit/5aedfad40c24b7136df051992b359228604353ba))
+* **articles:** add slug/excerpt/emoji/color/archive/publish fields + parent↔children inverse ([#594](https://github.com/Auxx-Ai/auxx-ai/issues/594)) ([0198cf5](https://github.com/Auxx-Ai/auxx-ai/commit/0198cf568d36bcf97dec50b95a0da27bd729bc97))
+* **comments+agents:** tiptap-json comments with references + assignment/mention triggers ([#605](https://github.com/Auxx-Ai/auxx-ai/issues/605)) ([45744b3](https://github.com/Auxx-Ai/auxx-ai/commit/45744b3df53911b84399857d1beda7c6edbd9cb6))
+* **editor:** shared slash-commands module + persona bubble menu ([#607](https://github.com/Auxx-Ai/auxx-ai/issues/607)) ([2c80485](https://github.com/Auxx-Ai/auxx-ai/commit/2c8048503a79fc66da8638903aef55be8c5d493f))
+* **favorites:** articles & knowledge bases + KB articles search bar ([#587](https://github.com/Auxx-Ai/auxx-ai/issues/587)) ([4e9e94b](https://github.com/Auxx-Ai/auxx-ai/commit/4e9e94bc17ec6cdcc0e6470086d3c7afda37a8a5))
+* **kb-admin:** article status dots + breadcrumb KB switcher ([#585](https://github.com/Auxx-Ai/auxx-ai/issues/585)) ([27f3d34](https://github.com/Auxx-Ai/auxx-ai/commit/27f3d34031a9ccb08ccf62abc520c4d24984aa1c))
+* **kb:** cacheComponents Suspense fix, no-flash dark mode, 12-step palette ([#583](https://github.com/Auxx-Ai/auxx-ai/issues/583)) ([cdedc53](https://github.com/Auxx-Ai/auxx-ai/commit/cdedc5346c5aa9004c4663d3acc827856de8c96e))
+* **kopilot:** ai tools wedge a — SDK tool definitions + runtime bridge ([#598](https://github.com/Auxx-Ai/auxx-ai/issues/598)) ([23bc604](https://github.com/Auxx-Ai/auxx-ai/commit/23bc604b028e7def183558cc7ad27b01e5925350))
+* **kopilot:** lambda streaming response probe (spike) ([#588](https://github.com/Auxx-Ai/auxx-ai/issues/588)) ([61c19e3](https://github.com/Auxx-Ai/auxx-ai/commit/61c19e3b5c324d7e6d9505b9a9c07dd59f278b65))
+* **kopilot:** master Kopilot settings (model, toolsets, app accounts) ([#628](https://github.com/Auxx-Ai/auxx-ai/issues/628)) ([38c2c3d](https://github.com/Auxx-Ai/auxx-ai/commit/38c2c3d654cb615c22031c8c02db026a89a0751d))
+* **kopilot:** one-message-per-turn with content-block parts ([#615](https://github.com/Auxx-Ai/auxx-ai/issues/615)) ([0e95849](https://github.com/Auxx-Ai/auxx-ai/commit/0e95849dd9ab578daf9350a78f0cdefbbf000339))
+* **kopilot:** oneshot query mode + collapsible block cards ([#616](https://github.com/Auxx-Ai/auxx-ai/issues/616)) ([26f7134](https://github.com/Auxx-Ai/auxx-ai/commit/26f71343f01445d663ac2b824fe5254092721820))
+* **kopilot:** Phase 0 — prompt split + toolset tagging ([#590](https://github.com/Auxx-Ai/auxx-ai/issues/590)) ([2daad7a](https://github.com/Auxx-Ai/auxx-ai/commit/2daad7a39043cbe42f63a385feadbb175aa25946))
+* **kopilot:** rename resource: chips to entity: + rich template previews ([#618](https://github.com/Auxx-Ai/auxx-ai/issues/618)) ([b4ce797](https://github.com/Auxx-Ai/auxx-ai/commit/b4ce7976144b06cb4486776c5e197d201f3e09f4))
+* **kopilot:** rich-text prompt templates with reference chips ([#617](https://github.com/Auxx-Ai/auxx-ai/issues/617)) ([9b3c7db](https://github.com/Auxx-Ai/auxx-ai/commit/9b3c7dbcf79abd1855bf0d1fae35be62625760ee))
+* **kopilot:** section-registry prompt builder + multi-tier prompt caching ([#611](https://github.com/Auxx-Ai/auxx-ai/issues/611)) ([80f7ef6](https://github.com/Auxx-Ai/auxx-ai/commit/80f7ef647c5e4cd9669774abcac0d9c6dfcbdc39))
+* **kopilot:** smooth streaming text + partial-JSON block rendering ([#613](https://github.com/Auxx-Ai/auxx-ai/issues/613)) ([fb19f32](https://github.com/Auxx-Ai/auxx-ai/commit/fb19f325c834bec6ed07c57ebecefc36a2d4b9fd))
+* **workflows:** wire entity/company/stock/vendor events to workflow triggers ([#600](https://github.com/Auxx-Ai/auxx-ai/issues/600)) ([4f1d833](https://github.com/Auxx-Ai/auxx-ai/commit/4f1d8332ef335bebcdb338b5a52ec4d8f5db275d))
+
+
+### Bug Fixes
+
+* **homepage:** clip hero illustration horizontal overflow ([#614](https://github.com/Auxx-Ai/auxx-ai/issues/614)) ([2df1e27](https://github.com/Auxx-Ai/auxx-ai/commit/2df1e27cb5d3ab9a55a441aa411cdbf4f587de83))
+
 ## [0.1.147](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.146...auxx-v0.1.147) (2026-05-13)
 
 
