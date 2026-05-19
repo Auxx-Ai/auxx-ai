@@ -83,12 +83,13 @@ export class QuickActionExecutor {
       const lambdaResult = await invokeLambdaExecutor({
         caller: 'quick-action',
         payload: {
-          type: 'quick-action',
+          type: 'tool',
           serverBundleSha,
-          actionId: action.actionId,
+          toolId: action.actionId,
           inputs: action.inputs,
-          context: {
-            ...baseContext,
+          context: baseContext,
+          invocationContext: {
+            kind: 'action',
             threadId: context.threadId,
             ticketId: context.ticketId,
           },
