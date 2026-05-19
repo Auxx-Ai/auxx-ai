@@ -1,6 +1,16 @@
 // packages/lib/src/cache/org-cache-keys.ts
 
-import type { AgentConfig, AppAccountBinding, KnowledgeEntry, ToolsetEntry } from '@auxx/database'
+import type {
+  AgentConfig,
+  AppAccountBinding,
+  CatalogAction,
+  CatalogAgentTool,
+  CatalogBlock,
+  CatalogToolset,
+  CatalogTriggerProjection,
+  KnowledgeEntry,
+  ToolsetEntry,
+} from '@auxx/database'
 import type {
   CustomFieldEntity,
   OrganizationMemberInfo,
@@ -239,29 +249,22 @@ export interface CachedInstalledApp {
   }
 
   /**
-   * AI tool catalog materialized at publish (decision A1). Mirrors the JSONB
-   * column on `AppDeployment.aiTools`. See plans/kopilot/apps/README.md §5.
+   * Surface projections from the deployment's static catalog
+   * (`AppDeployment.catalog` — see `CatalogPayload`). Each consumer reads the
+   * projection it cares about without evaluating bundle code:
+   *  - Kopilot bridge → `agentTools` / `agentToolsets`
+   *  - Agent trigger picker → `agentTriggers`
+   *  - Workflow editor → `workflowBlocks` / `workflowTriggers`
+   *  - Quick-action drawer → `actions`
+   *
+   * See plans/kopilot/agents/triggers/app-surface-implementation-plan.md §5.3.
    */
-  aiTools?: Array<{
-    id: string
-    name: string
-    description: string
-    inputsJsonSchema: Record<string, unknown>
-    outputsJsonSchema: Record<string, unknown>
-    requiresConnection: boolean
-    timeoutMs: number
-    streaming: boolean
-    toolsetSlug: string
-    refs: Array<{ path: string[]; kind: string }>
-  }>
-
-  aiToolsets?: Array<{
-    slug: string
-    name: string
-    description: string
-    iconKey: string | null
-    subGroup: string | null
-  }>
+  agentTools?: CatalogAgentTool[]
+  agentToolsets?: CatalogToolset[]
+  agentTriggers?: CatalogTriggerProjection[]
+  workflowBlocks?: CatalogBlock[]
+  workflowTriggers?: CatalogTriggerProjection[]
+  actions?: CatalogAction[]
 
   /**
    * Org-scope connection presence + expiry (decision G2 split path).
