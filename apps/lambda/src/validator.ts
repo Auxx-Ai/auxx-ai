@@ -56,6 +56,7 @@ const BaseLambdaEventSchema = z.object({
     'code',
     'quick-action',
     'ai-tool',
+    'tool',
   ]),
 
   // Common limits with defaults
@@ -189,6 +190,47 @@ const AiToolExecutionSchema = AppEventSchema.extend({
     .optional(),
 })
 
+/**
+ * Tool execution schema — extends AppEventSchema.
+ *
+ * Unified replacement for `ai-tool` and `quick-action` events. The executor
+ * (`apps/lambda/src/executors/tool-executor.ts`) loads the tool from
+ * `__AUXX_TOOLS__` and runs `execute(input, ctx)`.
+ *
+ * `invocationContext.kind` discriminates the surface the call came from:
+ *   - 'agent'  — Kopilot bridge invocation (LLM tool call).
+ *   - 'action' — quick-action button invocation (ticket / email editor).
+ *
+ * See plans/kopilot/agents/triggers/app-surface-implementation-plan.md §7.
+ */
+const AgentInvocationContextSchema = z.object({
+  kind: z.literal('agent'),
+  sessionId: z.string().optional(),
+  agentId: z.string().nullish(),
+  triggerId: z.string().nullish(),
+  page: z.string().optional(),
+})
+
+const ActionInvocationContextSchema = z.object({
+  kind: z.literal('action'),
+  threadId: z.string().optional(),
+  ticketId: z.string().optional(),
+})
+
+const InvocationContextSchema = z.discriminatedUnion('kind', [
+  AgentInvocationContextSchema,
+  ActionInvocationContextSchema,
+])
+
+const ToolExecutionSchema = AppEventSchema.extend({
+  type: z.literal('tool'),
+  toolId: z.string().regex(/^[a-zA-Z0-9_-]{1,64}$/),
+  inputs: z.record(z.string(), z.unknown()),
+  // Tool timeout is bounded — 15s default, 30s hard cap.
+  timeout: z.number().min(1000).max(30000).default(15000),
+  invocationContext: InvocationContextSchema.nullish(),
+})
+
 // ============================================================================
 // EXPORTED TYPES
 // ============================================================================
@@ -202,6 +244,8 @@ export type WorkflowBlockExecutionEvent = z.infer<typeof WorkflowBlockExecutionS
 export type PollingTriggerExecutionEvent = z.infer<typeof PollingTriggerExecutionSchema>
 export type QuickActionExecutionEvent = z.infer<typeof QuickActionExecutionSchema>
 export type AiToolExecutionEvent = z.infer<typeof AiToolExecutionSchema>
+export type ToolExecutionEvent = z.infer<typeof ToolExecutionSchema>
+export type ToolInvocationContext = z.infer<typeof InvocationContextSchema>
 
 /** Type-safe union of all validated events */
 export type ValidatedLambdaEvent =
@@ -213,6 +257,7 @@ export type ValidatedLambdaEvent =
   | PollingTriggerExecutionEvent
   | QuickActionExecutionEvent
   | AiToolExecutionEvent
+  | ToolExecutionEvent
 
 /** Keep existing exports */
 export type ValidatedExecutionContext = z.infer<typeof ExecutionContextSchema>
@@ -253,6 +298,8 @@ export function validateLambdaEvent(event: unknown) {
       return QuickActionExecutionSchema.safeParse(event)
     case 'ai-tool':
       return AiToolExecutionSchema.safeParse(event)
+    case 'tool':
+      return ToolExecutionSchema.safeParse(event)
     default:
       // Return error in Zod format for unknown type
       return {

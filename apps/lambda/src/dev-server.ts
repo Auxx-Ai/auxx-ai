@@ -16,6 +16,7 @@ import { verifyInboundRequest } from './auth/verify-inbound.ts'
 import { loadBundle } from './bundle-loader.ts'
 import { createRuntimeContext } from './context-provider.ts'
 import { executeAiToolStreaming } from './executors/ai-tool-executor.ts'
+import { executeToolStreaming } from './executors/tool-executor.ts'
 import { handler } from './index.ts'
 import type { LambdaEvent } from './types.ts'
 import { validateLambdaEvent } from './validator.ts'
@@ -43,6 +44,13 @@ async function handleRequest(req: Request): Promise<Response> {
   // endpoint; only the response shape differs. See plans/kopilot/apps/README.md §6.2.
   if (url.pathname === '/ai-tool/stream' && req.method === 'POST') {
     return handleAiToolStreamingRequest(req)
+  }
+
+  // Streaming tool endpoint — unified surface for agent + action tools.
+  // Same SSE shape as `/ai-tool/stream`; routes 'tool' events to the
+  // unified `tool-executor` (replaces `/ai-tool/stream` once callers migrate).
+  if (url.pathname === '/tool/stream' && req.method === 'POST') {
+    return handleToolStreamingRequest(req)
   }
 
   // Main execution endpoint
@@ -166,6 +174,101 @@ async function handleAiToolStreamingRequest(req: Request): Promise<Response> {
 
       try {
         const gen = executeAiToolStreaming({ ...rest, bundleCode, context: runtimeContext })
+        let finalResult: unknown = null
+        while (true) {
+          const next = await gen.next()
+          if (next.done) {
+            finalResult = next.value
+            break
+          }
+          writeFrame('progress', next.value)
+        }
+        writeFrame('result', finalResult)
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        writeFrame('error', {
+          message,
+          code: error instanceof Error ? (error as { code?: string }).code : undefined,
+        })
+      } finally {
+        controller.close()
+      }
+    },
+  })
+
+  return new Response(stream, {
+    status: 200,
+    headers: {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache, no-transform',
+      Connection: 'keep-alive',
+      'X-Accel-Buffering': 'no',
+    },
+  })
+}
+
+async function handleToolStreamingRequest(req: Request): Promise<Response> {
+  const rawBody = await req.text()
+  if (rawBody.length > 5 * 1024 * 1024) {
+    return jsonError(413, 'PAYLOAD_TOO_LARGE', 'Payload too large')
+  }
+
+  const secret = Deno.env.get('LAMBDA_INVOKE_SECRET')
+  let authCaller: string | undefined
+  if (secret) {
+    const headers: Record<string, string> = {}
+    for (const [k, v] of req.headers.entries()) headers[k.toLowerCase()] = v
+    const authResult = await verifyInboundRequest({ headers, body: rawBody, secret })
+    console.log('[Lambda:Auth][tool:stream]', {
+      decision: authResult.valid ? 'accept' : 'reject',
+      caller: authResult.caller,
+      reason: authResult.reason,
+    })
+    if (!authResult.valid) {
+      return jsonError(401, 'AUTH_FAILED', authResult.reason ?? 'Unauthorized')
+    }
+    authCaller = authResult.caller
+  } else if (Deno.env.get('NODE_ENV') !== 'development') {
+    return jsonError(500, 'AUTH_CONFIG_ERROR', 'Auth not configured')
+  }
+
+  let event: unknown
+  try {
+    event = JSON.parse(rawBody)
+  } catch {
+    return jsonError(400, 'INVALID_JSON', 'Body is not valid JSON')
+  }
+
+  const validation = validateLambdaEvent(event)
+  if (!validation.success) {
+    return jsonError(400, 'VALIDATION_ERROR', 'Validation failed')
+  }
+
+  const validated = validation.data
+  if (validated.type !== 'tool') {
+    return jsonError(400, 'WRONG_EVENT_TYPE', `/tool/stream only accepts 'tool' events`)
+  }
+
+  // Mirror the caller allowlist in index.ts — both Kopilot (agent) and the
+  // quick-action service (action) may invoke 'tool' events.
+  if (authCaller && authCaller !== 'kopilot' && authCaller !== 'quick-action') {
+    return jsonError(403, 'CALLER_TYPE_DENIED', `Caller "${authCaller}" cannot invoke 'tool'`)
+  }
+
+  const { context: execCtx, serverBundleSha, ...rest } = validated
+  const bundleCode = await loadBundle(execCtx.appId, serverBundleSha)
+  const runtimeContext = createRuntimeContext(execCtx)
+
+  const encoder = new TextEncoder()
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      const writeFrame = (eventName: string, data: unknown) => {
+        const chunk = `event: ${eventName}\ndata: ${JSON.stringify(data)}\n\n`
+        controller.enqueue(encoder.encode(chunk))
+      }
+
+      try {
+        const gen = executeToolStreaming({ ...rest, bundleCode, context: runtimeContext })
         let finalResult: unknown = null
         while (true) {
           const next = await gen.next()

@@ -16,6 +16,7 @@ import { executeEventHandler } from './executors/event-executor.ts'
 import { executePollingTrigger } from './executors/polling-trigger-executor.ts'
 import { executeQuickAction } from './executors/quick-action-executor.ts'
 import { executeServerFunction } from './executors/server-function-executor.ts'
+import { executeTool } from './executors/tool-executor.ts'
 import { executeWebhookHandler } from './executors/webhook-executor.ts'
 import { executeWorkflowBlock } from './executors/workflow-block-executor.ts'
 import { getCapturedLogs } from './runtime-helpers/console.ts'
@@ -79,6 +80,10 @@ async function executeAppEvent(validatedEvent: ValidatedLambdaEvent) {
       const { context: _, serverBundleSha: __, ...eventData } = validatedEvent
       return executeAiTool({ ...eventData, bundleCode, context })
     }
+    case 'tool': {
+      const { context: _, serverBundleSha: __, ...eventData } = validatedEvent
+      return executeTool({ ...eventData, bundleCode, context })
+    }
   }
 }
 
@@ -103,10 +108,12 @@ const CALLER_TYPE_ALLOWLIST: Record<string, string[]> = {
   'app-events': ['event'],
   'workflow-engine': ['workflow-block', 'code'],
   worker: ['workflow-block', 'code', 'event', 'polling-trigger'],
-  'quick-action': ['quick-action'],
+  'quick-action': ['quick-action', 'tool'],
   // Kopilot bridge is the only caller permitted to dispatch AI tool runs.
   // See plans/kopilot/agents/tool-loading-and-execution.md §6 (decision E1).
-  kopilot: ['ai-tool'],
+  // 'tool' is the unified event type that replaces 'ai-tool' and
+  // 'quick-action' once callers migrate (T7/T8 of the app-surface plan).
+  kopilot: ['ai-tool', 'tool'],
 }
 
 /** Maximum payload size (5 MB) */
