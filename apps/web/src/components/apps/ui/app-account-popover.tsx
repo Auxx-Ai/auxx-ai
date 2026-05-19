@@ -21,6 +21,8 @@ interface AppAccountPopoverProps {
   placeholder?: string
   /** Override the trigger button. Defaults to a compact `PickerTrigger`. */
   triggerClassName?: string
+  /** Passed through to the picker. Defaults to true. See `AppAccountPicker`. */
+  allowPersonal?: boolean
 }
 
 /**
@@ -37,6 +39,7 @@ export function AppAccountPopover({
   onConnected,
   placeholder = 'Choose account',
   triggerClassName,
+  allowPersonal = true,
 }: AppAccountPopoverProps) {
   const [open, setOpen] = useState(false)
   const { appConnections, appInstallations } = useExtensionsContext()
@@ -75,6 +78,7 @@ export function AppAccountPopover({
             setOpen(false)
           }}
           onConnected={onConnected}
+          allowPersonal={allowPersonal}
         />
       </PopoverContentDialogAware>
     </Popover>

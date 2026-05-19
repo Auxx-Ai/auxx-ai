@@ -13,7 +13,7 @@ import { Section } from '@auxx/ui/components/section'
 import { Tabs, TabsList, TabsTrigger } from '@auxx/ui/components/tabs'
 import { BookOpen, Clock, FileText, Plus, Wrench, Zap } from 'lucide-react'
 import { useQueryState } from 'nuqs'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AGENT_TABS, type AgentTab, DEFAULT_AGENT_TAB } from '../../constant'
 import type { AgentDetail } from '../../store/agent-store'
 import type { AutosaveState } from '../shared/autosave-indicator'
@@ -22,6 +22,7 @@ import { KnowledgeSectionContent } from './knowledge/knowledge-section-content'
 import { PersonaEditor } from './prompt/persona-editor'
 import { ToolSelectDialog } from './tools/tool-select-dialog'
 import { ToolsSectionContent } from './tools/tools-section-content'
+import { useToolsetMutations } from './tools/use-toolset-mutations'
 import { TriggersSectionContent } from './triggers/triggers-section-content'
 
 const SECTION_ICONS: Record<AgentTab, React.ComponentType<{ className?: string }>> = {
@@ -237,6 +238,20 @@ interface ToolsSectionProps {
 function ToolsSection({ agent, onAutosaveChange }: ToolsSectionProps) {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [pendingAppId, setPendingAppId] = useState<string | null>(null)
+  const handleSavingChange = useCallback(
+    (saving: boolean) =>
+      onAutosaveChange?.(saving ? { kind: 'saving' } : { kind: 'saved', at: Date.now() }),
+    [onAutosaveChange]
+  )
+  const { toggleToolset, toggleToolsets } = useToolsetMutations(
+    agent.id,
+    agent.slug,
+    handleSavingChange
+  )
+  const boundAppIds = useMemo(
+    () => new Set(Object.keys(agent.appAccounts ?? {})),
+    [agent.appAccounts]
+  )
   return (
     <>
       <Section
@@ -267,16 +282,16 @@ function ToolsSection({ agent, onAutosaveChange }: ToolsSectionProps) {
         />
       </Section>
       <ToolSelectDialog
-        agent={agent}
+        installedToolsets={agent.toolsets}
+        boundAppIds={boundAppIds}
+        onToggleToolset={toggleToolset}
+        onToggleToolsets={toggleToolsets}
         open={dialogOpen}
         onOpenChange={(next) => {
           setDialogOpen(next)
           if (!next) setPendingAppId(null)
         }}
         initialAppId={pendingAppId ?? undefined}
-        onSavingChange={(saving) =>
-          onAutosaveChange?.(saving ? { kind: 'saving' } : { kind: 'saved', at: Date.now() })
-        }
       />
     </>
   )

@@ -12,8 +12,8 @@ import type {
   AgentToolResult,
   ToolProgressPayload,
 } from '../../../agent-framework/types'
+import { loadMasterKopilotSettings } from '../../load-master-settings'
 import type { GetToolDeps, PageCapability } from '../types'
-import { getAppConnectionPresence } from './connection-resolver'
 import { buildAppToolDigest } from './digest'
 
 /**
@@ -57,9 +57,12 @@ export async function createAppCapabilities(deps: {
 
   // Per plans/kopilot/apps/agent-credentials.md §3.5 — when an agent is
   // active, registration is gated on `Agent.appAccounts[appId].credId`. The
-  // master Kopilot path (no agent) keeps its today behavior.
+  // master Kopilot path reads `kopilot.appAccounts` from org settings
+  // (plans/kopilot/settings — explicit pin only, no fallbacks).
   const agent = agentId ? await getCachedAgentById(organizationId, agentId) : null
-  const appAccounts = agent?.appAccounts ?? {}
+  const appAccounts: Record<string, { credId: string }> = agent
+    ? (agent.appAccounts ?? {})
+    : (await loadMasterKopilotSettings(organizationId)).appAccounts
 
   const tools: AgentToolDefinition[] = []
 
@@ -76,11 +79,11 @@ export async function createAppCapabilities(deps: {
     // name regex `^[a-zA-Z0-9_-]{1,64}$` is honored cleanly.
     const slugPrefix = appSlug.replace(/-/g, '_')
 
-    // Per plans/kopilot/apps/agent-credentials.md §3.5 — when there is an
-    // active agent, the bound credId from `Agent.appAccounts[appId]` wins
-    // over the legacy per-scope presence check. During transition (no
-    // binding yet) we fall back to a workspace cred if one exists so
-    // existing agents keep working until they're explicitly bound.
+    // Per plans/kopilot/apps/agent-credentials.md §3.5 — registration is
+    // gated on the bound credId from the agent's (or master's)
+    // `appAccounts[appId]`. Agents fall back to any workspace cred during
+    // the transition; master no longer has any fallback path
+    // (plans/kopilot/settings/README.md §4.2 — explicit pin only).
     const binding = appAccounts[appId]
     const boundCredId: string | null = binding?.credId ?? null
 
@@ -93,20 +96,8 @@ export async function createAppCapabilities(deps: {
           // creator's pick (workspace or personal) is the binding.
           if (!boundCredId && !installation.orgConnectionPresent) continue
         } else {
-          // Master Kopilot (no `connectionScope` on tools): try workspace
-          // first, then the chatting user's personal cred. See
-          // plans/kopilot/apps/agent-credentials.md §3.6.
-          let present = installation.orgConnectionPresent
-          if (!present && userId) {
-            const result = await getAppConnectionPresence({
-              orgId: organizationId,
-              userId,
-              appId,
-              scope: 'user',
-            })
-            present = result.present
-          }
-          if (!present) continue
+          // Master Kopilot: explicit pin only, no fallback.
+          if (!boundCredId) continue
         }
       }
 
@@ -120,16 +111,17 @@ export async function createAppCapabilities(deps: {
       // and lambda-context shape — extracted so we don't fork the prep code.
       const prepareLambdaCall = async (args: Record<string, unknown>) => {
         // Resolution priority:
-        //  1. Agent run with explicit binding → resolve by credId.
+        //  1. Explicit binding (agent or master) → resolve by credId.
         //  2. Agent run, no binding → resolve any workspace cred (transition).
-        //  3. Master Kopilot → today's user-scoped resolution.
-        const resolveInput: Parameters<typeof resolveAppConnectionForRuntime>[0] | null = agent
-          ? boundCredId
+        //  3. Master Kopilot, no binding → unreachable (registration above
+        //     would have skipped this tool). Defensive fall-through still
+        //     returns a clear error.
+        const resolveInput: Parameters<typeof resolveAppConnectionForRuntime>[0] | null =
+          boundCredId
             ? { appId, organizationId, userId: userId ?? '', connectionId: boundCredId }
-            : { appId, organizationId, userId: userId ?? '' }
-          : userId
-            ? { appId, organizationId, userId }
-            : null
+            : agent
+              ? { appId, organizationId, userId: userId ?? '' }
+              : null
 
         if (!resolveInput) {
           return {

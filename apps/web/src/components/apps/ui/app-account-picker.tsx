@@ -27,6 +27,13 @@ interface AppAccountPickerProps {
   onPick: (credId: string) => void
   /** Fires when the connect flow returns a new credential. */
   onConnected?: (credId: string) => void
+  /**
+   * When false, hides personal credential rows and the "Connect personal
+   * account" action. Defaults to true. Master Kopilot passes false because
+   * personal creds are user-scoped — pinning master to a personal cred
+   * breaks the agent for every other user (see settings README §4.2).
+   */
+  allowPersonal?: boolean
 }
 
 /**
@@ -35,7 +42,13 @@ interface AppAccountPickerProps {
  * actions. Agnostic of binding semantics — see
  * plans/kopilot/apps/app-account-picker-command-refactor.md §3.
  */
-export function AppAccountPicker({ appId, value, onPick, onConnected }: AppAccountPickerProps) {
+export function AppAccountPicker({
+  appId,
+  value,
+  onPick,
+  onConnected,
+  allowPersonal = true,
+}: AppAccountPickerProps) {
   const { appInstallations } = useExtensionsContext()
   const { isAdminOrOwner } = useUser()
   const options = useAppCredentialOptions(appId)
@@ -69,7 +82,7 @@ export function AppAccountPicker({ appId, value, onPick, onConnected }: AppAccou
     <>
       <Command className='w-full'>
         <CommandList className='max-h-none'>
-          {userDef && options.personal.length > 0 && (
+          {allowPersonal && userDef && options.personal.length > 0 && (
             <CommandGroup heading='Personal'>
               {options.personal.map((c) => (
                 <AccountRow
@@ -98,7 +111,7 @@ export function AppAccountPicker({ appId, value, onPick, onConnected }: AppAccou
           )}
           <CommandSeparator />
           <CommandGroup>
-            {userDef && target && (
+            {allowPersonal && userDef && target && (
               <CommandItem
                 onSelect={() => flow.start({ target, scope: 'user' })}
                 className='cursor-pointer h-7.5'>

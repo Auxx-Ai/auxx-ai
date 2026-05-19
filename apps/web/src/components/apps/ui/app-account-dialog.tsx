@@ -26,6 +26,8 @@ interface AppAccountDialogProps {
   onSubmit: (value: string | string[] | undefined) => void
   open: boolean
   onOpenChange: (open: boolean) => void
+  /** Passed through to the picker. Defaults to true. See `AppAccountPicker`. */
+  allowPersonal?: boolean
 }
 
 /**
@@ -41,6 +43,7 @@ export function AppAccountDialog({
   onSubmit,
   open,
   onOpenChange,
+  allowPersonal = true,
 }: AppAccountDialogProps) {
   const { appInstallations } = useExtensionsContext()
   const installation = useMemo(
@@ -90,6 +93,7 @@ export function AppAccountDialog({
             value={pending}
             onPick={handlePick}
             onConnected={handlePick}
+            allowPersonal={allowPersonal}
           />
         </Field>
         <DialogFooter>

@@ -24,6 +24,7 @@ import {
   Rows3,
   Settings,
   ShoppingBag,
+  Sparkles,
   Sun,
   Tag,
   Trash2,
@@ -303,6 +304,13 @@ export const SETTINGS_MENU: SidebarProps[] = [
         label: 'AI Models',
         slug: 'aiModels',
         icon: <Bot />,
+        access: 'ADMIN',
+      },
+      {
+        id: 'settings-kopilot',
+        label: 'Kopilot',
+        slug: 'kopilot',
+        icon: <Sparkles />,
         access: 'ADMIN',
       },
 

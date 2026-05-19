@@ -420,6 +420,7 @@ export const settingScope = pgEnum('SettingScope', [
   'GENERAL',
   'SIDEBAR',
   'RECORDING',
+  'KOPILOT',
 ])
 export const signatureSharingType = pgEnum('SignatureSharingType', [
   'PRIVATE',

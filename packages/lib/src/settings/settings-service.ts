@@ -213,6 +213,34 @@ export const SETTINGS_CATALOG: Record<string, SettingConfig> = {
       { label: 'None', value: 'none' },
     ],
   },
+
+  // ── KOPILOT ────────────────────────────────────────────────
+  'kopilot.modelId': {
+    key: 'kopilot.modelId',
+    scope: 'KOPILOT',
+    defaultValue: null,
+    type: 'string',
+    description:
+      'Default model for master Kopilot in provider:model format (e.g. anthropic:claude-opus-4-7). null = system default.',
+    organizationOnly: true,
+  },
+  'kopilot.toolsets': {
+    key: 'kopilot.toolsets',
+    scope: 'KOPILOT',
+    defaultValue: [{ slug: 'auxx:*', enabled: true, source: 'auto_default' }],
+    type: 'object',
+    description:
+      'Per-toolset enable/disable + per-tool overrides for master Kopilot (native auxxai toolsets only). Supports glob slugs (e.g. auxx:*).',
+    organizationOnly: true,
+  },
+  'kopilot.appAccounts': {
+    key: 'kopilot.appAccounts',
+    scope: 'KOPILOT',
+    defaultValue: {},
+    type: 'object',
+    description: 'Per-app explicit workspace cred for master Kopilot. Missing = off.',
+    organizationOnly: true,
+  },
 }
 
 export class SettingsService {

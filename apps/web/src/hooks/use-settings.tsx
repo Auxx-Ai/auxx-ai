@@ -1,6 +1,11 @@
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useDehydratedSettings, useSettingsCatalog } from '~/providers/dehydrated-state-provider'
+import {
+  useDehydratedOrganizationId,
+  useDehydratedSettings,
+  useDehydratedStateContext,
+  useSettingsCatalog,
+} from '~/providers/dehydrated-state-provider'
 import { api } from '~/trpc/react'
 
 // Type for setting values
@@ -24,6 +29,8 @@ export function useSettings({ scope }: UseSettingsOptions) {
   // Use dehydrated settings catalog and user settings
   const settingsCatalog = useSettingsCatalog()
   const allUserSettings = useDehydratedSettings()
+  const organizationId = useDehydratedOrganizationId()
+  const { patchSettings } = useDehydratedStateContext()
 
   // Filter settings by scope if needed
   const userSettings = useMemo(() => {
@@ -192,11 +199,15 @@ export function useSettings({ scope }: UseSettingsOptions) {
   // Helper function to update an organization setting (admin only)
   const updateOrganizationSetting = useCallback(
     (key: string, value: SettingValue, allowUserOverride: boolean) => {
-      // if (!organizationId) return
-
       updateOrgSettingMutation.mutate({ key, value, allowUserOverride })
+
+      // Optimistically update local + dehydrated state so consumers re-render
+      // immediately — `useDehydratedSettings` is the source of truth for
+      // `settings`, but it doesn't auto-sync from tRPC invalidations.
+      setSettings((prev) => ({ ...prev, [key]: value }))
+      if (organizationId) patchSettings(organizationId, { [key]: value })
     },
-    [updateOrgSettingMutation]
+    [updateOrgSettingMutation, organizationId, patchSettings]
   )
 
   // Helper function to batch update organization settings (admin only)
@@ -208,11 +219,13 @@ export function useSettings({ scope }: UseSettingsOptions) {
         allowUserOverride: boolean
       }>
     ) => {
-      // if (!organizationId) return
-
       batchUpdateOrgSettingsMutation.mutate({ settings })
+
+      const patch = Object.fromEntries(settings.map((s) => [s.key, s.value]))
+      setSettings((prev) => ({ ...prev, ...patch }))
+      if (organizationId) patchSettings(organizationId, patch)
     },
-    [batchUpdateOrgSettingsMutation]
+    [batchUpdateOrgSettingsMutation, organizationId, patchSettings]
   )
 
   return {
