@@ -7,6 +7,104 @@ import { App } from './app'
 import { AppBundle } from './app-bundle'
 import { Organization } from './organization'
 
+/**
+ * Catalog payload baked at SDK publish time and read by every consumer
+ * (Kopilot bridge, workflow editor, quick-action drawer, agent picker)
+ * without evaluating bundle code.
+ *
+ * Single source of truth for the shape — imported by:
+ *  - packages/sdk (build pipeline that writes it)
+ *  - packages/lib/cache (envelope projection)
+ *  - packages/lib/ai/kopilot/capabilities/apps (bridge reads agent.tools)
+ *  - apps/web (workflow/quick-action/agent pickers)
+ *
+ * See plans/kopilot/agents/triggers/app-surface-implementation-plan.md §5.3.
+ */
+export interface CatalogTool {
+  id: string
+  name: string
+  description: string
+  inputsJsonSchema: Record<string, unknown>
+  outputsJsonSchema: Record<string, unknown>
+  requiresConnection: boolean
+  timeoutMs: number
+  streaming: boolean
+  refs: Array<{ path: string[]; kind: string }>
+}
+
+export interface CatalogAgentTool extends CatalogTool {
+  /** LLM-facing name (snake_case). May differ from CatalogTool.name. */
+  agentName: string
+  /** LLM-facing description (hint style, written for model consumption). */
+  agentDescription: string
+  toolsetSlug: string
+  idempotent?: boolean
+}
+
+export interface CatalogAction {
+  toolId: string
+  label: string
+  description?: string
+  iconKey: string | null
+  color?: string
+  surface: 'ticket-header' | 'email-editor'
+  requiresConfirmation?: boolean
+  confirmationMessage?: string
+}
+
+export interface CatalogToolset {
+  slug: string
+  name: string
+  description: string
+  iconKey: string | null
+  subGroup: string | null
+}
+
+export interface CatalogTrigger {
+  id: string
+  label: string
+  description?: string
+  iconKey: string | null
+  color?: string
+  inputsJsonSchema: Record<string, unknown>
+  refs: Array<{ path: string[]; kind: string }>
+}
+
+export interface CatalogTriggerProjection {
+  triggerId: string
+  label: string
+  description?: string
+  defaultEnabled?: boolean
+}
+
+export interface CatalogBlock {
+  id: string
+  label: string
+  description?: string
+  iconKey: string | null
+  color?: string
+  inputsJsonSchema: Record<string, unknown>
+  /** Dispatch table: `${resource}.${operation}` → tool id. */
+  toolMap: Record<string, string>
+  refs: Array<{ path: string[]; kind: string }>
+}
+
+export interface CatalogPayload {
+  tools: CatalogTool[]
+  triggers: CatalogTrigger[]
+  toolsets: CatalogToolset[]
+  workflow: {
+    blocks: CatalogBlock[]
+    triggers: CatalogTriggerProjection[]
+  }
+  agent: {
+    tools: CatalogAgentTool[]
+    triggers: CatalogTriggerProjection[]
+    toolsets: CatalogToolset[]
+  }
+  actions: CatalogAction[]
+}
+
 /** Drizzle table for AppDeployment */
 export const AppDeployment = pgTable(
   'AppDeployment',
@@ -34,31 +132,11 @@ export const AppDeployment = pgTable(
       user?: Record<string, any>
     }>(),
 
-    // AI tool catalog — converted at publish time by the SDK build step.
-    // Read by the Kopilot bridge at session-init to register tools with the LLM
-    // without evaluating bundle code. See plans/kopilot/apps/README.md §5 + §11
-    // and plans/kopilot/agents/tool-loading-and-execution.md §2 (decision A1).
-    aiTools: jsonb().$type<{
-      tools: Array<{
-        id: string
-        name: string
-        description: string
-        inputsJsonSchema: Record<string, unknown>
-        outputsJsonSchema: Record<string, unknown>
-        requiresConnection: boolean
-        timeoutMs: number
-        streaming: boolean
-        toolsetSlug: string
-        refs: Array<{ path: string[]; kind: string }>
-      }>
-      toolsets: Array<{
-        slug: string
-        name: string
-        description: string
-        iconKey: string | null
-        subGroup: string | null
-      }>
-    }>(),
+    // Static surface catalog — baked at SDK publish time. Read by every
+    // consumer (Kopilot bridge, workflow editor, quick-action drawer,
+    // agent picker) without evaluating bundle code. Shape is defined by
+    // CatalogPayload above.
+    catalog: jsonb().$type<CatalogPayload>(),
 
     // Dev-only fields
     targetOrganizationId: text().references((): AnyPgColumn => Organization.id, {
