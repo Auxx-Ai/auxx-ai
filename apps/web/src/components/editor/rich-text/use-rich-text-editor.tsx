@@ -100,6 +100,12 @@ export interface UseRichTextEditorOptions {
    * template gallery, etc.).
    */
   editable?: boolean
+  /**
+   * Overrides the default-branch placeholder rendered inside an empty text
+   * `Block`. Heading and table-cell branches still use their own placeholders.
+   * Defaults to `"Press '/' for commands"`.
+   */
+  placeholderText?: string
 }
 
 /**
@@ -120,6 +126,7 @@ export function useRichTextEditor({
   onPickerArrowVertical,
   referenceTabs,
   editable = true,
+  placeholderText,
 }: UseRichTextEditorOptions) {
   const normalizedInitialContent = useMemo<JSONContent>(() => {
     const migrated = migrateLegacyContent(initialContent)
@@ -175,7 +182,7 @@ export function useRichTextEditor({
           history: undefined,
           // Marks stay enabled (bold, italic, strike, code).
         }),
-        Block,
+        placeholderText ? Block.configure({ placeholderText }) : Block,
         Panel,
         Tabs,
         Accordion,

@@ -279,7 +279,7 @@ function TriggerRow({
         </Tooltip>
       }
       title={
-        <Tooltip content={lastFiredLabel}>
+        <Tooltip content={lastFiredLabel} allowInteraction>
           <span className='inline-flex items-center gap-1'>
             {title}
             {hasError ? <AlertTriangle className='size-3 text-destructive' /> : null}
@@ -289,7 +289,7 @@ function TriggerRow({
       actions={
         <>
           {isEditable && onEdit ? (
-            <Tooltip side='left' content='Edit trigger'>
+            <Tooltip side='left' content='Edit trigger' allowInteraction>
               <button
                 type='button'
                 onClick={onEdit}
@@ -300,7 +300,7 @@ function TriggerRow({
             </Tooltip>
           ) : null}
           {isDeletable && onDelete ? (
-            <Tooltip side='left' content='Delete trigger'>
+            <Tooltip side='left' content='Delete trigger' allowInteraction>
               <button
                 type='button'
                 onClick={onDelete}

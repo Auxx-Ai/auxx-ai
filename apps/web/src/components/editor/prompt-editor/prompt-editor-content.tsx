@@ -54,6 +54,8 @@ interface PromptEditorContentProps {
    * `@`-picker are inert. Used by the template gallery preview.
    */
   editable?: boolean
+  /** Overrides the default-branch empty-block placeholder hint. */
+  placeholderText?: string
 }
 
 interface LinkPopoverState {
@@ -84,6 +86,7 @@ export const PromptEditorContent = memo(function PromptEditorContent({
   referencePickerRef,
   referenceTabs,
   editable = true,
+  placeholderText,
 }: PromptEditorContentProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [linkPopover, setLinkPopover] = useState<LinkPopoverState | null>(null)
@@ -108,6 +111,7 @@ export const PromptEditorContent = memo(function PromptEditorContent({
     onPickerArrowVertical,
     referenceTabs,
     editable,
+    placeholderText,
   })
 
   const activePicker = useActivePicker(editor)
@@ -181,8 +185,26 @@ export const PromptEditorContent = memo(function PromptEditorContent({
     [editor, linkPopover]
   )
 
+  const handleHostMouseDown = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      if (!editor || editor.isDestroyed) return
+      const target = e.target as HTMLElement | null
+      // Let clicks inside the contenteditable run their normal PM behavior
+      // (caret placement, drag selection, picker triggers).
+      if (target?.closest('.ProseMirror')) return
+      // Click landed on the padded host gap below/around the editor — focus
+      // the editor and park the caret at the end of the doc.
+      e.preventDefault()
+      editor.commands.focus('end')
+    },
+    [editor]
+  )
+
   return (
-    <div ref={containerRef} className={`${styles.editor} relative flex-1 min-h-0 flex w-full`}>
+    <div
+      ref={containerRef}
+      className={`${styles.editor} relative flex-1 min-h-0 flex w-full`}
+      onMouseDown={handleHostMouseDown}>
       <EditorContent
         editor={editor}
         className='prose prose-sm max-w-none dark:prose-invert w-full [&_.ProseMirror]:outline-none [&_.ProseMirror]:focus:outline-none [&_.ProseMirror-focused]:outline-none focus:outline-none'

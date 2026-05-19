@@ -51,12 +51,20 @@ const escapeBlockDownward = (editor: Editor, depth: number): boolean => {
     .run()
 }
 
-export const Block = Node.create({
+export interface BlockOptions {
+  placeholderText: string
+}
+
+export const Block = Node.create<BlockOptions>({
   name: 'block',
   content: 'inline*',
   marks: '_',
   group: 'block',
   defining: true,
+
+  addOptions() {
+    return { placeholderText: "Press '/' for commands" }
+  },
 
   addAttributes() {
     return {
