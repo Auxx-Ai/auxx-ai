@@ -9,6 +9,24 @@ import type { WorkflowExecutionContext, WorkflowSDK } from '../types/workflow.ts
 import { createServerSDK } from './index.ts'
 
 /**
+ * Minimal local mirror of `@auxx/sdk`'s `BlockRuntimeError`.
+ *
+ * The lambda executors detect runtime errors across the sandbox / module
+ * boundary by `error.name === 'BlockRuntimeError'`, not `instanceof`.
+ * Defining a local class (lambda has no `@auxx/sdk` runtime dep) lets a
+ * missing tool lookup surface as a structured runtime error instead of a
+ * 500.
+ */
+class BlockRuntimeError extends Error {
+  readonly code: string
+  constructor(message: string, code = 'BLOCK_RUNTIME_ERROR') {
+    super(message)
+    this.name = 'BlockRuntimeError'
+    this.code = code
+  }
+}
+
+/**
  * Inject Workflow SDK into global scope
  * Called before executing workflow block
  */
@@ -67,6 +85,30 @@ export function injectWorkflowSDK(context: WorkflowExecutionContext): void {
     log: (level, message, data) => {
       // Log to console - will be captured by console interceptor from runtime-helpers
       console[level === 'info' ? 'log' : level](message, data)
+    },
+
+    /**
+     * In-process dispatch into the bundle's `__AUXX_TOOLS__` registry.
+     *
+     * Used by router-style workflow blocks (impl plan §6.3 / §7.4) — the
+     * block's execute resolves a tool id from its baked `toolMap` and
+     * forwards inputs through this helper. Looks up the tool by id and
+     * invokes its execute inside the same workflow sandbox. Throws
+     * `BlockRuntimeError` (name-matched by the executor) on missing id.
+     */
+    runTool: async (toolId: string, input: Record<string, any>) => {
+      console.log('[WorkflowSDK] runTool:', toolId)
+      const g = globalThis as typeof globalThis & {
+        __AUXX_TOOLS__?: Record<string, { execute: (input: any, ctx?: any) => unknown }>
+      }
+      const tool = g.__AUXX_TOOLS__?.[toolId]
+      if (!tool) {
+        throw new BlockRuntimeError(`Tool not found: ${toolId}`)
+      }
+      if (typeof tool.execute !== 'function') {
+        throw new BlockRuntimeError(`Tool ${toolId} does not have an execute function`)
+      }
+      return await tool.execute(input, context)
     },
 
     // Cache methods (optional)

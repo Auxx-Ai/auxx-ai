@@ -127,6 +127,19 @@ export interface WorkflowSDK {
 
   /** Set multiple organization settings */
   setOrganizationSettings: (settings: Record<string, any>) => Promise<void>
+
+  /**
+   * Run a tool by id from the bundle's __AUXX_TOOLS__ registry.
+   *
+   * In-process dispatch used by router-style workflow blocks (impl plan
+   * §6.3 / §7.4) — the block's execute resolves a tool id from its baked
+   * `toolMap` and forwards inputs through this helper. Same sandbox, no
+   * extra lambda hop, no serialization.
+   *
+   * Throws `BlockRuntimeError` (name-matched by the executor) when the id
+   * is not present in the registry.
+   */
+  runTool: (toolId: string, input: Record<string, any>) => Promise<unknown>
 }
 
 /**
