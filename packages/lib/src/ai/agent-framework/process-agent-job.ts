@@ -37,6 +37,20 @@ import type { AgentEngineConfig, SessionMessage } from './types'
 const logger = createScopedLogger('agent-job')
 
 /**
+ * Split a stored `provider:model` model id into its parts. Returns null for
+ * unset or malformed values so callers fall through to the next precedence
+ * tier (system default).
+ */
+function parseProviderModel(
+  pinned: string | null | undefined
+): { provider: string; model: string } | null {
+  if (!pinned) return null
+  const idx = pinned.indexOf(':')
+  if (idx <= 0 || idx === pinned.length - 1) return null
+  return { provider: pinned.slice(0, idx), model: pinned.slice(idx + 1) }
+}
+
+/**
  * BullMQ job handler for processing agent messages.
  * Runs the AgentEngine and publishes events to Redis for SSE relay.
  */
@@ -272,20 +286,35 @@ async function buildDomainConfig(
 ) {
   switch (domain) {
     case 'kopilot': {
-      // Resolve model: explicit override → system default → hardcoded fallback
+      // Resolve model precedence:
+      //   per-turn/per-session (`params.modelId`)
+      //     → agent/master pin (`agentConfig.modelId`)
+      //     → org system default
+      // Master pin is provider:model (see plans/kopilot/settings/04-runtime-activation.md
+      // §C5); agent pins follow the same shape.
       let defaultModel: string | undefined
       let defaultProvider: string | undefined
-      if (params.modelId) {
-        const [provider, ...modelParts] = params.modelId.split(':')
-        defaultProvider = provider
-        defaultModel = modelParts.join(':')
+      const pinned = params.modelId ?? null
+      if (pinned) {
+        const parsed = parseProviderModel(pinned)
+        if (parsed) {
+          defaultProvider = parsed.provider
+          defaultModel = parsed.model
+        }
       } else {
-        const { getCachedDefaultModel } = await import('../../cache/org-cache-helpers')
-        const { ModelType } = await import('../providers/types')
-        const systemDefault = await getCachedDefaultModel(params.organizationId, ModelType.LLM)
-        if (systemDefault) {
-          defaultProvider = systemDefault.provider
-          defaultModel = systemDefault.model
+        const agentConfigForModel = await resolveAgentConfig(params.organizationId, params.agentId)
+        const fromConfig = parseProviderModel(agentConfigForModel.modelId)
+        if (fromConfig) {
+          defaultProvider = fromConfig.provider
+          defaultModel = fromConfig.model
+        } else {
+          const { getCachedDefaultModel } = await import('../../cache/org-cache-helpers')
+          const { ModelType } = await import('../providers/types')
+          const systemDefault = await getCachedDefaultModel(params.organizationId, ModelType.LLM)
+          if (systemDefault) {
+            defaultProvider = systemDefault.provider
+            defaultModel = systemDefault.model
+          }
         }
       }
 

@@ -62,6 +62,8 @@ export interface SettingConfig {
     | 'INTEGRATION'
     | 'GENERAL'
     | 'SIDEBAR'
+    | 'RECORDING'
+    | 'KOPILOT'
   defaultValue: SettingValue
   type: 'string' | 'number' | 'boolean' | 'object' | 'color' | 'font' | 'image'
   description?: string

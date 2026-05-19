@@ -22,6 +22,10 @@ export {
 export { applyContextDefaults, findAllRefs, findRef } from './context-refs'
 export type { KopilotDomainConfigOptions } from './domain-config'
 export { createKopilotDomainConfig } from './domain-config'
+export {
+  loadMasterKopilotSettings,
+  type MasterKopilotSettings,
+} from './load-master-settings'
 export type { TriggerContext, TriggerKind } from './prompts/trigger-context'
 export { generateSessionTitle } from './session-title'
 export type {

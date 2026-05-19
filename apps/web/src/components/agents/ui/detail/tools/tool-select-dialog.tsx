@@ -20,16 +20,25 @@ import { pluralize } from '@auxx/utils/strings'
 import { AlertCircle, ChevronLeft } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '~/trpc/react'
-import type { AgentDetail } from '../../../store/agent-store'
 import { ToolSelectRow, toolCountBadge } from './tool-select-row'
-import { useToolsetMutations } from './use-toolset-mutations'
+
+export interface InstalledToolsetEntry {
+  slug: string
+  enabled: boolean
+  source: 'manual' | 'mention' | 'auto_default'
+}
 
 interface ToolSelectDialogProps {
-  agent: AgentDetail
+  /** Currently installed toolsets — used to render the green check + lock state. */
+  installedToolsets: InstalledToolsetEntry[]
+  /** App ids that have a bound credential — controls the inline hint in App-detail. */
+  boundAppIds: Set<string>
+  /** Toggle a single toolset on/off. */
+  onToggleToolset: (slug: string, enabled: boolean) => void | Promise<void>
+  /** Bulk-toggle multiple toolsets ("Add all tools"). */
+  onToggleToolsets: (changes: Array<{ slug: string; enabled: boolean }>) => void | Promise<void>
   open: boolean
   onOpenChange: (open: boolean) => void
-  /** Optional save-state hook — wires the agent autosave indicator. */
-  onSavingChange?: (saving: boolean) => void
   /**
    * When set + the dialog is opened, jumps straight to the App-detail view
    * for this app id. The Back button still returns to the Apps list.
@@ -40,10 +49,7 @@ interface ToolSelectDialogProps {
 type ViewMode = 'list' | 'app-detail'
 type ListTab = 'all' | 'apps'
 
-interface InstalledState {
-  enabled: boolean
-  source: 'manual' | 'mention' | 'auto_default'
-}
+type InstalledState = Pick<InstalledToolsetEntry, 'enabled' | 'source'>
 
 /**
  * Multi-view dialog used to add toolsets to an agent. Three surfaces:
@@ -56,18 +62,15 @@ interface InstalledState {
  * dialog stays open so the user can add several toolsets in a row.
  */
 export function ToolSelectDialog({
-  agent,
+  installedToolsets,
+  boundAppIds,
+  onToggleToolset,
+  onToggleToolsets,
   open,
   onOpenChange,
-  onSavingChange,
   initialAppId,
 }: ToolSelectDialogProps) {
   const catalogQuery = api.agentToolset.list.useQuery(undefined, { staleTime: 60_000 })
-  const { toggleToolset, toggleToolsets } = useToolsetMutations(
-    agent.id,
-    agent.slug,
-    onSavingChange
-  )
 
   const [viewMode, setViewMode] = useState<ViewMode>('list')
   const [tab, setTab] = useState<ListTab>('all')
@@ -100,11 +103,11 @@ export function ToolSelectDialog({
 
   const installedState = useMemo<Map<string, InstalledState>>(() => {
     const map = new Map<string, InstalledState>()
-    for (const row of agent.toolsets) {
+    for (const row of installedToolsets) {
       map.set(row.slug, { enabled: row.enabled, source: row.source })
     }
     return map
-  }, [agent.toolsets])
+  }, [installedToolsets])
 
   const catalog = catalogQuery.data
   const flat = useMemo(() => (catalog ? flattenCatalogToToolsets(catalog) : []), [catalog])
@@ -129,13 +132,13 @@ export function ToolSelectDialog({
     const source = sourceOf(slug)
     // Locked rows: clicking is a no-op (the row still shows the green check).
     if (installed && source && source !== 'manual') return
-    void toggleToolset(slug, !installed)
+    void onToggleToolset(slug, !installed)
   }
 
   const handleRemove = (slug: string) => {
     const source = sourceOf(slug)
     if (source && source !== 'manual') return
-    void toggleToolset(slug, false)
+    void onToggleToolset(slug, false)
   }
 
   const handleOpenApp = (appNode: CatalogContainerNode) => {
@@ -189,9 +192,9 @@ export function ToolSelectDialog({
               onRemove={handleRemove}
               onAddAll={(slugs) => {
                 if (slugs.length === 0) return
-                void toggleToolsets(slugs.map((slug) => ({ slug, enabled: true })))
+                void onToggleToolsets(slugs.map((slug) => ({ slug, enabled: true })))
               }}
-              hasBoundAccount={!!agent.appAccounts?.[selectedApp.id]}
+              hasBoundAccount={boundAppIds.has(selectedApp.id.replace(/^app:/, ''))}
             />
           ) : (
             <div className='flex flex-1 items-center justify-center p-8'>

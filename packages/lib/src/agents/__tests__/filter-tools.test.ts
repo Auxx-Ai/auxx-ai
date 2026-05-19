@@ -15,13 +15,14 @@ function tool(name: string, slug?: string): AgentToolDefinition {
   }
 }
 
-const master: ResolvedAgentConfig = {
+const masterEmpty: ResolvedAgentConfig = {
   agentId: null,
   name: 'Kopilot',
   userId: null,
   prompt: null,
   description: null,
   toolsets: [],
+  appAccounts: {},
   modelId: null,
 }
 
@@ -36,6 +37,7 @@ function agent(toolsets: Array<{ slug: string; disabledTools?: string[] }>): Res
       slug: t.slug,
       disabledTools: new Set(t.disabledTools ?? []),
     })),
+    appAccounts: {},
     modelId: null,
   }
 }
@@ -51,9 +53,11 @@ describe('filterToolsByToolsets', () => {
     expect(filterToolsByToolsets(tools, undefined)).toBe(tools)
   })
 
-  it('returns input unchanged for master sentinel', () => {
-    const tools = [findThreads, replyToThread]
-    expect(filterToolsByToolsets(tools, master)).toBe(tools)
+  it('applies the same slug filter for master sessions (no pass-through)', () => {
+    // Master with empty toolsets drops everything that has a slug; plan tools
+    // (no slug) still flow through.
+    const result = filterToolsByToolsets([findThreads, replyToThread, planCreate], masterEmpty)
+    expect(result.map((t) => t.name)).toEqual(['plan_create'])
   })
 
   it('drops tools whose slug is not enabled', () => {

@@ -6,7 +6,7 @@ import type { ResolvedAgentConfig } from './resolve-agent-config'
 /**
  * Drop tools whose `toolsetSlug` is not enabled for the given agent. Tools
  * without a slug are treated as always-on (plan tools today). Master sessions
- * pass through untouched.
+ * gate on the resolved `kopilot.*` settings — same filter, no pass-through.
  *
  * First of three composable predicates per
  * `plans/kopilot/agents/tool-loading-and-execution.md §12`. Invoker-scope
@@ -17,7 +17,7 @@ export function filterToolsByToolsets(
   tools: AgentToolDefinition[],
   agentConfig: ResolvedAgentConfig | undefined
 ): AgentToolDefinition[] {
-  if (!agentConfig || agentConfig.agentId === null) return tools
+  if (!agentConfig) return tools
 
   const bySlug = new Map<string, ReadonlySet<string>>(
     agentConfig.toolsets.map((t) => [t.slug, t.disabledTools])

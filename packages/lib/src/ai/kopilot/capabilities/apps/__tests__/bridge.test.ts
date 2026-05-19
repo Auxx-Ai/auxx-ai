@@ -10,6 +10,7 @@ vi.mock('../../../../cache', () => ({
         return { id: 'org-1', name: 'Acme', handle: 'acme', domains: [] }
       }
       if (key === 'installedApps') return MOCK_INSTALLED_APPS
+      if (key === 'orgSettings') return MOCK_ORG_SETTINGS
       return null
     }),
   }),
@@ -28,16 +29,12 @@ vi.mock('@auxx/services/lambda-execution', () => ({
   prepareLambdaContext: vi.fn((params) => ({ ...params })),
 }))
 
-vi.mock('../connection-resolver', () => ({
-  getAppConnectionPresence: vi.fn(),
-}))
-
 // Set up varying scenarios per test.
 let MOCK_INSTALLED_APPS: any[] = []
+let MOCK_ORG_SETTINGS: Record<string, unknown> = {}
 
 import { resolveAppConnectionForRuntime } from '@auxx/services/app-connections'
 import { invokeLambdaExecutor } from '@auxx/services/lambda-execution'
-import { getAppConnectionPresence } from '../connection-resolver'
 import { createAppCapabilities } from '../index'
 
 const SAMPLE_TOOL = {
@@ -83,10 +80,10 @@ function buildInstallation(overrides: Partial<any> = {}) {
   }
 }
 
-describe('createAppCapabilities — registration filter', () => {
-  it('hides user-scope tools when the user has no connection (decision A4)', async () => {
+describe('createAppCapabilities — registration filter (master Kopilot)', () => {
+  it('hides app tools when `kopilot.appAccounts` has no binding for the app', async () => {
     MOCK_INSTALLED_APPS = [buildInstallation()]
-    vi.mocked(getAppConnectionPresence).mockResolvedValue({ present: false, expiresAt: null })
+    MOCK_ORG_SETTINGS = { 'kopilot.appAccounts': {} }
 
     const capability = await createAppCapabilities({
       organizationId: 'org-1',
@@ -96,9 +93,9 @@ describe('createAppCapabilities — registration filter', () => {
     expect(capability.tools).toHaveLength(0)
   })
 
-  it('registers the tool when user-scope connection is present, with namespaced name', async () => {
+  it('registers the tool when `kopilot.appAccounts[appId].credId` is pinned', async () => {
     MOCK_INSTALLED_APPS = [buildInstallation()]
-    vi.mocked(getAppConnectionPresence).mockResolvedValue({ present: true, expiresAt: null })
+    MOCK_ORG_SETTINGS = { 'kopilot.appAccounts': { 'app-1': { credId: 'cred-1' } } }
 
     const capability = await createAppCapabilities({
       organizationId: 'org-1',
@@ -110,8 +107,9 @@ describe('createAppCapabilities — registration filter', () => {
     expect(capability.tools[0]?.toolsetSlug).toBe('app:gog-calendar:availability')
   })
 
-  it('hides user-scope tools on autonomous runs (userId=null) without DB hit', async () => {
+  it('hides app tools on autonomous master runs without a binding', async () => {
     MOCK_INSTALLED_APPS = [buildInstallation()]
+    MOCK_ORG_SETTINGS = { 'kopilot.appAccounts': {} }
 
     const capability = await createAppCapabilities({
       organizationId: 'org-1',
@@ -119,15 +117,13 @@ describe('createAppCapabilities — registration filter', () => {
     })
 
     expect(capability.tools).toHaveLength(0)
-    // No presence query should have fired — autonomous policy short-circuits.
-    expect(vi.mocked(getAppConnectionPresence)).not.toHaveBeenCalled()
   })
 })
 
 describe('createAppCapabilities — execute() posts ai-tool to lambda', () => {
   it('forwards args + serverBundleSha + caller=kopilot to invokeLambdaExecutor', async () => {
     MOCK_INSTALLED_APPS = [buildInstallation()]
-    vi.mocked(getAppConnectionPresence).mockResolvedValue({ present: true, expiresAt: null })
+    MOCK_ORG_SETTINGS = { 'kopilot.appAccounts': { 'app-1': { credId: 'cred-1' } } }
     vi.mocked(resolveAppConnectionForRuntime).mockResolvedValue({
       isErr: () => false,
       value: { userConnection: { id: 'cred-1', type: 'oauth2-code', value: 't' } },
