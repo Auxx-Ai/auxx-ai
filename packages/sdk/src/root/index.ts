@@ -19,11 +19,6 @@ export type {
   WorkflowOutput,
 } from '../server/workflow/index.js'
 export type { App, AppSettings, Permission } from './app.js'
-export type {
-  QuickActionContext,
-  QuickActionEntity,
-  QuickActionParticipant,
-} from './quick-actions/index.js'
 export { Settings } from './settings/index.js'
 // Export settings schema types and namespace
 export type {
@@ -44,6 +39,9 @@ export type {
 export type {
   AuxxRefMeta,
   EntityRefKind,
+  ToolActionContext,
+  ToolActionEntity,
+  ToolActionParticipant,
   ToolActionSurface,
   ToolAgentSurface,
   ToolConfig,

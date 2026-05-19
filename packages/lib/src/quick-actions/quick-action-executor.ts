@@ -130,9 +130,11 @@ export class QuickActionExecutor {
             consoleLogs,
             durationMs: endTime - startTime,
             execution: {
-              type: 'quick-action',
-              actionId: action.actionId,
+              type: 'tool',
+              toolId: action.actionId,
+              invocationKind: 'action',
               threadId: context.threadId,
+              ticketId: context.ticketId,
             },
           })
         } catch (logError) {

@@ -32,7 +32,7 @@ export const ExecutionContextSchema = z.object({
     .object({
       webhooks: z.string(),
       settings: z.string(),
-      // AI tool executions get an additional `entities` scope used by
+      // Tool executions get an additional `entities` scope used by
       // `ctx.entities.findByIntegrationId`. See
       // plans/kopilot/apps/credentials.md §3.6.
       entities: z.string().optional(),
@@ -54,8 +54,6 @@ const BaseLambdaEventSchema = z.object({
     'workflow-block',
     'polling-trigger',
     'code',
-    'quick-action',
-    'ai-tool',
     'tool',
   ]),
 
@@ -155,51 +153,17 @@ const PollingTriggerExecutionSchema = AppEventSchema.extend({
   pollingState: z.record(z.string(), z.unknown()),
 })
 
-/** Quick action execution schema - extends AppEventSchema */
-const QuickActionExecutionSchema = AppEventSchema.extend({
-  type: z.literal('quick-action'),
-  actionId: z.string(),
-  inputs: z.record(z.string(), z.unknown()),
-  timeout: z.number().min(1000).max(30000).default(30000),
-})
-
-/**
- * AI tool execution schema — extends AppEventSchema.
- *
- * Dispatched by the Kopilot bridge when the LLM calls an app-backed AI tool.
- * The executor (`apps/lambda/src/executors/ai-tool-executor.ts`) loads the
- * tool from `__AUXX_AI_TOOLS__` and runs `execute(input, ctx)`.
- *
- * See plans/kopilot/apps/README.md §6.1 and
- * plans/kopilot/agents/tool-loading-and-execution.md §6.
- */
-const AiToolExecutionSchema = AppEventSchema.extend({
-  type: z.literal('ai-tool'),
-  toolId: z.string().regex(/^[a-zA-Z0-9_-]{1,64}$/),
-  toolInput: z.record(z.string(), z.unknown()),
-  // AI tool timeout is bounded — 15s default, 30s hard cap (plans §10).
-  timeout: z.number().min(1000).max(30000).default(15000),
-  // Optional Kopilot-specific context — Wedge A passes session/agent ids.
-  kopilotContext: z
-    .object({
-      sessionId: z.string().optional(),
-      agentId: z.string().nullish(),
-      triggerId: z.string().nullish(),
-      page: z.string().optional(),
-    })
-    .optional(),
-})
-
 /**
  * Tool execution schema — extends AppEventSchema.
  *
- * Unified replacement for `ai-tool` and `quick-action` events. The executor
- * (`apps/lambda/src/executors/tool-executor.ts`) loads the tool from
+ * Unified executor entry point for tools surfaced as agent calls (LLM tool
+ * invocations) and action chips (email-editor / ticket-header buttons). The
+ * executor (`apps/lambda/src/executors/tool-executor.ts`) loads the tool from
  * `__AUXX_TOOLS__` and runs `execute(input, ctx)`.
  *
  * `invocationContext.kind` discriminates the surface the call came from:
  *   - 'agent'  — Kopilot bridge invocation (LLM tool call).
- *   - 'action' — quick-action button invocation (ticket / email editor).
+ *   - 'action' — action button invocation (ticket / email editor).
  *
  * See plans/kopilot/agents/triggers/app-surface-implementation-plan.md §7.
  */
@@ -242,8 +206,6 @@ export type EventExecutionEvent = z.infer<typeof EventExecutionSchema>
 export type WebhookExecutionEvent = z.infer<typeof WebhookExecutionSchema>
 export type WorkflowBlockExecutionEvent = z.infer<typeof WorkflowBlockExecutionSchema>
 export type PollingTriggerExecutionEvent = z.infer<typeof PollingTriggerExecutionSchema>
-export type QuickActionExecutionEvent = z.infer<typeof QuickActionExecutionSchema>
-export type AiToolExecutionEvent = z.infer<typeof AiToolExecutionSchema>
 export type ToolExecutionEvent = z.infer<typeof ToolExecutionSchema>
 export type ToolInvocationContext = z.infer<typeof InvocationContextSchema>
 
@@ -255,8 +217,6 @@ export type ValidatedLambdaEvent =
   | WebhookExecutionEvent
   | WorkflowBlockExecutionEvent
   | PollingTriggerExecutionEvent
-  | QuickActionExecutionEvent
-  | AiToolExecutionEvent
   | ToolExecutionEvent
 
 /** Keep existing exports */
@@ -294,10 +254,6 @@ export function validateLambdaEvent(event: unknown) {
       return WorkflowBlockExecutionSchema.safeParse(event)
     case 'polling-trigger':
       return PollingTriggerExecutionSchema.safeParse(event)
-    case 'quick-action':
-      return QuickActionExecutionSchema.safeParse(event)
-    case 'ai-tool':
-      return AiToolExecutionSchema.safeParse(event)
     case 'tool':
       return ToolExecutionSchema.safeParse(event)
     default:

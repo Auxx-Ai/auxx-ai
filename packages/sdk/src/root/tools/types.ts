@@ -2,7 +2,54 @@
 
 import type { ComponentType } from 'react'
 import type { z } from 'zod/v4'
-import type { QuickActionContext } from '../quick-actions/types.js'
+
+/**
+ * An entity instance resolved from the thread context (passed to
+ * `ToolActionSurface` callbacks). Generic shape — works for any entity
+ * definition (ticket, contact, order, company, custom).
+ */
+export interface ToolActionEntity {
+  id: string
+  entityDefinitionId: string
+  /** Entity definition slug (e.g., "shopify-order", "company") */
+  entityDefinitionSlug: string
+  displayName: string
+  /** Custom field values, keyed by field slug */
+  fields: Record<string, unknown>
+}
+
+/**
+ * A thread participant with optional linked contact entity.
+ */
+export interface ToolActionParticipant {
+  email: string
+  name?: string
+  isInternal: boolean
+  /** Linked contact entity (if resolved) */
+  contact?: ToolActionEntity
+}
+
+/**
+ * Context provided to a tool's `action` surface callbacks.
+ * Built by the platform — never constructed by the author.
+ */
+export interface ToolActionContext {
+  /** The thread being replied to */
+  threadId: string
+
+  /** Ticket entity instance linked to this thread (if any) */
+  ticket?: ToolActionEntity
+
+  /** Thread participants */
+  participants: ToolActionParticipant[]
+
+  /**
+   * All entity instances associated with the thread context.
+   * Includes ticket, contacts, and any entities linked via relationship fields
+   * (e.g., a Shopify order linked on the ticket, a company linked on the contact).
+   */
+  entities: ToolActionEntity[]
+}
 
 /**
  * Entity ref kinds for fence-resolvable id fields in tool outputs.
@@ -38,7 +85,7 @@ export interface ToolConfig {
   /**
    * Author opt-in: this tool's `execute` returns an `AsyncGenerator` and
    * should be invoked through the streaming lambda endpoint
-   * (`/ai-tool/stream`). Yields are forwarded as `tool-progress` agent
+   * (`/tool/stream`). Yields are forwarded as `tool-progress` agent
    * events; the generator's return value becomes the tool result.
    *
    * The runtime can also detect a generator return at execution time, but
@@ -68,8 +115,8 @@ export interface ToolAgentSurface {
 
 /**
  * Action-surface projection of a tool — opt in by setting `tool.action = {…}`.
- * Presence of this key exposes the tool as a quick-action button in the
- * ticket / email-editor context.
+ * Presence of this key exposes the tool as an action button in the ticket /
+ * email-editor context.
  */
 export interface ToolActionSurface {
   /** Display label shown on the action chip. */
@@ -80,8 +127,8 @@ export interface ToolActionSurface {
   readonly surface: 'ticket-header' | 'email-editor'
   readonly requiresConfirmation?: boolean
   readonly confirmationMessage?: string
-  readonly shouldShow?: (ctx: QuickActionContext) => boolean
-  readonly getDefaults?: (ctx: QuickActionContext) => Record<string, unknown>
+  readonly shouldShow?: (ctx: ToolActionContext) => boolean
+  readonly getDefaults?: (ctx: ToolActionContext) => Record<string, unknown>
 }
 
 /**
