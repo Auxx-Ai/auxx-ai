@@ -5,10 +5,22 @@ import type { AppStore } from '../extensions/app-store'
 import type { WorkflowBlock } from './types'
 
 /**
- * Responsible for loading workflow blocks from installed apps
+ * Responsible for loading workflow blocks from installed apps.
+ *
+ * Strategy: catalog-first, iframe RPC as a dev-only fallback. The deployment's
+ * static catalog (projected onto `AppInstallation.workflowBlocks` /
+ * `.workflowTriggers` via the org cache envelope) provides display metadata
+ * synchronously, with no iframe boot. The iframe RPC `get-workflow-blocks`
+ * stays as a fallback so author iteration in dev (where the catalog may be
+ * stale relative to the live SDK) still works without re-uploading.
+ *
+ * See plans/kopilot/agents/triggers/app-surface-implementation-plan.md §10.1.
  */
 /**
- * Serialized quick action metadata returned from app iframe.
+ * Serialized quick action metadata. Historically returned from the app iframe;
+ * now derived from the deployment catalog's `actions` projection. Kept as a
+ * stable shape so existing consumers (email-editor's `QuickActionPicker`) work
+ * unchanged.
  */
 export interface SerializedQuickAction {
   id: string
@@ -25,115 +37,187 @@ export interface SerializedQuickAction {
   installationId?: string
 }
 
+/** Convert a `CatalogBlock` projection into the runtime `WorkflowBlock` shape.
+ *
+ * The catalog projection is a strict subset of the iframe RPC payload —
+ * `inputsJsonSchema` rather than the rich `schema.inputs/outputs`, and no
+ * `polling`/`category`/`hasPanel` data. Producing a degraded `WorkflowBlock`
+ * here lets the picker render label / icon / color synchronously; the iframe
+ * fallback (if it ever fires) registers an upgraded definition.
+ */
+function catalogBlockToWorkflowBlock(
+  block: NonNullable<AppInstallation['workflowBlocks']>[number],
+  appId: string,
+  installationId: string
+): WorkflowBlock {
+  return {
+    id: block.id,
+    appId,
+    installationId,
+    label: block.label,
+    description: block.description,
+    category: 'integration',
+    icon: block.iconKey ?? undefined,
+    color: block.color,
+    schema: {
+      inputs: {},
+      outputs: {},
+    },
+  }
+}
+
+function catalogTriggerToWorkflowBlock(
+  trigger: NonNullable<AppInstallation['workflowTriggers']>[number],
+  appId: string,
+  installationId: string
+): WorkflowBlock {
+  return {
+    id: trigger.triggerId,
+    appId,
+    installationId,
+    label: trigger.label,
+    description: trigger.description,
+    category: 'integration',
+    schema: {
+      inputs: {},
+      outputs: {},
+    },
+  }
+}
+
 export class WorkflowBlockLoader {
   private appStore: AppStore
   private loadedBlocks = new Map<string, WorkflowBlock[]>()
   private loadedTriggers = new Map<string, WorkflowBlock[]>()
-  private loadedQuickActions = new Map<string, SerializedQuickAction[]>()
 
   constructor(appStore: AppStore) {
     this.appStore = appStore
   }
 
   /**
-   * Load workflow blocks from all installed apps
-   * @param appInstallations - List of installed apps from ExtensionsContext
+   * Load workflow blocks from all installed apps. Catalog-first per
+   * installation; iframe RPC fills in apps without catalog data (dev
+   * deployments that haven't re-uploaded yet).
    */
   async loadAllBlocks(appInstallations: AppInstallation[]): Promise<void> {
-    // Use allSettled to handle failures gracefully - one failed app won't block others
-    const results = await Promise.allSettled(
-      appInstallations.map((installation) => {
-        return this.loadAppWorkflowBlocks(installation.app.id, installation.installationId)
-      })
+    // Catalog-first: synchronously populate from cache envelope where possible.
+    for (const installation of appInstallations) {
+      this.loadFromCatalog(installation)
+    }
+
+    // Iframe RPC fallback for installations without catalog data.
+    const needsRpc = appInstallations.filter(
+      (i) => !this.hasCatalogData(i.app.id, i.installationId)
     )
 
-    // Handle failures without blocking successful loads
-    const failures: Array<{ appId: string; error: any }> = []
+    if (needsRpc.length === 0) return
+
+    const results = await Promise.allSettled(
+      needsRpc.map((installation) =>
+        this.loadAppWorkflowBlocks(installation.app.id, installation.installationId)
+      )
+    )
+
     results.forEach((result, idx) => {
       if (result.status === 'rejected') {
-        const installation = appInstallations[idx]
-        failures.push({ appId: installation.app.id, error: result.reason })
+        const installation = needsRpc[idx]
+        console.warn(
+          `[WorkflowBlockLoader] RPC fallback failed for ${installation.app.id}:`,
+          result.reason
+        )
       }
     })
   }
 
   /**
-   * Load workflow blocks from a specific app
+   * Synchronous catalog load for one installation. Reads
+   * `installation.workflowBlocks` / `.workflowTriggers` projected from
+   * `AppDeployment.catalog` by the org cache envelope.
+   */
+  loadFromCatalog(installation: AppInstallation): void {
+    const { appId, installationId } = {
+      appId: installation.app.id,
+      installationId: installation.installationId,
+    }
+    const loadKey = `${appId}:${installationId}`
+
+    const blocks = installation.workflowBlocks ?? []
+    if (blocks.length > 0) {
+      this.loadedBlocks.set(
+        loadKey,
+        blocks.map((b) => catalogBlockToWorkflowBlock(b, appId, installationId))
+      )
+    }
+
+    const triggers = installation.workflowTriggers ?? []
+    if (triggers.length > 0) {
+      this.loadedTriggers.set(
+        loadKey,
+        triggers.map((t) => catalogTriggerToWorkflowBlock(t, appId, installationId))
+      )
+    }
+  }
+
+  /** Returns true if catalog data already populated either map for this key. */
+  private hasCatalogData(appId: string, installationId: string): boolean {
+    const key = `${appId}:${installationId}`
+    return this.loadedBlocks.has(key) || this.loadedTriggers.has(key)
+  }
+
+  /**
+   * Iframe RPC fallback — read full-fidelity block metadata from the live
+   * app sandbox. Used when the catalog projection is missing (dev
+   * deployments that haven't re-uploaded since the SDK schema changed).
    */
   async loadAppWorkflowBlocks(appId: string, installationId: string): Promise<void> {
-    // Check if already loaded
     const loadKey = `${appId}:${installationId}`
     if (this.loadedBlocks.has(loadKey)) {
-      console.log(`[WorkflowBlockLoader] Blocks already loaded for ${loadKey}, skipping`)
       return
     }
 
     try {
-      // Get or create message client for this app
       const messageClient = this.appStore.getMessageClient({
         appId,
         appInstallationId: installationId,
       })
 
       if (!messageClient) {
-        console.warn(
-          `[WorkflowBlockLoader] No MessageClient for app ${appId} (installation: ${installationId})`
-        )
         return
       }
 
-      // Wait for client to be ready (iframe load + SDK ready)
       try {
-        console.log(`[WorkflowBlockLoader] Waiting for MessageClient ready: ${appId}`)
         await messageClient.waitUntilReady()
-        console.log(`[WorkflowBlockLoader] MessageClient ready: ${appId}`)
       } catch (readyError) {
-        console.error(`[WorkflowBlockLoader] MessageClient not ready for ${appId}:`, readyError)
+        console.warn(`[WorkflowBlockLoader] MessageClient not ready for ${appId}:`, readyError)
         return
       }
 
-      // Request workflow blocks from iframe
-      try {
-        console.log(`[WorkflowBlockLoader] Sending get-workflow-blocks to ${appId}`)
-        const result = await messageClient.sendRequest<{
-          blocks: Omit<WorkflowBlock, 'appId' | 'installationId'>[]
-          triggers?: Omit<WorkflowBlock, 'appId' | 'installationId'>[]
-        }>('get-workflow-blocks', {}, { timeout: 10000 })
+      const result = await messageClient.sendRequest<{
+        blocks: Omit<WorkflowBlock, 'appId' | 'installationId'>[]
+        triggers?: Omit<WorkflowBlock, 'appId' | 'installationId'>[]
+      }>('get-workflow-blocks', {}, { timeout: 10000 })
 
-        console.log(
-          `[WorkflowBlockLoader] Got ${result.blocks?.length ?? 0} blocks, ${result.triggers?.length ?? 0} triggers from ${appId}:`,
-          result.blocks?.map((b) => b.id)
-        )
+      if (result.blocks && result.blocks.length > 0) {
+        const enrichedBlocks: WorkflowBlock[] = result.blocks.map((block) => ({
+          ...block,
+          appId,
+          installationId,
+        }))
 
-        if (result.blocks && result.blocks.length > 0) {
-          // Enrich blocks with appId and installationId
-          const enrichedBlocks: WorkflowBlock[] = result.blocks.map((block) => ({
-            ...block,
-            appId,
-            installationId,
-          }))
+        this.loadedBlocks.set(loadKey, enrichedBlocks)
+      }
 
-          this.loadedBlocks.set(loadKey, enrichedBlocks)
-        }
+      if (result.triggers && result.triggers.length > 0) {
+        const enrichedTriggers: WorkflowBlock[] = result.triggers.map((trigger) => ({
+          ...trigger,
+          appId,
+          installationId,
+        }))
 
-        if (result.triggers && result.triggers.length > 0) {
-          const enrichedTriggers: WorkflowBlock[] = result.triggers.map((trigger) => ({
-            ...trigger,
-            appId,
-            installationId,
-          }))
-
-          this.loadedTriggers.set(loadKey, enrichedTriggers)
-        }
-      } catch (requestError) {
-        console.error(
-          `[WorkflowBlockLoader] get-workflow-blocks failed for ${appId}:`,
-          requestError
-        )
-        return
+        this.loadedTriggers.set(loadKey, enrichedTriggers)
       }
     } catch (error) {
-      console.error(`[WorkflowBlockLoader] Unexpected error for ${appId}:`, error)
+      console.warn(`[WorkflowBlockLoader] get-workflow-blocks failed for ${appId}:`, error)
     }
   }
 
@@ -172,69 +256,11 @@ export class WorkflowBlockLoader {
   }
 
   /**
-   * Load quick actions from a specific app
-   */
-  async loadAppQuickActions(
-    appId: string,
-    installationId: string,
-    context?: {
-      threadId?: string
-      ticket?: unknown
-      participants?: unknown[]
-      entities?: unknown[]
-    }
-  ): Promise<void> {
-    const loadKey = `${appId}:${installationId}`
-    if (this.loadedQuickActions.has(loadKey)) return
-
-    const messageClient = this.appStore.getMessageClient({
-      appId,
-      appInstallationId: installationId,
-    })
-
-    if (!messageClient) {
-      console.warn(`[WorkflowBlockLoader] No MessageClient for ${appId}`)
-      return
-    }
-
-    try {
-      await messageClient.waitUntilReady()
-      const result = await messageClient.sendRequest<{
-        quickActions: (SerializedQuickAction & { defaults?: Record<string, unknown> })[]
-      }>('get-quick-actions', { context }, { timeout: 10000 })
-
-      const enriched = (result.quickActions ?? []).map((qa) => ({
-        ...qa,
-        appId,
-        installationId,
-      }))
-      this.loadedQuickActions.set(loadKey, enriched)
-    } catch (error) {
-      console.warn(`[WorkflowBlockLoader] get-quick-actions failed for ${appId}:`, error)
-    }
-  }
-
-  /**
-   * Get all loaded quick actions
-   */
-  getAllQuickActions(): SerializedQuickAction[] {
-    return [...this.loadedQuickActions.values()].flat()
-  }
-
-  /**
-   * Get quick actions for a specific app installation
-   */
-  getQuickActionsForApp(appId: string, installationId: string): SerializedQuickAction[] {
-    return this.loadedQuickActions.get(`${appId}:${installationId}`) ?? []
-  }
-
-  /**
-   * Unload workflow blocks, triggers, and quick actions for an app installation
+   * Unload workflow blocks and triggers for an app installation
    */
   unloadAppBlocks(appId: string, installationId: string): void {
     const key = `${appId}:${installationId}`
     this.loadedBlocks.delete(key)
     this.loadedTriggers.delete(key)
-    this.loadedQuickActions.delete(key)
   }
 }
