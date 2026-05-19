@@ -1,62 +1,45 @@
 // apps/web/src/components/apps/ui/app-account-picker.tsx
 'use client'
 
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@auxx/ui/components/dialog'
-import { Skeleton } from '@auxx/ui/components/skeleton'
-import { toastError } from '@auxx/ui/components/toast'
-import { cn } from '@auxx/ui/lib/utils'
+import { Command, CommandGroup, CommandItem, CommandList } from '@auxx/ui/components/command'
 import { Check, User as UserIcon, Users } from 'lucide-react'
 import { useMemo } from 'react'
 import { useUser } from '~/hooks/use-user'
 import { type AppConnection, useExtensionsContext } from '~/providers/extensions/extensions-context'
-import { api } from '~/trpc/react'
 import { useAppCredentialOptions } from '../hooks/use-app-credential-options'
 import { useBoundCredential } from '../hooks/use-bound-credential'
-import type { ConnectTarget } from '../hooks/use-connect-flow'
-import { ConnectButton } from './connect-button'
+import { type ConnectTarget, useConnectFlow } from '../hooks/use-connect-flow'
+import { AppIcon } from './app-icon'
+import { type AppConnectionStatus, AppWithStatusIcon } from './app-with-status-icon'
 
 interface AppAccountPickerProps {
-  /** App id (slug) the picker is bound to. `null` keeps the dialog closed. */
+  /** App id (slug) the picker is bound to. */
   appId: string | null
-  agentId: string
-  agentSlug: string
-  /** Currently-bound credential id, if any. */
-  boundCredId: string | undefined
-  open: boolean
-  onOpenChange: (open: boolean) => void
+  /** Currently-selected credId(s). String for single-select, array for multi-select. */
+  value: string | string[] | undefined
+  /** Fires once per pick with the picked credId. Host decides single vs multi semantics. */
+  onPick: (credId: string) => void
+  /** Fires when the connect flow returns a new credential. */
+  onConnected?: (credId: string) => void
 }
 
 /**
- * Cog-triggered dialog that lets the agent's admin pick which credential
- * the agent runs as for one app. Workspace + the current user's personal
- * creds are shown side-by-side; selecting a connected row writes the
- * binding via `agent.update`. "Connect another account" uses
- * `ConnectButton` with popup-mode OAuth — the new credId auto-binds via
- * the `onConnected` callback without the picker reloading.
- *
- * See plans/kopilot/apps/agent-credentials.md §5.4 +
- * plans/kopilot/apps/app-settings-dialog-refactor.md §5.
+ * Command-based account picker. Renders Personal + Workspace groups of
+ * connections plus a footer group with "Connect personal/workspace account"
+ * actions. Agnostic of binding semantics — see
+ * plans/kopilot/apps/app-account-picker-command-refactor.md §3.
  */
-export function AppAccountPicker({
-  appId,
-  agentId,
-  agentSlug,
-  boundCredId,
-  open,
-  onOpenChange,
-}: AppAccountPickerProps) {
+export function AppAccountPicker({ appId, value, onPick, onConnected }: AppAccountPickerProps) {
   const { appInstallations } = useExtensionsContext()
-  const utils = api.useUtils()
-  const updateAgent = api.agent.update.useMutation()
   const { isAdminOrOwner } = useUser()
+  const options = useAppCredentialOptions(appId)
 
   const installation = useMemo(
     () => (appId ? appInstallations.find((i) => i.app.id === appId) : null),
     [appInstallations, appId]
   )
-  const options = useAppCredentialOptions(appId)
   const { user: userDef, organization: orgDef } = installation?.connectionDefinitions ?? {}
-  const appName = installation?.app.title ?? ''
+  const avatarUrl = installation?.app.avatarUrl ?? null
 
   const target: ConnectTarget | null = useMemo(() => {
     if (!installation || !appId) return null
@@ -69,165 +52,104 @@ export function AppAccountPicker({
     }
   }, [installation, appId])
 
-  const bindCredId = async (credId: string) => {
-    if (!appId) return
-    const previous = utils.agent.getById.getData({ agentId: agentSlug })
-    utils.agent.getById.setData({ agentId: agentSlug }, (old) =>
-      old ? { ...old, appAccounts: { ...old.appAccounts, [appId]: { credId } } } : old
-    )
-    try {
-      await updateAgent.mutateAsync({ agentId, appAccounts: { [appId]: { credId } } })
-    } catch (err) {
-      utils.agent.getById.setData({ agentId: agentSlug }, previous)
-      toastError({
-        title: 'Failed to set account',
-        description: err instanceof Error ? err.message : 'Unknown error',
-      })
-    }
-  }
+  const flow = useConnectFlow({
+    onConnected: (credId) => onConnected?.(credId),
+  })
 
-  const handlePick = async (cred: AppConnection) => {
-    await bindCredId(cred.id)
-    onOpenChange(false)
-  }
+  const isSelected = (credId: string) =>
+    Array.isArray(value) ? value.includes(credId) : value === credId
 
   return (
-    <Dialog open={open && !!appId} onOpenChange={onOpenChange}>
-      <DialogContent size='md' position='tc'>
-        <DialogHeader>
-          <DialogTitle>Account for {appName}</DialogTitle>
-        </DialogHeader>
-        <div className='flex flex-col gap-4'>
-          {!installation && <Skeleton className='h-20 w-full' />}
-          {installation && options.workspace.length === 0 && options.personal.length === 0 && (
-            <p className='text-sm text-muted-foreground'>
-              No accounts connected yet. Connect one below.
-            </p>
-          )}
-          {orgDef && options.workspace.length > 0 && (
-            <Section title='Workspace'>
-              {options.workspace.map((c) => (
-                <CredRow
-                  key={c.id}
-                  cred={c}
-                  selected={c.id === boundCredId}
-                  onSelect={() => handlePick(c)}
-                />
-              ))}
-            </Section>
-          )}
+    <>
+      <Command className='w-full'>
+        <CommandList className='max-h-none'>
           {userDef && options.personal.length > 0 && (
-            <Section title='My accounts'>
+            <CommandGroup heading='Personal'>
               {options.personal.map((c) => (
-                <CredRow
+                <AccountRow
                   key={c.id}
                   cred={c}
-                  selected={c.id === boundCredId}
-                  onSelect={() => handlePick(c)}
+                  avatarUrl={avatarUrl}
+                  selected={isSelected(c.id)}
+                  onSelect={() => onPick(c.id)}
                 />
               ))}
-            </Section>
+            </CommandGroup>
           )}
-          {installation && target && (
-            <div className='flex flex-col gap-2 border-t pt-4'>
-              <p className='text-xs text-muted-foreground'>Connect another account</p>
-              <div className='flex flex-wrap gap-2'>
-                {userDef && (
-                  <ConnectButton
-                    target={target}
-                    scope='user'
-                    label={
-                      <span className='inline-flex items-center gap-1.5'>
-                        <UserIcon className='size-3.5' />
-                        Connect personal {appName}
-                      </span>
-                    }
-                    onConnected={(credId) => {
-                      void bindCredId(credId)
-                    }}
-                  />
-                )}
-                {orgDef && (
-                  <ConnectButton
-                    target={target}
-                    scope='organization'
-                    disabled={!isAdminOrOwner}
-                    disabledReason='Only admins can connect workspace accounts'
-                    label={
-                      <span className='inline-flex items-center gap-1.5'>
-                        <Users className='size-3.5' />
-                        Connect workspace {appName}
-                      </span>
-                    }
-                    onConnected={(credId) => {
-                      void bindCredId(credId)
-                    }}
-                  />
-                )}
-              </div>
-            </div>
+
+          {orgDef && options.workspace.length > 0 && (
+            <CommandGroup heading='Workspace'>
+              {options.workspace.map((c) => (
+                <AccountRow
+                  key={c.id}
+                  cred={c}
+                  avatarUrl={avatarUrl}
+                  selected={isSelected(c.id)}
+                  onSelect={() => onPick(c.id)}
+                />
+              ))}
+            </CommandGroup>
           )}
-        </div>
-      </DialogContent>
-    </Dialog>
+
+          <CommandGroup>
+            {userDef && target && (
+              <CommandItem
+                onSelect={() => flow.start({ target, scope: 'user' })}
+                className='cursor-pointer h-7.5'>
+                <UserIcon className='text-muted-foreground' />
+                <span>Connect personal account</span>
+              </CommandItem>
+            )}
+            {orgDef && target && (
+              <CommandItem
+                onSelect={() => {
+                  if (isAdminOrOwner) flow.start({ target, scope: 'organization' })
+                }}
+                disabled={!isAdminOrOwner}
+                className='cursor-pointer h-7.5'>
+                <Users className='text-muted-foreground' />
+                <span>Connect workspace account</span>
+              </CommandItem>
+            )}
+          </CommandGroup>
+        </CommandList>
+      </Command>
+      {flow.Dialogs}
+    </>
   )
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div className='flex flex-col gap-1'>
-      <p className='text-xs font-medium uppercase tracking-wide text-muted-foreground'>{title}</p>
-      <div className='flex flex-col rounded-md border'>{children}</div>
-    </div>
-  )
-}
-
-function CredRow({
+function AccountRow({
   cred,
+  avatarUrl,
   selected,
   onSelect,
 }: {
   cred: AppConnection
+  avatarUrl: string | null
   selected: boolean
   onSelect: () => void
 }) {
   const bound = useBoundCredential(cred.id)
-  const statusText =
+  const status: AppConnectionStatus =
     bound.status === 'connected'
-      ? 'Connected'
+      ? 'connected'
       : bound.status === 'expired'
-        ? 'Expired'
-        : 'Not connected'
+        ? 'expired'
+        : 'not_connected'
+
   return (
-    <button
-      type='button'
-      onClick={onSelect}
-      className={cn(
-        'flex items-center justify-between gap-3 px-3 py-2 text-left hover:bg-primary-50 border-b last:border-b-0',
-        selected && 'bg-primary-50'
-      )}>
-      <div className='flex flex-col min-w-0'>
-        <span className='text-sm truncate'>{cred.label ?? cred.appName}</span>
-        {cred.connectedBy && (
-          <span className='text-xs text-muted-foreground truncate'>
-            Connected by {cred.connectedBy}
-          </span>
-        )}
-      </div>
-      <div className='flex items-center gap-2 shrink-0'>
-        <span
-          className={cn(
-            'text-xs',
-            bound.status === 'connected'
-              ? 'text-green-600'
-              : bound.status === 'expired'
-                ? 'text-amber-600'
-                : 'text-muted-foreground'
-          )}>
-          {statusText}
-        </span>
-        {selected && <Check className='size-4 text-foreground' />}
-      </div>
-    </button>
+    <CommandItem
+      value={cred.label ?? cred.appName ?? cred.id}
+      onSelect={onSelect}
+      className='cursor-pointer h-7.5'>
+      <AppIcon iconId={avatarUrl ?? 'package'} size='xs' />
+      <span className='truncate'>{cred.label ?? cred.appName}</span>
+      {selected && (
+        <div className='ml-auto rounded-full size-4 bg-info flex items-center justify-center border border-blue-800'>
+          <Check className='size-2.5! text-white' strokeWidth={4} />
+        </div>
+      )}
+    </CommandItem>
   )
 }

@@ -1,6 +1,7 @@
 // packages/lib/src/agents/agent-toolset-service.ts
 
 import {
+  type AppAccountBinding,
   type Database,
   database as defaultDb,
   schema,
@@ -11,6 +12,7 @@ import { createScopedLogger } from '@auxx/logger'
 import { eq } from 'drizzle-orm'
 import { onCacheEvent } from '../cache'
 import type { AgentToolsetConfig } from './agent-toolset-types'
+import { getOrgToolsetCatalog } from './toolset-catalog'
 
 const logger = createScopedLogger('agent-toolset-service')
 
@@ -80,15 +82,75 @@ export function applyToolsetPatch(
   return current.map((t, i) => (i === idx ? next : t))
 }
 
-async function loadToolsetsForUpdate(tx: Transaction, agentId: string): Promise<ToolsetEntry[]> {
+interface AgentToolsetRow {
+  toolsets: ToolsetEntry[]
+  appAccounts: Record<string, AppAccountBinding>
+}
+
+async function loadAgentForToolsetUpdate(
+  tx: Transaction,
+  agentId: string
+): Promise<AgentToolsetRow> {
   const [row] = await tx
-    .select({ toolsets: schema.Agent.toolsets })
+    .select({
+      toolsets: schema.Agent.toolsets,
+      appAccounts: schema.Agent.appAccounts,
+    })
     .from(schema.Agent)
     .where(eq(schema.Agent.id, agentId))
     .for('update')
     .limit(1)
   if (!row) throw new Error(`Agent not found: ${agentId}`)
-  return row.toolsets ?? []
+  return {
+    toolsets: row.toolsets ?? [],
+    appAccounts: row.appAccounts ?? {},
+  }
+}
+
+/**
+ * Drop `appAccounts[appId]` entries for any app whose last enabled toolset
+ * was just turned off. Returns the same object reference when no changes
+ * are needed so callers can skip the write.
+ */
+async function clearOrphanedAppAccounts(
+  organizationId: string,
+  prevToolsets: ToolsetEntry[],
+  nextToolsets: ToolsetEntry[],
+  appAccounts: Record<string, AppAccountBinding>,
+  patches: AgentToolsetPatch[]
+): Promise<Record<string, AppAccountBinding>> {
+  const disabledSlugs = patches.filter((p) => p.enabled === false).map((p) => p.slug)
+  if (disabledSlugs.length === 0) return appAccounts
+  if (Object.keys(appAccounts).length === 0) return appAccounts
+
+  const catalog = await getOrgToolsetCatalog(organizationId)
+  const slugToAppId = new Map(catalog.map((c) => [c.slug, c.appId]))
+
+  const affectedAppIds = new Set<string>()
+  const prevBySlug = new Map(prevToolsets.map((t) => [t.slug, t]))
+  for (const slug of disabledSlugs) {
+    if (prevBySlug.get(slug)?.enabled !== true) continue
+    const appId = slugToAppId.get(slug)
+    if (appId && appAccounts[appId]) affectedAppIds.add(appId)
+  }
+  if (affectedAppIds.size === 0) return appAccounts
+
+  const enabledAppIds = new Set<string>()
+  for (const entry of nextToolsets) {
+    if (!entry.enabled) continue
+    const appId = slugToAppId.get(entry.slug)
+    if (appId) enabledAppIds.add(appId)
+  }
+
+  let changed = false
+  const next: Record<string, AppAccountBinding> = { ...appAccounts }
+  for (const appId of affectedAppIds) {
+    if (!enabledAppIds.has(appId)) {
+      delete next[appId]
+      changed = true
+    }
+  }
+  return changed ? next : appAccounts
 }
 
 /**
@@ -102,11 +164,22 @@ export async function updateAgentToolset(
   db: Database = defaultDb as Database
 ): Promise<void> {
   await db.transaction(async (tx) => {
-    const current = await loadToolsetsForUpdate(tx, agentId)
-    const next = applyToolsetPatch(current, patch)
+    const row = await loadAgentForToolsetUpdate(tx, agentId)
+    const next = applyToolsetPatch(row.toolsets, patch)
+    const nextAppAccounts = await clearOrphanedAppAccounts(
+      organizationId,
+      row.toolsets,
+      next,
+      row.appAccounts,
+      [patch]
+    )
     await tx
       .update(schema.Agent)
-      .set({ toolsets: next, updatedAt: new Date() })
+      .set({
+        toolsets: next,
+        ...(nextAppAccounts === row.appAccounts ? {} : { appAccounts: nextAppAccounts }),
+        updatedAt: new Date(),
+      })
       .where(eq(schema.Agent.id, agentId))
   })
 
@@ -133,14 +206,25 @@ export async function batchUpdateAgentToolsets(
   db: Database = defaultDb as Database
 ): Promise<void> {
   await db.transaction(async (tx) => {
-    const current = await loadToolsetsForUpdate(tx, agentId)
-    let next = current
+    const row = await loadAgentForToolsetUpdate(tx, agentId)
+    let next = row.toolsets
     for (const patch of patches) {
       next = applyToolsetPatch(next, patch)
     }
+    const nextAppAccounts = await clearOrphanedAppAccounts(
+      organizationId,
+      row.toolsets,
+      next,
+      row.appAccounts,
+      patches
+    )
     await tx
       .update(schema.Agent)
-      .set({ toolsets: next, updatedAt: new Date() })
+      .set({
+        toolsets: next,
+        ...(nextAppAccounts === row.appAccounts ? {} : { appAccounts: nextAppAccounts }),
+        updatedAt: new Date(),
+      })
       .where(eq(schema.Agent.id, agentId))
   })
 

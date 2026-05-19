@@ -15,6 +15,7 @@ import { AgentsProvider } from '~/components/agents'
 import { useAgent } from '~/components/agents/hooks/use-agent'
 import { AgentDetailView } from '~/components/agents/ui/detail/agent-detail-view'
 import { EmptyState } from '~/components/global/empty-state'
+import { LoadingSpinner } from '~/components/global/loading-content'
 import { useUser } from '~/hooks/use-user'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
 
@@ -32,7 +33,7 @@ function AgentDetailLoader({ slug }: { slug: string }) {
           </MainPageBreadcrumb>
         </MainPageHeader>
         <MainPageContent>
-          <div className='p-6 text-sm text-muted-foreground'>Loading agent…</div>
+          <LoadingSpinner />
         </MainPageContent>
       </MainPage>
     )

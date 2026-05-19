@@ -4,9 +4,10 @@
 import type { CatalogNode } from '@auxx/lib/agents/client'
 import { EmptySection } from '@auxx/ui/components/section'
 import { Skeleton } from '@auxx/ui/components/skeleton'
+import { toastError } from '@auxx/ui/components/toast'
 import { Wrench } from 'lucide-react'
 import { useCallback, useMemo, useState } from 'react'
-import { AppAccountPicker } from '~/components/apps/ui/app-account-picker'
+import { AppAccountDialog } from '~/components/apps/ui/app-account-dialog'
 import { api } from '~/trpc/react'
 import type { AgentDetail } from '../../../store/agent-store'
 import type { AutosaveState } from '../../shared/autosave-indicator'
@@ -99,6 +100,31 @@ export function ToolsSectionContent({
 
   const [accountPickerAppId, setAccountPickerAppId] = useState<string | null>(null)
 
+  const utils = api.useUtils()
+  const updateAgent = api.agent.update.useMutation()
+
+  const bindAgentCredId = useCallback(
+    async (appId: string, credId: string) => {
+      const previous = utils.agent.getById.getData({ agentId: agent.slug })
+      utils.agent.getById.setData({ agentId: agent.slug }, (old) =>
+        old ? { ...old, appAccounts: { ...old.appAccounts, [appId]: { credId } } } : old
+      )
+      try {
+        await updateAgent.mutateAsync({
+          agentId: agent.id,
+          appAccounts: { [appId]: { credId } },
+        })
+      } catch (err) {
+        utils.agent.getById.setData({ agentId: agent.slug }, previous)
+        toastError({
+          title: 'Failed to set account',
+          description: err instanceof Error ? err.message : 'Unknown error',
+        })
+      }
+    },
+    [agent.id, agent.slug, utils, updateAgent]
+  )
+
   const toggleCollapsed = useCallback(
     (id: string) => {
       setCollapsedOverride((prev) => {
@@ -176,11 +202,14 @@ export function ToolsSectionContent({
           boundCredIdByApp={boundCredIdByApp}
         />
       ))}
-      <AppAccountPicker
+      <AppAccountDialog
         appId={accountPickerAppId}
-        agentId={agent.id}
-        agentSlug={agent.slug}
-        boundCredId={accountPickerAppId ? boundCredIdByApp[accountPickerAppId] : undefined}
+        value={accountPickerAppId ? boundCredIdByApp[accountPickerAppId] : undefined}
+        onSubmit={(next) => {
+          if (accountPickerAppId && typeof next === 'string') {
+            void bindAgentCredId(accountPickerAppId, next)
+          }
+        }}
         open={accountPickerAppId !== null}
         onOpenChange={(open) => {
           if (!open) setAccountPickerAppId(null)
