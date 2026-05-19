@@ -5,10 +5,10 @@ import { eq } from 'drizzle-orm'
 import { updateAgent } from '../../../../../agents/agent-service'
 import { resolveBuilderAvatar } from '../../../../../agents/builder-avatars'
 import { onCacheEvent } from '../../../../../cache'
+import { getRealtimeService, publishAgentUpdated } from '../../../../../realtime'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
 import { findRef } from '../../../context-refs'
 import type { GetToolDeps } from '../../types'
-import { buildAgentRailUpdate } from '../snapshot'
 
 const NAME_MAX = 100
 const DESCRIPTION_MAX = 280
@@ -133,33 +133,15 @@ active references — you do NOT pass an agentId.
       if (description !== undefined) applied.description = description
       if (avatarUrl !== undefined) applied.avatarUrl = avatarUrl
 
-      const changed: Array<'identity' | 'avatar'> = []
-      if (name !== undefined || description !== undefined) changed.push('identity')
-      if (avatarUrl !== undefined) changed.push('avatar')
-
       return {
         success: true,
         output: {
           agentId: agentRef.id,
           applied,
-          ...buildAgentRailUpdate({
-            agentId: agentRef.id,
-            changed,
-            summary: summarize(applied),
-          }),
         },
       }
     },
   }
-}
-
-function summarize(applied: Record<string, unknown>): string {
-  const parts: string[] = []
-  if (typeof applied.name === 'string') parts.push(`name: "${applied.name}"`)
-  if (typeof applied.description === 'string') parts.push('description updated')
-  if (applied.description === null) parts.push('description cleared')
-  if (typeof applied.avatarUrl === 'string') parts.push('avatar updated')
-  return parts.join(', ')
 }
 
 async function writeAgentAvatar(params: {
@@ -198,4 +180,7 @@ async function writeAgentAvatar(params: {
   }
 
   await onCacheEvent('agent.updated', { orgId: params.organizationId })
+  await publishAgentUpdated(getRealtimeService(), params.organizationId, {
+    agentId: params.agentId,
+  })
 }

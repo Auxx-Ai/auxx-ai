@@ -11,6 +11,7 @@ import {
 import { createScopedLogger } from '@auxx/logger'
 import { eq } from 'drizzle-orm'
 import { onCacheEvent } from '../cache'
+import { getRealtimeService, publishAgentUpdated } from '../realtime'
 import type { AgentToolsetConfig } from './agent-toolset-types'
 import { getOrgToolsetCatalog } from './toolset-catalog'
 
@@ -192,6 +193,7 @@ export async function updateAgentToolset(
       error: err instanceof Error ? err.message : String(err),
     })
   }
+  await publishAgentUpdated(getRealtimeService(), organizationId, { agentId })
 }
 
 /**
@@ -237,4 +239,5 @@ export async function batchUpdateAgentToolsets(
       error: err instanceof Error ? err.message : String(err),
     })
   }
+  await publishAgentUpdated(getRealtimeService(), organizationId, { agentId })
 }

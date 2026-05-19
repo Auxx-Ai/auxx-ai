@@ -10,6 +10,7 @@ import {
 import { createScopedLogger } from '@auxx/logger'
 import { eq } from 'drizzle-orm'
 import { onCacheEvent } from '../cache'
+import { getRealtimeService, publishAgentUpdated } from '../realtime'
 
 const logger = createScopedLogger('agent-scope-service')
 
@@ -171,6 +172,7 @@ async function fireAgentUpdated(organizationId: string, agentId: string): Promis
       error: err instanceof Error ? err.message : String(err),
     })
   }
+  await publishAgentUpdated(getRealtimeService(), organizationId, { agentId })
 }
 
 export class ScopeRowImmutableError extends Error {

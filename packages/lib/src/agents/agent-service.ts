@@ -14,6 +14,7 @@ import { generateId } from '@auxx/utils'
 import { and, eq, inArray, isNull, or } from 'drizzle-orm'
 import { getAllCachedAgents, getCachedAgentById, getCachedAgents, onCacheEvent } from '../cache'
 import { BadRequestError, ForbiddenError } from '../errors'
+import { getRealtimeService, publishAgentUpdated } from '../realtime'
 import { resolveDefaultToolsets } from './default-toolsets'
 import { reconcilePromptMentions, type ToolsetSource } from './prompt-mention-reconciler'
 import { getOrgToolCatalog } from './toolset-catalog'
@@ -195,6 +196,7 @@ export async function createAgent(
       error: err instanceof Error ? err.message : String(err),
     })
   }
+  await publishAgentUpdated(getRealtimeService(), organizationId, { agentId })
 
   return { agentId, userId: null, toolsetSlugs, toolsetSource }
 }
@@ -344,6 +346,7 @@ export async function updateAgent(
       error: err instanceof Error ? err.message : String(err),
     })
   }
+  await publishAgentUpdated(getRealtimeService(), organizationId, { agentId })
 }
 
 /**
@@ -460,6 +463,7 @@ export async function completeAgentSetup(
       error: err instanceof Error ? err.message : String(err),
     })
   }
+  await publishAgentUpdated(getRealtimeService(), organizationId, { agentId })
 }
 
 /**
@@ -533,6 +537,7 @@ export async function deleteDraftAgent(
       error: err instanceof Error ? err.message : String(err),
     })
   }
+  await publishAgentUpdated(getRealtimeService(), organizationId, { agentId })
 
   return { deleted: true }
 }

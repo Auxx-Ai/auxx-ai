@@ -259,3 +259,19 @@ export type MailSyncEvent =
   | MessageDeletedEvent
   | ParticipantUpdatedEvent
   | MailBatchEvent
+
+// ════════════════════════════════════════════════════════════════════════════
+// Agent admin events (org channel)
+// ════════════════════════════════════════════════════════════════════════════
+
+/**
+ * An agent's admin-view fields changed (prompt / toolsets / knowledge /
+ * identity / triggers / archive state). Fires from every server path that
+ * already calls `onCacheEvent('agent.created' | 'agent.updated' |
+ * 'agent.archived', …)`. The client uses this only as a refresh signal;
+ * the payload carries nothing the rail needs to apply directly.
+ */
+export interface AgentUpdatedEvent {
+  event: 'agent:updated'
+  data: { agentId: string }
+}
