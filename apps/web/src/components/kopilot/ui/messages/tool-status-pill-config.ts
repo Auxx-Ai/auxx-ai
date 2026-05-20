@@ -10,8 +10,13 @@ export interface ToolPillLabels {
 }
 
 export interface ToolPillConfig {
-  /** Lucide icon name — resolved to component in the pill */
-  icon: string
+  /**
+   * Lucide icon name for built-in tools that have a per-tool entry below.
+   * App-backed tools get their icon from the cached app catalog via the
+   * pill's `iconId` prop instead, so this field is optional and unused for
+   * the fallback config.
+   */
+  icon?: string
   labels: ToolPillLabels
 }
 
@@ -215,19 +220,29 @@ function formatToolName(name: string): string {
   return name.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
 }
 
-/** Returns config for a tool, or a generic fallback */
-export function getToolPillConfig(toolName: string): ToolPillConfig {
-  return (
-    configs[toolName] ?? {
-      icon: 'Wrench',
-      labels: {
-        running: () => ({ label: formatToolName(toolName) }),
-        completed: (_args, summary) => ({
-          label: `${formatToolName(toolName)} completed`,
-          secondary: summary,
-        }),
-        error: () => ({ label: `Failed: ${formatToolName(toolName)}` }),
-      },
-    }
-  )
+/**
+ * Returns config for a tool, or a generic fallback. When the caller passes a
+ * `displayName` (resolved via `useToolAppResolver` for app-backed tools), the
+ * fallback uses it verbatim — so an app tool like
+ * `gog_contacts_search_google_contacts` renders as "Search Google Contacts",
+ * not "Gog Contacts Search Google Contacts". The app prefix is conveyed
+ * visually by the `<AppIcon>` next to the label.
+ */
+export function getToolPillConfig(
+  toolName: string,
+  options?: { displayName?: string }
+): ToolPillConfig {
+  const existing = configs[toolName]
+  if (existing) return existing
+  const label = options?.displayName ?? formatToolName(toolName)
+  return {
+    labels: {
+      running: () => ({ label }),
+      // Bare `label` here; the secondary slot already carries "Completed"
+      // (or a richer per-tool summary) from `summarizeToolResult`, so a
+      // `${label} completed` headline would just stack a duplicate.
+      completed: (_args, summary) => ({ label, secondary: summary }),
+      error: () => ({ label: `Failed: ${label}` }),
+    },
+  }
 }

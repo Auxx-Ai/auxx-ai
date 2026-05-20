@@ -198,6 +198,26 @@ export interface CachedSystemModelDefault {
   updatedAt: string
 }
 
+/**
+ * Cached agent-tool projection: the source `CatalogAgentTool` plus two
+ * pre-resolved view-model fields the kopilot UI consumes directly without
+ * re-encoding or walking the toolset list.
+ *
+ *  - `registeredName` — the LLM-facing name the bridge registers this tool
+ *    under (`getRegisteredToolName(appSlug, tool.id)`). Stamped here so the
+ *    client `useToolAppResolver` hook can do `Map<registeredName, …>`
+ *    lookups against `ToolCallPart.name` without duplicating the encoding.
+ *  - `iconId` — the resolved icon to render in `<AppIcon>`: toolset's own
+ *    `iconKey` wins (multi-toolset apps like Workspace ship distinct
+ *    Mail/Calendar/Drive icons), falls back to the app's `avatarUrl`, then
+ *    to the Lucide `'package'` glyph so the component always has something
+ *    to render.
+ */
+export interface CachedAgentTool extends CatalogAgentTool {
+  registeredName: string
+  iconId: string
+}
+
 /** Cached installed app shape (JSON-serializable) */
 export interface CachedInstalledApp {
   installationId: string
@@ -259,7 +279,7 @@ export interface CachedInstalledApp {
    *
    * See plans/kopilot/agents/triggers/app-surface-implementation-plan.md §5.3.
    */
-  agentTools?: CatalogAgentTool[]
+  agentTools?: CachedAgentTool[]
   agentToolsets?: CatalogToolset[]
   agentTriggers?: CatalogTriggerProjection[]
   workflowBlocks?: CatalogBlock[]

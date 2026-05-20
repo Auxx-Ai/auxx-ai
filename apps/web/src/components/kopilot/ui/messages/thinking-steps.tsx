@@ -6,7 +6,10 @@ import { cn } from '@auxx/ui/lib/utils'
 import { ChevronRight, Loader2 } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import type React from 'react'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
+import { AppIcon } from '~/components/apps/ui/app-icon'
+import { Tooltip } from '~/components/global/tooltip'
+import { useToolAppResolver } from '../../hooks/use-tool-app-resolver'
 import type { KopilotMessage, ToolCallPart } from '../../stores/kopilot-store'
 import { type ApprovalCardProps, getApprovalCard } from '../blocks/approval-card-registry'
 import { GenericApprovalCard } from '../blocks/generic-approval-card'
@@ -64,11 +67,32 @@ export function ThinkingSteps({
   onApproval,
 }: ThinkingStepsProps) {
   const [isOpen, setIsOpen] = useState(isRunning)
+  const { resolve } = useToolAppResolver()
 
   const totalCount = steps.length
   const completedCount = steps.filter(
     (s) => s.toolCall.status === 'completed' || s.toolCall.status === 'error'
   ).length
+
+  // Unique app icons touched in this run, in first-touched order. Built-in
+  // tools (no resolver match) are intentionally skipped — the stack's purpose
+  // is to show *which third-party apps* the agent reached for.
+  const appIcons = useMemo(() => {
+    const seen = new Set<string>()
+    const out: { appId: string; iconId: string; title: string }[] = []
+    for (const step of steps) {
+      const r = resolve(step.toolCall.name)
+      if (!r) continue
+      if (seen.has(r.installation.app.id)) continue
+      seen.add(r.installation.app.id)
+      out.push({
+        appId: r.installation.app.id,
+        iconId: r.iconId,
+        title: r.appTitle,
+      })
+    }
+    return out
+  }, [steps, resolve])
 
   if (totalCount === 0 && !pendingThinking?.trim()) return null
 
@@ -106,6 +130,24 @@ export function ThinkingSteps({
           'flex items-center gap-1 rounded-md px-1 py-0.5 text-xs',
           'text-muted-foreground hover:bg-muted/50'
         )}>
+        {appIcons.length > 0 && (
+          <span className='flex items-center -space-x-1 mr-1'>
+            {appIcons.slice(0, 4).map((a) => (
+              <Tooltip key={a.appId} content={a.title} side='top'>
+                <AppIcon
+                  iconId={a.iconId}
+                  size='xs'
+                  className='ring-1 ring-background rounded-sm'
+                />
+              </Tooltip>
+            ))}
+            {appIcons.length > 4 && (
+              <span className='text-[10px] text-muted-foreground pl-1.5'>
+                +{appIcons.length - 4}
+              </span>
+            )}
+          </span>
+        )}
         {isRunning && <Loader2 className='size-3 animate-spin' />}
         <AnimatePresence mode='popLayout'>
           <motion.span
@@ -148,6 +190,7 @@ export function ThinkingSteps({
                     toolCall.output,
                     toolCall.digest
                   )
+                  const resolved = resolve(toolCall.name)
                   return (
                     <motion.div
                       key={step.id}
@@ -165,6 +208,9 @@ export function ThinkingSteps({
                             entities,
                           },
                         }}
+                        iconId={resolved?.iconId}
+                        color={resolved?.color}
+                        displayName={resolved?.displayName}
                       />
                       {step.thinking?.trim() && (
                         <p className='py-1 pl-2 text-xs text-muted-foreground/70 italic leading-relaxed'>

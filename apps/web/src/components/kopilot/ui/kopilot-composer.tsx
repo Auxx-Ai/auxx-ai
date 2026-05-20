@@ -474,8 +474,8 @@ export function KopilotComposer({ ref, page, onSend, contentClassName }: Kopilot
         }}
       />
       <KopilotContextChipStrip />
-      <div className='relative flex flex-row items-end rounded-xl border min-h-[120px] bg-primary-150  focus-within:border-info'>
-        <div className='relative flex flex-1 flex-col self-stretch'>
+      <div className='relative flex flex-col rounded-xl border min-h-[120px] bg-primary-150 focus-within:border-info'>
+        <div className='relative flex flex-1 flex-col min-h-0'>
           {editingMessageId && (
             <div className='flex items-center justify-between border-b px-3 py-1.5 text-xs text-muted-foreground'>
               <span>Editing message</span>
@@ -555,61 +555,63 @@ export function KopilotComposer({ ref, page, onSend, contentClassName }: Kopilot
             </InlinePickerPopover>
           )}
         </div>
-        <div className='absolute bottom-1 left-1 flex items-center gap-0.5'>
-          {allowModelPicker && (
-            <AiModelPicker
-              value={selectedModelId ?? systemLlmDefault}
-              onChange={handleModelFilter}
-              modelTypes={[ModelType.LLM]}
-              triggerVariant='transparent'
-              triggerClassName='h-7 text-xs text-muted-foreground'
-              compact
-              skipDeprecated
-            />
-          )}
-          {allowSenderPicker && (
-            <SenderPicker
-              displayActorId={displayActorId}
-              isLocked={isSenderLocked}
-              open={isSenderPickerOpen}
-              onOpenChange={setIsSenderPickerOpen}
-              onSelect={(actorId) => {
-                setSelectedAgentActorId(actorId)
-                setIsSenderPickerOpen(false)
-              }}
-              onClear={() => setSelectedAgentActorId(null)}
-            />
-          )}
-        </div>
-        <div className='absolute bottom-1 right-1 flex items-center gap-0.5'>
-          {allowSlashCommands && (
-            <Tooltip content='Insert prompt template' shortcut='/' allowInteraction>
+        <div className='flex items-center justify-between p-1 '>
+          <div className='flex items-center gap-0.5 overflow-y-auto no-scrollbar overscroll-contain'>
+            {allowModelPicker && (
+              <AiModelPicker
+                value={selectedModelId ?? systemLlmDefault}
+                onChange={handleModelFilter}
+                modelTypes={[ModelType.LLM]}
+                triggerVariant='transparent'
+                triggerClassName='h-7 text-xs text-muted-foreground'
+                compact
+                skipDeprecated
+              />
+            )}
+            {allowSenderPicker && (
+              <SenderPicker
+                displayActorId={displayActorId}
+                isLocked={isSenderLocked}
+                open={isSenderPickerOpen}
+                onOpenChange={setIsSenderPickerOpen}
+                onSelect={(actorId) => {
+                  setSelectedAgentActorId(actorId)
+                  setIsSenderPickerOpen(false)
+                }}
+                onClear={() => setSelectedAgentActorId(null)}
+              />
+            )}
+          </div>
+          <div className='flex items-center gap-0.5 shrink-0'>
+            {allowSlashCommands && (
+              <Tooltip content='Insert prompt template' shortcut='/' allowInteraction>
+                <Button
+                  size='icon-sm'
+                  variant='ghost'
+                  className='shrink-0'
+                  onMouseDown={(e) => {
+                    // Prevent editor blur — keeps the Suggestion plugin state
+                    // alive so inserting "/" opens the picker.
+                    e.preventDefault()
+                    handleInsertSlash()
+                  }}
+                  disabled={isStreaming}
+                  title='Insert prompt template'>
+                  <SquareSlash />
+                </Button>
+              </Tooltip>
+            )}
+            <Tooltip content='Send message' shortcut={<CornerDownLeft className='size-4' />}>
               <Button
                 size='icon-sm'
                 variant='ghost'
                 className='shrink-0'
-                onMouseDown={(e) => {
-                  // Prevent editor blur — keeps the Suggestion plugin state
-                  // alive so inserting "/" opens the picker.
-                  e.preventDefault()
-                  handleInsertSlash()
-                }}
-                disabled={isStreaming}
-                title='Insert prompt template'>
-                <SquareSlash />
+                onClick={handleSend}
+                disabled={isStreaming || isEmpty}>
+                <Send />
               </Button>
             </Tooltip>
-          )}
-          <Tooltip content='Send message' shortcut={<CornerDownLeft className='size-4' />}>
-            <Button
-              size='icon-sm'
-              variant='ghost'
-              className='shrink-0'
-              onClick={handleSend}
-              disabled={isStreaming || isEmpty}>
-              <Send />
-            </Button>
-          </Tooltip>
+          </div>
         </div>
       </div>
       {promptDialogOpen && (

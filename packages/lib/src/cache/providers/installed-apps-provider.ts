@@ -2,7 +2,8 @@
 
 import { schema } from '@auxx/database'
 import { and, eq, inArray, isNull } from 'drizzle-orm'
-import type { CachedInstalledApp } from '../org-cache-keys'
+import { getRegisteredToolName } from '../../ai/kopilot/capabilities/apps/tool-naming'
+import type { CachedAgentTool, CachedInstalledApp } from '../org-cache-keys'
 import type { CacheProvider } from '../org-cache-provider'
 
 /**
@@ -86,53 +87,72 @@ export const installedAppsProvider: CacheProvider<CachedInstalledApp[]> = {
     }
 
     // 3. Build serializable output
-    return installations.map((inst) => ({
-      installationId: inst.id,
-      installationType: inst.installationType as 'development' | 'production',
-      installedAt: inst.installedAt.toISOString(),
-      app: {
-        id: inst.app.id,
-        slug: inst.app.slug,
-        title: inst.app.title,
-        description: inst.app.description,
-        avatarUrl: inst.app.avatarUrl,
-        category: inst.app.category,
-      },
-      currentDeployment: inst.currentDeployment
-        ? {
-            id: inst.currentDeployment.id,
-            version: inst.currentDeployment.version,
-            deploymentType: inst.currentDeployment.deploymentType,
-            status: inst.currentDeployment.status,
-            clientBundleSha: inst.currentDeployment.clientBundle.sha256,
-            serverBundleSha: inst.currentDeployment.serverBundle.sha256,
-            createdAt: inst.currentDeployment.createdAt.toISOString(),
+    return installations.map((inst) => {
+      // Pre-resolve per-tool icon cascade once per app: toolset.iconKey →
+      // app.avatarUrl → 'package'. Same cascade as the admin tools tree
+      // (packages/lib/src/agents/toolset-catalog.ts:276-288) so the kopilot
+      // pill matches what users see in settings.
+      const appIconId = inst.app.avatarUrl ?? 'package'
+      const toolsetIconBySlug = new Map(
+        (inst.currentDeployment?.catalog?.agent.toolsets ?? []).map(
+          (ts) => [ts.slug, ts.iconKey] as const
+        )
+      )
+      const agentTools: CachedAgentTool[] | undefined =
+        inst.currentDeployment?.catalog?.agent.tools.map((t) => ({
+          ...t,
+          registeredName: getRegisteredToolName(inst.app.slug, t.id),
+          iconId: toolsetIconBySlug.get(t.toolsetSlug) ?? appIconId,
+        })) ?? undefined
+
+      return {
+        installationId: inst.id,
+        installationType: inst.installationType as 'development' | 'production',
+        installedAt: inst.installedAt.toISOString(),
+        app: {
+          id: inst.app.id,
+          slug: inst.app.slug,
+          title: inst.app.title,
+          description: inst.app.description,
+          avatarUrl: inst.app.avatarUrl,
+          category: inst.app.category,
+        },
+        currentDeployment: inst.currentDeployment
+          ? {
+              id: inst.currentDeployment.id,
+              version: inst.currentDeployment.version,
+              deploymentType: inst.currentDeployment.deploymentType,
+              status: inst.currentDeployment.status,
+              clientBundleSha: inst.currentDeployment.clientBundle.sha256,
+              serverBundleSha: inst.currentDeployment.serverBundle.sha256,
+              createdAt: inst.currentDeployment.createdAt.toISOString(),
+            }
+          : null,
+        connectionDefinitions: (() => {
+          const defs = connDefsByAppId.get(inst.app.id) ?? {}
+          const toCached = (def: (typeof connectionDefs)[0] | undefined) =>
+            def
+              ? {
+                  label: def.label,
+                  global: def.global,
+                  connectionType: def.connectionType,
+                  oauth2Features: def.oauth2Features as Record<string, unknown> | null,
+                }
+              : undefined
+          return {
+            user: toCached(defs.user),
+            organization: toCached(defs.organization),
           }
-        : null,
-      connectionDefinitions: (() => {
-        const defs = connDefsByAppId.get(inst.app.id) ?? {}
-        const toCached = (def: (typeof connectionDefs)[0] | undefined) =>
-          def
-            ? {
-                label: def.label,
-                global: def.global,
-                connectionType: def.connectionType,
-                oauth2Features: def.oauth2Features as Record<string, unknown> | null,
-              }
-            : undefined
-        return {
-          user: toCached(defs.user),
-          organization: toCached(defs.organization),
-        }
-      })(),
-      agentTools: inst.currentDeployment?.catalog?.agent.tools ?? undefined,
-      agentToolsets: inst.currentDeployment?.catalog?.agent.toolsets ?? undefined,
-      agentTriggers: inst.currentDeployment?.catalog?.agent.triggers ?? undefined,
-      workflowBlocks: inst.currentDeployment?.catalog?.workflow.blocks ?? undefined,
-      workflowTriggers: inst.currentDeployment?.catalog?.workflow.triggers ?? undefined,
-      actions: inst.currentDeployment?.catalog?.actions ?? undefined,
-      orgConnectionPresent: orgConnByAppId.get(inst.app.id)?.present ?? false,
-      orgConnectionExpiresAt: orgConnByAppId.get(inst.app.id)?.expiresAt?.toISOString() ?? null,
-    }))
+        })(),
+        agentTools,
+        agentToolsets: inst.currentDeployment?.catalog?.agent.toolsets ?? undefined,
+        agentTriggers: inst.currentDeployment?.catalog?.agent.triggers ?? undefined,
+        workflowBlocks: inst.currentDeployment?.catalog?.workflow.blocks ?? undefined,
+        workflowTriggers: inst.currentDeployment?.catalog?.workflow.triggers ?? undefined,
+        actions: inst.currentDeployment?.catalog?.actions ?? undefined,
+        orgConnectionPresent: orgConnByAppId.get(inst.app.id)?.present ?? false,
+        orgConnectionExpiresAt: orgConnByAppId.get(inst.app.id)?.expiresAt?.toISOString() ?? null,
+      }
+    })
   },
 }

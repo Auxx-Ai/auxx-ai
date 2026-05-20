@@ -2,29 +2,9 @@
 
 'use client'
 
-import {
-  BookOpen,
-  Check,
-  Columns3,
-  Database,
-  FileEdit,
-  FileText,
-  LayoutGrid,
-  Loader2,
-  type LucideIcon,
-  Mail,
-  MailCheck,
-  MailOpen,
-  Pencil,
-  PencilLine,
-  PenTool,
-  Plus,
-  Search,
-  Send,
-  Wrench,
-  X,
-} from 'lucide-react'
+import { Check, Loader2, X } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
+import { AppIcon } from '~/components/apps/ui/app-icon'
 import { getToolPillConfig } from './tool-status-pill-config'
 
 /**
@@ -43,35 +23,30 @@ interface ThinkingStep {
   }
 }
 
-const iconMap: Record<string, LucideIcon> = {
-  Mail,
-  MailOpen,
-  MailCheck,
-  PenTool,
-  Send,
-  BookOpen,
-  LayoutGrid,
-  Columns3,
-  Search,
-  Database,
-  FileEdit,
-  FileText,
-  Plus,
-  Pencil,
-  PencilLine,
-  Wrench,
-}
-
 interface ToolStatusPillProps {
   step: ThinkingStep
+  /**
+   * Resolved icon for the tool, in `<AppIcon iconId>` shape (Lucide name,
+   * url:..., https:// URL, base64, or emoji). Supplied by `thinking-steps`
+   * via `useToolAppResolver` for app-backed tools; built-in tools fall back
+   * to the per-tool config's Lucide name, or the generic `'wrench'`.
+   */
+  iconId?: string | null
+  color?: string
+  /**
+   * Human label for app-backed tools (e.g. "Search Google Contacts"). Used
+   * by the fallback config when no per-tool entry exists so labels never
+   * include the snake-case `appSlug_` prefix.
+   */
+  displayName?: string
 }
 
-export function ToolStatusPill({ step }: ToolStatusPillProps) {
+export function ToolStatusPill({ step, iconId, color, displayName }: ToolStatusPillProps) {
   if (!step.tool) return null
 
   const { name, args, status, summary } = step.tool
-  const config = getToolPillConfig(name)
-  const Icon = iconMap[config.icon] ?? Wrench
+  const config = getToolPillConfig(name, { displayName })
+  const resolvedIconId = iconId ?? config.icon ?? 'wrench'
 
   const labelData =
     status === 'running'
@@ -97,7 +72,7 @@ export function ToolStatusPill({ step }: ToolStatusPillProps) {
           {status === 'error' && <X className='size-3 text-destructive' />}
         </motion.span>
       </AnimatePresence>
-      <Icon className='size-3 shrink-0 text-muted-foreground' />
+      <AppIcon iconId={resolvedIconId} color={color} size='xs' />
       <span className='font-medium text-foreground/80 shrink-0'>{labelData.label}</span>
       {labelData.secondary && (
         <span className='truncate text-muted-foreground'>{labelData.secondary}</span>
