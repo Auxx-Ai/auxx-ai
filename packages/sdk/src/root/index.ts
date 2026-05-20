@@ -74,6 +74,7 @@ export type {
   WorkflowBlockConfig,
   WorkflowBooleanNode,
   WorkflowCategory,
+  WorkflowExecuteContext,
   WorkflowExecuteFunction,
   WorkflowExecutionContext,
   WorkflowFieldNode,
