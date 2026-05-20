@@ -8,10 +8,12 @@ import type { CacheProvider } from '../org-cache-provider'
 /**
  * Computes installed apps with connection definitions for an organization.
  *
- * Extended for the AI tool bridge (decision B2 in
+ * Extended for the app surface bridge (decision B2 in
  * `plans/kopilot/agents/tool-loading-and-execution.md` §3):
- * each row now carries the deployment's AI tool catalog plus a denormalized
- * `orgConnectionPresent` / `orgConnectionExpiresAt` via a left join on
+ * each row carries surface projections from the deployment's static catalog
+ * (`agentTools`, `agentToolsets`, `agentTriggers`, `workflowBlocks`,
+ * `workflowTriggers`, `actions`) plus a denormalized `orgConnectionPresent` /
+ * `orgConnectionExpiresAt` via a left join on
  * `WorkflowCredentials WHERE userId IS NULL`. User-scope presence stays a
  * per-request direct DB hit (decision G2).
  */
@@ -123,8 +125,12 @@ export const installedAppsProvider: CacheProvider<CachedInstalledApp[]> = {
           organization: toCached(defs.organization),
         }
       })(),
-      aiTools: inst.currentDeployment?.aiTools?.tools ?? undefined,
-      aiToolsets: inst.currentDeployment?.aiTools?.toolsets ?? undefined,
+      agentTools: inst.currentDeployment?.catalog?.agent.tools ?? undefined,
+      agentToolsets: inst.currentDeployment?.catalog?.agent.toolsets ?? undefined,
+      agentTriggers: inst.currentDeployment?.catalog?.agent.triggers ?? undefined,
+      workflowBlocks: inst.currentDeployment?.catalog?.workflow.blocks ?? undefined,
+      workflowTriggers: inst.currentDeployment?.catalog?.workflow.triggers ?? undefined,
+      actions: inst.currentDeployment?.catalog?.actions ?? undefined,
       orgConnectionPresent: orgConnByAppId.get(inst.app.id)?.present ?? false,
       orgConnectionExpiresAt: orgConnByAppId.get(inst.app.id)?.expiresAt?.toISOString() ?? null,
     }))

@@ -127,9 +127,15 @@ async function executeInSandbox(
     // }
 
     // 6. Execute the workflow block
-    // Note: Context is no longer passed - SDK functions read from global.AUXX_SERVER_SDK
+    // Pass a thin `ctx` second arg exposing `runTool` so router-style blocks
+    // (impl plan §6.3) can do `ctx.runTool(toolId, input)` to dispatch into
+    // __AUXX_TOOLS__ inside the same sandbox. The same helper is also
+    // reachable via `globalThis.__AUXX_WORKFLOW_SDK__.runTool`; both paths
+    // share one implementation in `runtime-helpers/workflow-sdk.ts`.
+    const sdk = (globalThis as any).__AUXX_WORKFLOW_SDK__
+    const blockCtx = { runTool: sdk.runTool }
     console.log('[WorkflowBlockExecutor] Executing workflow block:', blockId)
-    const output = await workflowBlock.execute(workflowInput)
+    const output = await workflowBlock.execute(workflowInput, blockCtx)
 
     // 7. Get captured logs from console interception
     const consoleLogs = getCapturedLogs()

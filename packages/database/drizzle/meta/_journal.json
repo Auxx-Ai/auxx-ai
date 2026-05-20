@@ -1135,6 +1135,13 @@
       "when": 1779229175129,
       "tag": "0161_add_kopilot_setting_scope",
       "breakpoints": true
+    },
+    {
+      "idx": 162,
+      "version": "7",
+      "when": 1779231574459,
+      "tag": "0162_rename_aiTools_to_catalog",
+      "breakpoints": true
     }
   ]
 }

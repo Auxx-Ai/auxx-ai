@@ -1,22 +1,20 @@
-// apps/lambda/src/executors/ai-tool-executor.ts
+// apps/lambda/src/executors/tool-executor.ts
 
 /**
- * AI tool executor for the Lambda runtime.
+ * Unified tool executor for the Lambda runtime.
  *
- * Loads the bundled app's `__AUXX_AI_TOOLS__` registry, looks up the requested
+ * Loads the bundled app's `__AUXX_TOOLS__` registry, looks up the requested
  * tool by id, and calls `tool.execute(input, ctx)` with the Workflow SDK
- * injected — same shape as workflow blocks. The result flows back through
- * `invokeLambdaExecutor` (buffered) or `invokeLambdaExecutorStreaming` on the
- * caller side.
+ * injected — same sandbox shape as workflow blocks.
  *
- * Two entry points:
- *   - `executeAiTool` — buffered: awaits a single value (or drains a streaming
- *     tool's generator and returns its final value).
- *   - `executeAiToolStreaming` — async generator: yields one envelope per
- *     progress event from a streaming tool, then returns the final result.
+ * The executor discriminates on `invocationContext.kind`:
+ *   - 'agent'  — LLM-driven invocation (Kopilot bridge caller).
+ *   - 'action' — quick-action button invocation (ticket / email editor).
  *
- * Pattern-matched against `workflow-block-executor.ts`. See plans/kopilot/apps/README.md §6
- * and plans/kopilot/agents/tool-loading-and-execution.md §6 (decision E1).
+ * Two entry points (buffered + streaming) mirror `ai-tool-executor.ts`.
+ *
+ * Replaces `ai-tool-executor.ts` and `quick-action-executor.ts` once callers
+ * migrate (T7/T8). Old files stay in place until T12 strips them.
  */
 
 import {
@@ -31,10 +29,10 @@ import {
 } from '../runtime-helpers/workflow-sdk.ts'
 import type { ExecutionResult } from '../types.ts'
 import { parseError } from '../utils.ts'
-import type { AiToolExecutionEvent } from '../validator.ts'
+import type { ToolExecutionEvent, ToolInvocationContext } from '../validator.ts'
 
 /** A streaming tool's progress payload — passed through verbatim to the caller. */
-export interface AiToolStreamProgress {
+export interface ToolStreamProgress {
   kind?: string
   data: unknown
 }
@@ -48,7 +46,7 @@ function setupSandbox(
   bundleCode: string,
   toolId: string,
   context: unknown,
-  kopilotContext: AiToolExecutionEvent['kopilotContext']
+  invocationContext: ToolInvocationContext | null | undefined
 ): SetupResult {
   const ctx = context as {
     userId?: string
@@ -57,10 +55,21 @@ function setupSandbox(
     organizationId: string
     organizationHandle: string
   }
+
+  // Reuse the workflow execution context shape; nodeId carries the tool id,
+  // executionId carries an invocation marker (kopilot session, ticket thread,
+  // or `tool` when neither surface supplies one).
+  const executionId =
+    invocationContext?.kind === 'agent'
+      ? (invocationContext.sessionId ?? 'agent')
+      : invocationContext?.kind === 'action'
+        ? (invocationContext.threadId ?? 'action')
+        : 'tool'
+
   const executionContext = createWorkflowExecutionContext(
     {
-      workflowId: 'kopilot',
-      executionId: kopilotContext?.sessionId ?? 'ai-tool',
+      workflowId: invocationContext?.kind === 'agent' ? 'kopilot' : 'quick-action',
+      executionId,
       nodeId: toolId,
       variables: {},
       user: {
@@ -80,29 +89,29 @@ function setupSandbox(
   injectServerRuntimeHelpers(executionContext)
   injectWorkflowSDK(executionContext)
 
-  // Mirrors workflow-block-executor — append `return { __AUXX_AI_TOOLS__ }`
+  // Mirrors workflow-block-executor — append `return { __AUXX_TOOLS__ }`
   // so we extract the registry from the bundle's top-level scope.
-  const codeWithReturn = bundleCode + '\nreturn { __AUXX_AI_TOOLS__ };'
+  const codeWithReturn = bundleCode + '\nreturn { __AUXX_TOOLS__ };'
   const fn = new Function(codeWithReturn)
   const result = fn()
-  const aiTools = result.__AUXX_AI_TOOLS__
+  const tools = result.__AUXX_TOOLS__
 
-  if (!aiTools) {
+  if (!tools) {
     cleanupWorkflowSDK()
     cleanupServerRuntimeHelpers()
-    throw new Error('Server bundle does not export AI tools (__AUXX_AI_TOOLS__)')
+    throw new Error('Server bundle does not export tools (__AUXX_TOOLS__)')
   }
 
-  const tool = aiTools[toolId]
+  const tool = tools[toolId]
   if (!tool) {
     cleanupWorkflowSDK()
     cleanupServerRuntimeHelpers()
-    throw new Error(`AI tool not found: ${toolId}`)
+    throw new Error(`Tool not found: ${toolId}`)
   }
   if (typeof tool.execute !== 'function') {
     cleanupWorkflowSDK()
     cleanupServerRuntimeHelpers()
-    throw new Error(`AI tool ${toolId} does not have an execute function`)
+    throw new Error(`Tool ${toolId} does not have an execute function`)
   }
 
   return {
@@ -121,8 +130,6 @@ function isAsyncGenerator(value: unknown): value is AsyncGenerator<unknown, unkn
 }
 
 function buildRuntimeErrorResult(error: unknown, consoleLogs: ReturnType<typeof getCapturedLogs>) {
-  // Preserve the typed error envelope `invokeLambdaExecutor` already maps
-  // to CONNECTION_REQUIRED. See plans/kopilot/apps/credentials.md §3.5.
   if (error instanceof Error && error.name === 'BlockRuntimeError') {
     return {
       result: null,
@@ -138,21 +145,24 @@ function buildRuntimeErrorResult(error: unknown, consoleLogs: ReturnType<typeof 
   return null
 }
 
-export async function executeAiTool(
-  options: Omit<AiToolExecutionEvent, 'context' | 'serverBundleSha'> & {
+export async function executeTool(
+  options: Omit<ToolExecutionEvent, 'context' | 'serverBundleSha'> & {
     bundleCode: string
     context: unknown
   }
 ): Promise<ExecutionResult> {
-  const { bundleCode, toolId, toolInput, context, timeout, kopilotContext } = options
+  const { bundleCode, toolId, inputs, context, timeout, invocationContext } = options
 
-  console.log('[AiToolExecutor] Starting execution:', { toolId })
+  console.log('[ToolExecutor] Starting execution:', {
+    toolId,
+    kind: invocationContext?.kind ?? 'none',
+  })
 
-  const setup = setupSandbox(bundleCode, toolId, context, kopilotContext)
+  const setup = setupSandbox(bundleCode, toolId, context, invocationContext)
 
   const executionPromise = (async (): Promise<ExecutionResult> => {
     try {
-      const exec = setup.tool.execute(toolInput)
+      const exec = setup.tool.execute(inputs)
       let output: unknown
       if (isAsyncGenerator(exec)) {
         // Buffered path consuming a streaming tool — drain the generator,
@@ -172,7 +182,7 @@ export async function executeAiTool(
     } catch (error) {
       const consoleLogs = getCapturedLogs()
       const { message } = parseError(error)
-      console.error('[AiToolExecutor] Execution failed:', message)
+      console.error('[ToolExecutor] Execution failed:', message)
       const runtime = buildRuntimeErrorResult(error, consoleLogs)
       if (runtime) return runtime
       throw error
@@ -182,10 +192,10 @@ export async function executeAiTool(
   })()
 
   const timeoutPromise = new Promise<never>((_, reject) => {
-    setTimeout(() => reject(new Error(`AI tool execution timeout after ${timeout}ms`)), timeout)
+    setTimeout(() => reject(new Error(`Tool execution timeout after ${timeout}ms`)), timeout)
   })
   const result = await Promise.race([executionPromise, timeoutPromise])
-  console.log('[AiToolExecutor] Execution complete:', { toolId })
+  console.log('[ToolExecutor] Execution complete:', { toolId })
   return result
 }
 
@@ -193,42 +203,45 @@ export async function executeAiTool(
  * Streaming variant — yields each progress event from a streaming tool's
  * generator, then returns the final `ExecutionResult`. Buffered tools work
  * here too: the generator simply yields nothing and returns the final value
- * once. Caller (`POST /ai-tool/stream`) is responsible for translating yields
- * into SSE frames and the return value into the terminal `event: result`.
+ * once. Caller is responsible for translating yields into SSE frames and the
+ * return value into the terminal `event: result`.
  */
-export async function* executeAiToolStreaming(
-  options: Omit<AiToolExecutionEvent, 'context' | 'serverBundleSha'> & {
+export async function* executeToolStreaming(
+  options: Omit<ToolExecutionEvent, 'context' | 'serverBundleSha'> & {
     bundleCode: string
     context: unknown
   }
-): AsyncGenerator<AiToolStreamProgress, ExecutionResult, void> {
-  const { bundleCode, toolId, toolInput, context, timeout, kopilotContext } = options
+): AsyncGenerator<ToolStreamProgress, ExecutionResult, void> {
+  const { bundleCode, toolId, inputs, context, timeout, invocationContext } = options
 
-  console.log('[AiToolExecutor:stream] Starting execution:', { toolId })
+  console.log('[ToolExecutor:stream] Starting execution:', {
+    toolId,
+    kind: invocationContext?.kind ?? 'none',
+  })
 
-  const setup = setupSandbox(bundleCode, toolId, context, kopilotContext)
+  const setup = setupSandbox(bundleCode, toolId, context, invocationContext)
   const startedAt = Date.now()
 
   try {
-    const exec = setup.tool.execute(toolInput)
+    const exec = setup.tool.execute(inputs)
     let output: unknown
     if (isAsyncGenerator(exec)) {
       while (true) {
         if (Date.now() - startedAt > timeout) {
-          throw new Error(`AI tool execution timeout after ${timeout}ms`)
+          throw new Error(`Tool execution timeout after ${timeout}ms`)
         }
         const next = await exec.next()
         if (next.done) {
           output = next.value
           break
         }
-        const payload = next.value as AiToolStreamProgress | unknown
+        const payload = next.value as ToolStreamProgress | unknown
         if (
           payload &&
           typeof payload === 'object' &&
           'data' in (payload as Record<string, unknown>)
         ) {
-          yield payload as AiToolStreamProgress
+          yield payload as ToolStreamProgress
         } else {
           yield { data: payload }
         }
@@ -237,17 +250,17 @@ export async function* executeAiToolStreaming(
       // Buffered tool invoked through the streaming endpoint — race against
       // the timeout, then return without ever yielding a progress event.
       const timeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(() => reject(new Error(`AI tool execution timeout after ${timeout}ms`)), timeout)
+        setTimeout(() => reject(new Error(`Tool execution timeout after ${timeout}ms`)), timeout)
       })
       output = await Promise.race([exec as Promise<unknown>, timeoutPromise])
     }
     const consoleLogs = getCapturedLogs()
-    console.log('[AiToolExecutor:stream] Execution complete:', { toolId })
+    console.log('[ToolExecutor:stream] Execution complete:', { toolId })
     return { result: output, metadata: { consoleLogs } } satisfies ExecutionResult
   } catch (error) {
     const consoleLogs = getCapturedLogs()
     const { message } = parseError(error)
-    console.error('[AiToolExecutor:stream] Execution failed:', message)
+    console.error('[ToolExecutor:stream] Execution failed:', message)
     const runtime = buildRuntimeErrorResult(error, consoleLogs)
     if (runtime) return runtime
     throw error

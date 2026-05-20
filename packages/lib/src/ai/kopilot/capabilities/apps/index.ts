@@ -67,7 +67,7 @@ export async function createAppCapabilities(deps: {
   const tools: AgentToolDefinition[] = []
 
   for (const installation of installedApps) {
-    const catalogTools = installation.aiTools ?? []
+    const catalogTools = installation.agentTools ?? []
     if (catalogTools.length === 0) continue
     if (!installation.currentDeployment) continue
 
@@ -156,13 +156,14 @@ export async function createAppCapabilities(deps: {
         return {
           ok: true as const,
           payload: {
-            type: 'ai-tool' as const,
+            type: 'tool' as const,
             serverBundleSha,
             toolId,
-            toolInput: args,
+            inputs: args,
             context,
             timeout: timeoutMs,
-            kopilotContext: {
+            invocationContext: {
+              kind: 'agent' as const,
               sessionId,
               agentId: agentId ?? null,
               triggerId: triggerId ?? null,

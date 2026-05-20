@@ -118,11 +118,9 @@ export class ServerBuilder {
    */
   async rebuild({
     workflowBlockModules,
-    quickActionModules,
     toolModules,
   }: {
     workflowBlockModules: Map<string, any>
-    quickActionModules: Map<string, any>
     toolModules?: Map<string, any>
   }): Promise<Result<esbuild.BuildResult, any>> {
     const jsResult = await generateServerEntry({
@@ -131,7 +129,6 @@ export class ServerBuilder {
       webhooksDirAbsolute: path.resolve(this._directories.webhooks),
       eventDirAbsolute: path.resolve(this._directories.events),
       workflowBlockModules,
-      quickActionModules,
       toolModules: toolModules ?? new Map(),
       log: console.log,
     })

@@ -1,19 +1,23 @@
+// packages/sdk/src/commands/version/create/bundle-javascript.ts
+
 import { complete, errored, isErrored } from '../../../errors.js'
-import { compileAndExtractSettingsSchema } from '../../../util/compile-and-extract-settings.js'
 import {
-  compileAndExtractTools,
-  type ToolCatalogPayload,
-} from '../../../util/compile-and-extract-tools.js'
+  type CatalogPayload,
+  compileAndExtractCatalog,
+} from '../../../util/compile-and-extract-catalog.js'
+import { compileAndExtractSettingsSchema } from '../../../util/compile-and-extract-settings.js'
 import type { SettingsSchema } from '../../../util/extract-settings-schema.js'
 import { prepareBuildContext } from '../../dev/prepare-build-context.js'
 
 /**
- * Bundle result with client/server bundles and optional settings schema
+ * Bundle result with client/server bundles, optional settings schema, and the
+ * publish-time catalog payload (`agent.tools`, `actions`, `workflow.blocks`,
+ * `triggers`, …) read directly by every consumer.
  */
 export type BundleResult = {
   bundles: [string, string]
   settingsSchema?: SettingsSchema
-  tools?: ToolCatalogPayload
+  catalog?: CatalogPayload
 }
 
 export async function bundleJavaScript() {
@@ -44,13 +48,14 @@ export async function bundleJavaScript() {
   // Extract settings schema after successful build
   const settingsSchema = await compileAndExtractSettingsSchema()
 
-  // Extract tool catalog (publish-time materialization — plans/kopilot/apps/README.md §5)
-  const toolsResult = await compileAndExtractTools()
-  const tools = isErrored(toolsResult) ? undefined : toolsResult.value
+  // Extract surface catalog (publish-time materialization — see
+  // plans/kopilot/agents/triggers/app-surface-implementation-plan.md §5.3).
+  const catalogResult = await compileAndExtractCatalog()
+  const catalog = isErrored(catalogResult) ? undefined : catalogResult.value
 
   return complete({
     bundles: [builds.client.outputFiles[0].text, builds.server.outputFiles[0].text],
     settingsSchema,
-    tools,
+    catalog,
   })
 }

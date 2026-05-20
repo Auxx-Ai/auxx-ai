@@ -83,12 +83,13 @@ export class QuickActionExecutor {
       const lambdaResult = await invokeLambdaExecutor({
         caller: 'quick-action',
         payload: {
-          type: 'quick-action',
+          type: 'tool',
           serverBundleSha,
-          actionId: action.actionId,
+          toolId: action.actionId,
           inputs: action.inputs,
-          context: {
-            ...baseContext,
+          context: baseContext,
+          invocationContext: {
+            kind: 'action',
             threadId: context.threadId,
             ticketId: context.ticketId,
           },
@@ -129,9 +130,11 @@ export class QuickActionExecutor {
             consoleLogs,
             durationMs: endTime - startTime,
             execution: {
-              type: 'quick-action',
-              actionId: action.actionId,
+              type: 'tool',
+              toolId: action.actionId,
+              invocationKind: 'action',
               threadId: context.threadId,
+              ticketId: context.ticketId,
             },
           })
         } catch (logError) {

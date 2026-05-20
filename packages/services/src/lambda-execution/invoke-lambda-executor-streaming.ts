@@ -3,7 +3,7 @@
 /**
  * Streaming-aware lambda invocation. Mirrors `invokeLambdaExecutor` but reads
  * the response body as a chunked SSE stream and forwards each event via
- * `onEvent`. Default target is `/ai-tool/stream` on the lambda-server (Railway
+ * `onEvent`. Default target is `/tool/stream` on the lambda-server (Railway
  * `lambda-server` container) — see plans/kopilot/apps/README.md §6.2.
  *
  * Wire format (per the lambda-server's streaming endpoint):
@@ -78,7 +78,7 @@ function parseSseFrames(buffer: string): {
 export async function invokeLambdaExecutorStreaming(params: {
   payload: any
   caller: string
-  /** Optional path on the lambda-server (default `/ai-tool/stream`). */
+  /** Optional path on the lambda-server (default `/tool/stream`). */
   path?: string
   lambdaUrl?: string
   onEvent: (ev: StreamEvent) => void
@@ -86,7 +86,7 @@ export async function invokeLambdaExecutorStreaming(params: {
   const {
     payload,
     caller,
-    path = '/ai-tool/stream',
+    path = '/tool/stream',
     lambdaUrl = INTERNAL_LAMBDA_URL,
     onEvent,
   } = params

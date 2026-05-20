@@ -15,7 +15,7 @@ import { serve } from 'https://deno.land/std@0.224.0/http/server.ts'
 import { verifyInboundRequest } from './auth/verify-inbound.ts'
 import { loadBundle } from './bundle-loader.ts'
 import { createRuntimeContext } from './context-provider.ts'
-import { executeAiToolStreaming } from './executors/ai-tool-executor.ts'
+import { executeToolStreaming } from './executors/tool-executor.ts'
 import { handler } from './index.ts'
 import type { LambdaEvent } from './types.ts'
 import { validateLambdaEvent } from './validator.ts'
@@ -37,12 +37,13 @@ async function handleRequest(req: Request): Promise<Response> {
     })
   }
 
-  // Streaming AI tool endpoint — runs an AI tool's `execute()` and pipes its
-  // AsyncGenerator yields out as SSE `event: progress` frames, terminating with
-  // `event: result`. Same auth + validation pipeline as the buffered `/`
-  // endpoint; only the response shape differs. See plans/kopilot/apps/README.md §6.2.
-  if (url.pathname === '/ai-tool/stream' && req.method === 'POST') {
-    return handleAiToolStreamingRequest(req)
+  // Streaming tool endpoint — unified surface for agent + action tools. Runs
+  // a tool's `execute()` and pipes its AsyncGenerator yields out as SSE
+  // `event: progress` frames, terminating with `event: result`. Same auth +
+  // validation pipeline as the buffered `/` endpoint; only the response shape
+  // differs. See plans/kopilot/apps/README.md §6.2.
+  if (url.pathname === '/tool/stream' && req.method === 'POST') {
+    return handleToolStreamingRequest(req)
   }
 
   // Main execution endpoint
@@ -104,20 +105,19 @@ function jsonError(status: number, code: string, message: string): Response {
   })
 }
 
-async function handleAiToolStreamingRequest(req: Request): Promise<Response> {
+async function handleToolStreamingRequest(req: Request): Promise<Response> {
   const rawBody = await req.text()
   if (rawBody.length > 5 * 1024 * 1024) {
     return jsonError(413, 'PAYLOAD_TOO_LARGE', 'Payload too large')
   }
 
-  // Auth — same gate as `handler()` in index.ts.
   const secret = Deno.env.get('LAMBDA_INVOKE_SECRET')
   let authCaller: string | undefined
   if (secret) {
     const headers: Record<string, string> = {}
     for (const [k, v] of req.headers.entries()) headers[k.toLowerCase()] = v
     const authResult = await verifyInboundRequest({ headers, body: rawBody, secret })
-    console.log('[Lambda:Auth][stream]', {
+    console.log('[Lambda:Auth][tool:stream]', {
       decision: authResult.valid ? 'accept' : 'reject',
       caller: authResult.caller,
       reason: authResult.reason,
@@ -143,13 +143,14 @@ async function handleAiToolStreamingRequest(req: Request): Promise<Response> {
   }
 
   const validated = validation.data
-  if (validated.type !== 'ai-tool') {
-    return jsonError(400, 'WRONG_EVENT_TYPE', `/ai-tool/stream only accepts 'ai-tool' events`)
+  if (validated.type !== 'tool') {
+    return jsonError(400, 'WRONG_EVENT_TYPE', `/tool/stream only accepts 'tool' events`)
   }
 
-  // Mirror the caller-allowlist check in index.ts — only `kopilot` may invoke AI tools.
-  if (authCaller && authCaller !== 'kopilot') {
-    return jsonError(403, 'CALLER_TYPE_DENIED', `Caller "${authCaller}" cannot invoke 'ai-tool'`)
+  // Mirror the caller allowlist in index.ts — both Kopilot (agent) and the
+  // quick-action service (action) may invoke 'tool' events.
+  if (authCaller && authCaller !== 'kopilot' && authCaller !== 'quick-action') {
+    return jsonError(403, 'CALLER_TYPE_DENIED', `Caller "${authCaller}" cannot invoke 'tool'`)
   }
 
   const { context: execCtx, serverBundleSha, ...rest } = validated
@@ -165,7 +166,7 @@ async function handleAiToolStreamingRequest(req: Request): Promise<Response> {
       }
 
       try {
-        const gen = executeAiToolStreaming({ ...rest, bundleCode, context: runtimeContext })
+        const gen = executeToolStreaming({ ...rest, bundleCode, context: runtimeContext })
         let finalResult: unknown = null
         while (true) {
           const next = await gen.next()

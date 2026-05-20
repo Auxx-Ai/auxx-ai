@@ -29,6 +29,18 @@ export type ExecutionContext =
       nodeId: string
       blockId: string
     }
+  | {
+      // Tool invocation via the unified tool-executor (agent or action surface).
+      // `invocationKind` mirrors `ToolInvocationContext.kind` on the lambda side.
+      type: 'tool'
+      toolId: string
+      invocationKind: 'agent' | 'action'
+      threadId?: string
+      ticketId?: string
+      sessionId?: string
+      agentId?: string | null
+      triggerId?: string | null
+    }
 
 /**
  * Log app execution (server function or workflow block) with console logs
@@ -60,28 +72,49 @@ export async function logAppExecution(params: {
   }
 
   const eventType =
-    execution.type === 'server-function' ? 'server-function-execution' : 'workflow-block-execution'
-
-  const eventData =
     execution.type === 'server-function'
-      ? {
-          functionIdentifier: execution.functionIdentifier,
-          installationId,
-          consoleLogs,
-        }
-      : {
-          workflowId: execution.workflowId,
-          runId: execution.runId,
-          nodeId: execution.nodeId,
-          blockId: execution.blockId,
-          installationId,
-          consoleLogs,
-        }
+      ? 'server-function-execution'
+      : execution.type === 'workflow-block'
+        ? 'workflow-block-execution'
+        : 'tool-execution'
 
-  const requestPath =
-    execution.type === 'server-function'
-      ? '/execute-server-function'
-      : `/workflows/${execution.workflowId}/runs/${execution.runId}/blocks/${execution.blockId}/execute`
+  let eventData: Record<string, unknown>
+  let requestPath: string
+  switch (execution.type) {
+    case 'server-function':
+      eventData = {
+        functionIdentifier: execution.functionIdentifier,
+        installationId,
+        consoleLogs,
+      }
+      requestPath = '/execute-server-function'
+      break
+    case 'workflow-block':
+      eventData = {
+        workflowId: execution.workflowId,
+        runId: execution.runId,
+        nodeId: execution.nodeId,
+        blockId: execution.blockId,
+        installationId,
+        consoleLogs,
+      }
+      requestPath = `/workflows/${execution.workflowId}/runs/${execution.runId}/blocks/${execution.blockId}/execute`
+      break
+    case 'tool':
+      eventData = {
+        toolId: execution.toolId,
+        invocationKind: execution.invocationKind,
+        threadId: execution.threadId,
+        ticketId: execution.ticketId,
+        sessionId: execution.sessionId,
+        agentId: execution.agentId,
+        triggerId: execution.triggerId,
+        installationId,
+        consoleLogs,
+      }
+      requestPath = `/tools/${execution.toolId}/execute`
+      break
+  }
 
   const insertResult = await fromDatabase(
     database

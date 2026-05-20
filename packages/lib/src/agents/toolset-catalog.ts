@@ -255,12 +255,12 @@ async function buildOrgCatalogTree(organizationId: string): Promise<CatalogNode[
   // 3. Installed apps — same producer fn, different source.
   const installedApps = await getOrgCache().get(organizationId, 'installedApps')
   for (const inst of installedApps) {
-    const aiTools = inst.aiTools ?? []
-    const aiToolsets = inst.aiToolsets ?? []
-    if (aiToolsets.length === 0) continue
+    const agentTools = inst.agentTools ?? []
+    const agentToolsets = inst.agentToolsets ?? []
+    if (agentToolsets.length === 0) continue
 
     const appToolsBySlug = new Map<string, ToolCatalogEntry[]>()
-    for (const tool of aiTools) {
+    for (const tool of agentTools) {
       const arr = appToolsBySlug.get(tool.toolsetSlug) ?? []
       arr.push({
         name: tool.id,
@@ -281,7 +281,7 @@ async function buildOrgCatalogTree(organizationId: string): Promise<CatalogNode[
         title: inst.app.title,
         iconId: appIconId,
         color: null,
-        toolsets: aiToolsets.map((ts) => ({
+        toolsets: agentToolsets.map((ts) => ({
           slug: ts.slug,
           fullLabel: ts.name,
           shortLabel: ts.name,

@@ -2,51 +2,55 @@
 
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
-import { useAppStore } from '~/lib/extensions/use-app-store'
+import { useMemo } from 'react'
+import type { SerializedQuickAction } from '~/lib/workflow/workflow-block-loader'
 import {
-  type SerializedQuickAction,
-  WorkflowBlockLoader,
-} from '~/lib/workflow/workflow-block-loader'
-import { useExtensionsContext } from '~/providers/extensions/extensions-context'
+  type AppInstallation,
+  useExtensionsContext,
+} from '~/providers/extensions/extensions-context'
 
 /**
  * Hook to load available quick actions from installed apps.
- * Returns serialized quick actions with defaults pre-filled from context.
+ *
+ * Reads directly from the deployment catalog's `actions` projection (exposed
+ * via `useExtensionsContext` → `apps.listInstalled` → cached envelope). No
+ * iframe boot — the picker renders synchronously from the trpc cache.
+ *
+ * See plans/kopilot/agents/triggers/app-surface-implementation-plan.md §10.2.
  */
-export function useQuickActions(threadId?: string, ticketId?: string) {
-  const appStore = useAppStore()
-  const { appInstallations } = useExtensionsContext()
-  const loaderRef = useRef<WorkflowBlockLoader | null>(null)
-  const [actions, setActions] = useState<SerializedQuickAction[]>([])
-  const [isLoading, setIsLoading] = useState(false)
+export function useQuickActions(_threadId?: string, _ticketId?: string) {
+  const { appInstallations, isLoading } = useExtensionsContext()
 
-  if (!loaderRef.current) {
-    loaderRef.current = new WorkflowBlockLoader(appStore)
-  }
-
-  useEffect(() => {
-    if (!appInstallations.length) return
-
-    const loader = loaderRef.current!
-    setIsLoading(true)
-
-    const context = {
-      threadId,
-      ticket: undefined,
-      participants: [],
-      entities: [],
-    }
-
-    Promise.allSettled(
-      appInstallations.map((inst) =>
-        loader.loadAppQuickActions(inst.app.id, inst.installationId, context)
-      )
-    ).then(() => {
-      setActions(loader.getAllQuickActions())
-      setIsLoading(false)
-    })
-  }, [appInstallations, threadId, ticketId])
+  const actions = useMemo<SerializedQuickAction[]>(
+    () => appInstallations.flatMap(installationToActions),
+    [appInstallations]
+  )
 
   return { actions, isLoading }
+}
+
+function installationToActions(installation: AppInstallation): SerializedQuickAction[] {
+  const actions = installation.actions ?? []
+  if (actions.length === 0) return []
+
+  // Build a tool-id → agent tool lookup for input schemas. Action-only tools
+  // aren't in `agentTools`, so their inputs render as an empty form until the
+  // envelope is extended with a tools-by-id projection.
+  const toolsById = new Map((installation.agentTools ?? []).map((t) => [t.id, t]))
+
+  return actions.map((action) => {
+    const tool = toolsById.get(action.toolId)
+    return {
+      id: action.toolId,
+      label: action.label,
+      description: action.description,
+      icon: action.iconKey ?? undefined,
+      color: action.color,
+      inputs: (tool?.inputsJsonSchema as Record<string, any>) ?? {},
+      outputs: (tool?.outputsJsonSchema as Record<string, any>) ?? {},
+      defaults: {},
+      appId: installation.app.id,
+      installationId: installation.installationId,
+    }
+  })
 }

@@ -18,12 +18,9 @@ interface WorkflowHandlerData {
 type WorkflowBlockModules = Map<string, Record<string, WorkflowHandlerData | undefined>>
 
 /**
- * Map of quick action handlers
- */
-type QuickActionModules = Map<string, Record<string, WorkflowHandlerData | undefined>>
-
-/**
  * Map of tool handlers — `{ execute: WorkflowHandlerData }` per toolId.
+ * Single registry consumed by the unified lambda tool-executor for both
+ * agent-surfaced and action-surfaced invocations.
  */
 type ToolModules = Map<string, { execute?: WorkflowHandlerData | null }>
 
@@ -181,7 +178,6 @@ export async function generateServerEntry({
   webhooksDirAbsolute,
   eventDirAbsolute,
   workflowBlockModules,
-  quickActionModules = new Map(),
   toolModules = new Map(),
   log,
 }: {
@@ -190,7 +186,6 @@ export async function generateServerEntry({
   webhooksDirAbsolute: string
   eventDirAbsolute: string
   workflowBlockModules: WorkflowBlockModules
-  quickActionModules?: QuickActionModules
   toolModules?: ToolModules
   log?: LogFunction
 }) {
@@ -296,29 +291,6 @@ export async function generateServerEntry({
             };
         }
 
-        // Quick action module registry
-        const quickActionModulesMap = new Map()
-
-        ${[...quickActionModules.entries()]
-          .map(
-            ([actionId, handlers]) => `quickActionModulesMap.set(
-                        ${JSON.stringify(actionId)},
-                        {
-                        ${[...Object.entries(handlers)]
-                          .map(([handler, data]) =>
-                            data
-                              ? `${JSON.stringify(handler)}: {
-                                        module: () => import(${JSON.stringify(path.join(appDirAbsolute, data.path))}),
-                                        export: ${JSON.stringify(data.export)}
-                                    },`
-                              : ''
-                          )
-                          .join('\n')}
-                        }
-                    )`
-          )
-          .join('\n')}
-
         // Tool module registry
         const toolModulesMap = new Map()
 
@@ -342,13 +314,14 @@ export async function generateServerEntry({
           )
           .join('\n')}
 
-        // Build __AUXX_AI_TOOLS__ for Lambda tool executor.
-        // Mirrors __AUXX_WORKFLOW_BLOCKS__ — the executor reads execute(input, ctx)
-        // off this global. See plans/kopilot/apps/README.md §5.
-        const __AUXX_AI_TOOLS__ = {};
+        // Build __AUXX_TOOLS__ — the single tool registry read by the unified
+        // lambda tool-executor for both agent-surfaced and action-surfaced
+        // invocations. Mirrors __AUXX_WORKFLOW_BLOCKS__: the executor reads
+        // execute(input, ctx) off this global. See plans/kopilot/agents/triggers/app-surface-implementation-plan.md §5.2.
+        const __AUXX_TOOLS__ = {};
 
         for (const [toolId, handlers] of toolModulesMap.entries()) {
-            __AUXX_AI_TOOLS__[toolId] = {
+            __AUXX_TOOLS__[toolId] = {
                 execute: async (...args) => {
                     const executeHandler = handlers.execute;
                     if (!executeHandler) {
@@ -361,29 +334,6 @@ export async function generateServerEntry({
                     }
                     if (typeof func !== "function") {
                         throw new Error(\`Execute export in tool \${toolId} is not a function\`);
-                    }
-                    return await func(...args);
-                }
-            };
-        }
-
-        // Build __AUXX_QUICK_ACTIONS__ for Lambda executor compatibility
-        const __AUXX_QUICK_ACTIONS__ = {};
-
-        for (const [actionId, handlers] of quickActionModulesMap.entries()) {
-            __AUXX_QUICK_ACTIONS__[actionId] = {
-                execute: async (...args) => {
-                    const executeHandler = handlers.execute;
-                    if (!executeHandler) {
-                        throw new Error(\`No execute handler for quick action \${actionId}\`);
-                    }
-                    const module = await executeHandler.module();
-                    const func = module[executeHandler.export];
-                    if (!func) {
-                        throw new Error(\`Execute export not found in quick action \${actionId}\`);
-                    }
-                    if (typeof func !== "function") {
-                        throw new Error(\`Execute export in quick action \${actionId} is not a function\`);
                     }
                     return await func(...args);
                 }

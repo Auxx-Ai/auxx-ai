@@ -356,23 +356,49 @@ export interface WorkflowBlock<TSchema extends WorkflowSchema = WorkflowSchema> 
 }
 
 /**
- * Workflow trigger definition (same structure as block, but initiates workflows)
+ * Workflow-surface projection of a trigger — opt in by setting `trigger.workflow = {…}`.
+ * Presence of this key exposes the trigger as a workflow start node.
  */
-export interface WorkflowTrigger<TSchema extends WorkflowSchema = WorkflowSchema> {
+export interface TriggerWorkflowSurface<TSchema extends WorkflowSchema = WorkflowSchema> {
+  /** Node visualization component (rendered on canvas) */
+  readonly node?: ComponentType<WorkflowNodeProps<TSchema>>
+  /** Panel configuration component */
+  readonly panel?: ComponentType<WorkflowPanelProps<TSchema>>
+}
+
+/**
+ * Agent-surface projection of a trigger — opt in by setting `trigger.agent = {…}`.
+ * Presence of this key exposes the trigger to agents.
+ */
+export interface TriggerAgentSurface {
+  /** Agent-facing label (defaults to trigger label) */
+  readonly label?: string
+  /** Agent-facing description (defaults to trigger description) */
+  readonly description?: string
+  /** Whether the trigger is enabled by default when an agent is created */
+  readonly defaultEnabled?: boolean
+}
+
+/**
+ * Trigger definition. Authors produce this via `defineTrigger({...})`.
+ *
+ * A trigger is an event source. It opts into being surfaced via explicit
+ * keys — `workflow` (initiates a workflow run) and `agent` (initiates an
+ * agent run). A trigger with no surface key is unreachable; the build
+ * scanner flags this as an authoring error.
+ */
+export interface Trigger<TSchema extends WorkflowSchema = WorkflowSchema> {
   /** Unique identifier for the trigger */
-  id: string
+  readonly id: string
 
   /** Display label */
-  label: string
+  readonly label: string
 
   /** Trigger description */
-  description?: string
-
-  /** Trigger category for organization */
-  category?: WorkflowCategory
+  readonly description?: string
 
   /**
-   * Block icon. Accepts:
+   * Trigger icon. Accepts:
    * - Lucide icon name (e.g. `'message-square'`)
    * - Emoji (e.g. `'💬'`)
    * - Imported image file — PNG, JPG, GIF, or WebP
@@ -382,25 +408,32 @@ export interface WorkflowTrigger<TSchema extends WorkflowSchema = WorkflowSchema
    *
    * Note: SVG imports are not supported (XSS risk). Use a remote URL for SVG icons.
    */
-  icon?: string | ComponentType
+  readonly icon?: string | ComponentType
 
   /** Icon color (hex color) */
-  color?: string
+  readonly color?: string
 
   /** Input/output schema */
-  schema: TSchema
-
-  /** Node visualization component */
-  node?: ComponentType<WorkflowNodeProps<TSchema>>
-
-  /** Panel configuration component */
-  panel?: ComponentType<WorkflowPanelProps<TSchema>>
+  readonly schema: TSchema
 
   /** Server-side execution function */
-  execute: WorkflowExecuteFunction<TSchema> | PollingExecuteFunction<TSchema>
+  readonly execute: WorkflowExecuteFunction<TSchema> | PollingExecuteFunction<TSchema>
 
   /** Trigger configuration */
-  config?: WorkflowBlockConfig
+  readonly config?: WorkflowBlockConfig
+
+  /** Surface key — exposes the trigger as a workflow start node. */
+  readonly workflow?: TriggerWorkflowSurface<TSchema>
+
+  /** Surface key — exposes the trigger to agents. */
+  readonly agent?: TriggerAgentSurface
+}
+
+/** Author helper for declaring a trigger. */
+export function defineTrigger<TSchema extends WorkflowSchema>(
+  t: Trigger<TSchema>
+): Trigger<TSchema> {
+  return t
 }
 
 /**

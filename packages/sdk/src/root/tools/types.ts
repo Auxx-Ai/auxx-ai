@@ -4,6 +4,54 @@ import type { ComponentType } from 'react'
 import type { z } from 'zod/v4'
 
 /**
+ * An entity instance resolved from the thread context (passed to
+ * `ToolActionSurface` callbacks). Generic shape — works for any entity
+ * definition (ticket, contact, order, company, custom).
+ */
+export interface ToolActionEntity {
+  id: string
+  entityDefinitionId: string
+  /** Entity definition slug (e.g., "shopify-order", "company") */
+  entityDefinitionSlug: string
+  displayName: string
+  /** Custom field values, keyed by field slug */
+  fields: Record<string, unknown>
+}
+
+/**
+ * A thread participant with optional linked contact entity.
+ */
+export interface ToolActionParticipant {
+  email: string
+  name?: string
+  isInternal: boolean
+  /** Linked contact entity (if resolved) */
+  contact?: ToolActionEntity
+}
+
+/**
+ * Context provided to a tool's `action` surface callbacks.
+ * Built by the platform — never constructed by the author.
+ */
+export interface ToolActionContext {
+  /** The thread being replied to */
+  threadId: string
+
+  /** Ticket entity instance linked to this thread (if any) */
+  ticket?: ToolActionEntity
+
+  /** Thread participants */
+  participants: ToolActionParticipant[]
+
+  /**
+   * All entity instances associated with the thread context.
+   * Includes ticket, contacts, and any entities linked via relationship fields
+   * (e.g., a Shopify order linked on the ticket, a company linked on the contact).
+   */
+  entities: ToolActionEntity[]
+}
+
+/**
  * Entity ref kinds for fence-resolvable id fields in tool outputs.
  * Maps to system semantics on EntityDefinition (entityType / standardType).
  * See plans/kopilot/apps/refs.md §3.
@@ -37,7 +85,7 @@ export interface ToolConfig {
   /**
    * Author opt-in: this tool's `execute` returns an `AsyncGenerator` and
    * should be invoked through the streaming lambda endpoint
-   * (`/ai-tool/stream`). Yields are forwarded as `tool-progress` agent
+   * (`/tool/stream`). Yields are forwarded as `tool-progress` agent
    * events; the generator's return value becomes the tool result.
    *
    * The runtime can also detect a generator return at execution time, but
@@ -49,7 +97,47 @@ export interface ToolConfig {
 }
 
 /**
+ * Agent-surface projection of a tool — opt in by setting `tool.agent = {…}`.
+ * Presence of this key exposes the tool to the LLM as a callable function.
+ */
+export interface ToolAgentSurface {
+  /** LLM-facing name (snake_case convention, e.g. `send_whatsapp_text`). */
+  readonly name?: string
+  /** LLM-facing description — hint-style, written for model consumption. */
+  readonly description?: string
+  /** Toolset for agent-side enablement grouping. */
+  readonly toolsetSlug?: string
+  /** Author opt-in: execute returns AsyncGenerator. */
+  readonly streaming?: boolean
+  /** LLM hint for read-only tools. */
+  readonly idempotent?: boolean
+}
+
+/**
+ * Action-surface projection of a tool — opt in by setting `tool.action = {…}`.
+ * Presence of this key exposes the tool as an action button in the ticket /
+ * email-editor context.
+ */
+export interface ToolActionSurface {
+  /** Display label shown on the action chip. */
+  readonly label: string
+  readonly description?: string
+  readonly icon?: string | ComponentType
+  readonly color?: string
+  readonly surface: 'ticket-header' | 'email-editor'
+  readonly requiresConfirmation?: boolean
+  readonly confirmationMessage?: string
+  readonly shouldShow?: (ctx: ToolActionContext) => boolean
+  readonly getDefaults?: (ctx: ToolActionContext) => Record<string, unknown>
+}
+
+/**
  * Tool definition. Authors produce this via `defineTool({...})`.
+ *
+ * A tool is the atomic unit of behavior. It opts into being surfaced via
+ * explicit keys — `agent` (LLM-callable) and `action` (quick-action button).
+ * A tool with no surface key is internal — invocable only from a workflow
+ * block's dispatcher.
  *
  * The build scanner walks `app.tools[].execute` to extract a module
  * reference (must be a default import from a `.tool.server.ts` file) — same
@@ -89,6 +177,12 @@ export interface ToolDefinition<
     input: z.input<TInput>,
     ctx: ToolExecuteContext
   ) => Promise<z.output<TOutput>> | AsyncGenerator<unknown, z.output<TOutput>>
+
+  /** Surface key — exposes the tool to the LLM as a callable function. */
+  readonly agent?: ToolAgentSurface
+
+  /** Surface key — exposes the tool as a quick-action button. */
+  readonly action?: ToolActionSurface
 }
 
 /**

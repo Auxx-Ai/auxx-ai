@@ -1,0 +1,1 @@
+ALTER TABLE "AppDeployment" RENAME COLUMN "aiTools" TO "catalog";

@@ -12,13 +12,13 @@ export type {
   Connection,
   InferWorkflowInput,
   InferWorkflowOutput,
+  Trigger,
   WorkflowBlock,
   WorkflowCategory,
   WorkflowExecutionContext,
   WorkflowOrganization,
   WorkflowSchema,
   WorkflowSDK,
-  WorkflowTrigger,
   WorkflowUser,
 } from '../../root/workflow/types.js'
 

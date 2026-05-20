@@ -5,7 +5,7 @@ import notifier from 'node-notifier'
 import { api } from '../../api/api.js'
 import { combineAsync, complete, isErrored } from '../../errors.js'
 import { calculateBundleSha } from '../../util/calculate-bundle-sha.js'
-import type { ToolCatalogPayload } from '../../util/compile-and-extract-tools.js'
+import type { CatalogPayload } from '../../util/compile-and-extract-catalog.js'
 import type { SettingsSchema } from '../../util/extract-settings-schema.js'
 import { spinnerify } from '../../util/spinner.js'
 import { uploadBundle } from '../../util/upload-bundle.js'
@@ -17,7 +17,7 @@ export async function upload({
   environmentVariables,
   cliVersion,
   settingsSchema,
-  tools,
+  catalog,
 }: {
   contents: any
   appId: string
@@ -25,7 +25,7 @@ export async function upload({
   environmentVariables: Record<string, string>
   cliVersion: string
   settingsSchema?: SettingsSchema
-  tools?: ToolCatalogPayload
+  catalog?: CatalogPayload
 }) {
   return await spinnerify(
     'Uploading...',
@@ -70,10 +70,10 @@ export async function upload({
       }
 
       // Mirror the `version create` log line so devs can see the catalog
-      // landed (plans/kopilot/apps/dev-upload-ai-tools.md §3.3).
-      if (tools && (tools.tools.length || tools.toolsets.length)) {
+      // landed. See plans/kopilot/agents/triggers/app-surface-implementation-plan.md §5.
+      if (catalog && (catalog.tools.length || catalog.toolsets.length)) {
         process.stdout.write(
-          `${chalk.green('✓ ')}Tools catalogued (${tools.tools.length} tools, ${tools.toolsets.length} toolsets)\n`
+          `${chalk.green('✓ ')}Catalog extracted (${catalog.tools.length} tools, ${catalog.toolsets.length} toolsets, ${catalog.workflow.blocks.length} blocks, ${catalog.triggers.length} triggers, ${catalog.actions.length} actions)\n`
         )
       }
 
@@ -86,7 +86,7 @@ export async function upload({
         targetOrganizationId,
         environmentVariables,
         settingsSchema,
-        aiTools: tools,
+        catalog,
         metadata: { cliVersion },
       })
       if (isErrored(deployResult)) {

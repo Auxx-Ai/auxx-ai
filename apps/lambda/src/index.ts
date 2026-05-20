@@ -10,12 +10,11 @@
 import { verifyInboundRequest } from './auth/verify-inbound.ts'
 import { loadBundle } from './bundle-loader.ts'
 import { createRuntimeContext } from './context-provider.ts'
-import { executeAiTool } from './executors/ai-tool-executor.ts'
 import { executeCode } from './executors/code-executor.ts'
 import { executeEventHandler } from './executors/event-executor.ts'
 import { executePollingTrigger } from './executors/polling-trigger-executor.ts'
-import { executeQuickAction } from './executors/quick-action-executor.ts'
 import { executeServerFunction } from './executors/server-function-executor.ts'
+import { executeTool } from './executors/tool-executor.ts'
 import { executeWebhookHandler } from './executors/webhook-executor.ts'
 import { executeWorkflowBlock } from './executors/workflow-block-executor.ts'
 import { getCapturedLogs } from './runtime-helpers/console.ts'
@@ -71,13 +70,9 @@ async function executeAppEvent(validatedEvent: ValidatedLambdaEvent) {
       const { context: _, serverBundleSha: __, ...eventData } = validatedEvent
       return executePollingTrigger({ ...eventData, bundleCode, context })
     }
-    case 'quick-action': {
+    case 'tool': {
       const { context: _, serverBundleSha: __, ...eventData } = validatedEvent
-      return executeQuickAction({ ...eventData, bundleCode, context })
-    }
-    case 'ai-tool': {
-      const { context: _, serverBundleSha: __, ...eventData } = validatedEvent
-      return executeAiTool({ ...eventData, bundleCode, context })
+      return executeTool({ ...eventData, bundleCode, context })
     }
   }
 }
@@ -103,10 +98,13 @@ const CALLER_TYPE_ALLOWLIST: Record<string, string[]> = {
   'app-events': ['event'],
   'workflow-engine': ['workflow-block', 'code'],
   worker: ['workflow-block', 'code', 'event', 'polling-trigger'],
-  'quick-action': ['quick-action'],
-  // Kopilot bridge is the only caller permitted to dispatch AI tool runs.
-  // See plans/kopilot/agents/tool-loading-and-execution.md §6 (decision E1).
-  kopilot: ['ai-tool'],
+  // Quick-action service (email-editor action chips) invokes tools through the
+  // unified 'tool' event with `invocationContext.kind = 'action'`.
+  'quick-action': ['tool'],
+  // Kopilot bridge invokes tools through the unified 'tool' event with
+  // `invocationContext.kind = 'agent'`. See
+  // plans/kopilot/agents/tool-loading-and-execution.md §6 (decision E1).
+  kopilot: ['tool'],
 }
 
 /** Maximum payload size (5 MB) */
