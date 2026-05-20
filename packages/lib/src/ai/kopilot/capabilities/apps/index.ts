@@ -15,6 +15,7 @@ import type {
 import { loadMasterKopilotSettings } from '../../load-master-settings'
 import type { GetToolDeps, PageCapability } from '../types'
 import { buildAppToolDigest } from './digest'
+import { getRegisteredToolName } from './tool-naming'
 
 /**
  * AI tool bridge — registers app-backed tools alongside native capabilities.
@@ -75,9 +76,6 @@ export async function createAppCapabilities(deps: {
     const appId = installation.app.id
     const appSlug = installation.app.slug
     const installationId = installation.installationId
-    // Per decision D1 — kebab → snake on the slug portion so the LLM tool
-    // name regex `^[a-zA-Z0-9_-]{1,64}$` is honored cleanly.
-    const slugPrefix = appSlug.replace(/-/g, '_')
 
     // Per plans/kopilot/apps/agent-credentials.md §3.5 — registration is
     // gated on the bound credId from the agent's (or master's)
@@ -101,7 +99,7 @@ export async function createAppCapabilities(deps: {
         }
       }
 
-      const registeredName = `${slugPrefix}_${tool.id}`
+      const registeredName = getRegisteredToolName(appSlug, tool.id)
       const refDescriptors = tool.refs ?? []
       const toolId = tool.id
       const timeoutMs = tool.timeoutMs

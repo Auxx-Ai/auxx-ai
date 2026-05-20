@@ -69,6 +69,7 @@ export {
 } from './org-cache-helpers'
 export type {
   CachedAgent,
+  CachedAgentTool,
   CachedAgentTrigger,
   CachedGroup,
   CachedInstalledApp,

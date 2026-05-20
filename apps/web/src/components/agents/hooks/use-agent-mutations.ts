@@ -149,6 +149,30 @@ export function useAgentMutations(): UseAgentMutationsResult {
         optimistic.archivedAt = patch.archivedAt ? patch.archivedAt.toISOString() : null
       }
       store.setAgentOptimistic(id, optimistic as never)
+
+      // The detail view reads `agent.getById` directly (not the store), so
+      // we also splice the patch into the query cache. Without this, the
+      // hero's name/description revert to the prop value the moment the
+      // inline editor closes and only flip to the new value after the
+      // mutation round-trip + invalidate refetch settle.
+      const stored = store.agentsById[id]
+      const slug = stored?.slug
+      const detailPatch: Partial<AgentDetail> = {}
+      if (patch.name !== undefined) detailPatch.name = patch.name
+      if (patch.slug !== undefined) detailPatch.slug = patch.slug
+      if (patch.description !== undefined) detailPatch.description = patch.description
+      if (patch.modelId !== undefined) detailPatch.modelId = patch.modelId
+      if (patch.mentionable !== undefined) detailPatch.mentionable = patch.mentionable
+      if (patch.archivedAt !== undefined) detailPatch.archivedAt = patch.archivedAt
+      const spliceDetail = (prev: AgentDetail | undefined): AgentDetail | undefined => {
+        if (!prev) return prev
+        return { ...prev, ...detailPatch }
+      }
+      utils.agent.getById.setData({ agentId: id }, spliceDetail)
+      if (slug && slug !== id) {
+        utils.agent.getById.setData({ agentId: slug }, spliceDetail)
+      }
+
       try {
         await updateMutation.mutateAsync({ agentId: id, ...patch })
         store.confirmAgentUpdate(id)

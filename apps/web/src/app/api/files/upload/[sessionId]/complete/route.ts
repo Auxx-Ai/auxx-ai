@@ -222,11 +222,20 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       storageLocationId,
     })
 
-    // 3.2 Invalidate dehydration cache so next page load fetches fresh data
+    // 3.2 Invalidate caches so next page load fetches fresh data
     if (session.entityType === 'USER_PROFILE') {
+      const targetUserId = session.entityId || session.userId
       const { DehydrationService } = await import('@auxx/lib/dehydration')
-      const dehydrationService = new DehydrationService()
-      await dehydrationService.invalidateUser(session.userId)
+      await new DehydrationService().invalidateUser(targetUserId)
+
+      // Agent avatar (admin uploading for an agent's synthetic user): bust the
+      // org `agents` cache so the avatar URL refreshes on next load. The
+      // processor's validateEntityAccess guarantees a mismatched entityId is
+      // an agent user.
+      if (session.entityId && session.entityId !== session.userId) {
+        const { onCacheEvent } = await import('@auxx/lib/cache')
+        await onCacheEvent('agent.updated', { orgId: session.organizationId })
+      }
     }
 
     // 3.3 Compute download URL for SSE
