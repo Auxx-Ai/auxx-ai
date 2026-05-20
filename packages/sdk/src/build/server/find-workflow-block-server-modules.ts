@@ -416,10 +416,20 @@ function visitBlock(
     // Unwrap TypeScript type annotations (satisfies, as, etc.)
     value = unwrapTypeAnnotations(value)
 
+    // `defineTrigger({...})` / `defineBlock({...})` — unwrap to the first argument.
+    if (value?.type === 'CallExpression') {
+      visitBlock(value.arguments[0], targetScope, result, targetPath, helpers)
+      return
+    }
     if (!value || value.type !== 'ObjectExpression') {
       throw new Error(`Expected variable ${node.name} to have an initializer`)
     }
     visitBlock(value, targetScope, result, targetPath, helpers)
+    return
+  }
+  // `defineTrigger({...})` — unwrap to its first argument.
+  if (node.type === 'CallExpression') {
+    visitBlock(node.arguments[0], scope, result, currPath, helpers)
     return
   }
   if (node.type === 'ObjectExpression') {

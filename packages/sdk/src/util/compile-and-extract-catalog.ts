@@ -79,7 +79,10 @@ export interface CatalogTriggerProjection {
   triggerId: string
   label: string
   description?: string
-  defaultEnabled?: boolean
+  iconKey: string | null
+  color?: string
+  inputsJsonSchema: Record<string, unknown>
+  refs: Array<{ path: string[]; kind: string }>
 }
 
 export interface CatalogBlock {
@@ -349,13 +352,14 @@ export async function compileAndExtractCatalog(): Promise<
     if (!trigger?.id) {
       return errored({ code: 'CATALOG_VALIDATION_FAILED', message: 'Trigger is missing an id' })
     }
+    const triggerInputs = serializeWorkflowSchemaInputs(trigger.schema)
     cataloguedTriggers.push({
       id: trigger.id,
       label: trigger.label,
       description: trigger.description,
       iconKey: null,
       color: trigger.color,
-      inputsJsonSchema: serializeWorkflowSchemaInputs(trigger.schema),
+      inputsJsonSchema: triggerInputs,
       refs: [],
     })
     if (trigger.workflow) {
@@ -363,6 +367,10 @@ export async function compileAndExtractCatalog(): Promise<
         triggerId: trigger.id,
         label: trigger.label,
         description: trigger.description,
+        iconKey: null,
+        color: trigger.color,
+        inputsJsonSchema: triggerInputs,
+        refs: [],
       })
     }
     if (trigger.agent) {
@@ -370,7 +378,10 @@ export async function compileAndExtractCatalog(): Promise<
         triggerId: trigger.id,
         label: trigger.agent.label ?? trigger.label,
         description: trigger.agent.description ?? trigger.description,
-        defaultEnabled: trigger.agent.defaultEnabled,
+        iconKey: null,
+        color: trigger.color,
+        inputsJsonSchema: triggerInputs,
+        refs: [],
       })
     }
   }

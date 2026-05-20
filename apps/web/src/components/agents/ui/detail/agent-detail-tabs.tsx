@@ -11,7 +11,7 @@ import {
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Section } from '@auxx/ui/components/section'
 import { Tabs, TabsList, TabsTrigger } from '@auxx/ui/components/tabs'
-import { BookOpen, Clock, FileText, Plus, Wrench, Zap } from 'lucide-react'
+import { BookOpen, Clock, FileText, Plug, Plus, Wrench, Zap } from 'lucide-react'
 import { useQueryState } from 'nuqs'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AGENT_TABS, type AgentTab, DEFAULT_AGENT_TAB } from '../../constant'
@@ -55,7 +55,7 @@ interface AgentDetailTabsProps {
  */
 export function AgentDetailTabs({ agent, onAutosaveChange }: AgentDetailTabsProps) {
   const [tab, setTab] = useQueryState('tab', { defaultValue: DEFAULT_AGENT_TAB })
-  const [addingKind, setAddingKind] = useState<'scheduled' | 'event' | null>(null)
+  const [addingKind, setAddingKind] = useState<'scheduled' | 'event' | 'app' | null>(null)
   const scrollContainerRef = useRef<HTMLDivElement | null>(null)
   const sectionRefs = useRef<Record<AgentTab, HTMLDivElement | null>>({
     prompt: null,
@@ -206,6 +206,10 @@ export function AgentDetailTabs({ agent, onAutosaveChange }: AgentDetailTabsProp
                   <DropdownMenuItem onClick={() => setAddingKind('event')}>
                     <Zap />
                     Event
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setAddingKind('app')}>
+                    <Plug />
+                    App
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>

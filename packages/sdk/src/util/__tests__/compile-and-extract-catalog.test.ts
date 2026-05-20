@@ -96,21 +96,24 @@ describe('compileAndExtractCatalog', () => {
       description: 'Fires when a new message arrives.',
       iconKey: null,
     })
-    expect(catalog.workflow.triggers).toEqual([
-      {
-        triggerId: 'on_message_received',
-        label: 'Message received',
-        description: 'Fires when a new message arrives.',
-      },
-    ])
-    expect(catalog.agent.triggers).toEqual([
-      {
-        triggerId: 'on_message_received',
-        label: 'Message received',
-        description: 'New message arrived in a channel.',
-        defaultEnabled: true,
-      },
-    ])
+    expect(catalog.workflow.triggers).toHaveLength(1)
+    expect(catalog.workflow.triggers[0]).toMatchObject({
+      triggerId: 'on_message_received',
+      label: 'Message received',
+      description: 'Fires when a new message arrives.',
+      iconKey: null,
+    })
+    expect(catalog.workflow.triggers[0]?.inputsJsonSchema).toBeDefined()
+    expect(catalog.agent.triggers).toHaveLength(1)
+    expect(catalog.agent.triggers[0]).toMatchObject({
+      triggerId: 'on_message_received',
+      label: 'Message received',
+      description: 'New message arrived in a channel.',
+      iconKey: null,
+    })
+    expect(catalog.agent.triggers[0]?.inputsJsonSchema).toBeDefined()
+    // defaultEnabled removed from projection
+    expect(catalog.agent.triggers[0]).not.toHaveProperty('defaultEnabled')
 
     // Workflow blocks — `toolMap` is the dispatcher table the runtime reads.
     expect(catalog.workflow.blocks).toHaveLength(1)

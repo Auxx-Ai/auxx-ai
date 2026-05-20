@@ -74,7 +74,10 @@ export interface CatalogTriggerProjection {
   triggerId: string
   label: string
   description?: string
-  defaultEnabled?: boolean
+  iconKey: string | null
+  color?: string
+  inputsJsonSchema: Record<string, unknown>
+  refs: Array<{ path: string[]; kind: string }>
 }
 
 export interface CatalogBlock {
