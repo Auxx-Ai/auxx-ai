@@ -147,7 +147,7 @@ export function ForgotPasswordForm() {
             onSuccess={onTurnstileSuccess}
             onExpire={onTurnstileExpire}
             onError={onTurnstileError}
-            options={{ size: 'invisible' }}
+            options={{ size: 'flexible' }}
           />
         </div>
       )}
