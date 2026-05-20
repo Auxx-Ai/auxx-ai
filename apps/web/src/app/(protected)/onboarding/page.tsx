@@ -2,7 +2,7 @@
 
 import { database, schema } from '@auxx/database'
 import { eq } from 'drizzle-orm'
-import { headers } from 'next/headers'
+import { cookies, headers } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { auth } from '~/auth/server'
 
@@ -58,8 +58,15 @@ export default async function OnboardingPage() {
     userCompletedOnboarding,
   })
 
-  // If organization onboarding is complete, go to dashboard
+  // If organization onboarding is complete, route to /app — unless this user landed
+  // here mid-Shopify-App-Store install, in which case finish the claim flow first.
   if (org?.completedOnboarding) {
+    const cookieStore = await cookies()
+    const claimToken = cookieStore.get('shopify_claim_token')?.value
+    if (claimToken) {
+      console.log('[Onboarding] Org onboarding complete, claim cookie set, redirecting to claim')
+      redirect('/shopify/claim')
+    }
     console.log('[Onboarding] Org onboarding complete, redirecting to /app')
     redirect('/app')
   }

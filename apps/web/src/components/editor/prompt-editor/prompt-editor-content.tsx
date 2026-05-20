@@ -203,7 +203,7 @@ export const PromptEditorContent = memo(function PromptEditorContent({
   return (
     <div
       ref={containerRef}
-      className={`${styles.editor} relative flex-1 min-h-0 flex w-full`}
+      className={`${styles.editor} relative flex-1 min-h-0 flex w-full pb-4`}
       onMouseDown={handleHostMouseDown}>
       <EditorContent
         editor={editor}

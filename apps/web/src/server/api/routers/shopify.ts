@@ -1,12 +1,19 @@
 import { WEBAPP_URL } from '@auxx/config/server'
 import { database as db, schema } from '@auxx/database'
+import { getOrgCache, isOrgMember, onCacheEvent, resolveAppSlug } from '@auxx/lib/cache'
 import { getQueue, Queues } from '@auxx/lib/jobs/queues'
 import { disableWebhooks, isShopifyConnected, SyncManager } from '@auxx/lib/shopify'
 import { createScopedLogger } from '@auxx/logger'
+import { getRedisClient } from '@auxx/redis'
+import { saveAppConnection } from '@auxx/services/app-connections'
+import { installApp } from '@auxx/services/apps'
 import { TRPCError } from '@trpc/server'
 import { and, count, desc, eq } from 'drizzle-orm'
+import { cookies } from 'next/headers'
 import { z } from 'zod'
 import { adminProcedure, createTRPCRouter, notDemo, protectedProcedure } from '../trpc'
+
+const CLAIM_COOKIE_NAME = 'shopify_claim_token'
 
 const logger = createScopedLogger('shopify-router')
 
@@ -399,6 +406,137 @@ export const shopifyRouter = createTRPCRouter({
           message: 'Failed to fetch webhook events',
         })
       }
+    }),
+
+  /**
+   * Finalize an App-Store-initiated Shopify install by attaching the parked credential
+   * to the chosen organization.
+   *
+   * Reads the claim token from the `shopify_claim_token` cookie, validates the user is
+   * a member of `organizationId`, lazily creates the AppInstallation if missing, writes
+   * the WorkflowCredentials row, then deletes the Redis entry and clears the cookie.
+   *
+   * Returns the URL the client should navigate to next.
+   */
+  finalizeAppStoreInstall: protectedProcedure
+    .input(z.object({ organizationId: z.string(), claimToken: z.string().optional() }))
+    .mutation(async ({ ctx, input }) => {
+      const cookieStore = await cookies()
+      // Cookie is the primary source (prod, single-device). The optional input is the
+      // cross-device / cross-domain fallback used when the cookie isn't present —
+      // mirrors the read priority on the claim page itself.
+      const claimToken = cookieStore.get(CLAIM_COOKIE_NAME)?.value ?? input.claimToken
+      if (!claimToken) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'No pending Shopify install. Reinstall from the App Store to continue.',
+        })
+      }
+
+      const userId = ctx.session.user.id
+      const { organizationId } = input
+
+      // Membership check via cached members set (any role can connect — we land here
+      // from an App Store install, not a permission-gated UI).
+      if (!(await isOrgMember(organizationId, userId))) {
+        throw new TRPCError({
+          code: 'FORBIDDEN',
+          message: 'You are not a member of this organization.',
+        })
+      }
+
+      const redis = await getRedisClient()
+      if (!redis) {
+        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Redis unavailable' })
+      }
+
+      const claimKey = `shopify:pending-claim:${claimToken}`
+      const raw = await redis.get(claimKey)
+      if (!raw) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'This install link has expired. Reinstall from the App Store to continue.',
+        })
+      }
+      const claim = JSON.parse(raw) as {
+        shop: string
+        accessToken: string
+        scope?: string
+        connectionDefinitionId: string
+      }
+
+      const appId = await resolveAppSlug('shopify')
+      if (!appId) {
+        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Shopify app not found' })
+      }
+
+      // Lazy: ensure AppInstallation exists for this org. If already installed,
+      // resolve the installationId via the cached installedApps set.
+      let installationId: string | null = null
+      const installResult = await installApp({
+        appId,
+        organizationId,
+        installationType: 'production',
+        installedById: userId,
+      })
+      if (installResult.isOk()) {
+        installationId = installResult.value.installation.id
+        await onCacheEvent('app.installed', { orgId: organizationId })
+      } else if (installResult.error.code === 'APP_ALREADY_INSTALLED') {
+        const installedApps = await getOrgCache().get(organizationId, 'installedApps')
+        installationId =
+          installedApps.find((i) => i.app.id === appId && i.installationType === 'production')
+            ?.installationId ?? null
+      } else {
+        logger.error('Failed to install Shopify app for org', {
+          error: installResult.error,
+          organizationId,
+        })
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: installResult.error.message,
+        })
+      }
+
+      if (!installationId) {
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: 'Failed to resolve Shopify installation',
+        })
+      }
+
+      const saveResult = await saveAppConnection(
+        appId,
+        installationId,
+        'Shopify',
+        organizationId,
+        userId,
+        null, // org-scoped
+        {
+          accessToken: claim.accessToken,
+          metadata: {
+            scope: claim.scope,
+            shopDomain: claim.shop,
+          },
+        }
+      )
+
+      if (saveResult.isErr()) {
+        logger.error('Failed to save Shopify connection', {
+          error: saveResult.error,
+          organizationId,
+        })
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: 'Failed to save Shopify connection',
+        })
+      }
+
+      await redis.del(claimKey)
+      cookieStore.delete(CLAIM_COOKIE_NAME)
+
+      const redirectUrl = `/app/settings/apps/installed/shopify/connections?attached=${encodeURIComponent(claim.shop)}`
+      return { redirectUrl, shop: claim.shop }
     }),
 
   // Get integration details

@@ -107,9 +107,10 @@ async function main() {
     {
       fetch: app.fetch,
       port: PORT,
+      hostname: '0.0.0.0',
     },
     (info) => {
-      log.info(`✓ Auxx API server running at http://localhost:${info.port}`)
+      log.info(`✓ Auxx API server running at http://${info.address}:${info.port}`)
     }
   )
 
