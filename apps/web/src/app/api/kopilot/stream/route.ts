@@ -547,7 +547,7 @@ async function runInProcessPath(params: {
     await createAppCapabilities({
       organizationId,
       userId,
-      agentId: null,
+      agentId: isBuilder ? null : agentId,
       triggerId: null,
       sessionId,
       getToolDeps,
