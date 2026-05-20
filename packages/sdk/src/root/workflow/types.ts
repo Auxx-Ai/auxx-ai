@@ -285,13 +285,14 @@ export interface WorkflowExecuteContext {
 /**
  * Execute function signature for workflow blocks.
  *
- * The `ctx` arg is optional — most blocks ignore it and reach the server
- * SDK via global imports (`@auxx/sdk/server`). Router-style blocks that
- * carry a `toolMap` use `ctx.runTool(toolId, input)` to dispatch.
+ * `ctx` is always injected by the runtime — blocks that don't need it
+ * can omit the parameter (TypeScript allows shorter-arity functions to
+ * satisfy this signature). Router-style blocks with a `toolMap` use
+ * `ctx.runTool(toolId, input)` to dispatch.
  */
 export type WorkflowExecuteFunction<TSchema extends WorkflowSchema = WorkflowSchema> = (
   input: InferWorkflowInput<TSchema>,
-  ctx?: WorkflowExecuteContext
+  ctx: WorkflowExecuteContext
 ) => Promise<InferWorkflowOutput<TSchema>>
 
 /**
