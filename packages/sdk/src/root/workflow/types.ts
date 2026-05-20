@@ -265,16 +265,33 @@ export interface WorkflowPanelProps<TSchema extends WorkflowSchema = WorkflowSch
 }
 
 /**
+ * Thin runtime context passed as the second arg to workflow block execute
+ * functions. Exposes `runTool` so router-style blocks (with a `toolMap`)
+ * can dispatch a resource/operation pair into the unified tool registry
+ * without re-implementing the call.
+ *
+ * The full server SDK is still reached via global imports
+ * (`@auxx/sdk/server`); this object only carries platform-injected helpers
+ * that aren't ergonomic as globals.
+ */
+export interface WorkflowExecuteContext {
+  /** Dispatch into an in-process tool by id. */
+  runTool: <TInput extends Record<string, any>, TOutput = unknown>(
+    toolId: string,
+    input: TInput
+  ) => Promise<TOutput>
+}
+
+/**
  * Execute function signature for workflow blocks.
  *
- * Context is no longer passed as a parameter - use SDK imports instead:
- * - import { getUserConnection } from '@auxx/sdk/server'
- * - import { getCurrentUser } from '@auxx/sdk/server'
- *
- * The runtime injects global.AUXX_SERVER_SDK before execution.
+ * The `ctx` arg is optional — most blocks ignore it and reach the server
+ * SDK via global imports (`@auxx/sdk/server`). Router-style blocks that
+ * carry a `toolMap` use `ctx.runTool(toolId, input)` to dispatch.
  */
 export type WorkflowExecuteFunction<TSchema extends WorkflowSchema = WorkflowSchema> = (
-  input: InferWorkflowInput<TSchema>
+  input: InferWorkflowInput<TSchema>,
+  ctx?: WorkflowExecuteContext
 ) => Promise<InferWorkflowOutput<TSchema>>
 
 /**
@@ -350,6 +367,14 @@ export interface WorkflowBlock<TSchema extends WorkflowSchema = WorkflowSchema> 
 
   /** Server-side execution function */
   execute: WorkflowExecuteFunction<TSchema>
+
+  /**
+   * Resource/operation → tool id dispatch table. Router-style blocks set
+   * this and forward each op to `ctx.runTool(toolMap[key], …)`. The build
+   * extractor reads this literal at compile time and projects it into the
+   * catalog envelope so the runtime can validate dispatches.
+   */
+  toolMap?: Record<string, string>
 
   /** Block configuration */
   config?: WorkflowBlockConfig
