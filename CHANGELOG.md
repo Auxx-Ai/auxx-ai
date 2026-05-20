@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.1.149](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.148...auxx-v0.1.149) (2026-05-20)
+
+
+### Features
+
+* **agents:** app-kind triggers in agent UI ([#633](https://github.com/Auxx-Ai/auxx-ai/issues/633)) ([fced871](https://github.com/Auxx-Ai/auxx-ai/commit/fced8718d727b6427e05317cad584a87618dc33b))
+* **app-surface:** unified tool registry + catalog envelope ([#629](https://github.com/Auxx-Ai/auxx-ai/issues/629)) ([9bec05d](https://github.com/Auxx-Ai/auxx-ai/commit/9bec05d94000fd657a23c985e9b416b2bc521249))
+
+
+### Bug Fixes
+
+* **sdk:** make WorkflowExecuteFunction ctx required ([#632](https://github.com/Auxx-Ai/auxx-ai/issues/632)) ([08e3156](https://github.com/Auxx-Ai/auxx-ai/commit/08e3156b3804808c84af2c7396c444098d90ef9c))
+* **sdk:** widen WorkflowExecuteFunction with ctx + add toolMap ([#631](https://github.com/Auxx-Ai/auxx-ai/issues/631)) ([dfc856e](https://github.com/Auxx-Ai/auxx-ai/commit/dfc856e218984487d69bd3ecb6b4645e60723ff7))
+
 ## [0.1.148](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.147...auxx-v0.1.148) (2026-05-19)
 
 
