@@ -303,7 +303,10 @@ export function SignUpForm() {
                           text='Login with Google'
                           onClick={() => {
                             posthog?.capture('user_signed_up', { method: 'google' })
-                            client.signIn.social({ provider: 'google' })
+                            const callbackUrl =
+                              new URLSearchParams(window.location.search).get('callbackUrl') ||
+                              '/app'
+                            client.signIn.social({ provider: 'google', callbackURL: callbackUrl })
                           }}
                         />
                         <GeneralSubmitButton
@@ -313,7 +316,10 @@ export function SignUpForm() {
                           text='Login with Github'
                           onClick={() => {
                             posthog?.capture('user_signed_up', { method: 'github' })
-                            client.signIn.social({ provider: 'github' })
+                            const callbackUrl =
+                              new URLSearchParams(window.location.search).get('callbackUrl') ||
+                              '/app'
+                            client.signIn.social({ provider: 'github', callbackURL: callbackUrl })
                           }}
                         />
                       </div>

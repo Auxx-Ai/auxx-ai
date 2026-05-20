@@ -128,8 +128,10 @@ export default function TeamOnboardingPage() {
       resetState()
       // 6. Update auth session to reflect completedOnboarding
       await updateUser({ completedOnboarding: true })
-      // 7. Redirect to main app (full reload to get fresh dehydrated state)
-      window.location.href = '/app'
+      // 7. Redirect through /onboarding so the entry-point routes to /app or to
+      //    /shopify/claim (App-Store-initiated installs) in one place.
+      //    Full reload to get fresh dehydrated state.
+      window.location.href = '/onboarding'
     } catch (error) {
       console.error('Failed to complete onboarding:', error)
       toastError({

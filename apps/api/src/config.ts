@@ -8,8 +8,10 @@ import { configService } from '@auxx/credentials'
  * Uses @auxx/config for environment variables and SST secrets
  */
 
-/** Server port */
-export const PORT = configService.get<number>('API_PORT') ?? 3007
+/** Server port (Railway sets PORT; local/dev can override with API_PORT) */
+const rawPort = configService.get<string>('PORT')
+export const PORT =
+  (rawPort ? Number(rawPort) : undefined) ?? configService.get<number>('API_PORT') ?? 3007
 
 /** Node environment */
 export const NODE_ENV = configService.get<string>('NODE_ENV') || 'development'

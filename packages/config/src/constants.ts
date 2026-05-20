@@ -131,6 +131,7 @@ export const RESERVED_ORGANIZATION_HANDLES = [
   'ph',
   'preview',
   'setup',
+  'shopify',
   'subscription',
   'workflows',
 
