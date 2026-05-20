@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.150](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.149...auxx-v0.1.150) (2026-05-20)
+
+
+### Features
+
+* **shopify:** app-store-initiated install with claim flow ([#634](https://github.com/Auxx-Ai/auxx-ai/issues/634)) ([524efca](https://github.com/Auxx-Ai/auxx-ai/commit/524efca56ba76816d14febd8f9a47c7ac3e8673d))
+
 ## [0.1.149](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.148...auxx-v0.1.149) (2026-05-20)
 
 
