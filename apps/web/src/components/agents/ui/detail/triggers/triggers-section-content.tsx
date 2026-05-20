@@ -9,10 +9,16 @@ import { TreeRow } from '@auxx/ui/components/tree-row'
 import { AlertTriangle, Pencil, Trash2 } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { useState } from 'react'
+import { AppIcon } from '~/components/apps/ui/app-icon'
 import { Tooltip } from '~/components/global/tooltip'
 import { useConfirm } from '~/hooks/use-confirm'
+import { useExtensionsContext } from '~/providers/extensions/extensions-context'
 import { api, type RouterOutputs } from '~/trpc/react'
 import type { AgentDetail } from '../../../store/agent-store'
+import {
+  AgentAppTriggerPickerDialog,
+  type AppTriggerSelection,
+} from './agent-app-trigger-picker-dialog'
 import { AgentTriggerDialog } from './agent-trigger-dialog'
 import { TriggerLabel } from './trigger-label'
 
@@ -52,8 +58,8 @@ const KIND_META: Record<
 
 interface TriggersSectionContentProps {
   agent: AgentDetail
-  addingKind: 'scheduled' | 'event' | null
-  onAddingKindChange: (kind: 'scheduled' | 'event' | null) => void
+  addingKind: 'scheduled' | 'event' | 'app' | null
+  onAddingKindChange: (kind: 'scheduled' | 'event' | 'app' | null) => void
 }
 
 /**
@@ -73,6 +79,8 @@ export function TriggersSectionContent({
   const [confirm, ConfirmDialog] = useConfirm()
   const [editingTrigger, setEditingTrigger] = useState<Trigger | null>(null)
   const [creatingBuiltinKind, setCreatingBuiltinKind] = useState<BuiltinKind | null>(null)
+  const [pendingAppSelection, setPendingAppSelection] = useState<AppTriggerSelection | null>(null)
+  const { appInstallations } = useExtensionsContext()
   const utils = api.useUtils()
 
   const triggers = api.agentTrigger.list.useQuery({ agentId: agent.id })
@@ -105,25 +113,57 @@ export function TriggersSectionContent({
     (r) => r.kind !== 'mention' && r.kind !== 'assignment' && r.kind !== 'dm'
   )
 
-  const isDialogOpen = !!addingKind || !!editingTrigger || !!creatingBuiltinKind
-  const dialogKind: 'scheduled' | 'event' | 'mention' | 'assignment' | 'dm' =
-    editingTrigger?.kind === 'event'
-      ? 'event'
-      : editingTrigger?.kind === 'scheduled'
-        ? 'scheduled'
-        : editingTrigger?.kind === 'mention'
-          ? 'mention'
-          : editingTrigger?.kind === 'assignment'
-            ? 'assignment'
-            : editingTrigger?.kind === 'dm'
-              ? 'dm'
-              : (creatingBuiltinKind ?? addingKind ?? 'scheduled')
+  // App-picker dialog is open whenever the user picked "App" from the dropdown
+  // but hasn't selected a (app, trigger) pair yet.
+  const isAppPickerOpen = addingKind === 'app' && !pendingAppSelection
+
+  // The config dialog opens for: editing a row, creating a built-in row,
+  // creating a scheduled/event row, OR after the user picked an app trigger.
+  const isDialogOpen =
+    !!editingTrigger ||
+    !!creatingBuiltinKind ||
+    addingKind === 'scheduled' ||
+    addingKind === 'event' ||
+    (addingKind === 'app' && !!pendingAppSelection)
+
+  const dialogKind: TriggerKind = editingTrigger?.kind
+    ? (editingTrigger.kind as TriggerKind)
+    : creatingBuiltinKind
+      ? creatingBuiltinKind
+      : addingKind === 'app'
+        ? 'app'
+        : (addingKind ?? 'scheduled')
+
+  const appSelectionForDialog =
+    addingKind === 'app' && pendingAppSelection
+      ? {
+          installationId: pendingAppSelection.installation.installationId,
+          appId: pendingAppSelection.installation.app.id,
+          appTitle: pendingAppSelection.installation.app.title,
+          appAvatarUrl: pendingAppSelection.installation.app.avatarUrl,
+          triggerId: pendingAppSelection.trigger.triggerId,
+          triggerLabel: pendingAppSelection.trigger.label,
+          triggerDescription: pendingAppSelection.trigger.description,
+          inputsJsonSchema: pendingAppSelection.trigger.inputsJsonSchema,
+        }
+      : undefined
 
   const handleDialogOpenChange = (open: boolean) => {
     if (open) return
     onAddingKindChange(null)
     setEditingTrigger(null)
     setCreatingBuiltinKind(null)
+    setPendingAppSelection(null)
+  }
+
+  const handleAppPickerOpenChange = (open: boolean) => {
+    if (!open && addingKind === 'app') {
+      onAddingKindChange(null)
+    }
+  }
+
+  const handleAppSelected = (selection: AppTriggerSelection) => {
+    setPendingAppSelection(selection)
   }
 
   const handleDelete = async (row: Trigger) => {
@@ -139,12 +179,19 @@ export function TriggersSectionContent({
 
   return (
     <div className='space-y-4'>
+      <AgentAppTriggerPickerDialog
+        open={isAppPickerOpen}
+        onOpenChange={handleAppPickerOpenChange}
+        onSelect={handleAppSelected}
+      />
+
       <AgentTriggerDialog
         open={isDialogOpen}
         onOpenChange={handleDialogOpenChange}
         agentId={agent.id}
         kind={dialogKind}
         trigger={editingTrigger ?? undefined}
+        appSelection={appSelectionForDialog}
         onSuccess={invalidateList}
       />
 
@@ -201,11 +248,30 @@ export function TriggersSectionContent({
             const meta = KIND_META[row.kind as TriggerKind]
             const isDirectEventRow =
               row.kind === 'event' && !row.entityDefinitionId && !!row.eventType
-            const isEditable = row.kind !== 'app' && !isDirectEventRow
+            const isEditable = !isDirectEventRow
+
+            let iconOverride: ReactNode | undefined
+            if (row.kind === 'app' && row.triggerAppId) {
+              const installation =
+                appInstallations.find((i) => i.installationId === row.triggerInstallationId) ??
+                appInstallations.find((i) => i.app.id === row.triggerAppId)
+              const avatarUrl = installation?.app.avatarUrl
+              if (avatarUrl) {
+                iconOverride = (
+                  <Tooltip content={installation?.app.title ?? meta.label}>
+                    <span className='inline-flex'>
+                      <AppIcon iconId={avatarUrl} size='sm' />
+                    </span>
+                  </Tooltip>
+                )
+              }
+            }
+
             return (
               <TriggerRow
                 key={row.id}
                 meta={meta}
+                icon={iconOverride}
                 title={<TriggerLabel row={row} />}
                 lastFiredAt={row.lastFiredAt}
                 hasError={!!row.lastError}
@@ -228,6 +294,8 @@ export function TriggersSectionContent({
 
 interface TriggerRowProps {
   meta: { label: string; iconId: string; color: string }
+  /** When provided, replaces the default EntityIcon for this row. */
+  icon?: ReactNode
   title: ReactNode
   description?: string
   lastFiredAt: string | null
@@ -247,6 +315,7 @@ interface TriggerRowProps {
  */
 function TriggerRow({
   meta,
+  icon,
   title,
   description,
   lastFiredAt,
@@ -266,17 +335,19 @@ function TriggerRow({
     <TreeRow
       description={description}
       icon={
-        <Tooltip content={meta.label}>
-          <span className='inline-flex'>
-            <EntityIcon
-              iconId={meta.iconId}
-              color={meta.color}
-              size='sm'
-              inverse
-              className='inset-shadow-xs inset-shadow-black/20'
-            />
-          </span>
-        </Tooltip>
+        icon ?? (
+          <Tooltip content={meta.label}>
+            <span className='inline-flex'>
+              <EntityIcon
+                iconId={meta.iconId}
+                color={meta.color}
+                size='sm'
+                inverse
+                className='inset-shadow-xs inset-shadow-black/20'
+              />
+            </span>
+          </Tooltip>
+        )
       }
       title={
         <Tooltip content={lastFiredLabel} allowInteraction>

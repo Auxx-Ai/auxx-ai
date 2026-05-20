@@ -35,7 +35,7 @@ const crudEventInputSchema = z.object({
   kind: z.literal('event'),
   triggerType: z.enum(['created', 'updated', 'deleted']),
   entityDefinitionId: z.string().min(1),
-  filter: z.record(z.unknown()).optional(),
+  filter: z.record(z.string(), z.unknown()).optional(),
 })
 
 const appInputSchema = z.object({
@@ -44,8 +44,8 @@ const appInputSchema = z.object({
   triggerAppTriggerId: z.string().min(1),
   triggerInstallationId: z.string().min(1),
   triggerConnectionId: z.string().optional(),
-  userInputs: z.record(z.unknown()).optional(),
-  filter: z.record(z.unknown()).optional(),
+  userInputs: z.record(z.string(), z.unknown()).optional(),
+  filter: z.record(z.string(), z.unknown()).optional(),
   polling: z
     .object({
       intervalMinutes: z.number().int().positive(),
@@ -114,7 +114,7 @@ export const agentTriggerRouter = createTRPCRouter({
       z.object({
         agentId: z.string().min(1),
         enabled: z.boolean().optional(),
-        instructions: z.record(z.unknown()).nullable().optional(),
+        instructions: z.record(z.string(), z.unknown()).nullable().optional(),
         trigger: triggerInputSchema,
       })
     )
@@ -150,7 +150,7 @@ export const agentTriggerRouter = createTRPCRouter({
       z.object({
         id: z.string().min(1),
         enabled: z.boolean().optional(),
-        instructions: z.record(z.unknown()).nullable().optional(),
+        instructions: z.record(z.string(), z.unknown()).nullable().optional(),
         trigger: triggerInputSchema.optional(),
       })
     )
