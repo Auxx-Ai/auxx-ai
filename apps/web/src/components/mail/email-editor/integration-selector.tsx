@@ -11,9 +11,9 @@ import {
 } from '@auxx/ui/components/command'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { cn } from '@auxx/ui/lib/utils'
-import { Check, ChevronsUpDown, Loader2 } from 'lucide-react'
+import { Check, ChevronsUpDown } from 'lucide-react'
 import React, { useState } from 'react'
-import { api } from '~/trpc/react'
+import { useEmailChannels } from '~/components/channels/store/channel-store'
 
 interface IntegrationSelectorProps {
   value: string
@@ -29,12 +29,12 @@ const IntegrationSelector: React.FC<IntegrationSelectorProps> = ({
   disabled,
   className,
 }) => {
-  const { data: allIntegrations, isLoading } = api.channel.getEmailClients.useQuery()
+  const allIntegrations = useEmailChannels()
 
   // Example integrations are seeded placeholders — they can't actually send, so hide
   // them from the "Send as" picker. See plans/seeding/example-data-for-new-accounts.md §7a.
   const integrations = React.useMemo(
-    () => allIntegrations?.filter((i) => !i.isExample),
+    () => allIntegrations.filter((i) => !i.isExample),
     [allIntegrations]
   )
 
@@ -42,21 +42,12 @@ const IntegrationSelector: React.FC<IntegrationSelectorProps> = ({
   const [searchQuery, setSearchQuery] = useState('')
 
   React.useEffect(() => {
-    if (integrations && integrations.length > 0 && !value) {
+    if (integrations.length > 0 && !value) {
       onChange(integrations[0].id)
     }
   }, [integrations, value, onChange])
 
-  if (isLoading) {
-    return (
-      <div className='flex items-center gap-2'>
-        <Loader2 className='h-4 w-4 animate-spin' />
-        <span className='text-sm text-muted-foreground'>Loading integrations...</span>
-      </div>
-    )
-  }
-
-  if (!integrations || integrations.length === 0) {
+  if (integrations.length === 0) {
     return <div className='text-sm text-muted-foreground'>No integrations available</div>
   }
 

@@ -38,8 +38,10 @@ export const INVALIDATION_GRAPH: Record<string, InvalidationMapping> = {
   'entity-def.updated': ['resources', 'entityDefs', 'entityDefSlugs'],
   'entity-def.deleted': ['resources', 'entityDefs', 'entityDefSlugs', 'customFields', 'overages'],
 
-  'channel.connected': ['channelProviders', 'inboxes', 'integrations', 'overages'],
-  'channel.disconnected': ['channelProviders', 'inboxes', 'integrations', 'overages'],
+  'channel.connected': ['channelProviders', 'inboxes', 'channels', 'overages'],
+  'channel.disconnected': ['channelProviders', 'inboxes', 'channels', 'overages'],
+  'channel.toggled': ['channels'],
+  'channel.settings_updated': ['channels'],
 
   'group.created': ['groups'],
   'group.updated': ['groups'],

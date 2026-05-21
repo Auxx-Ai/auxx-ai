@@ -1,10 +1,7 @@
-// Channel cache - cached provider lookup for batch operations
-export { getOrgChannelProviderMap, invalidateOrgChannelProviderMap } from './channel-cache'
 export {
   DEFAULT_IMPORT_BATCH_SIZE,
   PROVIDER_IMPORT_BATCH_SIZE,
 } from './channel-provider.interface'
-export { ChannelService } from './channel-service'
 export type { ChannelTokens } from './channel-token-accessor'
 export { ChannelTokenAccessor } from './channel-token-accessor'
 export { EmailForwardingProvider } from './email'

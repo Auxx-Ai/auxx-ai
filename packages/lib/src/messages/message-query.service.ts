@@ -4,7 +4,7 @@ import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { type ParticipantId, toParticipantId } from '@auxx/types'
 import { and, eq, inArray, sql } from 'drizzle-orm'
-import { getOrgChannelProviderMap } from '../providers/channel-cache'
+import { getOrgChannelProviderMap } from '../channels/cache'
 import { getMessageTypeFromProvider } from '../providers/type-utils'
 import { ChannelProviderType } from '../providers/types'
 import type {
