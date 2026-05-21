@@ -17,6 +17,7 @@ import {
   LabelsOnThread,
   Message,
   MessageParticipant,
+  MessageReceipt,
   OperatingHours,
   Organization,
   Participant,
@@ -144,7 +145,19 @@ export const messageRelations = relations(Message, ({ one, many }) => ({
     references: [Thread.id],
   }),
   participants: many(MessageParticipant),
+  receipts: many(MessageReceipt),
   // EmailAttachment relation removed — inbound attachments now use canonical Attachment
+}))
+
+export const messageReceiptRelations = relations(MessageReceipt, ({ one }) => ({
+  message: one(Message, {
+    fields: [MessageReceipt.messageId],
+    references: [Message.id],
+  }),
+  recipient: one(Participant, {
+    fields: [MessageReceipt.recipientParticipantId],
+    references: [Participant.id],
+  }),
 }))
 
 export const messageParticipantRelations = relations(MessageParticipant, ({ one }) => ({

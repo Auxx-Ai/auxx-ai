@@ -143,3 +143,23 @@ export interface ThreadMeta {
 export interface ThreadDetail extends ThreadMeta {
   messageIds: string[]
 }
+
+/**
+ * Shape of `Thread.metadata` for chat-channel threads.
+ *
+ * Stored loosely in JSON; not enforced at the DB level. The `claimedVisitor*`
+ * fields are unverified (v1) and not read by the AI.
+ */
+export interface ChatThreadMetadata {
+  channel: 'chat'
+  /** The chat integration id (DB column is still `integrationId`). */
+  channelId: string
+  visit?: {
+    userAgent?: string
+    ipAddress?: string
+    referrer?: string
+    url?: string
+  }
+  claimedVisitorEmail?: string
+  claimedVisitorName?: string
+}

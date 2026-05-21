@@ -75,7 +75,6 @@ export function ChatWidgetSettings({ widgetId }: ChatWidgetSettingsProps) {
       mobileFullScreen: true,
       collectUserInfo: false,
       allowedDomains: [],
-      useAi: false,
       operatingHoursEnabled: false,
       timezone: 'UTC',
     },
@@ -100,9 +99,6 @@ export function ChatWidgetSettings({ widgetId }: ChatWidgetSettingsProps) {
         collectUserInfo: widget.collectUserInfo,
         offlineMessage: widget.offlineMessage || '',
         allowedDomains: widget.allowedDomains,
-        useAi: widget.useAi,
-        aiModel: widget.aiModel || '',
-        aiInstructions: widget.aiInstructions || '',
         operatingHoursEnabled: false, // For this example
         timezone: 'UTC',
       })
@@ -167,12 +163,11 @@ export function ChatWidgetSettings({ widgetId }: ChatWidgetSettingsProps) {
 
           <Tabs value={activeTab} onValueChange={setActiveTab} className='w-full'>
             <CardContent>
-              <TabsList className='grid w-full grid-cols-5'>
+              <TabsList className='grid w-full grid-cols-4'>
                 <TabsTrigger value='general'>General</TabsTrigger>
                 <TabsTrigger value='appearance'>Appearance</TabsTrigger>
                 <TabsTrigger value='behavior'>Behavior</TabsTrigger>
                 <TabsTrigger value='domains'>Domains</TabsTrigger>
-                <TabsTrigger value='ai'>AI</TabsTrigger>
               </TabsList>
             </CardContent>
 
@@ -549,94 +544,6 @@ export function ChatWidgetSettings({ widgetId }: ChatWidgetSettingsProps) {
                     </div>
                   )}
                 </div>
-              </div>
-            </TabsContent>
-
-            {/* AI Settings */}
-            <TabsContent value='ai' className='p-6 pt-0'>
-              <div className='space-y-6'>
-                <FormField
-                  control={form.control}
-                  name='useAi'
-                  render={({ field }) => (
-                    <FormItem className='flex flex-row items-center justify-between rounded-lg border p-4'>
-                      <div className='space-y-0.5'>
-                        <FormLabel className='text-base'>Enable AI Responses</FormLabel>
-                        <FormDescription>
-                          Use AI to automatically respond to common questions
-                        </FormDescription>
-                      </div>
-                      <FormControl>
-                        <Switch
-                          checked={field.value}
-                          onCheckedChange={field.onChange}
-                          disabled={isLoading}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                {form.watch('useAi') && (
-                  <>
-                    <FormField
-                      control={form.control}
-                      name='aiModel'
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>AI Model</FormLabel>
-                          <Select
-                            onValueChange={field.onChange}
-                            defaultValue={field.value}
-                            disabled={isLoading}>
-                            <FormControl>
-                              <SelectTrigger>
-                                <SelectValue placeholder='Select an AI model' />
-                              </SelectTrigger>
-                            </FormControl>
-                            <SelectContent>
-                              <SelectItem value='gpt-5.4-nano'>OpenAI GPT-5.4 Nano</SelectItem>
-                              <SelectItem value='claude-sonnet-4-6'>
-                                Anthropic Claude Sonnet 4.6
-                              </SelectItem>
-                              <SelectItem value='claude-haiku-4-5-20251001'>
-                                Anthropic Claude Haiku 4.5
-                              </SelectItem>
-                              <SelectItem value='gemini-pro'>Google Gemini Pro</SelectItem>
-                            </SelectContent>
-                          </Select>
-                          <FormDescription>
-                            The AI model to use for automated responses
-                          </FormDescription>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-
-                    <FormField
-                      control={form.control}
-                      name='aiInstructions'
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>AI Instructions</FormLabel>
-                          <FormControl>
-                            <Textarea
-                              placeholder='You are a helpful customer support agent for our company. Answer questions accurately and concisely, and ask for more information if needed.'
-                              {...field}
-                              disabled={isLoading}
-                              className='min-h-32'
-                            />
-                          </FormControl>
-                          <FormDescription>
-                            Instructions that guide how the AI should respond
-                          </FormDescription>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  </>
-                )}
               </div>
             </TabsContent>
           </Tabs>

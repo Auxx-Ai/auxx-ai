@@ -1,10 +1,16 @@
 // src/server/api/routers/channel.ts
 
+import { WEBAPP_URL } from '@auxx/config/server'
 import { ConfigStorage, CredentialService, configService } from '@auxx/credentials'
 import { type Database, database, schema } from '@auxx/database'
 import { onCacheEvent, storeOAuthCsrfToken } from '@auxx/lib/cache'
-import { ChatWidgetService } from '@auxx/lib/chat'
+import {
+  getChatWidget,
+  type UpdateChatWidgetInput,
+  updateChatWidget,
+} from '@auxx/lib/chat-widget/config'
 import { getUserOrganizationId, requireAdminAccess } from '@auxx/lib/email'
+import { createChannel, linkChannelToInbox } from '@auxx/lib/integrations/lifecycle'
 import { SyncMessages } from '@auxx/lib/messages'
 import { FeatureKey, FeaturePermissionService } from '@auxx/lib/permissions'
 import type { ImapCredentialData } from '@auxx/lib/providers'
@@ -247,9 +253,6 @@ export const channelRouter = createTRPCRouter({
         collectUserInfo: chatWidgetInputSchema.shape.collectUserInfo.optional(),
         offlineMessage: chatWidgetInputSchema.shape.offlineMessage.optional(),
         allowedDomains: chatWidgetInputSchema.shape.allowedDomains.optional(),
-        useAi: chatWidgetInputSchema.shape.useAi.optional(),
-        aiModel: chatWidgetInputSchema.shape.aiModel.optional(),
-        aiInstructions: chatWidgetInputSchema.shape.aiInstructions.optional(),
         inboxId: z.string().optional(),
       })
     )
@@ -260,12 +263,48 @@ export const channelRouter = createTRPCRouter({
 
       await checkChannelLimit(ctx.db, organizationId)
 
-      const service = new ChatWidgetService(ctx.db, organizationId)
-      const result = await service.addChatWidgetIntegration(input)
+      const serviceCtx = { db: ctx.db, organizationId }
+      const { inboxId, ...widgetConfig } = input
+
+      const integrationId = await ctx.db.transaction(async (tx) => {
+        const channelResult = await createChannel(
+          serviceCtx,
+          { provider: 'chat', name: widgetConfig.name },
+          tx
+        )
+        if (!channelResult.ok) throw channelResult.error
+        const integration = channelResult.value
+
+        await tx.insert(schema.ChatWidget).values({
+          organizationId,
+          integrationId: integration.id,
+          name: widgetConfig.name,
+          title: widgetConfig.title,
+          subtitle: widgetConfig.subtitle,
+          primaryColor: widgetConfig.primaryColor,
+          logoUrl: widgetConfig.logoUrl,
+          position: widgetConfig.position,
+          welcomeMessage: widgetConfig.welcomeMessage,
+          autoOpen: widgetConfig.autoOpen,
+          mobileFullScreen: widgetConfig.mobileFullScreen,
+          collectUserInfo: widgetConfig.collectUserInfo,
+          offlineMessage: widgetConfig.offlineMessage,
+          allowedDomains: widgetConfig.allowedDomains ?? [],
+          isActive: true,
+          updatedAt: new Date(),
+        })
+
+        if (inboxId) {
+          const linkResult = await linkChannelToInbox(serviceCtx, integration.id, inboxId, tx)
+          if (!linkResult.ok) throw linkResult.error
+        }
+
+        return integration.id
+      })
 
       await onCacheEvent('channel.connected', { orgId: organizationId })
 
-      return result
+      return { success: true, integrationId }
     }),
 
   /**
@@ -287,9 +326,6 @@ export const channelRouter = createTRPCRouter({
         collectUserInfo: chatWidgetInputSchema.shape.collectUserInfo.optional(),
         offlineMessage: chatWidgetInputSchema.shape.offlineMessage.optional(),
         allowedDomains: chatWidgetInputSchema.shape.allowedDomains.optional(),
-        useAi: chatWidgetInputSchema.shape.useAi.optional(),
-        aiModel: chatWidgetInputSchema.shape.aiModel.optional(),
-        aiInstructions: chatWidgetInputSchema.shape.aiInstructions.optional(),
         inboxId: z.string().optional().nullable(),
       })
     )
@@ -299,8 +335,13 @@ export const channelRouter = createTRPCRouter({
       await requireAdminAccess(userId, organizationId)
 
       const { integrationId, ...updateData } = input
-      const service = new ChatWidgetService(ctx.db, organizationId)
-      return service.updateChatWidgetIntegration(integrationId, updateData)
+      const result = await updateChatWidget(
+        { db: ctx.db, organizationId },
+        integrationId,
+        updateData as UpdateChatWidgetInput
+      )
+      if (!result.ok) throw result.error
+      return { success: true }
     }),
 
   /**
@@ -310,8 +351,9 @@ export const channelRouter = createTRPCRouter({
     .input(z.object({ integrationId: z.string() }))
     .query(async ({ ctx, input }) => {
       const organizationId = getUserOrganizationId(ctx.session)
-      const service = new ChatWidgetService(ctx.db, organizationId)
-      return service.getChatWidgetIntegration(input.integrationId)
+      const result = await getChatWidget({ db: ctx.db, organizationId }, input.integrationId)
+      if (!result.ok) throw result.error
+      return result.value
     }),
 
   /**
@@ -321,8 +363,10 @@ export const channelRouter = createTRPCRouter({
     .input(z.object({ integrationId: z.string() }))
     .query(async ({ ctx, input }) => {
       const organizationId = getUserOrganizationId(ctx.session)
-      const service = new ChatWidgetService(ctx.db, organizationId)
-      return service.getInstallationCode(input.integrationId)
+      const result = await getChatWidget({ db: ctx.db, organizationId }, input.integrationId)
+      if (!result.ok) throw result.error
+      const scriptSrc = `${WEBAPP_URL}/api/integrations/chat/${result.value.id}/script.js`
+      return { script: `<script src="${scriptSrc}" async defer></script>` }
     }),
 
   getProviderType: protectedProcedure

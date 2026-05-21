@@ -124,6 +124,12 @@
       "import": "./dist/chat/index.mjs",
       "default": "./src/chat/index.ts"
     },
+    "./chat-widget/config": {
+      "types": "./src/chat-widget/config.ts",
+      "source": "./src/chat-widget/config.ts",
+      "import": "./dist/chat-widget/config.mjs",
+      "default": "./src/chat-widget/config.ts"
+    },
     "./comments": {
       "types": "./src/comments/index.ts",
       "source": "./src/comments/index.ts",
@@ -363,6 +369,12 @@
       "source": "./src/inboxes/index.ts",
       "import": "./dist/inboxes/index.mjs",
       "default": "./src/inboxes/index.ts"
+    },
+    "./integrations/lifecycle": {
+      "types": "./src/integrations/lifecycle.ts",
+      "source": "./src/integrations/lifecycle.ts",
+      "import": "./dist/integrations/lifecycle.mjs",
+      "default": "./src/integrations/lifecycle.ts"
     },
     "./jobs": {
       "types": "./src/jobs/index.ts",
