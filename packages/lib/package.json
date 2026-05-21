@@ -130,6 +130,12 @@
       "import": "./dist/chat-widget/config.mjs",
       "default": "./src/chat-widget/config.ts"
     },
+    "./chat-widget/visitor": {
+      "types": "./src/chat-widget/visitor.ts",
+      "source": "./src/chat-widget/visitor.ts",
+      "import": "./dist/chat-widget/visitor.mjs",
+      "default": "./src/chat-widget/visitor.ts"
+    },
     "./comments": {
       "types": "./src/comments/index.ts",
       "source": "./src/comments/index.ts",

@@ -1,0 +1,3 @@
+# Built artifact written by `@auxx/chat-widget` (post-build). Authoritative
+# source lives at `apps/chat-widget/src/main.tsx`; never edit the bundle here.
+chat-widget.js

@@ -1,0 +1,161 @@
+/* apps/chat-widget/src/styles.css
+ *
+ * Scoped under `.auxx-chat-*` to limit collisions with host page styles. We
+ * do not use Shadow DOM so customers can override these rules for white-label
+ * cases — that's a feature, not a bug.
+ */
+
+.auxx-chat-root {
+  position: fixed;
+  z-index: 2147483000;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  color: #111;
+}
+
+.auxx-chat-root--bottom-right {
+  right: 20px;
+  bottom: 20px;
+}
+.auxx-chat-root--bottom-left {
+  left: 20px;
+  bottom: 20px;
+}
+
+.auxx-chat-button {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  border: none;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  cursor: pointer;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.auxx-chat-button:focus {
+  outline: 2px solid rgba(0, 0, 0, 0.25);
+  outline-offset: 2px;
+}
+
+.auxx-chat-button svg {
+  width: 24px;
+  height: 24px;
+  fill: currentColor;
+}
+
+.auxx-chat-window {
+  width: 360px;
+  max-width: calc(100vw - 40px);
+  height: 540px;
+  max-height: calc(100vh - 100px);
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 12px;
+}
+
+.auxx-chat-header {
+  padding: 14px 16px;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.auxx-chat-header__title {
+  font-size: 15px;
+  font-weight: 600;
+}
+.auxx-chat-header__subtitle {
+  font-size: 12px;
+  opacity: 0.85;
+}
+.auxx-chat-header__close {
+  background: transparent;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.auxx-chat-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+  background: #f7f8fa;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.auxx-chat-message {
+  max-width: 80%;
+  padding: 8px 12px;
+  border-radius: 14px;
+  font-size: 13px;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+.auxx-chat-message--user {
+  align-self: flex-end;
+  background: #4f46e5;
+  color: #fff;
+  border-bottom-right-radius: 4px;
+}
+.auxx-chat-message--agent {
+  align-self: flex-start;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-bottom-left-radius: 4px;
+}
+.auxx-chat-message--system {
+  align-self: center;
+  background: transparent;
+  color: #6b7280;
+  font-style: italic;
+  font-size: 12px;
+}
+
+.auxx-chat-footer {
+  border-top: 1px solid #e5e7eb;
+  padding: 10px;
+  background: #fff;
+  display: flex;
+  gap: 8px;
+}
+.auxx-chat-input {
+  flex: 1;
+  border: 1px solid #e5e7eb;
+  border-radius: 999px;
+  padding: 8px 12px;
+  font-size: 13px;
+  outline: none;
+}
+.auxx-chat-input:focus {
+  border-color: #4f46e5;
+}
+.auxx-chat-send {
+  background: #4f46e5;
+  color: #fff;
+  border: none;
+  border-radius: 999px;
+  padding: 8px 14px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.auxx-chat-send:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.auxx-chat-error {
+  color: #b91c1c;
+  font-size: 12px;
+  padding: 6px 10px;
+  text-align: center;
+}

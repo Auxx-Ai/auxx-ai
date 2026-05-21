@@ -479,6 +479,28 @@ importers:
         specifier: 'catalog:'
         version: 5.9.2
 
+  apps/chat-widget:
+    dependencies:
+      preact:
+        specifier: ^10.24.0
+        version: 10.28.4
+      pusher-js:
+        specifier: 'catalog:'
+        version: 8.4.0
+    devDependencies:
+      '@auxx/typescript-config':
+        specifier: workspace:*
+        version: link:../../packages/typescript-config
+      '@types/node':
+        specifier: 'catalog:'
+        version: 22.19.13
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.2
+      vite:
+        specifier: 'catalog:'
+        version: 6.4.1(@types/node@22.19.13)(jiti@2.6.1)(lightningcss@1.31.1)(terser@5.46.0)(tsx@4.21.0)(yaml@2.8.2)
+
   apps/docs:
     dependencies:
       '@auxx/ui':
@@ -859,6 +881,9 @@ importers:
       '@auxx/billing':
         specifier: workspace:*
         version: link:../../packages/billing
+      '@auxx/chat-widget':
+        specifier: workspace:*
+        version: link:../chat-widget
       '@auxx/config':
         specifier: workspace:*
         version: link:../../packages/config
