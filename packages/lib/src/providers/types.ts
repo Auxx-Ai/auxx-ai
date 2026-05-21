@@ -42,6 +42,15 @@ export interface ProviderCapabilities {
   canReact: boolean // for social media
   canShare: boolean // for social media
 
+  // Send-pipeline shape — drives MessageSenderService.validateInput, usage guard,
+  // and post-send sync. Email-likes are all `true`; chat is all `false`. FB/IG
+  // are currently `true` for compatibility — see provider-capabilities.ts.
+  requiresSubject: boolean
+  requiresRecipients: boolean
+  countsAgainstOutboundEmailsQuota: boolean
+  triggersPostSendSync: boolean
+  supportsRichText: boolean
+
   // Rate limiting
   rateLimits?: {
     messagesPerMinute?: number

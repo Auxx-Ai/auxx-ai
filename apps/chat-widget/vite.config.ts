@@ -11,10 +11,17 @@ import { defineConfig } from 'vite'
  * `preact/compat` alias so existing `React.createElement`/JSX code keeps
  * working at a fraction of the bundle weight.
  *
- * URL resolution order (matches every other app):
- *   1. APP_URL (explicit override)
- *   2. DOMAIN → `https://app.${DOMAIN}`
- *   3. http://localhost:${WEB_PORT || 3000}
+ * The bundle talks only to `apps/api` (Hono) — config, passport, and the
+ * full chat surface all live there. URL resolution mirrors `@auxx/config`'s
+ * `resolveAppUrl('api')`:
+ *   1. API_URL (explicit override)
+ *   2. DOMAIN → `https://api.${DOMAIN}`
+ *   3. http://localhost:${API_PORT || 3007}
+ *
+ * Inlined rather than imported from `@auxx/config` for the same reason
+ * `apps/extension` inlines: Vite's config loader resolves via Node's
+ * `import` condition, which doesn't exist until tsdown builds the config
+ * package — duplicating six lines sidesteps the build-order race.
  */
 
 function readEnv(key: string): string | undefined {
@@ -24,12 +31,12 @@ function readEnv(key: string): string | undefined {
   return trimmed.length > 0 ? trimmed : undefined
 }
 
-function resolveWebappUrl(): string {
-  const appUrl = readEnv('APP_URL')
-  if (appUrl) return appUrl
+function resolveApiUrl(): string {
+  const apiUrl = readEnv('API_URL')
+  if (apiUrl) return apiUrl
   const domain = readEnv('DOMAIN')
-  if (domain) return `https://app.${domain}`
-  const port = readEnv('WEB_PORT') ?? '3000'
+  if (domain) return `https://api.${domain}`
+  const port = readEnv('API_PORT') ?? '3007'
   return `http://localhost:${port}`
 }
 
@@ -47,7 +54,7 @@ export default defineConfig({
     jsxImportSource: 'preact',
   },
   define: {
-    __AUXX_API_BASE_URL__: JSON.stringify(resolveWebappUrl()),
+    __AUXX_API_BASE_URL__: JSON.stringify(resolveApiUrl()),
   },
   build: {
     outDir: 'dist',

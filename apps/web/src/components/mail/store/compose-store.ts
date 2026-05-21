@@ -96,7 +96,8 @@ export const useComposeStore = create<ComposeStore>((set, get) => ({
       portalTargetId: null,
       position,
       zIndex: state.nextZIndex,
-      subject: config.draft?.subject || config.presetValues?.subject || '',
+      subject:
+        config.draft?.subject || config.presetValues?.subject || config.thread?.subject || '',
       pendingFocus: config.pendingFocus ?? false,
     }
 

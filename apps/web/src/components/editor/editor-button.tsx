@@ -493,10 +493,16 @@ export const EditorToolbar = ({
   fileSelect,
   aiToolsProps,
   showSend = true,
+  showFormatting = true,
+  allowSchedule = true,
   popoverClassName,
 }: Partial<EditorButtonsProps> & {
   fileSelect?: UseFileSelectReturn
   showSend?: boolean
+  /** When false, hides the rich-text formatting group (used for chat/SMS). */
+  showFormatting?: boolean
+  /** When false, sends immediately (no schedule dropdown). */
+  allowSchedule?: boolean
   aiToolsProps?: {
     threadId?: string
     hasContent: boolean
@@ -514,8 +520,10 @@ export const EditorToolbar = ({
 
   // Define button groups
   const buttonGroups = useMemo<EditorButtonGroup[]>(() => {
-    const groups: EditorButtonGroup[] = [
-      {
+    const groups: EditorButtonGroup[] = []
+
+    if (showFormatting) {
+      groups.push({
         id: 'formatting',
         label: 'Formatting',
         icon: LetterText,
@@ -551,8 +559,8 @@ export const EditorToolbar = ({
             <QuoteButton editor={editor} disabled={props?.disabled} />
           </>
         ),
-      },
-    ]
+      })
+    }
 
     // Only add AI group if aiToolsProps is provided
     if (aiToolsProps) {
@@ -580,7 +588,7 @@ export const EditorToolbar = ({
     }
 
     return groups
-  }, [aiToolsProps])
+  }, [aiToolsProps, showFormatting])
 
   // Toggle group function
   const toggleGroup = (groupId: string) => {
@@ -632,25 +640,26 @@ export const EditorToolbar = ({
                     </Button>
                   </Tooltip>
                 </motion.div>
-                {/* Show file select button after formatting button */}
-                {group.id === 'formatting' && fileSelect && (
-                  <motion.div
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    transition={{ delay: 0.3 }}
-                    className='flex items-center'>
-                    <FileSelectPickerWithTracking
-                      fileSelect={fileSelect}
-                      disabled={disabled}
-                      popoverClassName={popoverClassName}
-                    />
-                  </motion.div>
-                )}
               </React.Fragment>
             )
           })}
+          {/* File select renders independently so it stays available even when
+              the formatting group is hidden (e.g. chat). */}
+          {fileSelect && (
+            <motion.div
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.3 }}
+              className='flex items-center'>
+              <FileSelectPickerWithTracking
+                fileSelect={fileSelect}
+                disabled={disabled}
+                popoverClassName={popoverClassName}
+              />
+            </motion.div>
+          )}
         </div>
 
         {/* Animated group content - all groups stay in DOM */}
@@ -699,6 +708,7 @@ export const EditorToolbar = ({
           isSending={isSending}
           disabled={disabled}
           popoverClassName={popoverClassName}
+          allowSchedule={allowSchedule}
         />
       )}
     </div>

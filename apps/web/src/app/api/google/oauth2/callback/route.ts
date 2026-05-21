@@ -1,7 +1,7 @@
 // /api/google/oauth2/callback/route.ts
 
 import { WEBAPP_URL } from '@auxx/config/urls'
-import { consumeOAuthCsrfToken } from '@auxx/lib/cache'
+import { consumeOAuthCsrfToken, onCacheEvent } from '@auxx/lib/cache'
 import { requireAdminAccess } from '@auxx/lib/email'
 import { publisher } from '@auxx/lib/events'
 import { GoogleOAuthService } from '@auxx/lib/providers'
@@ -91,6 +91,8 @@ export async function GET(request: NextRequest) {
 
     // Handle the OAuth2 callback
     const result = await GoogleOAuthService.handleCallback(code, stateString)
+
+    await onCacheEvent('channel.connected', { orgId: state.orgId })
 
     await publisher.publishLater({
       type: 'integration:connected',

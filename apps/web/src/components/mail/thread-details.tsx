@@ -11,6 +11,7 @@ import { getThreadStoreState } from '~/components/threads/store/thread-store'
 import { useCompose } from '~/hooks/use-compose'
 import { api } from '~/trpc/react'
 import { CommentList } from '../global/comments/comment-list'
+import { asChatThreadMetadata, ChatVisitorSidebar } from './chat-visitor-sidebar'
 import type { MessageType } from './email-editor/types'
 import { useComposeStore } from './store/compose-store'
 import { ThreadFooter } from './thread-footer'
@@ -220,6 +221,8 @@ export default function ThreadDetails({
     return null
   }
 
+  const chatMetadata = asChatThreadMetadata(thread.metadata)
+
   return (
     <ScrollArea
       className={cn(
@@ -231,14 +234,17 @@ export default function ThreadDetails({
       <div className={cn('flex flex-1 flex-col', centered && 'mx-auto w-full max-w-4xl')}>
         <ThreadHeader />
 
-        <div className='flex-1 '>
-          <ThreadMessages />
+        <div className='flex flex-1'>
+          <div className='flex-1'>
+            <ThreadMessages />
 
-          <div className='px-4 pb-6 pt-4 md:px-6 md:pb-10'>
-            <CommentList recordId={toRecordId('thread', thread.id)} />
+            <div className='px-4 pb-6 pt-4 md:px-6 md:pb-10'>
+              <CommentList recordId={toRecordId('thread', thread.id)} />
+            </div>
+
+            <div className='grow'></div>
           </div>
-
-          <div className='grow'></div>
+          {chatMetadata && <ChatVisitorSidebar metadata={chatMetadata} />}
         </div>
 
         {/* Reply editor portal target — the editor renders here via portal when docked */}

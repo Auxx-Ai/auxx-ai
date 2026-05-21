@@ -1,37 +1,31 @@
 // apps/web/src/components/chat-widget/ui/settings/sections/appearance-section.tsx
 'use client'
+import { FieldType } from '@auxx/database/enums'
 import type { ChatWidgetWithIntegration } from '@auxx/lib/chat-widget/config'
 import { Button } from '@auxx/ui/components/button'
-import {
-  Form,
-  FormControl,
-  FormDescription,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from '@auxx/ui/components/form'
-import { Input } from '@auxx/ui/components/input'
-import { Label } from '@auxx/ui/components/label'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@auxx/ui/components/select'
-import { Switch } from '@auxx/ui/components/switch'
+import { Form, FormField } from '@auxx/ui/components/form'
 import { toastError } from '@auxx/ui/components/toast'
 import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
-import { LayoutGrid, Palette, Smartphone } from 'lucide-react'
+import { LayoutGrid, Link as LinkIcon, Palette, Smartphone } from 'lucide-react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
+import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
+import { ColorField } from '~/components/ui/color-field'
+import { BaseType } from '~/components/workflow/types'
+import { VarEditorField, VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
 import { api } from '~/trpc/react'
 
 interface AppearanceSectionProps {
   widget: ChatWidgetWithIntegration
   channelId: string
 }
+
+const POSITION_OPTIONS = [
+  { value: 'BOTTOM_RIGHT', label: 'Bottom Right' },
+  { value: 'BOTTOM_LEFT', label: 'Bottom Left' },
+  { value: 'TOP_RIGHT', label: 'Top Right' },
+  { value: 'TOP_LEFT', label: 'Top Left' },
+]
 
 const appearanceSchema = z.object({
   primaryColor: z
@@ -88,44 +82,49 @@ export function AppearanceSection({ widget, channelId }: AppearanceSectionProps)
               </p>
             </div>
 
-            <div className='space-y-4'>
+            <VarEditorField orientation='responsive' className='p-0'>
               <FormField
                 control={form.control}
                 name='primaryColor'
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Primary Color</FormLabel>
-                    <FormControl>
-                      <div className='flex items-center gap-2'>
-                        <Input type='color' className='w-16 p-1' {...field} />
-                        <Input
-                          type='text'
-                          value={field.value}
-                          onChange={field.onChange}
-                          placeholder='#4F46E5'
-                        />
-                      </div>
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
+                render={({ field, fieldState }) => (
+                  <VarEditorFieldRow
+                    title='Primary Color'
+                    description='Used for buttons, links, and the widget header.'
+                    type={BaseType.STRING}
+                    icon={<Palette className='size-3.5' />}
+                    showIcon
+                    isRequired
+                    validationError={fieldState.error?.message}>
+                    <ColorField
+                      value={field.value || ''}
+                      onChange={field.onChange}
+                      placeholder='Pick a color'
+                    />
+                  </VarEditorFieldRow>
                 )}
               />
 
               <FormField
                 control={form.control}
                 name='logoUrl'
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Logo URL (Optional)</FormLabel>
-                    <FormControl>
-                      <Input type='url' placeholder='https://…/logo.png' {...field} />
-                    </FormControl>
-                    <FormDescription>Square image works best (1:1).</FormDescription>
-                    <FormMessage />
-                  </FormItem>
+                render={({ field, fieldState }) => (
+                  <VarEditorFieldRow
+                    title='Logo URL'
+                    description='Square image works best (1:1).'
+                    type={BaseType.URL}
+                    icon={<LinkIcon className='size-3.5' />}
+                    showIcon
+                    validationError={fieldState.error?.message}>
+                    <FieldInputAdapter
+                      fieldType={FieldType.URL}
+                      value={field.value ?? ''}
+                      onChange={(v) => field.onChange((v as string) ?? '')}
+                      placeholder='https://…/logo.png'
+                    />
+                  </VarEditorFieldRow>
                 )}
               />
-            </div>
+            </VarEditorField>
           </div>
 
           <div className='flex-1 border-t lg:border-t-0 lg:border-l p-6 lg:pl-6'>
@@ -138,56 +137,56 @@ export function AppearanceSection({ widget, channelId }: AppearanceSectionProps)
               </p>
             </div>
 
-            <div className='space-y-4'>
+            <VarEditorField orientation='responsive' className='p-0'>
               <FormField
                 control={form.control}
                 name='position'
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Position</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        <SelectItem value='BOTTOM_RIGHT'>Bottom Right</SelectItem>
-                        <SelectItem value='BOTTOM_LEFT'>Bottom Left</SelectItem>
-                        <SelectItem value='TOP_RIGHT'>Top Right</SelectItem>
-                        <SelectItem value='TOP_LEFT'>Top Left</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
+                render={({ field, fieldState }) => (
+                  <VarEditorFieldRow
+                    title='Position'
+                    description='Corner of the page where the widget anchors.'
+                    type={BaseType.ENUM}
+                    icon={<LayoutGrid className='size-3.5' />}
+                    showIcon
+                    validationError={fieldState.error?.message}>
+                    <FieldInputAdapter
+                      fieldType={FieldType.SINGLE_SELECT}
+                      fieldOptions={{ options: POSITION_OPTIONS }}
+                      value={field.value}
+                      onChange={(v) => {
+                        const next = Array.isArray(v) ? v[0] : v
+                        if (typeof next === 'string') {
+                          field.onChange(next as AppearanceForm['position'])
+                        }
+                      }}
+                      placeholder='Choose position'
+                      triggerProps={{ className: 'w-full' }}
+                    />
+                  </VarEditorFieldRow>
                 )}
               />
 
               <FormField
                 control={form.control}
                 name='mobileFullScreen'
-                render={({ field }) => (
-                  <div className='rounded-xl border px-3 py-2.5'>
-                    <div
-                      className='flex cursor-pointer items-center justify-between'
-                      onClick={() => field.onChange(!field.value)}>
-                      <div className='space-y-0.5'>
-                        <Label className='flex cursor-pointer items-center gap-1.5 text-sm font-medium'>
-                          <Smartphone className='size-3.5 text-muted-foreground' />
-                          Mobile Full Screen
-                        </Label>
-                        <p className='text-xs text-muted-foreground'>
-                          Expand the widget to fill the screen on small devices.
-                        </p>
-                      </div>
-                      <div onClick={(e) => e.stopPropagation()}>
-                        <Switch size='sm' checked={field.value} onCheckedChange={field.onChange} />
-                      </div>
-                    </div>
-                  </div>
+                render={({ field, fieldState }) => (
+                  <VarEditorFieldRow
+                    title='Mobile Full Screen'
+                    description='Expand the widget to fill the screen on small devices.'
+                    type={BaseType.BOOLEAN}
+                    icon={<Smartphone className='size-3.5' />}
+                    showIcon
+                    validationError={fieldState.error?.message}>
+                    <FieldInputAdapter
+                      fieldType={FieldType.CHECKBOX}
+                      fieldOptions={{ variant: 'switch' }}
+                      value={field.value}
+                      onChange={(v) => field.onChange(Boolean(v))}
+                    />
+                  </VarEditorFieldRow>
                 )}
               />
-            </div>
+            </VarEditorField>
           </div>
         </div>
 

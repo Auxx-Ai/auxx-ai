@@ -124,6 +124,12 @@
       "import": "./dist/channels/index.mjs",
       "default": "./src/channels/index.ts"
     },
+    "./channels/client": {
+      "types": "./src/channels/client.ts",
+      "source": "./src/channels/client.ts",
+      "import": "./dist/channels/client.mjs",
+      "default": "./src/channels/client.ts"
+    },
     "./chat": {
       "types": "./src/chat/index.ts",
       "source": "./src/chat/index.ts",

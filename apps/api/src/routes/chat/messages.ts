@@ -1,8 +1,9 @@
 // apps/api/src/routes/chat/messages.ts
 
+import { ProviderRegistryService } from '@auxx/lib/providers'
 import { createScopedLogger } from '@auxx/logger'
 import { Hono } from 'hono'
-import { applyChatCorsHeaders, getChatService } from './lib'
+import { applyChatCorsHeaders } from './lib'
 
 const log = createScopedLogger('chat-messages-route')
 
@@ -16,35 +17,50 @@ messagesRoute.options('/', (c) => {
 /**
  * POST /api/chat/messages
  *
- * Visitor sends a chat message.
- * Body: `{ sessionId, threadId, content, clientMessageId?, attachmentIds? }`.
+ * Visitor sends a chat message. Body:
+ * `{ threadId, content, clientMessageId?, attachmentIds? }`.
+ *
+ * Resolves `ChatProvider` from the provider registry and calls
+ * `receiveMessage` — that path writes the Message row, attaches files, bumps
+ * the Thread, publishes realtime, and enqueues an agent run if configured.
  */
 messagesRoute.post('/', async (c) => {
   applyChatCorsHeaders(c, { allowCredentials: true })
 
+  const chat = c.get('chat')
   const body = (await c.req.json().catch(() => ({}))) as {
-    sessionId?: string
     threadId?: string
     content?: string
     clientMessageId?: string
     attachmentIds?: string[]
   }
 
-  if (!body.sessionId || !body.threadId || !body.content) {
+  if (!body.threadId || !body.content) {
     return c.json(
       {
         success: false,
-        error: { code: 'INVALID_REQUEST', message: 'sessionId, threadId and content are required' },
+        error: { code: 'INVALID_REQUEST', message: 'threadId and content are required' },
       },
       400
     )
   }
 
   try {
-    const service = getChatService()
-    const message = await service.sendUserMessage({
-      sessionId: body.sessionId,
+    const registry = new ProviderRegistryService(chat.organizationId)
+    const provider = (await registry.getProvider(chat.channelId)) as any
+    if (typeof provider.receiveMessage !== 'function') {
+      return c.json(
+        {
+          success: false,
+          error: { code: 'INTERNAL_ERROR', message: 'Channel does not support inbound messages' },
+        },
+        500
+      )
+    }
+
+    const result = await provider.receiveMessage({
       threadId: body.threadId,
+      fromParticipantId: chat.visitorParticipantId,
       content: body.content,
       clientMessageId: body.clientMessageId,
       attachmentIds: body.attachmentIds,
@@ -52,11 +68,16 @@ messagesRoute.post('/', async (c) => {
 
     return c.json({
       success: true,
-      data: { messageId: message.id, status: message.status, createdAt: message.createdAt },
+      data: {
+        messageId: result.messageId,
+        threadId: result.threadId,
+        status: 'delivered',
+        createdAt: new Date(),
+      },
     })
   } catch (error) {
     log.error('Failed to send chat message', {
-      sessionId: body.sessionId,
+      threadId: body.threadId,
       error: error instanceof Error ? error.message : String(error),
     })
     return c.json(

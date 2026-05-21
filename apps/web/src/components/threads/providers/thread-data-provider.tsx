@@ -6,7 +6,6 @@ import { useEffect } from 'react'
 import { useMailCountsStore } from '~/components/mail/store'
 import { useTaskStore } from '~/components/tasks/stores/task-store'
 import { api } from '~/trpc/react'
-import { useThreadRealtime } from '../realtime'
 import { useMessageStore, useParticipantStore, useThreadStore } from '../store'
 
 interface ThreadDataProviderProps {
@@ -24,11 +23,6 @@ interface ThreadDataProviderProps {
  * </ThreadDataProvider>
  */
 export function ThreadDataProvider({ children }: ThreadDataProviderProps) {
-  // ============================================================
-  // Realtime event subscription
-  // ============================================================
-  useThreadRealtime()
-
   // ============================================================
   // Thread batch fetching
   // ============================================================

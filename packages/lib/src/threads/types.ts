@@ -154,6 +154,9 @@ export interface ChatThreadMetadata {
   channel: 'chat'
   /** The chat integration id (DB column is still `integrationId`). */
   channelId: string
+  /** Participant id of the chat-widget visitor; encoded on the Thread so the
+   *  outbound provider can look it up without querying messages. */
+  visitorParticipantId: string
   visit?: {
     userAgent?: string
     ipAddress?: string

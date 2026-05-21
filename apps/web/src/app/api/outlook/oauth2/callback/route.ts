@@ -1,7 +1,7 @@
 // app/api/outlook/oauth2/callback/route.ts
 
 import { WEBAPP_URL } from '@auxx/config/server'
-import { consumeOAuthCsrfToken } from '@auxx/lib/cache'
+import { consumeOAuthCsrfToken, onCacheEvent } from '@auxx/lib/cache'
 import { publisher } from '@auxx/lib/events'
 import { OutlookOAuthService } from '@auxx/lib/providers'
 import { createScopedLogger } from '@auxx/logger'
@@ -107,6 +107,10 @@ export async function GET(req: NextRequest) {
       integrationId: result.integration.id,
       identifier,
     })
+
+    if (parsedState?.orgId) {
+      await onCacheEvent('channel.connected', { orgId: parsedState.orgId })
+    }
 
     await publisher.publishLater({
       type: 'integration:connected',

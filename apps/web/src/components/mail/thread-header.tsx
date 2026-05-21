@@ -1,6 +1,7 @@
 // src/components/mail/thread-header.tsx
 'use client'
 
+import { PLATFORM_CAPABILITIES } from '@auxx/lib/channels/client'
 import type { ActorId } from '@auxx/types/actor'
 import { toRecordId } from '@auxx/types/resource'
 import { Alert } from '@auxx/ui/components/alert'
@@ -26,6 +27,7 @@ import {
   Zap,
 } from 'lucide-react'
 import { useCallback, useRef, useState } from 'react'
+import { useChannel } from '~/components/channels/hooks/use-channels'
 import { useActor, useResource } from '~/components/resources/hooks'
 import { useThreadTags } from '~/components/tags/hooks/use-thread-tags'
 import { useInbox, useThread } from '~/components/threads/hooks'
@@ -73,6 +75,14 @@ export function ThreadHeader() {
   const isDone = thread?.status === 'ARCHIVED'
   const isTrash = thread?.status === 'TRASH'
   const isSpam = thread?.status === 'SPAM'
+
+  // Capability-aware action set. Spam/mark-unread/labels are email-only;
+  // messaging channels (chat, FB, IG, SMS) get a reduced toolbar.
+  const channel = useChannel(thread?.integrationId)
+  const platformCaps = channel?.provider
+    ? PLATFORM_CAPABILITIES[channel.provider as keyof typeof PLATFORM_CAPABILITIES]
+    : undefined
+  const isEmailChannel = platformCaps ? platformCaps.channel === 'email' : true
 
   // Local state for tag popover
   const [open, setOpen] = useState(false)
@@ -251,17 +261,19 @@ export function ThreadHeader() {
                 <span className='sr-only'>{isTrash ? 'Restore' : 'Delete'}</span>
               </Button>
             </Tooltip>
-            <Tooltip content={isSpam ? 'Not spam' : 'Mark as spam'} shortcut='!'>
-              <Button
-                variant='ghost'
-                size='icon'
-                disabled={!thread}
-                onClick={isSpam ? handleRestore : handleMarkSpam}
-                className='rounded-full hover:bg-foreground/10'>
-                {isSpam ? <MailCheck /> : <MailWarning />}
-                <span className='sr-only'>{isSpam ? 'Not spam' : 'Mark as spam'}</span>
-              </Button>
-            </Tooltip>
+            {isEmailChannel && (
+              <Tooltip content={isSpam ? 'Not spam' : 'Mark as spam'} shortcut='!'>
+                <Button
+                  variant='ghost'
+                  size='icon'
+                  disabled={!thread}
+                  onClick={isSpam ? handleRestore : handleMarkSpam}
+                  className='rounded-full hover:bg-foreground/10'>
+                  {isSpam ? <MailCheck /> : <MailWarning />}
+                  <span className='sr-only'>{isSpam ? 'Not spam' : 'Mark as spam'}</span>
+                </Button>
+              </Tooltip>
+            )}
 
             <Tooltip content='Apply Tags' shortcut='L'>
               <Button

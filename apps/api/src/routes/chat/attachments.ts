@@ -1,12 +1,17 @@
 // apps/api/src/routes/chat/attachments.ts
 
+import { randomBytes } from 'node:crypto'
+import { createStorageManager, MediaAssetService } from '@auxx/lib/files'
 import { createScopedLogger } from '@auxx/logger'
 import { Hono } from 'hono'
-import { applyChatCorsHeaders, getChatService } from './lib'
+import { applyChatCorsHeaders } from './lib'
 
 const log = createScopedLogger('chat-attachments-route')
 
 const attachmentsRoute = new Hono()
+
+const MAX_BYTES = 25 * 1024 * 1024 // 25MB — keep tight; chat attachments are
+// rendered inline and we don't want the bundle juggling huge blobs.
 
 attachmentsRoute.options('/', (c) => {
   applyChatCorsHeaders(c, { allowCredentials: true })
@@ -14,13 +19,17 @@ attachmentsRoute.options('/', (c) => {
 })
 
 /**
- * POST /api/chat/attachments (multipart/form-data)
+ * POST /api/chat/attachments  (multipart/form-data)
  *
- * Body fields: `sessionId`, `file`. Phase 4 swaps internals to the unified
- * file/attachment service.
+ * Body fields: `file` (binary). Uploads the blob to S3 via the shared
+ * StorageManager + MediaAssetService pipeline (same as email composer
+ * attachments). Returns the `assetId` which the widget then passes to
+ * `POST /api/chat/messages` as `attachmentIds[]`.
  */
 attachmentsRoute.post('/', async (c) => {
   applyChatCorsHeaders(c, { allowCredentials: true })
+
+  const chat = c.get('chat')
 
   let form: FormData
   try {
@@ -32,32 +41,82 @@ attachmentsRoute.post('/', async (c) => {
     )
   }
 
-  const sessionId = form.get('sessionId')
   const file = form.get('file')
-  if (typeof sessionId !== 'string' || !(file instanceof Blob)) {
+  if (!(file instanceof Blob)) {
     return c.json(
-      {
-        success: false,
-        error: { code: 'INVALID_REQUEST', message: 'sessionId and file are required' },
-      },
+      { success: false, error: { code: 'INVALID_REQUEST', message: 'file is required' } },
       400
     )
   }
 
+  const fileName =
+    'name' in file && typeof (file as File).name === 'string' ? (file as File).name : 'attachment'
+  const mimeType = file.type || 'application/octet-stream'
+
   try {
     const buffer = Buffer.from(await file.arrayBuffer())
-    const service = getChatService()
-    const attachment = await service.uploadAttachment({
-      sessionId,
-      fileName: 'name' in file && typeof file.name === 'string' ? file.name : 'attachment',
-      fileType: file.type || 'application/octet-stream',
-      fileSize: buffer.length,
-      fileBuffer: buffer,
+    if (buffer.byteLength === 0) {
+      return c.json(
+        { success: false, error: { code: 'INVALID_REQUEST', message: 'Empty file' } },
+        400
+      )
+    }
+    if (buffer.byteLength > MAX_BYTES) {
+      return c.json(
+        {
+          success: false,
+          error: {
+            code: 'FILE_TOO_LARGE',
+            message: `File exceeds ${(MAX_BYTES / 1024 / 1024).toFixed(0)}MB limit`,
+          },
+        },
+        413
+      )
+    }
+
+    const storageManager = createStorageManager(chat.organizationId)
+    const key = `${chat.organizationId}/chat-attachments/${Date.now()}-${randomBytes(8).toString('hex')}-${encodeURIComponent(fileName)}`
+
+    const storageLocation = await storageManager.uploadContent({
+      provider: 'S3',
+      key,
+      content: buffer,
+      mimeType,
+      size: buffer.byteLength,
+      visibility: 'PRIVATE',
+      organizationId: chat.organizationId,
     })
-    return c.json({ success: true, data: attachment })
+
+    // Visitor uploads have no User id — leave `createdById` null. The asset is
+    // org-scoped and tied to the chat thread via the Attachment row that
+    // POST /api/chat/messages writes on receive.
+    const mediaAssetService = new MediaAssetService(chat.organizationId, undefined)
+    const { asset } = await mediaAssetService.createWithVersion(
+      {
+        kind: 'EMAIL_ATTACHMENT',
+        purpose: 'ORIGINAL',
+        name: fileName,
+        mimeType,
+        size: BigInt(buffer.byteLength),
+        isPrivate: true,
+        organizationId: chat.organizationId,
+        createdById: null as any,
+      } as any,
+      storageLocation.id
+    )
+
+    return c.json({
+      success: true,
+      data: {
+        id: asset.id,
+        name: fileName,
+        size: buffer.byteLength,
+        type: mimeType,
+      },
+    })
   } catch (error) {
     log.error('Failed to upload chat attachment', {
-      sessionId,
+      channelId: chat.channelId,
       error: error instanceof Error ? error.message : String(error),
     })
     return c.json(

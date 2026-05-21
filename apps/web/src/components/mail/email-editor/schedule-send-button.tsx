@@ -25,6 +25,9 @@ interface ScheduleSendButtonProps {
   isSending?: boolean
   disabled?: boolean
   popoverClassName?: string
+  /** When false, omits the schedule-send dropdown — renders a plain Send button.
+   *  Used for chat / messaging channels that don't support scheduling. */
+  allowSchedule?: boolean
 }
 
 interface TimePreset {
@@ -105,6 +108,7 @@ export function ScheduleSendButton({
   isSending,
   disabled,
   popoverClassName,
+  allowSchedule = true,
 }: ScheduleSendButtonProps) {
   const [datePickerOpen, setDatePickerOpen] = useState(false)
   const [dropdownOpen, setDropdownOpen] = useState(false)
@@ -139,6 +143,25 @@ export function ScheduleSendButton({
   }, [])
 
   const minDate = useMemo(() => new Date(), [])
+
+  if (!allowSchedule) {
+    return (
+      <div className='relative flex items-center ms-2 shrink-0'>
+        <Button
+          className='min-w-[60px] gap-0'
+          onClick={onSend}
+          size='sm'
+          disabled={disabled}
+          loading={isSending}
+          loadingText='Sending...'>
+          Send
+          <Separator orientation='vertical' className='mx-1.5 h-3 opacity-50' />
+          <MetaIcon className='size-3! opacity-80' />
+          <CornerDownLeft className='size-3! opacity-80' />
+        </Button>
+      </div>
+    )
+  }
 
   return (
     <div className='relative flex items-center ms-2 shrink-0'>

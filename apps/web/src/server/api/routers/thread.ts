@@ -16,7 +16,7 @@ import {
 } from '@auxx/lib/mail-schedule'
 import { MessageSenderService } from '@auxx/lib/messages'
 import { buildPlaceholderContextForThread, resolvePlaceholdersInHtml } from '@auxx/lib/placeholders'
-import { ProviderRegistryService, whereThreadMessageType } from '@auxx/lib/providers'
+import { ProviderRegistryService } from '@auxx/lib/providers'
 import {
   type ListThreadIdsInput,
   linkEntityToThread,
@@ -48,14 +48,18 @@ const FileAttachmentSchema = z.object({
   type: z.enum(['file', 'asset']), // 'file' = FolderFile, 'asset' = MediaAsset
 })
 // Send Message Input Schema
+//
+// `subject` and `to` are nullable/empty here — the capability-driven
+// `MessageSenderService.validateInput` enforces them per provider so chat
+// (no subject, no recipients) passes through cleanly.
 const SendMessageInputSchema = z.object({
   threadId: z.string().optional(), // Allow creating new threads
   integrationId: z.string(), // Required: Which inbox is sending?
-  subject: z.string().min(1, 'Subject is required'),
+  subject: z.string().nullish(),
   textHtml: z.string().nullish(),
   textPlain: z.string().nullish(),
   signatureId: z.string().nullish(),
-  to: z.array(ParticipantInputSchema).min(1, 'At least one TO recipient is required'),
+  to: z.array(ParticipantInputSchema).default([]),
   cc: z.array(ParticipantInputSchema).optional(),
   bcc: z.array(ParticipantInputSchema).optional(),
   attachments: z.array(FileAttachmentSchema).optional(), // File attachments to attach
@@ -205,74 +209,6 @@ export const threadRouter = createTRPCRouter({
       }
     }),
 
-  getChatMessages: protectedProcedure
-    .input(
-      z.object({
-        threadId: z.string(),
-        limit: z.number().optional().default(50),
-        cursor: z.string().optional(),
-      })
-    )
-    .query(async ({ ctx, input }) => {
-      // Fetch 'ChatMessage' records for CHAT threads
-      // Implement pagination
-      const messages = await ctx.db
-        .select({
-          id: schema.ChatMessage.id,
-          threadId: schema.ChatMessage.threadId,
-          content: schema.ChatMessage.content,
-          createdAt: schema.ChatMessage.createdAt,
-          sender: schema.ChatMessage.sender,
-          agent: {
-            name: schema.User.name,
-            image: schema.User.image,
-          },
-        })
-        .from(schema.ChatMessage)
-        .leftJoin(schema.User, eq(schema.ChatMessage.agentId, schema.User.id))
-        .where(eq(schema.ChatMessage.threadId, input.threadId))
-        .orderBy(schema.ChatMessage.createdAt)
-        .limit(input.limit + 1)
-      // ... handle nextCursor ...
-      return { items: messages /* mapped if needed */, nextCursor: null /* calculated cursor */ }
-    }),
-  // Procedure to get ChatSession details (needed for ChatInterface)
-  getChatSessionByThreadId: protectedProcedure
-    .input(z.object({ threadId: z.string() }))
-    .query(async ({ ctx, input }) => {
-      const organizationId = getUserOrganizationId(ctx.session)
-      const [thread] = await ctx.db
-        .select({ externalId: schema.Thread.externalId })
-        .from(schema.Thread)
-        .where(
-          and(
-            eq(schema.Thread.id, input.threadId),
-            eq(schema.Thread.organizationId, organizationId),
-            whereThreadMessageType('CHAT')
-          )
-        )
-        .limit(1)
-      if (!thread || !thread.externalId) {
-        throw new TRPCError({
-          code: 'NOT_FOUND',
-          message: 'Chat thread or session link not found.',
-        })
-      }
-      const [session] = await ctx.db
-        .select()
-        .from(schema.ChatSession)
-        .where(
-          and(
-            eq(schema.ChatSession.id, thread.externalId),
-            eq(schema.ChatSession.organizationId, organizationId)
-          )
-        )
-        .limit(1)
-      if (!session) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Chat session details not found.' })
-      }
-      return session
-    }),
   /**
    * Sends an email message, potentially from a draft.
    * Updated to use MessageSenderService directly.
@@ -799,6 +735,22 @@ export const threadRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const { messageSender, organizationId, userId } = getServiceDependencies(ctx)
       try {
+        // Retry isn't meaningful for chat — there's no external provider state
+        // to reconcile, and the realtime publish is fire-and-forget on send.
+        // Short-circuit with a typed 4xx so the frontend can hide the Retry UI
+        // on chat bubbles.
+        const [row] = await ctx.db
+          .select({ provider: schema.Integration.provider })
+          .from(schema.Message)
+          .innerJoin(schema.Integration, eq(schema.Integration.id, schema.Message.integrationId))
+          .where(eq(schema.Message.id, input.messageId))
+          .limit(1)
+        if (row?.provider === 'chat') {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: 'chat_retry_unsupported',
+          })
+        }
         logger.info('API: Retrying message send', {
           messageId: input.messageId,
           userId,

@@ -71,6 +71,13 @@ export interface ThreadMeta {
 
   /** Number of pending scheduled messages on this thread */
   scheduledMessageCount: number
+
+  /**
+   * Loose JSON shape for channel-specific extras. Chat threads carry
+   * `ChatThreadMetadata` here (visitor participant id, visit context, claimed
+   * name/email). Null on email threads. Not enforced at the DB level.
+   */
+  metadata?: Record<string, unknown> | null
 }
 
 /** Scheduled message metadata for display in thread conversation view */

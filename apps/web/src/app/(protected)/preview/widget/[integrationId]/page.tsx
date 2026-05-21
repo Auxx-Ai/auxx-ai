@@ -2,27 +2,50 @@
 'use client'
 
 import { useParams } from 'next/navigation'
-import Script from 'next/script'
+import { useMemo } from 'react'
 import { useEnv } from '~/providers/dehydrated-state-provider'
 
 /**
- * Preview surface for the embedded chat widget. Renders the exact one-line
- * `<script>` snippet a customer would paste, so the preview is the smoke
- * test — if it renders here, it renders anywhere.
+ * Preview surface for the embedded chat widget. The widget HTML lives inside
+ * an `<iframe srcDoc>` so the document the script attaches to has none of our
+ * Tailwind preflight, Inter font, or provider tree — it looks like a
+ * customer's vanilla page, which is the only way the preview is a real
+ * smoke test ("if it renders here, it renders anywhere").
  */
 export default function PreviewWidgetPage() {
   const params = useParams<{ integrationId: string }>()
   const { appUrl } = useEnv()
   const integrationId = params?.integrationId
 
-  if (!integrationId) {
+  const srcDoc = useMemo(() => {
+    if (!integrationId) return null
+    const bundleSrc = `${appUrl}/scripts/chat-widget.js`
+    return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Auxx Chat Widget Preview</title>
+    <style>
+      html, body { margin: 0; padding: 0; height: 100%; background: #f7f9fc; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #1a202c; }
+      .empty { display: flex; align-items: center; justify-content: center; height: 100%; color: #718096; font-size: 14px; }
+    </style>
+  </head>
+  <body>
+    <div class="empty">Preview</div>
+    <script src="${bundleSrc}" data-channel-id="${integrationId}" async defer></script>
+  </body>
+</html>`
+  }, [appUrl, integrationId])
+
+  if (!integrationId || !srcDoc) {
     return <div style={{ padding: 16 }}>Loading…</div>
   }
 
   const bundleSrc = `${appUrl}/scripts/chat-widget.js`
 
   return (
-    <div style={{ height: '100vh', width: '100vw', background: '#f7f9fc' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100vw' }}>
       <div
         style={{
           padding: 10,
@@ -30,16 +53,17 @@ export default function PreviewWidgetPage() {
           color: '#a0aec0',
           textAlign: 'center',
           fontSize: 12,
-          position: 'sticky',
-          top: 0,
-          zIndex: 10000,
+          flex: '0 0 auto',
         }}>
-        Widget Preview — embedding the real customer snippet from {bundleSrc}
+        Widget Preview — sandboxed iframe loading {bundleSrc}
         <br />
         Channel ID: <code>{integrationId}</code>
       </div>
-
-      <Script src={bundleSrc} strategy='afterInteractive' data-channel-id={integrationId} />
+      <iframe
+        title='Chat Widget Preview'
+        srcDoc={srcDoc}
+        style={{ flex: '1 1 auto', border: 0, width: '100%' }}
+      />
     </div>
   )
 }

@@ -64,6 +64,10 @@ export interface MessageMeta {
 
   // Message type for rendering (EMAIL, CHAT, SMS)
   messageType: MessageType
+
+  /** Chat-only: delivery/read receipts for the (single) recipient. ISO dates. */
+  deliveredAt?: string | null
+  readAt?: string | null
 }
 
 /**
