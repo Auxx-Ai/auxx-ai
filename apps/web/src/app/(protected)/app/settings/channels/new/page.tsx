@@ -3,11 +3,23 @@
 'use client'
 
 import { Button } from '@auxx/ui/components/button'
+import { toastError } from '@auxx/ui/components/toast'
 import { ArrowLeft, Mail, MessageSquare } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { AppListCard } from '~/components/apps/ui/app-list-card'
 import SettingsPage from '~/components/global/settings-page'
+import { api } from '~/trpc/react'
 import { getIntegrationProviderIcon } from '../_components/integration-table'
+
+interface ChannelOption {
+  type: string
+  title: string
+  subtitle: string
+  description: string
+  icon?: React.ReactNode
+  /** If set, clicking the card runs this instead of navigating to /new/{type}. */
+  createInline?: boolean
+}
 
 /**
  * Integration Chooser Page
@@ -15,12 +27,20 @@ import { getIntegrationProviderIcon } from '../_components/integration-table'
  */
 export default function IntegrationChooserPage() {
   const router = useRouter()
+  const utils = api.useUtils()
+  const createChatChannel = api.channel.createChatChannel.useMutation({
+    onSuccess: ({ channelId }) => {
+      utils.channel.list.invalidate()
+      router.push(`/app/settings/channels/${channelId}`)
+    },
+    onError: (e) => toastError({ title: 'Failed to create chat widget', description: e.message }),
+  })
 
   const handleBack = () => {
     router.push('/app/settings/channels')
   }
 
-  const integrations = [
+  const integrations: ChannelOption[] = [
     {
       type: 'google',
       title: 'Gmail',
@@ -64,6 +84,7 @@ export default function IntegrationChooserPage() {
       subtitle: 'Chat',
       description: 'Create a live chat widget for your website',
       icon: <MessageSquare className='size-4' />,
+      createInline: true,
     },
     {
       type: 'whatsapp',
@@ -90,16 +111,28 @@ export default function IntegrationChooserPage() {
       }>
       <div className='space-y-4 sm:space-y-6 p-3 sm:p-6'>
         <div className='grid gap-4 sm:grid-cols-2 lg:grid-cols-3'>
-          {integrations.map((integration) => (
-            <AppListCard
-              key={integration.type}
-              title={integration.title}
-              description={integration.description}
-              href={`/app/settings/channels/new/${integration.type}`}
-              icon={integration.icon ?? getIntegrationProviderIcon(integration.type, 'size-4')}
-              subtitle={integration.subtitle}
-            />
-          ))}
+          {integrations.map((integration) =>
+            integration.createInline ? (
+              <AppListCard
+                key={integration.type}
+                title={integration.title}
+                description={integration.description}
+                onClick={() => createChatChannel.mutate()}
+                disabled={createChatChannel.isPending}
+                icon={integration.icon ?? getIntegrationProviderIcon(integration.type, 'size-4')}
+                subtitle={integration.subtitle}
+              />
+            ) : (
+              <AppListCard
+                key={integration.type}
+                title={integration.title}
+                description={integration.description}
+                href={`/app/settings/channels/new/${integration.type}`}
+                icon={integration.icon ?? getIntegrationProviderIcon(integration.type, 'size-4')}
+                subtitle={integration.subtitle}
+              />
+            )
+          )}
         </div>
       </div>
     </SettingsPage>

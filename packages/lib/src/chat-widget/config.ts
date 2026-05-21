@@ -18,7 +18,7 @@ export interface ServiceContext {
 /** Integration row with the ChatWidget row + inbox linkage attached. */
 export type ChatWidgetWithIntegration = NonNullable<Awaited<ReturnType<typeof loadChatWidget>>>
 
-/** Fields callers can update on a chat widget. AI columns intentionally absent. */
+/** Fields callers can update on a chat widget. */
 export interface UpdateChatWidgetInput {
   name?: string
   title?: string
@@ -34,6 +34,8 @@ export interface UpdateChatWidgetInput {
   allowedDomains?: string[]
   isActive?: boolean
   inboxId?: string | null
+  /** Agent that auto-replies to widget messages. Pass `null` to disable AI auto-reply. */
+  agentId?: string | null
 }
 
 /**
