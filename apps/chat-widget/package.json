@@ -1,0 +1,21 @@
+{
+  "name": "@auxx/chat-widget",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite build --watch",
+    "build": "vite build && node scripts/copy-to-web-public.mjs",
+    "clean": "rm -rf dist node_modules .turbo *.tsbuildinfo"
+  },
+  "dependencies": {
+    "preact": "^10.24.0",
+    "pusher-js": "catalog:"
+  },
+  "devDependencies": {
+    "@auxx/typescript-config": "workspace:*",
+    "@types/node": "catalog:",
+    "typescript": "catalog:",
+    "vite": "catalog:"
+  }
+}

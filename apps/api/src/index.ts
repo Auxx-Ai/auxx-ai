@@ -15,6 +15,7 @@ import appRuntime from './routes/app-runtime'
 import apps from './routes/apps'
 import bundleAssets from './routes/bundle-assets'
 import sdkBundles from './routes/bundles'
+import chat from './routes/chat'
 import deployments from './routes/deployments'
 import developers from './routes/developers'
 import entitiesFindByIntegrationId from './routes/entities/find-by-integration-id'
@@ -80,6 +81,7 @@ async function main() {
   app.route('/api/v1/sdk/entities', entitiesFindContactByEmail) // SDK callback: Lambda → API (AI tools, slack)
   app.route('/api/v1/sdk/entities', entitiesFindContactByPhone) // SDK callback: Lambda → API (AI tools, whatsapp)
   app.route('/api/v1/workflows', workflows) // Workflow execution routes
+  app.route('/api/chat', chat) // Visitor-facing chat widget routes (passport-gated)
   app.route('/api/v1/public/free-tool-leads', freeToolLeads) // Public lead capture from /free-tools/*
   app.route('/webhooks/recording', recordingWebhooks) // Recording bot provider webhooks (before generic /webhooks to avoid param collision)
   app.route('/webhooks', webhooks) // Public webhook receiver (no /api/v1 prefix)
