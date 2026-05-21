@@ -1,6 +1,6 @@
 // ~/app/(protected)/app/settings/channels/_components/chat-widget-settings.tsx
 'use client'
-import { widgetSchema as chatWidgetInputSchema } from '@auxx/lib/widgets/types'
+import { widgetSchema as chatWidgetInputSchema, WidgetPosition } from '@auxx/lib/widgets/types'
 import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
 import { Button } from '@auxx/ui/components/button'
 import { CopyButton } from '@auxx/ui/components/button-copy'
@@ -34,7 +34,7 @@ import { Skeleton } from '@auxx/ui/components/skeleton'
 import { Switch } from '@auxx/ui/components/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@auxx/ui/components/tabs' // Import Tabs components
 import { Textarea } from '@auxx/ui/components/textarea'
-import { toastError, toastError as toastErrorUtil, toastSuccess } from '@auxx/ui/components/toast'
+import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
 import { AlertCircle, ArrowLeft, Eye, InboxIcon, Loader2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
@@ -65,9 +65,6 @@ const updateFormSchema = z.object({
   allowedDomains: chatWidgetInputSchema.shape.allowedDomains
     .optional()
     .transform((val) => val?.filter((d) => d.trim() !== '').map((d) => d.trim()) ?? []),
-  useAi: chatWidgetInputSchema.shape.useAi.optional(),
-  aiModel: chatWidgetInputSchema.shape.aiModel.optional(),
-  aiInstructions: chatWidgetInputSchema.shape.aiInstructions.optional(),
 })
 
 type ChatWidgetUpdateFormValues = z.infer<typeof updateFormSchema>
@@ -113,20 +110,15 @@ export default function ChatWidgetSettingsPage({ integrationId }: ChatWidgetSett
       subtitle: '',
       primaryColor: '#4F46E5', // A sensible default color
       logoUrl: '',
-      position: 'BOTTOM_RIGHT', // Default position
+      position: WidgetPosition.BOTTOM_RIGHT,
       welcomeMessage: '',
       autoOpen: false,
       mobileFullScreen: true, // Or false, depending on your desired default
       collectUserInfo: false,
       offlineMessage: '',
       allowedDomains: [],
-      useAi: false,
-      aiModel: '',
-      aiInstructions: '',
     },
   })
-
-  const watchedFormValues = form.watch()
 
   // --- Effects ---
   useEffect(() => {
@@ -138,16 +130,13 @@ export default function ChatWidgetSettingsPage({ integrationId }: ChatWidgetSett
         subtitle: widget.subtitle ?? '',
         primaryColor: widget.primaryColor ?? '#4F46E5',
         logoUrl: widget.logoUrl ?? '',
-        position: widget.position ?? 'BOTTOM_RIGHT',
+        position: (widget.position as WidgetPosition) ?? WidgetPosition.BOTTOM_RIGHT,
         welcomeMessage: widget.welcomeMessage ?? '',
         autoOpen: widget.autoOpen ?? false,
         mobileFullScreen: widget.mobileFullScreen ?? true,
         collectUserInfo: widget.collectUserInfo ?? false,
         offlineMessage: widget.offlineMessage ?? '',
         allowedDomains: widget.allowedDomains ?? [],
-        useAi: widget.useAi ?? false,
-        aiModel: widget.aiModel ?? '',
-        aiInstructions: widget.aiInstructions ?? '',
       })
     }
   }, [integrationData, form])
@@ -383,7 +372,7 @@ export default function ChatWidgetSettingsPage({ integrationId }: ChatWidgetSett
             </CardHeader>
             <div>
               <Select
-                value={integrationData.inboxId ?? NO_INBOX_VALUE}
+                value={integrationData.inboxIntegration?.inboxId ?? NO_INBOX_VALUE}
                 onValueChange={handleInboxChange}
                 disabled={isLoadingInboxes || updateChatWidget.isPending}>
                 <SelectTrigger className='w-full md:w-[350px]'>
@@ -414,12 +403,11 @@ export default function ChatWidgetSettingsPage({ integrationId }: ChatWidgetSett
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className='space-y-6'>
             <Tabs value={activeTab} onValueChange={setActiveTab}>
-              <TabsList className='grid w-full grid-cols-3 md:grid-cols-6'>
+              <TabsList className='grid w-full grid-cols-3 md:grid-cols-5'>
                 <TabsTrigger value='general'>General</TabsTrigger>
                 <TabsTrigger value='appearance'>Appearance</TabsTrigger>
                 <TabsTrigger value='behavior'>Behavior</TabsTrigger>
                 <TabsTrigger value='domains'>Domains</TabsTrigger>
-                <TabsTrigger value='ai'>AI</TabsTrigger>
                 <TabsTrigger value='installation'>Installation</TabsTrigger>
               </TabsList>
 
@@ -680,72 +668,6 @@ export default function ChatWidgetSettingsPage({ integrationId }: ChatWidgetSett
                       name='allowedDomains'
                       render={() => <FormMessage />}
                     />
-                  </CardContent>
-                </Card>
-              </TabsContent>
-
-              {/* AI Tab */}
-              <TabsContent value='ai' className='mt-6'>
-                <Card>
-                  <CardHeader>
-                    <CardTitle>AI Settings</CardTitle>
-                  </CardHeader>
-                  <CardContent className='space-y-4'>
-                    <FormField
-                      control={form.control}
-                      name='useAi'
-                      render={({ field }) => (
-                        <FormItem className='flex items-center justify-between rounded-lg border p-4'>
-                          {' '}
-                          <div className='space-y-0.5'>
-                            <FormLabel>Use AI Assistance</FormLabel>
-                            <FormDescription>
-                              Enable AI features (requires configuration).
-                            </FormDescription>
-                          </div>{' '}
-                          <FormControl>
-                            <Switch checked={field.value} onCheckedChange={field.onChange} />
-                          </FormControl>{' '}
-                        </FormItem>
-                      )}
-                    />
-                    {form.watch('useAi') && (
-                      <div className='ml-2 space-y-4 border-l pl-4 pt-4'>
-                        <FormField
-                          control={form.control}
-                          name='aiModel'
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>AI Model</FormLabel>
-                              <FormControl>
-                                <Input placeholder='e.g., gpt-5.4-nano' {...field} />
-                              </FormControl>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                        <FormField
-                          control={form.control}
-                          name='aiInstructions'
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>AI Instructions</FormLabel>
-                              <FormControl>
-                                <Textarea
-                                  placeholder='Instructions for the AI assistant...'
-                                  {...field}
-                                  rows={4}
-                                />
-                              </FormControl>
-                              <FormDescription>
-                                Provide context or specific instructions.
-                              </FormDescription>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                      </div>
-                    )}
                   </CardContent>
                 </Card>
               </TabsContent>

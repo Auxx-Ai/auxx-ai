@@ -164,6 +164,7 @@ export const identifierType = pgEnum('IdentifierType', [
   'PHONE',
   'FACEBOOK_PSID',
   'INSTAGRAM_IGSID',
+  'CHAT_VISITOR',
 ])
 export const inboxStatus = pgEnum('InboxStatus', ['ACTIVE', 'ARCHIVED', 'PAUSED'])
 export const indexStatus = pgEnum('IndexStatus', ['PENDING', 'INDEXED', 'ERROR'])

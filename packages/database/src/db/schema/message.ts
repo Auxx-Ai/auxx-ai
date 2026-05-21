@@ -42,7 +42,7 @@ export const Message = pgTable(
       .references((): AnyPgColumn => Integration.id, { onUpdate: 'cascade', onDelete: 'cascade' }),
     isInbound: boolean().default(true).notNull(),
     isFirstInThread: boolean().default(true).notNull(),
-    subject: text().notNull(),
+    subject: text(),
     textHtml: text(),
     textPlain: text(),
     internetMessageId: text(),

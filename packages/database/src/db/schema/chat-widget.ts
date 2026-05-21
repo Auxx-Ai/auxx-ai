@@ -4,6 +4,7 @@
 import { createId } from '@paralleldrive/cuid2'
 import { type AnyPgColumn, boolean, index, pgTable, text, timestamp, uniqueIndex } from './_shared'
 
+import { Agent } from './agent'
 import { Integration } from './integration'
 import { Organization } from './organization'
 
@@ -40,9 +41,11 @@ export const ChatWidget = pgTable(
       .notNull()
       .references((): AnyPgColumn => Organization.id, { onUpdate: 'cascade', onDelete: 'cascade' }),
     allowedDomains: text().array(),
-    useAi: boolean().default(false).notNull(),
-    aiModel: text(),
-    aiInstructions: text(),
+    /** Agent that auto-replies to widget messages. Null = no AI auto-reply. */
+    agentId: text().references((): AnyPgColumn => Agent.id, {
+      onUpdate: 'cascade',
+      onDelete: 'set null',
+    }),
   },
   (table) => [
     uniqueIndex('ChatWidget_integrationId_key').using(

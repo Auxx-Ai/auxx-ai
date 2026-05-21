@@ -62,11 +62,6 @@ export const widgetSchema = z.object({
   // Domain allowlist
   allowedDomains: z.array(z.string()).default([]),
 
-  // AI integration
-  useAi: z.boolean().default(false),
-  aiModel: z.string().optional(),
-  aiInstructions: z.string().optional(),
-
   // Optional fields for validation
   operatingHoursEnabled: z.boolean().optional(),
   timezone: z.string().optional(),
@@ -92,9 +87,6 @@ export interface Widget {
   collectUserInfo: boolean
   offlineMessage?: string
   allowedDomains: string[]
-  useAi: boolean
-  aiModel?: string
-  aiInstructions?: string
   createdAt: Date
   updatedAt: Date
 }
@@ -169,9 +161,6 @@ export interface CreateWidgetInput {
   collectUserInfo?: boolean
   offlineMessage?: string
   allowedDomains?: string[]
-  useAi?: boolean
-  aiModel?: string
-  aiInstructions?: string
 }
 
 // Widget update input

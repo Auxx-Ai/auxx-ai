@@ -134,9 +134,6 @@ export const widgetRouter = createTRPCRouter({
         collectUserInfo: input.collectUserInfo,
         offlineMessage: input.offlineMessage,
         allowedDomains: input.allowedDomains,
-        useAi: input.useAi,
-        aiModel: input.aiModel,
-        aiInstructions: input.aiInstructions,
       }
 
       let widget

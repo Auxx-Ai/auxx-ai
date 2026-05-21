@@ -67,9 +67,6 @@ const formSchema = z.object({
     .optional()
     .default([])
     .transform((val) => val?.filter((d) => d.trim() !== '') ?? []), // Ensure empty strings are removed
-  useAi: chatWidgetInputSchema.shape.useAi.optional().default(false),
-  aiModel: chatWidgetInputSchema.shape.aiModel.optional(),
-  aiInstructions: chatWidgetInputSchema.shape.aiInstructions.optional(),
   // Operating hours would be handled separately if needed
 })
 
@@ -98,9 +95,6 @@ export default function ChatWidgetIntegrationForm() {
       collectUserInfo: false,
       offlineMessage: "We're currently offline. Please leave a message...",
       allowedDomains: [],
-      useAi: false,
-      aiModel: '',
-      aiInstructions: '',
     },
   })
 
