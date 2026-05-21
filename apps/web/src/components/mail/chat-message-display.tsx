@@ -22,6 +22,8 @@ import { Tooltip } from '../global/tooltip'
 import type { EmailActions } from './email-actions'
 import { SendStatusIndicator } from './send-status-indicator'
 
+export type ChatGroupPosition = 'solo' | 'first' | 'middle' | 'last'
+
 interface ChatMessageDisplayProps {
   /** Message ID to display */
   messageId: string
@@ -29,13 +31,34 @@ interface ChatMessageDisplayProps {
   messageActions: EmailActions
   /** Whether this message is the latest in the thread (unused for chat) */
   isOpen?: boolean
+  /** Position within a same-sender run; defaults to 'solo' */
+  groupPosition?: ChatGroupPosition
+  /** Is the bubble directly above me currently expanded? */
+  prevNeighborExpanded?: boolean
+  /** Is the bubble directly below me currently expanded? */
+  nextNeighborExpanded?: boolean
+  /** Am I the popped-out bubble? */
+  isExpanded?: boolean
+  /** Toggle expansion (no-op when groupPosition === 'solo') */
+  onToggle?: () => void
 }
 
 /**
- * Renders a chat message bubble. Plain-text content, sender avatar on the
- * appropriate side, and an outbound-only delivery/read receipt indicator.
+ * Renders a chat message bubble in the Kopilot UserMessage style.
+ * When part of a same-sender run, neighbouring bubbles share squared corners
+ * and the header/footer are hoisted to the first/last bubble. Clicking a
+ * non-solo bubble "pops" it: full rounding, vertical margin, and its own
+ * header/footer become visible.
  */
-const ChatMessageDisplay = ({ messageId, messageActions }: ChatMessageDisplayProps) => {
+const ChatMessageDisplay = ({
+  messageId,
+  messageActions,
+  groupPosition = 'solo',
+  prevNeighborExpanded = false,
+  nextNeighborExpanded = false,
+  isExpanded = false,
+  onToggle,
+}: ChatMessageDisplayProps) => {
   const { message, isLoading } = useMessage({ messageId })
   const { markAsUnread } = useThreadReadStatus(message?.threadId ?? null)
   const { from: sender } = useMessageParticipants(message?.participants ?? [])
@@ -48,81 +71,106 @@ const ChatMessageDisplay = ({ messageId, messageActions }: ChatMessageDisplayPro
   const senderInitials = sender?.initials ?? senderName.charAt(0).toUpperCase()
   const contactId = sender?.entityInstanceId
   const content = message.textPlain ?? message.snippet ?? ''
+  const isSending = !!message.sendStatus && message.sendStatus !== 'SENT'
+
+  const isGrouped = groupPosition !== 'solo'
+  const isSoloLike = groupPosition === 'solo' || isExpanded
+  const topRound = isSoloLike || groupPosition === 'first' || prevNeighborExpanded
+  const bottomRound = isSoloLike || groupPosition === 'last' || nextNeighborExpanded
+  const showHeader = isInbound && (isSoloLike || groupPosition === 'first')
+  const showFooter = isSoloLike || groupPosition === 'last'
+
+  const handleBubbleClick = () => {
+    if (!isGrouped) return
+    const sel = typeof window !== 'undefined' ? window.getSelection() : null
+    if (sel && sel.toString().length > 0) return
+    onToggle?.()
+  }
 
   return (
-    <div className='mt-2 flex flex-col'>
-      <div className={cn('flex flex-row', isInbound ? 'justify-start' : 'justify-end')}>
-        <div className={cn('mt-1 shrink-0', isInbound ? 'order-1' : 'order-3')}>
+    <div
+      className={cn(
+        'group/message flex w-full flex-col gap-1',
+        isInbound ? 'items-start' : 'items-end'
+      )}>
+      {showHeader && (
+        <div className='flex items-center gap-2 pl-1'>
           <ContactHoverCard contactId={contactId ?? undefined}>
-            <Avatar className='h-8 w-8'>
-              <AvatarFallback className='bg-foreground/50 text-background hover:bg-foreground/70'>
+            <Avatar className='size-4 rounded-full'>
+              <AvatarFallback className='bg-foreground/50 text-[8px] text-background hover:bg-foreground/70'>
                 {senderInitials}
               </AvatarFallback>
               <AvatarImage src={sender?.avatarUrl ?? undefined} />
             </Avatar>
           </ContactHoverCard>
+          <span className='text-xs font-medium text-foreground'>{senderName}</span>
         </div>
-
+      )}
+      <div className='relative w-full'>
         <div
+          onClick={handleBubbleClick}
           className={cn(
-            'max-w-lg px-2',
-            isInbound ? 'order-2 justify-self-start' : 'order-2 justify-self-end'
+            'w-full border border-transparent px-3 py-2 text-sm/5 shadow transition-all duration-300',
+            isGrouped && 'cursor-pointer',
+            isInbound
+              ? 'bg-illustration text-foreground ring-border-illustration shadow-black/10 ring-1'
+              : 'bg-primary text-primary-foreground inset-ring-foreground/10 inset-ring-1 shadow-black/15',
+            topRound ? 'rounded-t-2xl' : 'rounded-t-sm',
+            bottomRound ? 'rounded-b-2xl' : 'rounded-b-sm'
           )}>
-          <div className='min-h-[40px] min-w-[120px] rounded-2xl border border-black/10 bg-background shadow-xs dark:bg-gray-500'>
-            <div className='flex items-center justify-between'>
-              <div className='truncate px-4 py-2'>
-                <div className='flex items-center gap-2 text-sm text-gray-500'>
-                  <div className='truncate font-medium text-gray-700'>{senderName}</div>
-                  <SendStatusIndicator
-                    status={message.sendStatus}
-                    error={message.providerError}
-                    attempts={message.attempts}
-                  />
-                </div>
-              </div>
-              <div className='pr-2 pt-2'>
-                <ChatMessageDropdownMenu
-                  message={message}
-                  emailActions={messageActions}
-                  onMarkUnread={markAsUnread}
-                />
-              </div>
-            </div>
-
-            <div className='px-4 pb-3'>
-              <div className='cursor-text select-text whitespace-pre-wrap break-words text-sm leading-6 text-gray-700'>
-                <span className='font-sans text-black'>{content}</span>
-              </div>
-
-              {!isInbound && <ReceiptIndicator message={message} />}
-            </div>
+          <div className='cursor-text select-text whitespace-pre-wrap break-words font-sans'>
+            {content}
           </div>
         </div>
-
-        <div
-          className={cn(
-            'px-1 pt-4 text-xs font-normal uppercase text-gray-500',
-            isInbound ? 'order-3' : 'order-1'
-          )}>
-          <Tooltip
-            content={message.sentAt ? new Date(message.sentAt).toString() : ''}
-            delayDuration={0}
-            side='top'
-            sideOffset={5}
-            className='text-xs text-muted-foreground'>
-            <span className='shrink-0 whitespace-nowrap'>
-              {formatDistanceToNow(message.sentAt ? new Date(message.sentAt) : new Date(), {
-                addSuffix: true,
-              })}
-            </span>
-          </Tooltip>
-        </div>
+        <FloatingDropdown
+          message={message}
+          emailActions={messageActions}
+          onMarkUnread={markAsUnread}
+        />
       </div>
+      {showFooter && (
+        <div className='flex items-center gap-2 px-1'>
+          <TimestampLabel sentAt={message.sentAt} />
+          {!isInbound &&
+            (isSending ? (
+              <SendStatusIndicator
+                status={message.sendStatus}
+                error={message.providerError}
+                attempts={message.attempts}
+              />
+            ) : (
+              <ReceiptIndicator message={message} />
+            ))}
+        </div>
+      )}
     </div>
   )
 }
 
 export default ChatMessageDisplay
+
+function TimestampLabel({
+  sentAt,
+  className,
+}: {
+  sentAt: Date | string | null
+  className?: string
+}) {
+  const date = sentAt ? new Date(sentAt) : new Date()
+  return (
+    <Tooltip
+      content={sentAt ? date.toString() : ''}
+      delayDuration={0}
+      side='top'
+      sideOffset={5}
+      className='text-xs text-muted-foreground'>
+      <span
+        className={cn('shrink-0 whitespace-nowrap text-[10px] text-muted-foreground', className)}>
+        {formatDistanceToNow(date, { addSuffix: true })}
+      </span>
+    </Tooltip>
+  )
+}
 
 function ReceiptIndicator({ message }: { message: MessageMeta }) {
   if (message.sendStatus && message.sendStatus !== 'SENT') return null
@@ -132,7 +180,7 @@ function ReceiptIndicator({ message }: { message: MessageMeta }) {
   if (readAt) {
     return (
       <Tooltip content={`Read ${new Date(readAt).toLocaleString()}`}>
-        <div className='mt-1 flex items-center justify-end gap-1 text-[10px] text-blue-500'>
+        <div className='flex items-center gap-1 text-[10px] text-blue-500'>
           <CheckCheck className='h-3 w-3' />
           <span>Read</span>
         </div>
@@ -142,7 +190,7 @@ function ReceiptIndicator({ message }: { message: MessageMeta }) {
   if (deliveredAt) {
     return (
       <Tooltip content={`Delivered ${new Date(deliveredAt).toLocaleString()}`}>
-        <div className='mt-1 flex items-center justify-end gap-1 text-[10px] text-muted-foreground'>
+        <div className='flex items-center gap-1 text-[10px] text-muted-foreground'>
           <CheckCheck className='h-3 w-3' />
           <span>Delivered</span>
         </div>
@@ -150,7 +198,7 @@ function ReceiptIndicator({ message }: { message: MessageMeta }) {
     )
   }
   return (
-    <div className='mt-1 flex items-center justify-end gap-1 text-[10px] text-muted-foreground'>
+    <div className='flex items-center gap-1 text-[10px] text-muted-foreground'>
       <Check className='h-3 w-3' />
       <span>Sent</span>
     </div>
@@ -159,21 +207,20 @@ function ReceiptIndicator({ message }: { message: MessageMeta }) {
 
 function ChatMessageSkeleton() {
   return (
-    <div className='mt-2 flex flex-col'>
-      <div className='flex flex-row justify-start'>
-        <Skeleton className='h-8 w-8 rounded-full mt-1' />
-        <div className='max-w-lg px-2'>
-          <div className='min-h-[40px] min-w-[120px] rounded-2xl border p-4 space-y-2'>
-            <Skeleton className='h-3 w-20' />
-            <Skeleton className='h-8 w-full' />
-          </div>
-        </div>
+    <div className='mx-auto flex w-full max-w-2xl flex-col items-start gap-1'>
+      <div className='flex items-center gap-2 pl-1'>
+        <Skeleton className='size-4 rounded-full' />
+        <Skeleton className='h-3 w-24' />
+      </div>
+      <div className='w-3/5 space-y-2 rounded-2xl rounded-tl bg-muted/40 px-3 py-2'>
+        <Skeleton className='h-3 w-full' />
+        <Skeleton className='h-3 w-2/3' />
       </div>
     </div>
   )
 }
 
-function ChatMessageDropdownMenu({
+function FloatingDropdown({
   message,
   emailActions,
   onMarkUnread,
@@ -187,29 +234,36 @@ function ChatMessageDropdownMenu({
   }
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button variant='ghost' size='icon'>
-          <EllipsisVertical />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align='end' className='w-56'>
-        <DropdownMenuGroup>
-          <DropdownMenuItem onSelect={onMarkUnread}>
-            <Mail className='opacity-60' />
-            Mark as unread
+    <div
+      onClick={(e) => e.stopPropagation()}
+      className='absolute -right-2 -top-2 opacity-0 transition-opacity group-hover/message:opacity-100'>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant='ghost'
+            size='icon'
+            className='size-6 rounded-full border border-border bg-background shadow-sm'>
+            <EllipsisVertical className='size-3' />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align='end' className='w-56'>
+          <DropdownMenuGroup>
+            <DropdownMenuItem onSelect={onMarkUnread}>
+              <Mail className='opacity-60' />
+              Mark as unread
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={handleSelect(emailActions.onDelete)} variant='destructive'>
+              <Trash className='opacity-60' />
+              Delete
+            </DropdownMenuItem>
+          </DropdownMenuGroup>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onSelect={handleSelect(emailActions.onCopyId)}>
+            <CopyPlusIcon className='opacity-60' />
+            Copy Message ID
           </DropdownMenuItem>
-          <DropdownMenuItem onSelect={handleSelect(emailActions.onDelete)} variant='destructive'>
-            <Trash className='opacity-60' />
-            Delete
-          </DropdownMenuItem>
-        </DropdownMenuGroup>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem onSelect={handleSelect(emailActions.onCopyId)}>
-          <CopyPlusIcon className='opacity-60' />
-          Copy Message ID
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
   )
 }
