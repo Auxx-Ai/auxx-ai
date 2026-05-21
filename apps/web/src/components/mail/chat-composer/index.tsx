@@ -2,10 +2,9 @@
 'use client'
 
 import { Badge } from '@auxx/ui/components/badge'
-import { Button } from '@auxx/ui/components/button'
 import { toastError } from '@auxx/ui/components/toast'
 import { cn } from '@auxx/ui/lib/utils'
-import { ArrowDownLeft, ArrowUpRight, MessageCircle, Minus, Upload, X } from 'lucide-react'
+import { Upload } from 'lucide-react'
 import type React from 'react'
 import { useCallback, useMemo, useRef, useState } from 'react'
 import { useDropzone } from 'react-dropzone'
@@ -19,6 +18,7 @@ import {
   COMPOSE_ENTITY_TYPE,
   OUTPUT_FORMAT,
 } from '~/types/ai-tools'
+import { ChatPanelHeader } from '../chat-panel/header'
 import {
   EditorActiveStateProvider,
   useEditorActiveStateContext,
@@ -56,6 +56,8 @@ function ChatComposerInner({
   onPopOut,
   onMinimize,
   onDockBack,
+  hideHeader = false,
+  dragHandleProps,
 }: ChatComposerProps) {
   const popoverZIndex = isDialogMode ? 'z-[200]' : undefined
   const { editor } = useEditorContext()
@@ -216,62 +218,30 @@ function ChatComposerInner({
   )
 
   return (
-    <div className='transition-background flex flex-col duration-200 ease-in-out relative'>
+    <div
+      className={cn(
+        'transition-background flex flex-col duration-200 ease-in-out relative',
+        !hideHeader && 'bg-gray-300 dark:bg-gray-800 rounded-[15px] shadow-lg'
+      )}>
       {/* Header */}
-      <div className='absolute top-[-32px] h-full w-full rounded-t-[15px] bg-gray-300 dark:bg-gray-800'>
-        <div className='flex justify-between h-[36px]'>
-          <div className='ps-4 flex flex-row items-center gap-2'>
-            <MessageCircle size='16' className='my-1.5 text-foreground' />
-            <span className='text-sm'>Reply</span>
-          </div>
-          <div className='flex flex-row gap-0 items-center me-1'>
-            {!isDialogMode && onPopOut && (
-              <Button
-                size='icon-sm'
-                variant='ghost'
-                className='rounded-full text-muted-foreground hover:bg-gray-200 dark:hover:bg-gray-700'
-                onClick={onPopOut}
-                title='Pop out'>
-                <ArrowUpRight />
-              </Button>
-            )}
-            {isDialogMode && onDockBack && (
-              <Button
-                size='icon-sm'
-                variant='ghost'
-                className='rounded-full text-muted-foreground hover:bg-gray-200 dark:hover:bg-gray-700'
-                onClick={onDockBack}
-                title='Dock into thread'>
-                <ArrowDownLeft />
-              </Button>
-            )}
-            {isDialogMode && onMinimize && (
-              <Button
-                size='icon-sm'
-                variant='ghost'
-                className='rounded-full text-muted-foreground hover:bg-gray-200 dark:hover:bg-gray-700'
-                onClick={onMinimize}
-                title='Minimize'>
-                <Minus />
-              </Button>
-            )}
-            <Button
-              size='icon-sm'
-              variant='ghost'
-              className='rounded-full text-muted-foreground hover:bg-gray-200 dark:hover:bg-gray-700'
-              onClick={onClose}
-              disabled={isSending}>
-              <X />
-            </Button>
-          </div>
-        </div>
-      </div>
+      {!hideHeader && (
+        <ChatPanelHeader
+          threadId={thread.id}
+          isDialogMode={isDialogMode}
+          onClose={onClose}
+          onPopOut={onPopOut}
+          onMinimize={onMinimize}
+          onDockBack={onDockBack}
+          dragHandleProps={dragHandleProps}
+        />
+      )}
 
       {/* Body */}
       <div
         {...getRootProps()}
         className={cn(
-          'relative flex flex-col rounded-[20px] border border-transparent ring-2 ring-transparent bg-white shadow-lg dark:bg-background',
+          'relative flex flex-col border border-transparent ring-2 ring-transparent bg-white dark:bg-background',
+          hideHeader ? 'rounded-[20px] shadow-lg m-1 mt-0' : 'rounded-[12px] m-1 mt-0',
           'focus-within:ring-blue-500 focus-within:hover:bg-white focus-within:hover:border-transparent dark:hover:bg-background',
           activeState.isActive && 'ring-blue-500 hover:bg-white hover:border-transparent',
           isDragActive && 'border-transparent bg-white hover:bg-white hover:border-transparent'
@@ -290,7 +260,11 @@ function ChatComposerInner({
         <input {...getInputProps()} />
 
         {isDragActive && (
-          <div className='absolute inset-[-1px] z-50 flex items-center justify-center rounded-[20px] bg-blue-500/10 border-1 border-dashed border-info'>
+          <div
+            className={cn(
+              'absolute inset-[-1px] z-50 flex items-center justify-center bg-blue-500/10 border-1 border-dashed border-info',
+              hideHeader ? 'rounded-[20px]' : 'rounded-[12px]'
+            )}>
             <div className='text-center'>
               <Upload className='mx-auto size-8 text-blue-500' />
               <Badge variant='blue' className='cursor-default'>
@@ -300,7 +274,7 @@ function ChatComposerInner({
           </div>
         )}
 
-        <div className='flex flex-col flex-1 min-h-[120px]'>
+        <div className='flex flex-col flex-1 min-h-[60px]'>
           <LazyTiptapEditor
             content={content}
             onChange={handleContentChange}
@@ -308,6 +282,7 @@ function ChatComposerInner({
             editable={!aiToolsState.isProcessing && !isSending}
             popoverClassName={popoverZIndex}
             onEnter={handleSendClick}
+            contentClassName='sm:min-h-[60px] py-2 text-sm'
           />
 
           {(attachments.length > 0 || fileSelect.selectedItems.length > 0) && (

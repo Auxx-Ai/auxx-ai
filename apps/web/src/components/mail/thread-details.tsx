@@ -263,7 +263,7 @@ export default function ThreadDetails({
             </div>
           ) : (
             (isShowReplyBox || hasFloatingCompose) && (
-              <div className='px-4 py-4 pb-[90px]'>
+              <div className='px-4 pt-2 pb-[90px]'>
                 <div id={portalTargetId} />
               </div>
             )

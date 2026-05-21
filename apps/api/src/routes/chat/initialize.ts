@@ -1,10 +1,13 @@
 // apps/api/src/routes/chat/initialize.ts
 
+import type { ChatIdentifyClaim } from '@auxx/credentials/passport'
+import { issueChatPassport } from '@auxx/credentials/passport'
 import { database, schema } from '@auxx/database'
 import { initializeOrResumeChatThread } from '@auxx/lib/chat'
 import { createScopedLogger } from '@auxx/logger'
 import { asc, eq } from 'drizzle-orm'
 import { Hono } from 'hono'
+import { parseIdentifyPayload } from './identify'
 import { applyChatCorsHeaders } from './lib'
 
 const log = createScopedLogger('chat-initialize-route')
@@ -20,17 +23,21 @@ initializeRoute.options('/', (c) => {
  * POST /api/chat/initialize
  *
  * Bootstrap or resume the chat thread for the authenticated visitor.
- * Body: `{ url?, referrer?, userAgent?, visitorName?, visitorEmail? }`.
+ * Body: `{ url?, referrer?, userAgent?, visitorName?, visitorEmail?, identify? }`.
  *
- * Returns `{ threadId, visitorId, isNewSession, messages, pusherChannel }`.
- * The legacy `sessionId` field is no longer returned — the embedded widget
- * tracks the chat by thread id (`pusherChannel: chat-${threadId}`).
+ * Returns `{ threadId, visitorId, isNewSession, messages, pusherChannel, visitorPusherChannel }`.
+ * `visitorPusherChannel` is keyed by the visitor's Participant id and carries
+ * cross-thread updates (new thread, message on a backgrounded thread).
+ *
+ * If `identify` is present the passport is re-issued with the claim merged in
+ * and returned as `passport.token` so the widget can refresh its stored copy.
  */
 initializeRoute.post('/', async (c) => {
   applyChatCorsHeaders(c, { allowCredentials: true })
 
   const chat = c.get('chat')
   const body = await c.req.json().catch(() => ({}))
+  const identify = parseIdentifyPayload(body.identify) ?? chat.identify
 
   try {
     const result = await initializeOrResumeChatThread(
@@ -47,8 +54,12 @@ initializeRoute.post('/', async (c) => {
             c.req.header('x-real-ip') ||
             undefined,
         },
-        visitorName: typeof body.visitorName === 'string' ? body.visitorName : undefined,
-        visitorEmail: typeof body.visitorEmail === 'string' ? body.visitorEmail : undefined,
+        visitorName:
+          identify?.name ?? (typeof body.visitorName === 'string' ? body.visitorName : undefined),
+        visitorEmail:
+          identify?.email ??
+          (typeof body.visitorEmail === 'string' ? body.visitorEmail : undefined),
+        visitorExternalId: identify?.externalId,
       }
     )
 
@@ -94,6 +105,25 @@ initializeRoute.post('/', async (c) => {
       status: 'DELIVERED',
     }))
 
+    let passport: { token: string; expiresIn: string } | undefined
+    if (identify && hasNewIdentify(chat.identify, identify)) {
+      const issued = await issueChatPassport({
+        visitorParticipantId: chat.visitorParticipantId,
+        channelId: chat.channelId,
+        organizationId: chat.organizationId,
+        sessionId: chat.sessionId,
+        identify,
+      })
+      if (issued.isOk()) {
+        passport = { token: issued.value.token, expiresIn: issued.value.expiresIn }
+      } else {
+        log.warn('Failed to re-issue chat passport with identify claim', {
+          channelId: chat.channelId,
+          error: issued.error.message,
+        })
+      }
+    }
+
     return c.json({
       success: true,
       data: {
@@ -102,6 +132,8 @@ initializeRoute.post('/', async (c) => {
         isNewSession: isNew,
         messages,
         pusherChannel: `chat-${visitorChatSessionId}`,
+        visitorPusherChannel: `private-visitor-${chat.visitorParticipantId}`,
+        ...(passport ? { passport } : {}),
       },
     })
   } catch (error) {
@@ -121,5 +153,15 @@ initializeRoute.post('/', async (c) => {
     )
   }
 })
+
+/** Skip the passport re-issue when the new claim matches what's already encoded. */
+function hasNewIdentify(current: ChatIdentifyClaim | undefined, next: ChatIdentifyClaim): boolean {
+  if (!current) return true
+  return (
+    current.name !== next.name ||
+    current.email !== next.email ||
+    current.externalId !== next.externalId
+  )
+}
 
 export default initializeRoute

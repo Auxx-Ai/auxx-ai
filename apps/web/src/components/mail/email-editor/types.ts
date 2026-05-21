@@ -1,6 +1,7 @@
 // apps/web/src/components/mail/email-editor/types.ts
 
 import type { IdentifierType } from '@auxx/database/types'
+import type React from 'react'
 import type { RouterOutputs } from '~/trpc/react'
 
 /** Message type with all fields needed for display */
@@ -260,4 +261,6 @@ export interface ReplyComposeEditorProps {
   onSubjectChange?: (subject: string) => void
   /** Compose instance ID for store interactions (e.g. pending focus) */
   instanceId?: string
+  /** When set, the header's title region becomes the drag handle (spread on a div). */
+  dragHandleProps?: React.HTMLAttributes<HTMLDivElement>
 }

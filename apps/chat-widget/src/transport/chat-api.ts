@@ -18,6 +18,14 @@ export interface InitializeResponse {
   isNewSession: boolean
   messages: ChatMessage[]
   pusherChannel: string
+  visitorPusherChannel: string
+  passport?: { token: string; expiresIn: string }
+}
+
+export interface IdentifyApiPayload {
+  name?: string
+  email?: string
+  externalId?: string
 }
 
 interface ApiEnvelope<T> {
@@ -73,6 +81,7 @@ export function chatApi(channelId: string) {
       visitorEmail?: string
       sessionId?: string
       threadId?: string
+      identify?: IdentifyApiPayload
     }) =>
       call<InitializeResponse>(channelId, '/api/chat/initialize', {
         method: 'POST',
@@ -116,10 +125,19 @@ export function chatApi(channelId: string) {
         body: { messageIds },
       }),
 
-    updateVisitorInfo: (body: { sessionId: string; visitorName?: string; visitorEmail?: string }) =>
-      call<Record<string, never>>(channelId, '/api/chat/visitor-info', {
-        method: 'PATCH',
-        body,
-      }),
+    updateVisitorInfo: (body: {
+      threadId: string
+      visitorName?: string
+      visitorEmail?: string
+      identify?: IdentifyApiPayload
+    }) =>
+      call<{ passport?: { token: string; expiresIn: string } }>(
+        channelId,
+        '/api/chat/visitor-info',
+        {
+          method: 'PATCH',
+          body,
+        }
+      ),
   }
 }

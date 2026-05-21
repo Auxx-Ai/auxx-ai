@@ -2,8 +2,10 @@
 
 import { useEffect, useRef, useState } from 'preact/hooks'
 import { ChatPanel } from './chat-window'
+import { getStoredIdentify, type IdentifyPayload, onIdentify } from './identify'
 import { type ChatMessage, chatApi, type InitializeResponse } from './transport/chat-api'
 import { type ChatConfig, fetchChatConfig } from './transport/config'
+import { updateStoredPassport } from './transport/passport'
 import { connectPusher, type PusherConnection } from './transport/pusher'
 
 interface WidgetProps {
@@ -44,9 +46,11 @@ export function Widget({ channelId }: WidgetProps) {
         url: window.location.href,
         referrer: document.referrer || undefined,
         userAgent: navigator.userAgent,
+        identify: getStoredIdentify(channelId) ?? undefined,
       })
       .then((res) => {
         if (cancelled) return
+        if (res.passport) updateStoredPassport(channelId, res.passport)
         setSession(res)
         setMessages(res.messages)
       })
@@ -56,7 +60,22 @@ export function Widget({ channelId }: WidgetProps) {
     return () => {
       cancelled = true
     }
-  }, [open, session, config, api])
+  }, [open, session, config, api, channelId])
+
+  // Push later identify() calls to the backend once a session exists. Pre-session
+  // calls are persisted to sessionStorage and picked up by initialize() above.
+  useEffect(() => {
+    if (!session) return
+    const dispatch = (payload: IdentifyPayload) => {
+      api
+        .updateVisitorInfo({ threadId: session.threadId, identify: payload })
+        .then((res) => {
+          if (res?.passport) updateStoredPassport(channelId, res.passport)
+        })
+        .catch(() => {})
+    }
+    return onIdentify(dispatch)
+  }, [session, api, channelId])
 
   // Subscribe to Pusher once the session exists.
   useEffect(() => {

@@ -8,6 +8,7 @@ import { RedisRateLimiter } from '@auxx/lib/utils/rate-limiter'
 import { createScopedLogger } from '@auxx/logger'
 import { Hono } from 'hono'
 import { getCookie, setCookie } from 'hono/cookie'
+import { parseIdentifyPayload } from './identify'
 import {
   applyChatCorsHeaders,
   hostnameFromHeader,
@@ -57,7 +58,7 @@ passportRoute.post('/', async (c) => {
     )
   }
 
-  let body: { channelId?: string; visitorId?: string } = {}
+  let body: { channelId?: string; visitorId?: string; identify?: unknown } = {}
   try {
     body = (await c.req.json()) as typeof body
   } catch {
@@ -130,11 +131,14 @@ passportRoute.post('/', async (c) => {
   }
   const participant = participantResult.value
 
+  const identify = parseIdentifyPayload(body.identify) ?? undefined
+
   const issued = await issueChatPassport({
     visitorParticipantId: participant.id,
     channelId,
     organizationId: widget.organizationId,
     sessionId,
+    identify,
     expiresIn: '1h',
   })
   if (issued.isErr()) {

@@ -5,6 +5,7 @@
 // injects the inlined stylesheet so the bundle is fully self-contained.
 
 import { render } from 'preact'
+import { installIdentifyQueue } from './identify'
 import styles from './styles.css?inline'
 import { Widget } from './widget'
 
@@ -27,6 +28,7 @@ function injectStyles(): void {
 }
 
 function mount(channelId: string): void {
+  installIdentifyQueue(channelId)
   injectStyles()
   let root = document.getElementById(ROOT_ID)
   if (!root) {

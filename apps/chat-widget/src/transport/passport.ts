@@ -127,3 +127,21 @@ export async function getChatPassport(
 
   return inflight
 }
+
+/**
+ * Replace the stored passport with one issued by the backend out-of-band
+ * (e.g. `/api/chat/initialize` or `/api/chat/visitor-info` returned a refreshed
+ * token after an identify claim was merged in).
+ */
+export function updateStoredPassport(
+  channelId: string,
+  args: { token: string; expiresIn: string }
+): void {
+  const existing = readStored(channelId)
+  if (!existing) return
+  writeStored(channelId, {
+    ...existing,
+    passport: args.token,
+    expiresAt: expiresInToIso(args.expiresIn),
+  })
+}

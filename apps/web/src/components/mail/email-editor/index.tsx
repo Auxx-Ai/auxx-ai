@@ -110,6 +110,7 @@ function ReplyComposeEditorComponent({
   onDockBack,
   onSubjectChange,
   instanceId,
+  dragHandleProps,
 }: ReplyComposeEditorProps) {
   // Z-index override for popovers when editor is in floating mode (above compose at z-101+)
   const popoverZIndex = isDialogMode ? 'z-[200]' : undefined
@@ -1054,87 +1055,91 @@ function ReplyComposeEditorComponent({
   return (
     <>
       <ConfirmDialog />
-      <div className='transition-background flex flex-col duration-200 ease-in-out relative'>
+      <div className='transition-background flex flex-col duration-200 ease-in-out relative bg-gray-300 dark:bg-gray-800 rounded-[15px] shadow-lg'>
         {/* Header */}
-        <div className='absolute top-[-32px] h-full w-full rounded-t-[15px] bg-gray-300  dark:bg-gray-800 '>
-          <div className='flex justify-between h-[36px]'>
-            <div className='ps-4 flex flex-row items-center gap-2'>
-              <Mail size='16' className='my-1.5 text-foreground' />
-              <span className='text-sm'>Compose Email</span>
-              {isUpserting && (
-                <Loader2 className='ml-auto size-4 animate-spin text-muted-foreground' />
-              )}
-            </div>
-            <div className='flex flex-row gap-0 items-center me-1'>
-              {/* AI Status (undo/redo and processing) */}
-              <AIStatus
-                state={aiToolsState}
-                canUndo={canUndo}
-                canRedo={canRedo}
-                onUndo={handleUndo}
-                onRedo={redo}
-              />
-              {state.draftId && <span className='text-muted-foreground text-sm me-2'>Draft</span>}
+        <div className='flex justify-between h-9'>
+          <div
+            {...dragHandleProps}
+            className={cn(
+              'ps-4 flex flex-row items-center gap-2 flex-1 min-w-0',
+              dragHandleProps && 'cursor-grab active:cursor-grabbing',
+              dragHandleProps?.className
+            )}>
+            <Mail size='16' className='my-1.5 text-foreground' />
+            <span className='text-sm'>Compose Email</span>
+            {isUpserting && (
+              <Loader2 className='ml-auto size-4 animate-spin text-muted-foreground' />
+            )}
+          </div>
+          <div className='flex flex-row gap-0 items-center me-1 relative z-10'>
+            {/* AI Status (undo/redo and processing) */}
+            <AIStatus
+              state={aiToolsState}
+              canUndo={canUndo}
+              canRedo={canRedo}
+              onUndo={handleUndo}
+              onRedo={redo}
+            />
+            {state.draftId && <span className='text-muted-foreground text-sm me-2'>Draft</span>}
 
-              {/* Pop-out button — only in inline (non-dialog) mode */}
-              {!isDialogMode && onPopOut && (
-                <Button
-                  size='icon-sm'
-                  variant='ghost'
-                  className='rounded-full text-muted-foreground hover:bg-gray-200 dark:hover:bg-gray-700'
-                  onClick={onPopOut}
-                  title='Pop out'>
-                  <ArrowUpRight />
-                </Button>
-              )}
-
-              {/* Dock-back button — floating mode when thread is visible */}
-              {isDialogMode && onDockBack && (
-                <Button
-                  size='icon-sm'
-                  variant='ghost'
-                  className='rounded-full text-muted-foreground hover:bg-gray-200 dark:hover:bg-gray-700'
-                  onClick={onDockBack}
-                  title='Dock into thread'>
-                  <ArrowDownLeft />
-                </Button>
-              )}
-
-              {/* Minimize button — only in floating/dialog mode */}
-              {isDialogMode && onMinimize && (
-                <Button
-                  size='icon-sm'
-                  variant='ghost'
-                  className='rounded-full text-muted-foreground hover:bg-gray-200 dark:hover:bg-gray-700'
-                  onClick={onMinimize}
-                  title='Minimize'>
-                  <Minus />
-                </Button>
-              )}
-
-              {/* Delete button - only show in dialog mode when draft exists */}
-              {isDialogMode && state.draftId && (
-                <Button
-                  size='icon-sm'
-                  variant='ghost'
-                  className='rounded-full text-muted-foreground hover:bg-red-100 hover:text-red-600 dark:hover:bg-red-900/30'
-                  onClick={handleDiscardClick}
-                  disabled={isSending || isUpserting || isDeleting}
-                  title='Delete draft'>
-                  {isDeleting ? <Loader2 className='size-4 animate-spin' /> : <Trash2 />}
-                </Button>
-              )}
-
-              {/* Close/Discard button */}
+            {/* Pop-out button — only in inline (non-dialog) mode */}
+            {!isDialogMode && onPopOut && (
               <Button
                 size='icon-sm'
                 variant='ghost'
                 className='rounded-full text-muted-foreground hover:bg-gray-200 dark:hover:bg-gray-700'
-                onClick={isDialogMode ? handleCloseClick : handleDiscardClick}
-                disabled={isSending || isUpserting || (isDeleting && !isDialogMode)}>
-                {isDeleting && !isDialogMode ? <Loader2 className='size-4 animate-spin' /> : <X />}
+                onClick={onPopOut}
+                title='Pop out'>
+                <ArrowUpRight />
               </Button>
-            </div>
+            )}
+
+            {/* Dock-back button — floating mode when thread is visible */}
+            {isDialogMode && onDockBack && (
+              <Button
+                size='icon-sm'
+                variant='ghost'
+                className='rounded-full text-muted-foreground hover:bg-gray-200 dark:hover:bg-gray-700'
+                onClick={onDockBack}
+                title='Dock into thread'>
+                <ArrowDownLeft />
+              </Button>
+            )}
+
+            {/* Minimize button — only in floating/dialog mode */}
+            {isDialogMode && onMinimize && (
+              <Button
+                size='icon-sm'
+                variant='ghost'
+                className='rounded-full text-muted-foreground hover:bg-gray-200 dark:hover:bg-gray-700'
+                onClick={onMinimize}
+                title='Minimize'>
+                <Minus />
+              </Button>
+            )}
+
+            {/* Delete button - only show in dialog mode when draft exists */}
+            {isDialogMode && state.draftId && (
+              <Button
+                size='icon-sm'
+                variant='ghost'
+                className='rounded-full text-muted-foreground hover:bg-red-100 hover:text-red-600 dark:hover:bg-red-900/30'
+                onClick={handleDiscardClick}
+                disabled={isSending || isUpserting || isDeleting}
+                title='Delete draft'>
+                {isDeleting ? <Loader2 className='size-4 animate-spin' /> : <Trash2 />}
+              </Button>
+            )}
+
+            {/* Close/Discard button */}
+            <Button
+              size='icon-sm'
+              variant='ghost'
+              className='rounded-full text-muted-foreground hover:bg-gray-200 dark:hover:bg-gray-700'
+              onClick={isDialogMode ? handleCloseClick : handleDiscardClick}
+              disabled={isSending || isUpserting || (isDeleting && !isDialogMode)}>
+              {isDeleting && !isDialogMode ? <Loader2 className='size-4 animate-spin' /> : <X />}
+            </Button>
           </div>
         </div>
 
@@ -1142,7 +1147,7 @@ function ReplyComposeEditorComponent({
         <div
           {...getRootProps()}
           className={cn(
-            'relative flex flex-col rounded-[20px] border border-transparent  ring-2 ring-transparent bg-white shadow-lg dark:bg-background',
+            'relative flex flex-col rounded-[12px] m-1 mt-0 border border-transparent  ring-2 ring-transparent bg-white dark:bg-background',
             'focus-within:ring-blue-500 focus-within:hover:bg-white focus-within:hover:border-transparent dark:hover:bg-background',
             // 'hover:border-gray-400 dark:hover:border-black/20 hover:bg-gray-50 dark:hover:bg-background',
             activeState.isActive && 'ring-blue-500 hover:bg-white hover:border-transparent',
@@ -1169,7 +1174,7 @@ function ReplyComposeEditorComponent({
 
           {/* Drag overlay */}
           {isDragActive && (
-            <div className='absolute inset-[-1px] z-50 flex items-center justify-center rounded-[20px] bg-blue-500/10 border-1 border-dashed border-info'>
+            <div className='absolute inset-[-1px] z-50 flex items-center justify-center rounded-[12px] bg-blue-500/10 border-1 border-dashed border-info'>
               <div className='text-center'>
                 <Upload className='mx-auto size-8 text-blue-500' />
                 <Badge variant='blue' className='cursor-default'>

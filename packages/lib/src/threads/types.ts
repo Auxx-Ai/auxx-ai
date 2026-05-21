@@ -165,4 +165,6 @@ export interface ChatThreadMetadata {
   }
   claimedVisitorEmail?: string
   claimedVisitorName?: string
+  /** Embedder-supplied external id (e.g. customer id in the host app). Unverified in v1. */
+  claimedExternalId?: string
 }

@@ -5,6 +5,7 @@ export { issuePassport } from './issue-passport'
 export { issueWorkflowPassport } from './issue-workflow-passport'
 export type {
   BasePassportPayload,
+  ChatIdentifyClaim,
   ChatPassportPayload,
   ChatPassportResult,
   IssueChatPassportOptions,
