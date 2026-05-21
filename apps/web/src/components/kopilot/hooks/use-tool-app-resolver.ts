@@ -35,8 +35,10 @@ export interface ResolvedTool {
  * hook performs no string manipulation and has no knowledge of the
  * bridge's encoding (decision D1).
  *
- * Returns `undefined` for built-in tools (find_threads, search_kb, …);
- * the pill falls back to `tool-status-pill-config.ts` in that case.
+ * Built-in tools (find_threads, search_kb, …) resolve through the synthetic
+ * Auxx.ai row prepended by `installedAppsProvider`; the pill renders them
+ * with the toolset's iconKey (falling back to the auxx logo). See
+ * `plans/kopilot/agents/tools/project-builtin-auxx-into-installations.md`.
  */
 export function useToolAppResolver() {
   const { appInstallations } = useExtensionsContext()

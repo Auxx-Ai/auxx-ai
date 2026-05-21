@@ -7,6 +7,7 @@ import { Skeleton } from '@auxx/ui/components/skeleton'
 import { toastError } from '@auxx/ui/components/toast'
 import { Wrench } from 'lucide-react'
 import { useCallback, useMemo, useState } from 'react'
+import { useToolCatalog } from '~/components/agents/hooks/use-tool-catalog'
 import { AppAccountDialog } from '~/components/apps/ui/app-account-dialog'
 import { api } from '~/trpc/react'
 import type { AgentDetail } from '../../../store/agent-store'
@@ -39,9 +40,7 @@ export function ToolsSectionContent({
   onAutosaveChange,
   onAddToApp,
 }: ToolsSectionContentProps) {
-  const catalogQuery = api.agentToolset.list.useQuery(undefined, {
-    staleTime: 60_000,
-  })
+  const { catalog, isLoading: catalogIsLoading } = useToolCatalog()
 
   const handleSavingChange = useCallback(
     (saving: boolean) => {
@@ -65,8 +64,8 @@ export function ToolsSectionContent({
   }, [agent.toolsets])
 
   const installedTree = useMemo(
-    () => (catalogQuery.data ? pruneToInstalled(catalogQuery.data, stateBySlug) : []),
-    [catalogQuery.data, stateBySlug]
+    () => pruneToInstalled(catalog, stateBySlug),
+    [catalog, stateBySlug]
   )
 
   // Default = every container id collapsed. Derived synchronously from
@@ -157,7 +156,7 @@ export function ToolsSectionContent({
     [stateBySlug, toggleToolset, toggleToolsets]
   )
 
-  if (catalogQuery.isLoading || !catalogQuery.data) {
+  if (catalogIsLoading) {
     return (
       <div className='flex flex-col pe-4'>
         {[0, 1, 2].map((i) => (

@@ -74,7 +74,6 @@ export function ExtensionsProvider({ children }: ExtensionsProviderProps) {
 
   // Show error toast if loading failed
   if (error) {
-    console.error('[Extensions] Failed to load extensions:', error)
     toastError({
       title: 'Extensions unavailable',
       description: 'Failed to load extensions. Core features still available.',
@@ -87,25 +86,11 @@ export function ExtensionsProvider({ children }: ExtensionsProviderProps) {
   // Subscribe to connection expired events
   useEffect(() => {
     const unsubscribe = connectionExpiredEmitter.subscribe((event) => {
-      console.log('[Extensions] Connection expired event received:', event)
       setExpiredConnection(event)
     })
 
     return unsubscribe
   }, [])
-
-  console.log(
-    `[Extensions] ${isLoading ? 'Loading' : 'Loaded'} ${installations.length} installed extensions`,
-    {
-      apps: installations.map((i) => ({
-        slug: i.app.slug,
-        type: i.installationType,
-        version: i.currentDeployment?.version,
-        clientBundleSha: i.currentDeployment?.clientBundleSha ?? null,
-        hasDeployment: !!i.currentDeployment,
-      })),
-    }
-  )
 
   return (
     <InternalAppsContextProvider>
@@ -130,8 +115,6 @@ export function ExtensionsProvider({ children }: ExtensionsProviderProps) {
                   <ErrorBoundary
                     fallback={null} // Silent failure - extension just won't load
                     onError={(error) => {
-                      console.error(`[Extensions] ${installation.app.title} failed:`, error)
-
                       // Show toast in dev mode for better debugging experience
                       if (isDevLoggingEnabled) {
                         toastError({
