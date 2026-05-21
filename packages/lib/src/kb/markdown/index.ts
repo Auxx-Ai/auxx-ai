@@ -6,10 +6,12 @@ export { computeArticleJsonHash, computeContentHash } from './hash'
 export { type FrontmatterFields, mdToBlocks, parseFrontmatter } from './md-to-blocks'
 export { stampBlockIds } from './stamp-ids'
 export type {
+  ArticleNodeJSON,
   BlockAttrs,
   BlockJSON,
   BlockType,
   CalloutVariant,
+  ContainerBlockJSON,
   DocJSON,
   EmbedAspect,
   EmbedProvider,

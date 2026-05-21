@@ -115,6 +115,27 @@ export async function updateChatWidget(
     }
   }
 
+  // v1 of the in-widget KB reader only supports PUBLIC KBs — INTERNAL KBs
+  // need the signed-identity flow that doesn't exist yet. Reject the link
+  // here so admins get a clear error instead of a confusing 403 in the widget.
+  if (input.knowledgeBaseId) {
+    const kb = await ctx.db.query.KnowledgeBase.findFirst({
+      where: (k, { and, eq }) =>
+        and(eq(k.id, input.knowledgeBaseId!), eq(k.organizationId, ctx.organizationId)),
+      columns: { id: true, visibility: true },
+    })
+    if (!kb) {
+      return Result.error(
+        new BadRequestError('Selected knowledge base not found in this organization')
+      )
+    }
+    if (kb.visibility !== 'PUBLIC') {
+      return Result.error(
+        new BadRequestError('PUBLIC visibility required for chat widget integration')
+      )
+    }
+  }
+
   const { name, inboxId, ...widgetData } = input
   const hasInboxKey = Object.hasOwn(input, 'inboxId')
 

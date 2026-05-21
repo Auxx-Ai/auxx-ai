@@ -11,6 +11,7 @@
  */
 
 @import 'tailwindcss';
+@import './views/kb/article-typography.css';
 
 @source "./**/*.{ts,tsx}";
 

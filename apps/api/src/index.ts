@@ -25,6 +25,7 @@ import freeToolLeads from './routes/free-tool-leads'
 // Routes
 import health from './routes/health'
 import installations from './routes/installations'
+import kb from './routes/kb'
 import me from './routes/me'
 import organizations from './routes/organizations'
 import recordingWebhooks from './routes/recording-webhooks'
@@ -82,6 +83,7 @@ async function main() {
   app.route('/api/v1/sdk/entities', entitiesFindContactByPhone) // SDK callback: Lambda → API (AI tools, whatsapp)
   app.route('/api/v1/workflows', workflows) // Workflow execution routes
   app.route('/api/chat', chat) // Visitor-facing chat widget routes (passport-gated)
+  app.route('/api/kb', kb) // Visitor-facing KB browse/read routes (passport-gated)
   app.route('/api/v1/public/free-tool-leads', freeToolLeads) // Public lead capture from /free-tools/*
   app.route('/webhooks/recording', recordingWebhooks) // Recording bot provider webhooks (before generic /webhooks to avoid param collision)
   app.route('/webhooks', webhooks) // Public webhook receiver (no /api/v1 prefix)
