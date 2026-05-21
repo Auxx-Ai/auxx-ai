@@ -25,6 +25,7 @@
     "./components/icons/*": "./src/components/icons/*.tsx",
     "./hooks/*": "./src/hooks/*.ts",
     "./hooks": "./src/hooks/index.ts",
+    "./passport": "./src/passport/index.ts",
     "./tailwind-config": "./tailwind.config.ts"
   },
   "scripts": {

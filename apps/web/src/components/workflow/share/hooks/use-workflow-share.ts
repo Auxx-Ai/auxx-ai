@@ -35,15 +35,6 @@ export interface WorkflowSiteInfo {
 }
 
 /**
- * Passport response from API
- */
-export interface PassportResponse {
-  passport: string
-  endUserId: string
-  expiresAt: string
-}
-
-/**
  * Workflow run response from API
  */
 export interface WorkflowRunResponse {
@@ -71,23 +62,6 @@ export function useWorkflowShare(shareToken: string) {
   }, [shareToken, apiUrl])
 
   /**
-   * Fetch or create passport (sets cookie)
-   */
-  const fetchPassport = useCallback(async (): Promise<PassportResponse> => {
-    const res = await fetch(`${apiUrl}/workflows/share/${shareToken}/passport`, {
-      credentials: 'include',
-    })
-    if (!res.ok) {
-      const error = await res
-        .json()
-        .catch(() => ({ message: 'You dont have access to this workflow' }))
-      throw new Error(error.message || 'You dont have access to this workflow')
-    }
-    const { data } = await res.json()
-    return data
-  }, [shareToken, apiUrl])
-
-  /**
    * Get run status from Hono API
    */
   const getRunStatus = useCallback(
@@ -109,7 +83,6 @@ export function useWorkflowShare(shareToken: string) {
 
   return {
     fetchSiteInfo,
-    fetchPassport,
     getRunStatus,
   }
 }

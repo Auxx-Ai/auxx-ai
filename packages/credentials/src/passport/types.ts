@@ -6,14 +6,29 @@
 export type WorkflowShareAccessMode = 'public' | 'organization' | 'api_key'
 
 /**
- * Passport JWT payload
+ * Passport scope discriminator
  */
-export interface WorkflowPassportPayload {
-  /** EndUser ID */
+export type PassportScope = 'workflow' | 'chat'
+
+/**
+ * Fields present on every passport, regardless of scope
+ */
+export interface BasePassportPayload {
+  /** Subject id — endUserId for workflow, visitor Participant.id for chat */
   sub: string
   /** Issuer */
-  iss: string
-  type: 'workflow_passport'
+  iss: 'auxx'
+  /** Scope discriminator */
+  scope: PassportScope
+  iat: number
+  exp: number
+}
+
+/**
+ * Workflow passport JWT payload
+ */
+export interface WorkflowPassportPayload extends BasePassportPayload {
+  scope: 'workflow'
   shareToken: string
   workflowId: string
   organizationId: string
@@ -22,12 +37,24 @@ export interface WorkflowPassportPayload {
   userId?: string
   /** External user ID (for embedded) */
   externalId?: string
-  iat: number
-  exp: number
 }
 
 /**
- * Options for issuing passport
+ * Chat passport JWT payload
+ */
+export interface ChatPassportPayload extends BasePassportPayload {
+  scope: 'chat'
+  /** Chat integration / channel id */
+  channelId: string
+  organizationId: string
+  /** Visitor session id (cookie) */
+  sessionId: string
+}
+
+export type PassportPayload = WorkflowPassportPayload | ChatPassportPayload
+
+/**
+ * Options for issuing a workflow passport
  */
 export interface IssueWorkflowPassportOptions {
   endUserId: string
@@ -41,18 +68,32 @@ export interface IssueWorkflowPassportOptions {
 }
 
 /**
- * Result of passport issuance
+ * Options for issuing a chat passport
  */
-export interface WorkflowPassportResult {
-  token: string
-  expiresIn: string
-  payload: Omit<WorkflowPassportPayload, 'iat' | 'exp'>
+export interface IssueChatPassportOptions {
+  visitorParticipantId: string
+  channelId: string
+  organizationId: string
+  sessionId: string
+  expiresIn?: string
 }
 
 /**
- * Verified passport data
+ * Result of passport issuance
  */
-export interface VerifiedPassport {
+export interface PassportIssuanceResult<TPayload extends BasePassportPayload> {
+  token: string
+  expiresIn: string
+  payload: Omit<TPayload, 'iat' | 'exp'>
+}
+
+export type WorkflowPassportResult = PassportIssuanceResult<WorkflowPassportPayload>
+export type ChatPassportResult = PassportIssuanceResult<ChatPassportPayload>
+
+/**
+ * Verified workflow passport claims
+ */
+export interface VerifiedWorkflowPassport {
   endUserId: string
   shareToken: string
   workflowId: string
@@ -61,6 +102,21 @@ export interface VerifiedPassport {
   userId?: string
   externalId?: string
 }
+
+/**
+ * Verified chat passport claims
+ */
+export interface VerifiedChatPassport {
+  visitorParticipantId: string
+  channelId: string
+  organizationId: string
+  sessionId: string
+}
+
+/**
+ * @deprecated Use VerifiedWorkflowPassport directly. Kept as an alias for one phase.
+ */
+export type VerifiedPassport = VerifiedWorkflowPassport
 
 /**
  * Passport error types

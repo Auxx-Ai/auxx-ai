@@ -6,6 +6,7 @@ export {
   issueWorkflowPassport,
   type PassportError,
   type VerifiedPassport,
+  type VerifiedWorkflowPassport,
   verifyWorkflowPassport,
   type WorkflowPassportPayload,
   type WorkflowPassportResult,

@@ -1,53 +1,47 @@
 // apps/web/src/components/workflow/share/share-gate.tsx
 'use client'
 
+import { usePassport } from '@auxx/ui/passport'
 import { Loader2 } from 'lucide-react'
 import { type ReactNode, useEffect, useRef } from 'react'
-import { useWorkflowPassport } from './hooks/use-workflow-passport'
 import { useWorkflowShare } from './hooks/use-workflow-share'
 import { useWorkflowShareStore } from './workflow-share-provider'
 
-/**
- * Props for ShareGate component
- */
 interface ShareGateProps {
-  shareToken: string
   children: ReactNode
 }
 
 /**
  * Gate component that handles loading site info and passport
- * before rendering children
+ * before rendering children. Reads the active shareToken from the
+ * surrounding {@link WorkflowShareProvider}.
  */
-export function ShareGate({ shareToken, children }: ShareGateProps) {
-  const setShareToken = useWorkflowShareStore((s) => s.setShareToken)
+export function ShareGate({ children }: ShareGateProps) {
+  const shareToken = useWorkflowShareStore((s) => s.shareToken)
   const setSiteInfo = useWorkflowShareStore((s) => s.setSiteInfo)
   const setLoading = useWorkflowShareStore((s) => s.setLoading)
   const setError = useWorkflowShareStore((s) => s.setError)
-
   const isLoadingSite = useWorkflowShareStore((s) => s.isLoadingSite)
-  const isLoadingPassport = useWorkflowShareStore((s) => s.isLoadingPassport)
   const siteInfo = useWorkflowShareStore((s) => s.siteInfo)
-  const passport = useWorkflowShareStore((s) => s.passport)
   const siteError = useWorkflowShareStore((s) => s.siteError)
-  const passportError = useWorkflowShareStore((s) => s.passportError)
 
-  const { fetchSiteInfo } = useWorkflowShare(shareToken)
-  const { initializePassport } = useWorkflowPassport(shareToken)
+  const { passport, isLoading: isLoadingPassport, error: passportError } = usePassport()
 
-  // Track initialization to prevent duplicate calls
-  const initRef = useRef({ siteLoaded: false, passportLoaded: false })
+  const { fetchSiteInfo } = useWorkflowShare(shareToken ?? '')
 
-  // Load site info on mount (only once per shareToken)
+  const siteLoadedRef = useRef(false)
+
   useEffect(() => {
-    // Reset init state when shareToken changes
-    initRef.current = { siteLoaded: false, passportLoaded: false }
-    setShareToken(shareToken)
+    if (!shareToken) return
+    siteLoadedRef.current = false
+  }, [shareToken])
+
+  useEffect(() => {
+    if (!shareToken) return
+    if (siteLoadedRef.current) return
+    siteLoadedRef.current = true
 
     const loadSiteInfo = async () => {
-      if (initRef.current.siteLoaded) return
-      initRef.current.siteLoaded = true
-
       setLoading('site', true)
       try {
         const info = await fetchSiteInfo()
@@ -60,18 +54,8 @@ export function ShareGate({ shareToken, children }: ShareGateProps) {
     }
 
     loadSiteInfo()
-  }, [shareToken, setShareToken, setLoading, setSiteInfo, setError, fetchSiteInfo])
+  }, [shareToken, setLoading, setSiteInfo, setError, fetchSiteInfo])
 
-  // Load passport after site info is loaded (only once)
-  useEffect(() => {
-    if (!siteInfo) return
-    if (initRef.current.passportLoaded) return
-    initRef.current.passportLoaded = true
-
-    initializePassport()
-  }, [siteInfo, initializePassport])
-
-  // Loading state
   if (isLoadingSite || isLoadingPassport) {
     return (
       <div className='flex h-screen items-center justify-center'>
@@ -80,7 +64,6 @@ export function ShareGate({ shareToken, children }: ShareGateProps) {
     )
   }
 
-  // Site error state
   if (siteError) {
     return (
       <div className='flex h-screen flex-col items-center justify-center gap-4'>
@@ -90,7 +73,6 @@ export function ShareGate({ shareToken, children }: ShareGateProps) {
     )
   }
 
-  // Passport error state
   if (passportError) {
     return (
       <div className='flex h-screen flex-col items-center justify-center gap-4'>
@@ -100,7 +82,6 @@ export function ShareGate({ shareToken, children }: ShareGateProps) {
     )
   }
 
-  // Ready - render children
   if (siteInfo && passport) {
     return <>{children}</>
   }

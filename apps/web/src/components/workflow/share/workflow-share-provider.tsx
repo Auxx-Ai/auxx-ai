@@ -2,9 +2,13 @@
 'use client'
 
 import type { ContentSegment } from '@auxx/lib/workflow-engine/client'
-import { createContext, type ReactNode, useContext, useRef } from 'react'
+import { PassportProvider } from '@auxx/ui/passport'
+import { createContext, type ReactNode, useCallback, useContext, useRef } from 'react'
 import { createStore, type StoreApi, useStore } from 'zustand'
+import { useEnv } from '~/providers/dehydrated-state-provider'
 import type { WorkflowSiteInfo } from './hooks/use-workflow-share'
+
+const WORKFLOW_PASSPORT_STORAGE_PREFIX = 'auxx_passport_workflow_'
 
 /**
  * End node execution result
@@ -35,29 +39,24 @@ interface WorkflowShareState {
   // Data
   shareToken: string | null
   siteInfo: WorkflowSiteInfo | null
-  passport: string | null
-  endUserId: string | null
   currentRun: WorkflowRun | null
 
   // Loading states
   isLoadingSite: boolean
-  isLoadingPassport: boolean
   isExecuting: boolean
 
   // Error states
   siteError: string | null
-  passportError: string | null
   executionError: string | null
 
   // Actions
   setShareToken: (token: string) => void
   setSiteInfo: (info: WorkflowSiteInfo) => void
-  setPassport: (passport: string, endUserId: string) => void
   setCurrentRun: (run: WorkflowRun | null) => void
   updateRunStatus: (status: WorkflowRun['status'], error?: string) => void
   upsertEndNodeResult: (result: EndNodeResult) => void
-  setLoading: (key: 'site' | 'passport' | 'executing', value: boolean) => void
-  setError: (key: 'site' | 'passport' | 'execution', error: string | null) => void
+  setLoading: (key: 'site' | 'executing', value: boolean) => void
+  setError: (key: 'site' | 'execution', error: string | null) => void
   reset: () => void
 }
 
@@ -67,29 +66,24 @@ interface WorkflowShareState {
 const initialState = {
   shareToken: null,
   siteInfo: null,
-  passport: null,
-  endUserId: null,
   currentRun: null,
   isLoadingSite: false,
-  isLoadingPassport: false,
   isExecuting: false,
   siteError: null,
-  passportError: null,
   executionError: null,
 }
 
 /**
  * Create workflow share store
  */
-const createWorkflowShareStore = () =>
+const createWorkflowShareStore = (shareToken: string | null) =>
   createStore<WorkflowShareState>((set) => ({
     ...initialState,
+    shareToken,
 
     setShareToken: (token) => set({ shareToken: token }),
 
     setSiteInfo: (info) => set({ siteInfo: info, siteError: null }),
-
-    setPassport: (passport, endUserId) => set({ passport, endUserId, passportError: null }),
 
     setCurrentRun: (run) => set({ currentRun: run }),
 
@@ -122,37 +116,71 @@ const createWorkflowShareStore = () =>
       }),
 
     setLoading: (key, value) => {
-      const loadingKey =
-        key === 'site' ? 'isLoadingSite' : key === 'passport' ? 'isLoadingPassport' : 'isExecuting'
+      const loadingKey = key === 'site' ? 'isLoadingSite' : 'isExecuting'
       set({ [loadingKey]: value })
     },
 
     setError: (key, error) => {
-      const errorKey =
-        key === 'site' ? 'siteError' : key === 'passport' ? 'passportError' : 'executionError'
+      const errorKey = key === 'site' ? 'siteError' : 'executionError'
       set({ [errorKey]: error })
     },
 
-    reset: () => set(initialState),
+    reset: () => set({ ...initialState, shareToken }),
   }))
 
 type WorkflowShareStore = StoreApi<WorkflowShareState>
 
 const WorkflowShareContext = createContext<WorkflowShareStore | null>(null)
 
-/**
- * Provider for workflow share store
- */
-export function WorkflowShareProvider({ children }: { children: ReactNode }) {
-  const storeRef = useRef<WorkflowShareStore | undefined>(undefined)
+interface WorkflowShareProviderProps {
+  shareToken: string
+  children: ReactNode
+}
 
+/**
+ * Provider for workflow share store + passport.
+ *
+ * Wraps the zustand workflow-specific store and the shared {@link PassportProvider}
+ * so descendants can read site info via `useWorkflowShareStore` and the passport
+ * via `usePassport`.
+ */
+export function WorkflowShareProvider({ shareToken, children }: WorkflowShareProviderProps) {
+  const { apiUrl } = useEnv()
+
+  const storeRef = useRef<WorkflowShareStore | undefined>(undefined)
   if (!storeRef.current) {
-    storeRef.current = createWorkflowShareStore()
+    storeRef.current = createWorkflowShareStore(shareToken)
   }
+
+  const fetchWorkflowPassport = useCallback(
+    async (token: string) => {
+      const res = await fetch(`${apiUrl}/workflows/share/${token}/passport`, {
+        credentials: 'include',
+      })
+      if (!res.ok) {
+        const error = await res
+          .json()
+          .catch(() => ({ message: 'You dont have access to this workflow' }))
+        throw new Error(error.message || 'You dont have access to this workflow')
+      }
+      const { data } = await res.json()
+      return {
+        passport: data.passport as string,
+        subjectId: data.endUserId as string,
+        expiresAt: data.expiresAt as string,
+      }
+    },
+    [apiUrl]
+  )
 
   return (
     <WorkflowShareContext.Provider value={storeRef.current}>
-      {children}
+      <PassportProvider
+        scopeKey={shareToken}
+        storageKeyPrefix={WORKFLOW_PASSPORT_STORAGE_PREFIX}
+        fetchPassport={fetchWorkflowPassport}>
+        {children}
+      </PassportProvider>
     </WorkflowShareContext.Provider>
   )
 }
