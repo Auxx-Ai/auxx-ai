@@ -25,6 +25,7 @@ export async function issueChatPassport(
     channelId,
     organizationId,
     sessionId,
+    identify,
     expiresIn = DEFAULT_CHAT_EXPIRY,
   } = options
 
@@ -35,6 +36,7 @@ export async function issueChatPassport(
       channelId,
       organizationId,
       sessionId,
+      ...(identify ? { identify } : {}),
     },
     expiresIn,
   })

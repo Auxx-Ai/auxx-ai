@@ -31,6 +31,8 @@ type TiptapEditorProps = {
   onChange: (html: string) => void
   placeholder?: string
   className?: string
+  /** Extra class applied to the outer `EditorContent` wrapper (overrides defaults via twMerge). Use to tweak padding, min-height, text size, etc. */
+  contentClassName?: string
   editable?: boolean
   /** Extra class (e.g. z-index override) for the slash-command popover content. */
   popoverClassName?: string
@@ -43,6 +45,7 @@ const TiptapEditor = ({
   onChange,
   placeholder = 'Type your reply here...',
   className = '',
+  contentClassName,
   editable = true,
   popoverClassName,
   onEnter,
@@ -178,7 +181,8 @@ const TiptapEditor = ({
       <EditorContent
         editor={editorInstance}
         className={cn(
-          'w-full h-full flex flex-col bg-transparent px-4 py-3 text-[15px] leading-relaxed text-foreground outline-hidden ring-0 sm:min-h-[120px] *:outline-hidden'
+          'w-full h-full flex flex-col bg-transparent px-4 py-3 text-[15px] leading-relaxed text-foreground outline-hidden ring-0 sm:min-h-[120px] *:outline-hidden',
+          contentClassName
         )}
       />
       <InlinePickerPopover

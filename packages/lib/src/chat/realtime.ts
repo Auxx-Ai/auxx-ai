@@ -22,6 +22,11 @@ export interface ChatVisitorMessagePayload {
  * Publish a `message:created` for the agent inbox channel AND a `new-message`
  * for the visitor's private chat channel. Both channels need to update on every
  * new chat message; bundling here means callers don't have to remember both.
+ *
+ * When `visitorParticipantId` is provided, also publishes a `thread-updated`
+ * frame on the per-visitor channel so the widget can bump the thread's spot in
+ * the Messages tab and update the launcher unread badge even when the
+ * conversation isn't currently in view.
  */
 export async function publishChatMessageCreated(
   realtime: RealtimeService,
@@ -33,16 +38,46 @@ export async function publishChatMessageCreated(
     messageId: string
     threadId: string
     visitorPayload: ChatVisitorMessagePayload
+    /** Visitor's Participant id; enables cross-thread per-visitor updates. */
+    visitorParticipantId?: string
   }
 ): Promise<void> {
-  await Promise.all([
+  const tasks: Promise<unknown>[] = [
     publishMessageCreated(realtime, args.organizationId, {
       messageId: args.messageId,
       threadId: args.threadId,
       inboxId: args.inboxId,
     }),
     realtime.sendToChat(args.visitorChatSessionId, 'new-message', args.visitorPayload),
-  ])
+  ]
+  if (args.visitorParticipantId) {
+    tasks.push(
+      realtime.sendToVisitor(args.visitorParticipantId, 'thread-updated', {
+        threadId: args.threadId,
+        lastMessage: {
+          sender: args.visitorPayload.sender,
+          snippet: args.visitorPayload.content.slice(0, 280),
+          sentAt: args.visitorPayload.createdAt,
+        },
+      })
+    )
+  }
+  await Promise.all(tasks)
+}
+
+/**
+ * Notify the per-visitor channel that a brand-new thread has been created for
+ * the visitor. Phase 6 use case: an agent kicks off a thread without the
+ * visitor having sent the first message.
+ */
+export async function publishVisitorThreadCreated(
+  realtime: RealtimeService,
+  args: { visitorParticipantId: string; threadId: string; createdAt?: Date }
+): Promise<void> {
+  await realtime.sendToVisitor(args.visitorParticipantId, 'thread-created', {
+    threadId: args.threadId,
+    createdAt: args.createdAt ?? new Date(),
+  })
 }
 
 /**

@@ -9,6 +9,7 @@ export {
   publishChatMessageReceiptUpdated,
   publishChatThreadClosed,
   publishChatTyping,
+  publishVisitorThreadCreated,
 } from './realtime'
 export { markDelivered, markRead } from './receipts'
 export type {

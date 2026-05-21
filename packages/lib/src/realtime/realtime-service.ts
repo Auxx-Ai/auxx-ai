@@ -65,6 +65,20 @@ export class RealtimeService {
     return this.provider.publish(`private-chat-${sessionId}`, event, data, options)
   }
 
+  /**
+   * Publish to `private-visitor-{visitorParticipantId}` — the cross-thread
+   * channel used by the chat widget to receive updates for any of the visitor's
+   * threads (Messages tab list + launcher unread badge).
+   */
+  async sendToVisitor(
+    visitorParticipantId: string,
+    event: string,
+    data: unknown,
+    options?: { excludeSocketId?: string }
+  ): Promise<boolean> {
+    return this.provider.publish(`private-visitor-${visitorParticipantId}`, event, data, options)
+  }
+
   /** Authenticate a client for a private/presence channel */
   authenticateChannel(
     socketId: string,

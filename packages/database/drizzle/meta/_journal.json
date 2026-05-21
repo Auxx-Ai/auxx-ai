@@ -1149,6 +1149,13 @@
       "when": 1779334346669,
       "tag": "0163_chat_unification_schema",
       "breakpoints": true
+    },
+    {
+      "idx": 164,
+      "version": "7",
+      "when": 1779395605979,
+      "tag": "0164_chat_widget_v2_home_and_kb",
+      "breakpoints": true
     }
   ]
 }

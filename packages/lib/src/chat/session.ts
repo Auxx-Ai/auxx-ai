@@ -20,6 +20,8 @@ export interface InitializeChatThreadInput {
   visit?: VisitInfo
   visitorName?: string
   visitorEmail?: string
+  /** Embedder-supplied external id (unverified in v1). Stored as `claimedExternalId`. */
+  visitorExternalId?: string
 }
 
 export interface InitializeChatThreadResult {
@@ -96,11 +98,12 @@ export async function initializeOrResumeChatThread(
 
     if (resumable) {
       // Patch metadata with the latest visit info / claimed identity.
-      if (input.visit || input.visitorName || input.visitorEmail) {
+      if (input.visit || input.visitorName || input.visitorEmail || input.visitorExternalId) {
         await patchChatThreadMetadata(ctx, resumable.id, {
           visit: input.visit,
           claimedVisitorEmail: input.visitorEmail,
           claimedVisitorName: input.visitorName,
+          claimedExternalId: input.visitorExternalId,
         })
       }
       logger.info('Resumed chat thread', {
@@ -123,6 +126,7 @@ export async function initializeOrResumeChatThread(
       visit: input.visit,
       claimedVisitorEmail: input.visitorEmail,
       claimedVisitorName: input.visitorName,
+      claimedExternalId: input.visitorExternalId,
     }
 
     const [thread] = await ctx.db

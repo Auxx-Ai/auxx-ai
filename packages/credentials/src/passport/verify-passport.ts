@@ -58,6 +58,7 @@ export async function verifyPassport<S extends PassportScope>(
       channelId: p.channelId,
       organizationId: p.organizationId,
       sessionId: p.sessionId,
+      identify: p.identify,
     }
     return ok(verified as VerifiedForScope<S>)
   } catch (error) {

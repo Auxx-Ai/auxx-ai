@@ -5,10 +5,12 @@ import { Button } from '@auxx/ui/components/button'
 import { cn } from '@auxx/ui/lib/utils'
 import { Loader2, Minus, X } from 'lucide-react'
 import { motion, useDragControls, useMotionValue } from 'motion/react'
+import type React from 'react'
 import { useCallback, useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useChannel } from '~/components/channels/hooks/use-channels'
 import ChatComposer from '../chat-composer'
+import { ChatPanel } from '../chat-panel'
 import type { ComposeInstance } from '../store/compose-store'
 import { useComposeStore } from '../store/compose-store'
 import { useDraft } from './hooks/use-draft'
@@ -126,19 +128,34 @@ export function FloatingCompose({ instance }: { instance: ComposeInstance }) {
   const threadChannel = useChannel(instance.thread?.integrationId)
   const isChat = threadChannel?.provider === 'chat'
 
+  // Only attach drag in floating mode; inline/minimized aren't draggable.
+  const dragHandleProps =
+    instance.displayMode === 'floating'
+      ? { onPointerDown: (e: React.PointerEvent) => dragControls.start(e) }
+      : undefined
+
   const editorElement = showLoading ? (
     <div className='flex items-center justify-center rounded-[20px] bg-background p-8'>
       <Loader2 className='size-6 animate-spin text-muted-foreground' />
     </div>
+  ) : isChat && instance.thread && instance.displayMode !== 'inline' ? (
+    <ChatPanel
+      thread={instance.thread}
+      isDialogMode={true}
+      onClose={handleClose}
+      onSendSuccess={handleClose}
+      onMinimize={instance.displayMode === 'floating' ? handleMinimize : undefined}
+      onDockBack={canDockBack ? handleDockBack : undefined}
+      instanceId={instance.id}
+      dragHandleProps={dragHandleProps}
+    />
   ) : isChat && instance.thread ? (
     <ChatComposer
       thread={instance.thread}
-      isDialogMode={instance.displayMode !== 'inline'}
+      isDialogMode={false}
       onClose={handleClose}
       onSendSuccess={handleClose}
-      onPopOut={instance.displayMode === 'inline' ? handlePopOut : undefined}
-      onMinimize={instance.displayMode === 'floating' ? handleMinimize : undefined}
-      onDockBack={canDockBack ? handleDockBack : undefined}
+      onPopOut={handlePopOut}
       instanceId={instance.id}
     />
   ) : (
@@ -156,6 +173,7 @@ export function FloatingCompose({ instance }: { instance: ComposeInstance }) {
       onDockBack={canDockBack ? handleDockBack : undefined}
       onSubjectChange={handleSubjectChange}
       instanceId={instance.id}
+      dragHandleProps={dragHandleProps}
     />
   )
 
@@ -183,9 +201,12 @@ export function FloatingCompose({ instance }: { instance: ComposeInstance }) {
   }
 
   // FLOATING MODE — fixed position, draggable
+  const floatingWidthClass = isChat
+    ? 'fixed w-[min(380px,calc(100vw-32px))]'
+    : 'fixed w-[min(480px,calc(100vw-32px))]'
   return (
     <motion.div
-      className='fixed w-[min(480px,calc(100vw-32px))]'
+      className={floatingWidthClass}
       style={{
         bottom: `calc(16px + ${instance.position.y}px)`,
         right: `calc(16px + ${instance.position.x}px)`,
@@ -210,12 +231,6 @@ export function FloatingCompose({ instance }: { instance: ComposeInstance }) {
         })
       }}
       onPointerDown={() => bringToFront(instance.id)}>
-      {/* Drag handle — the gray header bar area */}
-      <div
-        className='absolute top-[-40px] left-0 right-[100px] h-[45px] cursor-grab active:cursor-grabbing rounded-t-[15px]'
-        style={{ zIndex: 1 }}
-        onPointerDown={(e) => dragControls.start(e)}
-      />
       {editorElement}
     </motion.div>
   )

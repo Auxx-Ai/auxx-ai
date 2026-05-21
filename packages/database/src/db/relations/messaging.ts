@@ -13,6 +13,7 @@ import {
   InboxIntegration,
   Integration,
   IntegrationTagLabel,
+  KnowledgeBase,
   Label,
   LabelsOnThread,
   Message,
@@ -193,6 +194,10 @@ export const chatWidgetRelations = relations(ChatWidget, ({ one, many }) => ({
   organization: one(Organization, {
     fields: [ChatWidget.organizationId],
     references: [Organization.id],
+  }),
+  knowledgeBase: one(KnowledgeBase, {
+    fields: [ChatWidget.knowledgeBaseId],
+    references: [KnowledgeBase.id],
   }),
   operatingHours: many(OperatingHours),
   sessions: many(ChatSession),

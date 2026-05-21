@@ -7,6 +7,7 @@ import configRoute from './config'
 import initializeRoute from './initialize'
 import messagesRoute from './messages'
 import passportRoute from './passport'
+import pusherAuthRoute from './pusher-auth'
 import receiptsRoute from './receipts'
 import threadsRoute from './threads'
 import typingRoute from './typing'
@@ -26,6 +27,7 @@ chatRoutes.use('/attachments/*', chatPassportMiddleware)
 chatRoutes.use('/typing/*', chatPassportMiddleware)
 chatRoutes.use('/receipts/*', chatPassportMiddleware)
 chatRoutes.use('/visitor-info/*', chatPassportMiddleware)
+chatRoutes.use('/pusher/*', chatPassportMiddleware)
 
 chatRoutes.route('/initialize', initializeRoute)
 chatRoutes.route('/messages', messagesRoute)
@@ -34,5 +36,6 @@ chatRoutes.route('/attachments', attachmentsRoute)
 chatRoutes.route('/typing', typingRoute)
 chatRoutes.route('/receipts', receiptsRoute)
 chatRoutes.route('/visitor-info', visitorInfoRoute)
+chatRoutes.route('/pusher/auth', pusherAuthRoute)
 
 export default chatRoutes

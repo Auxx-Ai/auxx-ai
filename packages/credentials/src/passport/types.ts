@@ -40,6 +40,22 @@ export interface WorkflowPassportPayload extends BasePassportPayload {
 }
 
 /**
+ * Visitor identity claimed via `window.AuxxChat.identify(...)`.
+ *
+ * v1: unsigned — the passport stores the claim but does not promote it to a
+ * trusted identity. A future phase adds HMAC signing (`source: 'verified'`).
+ */
+export interface ChatIdentifyClaim {
+  name?: string
+  email?: string
+  externalId?: string
+  /** Where the claim came from. v1 only emits 'embedder'. */
+  source: 'embedder'
+  /** ISO timestamp captured when the embedder called identify(). */
+  capturedAt: string
+}
+
+/**
  * Chat passport JWT payload
  */
 export interface ChatPassportPayload extends BasePassportPayload {
@@ -49,6 +65,8 @@ export interface ChatPassportPayload extends BasePassportPayload {
   organizationId: string
   /** Visitor session id (cookie) */
   sessionId: string
+  /** Optional claimed visitor identity from the embedder (unsigned in v1). */
+  identify?: ChatIdentifyClaim
 }
 
 export type PassportPayload = WorkflowPassportPayload | ChatPassportPayload
@@ -75,6 +93,8 @@ export interface IssueChatPassportOptions {
   channelId: string
   organizationId: string
   sessionId: string
+  /** Optional claimed visitor identity from the embedder (unsigned in v1). */
+  identify?: ChatIdentifyClaim
   expiresIn?: string
 }
 
@@ -111,6 +131,8 @@ export interface VerifiedChatPassport {
   channelId: string
   organizationId: string
   sessionId: string
+  /** Optional claimed visitor identity from the embedder (unsigned in v1). */
+  identify?: ChatIdentifyClaim
 }
 
 /**

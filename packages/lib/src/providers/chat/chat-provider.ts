@@ -125,6 +125,7 @@ export class ChatProvider extends BaseMessageProvider implements MessageProvider
       organizationId: this.organizationId,
       inboxId: thread.inboxId,
       visitorChatSessionId: thread.id,
+      visitorParticipantId,
       messageId: message.id,
       threadId: thread.id,
       visitorPayload: {
@@ -251,10 +252,13 @@ export class ChatProvider extends BaseMessageProvider implements MessageProvider
       })
 
       // Realtime — inbox channel for agents, visitor channel for echo.
+      // The inbound sender IS the visitor, so their fromParticipantId is the
+      // visitorParticipantId we publish per-visitor updates against.
       await publishChatMessageCreated(getRealtimeService(), {
         organizationId: this.organizationId,
         inboxId: thread.inboxId,
         visitorChatSessionId: thread.id,
+        visitorParticipantId: params.fromParticipantId,
         messageId: messageRowId,
         threadId: thread.id,
         visitorPayload: {
