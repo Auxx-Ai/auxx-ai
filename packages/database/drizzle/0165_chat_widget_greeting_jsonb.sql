@@ -1,0 +1,1 @@
+ALTER TABLE "ChatWidget" ALTER COLUMN "homeGreetingTemplate" SET DATA TYPE jsonb USING NULL;

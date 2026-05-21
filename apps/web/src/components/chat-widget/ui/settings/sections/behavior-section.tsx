@@ -1,6 +1,8 @@
 // apps/web/src/components/chat-widget/ui/settings/sections/behavior-section.tsx
 'use client'
+import { FieldType } from '@auxx/database/enums'
 import type { ChatWidgetWithIntegration } from '@auxx/lib/chat-widget/config'
+import type { RecordId } from '@auxx/lib/resources/client'
 import { Button } from '@auxx/ui/components/button'
 import {
   Form,
@@ -11,15 +13,30 @@ import {
   FormLabel,
   FormMessage,
 } from '@auxx/ui/components/form'
-import { Label } from '@auxx/ui/components/label'
-import { Switch } from '@auxx/ui/components/switch'
+import { Slider } from '@auxx/ui/components/slider'
 import { Textarea } from '@auxx/ui/components/textarea'
 import { toastError } from '@auxx/ui/components/toast'
 import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
-import { MessageSquareOff, MousePointerClick, SlidersHorizontal, UserPlus } from 'lucide-react'
+import type { JSONContent } from '@tiptap/react'
+import {
+  BookOpen,
+  Home,
+  MessageSquare,
+  MessageSquareOff,
+  MousePointerClick,
+  SlidersHorizontal,
+  Sparkles,
+  UserPlus,
+} from 'lucide-react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
+import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
+import { MultiRelationInput } from '~/components/shared/multi-relation-input'
+import { BaseType } from '~/components/workflow/types'
+import { VarEditorField, VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
 import { api } from '~/trpc/react'
+import { FeaturedArticlesField } from '../featured-articles-field'
+import { GreetingEditor } from '../greeting-editor'
 
 interface BehaviorSectionProps {
   widget: ChatWidgetWithIntegration
@@ -30,6 +47,15 @@ const behaviorSchema = z.object({
   autoOpen: z.boolean(),
   collectUserInfo: z.boolean(),
   offlineMessage: z.string().max(1000).optional(),
+  // Home group
+  homeGreetingTemplate: z.unknown().optional(),
+  homeShowRecentMessage: z.boolean(),
+  homeShowSendMessageCta: z.boolean(),
+  allowDownloadTranscript: z.boolean(),
+  brandingFooterEnabled: z.boolean(),
+  expandedWidthPx: z.number().int().min(480).max(960),
+  knowledgeBaseId: z.string().nullable(),
+  featuredArticleIds: z.array(z.string()),
 })
 
 type BehaviorForm = z.infer<typeof behaviorSchema>
@@ -44,12 +70,21 @@ export function BehaviorSection({ widget, channelId }: BehaviorSectionProps) {
     onError: (e) => toastError({ title: 'Failed to save', description: e.message }),
   })
 
+  const cw = widget.chatWidget
   const form = useForm<BehaviorForm>({
     resolver: standardSchemaResolver(behaviorSchema),
     defaultValues: {
-      autoOpen: widget.chatWidget?.autoOpen ?? false,
-      collectUserInfo: widget.chatWidget?.collectUserInfo ?? false,
-      offlineMessage: widget.chatWidget?.offlineMessage ?? '',
+      autoOpen: cw?.autoOpen ?? false,
+      collectUserInfo: cw?.collectUserInfo ?? false,
+      offlineMessage: cw?.offlineMessage ?? '',
+      homeGreetingTemplate: (cw?.homeGreetingTemplate as JSONContent | null) ?? null,
+      homeShowRecentMessage: cw?.homeShowRecentMessage ?? true,
+      homeShowSendMessageCta: cw?.homeShowSendMessageCta ?? true,
+      allowDownloadTranscript: cw?.allowDownloadTranscript ?? true,
+      brandingFooterEnabled: cw?.brandingFooterEnabled ?? true,
+      expandedWidthPx: cw?.expandedWidthPx ?? 720,
+      knowledgeBaseId: cw?.knowledgeBaseId ?? null,
+      featuredArticleIds: cw?.featuredArticleIds ?? [],
     },
   })
 
@@ -59,6 +94,14 @@ export function BehaviorSection({ widget, channelId }: BehaviorSectionProps) {
       autoOpen: values.autoOpen,
       collectUserInfo: values.collectUserInfo,
       offlineMessage: values.offlineMessage || undefined,
+      homeGreetingTemplate: values.homeGreetingTemplate ?? null,
+      homeShowRecentMessage: values.homeShowRecentMessage,
+      homeShowSendMessageCta: values.homeShowSendMessageCta,
+      allowDownloadTranscript: values.allowDownloadTranscript,
+      brandingFooterEnabled: values.brandingFooterEnabled,
+      expandedWidthPx: values.expandedWidthPx,
+      knowledgeBaseId: values.knowledgeBaseId,
+      featuredArticleIds: values.featuredArticleIds,
     })
   }
 
@@ -76,57 +119,137 @@ export function BehaviorSection({ widget, channelId }: BehaviorSectionProps) {
               </p>
             </div>
 
-            <div className='space-y-4'>
+            <VarEditorField
+              orientation='responsive'
+              className='p-0 **:data-[slot=field-row-label]:w-auto! @sm:**:data-[slot=field-row-label]:w-auto! **:data-[slot=field-row-content]:flex **:data-[slot=field-row-content]:justify-end **:data-[slot=field-row-content]:pe-3'>
               <FormField
                 control={form.control}
                 name='autoOpen'
-                render={({ field }) => (
-                  <div className='rounded-xl border px-3 py-2.5'>
-                    <div
-                      className='flex cursor-pointer items-center justify-between'
-                      onClick={() => field.onChange(!field.value)}>
-                      <div className='space-y-0.5'>
-                        <Label className='flex cursor-pointer items-center gap-1.5 text-sm font-medium'>
-                          <MousePointerClick className='size-3.5 text-muted-foreground' />
-                          Auto-open
-                        </Label>
-                        <p className='text-xs text-muted-foreground'>
-                          Automatically open the widget when a visitor lands on the page.
-                        </p>
-                      </div>
-                      <div onClick={(e) => e.stopPropagation()}>
-                        <Switch size='sm' checked={field.value} onCheckedChange={field.onChange} />
-                      </div>
+                render={({ field, fieldState }) => (
+                  <VarEditorFieldRow
+                    title='Auto-open'
+                    description='Automatically open the widget when a visitor lands on the page.'
+                    type={BaseType.BOOLEAN}
+                    icon={<MousePointerClick className='size-3.5' />}
+                    showIcon
+                    validationError={fieldState.error?.message}>
+                    <div className='items-end'>
+                      <FieldInputAdapter
+                        fieldType={FieldType.CHECKBOX}
+                        fieldOptions={{ variant: 'switch' }}
+                        value={field.value}
+                        onChange={(v) => field.onChange(Boolean(v))}
+                      />
                     </div>
-                  </div>
+                  </VarEditorFieldRow>
                 )}
               />
 
               <FormField
                 control={form.control}
                 name='collectUserInfo'
-                render={({ field }) => (
-                  <div className='rounded-xl border px-3 py-2.5'>
-                    <div
-                      className='flex cursor-pointer items-center justify-between'
-                      onClick={() => field.onChange(!field.value)}>
-                      <div className='space-y-0.5'>
-                        <Label className='flex cursor-pointer items-center gap-1.5 text-sm font-medium'>
-                          <UserPlus className='size-3.5 text-muted-foreground' />
-                          Collect Visitor Info
-                        </Label>
-                        <p className='text-xs text-muted-foreground'>
-                          Prompt visitors for name and email before the chat starts.
-                        </p>
-                      </div>
-                      <div onClick={(e) => e.stopPropagation()}>
-                        <Switch size='sm' checked={field.value} onCheckedChange={field.onChange} />
-                      </div>
-                    </div>
-                  </div>
+                render={({ field, fieldState }) => (
+                  <VarEditorFieldRow
+                    title='Collect Visitor Info'
+                    description='Prompt visitors for name and email before the chat starts.'
+                    type={BaseType.BOOLEAN}
+                    icon={<UserPlus className='size-3.5' />}
+                    showIcon
+                    validationError={fieldState.error?.message}>
+                    <FieldInputAdapter
+                      fieldType={FieldType.CHECKBOX}
+                      fieldOptions={{ variant: 'switch' }}
+                      value={field.value}
+                      onChange={(v) => field.onChange(Boolean(v))}
+                    />
+                  </VarEditorFieldRow>
                 )}
               />
-            </div>
+
+              <FormField
+                control={form.control}
+                name='homeShowRecentMessage'
+                render={({ field, fieldState }) => (
+                  <VarEditorFieldRow
+                    title='Show recent message card'
+                    description="Show a card linking to the visitor's most recent conversation."
+                    type={BaseType.BOOLEAN}
+                    icon={<MessageSquare className='size-3.5' />}
+                    showIcon
+                    validationError={fieldState.error?.message}>
+                    <FieldInputAdapter
+                      fieldType={FieldType.CHECKBOX}
+                      fieldOptions={{ variant: 'switch' }}
+                      value={field.value}
+                      onChange={(v) => field.onChange(Boolean(v))}
+                    />
+                  </VarEditorFieldRow>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name='homeShowSendMessageCta'
+                render={({ field, fieldState }) => (
+                  <VarEditorFieldRow
+                    title='Show "Send us a message" card'
+                    description='Always-visible CTA that starts a new conversation.'
+                    type={BaseType.BOOLEAN}
+                    icon={<Sparkles className='size-3.5' />}
+                    showIcon
+                    validationError={fieldState.error?.message}>
+                    <FieldInputAdapter
+                      fieldType={FieldType.CHECKBOX}
+                      fieldOptions={{ variant: 'switch' }}
+                      value={field.value}
+                      onChange={(v) => field.onChange(Boolean(v))}
+                    />
+                  </VarEditorFieldRow>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name='allowDownloadTranscript'
+                render={({ field, fieldState }) => (
+                  <VarEditorFieldRow
+                    title='Allow transcript download'
+                    description='Let visitors download a conversation as text.'
+                    type={BaseType.BOOLEAN}
+                    icon={<BookOpen className='size-3.5' />}
+                    showIcon
+                    validationError={fieldState.error?.message}>
+                    <FieldInputAdapter
+                      fieldType={FieldType.CHECKBOX}
+                      fieldOptions={{ variant: 'switch' }}
+                      value={field.value}
+                      onChange={(v) => field.onChange(Boolean(v))}
+                    />
+                  </VarEditorFieldRow>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name='brandingFooterEnabled'
+                render={({ field, fieldState }) => (
+                  <VarEditorFieldRow
+                    title='Show "Powered by" footer'
+                    description='Display Auxx branding at the bottom of the widget.'
+                    type={BaseType.BOOLEAN}
+                    icon={<Home className='size-3.5' />}
+                    showIcon
+                    validationError={fieldState.error?.message}>
+                    <FieldInputAdapter
+                      fieldType={FieldType.CHECKBOX}
+                      fieldOptions={{ variant: 'switch' }}
+                      value={field.value}
+                      onChange={(v) => field.onChange(Boolean(v))}
+                    />
+                  </VarEditorFieldRow>
+                )}
+              />
+            </VarEditorField>
           </div>
 
           <div className='flex-1 border-t lg:border-t-0 lg:border-l p-6 lg:pl-6'>
@@ -152,6 +275,117 @@ export function BehaviorSection({ widget, channelId }: BehaviorSectionProps) {
                     Leave blank to fall back to the default message.
                   </FormDescription>
                   <FormMessage />
+                </FormItem>
+              )}
+            />
+          </div>
+        </div>
+
+        <div className='border-t p-6'>
+          <div className='space-y-1 mb-6'>
+            <div className='flex items-center gap-2 text-base font-semibold tracking-tight text-foreground'>
+              <Home className='size-4' /> Home tab
+            </div>
+            <p className='text-sm text-muted-foreground'>
+              What visitors see on the widget's Home screen.
+            </p>
+          </div>
+
+          <div className='space-y-6'>
+            <FormField
+              control={form.control}
+              name='homeGreetingTemplate'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Greeting</FormLabel>
+                  <FormControl>
+                    <GreetingEditor
+                      value={(field.value as JSONContent | null) ?? null}
+                      onChange={field.onChange}
+                      placeholder='Hi {visitor:name} 👋'
+                    />
+                  </FormControl>
+                  <FormDescription>
+                    Type <code className='rounded bg-muted px-1'>{'{'}</code> to insert a visitor
+                    field. Click the badge to set a fallback for when the value isn't available.
+                  </FormDescription>
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name='expandedWidthPx'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Expanded width — {field.value}px</FormLabel>
+                  <FormControl>
+                    <Slider
+                      min={480}
+                      max={960}
+                      step={10}
+                      value={[field.value]}
+                      onValueChange={(v) => field.onChange(v[0] ?? 720)}
+                    />
+                  </FormControl>
+                  <FormDescription>
+                    Width of the widget when expanded on desktop (480–960px).
+                  </FormDescription>
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name='knowledgeBaseId'
+              render={({ field }) => {
+                const recordId = field.value ? (`kb:${field.value}` as RecordId) : null
+                return (
+                  <FormItem>
+                    <FormLabel>Knowledge base</FormLabel>
+                    <FormControl>
+                      <MultiRelationInput
+                        entityDefinitionId='kb'
+                        value={recordId ? [recordId] : []}
+                        multi={false}
+                        placeholder='Link a knowledge base…'
+                        onChange={(ids) => {
+                          const first = ids[0]
+                          if (!first) {
+                            field.onChange(null)
+                            return
+                          }
+                          const instanceId = first.includes(':')
+                            ? first.split(':').slice(1).join(':')
+                            : first
+                          field.onChange(instanceId)
+                        }}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      Articles from this KB power the widget's featured cards and Browse all view.
+                    </FormDescription>
+                  </FormItem>
+                )
+              }}
+            />
+
+            <FormField
+              control={form.control}
+              name='featuredArticleIds'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Featured articles</FormLabel>
+                  <FormControl>
+                    <FeaturedArticlesField
+                      knowledgeBaseId={form.watch('knowledgeBaseId')}
+                      value={field.value}
+                      onChange={field.onChange}
+                    />
+                  </FormControl>
+                  <FormDescription>
+                    Pinned articles shown as cards on the Home screen. Drag to reorder.
+                  </FormDescription>
                 </FormItem>
               )}
             />

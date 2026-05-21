@@ -125,6 +125,21 @@ export function chatApi(channelId: string) {
         body: { messageIds },
       }),
 
+    createThread: (body: { url?: string; referrer?: string; userAgent?: string } = {}) =>
+      call<{ threadId: string; pusherChannel: string }>(channelId, '/api/chat/threads', {
+        method: 'POST',
+        body,
+      }),
+
+    getRecentThread: () =>
+      call<{
+        thread: {
+          id: string
+          subject: string | null
+          lastMessage: { preview: string; isInbound: boolean; timestamp: string }
+        } | null
+      }>(channelId, '/api/chat/threads/recent', { method: 'GET' }),
+
     updateVisitorInfo: (body: {
       threadId: string
       visitorName?: string

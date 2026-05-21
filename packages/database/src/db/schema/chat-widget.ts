@@ -7,6 +7,7 @@ import {
   boolean,
   index,
   integer,
+  jsonb,
   pgTable,
   text,
   timestamp,
@@ -57,8 +58,8 @@ export const ChatWidget = pgTable(
       onDelete: 'set null',
     }),
 
-    // v2 Home config
-    homeGreetingTemplate: text(),
+    // v2 Home config — Tiptap JSON doc with `visitor:*` placeholder nodes.
+    homeGreetingTemplate: jsonb(),
     homeShowRecentMessage: boolean().default(true).notNull(),
     homeShowSendMessageCta: boolean().default(true).notNull(),
     brandingFooterEnabled: boolean().default(true).notNull(),

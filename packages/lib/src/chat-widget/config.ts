@@ -36,6 +36,18 @@ export interface UpdateChatWidgetInput {
   inboxId?: string | null
   /** Agent that auto-replies to widget messages. Pass `null` to disable AI auto-reply. */
   agentId?: string | null
+
+  // v2 Home config
+  /** Tiptap JSON doc, or `null` to clear. */
+  homeGreetingTemplate?: unknown
+  homeShowRecentMessage?: boolean
+  homeShowSendMessageCta?: boolean
+  brandingFooterEnabled?: boolean
+  allowDownloadTranscript?: boolean
+  expandedWidthPx?: number
+  /** Pass `null` to unlink the knowledge base. */
+  knowledgeBaseId?: string | null
+  featuredArticleIds?: string[]
 }
 
 /**

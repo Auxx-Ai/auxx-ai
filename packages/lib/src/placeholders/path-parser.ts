@@ -31,6 +31,16 @@ export type UserSlug = 'id' | 'email' | 'name' | 'firstName' | 'lastName'
 
 const USER_SLUGS = new Set<string>(['id', 'email', 'name', 'firstName', 'lastName'])
 
+/**
+ * Synthetic `visitor:` placeholder slugs. Used by the chat widget greeting
+ * template — the resolver substitutes the matching identify claim from the
+ * widget's `identify()` call. Each is plain TEXT (with EMAIL for `email`),
+ * fallback-supported.
+ */
+export type VisitorSlug = 'name' | 'email' | 'externalId'
+
+const VISITOR_SLUGS = new Set<string>(['name', 'email', 'externalId'])
+
 export type ParsedPlaceholder =
   | {
       kind: 'date'
@@ -43,6 +53,10 @@ export type ParsedPlaceholder =
   | {
       kind: 'user'
       slug: UserSlug
+    }
+  | {
+      kind: 'visitor'
+      slug: VisitorSlug
     }
   | {
       kind: 'field'
@@ -86,6 +100,14 @@ export function parsePlaceholderId(id: string): ParsedPlaceholder {
     if (USER_SLUGS.has(slug)) {
       return { kind: 'user', slug: slug as UserSlug }
     }
+  }
+
+  if (id.startsWith('visitor:') && !id.includes('::')) {
+    const slug = id.slice('visitor:'.length)
+    if (!VISITOR_SLUGS.has(slug)) {
+      throw new Error(`unknown visitor slug: ${slug}`)
+    }
+    return { kind: 'visitor', slug: slug as VisitorSlug }
   }
 
   const fieldRef = keyToFieldRef(id)

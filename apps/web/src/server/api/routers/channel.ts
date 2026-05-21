@@ -325,6 +325,16 @@ export const channelRouter = createTRPCRouter({
         isActive: z.boolean().optional(),
         inboxId: z.string().optional().nullable(),
         agentId: z.string().optional().nullable(),
+
+        // v2 Home config
+        homeGreetingTemplate: z.unknown().optional(),
+        homeShowRecentMessage: z.boolean().optional(),
+        homeShowSendMessageCta: z.boolean().optional(),
+        brandingFooterEnabled: z.boolean().optional(),
+        allowDownloadTranscript: z.boolean().optional(),
+        expandedWidthPx: z.number().int().min(480).max(960).optional(),
+        knowledgeBaseId: z.string().optional().nullable(),
+        featuredArticleIds: z.array(z.string()).optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {

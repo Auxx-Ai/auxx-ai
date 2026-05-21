@@ -19,4 +19,6 @@ export {
   type ParsedPlaceholder,
   parsePlaceholderId,
   tryParsePlaceholderId,
+  type UserSlug,
+  type VisitorSlug,
 } from './path-parser'
