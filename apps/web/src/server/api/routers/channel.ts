@@ -326,7 +326,9 @@ export const channelRouter = createTRPCRouter({
         collectUserInfo: chatWidgetInputSchema.shape.collectUserInfo.optional(),
         offlineMessage: chatWidgetInputSchema.shape.offlineMessage.optional(),
         allowedDomains: chatWidgetInputSchema.shape.allowedDomains.optional(),
+        isActive: z.boolean().optional(),
         inboxId: z.string().optional().nullable(),
+        agentId: z.string().optional().nullable(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -342,6 +344,62 @@ export const channelRouter = createTRPCRouter({
       )
       if (!result.ok) throw result.error
       return { success: true }
+    }),
+
+  /**
+   * Create a Chat Widget channel with sensible defaults — used by the
+   * "Add Channel" flow to skip the up-front form. Caller redirects to
+   * /app/settings/channels/[id] for editing.
+   */
+  createChatChannel: protectedProcedure
+    .use(notDemo('create chat widgets'))
+    .mutation(async ({ ctx }) => {
+      const { userId } = ctx.session
+      const organizationId = getUserOrganizationId(ctx.session)
+      await requireAdminAccess(userId, organizationId)
+
+      await checkChannelLimit(ctx.db, organizationId)
+
+      const existingCount = await ctx.db
+        .select({ value: count() })
+        .from(schema.ChatWidget)
+        .where(eq(schema.ChatWidget.organizationId, organizationId))
+      const suffix = (existingCount[0]?.value ?? 0) + 1
+      const widgetName = suffix > 1 ? `Chat Widget ${suffix}` : 'Chat Widget'
+
+      const serviceCtx = { db: ctx.db, organizationId }
+
+      const channelId = await ctx.db.transaction(async (tx) => {
+        const channelResult = await createChannel(
+          serviceCtx,
+          { provider: 'chat', name: widgetName },
+          tx
+        )
+        if (!channelResult.ok) throw channelResult.error
+        const integration = channelResult.value
+
+        await tx.insert(schema.ChatWidget).values({
+          organizationId,
+          integrationId: integration.id,
+          name: widgetName,
+          title: 'Chat',
+          welcomeMessage: 'Hi! How can we help?',
+          primaryColor: '#4F46E5',
+          position: 'BOTTOM_RIGHT',
+          isActive: true,
+          allowedDomains: [],
+          autoOpen: false,
+          mobileFullScreen: true,
+          collectUserInfo: true,
+          updatedAt: new Date(),
+        })
+
+        return integration.id
+      })
+
+      await onCacheEvent('channel.connected', { orgId: organizationId })
+
+      return { channelId }
     }),
 
   /**

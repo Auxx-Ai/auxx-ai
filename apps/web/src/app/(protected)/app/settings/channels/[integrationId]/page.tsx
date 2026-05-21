@@ -1,23 +1,22 @@
-// ~/app/(protected)/app/settings/integrations/[integrationId]/page.tsx
-'use client' // Required for useParams and conditional rendering logic
+// apps/web/src/app/(protected)/app/settings/channels/[integrationId]/page.tsx
+'use client'
 
 import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { AlertCircle } from 'lucide-react'
 import { useParams } from 'next/navigation'
+import { ChatWidgetSettings } from '~/components/chat-widget'
 import { api } from '~/trpc/react'
-import ChatWidgetSettings from '../_components/chat-widget-settings' // Import the new page component
-import IntegrationTabs from '../_components/integration-tabs' // For non-chat integrations
+import IntegrationTabs from '../_components/integration-tabs'
 
 /**
- * Integration Settings/Edit Page
- * Dynamically renders settings UI based on the integration provider type.
+ * Channel Settings Page
+ * Dynamically renders settings UI based on the channel provider type.
  */
 export default function IntegrationSettingsPage() {
   const params = useParams()
   const integrationId = params?.integrationId as string | undefined
 
-  // Fetch basic integration info just to get the provider type
   const {
     data: integrationBaseInfo,
     isLoading,
@@ -25,15 +24,14 @@ export default function IntegrationSettingsPage() {
   } = api.channel.getProviderType.useQuery(
     { integrationId: integrationId! },
     {
-      enabled: !!integrationId, // Only run query if integrationId is available
-      staleTime: 5 * 60 * 1000, // Cache for 5 mins
-      retry: false, // Don't retry if not found initially
+      enabled: !!integrationId,
+      staleTime: 5 * 60 * 1000,
+      retry: false,
     }
   )
 
   if (!integrationId) {
-    // Should ideally not happen with correct routing setup
-    return <div className='container py-6'>Invalid Integration ID.</div>
+    return <div className='container py-6'>Invalid Channel ID.</div>
   }
 
   if (isLoading) {
@@ -53,26 +51,15 @@ export default function IntegrationSettingsPage() {
           <AlertCircle className='h-4 w-4' />
           <AlertTitle>Error</AlertTitle>
           <AlertDescription>
-            Failed to load integration details: {error?.message || 'Integration not found.'}
+            Failed to load channel details: {error?.message || 'Channel not found.'}
           </AlertDescription>
         </Alert>
       </div>
     )
   }
 
-  // Conditional Rendering based on provider type
-  return (
-    <>
-      {integrationBaseInfo.provider === 'chat' ? (
-        // Render the dedicated Chat Widget settings page
-        <ChatWidgetSettings integrationId={integrationId} />
-      ) : (
-        // Render the standard tabs for other integration types
-        <IntegrationTabs
-          integrationId={integrationId}
-          providerType={integrationBaseInfo.provider}
-        />
-      )}
-    </>
-  )
+  if (integrationBaseInfo.provider === 'chat') {
+    return <ChatWidgetSettings channelId={integrationId} />
+  }
+  return <IntegrationTabs />
 }

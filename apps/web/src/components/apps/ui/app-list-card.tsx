@@ -10,7 +10,9 @@ import { Tooltip } from '~/components/global/tooltip'
 interface AppListCardProps {
   title: string
   description: string | null
-  href: string
+  href?: string
+  onClick?: () => void
+  disabled?: boolean
   icon?: React.ReactNode
   subtitle?: string
   verified?: boolean
@@ -19,21 +21,25 @@ interface AppListCardProps {
 
 /**
  * AppListCard component
- * Displays a card with icon, title, description, and optional badges
+ * Displays a card with icon, title, description, and optional badges. Pass
+ * either `href` (renders as a link) or `onClick` (renders as a button).
  */
 export function AppListCard({
   title,
   description,
   href,
+  onClick,
+  disabled,
   icon,
   subtitle,
   verified,
   badges,
 }: AppListCardProps) {
-  return (
-    <Link
-      href={href}
-      className='rounded-2xl bg-primary-50 hover:bg-primary-50/50 hover:outline-5 hover:outline-primary-50 flex flex-col p-3 gap-2 border'>
+  const cardClass =
+    'rounded-2xl bg-primary-50 hover:bg-primary-50/50 hover:outline-5 hover:outline-primary-50 flex flex-col p-3 gap-2 border text-left disabled:opacity-60 disabled:cursor-not-allowed'
+
+  const body = (
+    <>
       <div className='flex flex-row items-start justify-between gap-2 w-full'>
         <div className='flex flex-1 flex-row items-start gap-2'>
           <div className='size-8 rounded-xl border flex items-center justify-center overflow-hidden'>
@@ -67,6 +73,20 @@ export function AppListCard({
         </div>
       </div>
       <div className='text-sm text-muted-foreground line-clamp-2'>{description}</div>
+    </>
+  )
+
+  if (onClick) {
+    return (
+      <button type='button' onClick={onClick} disabled={disabled} className={cardClass}>
+        {body}
+      </button>
+    )
+  }
+
+  return (
+    <Link href={href ?? '#'} className={cardClass}>
+      {body}
     </Link>
   )
 }
