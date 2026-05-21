@@ -1,8 +1,8 @@
 // packages/lib/src/cache/integration-catalog.ts
 
 import { createScopedLogger } from '@auxx/logger'
-import { PLATFORM_CAPABILITIES, type PlatformCapabilities } from '../integrations/capabilities'
-import type { CachedIntegration } from './providers/integrations-provider'
+import { PLATFORM_CAPABILITIES, type PlatformCapabilities } from '../channels/capabilities'
+import type { CachedChannel } from './providers/channels-provider'
 import { getOrgCache } from './singletons'
 
 const logger = createScopedLogger('integration-catalog')
@@ -30,7 +30,8 @@ export interface IntegrationCatalogEntry {
  * Get the org's integration catalog, joined with `PLATFORM_CAPABILITIES`.
  * Skips integrations whose platform is not in the capability map (e.g. data-only
  * integrations) and integrations that can neither start a new conversation nor
- * reply on a thread.
+ * reply on a thread. Also skips disabled channels — the catalog only surfaces
+ * channels that kopilot can actually send through.
  *
  * TODO: gate by per-user permission once an integration-level permission system
  * exists. Pre-launch this returns the full org list to every user.
@@ -38,14 +39,14 @@ export interface IntegrationCatalogEntry {
 export async function getCachedIntegrationCatalog(
   organizationId: string
 ): Promise<IntegrationCatalogEntry[]> {
-  let integrations: CachedIntegration[]
+  let channels: CachedChannel[]
   try {
-    integrations = await getOrgCache().get(organizationId, 'integrations')
+    channels = await getOrgCache().get(organizationId, 'channels')
   } catch (err) {
     // Stale HMR cache: the singleton predates this provider being registered.
-    // Surface in logs but treat as "no integrations" so callers see an empty
+    // Surface in logs but treat as "no channels" so callers see an empty
     // catalog instead of a hard failure that breaks the whole turn.
-    logger.warn('Failed to load integrations cache; returning empty catalog', {
+    logger.warn('Failed to load channels cache; returning empty catalog', {
       organizationId,
       error: err instanceof Error ? err.message : String(err),
     })
@@ -53,15 +54,16 @@ export async function getCachedIntegrationCatalog(
   }
 
   const entries: IntegrationCatalogEntry[] = []
-  for (const i of integrations) {
-    const caps = PLATFORM_CAPABILITIES[i.platform]
+  for (const c of channels) {
+    if (!c.enabled) continue
+    const caps = PLATFORM_CAPABILITIES[c.provider]
     if (!caps) continue
     if (!caps.newOutbound && !caps.threadReply) continue
 
     entries.push({
-      integrationId: i.integrationId,
-      displayName: i.displayName,
-      platform: i.platform,
+      integrationId: c.id,
+      displayName: c.displayName,
+      platform: c.provider,
       channel: caps.channel,
       newOutbound: caps.newOutbound,
       threadReply: caps.threadReply,

@@ -118,6 +118,12 @@
       "import": "./dist/cache/index.mjs",
       "default": "./src/cache/index.ts"
     },
+    "./channels": {
+      "types": "./src/channels/index.ts",
+      "source": "./src/channels/index.ts",
+      "import": "./dist/channels/index.mjs",
+      "default": "./src/channels/index.ts"
+    },
     "./chat": {
       "types": "./src/chat/index.ts",
       "source": "./src/chat/index.ts",
@@ -375,12 +381,6 @@
       "source": "./src/inboxes/index.ts",
       "import": "./dist/inboxes/index.mjs",
       "default": "./src/inboxes/index.ts"
-    },
-    "./integrations/lifecycle": {
-      "types": "./src/integrations/lifecycle.ts",
-      "source": "./src/integrations/lifecycle.ts",
-      "import": "./dist/integrations/lifecycle.mjs",
-      "default": "./src/integrations/lifecycle.ts"
     },
     "./jobs": {
       "types": "./src/jobs/index.ts",

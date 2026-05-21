@@ -7,6 +7,7 @@ import { Combobox } from '@auxx/ui/components/combobox'
 import { cn } from '@auxx/ui/lib/utils'
 import { ChevronDown, Loader2 } from 'lucide-react'
 import { useCallback, useEffect, useMemo } from 'react'
+import { useChannelById } from '~/components/channels/store/channel-store'
 import { getIntegrationIconClass } from '~/components/mail/mail-status-config'
 import { IntegrationPicker } from '~/components/pickers/integration-picker'
 import { recordBadgeVariants } from '~/components/resources/ui/record-badge'
@@ -24,7 +25,6 @@ import {
   VarEditorFieldRow,
 } from '~/components/workflow/ui/input-editor/var-editor'
 import Section from '~/components/workflow/ui/section'
-import { api } from '~/trpc/react'
 import { AutoResolveBadge } from '../core/answer/components/auto-resolve-badge'
 import { transformThreadToWorkflowInput } from './node-inputs/thread-input'
 
@@ -370,8 +370,7 @@ function AutoResolvedValue({ value, type }: { value?: string | boolean; type?: '
 
 /** Renders an integration as a badge with icon, name, and email */
 function IntegrationBadge({ integrationId }: { integrationId: string }) {
-  const { data: integrations } = api.channel.listForPicker.useQuery()
-  const integration = integrations?.find((i) => i.id === integrationId)
+  const integration = useChannelById(integrationId)
   if (!integration) return <>{integrationId}</>
   const Icon = getIntegrationIconClass(integration.provider)
   return (

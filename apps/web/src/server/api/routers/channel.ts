@@ -5,17 +5,32 @@ import { ConfigStorage, CredentialService, configService } from '@auxx/credentia
 import { type Database, database, schema } from '@auxx/database'
 import { onCacheEvent, storeOAuthCsrfToken } from '@auxx/lib/cache'
 import {
+  addExcludedSender as addExcludedSenderToChannel,
+  addOpenPhoneChannel,
+  createChannel,
+  disconnect as disconnectChannel,
+  getAllStats,
+  getAuthUrl,
+  getSettings as getChannelSettings,
+  getProviderType,
+  linkChannelToInbox,
+  list as listChannels,
+  syncAllMessages,
+  syncMessages,
+  toggle as toggleChannel,
+  updateAllowedSenders,
+  updateSettings as updateChannelSettings,
+} from '@auxx/lib/channels'
+import {
   getChatWidget,
   type UpdateChatWidgetInput,
   updateChatWidget,
 } from '@auxx/lib/chat-widget/config'
 import { getUserOrganizationId, requireAdminAccess } from '@auxx/lib/email'
-import { createChannel, linkChannelToInbox } from '@auxx/lib/integrations/lifecycle'
 import { SyncMessages } from '@auxx/lib/messages'
 import { FeatureKey, FeaturePermissionService } from '@auxx/lib/permissions'
 import type { ImapCredentialData } from '@auxx/lib/providers'
 import {
-  ChannelService,
   ImapClientProvider,
   ImapSmtpSendService,
   LdapAuthService,
@@ -24,7 +39,7 @@ import {
 import { widgetSchema as chatWidgetInputSchema } from '@auxx/lib/widgets/types'
 import { createScopedLogger } from '@auxx/logger'
 import { TRPCError } from '@trpc/server'
-import { and, asc, count, eq, isNull } from 'drizzle-orm'
+import { and, count, eq, isNull } from 'drizzle-orm'
 import { z } from 'zod'
 import { adminProcedure, createTRPCRouter, notDemo, protectedProcedure } from '../trpc'
 
@@ -66,30 +81,6 @@ const IntegrationProviderTypeEnum = z.enum(SupportedProviderTypes)
 
 export const channelRouter = createTRPCRouter({
   /**
-   * Get integrations for picker components (lightweight query).
-   */
-  listForPicker: protectedProcedure.query(async ({ ctx }) => {
-    const { organizationId } = ctx.session
-    const integrations = await ctx.db
-      .select({
-        id: schema.Integration.id,
-        name: schema.Integration.name,
-        provider: schema.Integration.provider,
-        email: schema.Integration.email,
-        enabled: schema.Integration.enabled,
-      })
-      .from(schema.Integration)
-      .where(
-        and(
-          eq(schema.Integration.organizationId, organizationId),
-          isNull(schema.Integration.deletedAt)
-        )
-      )
-      .orderBy(asc(schema.Integration.name))
-    return integrations
-  }),
-
-  /**
    * Get OAuth URL for Google or Outlook.
    */
   getAuthUrl: protectedProcedure
@@ -108,13 +99,17 @@ export const channelRouter = createTRPCRouter({
 
       await checkChannelLimit(ctx.db, organizationId)
 
-      const service = new ChannelService(ctx.db, organizationId, userId)
-      const result = await service.getAuthUrl(input.provider as any, input.redirectPath)
+      const authUrlResult = await getAuthUrl(
+        { db: ctx.db, organizationId, userId },
+        input.provider as any,
+        input.redirectPath
+      )
+      if (!authUrlResult.ok) throw authUrlResult.error
 
       // Store CSRF token in Redis for callback verification
-      await storeOAuthCsrfToken(userId, result.csrfToken)
+      await storeOAuthCsrfToken(userId, authUrlResult.value.csrfToken)
 
-      return { authUrl: result.authUrl }
+      return { authUrl: authUrlResult.value.authUrl }
     }),
 
   /**
@@ -122,17 +117,7 @@ export const channelRouter = createTRPCRouter({
    */
   list: protectedProcedure.query(async ({ ctx }) => {
     const organizationId = getUserOrganizationId(ctx.session)
-    const service = new ChannelService(ctx.db, organizationId)
-    return service.getAllChannels()
-  }),
-
-  /**
-   * Get all email client integrations for the organization.
-   */
-  getEmailClients: protectedProcedure.query(async ({ ctx }) => {
-    const organizationId = getUserOrganizationId(ctx.session)
-    const service = new ChannelService(ctx.db, organizationId)
-    return service.getEmailClients()
+    return listChannels({ db: ctx.db, organizationId })
   }),
 
   /**
@@ -146,12 +131,15 @@ export const channelRouter = createTRPCRouter({
       const organizationId = getUserOrganizationId(ctx.session)
       await requireAdminAccess(userId, organizationId)
 
-      const service = new ChannelService(ctx.db, organizationId, userId)
-      const result = await service.disconnect(input.integrationId)
+      const result = await disconnectChannel(
+        { db: ctx.db, organizationId, userId },
+        input.integrationId
+      )
+      if (!result.ok) throw result.error
 
       await onCacheEvent('channel.disconnected', { orgId: organizationId })
 
-      return result
+      return result.value
     }),
 
   /**
@@ -165,8 +153,13 @@ export const channelRouter = createTRPCRouter({
       const organizationId = getUserOrganizationId(ctx.session)
       await requireAdminAccess(userId, organizationId)
 
-      const service = new ChannelService(ctx.db, organizationId, userId)
-      return service.toggle(input.integrationId, input.enabled)
+      const result = await toggleChannel(
+        { db: ctx.db, organizationId, userId },
+        input.integrationId,
+        input.enabled
+      )
+      if (!result.ok) throw result.error
+      return result.value
     }),
 
   /**
@@ -185,8 +178,13 @@ export const channelRouter = createTRPCRouter({
       const organizationId = getUserOrganizationId(ctx.session)
       await requireAdminAccess(userId, organizationId)
 
-      const service = new ChannelService(ctx.db, organizationId, userId)
-      return service.syncMessages(input.integrationId, input.days)
+      const result = await syncMessages(
+        { db: ctx.db, organizationId, userId },
+        input.integrationId,
+        input.days
+      )
+      if (!result.ok) throw result.error
+      return result.value
     }),
 
   // Note: Statistics endpoints (`getAllEmailStats`, `getEmailStats`) are removed for now.
@@ -205,8 +203,7 @@ export const channelRouter = createTRPCRouter({
       const organizationId = getUserOrganizationId(ctx.session)
       await requireAdminAccess(userId, organizationId)
 
-      const service = new ChannelService(ctx.db, organizationId, userId)
-      return service.syncAllMessages(input.days)
+      return syncAllMessages({ db: ctx.db, organizationId, userId }, input.days)
     }),
 
   addOpenPhoneIntegration: protectedProcedure
@@ -226,8 +223,7 @@ export const channelRouter = createTRPCRouter({
 
       await checkChannelLimit(ctx.db, organizationId)
 
-      const service = new ChannelService(ctx.db, organizationId, userId)
-      const result = await service.addOpenPhoneChannel(input)
+      const result = await addOpenPhoneChannel({ db: ctx.db, organizationId, userId }, input)
 
       await onCacheEvent('channel.connected', { orgId: organizationId })
 
@@ -431,8 +427,9 @@ export const channelRouter = createTRPCRouter({
     .input(z.object({ integrationId: z.string() }))
     .query(async ({ ctx, input }) => {
       const organizationId = getUserOrganizationId(ctx.session)
-      const service = new ChannelService(ctx.db, organizationId)
-      return service.getProviderType(input.integrationId)
+      const result = await getProviderType({ db: ctx.db, organizationId }, input.integrationId)
+      if (!result.ok) throw result.error
+      return result.value
     }),
 
   /**
@@ -459,8 +456,13 @@ export const channelRouter = createTRPCRouter({
       const organizationId = getUserOrganizationId(ctx.session)
       await requireAdminAccess(userId, organizationId)
 
-      const service = new ChannelService(ctx.db, organizationId, userId)
-      return service.updateSettings(input.integrationId, input.settings)
+      const result = await updateChannelSettings(
+        { db: ctx.db, organizationId, userId },
+        input.integrationId,
+        input.settings
+      )
+      if (!result.ok) throw result.error
+      return result.value
     }),
   /**
    * Update allowed senders for a forwarding integration.
@@ -477,8 +479,13 @@ export const channelRouter = createTRPCRouter({
       const organizationId = getUserOrganizationId(ctx.session)
       await requireAdminAccess(userId, organizationId)
 
-      const service = new ChannelService(ctx.db, organizationId, userId)
-      return service.updateAllowedSenders(input.integrationId, input.allowedSenders)
+      const result = await updateAllowedSenders(
+        { db: ctx.db, organizationId, userId },
+        input.integrationId,
+        input.allowedSenders
+      )
+      if (!result.ok) throw result.error
+      return result.value
     }),
 
   /**
@@ -494,9 +501,13 @@ export const channelRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const { userId } = ctx.session
       const organizationId = getUserOrganizationId(ctx.session)
-      const service = new ChannelService(ctx.db, organizationId, userId)
-
-      return service.addExcludedSender(input.integrationId, input.entry)
+      const result = await addExcludedSenderToChannel(
+        { db: ctx.db, organizationId, userId },
+        input.integrationId,
+        input.entry
+      )
+      if (!result.ok) throw result.error
+      return result.value
     }),
 
   /**
@@ -512,13 +523,15 @@ export const channelRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const { userId } = ctx.session
       const organizationId = getUserOrganizationId(ctx.session)
-      const service = new ChannelService(ctx.db, organizationId, userId)
-
-      const current = await service.getSettings(input.integrationId)
-      const existing = current?.excludeSenders ?? []
-      return service.updateSettings(input.integrationId, {
-        excludeSenders: existing.filter((e) => e !== input.entry),
+      const ctx2 = { db: ctx.db, organizationId, userId }
+      const currentResult = await getChannelSettings(ctx2, input.integrationId)
+      if (!currentResult.ok) throw currentResult.error
+      const existing = currentResult.value?.excludeSenders ?? []
+      const updateResult = await updateChannelSettings(ctx2, input.integrationId, {
+        excludeSenders: existing.filter((e: string) => e !== input.entry),
       })
+      if (!updateResult.ok) throw updateResult.error
+      return updateResult.value
     }),
 
   /**
@@ -526,7 +539,7 @@ export const channelRouter = createTRPCRouter({
    */
   getAllEmailStats: protectedProcedure.query(async ({ ctx }) => {
     const organizationId = getUserOrganizationId(ctx.session)
-    return ChannelService.getAllStats(ctx.db, organizationId)
+    return getAllStats({ db: ctx.db, organizationId })
   }),
 
   startSync: protectedProcedure

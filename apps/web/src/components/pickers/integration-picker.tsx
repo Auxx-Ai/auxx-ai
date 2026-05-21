@@ -18,7 +18,7 @@ import { cn } from '@auxx/ui/lib/utils'
 import { Check } from 'lucide-react'
 import type React from 'react'
 import { useState } from 'react'
-import { api } from '~/trpc/react'
+import { useChannelStore } from '~/components/channels/store/channel-store'
 import { getIntegrationColor, getIntegrationIconClass } from '../mail/mail-status-config'
 
 interface Integration {
@@ -60,9 +60,10 @@ export function IntegrationPicker({
   children,
   ...props
 }: IntegrationPickerProps) {
-  // Use tRPC to fetch integrations if not provided
-  const { data: fetchedIntegrations } = api.channel.listForPicker.useQuery()
-  const integrations = externalIntegrations || fetchedIntegrations || []
+  // Read channels from the hydrated store (kept opt-in via externalIntegrations
+  // for callers that need a custom list, e.g. workflow contexts).
+  const storeChannels = useChannelStore((s) => s.channels)
+  const integrations = externalIntegrations || storeChannels
 
   // Local state for managing selected integrations
   const [localSelected, setLocalSelected] = useState<string[]>(selected)

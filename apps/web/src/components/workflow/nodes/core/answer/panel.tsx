@@ -13,6 +13,7 @@ import {
 } from '@auxx/ui/components/select'
 import type React from 'react'
 import { memo, useCallback, useMemo, useState } from 'react'
+import { useChannelStore } from '~/components/channels/store/channel-store'
 import { getIntegrationIcon } from '~/components/mail/mail-status-config'
 import { IntegrationPicker } from '~/components/pickers/integration-picker'
 import { useNodeCrud, useReadOnly } from '~/components/workflow/hooks'
@@ -26,7 +27,6 @@ import {
 import { VarEditorArray } from '~/components/workflow/ui/input-editor/var-editor-array'
 import { Editor } from '~/components/workflow/ui/prompt-editor'
 import Section from '~/components/workflow/ui/section'
-import { api } from '~/trpc/react'
 import { BasePanel } from '../../shared/base/base-panel'
 import { AutoResolveBadge } from './components/auto-resolve-badge'
 import { validateAnswerConfig } from './schema'
@@ -45,12 +45,12 @@ export const AnswerPanel: React.FC<AnswerPanelProps> = memo(({ nodeId, data }) =
   const { inputs: nodeData, setInputs: setNodeData } = useNodeCrud<AnswerNodeData>(nodeId, data)
   const [showValidation, setShowValidation] = useState(false)
 
-  // Fetch integrations to display selected integration name
-  const { data: integrations } = api.channel.listForPicker.useQuery()
+  // Read channels from the hydrated store
+  const integrations = useChannelStore((s) => s.channels)
 
   // Find selected integration
   const selectedIntegration = useMemo(() => {
-    if (!nodeData.integrationId || !integrations) return null
+    if (!nodeData.integrationId) return null
     return integrations.find((i) => i.id === nodeData.integrationId)
   }, [nodeData.integrationId, integrations])
 

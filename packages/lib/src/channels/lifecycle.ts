@@ -1,18 +1,18 @@
-// packages/lib/src/integrations/lifecycle.ts
+// packages/lib/src/channels/lifecycle.ts
 
 import { type Database, type IntegrationEntity, schema, type Transaction } from '@auxx/database'
 import type { IntegrationProviderType } from '@auxx/database/types'
 import { and, eq } from 'drizzle-orm'
 import { BadRequestError, ConflictError, databaseErrorCodes, NotFoundError } from '../errors'
 import { InboxService } from '../inboxes/inbox-service'
+import { createScopedLogger } from '../logger'
+import { OpenPhoneService } from '../providers/openphone/openphone-service'
 import { Result, type TypedResult } from '../result'
+import type { ChannelCtx, OpenPhoneInput } from './types'
+
+const logger = createScopedLogger('channels.lifecycle')
 
 type DbHandle = Database | Transaction
-
-export interface ServiceContext {
-  db: Database
-  organizationId: string
-}
 
 export interface CreateChannelInput {
   provider: IntegrationProviderType
@@ -27,7 +27,7 @@ export interface CreateChannelInput {
  * Pass a `tx` to participate in an outer transaction.
  */
 export async function createChannel(
-  ctx: ServiceContext,
+  ctx: ChannelCtx,
   input: CreateChannelInput,
   tx?: Transaction
 ): Promise<TypedResult<IntegrationEntity, Error>> {
@@ -63,7 +63,7 @@ export async function createChannel(
  * given org.
  */
 export async function linkChannelToInbox(
-  ctx: ServiceContext,
+  ctx: ChannelCtx,
   channelId: string,
   inboxId: string | null,
   tx?: Transaction
@@ -101,4 +101,22 @@ export async function linkChannelToInbox(
   }
 
   return Result.nil()
+}
+
+/**
+ * Add an OpenPhone channel for the org. Wraps the provider-specific
+ * `OpenPhoneService.addIntegration` so the router doesn't need to
+ * instantiate it.
+ */
+export async function addOpenPhoneChannel(
+  ctx: ChannelCtx & { userId: string },
+  input: OpenPhoneInput
+) {
+  logger.info('Attempting to add OpenPhone channel', {
+    organizationId: ctx.organizationId,
+    phoneNumber: input.phoneNumber,
+  })
+
+  const service = new OpenPhoneService(ctx.db, ctx.organizationId, ctx.userId)
+  return await service.addIntegration(input)
 }

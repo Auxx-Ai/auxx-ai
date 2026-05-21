@@ -2,10 +2,10 @@
 
 import { type Database, schema } from '@auxx/database'
 import { desc, eq } from 'drizzle-orm'
+import { getOrgChannelProviderMap } from '../channels/cache'
 import { BadRequestError, ConflictError, databaseErrorCodes, NotFoundError } from '../errors'
 import { InboxService } from '../inboxes/inbox-service'
 import { createScopedLogger } from '../logger'
-import { getOrgChannelProviderMap } from '../providers/channel-cache'
 import { Result, type TypedResult } from '../result'
 
 const logger = createScopedLogger('chat-widget/config')

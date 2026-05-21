@@ -23,7 +23,7 @@ import type { Overage } from '../permissions/overage-detection-service'
 import type { FeatureMapObject } from '../permissions/types'
 import type { Resource } from '../resources/registry/types'
 import type { SettingValue } from '../settings/types'
-import type { CachedIntegration } from './providers/integrations-provider'
+import type { CachedChannel } from './providers/channels-provider'
 import type { CachedWorkflowApp } from './providers/workflow-apps-provider'
 
 /** Member info cached with joined user data */
@@ -341,7 +341,7 @@ export interface OrgCacheDataMap {
   groups: CachedGroup[] // all entity_group instances
   agents: CachedAgent[] // all Agent rows (active + archived); consumers filter archivedAt
   inboxes: Inbox[]
-  integrations: CachedIntegration[]
+  channels: CachedChannel[]
   overages: Overage[]
   orgSettings: Record<string, SettingValue> // key → value (org defaults only)
   installedApps: CachedInstalledApp[]
@@ -382,7 +382,7 @@ export const ORG_CACHE_KEY_CONFIG: Record<
   groups: { prefix: 'org:groups', ttlSeconds: ONE_DAY },
   agents: { prefix: 'org:agents', ttlSeconds: ONE_DAY },
   inboxes: { prefix: 'org:inboxes', ttlSeconds: ONE_DAY },
-  integrations: { prefix: 'org:integrations', ttlSeconds: ONE_DAY },
+  channels: { prefix: 'org:channels', ttlSeconds: ONE_DAY },
   overages: { prefix: 'org:overages', ttlSeconds: 900 },
   orgSettings: { prefix: 'org:settings', ttlSeconds: ONE_DAY },
   // v2: connectionDefinition (singular) → connectionDefinitions (pair). Bump on shape changes.

@@ -1,4 +1,4 @@
-// packages/lib/src/integrations/capabilities.ts
+// packages/lib/src/channels/capabilities.ts
 
 import { IntegrationProviderType } from '@auxx/database/enums'
 
