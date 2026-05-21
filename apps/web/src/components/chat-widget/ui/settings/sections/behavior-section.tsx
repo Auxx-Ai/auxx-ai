@@ -60,6 +60,27 @@ const behaviorSchema = z.object({
 
 type BehaviorForm = z.infer<typeof behaviorSchema>
 
+/**
+ * Inline warning rendered under the KB picker when the selected KB is
+ * INTERNAL. The widget reader only supports PUBLIC KBs in v1 — the server
+ * also rejects the save, this just surfaces it before the click so the
+ * admin doesn't waste the round-trip.
+ */
+function KbVisibilityWarning({ knowledgeBaseId }: { knowledgeBaseId: string | null }) {
+  const enabled = !!knowledgeBaseId
+  const { data } = api.kb.byId.useQuery(
+    { id: knowledgeBaseId ?? '' },
+    { enabled, staleTime: 60_000 }
+  )
+  if (!enabled || !data || data.visibility === 'PUBLIC') return null
+  return (
+    <p className='text-sm text-destructive'>
+      This knowledge base is set to INTERNAL. Switch it to PUBLIC before saving — chat widgets only
+      support PUBLIC knowledge bases.
+    </p>
+  )
+}
+
 export function BehaviorSection({ widget, channelId }: BehaviorSectionProps) {
   const utils = api.useUtils()
 
@@ -362,6 +383,7 @@ export function BehaviorSection({ widget, channelId }: BehaviorSectionProps) {
                         }}
                       />
                     </FormControl>
+                    <KbVisibilityWarning knowledgeBaseId={field.value} />
                     <FormDescription>
                       Articles from this KB power the widget's featured cards and Browse all view.
                     </FormDescription>

@@ -13,7 +13,9 @@ import type { NavFrame, NavView } from './navigation/use-navigation-stack'
 import { type TabId, useTabRouter } from './navigation/use-tab-router'
 import { type ChatConfig, fetchChatConfig } from './transport/config'
 import { HomeView } from './views/home/home-view'
-import { KbArticleView, KbSectionView, MessagesView, ThreadView } from './views/placeholder'
+import { KbArticleView } from './views/kb/kb-article-view'
+import { KbSectionView } from './views/kb/kb-section-view'
+import { MessagesView, ThreadView } from './views/placeholder'
 
 interface WidgetProps {
   channelId: string
@@ -160,9 +162,15 @@ function renderFrame(view: NavView, frame: NavFrame | null, channelId: string, c
       return <MessagesView />
     case 'thread':
       return <ThreadView label={label} />
-    case 'kb-section':
-      return <KbSectionView label={label} />
-    case 'kb-article':
-      return <KbArticleView label={label} />
+    case 'kb-section': {
+      const raw = frame?.params?.sectionId
+      const sectionId = typeof raw === 'string' ? raw : null
+      return <KbSectionView channelId={channelId} sectionId={sectionId} />
+    }
+    case 'kb-article': {
+      const raw = frame?.params?.articleId
+      if (typeof raw !== 'string') return null
+      return <KbArticleView channelId={channelId} articleId={raw} />
+    }
   }
 }

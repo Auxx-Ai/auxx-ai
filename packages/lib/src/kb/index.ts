@@ -33,4 +33,5 @@ export {
 } from './kopilot-snapshot'
 export { articleToMarkdown } from './markdown/article-to-markdown'
 export { type KbArticleEvent, kbArticleChannel, publishKbArticleEvent } from './realtime'
+export { type RenderArticleOptions, renderArticleHtml } from './render-article-html'
 export { syncArticleDenormalizedFields } from './sync-article-denormalized-fields'
