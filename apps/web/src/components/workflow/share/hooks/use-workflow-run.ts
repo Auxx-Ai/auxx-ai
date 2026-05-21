@@ -3,6 +3,7 @@
 
 import { WorkflowEventType } from '@auxx/lib/workflow-engine/client'
 import type { ContentSegment } from '@auxx/lib/workflow-engine/types/content-segment'
+import { usePassport } from '@auxx/ui/passport'
 import { useCallback, useRef } from 'react'
 import { useWorkflowShareStore } from '../workflow-share-provider'
 
@@ -28,7 +29,7 @@ interface WorkflowEvent {
  * Hook for executing workflow runs with SSE streaming
  */
 export function useWorkflowRun(shareToken: string) {
-  const passport = useWorkflowShareStore((s) => s.passport)
+  const { passport } = usePassport()
   const isExecuting = useWorkflowShareStore((s) => s.isExecuting)
   const currentRun = useWorkflowShareStore((s) => s.currentRun)
   const setLoading = useWorkflowShareStore((s) => s.setLoading)

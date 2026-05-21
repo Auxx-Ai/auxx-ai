@@ -4,6 +4,7 @@
 
 import { Alert, AlertDescription } from '@auxx/ui/components/alert'
 import { Button } from '@auxx/ui/components/button'
+import { usePassport } from '@auxx/ui/passport'
 import { AlertCircle } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { BaseType } from '../types'
@@ -27,11 +28,11 @@ interface WorkflowTriggerFormProps {
  */
 export function WorkflowTriggerForm({ submitButtonText }: WorkflowTriggerFormProps) {
   const shareToken = useWorkflowShareStore((s) => s.shareToken)
-  const passport = useWorkflowShareStore((s) => s.passport)
   const siteInfo = useWorkflowShareStore((s) => s.siteInfo)
   const executionError = useWorkflowShareStore((s) => s.executionError)
   const currentRun = useWorkflowShareStore((s) => s.currentRun)
   const isExecuting = useWorkflowShareStore((s) => s.isExecuting)
+  const { passport } = usePassport()
 
   const { executeRun, cancelRun, resetRun } = useWorkflowRun(shareToken!)
 

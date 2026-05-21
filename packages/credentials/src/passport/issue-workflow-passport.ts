@@ -1,8 +1,7 @@
 // packages/credentials/src/passport/issue-workflow-passport.ts
 
-import { SignJWT } from 'jose'
-import { err, ok, type Result } from 'neverthrow'
-import { configService } from '../config'
+import type { Result } from 'neverthrow'
+import { issuePassport } from './issue-passport'
 import type {
   IssueWorkflowPassportOptions,
   PassportError,
@@ -10,13 +9,10 @@ import type {
   WorkflowPassportResult,
 } from './types'
 
-const DEFAULT_EXPIRY = '7d'
-
 /**
- * Issue JWT passport token for public workflow access
+ * Issue a JWT passport for public workflow access.
  *
- * @param options - Passport options
- * @returns Result with passport token or error
+ * Thin wrapper around the generic {@link issuePassport} with `scope: 'workflow'`.
  */
 export async function issueWorkflowPassport(
   options: IssueWorkflowPassportOptions
@@ -29,41 +25,20 @@ export async function issueWorkflowPassport(
     accessMode,
     userId,
     externalId,
-    expiresIn = DEFAULT_EXPIRY,
+    expiresIn,
   } = options
 
-  try {
-    const jwtSecret = new TextEncoder().encode(
-      configService.get<string>('PUBLIC_WORKFLOW_JWT_SECRET') || 'public-workflow-secret-change-me'
-    )
-
-    const payload: Omit<WorkflowPassportPayload, 'iat' | 'exp'> = {
-      sub: endUserId,
-      iss: 'auxx',
-      type: 'workflow_passport',
+  return issuePassport<WorkflowPassportPayload>({
+    scope: 'workflow',
+    subjectId: endUserId,
+    claims: {
       shareToken,
       workflowId,
       organizationId,
       accessMode,
       userId: userId || undefined,
       externalId: externalId || undefined,
-    }
-
-    const token = await new SignJWT(payload as Record<string, unknown>)
-      .setProtectedHeader({ alg: 'HS256' })
-      .setIssuedAt()
-      .setExpirationTime(expiresIn)
-      .sign(jwtSecret)
-
-    return ok({
-      token,
-      expiresIn,
-      payload,
-    })
-  } catch (error) {
-    return err({
-      code: 'INVALID_PASSPORT' as const,
-      message: `Failed to issue passport: ${(error as Error).message}`,
-    })
-  }
+    },
+    expiresIn,
+  })
 }

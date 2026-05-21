@@ -76,8 +76,8 @@ export default async function PublicWorkflowRunPage({ params }: PageProps) {
 
   return (
     <div className='h-screen w-screen overflow-hidden'>
-      <WorkflowShareProvider>
-        <ShareGate shareToken={shareToken}>
+      <WorkflowShareProvider shareToken={shareToken}>
+        <ShareGate>
           <WorkflowTriggerInterface />
         </ShareGate>
       </WorkflowShareProvider>
