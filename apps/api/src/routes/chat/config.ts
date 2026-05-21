@@ -2,7 +2,12 @@
 
 import { configService } from '@auxx/credentials'
 import { Hono } from 'hono'
-import { applyChatCorsHeaders, loadChatWidgetByChannelId } from './lib'
+import {
+  applyChatCorsHeaders,
+  loadChatWidgetByChannelId,
+  loadHomeFeaturedArticles,
+  loadHomeKnowledgeBase,
+} from './lib'
 
 const configRoute = new Hono()
 
@@ -32,10 +37,26 @@ configRoute.get('/:channelId', async (c) => {
 
   c.header('Cache-Control', 'public, max-age=60, s-maxage=300, stale-while-revalidate=300')
 
+  const [knowledgeBase, featuredArticles] = await Promise.all([
+    loadHomeKnowledgeBase(widget.organizationId, widget.home.knowledgeBaseId),
+    loadHomeFeaturedArticles(widget.organizationId, widget.home.featuredArticleIds),
+  ])
+
   return c.json({
     channelId: widget.channelId,
     isActive: widget.isActive,
     appearance: widget.appearance,
+    home: {
+      greetingTemplate: widget.home.greetingTemplate,
+      showRecentMessage: widget.home.showRecentMessage,
+      showSendMessageCta: widget.home.showSendMessageCta,
+      expandedWidthPx: widget.home.expandedWidthPx,
+      knowledgeBase,
+      featuredArticles,
+    },
+    branding: {
+      footerEnabled: widget.branding.footerEnabled,
+    },
     realtime: {
       provider: 'pusher' as const,
       key: configService.get<string>('PUSHER_KEY') ?? '',

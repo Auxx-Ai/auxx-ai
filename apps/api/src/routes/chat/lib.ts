@@ -1,7 +1,7 @@
 // apps/api/src/routes/chat/lib.ts
 
 import { database, schema } from '@auxx/database'
-import { and, eq } from 'drizzle-orm'
+import { and, asc, eq, inArray } from 'drizzle-orm'
 import type { Context } from 'hono'
 
 export interface LoadedChatWidget {
@@ -22,6 +22,17 @@ export interface LoadedChatWidget {
     mobileFullScreen: boolean
     collectUserInfo: boolean
     offlineMessage: string | null
+  }
+  home: {
+    greetingTemplate: unknown
+    showRecentMessage: boolean
+    showSendMessageCta: boolean
+    expandedWidthPx: number
+    knowledgeBaseId: string | null
+    featuredArticleIds: string[]
+  }
+  branding: {
+    footerEnabled: boolean
   }
 }
 
@@ -60,7 +71,107 @@ export async function loadChatWidgetByChannelId(
       collectUserInfo: row.chatWidget.collectUserInfo,
       offlineMessage: row.chatWidget.offlineMessage ?? null,
     },
+    home: {
+      greetingTemplate: row.chatWidget.homeGreetingTemplate ?? null,
+      showRecentMessage: row.chatWidget.homeShowRecentMessage,
+      showSendMessageCta: row.chatWidget.homeShowSendMessageCta,
+      expandedWidthPx: row.chatWidget.expandedWidthPx,
+      knowledgeBaseId: row.chatWidget.knowledgeBaseId ?? null,
+      featuredArticleIds: row.chatWidget.featuredArticleIds ?? [],
+    },
+    branding: {
+      footerEnabled: row.chatWidget.brandingFooterEnabled,
+    },
   }
+}
+
+export interface HomeKnowledgeBaseInfo {
+  siteSlug: string
+  siteName: string
+  rootArticles: { id: string; title: string; emoji: string | null }[]
+}
+
+export interface HomeFeaturedArticle {
+  id: string
+  title: string
+  description: string | null
+  emoji: string | null
+}
+
+/**
+ * Resolve the KB site info + top-level published articles for the chat
+ * widget's Home tab. Returns `null` when the widget has no linked KB or the
+ * KB has been deleted.
+ */
+export async function loadHomeKnowledgeBase(
+  organizationId: string,
+  knowledgeBaseId: string | null
+): Promise<HomeKnowledgeBaseInfo | null> {
+  if (!knowledgeBaseId) return null
+  const kb = await database.query.KnowledgeBase.findFirst({
+    where: (k, { and: a, eq: e }) =>
+      a(e(k.id, knowledgeBaseId), e(k.organizationId, organizationId)),
+    columns: { id: true, name: true, slug: true },
+  })
+  if (!kb) return null
+
+  const articles = await database
+    .select({
+      id: schema.Article.id,
+      title: schema.Article.title,
+      emoji: schema.Article.emoji,
+    })
+    .from(schema.Article)
+    .where(
+      and(eq(schema.Article.knowledgeBaseId, knowledgeBaseId), eq(schema.Article.isPublished, true))
+    )
+    .orderBy(asc(schema.Article.sortOrder))
+
+  const rootArticles = articles
+    .filter((a) => a.title)
+    .map((a) => ({ id: a.id, title: a.title ?? '', emoji: a.emoji ?? null }))
+
+  return { siteSlug: kb.slug, siteName: kb.name, rootArticles }
+}
+
+/**
+ * Fetch the ordered set of featured articles for the chat widget Home tab.
+ * Filters out missing / unpublished entries and preserves the admin-set order.
+ */
+export async function loadHomeFeaturedArticles(
+  organizationId: string,
+  featuredArticleIds: string[]
+): Promise<HomeFeaturedArticle[]> {
+  if (featuredArticleIds.length === 0) return []
+  const rows = await database
+    .select({
+      id: schema.Article.id,
+      title: schema.Article.title,
+      excerpt: schema.Article.excerpt,
+      emoji: schema.Article.emoji,
+    })
+    .from(schema.Article)
+    .where(
+      and(
+        eq(schema.Article.organizationId, organizationId),
+        eq(schema.Article.isPublished, true),
+        inArray(schema.Article.id, featuredArticleIds)
+      )
+    )
+
+  const byId = new Map(rows.map((r) => [r.id, r]))
+  const out: HomeFeaturedArticle[] = []
+  for (const id of featuredArticleIds) {
+    const row = byId.get(id)
+    if (!row) continue
+    out.push({
+      id: row.id,
+      title: row.title ?? 'Untitled',
+      description: row.excerpt ?? null,
+      emoji: row.emoji ?? null,
+    })
+  }
+  return out
 }
 
 /** Extract hostname from an Origin/Referer header value, or null. */

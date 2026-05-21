@@ -1,6 +1,7 @@
 // apps/chat-widget/vite.config.ts
 
 import { resolve } from 'node:path'
+import tailwindcss from '@tailwindcss/vite'
 import { defineConfig } from 'vite'
 
 /**
@@ -41,6 +42,7 @@ function resolveApiUrl(): string {
 }
 
 export default defineConfig({
+  plugins: [tailwindcss()],
   resolve: {
     alias: {
       react: 'preact/compat',

@@ -22,6 +22,12 @@ export interface InitializeChatThreadInput {
   visitorEmail?: string
   /** Embedder-supplied external id (unverified in v1). Stored as `claimedExternalId`. */
   visitorExternalId?: string
+  /**
+   * When true, skip the resume-existing-thread lookup and always create a
+   * fresh thread. Used by the Home "Send us a message" CTA so each tap lands
+   * in a new conversation.
+   */
+  forceNewThread?: boolean
 }
 
 export interface InitializeChatThreadResult {
@@ -78,18 +84,20 @@ export async function initializeOrResumeChatThread(
     const visitor = visitorResult.value
 
     // Try to resume an open thread for this visitor on this channel.
-    const candidateThreads = await ctx.db
-      .select()
-      .from(schema.Thread)
-      .where(
-        and(
-          eq(schema.Thread.organizationId, ctx.organizationId),
-          eq(schema.Thread.integrationId, integration.id),
-          eq(schema.Thread.status, ThreadStatus.OPEN)
-        )
-      )
-      .orderBy(desc(schema.Thread.lastMessageAt))
-      .limit(20)
+    const candidateThreads = input.forceNewThread
+      ? []
+      : await ctx.db
+          .select()
+          .from(schema.Thread)
+          .where(
+            and(
+              eq(schema.Thread.organizationId, ctx.organizationId),
+              eq(schema.Thread.integrationId, integration.id),
+              eq(schema.Thread.status, ThreadStatus.OPEN)
+            )
+          )
+          .orderBy(desc(schema.Thread.lastMessageAt))
+          .limit(20)
 
     const resumable = candidateThreads.find((t) => {
       const meta = (t.metadata ?? {}) as Partial<ChatThreadMetadata>

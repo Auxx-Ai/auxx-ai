@@ -1,6 +1,6 @@
 // apps/web/src/components/editor/placeholders/field-shim.ts
 
-import type { OrgSlug, UserSlug } from '@auxx/lib/placeholders/client'
+import type { OrgSlug, UserSlug, VisitorSlug } from '@auxx/lib/placeholders/client'
 import type { ResourceField } from '@auxx/lib/resources/client'
 import type { FieldId } from '@auxx/types/field'
 
@@ -70,4 +70,36 @@ const USER_LABELS: Record<UserSlug, string> = {
   name: 'Name',
   firstName: 'First Name',
   lastName: 'Last Name',
+}
+
+/**
+ * Synthesize a `ResourceField` for a synthetic `visitor:<slug>` token. Used
+ * by the chat-widget greeting template; resolved client-side from the
+ * widget's identify() claims, so all fallback-supported slugs are TEXT (or
+ * EMAIL).
+ */
+export function shimFieldForVisitor(slug: VisitorSlug): ResourceField {
+  const label = VISITOR_LABELS[slug]
+  const fieldType = slug === 'email' ? 'EMAIL' : 'TEXT'
+  return {
+    id: `visitor:${slug}` as FieldId,
+    key: slug,
+    label,
+    type: 'string',
+    fieldType,
+    required: false,
+    capabilities: {
+      filterable: false,
+      sortable: false,
+      creatable: false,
+      updatable: true,
+      configurable: false,
+    },
+  }
+}
+
+const VISITOR_LABELS: Record<VisitorSlug, string> = {
+  name: 'Name',
+  email: 'Email',
+  externalId: 'External ID',
 }

@@ -10,6 +10,7 @@ import {
   type OrgSlug,
   tryParsePlaceholderId,
   type UserSlug,
+  type VisitorSlug,
 } from '@auxx/lib/placeholders/client'
 import type { ResourceField } from '@auxx/lib/resources/client'
 import { mapBaseTypeToFieldType } from '@auxx/lib/workflow-engine/client'
@@ -20,7 +21,7 @@ import { useMemo } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { useResourceProperty } from '~/components/resources'
 import { useResourceStore } from '~/components/resources/store/resource-store'
-import { shimFieldForOrg, shimFieldForUser } from './field-shim'
+import { shimFieldForOrg, shimFieldForUser, shimFieldForVisitor } from './field-shim'
 
 const DATE_SLUG_LABELS: Record<string, string> = {
   today: 'Today',
@@ -55,6 +56,18 @@ const USER_SLUG_FIELD_TYPES: Record<UserSlug, FallbackSupportedType> = {
   name: 'TEXT',
   firstName: 'TEXT',
   lastName: 'TEXT',
+}
+
+const VISITOR_SLUG_LABELS: Record<VisitorSlug, string> = {
+  name: 'Name',
+  email: 'Email',
+  externalId: 'External ID',
+}
+
+const VISITOR_SLUG_FIELD_TYPES: Record<VisitorSlug, FallbackSupportedType> = {
+  name: 'TEXT',
+  email: 'EMAIL',
+  externalId: 'TEXT',
 }
 
 /** Stable module-level empty array — reused so shallow-equality holds across renders. */
@@ -124,6 +137,7 @@ export function usePlaceholderLabel(id: string): PlaceholderLabel {
     if (parsed.kind === 'date') return 'Date'
     if (parsed.kind === 'org') return 'Organization'
     if (parsed.kind === 'user') return 'Sender'
+    if (parsed.kind === 'visitor') return 'Visitor'
     const res = state.getEffectiveResource(parsed.rootEntityDefinitionId)
     return res?.label ?? parsed.rootEntityDefinitionId
   })
@@ -181,6 +195,20 @@ export function usePlaceholderLabel(id: string): PlaceholderLabel {
       const fieldType = USER_SLUG_FIELD_TYPES[parsed.slug]
       return {
         breadcrumb: `Sender › ${label}`,
+        resolved: true,
+        iconId: fieldTypeOptions[fieldType]?.iconId ?? 'text',
+        field: shim,
+        fieldType,
+        fallbackSupported: true,
+      }
+    }
+
+    if (parsed.kind === 'visitor') {
+      const label = VISITOR_SLUG_LABELS[parsed.slug]
+      const shim = shimFieldForVisitor(parsed.slug)
+      const fieldType = VISITOR_SLUG_FIELD_TYPES[parsed.slug]
+      return {
+        breadcrumb: `Visitor › ${label}`,
         resolved: true,
         iconId: fieldTypeOptions[fieldType]?.iconId ?? 'text',
         field: shim,

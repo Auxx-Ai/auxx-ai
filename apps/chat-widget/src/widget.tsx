@@ -1,12 +1,19 @@
 // apps/chat-widget/src/widget.tsx
+//
+// Outer pillbox shell + tab router. The shell handles open/closed animation
+// and the trigger button. Inside, a `useTabRouter` selects which tab's stack
+// is active and renders the matching frame. Phase 6 will re-introduce the
+// chat-session/Pusher wiring inside ThreadView.
 
-import { useEffect, useRef, useState } from 'preact/hooks'
-import { ChatPanel } from './chat-window'
-import { getStoredIdentify, type IdentifyPayload, onIdentify } from './identify'
-import { type ChatMessage, chatApi, type InitializeResponse } from './transport/chat-api'
+import { useEffect, useState } from 'preact/hooks'
+import { FrameHeader, type FrameHeaderVariant } from './components/frame-header'
+import { TabBar } from './components/tab-bar'
+import { NavStackProvider } from './navigation/nav-stack-context'
+import type { NavFrame, NavView } from './navigation/use-navigation-stack'
+import { type TabId, useTabRouter } from './navigation/use-tab-router'
 import { type ChatConfig, fetchChatConfig } from './transport/config'
-import { updateStoredPassport } from './transport/passport'
-import { connectPusher, type PusherConnection } from './transport/pusher'
+import { HomeView } from './views/home/home-view'
+import { KbArticleView, KbSectionView, MessagesView, ThreadView } from './views/placeholder'
 
 interface WidgetProps {
   channelId: string
@@ -14,19 +21,11 @@ interface WidgetProps {
 
 export function Widget({ channelId }: WidgetProps) {
   const [config, setConfig] = useState<ChatConfig | null>(null)
-  const [session, setSession] = useState<InitializeResponse | null>(null)
-  const [messages, setMessages] = useState<ChatMessage[]>([])
   const [open, setOpen] = useState(false)
-  const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const pusherRef = useRef<PusherConnection | null>(null)
-  const triggerRef = useRef<HTMLButtonElement | null>(null)
-  const inputRef = useRef<HTMLInputElement | null>(null)
-  const mountedRef = useRef(false)
-  const api = useRef(chatApi(channelId)).current
+  const router = useTabRouter(channelId)
 
-  // Load config once on mount.
   useEffect(() => {
     fetchChatConfig(channelId)
       .then((c) => {
@@ -36,166 +35,134 @@ export function Widget({ channelId }: WidgetProps) {
       .catch((e) => setError(e instanceof Error ? e.message : 'Failed to load chat'))
   }, [channelId])
 
-  // Initialize session when the widget is first opened.
-  useEffect(() => {
-    if (!open || session || !config) return
-    let cancelled = false
-    setError(null)
-    api
-      .initialize({
-        url: window.location.href,
-        referrer: document.referrer || undefined,
-        userAgent: navigator.userAgent,
-        identify: getStoredIdentify(channelId) ?? undefined,
-      })
-      .then((res) => {
-        if (cancelled) return
-        if (res.passport) updateStoredPassport(channelId, res.passport)
-        setSession(res)
-        setMessages(res.messages)
-      })
-      .catch((e) => {
-        if (!cancelled) setError(e instanceof Error ? e.message : 'Failed to start chat')
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [open, session, config, api, channelId])
-
-  // Push later identify() calls to the backend once a session exists. Pre-session
-  // calls are persisted to sessionStorage and picked up by initialize() above.
-  useEffect(() => {
-    if (!session) return
-    const dispatch = (payload: IdentifyPayload) => {
-      api
-        .updateVisitorInfo({ threadId: session.threadId, identify: payload })
-        .then((res) => {
-          if (res?.passport) updateStoredPassport(channelId, res.passport)
-        })
-        .catch(() => {})
-    }
-    return onIdentify(dispatch)
-  }, [session, api, channelId])
-
-  // Subscribe to Pusher once the session exists.
-  useEffect(() => {
-    if (!session || !config) return
-    const conn = connectPusher({
-      key: config.realtime.key,
-      cluster: config.realtime.cluster,
-      channelName: session.pusherChannel,
-    })
-    pusherRef.current = conn
-
-    conn.channel.bind('new-message', (message: ChatMessage) => {
-      setMessages((prev) => {
-        if (prev.some((m) => m.id === message.id)) return prev
-        return [...prev, message]
-      })
-      if (message.sender !== 'USER') {
-        api.markDelivered([message.id]).catch(() => {})
-      }
-    })
-
-    return () => {
-      conn.disconnect()
-      pusherRef.current = null
-    }
-  }, [session, config, api])
-
-  // Move focus on open/close transitions. Skip the very first render so we
-  // don't yank focus on initial mount if autoOpen is off.
-  useEffect(() => {
-    if (!mountedRef.current) {
-      mountedRef.current = true
-      return
-    }
-    if (open) inputRef.current?.focus()
-    else triggerRef.current?.focus()
-  }, [open])
-
-  const handleSend = async (content: string) => {
-    if (!session) return
-    setSending(true)
-    setError(null)
-    const clientMessageId = `c_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
-    const optimistic: ChatMessage = {
-      id: clientMessageId,
-      content,
-      sender: 'USER',
-      createdAt: new Date().toISOString(),
-      status: 'sending',
-    }
-    setMessages((prev) => [...prev, optimistic])
-
-    try {
-      const res = await api.sendMessage({
-        sessionId: session.sessionId,
-        threadId: session.threadId,
-        content,
-        clientMessageId,
-      })
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.id === clientMessageId
-            ? { ...m, id: res.messageId, status: res.status, createdAt: res.createdAt }
-            : m
-        )
-      )
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to send')
-      setMessages((prev) => prev.filter((m) => m.id !== clientMessageId))
-    } finally {
-      setSending(false)
-    }
-  }
-
   if (!config) return null
 
   const positionClass = config.appearance.position.toLowerCase().includes('left')
     ? 'auxx-chat-shell--bottom-left'
     : 'auxx-chat-shell--bottom-right'
   const stateClass = open ? 'auxx-chat-shell--open' : 'auxx-chat-shell--closed'
-
   const rootStyle = { '--auxx-chat-primary': config.appearance.primaryColor } as Record<
     string,
     string
   >
 
   return (
-    <div class='auxx-chat-root' style={rootStyle}>
-      <div class={`auxx-chat-shell ${stateClass} ${positionClass}`}>
+    <div className='auxx-chat-root' style={rootStyle}>
+      <div className={`auxx-chat-shell ${stateClass} ${positionClass}`}>
         <button
-          ref={triggerRef}
           type='button'
-          class='auxx-chat-shell__trigger'
+          className='auxx-chat-shell__trigger'
           onClick={() => setOpen((v) => !v)}
           aria-label={open ? 'Close chat' : 'Open chat'}
           aria-expanded={open}
           tabIndex={open ? -1 : 0}
         />
-        <span class='auxx-chat-shell__icon' aria-hidden='true'>
+        <span className='auxx-chat-shell__icon' aria-hidden='true'>
           <svg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'>
             <path d='M20 2H4a2 2 0 0 0-2 2v18l4-4h14a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2zM6 9h12v2H6V9zm8 5H6v-2h8v2z' />
           </svg>
         </span>
         <div
-          class='auxx-chat-shell__panel'
+          className='auxx-chat-shell__panel'
           role='dialog'
           aria-modal='false'
           aria-label={config.appearance.title}
           aria-hidden={!open}>
-          <ChatPanel
-            config={config}
-            messages={messages}
-            sending={sending}
-            error={error}
-            inputRef={inputRef}
-            onClose={() => setOpen(false)}
-            onSend={handleSend}
-          />
+          <NavStackProvider value={router.currentStack}>
+            <PanelShell
+              channelId={channelId}
+              config={config}
+              activeTab={router.activeTab}
+              onTabChange={router.setActiveTab}
+              currentFrame={router.currentStack.current}
+              isAtRoot={router.currentStack.isAtRoot}
+              onBack={router.currentStack.pop}
+              onClose={() => setOpen(false)}
+              error={error}
+            />
+          </NavStackProvider>
         </div>
       </div>
     </div>
   )
+}
+
+interface PanelShellProps {
+  channelId: string
+  config: ChatConfig
+  activeTab: TabId
+  onTabChange: (tab: TabId) => void
+  currentFrame: NavFrame | null
+  isAtRoot: boolean
+  onBack: () => void
+  onClose: () => void
+  error: string | null
+}
+
+function PanelShell({
+  channelId,
+  config,
+  activeTab,
+  onTabChange,
+  currentFrame,
+  isAtRoot,
+  onBack,
+  onClose,
+  error,
+}: PanelShellProps) {
+  const view: NavView = currentFrame?.view ?? activeTab
+  const headerVariant = pickHeaderVariant(view, isAtRoot)
+
+  return (
+    <div className='flex h-full flex-col'>
+      <FrameHeader
+        variant={headerVariant}
+        title={headerTitle(view, currentFrame, config)}
+        subtitle={
+          view === 'home' && isAtRoot ? (config.appearance.subtitle ?? undefined) : undefined
+        }
+        logoUrl={config.appearance.logoUrl}
+        onBack={isAtRoot ? undefined : onBack}
+        onClose={onClose}
+      />
+      {error ? (
+        <div className='auxx-chat-error' role='alert'>
+          {error}
+        </div>
+      ) : null}
+      <div className='flex min-h-0 flex-1 flex-col bg-[color:var(--color-bg)]'>
+        {renderFrame(view, currentFrame, channelId, config)}
+      </div>
+      {isAtRoot ? <TabBar activeTab={activeTab} onChange={onTabChange} /> : null}
+    </div>
+  )
+}
+
+function pickHeaderVariant(view: NavView, isAtRoot: boolean): FrameHeaderVariant {
+  if (!isAtRoot) return 'contextual'
+  if (view === 'home') return 'dark-hero'
+  return 'plain'
+}
+
+function headerTitle(view: NavView, frame: NavFrame | null, config: ChatConfig): string {
+  if (frame) return frame.label
+  if (view === 'home') return config.appearance.title
+  if (view === 'messages') return 'Messages'
+  return ''
+}
+
+function renderFrame(view: NavView, frame: NavFrame | null, channelId: string, config: ChatConfig) {
+  const label = frame?.label ?? ''
+  switch (view) {
+    case 'home':
+      return <HomeView channelId={channelId} config={config} />
+    case 'messages':
+      return <MessagesView />
+    case 'thread':
+      return <ThreadView label={label} />
+    case 'kb-section':
+      return <KbSectionView label={label} />
+    case 'kb-article':
+      return <KbArticleView label={label} />
+  }
 }

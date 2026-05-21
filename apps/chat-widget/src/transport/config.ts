@@ -1,5 +1,34 @@
 // apps/chat-widget/src/transport/config.ts
 
+/** Tiptap JSON document. Loose shape — we walk it as a tree and render any
+ * leaf with `text` as plain text. `placeholder` nodes carry the visitor-claim
+ * id and an encoded `data-fallback` string. */
+export interface TiptapNode {
+  type?: string
+  text?: string
+  content?: TiptapNode[]
+  attrs?: Record<string, unknown>
+  marks?: { type: string; attrs?: Record<string, unknown> }[]
+}
+
+export interface ChatHomeConfig {
+  greetingTemplate: TiptapNode | null
+  showRecentMessage: boolean
+  showSendMessageCta: boolean
+  expandedWidthPx: number
+  knowledgeBase: {
+    siteSlug: string
+    siteName: string
+    rootArticles: { id: string; title: string; emoji: string | null }[]
+  } | null
+  featuredArticles: {
+    id: string
+    title: string
+    description: string | null
+    emoji: string | null
+  }[]
+}
+
 export interface ChatConfig {
   channelId: string
   isActive: boolean
@@ -15,6 +44,8 @@ export interface ChatConfig {
     collectUserInfo: boolean
     offlineMessage: string | null
   }
+  home: ChatHomeConfig
+  branding: { footerEnabled: boolean }
   realtime: { provider: 'pusher'; key: string; cluster: string }
 }
 

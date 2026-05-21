@@ -1,16 +1,12 @@
 // apps/chat-widget/src/main.tsx
 //
 // Entry point for the embedded chat widget. Reads `data-channel-id` off its
-// own <script> tag, mounts the Preact app inside a body-level container, and
-// injects the inlined stylesheet so the bundle is fully self-contained.
+// own <script> tag and mounts the Preact app inside a closed Shadow DOM via
+// `mountWidget` so host-page CSS cannot leak in.
 
-import { render } from 'preact'
 import { installIdentifyQueue } from './identify'
-import styles from './styles.css?inline'
+import { mountWidget } from './shadow-root'
 import { Widget } from './widget'
-
-const ROOT_ID = 'auxx-chat-widget-root'
-const STYLE_ID = 'auxx-chat-widget-styles'
 
 function findScriptTag(): HTMLScriptElement | null {
   const current = document.currentScript as HTMLScriptElement | null
@@ -19,24 +15,9 @@ function findScriptTag(): HTMLScriptElement | null {
   return all[all.length - 1] ?? null
 }
 
-function injectStyles(): void {
-  if (document.getElementById(STYLE_ID)) return
-  const tag = document.createElement('style')
-  tag.id = STYLE_ID
-  tag.textContent = styles
-  document.head.appendChild(tag)
-}
-
 function mount(channelId: string): void {
   installIdentifyQueue(channelId)
-  injectStyles()
-  let root = document.getElementById(ROOT_ID)
-  if (!root) {
-    root = document.createElement('div')
-    root.id = ROOT_ID
-    document.body.appendChild(root)
-  }
-  render(<Widget channelId={channelId} />, root)
+  mountWidget(<Widget channelId={channelId} />)
 }
 
 function boot(): void {
