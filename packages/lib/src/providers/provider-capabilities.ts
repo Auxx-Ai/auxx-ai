@@ -33,6 +33,11 @@ export const PROVIDER_CAPABILITIES: Record<IntegrationProviderType, ProviderCapa
     canUseTemplates: true,
     canReact: false,
     canShare: false,
+    requiresSubject: true,
+    requiresRecipients: true,
+    countsAgainstOutboundEmailsQuota: true,
+    triggersPostSendSync: true,
+    supportsRichText: true,
   },
   [IntegrationProviderType.facebook]: {
     // Facebook Messenger capabilities
@@ -64,6 +69,13 @@ export const PROVIDER_CAPABILITIES: Record<IntegrationProviderType, ProviderCapa
       messagesPerMinute: 200,
       messagesPerHour: 1000,
     },
+    // TODO: FB DMs have no subject and use PSID identifiers — flags below match
+    // today's behavior. De-emailing the FB pipeline is a separate refactor.
+    requiresSubject: true,
+    requiresRecipients: true,
+    countsAgainstOutboundEmailsQuota: true,
+    triggersPostSendSync: true,
+    supportsRichText: false,
   },
   [IntegrationProviderType.instagram]: {
     // Instagram Direct Message capabilities
@@ -95,6 +107,12 @@ export const PROVIDER_CAPABILITIES: Record<IntegrationProviderType, ProviderCapa
       messagesPerMinute: 100,
       messagesPerHour: 500,
     },
+    // TODO: see FB note above — Instagram DM flags match today's behavior.
+    requiresSubject: true,
+    requiresRecipients: true,
+    countsAgainstOutboundEmailsQuota: true,
+    triggersPostSendSync: true,
+    supportsRichText: false,
   },
   [IntegrationProviderType.openphone]: {
     // SMS capabilities (via OpenPhone or similar)
@@ -124,6 +142,11 @@ export const PROVIDER_CAPABILITIES: Record<IntegrationProviderType, ProviderCapa
       maxMessageLength: 160,
       supportsUnicode: true,
     },
+    requiresSubject: false,
+    requiresRecipients: true,
+    countsAgainstOutboundEmailsQuota: false,
+    triggersPostSendSync: false,
+    supportsRichText: false,
   },
   [IntegrationProviderType.mailgun]: {
     // Mailgun email service capabilities
@@ -150,6 +173,11 @@ export const PROVIDER_CAPABILITIES: Record<IntegrationProviderType, ProviderCapa
     canUseTemplates: true,
     canReact: false,
     canShare: false,
+    requiresSubject: true,
+    requiresRecipients: true,
+    countsAgainstOutboundEmailsQuota: true,
+    triggersPostSendSync: true,
+    supportsRichText: true,
   },
   [IntegrationProviderType.sms]: {
     // Generic SMS capabilities
@@ -179,6 +207,11 @@ export const PROVIDER_CAPABILITIES: Record<IntegrationProviderType, ProviderCapa
       maxMessageLength: 160,
       supportsUnicode: true,
     },
+    requiresSubject: false,
+    requiresRecipients: true,
+    countsAgainstOutboundEmailsQuota: false,
+    triggersPostSendSync: false,
+    supportsRichText: false,
   },
   [IntegrationProviderType.email]: {
     // Generic email capabilities
@@ -205,6 +238,11 @@ export const PROVIDER_CAPABILITIES: Record<IntegrationProviderType, ProviderCapa
     canUseTemplates: true,
     canReact: false,
     canShare: false,
+    requiresSubject: true,
+    requiresRecipients: true,
+    countsAgainstOutboundEmailsQuota: true,
+    triggersPostSendSync: true,
+    supportsRichText: true,
   },
   [IntegrationProviderType.whatsapp]: {
     // WhatsApp Business API capabilities
@@ -236,6 +274,11 @@ export const PROVIDER_CAPABILITIES: Record<IntegrationProviderType, ProviderCapa
       messagesPerMinute: 60,
       messagesPerDay: 1000,
     },
+    requiresSubject: false,
+    requiresRecipients: true,
+    countsAgainstOutboundEmailsQuota: false,
+    triggersPostSendSync: false,
+    supportsRichText: false,
   },
   [IntegrationProviderType.chat]: {
     // Generic chat capabilities (internal chat system)
@@ -262,6 +305,12 @@ export const PROVIDER_CAPABILITIES: Record<IntegrationProviderType, ProviderCapa
     canUseTemplates: true,
     canReact: true,
     canShare: false,
+    // Chat: visitor is encoded on the Thread, no subject, free.
+    requiresSubject: false,
+    requiresRecipients: false,
+    countsAgainstOutboundEmailsQuota: false,
+    triggersPostSendSync: false,
+    supportsRichText: false,
   },
   [IntegrationProviderType.shopify]: {
     // Shopify capabilities (not a messaging provider)
@@ -292,6 +341,11 @@ export const PROVIDER_CAPABILITIES: Record<IntegrationProviderType, ProviderCapa
       providesOrderData: true,
       providesCustomerData: true,
     },
+    requiresSubject: false,
+    requiresRecipients: false,
+    countsAgainstOutboundEmailsQuota: false,
+    triggersPostSendSync: false,
+    supportsRichText: false,
   },
   [IntegrationProviderType.imap]: {
     // IMAP/SMTP capabilities (self-hosted, enterprise)
@@ -318,6 +372,11 @@ export const PROVIDER_CAPABILITIES: Record<IntegrationProviderType, ProviderCapa
     canUseTemplates: true,
     canReact: false,
     canShare: false,
+    requiresSubject: true,
+    requiresRecipients: true,
+    countsAgainstOutboundEmailsQuota: true,
+    triggersPostSendSync: true,
+    supportsRichText: true,
   },
   [IntegrationProviderType.outlook]: {
     // Outlook/Office 365 capabilities
@@ -344,6 +403,11 @@ export const PROVIDER_CAPABILITIES: Record<IntegrationProviderType, ProviderCapa
     canUseTemplates: true,
     canReact: false,
     canShare: false,
+    requiresSubject: true,
+    requiresRecipients: true,
+    countsAgainstOutboundEmailsQuota: true,
+    triggersPostSendSync: true,
+    supportsRichText: true,
   },
 }
 /**
@@ -389,6 +453,11 @@ export function getProviderCapabilities(
       canUseTemplates: false,
       canReact: false,
       canShare: false,
+      requiresSubject: false,
+      requiresRecipients: false,
+      countsAgainstOutboundEmailsQuota: false,
+      triggersPostSendSync: false,
+      supportsRichText: false,
     }
   )
 }

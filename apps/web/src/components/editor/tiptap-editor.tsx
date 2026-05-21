@@ -34,6 +34,8 @@ type TiptapEditorProps = {
   editable?: boolean
   /** Extra class (e.g. z-index override) for the slash-command popover content. */
   popoverClassName?: string
+  /** When provided, plain Enter (no shift) calls this handler instead of inserting a paragraph break. */
+  onEnter?: () => void
 }
 
 const TiptapEditor = ({
@@ -43,12 +45,15 @@ const TiptapEditor = ({
   className = '',
   editable = true,
   popoverClassName,
+  onEnter,
 }: TiptapEditorProps) => {
   const { setEditor } = useEditorContext()
   const slashCommand = useSlashCommand()
   const externalSyncRef = useRef<{ markLocalEdit: (key: string) => void }>({
     markLocalEdit: () => {},
   })
+  const onEnterRef = useRef<(() => void) | undefined>(onEnter)
+  onEnterRef.current = onEnter
 
   const placeholderNodeExtension = useMemo(
     () => createPlaceholderNode((badgeProps) => <PlaceholderBadge {...badgeProps} />),
@@ -87,6 +92,21 @@ const TiptapEditor = ({
             'tiptap-email-editor prose prose-sm prose-headings:my-1 prose-ul:my-1 prose-p:my-0 prose-li:my-0 focus:outline-hidden max-w-none dark:prose-invert flex-1',
             className
           ),
+        },
+        handleKeyDown: (_view, event) => {
+          if (
+            onEnterRef.current &&
+            event.key === 'Enter' &&
+            !event.shiftKey &&
+            !event.metaKey &&
+            !event.ctrlKey &&
+            !slashCommand.isOpenRef.current
+          ) {
+            event.preventDefault()
+            onEnterRef.current()
+            return true
+          }
+          return false
         },
       },
       onCreate: ({ editor }) => {

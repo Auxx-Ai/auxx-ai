@@ -109,6 +109,17 @@ export function useReplyBox(thread: ThreadMeta | null | undefined) {
     }
   }, [effectiveDraft])
 
+  // Chat threads use an always-on composer (no "click Reply to reveal" flow).
+  // Auto-open the reply box for chat and keep it open across thread switches —
+  // the existing thread-id reset effect below would otherwise close it.
+  const isChat = thread?.integrationProvider === 'chat'
+  useEffect(() => {
+    if (isChat && !isShowReplyBox) {
+      setIsShowReplyBox(true)
+      setEditorMode('reply')
+    }
+  }, [isChat, isShowReplyBox])
+
   // Reset internal state ONLY when the thread ID actually changes
   const previousThreadId = useRef<string | null | undefined>(null)
   useEffect(() => {
@@ -116,7 +127,7 @@ export function useReplyBox(thread: ThreadMeta | null | undefined) {
     const hasDraft = !!effectiveDraft
 
     if (currentThreadId !== previousThreadId.current) {
-      if (!hasDraft) {
+      if (!hasDraft && !isChat) {
         setIsShowReplyBox(false)
         setSourceMessage(null)
         setEditorMode('reply')

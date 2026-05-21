@@ -13,6 +13,8 @@ interface LazyTiptapEditorProps {
   editable?: boolean
   className?: string
   popoverClassName?: string
+  /** When provided, plain Enter (no shift/cmd/ctrl) calls this instead of inserting a paragraph break. */
+  onEnter?: () => void
 }
 
 /**

@@ -12,6 +12,7 @@ import { createScopedLogger } from '@auxx/logger'
 import { and, desc, eq, isNull } from 'drizzle-orm'
 import type { ActiveIntegration, ProviderInstance } from '../email/message-service'
 import type { ChannelProvider } from './channel-provider.interface'
+import { ChatProvider } from './chat/chat-provider'
 import { EmailForwardingProvider } from './email/email-forwarding-provider'
 import { FacebookProvider } from './facebook/facebook-provider'
 import { GoogleProvider } from './google/google-provider'
@@ -61,6 +62,7 @@ export class ProviderRegistryService {
       mailgun: IntegrationProviderEnum.mailgun,
       imap: IntegrationProviderEnum.imap,
       email: IntegrationProviderEnum.email,
+      chat: IntegrationProviderEnum.chat,
     }
   }
   /**
@@ -205,6 +207,9 @@ export class ProviderRegistryService {
           break
         case IntegrationProviderEnum.email:
           provider = new EmailForwardingProvider(this.organizationId)
+          break
+        case IntegrationProviderEnum.chat:
+          provider = new ChatProvider(this.organizationId)
           break
         default:
           logger.error('Attempted to initialize unsupported provider type', { type, integrationId })

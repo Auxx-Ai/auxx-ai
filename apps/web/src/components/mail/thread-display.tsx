@@ -10,23 +10,13 @@ import { KopilotContext } from '~/components/kopilot/context'
 import { KopilotSuggestion } from '~/components/kopilot/suggestions'
 import { useThread, useThreadReadStatus } from '~/components/threads/hooks'
 import { useActiveThreadId, useHasMultipleSelected } from '~/components/threads/store'
-import type { ChannelProvider } from '~/components/threads/store/thread-store'
 import { useCompose } from '~/hooks/use-compose'
 import { useUser } from '~/hooks/use-user'
 import { EmptyState } from '../global/empty-state'
-import ChatInterface from '../mail-views/chat-interface'
 import BulkActionToolbar from './bulk-action-toolbar'
 import { useMailFilter } from './mail-filter-context'
 import ThreadDetails from './thread-details'
 import { ThreadProvider } from './thread-provider'
-
-/** Chat providers that use ChatInterface instead of ThreadDetails */
-const CHAT_PROVIDERS: ChannelProvider[] = ['FACEBOOK', 'INSTAGRAM', 'OPENPHONE']
-
-/** Check if thread should use chat interface based on integration provider */
-function isChatThread(provider: ChannelProvider | null): boolean {
-  return provider !== null && CHAT_PROVIDERS.includes(provider)
-}
 
 interface ThreadDisplayProps {
   /** When true, centers the content with a max-width for full-page list view */
@@ -94,18 +84,9 @@ export function ThreadDisplay({ centered, expectedThreadId }: ThreadDisplayProps
       )}
       <BulkActionToolbar />
       {thread && viewMode !== 'edit' ? (
-        isChatThread(thread.integrationProvider) ? (
-          <ChatInterface
-            threadId={thread.id}
-            sessionId={thread.externalId}
-            thread={thread}
-            centered={centered}
-          />
-        ) : (
-          <ThreadProvider threadId={thread.id}>
-            <ThreadDetails centered={centered} />
-          </ThreadProvider>
-        )
+        <ThreadProvider threadId={thread.id}>
+          <ThreadDetails centered={centered} />
+        </ThreadProvider>
       ) : isLoading || isResolvingThread ? (
         <div className='flex h-full items-center justify-center'>
           <Loader size='sm' title='Loading messages...' subtitle='Please wait' />

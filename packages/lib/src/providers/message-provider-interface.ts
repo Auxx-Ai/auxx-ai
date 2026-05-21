@@ -20,6 +20,11 @@ export interface MessageProvider {
   replyToMessage?(params: ReplyMessageParams): Promise<SendMessageResult>
   forwardMessage?(params: ForwardMessageParams): Promise<SendMessageResult>
 
+  // Inbound ingest. Only ChatProvider implements this today — email/FB/IG ingest
+  // runs via separate webhook/SQS paths. If those ever consolidate, the contract
+  // is here.
+  receiveMessage?(params: ReceiveMessageParams): Promise<ReceiveMessageResult>
+
   // Draft operations
   createDraft?(
     params: CreateDraftParams | Record<string, any>
@@ -89,6 +94,9 @@ export interface SendMessageParams {
   metadata?: Record<string, any>
   scheduledAt?: Date
   templateId?: string
+  /** Row id of the freshly composed Message — used by providers (e.g. chat)
+   *  that need to write side rows (receipts) after the composer commits. */
+  internalMessageId?: string
 }
 
 /**
@@ -132,6 +140,27 @@ export interface CreateDraftParams {
  * Parameters for updating a draft
  */
 export interface UpdateDraftParams extends Partial<CreateDraftParams> {}
+
+/**
+ * Parameters for receiving (ingesting) an inbound message.
+ */
+export interface ReceiveMessageParams {
+  threadId: string
+  /** Participant id of the inbound sender (e.g. chat visitor). */
+  fromParticipantId: string
+  content: string
+  /** Client-generated id for idempotency on retries. */
+  clientMessageId?: string
+  attachmentIds?: string[]
+}
+
+/**
+ * Result of receiving (ingesting) an inbound message.
+ */
+export interface ReceiveMessageResult {
+  messageId: string
+  threadId: string
+}
 
 /**
  * Result of sending a message

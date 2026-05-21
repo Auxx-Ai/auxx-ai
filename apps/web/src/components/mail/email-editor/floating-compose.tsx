@@ -7,6 +7,8 @@ import { Loader2, Minus, X } from 'lucide-react'
 import { motion, useDragControls, useMotionValue } from 'motion/react'
 import { useCallback, useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { useChannel } from '~/components/channels/hooks/use-channels'
+import ChatComposer from '../chat-composer'
 import type { ComposeInstance } from '../store/compose-store'
 import { useComposeStore } from '../store/compose-store'
 import { useDraft } from './hooks/use-draft'
@@ -118,10 +120,27 @@ export function FloatingCompose({ instance }: { instance: ComposeInstance }) {
   const showLoading =
     !editorMounted || (instance.mode === 'draft' && instance.draft?.id && isDraftLoading)
 
+  // Resolve the integration's provider to decide which composer to mount.
+  // Chat threads use the dedicated ChatComposer; everything else (email +
+  // FB/IG/SMS for now) flows through ReplyComposeEditor.
+  const threadChannel = useChannel(instance.thread?.integrationId)
+  const isChat = threadChannel?.provider === 'chat'
+
   const editorElement = showLoading ? (
     <div className='flex items-center justify-center rounded-[20px] bg-background p-8'>
       <Loader2 className='size-6 animate-spin text-muted-foreground' />
     </div>
+  ) : isChat && instance.thread ? (
+    <ChatComposer
+      thread={instance.thread}
+      isDialogMode={instance.displayMode !== 'inline'}
+      onClose={handleClose}
+      onSendSuccess={handleClose}
+      onPopOut={instance.displayMode === 'inline' ? handlePopOut : undefined}
+      onMinimize={instance.displayMode === 'floating' ? handleMinimize : undefined}
+      onDockBack={canDockBack ? handleDockBack : undefined}
+      instanceId={instance.id}
+    />
   ) : (
     <ReplyComposeEditor
       thread={instance.thread}

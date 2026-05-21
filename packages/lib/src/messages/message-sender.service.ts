@@ -79,22 +79,26 @@ export class MessageSenderService {
       subject: input.subject,
       recipientCount: input.to.length + (input.cc?.length || 0) + (input.bcc?.length || 0),
     })
-    // Validate input
-    this.validateInput(input)
-    // Usage guard: count outbound email before sending
-    const guard = await createUsageGuard(this.db ?? db)
-    if (guard) {
-      const usageResult = await guard.consume(input.organizationId, 'outboundEmails', {
-        userId: input.userId,
-      })
-      if (!usageResult.allowed) {
-        throw new UsageLimitError({
-          metric: 'outboundEmails',
-          current: usageResult.current ?? 0,
-          limit: usageResult.limit ?? 0,
-          message:
-            'You have reached your monthly email sending limit. Upgrade your plan to send more emails.',
+    // Validate input (capability-driven — subject/recipients depend on provider)
+    const capabilities = await this.getCapabilitiesForIntegration(input.integrationId)
+    this.validateInput(input, capabilities)
+    // Usage guard: count outbound email before sending (skip for providers that
+    // don't count, e.g. chat).
+    if (capabilities.countsAgainstOutboundEmailsQuota) {
+      const guard = await createUsageGuard(this.db ?? db)
+      if (guard) {
+        const usageResult = await guard.consume(input.organizationId, 'outboundEmails', {
+          userId: input.userId,
         })
+        if (!usageResult.allowed) {
+          throw new UsageLimitError({
+            metric: 'outboundEmails',
+            current: usageResult.current ?? 0,
+            limit: usageResult.limit ?? 0,
+            message:
+              'You have reached your monthly email sending limit. Upgrade your plan to send more emails.',
+          })
+        }
       }
     }
     let threadContext: ThreadContext | undefined
@@ -200,12 +204,15 @@ export class MessageSenderService {
       await this.threadManager.updateThreadParticipants(threadContext.id)
       // Outbound send is real activity on any linked entity (deal/ticket/lead).
       await touchActivityForThreadLinks(threadContext.id, this.organizationId)
-      // Step 9: Trigger post-send sync
-      await this.triggerPostSendSync(input.integrationId, {
-        messageId: composed.id,
-        threadId: threadContext.id,
-        sendToken: composed.sendToken,
-      })
+      // Step 9: Trigger post-send sync (skip for providers without external
+      // state to reconcile, e.g. chat).
+      if (capabilities.triggersPostSendSync) {
+        await this.triggerPostSendSync(input.integrationId, {
+          messageId: composed.id,
+          threadId: threadContext.id,
+          sendToken: composed.sendToken,
+        })
+      }
       // Step 10: Convert temp attachments to permanent after successful send
       if (input.attachmentIds && input.attachmentIds.length > 0 && sendResult.success) {
         await this.convertAttachmentsToPermanent(input.attachmentIds)
@@ -241,9 +248,14 @@ export class MessageSenderService {
     }
   }
   /**
-   * Validates send message input
+   * Validates send message input against the provider's capabilities.
+   * Subject / recipient checks are skipped for providers that don't require
+   * them (e.g. chat).
    */
-  private validateInput(input: SendMessageInput): void {
+  private validateInput(
+    input: SendMessageInput,
+    capabilities: { requiresSubject: boolean; requiresRecipients: boolean }
+  ): void {
     if (!input.userId) {
       throw new Error('User ID is required')
     }
@@ -256,14 +268,41 @@ export class MessageSenderService {
     if (!input.integrationId) {
       throw new Error('Integration ID is required')
     }
-    if (!input.subject) {
+    if (capabilities.requiresSubject && !input.subject) {
       throw new Error('Subject is required')
     }
-    if (!input.to || input.to.length === 0) {
+    if (capabilities.requiresRecipients && (!input.to || input.to.length === 0)) {
       throw new Error('At least one recipient is required')
     }
     if (!input.textHtml && !input.textPlain) {
       throw new Error('Message content is required')
+    }
+  }
+  /**
+   * Resolves the capability matrix for an integration. Looks up the
+   * integration's provider string and reads the static capability map.
+   */
+  private async getCapabilitiesForIntegration(integrationId: string): Promise<{
+    requiresSubject: boolean
+    requiresRecipients: boolean
+    countsAgainstOutboundEmailsQuota: boolean
+    triggersPostSendSync: boolean
+  }> {
+    const [integration] = await (this.db ?? db)
+      .select({ provider: schema.Integration.provider })
+      .from(schema.Integration)
+      .where(eq(schema.Integration.id, integrationId))
+      .limit(1)
+    if (!integration) {
+      throw new Error(`Integration ${integrationId} not found`)
+    }
+    const { getProviderCapabilities } = await import('../providers/provider-capabilities')
+    const caps = getProviderCapabilities(integration.provider as any)
+    return {
+      requiresSubject: caps.requiresSubject,
+      requiresRecipients: caps.requiresRecipients,
+      countsAgainstOutboundEmailsQuota: caps.countsAgainstOutboundEmailsQuota,
+      triggersPostSendSync: caps.triggersPostSendSync,
     }
   }
   /**
@@ -371,6 +410,7 @@ export class MessageSenderService {
       // Call provider's sendMessage method
       const result = await provider.sendMessage({
         messageId: input.composed.messageId,
+        internalMessageId: input.composed.id,
         from: input.participants.from.identifier,
         to: input.participants.to.map((p) => p.identifier),
         cc: input.participants.cc?.map((p) => p.identifier),

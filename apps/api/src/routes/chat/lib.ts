@@ -1,8 +1,6 @@
 // apps/api/src/routes/chat/lib.ts
 
 import { database, schema } from '@auxx/database'
-import { createChatService } from '@auxx/lib/chat'
-import { getRealtimeService } from '@auxx/lib/realtime'
 import { and, eq } from 'drizzle-orm'
 import type { Context } from 'hono'
 
@@ -99,9 +97,4 @@ export function applyChatCorsHeaders(c: Context, opts: { allowCredentials: boole
   if (opts.allowCredentials) {
     c.header('Access-Control-Allow-Credentials', 'true')
   }
-}
-
-/** Lazy chat service factory shared across routes. */
-export function getChatService() {
-  return createChatService(database, getRealtimeService())
 }

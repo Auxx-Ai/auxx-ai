@@ -1,19 +1,29 @@
 // apps/chat-widget/src/chat-window.tsx
 
+import type { Ref } from 'preact'
 import { useEffect, useRef, useState } from 'preact/hooks'
 import type { ChatMessage } from './transport/chat-api'
 import type { ChatConfig } from './transport/config'
 
-interface ChatWindowProps {
+interface ChatPanelProps {
   config: ChatConfig
   messages: ChatMessage[]
   sending: boolean
   error: string | null
+  inputRef: Ref<HTMLInputElement>
   onClose: () => void
   onSend: (content: string) => void
 }
 
-export function ChatWindow({ config, messages, sending, error, onClose, onSend }: ChatWindowProps) {
+export function ChatPanel({
+  config,
+  messages,
+  sending,
+  error,
+  inputRef,
+  onClose,
+  onSend,
+}: ChatPanelProps) {
   const [draft, setDraft] = useState('')
   const bodyRef = useRef<HTMLDivElement | null>(null)
 
@@ -29,8 +39,8 @@ export function ChatWindow({ config, messages, sending, error, onClose, onSend }
   }
 
   return (
-    <div class='auxx-chat-window' role='dialog' aria-label={config.appearance.title}>
-      <div class='auxx-chat-header' style={{ backgroundColor: config.appearance.primaryColor }}>
+    <>
+      <div class='auxx-chat-header'>
         <div>
           <div class='auxx-chat-header__title'>{config.appearance.title}</div>
           {config.appearance.subtitle ? (
@@ -60,6 +70,7 @@ export function ChatWindow({ config, messages, sending, error, onClose, onSend }
           submit()
         }}>
         <input
+          ref={inputRef}
           class='auxx-chat-input'
           placeholder='Type a message…'
           value={draft}
@@ -69,11 +80,10 @@ export function ChatWindow({ config, messages, sending, error, onClose, onSend }
         <button
           type='submit'
           class='auxx-chat-send'
-          disabled={sending || draft.trim().length === 0}
-          style={{ backgroundColor: config.appearance.primaryColor }}>
+          disabled={sending || draft.trim().length === 0}>
           Send
         </button>
       </form>
-    </div>
+    </>
   )
 }

@@ -1,8 +1,7 @@
 // apps/chat-widget/src/widget.tsx
 
 import { useEffect, useRef, useState } from 'preact/hooks'
-import { ChatButton } from './chat-button'
-import { ChatWindow } from './chat-window'
+import { ChatPanel } from './chat-window'
 import { type ChatMessage, chatApi, type InitializeResponse } from './transport/chat-api'
 import { type ChatConfig, fetchChatConfig } from './transport/config'
 import { connectPusher, type PusherConnection } from './transport/pusher'
@@ -20,6 +19,9 @@ export function Widget({ channelId }: WidgetProps) {
   const [error, setError] = useState<string | null>(null)
 
   const pusherRef = useRef<PusherConnection | null>(null)
+  const triggerRef = useRef<HTMLButtonElement | null>(null)
+  const inputRef = useRef<HTMLInputElement | null>(null)
+  const mountedRef = useRef(false)
   const api = useRef(chatApi(channelId)).current
 
   // Load config once on mount.
@@ -82,6 +84,17 @@ export function Widget({ channelId }: WidgetProps) {
     }
   }, [session, config, api])
 
+  // Move focus on open/close transitions. Skip the very first render so we
+  // don't yank focus on initial mount if autoOpen is off.
+  useEffect(() => {
+    if (!mountedRef.current) {
+      mountedRef.current = true
+      return
+    }
+    if (open) inputRef.current?.focus()
+    else triggerRef.current?.focus()
+  }, [open])
+
   const handleSend = async (content: string) => {
     if (!session) return
     setSending(true)
@@ -121,25 +134,49 @@ export function Widget({ channelId }: WidgetProps) {
   if (!config) return null
 
   const positionClass = config.appearance.position.toLowerCase().includes('left')
-    ? 'auxx-chat-root--bottom-left'
-    : 'auxx-chat-root--bottom-right'
+    ? 'auxx-chat-shell--bottom-left'
+    : 'auxx-chat-shell--bottom-right'
+  const stateClass = open ? 'auxx-chat-shell--open' : 'auxx-chat-shell--closed'
+
+  const rootStyle = { '--auxx-chat-primary': config.appearance.primaryColor } as Record<
+    string,
+    string
+  >
 
   return (
-    <div class={`auxx-chat-root ${positionClass}`}>
-      {open && (
-        <ChatWindow
-          config={config}
-          messages={messages}
-          sending={sending}
-          error={error}
-          onClose={() => setOpen(false)}
-          onSend={handleSend}
+    <div class='auxx-chat-root' style={rootStyle}>
+      <div class={`auxx-chat-shell ${stateClass} ${positionClass}`}>
+        <button
+          ref={triggerRef}
+          type='button'
+          class='auxx-chat-shell__trigger'
+          onClick={() => setOpen((v) => !v)}
+          aria-label={open ? 'Close chat' : 'Open chat'}
+          aria-expanded={open}
+          tabIndex={open ? -1 : 0}
         />
-      )}
-      <ChatButton
-        primaryColor={config.appearance.primaryColor}
-        onClick={() => setOpen((v) => !v)}
-      />
+        <span class='auxx-chat-shell__icon' aria-hidden='true'>
+          <svg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'>
+            <path d='M20 2H4a2 2 0 0 0-2 2v18l4-4h14a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2zM6 9h12v2H6V9zm8 5H6v-2h8v2z' />
+          </svg>
+        </span>
+        <div
+          class='auxx-chat-shell__panel'
+          role='dialog'
+          aria-modal='false'
+          aria-label={config.appearance.title}
+          aria-hidden={!open}>
+          <ChatPanel
+            config={config}
+            messages={messages}
+            sending={sending}
+            error={error}
+            inputRef={inputRef}
+            onClose={() => setOpen(false)}
+            onSend={handleSend}
+          />
+        </div>
+      </div>
     </div>
   )
 }

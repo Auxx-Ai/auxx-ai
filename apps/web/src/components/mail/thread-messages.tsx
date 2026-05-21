@@ -20,6 +20,7 @@ import { getThreadStoreState } from '~/components/threads/store/thread-store'
 import { useCompose } from '~/hooks/use-compose'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
+import ChatMessageDisplay from './chat-message-display'
 import EmailDisplay from './email-display'
 import type { DraftMessageType } from './email-editor/types'
 import MessageDisplay from './message-display'
@@ -220,6 +221,14 @@ export function ThreadMessages() {
                       messageActions={messageActions}
                       isOpen={isLastMessage}
                       isLastMessage={isLastMessage}
+                    />
+                  )
+                case 'CHAT':
+                  return (
+                    <ChatMessageDisplay
+                      messageId={message.id}
+                      messageActions={messageActions}
+                      isOpen={isLastMessage}
                     />
                   )
                 default:

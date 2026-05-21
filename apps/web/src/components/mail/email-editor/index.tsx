@@ -1,6 +1,7 @@
 // apps/web/src/components/mail/email-editor/index.tsx
 'use client'
 import type { IdentifierType } from '@auxx/database/types'
+import { PLATFORM_CAPABILITIES, type PlatformCapabilities } from '@auxx/lib/channels/client'
 import type { DraftActionPayload } from '@auxx/lib/quick-actions/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
@@ -22,6 +23,7 @@ import type React from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
 import { useDropzone } from 'react-dropzone'
+import { useChannel } from '~/components/channels/hooks/use-channels'
 import { EditorToolbar } from '~/components/editor/editor-button'
 import { EditorProvider, useEditorContext } from '~/components/editor/editor-context'
 import { type ContentApplier, makeContentApplier } from '~/components/editor/inline-picker'
@@ -158,6 +160,29 @@ function ReplyComposeEditorComponent({
   const toInputRef = useRef<RecipientInputHandle>(null)
   const ccInputRef = useRef<RecipientInputHandle>(null)
   const bccInputRef = useRef<RecipientInputHandle>(null)
+
+  // Resolve PlatformCapabilities for the currently-selected integration. The
+  // composer renders the same Tiptap surface for every channel; capability
+  // flags decide which header fields and quoted-reply UI to show.
+  const selectedChannel = useChannel(state.integrationId)
+  const selectedChannelFromList = useMemo(() => {
+    if (selectedChannel || !integrations?.channels || !state.integrationId) return undefined
+    return integrations.channels.find((c) => c.id === state.integrationId)
+  }, [selectedChannel, integrations, state.integrationId])
+  const providerKey = (selectedChannel?.provider ?? selectedChannelFromList?.provider) as
+    | keyof typeof PLATFORM_CAPABILITIES
+    | undefined
+  const platformCaps: PlatformCapabilities | undefined = providerKey
+    ? PLATFORM_CAPABILITIES[providerKey]
+    : undefined
+  const isEmailChannel = platformCaps ? platformCaps.channel === 'email' : true
+  const showSubjectField = platformCaps ? platformCaps.subject : true
+  const showCcBccToggle = platformCaps ? platformCaps.ccBcc : true
+  const showRecipientField = platformCaps
+    ? platformCaps.recipientModel !== 'thread_only' &&
+      platformCaps.recipientModel !== 'platform_user'
+    : true
+  const showQuotedReply = isEmailChannel
 
   // Other UI state
   const [content, setContent] = useState(state.contentHtml)
@@ -476,7 +501,6 @@ function ReplyComposeEditorComponent({
       draftId: state.draftId,
     }
   }, [state, content, recipients, attachments, fileSelect.selectedItems, quickActions])
-  // Auto-save hook
   const draftAutosave = useDraftAutosave({
     enabled: !isSending && !!state.integrationId,
     payload: draftPayload,
@@ -775,12 +799,12 @@ function ReplyComposeEditorComponent({
         setIsSending(false)
         return
       }
-      if (recipients.TO.length === 0) {
+      if (showRecipientField && recipients.TO.length === 0) {
         setShowNoToWarning(true)
         setIsSending(false)
         return
       }
-      if (!state.subject.trim()) {
+      if (showSubjectField && !state.subject.trim()) {
         toastError({ title: 'Missing Subject', description: 'Please enter a subject.' })
         setIsSending(false)
         return
@@ -901,12 +925,12 @@ function ReplyComposeEditorComponent({
           setIsSending(false)
           return
         }
-        if (recipients.TO.length === 0) {
+        if (showRecipientField && recipients.TO.length === 0) {
           setShowNoToWarning(true)
           setIsSending(false)
           return
         }
-        if (!state.subject.trim()) {
+        if (showSubjectField && !state.subject.trim()) {
           toastError({ title: 'Missing Subject', description: 'Please enter a subject.' })
           setIsSending(false)
           return
@@ -1171,56 +1195,58 @@ function ReplyComposeEditorComponent({
             <Separator className='mx-4 w-auto' />
 
             {/* To Field & Toggles */}
-            <div className='flex items-center gap-2 px-4 py-2'>
-              <span className='w-10 shrink-0 text-sm text-muted-foreground'>To:</span>
-              <RecipientInput
-                ref={toInputRef}
-                field='TO'
-                recipients={recipients.TO}
-                onAdd={(r) => upsertRecipient('TO', r)}
-                onRemove={(id) => removeRecipient('TO', id)}
-                onMoveTo={(id, target) => handleMoveTo('TO', id, target)}
-                onContactSelect={(c) => handleContactSelect('TO', c)}
-                placeholder='Add recipients...'
-                disabled={isSending}
-                popoverClassName={popoverZIndex}
-              />
-              <div className='ml-auto flex shrink-0 items-center gap-1'>
-                {!showSubject && (
-                  <Button
-                    variant='ghost'
-                    size='sm'
-                    className='h-6 px-1 text-xs text-info'
-                    onClick={() => setShowSubject(true)}
-                    disabled={isSending}>
-                    Subject
-                  </Button>
-                )}
-                {!showCc && (
-                  <Button
-                    variant='ghost'
-                    size='sm'
-                    className='h-6 px-1 text-xs text-info'
-                    onClick={() => setShowCc(true)}
-                    disabled={isSending}>
-                    Cc
-                  </Button>
-                )}
-                {!showBcc && (
-                  <Button
-                    variant='ghost'
-                    size='sm'
-                    className='h-6 px-1 text-xs text-info'
-                    onClick={() => setShowBcc(true)}
-                    disabled={isSending}>
-                    Bcc
-                  </Button>
-                )}
+            {showRecipientField && (
+              <div className='flex items-center gap-2 px-4 py-2'>
+                <span className='w-10 shrink-0 text-sm text-muted-foreground'>To:</span>
+                <RecipientInput
+                  ref={toInputRef}
+                  field='TO'
+                  recipients={recipients.TO}
+                  onAdd={(r) => upsertRecipient('TO', r)}
+                  onRemove={(id) => removeRecipient('TO', id)}
+                  onMoveTo={(id, target) => handleMoveTo('TO', id, target)}
+                  onContactSelect={(c) => handleContactSelect('TO', c)}
+                  placeholder='Add recipients...'
+                  disabled={isSending}
+                  popoverClassName={popoverZIndex}
+                />
+                <div className='ml-auto flex shrink-0 items-center gap-1'>
+                  {showSubjectField && !showSubject && (
+                    <Button
+                      variant='ghost'
+                      size='sm'
+                      className='h-6 px-1 text-xs text-info'
+                      onClick={() => setShowSubject(true)}
+                      disabled={isSending}>
+                      Subject
+                    </Button>
+                  )}
+                  {showCcBccToggle && !showCc && (
+                    <Button
+                      variant='ghost'
+                      size='sm'
+                      className='h-6 px-1 text-xs text-info'
+                      onClick={() => setShowCc(true)}
+                      disabled={isSending}>
+                      Cc
+                    </Button>
+                  )}
+                  {showCcBccToggle && !showBcc && (
+                    <Button
+                      variant='ghost'
+                      size='sm'
+                      className='h-6 px-1 text-xs text-info'
+                      onClick={() => setShowBcc(true)}
+                      disabled={isSending}>
+                      Bcc
+                    </Button>
+                  )}
+                </div>
               </div>
-            </div>
+            )}
 
             {/* Cc Field */}
-            {showCc && (
+            {showCcBccToggle && showCc && (
               <>
                 <Separator className='mx-4 w-auto' />
                 <div className='flex items-center gap-2 px-4 py-2'>
@@ -1253,7 +1279,7 @@ function ReplyComposeEditorComponent({
             )}
 
             {/* Bcc Field */}
-            {showBcc && (
+            {showCcBccToggle && showBcc && (
               <>
                 <Separator className='mx-4 w-auto' />
                 <div className='flex items-center gap-2 px-4 py-2'>
@@ -1286,7 +1312,7 @@ function ReplyComposeEditorComponent({
             )}
 
             {/* Subject Field */}
-            {showSubject && (
+            {showSubjectField && showSubject && (
               <>
                 <Separator className='mx-4 w-auto' />
                 <div className='flex items-center gap-2 px-4 py-2'>
@@ -1415,13 +1441,13 @@ function ReplyComposeEditorComponent({
               </div>
             )}
 
-            {state.includePrev && messageForPrevComponent && (
+            {showQuotedReply && state.includePrev && messageForPrevComponent && (
               <PrevMessage
                 message={messageForPrevComponent}
                 onRemove={() => setState((prev) => ({ ...prev, includePrev: false }))}
               />
             )}
-            {!state.includePrev && messageForPrevComponent && (
+            {showQuotedReply && !state.includePrev && messageForPrevComponent && (
               <div className='px-2'>
                 <Button
                   variant='ghost'
@@ -1439,7 +1465,7 @@ function ReplyComposeEditorComponent({
 
           {/* Toolbar with integrated AI Tools */}
           <div className='editor-toolbar-wrapper relative px-2 py-1 '>
-            {showNoToWarning && (
+            {showRecipientField && showNoToWarning && (
               <Badge variant='red' size='sm' className='absolute right-3 bottom-full z-10'>
                 Add a To recipient to send
               </Badge>
