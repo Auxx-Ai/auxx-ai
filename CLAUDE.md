@@ -194,6 +194,22 @@ Result.error(new NotFoundError('Not found'))
 Result.nil() // Ok with undefined value
 ```
 
+## Org Cache (read-path first)
+
+Before adding a new DB query for org-scoped data, check `@auxx/lib/cache`. Most hot read paths are already cached per-org and hydrated by providers — re-querying defeats invalidation and wastes a roundtrip.
+
+```typescript
+import {
+  getCachedResource, getCachedResources, getCachedResourceFields,
+  getCachedCustomFields, getCachedFieldMap, getCachedEntityDefId,
+  getCachedMembers, isOrgMember, getCachedGroups,
+  getCachedAgents, getCachedAgentById, getCachedDefaultModel,
+  getOrgCache, // for keys without a helper
+} from '@auxx/lib/cache'
+```
+
+Cached keys (`OrgCacheDataMap`): `entityDefs`, `entityDefSlugs`, `systemUser`, `channelProviders`, `members`, `memberRoleMap`, `features`, `subscription`, `orgProfile`, `resources`, `customFields`, `groups`, `agents`, `inboxes`, `integrations`, `overages`, `orgSettings`, `installedApps`, `workflowApps`, `aiProviderConfigs`, `aiCredentials`, `aiDefaultModels`. For anything in this list, prefer `getOrgCache().get(orgId, '<key>')` over a fresh query. Only hit the DB when the data isn't cached or you need a write-after-read consistency guarantee.
+
 ## Database Models
 
 Models extend `BaseModel` with typed CRUD operations and org-scoped queries:
