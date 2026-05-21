@@ -7,6 +7,7 @@ import { EmptySection } from '@auxx/ui/components/section'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { Plus, Wrench } from 'lucide-react'
 import { useCallback, useMemo, useState } from 'react'
+import { useToolCatalog } from '~/components/agents/hooks/use-tool-catalog'
 import {
   CatalogNodeRow,
   collectLeaves,
@@ -15,7 +16,6 @@ import {
 } from '~/components/agents/ui/detail/tools/catalog-node-row'
 import { ToolSelectDialog } from '~/components/agents/ui/detail/tools/tool-select-dialog'
 import { AppAccountDialog } from '~/components/apps/ui/app-account-dialog'
-import { api } from '~/trpc/react'
 import { useMasterKopilotToolsets } from './use-master-kopilot-toolsets'
 
 /**
@@ -24,8 +24,7 @@ import { useMasterKopilotToolsets } from './use-master-kopilot-toolsets'
  * with a "+ Add tools" trigger that opens the catalog browser dialog.
  */
 export function ToolsetsSection() {
-  const catalogQuery = api.agentToolset.list.useQuery(undefined, { staleTime: 60_000 })
-  const catalog = catalogQuery.data ?? []
+  const { catalog, isLoading: catalogIsLoading } = useToolCatalog()
   const tools = useMasterKopilotToolsets(catalog)
 
   const stateBySlug = useMemo<Map<string, ToolsetRowState>>(() => {
@@ -124,7 +123,7 @@ export function ToolsetsSection() {
         </Button>
       </div>
       <div className='flex flex-col pe-4'>
-        {catalogQuery.isLoading ? (
+        {catalogIsLoading ? (
           <div className='flex flex-col gap-1'>
             {[0, 1, 2].map((i) => (
               <Skeleton key={i} className='h-9 w-full' />

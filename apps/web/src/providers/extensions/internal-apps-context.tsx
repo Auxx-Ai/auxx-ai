@@ -32,7 +32,6 @@ export function InternalAppsContextProvider({ children }: { children: ReactNode 
 
   if (!storeRef.current) {
     storeRef.current = new AppStore()
-    console.log('[Extensions] AppStore created')
   }
 
   return (

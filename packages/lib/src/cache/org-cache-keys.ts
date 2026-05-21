@@ -204,9 +204,12 @@ export interface CachedSystemModelDefault {
  * re-encoding or walking the toolset list.
  *
  *  - `registeredName` — the LLM-facing name the bridge registers this tool
- *    under (`getRegisteredToolName(appSlug, tool.id)`). Stamped here so the
- *    client `useToolAppResolver` hook can do `Map<registeredName, …>`
- *    lookups against `ToolCallPart.name` without duplicating the encoding.
+ *    under. Third-party tools use `getRegisteredToolName(appSlug, tool.id)`
+ *    = `<slugPrefix>_<id>`; the synthetic auxx row uses the bare
+ *    `agentName` because built-in capabilities register under their bare
+ *    snake_case name (e.g. `mail_search`). Stamped here so the client
+ *    `useToolAppResolver` hook can do `Map<registeredName, …>` lookups
+ *    against `ToolCallPart.name` without duplicating the encoding.
  *  - `iconId` — the resolved icon to render in `<AppIcon>`: toolset's own
  *    `iconKey` wins (multi-toolset apps like Workspace ship distinct
  *    Mail/Calendar/Drive icons), falls back to the app's `avatarUrl`, then
@@ -216,6 +219,28 @@ export interface CachedSystemModelDefault {
 export interface CachedAgentTool extends CatalogAgentTool {
   registeredName: string
   iconId: string
+}
+
+/**
+ * Cache-side projection of a toolset. Extends the SDK-defined
+ * `CatalogToolset` with the fields the agent catalog renderer needs.
+ * Third-party rows populate `slug`/`name`/`description`/`iconKey`/
+ * `subGroup` and leave the rest `undefined` (the builder falls back
+ * to sensible defaults). The synthetic auxx row populates everything.
+ */
+export interface CachedAgentToolset extends CatalogToolset {
+  /** Short header text used inside the app/sub-group render. Falls back to `name`. */
+  shortLabel?: string
+  /** Tailwind-ish color key for `<AppIcon color>` and badges. */
+  color?: string
+  /** Auto-enable on agent create. Treated as `false` when undefined. */
+  isDefault?: boolean
+  /** Curated for the Tool-Select dialog's Popular tab. Treated as `false` when undefined. */
+  isPopular?: boolean
+  /** Sub-group header icon override; first non-null sibling wins. */
+  subGroupIconId?: string
+  /** Sub-group header color override; first non-null sibling wins. */
+  subGroupColor?: string
 }
 
 /** Cached installed app shape (JSON-serializable) */
@@ -280,7 +305,7 @@ export interface CachedInstalledApp {
    * See plans/kopilot/agents/triggers/app-surface-implementation-plan.md §5.3.
    */
   agentTools?: CachedAgentTool[]
-  agentToolsets?: CatalogToolset[]
+  agentToolsets?: CachedAgentToolset[]
   agentTriggers?: CatalogTriggerProjection[]
   workflowBlocks?: CatalogBlock[]
   workflowTriggers?: CatalogTriggerProjection[]

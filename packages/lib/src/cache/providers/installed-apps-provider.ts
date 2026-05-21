@@ -2,6 +2,7 @@
 
 import { schema } from '@auxx/database'
 import { and, eq, inArray, isNull } from 'drizzle-orm'
+import { getBuiltinAuxxInstalledRow } from '../../agents/builtin-installed-row'
 import { getRegisteredToolName } from '../../ai/kopilot/capabilities/apps/tool-naming'
 import type { CachedAgentTool, CachedInstalledApp } from '../org-cache-keys'
 import type { CacheProvider } from '../org-cache-provider'
@@ -86,8 +87,11 @@ export const installedAppsProvider: CacheProvider<CachedInstalledApp[]> = {
       connDefsByAppId.set(def.appId, existing)
     }
 
-    // 3. Build serializable output
-    return installations.map((inst) => {
+    // 3. Build serializable output. Prepend the synthetic built-in `auxx`
+    //    row so the client receives the same merged tree the server used to
+    //    ship via `agentToolset.list`. See
+    //    plans/kopilot/agents/tools/project-builtin-auxx-into-installations.md.
+    const thirdPartyRows = installations.map((inst) => {
       // Pre-resolve per-tool icon cascade once per app: toolset.iconKey →
       // app.avatarUrl → 'package'. Same cascade as the admin tools tree
       // (packages/lib/src/agents/toolset-catalog.ts:276-288) so the kopilot
@@ -154,5 +158,7 @@ export const installedAppsProvider: CacheProvider<CachedInstalledApp[]> = {
         orgConnectionExpiresAt: orgConnByAppId.get(inst.app.id)?.expiresAt?.toISOString() ?? null,
       }
     })
+
+    return [getBuiltinAuxxInstalledRow(), ...thirdPartyRows]
   },
 }

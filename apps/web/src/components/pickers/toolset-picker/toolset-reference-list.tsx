@@ -12,8 +12,8 @@ import {
 } from '@auxx/ui/components/command'
 import { cn } from '@auxx/ui/lib/utils'
 import { useMemo } from 'react'
+import { useToolCatalog } from '~/components/agents/hooks/use-tool-catalog'
 import { AppIcon } from '~/components/apps/ui/app-icon'
-import { api } from '~/trpc/react'
 
 export interface ToolsetReferenceListProps {
   /** Search query forwarded from the picker chip. */
@@ -26,26 +26,24 @@ export interface ToolsetReferenceListProps {
 /**
  * Flat single-list search component for the ReferencePicker Tools tab.
  *
- * Backed by `api.agentToolset.list` which returns the org catalog tree; this
- * component flattens it to one row per toolset for the picker. The "Tools"
- * tab is one of intentionally-coarse granularity: an admin pins a whole
- * toolset to the persona prompt and the agent gets all of its tools.
- * Individual tool pinning (`tool:<name>`) is not exposed in v1 — the catalog
- * has no per-tool selection surface and per-tool gating already lives on the
- * Tools tab via `disabledTools`.
+ * Backed by `useExtensionsContext().appInstallations` via `useToolCatalog`,
+ * which returns the org catalog tree; this component flattens it to one row
+ * per toolset for the picker. The "Tools" tab is one of intentionally-coarse
+ * granularity: an admin pins a whole toolset to the persona prompt and the
+ * agent gets all of its tools. Individual tool pinning (`tool:<name>`) is
+ * not exposed in v1 — the catalog has no per-tool selection surface and
+ * per-tool gating already lives on the Tools tab via `disabledTools`.
  */
 export function ToolsetReferenceList({
   externalSearch = '',
   onSelectSingle,
   className,
 }: ToolsetReferenceListProps) {
-  const catalogQuery = api.agentToolset.list.useQuery(undefined, {
-    staleTime: 60_000,
-  })
+  const { catalog, isLoading } = useToolCatalog()
 
   const flat = useMemo<FlatToolsetCatalogEntry[]>(
-    () => (catalogQuery.data ? flattenCatalogToToolsets(catalogQuery.data) : []),
-    [catalogQuery.data]
+    () => flattenCatalogToToolsets(catalog),
+    [catalog]
   )
 
   const filtered = useMemo<FlatToolsetCatalogEntry[]>(() => {
@@ -59,7 +57,6 @@ export function ToolsetReferenceList({
     })
   }, [flat, externalSearch])
 
-  const isLoading = catalogQuery.isLoading
   const showEmpty = !isLoading && filtered.length === 0 && flat.length > 0
   const showEmptyInitial = !isLoading && flat.length === 0
 

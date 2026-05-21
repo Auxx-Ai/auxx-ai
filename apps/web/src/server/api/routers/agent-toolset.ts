@@ -3,7 +3,6 @@
 import {
   agentExistsInOrg,
   batchUpdateAgentToolsets,
-  getOrgCatalogTree,
   getOrgToolCatalog,
   updateAgentToolset,
 } from '@auxx/lib/agents'
@@ -35,18 +34,13 @@ async function ensureAgentInOrg(organizationId: string, agentId: string): Promis
  */
 export const agentToolsetRouter = createTRPCRouter({
   /**
-   * Org-wide catalog tree — one `CatalogNode` per app at the root, with
-   * sub-group / toolset descendants. Tools tab walks the tree directly;
-   * pickers flatten it via `flattenCatalogToToolsets`. Per-agent enabled
-   * state lives on `agent.getById.toolsets`.
-   */
-  list: adminProcedure.query(async ({ ctx }) => {
-    return getOrgCatalogTree(ctx.session.organizationId)
-  }),
-
-  /**
    * Flat per-tool catalog — every tool exposed by the org, paired with its
    * parent toolset's display metadata. Backs the ReferencePicker Tools tab.
+   *
+   * The recursive catalog tree (formerly `list`) is no longer fetched from
+   * the server — clients now derive it locally from
+   * `useExtensionsContext().appInstallations` via `useToolCatalog`. See
+   * `plans/kopilot/agents/tools/project-builtin-auxx-into-installations.md`.
    */
   listTools: adminProcedure.query(async ({ ctx }) => {
     return getOrgToolCatalog(ctx.session.organizationId)

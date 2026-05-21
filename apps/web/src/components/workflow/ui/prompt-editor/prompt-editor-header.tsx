@@ -12,56 +12,50 @@ import {
   Trash,
   Variable,
 } from 'lucide-react'
-import React, { memo, useState } from 'react'
+import { memo, useState } from 'react'
 import { Tooltip } from '~/components/global/tooltip'
 import { GenerateContentDialog } from '~/components/workflow/dialogs/generate-content-dialog'
 import { useWorkflowStore } from '~/components/workflow/store'
 import { usePromptEditorContext } from './prompt-editor-context'
 
-/**
- * Action button component for header operations
- * Uses forwardRef for compatibility with Radix UI Tooltip
- */
-const ActionButton = React.forwardRef<
-  HTMLButtonElement,
-  React.ButtonHTMLAttributes<HTMLButtonElement> & {
-    children: React.ReactNode
-  }
->(({ onClick, children, className, ...props }, ref) => (
-  <button
-    ref={ref}
-    onClick={(e) => {
-      e.stopPropagation()
-      onClick?.(e)
-    }}
-    className={cn(
-      'flex size-6 rounded-lg items-center justify-center hover:bg-primary-200',
-      className
-    )}
-    {...props}>
-    {children}
-  </button>
-))
-ActionButton.displayName = 'ActionButton'
+type ActionButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> & {
+  children: React.ReactNode
+  ref?: React.Ref<HTMLButtonElement>
+}
 
-/**
- * Toggle expand button component
- */
-const ToggleExpandBtn: React.FC<{
+function ActionButton({ onClick, children, className, ref, ...props }: ActionButtonProps) {
+  return (
+    <button
+      ref={ref}
+      onClick={(e) => {
+        e.stopPropagation()
+        onClick?.(e)
+      }}
+      className={cn(
+        'flex size-6 rounded-lg items-center justify-center hover:bg-primary-200 [&_svg]:size-4',
+        className
+      )}
+      {...props}>
+      {children}
+    </button>
+  )
+}
+
+function ToggleExpandBtn({
+  isExpand,
+  onExpandChange,
+}: {
   isExpand: boolean
   onExpandChange: (expanded: boolean) => void
-}> = ({ isExpand, onExpandChange }) => (
-  <ActionButton onClick={() => onExpandChange(!isExpand)}>
-    {isExpand ? <Minimize2 className='size-4' /> : <Maximize2 className='size-4' />}
-  </ActionButton>
-)
+}) {
+  return (
+    <ActionButton onClick={() => onExpandChange(!isExpand)}>
+      {isExpand ? <Minimize2 /> : <Maximize2 />}
+    </ActionButton>
+  )
+}
 
-/**
- * PromptEditor Header Component
- * Contains title, character count, and operation buttons
- * Uses context to eliminate prop drilling
- */
-const PromptEditorHeader: React.FC = () => {
+function PromptEditorHeader() {
   const {
     title,
     required,
@@ -136,7 +130,7 @@ const PromptEditorHeader: React.FC = () => {
           {editable && (
             <Tooltip content='Insert variable'>
               <ActionButton onClick={handleInsertVariable}>
-                <Variable className='size-4' />
+                <Variable />
               </ActionButton>
             </Tooltip>
           )}
@@ -145,16 +139,7 @@ const PromptEditorHeader: React.FC = () => {
           {editable && showAIGenerate && workflowId && nodeId && (
             <Tooltip content='Generate Prompt'>
               <ActionButton onClick={() => setIsGenerateDialogOpen(true)}>
-                <Sparkles className='size-4' />
-              </ActionButton>
-            </Tooltip>
-          )}
-
-          {/* Remove button */}
-          {showRemove && (
-            <Tooltip content='Remove'>
-              <ActionButton onClick={onRemove}>
-                <Trash className='size-4' />
+                <Sparkles />
               </ActionButton>
             </Tooltip>
           )}
@@ -162,10 +147,20 @@ const PromptEditorHeader: React.FC = () => {
           {/* Copy button */}
           <Tooltip content={isCopied ? 'Copied!' : 'Copy'}>
             <ActionButton onClick={handleCopy}>
-              {isCopied ? <ClipboardCheck className='size-4' /> : <Clipboard className='size-4' />}
+              {isCopied ? <ClipboardCheck /> : <Clipboard />}
             </ActionButton>
           </Tooltip>
 
+          {/* Remove button */}
+          {showRemove && (
+            <Tooltip content='Remove'>
+              <ActionButton
+                onClick={onRemove}
+                className='text-destructive hover:bg-destructive/10 hover:text-destructive'>
+                <Trash />
+              </ActionButton>
+            </Tooltip>
+          )}
           <Tooltip content={isExpanded ? 'Close' : 'Expand'}>
             <ToggleExpandBtn isExpand={isExpanded} onExpandChange={setExpanded} />
           </Tooltip>

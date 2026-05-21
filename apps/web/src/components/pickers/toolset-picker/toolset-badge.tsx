@@ -7,9 +7,9 @@ import { Skeleton } from '@auxx/ui/components/skeleton'
 import { cn } from '@auxx/ui/lib/utils'
 import type { VariantProps } from 'class-variance-authority'
 import { useMemo } from 'react'
+import { useToolCatalog } from '~/components/agents/hooks/use-tool-catalog'
 import { AppIcon } from '~/components/apps/ui/app-icon'
 import { recordBadgeVariants } from '~/components/resources/ui/record-badge'
-import { api } from '~/trpc/react'
 
 interface ToolsetBadgeProps extends VariantProps<typeof recordBadgeVariants> {
   slug: string
@@ -23,13 +23,11 @@ interface ToolsetBadgeProps extends VariantProps<typeof recordBadgeVariants> {
  * is no longer in the catalog.
  */
 export function ToolsetBadge({ slug, className, variant, size }: ToolsetBadgeProps) {
-  const catalogQuery = api.agentToolset.list.useQuery(undefined, {
-    staleTime: 60_000,
-  })
-  const entry = useMemo(() => {
-    if (!catalogQuery.data) return undefined
-    return flattenCatalogToToolsets(catalogQuery.data).find((e) => e.slug === slug)
-  }, [catalogQuery.data, slug])
+  const { catalog, isLoading } = useToolCatalog()
+  const entry = useMemo(
+    () => flattenCatalogToToolsets(catalog).find((e) => e.slug === slug),
+    [catalog, slug]
+  )
 
   const label = entry?.label ?? slug
   const iconId = entry?.iconId ?? 'wrench'
@@ -40,7 +38,7 @@ export function ToolsetBadge({ slug, className, variant, size }: ToolsetBadgePro
       data-slot='toolset-badge'
       className={cn(recordBadgeVariants({ variant, size }), className)}>
       <AppIcon iconId={iconId} color={color} size='xs' />
-      {catalogQuery.isLoading && !entry ? (
+      {isLoading && !entry ? (
         <Skeleton />
       ) : (
         <span data-slot='record-display' className='truncate max-w-[160px]'>

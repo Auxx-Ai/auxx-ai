@@ -82,7 +82,6 @@ export {
   getOrgCatalogTree,
   getOrgToolCatalog,
   getOrgToolsetCatalog,
-  invalidateToolsetCatalog,
   type ToolCatalogEntry,
   type ToolsetCatalogEntry,
 } from './toolset-catalog'

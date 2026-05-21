@@ -17,9 +17,9 @@ import { Separator } from '@auxx/ui/components/separator'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { Tabs, TabsList, TabsTrigger } from '@auxx/ui/components/tabs'
 import { pluralize } from '@auxx/utils/strings'
-import { AlertCircle, ChevronLeft } from 'lucide-react'
+import { ChevronLeft } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { api } from '~/trpc/react'
+import { useToolCatalog } from '~/components/agents/hooks/use-tool-catalog'
 import { ToolSelectRow, toolCountBadge } from './tool-select-row'
 
 export interface InstalledToolsetEntry {
@@ -70,7 +70,7 @@ export function ToolSelectDialog({
   onOpenChange,
   initialAppId,
 }: ToolSelectDialogProps) {
-  const catalogQuery = api.agentToolset.list.useQuery(undefined, { staleTime: 60_000 })
+  const { catalog: catalogData, isLoading: catalogIsLoading } = useToolCatalog()
 
   const [viewMode, setViewMode] = useState<ViewMode>('list')
   const [tab, setTab] = useState<ListTab>('all')
@@ -109,8 +109,8 @@ export function ToolSelectDialog({
     return map
   }, [installedToolsets])
 
-  const catalog = catalogQuery.data
-  const flat = useMemo(() => (catalog ? flattenCatalogToToolsets(catalog) : []), [catalog])
+  const catalog = catalogData
+  const flat = useMemo(() => flattenCatalogToToolsets(catalog), [catalog])
 
   const selectedApp = useMemo(() => {
     if (!catalog || !selectedAppId) return null
@@ -175,7 +175,7 @@ export function ToolSelectDialog({
               searchInputRef={searchInputRef}
               catalog={catalog}
               flat={flat}
-              isLoading={catalogQuery.isLoading}
+              isLoading={catalogIsLoading}
               isInstalled={isInstalled}
               sourceOf={sourceOf}
               onToggle={handleToolsetClick}
