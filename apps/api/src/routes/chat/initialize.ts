@@ -9,7 +9,7 @@ import { createScopedLogger } from '@auxx/logger'
 import { asc, eq } from 'drizzle-orm'
 import { Hono } from 'hono'
 import { parseIdentifyPayload } from './identify'
-import { applyChatCorsHeaders } from './lib'
+import { applyChatCorsHeaders, loadThreadEvents } from './lib'
 
 const log = createScopedLogger('chat-initialize-route')
 
@@ -106,6 +106,11 @@ initializeRoute.post('/', async (c) => {
       status: 'DELIVERED',
     }))
 
+    // Hydrate thread lifecycle events so the widget can render centered
+    // system lines (taken_over / returned_to_ai / archived / reopened / …)
+    // alongside the persisted message transcript.
+    const threadEvents = isNew ? [] : await loadThreadEvents(chat.organizationId, thread.id)
+
     // If the visitor identified during this initialize (new claim with an
     // email) and we have an active thread, emit the lifecycle event so the
     // admin sees a centered system line in the conversation.
@@ -147,7 +152,9 @@ initializeRoute.post('/', async (c) => {
         visitorId: chat.sessionId,
         isNewSession: isNew,
         messages,
+        threadEvents,
         pusherChannel: `chat-${visitorChatSessionId}`,
+        threadPusherChannel: `private-thread-${thread.id}`,
         visitorPusherChannel: `private-visitor-${chat.visitorParticipantId}`,
         ...(passport ? { passport } : {}),
       },
