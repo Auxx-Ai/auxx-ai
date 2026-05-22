@@ -262,10 +262,11 @@ export function GeneralSection({ widget, channelId, onDelete }: GeneralSectionPr
               </VarEditorFieldRow>
 
               <VarEditorFieldRow
-                title='Privacy Policy URL'
+                title='Privacy URL'
                 description='When set, the widget shows a consent banner under the composer linking to this URL. Leave blank to hide.'
                 type={BaseType.STRING}
                 icon={<LinkIcon className='size-3.5' />}
+                isRequired
                 showIcon>
                 <div
                   onBlur={() => {
