@@ -9,7 +9,16 @@ import { Skeleton } from '@auxx/ui/components/skeleton'
 import { cn } from '@auxx/ui/lib/utils'
 import { formatDistanceToNowStrict } from 'date-fns'
 import DOMPurify from 'dompurify'
-import { Archive, Clock, ShieldAlert, Tag, Trash2, UserRound } from 'lucide-react'
+import {
+  Archive,
+  Bot,
+  Clock,
+  MessageCircle,
+  ShieldAlert,
+  Tag,
+  Trash2,
+  UserRound,
+} from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import type React from 'react'
 import { memo, useCallback, useMemo, useState } from 'react'
@@ -157,6 +166,18 @@ export const CompactThreadItem = memo(function CompactThreadItem({
 
   const hasTags = (thread?.tagIds?.length ?? 0) > 0
 
+  // --- Chat-specific affordances (4b-i) ---
+  const isChatThread = (thread?.integrationProvider as string | null) === 'chat'
+  const handoffState = thread?.handoffState ?? 'ai'
+  const isAssignedToMe =
+    !!currentUserId && !!thread?.assigneeId && thread.assigneeId.endsWith(`:${currentUserId}`)
+  const isLiveChat = useMemo(() => {
+    if (!isChatThread || !thread?.lastMessageAt) return false
+    if (!latestMessage?.isInbound) return false
+    const ts = new Date(thread.lastMessageAt).getTime()
+    return Date.now() - ts < 5 * 60_000
+  }, [isChatThread, thread?.lastMessageAt, latestMessage?.isInbound])
+
   if (isDeleted) {
     return null
   }
@@ -268,14 +289,50 @@ export const CompactThreadItem = memo(function CompactThreadItem({
 
             {/* Subject + Snippet */}
             <div className='flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden ms-2'>
+              {isChatThread && (
+                <MessageCircle
+                  className={cn(
+                    'size-3 shrink-0 text-muted-foreground',
+                    isLiveChat && 'text-blue-500'
+                  )}
+                  aria-label='Chat thread'
+                />
+              )}
               <span
                 className={cn(
                   'shrink-0 truncate text-xs',
                   isUnread ? 'text-foreground' : 'font-medium text-foreground/90',
-                  hasTags ? 'max-w-[40%]' : 'max-w-[50%]'
+                  hasTags ? 'max-w-[40%]' : 'max-w-[50%]',
+                  isLiveChat && 'font-semibold'
                 )}>
                 {thread.subject || '(no subject)'}
               </span>
+              {isChatThread &&
+                (handoffState === 'human' ? (
+                  <span
+                    className={cn(
+                      'shrink-0 rounded-full border px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide',
+                      isAssignedToMe
+                        ? 'border-blue-500/40 bg-blue-500/10 text-blue-700 dark:text-blue-300'
+                        : 'border-muted-foreground/20 bg-muted text-muted-foreground'
+                    )}
+                    title={isAssignedToMe ? 'You are on this chat' : 'A teammate is on this chat'}>
+                    {isAssignedToMe ? 'You' : 'Human'}
+                  </span>
+                ) : (
+                  <span
+                    className='shrink-0 inline-flex items-center gap-0.5 rounded-full border border-muted-foreground/20 bg-muted/60 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-muted-foreground'
+                    title='AI is replying'>
+                    <Bot className='size-2.5' />
+                    AI
+                  </span>
+                ))}
+              {isLiveChat && (
+                <span
+                  className='shrink-0 size-1.5 rounded-full bg-blue-500 animate-pulse'
+                  aria-label='Live chat'
+                />
+              )}
               {snippet && (
                 <>
                   <span className='shrink-0 text-muted-foreground/50'>—</span>

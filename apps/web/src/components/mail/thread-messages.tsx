@@ -14,7 +14,6 @@ import {
   useThread,
   useThreadMutation,
 } from '~/components/threads/hooks'
-import type { MessageMeta } from '~/components/threads/store'
 import { useThreadStore } from '~/components/threads/store'
 import type { ScheduledMessageMeta } from '~/components/threads/store/thread-store'
 import { getThreadStoreState } from '~/components/threads/store/thread-store'
@@ -22,6 +21,9 @@ import { useCompose } from '~/hooks/use-compose'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
 import { ChatMessageGroup } from './chat-message-group'
+import { SystemLine } from './chat-panel/system-line'
+import { useChatThreadEvents } from './chat-panel/use-thread-events'
+import { buildChatTimeline } from './chat-timeline'
 import EmailDisplay from './email-display'
 import type { DraftMessageType } from './email-editor/types'
 import MessageDisplay from './message-display'
@@ -162,6 +164,15 @@ export function ThreadMessages() {
     enabled: !!thread,
   })
 
+  // Chat thread lifecycle events (taken_over, returned_to_ai, archived,
+  // reopened, assignee:changed, visitor:identified). Only loaded for chat
+  // threads — email threads return an empty list and pay no realtime cost.
+  const isChatChannel = channel?.provider === 'chat'
+  const { events: threadEvents } = useChatThreadEvents({
+    threadId: thread?.id ?? null,
+    enabled: !!thread && isChatChannel,
+  })
+
   if (!thread) return null
 
   // Loading state
@@ -208,7 +219,10 @@ export function ThreadMessages() {
         )}
         {/* Email messages */}
         <div className={`flex flex-col gap-4 px-4 py-2 ${isMuted ? 'opacity-50' : ''}`}>
-          {buildRenderItems(messages).map((item) => {
+          {buildChatTimeline(messages, threadEvents).map((item) => {
+            if (item.kind === 'event') {
+              return <SystemLine key={`evt:${item.event.id}`} event={item.event} />
+            }
             if (item.kind === 'chat-group') {
               const groupIsLast =
                 item.endIndex === messages.length - 1 && scheduledMessages.length === 0
@@ -294,49 +308,4 @@ function MessageSkeleton() {
       <Skeleton className='h-20 w-full' />
     </div>
   )
-}
-
-type RenderItem =
-  | { kind: 'single'; message: MessageMeta; index: number }
-  | { kind: 'chat-group'; messages: MessageMeta[]; startIndex: number; endIndex: number }
-
-const CHAT_GROUP_WINDOW_MS = 5 * 60_000
-
-/**
- * Collapse consecutive same-sender CHAT messages (within 60s) into render
- * groups; everything else stays as a single render item carrying its original
- * index so existing per-message logic (latest-message check, animation delay)
- * keeps working.
- */
-function buildRenderItems(messages: MessageMeta[]): RenderItem[] {
-  const items: RenderItem[] = []
-  for (let i = 0; i < messages.length; i++) {
-    const m = messages[i]!
-    if (m.messageType !== 'CHAT') {
-      items.push({ kind: 'single', message: m, index: i })
-      continue
-    }
-    const startIndex = i
-    const run: MessageMeta[] = [m]
-    while (i + 1 < messages.length && canGroupChat(run[run.length - 1]!, messages[i + 1]!)) {
-      i++
-      run.push(messages[i]!)
-    }
-    items.push({ kind: 'chat-group', messages: run, startIndex, endIndex: i })
-  }
-  return items
-}
-
-function canGroupChat(a: MessageMeta, b: MessageMeta): boolean {
-  if (b.messageType !== 'CHAT') return false
-  if (a.isInbound !== b.isInbound) return false
-  if (fromParticipant(a) !== fromParticipant(b)) return false
-  const aT = a.sentAt ? new Date(a.sentAt).getTime() : null
-  const bT = b.sentAt ? new Date(b.sentAt).getTime() : null
-  if (aT === null || bT === null) return true
-  return Math.abs(bT - aT) <= CHAT_GROUP_WINDOW_MS
-}
-
-function fromParticipant(m: MessageMeta): string | null {
-  return m.participants.find((p) => p.startsWith('from:')) ?? null
 }

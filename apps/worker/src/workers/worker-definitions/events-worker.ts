@@ -4,6 +4,7 @@ import {
   handleEntityTriggers,
   handleFieldTriggerJob,
   publishEventJob,
+  publishThreadEventToRealtime,
   publishToAnalyticsJob,
   sendInvitationUserJob,
   triggerAgents,
@@ -29,6 +30,7 @@ const eventHandlersJobMappings = {
   triggerAgents,
   handleFieldTriggerJob,
   handleEntityTriggers,
+  publishThreadEventToRealtime,
 }
 
 export function startEventsWorker() {
