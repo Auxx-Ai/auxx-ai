@@ -314,6 +314,10 @@ export const channelRouter = createTRPCRouter({
         title: chatWidgetInputSchema.shape.title.optional(),
         subtitle: chatWidgetInputSchema.shape.subtitle.optional(),
         primaryColor: chatWidgetInputSchema.shape.primaryColor.optional(),
+        headerColor: z
+          .string()
+          .regex(/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/, 'Use a valid hex color')
+          .optional(),
         logoLight: chatWidgetInputSchema.shape.logoLight.optional(),
         logoDark: chatWidgetInputSchema.shape.logoDark.optional(),
         position: chatWidgetInputSchema.shape.position.optional(),
@@ -332,7 +336,6 @@ export const channelRouter = createTRPCRouter({
         homeShowSendMessageCta: z.boolean().optional(),
         brandingFooterEnabled: z.boolean().optional(),
         allowDownloadTranscript: z.boolean().optional(),
-        expandedWidthPx: z.number().int().min(480).max(960).optional(),
         knowledgeBaseId: z.string().optional().nullable(),
         featuredArticleIds: z.array(z.string()).optional(),
       })

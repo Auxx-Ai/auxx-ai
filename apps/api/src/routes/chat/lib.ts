@@ -15,6 +15,7 @@ export interface LoadedChatWidget {
     title: string
     subtitle: string | null
     primaryColor: string
+    headerColor: string
     logoLight: string | null
     logoDark: string | null
     position: string
@@ -27,7 +28,6 @@ export interface LoadedChatWidget {
     greetingTemplate: unknown
     showRecentMessage: boolean
     showSendMessageCta: boolean
-    expandedWidthPx: number
     knowledgeBaseId: string | null
     featuredArticleIds: string[]
   }
@@ -64,6 +64,7 @@ export async function loadChatWidgetByChannelId(
       title: row.chatWidget.title,
       subtitle: row.chatWidget.subtitle ?? null,
       primaryColor: row.chatWidget.primaryColor,
+      headerColor: row.chatWidget.headerColor,
       logoLight: row.chatWidget.logoLight ?? null,
       logoDark: row.chatWidget.logoDark ?? null,
       position: row.chatWidget.position,
@@ -76,7 +77,6 @@ export async function loadChatWidgetByChannelId(
       greetingTemplate: row.chatWidget.homeGreetingTemplate ?? null,
       showRecentMessage: row.chatWidget.homeShowRecentMessage,
       showSendMessageCta: row.chatWidget.homeShowSendMessageCta,
-      expandedWidthPx: row.chatWidget.expandedWidthPx,
       knowledgeBaseId: row.chatWidget.knowledgeBaseId ?? null,
       featuredArticleIds: row.chatWidget.featuredArticleIds ?? [],
     },

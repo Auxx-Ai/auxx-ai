@@ -32,6 +32,9 @@ const appearanceSchema = z.object({
   primaryColor: z
     .string()
     .regex(/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/, 'Use a valid hex color (#fff or #ffffff)'),
+  headerColor: z
+    .string()
+    .regex(/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/, 'Use a valid hex color (#fff or #ffffff)'),
   position: z.enum(['BOTTOM_RIGHT', 'BOTTOM_LEFT', 'TOP_RIGHT', 'TOP_LEFT']),
   logoLight: z.string().nullish(),
   logoDark: z.string().nullish(),
@@ -54,6 +57,7 @@ export function AppearanceSection({ widget, channelId }: AppearanceSectionProps)
     resolver: standardSchemaResolver(appearanceSchema),
     defaultValues: {
       primaryColor: widget.chatWidget?.primaryColor ?? '#4F46E5',
+      headerColor: widget.chatWidget?.headerColor ?? '#1F2329',
       position: (widget.chatWidget?.position as AppearanceForm['position']) ?? 'BOTTOM_RIGHT',
       logoLight: widget.chatWidget?.logoLight ?? '',
       logoDark: widget.chatWidget?.logoDark ?? '',
@@ -67,6 +71,7 @@ export function AppearanceSection({ widget, channelId }: AppearanceSectionProps)
     update.mutate({
       integrationId: channelId,
       primaryColor: values.primaryColor,
+      headerColor: values.headerColor,
       position: values.position,
       logoLight: values.logoLight ?? null,
       logoDark: values.logoDark ?? null,
@@ -95,7 +100,28 @@ export function AppearanceSection({ widget, channelId }: AppearanceSectionProps)
                 render={({ field, fieldState }) => (
                   <VarEditorFieldRow
                     title='Primary Color'
-                    description='Used for buttons, links, and the widget header.'
+                    description='Used for the launcher button, send buttons, and accent UI.'
+                    type={BaseType.STRING}
+                    icon={<Palette className='size-3.5' />}
+                    showIcon
+                    isRequired
+                    validationError={fieldState.error?.message}>
+                    <ColorField
+                      value={field.value || ''}
+                      onChange={field.onChange}
+                      placeholder='Pick a color'
+                    />
+                  </VarEditorFieldRow>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name='headerColor'
+                render={({ field, fieldState }) => (
+                  <VarEditorFieldRow
+                    title='Header Color'
+                    description='Background of the Home greeting band. Text color is auto-picked for contrast.'
                     type={BaseType.STRING}
                     icon={<Palette className='size-3.5' />}
                     showIcon

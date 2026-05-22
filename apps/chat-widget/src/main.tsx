@@ -15,9 +15,9 @@ function findScriptTag(): HTMLScriptElement | null {
   return all[all.length - 1] ?? null
 }
 
-function mount(channelId: string): void {
+function mount(channelId: string, cacheBust: string | null): void {
   installIdentifyQueue(channelId)
-  mountWidget(<Widget channelId={channelId} />)
+  mountWidget(<Widget channelId={channelId} cacheBust={cacheBust} />)
 }
 
 function boot(): void {
@@ -27,10 +27,11 @@ function boot(): void {
     console.error('[auxx-chat-widget] missing data-channel-id on script tag')
     return
   }
+  const cacheBust = tag?.dataset.v ?? null
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => mount(channelId), { once: true })
+    document.addEventListener('DOMContentLoaded', () => mount(channelId, cacheBust), { once: true })
   } else {
-    mount(channelId)
+    mount(channelId, cacheBust)
   }
 }
 

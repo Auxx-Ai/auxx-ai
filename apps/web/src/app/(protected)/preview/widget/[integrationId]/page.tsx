@@ -1,7 +1,7 @@
 // apps/web/src/app/(protected)/preview/widget/[integrationId]/page.tsx
 'use client'
 
-import { useParams } from 'next/navigation'
+import { useParams, useSearchParams } from 'next/navigation'
 import { useMemo } from 'react'
 import { useEnv } from '~/providers/dehydrated-state-provider'
 
@@ -14,12 +14,15 @@ import { useEnv } from '~/providers/dehydrated-state-provider'
  */
 export default function PreviewWidgetPage() {
   const params = useParams<{ integrationId: string }>()
+  const search = useSearchParams()
   const { appUrl } = useEnv()
   const integrationId = params?.integrationId
+  const v = search?.get('v') ?? null
 
   const srcDoc = useMemo(() => {
     if (!integrationId) return null
-    const bundleSrc = `${appUrl}/scripts/chat-widget.js`
+    const vAttr = v ? ` data-v="${encodeURIComponent(v)}"` : ''
+    const bundleSrc = `${appUrl}/scripts/chat-widget.js${v ? `?v=${encodeURIComponent(v)}` : ''}`
     return `<!doctype html>
 <html lang="en">
   <head>
@@ -33,10 +36,10 @@ export default function PreviewWidgetPage() {
   </head>
   <body>
     <div class="empty">Preview</div>
-    <script src="${bundleSrc}" data-channel-id="${integrationId}" async defer></script>
+    <script src="${bundleSrc}" data-channel-id="${integrationId}"${vAttr} async defer></script>
   </body>
 </html>`
-  }, [appUrl, integrationId])
+  }, [appUrl, integrationId, v])
 
   if (!integrationId || !srcDoc) {
     return <div style={{ padding: 16 }}>Loading…</div>

@@ -50,7 +50,6 @@ configRoute.get('/:channelId', async (c) => {
       greetingTemplate: widget.home.greetingTemplate,
       showRecentMessage: widget.home.showRecentMessage,
       showSendMessageCta: widget.home.showSendMessageCta,
-      expandedWidthPx: widget.home.expandedWidthPx,
       knowledgeBase,
       featuredArticles,
     },

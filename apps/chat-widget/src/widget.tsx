@@ -32,6 +32,7 @@ import { MessagesView } from './views/messages/messages-view'
 
 interface WidgetProps {
   channelId: string
+  cacheBust?: string | null
 }
 
 const EXPANDED_PREFIX = 'auxx-chat-expanded:'
@@ -52,14 +53,15 @@ function writeExpanded(channelId: string, expanded: boolean): void {
   }
 }
 
-export function Widget({ channelId }: WidgetProps) {
+export function Widget({ channelId, cacheBust = null }: WidgetProps) {
   const [config, setConfig] = useState<ChatConfig | null>(null)
   const [open, setOpen] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [unreadCount, setUnreadCount] = useState(0)
-  const [expanded, setExpanded] = useState(() =>
-    typeof window === 'undefined' ? false : readExpanded(channelId)
-  )
+  // `expanded` is the visual state; the user's sticky preference lives in
+  // localStorage. Start collapsed — the per-thread effect below restores the
+  // preference whenever the visitor enters a thread.
+  const [expanded, setExpanded] = useState(false)
 
   const router = useTabRouter(channelId)
   const subscribeRef = useRef<{
@@ -68,13 +70,13 @@ export function Widget({ channelId }: WidgetProps) {
   } | null>(null)
 
   useEffect(() => {
-    fetchChatConfig(channelId)
+    fetchChatConfig(channelId, cacheBust)
       .then((c) => {
         setConfig(c)
         if (c.appearance.autoOpen) setOpen(true)
       })
       .catch((e) => setError(e instanceof Error ? e.message : 'Failed to load chat'))
-  }, [channelId])
+  }, [channelId, cacheBust])
 
   // Per-visitor channel: mint the passport eagerly so the visitor channel can
   // connect even when the widget hasn't been opened yet. The badge fires off
@@ -134,6 +136,10 @@ export function Widget({ channelId }: WidgetProps) {
       .catch(() => {})
   }, [channelId, open, router.activeTab, router.currentStack.current?.id])
 
+  // Only an explicit user toggle (the menu button in a thread) writes to LS —
+  // entering/leaving thread views never mutates the preference. That way once
+  // a visitor expands, every subsequent thread they open auto-expands until
+  // they shrink it themselves.
   const toggleExpanded = useCallback(() => {
     setExpanded((prev) => {
       const next = !prev
@@ -141,6 +147,18 @@ export function Widget({ channelId }: WidgetProps) {
       return next
     })
   }, [channelId])
+
+  // Expand mode is thread-only. On entering a thread, restore the visitor's
+  // sticky preference. On leaving, collapse visually but leave the preference
+  // untouched.
+  const currentView = router.currentStack.current?.view ?? router.activeTab
+  useEffect(() => {
+    if (currentView === 'thread') {
+      setExpanded(readExpanded(channelId))
+    } else {
+      setExpanded(false)
+    }
+  }, [currentView, channelId])
 
   if (!config) return null
 
@@ -151,7 +169,6 @@ export function Widget({ channelId }: WidgetProps) {
   const expandedClass = open && expanded ? 'auxx-chat-shell--expanded' : ''
   const rootStyle = {
     '--auxx-chat-primary': config.appearance.primaryColor,
-    '--auxx-chat-expanded-width': `${config.home.expandedWidthPx}px`,
   } as Record<string, string>
 
   return (
@@ -242,34 +259,32 @@ function PanelShell({
       ? (currentFrame.params.threadId as string)
       : null
 
+  const hideHeader = view === 'home' && isAtRoot
+
   return (
     <div className='flex h-full flex-col'>
-      <FrameHeader
-        variant={headerVariant}
-        title={headerTitle(view, currentFrame, config)}
-        subtitle={
-          view === 'home' && isAtRoot
-            ? (config.appearance.subtitle ?? undefined)
-            : view === 'thread'
-              ? (config.appearance.subtitle ?? undefined)
-              : undefined
-        }
-        logoLight={config.appearance.logoLight}
-        logoDark={config.appearance.logoDark}
-        onBack={isAtRoot ? undefined : onBack}
-        onClose={onClose}
-        actions={
-          threadId ? (
-            <ConversationMenu
-              channelId={channelId}
-              threadId={threadId}
-              expanded={expanded}
-              onToggleExpanded={onToggleExpanded}
-              allowDownloadTranscript={config.allowDownloadTranscript}
-            />
-          ) : undefined
-        }
-      />
+      {hideHeader ? null : (
+        <FrameHeader
+          variant={headerVariant}
+          title={headerTitle(view, currentFrame, config)}
+          subtitle={view === 'thread' ? (config.appearance.subtitle ?? undefined) : undefined}
+          logoLight={config.appearance.logoLight}
+          logoDark={config.appearance.logoDark}
+          onBack={isAtRoot ? undefined : onBack}
+          onClose={onClose}
+          actions={
+            threadId ? (
+              <ConversationMenu
+                channelId={channelId}
+                threadId={threadId}
+                expanded={expanded}
+                onToggleExpanded={onToggleExpanded}
+                allowDownloadTranscript={config.allowDownloadTranscript}
+              />
+            ) : undefined
+          }
+        />
+      )}
       {error ? (
         <div
           className='px-2.5 py-1.5 text-center text-xs text-[color:var(--color-danger)]'
@@ -278,7 +293,7 @@ function PanelShell({
         </div>
       ) : null}
       <div className='flex min-h-0 flex-1 flex-col bg-[color:var(--color-bg)]'>
-        {renderFrame(view, currentFrame, channelId, config, subscribe)}
+        {renderFrame(view, currentFrame, channelId, config, subscribe, onClose)}
       </div>
       {isAtRoot ? <TabBar activeTab={activeTab} onChange={onTabChange} /> : null}
     </div>
@@ -303,11 +318,12 @@ function renderFrame(
   frame: NavFrame | null,
   channelId: string,
   config: ChatConfig,
-  subscribe?: PanelShellProps['subscribe']
+  subscribe?: PanelShellProps['subscribe'],
+  onClose?: () => void
 ) {
   switch (view) {
     case 'home':
-      return <HomeView channelId={channelId} config={config} />
+      return <HomeView channelId={channelId} config={config} onClose={onClose} />
     case 'messages':
       return <MessagesView channelId={channelId} subscribe={subscribe} />
     case 'thread': {

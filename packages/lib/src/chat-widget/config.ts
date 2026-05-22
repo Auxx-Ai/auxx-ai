@@ -24,6 +24,8 @@ export interface UpdateChatWidgetInput {
   title?: string
   subtitle?: string | null
   primaryColor?: string
+  /** Hex color for the Home hero band. Separate from `primaryColor`. */
+  headerColor?: string
   logoLight?: string | null
   logoDark?: string | null
   position?: string
@@ -44,7 +46,6 @@ export interface UpdateChatWidgetInput {
   homeShowSendMessageCta?: boolean
   brandingFooterEnabled?: boolean
   allowDownloadTranscript?: boolean
-  expandedWidthPx?: number
   /** Pass `null` to unlink the knowledge base. */
   knowledgeBaseId?: string | null
   featuredArticleIds?: string[]

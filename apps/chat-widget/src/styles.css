@@ -114,7 +114,9 @@
     box-shadow: var(--auxx-chat-shell-open-shadow);
   }
   .auxx-chat-shell--expanded {
-    width: var(--auxx-chat-expanded-width, 720px);
+    width: 640px;
+    height: calc(100vh - var(--auxx-chat-shell-edge-gap));
+    max-height: calc(100vh - var(--auxx-chat-shell-edge-gap));
   }
 
   .auxx-chat-shell__badge {

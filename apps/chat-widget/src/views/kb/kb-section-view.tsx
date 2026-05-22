@@ -5,7 +5,8 @@
 // kb-section or kb-article frames depending on whether the child has
 // children of its own.
 
-import { ChevronRight, FileText } from 'lucide-react'
+import { getIcon } from '@auxx/ui/components/icon-data'
+import { ChevronRight, FileText, Folder } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'preact/hooks'
 import { cn } from '~/lib/cn'
 import { useNavStack } from '~/navigation/nav-stack-context'
@@ -66,15 +67,21 @@ export function KbSectionView({ channelId, sectionId }: KbSectionViewProps) {
     <div className='flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto bg-[color:var(--color-surface)] p-3'>
       {rows.map((row) => {
         if (row.kind === 'header') {
+          const HeaderIcon = row.node.emoji ? (getIcon(row.node.emoji)?.icon ?? null) : null
           return (
             <div
               key={row.node.id}
-              className='px-3 pb-1 pt-3 text-[11px] font-semibold uppercase tracking-wide text-[color:var(--color-muted)]'>
-              {row.node.emoji ? <span className='mr-1.5'>{row.node.emoji}</span> : null}
-              {row.node.title}
+              className='flex items-center gap-1.5 px-3 pb-1 pt-3 text-[11px] font-semibold uppercase tracking-wide text-[color:var(--color-muted)]'>
+              {HeaderIcon ? <HeaderIcon className='size-3.5' aria-hidden='true' /> : null}
+              <span>{row.node.title}</span>
             </div>
           )
         }
+        const RowIcon = row.node.emoji
+          ? (getIcon(row.node.emoji)?.icon ?? (row.hasChildren ? Folder : FileText))
+          : row.hasChildren
+            ? Folder
+            : FileText
         return (
           <button
             key={row.node.id}
@@ -99,10 +106,8 @@ export function KbSectionView({ channelId, sectionId }: KbSectionViewProps) {
             className={cn(
               'group flex w-full items-center gap-3 rounded-lg border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-3 py-2.5 text-left transition-colors hover:bg-[color:var(--color-surface)]'
             )}>
-            <span className='flex size-5 shrink-0 items-center justify-center text-base leading-none'>
-              {row.node.emoji ?? (
-                <FileText className='size-4 text-[color:var(--color-muted)]' aria-hidden='true' />
-              )}
+            <span className='flex size-5 shrink-0 items-center justify-center'>
+              <RowIcon className='size-4 text-[color:var(--color-muted)]' aria-hidden='true' />
             </span>
             <span className='min-w-0 flex-1 truncate text-sm text-[color:var(--color-fg)]'>
               {row.node.title}

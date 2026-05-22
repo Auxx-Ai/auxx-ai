@@ -316,11 +316,24 @@ export function GeneralSection({ widget, channelId, onDelete }: GeneralSectionPr
                   const height = 800
                   const left = Math.max(0, (window.screen.availWidth - width) / 2)
                   const top = Math.max(0, (window.screen.availHeight - height) / 2)
-                  window.open(
-                    `/preview/widget/${channelId}`,
-                    `chat-widget-preview-${channelId}`,
+                  const url = `/preview/widget/${channelId}?v=${Date.now()}`
+                  const target = `chat-widget-preview-${channelId}`
+                  const popup = window.open(
+                    url,
+                    target,
                     `popup=yes,width=${width},height=${height},left=${left},top=${top}`
                   )
+                  // window.open with a named target focuses the existing popup
+                  // without reloading — force a fresh load so the new `v` is
+                  // picked up and the config cache is bypassed.
+                  if (popup) {
+                    try {
+                      popup.location.replace(url)
+                    } catch {
+                      /* cross-origin or closed — nothing to do */
+                    }
+                    popup.focus()
+                  }
                 }}>
                 <ExternalLink className='size-4' />
                 Open preview
