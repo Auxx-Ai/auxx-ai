@@ -141,11 +141,7 @@ export function HomeView({ channelId, config }: HomeViewProps) {
   return (
     <div className='flex min-h-0 flex-1 flex-col'>
       <div className='flex flex-col gap-1 px-5 pb-4 -mt-2 text-[color:var(--color-primary-foreground)]'>
-        <Greeting
-          doc={home.greetingTemplate ?? null}
-          fallbackText={config.appearance.welcomeMessage}
-          identify={identify}
-        />
+        <Greeting doc={home.greetingTemplate ?? null} identify={identify} />
       </div>
       <div className='flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto bg-[color:var(--color-surface)] p-3'>
         {cards.length === 0 ? (

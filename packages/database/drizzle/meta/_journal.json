@@ -1170,6 +1170,27 @@
       "when": 1779411873762,
       "tag": "0166_chat_widget_logos",
       "breakpoints": true
+    },
+    {
+      "idx": 167,
+      "version": "7",
+      "when": 1779413416276,
+      "tag": "0167_chat_widget_drop_legacy_welcome",
+      "breakpoints": true
+    },
+    {
+      "idx": 168,
+      "version": "7",
+      "when": 1779413604769,
+      "tag": "0168_drop_legacy_chat_session_message_attachment",
+      "breakpoints": true
+    },
+    {
+      "idx": 169,
+      "version": "7",
+      "when": 1779413746068,
+      "tag": "0169_drop_chat_widget_description",
+      "breakpoints": true
     }
   ]
 }

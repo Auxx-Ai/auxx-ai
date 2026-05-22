@@ -5,9 +5,9 @@
  * which is safely confined to the shadow root — preflight cannot leak to the
  * host page, and host-page CSS cannot leak in.
  *
- * The handwritten `.auxx-chat-*` classes that drive the v1 shell remain here
- * as `@layer components` so the existing shell keeps rendering while Phase 3+
- * migrates surface by surface to Tailwind utilities + shadcn-style wrappers.
+ * The handwritten `.auxx-chat-shell` classes that drive the pillbox shell
+ * remain here as `@layer components`; per-surface styles use Tailwind
+ * utilities + shadcn-style wrappers.
  */
 
 @import 'tailwindcss';
@@ -200,110 +200,6 @@
     transition-delay: var(--auxx-chat-panel-open-delay);
   }
 
-  .auxx-chat-header {
-    padding: 14px 16px;
-    background: var(--auxx-chat-primary);
-    color: #fff;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    flex-shrink: 0;
-  }
-  .auxx-chat-header__title {
-    font-size: 15px;
-    font-weight: 600;
-  }
-  .auxx-chat-header__subtitle {
-    font-size: 12px;
-    opacity: 0.85;
-  }
-  .auxx-chat-header__close {
-    background: transparent;
-    border: none;
-    color: inherit;
-    cursor: pointer;
-    font-size: 18px;
-    line-height: 1;
-  }
-
-  .auxx-chat-body {
-    flex: 1;
-    overflow-y: auto;
-    padding: 12px;
-    background: #f7f8fa;
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-  }
-
-  .auxx-chat-message {
-    max-width: 80%;
-    padding: 8px 12px;
-    border-radius: 14px;
-    font-size: 13px;
-    line-height: 1.4;
-    white-space: pre-wrap;
-    word-wrap: break-word;
-  }
-  .auxx-chat-message--user {
-    align-self: flex-end;
-    background: var(--auxx-chat-primary);
-    color: #fff;
-    border-bottom-right-radius: 4px;
-  }
-  .auxx-chat-message--agent {
-    align-self: flex-start;
-    background: #fff;
-    border: 1px solid #e5e7eb;
-    border-bottom-left-radius: 4px;
-  }
-  .auxx-chat-message--system {
-    align-self: center;
-    background: transparent;
-    color: #6b7280;
-    font-style: italic;
-    font-size: 12px;
-  }
-
-  .auxx-chat-footer {
-    border-top: 1px solid #e5e7eb;
-    padding: 10px;
-    background: #fff;
-    display: flex;
-    gap: 8px;
-    flex-shrink: 0;
-  }
-  .auxx-chat-input {
-    flex: 1;
-    border: 1px solid #e5e7eb;
-    border-radius: 999px;
-    padding: 8px 12px;
-    font-size: 13px;
-    outline: none;
-  }
-  .auxx-chat-input:focus {
-    border-color: var(--auxx-chat-primary);
-  }
-  .auxx-chat-send {
-    background: var(--auxx-chat-primary);
-    color: #fff;
-    border: none;
-    border-radius: 999px;
-    padding: 8px 14px;
-    font-size: 13px;
-    cursor: pointer;
-  }
-  .auxx-chat-send:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-
-  .auxx-chat-error {
-    color: #b91c1c;
-    font-size: 12px;
-    padding: 6px 10px;
-    text-align: center;
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {
