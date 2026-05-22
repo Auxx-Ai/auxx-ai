@@ -52,6 +52,9 @@ export interface ChatConfig {
   allowDownloadTranscript: boolean
   /** Tap-to-send suggestion chips shown above the composer on an empty thread. */
   suggestedReplies: string[]
+  /** When non-null, the conversation composer shows a privacy consent banner
+   * linking to this URL. Sanitized server-side to http/https only. */
+  privacyPolicyUrl: string | null
   realtime: { provider: 'pusher'; key: string; cluster: string }
 }
 

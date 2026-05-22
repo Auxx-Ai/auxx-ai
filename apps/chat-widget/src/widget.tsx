@@ -288,7 +288,7 @@ function PanelShell({
   const hideHeader = view === 'home' && isAtRoot
 
   return (
-    <div className='flex h-full flex-col'>
+    <div className='flex h-full flex-col [&>*:last-child]:rounded-b-2xl'>
       {hideHeader ? null : (
         <FrameHeader
           variant={headerVariant}
@@ -317,7 +317,7 @@ function PanelShell({
           {error}
         </div>
       ) : null}
-      <div className='flex min-h-0 flex-1 flex-col'>
+      <div className='flex min-h-0 flex-1 flex-col [&>*:last-child]:rounded-b-2xl'>
         {renderFrame(view, currentFrame, channelId, config, resolvedTheme, subscribe, onClose)}
       </div>
       {isAtRoot ? <TabBar activeTab={activeTab} onChange={onTabChange} /> : null}

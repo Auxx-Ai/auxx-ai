@@ -1212,6 +1212,13 @@
       "when": 1779465167091,
       "tag": "0172_add_chat_widget_suggested_replies",
       "breakpoints": true
+    },
+    {
+      "idx": 173,
+      "version": "7",
+      "when": 1779474026065,
+      "tag": "0173_add_chat_widget_privacy_policy_url",
+      "breakpoints": true
     }
   ]
 }

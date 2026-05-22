@@ -55,7 +55,7 @@ export const CompactThreadItem = memo(function CompactThreadItem({
   onAssignClick,
 }: CompactThreadItemProps) {
   const { selectedThreadIds, viewMode, filterConditions } = useMailFilter()
-  const { thread, isLoading: isThreadLoading } = useThread({ threadId })
+  const { thread, isLoading: isThreadLoading, isDeleted } = useThread({ threadId })
   const { message: latestMessage } = useMessage({
     messageId: thread?.latestMessageId,
     enabled: !!thread?.latestMessageId,
@@ -156,6 +156,10 @@ export const CompactThreadItem = memo(function CompactThreadItem({
   }, [latestMessage?.snippet])
 
   const hasTags = (thread?.tagIds?.length ?? 0) > 0
+
+  if (isDeleted) {
+    return null
+  }
 
   if (isThreadLoading || !thread) {
     return <CompactThreadItemSkeleton />

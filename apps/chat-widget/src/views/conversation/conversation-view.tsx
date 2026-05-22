@@ -7,11 +7,13 @@
 import { User } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import { cn } from '~/lib/cn'
+import { dismissPrivacyBanner, isPrivacyBannerDismissed } from '~/persistence/privacy-banner'
 import { markThreadRead } from '~/persistence/unread'
 import { type ChatMessage, chatApi } from '~/transport/chat-api'
 import type { ChatConfig } from '~/transport/config'
 import { connectPusher } from '~/transport/pusher'
 import { Composer, type ComposerSendArgs } from './composer/composer'
+import { PrivacyBanner } from './privacy-banner'
 import { SuggestedReplies } from './suggested-replies'
 
 interface ConversationViewProps {
@@ -30,6 +32,9 @@ export function ConversationView({ channelId, threadId, config }: ConversationVi
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [init, setInit] = useState<InitState | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [privacyDismissed, setPrivacyDismissed] = useState(() =>
+    isPrivacyBannerDismissed(channelId)
+  )
   const bodyRef = useRef<HTMLDivElement | null>(null)
 
   // Bootstrap: call initialize so we always have a sessionId + pusherChannel
@@ -150,7 +155,7 @@ export function ConversationView({ channelId, threadId, config }: ConversationVi
   const grouped = useMemo(() => groupConsecutive(messages), [messages])
 
   return (
-    <div className='flex min-h-0 flex-1 flex-col bg-muted'>
+    <div className='flex min-h-0 flex-1 flex-col bg-muted [&>*:last-child]:rounded-b-2xl'>
       <div ref={bodyRef} className='flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-3'>
         {error ? (
           <div className='rounded bg-background p-2 text-center text-xs text-destructive'>
@@ -168,6 +173,15 @@ export function ConversationView({ channelId, threadId, config }: ConversationVi
         />
       ) : null}
       <Composer channelId={channelId} onSend={handleSend} />
+      {config.privacyPolicyUrl && !privacyDismissed ? (
+        <PrivacyBanner
+          url={config.privacyPolicyUrl}
+          onDismiss={() => {
+            dismissPrivacyBanner(channelId)
+            setPrivacyDismissed(true)
+          }}
+        />
+      ) : null}
       {config.branding.footerEnabled ? (
         <div className='border-t border-border bg-background py-2 text-center text-[10px] uppercase tracking-wide text-muted-foreground'>
           Powered by Auxx

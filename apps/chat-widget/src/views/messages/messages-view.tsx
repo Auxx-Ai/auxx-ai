@@ -224,7 +224,11 @@ export function MessagesView({ channelId, subscribe }: MessagesViewProps) {
 }
 
 function Frame({ children }: { children: preact.ComponentChildren }) {
-  return <div className='relative flex min-h-0 flex-1 flex-col'>{children}</div>
+  return (
+    <div className='relative flex min-h-0 flex-1 flex-col [&>*:last-child]:rounded-b-2xl'>
+      {children}
+    </div>
+  )
 }
 
 interface ThreadRowProps {
