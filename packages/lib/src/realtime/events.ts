@@ -144,6 +144,8 @@ export interface ThreadMeta {
   lastMessageAt?: string | null
   latestMessageId?: string | null
   updatedAt?: string
+  /** Chat-only: AI vs human handoff state. Drives the take-over button UI. */
+  handoffState?: 'ai' | 'human'
 }
 
 /**

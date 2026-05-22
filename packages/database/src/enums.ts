@@ -669,6 +669,11 @@ export const ThreadStatusValues = [
 
 export const ThreadTypeValues = ['EMAIL', 'CHAT'] as const
 
+export const ThreadHandoffStateValues = ['ai', 'human'] as const
+
+/** Thread handoff state — drives whether the AI agent replies on chat threads. */
+export type ThreadHandoffState = (typeof ThreadHandoffStateValues)[number]
+
 export const TicketPriorityValues = ['LOW', 'MEDIUM', 'HIGH', 'URGENT'] as const
 
 export const TicketStatusValues = [
@@ -1381,6 +1386,11 @@ export const ThreadStatus = {
   SPAM: 'SPAM',
   TRASH: 'TRASH',
   IGNORED: 'IGNORED',
+} as const
+
+export const ThreadHandoffState = {
+  AI: 'ai',
+  HUMAN: 'human',
 } as const
 
 export const ThreadType = {

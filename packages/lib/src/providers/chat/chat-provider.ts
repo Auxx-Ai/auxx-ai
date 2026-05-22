@@ -298,6 +298,22 @@ export class ChatProvider extends BaseMessageProvider implements MessageProvider
     integrationId: string
   }): Promise<void> {
     try {
+      // P4.2 gate — if a human took over this thread, never run the AI agent.
+      // This is the earliest point we can short-circuit: before the widget
+      // lookup, before any agent-framework work, before any draft/compose.
+      const [thread] = await db
+        .select({ handoffState: schema.Thread.handoffState })
+        .from(schema.Thread)
+        .where(eq(schema.Thread.id, args.threadId))
+        .limit(1)
+      if (thread?.handoffState === 'human') {
+        logger.debug('Chat thread is in human handoff — skipping agent run', {
+          threadId: args.threadId,
+          messageId: args.messageId,
+        })
+        return
+      }
+
       const [widget] = await db
         .select({ agentId: schema.ChatWidget.agentId })
         .from(schema.ChatWidget)

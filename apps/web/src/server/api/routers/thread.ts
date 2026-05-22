@@ -20,8 +20,10 @@ import { ProviderRegistryService } from '@auxx/lib/providers'
 import {
   type ListThreadIdsInput,
   linkEntityToThread,
+  returnThreadToAi,
   ThreadMutationService,
   ThreadQueryService,
+  takeOverThread,
   UnreadService,
 } from '@auxx/lib/threads'
 import { createScopedLogger } from '@auxx/logger'
@@ -840,6 +842,53 @@ export const threadRouter = createTRPCRouter({
       })
 
       return { success: true }
+    }),
+
+  // ═══════════════════════════════════════════════════════════════
+  // CHAT HANDOFF (P4.2)
+  // Take-over / return-to-AI flips `Thread.handoffState`. The chat agent
+  // run is gated on this in `ChatProvider.maybeEnqueueAgentRun`. Events
+  // and realtime publishes land in P4.3.
+  // ═══════════════════════════════════════════════════════════════
+
+  /**
+   * Flip a chat thread to human-driven mode. Assigns the caller and sets
+   * `handoffState = 'human'` in one update so the AI gate sees a consistent
+   * snapshot. Does NOT publish thread events — that's P4.3.
+   */
+  takeOver: protectedProcedure
+    .input(z.object({ threadId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const { organizationId, userId } = getServiceDependencies(ctx)
+      const result = await takeOverThread({
+        db: ctx.db,
+        threadId: input.threadId,
+        organizationId,
+        userId,
+      })
+      if (result.isErr()) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: result.error.message })
+      }
+      return result.value
+    }),
+
+  /**
+   * Hand the thread back to the AI agent. Leaves `assigneeId` set so the
+   * "last human to touch this" audit trail is preserved.
+   */
+  returnToAi: protectedProcedure
+    .input(z.object({ threadId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const { organizationId } = getServiceDependencies(ctx)
+      const result = await returnThreadToAi({
+        db: ctx.db,
+        threadId: input.threadId,
+        organizationId,
+      })
+      if (result.isErr()) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: result.error.message })
+      }
+      return result.value
     }),
 
   unlinkFromTicket: protectedProcedure

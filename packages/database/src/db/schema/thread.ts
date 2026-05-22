@@ -9,6 +9,7 @@ import {
   jsonb,
   pgTable,
   text,
+  threadHandoffState,
   threadStatus,
   timestamp,
   uniqueIndex,
@@ -42,6 +43,13 @@ export const Thread = pgTable(
       onDelete: 'set null',
     }),
     status: threadStatus().default('OPEN').notNull(),
+    /**
+     * Who is currently driving replies on this thread. Chat threads start as
+     * `'ai'` and flip to `'human'` when a teammate clicks "Take over" — chat
+     * agent runs are gated on this. Assignment and handoff state are decoupled
+     * (see Phase 4.2 plan).
+     */
+    handoffState: threadHandoffState().default('ai').notNull(),
     messageCount: integer().default(0).notNull(),
     participantCount: integer().default(0).notNull(),
     firstMessageAt: timestamp({ precision: 3 }),

@@ -1,5 +1,6 @@
 // Re-export ActorId from canonical location for convenience
 export type { ActorId } from '@auxx/types/actor'
+export { returnThreadToAi, takeOverThread } from './handoff.service'
 export {
   clearPrimaryEntity,
   getWorkItemsForThread,
