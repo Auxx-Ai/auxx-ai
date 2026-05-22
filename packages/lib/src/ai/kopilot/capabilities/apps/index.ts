@@ -48,6 +48,14 @@ export async function createAppCapabilities(deps: {
   sessionId?: string
   /** Used by the bridge's execute() to construct lambda payloads. */
   getToolDeps?: GetToolDeps
+  /**
+   * Explicit per-app credential bindings. When provided, takes precedence over
+   * the agent / master-Kopilot lookup. Used by the workflow AI node, which owns
+   * its own bindings on the node config (no agent row, not master settings).
+   * Behaves like an agent run for the connection-presence gate (workspace
+   * cred fallback is allowed).
+   */
+  appAccounts?: Record<string, { credId: string }>
 }): Promise<PageCapability> {
   const { organizationId, userId, agentId, triggerId, sessionId } = deps
   const installedApps = await getOrgCache().get(organizationId, 'installedApps')
@@ -59,11 +67,17 @@ export async function createAppCapabilities(deps: {
   // Per plans/kopilot/apps/agent-credentials.md §3.5 — when an agent is
   // active, registration is gated on `Agent.appAccounts[appId].credId`. The
   // master Kopilot path reads `kopilot.appAccounts` from org settings
-  // (plans/kopilot/settings — explicit pin only, no fallbacks).
+  // (plans/kopilot/settings — explicit pin only, no fallbacks). When the
+  // caller passes `appAccounts` explicitly (workflow AI node), we use those
+  // and treat the run like an agent for the connection-presence gate.
   const agent = agentId ? await getCachedAgentById(organizationId, agentId) : null
-  const appAccounts: Record<string, { credId: string }> = agent
-    ? (agent.appAccounts ?? {})
-    : (await loadMasterKopilotSettings(organizationId)).appAccounts
+  const hasExplicitAppAccounts = deps.appAccounts !== undefined
+  const allowWorkspaceFallback = !!agent || hasExplicitAppAccounts
+  const appAccounts: Record<string, { credId: string }> = hasExplicitAppAccounts
+    ? (deps.appAccounts ?? {})
+    : agent
+      ? (agent.appAccounts ?? {})
+      : (await loadMasterKopilotSettings(organizationId)).appAccounts
 
   const tools: AgentToolDefinition[] = []
 
@@ -88,10 +102,11 @@ export async function createAppCapabilities(deps: {
     for (const tool of catalogTools) {
       // Connection-presence gate (decision A4).
       if (tool.requiresConnection) {
-        if (agent) {
-          // Agent run: require an explicit binding OR a workspace cred
-          // fallback. User-scope tools are no longer special-cased — the
-          // creator's pick (workspace or personal) is the binding.
+        if (allowWorkspaceFallback) {
+          // Agent run / workflow AI node: require an explicit binding OR a
+          // workspace cred fallback. User-scope tools are no longer
+          // special-cased — the creator's pick (workspace or personal) is the
+          // binding.
           if (!boundCredId && !installation.orgConnectionPresent) continue
         } else {
           // Master Kopilot: explicit pin only, no fallback.
@@ -117,7 +132,7 @@ export async function createAppCapabilities(deps: {
         const resolveInput: Parameters<typeof resolveAppConnectionForRuntime>[0] | null =
           boundCredId
             ? { appId, organizationId, userId: userId ?? '', connectionId: boundCredId }
-            : agent
+            : allowWorkspaceFallback
               ? { appId, organizationId, userId: userId ?? '' }
               : null
 

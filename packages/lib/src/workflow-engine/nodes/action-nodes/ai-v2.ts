@@ -333,8 +333,15 @@ export class AIProcessorV2 extends BaseAiNodeProcessor {
       import('../../../ai/kopilot'),
     ])
     const {
+      createActorCapabilities,
       createAppCapabilities,
+      createEntityCapabilities,
+      createKbCapabilities,
+      createKbReadCapabilities,
+      createKnowledgeCapabilities,
+      createMailCapabilities,
       createNativeWorkflowCapabilities,
+      createTaskCapabilities,
       createToolDepsFactory,
       runStructuredOutputPass,
       runWorkflowAiTurn,
@@ -360,12 +367,25 @@ export class AIProcessorV2 extends BaseAiNodeProcessor {
       hasStructuredOutput: !!config.structured_output?.enabled,
     })
 
-    // Capability factories — same pipeline the agent surface uses.
+    // Capability factories — same pipeline the agent surface uses. The
+    // built-in Auxx tools (mail / entities / knowledge / actors / tasks / KB)
+    // are registered through their dedicated factories; `createAppCapabilities`
+    // is for third-party installed apps only (the synthetic auxx installation
+    // row has `currentDeployment: null` and is skipped by that path).
     const getToolDeps = createToolDepsFactory({
       organizationId,
       userId,
       sessionId,
     })
+    const builtinCaps = [
+      createEntityCapabilities(getToolDeps),
+      createKnowledgeCapabilities(getToolDeps),
+      createMailCapabilities(getToolDeps),
+      createActorCapabilities(getToolDeps),
+      createTaskCapabilities(getToolDeps),
+      createKbReadCapabilities(getToolDeps),
+      createKbCapabilities(getToolDeps),
+    ]
     const appCaps = await createAppCapabilities({
       organizationId,
       userId,
@@ -373,10 +393,14 @@ export class AIProcessorV2 extends BaseAiNodeProcessor {
       triggerId: null,
       sessionId,
       getToolDeps,
+      // AI nodes own their own per-app credential bindings. Passing this
+      // explicitly opts into the agent-style connection-presence gate
+      // (workspace cred fallback allowed).
+      appAccounts: config.appAccounts ?? {},
     })
     const nativeCaps = createNativeWorkflowCapabilities(getToolDeps)
 
-    const allTools = [...appCaps.tools, ...nativeCaps.tools]
+    const allTools = [...builtinCaps.flatMap((c) => c.tools), ...appCaps.tools, ...nativeCaps.tools]
     const filtered = filterToolsByToolsets(allTools, this.buildResolvedAgentShim(config))
 
     if (filtered.length === 0) {
