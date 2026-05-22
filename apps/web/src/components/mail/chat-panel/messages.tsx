@@ -6,11 +6,11 @@ import { Skeleton } from '@auxx/ui/components/skeleton'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { useEffect, useMemo, useRef } from 'react'
 import { useMessages, useThreadMutation } from '~/components/threads/hooks'
-import type { MessageMeta } from '~/components/threads/store'
 import { ChatMessageGroup } from '../chat-message-group'
+import { buildChatTimeline } from '../chat-timeline'
 import type { EmailActions } from '../email-actions'
-
-const CHAT_GROUP_WINDOW_MS = 5 * 60_000
+import { SystemLine } from './system-line'
+import { useChatThreadEvents } from './use-thread-events'
 
 interface ChatPanelMessagesProps {
   threadId: string
@@ -23,6 +23,7 @@ interface ChatPanelMessagesProps {
  */
 export function ChatPanelMessages({ threadId }: ChatPanelMessagesProps) {
   const { messages, isLoading } = useMessages({ threadId })
+  const { events } = useChatThreadEvents({ threadId, enabled: true })
   const { update: updateThread } = useThreadMutation()
   const scrollRef = useRef<HTMLDivElement>(null)
 
@@ -50,13 +51,14 @@ export function ChatPanelMessages({ threadId }: ChatPanelMessagesProps) {
     [threadId, updateThread]
   )
 
-  // Auto-scroll to bottom on new messages
+  // Auto-scroll to bottom on new messages or thread events
   const latestMessageId = messages[messages.length - 1]?.id
+  const latestEventId = events[events.length - 1]?.id
   useEffect(() => {
     const el = scrollRef.current
     if (!el) return
     el.scrollTop = el.scrollHeight
-  }, [latestMessageId])
+  }, [latestMessageId, latestEventId])
 
   if (isLoading && messages.length === 0) {
     return (
@@ -68,7 +70,7 @@ export function ChatPanelMessages({ threadId }: ChatPanelMessagesProps) {
     )
   }
 
-  if (messages.length === 0) {
+  if (messages.length === 0 && events.length === 0) {
     return (
       <div className='flex flex-1 items-center justify-center p-4 text-xs text-muted-foreground'>
         No messages yet.
@@ -76,12 +78,15 @@ export function ChatPanelMessages({ threadId }: ChatPanelMessagesProps) {
     )
   }
 
-  const items = buildRenderItems(messages)
+  const items = buildChatTimeline(messages, events)
 
   return (
     <ScrollArea viewportRef={scrollRef} className='flex-1' scrollbarClassName='w-1!'>
       <div className='flex flex-col gap-2 px-3 py-2'>
         {items.map((item) => {
+          if (item.kind === 'event') {
+            return <SystemLine key={`evt:${item.event.id}`} event={item.event} />
+          }
           if (item.kind === 'chat-group') {
             const groupIsLast = item.endIndex === messages.length - 1
             return (
@@ -106,41 +111,4 @@ export function ChatPanelMessages({ threadId }: ChatPanelMessagesProps) {
       </div>
     </ScrollArea>
   )
-}
-
-type RenderItem =
-  | { kind: 'single'; message: MessageMeta; index: number }
-  | { kind: 'chat-group'; messages: MessageMeta[]; startIndex: number; endIndex: number }
-
-function buildRenderItems(messages: MessageMeta[]): RenderItem[] {
-  const items: RenderItem[] = []
-  for (let i = 0; i < messages.length; i++) {
-    const m = messages[i]!
-    if (m.messageType !== 'CHAT') {
-      items.push({ kind: 'single', message: m, index: i })
-      continue
-    }
-    const startIndex = i
-    const run: MessageMeta[] = [m]
-    while (i + 1 < messages.length && canGroupChat(run[run.length - 1]!, messages[i + 1]!)) {
-      i++
-      run.push(messages[i]!)
-    }
-    items.push({ kind: 'chat-group', messages: run, startIndex, endIndex: i })
-  }
-  return items
-}
-
-function canGroupChat(a: MessageMeta, b: MessageMeta): boolean {
-  if (b.messageType !== 'CHAT') return false
-  if (a.isInbound !== b.isInbound) return false
-  if (fromParticipant(a) !== fromParticipant(b)) return false
-  const aT = a.sentAt ? new Date(a.sentAt).getTime() : null
-  const bT = b.sentAt ? new Date(b.sentAt).getTime() : null
-  if (aT === null || bT === null) return true
-  return Math.abs(bT - aT) <= CHAT_GROUP_WINDOW_MS
-}
-
-function fromParticipant(m: MessageMeta): string | null {
-  return m.participants.find((p) => p.startsWith('from:')) ?? null
 }

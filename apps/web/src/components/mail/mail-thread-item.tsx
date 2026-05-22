@@ -22,7 +22,16 @@ import { cn } from '@auxx/ui/lib/utils'
 import { useDraggable } from '@dnd-kit/core'
 import { formatDistanceToNowStrict } from 'date-fns'
 import DOMPurify from 'dompurify'
-import { Archive, Ban, Clock, MailWarning, MoreVertical, Trash2 } from 'lucide-react'
+import {
+  Archive,
+  Ban,
+  Bot,
+  Clock,
+  MailWarning,
+  MessageCircle,
+  MoreVertical,
+  Trash2,
+} from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import type React from 'react'
 import { memo, useCallback, useMemo } from 'react'
@@ -308,6 +317,21 @@ export const MailThreadItem = memo(function MailThreadItem({
 
   const hasTags = (thread?.tagIds?.length ?? 0) > 0
 
+  // --- Chat-specific affordances (4b-i) ---
+  // Channel marker, handoff badge, and "live" emphasis on rows whose latest
+  // inbound message landed in the last few minutes. Detection uses the
+  // lowercase `'chat'` provider value coming from the Integration row.
+  const isChatThread = (thread?.integrationProvider as string | null) === 'chat'
+  const handoffState = thread?.handoffState ?? 'ai'
+  const isAssignedToMe =
+    !!currentUserId && !!thread?.assigneeId && thread.assigneeId.endsWith(`:${currentUserId}`)
+  const isLiveChat = useMemo(() => {
+    if (!isChatThread || !thread?.lastMessageAt) return false
+    if (!latestMessage?.isInbound) return false
+    const ts = new Date(thread.lastMessageAt).getTime()
+    return Date.now() - ts < 5 * 60_000
+  }, [isChatThread, thread?.lastMessageAt, latestMessage?.isInbound])
+
   // --- Tombstoned (optimistic delete) — render nothing ---
   if (isDeleted) {
     return null
@@ -411,13 +435,51 @@ export const MailThreadItem = memo(function MailThreadItem({
 
               {/* Subject */}
               <div className='flex w-full items-center gap-1 min-w-0'>
+                {isChatThread && (
+                  <MessageCircle
+                    className={cn(
+                      'size-3 shrink-0 text-muted-foreground group-aria-selected:text-background/80',
+                      isLiveChat && 'text-blue-500 group-aria-selected:text-white'
+                    )}
+                    aria-label='Chat thread'
+                  />
+                )}
                 <div
                   className={cn(
                     'min-w-0 truncate text-xs font-medium group-aria-selected:text-background/80',
-                    hasTags && 'max-w-[60%] shrink-0'
+                    hasTags && 'max-w-[60%] shrink-0',
+                    isLiveChat && 'font-semibold'
                   )}>
                   {thread.subject || '(no subject)'}
                 </div>
+                {isChatThread &&
+                  (handoffState === 'human' ? (
+                    <span
+                      className={cn(
+                        'shrink-0 rounded-full border px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide',
+                        isAssignedToMe
+                          ? 'border-blue-500/40 bg-blue-500/10 text-blue-700 dark:text-blue-300'
+                          : 'border-muted-foreground/20 bg-muted text-muted-foreground'
+                      )}
+                      title={
+                        isAssignedToMe ? 'You are on this chat' : 'A teammate is on this chat'
+                      }>
+                      {isAssignedToMe ? 'You' : 'Human'}
+                    </span>
+                  ) : (
+                    <span
+                      className='shrink-0 inline-flex items-center gap-0.5 rounded-full border border-muted-foreground/20 bg-muted/60 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-muted-foreground'
+                      title='AI is replying'>
+                      <Bot className='size-2.5' />
+                      AI
+                    </span>
+                  ))}
+                {isLiveChat && (
+                  <span
+                    className={cn('shrink-0 size-1.5 rounded-full bg-blue-500', 'animate-pulse')}
+                    aria-label='Live chat'
+                  />
+                )}
                 <div className='min-w-0 flex-1'>
                   <OverflowRow collapseSlot='text' className='justify-end' gap={4}>
                     {thread.tagIds?.map((tagId) => (

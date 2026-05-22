@@ -29,7 +29,7 @@ import {
 import { createScopedLogger } from '@auxx/logger'
 import { recordIdSchema } from '@auxx/types/resource'
 import { TRPCError } from '@trpc/server'
-import { and, eq } from 'drizzle-orm'
+import { and, asc, eq, inArray, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { createTRPCRouter, notDemo, protectedProcedure } from '~/server/api/trpc'
 
@@ -925,5 +925,55 @@ export const threadRouter = createTRPCRouter({
       })
 
       return { success: true }
+    }),
+
+  // ═══════════════════════════════════════════════════════════════
+  // CHAT THREAD LIFECYCLE EVENTS (P4b-i)
+  // Centered system-line feed for the admin chat panel: takeover,
+  // return-to-AI, archive, reopen, assignee changed, visitor identified.
+  // Uses the `Event_threadId_expr_idx` expression index on
+  // `(Event.data->>'threadId')` added in #664.
+  // ═══════════════════════════════════════════════════════════════
+  listEvents: protectedProcedure
+    .input(z.object({ threadId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const { organizationId } = getServiceDependencies(ctx)
+      const rows = await ctx.db
+        .select({
+          id: schema.Event.id,
+          type: schema.Event.type,
+          createdAt: schema.Event.createdAt,
+          data: schema.Event.data,
+        })
+        .from(schema.Event)
+        .where(
+          and(
+            eq(schema.Event.organizationId, organizationId),
+            inArray(schema.Event.type, [
+              'thread:taken_over',
+              'thread:returned_to_ai',
+              'thread:archived',
+              'thread:reopened',
+              'thread:assignee:changed',
+              'thread:visitor:identified',
+            ]),
+            sql`(${schema.Event.data}->>'threadId') = ${input.threadId}`
+          )
+        )
+        .orderBy(asc(schema.Event.createdAt))
+        .limit(50)
+
+      return rows.map((r) => ({
+        id: r.id,
+        type: r.type as
+          | 'thread:taken_over'
+          | 'thread:returned_to_ai'
+          | 'thread:archived'
+          | 'thread:reopened'
+          | 'thread:assignee:changed'
+          | 'thread:visitor:identified',
+        createdAt: r.createdAt.toISOString(),
+        data: (r.data ?? {}) as Record<string, unknown>,
+      }))
     }),
 })
