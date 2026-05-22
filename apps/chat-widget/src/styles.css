@@ -89,7 +89,7 @@
   /* Legacy v1 shell — kept until Phase 3 replaces it with a navigation + tab UI. */
 
   .auxx-chat-root {
-    --auxx-chat-shell-closed-size: 56px;
+    --auxx-chat-shell-closed-size: 48px;
     --auxx-chat-shell-open-width: 360px;
     --auxx-chat-shell-open-height: 540px;
     --auxx-chat-shell-closed-radius: 28px;
