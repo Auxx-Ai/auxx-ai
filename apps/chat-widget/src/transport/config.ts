@@ -46,6 +46,7 @@ export interface ChatConfig {
   }
   home: ChatHomeConfig
   branding: { footerEnabled: boolean }
+  allowDownloadTranscript: boolean
   realtime: { provider: 'pusher'; key: string; cluster: string }
 }
 

@@ -34,6 +34,7 @@ export interface LoadedChatWidget {
   branding: {
     footerEnabled: boolean
   }
+  allowDownloadTranscript: boolean
 }
 
 /**
@@ -82,6 +83,7 @@ export async function loadChatWidgetByChannelId(
     branding: {
       footerEnabled: row.chatWidget.brandingFooterEnabled,
     },
+    allowDownloadTranscript: row.chatWidget.allowDownloadTranscript,
   }
 }
 

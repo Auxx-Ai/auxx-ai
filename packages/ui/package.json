@@ -22,6 +22,7 @@
     "./components/kb/utils": "./src/components/kb/utils/index.ts",
     "./components/menu-styles": "./src/components/menu-styles.ts",
     "./components/*": "./src/components/*.tsx",
+    "./components/emojis": "./src/components/emojis.ts",
     "./components/icons/*": "./src/components/icons/*.tsx",
     "./hooks/*": "./src/hooks/*.ts",
     "./hooks": "./src/hooks/index.ts",

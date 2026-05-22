@@ -2,31 +2,70 @@
 //
 // Outer pillbox shell + tab router. The shell handles open/closed animation
 // and the trigger button. Inside, a `useTabRouter` selects which tab's stack
-// is active and renders the matching frame. Phase 6 will re-introduce the
-// chat-session/Pusher wiring inside ThreadView.
+// is active and renders the matching frame.
+//
+// As of Phase 6 the shell also:
+//   - subscribes to the per-visitor Pusher channel as soon as the passport is
+//     issued, so the launcher unread badge updates while closed.
+//   - tracks an `expanded` state per channel for the wide-window mode.
 
-import { useEffect, useState } from 'preact/hooks'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import { FrameHeader, type FrameHeaderVariant } from './components/frame-header'
 import { TabBar } from './components/tab-bar'
 import { NavStackProvider } from './navigation/nav-stack-context'
 import type { NavFrame, NavView } from './navigation/use-navigation-stack'
 import { type TabId, useTabRouter } from './navigation/use-tab-router'
+import { getLastReadAt } from './persistence/unread'
+import { chatApi } from './transport/chat-api'
 import { type ChatConfig, fetchChatConfig } from './transport/config'
+import {
+  connectVisitorChannel,
+  type ThreadCreatedEvent,
+  type ThreadUpdatedEvent,
+} from './transport/visitor-channel'
+import { ConversationView } from './views/conversation/conversation-view'
+import { ConversationMenu } from './views/conversation/menu'
 import { HomeView } from './views/home/home-view'
 import { KbArticleView } from './views/kb/kb-article-view'
 import { KbSectionView } from './views/kb/kb-section-view'
-import { MessagesView, ThreadView } from './views/placeholder'
+import { MessagesView } from './views/messages/messages-view'
 
 interface WidgetProps {
   channelId: string
+}
+
+const EXPANDED_PREFIX = 'auxx-chat-expanded:'
+
+function readExpanded(channelId: string): boolean {
+  try {
+    return window.localStorage.getItem(`${EXPANDED_PREFIX}${channelId}`) === '1'
+  } catch {
+    return false
+  }
+}
+
+function writeExpanded(channelId: string, expanded: boolean): void {
+  try {
+    window.localStorage.setItem(`${EXPANDED_PREFIX}${channelId}`, expanded ? '1' : '0')
+  } catch {
+    /* ignore */
+  }
 }
 
 export function Widget({ channelId }: WidgetProps) {
   const [config, setConfig] = useState<ChatConfig | null>(null)
   const [open, setOpen] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [unreadCount, setUnreadCount] = useState(0)
+  const [expanded, setExpanded] = useState(() =>
+    typeof window === 'undefined' ? false : readExpanded(channelId)
+  )
 
   const router = useTabRouter(channelId)
+  const subscribeRef = useRef<{
+    onThreadUpdated: (cb: (e: ThreadUpdatedEvent) => void) => () => void
+    onThreadCreated: (cb: (e: ThreadCreatedEvent) => void) => () => void
+  } | null>(null)
 
   useEffect(() => {
     fetchChatConfig(channelId)
@@ -37,20 +76,87 @@ export function Widget({ channelId }: WidgetProps) {
       .catch((e) => setError(e instanceof Error ? e.message : 'Failed to load chat'))
   }, [channelId])
 
+  // Per-visitor channel: mint the passport eagerly so the visitor channel can
+  // connect even when the widget hasn't been opened yet. The badge fires off
+  // realtime events without requiring an open-state subscription.
+  useEffect(() => {
+    if (!config) return
+    let cancelled = false
+    let handle: Awaited<ReturnType<typeof connectVisitorChannel>> | null = null
+    let lastSnapshot: Awaited<ReturnType<ReturnType<typeof chatApi>['listThreads']>> | null = null
+
+    const refreshUnread = async () => {
+      try {
+        const data = await chatApi(channelId).listThreads(null)
+        if (cancelled) return
+        lastSnapshot = data
+        setUnreadCount(countUnread(channelId, data.items))
+      } catch {
+        /* keep current count */
+      }
+    }
+
+    ;(async () => {
+      try {
+        handle = await connectVisitorChannel(channelId, config)
+        if (cancelled) {
+          handle?.disconnect()
+          return
+        }
+        subscribeRef.current = {
+          onThreadUpdated: handle.onThreadUpdated,
+          onThreadCreated: handle.onThreadCreated,
+        }
+        handle.onThreadUpdated(() => refreshUnread())
+        handle.onThreadCreated(() => refreshUnread())
+        refreshUnread()
+      } catch (e) {
+        if (!cancelled) console.warn('[auxx-chat-widget] visitor channel failed', e)
+      }
+    })()
+
+    return () => {
+      cancelled = true
+      handle?.disconnect()
+      subscribeRef.current = null
+    }
+  }, [channelId, config])
+
+  // When the widget opens or the active tab changes to Messages, refresh
+  // unread off local storage (covers the case where the user reads a thread
+  // while still connected).
+  useEffect(() => {
+    if (!open) return
+    const items = chatApi(channelId)
+    items
+      .listThreads(null)
+      .then((data) => setUnreadCount(countUnread(channelId, data.items)))
+      .catch(() => {})
+  }, [channelId, open, router.activeTab, router.currentStack.current?.id])
+
+  const toggleExpanded = useCallback(() => {
+    setExpanded((prev) => {
+      const next = !prev
+      writeExpanded(channelId, next)
+      return next
+    })
+  }, [channelId])
+
   if (!config) return null
 
   const positionClass = config.appearance.position.toLowerCase().includes('left')
     ? 'auxx-chat-shell--bottom-left'
     : 'auxx-chat-shell--bottom-right'
   const stateClass = open ? 'auxx-chat-shell--open' : 'auxx-chat-shell--closed'
-  const rootStyle = { '--auxx-chat-primary': config.appearance.primaryColor } as Record<
-    string,
-    string
-  >
+  const expandedClass = open && expanded ? 'auxx-chat-shell--expanded' : ''
+  const rootStyle = {
+    '--auxx-chat-primary': config.appearance.primaryColor,
+    '--auxx-chat-expanded-width': `${config.home.expandedWidthPx}px`,
+  } as Record<string, string>
 
   return (
     <div className='auxx-chat-root' style={rootStyle}>
-      <div className={`auxx-chat-shell ${stateClass} ${positionClass}`}>
+      <div className={`auxx-chat-shell ${stateClass} ${positionClass} ${expandedClass}`}>
         <button
           type='button'
           className='auxx-chat-shell__trigger'
@@ -64,6 +170,11 @@ export function Widget({ channelId }: WidgetProps) {
             <path d='M20 2H4a2 2 0 0 0-2 2v18l4-4h14a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2zM6 9h12v2H6V9zm8 5H6v-2h8v2z' />
           </svg>
         </span>
+        {!open && unreadCount > 0 ? (
+          <span className='auxx-chat-shell__badge' aria-label={`${unreadCount} unread`}>
+            {unreadCount > 9 ? '9+' : unreadCount}
+          </span>
+        ) : null}
         <div
           className='auxx-chat-shell__panel'
           role='dialog'
@@ -81,6 +192,9 @@ export function Widget({ channelId }: WidgetProps) {
               onBack={router.currentStack.pop}
               onClose={() => setOpen(false)}
               error={error}
+              subscribe={subscribeRef.current ?? undefined}
+              expanded={expanded}
+              onToggleExpanded={toggleExpanded}
             />
           </NavStackProvider>
         </div>
@@ -99,6 +213,12 @@ interface PanelShellProps {
   onBack: () => void
   onClose: () => void
   error: string | null
+  subscribe?: {
+    onThreadUpdated: (cb: (e: ThreadUpdatedEvent) => void) => () => void
+    onThreadCreated: (cb: (e: ThreadCreatedEvent) => void) => () => void
+  }
+  expanded: boolean
+  onToggleExpanded: () => void
 }
 
 function PanelShell({
@@ -111,9 +231,16 @@ function PanelShell({
   onBack,
   onClose,
   error,
+  subscribe,
+  expanded,
+  onToggleExpanded,
 }: PanelShellProps) {
   const view: NavView = currentFrame?.view ?? activeTab
   const headerVariant = pickHeaderVariant(view, isAtRoot)
+  const threadId =
+    view === 'thread' && typeof currentFrame?.params?.threadId === 'string'
+      ? (currentFrame.params.threadId as string)
+      : null
 
   return (
     <div className='flex h-full flex-col'>
@@ -121,11 +248,26 @@ function PanelShell({
         variant={headerVariant}
         title={headerTitle(view, currentFrame, config)}
         subtitle={
-          view === 'home' && isAtRoot ? (config.appearance.subtitle ?? undefined) : undefined
+          view === 'home' && isAtRoot
+            ? (config.appearance.subtitle ?? undefined)
+            : view === 'thread'
+              ? (config.appearance.subtitle ?? undefined)
+              : undefined
         }
         logoUrl={config.appearance.logoUrl}
         onBack={isAtRoot ? undefined : onBack}
         onClose={onClose}
+        actions={
+          threadId ? (
+            <ConversationMenu
+              channelId={channelId}
+              threadId={threadId}
+              expanded={expanded}
+              onToggleExpanded={onToggleExpanded}
+              allowDownloadTranscript={config.allowDownloadTranscript}
+            />
+          ) : undefined
+        }
       />
       {error ? (
         <div className='auxx-chat-error' role='alert'>
@@ -133,7 +275,7 @@ function PanelShell({
         </div>
       ) : null}
       <div className='flex min-h-0 flex-1 flex-col bg-[color:var(--color-bg)]'>
-        {renderFrame(view, currentFrame, channelId, config)}
+        {renderFrame(view, currentFrame, channelId, config, subscribe)}
       </div>
       {isAtRoot ? <TabBar activeTab={activeTab} onChange={onTabChange} /> : null}
     </div>
@@ -153,15 +295,23 @@ function headerTitle(view: NavView, frame: NavFrame | null, config: ChatConfig):
   return ''
 }
 
-function renderFrame(view: NavView, frame: NavFrame | null, channelId: string, config: ChatConfig) {
-  const label = frame?.label ?? ''
+function renderFrame(
+  view: NavView,
+  frame: NavFrame | null,
+  channelId: string,
+  config: ChatConfig,
+  subscribe?: PanelShellProps['subscribe']
+) {
   switch (view) {
     case 'home':
       return <HomeView channelId={channelId} config={config} />
     case 'messages':
-      return <MessagesView />
-    case 'thread':
-      return <ThreadView label={label} />
+      return <MessagesView channelId={channelId} subscribe={subscribe} />
+    case 'thread': {
+      const raw = frame?.params?.threadId
+      if (typeof raw !== 'string') return null
+      return <ConversationView channelId={channelId} threadId={raw} config={config} />
+    }
     case 'kb-section': {
       const raw = frame?.params?.sectionId
       const sectionId = typeof raw === 'string' ? raw : null
@@ -173,4 +323,19 @@ function renderFrame(view: NavView, frame: NavFrame | null, channelId: string, c
       return <KbArticleView channelId={channelId} articleId={raw} />
     }
   }
+}
+
+function countUnread(
+  channelId: string,
+  items: { id: string; lastMessage: { isInbound: boolean; sentAt: string } }[]
+): number {
+  let count = 0
+  for (const t of items) {
+    if (t.lastMessage.isInbound) continue
+    const lastRead = getLastReadAt(channelId, t.id)
+    if (!lastRead || new Date(t.lastMessage.sentAt) > new Date(lastRead)) {
+      count += 1
+    }
+  }
+  return count
 }

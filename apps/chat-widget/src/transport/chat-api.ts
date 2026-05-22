@@ -28,6 +28,14 @@ export interface IdentifyApiPayload {
   externalId?: string
 }
 
+export interface ThreadListItem {
+  id: string
+  agent: { id: string; name: string; avatarUrl: string | null } | null
+  lastMessage: { snippet: string; sentAt: string; isInbound: boolean }
+  unreadCount: number
+  updatedAt: string
+}
+
 export function chatApi(channelId: string) {
   return {
     initialize: (body: {
@@ -96,6 +104,22 @@ export function chatApi(channelId: string) {
           lastMessage: { preview: string; isInbound: boolean; timestamp: string }
         } | null
       }>(channelId, '/api/chat/threads/recent', { method: 'GET' }),
+
+    listThreads: (cursor: string | null = null) => {
+      const query: Record<string, string> = {}
+      if (cursor) query.cursor = cursor
+      return authedFetch<{
+        items: ThreadListItem[]
+        nextCursor: string | null
+      }>(channelId, '/api/chat/threads', { method: 'GET', query })
+    },
+
+    getTranscript: (threadId: string) =>
+      authedFetch<{ html: string; filename: string }>(
+        channelId,
+        `/api/chat/threads/${threadId}/transcript`,
+        { method: 'POST' }
+      ),
 
     updateVisitorInfo: (body: {
       threadId: string
