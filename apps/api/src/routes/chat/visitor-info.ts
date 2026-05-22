@@ -3,6 +3,7 @@
 import { issueChatPassport } from '@auxx/credentials/passport'
 import { database } from '@auxx/database'
 import { patchChatThreadMetadata } from '@auxx/lib/chat'
+import { publisher } from '@auxx/lib/events'
 import { createScopedLogger } from '@auxx/logger'
 import { Hono } from 'hono'
 import { parseIdentifyPayload } from './identify'
@@ -57,6 +58,22 @@ visitorInfoRoute.patch('/', async (c) => {
         claimedExternalId,
       }
     )
+
+    // Emit `thread:visitor:identified` once an email is attached to an active
+    // thread — admin + widget render this as a centered system line. Fired
+    // only when we have an email (the spec keys the event on visitorEmail);
+    // anonymous name-only updates don't qualify.
+    if (claimedVisitorEmail) {
+      await publisher.publishLater({
+        type: 'thread:visitor:identified',
+        data: {
+          threadId: body.threadId,
+          organizationId: chat.organizationId,
+          visitorEmail: claimedVisitorEmail,
+          participantId: chat.visitorParticipantId,
+        },
+      })
+    }
 
     let passport: { token: string; expiresIn: string } | undefined
     if (identify) {

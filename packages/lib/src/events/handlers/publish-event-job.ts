@@ -7,6 +7,7 @@ import { getQueue } from '../../jobs/queues'
 import { Queues } from '../../jobs/queues/types'
 import type { AuxxEvent, IEventsHandlers } from '../types'
 import { createTimelineEvent } from './create-timeline-event'
+import { publishThreadEventToRealtime } from './publish-thread-event-to-realtime'
 import { sendInvitationUserJob } from './send-invitation-user-job'
 import { triggerAgents } from './trigger-agents'
 import { triggerResourceWorkflows } from './trigger-resource-workflows'
@@ -39,10 +40,17 @@ export const EventHandlers: IEventsHandlers = {
 
   // thread events
   'thread:moved': [],
-  'thread:archived': [],
   'thread:deleted': [],
-  'thread:reopened': [],
   'thread:restored': [],
+  // Chat thread lifecycle events — persisted via the generic createEventJob
+  // pipeline AND fanned out to the per-thread realtime room so widget +
+  // admin clients render centered system lines without polling.
+  'thread:archived': [publishThreadEventToRealtime],
+  'thread:reopened': [publishThreadEventToRealtime],
+  'thread:taken_over': [publishThreadEventToRealtime],
+  'thread:returned_to_ai': [publishThreadEventToRealtime],
+  'thread:assignee:changed': [publishThreadEventToRealtime],
+  'thread:visitor:identified': [publishThreadEventToRealtime],
 
   'messages:sync:pending': [],
   'messages:sync:processing': [],

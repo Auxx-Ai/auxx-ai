@@ -99,7 +99,7 @@ const getServiceDependencies = (
   const messageSender = new MessageSenderService(organizationId, providerRegistry, ctx.db, socketId)
   // New specialized services
   const threadQuery = new ThreadQueryService(organizationId, ctx.db)
-  const threadMutation = new ThreadMutationService(organizationId, ctx.db, socketId)
+  const threadMutation = new ThreadMutationService(organizationId, ctx.db, socketId, userId)
   return {
     threadQuery,
     threadMutation,
@@ -879,11 +879,12 @@ export const threadRouter = createTRPCRouter({
   returnToAi: protectedProcedure
     .input(z.object({ threadId: z.string() }))
     .mutation(async ({ ctx, input }) => {
-      const { organizationId } = getServiceDependencies(ctx)
+      const { organizationId, userId } = getServiceDependencies(ctx)
       const result = await returnThreadToAi({
         db: ctx.db,
         threadId: input.threadId,
         organizationId,
+        userId,
       })
       if (result.isErr()) {
         throw new TRPCError({ code: 'NOT_FOUND', message: result.error.message })

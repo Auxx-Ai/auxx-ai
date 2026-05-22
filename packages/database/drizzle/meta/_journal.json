@@ -1226,6 +1226,13 @@
       "when": 1779488638656,
       "tag": "0174_chat_thread_handoff_state",
       "breakpoints": true
+    },
+    {
+      "idx": 175,
+      "version": "7",
+      "when": 1779490802255,
+      "tag": "0175_event_thread_id_idx",
+      "breakpoints": true
     }
   ]
 }

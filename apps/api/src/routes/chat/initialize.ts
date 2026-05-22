@@ -4,6 +4,7 @@ import type { ChatIdentifyClaim } from '@auxx/credentials/passport'
 import { issueChatPassport } from '@auxx/credentials/passport'
 import { database, schema } from '@auxx/database'
 import { initializeOrResumeChatThread } from '@auxx/lib/chat'
+import { publisher } from '@auxx/lib/events'
 import { createScopedLogger } from '@auxx/logger'
 import { asc, eq } from 'drizzle-orm'
 import { Hono } from 'hono'
@@ -104,6 +105,21 @@ initializeRoute.post('/', async (c) => {
       timestamp: m.sentAt ?? m.createdAt,
       status: 'DELIVERED',
     }))
+
+    // If the visitor identified during this initialize (new claim with an
+    // email) and we have an active thread, emit the lifecycle event so the
+    // admin sees a centered system line in the conversation.
+    if (identify?.email && hasNewIdentify(chat.identify, identify) && thread?.id) {
+      await publisher.publishLater({
+        type: 'thread:visitor:identified',
+        data: {
+          threadId: thread.id,
+          organizationId: chat.organizationId,
+          visitorEmail: identify.email,
+          participantId: chat.visitorParticipantId,
+        },
+      })
+    }
 
     let passport: { token: string; expiresIn: string } | undefined
     if (identify && hasNewIdentify(chat.identify, identify)) {

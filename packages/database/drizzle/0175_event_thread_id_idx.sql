@@ -1,0 +1,1 @@
+CREATE INDEX "Event_threadId_expr_idx" ON "Event" USING btree (((data->>'threadId')));

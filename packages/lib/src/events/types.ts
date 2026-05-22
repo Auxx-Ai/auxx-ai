@@ -25,6 +25,10 @@ export type Events =
   | 'thread:reopened'
   | 'thread:deleted'
   | 'thread:restored'
+  | 'thread:taken_over'
+  | 'thread:returned_to_ai'
+  | 'thread:assignee:changed'
+  | 'thread:visitor:identified'
   | 'message:comment:created'
   | 'message:assignee:changed'
   | 'message:tag:added'
@@ -226,6 +230,8 @@ export type ThreadArchivedEvent = AuxxEventGeneric<
   {
     threadId: string
     organizationId: string
+    /** The user who archived the thread. */
+    userId: string
   }
 >
 export type ThreadDeletedEvent = AuxxEventGeneric<
@@ -240,6 +246,8 @@ export type ThreadReopenedEvent = AuxxEventGeneric<
   {
     threadId: string
     organizationId: string
+    /** The user who reopened the thread. */
+    userId: string
   }
 >
 export type ThreadRestoredEvent = AuxxEventGeneric<
@@ -247,6 +255,45 @@ export type ThreadRestoredEvent = AuxxEventGeneric<
   {
     threadId: string
     organizationId: string
+  }
+>
+export type ThreadTakenOverEvent = AuxxEventGeneric<
+  'thread:taken_over',
+  {
+    threadId: string
+    organizationId: string
+    /** The user who took the thread over (new assignee / driver). */
+    userId: string
+    /** Handoff state prior to the take-over (always `'ai'` today, but typed for future flows). */
+    previousState: 'ai' | 'human'
+  }
+>
+export type ThreadReturnedToAiEvent = AuxxEventGeneric<
+  'thread:returned_to_ai',
+  {
+    threadId: string
+    organizationId: string
+    /** The user who handed the thread back to the AI agent. */
+    userId: string
+  }
+>
+export type ThreadAssigneeChangedEvent = AuxxEventGeneric<
+  'thread:assignee:changed',
+  {
+    threadId: string
+    organizationId: string
+    fromUserId: string | null
+    toUserId: string | null
+  }
+>
+export type ThreadVisitorIdentifiedEvent = AuxxEventGeneric<
+  'thread:visitor:identified',
+  {
+    threadId: string
+    organizationId: string
+    visitorEmail: string
+    /** Visitor Participant id (the chat visitor's stable Participant row). */
+    participantId: string
   }
 >
 export type ProjectCreatedEvent = AuxxEventGeneric<
@@ -848,6 +895,10 @@ export type AuxxEvent =
   | ThreadDeletedEvent
   | ThreadReopenedEvent
   | ThreadRestoredEvent
+  | ThreadTakenOverEvent
+  | ThreadReturnedToAiEvent
+  | ThreadAssigneeChangedEvent
+  | ThreadVisitorIdentifiedEvent
   | MessageSyncPendingEvent
   | MessageSyncProcessingEvent
   | MessageSyncCompleteEvent
@@ -926,6 +977,10 @@ export interface IEventsHandlers {
   'thread:deleted': EventHandler<ThreadDeletedEvent>[]
   'thread:reopened': EventHandler<ThreadReopenedEvent>[]
   'thread:restored': EventHandler<ThreadRestoredEvent>[]
+  'thread:taken_over': EventHandler<ThreadTakenOverEvent>[]
+  'thread:returned_to_ai': EventHandler<ThreadReturnedToAiEvent>[]
+  'thread:assignee:changed': EventHandler<ThreadAssigneeChangedEvent>[]
+  'thread:visitor:identified': EventHandler<ThreadVisitorIdentifiedEvent>[]
   'message:processing:started': EventHandler<MessageProcessingStartedEvent>[]
   'message:processing:completed': EventHandler<MessageProcessingCompletedEvent>[]
   'message:processing:failed': EventHandler<MessageProcessingFailedEvent>[]
