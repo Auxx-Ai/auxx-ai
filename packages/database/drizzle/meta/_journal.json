@@ -1191,6 +1191,13 @@
       "when": 1779413746068,
       "tag": "0169_drop_chat_widget_description",
       "breakpoints": true
+    },
+    {
+      "idx": 170,
+      "version": "7",
+      "when": 1779419906396,
+      "tag": "0170_chat_widget_header_color_drop_expanded_width",
+      "breakpoints": true
     }
   ]
 }

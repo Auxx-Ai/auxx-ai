@@ -15,7 +15,6 @@ export interface ChatHomeConfig {
   greetingTemplate: TiptapNode | null
   showRecentMessage: boolean
   showSendMessageCta: boolean
-  expandedWidthPx: number
   knowledgeBase: {
     siteSlug: string
     siteName: string
@@ -36,6 +35,7 @@ export interface ChatConfig {
     title: string
     subtitle: string | null
     primaryColor: string
+    headerColor: string
     logoLight: string | null
     logoDark: string | null
     position: string
@@ -50,10 +50,15 @@ export interface ChatConfig {
   realtime: { provider: 'pusher'; key: string; cluster: string }
 }
 
-export async function fetchChatConfig(channelId: string): Promise<ChatConfig> {
-  const res = await fetch(`${__AUXX_API_BASE_URL__}/api/chat/config/${channelId}`, {
+export async function fetchChatConfig(
+  channelId: string,
+  cacheBust: string | null = null
+): Promise<ChatConfig> {
+  const qs = cacheBust ? `?v=${encodeURIComponent(cacheBust)}` : ''
+  const res = await fetch(`${__AUXX_API_BASE_URL__}/api/chat/config/${channelId}${qs}`, {
     method: 'GET',
     credentials: 'omit',
+    cache: cacheBust ? 'no-store' : 'default',
   })
   if (!res.ok) throw new Error(`Failed to load chat config (${res.status})`)
   return (await res.json()) as ChatConfig

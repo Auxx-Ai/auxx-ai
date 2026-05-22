@@ -13,7 +13,6 @@ import {
   FormLabel,
   FormMessage,
 } from '@auxx/ui/components/form'
-import { Slider } from '@auxx/ui/components/slider'
 import { Textarea } from '@auxx/ui/components/textarea'
 import { toastError } from '@auxx/ui/components/toast'
 import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
@@ -53,7 +52,6 @@ const behaviorSchema = z.object({
   homeShowSendMessageCta: z.boolean(),
   allowDownloadTranscript: z.boolean(),
   brandingFooterEnabled: z.boolean(),
-  expandedWidthPx: z.number().int().min(480).max(960),
   knowledgeBaseId: z.string().nullable(),
   featuredArticleIds: z.array(z.string()),
 })
@@ -103,7 +101,6 @@ export function BehaviorSection({ widget, channelId }: BehaviorSectionProps) {
       homeShowSendMessageCta: cw?.homeShowSendMessageCta ?? true,
       allowDownloadTranscript: cw?.allowDownloadTranscript ?? true,
       brandingFooterEnabled: cw?.brandingFooterEnabled ?? true,
-      expandedWidthPx: cw?.expandedWidthPx ?? 720,
       knowledgeBaseId: cw?.knowledgeBaseId ?? null,
       featuredArticleIds: cw?.featuredArticleIds ?? [],
     },
@@ -120,7 +117,6 @@ export function BehaviorSection({ widget, channelId }: BehaviorSectionProps) {
       homeShowSendMessageCta: values.homeShowSendMessageCta,
       allowDownloadTranscript: values.allowDownloadTranscript,
       brandingFooterEnabled: values.brandingFooterEnabled,
-      expandedWidthPx: values.expandedWidthPx,
       knowledgeBaseId: values.knowledgeBaseId,
       featuredArticleIds: values.featuredArticleIds,
     })
@@ -329,28 +325,6 @@ export function BehaviorSection({ widget, channelId }: BehaviorSectionProps) {
                   <FormDescription>
                     Type <code className='rounded bg-muted px-1'>{'{'}</code> to insert a visitor
                     field. Click the badge to set a fallback for when the value isn't available.
-                  </FormDescription>
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name='expandedWidthPx'
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Expanded width — {field.value}px</FormLabel>
-                  <FormControl>
-                    <Slider
-                      min={480}
-                      max={960}
-                      step={10}
-                      value={[field.value]}
-                      onValueChange={(v) => field.onChange(v[0] ?? 720)}
-                    />
-                  </FormControl>
-                  <FormDescription>
-                    Width of the widget when expanded on desktop (480–960px).
                   </FormDescription>
                 </FormItem>
               )}

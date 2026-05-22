@@ -9,6 +9,7 @@
 // Greeting + card visibility are driven by `config.home`. Identify claims
 // substitute into the greeting via the Tiptap-JSON walker in ./greeting.
 
+import { X } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'preact/hooks'
 import { getStoredIdentify, type IdentifyPayload, onIdentify } from '~/identify'
 import { useNavStack } from '~/navigation/nav-stack-context'
@@ -23,6 +24,25 @@ import { Greeting } from './greeting'
 interface HomeViewProps {
   channelId: string
   config: ChatConfig
+  onClose?: () => void
+}
+
+/**
+ * Pick a contrast-safe text color (black/white) for a hex background using
+ * WCAG relative luminance. Mirrors the simple version of WCAG 2.x §1.4.3:
+ * compute luminance of the bg, return white below ~0.5, black otherwise.
+ */
+function pickContrastText(hex: string): string {
+  const m = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(hex)
+  if (!m) return '#ffffff'
+  let h = m[1]
+  if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2]
+  const r = parseInt(h.slice(0, 2), 16) / 255
+  const g = parseInt(h.slice(2, 4), 16) / 255
+  const b = parseInt(h.slice(4, 6), 16) / 255
+  const toLin = (c: number) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4)
+  const lum = 0.2126 * toLin(r) + 0.7152 * toLin(g) + 0.0722 * toLin(b)
+  return lum > 0.5 ? '#000000' : '#ffffff'
 }
 
 interface RecentThread {
@@ -31,7 +51,7 @@ interface RecentThread {
   lastMessage: { preview: string; isInbound: boolean; timestamp: string }
 }
 
-export function HomeView({ channelId, config }: HomeViewProps) {
+export function HomeView({ channelId, config, onClose }: HomeViewProps) {
   const nav = useNavStack()
   const [identify, setIdentify] = useState<IdentifyPayload | null>(() =>
     getStoredIdentify(channelId)
@@ -138,12 +158,58 @@ export function HomeView({ channelId, config }: HomeViewProps) {
     ) : null,
   ].filter(Boolean)
 
+  const headerColor = config.appearance.headerColor
+  const headerText = pickContrastText(headerColor)
+  const isLightHeader = headerText === '#000000'
+
   return (
-    <div className='flex min-h-0 flex-1 flex-col'>
-      <div className='flex flex-col gap-1 px-5 pb-4 -mt-2 text-[color:var(--color-primary-foreground)]'>
+    <div className='relative flex min-h-0 flex-1 flex-col bg-[color:var(--color-surface)]'>
+      <div
+        aria-hidden='true'
+        className='pointer-events-none absolute inset-x-0 top-0 z-0'
+        style={{
+          height: '360px',
+          background: headerColor,
+        }}>
+        <div
+          style={{
+            position: 'absolute',
+            bottom: 0,
+            left: 0,
+            height: '140px',
+            width: '100%',
+            opacity: 1,
+            zIndex: 0,
+            background: 'linear-gradient(rgba(0, 0, 0, 0) 0%, var(--color-surface) 100%)',
+          }}
+        />
+      </div>
+      <div
+        className='relative z-10 flex shrink-0 flex-col gap-8 px-5 pt-5 pb-6'
+        style={{ color: headerText }}>
+        <div className='flex items-start justify-between'>
+          {config.appearance.logoLight ? (
+            <img src={config.appearance.logoLight} alt='' className='h-8 w-auto' />
+          ) : (
+            <span className='h-8' />
+          )}
+          {onClose ? (
+            <button
+              type='button'
+              onClick={onClose}
+              aria-label='Close chat'
+              className={
+                isLightHeader
+                  ? 'flex size-7 items-center justify-center rounded text-black/70 transition-colors hover:bg-black/5 hover:text-black'
+                  : 'flex size-7 items-center justify-center rounded text-white/90 transition-colors hover:bg-white/10 hover:text-white'
+              }>
+              <X className='size-4' aria-hidden='true' />
+            </button>
+          ) : null}
+        </div>
         <Greeting doc={home.greetingTemplate ?? null} identify={identify} />
       </div>
-      <div className='flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto bg-[color:var(--color-surface)] p-3'>
+      <div className='relative z-10 flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-3 pb-3'>
         {cards.length === 0 ? (
           <p className='py-6 text-center text-xs text-[color:var(--color-muted)]'>
             No conversations yet
@@ -153,7 +219,7 @@ export function HomeView({ channelId, config }: HomeViewProps) {
         )}
       </div>
       {config.branding.footerEnabled ? (
-        <div className='border-t border-[color:var(--color-border)] bg-[color:var(--color-bg)] py-2 text-center text-[10px] uppercase tracking-wide text-[color:var(--color-muted)]'>
+        <div className='relative z-10 border-t border-[color:var(--color-border)] bg-[color:var(--color-bg)] py-2 text-center text-[10px] uppercase tracking-wide text-[color:var(--color-muted)]'>
           Powered by Auxx
         </div>
       ) : null}

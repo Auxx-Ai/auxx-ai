@@ -1,11 +1,13 @@
 // apps/chat-widget/src/views/home/cards/article-card.tsx
 
-import { FileText } from 'lucide-react'
+import { ArticleIcon } from './article-icon'
 import { HomeCard } from './card'
 
 interface ArticleCardProps {
   title: string
   description: string | null
+  // Despite the prop name (matching the DB column `Article.emoji`), this
+  // carries a kebab-case Lucide icon id, not a literal emoji character.
   emoji: string | null
   onClick: () => void
 }
@@ -14,16 +16,7 @@ export function ArticleCard({ title, description, emoji, onClick }: ArticleCardP
   return (
     <HomeCard onClick={onClick}>
       <div className='flex items-center gap-2'>
-        {emoji ? (
-          <span className='text-base leading-none' aria-hidden='true'>
-            {emoji}
-          </span>
-        ) : (
-          <FileText
-            className='size-4 shrink-0 text-[color:var(--color-muted)]'
-            aria-hidden='true'
-          />
-        )}
+        <ArticleIcon iconId={emoji} />
         <span className='truncate text-sm font-medium text-[color:var(--color-fg)]'>{title}</span>
       </div>
       {description ? (
