@@ -5,8 +5,9 @@ import type { Job } from 'bullmq'
 import { getRealtimeService, rooms } from '../../realtime'
 import type {
   AuxxEvent,
+  ThreadArchivedEvent,
   ThreadAssigneeChangedEvent,
-  ThreadResolvedEvent,
+  ThreadReopenedEvent,
   ThreadReturnedToAiEvent,
   ThreadTakenOverEvent,
   ThreadVisitorIdentifiedEvent,
@@ -15,16 +16,18 @@ import type {
 const logger = createScopedLogger('publish-thread-event-to-realtime')
 
 type RealtimeThreadEvent =
+  | ThreadArchivedEvent
+  | ThreadReopenedEvent
   | ThreadTakenOverEvent
   | ThreadReturnedToAiEvent
-  | ThreadResolvedEvent
   | ThreadAssigneeChangedEvent
   | ThreadVisitorIdentifiedEvent
 
 const SUPPORTED_TYPES = new Set<AuxxEvent['type']>([
+  'thread:archived',
+  'thread:reopened',
   'thread:taken_over',
   'thread:returned_to_ai',
-  'thread:resolved',
   'thread:assignee:changed',
   'thread:visitor:identified',
 ])

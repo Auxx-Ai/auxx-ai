@@ -40,16 +40,15 @@ export const EventHandlers: IEventsHandlers = {
 
   // thread events
   'thread:moved': [],
-  'thread:archived': [],
   'thread:deleted': [],
-  'thread:reopened': [],
   'thread:restored': [],
   // Chat thread lifecycle events — persisted via the generic createEventJob
   // pipeline AND fanned out to the per-thread realtime room so widget +
   // admin clients render centered system lines without polling.
+  'thread:archived': [publishThreadEventToRealtime],
+  'thread:reopened': [publishThreadEventToRealtime],
   'thread:taken_over': [publishThreadEventToRealtime],
   'thread:returned_to_ai': [publishThreadEventToRealtime],
-  'thread:resolved': [publishThreadEventToRealtime],
   'thread:assignee:changed': [publishThreadEventToRealtime],
   'thread:visitor:identified': [publishThreadEventToRealtime],
 

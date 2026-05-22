@@ -21,7 +21,7 @@ const FILTERABLE_STATUSES = ['OPEN', 'ACTIVE', 'PENDING'] as const
  * Used by the update() and updateBulk() methods.
  */
 export interface ThreadUpdates {
-  status?: 'OPEN' | 'ARCHIVED' | 'SPAM' | 'TRASH' | 'IGNORED' | 'RESOLVED'
+  status?: 'OPEN' | 'ARCHIVED' | 'SPAM' | 'TRASH' | 'IGNORED'
   subject?: string
   assigneeId?: ActorId | null
   /** Inbox RecordId (format: "entityDefinitionId:instanceId") or null to unassign */
@@ -60,9 +60,9 @@ export class ThreadMutationService {
 
   /**
    * Acting user id, used to attribute lifecycle events
-   * (`thread:resolved`, `thread:assignee:changed`). Workers / workflow nodes
-   * with no human actor leave this undefined and skip the user-attributed
-   * event emission.
+   * (`thread:archived`, `thread:reopened`, `thread:assignee:changed`).
+   * Workers / workflow nodes with no human actor leave this undefined and
+   * skip the user-attributed event emission.
    */
   private readonly actorUserId?: string
 
@@ -209,22 +209,30 @@ export class ThreadMutationService {
       // Lifecycle events — emit after the DB write succeeds. Each fires
       // through the same `publisher.publishLater` path used elsewhere so
       // persistence (createEventJob) + realtime fan-out (per-thread room)
-      // stay in lockstep.
-      if (
-        'status' in dbUpdates &&
-        dbUpdates.status === 'RESOLVED' &&
-        previous?.status !== 'RESOLVED' &&
-        this.actorUserId
-      ) {
-        await publisher.publishLater({
-          type: 'thread:resolved',
-          data: {
-            threadId,
-            organizationId: this.organizationId,
-            userId: this.actorUserId,
-            resolvedAt: new Date(),
-          },
-        })
+      // stay in lockstep. ARCHIVED is our "done" state; un-ARCHIVING (to any
+      // other status) is a reopen.
+      if ('status' in dbUpdates && this.actorUserId) {
+        const nextStatus = dbUpdates.status
+        const prevStatus = previous?.status
+        if (nextStatus === 'ARCHIVED' && prevStatus !== 'ARCHIVED') {
+          await publisher.publishLater({
+            type: 'thread:archived',
+            data: {
+              threadId,
+              organizationId: this.organizationId,
+              userId: this.actorUserId,
+            },
+          })
+        } else if (prevStatus === 'ARCHIVED' && nextStatus !== 'ARCHIVED') {
+          await publisher.publishLater({
+            type: 'thread:reopened',
+            data: {
+              threadId,
+              organizationId: this.organizationId,
+              userId: this.actorUserId,
+            },
+          })
+        }
       }
       if ('assigneeId' in dbUpdates && (previous?.assigneeId ?? null) !== dbUpdates.assigneeId) {
         await publisher.publishLater({

@@ -27,7 +27,6 @@ export type Events =
   | 'thread:restored'
   | 'thread:taken_over'
   | 'thread:returned_to_ai'
-  | 'thread:resolved'
   | 'thread:assignee:changed'
   | 'thread:visitor:identified'
   | 'message:comment:created'
@@ -231,6 +230,8 @@ export type ThreadArchivedEvent = AuxxEventGeneric<
   {
     threadId: string
     organizationId: string
+    /** The user who archived the thread. */
+    userId: string
   }
 >
 export type ThreadDeletedEvent = AuxxEventGeneric<
@@ -245,6 +246,8 @@ export type ThreadReopenedEvent = AuxxEventGeneric<
   {
     threadId: string
     organizationId: string
+    /** The user who reopened the thread. */
+    userId: string
   }
 >
 export type ThreadRestoredEvent = AuxxEventGeneric<
@@ -272,16 +275,6 @@ export type ThreadReturnedToAiEvent = AuxxEventGeneric<
     organizationId: string
     /** The user who handed the thread back to the AI agent. */
     userId: string
-  }
->
-export type ThreadResolvedEvent = AuxxEventGeneric<
-  'thread:resolved',
-  {
-    threadId: string
-    organizationId: string
-    /** The user who marked the thread resolved. */
-    userId: string
-    resolvedAt: Date
   }
 >
 export type ThreadAssigneeChangedEvent = AuxxEventGeneric<
@@ -904,7 +897,6 @@ export type AuxxEvent =
   | ThreadRestoredEvent
   | ThreadTakenOverEvent
   | ThreadReturnedToAiEvent
-  | ThreadResolvedEvent
   | ThreadAssigneeChangedEvent
   | ThreadVisitorIdentifiedEvent
   | MessageSyncPendingEvent
@@ -987,7 +979,6 @@ export interface IEventsHandlers {
   'thread:restored': EventHandler<ThreadRestoredEvent>[]
   'thread:taken_over': EventHandler<ThreadTakenOverEvent>[]
   'thread:returned_to_ai': EventHandler<ThreadReturnedToAiEvent>[]
-  'thread:resolved': EventHandler<ThreadResolvedEvent>[]
   'thread:assignee:changed': EventHandler<ThreadAssigneeChangedEvent>[]
   'thread:visitor:identified': EventHandler<ThreadVisitorIdentifiedEvent>[]
   'message:processing:started': EventHandler<MessageProcessingStartedEvent>[]
