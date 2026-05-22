@@ -25,6 +25,11 @@ export type Events =
   | 'thread:reopened'
   | 'thread:deleted'
   | 'thread:restored'
+  | 'thread:taken_over'
+  | 'thread:returned_to_ai'
+  | 'thread:resolved'
+  | 'thread:assignee:changed'
+  | 'thread:visitor:identified'
   | 'message:comment:created'
   | 'message:assignee:changed'
   | 'message:tag:added'
@@ -247,6 +252,55 @@ export type ThreadRestoredEvent = AuxxEventGeneric<
   {
     threadId: string
     organizationId: string
+  }
+>
+export type ThreadTakenOverEvent = AuxxEventGeneric<
+  'thread:taken_over',
+  {
+    threadId: string
+    organizationId: string
+    /** The user who took the thread over (new assignee / driver). */
+    userId: string
+    /** Handoff state prior to the take-over (always `'ai'` today, but typed for future flows). */
+    previousState: 'ai' | 'human'
+  }
+>
+export type ThreadReturnedToAiEvent = AuxxEventGeneric<
+  'thread:returned_to_ai',
+  {
+    threadId: string
+    organizationId: string
+    /** The user who handed the thread back to the AI agent. */
+    userId: string
+  }
+>
+export type ThreadResolvedEvent = AuxxEventGeneric<
+  'thread:resolved',
+  {
+    threadId: string
+    organizationId: string
+    /** The user who marked the thread resolved. */
+    userId: string
+    resolvedAt: Date
+  }
+>
+export type ThreadAssigneeChangedEvent = AuxxEventGeneric<
+  'thread:assignee:changed',
+  {
+    threadId: string
+    organizationId: string
+    fromUserId: string | null
+    toUserId: string | null
+  }
+>
+export type ThreadVisitorIdentifiedEvent = AuxxEventGeneric<
+  'thread:visitor:identified',
+  {
+    threadId: string
+    organizationId: string
+    visitorEmail: string
+    /** Visitor Participant id (the chat visitor's stable Participant row). */
+    participantId: string
   }
 >
 export type ProjectCreatedEvent = AuxxEventGeneric<
@@ -848,6 +902,11 @@ export type AuxxEvent =
   | ThreadDeletedEvent
   | ThreadReopenedEvent
   | ThreadRestoredEvent
+  | ThreadTakenOverEvent
+  | ThreadReturnedToAiEvent
+  | ThreadResolvedEvent
+  | ThreadAssigneeChangedEvent
+  | ThreadVisitorIdentifiedEvent
   | MessageSyncPendingEvent
   | MessageSyncProcessingEvent
   | MessageSyncCompleteEvent
@@ -926,6 +985,11 @@ export interface IEventsHandlers {
   'thread:deleted': EventHandler<ThreadDeletedEvent>[]
   'thread:reopened': EventHandler<ThreadReopenedEvent>[]
   'thread:restored': EventHandler<ThreadRestoredEvent>[]
+  'thread:taken_over': EventHandler<ThreadTakenOverEvent>[]
+  'thread:returned_to_ai': EventHandler<ThreadReturnedToAiEvent>[]
+  'thread:resolved': EventHandler<ThreadResolvedEvent>[]
+  'thread:assignee:changed': EventHandler<ThreadAssigneeChangedEvent>[]
+  'thread:visitor:identified': EventHandler<ThreadVisitorIdentifiedEvent>[]
   'message:processing:started': EventHandler<MessageProcessingStartedEvent>[]
   'message:processing:completed': EventHandler<MessageProcessingCompletedEvent>[]
   'message:processing:failed': EventHandler<MessageProcessingFailedEvent>[]

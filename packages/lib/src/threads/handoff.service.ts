@@ -5,6 +5,7 @@ import { createScopedLogger } from '@auxx/logger'
 import { and, eq } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import { NotFoundError } from '../errors'
+import { publisher } from '../events/publisher'
 
 const logger = createScopedLogger('thread-handoff')
 
@@ -20,6 +21,8 @@ interface ReturnToAiParams {
   db: Database
   threadId: string
   organizationId: string
+  /** The user handing the thread back to the AI agent. */
+  userId: string
 }
 
 interface HandoffResult {
@@ -39,6 +42,18 @@ export const takeOverThread = async ({
   organizationId,
   userId,
 }: TakeOverParams): Promise<Result<HandoffResult, NotFoundError>> => {
+  // Snapshot pre-update state so the emitted event carries `previousState`
+  // (and so an assignee-changed event fires only when the assignee actually
+  // moved).
+  const [previous] = await db
+    .select({
+      handoffState: schema.Thread.handoffState,
+      assigneeId: schema.Thread.assigneeId,
+    })
+    .from(schema.Thread)
+    .where(and(eq(schema.Thread.id, threadId), eq(schema.Thread.organizationId, organizationId)))
+    .limit(1)
+
   const [updated] = await db
     .update(schema.Thread)
     .set({ assigneeId: userId, handoffState: 'human' })
@@ -54,6 +69,32 @@ export const takeOverThread = async ({
   }
 
   logger.info('Thread taken over by human', { threadId, organizationId, userId })
+
+  await publisher.publishLater({
+    type: 'thread:taken_over',
+    data: {
+      threadId: updated.id,
+      organizationId,
+      userId,
+      previousState: previous?.handoffState ?? 'ai',
+    },
+  })
+
+  // Fan out a separate assignee-changed event when the assignee actually moved
+  // — keeps the assignee timeline complete without conflating it with the
+  // handoff event (consumers can subscribe to one without the other).
+  const previousAssigneeId = previous?.assigneeId ?? null
+  if (previousAssigneeId !== userId) {
+    await publisher.publishLater({
+      type: 'thread:assignee:changed',
+      data: {
+        threadId: updated.id,
+        organizationId,
+        fromUserId: previousAssigneeId,
+        toUserId: userId,
+      },
+    })
+  }
 
   return ok({
     threadId: updated.id,
@@ -71,6 +112,7 @@ export const returnThreadToAi = async ({
   db,
   threadId,
   organizationId,
+  userId,
 }: ReturnToAiParams): Promise<Result<HandoffResult, NotFoundError>> => {
   const [updated] = await db
     .update(schema.Thread)
@@ -86,7 +128,16 @@ export const returnThreadToAi = async ({
     return err(new NotFoundError(`Thread ${threadId} not found`))
   }
 
-  logger.info('Thread returned to AI', { threadId, organizationId })
+  logger.info('Thread returned to AI', { threadId, organizationId, userId })
+
+  await publisher.publishLater({
+    type: 'thread:returned_to_ai',
+    data: {
+      threadId: updated.id,
+      organizationId,
+      userId,
+    },
+  })
 
   return ok({
     threadId: updated.id,

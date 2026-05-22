@@ -6,6 +6,7 @@ import { type ActorId, parseActorId } from '@auxx/types/actor'
 import { getInstanceId, parseRecordId, type RecordId, toRecordId } from '@auxx/types/resource'
 import { and, eq, exists, ilike, inArray, notExists, or, sql } from 'drizzle-orm'
 import { getOrgCache } from '../cache'
+import { publisher } from '../events/publisher'
 import { FieldValueService } from '../field-values'
 import { getRealtimeService, publishThreadDeleted, publishThreadUpdated } from '../realtime'
 import type { ThreadMeta } from '../realtime/events'
@@ -20,7 +21,7 @@ const FILTERABLE_STATUSES = ['OPEN', 'ACTIVE', 'PENDING'] as const
  * Used by the update() and updateBulk() methods.
  */
 export interface ThreadUpdates {
-  status?: 'OPEN' | 'ARCHIVED' | 'SPAM' | 'TRASH' | 'IGNORED'
+  status?: 'OPEN' | 'ARCHIVED' | 'SPAM' | 'TRASH' | 'IGNORED' | 'RESOLVED'
   subject?: string
   assigneeId?: ActorId | null
   /** Inbox RecordId (format: "entityDefinitionId:instanceId") or null to unassign */
@@ -57,10 +58,19 @@ export class ThreadMutationService {
    */
   private readonly socketId?: string
 
-  constructor(organizationId: string, db: Database, socketId?: string) {
+  /**
+   * Acting user id, used to attribute lifecycle events
+   * (`thread:resolved`, `thread:assignee:changed`). Workers / workflow nodes
+   * with no human actor leave this undefined and skip the user-attributed
+   * event emission.
+   */
+  private readonly actorUserId?: string
+
+  constructor(organizationId: string, db: Database, socketId?: string, actorUserId?: string) {
     this.organizationId = organizationId
     this.db = db
     this.socketId = socketId
+    this.actorUserId = actorUserId
   }
 
   // ═══════════════════════════════════════════════════════════════
@@ -137,9 +147,15 @@ export class ThreadMutationService {
       }
 
       // Capture pre-update inboxId so we can fan out the realtime event onto
-      // both the old and new inbox channels when inboxId changes.
+      // both the old and new inbox channels when inboxId changes. We also
+      // capture status + assigneeId so the lifecycle event emitters below
+      // know whether the value actually moved.
       const [previous] = await this.db
-        .select({ inboxId: schema.Thread.inboxId })
+        .select({
+          inboxId: schema.Thread.inboxId,
+          status: schema.Thread.status,
+          assigneeId: schema.Thread.assigneeId,
+        })
         .from(schema.Thread)
         .where(
           and(eq(schema.Thread.id, threadId), eq(schema.Thread.organizationId, this.organizationId))
@@ -188,6 +204,38 @@ export class ThreadMutationService {
           },
           { excludeSocketId: this.socketId }
         )
+      }
+
+      // Lifecycle events — emit after the DB write succeeds. Each fires
+      // through the same `publisher.publishLater` path used elsewhere so
+      // persistence (createEventJob) + realtime fan-out (per-thread room)
+      // stay in lockstep.
+      if (
+        'status' in dbUpdates &&
+        dbUpdates.status === 'RESOLVED' &&
+        previous?.status !== 'RESOLVED' &&
+        this.actorUserId
+      ) {
+        await publisher.publishLater({
+          type: 'thread:resolved',
+          data: {
+            threadId,
+            organizationId: this.organizationId,
+            userId: this.actorUserId,
+            resolvedAt: new Date(),
+          },
+        })
+      }
+      if ('assigneeId' in dbUpdates && (previous?.assigneeId ?? null) !== dbUpdates.assigneeId) {
+        await publisher.publishLater({
+          type: 'thread:assignee:changed',
+          data: {
+            threadId,
+            organizationId: this.organizationId,
+            fromUserId: previous?.assigneeId ?? null,
+            toUserId: dbUpdates.assigneeId,
+          },
+        })
       }
 
       return {
