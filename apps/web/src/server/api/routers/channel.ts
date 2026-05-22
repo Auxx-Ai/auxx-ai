@@ -338,6 +338,11 @@ export const channelRouter = createTRPCRouter({
         allowDownloadTranscript: z.boolean().optional(),
         knowledgeBaseId: z.string().optional().nullable(),
         featuredArticleIds: z.array(z.string()).optional(),
+
+        // Dark mode
+        defaultTheme: z.enum(['light', 'dark', 'system']).optional(),
+        primaryColorDark: z.string().optional().nullable(),
+        headerColorDark: z.string().optional().nullable(),
       })
     )
     .mutation(async ({ ctx, input }) => {

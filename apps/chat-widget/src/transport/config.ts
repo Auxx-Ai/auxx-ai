@@ -43,6 +43,9 @@ export interface ChatConfig {
     mobileFullScreen: boolean
     collectUserInfo: boolean
     offlineMessage: string | null
+    theme: 'light' | 'dark' | 'system'
+    primaryColorDark: string | null
+    headerColorDark: string | null
   }
   home: ChatHomeConfig
   branding: { footerEnabled: boolean }

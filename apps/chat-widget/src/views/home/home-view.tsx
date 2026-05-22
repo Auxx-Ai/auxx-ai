@@ -24,6 +24,7 @@ import { Greeting } from './greeting'
 interface HomeViewProps {
   channelId: string
   config: ChatConfig
+  resolvedTheme: 'light' | 'dark'
   onClose?: () => void
 }
 
@@ -51,7 +52,7 @@ interface RecentThread {
   lastMessage: { preview: string; isInbound: boolean; timestamp: string }
 }
 
-export function HomeView({ channelId, config, onClose }: HomeViewProps) {
+export function HomeView({ channelId, config, resolvedTheme, onClose }: HomeViewProps) {
   const nav = useNavStack()
   const [identify, setIdentify] = useState<IdentifyPayload | null>(() =>
     getStoredIdentify(channelId)
@@ -158,41 +159,33 @@ export function HomeView({ channelId, config, onClose }: HomeViewProps) {
     ) : null,
   ].filter(Boolean)
 
-  const headerColor = config.appearance.headerColor
+  const isDark = resolvedTheme === 'dark'
+  const headerColor =
+    isDark && config.appearance.headerColorDark
+      ? config.appearance.headerColorDark
+      : config.appearance.headerColor
   const headerText = pickContrastText(headerColor)
   const isLightHeader = headerText === '#000000'
+  // In dark mode prefer logoDark (light-surface logo); fall back to logoLight.
+  const logo = isDark
+    ? (config.appearance.logoDark ?? config.appearance.logoLight)
+    : config.appearance.logoLight
 
   return (
-    <div className='relative flex min-h-0 flex-1 flex-col bg-[color:var(--color-surface)]'>
+    <div className='relative flex min-h-0 flex-1 flex-col'>
       <div
         aria-hidden='true'
         className='pointer-events-none absolute inset-x-0 top-0 z-0'
         style={{
-          height: '360px',
-          background: headerColor,
-        }}>
-        <div
-          style={{
-            position: 'absolute',
-            bottom: 0,
-            left: 0,
-            height: '140px',
-            width: '100%',
-            opacity: 1,
-            zIndex: 0,
-            background: 'linear-gradient(rgba(0, 0, 0, 0) 0%, var(--color-surface) 100%)',
-          }}
-        />
-      </div>
+          height: '200px',
+          background: `linear-gradient(to bottom, ${headerColor} 45%, transparent 100%)`,
+        }}
+      />
       <div
         className='relative z-10 flex shrink-0 flex-col gap-8 px-5 pt-5 pb-6'
         style={{ color: headerText }}>
         <div className='flex items-start justify-between'>
-          {config.appearance.logoLight ? (
-            <img src={config.appearance.logoLight} alt='' className='h-8 w-auto' />
-          ) : (
-            <span className='h-8' />
-          )}
+          {logo ? <img src={logo} alt='' className='h-8 w-auto' /> : <span className='h-8' />}
           {onClose ? (
             <button
               type='button'
@@ -219,7 +212,7 @@ export function HomeView({ channelId, config, onClose }: HomeViewProps) {
         )}
       </div>
       {config.branding.footerEnabled ? (
-        <div className='relative z-10 border-t border-[color:var(--color-border)] bg-[color:var(--color-bg)] py-2 text-center text-[10px] uppercase tracking-wide text-[color:var(--color-muted)]'>
+        <div className='relative z-10 border-t border-[color:var(--color-border-subtle)] bg-transparent py-2 text-center text-[10px] uppercase tracking-wide text-[color:var(--color-muted)]'>
           Powered by Auxx
         </div>
       ) : null}

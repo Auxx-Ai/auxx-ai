@@ -16,6 +16,8 @@ import { NavStackProvider } from './navigation/nav-stack-context'
 import type { NavFrame, NavView } from './navigation/use-navigation-stack'
 import { type TabId, useTabRouter } from './navigation/use-tab-router'
 import { getLastReadAt } from './persistence/unread'
+import { useShadowRoot } from './shadow-root'
+import { useResolvedTheme } from './theme/use-resolved-theme'
 import { chatApi } from './transport/chat-api'
 import { type ChatConfig, fetchChatConfig } from './transport/config'
 import {
@@ -33,6 +35,7 @@ import { MessagesView } from './views/messages/messages-view'
 interface WidgetProps {
   channelId: string
   cacheBust?: string | null
+  scriptTheme?: 'light' | 'dark' | 'system'
 }
 
 const EXPANDED_PREFIX = 'auxx-chat-expanded:'
@@ -53,7 +56,7 @@ function writeExpanded(channelId: string, expanded: boolean): void {
   }
 }
 
-export function Widget({ channelId, cacheBust = null }: WidgetProps) {
+export function Widget({ channelId, cacheBust = null, scriptTheme }: WidgetProps) {
   const [config, setConfig] = useState<ChatConfig | null>(null)
   const [open, setOpen] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -62,6 +65,19 @@ export function Widget({ channelId, cacheBust = null }: WidgetProps) {
   // localStorage. Start collapsed — the per-thread effect below restores the
   // preference whenever the visitor enters a thread.
   const [expanded, setExpanded] = useState(false)
+
+  const shadowRoot = useShadowRoot()
+  const resolvedTheme = useResolvedTheme({
+    scriptTheme,
+    adminTheme: config?.appearance.theme ?? 'light',
+  })
+
+  // Apply data-theme to the .auxx-root element inside the shadow root so the
+  // CSS token scopes (`[data-theme='light']`, `[data-theme='dark']`) activate.
+  useEffect(() => {
+    const rootEl = shadowRoot?.querySelector('.auxx-root')
+    if (rootEl) rootEl.setAttribute('data-theme', resolvedTheme)
+  }, [shadowRoot, resolvedTheme])
 
   const router = useTabRouter(channelId)
   const subscribeRef = useRef<{
@@ -167,12 +183,19 @@ export function Widget({ channelId, cacheBust = null }: WidgetProps) {
     : 'auxx-chat-shell--bottom-right'
   const stateClass = open ? 'auxx-chat-shell--open' : 'auxx-chat-shell--closed'
   const expandedClass = open && expanded ? 'auxx-chat-shell--expanded' : ''
-  const rootStyle = {
+  const rootStyle: Record<string, string> = {
     '--auxx-chat-primary': config.appearance.primaryColor,
-  } as Record<string, string>
+    '--auxx-chat-header': config.appearance.headerColor,
+  }
+  if (config.appearance.primaryColorDark) {
+    rootStyle['--auxx-chat-primary-dark'] = config.appearance.primaryColorDark
+  }
+  if (config.appearance.headerColorDark) {
+    rootStyle['--auxx-chat-header-dark'] = config.appearance.headerColorDark
+  }
 
   return (
-    <div className='auxx-chat-root' style={rootStyle}>
+    <div className='auxx-chat-root' data-theme={resolvedTheme} style={rootStyle}>
       <div className={`auxx-chat-shell ${stateClass} ${positionClass} ${expandedClass}`}>
         <button
           type='button'
@@ -202,6 +225,7 @@ export function Widget({ channelId, cacheBust = null }: WidgetProps) {
             <PanelShell
               channelId={channelId}
               config={config}
+              resolvedTheme={resolvedTheme}
               activeTab={router.activeTab}
               onTabChange={router.setActiveTab}
               currentFrame={router.currentStack.current}
@@ -223,6 +247,7 @@ export function Widget({ channelId, cacheBust = null }: WidgetProps) {
 interface PanelShellProps {
   channelId: string
   config: ChatConfig
+  resolvedTheme: 'light' | 'dark'
   activeTab: TabId
   onTabChange: (tab: TabId) => void
   currentFrame: NavFrame | null
@@ -241,6 +266,7 @@ interface PanelShellProps {
 function PanelShell({
   channelId,
   config,
+  resolvedTheme,
   activeTab,
   onTabChange,
   currentFrame,
@@ -270,6 +296,7 @@ function PanelShell({
           subtitle={view === 'thread' ? (config.appearance.subtitle ?? undefined) : undefined}
           logoLight={config.appearance.logoLight}
           logoDark={config.appearance.logoDark}
+          resolvedTheme={resolvedTheme}
           onBack={isAtRoot ? undefined : onBack}
           onClose={onClose}
           actions={
@@ -292,8 +319,8 @@ function PanelShell({
           {error}
         </div>
       ) : null}
-      <div className='flex min-h-0 flex-1 flex-col bg-[color:var(--color-bg)]'>
-        {renderFrame(view, currentFrame, channelId, config, subscribe, onClose)}
+      <div className='flex min-h-0 flex-1 flex-col'>
+        {renderFrame(view, currentFrame, channelId, config, resolvedTheme, subscribe, onClose)}
       </div>
       {isAtRoot ? <TabBar activeTab={activeTab} onChange={onTabChange} /> : null}
     </div>
@@ -318,12 +345,20 @@ function renderFrame(
   frame: NavFrame | null,
   channelId: string,
   config: ChatConfig,
+  resolvedTheme: 'light' | 'dark',
   subscribe?: PanelShellProps['subscribe'],
   onClose?: () => void
 ) {
   switch (view) {
     case 'home':
-      return <HomeView channelId={channelId} config={config} onClose={onClose} />
+      return (
+        <HomeView
+          channelId={channelId}
+          config={config}
+          resolvedTheme={resolvedTheme}
+          onClose={onClose}
+        />
+      )
     case 'messages':
       return <MessagesView channelId={channelId} subscribe={subscribe} />
     case 'thread': {
