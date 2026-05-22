@@ -1,8 +1,9 @@
 // apps/chat-widget/vite.config.ts
 
-import { resolve } from 'node:path'
+import { copyFileSync, existsSync, mkdirSync } from 'node:fs'
+import { dirname, resolve } from 'node:path'
 import tailwindcss from '@tailwindcss/vite'
-import { defineConfig } from 'vite'
+import { defineConfig, type Plugin } from 'vite'
 
 /**
  * Auxx chat-widget bundle build config.
@@ -32,6 +33,23 @@ function readEnv(key: string): string | undefined {
   return trimmed.length > 0 ? trimmed : undefined
 }
 
+/** Copies the freshly-built bundle into apps/web/public/scripts after every
+ * rebuild — including watch-mode rebuilds — so the host page always serves
+ * the current widget. */
+function copyToWebPublicPlugin(): Plugin {
+  const source = resolve(__dirname, 'dist', 'chat-widget.js')
+  const target = resolve(__dirname, '..', 'web', 'public', 'scripts', 'chat-widget.js')
+  return {
+    name: 'auxx-copy-to-web-public',
+    writeBundle() {
+      if (!existsSync(source)) return
+      mkdirSync(dirname(target), { recursive: true })
+      copyFileSync(source, target)
+      console.log(`[chat-widget] copied → ${target}`)
+    },
+  }
+}
+
 function resolveApiUrl(): string {
   const apiUrl = readEnv('API_URL')
   if (apiUrl) return apiUrl
@@ -42,7 +60,7 @@ function resolveApiUrl(): string {
 }
 
 export default defineConfig({
-  plugins: [tailwindcss()],
+  plugins: [tailwindcss(), copyToWebPublicPlugin()],
   resolve: {
     alias: {
       react: 'preact/compat',

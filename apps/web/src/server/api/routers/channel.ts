@@ -343,6 +343,9 @@ export const channelRouter = createTRPCRouter({
         defaultTheme: z.enum(['light', 'dark', 'system']).optional(),
         primaryColorDark: z.string().optional().nullable(),
         headerColorDark: z.string().optional().nullable(),
+
+        // v3 conversation polish
+        suggestedReplies: z.array(z.string().trim().max(80)).max(5).optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -404,6 +407,7 @@ export const channelRouter = createTRPCRouter({
           autoOpen: false,
           mobileFullScreen: true,
           collectUserInfo: true,
+          suggestedReplies: ['Product question', 'Get help', 'Talk to sales'],
           updatedAt: new Date(),
         })
 

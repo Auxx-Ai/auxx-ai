@@ -23,6 +23,7 @@ import { BaseType } from '~/components/workflow/types'
 import { VarEditorField, VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
 import { api } from '~/trpc/react'
 import { GreetingEditor } from '../greeting-editor'
+import { SuggestedRepliesEditor } from '../suggested-replies-editor'
 import { LogoUploadCell } from './logo-upload-cell'
 
 interface AppearanceSectionProps {
@@ -62,6 +63,7 @@ const appearanceSchema = z.object({
   logoDark: z.string().nullish(),
   mobileFullScreen: z.boolean(),
   homeGreetingTemplate: z.unknown().optional(),
+  suggestedReplies: z.array(z.string().max(80)).max(5).optional(),
 })
 
 type AppearanceForm = z.infer<typeof appearanceSchema>
@@ -93,6 +95,8 @@ export function AppearanceSection({ widget, channelId }: AppearanceSectionProps)
       logoDark: widget.chatWidget?.logoDark ?? '',
       mobileFullScreen: widget.chatWidget?.mobileFullScreen ?? true,
       homeGreetingTemplate: (widget.chatWidget?.homeGreetingTemplate as JSONContent | null) ?? null,
+      suggestedReplies:
+        (widget.chatWidget as { suggestedReplies?: string[] | null })?.suggestedReplies ?? [],
     },
   })
 
@@ -114,6 +118,10 @@ export function AppearanceSection({ widget, channelId }: AppearanceSectionProps)
       logoDark: values.logoDark ?? null,
       mobileFullScreen: values.mobileFullScreen,
       homeGreetingTemplate: values.homeGreetingTemplate ?? null,
+      suggestedReplies: (values.suggestedReplies ?? [])
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0)
+        .slice(0, 5),
     })
   }
 
@@ -378,6 +386,26 @@ export function AppearanceSection({ widget, channelId }: AppearanceSectionProps)
                     Type <code className='rounded bg-muted px-1'>{'{'}</code> to insert a visitor
                     field. Click the badge to set a fallback for when the value isn't available.
                   </FormDescription>
+                </FormItem>
+              )}
+            />
+
+            <div className='mt-6 mb-2 text-sm font-medium text-foreground'>Suggested replies</div>
+            <p className='mb-3 text-sm text-muted-foreground'>
+              Shown above the composer until the visitor sends their first message. Tapping a
+              suggestion sends it as the visitor's message.
+            </p>
+            <FormField
+              control={form.control}
+              name='suggestedReplies'
+              render={({ field }) => (
+                <FormItem>
+                  <FormControl>
+                    <SuggestedRepliesEditor
+                      value={(field.value as string[] | undefined) ?? []}
+                      onChange={field.onChange}
+                    />
+                  </FormControl>
                 </FormItem>
               )}
             />

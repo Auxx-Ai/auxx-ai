@@ -17,10 +17,10 @@ export function ArticleCard({ title, description, emoji, onClick }: ArticleCardP
     <HomeCard onClick={onClick}>
       <div className='flex items-center gap-2'>
         <ArticleIcon iconId={emoji} />
-        <span className='truncate text-sm font-medium text-[color:var(--color-fg)]'>{title}</span>
+        <span className='truncate text-sm font-medium text-foreground'>{title}</span>
       </div>
       {description ? (
-        <span className='line-clamp-2 text-xs text-[color:var(--color-muted)]'>{description}</span>
+        <span className='line-clamp-2 text-xs text-muted-foreground'>{description}</span>
       ) : null}
     </HomeCard>
   )

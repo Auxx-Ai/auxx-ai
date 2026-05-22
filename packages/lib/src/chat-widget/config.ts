@@ -54,6 +54,9 @@ export interface UpdateChatWidgetInput {
   defaultTheme?: 'light' | 'dark' | 'system'
   primaryColorDark?: string | null
   headerColorDark?: string | null
+
+  /** Up to 5 tap-to-send suggestion chips shown above the composer on a fresh thread. */
+  suggestedReplies?: string[]
 }
 
 /**

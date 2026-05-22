@@ -50,6 +50,8 @@ export interface ChatConfig {
   home: ChatHomeConfig
   branding: { footerEnabled: boolean }
   allowDownloadTranscript: boolean
+  /** Tap-to-send suggestion chips shown above the composer on an empty thread. */
+  suggestedReplies: string[]
   realtime: { provider: 'pusher'; key: string; cluster: string }
 }
 

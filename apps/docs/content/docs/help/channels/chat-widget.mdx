@@ -1,8 +1,91 @@
 ---
 title: Chat Widget
-description: Connect a chat widget to Auxx.ai to manage live conversations from a unified inbox.
+description: Embed the Auxx chat widget on your site to route live conversations and AI replies into your inbox.
 ---
 
-<Callout type="warn" title="Coming soon">
-  This channel is not yet available. Check back for updates.
-</Callout>
+The chat widget is a small script you drop into your site's HTML. Visitors get a launcher in the corner of the page; messages land in the inbox you've connected to the widget and can be answered by your team or an AI agent.
+
+## Prerequisites
+
+- A chat widget created in **Settings → Channels → Chat Widget**.
+- An inbox the widget routes conversations into (set on the widget's **General** tab).
+- Access to your site's HTML or template — the snippet needs to run on every page where the widget should appear.
+
+## 1. Paste the install snippet
+
+Open your widget in **Settings → Channels**, go to the **General** tab, and find the **Install** section. Copy the snippet — it looks like:
+
+```html
+<script src="https://app.auxx.ai/api/integrations/chat/INTEGRATION_ID/script.js" async defer></script>
+```
+
+Paste it into your site's HTML just before the closing `</body>` tag, on every page the widget should appear on.
+
+## 2. Configure allowed domains (optional)
+
+By default the widget loads on any site you embed it on. To restrict that:
+
+1. Open the widget's **Domains** tab.
+2. Add each domain that should be allowed to embed the widget — bare hostnames only, no protocol (`example.com`, not `https://example.com`).
+3. Subdomains of an allowed domain pass automatically — adding `example.com` also allows `app.example.com`.
+
+Leave the list empty if you want the widget to load anywhere.
+
+## 3. Identify the visitor (optional)
+
+If you know who's on the page — for example after a user signs in — pass their info to the widget so the conversation is attached to a known visitor instead of an anonymous one.
+
+There are two patterns, pick whichever fits your setup.
+
+### Queue-style — call before the bundle loads
+
+Push commands onto a `window.AuxxChat` array before the script tag. The widget drains the queue once it boots.
+
+```html
+<script>
+  window.AuxxChat = window.AuxxChat || [];
+  window.AuxxChat.push(['identify', {
+    name: 'Jane Doe',
+    email: 'jane@acme.com',
+    externalId: 'cus_123'
+  }]);
+</script>
+<script src="https://app.auxx.ai/api/integrations/chat/INTEGRATION_ID/script.js" async defer></script>
+```
+
+### Direct call — after the bundle has loaded
+
+Call `identify` directly after the widget script is on the page (typical in single-page apps after a login event):
+
+```js
+window.AuxxChat.identify({
+  email: 'jane@acme.com',
+  externalId: 'cus_123'
+})
+```
+
+### Payload reference
+
+| Field        | Type     | Notes                                                                |
+| ------------ | -------- | -------------------------------------------------------------------- |
+| `name`       | string   | Display name shown in the inbox.                                     |
+| `email`      | string   | Used to match or create a contact.                                   |
+| `externalId` | string   | Your stable visitor key (e.g. your user id). Recommended for matching. |
+
+All three fields are optional, but at least one must be non-empty for the call to register. Empty strings are dropped, and the most recent payload is persisted to `sessionStorage` so calling `identify` on every page load is safe.
+
+## 4. Verify the install
+
+Open a page that includes the snippet — you should see the launcher in the configured corner. If it doesn't appear:
+
+- Check the **Domains** tab — if you've restricted domains, the current page's hostname must be in the list (or be a subdomain of one).
+- Open the browser console and look for Content Security Policy errors blocking the script src.
+- Confirm the snippet is actually in the rendered HTML (some CMS templates strip script tags).
+
+You can also use the **Open preview** button at the top of the widget settings to load a live preview in a popup — useful for smoke-testing settings without touching your live site.
+
+## Troubleshooting
+
+- **Launcher doesn't appear** — check domain allowlist, browser console errors, and that the snippet is in the rendered HTML.
+- **`identify` doesn't take effect** — confirm at least one field is non-empty and that the command string is exactly `'identify'`.
+- **AI auto-reply isn't firing** — verify an agent is selected in **General → AI Auto-Reply** and that auto-reply behaviour is enabled in the **Behavior** tab.

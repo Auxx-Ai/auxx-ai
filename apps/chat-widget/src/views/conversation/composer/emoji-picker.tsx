@@ -99,7 +99,7 @@ export default function EmojiPicker({ onSelect, onClose }: EmojiPickerProps) {
 
   return (
     <div className='w-80'>
-      <div className='flex items-center border-b border-[color:var(--color-border)] px-3 py-0.5'>
+      <div className='flex items-center border-b border-border px-3 py-0.5'>
         <Search className='mr-2 size-4 shrink-0 opacity-50' aria-hidden='true' />
         <input
           type='text'
@@ -112,19 +112,19 @@ export default function EmojiPicker({ onSelect, onClose }: EmojiPickerProps) {
           <button
             type='button'
             onClick={() => setSearchQuery('')}
-            className='flex size-5 shrink-0 items-center justify-center rounded-full bg-[color:var(--color-surface)] hover:bg-[color:var(--color-border)]'>
+            className='flex size-5 shrink-0 items-center justify-center rounded-full bg-muted hover:bg-border'>
             <X className='size-3' aria-hidden='true' />
           </button>
         ) : null}
       </div>
 
-      <div className='flex items-center gap-0.5 border-b border-[color:var(--color-border)] p-1'>
+      <div className='flex items-center gap-0.5 border-b border-border p-1'>
         <SkinToneButton
           currentTone={skinTone}
           showingSelector={showSkinTones}
           onClick={() => setShowSkinTones((v) => !v)}
         />
-        <div className='mx-1 h-5 w-px bg-[color:var(--color-border)]' />
+        <div className='mx-1 h-5 w-px bg-border' />
         {showSkinTones ? (
           <div className='flex gap-0.5'>
             {SKIN_TONES.map((tone) => (
@@ -134,8 +134,8 @@ export default function EmojiPicker({ onSelect, onClose }: EmojiPickerProps) {
                 title={tone === '' ? 'Default' : `Skin tone ${SKIN_TONES.indexOf(tone)}`}
                 onClick={() => handleSkinToneSelect(tone)}
                 className={cn(
-                  'flex size-7 items-center justify-center rounded hover:bg-[color:var(--color-surface)]',
-                  skinTone === tone && 'bg-[color:var(--color-surface)]'
+                  'flex size-7 items-center justify-center rounded hover:bg-muted',
+                  skinTone === tone && 'bg-muted'
                 )}>
                 <span className={cn('size-4 rounded-full', SKIN_TONE_COLORS[tone])} />
               </button>
@@ -160,10 +160,8 @@ export default function EmojiPicker({ onSelect, onClose }: EmojiPickerProps) {
           <div className='px-2'>
             {filtered.length > 0 ? (
               <>
-                <div className='sticky top-0 z-10 bg-[color:var(--color-bg)] py-2'>
-                  <h3 className='text-sm font-medium text-[color:var(--color-muted)]'>
-                    Search results
-                  </h3>
+                <div className='sticky top-0 z-10 bg-background py-2'>
+                  <h3 className='text-sm font-medium text-muted-foreground'>Search results</h3>
                 </div>
                 <div className='grid grid-cols-10 gap-0.5'>
                   {filtered.map((item) => (
@@ -172,7 +170,7 @@ export default function EmojiPicker({ onSelect, onClose }: EmojiPickerProps) {
                 </div>
               </>
             ) : (
-              <div className='flex h-32 items-center justify-center text-sm text-[color:var(--color-muted)]'>
+              <div className='flex h-32 items-center justify-center text-sm text-muted-foreground'>
                 No emojis found
               </div>
             )}
@@ -209,7 +207,7 @@ const Cell = memo(function Cell({
       type='button'
       onClick={() => onSelect(display)}
       title={item.label}
-      className='flex size-8 cursor-pointer items-center justify-center rounded-md text-lg hover:bg-[color:var(--color-surface)]'>
+      className='flex size-8 cursor-pointer items-center justify-center rounded-md text-lg hover:bg-muted'>
       {display}
     </button>
   )
@@ -235,7 +233,7 @@ const Section = memo(function Section({
   return (
     <div ref={sectionRef} data-section={group.id} className='mb-0 min-h-[260px] px-2 scroll-mt-8'>
       <div className='sticky top-0 z-10 py-2'>
-        <h3 className='inline-flex rounded-full border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2 text-sm font-medium text-[color:var(--color-muted)]'>
+        <h3 className='inline-flex rounded-full border border-border bg-background px-2 text-sm font-medium text-muted-foreground'>
           {group.label}
         </h3>
       </div>
@@ -264,8 +262,8 @@ const TabButton = memo(function TabButton({
       title={group.label}
       onClick={onClick}
       className={cn(
-        'flex size-7 items-center justify-center rounded text-[color:var(--color-muted)] hover:bg-[color:var(--color-surface)] hover:text-[color:var(--color-fg)]',
-        isActive && 'bg-[color:var(--color-surface)] text-[color:var(--color-primary)]'
+        'flex size-7 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground',
+        isActive && 'bg-muted text-primary'
       )}>
       <Icon className='size-4' />
     </button>
@@ -286,7 +284,7 @@ const SkinToneButton = memo(function SkinToneButton({
       type='button'
       title='Skin tone'
       onClick={onClick}
-      className='flex size-7 items-center justify-center rounded hover:bg-[color:var(--color-surface)]'>
+      className='flex size-7 items-center justify-center rounded hover:bg-muted'>
       {showingSelector ? (
         <ChevronLeft className='size-4' />
       ) : (

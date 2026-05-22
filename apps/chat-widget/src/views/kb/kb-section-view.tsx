@@ -43,35 +43,35 @@ export function KbSectionView({ channelId, sectionId }: KbSectionViewProps) {
 
   if (error) {
     return (
-      <div className='flex flex-1 items-center justify-center p-6 text-center text-sm text-[color:var(--color-muted)]'>
+      <div className='flex flex-1 items-center justify-center p-6 text-center text-sm text-muted-foreground'>
         {error}
       </div>
     )
   }
   if (!tree) {
     return (
-      <div className='flex flex-1 items-center justify-center p-6 text-center text-xs text-[color:var(--color-muted)]'>
+      <div className='flex flex-1 items-center justify-center p-6 text-center text-xs text-muted-foreground'>
         Loading…
       </div>
     )
   }
   if (rows.length === 0) {
     return (
-      <div className='flex flex-1 items-center justify-center p-6 text-center text-sm text-[color:var(--color-muted)]'>
+      <div className='flex flex-1 items-center justify-center p-6 text-center text-sm text-muted-foreground'>
         Nothing here yet
       </div>
     )
   }
 
   return (
-    <div className='flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto bg-[color:var(--color-surface)] p-3'>
+    <div className='flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto bg-muted p-3'>
       {rows.map((row) => {
         if (row.kind === 'header') {
           const HeaderIcon = row.node.emoji ? (getIcon(row.node.emoji)?.icon ?? null) : null
           return (
             <div
               key={row.node.id}
-              className='flex items-center gap-1.5 px-3 pb-1 pt-3 text-[11px] font-semibold uppercase tracking-wide text-[color:var(--color-muted)]'>
+              className='flex items-center gap-1.5 px-3 pb-1 pt-3 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground'>
               {HeaderIcon ? <HeaderIcon className='size-3.5' aria-hidden='true' /> : null}
               <span>{row.node.title}</span>
             </div>
@@ -104,16 +104,16 @@ export function KbSectionView({ channelId, sectionId }: KbSectionViewProps) {
               }
             }}
             className={cn(
-              'group flex w-full items-center gap-3 rounded-lg border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-3 py-2.5 text-left transition-colors hover:bg-[color:var(--color-surface)]'
+              'group flex w-full items-center gap-3 rounded-lg border border-border bg-background px-3 py-2.5 text-left transition-colors hover:bg-muted'
             )}>
             <span className='flex size-5 shrink-0 items-center justify-center'>
-              <RowIcon className='size-4 text-[color:var(--color-muted)]' aria-hidden='true' />
+              <RowIcon className='size-4 text-muted-foreground' aria-hidden='true' />
             </span>
-            <span className='min-w-0 flex-1 truncate text-sm text-[color:var(--color-fg)]'>
+            <span className='min-w-0 flex-1 truncate text-sm text-foreground'>
               {row.node.title}
             </span>
             <ChevronRight
-              className='size-4 shrink-0 text-[color:var(--color-muted)] transition-transform group-hover:translate-x-0.5'
+              className='size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5'
               aria-hidden='true'
             />
           </button>

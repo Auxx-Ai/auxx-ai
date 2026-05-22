@@ -6,7 +6,14 @@ import { Button } from '@auxx/ui/components/button'
 import { RadioTab, RadioTabItem } from '@auxx/ui/components/radio-tab'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { toastError } from '@auxx/ui/components/toast'
-import { AlertCircle, ArrowLeft, Globe, Palette, Settings, SlidersHorizontal } from 'lucide-react'
+import {
+  AlertCircle,
+  ExternalLink,
+  Globe,
+  Palette,
+  Settings,
+  SlidersHorizontal,
+} from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useQueryState } from 'nuqs'
 import SettingsPage from '~/components/global/settings-page'
@@ -42,7 +49,30 @@ export function ChatWidgetSettings({ channelId }: ChatWidgetSettingsProps) {
   const { data, isLoading, error } = useChatWidget(channelId)
   const disconnectChannel = api.channel.disconnect.useMutation()
 
-  const handleBack = () => router.push('/app/settings/channels')
+  const openPreview = () => {
+    const width = 900
+    const height = 800
+    const left = Math.max(0, (window.screen.availWidth - width) / 2)
+    const top = Math.max(0, (window.screen.availHeight - height) / 2)
+    const url = `/preview/widget/${channelId}?v=${Date.now()}`
+    const target = `chat-widget-preview-${channelId}`
+    const popup = window.open(
+      url,
+      target,
+      `popup=yes,width=${width},height=${height},left=${left},top=${top}`
+    )
+    // window.open with a named target focuses the existing popup without
+    // reloading — force a fresh load so the new `v` is picked up and the
+    // config cache is bypassed.
+    if (popup) {
+      try {
+        popup.location.replace(url)
+      } catch {
+        /* cross-origin or closed — nothing to do */
+      }
+      popup.focus()
+    }
+  }
 
   const handleDelete = async () => {
     const confirmed = await confirm({
@@ -93,13 +123,7 @@ export function ChatWidgetSettings({ channelId }: ChatWidgetSettingsProps) {
           { title: 'Settings', href: '/app/settings' },
           { title: 'Channels', href: '/app/settings/channels' },
           { title: 'Chat Widget' },
-        ]}
-        button={
-          <Button variant='outline' size='sm' onClick={handleBack}>
-            <ArrowLeft className='mr-2 h-4 w-4' />
-            Back
-          </Button>
-        }>
+        ]}>
         <div className='p-6'>
           <Alert variant='destructive'>
             <AlertCircle className='h-4 w-4' />
@@ -139,9 +163,9 @@ export function ChatWidgetSettings({ channelId }: ChatWidgetSettingsProps) {
         { title: widgetName },
       ]}
       button={
-        <Button variant='outline' size='sm' onClick={handleBack}>
-          <ArrowLeft className='mr-2 h-4 w-4' />
-          Back
+        <Button variant='outline' size='sm' onClick={openPreview}>
+          <ExternalLink className='mr-2 h-4 w-4' />
+          Open preview
         </Button>
       }>
       <ConfirmDialog />

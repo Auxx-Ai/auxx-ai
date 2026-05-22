@@ -18,11 +18,10 @@ import { toastError } from '@auxx/ui/components/toast'
 import { useCopy } from '@auxx/ui/hooks/use-copy'
 import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
 import {
+  ArrowUpRight,
   Check,
   Code,
   Copy,
-  ExternalLink,
-  Eye,
   InboxIcon,
   Power,
   Settings,
@@ -39,6 +38,7 @@ import { ActorPicker } from '~/components/pickers/actor-picker'
 import { MultiRelationInput } from '~/components/shared/multi-relation-input'
 import { BaseType } from '~/components/workflow/types'
 import { VarEditorField, VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
+import { useEnv } from '~/providers/dehydrated-state-provider'
 import { api } from '~/trpc/react'
 
 interface GeneralSectionProps {
@@ -58,6 +58,7 @@ type GeneralForm = z.infer<typeof generalSchema>
 
 export function GeneralSection({ widget, channelId, onDelete }: GeneralSectionProps) {
   const utils = api.useUtils()
+  const { docsUrl } = useEnv()
   const { data: installCode, isLoading: installLoading } = api.channel.getInstallationCode.useQuery(
     { integrationId: channelId }
   )
@@ -301,49 +302,30 @@ export function GeneralSection({ widget, channelId, onDelete }: GeneralSectionPr
                   </Tooltip>
                 </InputGroupAddon>
               </InputGroup>
-            </div>
 
-            <div>
-              <div className='space-y-1 mb-4'>
-                <div className='flex items-center gap-2 text-base font-semibold tracking-tight text-foreground'>
-                  <Eye className='size-4' /> Preview
-                </div>
-                <p className='text-sm text-muted-foreground'>
-                  Open a live preview of this widget in a new tab to smoke-test your install snippet
-                  and settings.
-                </p>
-              </div>
-              <Button
-                type='button'
-                variant='outline'
-                size='sm'
-                onClick={() => {
-                  const width = 900
-                  const height = 800
-                  const left = Math.max(0, (window.screen.availWidth - width) / 2)
-                  const top = Math.max(0, (window.screen.availHeight - height) / 2)
-                  const url = `/preview/widget/${channelId}?v=${Date.now()}`
-                  const target = `chat-widget-preview-${channelId}`
-                  const popup = window.open(
-                    url,
-                    target,
-                    `popup=yes,width=${width},height=${height},left=${left},top=${top}`
-                  )
-                  // window.open with a named target focuses the existing popup
-                  // without reloading — force a fresh load so the new `v` is
-                  // picked up and the config cache is bypassed.
-                  if (popup) {
-                    try {
-                      popup.location.replace(url)
-                    } catch {
-                      /* cross-origin or closed — nothing to do */
-                    }
-                    popup.focus()
-                  }
-                }}>
-                <ExternalLink className='size-4' />
-                Open preview
-              </Button>
+              <ul className='mt-4 space-y-1.5 pl-5 text-sm text-muted-foreground list-disc marker:text-muted-foreground/60'>
+                <li>
+                  Paste the snippet just before <code>&lt;/body&gt;</code> on every page that should
+                  show the widget.
+                </li>
+                <li>
+                  If you've restricted embedding, add the page's domain in the{' '}
+                  <strong>Domains</strong> tab.
+                </li>
+                <li>
+                  Optional: pass visitor info via <code>window.AuxxChat.identify(…)</code> so
+                  conversations attach to a known contact.
+                </li>
+              </ul>
+
+              <a
+                href={`${docsUrl}/help/channels/chat-widget`}
+                target='_blank'
+                rel='noreferrer'
+                className='mt-4 inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline'>
+                Read the full setup guide
+                <ArrowUpRight className='size-3.5' />
+              </a>
             </div>
           </div>
         </div>

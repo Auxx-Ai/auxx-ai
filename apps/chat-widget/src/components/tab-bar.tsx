@@ -21,7 +21,7 @@ const TABS: { id: TabId; label: string; icon: typeof Home }[] = [
 export function TabBar({ activeTab, onChange }: TabBarProps) {
   return (
     <nav
-      className='flex shrink-0 items-stretch justify-around divide-x divide-[color:var(--color-border-subtle)] border-t border-[color:var(--color-border-subtle)] bg-transparent'
+      className='flex shrink-0 items-stretch justify-around divide-x divide-border border-t border-border bg-transparent'
       aria-label='Widget sections'>
       {TABS.map((tab) => {
         const isActive = tab.id === activeTab
@@ -32,9 +32,7 @@ export function TabBar({ activeTab, onChange }: TabBarProps) {
             type='button'
             className={cn(
               'flex flex-1 flex-col items-center justify-center gap-1 px-2 py-2 text-xs font-medium transition-colors',
-              isActive
-                ? 'text-[color:var(--color-primary)]'
-                : 'text-[color:var(--color-muted)] hover:text-[color:var(--color-fg)]'
+              isActive ? 'text-primary' : 'text-muted-foreground hover:text-foreground'
             )}
             onClick={() => onChange(tab.id)}
             aria-current={isActive ? 'page' : undefined}>

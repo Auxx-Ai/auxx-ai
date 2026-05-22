@@ -1205,6 +1205,13 @@
       "when": 1779426707299,
       "tag": "0171_chat_widget_dark_mode",
       "breakpoints": true
+    },
+    {
+      "idx": 172,
+      "version": "7",
+      "when": 1779465167091,
+      "tag": "0172_add_chat_widget_suggested_replies",
+      "breakpoints": true
     }
   ]
 }
