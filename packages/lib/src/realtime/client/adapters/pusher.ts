@@ -1,41 +1,54 @@
 // @auxx/lib/realtime/client/adapters/pusher.ts
 
 import Pusher from 'pusher-js'
-import type { ChannelSubscription, RealtimeAdapter } from '../types'
+import { toPusherChannel } from '../../room-keys'
+import type {
+  PresenceHandlers,
+  PresenceMember,
+  RealtimeAdapter,
+  SubscribeHandlers,
+  Subscription,
+} from '../types'
 
-/** Wrap a Pusher.Channel to satisfy the ChannelSubscription interface. */
-function wrapPusherChannel(channel: Pusher.Channel): ChannelSubscription {
-  return {
-    bind: (event, cb) => channel.bind(event, cb),
-    unbind: (event, cb) => channel.unbind(event, cb),
-    unbindAll: () => channel.unbind_all(),
+interface RoomEntry {
+  channel: Pusher.Channel
+  refCount: number
+  /** Bound event names so we can `unbind` cleanly on teardown. */
+  handlers: Set<SubscribeHandlers | PresenceHandlers>
+  /** Catch-all bind for `onEvent` — we use `bind_global` once per channel. */
+  globalListener?: (event: string, payload: unknown) => void
+  /** Presence-only listeners we attached for cleanup. */
+  presenceListeners?: {
+    onSubscriptionSucceeded?: () => void
+    onMemberAdded?: (member: { id: string; info?: Record<string, unknown> }) => void
+    onMemberRemoved?: (member: { id: string }) => void
+    onMemberUpdate?: (payload: { id: string; meta?: Record<string, unknown> }) => void
   }
 }
 
+const FRESH_ROOM_MAP: ReadonlySet<string> = new Set()
+
 /**
- * Client-side Pusher implementation of RealtimeAdapter.
- * Subscribe/getSnapshot methods are arrow-function class fields for stable references
- * (required by useSyncExternalStore to avoid infinite re-render loops).
+ * Pusher-backed RealtimeAdapter.
+ *
+ * Internal store layout:
+ *   - `rooms`: live `Map<roomKey, RoomEntry>` driving the subscription
+ *   - `roomsSnapshot`: frozen `Set<roomKey>` exposed to `useSyncExternalStore`
+ *     (replaced with a new reference on every membership change so React
+ *     re-renders, but identity-stable across no-op state changes).
  */
 export class PusherRealtimeAdapter implements RealtimeAdapter {
   private pusher: Pusher | null = null
   private connected = false
-  private orgChannel: ChannelSubscription | null = null
-  private currentOrgId: string | null = null
+  private authEndpoint = '/api/pusher/auth'
   private connectionListeners = new Set<() => void>()
-  private orgChannelListeners = new Set<() => void>()
-
-  /** slug → channel wrapper; slug is the raw inbox UUID or `'none'`. */
-  private inboxChannels: Map<string, ChannelSubscription> = new Map()
-  /** Frozen snapshot — replaced (new reference) only on membership change. */
-  private inboxChannelsSnapshot: ReadonlyMap<string, ChannelSubscription> = new Map()
-  /** Reference count per slug so multiple consumers can subscribe safely. */
-  private inboxRefCounts = new Map<string, number>()
-  private inboxChannelListeners = new Set<() => void>()
-  private static readonly EMPTY_INBOX_MAP: ReadonlyMap<string, ChannelSubscription> = new Map()
+  private rooms = new Map<string, RoomEntry>()
+  private roomsSnapshot: ReadonlySet<string> = new Set()
+  private roomListeners = new Set<() => void>()
 
   connect(config: { key: string; cluster: string; authEndpoint: string }) {
-    if (this.pusher) return // Already connected
+    if (this.pusher) return
+    this.authEndpoint = config.authEndpoint
     this.pusher = new Pusher(config.key, {
       cluster: config.cluster,
       authEndpoint: config.authEndpoint,
@@ -43,83 +56,23 @@ export class PusherRealtimeAdapter implements RealtimeAdapter {
     })
     this.pusher.connection.bind('connected', () => {
       this.connected = true
-      this.notifyConnectionListeners()
+      this.notifyConnection()
     })
     this.pusher.connection.bind('disconnected', () => {
       this.connected = false
-      this.notifyConnectionListeners()
+      this.notifyConnection()
     })
   }
 
   disconnect() {
-    if (this.pusher) {
-      this.pusher.disconnect()
-      this.pusher = null
-      this.connected = false
-      this.orgChannel = null
-      this.currentOrgId = null
-      this.inboxChannels.clear()
-      this.inboxRefCounts.clear()
-      this.refreshInboxSnapshot()
-      this.notifyConnectionListeners()
-      this.notifyOrgChannelListeners()
-      this.notifyInboxChannelListeners()
-    }
-  }
-
-  subscribeToOrg(organizationId: string) {
     if (!this.pusher) return
-    // Skip if already subscribed to this org
-    if (this.currentOrgId === organizationId && this.orgChannel) return
-
-    // Unsubscribe from previous org channel
-    if (this.currentOrgId) {
-      this.pusher.unsubscribe(`presence-org-${this.currentOrgId}`)
-      // Drop any stale per-inbox subscriptions tied to the previous org.
-      for (const slug of this.inboxChannels.keys()) {
-        this.pusher.unsubscribe(`presence-org-${this.currentOrgId}-inbox-${slug}`)
-      }
-      this.inboxChannels.clear()
-      this.inboxRefCounts.clear()
-      this.refreshInboxSnapshot()
-      this.notifyInboxChannelListeners()
-    }
-
-    const channel = this.pusher.subscribe(`presence-org-${organizationId}`)
-    this.orgChannel = wrapPusherChannel(channel)
-    this.currentOrgId = organizationId
-    this.notifyOrgChannelListeners()
-  }
-
-  subscribeToInbox(organizationId: string, inboxSlug: string) {
-    if (!this.pusher) return
-    if (this.currentOrgId !== organizationId) return
-
-    const refCount = (this.inboxRefCounts.get(inboxSlug) ?? 0) + 1
-    this.inboxRefCounts.set(inboxSlug, refCount)
-    if (this.inboxChannels.has(inboxSlug)) return
-
-    const channelName = `presence-org-${organizationId}-inbox-${inboxSlug}`
-    const channel = this.pusher.subscribe(channelName)
-    this.inboxChannels.set(inboxSlug, wrapPusherChannel(channel))
-    this.refreshInboxSnapshot()
-    this.notifyInboxChannelListeners()
-  }
-
-  unsubscribeFromInbox(organizationId: string, inboxSlug: string) {
-    if (!this.pusher) return
-    if (this.currentOrgId !== organizationId) return
-
-    const refCount = this.inboxRefCounts.get(inboxSlug) ?? 0
-    if (refCount <= 1) {
-      this.inboxRefCounts.delete(inboxSlug)
-      this.inboxChannels.delete(inboxSlug)
-      this.pusher.unsubscribe(`presence-org-${organizationId}-inbox-${inboxSlug}`)
-      this.refreshInboxSnapshot()
-      this.notifyInboxChannelListeners()
-    } else {
-      this.inboxRefCounts.set(inboxSlug, refCount - 1)
-    }
+    this.pusher.disconnect()
+    this.pusher = null
+    this.connected = false
+    this.rooms.clear()
+    this.refreshRoomsSnapshot()
+    this.notifyConnection()
+    this.notifyRooms()
   }
 
   getSocketId(): string | undefined {
@@ -130,7 +83,204 @@ export class PusherRealtimeAdapter implements RealtimeAdapter {
     return this.connected
   }
 
-  // --- useSyncExternalStore contract (stable arrow-function references) ---
+  // ----------------------------------------------------------------------
+  // Generic subscribe
+  // ----------------------------------------------------------------------
+
+  subscribe(roomKey: string, handlers: SubscribeHandlers): Subscription {
+    return this.subscribeInternal(roomKey, handlers, false)
+  }
+
+  subscribePresence(
+    roomKey: string,
+    _self: PresenceMember,
+    handlers: PresenceHandlers
+  ): Subscription {
+    // Pusher derives the presence-self payload from the auth response on the
+    // server (`channel_data` carries the user_id + user_info); the explicit
+    // `self` here is informational only.
+    return this.subscribeInternal(roomKey, handlers, true)
+  }
+
+  private subscribeInternal(
+    roomKey: string,
+    handlers: SubscribeHandlers | PresenceHandlers,
+    presence: boolean
+  ): Subscription {
+    if (!this.pusher) {
+      return { unsubscribe: () => {} }
+    }
+    const channelName = toPusherChannel(roomKey)
+    if (!channelName) {
+      // Unknown room — surface as a no-op rather than throwing inside React.
+      return { unsubscribe: () => {} }
+    }
+    if (presence && !channelName.startsWith('presence-')) {
+      return { unsubscribe: () => {} }
+    }
+
+    let entry = this.rooms.get(roomKey)
+    if (!entry) {
+      const channel = this.pusher.subscribe(channelName)
+      entry = {
+        channel,
+        refCount: 0,
+        handlers: new Set(),
+      }
+      // Single catch-all listener — fans out to every registered handler.
+      // Filter Pusher internal events (`pusher:subscription_succeeded`,
+      // `pusher:pong`, `pusher:cache_miss`, etc.) so consumers only see real
+      // domain events. Presence built-ins (`pusher:member_added` /
+      // `pusher:member_removed`) are bound explicitly above and routed through
+      // the presence handlers, not the global fan-out.
+      const globalListener = (event: string, payload: unknown) => {
+        if (event.startsWith('pusher:')) return
+        const current = this.rooms.get(roomKey)
+        if (!current) return
+        for (const h of current.handlers) {
+          h.onEvent?.(event, payload)
+        }
+      }
+      channel.bind_global(globalListener)
+      entry.globalListener = globalListener
+
+      if (presence) {
+        const presenceCh = channel as Pusher.PresenceChannel
+        const onSubSucceeded = () => {
+          const members: PresenceMember[] = []
+          presenceCh.members.each((m: { id: string; info?: Record<string, unknown> }) => {
+            members.push({ id: m.id, meta: m.info })
+          })
+          const current = this.rooms.get(roomKey)
+          if (!current) return
+          for (const h of current.handlers) {
+            ;(h as PresenceHandlers).onMembers?.(members)
+          }
+        }
+        const onMemberAdded = (member: { id: string; info?: Record<string, unknown> }) => {
+          const current = this.rooms.get(roomKey)
+          if (!current) return
+          for (const h of current.handlers) {
+            ;(h as PresenceHandlers).onJoin?.({ id: member.id, meta: member.info })
+          }
+        }
+        const onMemberRemoved = (member: { id: string }) => {
+          const current = this.rooms.get(roomKey)
+          if (!current) return
+          for (const h of current.handlers) {
+            ;(h as PresenceHandlers).onLeave?.(member.id)
+          }
+        }
+        const onMemberUpdate = (payload: { id: string; meta?: Record<string, unknown> }) => {
+          const current = this.rooms.get(roomKey)
+          if (!current) return
+          for (const h of current.handlers) {
+            ;(h as PresenceHandlers).onMemberUpdate?.(payload)
+          }
+        }
+        channel.bind('pusher:subscription_succeeded', onSubSucceeded)
+        channel.bind('pusher:member_added', onMemberAdded)
+        channel.bind('pusher:member_removed', onMemberRemoved)
+        // `member-update` is a custom server-mediated event (see
+        // `RealtimeService.publishMemberUpdate`). Routed through the same
+        // handler shape as Pusher's built-in member events.
+        channel.bind('member-update', onMemberUpdate)
+        entry.presenceListeners = {
+          onSubscriptionSucceeded: onSubSucceeded,
+          onMemberAdded,
+          onMemberRemoved,
+          onMemberUpdate,
+        }
+      }
+
+      this.rooms.set(roomKey, entry)
+    }
+
+    entry.handlers.add(handlers)
+    entry.refCount += 1
+    if (entry.refCount === 1) {
+      this.refreshRoomsSnapshot()
+      this.notifyRooms()
+    }
+
+    return {
+      unsubscribe: () => this.unsubscribe(roomKey, handlers),
+    }
+  }
+
+  private unsubscribe(roomKey: string, handlers: SubscribeHandlers | PresenceHandlers) {
+    const entry = this.rooms.get(roomKey)
+    if (!entry) return
+    entry.handlers.delete(handlers)
+    entry.refCount = Math.max(0, entry.refCount - 1)
+    if (entry.refCount === 0) {
+      this.teardownRoom(roomKey, entry)
+      this.refreshRoomsSnapshot()
+      this.notifyRooms()
+    }
+  }
+
+  private teardownRoom(roomKey: string, entry: RoomEntry) {
+    if (!this.pusher) {
+      this.rooms.delete(roomKey)
+      return
+    }
+    const channelName = toPusherChannel(roomKey)
+    try {
+      if (entry.globalListener) entry.channel.unbind_global(entry.globalListener)
+      if (entry.presenceListeners) {
+        const l = entry.presenceListeners
+        if (l.onSubscriptionSucceeded)
+          entry.channel.unbind('pusher:subscription_succeeded', l.onSubscriptionSucceeded)
+        if (l.onMemberAdded) entry.channel.unbind('pusher:member_added', l.onMemberAdded)
+        if (l.onMemberRemoved) entry.channel.unbind('pusher:member_removed', l.onMemberRemoved)
+        if (l.onMemberUpdate) entry.channel.unbind('member-update', l.onMemberUpdate)
+      }
+    } catch {
+      /* defensive — Pusher channels may already be torn down on disconnect */
+    }
+    if (channelName) {
+      this.pusher.unsubscribe(channelName)
+    }
+    this.rooms.delete(roomKey)
+  }
+
+  unsubscribeMatching(predicate: (roomKey: string) => boolean) {
+    const toRemove: string[] = []
+    for (const key of this.rooms.keys()) {
+      if (predicate(key)) toRemove.push(key)
+    }
+    if (toRemove.length === 0) return
+    for (const key of toRemove) {
+      const entry = this.rooms.get(key)
+      if (entry) this.teardownRoom(key, entry)
+    }
+    this.refreshRoomsSnapshot()
+    this.notifyRooms()
+  }
+
+  // ----------------------------------------------------------------------
+  // updateSelf — server-mediated presence meta update
+  // ----------------------------------------------------------------------
+
+  updateSelf = async (roomKey: string, meta: Record<string, unknown>): Promise<void> => {
+    // Posted to the colocated tRPC `realtime.updateSelf` mutation. Routed
+    // through plain fetch to keep the adapter free of tRPC-client deps.
+    const trpcEndpoint = '/api/trpc/realtime.updateSelf'
+    try {
+      await fetch(trpcEndpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ json: { roomKey, meta } }),
+      })
+    } catch {
+      /* ignore — fire-and-forget; idle transitions will retry next flip */
+    }
+  }
+
+  // ----------------------------------------------------------------------
+  // useSyncExternalStore plumbing
+  // ----------------------------------------------------------------------
 
   subscribeToConnection = (callback: () => void): (() => void) => {
     this.connectionListeners.add(callback)
@@ -138,50 +288,32 @@ export class PusherRealtimeAdapter implements RealtimeAdapter {
   }
 
   getConnectionSnapshot = (): boolean => this.connected
-
   getServerConnectionSnapshot = (): boolean => false
 
-  subscribeToOrgChannel = (callback: () => void): (() => void) => {
-    this.orgChannelListeners.add(callback)
-    return () => this.orgChannelListeners.delete(callback)
+  subscribeToRooms = (callback: () => void): (() => void) => {
+    this.roomListeners.add(callback)
+    return () => this.roomListeners.delete(callback)
   }
 
-  getOrgChannelSnapshot = (): ChannelSubscription | null => this.orgChannel
+  getRoomSnapshot = (roomKey: string): boolean => this.rooms.has(roomKey)
+  getServerRoomSnapshot = (_roomKey: string): boolean => false
 
-  getServerOrgChannelSnapshot = (): ChannelSubscription | null => null
+  getRoomMapSnapshot = (): ReadonlySet<string> => this.roomsSnapshot
+  getServerRoomMapSnapshot = (): ReadonlySet<string> => FRESH_ROOM_MAP
 
-  subscribeToInboxChannels = (callback: () => void): (() => void) => {
-    this.inboxChannelListeners.add(callback)
-    return () => this.inboxChannelListeners.delete(callback)
+  // ----------------------------------------------------------------------
+  // Internals
+  // ----------------------------------------------------------------------
+
+  private refreshRoomsSnapshot() {
+    this.roomsSnapshot = new Set(this.rooms.keys())
   }
 
-  getInboxChannelSnapshot = (inboxSlug: string): ChannelSubscription | null =>
-    this.inboxChannels.get(inboxSlug) ?? null
-
-  getServerInboxChannelSnapshot = (_inboxSlug: string): ChannelSubscription | null => null
-
-  getInboxChannelMapSnapshot = (): ReadonlyMap<string, ChannelSubscription> =>
-    this.inboxChannelsSnapshot
-
-  getServerInboxChannelMapSnapshot = (): ReadonlyMap<string, ChannelSubscription> =>
-    PusherRealtimeAdapter.EMPTY_INBOX_MAP
-
-  // --- Internal ---
-
-  /** Replace the public snapshot with a frozen copy of the live map. */
-  private refreshInboxSnapshot() {
-    this.inboxChannelsSnapshot = new Map(this.inboxChannels)
-  }
-
-  private notifyConnectionListeners() {
+  private notifyConnection() {
     for (const cb of this.connectionListeners) cb()
   }
 
-  private notifyOrgChannelListeners() {
-    for (const cb of this.orgChannelListeners) cb()
-  }
-
-  private notifyInboxChannelListeners() {
-    for (const cb of this.inboxChannelListeners) cb()
+  private notifyRooms() {
+    for (const cb of this.roomListeners) cb()
   }
 }

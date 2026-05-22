@@ -9,6 +9,7 @@ import type {
   ThreadMeta,
 } from './events'
 import type { RealtimeService } from './realtime-service'
+import { rooms } from './rooms'
 
 const CHUNK_SIZE = 50
 
@@ -33,13 +34,10 @@ export async function publishFieldValueUpdates(
   const { features } = await getOrgCache().getOrRecompute(organizationId, ['features'])
   if (!features?.realtimeSync) return
 
+  const roomKey = rooms.orgPresence(organizationId)
+
   if (entries.length <= CHUNK_SIZE) {
-    await realtimeService.sendToOrganization(
-      organizationId,
-      'fieldValues:updated',
-      { entries },
-      options
-    )
+    await realtimeService.publish(roomKey, 'fieldValues:updated', { entries }, options)
     return
   }
 
@@ -50,8 +48,8 @@ export async function publishFieldValueUpdates(
   for (let i = 0; i < totalChunks; i++) {
     const chunk = entries.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE)
     promises.push(
-      realtimeService.sendToOrganization(
-        organizationId,
+      realtimeService.publish(
+        roomKey,
         'fieldValues:updated',
         { entries: chunk, chunk: { index: i, total: totalChunks } },
         options
@@ -75,6 +73,11 @@ async function isMailRealtimeEnabled(organizationId: string): Promise<boolean> {
   return Boolean(features?.realtimeMail)
 }
 
+/** Resolve a nullable inboxId to its registry slug. `null` → `'none'`. */
+function inboxRoom(organizationId: string, inboxId: string | null): string {
+  return rooms.orgInbox(organizationId, inboxId ?? 'none')
+}
+
 /**
  * Publish `thread:created` on the inbox channel for the given thread.
  * `inboxId` is the raw EntityInstance id (or null for triage).
@@ -87,9 +90,8 @@ export async function publishThreadCreated(
 ) {
   if (!(await isMailRealtimeEnabled(organizationId))) return
   await realtimeService
-    .sendToInbox(
-      organizationId,
-      args.inboxId,
+    .publish(
+      inboxRoom(organizationId, args.inboxId),
       'thread:created',
       { threadId: args.threadId, inboxId: args.inboxRecordId ?? null },
       options
@@ -122,7 +124,12 @@ export async function publishThreadUpdated(
   }
   await Promise.allSettled(
     Array.from(targets).map((inboxId) =>
-      realtimeService.sendToInbox(organizationId, inboxId, 'thread:updated', payload, options)
+      realtimeService.publish(
+        inboxRoom(organizationId, inboxId),
+        'thread:updated',
+        payload,
+        options
+      )
     )
   )
 }
@@ -136,9 +143,8 @@ export async function publishThreadDeleted(
 ) {
   if (!(await isMailRealtimeEnabled(organizationId))) return
   await realtimeService
-    .sendToInbox(
-      organizationId,
-      args.inboxId,
+    .publish(
+      inboxRoom(organizationId, args.inboxId),
       'thread:deleted',
       { threadId: args.threadId },
       options
@@ -155,9 +161,8 @@ export async function publishMessageCreated(
 ) {
   if (!(await isMailRealtimeEnabled(organizationId))) return
   await realtimeService
-    .sendToInbox(
-      organizationId,
-      args.inboxId,
+    .publish(
+      inboxRoom(organizationId, args.inboxId),
       'message:created',
       { messageId: args.messageId, threadId: args.threadId },
       options
@@ -179,9 +184,8 @@ export async function publishMessageUpdated(
 ) {
   if (!(await isMailRealtimeEnabled(organizationId))) return
   await realtimeService
-    .sendToInbox(
-      organizationId,
-      args.inboxId,
+    .publish(
+      inboxRoom(organizationId, args.inboxId),
       'message:updated',
       {
         messageId: args.messageId,
@@ -202,9 +206,8 @@ export async function publishMessageDeleted(
 ) {
   if (!(await isMailRealtimeEnabled(organizationId))) return
   await realtimeService
-    .sendToInbox(
-      organizationId,
-      args.inboxId,
+    .publish(
+      inboxRoom(organizationId, args.inboxId),
       'message:deleted',
       { messageId: args.messageId, threadId: args.threadId },
       options
@@ -225,8 +228,8 @@ export async function publishParticipantUpdated(
 ) {
   if (!(await isMailRealtimeEnabled(organizationId))) return
   await realtimeService
-    .sendToOrganization(
-      organizationId,
+    .publish(
+      rooms.orgPresence(organizationId),
       'participant:updated',
       {
         participantId: args.participantId,
@@ -264,18 +267,10 @@ export async function flushMailBatch(
 
   const promises: Promise<boolean>[] = []
   for (const [slug, list] of buckets) {
-    const inboxId = slug === 'none' ? null : slug
+    const roomKey = rooms.orgInbox(organizationId, slug)
     for (let i = 0; i < list.length; i += CHUNK_SIZE) {
       const chunk = list.slice(i, i + CHUNK_SIZE)
-      promises.push(
-        realtimeService.sendToInbox(
-          organizationId,
-          inboxId,
-          'mail:batch',
-          { events: chunk },
-          options
-        )
-      )
+      promises.push(realtimeService.publish(roomKey, 'mail:batch', { events: chunk }, options))
     }
   }
   await Promise.allSettled(promises)
@@ -303,6 +298,6 @@ export async function publishAgentUpdated(
   const { features } = await getOrgCache().getOrRecompute(organizationId, ['features'])
   if (!features?.realtimeSync) return
   await realtimeService
-    .sendToOrganization(organizationId, 'agent:updated', { agentId: args.agentId }, options)
+    .publish(rooms.orgPresence(organizationId), 'agent:updated', { agentId: args.agentId }, options)
     .catch(() => {})
 }

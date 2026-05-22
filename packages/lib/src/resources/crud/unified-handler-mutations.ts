@@ -15,7 +15,7 @@ import { UnprocessableEntityError } from '../../errors'
 import { publisher } from '../../events/publisher'
 import { getEntityPreDeleteHooks } from '../../field-hooks/registry'
 import type { FieldValueService } from '../../field-values'
-import { getRealtimeService } from '../../realtime'
+import { getRealtimeService, rooms } from '../../realtime'
 import { invalidateSnapshots } from '../../snapshot'
 import {
   captureEventData,
@@ -375,8 +375,8 @@ export async function createEntity(
     const { features } = await getOrgCache().getOrRecompute(ctx.organizationId, ['features'])
     if (features?.realtimeSync) {
       getRealtimeService()
-        .sendToOrganization(
-          ctx.organizationId,
+        .publish(
+          rooms.orgPresence(ctx.organizationId),
           'record:created',
           {
             entityDefinitionId: entityDef.id,
@@ -486,8 +486,8 @@ export async function updateEntity(
     const { features } = await getOrgCache().getOrRecompute(ctx.organizationId, ['features'])
     if (features?.realtimeSync) {
       getRealtimeService()
-        .sendToOrganization(
-          ctx.organizationId,
+        .publish(
+          rooms.orgPresence(ctx.organizationId),
           'record:updated',
           {
             entityDefinitionId: entityDef.id,
@@ -563,8 +563,8 @@ export async function archiveEntity(
     const { features } = await getOrgCache().getOrRecompute(ctx.organizationId, ['features'])
     if (features?.realtimeSync) {
       getRealtimeService()
-        .sendToOrganization(
-          ctx.organizationId,
+        .publish(
+          rooms.orgPresence(ctx.organizationId),
           'record:archived',
           { recordId, entityDefinitionId: entityDef.id },
           { excludeSocketId: ctx.socketId }
@@ -712,8 +712,8 @@ export async function deleteEntity(
     const { features } = await getOrgCache().getOrRecompute(ctx.organizationId, ['features'])
     if (features?.realtimeSync) {
       getRealtimeService()
-        .sendToOrganization(
-          ctx.organizationId,
+        .publish(
+          rooms.orgPresence(ctx.organizationId),
           'record:deleted',
           { recordId, entityDefinitionId: entityDef.id },
           { excludeSocketId: ctx.socketId }

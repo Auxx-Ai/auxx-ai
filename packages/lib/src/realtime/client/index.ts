@@ -20,5 +20,12 @@ export type {
   ThreadUpdatedEvent,
 } from '../events'
 export { getPusherClient } from '../pusher-client'
+export { type RoomKind, rooms } from '../room-keys'
 export { PusherRealtimeAdapter } from './adapters/pusher'
-export type { ChannelSubscription, RealtimeAdapter } from './types'
+export type {
+  PresenceHandlers,
+  PresenceMember,
+  RealtimeAdapter,
+  SubscribeHandlers,
+  Subscription,
+} from './types'

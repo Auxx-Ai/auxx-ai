@@ -2,7 +2,7 @@
 
 'use client'
 
-import { useEffect } from 'react'
+import { useCallback } from 'react'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { useOrgChannel } from '~/realtime/hooks'
 import { api } from '~/trpc/react'
@@ -16,18 +16,20 @@ import { api } from '~/trpc/react'
  * becomes a problem we narrow to an agent-scoped channel.
  */
 export function useAgentRealtime() {
-  const orgChannel = useOrgChannel()
   const { hasAccess } = useFeatureFlags()
   const realtimeSyncEnabled = hasAccess('realtimeSync')
   const utils = api.useUtils()
 
-  useEffect(() => {
-    if (!orgChannel || !realtimeSyncEnabled) return
-    const onUpdate = () => {
-      void utils.agent.getById.invalidate()
-      void utils.agent.list.invalidate()
-    }
-    orgChannel.bind('agent:updated', onUpdate)
-    return () => orgChannel.unbind('agent:updated', onUpdate)
-  }, [orgChannel, realtimeSyncEnabled, utils])
+  const onEvent = useCallback(
+    (event: string) => {
+      if (!realtimeSyncEnabled) return
+      if (event === 'agent:updated') {
+        void utils.agent.getById.invalidate()
+        void utils.agent.list.invalidate()
+      }
+    },
+    [realtimeSyncEnabled, utils]
+  )
+
+  useOrgChannel({ onEvent })
 }

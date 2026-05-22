@@ -3,7 +3,7 @@ import { database as db, schema } from '@auxx/database'
 import type { NotificationType } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
 import { and, count, desc, eq, gte, inArray, lt } from 'drizzle-orm'
-import { getRealtimeService } from '../realtime'
+import { getRealtimeService, rooms } from '../realtime'
 import type { RealtimeService } from '../realtime/realtime-service'
 
 const logger = createScopedLogger('notification-service')
@@ -95,7 +95,7 @@ export class NotificationService {
       // Send real-time notification if service is available
       if (this.realTimeService) {
         logger.debug('Sending real-time notification', { userId, notificationId: notification!.id })
-        await this.realTimeService.sendToUser(userId, 'notification', notification)
+        await this.realTimeService.publish(rooms.user(userId), 'notification', notification)
       } else {
         logger.warn('Real-time service not available, skipping real-time notification')
       }
