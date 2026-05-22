@@ -19,6 +19,8 @@ interface UseThreadResult {
   isCached: boolean
   /** Thread was not found */
   isNotFound: boolean
+  /** Thread was deleted locally (tombstoned) — UI should hide it */
+  isDeleted: boolean
 }
 
 /**
@@ -42,6 +44,11 @@ export function useThread({ threadId, enabled = true }: UseThreadOptions): UseTh
   // Subscribe to not found state
   const isNotFound = useThreadStore(
     useCallback((state) => (threadId ? state.notFoundIds.has(threadId) : false), [threadId])
+  )
+
+  // Subscribe to deleted (tombstoned) state
+  const isDeleted = useThreadStore(
+    useCallback((state) => (threadId ? state.deletedIds.has(threadId) : false), [threadId])
   )
 
   // Track requested IDs to prevent duplicate requests
@@ -71,6 +78,7 @@ export function useThread({ threadId, enabled = true }: UseThreadOptions): UseTh
     isLoading: !thread && isLoading,
     isCached: !!thread,
     isNotFound,
+    isDeleted,
   }
 }
 

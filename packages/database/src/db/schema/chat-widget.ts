@@ -87,6 +87,11 @@ export const ChatWidget = pgTable(
     /** Up to 5 tap-to-send suggestions shown above the composer while the
      * conversation thread has no user messages. Null = no chips rendered. */
     suggestedReplies: text().array(),
+
+    /** Optional URL to the operator's privacy policy. When set, the conversation
+     * composer shows a one-line consent banner linking to this URL. Null = no
+     * banner rendered. */
+    privacyPolicyUrl: text(),
   },
   (table) => [
     uniqueIndex('ChatWidget_integrationId_key').using(

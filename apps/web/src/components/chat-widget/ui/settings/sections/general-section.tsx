@@ -23,6 +23,7 @@ import {
   Code,
   Copy,
   InboxIcon,
+  Link as LinkIcon,
   Power,
   Settings,
   Sparkles,
@@ -30,6 +31,7 @@ import {
   Trash2,
   Type as TypeIcon,
 } from 'lucide-react'
+import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
@@ -106,6 +108,10 @@ export function GeneralSection({ widget, channelId, onDelete }: GeneralSectionPr
     // Picker emits RecordIds ("inbox:<id>") but the integration row stores the raw id.
     update.mutate({ integrationId: channelId, inboxId: getInstanceId(nextRecordId) })
   }
+
+  const [privacyUrlDraft, setPrivacyUrlDraft] = useState<string>(
+    widget.chatWidget?.privacyPolicyUrl ?? ''
+  )
 
   const rawAgentId = widget.chatWidget?.agentId ?? null
   const agentActorIds: ActorId[] = rawAgentId ? [toActorId('agent', rawAgentId)] : []
@@ -253,6 +259,32 @@ export function GeneralSection({ widget, channelId, onDelete }: GeneralSectionPr
                   disabled={update.isPending}
                   triggerProps={{ className: 'w-full ps-0 pe-1' }}
                 />
+              </VarEditorFieldRow>
+
+              <VarEditorFieldRow
+                title='Privacy Policy URL'
+                description='When set, the widget shows a consent banner under the composer linking to this URL. Leave blank to hide.'
+                type={BaseType.STRING}
+                icon={<LinkIcon className='size-3.5' />}
+                showIcon>
+                <div
+                  onBlur={() => {
+                    const next = privacyUrlDraft.trim()
+                    const current = widget.chatWidget?.privacyPolicyUrl ?? ''
+                    if (next === current) return
+                    update.mutate({
+                      integrationId: channelId,
+                      privacyPolicyUrl: next === '' ? null : next,
+                    })
+                  }}>
+                  <FieldInputAdapter
+                    fieldType={FieldType.URL}
+                    value={privacyUrlDraft}
+                    onChange={(v) => setPrivacyUrlDraft((v as string) ?? '')}
+                    placeholder='https://example.com/privacy'
+                    disabled={update.isPending}
+                  />
+                </div>
               </VarEditorFieldRow>
             </VarEditorField>
           </div>

@@ -345,7 +345,16 @@ export const channelRouter = createTRPCRouter({
         headerColorDark: z.string().optional().nullable(),
 
         // v3 conversation polish
-        suggestedReplies: z.array(z.string().trim().max(80)).max(5).optional(),
+        suggestedReplies: z
+          .array(z.string().trim().max(80))
+          .max(5)
+          .transform((arr) => arr.filter((s) => s.length > 0))
+          .optional(),
+
+        // v3 privacy banner
+        privacyPolicyUrl: z
+          .union([z.httpUrl().max(2048), z.literal('').transform(() => null), z.null()])
+          .optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {

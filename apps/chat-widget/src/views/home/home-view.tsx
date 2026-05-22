@@ -172,10 +172,10 @@ export function HomeView({ channelId, config, resolvedTheme, onClose }: HomeView
     : config.appearance.logoLight
 
   return (
-    <div className='relative flex min-h-0 flex-1 flex-col'>
+    <div className='relative flex min-h-0 flex-1 flex-col [&>*:last-child]:rounded-b-2xl'>
       <div
         aria-hidden='true'
-        className='pointer-events-none absolute inset-x-0 top-0 z-0'
+        className='pointer-events-none absolute inset-x-0 top-0 z-0 rounded-t-2xl'
         style={{
           height: '200px',
           background: `linear-gradient(to bottom, ${headerColor} 45%, transparent 100%)`,

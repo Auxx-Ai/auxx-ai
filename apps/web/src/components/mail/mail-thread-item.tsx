@@ -176,7 +176,7 @@ export const MailThreadItem = memo(function MailThreadItem({
   const { selectedThreadIds, viewMode, filterConditions } = useMailFilter()
 
   // --- NEW: Use ID-based hooks ---
-  const { thread, isLoading: isThreadLoading } = useThread({ threadId })
+  const { thread, isLoading: isThreadLoading, isDeleted } = useThread({ threadId })
   const { message: latestMessage } = useMessage({
     messageId: thread?.latestMessageId,
     enabled: !!thread?.latestMessageId,
@@ -307,6 +307,11 @@ export const MailThreadItem = memo(function MailThreadItem({
   }, [latestMessage?.snippet])
 
   const hasTags = (thread?.tagIds?.length ?? 0) > 0
+
+  // --- Tombstoned (optimistic delete) — render nothing ---
+  if (isDeleted) {
+    return null
+  }
 
   // --- Loading state ---
   if (isThreadLoading || !thread) {

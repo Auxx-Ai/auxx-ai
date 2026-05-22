@@ -146,6 +146,13 @@ interface ThreadStoreState {
   pendingIds: Set<string>
   loadingIds: Set<string>
   notFoundIds: Set<string>
+  /**
+   * Tombstones for threads removed optimistically. We keep the id flagged so
+   * the sidebar (driven by the cached `thread.listIds` query) can skip rendering
+   * it without invalidating the list query. Also prevents re-fetches from
+   * resurrecting the thread before the server catches up.
+   */
+  deletedIds: Set<string>
   batchTimer: ReturnType<typeof setTimeout> | null
 
   // ═══════════════════════════════════════════════════════════════
@@ -187,6 +194,8 @@ interface ThreadStoreState {
    */
   setThreadPatch: (id: string, patch: Partial<ThreadMeta>) => void
   removeThread: (id: string) => void
+  /** Restore a tombstoned thread (used to rollback an optimistic delete). */
+  undeleteThread: (id: string, restore?: ThreadMeta) => void
 
   // Optimistic updates (version-tracked for concurrent mutation safety)
   updateThreadOptimistic: (id: string, updates: Partial<ThreadMeta>) => number
@@ -263,6 +272,7 @@ export const useThreadStore = create<ThreadStoreState>()(
       pendingIds: new Set(),
       loadingIds: new Set(),
       notFoundIds: new Set(),
+      deletedIds: new Set(),
       batchTimer: null,
 
       // ═══════════════════════════════════════════════════════════════
@@ -286,9 +296,10 @@ export const useThreadStore = create<ThreadStoreState>()(
       setThreads: (threads) =>
         set((state) => {
           for (const thread of threads) {
-            state.threads.set(thread.id, thread)
             state.pendingIds.delete(thread.id)
             state.loadingIds.delete(thread.id)
+            if (state.deletedIds.has(thread.id)) continue
+            state.threads.set(thread.id, thread)
             state.notFoundIds.delete(thread.id)
           }
         }),
@@ -324,6 +335,16 @@ export const useThreadStore = create<ThreadStoreState>()(
       removeThread: (id) =>
         set((state) => {
           state.threads.delete(id)
+          state.pendingIds.delete(id)
+          state.loadingIds.delete(id)
+          state.notFoundIds.delete(id)
+          state.deletedIds.add(id)
+        }),
+
+      undeleteThread: (id, restore) =>
+        set((state) => {
+          state.deletedIds.delete(id)
+          if (restore) state.threads.set(id, restore)
         }),
 
       // ═══════════════════════════════════════════════════════════════
@@ -458,7 +479,8 @@ export const useThreadStore = create<ThreadStoreState>()(
           state.threads.has(id) ||
           state.loadingIds.has(id) ||
           state.pendingIds.has(id) ||
-          state.notFoundIds.has(id)
+          state.notFoundIds.has(id) ||
+          state.deletedIds.has(id)
         ) {
           return
         }
@@ -497,11 +519,13 @@ export const useThreadStore = create<ThreadStoreState>()(
       completeBatch: (threads, notFoundIds) =>
         set((state) => {
           for (const thread of threads) {
-            state.threads.set(thread.id, thread)
             state.loadingIds.delete(thread.id)
+            if (state.deletedIds.has(thread.id)) continue
+            state.threads.set(thread.id, thread)
           }
           for (const id of notFoundIds) {
             state.loadingIds.delete(id)
+            if (state.deletedIds.has(id)) continue
             state.notFoundIds.add(id)
           }
         }),
@@ -671,6 +695,7 @@ export const useThreadStore = create<ThreadStoreState>()(
           state.pendingIds.clear()
           state.loadingIds.clear()
           state.notFoundIds.clear()
+          state.deletedIds.clear()
           state.batchTimer = null
 
           // Clear scheduled message state

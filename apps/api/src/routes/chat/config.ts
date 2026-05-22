@@ -58,6 +58,7 @@ configRoute.get('/:channelId', async (c) => {
     },
     allowDownloadTranscript: widget.allowDownloadTranscript,
     suggestedReplies: widget.suggestedReplies,
+    privacyPolicyUrl: widget.privacyPolicyUrl,
     realtime: {
       provider: 'pusher' as const,
       key: configService.get<string>('PUSHER_KEY') ?? '',

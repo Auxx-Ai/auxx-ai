@@ -57,6 +57,9 @@ export interface UpdateChatWidgetInput {
 
   /** Up to 5 tap-to-send suggestion chips shown above the composer on a fresh thread. */
   suggestedReplies?: string[]
+
+  /** Pass `null` (or empty after sanitization) to clear the URL. */
+  privacyPolicyUrl?: string | null
 }
 
 /**

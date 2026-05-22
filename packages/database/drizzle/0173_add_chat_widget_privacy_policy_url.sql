@@ -1,0 +1,1 @@
+ALTER TABLE "ChatWidget" ADD COLUMN "privacyPolicyUrl" text;

@@ -39,6 +39,7 @@ export interface LoadedChatWidget {
   }
   allowDownloadTranscript: boolean
   suggestedReplies: string[]
+  privacyPolicyUrl: string | null
 }
 
 /**
@@ -91,10 +92,8 @@ export async function loadChatWidgetByChannelId(
       footerEnabled: row.chatWidget.brandingFooterEnabled,
     },
     allowDownloadTranscript: row.chatWidget.allowDownloadTranscript,
-    suggestedReplies: (row.chatWidget.suggestedReplies ?? [])
-      .map((s) => s.trim())
-      .filter((s) => s.length > 0)
-      .slice(0, 5),
+    suggestedReplies: row.chatWidget.suggestedReplies ?? [],
+    privacyPolicyUrl: row.chatWidget.privacyPolicyUrl ?? null,
   }
 }
 

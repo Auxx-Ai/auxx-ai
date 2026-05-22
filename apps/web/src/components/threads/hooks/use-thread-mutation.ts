@@ -51,6 +51,7 @@ export function useThreadMutation() {
   const confirmOptimistic = useThreadStore((s) => s.confirmOptimistic)
   const rollbackOptimistic = useThreadStore((s) => s.rollbackOptimistic)
   const removeThread = useThreadStore((s) => s.removeThread)
+  const undeleteThread = useThreadStore((s) => s.undeleteThread)
   const getThread = useThreadStore((s) => s.getThread)
 
   // Count update store actions (direct access for bulk operations)
@@ -279,7 +280,9 @@ export function useThreadMutation() {
         }
       }
 
-      // 2. Remove from store optimistically
+      // 2. Snapshot + tombstone in store. Tombstone hides the sidebar row
+      //    without invalidating the cached `thread.listIds` query.
+      const previous = getThread(threadId)
       removeThread(threadId)
 
       // 3. Create RecordId and call backend mutation
@@ -289,8 +292,8 @@ export function useThreadMutation() {
         { recordId },
         {
           onError: (error) => {
-            // Note: Can't easily rollback a delete - would need to re-fetch
             restoreSnapshot()
+            undeleteThread(threadId, previous)
             toastError({ title: 'Delete failed', description: error.message })
           },
         }
@@ -298,6 +301,8 @@ export function useThreadMutation() {
     },
     [
       removeThread,
+      undeleteThread,
+      getThread,
       removeMutation,
       currentUserId,
       buildThreadContext,
@@ -334,8 +339,13 @@ export function useThreadMutation() {
         batchUpdate(countUpdates)
       }
 
-      // 2. Remove all from store optimistically
-      threadIds.forEach((id) => removeThread(id))
+      // 2. Snapshot + tombstone each thread (sidebar hides via isDeleted flag)
+      const previous = new Map<string, ThreadMeta>()
+      for (const id of threadIds) {
+        const t = getThread(id)
+        if (t) previous.set(id, t)
+        removeThread(id)
+      }
 
       // 3. Create RecordIds and call backend mutation
       const recordIds = threadIds.map((id) => toRecordId('thread', id))
@@ -344,8 +354,10 @@ export function useThreadMutation() {
         { recordIds },
         {
           onError: (error) => {
-            // Note: Can't easily rollback bulk delete - would need to re-fetch
             restoreSnapshot()
+            for (const id of threadIds) {
+              undeleteThread(id, previous.get(id))
+            }
             toastError({ title: 'Bulk delete failed', description: error.message })
           },
         }
@@ -353,6 +365,8 @@ export function useThreadMutation() {
     },
     [
       removeThread,
+      undeleteThread,
+      getThread,
       removeBulkMutation,
       currentUserId,
       buildThreadContext,
