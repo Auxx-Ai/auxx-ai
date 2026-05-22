@@ -406,18 +406,13 @@ threadsRoute.get('/', async (c) => {
           sentAt,
           isInbound: last?.isInbound ?? false,
         },
-        // Read-receipt aggregation is not yet wired through; surface 0 here and
-        // let the widget maintain unread via the per-visitor channel + local
-        // last-read-at storage.
-        unreadCount: 0,
         updatedAt: t.lastMessageAt ?? t.id,
       }
     })
 
-    const nextCursor =
-      nextThread && nextThread.lastMessageAt
-        ? `${nextThread.lastMessageAt.toISOString()}__${nextThread.id}`
-        : null
+    const nextCursor = nextThread?.lastMessageAt
+      ? `${nextThread.lastMessageAt.toISOString()}__${nextThread.id}`
+      : null
 
     return c.json({ success: true, data: { items, nextCursor } })
   } catch (error) {

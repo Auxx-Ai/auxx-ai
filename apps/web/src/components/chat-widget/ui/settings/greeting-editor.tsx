@@ -155,7 +155,7 @@ export function GreetingEditor({
 
 /**
  * Tiptap's default empty doc is `{ type: 'doc', content: [{ type: 'paragraph' }] }`.
- * Persist `null` for that case so we can fall back to `welcomeMessage` cleanly.
+ * Persist `null` for that case so the widget falls back to the default greeting.
  */
 function isEmptyDoc(doc: JSONContent): boolean {
   if (doc.type !== 'doc' || !Array.isArray(doc.content)) return true

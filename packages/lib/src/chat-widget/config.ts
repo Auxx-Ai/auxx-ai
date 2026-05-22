@@ -27,7 +27,6 @@ export interface UpdateChatWidgetInput {
   logoLight?: string | null
   logoDark?: string | null
   position?: string
-  welcomeMessage?: string | null
   autoOpen?: boolean
   mobileFullScreen?: boolean
   collectUserInfo?: boolean

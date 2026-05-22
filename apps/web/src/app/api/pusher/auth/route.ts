@@ -1,12 +1,11 @@
 // ~/app/api/pusher/auth/route.ts
 
-import { database, schema } from '@auxx/database'
+import { database } from '@auxx/database'
 import { InboxService } from '@auxx/lib/inboxes'
 import { findMemberByUser } from '@auxx/lib/members'
 import { getRealtimeService } from '@auxx/lib/realtime'
 import { createScopedLogger } from '@auxx/logger'
 import { toRecordId } from '@auxx/types/resource'
-import { eq } from 'drizzle-orm'
 import { headers } from 'next/headers'
 import { type NextRequest, NextResponse } from 'next/server'
 import { auth } from '~/auth/server'
@@ -37,41 +36,11 @@ export async function POST(req: NextRequest) {
 
     // Handle chat channels (no authentication required)
     if (channel_name.startsWith('private-chat-')) {
-      logger.info('Authenticating chat session channel', { channel_name })
+      logger.info('Authenticating chat channel', { channel_name })
 
-      // Extract sessionId from channel name
-      const sessionId = channel_name.replace('private-chat-', '')
-
-      // Skip database verification during development or if specified in config
-      const skipVerification =
-        process.env.NODE_ENV === 'development' &&
-        process.env.SKIP_CHAT_SESSION_VERIFICATION === 'true'
-
-      if (!skipVerification) {
-        try {
-          // Check if the session exists
-          const [chatSession] = await database
-            .select()
-            .from(schema.ChatSession)
-            .where(eq(schema.ChatSession.id, sessionId))
-            .limit(1)
-          const session = chatSession ?? null
-
-          if (!session) {
-            logger.warn('Chat session not found', { sessionId, channel_name })
-            return NextResponse.json({ error: 'Invalid chat session' }, { status: 403 })
-          }
-        } catch (error) {
-          logger.error('Error verifying chat session', { sessionId, error })
-          // During development, we can continue even if verification fails
-          if (process.env.NODE_ENV !== 'development') {
-            return NextResponse.json({ error: 'Error verifying chat session' }, { status: 500 })
-          }
-          logger.warn('Proceeding despite session verification error (development mode)')
-        }
-      }
-
-      // Authenticate the channel without user data
+      // Authenticate the channel without user data. The visitor passport
+      // already authorizes the channel; Pusher-side channel binding enforces
+      // it on publish.
       const authResponse = realTimeService.authenticateChannel(socket_id, channel_name)
 
       if (!authResponse) {

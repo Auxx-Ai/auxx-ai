@@ -3,9 +3,6 @@
 
 import { relations } from 'drizzle-orm/relations'
 import {
-  ChatAttachment,
-  ChatMessage,
-  ChatSession,
   ChatWidget,
   Draft,
   EmailEmbedding,
@@ -79,8 +76,6 @@ export const threadRelations = relations(Thread, ({ one, many }) => ({
     references: [Organization.id],
   }),
   participants: many(ThreadParticipant),
-  chatSessions: many(ChatSession),
-  chatMessages: many(ChatMessage),
   labels: many(LabelsOnThread),
   // tags: many(TagsOnThread), // DEPRECATED: Tags now use FieldValue via RELATIONSHIP field
 }))
@@ -200,55 +195,6 @@ export const chatWidgetRelations = relations(ChatWidget, ({ one, many }) => ({
     references: [KnowledgeBase.id],
   }),
   operatingHours: many(OperatingHours),
-  sessions: many(ChatSession),
-}))
-
-export const chatSessionRelations = relations(ChatSession, ({ one, many }) => ({
-  user: one(User, {
-    fields: [ChatSession.closedById],
-    references: [User.id],
-  }),
-  organization: one(Organization, {
-    fields: [ChatSession.organizationId],
-    references: [Organization.id],
-  }),
-  thread: one(Thread, {
-    fields: [ChatSession.threadId],
-    references: [Thread.id],
-  }),
-  widget: one(ChatWidget, {
-    fields: [ChatSession.widgetId],
-    references: [ChatWidget.id],
-  }),
-  messages: many(ChatMessage),
-  attachments: many(ChatAttachment),
-}))
-
-export const chatMessageRelations = relations(ChatMessage, ({ one, many }) => ({
-  user: one(User, {
-    fields: [ChatMessage.agentId],
-    references: [User.id],
-  }),
-  session: one(ChatSession, {
-    fields: [ChatMessage.sessionId],
-    references: [ChatSession.id],
-  }),
-  thread: one(Thread, {
-    fields: [ChatMessage.threadId],
-    references: [Thread.id],
-  }),
-  attachments: many(ChatAttachment),
-}))
-
-export const chatAttachmentRelations = relations(ChatAttachment, ({ one }) => ({
-  message: one(ChatMessage, {
-    fields: [ChatAttachment.messageId],
-    references: [ChatMessage.id],
-  }),
-  session: one(ChatSession, {
-    fields: [ChatAttachment.sessionId],
-    references: [ChatSession.id],
-  }),
 }))
 
 /**

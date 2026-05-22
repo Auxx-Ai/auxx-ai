@@ -32,7 +32,6 @@ export interface ThreadListItem {
   id: string
   agent: { id: string; name: string; avatarUrl: string | null } | null
   lastMessage: { snippet: string; sentAt: string; isInbound: boolean }
-  unreadCount: number
   updatedAt: string
 }
 

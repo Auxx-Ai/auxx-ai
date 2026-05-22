@@ -18,7 +18,6 @@ export interface LoadedChatWidget {
     logoLight: string | null
     logoDark: string | null
     position: string
-    welcomeMessage: string | null
     autoOpen: boolean
     mobileFullScreen: boolean
     collectUserInfo: boolean
@@ -68,7 +67,6 @@ export async function loadChatWidgetByChannelId(
       logoLight: row.chatWidget.logoLight ?? null,
       logoDark: row.chatWidget.logoDark ?? null,
       position: row.chatWidget.position,
-      welcomeMessage: row.chatWidget.welcomeMessage ?? null,
       autoOpen: row.chatWidget.autoOpen,
       mobileFullScreen: row.chatWidget.mobileFullScreen,
       collectUserInfo: row.chatWidget.collectUserInfo,

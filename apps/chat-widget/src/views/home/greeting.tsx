@@ -10,14 +10,12 @@ import type { TiptapNode } from '~/transport/config'
 
 interface GreetingProps {
   doc: TiptapNode | null
-  fallbackText: string | null
   identify: IdentifyPayload | null
 }
 
-export function Greeting({ doc, fallbackText, identify }: GreetingProps) {
+export function Greeting({ doc, identify }: GreetingProps) {
   if (!doc) {
-    if (!fallbackText) return null
-    return <h2 className='text-xl font-semibold leading-tight'>{fallbackText}</h2>
+    return <h2 className='text-xl font-semibold leading-tight'>Hi! How can we help?</h2>
   }
   return (
     <h2 className='text-xl font-semibold leading-tight'>

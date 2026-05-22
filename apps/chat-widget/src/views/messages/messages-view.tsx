@@ -119,7 +119,6 @@ export function MessagesView({ channelId, subscribe }: MessagesViewProps) {
           id: evt.threadId,
           agent: null,
           lastMessage: { snippet: '', sentAt: evt.createdAt, isInbound: false },
-          unreadCount: 0,
           updatedAt: evt.createdAt,
         }
         return [placeholder, ...prev]

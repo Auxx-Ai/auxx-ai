@@ -23,7 +23,6 @@ import {
   ExternalLink,
   Eye,
   InboxIcon,
-  MessageSquare,
   Power,
   Settings,
   Sparkles,
@@ -51,7 +50,6 @@ const generalSchema = z.object({
   name: z.string().min(1, 'Name is required').max(255),
   title: z.string().min(1, 'Title is required').max(255),
   subtitle: z.string().max(255).optional(),
-  welcomeMessage: z.string().max(1000).optional(),
   isActive: z.boolean(),
 })
 
@@ -80,7 +78,6 @@ export function GeneralSection({ widget, channelId, onDelete }: GeneralSectionPr
       name: widget.name || widget.chatWidget?.name || '',
       title: widget.chatWidget?.title ?? 'Chat',
       subtitle: widget.chatWidget?.subtitle ?? '',
-      welcomeMessage: widget.chatWidget?.welcomeMessage ?? '',
       isActive: widget.chatWidget?.isActive ?? true,
     },
   })
@@ -91,7 +88,6 @@ export function GeneralSection({ widget, channelId, onDelete }: GeneralSectionPr
       name: values.name,
       title: values.title,
       subtitle: values.subtitle || undefined,
-      welcomeMessage: values.welcomeMessage || undefined,
       isActive: values.isActive,
     })
   }
@@ -197,27 +193,6 @@ export function GeneralSection({ widget, channelId, onDelete }: GeneralSectionPr
                       value={field.value ?? ''}
                       onChange={(v) => field.onChange((v as string) ?? '')}
                       placeholder='We typically reply in minutes'
-                    />
-                  </VarEditorFieldRow>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name='welcomeMessage'
-                render={({ field, fieldState }) => (
-                  <VarEditorFieldRow
-                    title='Welcome Message'
-                    description='Sent automatically when a chat starts.'
-                    type={BaseType.STRING}
-                    icon={<MessageSquare className='size-3.5' />}
-                    showIcon
-                    validationError={fieldState.error?.message}>
-                    <FieldInputAdapter
-                      fieldType={FieldType.TEXT}
-                      value={field.value ?? ''}
-                      onChange={(v) => field.onChange((v as string) ?? '')}
-                      placeholder='Hi! How can we help?'
                     />
                   </VarEditorFieldRow>
                 )}
