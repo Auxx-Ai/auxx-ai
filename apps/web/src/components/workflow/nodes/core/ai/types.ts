@@ -1,5 +1,7 @@
 // apps/web/src/components/workflow/nodes/core/ai/types.ts
 
+import type { ToolsetEntry } from '@auxx/lib/agents/client'
+import type { TiptapDoc } from '@auxx/lib/tiptap'
 import type { Node } from '@xyflow/react'
 import type { BaseNodeData, SpecificNode } from '~/components/workflow/types'
 
@@ -53,12 +55,17 @@ export interface AiModel {
 }
 
 /**
- * Prompt template item
+ * Prompt template item. Storage shape after Phase 4: the prompt body is a
+ * Tiptap doc (`{ type: 'doc', content: [...] }`) so `variable-node` and
+ * `reference` chips round-trip without lossy text serialization.
+ *
+ * Phase 5 reads `.json` directly via `docToText({ variables, references })`.
+ * The legacy `text: string` field is gone — no production users (see
+ * `project_no_production_users.md`), hard cut.
  */
 export interface PromptTemplate {
   role: PromptRole
-  text: string
-  editorContent?: string // Store the original editor content (JSON/HTML)
+  json: TiptapDoc
 }
 
 /**
@@ -89,24 +96,16 @@ export interface StructuredOutputConfig {
 }
 
 /**
- * Tools configuration for AI nodes
+ * Re-export the shared ToolsetEntry shape for convenience. The flat AI-node
+ * data uses the same shape as `Agent.toolsets` so the agent-framework picker
+ * dialog (`ToolSelectDialog`) and the back-end `filterToolsByToolsets`
+ * pipeline work without translation. See `plans/workflow/ai/phase-3-frontend-picker-migration.md`.
  */
-export interface AiToolsConfig {
-  enabled: boolean
-  allowedNodeIds?: string[] // Specific workflow nodes to expose as tools
-  allowedBuiltInTools?: string[] // Specific built-in tools to enable
-  maxConcurrentTools?: number // Limit concurrent tool executions
-  autoInvoke?: boolean // Auto-invoke tools vs manual approval
-
-  // Tool-specific credential mappings
-  toolCredentials?: Record<string, string> // toolId -> credentialId
-
-  // Default credential fallbacks per tool type/node type
-  defaultCredentials?: Record<string, string> // nodeType -> credentialId
-}
+export type { ToolsetEntry }
 
 /**
- * Node data for AI nodes
+ * Node data for AI nodes — flat tools shape (Phase 3). The legacy
+ * `tools: AiToolsConfig` nested block is gone; see the Phase 3 plan.
  */
 export interface AiNodeData extends BaseNodeData {
   model: AiModel
@@ -114,7 +113,17 @@ export interface AiNodeData extends BaseNodeData {
   context: AiContext
   files: AiFiles
   structured_output: StructuredOutputConfig
-  tools: AiToolsConfig
+
+  /** Master gate for the entire tool surface on this node. */
+  toolsEnabled?: boolean
+  /** Per-toolset enablement. Mirrors `Agent.toolsets`. */
+  toolsets?: ToolsetEntry[]
+  /** Per-app explicit credential pin. Mirrors `Agent.appAccounts`. */
+  appAccounts?: Record<string, { credId: string }>
+  /** Approval mode reserved for future use; v1 is always `auto`. */
+  approvalMode?: 'auto'
+  /** Default 10 for AI node; agent default is 30. */
+  maxIterations?: number
 }
 
 /**

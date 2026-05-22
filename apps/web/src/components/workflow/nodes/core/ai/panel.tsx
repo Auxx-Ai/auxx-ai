@@ -1,6 +1,7 @@
 // apps/web/src/components/workflow/nodes/core/ai/panel.tsx
+'use client'
 
-import { Badge } from '@auxx/ui/components/badge'
+import type { TiptapDoc } from '@auxx/lib/tiptap'
 import { Button } from '@auxx/ui/components/button'
 import { Label } from '@auxx/ui/components/label'
 import {
@@ -11,13 +12,13 @@ import {
   SelectValue,
 } from '@auxx/ui/components/select'
 import { Switch } from '@auxx/ui/components/switch'
-import { cn } from '@auxx/ui/lib/utils'
 import { produce } from 'immer'
-import { AlertTriangle, Pencil, Plus, Wrench, X } from 'lucide-react'
+import { Pencil, Plus } from 'lucide-react'
 import type React from 'react'
 import { memo, useCallback, useEffect, useState } from 'react'
+import { DEFAULT_TABS } from '~/components/editor/inline-picker'
+import type { ReferenceTab } from '~/components/editor/inline-picker/nodes/reference-picker-node'
 import { useNodeCrud, useReadOnly } from '~/components/workflow/hooks'
-import { useWorkflowStore } from '~/components/workflow/store/workflow-store'
 import { BaseType } from '~/components/workflow/types'
 import { VarEditor, VarEditorField } from '~/components/workflow/ui/input-editor/var-editor'
 import { OutputVariablesDisplay } from '~/components/workflow/ui/output-variables'
@@ -30,14 +31,18 @@ import Section from '../../../ui/section'
 import { BasePanel } from '../../shared/base/base-panel'
 import { PROMPT_ROLES } from './constants'
 import { aiDefinition } from './schema'
-import {
-  CredentialStatusBadge,
-  getToolCredentialStatus,
-  hasCredentialIssue,
-} from './tool-credential-status'
-import { ToolsSelectionDialog } from './tools-selection-dialog'
+import { ToolsSection } from './tools/tools-section'
 import type { AiNodeData, PromptTemplate } from './types'
 import { AiModelMode, PromptRole } from './types'
+
+const EMPTY_PROMPT_DOC: TiptapDoc = { type: 'doc', content: [{ type: 'paragraph' }] }
+
+/**
+ * Tab set for the AI-node prompt editor. Admin-authored surface, so we
+ * include `tools`, `resources`, `fields` on top of the default tabs so
+ * authors can pin toolsets, schema objects, and field values inline.
+ */
+const AI_NODE_REFERENCE_TABS: ReferenceTab[] = [...DEFAULT_TABS, 'tools', 'resources', 'fields']
 
 interface AiPanelProps {
   nodeId: string
@@ -48,8 +53,6 @@ const AiPanelComponent: React.FC<AiPanelProps> = ({ nodeId, data }) => {
   const { isReadOnly } = useReadOnly()
   const [isOpen, setIsOpen] = useState(false)
   const [schema, setSchema] = useState<SchemaRoot | undefined>()
-  const [toolsDialogOpen, setToolsDialogOpen] = useState(false)
-  const nodes = useWorkflowStore((state) => state.nodes)
 
   // Use CRUD operations for the node data
   const { inputs: nodeData, setInputs: setNodeData } = useNodeCrud<AiNodeData>(nodeId, data)
@@ -85,7 +88,7 @@ const AiPanelComponent: React.FC<AiPanelProps> = ({ nodeId, data }) => {
   const updatePromptTemplate = (index: number, updates: Partial<PromptTemplate>) => {
     const newData = produce(nodeData, (draft: AiNodeData) => {
       if (!draft.prompt_template) {
-        draft.prompt_template = [{ role: PromptRole.SYSTEM, text: '' }]
+        draft.prompt_template = [{ role: PromptRole.SYSTEM, json: EMPTY_PROMPT_DOC }]
       }
       Object.assign(draft.prompt_template[index], updates)
     })
@@ -97,7 +100,7 @@ const AiPanelComponent: React.FC<AiPanelProps> = ({ nodeId, data }) => {
       if (!draft.prompt_template) {
         draft.prompt_template = []
       }
-      draft.prompt_template.push({ role: PromptRole.USER, text: '', editorContent: undefined })
+      draft.prompt_template.push({ role: PromptRole.USER, json: EMPTY_PROMPT_DOC })
     })
     setNodeData(newData)
   }
@@ -136,100 +139,6 @@ const AiPanelComponent: React.FC<AiPanelProps> = ({ nodeId, data }) => {
     },
     [nodeData, setNodeData]
   )
-
-  // Tools update handler
-  const updateTools = (updates: Partial<AiNodeData['tools']>) => {
-    const newData = produce(nodeData, (draft: AiNodeData) => {
-      if (!draft.tools) {
-        draft.tools = {
-          enabled: false,
-          allowedNodeIds: [],
-          allowedBuiltInTools: [],
-          maxConcurrentTools: 5,
-          autoInvoke: true,
-        }
-      }
-      Object.assign(draft.tools, updates)
-    })
-    setNodeData(newData)
-  }
-
-  // Get tools count for display
-  const getToolsCount = () => {
-    const nodeTools = nodeData.tools?.allowedNodeIds?.length || 0
-    const builtInTools = nodeData.tools?.allowedBuiltInTools?.length || 0
-    return nodeTools + builtInTools
-  }
-
-  // Get enabled tools for display with credential status
-  const getEnabledTools = () => {
-    const tools: Array<{
-      id: string
-      name: string
-      type: 'node' | 'builtin'
-      nodeType?: string
-      credentialStatus?: ReturnType<typeof getToolCredentialStatus>
-      hasCredentialIssue: boolean
-    }> = []
-
-    // Add workflow node tools
-    if (nodeData.tools?.allowedNodeIds && nodes && Array.isArray(nodes)) {
-      nodeData.tools.allowedNodeIds.forEach((nodeId) => {
-        const node = nodes.find((n) => n.id === nodeId)
-        if (node) {
-          const credentialId = nodeData.tools?.toolCredentials?.[nodeId]
-          const credentialStatus = getToolCredentialStatus(
-            nodeId,
-            'workflow_node',
-            node.type,
-            credentialId
-          )
-
-          tools.push({
-            id: nodeId,
-            name: node.data?.title || `${node.type} ${nodeId}`,
-            type: 'node',
-            nodeType: node.type,
-            credentialStatus,
-            hasCredentialIssue: hasCredentialIssue(
-              nodeId,
-              'workflow_node',
-              node.type,
-              credentialId
-            ),
-          })
-        }
-      })
-    }
-
-    // Add built-in tools
-    if (nodeData.tools?.allowedBuiltInTools) {
-      const builtInNames: Record<string, string> = {
-        http_request: 'HTTP Request',
-        assign_variable: 'Assign Variable',
-      }
-
-      nodeData.tools.allowedBuiltInTools.forEach((toolId) => {
-        const credentialId = nodeData.tools?.toolCredentials?.[toolId]
-        const credentialStatus = getToolCredentialStatus(
-          toolId,
-          'built_in',
-          undefined,
-          credentialId
-        )
-
-        tools.push({
-          id: toolId,
-          name: builtInNames[toolId] || toolId,
-          type: 'builtin',
-          credentialStatus,
-          hasCredentialIssue: hasCredentialIssue(toolId, 'built_in', undefined, credentialId),
-        })
-      })
-    }
-
-    return tools
-  }
 
   return (
     <BasePanel title='AI Configuration' nodeId={nodeId} data={data} showNextStep={true}>
@@ -287,9 +196,10 @@ const AiPanelComponent: React.FC<AiPanelProps> = ({ nodeId, data }) => {
           )
         }>
         <div className='space-y-2'>
-          {(nodeData.prompt_template || [{ role: PromptRole.SYSTEM, text: '' }]).map(
+          {(nodeData.prompt_template || [{ role: PromptRole.SYSTEM, json: EMPTY_PROMPT_DOC }]).map(
             (template: PromptTemplate, index: number) => (
               <Editor
+                key={index}
                 title={
                   index === 0 ? (
                     <span className='text-xs font-semibold text-muted-foreground'>System</span>
@@ -302,19 +212,17 @@ const AiPanelComponent: React.FC<AiPanelProps> = ({ nodeId, data }) => {
                   )
                 }
                 readOnly={isReadOnly}
-                value={template.text || ''}
-                onChange={(value) => {
-                  // Store both the original editor content and the preprocessed text
-                  updatePromptTemplate(index, { text: value })
-                }}
-                placeholder='Use { for variables'
+                valueJson={template.json}
+                onChangeJson={(json) => updatePromptTemplate(index, { json })}
+                placeholder='Use { for variables, @ for references'
                 nodeId={nodeId}
                 includeEnvironment
                 includeSystem
                 showRemove={index > 0}
                 onRemove={() => removePromptTemplate(index)}
                 minHeight={index === 0 ? 200 : 56}
-                key={index}
+                enableReferencePicker
+                referenceTabs={AI_NODE_REFERENCE_TABS}
               />
             )
           )}
@@ -367,103 +275,7 @@ const AiPanelComponent: React.FC<AiPanelProps> = ({ nodeId, data }) => {
         </VarEditorField>
       </Section>
 
-      <Section
-        title='Tools'
-        description='Allow AI to use other nodes and built-in functions as tools'
-        showEnable
-        onEnableChange={(enabled) => updateTools({ enabled })}
-        enabled={nodeData.tools?.enabled || false}
-        initialOpen={nodeData.tools?.enabled || false}>
-        <div className='space-y-3'>
-          {/* Tools List */}
-          {nodeData.tools?.enabled && (
-            <>
-              <div className='flex items-center justify-between'>
-                <div className='text-xs text-muted-foreground'>
-                  Available Tools ({getToolsCount()})
-                </div>
-                <Button
-                  variant='outline'
-                  size='sm'
-                  onClick={() => setToolsDialogOpen(true)}
-                  disabled={isReadOnly}>
-                  <Plus className='h-3 w-3 mr-1' />
-                  Add Tools
-                </Button>
-              </div>
-
-              {/* Tools Display */}
-              <div className='space-y-2'>
-                {getEnabledTools().map((tool) => (
-                  <div
-                    key={tool.id}
-                    className={cn(
-                      'flex items-center justify-between p-2 bg-muted rounded-md',
-                      tool.hasCredentialIssue && 'border border-destructive/50 bg-destructive/5'
-                    )}>
-                    <div className='flex items-center gap-2'>
-                      <Wrench className='h-3 w-3 text-muted-foreground' />
-                      <span className='text-xs font-medium'>{tool.name}</span>
-                      <Badge
-                        variant={tool.type === 'node' ? 'outline' : 'secondary'}
-                        className='text-xs'>
-                        {tool.type === 'node' ? 'Workflow' : 'Built-in'}
-                      </Badge>
-                      {tool.credentialStatus?.statusText && (
-                        <CredentialStatusBadge
-                          toolId={tool.id}
-                          toolType={tool.type === 'node' ? 'workflow_node' : 'built_in'}
-                          nodeType={tool.nodeType}
-                          currentCredential={nodeData.tools?.toolCredentials?.[tool.id]}
-                        />
-                      )}
-                    </div>
-
-                    <div className='flex items-center gap-1'>
-                      {tool.hasCredentialIssue && (
-                        <Button
-                          variant='ghost'
-                          size='xs'
-                          onClick={() => setToolsDialogOpen(true)}
-                          className='text-destructive'>
-                          <AlertTriangle className='h-3 w-3' />
-                        </Button>
-                      )}
-
-                      {!isReadOnly && (
-                        <Button
-                          variant='ghost'
-                          size='xs'
-                          onClick={() => {
-                            if (tool.type === 'node') {
-                              const newNodeIds =
-                                nodeData.tools?.allowedNodeIds?.filter((id) => id !== tool.id) || []
-                              updateTools({ allowedNodeIds: newNodeIds })
-                            } else {
-                              const newBuiltInTools =
-                                nodeData.tools?.allowedBuiltInTools?.filter(
-                                  (id) => id !== tool.id
-                                ) || []
-                              updateTools({ allowedBuiltInTools: newBuiltInTools })
-                            }
-                          }}>
-                          <X className='h-3 w-3' />
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                ))}
-
-                {getToolsCount() === 0 && (
-                  <div className='text-center py-4 text-xs text-muted-foreground'>
-                    No tools configured. Click "Add Tools" to get started.
-                  </div>
-                )}
-              </div>
-            </>
-          )}
-        </div>
-      </Section>
+      <ToolsSection data={nodeData} setData={setNodeData} />
 
       <Section
         title='Structured Output'
@@ -523,23 +335,6 @@ const AiPanelComponent: React.FC<AiPanelProps> = ({ nodeId, data }) => {
       <OutputVariablesDisplay
         outputVariables={aiDefinition.outputVariables?.(nodeData, nodeId) || []}
         initialOpen={false}
-      />
-
-      {/* Tools Selection Dialog */}
-      <ToolsSelectionDialog
-        isOpen={toolsDialogOpen}
-        onClose={() => setToolsDialogOpen(false)}
-        currentConfig={
-          nodeData.tools || {
-            enabled: false,
-            allowedNodeIds: [],
-            allowedBuiltInTools: [],
-            maxConcurrentTools: 5,
-            autoInvoke: true,
-          }
-        }
-        onSave={(toolsConfig) => updateTools(toolsConfig)}
-        nodeId={nodeId}
       />
     </BasePanel>
   )

@@ -2,7 +2,7 @@
 'use client'
 
 import { cn } from '@auxx/ui/lib/utils'
-import type { JSONContent } from '@tiptap/core'
+import type { Extension, JSONContent } from '@tiptap/core'
 import type { Editor } from '@tiptap/react'
 import { useCallback, useRef, useState } from 'react'
 import type { ReferenceTab } from '~/components/editor/inline-picker/nodes/reference-picker-node'
@@ -32,6 +32,11 @@ export interface PromptEditorProps {
   editable?: boolean
   /** Overrides the default-branch empty-block placeholder hint. */
   placeholderText?: string
+  /**
+   * Extra inline Tiptap extensions to mount alongside the standard ones
+   * (e.g. the workflow `{`-variable picker). Defaults to `[]`.
+   */
+  inlineExtensions?: Extension[]
 }
 
 /**
@@ -56,6 +61,7 @@ export function PromptEditor({
   className,
   editable = true,
   placeholderText,
+  inlineExtensions,
 }: PromptEditorProps) {
   const referencePickerRef = useRef<ReferencePickerHandle | null>(null)
   const [, setFocused] = useState(false)
@@ -86,6 +92,7 @@ export function PromptEditor({
         referenceTabs={referenceTabs}
         editable={editable}
         placeholderText={placeholderText}
+        inlineExtensions={inlineExtensions}
       />
     </div>
   )

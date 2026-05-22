@@ -1,39 +1,18 @@
-import type { JSONContent } from '@tiptap/core'
+// apps/web/src/components/workflow/ui/input-editor/tiptap-converters.ts
 
-// .insertContent({ type: 'variable-node', attrs: { variableId: variable.id } })
-
-// Convert TipTap JSON content to string with {{varId}} placeholders
-export function tiptapToString(content: JSONContent): string {
-  if (!content) return ''
-
-  function processNode(node: JSONContent): string {
-    if (node.type === 'text') {
-      return node.text || ''
-    }
-
-    if (node.type === 'variable-node') {
-      return `{{${node.attrs?.variableId || ''}}}`
-    }
-
-    if (node.type === 'paragraph') {
-      const text = node.content?.map(processNode).join('') || ''
-      return text
-    }
-
-    if (node.type === 'doc') {
-      return node.content?.map(processNode).join('\n').trim() || ''
-    }
-
-    // Handle other block elements
-    if (node.content) {
-      return node.content.map(processNode).join('')
-    }
-
-    return ''
-  }
-
-  return processNode(content)
-}
+/**
+ * Legacy variable-editor helpers used by the 9 non-AI workflow nodes that
+ * persist prompt content as `text: string` with `{{var}}` placeholders.
+ *
+ * The Tiptap-doc-aware helpers (`stringToTiptap`, `tiptapToString`,
+ * `extractVarIds`) moved to `@auxx/lib/tiptap` as
+ * `textToDoc({ parseVariables: true })`, `docToText`, and
+ * `collectVariableIds` respectively (see Phase 0 + Phase 4 plans).
+ *
+ * What remains here is the string-shape regex scan + validator — both
+ * editor-layer concerns operating on the legacy `text: string` shape,
+ * not Tiptap docs.
+ */
 
 /**
  * Check if a string is valid JSON.
@@ -59,81 +38,8 @@ export function isJsonObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-// Convert string with {{varId}} placeholders to TipTap JSON content
-export function stringToTiptap(
-  text: string,
-  varData?: Record<string, { label: string }>
-): JSONContent {
-  if (isJsonObject(text)) {
-    return text as JSONContent
-  }
-
-  if (!text) {
-    return { type: 'doc', content: [{ type: 'paragraph', content: [] }] }
-  }
-
-  const lines = (text + '').split('\n')
-  const paragraphs: JSONContent[] = []
-
-  for (const line of lines) {
-    const content: JSONContent[] = []
-    const tagPattern = /\{\{([^}]+)\}\}/g
-    let lastIndex = 0
-    let match
-
-    while ((match = tagPattern.exec(line)) !== null) {
-      // Add text before the tag
-      if (match.index > lastIndex) {
-        const textBefore = line.slice(lastIndex, match.index)
-        if (textBefore) {
-          content.push({ type: 'text', text: textBefore })
-        }
-      }
-
-      // Add the tag
-      const varId = match[1]
-      content.push({ type: 'variable-node', attrs: { variableId: varId } })
-
-      lastIndex = match.index + match[0].length
-    }
-
-    // Add remaining text
-    if (lastIndex < line.length) {
-      const remainingText = line.slice(lastIndex)
-      if (remainingText) {
-        content.push({ type: 'text', text: remainingText })
-      }
-    }
-
-    // Create paragraph
-    paragraphs.push({ type: 'paragraph', content: content.length > 0 ? content : [] })
-  }
-
-  return {
-    type: 'doc',
-    content: paragraphs.length > 0 ? paragraphs : [{ type: 'paragraph', content: [] }],
-  }
-}
-
-// Extract all varIds from TipTap content
-export function extractVarIds(content: JSONContent): string[] {
-  const varIds: string[] = []
-
-  function traverse(node: JSONContent) {
-    if (node.type === 'variable-node' && node.attrs?.variableId) {
-      varIds.push(node.attrs.variableId)
-    }
-
-    if (node.content) {
-      node.content.forEach(traverse)
-    }
-  }
-
-  traverse(content)
-  return [...new Set(varIds)] // Remove duplicates
-}
-
-// Extract all tag varIds from string content ({{varId}} format)
+// Extract all tag varIds from string content ({{varId}} format) — used by
+// the 9 non-AI workflow nodes that still persist as `text: string`.
 export function extractVarIdsFromString(text: string): string[] {
   if (!text) return []
 
@@ -152,12 +58,12 @@ export function extractVarIdsFromString(text: string): string[] {
 }
 
 // Insert a variable tag at current cursor position
-export function insertTag(editor: any, variableId: string, label?: string) {
+export function insertTag(editor: any, variableId: string, _label?: string) {
   editor.chain().focus().insertContent({ type: 'variable-node', attrs: { variableId } }).run()
 }
 
 // Replace text selection with variable tag
-export function replaceSelectionWithTag(editor: any, variableId: string, label?: string) {
+export function replaceSelectionWithTag(editor: any, variableId: string, _label?: string) {
   editor
     .chain()
     .focus()

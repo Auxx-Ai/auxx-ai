@@ -176,6 +176,19 @@ export const BUILTIN_TOOLSETS: ReadonlyArray<CachedAgentToolset> = [
     isPopular: false,
     description: 'Look up workspace members, teams, and bot actors.',
   },
+  {
+    slug: 'workflow.variable',
+    subGroup: 'Workflow',
+    name: 'Workflow — Variables',
+    shortLabel: 'Variables',
+    iconKey: 'variable',
+    color: 'indigo',
+    isDefault: true,
+    isPopular: false,
+    description: 'Assign workflow variables so downstream nodes can read them.',
+    subGroupIconId: 'workflow',
+    subGroupColor: 'indigo',
+  },
 ]
 
 /** Lookup helper — fast path for tag-side code that already has a slug. */

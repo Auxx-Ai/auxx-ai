@@ -13,9 +13,19 @@ export interface TextToDocOptions {
    * round-trip cleanly between the editor and LLM-authored content.
    */
   parseReferences?: boolean
+  /**
+   * When set, `{{<variableId>}}` substrings are converted to inline
+   * `variable-node` nodes (`{ type: 'variable-node', attrs: { variableId } }`).
+   * Mirrors `parseReferences` for the workflow variable picker chip.
+   *
+   * The chip shape matches the apps/web `variable-node` extension —
+   * see `apps/web/src/components/workflow/ui/input-editor/tiptap-converters.ts`.
+   */
+  parseVariables?: boolean
 }
 
 const REFERENCE_MARKER = /@\[([^\]]+)\]/g
+const VARIABLE_MARKER = /\{\{([^}]+)\}\}/g
 
 /**
  * Build a minimal Tiptap doc from plain text. `\n\n` splits paragraphs;
@@ -44,8 +54,8 @@ function buildInline(paragraph: string, options: TextToDocOptions): TiptapNode[]
   const out: TiptapNode[] = []
   lines.forEach((line, idx) => {
     if (idx > 0) out.push({ type: 'hardBreak' })
-    if (options.parseReferences) {
-      for (const node of splitReferences(line)) out.push(node)
+    if (options.parseReferences || options.parseVariables) {
+      for (const node of splitMarkers(line, options)) out.push(node)
     } else if (line.length > 0) {
       out.push({ type: 'text', text: line })
     }
@@ -53,19 +63,52 @@ function buildInline(paragraph: string, options: TextToDocOptions): TiptapNode[]
   return out
 }
 
-function splitReferences(line: string): TiptapNode[] {
+interface Marker {
+  index: number
+  length: number
+  node: TiptapNode
+}
+
+function splitMarkers(line: string, options: TextToDocOptions): TiptapNode[] {
+  const markers: Marker[] = []
+  if (options.parseReferences) {
+    REFERENCE_MARKER.lastIndex = 0
+    let match: RegExpExecArray | null
+    while ((match = REFERENCE_MARKER.exec(line)) !== null) {
+      const id = match[1]
+      if (!id) continue
+      markers.push({
+        index: match.index,
+        length: match[0].length,
+        node: { type: 'reference', attrs: { id } },
+      })
+    }
+  }
+  if (options.parseVariables) {
+    VARIABLE_MARKER.lastIndex = 0
+    let match: RegExpExecArray | null
+    while ((match = VARIABLE_MARKER.exec(line)) !== null) {
+      const variableId = match[1]
+      if (!variableId) continue
+      markers.push({
+        index: match.index,
+        length: match[0].length,
+        node: { type: 'variable-node', attrs: { variableId } },
+      })
+    }
+  }
+  markers.sort((a, b) => a.index - b.index)
+
   const out: TiptapNode[] = []
   let lastIndex = 0
-  REFERENCE_MARKER.lastIndex = 0
-  let match: RegExpExecArray | null
-  while ((match = REFERENCE_MARKER.exec(line)) !== null) {
-    const id = match[1]
-    if (!id) continue
-    if (match.index > lastIndex) {
-      out.push({ type: 'text', text: line.slice(lastIndex, match.index) })
+  for (const marker of markers) {
+    // Skip overlapping markers (later marker subsumed by earlier).
+    if (marker.index < lastIndex) continue
+    if (marker.index > lastIndex) {
+      out.push({ type: 'text', text: line.slice(lastIndex, marker.index) })
     }
-    out.push({ type: 'reference', attrs: { id } })
-    lastIndex = match.index + match[0].length
+    out.push(marker.node)
+    lastIndex = marker.index + marker.length
   }
   if (lastIndex < line.length) {
     out.push({ type: 'text', text: line.slice(lastIndex) })

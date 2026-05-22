@@ -1,19 +1,39 @@
 // packages/lib/src/workflow-engine/nodes/action-nodes/__tests__/ai-v2.test.ts
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { textToDoc } from '../../../../tiptap'
 import type { WorkflowNode } from '../../../core/types'
 import { WorkflowNodeType } from '../../../core/types'
 import { AIProcessorV2 } from '../ai-v2'
 
+// Phase 5: `buildMessages` lazy-imports `../../../agents` to fetch the org
+// tool/toolset catalogs for the reference resolver. Stub the barrel so the
+// unit tests don't need DB/cache wiring.
+vi.mock('../../../../agents', () => ({
+  getOrgToolCatalog: vi.fn(async () => []),
+  getOrgToolsetCatalog: vi.fn(async () => []),
+  filterToolsByToolsets: vi.fn(() => []),
+}))
+
+// Helper: build a Phase-4 `{ role, json }` prompt template from legacy
+// `text` so the suite stays readable. Parses `{{var}}` placeholders into
+// chips so `extractRequiredVariables` round-trips through `docToText`.
+const pt = (role: 'system' | 'user' | 'assistant', text: string) => ({
+  role,
+  json: textToDoc(text, { parseVariables: true }),
+})
+
 /**
- * Test suite for AIProcessorV2
+ * Tests for the post-Phase-2 AIProcessorV2.
  *
- * These tests ensure that the AI node correctly:
- * - Extends BaseAiNodeProcessor
- * - Handles prompt templates and legacy prompts
- * - Supports structured output
- * - Manages tools integration
- * - Extracts required variables
+ * The processor now reads the flat `nodeData` shape (`toolsEnabled`,
+ * `toolsets`, `appAccounts`) and delegates tool execution to the agent
+ * framework via `runWorkflowAiTurn`. The no-tools branch still runs through
+ * `BaseAiNodeProcessor.executeNode`.
+ *
+ * End-to-end coverage (live LLM call, real workflow context manager) is left
+ * to integration suites — see plan §6 tests 2–5. Mocking the LLM at this
+ * level would replicate the LLM adapter without exercising the bridge.
  */
 describe('AIProcessorV2', () => {
   let processor: AIProcessorV2
@@ -22,7 +42,6 @@ describe('AIProcessorV2', () => {
   beforeEach(() => {
     processor = new AIProcessorV2()
 
-    // Mock ExecutionContextManager
     mockContextManager = {
       getVariable: vi.fn((path: string) => {
         if (path === 'sys.organizationId') return 'org_test_123'
@@ -40,7 +59,19 @@ describe('AIProcessorV2', () => {
         userId: 'user_test_123',
       })),
       getAllVariables: vi.fn(() => ({})),
-      buildOptimizedContext: vi.fn(() => new Map()),
+      buildOptimizedContext: vi.fn(async (ids: string[]) => {
+        const map = new Map<string, unknown>()
+        for (const id of ids) {
+          const value = await mockContextManager.getVariable(id)
+          if (value !== undefined) map.set(id, value)
+        }
+        return map
+      }),
+      formatForDisplay: vi.fn((value: unknown) => {
+        if (value == null) return ''
+        if (typeof value !== 'object') return String(value)
+        return JSON.stringify(value)
+      }),
       interpolateVariables: vi.fn().mockImplementation((text: string) => {
         if (!text || typeof text !== 'string') return Promise.resolve(text)
         const result = text.replace(/\{\{([^}]+)\}\}/g, (_match: string, path: string) => {
@@ -60,12 +91,10 @@ describe('AIProcessorV2', () => {
       expect(proc.type).toBe(WorkflowNodeType.AI)
     })
 
-    it('should initialize with node registry for tools', () => {
+    it('should initialize with a node registry argument (ignored post-Phase-2)', () => {
       const mockRegistry = { getNode: vi.fn() }
       const proc = new AIProcessorV2(mockRegistry)
       expect(proc).toBeDefined()
-      expect((proc as any).toolRegistry).toBeDefined()
-      expect((proc as any).toolExecutionManager).toBeDefined()
     })
   })
 
@@ -79,8 +108,8 @@ describe('AIProcessorV2', () => {
         data: {
           model: { provider: 'openai', name: 'gpt-4' },
           prompt_template: [
-            { role: 'system', text: 'You are a helpful assistant' },
-            { role: 'user', text: 'Hello, world!' },
+            pt('system', 'You are a helpful assistant'),
+            pt('user', 'Hello, world!'),
           ],
         },
       }
@@ -101,8 +130,8 @@ describe('AIProcessorV2', () => {
         data: {
           model: { provider: 'openai', name: 'gpt-4' },
           prompt_template: [
-            { role: 'system', text: 'You are a helpful assistant' },
-            { role: 'user', text: 'Email: {{webhook.email}}, Subject: {{webhook.subject}}' },
+            pt('system', 'You are a helpful assistant'),
+            pt('user', 'Email: {{webhook.email}}, Subject: {{webhook.subject}}'),
           ],
         },
       }
@@ -229,107 +258,6 @@ describe('AIProcessorV2', () => {
     })
   })
 
-  describe('getTools', () => {
-    it('should return undefined when tools are not enabled', async () => {
-      const node: WorkflowNode = {
-        nodeId: 'node_1',
-        name: 'AI Node',
-        type: WorkflowNodeType.AI,
-        position: { x: 0, y: 0 },
-        data: {
-          tools: { enabled: false },
-        },
-      }
-
-      const tools = await (processor as any).getTools(
-        node,
-        node.data,
-        { id: 'workflow_1' },
-        mockContextManager
-      )
-      expect(tools).toBeUndefined()
-    })
-
-    it('should return undefined when tool registry is not initialized', async () => {
-      const node: WorkflowNode = {
-        nodeId: 'node_1',
-        name: 'AI Node',
-        type: WorkflowNodeType.AI,
-        position: { x: 0, y: 0 },
-        data: {
-          tools: { enabled: true, mode: 'both' },
-        },
-      }
-
-      const tools = await (processor as any).getTools(
-        node,
-        node.data,
-        { id: 'workflow_1' },
-        mockContextManager
-      )
-      expect(tools).toBeUndefined()
-    })
-
-    it('should return undefined when workflow is not provided', async () => {
-      const mockRegistry = { getNode: vi.fn() }
-      const proc = new AIProcessorV2(mockRegistry)
-
-      const node: WorkflowNode = {
-        nodeId: 'node_1',
-        name: 'AI Node',
-        type: WorkflowNodeType.AI,
-        position: { x: 0, y: 0 },
-        data: {
-          tools: { enabled: true, mode: 'both' },
-        },
-      }
-
-      const tools = await (proc as any).getTools(node, node.data, undefined, mockContextManager)
-      expect(tools).toBeUndefined()
-    })
-  })
-
-  describe('getToolExecutor', () => {
-    it('should return undefined when tool execution manager is not initialized', async () => {
-      const node: WorkflowNode = {
-        nodeId: 'node_1',
-        name: 'AI Node',
-        type: WorkflowNodeType.AI,
-        position: { x: 0, y: 0 },
-        data: {},
-      }
-
-      const executor = await (processor as any).getToolExecutor(
-        node,
-        node.data,
-        { id: 'workflow_1' },
-        mockContextManager
-      )
-      expect(executor).toBeUndefined()
-    })
-
-    it('should return undefined when workflow is not provided', async () => {
-      const mockRegistry = { getNode: vi.fn() }
-      const proc = new AIProcessorV2(mockRegistry)
-
-      const node: WorkflowNode = {
-        nodeId: 'node_1',
-        name: 'AI Node',
-        type: WorkflowNodeType.AI,
-        position: { x: 0, y: 0 },
-        data: {},
-      }
-
-      const executor = await (proc as any).getToolExecutor(
-        node,
-        node.data,
-        undefined,
-        mockContextManager
-      )
-      expect(executor).toBeUndefined()
-    })
-  })
-
   describe('extractRequiredVariables', () => {
     it('should extract variables from prompt_template', () => {
       const node: WorkflowNode = {
@@ -339,8 +267,8 @@ describe('AIProcessorV2', () => {
         position: { x: 0, y: 0 },
         data: {
           prompt_template: [
-            { role: 'system', text: 'You are a helpful assistant' },
-            { role: 'user', text: 'Email: {{webhook.email}}, Name: {{webhook.name}}' },
+            pt('system', 'You are a helpful assistant'),
+            pt('user', 'Email: {{webhook.email}}, Name: {{webhook.name}}'),
           ],
         },
       }
@@ -389,7 +317,7 @@ describe('AIProcessorV2', () => {
         type: WorkflowNodeType.AI,
         position: { x: 0, y: 0 },
         data: {
-          prompt_template: [{ role: 'user', text: 'Hello' }],
+          prompt_template: [pt('user', 'Hello')],
           context: {
             enabled: true,
             variable_selector: ['workflow.state', 'user.preferences'],
@@ -410,14 +338,13 @@ describe('AIProcessorV2', () => {
         position: { x: 0, y: 0 },
         data: {
           prompt_template: [
-            { role: 'system', text: 'Email: {{webhook.email}}' },
-            { role: 'user', text: 'Also email: {{webhook.email}}' },
+            pt('system', 'Email: {{webhook.email}}'),
+            pt('user', 'Also email: {{webhook.email}}'),
           ],
         },
       }
 
       const variables = (processor as any).extractRequiredVariables(node)
-      // Should only contain webhook.email once
       const emailCount = variables.filter((v: string) => v === 'webhook.email').length
       expect(emailCount).toBe(1)
     })
@@ -432,7 +359,7 @@ describe('AIProcessorV2', () => {
         position: { x: 0, y: 0 },
         data: {
           model: { provider: 'openai', name: 'gpt-4' },
-          prompt_template: [{ role: 'user', text: 'Hello' }],
+          prompt_template: [pt('user', 'Hello')],
         },
       }
 
@@ -536,7 +463,7 @@ describe('AIProcessorV2', () => {
       expect(result.errors).toContain('Structured output is enabled but no schema is defined')
     })
 
-    it('should validate tools configuration mode', async () => {
+    it('should accept toolsEnabled with toolsets array', async () => {
       const node: WorkflowNode = {
         nodeId: 'node_1',
         name: 'AI Node',
@@ -545,16 +472,96 @@ describe('AIProcessorV2', () => {
         data: {
           model: { provider: 'openai', name: 'gpt-4' },
           prompt: 'Hello',
-          tools: {
-            enabled: true,
-            mode: 'invalid_mode' as any,
-          },
+          toolsEnabled: true,
+          toolsets: [{ slug: 'workflow.variable', enabled: true, source: 'manual' }],
+        },
+      }
+
+      const result = await (processor as any).validateNodeConfig(node)
+      expect(result.valid).toBe(true)
+    })
+
+    it('should reject invalid maxIterations on a tools-enabled node', async () => {
+      const node: WorkflowNode = {
+        nodeId: 'node_1',
+        name: 'AI Node',
+        type: WorkflowNodeType.AI,
+        position: { x: 0, y: 0 },
+        data: {
+          model: { provider: 'openai', name: 'gpt-4' },
+          prompt: 'Hello',
+          toolsEnabled: true,
+          toolsets: [],
+          maxIterations: 0,
         },
       }
 
       const result = await (processor as any).validateNodeConfig(node)
       expect(result.valid).toBe(false)
-      expect(result.errors).toContain('Tools mode must be one of: workflow_nodes, built_in, both')
+      expect(result.errors).toContain('Max iterations must be a positive number')
     })
   })
+
+  describe('buildResolvedAgentShim', () => {
+    it('returns undefined when no toolsets are enabled', () => {
+      const shim = (processor as any).buildResolvedAgentShim({ toolsets: [] })
+      expect(shim).toBeUndefined()
+    })
+
+    it('builds a ResolvedAgentConfig-shaped value with disabledTools as a Set', () => {
+      const shim = (processor as any).buildResolvedAgentShim({
+        toolsets: [
+          {
+            slug: 'workflow.variable',
+            enabled: true,
+            source: 'manual',
+            config: { disabledTools: ['assign_variable'] },
+          },
+          { slug: 'mail.compose', enabled: false, source: 'manual' },
+        ],
+        appAccounts: { mailgun: { credId: 'cred_1' } },
+      })
+
+      expect(shim.toolsets).toHaveLength(1)
+      expect(shim.toolsets[0]).toMatchObject({ slug: 'workflow.variable' })
+      expect(shim.toolsets[0].disabledTools.has('assign_variable')).toBe(true)
+      expect(shim.appAccounts).toEqual({ mailgun: { credId: 'cred_1' } })
+    })
+  })
+
+  describe('executeNode routing (no-tools path)', () => {
+    it('delegates to BaseAiNodeProcessor.executeNode when toolsEnabled is falsy', async () => {
+      const proc = new AIProcessorV2()
+      const baseSpy = vi
+        .spyOn(Object.getPrototypeOf(Object.getPrototypeOf(proc)), 'executeNode')
+        .mockResolvedValue({
+          status: 0, // NodeRunningStatus.Succeeded numeric is implementation detail
+          output: { text: 'no-tools-path' },
+          outputHandle: 'source',
+        } as any)
+
+      const node: WorkflowNode = {
+        nodeId: 'node_1',
+        name: 'AI Node',
+        type: WorkflowNodeType.AI,
+        position: { x: 0, y: 0 },
+        data: {
+          model: { provider: 'openai', name: 'gpt-4' },
+          prompt_template: [pt('user', 'hi')],
+          toolsEnabled: false,
+        },
+      }
+
+      await (proc as any).executeNode(node, mockContextManager)
+      expect(baseSpy).toHaveBeenCalledTimes(1)
+      baseSpy.mockRestore()
+    })
+  })
+
+  // Integration tests for the tools-enabled path live in plan §6 tests 2–5.
+  // They require either a real workflow run harness or mocking the
+  // `runWorkflowAiTurn` runner end-to-end; both are out of scope for this
+  // unit suite.
+  describe.todo('tools-enabled path — integration coverage (plan §6 tests 2–5)')
+  describe.todo('structured-output second pass triggers on enabled + schema (plan §6 test 4)')
 })

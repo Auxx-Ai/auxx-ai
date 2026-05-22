@@ -1,12 +1,15 @@
 // packages/lib/src/workflow-engine/nodes/action-nodes/ai-v2.ts
 
+import type { ResolvedAgentConfig } from '../../../agents'
+import type { AgentEvent } from '../../../ai/agent-framework/types'
 import { LLMClient } from '../../../ai/clients/base/llm-client'
-import type { Message, MultiModalContent, Tool } from '../../../ai/clients/base/types'
+import type { Message, MultiModalContent } from '../../../ai/clients/base/types'
+import { buildInstructionReferenceResolver } from '../../../ai/kopilot/prompts/resolve-instruction-references'
+import { collectVariableIds, docToText } from '../../../tiptap'
 import type { ExecutionContextManager } from '../../core/execution-context'
-import { ToolExecutionManager } from '../../core/tool-execution-manager'
-import { ToolRegistry } from '../../core/tool-registry'
 import type {
   NodeExecutionResult,
+  PreprocessedNodeData,
   ValidationResult,
   Workflow,
   WorkflowNode,
@@ -18,11 +21,11 @@ import type {
   StructuredOutputConfig,
 } from '../utils/ai-invocation-utils'
 import {
-  convertToolsToOrchestratorFormat,
+  extractModelConfig,
   logUnresolvedVariables,
   type PromptTemplate,
+  resolveModelConfig,
 } from '../utils/ai-node-utils'
-import { AIV2ToolExecutor } from './ai-v2-tool-executor'
 
 interface AiModelConfig extends BaseAiModelConfig {
   completion_params?: {
@@ -31,26 +34,29 @@ interface AiModelConfig extends BaseAiModelConfig {
     top_p?: number
     frequency_penalty?: number
     presence_penalty?: number
-    // GPT-5 reasoning model parameters
     reasoning_effort?: 'minimal' | 'low' | 'medium' | 'high'
     verbosity?: 'low' | 'medium' | 'high'
     max_completion_tokens?: number
-    // Allow any additional parameters to pass through
     [key: string]: any
   }
 }
 
-interface AiToolsConfig {
+/**
+ * Per-toolset entry on the AI node. Shape matches `Agent.toolsets` so the
+ * picker dialog and `filterToolsByToolsets` work without translation.
+ */
+export interface AiToolsetEntry {
+  slug: string
   enabled: boolean
-  mode: 'workflow_nodes' | 'built_in' | 'both'
-  allowedNodeIds?: string[]
-  allowedBuiltInTools?: string[]
-  maxConcurrentTools?: number
-  autoInvoke?: boolean
-  toolCredentials?: Record<string, string> // toolId -> credentialId
-  defaultCredentials?: Record<string, string> // nodeType -> credentialId
+  config?: { disabledTools?: string[] }
+  source: 'manual'
 }
 
+/**
+ * Flat AI-node data shape — see `plans/workflow/ai/phase-2-ai-processor-migration.md`.
+ * No legacy `tools: AiToolsConfig` block; per `project_no_production_users.md`
+ * we break the shape outright.
+ */
 interface AiNodeConfig {
   title?: string
   desc?: string
@@ -59,10 +65,10 @@ interface AiNodeConfig {
   context?: { enabled: boolean; variable_selector?: string[] }
   files?: {
     enabled: boolean
-    input?: string // single file reference (variable ref or file:id constant)
-    isConstant?: boolean // true = constant file picker, false = variable reference
-    maxFiles?: number // guard rail, default 10
-    maxTotalSize?: number // bytes, default 20MB
+    input?: string
+    isConstant?: boolean
+    maxFiles?: number
+    maxTotalSize?: number
   }
   structured_output?: {
     enabled: boolean
@@ -73,8 +79,19 @@ interface AiNodeConfig {
       additionalProperties?: boolean
     }
   }
-  tools?: AiToolsConfig
-  // Legacy support
+
+  /** Master gate for the entire tool surface on this node. */
+  toolsEnabled?: boolean
+  /** Per-toolset enablement. */
+  toolsets?: AiToolsetEntry[]
+  /** Per-app explicit credential pin. */
+  appAccounts?: Record<string, { credId: string }>
+  /** Approval mode reserved for future use; v1 is always `auto`. */
+  approvalMode?: 'auto'
+  /** Default 10 for AI node; agent default is 30. */
+  maxIterations?: number
+
+  // Legacy fields preserved for `buildMessages` only.
   prompt?: string
   systemPrompt?: string
   temperature?: number
@@ -83,25 +100,27 @@ interface AiNodeConfig {
 }
 
 /**
- * Enhanced AI node processor that integrates with organization AI configurations
- * Extends BaseAiNodeProcessor for shared AI orchestration logic
+ * AI workflow node processor. When `toolsEnabled` is false the node executes
+ * through the shared `BaseAiNodeProcessor` template (single LLM call). When
+ * tools are enabled the node runs through the agent framework via
+ * `runWorkflowAiTurn` — reusing the agents' `createAppCapabilities` +
+ * `createNativeWorkflowCapabilities` pipeline (per
+ * `plans/workflow/ai/phase-2-ai-processor-migration.md`).
  */
 export class AIProcessorV2 extends BaseAiNodeProcessor {
   readonly type: WorkflowNodeType = WorkflowNodeType.AI
-  private toolRegistry!: ToolRegistry
-  private toolExecutionManager!: ToolExecutionManager
 
-  constructor(nodeRegistry?: any) {
-    super() // Initializes llmOrchestrator and usageService in base class
-    if (nodeRegistry) {
-      this.toolRegistry = new ToolRegistry(nodeRegistry)
-      this.toolExecutionManager = new ToolExecutionManager(nodeRegistry, this.toolRegistry)
-    }
+  // Constructor kept for back-compat with `NodeProcessorRegistry.registerDefaults`
+  // which passes a `nodeRegistry` arg. The registry is now unused — workflow-node-as-tool
+  // is deferred to v2 (see plan §0.4).
+  constructor(_nodeRegistry?: unknown) {
+    super()
   }
 
   /**
-   * Build messages from prompt templates or legacy format
-   * Implements abstract method from BaseAiNodeProcessor
+   * Build messages from prompt templates (or legacy prompt fields) and attach
+   * file content if `files` is enabled. Identical to the previous behavior —
+   * only the tools pipeline is touched in this phase.
    */
   protected async buildMessages(
     node: WorkflowNode,
@@ -111,26 +130,50 @@ export class AIProcessorV2 extends BaseAiNodeProcessor {
     const config = data as AiNodeConfig
     const messages: Message[] = []
 
-    // Handle new format with prompt_template
     if (config.prompt_template && config.prompt_template.length > 0) {
-      // Process all templates in parallel
-      const templatePromises = config.prompt_template.map(async (template) => {
-        // Text is already preprocessed, just interpolate variables
-        const resolvedText = await this.interpolateVariables(template.text, contextManager)
+      // Phase 5: single-walk render. Each `template.json` is flattened once via
+      // `docToText({ references, variables })` — chips and variable nodes are
+      // substituted in the same walk; no second regex pass. Variables for the
+      // whole AI-node run are resolved up front in a single batched call.
+      //
+      // Lazy import of `../../../agents` matches the no-tools path's pattern
+      // (see `executeNodeWithTools`) — the agents barrel re-exports runtime
+      // code that drags `@auxx/services` into the module graph, and
+      // `buildMessages` is hot on the no-tools path too.
+      const { getOrgToolCatalog, getOrgToolsetCatalog } = await import('../../../agents')
 
-        // Log if any variables were not resolved using utility
-        logUnresolvedVariables(resolvedText, contextManager, 'ai-node', template.role)
+      const organizationId = (await contextManager.getVariable('sys.organizationId')) as
+        | string
+        | undefined
+      const [toolCatalog, toolsetCatalog] = organizationId
+        ? await Promise.all([
+            getOrgToolCatalog(organizationId),
+            getOrgToolsetCatalog(organizationId),
+          ])
+        : [undefined, undefined]
+      const references = buildInstructionReferenceResolver({ toolCatalog, toolsetCatalog })
 
-        return { role: template.role, content: resolvedText }
-      })
+      // Cross-template union of variable ids — resolve once, share across templates.
+      const allVarIds = [
+        ...new Set(config.prompt_template.flatMap((t) => collectVariableIds(t.json))),
+      ]
+      const resolved = await contextManager.buildOptimizedContext(allVarIds)
+      const variables = (id: string) => contextManager.formatForDisplay(resolved.get(id), id)
 
-      messages.push(...(await Promise.all(templatePromises)))
-    }
-    // Handle legacy format
-    else if (config.prompt) {
-      // Process system and user prompts in parallel
+      for (const template of config.prompt_template) {
+        const text = docToText(template.json, { references, variables })
+        logUnresolvedVariables(text, contextManager, 'ai-node', template.role)
+        messages.push({ role: template.role, content: text })
+      }
+
+      // Stash resolved variable map for run-log + downstream uses (Phase 4 §0.3).
+      contextManager.setNodeVariable(
+        node.nodeId,
+        '_resolvedPromptVars',
+        Object.fromEntries(resolved)
+      )
+    } else if (config.prompt) {
       const promptPromises: Promise<Message>[] = []
-
       if (config.systemPrompt) {
         promptPromises.push(
           this.interpolateVariables(config.systemPrompt, contextManager).then((content) => ({
@@ -139,20 +182,18 @@ export class AIProcessorV2 extends BaseAiNodeProcessor {
           }))
         )
       }
-
       promptPromises.push(
         this.interpolateVariables(config.prompt, contextManager).then((content) => ({
           role: 'user' as const,
           content,
         }))
       )
-
       messages.push(...(await Promise.all(promptPromises)))
     } else {
       throw new Error('No prompt configuration found')
     }
 
-    // Attach file content if files config is enabled
+    // File attachment (unchanged from previous implementation).
     if (config.files?.enabled && config.files.input) {
       contextManager.log('INFO', node.nodeId, '[Files] Starting file attachment', {
         input: config.files.input,
@@ -162,15 +203,13 @@ export class AIProcessorV2 extends BaseAiNodeProcessor {
       const fileService = contextManager.getFileService()
       const fileContents: MultiModalContent[] = []
       let totalSize = 0
-      const maxTotal = config.files.maxTotalSize ?? 20 * 1024 * 1024 // 20MB default
+      const maxTotal = config.files.maxTotalSize ?? 20 * 1024 * 1024
       const maxFiles = config.files.maxFiles ?? 10
 
-      // Resolve the file input — constant mode splits comma-separated file: IDs, variable mode resolves to raw value
       let rawValue: any
       if (config.files.isConstant) {
         rawValue = config.files.input.split(',').filter(Boolean)
       } else {
-        // Extract plain path from {{variable}} format, then resolve to raw value (not string interpolation)
         const varIds = this.extractVariableIds(config.files.input)
         rawValue =
           varIds.length > 0
@@ -178,31 +217,7 @@ export class AIProcessorV2 extends BaseAiNodeProcessor {
             : await this.resolveVariablePath(config.files.input, contextManager)
       }
 
-      contextManager.log('INFO', node.nodeId, '[Files] Resolved raw value', {
-        rawValueType:
-          rawValue === undefined
-            ? 'undefined'
-            : Array.isArray(rawValue)
-              ? 'array'
-              : typeof rawValue,
-        rawValueLength: Array.isArray(rawValue) ? rawValue.length : undefined,
-        rawValue: Array.isArray(rawValue)
-          ? JSON.stringify(rawValue).slice(0, 200)
-          : String(rawValue)?.slice(0, 200),
-      })
-
       const fileRefs = await fileService.normalizeFileInputs(rawValue, node.nodeId)
-
-      contextManager.log('INFO', node.nodeId, '[Files] Normalized file references', {
-        fileRefsCount: fileRefs.length,
-        fileRefs: fileRefs.map((r) => ({
-          id: r.id,
-          filename: r.filename,
-          mimeType: r.mimeType,
-          size: r.size,
-          source: r.source,
-        })),
-      })
 
       for (const fileRef of fileRefs) {
         if (fileContents.length >= maxFiles) {
@@ -213,7 +228,6 @@ export class AIProcessorV2 extends BaseAiNodeProcessor {
           )
           break
         }
-
         if (totalSize + fileRef.size > maxTotal) {
           contextManager.log(
             'WARN',
@@ -222,7 +236,6 @@ export class AIProcessorV2 extends BaseAiNodeProcessor {
           )
           break
         }
-
         if (!LLMClient.isSupportedFileMimeType(fileRef.mimeType)) {
           contextManager.log(
             'WARN',
@@ -231,7 +244,6 @@ export class AIProcessorV2 extends BaseAiNodeProcessor {
           )
           continue
         }
-
         const base64 = (await fileService.getContent(fileRef, { asBase64: true })) as string
         fileContents.push(
           LLMClient.fileToMultiModalContent(
@@ -244,150 +256,319 @@ export class AIProcessorV2 extends BaseAiNodeProcessor {
         totalSize += fileRef.size
       }
 
-      contextManager.log('INFO', node.nodeId, '[Files] File content processing complete', {
-        fileContentsCount: fileContents.length,
-        totalSize,
-      })
-
       if (fileContents.length > 0) {
-        // Append to last user message as multi-modal content
         const lastUserMsg = messages.findLast((m) => m.role === 'user')
         if (lastUserMsg) {
-          contextManager.log('INFO', node.nodeId, '[Files] Attaching to last user message', {
-            userMessageContent: String(lastUserMsg.content).slice(0, 100),
-            fileCount: fileContents.length,
-          })
           const textContent: MultiModalContent = {
             type: 'text',
             data: lastUserMsg.content as string,
           }
           lastUserMsg.content = [textContent, ...fileContents]
         }
-      } else {
-        contextManager.log(
-          'WARN',
-          node.nodeId,
-          '[Files] No file content to attach after processing'
-        )
       }
-    } else if (config.files?.enabled) {
-      contextManager.log('WARN', node.nodeId, '[Files] Files enabled but input is empty', {
-        filesConfig: config.files,
-      })
     }
 
     return messages
   }
 
   /**
-   * Handle AI response
-   * Implements abstract method from BaseAiNodeProcessor
+   * Subclass hook — used by the no-tools path. The tools path overrides
+   * `executeNode` outright and never calls this.
    */
   protected async handleResponse(
-    node: WorkflowNode,
-    data: any,
-    contextManager: ExecutionContextManager,
-    response: InvokeOrchestratorResponse
+    _node: WorkflowNode,
+    _data: any,
+    _contextManager: ExecutionContextManager,
+    _response: InvokeOrchestratorResponse
   ): Promise<Partial<NodeExecutionResult>> {
-    // Base class already stores standard variables, we just return the result
     return {
       status: NodeRunningStatus.Succeeded,
       output: {},
-      outputHandle: 'source', // Standard output for action nodes
+      outputHandle: 'source',
     }
   }
 
-  /**
-   * Get structured output configuration
-   * Implements abstract method from BaseAiNodeProcessor
-   */
   protected getStructuredOutputConfig(
-    node: WorkflowNode,
+    _node: WorkflowNode,
     data: any
   ): StructuredOutputConfig | undefined {
     const config = data as AiNodeConfig
+    if (!config.structured_output?.enabled) return undefined
+    return { enabled: true, schema: config.structured_output.schema }
+  }
 
-    if (!config.structured_output?.enabled) {
-      return undefined
+  /**
+   * Template-method override. With tools disabled, delegate to
+   * `BaseAiNodeProcessor.executeNode`. With tools enabled, run through the
+   * agent framework — single source of truth for tool execution.
+   */
+  protected async executeNode(
+    node: WorkflowNode,
+    contextManager: ExecutionContextManager,
+    preprocessedData?: PreprocessedNodeData
+  ): Promise<Partial<NodeExecutionResult>> {
+    const config = node.data as AiNodeConfig
+    if (!config?.toolsEnabled) {
+      return super.executeNode(node, contextManager, preprocessedData)
+    }
+    return this.executeNodeWithTools(node, config, contextManager)
+  }
+
+  /**
+   * Tool-enabled execution path. Builds capabilities + filtered toolset, runs
+   * the agent framework, optionally runs the structured-output second pass.
+   */
+  private async executeNodeWithTools(
+    node: WorkflowNode,
+    config: AiNodeConfig,
+    contextManager: ExecutionContextManager
+  ): Promise<Partial<NodeExecutionResult>> {
+    const startTime = Date.now()
+
+    // Lazy imports — keeps module load light for unit tests that never exercise
+    // the agent-framework path and avoids dragging `@auxx/services` (lambda
+    // execution, app connections) into modules that only need the no-tools path.
+    const [{ filterToolsByToolsets }, kopilot] = await Promise.all([
+      import('../../../agents'),
+      import('../../../ai/kopilot'),
+    ])
+    const {
+      createAppCapabilities,
+      createNativeWorkflowCapabilities,
+      createToolDepsFactory,
+      runStructuredOutputPass,
+      runWorkflowAiTurn,
+    } = kopilot
+
+    const organizationId = (await contextManager.getVariable('sys.organizationId')) as string
+    const userId = (await contextManager.getVariable('sys.userId')) as string
+    if (!organizationId) throw new Error('Organization ID is required for AI node execution')
+    if (!userId) throw new Error('User ID is required for AI node execution')
+
+    const workflow = (await contextManager.getVariable('sys.workflow')) as Workflow | undefined
+    const sessionId = workflow?.id ?? workflow?.workflowId ?? `ai-node-${node.nodeId}`
+
+    // Resolve provider + model (defaults inherit org system default the same
+    // way the no-tools path does).
+    const extracted = extractModelConfig(config.model)
+    const { provider, model } = await resolveModelConfig(extracted, organizationId)
+
+    contextManager.log('INFO', node.name, 'AI node executing with tools', {
+      provider,
+      model,
+      toolsetCount: config.toolsets?.length ?? 0,
+      hasStructuredOutput: !!config.structured_output?.enabled,
+    })
+
+    // Capability factories — same pipeline the agent surface uses.
+    const getToolDeps = createToolDepsFactory({
+      organizationId,
+      userId,
+      sessionId,
+    })
+    const appCaps = await createAppCapabilities({
+      organizationId,
+      userId,
+      agentId: null,
+      triggerId: null,
+      sessionId,
+      getToolDeps,
+    })
+    const nativeCaps = createNativeWorkflowCapabilities(getToolDeps)
+
+    const allTools = [...appCaps.tools, ...nativeCaps.tools]
+    const filtered = filterToolsByToolsets(allTools, this.buildResolvedAgentShim(config))
+
+    if (filtered.length === 0) {
+      contextManager.log('WARN', node.name, 'Tools enabled but no toolsets resolved', {
+        toolsets: config.toolsets,
+      })
+    }
+
+    // Build the prompt messages (same code path as the no-tools branch).
+    const messages = await this.buildMessages(node, config, contextManager)
+
+    // Hand off to the agent framework.
+    const turn = await runWorkflowAiTurn({
+      organizationId,
+      userId,
+      sessionId,
+      tools: filtered,
+      model: { provider, model },
+      messages,
+      workflow: { nodeId: node.nodeId, contextManager },
+      parameters: config.model?.completion_params,
+      maxIterations: config.maxIterations ?? 10,
+      onEvent: (ev) => this.writeAgentEventToWorkflowLog(ev, contextManager, node.nodeId),
+    })
+
+    // Structured-output second pass (Q-7).
+    let structured: Record<string, unknown> | undefined
+    if (config.structured_output?.enabled && config.structured_output.schema) {
+      structured = await runStructuredOutputPass({
+        organizationId,
+        userId,
+        sessionId,
+        workflowId: workflow?.id,
+        nodeId: node.nodeId,
+        model: { provider, model },
+        schema: config.structured_output.schema as Record<string, unknown>,
+        sourceMessage: turn.finalAssistantMessage,
+        parameters: config.model?.completion_params,
+      })
+    }
+
+    // Standard output variables — match what `BaseAiNodeProcessor.storeAIResponse`
+    // wrote so downstream nodes consume the same shape.
+    const outputVariable = (config as any).outputVariable || `${node.nodeId}.text`
+    contextManager.setVariable(outputVariable, turn.finalAssistantMessage)
+    contextManager.setNodeVariable(node.nodeId, 'output', turn.finalAssistantMessage)
+    contextManager.setNodeVariable(node.nodeId, 'text', turn.finalAssistantMessage)
+    if (structured) {
+      contextManager.setNodeVariable(node.nodeId, 'structured_output', structured)
+      for (const [key, value] of Object.entries(structured)) {
+        contextManager.setNodeVariable(node.nodeId, key, value)
+      }
+    }
+    if (turn.toolCalls.length > 0) {
+      const toolResults = turn.toolCalls.map((tc) => ({
+        toolCallId: tc.toolCallId,
+        toolName: tc.name,
+        success: tc.success,
+        output: tc.output ?? {},
+        error: tc.error,
+      }))
+      contextManager.setNodeVariable(node.nodeId, 'tool_results', toolResults)
     }
 
     return {
-      enabled: true,
-      schema: config.structured_output.schema,
+      status: NodeRunningStatus.Succeeded,
+      output: {
+        text: turn.finalAssistantMessage,
+        content: turn.finalAssistantMessage,
+        structured_output: structured,
+        tool_calls: turn.toolCalls.map((tc) => ({
+          id: tc.toolCallId,
+          name: tc.name,
+          arguments: tc.args,
+        })),
+        tool_results: turn.toolCalls.map((tc) => ({
+          toolCallId: tc.toolCallId,
+          toolName: tc.name,
+          success: tc.success,
+          output: tc.output ?? {},
+          error: tc.error,
+        })),
+        model,
+        usage: turn.usage,
+        ...(structured ?? {}),
+      },
+      processData: {
+        model: {
+          provider,
+          name: model,
+        },
+        finalPrompts: messages.map((m) => ({ role: m.role, content: m.content })),
+        structuredOutput: {
+          enabled: !!config.structured_output?.enabled,
+          schema: config.structured_output?.schema,
+        },
+        tokenUsage: turn.usage,
+        executionTime: Date.now() - startTime,
+      },
+      metadata: {
+        model,
+        provider,
+        promptTokens: turn.usage?.prompt_tokens,
+        completionTokens: turn.usage?.completion_tokens,
+        totalTokens: turn.usage?.total_tokens,
+      },
+      outputHandle: 'source',
     }
   }
 
   /**
-   * Get tools for AI to use
-   * Overrides optional method from BaseAiNodeProcessor
+   * Adapt the flat `nodeData` shape into the minimal `ResolvedAgentConfig`
+   * surface `filterToolsByToolsets` reads — `toolsets[].slug` +
+   * `toolsets[].disabledTools`. Other `ResolvedAgentConfig` fields are
+   * unused by the filter and are cast away.
    */
-  protected async getTools(
-    node: WorkflowNode,
-    data: any,
-    workflow: Workflow | undefined,
-    contextManager: ExecutionContextManager
-  ): Promise<Tool[] | undefined> {
-    const config = data as AiNodeConfig
-
-    if (!config.tools?.enabled || !this.toolRegistry || !workflow) {
-      return undefined
-    }
-
-    const tools = this.toolRegistry.getAvailableToolsForWorkflow(workflow, node.nodeId, {
-      mode: config.tools.mode || 'both',
-      allowedNodeIds: config.tools.allowedNodeIds,
-      allowedBuiltInTools: config.tools.allowedBuiltInTools,
-    })
-
-    const availableTools = tools.filter((tool) => tool.enabled)
-
-    if (availableTools.length === 0) {
-      return undefined
-    }
-
-    contextManager.log('INFO', node.name, 'Tools available for AI', {
-      toolCount: availableTools.length,
-      toolNames: availableTools.map((t) => t.name),
-    })
-
-    // Convert to orchestrator format
-    return convertToolsToOrchestratorFormat(availableTools)
+  private buildResolvedAgentShim(config: AiNodeConfig): ResolvedAgentConfig | undefined {
+    const entries = (config.toolsets ?? []).filter((t) => t.enabled)
+    if (entries.length === 0) return undefined
+    const toolsets = entries.map((t) => ({
+      slug: t.slug,
+      disabledTools: new Set<string>(t.config?.disabledTools ?? []),
+    }))
+    return {
+      agentId: null,
+      name: 'workflow-ai-node',
+      userId: null,
+      prompt: null,
+      description: null,
+      toolsets,
+      appAccounts: config.appAccounts ?? {},
+      modelId: null,
+    } as ResolvedAgentConfig
   }
 
   /**
-   * Get tool executor for executing tool calls
-   * Overrides optional method from BaseAiNodeProcessor
+   * Forward agent-framework events into the workflow run log. Text deltas are
+   * intentionally dropped — too chatty for run logs.
    */
-  protected async getToolExecutor(
-    node: WorkflowNode,
-    data: any,
-    workflow: Workflow | undefined,
-    contextManager: ExecutionContextManager
-  ): Promise<any> {
-    if (!this.toolExecutionManager || !workflow) {
-      return undefined
+  private writeAgentEventToWorkflowLog(
+    ev: AgentEvent,
+    contextManager: ExecutionContextManager,
+    nodeId: string
+  ): void {
+    switch (ev.type) {
+      case 'tool-call-started':
+        contextManager.log('INFO', nodeId, 'tool-call-start', {
+          toolName: ev.name,
+          args: ev.args,
+        })
+        return
+      case 'tool-progress':
+        contextManager.log('INFO', nodeId, 'tool-progress', {
+          toolCallId: ev.toolCallId,
+          kind: ev.kind,
+          data: ev.data,
+        })
+        return
+      case 'tool-call-completed':
+        contextManager.log('INFO', nodeId, 'tool-call-finish', {
+          toolCallId: ev.toolCallId,
+          output: ev.output,
+          digest: ev.digest,
+        })
+        return
+      case 'tool-call-failed':
+        contextManager.log('ERROR', nodeId, 'tool-call-failed', {
+          toolCallId: ev.toolCallId,
+          error: ev.error,
+        })
+        return
+      case 'turn-error':
+        contextManager.log('ERROR', nodeId, 'agent turn-error', { error: ev.error })
+        return
+      default:
+        // text-delta / thinking-delta / message lifecycle events are not logged.
+        return
     }
-
-    return new AIV2ToolExecutor(this.toolExecutionManager, contextManager, node.nodeId, workflow)
   }
 
-  /**
-   * Extract variables from AI prompt templates and context
-   */
   protected extractRequiredVariables(node: WorkflowNode): string[] {
     const config = node.data as unknown as AiNodeConfig
     const variables = new Set<string>()
 
-    // Extract from prompt_template
     if (config.prompt_template && Array.isArray(config.prompt_template)) {
       config.prompt_template.forEach((template: PromptTemplate) => {
-        if (template.text) {
-          this.extractVariableIds(template.text).forEach((v) => variables.add(v))
+        if (template.json) {
+          collectVariableIds(template.json).forEach((v) => variables.add(v))
         }
       })
     }
 
-    // Extract from legacy prompt fields
     if (config.prompt && typeof config.prompt === 'string') {
       this.extractVariableIds(config.prompt).forEach((v) => variables.add(v))
     }
@@ -396,12 +577,10 @@ export class AIProcessorV2 extends BaseAiNodeProcessor {
       this.extractVariableIds(config.systemPrompt).forEach((v) => variables.add(v))
     }
 
-    // Extract from context if enabled
     if (config.context?.enabled && config.context.variable_selector) {
       config.context.variable_selector.forEach((v: string) => variables.add(v))
     }
 
-    // Extract from files config if enabled (only in variable mode)
     if (config.files?.enabled && config.files.input && !config.files.isConstant) {
       this.extractVariableIds(config.files.input).forEach((v) => variables.add(v))
     }
@@ -412,8 +591,6 @@ export class AIProcessorV2 extends BaseAiNodeProcessor {
   protected async validateNodeConfig(node: WorkflowNode): Promise<ValidationResult> {
     const errors: string[] = []
     const warnings: string[] = []
-
-    // The configuration should be in node.data according to WorkflowNode interface
     const config = node.data as unknown as AiNodeConfig
 
     if (!config) {
@@ -421,28 +598,22 @@ export class AIProcessorV2 extends BaseAiNodeProcessor {
       return { valid: false, errors, warnings }
     }
 
-    // Validate prompt configuration - check for common issues
     if (!config.prompt_template?.length && !config.prompt) {
-      // Check if prompt might be nested under a different structure
       const possiblePrompt =
         (config as any)?.prompt || (config as any)?.prompts || (config as any)?.messages
-
       if (!possiblePrompt) {
         errors.push(
-          `AI node configuration is invalid. Expected 'prompt_template' array but found: ${Object.keys(config).join(', ')}. This may indicate the node config was not properly saved or loaded.`
+          `AI node configuration is invalid. Expected 'prompt_template' array but found: ${Object.keys(
+            config
+          ).join(', ')}.`
         )
       }
     }
 
-    // Validate model configuration
-    if (!config.model?.provider && !config.model?.name) {
-      // Check if using legacy format
-      if (!config.model) {
-        warnings.push('Model configuration is missing, will use defaults')
-      }
+    if (!config.model?.provider && !config.model?.name && !config.model) {
+      warnings.push('Model configuration is missing, will use defaults')
     }
 
-    // Validate completion parameters
     if (config.model?.completion_params?.temperature !== undefined) {
       const temp = config.model.completion_params.temperature
       if (typeof temp !== 'number' || temp < 0 || temp > 2) {
@@ -457,12 +628,10 @@ export class AIProcessorV2 extends BaseAiNodeProcessor {
       }
     }
 
-    // Validate structured output configuration
     if (config.structured_output?.enabled) {
       if (!config.structured_output.schema) {
         errors.push('Structured output is enabled but no schema is defined')
       } else {
-        // Validate schema structure
         const schema = config.structured_output.schema
         if (schema.type !== 'object') {
           errors.push('Structured output schema must have type "object"')
@@ -473,33 +642,18 @@ export class AIProcessorV2 extends BaseAiNodeProcessor {
       }
     }
 
-    // Validate files configuration
-    if (config.files?.enabled) {
-      if (!config.files.input) {
-        warnings.push('Files are enabled but no file input is configured')
-      }
+    if (config.files?.enabled && !config.files.input) {
+      warnings.push('Files are enabled but no file input is configured')
     }
 
-    // Validate tools configuration
-    if (config.tools?.enabled) {
-      const mode = config.tools.mode || 'both'
-      if (!['workflow_nodes', 'built_in', 'both'].includes(mode)) {
-        errors.push('Tools mode must be one of: workflow_nodes, built_in, both')
+    if (config.toolsEnabled) {
+      if (config.toolsets && !Array.isArray(config.toolsets)) {
+        errors.push('Toolsets must be an array')
       }
-
-      if (config.tools.maxConcurrentTools !== undefined) {
-        const maxTools = config.tools.maxConcurrentTools
-        if (typeof maxTools !== 'number' || maxTools < 1) {
-          errors.push('Max concurrent tools must be a positive number')
+      if (config.maxIterations !== undefined) {
+        if (typeof config.maxIterations !== 'number' || config.maxIterations < 1) {
+          errors.push('Max iterations must be a positive number')
         }
-      }
-
-      if (config.tools.allowedNodeIds && !Array.isArray(config.tools.allowedNodeIds)) {
-        errors.push('Allowed node IDs must be an array')
-      }
-
-      if (config.tools.allowedBuiltInTools && !Array.isArray(config.tools.allowedBuiltInTools)) {
-        errors.push('Allowed built-in tools must be an array')
       }
     }
 

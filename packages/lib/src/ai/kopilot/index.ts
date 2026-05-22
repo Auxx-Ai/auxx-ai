@@ -14,10 +14,13 @@ export {
   createKnowledgeCapabilities,
   createKopilotCapabilities,
   createMailCapabilities,
+  createNativeWorkflowCapabilities,
   createSuggestRepliesGlobalCapability,
   createTaskCapabilities,
   createToolDepsFactory,
   KB_PAGE,
+  WORKFLOW_AI_NODE_PAGE,
+  WORKFLOW_NATIVE_TOOLSET_SLUG,
 } from './capabilities'
 export { applyContextDefaults, findAllRefs, findRef } from './context-refs'
 export type { KopilotDomainConfigOptions } from './domain-config'
@@ -27,6 +30,14 @@ export {
   type MasterKopilotSettings,
 } from './load-master-settings'
 export type { TriggerContext, TriggerKind } from './prompts/trigger-context'
+export {
+  type RunStructuredOutputPassArgs,
+  type RunWorkflowAiTurnArgs,
+  type RunWorkflowAiTurnResult,
+  runStructuredOutputPass,
+  runWorkflowAiTurn,
+  type ToolCallSummary,
+} from './runners'
 export { generateSessionTitle } from './session-title'
 export type {
   KopilotDomainState,

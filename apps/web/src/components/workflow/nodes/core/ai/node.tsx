@@ -23,14 +23,10 @@ export const AiNode = memo<AiNodeType>(({ id, data, selected, width, height }) =
               {data.prompt_template.length} prompt{data.prompt_template.length !== 1 ? 's' : ''}
             </div>
           )}
-          {data?.tools?.enabled && (
+          {data?.toolsEnabled && (
             <div className='text-[10px] flex items-center gap-1'>
               <span>🔧</span>
-              <span>
-                {(data.tools.allowedNodeIds?.length || 0) +
-                  (data.tools.allowedBuiltInTools?.length || 0)}{' '}
-                tools
-              </span>
+              <span>{(data.toolsets ?? []).filter((t) => t.enabled).length} tools</span>
             </div>
           )}
         </div>

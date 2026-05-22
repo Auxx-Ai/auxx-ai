@@ -1,5 +1,6 @@
 // apps/web/src/components/workflow/nodes/core/ai/schema.ts
 
+import { collectVariableIds, isNonEmptyDoc, type TiptapDoc } from '@auxx/lib/tiptap'
 import { AI_NODE_CONSTANTS } from '@auxx/lib/workflow-engine/constants'
 import { z } from 'zod'
 import {
@@ -14,6 +15,8 @@ import { extractVarIdsFromString } from '~/components/workflow/ui/input-editor/t
 import { createUnifiedOutputVariable } from '~/components/workflow/utils/variable-conversion'
 import { containsVariableReference } from '~/components/workflow/utils/variable-utils'
 import { AiModelMode, type AiNodeData, PromptRole } from './types'
+
+const EMPTY_PROMPT_DOC: TiptapDoc = { type: 'doc', content: [{ type: 'paragraph' }] }
 
 /**
  * Zod schema for AI model completion parameters
@@ -54,9 +57,17 @@ const modelSchema = z.object({
 })
 
 /**
- * Zod schema for prompt template
+ * Zod schema for prompt template. Phase 4 storage shape: a Tiptap doc
+ * (`{ type: 'doc', content: [...] }`) — see `PromptTemplate` in `./types.ts`.
  */
-const promptTemplateSchema = z.object({ role: z.enum(PromptRole), text: z.string() })
+const tiptapDocSchema = z
+  .object({
+    type: z.literal('doc'),
+    content: z.array(z.any()).optional(),
+  })
+  .passthrough()
+
+const promptTemplateSchema = z.object({ role: z.enum(PromptRole), json: tiptapDocSchema })
 
 /**
  * Zod schema for AI context
@@ -91,6 +102,21 @@ const structuredOutputSchema = z.object({
 })
 
 /**
+ * Zod schema for a single toolset entry on the AI node. Mirrors the shared
+ * `ToolsetEntry` from `@auxx/database` so the picker dialog and back-end
+ * filter pipeline work without translation.
+ */
+const toolsetEntrySchema = z.object({
+  slug: z.string(),
+  enabled: z.boolean(),
+  source: z.enum(['manual', 'mention', 'auto_default']),
+  config: z.record(z.string(), z.unknown()).default({}),
+  appInstallationId: z.string().nullable().optional(),
+})
+
+const appAccountsSchema = z.record(z.string(), z.object({ credId: z.string() }))
+
+/**
  * Main schema for AI node data
  */
 export const aiNodeDataSchema = z.object({
@@ -105,6 +131,12 @@ export const aiNodeDataSchema = z.object({
   context: contextSchema,
   files: filesSchema,
   structured_output: structuredOutputSchema,
+  // Flat tools shape (Phase 3)
+  toolsEnabled: z.boolean().optional(),
+  toolsets: z.array(toolsetEntrySchema).optional(),
+  appAccounts: appAccountsSchema.optional(),
+  approvalMode: z.literal('auto').optional(),
+  maxIterations: z.number().optional(),
 })
 
 /**
@@ -118,6 +150,11 @@ export const aiSchema = z.object({
   context: contextSchema,
   files: filesSchema,
   structured_output: structuredOutputSchema,
+  toolsEnabled: z.boolean().optional(),
+  toolsets: z.array(toolsetEntrySchema).optional(),
+  appAccounts: appAccountsSchema.optional(),
+  approvalMode: z.literal('auto').optional(),
+  maxIterations: z.number().optional(),
 })
 
 /**
@@ -134,10 +171,12 @@ export const createAiDefaultData = (): Partial<AiNodeData> => ({
     mode: AiModelMode.CHAT,
     completion_params: { temperature: AI_NODE_CONSTANTS.TEMPERATURE.default },
   },
-  prompt_template: [{ role: PromptRole.SYSTEM, text: '' }],
+  prompt_template: [{ role: PromptRole.SYSTEM, json: EMPTY_PROMPT_DOC }],
   context: { enabled: false, variable_selector: [] },
   files: { enabled: false, input: '', isConstant: false },
   structured_output: { enabled: false },
+  toolsEnabled: false,
+  toolsets: [],
 })
 
 /**
@@ -200,19 +239,10 @@ export const validateAiData = (data: Partial<AiNodeData>): ValidationResult => {
       })
     }
 
-    if (!template.text?.trim()) {
+    if (!template.json || !isNonEmptyDoc(template.json)) {
       errors.push({
-        field: `prompt_template.${index}.text`,
+        field: `prompt_template.${index}.json`,
         message: 'Prompt text is required',
-        type: 'error',
-      })
-    }
-
-    // Validate prompt length
-    if (template.text && template.text.length > AI_NODE_CONSTANTS.PROMPT.MAX_LENGTH) {
-      errors.push({
-        field: `prompt_template.${index}.text`,
-        message: `Prompt text cannot exceed ${AI_NODE_CONSTANTS.PROMPT.MAX_LENGTH} characters`,
         type: 'error',
       })
     }
@@ -316,9 +346,9 @@ const getAiOutputVariables = (data: Partial<AiNodeData>, nodeId: string): Unifie
 export function extractAIVariableIds(data: AiNodeData): string[] {
   const uniqueVariableIds = new Set<string>()
 
-  // Extract from prompt templates
-  data.prompt_template?.forEach((template: any) => {
-    const ids = extractVarIdsFromString(template.text)
+  // Extract from prompt templates — chip ids from the Tiptap doc.
+  data.prompt_template?.forEach((template) => {
+    const ids = collectVariableIds(template.json)
     ids.forEach((id) => {
       uniqueVariableIds.add(id)
     })

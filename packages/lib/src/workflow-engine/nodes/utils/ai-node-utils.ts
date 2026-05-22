@@ -1,17 +1,23 @@
 // packages/lib/src/workflow-engine/nodes/utils/ai-node-utils.ts
 
-import type { Message, Tool } from '../../../ai/clients/base/types'
+import type { Message } from '../../../ai/clients/base/types'
 import type { AICallbacks } from '../../../ai/orchestrator/types'
 import { ModelType } from '../../../ai/providers/types'
 import { getCachedDefaultModel } from '../../../cache/org-cache-helpers'
+import { docToText, type TiptapDoc } from '../../../tiptap'
 import type { ExecutionContextManager } from '../../core/execution-context'
 
 /**
- * Prompt template interface used by AI nodes
+ * Prompt template interface used by AI nodes. Phase 4 storage shape: the
+ * prompt body is a Tiptap doc (`{ type: 'doc', content: [...] }`) so chip
+ * identity (`variable-node`, `reference`) round-trips. Phase 5 wires the
+ * full single-walk resolver — for now `buildMessagesFromTemplates` flattens
+ * via `docToText(json)` which yields `{{varId}}` placeholders that the
+ * existing `interpolateVariables` regex picks up (legacy-equivalent).
  */
 export interface PromptTemplate {
   role: 'system' | 'user' | 'assistant'
-  text: string
+  json: TiptapDoc
 }
 
 /**
@@ -179,7 +185,7 @@ export function extractVariableIdsFromTemplates(templates: PromptTemplate[]): st
   const variableIds = new Set<string>()
 
   for (const template of templates) {
-    const ids = extractVariableIdsFromText(template.text)
+    const ids = extractVariableIdsFromText(docToText(template.json))
     ids.forEach((id) => variableIds.add(id))
   }
 
@@ -233,9 +239,11 @@ export async function buildMessagesFromTemplates(
 ): Promise<Message[]> {
   const messages: Message[] = []
 
-  // Process all templates in parallel
+  // Process all templates in parallel — `docToText` is the Phase-4 stopgap
+  // (yields `{{varId}}` placeholders for legacy `interpolateVariables`).
+  // Phase 5 replaces this with a single-walk resolver.
   const messagePromises = templates.map(async (template) => {
-    const resolvedText = await interpolateFn(template.text, contextManager)
+    const resolvedText = await interpolateFn(docToText(template.json), contextManager)
 
     return {
       role: template.role,
@@ -267,36 +275,15 @@ export function buildMessagesWithOptimizedContext(
   // Build optimized context with only required variables (Phase 5)
   const optimizedContext = buildOptimizedContextFn(requiredVariables)
 
-  // Build messages using optimized context
+  // Build messages using optimized context. `docToText` is the Phase-4
+  // stopgap — Phase 5 will switch to the single-walk resolver.
   return templates.map((template) => {
-    const content = interpolateVariablesFromContext(template.text, optimizedContext)
+    const content = interpolateVariablesFromContext(docToText(template.json), optimizedContext)
     return {
       role: template.role,
       content,
     }
   })
-}
-
-/**
- * Convert workflow tools to orchestrator Tool format
- * Pure function - transforms tool definitions
- *
- * @param workflowTools - Array of workflow tool definitions
- * @returns Array of orchestrator-compatible tools
- */
-export function convertToolsToOrchestratorFormat(workflowTools: any[]): Tool[] {
-  return workflowTools.map((tool) => ({
-    type: 'function' as const,
-    function: {
-      name: tool.name,
-      description: tool.description || `Execute ${tool.name} tool`,
-      parameters: tool.parameters ||
-        tool.schema || {
-          type: 'object',
-          properties: {},
-        },
-    },
-  }))
 }
 
 /**
@@ -433,10 +420,10 @@ export function validatePromptTemplates(templates: any): {
       errors.push(`Template ${index + 1}: Role must be system, user, or assistant`)
     }
 
-    if (!template.text) {
-      errors.push(`Template ${index + 1}: Text is required`)
-    } else if (typeof template.text !== 'string') {
-      errors.push(`Template ${index + 1}: Text must be a string`)
+    if (!template.json || typeof template.json !== 'object') {
+      errors.push(`Template ${index + 1}: JSON doc is required`)
+    } else if ((template.json as TiptapDoc).type !== 'doc') {
+      errors.push(`Template ${index + 1}: JSON must be a Tiptap doc`)
     }
   })
 

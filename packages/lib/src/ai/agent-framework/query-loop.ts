@@ -84,6 +84,7 @@ export async function* agentQueryLoop(
     signal: config.signal,
     turnId,
     traceId: turnId,
+    workflow: config.workflow,
   }
 
   const minToolCalls = agent.minToolCalls ?? 0

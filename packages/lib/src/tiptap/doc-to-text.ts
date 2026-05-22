@@ -10,6 +10,15 @@ interface DocToTextOptions {
    * by `blocksToMd`, so a re-paste round-trips.
    */
   references?: (id: string) => string
+  /**
+   * Optional resolver for inline `variable-node` chips. Receives the
+   * `variableId` and returns the text to inline (typically the resolved
+   * variable value, formatted for display). When unset, the chip renders
+   * to `{{variableId}}` so a downstream regex-based interpolation pass
+   * can pick it up — matches legacy behavior used by the 9 non-AI
+   * workflow nodes.
+   */
+  variables?: (variableId: string) => string
 }
 
 /**
@@ -34,20 +43,20 @@ export function docToText(doc: unknown, options: DocToTextOptions = {}): string 
   return walkNode(doc as TiptapNode, options).trim()
 }
 
-const BLOCK_TYPES = new Set([
+// Block containers whose children are block-level siblings — join with '\n'.
+const BLOCK_CONTAINER_TYPES = new Set([
   'doc',
-  'paragraph',
-  'heading',
   'bulletList',
   'orderedList',
   'listItem',
   'blockquote',
-  'codeBlock',
-  'horizontalRule',
   // KB block schema — `Doc -> block -> inline`. Each `block` is a block-
   // level container that should join its siblings with newlines.
   'block',
 ])
+
+// Inline containers whose children are inline (text + chips) — join with ''.
+const INLINE_CONTAINER_TYPES = new Set(['paragraph', 'heading', 'codeBlock', 'horizontalRule'])
 
 function walkNode(node: TiptapNode, options: DocToTextOptions): string {
   if (typeof node.text === 'string') return node.text
@@ -60,10 +69,17 @@ function walkNode(node: TiptapNode, options: DocToTextOptions): string {
     if (!id) return ''
     return options.references ? options.references(id) : `[reference](${id})`
   }
+  if (node.type === 'variable-node') {
+    const variableId =
+      typeof node.attrs?.variableId === 'string' ? (node.attrs.variableId as string) : ''
+    if (!variableId) return ''
+    return options.variables ? options.variables(variableId) : `{{${variableId}}}`
+  }
   if (Array.isArray(node.content)) {
-    const isBlock = !node.type || BLOCK_TYPES.has(node.type)
     const parts = node.content.map((child) => walkNode(child, options)).filter((s) => s.length > 0)
-    return isBlock ? parts.join('\n') : parts.join(' ')
+    if (!node.type || BLOCK_CONTAINER_TYPES.has(node.type)) return parts.join('\n')
+    if (INLINE_CONTAINER_TYPES.has(node.type)) return parts.join('')
+    return parts.join(' ')
   }
   return ''
 }

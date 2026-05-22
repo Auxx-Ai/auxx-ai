@@ -381,6 +381,7 @@ export class AgentEngine {
         signal: config.signal,
         turnId: this.turnId ?? undefined,
         traceId: this.turnId ?? undefined,
+        workflow: config.workflow,
       }
 
       // Re-run input validation on merged args.

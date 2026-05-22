@@ -18,3 +18,9 @@ export { createMailCapabilities } from './mail'
 export { createCapabilityRegistry } from './registry'
 export { createTaskCapabilities } from './tasks'
 export type { CapabilityRegistry, GetToolDeps, PageCapability, ToolDeps } from './types'
+export {
+  assignVariableTool,
+  createNativeWorkflowCapabilities,
+  WORKFLOW_AI_NODE_PAGE,
+  WORKFLOW_NATIVE_TOOLSET_SLUG,
+} from './workflow'

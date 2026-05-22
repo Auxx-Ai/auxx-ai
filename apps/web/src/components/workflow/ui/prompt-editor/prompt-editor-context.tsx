@@ -2,7 +2,9 @@
 
 'use client'
 
+import type { TiptapDoc } from '@auxx/lib/tiptap'
 import React, { createContext, useCallback, useContext, useMemo, useRef, useState } from 'react'
+import type { ReferenceTab } from '~/components/editor/inline-picker/nodes/reference-picker-node'
 import { useAvailableVariables } from '~/components/workflow/hooks'
 import type { BaseType, UnifiedVariable, VariableGroup } from '~/components/workflow/types'
 
@@ -41,6 +43,23 @@ interface PromptEditorContextType {
   // Content Management
   value: string
   onChange: (value: string) => void
+  /**
+   * JSON mode (opt-in for the AI node). When set, the inner Tiptap
+   * editor reads `valueJson` once at mount and emits `onChangeJson`
+   * with the live Tiptap doc on each edit — bypassing the text round-
+   * trip so `reference` chips keep their `RecordId` attrs.
+   */
+  valueJson?: TiptapDoc
+  onChangeJson?: (json: TiptapDoc) => void
+  /** `true` when the editor should run in JSON mode (see above). */
+  jsonMode: boolean
+  /**
+   * Reference (`@`) picker — opt-in. When true, the inner editor mounts
+   * the reference badge + picker chip extensions, and `TiptapPromptEditor`
+   * mounts the popover alongside the existing variable popover.
+   */
+  enableReferencePicker: boolean
+  referenceTabs?: ReferenceTab[]
   characterCount: number
   setCharacterCount: (count: number) => void
 
@@ -121,6 +140,13 @@ interface PromptEditorProviderProps {
   // Content
   value?: string
   onChange?: (value: string) => void
+  /** JSON-mode content (opt-in — see context type). */
+  valueJson?: TiptapDoc
+  onChangeJson?: (json: TiptapDoc) => void
+  /** Mount the `@`-reference picker extensions (opt-in). */
+  enableReferencePicker?: boolean
+  /** Tabs the reference picker exposes (defaults to `DEFAULT_TABS`). */
+  referenceTabs?: ReferenceTab[]
 
   // Configuration
   placeholder?: string
@@ -182,6 +208,10 @@ export const PromptEditorProvider: React.FC<PromptEditorProviderProps> = ({
   children,
   value: initialValue = '',
   onChange: onChangeCallback,
+  valueJson,
+  onChangeJson,
+  enableReferencePicker = false,
+  referenceTabs,
   readOnly = false,
   showRemove = false,
   showAIGenerate = true,
@@ -196,6 +226,7 @@ export const PromptEditorProvider: React.FC<PromptEditorProviderProps> = ({
   gradientBorder = true,
   ...props
 }) => {
+  const jsonMode = valueJson !== undefined
   // Refs
   const ref = useRef<HTMLDivElement>(null)
 
@@ -292,6 +323,11 @@ export const PromptEditorProvider: React.FC<PromptEditorProviderProps> = ({
       // Content
       value,
       onChange: handleChange,
+      valueJson,
+      onChangeJson,
+      jsonMode,
+      enableReferencePicker,
+      referenceTabs,
       characterCount,
       setCharacterCount,
 
@@ -338,6 +374,11 @@ export const PromptEditorProvider: React.FC<PromptEditorProviderProps> = ({
       nodeId,
       value,
       handleChange,
+      valueJson,
+      onChangeJson,
+      jsonMode,
+      enableReferencePicker,
+      referenceTabs,
       isExpanded,
       isFocused,
       isCopied,

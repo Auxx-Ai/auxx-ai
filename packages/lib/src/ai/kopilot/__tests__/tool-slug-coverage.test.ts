@@ -29,6 +29,7 @@ const KNOWN_SLUGS = new Set<string>([
   'auxx:kb:write',
   'auxx:docs',
   'auxx:actors',
+  'workflow.variable',
 ])
 
 const ALWAYS_ON_TOOLS = new Set<string>(['plan_create', 'plan_update_step'])

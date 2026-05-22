@@ -2,7 +2,9 @@
 
 'use client'
 
+import { collectVariableIds, docToText, type TiptapDoc, textToDoc } from '@auxx/lib/tiptap'
 import type { TableId } from '@auxx/lib/workflow-engine/client'
+import type { Extension, JSONContent } from '@tiptap/core'
 import Placeholder from '@tiptap/extension-placeholder'
 import { type Editor, useEditor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
@@ -11,14 +13,12 @@ import { VariableNode } from '~/components/editor/extensions/variable-node'
 import {
   createInlinePickerExtension,
   type InlinePickerState,
+  stableStringify,
 } from '~/components/editor/inline-picker'
+import type { ReferenceTab } from '~/components/editor/inline-picker/nodes/reference-picker-node'
+import { buildReferencePickerExtensions } from '~/components/editor/rich-text/reference-picker-extensions'
 import type { BaseType } from '~/components/workflow/types'
-import {
-  extractVarIds,
-  stringToTiptap,
-  tiptapToString,
-  validateTagPattern,
-} from '../tiptap-converters'
+import { validateTagPattern } from '../tiptap-converters'
 
 /** Initial closed state for picker */
 const initialPickerState: InlinePickerState = {
@@ -29,11 +29,25 @@ const initialPickerState: InlinePickerState = {
 }
 
 /**
- * Options for useWorkflowVariableEditor hook
+ * Options for useWorkflowVariableEditor hook.
+ *
+ * Two storage modes:
+ *  - **string mode** (default): `initialContent` + `onContentChange` use
+ *    the legacy `{{variableId}}` text format. Used by 9 workflow node
+ *    panels (answer, http, information-extractor, text-classifier, end,
+ *    human, http error/body, generate-content-dialog).
+ *  - **JSON mode** (opt-in): `valueJson` + `onContentChangeJson` carry the
+ *    full Tiptap doc as JSON. Used by the AI node so `reference` chips
+ *    keep their `RecordId` attrs through the round-trip (text mode would
+ *    flatten them via `docToText`). Mode is selected purely by which
+ *    props are supplied — the two modes are not meant to be mixed on the
+ *    same mount.
  */
 export interface UseWorkflowVariableEditorOptions {
-  /** Initial content in {{variableId}} format */
+  /** Initial content in {{variableId}} format (string mode). */
   initialContent?: string
+  /** Initial content as a full Tiptap doc (JSON mode). */
+  valueJson?: TiptapDoc
   /** Placeholder text when editor is empty */
   placeholder?: string
   /** Editor class name */
@@ -46,8 +60,10 @@ export interface UseWorkflowVariableEditorOptions {
   editable?: boolean
   /** Tab index for keyboard navigation */
   tabIndex?: number
-  /** Callback when content changes (debounced) */
+  /** Callback when content changes (debounced) — string mode. */
   onContentChange?: (content: string) => void
+  /** Callback when content changes — JSON mode, fires immediately with the live Tiptap doc. */
+  onContentChangeJson?: (doc: TiptapDoc) => void
   /** Callback when editor loses focus (debounced) */
   onBlur?: (content: string) => void
   /** Callback when editor gains focus */
@@ -58,6 +74,19 @@ export interface UseWorkflowVariableEditorOptions {
   blurDebounceMs?: number
   /** Trigger character(s) to open variable picker (default: '{') */
   trigger?: string
+  /**
+   * When `true`, mounts the `@`-reference picker extensions
+   * (`referenceBadgeNode` + `ReferencePickerNode`). Off by default — only
+   * the AI node opts in today. Consumers must mount the popover
+   * separately (via `useActivePicker(editor)` + `InlinePickerPopover`).
+   */
+  enableReferencePicker?: boolean
+  /** Tabs the reference picker exposes (defaults to `DEFAULT_TABS`). */
+  referenceTabs?: ReferenceTab[]
+  /** Forwarded to the reference picker chip — confirm highlighted item. */
+  onPickerEnter?: () => boolean
+  /** Forwarded to the reference picker chip — move highlight up/down. */
+  onPickerArrowVertical?: (direction: 1 | -1) => boolean
 }
 
 /**
@@ -97,13 +126,16 @@ export interface UseWorkflowVariableEditorReturn {
  * the inline-picker's suggestion extension for trigger detection.
  *
  * Features:
- * - {{variableId}} serialization format
+ * - {{variableId}} serialization format (string mode) OR full Tiptap doc
+ *   round-trip (JSON mode — opt-in for the AI node, see options docstring).
  * - Debounced content changes and blur
  * - Focus state tracking
  * - Picker state for React-driven UI
+ * - Optional `@`-reference picker (opt-in for the AI node).
  */
 export function useWorkflowVariableEditor({
   initialContent = '',
+  valueJson,
   placeholder = 'Enter value or use {variables}',
   className,
   nodeId,
@@ -111,12 +143,23 @@ export function useWorkflowVariableEditor({
   editable = true,
   tabIndex,
   onContentChange,
+  onContentChangeJson,
   onBlur,
   onFocus,
   debounceMs = 1000,
   blurDebounceMs = 100,
   trigger = '{',
+  enableReferencePicker = false,
+  referenceTabs,
+  onPickerEnter,
+  onPickerArrowVertical,
 }: UseWorkflowVariableEditorOptions): UseWorkflowVariableEditorReturn {
+  // JSON mode is selected when the caller supplies `valueJson`. We capture
+  // this once at mount via a ref — toggling modes after mount is unsupported
+  // (would require destroying / recreating the editor instance).
+  const isJsonMode = valueJson !== undefined
+  const isJsonModeRef = useRef(isJsonMode)
+
   const [isFocused, setIsFocused] = useState(false)
   const [suggestionState, setSuggestionState] = useState<InlinePickerState>(initialPickerState)
 
@@ -124,15 +167,27 @@ export function useWorkflowVariableEditor({
   const contentRef = useRef(initialContent)
   const lastBlurredContent = useRef(initialContent)
   const onContentChangeRef = useRef(onContentChange)
+  const onContentChangeJsonRef = useRef(onContentChangeJson)
   const onBlurRef = useRef(onBlur)
   const debounceTimeoutRef = useRef<NodeJS.Timeout>()
   const blurTimeoutRef = useRef<NodeJS.Timeout>()
   const rangeRef = useRef<{ from: number; to: number } | null>(null)
 
+  // JSON-mode loop guard: every `setInputs` on the parent rebuilds the
+  // prompt template object, which would re-fire onChange and bounce a
+  // fresh patch back. Compare the stable-stringified doc against the
+  // last saved hash and skip when equal. Seed with the initial doc so
+  // the very first emit (driven by Tiptap's initial onUpdate) is deduped.
+  const lastSavedJsonKeyRef = useRef<string>(isJsonMode ? stableStringify(valueJson) : '')
+
   // Update refs when props change
   useEffect(() => {
     onContentChangeRef.current = onContentChange
   }, [onContentChange])
+
+  useEffect(() => {
+    onContentChangeJsonRef.current = onContentChangeJson
+  }, [onContentChangeJson])
 
   useEffect(() => {
     onBlurRef.current = onBlur
@@ -225,12 +280,40 @@ export function useWorkflowVariableEditor({
     []
   )
 
-  // Convert initial content from {{variableId}} to TipTap JSON
-  const initialTiptapContent = useMemo(() => stringToTiptap(initialContent), [initialContent])
+  // Reference picker bundle (opt-in). Mounted alongside the `{`-picker so
+  // the AI node gets BOTH `{`-vars and `@`-references in one editor.
+  const referencePickerExtensions = useMemo<Extension[]>(
+    () =>
+      enableReferencePicker
+        ? (buildReferencePickerExtensions({
+            onPickerEnter,
+            onPickerArrowVertical,
+            referenceTabs,
+          }) as unknown as Extension[])
+        : [],
+    [enableReferencePicker, onPickerEnter, onPickerArrowVertical, referenceTabs]
+  )
+
+  // Snapshot the initial Tiptap content — JSON mode reads `valueJson`
+  // directly (no text round-trip would lose `reference` chip attrs);
+  // string mode runs the existing `textToDoc` parse.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: snapshot at mount only — see JSON-mode contract above
+  const initialTiptapContent = useMemo<JSONContent>(() => {
+    if (isJsonModeRef.current) {
+      return (valueJson as JSONContent) ?? { type: 'doc', content: [] }
+    }
+    return textToDoc(initialContent, { parseVariables: true }) as JSONContent
+  }, [])
 
   // Create editor with all extensions
   const editor = useEditor({
-    extensions: [starterKitExtension, VariableNode, pickerExtension, placeholderExtension],
+    extensions: [
+      starterKitExtension,
+      VariableNode,
+      pickerExtension,
+      ...referencePickerExtensions,
+      placeholderExtension,
+    ],
     content: initialTiptapContent,
     editable,
     immediatelyRender: false,
@@ -244,7 +327,15 @@ export function useWorkflowVariableEditor({
       },
     },
     onUpdate: ({ editor }) => {
-      const content = tiptapToString(editor.getJSON())
+      if (isJsonModeRef.current) {
+        const json = editor.getJSON() as TiptapDoc
+        const key = stableStringify(json)
+        if (key === lastSavedJsonKeyRef.current) return
+        lastSavedJsonKeyRef.current = key
+        onContentChangeJsonRef.current?.(json)
+        return
+      }
+      const content = docToText(editor.getJSON())
       debouncedContentChange(content)
     },
     onFocus: ({ editor }) => {
@@ -255,7 +346,8 @@ export function useWorkflowVariableEditor({
       // Only blur if picker is not open
       if (!suggestionState.isOpen) {
         if (isFocused) setIsFocused(false)
-        const content = tiptapToString(editor.getJSON())
+        if (isJsonModeRef.current) return
+        const content = docToText(editor.getJSON())
         debouncedBlur(content)
       }
     },
@@ -301,13 +393,16 @@ export function useWorkflowVariableEditor({
 
   // Get content as {{variableId}} format string
   const getStringContent = useCallback(() => {
-    return editor ? tiptapToString(editor.getJSON()) : ''
+    return editor ? docToText(editor.getJSON()) : ''
   }, [editor])
 
-  // Set content programmatically (skips echoed values from our own onChange)
+  // Set content programmatically (skips echoed values from our own onChange).
+  // In JSON mode this is a no-op: callers shouldn't externally drive the
+  // editor (see JSON-mode contract above — uncontrolled after mount).
   const setContent = useCallback(
     (content: string) => {
       if (!editor) return
+      if (isJsonModeRef.current) return
 
       // If the incoming content matches what we last sent to the parent via
       // onContentChange, this is just an echo of our own edit bouncing back
@@ -315,7 +410,7 @@ export function useWorkflowVariableEditor({
       // the cursor position and close the variable picker.
       if (content === contentRef.current) return
 
-      const tiptapContent = stringToTiptap(content)
+      const tiptapContent = textToDoc(content, { parseVariables: true })
       editor.commands.setContent(tiptapContent)
       contentRef.current = content
     },
@@ -324,9 +419,10 @@ export function useWorkflowVariableEditor({
 
   // Flush pending debounced changes
   const flushPendingChanges = useCallback(() => {
+    if (isJsonModeRef.current) return
     if (debounceTimeoutRef.current) {
       clearTimeout(debounceTimeoutRef.current)
-      const currentContent = editor ? tiptapToString(editor.getJSON()) : ''
+      const currentContent = editor ? docToText(editor.getJSON()) : ''
       if (contentRef.current !== currentContent && onContentChangeRef.current) {
         contentRef.current = currentContent
         onContentChangeRef.current(currentContent)
@@ -338,13 +434,13 @@ export function useWorkflowVariableEditor({
   // biome-ignore lint/correctness/useExhaustiveDependencies: editor.getJSON and editor are accessed via editor?.state.doc as a change signal
   const usedTags = useMemo(() => {
     if (!editor) return []
-    return extractVarIds(editor.getJSON())
+    return collectVariableIds(editor.getJSON())
   }, [editor?.state.doc])
 
   // Validate current content (memoized)
   // biome-ignore lint/correctness/useExhaustiveDependencies: editor.getJSON and editor are accessed via editor?.state.doc as a change signal
   const validation = useMemo(() => {
-    const content = editor ? tiptapToString(editor.getJSON()) : ''
+    const content = editor ? docToText(editor.getJSON()) : ''
     return validateTagPattern(content)
   }, [editor?.state.doc])
 

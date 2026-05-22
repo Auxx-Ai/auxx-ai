@@ -188,6 +188,15 @@ export class ExecutionContextManager {
   }
 
   /**
+   * Alias for `setVariable` used by the agent framework's `WorkflowToolContext`.
+   * Lets workflow-native tools (`assign_variable`, future code-eval, etc.) reach
+   * the active run's context without depending on workflow-engine internals.
+   */
+  assignVariable(name: string, value: unknown): void {
+    this.setVariable(name, value)
+  }
+
+  /**
    * Set a node-specific variable with proper path formatting
    * @param nodeId The ID of the node
    * @param path The variable path (e.g., 'output', 'method', 'headers.content-type')
@@ -503,7 +512,7 @@ export class ExecutionContextManager {
       // String.replace() treats $& $' $` $n specially in replacement strings
       let replacement: string
       if (typeof value === 'object') {
-        replacement = this.toDisplayString(value, path)
+        replacement = this.formatForDisplay(value, path)
       } else {
         replacement = String(value)
       }
@@ -519,16 +528,19 @@ export class ExecutionContextManager {
 
   /**
    * Convert an object value to a display string for interpolation.
-   * Checks the recordFieldCache for display values when the path resolved through a ResourceReference.
-   * Falls back to heuristics (name/label properties) or JSON.stringify for non-entity objects.
+   * Falls back to heuristics (name/label/displayName/value properties) or
+   * JSON.stringify for non-entity objects. Arrays are joined with ', '.
+   *
+   * Public so Phase 5's `buildMessages` rewrite can render a resolved-
+   * variable Map into a Tiptap doc via `docToText(json, { variables })`.
    */
-  private toDisplayString(value: unknown, variablePath: string): string {
+  public formatForDisplay(value: unknown, _variablePath: string): string {
     if (value == null) return ''
     if (typeof value !== 'object') return String(value)
 
     // For arrays, join elements
     if (Array.isArray(value)) {
-      return value.map((v) => this.toDisplayString(v, '')).join(', ')
+      return value.map((v) => this.formatForDisplay(v, '')).join(', ')
     }
 
     // Try common display-friendly properties
