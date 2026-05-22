@@ -1,7 +1,7 @@
 // packages/lib/src/files/upload/processors/entity-processors.ts
 import { database as db, schema } from '@auxx/database'
 import type { MediaAsset } from '@auxx/database/types'
-import { and, desc, eq, isNull } from 'drizzle-orm'
+import { and, desc, eq } from 'drizzle-orm'
 import { getOrgCache, isAgentUser } from '../../../cache'
 import { isAdminOrOwner } from '../../../members/member-queries'
 import { MemberService } from '../../../members/member-service'
@@ -87,24 +87,19 @@ export class UserProfileProcessor extends BaseAssetProcessor {
     session: PresignedUploadSession,
     storageLocationId: string
   ): Promise<ProcessorResult> {
-    let assetId: string
     // Wrap database operations in a transaction
     const result = await this.mediaAssetService.getTx(async (tx) => {
       // Try to find existing user avatar (use transaction)
       const existingAsset = await this.findExistingAsset(session, tx)
-      if (existingAsset) {
-        // Update existing asset with new version (use transaction)
-        assetId = await this.createNewVersion(existingAsset.id, session, storageLocationId, tx)
-      } else {
-        // Create new asset (use transaction)
-        assetId = await this.createAsset(session, storageLocationId, tx)
-      }
+      const { assetId, externalUrl } = existingAsset
+        ? await this.createNewVersion(existingAsset.id, session, storageLocationId, tx)
+        : await this.createAsset(session, storageLocationId, tx)
       // Update user avatar within the same transaction
       const userId = session.entityId || session.userId
       if (!userId) {
         throw new Error('Cannot determine user ID for avatar update')
       }
-      await this.updateUserAvatar(userId, assetId, tx)
+      await this.updateUserAvatar(userId, assetId, externalUrl, tx)
       return {
         assetId,
         storageLocationId,
@@ -221,49 +216,31 @@ export class UserProfileProcessor extends BaseAssetProcessor {
     session: PresignedUploadSession,
     storageLocationId: string,
     tx: any
-  ): Promise<string> {
+  ): Promise<{ assetId: string; externalUrl: string | null }> {
     // Use the service with transaction to create version + update asset metadata
     const assetService = this.mediaAssetService.withTx(tx)
-    const { asset } = await assetService.updateContent(existingAssetId, storageLocationId, {
-      size: BigInt(session.expectedSize),
-      mimeType: session.mimeType,
-    })
+    const { asset, version } = await assetService.updateContent(
+      existingAssetId,
+      storageLocationId,
+      {
+        size: BigInt(session.expectedSize),
+        mimeType: session.mimeType,
+      }
+    )
     this.logger.info('Created new user avatar version', {
       assetId: asset.id,
       userId: session.entityId,
       sessionId: session.id,
     })
-    return asset.id
+    return { assetId: asset.id, externalUrl: version.storageLocation?.externalUrl ?? null }
   }
-  private async updateUserAvatar(userId: string, assetId: string, tx?: any): Promise<void> {
+  private async updateUserAvatar(
+    userId: string,
+    assetId: string,
+    originalUrl: string | null,
+    tx?: any
+  ): Promise<void> {
     const dbClient = tx || db
-    // Get the original asset to get its URL
-    const [asset] = await dbClient
-      .select({
-        id: schema.MediaAsset.id,
-        currentVersion: {
-          id: schema.MediaAssetVersion.id,
-          storageLocation: {
-            externalUrl: schema.StorageLocation.externalUrl,
-          },
-        },
-      })
-      .from(schema.MediaAsset)
-      .leftJoin(
-        schema.MediaAssetVersion,
-        eq(schema.MediaAsset.currentVersionId, schema.MediaAssetVersion.id)
-      )
-      .leftJoin(
-        schema.StorageLocation,
-        and(
-          eq(schema.MediaAssetVersion.storageLocationId, schema.StorageLocation.id),
-          isNull(schema.StorageLocation.deletedAt)
-        )
-      )
-      .where(eq(schema.MediaAsset.id, assetId))
-      .limit(1)
-    // Update user with original image URL immediately
-    const originalUrl = asset?.currentVersion?.storageLocation?.externalUrl || null
     await dbClient
       .update(schema.User)
       .set({
@@ -313,8 +290,13 @@ export class ArticleProcessor extends BaseAttachmentProcessor {
   protected readonly fileVisibility = 'PRIVATE'
   protected readonly preferredProvider = 'S3'
   protected readonly maxFileSize = 10 * 1024 * 1024 // 10MB
+  // No `image/*` wildcard — that would match `image/svg+xml`, and SVGs can
+  // carry <script> that runs in our origin when opened directly.
   protected readonly allowedMimeTypes = [
-    'image/*',
+    'image/jpeg',
+    'image/png',
+    'image/webp',
+    'image/gif',
     'application/pdf',
     'text/plain',
     'text/markdown',
@@ -643,7 +625,9 @@ export class KnowledgeBaseProcessor extends BaseAttachmentProcessor {
   protected readonly fileVisibility = 'PUBLIC'
   protected readonly preferredProvider = 'S3'
   protected readonly maxFileSize = 10 * 1024 * 1024 // 10MB
-  protected readonly allowedMimeTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/svg+xml']
+  // SVG is intentionally excluded — uploaded SVGs can carry <script> and
+  // execute in our origin when opened directly or rendered inline.
+  protected readonly allowedMimeTypes = ['image/jpeg', 'image/png', 'image/webp']
   protected readonly assetKind: AssetKind = 'THUMBNAIL'
   /**
    * Ensure the knowledge base exists and belongs to the organization
@@ -674,43 +658,15 @@ export class KnowledgeBaseProcessor extends BaseAttachmentProcessor {
     session: PresignedUploadSession,
     storageLocationId: string
   ): Promise<ProcessorResult> {
-    let assetId = ''
     // Create asset and attachment within a transaction for consistency
     const result = await this.mediaAssetService.getTx(async (tx) => {
-      assetId = await this.createAsset(session, storageLocationId, tx)
+      const { assetId, externalUrl } = await this.createAsset(session, storageLocationId, tx)
       await this.createAttachment(assetId, session, tx)
-      // Fetch original URL from asset's current version storage location
-      const [asset] = await tx
-        .select({
-          id: schema.MediaAsset.id,
-          currentVersion: {
-            id: schema.MediaAssetVersion.id,
-            storageLocation: {
-              externalUrl: schema.StorageLocation.externalUrl,
-            },
-          },
-        })
-        .from(schema.MediaAsset)
-        .leftJoin(
-          schema.MediaAssetVersion,
-          eq(schema.MediaAsset.currentVersionId, schema.MediaAssetVersion.id)
-        )
-        .leftJoin(
-          schema.StorageLocation,
-          and(
-            eq(schema.MediaAssetVersion.storageLocationId, schema.StorageLocation.id),
-            isNull(schema.StorageLocation.deletedAt)
-          )
-        )
-        .where(eq(schema.MediaAsset.id, assetId))
-        .limit(1)
-
-      const originalUrl = asset?.currentVersion?.storageLocation?.externalUrl || null
       // Update KnowledgeBase.logoLight/logoDark immediately to original URL
-      if (session.entityId && originalUrl) {
+      if (session.entityId && externalUrl) {
         const variant = (session.metadata?.variant as string) || 'light'
         const updateData =
-          variant === 'dark' ? { logoDark: originalUrl } : { logoLight: originalUrl }
+          variant === 'dark' ? { logoDark: externalUrl } : { logoLight: externalUrl }
         await tx
           .update(schema.KnowledgeBase)
           .set(updateData)
@@ -718,7 +674,7 @@ export class KnowledgeBaseProcessor extends BaseAttachmentProcessor {
         this.logger.info('Updated KB logo URL (original)', {
           knowledgeBaseId: session.entityId,
           variant,
-          url: originalUrl,
+          url: externalUrl,
         })
       }
       return { assetId, storageLocationId }
@@ -739,6 +695,68 @@ export class KnowledgeBaseProcessor extends BaseAttachmentProcessor {
         error: error instanceof Error ? error.message : 'Unknown error',
       })
     }
+    return result
+  }
+}
+// ============= Chat Widget Processor =============
+export class ChatWidgetProcessor extends BaseAttachmentProcessor {
+  protected readonly entityType = 'CHAT_WIDGET'
+  protected readonly fileVisibility = 'PUBLIC'
+  protected readonly preferredProvider = 'S3'
+  protected readonly maxFileSize = 10 * 1024 * 1024 // 10MB
+  protected readonly allowedMimeTypes = ['image/jpeg', 'image/png', 'image/webp']
+  protected readonly assetKind: AssetKind = 'THUMBNAIL'
+  /**
+   * Ensure the chat widget exists and belongs to the organization
+   */
+  protected async validateEntityAccess(
+    entityId: string,
+    organizationId: string,
+    userId: string
+  ): Promise<void> {
+    const [widget] = await db
+      .select({ id: schema.ChatWidget.id })
+      .from(schema.ChatWidget)
+      .where(
+        and(
+          eq(schema.ChatWidget.id, entityId),
+          eq(schema.ChatWidget.organizationId, organizationId)
+        )
+      )
+      .limit(1)
+    if (!widget) {
+      throw new Error('Chat widget not found or access denied')
+    }
+  }
+  /**
+   * Write the uploaded asset's original URL to ChatWidget.logoLight / logoDark
+   * based on `session.metadata.variant`. The widget renders the original URL
+   * directly — there's only one fixed render size, so no thumbnail presets.
+   */
+  protected async executeProcess(
+    session: PresignedUploadSession,
+    storageLocationId: string
+  ): Promise<ProcessorResult> {
+    const result = await this.mediaAssetService.getTx(async (tx) => {
+      const { assetId, externalUrl } = await this.createAsset(session, storageLocationId, tx)
+      await this.createAttachment(assetId, session, tx)
+
+      if (session.entityId && externalUrl) {
+        const variant = (session.metadata?.variant as string) || 'light'
+        const updateData =
+          variant === 'dark' ? { logoDark: externalUrl } : { logoLight: externalUrl }
+        await tx
+          .update(schema.ChatWidget)
+          .set(updateData)
+          .where(eq(schema.ChatWidget.id, session.entityId))
+        this.logger.info('Updated chat widget logo URL', {
+          chatWidgetId: session.entityId,
+          variant,
+          url: externalUrl,
+        })
+      }
+      return { assetId, storageLocationId }
+    })
     return result
   }
 }

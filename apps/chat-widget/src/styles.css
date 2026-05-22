@@ -60,6 +60,12 @@
     --auxx-chat-shell-edge-gap: 20px;
 
     --auxx-chat-primary: #4f46e5;
+    /* Re-declare the Tailwind theme token here so it's computed on the same
+     * element where the inline style sets `--auxx-chat-primary`. The @theme
+     * declaration lives at `:root, :host` — outside the shadow tree — and
+     * its `var(--auxx-chat-primary, …)` substitutes against that element,
+     * so without this override it would always resolve to the fallback. */
+    --color-primary: var(--auxx-chat-primary);
     --auxx-chat-surface: #fff;
     --auxx-chat-shell-closed-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
     --auxx-chat-shell-open-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);

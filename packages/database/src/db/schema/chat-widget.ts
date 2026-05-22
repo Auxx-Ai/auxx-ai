@@ -17,6 +17,7 @@ import {
 import { Agent } from './agent'
 import { Integration } from './integration'
 import { KnowledgeBase } from './knowledge-base'
+import { MediaAsset } from './media-asset'
 import { Organization } from './organization'
 
 /** Drizzle table for chatWidget */
@@ -39,7 +40,10 @@ export const ChatWidget = pgTable(
     title: text().default('Chat Support').notNull(),
     subtitle: text(),
     primaryColor: text().default('#4F46E5').notNull(),
-    logoUrl: text(),
+    logoLight: text(),
+    logoDark: text(),
+    logoLightId: text().references((): AnyPgColumn => MediaAsset.id, { onUpdate: 'cascade' }),
+    logoDarkId: text().references((): AnyPgColumn => MediaAsset.id, { onUpdate: 'cascade' }),
     position: text().default('BOTTOM_RIGHT').notNull(),
     welcomeMessage: text(),
     autoOpen: boolean().default(false).notNull(),
@@ -80,6 +84,8 @@ export const ChatWidget = pgTable(
       'btree',
       table.integrationId.asc().nullsLast()
     ),
+    uniqueIndex('ChatWidget_logoLightId_key').using('btree', table.logoLightId.asc().nullsLast()),
+    uniqueIndex('ChatWidget_logoDarkId_key').using('btree', table.logoDarkId.asc().nullsLast()),
     index('ChatWidget_organizationId_idx').using('btree', table.organizationId.asc().nullsLast()),
     uniqueIndex('ChatWidget_organizationId_name_key').using(
       'btree',

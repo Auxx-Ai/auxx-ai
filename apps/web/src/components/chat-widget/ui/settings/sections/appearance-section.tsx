@@ -6,7 +6,7 @@ import { Button } from '@auxx/ui/components/button'
 import { Form, FormField } from '@auxx/ui/components/form'
 import { toastError } from '@auxx/ui/components/toast'
 import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
-import { LayoutGrid, Link as LinkIcon, Palette, Smartphone } from 'lucide-react'
+import { LayoutGrid, Moon, Palette, Smartphone, Sun } from 'lucide-react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
@@ -14,6 +14,7 @@ import { ColorField } from '~/components/ui/color-field'
 import { BaseType } from '~/components/workflow/types'
 import { VarEditorField, VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
 import { api } from '~/trpc/react'
+import { LogoUploadCell } from './logo-upload-cell'
 
 interface AppearanceSectionProps {
   widget: ChatWidgetWithIntegration
@@ -32,7 +33,8 @@ const appearanceSchema = z.object({
     .string()
     .regex(/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/, 'Use a valid hex color (#fff or #ffffff)'),
   position: z.enum(['BOTTOM_RIGHT', 'BOTTOM_LEFT', 'TOP_RIGHT', 'TOP_LEFT']),
-  logoUrl: z.string().url('Must be a valid URL').or(z.literal('')).optional(),
+  logoLight: z.string().nullish(),
+  logoDark: z.string().nullish(),
   mobileFullScreen: z.boolean(),
 })
 
@@ -53,17 +55,21 @@ export function AppearanceSection({ widget, channelId }: AppearanceSectionProps)
     defaultValues: {
       primaryColor: widget.chatWidget?.primaryColor ?? '#4F46E5',
       position: (widget.chatWidget?.position as AppearanceForm['position']) ?? 'BOTTOM_RIGHT',
-      logoUrl: widget.chatWidget?.logoUrl ?? '',
+      logoLight: widget.chatWidget?.logoLight ?? '',
+      logoDark: widget.chatWidget?.logoDark ?? '',
       mobileFullScreen: widget.chatWidget?.mobileFullScreen ?? true,
     },
   })
+
+  const chatWidgetId = widget.chatWidget?.id ?? ''
 
   const onSubmit = (values: AppearanceForm) => {
     update.mutate({
       integrationId: channelId,
       primaryColor: values.primaryColor,
       position: values.position,
-      logoUrl: values.logoUrl || undefined,
+      logoLight: values.logoLight ?? null,
+      logoDark: values.logoDark ?? null,
       mobileFullScreen: values.mobileFullScreen,
     })
   }
@@ -106,20 +112,39 @@ export function AppearanceSection({ widget, channelId }: AppearanceSectionProps)
 
               <FormField
                 control={form.control}
-                name='logoUrl'
+                name='logoLight'
                 render={({ field, fieldState }) => (
                   <VarEditorFieldRow
-                    title='Logo URL'
-                    description='Square image works best (1:1).'
-                    type={BaseType.URL}
-                    icon={<LinkIcon className='size-3.5' />}
+                    title='Light mode logo'
+                    description='Shown on the dark primary-colored header band.'
+                    icon={<Sun className='size-3.5' />}
                     showIcon
                     validationError={fieldState.error?.message}>
-                    <FieldInputAdapter
-                      fieldType={FieldType.URL}
+                    <LogoUploadCell
+                      variant='light'
                       value={field.value ?? ''}
-                      onChange={(v) => field.onChange((v as string) ?? '')}
-                      placeholder='https://…/logo.png'
+                      onChange={(v) => field.onChange(v)}
+                      chatWidgetId={chatWidgetId}
+                    />
+                  </VarEditorFieldRow>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name='logoDark'
+                render={({ field, fieldState }) => (
+                  <VarEditorFieldRow
+                    title='Dark mode logo'
+                    description='Reserved for light-surface headers.'
+                    icon={<Moon className='size-3.5' />}
+                    showIcon
+                    validationError={fieldState.error?.message}>
+                    <LogoUploadCell
+                      variant='dark'
+                      value={field.value ?? ''}
+                      onChange={(v) => field.onChange(v)}
+                      chatWidgetId={chatWidgetId}
                     />
                   </VarEditorFieldRow>
                 )}

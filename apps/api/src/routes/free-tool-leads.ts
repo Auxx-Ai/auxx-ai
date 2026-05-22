@@ -5,6 +5,7 @@ import { createScopedLogger } from '@auxx/logger'
 import { Hono } from 'hono'
 import { bodyLimit } from 'hono/body-limit'
 import { errorResponse, successResponse } from '../lib/response'
+import { ipKey, rateLimit } from '../middleware/rate-limit'
 
 const log = createScopedLogger('free-tool-leads')
 
@@ -21,6 +22,11 @@ const ALLOWED_SLUGS = new Set([
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 const freeToolLeads = new Hono()
+
+freeToolLeads.use(
+  '/',
+  rateLimit([{ name: 'free-tool-leads:ip', maxRequests: 5, perInterval: 60_000, key: ipKey }])
+)
 
 freeToolLeads.post(
   '/',

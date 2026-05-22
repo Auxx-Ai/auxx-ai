@@ -51,7 +51,7 @@ export abstract class BaseAttachmentProcessor extends BaseAssetProcessor {
     tx?: any
   ): Promise<ProcessorResult> {
     // First create asset
-    const assetId = await this.createAsset(session, storageLocationId, tx)
+    const { assetId } = await this.createAsset(session, storageLocationId, tx)
     await this.postCreateAsset(session, storageLocationId, assetId, tx)
 
     // Then create attachment linking asset to entity

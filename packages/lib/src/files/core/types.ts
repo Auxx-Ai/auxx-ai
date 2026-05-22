@@ -26,6 +26,7 @@ export type EntityType =
   | 'WORKFLOW_RUN'
   | 'DATASET'
   | 'KNOWLEDGE_BASE'
+  | 'CHAT_WIDGET'
   | 'USER_PROFILE'
 /**
  * Attachment roles defining how files are used

@@ -55,7 +55,7 @@ export class WorkflowProcessor extends BaseAssetProcessor {
     }
 
     // Otherwise, create standalone asset for workflows
-    const assetId = await this.createAsset(session, storageLocationId)
+    const { assetId } = await this.createAsset(session, storageLocationId)
 
     // Schedule cleanup if temporary
     if (session.metadata?.isTemporary) {

@@ -254,7 +254,8 @@ function PanelShell({
               ? (config.appearance.subtitle ?? undefined)
               : undefined
         }
-        logoUrl={config.appearance.logoUrl}
+        logoLight={config.appearance.logoLight}
+        logoDark={config.appearance.logoDark}
         onBack={isAtRoot ? undefined : onBack}
         onClose={onClose}
         actions={

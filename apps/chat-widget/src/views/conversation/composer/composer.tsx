@@ -117,7 +117,7 @@ export function Composer({ channelId, onSend, disabled, placeholder }: ComposerP
         placeholder={placeholder ?? 'Type a message…'}
         minRows={1}
         maxRows={6}
-        disabled={disabled || sending}
+        disabled={disabled}
       />
       <div className='flex items-center justify-between gap-1 px-2 pb-2'>
         <div className='flex items-center gap-1'>

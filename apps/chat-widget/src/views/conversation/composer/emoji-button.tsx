@@ -33,7 +33,8 @@ export function EmojiButton({ onSelect }: EmojiButtonProps) {
         className='w-auto p-0'
         align='start'
         sideOffset={6}
-        onOpenAutoFocus={(e) => e.preventDefault()}>
+        onOpenAutoFocus={(e) => e.preventDefault()}
+        onCloseAutoFocus={(e) => e.preventDefault()}>
         <EmojiPicker onSelect={onSelect} onClose={() => setOpen(false)} />
       </PopoverContent>
     </Popover>

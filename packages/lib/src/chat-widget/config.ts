@@ -24,7 +24,8 @@ export interface UpdateChatWidgetInput {
   title?: string
   subtitle?: string | null
   primaryColor?: string
-  logoUrl?: string | null
+  logoLight?: string | null
+  logoDark?: string | null
   position?: string
   welcomeMessage?: string | null
   autoOpen?: boolean
