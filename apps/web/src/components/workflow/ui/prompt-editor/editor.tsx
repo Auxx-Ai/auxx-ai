@@ -2,17 +2,36 @@
 
 'use client'
 
+import type { TiptapDoc } from '@auxx/lib/tiptap'
 import React from 'react'
+import type { ReferenceTab } from '~/components/editor/inline-picker/nodes/reference-picker-node'
 import { PromptEditorProvider } from './prompt-editor-context'
 import PromptEditorWrapper from './prompt-editor-wrapper'
 
 /**
- * Props interface for the new Tiptap-based Editor component
+ * Props interface for the new Tiptap-based Editor component.
+ *
+ * Two content modes:
+ *  - **string mode** (default): `value` + `onChange` carry the legacy
+ *    `{{variableId}}` text serialization. Used by 9 workflow node panels.
+ *  - **JSON mode** (opt-in): `valueJson` + `onChangeJson` carry the full
+ *    Tiptap doc. Used by the AI node so `@`-reference chips keep their
+ *    `RecordId` attrs (text mode flattens them via `docToText`).
+ *
+ * The `@`-reference picker is also opt-in (`enableReferencePicker`) so
+ * the 9 other node mounts don't get a picker they didn't ask for.
  */
 export interface EditorProps {
   // Content
   value?: string
   onChange?: (value: string) => void
+  /** JSON-mode content (opt-in — see component docstring). */
+  valueJson?: TiptapDoc
+  onChangeJson?: (json: TiptapDoc) => void
+  /** Mount the `@`-reference picker extensions (opt-in). */
+  enableReferencePicker?: boolean
+  /** Tabs the reference picker exposes (defaults to `DEFAULT_TABS`). */
+  referenceTabs?: ReferenceTab[]
 
   // Configuration
   placeholder?: string

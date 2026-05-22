@@ -6,7 +6,8 @@ import { cn } from '@auxx/ui/lib/utils'
 import { EditorContent } from '@tiptap/react'
 import type React from 'react'
 import { useCallback, useEffect, useRef } from 'react'
-import { InlinePickerPopover } from '~/components/editor/inline-picker'
+import { InlinePickerPopover, useActivePicker } from '~/components/editor/inline-picker'
+import { ReferencePickerContent } from '~/components/pickers/reference-picker/reference-picker-content'
 import { useWorkflowVariableEditor } from '../input-editor/hooks/use-workflow-variable-editor'
 import { VariableExplorerEnhanced } from '../variables/variable-explorer-enhanced'
 import { usePromptEditorContext } from './prompt-editor-context'
@@ -16,11 +17,24 @@ import './tiptap-prompt-editor.css'
  * Core TiptapPromptEditor component.
  * Uses context instead of props to eliminate prop drilling.
  * Uses the new inline-picker system for React-driven variable picker UI.
+ *
+ * When the context flips into JSON mode (`jsonMode = true`) the inner
+ * `useWorkflowVariableEditor` runs the JSON path — initial doc read
+ * once, no text round-trip, onChange emits the live Tiptap doc.
+ *
+ * When `enableReferencePicker = true`, also mounts the `@`-picker popover
+ * alongside the standard `{`-variable popover. Both share the same
+ * containerRef for positioning.
  */
 const TiptapPromptEditor: React.FC = () => {
   const {
     value,
     onChange,
+    valueJson,
+    onChangeJson,
+    jsonMode,
+    enableReferencePicker,
+    referenceTabs,
     placeholder,
     setFocused,
     editable,
@@ -46,6 +60,19 @@ const TiptapPromptEditor: React.FC = () => {
     inputClassName
   )
 
+  // Reference-picker keyboard nav: the popover (`ReferencePickerContent`)
+  // exposes an imperative handle for arrow/Enter; the chip extension
+  // forwards keydowns into these callbacks.
+  const referencePickerRef = useRef<React.ComponentRef<typeof ReferencePickerContent> | null>(null)
+  const onPickerEnter = useCallback(
+    () => referencePickerRef.current?.confirmHighlighted() ?? false,
+    []
+  )
+  const onPickerArrowVertical = useCallback(
+    (dir: 1 | -1) => referencePickerRef.current?.moveHighlight(dir) ?? false,
+    []
+  )
+
   const {
     editor,
     suggestionState,
@@ -55,15 +82,26 @@ const TiptapPromptEditor: React.FC = () => {
     setContent,
     flushPendingChanges,
   } = useWorkflowVariableEditor({
-    initialContent: value,
+    // String-mode props (used when jsonMode === false)
+    initialContent: jsonMode ? undefined : value,
+    onContentChange: jsonMode ? undefined : onChange,
+    onBlur: jsonMode ? undefined : onBlur,
+    // JSON-mode props (used when jsonMode === true)
+    valueJson: jsonMode ? valueJson : undefined,
+    onContentChangeJson: jsonMode ? onChangeJson : undefined,
     placeholder,
     className: editorClassName,
     nodeId,
-    onContentChange: onChange,
-    onBlur,
     editable,
     trigger,
+    enableReferencePicker,
+    referenceTabs,
+    onPickerEnter: enableReferencePicker ? onPickerEnter : undefined,
+    onPickerArrowVertical: enableReferencePicker ? onPickerArrowVertical : undefined,
   })
+
+  // Track the active reference-picker chip (at most one per doc).
+  const activePicker = useActivePicker(enableReferencePicker ? editor : null)
 
   // Update context focus state when isFocused changes
   useEffect(() => {
@@ -83,19 +121,21 @@ const TiptapPromptEditor: React.FC = () => {
     }
   }, [editor, editorRef, setCharacterCount])
 
-  // Handle component unmount - flush any pending changes
+  // Handle component unmount - flush any pending changes (string mode only)
   useEffect(() => {
     return () => {
       flushPendingChanges()
     }
   }, [flushPendingChanges])
 
-  // Sync external value changes to editor (e.g., from Apply button in generate dialog)
+  // Sync external value changes to editor (e.g., from Apply button in
+  // generate dialog). JSON mode is uncontrolled-after-mount on purpose —
+  // see `useWorkflowVariableEditor` JSON-mode contract — so we skip the
+  // sync entirely in that mode.
   useEffect(() => {
-    if (editor && value !== undefined) {
-      setContent(value)
-    }
-  }, [value, editor, setContent])
+    if (!editor || jsonMode) return
+    if (value !== undefined) setContent(value)
+  }, [value, editor, setContent, jsonMode])
 
   /**
    * Handle Escape key - prevent parent dialog close when inside command picker
@@ -121,7 +161,7 @@ const TiptapPromptEditor: React.FC = () => {
         )}
       />
 
-      {/* Variable picker popover */}
+      {/* Variable picker popover ({ trigger) */}
       <InlinePickerPopover
         state={suggestionState}
         containerRef={containerRef}
@@ -135,6 +175,38 @@ const TiptapPromptEditor: React.FC = () => {
           onClose={closePicker}
         />
       </InlinePickerPopover>
+
+      {/* Reference picker popover (@ trigger) — opt-in */}
+      {enableReferencePicker && (
+        <InlinePickerPopover
+          state={{
+            isOpen: !!activePicker,
+            query: activePicker?.query ?? '',
+            range: null,
+            clientRect: activePicker?.clientRect ?? null,
+          }}
+          containerRef={containerRef}
+          width={360}
+          side='bottom'
+          align='start'
+          autoFocus={false}
+          onInteractOutside={(e) => {
+            const target = e.target as HTMLElement | null
+            if (target?.closest('[data-type="reference-picker"]')) {
+              e.preventDefault()
+            }
+          }}
+          onClose={() => editor?.commands.closeReferencePicker({ keepText: true })}>
+          <ReferencePickerContent
+            ref={referencePickerRef}
+            tab={activePicker?.tab ?? 'people'}
+            query={activePicker?.query ?? ''}
+            onSelect={(id) => editor?.commands.confirmReferencePicker(id)}
+            onTabChange={(tab) => editor?.commands.setReferencePickerTab(tab)}
+            tabs={referenceTabs}
+          />
+        </InlinePickerPopover>
+      )}
 
       {showReadOnlyOverlay && <div className='absolute inset-0 z-10' />}
     </div>

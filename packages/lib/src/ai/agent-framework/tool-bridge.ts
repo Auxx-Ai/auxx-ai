@@ -1,45 +1,19 @@
 // packages/lib/src/ai/agent-framework/tool-bridge.ts
 
-import type { Database } from '@auxx/database'
-import { generateId } from '@auxx/utils'
-import type { NodeProcessorRegistry } from '../../workflow-engine/core/node-processor-registry'
-import { executeSingleNode } from '../../workflow-engine/core/single-node-executor'
-import type { ToolDefinition } from '../../workflow-engine/core/tool-registry'
-import { ToolRegistry } from '../../workflow-engine/core/tool-registry'
 import type { ToolContext } from './tool-context'
 import type { AgentToolDefinition, AgentToolResult } from './types'
 import { executeToolWithProgress } from './utils'
 
-export interface ToolBridgeConfig {
-  /** Node processor registry for workflow node execution */
-  nodeRegistry: NodeProcessorRegistry
-  /** Database connection for node execution */
-  db?: Database
-}
-
-/**
- * Convert workflow ToolDefinitions into AgentToolDefinitions.
- * Each tool's execute() calls executeSingleNode() under the hood.
- */
-export function buildToolsFromDefinitions(
-  toolDefs: ToolDefinition[],
-  bridgeConfig: ToolBridgeConfig
-): AgentToolDefinition[] {
-  return toolDefs
-    .filter((def) => def.enabled)
-    .map((def) => toolDefinitionToAgentTool(def, bridgeConfig))
-}
-
-/**
- * Get all built-in tools from the ToolRegistry as AgentToolDefinitions.
- */
-export function getBuiltInTools(bridgeConfig: ToolBridgeConfig): AgentToolDefinition[] {
-  const toolRegistry = new ToolRegistry(bridgeConfig.nodeRegistry)
-  return buildToolsFromDefinitions(toolRegistry.getBuiltInTools(), bridgeConfig)
-}
-
 /**
  * Dispatch a tool call by name from a tools array.
+ *
+ * Note: the previous `buildToolsFromDefinitions` + `getBuiltInTools` helpers
+ * were dropped along with the legacy workflow `ToolRegistry` /
+ * `ToolDefinition` shape (Phase 2 — see
+ * `plans/workflow/ai/phase-2-ai-processor-migration.md`). The agent framework
+ * now consumes only `AgentToolDefinition`s emitted by the kopilot capability
+ * factories. Workflow-node-as-tool returns in v2 via a dedicated capability
+ * (`createWorkflowNodeCapabilities`).
  */
 export async function executeToolCall(
   toolName: string,
@@ -55,58 +29,4 @@ export async function executeToolCall(
   // point doesn't carry a progress channel; callers that want progress events
   // should go through the agent query loop.
   return executeToolWithProgress(tool, args, ctx)
-}
-
-// ===== INTERNAL =====
-
-function humanizeToolName(name: string): string {
-  const spaced = name.replace(/[_-]+/g, ' ').trim()
-  if (!spaced) return name
-  return spaced.charAt(0).toUpperCase() + spaced.slice(1)
-}
-
-function toolDefinitionToAgentTool(
-  def: ToolDefinition,
-  bridgeConfig: ToolBridgeConfig
-): AgentToolDefinition {
-  return {
-    name: def.name,
-    displayName: humanizeToolName(def.name),
-    description: def.description,
-    parameters: def.inputSchema as Record<string, unknown>,
-    execute: async (args: Record<string, unknown>, ctx: ToolContext): Promise<AgentToolResult> => {
-      try {
-        const node = {
-          id: def.sourceNodeId ?? generateId(),
-          type: def.nodeType,
-          data: { ...def.nodeConfig },
-          position: { x: 0, y: 0 },
-        }
-
-        const context = {
-          workflowId: `agent-${ctx.sessionId ?? ctx.traceId ?? 'unknown'}`,
-          executionId: generateId(),
-          organizationId: ctx.organizationId,
-          userId: ctx.userId,
-        }
-
-        const result = await executeSingleNode(
-          node,
-          args,
-          context,
-          bridgeConfig.nodeRegistry,
-          undefined,
-          bridgeConfig.db
-        )
-
-        return {
-          success: true,
-          output: result.outputs ?? result.processData ?? {},
-        }
-      } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error)
-        return { success: false, output: null, error: errorMessage }
-      }
-    },
-  }
 }

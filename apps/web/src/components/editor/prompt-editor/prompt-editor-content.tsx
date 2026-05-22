@@ -8,7 +8,7 @@ import {
   InputGroupInput,
 } from '@auxx/ui/components/input-group'
 import { Popover, PopoverAnchor, PopoverContentDialogAware } from '@auxx/ui/components/popover'
-import type { JSONContent } from '@tiptap/core'
+import type { Extension, JSONContent } from '@tiptap/core'
 import type { Editor } from '@tiptap/react'
 import { EditorContent } from '@tiptap/react'
 import { Link as LinkIcon } from 'lucide-react'
@@ -56,6 +56,11 @@ interface PromptEditorContentProps {
   editable?: boolean
   /** Overrides the default-branch empty-block placeholder hint. */
   placeholderText?: string
+  /**
+   * Extra inline Tiptap extensions to mount alongside the standard ones
+   * (e.g. the workflow `{`-variable picker). Defaults to `[]`.
+   */
+  inlineExtensions?: Extension[]
 }
 
 interface LinkPopoverState {
@@ -87,6 +92,7 @@ export const PromptEditorContent = memo(function PromptEditorContent({
   referenceTabs,
   editable = true,
   placeholderText,
+  inlineExtensions,
 }: PromptEditorContentProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [linkPopover, setLinkPopover] = useState<LinkPopoverState | null>(null)
@@ -112,6 +118,7 @@ export const PromptEditorContent = memo(function PromptEditorContent({
     referenceTabs,
     editable,
     placeholderText,
+    inlineExtensions,
   })
 
   const activePicker = useActivePicker(editor)

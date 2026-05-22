@@ -79,4 +79,62 @@ describe('textToDoc', () => {
       ],
     })
   })
+
+  it('leaves {{var}} literal when parseVariables is unset', () => {
+    expect(textToDoc('Hi {{foo.bar}}')).toEqual({
+      type: 'doc',
+      content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Hi {{foo.bar}}' }] }],
+    })
+  })
+
+  it('emits variable-node chips when parseVariables is true', () => {
+    expect(textToDoc('Hi {{foo.bar}}', { parseVariables: true })).toEqual({
+      type: 'doc',
+      content: [
+        {
+          type: 'paragraph',
+          content: [
+            { type: 'text', text: 'Hi ' },
+            { type: 'variable-node', attrs: { variableId: 'foo.bar' } },
+          ],
+        },
+      ],
+    })
+  })
+
+  it('handles text on both sides of a variable chip', () => {
+    expect(textToDoc('Hi {{foo}} there', { parseVariables: true })).toEqual({
+      type: 'doc',
+      content: [
+        {
+          type: 'paragraph',
+          content: [
+            { type: 'text', text: 'Hi ' },
+            { type: 'variable-node', attrs: { variableId: 'foo' } },
+            { type: 'text', text: ' there' },
+          ],
+        },
+      ],
+    })
+  })
+
+  it('combines references and variables in a single line', () => {
+    expect(
+      textToDoc('A {{v1}} B @[user:1] C', { parseReferences: true, parseVariables: true })
+    ).toEqual({
+      type: 'doc',
+      content: [
+        {
+          type: 'paragraph',
+          content: [
+            { type: 'text', text: 'A ' },
+            { type: 'variable-node', attrs: { variableId: 'v1' } },
+            { type: 'text', text: ' B ' },
+            { type: 'reference', attrs: { id: 'user:1' } },
+            { type: 'text', text: ' C' },
+          ],
+        },
+      ],
+    })
+  })
 })

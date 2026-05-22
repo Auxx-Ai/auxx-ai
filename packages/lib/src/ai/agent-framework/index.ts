@@ -21,9 +21,8 @@ export { processAgentMessage } from './process-agent-job'
 
 export { agentQueryLoop } from './query-loop'
 export { withAgentRunLog } from './run-log'
-export type { ToolBridgeConfig } from './tool-bridge'
-export { buildToolsFromDefinitions, executeToolCall, getBuiltInTools } from './tool-bridge'
-export type { ToolContext } from './tool-context'
+export { executeToolCall } from './tool-bridge'
+export type { ToolContext, WorkflowToolContext } from './tool-context'
 
 export type {
   AgentDefinition,

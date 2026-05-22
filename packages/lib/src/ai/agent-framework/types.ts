@@ -3,7 +3,7 @@
 import type { Database } from '@auxx/database'
 import type { z } from 'zod'
 import type { Message, ModelParameters, Tool, ToolCall, UsageMetrics } from '../clients/base/types'
-import type { ToolContext } from './tool-context'
+import type { ToolContext, WorkflowToolContext } from './tool-context'
 
 // ===== CONTENT PARTS =====
 
@@ -676,6 +676,13 @@ export interface AgentEngineConfig {
    *   IS the authorization. There is no human in the loop to ask.
    */
   approvalMode?: 'pause' | 'capture' | 'auto'
+  /**
+   * Workflow handle threaded into every tool's `ToolContext` when this engine
+   * runs inside a workflow AI node. Lets workflow-native tools
+   * (`assign_variable`, future code-eval, …) reach the active run's execution
+   * context without forming a hard dependency on `@auxx/lib/workflow-engine`.
+   */
+  workflow?: WorkflowToolContext
 }
 
 // ===== AGENT DEPENDENCIES =====

@@ -106,6 +106,12 @@ export interface UseRichTextEditorOptions {
    * Defaults to `"Press '/' for commands"`.
    */
   placeholderText?: string
+  /**
+   * Extra Tiptap extensions to mount alongside the standard ones (e.g. the
+   * workflow `{`-variable picker). Spread into the extensions array after
+   * the reference-picker extensions. Defaults to `[]`.
+   */
+  inlineExtensions?: Extension[]
 }
 
 /**
@@ -127,6 +133,7 @@ export function useRichTextEditor({
   referenceTabs,
   editable = true,
   placeholderText,
+  inlineExtensions,
 }: UseRichTextEditorOptions) {
   const normalizedInitialContent = useMemo<JSONContent>(() => {
     const migrated = migrateLegacyContent(initialContent)
@@ -207,6 +214,7 @@ export function useRichTextEditor({
         // overlap the line gutter). See block-node-view.tsx `showPlaceholder`.
         ...(slashCommand ? [slashCommand.slashCommandExtension] : []),
         ...referencePickerExtensions,
+        ...(inlineExtensions ?? []),
         placeholderNodeExtension,
       ],
       content: normalizedInitialContent,
