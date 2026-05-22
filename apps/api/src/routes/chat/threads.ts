@@ -4,13 +4,15 @@ import { database, schema } from '@auxx/database'
 import { initializeOrResumeChatThread } from '@auxx/lib/chat'
 import type { ChatThreadMetadata } from '@auxx/lib/threads/types'
 import { createScopedLogger } from '@auxx/logger'
-import { and, asc, desc, eq } from 'drizzle-orm'
+import { and, asc, desc, eq, isNotNull, lt, or, sql } from 'drizzle-orm'
 import { Hono } from 'hono'
-import { applyChatCorsHeaders } from './lib'
+import { applyChatCorsHeaders, loadChatWidgetByChannelId } from './lib'
 
 const log = createScopedLogger('chat-threads-route')
 
 const threadsRoute = new Hono()
+
+const LIST_PAGE_SIZE = 20
 
 threadsRoute.options('/', (c) => {
   applyChatCorsHeaders(c, { allowCredentials: true })
@@ -23,6 +25,11 @@ threadsRoute.options('/recent', (c) => {
 })
 
 threadsRoute.options('/:threadId/messages', (c) => {
+  applyChatCorsHeaders(c, { allowCredentials: true })
+  return c.body(null, 204)
+})
+
+threadsRoute.options('/:threadId/transcript', (c) => {
   applyChatCorsHeaders(c, { allowCredentials: true })
   return c.body(null, 204)
 })
@@ -94,7 +101,11 @@ threadsRoute.get('/recent', async (c) => {
       .where(
         and(
           eq(schema.Thread.organizationId, chat.organizationId),
-          eq(schema.Thread.integrationId, chat.channelId)
+          eq(schema.Thread.integrationId, chat.channelId),
+          // Skip empty threads — earlier widget builds created threads
+          // eagerly on every "Send us a message" tap, so an empty thread
+          // could otherwise mask an older one that actually has messages.
+          isNotNull(schema.Thread.latestMessageId)
         )
       )
       .orderBy(desc(schema.Thread.lastMessageAt))
@@ -219,5 +230,268 @@ threadsRoute.get('/:threadId/messages', async (c) => {
     )
   }
 })
+
+/**
+ * GET /api/chat/threads
+ *
+ * List the visitor's threads on this channel, ordered by `lastMessageAt`
+ * descending. Cursor pagination keyed by `lastMessageAt|id` so duplicates
+ * across pages stay stable when timestamps collide.
+ *
+ * Query: `?cursor=<iso>__<id>&limit=20`
+ */
+threadsRoute.get('/', async (c) => {
+  applyChatCorsHeaders(c, { allowCredentials: true })
+
+  const chat = c.get('chat')
+  const cursor = c.req.query('cursor') ?? null
+  const limitRaw = Number(c.req.query('limit') ?? LIST_PAGE_SIZE)
+  const limit = Number.isFinite(limitRaw) ? Math.max(1, Math.min(50, limitRaw)) : LIST_PAGE_SIZE
+
+  try {
+    const cursorParts = cursor ? parseCursor(cursor) : null
+
+    // We can't filter on metadata.visitorParticipantId at SQL-time without a
+    // jsonb index, so we over-fetch by 4x and filter in-memory. Visitor thread
+    // counts on a single channel are bounded enough that this is cheap.
+    const fetchLimit = limit * 4
+    const baseConditions = [
+      eq(schema.Thread.organizationId, chat.organizationId),
+      eq(schema.Thread.integrationId, chat.channelId),
+    ]
+
+    const conditions = cursorParts
+      ? [
+          ...baseConditions,
+          or(
+            lt(schema.Thread.lastMessageAt, cursorParts.lastMessageAt),
+            and(
+              eq(schema.Thread.lastMessageAt, cursorParts.lastMessageAt),
+              lt(schema.Thread.id, cursorParts.id)
+            )
+          )!,
+        ]
+      : baseConditions
+
+    const rows = await database
+      .select({
+        id: schema.Thread.id,
+        subject: schema.Thread.subject,
+        lastMessageAt: schema.Thread.lastMessageAt,
+        latestMessageId: schema.Thread.latestMessageId,
+        metadata: schema.Thread.metadata,
+        assigneeId: schema.Thread.assigneeId,
+        assigneeName: schema.User.name,
+        assigneeImage: schema.User.image,
+      })
+      .from(schema.Thread)
+      .leftJoin(schema.User, eq(schema.User.id, schema.Thread.assigneeId))
+      .where(and(...conditions))
+      .orderBy(desc(schema.Thread.lastMessageAt), desc(schema.Thread.id))
+      .limit(fetchLimit)
+
+    const mine = rows.filter((t) => {
+      const meta = (t.metadata ?? {}) as Partial<ChatThreadMetadata>
+      return meta.channel === 'chat' && meta.visitorParticipantId === chat.visitorParticipantId
+    })
+
+    const page = mine.slice(0, limit)
+    const nextThread = mine.length > limit ? mine[limit] : null
+
+    // Fetch latest message snippet for each thread (small N, no N+1 concern).
+    const messageIds = page.map((t) => t.latestMessageId).filter((id): id is string => !!id)
+    const lastMessages = messageIds.length
+      ? await database
+          .select({
+            id: schema.Message.id,
+            threadId: schema.Message.threadId,
+            textPlain: schema.Message.textPlain,
+            textHtml: schema.Message.textHtml,
+            isInbound: schema.Message.isInbound,
+            sentAt: schema.Message.sentAt,
+            createdAt: schema.Message.createdAt,
+          })
+          .from(schema.Message)
+          .where(
+            sql`${schema.Message.id} = ANY(ARRAY[${sql.join(
+              messageIds.map((id) => sql`${id}`),
+              sql`, `
+            )}]::text[])`
+          )
+      : []
+    const lastByThread = new Map(lastMessages.map((m) => [m.threadId, m]))
+
+    const items = page.map((t) => {
+      const last = lastByThread.get(t.id)
+      const snippet = last ? (last.textPlain ?? last.textHtml ?? '').slice(0, 160) : ''
+      const sentAt = last?.sentAt ?? last?.createdAt ?? t.lastMessageAt ?? new Date()
+      return {
+        id: t.id,
+        agent: t.assigneeId
+          ? { id: t.assigneeId, name: t.assigneeName ?? 'Support', avatarUrl: t.assigneeImage }
+          : null,
+        lastMessage: {
+          snippet,
+          sentAt,
+          isInbound: last?.isInbound ?? false,
+        },
+        // Read-receipt aggregation is not yet wired through; surface 0 here and
+        // let the widget maintain unread via the per-visitor channel + local
+        // last-read-at storage.
+        unreadCount: 0,
+        updatedAt: t.lastMessageAt ?? t.id,
+      }
+    })
+
+    const nextCursor =
+      nextThread && nextThread.lastMessageAt
+        ? `${nextThread.lastMessageAt.toISOString()}__${nextThread.id}`
+        : null
+
+    return c.json({ success: true, data: { items, nextCursor } })
+  } catch (error) {
+    log.error('Failed to list chat threads', {
+      channelId: chat.channelId,
+      error: error instanceof Error ? error.message : String(error),
+    })
+    return c.json(
+      { success: false, error: { code: 'INTERNAL_ERROR', message: 'Failed to list threads' } },
+      500
+    )
+  }
+})
+
+/**
+ * POST /api/chat/threads/:threadId/transcript
+ *
+ * Render the thread's messages as a sanitized HTML document for download.
+ * Gated by ChatWidget.allowDownloadTranscript.
+ */
+threadsRoute.post('/:threadId/transcript', async (c) => {
+  applyChatCorsHeaders(c, { allowCredentials: true })
+
+  const chat = c.get('chat')
+  const threadId = c.req.param('threadId')
+
+  try {
+    const widget = await loadChatWidgetByChannelId(chat.channelId)
+    if (!widget || !widget.allowDownloadTranscript) {
+      return c.json(
+        { success: false, error: { code: 'FORBIDDEN', message: 'Transcript download disabled' } },
+        403
+      )
+    }
+
+    const [thread] = await database
+      .select({
+        id: schema.Thread.id,
+        subject: schema.Thread.subject,
+        metadata: schema.Thread.metadata,
+      })
+      .from(schema.Thread)
+      .where(
+        and(
+          eq(schema.Thread.id, threadId),
+          eq(schema.Thread.organizationId, chat.organizationId),
+          eq(schema.Thread.integrationId, chat.channelId)
+        )
+      )
+      .limit(1)
+    if (!thread) {
+      return c.json(
+        { success: false, error: { code: 'NOT_FOUND', message: 'Thread not found' } },
+        404
+      )
+    }
+    const meta = (thread.metadata ?? {}) as Partial<ChatThreadMetadata>
+    if (meta.visitorParticipantId !== chat.visitorParticipantId) {
+      return c.json(
+        { success: false, error: { code: 'FORBIDDEN', message: 'Not your thread' } },
+        403
+      )
+    }
+
+    const rows = await database
+      .select({
+        id: schema.Message.id,
+        textPlain: schema.Message.textPlain,
+        textHtml: schema.Message.textHtml,
+        isInbound: schema.Message.isInbound,
+        sentAt: schema.Message.sentAt,
+        createdAt: schema.Message.createdAt,
+      })
+      .from(schema.Message)
+      .where(eq(schema.Message.threadId, threadId))
+      .orderBy(asc(schema.Message.sentAt))
+
+    const html = renderTranscriptHtml({
+      subject: thread.subject ?? 'Conversation',
+      messages: rows.map((m) => ({
+        body: m.textPlain ?? stripHtml(m.textHtml ?? ''),
+        isInbound: m.isInbound,
+        sentAt: m.sentAt ?? m.createdAt,
+      })),
+    })
+
+    return c.json({ success: true, data: { html, filename: `transcript-${threadId}.html` } })
+  } catch (error) {
+    log.error('Failed to render chat transcript', {
+      threadId,
+      error: error instanceof Error ? error.message : String(error),
+    })
+    return c.json(
+      { success: false, error: { code: 'INTERNAL_ERROR', message: 'Failed to render transcript' } },
+      500
+    )
+  }
+})
+
+function parseCursor(cursor: string): { lastMessageAt: Date; id: string } | null {
+  const [iso, id] = cursor.split('__')
+  if (!iso || !id) return null
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return null
+  return { lastMessageAt: d, id }
+}
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
+function stripHtml(html: string): string {
+  return html.replace(/<[^>]*>/g, '').trim()
+}
+
+function renderTranscriptHtml(args: {
+  subject: string
+  messages: { body: string; isInbound: boolean; sentAt: Date }[]
+}): string {
+  const rows = args.messages
+    .map((m) => {
+      const who = m.isInbound ? 'You' : 'Support'
+      const at = new Date(m.sentAt).toISOString()
+      return `<div class="row ${m.isInbound ? 'in' : 'out'}"><div class="meta">${escapeHtml(
+        who
+      )} · ${escapeHtml(at)}</div><div class="body">${escapeHtml(m.body)}</div></div>`
+    })
+    .join('\n')
+  return `<!doctype html>
+<html><head><meta charset="utf-8"><title>${escapeHtml(args.subject)}</title>
+<style>
+  body { font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; max-width: 720px; margin: 32px auto; padding: 0 16px; color: #111; }
+  h1 { font-size: 18px; }
+  .row { margin: 12px 0; padding: 12px; border-radius: 10px; }
+  .row.in { background: #f3f4f6; }
+  .row.out { background: #eef2ff; }
+  .meta { font-size: 11px; color: #6b7280; margin-bottom: 4px; }
+  .body { white-space: pre-wrap; }
+</style></head>
+<body><h1>${escapeHtml(args.subject)}</h1>${rows}</body></html>`
+}
 
 export default threadsRoute

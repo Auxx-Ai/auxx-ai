@@ -29,9 +29,12 @@ export function DropdownMenuContent({
       <DropdownMenuPrimitive.Content
         sideOffset={sideOffset}
         className={cn(
-          'z-50 min-w-[10rem] overflow-hidden rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] p-1 text-sm shadow-md',
+          // See popover.tsx — must outrank `.auxx-chat-shell`'s z-index since
+          // the dropdown is portaled as a sibling of the shell stacking ctx.
+          'min-w-[10rem] overflow-hidden rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] p-1 text-sm shadow-md',
           className
         )}
+        style={{ zIndex: 2147483001 }}
         {...props}
       />
     </DropdownMenuPrimitive.Portal>

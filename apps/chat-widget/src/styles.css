@@ -107,6 +107,32 @@
     background: var(--auxx-chat-surface);
     box-shadow: var(--auxx-chat-shell-open-shadow);
   }
+  .auxx-chat-shell--expanded {
+    width: var(--auxx-chat-expanded-width, 720px);
+  }
+
+  .auxx-chat-shell__badge {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    border-radius: 9px;
+    background: #ef4444;
+    color: #fff;
+    font-size: 11px;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 3;
+    pointer-events: none;
+    border: 2px solid var(--auxx-chat-primary, #4f46e5);
+  }
+  .auxx-chat-shell--open .auxx-chat-shell__badge {
+    display: none;
+  }
 
   .auxx-chat-shell__trigger {
     position: absolute;

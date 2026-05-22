@@ -75,6 +75,15 @@ export function HomeView({ channelId, config }: HomeViewProps) {
   const handleSendMessage = useCallback(async () => {
     setCreating(true)
     try {
+      // Reuse the visitor's existing thread if one exists — a single ongoing
+      // conversation rather than a new thread per click. `recent` is already
+      // loaded when the admin enabled the Recent card; otherwise fetch on
+      // demand.
+      const existing = recent ?? (await api.getRecentThread().catch(() => null))?.thread ?? null
+      if (existing) {
+        openThread(existing.id, existing.subject || 'Conversation')
+        return
+      }
       const { threadId } = await api.createThread({
         url: typeof window !== 'undefined' ? window.location.href : undefined,
         referrer: typeof document !== 'undefined' ? document.referrer || undefined : undefined,
@@ -86,7 +95,7 @@ export function HomeView({ channelId, config }: HomeViewProps) {
     } finally {
       setCreating(false)
     }
-  }, [api, openThread])
+  }, [api, openThread, recent])
 
   const cards = [
     home.showRecentMessage && recent ? (
