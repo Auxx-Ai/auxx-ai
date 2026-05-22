@@ -2,6 +2,7 @@
 
 import { publishMessageCreated, publishMessageUpdated } from '../realtime/publish-helpers'
 import type { RealtimeService } from '../realtime/realtime-service'
+import { rooms } from '../realtime/rooms'
 
 /**
  * Shape of a chat message frame the embedded widget renders. Loose typing —
@@ -48,11 +49,15 @@ export async function publishChatMessageCreated(
       threadId: args.threadId,
       inboxId: args.inboxId,
     }),
-    realtime.sendToChat(args.visitorChatSessionId, 'new-message', args.visitorPayload),
+    realtime.publish(
+      rooms.chatSession(args.visitorChatSessionId),
+      'new-message',
+      args.visitorPayload
+    ),
   ]
   if (args.visitorParticipantId) {
     tasks.push(
-      realtime.sendToVisitor(args.visitorParticipantId, 'thread-updated', {
+      realtime.publish(rooms.visitor(args.visitorParticipantId), 'thread-updated', {
         threadId: args.threadId,
         lastMessage: {
           sender: args.visitorPayload.sender,
@@ -74,7 +79,7 @@ export async function publishVisitorThreadCreated(
   realtime: RealtimeService,
   args: { visitorParticipantId: string; threadId: string; createdAt?: Date }
 ): Promise<void> {
-  await realtime.sendToVisitor(args.visitorParticipantId, 'thread-created', {
+  await realtime.publish(rooms.visitor(args.visitorParticipantId), 'thread-created', {
     threadId: args.threadId,
     createdAt: args.createdAt ?? new Date(),
   })
@@ -114,7 +119,7 @@ export async function publishChatTyping(
     agent?: { id: string; name: string }
   }
 ): Promise<void> {
-  await realtime.sendToChat(args.visitorChatSessionId, 'typing', {
+  await realtime.publish(rooms.chatSession(args.visitorChatSessionId), 'typing', {
     sender: args.sender,
     isTyping: args.isTyping,
     agent: args.agent,
@@ -127,7 +132,7 @@ export async function publishChatThreadClosed(
   realtime: RealtimeService,
   args: { visitorChatSessionId: string; closedBy: { id: string; name: string } }
 ): Promise<void> {
-  await realtime.sendToChat(args.visitorChatSessionId, 'session-closed', {
+  await realtime.publish(rooms.chatSession(args.visitorChatSessionId), 'session-closed', {
     closedBy: args.closedBy,
     createdAt: new Date(),
   })

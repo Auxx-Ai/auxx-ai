@@ -18,7 +18,7 @@ import type {
 } from '../../files/core/thumbnail-types'
 import { createStorageManager } from '../../files/storage/storage-manager'
 import { createScopedLogger } from '../../logger'
-import { getRealtimeService } from '../../realtime'
+import { getRealtimeService, rooms } from '../../realtime'
 import { toRecordId } from '../../resources/resource-id'
 
 /**
@@ -481,8 +481,8 @@ async function publishAvatarResolved(params: {
     await Promise.all(
       instances.map(({ entityInstanceId, entityDefinitionId }) =>
         realtime
-          .sendToOrganization(
-            orgId,
+          .publish(
+            rooms.orgPresence(orgId),
             'record:updated',
             {
               entityDefinitionId,

@@ -1,10 +1,14 @@
 // @auxx/lib/realtime/realtime-service.ts
 
+import { type AuthorizeCtx, findRoom, fromPusherChannel, toPusherChannel } from './rooms'
 import type { RealtimeProvider } from './types'
 
 /**
  * Provider-agnostic realtime service.
- * Wraps a RealtimeProvider with channel naming conventions and convenience methods.
+ *
+ * The public API is opaque-room-key based — callers build keys via
+ * `rooms.X(...)` helpers and the service handles the Pusher prefix mapping
+ * (`presence-` / `private-`) internally.
  */
 export class RealtimeService {
   private provider: RealtimeProvider
@@ -13,73 +17,65 @@ export class RealtimeService {
     this.provider = provider
   }
 
-  /** Publish to `presence-org-{organizationId}` */
-  async sendToOrganization(
-    organizationId: string,
+  /**
+   * Publish an event to a room. The Pusher channel name is derived from the
+   * room's registered kind (plain → `private-{key}`, presence → `presence-{key}`).
+   * Returns false if the room isn't registered or the provider isn't initialized.
+   */
+  async publish(
+    roomKey: string,
     event: string,
     data: unknown,
     options?: { excludeSocketId?: string }
   ): Promise<boolean> {
-    return this.provider.publish(`presence-org-${organizationId}`, event, data, options)
+    const channel = toPusherChannel(roomKey)
+    if (!channel) return false
+    return this.provider.publish(channel, event, data, options)
   }
 
   /**
-   * Publish to `presence-org-{organizationId}-inbox-{inboxId | 'none'}`.
-   * Mail events publish per-inbox so users only receive events for inboxes they
-   * can read. Unassigned threads (`inboxId = null`) ride on the `none` slug,
-   * which every org member subscribes to as the org-triage default.
+   * Publish a `member-update` event on a presence room. Used by
+   * `realtime.updateSelf` tRPC to fan out per-member meta changes (e.g. idle
+   * transitions, custom status) without relying on Pusher client-events.
    */
-  async sendToInbox(
-    organizationId: string,
-    inboxId: string | null,
-    event: string,
-    data: unknown,
-    options?: { excludeSocketId?: string }
+  async publishMemberUpdate(
+    roomKey: string,
+    member: { id: string; meta?: Record<string, unknown> }
   ): Promise<boolean> {
-    const slug = inboxId ?? 'none'
-    return this.provider.publish(
-      `presence-org-${organizationId}-inbox-${slug}`,
-      event,
-      data,
-      options
-    )
-  }
-
-  /** Publish to `private-user-{userId}` */
-  async sendToUser(
-    userId: string,
-    event: string,
-    data: unknown,
-    options?: { excludeSocketId?: string }
-  ): Promise<boolean> {
-    return this.provider.publish(`private-user-${userId}`, event, data, options)
-  }
-
-  /** Publish to `private-chat-{sessionId}` */
-  async sendToChat(
-    sessionId: string,
-    event: string,
-    data: unknown,
-    options?: { excludeSocketId?: string }
-  ): Promise<boolean> {
-    return this.provider.publish(`private-chat-${sessionId}`, event, data, options)
+    const def = findRoom(roomKey)
+    if (!def || def.kind !== 'presence') return false
+    return this.publish(roomKey, 'member-update', member)
   }
 
   /**
-   * Publish to `private-visitor-{visitorParticipantId}` — the cross-thread
-   * channel used by the chat widget to receive updates for any of the visitor's
-   * threads (Messages tab list + launcher unread badge).
+   * Authenticate a Pusher channel binding. Takes the raw Pusher channel name
+   * (e.g. `private-org-xxx-inbox-yyy`) so the route handler can pass through
+   * what Pusher sent it. ACL is dispatched via the room registry.
    */
-  async sendToVisitor(
-    visitorParticipantId: string,
-    event: string,
-    data: unknown,
-    options?: { excludeSocketId?: string }
-  ): Promise<boolean> {
-    return this.provider.publish(`private-visitor-${visitorParticipantId}`, event, data, options)
+  async authorize(
+    socketId: string,
+    channelName: string,
+    ctx: AuthorizeCtx,
+    userData?: { id: string; name?: string; email?: string; image?: string }
+  ): Promise<{ auth: string; channel_data?: string } | null> {
+    const roomKey = fromPusherChannel(channelName)
+    if (!roomKey) return null
+    const def = findRoom(roomKey)
+    if (!def) return null
+    // Reject if the channel prefix doesn't match the registered kind.
+    const expected = toPusherChannel(roomKey)
+    if (expected !== channelName) return null
+
+    const allowed = await def.authorize(roomKey, ctx)
+    if (!allowed) return null
+    return this.provider.authenticate(socketId, channelName, userData)
   }
 
-  /** Authenticate a client for a private/presence channel */
+  /**
+   * Raw Pusher authentication — used by the widget auth route which does its
+   * own visitor-passport check upstream. Prefer `authorize(...)` everywhere
+   * else.
+   */
   authenticateChannel(
     socketId: string,
     channel: string,

@@ -9,7 +9,7 @@ import type {
   RecordDeletedEvent,
   RecordUpdatedEvent,
 } from '@auxx/lib/realtime'
-import { useCallback, useEffect } from 'react'
+import { useCallback } from 'react'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { useOrgChannel } from '~/realtime/hooks'
 import { api } from '~/trpc/react'
@@ -22,7 +22,6 @@ import { useRecordStore } from '../store/record-store'
  * Mount once in the app layout.
  */
 export function useResourceSync() {
-  const orgChannel = useOrgChannel()
   const { hasAccess } = useFeatureFlags()
   const realtimeSyncEnabled = hasAccess('realtimeSync')
   const utils = api.useUtils()
@@ -70,13 +69,8 @@ export function useResourceSync() {
     [setRecords, invalidateLists, setValues, utils]
   )
 
-  // Partial-update the cached record if we already have it. If the tab never
-  // fetched this record, do nothing — `useRecord` will fetch fresh when a
-  // component first mounts a card for it.
-  //
-  // Merge only keys present on the payload. The field-value layer emits
-  // column-specific events (`{ displayName }` or `{ avatarUrl }` only), so
-  // treat `undefined` as "don't touch" and `null` as "clear".
+  // Partial-update the cached record if we already have it. Merge only keys
+  // present on the payload — `undefined` means "don't touch", `null` clears.
   const handleRecordUpdated = useCallback(
     (raw: unknown) => {
       const data = raw as RecordUpdatedEvent['data']
@@ -112,29 +106,31 @@ export function useResourceSync() {
     [invalidateLists, utils]
   )
 
-  useEffect(() => {
-    if (!orgChannel || !realtimeSyncEnabled) return
+  const onEvent = useCallback(
+    (event: string, payload: unknown) => {
+      if (!realtimeSyncEnabled) return
+      switch (event) {
+        case 'fieldValues:updated':
+          return handleFieldValuesUpdated(payload)
+        case 'record:created':
+          return handleRecordCreated(payload)
+        case 'record:updated':
+          return handleRecordUpdated(payload)
+        case 'record:deleted':
+          return handleRecordDeleted(payload)
+        case 'record:archived':
+          return handleRecordArchived(payload)
+      }
+    },
+    [
+      realtimeSyncEnabled,
+      handleFieldValuesUpdated,
+      handleRecordCreated,
+      handleRecordUpdated,
+      handleRecordDeleted,
+      handleRecordArchived,
+    ]
+  )
 
-    orgChannel.bind('fieldValues:updated', handleFieldValuesUpdated)
-    orgChannel.bind('record:created', handleRecordCreated)
-    orgChannel.bind('record:updated', handleRecordUpdated)
-    orgChannel.bind('record:deleted', handleRecordDeleted)
-    orgChannel.bind('record:archived', handleRecordArchived)
-
-    return () => {
-      orgChannel.unbind('fieldValues:updated', handleFieldValuesUpdated)
-      orgChannel.unbind('record:created', handleRecordCreated)
-      orgChannel.unbind('record:updated', handleRecordUpdated)
-      orgChannel.unbind('record:deleted', handleRecordDeleted)
-      orgChannel.unbind('record:archived', handleRecordArchived)
-    }
-  }, [
-    orgChannel,
-    realtimeSyncEnabled,
-    handleFieldValuesUpdated,
-    handleRecordCreated,
-    handleRecordUpdated,
-    handleRecordDeleted,
-    handleRecordArchived,
-  ])
+  useOrgChannel({ onEvent })
 }

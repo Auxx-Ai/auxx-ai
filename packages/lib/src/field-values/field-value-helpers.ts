@@ -22,7 +22,7 @@ import { and, eq, inArray, sql } from 'drizzle-orm'
 import { findCachedResource, getCachedEntityDefId, getCachedResource, getOrgCache } from '../cache'
 import type { FieldOptions } from '../custom-fields/field-options'
 import { BadRequestError } from '../errors'
-import { getRealtimeService } from '../realtime'
+import { getRealtimeService, rooms } from '../realtime'
 import { isRecordId, parseRecordId, toRecordId } from '../resources/resource-id'
 import { cascadeDependentDisplayNames, getDisplayFieldDeps } from './display-field-deps'
 import { FieldValueValidator, fieldValueSchemas } from './field-value-validator'
@@ -891,8 +891,8 @@ async function publishRecordColumnUpdate(
     if (!features?.realtimeSync) return
     const recordId = toRecordId(entityDefId, entityInstanceId)
     getRealtimeService()
-      .sendToOrganization(
-        ctx.organizationId,
+      .publish(
+        rooms.orgPresence(ctx.organizationId),
         'record:updated',
         {
           entityDefinitionId: entityDefId,

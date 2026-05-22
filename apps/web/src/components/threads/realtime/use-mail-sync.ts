@@ -13,7 +13,7 @@ import type {
   ThreadDeletedEvent,
   ThreadUpdatedEvent,
 } from '@auxx/lib/realtime/client'
-import { useCallback, useEffect, useMemo } from 'react'
+import { useCallback, useMemo } from 'react'
 import { useUser } from '~/hooks/use-user'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { useInboxChannels, useOrgChannel } from '~/realtime/hooks'
@@ -38,7 +38,6 @@ export function useMailSync() {
   const { hasAccess } = useFeatureFlags()
   const realtimeMailEnabled = hasAccess('realtimeMail')
 
-  const orgChannel = useOrgChannel()
   const { inboxes } = useInboxes()
 
   // Build the slug set from accessible inboxes plus the implicit `none`
@@ -48,8 +47,6 @@ export function useMailSync() {
     list.push('none')
     return list
   }, [inboxes])
-
-  const inboxChannels = useInboxChannels(realtimeMailEnabled ? slugs : [])
 
   // Store actions (selectors to avoid re-renders).
   const requestThread = useThreadStore((s) => s.requestThread)
@@ -70,8 +67,7 @@ export function useMailSync() {
   const utils = api.useUtils()
 
   const handleThreadCreated = useCallback(
-    (raw: unknown) => {
-      const data = (raw as ThreadCreatedEvent['data']) ?? null
+    (data: ThreadCreatedEvent['data'] | null) => {
       if (!data?.threadId) return
       requestThread(data.threadId)
       invalidateAllContexts()
@@ -84,8 +80,7 @@ export function useMailSync() {
   // already skips keys with pending optimistic mutations. Drops events whose
   // `userId` belongs to a different user (per-user unread fanout).
   const handleThreadUpdated = useCallback(
-    (raw: unknown) => {
-      const data = (raw as ThreadUpdatedEvent['data']) ?? null
+    (data: ThreadUpdatedEvent['data'] | null) => {
       if (!data?.threadId || !data.patch) return
       const patch = { ...(data.patch as Record<string, unknown>) }
       if (patch.userId && currentUserId && patch.userId !== currentUserId) return
@@ -98,8 +93,7 @@ export function useMailSync() {
   )
 
   const handleThreadDeleted = useCallback(
-    (raw: unknown) => {
-      const data = (raw as ThreadDeletedEvent['data']) ?? null
+    (data: ThreadDeletedEvent['data'] | null) => {
       if (!data?.threadId) return
       removeThread(data.threadId)
       invalidateMessageList(data.threadId)
@@ -109,21 +103,16 @@ export function useMailSync() {
   )
 
   const handleMessageCreated = useCallback(
-    (raw: unknown) => {
-      const data = (raw as MessageCreatedEvent['data']) ?? null
+    (data: MessageCreatedEvent['data'] | null) => {
       if (!data?.messageId || !data?.threadId) return
       requestMessage(data.messageId)
       appendMessage(data.threadId, data.messageId)
-      // Thread metadata (lastMessageAt, latestMessageId, messageCount) lands
-      // via the metadata-recompute thread:updated event published by the
-      // ingest seam.
     },
     [requestMessage, appendMessage]
   )
 
   const handleMessageUpdated = useCallback(
-    (raw: unknown) => {
-      const data = (raw as MessageUpdatedEvent['data']) ?? null
+    (data: MessageUpdatedEvent['data'] | null) => {
       if (!data?.messageId || !data.patch) return
       const patch = { ...(data.patch as Record<string, unknown>) }
       delete patch.id
@@ -135,8 +124,7 @@ export function useMailSync() {
   )
 
   const handleMessageDeleted = useCallback(
-    (raw: unknown) => {
-      const data = (raw as MessageDeletedEvent['data']) ?? null
+    (data: MessageDeletedEvent['data'] | null) => {
       if (!data?.messageId || !data?.threadId) return
       removeMessage(data.messageId)
       removeFromMessageList(data.threadId, data.messageId)
@@ -145,8 +133,7 @@ export function useMailSync() {
   )
 
   const handleParticipantUpdated = useCallback(
-    (raw: unknown) => {
-      const data = (raw as ParticipantUpdatedEvent['data']) ?? null
+    (data: ParticipantUpdatedEvent['data'] | null) => {
       if (!data?.participantId || !data.patch) return
       const patch = { ...(data.patch as Record<string, unknown>) }
       delete patch.id
@@ -192,8 +179,7 @@ export function useMailSync() {
   )
 
   const handleMailBatch = useCallback(
-    (raw: unknown) => {
-      const data = (raw as MailBatchEvent['data']) ?? null
+    (data: MailBatchEvent['data'] | null) => {
       if (!Array.isArray(data?.events)) return
       for (const e of data.events) dispatchEvent(e)
       // One list invalidation at the end of a bundle.
@@ -202,49 +188,49 @@ export function useMailSync() {
     [dispatchEvent, utils]
   )
 
-  // Bind handlers on every active inbox channel.
-  useEffect(() => {
-    if (!realtimeMailEnabled) return
-    const cleanups: Array<() => void> = []
-    for (const channel of inboxChannels.values()) {
-      channel.bind('thread:created', handleThreadCreated)
-      channel.bind('thread:updated', handleThreadUpdated)
-      channel.bind('thread:deleted', handleThreadDeleted)
-      channel.bind('message:created', handleMessageCreated)
-      channel.bind('message:updated', handleMessageUpdated)
-      channel.bind('message:deleted', handleMessageDeleted)
-      channel.bind('mail:batch', handleMailBatch)
-      cleanups.push(() => {
-        channel.unbind('thread:created', handleThreadCreated)
-        channel.unbind('thread:updated', handleThreadUpdated)
-        channel.unbind('thread:deleted', handleThreadDeleted)
-        channel.unbind('message:created', handleMessageCreated)
-        channel.unbind('message:updated', handleMessageUpdated)
-        channel.unbind('message:deleted', handleMessageDeleted)
-        channel.unbind('mail:batch', handleMailBatch)
-      })
-    }
-    return () => {
-      for (const c of cleanups) c()
-    }
-  }, [
-    realtimeMailEnabled,
-    inboxChannels,
-    handleThreadCreated,
-    handleThreadUpdated,
-    handleThreadDeleted,
-    handleMessageCreated,
-    handleMessageUpdated,
-    handleMessageDeleted,
-    handleMailBatch,
-  ])
+  // Inbox-channel event dispatcher. Bound across every active per-inbox room
+  // by `useInboxChannels`.
+  const onInboxEvent = useCallback(
+    (event: string, payload: unknown) => {
+      switch (event) {
+        case 'thread:created':
+          return handleThreadCreated(payload as ThreadCreatedEvent['data'])
+        case 'thread:updated':
+          return handleThreadUpdated(payload as ThreadUpdatedEvent['data'])
+        case 'thread:deleted':
+          return handleThreadDeleted(payload as ThreadDeletedEvent['data'])
+        case 'message:created':
+          return handleMessageCreated(payload as MessageCreatedEvent['data'])
+        case 'message:updated':
+          return handleMessageUpdated(payload as MessageUpdatedEvent['data'])
+        case 'message:deleted':
+          return handleMessageDeleted(payload as MessageDeletedEvent['data'])
+        case 'mail:batch':
+          return handleMailBatch(payload as MailBatchEvent['data'])
+      }
+    },
+    [
+      handleThreadCreated,
+      handleThreadUpdated,
+      handleThreadDeleted,
+      handleMessageCreated,
+      handleMessageUpdated,
+      handleMessageDeleted,
+      handleMailBatch,
+    ]
+  )
 
-  // Participant events ride on the org channel.
-  useEffect(() => {
-    if (!realtimeMailEnabled || !orgChannel) return
-    orgChannel.bind('participant:updated', handleParticipantUpdated)
-    return () => {
-      orgChannel.unbind('participant:updated', handleParticipantUpdated)
-    }
-  }, [realtimeMailEnabled, orgChannel, handleParticipantUpdated])
+  // Org-channel event dispatcher (currently just participant updates).
+  const onOrgEvent = useCallback(
+    (event: string, payload: unknown) => {
+      if (!realtimeMailEnabled) return
+      if (event === 'participant:updated') {
+        handleParticipantUpdated(payload as ParticipantUpdatedEvent['data'])
+      }
+    },
+    [realtimeMailEnabled, handleParticipantUpdated]
+  )
+
+  useInboxChannels(realtimeMailEnabled ? slugs : [], { onEvent: onInboxEvent })
+  useOrgChannel({ onEvent: onOrgEvent })
 }

@@ -52,4 +52,15 @@ export {
   publishThreadUpdated,
 } from './publish-helpers'
 export { RealtimeService } from './realtime-service'
+export {
+  type AuthorizeCtx,
+  findRoom,
+  findRoomByChannel,
+  fromPusherChannel,
+  type RoomDef,
+  type RoomKind,
+  roomKindFor,
+  rooms,
+  toPusherChannel,
+} from './rooms'
 export type { RealtimeProvider } from './types'
