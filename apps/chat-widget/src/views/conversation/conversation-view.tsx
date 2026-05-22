@@ -11,10 +11,16 @@ import { dismissPrivacyBanner, isPrivacyBannerDismissed } from '~/persistence/pr
 import { markThreadRead } from '~/persistence/unread'
 import { type ChatMessage, chatApi } from '~/transport/chat-api'
 import type { ChatConfig } from '~/transport/config'
-import { connectPusher } from '~/transport/pusher'
+import { connectPrivatePusher, connectPusher } from '~/transport/pusher'
+import {
+  THREAD_EVENT_TYPES,
+  type ThreadEvent,
+  type ThreadEventData,
+} from '~/transport/thread-events'
 import { Composer, type ComposerSendArgs } from './composer/composer'
 import { PrivacyBanner } from './privacy-banner'
 import { SuggestedReplies } from './suggested-replies'
+import { SystemLine } from './system-line'
 
 interface ConversationViewProps {
   channelId: string
@@ -25,11 +31,13 @@ interface ConversationViewProps {
 interface InitState {
   sessionId: string
   pusherChannel: string
+  threadPusherChannel: string
 }
 
 export function ConversationView({ channelId, threadId, config }: ConversationViewProps) {
   const api = useMemo(() => chatApi(channelId), [channelId])
   const [messages, setMessages] = useState<ChatMessage[]>([])
+  const [threadEvents, setThreadEvents] = useState<ThreadEvent[]>([])
   const [init, setInit] = useState<InitState | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [privacyDismissed, setPrivacyDismissed] = useState(() =>
@@ -51,14 +59,23 @@ export function ConversationView({ channelId, threadId, config }: ConversationVi
       })
       .then((data) => {
         if (cancelled) return
-        setInit({ sessionId: data.sessionId, pusherChannel: data.pusherChannel })
+        setInit({
+          sessionId: data.sessionId,
+          pusherChannel: data.pusherChannel,
+          threadPusherChannel: data.threadPusherChannel,
+        })
         if (data.threadId === threadId) {
           setMessages(data.messages)
+          setThreadEvents(data.threadEvents ?? [])
         } else {
           // Fallback for cases where initialize resumed a different thread.
           api
             .getHistory(threadId, data.sessionId)
-            .then((hist) => !cancelled && setMessages(hist.messages))
+            .then((hist) => {
+              if (cancelled) return
+              setMessages(hist.messages)
+              setThreadEvents(hist.threadEvents ?? [])
+            })
             .catch(() => {})
         }
       })
@@ -110,17 +127,67 @@ export function ConversationView({ channelId, threadId, config }: ConversationVi
     }
   }, [init, threadId, config.realtime.key, config.realtime.cluster])
 
+  // Subscribe to the per-thread private channel for live lifecycle events
+  // (taken_over / returned_to_ai / archived / reopened / …). The server pushes
+  // these via the shared realtime helper; the widget binds the same set of
+  // type names directly as Pusher event keys.
+  useEffect(() => {
+    if (!init) return
+    const channelName = init.threadPusherChannel
+    const expected = `private-thread-${threadId}`
+    if (channelName !== expected) return
+    const conn = connectPrivatePusher({
+      key: config.realtime.key,
+      cluster: config.realtime.cluster,
+      channelName,
+      channelId,
+    })
+    const handlers = THREAD_EVENT_TYPES.map((type) => {
+      const handler = (payload: { id?: string; createdAt?: string } & ThreadEventData) => {
+        if ((payload as { threadId?: string }).threadId !== threadId) return
+        setThreadEvents((prev) => {
+          // Dedupe by id when the server provides one; fall back to
+          // (type, threadId, createdAt) for transient payloads.
+          const id =
+            payload.id ?? `${type}:${threadId}:${payload.createdAt ?? new Date().toISOString()}`
+          if (prev.some((e) => e.id === id)) return prev
+          return [
+            ...prev,
+            {
+              id,
+              type,
+              createdAt: payload.createdAt ?? new Date().toISOString(),
+              data: payload as ThreadEventData,
+            },
+          ]
+        })
+      }
+      conn.channel.bind(type, handler)
+      return { type, handler }
+    })
+    return () => {
+      for (const { type, handler } of handlers) {
+        try {
+          conn.channel.unbind(type, handler)
+        } catch {
+          /* ignore */
+        }
+      }
+      conn.disconnect()
+    }
+  }, [init, threadId, channelId, config.realtime.key, config.realtime.cluster])
+
   // Mark read whenever the last message changes.
   useEffect(() => {
     if (messages.length === 0) return
     markThreadRead(channelId, threadId)
   }, [channelId, threadId, messages.length])
 
-  // Auto-scroll to bottom on new messages.
+  // Auto-scroll to bottom on new messages or thread events.
   useEffect(() => {
     const el = bodyRef.current
     if (el) el.scrollTop = el.scrollHeight
-  }, [messages.length])
+  }, [messages.length, threadEvents.length])
 
   const handleSend = useCallback(
     async ({ content, attachmentIds }: ComposerSendArgs) => {
@@ -152,7 +219,7 @@ export function ConversationView({ channelId, threadId, config }: ConversationVi
     [api, init, threadId]
   )
 
-  const grouped = useMemo(() => groupConsecutive(messages), [messages])
+  const timeline = useMemo(() => buildTimeline(messages, threadEvents), [messages, threadEvents])
 
   return (
     <div className='flex min-h-0 flex-1 flex-col bg-muted [&>*:last-child]:rounded-b-2xl'>
@@ -162,9 +229,13 @@ export function ConversationView({ channelId, threadId, config }: ConversationVi
             {error}
           </div>
         ) : null}
-        {grouped.map((group, gi) => (
-          <Bubble key={`g-${gi}`} group={group} />
-        ))}
+        {timeline.map((item, i) =>
+          item.kind === 'event' ? (
+            <SystemLine key={`e-${item.event.id}`} event={item.event} />
+          ) : (
+            <Bubble key={`g-${i}`} group={item.group} />
+          )
+        )}
       </div>
       {init && messages.length === 0 ? (
         <SuggestedReplies
@@ -196,17 +267,51 @@ interface MessageGroup {
   messages: ChatMessage[]
 }
 
-function groupConsecutive(messages: ChatMessage[]): MessageGroup[] {
-  const groups: MessageGroup[] = []
-  for (const m of messages) {
-    const last = groups[groups.length - 1]
-    if (last && last.sender === m.sender) {
-      last.messages.push(m)
+type TimelineItem =
+  | { kind: 'group'; group: MessageGroup; createdAt: number }
+  | { kind: 'event'; event: ThreadEvent; createdAt: number }
+
+/**
+ * Interleave messages and thread events by `createdAt`. Consecutive messages
+ * from the same sender are grouped into a single bubble cluster; any event
+ * between them breaks the cluster.
+ */
+function buildTimeline(messages: ChatMessage[], events: ThreadEvent[]): TimelineItem[] {
+  type Entry =
+    | { kind: 'message'; createdAt: number; message: ChatMessage }
+    | { kind: 'event'; createdAt: number; event: ThreadEvent }
+  const entries: Entry[] = [
+    ...messages.map((m) => ({
+      kind: 'message' as const,
+      createdAt: new Date(m.createdAt).getTime(),
+      message: m,
+    })),
+    ...events.map((e) => ({
+      kind: 'event' as const,
+      createdAt: new Date(e.createdAt).getTime(),
+      event: e,
+    })),
+  ]
+  entries.sort((a, b) => a.createdAt - b.createdAt)
+
+  const out: TimelineItem[] = []
+  for (const entry of entries) {
+    if (entry.kind === 'event') {
+      out.push({ kind: 'event', event: entry.event, createdAt: entry.createdAt })
+      continue
+    }
+    const last = out[out.length - 1]
+    if (last && last.kind === 'group' && last.group.sender === entry.message.sender) {
+      last.group.messages.push(entry.message)
     } else {
-      groups.push({ sender: m.sender, messages: [m] })
+      out.push({
+        kind: 'group',
+        group: { sender: entry.message.sender, messages: [entry.message] },
+        createdAt: entry.createdAt,
+      })
     }
   }
-  return groups
+  return out
 }
 
 function Bubble({ group }: { group: MessageGroup }) {

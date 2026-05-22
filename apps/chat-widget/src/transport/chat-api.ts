@@ -1,6 +1,7 @@
 // apps/chat-widget/src/transport/chat-api.ts
 
 import { authedFetch } from './api-client'
+import type { ThreadEvent } from './thread-events'
 
 export interface ChatMessage {
   id: string
@@ -17,7 +18,11 @@ export interface InitializeResponse {
   visitorId: string
   isNewSession: boolean
   messages: ChatMessage[]
+  /** Persisted thread lifecycle events (taken_over / archived / …). */
+  threadEvents: ThreadEvent[]
   pusherChannel: string
+  /** Private per-thread channel for live lifecycle events. */
+  threadPusherChannel: string
   visitorPusherChannel: string
   passport?: { token: string; expiresIn: string }
 }
@@ -67,11 +72,14 @@ export function chatApi(channelId: string) {
     },
 
     getHistory: (threadId: string, sessionId: string) =>
-      authedFetch<{ messages: ChatMessage[]; nextCursor: string | null }>(
-        channelId,
-        `/api/chat/threads/${threadId}/messages`,
-        { method: 'GET', query: { sessionId } }
-      ),
+      authedFetch<{
+        messages: ChatMessage[]
+        threadEvents: ThreadEvent[]
+        nextCursor: string | null
+      }>(channelId, `/api/chat/threads/${threadId}/messages`, {
+        method: 'GET',
+        query: { sessionId },
+      }),
 
     setTyping: (sessionId: string, isTyping: boolean) =>
       authedFetch<Record<string, never>>(channelId, '/api/chat/typing', {

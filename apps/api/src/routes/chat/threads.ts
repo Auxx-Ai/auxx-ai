@@ -7,7 +7,7 @@ import type { ChatThreadMetadata } from '@auxx/lib/threads/types'
 import { createScopedLogger } from '@auxx/logger'
 import { and, asc, desc, eq, isNotNull, lt, or, sql } from 'drizzle-orm'
 import { Hono } from 'hono'
-import { applyChatCorsHeaders, loadChatWidgetByChannelId } from './lib'
+import { applyChatCorsHeaders, loadChatWidgetByChannelId, loadThreadEvents } from './lib'
 
 const log = createScopedLogger('chat-threads-route')
 
@@ -219,7 +219,11 @@ threadsRoute.get('/:threadId/messages', async (c) => {
       status: 'DELIVERED',
     }))
 
-    return c.json({ success: true, data: { messages, nextCursor: null } })
+    // Hydrate the thread's lifecycle events so the widget can interleave
+    // centered system lines with the message transcript on reload.
+    const threadEvents = await loadThreadEvents(chat.organizationId, threadId)
+
+    return c.json({ success: true, data: { messages, threadEvents, nextCursor: null } })
   } catch (error) {
     log.error('Failed to load chat history', {
       threadId,

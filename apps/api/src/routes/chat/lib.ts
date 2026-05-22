@@ -1,8 +1,73 @@
 // apps/api/src/routes/chat/lib.ts
 
 import { database, schema } from '@auxx/database'
-import { and, asc, eq, inArray } from 'drizzle-orm'
+import { and, asc, eq, inArray, sql } from 'drizzle-orm'
 import type { Context } from 'hono'
+
+/**
+ * Thread lifecycle event types the widget renders as centered system lines.
+ *
+ * Keep in sync with `apps/chat-widget/src/transport/thread-events.ts` —
+ * the union is duplicated rather than imported because the widget cannot
+ * pull `@auxx/lib/events` (server deps).
+ */
+export const WIDGET_THREAD_EVENT_TYPES = [
+  'thread:taken_over',
+  'thread:returned_to_ai',
+  'thread:archived',
+  'thread:reopened',
+  'thread:assignee:changed',
+  'thread:visitor:identified',
+] as const
+
+export type WidgetThreadEventType = (typeof WIDGET_THREAD_EVENT_TYPES)[number]
+
+export interface WidgetThreadEvent {
+  id: string
+  type: WidgetThreadEventType
+  createdAt: Date
+  data: Record<string, unknown>
+}
+
+/** Cap analogous to message history pagination; anonymous chats are short. */
+const THREAD_EVENT_LIMIT = 50
+
+/**
+ * Fetch the persisted thread lifecycle events for a given thread, org-scoped.
+ *
+ * Uses the `Event_threadId_expr_idx` expression index on `data->>'threadId'`
+ * (added in #664) plus the `Event_type_idx` to narrow to widget-visible types.
+ * Returned newest-last so the widget can append in chronological order.
+ */
+export async function loadThreadEvents(
+  organizationId: string,
+  threadId: string
+): Promise<WidgetThreadEvent[]> {
+  const rows = await database
+    .select({
+      id: schema.Event.id,
+      type: schema.Event.type,
+      createdAt: schema.Event.createdAt,
+      data: schema.Event.data,
+    })
+    .from(schema.Event)
+    .where(
+      and(
+        eq(schema.Event.organizationId, organizationId),
+        inArray(schema.Event.type, [...WIDGET_THREAD_EVENT_TYPES]),
+        sql`(${schema.Event.data}->>'threadId') = ${threadId}`
+      )
+    )
+    .orderBy(asc(schema.Event.createdAt))
+    .limit(THREAD_EVENT_LIMIT)
+
+  return rows.map((r) => ({
+    id: r.id,
+    type: r.type as WidgetThreadEventType,
+    createdAt: r.createdAt,
+    data: (r.data ?? {}) as Record<string, unknown>,
+  }))
+}
 
 export interface LoadedChatWidget {
   channelId: string
