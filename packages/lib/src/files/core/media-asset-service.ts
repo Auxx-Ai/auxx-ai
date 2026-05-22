@@ -4,6 +4,7 @@ import { type Database, database as db, schema } from '@auxx/database'
 import type {
   MediaAssetEntity as MediaAsset,
   MediaAssetVersionEntity as MediaAssetVersion,
+  StorageLocationEntity as StorageLocation,
 } from '@auxx/database/types'
 import {
   and,
@@ -548,7 +549,7 @@ export class MediaAssetService
     storageLocationId: string
   ): Promise<{
     asset: MediaAsset
-    version: MediaAssetVersion
+    version: MediaAssetVersion & { storageLocation: StorageLocation }
   }> {
     return this.getTx(async (tx) => {
       // Create the asset record
@@ -653,7 +654,10 @@ export class MediaAssetService
       size?: bigint
       mimeType?: string
     } = {}
-  ): Promise<{ asset: MediaAsset; version: MediaAssetVersion }> {
+  ): Promise<{
+    asset: MediaAsset
+    version: MediaAssetVersion & { storageLocation: StorageLocation }
+  }> {
     return this.getTx(async (tx) => {
       const asset = await this.get(id, tx)
       if (!asset) {
@@ -1124,7 +1128,7 @@ export class MediaAssetService
     storageLocationId: string,
     metadata: any = {},
     db?: DatabaseClient
-  ): Promise<MediaAssetVersion> {
+  ): Promise<MediaAssetVersion & { storageLocation: StorageLocation }> {
     if (db) {
       // Already in transaction, work directly with it
       const entity = await this.get(entityId, db)
@@ -1174,7 +1178,7 @@ export class MediaAssetService
         })
         .where(eq(schema.MediaAsset.id, entityId))
 
-      return version
+      return { ...version, storageLocation }
     } else {
       // Not in transaction, create one
       const entity = await this.get(entityId)

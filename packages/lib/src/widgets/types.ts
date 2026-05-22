@@ -49,7 +49,8 @@ export const widgetSchema = z.object({
   title: z.string().min(1, 'Widget title is required'),
   subtitle: z.string().optional(),
   primaryColor: z.string().default('#4F46E5'),
-  logoUrl: z.url().optional().or(z.literal('')),
+  logoLight: z.string().nullish(),
+  logoDark: z.string().nullish(),
   position: z.enum(WidgetPosition).default(WidgetPosition.BOTTOM_RIGHT),
 
   // Behavior
@@ -79,7 +80,8 @@ export interface Widget {
   title: string
   subtitle?: string
   primaryColor: string
-  logoUrl?: string
+  logoLight?: string | null
+  logoDark?: string | null
   position: WidgetPosition
   welcomeMessage?: string
   autoOpen: boolean
@@ -153,7 +155,8 @@ export interface CreateWidgetInput {
   title: string
   subtitle?: string
   primaryColor?: string
-  logoUrl?: string
+  logoLight?: string | null
+  logoDark?: string | null
   position?: WidgetPosition
   welcomeMessage?: string
   autoOpen?: boolean

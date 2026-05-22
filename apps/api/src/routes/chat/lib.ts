@@ -15,7 +15,8 @@ export interface LoadedChatWidget {
     title: string
     subtitle: string | null
     primaryColor: string
-    logoUrl: string | null
+    logoLight: string | null
+    logoDark: string | null
     position: string
     welcomeMessage: string | null
     autoOpen: boolean
@@ -64,7 +65,8 @@ export async function loadChatWidgetByChannelId(
       title: row.chatWidget.title,
       subtitle: row.chatWidget.subtitle ?? null,
       primaryColor: row.chatWidget.primaryColor,
-      logoUrl: row.chatWidget.logoUrl ?? null,
+      logoLight: row.chatWidget.logoLight ?? null,
+      logoDark: row.chatWidget.logoDark ?? null,
       position: row.chatWidget.position,
       welcomeMessage: row.chatWidget.welcomeMessage ?? null,
       autoOpen: row.chatWidget.autoOpen,

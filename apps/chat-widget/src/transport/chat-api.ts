@@ -58,12 +58,14 @@ export function chatApi(channelId: string) {
       threadId: string
       content: string
       clientMessageId?: string
-    }) =>
-      authedFetch<{ messageId: string; status: string; createdAt: string }>(
+    }) => {
+      const { threadId, ...rest } = body
+      return authedFetch<{ messageId: string; status: string; createdAt: string }>(
         channelId,
-        '/api/chat/messages',
-        { method: 'POST', body }
-      ),
+        `/api/chat/threads/${threadId}/messages`,
+        { method: 'POST', body: rest }
+      )
+    },
 
     getHistory: (threadId: string, sessionId: string) =>
       authedFetch<{ messages: ChatMessage[]; nextCursor: string | null }>(

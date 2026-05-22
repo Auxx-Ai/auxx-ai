@@ -36,7 +36,7 @@ export abstract class BaseAssetProcessor extends BaseProcessor {
     tx?: any
   ): Promise<ProcessorResult> {
     // Only create asset - no attachments
-    const assetId = await this.createAsset(session, storageLocationId, tx)
+    const { assetId } = await this.createAsset(session, storageLocationId, tx)
 
     // Post-asset creation hook (can be overridden by subclasses)
     await this.postCreateAsset(session, storageLocationId, assetId, tx)
@@ -145,7 +145,7 @@ export abstract class BaseAssetProcessor extends BaseProcessor {
     session: PresignedUploadSession,
     storageLocationId: string,
     tx?: any
-  ): Promise<string> {
+  ): Promise<{ assetId: string; externalUrl: string | null }> {
     try {
       const assetData: CreateAssetRequest = {
         kind: this.getAssetKind(session),
@@ -158,7 +158,7 @@ export abstract class BaseAssetProcessor extends BaseProcessor {
       }
 
       const assetService = tx ? this.mediaAssetService.withTx(tx) : this.mediaAssetService
-      const { asset } = await assetService.createWithVersion(assetData, storageLocationId)
+      const { asset, version } = await assetService.createWithVersion(assetData, storageLocationId)
 
       this.logger.info('Created MediaAsset record', {
         assetId: asset.id,
@@ -167,7 +167,7 @@ export abstract class BaseAssetProcessor extends BaseProcessor {
         sessionId: session.id,
       })
 
-      return asset.id
+      return { assetId: asset.id, externalUrl: version.storageLocation?.externalUrl ?? null }
     } catch (error) {
       this.logger.error('Failed to create MediaAsset record', {
         error: error instanceof Error ? error.message : String(error),

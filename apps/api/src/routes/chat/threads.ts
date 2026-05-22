@@ -2,6 +2,7 @@
 
 import { database, schema } from '@auxx/database'
 import { initializeOrResumeChatThread } from '@auxx/lib/chat'
+import { ProviderRegistryService } from '@auxx/lib/providers'
 import type { ChatThreadMetadata } from '@auxx/lib/threads/types'
 import { createScopedLogger } from '@auxx/logger'
 import { and, asc, desc, eq, isNotNull, lt, or, sql } from 'drizzle-orm'
@@ -226,6 +227,76 @@ threadsRoute.get('/:threadId/messages', async (c) => {
     })
     return c.json(
       { success: false, error: { code: 'INTERNAL_ERROR', message: 'Failed to load history' } },
+      500
+    )
+  }
+})
+
+/**
+ * POST /api/chat/threads/:threadId/messages
+ *
+ * Visitor sends a chat message. Body:
+ * `{ content, clientMessageId?, attachmentIds? }`. `threadId` comes from the URL.
+ *
+ * Resolves `ChatProvider` from the provider registry and calls
+ * `receiveMessage` — that path writes the Message row, attaches files, bumps
+ * the Thread, publishes realtime, and enqueues an agent run if configured.
+ */
+threadsRoute.post('/:threadId/messages', async (c) => {
+  applyChatCorsHeaders(c, { allowCredentials: true })
+
+  const chat = c.get('chat')
+  const threadId = c.req.param('threadId')
+  const body = (await c.req.json().catch(() => ({}))) as {
+    content?: string
+    clientMessageId?: string
+    attachmentIds?: string[]
+  }
+
+  if (!body.content) {
+    return c.json(
+      { success: false, error: { code: 'INVALID_REQUEST', message: 'content is required' } },
+      400
+    )
+  }
+
+  try {
+    const registry = new ProviderRegistryService(chat.organizationId)
+    const provider = (await registry.getProvider(chat.channelId)) as any
+    if (typeof provider.receiveMessage !== 'function') {
+      return c.json(
+        {
+          success: false,
+          error: { code: 'INTERNAL_ERROR', message: 'Channel does not support inbound messages' },
+        },
+        500
+      )
+    }
+
+    const result = await provider.receiveMessage({
+      threadId,
+      fromParticipantId: chat.visitorParticipantId,
+      content: body.content,
+      clientMessageId: body.clientMessageId,
+      attachmentIds: body.attachmentIds,
+    })
+
+    return c.json({
+      success: true,
+      data: {
+        messageId: result.messageId,
+        threadId: result.threadId,
+        status: 'delivered',
+        createdAt: new Date(),
+      },
+    })
+  } catch (error) {
+    log.error('Failed to send chat message', {
+      threadId,
+      error: error instanceof Error ? error.message : String(error),
+    })
+    return c.json(
+      { success: false, error: { code: 'INTERNAL_ERROR', message: 'Failed to send message' } },
       500
     )
   }

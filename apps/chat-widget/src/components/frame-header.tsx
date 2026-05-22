@@ -16,7 +16,8 @@ interface FrameHeaderProps {
   variant: FrameHeaderVariant
   title?: string
   subtitle?: string
-  logoUrl?: string | null
+  logoLight?: string | null
+  logoDark?: string | null
   onClose: () => void
   onBack?: () => void
   actions?: ComponentChildren
@@ -27,7 +28,8 @@ export function FrameHeader({
   variant,
   title,
   subtitle,
-  logoUrl,
+  logoLight,
+  logoDark: _logoDark,
   onClose,
   onBack,
   actions,
@@ -37,7 +39,11 @@ export function FrameHeader({
     return (
       <header className='relative flex shrink-0 flex-col gap-4 bg-[color:var(--color-primary)] px-5 py-5 text-[color:var(--color-primary-foreground)]'>
         <div className='flex items-start justify-between'>
-          {logoUrl ? <img src={logoUrl} alt='' className='h-8 w-auto' /> : <span className='h-8' />}
+          {logoLight ? (
+            <img src={logoLight} alt='' className='h-8 w-auto' />
+          ) : (
+            <span className='h-8' />
+          )}
           <CloseButton onClose={onClose} tone='light' />
         </div>
         {children ?? (

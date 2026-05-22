@@ -19,6 +19,7 @@ export const ENTITY_TYPES = {
   COMMENT: 'COMMENT',
   MESSAGE: 'MESSAGE',
   KNOWLEDGE_BASE: 'KNOWLEDGE_BASE',
+  CHAT_WIDGET: 'CHAT_WIDGET',
   CUSTOM_FIELD: 'CUSTOM_FIELD',
 } as const
 
@@ -145,6 +146,14 @@ export interface KnowledgeBaseFileMetadata extends BaseEntityMetadata {
 }
 
 /**
+ * Chat widget-specific metadata (light/dark logo variants)
+ */
+export interface ChatWidgetFileMetadata extends BaseEntityMetadata {
+  chatWidgetId: string
+  variant: 'light' | 'dark'
+}
+
+/**
  * Workflow-specific metadata
  */
 export interface WorkflowFileMetadata extends BaseEntityMetadata {
@@ -191,6 +200,7 @@ export type EntityFileMetadata =
   | TicketFileMetadata
   | ArticleFileMetadata
   | KnowledgeBaseFileMetadata
+  | ChatWidgetFileMetadata
   | WorkflowFileMetadata
   | CommentFileMetadata
   | CustomFieldFileMetadata
@@ -396,17 +406,17 @@ export const ENTITY_CONFIGS: Record<EntityType, EntityUploadConfig> = {
     ],
     validation: {
       maxFileSize: 10 * 1024 * 1024, // 10MB
+      // Avoid `image/*` wildcard — it would admit `image/svg+xml`, which is
+      // an XSS vector when uploaded files are served from our origin.
       allowedMimeTypes: [
-        'image/*',
+        'image/jpeg',
+        'image/png',
+        'image/gif',
+        'image/webp',
         'text/*',
         'video/*',
         'audio/*',
         'application/pdf',
-        // 'text/plain',
-        // 'video/mp4',
-        // 'video/webm',
-        // 'audio/mpeg',
-        // 'audio/wav',
       ],
       allowedExtensions: [
         '.jpg',
@@ -414,7 +424,6 @@ export const ENTITY_CONFIGS: Record<EntityType, EntityUploadConfig> = {
         '.png',
         '.gif',
         '.webp',
-        '.svg',
         '.pdf',
         '.txt',
         '.md',
@@ -607,8 +616,36 @@ export const ENTITY_CONFIGS: Record<EntityType, EntityUploadConfig> = {
     ],
     validation: {
       maxFileSize: 10 * 1024 * 1024, // 10MB
-      allowedMimeTypes: ['image/jpeg', 'image/png', 'image/webp', 'image/svg+xml'],
-      allowedExtensions: ['.jpg', '.jpeg', '.png', '.webp', '.svg'],
+      // SVG is intentionally excluded — XSS risk (script execution in our origin).
+      allowedMimeTypes: ['image/jpeg', 'image/png', 'image/webp'],
+      allowedExtensions: ['.jpg', '.jpeg', '.png', '.webp'],
+      scanForViruses: true,
+      requireExtension: true,
+      blockExecutables: true,
+    },
+    defaultVisibility: 'public',
+    maxConcurrentUploads: 1,
+    enableBatchUpload: false,
+    supportedFeatures: { progress: true, preview: true, retry: true, pause: false, resume: false },
+  },
+
+  [ENTITY_TYPES.CHAT_WIDGET]: {
+    entityType: ENTITY_TYPES.CHAT_WIDGET,
+    displayName: 'Chat Widget Branding',
+    description: 'Logos and branding assets for the embedded Chat Widget',
+    stages: [
+      { name: 'validation', displayName: 'Validation', weight: 50, estimatedDuration: 1 },
+      {
+        name: 'attachment-creation',
+        displayName: 'Attachment Creation',
+        weight: 50,
+        estimatedDuration: 2,
+      },
+    ],
+    validation: {
+      maxFileSize: 10 * 1024 * 1024, // 10MB
+      allowedMimeTypes: ['image/jpeg', 'image/png', 'image/webp'],
+      allowedExtensions: ['.jpg', '.jpeg', '.png', '.webp'],
       scanForViruses: true,
       requireExtension: true,
       blockExecutables: true,

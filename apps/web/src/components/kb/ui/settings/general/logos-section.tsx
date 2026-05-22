@@ -47,7 +47,7 @@ function LogoUploadCell({ variant, value, onChange, knowledgeBaseId }: LogoUploa
     allowMultiple: false,
     maxFiles: 1,
     autoStart: true,
-    fileExtensions: ['.png', '.jpg', '.jpeg', '.webp', '.svg'],
+    fileExtensions: ['.png', '.jpg', '.jpeg', '.webp'],
     sessionMetadata: { role: 'KB_LOGO', variant, title: `kb-logo-${variant}` },
     onUploadComplete: (files) => {
       const url = files?.[0]?.url || ''

@@ -4,6 +4,7 @@ import { createScopedLogger } from '@auxx/logger'
 import { DatasetAssetProcessor } from './dataset'
 import {
   ArticleProcessor,
+  ChatWidgetProcessor,
   CommentProcessor,
   CustomFieldProcessor,
   KnowledgeBaseProcessor,
@@ -46,6 +47,7 @@ export function initializeProcessors(): void {
     'KNOWLEDGE_BASE',
     (orgId) => new KnowledgeBaseProcessor(orgId)
   )
+  ProcessorRegistry.registerForEntity('CHAT_WIDGET', (orgId) => new ChatWidgetProcessor(orgId))
 
   // Set default processor for unknown entity types
   ProcessorRegistry.setDefaultProcessor((orgId) => new FileProcessor(orgId))

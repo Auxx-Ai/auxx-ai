@@ -1163,6 +1163,13 @@
       "when": 1779402937184,
       "tag": "0165_chat_widget_greeting_jsonb",
       "breakpoints": true
+    },
+    {
+      "idx": 166,
+      "version": "7",
+      "when": 1779411873762,
+      "tag": "0166_chat_widget_logos",
+      "breakpoints": true
     }
   ]
 }

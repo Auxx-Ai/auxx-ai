@@ -24,7 +24,7 @@ attachmentsRoute.options('/', (c) => {
  * Body fields: `file` (binary). Uploads the blob to S3 via the shared
  * StorageManager + MediaAssetService pipeline (same as email composer
  * attachments). Returns the `assetId` which the widget then passes to
- * `POST /api/chat/messages` as `attachmentIds[]`.
+ * `POST /api/chat/threads/:threadId/messages` as `attachmentIds[]`.
  */
 attachmentsRoute.post('/', async (c) => {
   applyChatCorsHeaders(c, { allowCredentials: true })
@@ -89,7 +89,7 @@ attachmentsRoute.post('/', async (c) => {
 
     // Visitor uploads have no User id — leave `createdById` null. The asset is
     // org-scoped and tied to the chat thread via the Attachment row that
-    // POST /api/chat/messages writes on receive.
+    // POST /api/chat/threads/:threadId/messages writes on receive.
     const mediaAssetService = new MediaAssetService(chat.organizationId, undefined)
     const { asset } = await mediaAssetService.createWithVersion(
       {
