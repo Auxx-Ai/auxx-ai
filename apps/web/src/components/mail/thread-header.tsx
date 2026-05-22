@@ -2,7 +2,7 @@
 'use client'
 
 import { PLATFORM_CAPABILITIES } from '@auxx/lib/channels/client'
-import type { ActorId } from '@auxx/types/actor'
+import { type ActorId, parseActorId } from '@auxx/types/actor'
 import { toRecordId } from '@auxx/types/resource'
 import { Alert } from '@auxx/ui/components/alert'
 import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
@@ -17,6 +17,8 @@ import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import {
   Archive,
   ArchiveRestore,
+  Bot,
+  HandMetal,
   MailCheck,
   MailWarning,
   MoreHorizontal,
@@ -27,12 +29,14 @@ import {
   Zap,
 } from 'lucide-react'
 import { useCallback, useRef, useState } from 'react'
+import { useSession } from '~/auth/auth-client'
 import { useChannel } from '~/components/channels/hooks/use-channels'
 import { useActor, useResource } from '~/components/resources/hooks'
 import { useThreadTags } from '~/components/tags/hooks/use-thread-tags'
 import { useInbox, useThread } from '~/components/threads/hooks'
 import { ManualTriggerButton } from '~/components/workflow/manual-trigger-button'
 import { useConfirm } from '~/hooks/use-confirm'
+import { api } from '~/trpc/react'
 import { EditableText } from '../editor/editable-text'
 import { Tooltip } from '../global/tooltip'
 import { ActorPicker } from '../pickers/actor-picker'
@@ -83,6 +87,57 @@ export function ThreadHeader() {
     ? PLATFORM_CAPABILITIES[channel.provider as keyof typeof PLATFORM_CAPABILITIES]
     : undefined
   const isEmailChannel = platformCaps ? platformCaps.channel === 'email' : true
+  const isChatChannel = channel?.provider === 'chat'
+
+  // P4.2 — chat handoff buttons. "Take over" appears when AI is driving or
+  // someone else is assigned; "Return to AI" appears when the current user
+  // owns the thread and it's flipped to human. Polished header banner is
+  // Phase 4b — this is the minimal functional surface.
+  const { data: session } = useSession()
+  const currentUserId = session?.user?.id
+  const assigneeUserId = thread?.assigneeId
+    ? (() => {
+        try {
+          return parseActorId(thread.assigneeId).id
+        } catch {
+          return null
+        }
+      })()
+    : null
+  const isAssignedToMe = !!currentUserId && assigneeUserId === currentUserId
+  const handoffState = thread?.handoffState ?? 'ai'
+  const showTakeOver = isChatChannel && (handoffState === 'ai' || !isAssignedToMe)
+  const showReturnToAi = isChatChannel && handoffState === 'human' && isAssignedToMe
+
+  const takeOver = api.thread.takeOver.useMutation()
+  const returnToAi = api.thread.returnToAi.useMutation()
+  const utils = api.useUtils()
+
+  const handleTakeOver = useCallback(async () => {
+    if (!thread) return
+    try {
+      await takeOver.mutateAsync({ threadId: thread.id })
+      await utils.thread.invalidate()
+    } catch (error) {
+      toastError({
+        title: 'Failed to take over',
+        description: error instanceof Error ? error.message : 'Unknown error',
+      })
+    }
+  }, [thread, takeOver, utils])
+
+  const handleReturnToAi = useCallback(async () => {
+    if (!thread) return
+    try {
+      await returnToAi.mutateAsync({ threadId: thread.id })
+      await utils.thread.invalidate()
+    } catch (error) {
+      toastError({
+        title: 'Failed to return to AI',
+        description: error instanceof Error ? error.message : 'Unknown error',
+      })
+    }
+  }, [thread, returnToAi, utils])
 
   // Local state for tag popover
   const [open, setOpen] = useState(false)
@@ -312,6 +367,34 @@ export function ThreadHeader() {
               </Tooltip>
             </ManualTriggerButton>
 
+            {showTakeOver && (
+              <Tooltip content='Take over from AI'>
+                <Button
+                  variant='outline'
+                  size='sm'
+                  onClick={handleTakeOver}
+                  loading={takeOver.isPending}
+                  loadingText='Taking over...'
+                  className='mr-2'>
+                  <HandMetal />
+                  Take over
+                </Button>
+              </Tooltip>
+            )}
+            {showReturnToAi && (
+              <Tooltip content='Hand thread back to AI'>
+                <Button
+                  variant='outline'
+                  size='sm'
+                  onClick={handleReturnToAi}
+                  loading={returnToAi.isPending}
+                  loadingText='Returning...'
+                  className='mr-2'>
+                  <Bot />
+                  Return to AI
+                </Button>
+              </Tooltip>
+            )}
             <ActorPicker
               key={`assignee-${thread.id}`}
               value={assigneeValue}

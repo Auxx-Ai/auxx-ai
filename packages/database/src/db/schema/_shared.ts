@@ -467,6 +467,7 @@ export const threadStatus = pgEnum('ThreadStatus', [
   'IGNORED',
 ])
 export const threadType = pgEnum('ThreadType', ['EMAIL', 'CHAT'])
+export const threadHandoffState = pgEnum('ThreadHandoffState', ['ai', 'human'])
 export const ticketPriority = pgEnum('TicketPriority', ['LOW', 'MEDIUM', 'HIGH', 'URGENT'])
 export const ticketStatus = pgEnum('TicketStatus', [
   'OPEN',

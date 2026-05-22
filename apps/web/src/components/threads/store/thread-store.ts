@@ -73,6 +73,13 @@ export interface ThreadMeta {
   scheduledMessageCount: number
 
   /**
+   * Whether the AI agent or a human is currently driving replies. Chat-only
+   * signal (drives the take-over / return-to-AI buttons); email threads
+   * always read `'ai'`.
+   */
+  handoffState: 'ai' | 'human'
+
+  /**
    * Loose JSON shape for channel-specific extras. Chat threads carry
    * `ChatThreadMetadata` here (visitor participant id, visit context, claimed
    * name/email). Null on email threads. Not enforced at the DB level.

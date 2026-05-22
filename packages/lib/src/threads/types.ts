@@ -135,6 +135,13 @@ export interface ThreadMeta {
 
   /** Number of pending scheduled messages on this thread */
   scheduledMessageCount: number
+
+  /**
+   * Whether the AI agent or a human is currently driving replies on this
+   * thread. Chat-only signal; email threads always read `'ai'` (no agent run
+   * happens regardless). Drives the take-over / return-to-AI buttons.
+   */
+  handoffState: 'ai' | 'human'
 }
 
 /**
