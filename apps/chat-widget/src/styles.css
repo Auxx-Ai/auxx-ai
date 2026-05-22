@@ -5,9 +5,12 @@
  * which is safely confined to the shadow root — preflight cannot leak to the
  * host page, and host-page CSS cannot leak in.
  *
- * The handwritten `.auxx-chat-shell` classes that drive the pillbox shell
- * remain here as `@layer components`; per-surface styles use Tailwind
- * utilities + shadcn-style wrappers.
+ * Tokens follow the shadcn vocabulary (background/foreground/card/popover/
+ * primary/secondary/muted/accent/destructive/border/input/ring + *-foreground
+ * pairs). Indirection: `@theme` declares `--color-X: var(--X)` so Tailwind
+ * JITs `bg-X`, `text-X`, etc.; actual values live on `.auxx-root` so the
+ * inline `--auxx-chat-primary` brand override (set on a descendant of
+ * `.auxx-root`) is reachable.
  */
 
 @import 'tailwindcss';
@@ -15,61 +18,320 @@
 
 @source "./**/*.{ts,tsx}";
 
+@custom-variant dark (&:is([data-theme='dark'] *));
+
 @theme {
-  /* Light-mode defaults. Tailwind JITs utility classes from these token names.
-   * Dark overrides are applied via .auxx-root[data-theme='dark'] in @layer base
-   * below — setting them directly on an element inside the shadow DOM rather
-   * than at :host, so the values are actually inherited by descendants. */
-  --color-bg: #ffffff;
-  --color-fg: #111111;
-  --color-muted: #6b7280;
-  --color-border: #e5e7eb;
-  --color-surface: #f7f8fa;
-  --color-primary: var(--auxx-chat-primary, #4f46e5);
-  --color-primary-foreground: #ffffff;
-  --color-danger: #b91c1c;
-
-  --radius-sm: 0.375rem;
-  --radius-md: 0.5rem;
-  --radius-lg: 0.75rem;
-  --radius-xl: 1rem;
-
   --font-sans:
     -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --color-illustration: var(--illustration);
+  --color-border-illustration: var(--border-illustration);
+
+  --radius: 0.625rem;
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  --animate-accordion-down: accordion-down 0.2s ease-out;
+  --animate-accordion-up: accordion-up 0.2s ease-out;
+  --animate-hue-rotate: hue-rotate 4s infinite;
+  --animate-scan: scan 3s infinite;
+  --animate-capture: capture 0.1s infinite;
+  --animate-reveal: reveal 0.8s ease-in;
+  --animate-logo-reveal: logo-reveal 0.5s ease-in-out;
+  --animate-enter-from-right: enter-from-right 0.3s ease-out;
+  --animate-enter-from-left: enter-from-left 0.3s ease-out;
+  --animate-exit-to-right: exit-to-right 0.3s ease-in;
+  --animate-exit-to-left: exit-to-left 0.3s ease-in;
+  --animate-scale-in: scale-in 0.2s ease-out;
+  --animate-scale-out: scale-out 0.2s ease-in;
+  --animate-fade-in: fade-in 0.2s ease-out;
+  --animate-fade-out: fade-out 0.2s ease-in;
+
+  @keyframes accordion-down {
+    from {
+      height: 0;
+    }
+    to {
+      height: var(--radix-accordion-content-height);
+    }
+  }
+
+  @keyframes accordion-up {
+    from {
+      height: var(--radix-accordion-content-height);
+    }
+    to {
+      height: 0;
+    }
+  }
+
+  @keyframes hue-rotate {
+    from {
+      filter: hue-rotate(0deg);
+    }
+    to {
+      filter: hue-rotate(360deg);
+    }
+  }
+
+  @keyframes scan {
+    from {
+      transform: translateY(0);
+    }
+    50% {
+      transform: translateY(100%);
+    }
+    to {
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes capture {
+    from {
+      opacity: 0;
+    }
+    50% {
+      opacity: 1;
+    }
+    to {
+      opacity: 0;
+    }
+  }
+
+  @keyframes reveal {
+    from {
+      clip-path: circle(0% at 50% 50%);
+    }
+    to {
+      clip-path: circle(100% at 50% 50%);
+    }
+  }
+
+  @keyframes logo-reveal {
+    from {
+      transform: scale(0);
+      opacity: 0;
+      filter: blur(12px);
+    }
+    75% {
+      opacity: 1;
+      transform: scale(1.1);
+      filter: blur(0px);
+    }
+    to {
+      transform: scale(1);
+    }
+  }
+
+  @keyframes enter-from-right {
+    from {
+      opacity: 0;
+      transform: translateX(200px);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+
+  @keyframes enter-from-left {
+    from {
+      opacity: 0;
+      transform: translateX(-200px);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+
+  @keyframes exit-to-right {
+    from {
+      opacity: 1;
+      transform: translateX(0);
+    }
+    to {
+      opacity: 0;
+      transform: translateX(200px);
+    }
+  }
+
+  @keyframes exit-to-left {
+    from {
+      opacity: 1;
+      transform: translateX(0);
+    }
+    to {
+      opacity: 0;
+      transform: translateX(-200px);
+    }
+  }
+
+  @keyframes scale-in {
+    from {
+      opacity: 0;
+      transform: rotateX(-10deg) scale(0.9);
+    }
+    to {
+      opacity: 1;
+      transform: rotateX(0deg) scale(1);
+    }
+  }
+
+  @keyframes scale-out {
+    from {
+      opacity: 1;
+      transform: rotateX(0deg) scale(1);
+    }
+    to {
+      opacity: 0;
+      transform: rotateX(-10deg) scale(0.95);
+    }
+  }
+
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  @keyframes fade-out {
+    from {
+      opacity: 1;
+    }
+    to {
+      opacity: 0;
+    }
+  }
 }
 
 @layer base {
-  /* Glass design tokens — defined here (inside shadow DOM element tree) rather
-   * than @theme (:host) so that dark-mode overrides inherit correctly.
-   * Light percentages are higher than dark because 3% of near-black on white
-   * is nearly invisible; dark mode uses lower values since white on dark pops. */
+  /* Token values live on `.auxx-root` (inside the shadow tree), NOT at `:host`
+   * or `:root`, so the inline brand override `--auxx-chat-primary` on
+   * `.auxx-chat-root` (a descendant) flows through. CSS custom property
+   * inheritance only goes downward from where the var is set. */
   .auxx-root {
-    --color-surface-subtle: color-mix(in srgb, #111111 6%, transparent);
-    --color-hover: color-mix(in srgb, #111111 9%, transparent);
-    --color-border-strong: color-mix(in srgb, #111111 14%, transparent);
-    --color-border-subtle: color-mix(in srgb, #111111 8%, transparent);
-    --color-bg-panel: color-mix(in srgb, #ffffff 90%, transparent);
+    --background: var(--color-zinc-50);
+    --foreground: var(--color-zinc-950);
+
+    --card: var(--color-white);
+    --card-foreground: var(--color-zinc-950);
+    --illustration: var(--color-white);
+    --border-illustration: color-mix(in srgb, var(--foreground) 7.5%, transparent);
+
+    --popover: var(--color-white);
+    --popover-foreground: var(--color-zinc-950);
+
+    --primary: var(--auxx-chat-primary, var(--color-indigo-500));
+    --primary-foreground: var(--color-white);
+
+    --secondary: var(--color-sky-100);
+    --secondary-foreground: var(--color-sky-600);
+
+    --muted: color-mix(in srgb, var(--foreground) 5%, transparent);
+    --muted-foreground: var(--color-zinc-600);
+
+    --accent: var(--color-zinc-100);
+    --accent-foreground: var(--color-zinc-800);
+
+    --destructive: var(--color-red-600);
+    --destructive-foreground: var(--color-white);
+
+    --border: color-mix(in srgb, var(--foreground) 7.5%, transparent);
+    --input: color-mix(in srgb, var(--foreground) 7.5%, transparent);
+    --ring: var(--primary);
+
+    /* Re-declare the `--color-*` mappings here so they're computed at this
+     * scope (where `--background`, `--foreground`, etc. live). The `@theme`
+     * block also emits them at `:host`, but `--background` isn't set there, so
+     * those declarations resolve to invalid and inherit broken values down to
+     * every descendant. Mirroring them here recomputes correctly. */
+    --color-background: var(--background);
+    --color-foreground: var(--foreground);
+    --color-card: var(--card);
+    --color-card-foreground: var(--card-foreground);
+    --color-popover: var(--popover);
+    --color-popover-foreground: var(--popover-foreground);
+    --color-primary: var(--primary);
+    --color-primary-foreground: var(--primary-foreground);
+    --color-secondary: var(--secondary);
+    --color-secondary-foreground: var(--secondary-foreground);
+    --color-muted: var(--muted);
+    --color-muted-foreground: var(--muted-foreground);
+    --color-accent: var(--accent);
+    --color-accent-foreground: var(--accent-foreground);
+    --color-destructive: var(--destructive);
+    --color-destructive-foreground: var(--destructive-foreground);
+    --color-border: var(--border);
+    --color-input: var(--input);
+    --color-ring: var(--ring);
+    --color-illustration: var(--illustration);
+    --color-border-illustration: var(--border-illustration);
   }
 
-  /* Dark mode: override --color-* directly on .auxx-root so all descendants
-   * inherit the dark values. Setting on this element (inside shadow DOM) works
-   * because CSS custom property inheritance flows down from here, whereas @theme
-   * outputs at :host where brand vars on child elements are unreachable. */
   .auxx-root[data-theme='dark'] {
-    --color-bg: #0d1117;
-    --color-fg: #f3f4f6;
-    --color-muted: #9ca3af;
-    --color-border: #1f2937;
-    --color-surface: #161b22;
-    --color-primary-foreground: #ffffff;
-    --color-danger: #f87171;
-    /* --color-primary is handled on .auxx-chat-root[data-theme='dark'] below
-     * because the --auxx-chat-primary-dark brand var is an inline style there. */
-    --color-surface-subtle: color-mix(in srgb, #f3f4f6 3%, transparent);
-    --color-hover: color-mix(in srgb, #f3f4f6 5%, transparent);
-    --color-border-strong: color-mix(in srgb, #f3f4f6 10%, transparent);
-    --color-border-subtle: color-mix(in srgb, #f3f4f6 5%, transparent);
-    --color-bg-panel: color-mix(in srgb, #0d1117 85%, transparent);
+    --background: var(--color-zinc-950);
+    --foreground: var(--color-white);
+
+    --card: color-mix(in oklab, var(--color-zinc-800) 55%, #000);
+    --card-foreground: var(--color-white);
+    --illustration: color-mix(in oklab, var(--color-zinc-800) 60%, #000);
+    --border-illustration: color-mix(in srgb, var(--foreground) 7.5%, transparent);
+
+    --popover: var(--color-zinc-950);
+    --popover-foreground: var(--color-white);
+
+    --primary: var(--auxx-chat-primary-dark, var(--auxx-chat-primary, var(--color-indigo-500)));
+    --primary-foreground: var(--color-white);
+
+    --secondary: var(--color-zinc-800);
+    --secondary-foreground: var(--color-white);
+
+    --muted: var(--color-zinc-800);
+    --muted-foreground: var(--color-zinc-400);
+
+    --accent: var(--color-zinc-800);
+    --accent-foreground: var(--color-white);
+
+    --destructive: var(--color-red-700);
+    --destructive-foreground: var(--color-white);
+
+    --border: color-mix(in srgb, var(--foreground) 7.5%, transparent);
+    --input: color-mix(in srgb, var(--foreground) 7.5%, transparent);
+    --ring: var(--color-zinc-600);
   }
 
   .auxx-root,
@@ -80,13 +342,13 @@
   }
   .auxx-root {
     font-family: var(--font-sans);
-    color: var(--color-fg);
+    color: var(--foreground);
     line-height: 1.4;
   }
 }
 
 @layer components {
-  /* Legacy v1 shell — kept until Phase 3 replaces it with a navigation + tab UI. */
+  /* Legacy v1 shell — kept until `widget-morphing-popover.md` retires it. */
 
   .auxx-chat-root {
     --auxx-chat-shell-closed-size: 48px;
@@ -97,10 +359,6 @@
     --auxx-chat-shell-edge-gap: 20px;
 
     --auxx-chat-primary: #4f46e5;
-    /* Re-declare --color-primary on this element so the var() resolves here
-     * where the inline-style --auxx-chat-primary is actually set. Without this,
-     * the @theme value resolves at :host where the brand var is unreachable. */
-    --color-primary: var(--auxx-chat-primary);
     --auxx-chat-shell-closed-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 
     --auxx-chat-shell-duration: 280ms;
@@ -109,13 +367,6 @@
     --auxx-chat-panel-duration: 160ms;
     --auxx-chat-panel-open-delay: 140ms;
     --auxx-chat-panel-close-delay: 0ms;
-  }
-
-  .auxx-chat-root[data-theme='dark'] {
-    --color-primary: var(--auxx-chat-primary-dark, var(--auxx-chat-primary, #4f46e5));
-    --auxx-chat-shell-open-shadow:
-      0 0 0 1px rgba(0, 0, 0, 0.5),
-      0 24px 64px rgba(0, 0, 0, 0.6);
   }
 
   .auxx-chat-shell {
@@ -149,13 +400,13 @@
     height: var(--auxx-chat-shell-open-height);
     max-width: calc(100vw - calc(var(--auxx-chat-shell-edge-gap) * 2));
     max-height: calc(100vh - calc(var(--auxx-chat-shell-edge-gap) * 5));
-    border-radius: var(--auxx-chat-shell-open-radius);
-    background: var(--color-bg-panel);
-    backdrop-filter: blur(12px);
-    border: 1px solid var(--color-border-strong);
+    border-radius: 1rem;
+    background: color-mix(in srgb, var(--background) 85%, transparent);
+    backdrop-filter: blur(16px);
+    border: 1px solid color-mix(in srgb, var(--foreground) 10%, transparent);
     --auxx-chat-shell-open-shadow:
-      0 0 0 1px rgba(0, 0, 0, 0.12),
-      0 24px 64px rgba(0, 0, 0, 0.22);
+      0 0 0 1px var(--border-illustration),
+      0 25px 50px -12px rgb(0 0 0 / 0.75);
     box-shadow: var(--auxx-chat-shell-open-shadow);
   }
   .auxx-chat-shell--expanded {
@@ -246,7 +497,6 @@
     pointer-events: auto;
     transition-delay: var(--auxx-chat-panel-open-delay);
   }
-
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -110,7 +110,7 @@ export function AttachButton({ channelId, inflight, onChange, disabled }: Attach
         disabled={disabled}
         onClick={() => inputRef.current?.click()}
         className={cn(
-          'flex size-7 items-center justify-center rounded text-[color:var(--color-muted)] transition-colors hover:bg-[color:var(--color-surface)] hover:text-[color:var(--color-fg)] disabled:opacity-50'
+          'flex size-7 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50'
         )}>
         <Paperclip className='size-4' aria-hidden='true' />
       </button>
@@ -127,13 +127,13 @@ export function AttachmentThumbRow({
 }) {
   if (inflight.length === 0) return null
   return (
-    <div className='flex flex-wrap gap-1.5 border-b border-[color:var(--color-border)] px-3 py-2'>
+    <div className='flex flex-wrap gap-1.5 border-b border-border px-3 py-2'>
       {inflight.map((a) => (
         <div
           key={a.localId}
           className={cn(
-            'flex items-center gap-1.5 rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-surface)] px-2 py-1 text-xs',
-            a.error ? 'border-[color:var(--color-danger)] text-[color:var(--color-danger)]' : ''
+            'flex items-center gap-1.5 rounded-md border border-border bg-muted px-2 py-1 text-xs',
+            a.error ? 'border-destructive text-destructive' : ''
           )}>
           <span className='max-w-[140px] truncate'>{a.name}</span>
           {!a.assetId && !a.error ? (
@@ -146,7 +146,7 @@ export function AttachmentThumbRow({
             type='button'
             onClick={() => onRemove(a.localId)}
             aria-label='Remove attachment'
-            className='text-[color:var(--color-muted)] hover:text-[color:var(--color-fg)]'>
+            className='text-muted-foreground hover:text-foreground'>
             <X className='size-3' aria-hidden='true' />
           </button>
         </div>

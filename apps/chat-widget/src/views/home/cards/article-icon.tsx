@@ -15,7 +15,7 @@ interface ArticleIconProps {
 }
 
 export function ArticleIcon({ iconId, className }: ArticleIconProps) {
-  const cls = className ?? 'size-4 shrink-0 text-[color:var(--color-muted)]'
+  const cls = className ?? 'size-4 shrink-0 text-muted-foreground'
   const entry = iconId ? getIcon(iconId) : null
   const Icon = entry?.icon ?? FileText
   return <Icon className={cls} aria-hidden='true' />

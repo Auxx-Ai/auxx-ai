@@ -12,6 +12,7 @@ import { type ChatMessage, chatApi } from '~/transport/chat-api'
 import type { ChatConfig } from '~/transport/config'
 import { connectPusher } from '~/transport/pusher'
 import { Composer, type ComposerSendArgs } from './composer/composer'
+import { SuggestedReplies } from './suggested-replies'
 
 interface ConversationViewProps {
   channelId: string
@@ -149,10 +150,10 @@ export function ConversationView({ channelId, threadId, config }: ConversationVi
   const grouped = useMemo(() => groupConsecutive(messages), [messages])
 
   return (
-    <div className='flex min-h-0 flex-1 flex-col bg-[color:var(--color-surface)]'>
+    <div className='flex min-h-0 flex-1 flex-col bg-muted'>
       <div ref={bodyRef} className='flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-3'>
         {error ? (
-          <div className='rounded bg-[color:var(--color-bg)] p-2 text-center text-xs text-[color:var(--color-danger)]'>
+          <div className='rounded bg-background p-2 text-center text-xs text-destructive'>
             {error}
           </div>
         ) : null}
@@ -160,9 +161,15 @@ export function ConversationView({ channelId, threadId, config }: ConversationVi
           <Bubble key={`g-${gi}`} group={group} />
         ))}
       </div>
+      {init && messages.length === 0 ? (
+        <SuggestedReplies
+          replies={config.suggestedReplies ?? []}
+          onSelect={(text) => handleSend({ content: text, attachmentIds: [] })}
+        />
+      ) : null}
       <Composer channelId={channelId} onSend={handleSend} />
       {config.branding.footerEnabled ? (
-        <div className='border-t border-[color:var(--color-border)] bg-[color:var(--color-bg)] py-2 text-center text-[10px] uppercase tracking-wide text-[color:var(--color-muted)]'>
+        <div className='border-t border-border bg-background py-2 text-center text-[10px] uppercase tracking-wide text-muted-foreground'>
           Powered by Auxx
         </div>
       ) : null}
@@ -193,7 +200,7 @@ function Bubble({ group }: { group: MessageGroup }) {
   const isSystem = group.sender === 'SYSTEM'
   if (isSystem) {
     return (
-      <div className='self-center text-center text-xs italic text-[color:var(--color-muted)]'>
+      <div className='self-center text-center text-xs italic text-muted-foreground'>
         {group.messages.map((m) => m.content).join(' ')}
       </div>
     )
@@ -201,7 +208,7 @@ function Bubble({ group }: { group: MessageGroup }) {
   return (
     <div className={cn('flex items-end gap-2', isUser ? 'flex-row-reverse' : 'flex-row')}>
       {!isUser ? (
-        <div className='flex size-7 shrink-0 items-center justify-center self-end rounded-full bg-[color:var(--color-bg)] text-[color:var(--color-muted)]'>
+        <div className='flex size-7 shrink-0 items-center justify-center self-end rounded-full bg-background text-muted-foreground'>
           <User className='size-3.5' aria-hidden='true' />
         </div>
       ) : null}
@@ -213,8 +220,8 @@ function Bubble({ group }: { group: MessageGroup }) {
             className={cn(
               'whitespace-pre-wrap break-words rounded-2xl px-3 py-1.5 text-sm',
               isUser
-                ? 'bg-[color:var(--color-primary)] text-[color:var(--color-primary-foreground)]'
-                : 'border border-[color:var(--color-border)] bg-[color:var(--color-bg)] text-[color:var(--color-fg)]',
+                ? 'bg-primary text-primary-foreground'
+                : 'border border-border bg-background text-foreground',
               i === 0 && (isUser ? 'rounded-tr-md' : 'rounded-tl-md'),
               i === group.messages.length - 1 && (isUser ? 'rounded-br-sm' : 'rounded-bl-sm')
             )}>

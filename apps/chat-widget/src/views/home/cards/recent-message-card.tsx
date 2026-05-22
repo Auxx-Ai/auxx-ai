@@ -21,12 +21,12 @@ export function RecentMessageCard({
   return (
     <HomeCard onClick={onOpen}>
       <div className='flex items-center justify-between gap-2'>
-        <span className='truncate text-sm font-medium text-[color:var(--color-fg)]'>
+        <span className='truncate text-sm font-medium text-foreground'>
           {subject || 'Recent conversation'}
         </span>
-        <span className='shrink-0 text-xs text-[color:var(--color-muted)]'>{relative}</span>
+        <span className='shrink-0 text-xs text-muted-foreground'>{relative}</span>
       </div>
-      <span className='truncate text-xs text-[color:var(--color-muted)]'>
+      <span className='truncate text-xs text-muted-foreground'>
         {isInbound ? 'You: ' : ''}
         {preview}
       </span>

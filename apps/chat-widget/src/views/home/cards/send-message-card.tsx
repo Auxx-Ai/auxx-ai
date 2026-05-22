@@ -12,17 +12,12 @@ export function SendMessageCard({ onClick, isPending }: SendMessageCardProps) {
   return (
     <HomeCard onClick={onClick} disabled={isPending}>
       <div className='flex items-center gap-2'>
-        <MessageSquarePlus
-          className='size-4 shrink-0 text-[color:var(--color-primary)]'
-          aria-hidden='true'
-        />
-        <span className='text-sm font-medium text-[color:var(--color-fg)]'>
+        <MessageSquarePlus className='size-4 shrink-0 text-primary' aria-hidden='true' />
+        <span className='text-sm font-medium text-foreground'>
           {isPending ? 'Starting…' : 'Send us a message'}
         </span>
       </div>
-      <span className='text-xs text-[color:var(--color-muted)]'>
-        We usually reply within a few minutes.
-      </span>
+      <span className='text-xs text-muted-foreground'>We usually reply within a few minutes.</span>
     </HomeCard>
   )
 }

@@ -57,7 +57,7 @@ export function ConversationMenu({
           // DismissableLayer's outside-click detector doesn't retarget through
           // the shadow boundary and close the menu instantly.
           onPointerDown={(e) => e.stopPropagation()}
-          className='flex size-7 items-center justify-center rounded text-[color:var(--color-muted)] hover:bg-[color:var(--color-surface)] hover:text-[color:var(--color-fg)]'>
+          className='flex size-7 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground'>
           <MoreHorizontal className='size-4' aria-hidden='true' />
         </button>
       </DropdownMenuTrigger>

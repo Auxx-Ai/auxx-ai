@@ -3,7 +3,6 @@
 'use client'
 
 import { Button } from '@auxx/ui/components/button'
-import { EntityIcon } from '@auxx/ui/components/icons'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import {
   closestCenter,
@@ -18,12 +17,11 @@ import {
   arrayMove,
   SortableContext,
   sortableKeyboardCoordinates,
-  useSortable,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
-import { CSS } from '@dnd-kit/utilities'
-import { GripVertical, Plus, X } from 'lucide-react'
+import { Plus } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
+import { SortableRow } from '~/components/global/sortable-row'
 import { useArticleList } from '~/components/kb/hooks/use-article-list'
 import { getArticleStoreState } from '~/components/kb/store/article-store'
 import { normalizeServerArticle } from '~/components/kb/store/normalize-server-article'
@@ -100,28 +98,37 @@ export function FeaturedArticlesField({
 
   return (
     <div className='space-y-2'>
-      {value.length > 0 && (
-        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-          <SortableContext items={value} strategy={verticalListSortingStrategy}>
-            <ul className='space-y-1.5'>
-              {value.map((articleId) => {
-                const article = articleById.get(articleId)
-                return (
-                  <SortableRow
-                    key={articleId}
-                    id={articleId}
-                    title={article?.title ?? 'Untitled'}
-                    emoji={article?.emoji ?? null}
-                    missing={!article}
-                    onRemove={() => handleRemove(articleId)}
-                    disabled={disabled}
-                  />
-                )
-              })}
-            </ul>
-          </SortableContext>
-        </DndContext>
-      )}
+      <div className='rounded-xl border bg-popover p-2'>
+        {value.length > 0 ? (
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleDragEnd}>
+            <SortableContext items={value} strategy={verticalListSortingStrategy}>
+              <ul className='space-y-0.5'>
+                {value.map((articleId) => {
+                  const article = articleById.get(articleId)
+                  const title = article?.title ?? `Missing article (${articleId.slice(0, 6)}…)`
+                  return (
+                    <SortableRow
+                      key={articleId}
+                      id={articleId}
+                      text={title}
+                      icon={{ iconId: article?.emoji ?? 'file-text' }}
+                      onRemove={() => handleRemove(articleId)}
+                      disabled={disabled}
+                    />
+                  )
+                })}
+              </ul>
+            </SortableContext>
+          </DndContext>
+        ) : (
+          <div className='flex h-8 items-center justify-center text-sm text-muted-foreground'>
+            No featured articles yet
+          </div>
+        )}
+      </div>
 
       <Popover open={pickerOpen} onOpenChange={setPickerOpen}>
         <PopoverTrigger asChild>
@@ -150,54 +157,5 @@ export function FeaturedArticlesField({
         </PopoverContent>
       </Popover>
     </div>
-  )
-}
-
-interface SortableRowProps {
-  id: string
-  title: string
-  emoji: string | null
-  missing: boolean
-  onRemove: () => void
-  disabled?: boolean
-}
-
-function SortableRow({ id, title, emoji, missing, onRemove, disabled }: SortableRowProps) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
-    id,
-  })
-  const style = {
-    transform: CSS.Translate.toString(transform),
-    transition,
-    opacity: isDragging ? 0.6 : 1,
-  }
-
-  return (
-    <li
-      ref={setNodeRef}
-      style={style}
-      className='flex items-center gap-2 rounded-md border px-2 py-1.5 bg-background'>
-      <button
-        type='button'
-        className='cursor-grab text-muted-foreground hover:text-foreground touch-none'
-        aria-label='Drag to reorder'
-        {...attributes}
-        {...listeners}>
-        <GripVertical className='size-3.5' />
-      </button>
-      <EntityIcon iconId={emoji ?? 'file-text'} size='xs' className='text-muted-foreground' />
-      <span className={`flex-1 truncate text-sm ${missing ? 'italic text-muted-foreground' : ''}`}>
-        {missing ? `Missing article (${id.slice(0, 6)}…)` : title}
-      </span>
-      <Button
-        type='button'
-        variant='ghost'
-        size='icon-xs'
-        onClick={onRemove}
-        disabled={disabled}
-        aria-label='Remove'>
-        <X className='size-3.5' />
-      </Button>
-    </li>
   )
 }

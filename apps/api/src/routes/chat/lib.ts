@@ -38,6 +38,7 @@ export interface LoadedChatWidget {
     footerEnabled: boolean
   }
   allowDownloadTranscript: boolean
+  suggestedReplies: string[]
 }
 
 /**
@@ -90,6 +91,10 @@ export async function loadChatWidgetByChannelId(
       footerEnabled: row.chatWidget.brandingFooterEnabled,
     },
     allowDownloadTranscript: row.chatWidget.allowDownloadTranscript,
+    suggestedReplies: (row.chatWidget.suggestedReplies ?? [])
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0)
+      .slice(0, 5),
   }
 }
 

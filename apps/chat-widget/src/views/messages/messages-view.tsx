@@ -163,7 +163,7 @@ export function MessagesView({ channelId, subscribe }: MessagesViewProps) {
   if (loading && threads.length === 0) {
     return (
       <Frame>
-        <div className='flex flex-1 items-center justify-center text-xs text-[color:var(--color-muted)]'>
+        <div className='flex flex-1 items-center justify-center text-xs text-muted-foreground'>
           Loading…
         </div>
       </Frame>
@@ -173,7 +173,7 @@ export function MessagesView({ channelId, subscribe }: MessagesViewProps) {
   if (error && threads.length === 0) {
     return (
       <Frame>
-        <div className='flex flex-1 items-center justify-center px-6 text-center text-sm text-[color:var(--color-muted)]'>
+        <div className='flex flex-1 items-center justify-center px-6 text-center text-sm text-muted-foreground'>
           {error}
         </div>
       </Frame>
@@ -184,12 +184,12 @@ export function MessagesView({ channelId, subscribe }: MessagesViewProps) {
     return (
       <Frame>
         <div className='flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center'>
-          <div className='flex size-12 items-center justify-center rounded-full bg-[color:var(--color-surface-subtle)]'>
-            <MessageCircle className='size-6 text-[color:var(--color-muted)]' aria-hidden='true' />
+          <div className='flex size-12 items-center justify-center rounded-full bg-muted'>
+            <MessageCircle className='size-6 text-muted-foreground' aria-hidden='true' />
           </div>
           <div className='flex flex-col gap-1'>
-            <p className='text-sm font-medium text-[color:var(--color-fg)]'>No conversations yet</p>
-            <p className='text-xs text-[color:var(--color-muted)]'>
+            <p className='text-sm font-medium text-foreground'>No conversations yet</p>
+            <p className='text-xs text-muted-foreground'>
               Start one and we&apos;ll get back to you soon.
             </p>
           </div>
@@ -240,32 +240,27 @@ function ThreadRow({ thread, isUnread, onOpen }: ThreadRowProps) {
       type='button'
       onClick={onOpen}
       className={cn(
-        'flex w-full items-start gap-3 rounded-lg px-3 py-2.5 text-left transition-colors hover:bg-[color:var(--color-hover)]'
+        'flex w-full items-start gap-3 rounded-lg px-3 py-2.5 text-left transition-colors hover:bg-accent'
       )}>
       <Avatar agent={thread.agent} />
       <div className='flex min-w-0 flex-1 flex-col gap-0.5'>
         <div className='flex items-center justify-between gap-2'>
-          <span className='truncate text-sm font-medium text-[color:var(--color-fg)]'>
+          <span className='truncate text-sm font-medium text-foreground'>
             {thread.agent?.name ?? 'Support'}
           </span>
-          <span className='shrink-0 text-[11px] text-[color:var(--color-muted)]'>{relative}</span>
+          <span className='shrink-0 text-[11px] text-muted-foreground'>{relative}</span>
         </div>
         <div className='flex items-center gap-2'>
           <span
             className={cn(
               'min-w-0 flex-1 truncate text-xs',
-              isUnread
-                ? 'font-medium text-[color:var(--color-fg)]'
-                : 'text-[color:var(--color-muted)]'
+              isUnread ? 'font-medium text-foreground' : 'text-muted-foreground'
             )}>
             {thread.lastMessage.isInbound ? 'You: ' : ''}
             {thread.lastMessage.snippet || 'No messages yet'}
           </span>
           {isUnread ? (
-            <span
-              className='size-2 shrink-0 rounded-full bg-[color:var(--color-primary)]'
-              aria-label='Unread'
-            />
+            <span className='size-2 shrink-0 rounded-full bg-primary' aria-label='Unread' />
           ) : null}
         </div>
       </div>
@@ -280,7 +275,7 @@ function Avatar({ agent }: { agent: ThreadListItem['agent'] }) {
     )
   }
   return (
-    <div className='flex size-9 shrink-0 items-center justify-center rounded-full bg-[color:var(--color-surface-subtle)] text-[color:var(--color-muted)]'>
+    <div className='flex size-9 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground'>
       <User className='size-4' aria-hidden='true' />
     </div>
   )
@@ -293,7 +288,7 @@ function FloatingSendPill({ onClick, disabled }: { onClick: () => void; disabled
         type='button'
         onClick={onClick}
         disabled={disabled}
-        className='pointer-events-auto inline-flex items-center gap-2 rounded-full bg-[color:var(--color-primary)] px-4 py-2 text-sm font-medium text-[color:var(--color-primary-foreground)] shadow-md transition-opacity hover:brightness-110 disabled:opacity-50'>
+        className='pointer-events-auto inline-flex items-center gap-2 rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-md transition-opacity hover:brightness-110 disabled:opacity-50'>
         <Plus className='size-4' aria-hidden='true' />
         Send us a message
       </button>

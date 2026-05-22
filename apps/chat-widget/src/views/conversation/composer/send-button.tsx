@@ -17,7 +17,7 @@ export function SendButton({ onClick, disabled, loading }: SendButtonProps) {
       disabled={disabled || loading}
       title='Send'
       className={cn(
-        'flex size-8 items-center justify-center rounded-full bg-[color:var(--color-primary)] text-[color:var(--color-primary-foreground)] transition-opacity disabled:opacity-40'
+        'flex size-8 items-center justify-center rounded-full bg-primary text-primary-foreground transition-opacity disabled:opacity-40'
       )}>
       {loading ? (
         <span

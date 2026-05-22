@@ -293,26 +293,31 @@ export function BehaviorSection({ widget, channelId }: BehaviorSectionProps) {
           </div>
         </div>
 
-        <div className='border-t p-6'>
-          <div className='space-y-1 mb-6'>
-            <div className='flex items-center gap-2 text-base font-semibold tracking-tight text-foreground'>
-              <Home className='size-4' /> Home tab
+        <div className='flex flex-col border-t lg:flex-row'>
+          <div className='flex-1 p-6 lg:pr-6'>
+            <div className='space-y-1 mb-6'>
+              <div className='flex items-center gap-2 text-base font-semibold tracking-tight text-foreground'>
+                <BookOpen className='size-4' /> Knowledge base
+              </div>
+              <p className='text-sm text-muted-foreground'>
+                Source articles for the widget's Home and Browse screens.
+              </p>
             </div>
-            <p className='text-sm text-muted-foreground'>
-              What visitors see on the widget's Home screen.
-            </p>
-          </div>
 
-          <div className='space-y-6'>
-            <FormField
-              control={form.control}
-              name='knowledgeBaseId'
-              render={({ field }) => {
-                const recordId = field.value ? (`kb:${field.value}` as RecordId) : null
-                return (
-                  <FormItem>
-                    <FormLabel>Knowledge base</FormLabel>
-                    <FormControl>
+            <VarEditorField orientation='responsive' className='p-0'>
+              <FormField
+                control={form.control}
+                name='knowledgeBaseId'
+                render={({ field, fieldState }) => {
+                  const recordId = field.value ? (`kb:${field.value}` as RecordId) : null
+                  return (
+                    <VarEditorFieldRow
+                      title='Knowledge base'
+                      description="Articles from this KB power the widget's featured cards and Browse all view."
+                      type={BaseType.RELATION}
+                      icon={<BookOpen className='size-3.5' />}
+                      showIcon
+                      validationError={fieldState.error?.message}>
                       <MultiRelationInput
                         entityDefinitionId='kb'
                         value={recordId ? [recordId] : []}
@@ -330,15 +335,23 @@ export function BehaviorSection({ widget, channelId }: BehaviorSectionProps) {
                           field.onChange(instanceId)
                         }}
                       />
-                    </FormControl>
-                    <KbVisibilityWarning knowledgeBaseId={field.value} />
-                    <FormDescription>
-                      Articles from this KB power the widget's featured cards and Browse all view.
-                    </FormDescription>
-                  </FormItem>
-                )
-              }}
-            />
+                      <KbVisibilityWarning knowledgeBaseId={field.value} />
+                    </VarEditorFieldRow>
+                  )
+                }}
+              />
+            </VarEditorField>
+          </div>
+
+          <div className='flex-1 border-t p-6 lg:border-t-0 lg:border-l lg:pl-6'>
+            <div className='space-y-1 mb-6'>
+              <div className='flex items-center gap-2 text-base font-semibold tracking-tight text-foreground'>
+                <Home className='size-4' /> Featured articles
+              </div>
+              <p className='text-sm text-muted-foreground'>
+                Pinned articles shown as cards on the Home screen.
+              </p>
+            </div>
 
             <FormField
               control={form.control}

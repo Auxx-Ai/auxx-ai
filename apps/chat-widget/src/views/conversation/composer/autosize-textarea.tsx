@@ -193,7 +193,7 @@ export const AutosizeTextarea = forwardRef<HTMLTextAreaElement, AutosizeTextarea
         value={value}
         onInput={onInput}
         className={cn(
-          'block w-full resize-none border-0 bg-transparent px-3 py-2 text-sm outline-none placeholder:text-[color:var(--color-muted)]',
+          'block w-full resize-none border-0 bg-transparent px-3 py-2 text-sm outline-none placeholder:text-muted-foreground',
           className
         )}
         style={style}

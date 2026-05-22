@@ -313,9 +313,7 @@ function PanelShell({
         />
       )}
       {error ? (
-        <div
-          className='px-2.5 py-1.5 text-center text-xs text-[color:var(--color-danger)]'
-          role='alert'>
+        <div className='px-2.5 py-1.5 text-center text-xs text-destructive' role='alert'>
           {error}
         </div>
       ) : null}

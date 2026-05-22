@@ -83,6 +83,10 @@ export const ChatWidget = pgTable(
     defaultTheme: text().default('light').notNull(), // 'light' | 'dark' | 'system'
     primaryColorDark: text(), // nullable — falls back to primaryColor
     headerColorDark: text(), // nullable — falls back to headerColor
+
+    /** Up to 5 tap-to-send suggestions shown above the composer while the
+     * conversation thread has no user messages. Null = no chips rendered. */
+    suggestedReplies: text().array(),
   },
   (table) => [
     uniqueIndex('ChatWidget_integrationId_key').using(

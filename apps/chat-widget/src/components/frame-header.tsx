@@ -42,7 +42,7 @@ export function FrameHeader({
     // (white/transparent, designed for dark backgrounds).
     const heroLogo = logoLight
     return (
-      <header className='relative flex shrink-0 flex-col gap-4 bg-[color:var(--color-primary)] px-5 py-5 text-[color:var(--color-primary-foreground)]'>
+      <header className='relative flex shrink-0 flex-col gap-4 bg-primary px-5 py-5 text-primary-foreground'>
         <div className='flex items-start justify-between'>
           {heroLogo ? (
             <img src={heroLogo} alt='' className='h-8 w-auto' />
@@ -63,7 +63,7 @@ export function FrameHeader({
 
   if (variant === 'plain') {
     return (
-      <header className='relative flex shrink-0 items-center justify-between border-b border-[color:var(--color-border-subtle)] bg-transparent px-4 py-3'>
+      <header className='relative flex shrink-0 items-center justify-between border-b border-border bg-transparent px-4 py-3'>
         <span className='w-6' />
         <h1 className='text-sm font-semibold'>{title}</h1>
         <CloseButton onClose={onClose} tone='dark' />
@@ -72,24 +72,22 @@ export function FrameHeader({
   }
 
   return (
-    <header className='relative flex shrink-0 items-center gap-2 border-b border-[color:var(--color-border-subtle)] bg-transparent px-3 py-2'>
+    <header className='relative flex shrink-0 items-center gap-2 border-b border-border bg-transparent px-3 py-2'>
       {onBack ? (
         <button
           type='button'
           onClick={onBack}
-          className='flex size-7 items-center justify-center rounded text-[color:var(--color-muted)] hover:bg-[color:var(--color-hover)] hover:text-[color:var(--color-fg)]'
+          className='flex size-7 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-foreground'
           aria-label='Back'>
           <ArrowLeft className='size-4' aria-hidden='true' />
         </button>
       ) : null}
       <div className='flex min-w-0 flex-1 flex-col'>
         {title ? (
-          <span className='truncate text-sm font-semibold text-[color:var(--color-fg)]'>
-            {title}
-          </span>
+          <span className='truncate text-sm font-semibold text-foreground'>{title}</span>
         ) : null}
         {subtitle ? (
-          <span className='truncate text-xs text-[color:var(--color-muted)]'>{subtitle}</span>
+          <span className='truncate text-xs text-muted-foreground'>{subtitle}</span>
         ) : null}
       </div>
       {actions}
@@ -108,7 +106,7 @@ function CloseButton({ onClose, tone }: { onClose: () => void; tone: 'light' | '
         'flex size-7 items-center justify-center rounded transition-colors',
         tone === 'light'
           ? 'text-white/90 hover:bg-white/10 hover:text-white'
-          : 'text-[color:var(--color-muted)] hover:bg-[color:var(--color-hover)] hover:text-[color:var(--color-fg)]'
+          : 'text-muted-foreground hover:bg-accent hover:text-foreground'
       )}>
       <X className='size-4' aria-hidden='true' />
     </button>

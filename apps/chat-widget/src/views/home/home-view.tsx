@@ -182,7 +182,7 @@ export function HomeView({ channelId, config, resolvedTheme, onClose }: HomeView
         }}
       />
       <div
-        className='relative z-10 flex shrink-0 flex-col gap-8 px-5 pt-5 pb-6'
+        className='relative z-10 flex shrink-0 flex-col gap-8 ps-5 pe-3 pt-5 pb-6'
         style={{ color: headerText }}>
         <div className='flex items-start justify-between'>
           {logo ? <img src={logo} alt='' className='h-8 w-auto' /> : <span className='h-8' />}
@@ -204,15 +204,13 @@ export function HomeView({ channelId, config, resolvedTheme, onClose }: HomeView
       </div>
       <div className='relative z-10 flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-3 pb-3'>
         {cards.length === 0 ? (
-          <p className='py-6 text-center text-xs text-[color:var(--color-muted)]'>
-            No conversations yet
-          </p>
+          <p className='py-6 text-center text-xs text-muted-foreground'>No conversations yet</p>
         ) : (
           cards
         )}
       </div>
       {config.branding.footerEnabled ? (
-        <div className='relative z-10 border-t border-[color:var(--color-border-subtle)] bg-transparent py-2 text-center text-[10px] uppercase tracking-wide text-[color:var(--color-muted)]'>
+        <div className='relative z-10 border-t border-border bg-transparent py-2 text-center text-[10px] uppercase tracking-wide text-muted-foreground'>
           Powered by Auxx
         </div>
       ) : null}

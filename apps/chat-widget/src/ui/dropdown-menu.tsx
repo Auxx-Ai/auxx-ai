@@ -12,10 +12,7 @@ export const DropdownMenuSeparator = ({
   className,
   ...props
 }: ComponentProps<typeof DropdownMenuPrimitive.Separator>) => (
-  <DropdownMenuPrimitive.Separator
-    className={cn('my-1 h-px bg-[color:var(--color-border)]', className)}
-    {...props}
-  />
+  <DropdownMenuPrimitive.Separator className={cn('my-1 h-px bg-border', className)} {...props} />
 )
 
 export function DropdownMenuContent({
@@ -31,7 +28,7 @@ export function DropdownMenuContent({
         className={cn(
           // See popover.tsx — must outrank `.auxx-chat-shell`'s z-index since
           // the dropdown is portaled as a sibling of the shell stacking ctx.
-          'min-w-[10rem] overflow-hidden rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] p-1 text-sm shadow-md',
+          'min-w-[10rem] overflow-hidden rounded-md border border-border bg-background p-1 text-sm shadow-md',
           className
         )}
         style={{ zIndex: 2147483001 }}
@@ -48,7 +45,7 @@ export function DropdownMenuItem({
   return (
     <DropdownMenuPrimitive.Item
       className={cn(
-        'relative flex cursor-pointer select-none items-center gap-2 rounded px-2 py-1.5 outline-none focus:bg-[color:var(--color-surface)] data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
+        'relative flex cursor-pointer select-none items-center gap-2 rounded px-2 py-1.5 outline-none focus:bg-muted data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
         className
       )}
       {...props}
