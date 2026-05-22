@@ -1,6 +1,8 @@
 # docker-compose.yml
 # Development infrastructure — run apps on host with `pnpm dev`
 
+name: auxxai
+
 services:
   postgres:
     image: ankane/pgvector:latest
