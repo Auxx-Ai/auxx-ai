@@ -15,9 +15,23 @@ function findScriptTag(): HTMLScriptElement | null {
   return all[all.length - 1] ?? null
 }
 
-function mount(channelId: string, cacheBust: string | null): void {
+const VALID_THEMES = ['light', 'dark', 'system'] as const
+type ScriptTheme = 'light' | 'dark' | 'system'
+
+function parseScriptTheme(raw: string | undefined): ScriptTheme | undefined {
+  if (raw && (VALID_THEMES as readonly string[]).includes(raw)) {
+    return raw as ScriptTheme
+  }
+  return undefined
+}
+
+function mount(
+  channelId: string,
+  cacheBust: string | null,
+  scriptTheme: ScriptTheme | undefined
+): void {
   installIdentifyQueue(channelId)
-  mountWidget(<Widget channelId={channelId} cacheBust={cacheBust} />)
+  mountWidget(<Widget channelId={channelId} cacheBust={cacheBust} scriptTheme={scriptTheme} />)
 }
 
 function boot(): void {
@@ -28,10 +42,13 @@ function boot(): void {
     return
   }
   const cacheBust = tag?.dataset.v ?? null
+  const scriptTheme = parseScriptTheme(tag?.dataset.theme)
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => mount(channelId, cacheBust), { once: true })
+    document.addEventListener('DOMContentLoaded', () => mount(channelId, cacheBust, scriptTheme), {
+      once: true,
+    })
   } else {
-    mount(channelId, cacheBust)
+    mount(channelId, cacheBust, scriptTheme)
   }
 }
 

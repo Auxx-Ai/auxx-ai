@@ -11,6 +11,7 @@ import {
   InputGroupAddon,
   InputGroupButton,
   InputGroupInput,
+  InputGroupText,
 } from '@auxx/ui/components/input-group'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { toastError } from '@auxx/ui/components/toast'
@@ -232,7 +233,7 @@ export function GeneralSection({ widget, channelId, onDelete }: GeneralSectionPr
                   multi={false}
                   placeholder='Pick an inbox'
                   disabled={update.isPending}
-                  triggerProps={{ className: 'w-full' }}
+                  triggerProps={{ className: 'w-full ps-0 pe-1' }}
                 />
               </VarEditorFieldRow>
 
@@ -249,7 +250,7 @@ export function GeneralSection({ widget, channelId, onDelete }: GeneralSectionPr
                   target='agent'
                   emptyLabel='Choose an agent…'
                   disabled={update.isPending}
-                  triggerProps={{ className: 'w-full' }}
+                  triggerProps={{ className: 'w-full ps-0 pe-1' }}
                 />
               </VarEditorFieldRow>
             </VarEditorField>
@@ -266,13 +267,15 @@ export function GeneralSection({ widget, channelId, onDelete }: GeneralSectionPr
                   <code>&lt;/body&gt;</code>.
                 </p>
               </div>
-              {installLoading ? (
-                <Skeleton className='h-9 w-full' />
-              ) : installCode?.script ? (
-                <InputGroup>
-                  <InputGroupAddon align='inline-start'>
-                    <Code />
-                  </InputGroupAddon>
+              <InputGroup>
+                <InputGroupAddon align='inline-start'>
+                  <Code />
+                </InputGroupAddon>
+                {installLoading ? (
+                  <InputGroupText className='flex-1'>
+                    <Skeleton className='h-4 w-full' />
+                  </InputGroupText>
+                ) : installCode?.script ? (
                   <InputGroupInput
                     type='text'
                     value={installCode.script}
@@ -280,21 +283,24 @@ export function GeneralSection({ widget, channelId, onDelete }: GeneralSectionPr
                     className='font-mono text-xs'
                     onFocus={(e) => e.target.select()}
                   />
-                  <InputGroupAddon align='inline-end' className='gap-0.5'>
-                    <Tooltip content='Copy'>
-                      <InputGroupButton
-                        aria-label='Copy install snippet'
-                        className='rounded-full'
-                        size='icon-xs'
-                        onClick={() => copyLink(installCode.script)}>
-                        {copiedLink ? <Check /> : <Copy />}
-                      </InputGroupButton>
-                    </Tooltip>
-                  </InputGroupAddon>
-                </InputGroup>
-              ) : (
-                <p className='text-sm text-destructive'>Could not load installation code.</p>
-              )}
+                ) : (
+                  <InputGroupText className='text-destructive'>
+                    Could not load installation code.
+                  </InputGroupText>
+                )}
+                <InputGroupAddon align='inline-end' className='gap-0.5'>
+                  <Tooltip content='Copy'>
+                    <InputGroupButton
+                      aria-label='Copy install snippet'
+                      className='rounded-full'
+                      size='icon-xs'
+                      disabled={!installCode?.script}
+                      onClick={() => installCode?.script && copyLink(installCode.script)}>
+                      {copiedLink ? <Check /> : <Copy />}
+                    </InputGroupButton>
+                  </Tooltip>
+                </InputGroupAddon>
+              </InputGroup>
             </div>
 
             <div>

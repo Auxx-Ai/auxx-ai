@@ -49,6 +49,11 @@ export interface UpdateChatWidgetInput {
   /** Pass `null` to unlink the knowledge base. */
   knowledgeBaseId?: string | null
   featuredArticleIds?: string[]
+
+  // Dark mode
+  defaultTheme?: 'light' | 'dark' | 'system'
+  primaryColorDark?: string | null
+  headerColorDark?: string | null
 }
 
 /**

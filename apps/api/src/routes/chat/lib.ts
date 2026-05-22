@@ -23,6 +23,9 @@ export interface LoadedChatWidget {
     mobileFullScreen: boolean
     collectUserInfo: boolean
     offlineMessage: string | null
+    theme: 'light' | 'dark' | 'system'
+    primaryColorDark: string | null
+    headerColorDark: string | null
   }
   home: {
     greetingTemplate: unknown
@@ -72,6 +75,9 @@ export async function loadChatWidgetByChannelId(
       mobileFullScreen: row.chatWidget.mobileFullScreen,
       collectUserInfo: row.chatWidget.collectUserInfo,
       offlineMessage: row.chatWidget.offlineMessage ?? null,
+      theme: (row.chatWidget.defaultTheme ?? 'light') as 'light' | 'dark' | 'system',
+      primaryColorDark: row.chatWidget.primaryColorDark ?? null,
+      headerColorDark: row.chatWidget.headerColorDark ?? null,
     },
     home: {
       greetingTemplate: row.chatWidget.homeGreetingTemplate ?? null,

@@ -23,9 +23,12 @@ import {
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { GripVertical, Plus, X } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useArticleList } from '~/components/kb/hooks/use-article-list'
+import { getArticleStoreState } from '~/components/kb/store/article-store'
+import { normalizeServerArticle } from '~/components/kb/store/normalize-server-article'
 import { ArticlePicker } from '~/components/kb/ui/articles/article-picker'
+import { api } from '~/trpc/react'
 
 interface FeaturedArticlesFieldProps {
   /** KB the picker scopes to; when null the field is disabled. */
@@ -48,6 +51,23 @@ export function FeaturedArticlesField({
   disabled,
 }: FeaturedArticlesFieldProps) {
   const [pickerOpen, setPickerOpen] = useState(false)
+
+  // The article store is normally hydrated by KnowledgeBaseProvider (mounted only
+  // under the KB editor/preview routes). This field renders on the chat widget
+  // settings page, so hydrate the store ourselves whenever a KB is linked.
+  const articlesQuery = api.kb.getArticles.useQuery(
+    { knowledgeBaseId: knowledgeBaseId ?? '', includeUnpublished: true },
+    { enabled: !!knowledgeBaseId }
+  )
+  useEffect(() => {
+    if (articlesQuery.data && knowledgeBaseId) {
+      getArticleStoreState().setArticles(
+        knowledgeBaseId,
+        (articlesQuery.data as any[]).map(normalizeServerArticle)
+      )
+    }
+  }, [articlesQuery.data, knowledgeBaseId])
+
   const articles = useArticleList(knowledgeBaseId)
   const articleById = useMemo(() => new Map(articles.map((a) => [a.id, a])), [articles])
   const selectedSet = useMemo(() => new Set(value), [value])

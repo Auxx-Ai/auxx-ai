@@ -16,6 +16,10 @@
 @source "./**/*.{ts,tsx}";
 
 @theme {
+  /* Light-mode defaults. Tailwind JITs utility classes from these token names.
+   * Dark overrides are applied via .auxx-root[data-theme='dark'] in @layer base
+   * below — setting them directly on an element inside the shadow DOM rather
+   * than at :host, so the values are actually inherited by descendants. */
   --color-bg: #ffffff;
   --color-fg: #111111;
   --color-muted: #6b7280;
@@ -35,6 +39,39 @@
 }
 
 @layer base {
+  /* Glass design tokens — defined here (inside shadow DOM element tree) rather
+   * than @theme (:host) so that dark-mode overrides inherit correctly.
+   * Light percentages are higher than dark because 3% of near-black on white
+   * is nearly invisible; dark mode uses lower values since white on dark pops. */
+  .auxx-root {
+    --color-surface-subtle: color-mix(in srgb, #111111 6%, transparent);
+    --color-hover: color-mix(in srgb, #111111 9%, transparent);
+    --color-border-strong: color-mix(in srgb, #111111 14%, transparent);
+    --color-border-subtle: color-mix(in srgb, #111111 8%, transparent);
+    --color-bg-panel: color-mix(in srgb, #ffffff 90%, transparent);
+  }
+
+  /* Dark mode: override --color-* directly on .auxx-root so all descendants
+   * inherit the dark values. Setting on this element (inside shadow DOM) works
+   * because CSS custom property inheritance flows down from here, whereas @theme
+   * outputs at :host where brand vars on child elements are unreachable. */
+  .auxx-root[data-theme='dark'] {
+    --color-bg: #0d1117;
+    --color-fg: #f3f4f6;
+    --color-muted: #9ca3af;
+    --color-border: #1f2937;
+    --color-surface: #161b22;
+    --color-primary-foreground: #ffffff;
+    --color-danger: #f87171;
+    /* --color-primary is handled on .auxx-chat-root[data-theme='dark'] below
+     * because the --auxx-chat-primary-dark brand var is an inline style there. */
+    --color-surface-subtle: color-mix(in srgb, #f3f4f6 3%, transparent);
+    --color-hover: color-mix(in srgb, #f3f4f6 5%, transparent);
+    --color-border-strong: color-mix(in srgb, #f3f4f6 10%, transparent);
+    --color-border-subtle: color-mix(in srgb, #f3f4f6 5%, transparent);
+    --color-bg-panel: color-mix(in srgb, #0d1117 85%, transparent);
+  }
+
   .auxx-root,
   .auxx-root *,
   .auxx-root *::before,
@@ -60,15 +97,11 @@
     --auxx-chat-shell-edge-gap: 20px;
 
     --auxx-chat-primary: #4f46e5;
-    /* Re-declare the Tailwind theme token here so it's computed on the same
-     * element where the inline style sets `--auxx-chat-primary`. The @theme
-     * declaration lives at `:root, :host` — outside the shadow tree — and
-     * its `var(--auxx-chat-primary, …)` substitutes against that element,
-     * so without this override it would always resolve to the fallback. */
+    /* Re-declare --color-primary on this element so the var() resolves here
+     * where the inline-style --auxx-chat-primary is actually set. Without this,
+     * the @theme value resolves at :host where the brand var is unreachable. */
     --color-primary: var(--auxx-chat-primary);
-    --auxx-chat-surface: #fff;
     --auxx-chat-shell-closed-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-    --auxx-chat-shell-open-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
 
     --auxx-chat-shell-duration: 280ms;
     --auxx-chat-shell-ease: cubic-bezier(0.32, 0.72, 0, 1);
@@ -76,6 +109,13 @@
     --auxx-chat-panel-duration: 160ms;
     --auxx-chat-panel-open-delay: 140ms;
     --auxx-chat-panel-close-delay: 0ms;
+  }
+
+  .auxx-chat-root[data-theme='dark'] {
+    --color-primary: var(--auxx-chat-primary-dark, var(--auxx-chat-primary, #4f46e5));
+    --auxx-chat-shell-open-shadow:
+      0 0 0 1px rgba(0, 0, 0, 0.5),
+      0 24px 64px rgba(0, 0, 0, 0.6);
   }
 
   .auxx-chat-shell {
@@ -110,7 +150,12 @@
     max-width: calc(100vw - calc(var(--auxx-chat-shell-edge-gap) * 2));
     max-height: calc(100vh - calc(var(--auxx-chat-shell-edge-gap) * 5));
     border-radius: var(--auxx-chat-shell-open-radius);
-    background: var(--auxx-chat-surface);
+    background: var(--color-bg-panel);
+    backdrop-filter: blur(12px);
+    border: 1px solid var(--color-border-strong);
+    --auxx-chat-shell-open-shadow:
+      0 0 0 1px rgba(0, 0, 0, 0.12),
+      0 24px 64px rgba(0, 0, 0, 0.22);
     box-shadow: var(--auxx-chat-shell-open-shadow);
   }
   .auxx-chat-shell--expanded {

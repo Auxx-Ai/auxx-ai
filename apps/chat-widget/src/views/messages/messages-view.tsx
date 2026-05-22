@@ -184,7 +184,7 @@ export function MessagesView({ channelId, subscribe }: MessagesViewProps) {
     return (
       <Frame>
         <div className='flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center'>
-          <div className='flex size-12 items-center justify-center rounded-full bg-[color:var(--color-surface)]'>
+          <div className='flex size-12 items-center justify-center rounded-full bg-[color:var(--color-surface-subtle)]'>
             <MessageCircle className='size-6 text-[color:var(--color-muted)]' aria-hidden='true' />
           </div>
           <div className='flex flex-col gap-1'>
@@ -224,11 +224,7 @@ export function MessagesView({ channelId, subscribe }: MessagesViewProps) {
 }
 
 function Frame({ children }: { children: preact.ComponentChildren }) {
-  return (
-    <div className='relative flex min-h-0 flex-1 flex-col bg-[color:var(--color-surface)]'>
-      {children}
-    </div>
-  )
+  return <div className='relative flex min-h-0 flex-1 flex-col'>{children}</div>
 }
 
 interface ThreadRowProps {
@@ -244,7 +240,7 @@ function ThreadRow({ thread, isUnread, onOpen }: ThreadRowProps) {
       type='button'
       onClick={onOpen}
       className={cn(
-        'flex w-full items-start gap-3 rounded-lg border border-transparent bg-[color:var(--color-bg)] px-3 py-2.5 text-left transition-colors hover:border-[color:var(--color-border)]'
+        'flex w-full items-start gap-3 rounded-lg px-3 py-2.5 text-left transition-colors hover:bg-[color:var(--color-hover)]'
       )}>
       <Avatar agent={thread.agent} />
       <div className='flex min-w-0 flex-1 flex-col gap-0.5'>
@@ -284,7 +280,7 @@ function Avatar({ agent }: { agent: ThreadListItem['agent'] }) {
     )
   }
   return (
-    <div className='flex size-9 shrink-0 items-center justify-center rounded-full bg-[color:var(--color-surface)] text-[color:var(--color-muted)]'>
+    <div className='flex size-9 shrink-0 items-center justify-center rounded-full bg-[color:var(--color-surface-subtle)] text-[color:var(--color-muted)]'>
       <User className='size-4' aria-hidden='true' />
     </div>
   )

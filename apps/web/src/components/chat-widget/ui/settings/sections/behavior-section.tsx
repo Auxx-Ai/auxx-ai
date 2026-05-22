@@ -16,7 +16,6 @@ import {
 import { Textarea } from '@auxx/ui/components/textarea'
 import { toastError } from '@auxx/ui/components/toast'
 import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
-import type { JSONContent } from '@tiptap/react'
 import {
   BookOpen,
   Home,
@@ -35,7 +34,6 @@ import { BaseType } from '~/components/workflow/types'
 import { VarEditorField, VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
 import { api } from '~/trpc/react'
 import { FeaturedArticlesField } from '../featured-articles-field'
-import { GreetingEditor } from '../greeting-editor'
 
 interface BehaviorSectionProps {
   widget: ChatWidgetWithIntegration
@@ -47,7 +45,6 @@ const behaviorSchema = z.object({
   collectUserInfo: z.boolean(),
   offlineMessage: z.string().max(1000).optional(),
   // Home group
-  homeGreetingTemplate: z.unknown().optional(),
   homeShowRecentMessage: z.boolean(),
   homeShowSendMessageCta: z.boolean(),
   allowDownloadTranscript: z.boolean(),
@@ -96,7 +93,6 @@ export function BehaviorSection({ widget, channelId }: BehaviorSectionProps) {
       autoOpen: cw?.autoOpen ?? false,
       collectUserInfo: cw?.collectUserInfo ?? false,
       offlineMessage: cw?.offlineMessage ?? '',
-      homeGreetingTemplate: (cw?.homeGreetingTemplate as JSONContent | null) ?? null,
       homeShowRecentMessage: cw?.homeShowRecentMessage ?? true,
       homeShowSendMessageCta: cw?.homeShowSendMessageCta ?? true,
       allowDownloadTranscript: cw?.allowDownloadTranscript ?? true,
@@ -112,7 +108,6 @@ export function BehaviorSection({ widget, channelId }: BehaviorSectionProps) {
       autoOpen: values.autoOpen,
       collectUserInfo: values.collectUserInfo,
       offlineMessage: values.offlineMessage || undefined,
-      homeGreetingTemplate: values.homeGreetingTemplate ?? null,
       homeShowRecentMessage: values.homeShowRecentMessage,
       homeShowSendMessageCta: values.homeShowSendMessageCta,
       allowDownloadTranscript: values.allowDownloadTranscript,
@@ -309,27 +304,6 @@ export function BehaviorSection({ widget, channelId }: BehaviorSectionProps) {
           </div>
 
           <div className='space-y-6'>
-            <FormField
-              control={form.control}
-              name='homeGreetingTemplate'
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Greeting</FormLabel>
-                  <FormControl>
-                    <GreetingEditor
-                      value={(field.value as JSONContent | null) ?? null}
-                      onChange={field.onChange}
-                      placeholder='Hi {visitor:name} 👋'
-                    />
-                  </FormControl>
-                  <FormDescription>
-                    Type <code className='rounded bg-muted px-1'>{'{'}</code> to insert a visitor
-                    field. Click the badge to set a fallback for when the value isn't available.
-                  </FormDescription>
-                </FormItem>
-              )}
-            />
-
             <FormField
               control={form.control}
               name='knowledgeBaseId'

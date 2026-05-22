@@ -105,8 +105,8 @@ export function Composer({ channelId, onSend, disabled, placeholder }: ComposerP
       onDragLeave={() => setDragOver(false)}
       onDrop={handleDrop}
       className={cn(
-        'mx-3 mb-3 rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-bg)] transition-colors focus-within:border-[color:var(--color-primary)] focus-within:ring-2 focus-within:ring-[color:var(--color-primary)]/30',
-        dragOver && 'border-[color:var(--color-primary)] bg-[color:var(--color-surface)]'
+        'mx-3 mb-3 rounded-xl bg-[color:var(--color-surface-subtle)] ring-1 ring-[color:var(--color-border-strong)] transition-colors focus-within:ring-[color:var(--color-primary)] focus-within:ring-2',
+        dragOver && 'ring-[color:var(--color-primary)] bg-[color:var(--color-hover)]'
       )}>
       <AttachmentThumbRow inflight={attachments} onRemove={handleRemoveAttachment} />
       <AutosizeTextarea

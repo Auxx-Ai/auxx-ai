@@ -18,6 +18,7 @@ interface FrameHeaderProps {
   subtitle?: string
   logoLight?: string | null
   logoDark?: string | null
+  resolvedTheme?: 'light' | 'dark'
   onClose: () => void
   onBack?: () => void
   actions?: ComponentChildren
@@ -29,18 +30,22 @@ export function FrameHeader({
   title,
   subtitle,
   logoLight,
-  logoDark: _logoDark,
+  logoDark,
+  resolvedTheme = 'light',
   onClose,
   onBack,
   actions,
   children,
 }: FrameHeaderProps) {
   if (variant === 'dark-hero') {
+    // dark-hero sits on the primary-colored band — always use the light logo
+    // (white/transparent, designed for dark backgrounds).
+    const heroLogo = logoLight
     return (
       <header className='relative flex shrink-0 flex-col gap-4 bg-[color:var(--color-primary)] px-5 py-5 text-[color:var(--color-primary-foreground)]'>
         <div className='flex items-start justify-between'>
-          {logoLight ? (
-            <img src={logoLight} alt='' className='h-8 w-auto' />
+          {heroLogo ? (
+            <img src={heroLogo} alt='' className='h-8 w-auto' />
           ) : (
             <span className='h-8' />
           )}
@@ -58,7 +63,7 @@ export function FrameHeader({
 
   if (variant === 'plain') {
     return (
-      <header className='relative flex shrink-0 items-center justify-between border-b border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-4 py-3'>
+      <header className='relative flex shrink-0 items-center justify-between border-b border-[color:var(--color-border-subtle)] bg-transparent px-4 py-3'>
         <span className='w-6' />
         <h1 className='text-sm font-semibold'>{title}</h1>
         <CloseButton onClose={onClose} tone='dark' />
@@ -67,12 +72,12 @@ export function FrameHeader({
   }
 
   return (
-    <header className='relative flex shrink-0 items-center gap-2 border-b border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-3 py-2'>
+    <header className='relative flex shrink-0 items-center gap-2 border-b border-[color:var(--color-border-subtle)] bg-transparent px-3 py-2'>
       {onBack ? (
         <button
           type='button'
           onClick={onBack}
-          className='flex size-7 items-center justify-center rounded text-[color:var(--color-muted)] hover:bg-[color:var(--color-surface)] hover:text-[color:var(--color-fg)]'
+          className='flex size-7 items-center justify-center rounded text-[color:var(--color-muted)] hover:bg-[color:var(--color-hover)] hover:text-[color:var(--color-fg)]'
           aria-label='Back'>
           <ArrowLeft className='size-4' aria-hidden='true' />
         </button>
@@ -103,7 +108,7 @@ function CloseButton({ onClose, tone }: { onClose: () => void; tone: 'light' | '
         'flex size-7 items-center justify-center rounded transition-colors',
         tone === 'light'
           ? 'text-white/90 hover:bg-white/10 hover:text-white'
-          : 'text-[color:var(--color-muted)] hover:bg-[color:var(--color-surface)] hover:text-[color:var(--color-fg)]'
+          : 'text-[color:var(--color-muted)] hover:bg-[color:var(--color-hover)] hover:text-[color:var(--color-fg)]'
       )}>
       <X className='size-4' aria-hidden='true' />
     </button>

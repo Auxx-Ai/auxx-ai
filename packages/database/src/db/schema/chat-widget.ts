@@ -78,6 +78,11 @@ export const ChatWidget = pgTable(
     featuredArticleIds: text().array(),
 
     allowDownloadTranscript: boolean().default(true).notNull(),
+
+    // Dark mode
+    defaultTheme: text().default('light').notNull(), // 'light' | 'dark' | 'system'
+    primaryColorDark: text(), // nullable — falls back to primaryColor
+    headerColorDark: text(), // nullable — falls back to headerColor
   },
   (table) => [
     uniqueIndex('ChatWidget_integrationId_key').using(
