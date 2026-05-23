@@ -9,7 +9,8 @@
 //     issued, so the launcher unread badge updates while closed.
 //   - tracks an `expanded` state per channel for the wide-window mode.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
+import type { Ref } from 'preact'
+import { useCallback, useEffect, useRef, useState } from 'preact/hooks'
 import { FrameHeader, type FrameHeaderVariant } from './components/frame-header'
 import { TabBar } from './components/tab-bar'
 import { NavStackProvider } from './navigation/nav-stack-context'
@@ -31,6 +32,7 @@ import { HomeView } from './views/home/home-view'
 import { KbArticleView } from './views/kb/kb-article-view'
 import { KbSectionView } from './views/kb/kb-section-view'
 import { MessagesView } from './views/messages/messages-view'
+import { clampToViewport, useDragShell } from './views/use-drag-shell'
 
 interface WidgetProps {
   channelId: string
@@ -65,6 +67,20 @@ export function Widget({ channelId, cacheBust = null, scriptTheme }: WidgetProps
   // localStorage. Start collapsed — the per-thread effect below restores the
   // preference whenever the visitor enters a thread.
   const [expanded, setExpanded] = useState(false)
+  // `floatPosition` is in-memory only. null = docked. Closing the widget or
+  // reloading the page resets to docked.
+  const [floatPosition, setFloatPosition] = useState<{ x: number; y: number } | null>(null)
+  // Track both elements as state so the drag effect re-runs when either swaps
+  // — the active header element changes as the visitor navigates views
+  // (contextual ↔ plain ↔ dark-hero ↔ home div).
+  const [shellEl, setShellEl] = useState<HTMLDivElement | null>(null)
+  const [headerEl, setHeaderEl] = useState<HTMLElement | null>(null)
+  const shellRefCallback = useCallback((el: HTMLDivElement | null) => {
+    setShellEl(el)
+  }, [])
+  const headerRefCallback = useCallback((el: HTMLElement | null) => {
+    setHeaderEl(el)
+  }, [])
 
   const shadowRoot = useShadowRoot()
   const resolvedTheme = useResolvedTheme({
@@ -166,23 +182,113 @@ export function Widget({ channelId, cacheBust = null, scriptTheme }: WidgetProps
 
   // Expand mode is thread-only. On entering a thread, restore the visitor's
   // sticky preference. On leaving, collapse visually but leave the preference
-  // untouched.
+  // untouched. Floating mode supersedes expanded — skip restoration while
+  // detached.
   const currentView = router.currentStack.current?.view ?? router.activeTab
   useEffect(() => {
+    if (floatPosition) return
     if (currentView === 'thread') {
       setExpanded(readExpanded(channelId))
     } else {
       setExpanded(false)
     }
-  }, [currentView, channelId])
+  }, [currentView, channelId, floatPosition])
+
+  // Visual flags for the float entry/exit animations:
+  //   `bobbing`   — 4-cycle up/down translate keyframe applied right after
+  //                 the panel detaches.
+  //   `docking`   — left/top transition re-enabled while we tween the panel
+  //                 back to its corner before clearing floatPosition.
+  const [bobbing, setBobbing] = useState(false)
+  const [docking, setDocking] = useState(false)
+  const dockTimerRef = useRef<number | null>(null)
+  const bobTimerRef = useRef<number | null>(null)
+
+  useEffect(
+    () => () => {
+      if (dockTimerRef.current !== null) window.clearTimeout(dockTimerRef.current)
+      if (bobTimerRef.current !== null) window.clearTimeout(bobTimerRef.current)
+    },
+    []
+  )
+
+  const toggleFloating = useCallback(() => {
+    if (docking) return
+    if (floatPosition) {
+      // Re-dock: tween left/top back to the corner, then drop floatPosition
+      // so the corner-anchored CSS takes over.
+      if (!shellEl) {
+        setFloatPosition(null)
+        return
+      }
+      const rect = shellEl.getBoundingClientRect()
+      const isLeft = config?.appearance.position.toLowerCase().includes('left') ?? false
+      const edgeGap = 20
+      const target = {
+        x: isLeft ? edgeGap : Math.max(edgeGap, window.innerWidth - rect.width - edgeGap),
+        y: Math.max(edgeGap, window.innerHeight - rect.height - edgeGap),
+      }
+      setDocking(true)
+      setFloatPosition(target)
+      if (dockTimerRef.current !== null) window.clearTimeout(dockTimerRef.current)
+      dockTimerRef.current = window.setTimeout(() => {
+        setFloatPosition(null)
+        setDocking(false)
+        dockTimerRef.current = null
+      }, 340)
+      return
+    }
+    // Detach: place the panel at its current location and bob for ~4 cycles.
+    const rect = shellEl?.getBoundingClientRect()
+    const next = rect
+      ? clampToViewport({ x: rect.left, y: rect.top }, rect.width, rect.height)
+      : { x: 20, y: 20 }
+    setExpanded(false)
+    setFloatPosition(next)
+    setBobbing(true)
+    if (bobTimerRef.current !== null) window.clearTimeout(bobTimerRef.current)
+    bobTimerRef.current = window.setTimeout(() => {
+      setBobbing(false)
+      bobTimerRef.current = null
+    }, 1600 * 2)
+  }, [docking, floatPosition, shellEl, config?.appearance.position])
+
+  const handleClose = useCallback(() => {
+    setOpen(false)
+    setFloatPosition(null)
+    setBobbing(false)
+    setDocking(false)
+    if (dockTimerRef.current !== null) {
+      window.clearTimeout(dockTimerRef.current)
+      dockTimerRef.current = null
+    }
+    if (bobTimerRef.current !== null) {
+      window.clearTimeout(bobTimerRef.current)
+      bobTimerRef.current = null
+    }
+  }, [])
+
+  const isFloating = open && floatPosition !== null
+
+  useDragShell({
+    enabled: isFloating && !docking,
+    shellEl,
+    headerEl,
+    position: floatPosition,
+    onPositionChange: setFloatPosition,
+  })
 
   if (!config) return null
 
-  const positionClass = config.appearance.position.toLowerCase().includes('left')
-    ? 'auxx-chat-shell--bottom-left'
-    : 'auxx-chat-shell--bottom-right'
+  const positionClass = isFloating
+    ? 'auxx-chat-shell--floating'
+    : config.appearance.position.toLowerCase().includes('left')
+      ? 'auxx-chat-shell--bottom-left'
+      : 'auxx-chat-shell--bottom-right'
   const stateClass = open ? 'auxx-chat-shell--open' : 'auxx-chat-shell--closed'
-  const expandedClass = open && expanded ? 'auxx-chat-shell--expanded' : ''
+  const expandedClass = open && expanded && !isFloating ? 'auxx-chat-shell--expanded' : ''
+  const bobbingClass = bobbing && isFloating ? 'auxx-chat-shell--bobbing' : ''
+  const dockingClass = docking ? 'auxx-chat-shell--docking' : ''
   const rootStyle: Record<string, string> = {
     '--auxx-chat-primary': config.appearance.primaryColor,
     '--auxx-chat-header': config.appearance.headerColor,
@@ -193,10 +299,20 @@ export function Widget({ channelId, cacheBust = null, scriptTheme }: WidgetProps
   if (config.appearance.headerColorDark) {
     rootStyle['--auxx-chat-header-dark'] = config.appearance.headerColorDark
   }
+  const shellStyle: Record<string, string> = {}
+  if (isFloating && floatPosition) {
+    shellStyle.left = `${floatPosition.x}px`
+    shellStyle.top = `${floatPosition.y}px`
+    shellStyle.right = 'auto'
+    shellStyle.bottom = 'auto'
+  }
 
   return (
     <div className='auxx-chat-root' data-theme={resolvedTheme} style={rootStyle}>
-      <div className={`auxx-chat-shell ${stateClass} ${positionClass} ${expandedClass}`}>
+      <div
+        ref={shellRefCallback}
+        className={`auxx-chat-shell ${stateClass} ${positionClass} ${expandedClass} ${bobbingClass} ${dockingClass}`}
+        style={shellStyle}>
         <button
           type='button'
           className='auxx-chat-shell__trigger'
@@ -231,11 +347,14 @@ export function Widget({ channelId, cacheBust = null, scriptTheme }: WidgetProps
               currentFrame={router.currentStack.current}
               isAtRoot={router.currentStack.isAtRoot}
               onBack={router.currentStack.pop}
-              onClose={() => setOpen(false)}
+              onClose={handleClose}
               error={error}
               subscribe={subscribeRef.current ?? undefined}
               expanded={expanded}
               onToggleExpanded={toggleExpanded}
+              floating={isFloating}
+              onToggleFloating={toggleFloating}
+              headerRef={headerRefCallback}
             />
           </NavStackProvider>
         </div>
@@ -261,6 +380,9 @@ interface PanelShellProps {
   }
   expanded: boolean
   onToggleExpanded: () => void
+  floating: boolean
+  onToggleFloating: () => void
+  headerRef: Ref<HTMLElement>
 }
 
 function PanelShell({
@@ -277,6 +399,9 @@ function PanelShell({
   subscribe,
   expanded,
   onToggleExpanded,
+  floating,
+  onToggleFloating,
+  headerRef,
 }: PanelShellProps) {
   const view: NavView = currentFrame?.view ?? activeTab
   const headerVariant = pickHeaderVariant(view, isAtRoot)
@@ -299,6 +424,9 @@ function PanelShell({
           resolvedTheme={resolvedTheme}
           onBack={isAtRoot ? undefined : onBack}
           onClose={onClose}
+          floating={floating}
+          onToggleFloating={onToggleFloating}
+          headerRef={headerRef}
           actions={
             threadId ? (
               <ConversationMenu
@@ -307,6 +435,7 @@ function PanelShell({
                 expanded={expanded}
                 onToggleExpanded={onToggleExpanded}
                 allowDownloadTranscript={config.allowDownloadTranscript}
+                floating={floating}
               />
             ) : undefined
           }
@@ -318,7 +447,18 @@ function PanelShell({
         </div>
       ) : null}
       <div className='flex min-h-0 flex-1 flex-col [&>*:last-child]:rounded-b-2xl'>
-        {renderFrame(view, currentFrame, channelId, config, resolvedTheme, subscribe, onClose)}
+        {renderFrame(
+          view,
+          currentFrame,
+          channelId,
+          config,
+          resolvedTheme,
+          subscribe,
+          onClose,
+          floating,
+          onToggleFloating,
+          headerRef
+        )}
       </div>
       {isAtRoot ? <TabBar activeTab={activeTab} onChange={onTabChange} /> : null}
     </div>
@@ -345,7 +485,10 @@ function renderFrame(
   config: ChatConfig,
   resolvedTheme: 'light' | 'dark',
   subscribe?: PanelShellProps['subscribe'],
-  onClose?: () => void
+  onClose?: () => void,
+  floating?: boolean,
+  onToggleFloating?: () => void,
+  headerRef?: Ref<HTMLElement>
 ) {
   switch (view) {
     case 'home':
@@ -355,6 +498,9 @@ function renderFrame(
           config={config}
           resolvedTheme={resolvedTheme}
           onClose={onClose}
+          floating={floating}
+          onToggleFloating={onToggleFloating}
+          headerRef={headerRef}
         />
       )
     case 'messages':

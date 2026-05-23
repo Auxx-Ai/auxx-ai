@@ -5,9 +5,13 @@
 //   - dark hero    → Home root: logo + greeting on a primary-colored band
 //   - plain title  → Messages root: centered "Messages" on a flat band
 //   - contextual   → deep frames: back chevron + custom title + actions slot
+//
+// v3 Phase 6 adds the floating-window toggle button immediately left of the
+// close button in every variant, and forwards a ref to the root `<header>`
+// element so the parent can attach a pointer-drag controller while floating.
 
-import { ArrowLeft, X } from 'lucide-react'
-import type { ComponentChildren } from 'preact'
+import { ArrowDownLeft, ArrowLeft, ArrowUpRight, X } from 'lucide-react'
+import type { ComponentChildren, Ref } from 'preact'
 import { cn } from '~/lib/cn'
 
 export type FrameHeaderVariant = 'dark-hero' | 'plain' | 'contextual'
@@ -23,6 +27,9 @@ interface FrameHeaderProps {
   onBack?: () => void
   actions?: ComponentChildren
   children?: ComponentChildren
+  floating?: boolean
+  onToggleFloating?: () => void
+  headerRef?: Ref<HTMLElement>
 }
 
 export function FrameHeader({
@@ -36,20 +43,30 @@ export function FrameHeader({
   onBack,
   actions,
   children,
+  floating,
+  onToggleFloating,
+  headerRef,
 }: FrameHeaderProps) {
   if (variant === 'dark-hero') {
     // dark-hero sits on the primary-colored band — always use the light logo
     // (white/transparent, designed for dark backgrounds).
     const heroLogo = logoLight
     return (
-      <header className='relative flex shrink-0 flex-col gap-4 bg-primary px-5 py-5 text-primary-foreground'>
+      <header
+        ref={headerRef}
+        className='relative flex shrink-0 flex-col gap-4 bg-primary px-5 py-5 text-primary-foreground'>
         <div className='flex items-start justify-between'>
           {heroLogo ? (
             <img src={heroLogo} alt='' className='h-8 w-auto' />
           ) : (
             <span className='h-8' />
           )}
-          <CloseButton onClose={onClose} tone='light' />
+          <div className='flex items-center gap-1'>
+            {onToggleFloating ? (
+              <FloatButton floating={floating ?? false} onToggle={onToggleFloating} tone='light' />
+            ) : null}
+            <CloseButton onClose={onClose} tone='light' />
+          </div>
         </div>
         {children ?? (
           <div className='flex flex-col gap-1'>
@@ -63,16 +80,25 @@ export function FrameHeader({
 
   if (variant === 'plain') {
     return (
-      <header className='relative flex shrink-0 items-center justify-between border-b border-border bg-transparent px-4 py-3'>
-        <span className='w-6' />
+      <header
+        ref={headerRef}
+        className='relative flex shrink-0 items-center justify-between border-b border-border bg-transparent px-4 py-3'>
+        <span aria-hidden className='size-7' />
         <h1 className='text-sm font-semibold'>{title}</h1>
-        <CloseButton onClose={onClose} tone='dark' />
+        <div className='flex items-center gap-1'>
+          {onToggleFloating ? (
+            <FloatButton floating={floating ?? false} onToggle={onToggleFloating} tone='dark' />
+          ) : null}
+          <CloseButton onClose={onClose} tone='dark' />
+        </div>
       </header>
     )
   }
 
   return (
-    <header className='relative flex shrink-0 items-center gap-2 border-b border-border bg-transparent px-3 py-2'>
+    <header
+      ref={headerRef}
+      className='relative flex shrink-0 items-center gap-2 border-b border-border bg-transparent px-3 py-2'>
       {onBack ? (
         <button
           type='button'
@@ -91,8 +117,40 @@ export function FrameHeader({
         ) : null}
       </div>
       {actions}
+      {onToggleFloating ? (
+        <FloatButton floating={floating ?? false} onToggle={onToggleFloating} tone='dark' />
+      ) : null}
       <CloseButton onClose={onClose} tone='dark' />
     </header>
+  )
+}
+
+function FloatButton({
+  floating,
+  onToggle,
+  tone,
+}: {
+  floating: boolean
+  onToggle: () => void
+  tone: 'light' | 'dark'
+}) {
+  const Icon = floating ? ArrowDownLeft : ArrowUpRight
+  return (
+    <button
+      type='button'
+      onClick={onToggle}
+      onPointerDown={(e) => e.stopPropagation()}
+      data-no-drag
+      aria-label={floating ? 'Dock chat' : 'Pop out chat'}
+      aria-pressed={floating}
+      className={cn(
+        'flex size-7 items-center justify-center rounded transition-colors',
+        tone === 'light'
+          ? 'text-white/90 hover:bg-white/10 hover:text-white'
+          : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+      )}>
+      <Icon className='size-4' aria-hidden='true' />
+    </button>
   )
 }
 
@@ -101,6 +159,8 @@ function CloseButton({ onClose, tone }: { onClose: () => void; tone: 'light' | '
     <button
       type='button'
       onClick={onClose}
+      onPointerDown={(e) => e.stopPropagation()}
+      data-no-drag
       aria-label='Close chat'
       className={cn(
         'flex size-7 items-center justify-center rounded transition-colors',
