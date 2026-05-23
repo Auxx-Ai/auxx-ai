@@ -119,18 +119,16 @@ const REGISTRY: RoomDef[] = [
   },
   // Visitor chat session (widget-side): `chat-{sessionId}`.
   //
-  // The widget signs `chat-*` bindings via `/api/chat/pusher/auth` (apps/api),
-  // which validates the visitor passport and populates `ctx.visitor`. This
-  // surface (apps/web `/api/pusher/auth`) never populates `ctx.visitor`, so in
-  // practice the predicate below collapses to "authenticated admin only" here.
-  //
-  // Kept in the registry on purpose: when the widget's transport eventually
-  // migrates onto this codepath, the ACL row is already in place. Don't drop
-  // it just because the apps/web path can't satisfy it today.
+  // Public Pusher channel — the widget connects with `connectPusher` (no auth
+  // signing) at bootstrap, before any session is established. Authorization is
+  // moot: the channel name is unguessable (random session id) and only carries
+  // the visitor's own transcript echo. Authorize hook is unreachable for
+  // public channels (Pusher never asks the server to sign them) but we leave
+  // the entry in the registry so `findRoom` can resolve the key.
   {
-    kind: 'plain',
+    kind: 'public',
     match: (k) => k.startsWith('chat-'),
-    authorize: (_key, ctx) => !!ctx.session || !!ctx.visitor,
+    authorize: () => true,
   },
   // Visitor cross-thread (widget-side): `visitor-{participantId}`
   {

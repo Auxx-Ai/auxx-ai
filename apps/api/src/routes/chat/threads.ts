@@ -1,8 +1,9 @@
 // apps/api/src/routes/chat/threads.ts
 
 import { database, schema } from '@auxx/database'
-import { initializeOrResumeChatThread } from '@auxx/lib/chat'
+import { initializeOrResumeChatThread, publishVisitorThreadCreated } from '@auxx/lib/chat'
 import { ProviderRegistryService } from '@auxx/lib/providers'
+import { getRealtimeService, publishThreadCreated } from '@auxx/lib/realtime'
 import type { ChatThreadMetadata } from '@auxx/lib/threads/types'
 import { createScopedLogger } from '@auxx/logger'
 import { and, asc, desc, eq, isNotNull, lt, or, sql } from 'drizzle-orm'
@@ -75,10 +76,35 @@ threadsRoute.post('/', async (c) => {
     )
   }
 
+  const { thread, isNew } = result.value
+  if (isNew) {
+    await Promise.all([
+      publishThreadCreated(getRealtimeService(), chat.organizationId, {
+        threadId: thread.id,
+        inboxId: thread.inboxId ?? null,
+      }).catch((err) =>
+        log.warn('Failed to publish thread:created for new chat thread', {
+          threadId: thread.id,
+          error: err instanceof Error ? err.message : String(err),
+        })
+      ),
+      publishVisitorThreadCreated(getRealtimeService(), {
+        visitorParticipantId: chat.visitorParticipantId,
+        threadId: thread.id,
+        createdAt: thread.createdAt ?? new Date(),
+      }).catch((err) =>
+        log.warn('Failed to publish visitor thread-created', {
+          threadId: thread.id,
+          error: err instanceof Error ? err.message : String(err),
+        })
+      ),
+    ])
+  }
+
   return c.json({
     success: true,
     data: {
-      threadId: result.value.thread.id,
+      threadId: thread.id,
       pusherChannel: `chat-${result.value.visitorChatSessionId}`,
     },
   })
@@ -333,6 +359,10 @@ threadsRoute.get('/', async (c) => {
     const baseConditions = [
       eq(schema.Thread.organizationId, chat.organizationId),
       eq(schema.Thread.integrationId, chat.channelId),
+      // Skip empty threads — the widget previously created threads eagerly on
+      // every Home "Send us a message" tap, leaving rows with no messages that
+      // showed up as "No messages yet, Support" in the Messages tab.
+      isNotNull(schema.Thread.latestMessageId),
     ]
 
     const conditions = cursorParts

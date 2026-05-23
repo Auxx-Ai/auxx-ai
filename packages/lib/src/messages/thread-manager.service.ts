@@ -200,16 +200,19 @@ export class ThreadManagerService {
       return
     }
 
-    // Update the pending thread with real data
+    // Update the pending thread with real data. Merge reconciliation state into
+    // the existing jsonb instead of replacing — replacing would clobber any
+    // provider-specific metadata already on the thread (e.g. chat's
+    // visitorParticipantId / channel, which downstream filters depend on).
     await this.db
       .update(schema.Thread)
       .set({
         externalId: providerData.externalThreadId,
-        metadata: {
-          state: ThreadState.RECONCILED,
-          reconciledAt: new Date().toISOString(),
-          originalExternalId: providerData.externalThreadId,
-        },
+        metadata: sql`COALESCE(${schema.Thread.metadata}, '{}'::jsonb) || jsonb_build_object(
+          'state', ${ThreadState.RECONCILED}::text,
+          'reconciledAt', ${new Date().toISOString()}::text,
+          'originalExternalId', ${providerData.externalThreadId}::text
+        )`,
       })
       .where(eq(schema.Thread.id, pendingThreadId))
 

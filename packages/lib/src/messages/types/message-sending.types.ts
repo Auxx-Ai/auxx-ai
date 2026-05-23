@@ -127,6 +127,10 @@ export interface ReconciliationInput {
   sendToken: string
   providerResponse: ProviderSendResponse
   threadContext: ThreadContext
+  /** Whether to reconcile the thread against an external thread id. False for
+   * providers like `chat` that have no external state — the per-message
+   * bookkeeping (sendStatus, sentAt, externalId) still runs. Defaults to true. */
+  reconcileThread?: boolean
 }
 /**
  * Post-send sync job

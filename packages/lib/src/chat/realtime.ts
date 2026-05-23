@@ -1,6 +1,10 @@
 // packages/lib/src/chat/realtime.ts
 
-import { publishMessageCreated, publishMessageUpdated } from '../realtime/publish-helpers'
+import {
+  publishMessageCreated,
+  publishMessageUpdated,
+  publishThreadUpdated,
+} from '../realtime/publish-helpers'
 import type { RealtimeService } from '../realtime/realtime-service'
 import { rooms } from '../realtime/rooms'
 
@@ -48,6 +52,18 @@ export async function publishChatMessageCreated(
       messageId: args.messageId,
       threadId: args.threadId,
       inboxId: args.inboxId,
+    }),
+    // Bump the thread row in the admin's mail-thread list so it re-sorts and
+    // the `isLiveChat` dot in `mail-thread-item.tsx` re-evaluates against the
+    // fresh `lastMessageAt`. Without this, `ChatProvider.receiveMessage` updates
+    // the DB but the admin list stays stale until refresh.
+    publishThreadUpdated(realtime, args.organizationId, {
+      threadId: args.threadId,
+      inboxId: args.inboxId,
+      patch: {
+        lastMessageAt: args.visitorPayload.createdAt.toISOString(),
+        latestMessageId: args.messageId,
+      },
     }),
     realtime.publish(
       rooms.chatSession(args.visitorChatSessionId),

@@ -37,6 +37,7 @@ export const PROVIDER_CAPABILITIES: Record<IntegrationProviderType, ProviderCapa
     requiresRecipients: true,
     countsAgainstOutboundEmailsQuota: true,
     triggersPostSendSync: true,
+    requiresSendReconciliation: true,
     supportsRichText: true,
   },
   [IntegrationProviderType.facebook]: {
@@ -75,6 +76,7 @@ export const PROVIDER_CAPABILITIES: Record<IntegrationProviderType, ProviderCapa
     requiresRecipients: true,
     countsAgainstOutboundEmailsQuota: true,
     triggersPostSendSync: true,
+    requiresSendReconciliation: true,
     supportsRichText: false,
   },
   [IntegrationProviderType.instagram]: {
@@ -112,6 +114,7 @@ export const PROVIDER_CAPABILITIES: Record<IntegrationProviderType, ProviderCapa
     requiresRecipients: true,
     countsAgainstOutboundEmailsQuota: true,
     triggersPostSendSync: true,
+    requiresSendReconciliation: true,
     supportsRichText: false,
   },
   [IntegrationProviderType.openphone]: {
@@ -146,6 +149,7 @@ export const PROVIDER_CAPABILITIES: Record<IntegrationProviderType, ProviderCapa
     requiresRecipients: true,
     countsAgainstOutboundEmailsQuota: false,
     triggersPostSendSync: false,
+    requiresSendReconciliation: false,
     supportsRichText: false,
   },
   [IntegrationProviderType.mailgun]: {
@@ -177,6 +181,7 @@ export const PROVIDER_CAPABILITIES: Record<IntegrationProviderType, ProviderCapa
     requiresRecipients: true,
     countsAgainstOutboundEmailsQuota: true,
     triggersPostSendSync: true,
+    requiresSendReconciliation: true,
     supportsRichText: true,
   },
   [IntegrationProviderType.sms]: {
@@ -211,6 +216,7 @@ export const PROVIDER_CAPABILITIES: Record<IntegrationProviderType, ProviderCapa
     requiresRecipients: true,
     countsAgainstOutboundEmailsQuota: false,
     triggersPostSendSync: false,
+    requiresSendReconciliation: false,
     supportsRichText: false,
   },
   [IntegrationProviderType.email]: {
@@ -242,6 +248,7 @@ export const PROVIDER_CAPABILITIES: Record<IntegrationProviderType, ProviderCapa
     requiresRecipients: true,
     countsAgainstOutboundEmailsQuota: true,
     triggersPostSendSync: true,
+    requiresSendReconciliation: true,
     supportsRichText: true,
   },
   [IntegrationProviderType.whatsapp]: {
@@ -278,6 +285,7 @@ export const PROVIDER_CAPABILITIES: Record<IntegrationProviderType, ProviderCapa
     requiresRecipients: true,
     countsAgainstOutboundEmailsQuota: false,
     triggersPostSendSync: false,
+    requiresSendReconciliation: false,
     supportsRichText: false,
   },
   [IntegrationProviderType.chat]: {
@@ -306,10 +314,13 @@ export const PROVIDER_CAPABILITIES: Record<IntegrationProviderType, ProviderCapa
     canReact: true,
     canShare: false,
     // Chat: visitor is encoded on the Thread, no subject, free.
+    // Chat has no external state to reconcile — the provider echoes our own
+    // thread id back, and reconciling would clobber thread metadata.
     requiresSubject: false,
     requiresRecipients: false,
     countsAgainstOutboundEmailsQuota: false,
     triggersPostSendSync: false,
+    requiresSendReconciliation: false,
     supportsRichText: false,
   },
   [IntegrationProviderType.shopify]: {
@@ -345,6 +356,7 @@ export const PROVIDER_CAPABILITIES: Record<IntegrationProviderType, ProviderCapa
     requiresRecipients: false,
     countsAgainstOutboundEmailsQuota: false,
     triggersPostSendSync: false,
+    requiresSendReconciliation: false,
     supportsRichText: false,
   },
   [IntegrationProviderType.imap]: {
@@ -376,6 +388,7 @@ export const PROVIDER_CAPABILITIES: Record<IntegrationProviderType, ProviderCapa
     requiresRecipients: true,
     countsAgainstOutboundEmailsQuota: true,
     triggersPostSendSync: true,
+    requiresSendReconciliation: true,
     supportsRichText: true,
   },
   [IntegrationProviderType.outlook]: {
@@ -407,6 +420,7 @@ export const PROVIDER_CAPABILITIES: Record<IntegrationProviderType, ProviderCapa
     requiresRecipients: true,
     countsAgainstOutboundEmailsQuota: true,
     triggersPostSendSync: true,
+    requiresSendReconciliation: true,
     supportsRichText: true,
   },
 }
@@ -457,6 +471,7 @@ export function getProviderCapabilities(
       requiresRecipients: false,
       countsAgainstOutboundEmailsQuota: false,
       triggersPostSendSync: false,
+      requiresSendReconciliation: false,
       supportsRichText: false,
     }
   )

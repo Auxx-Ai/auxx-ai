@@ -76,7 +76,10 @@ export function ConversationView({ channelId, threadId, config }: ConversationVi
           setMessages(data.messages)
           setThreadEvents(data.threadEvents ?? [])
         } else {
-          // Fallback for cases where initialize resumed a different thread.
+          // Defensive: the server now honors `resumeThreadId` so this branch
+          // shouldn't fire in practice. If it does, surface the error loudly
+          // instead of silently rendering an empty transcript — that masks
+          // real bugs as "thread reset to welcome bubble."
           api
             .getHistory(threadId, data.sessionId)
             .then((hist) => {
@@ -84,7 +87,10 @@ export function ConversationView({ channelId, threadId, config }: ConversationVi
               setMessages(hist.messages)
               setThreadEvents(hist.threadEvents ?? [])
             })
-            .catch(() => {})
+            .catch((e) => {
+              if (cancelled) return
+              setError(e instanceof Error ? e.message : 'Failed to load conversation')
+            })
         }
       })
       .catch((e) => {
@@ -230,12 +236,20 @@ export function ConversationView({ channelId, threadId, config }: ConversationVi
   const timeline = useMemo(() => buildTimeline(messages, threadEvents), [messages, threadEvents])
 
   return (
-    <div className='flex min-h-0 flex-1 flex-col bg-muted [&>*:last-child]:rounded-b-2xl'>
+    <div className='flex min-h-0 flex-1 flex-col dark:bg-background bg-muted  [&>*:last-child]:rounded-b-2xl'>
       <div ref={bodyRef} className='flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-3'>
         {error ? (
           <div className='rounded bg-background p-2 text-center text-xs text-destructive'>
             {error}
           </div>
+        ) : null}
+        {init ? (
+          <WelcomeBubble
+            agent={config.agent}
+            template={config.welcomeMessageTemplate}
+            identify={identify}
+            initialTyping={messages.length === 0}
+          />
         ) : null}
         {timeline.map((item, i) =>
           item.kind === 'event' ? (
@@ -244,13 +258,6 @@ export function ConversationView({ channelId, threadId, config }: ConversationVi
             <Bubble key={`g-${i}`} group={item.group} />
           )
         )}
-        {init && messages.length === 0 ? (
-          <WelcomeBubble
-            agent={config.agent}
-            template={config.welcomeMessageTemplate}
-            identify={identify}
-          />
-        ) : null}
       </div>
       {init && messages.length === 0 ? (
         <SuggestedReplies

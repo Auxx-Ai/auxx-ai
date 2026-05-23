@@ -28,6 +28,13 @@ export interface InitializeChatThreadInput {
    * in a new conversation.
    */
   forceNewThread?: boolean
+  /**
+   * When set, resume this specific thread (after verifying ownership) instead
+   * of falling back to "most recent open thread for this visitor." Used when
+   * the visitor opens a specific past conversation from the Messages tab so
+   * `initialize` doesn't silently swap them onto a different thread.
+   */
+  resumeThreadId?: string
 }
 
 export interface InitializeChatThreadResult {
@@ -82,6 +89,40 @@ export async function initializeOrResumeChatThread(
     })
     if (visitorResult.error) return Result.error(visitorResult.error)
     const visitor = visitorResult.value
+
+    // Visitor explicitly asked to resume a specific thread (e.g. tapped a row
+    // in the Messages tab). Verify ownership + that it lives on this channel,
+    // then resume; otherwise reject — don't silently swap them onto a
+    // different thread.
+    if (input.resumeThreadId) {
+      const [requested] = await ctx.db
+        .select()
+        .from(schema.Thread)
+        .where(
+          and(
+            eq(schema.Thread.id, input.resumeThreadId),
+            eq(schema.Thread.organizationId, ctx.organizationId),
+            eq(schema.Thread.integrationId, integration.id)
+          )
+        )
+        .limit(1)
+      if (!requested) {
+        return Result.error(new NotFoundError('Chat thread not found'))
+      }
+      const meta = (requested.metadata ?? {}) as Partial<ChatThreadMetadata>
+      if (meta.channel !== 'chat' || meta.visitorParticipantId !== visitor.id) {
+        return Result.error(new ForbiddenError('Chat thread does not belong to this visitor'))
+      }
+      logger.info('Resumed requested chat thread', {
+        threadId: requested.id,
+        visitorId: input.visitorId,
+      })
+      return Result.ok({
+        thread: requested,
+        isNew: false,
+        visitorChatSessionId: requested.id,
+      })
+    }
 
     // Try to resume an open thread for this visitor on this channel.
     const candidateThreads = input.forceNewThread

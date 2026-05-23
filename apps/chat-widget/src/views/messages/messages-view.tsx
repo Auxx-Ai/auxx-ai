@@ -11,17 +11,19 @@ import { cn } from '~/lib/cn'
 import { useNavStack } from '~/navigation/nav-stack-context'
 import { getLastReadAt } from '~/persistence/unread'
 import { chatApi, type ThreadListItem } from '~/transport/chat-api'
+import type { ChatConfig } from '~/transport/config'
 import type { ThreadCreatedEvent, ThreadUpdatedEvent } from '~/transport/visitor-channel'
 
 interface MessagesViewProps {
   channelId: string
+  config: ChatConfig
   subscribe?: {
     onThreadUpdated: (cb: (e: ThreadUpdatedEvent) => void) => () => void
     onThreadCreated: (cb: (e: ThreadCreatedEvent) => void) => () => void
   }
 }
 
-export function MessagesView({ channelId, subscribe }: MessagesViewProps) {
+export function MessagesView({ channelId, config, subscribe }: MessagesViewProps) {
   const nav = useNavStack()
   const api = chatApi(channelId)
   const [threads, setThreads] = useState<ThreadListItem[]>([])
@@ -137,6 +139,9 @@ export function MessagesView({ channelId, subscribe }: MessagesViewProps) {
     [nav]
   )
 
+  const fallbackAgentName = config.agent?.name ?? 'Support'
+  const fallbackAgentAvatar = config.agent?.avatarUrl ?? null
+
   const handleNewThread = useCallback(async () => {
     if (creating) return
     // Reuse the most recent existing thread if there is one — we only want
@@ -144,7 +149,7 @@ export function MessagesView({ channelId, subscribe }: MessagesViewProps) {
     // per click.
     if (threads.length > 0) {
       const top = threads[0]
-      openThread(top.id, top.agent?.name ?? 'Conversation')
+      openThread(top.id, top.agent?.name ?? fallbackAgentName)
       return
     }
     setCreating(true)
@@ -154,11 +159,11 @@ export function MessagesView({ channelId, subscribe }: MessagesViewProps) {
         referrer: typeof document !== 'undefined' ? document.referrer || undefined : undefined,
         userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : undefined,
       })
-      openThread(threadId, 'New conversation')
+      openThread(threadId, fallbackAgentName)
     } finally {
       setCreating(false)
     }
-  }, [api, creating, openThread, threads])
+  }, [api, creating, openThread, threads, fallbackAgentName])
 
   if (loading && threads.length === 0) {
     return (
@@ -212,7 +217,9 @@ export function MessagesView({ channelId, subscribe }: MessagesViewProps) {
               key={t.id}
               thread={t}
               isUnread={isUnread}
-              onOpen={() => openThread(t.id, t.agent?.name ?? 'Conversation')}
+              fallbackName={fallbackAgentName}
+              fallbackAvatarUrl={fallbackAgentAvatar}
+              onOpen={() => openThread(t.id, t.agent?.name ?? fallbackAgentName)}
             />
           )
         })}
@@ -234,11 +241,15 @@ function Frame({ children }: { children: preact.ComponentChildren }) {
 interface ThreadRowProps {
   thread: ThreadListItem
   isUnread: boolean
+  fallbackName: string
+  fallbackAvatarUrl: string | null
   onOpen: () => void
 }
 
-function ThreadRow({ thread, isUnread, onOpen }: ThreadRowProps) {
+function ThreadRow({ thread, isUnread, fallbackName, fallbackAvatarUrl, onOpen }: ThreadRowProps) {
   const relative = formatRelativeTime(thread.lastMessage.sentAt)
+  const displayName = thread.agent?.name ?? fallbackName
+  const displayAvatarUrl = thread.agent?.avatarUrl ?? fallbackAvatarUrl
   return (
     <button
       type='button'
@@ -246,12 +257,10 @@ function ThreadRow({ thread, isUnread, onOpen }: ThreadRowProps) {
       className={cn(
         'flex w-full items-start gap-3 rounded-lg px-3 py-2.5 text-left transition-colors hover:bg-accent'
       )}>
-      <Avatar agent={thread.agent} />
+      <Avatar avatarUrl={displayAvatarUrl} />
       <div className='flex min-w-0 flex-1 flex-col gap-0.5'>
         <div className='flex items-center justify-between gap-2'>
-          <span className='truncate text-sm font-medium text-foreground'>
-            {thread.agent?.name ?? 'Support'}
-          </span>
+          <span className='truncate text-sm font-medium text-foreground'>{displayName}</span>
           <span className='shrink-0 text-[11px] text-muted-foreground'>{relative}</span>
         </div>
         <div className='flex items-center gap-2'>
@@ -272,11 +281,9 @@ function ThreadRow({ thread, isUnread, onOpen }: ThreadRowProps) {
   )
 }
 
-function Avatar({ agent }: { agent: ThreadListItem['agent'] }) {
-  if (agent?.avatarUrl) {
-    return (
-      <img src={agent.avatarUrl} alt='' className='size-9 shrink-0 rounded-full object-cover' />
-    )
+function Avatar({ avatarUrl }: { avatarUrl: string | null }) {
+  if (avatarUrl) {
+    return <img src={avatarUrl} alt='' className='size-9 shrink-0 rounded-full object-cover' />
   }
   return (
     <div className='flex size-9 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground'>
