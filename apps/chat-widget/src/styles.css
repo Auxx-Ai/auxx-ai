@@ -245,9 +245,9 @@
    * inheritance only goes downward from where the var is set. */
   .auxx-root {
     --background: var(--color-zinc-50);
-    /* Default body text — Define's --define-text-default (neutral-dark-60).
-     * Tinted dark at 60% alpha so the surface bleeds through; hover/active
-     * states bump to --auxx-chat-text-loud (90%) for contrast. */
+    /* Default body text — tinted dark at 60% alpha so the surface bleeds
+     * through; hover/active states bump to --auxx-chat-text-loud (90%) for
+     * contrast. */
     --foreground: oklch(14% var(--auxx-chat-tint-c) var(--auxx-chat-tint-h) / 0.6);
 
     --card: var(--auxx-chat-surface-medium);
@@ -324,29 +324,26 @@
     );
     --auxx-chat-surface-loud: oklch(98% var(--auxx-chat-tint-c) var(--auxx-chat-tint-h) / 0.9);
     --auxx-chat-surface-medium: oklch(98% var(--auxx-chat-tint-c) var(--auxx-chat-tint-h) / 0.6);
-    /* Hero band — Define's --define-base-heavy-loud equivalent. Higher
-     * chroma than the neutral tint (0.069 vs 0.012) so the brand hue
-     * actually reads as color, lifted to 88% lightness so it sits as a
-     * "soft glow" rather than a saturated fill. Derived from the same
-     * tint-h that comes from --auxx-chat-primary. */
+    /* Hero band — higher chroma than the neutral tint (0.069 vs 0.012) so
+     * the brand hue actually reads as color, lifted to 88% lightness so it
+     * sits as a "soft glow" rather than a saturated fill. Derived from the
+     * same tint-h that comes from --auxx-chat-primary. */
     --auxx-chat-primary-band: oklch(88% 0.069 var(--auxx-chat-tint-h) / 0.88);
     --auxx-chat-surface-default: oklch(98% var(--auxx-chat-tint-c) var(--auxx-chat-tint-h) / 0.4);
-    /* Always-dark contrast surface in light mode (mirrors Define's
-     * --define-background-dark-default). Inverts to a light surface in dark
-     * mode so contrast bubbles/hovers stay distinct from the shell. */
+    /* Always-dark contrast surface in light mode. Inverts to a light
+     * surface in dark mode so contrast bubbles/hovers stay distinct from
+     * the shell. */
     --auxx-chat-surface-dark-default: oklch(
       14% var(--auxx-chat-tint-c) var(--auxx-chat-tint-h) / 0.06
     );
-    /* Faint dark overlay — Define's --define-background-dark-faint
-     * (neutral-dark-2). Barely-there darkening for row hovers and other
+    /* Faint dark overlay — barely-there darkening for row hovers and other
      * gentle states where surface-dark-default would feel too heavy. */
     --auxx-chat-surface-dark-faint: oklch(
       14% var(--auxx-chat-tint-c) var(--auxx-chat-tint-h) / 0.02
     );
-    /* "Loud" foreground — Define's --define-neutral-dark-90 equivalent.
-     * Tinted dark at 90% alpha. Used by hover/active states (text bumps from
-     * --foreground's 60% to 90% for contrast) and by content that needs a
-     * crisper read (agent bubble, primary labels). */
+    /* "Loud" foreground — tinted dark at 90% alpha. Used by hover/active
+     * states (text bumps from --foreground's 60% to 90% for contrast) and
+     * by content that needs a crisper read (agent bubble, primary labels). */
     --auxx-chat-text-loud: oklch(14% var(--auxx-chat-tint-c) var(--auxx-chat-tint-h) / 0.9);
     --auxx-chat-surface-raised: linear-gradient(
       180deg,
