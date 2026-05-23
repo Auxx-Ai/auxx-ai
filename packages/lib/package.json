@@ -154,6 +154,12 @@
       "import": "./dist/chat-widget/visitor.mjs",
       "default": "./src/chat-widget/visitor.ts"
     },
+    "./chat/labels": {
+      "types": "./src/chat/labels.ts",
+      "source": "./src/chat/labels.ts",
+      "import": "./dist/chat/labels.mjs",
+      "default": "./src/chat/labels.ts"
+    },
     "./comments": {
       "types": "./src/comments/index.ts",
       "source": "./src/comments/index.ts",

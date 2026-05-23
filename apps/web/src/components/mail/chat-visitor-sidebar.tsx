@@ -1,6 +1,7 @@
 // apps/web/src/components/mail/chat-visitor-sidebar.tsx
 'use client'
 
+import { formatVisitorLabel } from '@auxx/lib/chat/labels'
 import { Separator } from '@auxx/ui/components/separator'
 import { User } from 'lucide-react'
 
@@ -16,6 +17,7 @@ interface ChatThreadMetadata {
   }
   claimedVisitorEmail?: string
   claimedVisitorName?: string
+  visitorLabel?: string
 }
 
 /**
@@ -52,8 +54,8 @@ export function ChatVisitorSidebar({ metadata }: { metadata: ChatThreadMetadata 
         {metadata.visitorParticipantId && (
           <p title={metadata.visitorParticipantId}>
             <strong className='font-medium'>Visitor ID:</strong>{' '}
-            <span className='font-mono text-muted-foreground'>
-              {metadata.visitorParticipantId.substring(0, 8)}...
+            <span className='text-muted-foreground'>
+              {metadata.visitorLabel ?? formatVisitorLabel(metadata.visitorParticipantId)}
             </span>
           </p>
         )}

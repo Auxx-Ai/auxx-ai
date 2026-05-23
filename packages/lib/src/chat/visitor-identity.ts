@@ -5,6 +5,7 @@ import type { ParticipantEntity } from '@auxx/database/types'
 import { and, eq } from 'drizzle-orm'
 import { BadRequestError } from '../errors'
 import { Result, type TypedResult } from '../result'
+import { formatVisitorLabel } from './labels'
 import type { ServiceContext } from './types'
 
 /**
@@ -36,14 +37,15 @@ export async function findOrCreateVisitorParticipant(
       return Result.ok(existing)
     }
 
+    const fallback = formatVisitorLabel(visitorId)
     const [created] = await ctx.db
       .insert(schema.Participant)
       .values({
         organizationId: ctx.organizationId,
         identifier: visitorId,
         identifierType: 'CHAT_VISITOR',
-        name: opts?.displayName ?? null,
-        displayName: opts?.displayName ?? null,
+        name: opts?.displayName ?? fallback,
+        displayName: opts?.displayName ?? fallback,
         firstInteractionType: 'chat',
         firstInteractionDate: new Date(),
         updatedAt: new Date(),
@@ -54,6 +56,47 @@ export async function findOrCreateVisitorParticipant(
       return Result.error(new Error('Failed to create visitor participant'))
     }
     return Result.ok(created)
+  } catch (error) {
+    return Result.error(error instanceof Error ? error : new Error(String(error)))
+  }
+}
+
+/**
+ * Update a chat visitor's Participant row when the widget supplies a claimed
+ * identity (name/email). Overwrites the synthetic `Chat user #xxxx` label
+ * baked in at create time so message headers and threads start showing the
+ * real name. No-op if neither field is provided.
+ */
+export async function updateVisitorClaimedIdentity(
+  ctx: ServiceContext,
+  visitorParticipantId: string,
+  opts: { name?: string; email?: string }
+): Promise<TypedResult<undefined, Error>> {
+  const trimmedName = opts.name?.trim()
+  const trimmedEmail = opts.email?.trim()
+  if (!trimmedName && !trimmedEmail) return Result.nil()
+
+  try {
+    const updates: Record<string, unknown> = { updatedAt: new Date() }
+    if (trimmedName) {
+      updates.name = trimmedName
+      updates.displayName = trimmedName
+    } else if (trimmedEmail) {
+      // No name yet — fall back to email so the FROM stops showing the synthetic.
+      updates.displayName = trimmedEmail
+    }
+
+    await ctx.db
+      .update(schema.Participant)
+      .set(updates)
+      .where(
+        and(
+          eq(schema.Participant.id, visitorParticipantId),
+          eq(schema.Participant.organizationId, ctx.organizationId),
+          eq(schema.Participant.identifierType, 'CHAT_VISITOR')
+        )
+      )
+    return Result.nil()
   } catch (error) {
     return Result.error(error instanceof Error ? error : new Error(String(error)))
   }

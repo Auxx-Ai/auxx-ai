@@ -8,6 +8,7 @@ import { and, desc, eq } from 'drizzle-orm'
 import { BadRequestError, ForbiddenError, NotFoundError } from '../errors'
 import { Result, type TypedResult } from '../result'
 import type { ChatThreadMetadata } from '../threads/types'
+import { formatVisitorLabel, formatVisitorThreadSubject } from './labels'
 import { patchChatThreadMetadata } from './metadata'
 import type { ServiceContext, VisitInfo } from './types'
 import { findOrCreateVisitorParticipant } from './visitor-identity'
@@ -168,6 +169,7 @@ export async function initializeOrResumeChatThread(
 
     // Create a new thread.
     const now = new Date()
+    const visitorLabel = formatVisitorLabel(visitor.identifier)
     const metadata: ChatThreadMetadata = {
       channel: 'chat',
       channelId: integration.id,
@@ -176,12 +178,19 @@ export async function initializeOrResumeChatThread(
       claimedVisitorEmail: input.visitorEmail,
       claimedVisitorName: input.visitorName,
       claimedExternalId: input.visitorExternalId,
+      visitorLabel,
     }
+
+    // Subject: friendlier `Chat #354b` when the visitor is still anonymous;
+    // upgrade to `Chat with <claimed-name>` once the visitor identifies.
+    const subject = input.visitorName
+      ? `Chat with ${input.visitorName}`
+      : formatVisitorThreadSubject(visitor.identifier)
 
     const [thread] = await ctx.db
       .insert(schema.Thread)
       .values({
-        subject: `Chat with ${visitor.displayName || visitor.name || 'Visitor'}`,
+        subject,
         organizationId: ctx.organizationId,
         integrationId: integration.id,
         status: ThreadStatus.OPEN,

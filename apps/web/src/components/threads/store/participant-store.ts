@@ -10,7 +10,7 @@ const BATCH_DELAY = 50
 const MAX_BATCH_SIZE = 50
 
 /** Identifier type for participants */
-export type ParticipantIdentifierType = 'EMAIL' | 'PHONE'
+export type ParticipantIdentifierType = 'EMAIL' | 'PHONE' | 'CHAT_VISITOR'
 
 /**
  * ParticipantMeta - email/phone participant for display.
