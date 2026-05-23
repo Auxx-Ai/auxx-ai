@@ -9,6 +9,7 @@ import { Bot, HandMetal } from 'lucide-react'
 import { useCallback } from 'react'
 import { useSession } from '~/auth/auth-client'
 import { useActor } from '~/components/resources/hooks'
+import { useThreadStore } from '~/components/threads/store'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
 
@@ -52,7 +53,9 @@ export function ChatHandoffBanner({ threadId, handoffState, assigneeId }: ChatHa
 
   const takeOver = api.thread.takeOver.useMutation()
   const returnToAi = api.thread.returnToAi.useMutation()
-  const utils = api.useUtils()
+  const updateThreadOptimistic = useThreadStore((s) => s.updateThreadOptimistic)
+  const confirmOptimistic = useThreadStore((s) => s.confirmOptimistic)
+  const rollbackOptimistic = useThreadStore((s) => s.rollbackOptimistic)
 
   const handleTakeOver = useCallback(async () => {
     // When stealing from another teammate, confirm first so it isn't an
@@ -67,10 +70,16 @@ export function ChatHandoffBanner({ threadId, handoffState, assigneeId }: ChatHa
       })
       if (!ok) return
     }
+    if (!currentUserId) return
+    const version = updateThreadOptimistic(threadId, {
+      handoffState: 'human',
+      assigneeId: toActorId('user', currentUserId),
+    })
     try {
       await takeOver.mutateAsync({ threadId })
-      await utils.thread.invalidate()
+      confirmOptimistic(threadId, version)
     } catch (error) {
+      rollbackOptimistic(threadId, version)
       toastError({
         title: 'Failed to take over',
         description: error instanceof Error ? error.message : 'Unknown error',
@@ -83,21 +92,28 @@ export function ChatHandoffBanner({ threadId, handoffState, assigneeId }: ChatHa
     assigneeName,
     confirm,
     takeOver,
-    utils,
+    currentUserId,
     threadId,
+    updateThreadOptimistic,
+    confirmOptimistic,
+    rollbackOptimistic,
   ])
 
   const handleReturnToAi = useCallback(async () => {
+    // Server leaves `assigneeId` untouched (audit trail of last human), so we
+    // only flip the handoff state here.
+    const version = updateThreadOptimistic(threadId, { handoffState: 'ai' })
     try {
       await returnToAi.mutateAsync({ threadId })
-      await utils.thread.invalidate()
+      confirmOptimistic(threadId, version)
     } catch (error) {
+      rollbackOptimistic(threadId, version)
       toastError({
         title: 'Failed to return to AI',
         description: error instanceof Error ? error.message : 'Unknown error',
       })
     }
-  }, [returnToAi, utils, threadId])
+  }, [returnToAi, threadId, updateThreadOptimistic, confirmOptimistic, rollbackOptimistic])
 
   // State 1 — AI is driving.
   if (handoffState === 'ai') {

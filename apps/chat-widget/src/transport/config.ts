@@ -48,6 +48,17 @@ export interface ChatConfig {
     headerColorDark: string | null
   }
   home: ChatHomeConfig
+  /** Tiptap doc rendered as the synthetic welcome bubble when a thread has
+   * zero real messages. Null = the widget shows a hardcoded greeting. */
+  welcomeMessageTemplate: TiptapNode | null
+  /** Display identity for the bot/agent sender — name/avatar of the
+   * configured agent's backing user, or an org-name fallback when no agent
+   * is bound (`isOrgFallback: true`). */
+  agent: {
+    name: string
+    avatarUrl: string | null
+    isOrgFallback?: boolean
+  } | null
   branding: { footerEnabled: boolean }
   allowDownloadTranscript: boolean
   /** Tap-to-send suggestion chips shown above the composer on an empty thread. */

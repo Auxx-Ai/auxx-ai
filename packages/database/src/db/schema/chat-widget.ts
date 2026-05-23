@@ -69,6 +69,12 @@ export const ChatWidget = pgTable(
     homeShowSendMessageCta: boolean().default(true).notNull(),
     brandingFooterEnabled: boolean().default(true).notNull(),
 
+    /** v3 conversation welcome — Tiptap JSON doc (same shape as
+     * `homeGreetingTemplate`) rendered as a synthetic first bubble inside the
+     * conversation view when the thread has zero real Messages. Null = the
+     * widget falls back to a hardcoded greeting. */
+    welcomeMessageTemplate: jsonb(),
+
     // v2 KB linkage (one widget → at most one KB)
     knowledgeBaseId: text().references((): AnyPgColumn => KnowledgeBase.id, {
       onUpdate: 'cascade',

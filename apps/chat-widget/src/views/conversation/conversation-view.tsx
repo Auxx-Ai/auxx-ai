@@ -4,9 +4,8 @@
 // Pusher channel for live updates, renders grouped message bubbles, and hosts
 // the composer at the bottom.
 
-import { User } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
-import { cn } from '~/lib/cn'
+import { getStoredIdentify, type IdentifyPayload, onIdentify } from '~/identify'
 import { dismissPrivacyBanner, isPrivacyBannerDismissed } from '~/persistence/privacy-banner'
 import { markThreadRead } from '~/persistence/unread'
 import { type ChatMessage, chatApi } from '~/transport/chat-api'
@@ -17,10 +16,12 @@ import {
   type ThreadEvent,
   type ThreadEventData,
 } from '~/transport/thread-events'
+import { Bubble, type MessageGroup } from './bubble'
 import { Composer, type ComposerSendArgs } from './composer/composer'
 import { PrivacyBanner } from './privacy-banner'
 import { SuggestedReplies } from './suggested-replies'
 import { SystemLine } from './system-line'
+import { WelcomeBubble } from './welcome-bubble'
 
 interface ConversationViewProps {
   channelId: string
@@ -43,7 +44,14 @@ export function ConversationView({ channelId, threadId, config }: ConversationVi
   const [privacyDismissed, setPrivacyDismissed] = useState(() =>
     isPrivacyBannerDismissed(channelId)
   )
+  const [identify, setIdentify] = useState<IdentifyPayload | null>(() =>
+    getStoredIdentify(channelId)
+  )
   const bodyRef = useRef<HTMLDivElement | null>(null)
+
+  // Pick up later identify() calls so the welcome bubble's `visitor:*`
+  // placeholders refresh in place.
+  useEffect(() => onIdentify(setIdentify), [])
 
   // Bootstrap: call initialize so we always have a sessionId + pusherChannel
   // matched to the visitor's current passport. The endpoint resumes when a
@@ -236,6 +244,13 @@ export function ConversationView({ channelId, threadId, config }: ConversationVi
             <Bubble key={`g-${i}`} group={item.group} />
           )
         )}
+        {init && messages.length === 0 ? (
+          <WelcomeBubble
+            agent={config.agent}
+            template={config.welcomeMessageTemplate}
+            identify={identify}
+          />
+        ) : null}
       </div>
       {init && messages.length === 0 ? (
         <SuggestedReplies
@@ -260,11 +275,6 @@ export function ConversationView({ channelId, threadId, config }: ConversationVi
       ) : null}
     </div>
   )
-}
-
-interface MessageGroup {
-  sender: ChatMessage['sender']
-  messages: ChatMessage[]
 }
 
 type TimelineItem =
@@ -312,42 +322,4 @@ function buildTimeline(messages: ChatMessage[], events: ThreadEvent[]): Timeline
     }
   }
   return out
-}
-
-function Bubble({ group }: { group: MessageGroup }) {
-  const isUser = group.sender === 'USER'
-  const isSystem = group.sender === 'SYSTEM'
-  if (isSystem) {
-    return (
-      <div className='self-center text-center text-xs italic text-muted-foreground'>
-        {group.messages.map((m) => m.content).join(' ')}
-      </div>
-    )
-  }
-  return (
-    <div className={cn('flex items-end gap-2', isUser ? 'flex-row-reverse' : 'flex-row')}>
-      {!isUser ? (
-        <div className='flex size-7 shrink-0 items-center justify-center self-end rounded-full bg-background text-muted-foreground'>
-          <User className='size-3.5' aria-hidden='true' />
-        </div>
-      ) : null}
-      <div
-        className={cn('flex max-w-[80%] flex-col gap-0.5', isUser ? 'items-end' : 'items-start')}>
-        {group.messages.map((m, i) => (
-          <div
-            key={m.id}
-            className={cn(
-              'whitespace-pre-wrap break-words rounded-2xl px-3 py-1.5 text-sm',
-              isUser
-                ? 'bg-primary text-primary-foreground'
-                : 'border border-border bg-background text-foreground',
-              i === 0 && (isUser ? 'rounded-tr-md' : 'rounded-tl-md'),
-              i === group.messages.length - 1 && (isUser ? 'rounded-br-sm' : 'rounded-bl-sm')
-            )}>
-            {m.content}
-          </div>
-        ))}
-      </div>
-    </div>
-  )
 }

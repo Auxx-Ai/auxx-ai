@@ -1233,6 +1233,13 @@
       "when": 1779490802255,
       "tag": "0175_event_thread_id_idx",
       "breakpoints": true
+    },
+    {
+      "idx": 176,
+      "version": "7",
+      "when": 1779494872529,
+      "tag": "0176_chat_widget_welcome_message_template",
+      "breakpoints": true
     }
   ]
 }
