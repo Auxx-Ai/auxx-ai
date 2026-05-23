@@ -3,14 +3,7 @@
 import { FieldType } from '@auxx/database/enums'
 import type { ChatWidgetWithIntegration } from '@auxx/lib/chat-widget/config'
 import { Button } from '@auxx/ui/components/button'
-import {
-  Form,
-  FormControl,
-  FormDescription,
-  FormField,
-  FormItem,
-  FormLabel,
-} from '@auxx/ui/components/form'
+import { Form, FormControl, FormDescription, FormField, FormItem } from '@auxx/ui/components/form'
 import { toastError } from '@auxx/ui/components/toast'
 import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
 import type { JSONContent } from '@tiptap/react'
@@ -63,6 +56,7 @@ const appearanceSchema = z.object({
   logoDark: z.string().nullish(),
   mobileFullScreen: z.boolean(),
   homeGreetingTemplate: z.unknown().optional(),
+  welcomeMessageTemplate: z.unknown().optional(),
   suggestedReplies: z.array(z.string().max(80)).max(5).optional(),
 })
 
@@ -95,6 +89,9 @@ export function AppearanceSection({ widget, channelId }: AppearanceSectionProps)
       logoDark: widget.chatWidget?.logoDark ?? '',
       mobileFullScreen: widget.chatWidget?.mobileFullScreen ?? true,
       homeGreetingTemplate: (widget.chatWidget?.homeGreetingTemplate as JSONContent | null) ?? null,
+      welcomeMessageTemplate:
+        ((widget.chatWidget as { welcomeMessageTemplate?: JSONContent | null })
+          ?.welcomeMessageTemplate as JSONContent | null) ?? null,
       suggestedReplies:
         (widget.chatWidget as { suggestedReplies?: string[] | null })?.suggestedReplies ?? [],
     },
@@ -118,6 +115,7 @@ export function AppearanceSection({ widget, channelId }: AppearanceSectionProps)
       logoDark: values.logoDark ?? null,
       mobileFullScreen: values.mobileFullScreen,
       homeGreetingTemplate: values.homeGreetingTemplate ?? null,
+      welcomeMessageTemplate: values.welcomeMessageTemplate ?? null,
       suggestedReplies: (values.suggestedReplies ?? [])
         .map((s) => s.trim())
         .filter((s) => s.length > 0)
@@ -296,10 +294,8 @@ export function AppearanceSection({ widget, channelId }: AppearanceSectionProps)
                 )}
               />
             </VarEditorField>
-          </div>
 
-          <div className='flex-1 border-t lg:border-t-0 lg:border-l p-6 lg:pl-6'>
-            <div className='space-y-1 mb-6'>
+            <div className='space-y-1 mt-6 mb-4'>
               <div className='flex items-center gap-2 text-base font-semibold tracking-tight text-foreground'>
                 <LayoutGrid className='size-4' /> Layout
               </div>
@@ -360,8 +356,10 @@ export function AppearanceSection({ widget, channelId }: AppearanceSectionProps)
                 )}
               />
             </VarEditorField>
+          </div>
 
-            <div className='space-y-1 mt-6 mb-4'>
+          <div className='flex-1 border-t lg:border-t-0 lg:border-l p-6 lg:pl-6'>
+            <div className='space-y-1 mb-6'>
               <div className='flex items-center gap-2 text-base font-semibold tracking-tight text-foreground'>
                 <MessageSquare className='size-4' /> Greeting
               </div>
@@ -385,6 +383,37 @@ export function AppearanceSection({ widget, channelId }: AppearanceSectionProps)
                   <FormDescription>
                     Type <code className='rounded bg-muted px-1'>{'{'}</code> to insert a visitor
                     field. Click the badge to set a fallback for when the value isn't available.
+                  </FormDescription>
+                </FormItem>
+              )}
+            />
+
+            <div className='space-y-1 mt-6 mb-4'>
+              <div className='flex items-center gap-2 text-base font-semibold tracking-tight text-foreground'>
+                <MessageSquare className='size-4' /> Welcome message
+              </div>
+              <p className='text-sm text-muted-foreground'>
+                Synthetic first bubble shown inside a new conversation, before the visitor types
+                anything. Sender is the configured AI agent (or your org name when no agent is
+                bound).
+              </p>
+            </div>
+
+            <FormField
+              control={form.control}
+              name='welcomeMessageTemplate'
+              render={({ field }) => (
+                <FormItem>
+                  <FormControl>
+                    <GreetingEditor
+                      value={(field.value as JSONContent | null) ?? null}
+                      onChange={field.onChange}
+                      placeholder='Hi {visitor:name}, how can I help today?'
+                    />
+                  </FormControl>
+                  <FormDescription>
+                    Type <code className='rounded bg-muted px-1'>{'{'}</code> to insert a visitor
+                    field. The bubble disappears the moment the visitor sends their first message.
                   </FormDescription>
                 </FormItem>
               )}

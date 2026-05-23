@@ -1,6 +1,7 @@
 // apps/api/src/routes/chat/lib.ts
 
 import { database, schema } from '@auxx/database'
+import { getCachedAgentById, getCachedOrgProfile } from '@auxx/lib/cache'
 import { and, asc, eq, inArray, sql } from 'drizzle-orm'
 import type { Context } from 'hono'
 
@@ -99,6 +100,21 @@ export interface LoadedChatWidget {
     knowledgeBaseId: string | null
     featuredArticleIds: string[]
   }
+  /** Tiptap doc for the in-conversation welcome bubble. Null = widget falls
+   * back to a hardcoded greeting client-side. */
+  welcomeMessageTemplate: unknown
+  /**
+   * Display identity for the bot/agent sender — used by the synthetic welcome
+   * bubble and (eventually) for the persisted bubble avatar/name. Resolves to
+   * the agent's backing User when `ChatWidget.agentId` is set, otherwise falls
+   * back to the org with `isOrgFallback: true` so the widget can swap in a
+   * generic avatar.
+   */
+  agent: {
+    name: string
+    avatarUrl: string | null
+    isOrgFallback?: boolean
+  } | null
   branding: {
     footerEnabled: boolean
   }
@@ -122,6 +138,8 @@ export async function loadChatWidgetByChannelId(
     with: { chatWidget: true },
   })
   if (!row?.chatWidget) return null
+
+  const agent = await resolveAgentIdentity(row.organizationId, row.chatWidget.agentId ?? null)
 
   return {
     channelId: row.id,
@@ -153,12 +171,51 @@ export async function loadChatWidgetByChannelId(
       knowledgeBaseId: row.chatWidget.knowledgeBaseId ?? null,
       featuredArticleIds: row.chatWidget.featuredArticleIds ?? [],
     },
+    welcomeMessageTemplate: row.chatWidget.welcomeMessageTemplate ?? null,
+    agent,
     branding: {
       footerEnabled: row.chatWidget.brandingFooterEnabled,
     },
     allowDownloadTranscript: row.chatWidget.allowDownloadTranscript,
     suggestedReplies: row.chatWidget.suggestedReplies ?? [],
     privacyPolicyUrl: row.chatWidget.privacyPolicyUrl ?? null,
+  }
+}
+
+/**
+ * Resolve the bot display identity for the widget.
+ *
+ *  - `agentId` set → look up the cached agent (which already projects the
+ *    backing `User.name`/`User.image` into `name`/`avatarUrl` at hydration).
+ *  - `agentId` null → fall back to the organization's profile name via the
+ *    org cache. There is no `Organization.logo` column today, so `avatarUrl`
+ *    is null and the widget renders its built-in placeholder. Marked
+ *    `isOrgFallback: true` so downstream UI can differentiate.
+ *
+ * Both branches read from the org cache — no fresh DB joins on this hot
+ * config path.
+ */
+async function resolveAgentIdentity(
+  organizationId: string,
+  agentId: string | null
+): Promise<LoadedChatWidget['agent']> {
+  if (agentId) {
+    const cached = await getCachedAgentById(organizationId, agentId)
+    if (cached && (cached.name || cached.avatarUrl)) {
+      return {
+        name: cached.name ?? 'Assistant',
+        avatarUrl: cached.avatarUrl ?? null,
+      }
+    }
+    // Fall through to org fallback when the agent is a draft (no name/avatar
+    // yet) or no longer in the cache.
+  }
+
+  const profile = await getCachedOrgProfile(organizationId)
+  return {
+    name: profile?.name ?? 'Support',
+    avatarUrl: null,
+    isOrgFallback: true,
   }
 }
 

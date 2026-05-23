@@ -68,6 +68,24 @@ async function checkChannelLimit(db: Database, organizationId: string) {
   }
 }
 
+/**
+ * Default Tiptap document seeded into `ChatWidget.welcomeMessageTemplate` on
+ * channel create. Plain prose — the widget's `WelcomeBubble` resolves the
+ * sender identity (agent name / org fallback) separately. Admins can edit
+ * the doc and add `visitor:*` placeholders via the appearance section.
+ */
+function defaultWelcomeMessageTemplate() {
+  return {
+    type: 'doc',
+    content: [
+      {
+        type: 'paragraph',
+        content: [{ type: 'text', text: 'Hi there! How can I help you today?' }],
+      },
+    ],
+  }
+}
+
 // Define supported provider types, removed 'mailgun'
 const SupportedProviderTypes = [
   'google',
@@ -332,6 +350,8 @@ export const channelRouter = createTRPCRouter({
 
         // v2 Home config
         homeGreetingTemplate: z.unknown().optional(),
+        /** v3 — synthetic welcome bubble Tiptap doc. Null clears. */
+        welcomeMessageTemplate: z.unknown().optional(),
         homeShowRecentMessage: z.boolean().optional(),
         homeShowSendMessageCta: z.boolean().optional(),
         brandingFooterEnabled: z.boolean().optional(),
@@ -417,6 +437,7 @@ export const channelRouter = createTRPCRouter({
           mobileFullScreen: true,
           collectUserInfo: true,
           suggestedReplies: ['Product question', 'Get help', 'Talk to sales'],
+          welcomeMessageTemplate: defaultWelcomeMessageTemplate(),
           updatedAt: new Date(),
         })
 

@@ -24,6 +24,24 @@ export function Greeting({ doc, identify }: GreetingProps) {
   )
 }
 
+/**
+ * Render a Tiptap doc as inline content, substituting `visitor:*` placeholder
+ * nodes against the identify payload (or their fallback). Exported so the
+ * conversation welcome bubble can reuse the same walker as the Home greeting.
+ *
+ *  - `collapseBlocks` collapses paragraphs into plain spans (no block-level
+ *    line break). Pass `false` to render paragraph as a `display:block` span,
+ *    matching the editor's visual line breaks.
+ */
+export function renderGreetingInline(
+  doc: TiptapNode | null,
+  identify: IdentifyPayload | null,
+  options: { collapseBlocks?: boolean } = {}
+) {
+  if (!doc) return null
+  return renderNodes(doc.content ?? [], identify, options.collapseBlocks ?? true)
+}
+
 function renderNodes(
   nodes: TiptapNode[],
   identify: IdentifyPayload | null,

@@ -42,6 +42,8 @@ export interface UpdateChatWidgetInput {
   // v2 Home config
   /** Tiptap JSON doc, or `null` to clear. */
   homeGreetingTemplate?: unknown
+  /** v3 — Tiptap doc for the synthetic welcome bubble, or `null` to clear. */
+  welcomeMessageTemplate?: unknown
   homeShowRecentMessage?: boolean
   homeShowSendMessageCta?: boolean
   brandingFooterEnabled?: boolean

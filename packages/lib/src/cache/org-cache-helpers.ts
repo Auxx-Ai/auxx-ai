@@ -3,7 +3,12 @@
 import type { CustomFieldEntity } from '@auxx/database/types'
 import type { ResourceField } from '../resources/registry/field-types'
 import type { Resource } from '../resources/registry/types'
-import type { CachedAgent, CachedGroup, OrgMemberInfo } from './org-cache-keys'
+import type {
+  CachedAgent,
+  CachedGroup,
+  DehydratedOrgProfile,
+  OrgMemberInfo,
+} from './org-cache-keys'
 import { getOrgCache } from './singletons'
 
 /**
@@ -225,4 +230,16 @@ export async function getCachedAgentsByIds(
 export async function isAgentUser(orgId: string, userId: string): Promise<boolean> {
   const agents = await getOrgCache().get(orgId, 'agents')
   return agents.some((a) => a.userId === userId)
+}
+
+// ── Org profile cache helper ──
+
+/**
+ * Get the dehydrated org profile (name, website, domains, handle, …) from the
+ * org cache. Returns null when the profile has not been hydrated for this org
+ * (rare — onboarding hydrates it).
+ */
+export async function getCachedOrgProfile(orgId: string): Promise<DehydratedOrgProfile | null> {
+  const profile = await getOrgCache().get(orgId, 'orgProfile')
+  return profile ?? null
 }

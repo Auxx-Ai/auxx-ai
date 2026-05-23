@@ -53,6 +53,8 @@ configRoute.get('/:channelId', async (c) => {
       knowledgeBase,
       featuredArticles,
     },
+    welcomeMessageTemplate: widget.welcomeMessageTemplate,
+    agent: widget.agent,
     branding: {
       footerEnabled: widget.branding.footerEnabled,
     },
