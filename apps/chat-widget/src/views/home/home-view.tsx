@@ -9,7 +9,8 @@
 // Greeting + card visibility are driven by `config.home`. Identify claims
 // substitute into the greeting via the Tiptap-JSON walker in ./greeting.
 
-import { X } from 'lucide-react'
+import { ArrowDownLeft, ArrowUpRight, X } from 'lucide-react'
+import type { Ref } from 'preact'
 import { useCallback, useEffect, useState } from 'preact/hooks'
 import { getStoredIdentify, type IdentifyPayload, onIdentify } from '~/identify'
 import { useNavStack } from '~/navigation/nav-stack-context'
@@ -26,6 +27,9 @@ interface HomeViewProps {
   config: ChatConfig
   resolvedTheme: 'light' | 'dark'
   onClose?: () => void
+  floating?: boolean
+  onToggleFloating?: () => void
+  headerRef?: Ref<HTMLElement>
 }
 
 /**
@@ -52,7 +56,15 @@ interface RecentThread {
   lastMessage: { preview: string; isInbound: boolean; timestamp: string }
 }
 
-export function HomeView({ channelId, config, resolvedTheme, onClose }: HomeViewProps) {
+export function HomeView({
+  channelId,
+  config,
+  resolvedTheme,
+  onClose,
+  floating = false,
+  onToggleFloating,
+  headerRef,
+}: HomeViewProps) {
   const nav = useNavStack()
   const [identify, setIdentify] = useState<IdentifyPayload | null>(() =>
     getStoredIdentify(channelId)
@@ -182,23 +194,48 @@ export function HomeView({ channelId, config, resolvedTheme, onClose }: HomeView
         }}
       />
       <div
+        ref={headerRef}
         className='relative z-10 flex shrink-0 flex-col gap-8 ps-5 pe-3 pt-5 pb-6'
         style={{ color: headerText }}>
         <div className='flex items-start justify-between'>
           {logo ? <img src={logo} alt='' className='h-8 w-auto' /> : <span className='h-8' />}
-          {onClose ? (
-            <button
-              type='button'
-              onClick={onClose}
-              aria-label='Close chat'
-              className={
-                isLightHeader
-                  ? 'flex size-7 items-center justify-center rounded text-black/70 transition-colors hover:bg-black/5 hover:text-black'
-                  : 'flex size-7 items-center justify-center rounded text-white/90 transition-colors hover:bg-white/10 hover:text-white'
-              }>
-              <X className='size-4' aria-hidden='true' />
-            </button>
-          ) : null}
+          <div className='flex items-center gap-1'>
+            {onToggleFloating ? (
+              <button
+                type='button'
+                onClick={onToggleFloating}
+                onPointerDown={(e) => e.stopPropagation()}
+                data-no-drag
+                aria-label={floating ? 'Dock chat' : 'Pop out chat'}
+                aria-pressed={floating}
+                className={
+                  isLightHeader
+                    ? 'flex size-7 items-center justify-center rounded text-black/70 transition-colors hover:bg-black/5 hover:text-black'
+                    : 'flex size-7 items-center justify-center rounded text-white/90 transition-colors hover:bg-white/10 hover:text-white'
+                }>
+                {floating ? (
+                  <ArrowDownLeft className='size-4' aria-hidden='true' />
+                ) : (
+                  <ArrowUpRight className='size-4' aria-hidden='true' />
+                )}
+              </button>
+            ) : null}
+            {onClose ? (
+              <button
+                type='button'
+                onClick={onClose}
+                onPointerDown={(e) => e.stopPropagation()}
+                data-no-drag
+                aria-label='Close chat'
+                className={
+                  isLightHeader
+                    ? 'flex size-7 items-center justify-center rounded text-black/70 transition-colors hover:bg-black/5 hover:text-black'
+                    : 'flex size-7 items-center justify-center rounded text-white/90 transition-colors hover:bg-white/10 hover:text-white'
+                }>
+                <X className='size-4' aria-hidden='true' />
+              </button>
+            ) : null}
+          </div>
         </div>
         <Greeting doc={home.greetingTemplate ?? null} identify={identify} />
       </div>

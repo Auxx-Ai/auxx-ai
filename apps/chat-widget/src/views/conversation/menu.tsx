@@ -19,6 +19,8 @@ interface ConversationMenuProps {
   expanded: boolean
   onToggleExpanded: () => void
   allowDownloadTranscript: boolean
+  /** When the widget is in floating-window mode, the expand/shrink row is hidden. */
+  floating?: boolean
 }
 
 export function ConversationMenu({
@@ -27,6 +29,7 @@ export function ConversationMenu({
   expanded,
   onToggleExpanded,
   allowDownloadTranscript,
+  floating = false,
 }: ConversationMenuProps) {
   const api = chatApi(channelId)
 
@@ -62,14 +65,16 @@ export function ConversationMenu({
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align='end'>
-        <DropdownMenuItem onSelect={onToggleExpanded}>
-          {expanded ? (
-            <Minimize2 className='size-4' aria-hidden='true' />
-          ) : (
-            <Maximize2 className='size-4' aria-hidden='true' />
-          )}
-          {expanded ? 'Shrink window' : 'Expand window'}
-        </DropdownMenuItem>
+        {floating ? null : (
+          <DropdownMenuItem onSelect={onToggleExpanded}>
+            {expanded ? (
+              <Minimize2 className='size-4' aria-hidden='true' />
+            ) : (
+              <Maximize2 className='size-4' aria-hidden='true' />
+            )}
+            {expanded ? 'Shrink window' : 'Expand window'}
+          </DropdownMenuItem>
+        )}
         {allowDownloadTranscript ? (
           <DropdownMenuItem onSelect={handleDownload}>
             <Download className='size-4' aria-hidden='true' />

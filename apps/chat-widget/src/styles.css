@@ -420,6 +420,54 @@
     height: calc(100vh - var(--auxx-chat-shell-edge-gap));
     max-height: calc(100vh - var(--auxx-chat-shell-edge-gap));
   }
+  .auxx-chat-shell--floating {
+    right: auto;
+    bottom: auto;
+    transform-origin: top left;
+    /* Disable the docked size transitions while floating — left/top must
+       respond instantly to pointer movement. */
+    transition: none;
+  }
+  .auxx-chat-shell--floating .auxx-chat-shell__trigger,
+  .auxx-chat-shell--floating .auxx-chat-shell__icon {
+    display: none;
+  }
+  /* Entry bob — runs 2 slow cycles of a gentle up/down translate after
+     detaching. The keyframe-driven transform composes with the inline
+     left/top, so dragging during the bob still works (transform is layered
+     on top). */
+  .auxx-chat-shell--bobbing {
+    animation: auxx-float-bob 1600ms cubic-bezier(0.45, 0, 0.55, 1) 2;
+  }
+  @keyframes auxx-float-bob {
+    0% {
+      transform: translateY(0);
+    }
+    50% {
+      transform: translateY(-6px);
+    }
+    100% {
+      transform: translateY(0);
+    }
+  }
+  /* Dock-back transition — temporarily re-enables left/top tweening so the
+     panel slides back to its corner before snapping to the docked layout. */
+  .auxx-chat-shell--docking {
+    transition:
+      left 320ms cubic-bezier(0.32, 0.72, 0, 1),
+      top 320ms cubic-bezier(0.32, 0.72, 0, 1);
+  }
+  .auxx-chat-drag-handle {
+    cursor: grab;
+    touch-action: none;
+  }
+  .auxx-chat-drag-handle.is-dragging {
+    cursor: grabbing;
+    user-select: none;
+  }
+  .auxx-chat-drag-handle :is(button, a, input, textarea, select, [role='button']) {
+    cursor: pointer;
+  }
 
   .auxx-chat-shell__badge {
     position: absolute;
@@ -513,5 +561,8 @@
   .auxx-chat-shell__icon,
   .auxx-chat-shell__panel {
     transition: none;
+  }
+  .auxx-chat-shell--bobbing {
+    animation: none;
   }
 }
