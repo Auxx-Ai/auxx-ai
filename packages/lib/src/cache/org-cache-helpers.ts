@@ -232,6 +232,20 @@ export async function isAgentUser(orgId: string, userId: string): Promise<boolea
   return agents.some((a) => a.userId === userId)
 }
 
+// ── Channel cache helpers ──
+
+/**
+ * Returns true when the org has at least one enabled chat integration with an
+ * active widget. Derived from the existing `channels` cache, so no new key.
+ *
+ * Used to gate Phase 4c chat-duty UI (nav-user toggle, handoff banner copy,
+ * assignee-picker filter) — features only surface once chat is set up.
+ */
+export async function getCachedOrgHasActiveChat(orgId: string): Promise<boolean> {
+  const channels = await getOrgCache().get(orgId, 'channels')
+  return channels.some((c) => c.provider === 'chat' && c.enabled && c.chatWidget?.isActive === true)
+}
+
 // ── Org profile cache helper ──
 
 /**

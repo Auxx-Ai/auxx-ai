@@ -25,6 +25,7 @@ export async function findMemberByUser(
     organizationId: member.organizationId,
     role: member.role,
     status: member.status,
+    onChatDuty: member.onChatDuty,
   }
 }
 
@@ -64,6 +65,7 @@ export async function listMembersWithUser(
       organizationId: schema.OrganizationMember.organizationId,
       role: schema.OrganizationMember.role,
       status: schema.OrganizationMember.status,
+      onChatDuty: schema.OrganizationMember.onChatDuty,
       user: {
         id: schema.User.id,
         name: schema.User.name,
@@ -102,6 +104,7 @@ async function findMemberByUserDirect(
       organizationId: schema.OrganizationMember.organizationId,
       role: schema.OrganizationMember.role,
       status: schema.OrganizationMember.status,
+      onChatDuty: schema.OrganizationMember.onChatDuty,
     })
     .from(schema.OrganizationMember)
     .where(

@@ -23,6 +23,8 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from '@auxx/ui/components/sidebar'
+import { Switch } from '@auxx/ui/components/switch'
+import { toastError } from '@auxx/ui/components/toast'
 import { getInitialsFromName } from '@auxx/utils'
 import {
   BadgeCheck,
@@ -30,6 +32,7 @@ import {
   ChevronsUpDown,
   Code,
   CreditCard,
+  Headset,
   LogOut,
   Moon,
   Plus,
@@ -42,7 +45,7 @@ import {
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useTheme } from 'next-themes'
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 // import { signOut } from 'next-auth/react'
 import { client } from '~/auth/auth-client' // Use the correct import for your auth library
 import { Tooltip } from '~/components/global/tooltip'
@@ -51,6 +54,7 @@ import { useAnalytics } from '~/hooks/use-analytics'
 import { useIsSelfHosted } from '~/hooks/use-deployment-mode'
 import { useUser } from '~/hooks/use-user'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
+import { api } from '~/trpc/react'
 
 import { CreateOrganizationDialog } from '../create-org-dialog'
 
@@ -104,6 +108,31 @@ export function NavUser({ user }: Prop) {
     }
   }
   const { theme, setTheme } = useTheme()
+
+  // Chat duty (Phase 4c). Gate the toggle on the org actually having an
+  // active chat channel — otherwise the feature has no meaning yet.
+  const orgHasActiveChatQuery = api.chatDuty.orgHasActiveChat.useQuery(undefined, {
+    enabled: !!organizationId,
+  })
+  const onDutyQuery = api.chatDuty.listOnDuty.useQuery(undefined, {
+    enabled: !!organizationId && orgHasActiveChatQuery.data === true,
+  })
+  const setSelfDuty = api.chatDuty.setSelf.useMutation({
+    onSuccess: () => {
+      void onDutyQuery.refetch()
+    },
+    onError: (error) => {
+      toastError({ title: 'Failed to update chat duty', description: error.message })
+    },
+  })
+  const isOnDuty = !!userData?.id && (onDutyQuery.data ?? []).includes(userData.id)
+  const handleToggleDuty = useCallback(
+    (next: boolean) => {
+      setSelfDuty.mutate({ onDuty: next })
+    },
+    [setSelfDuty]
+  )
+
   return (
     <>
       <CreateOrganizationDialog open={showNewOrgDialog} onOpenChange={setShowNewOrgDialog} />
@@ -236,6 +265,20 @@ export function NavUser({ user }: Prop) {
                       <CreditCard />
                       Billing
                     </Link>
+                  </DropdownMenuItem>
+                )}
+                {orgHasActiveChatQuery.data && (
+                  <DropdownMenuItem
+                    onSelect={(e) => e.preventDefault()}
+                    onClick={(e) => e.preventDefault()}>
+                    <Headset />
+                    Chat duty
+                    <Switch
+                      className='ml-auto'
+                      checked={isOnDuty}
+                      disabled={setSelfDuty.isPending}
+                      onCheckedChange={handleToggleDuty}
+                    />
                   </DropdownMenuItem>
                 )}
                 <DropdownMenuItem onSelect={(e) => e.preventDefault()}>

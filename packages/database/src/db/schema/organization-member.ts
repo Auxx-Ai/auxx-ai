@@ -4,6 +4,7 @@
 import { createId } from '@paralleldrive/cuid2'
 import {
   type AnyPgColumn,
+  boolean,
   index,
   organizationMemberStatus,
   organizationRole,
@@ -34,6 +35,15 @@ export const OrganizationMember = pgTable(
       .references((): AnyPgColumn => Organization.id, { onUpdate: 'cascade', onDelete: 'cascade' }),
     status: organizationMemberStatus().default('ACTIVE').notNull(),
     role: organizationRole().default('USER').notNull(),
+    /** Chat duty (Phase 4c): when true, this member is opted in to receive
+     * routed customer chats. Persistent, manually toggled, decoupled from
+     * presence. See plans/chat/v3/phase-4c-chat-duty.md. */
+    onChatDuty: boolean().default(false).notNull(),
+    chatDutyUpdatedAt: timestamp({ precision: 3 }),
+    chatDutyUpdatedById: text().references((): AnyPgColumn => User.id, {
+      onUpdate: 'cascade',
+      onDelete: 'set null',
+    }),
   },
   (table) => [
     index('OrganizationMember_organizationId_idx').using(
@@ -54,5 +64,5 @@ export type OrganizationMemberEntity = typeof OrganizationMember.$inferSelect
 /** Minimal membership info used in auth checks */
 export type OrganizationMemberInfo = Pick<
   OrganizationMemberEntity,
-  'id' | 'userId' | 'organizationId' | 'role' | 'status'
+  'id' | 'userId' | 'organizationId' | 'role' | 'status' | 'onChatDuty'
 >

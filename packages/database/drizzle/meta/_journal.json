@@ -1240,6 +1240,13 @@
       "when": 1779494872529,
       "tag": "0176_chat_widget_welcome_message_template",
       "breakpoints": true
+    },
+    {
+      "idx": 177,
+      "version": "7",
+      "when": 1779496944957,
+      "tag": "0177_chat_duty",
+      "breakpoints": true
     }
   ]
 }

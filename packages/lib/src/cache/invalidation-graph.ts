@@ -97,6 +97,9 @@ export const INVALIDATION_GRAPH: Record<string, InvalidationMapping> = {
     user: ['userMemberships'],
     org: ['members', 'memberRoleMap'],
   },
+  // Chat-duty toggle (Phase 4c) — only the cached `members` row changes
+  // (roles untouched), so we keep the invalidation tight.
+  'member.chat-duty.changed': ['members'],
 
   // ── Settings events ──
   'org.settings.changed': { org: ['orgSettings'], user: ['userSettings'] },
