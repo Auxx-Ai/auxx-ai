@@ -25,7 +25,7 @@ export function PopoverContent({
           // The widget shell sits at z-index 2147483000 and creates its own
           // stacking context. The popover is portaled as a sibling of the
           // shell, so it needs to outrank it to render in front.
-          'rounded-md border border-border bg-background p-3 text-sm shadow-md outline-none',
+          'rounded-md border border-border bg-[color:var(--auxx-chat-surface-loud)] p-3 text-sm shadow-md outline-none backdrop-blur-xl',
           className
         )}
         style={{ zIndex: 2147483001 }}

@@ -109,7 +109,7 @@ export function KbArticleView({ channelId, articleId }: KbArticleViewProps) {
   }
 
   return (
-    <div className='flex min-h-0 flex-1 flex-col overflow-y-auto bg-background'>
+    <div className='flex min-h-0 flex-1 flex-col overflow-y-auto bg-[color:var(--auxx-chat-surface-loud)]'>
       <div
         ref={containerRef}
         className='auxx-kb-article px-5 py-4'

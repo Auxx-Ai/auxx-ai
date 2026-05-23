@@ -335,7 +335,8 @@ export const channelRouter = createTRPCRouter({
         headerColor: z
           .string()
           .regex(/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/, 'Use a valid hex color')
-          .optional(),
+          .optional()
+          .nullable(),
         logoLight: chatWidgetInputSchema.shape.logoLight.optional(),
         logoDark: chatWidgetInputSchema.shape.logoDark.optional(),
         position: chatWidgetInputSchema.shape.position.optional(),

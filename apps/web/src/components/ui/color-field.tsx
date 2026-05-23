@@ -64,6 +64,8 @@ interface ColorFieldProps {
   onChange: (value: string) => void
   disabled?: boolean
   placeholder?: string
+  /** When true, shows an X to clear the value (emits empty string). */
+  clearable?: boolean
 }
 
 export function ColorField({
@@ -71,6 +73,7 @@ export function ColorField({
   onChange,
   disabled,
   placeholder = 'Pick a color',
+  clearable = false,
 }: ColorFieldProps) {
   const [open, setOpen] = useState(false)
   const [customColor, setCustomColor] = useState(value)
@@ -104,7 +107,11 @@ export function ColorField({
           variant='transparent'
           hasValue={hasValue}
           placeholder={placeholder}
-          showClear={false}
+          showClear={clearable}
+          onClear={() => {
+            onChange('')
+            setCustomColor('')
+          }}
           asCombobox
           className='ps-0 pe-1 w-full'>
           <div className='flex items-center gap-2'>

@@ -28,7 +28,7 @@ export function DropdownMenuContent({
         className={cn(
           // See popover.tsx — must outrank `.auxx-chat-shell`'s z-index since
           // the dropdown is portaled as a sibling of the shell stacking ctx.
-          'min-w-[10rem] overflow-hidden rounded-md border border-border bg-background p-1 text-sm shadow-md',
+          'min-w-[10rem] overflow-hidden rounded-xl border border-border bg-[color:var(--auxx-chat-surface-loud)] p-1 text-sm shadow-md backdrop-blur-xl',
           className
         )}
         style={{ zIndex: 2147483001 }}
@@ -45,7 +45,7 @@ export function DropdownMenuItem({
   return (
     <DropdownMenuPrimitive.Item
       className={cn(
-        'relative flex cursor-pointer select-none items-center gap-2 rounded px-2 py-1.5 outline-none focus:bg-muted data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
+        'relative flex cursor-pointer select-none items-center gap-2 rounded px-2 py-1.5 outline-none focus:bg-[color:var(--auxx-chat-surface-dark-default)] focus:text-[color:var(--auxx-chat-text-loud)] data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
         className
       )}
       {...props}

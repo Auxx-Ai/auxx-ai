@@ -231,11 +231,7 @@ export function MessagesView({ channelId, config, subscribe }: MessagesViewProps
 }
 
 function Frame({ children }: { children: preact.ComponentChildren }) {
-  return (
-    <div className='relative flex min-h-0 flex-1 flex-col [&>*:last-child]:rounded-b-2xl'>
-      {children}
-    </div>
-  )
+  return <div className='auxx-chat-frame relative flex min-h-0 flex-1 flex-col'>{children}</div>
 }
 
 interface ThreadRowProps {
@@ -255,7 +251,7 @@ function ThreadRow({ thread, isUnread, fallbackName, fallbackAvatarUrl, onOpen }
       type='button'
       onClick={onOpen}
       className={cn(
-        'flex w-full items-start gap-3 rounded-lg px-3 py-2.5 text-left transition-colors hover:bg-accent'
+        'flex w-full items-start gap-3 rounded-lg border border-border px-3 py-2.5 text-left transition-colors hover:bg-[color:var(--auxx-chat-surface-dark-faint)]'
       )}>
       <Avatar avatarUrl={displayAvatarUrl} />
       <div className='flex min-w-0 flex-1 flex-col gap-0.5'>

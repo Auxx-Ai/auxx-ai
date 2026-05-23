@@ -245,10 +245,13 @@
    * inheritance only goes downward from where the var is set. */
   .auxx-root {
     --background: var(--color-zinc-50);
-    --foreground: var(--color-zinc-950);
+    /* Default body text — tinted dark at 60% alpha so the surface bleeds
+     * through; hover/active states bump to --auxx-chat-text-loud (90%) for
+     * contrast. */
+    --foreground: oklch(14% var(--auxx-chat-tint-c) var(--auxx-chat-tint-h) / 0.6);
 
-    --card: var(--color-white);
-    --card-foreground: var(--color-zinc-950);
+    --card: var(--auxx-chat-surface-medium);
+    --card-foreground: var(--auxx-chat-text-loud);
     --illustration: var(--color-white);
     --border-illustration: color-mix(in srgb, var(--foreground) 7.5%, transparent);
 
@@ -262,7 +265,7 @@
     --secondary-foreground: var(--color-sky-600);
 
     --muted: color-mix(in srgb, var(--foreground) 5%, transparent);
-    --muted-foreground: var(--color-zinc-600);
+    --muted-foreground: oklch(14% var(--auxx-chat-tint-c) var(--auxx-chat-tint-h) / 0.3);
 
     --accent: var(--color-zinc-100);
     --accent-foreground: var(--color-zinc-800);
@@ -270,8 +273,8 @@
     --destructive: var(--color-red-600);
     --destructive-foreground: var(--color-white);
 
-    --border: color-mix(in srgb, var(--foreground) 7.5%, transparent);
-    --input: color-mix(in srgb, var(--foreground) 7.5%, transparent);
+    --border: var(--auxx-chat-hairline);
+    --input: var(--auxx-chat-hairline);
     --ring: var(--primary);
 
     /* Re-declare the `--color-*` mappings here so they're computed at this
@@ -300,14 +303,82 @@
     --color-ring: var(--ring);
     --color-illustration: var(--illustration);
     --color-border-illustration: var(--border-illustration);
+
+    /* Tinted neutral surfaces. The hue (`--auxx-chat-tint-h`) is inherited
+     * from `--auxx-chat-primary` via inline style in widget.tsx; default 250
+     * (cool blue) matches the existing indigo brand default. Chroma is
+     * collapsed to ~0.012 so the tint reads as warmth/coolness rather than a
+     * visible color cast.
+     *
+     * Alpha ladder: 40/70/86/90/96 — sparse subset of a full neutral ramp,
+     * sized to the surface tiers we actually use (glass overlay → loud →
+     * raised). */
+    --auxx-chat-tint-h: 250;
+    --auxx-chat-tint-c: 0.012;
+    --auxx-chat-neutral-base: oklch(98% var(--auxx-chat-tint-c) var(--auxx-chat-tint-h));
+
+    --auxx-chat-glass-overlay: linear-gradient(
+      180deg,
+      oklch(98% var(--auxx-chat-tint-c) var(--auxx-chat-tint-h) / 0.7) 0%,
+      oklch(98% var(--auxx-chat-tint-c) var(--auxx-chat-tint-h) / 0.4) 100%
+    );
+    --auxx-chat-surface-loud: oklch(98% var(--auxx-chat-tint-c) var(--auxx-chat-tint-h) / 0.9);
+    --auxx-chat-surface-medium: oklch(98% var(--auxx-chat-tint-c) var(--auxx-chat-tint-h) / 0.6);
+    /* Hero band — higher chroma than the neutral tint (0.069 vs 0.012) so
+     * the brand hue actually reads as color, lifted to 88% lightness so it
+     * sits as a "soft glow" rather than a saturated fill. Derived from the
+     * same tint-h that comes from --auxx-chat-primary. */
+    --auxx-chat-primary-band: oklch(88% 0.069 var(--auxx-chat-tint-h) / 0.88);
+    --auxx-chat-surface-default: oklch(98% var(--auxx-chat-tint-c) var(--auxx-chat-tint-h) / 0.4);
+    /* Always-dark contrast surface in light mode. Inverts to a light
+     * surface in dark mode so contrast bubbles/hovers stay distinct from
+     * the shell. */
+    --auxx-chat-surface-dark-default: oklch(
+      14% var(--auxx-chat-tint-c) var(--auxx-chat-tint-h) / 0.06
+    );
+    /* Faint dark overlay — barely-there darkening for row hovers and other
+     * gentle states where surface-dark-default would feel too heavy. */
+    --auxx-chat-surface-dark-faint: oklch(
+      14% var(--auxx-chat-tint-c) var(--auxx-chat-tint-h) / 0.02
+    );
+    /* "Loud" foreground — tinted dark at 90% alpha. Used by hover/active
+     * states (text bumps from --foreground's 60% to 90% for contrast) and
+     * by content that needs a crisper read (agent bubble, primary labels). */
+    --auxx-chat-text-loud: oklch(14% var(--auxx-chat-tint-c) var(--auxx-chat-tint-h) / 0.9);
+    --auxx-chat-surface-raised: linear-gradient(
+      180deg,
+      oklch(98% var(--auxx-chat-tint-c) var(--auxx-chat-tint-h) / 0.96) 0%,
+      oklch(98% var(--auxx-chat-tint-c) var(--auxx-chat-tint-h) / 0.86) 100%
+    );
+
+    --auxx-chat-hairline: oklch(14% var(--auxx-chat-tint-c) var(--auxx-chat-tint-h) / 0.06);
+
+    --auxx-chat-shadow-tint: oklch(14% var(--auxx-chat-tint-c) var(--auxx-chat-tint-h) / 0.04);
+    --auxx-chat-shadow-tint-strong: oklch(
+      14% var(--auxx-chat-tint-c) var(--auxx-chat-tint-h) / 0.08
+    );
+    --auxx-chat-shadow-tint-light: oklch(
+      14% var(--auxx-chat-tint-c) var(--auxx-chat-tint-h) / 0.02
+    );
+
+    --auxx-chat-shadow-shell:
+      0 0 0 1px var(--auxx-chat-shadow-tint), 0 0 2px 0 var(--auxx-chat-shadow-tint),
+      0 4px 6px -2px var(--auxx-chat-shadow-tint),
+      0 16px 28px -8px var(--auxx-chat-shadow-tint),
+      0 24px 40px -12px var(--auxx-chat-shadow-tint-strong);
+
+    --auxx-chat-shadow-raised:
+      0 0 0 1px var(--auxx-chat-shadow-tint), 0 4px 12px 0 var(--auxx-chat-shadow-tint-light),
+      0 8px 24px 0 var(--auxx-chat-shadow-tint-light), 0 16px 32px 0 var(--auxx-chat-shadow-tint),
+      0 32px 48px 0 var(--auxx-chat-shadow-tint-light);
   }
 
   .auxx-root[data-theme='dark'] {
     --background: var(--color-zinc-950);
-    --foreground: var(--color-white);
+    --foreground: oklch(98% var(--auxx-chat-tint-c) var(--auxx-chat-tint-h) / 0.6);
 
-    --card: color-mix(in oklab, var(--color-zinc-800) 55%, #000);
-    --card-foreground: var(--color-white);
+    --card: var(--auxx-chat-surface-medium);
+    --card-foreground: var(--auxx-chat-text-loud);
     --illustration: color-mix(in oklab, var(--color-zinc-800) 60%, #000);
     --border-illustration: color-mix(in srgb, var(--foreground) 7.5%, transparent);
 
@@ -321,7 +392,7 @@
     --secondary-foreground: var(--color-white);
 
     --muted: var(--color-zinc-800);
-    --muted-foreground: var(--color-zinc-400);
+    --muted-foreground: oklch(98% var(--auxx-chat-tint-c) var(--auxx-chat-tint-h) / 0.3);
 
     --accent: var(--color-zinc-800);
     --accent-foreground: var(--color-white);
@@ -329,9 +400,47 @@
     --destructive: var(--color-red-700);
     --destructive-foreground: var(--color-white);
 
-    --border: color-mix(in srgb, var(--foreground) 7.5%, transparent);
-    --input: color-mix(in srgb, var(--foreground) 7.5%, transparent);
+    --border: var(--auxx-chat-hairline);
+    --input: var(--auxx-chat-hairline);
     --ring: var(--color-zinc-600);
+
+    /* Dark-mode tinted tokens. The base flips to a dark neutral (oklch 14%)
+     * with the same hue inherited from the brand color. Shadow alphas roughly
+     * double so shadows still register against dark host backgrounds. */
+    --auxx-chat-neutral-base: oklch(14% var(--auxx-chat-tint-c) var(--auxx-chat-tint-h));
+
+    --auxx-chat-glass-overlay: linear-gradient(
+      180deg,
+      oklch(14% var(--auxx-chat-tint-c) var(--auxx-chat-tint-h) / 0.62) 0%,
+      oklch(14% var(--auxx-chat-tint-c) var(--auxx-chat-tint-h) / 0.38) 100%
+    );
+    --auxx-chat-surface-loud: oklch(14% var(--auxx-chat-tint-c) var(--auxx-chat-tint-h) / 0.5);
+    --auxx-chat-surface-medium: oklch(14% var(--auxx-chat-tint-c) var(--auxx-chat-tint-h) / 0.35);
+    /* Dark-mode flip: drop lightness so the band darkens against the dark
+     * shell rather than blowing out as a bright wash. */
+    --auxx-chat-primary-band: oklch(25% 0.069 var(--auxx-chat-tint-h) / 0.88);
+    --auxx-chat-surface-default: oklch(14% var(--auxx-chat-tint-c) var(--auxx-chat-tint-h) / 0.2);
+    /* Inverts in dark mode — becomes a light-tinted contrast surface so
+     * bubbles/hovers stay distinct against the dark glass shell. */
+    --auxx-chat-surface-dark-default: oklch(
+      98% var(--auxx-chat-tint-c) var(--auxx-chat-tint-h) / 0.08
+    );
+    --auxx-chat-surface-dark-faint: oklch(
+      98% var(--auxx-chat-tint-c) var(--auxx-chat-tint-h) / 0.03
+    );
+    /* Dark-mode flip: loud text inverts to light (since surfaces also flip). */
+    --auxx-chat-text-loud: oklch(98% var(--auxx-chat-tint-c) var(--auxx-chat-tint-h) / 0.9);
+    --auxx-chat-surface-raised: linear-gradient(
+      180deg,
+      oklch(14% var(--auxx-chat-tint-c) var(--auxx-chat-tint-h) / 0.6) 0%,
+      oklch(14% var(--auxx-chat-tint-c) var(--auxx-chat-tint-h) / 0.4) 100%
+    );
+
+    --auxx-chat-hairline: oklch(98% var(--auxx-chat-tint-c) var(--auxx-chat-tint-h) / 0.08);
+
+    --auxx-chat-shadow-tint: oklch(0% 0 0 / 0.4);
+    --auxx-chat-shadow-tint-strong: oklch(0% 0 0 / 0.6);
+    --auxx-chat-shadow-tint-light: oklch(0% 0 0 / 0.2);
   }
 
   .auxx-root,
@@ -356,6 +465,11 @@
     --auxx-chat-shell-open-height: 540px;
     --auxx-chat-shell-closed-radius: 28px;
     --auxx-chat-shell-open-radius: 16px;
+    /* Asymmetric panel radii: tighter top, looser bottom. The
+     * shell can't use overflow:hidden (the closed-state unread badge sits
+     * outside the box), so per-frame clip utilities below mirror these. */
+    --auxx-chat-shell-radius-top: 1.125rem;
+    --auxx-chat-shell-radius-bottom: 1.75rem;
     --auxx-chat-shell-edge-gap: 20px;
 
     --auxx-chat-primary: #4f46e5;
@@ -382,8 +496,12 @@
     border-radius: var(--auxx-chat-shell-closed-radius);
     background: color-mix(in srgb, var(--auxx-chat-primary) 88%, transparent);
     box-shadow: var(--auxx-chat-shell-closed-shadow);
-    backdrop-filter: blur(40px);
+    /* Both prefixed and unprefixed are required (Firefox 103+ only honors the
+     * unprefixed property). Tailwind v4's Lightning CSS dedupes identical
+     * adjacent declarations, so we apply the unprefixed one !important to
+     * keep it from being collapsed away. */
     -webkit-backdrop-filter: blur(40px);
+    backdrop-filter: blur(40px) !important;
     transition:
       width var(--auxx-chat-shell-duration) var(--auxx-chat-shell-ease),
       height var(--auxx-chat-shell-duration) var(--auxx-chat-shell-ease),
@@ -406,14 +524,24 @@
     height: var(--auxx-chat-shell-open-height);
     max-width: calc(100vw - calc(var(--auxx-chat-shell-edge-gap) * 2));
     max-height: calc(100vh - calc(var(--auxx-chat-shell-edge-gap) * 5));
-    border-radius: 1rem;
-    background: color-mix(in srgb, var(--background) 85%, transparent);
-    backdrop-filter: blur(16px);
-    border: 1px solid color-mix(in srgb, var(--foreground) 10%, transparent);
-    --auxx-chat-shell-open-shadow:
-      0 0 0 1px var(--border-illustration),
-      0 25px 50px -12px rgb(0 0 0 / 0.75);
-    box-shadow: var(--auxx-chat-shell-open-shadow);
+    border-top-left-radius: var(--auxx-chat-shell-radius-top);
+    border-top-right-radius: var(--auxx-chat-shell-radius-top);
+    border-bottom-left-radius: var(--auxx-chat-shell-radius-bottom);
+    border-bottom-right-radius: var(--auxx-chat-shell-radius-bottom);
+    /* Two translucent layers — vertical wash (70%→40% alpha) on top of a
+     * 40%-alpha base. Combined alpha sits around 70–80%, so the backdrop
+     * blur shows through. Do NOT add an opaque layer here — it kills the
+     * glass entirely. */
+    background:
+      var(--auxx-chat-glass-overlay),
+      var(--auxx-chat-surface-default);
+    -webkit-backdrop-filter: blur(24px);
+    backdrop-filter: blur(24px) !important;
+    border: none;
+    box-shadow: var(--auxx-chat-shadow-shell);
+    /* DO NOT add overflow:hidden — the unread badge on the closed launcher
+     * sits at top:-4px/right:-4px and must not be clipped. Corner clipping
+     * is per-frame via .auxx-chat-clip-top / .auxx-chat-clip-bottom. */
   }
   .auxx-chat-shell--expanded {
     width: 640px;
@@ -553,6 +681,85 @@
     opacity: 1;
     pointer-events: auto;
     transition-delay: var(--auxx-chat-panel-open-delay);
+  }
+
+  /* Per-frame corner clipping. The shell deliberately has no overflow:hidden
+   * (the closed-launcher unread badge sits outside the box). Each frame
+   * either applies these classes directly OR wraps children in
+   * `.auxx-chat-frame`, which auto-rounds its first/last children to match
+   * the shell's asymmetric radii.
+   *
+   * No `overflow: hidden` on these utilities — backgrounds and borders are
+   * the only things that need rounding, and adding overflow would break
+   * portaled popovers (Radix dropdowns) that escape the parent stacking
+   * context but visually originate inside the frame. */
+  .auxx-chat-clip-top {
+    border-top-left-radius: var(--auxx-chat-shell-radius-top);
+    border-top-right-radius: var(--auxx-chat-shell-radius-top);
+  }
+  .auxx-chat-clip-bottom {
+    border-bottom-left-radius: var(--auxx-chat-shell-radius-bottom);
+    border-bottom-right-radius: var(--auxx-chat-shell-radius-bottom);
+  }
+  .auxx-chat-frame > *:first-child {
+    border-top-left-radius: var(--auxx-chat-shell-radius-top);
+    border-top-right-radius: var(--auxx-chat-shell-radius-top);
+  }
+  .auxx-chat-frame > *:last-child {
+    border-bottom-left-radius: var(--auxx-chat-shell-radius-bottom);
+    border-bottom-right-radius: var(--auxx-chat-shell-radius-bottom);
+  }
+
+  /* Conversation body mask — fades messages into the header band as they
+   * scroll past the top edge. */
+  .auxx-chat-body-mask {
+    -webkit-mask-image: linear-gradient(180deg, transparent 0, #000 5%, #000 100%);
+    mask-image: linear-gradient(180deg, transparent 0, #000 5%, #000 100%);
+  }
+
+  /* Composer plinth — the "loud" surface strip beneath the body. Holds the
+   * suggested-replies, composer card, and privacy banner. The ::before
+   * gradient feathers the body's bottom edge into the plinth. */
+  .auxx-chat-composer-plinth {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    padding: 0 0.5rem 0.5rem;
+    background: var(--auxx-chat-surface-loud);
+  }
+  .auxx-chat-composer-plinth::before {
+    content: '';
+    position: absolute;
+    bottom: 100%;
+    left: 0;
+    right: 0;
+    height: 1rem;
+    background: linear-gradient(180deg, transparent 0%, var(--auxx-chat-surface-loud) 100%);
+    pointer-events: none;
+  }
+
+  /* Composer textarea card — raised pill sitting on the plinth with its own
+   * blur and multi-shadow stack. Focus state adds a primary-colored ring on
+   * top of the existing shadow composite. */
+  .auxx-chat-composer-card {
+    position: relative;
+    border-radius: 1.25rem;
+    background-image: var(--auxx-chat-surface-raised);
+    box-shadow: var(--auxx-chat-shadow-raised);
+    -webkit-backdrop-filter: blur(24px);
+    backdrop-filter: blur(24px) !important;
+    transition: box-shadow 120ms ease-out;
+  }
+  .auxx-chat-composer-card:focus-within {
+    box-shadow:
+      0 0 0 2px var(--primary),
+      var(--auxx-chat-shadow-raised);
+  }
+  .auxx-chat-composer-card.is-drag-over {
+    box-shadow:
+      0 0 0 2px var(--primary),
+      var(--auxx-chat-shadow-raised);
   }
 }
 

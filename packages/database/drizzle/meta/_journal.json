@@ -1247,6 +1247,13 @@
       "when": 1779496944957,
       "tag": "0177_chat_duty",
       "breakpoints": true
+    },
+    {
+      "idx": 178,
+      "version": "7",
+      "when": 1779515590895,
+      "tag": "0178_chat_widget_header_color_nullable",
+      "breakpoints": true
     }
   ]
 }

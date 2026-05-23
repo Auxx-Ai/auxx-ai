@@ -34,8 +34,7 @@ interface HomeViewProps {
 
 /**
  * Pick a contrast-safe text color (black/white) for a hex background using
- * WCAG relative luminance. Mirrors the simple version of WCAG 2.x §1.4.3:
- * compute luminance of the bg, return white below ~0.5, black otherwise.
+ * WCAG relative luminance.
  */
 function pickContrastText(hex: string): string {
   const m = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(hex)
@@ -172,11 +171,22 @@ export function HomeView({
   ].filter(Boolean)
 
   const isDark = resolvedTheme === 'dark'
-  const headerColor =
+  // Hero band defaults to --auxx-chat-primary-band (derived from the brand
+  // tint hue, see styles.css). Admin-set headerColor / headerColorDark still
+  // override when present — picks the dark variant if available, else falls
+  // back to the light field.
+  const headerOverride =
     isDark && config.appearance.headerColorDark
       ? config.appearance.headerColorDark
       : config.appearance.headerColor
-  const headerText = pickContrastText(headerColor)
+  const bandColor = headerOverride ?? 'var(--auxx-chat-primary-band)'
+  // If admin set a header color, compute contrast against it; otherwise the
+  // band lightness follows the theme (light in light mode, dark in dark mode).
+  const headerText = headerOverride
+    ? pickContrastText(headerOverride)
+    : isDark
+      ? '#FFFFFF'
+      : '#000000'
   const isLightHeader = headerText === '#000000'
   // In dark mode prefer logoDark (light-surface logo); fall back to logoLight.
   const logo = isDark
@@ -184,13 +194,13 @@ export function HomeView({
     : config.appearance.logoLight
 
   return (
-    <div className='relative flex min-h-0 flex-1 flex-col [&>*:last-child]:rounded-b-2xl'>
+    <div className='auxx-chat-frame relative flex min-h-0 flex-1 flex-col'>
       <div
         aria-hidden='true'
-        className='pointer-events-none absolute inset-x-0 top-0 z-0 rounded-t-2xl'
+        className='auxx-chat-clip-top pointer-events-none absolute inset-x-0 top-0 z-0'
         style={{
           height: '200px',
-          background: `linear-gradient(to bottom, ${headerColor} 45%, transparent 100%)`,
+          background: `linear-gradient(to bottom, ${bandColor} 45%, transparent 100%)`,
         }}
       />
       <div
@@ -239,7 +249,7 @@ export function HomeView({
         </div>
         <Greeting doc={home.greetingTemplate ?? null} identify={identify} />
       </div>
-      <div className='relative z-10 flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-3 pb-3'>
+      <div className='auxx-chat-body-mask relative z-10 flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-3 pb-3'>
         {cards.length === 0 ? (
           <p className='py-6 text-center text-xs text-muted-foreground'>No conversations yet</p>
         ) : (
@@ -247,7 +257,7 @@ export function HomeView({
         )}
       </div>
       {config.branding.footerEnabled ? (
-        <div className='relative z-10 border-t border-border bg-transparent py-2 text-center text-[10px] uppercase tracking-wide text-muted-foreground'>
+        <div className='relative z-10 border-t border-[color:var(--auxx-chat-hairline)] bg-transparent py-2 text-center text-[10px] uppercase tracking-wide text-muted-foreground'>
           Powered by Auxx
         </div>
       ) : null}

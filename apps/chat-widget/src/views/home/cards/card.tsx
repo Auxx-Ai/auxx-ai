@@ -28,7 +28,7 @@ export function HomeCard({
       onClick={onClick}
       disabled={disabled}
       className={cn(
-        'group flex w-full items-center gap-3 rounded-lg border border-border bg-card px-3 py-3 text-left transition-colors hover:bg-foreground/5 disabled:cursor-not-allowed disabled:opacity-60',
+        'group flex w-full items-center gap-3 rounded-lg border border-[color:var(--auxx-chat-hairline)] bg-card px-3 py-3 text-left transition-colors hover:bg-[color:var(--auxx-chat-surface-loud)] disabled:cursor-not-allowed disabled:opacity-60',
         className
       )}>
       <div className='flex min-w-0 flex-1 flex-col gap-0.5'>{children}</div>
