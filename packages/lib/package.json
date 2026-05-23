@@ -136,6 +136,12 @@
       "import": "./dist/chat/index.mjs",
       "default": "./src/chat/index.ts"
     },
+    "./chat-duty": {
+      "types": "./src/chat-duty/index.ts",
+      "source": "./src/chat-duty/index.ts",
+      "import": "./dist/chat-duty/index.mjs",
+      "default": "./src/chat-duty/index.ts"
+    },
     "./chat-widget/config": {
       "types": "./src/chat-widget/config.ts",
       "source": "./src/chat-widget/config.ts",

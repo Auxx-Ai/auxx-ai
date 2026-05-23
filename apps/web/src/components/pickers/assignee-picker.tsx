@@ -15,7 +15,7 @@ import {
 import { FormControl, FormField, FormItem, FormLabel, FormMessage } from '@auxx/ui/components/form'
 import { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { cn } from '@auxx/ui/lib/utils'
-import { Check, Search, Users, X } from 'lucide-react'
+import { Check, Headset, Search, Users, X } from 'lucide-react'
 import { type ReactNode, useEffect, useState } from 'react'
 import type { Control } from 'react-hook-form'
 import { useDebounce } from '~/hooks/use-debounced-value'
@@ -51,6 +51,14 @@ export interface AssigneePickerProps {
   style?: React.CSSProperties // Style for the popover content
   /** External anchor ref - popover anchors to this element instead of trigger */
   anchorRef?: React.RefObject<HTMLElement | null>
+  /**
+   * Phase 4c (Chat duty). When true, the member list filters to users
+   * currently on chat duty. Picker shows a small "Show all" toggle so the
+   * caller can still surface off-duty members when needed (manual override,
+   * unusual assignment). Defaults to false so non-chat surfaces are
+   * unaffected.
+   */
+  onlyOnDuty?: boolean
 }
 
 export function AssigneePicker({
@@ -71,12 +79,16 @@ export function AssigneePicker({
   side = 'bottom',
   sideOffset = 5,
   anchorRef,
+  onlyOnDuty = false,
   ...props
 }: AssigneePickerProps) {
   // Internal state
   const [isOpen, setIsOpen] = useState(open || false)
   const [searchValue, setSearchValue] = useState('')
   const [debouncedSearchValue] = useDebounce(searchValue, 300)
+  // Escape hatch when the caller passed `onlyOnDuty` — lets the user
+  // temporarily widen the list to all members for an unusual assignment.
+  const [showAllOverride, setShowAllOverride] = useState(false)
 
   const { user } = useUser()
 
@@ -84,6 +96,14 @@ export function AssigneePicker({
   const { data: fetchedMembers, isLoading } = api.user.teamMembers.useQuery(undefined, {
     enabled: !providedMembers,
   })
+
+  // On-duty userIds — only fetched when the caller asked us to filter, so
+  // non-chat pickers don't pay the cost.
+  const { data: onDutyUserIds } = api.chatDuty.listOnDuty.useQuery(undefined, {
+    enabled: onlyOnDuty,
+  })
+  const onDutySet = onDutyUserIds ? new Set(onDutyUserIds) : null
+  const dutyFilterActive = onlyOnDuty && !showAllOverride && !!onDutySet
 
   const teamMembers = providedMembers || fetchedMembers || []
 
@@ -208,8 +228,14 @@ export function AssigneePicker({
     }
   }
 
-  // Filter members based on search
+  // Filter members based on search + (optional) on-duty filter
   const filteredMembers = teamMembers.filter((member) => {
+    // Duty filter applies first so search counts only run against the visible
+    // set. Skip when the override is on or when the data hasn't loaded yet.
+    if (dutyFilterActive && onDutySet && !onDutySet.has(member.id)) {
+      return false
+    }
+
     if (!debouncedSearchValue) return true
 
     const searchTerms = debouncedSearchValue.toLowerCase().split(' ')
@@ -325,6 +351,23 @@ export function AssigneePicker({
 
           <CommandList>
             <CommandEmpty>No members found.</CommandEmpty>
+
+            {/* Duty filter toggle — only when caller opted in. */}
+            {onlyOnDuty && (
+              <CommandGroup>
+                <CommandItem
+                  value='__duty-filter-toggle'
+                  onSelect={() => setShowAllOverride((prev) => !prev)}
+                  className='flex items-center text-xs text-muted-foreground'>
+                  <Headset className='size-4' />
+                  <span>{showAllOverride ? 'Showing all members' : 'On-duty members only'}</span>
+                  <span className='ml-auto text-primary'>
+                    {showAllOverride ? 'Filter on duty' : 'Show all'}
+                  </span>
+                </CommandItem>
+                <CommandSeparator />
+              </CommandGroup>
+            )}
 
             {/* Selected members group */}
             {((selectedMembers && selectedMembers.length > 0) || includeUnassigned) && (

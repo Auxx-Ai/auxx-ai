@@ -16,6 +16,7 @@ export const membersProvider: CacheProvider<OrgMemberInfo[]> = {
         organizationId: schema.OrganizationMember.organizationId,
         role: schema.OrganizationMember.role,
         status: schema.OrganizationMember.status,
+        onChatDuty: schema.OrganizationMember.onChatDuty,
         user: {
           id: schema.User.id,
           name: schema.User.name,
