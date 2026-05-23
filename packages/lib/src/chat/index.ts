@@ -18,4 +18,4 @@ export type {
 } from './session'
 export { initializeOrResumeChatThread } from './session'
 export type { ServiceContext, VisitInfo } from './types'
-export { findOrCreateVisitorParticipant } from './visitor-identity'
+export { findOrCreateVisitorParticipant, updateVisitorClaimedIdentity } from './visitor-identity'

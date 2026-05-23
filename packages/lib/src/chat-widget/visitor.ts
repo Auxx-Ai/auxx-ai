@@ -3,6 +3,7 @@
 import { type Database, schema } from '@auxx/database'
 import type { ParticipantEntity } from '@auxx/database/types'
 import { and, eq } from 'drizzle-orm'
+import { formatVisitorLabel } from '../chat/labels'
 import { Result, type TypedResult } from '../result'
 
 export interface FindOrCreateVisitorOptions {
@@ -34,14 +35,15 @@ export async function findOrCreateVisitorParticipant(
     })
     if (existing) return Result.ok(existing)
 
+    const fallback = formatVisitorLabel(sessionId)
     const [created] = await db
       .insert(schema.Participant)
       .values({
         organizationId,
         identifier: sessionId,
         identifierType: 'CHAT_VISITOR',
-        name: name ?? null,
-        displayName: name ?? null,
+        name: name ?? fallback,
+        displayName: name ?? fallback,
         firstInteractionType: 'chat',
         firstInteractionDate: new Date(),
         updatedAt: new Date(),

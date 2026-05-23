@@ -174,4 +174,10 @@ export interface ChatThreadMetadata {
   claimedVisitorName?: string
   /** Embedder-supplied external id (e.g. customer id in the host app). Unverified in v1. */
   claimedExternalId?: string
+  /**
+   * Friendly handle derived from the visitor's session identifier (e.g.
+   * `Chat user #354b`). Frozen at thread-creation time so the sidebar can
+   * render it without an extra Participant fetch.
+   */
+  visitorLabel?: string
 }

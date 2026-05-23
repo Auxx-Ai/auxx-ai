@@ -2,7 +2,7 @@
 
 import { issueChatPassport } from '@auxx/credentials/passport'
 import { database } from '@auxx/database'
-import { patchChatThreadMetadata } from '@auxx/lib/chat'
+import { patchChatThreadMetadata, updateVisitorClaimedIdentity } from '@auxx/lib/chat'
 import { publisher } from '@auxx/lib/events'
 import { createScopedLogger } from '@auxx/logger'
 import { Hono } from 'hono'
@@ -49,15 +49,19 @@ visitorInfoRoute.patch('/', async (c) => {
   const claimedExternalId = identify?.externalId
 
   try {
-    await patchChatThreadMetadata(
-      { db: database, organizationId: chat.organizationId },
-      body.threadId,
-      {
-        claimedVisitorName,
-        claimedVisitorEmail,
-        claimedExternalId,
-      }
-    )
+    const ctx = { db: database, organizationId: chat.organizationId }
+    await patchChatThreadMetadata(ctx, body.threadId, {
+      claimedVisitorName,
+      claimedVisitorEmail,
+      claimedExternalId,
+    })
+
+    // Overwrite the synthetic `Chat user #xxxx` displayName so message FROM
+    // and future thread subjects pick up the real identity.
+    await updateVisitorClaimedIdentity(ctx, chat.visitorParticipantId, {
+      name: claimedVisitorName,
+      email: claimedVisitorEmail,
+    })
 
     // Emit `thread:visitor:identified` once an email is attached to an active
     // thread — admin + widget render this as a centered system line. Fired

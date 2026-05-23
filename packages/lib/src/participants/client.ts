@@ -8,7 +8,7 @@
 /**
  * Identifier type for participants.
  */
-export type ParticipantIdentifierType = 'EMAIL' | 'PHONE'
+export type ParticipantIdentifierType = 'EMAIL' | 'PHONE' | 'CHAT_VISITOR'
 
 /**
  * Participant display data for frontend store.
