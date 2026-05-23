@@ -11,7 +11,15 @@
  * the server registry adds `authorize(...)` fns on top.
  */
 
-export type RoomKind = 'plain' | 'presence'
+/**
+ * - `plain` — server-published, client subscribes via `private-` Pusher channel
+ *   with auth signing. Most admin-side rooms.
+ * - `presence` — Pusher `presence-` channel; carries member roster + state.
+ * - `public` — server-published, client subscribes to the raw channel name
+ *   with no auth. Used for the visitor chat session (`chat-{id}`) which is
+ *   bootstrapped from the widget without a session cookie.
+ */
+export type RoomKind = 'plain' | 'presence' | 'public'
 
 /** Typed helpers to build room keys. Mirrored on `rooms` for server callers. */
 export const rooms = {
@@ -42,21 +50,28 @@ export function roomKindFor(roomKey: string): RoomKind | null {
   if (roomKey.startsWith('org-')) return 'presence'
   if (roomKey.startsWith('user-')) return 'plain'
   if (roomKey.startsWith('thread-')) return 'plain'
-  if (roomKey.startsWith('chat-')) return 'plain'
+  // Widget visitor session — raw public Pusher channel, no auth signing. The
+  // widget connects with `connectPusher` (non-private), so the server must
+  // publish to the same raw channel name.
+  if (roomKey.startsWith('chat-')) return 'public'
   if (roomKey.startsWith('visitor-')) return 'plain'
   return null
 }
 
-/** Map a room key to its Pusher channel name (`private-` / `presence-`). */
+/** Map a room key to its Pusher channel name. */
 export function toPusherChannel(roomKey: string): string | null {
   const kind = roomKindFor(roomKey)
   if (!kind) return null
-  return kind === 'presence' ? `presence-${roomKey}` : `private-${roomKey}`
+  if (kind === 'presence') return `presence-${roomKey}`
+  if (kind === 'public') return roomKey
+  return `private-${roomKey}`
 }
 
 /** Strip the Pusher prefix to recover the room key. */
 export function fromPusherChannel(channelName: string): string | null {
   if (channelName.startsWith('private-')) return channelName.slice('private-'.length)
   if (channelName.startsWith('presence-')) return channelName.slice('presence-'.length)
+  // Public channel — channel name and room key are the same.
+  if (roomKindFor(channelName) === 'public') return channelName
   return null
 }

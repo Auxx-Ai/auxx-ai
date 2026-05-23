@@ -358,7 +358,7 @@ function renderFrame(
         />
       )
     case 'messages':
-      return <MessagesView channelId={channelId} subscribe={subscribe} />
+      return <MessagesView channelId={channelId} subscribe={subscribe} config={config} />
     case 'thread': {
       const raw = frame?.params?.threadId
       if (typeof raw !== 'string') return null

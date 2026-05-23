@@ -20,6 +20,12 @@ interface WelcomeBubbleProps {
   identify: IdentifyPayload | null
   /** Milliseconds the typing-dots animation shows before the bubble swaps in. */
   typingDelayMs?: number
+  /**
+   * Whether to start in the typing-dots state. Pass false when the conversation
+   * already has messages so the bubble doesn't replay the typing animation
+   * every time the visitor reopens the thread.
+   */
+  initialTyping?: boolean
 }
 
 export function WelcomeBubble({
@@ -27,13 +33,15 @@ export function WelcomeBubble({
   template,
   identify,
   typingDelayMs = 900,
+  initialTyping = true,
 }: WelcomeBubbleProps) {
-  const [showContent, setShowContent] = useState(false)
+  const [showContent, setShowContent] = useState(!initialTyping)
 
   useEffect(() => {
+    if (!initialTyping) return
     const t = window.setTimeout(() => setShowContent(true), typingDelayMs)
     return () => window.clearTimeout(t)
-  }, [typingDelayMs])
+  }, [typingDelayMs, initialTyping])
 
   const avatar: BubbleAvatar | undefined = agent
     ? { name: agent.name, avatarUrl: agent.avatarUrl }

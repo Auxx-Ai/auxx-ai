@@ -165,12 +165,17 @@ export class MessageSenderService {
         threadContext: threadContext,
         attachments: attachmentFiles,
       })
-      // Step 7: Reconcile with provider response
+      // Step 7: Reconcile with provider response. Per-message bookkeeping
+      // (sendStatus, sentAt, externalId) always runs; the thread-level
+      // reconciliation is gated on the capability — chat has no external
+      // thread state and echoes our own id back, which would clobber thread
+      // metadata if reconciled.
       await this.reconciler.reconcileSentMessage({
         messageId: composed.id,
         sendToken: composed.sendToken,
         providerResponse: sendResult,
         threadContext: threadContext,
+        reconcileThread: capabilities.requiresSendReconciliation,
       })
 
       // Realtime: publish `message:created` for the freshly sent message so

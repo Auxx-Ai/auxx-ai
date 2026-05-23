@@ -134,7 +134,13 @@ export class PusherRealtimeAdapter implements RealtimeAdapter {
       // `pusher:member_removed`) are bound explicitly above and routed through
       // the presence handlers, not the global fan-out.
       const globalListener = (event: string, payload: unknown) => {
-        if (event.startsWith('pusher:')) return
+        if (event.startsWith('pusher:')) {
+          if (event === 'pusher:subscription_succeeded' || event === 'pusher:subscription_error') {
+            console.log('[realtime.sub]', roomKey, event)
+          }
+          return
+        }
+        console.log('[realtime.sub]', roomKey, event, payload)
         const current = this.rooms.get(roomKey)
         if (!current) return
         for (const h of current.handlers) {

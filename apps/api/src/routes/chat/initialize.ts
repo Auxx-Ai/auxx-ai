@@ -3,8 +3,9 @@
 import type { ChatIdentifyClaim } from '@auxx/credentials/passport'
 import { issueChatPassport } from '@auxx/credentials/passport'
 import { database, schema } from '@auxx/database'
-import { initializeOrResumeChatThread } from '@auxx/lib/chat'
+import { initializeOrResumeChatThread, publishVisitorThreadCreated } from '@auxx/lib/chat'
 import { publisher } from '@auxx/lib/events'
+import { getRealtimeService, publishThreadCreated } from '@auxx/lib/realtime'
 import { createScopedLogger } from '@auxx/logger'
 import { asc, eq } from 'drizzle-orm'
 import { Hono } from 'hono'
@@ -46,6 +47,7 @@ initializeRoute.post('/', async (c) => {
       {
         channelId: chat.channelId,
         visitorId: chat.sessionId,
+        resumeThreadId: typeof body.threadId === 'string' ? body.threadId : undefined,
         visit: {
           url: typeof body.url === 'string' ? body.url : undefined,
           referrer: typeof body.referrer === 'string' ? body.referrer : undefined,
@@ -79,6 +81,33 @@ initializeRoute.post('/', async (c) => {
     }
 
     const { thread, isNew, visitorChatSessionId } = result.value
+
+    if (isNew) {
+      // New chat thread — fan out so the admin's mail-thread list picks it up
+      // live, and the visitor's Messages tab (cross-thread channel) bumps to
+      // include it without a refetch.
+      await Promise.all([
+        publishThreadCreated(getRealtimeService(), chat.organizationId, {
+          threadId: thread.id,
+          inboxId: thread.inboxId ?? null,
+        }).catch((err) =>
+          log.warn('Failed to publish thread:created for new chat thread', {
+            threadId: thread.id,
+            error: err instanceof Error ? err.message : String(err),
+          })
+        ),
+        publishVisitorThreadCreated(getRealtimeService(), {
+          visitorParticipantId: chat.visitorParticipantId,
+          threadId: thread.id,
+          createdAt: thread.createdAt ?? new Date(),
+        }).catch((err) =>
+          log.warn('Failed to publish visitor thread-created', {
+            threadId: thread.id,
+            error: err instanceof Error ? err.message : String(err),
+          })
+        ),
+      ])
+    }
 
     // Load existing messages on resume so the widget can rehydrate.
     const rows = isNew

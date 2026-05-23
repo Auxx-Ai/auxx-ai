@@ -29,6 +29,7 @@ export class RealtimeService {
     options?: { excludeSocketId?: string }
   ): Promise<boolean> {
     const channel = toPusherChannel(roomKey)
+    console.log('[realtime.publish]', roomKey, event, channel ? '→' : 'NO_CHANNEL')
     if (!channel) return false
     return this.provider.publish(channel, event, data, options)
   }

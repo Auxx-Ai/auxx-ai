@@ -26,6 +26,7 @@ export class MessageReconcilerService {
    */
   async reconcileSentMessage(input: ReconciliationInput): Promise<void> {
     const { messageId, sendToken, providerResponse, threadContext } = input
+    const reconcileThread = input.reconcileThread !== false
 
     logger.info('Reconciling sent message', {
       messageId,
@@ -85,8 +86,10 @@ export class MessageReconcilerService {
 
     await this.db.update(schema.Message).set(updateData).where(eq(schema.Message.id, messageId))
 
-    // Step 2: Reconcile thread if needed (not just pending)
-    if (providerResponse.threadId) {
+    // Step 2: Reconcile thread if needed (not just pending). Skipped for
+    // providers without external thread state (e.g. chat) — they echo our own
+    // thread id back, and reconciling would clobber thread metadata.
+    if (reconcileThread && providerResponse.threadId) {
       await this.threadManager.reconcileThread(threadContext.id, {
         externalThreadId: providerResponse.threadId,
         actualMessageId: providerResponse.messageId || messageId,
@@ -95,7 +98,12 @@ export class MessageReconcilerService {
     }
 
     // Step 3: Mark duplicates for cleanup if we detect any
-    if (providerResponse.success && providerResponse.threadId && providerResponse.messageId) {
+    if (
+      reconcileThread &&
+      providerResponse.success &&
+      providerResponse.threadId &&
+      providerResponse.messageId
+    ) {
       await this.markDuplicatesForCleanup({
         realThreadId: threadContext.id,
         realMessageId: messageId,

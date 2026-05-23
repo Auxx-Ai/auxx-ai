@@ -34,6 +34,34 @@ passportRoute.options('/', (c) => {
   return c.body(null, 204)
 })
 
+passportRoute.options('/reset', (c) => {
+  applyChatCorsHeaders(c, { allowCredentials: true })
+  return c.body(null, 204)
+})
+
+/**
+ * POST /api/chat/passport/reset
+ *
+ * Dev/preview-only convenience to wipe the visitor's sticky session. Clears
+ * the `auxx_chat_session_id` cookie by setting `Max-Age=0`. After this the
+ * next passport request will allocate a brand-new sessionId + Participant.
+ *
+ * Not gated to dev because (a) it only affects the caller's own cookie and
+ * (b) Pusher channel names are unguessable, so worst-case a malicious caller
+ * just resets *themselves*.
+ */
+passportRoute.post('/reset', (c) => {
+  applyChatCorsHeaders(c, { allowCredentials: true })
+  setCookie(c, CHAT_SESSION_COOKIE, '', {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'None',
+    maxAge: 0,
+    path: '/',
+  })
+  return c.json({ success: true })
+})
+
 /**
  * POST /api/chat/passport
  *

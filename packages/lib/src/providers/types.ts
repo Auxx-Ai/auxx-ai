@@ -49,6 +49,11 @@ export interface ProviderCapabilities {
   requiresRecipients: boolean
   countsAgainstOutboundEmailsQuota: boolean
   triggersPostSendSync: boolean
+  /** Whether the send pipeline should reconcile the local message against a
+   * provider response (externalThreadId, internetMessageId, etc.). False for
+   * providers like `chat` that have no external state — the provider echoes
+   * our local ids back and reconciling would clobber thread metadata. */
+  requiresSendReconciliation: boolean
   supportsRichText: boolean
 
   // Rate limiting

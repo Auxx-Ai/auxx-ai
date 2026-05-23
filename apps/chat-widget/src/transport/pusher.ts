@@ -18,6 +18,15 @@ export function connectPusher(opts: {
     forceTLS: true,
   })
   const channel = pusher.subscribe(opts.channelName)
+  channel.bind_global((event: string, payload: unknown) => {
+    if (event.startsWith('pusher:')) {
+      if (event === 'pusher:subscription_succeeded' || event === 'pusher:subscription_error') {
+        console.log('[widget.sub]', opts.channelName, event)
+      }
+      return
+    }
+    console.log('[widget.sub]', opts.channelName, event, payload)
+  })
   return {
     channel,
     disconnect: () => {
@@ -74,6 +83,15 @@ export function connectPrivatePusher(opts: {
     },
   })
   const channel = pusher.subscribe(opts.channelName)
+  channel.bind_global((event: string, payload: unknown) => {
+    if (event.startsWith('pusher:')) {
+      if (event === 'pusher:subscription_succeeded' || event === 'pusher:subscription_error') {
+        console.log('[widget.sub]', opts.channelName, event)
+      }
+      return
+    }
+    console.log('[widget.sub]', opts.channelName, event, payload)
+  })
   return {
     channel,
     disconnect: () => {

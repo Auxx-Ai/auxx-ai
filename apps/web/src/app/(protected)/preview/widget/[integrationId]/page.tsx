@@ -2,7 +2,7 @@
 'use client'
 
 import { useParams, useSearchParams } from 'next/navigation'
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { useEnv } from '~/providers/dehydrated-state-provider'
 
 type PreviewTheme = 'light' | 'dark' | 'system'
@@ -26,10 +26,29 @@ const THEME_LABELS: Record<PreviewTheme, string> = {
 export default function PreviewWidgetPage() {
   const params = useParams<{ integrationId: string }>()
   const search = useSearchParams()
-  const { appUrl } = useEnv()
+  const { appUrl, apiUrl } = useEnv()
   const integrationId = params?.integrationId
   const v = search?.get('v') ?? null
   const [previewTheme, setPreviewTheme] = useState<PreviewTheme>('light')
+  const [iframeKey, setIframeKey] = useState(0)
+  const [resetting, setResetting] = useState(false)
+
+  const handleClearVisitor = useCallback(async () => {
+    if (resetting) return
+    setResetting(true)
+    try {
+      // Clears the `auxx_chat_session_id` cookie on the API origin. Widget
+      // localStorage (passport, identify, unread) lives in the srcDoc iframe
+      // and gets discarded when we rekey the iframe below.
+      await fetch(`${apiUrl}/api/chat/passport/reset`, {
+        method: 'POST',
+        credentials: 'include',
+      }).catch(() => {})
+    } finally {
+      setIframeKey((k) => k + 1)
+      setResetting(false)
+    }
+  }, [apiUrl, resetting])
 
   const srcDoc = useMemo(() => {
     if (!integrationId) return null
@@ -57,8 +76,6 @@ export default function PreviewWidgetPage() {
     return <div style={{ padding: 16 }}>Loading…</div>
   }
 
-  const bundleSrc = `${appUrl}/scripts/chat-widget.js`
-
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100vw' }}>
       <div
@@ -74,40 +91,59 @@ export default function PreviewWidgetPage() {
           gap: 12,
         }}>
         <span>
-          Widget Preview — {bundleSrc} &nbsp;|&nbsp; Channel:{' '}
+          Widget Preview &nbsp;|&nbsp; Channel:{' '}
           <code style={{ color: '#e2e8f0' }}>{integrationId}</code>
         </span>
-        <div
-          style={{
-            display: 'flex',
-            gap: 2,
-            background: '#1a202c',
-            borderRadius: 6,
-            padding: 2,
-          }}>
-          {(['light', 'dark', 'system'] as const).map((t) => (
-            <button
-              key={t}
-              type='button'
-              onClick={() => setPreviewTheme(t)}
-              style={{
-                padding: '3px 10px',
-                borderRadius: 4,
-                border: 'none',
-                cursor: 'pointer',
-                fontSize: 11,
-                fontWeight: previewTheme === t ? 600 : 400,
-                background: previewTheme === t ? '#4a5568' : 'transparent',
-                color: previewTheme === t ? '#f7fafc' : '#a0aec0',
-                transition: 'background 0.15s',
-              }}>
-              {THEME_LABELS[t]}
-            </button>
-          ))}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <button
+            type='button'
+            onClick={handleClearVisitor}
+            disabled={resetting}
+            title='Clear the visitor session cookie + reload the widget. Fresh sessionId + Participant on next load.'
+            style={{
+              padding: '4px 10px',
+              borderRadius: 4,
+              border: '1px solid #4a5568',
+              cursor: resetting ? 'wait' : 'pointer',
+              fontSize: 11,
+              background: '#1a202c',
+              color: '#e2e8f0',
+              opacity: resetting ? 0.6 : 1,
+            }}>
+            {resetting ? 'Clearing…' : 'Clear visitor'}
+          </button>
+          <div
+            style={{
+              display: 'flex',
+              gap: 2,
+              background: '#1a202c',
+              borderRadius: 6,
+              padding: 2,
+            }}>
+            {(['light', 'dark', 'system'] as const).map((t) => (
+              <button
+                key={t}
+                type='button'
+                onClick={() => setPreviewTheme(t)}
+                style={{
+                  padding: '3px 10px',
+                  borderRadius: 4,
+                  border: 'none',
+                  cursor: 'pointer',
+                  fontSize: 11,
+                  fontWeight: previewTheme === t ? 600 : 400,
+                  background: previewTheme === t ? '#4a5568' : 'transparent',
+                  color: previewTheme === t ? '#f7fafc' : '#a0aec0',
+                  transition: 'background 0.15s',
+                }}>
+                {THEME_LABELS[t]}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
       <iframe
-        key={previewTheme}
+        key={`${previewTheme}-${iframeKey}`}
         title='Chat Widget Preview'
         srcDoc={srcDoc}
         style={{ flex: '1 1 auto', border: 0, width: '100%' }}

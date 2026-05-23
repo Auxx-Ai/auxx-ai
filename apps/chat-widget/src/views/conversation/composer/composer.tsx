@@ -105,7 +105,7 @@ export function Composer({ channelId, onSend, disabled, placeholder }: ComposerP
       onDragLeave={() => setDragOver(false)}
       onDrop={handleDrop}
       className={cn(
-        'mx-3 mb-3 rounded-xl bg-muted ring-1 ring-border transition-colors focus-within:ring-primary focus-within:ring-2',
+        'relative mx-3 mb-3 rounded-xl bg-muted ring-1 ring-border transition-colors focus-within:ring-primary focus-within:ring-2',
         dragOver && 'ring-primary bg-accent'
       )}>
       <AttachmentThumbRow inflight={attachments} onRemove={handleRemoveAttachment} />
@@ -118,9 +118,10 @@ export function Composer({ channelId, onSend, disabled, placeholder }: ComposerP
         minRows={1}
         maxRows={6}
         disabled={disabled}
+        className='pb-10'
       />
-      <div className='flex items-center justify-between gap-1 px-2 pb-2'>
-        <div className='flex items-center gap-1'>
+      <div className='pointer-events-none absolute inset-x-0 bottom-0 flex items-center justify-between gap-1 px-1 pb-1'>
+        <div className='pointer-events-auto flex items-center gap-1'>
           <EmojiButton onSelect={insertAtCaret} />
           <AttachButton
             channelId={channelId}
@@ -129,7 +130,9 @@ export function Composer({ channelId, onSend, disabled, placeholder }: ComposerP
             disabled={disabled || sending}
           />
         </div>
-        <SendButton onClick={handleSend} disabled={!canSend} loading={sending} />
+        <div className='pointer-events-auto'>
+          <SendButton onClick={handleSend} disabled={!canSend} loading={sending} />
+        </div>
       </div>
     </div>
   )
