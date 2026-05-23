@@ -18,6 +18,7 @@ import type { NavFrame, NavView } from './navigation/use-navigation-stack'
 import { type TabId, useTabRouter } from './navigation/use-tab-router'
 import { getLastReadAt } from './persistence/unread'
 import { useShadowRoot } from './shadow-root'
+import { hexToOklchHue } from './theme/hex-to-oklch-hue'
 import { useResolvedTheme } from './theme/use-resolved-theme'
 import { chatApi } from './transport/chat-api'
 import { type ChatConfig, fetchChatConfig } from './transport/config'
@@ -292,6 +293,12 @@ export function Widget({ channelId, cacheBust = null, scriptTheme }: WidgetProps
   const rootStyle: Record<string, string> = {
     '--auxx-chat-primary': config.appearance.primaryColor,
     '--auxx-chat-header': config.appearance.headerColor,
+    // Derive the OKLCH hue from the brand color and feed it to every
+    // tinted surface (glass overlay, loud/raised plinth, shadow tints).
+    // Indigo brand → cool tint; orange brand → warm tint.
+    '--auxx-chat-tint-h': String(
+      hexToOklchHue(config.appearance.primaryColorDark ?? config.appearance.primaryColor)
+    ),
   }
   if (config.appearance.primaryColorDark) {
     rootStyle['--auxx-chat-primary-dark'] = config.appearance.primaryColorDark
@@ -413,7 +420,7 @@ function PanelShell({
   const hideHeader = view === 'home' && isAtRoot
 
   return (
-    <div className='flex h-full flex-col [&>*:last-child]:rounded-b-2xl'>
+    <div className='auxx-chat-frame flex h-full flex-col'>
       {hideHeader ? null : (
         <FrameHeader
           variant={headerVariant}
@@ -446,7 +453,7 @@ function PanelShell({
           {error}
         </div>
       ) : null}
-      <div className='flex min-h-0 flex-1 flex-col [&>*:last-child]:rounded-b-2xl'>
+      <div className='auxx-chat-frame flex min-h-0 flex-1 flex-col'>
         {renderFrame(
           view,
           currentFrame,

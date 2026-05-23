@@ -64,7 +64,7 @@ export function KbSectionView({ channelId, sectionId }: KbSectionViewProps) {
   }
 
   return (
-    <div className='flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto bg-muted p-3'>
+    <div className='flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto p-3'>
       {rows.map((row) => {
         if (row.kind === 'header') {
           const HeaderIcon = row.node.emoji ? (getIcon(row.node.emoji)?.icon ?? null) : null
@@ -104,7 +104,7 @@ export function KbSectionView({ channelId, sectionId }: KbSectionViewProps) {
               }
             }}
             className={cn(
-              'group flex w-full items-center gap-3 rounded-lg border border-border bg-background px-3 py-2.5 text-left transition-colors hover:bg-muted'
+              'group flex w-full items-center gap-3 rounded-lg border border-[color:var(--auxx-chat-hairline)] bg-card px-3 py-2.5 text-left transition-colors hover:bg-[color:var(--auxx-chat-surface-loud)]'
             )}>
             <span className='flex size-5 shrink-0 items-center justify-center'>
               <RowIcon className='size-4 text-muted-foreground' aria-hidden='true' />

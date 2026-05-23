@@ -54,7 +54,7 @@ export function FrameHeader({
     return (
       <header
         ref={headerRef}
-        className='relative flex shrink-0 flex-col gap-4 bg-primary px-5 py-5 text-primary-foreground'>
+        className='auxx-chat-clip-top relative flex shrink-0 flex-col gap-4 bg-primary px-5 py-5 text-primary-foreground'>
         <div className='flex items-start justify-between'>
           {heroLogo ? (
             <img src={heroLogo} alt='' className='h-8 w-auto' />
@@ -82,7 +82,7 @@ export function FrameHeader({
     return (
       <header
         ref={headerRef}
-        className='relative flex shrink-0 items-center justify-between border-b border-border bg-transparent px-4 py-3'>
+        className='auxx-chat-clip-top relative flex shrink-0 items-center justify-between border-b border-[color:var(--auxx-chat-hairline)] bg-transparent px-4 py-3'>
         <span aria-hidden className='size-7' />
         <h1 className='text-sm font-semibold'>{title}</h1>
         <div className='flex items-center gap-1'>
@@ -98,12 +98,12 @@ export function FrameHeader({
   return (
     <header
       ref={headerRef}
-      className='relative flex shrink-0 items-center gap-2 border-b border-border bg-transparent px-3 py-2'>
+      className='auxx-chat-clip-top relative flex shrink-0 items-center gap-2 border-b border-[color:var(--auxx-chat-hairline)] bg-transparent px-3 py-2'>
       {onBack ? (
         <button
           type='button'
           onClick={onBack}
-          className='flex size-7 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-foreground'
+          className='flex size-7 items-center justify-center rounded text-muted-foreground hover:bg-[color:var(--auxx-chat-surface-dark-default)] hover:text-[color:var(--auxx-chat-text-loud)]'
           aria-label='Back'>
           <ArrowLeft className='size-4' aria-hidden='true' />
         </button>
@@ -147,7 +147,7 @@ function FloatButton({
         'flex size-7 items-center justify-center rounded transition-colors',
         tone === 'light'
           ? 'text-white/90 hover:bg-white/10 hover:text-white'
-          : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+          : 'text-muted-foreground hover:bg-[color:var(--auxx-chat-surface-dark-default)] hover:text-[color:var(--auxx-chat-text-loud)]'
       )}>
       <Icon className='size-4' aria-hidden='true' />
     </button>
@@ -166,7 +166,7 @@ function CloseButton({ onClose, tone }: { onClose: () => void; tone: 'light' | '
         'flex size-7 items-center justify-center rounded transition-colors',
         tone === 'light'
           ? 'text-white/90 hover:bg-white/10 hover:text-white'
-          : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+          : 'text-muted-foreground hover:bg-[color:var(--auxx-chat-surface-dark-default)] hover:text-[color:var(--auxx-chat-text-loud)]'
       )}>
       <X className='size-4' aria-hidden='true' />
     </button>

@@ -42,7 +42,10 @@ const HEX_RE = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/
 const appearanceSchema = z.object({
   defaultTheme: z.enum(['light', 'dark', 'system']),
   primaryColor: z.string().regex(HEX_RE, 'Use a valid hex color (#fff or #ffffff)'),
-  headerColor: z.string().regex(HEX_RE, 'Use a valid hex color (#fff or #ffffff)'),
+  headerColor: z
+    .string()
+    .refine((v) => !v || HEX_RE.test(v), 'Use a valid hex color (#fff or #ffffff)')
+    .nullish(),
   primaryColorDark: z
     .string()
     .refine((v) => !v || HEX_RE.test(v), 'Use a valid hex color (#fff or #ffffff)')
@@ -79,7 +82,7 @@ export function AppearanceSection({ widget, channelId }: AppearanceSectionProps)
         ((widget.chatWidget as { defaultTheme?: string })
           ?.defaultTheme as AppearanceForm['defaultTheme']) ?? 'light',
       primaryColor: widget.chatWidget?.primaryColor ?? '#4F46E5',
-      headerColor: widget.chatWidget?.headerColor ?? '#1F2329',
+      headerColor: widget.chatWidget?.headerColor ?? '',
       primaryColorDark:
         (widget.chatWidget as { primaryColorDark?: string | null })?.primaryColorDark ?? '',
       headerColorDark:
@@ -107,7 +110,7 @@ export function AppearanceSection({ widget, channelId }: AppearanceSectionProps)
       integrationId: channelId,
       defaultTheme: values.defaultTheme,
       primaryColor: values.primaryColor,
-      headerColor: values.headerColor,
+      headerColor: values.headerColor || null,
       primaryColorDark: values.primaryColorDark || null,
       headerColorDark: values.headerColorDark || null,
       position: values.position,
@@ -217,16 +220,16 @@ export function AppearanceSection({ widget, channelId }: AppearanceSectionProps)
                 render={({ field, fieldState }) => (
                   <VarEditorFieldRow
                     title='Header Color'
-                    description='Background of the Home greeting band. Text color is auto-picked for contrast.'
+                    description='Background of the Home greeting band. Leave empty to derive from the brand color. Text color is auto-picked for contrast.'
                     type={BaseType.STRING}
                     icon={<Palette className='size-3.5' />}
                     showIcon
-                    isRequired
                     validationError={fieldState.error?.message}>
                     <ColorField
                       value={field.value || ''}
                       onChange={field.onChange}
-                      placeholder='Pick a color'
+                      placeholder='Auto (brand)'
+                      clearable
                     />
                   </VarEditorFieldRow>
                 )}

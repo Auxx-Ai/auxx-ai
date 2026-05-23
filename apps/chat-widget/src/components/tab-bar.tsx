@@ -21,7 +21,7 @@ const TABS: { id: TabId; label: string; icon: typeof Home }[] = [
 export function TabBar({ activeTab, onChange }: TabBarProps) {
   return (
     <nav
-      className='flex shrink-0 items-stretch justify-around divide-x divide-border border-t border-border bg-transparent'
+      className='flex shrink-0 items-stretch justify-around divide-x divide-[color:var(--auxx-chat-hairline)] border-t border-[color:var(--auxx-chat-hairline)] bg-transparent'
       aria-label='Widget sections'>
       {TABS.map((tab) => {
         const isActive = tab.id === activeTab

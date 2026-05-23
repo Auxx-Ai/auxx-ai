@@ -38,10 +38,12 @@ export const ChatWidget = pgTable(
     title: text().default('Chat Support').notNull(),
     subtitle: text(),
     primaryColor: text().default('#4F46E5').notNull(),
-    /** Hex color for the Home hero band. Independent of `primaryColor` so the
-     * launcher and the header can be tuned separately. Text color is
-     * auto-derived client-side from luminance. */
-    headerColor: text().default('#1F2329').notNull(),
+    /** Hex color override for the Home hero band. When null, the widget
+     * derives the band from the brand tint hue (see --auxx-chat-primary-band).
+     * Independent of `primaryColor` so the launcher and the header can be
+     * tuned separately. Text color is auto-derived client-side from luminance
+     * when set; theme-based when null. */
+    headerColor: text(),
     logoLight: text(),
     logoDark: text(),
     logoLightId: text().references((): AnyPgColumn => MediaAsset.id, { onUpdate: 'cascade' }),

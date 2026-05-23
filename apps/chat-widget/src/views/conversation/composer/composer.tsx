@@ -104,10 +104,7 @@ export function Composer({ channelId, onSend, disabled, placeholder }: ComposerP
       }}
       onDragLeave={() => setDragOver(false)}
       onDrop={handleDrop}
-      className={cn(
-        'relative mx-3 mb-3 rounded-xl bg-muted ring-1 ring-border transition-colors focus-within:ring-primary focus-within:ring-2',
-        dragOver && 'ring-primary bg-accent'
-      )}>
+      className={cn('auxx-chat-composer-card mx-1 mb-1', dragOver && 'is-drag-over')}>
       <AttachmentThumbRow inflight={attachments} onRemove={handleRemoveAttachment} />
       <AutosizeTextarea
         ref={textareaRef}

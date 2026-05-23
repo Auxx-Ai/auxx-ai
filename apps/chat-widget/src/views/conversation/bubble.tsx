@@ -79,7 +79,7 @@ function pillClass(isUser: boolean, first: boolean, last: boolean): string {
     'whitespace-pre-wrap break-words rounded-2xl px-3 py-1.5 text-sm',
     isUser
       ? 'bg-primary text-primary-foreground'
-      : 'border border-border bg-background text-foreground',
+      : 'bg-[color:var(--auxx-chat-surface-loud)] text-[color:var(--auxx-chat-text-loud)]',
     first && (isUser ? 'rounded-tr-md' : 'rounded-tl-md'),
     last && (isUser ? 'rounded-br-sm' : 'rounded-bl-sm')
   )

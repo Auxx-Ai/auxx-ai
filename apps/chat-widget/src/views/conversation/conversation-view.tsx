@@ -236,8 +236,10 @@ export function ConversationView({ channelId, threadId, config }: ConversationVi
   const timeline = useMemo(() => buildTimeline(messages, threadEvents), [messages, threadEvents])
 
   return (
-    <div className='flex min-h-0 flex-1 flex-col dark:bg-background bg-muted  [&>*:last-child]:rounded-b-2xl'>
-      <div ref={bodyRef} className='flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-3'>
+    <div className='auxx-chat-frame flex min-h-0 flex-1 flex-col'>
+      <div
+        ref={bodyRef}
+        className='auxx-chat-body-mask flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-3'>
         {error ? (
           <div className='rounded bg-background p-2 text-center text-xs text-destructive'>
             {error}
@@ -259,24 +261,29 @@ export function ConversationView({ channelId, threadId, config }: ConversationVi
           )
         )}
       </div>
-      {init && messages.length === 0 ? (
-        <SuggestedReplies
-          replies={config.suggestedReplies ?? []}
-          onSelect={(text) => handleSend({ content: text, attachmentIds: [] })}
-        />
-      ) : null}
-      <Composer channelId={channelId} onSend={handleSend} />
-      {config.privacyPolicyUrl && !privacyDismissed ? (
-        <PrivacyBanner
-          url={config.privacyPolicyUrl}
-          onDismiss={() => {
-            dismissPrivacyBanner(channelId)
-            setPrivacyDismissed(true)
-          }}
-        />
-      ) : null}
+      {/* "Loud" plinth — suggested replies, composer, privacy banner sit on a
+       * tinted surface strip. The plinth's ::before pseudo feathers the body's
+       * bottom edge into the plinth so there's no hard seam. */}
+      <div className='auxx-chat-composer-plinth'>
+        {init && messages.length === 0 ? (
+          <SuggestedReplies
+            replies={config.suggestedReplies ?? []}
+            onSelect={(text) => handleSend({ content: text, attachmentIds: [] })}
+          />
+        ) : null}
+        <Composer channelId={channelId} onSend={handleSend} />
+        {config.privacyPolicyUrl && !privacyDismissed ? (
+          <PrivacyBanner
+            url={config.privacyPolicyUrl}
+            onDismiss={() => {
+              dismissPrivacyBanner(channelId)
+              setPrivacyDismissed(true)
+            }}
+          />
+        ) : null}
+      </div>
       {config.branding.footerEnabled ? (
-        <div className='border-t border-border bg-background py-2 text-center text-[10px] uppercase tracking-wide text-muted-foreground'>
+        <div className='border-t border-[color:var(--auxx-chat-hairline)] bg-transparent py-2 text-center text-[10px] uppercase tracking-wide text-muted-foreground'>
           Powered by Auxx
         </div>
       ) : null}
