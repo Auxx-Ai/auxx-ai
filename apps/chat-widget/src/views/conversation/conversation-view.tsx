@@ -263,30 +263,50 @@ export function ConversationView({ channelId, threadId, config }: ConversationVi
       </div>
       {/* "Loud" plinth — suggested replies, composer, privacy banner sit on a
        * tinted surface strip. The plinth's ::before pseudo feathers the body's
-       * bottom edge into the plinth so there's no hard seam. */}
+       * bottom edge into the plinth so there's no hard seam.
+       *
+       * Offline mode (no AI agent bound AND nobody on duty): swap the composer
+       * for a muted notice. Suggested replies + privacy banner would have
+       * nothing to act on so we drop them too. */}
       <div className='auxx-chat-composer-plinth'>
-        {init && messages.length === 0 ? (
-          <SuggestedReplies
-            replies={config.suggestedReplies ?? []}
-            onSelect={(text) => handleSend({ content: text, attachmentIds: [] })}
-          />
-        ) : null}
-        <Composer channelId={channelId} onSend={handleSend} />
-        {config.privacyPolicyUrl && !privacyDismissed ? (
-          <PrivacyBanner
-            url={config.privacyPolicyUrl}
-            onDismiss={() => {
-              dismissPrivacyBanner(channelId)
-              setPrivacyDismissed(true)
-            }}
-          />
-        ) : null}
+        {config.isOffline ? (
+          <OfflineNotice message={config.appearance.offlineMessage} />
+        ) : (
+          <>
+            {init && messages.length === 0 ? (
+              <SuggestedReplies
+                replies={config.suggestedReplies ?? []}
+                onSelect={(text) => handleSend({ content: text, attachmentIds: [] })}
+              />
+            ) : null}
+            <Composer channelId={channelId} onSend={handleSend} />
+            {config.privacyPolicyUrl && !privacyDismissed ? (
+              <PrivacyBanner
+                url={config.privacyPolicyUrl}
+                onDismiss={() => {
+                  dismissPrivacyBanner(channelId)
+                  setPrivacyDismissed(true)
+                }}
+              />
+            ) : null}
+          </>
+        )}
       </div>
       {config.branding.footerEnabled ? (
         <div className='border-t border-[color:var(--auxx-chat-hairline)] bg-transparent py-2 text-center text-[10px] uppercase tracking-wide text-muted-foreground'>
           Powered by Auxx
         </div>
       ) : null}
+    </div>
+  )
+}
+
+function OfflineNotice({ message }: { message: string | null }) {
+  const text =
+    message?.trim() || 'No one is available right now. Leave a message and we’ll reply by email.'
+  return (
+    <div className='mx-1 mb-1 rounded-md border border-[color:var(--auxx-chat-hairline)] bg-background/60 px-3 py-3 text-center text-xs text-muted-foreground'>
+      {text}
     </div>
   )
 }

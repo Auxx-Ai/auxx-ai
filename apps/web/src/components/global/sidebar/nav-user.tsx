@@ -50,8 +50,10 @@ import { useCallback, useEffect, useState } from 'react'
 import { client } from '~/auth/auth-client' // Use the correct import for your auth library
 import { Tooltip } from '~/components/global/tooltip'
 import { useKopilotStore } from '~/components/kopilot/stores/kopilot-store'
+import { PresenceDot } from '~/components/users/presence-dot'
 import { useAnalytics } from '~/hooks/use-analytics'
 import { useIsSelfHosted } from '~/hooks/use-deployment-mode'
+import { useOrgPresence } from '~/hooks/use-org-presence'
 import { useUser } from '~/hooks/use-user'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { api } from '~/trpc/react'
@@ -126,6 +128,11 @@ export function NavUser({ user }: Prop) {
     },
   })
   const isOnDuty = !!userData?.id && (onDutyQuery.data ?? []).includes(userData.id)
+
+  const { getState } = useOrgPresence()
+  const myPresence = getState(userData?.id)
+  const presenceLabel =
+    myPresence === 'online' ? 'Online' : myPresence === 'away' ? 'Away' : 'Offline'
   const handleToggleDuty = useCallback(
     (next: boolean) => {
       setSelfDuty.mutate({ onDuty: next })
@@ -144,10 +151,21 @@ export function NavUser({ user }: Prop) {
               <SidebarMenuButton
                 size='lg'
                 className='ps-1 w-auto pe-1.5  h-8 rounded-2xl ring-0 ring-ring/20  data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground group-data-[collapsible=icon]:pe-0'>
-                <Avatar className='size-6 rounded-full ring-1 ring-ring/20 group-data-[collapsible=icon]:mx-auto'>
-                  <AvatarImage src={displayImage!} alt={displayName} />
-                  <AvatarFallback className='rounded-lg'>{initials}</AvatarFallback>
-                </Avatar>
+                <span className='relative inline-flex shrink-0 group-data-[collapsible=icon]:mx-auto'>
+                  <Avatar className='size-6 rounded-full ring-1 ring-ring/20'>
+                    <AvatarImage src={displayImage!} alt={displayName} />
+                    <AvatarFallback className='rounded-lg'>{initials}</AvatarFallback>
+                  </Avatar>
+                  {/* Inset positioning — the surrounding SidebarMenuButton has
+                   * `overflow-hidden` so the dot must stay within the avatar's
+                   * bounding box (otherwise it gets clipped in icon-collapsed
+                   * mode where the button shrinks to exactly fit the avatar). */}
+                  <PresenceDot
+                    state={myPresence}
+                    hideOffline
+                    className='absolute bottom-0 right-0 size-2'
+                  />
+                </span>
                 <div className='grid flex-1 text-left text-sm leading-tight group-data-[collapsible=icon]:hidden pe-2'>
                   <span className='truncate'>{displayName}</span>
                 </div>
@@ -160,13 +178,21 @@ export function NavUser({ user }: Prop) {
               sideOffset={-32}>
               <DropdownMenuLabel className='p-0 font-normal'>
                 <div className='flex items-center gap-2 px-1 py-1.5 text-left text-sm'>
-                  <Avatar className='size-7 rounded-full ring-1 ring-ring/20'>
-                    <AvatarImage src={displayImage!} alt={displayName} />
-                    <AvatarFallback className='rounded-lg'>{initials}</AvatarFallback>
-                  </Avatar>
+                  <span className='relative inline-flex shrink-0'>
+                    <Avatar className='size-7 rounded-full ring-1 ring-ring/20'>
+                      <AvatarImage src={displayImage!} alt={displayName} />
+                      <AvatarFallback className='rounded-lg'>{initials}</AvatarFallback>
+                    </Avatar>
+                    <PresenceDot
+                      state={myPresence}
+                      className='absolute -bottom-0.5 -right-0.5 size-2.5'
+                    />
+                  </span>
                   <div className='grid flex-1 text-left text-sm leading-tight'>
                     <span className='truncate font-semibold'>{displayName}</span>
-                    <span className='truncate text-xs'>{displayEmail}</span>
+                    <span className='truncate text-xs text-muted-foreground'>
+                      {presenceLabel} · {displayEmail}
+                    </span>
                   </div>
                 </div>
               </DropdownMenuLabel>

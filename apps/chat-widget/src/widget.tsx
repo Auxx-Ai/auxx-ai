@@ -10,8 +10,9 @@
 //   - tracks an `expanded` state per channel for the wide-window mode.
 
 import type { Ref } from 'preact'
-import { useCallback, useEffect, useRef, useState } from 'preact/hooks'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks'
 import { FrameHeader, type FrameHeaderVariant } from './components/frame-header'
+import { FrameTransition, type SlideDirection } from './components/frame-transition'
 import { TabBar } from './components/tab-bar'
 import { NavStackProvider } from './navigation/nav-stack-context'
 import type { NavFrame, NavView } from './navigation/use-navigation-stack'
@@ -42,6 +43,36 @@ interface WidgetProps {
 }
 
 const EXPANDED_PREFIX = 'auxx-chat-expanded:'
+
+const TAB_ORDER: TabId[] = ['home', 'messages']
+
+interface NavSignature {
+  activeTab: TabId
+  stackLength: number
+  currentId: string | null
+}
+
+// Picks the slide direction for the next FrameTransition swap by diffing the
+// previous nav signature against the current one. Tab swaps use TAB_ORDER to
+// determine which side the new tab slides in from; stack pushes always slide
+// in from the right, pops from the left. Same-stack-length identity changes
+// (replace) are treated as a forward slide.
+function useTransitionDirection(signature: NavSignature): SlideDirection {
+  const prevRef = useRef<NavSignature>(signature)
+  let direction: SlideDirection = 'from-right'
+  const prev = prevRef.current
+  if (prev.activeTab !== signature.activeTab) {
+    const prevIdx = TAB_ORDER.indexOf(prev.activeTab)
+    const nextIdx = TAB_ORDER.indexOf(signature.activeTab)
+    direction = nextIdx > prevIdx ? 'from-right' : 'from-left'
+  } else if (signature.stackLength < prev.stackLength) {
+    direction = 'from-left'
+  }
+  useLayoutEffect(() => {
+    prevRef.current = signature
+  })
+  return direction
+}
 
 function readExpanded(channelId: string): boolean {
   try {
@@ -79,8 +110,18 @@ export function Widget({ channelId, cacheBust = null, scriptTheme }: WidgetProps
   const shellRefCallback = useCallback((el: HTMLDivElement | null) => {
     setShellEl(el)
   }, [])
+  // Multiple PanelShells share this callback during a frame transition (the
+  // exiting + entering layers both render a header). On mount, the latest
+  // header wins. On unmount, the callback fires with `null` — but we can't
+  // tell which element triggered it. Only clear if the currently-tracked
+  // header is no longer in the DOM; otherwise the entering layer's freshly
+  // set ref would get clobbered when the exiting layer tears down.
   const headerRefCallback = useCallback((el: HTMLElement | null) => {
-    setHeaderEl(el)
+    if (el) {
+      setHeaderEl(el)
+    } else {
+      setHeaderEl((current) => (current && current.isConnected ? current : null))
+    }
   }, [])
 
   const shadowRoot = useShadowRoot()
@@ -89,12 +130,47 @@ export function Widget({ channelId, cacheBust = null, scriptTheme }: WidgetProps
     adminTheme: config?.appearance.theme ?? 'light',
   })
 
-  // Apply data-theme to the .auxx-root element inside the shadow root so the
-  // CSS token scopes (`[data-theme='light']`, `[data-theme='dark']`) activate.
+  // Apply data-theme + brand custom properties to the .auxx-root element
+  // inside the shadow root.
+  //
+  // Why brand vars must live on `.auxx-root`, not the JSX `.auxx-chat-root`
+  // below: unregistered custom properties substitute their `var()` references
+  // at *declaration* time, not at use time. Every derived token
+  // (`--primary`, `--auxx-chat-primary-band`, glass overlay, loud, raised,
+  // shadow tints) is declared on `.auxx-root` in styles.css and references
+  // `--auxx-chat-primary` / `--auxx-chat-tint-h`. If those inputs are only
+  // set inline on a descendant, the derived tokens resolve against the
+  // defaults on `.auxx-root` and descendants inherit the already-frozen
+  // (defaulted) values. Setting the inputs on `.auxx-root` itself fixes the
+  // whole derivation chain.
+  const tintHue = config
+    ? hexToOklchHue(config.appearance.primaryColorDark ?? config.appearance.primaryColor)
+    : null
+  const primaryColor = config?.appearance.primaryColor ?? null
+  const primaryColorDark = config?.appearance.primaryColorDark ?? null
+  const headerColor = config?.appearance.headerColor ?? null
+  const headerColorDark = config?.appearance.headerColorDark ?? null
   useEffect(() => {
-    const rootEl = shadowRoot?.querySelector('.auxx-root')
-    if (rootEl) rootEl.setAttribute('data-theme', resolvedTheme)
-  }, [shadowRoot, resolvedTheme])
+    const rootEl = shadowRoot?.querySelector('.auxx-root') as HTMLElement | null
+    if (!rootEl) return
+    rootEl.setAttribute('data-theme', resolvedTheme)
+    if (primaryColor) rootEl.style.setProperty('--auxx-chat-primary', primaryColor)
+    if (tintHue !== null) rootEl.style.setProperty('--auxx-chat-tint-h', String(tintHue))
+    if (primaryColorDark) rootEl.style.setProperty('--auxx-chat-primary-dark', primaryColorDark)
+    else rootEl.style.removeProperty('--auxx-chat-primary-dark')
+    if (headerColor) rootEl.style.setProperty('--auxx-chat-header', headerColor)
+    else rootEl.style.removeProperty('--auxx-chat-header')
+    if (headerColorDark) rootEl.style.setProperty('--auxx-chat-header-dark', headerColorDark)
+    else rootEl.style.removeProperty('--auxx-chat-header-dark')
+  }, [
+    shadowRoot,
+    resolvedTheme,
+    primaryColor,
+    tintHue,
+    primaryColorDark,
+    headerColor,
+    headerColorDark,
+  ])
 
   const router = useTabRouter(channelId)
   const subscribeRef = useRef<{
@@ -279,6 +355,12 @@ export function Widget({ channelId, cacheBust = null, scriptTheme }: WidgetProps
     onPositionChange: setFloatPosition,
   })
 
+  const direction = useTransitionDirection({
+    activeTab: router.activeTab,
+    stackLength: router.currentStack.stack.length,
+    currentId: router.currentStack.current?.id ?? null,
+  })
+
   if (!config) return null
 
   const positionClass = isFloating
@@ -290,22 +372,6 @@ export function Widget({ channelId, cacheBust = null, scriptTheme }: WidgetProps
   const expandedClass = open && expanded && !isFloating ? 'auxx-chat-shell--expanded' : ''
   const bobbingClass = bobbing && isFloating ? 'auxx-chat-shell--bobbing' : ''
   const dockingClass = docking ? 'auxx-chat-shell--docking' : ''
-  const rootStyle: Record<string, string> = {
-    '--auxx-chat-primary': config.appearance.primaryColor,
-    '--auxx-chat-header': config.appearance.headerColor,
-    // Derive the OKLCH hue from the brand color and feed it to every
-    // tinted surface (glass overlay, loud/raised plinth, shadow tints).
-    // Indigo brand → cool tint; orange brand → warm tint.
-    '--auxx-chat-tint-h': String(
-      hexToOklchHue(config.appearance.primaryColorDark ?? config.appearance.primaryColor)
-    ),
-  }
-  if (config.appearance.primaryColorDark) {
-    rootStyle['--auxx-chat-primary-dark'] = config.appearance.primaryColorDark
-  }
-  if (config.appearance.headerColorDark) {
-    rootStyle['--auxx-chat-header-dark'] = config.appearance.headerColorDark
-  }
   const shellStyle: Record<string, string> = {}
   if (isFloating && floatPosition) {
     shellStyle.left = `${floatPosition.x}px`
@@ -315,7 +381,7 @@ export function Widget({ channelId, cacheBust = null, scriptTheme }: WidgetProps
   }
 
   return (
-    <div className='auxx-chat-root' data-theme={resolvedTheme} style={rootStyle}>
+    <div className='auxx-chat-root' data-theme={resolvedTheme}>
       <div
         ref={shellRefCallback}
         className={`auxx-chat-shell ${stateClass} ${positionClass} ${expandedClass} ${bobbingClass} ${dockingClass}`}
@@ -345,24 +411,30 @@ export function Widget({ channelId, cacheBust = null, scriptTheme }: WidgetProps
           aria-label={config.appearance.title}
           aria-hidden={!open}>
           <NavStackProvider value={router.currentStack}>
-            <PanelShell
-              channelId={channelId}
-              config={config}
-              resolvedTheme={resolvedTheme}
-              activeTab={router.activeTab}
-              onTabChange={router.setActiveTab}
-              currentFrame={router.currentStack.current}
-              isAtRoot={router.currentStack.isAtRoot}
-              onBack={router.currentStack.pop}
-              onClose={handleClose}
-              error={error}
-              subscribe={subscribeRef.current ?? undefined}
-              expanded={expanded}
-              onToggleExpanded={toggleExpanded}
-              floating={isFloating}
-              onToggleFloating={toggleFloating}
-              headerRef={headerRefCallback}
-            />
+            <FrameTransition
+              viewKey={`${router.activeTab}|${router.currentStack.current?.id ?? 'root'}`}
+              direction={direction}>
+              <PanelShell
+                channelId={channelId}
+                config={config}
+                resolvedTheme={resolvedTheme}
+                activeTab={router.activeTab}
+                currentFrame={router.currentStack.current}
+                isAtRoot={router.currentStack.isAtRoot}
+                onBack={router.currentStack.pop}
+                onClose={handleClose}
+                error={error}
+                subscribe={subscribeRef.current ?? undefined}
+                expanded={expanded}
+                onToggleExpanded={toggleExpanded}
+                floating={isFloating}
+                onToggleFloating={toggleFloating}
+                headerRef={headerRefCallback}
+              />
+            </FrameTransition>
+            {router.currentStack.isAtRoot ? (
+              <TabBar activeTab={router.activeTab} onChange={router.setActiveTab} />
+            ) : null}
           </NavStackProvider>
         </div>
       </div>
@@ -375,7 +447,6 @@ interface PanelShellProps {
   config: ChatConfig
   resolvedTheme: 'light' | 'dark'
   activeTab: TabId
-  onTabChange: (tab: TabId) => void
   currentFrame: NavFrame | null
   isAtRoot: boolean
   onBack: () => void
@@ -397,7 +468,6 @@ function PanelShell({
   config,
   resolvedTheme,
   activeTab,
-  onTabChange,
   currentFrame,
   isAtRoot,
   onBack,
@@ -467,7 +537,6 @@ function PanelShell({
           headerRef
         )}
       </div>
-      {isAtRoot ? <TabBar activeTab={activeTab} onChange={onTabChange} /> : null}
     </div>
   )
 }

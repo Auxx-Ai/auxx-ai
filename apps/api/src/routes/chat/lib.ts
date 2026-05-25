@@ -2,6 +2,7 @@
 
 import { database, schema } from '@auxx/database'
 import { getCachedAgentById, getCachedOrgProfile } from '@auxx/lib/cache'
+import { listOnDutyUserIds } from '@auxx/lib/chat-duty'
 import { and, asc, eq, inArray, sql } from 'drizzle-orm'
 import type { Context } from 'hono'
 
@@ -121,6 +122,13 @@ export interface LoadedChatWidget {
   allowDownloadTranscript: boolean
   suggestedReplies: string[]
   privacyPolicyUrl: string | null
+  /**
+   * Derived: true when nobody is on chat duty AND the widget has no AI agent
+   * bound. In that state the widget renders `appearance.offlineMessage` and
+   * disables sending. Snapshotted at config-fetch time — visitors with an open
+   * session won't see this flip mid-conversation until they reconnect.
+   */
+  isOffline: boolean
 }
 
 /**
@@ -139,7 +147,12 @@ export async function loadChatWidgetByChannelId(
   })
   if (!row?.chatWidget) return null
 
-  const agent = await resolveAgentIdentity(row.organizationId, row.chatWidget.agentId ?? null)
+  const agentId = row.chatWidget.agentId ?? null
+  const [agent, onDutyUserIds] = await Promise.all([
+    resolveAgentIdentity(row.organizationId, agentId),
+    listOnDutyUserIds(row.organizationId),
+  ])
+  const isOffline = agentId === null && onDutyUserIds.length === 0
 
   return {
     channelId: row.id,
@@ -179,6 +192,7 @@ export async function loadChatWidgetByChannelId(
     allowDownloadTranscript: row.chatWidget.allowDownloadTranscript,
     suggestedReplies: row.chatWidget.suggestedReplies ?? [],
     privacyPolicyUrl: row.chatWidget.privacyPolicyUrl ?? null,
+    isOffline,
   }
 }
 
