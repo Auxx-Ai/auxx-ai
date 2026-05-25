@@ -1,6 +1,7 @@
 // apps/web/src/components/mail/chat-message-display.tsx
 'use client'
 
+import { formatVisitorLabel } from '@auxx/lib/chat/labels'
 import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
 import { Button } from '@auxx/ui/components/button'
 import {
@@ -67,7 +68,13 @@ const ChatMessageDisplay = ({
   if (!message) return null
 
   const isInbound = message.isInbound
-  const senderName = sender?.displayName ?? 'Unknown'
+  const senderName = (() => {
+    if (!sender) return 'Unknown'
+    if (sender.displayName) return sender.displayName
+    if (sender.name) return sender.name
+    if (sender.identifierType === 'CHAT_VISITOR') return formatVisitorLabel(sender.identifier)
+    return sender.identifier || 'Unknown'
+  })()
   const senderInitials = sender?.initials ?? senderName.charAt(0).toUpperCase()
   const contactId = sender?.entityInstanceId
   const content = message.textPlain ?? message.snippet ?? ''

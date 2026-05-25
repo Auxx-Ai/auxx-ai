@@ -37,6 +37,14 @@ const FRESH_ROOM_MAP: ReadonlySet<string> = new Set()
  *     (replaced with a new reference on every membership change so React
  *     re-renders, but identity-stable across no-op state changes).
  */
+interface PendingSubscription {
+  roomKey: string
+  handlers: SubscribeHandlers | PresenceHandlers
+  presence: boolean
+  realSub: Subscription | null
+  cancelled: boolean
+}
+
 export class PusherRealtimeAdapter implements RealtimeAdapter {
   private pusher: Pusher | null = null
   private connected = false
@@ -45,6 +53,10 @@ export class PusherRealtimeAdapter implements RealtimeAdapter {
   private rooms = new Map<string, RoomEntry>()
   private roomsSnapshot: ReadonlySet<string> = new Set()
   private roomListeners = new Set<() => void>()
+  // Subscriptions requested before `connect()` ran — happens when a descendant
+  // of the provider that owns the lifecycle mounts first (React fires child
+  // useEffects before parent's). Replayed on `connect()`.
+  private pendingSubs: PendingSubscription[] = []
 
   connect(config: { key: string; cluster: string; authEndpoint: string }) {
     if (this.pusher) return
@@ -62,6 +74,13 @@ export class PusherRealtimeAdapter implements RealtimeAdapter {
       this.connected = false
       this.notifyConnection()
     })
+    // Replay anything that subscribed before connect ran.
+    const pending = this.pendingSubs
+    this.pendingSubs = []
+    for (const p of pending) {
+      if (p.cancelled) continue
+      p.realSub = this.subscribeInternal(p.roomKey, p.handlers, p.presence)
+    }
   }
 
   disconnect() {
@@ -108,7 +127,26 @@ export class PusherRealtimeAdapter implements RealtimeAdapter {
     presence: boolean
   ): Subscription {
     if (!this.pusher) {
-      return { unsubscribe: () => {} }
+      // Buffer until `connect()` runs. Caller still gets a Subscription
+      // whose `unsubscribe` works whether the replay happened or not.
+      const pending: PendingSubscription = {
+        roomKey,
+        handlers,
+        presence,
+        realSub: null,
+        cancelled: false,
+      }
+      this.pendingSubs.push(pending)
+      return {
+        unsubscribe: () => {
+          pending.cancelled = true
+          if (pending.realSub) {
+            pending.realSub.unsubscribe()
+            return
+          }
+          this.pendingSubs = this.pendingSubs.filter((p) => p !== pending)
+        },
+      }
     }
     const channelName = toPusherChannel(roomKey)
     if (!channelName) {
@@ -207,6 +245,26 @@ export class PusherRealtimeAdapter implements RealtimeAdapter {
     if (entry.refCount === 1) {
       this.refreshRoomsSnapshot()
       this.notifyRooms()
+    }
+
+    // Late-join replay: if the channel is already past `subscription_succeeded`
+    // by the time a second handler attaches, the built-in event won't fire
+    // again — so the new handler would never see the current roster. Replay
+    // the snapshot immediately. Run async so the caller's `subscribePresence`
+    // returns before `onMembers` lands (matches the natural ordering of a
+    // fresh subscription).
+    if (presence) {
+      const presenceCh = entry.channel as Pusher.PresenceChannel
+      if (presenceCh.subscribed) {
+        const members: PresenceMember[] = []
+        presenceCh.members.each((m: { id: string; info?: Record<string, unknown> }) => {
+          members.push({ id: m.id, meta: m.info })
+        })
+        queueMicrotask(() => {
+          if (!this.rooms.get(roomKey)?.handlers.has(handlers)) return
+          ;(handlers as PresenceHandlers).onMembers?.(members)
+        })
+      }
     }
 
     return {

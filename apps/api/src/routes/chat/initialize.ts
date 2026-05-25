@@ -131,7 +131,7 @@ initializeRoute.post('/', async (c) => {
       threadId: m.threadId,
       content: m.textPlain ?? m.textHtml ?? '',
       sender: m.isInbound ? 'USER' : 'AGENT',
-      timestamp: m.sentAt ?? m.createdAt,
+      createdAt: m.sentAt ?? m.createdAt,
       status: 'DELIVERED',
     }))
 

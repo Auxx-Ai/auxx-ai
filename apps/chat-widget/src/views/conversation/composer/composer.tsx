@@ -112,7 +112,7 @@ export function Composer({ channelId, onSend, disabled, placeholder }: ComposerP
         onInput={(e) => setValue((e.currentTarget as HTMLTextAreaElement).value)}
         onKeyDown={handleKeyDown}
         placeholder={placeholder ?? 'Type a message…'}
-        minRows={1}
+        minRows={3}
         maxRows={6}
         disabled={disabled}
         className='pb-10'

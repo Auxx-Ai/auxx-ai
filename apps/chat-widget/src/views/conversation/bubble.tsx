@@ -69,18 +69,37 @@ export function Bubble({ sender, avatar, typing, group, children }: BubbleProps)
         ) : (
           <div className={pillClass(isUser, true, true)}>{children}</div>
         )}
+        {!typing && group && group.messages.length > 0 ? (
+          <time
+            className='px-1 text-[10px] text-muted-foreground'
+            dateTime={group.messages[group.messages.length - 1]!.createdAt}>
+            {formatBubbleTime(group.messages[group.messages.length - 1]!.createdAt)}
+          </time>
+        ) : null}
       </div>
     </div>
   )
 }
 
+function formatBubbleTime(iso: string): string {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return ''
+  return d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
+}
+
 function pillClass(isUser: boolean, first: boolean, last: boolean): string {
+  // Speaker-side corners (right for user, left for agent) are flattened where
+  // a pill butts against another pill in the same group — so the stacked
+  // seam looks continuous instead of pinching between two full curves. The
+  // very last pill of a group gets a smaller "tail" corner on the outermost
+  // bottom edge.
   return cn(
     'whitespace-pre-wrap break-words rounded-2xl px-3 py-1.5 text-sm',
     isUser
       ? 'bg-primary text-primary-foreground'
       : 'bg-[color:var(--auxx-chat-surface-loud)] text-[color:var(--auxx-chat-text-loud)]',
-    first && (isUser ? 'rounded-tr-md' : 'rounded-tl-md'),
+    !first && (isUser ? 'rounded-tr-md' : 'rounded-tl-md'),
+    !last && (isUser ? 'rounded-br-md' : 'rounded-bl-md'),
     last && (isUser ? 'rounded-br-sm' : 'rounded-bl-sm')
   )
 }

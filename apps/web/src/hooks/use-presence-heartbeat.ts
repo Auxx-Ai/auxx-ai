@@ -4,6 +4,7 @@
 import { PRESENCE_IDLE_MS } from '@auxx/lib/presence'
 import { rooms } from '@auxx/lib/realtime/client'
 import { useEffect } from 'react'
+import { usePresenceSubscription } from '~/hooks/use-org-presence'
 import { useUser } from '~/hooks/use-user'
 import { realtimeAdapter } from '~/realtime/adapter'
 
@@ -12,44 +13,38 @@ import { realtimeAdapter } from '~/realtime/adapter'
  * org presence room when the tab is hidden or interaction stalls past
  * `PRESENCE_IDLE_MS`.
  *
+ * Subscription itself is delegated to `usePresenceSubscription` — shared with
+ * `useOrgPresence` consumers via ref-counting, so the channel stays alive
+ * regardless of which surface (sidebar nav, embed view) is mounted.
+ *
  * Only emits on edge transitions — mouse-jiggling while already-active is a
  * no-op. On tab close / network drop, Pusher's connection drops and the
- * `pusher:member_removed` event handles "offline" via the presence channel;
- * no explicit "going offline" message is needed.
+ * `pusher:member_removed` event handles "offline"; no explicit "going
+ * offline" message is needed.
  */
 export function usePresenceHeartbeat(): void {
   const { organizationId } = useUser()
+  usePresenceSubscription(organizationId)
 
   useEffect(() => {
     if (!organizationId || typeof window === 'undefined') return
     const roomKey = rooms.orgPresence(organizationId)
 
-    // Subscribing puts this user in the presence channel's member list — every
-    // other admin watching the room will see them via `pusher:member_added`.
-    // Without this, `updateSelf` would still publish member-update events but
-    // the user would never have joined, so observers wouldn't track them.
-    // Refcounted with `useOrgPresence` consumers, so this is cheap.
-    const sub = realtimeAdapter.subscribePresence(roomKey, { id: 'self', meta: {} }, {})
-
     let isIdle: boolean | null = null
     let lastInteraction = Date.now()
-    let timer: ReturnType<typeof setInterval> | null = null
 
     const flip = (next: boolean) => {
       if (next === isIdle) return
       isIdle = next
-      // Fire-and-forget — the adapter's `updateSelf` already swallows errors.
       void realtimeAdapter.updateSelf(roomKey, { idle: next })
     }
 
     const recompute = () => {
-      const idle = document.hidden || Date.now() - lastInteraction > PRESENCE_IDLE_MS
-      flip(idle)
+      flip(document.hidden || Date.now() - lastInteraction > PRESENCE_IDLE_MS)
     }
 
     const onActivity = () => {
       lastInteraction = Date.now()
-      // Cheap path — if we're already not-idle, this is a no-op.
       if (isIdle !== false) recompute()
     }
 
@@ -63,7 +58,7 @@ export function usePresenceHeartbeat(): void {
 
     // Poll every 5s for the online → away transition. mousemove/keydown handle
     // the reverse direction (away → online) immediately.
-    timer = setInterval(recompute, 5_000)
+    const timer = setInterval(recompute, 5_000)
 
     // `passive: true` keeps these listeners off the scrolling critical path.
     document.addEventListener('mousemove', onActivity, { passive: true })
@@ -72,12 +67,11 @@ export function usePresenceHeartbeat(): void {
     document.addEventListener('visibilitychange', onVisibility)
 
     return () => {
-      if (timer) clearInterval(timer)
+      clearInterval(timer)
       document.removeEventListener('mousemove', onActivity)
       document.removeEventListener('keydown', onActivity)
       document.removeEventListener('click', onActivity)
       document.removeEventListener('visibilitychange', onVisibility)
-      sub.unsubscribe()
     }
   }, [organizationId])
 }

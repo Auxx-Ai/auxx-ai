@@ -201,6 +201,7 @@ export class ChatProvider extends BaseMessageProvider implements MessageProvider
           isInbound: true,
           subject: null,
           textPlain: params.content,
+          snippet: params.content ? params.content.slice(0, 280) : null,
           sentAt: now,
           receivedAt: now,
           sendStatus: 'SENT' as any,
