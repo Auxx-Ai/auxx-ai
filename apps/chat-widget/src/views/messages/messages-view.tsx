@@ -144,16 +144,17 @@ export function MessagesView({ channelId, config, subscribe }: MessagesViewProps
 
   const handleNewThread = useCallback(async () => {
     if (creating) return
-    // Reuse the most recent existing thread if there is one — we only want
-    // visitors to accumulate a single ongoing conversation, not a new thread
-    // per click.
-    if (threads.length > 0) {
-      const top = threads[0]
-      openThread(top.id, top.agent?.name ?? fallbackAgentName)
-      return
-    }
     setCreating(true)
     try {
+      // Reuse only the visitor's most-recent thread when it has no messages
+      // yet — otherwise every tap should land in a fresh conversation. The
+      // /recent endpoint surfaces empty threads (the listing above filters
+      // them out), so this is the one place we can spot the reuse case.
+      const existing = (await api.getRecentThread().catch(() => null))?.thread ?? null
+      if (existing && !existing.lastMessage) {
+        openThread(existing.id, existing.subject || fallbackAgentName)
+        return
+      }
       const { threadId } = await api.createThread({
         url: typeof window !== 'undefined' ? window.location.href : undefined,
         referrer: typeof document !== 'undefined' ? document.referrer || undefined : undefined,
@@ -163,7 +164,7 @@ export function MessagesView({ channelId, config, subscribe }: MessagesViewProps
     } finally {
       setCreating(false)
     }
-  }, [api, creating, openThread, threads, fallbackAgentName])
+  }, [api, creating, openThread, fallbackAgentName])
 
   if (loading && threads.length === 0) {
     return (

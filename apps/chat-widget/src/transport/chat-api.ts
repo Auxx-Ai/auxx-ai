@@ -110,7 +110,7 @@ export function chatApi(channelId: string) {
         thread: {
           id: string
           subject: string | null
-          lastMessage: { preview: string; isInbound: boolean; timestamp: string }
+          lastMessage: { preview: string; isInbound: boolean; timestamp: string } | null
         } | null
       }>(channelId, '/api/chat/threads/recent', { method: 'GET' }),
 

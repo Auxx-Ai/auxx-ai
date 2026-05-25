@@ -8,6 +8,7 @@ import { FilesystemProvider } from '~/components/files/provider/filesystem-provi
 import { ResourceProvider } from '~/components/resources'
 import { useResourceSync } from '~/components/resources/hooks/use-resource-sync'
 import { useMailSync } from '~/components/threads/realtime'
+import { usePresenceHeartbeat } from '~/hooks/use-presence-heartbeat'
 import { useRealtimeLifecycle } from '~/realtime/use-realtime-lifecycle'
 
 interface AuxxAppProvidersProps {
@@ -29,6 +30,7 @@ interface AuxxAppProvidersProps {
  */
 export function AuxxAppProviders({ children }: AuxxAppProvidersProps) {
   useRealtimeLifecycle()
+  usePresenceHeartbeat()
   useResourceSync()
   useMailSync()
 

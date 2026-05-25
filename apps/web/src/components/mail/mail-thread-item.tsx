@@ -2,6 +2,7 @@
 'use client'
 
 import { evaluateConditions, normalizeStatusConditions } from '@auxx/lib/conditions/client'
+import type { ActorId } from '@auxx/types/actor'
 import { toRecordId } from '@auxx/types/resource'
 import { Button } from '@auxx/ui/components/button'
 import { Checkbox } from '@auxx/ui/components/checkbox'
@@ -56,6 +57,7 @@ import { threadFieldResolver } from '~/components/threads/utils/thread-field-res
 import { useIsRecordProcessing } from '~/components/workflow/use-is-record-processing'
 import { WorkflowSubMenu } from '~/components/workflow/workflow-submenu'
 import { api } from '~/trpc/react'
+import { ChatAssigneeChip } from './chat-assignee-chip'
 import { useMailFilter } from './mail-filter-context'
 import { getIntegrationIcon } from './mail-status-config'
 
@@ -454,18 +456,21 @@ export const MailThreadItem = memo(function MailThreadItem({
                 </div>
                 {isChatThread &&
                   (handoffState === 'human' ? (
-                    <span
-                      className={cn(
-                        'shrink-0 rounded-full border px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide',
-                        isAssignedToMe
-                          ? 'border-blue-500/40 bg-blue-500/10 text-blue-700 dark:text-blue-300'
-                          : 'border-muted-foreground/20 bg-muted text-muted-foreground'
-                      )}
-                      title={
-                        isAssignedToMe ? 'You are on this chat' : 'A teammate is on this chat'
-                      }>
-                      {isAssignedToMe ? 'You' : 'Human'}
-                    </span>
+                    isAssignedToMe ? (
+                      <span
+                        className='shrink-0 rounded-full border border-blue-500/40 bg-blue-500/10 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-blue-700 dark:text-blue-300'
+                        title='You are on this chat'>
+                        You
+                      </span>
+                    ) : thread.assigneeId ? (
+                      <ChatAssigneeChip assigneeId={thread.assigneeId as ActorId} />
+                    ) : (
+                      <span
+                        className='shrink-0 rounded-full border border-muted-foreground/20 bg-muted px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-muted-foreground'
+                        title='A teammate is on this chat'>
+                        Human
+                      </span>
+                    )
                   ) : (
                     <span
                       className='shrink-0 inline-flex items-center gap-0.5 rounded-full border border-muted-foreground/20 bg-muted/60 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-muted-foreground'

@@ -10,7 +10,9 @@ import { useSession } from '~/auth/auth-client'
 import { useActor } from '~/components/resources/hooks'
 import { useThreadStore } from '~/components/threads/store'
 import { AvatarWithStatusIcon } from '~/components/users/avatar-with-status-icon'
+import { PresenceDot } from '~/components/users/presence-dot'
 import { useConfirm } from '~/hooks/use-confirm'
+import { useOrgPresence } from '~/hooks/use-org-presence'
 import { api } from '~/trpc/react'
 
 interface ChatHandoffBannerProps {
@@ -60,6 +62,9 @@ export function ChatHandoffBanner({ threadId, handoffState, assigneeId }: ChatHa
   const onDutyUserIds = onDutyQuery.data ?? []
   const onDutyCount = onDutyUserIds.length
   const assigneeOnDuty = !!assigneeUserId && onDutyUserIds.includes(assigneeUserId)
+
+  const { getState } = useOrgPresence()
+  const assigneePresence = getState(assigneeUserId)
 
   const takeOver = api.thread.takeOver.useMutation()
   const returnToAi = api.thread.returnToAi.useMutation()
@@ -196,14 +201,29 @@ export function ChatHandoffBanner({ threadId, handoffState, assigneeId }: ChatHa
       <ConfirmDialog />
       <div className='mx-4 mt-2 flex items-center justify-between gap-3 rounded-md border bg-muted/40 px-3 py-2 text-sm'>
         <div className='flex items-center gap-2 text-muted-foreground'>
-          <AvatarWithStatusIcon
-            className='size-5'
-            status={assigneeOnDuty ? 'on_duty' : 'none'}
-            src={assignee?.image}
-            alt={assigneeName}
-            fallback={assigneeInitials}
-          />
-          <span>{assigneeName} is on this chat.</span>
+          <span className='relative inline-flex'>
+            <AvatarWithStatusIcon
+              className='size-5'
+              status={assigneeOnDuty ? 'on_duty' : 'none'}
+              src={assignee?.image}
+              alt={assigneeName}
+              fallback={assigneeInitials}
+            />
+            <PresenceDot
+              state={assigneePresence}
+              hideOffline
+              className='absolute -bottom-0.5 -left-0.5 size-1.5'
+            />
+          </span>
+          <span>
+            {assigneeName} is on this chat
+            {assigneePresence === 'away'
+              ? ' (away)'
+              : assigneePresence === 'offline'
+                ? ' (offline)'
+                : ''}
+            .
+          </span>
         </div>
         <Button
           variant='outline'

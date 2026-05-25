@@ -52,7 +52,7 @@ function pickContrastText(hex: string): string {
 interface RecentThread {
   id: string
   subject: string | null
-  lastMessage: { preview: string; isInbound: boolean; timestamp: string }
+  lastMessage: { preview: string; isInbound: boolean; timestamp: string } | null
 }
 
 export function HomeView({
@@ -107,12 +107,11 @@ export function HomeView({
   const handleSendMessage = useCallback(async () => {
     setCreating(true)
     try {
-      // Reuse the visitor's existing thread if one exists — a single ongoing
-      // conversation rather than a new thread per click. `recent` is already
-      // loaded when the admin enabled the Recent card; otherwise fetch on
-      // demand.
+      // Reuse only the visitor's most-recent thread when it has no messages
+      // yet — otherwise every tap should land in a fresh conversation. The
+      // recent endpoint includes empty threads so we can spot the reuse case.
       const existing = recent ?? (await api.getRecentThread().catch(() => null))?.thread ?? null
-      if (existing) {
+      if (existing && !existing.lastMessage) {
         openThread(existing.id, existing.subject || 'Conversation')
         return
       }
@@ -130,7 +129,7 @@ export function HomeView({
   }, [api, openThread, recent])
 
   const cards = [
-    home.showRecentMessage && recent ? (
+    home.showRecentMessage && recent && recent.lastMessage ? (
       <RecentMessageCard
         key='recent'
         subject={recent.subject}

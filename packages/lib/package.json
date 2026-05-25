@@ -550,6 +550,12 @@
       "import": "./dist/posthog/posthog-client.mjs",
       "default": "./src/posthog/posthog-client.ts"
     },
+    "./presence": {
+      "types": "./src/presence/index.ts",
+      "source": "./src/presence/index.ts",
+      "import": "./dist/presence/index.mjs",
+      "default": "./src/presence/index.ts"
+    },
     "./prompt-templates": {
       "types": "./src/prompt-templates/index.ts",
       "source": "./src/prompt-templates/index.ts",

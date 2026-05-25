@@ -113,9 +113,12 @@ threadsRoute.post('/', async (c) => {
 /**
  * GET /api/chat/threads/recent
  *
- * Return the visitor's most recently active thread + a one-line preview for
- * the Home "Recent message" card. Returns `{ thread: null }` when the visitor
- * has no threads on this channel.
+ * Return the visitor's most recently active thread for the Home "Recent
+ * message" card and the "Send us a message" reuse rule. Includes threads
+ * with no messages yet so the widget can reuse the empty thread instead of
+ * spawning a new one on every tap. `lastMessage` is null when the thread
+ * has no messages. Returns `{ thread: null }` when the visitor has no
+ * threads on this channel.
  */
 threadsRoute.get('/recent', async (c) => {
   applyChatCorsHeaders(c, { allowCredentials: true })
@@ -128,14 +131,10 @@ threadsRoute.get('/recent', async (c) => {
       .where(
         and(
           eq(schema.Thread.organizationId, chat.organizationId),
-          eq(schema.Thread.integrationId, chat.channelId),
-          // Skip empty threads — earlier widget builds created threads
-          // eagerly on every "Send us a message" tap, so an empty thread
-          // could otherwise mask an older one that actually has messages.
-          isNotNull(schema.Thread.latestMessageId)
+          eq(schema.Thread.integrationId, chat.channelId)
         )
       )
-      .orderBy(desc(schema.Thread.lastMessageAt))
+      .orderBy(desc(schema.Thread.lastMessageAt), desc(schema.Thread.createdAt))
       .limit(20)
 
     const recent = threads.find((t) => {
@@ -147,22 +146,20 @@ threadsRoute.get('/recent', async (c) => {
       return c.json({ success: true, data: { thread: null } })
     }
 
-    const [lastMessage] = await database
-      .select({
-        textPlain: schema.Message.textPlain,
-        textHtml: schema.Message.textHtml,
-        isInbound: schema.Message.isInbound,
-        sentAt: schema.Message.sentAt,
-        createdAt: schema.Message.createdAt,
-      })
-      .from(schema.Message)
-      .where(eq(schema.Message.threadId, recent.id))
-      .orderBy(desc(schema.Message.sentAt))
-      .limit(1)
-
-    if (!lastMessage) {
-      return c.json({ success: true, data: { thread: null } })
-    }
+    const [lastMessage] = recent.latestMessageId
+      ? await database
+          .select({
+            textPlain: schema.Message.textPlain,
+            textHtml: schema.Message.textHtml,
+            isInbound: schema.Message.isInbound,
+            sentAt: schema.Message.sentAt,
+            createdAt: schema.Message.createdAt,
+          })
+          .from(schema.Message)
+          .where(eq(schema.Message.threadId, recent.id))
+          .orderBy(desc(schema.Message.sentAt))
+          .limit(1)
+      : []
 
     return c.json({
       success: true,
@@ -170,11 +167,13 @@ threadsRoute.get('/recent', async (c) => {
         thread: {
           id: recent.id,
           subject: recent.subject,
-          lastMessage: {
-            preview: (lastMessage.textPlain ?? lastMessage.textHtml ?? '').slice(0, 160),
-            isInbound: lastMessage.isInbound,
-            timestamp: lastMessage.sentAt ?? lastMessage.createdAt,
-          },
+          lastMessage: lastMessage
+            ? {
+                preview: (lastMessage.textPlain ?? lastMessage.textHtml ?? '').slice(0, 160),
+                isInbound: lastMessage.isInbound,
+                timestamp: lastMessage.sentAt ?? lastMessage.createdAt,
+              }
+            : null,
         },
       },
     })

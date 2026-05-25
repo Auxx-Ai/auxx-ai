@@ -66,6 +66,10 @@ export interface ChatConfig {
   /** When non-null, the conversation composer shows a privacy consent banner
    * linking to this URL. Sanitized server-side to http/https only. */
   privacyPolicyUrl: string | null
+  /** Server-derived: true when nobody is on chat duty AND the widget has no AI
+   * agent bound. Snapshot taken at config-fetch time. When true, the
+   * conversation view replaces the composer with `appearance.offlineMessage`. */
+  isOffline: boolean
   realtime: { provider: 'pusher'; key: string; cluster: string }
 }
 

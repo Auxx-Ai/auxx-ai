@@ -313,6 +313,11 @@
      * Alpha ladder: 40/70/86/90/96 — sparse subset of a full neutral ramp,
      * sized to the surface tiers we actually use (glass overlay → loud →
      * raised). */
+    /* Brand color defaults. widget.tsx overrides these inline on `.auxx-root`
+     * when the channel config loads — declared here so derived tokens that
+     * reference them (including `--primary` and the closed-launcher shadow)
+     * still resolve to something sane while the config is in-flight. */
+    --auxx-chat-primary: var(--color-indigo-500);
     --auxx-chat-tint-h: 250;
     --auxx-chat-tint-c: 0.012;
     --auxx-chat-neutral-base: oklch(98% var(--auxx-chat-tint-c) var(--auxx-chat-tint-h));
@@ -472,7 +477,13 @@
     --auxx-chat-shell-radius-bottom: 1.75rem;
     --auxx-chat-shell-edge-gap: 20px;
 
-    --auxx-chat-primary: #4f46e5;
+    /* `--auxx-chat-primary` (and `--auxx-chat-primary-dark`) are set inline
+     * on `.auxx-root` by widget.tsx when the brand config loads, so derived
+     * tokens declared on `.auxx-root` (e.g. `--primary`, `--auxx-chat-glass-
+     * overlay`, etc.) can substitute them at computed-value time on the right
+     * element. Do NOT default `--auxx-chat-primary` here — that declaration
+     * would beat the inherited inline value for every descendant of
+     * `.auxx-chat-root` (including the closed launcher's tinted shadow). */
     --auxx-chat-closed-outer-border: color-mix(in oklab, var(--auxx-chat-primary), black 22%);
     --auxx-chat-closed-inner-border: color-mix(in oklab, var(--auxx-chat-primary), white 20%);
     --auxx-chat-shell-closed-shadow:
@@ -761,6 +772,82 @@
       0 0 0 2px var(--primary),
       var(--auxx-chat-shadow-raised);
   }
+
+  /* Frame swipe transition — wraps the active PanelShell and slides between
+   * frames when the visitor switches tabs or pushes/pops a navigation frame.
+   * Two layers (entering + exiting) stack absolutely; `overflow:hidden` is
+   * only set during an animation so portaled popovers aren't clipped at
+   * rest. iOS-style parallax: entering layer slides the full panel width
+   * while the exiting layer drifts 30% off with a fade. */
+  .auxx-chat-frame-transition {
+    position: relative;
+    flex: 1 1 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .auxx-chat-frame-transition--animating {
+    overflow: hidden;
+  }
+  .auxx-chat-frame-layer {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    flex: 1 1 0;
+  }
+  .auxx-chat-frame-transition--animating .auxx-chat-frame-layer {
+    position: absolute;
+    inset: 0;
+    flex: none;
+  }
+  .auxx-chat-frame--entering[data-direction='from-right'] {
+    animation: auxx-frame-slide-in-right 280ms var(--auxx-chat-shell-ease) both;
+  }
+  .auxx-chat-frame--entering[data-direction='from-left'] {
+    animation: auxx-frame-slide-in-left 280ms var(--auxx-chat-shell-ease) both;
+  }
+  .auxx-chat-frame--exiting[data-direction='from-right'] {
+    animation: auxx-frame-slide-out-left 280ms var(--auxx-chat-shell-ease) both;
+  }
+  .auxx-chat-frame--exiting[data-direction='from-left'] {
+    animation: auxx-frame-slide-out-right 280ms var(--auxx-chat-shell-ease) both;
+  }
+  @keyframes auxx-frame-slide-in-right {
+    from {
+      transform: translateX(100%);
+    }
+    to {
+      transform: translateX(0);
+    }
+  }
+  @keyframes auxx-frame-slide-in-left {
+    from {
+      transform: translateX(-100%);
+    }
+    to {
+      transform: translateX(0);
+    }
+  }
+  @keyframes auxx-frame-slide-out-left {
+    from {
+      transform: translateX(0);
+      opacity: 1;
+    }
+    to {
+      transform: translateX(-30%);
+      opacity: 0;
+    }
+  }
+  @keyframes auxx-frame-slide-out-right {
+    from {
+      transform: translateX(0);
+      opacity: 1;
+    }
+    to {
+      transform: translateX(30%);
+      opacity: 0;
+    }
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -771,5 +858,31 @@
   }
   .auxx-chat-shell--bobbing {
     animation: none;
+  }
+  .auxx-chat-frame--entering,
+  .auxx-chat-frame--entering[data-direction='from-right'],
+  .auxx-chat-frame--entering[data-direction='from-left'] {
+    animation: auxx-frame-fade-in 120ms ease-out both;
+  }
+  .auxx-chat-frame--exiting,
+  .auxx-chat-frame--exiting[data-direction='from-right'],
+  .auxx-chat-frame--exiting[data-direction='from-left'] {
+    animation: auxx-frame-fade-out 120ms ease-out both;
+  }
+  @keyframes auxx-frame-fade-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+  @keyframes auxx-frame-fade-out {
+    from {
+      opacity: 1;
+    }
+    to {
+      opacity: 0;
+    }
   }
 }
