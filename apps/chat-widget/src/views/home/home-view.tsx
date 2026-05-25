@@ -248,7 +248,7 @@ export function HomeView({
         </div>
         <Greeting doc={home.greetingTemplate ?? null} identify={identify} />
       </div>
-      <div className='auxx-chat-body-mask relative z-10 flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-3 pb-3'>
+      <div className='auxx-chat-body-mask relative z-10 flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pt-3 px-3 pb-3'>
         {cards.length === 0 ? (
           <p className='py-6 text-center text-xs text-muted-foreground'>No conversations yet</p>
         ) : (

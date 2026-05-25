@@ -156,14 +156,9 @@ export function NavUser({ user }: Prop) {
                     <AvatarImage src={displayImage!} alt={displayName} />
                     <AvatarFallback className='rounded-lg'>{initials}</AvatarFallback>
                   </Avatar>
-                  {/* Inset positioning — the surrounding SidebarMenuButton has
-                   * `overflow-hidden` so the dot must stay within the avatar's
-                   * bounding box (otherwise it gets clipped in icon-collapsed
-                   * mode where the button shrinks to exactly fit the avatar). */}
                   <PresenceDot
                     state={myPresence}
-                    hideOffline
-                    className='absolute bottom-0 right-0 size-2'
+                    className='absolute -bottom-0.5 -right-0.5 size-2'
                   />
                 </span>
                 <div className='grid flex-1 text-left text-sm leading-tight group-data-[collapsible=icon]:hidden pe-2'>
