@@ -142,6 +142,7 @@ export class MessageComposerService {
           subject: input.subject,
           textHtml: input.textHtml,
           textPlain: textPlain,
+          snippet: textPlain ? textPlain.slice(0, 280) : null,
 
           // Participants
           fromId: input.participants.from.id,
@@ -329,6 +330,7 @@ export class MessageComposerService {
           subject: input.subject,
           textHtml: input.textHtml,
           textPlain: textPlain,
+          snippet: textPlain ? textPlain.slice(0, 280) : null,
 
           // Update references
           inReplyTo: input.inReplyTo,
@@ -474,6 +476,7 @@ export class MessageComposerService {
           subject: input.subject,
           textHtml: input.textHtml,
           textPlain: textPlain,
+          snippet: textPlain ? textPlain.slice(0, 280) : null,
 
           // Update references
           inReplyTo: input.inReplyTo,
