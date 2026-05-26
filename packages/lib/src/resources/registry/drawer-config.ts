@@ -21,7 +21,6 @@ export const DRAWER_CONFIG_REGISTRY: DrawerConfigRegistry = {
       { value: 'parts', label: 'Parts', icon: 'package' },
     ],
     actions: {
-      enableEmailCompose: true,
       enableMerge: true,
       enableGroups: true,
       enableArchive: true,
@@ -33,7 +32,6 @@ export const DRAWER_CONFIG_REGISTRY: DrawerConfigRegistry = {
     entityType: 'ticket',
     additionalTabs: [{ value: 'conversation', label: 'Conversation', icon: 'mail' }],
     actions: {
-      enableEmailCompose: true,
       enableEdit: true,
       enableRename: true,
       enableMerge: true,

@@ -9,6 +9,12 @@ import { Result, type TypedResult } from '../result'
 import { getIdentifier } from './internal/identifier'
 import type { ChannelCtx } from './types'
 
+// Org cache JSON-roundtrips, turning Date columns into ISO strings.
+function toDate<T extends Date | null>(v: T | string): T {
+  if (v === null || v instanceof Date) return v as T
+  return new Date(v) as T
+}
+
 /**
  * Get all channels for the org (admin Channels page payload).
  *
@@ -50,18 +56,18 @@ export async function list(ctx: ChannelCtx) {
       provider: c.provider,
       name: c.name,
       enabled: c.enabled,
-      updatedAt: c.updatedAt,
-      lastSyncedAt: c.lastSyncedAt,
+      updatedAt: toDate(c.updatedAt),
+      lastSyncedAt: toDate(c.lastSyncedAt),
       email: c.email || (c.metadata as any)?.email || undefined,
       identifier: getIdentifier({ ...c, chatWidget: c.chatWidget }),
       inboxId: c.inboxId,
       widgetSettings: c.provider === 'chat' ? c.chatWidget : undefined,
       authStatus: c.authStatus,
-      lastSuccessfulSync: c.lastSuccessfulSync,
+      lastSuccessfulSync: toDate(c.lastSuccessfulSync),
       metadata: c.metadata,
       requiresReauth: c.requiresReauth,
       lastAuthError: c.lastAuthError,
-      lastAuthErrorAt: c.lastAuthErrorAt,
+      lastAuthErrorAt: toDate(c.lastAuthErrorAt),
       settings: c.settings,
       isExample: c.isExample,
       syncStatus: live?.syncStatus ?? null,

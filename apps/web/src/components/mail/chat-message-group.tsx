@@ -19,10 +19,9 @@ interface ChatMessageGroupProps {
 
 /**
  * Renders a run of consecutive same-sender chat messages as a merged stack.
- * Inside the run, sibling bubbles are sized to the widest content via CSS
- * grid (`grid-cols-[minmax(0,max-content)]` + per-bubble `w-full`).
- * Clicking any bubble expands the whole group: every bubble gets full
- * rounding, the gap opens, and each shows its own timestamp/receipt.
+ * Each bubble sizes to its own content. Clicking any bubble expands the
+ * whole group: every bubble gets full rounding, the gap opens, and each
+ * shows its own timestamp/receipt.
  */
 export function ChatMessageGroup({
   messages,
@@ -51,8 +50,8 @@ export function ChatMessageGroup({
     <div ref={rootRef} className='mx-auto w-full max-w-2xl'>
       <div
         className={cn(
-          'grid w-fit max-w-[80%] grid-cols-[minmax(0,max-content)] transition-all duration-300',
-          isInbound ? 'mr-auto' : 'ml-auto',
+          'flex max-w-[80%] flex-col transition-all duration-300',
+          isInbound ? 'mr-auto items-start' : 'ml-auto items-end',
           expanded ? 'gap-2' : 'gap-0.5'
         )}>
         {messages.map((message, index) => {

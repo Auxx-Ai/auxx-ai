@@ -8,6 +8,7 @@ import { getOrgCache } from '../../cache'
 import { publishChatMessageCreated, publishChatMessageReceiptUpdated } from '../../chat/realtime'
 import type { ChatAttachment } from '../../chat/types'
 import { getRealtimeService } from '../../realtime'
+import { publishMessageUpdated } from '../../realtime/publish-helpers'
 import { Result, type TypedResult } from '../../result'
 import type { ChatThreadMetadata } from '../../threads/types'
 import {
@@ -194,6 +195,33 @@ export class ChatProvider extends BaseMessageProvider implements MessageProvider
       },
       skipInboxMessagePublish: true,
     })
+
+    // When the message has attachments, push the server-authoritative
+    // attachment metadata to the inbox channel as `message:updated`. The
+    // sender's optimistic write uses staged file-ids (FolderFile / MediaAsset),
+    // which don't resolve against `/api/attachments/{id}/{thumbnail,download}`
+    // — those endpoints expect `Attachment.id`. No `excludeSocketId` here:
+    // we *want* the sender to receive this patch and overwrite the optimistic
+    // attachment array with real ids. Chat has no post-send sync, so without
+    // this push the wrong ids stick.
+    if (attachments?.length) {
+      await publishMessageUpdated(getRealtimeService(), this.organizationId, {
+        messageId: message.id,
+        threadId: thread.id,
+        inboxId: thread.inboxId,
+        patch: {
+          attachments: attachments.map((a) => ({
+            id: a.id,
+            name: a.name,
+            mimeType: a.mimeType ?? null,
+            size: a.size ?? null,
+            url: null,
+            inline: false,
+            contentId: null,
+          })),
+        },
+      })
+    }
 
     return { success: true, id: message.id, externalId: undefined, threadId: thread.id }
   }

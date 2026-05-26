@@ -3,24 +3,13 @@
 
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { useCallback, useState } from 'react'
-import { useMessageListStore } from '~/components/threads/store/message-list-store'
-import { type MessageMeta, useMessageStore } from '~/components/threads/store/message-store'
-import { getThreadStoreState } from '~/components/threads/store/thread-store'
+import {
+  appendOptimisticMessage,
+  toAttachmentMeta,
+} from '~/components/threads/hooks/append-optimistic-message'
+import type { MessageMeta } from '~/components/threads/store/message-store'
 import { api } from '~/trpc/react'
 import type { FileAttachment } from '../email-editor/types'
-
-function htmlToSnippet(html: string, maxLen = 140): string {
-  const text = html
-    .replace(/<style[\s\S]*?<\/style>/gi, '')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/\s+/g, ' ')
-    .trim()
-  return text.length > maxLen ? `${text.slice(0, maxLen - 1)}…` : text
-}
 
 interface UseChatSendOptions {
   threadId: string
@@ -32,6 +21,10 @@ interface UseChatSendOptions {
 
 interface SendArgs {
   textHtml: string
+  /** Plain text counterpart (from `editor.getText()`) — preserves newlines and
+   *  drives the bubble render. Without this, the optimistic message falls back
+   *  to `snippet`, which is single-line and truncated at 140 chars. */
+  textPlain: string
   attachments: FileAttachment[]
 }
 
@@ -45,22 +38,27 @@ export function useChatSend({ threadId, integrationId, onSendSuccess }: UseChatS
       toastSuccess({ description: 'Message sent' })
 
       if (sentMessage.threadId && sentMessage.id) {
-        // Synthesize a MessageMeta entry so the inbox row's snippet/body
-        // updates in-place when `latestMessageId` flips — without it, the row
-        // renders empty for the ~50ms request batch window and visibly shifts.
         const sentAt = sentMessage.sentAt?.toISOString() ?? new Date().toISOString()
+        const textPlain = variables.textPlain ?? ''
+        const attachments = (variables.attachments ?? []).map(toAttachmentMeta)
+        const snippet =
+          textPlain.length > 0
+            ? textPlain.length > 140
+              ? `${textPlain.slice(0, 139)}…`
+              : textPlain
+            : (attachments[0]?.name ?? '')
         const optimistic: MessageMeta = {
           id: sentMessage.id,
           threadId: sentMessage.threadId,
           subject: sentMessage.subject ?? null,
-          snippet: htmlToSnippet(variables.textHtml ?? ''),
+          snippet,
           textHtml: variables.textHtml ?? null,
-          textPlain: null,
+          textPlain,
           isInbound: false,
           isFirstInThread: false,
-          hasAttachments: (variables.attachments?.length ?? 0) > 0,
+          hasAttachments: attachments.length > 0,
           hasHtmlBody: !!variables.textHtml,
-          hasTextBody: false,
+          hasTextBody: textPlain.length > 0,
           sentAt,
           receivedAt: null,
           createdAt: sentAt,
@@ -69,28 +67,10 @@ export function useChatSend({ threadId, integrationId, onSendSuccess }: UseChatS
           sendStatus: 'SENT',
           providerError: null,
           attempts: 1,
-          attachments: [],
+          attachments,
           messageType: 'CHAT',
         }
-        useMessageStore.getState().setMessages([optimistic])
-
-        // Optimistically append the new message ID to the local list. Avoid
-        // invalidating the cached list — that would wipe `messageIds` and
-        // unmount/remount every message in the thread (visible as a full
-        // slide-in animation replay).
-        useMessageListStore.getState().appendMessage(sentMessage.threadId, sentMessage.id)
-        // tRPC cache invalidate is safe — the local list cache stays intact, so
-        // useMessages remains disabled and no refetch happens. The next time
-        // the cache misses (e.g. cold load), the fresh data will be used.
-        utils.message.listByThread.invalidate({ threadId: sentMessage.threadId })
-
-        const currentThread = getThreadStoreState().getThread(sentMessage.threadId)
-        if (currentThread) {
-          getThreadStoreState().updateThread(sentMessage.threadId, {
-            lastMessageAt: sentAt,
-            latestMessageId: sentMessage.id,
-          })
-        }
+        appendOptimisticMessage(utils, sentMessage.threadId, optimistic)
       }
 
       onSendSuccess()
@@ -102,11 +82,12 @@ export function useChatSend({ threadId, integrationId, onSendSuccess }: UseChatS
   })
 
   const send = useCallback(
-    ({ textHtml, attachments }: SendArgs) => {
+    ({ textHtml, textPlain, attachments }: SendArgs) => {
       mutation.mutate({
         threadId,
         integrationId,
         textHtml,
+        textPlain,
         to: [],
         attachments: attachments.length > 0 ? attachments : undefined,
       })

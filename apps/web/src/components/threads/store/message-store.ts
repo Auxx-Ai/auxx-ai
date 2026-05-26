@@ -78,6 +78,13 @@ interface MessageStoreState {
   pendingIds: Set<string>
   loadingIds: Set<string>
   notFoundIds: Set<string>
+  /**
+   * Realtime `message:updated` patches that arrived before the message itself
+   * was written to the store (e.g. when the server publishes the patch during
+   * the mutation, ahead of the client's optimistic write in `onSuccess`).
+   * Drained by `setMessages` / `completeBatch` once the row appears.
+   */
+  pendingPatches: Map<string, Partial<MessageMeta>>
   batchTimer: ReturnType<typeof setTimeout> | null
 
   setMessages: (messages: MessageMeta[]) => void
@@ -104,15 +111,18 @@ export const useMessageStore = create<MessageStoreState>()(
       pendingIds: new Set(),
       loadingIds: new Set(),
       notFoundIds: new Set(),
+      pendingPatches: new Map(),
       batchTimer: null,
 
       setMessages: (messages) =>
         set((state) => {
           for (const msg of messages) {
-            state.messages.set(msg.id, msg)
+            const buffered = state.pendingPatches.get(msg.id)
+            state.messages.set(msg.id, buffered ? { ...msg, ...buffered } : msg)
             state.pendingIds.delete(msg.id)
             state.loadingIds.delete(msg.id)
             state.notFoundIds.delete(msg.id)
+            state.pendingPatches.delete(msg.id)
           }
         }),
 
@@ -121,6 +131,9 @@ export const useMessageStore = create<MessageStoreState>()(
           const existing = state.messages.get(id)
           if (existing) {
             state.messages.set(id, { ...existing, ...updates })
+          } else {
+            const prior = state.pendingPatches.get(id)
+            state.pendingPatches.set(id, prior ? { ...prior, ...updates } : updates)
           }
         }),
 
@@ -173,12 +186,15 @@ export const useMessageStore = create<MessageStoreState>()(
       completeBatch: (messages, notFoundIds) =>
         set((state) => {
           for (const msg of messages) {
-            state.messages.set(msg.id, msg)
+            const buffered = state.pendingPatches.get(msg.id)
+            state.messages.set(msg.id, buffered ? { ...msg, ...buffered } : msg)
             state.loadingIds.delete(msg.id)
+            state.pendingPatches.delete(msg.id)
           }
           for (const id of notFoundIds) {
             state.loadingIds.delete(id)
             state.notFoundIds.add(id)
+            state.pendingPatches.delete(id)
           }
         }),
 
@@ -195,6 +211,7 @@ export const useMessageStore = create<MessageStoreState>()(
           state.pendingIds.clear()
           state.loadingIds.clear()
           state.notFoundIds.clear()
+          state.pendingPatches.clear()
           state.batchTimer = null
         })
       },

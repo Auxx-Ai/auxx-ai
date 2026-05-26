@@ -279,7 +279,7 @@ export class MessageSenderService {
     if (capabilities.requiresRecipients && (!input.to || input.to.length === 0)) {
       throw new Error('At least one recipient is required')
     }
-    if (!input.textHtml && !input.textPlain) {
+    if (!input.textHtml && !input.textPlain && !input.attachmentIds?.length) {
       throw new Error('Message content is required')
     }
   }

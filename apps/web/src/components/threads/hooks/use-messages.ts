@@ -70,15 +70,25 @@ export function useMessages({ threadId, enabled = true }: UseMessagesOptions): U
   useEffect(() => {
     if (!data || !threadId) return
 
-    // Populate message store
+    // Populate message store. Additive — won't drop optimistic entries that
+    // aren't in `data` (e.g. a just-sent message whose mutation `onSuccess`
+    // wrote to the store before this effect re-fired from a stale cache).
     setMessages(data.messages)
 
-    // Populate list store
-    setList(threadId, {
-      messageIds: data.messages.map((m) => m.id),
-      total: data.total,
-      fetchedAt: Date.now(),
-    })
+    // Only seed the list when it hasn't been populated yet. On remount with
+    // a warm tRPC cache (e.g. a chat thread's compose instance popping out
+    // floating a second time → new `ChatPanelMessages` mount), `data` is
+    // synchronously available from queryClient and this effect would
+    // otherwise re-run and clobber `appendMessage`/`removeMessage` mutations
+    // applied since the original fetch — wiping the just-sent message from
+    // both the floating panel and the thread view.
+    if (!cachedList) {
+      setList(threadId, {
+        messageIds: data.messages.map((m) => m.id),
+        total: data.total,
+        fetchedAt: Date.now(),
+      })
+    }
 
     // Extract unique participant IDs and queue fetches
     const allParticipantIds = data.messages.flatMap((m) => m.participants)
@@ -86,7 +96,7 @@ export function useMessages({ threadId, enabled = true }: UseMessagesOptions): U
     for (const id of uniqueIds) {
       requestParticipant(id)
     }
-  }, [data, threadId, setList, setMessages, requestParticipant])
+  }, [data, threadId, cachedList, setList, setMessages, requestParticipant])
 
   return {
     messages,

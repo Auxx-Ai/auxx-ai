@@ -6,7 +6,7 @@ import { toastError } from '@auxx/ui/components/toast'
 import { cn } from '@auxx/ui/lib/utils'
 import { Upload } from 'lucide-react'
 import type React from 'react'
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useDropzone } from 'react-dropzone'
 import { EditorToolbar } from '~/components/editor/editor-button'
 import { EditorProvider, useEditorContext } from '~/components/editor/editor-context'
@@ -97,6 +97,21 @@ function ChatComposerInner({
     },
   })
 
+  // Keep focus in the editor across a send. The editor's `editable` flag
+  // flips false while `isSending` is true, which makes the browser blur the
+  // contenteditable element; calling `focus()` synchronously inside
+  // `onSendSuccess` is too early because the re-enable hasn't rendered yet.
+  // Watching the falling edge of `isSending` runs after the editor has flipped
+  // back to `editable`, so focus sticks. Critical for the chat experience —
+  // an agent typing rapid replies shouldn't have to click back into the box.
+  const wasSendingRef = useRef(false)
+  useEffect(() => {
+    if (wasSendingRef.current && !isSending) {
+      editor?.commands.focus('end')
+    }
+    wasSendingRef.current = isSending
+  }, [isSending, editor])
+
   const allAttachments = useMemo(() => {
     const filesFromSelect: FileAttachment[] = fileSelect.selectedItems
       .filter((item) => item.source === 'filesystem' || item.serverFileId)
@@ -121,13 +136,28 @@ function ChatComposerInner({
       toastError({ title: 'Missing channel', description: 'No chat channel for this thread.' })
       return
     }
-    const plainContent = editor?.getText()?.trim() ?? ''
-    if (!plainContent) {
-      toastError({ title: 'Empty message', description: 'Type something before sending.' })
+    const plainContent = editor?.getText() ?? ''
+    const hasAttachment = allAttachments.length > 0
+    if (!plainContent.trim() && !hasAttachment) {
+      toastError({
+        title: 'Empty message',
+        description: 'Type something or attach a file before sending.',
+      })
       return
     }
-    send({ textHtml: content, attachments: allAttachments })
+    send({ textHtml: content, textPlain: plainContent, attachments: allAttachments })
   }, [isSending, editor, integrationId, content, allAttachments, send])
+
+  const handleKeyDown = useCallback(
+    (event: React.KeyboardEvent<HTMLDivElement>) => {
+      if (event.metaKey && event.key === 'Enter') {
+        event.preventDefault()
+        event.stopPropagation()
+        handleSendClick()
+      }
+    },
+    [handleSendClick]
+  )
 
   const handleContentChange = useCallback((next: string) => {
     setContent((prev) => (prev === next ? prev : next))
@@ -232,7 +262,6 @@ function ChatComposerInner({
         <ChatPanelHeader
           threadId={thread.id}
           isDialogMode={isDialogMode}
-          onClose={onClose}
           onPopOut={onPopOut}
           onMinimize={onMinimize}
           onDockBack={onDockBack}
@@ -251,6 +280,7 @@ function ChatComposerInner({
           isDragActive && 'border-transparent bg-white hover:bg-white hover:border-transparent'
         )}
         onClick={handleWrapperClick}
+        onKeyDown={handleKeyDown}
         onFocus={(e) => {
           if (!e.currentTarget.contains(e.relatedTarget)) {
             activeState.setHasFocus(true)
@@ -285,7 +315,6 @@ function ChatComposerInner({
             placeholder='Type your reply...'
             editable={!aiToolsState.isProcessing && !isSending}
             popoverClassName={popoverZIndex}
-            onEnter={handleSendClick}
             contentClassName='sm:min-h-[60px] py-2 text-sm'
           />
 
@@ -341,7 +370,6 @@ function ChatComposerInner({
               fileSelect={fileSelect}
               showFormatting={false}
               allowSchedule={false}
-              showMetaShortcut={false}
               popoverClassName={popoverZIndex}
               aiToolsProps={{
                 threadId: thread.id,

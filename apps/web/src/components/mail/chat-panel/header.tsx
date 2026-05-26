@@ -12,7 +12,8 @@ import { asChatThreadMetadata } from '../chat-visitor-sidebar'
 interface ChatPanelHeaderProps {
   threadId: string
   isDialogMode: boolean
-  onClose: () => void
+  /** When omitted, the close (X) button is not rendered. */
+  onClose?: () => void
   onPopOut?: () => void
   onMinimize?: () => void
   onDockBack?: () => void
@@ -96,13 +97,15 @@ export function ChatPanelHeader({
             <Minus />
           </Button>
         )}
-        <Button
-          size='icon-sm'
-          variant='ghost'
-          className='rounded-full text-muted-foreground hover:bg-gray-200 dark:hover:bg-gray-700'
-          onClick={onClose}>
-          <X />
-        </Button>
+        {onClose && (
+          <Button
+            size='icon-sm'
+            variant='ghost'
+            className='rounded-full text-muted-foreground hover:bg-gray-200 dark:hover:bg-gray-700'
+            onClick={onClose}>
+            <X />
+          </Button>
+        )}
       </div>
     </div>
   )
