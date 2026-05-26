@@ -580,30 +580,50 @@ export class MessageComposerService {
   }
 
   /**
-   * Appends signature to message body
+   * Appends signature to message body.
+   * Signatures live as EntityInstance(entityType='signature') with the body
+   * stored as a FieldValue keyed by CustomField.systemAttribute='signature_body'.
    */
   async appendSignature(
     content: { html?: string | null; plain?: string | null },
     signatureId: string,
-    userId: string
+    _userId: string
   ): Promise<{ html?: string | null; plain?: string | null }> {
     if (!signatureId) return content
 
-    const signature = await this.db.query.Signature.findFirst({
-      where: (signatures, { eq, and, or }) =>
+    const [row] = await this.db
+      .select({ body: schema.FieldValue.valueText })
+      .from(schema.EntityInstance)
+      .innerJoin(
+        schema.CustomField,
         and(
-          eq(signatures.id, signatureId),
-          or(eq(signatures.createdById, userId), eq(signatures.organizationId, this.organizationId))
-        ),
-    })
+          eq(schema.CustomField.entityDefinitionId, schema.EntityInstance.entityDefinitionId),
+          eq(schema.CustomField.systemAttribute, 'signature_body')
+        )
+      )
+      .innerJoin(
+        schema.FieldValue,
+        and(
+          eq(schema.FieldValue.entityId, schema.EntityInstance.id),
+          eq(schema.FieldValue.fieldId, schema.CustomField.id)
+        )
+      )
+      .where(
+        and(
+          eq(schema.EntityInstance.id, signatureId),
+          eq(schema.EntityInstance.organizationId, this.organizationId)
+        )
+      )
+      .limit(1)
 
-    if (!signature) return content
+    const body = row?.body
+    if (!body) return content
 
     return {
-      html: content.html ? `${content.html}${signature.body}` : signature.body,
+      html: content.html ? `${content.html}${body}` : body,
       plain: content.plain
-        ? `${content.plain}\n${outboundHtmlToText(signature.body)}`
-        : outboundHtmlToText(signature.body),
+        ? `${content.plain}\n${outboundHtmlToText(body)}`
+        : outboundHtmlToText(body),
     }
   }
 }

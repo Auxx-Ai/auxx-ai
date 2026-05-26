@@ -188,8 +188,10 @@ export const SYSTEM_ATTRIBUTES = [
   'inbox_settings',
 
   // ─── Signature fields ───────────────────────────────────────────
-  'is_default',
-  'visibility',
+  'signature_name',
+  'signature_body',
+  'signature_is_default',
+  'signature_visibility',
 ] as const
 
 /** Union type of all valid system attribute identifiers */

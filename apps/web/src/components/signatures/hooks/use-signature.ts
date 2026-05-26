@@ -12,10 +12,10 @@ import type { RecordMeta } from '~/components/resources/store/record-store'
  */
 interface SignatureRecordMeta extends RecordMeta {
   fieldValues: {
-    name?: string
-    body?: string
-    is_default?: boolean
-    visibility?: SignatureVisibility
+    signature_name?: string
+    signature_body?: string
+    signature_is_default?: boolean
+    signature_visibility?: SignatureVisibility
     created_by_id?: string
   }
 }
@@ -61,7 +61,7 @@ export function useSignatures(): UseSignaturesResult {
 
     const items: SignatureItem[] = records.map((record) => {
       // Handle visibility being returned as array from entity system
-      const rawVisibility = record.fieldValues?.visibility
+      const rawVisibility = record.fieldValues?.signature_visibility
       const visibility: SignatureVisibility = Array.isArray(rawVisibility)
         ? (rawVisibility[0] ?? 'private')
         : (rawVisibility ?? 'private')
@@ -69,9 +69,9 @@ export function useSignatures(): UseSignaturesResult {
       return {
         id: record.id,
         recordId: record.recordId,
-        name: record.fieldValues?.name ?? record.displayName ?? 'Untitled',
-        body: record.fieldValues?.body ?? '',
-        isDefault: record.fieldValues?.is_default ?? false,
+        name: record.fieldValues?.signature_name ?? record.displayName ?? 'Untitled',
+        body: record.fieldValues?.signature_body ?? '',
+        isDefault: record.fieldValues?.signature_is_default ?? false,
         visibility,
         createdById: record.fieldValues?.created_by_id,
       }
