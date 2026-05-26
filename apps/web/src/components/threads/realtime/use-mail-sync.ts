@@ -105,10 +105,32 @@ export function useMailSync() {
   const handleMessageCreated = useCallback(
     (data: MessageCreatedEvent['data'] | null) => {
       if (!data?.messageId || !data?.threadId) return
-      requestMessage(data.messageId)
-      appendMessage(data.threadId, data.messageId)
+      const { messageId, threadId } = data
+
+      // If the message data is already in the store (e.g. optimistic write
+      // from a local send), append immediately.
+      if (useMessageStore.getState().messages.has(messageId)) {
+        appendMessage(threadId, messageId)
+        setThreadPatch(threadId, { latestMessageId: messageId })
+        return
+      }
+
+      // Otherwise, kick off the fetch and defer the list append + thread
+      // patch until the message data lands. Without this, the id sits in
+      // `messageIds` with no entry in `messages` for ~50ms (batch window),
+      // and `useMessages` filters it out — visible as a missing message.
+      requestMessage(messageId)
+      const unsub = useMessageStore.subscribe(
+        (s) => s.messages.has(messageId),
+        (hasNow) => {
+          if (!hasNow) return
+          appendMessage(threadId, messageId)
+          setThreadPatch(threadId, { latestMessageId: messageId })
+          unsub()
+        }
+      )
     },
-    [requestMessage, appendMessage]
+    [requestMessage, appendMessage, setThreadPatch]
   )
 
   const handleMessageUpdated = useCallback(

@@ -694,6 +694,39 @@
     transition-delay: var(--auxx-chat-panel-open-delay);
   }
 
+  /* Mobile (< Tailwind `sm` breakpoint, 640px): open shell fills the viewport.
+   * Uses `100dvh` so the on-screen keyboard and dynamic browser chrome don't
+   * crop the bottom of the frame. The closed launcher keeps its corner
+   * position and small size — only the open state goes fullscreen. */
+  @media (max-width: 639.98px) {
+    .auxx-chat-shell--open {
+      width: 100vw;
+      height: 100vh;
+      height: 100dvh;
+      max-width: 100vw;
+      max-height: 100dvh;
+      border-radius: 0;
+      /* Zero the radius vars so per-frame clip utilities
+       * (auxx-chat-clip-top/bottom, auxx-chat-frame children) also go square. */
+      --auxx-chat-shell-radius-top: 0px;
+      --auxx-chat-shell-radius-bottom: 0px;
+    }
+    /* Keep the launcher's corner anchor (right/bottom or left/bottom) — do
+     * NOT set the opposing edges. With width/height = 100vw/100dvh, the open
+     * shell still grows from the launcher corner because top/left (or
+     * top/right for bottom-left) stay `auto`. Setting `inset: 0` would
+     * over-constrain the box and the browser would anchor it at top-left,
+     * making the open animation grow from the wrong corner. */
+    .auxx-chat-shell--open.auxx-chat-shell--bottom-right {
+      right: 0;
+      bottom: 0;
+    }
+    .auxx-chat-shell--open.auxx-chat-shell--bottom-left {
+      left: 0;
+      bottom: 0;
+    }
+  }
+
   /* Per-frame corner clipping. The shell deliberately has no overflow:hidden
    * (the closed-launcher unread badge sits outside the box). Each frame
    * either applies these classes directly OR wraps children in

@@ -13,6 +13,8 @@ interface ChatMessageGroupProps {
   messageActions: EmailActions
   /** True when the last message of the run is the latest in the thread. */
   isLast: boolean
+  /** Class forwarded to per-message dropdown content — used to bump z-index above floating compose. */
+  popoverClassName?: string
 }
 
 /**
@@ -22,7 +24,12 @@ interface ChatMessageGroupProps {
  * Clicking any bubble expands the whole group: every bubble gets full
  * rounding, the gap opens, and each shows its own timestamp/receipt.
  */
-export function ChatMessageGroup({ messages, messageActions, isLast }: ChatMessageGroupProps) {
+export function ChatMessageGroup({
+  messages,
+  messageActions,
+  isLast,
+  popoverClassName,
+}: ChatMessageGroupProps) {
   const [expanded, setExpanded] = useState(false)
   const rootRef = useRef<HTMLDivElement>(null)
 
@@ -44,7 +51,7 @@ export function ChatMessageGroup({ messages, messageActions, isLast }: ChatMessa
     <div ref={rootRef} className='mx-auto w-full max-w-2xl'>
       <div
         className={cn(
-          'grid w-fit min-w-1/2 max-w-[85%] grid-cols-[minmax(0,1fr)] transition-all duration-300',
+          'grid w-fit max-w-[80%] grid-cols-[minmax(0,max-content)] transition-all duration-300',
           isInbound ? 'mr-auto' : 'ml-auto',
           expanded ? 'gap-2' : 'gap-0.5'
         )}>
@@ -59,6 +66,7 @@ export function ChatMessageGroup({ messages, messageActions, isLast }: ChatMessa
               groupPosition={position}
               isExpanded={expanded}
               onToggle={onToggle}
+              popoverClassName={popoverClassName}
             />
           )
         })}

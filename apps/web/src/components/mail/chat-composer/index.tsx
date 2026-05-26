@@ -89,8 +89,12 @@ function ChatComposerInner({
   const { send, isSending } = useChatSend({
     threadId: thread.id,
     integrationId,
-    onSendSuccess,
-    onClose,
+    onSendSuccess: () => {
+      editor?.commands.clearContent(true)
+      setContent('')
+      setAttachments([])
+      onSendSuccess()
+    },
   })
 
   const allAttachments = useMemo(() => {
@@ -337,11 +341,12 @@ function ChatComposerInner({
               fileSelect={fileSelect}
               showFormatting={false}
               allowSchedule={false}
+              showMetaShortcut={false}
               popoverClassName={popoverZIndex}
               aiToolsProps={{
                 threadId: thread.id,
                 hasContent,
-                hasPreviousMessages: (thread.messages?.length ?? 0) > 0,
+                hasPreviousMessages: (thread.messageCount ?? thread.messages?.length ?? 0) > 0,
                 state: aiToolsState,
                 onOperation: handleAIOperation,
               }}

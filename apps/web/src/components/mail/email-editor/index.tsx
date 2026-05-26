@@ -32,6 +32,7 @@ import { useCountUpdates } from '~/components/mail/hooks'
 import { useComposeStore } from '~/components/mail/store/compose-store'
 import { SignatureEditor } from '~/components/signatures/ui'
 import { getMessageListStoreState } from '~/components/threads/store/message-list-store'
+import { getMessageStoreState, type MessageMeta } from '~/components/threads/store/message-store'
 import { getThreadStoreState } from '~/components/threads/store/thread-store'
 import { useAnalytics } from '~/hooks/use-analytics'
 import { useConfirm } from '~/hooks/use-confirm'
@@ -96,6 +97,20 @@ const toPayload = (recipients: RecipientState[]): ParticipantInputData[] =>
     identifierType: r.identifierType,
     name: r.name || undefined,
   }))
+
+function htmlToSnippet(html: string, maxLen = 140): string {
+  const text = html
+    .replace(/<style[\s\S]*?<\/style>/gi, '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/\s+/g, ' ')
+    .trim()
+  return text.length > maxLen ? `${text.slice(0, maxLen - 1)}…` : text
+}
+
 function ReplyComposeEditorComponent({
   thread,
   sourceMessage,
@@ -347,7 +362,7 @@ function ReplyComposeEditorComponent({
 
   const sendMessageMutation = api.thread.sendMessage.useMutation({
     onMutate: () => setIsSending(true),
-    onSuccess: (sentMessage) => {
+    onSuccess: (sentMessage, variables) => {
       toastSuccess({ description: 'Message sent successfully' })
 
       // Draft cleanup (if sending from a draft)
@@ -380,12 +395,42 @@ function ReplyComposeEditorComponent({
         utils.message.listByThread.invalidate({ threadId: sentMessage.threadId })
       }
 
-      // Thread metadata patch
-      if (sentMessage.threadId) {
+      // Thread metadata patch + optimistic MessageMeta — point the row's
+      // snippet/sender at the new message in the same render. Without the
+      // synthesized message entry, `useMessage` returns undefined for the
+      // ~50ms request batch window and the snippet line blanks out.
+      if (sentMessage.threadId && sentMessage.id) {
+        const sentAt = sentMessage.sentAt?.toISOString() ?? new Date().toISOString()
+        const optimistic: MessageMeta = {
+          id: sentMessage.id,
+          threadId: sentMessage.threadId,
+          subject: sentMessage.subject ?? null,
+          snippet: htmlToSnippet(variables.textHtml ?? ''),
+          textHtml: variables.textHtml ?? null,
+          textPlain: variables.textPlain ?? null,
+          isInbound: false,
+          isFirstInThread: false,
+          hasAttachments: (variables.attachments?.length ?? 0) > 0,
+          hasHtmlBody: !!variables.textHtml,
+          hasTextBody: !!variables.textPlain,
+          sentAt,
+          receivedAt: null,
+          createdAt: sentAt,
+          participants: [],
+          createdById: null,
+          sendStatus: 'SENT',
+          providerError: null,
+          attempts: 1,
+          attachments: [],
+          messageType: 'EMAIL',
+        }
+        getMessageStoreState().setMessages([optimistic])
+
         const currentThread = getThreadStoreState().getThread(sentMessage.threadId)
         if (currentThread) {
           getThreadStoreState().updateThread(sentMessage.threadId, {
-            lastMessageAt: sentMessage.sentAt?.toISOString() ?? new Date().toISOString(),
+            lastMessageAt: sentAt,
+            latestMessageId: sentMessage.id,
           })
         }
       }

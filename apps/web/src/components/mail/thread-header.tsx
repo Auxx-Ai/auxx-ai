@@ -39,7 +39,7 @@ import { ActorPicker } from '../pickers/actor-picker'
 import { InboxPicker } from '../pickers/inbox-picker'
 import { TagPicker } from '../pickers/tag-picker'
 import { RecordBadge } from '../resources/ui'
-import { ChatHandoffBanner } from './chat-handoff-banner'
+import { ThreadHandoffControl } from './thread-handoff-control'
 import { useThreadContext } from './thread-provider'
 import { ThreadTag } from './thread-tag'
 import { ThreadTicketControl } from './thread-ticket-control'
@@ -230,14 +230,17 @@ export function ThreadHeader() {
         data-slot='thread-header'
         className='flex items-center px-4 py-2 sticky inset-x-0 top-0 z-1 bg-secondary dark:bg-muted-50 pb-3 mask-b-from-80% mask-b-to-100% w-full'>
         <div className='flex  w-full justify-between shrink-0 overflow-x-auto no-scrollbar '>
-          <div className='flex shrink-0 items-start gap-2 pt-0.5 ps-0.5'>
-            <InboxPicker
-              onChange={handleInboxChange}
-              selected={thread?.inboxId ? [thread.inboxId] : undefined}
-              allowMultiple={false}>
-              <RecordBadge recordId={thread?.inboxId} />
-            </InboxPicker>
-            <ThreadTicketControl />
+          <div className='flex shrink-0 flex-col sm:flex-row sm:items-start gap-2 pt-0.5 ps-0.5'>
+            <div className='flex items-start gap-2'>
+              <InboxPicker
+                onChange={handleInboxChange}
+                selected={thread?.inboxId ? [thread.inboxId] : undefined}
+                allowMultiple={false}>
+                <RecordBadge recordId={thread?.inboxId} />
+              </InboxPicker>
+              <ThreadTicketControl />
+            </div>
+            {isChatChannel && <ThreadHandoffControl />}
           </div>
           <div data-slot='thread-header-actions' className=' flex items-center '>
             <Tooltip content={isDone ? 'Unarchive' : 'Archive'} shortcut='D'>
@@ -403,14 +406,6 @@ export function ThreadHeader() {
           )}
         </div>
       </div>
-
-      {isChatChannel && (
-        <ChatHandoffBanner
-          threadId={thread.id}
-          handoffState={thread.handoffState ?? 'ai'}
-          assigneeId={thread.assigneeId}
-        />
-      )}
 
       {isTrash && (
         <div className='px-4 mt-2'>

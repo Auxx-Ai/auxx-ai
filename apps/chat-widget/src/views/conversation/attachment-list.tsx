@@ -47,7 +47,7 @@ function AttachmentImage({
   channelId: string
   attachment: ChatAttachment
 }) {
-  const { url, loading, error } = useAttachmentUrl(channelId, attachment.id)
+  const { url, loading, error, retry } = useAttachmentUrl(channelId, attachment.id)
   const effectiveUrl = attachment.objectUrl ?? url
   if (effectiveUrl) {
     return (
@@ -60,15 +60,19 @@ function AttachmentImage({
           src={effectiveUrl}
           alt={attachment.name}
           className='max-h-[200px] max-w-[200px] rounded-md object-cover'
+          onError={attachment.objectUrl ? undefined : retry}
         />
       </a>
     )
   }
   if (error) {
     return (
-      <div className='rounded-md border border-destructive/40 bg-background/20 px-2 py-1 text-[11px]'>
-        Couldn’t load image — refresh to retry.
-      </div>
+      <button
+        type='button'
+        onClick={retry}
+        className='rounded-md border border-destructive/40 bg-background/20 px-2 py-1 text-left text-[11px] hover:bg-background/30'>
+        Couldn’t load image — click to retry.
+      </button>
     )
   }
   return (
@@ -88,7 +92,7 @@ function AttachmentChip({
   attachment: ChatAttachment
   isUser: boolean
 }) {
-  const { url, loading, error } = useAttachmentUrl(channelId, attachment.id)
+  const { url, loading, error, retry } = useAttachmentUrl(channelId, attachment.id)
   const effectiveUrl = attachment.objectUrl ?? url
   const Icon = iconForMime(attachment.mimeType)
 
@@ -99,7 +103,7 @@ function AttachmentChip({
         <span className='truncate text-xs font-medium'>{attachment.name}</span>
         <span className='text-[10px] opacity-70'>
           {formatBytes(attachment.size)}
-          {error ? ' · couldn’t load' : loading && !effectiveUrl ? ' · loading…' : ''}
+          {error ? ' · click to retry' : loading && !effectiveUrl ? ' · loading…' : ''}
         </span>
       </div>
     </>
@@ -112,6 +116,13 @@ function AttachmentChip({
       : 'bg-background text-foreground hover:bg-muted'
   )
 
+  if (error) {
+    return (
+      <button type='button' onClick={retry} className={classes}>
+        {body}
+      </button>
+    )
+  }
   if (!effectiveUrl) {
     return (
       <div className={cn(classes, 'cursor-default opacity-80')} aria-busy={loading}>

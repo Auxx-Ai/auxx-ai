@@ -42,6 +42,8 @@ interface ChatMessageDisplayProps {
   isExpanded?: boolean
   /** Toggle expansion (no-op when groupPosition === 'solo') */
   onToggle?: () => void
+  /** Class forwarded to the message dropdown content — used to bump z-index above floating compose. */
+  popoverClassName?: string
 }
 
 /**
@@ -59,6 +61,7 @@ const ChatMessageDisplay = ({
   nextNeighborExpanded = false,
   isExpanded = false,
   onToggle,
+  popoverClassName,
 }: ChatMessageDisplayProps) => {
   const { message, isLoading } = useMessage({ messageId })
   const { markAsUnread } = useThreadReadStatus(message?.threadId ?? null)
@@ -132,6 +135,10 @@ const ChatMessageDisplay = ({
                   key={a.id}
                   attachment={toAttachmentInfo(a)}
                   showRemoveButton={false}
+                  className={cn(
+                    !isInbound &&
+                      'border-primary-foreground/20 bg-primary-foreground/10 hover:bg-primary-foreground/20 dark:bg-primary-foreground/10 dark:hover:bg-primary-foreground/20 [&_[data-slot=file-icon]]:text-primary-foreground'
+                  )}
                 />
               ))}
             </div>
@@ -141,6 +148,7 @@ const ChatMessageDisplay = ({
           message={message}
           emailActions={messageActions}
           onMarkUnread={markAsUnread}
+          popoverClassName={popoverClassName}
         />
       </div>
       {showFooter && (
@@ -175,7 +183,7 @@ function TimestampLabel({
   return (
     <Tooltip
       content={sentAt ? date.toString() : ''}
-      delayDuration={0}
+      delayDuration={500}
       side='top'
       sideOffset={5}
       className='text-xs text-muted-foreground'>
@@ -262,10 +270,12 @@ function FloatingDropdown({
   message,
   emailActions,
   onMarkUnread,
+  popoverClassName,
 }: {
   message: MessageMeta
   emailActions: EmailActions
   onMarkUnread: () => void
+  popoverClassName?: string
 }) {
   const handleSelect = (action: (msg: any) => void) => () => {
     action(message)
@@ -274,17 +284,17 @@ function FloatingDropdown({
   return (
     <div
       onClick={(e) => e.stopPropagation()}
-      className='absolute -right-2 -top-2 opacity-0 transition-opacity group-hover/message:opacity-100'>
+      className='absolute right-1 top-1 transition-opacity sm:-right-2 sm:-top-2 sm:opacity-0 sm:group-hover/message:opacity-100'>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button
             variant='ghost'
             size='icon'
-            className='size-6 rounded-full border border-border bg-background shadow-sm'>
+            className='size-6 rounded-full bg-primary-200/40 hover:bg-primary-200/60 sm:border sm:border-border sm:bg-background sm:shadow-sm sm:hover:bg-background/80'>
             <EllipsisVertical className='size-3' />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align='end' className='w-56'>
+        <DropdownMenuContent align='end' className={cn('w-56', popoverClassName)}>
           <DropdownMenuGroup>
             <DropdownMenuItem onSelect={onMarkUnread}>
               <Mail className='opacity-60' />

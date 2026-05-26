@@ -4,26 +4,29 @@
 // stack is at root — pushing a deep frame (thread, kb-article…) hides the
 // bar so the user can focus on content.
 
-import { Home, MessageSquare } from 'lucide-react'
+import { HelpCircle, Home, MessageSquare } from 'lucide-react'
 import { cn } from '~/lib/cn'
 import type { TabId } from '~/navigation/use-tab-router'
 
 interface TabBarProps {
   activeTab: TabId
   onChange: (tab: TabId) => void
+  showHelp: boolean
 }
 
-const TABS: { id: TabId; label: string; icon: typeof Home }[] = [
+const ALL_TABS: { id: TabId; label: string; icon: typeof Home }[] = [
   { id: 'home', label: 'Home', icon: Home },
   { id: 'messages', label: 'Messages', icon: MessageSquare },
+  { id: 'help', label: 'Help', icon: HelpCircle },
 ]
 
-export function TabBar({ activeTab, onChange }: TabBarProps) {
+export function TabBar({ activeTab, onChange, showHelp }: TabBarProps) {
+  const tabs = showHelp ? ALL_TABS : ALL_TABS.filter((t) => t.id !== 'help')
   return (
     <nav
       className='auxx-chat-clip-bottom flex shrink-0 items-stretch justify-around divide-x divide-[color:var(--auxx-chat-hairline)] border-t border-[color:var(--auxx-chat-hairline)] bg-transparent'
       aria-label='Widget sections'>
-      {TABS.map((tab) => {
+      {tabs.map((tab) => {
         const isActive = tab.id === activeTab
         const IconComponent = tab.icon
         return (

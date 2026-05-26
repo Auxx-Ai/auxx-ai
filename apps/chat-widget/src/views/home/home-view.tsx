@@ -219,8 +219,8 @@ export function HomeView({
                 aria-pressed={floating}
                 className={
                   isLightHeader
-                    ? 'flex size-7 items-center justify-center rounded text-black/70 transition-colors hover:bg-black/5 hover:text-black'
-                    : 'flex size-7 items-center justify-center rounded text-white/90 transition-colors hover:bg-white/10 hover:text-white'
+                    ? 'hidden size-7 items-center justify-center rounded text-black/70 transition-colors hover:bg-black/5 hover:text-black sm:flex'
+                    : 'hidden size-7 items-center justify-center rounded text-white/90 transition-colors hover:bg-white/10 hover:text-white sm:flex'
                 }>
                 {floating ? (
                   <ArrowDownLeft className='size-4' aria-hidden='true' />

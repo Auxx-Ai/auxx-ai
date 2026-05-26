@@ -44,7 +44,7 @@ interface WidgetProps {
 
 const EXPANDED_PREFIX = 'auxx-chat-expanded:'
 
-const TAB_ORDER: TabId[] = ['home', 'messages']
+const TAB_ORDER: TabId[] = ['home', 'messages', 'help']
 
 interface NavSignature {
   activeTab: TabId
@@ -186,6 +186,12 @@ export function Widget({ channelId, cacheBust = null, scriptTheme }: WidgetProps
       })
       .catch((e) => setError(e instanceof Error ? e.message : 'Failed to load chat'))
   }, [channelId, cacheBust])
+
+  useEffect(() => {
+    if (config && config.home.knowledgeBase === null && router.activeTab === 'help') {
+      router.setActiveTab('home')
+    }
+  }, [config, router.activeTab, router.setActiveTab])
 
   // Per-visitor channel: mint the passport eagerly so the visitor channel can
   // connect even when the widget hasn't been opened yet. The badge fires off
@@ -433,7 +439,11 @@ export function Widget({ channelId, cacheBust = null, scriptTheme }: WidgetProps
               />
             </FrameTransition>
             {router.currentStack.isAtRoot ? (
-              <TabBar activeTab={router.activeTab} onChange={router.setActiveTab} />
+              <TabBar
+                activeTab={router.activeTab}
+                onChange={router.setActiveTab}
+                showHelp={config.home.knowledgeBase !== null}
+              />
             ) : null}
           </NavStackProvider>
         </div>
@@ -551,6 +561,7 @@ function headerTitle(view: NavView, frame: NavFrame | null, config: ChatConfig):
   if (frame) return frame.label
   if (view === 'home') return config.appearance.title
   if (view === 'messages') return 'Messages'
+  if (view === 'help') return config.home.knowledgeBase?.siteName ?? 'Help'
   return ''
 }
 
@@ -581,6 +592,8 @@ function renderFrame(
       )
     case 'messages':
       return <MessagesView channelId={channelId} subscribe={subscribe} config={config} />
+    case 'help':
+      return <KbSectionView channelId={channelId} sectionId={null} />
     case 'thread': {
       const raw = frame?.params?.threadId
       if (typeof raw !== 'string') return null

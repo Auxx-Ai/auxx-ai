@@ -9,7 +9,7 @@
 // refresh ~1 minute before that to avoid serving a stale URL that 403s mid-
 // render.
 
-import { useEffect, useState } from 'preact/hooks'
+import { useCallback, useEffect, useState } from 'preact/hooks'
 import { chatApi } from '~/transport/chat-api'
 
 interface CacheEntry {
@@ -24,16 +24,31 @@ export interface AttachmentUrlState {
   url: string | null
   loading: boolean
   error: boolean
+  /**
+   * Force a refetch — clears the cached URL for this attachment and triggers
+   * the effect to run again. Call from image `onError` or a manual retry
+   * button so a transient 5xx / expired-URL doesn't strand the user behind
+   * "refresh to retry."
+   */
+  retry: () => void
 }
 
 export function useAttachmentUrl(channelId: string, attachmentId: string): AttachmentUrlState {
-  const [state, setState] = useState<AttachmentUrlState>(() => {
+  const [nonce, setNonce] = useState(0)
+  const [state, setState] = useState<Omit<AttachmentUrlState, 'retry'>>(() => {
     const cached = cache.get(attachmentId)
     if (cached && cached.expiresAt > Date.now() + 60_000) {
       return { url: cached.url, loading: false, error: false }
     }
     return { url: null, loading: true, error: false }
   })
+
+  const retry = useCallback(() => {
+    cache.delete(attachmentId)
+    inflight.delete(attachmentId)
+    setState({ url: null, loading: true, error: false })
+    setNonce((n) => n + 1)
+  }, [attachmentId])
 
   useEffect(() => {
     const cached = cache.get(attachmentId)
@@ -69,7 +84,7 @@ export function useAttachmentUrl(channelId: string, attachmentId: string): Attac
     return () => {
       cancelled = true
     }
-  }, [channelId, attachmentId])
+  }, [channelId, attachmentId, nonce])
 
-  return state
+  return { ...state, retry }
 }

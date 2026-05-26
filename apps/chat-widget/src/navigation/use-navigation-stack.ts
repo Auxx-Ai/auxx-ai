@@ -7,7 +7,7 @@
 
 import { useCallback, useMemo, useState } from 'preact/hooks'
 
-export type NavView = 'home' | 'messages' | 'thread' | 'kb-section' | 'kb-article'
+export type NavView = 'home' | 'messages' | 'help' | 'thread' | 'kb-section' | 'kb-article'
 
 export interface NavFrame {
   id: string

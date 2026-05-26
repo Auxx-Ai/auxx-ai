@@ -495,6 +495,7 @@ export const EditorToolbar = ({
   showSend = true,
   showFormatting = true,
   allowSchedule = true,
+  showMetaShortcut = true,
   popoverClassName,
 }: Partial<EditorButtonsProps> & {
   fileSelect?: UseFileSelectReturn
@@ -503,6 +504,8 @@ export const EditorToolbar = ({
   showFormatting?: boolean
   /** When false, sends immediately (no schedule dropdown). */
   allowSchedule?: boolean
+  /** When false, hides the ⌘ glyph next to the Enter icon — used when plain Enter submits. */
+  showMetaShortcut?: boolean
   aiToolsProps?: {
     threadId?: string
     hasContent: boolean
@@ -709,6 +712,7 @@ export const EditorToolbar = ({
           disabled={disabled}
           popoverClassName={popoverClassName}
           allowSchedule={allowSchedule}
+          showMetaShortcut={showMetaShortcut}
         />
       )}
     </div>

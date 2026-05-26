@@ -13,7 +13,7 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import { type NavStack, useNavigationStack } from './use-navigation-stack'
 
-export type TabId = 'home' | 'messages'
+export type TabId = 'home' | 'messages' | 'help'
 
 interface PersistedSnapshot {
   activeTab: TabId
@@ -24,6 +24,7 @@ interface TabRouter {
   setActiveTab: (tab: TabId) => void
   homeStack: NavStack
   messagesStack: NavStack
+  helpStack: NavStack
   currentStack: NavStack
 }
 
@@ -39,7 +40,11 @@ function readSnapshot(channelId: string): PersistedSnapshot | null {
     const raw = window.localStorage.getItem(storageKey(channelId))
     if (!raw) return null
     const parsed = JSON.parse(raw) as { activeTab?: unknown }
-    if (parsed.activeTab === 'home' || parsed.activeTab === 'messages') {
+    if (
+      parsed.activeTab === 'home' ||
+      parsed.activeTab === 'messages' ||
+      parsed.activeTab === 'help'
+    ) {
       return { activeTab: parsed.activeTab }
     }
   } catch {
@@ -64,7 +69,9 @@ export function useTabRouter(channelId: string, initialTab: TabId = 'home'): Tab
 
   const homeStack = useNavigationStack()
   const messagesStack = useNavigationStack()
-  const currentStack = activeTab === 'home' ? homeStack : messagesStack
+  const helpStack = useNavigationStack()
+  const currentStack =
+    activeTab === 'home' ? homeStack : activeTab === 'messages' ? messagesStack : helpStack
 
   const timerRef = useRef<number | null>(null)
   useEffect(() => {
@@ -79,7 +86,7 @@ export function useTabRouter(channelId: string, initialTab: TabId = 'home'): Tab
   }, [channelId, activeTab])
 
   return useMemo(
-    () => ({ activeTab, setActiveTab, homeStack, messagesStack, currentStack }),
-    [activeTab, homeStack, messagesStack, currentStack]
+    () => ({ activeTab, setActiveTab, homeStack, messagesStack, helpStack, currentStack }),
+    [activeTab, homeStack, messagesStack, helpStack, currentStack]
   )
 }

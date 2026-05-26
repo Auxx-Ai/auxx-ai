@@ -29,10 +29,27 @@ export interface KbArticleResponse {
   updatedAt: string
 }
 
+export interface KbSearchHit {
+  id: string
+  title: string
+  emoji?: string
+  articleKind: KbArticleKind
+}
+
+export interface KbSearchResponse {
+  results: KbSearchHit[]
+}
+
 export function kbApi(channelId: string) {
   return {
     getTree: () => authedFetch<KbTreeResponse>(channelId, '/api/kb/tree'),
     getArticle: (id: string) =>
       authedFetch<KbArticleResponse>(channelId, `/api/kb/articles/${encodeURIComponent(id)}`),
+    search: (q: string, signal?: AbortSignal) =>
+      authedFetch<KbSearchResponse>(
+        channelId,
+        `/api/kb/search?q=${encodeURIComponent(q)}`,
+        signal ? { signal } : undefined
+      ),
   }
 }
