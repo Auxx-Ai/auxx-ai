@@ -4,7 +4,13 @@ import { Sparkles } from 'lucide-react'
 import Link from 'next/link'
 import { Button } from '~/components/ui/button'
 import { config } from '~/lib/config'
-import { MockAppSidebar, MockBrowserChrome, MockKopilotWindow, MockMainPage } from '../../_mocks'
+import {
+  MockAppSidebar,
+  MockBrowserChrome,
+  MockKopilotHeader,
+  MockKopilotWindow,
+  MockMainPage,
+} from '../../_mocks'
 import { KOPILOT_HERO_SCRIPT } from './kopilot-hero-script'
 
 export default function KopilotHero() {
@@ -52,13 +58,17 @@ export default function KopilotHero() {
           <MockBrowserChrome variant='regular'>
             <div className='flex h-[560px]'>
               <MockAppSidebar activeKey='kopilot' className='hidden md:flex' />
-              <MockMainPage>
+              <MockMainPage
+                header={
+                  <MockKopilotHeader
+                    breadcrumb={{
+                      trail: ['Chats'],
+                      title: 'Open Support Tickets Summary',
+                      titleMobile: 'Tickets',
+                    }}
+                  />
+                }>
                 <MockKopilotWindow
-                  breadcrumb={{
-                    trail: ['Chats'],
-                    title: 'Open Support Tickets Summary',
-                    titleMobile: 'Tickets',
-                  }}
                   script={KOPILOT_HERO_SCRIPT}
                   composerPlaceholder='Ask Kopilot...'
                   modelLabel='GPT-5.4 Nano'

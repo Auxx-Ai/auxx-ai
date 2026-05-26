@@ -15,6 +15,7 @@ export {
   MockThreadListBlock,
 } from './mock-blocks'
 export { MockBrowserChrome } from './mock-browser-chrome'
+export { MockKopilotHeader, type MockKopilotHeaderProps } from './mock-kopilot-header'
 export { MockKopilotPromptStory } from './mock-kopilot-prompt-story'
 export { MockKopilotWindow } from './mock-kopilot-window'
 export { MockMainPage } from './mock-main-page'

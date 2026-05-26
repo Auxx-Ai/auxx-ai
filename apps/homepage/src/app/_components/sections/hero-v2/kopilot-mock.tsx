@@ -6,8 +6,10 @@ import { motion, useReducedMotion } from 'motion/react'
 import {
   MockAppSidebar,
   MockBrowserChrome,
+  MockKopilotHeader,
   MockKopilotWindow,
   MockMainPage,
+  MockPanelFrame,
 } from '~/app/platform/ai/_mocks'
 import { KOPILOT_HERO_SCRIPT } from '~/app/platform/ai/kopilot/_components/kopilot-hero-script'
 import { AgentLog } from './agent-log'
@@ -26,7 +28,7 @@ export function KopilotMock() {
   return (
     <div className='pointer-events-none relative h-full min-h-[80vh] w-full select-none transform-3d'>
       {/* Crosshatch mesh background — fades radially */}
-      <div
+      {/* <div
         aria-hidden
         className='pointer-events-none absolute inset-0 mask-radial-from-55% mask-radial-to-75% opacity-60'
         style={{
@@ -37,71 +39,122 @@ export function KopilotMock() {
             repeating-linear-gradient(157.5deg, transparent, transparent 1px, rgba(120, 120, 140, 0.03) 1px, rgba(120, 120, 140, 0.03) 2px, transparent 2px, transparent 4px)
           `,
         }}
-      />
+      /> */}
 
-      {/* Back layer — chrome and the inner content (sidebar / main+kopilot) are SIBLINGS
-          under one relative wrapper. Each layer's Z is a direct world coordinate (no parent
-          transform compounding). Single float on the outer wrapper keeps the whole composition
-          moving as a unit. Entrance is Z-only: each layer starts ~40px closer to the viewer
-          than its resting Z, then settles back into its resting depth. */}
+      {/* Back layer — chrome shell ONLY. Sidebar + kopilot header are rendered as
+          independent root-level siblings below so each can drop in true screen-Y with
+          its own stagger. Chrome's interior is a sized placeholder with the sidebar/
+          main-page background colors so the shell reads correctly while the other
+          layers are still off-screen mid-animation. */}
       <motion.div
-        initial={reduce ? false : { opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 0.6, ease: 'easeOut' }}
+        initial={reduce ? false : { opacity: 0, y: -300 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 2, ease: [0.16, 1, 0.3, 1], delay: 0 }}
         className='absolute right-[-22vw] bottom-[-6vh] z-0 transform-3d'>
         <div className='relative rotate-x-[30deg] rotate-y-[24deg] rotate-[344deg] mask-radial-from-65% mask-radial-at-top-right mask-radial-[200%_100%] perspective-[4000px] transform-3d'>
-          <motion.div {...float(0)} className='relative w-[1100px] max-w-none transform-3d'>
-            {/* Layer 1 — chrome frame (world z:-160). Static; outer wrapper handles fade. */}
-            <div className='transform-3d' style={{ transform: 'translateZ(-160px)' }}>
-              <MockBrowserChrome allowOverflow variant='regular' className='transform-3d'>
-                <div className='h-[620px]' />
-              </MockBrowserChrome>
-            </div>
-
-            {/* Content layers — absolutely positioned over chrome's content area.
-                Top offset (50px) matches chrome's outer p-2 + header height (~9 + 41). */}
-            <div
-              className='pointer-events-none absolute flex transform-3d'
-              style={{ top: '50px', left: '10px', right: '10px', height: '620px' }}>
-              {/* Layer 2 — sidebar (world z:-40). Static. */}
-              <div
-                className='hidden flex-shrink-0 shadow-2xl shadow-black/50 transform-3d md:flex'
-                style={{ transform: 'translateZ(-40px)' }}>
-                <MockAppSidebar activeKey='kopilot' />
-              </div>
-
-              {/* Layer 3 — main page (world z:80), kopilot window nested at relative z:140 (world 220). Static. */}
-              <div
-                className='flex flex-1 shadow-2xl shadow-black/60 transform-3d'
-                style={{ transform: 'translateZ(80px)' }}>
-                <MockMainPage allowOverflow>
-                  <div
-                    className='flex h-full min-h-0 flex-1 flex-col overflow-hidden rounded-[calc(var(--radius-2xl)-4px)] transform-3d'
-                    style={{ transform: 'translateZ(140px)' }}>
-                    <MockKopilotWindow
+          <motion.div className='relative w-[1100px] max-w-none transform-3d'>
+            <MockBrowserChrome variant='regular'>
+              <div className='flex h-[620px] bg-mock-page-bg'>
+                {/* Transparent sidebar spacer — sidebar is rendered as an independent
+                    sibling, but MockMainPage (and the kopilot header inside it) must
+                    still be offset by the sidebar width so the header lines up with
+                    where the sidebar lands. Hidden on mobile since the sidebar itself
+                    is hidden below md. */}
+                <div className='hidden w-[220px] shrink-0 md:block' />
+                <MockMainPage
+                  noPanelFrame
+                  header={
+                    <MockKopilotHeader
                       breadcrumb={{
                         trail: ['Chats'],
                         title: 'Open Support Tickets Summary',
                         titleMobile: 'Tickets',
                       }}
-                      script={KOPILOT_HERO_SCRIPT}
-                      composerPlaceholder='Ask Kopilot...'
-                      modelLabel='GPT-5.4 Nano'
                     />
-                  </div>
+                  }>
+                  <div className='h-full w-full' />
                 </MockMainPage>
+              </div>
+            </MockBrowserChrome>
+          </motion.div>
+        </div>
+      </motion.div>
+
+      {/* Sidebar — INDEPENDENT root-level sibling. Y motion on the OUTER motion.div
+          (before the tilt) gives a true screen-Y drop. Matched outer wrappers + tilt
+          + perspective + width align with the chrome layer. Inside the matching tilt,
+          MockAppSidebar is absolutely positioned at the chrome's sidebar slot. */}
+      <motion.div
+        initial={reduce ? false : { opacity: 0, y: -300 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 2, ease: [0.16, 1, 0.3, 1], delay: 0.5 }}
+        className='absolute right-[-22vw] bottom-[-6vh] z-0 transform-3d'>
+        <div className='relative rotate-x-[30deg] rotate-y-[24deg] rotate-[344deg] perspective-[4000px] mask-radial-from-65% mask-radial-at-top-right mask-radial-[200%_100%]  transform-3d'>
+          <motion.div className='relative w-[1100px] max-w-none transform-3d'>
+            <div className='relative h-[680px] w-full transform-3d'>
+              <div
+                className='absolute flex transform-3d'
+                style={{
+                  top: 50,
+                  left: 20,
+                  width: 220,
+                  bottom: 10,
+                  transform: 'translateZ(60px)',
+                }}>
+                <div className='hidden h-full w-full overflow-hidden rounded-2xl shadow-2xl shadow-black/30 md:flex'>
+                  <MockAppSidebar activeKey='kopilot' className='hidden h-full w-full md:flex' />
+                </div>
               </div>
             </div>
           </motion.div>
         </div>
       </motion.div>
 
-      {/* Mid layer — agent log. translateZ:340 keeps it above the back-layer Kopilot world z (220). */}
+      {/* Panel frame — INDEPENDENT root-level sibling with its own perspective + tilt + float.
+          Y motion is applied to the OUTER motion.div BEFORE the rotation, so the drop is in
+          true screen-Y (not tilted local-Y). Outer wrappers match the back-layer wrapper's
+          positioning + tilt EXACTLY so the panel visually aligns with the chrome's main-page
+          area. Inside the matching tilt, panel is absolutely positioned at the chrome interior
+          offsets (top:62 left:241 right:21 bottom:21). */}
       <motion.div
-        initial={reduce ? false : { opacity: 0, z: 340 }}
-        animate={{ opacity: 1, z: 340 }}
-        transition={{ duration: 0.5, ease: 'easeOut', delay: 0.15 }}
-        className='absolute right-[18%] top-[38%] z-10 perspective-[4000px] transform-3d'>
+        initial={reduce ? false : { opacity: 0, y: -300 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 2, ease: [0.16, 1, 0.3, 1], delay: 1 }}
+        className='absolute right-[-22vw] bottom-[-6vh] z-[1] transform-3d'>
+        <div className='relative rotate-x-[30deg] rotate-y-[24deg] rotate-[344deg] perspective-[4000px] transform-3d'>
+          <motion.div className='relative w-[1100px] max-w-none transform-3d'>
+            {/* This div mirrors the chrome's outer size so the panel can position
+                inside its main-page interior. Height matches chrome: header(~50) + 620. */}
+            <div className='relative h-[680px] w-full transform-3d'>
+              {/* Width is calc(100% − sidebar − chrome padding) so the panel fills the
+                  main-page area exactly: full chrome interior on mobile (no sidebar),
+                  full minus the 220px sidebar on desktop. 29 = 8 (chrome p-2 left) + 21
+                  (right offset). 249 = 228 (chrome p-2 + sidebar) + 21. */}
+              <div
+                className='absolute top-[180px] left-[8px] bottom-[21px] flex w-[calc(100%_-_29px)] transform-3d md:left-[228px] md:w-[calc(100%_-_320px)]'
+                style={{ transform: 'translateZ(120px)' }}>
+                <div className='flex h-full min-h-0 flex-1 flex-col shadow-2xl shadow-black/40 transform-3d rounded-2xl'>
+                  <MockPanelFrame>
+                    <MockKopilotWindow
+                      script={KOPILOT_HERO_SCRIPT}
+                      composerPlaceholder='Ask Kopilot...'
+                      modelLabel='GPT-5.4 Nano'
+                    />
+                  </MockPanelFrame>
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        </div>
+      </motion.div>
+
+      {/* Mid layer — AgentLog. Root-level sibling with its own perspective + tilt + float
+          (breathing). Y drop on the outer motion.div (before tilt) for true screen-Y. */}
+      <motion.div
+        initial={reduce ? false : { opacity: 0, y: -300, z: 340 }}
+        animate={{ opacity: 1, y: 0, z: 340 }}
+        transition={{ duration: 2, ease: [0.16, 1, 0.3, 1], delay: 1.5 }}
+        className='absolute right-[18%] top-[18%] z-10 perspective-[4000px] transform-3d '>
         <motion.div {...float(1.2)} className='transform-3d'>
           <div className='rotate-x-[30deg] rotate-y-[24deg] rotate-[344deg]'>
             <AgentLog />
@@ -109,13 +162,14 @@ export function KopilotMock() {
         </motion.div>
       </motion.div>
 
-      {/* Front layer — Kopilot prompt bubble, highest at translateZ:440. */}
+      {/* Front layer — Kopilot prompt bubble. Root-level sibling with its own perspective +
+          tilt + float (breathing). Y drop on the outer motion.div for true screen-Y. */}
       <motion.div
-        initial={reduce ? false : { opacity: 0, z: 440 }}
-        animate={{ opacity: 1, z: 440 }}
-        transition={{ duration: 0.5, ease: 'easeOut', delay: 0.25 }}
-        className='absolute right-[10%] top-[18%] z-20 perspective-[4000px] transform-3d'>
-        <motion.div {...float(2.4)}>
+        initial={reduce ? false : { opacity: 0, y: -300, z: 440 }}
+        animate={{ opacity: 1, y: 0, z: 440 }}
+        transition={{ duration: 2, ease: [0.16, 1, 0.3, 1], delay: 2 }}
+        className='absolute right-[10%] top-[8%] z-20 perspective-[4000px] transform-3d'>
+        <motion.div {...float(2.4)} className='transform-3d'>
           <div className='rotate-x-[30deg] rotate-y-[24deg] rotate-[344deg]'>
             <div className='w-[360px] max-w-full rounded-xl border border-foreground/10 bg-background/95 p-3.5 shadow-2xl shadow-black/25 backdrop-blur-md'>
               <div className='mb-2 flex items-center gap-2'>

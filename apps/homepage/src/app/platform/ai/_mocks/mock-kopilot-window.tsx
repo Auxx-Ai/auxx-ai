@@ -2,27 +2,13 @@
 
 'use client'
 
-import {
-  ChevronRight,
-  ChevronsUpDown,
-  PanelLeft,
-  Plus,
-  Send,
-  Sparkles,
-  SquareSlash,
-} from 'lucide-react'
+import { ChevronsUpDown, Send, Sparkles, SquareSlash } from 'lucide-react'
 import { useEffect, useRef } from 'react'
 import { cn } from '~/lib/utils'
 import { TurnView } from './turn-view'
 import { type KopilotStoryScript, useKopilotStory } from './use-kopilot-story'
 
 interface MockKopilotWindowProps {
-  breadcrumb?: {
-    trail: string[]
-    title: string
-    /** Shorter title rendered below `sm:` to keep the header on one line. */
-    titleMobile?: string
-  }
   /** Story to play out. */
   script: KopilotStoryScript
   composerPlaceholder?: string
@@ -34,9 +20,12 @@ interface MockKopilotWindowProps {
  * Story-mode Kopilot chat surface. Plays a scripted multi-turn conversation
  * driven by `useKopilotStory`. Visual fidelity targets the real components
  * in `apps/web/src/components/kopilot/ui/`.
+ *
+ * The breadcrumb header has been extracted into `MockKopilotHeader` — render
+ * it separately above the panel frame so it can sit flat while the panel
+ * lifts in 3D.
  */
 export function MockKopilotWindow({
-  breadcrumb,
   script,
   composerPlaceholder = 'Ask Kopilot...',
   modelLabel = 'GPT-5.4 Nano',
@@ -57,8 +46,6 @@ export function MockKopilotWindow({
     <div
       ref={ref}
       className={cn('flex h-full min-h-0 flex-1 flex-col text-mock-window-foreground', className)}>
-      <Header breadcrumb={breadcrumb} />
-
       <div
         ref={scrollRef}
         className='no-scrollbar min-h-0 flex-1 overflow-y-auto px-3 py-4 sm:px-6 sm:py-6'>
@@ -78,37 +65,6 @@ export function MockKopilotWindow({
             modelLabel={modelLabel}
           />
         </div>
-      </div>
-    </div>
-  )
-}
-
-function Header({ breadcrumb }: { breadcrumb?: MockKopilotWindowProps['breadcrumb'] }) {
-  const titleMobile = breadcrumb?.titleMobile ?? breadcrumb?.title
-  return (
-    <div className='flex items-center justify-between border-b border-mock-window-border px-4 py-2 text-xs'>
-      <div className='flex min-w-0 items-center gap-2 text-mock-window-muted'>
-        <PanelLeft className='size-3.5 shrink-0' />
-        {breadcrumb?.trail.map((label) => (
-          <span key={label} className='hidden items-center gap-2 sm:flex'>
-            <span>{label}</span>
-            <ChevronRight className='size-3 text-mock-window-muted' />
-          </span>
-        ))}
-        {breadcrumb?.title ? (
-          <span className='hidden max-w-[28ch] truncate text-mock-window-foreground sm:inline'>
-            {breadcrumb.title}
-          </span>
-        ) : null}
-        {titleMobile ? (
-          <span className='max-w-[20ch] truncate text-mock-window-foreground sm:hidden'>
-            {titleMobile}
-          </span>
-        ) : null}
-      </div>
-      <div className='inline-flex shrink-0 items-center gap-1 rounded-md border border-mock-window-border px-2 py-1 text-mock-window-foreground'>
-        <Plus className='size-3' />
-        <span>New chat</span>
       </div>
     </div>
   )

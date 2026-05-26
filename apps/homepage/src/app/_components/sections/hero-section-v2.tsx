@@ -6,6 +6,7 @@ import { motion, useReducedMotion } from 'motion/react'
 import Link from 'next/link'
 import { Button } from '~/components/ui/button'
 import { useConfig } from '~/lib/config-context'
+import { HeroIllustration } from './hero-illustration'
 import { CyclingPill } from './hero-v2/cycling-pill'
 import { KopilotMock } from './hero-v2/kopilot-mock'
 
@@ -59,16 +60,8 @@ export default function HeroSectionV2() {
                 <Link href={urls.signup}>Start free trial</Link>
               </Button>
               <Button asChild variant='outline' className='rounded-full px-6 text-base'>
-                <Link href={urls.demo}>Book a demo</Link>
+                <Link href={urls.demo}>Try demo</Link>
               </Button>
-            </motion.div>
-
-            <motion.div
-              initial={reduce ? false : { opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5, ease: 'easeOut', delay: 0.3 }}
-              className='mt-12'>
-              <CyclingPill />
             </motion.div>
           </div>
 
@@ -77,7 +70,16 @@ export default function HeroSectionV2() {
             <KopilotMock />
           </div>
         </div>
+
+        <motion.div
+          initial={reduce ? false : { opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, ease: 'easeOut', delay: 0.3 }}
+          className='absolute inset-x-0 bottom-8 z-20 flex justify-start px-6'>
+          <CyclingPill />
+        </motion.div>
       </section>
+      <HeroIllustration />
     </main>
   )
 }

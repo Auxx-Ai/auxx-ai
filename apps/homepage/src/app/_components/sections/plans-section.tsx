@@ -265,9 +265,10 @@ export default function PlansSection() {
     return (
       <div
         data-plan={plan}
+        data-theme={plan === 'starter' ? 'dark' : undefined}
         className={cn(
           plan === 'starter' &&
-            'z-1 md:ring-muted/50 md:inset-shadow-xs relative isolate md:rounded-xl md:ring-1'
+            'dark text-foreground z-1 md:ring-muted/50 md:inset-shadow-xs relative isolate md:rounded-xl md:ring-1'
         )}>
         {plan === 'starter' && (
           <div
