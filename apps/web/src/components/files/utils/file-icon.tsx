@@ -135,11 +135,16 @@ export function getFileIcon(mimeType?: string, ext?: string, className?: string)
     const defaultIcon = getIcon('file')
     if (!defaultIcon) return null
     const DefaultIcon = defaultIcon.icon
-    return <DefaultIcon className={cn('size-3 text-muted-foreground', className)} />
+    return (
+      <DefaultIcon
+        data-slot='file-icon'
+        className={cn('size-3 text-muted-foreground', className)}
+      />
+    )
   }
 
   const Icon = iconData.icon
-  return <Icon className={cn('size-3 text-muted-foreground', className)} />
+  return <Icon data-slot='file-icon' className={cn('size-3 text-muted-foreground', className)} />
 }
 
 type FileIconProps = {

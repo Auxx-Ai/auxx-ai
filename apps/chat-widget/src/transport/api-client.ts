@@ -16,6 +16,7 @@ export interface ApiRequest {
   method?: string
   body?: unknown
   query?: Record<string, string>
+  signal?: AbortSignal
 }
 
 export async function authedFetch<T>(
@@ -39,6 +40,7 @@ export async function authedFetch<T>(
         ...(init.body ? { 'Content-Type': 'application/json' } : {}),
       },
       body: init.body ? JSON.stringify(init.body) : undefined,
+      signal: init.signal,
     })
   }
 

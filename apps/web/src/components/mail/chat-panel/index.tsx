@@ -52,7 +52,7 @@ export function ChatPanel({
         dragHandleProps={dragHandleProps}
       />
 
-      <ChatPanelMessages threadId={thread.id} />
+      <ChatPanelMessages threadId={thread.id} popoverClassName='z-[200]' />
 
       <ChatComposer
         thread={thread}

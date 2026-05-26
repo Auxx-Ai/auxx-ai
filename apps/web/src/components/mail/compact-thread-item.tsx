@@ -10,16 +10,7 @@ import { Skeleton } from '@auxx/ui/components/skeleton'
 import { cn } from '@auxx/ui/lib/utils'
 import { formatDistanceToNowStrict } from 'date-fns'
 import DOMPurify from 'dompurify'
-import {
-  Archive,
-  Bot,
-  Clock,
-  MessageCircle,
-  ShieldAlert,
-  Tag,
-  Trash2,
-  UserRound,
-} from 'lucide-react'
+import { Archive, Clock, ShieldAlert, Tag, Trash2, UserRound } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import type React from 'react'
 import { memo, useCallback, useMemo, useState } from 'react'
@@ -38,7 +29,7 @@ import {
 import { useSelectionAnchorId, useThreadSelectionStore } from '~/components/threads/store'
 import { threadFieldResolver } from '~/components/threads/utils/thread-field-resolver'
 import { useIsRecordProcessing } from '~/components/workflow/use-is-record-processing'
-import { ChatAssigneeChip } from './chat-assignee-chip'
+import { AssigneeChip } from './assignee-chip'
 import { useMailFilter } from './mail-filter-context'
 import { getIntegrationIcon } from './mail-status-config'
 import { ProcessingMenu } from './mail-thread-item'
@@ -165,11 +156,7 @@ export const CompactThreadItem = memo(function CompactThreadItem({
 
   const hasTags = (thread?.tagIds?.length ?? 0) > 0
 
-  // --- Chat-specific affordances (4b-i) ---
   const isChatThread = (thread?.integrationProvider as string | null) === 'chat'
-  const handoffState = thread?.handoffState ?? 'ai'
-  const isAssignedToMe =
-    !!currentUserId && !!thread?.assigneeId && thread.assigneeId.endsWith(`:${currentUserId}`)
   const isLiveChat = useMemo(() => {
     if (!isChatThread || !thread?.lastMessageAt) return false
     if (!latestMessage?.isInbound) return false
@@ -248,8 +235,14 @@ export const CompactThreadItem = memo(function CompactThreadItem({
               {isProcessing ? (
                 <SparkleIcon variant='generating' className='shrink-0' />
               ) : (
-                <div className='rounded-full border p-0.5 text-blue-500'>
+                <div className='relative rounded-full border p-0.5 text-blue-500'>
                   {getIntegrationIcon(thread.integrationProvider)}
+                  {isLiveChat && (
+                    <span
+                      className='absolute -top-0.5 -right-0.5 size-1.5 rounded-full bg-blue-500 ring-2 ring-background animate-pulse'
+                      aria-label='Live chat'
+                    />
+                  )}
                 </div>
               )}
             </div>
@@ -288,15 +281,6 @@ export const CompactThreadItem = memo(function CompactThreadItem({
 
             {/* Subject + Snippet */}
             <div className='flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden ms-2'>
-              {isChatThread && (
-                <MessageCircle
-                  className={cn(
-                    'size-3 shrink-0 text-muted-foreground',
-                    isLiveChat && 'text-blue-500'
-                  )}
-                  aria-label='Chat thread'
-                />
-              )}
               <span
                 className={cn(
                   'shrink-0 truncate text-xs',
@@ -306,37 +290,7 @@ export const CompactThreadItem = memo(function CompactThreadItem({
                 )}>
                 {thread.subject || '(no subject)'}
               </span>
-              {isChatThread &&
-                (handoffState === 'human' ? (
-                  isAssignedToMe ? (
-                    <span
-                      className='shrink-0 rounded-full border border-blue-500/40 bg-blue-500/10 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-blue-700 dark:text-blue-300'
-                      title='You are on this chat'>
-                      You
-                    </span>
-                  ) : thread.assigneeId ? (
-                    <ChatAssigneeChip assigneeId={thread.assigneeId as ActorId} />
-                  ) : (
-                    <span
-                      className='shrink-0 rounded-full border border-muted-foreground/20 bg-muted px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-muted-foreground'
-                      title='A teammate is on this chat'>
-                      Human
-                    </span>
-                  )
-                ) : (
-                  <span
-                    className='shrink-0 inline-flex items-center gap-0.5 rounded-full border border-muted-foreground/20 bg-muted/60 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-muted-foreground'
-                    title='AI is replying'>
-                    <Bot className='size-2.5' />
-                    AI
-                  </span>
-                ))}
-              {isLiveChat && (
-                <span
-                  className='shrink-0 size-1.5 rounded-full bg-blue-500 animate-pulse'
-                  aria-label='Live chat'
-                />
-              )}
+              {thread.assigneeId && <AssigneeChip assigneeId={thread.assigneeId as ActorId} />}
               {snippet && (
                 <>
                   <span className='shrink-0 text-muted-foreground/50'>—</span>

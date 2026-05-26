@@ -172,6 +172,10 @@ export class ChatProvider extends BaseMessageProvider implements MessageProvider
       ? await loadChatAttachmentsForMessage(this.organizationId, message.id)
       : undefined
 
+    // `MessageSenderService` publishes `message:created` on the inbox channel
+    // itself (with `excludeSocketId` for self-echo suppression). Skip the
+    // duplicate here — without this, the originating tab receives an un-excluded
+    // echo of its own send and falls into the deferred-fetch path.
     await publishChatMessageCreated(getRealtimeService(), {
       organizationId: this.organizationId,
       inboxId: thread.inboxId,
@@ -188,6 +192,7 @@ export class ChatProvider extends BaseMessageProvider implements MessageProvider
         status: 'delivered',
         ...(attachments?.length ? { attachments } : {}),
       },
+      skipInboxMessagePublish: true,
     })
 
     return { success: true, id: message.id, externalId: undefined, threadId: thread.id }

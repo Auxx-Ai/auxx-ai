@@ -144,7 +144,7 @@ function FloatButton({
       aria-label={floating ? 'Dock chat' : 'Pop out chat'}
       aria-pressed={floating}
       className={cn(
-        'flex size-7 items-center justify-center rounded transition-colors',
+        'hidden size-7 items-center justify-center rounded transition-colors sm:flex',
         tone === 'light'
           ? 'text-white/90 hover:bg-white/10 hover:text-white'
           : 'text-muted-foreground hover:bg-[color:var(--auxx-chat-surface-dark-default)] hover:text-[color:var(--auxx-chat-text-loud)]'

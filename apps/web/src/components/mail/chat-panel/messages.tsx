@@ -14,6 +14,8 @@ import { useChatThreadEvents } from './use-thread-events'
 
 interface ChatPanelMessagesProps {
   threadId: string
+  /** Class forwarded to per-message dropdown content — used to bump z-index above floating compose. */
+  popoverClassName?: string
 }
 
 /**
@@ -21,7 +23,7 @@ interface ChatPanelMessagesProps {
  * store as the main thread view (no second fetch) and auto-scrolls to the
  * bottom as new messages arrive.
  */
-export function ChatPanelMessages({ threadId }: ChatPanelMessagesProps) {
+export function ChatPanelMessages({ threadId, popoverClassName }: ChatPanelMessagesProps) {
   const { messages, isLoading } = useMessages({ threadId })
   const { events } = useChatThreadEvents({ threadId, enabled: true })
   const { update: updateThread } = useThreadMutation()
@@ -81,8 +83,11 @@ export function ChatPanelMessages({ threadId }: ChatPanelMessagesProps) {
   const items = buildChatTimeline(messages, events)
 
   return (
-    <ScrollArea viewportRef={scrollRef} className='flex-1' scrollbarClassName='w-1!'>
-      <div className='flex flex-col gap-2 px-3 py-2'>
+    <ScrollArea
+      viewportRef={scrollRef}
+      className='flex-1 **:data-[slot=scroll-area-viewport]:overscroll-none'
+      scrollbarClassName='w-1!'>
+      <div className='flex flex-col gap-2 px-3 py-2 pe-4'>
         {items.map((item) => {
           if (item.kind === 'event') {
             return <SystemLine key={`evt:${item.event.id}`} event={item.event} />
@@ -95,6 +100,7 @@ export function ChatPanelMessages({ threadId }: ChatPanelMessagesProps) {
                 messages={item.messages}
                 messageActions={messageActions}
                 isLast={groupIsLast}
+                popoverClassName={popoverClassName}
               />
             )
           }

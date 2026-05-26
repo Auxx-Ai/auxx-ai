@@ -143,7 +143,7 @@ export function FloatingCompose({ instance }: { instance: ComposeInstance }) {
       thread={instance.thread}
       isDialogMode={true}
       onClose={handleClose}
-      onSendSuccess={handleClose}
+      onSendSuccess={() => {}}
       onMinimize={instance.displayMode === 'floating' ? handleMinimize : undefined}
       onDockBack={canDockBack ? handleDockBack : undefined}
       instanceId={instance.id}
@@ -154,7 +154,7 @@ export function FloatingCompose({ instance }: { instance: ComposeInstance }) {
       thread={instance.thread}
       isDialogMode={false}
       onClose={handleClose}
-      onSendSuccess={handleClose}
+      onSendSuccess={() => {}}
       onPopOut={handlePopOut}
       instanceId={instance.id}
     />

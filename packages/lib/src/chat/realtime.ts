@@ -35,6 +35,11 @@ export interface ChatVisitorMessagePayload {
  * frame on the per-visitor channel so the widget can bump the thread's spot in
  * the Messages tab and update the launcher unread badge even when the
  * conversation isn't currently in view.
+ *
+ * On the outbound (agent → visitor) path, `MessageSenderService` is the
+ * orchestrator and publishes `message:created` itself with `excludeSocketId`
+ * for self-echo suppression. Pass `skipInboxMessagePublish: true` from that
+ * path to avoid a duplicate publish that bypasses the socket-id exclusion.
  */
 export async function publishChatMessageCreated(
   realtime: RealtimeService,
@@ -48,14 +53,21 @@ export async function publishChatMessageCreated(
     visitorPayload: ChatVisitorMessagePayload
     /** Visitor's Participant id; enables cross-thread per-visitor updates. */
     visitorParticipantId?: string
+    /** Skip the inbox `message:created` publish — caller already does it. */
+    skipInboxMessagePublish?: boolean
   }
 ): Promise<void> {
-  const tasks: Promise<unknown>[] = [
-    publishMessageCreated(realtime, args.organizationId, {
-      messageId: args.messageId,
-      threadId: args.threadId,
-      inboxId: args.inboxId,
-    }),
+  const tasks: Promise<unknown>[] = []
+  if (!args.skipInboxMessagePublish) {
+    tasks.push(
+      publishMessageCreated(realtime, args.organizationId, {
+        messageId: args.messageId,
+        threadId: args.threadId,
+        inboxId: args.inboxId,
+      })
+    )
+  }
+  tasks.push(
     // Bump the thread row in the admin's mail-thread list so it re-sorts and
     // the `isLiveChat` dot in `mail-thread-item.tsx` re-evaluates against the
     // fresh `lastMessageAt`. Without this, `ChatProvider.receiveMessage` updates
@@ -72,8 +84,8 @@ export async function publishChatMessageCreated(
       rooms.chatSession(args.visitorChatSessionId),
       'new-message',
       args.visitorPayload
-    ),
-  ]
+    )
+  )
   if (args.visitorParticipantId) {
     tasks.push(
       realtime.publish(rooms.visitor(args.visitorParticipantId), 'thread-updated', {

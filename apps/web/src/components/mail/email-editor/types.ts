@@ -237,6 +237,7 @@ export interface EditorThread {
   subject?: string
   integrationId?: string
   messages?: MessageType[]
+  messageCount?: number
 }
 
 export interface ReplyComposeEditorProps {
