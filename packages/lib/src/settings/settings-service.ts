@@ -157,6 +157,13 @@ export const SETTINGS_CATALOG: Record<string, SettingConfig> = {
     description: 'Automatically create and link companies from inbound/outbound message domains',
     organizationOnly: true,
   },
+  'compose.defaultIntegrationId': {
+    key: 'compose.defaultIntegrationId',
+    scope: 'COMMUNICATION',
+    defaultValue: null,
+    type: 'string',
+    description: 'Default sending channel for new compose drafts',
+  },
   ...sidebarSettings,
 
   // ── RECORDING ──────────────────────────────────────────────

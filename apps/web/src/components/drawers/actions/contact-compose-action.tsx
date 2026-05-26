@@ -4,7 +4,7 @@
 import { Button } from '@auxx/ui/components/button'
 import { Mail } from 'lucide-react'
 import * as React from 'react'
-import { useChannels } from '~/components/channels/hooks/use-channels'
+import { useDefaultChannelId } from '~/components/channels/hooks/use-default-channel'
 import { Tooltip } from '~/components/global/tooltip'
 import type { EditorPresetValues } from '~/components/mail/email-editor/types'
 import { useSystemValues } from '~/components/resources/hooks/use-system-values'
@@ -21,8 +21,7 @@ export function ContactComposeAction({ recordId, record }: DrawerActionProps) {
   const { openCompose } = useCompose()
 
   const { values } = useSystemValues(recordId, [...CONTACT_FIELDS], { autoFetch: true })
-  const channels = useChannels()
-  const defaultIntegrationId = channels[0]?.id
+  const defaultIntegrationId = useDefaultChannelId()
 
   const presetValues = React.useMemo<EditorPresetValues | undefined>(() => {
     const email = values.primary_email as string | undefined

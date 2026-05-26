@@ -268,6 +268,21 @@ export interface MailBatchEvent {
   }
 }
 
+/**
+ * Signals the end of a server-side sync cycle that touched the inbox. Per-message
+ * realtime publishes are suppressed during sync (otherwise a backfill of N
+ * messages fans out into N events → N `getByIds` mutations → rate limit).
+ * The client invalidates `thread.listIds` for the inbox on receipt; subsequent
+ * thread / message data is loaded lazily on demand.
+ */
+export interface InboxSyncCompletedEvent {
+  event: 'inbox:syncCompleted'
+  data: {
+    /** Raw EntityInstance id of the inbox, or null for the triage (`none`) channel. */
+    inboxId: string | null
+  }
+}
+
 /** Union of all mail sync events. */
 export type MailSyncEvent =
   | ThreadCreatedEvent
@@ -278,6 +293,7 @@ export type MailSyncEvent =
   | MessageDeletedEvent
   | ParticipantUpdatedEvent
   | MailBatchEvent
+  | InboxSyncCompletedEvent
 
 // ════════════════════════════════════════════════════════════════════════════
 // Agent admin events (org channel)

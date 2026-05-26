@@ -24,12 +24,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
 import { useDropzone } from 'react-dropzone'
 import { useChannel } from '~/components/channels/hooks/use-channels'
+import { useDefaultChannelId } from '~/components/channels/hooks/use-default-channel'
 import { EditorToolbar } from '~/components/editor/editor-button'
 import { EditorProvider, useEditorContext } from '~/components/editor/editor-context'
 import { type ContentApplier, makeContentApplier } from '~/components/editor/inline-picker'
 import { useFileSelect } from '~/components/file-select/hooks/use-file-select'
 import { useCountUpdates } from '~/components/mail/hooks'
 import { useComposeStore } from '~/components/mail/store/compose-store'
+import { ChannelPicker } from '~/components/pickers/channel-picker'
 import { SignatureEditor } from '~/components/signatures/ui'
 import {
   appendOptimisticMessage,
@@ -55,7 +57,6 @@ import {
   useEditorActiveStateContext,
 } from './editor-active-state-context'
 import { useAIToolsState, useDraftMutations } from './hooks'
-import IntegrationSelector from './integration-selector'
 // Editor Imports
 import { LazyTiptapEditor } from './lazy-tiptap-editor'
 import { MessageFile } from './message-file'
@@ -157,6 +158,7 @@ function ReplyComposeEditorComponent({
   const { data: integrations } = api.channel.list.useQuery(undefined, {
     enabled: mode === 'new',
   })
+  const defaultIntegrationId = useDefaultChannelId()
   // Initialize state with pure function + lazy evaluation
   const [state, setState] = useState<InitState>(() => {
     const derived = deriveInitialState({
@@ -164,7 +166,7 @@ function ReplyComposeEditorComponent({
       thread,
       sourceMessage,
       draft: initialDraft,
-      defaultIntegrationId: integrations?.channels?.[0]?.id,
+      defaultIntegrationId,
       presetValues,
     })
     return derived
@@ -234,7 +236,7 @@ function ReplyComposeEditorComponent({
         thread,
         sourceMessage,
         draft: initialDraft,
-        defaultIntegrationId: integrations?.channels?.[0]?.id,
+        defaultIntegrationId,
         presetValues,
       })
 
@@ -1220,7 +1222,7 @@ function ReplyComposeEditorComponent({
             <div className='flex items-center gap-2 px-4 py-2'>
               <span className='w-10 shrink-0 text-sm text-muted-foreground'>From:</span>
               <div className='flex-1'>
-                <IntegrationSelector
+                <ChannelPicker
                   value={state.integrationId}
                   onChange={handleIntegrationChange}
                   disabled={isSending}

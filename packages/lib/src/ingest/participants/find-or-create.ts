@@ -86,7 +86,6 @@ export async function findOrCreateParticipantRecord(
         id: schema.Participant.id,
         name: schema.Participant.name,
         displayName: schema.Participant.displayName,
-        avatarUrl: schema.Participant.avatarUrl,
         hasReceivedMessage: schema.Participant.hasReceivedMessage,
         lastSentMessageAt: schema.Participant.lastSentMessageAt,
         isInternal: schema.Participant.isInternal,
@@ -150,7 +149,6 @@ export async function findOrCreateParticipantRecord(
       if (participant.displayName !== previous.displayName) {
         patch.displayName = participant.displayName
       }
-      if (participant.avatarUrl !== previous.avatarUrl) patch.avatarUrl = participant.avatarUrl
       if (participant.hasReceivedMessage !== previous.hasReceivedMessage) {
         patch.hasReceivedMessage = participant.hasReceivedMessage
       }

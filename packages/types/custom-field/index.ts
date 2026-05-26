@@ -67,6 +67,8 @@ export const selectOptionSchema = z.object({
   color: z.enum(SELECT_OPTION_COLORS).optional(),
   /** Icon ID for displaying an entity icon */
   icon: z.string().optional(),
+  /** Avatar image URL — used by record/relation pickers; not persisted on field options */
+  avatarUrl: z.string().optional(),
   /** Target time for items to remain in this status (kanban) */
   targetTimeInStatus: targetTimeInStatusSchema.optional(),
   /** Trigger celebration animation when cards move to this column (kanban) */

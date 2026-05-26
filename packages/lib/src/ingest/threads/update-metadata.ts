@@ -12,8 +12,9 @@ import type { IngestContext } from '../context'
  *
  * After the recompute, re-reads the affected columns and publishes a
  * `thread:updated` patch on the inbox channel so other tabs see the metadata
- * change without waiting for a refetch. During initial sync the patch is
- * appended to `ctx.batchedEvents` instead of being sent immediately.
+ * change without waiting for a refetch. During a sync batch the publish is
+ * suppressed — the orchestrator's `inbox:syncCompleted` event causes the FE
+ * to refresh the thread list (and lazily reload thread metadata) at the end.
  */
 export async function updateThreadMetadataEfficient(
   ctx: IngestContext,
@@ -84,14 +85,8 @@ export async function updateThreadMetadataEfficient(
       latestMessageId: row.latestMessageId ?? null,
     }
 
-    if (ctx.isInitialSync) {
-      ctx.batchedEvents.push({
-        inboxId: row.inboxId ?? null,
-        event: {
-          event: 'thread:updated',
-          data: { threadId, patch: { id: threadId, ...patch } },
-        },
-      })
+    if (ctx.inSyncBatch) {
+      ctx.touchedInboxIds.add(row.inboxId ?? null)
       return
     }
 

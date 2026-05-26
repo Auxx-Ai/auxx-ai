@@ -5,7 +5,6 @@ import { createScopedLogger, type Logger } from '@auxx/logger'
 import { SelectiveModeCache } from '../cache/selective-mode-cache'
 import { MessageReconcilerService } from '../messages/message-reconciler.service'
 import { ThreadManagerService } from '../messages/thread-manager.service'
-import type { MailSyncEvent } from '../realtime/events'
 import { UnifiedCrudHandler } from '../resources/crud/unified-handler'
 import { SystemUserService } from '../users/system-user-service'
 import type { IntegrationSettings } from './types'
@@ -54,11 +53,17 @@ export interface IngestContext {
   socketId?: string
 
   /**
-   * Buffer for mail realtime events accumulated during initial / polling sync.
-   * Per-message publishes append here when `isInitialSync` is true; the
-   * batch orchestrator flushes them in chunks at the end of the batch.
+   * True while a sync orchestrator (batchStoreMessages, gmail / outlook
+   * ingestors) is running. Per-message / per-thread realtime publishes are
+   * suppressed in this mode — instead each touched inbox is recorded in
+   * `touchedInboxIds` and a single `inbox:syncCompleted` event is emitted at
+   * the end. Prevents a backfill of N messages from fanning out into N
+   * realtime events → N client `getByIds` mutations → tRPC rate limit blowup.
    */
-  batchedEvents: Array<{ inboxId: string | null; event: MailSyncEvent }>
+  inSyncBatch: boolean
+
+  /** Inboxes touched during the current sync batch. Null = triage. */
+  touchedInboxIds: Set<string | null>
 
   readonly companyIdByDomain: Map<string, string | null>
   readonly ownDomainsByOrg: Map<string, Set<string>>
@@ -99,7 +104,8 @@ export async function createIngestContext(
     isInitialSync: opts.isInitialSync ?? false,
     ownEmails: normalizeOwnEmails(opts.ownEmails),
     socketId: opts.socketId,
-    batchedEvents: [],
+    inSyncBatch: false,
+    touchedInboxIds: new Set(),
     companyIdByDomain: new Map(),
     ownDomainsByOrg: new Map(),
     providerByIntegrationId: new Map(),

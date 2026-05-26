@@ -1,7 +1,7 @@
 // packages/lib/src/ingest/batch-store-messages.ts
 
 import { v4 as uuidv4 } from 'uuid'
-import { flushMailBatch, getRealtimeService } from '../realtime'
+import { getRealtimeService, publishInboxSyncCompleted } from '../realtime'
 import { type IngestContext, resetBatchCaches } from './context'
 import { storeMessage } from './store-message'
 import type { MessageData } from './types'
@@ -39,6 +39,13 @@ export async function batchStoreMessages(
     ctx.isInitialSync = true
     await ctx.selectiveCache.markBatchProcessing(organizationId, actualBatchId)
   }
+
+  // Enter sync-batch mode: every realtime publish from store-message /
+  // update-metadata / delete-messages is suppressed; we collect touched
+  // inbox ids and emit one `inbox:syncCompleted` per inbox at the end.
+  const wasInSyncBatch = ctx.inSyncBatch
+  ctx.inSyncBatch = true
+  if (!wasInSyncBatch) ctx.touchedInboxIds = new Set()
 
   resetBatchCaches(ctx)
 
@@ -85,15 +92,26 @@ export async function batchStoreMessages(
     ctx.isInitialSync = false
   }
 
-  // Flush any mail realtime events buffered during the batch (initial-sync
-  // path appends instead of publishing per message). flushMailBatch chunks
-  // into 50-event `mail:batch` frames per inbox channel.
-  if (ctx.batchedEvents.length > 0) {
-    const buffered = ctx.batchedEvents
-    ctx.batchedEvents = []
-    await flushMailBatch(getRealtimeService(), organizationId, buffered, {
-      excludeSocketId: ctx.socketId,
-    })
+  // Emit one `inbox:syncCompleted` per inbox touched during the batch — the
+  // FE invalidates `thread.listIds` for the inbox and lazy-loads from there.
+  // Only flush on the outermost orchestrator so nested calls don't double-fire.
+  if (!wasInSyncBatch) {
+    const touched = Array.from(ctx.touchedInboxIds)
+    ctx.touchedInboxIds = new Set()
+    ctx.inSyncBatch = false
+    if (touched.length > 0) {
+      const realtime = getRealtimeService()
+      await Promise.allSettled(
+        touched.map((inboxId) =>
+          publishInboxSyncCompleted(
+            realtime,
+            organizationId,
+            { inboxId },
+            { excludeSocketId: ctx.socketId }
+          )
+        )
+      )
+    }
   }
 
   ctx.logger.info(`Batch store completed: ${successCount} of ${messages.length} messages stored.`, {

@@ -130,6 +130,7 @@ export function MultiRelationInput({
       .map((item) => ({
         label: item.displayName,
         value: item.recordId,
+        avatarUrl: item.avatarUrl,
       }))
   }, [searchResults, excludeIds])
 

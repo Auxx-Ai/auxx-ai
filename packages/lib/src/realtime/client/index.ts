@@ -5,6 +5,7 @@ export type {
   AiValueMetadata,
   FieldValuesUpdatedEvent,
   FieldValueUpdateEntry,
+  InboxSyncCompletedEvent,
   MailBatchEvent,
   MailSyncEvent,
   MessageCreatedEvent,

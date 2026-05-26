@@ -56,8 +56,16 @@ export async function deleteMessagesByExternalIds(
 
   const realtime = getRealtimeService()
 
-  // Publish message:deleted for each removed message (skipped during initial sync).
-  if (!ctx.isInitialSync) {
+  // Publish message:deleted for each removed message. During a sync batch,
+  // suppress per-message events and just mark affected inboxes as touched —
+  // the orchestrator's `inbox:syncCompleted` triggers a thread-list refresh
+  // at the end of the batch instead.
+  if (ctx.inSyncBatch) {
+    for (const msg of messages) {
+      if (!msg.threadId) continue
+      ctx.touchedInboxIds.add(inboxIdByThread.get(msg.threadId) ?? null)
+    }
+  } else {
     for (const msg of messages) {
       if (!msg.threadId) continue
       await publishMessageDeleted(
@@ -70,17 +78,6 @@ export async function deleteMessagesByExternalIds(
         },
         { excludeSocketId: ctx.socketId }
       )
-    }
-  } else {
-    for (const msg of messages) {
-      if (!msg.threadId) continue
-      ctx.batchedEvents.push({
-        inboxId: inboxIdByThread.get(msg.threadId) ?? null,
-        event: {
-          event: 'message:deleted',
-          data: { messageId: msg.id, threadId: msg.threadId },
-        },
-      })
     }
   }
 
@@ -97,11 +94,8 @@ export async function deleteMessagesByExternalIds(
       ctx.logger.debug('Deleted empty thread after message removal', { threadId })
 
       const inboxId = inboxIdByThread.get(threadId) ?? null
-      if (ctx.isInitialSync) {
-        ctx.batchedEvents.push({
-          inboxId,
-          event: { event: 'thread:deleted', data: { threadId } },
-        })
+      if (ctx.inSyncBatch) {
+        ctx.touchedInboxIds.add(inboxId)
       } else {
         await publishThreadDeleted(
           realtime,

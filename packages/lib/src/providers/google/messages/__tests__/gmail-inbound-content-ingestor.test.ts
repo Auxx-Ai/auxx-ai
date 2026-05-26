@@ -33,6 +33,7 @@ import { GmailInboundContentIngestor } from '../gmail-inbound-content-ingestor'
 function makeStorageService(): MessageStorageService {
   return {
     storeMessage: mocks.storeMessage,
+    runInSyncBatch: async (_orgId: string, fn: () => Promise<unknown>) => fn(),
   } as any
 }
 

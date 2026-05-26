@@ -36,6 +36,7 @@ import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { Tooltip } from '~/components/global/tooltip'
+import { InboxDialog } from '~/components/inbox/inbox-dialog'
 import { ActorPicker } from '~/components/pickers/actor-picker'
 import { MultiRelationInput } from '~/components/shared/multi-relation-input'
 import { BaseType } from '~/components/workflow/types'
@@ -112,6 +113,12 @@ export function GeneralSection({ widget, channelId, onDelete }: GeneralSectionPr
   const [privacyUrlDraft, setPrivacyUrlDraft] = useState<string>(
     widget.chatWidget?.privacyPolicyUrl ?? ''
   )
+
+  const [inboxDialogOpen, setInboxDialogOpen] = useState(false)
+
+  const handleInboxCreated = (inbox: { id: string }) => {
+    update.mutate({ integrationId: channelId, inboxId: inbox.id })
+  }
 
   const rawAgentId = widget.chatWidget?.agentId ?? null
   const agentActorIds: ActorId[] = rawAgentId ? [toActorId('agent', rawAgentId)] : []
@@ -241,6 +248,8 @@ export function GeneralSection({ widget, channelId, onDelete }: GeneralSectionPr
                   placeholder='Pick an inbox'
                   disabled={update.isPending}
                   triggerProps={{ className: 'w-full ps-0 pe-1' }}
+                  onCreate={() => setInboxDialogOpen(true)}
+                  createLabel='Create inbox'
                 />
               </VarEditorFieldRow>
 
@@ -392,6 +401,13 @@ export function GeneralSection({ widget, channelId, onDelete }: GeneralSectionPr
           </Button>
         </div>
       </form>
+      {inboxDialogOpen && (
+        <InboxDialog
+          open={inboxDialogOpen}
+          onOpenChange={setInboxDialogOpen}
+          onSuccess={handleInboxCreated}
+        />
+      )}
     </Form>
   )
 }
