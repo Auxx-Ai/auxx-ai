@@ -4,6 +4,7 @@ import { type Database, database, schema } from '@auxx/database'
 import type { IdentifierType, ParticipantEntity } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq, inArray } from 'drizzle-orm'
+import { formatVisitorLabel } from '../chat/labels'
 import {
   extractRegistrableDomain,
   getOwnDomains,
@@ -57,16 +58,30 @@ export class ParticipantService {
     return ownDomains.has(normalizeDomain(domain))
   }
 
-  /** Calculates display name and initials for a participant. */
+  /**
+   * Calculates display name and initials for a participant.
+   *
+   * For anonymous chat visitors the raw identifier is an opaque session UUID,
+   * so when there's no name we surface the friendly `Chat user #xxxx` handle
+   * instead. This is the single source of truth — every consumer that reads
+   * `ParticipantMeta.displayName` gets the correct label without needing its
+   * own fallback chain.
+   */
   private _calculateDisplayInfo(
     name?: string | null,
-    identifier?: string | null
+    identifier?: string | null,
+    identifierType?: IdentifierType | null
   ): {
     displayName: string
     initials: string
   } {
     const validName = name?.trim()
-    const validIdentifier = identifier?.trim() ?? 'Unknown'
+    const trimmedIdentifier = identifier?.trim()
+    const identifierFallback =
+      identifierType === 'CHAT_VISITOR' && trimmedIdentifier
+        ? formatVisitorLabel(trimmedIdentifier)
+        : (trimmedIdentifier ?? 'Unknown')
+    const validIdentifier = identifierFallback
     const displayName = validName || validIdentifier
     let initials = '?'
     if (validName) {
@@ -114,7 +129,7 @@ export class ParticipantService {
       organizationId: this.organizationId,
     })
     try {
-      const { displayName, initials } = this._calculateDisplayInfo(name, identifier)
+      const { displayName, initials } = this._calculateDisplayInfo(name, identifier, identifierType)
       const isInternal = await this._classifyIsInternal(identifier, identifierType)
       const updateValues: Record<string, unknown> = {
         ...(name !== undefined && { name: name }),
@@ -261,14 +276,21 @@ export class ParticipantService {
 
     const participantMap = new Map(
       participants.map((p) => {
-        const { displayName, initials } = this._calculateDisplayInfo(p.name, p.identifier)
+        // Trust the recomputed values over whatever's persisted: legacy
+        // CHAT_VISITOR rows have the raw session UUID stored in `displayName`,
+        // and `_calculateDisplayInfo` now produces the friendly handle.
+        const { displayName, initials } = this._calculateDisplayInfo(
+          p.name,
+          p.identifier,
+          p.identifierType
+        )
 
         const meta: ParticipantMeta = {
           id: p.id,
           name: p.name,
           identifier: p.identifier,
           identifierType: p.identifierType as ParticipantIdentifierType,
-          displayName: p.displayName || displayName,
+          displayName,
           initials: p.initials || initials,
           avatarUrl: null,
           entityInstanceId: p.entityInstanceId,

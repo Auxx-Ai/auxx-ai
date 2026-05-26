@@ -2,6 +2,7 @@
 
 import { database, schema } from '@auxx/database'
 import { getCachedAgentById, getCachedOrgProfile } from '@auxx/lib/cache'
+import type { ChatAttachment } from '@auxx/lib/chat'
 import { listOnDutyUserIds } from '@auxx/lib/chat-duty'
 import { and, asc, eq, inArray, sql } from 'drizzle-orm'
 import type { Context } from 'hono'
@@ -69,6 +70,64 @@ export async function loadThreadEvents(
     createdAt: r.createdAt,
     data: (r.data ?? {}) as Record<string, unknown>,
   }))
+}
+
+/**
+ * Load non-inline attachment metadata for a batch of message ids, grouped by
+ * message. Returns metadata only — no presigned URLs. The widget resolves URLs
+ * lazily via `GET /api/chat/attachments/:attachmentId/url` per attachment.
+ *
+ * `role = 'ATTACHMENT'` filter keeps cid-referenced inline images out of the
+ * bubble (those are handled separately by the email path).
+ *
+ * Joins both `MediaAsset` and `FolderFile` because agent-side picks from the
+ * file manager produce `Attachment.fileId` rows, while fresh uploads produce
+ * `Attachment.assetId` rows. The widget treats the returned `id` as opaque —
+ * it's actually `Attachment.id` so the URL endpoint can resolve either backing.
+ */
+export async function loadChatAttachmentsForMessages(
+  organizationId: string,
+  messageIds: string[]
+): Promise<Map<string, ChatAttachment[]>> {
+  if (messageIds.length === 0) return new Map()
+
+  const rows = await database
+    .select({
+      messageId: schema.Attachment.entityId,
+      id: schema.Attachment.id,
+      assetName: schema.MediaAsset.name,
+      assetMimeType: schema.MediaAsset.mimeType,
+      assetSize: schema.MediaAsset.size,
+      fileName: schema.FolderFile.name,
+      fileMimeType: schema.FolderFile.mimeType,
+      fileSize: schema.FolderFile.size,
+      title: schema.Attachment.title,
+    })
+    .from(schema.Attachment)
+    .leftJoin(schema.MediaAsset, eq(schema.MediaAsset.id, schema.Attachment.assetId))
+    .leftJoin(schema.FolderFile, eq(schema.FolderFile.id, schema.Attachment.fileId))
+    .where(
+      and(
+        eq(schema.Attachment.organizationId, organizationId),
+        eq(schema.Attachment.entityType, 'MESSAGE'),
+        inArray(schema.Attachment.entityId, messageIds),
+        eq(schema.Attachment.role, 'ATTACHMENT')
+      )
+    )
+    .orderBy(asc(schema.Attachment.entityId), asc(schema.Attachment.sort))
+
+  const out = new Map<string, ChatAttachment[]>()
+  for (const r of rows) {
+    const list = out.get(r.messageId) ?? []
+    list.push({
+      id: r.id,
+      name: r.title ?? r.assetName ?? r.fileName ?? 'attachment',
+      mimeType: r.assetMimeType ?? r.fileMimeType ?? 'application/octet-stream',
+      size: Number(r.assetSize ?? r.fileSize ?? 0),
+    })
+    out.set(r.messageId, list)
+  }
+  return out
 }
 
 export interface LoadedChatWidget {

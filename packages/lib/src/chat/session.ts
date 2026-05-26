@@ -125,12 +125,33 @@ export async function initializeOrResumeChatThread(
       })
     }
 
-    // Try to resume an open thread for this visitor on this channel.
+    // Try to resume an open thread for this visitor on this channel. Use
+    // `Message.fromId` as the linkage rather than scanning the most recent 20
+    // threads and filtering on `Thread.metadata->>visitorParticipantId`:
+    //
+    //   1. Correctness — on a busy public widget, 20 newer threads from other
+    //      visitors mask this visitor's own thread, so we'd silently spawn a
+    //      new one instead of resuming.
+    //   2. Performance — `Message.fromId` is already indexed; this is a
+    //      single indexed lookup vs. fetching 20 rows to keep at most 1.
+    //
+    // Empty-thread edge case: a brand-new thread the visitor hasn't sent into
+    // yet won't match here. That's fine — `resumeThreadId` already handles
+    // explicit reopen above, and a thread with zero messages has nothing to
+    // resume into.
     const candidateThreads = input.forceNewThread
       ? []
       : await ctx.db
-          .select()
+          .selectDistinct({ thread: schema.Thread })
           .from(schema.Thread)
+          .innerJoin(
+            schema.Message,
+            and(
+              eq(schema.Message.threadId, schema.Thread.id),
+              eq(schema.Message.isInbound, true),
+              eq(schema.Message.fromId, visitor.id)
+            )
+          )
           .where(
             and(
               eq(schema.Thread.organizationId, ctx.organizationId),
@@ -139,12 +160,9 @@ export async function initializeOrResumeChatThread(
             )
           )
           .orderBy(desc(schema.Thread.lastMessageAt))
-          .limit(20)
+          .limit(1)
 
-    const resumable = candidateThreads.find((t) => {
-      const meta = (t.metadata ?? {}) as Partial<ChatThreadMetadata>
-      return meta.channel === 'chat' && meta.visitorParticipantId === visitor.id
-    })
+    const resumable = candidateThreads[0]?.thread
 
     if (resumable) {
       // Patch metadata with the latest visit info / claimed identity.

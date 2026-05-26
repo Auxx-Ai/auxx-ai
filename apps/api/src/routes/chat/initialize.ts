@@ -7,12 +7,16 @@ import { initializeOrResumeChatThread, publishVisitorThreadCreated } from '@auxx
 import { publisher } from '@auxx/lib/events'
 import { getRealtimeService, publishThreadCreated } from '@auxx/lib/realtime'
 import { createScopedLogger } from '@auxx/logger'
-import { asc, eq } from 'drizzle-orm'
+import { desc, eq } from 'drizzle-orm'
 import { Hono } from 'hono'
 import { parseIdentifyPayload } from './identify'
-import { applyChatCorsHeaders, loadThreadEvents } from './lib'
+import { applyChatCorsHeaders, loadChatAttachmentsForMessages, loadThreadEvents } from './lib'
 
 const log = createScopedLogger('chat-initialize-route')
+
+/** Most recent page of messages returned on initialize. Older pages load via
+ * `GET /api/chat/threads/:threadId/messages?cursor=…` as the visitor scrolls. */
+const INITIAL_MESSAGE_PAGE = 50
 
 const initializeRoute = new Hono()
 
@@ -109,8 +113,9 @@ initializeRoute.post('/', async (c) => {
       ])
     }
 
-    // Load existing messages on resume so the widget can rehydrate.
-    const rows = isNew
+    // Load the most recent page of messages on resume so the widget can
+    // rehydrate. Older messages page in via `getHistory` on scroll.
+    const recentRows = isNew
       ? []
       : await database
           .select({
@@ -124,16 +129,34 @@ initializeRoute.post('/', async (c) => {
           })
           .from(schema.Message)
           .where(eq(schema.Message.threadId, thread.id))
-          .orderBy(asc(schema.Message.sentAt))
+          .orderBy(desc(schema.Message.sentAt))
+          .limit(INITIAL_MESSAGE_PAGE)
 
-    const messages = rows.map((m) => ({
-      id: m.id,
-      threadId: m.threadId,
-      content: m.textPlain ?? m.textHtml ?? '',
-      sender: m.isInbound ? 'USER' : 'AGENT',
-      createdAt: m.sentAt ?? m.createdAt,
-      status: 'DELIVERED',
-    }))
+    // Flip back to chronological for render. The widget appends bubbles top-
+    // to-bottom; reversing in JS keeps the SQL plan simple (uses the existing
+    // sentAt desc index).
+    const rows = recentRows.slice().reverse()
+
+    const attachmentsByMessage =
+      rows.length > 0
+        ? await loadChatAttachmentsForMessages(
+            chat.organizationId,
+            rows.map((r) => r.id)
+          )
+        : new Map()
+
+    const messages = rows.map((m) => {
+      const attachments = attachmentsByMessage.get(m.id)
+      return {
+        id: m.id,
+        threadId: m.threadId,
+        content: m.textPlain ?? m.textHtml ?? '',
+        sender: m.isInbound ? 'USER' : 'AGENT',
+        createdAt: m.sentAt ?? m.createdAt,
+        status: 'DELIVERED',
+        ...(attachments?.length ? { attachments } : {}),
+      }
+    })
 
     // Hydrate thread lifecycle events so the widget can render centered
     // system lines (taken_over / returned_to_ai / archived / reopened / …)
@@ -174,6 +197,14 @@ initializeRoute.post('/', async (c) => {
       }
     }
 
+    // `recentRows` has the newest page in descending order; if we filled the
+    // page, expose the oldest entry's timestamp as the cursor so the widget
+    // can request older messages on scroll up.
+    const nextCursor =
+      recentRows.length === INITIAL_MESSAGE_PAGE
+        ? (recentRows[recentRows.length - 1]?.sentAt?.toISOString() ?? null)
+        : null
+
     return c.json({
       success: true,
       data: {
@@ -181,6 +212,7 @@ initializeRoute.post('/', async (c) => {
         visitorId: chat.sessionId,
         isNewSession: isNew,
         messages,
+        nextCursor,
         threadEvents,
         pusherChannel: `chat-${visitorChatSessionId}`,
         threadPusherChannel: `private-thread-${thread.id}`,

@@ -1,7 +1,6 @@
 // apps/web/src/components/mail/chat-visitor-sidebar.tsx
 'use client'
 
-import { formatVisitorLabel } from '@auxx/lib/chat/labels'
 import { Separator } from '@auxx/ui/components/separator'
 import { User } from 'lucide-react'
 import { useParticipant } from '~/components/threads/hooks'
@@ -28,21 +27,11 @@ interface ChatThreadMetadata {
  */
 export function ChatVisitorSidebar({ metadata }: { metadata: ChatThreadMetadata }) {
   const visit = metadata.visit ?? {}
-  // Fetch the visitor participant from the store so the sidebar label is derived
-  // from the sticky session identifier (same suffix every other site shows),
-  // not the participant row PK.
   const { participant: visitor } = useParticipant({
     participantId: metadata.visitorParticipantId ?? null,
     enabled: !!metadata.visitorParticipantId,
   })
-  const visitorLabel =
-    visitor?.displayName ??
-    metadata.visitorLabel ??
-    (visitor?.identifier
-      ? formatVisitorLabel(visitor.identifier)
-      : metadata.visitorParticipantId
-        ? formatVisitorLabel(metadata.visitorParticipantId)
-        : null)
+  const visitorLabel = visitor?.displayName ?? metadata.visitorLabel ?? null
   return (
     <aside className='w-64 shrink-0 space-y-3 overflow-y-auto border-l bg-muted/30 p-4 text-xs'>
       <h3 className='flex items-center gap-1.5 text-sm font-semibold'>

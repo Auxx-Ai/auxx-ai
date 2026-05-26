@@ -1,8 +1,11 @@
 // apps/api/src/routes/chat/attachments.ts
 
 import { randomBytes } from 'node:crypto'
-import { createStorageManager, MediaAssetService } from '@auxx/lib/files'
+import { database, schema } from '@auxx/database'
+import { AttachmentService, createStorageManager, MediaAssetService } from '@auxx/lib/files'
+import type { ChatThreadMetadata } from '@auxx/lib/threads/types'
 import { createScopedLogger } from '@auxx/logger'
+import { and, eq, sql } from 'drizzle-orm'
 import { Hono } from 'hono'
 import { applyChatCorsHeaders } from './lib'
 
@@ -121,6 +124,88 @@ attachmentsRoute.post('/', async (c) => {
     })
     return c.json(
       { success: false, error: { code: 'INTERNAL_ERROR', message: 'Failed to upload attachment' } },
+      500
+    )
+  }
+})
+
+attachmentsRoute.options('/:attachmentId/url', (c) => {
+  applyChatCorsHeaders(c, { allowCredentials: true })
+  return c.body(null, 204)
+})
+
+/**
+ * GET /api/chat/attachments/:attachmentId/url
+ *
+ * Resolve a short-lived presigned download URL for a single Attachment row.
+ * Used by the widget to render attachment thumbnails / download chips lazily —
+ * the URL never ships in initialize/history responses or Pusher payloads (so
+ * the TTL doesn't outlive a long-lived frame).
+ *
+ * Keyed off `Attachment.id` rather than `MediaAsset.id` because agent-side
+ * file-manager picks produce `Attachment.fileId` (→ FolderFile) rows with
+ * `assetId = NULL`. Resolution delegates to `AttachmentService.getDownloadUrl`
+ * which handles both backings.
+ *
+ * ACL: passport is org-scoped + visitor-scoped via `visitorParticipantId`. We
+ * verify the attachment hangs off a message in a thread the passport owns.
+ *
+ * Returns 404 (not 403) on ACL miss so we don't leak asset existence.
+ */
+attachmentsRoute.get('/:attachmentId/url', async (c) => {
+  applyChatCorsHeaders(c, { allowCredentials: true })
+
+  const chat = c.get('chat')
+  const attachmentId = c.req.param('attachmentId')
+
+  try {
+    const [hit] = await database
+      .select({ one: sql`1` })
+      .from(schema.Attachment)
+      .innerJoin(schema.Message, eq(schema.Message.id, schema.Attachment.entityId))
+      .innerJoin(schema.Thread, eq(schema.Thread.id, schema.Message.threadId))
+      .where(
+        and(
+          eq(schema.Attachment.id, attachmentId),
+          eq(schema.Attachment.organizationId, chat.organizationId),
+          eq(schema.Attachment.entityType, 'MESSAGE'),
+          eq(schema.Thread.integrationId, chat.channelId),
+          sql`(${schema.Thread.metadata}->>'visitorParticipantId') = ${chat.visitorParticipantId}`
+        )
+      )
+      .limit(1)
+
+    if (!hit) {
+      return c.json(
+        { success: false, error: { code: 'NOT_FOUND', message: 'Attachment not found' } },
+        404
+      )
+    }
+
+    // Visitor uploads have no User id — pass `undefined` for userId.
+    const attachmentService = new AttachmentService(chat.organizationId, undefined)
+    let url: string
+    try {
+      url = await attachmentService.getDownloadUrl(attachmentId)
+    } catch {
+      return c.json(
+        { success: false, error: { code: 'NOT_FOUND', message: 'Attachment not found' } },
+        404
+      )
+    }
+
+    // 1h TTL — long enough that paint + clicks succeed without a refetch,
+    // short enough to limit damage if a URL leaks.
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString()
+    return c.json({ success: true, data: { url, expiresAt } })
+  } catch (error) {
+    log.error('Failed to resolve chat attachment URL', {
+      channelId: chat.channelId,
+      attachmentId,
+      error: error instanceof Error ? error.message : String(error),
+    })
+    return c.json(
+      { success: false, error: { code: 'INTERNAL_ERROR', message: 'Failed to resolve URL' } },
       500
     )
   }

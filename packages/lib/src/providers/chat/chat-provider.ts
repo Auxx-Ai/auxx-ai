@@ -3,8 +3,10 @@
 import { database as db, schema } from '@auxx/database'
 import { IntegrationProviderType, ThreadStatus } from '@auxx/database/enums'
 import { createScopedLogger } from '@auxx/logger'
-import { and, eq, inArray, sql } from 'drizzle-orm'
+import { and, asc, eq, inArray, sql } from 'drizzle-orm'
+import { getOrgCache } from '../../cache'
 import { publishChatMessageCreated, publishChatMessageReceiptUpdated } from '../../chat/realtime'
+import type { ChatAttachment } from '../../chat/types'
 import { getRealtimeService } from '../../realtime'
 import { Result, type TypedResult } from '../../result'
 import type { ChatThreadMetadata } from '../../threads/types'
@@ -19,6 +21,47 @@ import {
 import { getProviderCapabilities, type ProviderCapabilities } from '../provider-capabilities'
 
 const logger = createScopedLogger('chat-provider')
+
+/**
+ * Load non-inline attachment metadata for a single agent-sent message before
+ * we publish the realtime frame. Gate the call site on
+ * `Message.hasAttachments` — most replies are text-only.
+ */
+async function loadChatAttachmentsForMessage(
+  organizationId: string,
+  messageId: string
+): Promise<ChatAttachment[]> {
+  const rows = await db
+    .select({
+      id: schema.Attachment.id,
+      title: schema.Attachment.title,
+      assetName: schema.MediaAsset.name,
+      assetMimeType: schema.MediaAsset.mimeType,
+      assetSize: schema.MediaAsset.size,
+      fileName: schema.FolderFile.name,
+      fileMimeType: schema.FolderFile.mimeType,
+      fileSize: schema.FolderFile.size,
+    })
+    .from(schema.Attachment)
+    .leftJoin(schema.MediaAsset, eq(schema.MediaAsset.id, schema.Attachment.assetId))
+    .leftJoin(schema.FolderFile, eq(schema.FolderFile.id, schema.Attachment.fileId))
+    .where(
+      and(
+        eq(schema.Attachment.organizationId, organizationId),
+        eq(schema.Attachment.entityType, 'MESSAGE'),
+        eq(schema.Attachment.entityId, messageId),
+        eq(schema.Attachment.role, 'ATTACHMENT')
+      )
+    )
+    .orderBy(asc(schema.Attachment.sort))
+
+  return rows.map((r) => ({
+    id: r.id,
+    name: r.title ?? r.assetName ?? r.fileName ?? 'attachment',
+    mimeType: r.assetMimeType ?? r.fileMimeType ?? 'application/octet-stream',
+    size: Number(r.assetSize ?? r.fileSize ?? 0),
+  }))
+}
 
 /**
  * Provider for the embedded chat widget. Handles both directions of a chat:
@@ -81,6 +124,7 @@ export class ChatProvider extends BaseMessageProvider implements MessageProvider
         textHtml: schema.Message.textHtml,
         sentAt: schema.Message.sentAt,
         fromId: schema.Message.fromId,
+        hasAttachments: schema.Message.hasAttachments,
       })
       .from(schema.Message)
       .where(eq(schema.Message.id, internalMessageId))
@@ -121,6 +165,13 @@ export class ChatProvider extends BaseMessageProvider implements MessageProvider
         .onConflictDoNothing()
     }
 
+    // Most agent replies are text-only; only join Attachment when the
+    // composer flipped `hasAttachments`. Phase 5.5 — avoids one query per
+    // reply on the common path.
+    const attachments = message.hasAttachments
+      ? await loadChatAttachmentsForMessage(this.organizationId, message.id)
+      : undefined
+
     await publishChatMessageCreated(getRealtimeService(), {
       organizationId: this.organizationId,
       inboxId: thread.inboxId,
@@ -135,6 +186,7 @@ export class ChatProvider extends BaseMessageProvider implements MessageProvider
         sender: 'AGENT',
         createdAt: message.sentAt ?? new Date(),
         status: 'delivered',
+        ...(attachments?.length ? { attachments } : {}),
       },
     })
 
@@ -171,6 +223,7 @@ export class ChatProvider extends BaseMessageProvider implements MessageProvider
           organizationId: schema.Thread.organizationId,
           integrationId: schema.Thread.integrationId,
           inboxId: schema.Thread.inboxId,
+          handoffState: schema.Thread.handoffState,
         })
         .from(schema.Thread)
         .where(
@@ -252,6 +305,18 @@ export class ChatProvider extends BaseMessageProvider implements MessageProvider
         return { messageRowId: finalId }
       })
 
+      // Load attachment metadata for the realtime payload. The transaction
+      // above already inserted Attachment rows for `params.attachmentIds`;
+      // re-read by joining Attachment → MediaAsset so the publish carries
+      // `Attachment.id` (the opaque id the URL endpoint resolves against).
+      let attachments: ChatAttachment[] | undefined
+      if (params.attachmentIds && params.attachmentIds.length > 0) {
+        const rows = await loadChatAttachmentsForMessage(this.organizationId, messageRowId)
+        if (rows.length > 0) {
+          attachments = rows
+        }
+      }
+
       // Realtime — inbox channel for agents, visitor channel for echo.
       // The inbound sender IS the visitor, so their fromParticipantId is the
       // visitorParticipantId we publish per-visitor updates against.
@@ -270,6 +335,7 @@ export class ChatProvider extends BaseMessageProvider implements MessageProvider
           createdAt: now,
           status: 'delivered',
           clientMessageId: params.clientMessageId,
+          ...(attachments?.length ? { attachments } : {}),
         },
       })
 
@@ -278,6 +344,7 @@ export class ChatProvider extends BaseMessageProvider implements MessageProvider
         threadId: thread.id,
         messageId: messageRowId,
         integrationId,
+        handoffState: thread.handoffState,
       })
 
       return Result.ok({ messageId: messageRowId, threadId: thread.id })
@@ -297,17 +364,14 @@ export class ChatProvider extends BaseMessageProvider implements MessageProvider
     threadId: string
     messageId: string
     integrationId: string
+    /** Read from the same Thread row receiveMessage already loaded. */
+    handoffState: 'ai' | 'human'
   }): Promise<void> {
     try {
       // P4.2 gate — if a human took over this thread, never run the AI agent.
       // This is the earliest point we can short-circuit: before the widget
       // lookup, before any agent-framework work, before any draft/compose.
-      const [thread] = await db
-        .select({ handoffState: schema.Thread.handoffState })
-        .from(schema.Thread)
-        .where(eq(schema.Thread.id, args.threadId))
-        .limit(1)
-      if (thread?.handoffState === 'human') {
+      if (args.handoffState === 'human') {
         logger.debug('Chat thread is in human handoff — skipping agent run', {
           threadId: args.threadId,
           messageId: args.messageId,
@@ -315,19 +379,21 @@ export class ChatProvider extends BaseMessageProvider implements MessageProvider
         return
       }
 
-      const [widget] = await db
-        .select({ agentId: schema.ChatWidget.agentId })
-        .from(schema.ChatWidget)
-        .where(eq(schema.ChatWidget.integrationId, args.integrationId))
-        .limit(1)
-      if (!widget?.agentId) return
+      // Read agentId from the org `channels` cache instead of querying
+      // ChatWidget on every inbound message. The cache already includes the
+      // joined ChatWidget row and is invalidated on channel.connected /
+      // channel.settings_updated / chat-widget edits.
+      const channels = await getOrgCache().get(this.organizationId, 'channels')
+      const channel = channels.find((c) => c.id === args.integrationId)
+      const agentId = channel?.chatWidget?.agentId ?? null
+      if (!agentId) return
 
       // TODO(chat-agent): enqueueAgentJob expects an AgentSession id. The chat
       // → agent run path needs a session creation step (or a chat-specific
       // engine entry point). For phase 4a, leave this as a logged TODO so the
       // unblock work is visible.
       logger.warn('Chat widget has agentId but agent enqueue path not yet wired', {
-        agentId: widget.agentId,
+        agentId,
         threadId: args.threadId,
         messageId: args.messageId,
       })

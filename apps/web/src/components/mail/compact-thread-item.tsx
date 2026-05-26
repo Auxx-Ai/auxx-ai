@@ -151,10 +151,7 @@ export const CompactThreadItem = memo(function CompactThreadItem({
       : ''
   }, [thread?.lastMessageAt])
 
-  const senderName = useMemo(
-    () => senderParticipant?.name || senderParticipant?.identifier || null,
-    [senderParticipant]
-  )
+  const senderName = senderParticipant?.displayName ?? null
 
   const snippet = useMemo(() => {
     if (typeof window !== 'undefined' && latestMessage?.snippet) {

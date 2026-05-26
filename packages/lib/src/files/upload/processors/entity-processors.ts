@@ -2,7 +2,7 @@
 import { database as db, schema } from '@auxx/database'
 import type { MediaAsset } from '@auxx/database/types'
 import { and, desc, eq } from 'drizzle-orm'
-import { getOrgCache, isAgentUser } from '../../../cache'
+import { getOrgCache, isAgentUser, onCacheEvent } from '../../../cache'
 import { isAdminOrOwner } from '../../../members/member-queries'
 import { MemberService } from '../../../members/member-service'
 import { ensureThumbnailPresets } from '../../core/thumbnail-batch'
@@ -737,6 +737,7 @@ export class ChatWidgetProcessor extends BaseAttachmentProcessor {
     session: PresignedUploadSession,
     storageLocationId: string
   ): Promise<ProcessorResult> {
+    let logoUpdated = false
     const result = await this.mediaAssetService.getTx(async (tx) => {
       const { assetId, externalUrl } = await this.createAsset(session, storageLocationId, tx)
       await this.createAttachment(assetId, session, tx)
@@ -754,9 +755,15 @@ export class ChatWidgetProcessor extends BaseAttachmentProcessor {
           variant,
           url: externalUrl,
         })
+        logoUpdated = true
       }
       return { assetId, storageLocationId }
     })
+    // Logo lives on the cached ChatWidget row inside `channels`. Bust the
+    // cache so the next read returns the new URL.
+    if (logoUpdated && session.organizationId) {
+      await onCacheEvent('channel.settings_updated', { orgId: session.organizationId })
+    }
     return result
   }
 }

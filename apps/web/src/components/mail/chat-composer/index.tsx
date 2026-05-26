@@ -67,7 +67,7 @@ function ChatComposerInner({
   const [attachments, setAttachments] = useState<FileAttachment[]>([])
 
   const tempEntityId = useMemo(
-    () => `chat-message-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+    () => `temp-message-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
     []
   )
   const fileSelect = useFileSelect({

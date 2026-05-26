@@ -17,5 +17,5 @@ export type {
   InitializeChatThreadResult,
 } from './session'
 export { initializeOrResumeChatThread } from './session'
-export type { ServiceContext, VisitInfo } from './types'
+export type { ChatAttachment, ServiceContext, VisitInfo } from './types'
 export { findOrCreateVisitorParticipant, updateVisitorClaimedIdentity } from './visitor-identity'

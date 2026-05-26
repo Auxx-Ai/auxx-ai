@@ -3,6 +3,23 @@
 import { authedFetch } from './api-client'
 import type { ThreadEvent } from './thread-events'
 
+/**
+ * Per-attachment metadata shipped from the API and on Pusher frames. Never
+ * carries a presigned URL — the widget resolves URLs lazily via
+ * `getAttachmentUrl(attachmentId)` as bubbles render.
+ *
+ * `objectUrl` is widget-local: set on optimistic sends from a
+ * `URL.createObjectURL(file)` and skipped on reconcile when the server payload
+ * arrives. Revoke it on unmount.
+ */
+export interface ChatAttachment {
+  id: string
+  name: string
+  mimeType: string
+  size: number
+  objectUrl?: string
+}
+
 export interface ChatMessage {
   id: string
   content: string
@@ -10,6 +27,7 @@ export interface ChatMessage {
   createdAt: string
   status?: string
   agent?: { id?: string; name?: string; image?: string | null }
+  attachments?: ChatAttachment[]
 }
 
 export interface InitializeResponse {
@@ -18,6 +36,8 @@ export interface InitializeResponse {
   visitorId: string
   isNewSession: boolean
   messages: ChatMessage[]
+  /** Cursor for fetching older messages via `getHistory`. Null = no more. */
+  nextCursor: string | null
   /** Persisted thread lifecycle events (taken_over / archived / …). */
   threadEvents: ThreadEvent[]
   pusherChannel: string
@@ -62,6 +82,7 @@ export function chatApi(channelId: string) {
       threadId: string
       content: string
       clientMessageId?: string
+      attachmentIds?: string[]
     }) => {
       const { threadId, ...rest } = body
       return authedFetch<{ messageId: string; status: string; createdAt: string }>(
@@ -71,15 +92,30 @@ export function chatApi(channelId: string) {
       )
     },
 
-    getHistory: (threadId: string, sessionId: string) =>
-      authedFetch<{
+    getAttachmentUrl: (attachmentId: string) =>
+      authedFetch<{ url: string; expiresAt: string }>(
+        channelId,
+        `/api/chat/attachments/${attachmentId}/url`,
+        { method: 'GET' }
+      ),
+
+    getHistory: (
+      threadId: string,
+      sessionId: string,
+      opts: { cursor?: string | null; limit?: number } = {}
+    ) => {
+      const query: Record<string, string> = { sessionId }
+      if (opts.cursor) query.cursor = opts.cursor
+      if (opts.limit) query.limit = String(opts.limit)
+      return authedFetch<{
         messages: ChatMessage[]
         threadEvents: ThreadEvent[]
         nextCursor: string | null
       }>(channelId, `/api/chat/threads/${threadId}/messages`, {
         method: 'GET',
-        query: { sessionId },
-      }),
+        query,
+      })
+    },
 
     setTyping: (sessionId: string, isTyping: boolean) =>
       authedFetch<Record<string, never>>(channelId, '/api/chat/typing', {
