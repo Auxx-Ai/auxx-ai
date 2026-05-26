@@ -1,7 +1,6 @@
 // apps/web/src/components/mail/chat-message-display.tsx
 'use client'
 
-import { formatVisitorLabel } from '@auxx/lib/chat/labels'
 import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
 import { Button } from '@auxx/ui/components/button'
 import {
@@ -17,8 +16,9 @@ import { cn } from '@auxx/ui/lib/utils'
 import { formatDistanceToNow } from 'date-fns'
 import { Check, CheckCheck, CopyPlusIcon, EllipsisVertical, Mail, Trash } from 'lucide-react'
 import { useMessage, useMessageParticipants, useThreadReadStatus } from '~/components/threads/hooks'
-import type { MessageMeta } from '~/components/threads/store'
+import type { AttachmentMeta, MessageMeta } from '~/components/threads/store'
 import { ContactHoverCard } from '../contacts/contact-hover-card'
+import { AttachmentDisplay } from '../files/utils/attachment-display'
 import { Tooltip } from '../global/tooltip'
 import type { EmailActions } from './email-actions'
 import { SendStatusIndicator } from './send-status-indicator'
@@ -68,17 +68,12 @@ const ChatMessageDisplay = ({
   if (!message) return null
 
   const isInbound = message.isInbound
-  const senderName = (() => {
-    if (!sender) return 'Unknown'
-    if (sender.displayName) return sender.displayName
-    if (sender.name) return sender.name
-    if (sender.identifierType === 'CHAT_VISITOR') return formatVisitorLabel(sender.identifier)
-    return sender.identifier || 'Unknown'
-  })()
+  const senderName = sender?.displayName ?? 'Unknown'
   const senderInitials = sender?.initials ?? senderName.charAt(0).toUpperCase()
   const contactId = sender?.entityInstanceId
   const content = message.textPlain ?? message.snippet ?? ''
   const isSending = !!message.sendStatus && message.sendStatus !== 'SENT'
+  const nonInlineAttachments = (message.attachments ?? []).filter((a) => !a.inline)
 
   const isGrouped = groupPosition !== 'solo'
   const isSoloLike = groupPosition === 'solo' || isExpanded
@@ -125,9 +120,22 @@ const ChatMessageDisplay = ({
             topRound ? 'rounded-t-2xl' : 'rounded-t-sm',
             bottomRound ? 'rounded-b-2xl' : 'rounded-b-sm'
           )}>
-          <div className='cursor-text select-text whitespace-pre-wrap break-words font-sans'>
-            {content}
-          </div>
+          {content ? (
+            <div className='cursor-text select-text whitespace-pre-wrap break-words font-sans'>
+              {content}
+            </div>
+          ) : null}
+          {nonInlineAttachments.length > 0 ? (
+            <div className={cn('flex flex-col gap-1.5', content ? 'mt-2' : '')}>
+              {nonInlineAttachments.map((a) => (
+                <AttachmentDisplay
+                  key={a.id}
+                  attachment={toAttachmentInfo(a)}
+                  showRemoveButton={false}
+                />
+              ))}
+            </div>
+          ) : null}
         </div>
         <FloatingDropdown
           message={message}
@@ -210,6 +218,29 @@ function ReceiptIndicator({ message }: { message: MessageMeta }) {
       <span>Sent</span>
     </div>
   )
+}
+
+/**
+ * Bridge from `AttachmentMeta` (the store's display shape, already loaded for
+ * every message) to the `GroupedAttachmentInfo` shape `AttachmentDisplay`
+ * expects. At runtime the component only reads id/name/mimeType/size — the
+ * extra fields are just to satisfy the prop type. We download via
+ * `/api/attachments/{id}/download` like the email path, so no presigned URL
+ * resolution is needed here.
+ */
+function toAttachmentInfo(a: AttachmentMeta) {
+  return {
+    id: a.id,
+    role: 'ATTACHMENT',
+    title: null,
+    sort: 0,
+    createdAt: new Date(),
+    type: 'asset' as const,
+    fileId: a.id,
+    name: a.name,
+    mimeType: a.mimeType,
+    size: a.size != null ? BigInt(a.size) : null,
+  }
 }
 
 function ChatMessageSkeleton() {

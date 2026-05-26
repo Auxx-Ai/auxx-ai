@@ -1,7 +1,6 @@
 // apps/web/src/components/mail/participant-display.tsx
 'use client'
 
-import { formatVisitorLabel } from '@auxx/lib/chat/labels'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -88,13 +87,7 @@ export const ParticipantDisplay: React.FC<ParticipantDisplayProps> = ({
 
   const { identifier, identifierType, name, displayName, entityInstanceId, isInternal } =
     participant
-  // Belt-and-braces for anonymous chat visitors: if displayName/name weren't
-  // backfilled (pre-friendly-label rows), derive the friendly handle from
-  // the sticky session identifier so the FROM never falls back to a raw UUID.
-  const displayLabel =
-    displayName ||
-    name ||
-    (identifierType === 'CHAT_VISITOR' ? formatVisitorLabel(identifier) : identifier)
+  const displayLabel = displayName || identifier
 
   const senderDomain =
     identifierType === 'EMAIL' ? (identifier.split('@')[1] ?? undefined) : undefined

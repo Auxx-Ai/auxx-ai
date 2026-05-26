@@ -14,6 +14,12 @@ import { SendButton } from './send-button'
 export interface ComposerSendArgs {
   content: string
   attachmentIds: string[]
+  /**
+   * Inflight attachment metadata for the uploaded ids, in send order. Lets
+   * the caller render an optimistic bubble (chip + image preview) without
+   * waiting for a server payload to reconcile.
+   */
+  inflight: InflightAttachment[]
 }
 
 interface ComposerProps {
@@ -30,7 +36,8 @@ export function Composer({ channelId, onSend, disabled, placeholder }: ComposerP
   const [dragOver, setDragOver] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
 
-  const uploaded = attachments.filter((a) => a.assetId).map((a) => a.assetId!) as string[]
+  const uploadedInflight = attachments.filter((a) => a.assetId && !a.error)
+  const uploaded = uploadedInflight.map((a) => a.assetId!) as string[]
   const hasInflight = attachments.some((a) => !a.assetId && !a.error)
   const canSend = !sending && !hasInflight && (value.trim().length > 0 || uploaded.length > 0)
 
@@ -38,13 +45,20 @@ export function Composer({ channelId, onSend, disabled, placeholder }: ComposerP
     if (!canSend) return
     setSending(true)
     try {
-      await onSend({ content: value.trim(), attachmentIds: uploaded })
+      await onSend({
+        content: value.trim(),
+        attachmentIds: uploaded,
+        inflight: uploadedInflight,
+      })
       setValue('')
+      // Don't revoke objectUrls here — ownership transfers to the caller via
+      // `inflight`. The conversation view tracks them and revokes on Pusher
+      // reconcile or unmount.
       setAttachments([])
     } finally {
       setSending(false)
     }
-  }, [canSend, onSend, uploaded, value])
+  }, [canSend, onSend, uploaded, uploadedInflight, value])
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
@@ -79,7 +93,17 @@ export function Composer({ channelId, onSend, disabled, placeholder }: ComposerP
   )
 
   const handleRemoveAttachment = useCallback((localId: string) => {
-    setAttachments((prev) => prev.filter((a) => a.localId !== localId))
+    setAttachments((prev) => {
+      const removed = prev.find((a) => a.localId === localId)
+      if (removed?.objectUrl) {
+        try {
+          URL.revokeObjectURL(removed.objectUrl)
+        } catch {
+          /* ignore */
+        }
+      }
+      return prev.filter((a) => a.localId !== localId)
+    })
   }, [])
 
   // Drag-and-drop handoff to AttachButton's upload pipeline.
@@ -147,6 +171,7 @@ async function uploadFiles(
     name: f.name,
     size: f.size,
     type: f.type,
+    objectUrl: f.type.startsWith('image/') ? URL.createObjectURL(f) : undefined,
   }))
   const start = [...current, ...additions]
   setState(start)

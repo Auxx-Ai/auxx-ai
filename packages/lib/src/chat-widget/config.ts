@@ -2,6 +2,7 @@
 
 import { type Database, schema } from '@auxx/database'
 import { desc, eq } from 'drizzle-orm'
+import { onCacheEvent } from '../cache'
 import { getOrgChannelProviderMap } from '../channels/cache'
 import { BadRequestError, ConflictError, databaseErrorCodes, NotFoundError } from '../errors'
 import { InboxService } from '../inboxes/inbox-service'
@@ -199,6 +200,10 @@ export async function updateChatWidget(
     logger.error('Failed to update chat widget', { error, channelId })
     throw error
   }
+
+  // Invalidate the `channels` org cache so ChatProvider.maybeEnqueueAgentRun
+  // and other hot paths pick up the new agentId / name / settings.
+  await onCacheEvent('channel.settings_updated', { orgId: ctx.organizationId })
 
   return Result.nil()
 }

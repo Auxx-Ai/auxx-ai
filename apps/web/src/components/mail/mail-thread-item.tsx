@@ -1,7 +1,6 @@
 // apps/web/src/components/mail/mail-thread-item.tsx
 'use client'
 
-import { formatVisitorLabel } from '@auxx/lib/chat/labels'
 import { evaluateConditions, normalizeStatusConditions } from '@auxx/lib/conditions/client'
 import type { ActorId } from '@auxx/types/actor'
 import { toRecordId } from '@auxx/types/resource'
@@ -306,15 +305,7 @@ export const MailThreadItem = memo(function MailThreadItem({
       : ''
   }, [thread?.lastMessageAt])
 
-  const senderName = useMemo(() => {
-    if (!senderParticipant) return 'Unknown'
-    if (senderParticipant.displayName) return senderParticipant.displayName
-    if (senderParticipant.name) return senderParticipant.name
-    if (senderParticipant.identifierType === 'CHAT_VISITOR') {
-      return formatVisitorLabel(senderParticipant.identifier)
-    }
-    return senderParticipant.identifier || 'Unknown'
-  }, [senderParticipant])
+  const senderName = senderParticipant?.displayName ?? 'Unknown'
 
   const snippet = useMemo(() => {
     if (typeof window !== 'undefined' && latestMessage?.snippet) {

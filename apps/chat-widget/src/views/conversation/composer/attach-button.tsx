@@ -24,6 +24,8 @@ export interface InflightAttachment {
   type: string
   /** Asset id once the upload settles. */
   assetId?: string
+  /** Local blob URL for instant image preview pre-upload. Caller revokes. */
+  objectUrl?: string
   error?: string
 }
 
@@ -46,6 +48,7 @@ export function AttachButton({ channelId, inflight, onChange, disabled }: Attach
         name: f.name,
         size: f.size,
         type: f.type,
+        objectUrl: f.type.startsWith('image/') ? URL.createObjectURL(f) : undefined,
       }))
       const start = [...inflight, ...additions]
       onChange(start)

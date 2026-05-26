@@ -8,13 +8,19 @@ import type { ChatThreadMetadata } from '@auxx/lib/threads/types'
 import { createScopedLogger } from '@auxx/logger'
 import { and, asc, desc, eq, isNotNull, lt, or, sql } from 'drizzle-orm'
 import { Hono } from 'hono'
-import { applyChatCorsHeaders, loadChatWidgetByChannelId, loadThreadEvents } from './lib'
+import {
+  applyChatCorsHeaders,
+  loadChatAttachmentsForMessages,
+  loadChatWidgetByChannelId,
+  loadThreadEvents,
+} from './lib'
 
 const log = createScopedLogger('chat-threads-route')
 
 const threadsRoute = new Hono()
 
 const LIST_PAGE_SIZE = 20
+const MESSAGE_PAGE_SIZE = 50
 
 threadsRoute.options('/', (c) => {
   applyChatCorsHeaders(c, { allowCredentials: true })
@@ -221,7 +227,14 @@ threadsRoute.get('/:threadId/messages', async (c) => {
       )
     }
 
-    const rows = await database
+    const cursorParam = c.req.query('cursor') ?? null
+    const cursorDate = cursorParam ? parseHistoryCursor(cursorParam) : null
+    const limitRaw = Number(c.req.query('limit') ?? MESSAGE_PAGE_SIZE)
+    const limit = Number.isFinite(limitRaw)
+      ? Math.max(1, Math.min(100, limitRaw))
+      : MESSAGE_PAGE_SIZE
+
+    const recentRows = await database
       .select({
         id: schema.Message.id,
         threadId: schema.Message.threadId,
@@ -232,23 +245,50 @@ threadsRoute.get('/:threadId/messages', async (c) => {
         createdAt: schema.Message.createdAt,
       })
       .from(schema.Message)
-      .where(eq(schema.Message.threadId, threadId))
-      .orderBy(asc(schema.Message.sentAt))
+      .where(
+        and(
+          eq(schema.Message.threadId, threadId),
+          cursorDate ? lt(schema.Message.sentAt, cursorDate) : undefined
+        )
+      )
+      .orderBy(desc(schema.Message.sentAt))
+      .limit(limit)
 
-    const messages = rows.map((m) => ({
-      id: m.id,
-      threadId: m.threadId,
-      content: m.textPlain ?? m.textHtml ?? '',
-      sender: m.isInbound ? 'USER' : 'AGENT',
-      createdAt: m.sentAt ?? m.createdAt,
-      status: 'DELIVERED',
-    }))
+    // Render chronologically; cursor logic still uses the desc-sorted page.
+    const rows = recentRows.slice().reverse()
+
+    const attachmentsByMessage =
+      rows.length > 0
+        ? await loadChatAttachmentsForMessages(
+            chat.organizationId,
+            rows.map((r) => r.id)
+          )
+        : new Map()
+
+    const messages = rows.map((m) => {
+      const attachments = attachmentsByMessage.get(m.id)
+      return {
+        id: m.id,
+        threadId: m.threadId,
+        content: m.textPlain ?? m.textHtml ?? '',
+        sender: m.isInbound ? 'USER' : 'AGENT',
+        createdAt: m.sentAt ?? m.createdAt,
+        status: 'DELIVERED',
+        ...(attachments?.length ? { attachments } : {}),
+      }
+    })
 
     // Hydrate the thread's lifecycle events so the widget can interleave
-    // centered system lines with the message transcript on reload.
-    const threadEvents = await loadThreadEvents(chat.organizationId, threadId)
+    // centered system lines with the message transcript on reload. Only on
+    // the initial page — older pages reuse what the widget already has.
+    const threadEvents = cursorDate ? [] : await loadThreadEvents(chat.organizationId, threadId)
 
-    return c.json({ success: true, data: { messages, threadEvents, nextCursor: null } })
+    const nextCursor =
+      recentRows.length === limit
+        ? (recentRows[recentRows.length - 1]?.sentAt?.toISOString() ?? null)
+        : null
+
+    return c.json({ success: true, data: { messages, threadEvents, nextCursor } })
   } catch (error) {
     log.error('Failed to load chat history', {
       threadId,
@@ -544,6 +584,11 @@ threadsRoute.post('/:threadId/transcript', async (c) => {
     )
   }
 })
+
+function parseHistoryCursor(cursor: string): Date | null {
+  const d = new Date(cursor)
+  return Number.isNaN(d.getTime()) ? null : d
+}
 
 function parseCursor(cursor: string): { lastMessageAt: Date; id: string } | null {
   const [iso, id] = cursor.split('__')

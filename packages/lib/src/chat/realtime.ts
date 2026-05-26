@@ -7,6 +7,7 @@ import {
 } from '../realtime/publish-helpers'
 import type { RealtimeService } from '../realtime/realtime-service'
 import { rooms } from '../realtime/rooms'
+import type { ChatAttachment } from './types'
 
 /**
  * Shape of a chat message frame the embedded widget renders. Loose typing —
@@ -21,6 +22,8 @@ export interface ChatVisitorMessagePayload {
   status: 'sending' | 'sent' | 'delivered' | 'read' | 'error'
   clientMessageId?: string
   agent?: { id?: string; name?: string; image?: string }
+  /** Metadata only — no presigned URLs. Widget resolves URLs lazily. */
+  attachments?: ChatAttachment[]
 }
 
 /**

@@ -8,7 +8,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import { getStoredIdentify, type IdentifyPayload, onIdentify } from '~/identify'
 import { dismissPrivacyBanner, isPrivacyBannerDismissed } from '~/persistence/privacy-banner'
 import { markThreadRead } from '~/persistence/unread'
-import { type ChatMessage, chatApi } from '~/transport/chat-api'
+import { type ChatAttachment, type ChatMessage, chatApi } from '~/transport/chat-api'
 import type { ChatConfig } from '~/transport/config'
 import { connectPrivatePusher, connectPusher } from '~/transport/pusher'
 import {
@@ -48,10 +48,29 @@ export function ConversationView({ channelId, threadId, config }: ConversationVi
     getStoredIdentify(channelId)
   )
   const bodyRef = useRef<HTMLDivElement | null>(null)
+  // Track every `URL.createObjectURL(...)` we hand off as an optimistic
+  // preview so we can revoke them on Pusher reconcile or widget unmount. A
+  // missed revoke leaks memory per send.
+  const objectUrlsRef = useRef<Set<string>>(new Set())
 
   // Pick up later identify() calls so the welcome bubble's `visitor:*`
   // placeholders refresh in place.
   useEffect(() => onIdentify(setIdentify), [])
+
+  // Revoke any outstanding optimistic blob URLs on unmount.
+  useEffect(
+    () => () => {
+      for (const url of objectUrlsRef.current) {
+        try {
+          URL.revokeObjectURL(url)
+        } catch {
+          /* ignore */
+        }
+      }
+      objectUrlsRef.current.clear()
+    },
+    []
+  )
 
   // Bootstrap: call initialize so we always have a sessionId + pusherChannel
   // matched to the visitor's current passport. The endpoint resumes when a
@@ -115,10 +134,35 @@ export function ConversationView({ channelId, threadId, config }: ConversationVi
       content: string
       sender: string
       createdAt: string
+      clientMessageId?: string
+      attachments?: ChatAttachment[]
     }) => {
       if (data.threadId !== threadId) return
       setMessages((prev) => {
-        if (prev.some((m) => m.id === data.id)) return prev
+        // Match against either the server id (echo on a second tab) or the
+        // optimistic clientMessageId (own send round-tripping back). Merge
+        // server attachments onto the optimistic entry rather than replacing,
+        // so the local objectUrl previews don't flash. Once the merge lands
+        // we revoke the optimistic blob URLs — we know the server payload
+        // is now driving the render.
+        const idx = prev.findIndex(
+          (m) => m.id === data.id || (data.clientMessageId && m.id === data.clientMessageId)
+        )
+        if (idx >= 0) {
+          const existing = prev[idx]!
+          const mergedAttachments = mergeAttachments(existing.attachments, data.attachments)
+          revokeOptimisticUrls(existing.attachments, objectUrlsRef.current)
+          const next = prev.slice()
+          next[idx] = {
+            ...existing,
+            id: data.id,
+            content: data.content || existing.content,
+            createdAt: data.createdAt || existing.createdAt,
+            status: 'delivered',
+            ...(mergedAttachments ? { attachments: mergedAttachments } : {}),
+          }
+          return next
+        }
         return [
           ...prev,
           {
@@ -126,6 +170,7 @@ export function ConversationView({ channelId, threadId, config }: ConversationVi
             content: data.content,
             sender: (data.sender as ChatMessage['sender']) ?? 'AGENT',
             createdAt: data.createdAt,
+            ...(data.attachments?.length ? { attachments: data.attachments } : {}),
           },
         ]
       })
@@ -204,15 +249,31 @@ export function ConversationView({ channelId, threadId, config }: ConversationVi
   }, [messages.length, threadEvents.length])
 
   const handleSend = useCallback(
-    async ({ content, attachmentIds }: ComposerSendArgs) => {
+    async ({ content, attachmentIds, inflight }: ComposerSendArgs) => {
       if (!init) return
       const clientMessageId = `c-${Date.now()}-${Math.random().toString(36).slice(2)}`
+      const optimisticAttachments: ChatAttachment[] | undefined =
+        inflight && inflight.length > 0
+          ? inflight
+              .filter((a) => a.assetId)
+              .map((a) => {
+                if (a.objectUrl) objectUrlsRef.current.add(a.objectUrl)
+                return {
+                  id: a.assetId!,
+                  name: a.name,
+                  mimeType: a.type,
+                  size: a.size,
+                  ...(a.objectUrl ? { objectUrl: a.objectUrl } : {}),
+                }
+              })
+          : undefined
       const optimistic: ChatMessage = {
         id: clientMessageId,
         content,
         sender: 'USER',
         createdAt: new Date().toISOString(),
         status: 'sending',
+        ...(optimisticAttachments?.length ? { attachments: optimisticAttachments } : {}),
       }
       setMessages((prev) => [...prev, optimistic])
       try {
@@ -222,7 +283,7 @@ export function ConversationView({ channelId, threadId, config }: ConversationVi
           content,
           clientMessageId,
           ...(attachmentIds.length > 0 ? { attachmentIds } : {}),
-        } as any)
+        })
       } catch (e) {
         setMessages((prev) =>
           prev.map((m) => (m.id === clientMessageId ? { ...m, status: 'error' } : m))
@@ -257,7 +318,7 @@ export function ConversationView({ channelId, threadId, config }: ConversationVi
           item.kind === 'event' ? (
             <SystemLine key={`e-${item.event.id}`} event={item.event} />
           ) : (
-            <Bubble key={`g-${i}`} group={item.group} />
+            <Bubble key={`g-${i}`} group={item.group} channelId={channelId} />
           )
         )}
       </div>
@@ -276,7 +337,7 @@ export function ConversationView({ channelId, threadId, config }: ConversationVi
             {init && messages.length === 0 ? (
               <SuggestedReplies
                 replies={config.suggestedReplies ?? []}
-                onSelect={(text) => handleSend({ content: text, attachmentIds: [] })}
+                onSelect={(text) => handleSend({ content: text, attachmentIds: [], inflight: [] })}
               />
             ) : null}
             <Composer channelId={channelId} onSend={handleSend} />
@@ -309,6 +370,54 @@ function OfflineNotice({ message }: { message: string | null }) {
       {text}
     </div>
   )
+}
+
+/**
+ * Merge attachments from a server payload onto an existing optimistic entry.
+ * The server is canonical for ids/order; optimistic entries only contribute
+ * `objectUrl` so the visitor doesn't see a flash on reconcile.
+ *
+ * Optimistic ids are MediaAsset ids (from the upload POST response); server
+ * ids are Attachment ids, so id-based matching fails on reconcile. When
+ * counts match, fall back to position-based zipping — the visitor sends in
+ * the order they picked, server preserves it via `Attachment.sort`.
+ */
+function mergeAttachments(
+  optimistic: ChatAttachment[] | undefined,
+  server: ChatAttachment[] | undefined
+): ChatAttachment[] | undefined {
+  if (!server || server.length === 0)
+    return optimistic && optimistic.length > 0 ? optimistic : undefined
+  if (!optimistic || optimistic.length === 0) return server
+  if (optimistic.length === server.length) {
+    return server.map((s, i) => {
+      const o = optimistic[i]
+      return o?.objectUrl ? { ...s, objectUrl: o.objectUrl } : s
+    })
+  }
+  const byId = new Map(optimistic.map((a) => [a.id, a]))
+  return server.map((s) => {
+    const o = byId.get(s.id)
+    return o?.objectUrl ? { ...s, objectUrl: o.objectUrl } : s
+  })
+}
+
+/** Revoke any blob URLs we created for the optimistic preview. */
+function revokeOptimisticUrls(
+  attachments: ChatAttachment[] | undefined,
+  tracked: Set<string>
+): void {
+  if (!attachments) return
+  for (const a of attachments) {
+    if (a.objectUrl && tracked.has(a.objectUrl)) {
+      try {
+        URL.revokeObjectURL(a.objectUrl)
+      } catch {
+        /* ignore */
+      }
+      tracked.delete(a.objectUrl)
+    }
+  }
 }
 
 type TimelineItem =

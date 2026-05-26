@@ -12,6 +12,7 @@ import { User } from 'lucide-react'
 import type { ComponentChildren } from 'preact'
 import { cn } from '~/lib/cn'
 import type { ChatMessage } from '~/transport/chat-api'
+import { AttachmentList } from './attachment-list'
 
 export type BubbleSender = 'USER' | 'AGENT' | 'SYSTEM'
 
@@ -36,9 +37,11 @@ interface BubbleProps {
   group?: MessageGroup
   /** Single-pill body for synthetic bubbles when neither `group` nor `typing`. */
   children?: ComponentChildren
+  /** Channel id, needed to resolve attachment URLs lazily per message. */
+  channelId?: string
 }
 
-export function Bubble({ sender, avatar, typing, group, children }: BubbleProps) {
+export function Bubble({ sender, avatar, typing, group, children, channelId }: BubbleProps) {
   const effectiveSender: BubbleSender = sender ?? group?.sender ?? 'AGENT'
   const isUser = effectiveSender === 'USER'
   const isSystem = effectiveSender === 'SYSTEM'
@@ -61,11 +64,20 @@ export function Bubble({ sender, avatar, typing, group, children }: BubbleProps)
             <TypingDots />
           </div>
         ) : group ? (
-          group.messages.map((m, i) => (
-            <div key={m.id} className={pillClass(isUser, i === 0, i === group.messages.length - 1)}>
-              {m.content}
-            </div>
-          ))
+          group.messages.map((m, i) => {
+            const hasAttachments = m.attachments && m.attachments.length > 0
+            const hasContent = m.content && m.content.length > 0
+            return (
+              <div
+                key={m.id}
+                className={pillClass(isUser, i === 0, i === group.messages.length - 1)}>
+                {hasContent ? <div>{m.content}</div> : null}
+                {hasAttachments && channelId ? (
+                  <AttachmentList channelId={channelId} items={m.attachments!} isUser={isUser} />
+                ) : null}
+              </div>
+            )
+          })
         ) : (
           <div className={pillClass(isUser, true, true)}>{children}</div>
         )}
