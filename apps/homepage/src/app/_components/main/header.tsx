@@ -232,7 +232,7 @@ export default function Header() {
         )}>
         <div
           className={cn(
-            'in-data-scrolled:ring-foreground/5 in-data-scrolled:bg-background/75 in-data-scrolled:shadow-black/10 in-data-scrolled:max-w-4xl max-lg:in-data-scrolled:px-5 in-data-scrolled:backdrop-blur mx-auto w-full max-w-6xl rounded-2xl border border-transparent px-3 shadow-md shadow-transparent ring-1 ring-transparent transition-[max-width,padding,background-color,box-shadow,backdrop-filter] duration-500 ease-in-out',
+            'in-data-scrolled:ring-foreground/5 in-data-scrolled:bg-background/75 in-data-scrolled:shadow-black/10 in-data-scrolled:max-w-4xl max-lg:in-data-scrolled:px-5 in-data-scrolled:backdrop-blur mx-auto w-full max-w-6xl rounded-2xl border border-transparent px-3 shadow-md shadow-transparent ring-1 ring-transparent transition-[max-width,padding,background-color,box-shadow,backdrop-filter] duration-500 ease-in-out max-lg:pb-4',
             'max-lg:in-data-[state=active]:backdrop-blur max-lg:in-data-[state=active]:ring-foreground/5 max-lg:in-data-[state=active]:bg-background/75 max-lg:in-data-[state=active]:px-5 max-lg:in-data-[state=active]:shadow-black/10'
           )}>
           <div className='relative flex flex-wrap items-center justify-between lg:py-3'>

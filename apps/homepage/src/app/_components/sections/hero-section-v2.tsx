@@ -65,8 +65,9 @@ export default function HeroSectionV2() {
             </motion.div>
           </div>
 
-          {/* Right column — Kopilot mockup */}
-          <div className='relative lg:col-span-7'>
+          {/* Right column — Kopilot mockup. Hidden below md; the tilted desktop
+              mock doesn't translate well to phone widths. */}
+          <div className='relative hidden md:block lg:col-span-7'>
             <KopilotMock />
           </div>
         </div>
