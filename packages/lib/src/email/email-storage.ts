@@ -28,6 +28,7 @@ import {
   normalizeOwnEmails,
   storeMessage,
 } from '../ingest'
+import { getRealtimeService, publishInboxSyncCompleted } from '../realtime'
 
 // Type re-exports (MessageData etc. live in ingest/types now)
 export type {
@@ -119,6 +120,42 @@ export class MessageStorageService {
     if (!orgId) return 0
     const ctx = await this.resolveCtx(orgId)
     return batchStoreMessages(ctx, messages, { batchId, isInitialSync })
+  }
+
+  /**
+   * Run a block of work inside a sync batch: per-message realtime publishes
+   * are suppressed (via `ctx.inSyncBatch`) and a single `inbox:syncCompleted`
+   * event is emitted for each touched inbox once the block resolves. Used by
+   * provider-specific ingestors (Gmail, Outlook) whose loops don't go through
+   * `batchStoreMessages`.
+   */
+  async runInSyncBatch<T>(organizationId: string, fn: () => Promise<T>): Promise<T> {
+    const ctx = await this.resolveCtx(organizationId)
+    const wasInSyncBatch = ctx.inSyncBatch
+    ctx.inSyncBatch = true
+    if (!wasInSyncBatch) ctx.touchedInboxIds = new Set()
+    try {
+      return await fn()
+    } finally {
+      if (!wasInSyncBatch) {
+        const touched = Array.from(ctx.touchedInboxIds)
+        ctx.touchedInboxIds = new Set()
+        ctx.inSyncBatch = false
+        if (touched.length > 0) {
+          const realtime = getRealtimeService()
+          await Promise.allSettled(
+            touched.map((inboxId) =>
+              publishInboxSyncCompleted(
+                realtime,
+                organizationId,
+                { inboxId },
+                { excludeSocketId: ctx.socketId }
+              )
+            )
+          )
+        }
+      }
+    }
   }
 
   async deleteMessagesByExternalIds(integrationId: string, externalIds: string[]): Promise<number> {

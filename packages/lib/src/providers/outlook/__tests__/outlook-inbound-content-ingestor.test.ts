@@ -38,6 +38,7 @@ import { OutlookInboundContentIngestor } from '../outlook-inbound-content-ingest
 function makeStorageService(): MessageStorageService {
   return {
     storeMessage: mocks.storeMessage,
+    runInSyncBatch: async (_orgId: string, fn: () => Promise<unknown>) => fn(),
   } as any
 }
 

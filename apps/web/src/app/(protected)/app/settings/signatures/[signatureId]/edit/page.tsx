@@ -7,6 +7,7 @@ import { use } from 'react'
 import SettingsPage from '~/components/global/settings-page'
 import { useSignature } from '~/components/signatures/hooks'
 import { SignatureForm } from '~/components/signatures/ui'
+import { useUser } from '~/hooks/use-user'
 
 interface EditSignaturePageProps {
   params: Promise<{ signatureId: string }>
@@ -19,9 +20,7 @@ interface EditSignaturePageProps {
 export default function EditSignaturePage({ params }: EditSignaturePageProps) {
   const { signatureId } = use(params)
   const { signature, isLoading } = useSignature(signatureId)
-
-  // TODO: Get isAdmin from session/auth context
-  const isAdmin = true
+  const { isAdminOrOwner } = useUser()
 
   if (isLoading) {
     return (
@@ -65,7 +64,7 @@ export default function EditSignaturePage({ params }: EditSignaturePageProps) {
             isDefault: signature.isDefault,
             visibility: signature.visibility,
           }}
-          isAdmin={isAdmin}
+          isAdmin={isAdminOrOwner}
         />
       </div>
     </SettingsPage>

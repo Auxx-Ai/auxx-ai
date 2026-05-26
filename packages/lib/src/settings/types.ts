@@ -42,6 +42,7 @@ export type Setting =
   | 'dashboard.defaultView'
   | 'email.internalDomains'
   | 'email.partnerDomains'
+  | 'compose.defaultIntegrationId'
 
 export type GenericSetting<U extends Setting, T extends Record<string, unknown>> = {
   type: U

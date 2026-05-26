@@ -3,6 +3,7 @@
 'use client'
 
 import type {
+  InboxSyncCompletedEvent,
   MailBatchEvent,
   MailSyncEvent,
   MessageCreatedEvent,
@@ -154,6 +155,19 @@ export function useMailSync() {
     [removeMessage, removeFromMessageList]
   )
 
+  // Server emits one `inbox:syncCompleted` per touched inbox at the end of a
+  // sync batch (per-message events are suppressed during sync to avoid the
+  // realtime → getByIds fan-out that trips the tRPC rate limiter). Refresh
+  // the thread list so any new / removed threads surface; thread + message
+  // data are loaded lazily on demand.
+  const handleInboxSyncCompleted = useCallback(
+    (_data: InboxSyncCompletedEvent['data'] | null) => {
+      utils.thread.listIds.invalidate()
+      invalidateAllContexts()
+    },
+    [utils, invalidateAllContexts]
+  )
+
   const handleParticipantUpdated = useCallback(
     (data: ParticipantUpdatedEvent['data'] | null) => {
       if (!data?.participantId || !data.patch) return
@@ -187,6 +201,8 @@ export function useMailSync() {
         case 'mail:batch':
           for (const inner of e.data.events) dispatchEvent(inner)
           return
+        case 'inbox:syncCompleted':
+          return handleInboxSyncCompleted(e.data)
       }
     },
     [
@@ -197,6 +213,7 @@ export function useMailSync() {
       handleMessageUpdated,
       handleMessageDeleted,
       handleParticipantUpdated,
+      handleInboxSyncCompleted,
     ]
   )
 
@@ -229,6 +246,8 @@ export function useMailSync() {
           return handleMessageDeleted(payload as MessageDeletedEvent['data'])
         case 'mail:batch':
           return handleMailBatch(payload as MailBatchEvent['data'])
+        case 'inbox:syncCompleted':
+          return handleInboxSyncCompleted(payload as InboxSyncCompletedEvent['data'])
       }
     },
     [
@@ -239,6 +258,7 @@ export function useMailSync() {
       handleMessageUpdated,
       handleMessageDeleted,
       handleMailBatch,
+      handleInboxSyncCompleted,
     ]
   )
 

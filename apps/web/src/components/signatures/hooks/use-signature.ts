@@ -6,15 +6,17 @@ import { type FieldInfo, useAllRecords } from '~/components/resources/hooks/use-
 import type { RecordMeta } from '~/components/resources/store/record-store'
 
 /**
- * Extended RecordMeta with signature-specific field values
+ * Extended RecordMeta with signature-specific field values.
+ * Keys come from each field's `systemAttribute` (see SIGNATURE_FIELDS),
+ * which is what the entity system emits on the wire — not the registry `key`.
  */
 interface SignatureRecordMeta extends RecordMeta {
   fieldValues: {
     name?: string
     body?: string
-    isDefault?: boolean
+    is_default?: boolean
     visibility?: SignatureVisibility
-    createdById?: string
+    created_by_id?: string
   }
 }
 
@@ -69,9 +71,9 @@ export function useSignatures(): UseSignaturesResult {
         recordId: record.recordId,
         name: record.fieldValues?.name ?? record.displayName ?? 'Untitled',
         body: record.fieldValues?.body ?? '',
-        isDefault: record.fieldValues?.isDefault ?? false,
+        isDefault: record.fieldValues?.is_default ?? false,
         visibility,
-        createdById: record.fieldValues?.createdById,
+        createdById: record.fieldValues?.created_by_id,
       }
     })
 

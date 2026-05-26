@@ -65,32 +65,37 @@ export class OutlookInboundContentIngestor {
     const retriableFailures: IngestFailure[] = []
     const nonRetriableFailures: IngestFailure[] = []
 
-    for (const messageData of sortedMessages) {
-      try {
-        await this.storeOneWithIngest(messageData, fetchContext)
-        storedCount++
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error)
-        const retriable = isRetriableIngestError(error)
+    // Run the whole batch under a sync-batch — per-message events are
+    // suppressed and one `inbox:syncCompleted` is emitted per touched inbox
+    // once we exit. Prevents the rate-limit fan-out for large backfills.
+    await this.storageService.runInSyncBatch(this.organizationId, async () => {
+      for (const messageData of sortedMessages) {
+        try {
+          await this.storeOneWithIngest(messageData, fetchContext)
+          storedCount++
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error)
+          const retriable = isRetriableIngestError(error)
 
-        logger.error('Error storing Outlook message with ingest in batch', {
-          error: message,
-          externalId: messageData.externalId,
-          retriable,
-        })
+          logger.error('Error storing Outlook message with ingest in batch', {
+            error: message,
+            externalId: messageData.externalId,
+            retriable,
+          })
 
-        const failure: IngestFailure = {
-          externalId: messageData.externalId,
-          error: message,
-          retriable,
-        }
-        if (retriable) {
-          retriableFailures.push(failure)
-        } else {
-          nonRetriableFailures.push(failure)
+          const failure: IngestFailure = {
+            externalId: messageData.externalId,
+            error: message,
+            retriable,
+          }
+          if (retriable) {
+            retriableFailures.push(failure)
+          } else {
+            nonRetriableFailures.push(failure)
+          }
         }
       }
-    }
+    })
 
     const failedCount = retriableFailures.length + nonRetriableFailures.length
     const failedExternalIds = [

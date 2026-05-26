@@ -241,6 +241,29 @@ export async function publishParticipantUpdated(
 }
 
 /**
+ * Signal the end of a server-side sync cycle that touched a given inbox. The
+ * client listens and invalidates `thread.listIds` for the inbox — per-message
+ * events are suppressed during sync to avoid the realtime → getByIds fan-out
+ * that trips the tRPC mutation rate limit.
+ */
+export async function publishInboxSyncCompleted(
+  realtimeService: RealtimeService,
+  organizationId: string,
+  args: { inboxId: string | null },
+  options?: MailPublishOptions
+) {
+  if (!(await isMailRealtimeEnabled(organizationId))) return
+  await realtimeService
+    .publish(
+      inboxRoom(organizationId, args.inboxId),
+      'inbox:syncCompleted',
+      { inboxId: args.inboxId },
+      options
+    )
+    .catch(() => {})
+}
+
+/**
  * Flush a list of mail events as one or more `mail:batch` frames on the inbox
  * channel. Used by ingest's initial-sync / polling-sync paths to coalesce
  * many events into a small number of frames. Events are chunked at

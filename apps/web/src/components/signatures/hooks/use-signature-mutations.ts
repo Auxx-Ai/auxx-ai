@@ -82,7 +82,10 @@ export function useSignatureMutations() {
 
   return {
     /**
-     * Create a new signature
+     * Create a new signature.
+     * Field keys must match each field's `systemAttribute` (see SIGNATURE_FIELDS) —
+     * the entity-system setFieldValues lookup is keyed by systemAttribute, so
+     * `isDefault` would silently no-op; use `is_default`.
      */
     create: (input: CreateSignatureInput) =>
       createSignature.mutateAsync({
@@ -90,7 +93,7 @@ export function useSignatureMutations() {
         values: {
           name: input.name,
           body: input.body,
-          isDefault: input.isDefault ?? false,
+          is_default: input.isDefault ?? false,
           visibility: input.visibility ?? 'private',
         },
       }),
@@ -98,11 +101,14 @@ export function useSignatureMutations() {
     /**
      * Update an existing signature
      */
-    update: (recordId: string, input: UpdateSignatureInput) =>
-      updateSignature.mutateAsync({
-        recordId,
-        values: input,
-      }),
+    update: (recordId: string, input: UpdateSignatureInput) => {
+      const values: Record<string, unknown> = {}
+      if (input.name !== undefined) values.name = input.name
+      if (input.body !== undefined) values.body = input.body
+      if (input.isDefault !== undefined) values.is_default = input.isDefault
+      if (input.visibility !== undefined) values.visibility = input.visibility
+      return updateSignature.mutateAsync({ recordId, values })
+    },
 
     /**
      * Delete a signature

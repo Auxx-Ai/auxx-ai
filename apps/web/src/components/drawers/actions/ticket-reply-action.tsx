@@ -3,7 +3,7 @@
 
 import { Button } from '@auxx/ui/components/button'
 import { MessageSquare } from 'lucide-react'
-import { useChannels } from '~/components/channels/hooks/use-channels'
+import { useDefaultChannelId } from '~/components/channels/hooks/use-default-channel'
 import { Tooltip } from '~/components/global/tooltip'
 import type { EditorPresetValues } from '~/components/mail/email-editor/types'
 import { useSystemValues } from '~/components/resources/hooks/use-system-values'
@@ -20,8 +20,7 @@ export function TicketReplyAction({ recordId, entityInstanceId, record }: Drawer
   const { openCompose } = useCompose()
 
   const { values } = useSystemValues(recordId, [...TICKET_FIELDS], { autoFetch: true })
-  const channels = useChannels()
-  const defaultIntegrationId = channels[0]?.id
+  const defaultIntegrationId = useDefaultChannelId()
 
   const handleClick = () => {
     const title =

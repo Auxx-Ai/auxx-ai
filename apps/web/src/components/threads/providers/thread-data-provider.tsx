@@ -7,171 +7,76 @@ import { useMailCountsStore } from '~/components/mail/store'
 import { useTaskStore } from '~/components/tasks/stores/task-store'
 import { api } from '~/trpc/react'
 import { useMessageStore, useParticipantStore, useThreadStore } from '../store'
+import { useBatchDrain } from './use-batch-drain'
 
 interface ThreadDataProviderProps {
   children: React.ReactNode
 }
 
 /**
- * Provider that orchestrates batch fetching for threads, messages, and participants.
- * Place high in component tree (e.g., app layout).
+ * Orchestrates serial batch fetching for threads, messages, participants,
+ * tasks, and standalone drafts. Place high in the component tree.
  *
- * @example
- * // In app/layout.tsx or similar
- * <ThreadDataProvider>
- *   <YourApp />
- * </ThreadDataProvider>
+ * Each resource gets its own drain loop (`useBatchDrain`), which fires
+ * batches one at a time per resource — never concurrently — so a realtime
+ * burst (channel sync, big mailbox import) cannot fan out into dozens of
+ * overlapping `getByIds` mutations and trip the tRPC rate limiter.
  */
 export function ThreadDataProvider({ children }: ThreadDataProviderProps) {
-  // ============================================================
-  // Thread batch fetching
-  // ============================================================
-  const pendingThreadCount = useThreadStore((s) => s.pendingIds.size)
-  const startThreadBatch = useThreadStore((s) => s.startBatch)
-  const completeThreadBatch = useThreadStore((s) => s.completeBatch)
-
   const { mutateAsync: fetchThreads } = api.thread.getByIds.useMutation()
-
-  useEffect(() => {
-    if (pendingThreadCount === 0) return
-
-    const timer = setTimeout(async () => {
-      const batch = startThreadBatch()
-      if (batch.length === 0) return
-
-      try {
-        const threads = await fetchThreads({ ids: batch })
-        const foundIds = new Set(threads.map((t) => t.id))
-        const notFoundIds = batch.filter((id) => !foundIds.has(id))
-        completeThreadBatch(threads, notFoundIds)
-      } catch (error) {
-        console.error('Thread batch fetch failed:', error)
-        completeThreadBatch([], batch) // Mark all as not found on error
-      }
-    }, 50)
-
-    return () => clearTimeout(timer)
-  }, [pendingThreadCount, startThreadBatch, completeThreadBatch, fetchThreads])
-
-  // ============================================================
-  // Message batch fetching
-  // ============================================================
-  const pendingMessageCount = useMessageStore((s) => s.pendingIds.size)
-  const startMessageBatch = useMessageStore((s) => s.startBatch)
-  const completeMessageBatch = useMessageStore((s) => s.completeBatch)
+  useBatchDrain({
+    subscribePending: (cb) => useThreadStore.subscribe((s) => s.pendingIds.size, cb),
+    getPendingSize: () => useThreadStore.getState().pendingIds.size,
+    startBatch: () => useThreadStore.getState().startBatch(),
+    completeBatch: (items, notFoundIds) =>
+      useThreadStore.getState().completeBatch(items, notFoundIds),
+    fetcher: (ids) => fetchThreads({ ids }),
+    label: 'Thread',
+  })
 
   const { mutateAsync: fetchMessages } = api.message.getByIds.useMutation()
-
-  useEffect(() => {
-    if (pendingMessageCount === 0) return
-
-    const timer = setTimeout(async () => {
-      const batch = startMessageBatch()
-      if (batch.length === 0) return
-
-      try {
-        const messages = await fetchMessages({ ids: batch })
-        const foundIds = new Set(messages.map((m) => m.id))
-        const notFoundIds = batch.filter((id) => !foundIds.has(id))
-        completeMessageBatch(messages, notFoundIds)
-      } catch (error) {
-        console.error('Message batch fetch failed:', error)
-        completeMessageBatch([], batch)
-      }
-    }, 50)
-
-    return () => clearTimeout(timer)
-  }, [pendingMessageCount, startMessageBatch, completeMessageBatch, fetchMessages])
-
-  // ============================================================
-  // Participant batch fetching
-  // ============================================================
-  const pendingParticipantCount = useParticipantStore((s) => s.pendingIds.size)
-  const startParticipantBatch = useParticipantStore((s) => s.startBatch)
-  const completeParticipantBatch = useParticipantStore((s) => s.completeBatch)
+  useBatchDrain({
+    subscribePending: (cb) => useMessageStore.subscribe((s) => s.pendingIds.size, cb),
+    getPendingSize: () => useMessageStore.getState().pendingIds.size,
+    startBatch: () => useMessageStore.getState().startBatch(),
+    completeBatch: (items, notFoundIds) =>
+      useMessageStore.getState().completeBatch(items, notFoundIds),
+    fetcher: (ids) => fetchMessages({ ids }),
+    label: 'Message',
+  })
 
   const { mutateAsync: fetchParticipants } = api.participant.getByIds.useMutation()
-
-  useEffect(() => {
-    if (pendingParticipantCount === 0) return
-
-    const timer = setTimeout(async () => {
-      const batch = startParticipantBatch()
-      if (batch.length === 0) return
-
-      try {
-        const participants = await fetchParticipants({ ids: batch })
-        const foundIds = new Set(participants.map((p) => p.id))
-        const notFoundIds = batch.filter((id) => !foundIds.has(id))
-        completeParticipantBatch(participants, notFoundIds)
-      } catch (error) {
-        console.error('Participant batch fetch failed:', error)
-        completeParticipantBatch([], batch)
-      }
-    }, 50)
-
-    return () => clearTimeout(timer)
-  }, [pendingParticipantCount, startParticipantBatch, completeParticipantBatch, fetchParticipants])
-
-  // ============================================================
-  // Task by-id batch fetching (kopilot reference blocks)
-  // ============================================================
-  const pendingTaskCount = useTaskStore((s) => s.pendingFetchIds.size)
-  const startTaskBatch = useTaskStore((s) => s.startBatch)
-  const completeTaskBatch = useTaskStore((s) => s.completeBatch)
+  useBatchDrain({
+    subscribePending: (cb) => useParticipantStore.subscribe((s) => s.pendingIds.size, cb),
+    getPendingSize: () => useParticipantStore.getState().pendingIds.size,
+    startBatch: () => useParticipantStore.getState().startBatch(),
+    completeBatch: (items, notFoundIds) =>
+      useParticipantStore.getState().completeBatch(items, notFoundIds),
+    fetcher: (ids) => fetchParticipants({ ids }),
+    label: 'Participant',
+  })
 
   const { mutateAsync: fetchTasks } = api.task.getByIds.useMutation()
-
-  useEffect(() => {
-    if (pendingTaskCount === 0) return
-
-    const timer = setTimeout(async () => {
-      const batch = startTaskBatch()
-      if (batch.length === 0) return
-
-      try {
-        const tasks = await fetchTasks({ ids: batch })
-        const foundIds = new Set(tasks.map((t) => t.id))
-        const notFoundIds = batch.filter((id) => !foundIds.has(id))
-        completeTaskBatch(tasks, notFoundIds)
-      } catch (error) {
-        console.error('Task batch fetch failed:', error)
-        completeTaskBatch([], batch)
-      }
-    }, 50)
-
-    return () => clearTimeout(timer)
-  }, [pendingTaskCount, startTaskBatch, completeTaskBatch, fetchTasks])
-
-  // ============================================================
-  // Standalone draft batch fetching
-  // ============================================================
-  const pendingDraftCount = useThreadStore((s) => s.pendingDraftIds.size)
-  const startDraftBatch = useThreadStore((s) => s.startDraftBatch)
-  const completeDraftBatch = useThreadStore((s) => s.completeDraftBatch)
+  useBatchDrain({
+    subscribePending: (cb) => useTaskStore.subscribe((s) => s.pendingFetchIds.size, cb),
+    getPendingSize: () => useTaskStore.getState().pendingFetchIds.size,
+    startBatch: () => useTaskStore.getState().startBatch(),
+    completeBatch: (items, notFoundIds) =>
+      useTaskStore.getState().completeBatch(items, notFoundIds),
+    fetcher: (ids) => fetchTasks({ ids }),
+    label: 'Task',
+  })
 
   const { mutateAsync: fetchDrafts } = api.draft.getByIds.useMutation()
-
-  useEffect(() => {
-    if (pendingDraftCount === 0) return
-
-    const timer = setTimeout(async () => {
-      const batch = startDraftBatch()
-      if (batch.length === 0) return
-
-      try {
-        const drafts = await fetchDrafts({ ids: batch })
-        const foundIds = new Set(drafts.map((d) => d.id))
-        const notFoundIds = batch.filter((id) => !foundIds.has(id))
-        completeDraftBatch(drafts, notFoundIds)
-      } catch (error) {
-        console.error('Draft batch fetch failed:', error)
-        completeDraftBatch([], batch) // Mark all as not found on error
-      }
-    }, 50)
-
-    return () => clearTimeout(timer)
-  }, [pendingDraftCount, startDraftBatch, completeDraftBatch, fetchDrafts])
+  useBatchDrain({
+    subscribePending: (cb) => useThreadStore.subscribe((s) => s.pendingDraftIds.size, cb),
+    getPendingSize: () => useThreadStore.getState().pendingDraftIds.size,
+    startBatch: () => useThreadStore.getState().startDraftBatch(),
+    completeBatch: (items, notFoundIds) =>
+      useThreadStore.getState().completeDraftBatch(items, notFoundIds),
+    fetcher: (ids) => fetchDrafts({ ids }),
+    label: 'Draft',
+  })
 
   // ============================================================
   // Mail counts fetching

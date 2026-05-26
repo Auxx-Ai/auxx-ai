@@ -402,28 +402,14 @@ export async function storeMessage(
     await touchActivityForThreadLinks(thread.id, messageData.organizationId, messageData.sentAt)
 
     // Realtime publish — message:created (and thread:created on a brand-new
-    // thread). During initial / polling sync, append to ctx.batchedEvents so
-    // the batch orchestrator can flush a small number of `mail:batch` frames
-    // at the end instead of one publish per message.
+    // thread). During a sync batch, suppress per-message events entirely and
+    // just record the inbox as touched; the orchestrator emits one
+    // `inbox:syncCompleted` per touched inbox at the end so the FE refreshes
+    // `thread.listIds` once instead of fetching every id.
     const inboxIdForChannel = thread.inboxId ?? null
     const inboxRecordId = inboxIdForChannel ? toRecordId('inbox', inboxIdForChannel) : null
-    if (ctx.isInitialSync) {
-      if (isNewThread) {
-        ctx.batchedEvents.push({
-          inboxId: inboxIdForChannel,
-          event: {
-            event: 'thread:created',
-            data: { threadId: thread.id, inboxId: inboxRecordId },
-          },
-        })
-      }
-      ctx.batchedEvents.push({
-        inboxId: inboxIdForChannel,
-        event: {
-          event: 'message:created',
-          data: { messageId: messageRecord.id, threadId: thread.id },
-        },
-      })
+    if (ctx.inSyncBatch) {
+      ctx.touchedInboxIds.add(inboxIdForChannel)
     } else {
       const realtime = getRealtimeService()
       if (isNewThread) {

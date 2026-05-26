@@ -28,6 +28,7 @@ import {
   X,
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { RecordIcon } from '~/components/resources/ui/record-icon'
 
 /**
  * Props for the MultiSelectPicker component
@@ -95,6 +96,9 @@ export interface MultiSelectPickerProps {
 
   /** Label for browse button (default: "Browse all") */
   browseLabel?: string
+
+  /** Render a per-row secondary action (e.g., a "favorite" star). Rendered before the selection indicator. */
+  renderItemAction?: (opt: SelectOption) => React.ReactNode
 }
 
 /**
@@ -124,6 +128,7 @@ export function MultiSelectPicker({
   onEdit,
   onBrowse,
   browseLabel = 'Browse all',
+  renderItemAction,
 }: MultiSelectPickerProps) {
   const editInputRef = useRef<HTMLInputElement>(null)
 
@@ -448,31 +453,45 @@ export function MultiSelectPicker({
                         <div className='flex items-center gap-2'>
                           {/* Selection indicator (checkbox/radio) or manage icon */}
 
-                          {/* Icon (if option has icon) */}
-                          {opt.icon && (
-                            <EntityIcon
-                              iconId={opt.icon}
+                          {/* Avatar + icon fallback (record pickers carry avatarUrl) */}
+                          {opt.avatarUrl ? (
+                            <RecordIcon
+                              avatarUrl={opt.avatarUrl}
+                              iconId={opt.icon || 'circle'}
+                              color={opt.color ?? 'gray'}
                               size='sm'
-                              {...(opt.color?.startsWith('#')
-                                ? { style: { color: opt.color } }
-                                : { color: opt.color ?? 'gray' })}
                             />
-                          )}
-
-                          {/* Color dot (if option has color but no icon) */}
-                          {opt.color && !opt.icon && (
-                            <div
-                              className={cn(
-                                'size-3 rounded-full ring-1 ring-inset ring-black/10 dark:ring-white/10',
-                                getColorSwatch(opt.color)
+                          ) : (
+                            <>
+                              {/* Icon (if option has icon) */}
+                              {opt.icon && (
+                                <EntityIcon
+                                  iconId={opt.icon}
+                                  size='sm'
+                                  {...(opt.color?.startsWith('#')
+                                    ? { style: { color: opt.color } }
+                                    : { color: opt.color ?? 'gray' })}
+                                />
                               )}
-                            />
+
+                              {/* Color dot (if option has color but no icon) */}
+                              {opt.color && !opt.icon && (
+                                <div
+                                  className={cn(
+                                    'size-3 rounded-full ring-1 ring-inset ring-black/10 dark:ring-white/10',
+                                    getColorSwatch(opt.color)
+                                  )}
+                                />
+                              )}
+                            </>
                           )}
 
                           {/* Option label */}
                           <span className='truncate'>{opt.label}</span>
                         </div>
                         <div className='flex items-center gap-1 shrink-0'>
+                          {/* Per-row secondary action (e.g., favorite star) */}
+                          {!isManageMode && renderItemAction && renderItemAction(opt)}
                           {/* Edit button on hover (normal mode only) */}
                           {!isManageMode && onEdit && (
                             <button

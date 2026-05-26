@@ -158,6 +158,8 @@ export class InboxService {
 
     // Delete the entity instance
     await this.crudHandler.delete(recordId)
+
+    await onCacheEvent('channel.inbox-link.changed', { orgId: this.organizationId })
   }
 
   /**

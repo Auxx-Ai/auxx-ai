@@ -43,6 +43,7 @@ export {
   flushMailBatch,
   publishAgentUpdated,
   publishFieldValueUpdates,
+  publishInboxSyncCompleted,
   publishMessageCreated,
   publishMessageDeleted,
   publishMessageUpdated,
