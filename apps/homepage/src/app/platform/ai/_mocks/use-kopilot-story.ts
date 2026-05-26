@@ -11,6 +11,10 @@ export interface KopilotStoryScript {
   turns: ScriptTurn[]
   /** Multiplier on all timings. 1 = realistic, <1 speeds up, >1 slows down. */
   speed?: number
+  /** When true, playback restarts after the last turn settles. */
+  loop?: boolean
+  /** Pause between loops in ms. Defaults to 2500. */
+  loopGapMs?: number
 }
 
 export interface ScriptTurn {
@@ -385,6 +389,8 @@ export function useKopilotStory<T extends Element = HTMLDivElement>(
     let cursor = 0
     let timeoutId: ReturnType<typeof setTimeout> | null = null
 
+    const loopGap = script.loopGapMs ?? 2500
+
     const tick = () => {
       if (cancelled) return
       const ev = events[cursor]
@@ -394,6 +400,13 @@ export function useKopilotStory<T extends Element = HTMLDivElement>(
       const next = events[cursor]
       if (next) {
         timeoutId = setTimeout(tick, next.delay)
+      } else if (script.loop) {
+        timeoutId = setTimeout(() => {
+          if (cancelled) return
+          cursor = 0
+          setState(initialState)
+          timeoutId = setTimeout(tick, events[0]!.delay)
+        }, loopGap)
       }
     }
 

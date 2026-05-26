@@ -12,6 +12,8 @@ import type { KopilotStoryScript } from '../../_mocks/use-kopilot-story'
  */
 export const KOPILOT_HERO_SCRIPT: KopilotStoryScript = {
   speed: 1,
+  loop: true,
+  loopGapMs: 3000,
   turns: [
     {
       user: 'Summarize my open tickets',

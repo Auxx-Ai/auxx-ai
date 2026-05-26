@@ -429,7 +429,7 @@
   --color-card-foreground: var(--color-zinc-950);
   --color-popover: var(--color-white);
   --color-popover-foreground: var(--color-zinc-950);
-  --color-primary: lab(70% -7.01 -44.82);
+  --color-primary: var(--color-zinc-950);
 
   --color-primary-foreground: var(--color-white);
   --color-secondary: var(--color-sky-100);
