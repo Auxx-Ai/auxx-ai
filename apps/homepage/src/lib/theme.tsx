@@ -4,7 +4,7 @@
 import { createContext, use, useCallback, useEffect, useState } from 'react'
 
 const STORAGE_KEY = 'theme'
-const DEFAULT_THEME = 'dark'
+const DEFAULT_THEME = 'quartz'
 const THEMES = ['quartz', 'dark'] as const
 
 export type Theme = (typeof THEMES)[number]

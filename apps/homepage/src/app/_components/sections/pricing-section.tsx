@@ -108,7 +108,9 @@ export default function PricingSection() {
                             ))}
                           </ul>
                         </div>
-                        <div className='rounded-(--radius) ring-foreground/10 relative overflow-hidden @4xl:my-2 @max-4xl:mx-1 row-span-4 grid grid-rows-subgrid gap-8 border-transparent shadow shadow-xl ring-1 backdrop-blur [&>*+*]:relative [&>*+*]:z-10'>
+                        <div
+                          data-theme='dark'
+                          className='dark text-foreground rounded-(--radius) ring-foreground/10 relative overflow-hidden @4xl:my-2 @max-4xl:mx-1 row-span-4 grid grid-rows-subgrid gap-8 border-transparent shadow shadow-xl ring-1 backdrop-blur [&>*+*]:relative [&>*+*]:z-10'>
                           <RandomGradient
                             colors={[...GRADIENT_PALETTES.aurora]}
                             mode='mesh'

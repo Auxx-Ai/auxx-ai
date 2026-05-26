@@ -134,7 +134,7 @@ export default function RootLayout({
   const posthogHost = configService.get<string>('POSTHOG_HOST') || 'https://us.i.posthog.com'
 
   return (
-    <html lang='en' data-theme='dark' suppressHydrationWarning>
+    <html lang='en' data-theme='quartz' suppressHydrationWarning>
       <head>
         <ThemeScript />
         <OrganizationJsonLd />

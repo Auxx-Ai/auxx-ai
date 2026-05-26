@@ -3,6 +3,7 @@
 import {
   MockAppSidebar,
   MockBrowserChrome,
+  MockKopilotHeader,
   MockKopilotWindow,
   MockMainPage,
 } from '~/app/platform/ai/_mocks'
@@ -25,13 +26,17 @@ export default function KopilotHomeSection() {
         <MockBrowserChrome variant='regular'>
           <div className='flex h-[560px]'>
             <MockAppSidebar activeKey='kopilot' className='hidden md:flex' />
-            <MockMainPage>
+            <MockMainPage
+              header={
+                <MockKopilotHeader
+                  breadcrumb={{
+                    trail: ['Chats'],
+                    title: 'Open Support Tickets Summary',
+                    titleMobile: 'Tickets',
+                  }}
+                />
+              }>
               <MockKopilotWindow
-                breadcrumb={{
-                  trail: ['Chats'],
-                  title: 'Open Support Tickets Summary',
-                  titleMobile: 'Tickets',
-                }}
                 script={KOPILOT_HERO_SCRIPT}
                 composerPlaceholder='Ask Kopilot...'
                 modelLabel='GPT-5.4 Nano'

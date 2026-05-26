@@ -5,10 +5,14 @@ import { MockPanelFrame } from './mock-panel-frame'
 
 interface MockMainPageProps {
   className?: string
-  /** When true, swaps `overflow-hidden` for `overflow-visible` and enables
-   *  `transform-3d` so 3D-translated children render beyond the panel bounds.
-   *  Forwarded to the inner `MockPanelFrame`. Default `false`. */
-  allowOverflow?: boolean
+  /** Optional header rendered above the panel frame (e.g. a `MockKopilotHeader`).
+   *  Sits flat inside the page padding; the panel frame below it can be lifted
+   *  in 3D independently. */
+  header?: React.ReactNode
+  /** When true, MockMainPage does NOT wrap children in `MockPanelFrame` — caller
+   *  is responsible for rendering the frame (useful when the panel frame itself
+   *  needs to be animated/transformed by the caller). Default `false`. */
+  noPanelFrame?: boolean
   children: React.ReactNode
 }
 
@@ -19,17 +23,20 @@ interface MockMainPageProps {
  * (`bg-neutral-100 dark:bg-background p-3 pt-0`) and wraps its content in a
  * `MockPanelFrame` for the nested-border depth effect.
  */
-export function MockMainPage({ className, allowOverflow = false, children }: MockMainPageProps) {
+export function MockMainPage({
+  className,
+  header,
+  noPanelFrame = false,
+  children,
+}: MockMainPageProps) {
   return (
     <div
       className={cn(
-        'flex h-full min-h-0 flex-1 flex-col bg-mock-page-bg p-3 pt-3',
-        allowOverflow ? 'overflow-visible transform-3d' : 'overflow-hidden',
+        'flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-mock-page-bg p-3 pt-3',
         className
       )}>
-      <MockPanelFrame flex allowOverflow={allowOverflow}>
-        {children}
-      </MockPanelFrame>
+      {header}
+      {noPanelFrame ? children : <MockPanelFrame flex>{children}</MockPanelFrame>}
     </div>
   )
 }

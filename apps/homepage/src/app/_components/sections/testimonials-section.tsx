@@ -79,7 +79,9 @@ export default function TestimonialsSection() {
                   />
                 ))}
 
-                <div className='max-lg:rounded-(--radius) lg:rounded-tl-(--radius) lg:rounded-br-(--radius) relative overflow-hidden ring-foreground/5 row-start-1 flex flex-col justify-between gap-6 border border-transparent p-8 shadow-lg shadow-black/10 ring-1 lg:col-start-1'>
+                <div
+                  data-theme='dark'
+                  className='dark text-foreground max-lg:rounded-(--radius) lg:rounded-tl-(--radius) lg:rounded-br-(--radius) relative overflow-hidden ring-foreground/5 row-start-1 flex flex-col justify-between gap-6 border border-transparent p-8 shadow-lg shadow-black/10 ring-1 lg:col-start-1'>
                   <RandomGradient
                     colors={[...GRADIENT_PALETTES.openai]}
                     mode='openai'
@@ -120,7 +122,9 @@ export default function TestimonialsSection() {
                     </div>
                   </div>
                 </div>
-                <div className='rounded-(--radius) relative overflow-hidden ring-foreground/5 row-start-3 flex flex-col justify-between gap-6 border border-transparent p-8 shadow-lg shadow-black/10 ring-1 sm:col-start-2 lg:row-start-2'>
+                <div
+                  data-theme='dark'
+                  className='dark text-foreground rounded-(--radius) relative overflow-hidden ring-foreground/5 row-start-3 flex flex-col justify-between gap-6 border border-transparent p-8 shadow-lg shadow-black/10 ring-1 sm:col-start-2 lg:row-start-2'>
                   <RandomGradient
                     colors={[...GRADIENT_PALETTES.openai]}
                     mode='openai'
@@ -153,7 +157,9 @@ export default function TestimonialsSection() {
                     </div>
                   </div>
                 </div>
-                <div className='rounded-(--radius) relative overflow-hidden ring-foreground/5 flex flex-col justify-between gap-6 border border-transparent p-8 shadow-lg shadow-black/10 ring-1 sm:row-start-2 lg:col-start-3 lg:row-start-3 lg:rounded-bl-none lg:rounded-tr-none'>
+                <div
+                  data-theme='dark'
+                  className='dark text-foreground rounded-(--radius) relative overflow-hidden ring-foreground/5 flex flex-col justify-between gap-6 border border-transparent p-8 shadow-lg shadow-black/10 ring-1 sm:row-start-2 lg:col-start-3 lg:row-start-3 lg:rounded-bl-none lg:rounded-tr-none'>
                   <RandomGradient
                     colors={[...GRADIENT_PALETTES.openai]}
                     mode='openai'

@@ -3,15 +3,17 @@ import { RandomGradient } from '@auxx/ui/components/random-gradient'
 import Link from 'next/link'
 import {
   ClaudeAI,
-  Cloudflare,
+  DeepSeek,
   Gemini,
-  GooglePaLM,
-  Linear,
-  MediaWiki,
+  Github,
+  Gmail,
   OpenAI,
-  Replit,
-  Vercel,
-  VisualStudioCode,
+  Outlook,
+  Quickbooks,
+  Shopify,
+  Slack,
+  Stripe,
+  Supabase,
 } from '~/components/logos'
 import { Button } from '~/components/ui/button'
 import { config } from '~/lib/config'
@@ -41,9 +43,11 @@ export default function IntegrationSection() {
                   <div className='flex flex-row-reverse justify-center gap-3'>
                     <div className='bg-black/40 size-11 rounded-full border border-black/10'></div>
                     <IntegrationCard>
-                      <MediaWiki className='size-6' />
+                      <Shopify className='size-6' />
                     </IntegrationCard>
-                    <div className='bg-black/40 size-11 rounded-full border border-black/10'></div>
+                    <IntegrationCard>
+                      <Quickbooks className='size-6' />
+                    </IntegrationCard>
                     <div className='bg-black/40 size-11 rounded-full border border-black/10'></div>
                     <div className='bg-black/40 size-11 rounded-full border border-black/10'></div>
                   </div>
@@ -51,15 +55,15 @@ export default function IntegrationSection() {
                     <div className='bg-black/40 size-11 rounded-full border border-black/10'></div>
 
                     <IntegrationCard>
-                      <Replit className='size-6' />
+                      <Slack className='size-6' />
                     </IntegrationCard>
                     <div className='bg-black/40 size-11 rounded-full border border-black/10'></div>
 
                     <IntegrationCard>
-                      <Vercel className='size-6' />
+                      <Github className='size-6' />
                     </IntegrationCard>
                     <IntegrationCard>
-                      <Linear className='size-6' />
+                      <Stripe className='size-6' />
                     </IntegrationCard>
                     <div className='bg-black/40 size-11 rounded-full border border-black/10'></div>
                   </div>
@@ -67,7 +71,7 @@ export default function IntegrationSection() {
                     <div className='bg-black/40 size-11 rounded-full border border-black/10'></div>
 
                     <IntegrationCard>
-                      <VisualStudioCode className='size-6' />
+                      <Gmail className='size-6' />
                     </IntegrationCard>
                     <div className='bg-black/40 size-11 rounded-full border border-black/10'></div>
                     <IntegrationCard>
@@ -75,7 +79,7 @@ export default function IntegrationSection() {
                     </IntegrationCard>
                     <div className='bg-black/40 size-11 rounded-full border border-black/10'></div>
                     <IntegrationCard>
-                      <Cloudflare className='size-6' />
+                      <Supabase className='size-6' />
                     </IntegrationCard>
                     <div className='bg-black/40 size-11 rounded-full border border-black/10'></div>
                   </div>
@@ -90,14 +94,14 @@ export default function IntegrationSection() {
                     </IntegrationCard>
                     <div className='bg-black/40 size-11 rounded-full border border-black/10'></div>
                     <IntegrationCard>
-                      <GooglePaLM className='size-6' />
+                      <Outlook className='size-6' />
                     </IntegrationCard>
                     <div className='bg-black/40 size-11 rounded-full border border-black/10'></div>
                   </div>
                   <div className='flex justify-center gap-3'>
                     <div className='bg-black/40 size-11 rounded-full border border-black/10'></div>
                     <IntegrationCard>
-                      <MediaWiki className='size-6' />
+                      <DeepSeek className='size-6' />
                     </IntegrationCard>
                     <div className='bg-black/40 size-11 rounded-full border border-black/10'></div>
                     <div className='bg-black/40 size-11 rounded-full border border-black/10'></div>
