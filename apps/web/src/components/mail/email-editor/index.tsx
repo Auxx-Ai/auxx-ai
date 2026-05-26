@@ -31,8 +31,11 @@ import { useFileSelect } from '~/components/file-select/hooks/use-file-select'
 import { useCountUpdates } from '~/components/mail/hooks'
 import { useComposeStore } from '~/components/mail/store/compose-store'
 import { SignatureEditor } from '~/components/signatures/ui'
-import { getMessageListStoreState } from '~/components/threads/store/message-list-store'
-import { getMessageStoreState, type MessageMeta } from '~/components/threads/store/message-store'
+import {
+  appendOptimisticMessage,
+  toAttachmentMeta,
+} from '~/components/threads/hooks/append-optimistic-message'
+import type { MessageMeta } from '~/components/threads/store/message-store'
 import { getThreadStoreState } from '~/components/threads/store/thread-store'
 import { useAnalytics } from '~/hooks/use-analytics'
 import { useConfirm } from '~/hooks/use-confirm'
@@ -389,18 +392,9 @@ function ReplyComposeEditorComponent({
         onSendDraft()
       }
 
-      // Message list refresh — invalidate both Zustand and React Query caches
-      if (sentMessage.threadId) {
-        getMessageListStoreState().invalidate(sentMessage.threadId)
-        utils.message.listByThread.invalidate({ threadId: sentMessage.threadId })
-      }
-
-      // Thread metadata patch + optimistic MessageMeta — point the row's
-      // snippet/sender at the new message in the same render. Without the
-      // synthesized message entry, `useMessage` returns undefined for the
-      // ~50ms request batch window and the snippet line blanks out.
       if (sentMessage.threadId && sentMessage.id) {
         const sentAt = sentMessage.sentAt?.toISOString() ?? new Date().toISOString()
+        const attachments = (variables.attachments ?? []).map(toAttachmentMeta)
         const optimistic: MessageMeta = {
           id: sentMessage.id,
           threadId: sentMessage.threadId,
@@ -410,7 +404,7 @@ function ReplyComposeEditorComponent({
           textPlain: variables.textPlain ?? null,
           isInbound: false,
           isFirstInThread: false,
-          hasAttachments: (variables.attachments?.length ?? 0) > 0,
+          hasAttachments: attachments.length > 0,
           hasHtmlBody: !!variables.textHtml,
           hasTextBody: !!variables.textPlain,
           sentAt,
@@ -421,18 +415,10 @@ function ReplyComposeEditorComponent({
           sendStatus: 'SENT',
           providerError: null,
           attempts: 1,
-          attachments: [],
+          attachments,
           messageType: 'EMAIL',
         }
-        getMessageStoreState().setMessages([optimistic])
-
-        const currentThread = getThreadStoreState().getThread(sentMessage.threadId)
-        if (currentThread) {
-          getThreadStoreState().updateThread(sentMessage.threadId, {
-            lastMessageAt: sentAt,
-            latestMessageId: sentMessage.id,
-          })
-        }
+        appendOptimisticMessage(utils, sentMessage.threadId, optimistic)
       }
 
       onSendSuccess()

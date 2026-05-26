@@ -42,6 +42,7 @@ export const INVALIDATION_GRAPH: Record<string, InvalidationMapping> = {
   'channel.disconnected': ['channelProviders', 'inboxes', 'channels', 'overages'],
   'channel.toggled': ['channels'],
   'channel.settings_updated': ['channels'],
+  'channel.inbox-link.changed': ['channels', 'inboxes'],
 
   'group.created': ['groups'],
   'group.updated': ['groups'],

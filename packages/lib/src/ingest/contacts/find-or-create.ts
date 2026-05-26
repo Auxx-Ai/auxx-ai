@@ -41,8 +41,18 @@ export async function findOrCreateContactForParticipant(
     const handler = ctx.crudHandler
     const force = options?.force ?? false
 
-    const systemAttr =
-      participant.identifierType === IdentifierTypeEnum.PHONE ? 'phone' : 'primary_email'
+    // Chat-widget visitors are identified by an opaque session id (cookie value),
+    // not an email/phone — `Participant.identifier` is a cuid, not addressable.
+    // The other identifier types all carry a real address we can use as a dedupe
+    // key on the contact (`primary_email` / `phone`); chat visitors don't, so we
+    // skip the identifier-keyed lookup and rely on `Participant.entityInstanceId`
+    // for dedupe on the caller side.
+    const isChatVisitor = participant.identifierType === 'CHAT_VISITOR'
+    const systemAttr = isChatVisitor
+      ? null
+      : participant.identifierType === IdentifierTypeEnum.PHONE
+        ? 'phone'
+        : 'primary_email'
 
     // Never auto-create a contact for the integration owner's own addresses.
     // `force` is the documented escape hatch for the user-initiated
@@ -56,13 +66,16 @@ export async function findOrCreateContactForParticipant(
     }
 
     if (!force && mode === 'none') {
+      if (!systemAttr) return null
       const existing = await handler.findByField('contact', systemAttr, participant.identifier)
       return existing?.id ?? null
     }
 
     if (!force && mode === 'selective' && messageContext) {
-      const existing = await handler.findByField('contact', systemAttr, participant.identifier)
-      if (existing) return existing.id
+      if (systemAttr) {
+        const existing = await handler.findByField('contact', systemAttr, participant.identifier)
+        if (existing) return existing.id
+      }
 
       const isOutboundRecipient =
         !messageContext.isInbound &&
@@ -86,7 +99,6 @@ export async function findOrCreateContactForParticipant(
     }
 
     const names = getNamesFromParticipant(participant)
-    const findBy: Record<string, unknown> = { [systemAttr]: participant.identifier }
     const createValues: Record<string, unknown> = {
       first_name: names.firstName,
       last_name: names.lastName,
@@ -97,8 +109,18 @@ export async function findOrCreateContactForParticipant(
       createValues.phone = participant.identifier
     }
 
-    const { instance } = await handler.findOrCreate('contact', findBy, createValues)
-    const contactId = instance.id
+    let contactId: string
+    if (isChatVisitor || !systemAttr) {
+      // No identifier-keyed dedupe — just create. The caller writes the new id
+      // back to `Participant.entityInstanceId`, which is the only stable dedupe
+      // key we have for chat visitors.
+      const { instance } = await handler.create('contact', createValues)
+      contactId = instance.id
+    } else {
+      const findBy: Record<string, unknown> = { [systemAttr]: participant.identifier }
+      const { instance } = await handler.findOrCreate('contact', findBy, createValues)
+      contactId = instance.id
+    }
 
     if (contactId) {
       const ownDomains = await resolveOwnDomains(ctx, ctx.organizationId)

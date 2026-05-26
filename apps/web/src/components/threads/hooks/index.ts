@@ -1,5 +1,6 @@
 // apps/web/src/components/threads/hooks/index.ts
 
+export { appendOptimisticMessage } from './append-optimistic-message'
 export { useFocusedThreadShortcuts } from './use-focused-thread-shortcuts'
 export { type InboxItem, type InboxRecord, useInbox, useInboxes } from './use-inbox'
 export { useMessage } from './use-message'

@@ -94,10 +94,7 @@ const ChatMessageDisplay = ({
 
   return (
     <div
-      className={cn(
-        'group/message flex w-full flex-col gap-1',
-        isInbound ? 'items-start' : 'items-end'
-      )}>
+      className={cn('group/message flex flex-col gap-1', isInbound ? 'items-start' : 'items-end')}>
       {showHeader && (
         <div className='flex items-center gap-2 pl-1'>
           <ContactHoverCard contactId={contactId ?? undefined}>
@@ -111,17 +108,29 @@ const ChatMessageDisplay = ({
           <span className='text-xs font-medium text-foreground'>{senderName}</span>
         </div>
       )}
-      <div className='relative w-full'>
+      <div className='relative w-fit max-w-full'>
         <div
           onClick={handleBubbleClick}
           className={cn(
-            'w-full border border-transparent px-3 py-2 text-sm/5 shadow transition-all duration-300',
+            'border border-transparent px-3 py-2 text-sm/5 shadow transition-all duration-300',
             isGrouped && 'cursor-pointer',
             isInbound
-              ? 'bg-illustration text-foreground ring-border-illustration shadow-black/10 ring-1'
-              : 'bg-primary text-primary-foreground inset-ring-foreground/10 inset-ring-1 shadow-black/15',
-            topRound ? 'rounded-t-2xl' : 'rounded-t-sm',
-            bottomRound ? 'rounded-b-2xl' : 'rounded-b-sm'
+              ? 'bg-illustration text-foreground ring-border-illustration shadow-black/10 ring-1 rounded-r-2xl'
+              : 'bg-primary text-primary-foreground inset-ring-foreground/10 inset-ring-1 shadow-black/15 rounded-l-2xl',
+            isInbound
+              ? topRound
+                ? 'rounded-tl-2xl'
+                : 'rounded-tl-sm'
+              : topRound
+                ? 'rounded-tr-2xl'
+                : 'rounded-tr-sm',
+            isInbound
+              ? bottomRound
+                ? 'rounded-bl-2xl'
+                : 'rounded-bl-sm'
+              : bottomRound
+                ? 'rounded-br-2xl'
+                : 'rounded-br-sm'
           )}>
           {content ? (
             <div className='cursor-text select-text whitespace-pre-wrap break-words font-sans'>

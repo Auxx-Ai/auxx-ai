@@ -5,6 +5,7 @@ import { ResourceGranteeType, ResourcePermission } from '@auxx/database/enums'
 import { createScopedLogger } from '@auxx/logger'
 import { parseRecordId, type RecordId, toRecordId } from '@auxx/types/resource'
 import { and, eq } from 'drizzle-orm'
+import { onCacheEvent } from '../cache'
 import {
   checkAccess,
   getUserAccessibleInstances,
@@ -280,7 +281,7 @@ export class InboxService {
     const instanceId = getInstanceId(recordId)
     logger.info('Adding integration to inbox', { instanceId, integrationId, isDefault })
 
-    return this.db.transaction(async (tx) => {
+    const result = await this.db.transaction(async (tx) => {
       // Check if integration already assigned somewhere
       const existing = await tx.query.InboxIntegration.findFirst({
         where: eq(schema.InboxIntegration.integrationId, integrationId),
@@ -335,6 +336,9 @@ export class InboxService {
 
       return created
     })
+
+    await onCacheEvent('channel.inbox-link.changed', { orgId: this.organizationId })
+    return result
   }
 
   /**
@@ -364,6 +368,8 @@ export class InboxService {
           eq(schema.InboxIntegration.integrationId, integrationId)
         )
       )
+
+    await onCacheEvent('channel.inbox-link.changed', { orgId: this.organizationId })
     return true
   }
 

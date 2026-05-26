@@ -149,6 +149,22 @@ export interface ThreadMeta {
 }
 
 /**
+ * Attachment shape used inside realtime message patches. Mirrors the
+ * client-side `AttachmentMeta` so a `message:updated` patch can fully replace
+ * a message's attachments array (e.g. swapping optimistic file-ids for the
+ * server-side `Attachment.id`s).
+ */
+export interface AttachmentMeta {
+  id: string
+  name: string
+  mimeType: string | null
+  size: number | null
+  url: string | null
+  inline: boolean
+  contentId: string | null
+}
+
+/**
  * Partial-by-design message metadata for mail realtime patches.
  */
 export interface MessageMeta {
@@ -160,6 +176,7 @@ export interface MessageMeta {
   receivedAt?: string | null
   isInbound?: boolean
   hasAttachments?: boolean
+  attachments?: AttachmentMeta[]
   fromId?: string | null
   sendStatus?: 'PENDING' | 'SENT' | 'FAILED' | null
   providerError?: string | null

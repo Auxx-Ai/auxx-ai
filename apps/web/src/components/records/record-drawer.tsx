@@ -20,8 +20,6 @@ import {
   Expand,
   Link as LinkIcon,
   Merge,
-  MessageSquare,
-  MessagesSquare,
   MoreHorizontal,
   TextCursorInput,
   Trash,
@@ -31,6 +29,7 @@ import { useRouter } from 'next/navigation'
 import * as React from 'react'
 import { EntityInstanceDialog } from '~/components/custom-fields/ui/entity-instance-dialog'
 import { BaseEntityDrawer } from '~/components/drawers/base-entity-drawer'
+import { getHeaderActions } from '~/components/drawers/drawer-action-registry'
 import { FavoriteToggleMenuItem } from '~/components/favorites/ui/favorite-toggle-menu-item'
 import { DockToggleButton } from '~/components/global/dock-toggle-button'
 import { Tooltip } from '~/components/global/tooltip'
@@ -85,12 +84,21 @@ export const RecordDrawer = React.memo(function RecordDrawer({
   // Get resource with fields
   const { resource } = useResource(entityDefinitionId ?? null)
 
+  // Resolve entity type once (used for both drawer config and action registry)
+  const entityType = React.useMemo(
+    () => resource?.entityType ?? (resource?.type === 'system' ? resource?.id : 'custom'),
+    [resource]
+  )
+
   // Get drawer config for entity-type-aware actions
   const drawerConfig = React.useMemo(() => {
-    const entityType =
-      resource?.entityType ?? (resource?.type === 'system' ? resource?.id : 'custom')
     return entityType ? getEntityDrawerConfig(entityType, entityDefinitionId || undefined) : null
-  }, [resource, entityDefinitionId])
+  }, [entityType, entityDefinitionId])
+
+  const headerActionComponents = React.useMemo(
+    () => (entityType ? getHeaderActions(entityType) : []),
+    [entityType]
+  )
 
   // Fetch entity record from cache (populated by batch fetcher when list loads)
   const { record: cachedRecord, isLoading: isRecordLoading } = useRecord({
@@ -190,14 +198,6 @@ export const RecordDrawer = React.memo(function RecordDrawer({
     setFocusComposerTrigger((prev) => prev + 1)
   }, [])
 
-  /** Handle reply - navigate to detail page */
-  const handleReply = React.useCallback(() => {
-    if (resource?.apiSlug && entityInstanceId) {
-      router.push(`/app/tickets/${entityInstanceId}#reply`)
-      onOpenChange?.(false)
-    }
-  }, [resource?.apiSlug, entityInstanceId, router, onOpenChange])
-
   /** Handle delete with confirmation */
   const handleDelete = React.useCallback(async () => {
     if (!onDeleteInstance || !entityInstanceId) return
@@ -268,21 +268,19 @@ export const RecordDrawer = React.memo(function RecordDrawer({
         headerTitle={resource?.label || 'Record'}
         headerActions={
           <>
-            {/* Reply button (ticket-specific) */}
-            {actions?.enableEmailCompose && (
-              <Tooltip content='Reply'>
-                <Button variant='ghost' size='icon-xs' onClick={handleReply}>
-                  <MessageSquare />
-                </Button>
-              </Tooltip>
-            )}
-
-            {/* Create note */}
-            <Tooltip content='Create note'>
-              <Button variant='ghost' size='icon-xs' onClick={handleCreateNoteClick}>
-                <MessagesSquare />
-              </Button>
-            </Tooltip>
+            {/* Entity-specific header actions (compose for contacts, reply for tickets, etc.) */}
+            {entityType &&
+              headerActionComponents.map((Action, i) => (
+                <Action
+                  key={i}
+                  recordId={recordId}
+                  entityInstanceId={entityInstanceId}
+                  entityType={entityType}
+                  record={cachedRecord}
+                  resource={resource}
+                  onCreateNote={handleCreateNoteClick}
+                />
+              ))}
 
             {/* Run workflow */}
             <ManualTriggerButton

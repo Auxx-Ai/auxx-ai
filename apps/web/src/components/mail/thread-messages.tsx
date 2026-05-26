@@ -179,7 +179,7 @@ export function ThreadMessages() {
   if (isLoading && messages.length === 0) {
     return (
       <div className='flex flex-col gap-4 px-4 py-2'>
-        {[1, 2, 3].map((i) => (
+        {[1, 2].map((i) => (
           <MessageSkeleton key={i} />
         ))}
       </div>

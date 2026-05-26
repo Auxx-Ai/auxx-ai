@@ -28,8 +28,6 @@ interface ScheduleSendButtonProps {
   /** When false, omits the schedule-send dropdown — renders a plain Send button.
    *  Used for chat / messaging channels that don't support scheduling. */
   allowSchedule?: boolean
-  /** When false, hides the ⌘ glyph next to the Enter icon — used when plain Enter submits. */
-  showMetaShortcut?: boolean
 }
 
 interface TimePreset {
@@ -111,7 +109,6 @@ export function ScheduleSendButton({
   disabled,
   popoverClassName,
   allowSchedule = true,
-  showMetaShortcut = true,
 }: ScheduleSendButtonProps) {
   const [datePickerOpen, setDatePickerOpen] = useState(false)
   const [dropdownOpen, setDropdownOpen] = useState(false)
@@ -159,7 +156,7 @@ export function ScheduleSendButton({
           loadingText='Sending...'>
           Send
           <Separator orientation='vertical' className='mx-1.5 h-3 opacity-50' />
-          {showMetaShortcut && <MetaIcon className='size-3! opacity-80' />}
+          <MetaIcon className='size-3! opacity-80' />
           <CornerDownLeft className='size-3! opacity-80' />
         </Button>
       </div>
@@ -205,7 +202,7 @@ export function ScheduleSendButton({
           loadingText='Sending...'>
           Send
           <Separator orientation='vertical' className='mx-1.5 h-3 opacity-50' />
-          {showMetaShortcut && <MetaIcon className='size-3! opacity-80' />}
+          <MetaIcon className='size-3! opacity-80' />
           <CornerDownLeft className='size-3! opacity-80' />
         </Button>
       )}

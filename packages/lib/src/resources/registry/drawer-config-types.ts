@@ -19,7 +19,6 @@ export interface DrawerTabDefinition {
  * Drawer action capabilities
  */
 export interface DrawerActions {
-  enableEmailCompose?: boolean
   enableMerge?: boolean
   enableGroups?: boolean
   enableAssign?: boolean
