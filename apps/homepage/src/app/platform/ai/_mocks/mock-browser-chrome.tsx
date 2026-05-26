@@ -6,6 +6,12 @@ interface MockBrowserChromeProps {
   variant?: 'regular' | 'compact'
   url?: string
   className?: string
+  /**
+   * When true, the inner content surface uses `overflow-visible` instead of
+   * `overflow-hidden`, allowing children that translate in 3D (translateZ) to
+   * render beyond the chrome bounds without being flattened. Default `false`.
+   */
+  allowOverflow?: boolean
   children: React.ReactNode
 }
 
@@ -21,6 +27,7 @@ export function MockBrowserChrome({
   variant = 'regular',
   url = 'app.auxx.ai/app/chats',
   className,
+  allowOverflow = false,
   children,
 }: MockBrowserChromeProps) {
   return (
@@ -30,7 +37,11 @@ export function MockBrowserChrome({
         className='pointer-events-none absolute inset-0 scale-100 opacity-75 blur-lg transition-all duration-300 dark:opacity-50'>
         <div className='bg-linear-to-r/increasing animate-hue-rotate absolute inset-x-6 bottom-0 top-12 -translate-y-3 from-pink-400 to-purple-400' />
       </div>
-      <div className='relative overflow-hidden rounded-2xl bg-card/85 backdrop-blur-md text-card-foreground shadow-xl shadow-black/[.065] ring-1 ring-border-illustration'>
+      <div
+        className={cn(
+          'relative rounded-2xl bg-card/85 backdrop-blur-md text-card-foreground shadow-xl shadow-black/[.065] ring-1 ring-border-illustration',
+          allowOverflow ? 'overflow-visible transform-3d' : 'overflow-hidden'
+        )}>
         {variant === 'regular' ? (
           <div className='relative grid grid-cols-[auto_1fr_auto] items-center gap-3 border-b border-border px-3 py-2'>
             <TrafficLights />

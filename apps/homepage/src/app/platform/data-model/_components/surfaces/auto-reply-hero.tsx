@@ -28,7 +28,6 @@ export function AutoReplyHero() {
     <>
       <div className='pointer-events-none absolute inset-x-0 top-0 bottom-[42%] overflow-hidden opacity-30 transition-opacity duration-500 ease-out group-hover/card:opacity-100'>
         <div className='absolute inset-x-0 top-0 z-10 h-20 bg-gradient-to-b from-[#EDFDED] via-[#EDFDED]/80 to-transparent dark:from-[#1A2A20] dark:via-[#1A2A20]/80' />
-        <div className='absolute inset-x-0 bottom-0 z-10 h-12 bg-gradient-to-t from-[#EDFDED] to-transparent dark:from-[#1A2A20]' />
         <div className='flex flex-col px-5 pt-12 [animation:scroll-code_25s_linear_infinite_paused] group-hover/card:[animation-play-state:running]'>
           {[0, 1].map((i) => (
             <pre
