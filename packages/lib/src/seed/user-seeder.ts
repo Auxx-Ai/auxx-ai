@@ -146,10 +146,10 @@ export class UserSeeder {
 
       const displayName = this.user.name || this.user.email || 'User'
       const result = await handler.create('signature', {
-        name: `${displayName} - Default`,
-        body: `<p>Best regards,<br>${displayName}</p>`,
-        is_default: true,
-        visibility: 'private',
+        signature_name: `${displayName} - Default`,
+        signature_body: `<p>Best regards,<br>${displayName}</p>`,
+        signature_is_default: true,
+        signature_visibility: 'private',
       })
 
       logger.info('Created default signature', {

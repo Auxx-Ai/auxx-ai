@@ -84,17 +84,16 @@ export function useSignatureMutations() {
     /**
      * Create a new signature.
      * Field keys must match each field's `systemAttribute` (see SIGNATURE_FIELDS) —
-     * the entity-system setFieldValues lookup is keyed by systemAttribute, so
-     * `isDefault` would silently no-op; use `is_default`.
+     * the entity-system setFieldValues lookup is keyed by systemAttribute.
      */
     create: (input: CreateSignatureInput) =>
       createSignature.mutateAsync({
         entityDefinitionId: 'signature',
         values: {
-          name: input.name,
-          body: input.body,
-          is_default: input.isDefault ?? false,
-          visibility: input.visibility ?? 'private',
+          signature_name: input.name,
+          signature_body: input.body,
+          signature_is_default: input.isDefault ?? false,
+          signature_visibility: input.visibility ?? 'private',
         },
       }),
 
@@ -103,10 +102,10 @@ export function useSignatureMutations() {
      */
     update: (recordId: string, input: UpdateSignatureInput) => {
       const values: Record<string, unknown> = {}
-      if (input.name !== undefined) values.name = input.name
-      if (input.body !== undefined) values.body = input.body
-      if (input.isDefault !== undefined) values.is_default = input.isDefault
-      if (input.visibility !== undefined) values.visibility = input.visibility
+      if (input.name !== undefined) values.signature_name = input.name
+      if (input.body !== undefined) values.signature_body = input.body
+      if (input.isDefault !== undefined) values.signature_is_default = input.isDefault
+      if (input.visibility !== undefined) values.signature_visibility = input.visibility
       return updateSignature.mutateAsync({ recordId, values })
     },
 
