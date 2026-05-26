@@ -42,21 +42,23 @@ const logos: Record<'ai' | 'messages', React.ReactNode[]> = {
 
 type LogoGroup = keyof typeof logos
 
+const mobilePages = (arr: React.ReactNode[]): React.ReactNode[][] => [
+  arr.slice(0, 3),
+  arr.slice(2, 5),
+]
+
 export default function LogoCloudTwo() {
-  const [currentGroup, setCurrentGroup] = useState<LogoGroup>('ai')
+  const [tick, setTick] = useState(0)
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      setCurrentGroup((prev) => {
-        const groups = Object.keys(logos) as LogoGroup[]
-        const currentIndex = groups.indexOf(prev)
-        const nextIndex = (currentIndex + 1) % groups.length
-        return groups[nextIndex]
-      })
-    }, 2500)
-
+    const interval = setInterval(() => setTick((t) => t + 1), 2500)
     return () => clearInterval(interval)
   }, [])
+
+  const groupKeys = Object.keys(logos) as LogoGroup[]
+  const currentGroup: LogoGroup = groupKeys[tick % groupKeys.length]
+  const mobilePageIndex = Math.floor(tick / groupKeys.length) % 2
+  const currentMobileLogos = mobilePages(logos[currentGroup])[mobilePageIndex]
 
   return (
     <section className='border-foreground/10 relative overflow-hidden border-b'>
@@ -78,7 +80,24 @@ export default function LogoCloudTwo() {
             </div>
             <div
               aria-hidden='true'
-              className='perspective-dramatic mx-auto grid max-w-5xl grid-cols-3 items-center gap-8 md:h-10 md:grid-cols-5'>
+              className='perspective-dramatic mx-auto grid max-w-5xl grid-cols-3 items-center gap-8 md:hidden'>
+              <AnimatePresence initial={false} mode='popLayout'>
+                {currentMobileLogos.map((logo, i) => (
+                  <motion.div
+                    key={`${currentGroup}-${mobilePageIndex}-${i}`}
+                    className='**:fill-foreground! flex items-center justify-center'
+                    initial={{ opacity: 0, y: 24, filter: 'blur(6px)' }}
+                    animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+                    exit={{ opacity: 0, y: -24, filter: 'blur(6px)', scale: 0.5 }}
+                    transition={{ delay: i * 0.05, duration: 0.4 }}>
+                    {logo}
+                  </motion.div>
+                ))}
+              </AnimatePresence>
+            </div>
+            <div
+              aria-hidden='true'
+              className='perspective-dramatic mx-auto hidden max-w-5xl grid-cols-5 items-center gap-8 md:grid md:h-10'>
               <AnimatePresence initial={false} mode='popLayout'>
                 {logos[currentGroup].map((logo, i) => (
                   <motion.div

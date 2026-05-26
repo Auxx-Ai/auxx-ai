@@ -38,7 +38,7 @@ export default function HeroSectionV2() {
               initial={reduce ? false : { opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5, ease: 'easeOut', delay: 0.05 }}
-              className='text-balance text-4xl font-semibold tracking-tight text-foreground lg:text-5xl'>
+              className='text-balance text-4xl font-semibold tracking-tight text-foreground lg:text-5xl backdrop-blur-xs rounded-xl'>
               The AI agent that runs your inbox and CRM.
             </motion.h1>
 
@@ -46,7 +46,7 @@ export default function HeroSectionV2() {
               initial={reduce ? false : { opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5, ease: 'easeOut', delay: 0.12 }}
-              className='mt-5 max-w-md text-lg leading-relaxed text-muted-foreground'>
+              className='mt-5 max-w-md text-lg leading-relaxed text-muted-foreground backdrop-blur-xs rounded-xl'>
               Kopilot reads every ticket, drafts the reply, and updates your customer record — so
               you sell, and the agent does the rest.
             </motion.p>

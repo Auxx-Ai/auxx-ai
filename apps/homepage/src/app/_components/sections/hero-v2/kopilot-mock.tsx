@@ -69,11 +69,11 @@ const dropIn = (reduce: boolean | null, delay: number, z?: number) => ({
 export function KopilotMock() {
   const reduce = useReducedMotion()
 
-  const float = (delay: number) =>
+  const float = (delay: number, amplitude = 6) =>
     reduce
       ? {}
       : {
-          animate: { y: [0, -6, 0] },
+          animate: { y: [0, -amplitude, 0] },
           transition: { duration: 7, repeat: Infinity, ease: 'easeInOut', delay },
         }
 
@@ -144,32 +144,34 @@ export function KopilotMock() {
           is in true screen-Y (not tilted local-Y). Inside the matching tilt, panel is
           absolutely positioned at the chrome interior offsets. */}
       <motion.div {...dropIn(reduce, 1)} className={cn(STAGE_ANCHOR, 'z-[1]')}>
-        <div className={TILT_STAGE}>
-          <motion.div className={MOCK_CANVAS}>
-            {/* Mirrors the chrome's outer size so the panel can position inside
+        <motion.div {...float(2.4, 24)} className='transform-3d'>
+          <div className={TILT_STAGE}>
+            <motion.div className={MOCK_CANVAS}>
+              {/* Mirrors the chrome's outer size so the panel can position inside
                 its main-page interior. Height matches chrome: header(~50) + 620. */}
-            <div className='relative h-[680px] w-full transform-3d'>
-              {/* Width is calc(100% − sidebar − chrome padding) so the panel fills
+              <div className='relative h-[680px] w-full transform-3d'>
+                {/* Width is calc(100% − sidebar − chrome padding) so the panel fills
                   the main-page area exactly: full chrome interior on mobile (no
                   sidebar), full minus the 220px sidebar on desktop.
                   29 = 8 (chrome p-2 left) + 21 (right offset).
                   249 = 228 (chrome p-2 + sidebar) + 21. */}
-              <div
-                className='absolute top-[180px] left-[8px] bottom-[21px] flex w-[calc(100%_-_29px)] transform-3d md:left-[228px] md:w-[calc(100%_-_320px)]'
-                style={{ transform: 'translateZ(120px)' }}>
-                <div className='flex h-full min-h-0 flex-1 flex-col rounded-2xl shadow-2xl shadow-black/40 transform-3d'>
-                  <MockPanelFrame>
-                    <MockKopilotWindow
-                      script={KOPILOT_HERO_SCRIPT}
-                      composerPlaceholder='Ask Kopilot...'
-                      modelLabel='GPT-5.4 Nano'
-                    />
-                  </MockPanelFrame>
+                <div
+                  className='absolute top-[180px] left-[8px] bottom-[21px] flex w-[calc(100%_-_29px)] transform-3d md:left-[228px] md:w-[calc(100%_-_320px)]'
+                  style={{ transform: 'translateZ(120px)' }}>
+                  <div className='flex h-full min-h-0 flex-1 flex-col rounded-2xl shadow-2xl shadow-black/40 transform-3d backdrop-blur-[2px]'>
+                    <MockPanelFrame>
+                      <MockKopilotWindow
+                        script={KOPILOT_HERO_SCRIPT}
+                        composerPlaceholder='Ask Kopilot...'
+                        modelLabel='GPT-5.4 Nano'
+                      />
+                    </MockPanelFrame>
+                  </div>
                 </div>
               </div>
-            </div>
-          </motion.div>
-        </div>
+            </motion.div>
+          </div>
+        </motion.div>
       </motion.div>
 
       {/* Mid layer — AgentLog. Root-level sibling with its own perspective + tilt + float
