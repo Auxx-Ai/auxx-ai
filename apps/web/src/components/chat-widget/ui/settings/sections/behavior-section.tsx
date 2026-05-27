@@ -120,8 +120,8 @@ export function BehaviorSection({ widget, channelId }: BehaviorSectionProps) {
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)}>
-        <div className='flex flex-col lg:flex-row'>
-          <div className='flex-1 p-6 lg:pr-6'>
+        <div className='p-6 space-y-8'>
+          <div>
             <div className='space-y-1 mb-6'>
               <div className='flex items-center gap-2 text-base font-semibold tracking-tight text-foreground'>
                 <SlidersHorizontal className='size-4' /> Engagement
@@ -264,7 +264,7 @@ export function BehaviorSection({ widget, channelId }: BehaviorSectionProps) {
             </VarEditorField>
           </div>
 
-          <div className='flex-1 border-t lg:border-t-0 lg:border-l p-6 lg:pl-6'>
+          <div>
             <div className='space-y-1 mb-6'>
               <div className='flex items-center gap-2 text-base font-semibold tracking-tight text-foreground'>
                 <MessageSquareOff className='size-4' /> Offline
@@ -293,8 +293,8 @@ export function BehaviorSection({ widget, channelId }: BehaviorSectionProps) {
           </div>
         </div>
 
-        <div className='flex flex-col border-t lg:flex-row'>
-          <div className='flex-1 p-6 lg:pr-6'>
+        <div className='border-t p-6 space-y-8'>
+          <div>
             <div className='space-y-1 mb-6'>
               <div className='flex items-center gap-2 text-base font-semibold tracking-tight text-foreground'>
                 <BookOpen className='size-4' /> Knowledge base
@@ -343,7 +343,7 @@ export function BehaviorSection({ widget, channelId }: BehaviorSectionProps) {
             </VarEditorField>
           </div>
 
-          <div className='flex-1 border-t p-6 lg:border-t-0 lg:border-l lg:pl-6'>
+          <div>
             <div className='space-y-1 mb-6'>
               <div className='flex items-center gap-2 text-base font-semibold tracking-tight text-foreground'>
                 <Home className='size-4' /> Featured articles

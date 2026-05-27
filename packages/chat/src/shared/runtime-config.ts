@@ -50,6 +50,29 @@ export function getBootAttributes(): Record<string, unknown> | null {
   return Object.keys(attrs).length > 0 ? attrs : null
 }
 
+/**
+ * Force the widget to mount in the open state, regardless of the channel's
+ * saved `autoOpen` setting. Used by the in-app preview surfaces (settings
+ * embed pane, dev-tester) so testers don't have to click the launcher every
+ * time the iframe reloads. Customers can set it too via `Auxx.boot({ open: true })`.
+ *
+ * Returns `false` outside a browser or when boot didn't request it.
+ */
+export function getStartOpen(): boolean {
+  if (typeof window === 'undefined') return false
+  return window.__AUXX_CONFIG__?.open === true
+}
+
+/**
+ * Keep the rounded shell corners even when the viewport is small enough to
+ * trigger the mobile-fullscreen media query. Used by the settings preview
+ * pane so the phone-narrow iframe stays visually rounded.
+ */
+export function getPreviewRounded(): boolean {
+  if (typeof window === 'undefined') return false
+  return window.__AUXX_CONFIG__?.previewRounded === true
+}
+
 export interface ChatUserDataEnvelope {
   /** Customer-signed HS256 JWT, verified per-request by the API. */
   auxx_user_jwt?: string

@@ -725,6 +725,19 @@
       left: 0;
       bottom: 0;
     }
+    /* Settings preview surfaces opt into the rounded mobile look — they want
+     * the phone-fullscreen sizing (because the iframe IS phone-narrow) but
+     * not the production square corners, since the preview frame already
+     * has its own rounded container. Higher specificity (attribute selector
+     * on the root) beats the plain `.auxx-chat-shell--open` rules above. */
+    .auxx-root[data-preview-rounded='true'] .auxx-chat-shell--open {
+      --auxx-chat-shell-radius-top: 1.125rem;
+      --auxx-chat-shell-radius-bottom: 1.75rem;
+      border-top-left-radius: var(--auxx-chat-shell-radius-top);
+      border-top-right-radius: var(--auxx-chat-shell-radius-top);
+      border-bottom-left-radius: var(--auxx-chat-shell-radius-bottom);
+      border-bottom-right-radius: var(--auxx-chat-shell-radius-bottom);
+    }
   }
 
   /* Per-frame corner clipping. The shell deliberately has no overflow:hidden

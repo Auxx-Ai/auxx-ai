@@ -63,6 +63,10 @@ export default function PreviewWidgetPage() {
   const params = useParams<{ integrationId: string }>()
   const search = useSearchParams()
   const { appUrl, apiUrl } = useEnv()
+  // `useEnv().apiUrl` is the v1 SDK base (`<origin>/api/v1`), but the chat
+  // widget mounts its own `/api/chat/*` routes at the API origin — feeding the
+  // v1-suffixed URL into `apiBase` produces `/api/v1/api/chat/...` → 404.
+  const chatApiBase = apiUrl.replace(/\/api\/v1\/?$/, '')
   const integrationId = params?.integrationId
   const v = search?.get('v') ?? null
 
@@ -98,7 +102,7 @@ export default function PreviewWidgetPage() {
     setResetting(true)
     try {
       // Clear the `auxx_chat_session_id` cookie on the API origin.
-      await fetch(`${apiUrl}/api/chat/passport/reset`, {
+      await fetch(`${chatApiBase}/api/chat/passport/reset`, {
         method: 'POST',
         credentials: 'include',
       }).catch(() => {})
@@ -132,7 +136,7 @@ export default function PreviewWidgetPage() {
       setIframeKey((k) => k + 1)
       setResetting(false)
     }
-  }, [apiUrl, resetting])
+  }, [chatApiBase, resetting])
 
   const handleSignAndBoot = useCallback(async () => {
     if (!integrationId) return
@@ -158,7 +162,7 @@ export default function PreviewWidgetPage() {
       const userData: Record<string, unknown> = { auxx_user_jwt: token }
       if (Object.keys(nonSensitive).length > 0) userData.attributes = nonSensitive
       try {
-        const res = await fetch(`${apiUrl}/api/chat/passport`, {
+        const res = await fetch(`${chatApiBase}/api/chat/passport`, {
           method: 'POST',
           credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
@@ -203,7 +207,7 @@ export default function PreviewWidgetPage() {
       // tRPC surfaces the error via signTestJwt.error — render below.
     }
   }, [
-    apiUrl,
+    chatApiBase,
     email,
     expiresIn,
     integrationId,
@@ -238,7 +242,7 @@ export default function PreviewWidgetPage() {
     // script tag — so the same hosted bundle picks up the JWT + attributes.
     const declarativeScript = `<script src="${bundleSrc}" data-channel-id="${integrationId}" data-theme="${previewTheme}"${vAttr} async defer></script>`
 
-    const programmaticConfig: Record<string, unknown> = { apiBase: apiUrl }
+    const programmaticConfig: Record<string, unknown> = { apiBase: chatApiBase }
     if (activeJwt) programmaticConfig.userJwt = activeJwt
     if (activeAttrs) programmaticConfig.attributes = activeAttrs
     const programmaticScript = `<script>
@@ -310,7 +314,7 @@ export default function PreviewWidgetPage() {
     ${bootHtml}
   </body>
 </html>`
-  }, [activeAttrs, activeJwt, appUrl, apiUrl, bootMode, integrationId, previewTheme, v])
+  }, [activeAttrs, activeJwt, appUrl, chatApiBase, bootMode, integrationId, previewTheme, v])
 
   if (!integrationId || !srcDoc) {
     return <div style={{ padding: 16 }}>Loading…</div>

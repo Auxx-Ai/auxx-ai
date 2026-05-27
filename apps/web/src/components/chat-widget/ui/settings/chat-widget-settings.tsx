@@ -8,6 +8,7 @@ import { Skeleton } from '@auxx/ui/components/skeleton'
 import { toastError } from '@auxx/ui/components/toast'
 import {
   AlertCircle,
+  Code,
   ExternalLink,
   Palette,
   Settings,
@@ -20,19 +21,22 @@ import SettingsPage from '~/components/global/settings-page'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
 import { useChatWidget } from '../../hooks/use-chat-widget'
+import { MobilePreviewLauncher, PreviewPane } from './preview-pane'
 import { AppearanceSection } from './sections/appearance-section'
 import { BehaviorSection } from './sections/behavior-section'
 import { GeneralSection } from './sections/general-section'
 import { IdentitySection } from './sections/identity-section'
+import { SetupSection } from './sections/setup-section'
 
 interface ChatWidgetSettingsProps {
   channelId: string
 }
 
-type SectionId = 'general' | 'appearance' | 'behavior' | 'identity'
+type SectionId = 'general' | 'setup' | 'appearance' | 'behavior' | 'identity'
 
 const SETTINGS_SECTIONS: { id: SectionId; label: string; icon: typeof Settings }[] = [
   { id: 'general', label: 'General', icon: Settings },
+  { id: 'setup', label: 'Setup', icon: Code },
   { id: 'appearance', label: 'Appearance', icon: Palette },
   { id: 'behavior', label: 'Behavior', icon: SlidersHorizontal },
   { id: 'identity', label: 'Identity', icon: ShieldCheck },
@@ -142,6 +146,8 @@ export function ChatWidgetSettings({ channelId }: ChatWidgetSettingsProps) {
 
   const renderActiveSection = () => {
     switch (activeSection) {
+      case 'setup':
+        return <SetupSection widget={widget} channelId={channelId} />
       case 'appearance':
         return <AppearanceSection widget={widget} channelId={channelId} />
       case 'behavior':
@@ -164,32 +170,36 @@ export function ChatWidgetSettings({ channelId }: ChatWidgetSettingsProps) {
       ]}
       button={
         <Button variant='outline' size='sm' onClick={openPreview}>
-          <ExternalLink className='mr-2 h-4 w-4' />
+          <ExternalLink />
           Open preview
         </Button>
       }>
       <ConfirmDialog />
-      <div className='overflowy-y-auto h-full flex-1'>
-        <div className='p-3 backdrop-blur-sm sticky top-0 z-10 bg-background/70 border-b border-border'>
-          <RadioTab
-            value={activeSection}
-            onValueChange={setActiveSection}
-            size='sm'
-            radioGroupClassName='grid w-full grid-cols-4'
-            className='border border-primary-200 flex w-full'>
-            {SETTINGS_SECTIONS.map((section) => {
-              const Icon = section.icon
-              return (
-                <RadioTabItem key={section.id} value={section.id} size='sm'>
-                  <Icon />
-                  {section.label}
-                </RadioTabItem>
-              )
-            })}
-          </RadioTab>
-        </div>
-        {renderActiveSection()}
+      <div className='sticky top-[68px] z-10 border-b border-border bg-background/90 p-3 backdrop-blur-sm'>
+        <RadioTab
+          value={activeSection}
+          onValueChange={setActiveSection}
+          size='sm'
+          radioGroupClassName='grid w-full grid-cols-5'
+          className='border border-primary-200 flex w-full'>
+          {SETTINGS_SECTIONS.map((section) => {
+            const Icon = section.icon
+            return (
+              <RadioTabItem key={section.id} value={section.id} size='sm'>
+                <Icon />
+                {section.label}
+              </RadioTabItem>
+            )
+          })}
+        </RadioTab>
       </div>
+      <div className='grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_420px]'>
+        <div className='min-w-0'>{renderActiveSection()}</div>
+        <div className='hidden border-l lg:block'>
+          <PreviewPane channelId={channelId} intent={activeSection} />
+        </div>
+      </div>
+      <MobilePreviewLauncher channelId={channelId} intent={activeSection} />
     </SettingsPage>
   )
 }

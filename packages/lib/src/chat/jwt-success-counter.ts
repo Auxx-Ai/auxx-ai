@@ -25,7 +25,8 @@ function counterKey(channelId: string): string {
  */
 export async function recordChatJwtSuccess(channelId: string): Promise<void> {
   try {
-    const redis = getRedisClient()
+    const redis = await getRedisClient()
+    if (!redis) return
     const key = counterKey(channelId)
     await redis.incr(key)
     await redis.expire(key, COUNTER_TTL_SECONDS)
@@ -44,7 +45,8 @@ export async function recordChatJwtSuccess(channelId: string): Promise<void> {
  */
 export async function getChatJwtSuccessCount(channelId: string): Promise<number> {
   try {
-    const redis = getRedisClient()
+    const redis = await getRedisClient()
+    if (!redis) return 0
     const raw = await redis.get(counterKey(channelId))
     if (!raw) return 0
     const parsed = Number.parseInt(raw, 10)
