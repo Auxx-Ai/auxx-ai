@@ -5,6 +5,7 @@ import { createId } from '@paralleldrive/cuid2'
 import {
   type AnyPgColumn,
   boolean,
+  identityVerification,
   index,
   jsonb,
   pgTable,
@@ -100,6 +101,18 @@ export const ChatWidget = pgTable(
      * composer shows a one-line consent banner linking to this URL. Null = no
      * banner rendered. */
     privacyPolicyUrl: text(),
+
+    /**
+     * Per-channel JWT enforcement state. `off` accepts any visitor;
+     * `in_progress` accepts both JWT-signed and anonymous traffic while the
+     * customer rolls out signing on their server; `enforced` rejects any
+     * write without a verified JWT.
+     *
+     * The `in_progress → enforced` transition is gated on the channel having
+     * recorded at least one successfully verified JWT inside the success
+     * counter's TTL — a safety rail against locking the channel out.
+     */
+    identityVerification: identityVerification().default('off').notNull(),
   },
   (table) => [
     uniqueIndex('ChatWidget_integrationId_key').using(

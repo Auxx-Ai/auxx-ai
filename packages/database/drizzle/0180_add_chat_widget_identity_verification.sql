@@ -1,0 +1,2 @@
+CREATE TYPE "public"."IdentityVerification" AS ENUM('off', 'in_progress', 'enforced');--> statement-breakpoint
+ALTER TABLE "ChatWidget" ADD COLUMN "identityVerification" "IdentityVerification" DEFAULT 'off' NOT NULL;

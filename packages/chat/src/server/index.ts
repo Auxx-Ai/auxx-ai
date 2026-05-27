@@ -9,8 +9,8 @@
  * widget forwards the token with every request to `/api/chat/*`; phase 3
  * wires verification on the server side.
  *
- * Default expiry is 1h to mirror Intercom's recommended ceiling. Tokens are
- * short-lived; per-request re-verification catches expiry — no denylist.
+ * Default expiry is 1h. Tokens are short-lived; per-request re-verification
+ * catches expiry — no denylist.
  */
 
 import jwt, { type SignOptions } from 'jsonwebtoken'

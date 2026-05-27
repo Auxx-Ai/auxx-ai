@@ -27,6 +27,10 @@ export async function issueChatPassport(
     sessionId,
     identify,
     expiresIn = DEFAULT_CHAT_EXPIRY,
+    identityVerified,
+    contactId,
+    userJwtHash,
+    identityVerification,
   } = options
 
   return issuePassport<ChatPassportPayload>({
@@ -37,6 +41,10 @@ export async function issueChatPassport(
       organizationId,
       sessionId,
       ...(identify ? { identify } : {}),
+      ...(identityVerified ? { identityVerified: true } : {}),
+      ...(contactId ? { contactId } : {}),
+      ...(userJwtHash ? { userJwtHash } : {}),
+      ...(identityVerification && identityVerification !== 'off' ? { identityVerification } : {}),
     },
     expiresIn,
   })

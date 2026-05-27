@@ -1,5 +1,7 @@
+import { CredentialService } from '@auxx/credentials'
 import { generateSecureToken, hashApiKey } from '@auxx/credentials/api-key'
 import { schema } from '@auxx/database'
+import { isAdminOrOwner } from '@auxx/lib/members'
 import { createScopedLogger } from '@auxx/logger'
 import { TRPCError } from '@trpc/server'
 import { and, eq } from 'drizzle-orm'
@@ -17,6 +19,7 @@ export const apiKeyRouter = createTRPCRouter({
     .input(
       z.object({
         workflowAppId: z.string().optional(),
+        channelId: z.string().optional(),
       })
     )
     .query(async ({ ctx, input }) => {
@@ -31,6 +34,20 @@ export const apiKeyRouter = createTRPCRouter({
               eq(schema.ApiKey.organizationId, orgId),
               eq(schema.ApiKey.type, 'workflow'),
               eq(schema.ApiKey.referenceId, input.workflowAppId),
+              eq(schema.ApiKey.isActive, true)
+            )
+          )
+      }
+
+      if (input.channelId) {
+        return ctx.db
+          .select()
+          .from(schema.ApiKey)
+          .where(
+            and(
+              eq(schema.ApiKey.organizationId, orgId),
+              eq(schema.ApiKey.type, 'chat'),
+              eq(schema.ApiKey.referenceId, input.channelId),
               eq(schema.ApiKey.isActive, true)
             )
           )
@@ -56,8 +73,9 @@ export const apiKeyRouter = createTRPCRouter({
     .input(
       z.object({
         name: z.string().optional(),
-        type: z.enum(['app', 'workflow']).optional().default('app'),
+        type: z.enum(['app', 'workflow', 'chat']).optional().default('app'),
         workflowAppId: z.string().optional(),
+        channelId: z.string().optional(),
       })
     )
     .use(notDemo('generate API keys'))
@@ -91,6 +109,39 @@ export const apiKeyRouter = createTRPCRouter({
         }
       }
 
+      // Chat keys are channel-scoped and admin-gated
+      if (input.type === 'chat') {
+        if (!input.channelId) {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: 'channelId is required for chat API keys',
+          })
+        }
+
+        if (!(await isAdminOrOwner(orgId, userId))) {
+          throw new TRPCError({
+            code: 'FORBIDDEN',
+            message: 'You must be an admin or owner to manage chat signing keys',
+          })
+        }
+
+        const [integration] = await ctx.db
+          .select({ id: schema.Integration.id })
+          .from(schema.Integration)
+          .where(
+            and(
+              eq(schema.Integration.id, input.channelId),
+              eq(schema.Integration.organizationId, orgId)
+            )
+          )
+        if (!integration) {
+          throw new TRPCError({
+            code: 'NOT_FOUND',
+            message: 'Channel not found',
+          })
+        }
+      }
+
       // Check for duplicate name
       if (input.name) {
         const [existing] = await ctx.db
@@ -119,16 +170,35 @@ export const apiKeyRouter = createTRPCRouter({
 
       const keySuffix = secretKey.slice(-5).toUpperCase()
       const defaultName =
-        input.type === 'workflow' ? `Workflow Key ...${keySuffix}` : `Secret key ...${keySuffix}`
+        input.type === 'workflow'
+          ? `Workflow Key ...${keySuffix}`
+          : input.type === 'chat'
+            ? `Chat Key ...${keySuffix}`
+            : `Secret key ...${keySuffix}`
+
+      const referenceId =
+        input.type === 'workflow'
+          ? (input.workflowAppId ?? null)
+          : input.type === 'chat'
+            ? (input.channelId ?? null)
+            : null
+
+      // Chat keys sign customer JWTs — verification needs the original plaintext,
+      // which the one-way `hashedKey` cannot recover. Store the secret encrypted
+      // (AES-256-GCM via CredentialService) so phase 3's verify-jwt can decrypt
+      // and re-derive HS256. Other key types stay hash-only.
+      const encryptedSecret =
+        input.type === 'chat' ? CredentialService.encrypt({ value: secretKey }) : null
 
       await ctx.db.insert(schema.ApiKey).values({
         userId,
         organizationId: orgId,
         name: input.name || defaultName,
         hashedKey,
+        encryptedSecret,
         isActive: true,
         type: input.type,
-        referenceId: input.type === 'workflow' ? input.workflowAppId : null,
+        referenceId,
         updatedAt: new Date(),
       })
 
@@ -137,14 +207,25 @@ export const apiKeyRouter = createTRPCRouter({
   delete: protectedProcedure
     .input(z.object({ id: z.string() }))
     .mutation(async ({ ctx, input }) => {
+      const orgId = ctx.session.organizationId
+      const userId = ctx.session.user.id
+
+      const [existing] = await ctx.db
+        .select({ type: schema.ApiKey.type })
+        .from(schema.ApiKey)
+        .where(and(eq(schema.ApiKey.id, input.id), eq(schema.ApiKey.organizationId, orgId)))
+        .limit(1)
+
+      if (existing?.type === 'chat' && !(await isAdminOrOwner(orgId, userId))) {
+        throw new TRPCError({
+          code: 'FORBIDDEN',
+          message: 'You must be an admin or owner to revoke chat signing keys',
+        })
+      }
+
       await ctx.db
         .update(schema.ApiKey)
         .set({ isActive: false, updatedAt: new Date() })
-        .where(
-          and(
-            eq(schema.ApiKey.id, input.id),
-            eq(schema.ApiKey.organizationId, ctx.session.organizationId)
-          )
-        )
+        .where(and(eq(schema.ApiKey.id, input.id), eq(schema.ApiKey.organizationId, orgId)))
     }),
 })

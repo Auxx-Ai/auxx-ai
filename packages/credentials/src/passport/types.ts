@@ -67,6 +67,28 @@ export interface ChatPassportPayload extends BasePassportPayload {
   sessionId: string
   /** Optional claimed visitor identity from the embedder (unsigned in v1). */
   identify?: ChatIdentifyClaim
+  /**
+   * `true` when the mint request carried a validly-signed customer JWT (v4
+   * phase 3). Downstream code uses this to decide whether to trust the
+   * resolved Contact for attribution or treat it as a soft hint only.
+   */
+  identityVerified?: boolean
+  /** Resolved Contact `EntityInstance.id` when `identityVerified` is true. */
+  contactId?: string
+  /**
+   * SHA-256 of the user JWT used at mint time. Per-request middleware
+   * compares against the same hash of the request-bound JWT so a stolen
+   * passport without a fresh signed JWT is rejected once enforcement
+   * (phase 5) is on.
+   */
+  userJwtHash?: string
+  /**
+   * Channel's per-mint enforcement state (v4 phase 5). Baked into the
+   * passport so the per-request middleware can decide whether to 401 on a
+   * missing/invalid JWT without an extra DB roundtrip. Defaults to `'off'`
+   * for backcompat with pre-phase-5 passports.
+   */
+  identityVerification?: 'off' | 'in_progress' | 'enforced'
 }
 
 export type PassportPayload = WorkflowPassportPayload | ChatPassportPayload
@@ -96,6 +118,12 @@ export interface IssueChatPassportOptions {
   /** Optional claimed visitor identity from the embedder (unsigned in v1). */
   identify?: ChatIdentifyClaim
   expiresIn?: string
+  /** Set when the mint request carried a validly-signed customer JWT (v4 phase 3). */
+  identityVerified?: boolean
+  contactId?: string
+  userJwtHash?: string
+  /** Channel-level enforcement state baked into the passport (v4 phase 5). */
+  identityVerification?: 'off' | 'in_progress' | 'enforced'
 }
 
 /**
@@ -133,6 +161,12 @@ export interface VerifiedChatPassport {
   sessionId: string
   /** Optional claimed visitor identity from the embedder (unsigned in v1). */
   identify?: ChatIdentifyClaim
+  /** v4 phase 3: present when minted with a valid customer JWT. */
+  identityVerified?: boolean
+  contactId?: string
+  userJwtHash?: string
+  /** Channel enforcement state baked at mint time (v4 phase 5). */
+  identityVerification?: 'off' | 'in_progress' | 'enforced'
 }
 
 /**

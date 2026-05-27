@@ -1254,6 +1254,20 @@
       "when": 1779515590895,
       "tag": "0178_chat_widget_header_color_nullable",
       "breakpoints": true
+    },
+    {
+      "idx": 179,
+      "version": "7",
+      "when": 1779857551000,
+      "tag": "0179_add_api_key_encrypted_secret",
+      "breakpoints": true
+    },
+    {
+      "idx": 180,
+      "version": "7",
+      "when": 1779858653669,
+      "tag": "0180_add_chat_widget_identity_verification",
+      "breakpoints": true
     }
   ]
 }

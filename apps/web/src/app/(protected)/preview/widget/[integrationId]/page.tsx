@@ -4,13 +4,47 @@
 import { useParams, useSearchParams } from 'next/navigation'
 import { useCallback, useMemo, useState } from 'react'
 import { useEnv } from '~/providers/dehydrated-state-provider'
+import { api } from '~/trpc/react'
 
 type PreviewTheme = 'light' | 'dark' | 'system'
+type BootMode = 'declarative' | 'programmatic'
+type IdentityMode = 'anonymous' | 'identified'
+type ExpiresIn = '30s' | '1m' | '1h' | '1d'
 
 const THEME_LABELS: Record<PreviewTheme, string> = {
   light: 'Light',
   dark: 'Dark',
   system: 'System',
+}
+
+const ENFORCEMENT_LABELS: Record<'off' | 'in_progress' | 'enforced', string> = {
+  off: 'Off',
+  in_progress: 'In progress',
+  enforced: 'Enforced',
+}
+
+/**
+ * AttrEntry is one row of the simple key/value editor used for the sensitive
+ * (JWT-claim) and non-sensitive (`Auxx.boot({ attributes })`) attribute bags
+ * that the preview surface lets testers play with to exercise phase-4's
+ * conflict resolution.
+ */
+interface AttrEntry {
+  id: string
+  key: string
+  value: string
+}
+
+const nextId = (): string => Math.random().toString(36).slice(2, 10)
+
+function attrsToObject(entries: AttrEntry[]): Record<string, unknown> {
+  const out: Record<string, unknown> = {}
+  for (const entry of entries) {
+    const k = entry.key.trim()
+    if (!k) continue
+    out[k] = entry.value
+  }
+  return out
 }
 
 /**
@@ -20,8 +54,10 @@ const THEME_LABELS: Record<PreviewTheme, string> = {
  * customer's vanilla page, which is the only way the preview is a real
  * smoke test ("if it renders here, it renders anywhere").
  *
- * The Light / Dark / System toggle overrides the widget theme for this preview
- * session only — it does not save the setting.
+ * v4 phase 6 expanded the toolbar to drive both boot modes (declarative
+ * `<script>` and programmatic `Auxx.boot()`) and the JWT identity surface:
+ * pick a `user_id`, sign a test JWT via `chat.signTestJwt`, boot the widget
+ * with that JWT, and read back what the server resolved.
  */
 export default function PreviewWidgetPage() {
   const params = useParams<{ integrationId: string }>()
@@ -29,9 +65,33 @@ export default function PreviewWidgetPage() {
   const { appUrl, apiUrl } = useEnv()
   const integrationId = params?.integrationId
   const v = search?.get('v') ?? null
+
   const [previewTheme, setPreviewTheme] = useState<PreviewTheme>('light')
+  const [bootMode, setBootMode] = useState<BootMode>('declarative')
+  const [identityMode, setIdentityMode] = useState<IdentityMode>('anonymous')
+  const [userId, setUserId] = useState(() => `preview-${nextId()}`)
+  const [email, setEmail] = useState('')
+  const [expiresIn, setExpiresIn] = useState<ExpiresIn>('1h')
+  const [sensitiveAttrs, setSensitiveAttrs] = useState<AttrEntry[]>([])
+  const [nonSensitiveAttrs, setNonSensitiveAttrs] = useState<AttrEntry[]>([])
+  const [activeJwt, setActiveJwt] = useState<string | null>(null)
+  const [activeAttrs, setActiveAttrs] = useState<Record<string, unknown> | null>(null)
+
+  type PassportSnapshot = {
+    identityVerified: boolean
+    contactId?: string
+    resolution?: 'matched_external_id' | 'matched_email' | 'created'
+    error?: string
+  }
+  const [passportSnapshot, setPassportSnapshot] = useState<PassportSnapshot | null>(null)
   const [iframeKey, setIframeKey] = useState(0)
   const [resetting, setResetting] = useState(false)
+
+  const { data: identityState } = api.channel.getChatIdentityState.useQuery(
+    { channelId: integrationId ?? '' },
+    { enabled: !!integrationId }
+  )
+  const signTestJwt = api.chat.signTestJwt.useMutation()
 
   const handleClearVisitor = useCallback(async () => {
     if (resetting) return
@@ -61,15 +121,105 @@ export default function PreviewWidgetPage() {
       }
       for (let i = window.sessionStorage.length - 1; i >= 0; i--) {
         const key = window.sessionStorage.key(i)
-        if (key && key.startsWith('auxx-chat-identify:')) {
+        if (key?.startsWith('auxx-chat-identify:')) {
           window.sessionStorage.removeItem(key)
         }
       }
+      setActiveJwt(null)
+      setActiveAttrs(null)
+      setPassportSnapshot(null)
     } finally {
       setIframeKey((k) => k + 1)
       setResetting(false)
     }
   }, [apiUrl, resetting])
+
+  const handleSignAndBoot = useCallback(async () => {
+    if (!integrationId) return
+    setPassportSnapshot(null)
+    try {
+      const sensitive = attrsToObject(sensitiveAttrs)
+      const nonSensitive = attrsToObject(nonSensitiveAttrs)
+      const payload = {
+        user_id: userId,
+        ...(email ? { email } : {}),
+        ...sensitive,
+      }
+      const { token } = await signTestJwt.mutateAsync({
+        channelId: integrationId,
+        payload,
+        expiresIn,
+      })
+
+      // Preflight-mint from the parent so we can populate the status panel
+      // with what the server resolved (identityVerified, contactId,
+      // resolution path). The iframe will mint again itself for the actual
+      // widget session — same JWT, same channel, same Contact.
+      const userData: Record<string, unknown> = { auxx_user_jwt: token }
+      if (Object.keys(nonSensitive).length > 0) userData.attributes = nonSensitive
+      try {
+        const res = await fetch(`${apiUrl}/api/chat/passport`, {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ channelId: integrationId, user_data: userData }),
+        })
+        const json = (await res.json()) as
+          | {
+              success: true
+              data: {
+                identityVerified?: boolean
+                contactId?: string
+                resolution?: 'matched_external_id' | 'matched_email' | 'created'
+              }
+            }
+          | { success: false; error: { code: string; message: string } }
+        if (!res.ok || !json.success) {
+          setPassportSnapshot({
+            identityVerified: false,
+            error: 'success' in json && !json.success ? json.error.message : `HTTP ${res.status}`,
+          })
+        } else {
+          setPassportSnapshot({
+            identityVerified: !!json.data.identityVerified,
+            contactId: json.data.contactId,
+            resolution: json.data.resolution,
+          })
+        }
+      } catch (err) {
+        setPassportSnapshot({
+          identityVerified: false,
+          error: (err as Error).message,
+        })
+      }
+
+      setActiveJwt(token)
+      setActiveAttrs(Object.keys(nonSensitive).length > 0 ? nonSensitive : null)
+      // Force programmatic boot when signing — declarative mode can't ship
+      // the JWT alongside the script tag.
+      setBootMode('programmatic')
+      setIframeKey((k) => k + 1)
+    } catch {
+      // tRPC surfaces the error via signTestJwt.error — render below.
+    }
+  }, [
+    apiUrl,
+    email,
+    expiresIn,
+    integrationId,
+    nonSensitiveAttrs,
+    sensitiveAttrs,
+    signTestJwt,
+    userId,
+  ])
+
+  const handleClearIdentity = useCallback(() => {
+    setActiveJwt(null)
+    setActiveAttrs(null)
+    setPassportSnapshot(null)
+    setIdentityMode('anonymous')
+    setIframeKey((k) => k + 1)
+  }, [])
 
   const srcDoc = useMemo(() => {
     if (!integrationId) return null
@@ -81,6 +231,23 @@ export default function PreviewWidgetPage() {
     const muted = isDark ? '#94a3b8' : '#64748b'
     const cardBg = isDark ? '#161b22' : '#ffffff'
     const cardBorder = isDark ? '#30363d' : '#e2e8f0'
+
+    // The boot snippet differs between modes. Declarative is the existing
+    // `<script data-channel-id>` form. Programmatic mirrors what the npm
+    // bootstrap does internally — set `__AUXX_CONFIG__`, then inject the
+    // script tag — so the same hosted bundle picks up the JWT + attributes.
+    const declarativeScript = `<script src="${bundleSrc}" data-channel-id="${integrationId}" data-theme="${previewTheme}"${vAttr} async defer></script>`
+
+    const programmaticConfig: Record<string, unknown> = { apiBase: apiUrl }
+    if (activeJwt) programmaticConfig.userJwt = activeJwt
+    if (activeAttrs) programmaticConfig.attributes = activeAttrs
+    const programmaticScript = `<script>
+      window.__AUXX_CONFIG__ = ${JSON.stringify(programmaticConfig)};
+    </script>
+    <script src="${bundleSrc}" data-channel-id="${integrationId}" data-theme="${previewTheme}"${vAttr} async defer></script>`
+
+    const bootHtml = bootMode === 'declarative' ? declarativeScript : programmaticScript
+
     return `<!doctype html>
 <html lang="en">
   <head>
@@ -90,8 +257,6 @@ export default function PreviewWidgetPage() {
     <style>
       html, body { margin: 0; padding: 0; min-height: 100%; background: ${bg}; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: ${fg}; }
       .stage { position: relative; min-height: 100vh; padding: 48px 64px 120px; overflow: hidden; }
-      /* Colored blobs scattered behind everything so the glass blur has
-         something interesting to filter. Soft, large, low-saturation. */
       .blob { position: absolute; border-radius: 50%; filter: blur(40px); opacity: ${isDark ? 0.4 : 0.55}; pointer-events: none; }
       .blob-1 { width: 380px; height: 380px; top: -80px; left: -60px; background: #f472b6; }
       .blob-2 { width: 420px; height: 420px; top: 120px; right: 80px; background: #60a5fa; }
@@ -142,14 +307,26 @@ export default function PreviewWidgetPage() {
         </div>
       </div>
     </div>
-    <script src="${bundleSrc}" data-channel-id="${integrationId}" data-theme="${previewTheme}"${vAttr} async defer></script>
+    ${bootHtml}
   </body>
 </html>`
-  }, [appUrl, integrationId, v, previewTheme])
+  }, [activeAttrs, activeJwt, appUrl, apiUrl, bootMode, integrationId, previewTheme, v])
 
   if (!integrationId || !srcDoc) {
     return <div style={{ padding: 16 }}>Loading…</div>
   }
+
+  const enforcementLabel = identityState
+    ? ENFORCEMENT_LABELS[identityState.state]
+    : ENFORCEMENT_LABELS.off
+  const enforcementColor =
+    identityState?.state === 'enforced'
+      ? '#34d399'
+      : identityState?.state === 'in_progress'
+        ? '#fbbf24'
+        : '#a0aec0'
+
+  const noSigningKey = signTestJwt.error?.message === 'NO_SIGNING_KEY'
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100vw' }}>
@@ -168,8 +345,37 @@ export default function PreviewWidgetPage() {
         <span>
           Widget Preview &nbsp;|&nbsp; Channel:{' '}
           <code style={{ color: '#e2e8f0' }}>{integrationId}</code>
+          <span
+            style={{
+              marginLeft: 10,
+              padding: '2px 8px',
+              borderRadius: 999,
+              background: '#1a202c',
+              color: enforcementColor,
+              fontSize: 10,
+              fontWeight: 600,
+              border: `1px solid ${enforcementColor}`,
+            }}>
+            Enforcement: {enforcementLabel}
+          </span>
         </span>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <Segmented
+            value={bootMode}
+            onChange={setBootMode}
+            options={[
+              { value: 'declarative', label: 'Declarative' },
+              { value: 'programmatic', label: 'Programmatic' },
+            ]}
+          />
+          <Segmented
+            value={identityMode}
+            onChange={setIdentityMode}
+            options={[
+              { value: 'anonymous', label: 'Anonymous' },
+              { value: 'identified', label: 'Identified' },
+            ]}
+          />
           <button
             type='button'
             onClick={handleClearVisitor}
@@ -187,42 +393,414 @@ export default function PreviewWidgetPage() {
             }}>
             {resetting ? 'Clearing…' : 'Clear visitor'}
           </button>
-          <div
-            style={{
-              display: 'flex',
-              gap: 2,
-              background: '#1a202c',
-              borderRadius: 6,
-              padding: 2,
-            }}>
-            {(['light', 'dark', 'system'] as const).map((t) => (
-              <button
-                key={t}
-                type='button'
-                onClick={() => setPreviewTheme(t)}
-                style={{
-                  padding: '3px 10px',
-                  borderRadius: 4,
-                  border: 'none',
-                  cursor: 'pointer',
-                  fontSize: 11,
-                  fontWeight: previewTheme === t ? 600 : 400,
-                  background: previewTheme === t ? '#4a5568' : 'transparent',
-                  color: previewTheme === t ? '#f7fafc' : '#a0aec0',
-                  transition: 'background 0.15s',
-                }}>
-                {THEME_LABELS[t]}
-              </button>
-            ))}
-          </div>
+          <Segmented
+            value={previewTheme}
+            onChange={setPreviewTheme}
+            options={(['light', 'dark', 'system'] as const).map((t) => ({
+              value: t,
+              label: THEME_LABELS[t],
+            }))}
+          />
         </div>
       </div>
+
+      {identityMode === 'identified' && (
+        <IdentityPanel
+          userId={userId}
+          email={email}
+          expiresIn={expiresIn}
+          sensitiveAttrs={sensitiveAttrs}
+          nonSensitiveAttrs={nonSensitiveAttrs}
+          activeJwt={activeJwt}
+          passportSnapshot={passportSnapshot}
+          signing={signTestJwt.isPending}
+          signError={signTestJwt.error?.message ?? null}
+          noSigningKey={noSigningKey}
+          integrationId={integrationId}
+          onUserIdChange={setUserId}
+          onEmailChange={setEmail}
+          onExpiresInChange={setExpiresIn}
+          onSensitiveChange={setSensitiveAttrs}
+          onNonSensitiveChange={setNonSensitiveAttrs}
+          onSignAndBoot={handleSignAndBoot}
+          onClearIdentity={handleClearIdentity}
+        />
+      )}
+
       <iframe
-        key={`${previewTheme}-${iframeKey}`}
+        key={`${previewTheme}-${bootMode}-${iframeKey}`}
         title='Chat Widget Preview'
         srcDoc={srcDoc}
         style={{ flex: '1 1 auto', border: 0, width: '100%' }}
       />
+    </div>
+  )
+}
+
+interface SegmentedProps<T extends string> {
+  value: T
+  onChange: (next: T) => void
+  options: Array<{ value: T; label: string }>
+}
+
+function Segmented<T extends string>({ value, onChange, options }: SegmentedProps<T>) {
+  return (
+    <div
+      style={{
+        display: 'flex',
+        gap: 2,
+        background: '#1a202c',
+        borderRadius: 6,
+        padding: 2,
+      }}>
+      {options.map((opt) => (
+        <button
+          key={opt.value}
+          type='button'
+          onClick={() => onChange(opt.value)}
+          style={{
+            padding: '3px 10px',
+            borderRadius: 4,
+            border: 'none',
+            cursor: 'pointer',
+            fontSize: 11,
+            fontWeight: value === opt.value ? 600 : 400,
+            background: value === opt.value ? '#4a5568' : 'transparent',
+            color: value === opt.value ? '#f7fafc' : '#a0aec0',
+            transition: 'background 0.15s',
+          }}>
+          {opt.label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+interface IdentityPanelProps {
+  userId: string
+  email: string
+  expiresIn: ExpiresIn
+  sensitiveAttrs: AttrEntry[]
+  nonSensitiveAttrs: AttrEntry[]
+  activeJwt: string | null
+  passportSnapshot: {
+    identityVerified: boolean
+    contactId?: string
+    resolution?: 'matched_external_id' | 'matched_email' | 'created'
+    error?: string
+  } | null
+  signing: boolean
+  signError: string | null
+  noSigningKey: boolean
+  integrationId: string
+  onUserIdChange: (v: string) => void
+  onEmailChange: (v: string) => void
+  onExpiresInChange: (v: ExpiresIn) => void
+  onSensitiveChange: (v: AttrEntry[]) => void
+  onNonSensitiveChange: (v: AttrEntry[]) => void
+  onSignAndBoot: () => void
+  onClearIdentity: () => void
+}
+
+function IdentityPanel(props: IdentityPanelProps) {
+  return (
+    <div
+      style={{
+        padding: '10px 16px',
+        background: '#1a202c',
+        color: '#cbd5e0',
+        fontSize: 12,
+        borderTop: '1px solid #2d3748',
+        borderBottom: '1px solid #2d3748',
+        display: 'grid',
+        gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+        gap: 12,
+      }}>
+      <div>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
+          <Field
+            label='user_id'
+            value={props.userId}
+            onChange={props.onUserIdChange}
+            placeholder='preview-…'
+          />
+          <Field
+            label='email'
+            value={props.email}
+            onChange={props.onEmailChange}
+            placeholder='optional'
+          />
+          <SelectField
+            label='exp'
+            value={props.expiresIn}
+            onChange={(v) => props.onExpiresInChange(v as ExpiresIn)}
+            options={[
+              { value: '30s', label: '30s' },
+              { value: '1m', label: '1m' },
+              { value: '1h', label: '1h' },
+              { value: '1d', label: '1d' },
+            ]}
+          />
+        </div>
+        <AttrsEditor
+          label='Sensitive attributes (JWT claims)'
+          entries={props.sensitiveAttrs}
+          onChange={props.onSensitiveChange}
+        />
+        <AttrsEditor
+          label='Non-sensitive attributes (Auxx.boot)'
+          entries={props.nonSensitiveAttrs}
+          onChange={props.onNonSensitiveChange}
+        />
+        <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+          <button
+            type='button'
+            onClick={props.onSignAndBoot}
+            disabled={props.signing || !props.userId}
+            style={{
+              padding: '4px 12px',
+              borderRadius: 4,
+              border: '1px solid #4a5568',
+              cursor: props.signing ? 'wait' : 'pointer',
+              fontSize: 11,
+              background: '#3b4252',
+              color: '#f7fafc',
+              fontWeight: 600,
+              opacity: props.signing || !props.userId ? 0.6 : 1,
+            }}>
+            {props.signing ? 'Signing…' : 'Sign & boot'}
+          </button>
+          {props.activeJwt && (
+            <button
+              type='button'
+              onClick={props.onClearIdentity}
+              style={{
+                padding: '4px 10px',
+                borderRadius: 4,
+                border: '1px solid #4a5568',
+                cursor: 'pointer',
+                fontSize: 11,
+                background: '#1a202c',
+                color: '#e2e8f0',
+              }}>
+              Clear identity
+            </button>
+          )}
+        </div>
+        {props.noSigningKey && (
+          <div style={{ marginTop: 8, fontSize: 11, color: '#fbbf24' }}>
+            No active chat signing key for this channel. Create one in the channel settings →
+            Identity tab, then retry.{' '}
+            <a
+              href={`/app/settings/channels/${props.integrationId}`}
+              target='_blank'
+              rel='noreferrer'
+              style={{ color: '#60a5fa', textDecoration: 'underline' }}>
+              Open settings
+            </a>
+          </div>
+        )}
+        {!props.noSigningKey && props.signError && (
+          <div style={{ marginTop: 8, fontSize: 11, color: '#f87171' }}>{props.signError}</div>
+        )}
+      </div>
+
+      <div
+        style={{
+          background: '#0d1117',
+          border: '1px solid #30363d',
+          borderRadius: 6,
+          padding: 10,
+          fontSize: 11,
+          fontFamily: 'ui-monospace, SFMono-Regular, monospace',
+        }}>
+        <div style={{ fontWeight: 600, marginBottom: 6, fontFamily: 'inherit' }}>
+          Server resolved
+        </div>
+        {props.passportSnapshot ? (
+          props.passportSnapshot.error ? (
+            <div style={{ color: '#f87171' }}>Error: {props.passportSnapshot.error}</div>
+          ) : (
+            <div style={{ display: 'grid', gap: 4 }}>
+              <KV k='identityVerified' v={String(props.passportSnapshot.identityVerified)} />
+              {props.passportSnapshot.contactId && (
+                <KV k='contactId' v={props.passportSnapshot.contactId} />
+              )}
+              {props.passportSnapshot.resolution && (
+                <KV k='resolution' v={props.passportSnapshot.resolution} />
+              )}
+            </div>
+          )
+        ) : (
+          <div style={{ color: '#6b7280' }}>Sign & boot to populate.</div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function KV({ k, v }: { k: string; v: string }) {
+  return (
+    <div>
+      <span style={{ color: '#9ca3af' }}>{k}:</span> <span style={{ color: '#e5e7eb' }}>{v}</span>
+    </div>
+  )
+}
+
+interface FieldProps {
+  label: string
+  value: string
+  onChange: (v: string) => void
+  placeholder?: string
+}
+
+function Field({ label, value, onChange, placeholder }: FieldProps) {
+  return (
+    <label style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: '1 1 auto' }}>
+      <span style={{ fontSize: 10, color: '#9ca3af' }}>{label}</span>
+      <input
+        type='text'
+        value={value}
+        placeholder={placeholder}
+        onChange={(e) => onChange(e.target.value)}
+        style={{
+          padding: '3px 8px',
+          background: '#0d1117',
+          color: '#e5e7eb',
+          border: '1px solid #30363d',
+          borderRadius: 4,
+          fontSize: 11,
+          fontFamily: 'ui-monospace, SFMono-Regular, monospace',
+        }}
+      />
+    </label>
+  )
+}
+
+interface SelectFieldProps {
+  label: string
+  value: string
+  onChange: (v: string) => void
+  options: Array<{ value: string; label: string }>
+}
+
+function SelectField({ label, value, onChange, options }: SelectFieldProps) {
+  return (
+    <label style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+      <span style={{ fontSize: 10, color: '#9ca3af' }}>{label}</span>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        style={{
+          padding: '3px 8px',
+          background: '#0d1117',
+          color: '#e5e7eb',
+          border: '1px solid #30363d',
+          borderRadius: 4,
+          fontSize: 11,
+        }}>
+        {options.map((opt) => (
+          <option key={opt.value} value={opt.value}>
+            {opt.label}
+          </option>
+        ))}
+      </select>
+    </label>
+  )
+}
+
+interface AttrsEditorProps {
+  label: string
+  entries: AttrEntry[]
+  onChange: (next: AttrEntry[]) => void
+}
+
+function AttrsEditor({ label, entries, onChange }: AttrsEditorProps) {
+  const handleAdd = () => onChange([...entries, { id: nextId(), key: '', value: '' }])
+  const handleRemove = (id: string) => onChange(entries.filter((e) => e.id !== id))
+  const handlePatch = (id: string, patch: Partial<AttrEntry>) =>
+    onChange(entries.map((e) => (e.id === id ? { ...e, ...patch } : e)))
+  return (
+    <div style={{ marginTop: 8 }}>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          marginBottom: 4,
+        }}>
+        <span style={{ fontSize: 10, color: '#9ca3af' }}>{label}</span>
+        <button
+          type='button'
+          onClick={handleAdd}
+          style={{
+            padding: '1px 8px',
+            borderRadius: 4,
+            border: '1px solid #30363d',
+            background: 'transparent',
+            color: '#9ca3af',
+            fontSize: 10,
+            cursor: 'pointer',
+          }}>
+          + Add
+        </button>
+      </div>
+      {entries.length === 0 ? (
+        <div style={{ fontSize: 10, color: '#6b7280', fontStyle: 'italic' }}>none</div>
+      ) : (
+        <div style={{ display: 'grid', gap: 4 }}>
+          {entries.map((entry) => (
+            <div key={entry.id} style={{ display: 'flex', gap: 4 }}>
+              <input
+                type='text'
+                value={entry.key}
+                placeholder='key'
+                onChange={(e) => handlePatch(entry.id, { key: e.target.value })}
+                style={{
+                  flex: '0 0 38%',
+                  padding: '2px 6px',
+                  background: '#0d1117',
+                  color: '#e5e7eb',
+                  border: '1px solid #30363d',
+                  borderRadius: 4,
+                  fontSize: 11,
+                  fontFamily: 'ui-monospace, SFMono-Regular, monospace',
+                }}
+              />
+              <input
+                type='text'
+                value={entry.value}
+                placeholder='value'
+                onChange={(e) => handlePatch(entry.id, { value: e.target.value })}
+                style={{
+                  flex: '1 1 auto',
+                  padding: '2px 6px',
+                  background: '#0d1117',
+                  color: '#e5e7eb',
+                  border: '1px solid #30363d',
+                  borderRadius: 4,
+                  fontSize: 11,
+                  fontFamily: 'ui-monospace, SFMono-Regular, monospace',
+                }}
+              />
+              <button
+                type='button'
+                onClick={() => handleRemove(entry.id)}
+                style={{
+                  padding: '2px 8px',
+                  borderRadius: 4,
+                  border: '1px solid #30363d',
+                  background: 'transparent',
+                  color: '#9ca3af',
+                  fontSize: 10,
+                  cursor: 'pointer',
+                }}>
+                ×
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
