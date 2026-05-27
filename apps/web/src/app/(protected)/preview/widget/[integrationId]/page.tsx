@@ -37,13 +37,34 @@ export default function PreviewWidgetPage() {
     if (resetting) return
     setResetting(true)
     try {
-      // Clears the `auxx_chat_session_id` cookie on the API origin. Widget
-      // localStorage (passport, identify, unread) lives in the srcDoc iframe
-      // and gets discarded when we rekey the iframe below.
+      // Clear the `auxx_chat_session_id` cookie on the API origin.
       await fetch(`${apiUrl}/api/chat/passport/reset`, {
         method: 'POST',
         credentials: 'include',
       }).catch(() => {})
+      // srcdoc iframes inherit the parent's origin, so the widget's
+      // `window.localStorage` IS this page's localStorage. Rekeying the
+      // iframe doesn't drop it — wipe the widget's keys here so the next
+      // mount mints a fresh passport / participant and forgets the thread.
+      const prefixes = [
+        'auxx_passport_chat_',
+        'auxx-chat-route:',
+        'auxx-chat-expanded:',
+        'auxx-chat-read:',
+        'auxx-chat-privacy-dismissed:',
+      ]
+      for (let i = window.localStorage.length - 1; i >= 0; i--) {
+        const key = window.localStorage.key(i)
+        if (key && prefixes.some((p) => key.startsWith(p))) {
+          window.localStorage.removeItem(key)
+        }
+      }
+      for (let i = window.sessionStorage.length - 1; i >= 0; i--) {
+        const key = window.sessionStorage.key(i)
+        if (key && key.startsWith('auxx-chat-identify:')) {
+          window.sessionStorage.removeItem(key)
+        }
+      }
     } finally {
       setIframeKey((k) => k + 1)
       setResetting(false)

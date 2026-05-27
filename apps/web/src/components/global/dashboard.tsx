@@ -9,7 +9,6 @@ import {
   type DragEndEvent,
   DragOverlay,
   type DragStartEvent,
-  KeyboardSensor,
   PointerSensor,
   pointerWithin,
   TouchSensor,
@@ -17,7 +16,6 @@ import {
   useSensors,
 } from '@dnd-kit/core'
 import { snapCenterToCursor } from '@dnd-kit/modifiers'
-import { sortableKeyboardCoordinates } from '@dnd-kit/sortable'
 import { usePathname, useRouter } from 'next/navigation'
 import React, { useCallback, useState } from 'react'
 import { createPortal } from 'react-dom'
@@ -63,8 +61,7 @@ export const Dashboard = ({
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } })
   )
 
   const handleDragStart = useCallback((event: DragStartEvent) => {
