@@ -17,6 +17,7 @@ export const DEFAULT_EDITOR_OPTIONS = {
     horizontal: 'auto' as const,
     verticalScrollbarSize: 6,
     horizontalScrollbarSize: 6,
+    alwaysConsumeMouseWheel: false,
   },
   // Disable bracket guides on the right side
   guides: {

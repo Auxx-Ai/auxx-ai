@@ -1,33 +1,44 @@
 // apps/web/src/components/chat-widget/ui/settings/sections/setup-section.tsx
 'use client'
 import type { ChatWidgetWithIntegration } from '@auxx/lib/chat-widget/config'
-import {
-  InputGroup,
-  InputGroupAddon,
-  InputGroupButton,
-  InputGroupInput,
-  InputGroupText,
-} from '@auxx/ui/components/input-group'
-import { Skeleton } from '@auxx/ui/components/skeleton'
-import { useCopy } from '@auxx/ui/hooks/use-copy'
-import { ArrowUpRight, Check, Code, Copy, ExternalLink } from 'lucide-react'
-import { Tooltip } from '~/components/global/tooltip'
+import { AngularIcon } from '@auxx/ui/components/icons/angular-icon'
+import { NpmIcon } from '@auxx/ui/components/icons/npm-icon'
+import { ReactIcon } from '@auxx/ui/components/icons/react-icon'
+import { VueIcon } from '@auxx/ui/components/icons/vue-icon'
+import { RadioTab, RadioTabItem } from '@auxx/ui/components/radio-tab'
+import { ArrowUpRight, Code, ExternalLink } from 'lucide-react'
+import { parseAsStringLiteral, useQueryState } from 'nuqs'
+import { useMemo } from 'react'
+import CodeEditor from '~/components/workflow/ui/code-editor'
+import { CodeLanguage } from '~/components/workflow/ui/code-editor/types'
 import { useEnv } from '~/providers/dehydrated-state-provider'
-import { api } from '~/trpc/react'
+import {
+  getSetupSnippets,
+  type SetupCodeFlavor,
+  type SetupFramework,
+  type SetupSnippet,
+} from './setup-snippets'
 
 interface SetupSectionProps {
   widget: ChatWidgetWithIntegration
   channelId: string
 }
 
+const FRAMEWORKS = ['code', 'react', 'vue', 'angular'] as const
+const FLAVORS = ['basic-js', 'npm', 'spa'] as const
+
 export function SetupSection({ channelId }: SetupSectionProps) {
   const { docsUrl } = useEnv()
-  const { data: installCode, isLoading: installLoading } = api.channel.getInstallationCode.useQuery(
-    { integrationId: channelId }
+  const [framework, setFramework] = useQueryState(
+    'framework',
+    parseAsStringLiteral(FRAMEWORKS).withDefault('code')
   )
-  const { copied: copiedLink, copy: copyLink } = useCopy({
-    toastMessage: 'Install snippet copied to clipboard',
-  })
+  const [flavor, setFlavor] = useQueryState(
+    'flavor',
+    parseAsStringLiteral(FLAVORS).withDefault('basic-js')
+  )
+
+  const snippets = useMemo(() => getSetupSnippets(channelId), [channelId])
 
   const openFullPreview = () => {
     const width = 900
@@ -51,6 +62,15 @@ export function SetupSection({ channelId }: SetupSectionProps) {
     }
   }
 
+  const activeSnippet: SetupSnippet =
+    framework === 'code'
+      ? snippets.code[flavor]
+      : framework === 'react'
+        ? snippets.react
+        : framework === 'vue'
+          ? snippets.vue
+          : snippets.angular
+
   return (
     <div className='p-6 space-y-8'>
       <div>
@@ -59,59 +79,75 @@ export function SetupSection({ channelId }: SetupSectionProps) {
             <Code className='size-4' /> Install
           </div>
           <p className='text-sm text-muted-foreground'>
-            Paste this snippet into your site's HTML, ideally just before <code>&lt;/body&gt;</code>
-            .
+            Choose your stack — the snippet below is ready to paste.
           </p>
         </div>
-        <InputGroup>
-          <InputGroupAddon align='inline-start'>
-            <Code />
-          </InputGroupAddon>
-          {installLoading ? (
-            <InputGroupText className='flex-1'>
-              <Skeleton className='h-4 w-full' />
-            </InputGroupText>
-          ) : installCode?.script ? (
-            <InputGroupInput
-              type='text'
-              value={installCode.script}
-              readOnly
-              className='font-mono text-xs'
-              onFocus={(e) => e.target.select()}
-            />
-          ) : (
-            <InputGroupText className='text-destructive'>
-              Could not load installation code.
-            </InputGroupText>
-          )}
-          <InputGroupAddon align='inline-end' className='gap-0.5'>
-            <Tooltip content='Copy'>
-              <InputGroupButton
-                aria-label='Copy install snippet'
-                className='rounded-full'
-                size='icon-xs'
-                disabled={!installCode?.script}
-                onClick={() => installCode?.script && copyLink(installCode.script)}>
-                {copiedLink ? <Check /> : <Copy />}
-              </InputGroupButton>
-            </Tooltip>
-          </InputGroupAddon>
-        </InputGroup>
 
-        <ul className='mt-4 space-y-1.5 pl-5 text-sm text-muted-foreground list-disc marker:text-muted-foreground/60'>
-          <li>
-            Paste the snippet just before <code>&lt;/body&gt;</code> on every page that should show
-            the widget.
-          </li>
-          <li>
-            Pass visitor info via <code>window.AuxxChat.identify(…)</code> so conversations attach
-            to a known contact.
-          </li>
-          <li>
-            For verified identity, see the <strong>Identity</strong> tab — sign a per-session JWT on
-            your server and pass it to <code>Auxx.boot()</code>.
-          </li>
-        </ul>
+        <RadioTab
+          value={framework}
+          onValueChange={(v) => setFramework(v as SetupFramework)}
+          size='sm'
+          radioGroupClassName='grid w-full grid-cols-4'
+          className='border border-primary-200 flex w-full mb-3'>
+          <RadioTabItem value='code' size='sm'>
+            <Code />
+            Code snippet
+          </RadioTabItem>
+          <RadioTabItem value='react' size='sm'>
+            <ReactIcon />
+            React
+          </RadioTabItem>
+          <RadioTabItem value='vue' size='sm'>
+            <VueIcon />
+            Vue
+          </RadioTabItem>
+          <RadioTabItem value='angular' size='sm'>
+            <AngularIcon />
+            Angular
+          </RadioTabItem>
+        </RadioTab>
+
+        {framework === 'code' && (
+          <RadioTab
+            value={flavor}
+            onValueChange={(v) => setFlavor(v as SetupCodeFlavor)}
+            size='sm'
+            radioGroupClassName='grid w-full grid-cols-3'
+            className='border border-primary-200 flex w-full mb-4'>
+            <RadioTabItem value='basic-js' size='sm'>
+              <Code />
+              Basic JS
+            </RadioTabItem>
+            <RadioTabItem value='npm' size='sm'>
+              <NpmIcon />
+              npm package
+            </RadioTabItem>
+            <RadioTabItem value='spa' size='sm'>
+              <Code />
+              Single page app
+            </RadioTabItem>
+          </RadioTab>
+        )}
+
+        <div className='space-y-3'>
+          {activeSnippet.blocks.map((block, i) => {
+            const lines = block.value.split('\n').length
+            const isShell = block.language === CodeLanguage.shell
+            // header (28) + lines * 18 (CODE_EDITOR_LINE_HEIGHT) + 24px padding
+            const minHeight = isShell ? 56 : 28 + lines * 18 + 24
+            return (
+              <CodeEditor
+                key={`${framework}-${flavor}-${i}`}
+                language={block.language}
+                value={block.value}
+                readOnly
+                title={block.title ?? activeSnippet.label}
+                minHeight={minHeight}
+              />
+            )
+          })}
+          <p className='text-sm text-muted-foreground'>{activeSnippet.note}</p>
+        </div>
 
         <div className='mt-4 flex items-center gap-4'>
           <a

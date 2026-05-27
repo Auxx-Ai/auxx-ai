@@ -23,7 +23,7 @@ import { cn } from '@auxx/ui/lib/utils'
 import { useDraggable } from '@dnd-kit/core'
 import { formatDistanceToNowStrict } from 'date-fns'
 import DOMPurify from 'dompurify'
-import { Archive, Ban, Clock, MailWarning, MoreVertical, Trash2 } from 'lucide-react'
+import { Archive, Ban, Clock, MailWarning, MoreHorizontal, Trash2 } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import type React from 'react'
 import { memo, useCallback, useMemo } from 'react'
@@ -89,8 +89,11 @@ export function ProcessingMenu({
   return (
     <DropdownMenu onOpenChange={onOpenChange}>
       <DropdownMenuTrigger asChild>
-        <Button variant='ghost' size='icon-sm' className='rounded-[8px]!'>
-          <MoreVertical />
+        <Button
+          variant='ghost'
+          size='icon-xs'
+          className='rounded-[8px]! hover:bg-background/50 group-aria-selected:text-background/50'>
+          <MoreHorizontal />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align='end'>
@@ -346,7 +349,7 @@ export const MailThreadItem = memo(function MailThreadItem({
             className={cn(
               'z-2 hover:bg-accent hover:text-accent-foreground dark:border-[#1e2227] group relative flex w-full cursor-grab flex-col items-start gap-1 rounded-lg border bg-background ps-6 pe-2 py-3 text-left text-sm active:cursor-grabbing dark:bg-[#2c313c] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 dark:focus-visible:ring-0 dark:focus-visible:ring-offset-0',
               isHighlighted &&
-                'bg-info hover:bg-info-100! text-background shadow-md dark:bg-info dark:hover:bg-info-100 border-info/50'
+                'bg-info hover:bg-info-100! text-background shadow dark:bg-info dark:hover:bg-info-100 border-info/50'
             )}
             aria-selected={isHighlighted}
             onClick={handleClick}
@@ -419,8 +422,23 @@ export const MailThreadItem = memo(function MailThreadItem({
                     </div>
                   )}
                 </div>
-                <div className='ml-auto shrink-0 whitespace-nowrap pl-2 text-xs text-muted-foreground group-aria-selected:text-background/50'>
-                  {formattedDate}
+                <div className='ml-auto shrink-0 whitespace-nowrap pl-2 text-xs text-right min-w-[2.5rem] group/menu relative'>
+                  <span className='text-muted-foreground group-aria-selected:text-background/50 group-hover:hidden group-has-data-[state=open]/menu:hidden'>
+                    {formattedDate}
+                  </span>
+                  <div className='hidden absolute -right-1 -top-4 group-hover:flex group-has-data-[state=open]/menu:flex'>
+                    <ProcessingMenu
+                      threadId={threadId}
+                      integrationId={thread?.integrationId}
+                      senderEmail={
+                        senderParticipant?.identifierType === 'EMAIL'
+                          ? senderParticipant.identifier
+                          : undefined
+                      }
+                      update={update}
+                      isUpdating={isUpdating}
+                    />
+                  </div>
                 </div>
               </div>
 
@@ -459,26 +477,7 @@ export const MailThreadItem = memo(function MailThreadItem({
             />
           </div>
 
-          {/* Processing menu — desktop: right panel, mobile: bottom-right corner */}
-          <div className='hidden sm:flex z-1 me-0.5 relative border-primary-500 rounded-r-lg -ms-1.5 ps-2 py-0.5 pe-0.5 bg-primary-200 dark:bg-[#252931] flex-row shrink-0'>
-            <div
-              className='absolute inset-0 rounded-r-lg pointer-events-none mask-y-from-98% mask-y-to-100%'
-              style={{ boxShadow: 'inset 25px 0 25px -25px #000, 1px 1px 3px rgba(0,0,0,0.2)' }}
-            />
-            <div className='flex flex-col justify-start h-full'>
-              <ProcessingMenu
-                threadId={threadId}
-                integrationId={thread?.integrationId}
-                senderEmail={
-                  senderParticipant?.identifierType === 'EMAIL'
-                    ? senderParticipant.identifier
-                    : undefined
-                }
-                update={update}
-                isUpdating={isUpdating}
-              />
-            </div>
-          </div>
+          {/* Processing menu — mobile: bottom-right corner (desktop uses hover swap in header) */}
           <div className='sm:hidden absolute bottom-1.5 right-1.5 z-3'>
             <ProcessingMenu
               threadId={threadId}

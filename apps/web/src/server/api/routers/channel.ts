@@ -1,6 +1,5 @@
 // src/server/api/routers/channel.ts
 
-import { WEBAPP_URL } from '@auxx/config/server'
 import { ConfigStorage, CredentialService, configService } from '@auxx/credentials'
 import { type Database, database, schema } from '@auxx/database'
 import { onCacheEvent, storeOAuthCsrfToken } from '@auxx/lib/cache'
@@ -540,19 +539,6 @@ export const channelRouter = createTRPCRouter({
       const result = await getChatWidget({ db: ctx.db, organizationId }, input.integrationId)
       if (!result.ok) throw result.error
       return result.value
-    }),
-
-  /**
-   * Get widget installation code.
-   */
-  getInstallationCode: protectedProcedure
-    .input(z.object({ integrationId: z.string() }))
-    .query(async ({ ctx, input }) => {
-      const organizationId = getUserOrganizationId(ctx.session)
-      const result = await getChatWidget({ db: ctx.db, organizationId }, input.integrationId)
-      if (!result.ok) throw result.error
-      const scriptSrc = `${WEBAPP_URL}/api/integrations/chat/${result.value.id}/script.js`
-      return { script: `<script src="${scriptSrc}" async defer></script>` }
     }),
 
   getProviderType: protectedProcedure

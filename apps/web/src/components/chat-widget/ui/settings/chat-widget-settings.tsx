@@ -175,7 +175,7 @@ export function ChatWidgetSettings({ channelId }: ChatWidgetSettingsProps) {
         </Button>
       }>
       <ConfirmDialog />
-      <div className='sticky top-[68px] z-10 border-b border-border bg-background/90 p-3 backdrop-blur-sm'>
+      <div className='sticky top-[68px] z-20 border-b border-border bg-background/90 p-3 backdrop-blur-sm'>
         <RadioTab
           value={activeSection}
           onValueChange={setActiveSection}
