@@ -171,6 +171,12 @@ export const identityVerification = pgEnum('IdentityVerification', [
   'in_progress',
   'enforced',
 ])
+/**
+ * Audience policy for a chat channel. "users" here means logged-in
+ * end-customers (the JWT path), not organization members. Independent of
+ * `identityVerification`, which controls the JWT rollout stage.
+ */
+export const chatAudience = pgEnum('ChatAudience', ['visitors', 'both', 'users'])
 export const inboxStatus = pgEnum('InboxStatus', ['ACTIVE', 'ARCHIVED', 'PAUSED'])
 export const indexStatus = pgEnum('IndexStatus', ['PENDING', 'INDEXED', 'ERROR'])
 export const integrationAuthStatus = pgEnum('IntegrationAuthStatus', [

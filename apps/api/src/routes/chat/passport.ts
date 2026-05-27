@@ -204,11 +204,19 @@ passportRoute.post('/', async (c) => {
   const userJwt = extractUserJwt(body)
   const bootAttributes = extractBootAttributes(body)
 
-  // Phase 5 enforcement: when the channel is enforced, the mint itself must
-  // reject any request that can't produce a valid JWT — otherwise we'd hand
-  // out passports that every downstream call would then 401.
-  if (widget.identityVerification === 'enforced' && !userJwt) {
-    log.warn('Chat passport mint rejected — channel is enforced and no JWT was supplied', {
+  // v4 phase 9 — branch on (audience, rollout):
+  //  - `visitors`: short-circuit. No key lookup, no verify, JWT ignored.
+  //  - `users + enforced`: mint itself requires a valid JWT.
+  //  - `both + enforced` / others: verify when present, do not reject on
+  //    absence (the per-request middleware handles the write-time gate for
+  //    `both + enforced`).
+  const audience = widget.chatAudience
+  const rollout = widget.identityVerification
+  const skipJwtPath = audience === 'visitors'
+  const requireJwtAtMint = audience === 'users' && rollout === 'enforced'
+
+  if (requireJwtAtMint && !userJwt) {
+    log.warn('Chat passport mint rejected — users-only enforced channel, no JWT', {
       channelId,
     })
     return c.json(
@@ -223,7 +231,7 @@ passportRoute.post('/', async (c) => {
     )
   }
 
-  if (userJwt) {
+  if (!skipJwtPath && userJwt) {
     const verified = await verifyChannelUserJwt(channelId, widget.organizationId, userJwt)
     if (verified.isErr()) {
       log.warn('Chat user JWT verification failed', {
@@ -231,7 +239,7 @@ passportRoute.post('/', async (c) => {
         code: verified.error.code,
         message: verified.error.message,
       })
-      if (widget.identityVerification === 'enforced') {
+      if (requireJwtAtMint) {
         return c.json(
           {
             success: false,
@@ -266,10 +274,18 @@ passportRoute.post('/', async (c) => {
           contactId: resolved.contactId,
         })
       } catch (error) {
+        const e = error as Error & { cause?: unknown; code?: string }
+        const cause = e.cause as Error | undefined
         log.error('Chat contact resolution from JWT failed', {
           channelId,
           userId: claims.userId,
-          error: (error as Error).message,
+          email: claims.email,
+          attributes: writes,
+          error: e.message,
+          code: e.code,
+          causeMessage: cause?.message,
+          causeStack: cause?.stack,
+          stack: e.stack,
         })
       }
     }

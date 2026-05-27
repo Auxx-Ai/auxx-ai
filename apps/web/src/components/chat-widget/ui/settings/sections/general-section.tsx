@@ -6,18 +6,24 @@ import { type ActorId, parseActorId, toActorId } from '@auxx/types/actor'
 import { getInstanceId, type RecordId, toRecordId } from '@auxx/types/resource'
 import { Button } from '@auxx/ui/components/button'
 import { Form, FormField } from '@auxx/ui/components/form'
+import { RadioTab, RadioTabItem } from '@auxx/ui/components/radio-tab'
 import { toastError } from '@auxx/ui/components/toast'
 import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
 import {
+  AlertTriangle,
   InboxIcon,
   Link as LinkIcon,
   Power,
   Settings,
+  ShieldCheck,
   Sparkles,
   Tag,
   Trash2,
   Type as TypeIcon,
+  UserRound,
+  Users,
 } from 'lucide-react'
+import { useQueryState } from 'nuqs'
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
@@ -41,12 +47,23 @@ const generalSchema = z.object({
   title: z.string().min(1, 'Title is required').max(255),
   subtitle: z.string().max(255).optional(),
   isActive: z.boolean(),
+  chatAudience: z.enum(['visitors', 'both', 'users']),
 })
 
 type GeneralForm = z.infer<typeof generalSchema>
 
+type ChatAudience = GeneralForm['chatAudience']
+
+const AUDIENCE_DESCRIPTIONS: Record<ChatAudience, string> = {
+  visitors: 'Anyone can chat anonymously. No login or identity setup required on your side.',
+  both: 'Anonymous visitors and logged-in users can both chat. Signed JWTs link conversations to the real account; visitors without a JWT chat anonymously.',
+  users:
+    'Only logged-in users with a valid JWT can chat. The widget bubble stays hidden for anonymous visitors and appears automatically when your site passes a userJwt to Auxx.boot().',
+}
+
 export function GeneralSection({ widget, channelId, onDelete }: GeneralSectionProps) {
   const utils = api.useUtils()
+  const [, setActiveSection] = useQueryState('s')
 
   const update = api.channel.updateChatWidgetIntegration.useMutation({
     onSuccess: () => {
@@ -56,6 +73,8 @@ export function GeneralSection({ widget, channelId, onDelete }: GeneralSectionPr
     onError: (e) => toastError({ title: 'Failed to save', description: e.message }),
   })
 
+  const identityVerification = widget.chatWidget?.identityVerification ?? 'off'
+
   const form = useForm<GeneralForm>({
     resolver: standardSchemaResolver(generalSchema),
     defaultValues: {
@@ -63,6 +82,7 @@ export function GeneralSection({ widget, channelId, onDelete }: GeneralSectionPr
       title: widget.chatWidget?.title ?? 'Chat',
       subtitle: widget.chatWidget?.subtitle ?? '',
       isActive: widget.chatWidget?.isActive ?? true,
+      chatAudience: (widget.chatWidget?.chatAudience ?? 'visitors') as ChatAudience,
     },
   })
 
@@ -73,6 +93,7 @@ export function GeneralSection({ widget, channelId, onDelete }: GeneralSectionPr
       title: values.title,
       subtitle: values.subtitle || undefined,
       isActive: values.isActive,
+      chatAudience: values.chatAudience,
     })
   }
 
@@ -277,6 +298,63 @@ export function GeneralSection({ widget, channelId, onDelete }: GeneralSectionPr
               </div>
             </VarEditorFieldRow>
           </VarEditorField>
+        </div>
+
+        <div className='border-t p-6'>
+          <div className='space-y-1 mb-4'>
+            <div className='flex items-center gap-2 text-base font-semibold tracking-tight text-foreground'>
+              <Users className='size-4' /> Audience
+            </div>
+            <p className='text-sm text-muted-foreground'>Who is this widget for?</p>
+          </div>
+
+          <FormField
+            control={form.control}
+            name='chatAudience'
+            render={({ field }) => (
+              <>
+                <RadioTab
+                  value={field.value}
+                  onValueChange={(v) => field.onChange(v as ChatAudience)}
+                  size='sm'
+                  radioGroupClassName='grid w-full grid-cols-3'
+                  className='border border-primary-200 flex w-full mb-3'>
+                  <RadioTabItem value='visitors' size='sm'>
+                    <UserRound />
+                    Visitors only
+                  </RadioTabItem>
+                  <RadioTabItem value='both' size='sm'>
+                    <Users />
+                    Both
+                  </RadioTabItem>
+                  <RadioTabItem value='users' size='sm'>
+                    <ShieldCheck />
+                    Users only
+                  </RadioTabItem>
+                </RadioTab>
+
+                <p className='text-xs text-muted-foreground'>
+                  {AUDIENCE_DESCRIPTIONS[field.value]}
+                </p>
+
+                {field.value === 'users' && identityVerification === 'off' && (
+                  <div className='mt-3 flex items-center gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-900 dark:text-amber-200'>
+                    <AlertTriangle className='size-3.5 shrink-0' />
+                    <span className='flex-1'>
+                      Rollout is off — anonymous visitors can still chat. Start rollout on the
+                      Identity tab to lock down.
+                    </span>
+                    <button
+                      type='button'
+                      onClick={() => setActiveSection('identity')}
+                      className='shrink-0 font-medium underline'>
+                      Open Identity
+                    </button>
+                  </div>
+                )}
+              </>
+            )}
+          />
         </div>
 
         <div className='flex flex-wrap items-center justify-between gap-3 border-t p-6'>

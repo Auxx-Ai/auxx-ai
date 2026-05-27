@@ -63,6 +63,12 @@ export interface UpdateChatWidgetInput {
 
   /** Pass `null` (or empty after sanitization) to clear the URL. */
   privacyPolicyUrl?: string | null
+
+  /** JWT rollout stage. Independent of `chatAudience`. */
+  identityVerification?: 'off' | 'in_progress' | 'enforced'
+
+  /** Audience policy: visitors only, both, or users only. */
+  chatAudience?: 'visitors' | 'both' | 'users'
 }
 
 /**

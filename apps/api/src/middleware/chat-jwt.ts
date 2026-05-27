@@ -1,5 +1,6 @@
 // apps/api/src/middleware/chat-jwt.ts
 
+import { getOrgCache } from '@auxx/lib/cache'
 import { hashChatUserJwt, type VerifiedChatUserJwt, verifyChannelUserJwt } from '@auxx/lib/chat'
 import { createScopedLogger } from '@auxx/logger'
 import type { MiddlewareHandler } from 'hono'
@@ -20,10 +21,10 @@ declare module 'hono' {
  * Re-verify the customer-signed JWT carried in `user_data.auxx_user_jwt`
  * on every chat request after the passport middleware has run.
  *
- * Phase 3/4 wrote `c.var.chatJwt` and warn-logged on failure but never
- * rejected. Phase 5 layers enforcement on top: when the channel's
- * `identityVerification === 'enforced'` (baked into the passport at mint
- * time), missing/invalid JWTs on write requests return 401 instead.
+ * v4 phase 9: reads the live `(chatAudience, identityVerification)` from the
+ * channel cache rather than the baked passport — flipping policy in the
+ * dashboard takes effect on the next request instead of waiting for the
+ * passport TTL.
  *
  * GET/HEAD have no body — they pass through. Customers should sign
  * attribute-bearing POST/PUT calls; pure reads carry only the passport.
@@ -37,7 +38,31 @@ export const chatUserJwtMiddleware: MiddlewareHandler = async (c, next) => {
     return next()
   }
 
-  const enforced = passport.identityVerification === 'enforced'
+  // Live channel policy — never trust the passport-baked enforcement state.
+  const channels = await getOrgCache().get(passport.organizationId, 'channels')
+  const channel = channels.find((ch) => ch.id === passport.channelId)
+  const audience = (channel?.chatWidget?.chatAudience ?? 'visitors') as
+    | 'visitors'
+    | 'both'
+    | 'users'
+  const rollout = (channel?.chatWidget?.identityVerification ?? 'off') as
+    | 'off'
+    | 'in_progress'
+    | 'enforced'
+
+  // `visitors` audience skips the JWT path entirely — any token in the body
+  // is ignored, no key lookup, no verify.
+  if (audience === 'visitors') {
+    c.set('chatJwt', { verified: false, reason: 'absent' })
+    return next()
+  }
+
+  // Write-time enforcement applies when the channel rolled out to `enforced`
+  // and the audience expects a JWT. `both + enforced` rejects an invalid JWT
+  // when sent but lets anonymous traffic through. `users + enforced` rejects
+  // missing/invalid JWTs unconditionally.
+  const enforced = rollout === 'enforced'
+  const usersOnlyEnforced = enforced && audience === 'users'
   const rejectEnforced = (code: 'IDENTITY_REQUIRED', message: string) =>
     c.json({ success: false, error: { code, message } }, 401)
 
@@ -54,8 +79,8 @@ export const chatUserJwtMiddleware: MiddlewareHandler = async (c, next) => {
   const contentType = c.req.header('content-type') ?? ''
   if (!contentType.toLowerCase().includes('application/json')) {
     c.set('chatJwt', { verified: false, reason: 'absent' })
-    if (enforced) {
-      log.warn('Chat request rejected — enforced channel, non-JSON body', {
+    if (usersOnlyEnforced) {
+      log.warn('Chat request rejected — users-only enforced channel, non-JSON body', {
         channelId: passport.channelId,
         contentType,
       })
@@ -70,8 +95,8 @@ export const chatUserJwtMiddleware: MiddlewareHandler = async (c, next) => {
   } catch {
     // Empty / malformed JSON — treat as absent.
     c.set('chatJwt', { verified: false, reason: 'absent' })
-    if (enforced) {
-      log.warn('Chat request rejected — enforced channel, no JWT body', {
+    if (usersOnlyEnforced) {
+      log.warn('Chat request rejected — users-only enforced channel, no JWT body', {
         channelId: passport.channelId,
       })
       return rejectEnforced('IDENTITY_REQUIRED', 'This chat channel requires a signed user JWT')
@@ -88,8 +113,8 @@ export const chatUserJwtMiddleware: MiddlewareHandler = async (c, next) => {
 
   if (!token) {
     c.set('chatJwt', { verified: false, reason: 'absent' })
-    if (enforced) {
-      log.warn('Chat request rejected — enforced channel, no JWT in user_data', {
+    if (usersOnlyEnforced) {
+      log.warn('Chat request rejected — users-only enforced channel, no JWT in user_data', {
         channelId: passport.channelId,
       })
       return rejectEnforced('IDENTITY_REQUIRED', 'This chat channel requires a signed user JWT')
@@ -104,6 +129,8 @@ export const chatUserJwtMiddleware: MiddlewareHandler = async (c, next) => {
       code: result.error.code,
     })
     c.set('chatJwt', { verified: false, reason: 'unverified' })
+    // `both + enforced` and `users + enforced` both reject invalid JWTs when
+    // sent — the matrix only differs in how they treat *absent* tokens.
     if (enforced) {
       return rejectEnforced(
         'IDENTITY_REQUIRED',

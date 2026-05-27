@@ -27,8 +27,9 @@ interface SetupSectionProps {
 const FRAMEWORKS = ['code', 'react', 'vue', 'angular'] as const
 const FLAVORS = ['basic-js', 'npm', 'spa'] as const
 
-export function SetupSection({ channelId }: SetupSectionProps) {
+export function SetupSection({ widget, channelId }: SetupSectionProps) {
   const { docsUrl } = useEnv()
+  const [, setActiveSection] = useQueryState('s')
   const [framework, setFramework] = useQueryState(
     'framework',
     parseAsStringLiteral(FRAMEWORKS).withDefault('code')
@@ -38,7 +39,10 @@ export function SetupSection({ channelId }: SetupSectionProps) {
     parseAsStringLiteral(FLAVORS).withDefault('basic-js')
   )
 
-  const snippets = useMemo(() => getSetupSnippets(channelId), [channelId])
+  const audience = (widget.chatWidget?.chatAudience ?? 'visitors') as 'visitors' | 'both' | 'users'
+  const verified = audience !== 'visitors'
+
+  const snippets = useMemo(() => getSetupSnippets(channelId, audience), [channelId, audience])
 
   const openFullPreview = () => {
     const width = 900
@@ -79,9 +83,31 @@ export function SetupSection({ channelId }: SetupSectionProps) {
             <Code className='size-4' /> Install
           </div>
           <p className='text-sm text-muted-foreground'>
-            Choose your stack — the snippet below is ready to paste.
+            Choose your stack. The snippet below is ready to paste.
           </p>
         </div>
+
+        <p className='mb-3 text-xs text-muted-foreground'>
+          {verified
+            ? 'Your server signs a short-lived JWT so the widget knows exactly which logged-in user it’s talking to. Messages can’t be spoofed and chats link back to the real account.'
+            : 'Anyone visiting your site shows up as an anonymous chat visitor — fastest to install, no backend changes needed. Change Audience on the General tab once you want to verify logged-in users.'}
+        </p>
+
+        {verified && (
+          <div className='mb-3 flex items-center justify-between gap-3 rounded-md border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground'>
+            <span>
+              You&apos;ll need a signing key — create one on the Identity tab, then put it in your
+              server&apos;s <code className='font-mono'>AUXX_CHAT_SECRET</code> env var.
+            </span>
+            <button
+              type='button'
+              onClick={() => setActiveSection('identity')}
+              className='inline-flex shrink-0 items-center gap-1 font-medium text-primary hover:underline'>
+              Open Identity
+              <ArrowUpRight className='size-3' />
+            </button>
+          </div>
+        )}
 
         <RadioTab
           value={framework}
@@ -91,7 +117,7 @@ export function SetupSection({ channelId }: SetupSectionProps) {
           className='border border-primary-200 flex w-full mb-3'>
           <RadioTabItem value='code' size='sm'>
             <Code />
-            Code snippet
+            Vanilla JS
           </RadioTabItem>
           <RadioTabItem value='react' size='sm'>
             <ReactIcon />
@@ -137,7 +163,7 @@ export function SetupSection({ channelId }: SetupSectionProps) {
             const minHeight = isShell ? 56 : 28 + lines * 18 + 24
             return (
               <CodeEditor
-                key={`${framework}-${flavor}-${i}`}
+                key={`${audience}-${framework}-${flavor}-${i}`}
                 language={block.language}
                 value={block.value}
                 readOnly

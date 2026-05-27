@@ -50,7 +50,14 @@ export default function PreviewWidgetEmbedPage() {
     // tester has to click the launcher every reload.
     // `previewRounded` keeps the rounded shell in the mobile-fullscreen
     // layout (the iframe is phone-narrow so the mobile media query fires).
-    const programmaticConfig = { apiBase: chatApiBase, open: true, previewRounded: true }
+    // `previewBypassAudience` keeps the launcher visible on `users`-audience
+    // channels so admins can preview them without signing a fake JWT.
+    const programmaticConfig = {
+      apiBase: chatApiBase,
+      open: true,
+      previewRounded: true,
+      previewBypassAudience: true,
+    }
     const bootHtml = `<script>
       window.__AUXX_CONFIG__ = ${JSON.stringify(programmaticConfig)};
     </script>

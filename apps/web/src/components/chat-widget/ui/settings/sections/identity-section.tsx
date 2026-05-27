@@ -28,7 +28,6 @@ import {
   KeyRound,
   LockKeyhole,
   ShieldCheck,
-  Terminal,
   Trash2,
 } from 'lucide-react'
 import { useQueryState } from 'nuqs'
@@ -47,6 +46,7 @@ export function IdentitySection({ widget, channelId }: IdentitySectionProps) {
   const utils = api.useUtils()
   const [confirm, ConfirmDialog] = useConfirm()
   const [, setActiveSection] = useQueryState('s')
+  const [, setSetupMode] = useQueryState('mode')
   const [newlyCreatedKey, setNewlyCreatedKey] = useState<string | null>(null)
   const {
     copied: copiedKey,
@@ -80,21 +80,16 @@ export function IdentitySection({ widget, channelId }: IdentitySectionProps) {
 
   const updateChannel = api.channel.updateChatWidgetIntegration.useMutation({
     onSuccess: () => {
+      utils.channel.getChatIdentityState.invalidate({ channelId })
       utils.channel.getChatWidgetIntegration.invalidate({ integrationId: channelId })
     },
     onError: (e) => toastError({ title: 'Failed to save', description: e.message }),
   })
 
   const { data: identityState } = api.channel.getChatIdentityState.useQuery({ channelId })
-  const setIdentity = api.channel.setChatIdentityVerificationState.useMutation({
-    onSuccess: () => {
-      utils.channel.getChatIdentityState.invalidate({ channelId })
-      utils.channel.getChatWidgetIntegration.invalidate({ integrationId: channelId })
-    },
-    onError: (e) =>
-      toastError({ title: 'Failed to update enforcement state', description: e.message }),
-  })
   const state = identityState?.state ?? 'off'
+  const audience = identityState?.audience ?? widget.chatWidget?.chatAudience ?? 'visitors'
+  const audienceDisabled = audience === 'visitors'
   const canEnforce = (identityState?.successCount ?? 0) > 0
 
   const stateLabel = state === 'off' ? 'Off' : state === 'in_progress' ? 'In progress' : 'Enforced'
@@ -145,19 +140,8 @@ export function IdentitySection({ widget, channelId }: IdentitySectionProps) {
             </div>
             <p className='text-sm text-muted-foreground'>
               Sign a short-lived JWT on your server with one of these per-channel secrets so the
-              widget can prove who the visitor is. Phase 3 wires verification end-to-end; for now,
-              you can mint and rotate keys here.
+              widget can prove who the visitor is.
             </p>
-          </div>
-
-          <div className='mb-2 flex justify-end'>
-            <button
-              type='button'
-              onClick={() => setActiveSection('setup')}
-              className='inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline'>
-              See Setup for framework-specific install instructions
-              <ArrowUpRight className='size-3' />
-            </button>
           </div>
 
           <EnforcementCard
@@ -165,62 +149,87 @@ export function IdentitySection({ widget, channelId }: IdentitySectionProps) {
             stateLabel={stateLabel}
             stateBadgeVariant={stateBadgeVariant}
             canEnforce={canEnforce}
-            isPending={setIdentity.isPending}
-            onTransition={(next) => setIdentity.mutate({ channelId, state: next })}
+            isPending={updateChannel.isPending}
+            disabled={audienceDisabled}
+            onOpenGeneral={() => setActiveSection('general')}
+            onTransition={(next) =>
+              updateChannel.mutate({ integrationId: channelId, identityVerification: next })
+            }
+            onOpenSetup={() => {
+              setSetupMode(null)
+              setActiveSection('setup')
+            }}
           />
 
-          <div className='flex items-center justify-between mb-3'>
-            <div>
-              <div className='text-sm font-medium'>Signing keys</div>
-              <p className='text-xs text-muted-foreground'>
-                Multiple active keys are allowed — rotate by creating a new one, switching your
-                server over, then revoking the old.
-              </p>
-            </div>
-            <Button
-              type='button'
-              size='xs'
-              variant='outline'
-              onClick={handleCreate}
-              loading={createKey.isPending}
-              loadingText='Creating…'>
-              <LockKeyhole className='size-3.5' />
-              Create signing key
-            </Button>
-          </div>
+          <div className='relative'>
+            <div
+              className={
+                audienceDisabled ? 'opacity-50 pointer-events-none select-none' : undefined
+              }>
+              <div className='flex items-center justify-between mb-3'>
+                <div>
+                  <div className='text-sm font-medium'>Signing keys</div>
+                  <p className='text-xs text-muted-foreground'>
+                    Multiple active keys are allowed — rotate by creating a new one, switching your
+                    server over, then revoking the old.
+                  </p>
+                </div>
+                <Button
+                  type='button'
+                  size='xs'
+                  variant='outline'
+                  onClick={handleCreate}
+                  loading={createKey.isPending}
+                  loadingText='Creating…'>
+                  <LockKeyhole className='size-3.5' />
+                  Create signing key
+                </Button>
+              </div>
 
-          {chatKeys.length === 0 ? (
-            <p className='text-sm text-muted-foreground'>No signing keys yet.</p>
-          ) : (
-            <div className='space-y-2'>
-              {chatKeys.map((key) => (
-                <InputGroup key={key.id}>
-                  <InputGroupAddon align='inline-start'>
-                    <KeyRound className='size-3 text-muted-foreground' />
-                  </InputGroupAddon>
-                  <InputGroupText className='ms-1 flex-1 truncate font-mono'>
-                    {key.name}
-                  </InputGroupText>
-                  <InputGroupAddon align='inline-end' className='pe-2.5 gap-2'>
-                    <Badge variant='gray' className='opacity-50 rounded-lg'>
-                      {new Date(key.createdAt).toLocaleDateString()}
-                    </Badge>
-                    <InputGroupButton
-                      type='button'
-                      variant='destructive-hover'
-                      className='rounded-lg'
-                      aria-label='Revoke signing key'
-                      title='Revoke'
-                      size='icon-xs'
-                      onClick={() => handleRevoke(key.id)}
-                      disabled={deleteKey.isPending}>
-                      <Trash2 />
-                    </InputGroupButton>
-                  </InputGroupAddon>
-                </InputGroup>
-              ))}
+              {chatKeys.length === 0 ? (
+                <p className='text-sm text-muted-foreground'>No signing keys yet.</p>
+              ) : (
+                <div className='space-y-2'>
+                  {chatKeys.map((key) => (
+                    <InputGroup key={key.id}>
+                      <InputGroupAddon align='inline-start'>
+                        <KeyRound className='size-3 text-muted-foreground' />
+                      </InputGroupAddon>
+                      <InputGroupText className='ms-1 flex-1 truncate font-mono'>
+                        {key.name}
+                      </InputGroupText>
+                      <InputGroupAddon align='inline-end' className='pe-2.5 gap-2'>
+                        <Badge variant='gray' className='opacity-50 rounded-lg'>
+                          {new Date(key.createdAt).toLocaleDateString()}
+                        </Badge>
+                        <InputGroupButton
+                          type='button'
+                          variant='destructive-hover'
+                          className='rounded-lg'
+                          aria-label='Revoke signing key'
+                          title='Revoke'
+                          size='icon-xs'
+                          onClick={() => handleRevoke(key.id)}
+                          disabled={deleteKey.isPending}>
+                          <Trash2 />
+                        </InputGroupButton>
+                      </InputGroupAddon>
+                    </InputGroup>
+                  ))}
+                </div>
+              )}
             </div>
-          )}
+            {audienceDisabled && (
+              <div className='absolute inset-0 flex items-center justify-center pointer-events-none'>
+                <button
+                  type='button'
+                  onClick={() => setActiveSection('general')}
+                  className='pointer-events-auto rounded-full border border-border bg-background px-3 py-1.5 text-xs font-medium shadow-sm hover:bg-muted'>
+                  Change Audience to manage signing keys
+                </button>
+              </div>
+            )}
+          </div>
         </div>
 
         <div>
@@ -300,7 +309,10 @@ interface EnforcementCardProps {
   stateBadgeVariant: 'gray' | 'amber' | 'green'
   canEnforce: boolean
   isPending: boolean
+  disabled?: boolean
   onTransition: (next: EnforcementState) => void
+  onOpenSetup: () => void
+  onOpenGeneral?: () => void
 }
 
 function EnforcementCard({
@@ -309,58 +321,77 @@ function EnforcementCard({
   stateBadgeVariant,
   canEnforce,
   isPending,
+  disabled,
   onTransition,
+  onOpenSetup,
+  onOpenGeneral,
 }: EnforcementCardProps) {
   return (
-    <div className='rounded-md border border-border bg-muted/30 p-4 mb-6'>
-      <div className='flex items-center gap-2 text-sm font-medium'>
-        <LockKeyhole className='size-3.5 text-muted-foreground' />
-        Enforcement
-        <Badge variant={stateBadgeVariant} className='ml-auto rounded-md'>
-          {stateLabel}
-        </Badge>
-      </div>
-      <p className='mt-1 text-xs text-muted-foreground'>
-        {state === 'off' &&
-          'The widget currently accepts both verified and unverified visitors. Start rollout to begin signing JWTs from your server without breaking existing sessions.'}
-        {state === 'in_progress' &&
-          'JWT-signed and anonymous traffic both work. Enforce once your server reliably signs every visitor.'}
-        {state === 'enforced' &&
-          'All chat write requests must carry a valid JWT. Visitors without one are rejected.'}
-      </p>
+    <div className='relative rounded-2xl border border-border bg-muted/30 p-4 mb-6'>
+      <div className={disabled ? 'opacity-50 pointer-events-none select-none' : undefined}>
+        <div className='flex items-center gap-2 text-sm font-medium'>
+          <LockKeyhole className='size-3.5 text-muted-foreground' />
+          Enforcement
+          <Badge variant={stateBadgeVariant} className='ml-auto rounded-md'>
+            {stateLabel}
+          </Badge>
+        </div>
+        <p className='mt-1 text-xs text-muted-foreground'>
+          {state === 'off' &&
+            'The widget currently accepts both verified and unverified visitors. Start rollout to begin signing JWTs from your server without breaking existing sessions.'}
+          {state === 'in_progress' &&
+            'JWT-signed and anonymous traffic both work. Enforce once your server reliably signs every visitor.'}
+          {state === 'enforced' &&
+            'All chat write requests must carry a valid JWT. Visitors without one are rejected.'}
+        </p>
 
-      <ol className='mt-4 space-y-3'>
-        <Step
-          n={1}
-          title='Install @auxx/chat'
-          snippet={'npm install @auxx/chat'}
-          done={state !== 'off'}
-        />
-        <Step
-          n={2}
-          title='Sign JWTs on your server'
-          snippet={SIGN_SNIPPET}
-          done={state !== 'off'}
-        />
-        <Step
-          n={3}
-          title='Pass the JWT to the widget'
-          snippet={BOOT_SNIPPET}
-          done={state !== 'off'}
-        />
-        <li className='flex items-center gap-3'>
-          <div className='flex size-6 shrink-0 items-center justify-center rounded-full bg-background text-xs font-medium ring-1 ring-border'>
-            4
+        <div className='mt-4 flex items-center gap-3 rounded-md border border-border bg-background px-3 py-2 text-xs'>
+          <div
+            className={
+              canEnforce
+                ? 'flex size-6 shrink-0 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-700 ring-1 ring-emerald-500/20 dark:text-emerald-400'
+                : 'flex size-6 shrink-0 items-center justify-center rounded-full bg-background text-xs font-medium ring-1 ring-border'
+            }>
+            {canEnforce ? <Check className='size-3.5' /> : '1'}
           </div>
-          <div className='flex-1 text-sm'>Enforce</div>
+          <div className='flex-1'>
+            <div className='text-sm font-medium text-foreground'>
+              {canEnforce ? 'JWT-signed traffic seen' : 'Wire up your widget with a userJwt'}
+            </div>
+            <div className='text-muted-foreground'>
+              {canEnforce
+                ? 'Your widget is sending signed visitors. Safe to enforce.'
+                : 'Use the Verified setup snippet — server signs a JWT, widget boots with it.'}
+            </div>
+          </div>
+          <button
+            type='button'
+            onClick={onOpenSetup}
+            className='inline-flex shrink-0 items-center gap-1 font-medium text-primary hover:underline'>
+            Open Setup
+            <ArrowUpRight className='size-3' />
+          </button>
+        </div>
+
+        <div className='mt-3 flex items-center justify-end'>
           <EnforceActions
             state={state}
             canEnforce={canEnforce}
             isPending={isPending}
             onTransition={onTransition}
           />
-        </li>
-      </ol>
+        </div>
+      </div>
+      {disabled && (
+        <div className='absolute inset-0 flex items-center justify-center pointer-events-none'>
+          <button
+            type='button'
+            onClick={onOpenGeneral}
+            className='pointer-events-auto rounded-full border border-border bg-background px-3 py-1.5 text-xs font-medium shadow-sm hover:bg-muted'>
+            JWT identity is off — change Audience on the General tab
+          </button>
+        </div>
+      )}
     </div>
   )
 }
@@ -410,59 +441,3 @@ function EnforceActions({
     </Button>
   )
 }
-
-function Step({
-  n,
-  title,
-  snippet,
-  done,
-}: {
-  n: number
-  title: string
-  snippet: string
-  done: boolean
-}) {
-  const { copied, copy } = useCopy({ toastMessage: 'Snippet copied', autoReset: true })
-  return (
-    <li className='flex gap-3'>
-      <div
-        className={
-          done
-            ? 'mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-700 ring-1 ring-emerald-500/20 dark:text-emerald-400'
-            : 'mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full bg-background text-xs font-medium ring-1 ring-border'
-        }>
-        {done ? <Check className='size-3.5' /> : n}
-      </div>
-      <div className='flex-1 min-w-0'>
-        <div className='text-sm'>{title}</div>
-        <div className='mt-1 relative group'>
-          <pre className='overflow-x-auto rounded-md bg-background p-2 text-xs font-mono ring-1 ring-border'>
-            <Terminal className='inline-block size-3 text-muted-foreground mr-1 align-[-1px]' />
-            {snippet}
-          </pre>
-          <button
-            type='button'
-            aria-label='Copy snippet'
-            className='absolute right-1 top-1 opacity-0 group-hover:opacity-100 transition-opacity rounded p-1 hover:bg-muted'
-            onClick={() => copy(snippet)}>
-            {copied ? <Check className='size-3' /> : <Copy className='size-3' />}
-          </button>
-        </div>
-      </div>
-    </li>
-  )
-}
-
-const SIGN_SNIPPET = `import { signUserJwt } from '@auxx/chat/server'
-
-const token = await signUserJwt(
-  { user_id: user.id, email: user.email },
-  process.env.AUXX_CHAT_SECRET!
-)`
-
-const BOOT_SNIPPET = `import Auxx from '@auxx/chat'
-
-Auxx.boot({
-  channelId: '<your channel id>',
-  userJwt: token,
-})`

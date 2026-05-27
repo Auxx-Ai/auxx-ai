@@ -15,6 +15,13 @@ interface Window {
      * render with the production square-edge mobile chrome.
      */
     previewRounded?: boolean
+    /**
+     * Force the launcher to render even on `users`-audience channels with no
+     * `userJwt`. Used by the admin settings preview iframe so customers can
+     * see how the widget looks without first signing a fake JWT. Visual only;
+     * the server still rejects anonymous passport mints on enforced channels.
+     */
+    previewBypassAudience?: boolean
   }
 }
 
