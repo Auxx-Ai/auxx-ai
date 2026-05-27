@@ -2,7 +2,6 @@
 'use client'
 import { FieldType } from '@auxx/database/enums'
 import type { ChatWidgetWithIntegration } from '@auxx/lib/chat-widget/config'
-import type { RecordId } from '@auxx/lib/resources/client'
 import { Button } from '@auxx/ui/components/button'
 import {
   Form,
@@ -29,11 +28,9 @@ import {
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
-import { MultiRelationInput } from '~/components/shared/multi-relation-input'
 import { BaseType } from '~/components/workflow/types'
 import { VarEditorField, VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
 import { api } from '~/trpc/react'
-import { FeaturedArticlesField } from '../featured-articles-field'
 
 interface BehaviorSectionProps {
   widget: ChatWidgetWithIntegration
@@ -49,32 +46,9 @@ const behaviorSchema = z.object({
   homeShowSendMessageCta: z.boolean(),
   allowDownloadTranscript: z.boolean(),
   brandingFooterEnabled: z.boolean(),
-  knowledgeBaseId: z.string().nullable(),
-  featuredArticleIds: z.array(z.string()),
 })
 
 type BehaviorForm = z.infer<typeof behaviorSchema>
-
-/**
- * Inline warning rendered under the KB picker when the selected KB is
- * INTERNAL. The widget reader only supports PUBLIC KBs in v1 — the server
- * also rejects the save, this just surfaces it before the click so the
- * admin doesn't waste the round-trip.
- */
-function KbVisibilityWarning({ knowledgeBaseId }: { knowledgeBaseId: string | null }) {
-  const enabled = !!knowledgeBaseId
-  const { data } = api.kb.byId.useQuery(
-    { id: knowledgeBaseId ?? '' },
-    { enabled, staleTime: 60_000 }
-  )
-  if (!enabled || !data || data.visibility === 'PUBLIC') return null
-  return (
-    <p className='text-sm text-destructive'>
-      This knowledge base is set to INTERNAL. Switch it to PUBLIC before saving — chat widgets only
-      support PUBLIC knowledge bases.
-    </p>
-  )
-}
 
 export function BehaviorSection({ widget, channelId }: BehaviorSectionProps) {
   const utils = api.useUtils()
@@ -97,8 +71,6 @@ export function BehaviorSection({ widget, channelId }: BehaviorSectionProps) {
       homeShowSendMessageCta: cw?.homeShowSendMessageCta ?? true,
       allowDownloadTranscript: cw?.allowDownloadTranscript ?? true,
       brandingFooterEnabled: cw?.brandingFooterEnabled ?? true,
-      knowledgeBaseId: cw?.knowledgeBaseId ?? null,
-      featuredArticleIds: cw?.featuredArticleIds ?? [],
     },
   })
 
@@ -112,8 +84,6 @@ export function BehaviorSection({ widget, channelId }: BehaviorSectionProps) {
       homeShowSendMessageCta: values.homeShowSendMessageCta,
       allowDownloadTranscript: values.allowDownloadTranscript,
       brandingFooterEnabled: values.brandingFooterEnabled,
-      knowledgeBaseId: values.knowledgeBaseId,
-      featuredArticleIds: values.featuredArticleIds,
     })
   }
 
@@ -287,88 +257,6 @@ export function BehaviorSection({ widget, channelId }: BehaviorSectionProps) {
                     Leave blank to fall back to the default message.
                   </FormDescription>
                   <FormMessage />
-                </FormItem>
-              )}
-            />
-          </div>
-        </div>
-
-        <div className='border-t p-6 space-y-8'>
-          <div>
-            <div className='space-y-1 mb-6'>
-              <div className='flex items-center gap-2 text-base font-semibold tracking-tight text-foreground'>
-                <BookOpen className='size-4' /> Knowledge base
-              </div>
-              <p className='text-sm text-muted-foreground'>
-                Source articles for the widget's Home and Browse screens.
-              </p>
-            </div>
-
-            <VarEditorField orientation='responsive' className='p-0'>
-              <FormField
-                control={form.control}
-                name='knowledgeBaseId'
-                render={({ field, fieldState }) => {
-                  const recordId = field.value ? (`kb:${field.value}` as RecordId) : null
-                  return (
-                    <VarEditorFieldRow
-                      title='Knowledge base'
-                      description="Articles from this KB power the widget's featured cards and Browse all view."
-                      type={BaseType.RELATION}
-                      icon={<BookOpen className='size-3.5' />}
-                      showIcon
-                      validationError={fieldState.error?.message}>
-                      <MultiRelationInput
-                        entityDefinitionId='kb'
-                        value={recordId ? [recordId] : []}
-                        multi={false}
-                        placeholder='Link a knowledge base…'
-                        onChange={(ids) => {
-                          const first = ids[0]
-                          if (!first) {
-                            field.onChange(null)
-                            return
-                          }
-                          const instanceId = first.includes(':')
-                            ? first.split(':').slice(1).join(':')
-                            : first
-                          field.onChange(instanceId)
-                        }}
-                      />
-                      <KbVisibilityWarning knowledgeBaseId={field.value} />
-                    </VarEditorFieldRow>
-                  )
-                }}
-              />
-            </VarEditorField>
-          </div>
-
-          <div>
-            <div className='space-y-1 mb-6'>
-              <div className='flex items-center gap-2 text-base font-semibold tracking-tight text-foreground'>
-                <Home className='size-4' /> Featured articles
-              </div>
-              <p className='text-sm text-muted-foreground'>
-                Pinned articles shown as cards on the Home screen.
-              </p>
-            </div>
-
-            <FormField
-              control={form.control}
-              name='featuredArticleIds'
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Featured articles</FormLabel>
-                  <FormControl>
-                    <FeaturedArticlesField
-                      knowledgeBaseId={form.watch('knowledgeBaseId')}
-                      value={field.value}
-                      onChange={field.onChange}
-                    />
-                  </FormControl>
-                  <FormDescription>
-                    Pinned articles shown as cards on the Home screen. Drag to reorder.
-                  </FormDescription>
                 </FormItem>
               )}
             />

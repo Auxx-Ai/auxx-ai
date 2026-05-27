@@ -6,7 +6,7 @@ import { Moon, Smartphone, Sun, SunMoon } from 'lucide-react'
 import { useState } from 'react'
 
 type PreviewTheme = 'light' | 'dark' | 'system'
-type PreviewIntent = 'general' | 'setup' | 'appearance' | 'behavior' | 'identity'
+type PreviewIntent = 'general' | 'setup' | 'appearance' | 'behavior' | 'ai' | 'identity'
 
 interface PreviewPaneProps {
   channelId: string

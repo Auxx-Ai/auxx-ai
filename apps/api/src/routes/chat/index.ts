@@ -33,7 +33,14 @@ chatRoutes.use('/attachments/*', chatPassportMiddleware, chatUserJwtMiddleware)
 chatRoutes.use('/typing/*', chatPassportMiddleware, chatUserJwtMiddleware)
 chatRoutes.use('/receipts/*', chatPassportMiddleware, chatUserJwtMiddleware)
 chatRoutes.use('/visitor-info/*', chatPassportMiddleware, chatUserJwtMiddleware)
-chatRoutes.use('/pusher/*', chatPassportMiddleware, chatUserJwtMiddleware)
+// `/pusher/auth` is form-encoded (Pusher's client posts `socket_id`/`channel_name`
+// as application/x-www-form-urlencoded). The chat-jwt middleware can only read
+// the JWT envelope from JSON bodies, so re-verifying here would always 401 on
+// `users + enforced` channels. The passport mint already gates identity at
+// session start, and the pusher-auth handler ACL-checks channels against the
+// passport's visitorParticipantId — re-verifying per pusher-auth call adds no
+// security and breaks the request shape.
+chatRoutes.use('/pusher/*', chatPassportMiddleware)
 
 // /initialize — POST per page-load.
 chatRoutes.use(
