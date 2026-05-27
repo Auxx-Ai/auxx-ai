@@ -394,6 +394,12 @@
       "import": "./dist/inboxes/index.mjs",
       "default": "./src/inboxes/index.ts"
     },
+    "./ingest": {
+      "types": "./src/ingest/index.ts",
+      "source": "./src/ingest/index.ts",
+      "import": "./dist/ingest/index.mjs",
+      "default": "./src/ingest/index.ts"
+    },
     "./jobs": {
       "types": "./src/jobs/index.ts",
       "source": "./src/jobs/index.ts",

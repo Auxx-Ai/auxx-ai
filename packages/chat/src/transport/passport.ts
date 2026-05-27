@@ -1,6 +1,6 @@
 // packages/chat/src/transport/passport.ts
 
-import { getApiBase } from '~/shared/runtime-config'
+import { buildUserDataEnvelope, getApiBase } from '~/shared/runtime-config'
 
 const STORAGE_PREFIX = 'auxx_passport_chat_'
 const EXPIRY_BUFFER_MS = 5 * 60 * 1000
@@ -65,11 +65,19 @@ function expiresInToIso(expiresIn: string): string {
 }
 
 async function mintPassport(channelId: string, visitorId: string | null): Promise<StoredPassport> {
+  // v4 phase 3 — pass the customer-signed JWT (if any) on the mint request
+  // so the route can verify identity, resolve the Contact, and bake
+  // `identityVerified`/`contactId`/`userJwtHash` into the issued passport.
+  const userData = buildUserDataEnvelope()
   const res = await fetch(`${getApiBase()}/api/chat/passport`, {
     method: 'POST',
     credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ channelId, visitorId: visitorId ?? undefined }),
+    body: JSON.stringify({
+      channelId,
+      visitorId: visitorId ?? undefined,
+      ...(userData ? { user_data: userData } : {}),
+    }),
   })
   const json = (await res.json()) as
     | {

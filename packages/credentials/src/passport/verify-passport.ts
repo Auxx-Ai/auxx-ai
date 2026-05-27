@@ -59,6 +59,10 @@ export async function verifyPassport<S extends PassportScope>(
       organizationId: p.organizationId,
       sessionId: p.sessionId,
       identify: p.identify,
+      identityVerified: p.identityVerified,
+      contactId: p.contactId,
+      userJwtHash: p.userJwtHash,
+      identityVerification: p.identityVerification,
     }
     return ok(verified as VerifiedForScope<S>)
   } catch (error) {

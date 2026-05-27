@@ -27,10 +27,17 @@ export const ApiKey = pgTable(
       onUpdate: 'cascade',
       onDelete: 'cascade',
     }),
-    /** Type of API key: 'app' for traditional org-level, 'workflow' for workflow-scoped */
+    /** Type of API key: 'app' for traditional org-level, 'workflow' for workflow-scoped, 'chat' for chat-widget JWT signing */
     type: text().default('app').notNull(),
-    /** Reference ID (workflowAppId when type='workflow', null for 'app') */
+    /** Reference ID (workflowAppId when type='workflow', channelId/integrationId when type='chat', null for 'app') */
     referenceId: text(),
+    /**
+     * AES-256-GCM encrypted plaintext secret (via `CredentialService.encrypt`).
+     * Set for `type='chat'` only — HS256 JWT verification needs the original
+     * secret, which a one-way `hashedKey` cannot recover. Null for other types
+     * where bearer-token comparison against `hashedKey` is sufficient.
+     */
+    encryptedSecret: text(),
   },
   (table) => [
     uniqueIndex('ApiKey_hashedKey_key').using('btree', table.hashedKey.asc().nullsLast()),

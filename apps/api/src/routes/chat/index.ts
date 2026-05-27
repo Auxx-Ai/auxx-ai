@@ -1,6 +1,7 @@
 // apps/api/src/routes/chat/index.ts
 
 import { Hono } from 'hono'
+import { chatUserJwtMiddleware } from '../../middleware/chat-jwt'
 import { chatPassportMiddleware } from '../../middleware/chat-passport'
 import { channelKey, ipKey, rateLimit, visitorThreadKey } from '../../middleware/rate-limit'
 import attachmentsRoute from './attachments'
@@ -23,13 +24,16 @@ chatRoutes.route('/passport', passportRoute)
 
 // Everything below requires a chat passport. Mount the passport middleware
 // first so the rate-limit keys can read `c.var.chat.channelId` etc.
-chatRoutes.use('/initialize/*', chatPassportMiddleware)
-chatRoutes.use('/threads/*', chatPassportMiddleware)
-chatRoutes.use('/attachments/*', chatPassportMiddleware)
-chatRoutes.use('/typing/*', chatPassportMiddleware)
-chatRoutes.use('/receipts/*', chatPassportMiddleware)
-chatRoutes.use('/visitor-info/*', chatPassportMiddleware)
-chatRoutes.use('/pusher/*', chatPassportMiddleware)
+// `chatUserJwtMiddleware` runs after — it relies on `c.var.chat` to know
+// which channel's signing keys to verify against, and writes the per-request
+// JWT state onto `c.var.chatJwt`. Warn-only in v4 (phase 5 adds enforcement).
+chatRoutes.use('/initialize/*', chatPassportMiddleware, chatUserJwtMiddleware)
+chatRoutes.use('/threads/*', chatPassportMiddleware, chatUserJwtMiddleware)
+chatRoutes.use('/attachments/*', chatPassportMiddleware, chatUserJwtMiddleware)
+chatRoutes.use('/typing/*', chatPassportMiddleware, chatUserJwtMiddleware)
+chatRoutes.use('/receipts/*', chatPassportMiddleware, chatUserJwtMiddleware)
+chatRoutes.use('/visitor-info/*', chatPassportMiddleware, chatUserJwtMiddleware)
+chatRoutes.use('/pusher/*', chatPassportMiddleware, chatUserJwtMiddleware)
 
 // /initialize — POST per page-load.
 chatRoutes.use(

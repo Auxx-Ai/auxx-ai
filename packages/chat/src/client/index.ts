@@ -62,18 +62,31 @@ function pushAttributes(attributes: Record<string, unknown>): void {
   const queue = (window.AuxxChat ??= [] as unknown[])
   if (Array.isArray(queue)) {
     queue.push(['identify', attributes])
-    return
+  } else {
+    const handle = queue as { push?: (cmd: unknown) => void }
+    handle.push?.(['identify', attributes])
   }
-  const handle = queue as { push?: (cmd: unknown) => void }
-  handle.push?.(['identify', attributes])
+
+  // Mirror onto __AUXX_CONFIG__ so `buildUserDataEnvelope()` can ship the
+  // non-sensitive bag alongside the JWT for phase-4 resolution.
+  const cfg = (window.__AUXX_CONFIG__ ??= {})
+  cfg.attributes = { ...(cfg.attributes ?? {}), ...attributes }
 }
 
 function boot(options: BootOptions): void {
   ensureBrowser()
   if (state) {
-    // Re-booting with the same channel is a no-op; switching channels needs
-    // an explicit shutdown() first.
+    // Same-channel re-boot is a soft refresh: we don't re-inject the script,
+    // but we do roll forward the userJwt (so the React wrapper's reboot-on-
+    // JWT-change effect actually rotates the token) and push any new
+    // attributes through the identify queue.
     if (state.channelId === options.channelId) {
+      if (options.userJwt !== undefined) {
+        state.userJwt = options.userJwt
+        const cfg = (window.__AUXX_CONFIG__ ??= {})
+        if (options.userJwt) cfg.userJwt = options.userJwt
+        else delete cfg.userJwt
+      }
       if (options.attributes) pushAttributes(options.attributes)
       return
     }

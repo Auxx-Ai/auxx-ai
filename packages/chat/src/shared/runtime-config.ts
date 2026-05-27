@@ -18,3 +18,57 @@ export function getApiBase(): string {
   }
   return __AUXX_API_BASE_URL__
 }
+
+/**
+ * Customer-signed JWT for identity verification. Set by `Auxx.boot({ userJwt })`
+ * on the bootstrap config (never persisted to localStorage — JWTs are
+ * short-lived and the customer's server mints fresh ones per session). The
+ * transport layer reads this on every request and ships it inside
+ * `user_data.auxx_user_jwt` so the API can re-verify per call.
+ *
+ * Returns `null` outside a browser, when boot hasn't run, or when the
+ * customer did not pass a JWT.
+ */
+export function getUserJwt(): string | null {
+  if (typeof window === 'undefined') return null
+  const token = window.__AUXX_CONFIG__?.userJwt
+  return typeof token === 'string' && token.length > 0 ? token : null
+}
+
+/**
+ * Non-sensitive attributes set on `Auxx.boot({ attributes })` (or merged in
+ * later via `Auxx.update()`). These ride alongside the user JWT in the
+ * `user_data` envelope so the server can merge them with JWT-verified
+ * claims; phase-4 resolution drops same-key conflicts in favor of the JWT.
+ *
+ * Returns `null` when no boot attributes have been set.
+ */
+export function getBootAttributes(): Record<string, unknown> | null {
+  if (typeof window === 'undefined') return null
+  const attrs = window.__AUXX_CONFIG__?.attributes
+  if (!attrs || typeof attrs !== 'object') return null
+  return Object.keys(attrs).length > 0 ? attrs : null
+}
+
+export interface ChatUserDataEnvelope {
+  /** Customer-signed HS256 JWT, verified per-request by the API. */
+  auxx_user_jwt?: string
+  /** Non-sensitive bag merged with JWT claims by `resolveChatAttributes`. */
+  attributes?: Record<string, unknown>
+}
+
+/**
+ * Compose the `user_data` envelope sent with every chat request. Includes the
+ * customer-signed JWT (when boot supplied one) and the boot-time attribute
+ * bag (when set). Returns `null` when nothing in the envelope is set, so
+ * callers can skip the field entirely.
+ */
+export function buildUserDataEnvelope(): ChatUserDataEnvelope | null {
+  const jwt = getUserJwt()
+  const attributes = getBootAttributes()
+  if (!jwt && !attributes) return null
+  return {
+    ...(jwt ? { auxx_user_jwt: jwt } : {}),
+    ...(attributes ? { attributes } : {}),
+  }
+}

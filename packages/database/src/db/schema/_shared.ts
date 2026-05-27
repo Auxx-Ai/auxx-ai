@@ -166,6 +166,11 @@ export const identifierType = pgEnum('IdentifierType', [
   'INSTAGRAM_IGSID',
   'CHAT_VISITOR',
 ])
+export const identityVerification = pgEnum('IdentityVerification', [
+  'off',
+  'in_progress',
+  'enforced',
+])
 export const inboxStatus = pgEnum('InboxStatus', ['ACTIVE', 'ARCHIVED', 'PAUSED'])
 export const indexStatus = pgEnum('IndexStatus', ['PENDING', 'INDEXED', 'ERROR'])
 export const integrationAuthStatus = pgEnum('IntegrationAuthStatus', [

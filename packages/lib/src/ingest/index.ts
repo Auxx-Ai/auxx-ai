@@ -9,7 +9,13 @@ export { linkContactToCompanyByDomain } from './companies/link-contact'
 // Contacts
 export { createContactAfterOutboundMessage } from './contacts/create-after-outbound'
 export { ensureContactsForRecipients } from './contacts/ensure-for-recipients'
+export { buildServerExternalId, chatExternalId } from './contacts/external-id'
 export { findOrCreateContactForParticipant } from './contacts/find-or-create'
+export type {
+  FindOrCreateContactFromJwtInput,
+  FindOrCreateContactFromJwtResult,
+} from './contacts/find-or-create-from-jwt'
+export { findOrCreateContactFromJwt } from './contacts/find-or-create-from-jwt'
 export { hasOrganizationSentToParticipant } from './contacts/has-sent-to'
 // Context
 export type { CreateIngestContextOptions, IngestContext } from './context'

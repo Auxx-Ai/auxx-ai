@@ -182,6 +182,12 @@ export interface LoadedChatWidget {
   suggestedReplies: string[]
   privacyPolicyUrl: string | null
   /**
+   * Per-channel JWT enforcement state (v4 phase 5). Baked into the issued
+   * passport so the per-request middleware can decide whether to 401 on a
+   * missing/invalid JWT without an extra DB roundtrip.
+   */
+  identityVerification: 'off' | 'in_progress' | 'enforced'
+  /**
    * Derived: true when nobody is on chat duty AND the widget has no AI agent
    * bound. In that state the widget renders `appearance.offlineMessage` and
    * disables sending. Snapshotted at config-fetch time — visitors with an open
@@ -251,6 +257,7 @@ export async function loadChatWidgetByChannelId(
     allowDownloadTranscript: row.chatWidget.allowDownloadTranscript,
     suggestedReplies: row.chatWidget.suggestedReplies ?? [],
     privacyPolicyUrl: row.chatWidget.privacyPolicyUrl ?? null,
+    identityVerification: row.chatWidget.identityVerification,
     isOffline,
   }
 }

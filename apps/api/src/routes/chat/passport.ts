@@ -3,7 +3,9 @@
 import { randomUUID } from 'node:crypto'
 import { issueChatPassport } from '@auxx/credentials/passport'
 import { database } from '@auxx/database'
+import { resolveChatAttributes, verifyChannelUserJwt } from '@auxx/lib/chat'
 import { findOrCreateVisitorParticipant } from '@auxx/lib/chat-widget/visitor'
+import { findOrCreateContactFromJwt } from '@auxx/lib/ingest'
 import { RedisRateLimiter } from '@auxx/lib/utils/rate-limiter'
 import { createScopedLogger } from '@auxx/logger'
 import { Hono } from 'hono'
@@ -15,6 +17,29 @@ import {
   isHostAllowed,
   loadChatWidgetByChannelId,
 } from './lib'
+
+/** Pull the customer-signed JWT out of the request body's `user_data` envelope. */
+function extractUserJwt(body: unknown): string | null {
+  if (!body || typeof body !== 'object') return null
+  const userData = (body as { user_data?: unknown }).user_data
+  if (!userData || typeof userData !== 'object') return null
+  const token = (userData as { auxx_user_jwt?: unknown }).auxx_user_jwt
+  return typeof token === 'string' && token.length > 0 ? token : null
+}
+
+/**
+ * Pull the non-sensitive `Auxx.boot({ attributes })` bag out of the
+ * `user_data` envelope. Phase 4 merges these with verified JWT claims via
+ * `resolveChatAttributes` — JWT wins on same-key conflict.
+ */
+function extractBootAttributes(body: unknown): Record<string, unknown> | undefined {
+  if (!body || typeof body !== 'object') return undefined
+  const userData = (body as { user_data?: unknown }).user_data
+  if (!userData || typeof userData !== 'object') return undefined
+  const attrs = (userData as { attributes?: unknown }).attributes
+  if (!attrs || typeof attrs !== 'object' || Array.isArray(attrs)) return undefined
+  return attrs as Record<string, unknown>
+}
 
 const log = createScopedLogger('chat-passport-route')
 
@@ -86,7 +111,12 @@ passportRoute.post('/', async (c) => {
     )
   }
 
-  let body: { channelId?: string; visitorId?: string; identify?: unknown } = {}
+  let body: {
+    channelId?: string
+    visitorId?: string
+    identify?: unknown
+    user_data?: unknown
+  } = {}
   try {
     body = (await c.req.json()) as typeof body
   } catch {
@@ -161,6 +191,90 @@ passportRoute.post('/', async (c) => {
 
   const identify = parseIdentifyPayload(body.identify) ?? undefined
 
+  // v4 phase 3 — JWT identity verification on mint. The customer's server
+  // signs an HS256 JWT with one of the channel's active
+  // `ApiKey.encryptedSecret` rows; we verify, resolve (or create) the
+  // Contact, and bake the result into the passport. Failures emit
+  // `logger.warn` only — enforcement is gated to phase 5.
+  let identityVerified = false
+  let contactId: string | undefined
+  let userJwtHash: string | undefined
+  let identityResolution: 'matched_external_id' | 'matched_email' | 'created' | undefined
+
+  const userJwt = extractUserJwt(body)
+  const bootAttributes = extractBootAttributes(body)
+
+  // Phase 5 enforcement: when the channel is enforced, the mint itself must
+  // reject any request that can't produce a valid JWT — otherwise we'd hand
+  // out passports that every downstream call would then 401.
+  if (widget.identityVerification === 'enforced' && !userJwt) {
+    log.warn('Chat passport mint rejected — channel is enforced and no JWT was supplied', {
+      channelId,
+    })
+    return c.json(
+      {
+        success: false,
+        error: {
+          code: 'IDENTITY_REQUIRED',
+          message: 'This chat channel requires a signed user JWT',
+        },
+      },
+      401
+    )
+  }
+
+  if (userJwt) {
+    const verified = await verifyChannelUserJwt(channelId, widget.organizationId, userJwt)
+    if (verified.isErr()) {
+      log.warn('Chat user JWT verification failed', {
+        channelId,
+        code: verified.error.code,
+        message: verified.error.message,
+      })
+      if (widget.identityVerification === 'enforced') {
+        return c.json(
+          {
+            success: false,
+            error: {
+              code: 'IDENTITY_REQUIRED',
+              message: 'This chat channel requires a valid signed user JWT',
+            },
+          },
+          401
+        )
+      }
+    } else {
+      const claims = verified.value
+      const { writes } = resolveChatAttributes({
+        jwtClaims: claims.attributes,
+        bootAttributes,
+      })
+      try {
+        const resolved = await findOrCreateContactFromJwt({
+          organizationId: widget.organizationId,
+          userId: claims.userId,
+          email: claims.email,
+          attributes: writes,
+        })
+        identityVerified = true
+        contactId = resolved.contactId
+        userJwtHash = claims.hash
+        identityResolution = resolved.resolution
+        log.info('Chat user JWT verified', {
+          channelId,
+          resolution: resolved.resolution,
+          contactId: resolved.contactId,
+        })
+      } catch (error) {
+        log.error('Chat contact resolution from JWT failed', {
+          channelId,
+          userId: claims.userId,
+          error: (error as Error).message,
+        })
+      }
+    }
+  }
+
   const issued = await issueChatPassport({
     visitorParticipantId: participant.id,
     channelId,
@@ -168,6 +282,8 @@ passportRoute.post('/', async (c) => {
     sessionId,
     identify,
     expiresIn: '1h',
+    ...(identityVerified ? { identityVerified, contactId, userJwtHash } : {}),
+    identityVerification: widget.identityVerification,
   })
   if (issued.isErr()) {
     log.error('Failed to issue chat passport', { channelId, error: issued.error.message })
@@ -193,6 +309,11 @@ passportRoute.post('/', async (c) => {
       visitorId: participant.identifier,
       visitorParticipantId: participant.id,
       expiresIn: issued.value.expiresIn,
+      // Identity outcome echoed back for in-app surfaces (preview page,
+      // future admin debug tools). Visitor clients ignore these fields.
+      identityVerified,
+      ...(contactId ? { contactId } : {}),
+      ...(identityResolution ? { resolution: identityResolution } : {}),
     },
   })
 })

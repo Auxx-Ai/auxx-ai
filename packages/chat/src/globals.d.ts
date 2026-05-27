@@ -6,6 +6,7 @@ interface Window {
   __AUXX_CONFIG__?: {
     apiBase?: string
     userJwt?: string
+    attributes?: Record<string, unknown>
   }
 }
 

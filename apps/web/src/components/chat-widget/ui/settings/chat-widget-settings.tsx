@@ -9,9 +9,9 @@ import { toastError } from '@auxx/ui/components/toast'
 import {
   AlertCircle,
   ExternalLink,
-  Globe,
   Palette,
   Settings,
+  ShieldCheck,
   SlidersHorizontal,
 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
@@ -22,20 +22,20 @@ import { api } from '~/trpc/react'
 import { useChatWidget } from '../../hooks/use-chat-widget'
 import { AppearanceSection } from './sections/appearance-section'
 import { BehaviorSection } from './sections/behavior-section'
-import { DomainsSection } from './sections/domains-section'
 import { GeneralSection } from './sections/general-section'
+import { IdentitySection } from './sections/identity-section'
 
 interface ChatWidgetSettingsProps {
   channelId: string
 }
 
-type SectionId = 'general' | 'appearance' | 'behavior' | 'domains'
+type SectionId = 'general' | 'appearance' | 'behavior' | 'identity'
 
 const SETTINGS_SECTIONS: { id: SectionId; label: string; icon: typeof Settings }[] = [
   { id: 'general', label: 'General', icon: Settings },
   { id: 'appearance', label: 'Appearance', icon: Palette },
   { id: 'behavior', label: 'Behavior', icon: SlidersHorizontal },
-  { id: 'domains', label: 'Domains', icon: Globe },
+  { id: 'identity', label: 'Identity', icon: ShieldCheck },
 ]
 
 export function ChatWidgetSettings({ channelId }: ChatWidgetSettingsProps) {
@@ -146,8 +146,8 @@ export function ChatWidgetSettings({ channelId }: ChatWidgetSettingsProps) {
         return <AppearanceSection widget={widget} channelId={channelId} />
       case 'behavior':
         return <BehaviorSection widget={widget} channelId={channelId} />
-      case 'domains':
-        return <DomainsSection widget={widget} channelId={channelId} />
+      case 'identity':
+        return <IdentitySection widget={widget} channelId={channelId} />
       default:
         return <GeneralSection widget={widget} channelId={channelId} onDelete={handleDelete} />
     }

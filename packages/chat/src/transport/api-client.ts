@@ -4,7 +4,7 @@
 // minting + bearer auth, single-retry on 401 with a forced passport refresh,
 // and ApiEnvelope unwrapping so endpoint files stay declarative.
 
-import { getApiBase } from '~/shared/runtime-config'
+import { buildUserDataEnvelope, getApiBase } from '~/shared/runtime-config'
 import { getChatPassport } from './passport'
 
 export interface ApiEnvelope<T> {
@@ -27,6 +27,23 @@ export async function authedFetch<T>(
 ): Promise<T> {
   const method = init.method ?? 'GET'
 
+  // v4 phase 3 — every authed write carries the customer's signed JWT
+  // (when boot supplied one) inside the `user_data` envelope. Per-request
+  // middleware re-verifies it server-side. GET/HEAD requests don't take a
+  // body, so they skip the envelope — only the passport authenticates them.
+  const userData = buildUserDataEnvelope()
+  const bodyObject =
+    init.body !== undefined && init.body !== null
+      ? typeof init.body === 'object'
+        ? (init.body as Record<string, unknown>)
+        : { value: init.body }
+      : null
+  const finalBody =
+    userData && method !== 'GET' && method !== 'HEAD'
+      ? { ...(bodyObject ?? {}), user_data: userData }
+      : bodyObject
+  const hasBody = finalBody !== null
+
   const doFetch = async (token: string) => {
     let url = `${getApiBase()}${path}`
     if (init.query) {
@@ -38,9 +55,9 @@ export async function authedFetch<T>(
       credentials: 'include',
       headers: {
         Authorization: `Bearer ${token}`,
-        ...(init.body ? { 'Content-Type': 'application/json' } : {}),
+        ...(hasBody ? { 'Content-Type': 'application/json' } : {}),
       },
-      body: init.body ? JSON.stringify(init.body) : undefined,
+      body: hasBody ? JSON.stringify(finalBody) : undefined,
       signal: init.signal,
     })
   }
