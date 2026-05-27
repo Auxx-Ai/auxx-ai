@@ -38,6 +38,7 @@ import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapte
 import { Tooltip } from '~/components/global/tooltip'
 import { InboxDialog } from '~/components/inbox/inbox-dialog'
 import { ActorPicker } from '~/components/pickers/actor-picker'
+import { useResource } from '~/components/resources/hooks/use-resource'
 import { MultiRelationInput } from '~/components/shared/multi-relation-input'
 import { BaseType } from '~/components/workflow/types'
 import { VarEditorField, VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
@@ -97,8 +98,11 @@ export function GeneralSection({ widget, channelId, onDelete }: GeneralSectionPr
     })
   }
 
+  const { resource: inboxResource } = useResource('inbox')
+  const inboxEntityDefId = inboxResource?.entityDefinitionId ?? null
   const rawInboxId = widget.inboxIntegration?.inboxId ?? null
-  const inboxRecordId = rawInboxId ? toRecordId('inbox', rawInboxId) : null
+  const inboxRecordId =
+    rawInboxId && inboxEntityDefId ? toRecordId(inboxEntityDefId, rawInboxId) : null
 
   const handleInboxChange = (selected: RecordId[]) => {
     const nextRecordId = selected[0]
@@ -132,7 +136,6 @@ export function GeneralSection({ widget, channelId, onDelete }: GeneralSectionPr
     const { id } = parseActorId(next)
     update.mutate({ integrationId: channelId, agentId: id })
   }
-
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)}>

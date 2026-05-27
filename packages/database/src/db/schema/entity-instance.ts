@@ -56,7 +56,19 @@ export const EntityInstance = pgTable(
     /** Denormalized secondary display field value (subtitle/description) */
     secondaryDisplayValue: text(),
 
-    /** Denormalized avatar URL from avatarFieldId */
+    /**
+     * Denormalized visual identity ref from `avatarFieldId`.
+     * Polymorphic encoding (see `parseVisualRef` / `encodeAvatarRef`):
+     *   - `https://…` or `url:…` → image URL
+     *   - `base64:…` → base64 image
+     *   - emoji literal → emoji
+     *   - `color:<name>` → colored swatch (e.g. `color:indigo`)
+     *   - `icon:<lucideId>[:<color>]` → lucide icon + optional color
+     *   - bare lucide id → entity icon fallback
+     * Most rows still hold a real URL; the encoded forms are used for
+     * entities whose `avatarFieldId` points at a non-URL source (e.g.
+     * `inbox.color`).
+     */
     avatarUrl: text(),
 
     /** Combined searchable text from key fields (for full-text search) */

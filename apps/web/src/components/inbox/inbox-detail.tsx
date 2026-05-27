@@ -49,7 +49,6 @@ export function InboxDetail({ inboxId }: { inboxId: string }) {
   /** Handle successful dialog save */
   const handleDialogSuccess = () => {
     utils.inbox.getIntegrations.invalidate({ inboxId })
-    // utils.inbox.getAll.invalidate()
   }
 
   return (

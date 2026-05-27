@@ -81,6 +81,8 @@ export class InboxService {
       ])
     }
 
+    await onCacheEvent('inbox.created', { orgId: this.organizationId })
+
     return this.resolveInbox(recordId)
   }
 
@@ -119,6 +121,7 @@ export class InboxService {
 
     if (Object.keys(values).length > 0) {
       await this.crudHandler.update(recordId, values)
+      await onCacheEvent('inbox.updated', { orgId: this.organizationId })
     }
 
     return this.resolveInbox(recordId)
@@ -159,6 +162,7 @@ export class InboxService {
     // Delete the entity instance
     await this.crudHandler.delete(recordId)
 
+    await onCacheEvent('inbox.deleted', { orgId: this.organizationId })
     await onCacheEvent('channel.inbox-link.changed', { orgId: this.organizationId })
   }
 
@@ -212,13 +216,6 @@ export class InboxService {
   async hasUserAccess(recordId: RecordId, userId: string): Promise<boolean> {
     const result = await checkAccess(this.ctx, { recordId, userId })
     return result.hasAccess
-  }
-
-  /**
-   * Check if user has access to an inbox by raw ID (convenience method)
-   */
-  async hasUserAccessById(inboxId: string, userId: string): Promise<boolean> {
-    return this.hasUserAccess(toRecordId('inbox', inboxId), userId)
   }
 
   // ═══════════════════════════════════════════════════════════════════════════

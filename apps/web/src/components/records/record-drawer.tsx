@@ -397,7 +397,7 @@ export const RecordDrawer = React.memo(function RecordDrawer({
         }
         cardContent={
           <div className='flex gap-3 py-2 px-3 flex-row items-center justify-start border-b'>
-            {avatarField && recordId ? (
+            {avatarField && recordId && avatarFieldDef?.fieldType === 'FILE' ? (
               <AvatarUploadIcon
                 recordId={recordId}
                 avatarUrl={cachedRecord?.avatarUrl as string}

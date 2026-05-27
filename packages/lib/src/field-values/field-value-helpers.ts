@@ -984,13 +984,13 @@ export async function maybeUpdateDisplayValue(
 
     const typedValue = Array.isArray(value) ? value.map(toTypedValue) : toTypedValue(value)
 
-    // For avatar fields, extract URL directly or queue thumbnail for FILE refs
+    // For avatar fields, extract URL directly, queue thumbnail for FILE refs,
+    // or encode non-URL text values into the polymorphic visual-ref grammar
+    // (e.g. inbox_color → 'color:indigo'). See encodeAvatarRef below.
     if (column === 'avatarUrl') {
       const singleValue = Array.isArray(typedValue) ? typedValue[0] : typedValue
       if (singleValue) {
-        if (singleValue.type === 'text') {
-          displayValue = singleValue.value || null
-        } else if (singleValue.type === 'json') {
+        if (singleValue.type === 'json') {
           const json = singleValue.value as Record<string, unknown>
           if (typeof json?.url === 'string') {
             displayValue = json.url
@@ -1005,6 +1005,9 @@ export async function maybeUpdateDisplayValue(
               void queueAvatarThumbnail(ctx.organizationId, ctx.userId, assetId)
             }
           }
+        } else if (singleValue.type === 'text') {
+          const raw = singleValue.value
+          displayValue = raw ? encodeAvatarRef(field, raw) : null
         }
       }
     } else if (field.type === 'RELATIONSHIP') {
@@ -1049,6 +1052,39 @@ export async function maybeUpdateDisplayValue(
   }
 
   await publishRecordColumnUpdate(ctx, entityDef.id, entityInstanceId, { [column]: displayValue })
+}
+
+// =============================================================================
+// AVATAR REF ENCODING
+// =============================================================================
+
+/**
+ * True when `s` already conforms to the visual-ref grammar (URL, encoded URL,
+ * base64, color, or icon). Keeps `encodeAvatarRef` idempotent — backfill
+ * writes `'color:indigo'` directly; subsequent field writes must not re-wrap
+ * it as `'color:color:indigo'`.
+ */
+function looksLikeEncodedRef(s: string): boolean {
+  return (
+    s.startsWith('http://') ||
+    s.startsWith('https://') ||
+    s.startsWith('url:') ||
+    s.startsWith('base64:') ||
+    s.startsWith('color:') ||
+    s.startsWith('icon:')
+  )
+}
+
+/**
+ * Encode a non-URL avatar source as a polymorphic visual-ref. Today the only
+ * case is a plain color name from a TEXT field wired as `avatarFieldId`
+ * (e.g. inbox_color). Extend here when user-configurable entities add emoji or
+ * icon avatar sources.
+ */
+function encodeAvatarRef(field: CachedField, rawText: string): string {
+  if (field.type === 'URL') return rawText
+  if (looksLikeEncodedRef(rawText)) return rawText
+  return `color:${rawText}`
 }
 
 // =============================================================================

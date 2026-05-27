@@ -69,6 +69,7 @@ export interface RecordMeta {
   recordId: RecordId
   displayName?: string
   secondaryDisplayValue?: string | null
+  /** URL or encoded visual ref — see `EntityInstance.avatarUrl` doc-comment. */
   avatarUrl?: string | null
   createdAt?: string
   updatedAt?: string
