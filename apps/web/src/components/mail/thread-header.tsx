@@ -236,7 +236,7 @@ export function ThreadHeader() {
                 onChange={handleInboxChange}
                 selected={thread?.inboxId ? [thread.inboxId] : undefined}
                 allowMultiple={false}>
-                <RecordBadge recordId={thread?.inboxId} />
+                <RecordBadge recordId={thread?.inboxId} hoverCard={false} />
               </InboxPicker>
               <ThreadTicketControl />
             </div>

@@ -61,12 +61,6 @@ export function InboxDialog({ open, onOpenChange, recordId, onSuccess }: InboxDi
   // Extract inboxId from recordId for mutations
   const inboxId = recordId ? parseRecordId(recordId).entityInstanceId : null
 
-  // Fetch inbox data directly for edit mode
-  // const { data: inboxData } = api.inbox.getById.useQuery(
-  //   { inboxId: inboxId! },
-  //   { enabled: isEditing && !!inboxId }
-  // )
-
   // Fetch system field values for edit mode
   const { values: fieldValues, isLoading: isLoadingValues } = useSystemValues(
     recordId,
@@ -250,6 +244,10 @@ export function InboxDialog({ open, onOpenChange, recordId, onSuccess }: InboxDi
       })
 
       if (success) {
+        // Field-value mutations don't invalidate inbox query caches, so picker
+        // rows and badges stay stale until the React Query staleTime expires.
+        // Flush both here so every dialog caller gets fresh data.
+        invalidateInboxes()
         onOpenChange(false)
         onSuccess?.({ id: inboxId!, name: data.name })
       }

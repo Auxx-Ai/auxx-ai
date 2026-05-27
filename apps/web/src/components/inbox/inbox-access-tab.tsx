@@ -60,7 +60,6 @@ export function InboxAccessTab({ inbox }: { inbox: Inbox }) {
     onSuccess: () => {
       setIsUpdating(false)
       form.reset({ actorIds: [] })
-      utils.inbox.getById.invalidate({ inboxId: inbox.id })
       utils.resourceAccess.forInstance.invalidate({ recordId })
     },
     onError: (error) => {

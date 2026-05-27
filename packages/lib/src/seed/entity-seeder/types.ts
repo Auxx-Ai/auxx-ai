@@ -63,6 +63,12 @@ export interface DisplayFieldConfig {
   primaryDisplayField: string
   /** field.id for secondary display (e.g., 'primaryEmail', 'number'), undefined if none */
   secondaryDisplayField?: string
-  /** field.id for avatar display (e.g., 'image', 'avatarUrl'), undefined if none */
+  /**
+   * field.id for the avatar source (e.g., 'image', 'avatarUrl', 'color'),
+   * undefined if none. May point at a URL/FILE field (real avatar image) or a
+   * non-URL field whose value is encoded into the polymorphic visual-ref
+   * grammar at sync time (e.g. inbox 'color' → `color:indigo`). See
+   * `encodeAvatarRef` and `EntityInstance.avatarUrl`.
+   */
   avatarField?: string
 }

@@ -1,7 +1,6 @@
 // apps/web/src/components/inbox/inbox-list.tsx
 'use client'
 
-import { getOptionColor, type SelectOptionColor } from '@auxx/lib/custom-fields/client'
 import type { Inbox } from '@auxx/lib/inboxes'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
@@ -13,14 +12,15 @@ import {
   TableHeader,
   TableRow,
 } from '@auxx/ui/components/table'
-import { cn } from '@auxx/ui/lib/utils'
 import { InboxIcon, PlusIcon, RefreshCw } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 import { EmptyState } from '~/components/global/empty-state'
 import SettingsPage from '~/components/global/settings-page'
+import { useResource } from '~/components/resources'
+import { RecordIcon } from '~/components/resources/ui/record-icon'
+import { useInboxes } from '~/components/threads/hooks'
 import { useUser } from '~/hooks/use-user'
-import { api } from '~/trpc/react'
 import { InboxDialog } from './inbox-dialog'
 
 /** Component for displaying the list of inboxes */
@@ -33,14 +33,13 @@ export function InboxList() {
     requireRoles: ['ADMIN', 'OWNER'],
   })
 
-  // Fetch all inboxes for the organization
-  const { data: inboxes, isLoading: isLoadingInboxes } = api.inbox.getAll.useQuery()
-
-  // Get tRPC utils for cache invalidation
-  const utils = api.useUtils()
+  // Read inboxes from the generic record store; field-value mutations flush
+  // this automatically, so no manual invalidation is required after edits.
+  const { inboxes, records, isLoading: isLoadingInboxes } = useInboxes()
+  const { resource } = useResource('inbox')
 
   /** Get status badge based on inbox status */
-  const getStatusBadge = (status: Inbox['status']) => {
+  const getStatusBadge = (status: Inbox['status'] | undefined) => {
     switch (status) {
       case 'ACTIVE':
         return <Badge variant='green'>Active</Badge>
@@ -49,12 +48,12 @@ export function InboxList() {
       case 'PAUSED':
         return <Badge variant='yellow'>Paused</Badge>
       default:
-        return <Badge>{status}</Badge>
+        return <Badge>{status ?? 'Unknown'}</Badge>
     }
   }
 
   /** Get access display based on visibility */
-  const getAccessDisplay = (visibility: Inbox['visibility']) => {
+  const getAccessDisplay = (visibility: Inbox['visibility'] | undefined) => {
     switch (visibility) {
       case 'org_members':
         return 'All members'
@@ -63,7 +62,7 @@ export function InboxList() {
       case 'custom':
         return 'Custom'
       default:
-        return visibility
+        return visibility ?? '—'
     }
   }
 
@@ -75,11 +74,6 @@ export function InboxList() {
   /** Navigate to the inbox detail page */
   const handleRowClick = (inboxId: string) => {
     router.push(`/app/settings/inbox/${inboxId}`)
-  }
-
-  /** Handle successful dialog submission */
-  const handleDialogSuccess = () => {
-    utils.inbox.getAll.invalidate()
   }
 
   return (
@@ -101,7 +95,7 @@ export function InboxList() {
           description={<>Hang on tight while we load your inboxes...</>}
           button={<div className='h-12'></div>}
         />
-      ) : inboxes?.length ? (
+      ) : inboxes.length ? (
         <Table>
           <TableHeader>
             <TableRow>
@@ -111,32 +105,38 @@ export function InboxList() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {inboxes.map((inbox) => (
-              <TableRow
-                key={inbox.id}
-                onClick={() => handleRowClick(inbox.id)}
-                className='cursor-pointer hover:bg-muted'>
-                <TableCell>
-                  <div className='flex items-center space-x-3'>
-                    {/* Colored dot based on inbox color */}
-                    <div
-                      className={cn(
-                        'h-3 w-3 rounded-full',
-                        getOptionColor((inbox.color || 'indigo') as SelectOptionColor).swatch
-                      )}
-                    />
-                    <div>
-                      <div className='font-medium'>{inbox.name}</div>
-                      {inbox.description && (
-                        <div className='text-sm text-muted-foreground'>{inbox.description}</div>
-                      )}
+            {inboxes.map((inbox) => {
+              const record = records.find((r) => r.id === inbox.id)
+              const status = Array.isArray(inbox.status) ? inbox.status[0] : inbox.status
+              const visibility = Array.isArray(inbox.visibility)
+                ? inbox.visibility[0]
+                : inbox.visibility
+              return (
+                <TableRow
+                  key={inbox.id}
+                  onClick={() => handleRowClick(inbox.id)}
+                  className='cursor-pointer hover:bg-muted'>
+                  <TableCell>
+                    <div className='flex items-center space-x-3'>
+                      <RecordIcon
+                        avatarUrl={record?.avatarUrl}
+                        iconId={resource?.icon ?? 'inbox'}
+                        color={resource?.color ?? 'gray'}
+                        size='xs'
+                      />
+                      <div>
+                        <div className='font-medium'>{inbox.name}</div>
+                        {inbox.description && (
+                          <div className='text-sm text-muted-foreground'>{inbox.description}</div>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                </TableCell>
-                <TableCell>{getAccessDisplay(inbox.visibility)}</TableCell>
-                <TableCell>{getStatusBadge(inbox.status)}</TableCell>
-              </TableRow>
-            ))}
+                  </TableCell>
+                  <TableCell>{getAccessDisplay(visibility)}</TableCell>
+                  <TableCell>{getStatusBadge(status)}</TableCell>
+                </TableRow>
+              )
+            })}
           </TableBody>
         </Table>
       ) : (
@@ -154,13 +154,7 @@ export function InboxList() {
       )}
 
       {/* Dialog only renders when open */}
-      {dialogOpen && (
-        <InboxDialog
-          open={dialogOpen}
-          onOpenChange={setDialogOpen}
-          onSuccess={handleDialogSuccess}
-        />
-      )}
+      {dialogOpen && <InboxDialog open={dialogOpen} onOpenChange={setDialogOpen} />}
     </SettingsPage>
   )
 }

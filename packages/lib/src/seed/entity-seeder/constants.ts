@@ -152,6 +152,7 @@ export const DISPLAY_FIELD_CONFIG: Record<string, DisplayFieldConfig> = {
   inbox: {
     primaryDisplayField: 'name',
     secondaryDisplayField: undefined,
+    avatarField: 'color',
   },
   tag: {
     primaryDisplayField: 'title',

@@ -1,5 +1,7 @@
 // apps/web/src/components/fields/registries/dynamic-options-registry.ts
 
+import { useMemo } from 'react'
+import { useAllRecords } from '~/components/resources/hooks/use-all-records'
 import { api } from '~/trpc/react'
 
 /**
@@ -61,17 +63,26 @@ export const DYNAMIC_OPTIONS_REGISTRY: Record<string, DynamicOptionsEntry> = {
     },
   },
 
-  // Inboxes (for thread inbox field)
+  // Inboxes (for thread inbox field) — backed by record.listAll so field-value
+  // mutations (color / name edits) invalidate the dropdown automatically.
   inboxes: {
     useOptions: (enabled) => {
-      const { data, isLoading } = api.inbox.getAll.useQuery(undefined, {
+      const { records, isLoading } = useAllRecords({
+        entityDefinitionId: 'inbox',
         enabled,
-        staleTime: 5 * 60 * 1000,
       })
-      return {
-        data: data?.map((i) => ({ value: i.id, label: i.name })),
-        isLoading,
-      }
+      const data = useMemo(
+        () =>
+          records.map((r) => ({
+            value: r.id,
+            label:
+              (r.fieldValues as { inbox_name?: string } | undefined)?.inbox_name ??
+              r.displayName ??
+              'Untitled',
+          })),
+        [records]
+      )
+      return { data, isLoading }
     },
   },
 

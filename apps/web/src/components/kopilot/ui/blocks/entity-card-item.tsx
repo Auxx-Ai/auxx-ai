@@ -44,7 +44,11 @@ export function EntityCardItem({ recordId, snapshot, selectable }: EntityCardIte
     snapshot?.displayName && snapshot.displayName !== recordId ? snapshot.displayName : undefined
   const displayName = record?.displayName ?? snapshotName
   const secondaryInfo = record?.secondaryInfo ?? snapshot?.summary
-  const avatarUrl = record?.avatarUrl
+  const rawAvatar = record?.avatarUrl
+  const avatarUrl =
+    rawAvatar && (rawAvatar.startsWith('http://') || rawAvatar.startsWith('https://'))
+      ? rawAvatar
+      : null
 
   // Skeleton when we have nothing to show yet and haven't finished a fetch attempt.
   // `hasLoadedOnce` covers the first-render gap before useRecord's batch fetch resolves.

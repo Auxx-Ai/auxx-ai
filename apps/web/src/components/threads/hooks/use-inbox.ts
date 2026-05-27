@@ -28,7 +28,8 @@ export interface InboxItem {
   name: string
   description?: string | null
   color?: string | null
-  status?: string
+  status?: 'ACTIVE' | 'ARCHIVED' | 'PAUSED'
+  visibility?: 'org_members' | 'private' | 'custom'
 }
 
 /**
@@ -73,6 +74,7 @@ export function useInboxes(): UseInboxesResult {
       description: record.fieldValues?.inbox_description ?? null,
       color: record.fieldValues?.inbox_color ?? null,
       status: record.fieldValues?.inbox_status,
+      visibility: record.fieldValues?.inbox_visibility,
     }))
 
     // Key map by recordId for direct lookup (thread.inboxId is now RecordId)

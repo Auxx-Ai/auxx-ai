@@ -24,6 +24,7 @@ import { migration018ArticleTags } from './migrations/018-article-tags'
 import { migration019TagScope } from './migrations/019-tag-scope'
 import { migration020ArticleNewFields } from './migrations/020-article-new-fields'
 import { migration021SignatureFieldsPrefix } from './migrations/021-signature-fields-prefix'
+import { migration022InboxVisualRef } from './migrations/022-inbox-visual-ref'
 import type { EntityMigration, MigrationRunResult } from './types'
 
 const logger = createScopedLogger('entity-migrations')
@@ -53,6 +54,7 @@ const ALL_MIGRATIONS: EntityMigration[] = [
   migration019TagScope,
   migration020ArticleNewFields,
   migration021SignatureFieldsPrefix,
+  migration022InboxVisualRef,
 ]
 
 // ─── Public API ──────────────────────────────────────────────────────

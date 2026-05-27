@@ -2,12 +2,11 @@
 'use client'
 
 import { parseRecordId, type RecordId } from '@auxx/lib/resources/client'
-import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
-import { EntityIcon } from '@auxx/ui/components/icons'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { cn } from '@auxx/ui/lib/utils'
 import type { ReactNode } from 'react'
 import { useRecord, useResource } from '~/components/resources'
+import { RecordIcon } from '~/components/resources/ui/record-icon'
 
 interface MergeItemCardProps {
   /** RecordId of the item to display */
@@ -45,20 +44,13 @@ export function MergeItemCard({ recordId, actions, className }: MergeItemCardPro
         'flex items-center gap-2 ps-1.5 pe-1 py-1 rounded-xl border bg-card group hover:bg-muted/50 transition-colors',
         className
       )}>
-      {/* Avatar or icon */}
-      {record?.avatarUrl ? (
-        <Avatar className='size-8'>
-          <AvatarImage src={record.avatarUrl} />
-          <AvatarFallback>{record?.displayName?.[0] ?? '?'}</AvatarFallback>
-        </Avatar>
-      ) : (
-        <EntityIcon
-          iconId={resource?.icon ?? 'circle'}
-          color={resource?.color ?? 'gray'}
-          size='sm'
-          inverse
-        />
-      )}
+      <RecordIcon
+        avatarUrl={record?.avatarUrl}
+        iconId={resource?.icon ?? 'circle'}
+        color={resource?.color ?? 'gray'}
+        size='lg'
+        inverse
+      />
 
       {/* Name and secondary */}
       <div className='flex-1 min-w-0 truncate'>
