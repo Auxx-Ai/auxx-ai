@@ -1,6 +1,7 @@
 // apps/web/src/components/chat-widget/ui/settings/preview-pane.tsx
 'use client'
 import { Button } from '@auxx/ui/components/button'
+import { cn } from '@auxx/ui/lib/utils'
 import { Moon, Smartphone, Sun, SunMoon } from 'lucide-react'
 import { useState } from 'react'
 
@@ -33,7 +34,7 @@ export function PreviewPane({ channelId, className }: PreviewPaneProps) {
   const src = `/preview/widget/${channelId}/embed?theme=${theme}`
 
   return (
-    <div className={className}>
+    <div className={cn('h-full', className)}>
       <div className='sticky top-[128px] flex h-[680px] max-h-[calc(100vh-9rem)] flex-col gap-3 p-4'>
         <div className='flex items-center justify-between'>
           <div className='text-sm font-medium text-muted-foreground'>Live preview</div>

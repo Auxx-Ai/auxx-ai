@@ -188,6 +188,14 @@ export interface LoadedChatWidget {
    */
   identityVerification: 'off' | 'in_progress' | 'enforced'
   /**
+   * Channel audience policy (v4 phase 9). Independent of `identityVerification`.
+   * - `visitors`: anonymous only — JWT path skipped entirely.
+   * - `both`: anonymous + logged-in users — JWT verified when present.
+   * - `users`: only logged-in users — mint + writes require a valid JWT when
+   *   rollout is `enforced`.
+   */
+  chatAudience: 'visitors' | 'both' | 'users'
+  /**
    * Derived: true when nobody is on chat duty AND the widget has no AI agent
    * bound. In that state the widget renders `appearance.offlineMessage` and
    * disables sending. Snapshotted at config-fetch time — visitors with an open
@@ -258,6 +266,7 @@ export async function loadChatWidgetByChannelId(
     suggestedReplies: row.chatWidget.suggestedReplies ?? [],
     privacyPolicyUrl: row.chatWidget.privacyPolicyUrl ?? null,
     identityVerification: row.chatWidget.identityVerification,
+    chatAudience: row.chatWidget.chatAudience,
     isOffline,
   }
 }

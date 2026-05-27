@@ -73,6 +73,16 @@ export function getPreviewRounded(): boolean {
   return window.__AUXX_CONFIG__?.previewRounded === true
 }
 
+/**
+ * Treat the bundle as if a JWT were present for the purpose of deciding
+ * whether to render the launcher on `users`-audience channels. Used by the
+ * admin settings preview iframe; not part of the public `BootOptions` surface.
+ */
+export function getPreviewBypassAudience(): boolean {
+  if (typeof window === 'undefined') return false
+  return window.__AUXX_CONFIG__?.previewBypassAudience === true
+}
+
 export interface ChatUserDataEnvelope {
   /** Customer-signed HS256 JWT, verified per-request by the API. */
   auxx_user_jwt?: string

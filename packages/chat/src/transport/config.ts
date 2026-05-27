@@ -68,6 +68,14 @@ export interface ChatConfig {
   /** When non-null, the conversation composer shows a privacy consent banner
    * linking to this URL. Sanitized server-side to http/https only. */
   privacyPolicyUrl: string | null
+  /**
+   * Channel audience policy (v4 phase 9/10). Controls whether anonymous
+   * visitors can chat: `visitors` allows anonymous only, `both` allows both
+   * anonymous and JWT-identified, `users` requires a JWT. Phase 10 reads this
+   * client-side to hide the launcher on `users` channels when boot didn't
+   * supply a `userJwt`.
+   */
+  chatAudience: 'visitors' | 'both' | 'users'
   /** Server-derived: true when nobody is on chat duty AND the widget has no AI
    * agent bound. Snapshot taken at config-fetch time. When true, the
    * conversation view replaces the composer with `appearance.offlineMessage`. */

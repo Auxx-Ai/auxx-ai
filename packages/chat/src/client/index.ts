@@ -156,7 +156,30 @@ function shutdown(): void {
   state = null
 }
 
-const Auxx = { boot, update, shutdown }
+/**
+ * Identity rotation. Clears the cached passport so the next request mints
+ * fresh, drops the in-memory JWT. Does NOT remove the script tag or hide
+ * the widget — the visitor can still chat anonymously after logout if the
+ * channel allows it.
+ *
+ * Use `shutdown()` for a soft teardown (unmount) where the visitor session
+ * should survive a re-mount. Use `logout()` when the visitor's identity
+ * just changed (logged out, switched accounts).
+ */
+function logout(): void {
+  if (typeof window === 'undefined') return
+  if (!state) return
+  try {
+    window.localStorage.removeItem(`auxx_passport_chat_${state.channelId}`)
+  } catch {
+    /* ignore */
+  }
+  state.userJwt = undefined
+  const cfg = (window.__AUXX_CONFIG__ ??= {})
+  delete cfg.userJwt
+}
+
+const Auxx = { boot, update, shutdown, logout }
 
 export default Auxx
-export { boot, update, shutdown }
+export { boot, update, shutdown, logout }

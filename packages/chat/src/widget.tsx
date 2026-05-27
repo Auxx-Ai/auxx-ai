@@ -19,7 +19,12 @@ import type { NavFrame, NavView } from './navigation/use-navigation-stack'
 import { type TabId, useTabRouter } from './navigation/use-tab-router'
 import { getLastReadAt } from './persistence/unread'
 import { useShadowRoot } from './shadow-root'
-import { getPreviewRounded, getStartOpen } from './shared/runtime-config'
+import {
+  getPreviewBypassAudience,
+  getPreviewRounded,
+  getStartOpen,
+  getUserJwt,
+} from './shared/runtime-config'
 import { hexToOklchHue } from './theme/hex-to-oklch-hue'
 import { useResolvedTheme } from './theme/use-resolved-theme'
 import { chatApi } from './transport/chat-api'
@@ -370,6 +375,14 @@ export function Widget({ channelId, cacheBust = null, scriptTheme }: WidgetProps
   })
 
   if (!config) return null
+
+  // Phase 10 — `users`-audience channels stay hidden for anonymous visitors.
+  // The server-side gate (passport mint) is the source of truth; this just
+  // prevents painting a launcher that would 401 on click. The admin preview
+  // iframe sets `previewBypassAudience` so it keeps rendering for testers.
+  if (config.chatAudience === 'users' && !getUserJwt() && !getPreviewBypassAudience()) {
+    return null
+  }
 
   const positionClass = isFloating
     ? 'auxx-chat-shell--floating'

@@ -5,6 +5,7 @@ import { createId } from '@paralleldrive/cuid2'
 import {
   type AnyPgColumn,
   boolean,
+  chatAudience,
   identityVerification,
   index,
   jsonb,
@@ -113,6 +114,13 @@ export const ChatWidget = pgTable(
      * counter's TTL — a safety rail against locking the channel out.
      */
     identityVerification: identityVerification().default('off').notNull(),
+
+    /**
+     * Channel audience policy: `visitors` (anonymous only), `both` (visitors
+     * + logged-in users), or `users` (logged-in only). Independent of
+     * `identityVerification`, which is the JWT rollout stage.
+     */
+    chatAudience: chatAudience().default('visitors').notNull(),
   },
   (table) => [
     uniqueIndex('ChatWidget_integrationId_key').using(

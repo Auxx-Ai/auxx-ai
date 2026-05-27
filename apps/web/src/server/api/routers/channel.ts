@@ -376,6 +376,12 @@ export const channelRouter = createTRPCRouter({
         privacyPolicyUrl: z
           .union([z.httpUrl().max(2048), z.literal('').transform(() => null), z.null()])
           .optional(),
+
+        // v4 phase 9 — channel audience + JWT rollout stage. Live on the same
+        // mutation as the rest of the chat-widget fields; the Redis safety
+        // rail on `enforced` is inlined below.
+        chatAudience: z.enum(['visitors', 'both', 'users']).optional(),
+        identityVerification: z.enum(['off', 'in_progress', 'enforced']).optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -384,6 +390,23 @@ export const channelRouter = createTRPCRouter({
       await requireAdminAccess(userId, organizationId)
 
       const { integrationId, ...updateData } = input
+
+      // Safety rail for `in_progress → enforced`: require at least one
+      // successfully-verified JWT inside the success-counter TTL before the
+      // transition is accepted. Lives at the procedure layer so the
+      // updateChatWidget service stays a pure field-level updater with no
+      // Redis dependency.
+      if (updateData.identityVerification === 'enforced') {
+        const successCount = await getChatJwtSuccessCount(integrationId)
+        if (successCount === 0) {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message:
+              'No valid JWT requests seen yet — install the SDK and pass a userJwt to Auxx.boot before enforcing.',
+          })
+        }
+      }
+
       const result = await updateChatWidget(
         { db: ctx.db, organizationId },
         integrationId,
@@ -412,64 +435,9 @@ export const channelRouter = createTRPCRouter({
           | 'off'
           | 'in_progress'
           | 'enforced',
+        audience: (widget.chatWidget?.chatAudience ?? 'visitors') as 'visitors' | 'both' | 'users',
         successCount,
       }
-    }),
-
-  /**
-   * Drive the per-channel JWT enforcement state machine. Admin-only.
-   *
-   * Allowed transitions (mirroring `phase-5-enforcement.md`):
-   * - `off ↔ in_progress` and `enforced → off` are always allowed.
-   * - `in_progress → enforced` requires the safety rail: at least one
-   *   successfully-verified JWT inside the success counter's TTL.
-   *
-   * Lives outside the generic `updateChatWidget` updater because the
-   * gating check on the Redis counter does not belong in the field-level
-   * channel updater.
-   */
-  setChatIdentityVerificationState: protectedProcedure
-    .input(
-      z.object({
-        channelId: z.string(),
-        state: z.enum(['off', 'in_progress', 'enforced']),
-      })
-    )
-    .mutation(async ({ ctx, input }) => {
-      const { userId } = ctx.session
-      const organizationId = getUserOrganizationId(ctx.session)
-      await requireAdminAccess(userId, organizationId)
-
-      const widgetResult = await getChatWidget({ db: ctx.db, organizationId }, input.channelId)
-      if (!widgetResult.ok) throw widgetResult.error
-      const current = (widgetResult.value.chatWidget?.identityVerification ?? 'off') as
-        | 'off'
-        | 'in_progress'
-        | 'enforced'
-
-      if (current === input.state) return { success: true, state: current }
-
-      if (input.state === 'enforced') {
-        const successCount = await getChatJwtSuccessCount(input.channelId)
-        if (successCount === 0) {
-          throw new TRPCError({
-            code: 'BAD_REQUEST',
-            message:
-              'No valid JWT requests seen yet — install the SDK and pass a userJwt to Auxx.boot before enforcing.',
-          })
-        }
-      }
-
-      const widgetRow = widgetResult.value.chatWidget
-      if (!widgetRow) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Chat widget not found' })
-      }
-      await ctx.db
-        .update(schema.ChatWidget)
-        .set({ identityVerification: input.state, updatedAt: new Date() })
-        .where(eq(schema.ChatWidget.id, widgetRow.id))
-
-      return { success: true, state: input.state }
     }),
 
   /**

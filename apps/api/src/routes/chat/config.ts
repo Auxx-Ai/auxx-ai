@@ -61,6 +61,7 @@ configRoute.get('/:channelId', async (c) => {
     allowDownloadTranscript: widget.allowDownloadTranscript,
     suggestedReplies: widget.suggestedReplies,
     privacyPolicyUrl: widget.privacyPolicyUrl,
+    chatAudience: widget.chatAudience,
     isOffline: widget.isOffline,
     realtime: {
       provider: 'pusher' as const,
