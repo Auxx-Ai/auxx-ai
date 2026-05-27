@@ -34,6 +34,9 @@ export interface PickerTriggerOptions {
 
   /** Size for badges rendered inside the trigger */
   badgeSize?: 'default' | 'sm'
+
+  /** Whether record badges in the trigger show a hover card (default: true) */
+  badgeHoverCard?: boolean
 }
 
 /**

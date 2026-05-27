@@ -250,7 +250,7 @@ export function GeneralSection({ widget, channelId, onDelete }: GeneralSectionPr
                   multi={false}
                   placeholder='Pick an inbox'
                   disabled={update.isPending}
-                  triggerProps={{ className: 'w-full ps-0 pe-1' }}
+                  triggerProps={{ className: 'w-full ps-0 pe-1', badgeHoverCard: false }}
                   onCreate={() => setInboxDialogOpen(true)}
                   createLabel='Create inbox'
                 />

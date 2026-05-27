@@ -178,7 +178,12 @@ export function MultiRelationInput({
     return (
       <div className='flex flex-wrap gap-1 flex-1 py-0.5'>
         {displayItems.map((recordId) => (
-          <RecordBadge key={recordId} recordId={recordId} size={triggerProps?.badgeSize} />
+          <RecordBadge
+            key={recordId}
+            recordId={recordId}
+            size={triggerProps?.badgeSize}
+            hoverCard={triggerProps?.badgeHoverCard ?? true}
+          />
         ))}
         {remainingCount > 0 && (
           <Badge variant='outline' className='text-xs'>
