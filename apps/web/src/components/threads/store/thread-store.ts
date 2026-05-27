@@ -85,6 +85,11 @@ export interface ThreadMeta {
    * name/email). Null on email threads. Not enforced at the DB level.
    */
   metadata?: Record<string, unknown> | null
+
+  /** Soft-merge pointer: target Thread RecordId when this thread has been merged. */
+  mergedIntoThreadId?: RecordId | null
+  /** Timestamp when the merge was applied. Used to hide source threads from lists. */
+  mergedAt?: string | null
 }
 
 /** Scheduled message metadata for display in thread conversation view */

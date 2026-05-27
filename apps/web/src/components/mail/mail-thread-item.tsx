@@ -3,7 +3,7 @@
 
 import { evaluateConditions, normalizeStatusConditions } from '@auxx/lib/conditions/client'
 import type { ActorId } from '@auxx/types/actor'
-import { toRecordId } from '@auxx/types/resource'
+import { getInstanceId, type RecordId, toRecordId } from '@auxx/types/resource'
 import { Button } from '@auxx/ui/components/button'
 import { Checkbox } from '@auxx/ui/components/checkbox'
 import {
@@ -23,13 +23,14 @@ import { cn } from '@auxx/ui/lib/utils'
 import { useDraggable } from '@dnd-kit/core'
 import { formatDistanceToNowStrict } from 'date-fns'
 import DOMPurify from 'dompurify'
-import { Archive, Ban, Clock, MailWarning, MoreHorizontal, Trash2 } from 'lucide-react'
+import { Archive, Ban, Clock, MailWarning, Merge, MoreHorizontal, Trash2 } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import type React from 'react'
 import { memo, useCallback, useMemo } from 'react'
 import { useSession } from '~/auth/auth-client'
 import { AiGeneratingIndicatorCss } from '~/components/fields/ai-overlay/ai-generating-indicator-css'
 import { SparkleIcon } from '~/components/kopilot/ui/sparkle-icon'
+import { RecordPickerContent } from '~/components/pickers/record-picker/record-picker-content'
 import { TagBadge } from '~/components/tags/ui/tag-badge'
 // NEW: Import from new hooks
 import {
@@ -77,6 +78,20 @@ export function ProcessingMenu({
     console.log('Workflow triggered successfully')
   }, [])
 
+  const { merge } = useThreadMutation()
+
+  const handleMergeInto = useCallback(
+    (ids: RecordId[]) => {
+      const picked = ids[0]
+      if (!picked) return
+      const targetId = getInstanceId(picked)
+      if (targetId === threadId) return
+      merge([threadId], targetId)
+      onOpenChange?.(false)
+    },
+    [merge, threadId, onOpenChange]
+  )
+
   const addExcludedSender = api.channel.addExcludedSender.useMutation({
     onSuccess: () => {
       update(threadId, { status: 'IGNORED' })
@@ -122,6 +137,22 @@ export function ProcessingMenu({
             <DropdownMenuSeparator />
           </>
         )}
+        <DropdownMenuSub>
+          <DropdownMenuSubTrigger>
+            <Merge />
+            Merge into…
+          </DropdownMenuSubTrigger>
+          <DropdownMenuSubContent className='p-0 w-72'>
+            <RecordPickerContent
+              value={[]}
+              onChange={handleMergeInto}
+              multi={false}
+              entityDefinitionId='thread'
+              excludeIds={[toRecordId('thread', threadId)]}
+            />
+          </DropdownMenuSubContent>
+        </DropdownMenuSub>
+        <DropdownMenuSeparator />
         <DropdownMenuItem
           onClick={() => update(threadId, { status: 'ARCHIVED' })}
           disabled={isUpdating}>

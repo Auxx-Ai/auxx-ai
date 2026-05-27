@@ -8,6 +8,7 @@ import {
   integer,
   jsonb,
   pgTable,
+  sql,
   text,
   threadHandoffState,
   threadStatus,
@@ -90,6 +91,16 @@ export const Thread = pgTable(
     waitingSince: timestamp({ precision: 3 }),
     createdAt: timestamp({ precision: 3 }).defaultNow().notNull(),
     metadata: jsonb(),
+    /** Soft-merge pointer: when set, this thread is hidden from lists and treated as merged into the target. */
+    mergedIntoThreadId: text().references((): AnyPgColumn => Thread.id, {
+      onUpdate: 'cascade',
+      onDelete: 'set null',
+    }),
+    mergedAt: timestamp({ precision: 3 }),
+    mergedById: text().references((): AnyPgColumn => User.id, {
+      onUpdate: 'cascade',
+      onDelete: 'set null',
+    }),
   },
   (table) => [
     uniqueIndex('Thread_integrationId_externalId_key').using(
@@ -135,6 +146,14 @@ export const Thread = pgTable(
       table.primaryEntityDefinitionId.asc().nullsLast(),
       table.lastMessageAt.desc().nullsFirst()
     ),
+    index('Thread_org_active_lastMessage_idx')
+      .using(
+        'btree',
+        table.organizationId.asc().nullsLast(),
+        table.lastMessageAt.desc().nullsFirst(),
+        table.id.desc().nullsFirst()
+      )
+      .where(sql`"mergedIntoThreadId" IS NULL`),
   ]
 )
 

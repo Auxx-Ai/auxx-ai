@@ -43,20 +43,26 @@ export function buildConditionGroupsQuery(
   groups: ConditionGroup[],
   organizationId: string
 ): SQL<unknown> {
+  // Hide soft-merged threads from every list view. The corresponding partial
+  // index on Thread keeps this filter free for the hot pagination path.
+  const baseScope = and(
+    eq(Thread.organizationId, organizationId),
+    isNull(Thread.mergedIntoThreadId)
+  )!
+
   if (groups.length === 0) {
-    // No conditions -> match all (within org)
-    return eq(Thread.organizationId, organizationId)
+    return baseScope
   }
 
   const groupConditions = groups.map((group) => buildGroupQuery(group, organizationId))
   const validConditions = groupConditions.filter(Boolean) as SQL<unknown>[]
 
   if (validConditions.length === 0) {
-    return eq(Thread.organizationId, organizationId)
+    return baseScope
   }
 
   // Groups combined with AND
-  return and(eq(Thread.organizationId, organizationId), ...validConditions)!
+  return and(baseScope, ...validConditions)!
 }
 
 /**

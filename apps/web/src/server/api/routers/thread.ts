@@ -21,6 +21,7 @@ import {
   type ListThreadIdsInput,
   linkEntityToThread,
   returnThreadToAi,
+  ThreadMergeService,
   ThreadMutationService,
   ThreadQueryService,
   takeOverThread,
@@ -584,6 +585,8 @@ export const threadRouter = createTRPCRouter({
           inboxId: recordIdSchema.nullable().optional(),
           ticketId: recordIdSchema.nullable().optional(),
           isUnread: z.boolean().optional(),
+          // Merge routing: when present, the lib service redirects to ThreadMergeService.
+          mergedIntoThreadId: recordIdSchema.nullable().optional(),
         }),
       })
     )
@@ -616,12 +619,13 @@ export const threadRouter = createTRPCRouter({
   updateBulk: protectedProcedure
     .input(
       z.object({
-        recordIds: z.array(recordIdSchema),
+        recordIds: z.array(recordIdSchema).max(50),
         updates: z.object({
           status: z.enum(['OPEN', 'ARCHIVED', 'SPAM', 'TRASH', 'IGNORED']).optional(),
           assigneeId: z.string().nullable().optional(),
           inboxId: recordIdSchema.nullable().optional(),
           ticketId: recordIdSchema.nullable().optional(),
+          mergedIntoThreadId: recordIdSchema.nullable().optional(),
         }),
       })
     )
@@ -704,6 +708,33 @@ export const threadRouter = createTRPCRouter({
         throw new TRPCError({
           code: 'INTERNAL_SERVER_ERROR',
           message: 'Failed bulk removing threads.',
+        })
+      }
+    }),
+
+  /**
+   * Unmerge every source from a single merge batch. Used by the "Undo merge"
+   * action on the target's collapsed merge timeline entry — needs a batchId,
+   * which isn't a Thread field, so this stays as its own dedicated procedure.
+   */
+  unmergeBatch: protectedProcedure
+    .input(z.object({ batchId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const { organizationId, userId } = getServiceDependencies(ctx)
+      const service = new ThreadMergeService(ctx.db, organizationId, userId)
+      try {
+        await service.unmergeBatch(input.batchId, userId)
+        return { success: true }
+      } catch (error: unknown) {
+        if (error instanceof TRPCError) throw error
+        handleServiceError(error, 'threadMerge.unmergeBatch', {
+          organizationId,
+          userId,
+          batchId: input.batchId,
+        })
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: 'Failed to unmerge batch.',
         })
       }
     }),
