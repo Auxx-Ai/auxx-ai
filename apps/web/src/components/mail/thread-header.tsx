@@ -3,7 +3,7 @@
 
 import { PLATFORM_CAPABILITIES } from '@auxx/lib/channels/client'
 import type { ActorId } from '@auxx/types/actor'
-import { toRecordId } from '@auxx/types/resource'
+import { getInstanceId, type RecordId, toRecordId } from '@auxx/types/resource'
 import { Alert } from '@auxx/ui/components/alert'
 import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
 import { Button } from '@auxx/ui/components/button'
@@ -19,18 +19,22 @@ import {
   ArchiveRestore,
   MailCheck,
   MailWarning,
+  Merge,
   MoreHorizontal,
   PackageOpen,
   Tags,
   Trash,
+  Undo2,
   UserPlus,
   Zap,
 } from 'lucide-react'
+import Link from 'next/link'
 import { useCallback, useRef, useState } from 'react'
 import { useChannel } from '~/components/channels/hooks/use-channels'
+import { RecordPicker } from '~/components/pickers/record-picker'
 import { useActor, useResource } from '~/components/resources/hooks'
 import { useThreadTags } from '~/components/tags/hooks/use-thread-tags'
-import { useInbox, useThread } from '~/components/threads/hooks'
+import { useInbox, useThread, useThreadMutation } from '~/components/threads/hooks'
 import { ManualTriggerButton } from '~/components/workflow/manual-trigger-button'
 import { useConfirm } from '~/hooks/use-confirm'
 import { EditableText } from '../editor/editable-text'
@@ -55,6 +59,7 @@ export function ThreadHeader() {
   // Get context for mutations and handlers
   const { threadId, handlers, mutations } = useThreadContext()
   const { selectedTags, handleTagChange } = useThreadTags(threadId)
+  const { merge, unmerge } = useThreadMutation()
 
   // Get thread data from store
   const { thread } = useThread({ threadId })
@@ -197,6 +202,22 @@ export function ThreadHeader() {
     },
     [thread, handlers]
   )
+
+  const handleMergeInto = useCallback(
+    (ids: RecordId[]) => {
+      const picked = ids[0]
+      if (!picked || !thread) return
+      const targetId = getInstanceId(picked)
+      if (targetId === thread.id) return
+      merge([thread.id], targetId)
+    },
+    [merge, thread]
+  )
+
+  const handleUnmerge = useCallback(() => {
+    if (!thread) return
+    unmerge(thread.id)
+  }, [unmerge, thread])
 
   /**
    * Handle permanent deletion with confirmation
@@ -357,6 +378,29 @@ export function ThreadHeader() {
               </div>
             </ActorPicker>
 
+            <RecordPicker
+              value={[]}
+              onChange={handleMergeInto}
+              multi={false}
+              entityDefinitionId='thread'
+              excludeIds={[toRecordId('thread', thread.id)]}
+              align='end'
+              side='bottom'
+              emptyLabel='Merge into thread…'>
+              <div>
+                <Tooltip content='Merge into…'>
+                  <Button
+                    variant='ghost'
+                    size='icon'
+                    disabled={!thread}
+                    className='rounded-full hover:bg-foreground/10'>
+                    <Merge />
+                    <span className='sr-only'>Merge into…</span>
+                  </Button>
+                </Tooltip>
+              </div>
+            </RecordPicker>
+
             {/* More actions dropdown */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -409,6 +453,40 @@ export function ThreadHeader() {
         </div>
       </div>
 
+      {thread.mergedAt && thread.mergedIntoThreadId && (
+        <div className='px-4 mt-2'>
+          <Alert className='flex items-center justify-between'>
+            <div className='flex items-center gap-2'>
+              <Merge className='size-4' />
+              <span>
+                This thread was merged into{' '}
+                <Link
+                  className='underline'
+                  href={`/app/mail/inbox/open/${getInstanceId(thread.mergedIntoThreadId)}`}>
+                  the target thread
+                </Link>
+                .
+              </span>
+            </div>
+            {(() => {
+              const mergedAtMs =
+                typeof thread.mergedAt === 'string'
+                  ? Date.parse(thread.mergedAt)
+                  : thread.mergedAt instanceof Date
+                    ? thread.mergedAt.getTime()
+                    : NaN
+              const isWithin24h =
+                Number.isFinite(mergedAtMs) && Date.now() - mergedAtMs < 24 * 60 * 60 * 1000
+              return isWithin24h ? (
+                <Button variant='ghost' size='sm' onClick={handleUnmerge} className='h-7'>
+                  <Undo2 className='size-3.5' />
+                  Unmerge
+                </Button>
+              ) : null
+            })()}
+          </Alert>
+        </div>
+      )}
       {isTrash && (
         <div className='px-4 mt-2'>
           <Alert variant='destructive' className='flex items-center justify-between'>

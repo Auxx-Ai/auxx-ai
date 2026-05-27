@@ -7,13 +7,16 @@ import { type ThreadCountContext, useCountUpdates } from '~/components/mail/hook
 import { type CountUpdates, useMailCountsStore } from '~/components/mail/store'
 import { useUser } from '~/hooks/use-user'
 import { api } from '~/trpc/react'
-import { type ThreadMeta, useThreadStore } from '../store'
+import { type ThreadMeta, useThreadSelectionStore, useThreadStore } from '../store'
 
 /**
  * Partial thread updates that can be applied optimistically.
  */
 export type ThreadUpdates = Partial<
-  Pick<ThreadMeta, 'status' | 'subject' | 'assigneeId' | 'inboxId' | 'ticketId' | 'isUnread'>
+  Pick<
+    ThreadMeta,
+    'status' | 'subject' | 'assigneeId' | 'inboxId' | 'ticketId' | 'isUnread' | 'mergedIntoThreadId'
+  >
 >
 
 /**
@@ -53,6 +56,20 @@ export function useThreadMutation() {
   const removeThread = useThreadStore((s) => s.removeThread)
   const undeleteThread = useThreadStore((s) => s.undeleteThread)
   const getThread = useThreadStore((s) => s.getThread)
+  const setActiveThread = useThreadSelectionStore((s) => s.setActiveThread)
+
+  // Close the active thread if it was just tombstoned. Read via getState so
+  // the callback dependency stays stable; mail-box's URL-sync effect clears
+  // `?tid=` once activeThreadId flips to null.
+  const closeIfActive = useCallback(
+    (threadIds: string[]) => {
+      const activeId = useThreadSelectionStore.getState().activeThreadId
+      if (activeId && threadIds.includes(activeId)) {
+        setActiveThread(null)
+      }
+    },
+    [setActiveThread]
+  )
 
   // Count update store actions (direct access for bulk operations)
   const saveSnapshot = useMailCountsStore((s) => s.saveSnapshot)
@@ -284,6 +301,7 @@ export function useThreadMutation() {
       //    without invalidating the cached `thread.listIds` query.
       const previous = getThread(threadId)
       removeThread(threadId)
+      closeIfActive([threadId])
 
       // 3. Create RecordId and call backend mutation
       const recordId = toRecordId('thread', threadId)
@@ -309,6 +327,7 @@ export function useThreadMutation() {
       restoreSnapshot,
       saveSnapshot,
       batchUpdate,
+      closeIfActive,
     ]
   )
 
@@ -346,6 +365,7 @@ export function useThreadMutation() {
         if (t) previous.set(id, t)
         removeThread(id)
       }
+      closeIfActive(threadIds)
 
       // 3. Create RecordIds and call backend mutation
       const recordIds = threadIds.map((id) => toRecordId('thread', id))
@@ -373,7 +393,63 @@ export function useThreadMutation() {
       restoreSnapshot,
       saveSnapshot,
       batchUpdate,
+      closeIfActive,
     ]
+  )
+
+  /**
+   * Merge one or more source threads into a target. Sources are tombstoned in
+   * the store so they disappear from list views immediately; the server
+   * routes through ThreadMergeService and reconciles the target's denormalized
+   * counts on the next fetch.
+   */
+  const merge = useCallback(
+    (sourceThreadIds: string[], targetThreadId: string) => {
+      if (sourceThreadIds.length === 0) return
+
+      const previous = new Map<string, ThreadMeta>()
+      for (const id of sourceThreadIds) {
+        const t = getThread(id)
+        if (t) previous.set(id, t)
+        removeThread(id)
+      }
+      closeIfActive(sourceThreadIds)
+
+      const recordIds = sourceThreadIds.map((id) => toRecordId('thread', id))
+      const mergedIntoRecord = toRecordId('thread', targetThreadId)
+
+      updateBulkMutation.mutate(
+        { recordIds, updates: { mergedIntoThreadId: mergedIntoRecord } },
+        {
+          onError: (error) => {
+            for (const id of sourceThreadIds) {
+              undeleteThread(id, previous.get(id))
+            }
+            toastError({ title: 'Merge failed', description: error.message })
+          },
+        }
+      )
+    },
+    [getThread, removeThread, undeleteThread, updateBulkMutation, closeIfActive]
+  )
+
+  /**
+   * Unmerge a single source thread, restoring its content and clearing the
+   * merge pointer.
+   */
+  const unmerge = useCallback(
+    (sourceThreadId: string) => {
+      const recordId = toRecordId('thread', sourceThreadId)
+      updateMutation.mutate(
+        { recordId, updates: { mergedIntoThreadId: null } },
+        {
+          onError: (error) => {
+            toastError({ title: 'Unmerge failed', description: error.message })
+          },
+        }
+      )
+    },
+    [updateMutation]
   )
 
   return {
@@ -381,6 +457,8 @@ export function useThreadMutation() {
     updateBulk,
     remove,
     removeBulk,
+    merge,
+    unmerge,
     // Expose isPending states for UI
     isUpdating: updateMutation.isPending,
     isBulkUpdating: updateBulkMutation.isPending,

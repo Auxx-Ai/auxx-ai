@@ -6,10 +6,12 @@ import { type ActorId, parseActorId } from '@auxx/types/actor'
 import { getInstanceId, parseRecordId, type RecordId, toRecordId } from '@auxx/types/resource'
 import { and, eq, exists, ilike, inArray, notExists, or, sql } from 'drizzle-orm'
 import { getOrgCache } from '../cache'
+import { BadRequestError } from '../errors'
 import { publisher } from '../events/publisher'
 import { FieldValueService } from '../field-values'
 import { getRealtimeService, publishThreadDeleted, publishThreadUpdated } from '../realtime'
 import type { ThreadMeta } from '../realtime/events'
+import { ThreadMergeService } from './thread-merge.service'
 
 const logger = createScopedLogger('thread-mutation-service')
 
@@ -29,6 +31,15 @@ export interface ThreadUpdates {
   /** Ticket RecordId (format: "ticket:instanceId") or null to unlink */
   ticketId?: RecordId | null
   isUnread?: boolean
+  /**
+   * Merge routing field. When set to a Thread RecordId, the corresponding
+   * `update`/`updateBulk` call routes through {@link ThreadMergeService.merge}
+   * instead of the standard field-update path. When explicitly `null`, the
+   * call routes through {@link ThreadMergeService.unmerge}.
+   */
+  mergedIntoThreadId?: RecordId | null
+  /** Optimistic-only field; the server overwrites/clears it. */
+  mergedAt?: Date | null
 }
 
 /**
@@ -83,6 +94,43 @@ export class ThreadMutationService {
    */
   async update(recordId: RecordId, updates: ThreadUpdates): Promise<MutationResult> {
     const { entityInstanceId: threadId } = parseRecordId(recordId)
+
+    // Merge / unmerge routing: when mergedIntoThreadId is present in the
+    // updates payload, defer to ThreadMergeService rather than running the
+    // standard field-update path. mergedAt is purely optimistic UI state.
+    if ('mergedIntoThreadId' in updates) {
+      const mergeService = new ThreadMergeService(this.db, this.organizationId, this.actorUserId)
+      if (typeof updates.mergedIntoThreadId === 'string') {
+        if (!this.actorUserId) {
+          throw new BadRequestError('Merge requires an authenticated actor')
+        }
+        const targetThreadId = getInstanceId(updates.mergedIntoThreadId)
+        await mergeService.merge({
+          sourceThreadIds: [threadId],
+          targetThreadId,
+          organizationId: this.organizationId,
+          actorUserId: this.actorUserId,
+        })
+        return {
+          id: threadId,
+          success: true,
+          updatedFields: updates,
+          timestamp: new Date(),
+        }
+      }
+      if (updates.mergedIntoThreadId === null) {
+        if (!this.actorUserId) {
+          throw new BadRequestError('Unmerge requires an authenticated actor')
+        }
+        await mergeService.unmerge(threadId, this.actorUserId)
+        return {
+          id: threadId,
+          success: true,
+          updatedFields: updates,
+          timestamp: new Date(),
+        }
+      }
+    }
 
     logger.info('Updating thread via unified method', {
       threadId,
@@ -272,6 +320,33 @@ export class ThreadMutationService {
     if (!recordIds || recordIds.length === 0) return { count: 0 }
 
     const threadIds = recordIds.map((id) => parseRecordId(id).entityInstanceId)
+
+    // Merge / unmerge routing — see notes on `update` above.
+    if ('mergedIntoThreadId' in updates) {
+      const mergeService = new ThreadMergeService(this.db, this.organizationId, this.actorUserId)
+      if (typeof updates.mergedIntoThreadId === 'string') {
+        if (!this.actorUserId) {
+          throw new BadRequestError('Merge requires an authenticated actor')
+        }
+        const targetThreadId = getInstanceId(updates.mergedIntoThreadId)
+        const result = await mergeService.merge({
+          sourceThreadIds: threadIds,
+          targetThreadId,
+          organizationId: this.organizationId,
+          actorUserId: this.actorUserId,
+        })
+        return { count: result.sourceThreadIds.length }
+      }
+      if (updates.mergedIntoThreadId === null) {
+        if (!this.actorUserId) {
+          throw new BadRequestError('Unmerge requires an authenticated actor')
+        }
+        for (const sourceId of threadIds) {
+          await mergeService.unmerge(sourceId, this.actorUserId)
+        }
+        return { count: threadIds.length }
+      }
+    }
 
     logger.info('Bulk updating threads via unified method', {
       count: threadIds.length,

@@ -10,6 +10,11 @@ export {
   type ThreadWorkItem,
   unlinkEntity,
 } from './links.service'
+export type {
+  MergeThreadsInput,
+  MergeThreadsResult,
+} from './thread-merge.service'
+export { ThreadMergeService } from './thread-merge.service'
 export type { MutationResult, ThreadUpdates } from './thread-mutation.service'
 export { ThreadMutationService } from './thread-mutation.service'
 export { ThreadQueryService } from './thread-query.service'

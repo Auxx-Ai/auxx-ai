@@ -2,14 +2,15 @@
 'use client'
 
 import type { ActorId } from '@auxx/types/actor'
-import type { RecordId } from '@auxx/types/resource'
+import { getInstanceId, type RecordId } from '@auxx/types/resource'
 import { ActionBar, type ActionBarAction } from '@auxx/ui/components/action-bar'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { useHotkey } from '@tanstack/react-hotkeys'
-import { Archive, Ban, Play, Tags, Trash, Trash2, UserPlus } from 'lucide-react'
+import { Archive, Ban, Merge, Play, Tags, Trash, Trash2, UserPlus } from 'lucide-react'
 import { useCallback, useMemo, useState } from 'react'
 import { useShallow } from 'zustand/shallow'
 import { ActorPicker } from '~/components/pickers/actor-picker'
+import { RecordPicker } from '~/components/pickers/record-picker'
 import { TagPicker } from '~/components/pickers/tag-picker'
 import { parseRecordId, toRecordId, useResource } from '~/components/resources'
 import { useThreadMutation } from '~/components/threads/hooks'
@@ -51,7 +52,7 @@ export default function BulkActionToolbar() {
   const [workflowDialogOpen, setWorkflowDialogOpen] = useState(false)
 
   // --- New unified mutation hook with optimistic updates ---
-  const { updateBulk, removeBulk, isBulkUpdating, isBulkRemoving } = useThreadMutation()
+  const { updateBulk, removeBulk, merge, isBulkUpdating, isBulkRemoving } = useThreadMutation()
 
   // --- Tag mutation: tri-state with optimistic updates against ThreadStore ---
   const tagBulk = api.thread.tagBulk.useMutation()
@@ -257,6 +258,31 @@ export default function BulkActionToolbar() {
     }
   }, [selectionCount, selectedThreadIds, removeBulk, clearSelection, confirm])
 
+  const handleMerge = useCallback(
+    async (ids: RecordId[]) => {
+      const picked = ids[0]
+      if (!picked || selectionCount < 2) return
+      const targetId = getInstanceId(picked)
+      const sourceIds = selectedThreadIds.filter((id) => id !== targetId)
+      if (sourceIds.length === 0) return
+
+      if (sourceIds.length >= 5) {
+        const confirmed = await confirm({
+          title: `Merge ${sourceIds.length} threads?`,
+          description:
+            'All selected threads will be merged into the chosen target. You can unmerge within 24 hours.',
+          confirmText: 'Merge',
+        })
+        if (!confirmed) return
+      }
+
+      merge(sourceIds, targetId)
+      toastSuccess({ title: `Merging ${sourceIds.length} threads` })
+      clearSelection()
+    },
+    [merge, selectedThreadIds, selectionCount, clearSelection, confirm]
+  )
+
   const disabled = selectionCount === 0
 
   // --- Build actions array ---
@@ -337,6 +363,25 @@ export default function BulkActionToolbar() {
         },
       },
       {
+        id: 'merge',
+        label: 'Merge',
+        icon: Merge,
+        disabled: selectionCount < 2 || isBulkUpdating || disabled,
+        tooltip: 'Merge selected into…',
+        picker: {
+          component: RecordPicker,
+          props: {
+            value: [] as RecordId[],
+            onChange: handleMerge,
+            multi: false,
+            entityDefinitionId: 'thread',
+            excludeIds: selectedThreadIds.map((id) => toRecordId('thread', id)),
+            align: 'end',
+            emptyLabel: 'Pick target thread…',
+          },
+        },
+      },
+      {
         id: 'delete',
         label: 'Delete',
         icon: Trash,
@@ -353,6 +398,9 @@ export default function BulkActionToolbar() {
       handleAssign,
       handleTagChange,
       handlePermanentlyDelete,
+      handleMerge,
+      selectedThreadIds,
+      selectionCount,
       isBulkUpdating,
       isBulkRemoving,
       tagBulk.isPending,

@@ -48,7 +48,7 @@ export function ThreadDisplay({ centered, expectedThreadId }: ThreadDisplayProps
   const threadId = storeThreadId ?? expectedThreadId ?? null
 
   // Get thread from store
-  const { thread, isLoading, isNotFound } = useThread({ threadId })
+  const { thread, isLoading, isNotFound, isDeleted } = useThread({ threadId })
   const { isUnread, markAsRead } = useThreadReadStatus(threadId)
 
   // Mark thread as read when displayed. Skip in edit mode — the thread isn't
@@ -66,8 +66,10 @@ export function ThreadDisplay({ centered, expectedThreadId }: ThreadDisplayProps
 
   // We have a selected thread but haven't received its data yet — show the
   // spinner instead of "No message selected" (covers the frames between
-  // URL/store sync and the batched fetch completing).
-  const isResolvingThread = !!threadId && !thread && !isNotFound
+  // URL/store sync and the batched fetch completing). Tombstoned threads
+  // (merge source, permanently deleted) are excluded so we don't loop forever
+  // waiting on a thread that will never come back.
+  const isResolvingThread = !!threadId && !thread && !isNotFound && !isDeleted
 
   return (
     <div className='flex h-full flex-col flex-1'>

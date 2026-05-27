@@ -123,9 +123,18 @@ export enum EntityInstanceEventType {
   WORKFLOW_COMPLETED = 'entity:workflow:completed',
 }
 
+/** Thread-specific event types */
+export enum ThreadEventType {
+  /** A source thread was merged into a target thread. Emitted on the source. */
+  MERGED_INTO = 'thread:merged_into',
+  /** A source thread merged into this thread. Emitted on the target, one per source. */
+  MERGED_FROM = 'thread:merged_from',
+}
+
 /** All timeline event types (expandable for other entities) */
 export type TimelineEventType =
   | ContactEventType
   | TicketEventType
   | EntityInstanceEventType
+  | ThreadEventType
   | string
