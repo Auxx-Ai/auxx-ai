@@ -1,6 +1,7 @@
 // scripts/ci/check-package-exports.js
 // Validates that every export path in @auxx/* package.json files points to an existing source file.
 // Also checks for disallowed deep imports into package internals.
+// Also validates that published packages don't reference workspace-only @auxx/* deps in their dist/.
 
 import { existsSync } from 'node:fs'
 import { readdir, readFile } from 'node:fs/promises'
@@ -10,10 +11,32 @@ const ROOT = resolve(import.meta.dirname, '..', '..')
 const PACKAGES_DIR = join(ROOT, 'packages')
 
 // Packages that use auto-generated exports (checked separately)
-const SKIP_PACKAGES = new Set(['lib', 'sdk', 'typescript-config', 'ui', 'seed'])
+const SKIP_PACKAGES = new Set(['lib', 'sdk', 'typescript-config', 'ui', 'seed', 'chat'])
 
 // Disallowed deep import patterns (checked across all consumer files)
 const DISALLOWED_IMPORTS = [/@auxx\/database\/schema\//, /@auxx\/database\/db\//]
+
+// @auxx/* packages that are NOT published to npm. If any of these appear inside
+// a published package's dist/, the customer install will 404. Add a new entry
+// here when a new private @auxx/* package gets created.
+const WORKSPACE_ONLY_PACKAGES = [
+  '@auxx/ui',
+  '@auxx/lib',
+  '@auxx/database',
+  '@auxx/services',
+  '@auxx/types',
+  '@auxx/config',
+  '@auxx/credentials',
+  '@auxx/redis',
+  '@auxx/email',
+  '@auxx/billing',
+  '@auxx/seed',
+  '@auxx/logger',
+  '@auxx/deployment',
+  '@auxx/utils',
+  '@auxx/workflow-nodes',
+  '@auxx/typescript-config',
+]
 
 let errors = 0
 
@@ -43,6 +66,50 @@ async function checkPackageExports(pkgDir, pkgName) {
     if (!existsSync(fullPath)) {
       console.error(`ERROR: ${pkgName} export "${exportPath}" -> "${sourcePath}" does not exist`)
       errors++
+    }
+  }
+}
+
+async function checkPublishedDistLeakage(pkgDir, pkgName) {
+  const pkgJsonPath = join(pkgDir, 'package.json')
+  if (!existsSync(pkgJsonPath)) return
+
+  const pkgJson = JSON.parse(await readFile(pkgJsonPath, 'utf-8'))
+  if (!pkgJson.publishConfig) return
+
+  const distDir = join(pkgDir, 'dist')
+  // Silently skip when dist isn't built — the publish workflow always builds
+  // before running this check, and we don't want noisy warnings on every
+  // local/CI run where the publishable packages weren't built.
+  if (!existsSync(distDir)) return
+
+  async function walk(dir) {
+    const out = []
+    for (const entry of await readdir(dir, { withFileTypes: true })) {
+      const full = join(dir, entry.name)
+      if (entry.isDirectory()) out.push(...(await walk(full)))
+      else if (/\.(js|mjs|cjs|d\.ts)$/.test(entry.name)) out.push(full)
+    }
+    return out
+  }
+
+  const files = await walk(distDir)
+  for (const file of files) {
+    const content = await readFile(file, 'utf-8')
+    for (const forbidden of WORKSPACE_ONLY_PACKAGES) {
+      if (forbidden === pkgName) continue
+      // Match real imports/requires, not doc-comment mentions in shim files.
+      const importRe = new RegExp(
+        `(?:from\\s+['"\`]|require\\(['"\`]|import\\(['"\`])${forbidden.replace('/', '\\/')}(?:['"\`]|\\/)`,
+        'g'
+      )
+      if (importRe.test(content)) {
+        const rel = file.replace(ROOT + '/', '')
+        console.error(
+          `ERROR: published package ${pkgName} dist references workspace-only ${forbidden}: ${rel}`
+        )
+        errors++
+      }
     }
   }
 }
@@ -87,14 +154,19 @@ async function checkDisallowedImports() {
 const packageDirs = await readdir(PACKAGES_DIR, { withFileTypes: true })
 for (const entry of packageDirs) {
   if (!entry.isDirectory()) continue
-  if (SKIP_PACKAGES.has(entry.name)) continue
 
   const pkgDir = join(PACKAGES_DIR, entry.name)
   const pkgJsonPath = join(pkgDir, 'package.json')
   if (!existsSync(pkgJsonPath)) continue
 
   const pkgJson = JSON.parse(await readFile(pkgJsonPath, 'utf-8'))
-  await checkPackageExports(pkgDir, pkgJson.name || entry.name)
+  const pkgName = pkgJson.name || entry.name
+
+  if (!SKIP_PACKAGES.has(entry.name)) {
+    await checkPackageExports(pkgDir, pkgName)
+  }
+  // Dist leakage check runs for every publishable package, including skipped ones.
+  await checkPublishedDistLeakage(pkgDir, pkgName)
 }
 
 await checkDisallowedImports()

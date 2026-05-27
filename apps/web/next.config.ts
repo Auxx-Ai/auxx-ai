@@ -102,7 +102,7 @@ const nextConfig = {
       // /preview/widget/*/embed needs to be framed same-origin by the chat-
       // widget settings page (live preview pane in apps/web/.../settings).
       {
-        source: '/((?!embed/|preview/widget/[^/]+/embed).*)',
+        source: '/((?!embed/|preview/widget/.+?/embed).*)',
         headers: [
           ...baselineHeaders,
           { key: 'X-Frame-Options', value: 'DENY' },

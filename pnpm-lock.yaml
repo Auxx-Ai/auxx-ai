@@ -1540,9 +1540,6 @@ importers:
 
   packages/chat:
     dependencies:
-      '@auxx/ui':
-        specifier: workspace:*
-        version: link:../ui
       class-variance-authority:
         specifier: ^0.7.1
         version: 0.7.1
@@ -1571,6 +1568,9 @@ importers:
       '@auxx/typescript-config':
         specifier: workspace:*
         version: link:../typescript-config
+      '@auxx/ui':
+        specifier: workspace:*
+        version: link:../ui
       '@tailwindcss/vite':
         specifier: ^4.1.7
         version: 4.3.0(vite@6.4.1(@types/node@22.19.13)(jiti@2.6.1)(lightningcss@1.32.0)(terser@5.46.0)(tsx@4.21.0)(yaml@2.8.2))

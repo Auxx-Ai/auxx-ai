@@ -1,6 +1,6 @@
 {
   "name": "@auxx/chat",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "Auxx chat widget — npm package with browser bootstrap, server JWT signer, and React wrapper.",
   "type": "module",
   "files": [
@@ -34,7 +34,6 @@
     "prepublishOnly": "pnpm run build"
   },
   "dependencies": {
-    "@auxx/ui": "workspace:*",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "jsonwebtoken": "^9.0.2",
@@ -54,6 +53,7 @@
   },
   "devDependencies": {
     "@auxx/typescript-config": "workspace:*",
+    "@auxx/ui": "workspace:*",
     "@tailwindcss/vite": "^4.1.7",
     "@types/jsonwebtoken": "^9.0.7",
     "@types/node": "catalog:",
