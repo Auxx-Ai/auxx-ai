@@ -1,0 +1,143 @@
+# .github/workflows/chat-publish.yml
+name: Publish @auxx/chat
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: Version bump type
+        required: true
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+          - prerelease
+          - custom
+      custom-version:
+        description: "Custom version (only when bump = custom, e.g. 0.2.0-beta.1)"
+        required: false
+        type: string
+      tag:
+        description: "npm dist-tag"
+        required: false
+        type: choice
+        default: latest
+        options:
+          - latest
+          - beta
+          - experimental
+          - next
+      dry-run:
+        description: "Dry run (build + pack, skip publish)"
+        required: false
+        type: boolean
+        default: false
+
+concurrency:
+  group: chat-publish
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  publish:
+    name: Build & Publish
+    runs-on: ubuntu-latest
+    environment: npm-publish
+    steps:
+      - name: Preflight checks
+        run: |
+          if [ "${{ github.ref }}" != "refs/heads/main" ]; then
+            echo "::error::Chat publish must run from main branch, got ${{ github.ref }}"
+            exit 1
+          fi
+          if [ "${{ inputs.bump }}" = "custom" ] && [ -z "${{ inputs.custom-version }}" ]; then
+            echo "::error::custom-version is required when bump=custom"
+            exit 1
+          fi
+
+      - uses: actions/checkout@v6
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: '.nvmrc'
+          registry-url: https://registry.npmjs.org
+
+      - name: Upgrade npm for Trusted Publishing
+        run: npm install -g npm@latest
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Bump version
+        working-directory: packages/chat
+        run: |
+          CURRENT=$(jq -r .version package.json)
+          if [ "${{ inputs.bump }}" = "custom" ]; then
+            NEW_VERSION="${{ inputs.custom-version }}"
+          else
+            NEW_VERSION=$(node -e "
+              const [, M, m, p, pre, n] = '$CURRENT'.match(/^(\d+)\.(\d+)\.(\d+)(?:-(.+?)\.(\d+))?$/);
+              const bump = '${{ inputs.bump }}', tag = '${{ inputs.tag }}';
+              if (bump === 'major') console.log(+M+1+'.0.0');
+              else if (bump === 'minor') console.log(M+'.'+(+m+1)+'.0');
+              else if (bump === 'patch') console.log(pre ? M+'.'+m+'.'+p : M+'.'+m+'.'+(+p+1));
+              else if (bump === 'prerelease') {
+                if (pre === tag) console.log(M+'.'+m+'.'+p+'-'+tag+'.'+(+n+1));
+                else console.log(M+'.'+m+'.'+(pre?p:+p+1)+'-'+tag+'.0');
+              }
+            ")
+          fi
+          if [ "$NEW_VERSION" = "$CURRENT" ]; then
+            echo "::error::Version unchanged ($CURRENT). Nothing to publish."
+            exit 1
+          fi
+          pnpm pkg set version="$NEW_VERSION"
+          echo "CHAT_VERSION=${NEW_VERSION}" >> "$GITHUB_ENV"
+          echo "Bumped @auxx/chat: ${CURRENT} → ${NEW_VERSION}"
+
+      - name: Build
+        working-directory: packages/chat
+        run: pnpm run build
+
+      - name: Verify package contents
+        working-directory: packages/chat
+        run: pnpm pack
+
+      - name: Publish to npm
+        if: ${{ !inputs.dry-run }}
+        working-directory: packages/chat
+        run: pnpm publish --access public --tag ${{ inputs.tag }} --no-git-checks --provenance
+
+      - name: Check tag availability
+        if: ${{ !inputs.dry-run }}
+        run: |
+          if git rev-parse "chat-v${CHAT_VERSION}" >/dev/null 2>&1; then
+            echo "::error::Tag chat-v${CHAT_VERSION} already exists"
+            exit 1
+          fi
+
+      - name: Commit version bump & tag
+        if: ${{ !inputs.dry-run }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add packages/chat/package.json
+          git commit -m "chore(chat): release @auxx/chat@${CHAT_VERSION}"
+          git tag "chat-v${CHAT_VERSION}"
+          git push origin main --tags
+
+      - name: Create GitHub Release
+        if: ${{ !inputs.dry-run }}
+        run: |
+          gh release create "chat-v${CHAT_VERSION}" \
+            --title "@auxx/chat v${CHAT_VERSION}" \
+            --notes "Published \`@auxx/chat@${CHAT_VERSION}\` to npm with dist-tag \`${{ inputs.tag }}\`" \
+            --target "${{ github.sha }}"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

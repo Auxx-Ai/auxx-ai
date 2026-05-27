@@ -482,52 +482,6 @@ importers:
         specifier: 'catalog:'
         version: 5.9.2
 
-  apps/chat-widget:
-    dependencies:
-      '@auxx/ui':
-        specifier: workspace:*
-        version: link:../../packages/ui
-      class-variance-authority:
-        specifier: ^0.7.1
-        version: 0.7.1
-      clsx:
-        specifier: ^2.1.1
-        version: 2.1.1
-      lucide-react:
-        specifier: 'catalog:'
-        version: 0.575.0(react@19.2.3)
-      preact:
-        specifier: ^10.24.0
-        version: 10.28.4
-      pusher-js:
-        specifier: 'catalog:'
-        version: 8.4.0
-      radix-ui:
-        specifier: ^1.4.2
-        version: 1.4.3(@types/react-dom@19.2.3(@types/react@19.2.3))(@types/react@19.2.3)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
-      tailwind-merge:
-        specifier: ^3.3.1
-        version: 3.5.0
-    devDependencies:
-      '@auxx/typescript-config':
-        specifier: workspace:*
-        version: link:../../packages/typescript-config
-      '@tailwindcss/vite':
-        specifier: ^4.1.7
-        version: 4.3.0(vite@6.4.1(@types/node@22.19.13)(jiti@2.6.1)(lightningcss@1.32.0)(terser@5.46.0)(tsx@4.21.0)(yaml@2.8.2))
-      '@types/node':
-        specifier: 'catalog:'
-        version: 22.19.13
-      tailwindcss:
-        specifier: 'catalog:'
-        version: 4.2.1
-      typescript:
-        specifier: 'catalog:'
-        version: 5.9.2
-      vite:
-        specifier: 'catalog:'
-        version: 6.4.1(@types/node@22.19.13)(jiti@2.6.1)(lightningcss@1.32.0)(terser@5.46.0)(tsx@4.21.0)(yaml@2.8.2)
-
   apps/docs:
     dependencies:
       '@auxx/ui':
@@ -908,9 +862,9 @@ importers:
       '@auxx/billing':
         specifier: workspace:*
         version: link:../../packages/billing
-      '@auxx/chat-widget':
+      '@auxx/chat':
         specifier: workspace:*
-        version: link:../chat-widget
+        version: link:../../packages/chat
       '@auxx/config':
         specifier: workspace:*
         version: link:../../packages/config
@@ -1583,6 +1537,64 @@ importers:
       vitest:
         specifier: 'catalog:'
         version: 4.0.18(@opentelemetry/api@1.9.0)(@types/node@22.19.13)(@vitest/ui@4.0.18)(jiti@2.6.1)(jsdom@28.1.0(@noble/hashes@2.0.1))(lightningcss@1.32.0)(terser@5.46.0)(tsx@4.21.0)(yaml@2.8.2)
+
+  packages/chat:
+    dependencies:
+      '@auxx/ui':
+        specifier: workspace:*
+        version: link:../ui
+      class-variance-authority:
+        specifier: ^0.7.1
+        version: 0.7.1
+      clsx:
+        specifier: ^2.1.1
+        version: 2.1.1
+      jsonwebtoken:
+        specifier: ^9.0.2
+        version: 9.0.3
+      lucide-react:
+        specifier: 'catalog:'
+        version: 0.575.0(react@19.2.3)
+      preact:
+        specifier: ^10.24.0
+        version: 10.28.4
+      pusher-js:
+        specifier: 'catalog:'
+        version: 8.4.0
+      radix-ui:
+        specifier: ^1.4.2
+        version: 1.4.3(@types/react-dom@19.2.3(@types/react@19.2.3))(@types/react@19.2.3)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
+      tailwind-merge:
+        specifier: ^3.3.1
+        version: 3.5.0
+    devDependencies:
+      '@auxx/typescript-config':
+        specifier: workspace:*
+        version: link:../typescript-config
+      '@tailwindcss/vite':
+        specifier: ^4.1.7
+        version: 4.3.0(vite@6.4.1(@types/node@22.19.13)(jiti@2.6.1)(lightningcss@1.32.0)(terser@5.46.0)(tsx@4.21.0)(yaml@2.8.2))
+      '@types/jsonwebtoken':
+        specifier: ^9.0.7
+        version: 9.0.10
+      '@types/node':
+        specifier: 'catalog:'
+        version: 22.19.13
+      '@types/react':
+        specifier: 'catalog:'
+        version: 19.2.3
+      react:
+        specifier: 'catalog:'
+        version: 19.2.3
+      tailwindcss:
+        specifier: 'catalog:'
+        version: 4.2.1
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.2
+      vite:
+        specifier: 'catalog:'
+        version: 6.4.1(@types/node@22.19.13)(jiti@2.6.1)(lightningcss@1.32.0)(terser@5.46.0)(tsx@4.21.0)(yaml@2.8.2)
 
   packages/config:
     dependencies:
