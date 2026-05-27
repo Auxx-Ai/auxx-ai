@@ -2,8 +2,8 @@
 'use client'
 import { FieldType } from '@auxx/database/enums'
 import type { ChatWidgetWithIntegration } from '@auxx/lib/chat-widget/config'
-import { type ActorId, parseActorId, toActorId } from '@auxx/types/actor'
 import { getInstanceId, type RecordId, toRecordId } from '@auxx/types/resource'
+import { Alert } from '@auxx/ui/components/alert'
 import { Button } from '@auxx/ui/components/button'
 import { Form, FormField } from '@auxx/ui/components/form'
 import { RadioTab, RadioTabItem } from '@auxx/ui/components/radio-tab'
@@ -16,7 +16,6 @@ import {
   Power,
   Settings,
   ShieldCheck,
-  Sparkles,
   Tag,
   Trash2,
   Type as TypeIcon,
@@ -29,7 +28,6 @@ import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { InboxDialog } from '~/components/inbox/inbox-dialog'
-import { ActorPicker } from '~/components/pickers/actor-picker'
 import { useResource } from '~/components/resources/hooks/use-resource'
 import { MultiRelationInput } from '~/components/shared/multi-relation-input'
 import { BaseType } from '~/components/workflow/types'
@@ -123,18 +121,6 @@ export function GeneralSection({ widget, channelId, onDelete }: GeneralSectionPr
     update.mutate({ integrationId: channelId, inboxId: inbox.id })
   }
 
-  const rawAgentId = widget.chatWidget?.agentId ?? null
-  const agentActorIds: ActorId[] = rawAgentId ? [toActorId('agent', rawAgentId)] : []
-
-  const handleAgentChange = (ids: ActorId[]) => {
-    const next = ids[0]
-    if (!next) {
-      update.mutate({ integrationId: channelId, agentId: null })
-      return
-    }
-    const { id } = parseActorId(next)
-    update.mutate({ integrationId: channelId, agentId: id })
-  }
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)}>
@@ -255,23 +241,6 @@ export function GeneralSection({ widget, channelId, onDelete }: GeneralSectionPr
             </VarEditorFieldRow>
 
             <VarEditorFieldRow
-              title='AI Auto-Reply'
-              description='Pick an Agent that responds automatically to new chat messages. Leave unset to require a human reply.'
-              type={BaseType.ACTOR}
-              icon={<Sparkles className='size-3.5' />}
-              showIcon>
-              <ActorPicker
-                value={agentActorIds}
-                onChange={handleAgentChange}
-                multi={false}
-                target='agent'
-                emptyLabel='Choose an agent…'
-                disabled={update.isPending}
-                triggerProps={{ className: 'w-full ps-0 pe-1' }}
-              />
-            </VarEditorFieldRow>
-
-            <VarEditorFieldRow
               title='Privacy URL'
               description='When set, the widget shows a consent banner under the composer linking to this URL. Leave blank to hide.'
               type={BaseType.STRING}
@@ -338,19 +307,21 @@ export function GeneralSection({ widget, channelId, onDelete }: GeneralSectionPr
                 </p>
 
                 {field.value === 'users' && identityVerification === 'off' && (
-                  <div className='mt-3 flex items-center gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-900 dark:text-amber-200'>
-                    <AlertTriangle className='size-3.5 shrink-0' />
-                    <span className='flex-1'>
-                      Rollout is off — anonymous visitors can still chat. Start rollout on the
-                      Identity tab to lock down.
-                    </span>
-                    <button
-                      type='button'
-                      onClick={() => setActiveSection('identity')}
-                      className='shrink-0 font-medium underline'>
-                      Open Identity
-                    </button>
-                  </div>
+                  <Alert variant='warning' className='mt-3'>
+                    <AlertTriangle />
+                    <div className='flex items-center gap-2'>
+                      <span className='flex-1'>
+                        Rollout is off. Anonymous visitors can still chat. Start rollout on the
+                        Identity tab to lock down.
+                      </span>
+                      <button
+                        type='button'
+                        onClick={() => setActiveSection('identity')}
+                        className='shrink-0 font-medium underline'>
+                        Open Identity
+                      </button>
+                    </div>
+                  </Alert>
                 )}
               </>
             )}

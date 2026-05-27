@@ -8,6 +8,7 @@ import { Skeleton } from '@auxx/ui/components/skeleton'
 import { toastError } from '@auxx/ui/components/toast'
 import {
   AlertCircle,
+  Bot,
   Code,
   ExternalLink,
   Palette,
@@ -22,6 +23,7 @@ import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
 import { useChatWidget } from '../../hooks/use-chat-widget'
 import { MobilePreviewLauncher, PreviewPane } from './preview-pane'
+import { AiSection } from './sections/ai-section'
 import { AppearanceSection } from './sections/appearance-section'
 import { BehaviorSection } from './sections/behavior-section'
 import { GeneralSection } from './sections/general-section'
@@ -32,13 +34,14 @@ interface ChatWidgetSettingsProps {
   channelId: string
 }
 
-type SectionId = 'general' | 'setup' | 'appearance' | 'behavior' | 'identity'
+type SectionId = 'general' | 'setup' | 'appearance' | 'behavior' | 'ai' | 'identity'
 
 const SETTINGS_SECTIONS: { id: SectionId; label: string; icon: typeof Settings }[] = [
   { id: 'general', label: 'General', icon: Settings },
   { id: 'setup', label: 'Setup', icon: Code },
   { id: 'appearance', label: 'Appearance', icon: Palette },
   { id: 'behavior', label: 'Behavior', icon: SlidersHorizontal },
+  { id: 'ai', label: 'AI', icon: Bot },
   { id: 'identity', label: 'Identity', icon: ShieldCheck },
 ]
 
@@ -152,6 +155,8 @@ export function ChatWidgetSettings({ channelId }: ChatWidgetSettingsProps) {
         return <AppearanceSection widget={widget} channelId={channelId} />
       case 'behavior':
         return <BehaviorSection widget={widget} channelId={channelId} />
+      case 'ai':
+        return <AiSection widget={widget} channelId={channelId} />
       case 'identity':
         return <IdentitySection widget={widget} channelId={channelId} />
       default:
@@ -180,7 +185,7 @@ export function ChatWidgetSettings({ channelId }: ChatWidgetSettingsProps) {
           value={activeSection}
           onValueChange={setActiveSection}
           size='sm'
-          radioGroupClassName='grid w-full grid-cols-5'
+          radioGroupClassName='grid w-full grid-cols-6'
           className='border border-primary-200 flex w-full'>
           {SETTINGS_SECTIONS.map((section) => {
             const Icon = section.icon

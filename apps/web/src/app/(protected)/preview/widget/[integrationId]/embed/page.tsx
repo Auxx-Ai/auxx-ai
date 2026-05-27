@@ -17,7 +17,7 @@ const VALID_THEMES: PreviewTheme[] = ['light', 'dark', 'system']
  * wants and the page itself blends with whatever theme is around it.
  *
  * Behavior is driven by query params:
- * - `intent` (one of: general, setup, appearance, behavior, identity) —
+ * - `intent` (one of: general, setup, appearance, behavior, ai, identity) —
  *   accepted today so the parent can re-key the iframe on tab change; the
  *   widget itself doesn't read it yet because it lives in a closed shadow
  *   root that the embed page can't poke at from outside. Reserved for a
