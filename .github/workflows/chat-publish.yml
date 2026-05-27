@@ -105,6 +105,9 @@ jobs:
         working-directory: packages/chat
         run: pnpm run build
 
+      - name: Verify no workspace-only @auxx/* leaks into dist
+        run: node scripts/ci/check-package-exports.js
+
       - name: Verify package contents
         working-directory: packages/chat
         run: pnpm pack
