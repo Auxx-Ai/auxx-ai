@@ -40,6 +40,7 @@ import { InboxPicker } from '../pickers/inbox-picker'
 import { TagPicker } from '../pickers/tag-picker'
 import { RecordBadge } from '../resources/ui'
 import { ThreadHandoffControl } from './thread-handoff-control'
+import { ThreadParticipantButton } from './thread-participant-button'
 import { useThreadContext } from './thread-provider'
 import { ThreadTag } from './thread-tag'
 import { ThreadTicketControl } from './thread-ticket-control'
@@ -241,6 +242,7 @@ export function ThreadHeader() {
               <ThreadTicketControl />
             </div>
             {isChatChannel && <ThreadHandoffControl />}
+            <ThreadParticipantButton threadId={threadId} />
           </div>
           <div data-slot='thread-header-actions' className=' flex items-center '>
             <Tooltip content={isDone ? 'Unarchive' : 'Archive'} shortcut='D'>

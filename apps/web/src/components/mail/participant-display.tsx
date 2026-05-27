@@ -67,6 +67,7 @@ export const ParticipantDisplay: React.FC<ParticipantDisplayProps> = ({
   const isPrimary = role === 'FROM'
 
   const [, setContactId] = useQueryState('contactId', { defaultValue: '' })
+  const [, setParticipantId] = useQueryState('participantId', { defaultValue: '' })
   const { update } = useThreadMutation()
 
   const addExcludedSender = api.channel.addExcludedSender.useMutation({
@@ -85,7 +86,7 @@ export const ParticipantDisplay: React.FC<ParticipantDisplayProps> = ({
     return null
   }
 
-  const { identifier, identifierType, name, displayName, entityInstanceId, isInternal } =
+  const { id, identifier, identifierType, name, displayName, entityInstanceId, isInternal } =
     participant
   const displayLabel = displayName || identifier
 
@@ -99,8 +100,13 @@ export const ParticipantDisplay: React.FC<ParticipantDisplayProps> = ({
     !isInternal
 
   function handleShowDetails() {
-    if (!entityInstanceId) return
-    void setContactId(entityInstanceId)
+    if (entityInstanceId) {
+      void setParticipantId('')
+      void setContactId(entityInstanceId)
+    } else {
+      void setContactId('')
+      void setParticipantId(id)
+    }
   }
 
   return (
@@ -126,7 +132,7 @@ export const ParticipantDisplay: React.FC<ParticipantDisplayProps> = ({
               Copy '{name}'
             </DropdownMenuItem>
           )}
-          <DropdownMenuItem onSelect={handleShowDetails} disabled={!entityInstanceId}>
+          <DropdownMenuItem onSelect={handleShowDetails}>
             <User />
             Show details
           </DropdownMenuItem>

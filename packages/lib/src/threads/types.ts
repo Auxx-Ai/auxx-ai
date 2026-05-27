@@ -142,6 +142,13 @@ export interface ThreadMeta {
    * happens regardless). Drives the take-over / return-to-AI buttons.
    */
   handoffState: 'ai' | 'human'
+
+  /**
+   * Channel-specific extras stored on `Thread.metadata` (JSONB). Chat threads
+   * carry `ChatThreadMetadata` here; other channels may carry `{ importance }`
+   * or be null. Loose shape — not enforced at the DB level.
+   */
+  metadata: Record<string, unknown> | null
 }
 
 /**
