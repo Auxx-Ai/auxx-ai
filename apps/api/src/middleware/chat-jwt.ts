@@ -47,11 +47,28 @@ export const chatUserJwtMiddleware: MiddlewareHandler = async (c, next) => {
     return next()
   }
 
+  // Only JSON bodies carry the user_data envelope. Reading any other
+  // content type (e.g. application/x-www-form-urlencoded from
+  // /pusher/auth) would consume the stream before the route handler can
+  // parse it, breaking the downstream handler.
+  const contentType = c.req.header('content-type') ?? ''
+  if (!contentType.toLowerCase().includes('application/json')) {
+    c.set('chatJwt', { verified: false, reason: 'absent' })
+    if (enforced) {
+      log.warn('Chat request rejected — enforced channel, non-JSON body', {
+        channelId: passport.channelId,
+        contentType,
+      })
+      return rejectEnforced('IDENTITY_REQUIRED', 'This chat channel requires a signed user JWT')
+    }
+    return next()
+  }
+
   let body: unknown = null
   try {
     body = await c.req.json()
   } catch {
-    // Not JSON or empty body — treat as absent.
+    // Empty / malformed JSON — treat as absent.
     c.set('chatJwt', { verified: false, reason: 'absent' })
     if (enforced) {
       log.warn('Chat request rejected — enforced channel, no JWT body', {

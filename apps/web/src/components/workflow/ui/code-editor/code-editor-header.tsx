@@ -36,15 +36,19 @@ const ToggleExpandBtn: React.FC<{
 /**
  * Language badge component
  */
-const LanguageBadge: React.FC<{ language: CodeLanguage }> = ({ language }) => {
-  const displayName = language === CodeLanguage.javascript ? 'JS' : 'JSON'
-
-  return (
-    <span className='inline-flex items-center rounded bg-primary-100 px-1.5 py-0.5 text-xs font-medium text-primary-700'>
-      {displayName}
-    </span>
-  )
+const LANGUAGE_BADGE: Record<CodeLanguage, string> = {
+  [CodeLanguage.javascript]: 'JS',
+  [CodeLanguage.json]: 'JSON',
+  [CodeLanguage.html]: 'HTML',
+  [CodeLanguage.shell]: 'Bash',
+  [CodeLanguage.typescript]: 'TS',
 }
+
+const LanguageBadge: React.FC<{ language: CodeLanguage }> = ({ language }) => (
+  <span className='inline-flex items-center rounded bg-primary-100 px-1.5 py-0.5 text-xs font-medium text-primary-700'>
+    {LANGUAGE_BADGE[language]}
+  </span>
+)
 
 /**
  * CodeEditor Header Component

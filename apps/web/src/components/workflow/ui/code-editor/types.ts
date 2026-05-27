@@ -5,11 +5,17 @@ import type React from 'react'
 export enum CodeLanguage {
   javascript = 'javascript',
   json = 'json',
+  html = 'html',
+  shell = 'shell',
+  typescript = 'typescript',
 }
 
 export const languageMap: Record<CodeLanguage, string> = {
   [CodeLanguage.javascript]: 'javascript',
   [CodeLanguage.json]: 'json',
+  [CodeLanguage.html]: 'html',
+  [CodeLanguage.shell]: 'shell',
+  [CodeLanguage.typescript]: 'typescript',
 }
 
 /** Input variable for code generation */

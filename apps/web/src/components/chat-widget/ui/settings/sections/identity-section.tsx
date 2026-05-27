@@ -21,6 +21,7 @@ import {
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { useCopy } from '@auxx/ui/hooks/use-copy'
 import {
+  ArrowUpRight,
   Check,
   Copy,
   Globe,
@@ -30,6 +31,7 @@ import {
   Terminal,
   Trash2,
 } from 'lucide-react'
+import { useQueryState } from 'nuqs'
 import { useCallback, useState } from 'react'
 import { EmailFilterSection } from '~/app/(protected)/app/settings/channels/_components/email-list-dialog'
 import { Tooltip } from '~/components/global/tooltip'
@@ -44,6 +46,7 @@ interface IdentitySectionProps {
 export function IdentitySection({ widget, channelId }: IdentitySectionProps) {
   const utils = api.useUtils()
   const [confirm, ConfirmDialog] = useConfirm()
+  const [, setActiveSection] = useQueryState('s')
   const [newlyCreatedKey, setNewlyCreatedKey] = useState<string | null>(null)
   const {
     copied: copiedKey,
@@ -145,6 +148,16 @@ export function IdentitySection({ widget, channelId }: IdentitySectionProps) {
               widget can prove who the visitor is. Phase 3 wires verification end-to-end; for now,
               you can mint and rotate keys here.
             </p>
+          </div>
+
+          <div className='mb-2 flex justify-end'>
+            <button
+              type='button'
+              onClick={() => setActiveSection('setup')}
+              className='inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline'>
+              See Setup for framework-specific install instructions
+              <ArrowUpRight className='size-3' />
+            </button>
           </div>
 
           <EnforcementCard

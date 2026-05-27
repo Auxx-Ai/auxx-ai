@@ -3,43 +3,226 @@ title: Chat Widget
 description: Embed the Auxx chat widget on your site to route live conversations and AI replies into your inbox.
 ---
 
-The chat widget is a small script you drop into your site's HTML. Visitors get a launcher in the corner of the page; messages land in the inbox you've connected to the widget and can be answered by your team or an AI agent.
+The chat widget runs in your visitors' browsers and routes their messages into the inbox you've connected to the widget. Pick the install path that matches your stack — every option ends up in the same place.
 
 ## Prerequisites
 
 - A chat widget created in **Settings → Channels → Chat Widget**.
 - An inbox the widget routes conversations into (set on the widget's **General** tab).
-- Access to your site's HTML or template — the snippet needs to run on every page where the widget should appear.
+- Your widget's **channel id** — find it in **Settings → Channels → your widget → Setup**. Every snippet on this page uses `<channelId>` as a placeholder.
 
-## 1. Paste the install snippet
+## 1. Install the widget
 
-Open your widget in **Settings → Channels**, go to the **General** tab, and find the **Install** section. Copy the snippet — it looks like:
+Open your widget in **Settings → Channels → Setup** and copy the snippet that matches your stack. The Setup tab generates the exact same snippets shown here, with your real channel id pre-filled.
+
+<Tabs items={['Basic JS', 'npm', 'SPA', 'React', 'Vue', 'Angular']}>
+
+<Tab value="Basic JS">
+
+Paste this just before `</body>` on every page that should show the widget. No build step, no framework — works on any HTML page.
 
 ```html
-<script src="https://app.auxx.ai/api/integrations/chat/INTEGRATION_ID/script.js" async defer></script>
+<script
+  src="https://app.auxx.ai/scripts/chat-widget.js"
+  data-channel-id="<channelId>"
+  async defer></script>
 ```
 
-Paste it into your site's HTML just before the closing `</body>` tag, on every page the widget should appear on.
+The bundle is a single static asset served from our CDN. The `data-channel-id` attribute is the only piece that's customer-specific.
+
+</Tab>
+
+<Tab value="npm">
+
+Install the package and call `boot` once after the page loads.
+
+```bash
+npm install @auxx/chat
+```
+
+```ts
+import Auxx from '@auxx/chat'
+
+Auxx.boot({ channelId: '<channelId>' })
+```
+
+To pass visitor info or a verified-identity JWT, call `Auxx.boot` again with the same `channelId` — same-channel re-boots are a soft refresh.
+
+</Tab>
+
+<Tab value="SPA">
+
+In a single-page app you usually want full control over the widget lifecycle: boot on login, push attribute updates without a re-init, shut down on logout so the next user starts cold.
+
+```ts
+import Auxx from '@auxx/chat'
+
+// On app start / login
+Auxx.boot({ channelId: '<channelId>', userJwt })
+
+// On user data change (no reboot)
+Auxx.update({ plan: 'pro' })
+
+// On logout
+Auxx.shutdown()
+```
+
+Same package as the npm install — this snippet is about how to drive its `boot` / `update` / `shutdown` API across your app's lifecycle.
+
+</Tab>
+
+<Tab value="React">
+
+```bash
+npm install @auxx/chat
+```
+
+```tsx
+import { AuxxChat } from '@auxx/chat/react'
+
+export function AppRoot() {
+  return (
+    <>
+      {/* … your app … */}
+      <AuxxChat channelId="<channelId>" userJwt={token} />
+    </>
+  )
+}
+```
+
+Mount once at your app root. The component runs `Auxx.boot` on mount, `Auxx.update` when its serialized attributes change, and `Auxx.shutdown` on unmount.
+
+</Tab>
+
+<Tab value="Vue">
+
+```bash
+npm install @auxx/chat
+```
+
+Create a thin wrapper component:
+
+```vue
+<!-- components/AuxxChat.vue -->
+<script setup lang="ts">
+import { onMounted, onUnmounted, watch } from 'vue'
+import Auxx from '@auxx/chat'
+
+const props = defineProps<{
+  channelId: string
+  userJwt?: string
+  attributes?: Record<string, unknown>
+}>()
+
+onMounted(() => {
+  Auxx.boot({
+    channelId: props.channelId,
+    userJwt: props.userJwt,
+    attributes: props.attributes,
+  })
+})
+onUnmounted(() => {
+  Auxx.shutdown()
+})
+watch(
+  () => props.attributes,
+  (next) => next && Auxx.update(next),
+  { deep: true }
+)
+</script>
+
+<template></template>
+```
+
+Then mount it once at your app root:
+
+```vue
+<!-- App.vue -->
+<script setup lang="ts">
+import AuxxChat from './components/AuxxChat.vue'
+</script>
+
+<template>
+  <!-- … your app … -->
+  <AuxxChat channel-id="<channelId>" :user-jwt="token" />
+</template>
+```
+
+</Tab>
+
+<Tab value="Angular">
+
+```bash
+npm install @auxx/chat
+```
+
+Create a thin wrapper component:
+
+```ts
+// auxx-chat.component.ts
+import { Component, Input, OnDestroy, OnInit } from '@angular/core'
+import Auxx from '@auxx/chat'
+
+@Component({ selector: 'auxx-chat', template: '' })
+export class AuxxChatComponent implements OnInit, OnDestroy {
+  @Input() channelId!: string
+  @Input() userJwt?: string
+
+  ngOnInit() {
+    Auxx.boot({ channelId: this.channelId, userJwt: this.userJwt })
+  }
+  ngOnDestroy() {
+    Auxx.shutdown()
+  }
+}
+```
+
+Declare it in your app module, then drop it in once at the root:
+
+```html
+<!-- app.component.html -->
+<!-- … your app … -->
+<auxx-chat channelId="<channelId>" [userJwt]="token"></auxx-chat>
+```
+
+</Tab>
+
+</Tabs>
 
 ## 2. Configure allowed domains (optional)
 
 By default the widget loads on any site you embed it on. To restrict that:
 
-1. Open the widget's **Domains** tab.
+1. Open the widget's **Identity** tab.
 2. Add each domain that should be allowed to embed the widget — bare hostnames only, no protocol (`example.com`, not `https://example.com`).
 3. Subdomains of an allowed domain pass automatically — adding `example.com` also allows `app.example.com`.
 
-Leave the list empty if you want the widget to load anywhere.
+Leave the list empty to allow the widget to load anywhere.
 
 ## 3. Identify the visitor (optional)
 
-If you know who's on the page — for example after a user signs in — pass their info to the widget so the conversation is attached to a known visitor instead of an anonymous one.
+If you know who's on the page — typically after a user signs in — pass their info to the widget so the conversation attaches to a known visitor instead of an anonymous one.
 
-There are two patterns, pick whichever fits your setup.
+### Pass identity at boot
 
-### Queue-style — call before the bundle loads
+When using the npm package, React, Vue, or Angular install paths, pass an identity payload directly to `Auxx.boot`:
 
-Push commands onto a `window.AuxxChat` array before the script tag. The widget drains the queue once it boots.
+```ts
+import Auxx from '@auxx/chat'
+
+Auxx.boot({
+  channelId: '<channelId>',
+  attributes: {
+    name: 'Jane Doe',
+    email: 'jane@acme.com',
+    externalId: 'cus_123',
+  },
+})
+```
+
+### Queue-style identify
+
+If your visitor data is rendered into the page server-side (e.g. a Rails or Django template), push commands onto a `window.AuxxChat` array before the script tag. The widget drains the queue once it boots — works with any install path, but it's most natural with the Basic JS snippet.
 
 ```html
 <script>
@@ -50,42 +233,56 @@ Push commands onto a `window.AuxxChat` array before the script tag. The widget d
     externalId: 'cus_123'
   }]);
 </script>
-<script src="https://app.auxx.ai/api/integrations/chat/INTEGRATION_ID/script.js" async defer></script>
+<script
+  src="https://app.auxx.ai/scripts/chat-widget.js"
+  data-channel-id="<channelId>"
+  async defer></script>
 ```
 
-### Direct call — after the bundle has loaded
-
-Call `identify` directly after the widget script is on the page (typical in single-page apps after a login event):
+Or call `identify` directly after the bundle has loaded:
 
 ```js
 window.AuxxChat.identify({
   email: 'jane@acme.com',
-  externalId: 'cus_123'
+  externalId: 'cus_123',
 })
 ```
 
 ### Payload reference
 
-| Field        | Type     | Notes                                                                |
-| ------------ | -------- | -------------------------------------------------------------------- |
-| `name`       | string   | Display name shown in the inbox.                                     |
-| `email`      | string   | Used to match or create a contact.                                   |
-| `externalId` | string   | Your stable visitor key (e.g. your user id). Recommended for matching. |
+| Field        | Type   | Notes                                                                  |
+| ------------ | ------ | ---------------------------------------------------------------------- |
+| `name`       | string | Display name shown in the inbox.                                       |
+| `email`      | string | Used to match or create a contact.                                     |
+| `externalId` | string | Your stable visitor key (e.g. your user id). Recommended for matching. |
 
 All three fields are optional, but at least one must be non-empty for the call to register. Empty strings are dropped, and the most recent payload is persisted to `sessionStorage` so calling `identify` on every page load is safe.
 
-## 4. Verify the install
+## 4. Verify identity with a JWT (recommended)
+
+Anyone can call `identify` from the browser, so the email or external id you pass is only as trustworthy as the visitor's tab. For sensitive surfaces (account info, billing, support history), sign a short-lived JWT on your server with one of your widget's signing keys and pass it as `userJwt`.
+
+1. Open the widget's **Identity** tab.
+2. Click **Create signing key** and copy the secret — it's only shown once.
+3. Sign a JWT for the current visitor on your server using that secret.
+4. Pass the token to `Auxx.boot({ channelId, userJwt })`.
+5. Once your server reliably signs every visitor, click **Enforce** to reject anonymous traffic.
+
+The Identity tab walks through this end-to-end with the exact code snippets to paste on your server.
+
+## 5. Verify the install
 
 Open a page that includes the snippet — you should see the launcher in the configured corner. If it doesn't appear:
 
-- Check the **Domains** tab — if you've restricted domains, the current page's hostname must be in the list (or be a subdomain of one).
+- Check **Identity → Allowed Domains** — if you've restricted domains, the current page's hostname must be in the list (or be a subdomain of one).
 - Open the browser console and look for Content Security Policy errors blocking the script src.
 - Confirm the snippet is actually in the rendered HTML (some CMS templates strip script tags).
 
-You can also use the **Open preview** button at the top of the widget settings to load a live preview in a popup — useful for smoke-testing settings without touching your live site.
+You can also use the **Open preview** button at the top of widget settings to load a live preview in a popup — useful for smoke-testing settings without touching your live site.
 
 ## Troubleshooting
 
-- **Launcher doesn't appear** — check domain allowlist, browser console errors, and that the snippet is in the rendered HTML.
+- **Launcher doesn't appear** — check the allowed-domain list, browser console errors, and that the snippet is in the rendered HTML.
 - **`identify` doesn't take effect** — confirm at least one field is non-empty and that the command string is exactly `'identify'`.
+- **Identity enforcement rejects requests** — the JWT may be expired or signed with a revoked key. Mint a new signing key, sign with the new secret, then revoke the old key once the rollout is complete.
 - **AI auto-reply isn't firing** — verify an agent is selected in **General → AI Auto-Reply** and that auto-reply behaviour is enabled in the **Behavior** tab.
