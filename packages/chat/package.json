@@ -1,0 +1,75 @@
+{
+  "name": "@auxx/chat",
+  "version": "0.0.1",
+  "description": "Auxx chat widget — npm package with browser bootstrap, server JWT signer, and React wrapper.",
+  "type": "module",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/client/client/index.d.ts",
+      "import": "./dist/client/client/index.js",
+      "browser": "./dist/client/client/index.js"
+    },
+    "./server": {
+      "types": "./dist/server/server/index.d.ts",
+      "import": "./dist/server/server/index.js"
+    },
+    "./react": {
+      "types": "./dist/react/react/index.d.ts",
+      "import": "./dist/react/react/index.js"
+    },
+    "./widget-bundle": {
+      "default": "./dist/widget-bundle/auxx-chat.js"
+    }
+  },
+  "scripts": {
+    "dev": "vite build --watch",
+    "build": "pnpm run build:bundle && pnpm run build:entries",
+    "build:bundle": "vite build",
+    "build:entries": "tsc -p tsconfig.client.json && tsc -p tsconfig.server.json && tsc -p tsconfig.react.json",
+    "clean": "rm -rf dist node_modules .turbo *.tsbuildinfo",
+    "prepublishOnly": "pnpm run build"
+  },
+  "dependencies": {
+    "@auxx/ui": "workspace:*",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "jsonwebtoken": "^9.0.2",
+    "lucide-react": "catalog:",
+    "preact": "^10.24.0",
+    "pusher-js": "catalog:",
+    "radix-ui": "^1.4.2",
+    "tailwind-merge": "^3.3.1"
+  },
+  "peerDependencies": {
+    "react": ">=18"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@auxx/typescript-config": "workspace:*",
+    "@tailwindcss/vite": "^4.1.7",
+    "@types/jsonwebtoken": "^9.0.7",
+    "@types/node": "catalog:",
+    "@types/react": "catalog:",
+    "react": "catalog:",
+    "tailwindcss": "catalog:",
+    "typescript": "catalog:",
+    "vite": "catalog:"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Auxx-Ai/auxx-ai.git",
+    "directory": "packages/chat"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org"
+  }
+}

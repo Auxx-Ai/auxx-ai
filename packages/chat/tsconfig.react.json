@@ -1,0 +1,18 @@
+{
+  "extends": "@auxx/typescript-config/base.json",
+  "compilerOptions": {
+    "outDir": "dist/react",
+    "rootDir": "src",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": ["node"],
+    "jsx": "react-jsx",
+    "declaration": true,
+    "declarationMap": true,
+    "composite": false,
+    "tsBuildInfoFile": "dist/.tsbuildinfo.react"
+  },
+  "include": ["src/react/**/*", "src/client/**/*", "src/shared/env.ts", "src/globals.d.ts"]
+}

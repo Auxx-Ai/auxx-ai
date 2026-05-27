@@ -28,7 +28,7 @@
   },
   "dependencies": {
     "@auxx/billing": "workspace:*",
-    "@auxx/chat-widget": "workspace:*",
+    "@auxx/chat": "workspace:*",
     "@auxx/config": "workspace:*",
     "@auxx/credentials": "workspace:*",
     "@auxx/database": "workspace:*",
