@@ -14,7 +14,7 @@ import {
   type StoredFieldValue,
   useFieldValueStore,
 } from '../store/field-value-store'
-import { type RecordMeta, useRecordStore } from '../store/record-store'
+import { type RecordMeta, type RecordStoreState, useRecordStore } from '../store/record-store'
 
 /**
  * Options for useAllRecords hook
@@ -139,6 +139,32 @@ export function useAllRecords<T extends RecordMeta = RecordMeta>(
   // Stable string key for selector memoization
   const keysKey = fieldValueKeys.join(',')
 
+  // Stable list of record ids for the current page (for meta overlay below)
+  const recordIds = useMemo(() => (data?.items ?? []).map((item) => item.id), [data?.items])
+  const idsKey = recordIds.join(',')
+
+  // Subscribe to the per-record meta (displayName / secondaryDisplayValue / avatarUrl)
+  // from the record store. Realtime keeps these fresh via use-resource-sync; the
+  // listAll React Query payload doesn't. Reading from the store here lets denormalized
+  // columns flow through to consumers the same way fieldValues already do.
+  const storeMetas = useRecordStore(
+    useShallow(
+      // biome-ignore lint/correctness/useExhaustiveDependencies: recordIds is captured from the same render as idsKey; idsKey serves as the stable content key
+      useCallback(
+        (state: RecordStoreState): Record<string, RecordMeta | undefined> => {
+          if (!resolvedEntityDefId) return {}
+          const bucket = state.records[resolvedEntityDefId]
+          if (!bucket) return {}
+          const result: Record<string, RecordMeta | undefined> = {}
+          for (const id of recordIds) result[id] = bucket.get(id)
+          return result
+        },
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [resolvedEntityDefId, idsKey]
+      )
+    )
+  )
+
   // Subscribe to ONLY the field values we need (prevents re-renders from unrelated changes)
   const relevantFieldValues = useFieldValueStore(
     useShallow(
@@ -194,6 +220,7 @@ export function useAllRecords<T extends RecordMeta = RecordMeta>(
 
     return data.items.map((item) => {
       const recordId = toRecordId(resolvedEntityDefId, item.id)
+      const storeMeta = storeMetas[item.id]
 
       // Build field values by reading from store (includes optimistic updates)
       const composedFieldValues: Record<string, unknown> = {}
@@ -211,12 +238,26 @@ export function useAllRecords<T extends RecordMeta = RecordMeta>(
         }
       }
 
+      // Overlay denormalized columns from the record store. Realtime keeps these
+      // fresh after every record:updated event; falls back to the listAll payload
+      // on the first render before the store is populated.
       return {
         ...item,
+        displayName: (storeMeta?.displayName as string | undefined) ?? item.displayName,
+        secondaryDisplayValue:
+          (storeMeta?.secondaryDisplayValue as string | undefined) ?? item.secondaryDisplayValue,
+        avatarUrl: (storeMeta?.avatarUrl as string | undefined) ?? item.avatarUrl,
         fieldValues: composedFieldValues,
       }
     })
-  }, [data?.items, data?.fields, resolvedEntityDefId, relevantFieldValues, resolveFieldId])
+  }, [
+    data?.items,
+    data?.fields,
+    resolvedEntityDefId,
+    relevantFieldValues,
+    resolveFieldId,
+    storeMetas,
+  ])
 
   return {
     records: records as T[],

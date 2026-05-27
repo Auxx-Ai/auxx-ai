@@ -880,6 +880,7 @@ export class ThreadQueryService {
           draftIds: draftIdsByThread.get(id) ?? [],
           scheduledMessageCount: scheduledCountMap.get(id) ?? 0,
           handoffState: t.handoffState,
+          metadata: (t.metadata as Record<string, unknown> | null) ?? null,
         } satisfies ThreadMeta
       })
       .filter(Boolean) as ThreadMeta[]

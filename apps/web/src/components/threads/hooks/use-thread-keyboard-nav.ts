@@ -152,11 +152,16 @@ export function useThreadKeyboardNav({
     conflictBehavior: 'allow',
   })
 
-  // Escape - clear selection
-  useHotkey('Escape', () => useThreadSelectionStore.getState().clearSelection(), {
-    enabled,
-    conflictBehavior: 'allow',
-  })
+  // Escape - clear selection. Defer to open Radix popovers/dropdowns so they
+  // can dismiss themselves first (Dialog/Drawer stop propagation on their own).
+  useHotkey(
+    'Escape',
+    () => {
+      if (document.querySelector('[data-radix-popper-content-wrapper]')) return
+      useThreadSelectionStore.getState().clearSelection()
+    },
+    { enabled, conflictBehavior: 'allow' }
+  )
 
   // Toggle view mode (view/edit)
   useHotkey(

@@ -58,6 +58,7 @@ import { ThreadDisplay } from '~/components/mail/thread-display'
 import { ThreadNavToolbar } from '~/components/mail/thread-nav-toolbar'
 import { NestedThreadProvider } from '~/components/mail/thread-provider'
 import type { ThreadsFilterInput } from '~/components/mail/types'
+import { ParticipantDrawer } from '~/components/participants/drawer/participant-drawer'
 import { RecordDrawer } from '~/components/records/record-drawer'
 import {
   useActiveThreadId,
@@ -200,6 +201,8 @@ function MailboxInner({
   const isContactDrawerOpen = !!contactId
   const [openTicketId, setOpenTicketId] = useQueryState('ticketId', { defaultValue: '' })
   const isTicketDrawerOpen = !!openTicketId
+  const [participantId, setParticipantId] = useQueryState('participantId', { defaultValue: '' })
+  const isParticipantDrawerOpen = !!participantId
 
   // Kopilot — page-level mount lives in the JSX below. Active-thread/contact/
   // ticket context is contributed by their respective drawer components.
@@ -439,6 +442,14 @@ function MailboxInner({
     [openTicketId, setOpenTicketId]
   )
 
+  // Handle closing participant drawer
+  const handleParticipantDrawerClose = useCallback(
+    (open: boolean) => {
+      void setParticipantId(open ? participantId : '')
+    },
+    [participantId, setParticipantId]
+  )
+
   // Build docked panels for contact + ticket drawers
   const dockedPanels = useMemo<DockedPanelConfig[]>(() => {
     const panels: DockedPanelConfig[] = []
@@ -479,6 +490,23 @@ function MailboxInner({
       })
     }
 
+    if (isDocked && isParticipantDrawerOpen) {
+      panels.push({
+        key: 'participant',
+        content: (
+          <ParticipantDrawer
+            participantId={participantId}
+            open={isParticipantDrawerOpen}
+            onOpenChange={handleParticipantDrawerClose}
+          />
+        ),
+        width: dockedWidth,
+        onWidthChange: setDockedWidth,
+        minWidth,
+        maxWidth,
+      })
+    }
+
     return panels
   }, [
     isDocked,
@@ -488,6 +516,9 @@ function MailboxInner({
     isTicketDrawerOpen,
     openTicketId,
     handleTicketDrawerClose,
+    isParticipantDrawerOpen,
+    participantId,
+    handleParticipantDrawerClose,
     dockedWidth,
     setDockedWidth,
     minWidth,
@@ -697,6 +728,15 @@ function MailboxInner({
             onOpenChange={handleTicketDrawerClose}
           />
         </NestedThreadProvider>
+      )}
+
+      {/* Overlay participant drawer when NOT docked */}
+      {!isDocked && (
+        <ParticipantDrawer
+          participantId={participantId}
+          open={isParticipantDrawerOpen}
+          onOpenChange={handleParticipantDrawerClose}
+        />
       )}
     </MailFilterProvider>
   )

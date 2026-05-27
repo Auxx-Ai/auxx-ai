@@ -147,6 +147,12 @@ export interface ThreadMeta {
   updatedAt?: string
   /** Chat-only: AI vs human handoff state. Drives the take-over button UI. */
   handoffState?: 'ai' | 'human'
+  /**
+   * Channel-specific extras (`Thread.metadata` JSONB). Patch semantics: omit =
+   * unchanged; `null` = clear; object = full replacement. Chat threads carry
+   * `ChatThreadMetadata`; other channels may carry `{ importance }`.
+   */
+  metadata?: Record<string, unknown> | null
 }
 
 /**

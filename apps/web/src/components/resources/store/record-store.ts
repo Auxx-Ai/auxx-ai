@@ -44,7 +44,7 @@ interface ListCache {
   nextCursor: string | null
 }
 
-interface RecordStoreState {
+export interface RecordStoreState {
   // ─────────────────────────────────────────────────────────────────
   // STATE
   // ─────────────────────────────────────────────────────────────────
