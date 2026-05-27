@@ -96,11 +96,13 @@ const nextConfig = {
       { key: 'Cross-Origin-Opener-Policy', value: 'same-origin-allow-popups' },
     ]
     return [
-      // Everything except /embed/* gets the strict no-framing policy.
-      // The extension iframe at /embed/* needs to be framed by the
-      // chrome-extension origin; CSP for that path is set in proxy.ts.
+      // Everything except /embed/* and the chat-widget preview embed gets the
+      // strict no-framing policy. The extension iframe at /embed/* needs to
+      // be framed by the chrome-extension origin (CSP set in proxy.ts), and
+      // /preview/widget/*/embed needs to be framed same-origin by the chat-
+      // widget settings page (live preview pane in apps/web/.../settings).
       {
-        source: '/((?!embed/).*)',
+        source: '/((?!embed/|preview/widget/[^/]+/embed).*)',
         headers: [
           ...baselineHeaders,
           { key: 'X-Frame-Options', value: 'DENY' },
@@ -113,6 +115,18 @@ const nextConfig = {
       {
         source: '/embed/:path*',
         headers: baselineHeaders,
+      },
+      // Same-origin framing for the chat-widget live preview pane.
+      {
+        source: '/preview/widget/:integrationId/embed',
+        headers: [
+          ...baselineHeaders,
+          { key: 'X-Frame-Options', value: 'SAMEORIGIN' },
+          {
+            key: 'Content-Security-Policy',
+            value: "frame-ancestors 'self'; upgrade-insecure-requests",
+          },
+        ],
       },
     ]
   },

@@ -19,6 +19,7 @@ import type { NavFrame, NavView } from './navigation/use-navigation-stack'
 import { type TabId, useTabRouter } from './navigation/use-tab-router'
 import { getLastReadAt } from './persistence/unread'
 import { useShadowRoot } from './shadow-root'
+import { getPreviewRounded, getStartOpen } from './shared/runtime-config'
 import { hexToOklchHue } from './theme/hex-to-oklch-hue'
 import { useResolvedTheme } from './theme/use-resolved-theme'
 import { chatApi } from './transport/chat-api'
@@ -154,6 +155,7 @@ export function Widget({ channelId, cacheBust = null, scriptTheme }: WidgetProps
     const rootEl = shadowRoot?.querySelector('.auxx-root') as HTMLElement | null
     if (!rootEl) return
     rootEl.setAttribute('data-theme', resolvedTheme)
+    if (getPreviewRounded()) rootEl.setAttribute('data-preview-rounded', 'true')
     if (primaryColor) rootEl.style.setProperty('--auxx-chat-primary', primaryColor)
     if (tintHue !== null) rootEl.style.setProperty('--auxx-chat-tint-h', String(tintHue))
     if (primaryColorDark) rootEl.style.setProperty('--auxx-chat-primary-dark', primaryColorDark)
@@ -182,7 +184,7 @@ export function Widget({ channelId, cacheBust = null, scriptTheme }: WidgetProps
     fetchChatConfig(channelId, cacheBust)
       .then((c) => {
         setConfig(c)
-        if (c.appearance.autoOpen) setOpen(true)
+        if (c.appearance.autoOpen || getStartOpen()) setOpen(true)
       })
       .catch((e) => setError(e instanceof Error ? e.message : 'Failed to load chat'))
   }, [channelId, cacheBust])

@@ -129,8 +129,8 @@ export function AppearanceSection({ widget, channelId }: AppearanceSectionProps)
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)}>
-        <div className='flex flex-col lg:flex-row'>
-          <div className='flex-1 p-6 lg:pr-6'>
+        <div className='p-6 space-y-8'>
+          <div>
             <div className='space-y-1 mb-6'>
               <div className='flex items-center gap-2 text-base font-semibold tracking-tight text-foreground'>
                 <Palette className='size-4' /> Branding
@@ -361,7 +361,7 @@ export function AppearanceSection({ widget, channelId }: AppearanceSectionProps)
             </VarEditorField>
           </div>
 
-          <div className='flex-1 border-t lg:border-t-0 lg:border-l p-6 lg:pl-6'>
+          <div>
             <div className='space-y-1 mb-6'>
               <div className='flex items-center gap-2 text-base font-semibold tracking-tight text-foreground'>
                 <MessageSquare className='size-4' /> Greeting
