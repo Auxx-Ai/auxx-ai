@@ -23,6 +23,8 @@ export type {
   InitializeChatThreadResult,
 } from './session'
 export { initializeOrResumeChatThread } from './session'
+export type { SignChannelUserJwtOptions, SignChannelUserJwtPayload } from './sign-jwt'
+export { signChannelUserJwt } from './sign-jwt'
 export type { ChatAttachment, ServiceContext, VisitInfo } from './types'
 export type { ChatJwtError, VerifiedChatUserJwt } from './verify-jwt'
 export { hashChatUserJwt, verifyChannelUserJwt } from './verify-jwt'

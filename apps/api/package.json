@@ -14,7 +14,6 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@auxx/chat": "workspace:*",
     "@auxx/config": "workspace:*",
     "@auxx/credentials": "workspace:*",
     "@auxx/database": "workspace:*",
