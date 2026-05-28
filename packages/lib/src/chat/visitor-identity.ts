@@ -4,9 +4,10 @@ import { schema } from '@auxx/database'
 import type { ParticipantEntity } from '@auxx/database/types'
 import { and, eq } from 'drizzle-orm'
 import { BadRequestError } from '../errors'
+import type { GeoLocation } from '../geo'
 import { Result, type TypedResult } from '../result'
-import { formatVisitorLabel } from './labels'
 import type { ServiceContext } from './types'
+import { generateVisitorName } from './visitor-naming'
 
 /**
  * Find or create the {@link schema.Participant} row representing a chat-widget
@@ -19,7 +20,7 @@ import type { ServiceContext } from './types'
 export async function findOrCreateVisitorParticipant(
   ctx: ServiceContext,
   visitorId: string,
-  opts?: { displayName?: string }
+  opts?: { displayName?: string; geo?: GeoLocation | null }
 ): Promise<TypedResult<ParticipantEntity, Error>> {
   if (!visitorId) {
     return Result.error(new BadRequestError('visitorId is required'))
@@ -37,7 +38,7 @@ export async function findOrCreateVisitorParticipant(
       return Result.ok(existing)
     }
 
-    const fallback = formatVisitorLabel(visitorId)
+    const fallback = generateVisitorName(visitorId, opts?.geo?.city)
     const [created] = await ctx.db
       .insert(schema.Participant)
       .values({

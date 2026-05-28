@@ -5,6 +5,7 @@ import { issueChatPassport } from '@auxx/credentials/passport'
 import { database, schema } from '@auxx/database'
 import { resolveChatAttributes, verifyChannelUserJwt } from '@auxx/lib/chat'
 import { findOrCreateVisitorParticipant } from '@auxx/lib/chat-widget/visitor'
+import { type GeoLocation, lookupIp } from '@auxx/lib/geo'
 import { findOrCreateContactFromJwt } from '@auxx/lib/ingest'
 import { RedisRateLimiter } from '@auxx/lib/utils/rate-limiter'
 import { createScopedLogger } from '@auxx/logger'
@@ -195,10 +196,29 @@ passportRoute.post('/', async (c) => {
   let sessionId = body.visitorId || getCookie(c, CHAT_SESSION_COOKIE)
   if (!sessionId) sessionId = randomUUID()
 
+  // Mint-time IP geo lookup. Used to (a) seed the friendly visitor handle
+  // ("Cyan Turtle from Inglewood") when the Participant is first created,
+  // (b) write city/region/country/timezone to the Contact on the verified
+  // path, and (c) populate Thread.metadata.visit downstream via the
+  // passport stash. Failures here never block mint.
+  const visitorIp = clientIp !== 'unknown' ? clientIp : undefined
+  let geo: GeoLocation | null = null
+  if (visitorIp) {
+    try {
+      geo = await lookupIp(visitorIp)
+    } catch (error) {
+      log.warn('Geo lookup failed', {
+        channelId,
+        error: error instanceof Error ? error.message : String(error),
+      })
+    }
+  }
+
   const participantResult = await findOrCreateVisitorParticipant({
     db: database,
     organizationId: widget.organizationId,
     sessionId,
+    geo,
   })
   if (participantResult.error) {
     log.error('Failed to resolve visitor participant', {
@@ -279,6 +299,14 @@ passportRoute.post('/', async (c) => {
       const claims = verified.value
       const { writes } = resolveChatAttributes({
         jwtClaims: claims.attributes,
+        serverAttributes: geo
+          ? {
+              city: geo.city,
+              region: geo.region,
+              country: geo.country,
+              timezone: geo.timezone,
+            }
+          : undefined,
         bootAttributes,
       })
       try {
@@ -350,6 +378,17 @@ passportRoute.post('/', async (c) => {
     expiresIn: '1h',
     ...(identityVerified ? { identityVerified, contactId, jwtUserId, userJwtHash } : {}),
     identityVerification: widget.identityVerification,
+    ...(geo
+      ? {
+          geo: {
+            ...(geo.city ? { city: geo.city } : {}),
+            ...(geo.region ? { region: geo.region } : {}),
+            ...(geo.country ? { country: geo.country } : {}),
+            ...(geo.countryCode ? { countryCode: geo.countryCode } : {}),
+            ...(geo.timezone ? { timezone: geo.timezone } : {}),
+          },
+        }
+      : {}),
   })
   if (issued.isErr()) {
     log.error('Failed to issue chat passport', { channelId, error: issued.error.message })

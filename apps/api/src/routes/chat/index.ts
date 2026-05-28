@@ -10,6 +10,7 @@ import initializeRoute from './initialize'
 import passportRoute from './passport'
 import pusherAuthRoute from './pusher-auth'
 import receiptsRoute from './receipts'
+import shopifyProxyRoute from './shopify-proxy'
 import threadsRoute from './threads'
 import typingRoute from './typing'
 import visitorInfoRoute from './visitor-info'
@@ -21,6 +22,10 @@ const minute = 60_000
 // Public surfaces — no passport required. Passport route owns its own limiter.
 chatRoutes.route('/config', configRoute)
 chatRoutes.route('/passport', passportRoute)
+// Shopify App Proxy mint — HMAC-authenticated by Shopify itself; no passport,
+// no chat-JWT middleware. Rate-limiting is upstream (Shopify proxies are
+// already throttled).
+chatRoutes.route('/shopify-proxy', shopifyProxyRoute)
 
 // Everything below requires a chat passport. Mount the passport middleware
 // first so the rate-limit keys can read `c.var.chat.channelId` etc.

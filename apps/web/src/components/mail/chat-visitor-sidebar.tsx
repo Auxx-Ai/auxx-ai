@@ -2,7 +2,7 @@
 'use client'
 
 import { Separator } from '@auxx/ui/components/separator'
-import { User } from 'lucide-react'
+import { MapPin, User } from 'lucide-react'
 import { useParticipant } from '~/components/threads/hooks'
 
 interface ChatThreadMetadata {
@@ -14,10 +14,19 @@ interface ChatThreadMetadata {
     ipAddress?: string
     referrer?: string
     url?: string
+    city?: string
+    region?: string
+    country?: string
+    timezone?: string
   }
   claimedVisitorEmail?: string
   claimedVisitorName?: string
   visitorLabel?: string
+}
+
+/** Render `City, Region, Country` skipping any empty parts. */
+function formatLocation(parts: { city?: string; region?: string; country?: string }): string {
+  return [parts.city, parts.region, parts.country].filter((p) => p && p.trim()).join(', ')
 }
 
 /**
@@ -32,6 +41,11 @@ export function ChatVisitorSidebar({ metadata }: { metadata: ChatThreadMetadata 
     enabled: !!metadata.visitorParticipantId,
   })
   const visitorLabel = visitor?.displayName ?? metadata.visitorLabel ?? null
+  const location = formatLocation({
+    city: visit.city,
+    region: visit.region,
+    country: visit.country,
+  })
   return (
     <aside className='w-64 shrink-0 space-y-3 overflow-y-auto border-l bg-muted/30 p-4 text-xs'>
       <h3 className='flex items-center gap-1.5 text-sm font-semibold'>
@@ -60,6 +74,16 @@ export function ChatVisitorSidebar({ metadata }: { metadata: ChatThreadMetadata 
           <p title={visitor?.identifier ?? metadata.visitorParticipantId}>
             <strong className='font-medium'>Visitor ID:</strong>{' '}
             <span className='text-muted-foreground'>{visitorLabel}</span>
+          </p>
+        )}
+        {(location || visit.timezone) && (
+          <p className='flex items-start gap-1.5'>
+            <MapPin size={12} className='mt-0.5 shrink-0 text-muted-foreground' />
+            <span>
+              {location && <span>{location}</span>}
+              {location && visit.timezone && <span className='text-muted-foreground'> · </span>}
+              {visit.timezone && <span className='text-muted-foreground'>{visit.timezone}</span>}
+            </span>
           </p>
         )}
       </div>
