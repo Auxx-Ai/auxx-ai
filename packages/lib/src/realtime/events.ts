@@ -2,6 +2,7 @@
 
 import type { FieldValueKey } from '@auxx/types/field'
 import type { RecordId } from '@auxx/types/resource'
+import type { ThreadMergeData } from '../threads/types'
 
 /** Stored field value — matches the client store's StoredFieldValue shape. */
 export type StoredFieldValue = unknown
@@ -153,6 +154,13 @@ export interface ThreadMeta {
    * `ChatThreadMetadata`; other channels may carry `{ importance }`.
    */
   metadata?: Record<string, unknown> | null
+  /** Soft-merge pointer — target Thread RecordId or null when unmerged/target. */
+  mergedIntoThreadId?: RecordId | null
+  /**
+   * Full replacement of the denormalized merge state (same semantics as
+   * `metadata`). Null clears the entry; object replaces it whole.
+   */
+  mergeData?: ThreadMergeData | null
 }
 
 /**

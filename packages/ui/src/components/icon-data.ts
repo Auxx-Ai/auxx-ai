@@ -123,6 +123,7 @@ import {
   MapPin,
   Megaphone,
   Menu,
+  Merge,
   MessageCircle,
   MessageSquare,
   Minus,
@@ -238,6 +239,7 @@ export const ICON_DATA: IconItem[] = [
   { id: 'arrow-up', label: 'Arrow Up', icon: ArrowUp },
   { id: 'arrow-down', label: 'Arrow Down', icon: ArrowDown },
   { id: 'arrow-left-right', label: 'Arrow Left Right', icon: ArrowLeftRight },
+  { id: 'merge', label: 'Merge', icon: Merge },
   // Communication
   { id: 'mail', label: 'Mail', icon: Mail },
   { id: 'message-square', label: 'Message Square', icon: MessageSquare },

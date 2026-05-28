@@ -407,10 +407,43 @@ export function useThreadMutation() {
     (sourceThreadIds: string[], targetThreadId: string) => {
       if (sourceThreadIds.length === 0) return
 
+      // Snapshot sources before tombstoning so rollback can restore them.
       const previous = new Map<string, ThreadMeta>()
+      const directEntries = sourceThreadIds.map((id) => {
+        const src = getThread(id)
+        if (src) previous.set(id, src)
+        return {
+          threadId: id,
+          subject: src?.subject ?? '',
+          mergedAt: new Date().toISOString(),
+          mergedById: currentUserId ?? '',
+          batchId: '',
+          messageCount: src?.messageCount ?? 0,
+        }
+      })
+      // Carry the flatten invariant client-side: pull each source's existing
+      // `mergeData.sources` (transitive ancestors) and bubble them up to the
+      // target alongside the direct sources.
+      const descendantEntries = sourceThreadIds.flatMap(
+        (id) => getThread(id)?.mergeData?.sources ?? []
+      )
+
+      const targetThread = getThread(targetThreadId)
+      let targetVersion: number | null = null
+      if (targetThread) {
+        targetVersion = updateThreadOptimistic(targetThreadId, {
+          mergeData: {
+            ...(targetThread.mergeData ?? {}),
+            sources: [
+              ...(targetThread.mergeData?.sources ?? []),
+              ...directEntries,
+              ...descendantEntries,
+            ],
+          },
+        })
+      }
+
       for (const id of sourceThreadIds) {
-        const t = getThread(id)
-        if (t) previous.set(id, t)
         removeThread(id)
       }
       closeIfActive(sourceThreadIds)
@@ -421,7 +454,11 @@ export function useThreadMutation() {
       updateBulkMutation.mutate(
         { recordIds, updates: { mergedIntoThreadId: mergedIntoRecord } },
         {
+          onSuccess: () => {
+            if (targetVersion !== null) confirmOptimistic(targetThreadId, targetVersion)
+          },
           onError: (error) => {
+            if (targetVersion !== null) rollbackOptimistic(targetThreadId, targetVersion)
             for (const id of sourceThreadIds) {
               undeleteThread(id, previous.get(id))
             }
@@ -430,7 +467,17 @@ export function useThreadMutation() {
         }
       )
     },
-    [getThread, removeThread, undeleteThread, updateBulkMutation, closeIfActive]
+    [
+      getThread,
+      removeThread,
+      undeleteThread,
+      updateBulkMutation,
+      closeIfActive,
+      currentUserId,
+      updateThreadOptimistic,
+      confirmOptimistic,
+      rollbackOptimistic,
+    ]
   )
 
   /**

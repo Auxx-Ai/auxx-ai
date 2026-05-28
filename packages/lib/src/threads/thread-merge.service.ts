@@ -3,10 +3,14 @@
 import { type Database, schema, type Transaction } from '@auxx/database'
 import type { ThreadEntity } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
+import { toRecordId } from '@auxx/types/resource'
 import { generateId } from '@auxx/utils'
 import { and, eq, inArray, sql } from 'drizzle-orm'
 import { BadRequestError, ConflictError, NotFoundError } from '../errors'
+import { getRealtimeService, publishThreadUpdated } from '../realtime'
+import type { ThreadMeta as RealtimeThreadMeta } from '../realtime/events'
 import { ThreadEventType, TimelineActorType, TimelineEntityType } from '../timeline/event-types'
+import type { ThreadMergeData, ThreadMergeSourceEntry, ThreadMergeTargetEntry } from './types'
 
 const logger = createScopedLogger('thread-merge-service')
 
@@ -89,9 +93,9 @@ function aggregatePresence(snapshots: PerSourceMoveSnapshot[]): MovePresence {
 /**
  * Soft, reversible thread merge service. Sources stay in the database with a
  * `mergedIntoThreadId` pointer; all content moves to the target. Sources are
- * hidden from list views by the global `mergedAt IS NULL` filter on the read
- * path. Unmerge is supported per-source within 24h via the IDs persisted in
- * the `thread:merged_from` timeline event on the target.
+ * hidden from list views by the global `mergedIntoThreadId IS NULL` filter on
+ * the read path. Unmerge is supported per-source within 24h via the IDs
+ * persisted in the `thread:merged_from` timeline event on the target.
  */
 export class ThreadMergeService {
   constructor(
@@ -103,6 +107,23 @@ export class ThreadMergeService {
   async merge(input: MergeThreadsInput): Promise<MergeThreadsResult> {
     const batchId = generateId()
     const now = new Date()
+
+    let realtimeFanout: {
+      targetId: string
+      targetInboxId: string | null
+      targetSubject: string
+      targetMeta: {
+        messageCount: number
+        participantCount: number
+        lastMessageAt: Date | null
+      }
+      flattenedTargetSources: ThreadMergeSourceEntry[]
+      rewrites: Array<{
+        threadId: string
+        inboxId: string | null
+        target: ThreadMergeTargetEntry
+      }>
+    } | null = null
 
     const result = await this.db.transaction(async (tx) => {
       // 0. Resolve final target by following merge pointers. The user may
@@ -145,7 +166,7 @@ export class ThreadMergeService {
       if (!target) {
         throw new NotFoundError(`Target thread ${finalTargetId} not found`)
       }
-      if (target.mergedAt) {
+      if (target.mergedIntoThreadId) {
         // Lost a race — the resolved target got merged between resolve and
         // lock. Surface as conflict rather than silently doing the wrong thing.
         throw new ConflictError('Target thread is itself merged into another thread')
@@ -158,7 +179,7 @@ export class ThreadMergeService {
         if (!src) {
           throw new NotFoundError(`Source thread ${id} not found`)
         }
-        if (src.mergedAt) {
+        if (src.mergedIntoThreadId) {
           // Tolerate stale selections (e.g. a thread already merged by a
           // prior action that the FE still had in its checkbox set). Skip it
           // rather than aborting the entire batch.
@@ -215,21 +236,90 @@ export class ThreadMergeService {
         scalarOverrides,
       })
 
-      // 7. Stamp the merge pointer on every source.
+      // 7. Build the flattened rewrite set. Each direct source carries the
+      // sources it had previously absorbed (`mergeData.sources[]`); those
+      // descendants need their pointer / target rewritten too so the
+      // flatten invariant holds (no two-hop chains).
+      const directSourceEntries: ThreadMergeSourceEntry[] = sources.map((src, i) => ({
+        threadId: src.id,
+        subject: src.subject,
+        mergedAt: now.toISOString(),
+        mergedById: input.actorUserId,
+        batchId,
+        messageCount: snapshots[i].movedMessageIds.length,
+      }))
+      const descendantEntries: ThreadMergeSourceEntry[] = sources.flatMap(
+        (src) => (src.mergeData as ThreadMergeData | null)?.sources ?? []
+      )
+      const flattenedTargetSources: ThreadMergeSourceEntry[] = [
+        ...directSourceEntries,
+        ...descendantEntries,
+      ]
+      const allRewriteIds = [...sourceIds, ...descendantEntries.map((d) => d.threadId)]
+
+      const targetEntryForRewrites: ThreadMergeTargetEntry = {
+        threadId: targetId,
+        subject: target.subject,
+        mergedAt: now.toISOString(),
+        mergedById: input.actorUserId,
+        batchId,
+      }
+
+      // Capture pre-update inboxId for every rewrite row so the realtime
+      // fanout can address the right channel.
+      const rewriteRows = await tx
+        .select({ id: schema.Thread.id, inboxId: schema.Thread.inboxId })
+        .from(schema.Thread)
+        .where(
+          and(
+            inArray(schema.Thread.id, allRewriteIds),
+            eq(schema.Thread.organizationId, input.organizationId)
+          )
+        )
+
       await tx
         .update(schema.Thread)
         .set({
           mergedIntoThreadId: targetId,
-          mergedAt: now,
-          mergedById: input.actorUserId,
+          mergeData: { target: targetEntryForRewrites } satisfies ThreadMergeData,
         })
-        .where(inArray(schema.Thread.id, sourceIds))
+        .where(
+          and(
+            inArray(schema.Thread.id, allRewriteIds),
+            eq(schema.Thread.organizationId, input.organizationId)
+          )
+        )
 
-      // 8. Recompute denormalized target metadata in one pass.
-      await this.recomputeTargetMetadata(tx, targetId)
+      // 8. Append the flattened source list to the target's `mergeData.sources`.
+      await tx.execute(sql`
+        UPDATE "Thread"
+        SET "mergeData" = jsonb_set(
+          COALESCE("mergeData", '{}'::jsonb),
+          '{sources}',
+          COALESCE("mergeData"->'sources', '[]'::jsonb) || ${JSON.stringify(flattenedTargetSources)}::jsonb
+        )
+        WHERE id = ${targetId}
+      `)
+
+      // 9. Recompute denormalized target metadata in one pass; capture the
+      //    recomputed values so the realtime patch can carry them.
+      const targetMeta = await this.recomputeTargetMetadata(tx, targetId)
 
       const movedMessageCount = snapshots.reduce((sum, s) => sum + s.movedMessageIds.length, 0)
       const movedCommentCount = snapshots.reduce((sum, s) => sum + s.movedCommentIds.length, 0)
+
+      realtimeFanout = {
+        targetId,
+        targetInboxId: target.inboxId ?? null,
+        targetSubject: target.subject,
+        targetMeta,
+        flattenedTargetSources,
+        rewrites: rewriteRows.map((row) => ({
+          threadId: row.id,
+          inboxId: row.inboxId ?? null,
+          target: targetEntryForRewrites,
+        })),
+      }
 
       return {
         batchId,
@@ -249,11 +339,33 @@ export class ThreadMergeService {
       movedCommentCount: result.movedCommentCount,
     })
 
+    if (realtimeFanout) {
+      await this.publishMergeFanout(realtimeFanout)
+    }
+
     return result
   }
 
   /** Unmerge ONE source from its current target. Other sources stay merged. */
   async unmerge(sourceThreadId: string, actorUserId: string): Promise<void> {
+    let realtimeFanout: {
+      sourceId: string
+      sourceInboxId: string | null
+      sourceMeta: {
+        messageCount: number
+        participantCount: number
+        lastMessageAt: Date | null
+      }
+      targetId: string
+      targetInboxId: string | null
+      targetMeta: {
+        messageCount: number
+        participantCount: number
+        lastMessageAt: Date | null
+      }
+      targetSourcesAfter: ThreadMergeSourceEntry[]
+    } | null = null
+
     await this.db.transaction(async (tx) => {
       const source = await this.loadSourceForUnmerge(tx, sourceThreadId)
       const event = await this.loadMergedIntoEvent(tx, sourceThreadId)
@@ -273,7 +385,7 @@ export class ThreadMergeService {
       if (!target) {
         throw new NotFoundError(`Merge target ${targetId} no longer exists`)
       }
-      if (target.mergedAt) {
+      if (target.mergedIntoThreadId) {
         throw new ConflictError('Cannot unmerge: target was itself merged')
       }
 
@@ -281,14 +393,47 @@ export class ThreadMergeService {
       await this.reverseSourceMoves(tx, sourceThreadId, data)
 
       // Recompute metadata on both threads.
-      await this.recomputeTargetMetadata(tx, targetId)
-      await this.recomputeTargetMetadata(tx, sourceThreadId)
+      const targetMeta = await this.recomputeTargetMetadata(tx, targetId)
+      const sourceMeta = await this.recomputeTargetMetadata(tx, sourceThreadId)
 
-      // Clear merge pointer on the source.
+      // Clear merge pointer and target snapshot on the source.
       await tx
         .update(schema.Thread)
-        .set({ mergedIntoThreadId: null, mergedAt: null, mergedById: null })
+        .set({ mergedIntoThreadId: null, mergeData: null })
         .where(eq(schema.Thread.id, sourceThreadId))
+
+      // Splice this source out of the target's `mergeData.sources` (and
+      // collapse `mergeData` to NULL when nothing is left).
+      await tx.execute(sql`
+        UPDATE "Thread"
+        SET "mergeData" = (
+          CASE
+            WHEN jsonb_array_length(
+              COALESCE(
+                (
+                  SELECT jsonb_agg(elem)
+                  FROM jsonb_array_elements("mergeData"->'sources') elem
+                  WHERE elem->>'threadId' <> ${sourceThreadId}
+                ),
+                '[]'::jsonb
+              )
+            ) = 0 THEN NULL
+            ELSE jsonb_set(
+              "mergeData",
+              '{sources}',
+              COALESCE(
+                (
+                  SELECT jsonb_agg(elem)
+                  FROM jsonb_array_elements("mergeData"->'sources') elem
+                  WHERE elem->>'threadId' <> ${sourceThreadId}
+                ),
+                '[]'::jsonb
+              )
+            )
+          END
+        )
+        WHERE id = ${targetId}
+      `)
 
       // Delete this source's merge events on the source and the target.
       await tx
@@ -313,12 +458,29 @@ export class ThreadMergeService {
           )
         )
 
+      const existingTargetSources = (target.mergeData as ThreadMergeData | null)?.sources ?? []
+      const targetSourcesAfter = existingTargetSources.filter((s) => s.threadId !== sourceThreadId)
+
+      realtimeFanout = {
+        sourceId: sourceThreadId,
+        sourceInboxId: source.inboxId ?? null,
+        sourceMeta,
+        targetId,
+        targetInboxId: target.inboxId ?? null,
+        targetMeta,
+        targetSourcesAfter,
+      }
+
       logger.info('Thread unmerge complete', {
         sourceThreadId,
         targetThreadId: targetId,
         actorUserId,
       })
     })
+
+    if (realtimeFanout) {
+      await this.publishUnmergeFanout(realtimeFanout)
+    }
   }
 
   /** Unmerge every source in a batch in one transaction. */
@@ -385,7 +547,6 @@ export class ThreadMergeService {
       visited.add(current)
       const [row] = await tx
         .select({
-          mergedAt: schema.Thread.mergedAt,
           mergedIntoThreadId: schema.Thread.mergedIntoThreadId,
         })
         .from(schema.Thread)
@@ -395,7 +556,7 @@ export class ThreadMergeService {
       if (!row) {
         throw new NotFoundError(`Target thread ${current} not found`)
       }
-      if (!row.mergedAt || !row.mergedIntoThreadId) return current
+      if (!row.mergedIntoThreadId) return current
       current = row.mergedIntoThreadId
     }
     throw new ConflictError('Merge pointer chain too deep')
@@ -907,10 +1068,11 @@ export class ThreadMergeService {
     if (!src) {
       throw new NotFoundError(`Source thread ${sourceId} not found`)
     }
-    if (!src.mergedAt || !src.mergedIntoThreadId) {
+    const target = (src.mergeData as ThreadMergeData | null)?.target
+    if (!src.mergedIntoThreadId || !target) {
       throw new ConflictError('Source thread is not merged')
     }
-    if (src.mergedAt.getTime() + UNMERGE_TTL_MS < Date.now()) {
+    if (Date.parse(target.mergedAt) + UNMERGE_TTL_MS < Date.now()) {
       throw new ConflictError('Unmerge window has expired')
     }
     return src
@@ -1067,8 +1229,15 @@ export class ThreadMergeService {
     }
   }
 
-  private async recomputeTargetMetadata(tx: Transaction, threadId: string): Promise<void> {
-    await tx.execute(sql`
+  private async recomputeTargetMetadata(
+    tx: Transaction,
+    threadId: string
+  ): Promise<{ messageCount: number; participantCount: number; lastMessageAt: Date | null }> {
+    const rows = await tx.execute<{
+      messageCount: number
+      participantCount: number
+      lastMessageAt: Date | string | null
+    }>(sql`
       UPDATE "Thread" t
       SET
         "messageCount" = COALESCE((
@@ -1105,6 +1274,97 @@ export class ThreadMergeService {
           WHERE "threadId" = ${threadId}
         ), 0)
       WHERE t.id = ${threadId}
+      RETURNING
+        "messageCount" AS "messageCount",
+        "participantCount" AS "participantCount",
+        "lastMessageAt" AS "lastMessageAt"
     `)
+    const row = rows.rows[0]
+    const lastMessageAt = row?.lastMessageAt
+      ? typeof row.lastMessageAt === 'string'
+        ? new Date(row.lastMessageAt)
+        : row.lastMessageAt
+      : null
+    return {
+      messageCount: Number(row?.messageCount ?? 0),
+      participantCount: Number(row?.participantCount ?? 0),
+      lastMessageAt,
+    }
+  }
+
+  private async publishMergeFanout(fanout: {
+    targetId: string
+    targetInboxId: string | null
+    targetSubject: string
+    targetMeta: { messageCount: number; participantCount: number; lastMessageAt: Date | null }
+    flattenedTargetSources: ThreadMergeSourceEntry[]
+    rewrites: Array<{ threadId: string; inboxId: string | null; target: ThreadMergeTargetEntry }>
+  }): Promise<void> {
+    const realtime = getRealtimeService()
+
+    const targetPatch: Partial<RealtimeThreadMeta> = {
+      mergeData: { sources: fanout.flattenedTargetSources },
+      messageCount: fanout.targetMeta.messageCount,
+      participantCount: fanout.targetMeta.participantCount,
+      lastMessageAt: fanout.targetMeta.lastMessageAt?.toISOString() ?? null,
+    }
+    await publishThreadUpdated(realtime, this.organizationId, {
+      threadId: fanout.targetId,
+      inboxId: fanout.targetInboxId,
+      previousInboxId: fanout.targetInboxId,
+      patch: targetPatch,
+    })
+
+    await Promise.allSettled(
+      fanout.rewrites.map((row) =>
+        publishThreadUpdated(realtime, this.organizationId, {
+          threadId: row.threadId,
+          inboxId: row.inboxId,
+          previousInboxId: row.inboxId,
+          patch: {
+            mergedIntoThreadId: toRecordId('thread', row.target.threadId),
+            mergeData: { target: row.target },
+          },
+        })
+      )
+    )
+  }
+
+  private async publishUnmergeFanout(fanout: {
+    sourceId: string
+    sourceInboxId: string | null
+    sourceMeta: { messageCount: number; participantCount: number; lastMessageAt: Date | null }
+    targetId: string
+    targetInboxId: string | null
+    targetMeta: { messageCount: number; participantCount: number; lastMessageAt: Date | null }
+    targetSourcesAfter: ThreadMergeSourceEntry[]
+  }): Promise<void> {
+    const realtime = getRealtimeService()
+
+    await publishThreadUpdated(realtime, this.organizationId, {
+      threadId: fanout.sourceId,
+      inboxId: fanout.sourceInboxId,
+      previousInboxId: fanout.sourceInboxId,
+      patch: {
+        mergedIntoThreadId: null,
+        mergeData: null,
+        messageCount: fanout.sourceMeta.messageCount,
+        participantCount: fanout.sourceMeta.participantCount,
+        lastMessageAt: fanout.sourceMeta.lastMessageAt?.toISOString() ?? null,
+      },
+    })
+
+    await publishThreadUpdated(realtime, this.organizationId, {
+      threadId: fanout.targetId,
+      inboxId: fanout.targetInboxId,
+      previousInboxId: fanout.targetInboxId,
+      patch: {
+        mergeData:
+          fanout.targetSourcesAfter.length > 0 ? { sources: fanout.targetSourcesAfter } : null,
+        messageCount: fanout.targetMeta.messageCount,
+        participantCount: fanout.targetMeta.participantCount,
+        lastMessageAt: fanout.targetMeta.lastMessageAt?.toISOString() ?? null,
+      },
+    })
   }
 }

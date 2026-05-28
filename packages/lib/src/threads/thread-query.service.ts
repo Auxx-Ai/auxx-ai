@@ -35,6 +35,7 @@ import type {
   ChannelProvider,
   ListThreadIdsInput,
   PaginatedIdsResult,
+  ThreadMergeData,
   ThreadMeta,
   ThreadSortDescriptor,
   ThreadSortField,
@@ -881,6 +882,10 @@ export class ThreadQueryService {
           scheduledMessageCount: scheduledCountMap.get(id) ?? 0,
           handoffState: t.handoffState,
           metadata: (t.metadata as Record<string, unknown> | null) ?? null,
+          mergedIntoThreadId: t.mergedIntoThreadId
+            ? toRecordId('thread', t.mergedIntoThreadId)
+            : null,
+          mergeData: (t.mergeData as ThreadMergeData | null) ?? null,
         } satisfies ThreadMeta
       })
       .filter(Boolean) as ThreadMeta[]
