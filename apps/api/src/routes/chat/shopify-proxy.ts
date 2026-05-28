@@ -1,9 +1,9 @@
 // apps/api/src/routes/chat/shopify-proxy.ts
 
 import { createHmac, timingSafeEqual } from 'node:crypto'
-import { signUserJwt } from '@auxx/chat/server'
 import { CredentialService } from '@auxx/credentials'
 import { database, schema } from '@auxx/database'
+import { signChannelUserJwt } from '@auxx/lib/chat'
 import { shopifyExternalId } from '@auxx/lib/ingest'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq } from 'drizzle-orm'
@@ -173,7 +173,7 @@ shopifyProxyRoute.get('/jwt', async (c) => {
   }
 
   const expiresIn = '1h'
-  const userJwt = signUserJwt(
+  const userJwt = await signChannelUserJwt(
     {
       user_id: shopifyExternalId(shop, customerId),
       attributes: {

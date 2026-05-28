@@ -296,6 +296,9 @@ importers:
 
   apps/api:
     dependencies:
+      '@auxx/chat':
+        specifier: workspace:*
+        version: link:../../packages/chat
       '@auxx/config':
         specifier: workspace:*
         version: link:../../packages/config
