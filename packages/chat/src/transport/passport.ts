@@ -42,6 +42,11 @@ function clearStored(channelId: string): void {
   }
 }
 
+/** Public wrapper so the npm client / fetch retry can drop a stale passport. */
+export function clearStoredPassport(channelId: string): void {
+  clearStored(channelId)
+}
+
 function isValid(stored: StoredPassport): boolean {
   const expiresAt = new Date(stored.expiresAt).getTime()
   if (Number.isNaN(expiresAt)) return false

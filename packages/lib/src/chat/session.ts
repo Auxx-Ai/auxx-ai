@@ -4,7 +4,7 @@ import { schema } from '@auxx/database'
 import { ThreadStatus } from '@auxx/database/enums'
 import type { ThreadEntity } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
-import { and, desc, eq } from 'drizzle-orm'
+import { and, desc, eq, or } from 'drizzle-orm'
 import { BadRequestError, ForbiddenError, NotFoundError } from '../errors'
 import { Result, type TypedResult } from '../result'
 import type { ChatThreadMetadata } from '../threads/types'
@@ -12,6 +12,7 @@ import { formatVisitorLabel, formatVisitorThreadSubject } from './labels'
 import { patchChatThreadMetadata } from './metadata'
 import type { ServiceContext, VisitInfo } from './types'
 import { findOrCreateVisitorParticipant } from './visitor-identity'
+import { buildVisitorThreadOwnership } from './visitor-thread-ownership'
 
 const logger = createScopedLogger('chat-session')
 
@@ -23,6 +24,14 @@ export interface InitializeChatThreadInput {
   visitorEmail?: string
   /** Embedder-supplied external id (unverified in v1). Stored as `claimedExternalId`. */
   visitorExternalId?: string
+  /**
+   * Verified Contact `EntityInstance.id` from the passport (set when the
+   * caller's JWT was verified at mint). When present, the resume lookup also
+   * matches threads whose inbound Participant has
+   * `entityInstanceId = contactId` — that's what lets Alice's thread follow
+   * her identity across devices / cleared cookies / new sessions.
+   */
+  contactId?: string
   /**
    * When true, skip the resume-existing-thread lookup and always create a
    * fresh thread. Used by the Home "Send us a message" CTA so each tap lands
@@ -96,6 +105,11 @@ export async function initializeOrResumeChatThread(
     // then resume; otherwise reject — don't silently swap them onto a
     // different thread.
     if (input.resumeThreadId) {
+      const requestedOwnership = buildVisitorThreadOwnership({
+        db: ctx.db,
+        visitorParticipantId: visitor.id,
+        contactId: input.contactId,
+      })
       const [requested] = await ctx.db
         .select()
         .from(schema.Thread)
@@ -103,16 +117,17 @@ export async function initializeOrResumeChatThread(
           and(
             eq(schema.Thread.id, input.resumeThreadId),
             eq(schema.Thread.organizationId, ctx.organizationId),
-            eq(schema.Thread.integrationId, integration.id)
+            eq(schema.Thread.integrationId, integration.id),
+            requestedOwnership
           )
         )
         .limit(1)
       if (!requested) {
-        return Result.error(new NotFoundError('Chat thread not found'))
+        return Result.error(new ForbiddenError('Chat thread does not belong to this visitor'))
       }
       const meta = (requested.metadata ?? {}) as Partial<ChatThreadMetadata>
-      if (meta.channel !== 'chat' || meta.visitorParticipantId !== visitor.id) {
-        return Result.error(new ForbiddenError('Chat thread does not belong to this visitor'))
+      if (meta.channel !== 'chat') {
+        return Result.error(new NotFoundError('Chat thread not found'))
       }
       logger.info('Resumed requested chat thread', {
         threadId: requested.id,
@@ -139,6 +154,16 @@ export async function initializeOrResumeChatThread(
     // yet won't match here. That's fine — `resumeThreadId` already handles
     // explicit reopen above, and a thread with zero messages has nothing to
     // resume into.
+    // When the passport carries a verified `contactId`, broaden the join to
+    // include any Participant linked to the same Contact — that's how Alice's
+    // thread resumes on a fresh device where her new session Participant has
+    // a different id but shares `entityInstanceId`.
+    const fromMatch = input.contactId
+      ? or(
+          eq(schema.Message.fromId, visitor.id),
+          eq(schema.Participant.entityInstanceId, input.contactId)
+        )
+      : eq(schema.Message.fromId, visitor.id)
     const candidateThreads = input.forceNewThread
       ? []
       : await ctx.db
@@ -146,17 +171,15 @@ export async function initializeOrResumeChatThread(
           .from(schema.Thread)
           .innerJoin(
             schema.Message,
-            and(
-              eq(schema.Message.threadId, schema.Thread.id),
-              eq(schema.Message.isInbound, true),
-              eq(schema.Message.fromId, visitor.id)
-            )
+            and(eq(schema.Message.threadId, schema.Thread.id), eq(schema.Message.isInbound, true))
           )
+          .innerJoin(schema.Participant, eq(schema.Participant.id, schema.Message.fromId))
           .where(
             and(
               eq(schema.Thread.organizationId, ctx.organizationId),
               eq(schema.Thread.integrationId, integration.id),
-              eq(schema.Thread.status, ThreadStatus.OPEN)
+              eq(schema.Thread.status, ThreadStatus.OPEN),
+              fromMatch
             )
           )
           .orderBy(desc(schema.Thread.lastMessageAt))

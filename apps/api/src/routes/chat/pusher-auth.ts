@@ -1,8 +1,8 @@
 // apps/api/src/routes/chat/pusher-auth.ts
 
 import { database, schema } from '@auxx/database'
+import { buildVisitorThreadOwnership } from '@auxx/lib/chat'
 import { getRealtimeService } from '@auxx/lib/realtime'
-import type { ChatThreadMetadata } from '@auxx/lib/threads/types'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq } from 'drizzle-orm'
 import { Hono } from 'hono'
@@ -63,6 +63,7 @@ pusherAuthRoute.post('/', async (c) => {
       threadId,
       organizationId: chat.organizationId,
       visitorParticipantId: chat.visitorParticipantId,
+      contactId: chat.contactId,
     })
   }
 
@@ -89,28 +90,35 @@ pusherAuthRoute.post('/', async (c) => {
 
 /**
  * ACL helper: a visitor can subscribe to `private-thread-{threadId}` only when
- * the thread's `metadata.visitorParticipantId` matches their passport. The org
- * scope is enforced via the same query so a leaked passport from one org can
- * never authorize a sibling-org thread channel.
+ * the thread is owned by the caller — either by the caller's session-keyed
+ * visitor Participant OR (when the passport carries a verified Contact) by
+ * any Participant linked to the same Contact. The org scope is enforced in
+ * the same query so a leaked passport from one org can never authorize a
+ * sibling-org thread channel.
  */
 async function visitorOwnsThread(args: {
   threadId: string
   organizationId: string
   visitorParticipantId: string
+  contactId: string | undefined
 }): Promise<boolean> {
+  const ownership = buildVisitorThreadOwnership({
+    db: database,
+    visitorParticipantId: args.visitorParticipantId,
+    contactId: args.contactId,
+  })
   const [row] = await database
-    .select({ metadata: schema.Thread.metadata })
+    .select({ id: schema.Thread.id })
     .from(schema.Thread)
     .where(
       and(
         eq(schema.Thread.id, args.threadId),
-        eq(schema.Thread.organizationId, args.organizationId)
+        eq(schema.Thread.organizationId, args.organizationId),
+        ownership
       )
     )
     .limit(1)
-  if (!row) return false
-  const meta = (row.metadata ?? {}) as Partial<ChatThreadMetadata>
-  return meta.channel === 'chat' && meta.visitorParticipantId === args.visitorParticipantId
+  return !!row
 }
 
 export default pusherAuthRoute

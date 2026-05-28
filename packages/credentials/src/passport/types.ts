@@ -76,6 +76,15 @@ export interface ChatPassportPayload extends BasePassportPayload {
   /** Resolved Contact `EntityInstance.id` when `identityVerified` is true. */
   contactId?: string
   /**
+   * The verified JWT's `user_id` claim baked at mint time. Per-request
+   * middleware compares this against the current request JWT's `user_id`;
+   * disagreement means the host app rotated identity without first calling
+   * `Auxx.logout()` / `Auxx.boot()`, and the request is rejected with
+   * `IDENTITY_MISMATCH` so a stale passport cannot serve a different user's
+   * conversations.
+   */
+  jwtUserId?: string
+  /**
    * SHA-256 of the user JWT used at mint time. Per-request middleware
    * compares against the same hash of the request-bound JWT so a stolen
    * passport without a fresh signed JWT is rejected once enforcement
@@ -121,6 +130,8 @@ export interface IssueChatPassportOptions {
   /** Set when the mint request carried a validly-signed customer JWT (v4 phase 3). */
   identityVerified?: boolean
   contactId?: string
+  /** The verified JWT's `user_id` claim — used to detect identity rotation. */
+  jwtUserId?: string
   userJwtHash?: string
   /** Channel-level enforcement state baked into the passport (v4 phase 5). */
   identityVerification?: 'off' | 'in_progress' | 'enforced'
@@ -164,6 +175,8 @@ export interface VerifiedChatPassport {
   /** v4 phase 3: present when minted with a valid customer JWT. */
   identityVerified?: boolean
   contactId?: string
+  /** The verified JWT's `user_id` claim baked at mint time. */
+  jwtUserId?: string
   userJwtHash?: string
   /** Channel enforcement state baked at mint time (v4 phase 5). */
   identityVerification?: 'off' | 'in_progress' | 'enforced'

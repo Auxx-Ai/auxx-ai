@@ -23,6 +23,7 @@
  */
 
 import { API_URL, WIDGET_URL } from '../shared/env'
+import { clearStoredPassport } from '../transport/passport'
 
 export interface BootOptions {
   channelId: string
@@ -82,6 +83,13 @@ function boot(options: BootOptions): void {
     // attributes through the identify queue.
     if (state.channelId === options.channelId) {
       if (options.userJwt !== undefined) {
+        // If the JWT actually changed, the cached passport is now bound to the
+        // previous identity. Drop it so the next request mints a fresh one;
+        // otherwise the cached passport's `visitorParticipantId` / `contactId`
+        // freezes the old user onto the new session.
+        if (state.userJwt !== options.userJwt) {
+          clearStoredPassport(options.channelId)
+        }
         state.userJwt = options.userJwt
         const cfg = (window.__AUXX_CONFIG__ ??= {})
         if (options.userJwt) cfg.userJwt = options.userJwt
@@ -169,11 +177,7 @@ function shutdown(): void {
 function logout(): void {
   if (typeof window === 'undefined') return
   if (!state) return
-  try {
-    window.localStorage.removeItem(`auxx_passport_chat_${state.channelId}`)
-  } catch {
-    /* ignore */
-  }
+  clearStoredPassport(state.channelId)
   state.userJwt = undefined
   const cfg = (window.__AUXX_CONFIG__ ??= {})
   delete cfg.userJwt

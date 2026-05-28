@@ -140,6 +140,35 @@ export const chatUserJwtMiddleware: MiddlewareHandler = async (c, next) => {
     return next()
   }
 
+  // Identity rotation guard. If the passport was minted under user A but the
+  // request now carries a JWT for user B, the host app rotated identity
+  // without first calling `Auxx.logout()` or `Auxx.boot()`. Reject so a
+  // stale passport's `contactId` cannot be used to read or write under a
+  // different user — the transport layer retries once after force-minting
+  // a fresh passport, which makes this transparent to well-behaved callers.
+  //
+  // Anonymous → identified upgrade (passport has no jwtUserId) is *not* a
+  // mismatch — let it through. The passport will be re-minted with the
+  // verified identity on the next mint cycle.
+  if (passport.jwtUserId && passport.jwtUserId !== result.value.userId) {
+    log.warn('Chat request rejected — JWT identity does not match the active passport', {
+      channelId: passport.channelId,
+      passportUserId: passport.jwtUserId,
+      requestUserId: result.value.userId,
+    })
+    return c.json(
+      {
+        success: false,
+        error: {
+          code: 'IDENTITY_MISMATCH',
+          message:
+            'JWT identity does not match the active session. Call Auxx.logout() or Auxx.boot() with the new user before sending requests as a different identity.',
+        },
+      },
+      401
+    )
+  }
+
   // Compare against the passport-bound hash so phase 5 can reject a
   // mid-session swap. v4 records the comparison but doesn't act on it.
   const passportHash = passport.userJwtHash

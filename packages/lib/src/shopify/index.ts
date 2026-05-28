@@ -1,5 +1,6 @@
 export * from '../sync-manager'
 export { SyncManager } from '../sync-manager'
+export * from './chat-metafields'
 export * from './shopify-types'
 export * from './shopify-webhooks'
 export * from './sync-customers'
