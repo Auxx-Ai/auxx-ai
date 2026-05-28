@@ -62,6 +62,13 @@ initializeRoute.post('/', async (c) => {
             c.req.header('x-forwarded-for')?.split(',')[0]?.trim() ||
             c.req.header('x-real-ip') ||
             undefined,
+          // Geo was resolved once at mint and stashed on the passport so
+          // initialize can write Thread.metadata.visit without re-hitting
+          // MaxMind. Re-mints (every 1h) refresh the values.
+          city: chat.geo?.city,
+          region: chat.geo?.region,
+          country: chat.geo?.country,
+          timezone: chat.geo?.timezone,
         },
         visitorName:
           identify?.name ?? (typeof body.visitorName === 'string' ? body.visitorName : undefined),

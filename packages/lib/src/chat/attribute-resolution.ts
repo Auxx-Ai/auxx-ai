@@ -32,6 +32,9 @@ function splitName(name: string): { first_name?: string; last_name?: string } {
 export interface ResolveChatAttributesInput {
   /** Attributes promoted out of a verified JWT — authoritative on conflict. */
   jwtClaims?: Record<string, unknown>
+  /** Server-derived attributes (e.g. IP geo lookup). Trusted, but not as
+   *  authoritative as a signed claim. Beats boot, loses to JWT. */
+  serverAttributes?: Record<string, unknown>
   /** Best-effort attributes supplied via `Auxx.boot({ attributes })`. */
   bootAttributes?: Record<string, unknown>
 }
@@ -42,16 +45,16 @@ export interface ResolveChatAttributesResult {
 }
 
 /**
- * Merge JWT-verified (sensitive) attributes with `Auxx.boot()`-supplied
- * (non-sensitive) attributes into a single write map.
+ * Merge JWT-verified, server-derived, and `Auxx.boot()`-supplied attributes
+ * into a single write map.
  *
  * Rules:
  *
- * 1. Reserved JWT claim names are stripped from both sides — they are not
+ * 1. Reserved JWT claim names are stripped from every tier — they are not
  *    generic Contact attributes (see {@link RESERVED_CLAIMS}).
- * 2. On same-key conflict, the JWT value wins; the boot copy is dropped
- *    silently. v4 does not record conflicts to an audit table.
- * 3. Keys present only on one side are written as-is.
+ * 2. Precedence on same-key conflict: `jwtClaims` > `serverAttributes` >
+ *    `bootAttributes`. Lower-precedence values are dropped silently.
+ * 3. Keys present only on one tier are written as-is.
  */
 export function resolveChatAttributes(
   input: ResolveChatAttributesInput
@@ -61,6 +64,14 @@ export function resolveChatAttributes(
   if (input.bootAttributes) {
     for (const [key, value] of Object.entries(input.bootAttributes)) {
       if (RESERVED_CLAIMS.has(key)) continue
+      writes[key] = value
+    }
+  }
+
+  if (input.serverAttributes) {
+    for (const [key, value] of Object.entries(input.serverAttributes)) {
+      if (RESERVED_CLAIMS.has(key)) continue
+      if (value === undefined || value === null || value === '') continue
       writes[key] = value
     }
   }

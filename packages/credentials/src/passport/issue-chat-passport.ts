@@ -32,6 +32,7 @@ export async function issueChatPassport(
     jwtUserId,
     userJwtHash,
     identityVerification,
+    geo,
   } = options
 
   return issuePassport<ChatPassportPayload>({
@@ -47,6 +48,7 @@ export async function issueChatPassport(
       ...(jwtUserId ? { jwtUserId } : {}),
       ...(userJwtHash ? { userJwtHash } : {}),
       ...(identityVerification && identityVerification !== 'off' ? { identityVerification } : {}),
+      ...(geo && Object.values(geo).some((v) => v) ? { geo } : {}),
     },
     expiresIn,
   })

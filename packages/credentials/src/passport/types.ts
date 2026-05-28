@@ -56,6 +56,21 @@ export interface ChatIdentifyClaim {
 }
 
 /**
+ * Coarse IP-derived location stashed on the chat passport so per-request
+ * handlers (e.g. `initialize`) can reuse the result of the mint-time geo
+ * lookup without re-hitting MaxMind. Shape mirrors `GeoLocation` in
+ * `@auxx/lib/geo` but is inlined here to keep `@auxx/credentials` free of
+ * the `@auxx/lib` dependency.
+ */
+export interface ChatPassportGeo {
+  city?: string
+  region?: string
+  country?: string
+  countryCode?: string
+  timezone?: string
+}
+
+/**
  * Chat passport JWT payload
  */
 export interface ChatPassportPayload extends BasePassportPayload {
@@ -98,6 +113,13 @@ export interface ChatPassportPayload extends BasePassportPayload {
    * for backcompat with pre-phase-5 passports.
    */
   identityVerification?: 'off' | 'in_progress' | 'enforced'
+  /**
+   * Visitor location resolved from the request IP at mint time. Reused by
+   * `initialize` to write `Thread.metadata.visit.{city, region, country,
+   * timezone}` without a second geo lookup. Refreshed on every re-mint
+   * (passports are 1h-lived).
+   */
+  geo?: ChatPassportGeo
 }
 
 export type PassportPayload = WorkflowPassportPayload | ChatPassportPayload
@@ -135,6 +157,8 @@ export interface IssueChatPassportOptions {
   userJwtHash?: string
   /** Channel-level enforcement state baked into the passport (v4 phase 5). */
   identityVerification?: 'off' | 'in_progress' | 'enforced'
+  /** Visitor location resolved from the request IP at mint time. */
+  geo?: ChatPassportGeo
 }
 
 /**
@@ -180,6 +204,8 @@ export interface VerifiedChatPassport {
   userJwtHash?: string
   /** Channel enforcement state baked at mint time (v4 phase 5). */
   identityVerification?: 'off' | 'in_progress' | 'enforced'
+  /** Visitor location resolved from the request IP at mint time. */
+  geo?: ChatPassportGeo
 }
 
 /**

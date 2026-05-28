@@ -4,13 +4,19 @@ import { createScopedLogger } from '@auxx/logger'
 import { toRecordId } from '@auxx/types/resource'
 import { UnifiedCrudHandler } from '../../resources/crud'
 import { SystemUserService } from '../../users/system-user-service'
-import { chatExternalId } from './external-id'
+import { resolveServerExternalId } from './external-id'
 
 const log = createScopedLogger('chat-find-or-create-from-jwt')
 
 export interface FindOrCreateContactFromJwtInput {
   organizationId: string
-  /** Customer-chosen stable identifier (any string) — written as `chat:<userId>`. */
+  /**
+   * Customer-chosen stable identifier. Wrapped with `chat:` to form the
+   * external id, unless it already carries a recognized source prefix
+   * (currently `shopify:`), in which case it's used verbatim. This lets the
+   * Shopify App Proxy mint encode `shopify:<shop>:<customerId>` directly in
+   * the `user_id` JWT claim without producing `chat:shopify:…` duplicates.
+   */
   userId: string
   /** Signed email from the customer's JWT, when present. Used for email-fold. */
   email?: string
@@ -29,13 +35,15 @@ export interface FindOrCreateContactFromJwtResult {
 
 /**
  * Three-tier resolution for a chat-widget visitor identified by a verified
- * customer JWT:
+ * customer JWT. The external id is `chat:<userId>` by default, or `<userId>`
+ * verbatim when it carries a recognized source prefix (`shopify:` —
+ * minted by our Shopify App Proxy):
  *
- *   1. Exact match on `external_id` containing `chat:<userId>`.
+ *   1. Exact match on `external_id` containing the resolved id.
  *   2. If miss and `jwt.email` is present, match on `primary_email`. On hit,
- *      append `chat:<userId>` to the existing `external_id` array — no
+ *      append the resolved id to the existing `external_id` array — no
  *      duplicate Contact created.
- *   3. Otherwise create a new Contact with `external_id: [chat:<userId>]`,
+ *   3. Otherwise create a new Contact with `external_id: [resolved id]`,
  *      `primary_email` (when present), and the resolved attribute map.
  *
  * Caller is responsible for verifying the JWT first; this function trusts
@@ -54,7 +62,7 @@ export async function findOrCreateContactFromJwt(
     actingUserId ?? (await SystemUserService.getSystemUserForActions(organizationId))
 
   const handler = new UnifiedCrudHandler(organizationId, resolvedActingUserId)
-  const externalId = chatExternalId(userId)
+  const externalId = resolveServerExternalId(userId)
 
   // Tier 1 — exact external-id match (multi-value containment via lookupByField).
   const byExternalId = await handler.findByField('contact', 'external_id', externalId)

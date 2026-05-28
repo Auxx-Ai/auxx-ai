@@ -8,7 +8,7 @@ import { and, desc, eq, or } from 'drizzle-orm'
 import { BadRequestError, ForbiddenError, NotFoundError } from '../errors'
 import { Result, type TypedResult } from '../result'
 import type { ChatThreadMetadata } from '../threads/types'
-import { formatVisitorLabel, formatVisitorThreadSubject } from './labels'
+import { formatVisitorThreadSubject } from './labels'
 import { patchChatThreadMetadata } from './metadata'
 import type { ServiceContext, VisitInfo } from './types'
 import { findOrCreateVisitorParticipant } from './visitor-identity'
@@ -210,7 +210,11 @@ export async function initializeOrResumeChatThread(
 
     // Create a new thread.
     const now = new Date()
-    const visitorLabel = formatVisitorLabel(visitor.identifier)
+    // Mirror the Participant's displayName onto the thread so the sidebar can
+    // render the friendly handle ("Cyan Turtle from Inglewood") without an
+    // extra Participant fetch. Falls back to identifier on the rare chance a
+    // displayName isn't set.
+    const visitorLabel = visitor.displayName ?? visitor.name ?? visitor.identifier
     const metadata: ChatThreadMetadata = {
       channel: 'chat',
       channelId: integration.id,

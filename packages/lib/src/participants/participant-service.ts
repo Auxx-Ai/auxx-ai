@@ -4,7 +4,7 @@ import { type Database, database, schema } from '@auxx/database'
 import type { IdentifierType, ParticipantEntity } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq, inArray } from 'drizzle-orm'
-import { formatVisitorLabel } from '../chat/labels'
+import { generateVisitorName } from '../chat/visitor-naming'
 import {
   extractRegistrableDomain,
   getOwnDomains,
@@ -79,7 +79,7 @@ export class ParticipantService {
     const trimmedIdentifier = identifier?.trim()
     const identifierFallback =
       identifierType === 'CHAT_VISITOR' && trimmedIdentifier
-        ? formatVisitorLabel(trimmedIdentifier)
+        ? generateVisitorName(trimmedIdentifier)
         : (trimmedIdentifier ?? 'Unknown')
     const validIdentifier = identifierFallback
     const displayName = validName || validIdentifier

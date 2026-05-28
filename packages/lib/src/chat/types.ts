@@ -13,6 +13,14 @@ export interface VisitInfo {
   ipAddress?: string
   referrer?: string
   url?: string
+  /** City resolved from the request IP via `@auxx/lib/geo`. */
+  city?: string
+  /** First-level subdivision (US state, Canadian province, etc.). */
+  region?: string
+  /** Country name. */
+  country?: string
+  /** IANA timezone, e.g. `America/Los_Angeles`. */
+  timezone?: string
 }
 
 /**

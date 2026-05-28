@@ -3,7 +3,8 @@
 import { type Database, schema } from '@auxx/database'
 import type { ParticipantEntity } from '@auxx/database/types'
 import { and, eq } from 'drizzle-orm'
-import { formatVisitorLabel } from '../chat/labels'
+import { generateVisitorName } from '../chat/visitor-naming'
+import type { GeoLocation } from '../geo'
 import { Result, type TypedResult } from '../result'
 
 export interface FindOrCreateVisitorOptions {
@@ -13,6 +14,9 @@ export interface FindOrCreateVisitorOptions {
   sessionId: string
   /** Optional initial visitor name (from widget collect-info form). */
   name?: string | null
+  /** Geo lookup result for the request IP. Seeds the city suffix on the
+   *  generated handle when the visitor is first created. */
+  geo?: GeoLocation | null
 }
 
 /**
@@ -23,7 +27,7 @@ export interface FindOrCreateVisitorOptions {
 export async function findOrCreateVisitorParticipant(
   options: FindOrCreateVisitorOptions
 ): Promise<TypedResult<ParticipantEntity, Error>> {
-  const { db, organizationId, sessionId, name } = options
+  const { db, organizationId, sessionId, name, geo } = options
 
   try {
     const existing = await db.query.Participant.findFirst({
@@ -35,7 +39,7 @@ export async function findOrCreateVisitorParticipant(
     })
     if (existing) return Result.ok(existing)
 
-    const fallback = formatVisitorLabel(sessionId)
+    const fallback = generateVisitorName(sessionId, geo?.city)
     const [created] = await db
       .insert(schema.Participant)
       .values({

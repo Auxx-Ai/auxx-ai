@@ -9,7 +9,7 @@ export { linkContactToCompanyByDomain } from './companies/link-contact'
 // Contacts
 export { createContactAfterOutboundMessage } from './contacts/create-after-outbound'
 export { ensureContactsForRecipients } from './contacts/ensure-for-recipients'
-export { buildServerExternalId, chatExternalId } from './contacts/external-id'
+export { buildServerExternalId, chatExternalId, shopifyExternalId } from './contacts/external-id'
 export { findOrCreateContactForParticipant } from './contacts/find-or-create'
 export type {
   FindOrCreateContactFromJwtInput,
