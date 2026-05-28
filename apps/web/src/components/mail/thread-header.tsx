@@ -44,6 +44,7 @@ import { InboxPicker } from '../pickers/inbox-picker'
 import { TagPicker } from '../pickers/tag-picker'
 import { RecordBadge } from '../resources/ui'
 import { ThreadHandoffControl } from './thread-handoff-control'
+import { ThreadMergeBadge } from './thread-merge-badge'
 import { ThreadParticipantButton } from './thread-participant-button'
 import { useThreadContext } from './thread-provider'
 import { ThreadTag } from './thread-tag'
@@ -264,6 +265,7 @@ export function ThreadHeader() {
             </div>
             {isChatChannel && <ThreadHandoffControl />}
             <ThreadParticipantButton threadId={threadId} />
+            <ThreadMergeBadge mergeData={thread.mergeData} />
           </div>
           <div data-slot='thread-header-actions' className=' flex items-center '>
             <Tooltip content={isDone ? 'Unarchive' : 'Archive'} shortcut='D'>
@@ -453,7 +455,7 @@ export function ThreadHeader() {
         </div>
       </div>
 
-      {thread.mergedAt && thread.mergedIntoThreadId && (
+      {thread.mergeData?.target && (
         <div className='px-4 mt-2'>
           <Alert className='flex items-center justify-between'>
             <div className='flex items-center gap-2'>
@@ -462,28 +464,18 @@ export function ThreadHeader() {
                 This thread was merged into{' '}
                 <Link
                   className='underline'
-                  href={`/app/mail/inbox/open/${getInstanceId(thread.mergedIntoThreadId)}`}>
-                  the target thread
+                  href={`/app/mail/inbox/open/${thread.mergeData.target.threadId}`}>
+                  {thread.mergeData.target.subject || 'the target thread'}
                 </Link>
                 .
               </span>
             </div>
-            {(() => {
-              const mergedAtMs =
-                typeof thread.mergedAt === 'string'
-                  ? Date.parse(thread.mergedAt)
-                  : thread.mergedAt instanceof Date
-                    ? thread.mergedAt.getTime()
-                    : NaN
-              const isWithin24h =
-                Number.isFinite(mergedAtMs) && Date.now() - mergedAtMs < 24 * 60 * 60 * 1000
-              return isWithin24h ? (
-                <Button variant='ghost' size='sm' onClick={handleUnmerge} className='h-7'>
-                  <Undo2 className='size-3.5' />
-                  Unmerge
-                </Button>
-              ) : null
-            })()}
+            {Date.now() - Date.parse(thread.mergeData.target.mergedAt) < 24 * 60 * 60 * 1000 && (
+              <Button variant='ghost' size='sm' onClick={handleUnmerge} className='h-7'>
+                <Undo2 className='size-3.5' />
+                Unmerge
+              </Button>
+            )}
           </Alert>
         </div>
       )}

@@ -96,11 +96,14 @@ export const Thread = pgTable(
       onUpdate: 'cascade',
       onDelete: 'set null',
     }),
-    mergedAt: timestamp({ precision: 3 }),
-    mergedById: text().references((): AnyPgColumn => User.id, {
-      onUpdate: 'cascade',
-      onDelete: 'set null',
-    }),
+    /**
+     * Denormalized merge state. Holds `target` when this thread is merged into
+     * another, or `sources[]` (flattened — direct + transitive) when other
+     * threads have been merged into this one. Mutually exclusive: a thread is
+     * either a source or a target at any given time, never both.
+     * Shape: see `ThreadMergeData` in `@auxx/lib/threads/types`.
+     */
+    mergeData: jsonb(),
   },
   (table) => [
     uniqueIndex('Thread_integrationId_externalId_key').using(

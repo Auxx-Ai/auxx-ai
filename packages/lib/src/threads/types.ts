@@ -7,6 +7,54 @@ import type { ConditionGroup } from '../conditions/types'
 /** Allowed fields that can be used when sorting thread lists. */
 export type ThreadSortField = 'lastMessageAt' | 'subject' | 'sender'
 
+/**
+ * Denormalized merge state stored on `Thread.mergeData`.
+ *
+ * Mutually exclusive: a thread is either a `target` (other threads merged
+ * into it) OR a `source` (it was merged into another), never both. The
+ * flatten-on-merge invariant prevents intermediate nodes from existing —
+ * after every merge, sources/descendants point directly at the final
+ * target and `sources[]` contains the full transitive ancestry.
+ */
+export interface ThreadMergeData {
+  /**
+   * Target-side: present when other threads have been merged INTO this one.
+   * Flattened — always holds the full transitive ancestry, not just direct
+   * sources.
+   */
+  sources?: ThreadMergeSourceEntry[]
+  /**
+   * Source-side: present when this thread was merged INTO another. Always
+   * points at the CURRENT final target after every flatten pass.
+   */
+  target?: ThreadMergeTargetEntry
+}
+
+/** One entry in `ThreadMergeData.sources[]`. */
+export interface ThreadMergeSourceEntry {
+  threadId: string
+  /** Subject snapshot taken at merge time. */
+  subject: string
+  /** ISO timestamp — when this thread entered the chain. */
+  mergedAt: string
+  mergedById: string
+  /** Batch this thread joined in. */
+  batchId: string
+  /** Snapshot count of messages moved off this source. */
+  messageCount: number
+}
+
+/** Source-side merge pointer stored on `Thread.mergeData.target`. */
+export interface ThreadMergeTargetEntry {
+  threadId: string
+  /** Target subject snapshot taken at merge time. */
+  subject: string
+  /** ISO timestamp — when this thread was originally merged. */
+  mergedAt: string
+  mergedById: string
+  batchId: string
+}
+
 /** Describes the field and direction requested when sorting threads. */
 export interface ThreadSortDescriptor {
   field: ThreadSortField
@@ -149,6 +197,19 @@ export interface ThreadMeta {
    * or be null. Loose shape — not enforced at the DB level.
    */
   metadata: Record<string, unknown> | null
+
+  /**
+   * Soft-merge pointer: target Thread RecordId when this thread has been
+   * merged into another. Null when this thread is a target or unmerged.
+   */
+  mergedIntoThreadId: RecordId | null
+
+  /**
+   * Denormalized merge state. Carries `target` when this thread is merged
+   * into another; `sources[]` (full flattened ancestry) when other threads
+   * have been merged into this one. Null when the thread is neither.
+   */
+  mergeData: ThreadMergeData | null
 }
 
 /**

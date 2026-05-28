@@ -38,8 +38,6 @@ export interface ThreadUpdates {
    * call routes through {@link ThreadMergeService.unmerge}.
    */
   mergedIntoThreadId?: RecordId | null
-  /** Optimistic-only field; the server overwrites/clears it. */
-  mergedAt?: Date | null
 }
 
 /**
@@ -97,7 +95,7 @@ export class ThreadMutationService {
 
     // Merge / unmerge routing: when mergedIntoThreadId is present in the
     // updates payload, defer to ThreadMergeService rather than running the
-    // standard field-update path. mergedAt is purely optimistic UI state.
+    // standard field-update path.
     if ('mergedIntoThreadId' in updates) {
       const mergeService = new ThreadMergeService(this.db, this.organizationId, this.actorUserId)
       if (typeof updates.mergedIntoThreadId === 'string') {

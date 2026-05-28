@@ -2,6 +2,7 @@
 
 import '~/lib/immer-config' // Enables Map/Set support for immer
 import type { ThreadClientFilter } from '@auxx/lib/mail-query/client'
+import type { ThreadMergeData } from '@auxx/lib/threads/types'
 import type { ActorId } from '@auxx/types/actor'
 import type { StandaloneDraftMeta } from '@auxx/types/draft'
 import type { RecordId } from '@auxx/types/resource'
@@ -88,8 +89,12 @@ export interface ThreadMeta {
 
   /** Soft-merge pointer: target Thread RecordId when this thread has been merged. */
   mergedIntoThreadId?: RecordId | null
-  /** Timestamp when the merge was applied. Used to hide source threads from lists. */
-  mergedAt?: string | null
+  /**
+   * Denormalized merge state. Carries `target` when this thread was merged
+   * into another; `sources[]` (flattened ancestry) when other threads have
+   * been merged into this one.
+   */
+  mergeData?: ThreadMergeData | null
 }
 
 /** Scheduled message metadata for display in thread conversation view */
