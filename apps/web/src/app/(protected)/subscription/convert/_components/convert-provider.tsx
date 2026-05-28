@@ -92,6 +92,15 @@ export function ConvertProvider({ children }: ConvertProviderProps) {
   const { organizationId } = useOrganizationIdContext()
   const organization = useDehydratedOrganization(organizationId)
   const { data: plans, isLoading: plansLoading } = api.billing.getPlans.useQuery()
+  const { data: subscription } = api.billing.getCurrentSubscription.useQuery()
+
+  // Shopify-billed orgs cannot use the Stripe convert flow — their billing lives on
+  // Shopify, so bounce them to the plans page (which shows the "manage in Shopify" CTA).
+  useEffect(() => {
+    if (subscription?.billingProvider === 'shopify') {
+      router.replace('/app/settings/plans')
+    }
+  }, [subscription?.billingProvider, router])
 
   // Load from sessionStorage after hydration
   useEffect(() => {

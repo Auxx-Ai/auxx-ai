@@ -1,0 +1,1 @@
+ALTER TABLE "PlanSubscription" ADD COLUMN "billingProvider" text DEFAULT 'stripe' NOT NULL;

@@ -322,6 +322,25 @@ export async function setupSchedules() {
       }
     )
 
+    // Shopify App Pricing state-sync job
+    // Every 15 minutes - Reconcile Shopify-billed orgs against the Partner API.
+    // App Pricing delivers no billing webhooks, so this is the backstop for
+    // off-redirect changes (cancellations, freezes). See plans/billing/v2/07-state-sync-poll.md.
+    await maintenanceQueue.upsertJobScheduler(
+      'shopifyBillingSyncJob',
+      { pattern: '*/15 * * * *' },
+      {
+        data: { batchSize: 100 },
+        opts: {
+          attempts: 2,
+          backoff: { type: 'exponential', delay: 60000 },
+          priority: 6,
+          removeOnComplete: { count: 24 },
+          removeOnFail: { count: 96 },
+        },
+      }
+    )
+
     // Demo cleanup job
     // Every 15 minutes - Clean up expired demo organizations
     await maintenanceQueue.upsertJobScheduler(

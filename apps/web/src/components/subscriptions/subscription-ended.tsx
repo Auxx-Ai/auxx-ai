@@ -3,8 +3,10 @@
 
 import { Button } from '@auxx/ui/components/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@auxx/ui/components/card'
+import { toastError } from '@auxx/ui/components/toast'
 import { Clock } from 'lucide-react'
 import Link from 'next/link'
+import { api } from '~/trpc/react'
 
 /** Props for SubscriptionEnded component */
 interface SubscriptionEndedProps {
@@ -25,7 +27,12 @@ export function SubscriptionEnded({
   otherOrganizationsCount = 0,
   planName,
 }: SubscriptionEndedProps) {
-  const normalizedPlanName = planName?.trim() ? planName.trim() : 'Pro'
+  const { data: subscription } = api.billing.getCurrentSubscription.useQuery()
+  const billingProvider = subscription?.billingProvider
+  const billingCycle = subscription?.billingCycle
+  const subPlan = subscription?.plan
+  const resolvedPlanName = (typeof subPlan === 'string' ? subPlan : subPlan?.name) ?? planName
+  const normalizedPlanName = resolvedPlanName?.trim() ? resolvedPlanName.trim() : 'Pro'
   const displayPlanName = normalizedPlanName.charAt(0).toUpperCase() + normalizedPlanName.slice(1)
 
   const title = isTrialEnded
@@ -33,6 +40,26 @@ export function SubscriptionEnded({
     : `${displayPlanName} subscription has ended`
 
   const description = 'Upgrade to maintain access to your organization and premium features'
+
+  const upgradeSubscription = api.billing.upgradeSubscription.useMutation({
+    onSuccess: (result) => {
+      if (result.url) window.location.assign(result.url)
+    },
+    onError: (error) => {
+      toastError({ title: 'Error starting upgrade', description: error.message })
+    },
+  })
+
+  const isShopify = billingProvider === 'shopify'
+
+  const handleApproveInShopify = () => {
+    upgradeSubscription.mutate({
+      planName: normalizedPlanName,
+      billingCycle: billingCycle ?? 'MONTHLY',
+      successUrl: `${window.location.origin}/billing/subscription/activated`,
+      cancelUrl: window.location.href,
+    })
+  }
 
   return (
     <div className='flex items-center justify-center flex-1 min-h-0 h-full'>
@@ -48,12 +75,24 @@ export function SubscriptionEnded({
             <CardDescription>{description}</CardDescription>
           </CardHeader>
           <CardContent className='space-y-3'>
-            <Button asChild className='w-full'>
-              <Link href='/subscription/convert/addons'>Continue with {displayPlanName}</Link>
-            </Button>
-            <Button asChild variant='translucent' className='w-full'>
-              <Link href='/subscription/convert/explore'>Explore plans</Link>
-            </Button>
+            {isShopify ? (
+              <Button
+                className='w-full'
+                onClick={handleApproveInShopify}
+                loading={upgradeSubscription.isPending}
+                loadingText='Redirecting to Shopify...'>
+                Approve in Shopify
+              </Button>
+            ) : (
+              <>
+                <Button asChild className='w-full'>
+                  <Link href='/subscription/convert/addons'>Continue with {displayPlanName}</Link>
+                </Button>
+                <Button asChild variant='translucent' className='w-full'>
+                  <Link href='/subscription/convert/explore'>Explore plans</Link>
+                </Button>
+              </>
+            )}
           </CardContent>
         </Card>
         <div className='w-full'>

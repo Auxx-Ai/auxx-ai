@@ -21,11 +21,14 @@
     "test:integration:watch": "pnpm exec dotenv -e ../../.env -e .env -- vitest --config vitest.integration.config.ts"
   },
   "dependencies": {
+    "@auxx/config": "workspace:*",
     "@auxx/credentials": "workspace:*",
     "@auxx/database": "workspace:*",
     "@auxx/types": "workspace:*",
     "@auxx/deployment": "workspace:*",
     "@auxx/logger": "workspace:*",
+    "@auxx/services": "workspace:*",
+    "@shopify/admin-api-client": "catalog:",
     "drizzle-orm": "catalog:",
     "stripe": "catalog:"
   },

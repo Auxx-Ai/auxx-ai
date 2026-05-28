@@ -1,5 +1,6 @@
 // packages/lib/src/cache/providers/subscription-provider.ts
 
+import { getProvider } from '@auxx/billing'
 import { schema } from '@auxx/database'
 import { eq } from 'drizzle-orm'
 import type { CachedSubscription } from '../org-cache-keys'
@@ -16,6 +17,9 @@ export const subscriptionProvider: CacheProvider<CachedSubscription | null> = {
 
     if (!subscription) return null
 
+    const billingProvider = (subscription.billingProvider ?? 'stripe') as 'stripe' | 'shopify'
+    const capabilities = getProvider(billingProvider).capabilities
+
     return {
       id: subscription.id,
       organizationId: subscription.organizationId,
@@ -30,6 +34,10 @@ export const subscriptionProvider: CacheProvider<CachedSubscription | null> = {
       cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
       canceledAt: subscription.canceledAt?.toISOString() ?? null,
       creditsBalance: subscription.creditsBalance,
+
+      billingProvider,
+      shopifyShopDomain: subscription.shopifyShopDomain ?? null,
+      capabilities,
 
       stripeCustomerId: subscription.stripeCustomerId,
       stripeSubscriptionId: subscription.stripeSubscriptionId,

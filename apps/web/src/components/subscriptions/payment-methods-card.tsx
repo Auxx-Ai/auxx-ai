@@ -19,6 +19,7 @@ export function PaymentMethodsCard() {
   const [confirm, ConfirmDialog] = useConfirm()
   const utils = api.useUtils()
 
+  const { data: subscription } = api.billing.getCurrentSubscription.useQuery()
   const { data: paymentMethods, isLoading } = api.billing.getPaymentMethods.useQuery()
 
   const setDefault = api.billing.setDefaultPaymentMethod.useMutation({
@@ -38,6 +39,9 @@ export function PaymentMethodsCard() {
       toastError({ title: 'Error deleting payment method', description: error.message })
     },
   })
+
+  // Gate on capability — defaults to hidden if cache hasn't repopulated yet.
+  if (subscription && !subscription.capabilities?.managedPaymentMethods) return null
 
   /** Get card brand icon */
   const getCardBrand = (brand: string) => {

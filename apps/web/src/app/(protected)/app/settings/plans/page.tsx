@@ -17,6 +17,7 @@ import { PaymentMethodsCard } from '~/components/subscriptions/payment-methods-c
 import { PlanChangeCard } from '~/components/subscriptions/plan-change-card'
 import { DemoBillingCycleGuard } from './_components/demo-billing-cycle-guard'
 import { PlanViewTracker } from './_components/plan-view-tracker'
+import { ShopifyAdminBillingBannerWrapper } from './_components/shopify-admin-billing-banner-wrapper'
 import { UpgradeConfetti } from './_components/upgrade-confetti'
 
 export default function PlansPage() {
@@ -40,6 +41,8 @@ export default function PlansPage() {
             <PlanChangeCard />
           </Suspense>
         </div>
+
+        <ShopifyAdminBillingBannerWrapper />
 
         <div id='billing-details' className='@container space-y-3'>
           <div className='space-y-1'>

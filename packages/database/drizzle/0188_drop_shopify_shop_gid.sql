@@ -1,0 +1,1 @@
+ALTER TABLE "PlanSubscription" DROP COLUMN "shopifyShopGid";

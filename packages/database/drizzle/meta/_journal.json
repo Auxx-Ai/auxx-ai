@@ -1289,6 +1289,41 @@
       "when": 1779927215426,
       "tag": "0183_thread_merge_data",
       "breakpoints": true
+    },
+    {
+      "idx": 184,
+      "version": "7",
+      "when": 1779952405164,
+      "tag": "0184_add_billing_provider_to_plan_subscription",
+      "breakpoints": true
+    },
+    {
+      "idx": 185,
+      "version": "7",
+      "when": 1779952643865,
+      "tag": "0185_add_shopify_columns_to_plan_subscription",
+      "breakpoints": true
+    },
+    {
+      "idx": 186,
+      "version": "7",
+      "when": 1779953232485,
+      "tag": "0186_add_signup_source_to_user",
+      "breakpoints": true
+    },
+    {
+      "idx": 187,
+      "version": "7",
+      "when": 1779993130166,
+      "tag": "0187_shopify_app_pricing_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 188,
+      "version": "7",
+      "when": 1779997127899,
+      "tag": "0188_drop_shopify_shop_gid",
+      "breakpoints": true
     }
   ]
 }

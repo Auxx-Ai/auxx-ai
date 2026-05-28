@@ -296,9 +296,6 @@ importers:
 
   apps/api:
     dependencies:
-      '@auxx/chat':
-        specifier: workspace:*
-        version: link:../../packages/chat
       '@auxx/config':
         specifier: workspace:*
         version: link:../../packages/config
@@ -1500,6 +1497,9 @@ importers:
 
   packages/billing:
     dependencies:
+      '@auxx/config':
+        specifier: workspace:*
+        version: link:../config
       '@auxx/credentials':
         specifier: workspace:*
         version: link:../credentials
@@ -1512,9 +1512,15 @@ importers:
       '@auxx/logger':
         specifier: workspace:*
         version: link:../logger
+      '@auxx/services':
+        specifier: workspace:*
+        version: link:../services
       '@auxx/types':
         specifier: workspace:*
         version: link:../types
+      '@shopify/admin-api-client':
+        specifier: 'catalog:'
+        version: 1.1.1
       drizzle-orm:
         specifier: 'catalog:'
         version: 0.44.5(@opentelemetry/api@1.9.0)(@types/pg@8.16.0)(@upstash/redis@1.36.2)(kysely@0.28.11)(pg@8.19.0)(postgres@3.4.8)

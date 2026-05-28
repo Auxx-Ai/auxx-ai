@@ -1,7 +1,10 @@
+import { getProvider, type ShopifyBillingProvider, stripeClient } from '@auxx/billing'
 import { WEBAPP_URL } from '@auxx/config/server'
 import { database as db, schema } from '@auxx/database'
 import { getOrgCache, isOrgMember, onCacheEvent, resolveAppSlug } from '@auxx/lib/cache'
+import { BadRequestError, ConflictError } from '@auxx/lib/errors'
 import { getQueue, Queues } from '@auxx/lib/jobs/queues'
+import { OrganizationService } from '@auxx/lib/organizations'
 import { disableWebhooks, isShopifyConnected, SyncManager } from '@auxx/lib/shopify'
 import { createScopedLogger } from '@auxx/logger'
 import { getRedisClient } from '@auxx/redis'
@@ -410,16 +413,28 @@ export const shopifyRouter = createTRPCRouter({
 
   /**
    * Finalize an App-Store-initiated Shopify install by attaching the parked credential
-   * to the chosen organization.
+   * to the chosen organization and parking a Shopify-billed PlanSubscription row, then
+   * handing back the URL of Shopify's hosted plan-selection page. Under Shopify App
+   * Pricing the merchant picks the plan on Shopify's page (not in-app) and approves the
+   * charge there; we observe the resulting contract via the Admin API on the
+   * post-approval landing route + the worker poll.
    *
-   * Reads the claim token from the `shopify_claim_token` cookie, validates the user is
-   * a member of `organizationId`, lazily creates the AppInstallation if missing, writes
-   * the WorkflowCredentials row, then deletes the Redis entry and clears the cookie.
-   *
-   * Returns the URL the client should navigate to next.
+   * Reads the claim token from the `shopify_claim_token` cookie (or the cross-device
+   * `claimToken` input), validates the user is a member of `organizationId`, lazily
+   * creates the AppInstallation, writes the WorkflowCredentials + ShopifyIntegration
+   * rows, reconciles any pre-existing PlanSubscription row (the shopify-claim signupSource
+   * skips the Stripe trial seed, so the hot path is no-op; the fallback path covers an
+   * existing Auxx user signing in to claim), upserts the Shopify PlanSubscription row
+   * (status `incomplete`, `planId` null until the merchant picks, `shopifyShopDomain` set
+   * for the Admin API read), and returns `{ redirectUrl }`.
    */
   finalizeAppStoreInstall: protectedProcedure
-    .input(z.object({ organizationId: z.string(), claimToken: z.string().optional() }))
+    .input(
+      z.object({
+        organizationId: z.string(),
+        claimToken: z.string().optional(),
+      })
+    )
     .mutation(async ({ ctx, input }) => {
       const cookieStore = await cookies()
       // Cookie is the primary source (prod, single-device). The optional input is the
@@ -505,6 +520,18 @@ export const shopifyRouter = createTRPCRouter({
         })
       }
 
+      // Guarantee the org has a handle before saveAppConnection fires the
+      // `connection-added` event — its Lambda context validator rejects a null
+      // organizationHandle. A fresh shopify-claim org hasn't been through the
+      // onboarding handle-picker yet, so derive a provisional handle from the
+      // shop domain (editable later; the picker pre-fills from the stored value).
+      await new OrganizationService(db).ensureOrganizationHandle({
+        organizationId,
+        userId,
+        userEmail: ctx.session.user.email ?? undefined,
+        seed: claim.shop,
+      })
+
       const saveResult = await saveAppConnection(
         appId,
         installationId,
@@ -532,10 +559,113 @@ export const shopifyRouter = createTRPCRouter({
         })
       }
 
+      // Mirror what the in-app OAuth callback does: persist a `ShopifyIntegration`
+      // row for the data-integration consumers (product/customer sync). The
+      // AppConnection write above is the workflow credentials store the billing
+      // provider's Admin API read loads the access token from.
+      await db
+        .insert(schema.ShopifyIntegration)
+        .values({
+          organizationId,
+          shopDomain: claim.shop,
+          accessToken: claim.accessToken,
+          scope: claim.scope,
+          createdById: userId,
+          enabled: true,
+          updatedAt: new Date(),
+        })
+        .onConflictDoUpdate({
+          target: [schema.ShopifyIntegration.organizationId, schema.ShopifyIntegration.shopDomain],
+          set: {
+            accessToken: claim.accessToken,
+            scope: claim.scope,
+            updatedAt: new Date(),
+            enabled: true,
+          },
+        })
+
       await redis.del(claimKey)
       cookieStore.delete(CLAIM_COOKIE_NAME)
 
-      const redirectUrl = `/app/settings/apps/installed/shopify/connections?attached=${encodeURIComponent(claim.shop)}`
+      // Reconcile any pre-existing PlanSubscription row. Hot path: new claim signup
+      // hits no row (shopify-claim signupSource skipped the trial seeder). Fallback
+      // path: existing Auxx user signed in on the claim page — their org may have a
+      // Stripe trial or live Stripe subscription that has to be reconciled before we
+      // upsert the Shopify billing row (PlanSubscription has uniqueIndex on
+      // organizationId).
+      const existing = await db.query.PlanSubscription.findFirst({
+        where: (s, { eq: e }) => e(s.organizationId, organizationId),
+      })
+
+      if (existing?.billingProvider === 'stripe') {
+        const reusable =
+          existing.status === 'trialing' ||
+          existing.status === 'incomplete' ||
+          existing.status === 'canceled' ||
+          existing.status === 'incomplete_expired'
+        if (!reusable) {
+          throw new BadRequestError(
+            'This organization has an active paid Stripe subscription. Cancel it before switching to Shopify billing.'
+          )
+        }
+        // Cancel the auto-created Stripe trial (or whatever Stripe sub is sitting here)
+        // and delete the local row. Calling Stripe directly — not via
+        // resolveBillingProvider — because we're explicitly reconciling that row; the
+        // resolver picks the provider based on the current row, which is exactly the
+        // value we're about to change. Done this way once at this site only.
+        if (existing.stripeSubscriptionId) {
+          try {
+            await stripeClient.getClient().subscriptions.cancel(existing.stripeSubscriptionId)
+          } catch (error) {
+            logger.warn('Failed to cancel pre-existing Stripe subscription during claim', {
+              organizationId,
+              stripeSubscriptionId: existing.stripeSubscriptionId,
+              error: error instanceof Error ? error.message : String(error),
+            })
+          }
+        }
+        await db.delete(schema.PlanSubscription).where(eq(schema.PlanSubscription.id, existing.id))
+      } else if (existing?.billingProvider === 'shopify' && existing.status !== 'canceled') {
+        throw new ConflictError(
+          'This organization already has an active Shopify subscription. Contact support if this is unexpected.'
+        )
+      }
+      // 'shopify' + 'canceled' (reinstall) falls through to the upsert below — the
+      // merchant re-enters Shopify's picker and we observe the fresh contract on return.
+
+      // Upsert the Shopify PlanSubscription row. `planId` stays null until the merchant
+      // picks a plan on Shopify's hosted page; `status` is `incomplete` until the
+      // post-approval landing route reads the contract from the Admin API. Writing
+      // billingProvider='shopify' here is what makes `resolveBillingProvider` route
+      // future calls through the Shopify provider. `shopifyShopDomain` drives the Admin
+      // API read — no Shop GID needed (the read is shop-token-scoped).
+      await db
+        .insert(schema.PlanSubscription)
+        .values({
+          organizationId,
+          planId: null,
+          plan: 'pending', // satisfy the legacy NOT NULL text column
+          billingProvider: 'shopify',
+          shopifyShopDomain: claim.shop,
+          status: 'incomplete',
+          seats: 1,
+          updatedAt: new Date(),
+        })
+        .onConflictDoUpdate({
+          target: schema.PlanSubscription.organizationId,
+          set: {
+            billingProvider: 'shopify',
+            shopifyShopDomain: claim.shop,
+            status: 'incomplete',
+            canceledAt: null,
+            updatedAt: new Date(),
+          },
+        })
+
+      // Hand back the Shopify hosted pricing-page URL. The merchant picks the plan +
+      // interval there, approves, and is redirected to /billing/subscription/activated.
+      const provider = getProvider('shopify') as ShopifyBillingProvider
+      const redirectUrl = await provider.getPlanSelectionUrl(organizationId)
       return { redirectUrl, shop: claim.shop }
     }),
 

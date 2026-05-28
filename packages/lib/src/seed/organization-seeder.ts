@@ -114,11 +114,13 @@ export class OrganizationSeeder {
   private db: Database
   private userId: string
   private userEmail?: string
+  private signupSource?: string
 
-  constructor(db: Database, userId: string, userEmail?: string) {
+  constructor(db: Database, userId: string, userEmail?: string, signupSource?: string) {
     this.db = db
     this.userId = userId
     this.userEmail = userEmail
+    this.signupSource = signupSource
   }
   /**
    * Seed a new organization with all necessary default data
@@ -349,6 +351,16 @@ export class OrganizationSeeder {
     // Self-hosted: no trial subscriptions needed
     if (isSelfHosted()) {
       logger.info('Self-hosted mode, skipping trial subscription', { organizationId })
+      return
+    }
+
+    // Shopify App Store install path owns its own billing flow — the
+    // finalizeAppStoreInstall mutation creates the Shopify-billing-provider
+    // PlanSubscription row after the merchant picks a plan. Skipping here
+    // keeps `organizationId` free of the auto-created Stripe trial row so the
+    // claim flow can insert without a uniqueIndex collision.
+    if (this.signupSource === 'shopify-claim') {
+      logger.info('Shopify-claim signup, skipping trial subscription', { organizationId })
       return
     }
 

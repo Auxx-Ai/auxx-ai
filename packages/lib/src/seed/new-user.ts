@@ -27,6 +27,7 @@ export async function seedNewUserDatabase(user: {
   name?: string | null
   email?: string | null
   image?: string | null
+  signupSource?: string | null
 }): Promise<UserEntity | undefined> {
   logger.info(`Seeding database for new user: ${user.id}`)
   if (!user.id || !user.email) {
@@ -98,7 +99,12 @@ export async function seedNewUserDatabase(user: {
       logger.info(`update defaultOrganizationId for user: ${updatedUser!.id}`)
 
       // Seed organization first — creates entity definitions (signature, etc.) that user seeder depends on
-      const seeder = new OrganizationSeeder(db, user.id, user.email ?? undefined)
+      const seeder = new OrganizationSeeder(
+        db,
+        user.id,
+        user.email ?? undefined,
+        user.signupSource ?? undefined
+      )
       await seeder.seedNewOrganization(organizationId)
 
       // Seed user-specific data (avatar migration, default signature, etc.)

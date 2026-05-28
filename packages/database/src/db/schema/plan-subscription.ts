@@ -34,6 +34,7 @@ export const PlanSubscription = pgTable(
       onDelete: 'cascade',
     }), // Nullable - populated by better-auth lifecycle hooks
     plan: text().notNull(), // Better-auth requires plan name ("free", "starter", etc.)
+    billingProvider: text().default('stripe').notNull(), // 'stripe' | 'shopify'
     status: text().default('incomplete').notNull(), // Stripe subscription status
     seats: integer().default(1).notNull(),
     billingCycle: billingCycle().default('MONTHLY').notNull(),
@@ -41,6 +42,7 @@ export const PlanSubscription = pgTable(
     canceledAt: timestamp({ precision: 3 }),
     stripeCustomerId: text(),
     stripeSubscriptionId: text(),
+    shopifyShopDomain: text(), // 'acme.myshopify.com' — drives the Admin API read (createShopifyAdminClient), the APP_UNINSTALLED fan-out, and the ?shop= redirect param. Nullable (Stripe rows have none).
     periodStart: timestamp({ precision: 3 }).defaultNow(),
     periodEnd: timestamp({ precision: 3 }),
     cancelAtPeriodEnd: boolean().default(false).notNull(),

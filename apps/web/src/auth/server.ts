@@ -350,6 +350,7 @@ export const auth = betterAuth({
       preferredTimezone: { type: 'string' },
       banned: { type: 'boolean' },
       forcePasswordChange: { type: 'boolean' },
+      signupSource: { type: 'string' },
     },
   },
   session: {

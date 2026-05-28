@@ -24,17 +24,28 @@ import Link from 'next/link'
 import { useState } from 'react'
 import { EmptyState } from '~/components/global/empty-state'
 import { api } from '~/trpc/react'
+import { ShopifyInvoicesLink } from './shopify-invoices-link'
 
 export function InvoiceList() {
   const [cursor, setCursor] = useState<string | undefined>(undefined)
 
+  const { data: subscription } = api.billing.getCurrentSubscription.useQuery()
+  const noInvoiceLedger = subscription && !subscription.capabilities?.invoiceLedger
+
   const { data, isLoading, isFetching, hasNextPage, fetchNextPage } =
     api.billing.getInvoices.useInfiniteQuery(
       { limit: 10, cursor },
-      { getNextPageParam: (lastPage) => lastPage.nextCursor }
+      {
+        getNextPageParam: (lastPage) => lastPage.nextCursor,
+        // Skip invoice fetching for providers that don't expose a ledger.
+        enabled: !noInvoiceLedger,
+      }
     )
 
-  const { data: subscription } = api.billing.getCurrentSubscription.useQuery()
+  // For providers without an invoice ledger (Shopify), deeplink to their admin instead.
+  if (noInvoiceLedger) {
+    return <ShopifyInvoicesLink shopDomain={subscription.shopifyShopDomain} />
+  }
 
   // Function to determine status badge styling based on invoice status
   const getStatusBadge = (status: string) => {

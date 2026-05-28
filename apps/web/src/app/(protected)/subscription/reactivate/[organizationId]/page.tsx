@@ -25,6 +25,18 @@ export default function ReactivatePage() {
     error: orgError,
   } = api.billing.getReactivationDetails.useQuery({ organizationId })
 
+  const { data: subscription } = api.billing.getCurrentSubscription.useQuery()
+  const isShopify = subscription?.billingProvider === 'shopify'
+
+  const upgradeSubscription = api.billing.upgradeSubscription.useMutation({
+    onSuccess: (result) => {
+      if (result.url) window.location.assign(result.url)
+    },
+    onError: (error) => {
+      toastError({ title: 'Error starting reactivation', description: error.message })
+    },
+  })
+
   const [timeRemaining, setTimeRemaining] = useState<string>('')
 
   // Update countdown timer
@@ -46,6 +58,20 @@ export default function ReactivatePage() {
 
   // Handle plan selection - redirect to convert flow with pre-filled data
   const handleSelectPlan = () => {
+    // Shopify-billed orgs reactivate via Shopify's hosted approval page — no
+    // Stripe SetupIntent or card collection.
+    if (isShopify) {
+      const planName = subscription?.plan?.name ?? 'Pro'
+      upgradeSubscription.mutate({
+        planName,
+        billingCycle: orgDetails?.lastBillingCycle || 'MONTHLY',
+        seats: orgDetails?.currentSeats || 1,
+        successUrl: `${window.location.origin}/billing/subscription/activated`,
+        cancelUrl: window.location.href,
+      })
+      return
+    }
+
     // Store selected org and plan in session storage
     sessionStorage.setItem('reactivation-organization-id', organizationId)
     sessionStorage.setItem(
@@ -211,12 +237,19 @@ export default function ReactivatePage() {
 
             {/* CTA Buttons */}
             <div className='space-y-3'>
-              <Button onClick={handleSelectPlan} className='w-full' size='lg'>
-                Reactivate with Pro Plan
+              <Button
+                onClick={handleSelectPlan}
+                className='w-full'
+                size='lg'
+                loading={isShopify && upgradeSubscription.isPending}
+                loadingText='Redirecting to Shopify...'>
+                {isShopify ? 'Approve in Shopify' : 'Reactivate with Pro Plan'}
               </Button>
-              <Button asChild variant='outline' className='w-full' size='lg'>
-                <Link href='/subscription/convert/explore'>View All Plans</Link>
-              </Button>
+              {!isShopify && (
+                <Button asChild variant='outline' className='w-full' size='lg'>
+                  <Link href='/subscription/convert/explore'>View All Plans</Link>
+                </Button>
+              )}
             </div>
 
             {/* Help Text */}

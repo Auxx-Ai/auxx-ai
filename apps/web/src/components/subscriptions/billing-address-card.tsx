@@ -13,7 +13,11 @@ import { BillingAddressDialog } from './billing-address-dialog'
 export function BillingAddressCard() {
   const { isDemo } = useDemo()
   const [dialogOpen, setDialogOpen] = useState(false)
+  const { data: subscription } = api.billing.getCurrentSubscription.useQuery()
   const { data: billingDetails, isLoading } = api.billing.getBillingDetails.useQuery()
+
+  // Gate on capability — defaults to hidden if cache hasn't repopulated yet.
+  if (subscription && !subscription.capabilities?.managedPaymentMethods) return null
 
   /** Format address into single line string */
   const formatAddress = (address: any) => {

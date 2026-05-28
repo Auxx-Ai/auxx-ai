@@ -231,6 +231,14 @@ function PlanChangeSummaryContent({
       })
     },
   })
+  const upgradeSubscription = api.billing.upgradeSubscription.useMutation({
+    onError: (error) => {
+      toastError({
+        title: 'Error starting upgrade',
+        description: error.message,
+      })
+    },
+  })
   const updateBillingAddress = api.billing.updateBillingAddress.useMutation()
   const createSetupIntent = api.billing.createSetupIntent.useMutation()
   const hasManuallySelectedPayment = useRef(false)
@@ -258,8 +266,34 @@ function PlanChangeSummaryContent({
     }
   }, [defaultPaymentMethod])
 
+  const isShopify = currentSubscription?.billingProvider === 'shopify'
+
   /** Handle form submission */
   const onSubmit = async (data: BillingAddressFormData) => {
+    // Shopify orgs skip the Stripe-only payment collection — the merchant
+    // approves the new AppSubscription on Shopify's hosted confirmation page.
+    if (isShopify) {
+      if (!selectedPlan) return
+      posthog?.capture('plan_change_initiated', {
+        from_plan: currentSubscription?.plan?.name ?? 'none',
+        to_plan: selectedPlan.name,
+        provider: 'shopify',
+      })
+      try {
+        const result = await upgradeSubscription.mutateAsync({
+          planName: selectedPlan.name,
+          billingCycle,
+          seats,
+          successUrl: `${window.location.origin}/billing/subscription/activated`,
+          cancelUrl: window.location.href,
+        })
+        if (result.url) window.location.assign(result.url)
+      } catch {
+        // toast handled by mutation onError
+      }
+      return
+    }
+
     if (!stripe || !elements) {
       toastError({ title: 'Error', description: 'Payment system not ready' })
       return
@@ -487,119 +521,123 @@ function PlanChangeSummaryContent({
             />
           </div>
 
-          {/* Billing Information */}
-          <div className='space-y-3'>
-            <Label>Billing information</Label>
+          {/* Billing Information — hidden for providers that don't manage card-on-file. */}
+          {!isShopify && (
             <div className='space-y-3'>
-              <div className='grid sm:grid-cols-2 gap-3'>
-                <div>
-                  <Input
-                    {...register('email', { required: 'Email is required' })}
-                    placeholder='Email'
-                    type='email'
-                  />
-                  {errors.email && (
-                    <p className='text-xs text-destructive mt-1'>{errors.email.message}</p>
-                  )}
+              <Label>Billing information</Label>
+              <div className='space-y-3'>
+                <div className='grid sm:grid-cols-2 gap-3'>
+                  <div>
+                    <Input
+                      {...register('email', { required: 'Email is required' })}
+                      placeholder='Email'
+                      type='email'
+                    />
+                    {errors.email && (
+                      <p className='text-xs text-destructive mt-1'>{errors.email.message}</p>
+                    )}
+                  </div>
+                  <div>
+                    <Input {...register('companyName')} placeholder='Company' />
+                  </div>
                 </div>
-                <div>
-                  <Input {...register('companyName')} placeholder='Company' />
-                </div>
-              </div>
 
-              <Input
-                {...register('line1', { required: 'Address is required' })}
-                placeholder='Address Line 1'
-              />
-              {errors.line1 && (
-                <p className='text-xs text-destructive mt-1'>{errors.line1.message}</p>
-              )}
-
-              <div className='grid grid-cols-1 sm:grid-cols-3 gap-3'>
-                <div>
-                  <Input
-                    {...register('city', { required: 'City is required' })}
-                    placeholder='City'
-                  />
-                  {errors.city && (
-                    <p className='text-xs text-destructive mt-1'>{errors.city.message}</p>
-                  )}
-                </div>
-                <div>
-                  <Input {...register('state')} placeholder='State' />
-                </div>
-                <div>
-                  <Input
-                    {...register('postalCode', { required: 'Postal code is required' })}
-                    placeholder='Postal Code'
-                  />
-                  {errors.postalCode && (
-                    <p className='text-xs text-destructive mt-1'>{errors.postalCode.message}</p>
-                  )}
-                </div>
-              </div>
-
-              <Controller
-                name='country'
-                control={control}
-                rules={{ required: 'Country is required' }}
-                render={({ field }) => (
-                  <CountrySelect value={field.value} onChange={field.onChange} />
+                <Input
+                  {...register('line1', { required: 'Address is required' })}
+                  placeholder='Address Line 1'
+                />
+                {errors.line1 && (
+                  <p className='text-xs text-destructive mt-1'>{errors.line1.message}</p>
                 )}
-              />
-              {errors.country && (
-                <p className='text-xs text-destructive mt-1'>{errors.country.message}</p>
-              )}
-            </div>
-          </div>
 
-          {/* Payment Information */}
-          <div className='space-y-3'>
-            <Label>Payment information</Label>
-            {defaultPaymentMethod ? (
-              <div className='flex items-center justify-between rounded-lg border p-3'>
-                <div>
-                  <p className='text-sm font-medium'>
-                    {defaultPaymentMethod.brand} •••• {defaultPaymentMethod.last4}
-                  </p>
-                  <p className='text-xs text-muted-foreground'>
-                    Expires {defaultPaymentMethod.expMonth}/{defaultPaymentMethod.expYear}
-                  </p>
+                <div className='grid grid-cols-1 sm:grid-cols-3 gap-3'>
+                  <div>
+                    <Input
+                      {...register('city', { required: 'City is required' })}
+                      placeholder='City'
+                    />
+                    {errors.city && (
+                      <p className='text-xs text-destructive mt-1'>{errors.city.message}</p>
+                    )}
+                  </div>
+                  <div>
+                    <Input {...register('state')} placeholder='State' />
+                  </div>
+                  <div>
+                    <Input
+                      {...register('postalCode', { required: 'Postal code is required' })}
+                      placeholder='Postal Code'
+                    />
+                    {errors.postalCode && (
+                      <p className='text-xs text-destructive mt-1'>{errors.postalCode.message}</p>
+                    )}
+                  </div>
                 </div>
-                <Button
-                  type='button'
-                  variant='ghost'
-                  size='sm'
-                  onClick={() => {
-                    hasManuallySelectedPayment.current = true
-                    setUseExistingPaymentMethod((prev) => !prev)
-                  }}>
-                  {useExistingPaymentMethod ? 'Use a different card' : 'Use saved card'}
-                </Button>
-              </div>
-            ) : null}
 
-            {shouldCollectNewPaymentMethod ? (
-              <div className='p-3 border rounded-lg'>
-                <CardElement
-                  options={{
-                    style: {
-                      base: {
-                        fontSize: '14px',
-                        color: 'hsl(var(--foreground))',
-                        '::placeholder': {
-                          color: 'hsl(var(--muted-foreground))',
+                <Controller
+                  name='country'
+                  control={control}
+                  rules={{ required: 'Country is required' }}
+                  render={({ field }) => (
+                    <CountrySelect value={field.value} onChange={field.onChange} />
+                  )}
+                />
+                {errors.country && (
+                  <p className='text-xs text-destructive mt-1'>{errors.country.message}</p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Payment Information — hidden for providers that don't manage card-on-file. */}
+          {!isShopify && (
+            <div className='space-y-3'>
+              <Label>Payment information</Label>
+              {defaultPaymentMethod ? (
+                <div className='flex items-center justify-between rounded-lg border p-3'>
+                  <div>
+                    <p className='text-sm font-medium'>
+                      {defaultPaymentMethod.brand} •••• {defaultPaymentMethod.last4}
+                    </p>
+                    <p className='text-xs text-muted-foreground'>
+                      Expires {defaultPaymentMethod.expMonth}/{defaultPaymentMethod.expYear}
+                    </p>
+                  </div>
+                  <Button
+                    type='button'
+                    variant='ghost'
+                    size='sm'
+                    onClick={() => {
+                      hasManuallySelectedPayment.current = true
+                      setUseExistingPaymentMethod((prev) => !prev)
+                    }}>
+                    {useExistingPaymentMethod ? 'Use a different card' : 'Use saved card'}
+                  </Button>
+                </div>
+              ) : null}
+
+              {shouldCollectNewPaymentMethod ? (
+                <div className='p-3 border rounded-lg'>
+                  <CardElement
+                    options={{
+                      style: {
+                        base: {
+                          fontSize: '14px',
+                          color: 'hsl(var(--foreground))',
+                          '::placeholder': {
+                            color: 'hsl(var(--muted-foreground))',
+                          },
+                        },
+                        invalid: {
+                          color: 'hsl(var(--destructive))',
                         },
                       },
-                      invalid: {
-                        color: 'hsl(var(--destructive))',
-                      },
-                    },
-                  }}
-                />
-              </div>
-            ) : null}
-          </div>
+                    }}
+                  />
+                </div>
+              ) : null}
+            </div>
+          )}
         </div>
 
         {/* Column 2: Summary Card (1/3 width) */}
@@ -676,36 +714,46 @@ function PlanChangeSummaryContent({
                 )}
               </div>
 
-              {/* Adjustment due today */}
-              <div className='flex justify-between text-xs'>
-                <span className='text-muted-foreground'>
-                  {preview?.transition === 'seat_addition' && 'Prorated seat addition'}
-                  {preview?.transition === 'seat_reduction' && 'Prorated seat reduction'}
-                  {preview?.transition === 'trial_to_paid' && 'Due after trial'}
-                  {!preview?.transition?.startsWith('seat_') &&
-                    preview?.transition !== 'trial_to_paid' &&
-                    'Adjustment due today'}
-                </span>
-                {isLoadingPreview ? (
-                  <Skeleton className='h-[16px] w-12' />
-                ) : (
-                  <span>${adjustmentDueToday.toFixed(2)}</span>
-                )}
-              </div>
-
-              {/* Add explanation for seat additions */}
-              {preview?.transition === 'seat_addition' &&
-                adjustmentDueToday > 0 &&
-                currentSubscription && (
-                  <div className='text-[10px] text-muted-foreground'>
-                    Adding {seats - currentSubscription.seats} seat(s) prorated for remaining
-                    billing period
+              {/* Adjustment due today — only providers that can preview proration. */}
+              {currentSubscription?.capabilities?.prorationPreview === false ? (
+                <div className='text-[10px] text-muted-foreground'>
+                  Exact charge amount will be shown on the Shopify approval page.
+                </div>
+              ) : (
+                <>
+                  <div className='flex justify-between text-xs'>
+                    <span className='text-muted-foreground'>
+                      {preview?.transition === 'seat_addition' && 'Prorated seat addition'}
+                      {preview?.transition === 'seat_reduction' && 'Prorated seat reduction'}
+                      {preview?.transition === 'trial_to_paid' && 'Due after trial'}
+                      {!preview?.transition?.startsWith('seat_') &&
+                        preview?.transition !== 'trial_to_paid' &&
+                        'Adjustment due today'}
+                    </span>
+                    {isLoadingPreview ? (
+                      <Skeleton className='h-[16px] w-12' />
+                    ) : (
+                      <span>${adjustmentDueToday.toFixed(2)}</span>
+                    )}
                   </div>
-                )}
 
-              {/* Add note for trial subscriptions */}
-              {preview?.transition === 'trial_to_paid' && preview?.proration?.note && (
-                <div className='text-[10px] text-muted-foreground'>{preview.proration.note}</div>
+                  {/* Add explanation for seat additions */}
+                  {preview?.transition === 'seat_addition' &&
+                    adjustmentDueToday > 0 &&
+                    currentSubscription && (
+                      <div className='text-[10px] text-muted-foreground'>
+                        Adding {seats - currentSubscription.seats} seat(s) prorated for remaining
+                        billing period
+                      </div>
+                    )}
+
+                  {/* Add note for trial subscriptions */}
+                  {preview?.transition === 'trial_to_paid' && preview?.proration?.note && (
+                    <div className='text-[10px] text-muted-foreground'>
+                      {preview.proration.note}
+                    </div>
+                  )}
+                </>
               )}
             </div>
 
@@ -737,13 +785,15 @@ function PlanChangeSummaryContent({
               type='submit'
               className='w-full'
               loading={
-                updateSubscriptionDirect.isPending ||
-                updateBillingAddress.isPending ||
-                (shouldCollectNewPaymentMethod ? createSetupIntent.isPending : false)
+                isShopify
+                  ? upgradeSubscription.isPending
+                  : updateSubscriptionDirect.isPending ||
+                    updateBillingAddress.isPending ||
+                    (shouldCollectNewPaymentMethod ? createSetupIntent.isPending : false)
               }
-              loadingText='Processing...'
+              loadingText={isShopify ? 'Redirecting to Shopify...' : 'Processing...'}
               disabled={isLoadingPreview}>
-              Confirm
+              {isShopify ? 'Approve in Shopify' : 'Confirm'}
             </Button>
 
             {currentSubscription?.status === 'trialing' && (
