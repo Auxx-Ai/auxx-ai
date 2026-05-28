@@ -8,25 +8,9 @@ import { createShopifyAdminClient } from './shopify-webhooks'
 
 const logger = createScopedLogger('shopify/chat-metafields')
 
-export const AUXX_CHAT_METAFIELD_NAMESPACE = 'auxx'
-export const AUXX_CHAT_METAFIELD_KEY_CHANNEL = 'chat_channel_id'
-export const AUXX_CHAT_METAFIELD_KEY_AUDIENCE = 'chat_audience'
-
-const METAFIELD_DEFINITIONS_MUTATION = `#graphql
-  mutation EnsureAuxxChatMetafieldDefinitions(
-    $channel: MetafieldDefinitionInput!,
-    $audience: MetafieldDefinitionInput!
-  ) {
-    channelDef: metafieldDefinitionCreate(definition: $channel) {
-      createdDefinition { id }
-      userErrors { field message code }
-    }
-    audienceDef: metafieldDefinitionCreate(definition: $audience) {
-      createdDefinition { id }
-      userErrors { field message code }
-    }
-  }
-`
+export const AUXX_CHAT_METAFIELD_NAMESPACE = '$app:chat'
+export const AUXX_CHAT_METAFIELD_KEY_CHANNEL = 'channel_id'
+export const AUXX_CHAT_METAFIELD_KEY_AUDIENCE = 'audience'
 
 const SHOP_GID_QUERY = `#graphql
   query ShopGid { shop { id } }
@@ -48,62 +32,16 @@ export interface WriteAuxxChatMetafieldsInput {
 }
 
 /**
- * Register the `auxx.chat_channel_id` and `auxx.chat_audience` shop
- * metafield definitions with storefront read access so the theme can read
- * them from Liquid without merchant intervention. Idempotent — Shopify
- * returns a `TAKEN` userError when a definition already exists; we treat
- * that as success.
- */
-export async function ensureAuxxChatMetafieldDefinitions(params: {
-  shopDomain: string
-  accessToken: string
-}): Promise<void> {
-  const { shopDomain, accessToken } = params
-  const client = createShopifyAdminClient({ shopDomain, accessToken })
-
-  const channel = {
-    namespace: AUXX_CHAT_METAFIELD_NAMESPACE,
-    key: AUXX_CHAT_METAFIELD_KEY_CHANNEL,
-    name: 'Auxx chat channel',
-    description: 'Auxx chat channel ID powering the storefront widget.',
-    type: 'single_line_text_field',
-    ownerType: 'SHOP',
-    pin: true,
-    access: { storefront: 'PUBLIC_READ' },
-  }
-  const audience = {
-    namespace: AUXX_CHAT_METAFIELD_NAMESPACE,
-    key: AUXX_CHAT_METAFIELD_KEY_AUDIENCE,
-    name: 'Auxx chat audience',
-    description: 'Auxx chat audience policy: visitors, both, or users.',
-    type: 'single_line_text_field',
-    ownerType: 'SHOP',
-    pin: true,
-    access: { storefront: 'PUBLIC_READ' },
-  }
-
-  try {
-    const response = await client.request(METAFIELD_DEFINITIONS_MUTATION, {
-      variables: { channel, audience },
-    })
-    const errors = [
-      ...(response.data?.channelDef?.userErrors ?? []),
-      ...(response.data?.audienceDef?.userErrors ?? []),
-    ].filter((e: { code?: string }) => e.code !== 'TAKEN')
-    if (errors.length > 0) {
-      logger.warn('Shopify metafield definition userErrors', { shopDomain, errors })
-    }
-  } catch (error) {
-    logger.error('Failed to register Shopify chat metafield definitions', { shopDomain, error })
-  }
-}
-
-/**
- * Write the `auxx.chat_channel_id` and/or `auxx.chat_audience` shop
- * metafields. Pass `null` to clear (the Liquid embed treats blank as
- * "not bound" and renders nothing). Failures are logged, not thrown —
- * the source of truth lives in our DB, so a metafield write retry can
- * be wired later without blocking the calling mutation.
+ * Write the `$app:chat.channel_id` and/or `$app:chat.audience` shop
+ * metafields in the app-reserved namespace. Pass `null` to clear (the
+ * Liquid embed treats blank as "not bound" and renders nothing).
+ * Failures are logged, not thrown — the source of truth lives in our
+ * DB, so a metafield write retry can be wired later without blocking
+ * the calling mutation.
+ *
+ * Reserved-namespace metafields are hidden from the merchant's Custom
+ * data UI, can't be read/written by other apps, and auto-delete on app
+ * uninstall — no definition registration required.
  */
 export async function writeAuxxChatMetafields(input: WriteAuxxChatMetafieldsInput): Promise<void> {
   const { shopDomain, accessToken, channelId, audience } = input
@@ -168,7 +106,7 @@ export async function writeAuxxChatMetafields(input: WriteAuxxChatMetafieldsInpu
  * `chatChannelId === channelId` in its AppSetting. Looks up each install's
  * Shopify access token + shop domain by decrypting its
  * `WorkflowCredentials.encryptedData`, then writes the
- * `auxx.chat_audience` metafield. Best-effort per install — one shop's
+ * `$app:chat.audience` metafield. Best-effort per install — one shop's
  * failure doesn't block the others.
  */
 export async function fanOutAuxxChatAudienceToShopify(params: {
@@ -235,9 +173,9 @@ export async function fanOutAuxxChatAudienceToShopify(params: {
 /**
  * Bind a chat channel to a specific Shopify install (an `AppInstallation`
  * for the `shopify` app). Resolves the install's access token + shop
- * domain by decrypting its org-scoped `WorkflowCredentials`, registers
- * the metafield definitions (idempotent), then writes the
- * `auxx.chat_channel_id` and `auxx.chat_audience` shop metafields.
+ * domain by decrypting its org-scoped `WorkflowCredentials`, then writes
+ * the `$app:chat.channel_id` and `$app:chat.audience` shop metafields in
+ * the app-reserved namespace.
  *
  * Called from the chat-widget admin UI (phase 5) when the merchant picks
  * which channel powers a connected store. The App Store install flow
@@ -296,8 +234,6 @@ export async function bindChatChannelToShopifyInstall(params: {
   if (!accessToken || !shopDomain) {
     return { ok: false, reason: 'credential_missing_shop_or_token' }
   }
-
-  await ensureAuxxChatMetafieldDefinitions({ shopDomain, accessToken })
 
   let audience: 'visitors' | 'both' | 'users' = 'visitors'
   if (channelId) {

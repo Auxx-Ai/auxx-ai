@@ -193,6 +193,13 @@ services:
       LAMBDA_INTERNAL_URL: http://lambda:${LAMBDA_PORT:-3008}
       DB_POOL_MAX: "5"
       APP_NAME: auxx-api
+      # Geolocation (optional). See .env.example for details.
+      AUXX_GEO_PROVIDER: ${AUXX_GEO_PROVIDER:-maxmind}
+      MAXMIND_LICENSE_KEY: ${MAXMIND_LICENSE_KEY:-}
+    volumes:
+      # Persists the MaxMind mmdb across restarts so we don't re-download
+      # the ~70MB file on every container boot.
+      - geo_data:/app/geo
     depends_on:
       migrate: { condition: service_completed_successfully }
       redis: { condition: service_healthy }
@@ -285,6 +292,7 @@ volumes:
   postgres_data:
   redis_data:
   letsencrypt_data:
+  geo_data:
 
 networks:
   auxx-network:

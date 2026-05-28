@@ -23,6 +23,9 @@ repomix.config.json
 /prisma/db.sqlite-journal
 db.sqlite
 /plans
+
+# MaxMind GeoLite2 database (license forbids redistribution)
+apps/api/geo/
 # next.js
 .open-next
 /.next/

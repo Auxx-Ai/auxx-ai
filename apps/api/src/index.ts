@@ -1,6 +1,7 @@
 // apps/api/src/index.ts
 
 import { configService } from '@auxx/credentials'
+import { initGeo } from '@auxx/lib/geo'
 import { createScopedLogger } from '@auxx/logger'
 import { serve } from '@hono/node-server'
 import { Hono } from 'hono'
@@ -42,6 +43,7 @@ const log = createScopedLogger('api-server')
  */
 async function main() {
   await configService.init()
+  await initGeo()
 
   const app = new Hono()
 

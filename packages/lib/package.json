@@ -346,6 +346,12 @@
       "import": "./dist/files/types/index.mjs",
       "default": "./src/files/types/index.ts"
     },
+    "./geo": {
+      "types": "./src/geo/index.ts",
+      "source": "./src/geo/index.ts",
+      "import": "./dist/geo/index.mjs",
+      "default": "./src/geo/index.ts"
+    },
     "./groups": {
       "types": "./src/groups/index.ts",
       "source": "./src/groups/index.ts",
@@ -909,6 +915,7 @@
     "lru-cache": "11.1.0",
     "lucide-react": "catalog:",
     "mailgun.js": "^12.0.1",
+    "maxmind": "^4.3.20",
     "mammoth": "^1.10.0",
     "mdast-util-to-string": "^4.0.0",
     "nanoid": "^5.1.5",

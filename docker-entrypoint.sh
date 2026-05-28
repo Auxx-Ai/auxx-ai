@@ -1,23 +1,33 @@
 #!/bin/sh
 # docker-entrypoint.sh
-# Replaces build-time URL placeholders with runtime values in .next client bundles.
 #
-# At build time, DOMAIN=__RUNTIME_DOMAIN__ is baked into Next.js bundles.
-# url.ts produces these patterns:
-#   https://app.__RUNTIME_DOMAIN__    (WEBAPP_URL)
-#   https://api.__RUNTIME_DOMAIN__    (API_URL)
-#   https://__RUNTIME_DOMAIN__        (HOMEPAGE_URL)
-#   https://docs.__RUNTIME_DOMAIN__   (DOCS_URL)
-#   https://build.__RUNTIME_DOMAIN__  (DEV_PORTAL_URL)
+# Shared entrypoint for every app image in the monorepo. Each block is
+# independently gated by its own preconditions, so the same script no-ops
+# safely in containers that don't need it.
 #
-# Supports two replacement modes:
-#   1. Explicit URL overrides — for platforms like Railway where each service
-#      has its own domain (no shared root).
-#   2. DOMAIN-based replacement — for custom domains with subdomain patterns.
+# Block 1 — Next.js runtime URL substitution (web, homepage, docs, build):
+#   At build time DOMAIN=__RUNTIME_DOMAIN__ is baked into Next.js bundles.
+#   url.ts produces these patterns:
+#     https://app.__RUNTIME_DOMAIN__    (WEBAPP_URL)
+#     https://api.__RUNTIME_DOMAIN__    (API_URL)
+#     https://__RUNTIME_DOMAIN__        (HOMEPAGE_URL)
+#     https://docs.__RUNTIME_DOMAIN__   (DOCS_URL)
+#     https://build.__RUNTIME_DOMAIN__  (DEV_PORTAL_URL)
+#   Two replacement modes are supported:
+#     1. Explicit URL overrides — for platforms like Railway where each
+#        service has its own domain (no shared root).
+#     2. DOMAIN-based replacement — for custom domains with subdomain
+#        patterns.
+#   Order matters: specific URL patterns (with subdomain prefix) are
+#   replaced first, then HOMEPAGE_URL (bare https://PLACEHOLDER), then
+#   DOMAIN catches any remaining occurrences.
 #
-# Order matters: specific URL patterns (with subdomain prefix) are replaced
-# first, then HOMEPAGE_URL (bare https://PLACEHOLDER), then DOMAIN catches
-# any remaining occurrences.
+# Block 2 — Optional MaxMind GeoLite2-City download (api):
+#   When AUXX_GEO_PROVIDER=maxmind (default) and MAXMIND_LICENSE_KEY is
+#   set, fetch the mmdb on first boot so the chat widget can label
+#   visitors with their city. License terms forbid redistribution, so
+#   the db is NEVER baked into the published image — operators always
+#   bring their own key. Persists when /app/geo is a mounted volume.
 
 PLACEHOLDER="__RUNTIME_DOMAIN__"
 PLACEHOLDER_LOWER="__runtime_domain__"
@@ -87,6 +97,45 @@ if [ "${replaced}" = true ]; then
   echo "[entrypoint] Replacement complete."
 else
   echo "[entrypoint] No replacements needed (DOMAIN=${DOMAIN:-<unset>}, APP_URL=${APP_URL:-<unset>})."
+fi
+
+# ─────────────────────────────────────────────────────────────────────
+# Block 2 — Optional GeoLite2-City download
+# ─────────────────────────────────────────────────────────────────────
+GEO_FILE="${MAXMIND_DB_PATH:-/app/geo/GeoLite2-City.mmdb}"
+GEO_DIR="${GEO_FILE%/*}"
+GEO_PROVIDER="${AUXX_GEO_PROVIDER:-maxmind}"
+
+if [ "${GEO_PROVIDER}" != "maxmind" ]; then
+  echo "[geo] AUXX_GEO_PROVIDER=${GEO_PROVIDER} — skipping MaxMind download"
+elif [ -f "${GEO_FILE}" ]; then
+  echo "[geo] ${GEO_FILE} exists — skipping download"
+elif [ -z "${MAXMIND_LICENSE_KEY}" ]; then
+  echo "[geo] MAXMIND_LICENSE_KEY not set — geo lookups will be disabled"
+  echo "[geo] To enable: sign up at maxmind.com and generate a GeoLite2 license key"
+else
+  mkdir -p "${GEO_DIR}"
+  echo "[geo] downloading GeoLite2-City…"
+  if command -v curl >/dev/null 2>&1 && curl -sSL --fail --max-time 60 \
+       "https://download.maxmind.com/app/geoip_download?edition_id=GeoLite2-City&license_key=${MAXMIND_LICENSE_KEY}&suffix=tar.gz" \
+       -o /tmp/geolite2.tar.gz; then
+    if tar -xzf /tmp/geolite2.tar.gz -C /tmp 2>/dev/null; then
+      mmdb=$(find /tmp -maxdepth 3 -name 'GeoLite2-City.mmdb' -print -quit)
+      if [ -n "${mmdb}" ]; then
+        mv "${mmdb}" "${GEO_FILE}"
+        rm -rf /tmp/geolite2.tar.gz /tmp/GeoLite2-City_*
+        echo "[geo] installed at ${GEO_FILE}"
+      else
+        echo "[geo] mmdb not found inside archive — geo lookups will be disabled"
+        rm -f /tmp/geolite2.tar.gz
+      fi
+    else
+      echo "[geo] tar extract failed — geo lookups will be disabled"
+      rm -f /tmp/geolite2.tar.gz
+    fi
+  else
+    echo "[geo] download failed — geo lookups will be disabled"
+  fi
 fi
 
 exec "$@"

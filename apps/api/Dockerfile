@@ -103,6 +103,12 @@ RUN groupadd --system --gid 1001 nodejs && \
 COPY --from=deploy --chown=api:nodejs /deployed /app
 COPY --from=builder --chown=api:nodejs /app/apps/api/public/app-runtime /app/public/app-runtime
 
+# Shared entrypoint (Next.js URL substitution is a no-op here; geo block
+# downloads GeoLite2-City.mmdb on first boot when MAXMIND_LICENSE_KEY is set).
+COPY --chown=api:nodejs docker-entrypoint.sh /app/docker-entrypoint.sh
+RUN chmod +x /app/docker-entrypoint.sh && \
+    mkdir -p /app/geo && chown api:nodejs /app/geo
+
 USER api
 WORKDIR /app
 
@@ -112,4 +118,5 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:${API_PORT}/health || exit 1
 
 EXPOSE 3007
+ENTRYPOINT ["./docker-entrypoint.sh"]
 CMD ["node", "dist/index.mjs"]
