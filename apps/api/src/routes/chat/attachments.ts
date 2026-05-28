@@ -2,8 +2,8 @@
 
 import { randomBytes } from 'node:crypto'
 import { database, schema } from '@auxx/database'
+import { buildVisitorThreadOwnership } from '@auxx/lib/chat'
 import { AttachmentService, createStorageManager, MediaAssetService } from '@auxx/lib/files'
-import type { ChatThreadMetadata } from '@auxx/lib/threads/types'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq, sql } from 'drizzle-orm'
 import { Hono } from 'hono'
@@ -159,6 +159,16 @@ attachmentsRoute.get('/:attachmentId/url', async (c) => {
   const attachmentId = c.req.param('attachmentId')
 
   try {
+    // Ownership: the outer query already joins schema.Message; pass
+    // `useAliases: true` so the inner EXISTS uses aliased Message/Participant
+    // copies and Drizzle doesn't conflate them with the outer joins.
+    const ownership = buildVisitorThreadOwnership({
+      db: database,
+      visitorParticipantId: chat.visitorParticipantId,
+      contactId: chat.contactId,
+      useAliases: true,
+    })
+
     const [hit] = await database
       .select({ one: sql`1` })
       .from(schema.Attachment)
@@ -170,7 +180,7 @@ attachmentsRoute.get('/:attachmentId/url', async (c) => {
           eq(schema.Attachment.organizationId, chat.organizationId),
           eq(schema.Attachment.entityType, 'MESSAGE'),
           eq(schema.Thread.integrationId, chat.channelId),
-          sql`(${schema.Thread.metadata}->>'visitorParticipantId') = ${chat.visitorParticipantId}`
+          ownership
         )
       )
       .limit(1)

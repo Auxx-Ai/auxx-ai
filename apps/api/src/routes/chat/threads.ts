@@ -1,10 +1,13 @@
 // apps/api/src/routes/chat/threads.ts
 
 import { database, schema } from '@auxx/database'
-import { initializeOrResumeChatThread, publishVisitorThreadCreated } from '@auxx/lib/chat'
+import {
+  buildVisitorThreadOwnership,
+  initializeOrResumeChatThread,
+  publishVisitorThreadCreated,
+} from '@auxx/lib/chat'
 import { ProviderRegistryService } from '@auxx/lib/providers'
 import { getRealtimeService, publishThreadCreated } from '@auxx/lib/realtime'
-import type { ChatThreadMetadata } from '@auxx/lib/threads/types'
 import { createScopedLogger } from '@auxx/logger'
 import { and, asc, desc, eq, isNotNull, lt, or, sql } from 'drizzle-orm'
 import { Hono } from 'hono'
@@ -21,6 +24,15 @@ const threadsRoute = new Hono()
 
 const LIST_PAGE_SIZE = 20
 const MESSAGE_PAGE_SIZE = 50
+
+/** Thin wrapper around `buildVisitorThreadOwnership` bound to the route's
+ * `database` handle so callers below don't have to pass it on every call. */
+function buildOwnershipExists(args: {
+  visitorParticipantId: string
+  contactId: string | undefined
+}) {
+  return buildVisitorThreadOwnership({ db: database, ...args })
+}
 
 threadsRoute.options('/', (c) => {
   applyChatCorsHeaders(c, { allowCredentials: true })
@@ -131,22 +143,23 @@ threadsRoute.get('/recent', async (c) => {
   const chat = c.get('chat')
 
   try {
-    const threads = await database
+    const ownership = buildOwnershipExists({
+      visitorParticipantId: chat.visitorParticipantId,
+      contactId: chat.contactId,
+    })
+
+    const [recent] = await database
       .select()
       .from(schema.Thread)
       .where(
         and(
           eq(schema.Thread.organizationId, chat.organizationId),
-          eq(schema.Thread.integrationId, chat.channelId)
+          eq(schema.Thread.integrationId, chat.channelId),
+          ownership
         )
       )
       .orderBy(desc(schema.Thread.lastMessageAt), desc(schema.Thread.createdAt))
-      .limit(20)
-
-    const recent = threads.find((t) => {
-      const meta = (t.metadata ?? {}) as Partial<ChatThreadMetadata>
-      return meta.channel === 'chat' && meta.visitorParticipantId === chat.visitorParticipantId
-    })
+      .limit(1)
 
     if (!recent) {
       return c.json({ success: true, data: { thread: null } })
@@ -391,10 +404,11 @@ threadsRoute.get('/', async (c) => {
   try {
     const cursorParts = cursor ? parseCursor(cursor) : null
 
-    // We can't filter on metadata.visitorParticipantId at SQL-time without a
-    // jsonb index, so we over-fetch by 4x and filter in-memory. Visitor thread
-    // counts on a single channel are bounded enough that this is cheap.
-    const fetchLimit = limit * 4
+    const ownership = buildOwnershipExists({
+      visitorParticipantId: chat.visitorParticipantId,
+      contactId: chat.contactId,
+    })
+
     const baseConditions = [
       eq(schema.Thread.organizationId, chat.organizationId),
       eq(schema.Thread.integrationId, chat.channelId),
@@ -402,6 +416,7 @@ threadsRoute.get('/', async (c) => {
       // every Home "Send us a message" tap, leaving rows with no messages that
       // showed up as "No messages yet, Support" in the Messages tab.
       isNotNull(schema.Thread.latestMessageId),
+      ownership,
     ]
 
     const conditions = cursorParts
@@ -417,6 +432,7 @@ threadsRoute.get('/', async (c) => {
         ]
       : baseConditions
 
+    // Fetch one extra row to detect a next page without a second roundtrip.
     const rows = await database
       .select({
         id: schema.Thread.id,
@@ -432,15 +448,10 @@ threadsRoute.get('/', async (c) => {
       .leftJoin(schema.User, eq(schema.User.id, schema.Thread.assigneeId))
       .where(and(...conditions))
       .orderBy(desc(schema.Thread.lastMessageAt), desc(schema.Thread.id))
-      .limit(fetchLimit)
+      .limit(limit + 1)
 
-    const mine = rows.filter((t) => {
-      const meta = (t.metadata ?? {}) as Partial<ChatThreadMetadata>
-      return meta.channel === 'chat' && meta.visitorParticipantId === chat.visitorParticipantId
-    })
-
-    const page = mine.slice(0, limit)
-    const nextThread = mine.length > limit ? mine[limit] : null
+    const page = rows.slice(0, limit)
+    const nextThread = rows.length > limit ? rows[limit] : null
 
     // Fetch latest message snippet for each thread (small N, no N+1 concern).
     const messageIds = page.map((t) => t.latestMessageId).filter((id): id is string => !!id)
@@ -521,6 +532,11 @@ threadsRoute.post('/:threadId/transcript', async (c) => {
       )
     }
 
+    const ownership = buildOwnershipExists({
+      visitorParticipantId: chat.visitorParticipantId,
+      contactId: chat.contactId,
+    })
+
     const [thread] = await database
       .select({
         id: schema.Thread.id,
@@ -532,7 +548,8 @@ threadsRoute.post('/:threadId/transcript', async (c) => {
         and(
           eq(schema.Thread.id, threadId),
           eq(schema.Thread.organizationId, chat.organizationId),
-          eq(schema.Thread.integrationId, chat.channelId)
+          eq(schema.Thread.integrationId, chat.channelId),
+          ownership
         )
       )
       .limit(1)
@@ -540,13 +557,6 @@ threadsRoute.post('/:threadId/transcript', async (c) => {
       return c.json(
         { success: false, error: { code: 'NOT_FOUND', message: 'Thread not found' } },
         404
-      )
-    }
-    const meta = (thread.metadata ?? {}) as Partial<ChatThreadMetadata>
-    if (meta.visitorParticipantId !== chat.visitorParticipantId) {
-      return c.json(
-        { success: false, error: { code: 'FORBIDDEN', message: 'Not your thread' } },
-        403
       )
     }
 

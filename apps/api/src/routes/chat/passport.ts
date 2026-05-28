@@ -2,12 +2,13 @@
 
 import { randomUUID } from 'node:crypto'
 import { issueChatPassport } from '@auxx/credentials/passport'
-import { database } from '@auxx/database'
+import { database, schema } from '@auxx/database'
 import { resolveChatAttributes, verifyChannelUserJwt } from '@auxx/lib/chat'
 import { findOrCreateVisitorParticipant } from '@auxx/lib/chat-widget/visitor'
 import { findOrCreateContactFromJwt } from '@auxx/lib/ingest'
 import { RedisRateLimiter } from '@auxx/lib/utils/rate-limiter'
 import { createScopedLogger } from '@auxx/logger'
+import { eq } from 'drizzle-orm'
 import { Hono } from 'hono'
 import { getCookie, setCookie } from 'hono/cookie'
 import { parseIdentifyPayload } from './identify'
@@ -17,6 +18,28 @@ import {
   isHostAllowed,
   loadChatWidgetByChannelId,
 } from './lib'
+
+/**
+ * Resolve the best human-readable label for a JWT-verified visitor's
+ * Participant. Priority: raw `name` claim > `first_name + last_name` >
+ * `first_name` > email. Returns `null` when none of those are usable so
+ * callers leave the existing label in place.
+ */
+function deriveVisitorDisplayName(opts: {
+  rawName?: string
+  firstName?: string
+  lastName?: string
+  email?: string
+}): string | null {
+  const raw = opts.rawName?.trim()
+  if (raw) return raw
+  const first = opts.firstName?.trim()
+  const last = opts.lastName?.trim()
+  if (first || last) return [first, last].filter(Boolean).join(' ').trim() || null
+  const email = opts.email?.trim()
+  if (email) return email
+  return null
+}
 
 /** Pull the customer-signed JWT out of the request body's `user_data` envelope. */
 function extractUserJwt(body: unknown): string | null {
@@ -199,6 +222,7 @@ passportRoute.post('/', async (c) => {
   let identityVerified = false
   let contactId: string | undefined
   let userJwtHash: string | undefined
+  let jwtUserId: string | undefined
   let identityResolution: 'matched_external_id' | 'matched_email' | 'created' | undefined
 
   const userJwt = extractUserJwt(body)
@@ -267,12 +291,38 @@ passportRoute.post('/', async (c) => {
         identityVerified = true
         contactId = resolved.contactId
         userJwtHash = claims.hash
+        jwtUserId = claims.userId
         identityResolution = resolved.resolution
         log.info('Chat user JWT verified', {
           channelId,
           resolution: resolved.resolution,
           contactId: resolved.contactId,
         })
+
+        // Link the cookie-keyed visitor Participant to the verified Contact's
+        // EntityInstance, and overwrite the synthetic `Chat user #xxxx`
+        // displayName with the verified identity so message headers / thread
+        // lists stop showing the placeholder. Done in one UPDATE.
+        const displayName = deriveVisitorDisplayName({
+          rawName: typeof claims.attributes.name === 'string' ? claims.attributes.name : undefined,
+          firstName: typeof writes.first_name === 'string' ? writes.first_name : undefined,
+          lastName: typeof writes.last_name === 'string' ? writes.last_name : undefined,
+          email: claims.email,
+        })
+        const participantUpdates: Record<string, unknown> = { updatedAt: new Date() }
+        if (!participant.entityInstanceId) {
+          participantUpdates.entityInstanceId = resolved.contactId
+        }
+        if (displayName) {
+          participantUpdates.name = displayName
+          participantUpdates.displayName = displayName
+        }
+        if (Object.keys(participantUpdates).length > 1) {
+          await database
+            .update(schema.Participant)
+            .set(participantUpdates)
+            .where(eq(schema.Participant.id, participant.id))
+        }
       } catch (error) {
         const e = error as Error & { cause?: unknown; code?: string }
         const cause = e.cause as Error | undefined
@@ -298,7 +348,7 @@ passportRoute.post('/', async (c) => {
     sessionId,
     identify,
     expiresIn: '1h',
-    ...(identityVerified ? { identityVerified, contactId, userJwtHash } : {}),
+    ...(identityVerified ? { identityVerified, contactId, jwtUserId, userJwtHash } : {}),
     identityVerification: widget.identityVerification,
   })
   if (issued.isErr()) {

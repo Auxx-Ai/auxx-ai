@@ -36,6 +36,7 @@ import {
   LdapAuthService,
   PROVIDER_CREDENTIAL_CONFIG,
 } from '@auxx/lib/providers'
+import { fanOutAuxxChatAudienceToShopify } from '@auxx/lib/shopify'
 import { widgetSchema as chatWidgetInputSchema } from '@auxx/lib/widgets/types'
 import { createScopedLogger } from '@auxx/logger'
 import { TRPCError } from '@trpc/server'
@@ -413,6 +414,25 @@ export const channelRouter = createTRPCRouter({
         updateData as UpdateChatWidgetInput
       )
       if (!result.ok) throw result.error
+
+      // Phase 2 (Shopify) — when chatAudience changes, fan out the new value
+      // to the auxx.chat_audience shop metafield on every Shopify install
+      // bound to this channel. Best-effort; helper logs and swallows per-shop
+      // failures.
+      if (updateData.chatAudience) {
+        try {
+          await fanOutAuxxChatAudienceToShopify({
+            channelId: integrationId,
+            audience: updateData.chatAudience,
+          })
+        } catch (error) {
+          logger.error('fanOutAuxxChatAudienceToShopify threw', {
+            error,
+            channelId: integrationId,
+          })
+        }
+      }
+
       return { success: true }
     }),
 

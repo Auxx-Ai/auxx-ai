@@ -3,6 +3,7 @@
 import { createScopedLogger } from '@auxx/logger'
 import { toRecordId } from '@auxx/types/resource'
 import { UnifiedCrudHandler } from '../../resources/crud'
+import { SystemUserService } from '../../users/system-user-service'
 import { chatExternalId } from './external-id'
 
 const log = createScopedLogger('chat-find-or-create-from-jwt')
@@ -43,9 +44,16 @@ export interface FindOrCreateContactFromJwtResult {
 export async function findOrCreateContactFromJwt(
   input: FindOrCreateContactFromJwtInput
 ): Promise<FindOrCreateContactFromJwtResult> {
-  const { organizationId, userId, email, attributes = {}, actingUserId = 'system' } = input
+  const { organizationId, userId, email, attributes = {}, actingUserId } = input
 
-  const handler = new UnifiedCrudHandler(organizationId, actingUserId)
+  // The default audit user must be a real `User.id` — passing the literal
+  // 'system' fails the `EntityInstance.createdById → User.id` FK. The
+  // SystemUserService creates/caches a per-org system user for exactly this
+  // case (mirrors how `createIngestContext` resolves it).
+  const resolvedActingUserId =
+    actingUserId ?? (await SystemUserService.getSystemUserForActions(organizationId))
+
+  const handler = new UnifiedCrudHandler(organizationId, resolvedActingUserId)
   const externalId = chatExternalId(userId)
 
   // Tier 1 — exact external-id match (multi-value containment via lookupByField).
@@ -55,21 +63,20 @@ export async function findOrCreateContactFromJwt(
   }
 
   // Tier 2 — email-fold. Append our external_id to the existing Contact.
+  // `findByField` returns the raw EntityInstance row with `values` as an array
+  // of FieldValue rows — not a Record<systemAttribute, value>. Rather than
+  // parse that to read the current external_id list and re-set it (which would
+  // silently overwrite any other external_ids the Contact already carries),
+  // use `mode: 'add'` so the handler appends with server-side dedup.
   if (email) {
     const byEmail = await handler.findByField('contact', 'primary_email', email)
     if (byEmail) {
-      const existingExternal = Array.isArray(byEmail.values?.external_id)
-        ? (byEmail.values.external_id as string[])
-        : []
-      const nextExternal = existingExternal.includes(externalId)
-        ? existingExternal
-        : [...existingExternal, externalId]
-
       try {
-        await handler.update(toRecordId('contact', byEmail.id), {
-          external_id: nextExternal,
-          ...attributes,
-        })
+        await handler.update(
+          toRecordId('contact', byEmail.id),
+          { external_id: [externalId], ...attributes },
+          { external_id: 'add' }
+        )
       } catch (error) {
         log.warn('Email-fold update failed, returning matched contact unchanged', {
           contactId: byEmail.id,

@@ -61,6 +61,7 @@ export async function verifyPassport<S extends PassportScope>(
       identify: p.identify,
       identityVerified: p.identityVerified,
       contactId: p.contactId,
+      jwtUserId: p.jwtUserId,
       userJwtHash: p.userJwtHash,
       identityVerification: p.identityVerification,
     }

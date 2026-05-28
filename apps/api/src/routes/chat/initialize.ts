@@ -4,6 +4,7 @@ import type { ChatIdentifyClaim } from '@auxx/credentials/passport'
 import { issueChatPassport } from '@auxx/credentials/passport'
 import { database, schema } from '@auxx/database'
 import { initializeOrResumeChatThread, publishVisitorThreadCreated } from '@auxx/lib/chat'
+import { ForbiddenError, NotFoundError } from '@auxx/lib/errors'
 import { publisher } from '@auxx/lib/events'
 import { getRealtimeService, publishThreadCreated } from '@auxx/lib/realtime'
 import { createScopedLogger } from '@auxx/logger'
@@ -51,6 +52,7 @@ initializeRoute.post('/', async (c) => {
       {
         channelId: chat.channelId,
         visitorId: chat.sessionId,
+        contactId: chat.contactId,
         resumeThreadId: typeof body.threadId === 'string' ? body.threadId : undefined,
         visit: {
           url: typeof body.url === 'string' ? body.url : undefined,
@@ -71,9 +73,23 @@ initializeRoute.post('/', async (c) => {
     )
 
     if (result.error) {
+      const err = result.error
+      // Map domain errors so the widget can recover (e.g. drop a stale
+      // resumeThreadId on 403/404 and re-init without it) instead of treating
+      // every failure as an opaque 500.
+      if (err instanceof ForbiddenError) {
+        log.warn('Chat thread resume denied', {
+          channelId: chat.channelId,
+          error: err.message,
+        })
+        return c.json({ success: false, error: { code: 'FORBIDDEN', message: err.message } }, 403)
+      }
+      if (err instanceof NotFoundError) {
+        return c.json({ success: false, error: { code: 'NOT_FOUND', message: err.message } }, 404)
+      }
       log.error('Failed to initialize chat thread', {
         channelId: chat.channelId,
-        error: result.error.message,
+        error: err.message,
       })
       return c.json(
         {

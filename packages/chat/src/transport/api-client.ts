@@ -64,13 +64,22 @@ export async function authedFetch<T>(
 
   let { passport } = await getChatPassport(channelId)
   let res = await doFetch(passport)
+  let json = (await res.json()) as ApiEnvelope<T>
 
-  if (res.status === 401) {
+  // Bounded one-retry on:
+  //   - 401 (expired / invalid passport)
+  //   - IDENTITY_MISMATCH (the cached passport was minted for a different JWT
+  //     identity than the one carried on this request — happens when the host
+  //     app rotates the user without calling Auxx.logout() or Auxx.boot()
+  //     again first). `getChatPassport({ force: true })` drops the stored
+  //     passport then mints a new one with the current JWT.
+  const isMismatch = !json.success && json.error?.code === 'IDENTITY_MISMATCH'
+  if (res.status === 401 || isMismatch) {
     passport = (await getChatPassport(channelId, { force: true })).passport
     res = await doFetch(passport)
+    json = (await res.json()) as ApiEnvelope<T>
   }
 
-  const json = (await res.json()) as ApiEnvelope<T>
   if (!res.ok || !json.success || json.data === undefined) {
     throw new Error(json.error?.message ?? `Request failed (${res.status})`)
   }

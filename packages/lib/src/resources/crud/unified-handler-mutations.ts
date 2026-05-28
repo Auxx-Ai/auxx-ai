@@ -88,13 +88,16 @@ export interface CreateEntityResult {
 /**
  * Helper to unwrap neverthrow Result and throw on error
  */
-function unwrapResult<T, E extends { message: string }>(result: {
+function unwrapResult<T, E extends { message: string; cause?: unknown }>(result: {
   isErr: () => boolean
   error: E
   value: T
 }): T {
   if (result.isErr()) {
-    throw new Error(result.error.message)
+    // Preserve `cause` so route-level logs can see the underlying DB error
+    // (constraint violation, missing column, etc.) instead of the generic
+    // `Database operation "create-entity-instance" failed` wrapper.
+    throw new Error(result.error.message, { cause: result.error.cause })
   }
   return result.value
 }
