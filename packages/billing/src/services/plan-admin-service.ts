@@ -7,6 +7,7 @@ import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { eq } from 'drizzle-orm'
+import { stripeClient } from './stripe-client'
 
 const logger = createScopedLogger('plan-admin-service')
 
@@ -274,7 +275,7 @@ export class PlanAdminService {
     }
 
     // Get Stripe client
-    const stripe = await this.getStripeClient()
+    const stripe = this.getStripeClient()
 
     // Create or update Stripe product
     let stripeProductId = plan.stripeProductId
@@ -368,8 +369,7 @@ export class PlanAdminService {
   /**
    * Get Stripe client instance
    */
-  private async getStripeClient() {
-    const { stripeClient } = await import('@auxx/billing')
+  private getStripeClient() {
     return stripeClient.getClient()
   }
 }

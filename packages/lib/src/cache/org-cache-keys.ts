@@ -56,6 +56,11 @@ export interface CachedSubscription {
   canceledAt: string | null
   creditsBalance: number
 
+  // Billing provider routing
+  billingProvider: 'stripe' | 'shopify'
+  shopifyShopDomain: string | null
+  capabilities: import('@auxx/billing').BillingCapabilities
+
   // Stripe identifiers (server-only — never send to client)
   stripeCustomerId: string | null
   stripeSubscriptionId: string | null

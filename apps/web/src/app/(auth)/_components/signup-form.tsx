@@ -198,6 +198,10 @@ export function SignUpForm() {
 
     // Get callbackUrl from URL params (e.g., from invitation flow)
     const callbackUrl = new URLSearchParams(window.location.search).get('callbackUrl')
+    // Tag signups that originate from the Shopify App Store claim flow so the
+    // organization seeder skips the auto-created Stripe trial — Shopify-installed
+    // orgs are forced to Shopify Billing per App Store rule 1.2.1.
+    const signupSource = callbackUrl?.startsWith('/shopify/claim') ? 'shopify-claim' : 'web'
 
     try {
       const { data: _data, error } = await client.signUp.email({
@@ -205,6 +209,7 @@ export function SignUpForm() {
         password: values.password,
         name: '',
         callbackURL: callbackUrl || '/app',
+        signupSource,
         fetchOptions: {
           headers: turnstileToken ? { 'x-captcha-response': turnstileToken } : {},
         },

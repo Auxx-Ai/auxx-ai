@@ -12,6 +12,8 @@ export enum ErrorCode {
   NO_CUSTOMER_FOUND = 'NO_CUSTOMER_FOUND',
   PRICE_NOT_CONFIGURED = 'PRICE_NOT_CONFIGURED',
   STRIPE_ERROR = 'STRIPE_ERROR',
+  PLAN_NOT_AVAILABLE = 'PLAN_NOT_AVAILABLE',
+  OPERATION_NOT_SUPPORTED = 'OPERATION_NOT_SUPPORTED',
 }
 
 export const ErrorMessages: Record<ErrorCode, string> = {
@@ -23,6 +25,8 @@ export const ErrorMessages: Record<ErrorCode, string> = {
   [ErrorCode.NO_CUSTOMER_FOUND]: 'No Stripe customer found for this organization',
   [ErrorCode.PRICE_NOT_CONFIGURED]: 'Price not configured for this plan',
   [ErrorCode.STRIPE_ERROR]: 'Stripe API error',
+  [ErrorCode.PLAN_NOT_AVAILABLE]: 'Plan is not available for this billing provider',
+  [ErrorCode.OPERATION_NOT_SUPPORTED]: 'Operation not supported for this billing provider',
 }
 
 export class BillingError extends Error {

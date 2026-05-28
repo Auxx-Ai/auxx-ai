@@ -1,0 +1,1 @@
+ALTER TABLE "User" ADD COLUMN "signupSource" text DEFAULT 'web' NOT NULL;

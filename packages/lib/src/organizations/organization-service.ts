@@ -153,6 +153,114 @@ export class OrganizationService {
 
     return integrationId
   }
+
+  /**
+   * slugifyHandle turns an arbitrary seed (e.g. a Shopify shop domain) into a
+   * candidate handle that satisfies the org-handle constraints: lowercase,
+   * `[a-z0-9-]` only, no leading/trailing hyphens, 4–32 chars. Domain seeds are
+   * reduced to their first label first (`acme.myshopify.com` → `acme`).
+   */
+  private slugifyHandle(seed: string): string {
+    const base = seed
+      .trim()
+      .toLowerCase()
+      .split('.')[0] // drop domain suffix: acme.myshopify.com → acme
+      ?.replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+    return (base || 'store').slice(0, 32)
+  }
+
+  /**
+   * ensureOrganizationHandle guarantees an organization has a non-null, unique
+   * handle, deriving a provisional one from `seed` when none is set yet.
+   *
+   * The Shopify App-Store claim flow connects an app (firing `connection-added`,
+   * which requires a non-null `organizationHandle` in the Lambda context) before
+   * the merchant reaches the onboarding handle-picker. This seeds a sensible
+   * handle from the shop domain so the event validates; the merchant can still
+   * change it in onboarding (the picker pre-fills from the stored value).
+   *
+   * No-op when the org already has a handle. The derived handle has no external
+   * binding to the shop name — a collision just gets a numeric/id suffix.
+   *
+   * @returns the org's handle (existing or newly assigned), or null on failure.
+   */
+  async ensureOrganizationHandle(params: {
+    organizationId: string
+    userId: string
+    seed: string
+    userEmail?: string
+  }): Promise<string | null> {
+    const [org] = await this.db
+      .select({ handle: schema.Organization.handle })
+      .from(schema.Organization)
+      .where(eq(schema.Organization.id, params.organizationId))
+      .limit(1)
+
+    if (!org) return null
+    if (org.handle) return org.handle
+
+    let base = this.slugifyHandle(params.seed)
+    // Enforce the 4-char minimum by padding from the (unique) org id.
+    if (base.length < 4) {
+      base = (base + params.organizationId.toLowerCase().replace(/[^a-z0-9]/g, '')).slice(0, 32)
+    }
+
+    const handle = await this.findAvailableHandle(base, params.organizationId)
+
+    await this.db
+      .update(schema.Organization)
+      .set({ handle, updatedAt: new Date() })
+      .where(eq(schema.Organization.id, params.organizationId))
+
+    await this.ensureForwardingAddressIntegration({
+      organizationId: params.organizationId,
+      userId: params.userId,
+      userEmail: params.userEmail,
+      handle,
+    })
+
+    await flushOrganization(params.organizationId)
+
+    logger.info('Assigned provisional organization handle', {
+      organizationId: params.organizationId,
+      handle,
+    })
+
+    return handle
+  }
+
+  /**
+   * findAvailableHandle returns the first non-reserved handle that is free on the
+   * `Organization_handle_key` unique index, starting from `base` and falling back
+   * to `base-2`, `base-3`, … then `base-<orgId slice>` (effectively guaranteed
+   * unique) if the numeric suffixes are exhausted.
+   */
+  private async findAvailableHandle(base: string, organizationId: string): Promise<string> {
+    const isTaken = async (candidate: string): Promise<boolean> => {
+      if (RESERVED_ORGANIZATION_HANDLES.includes(candidate as any)) return true
+      const [existing] = await this.db
+        .select({ id: schema.Organization.id })
+        .from(schema.Organization)
+        .where(eq(schema.Organization.handle, candidate))
+        .limit(1)
+      return !!existing
+    }
+
+    if (!(await isTaken(base))) return base
+
+    for (let n = 2; n <= 9; n++) {
+      const candidate = `${base.slice(0, 32 - 2)}-${n}`
+      if (!(await isTaken(candidate))) return candidate
+    }
+
+    const suffix = organizationId
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, '')
+      .slice(0, 6)
+    return `${base.slice(0, 32 - (suffix.length + 1))}-${suffix}`
+  }
+
   /**
    * Verifies if a user is an OWNER of the specified organization.
    * Throws TRPCError if not.

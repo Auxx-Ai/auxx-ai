@@ -45,6 +45,11 @@ export {
   applyScheduledSubscriptionChangesJob,
 } from './billing/apply-scheduled-subscription-changes-job'
 export {
+  type ShopifyBillingSyncJobData,
+  type ShopifyBillingSyncResult,
+  shopifyBillingSyncJob,
+} from './billing/shopify-billing-sync-job'
+export {
   type StripeSubscriptionSyncJobData,
   type StripeSubscriptionSyncResult,
   stripeSubscriptionSyncJob,

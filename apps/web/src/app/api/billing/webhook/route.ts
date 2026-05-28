@@ -3,7 +3,7 @@
  * Stripe webhook handler for billing events.
  */
 
-import { WebhookService } from '@auxx/billing'
+import { getProvider } from '@auxx/billing'
 import { configService } from '@auxx/credentials'
 import { database } from '@auxx/database'
 import { isSelfHosted } from '@auxx/deployment'
@@ -39,10 +39,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'No signature' }, { status: 400 })
     }
 
-    const webhookService = new WebhookService(
-      database,
-      configService.get<string>('STRIPE_WEBHOOK_SECRET')!,
-      {
+    await getProvider('stripe').processWebhook({
+      db: database,
+      body,
+      signature,
+      webhookSecret: configService.get<string>('STRIPE_WEBHOOK_SECRET')!,
+      handlers: {
         onCheckoutSessionCompleted: async (event, ctx) => {
           if (ctx.organizationId) {
             await onCacheEvent('plan.subscribed', { orgId: ctx.organizationId })
@@ -83,10 +85,8 @@ export async function POST(req: NextRequest) {
           logger.warn('Invoice payment failed, cache invalidated', { eventId: event.id })
         },
       },
-      handlePlanDowngrade
-    )
-
-    await webhookService.processWebhook(body, signature)
+      onPlanChange: handlePlanDowngrade,
+    })
 
     return NextResponse.json({ success: true })
   } catch (error: any) {

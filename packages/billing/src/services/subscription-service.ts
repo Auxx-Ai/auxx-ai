@@ -21,6 +21,7 @@ import { BillingError, ErrorCode } from '../utils/error-codes'
 import { buildUrl } from '../utils/url-helpers'
 import { CustomerService } from './customer-service'
 import { PlanService } from './plan-service'
+import { computePlanPreviewBase, type PreviewTransition } from './preview-base'
 import { stripeClient } from './stripe-client'
 
 /** Scoped logger for subscription service operations. */
@@ -525,53 +526,18 @@ export class SubscriptionService {
       throw new BillingError(ErrorCode.PLAN_NOT_FOUND)
     }
 
-    // 3. Calculate pricing
+    // 3. Compute provider-agnostic preview base (subtotal, renewal lines, transition kind)
+    const base = computePlanPreviewBase({
+      currentSubscription: subscription ?? null,
+      targetPlan,
+      billingCycle: input.billingCycle,
+      seats: input.seats,
+    })
+    let transition: PreviewTransition = base.transition
     const price =
       input.billingCycle === 'MONTHLY' ? targetPlan.monthlyPrice : targetPlan.annualPrice
-    const subtotal = (price * input.seats) / 100
-    const tax = 0 // TODO: Integrate with Stripe Tax API
-    const total = subtotal + tax
-
-    // 4. Determine transition type with enhanced detection
-    let proration = null
-    let transition:
-      | 'renewal'
-      | 'upgrade'
-      | 'downgrade'
-      | 'seat_addition'
-      | 'seat_reduction'
-      | 'switch_to_annual'
-      | 'switch_to_monthly'
-      | 'trial_to_paid' = 'renewal'
-
-    // Check for trial subscription
-    const isTrialing = subscription?.status === 'trialing'
-
-    // Detect specific types of changes
-    const isSamePlan = subscription && subscription.planId === targetPlan.id
-    const isSameBillingCycle = subscription && subscription.billingCycle === input.billingCycle
-    const currentSeats = subscription?.seats || 0
-    const isSeatIncrease = input.seats > currentSeats
-    const isSeatDecrease = input.seats < currentSeats
-    const isBillingCycleChange = !isSameBillingCycle
-
-    if (subscription?.plan) {
-      const currentPlanLevel = subscription.plan.hierarchyLevel
-      const targetPlanLevel = targetPlan.hierarchyLevel
-
-      // Determine transition type based on changes
-      if (targetPlanLevel > currentPlanLevel) {
-        transition = 'upgrade'
-      } else if (targetPlanLevel < currentPlanLevel) {
-        transition = 'downgrade'
-      } else if (isSamePlan && isSameBillingCycle && isSeatIncrease) {
-        transition = 'seat_addition'
-      } else if (isSamePlan && isSameBillingCycle && isSeatDecrease) {
-        transition = 'seat_reduction'
-      } else if (isBillingCycleChange) {
-        transition = input.billingCycle === 'ANNUAL' ? 'switch_to_annual' : 'switch_to_monthly'
-      }
-    }
+    let proration: { amount: number; currency: string; credit: number; note?: string } | null = null
+    const { isTrialing, isSeatIncrease, isSeatDecrease } = base
 
     // 4a. Handle trial subscriptions - no proration applies
     if (isTrialing && subscription) {
@@ -585,28 +551,7 @@ export class SubscriptionService {
           credit: 0,
           note: 'No charge during trial. Billing starts after trial ends.',
         },
-        renewal: {
-          currency: 'USD',
-          total: Math.round(total * 100),
-          total_excluding_tax: Math.round(subtotal * 100),
-          subtotal: Math.round(subtotal * 100),
-          tax: Math.round(tax * 100),
-          line_items: [
-            {
-              description: `${input.seats} seat × ${targetPlan.name} (at $${(price / 100).toFixed(2)} / ${input.billingCycle === 'MONTHLY' ? 'month' : 'year'})`,
-              amount: Math.round(subtotal * 100),
-              quantity: input.seats,
-              billing_product_id: `seat_${targetPlan.name.toLowerCase()}`,
-              billing_product_price_id:
-                input.billingCycle === 'MONTHLY'
-                  ? targetPlan.stripePriceIdMonthly
-                  : targetPlan.stripePriceIdAnnual,
-            },
-          ],
-          discount: 0,
-          discount_metadata: null,
-          billing_starts: subscription.trialEnd || null,
-        },
+        renewal: base.renewal,
         period_end: subscription.trialEnd || null,
       }
     }
@@ -712,27 +657,7 @@ export class SubscriptionService {
       subscriptionId: subscription?.id || null,
       transition,
       proration,
-      renewal: {
-        currency: 'USD',
-        total: Math.round(total * 100),
-        total_excluding_tax: Math.round(subtotal * 100),
-        subtotal: Math.round(subtotal * 100),
-        tax: Math.round(tax * 100),
-        line_items: [
-          {
-            description: `${input.seats} seat × ${targetPlan.name} (at $${(price / 100).toFixed(2)} / ${input.billingCycle === 'MONTHLY' ? 'month' : 'year'})`,
-            amount: Math.round(subtotal * 100),
-            quantity: input.seats,
-            billing_product_id: `seat_${targetPlan.name.toLowerCase()}`,
-            billing_product_price_id:
-              input.billingCycle === 'MONTHLY'
-                ? targetPlan.stripePriceIdMonthly
-                : targetPlan.stripePriceIdAnnual,
-          },
-        ],
-        discount: 0,
-        discount_metadata: null,
-      },
+      renewal: base.renewal,
       period_end: subscription?.endDate || null,
     }
   }

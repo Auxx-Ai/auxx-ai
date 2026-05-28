@@ -1,14 +1,19 @@
 // apps/web/src/server/api/routers/billing.ts
 
-import { BillingPortalService, SubscriptionService, stripeClient } from '@auxx/billing'
-import { WEBAPP_URL } from '@auxx/config/server'
+import {
+  getProvider,
+  resolveBillingProvider,
+  type ShopifyBillingProvider,
+  stripeClient,
+} from '@auxx/billing'
 import { schema } from '@auxx/database'
 import { isSelfHosted } from '@auxx/deployment'
 import { getAppCache, getOrgCache, onCacheEvent } from '@auxx/lib/cache'
 import { getUserOrganizationId } from '@auxx/lib/email'
+import { BadRequestError } from '@auxx/lib/errors'
 import { createScopedLogger } from '@auxx/logger'
 import { TRPCError } from '@trpc/server'
-import { and, desc, eq, lt } from 'drizzle-orm'
+import { and, desc, eq, isNull, lt } from 'drizzle-orm'
 import { z } from 'zod'
 import { createTRPCRouter, notDemo, protectedProcedure } from '~/server/api/trpc'
 
@@ -61,6 +66,81 @@ export const billingRouter = createTRPCRouter({
         message: `Error fetching current subscription: ${message}`,
       })
     }
+  }),
+
+  /**
+   * Reconciles the local PlanSubscription row against the Shopify Admin API
+   * (`currentAppInstallation.activeSubscriptions`). App Pricing delivers no billing
+   * webhooks, so this is the read-path for off-redirect changes; the post-approval
+   * landing route also calls the provider's `syncFromAdminApi` directly. No-op for
+   * non-Shopify orgs.
+   */
+  syncShopifyStatus: cloudOnlyProcedure.mutation(async ({ ctx }) => {
+    const organizationId = getUserOrganizationId(ctx.session)
+    if (!organizationId) {
+      throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Organization ID not found' })
+    }
+
+    const [row] = await ctx.db
+      .select({
+        status: schema.PlanSubscription.status,
+        billingProvider: schema.PlanSubscription.billingProvider,
+        shopifyShopDomain: schema.PlanSubscription.shopifyShopDomain,
+      })
+      .from(schema.PlanSubscription)
+      .where(eq(schema.PlanSubscription.organizationId, organizationId))
+      .limit(1)
+
+    if (!row || row.billingProvider !== 'shopify' || !row.shopifyShopDomain) {
+      return { synced: false, status: row?.status ?? null }
+    }
+
+    try {
+      const provider = getProvider('shopify') as ShopifyBillingProvider
+      await provider.syncFromAdminApi(organizationId)
+      await onCacheEvent('plan.changed', { orgId: organizationId })
+      const [updated] = await ctx.db
+        .select({ status: schema.PlanSubscription.status })
+        .from(schema.PlanSubscription)
+        .where(eq(schema.PlanSubscription.organizationId, organizationId))
+        .limit(1)
+      return { synced: true, status: updated?.status ?? row.status }
+    } catch (error) {
+      logger.error('Failed to sync Shopify subscription status', {
+        organizationId,
+        error: error instanceof Error ? error.message : String(error),
+      })
+      return { synced: false, status: row.status }
+    }
+  }),
+
+  /**
+   * Returns the URL of Shopify's hosted pricing page for the current org. Used by the
+   * Settings → Plans "Manage plan in Shopify Admin" CTA on Shopify-billed orgs — the
+   * merchant picks/changes the plan on Shopify's page, approves, and returns to
+   * /billing/subscription/activated.
+   */
+  getShopifyPricingUrl: cloudOnlyProcedure.query(async ({ ctx }) => {
+    const organizationId = getUserOrganizationId(ctx.session)
+    if (!organizationId) {
+      throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Organization ID not found' })
+    }
+    const provider = getProvider('shopify') as ShopifyBillingProvider
+    const url = await provider.getPlanSelectionUrl(organizationId)
+    return { url }
+  }),
+
+  /**
+   * Drift tripwire: lists self-served Plan rows missing a `shopifyPlanHandle`. A Shopify
+   * merchant can't be mapped to such a plan, so this surfaces Partner Dashboard <-> DB
+   * drift before merchants hit it. Enterprise/Demo are expected NULLs (not selfServed).
+   */
+  validateShopifyPlanMapping: cloudOnlyProcedure.query(async ({ ctx }) => {
+    const rows = await ctx.db
+      .select({ id: schema.Plan.id, name: schema.Plan.name })
+      .from(schema.Plan)
+      .where(and(eq(schema.Plan.selfServed, true), isNull(schema.Plan.shopifyPlanHandle)))
+    return { missing: rows, ok: rows.length === 0 }
   }),
 
   // Get organization invoices
@@ -210,9 +290,8 @@ export const billingRouter = createTRPCRouter({
           throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Organization ID not found' })
         }
 
-        const subscriptionService = new SubscriptionService(ctx.db, WEBAPP_URL)
-
-        return await subscriptionService.calculateSubscriptionPreview({
+        const provider = await resolveBillingProvider(ctx.db, organizationId)
+        return await provider.calculatePreview!({
           organizationId,
           ...input,
         })
@@ -247,15 +326,19 @@ export const billingRouter = createTRPCRouter({
           throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Organization ID not found' })
         }
 
-        const subscriptionService = new SubscriptionService(ctx.db, WEBAPP_URL)
-
-        return await subscriptionService.createCheckoutSession(
-          {
-            organizationId,
-            ...input,
-          },
-          ctx.session.user.email
-        )
+        const provider = await resolveBillingProvider(ctx.db, organizationId)
+        const result = await provider.createSubscription({
+          organizationId,
+          userEmail: ctx.session.user.email,
+          ...input,
+        })
+        if (result.kind !== 'redirect') {
+          throw new TRPCError({
+            code: 'INTERNAL_SERVER_ERROR',
+            message: 'Unexpected subscription result',
+          })
+        }
+        return { url: result.url, redirect: true }
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : ''
         logger.error('Error upgrading subscription', { error: message })
@@ -276,12 +359,8 @@ export const billingRouter = createTRPCRouter({
           throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Organization ID not found' })
         }
 
-        const subscriptionService = new SubscriptionService(ctx.db, WEBAPP_URL)
-
-        await subscriptionService.cancelSubscription({
-          organizationId,
-          returnUrl: '', // No longer needed
-        })
+        const provider = await resolveBillingProvider(ctx.db, organizationId)
+        await provider.cancelSubscription({ organizationId })
 
         await onCacheEvent('plan.canceled', { orgId: organizationId })
 
@@ -307,9 +386,8 @@ export const billingRouter = createTRPCRouter({
           throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Organization ID not found' })
         }
 
-        const subscriptionService = new SubscriptionService(ctx.db, WEBAPP_URL)
-
-        await subscriptionService.restoreSubscription({ organizationId })
+        const provider = await resolveBillingProvider(ctx.db, organizationId)
+        await provider.restoreSubscription({ organizationId })
 
         await onCacheEvent('plan.changed', { orgId: organizationId })
 
@@ -341,12 +419,12 @@ export const billingRouter = createTRPCRouter({
           throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Organization ID not found' })
         }
 
-        const portalService = new BillingPortalService(ctx.db, WEBAPP_URL)
-
-        return await portalService.createSession({
+        const provider = await resolveBillingProvider(ctx.db, organizationId)
+        const { url } = await provider.createBillingPortalUrl!({
           organizationId,
           ...input,
         })
+        return { url, redirect: true }
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : ''
 
@@ -364,6 +442,11 @@ export const billingRouter = createTRPCRouter({
       const organizationId = getUserOrganizationId(ctx.session)
       if (!organizationId) {
         throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Organization ID not found' })
+      }
+
+      const provider = await resolveBillingProvider(ctx.db, organizationId)
+      if (!provider.capabilities.managedPaymentMethods) {
+        return null
       }
 
       const subscription = await getCachedSubscription(organizationId)
@@ -418,6 +501,13 @@ export const billingRouter = createTRPCRouter({
           throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Organization ID not found' })
         }
 
+        const provider = await resolveBillingProvider(ctx.db, organizationId)
+        if (!provider.capabilities.managedPaymentMethods) {
+          throw new BadRequestError(
+            'Billing address is managed in Shopify Admin for this organization.'
+          )
+        }
+
         const subscription = await getCachedSubscription(organizationId)
 
         if (!subscription?.stripeCustomerId) {
@@ -458,33 +548,13 @@ export const billingRouter = createTRPCRouter({
         throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Organization ID not found' })
       }
 
-      const subscription = await getCachedSubscription(organizationId)
-
-      if (!subscription?.stripeCustomerId) {
-        return []
+      const provider = await resolveBillingProvider(ctx.db, organizationId)
+      if (!provider.capabilities.managedPaymentMethods) {
+        throw new BadRequestError(
+          'Payment methods are managed in Shopify Admin for this organization.'
+        )
       }
-
-      const stripe = stripeClient.getClient()
-      const paymentMethods = await stripe.paymentMethods.list({
-        customer: subscription.stripeCustomerId,
-        type: 'card',
-      })
-
-      // Get customer to check default payment method
-      const customer = await stripe.customers.retrieve(subscription.stripeCustomerId)
-      const defaultPaymentMethodId =
-        typeof customer !== 'string' && !customer.deleted
-          ? customer.invoice_settings.default_payment_method
-          : null
-
-      return paymentMethods.data.map((pm) => ({
-        id: pm.id,
-        brand: pm.card?.brand || 'unknown',
-        last4: pm.card?.last4 || '****',
-        expMonth: pm.card?.exp_month || 0,
-        expYear: pm.card?.exp_year || 0,
-        isDefault: pm.id === defaultPaymentMethodId,
-      }))
+      return await provider.listPaymentMethods!(organizationId)
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : ''
 
@@ -504,19 +574,13 @@ export const billingRouter = createTRPCRouter({
         throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Organization ID not found' })
       }
 
-      const subscription = await getCachedSubscription(organizationId)
-
-      if (!subscription?.stripeCustomerId) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'No Stripe customer found' })
+      const provider = await resolveBillingProvider(ctx.db, organizationId)
+      if (!provider.capabilities.managedPaymentMethods) {
+        throw new BadRequestError(
+          'Payment methods are managed in Shopify Admin for this organization.'
+        )
       }
-
-      const stripe = stripeClient.getClient()
-      const setupIntent = await stripe.setupIntents.create({
-        customer: subscription.stripeCustomerId,
-        payment_method_types: ['card'],
-      })
-
-      return { clientSecret: setupIntent.client_secret }
+      return await provider.createSetupIntent!(organizationId)
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : ''
 
@@ -538,18 +602,13 @@ export const billingRouter = createTRPCRouter({
           throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Organization ID not found' })
         }
 
-        const subscription = await getCachedSubscription(organizationId)
-
-        if (!subscription?.stripeCustomerId) {
-          throw new TRPCError({ code: 'NOT_FOUND', message: 'No Stripe customer found' })
+        const provider = await resolveBillingProvider(ctx.db, organizationId)
+        if (!provider.capabilities.managedPaymentMethods) {
+          throw new BadRequestError(
+            'Payment methods are managed in Shopify Admin for this organization.'
+          )
         }
-
-        const stripe = stripeClient.getClient()
-        await stripe.customers.update(subscription.stripeCustomerId, {
-          invoice_settings: {
-            default_payment_method: input.paymentMethodId,
-          },
-        })
+        await provider.setDefaultPaymentMethod!(organizationId, input.paymentMethodId)
 
         return { success: true }
       } catch (error: unknown) {
@@ -573,8 +632,13 @@ export const billingRouter = createTRPCRouter({
           throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Organization ID not found' })
         }
 
-        const stripe = stripeClient.getClient()
-        await stripe.paymentMethods.detach(input.paymentMethodId)
+        const provider = await resolveBillingProvider(ctx.db, organizationId)
+        if (!provider.capabilities.managedPaymentMethods) {
+          throw new BadRequestError(
+            'Payment methods are managed in Shopify Admin for this organization.'
+          )
+        }
+        await provider.deletePaymentMethod!(organizationId, input.paymentMethodId)
 
         return { success: true }
       } catch (error: unknown) {
@@ -606,9 +670,8 @@ export const billingRouter = createTRPCRouter({
           throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Organization ID not found' })
         }
 
-        const subscriptionService = new SubscriptionService(ctx.db, WEBAPP_URL)
-
-        const result = await subscriptionService.updateSubscriptionDirect({
+        const provider = await resolveBillingProvider(ctx.db, organizationId)
+        const result = await provider.updateSubscriptionDirect!({
           organizationId,
           userId: ctx.session.user.id,
           ...input,
@@ -634,6 +697,13 @@ export const billingRouter = createTRPCRouter({
       const organizationId = getUserOrganizationId(ctx.session)
       if (!organizationId) {
         throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Organization ID not found' })
+      }
+
+      const provider = await resolveBillingProvider(ctx.db, organizationId)
+      if (!provider.capabilities.scheduledDowngrade) {
+        throw new BadRequestError(
+          'Scheduled plan changes are not supported for this billing provider.'
+        )
       }
 
       const cachedSub = await getCachedSubscription(organizationId)
