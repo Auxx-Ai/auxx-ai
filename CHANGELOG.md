@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.153](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.152...auxx-v0.1.153) (2026-06-01)
+
+
+### Bug Fixes
+
+* **auth:** resolve headers from ctx.headers in before hook ([#712](https://github.com/Auxx-Ai/auxx-ai/issues/712)) ([dd662b9](https://github.com/Auxx-Ai/auxx-ai/commit/dd662b93f2a024cea701d44ce484eb6a1b972d59))
+
 ## [0.1.152](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.151...auxx-v0.1.152) (2026-06-01)
 
 
