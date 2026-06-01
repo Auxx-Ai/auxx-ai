@@ -17,6 +17,7 @@ import {
 } from '@auxx/services/app-versions'
 import { eq } from 'drizzle-orm'
 import { z } from 'zod'
+import { recordAuditFromCtx } from '~/server/api/audit-context'
 import { createTRPCRouter, superAdminProcedure } from '~/server/api/trpc'
 import { invalidateBuildCacheForDeveloperAccount } from '~/server/lib/invalidate-build-cache'
 
@@ -286,7 +287,20 @@ export const adminAppsRouter = createTRPCRouter({
     )
     .query(async ({ ctx, input }) => {
       const adminService = new AdminService(ctx.db)
-      return adminService.exportByDeveloperAccount(input.developerAccountId)
+      const result = await adminService.exportByDeveloperAccount(input.developerAccountId)
+
+      await recordAuditFromCtx(ctx, {
+        organizationId: null,
+        actorType: 'admin',
+        category: 'data_export',
+        action: 'data.exported',
+        visibility: 'internal',
+        targetType: 'DeveloperAccount',
+        targetId: input.developerAccountId,
+        metadata: { export: 'developer-account-apps' },
+      })
+
+      return result
     }),
 
   /**

@@ -11,6 +11,7 @@ import { createScopedLogger } from '@auxx/logger'
 import { TRPCError } from '@trpc/server'
 import { and, eq } from 'drizzle-orm'
 import { z } from 'zod'
+import { recordAuditFromCtx } from '~/server/api/audit-context'
 import { createTRPCRouter, notDemo, protectedProcedure, publicProcedure } from '~/server/api/trpc'
 
 const logger = createScopedLogger('api-organization')
@@ -143,6 +144,14 @@ export const organizationRouter = createTRPCRouter({
 
       // Invalidate dehydration cache for all org members (org data visible to all)
       await onCacheEvent('org.updated', { orgId: organizationId })
+
+      await recordAuditFromCtx(ctx, {
+        category: 'settings',
+        action: 'organization.updated',
+        targetType: 'Organization',
+        targetId: organizationId,
+        newState: updateData,
+      })
 
       return organization
     }),
@@ -321,6 +330,14 @@ export const organizationRouter = createTRPCRouter({
       // Invalidate dehydration cache so client gets fresh data on reload
       const dehydrationService = new DehydrationService(ctx.db)
       await dehydrationService.invalidateUser(userId)
+
+      await recordAuditFromCtx(ctx, {
+        category: 'auth',
+        action: 'organization.switched',
+        targetType: 'Organization',
+        targetId: organizationId,
+        metadata: { fromOrganizationId: currentOrganizationId, toOrganizationId: organizationId },
+      })
 
       return { success: true, organizationId }
     }),

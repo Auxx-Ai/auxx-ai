@@ -1324,6 +1324,20 @@
       "when": 1779997127899,
       "tag": "0188_drop_shopify_shop_gid",
       "breakpoints": true
+    },
+    {
+      "idx": 189,
+      "version": "7",
+      "when": 1780292535183,
+      "tag": "0189_audit_log",
+      "breakpoints": true
+    },
+    {
+      "idx": 190,
+      "version": "7",
+      "when": 1780292949463,
+      "tag": "0190_drop_admin_action_log",
+      "breakpoints": true
     }
   ]
 }

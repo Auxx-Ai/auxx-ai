@@ -1,6 +1,6 @@
 // packages/services/src/app-versions/admin-reject-deployment.ts
 
-import { AdminActionLog, AppDeployment, database } from '@auxx/database'
+import { AppDeployment, AuditLog, database, toAuditRow } from '@auxx/database'
 import { eq } from 'drizzle-orm'
 import { err, ok } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
@@ -73,21 +73,27 @@ export async function adminRejectDeployment(params: {
 
   // Log admin action
   await fromDatabase(
-    database.insert(AdminActionLog).values({
-      adminUserId,
-      actionType: 'REJECT_APP_DEPLOYMENT',
-      targetType: 'APP_DEPLOYMENT',
-      targetId: deploymentId,
-      reason,
-      previousState: { status: deployment.status },
-      newState: { status: 'rejected' },
-      details: {
-        appId: app.id,
-        appTitle: app.title,
-        appSlug: app.slug,
-        version: deployment.version,
-      },
-    }),
+    database.insert(AuditLog).values(
+      toAuditRow({
+        organizationId: null,
+        category: 'apps',
+        action: 'REJECT_APP_DEPLOYMENT',
+        actorType: 'admin',
+        actorId: adminUserId,
+        targetType: 'APP_DEPLOYMENT',
+        targetId: deploymentId,
+        reason,
+        previousState: { status: deployment.status },
+        newState: { status: 'rejected' },
+        metadata: {
+          appId: app.id,
+          appTitle: app.title,
+          appSlug: app.slug,
+          version: deployment.version,
+        },
+        visibility: 'internal',
+      })
+    ),
     'log-admin-action'
   )
 

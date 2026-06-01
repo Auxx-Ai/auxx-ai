@@ -1,6 +1,6 @@
 // packages/services/src/app-versions/admin-approve-deployment.ts
 
-import { AdminActionLog, AppDeployment, database } from '@auxx/database'
+import { AppDeployment, AuditLog, database, toAuditRow } from '@auxx/database'
 import { eq } from 'drizzle-orm'
 import { err, ok } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
@@ -74,21 +74,27 @@ export async function adminApproveDeployment(params: {
 
   // Log admin action
   await fromDatabase(
-    database.insert(AdminActionLog).values({
-      adminUserId,
-      actionType: 'APPROVE_APP_DEPLOYMENT',
-      targetType: 'APP_DEPLOYMENT',
-      targetId: deploymentId,
-      previousState: { status: deployment.status },
-      newState: { status: newStatus },
-      details: {
-        appId: app.id,
-        appTitle: app.title,
-        appSlug: app.slug,
-        version: deployment.version,
-        autoPublish,
-      },
-    }),
+    database.insert(AuditLog).values(
+      toAuditRow({
+        organizationId: null,
+        category: 'apps',
+        action: 'APPROVE_APP_DEPLOYMENT',
+        actorType: 'admin',
+        actorId: adminUserId,
+        targetType: 'APP_DEPLOYMENT',
+        targetId: deploymentId,
+        previousState: { status: deployment.status },
+        newState: { status: newStatus },
+        metadata: {
+          appId: app.id,
+          appTitle: app.title,
+          appSlug: app.slug,
+          version: deployment.version,
+          autoPublish,
+        },
+        visibility: 'internal',
+      })
+    ),
     'log-admin-action'
   )
 

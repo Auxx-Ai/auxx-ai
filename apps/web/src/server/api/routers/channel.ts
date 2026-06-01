@@ -43,6 +43,7 @@ import { createScopedLogger } from '@auxx/logger'
 import { TRPCError } from '@trpc/server'
 import { and, count, eq, isNull } from 'drizzle-orm'
 import { z } from 'zod'
+import { recordAuditFromCtx } from '~/server/api/audit-context'
 import { adminProcedure, createTRPCRouter, notDemo, protectedProcedure } from '../trpc'
 
 const logger = createScopedLogger('channel-router')
@@ -150,6 +151,13 @@ export const channelRouter = createTRPCRouter({
       if (!result.ok) throw result.error
 
       await onCacheEvent('channel.disconnected', { orgId: organizationId })
+
+      await recordAuditFromCtx(ctx, {
+        category: 'integrations',
+        action: 'integration.disconnected',
+        targetType: 'Channel',
+        targetId: input.integrationId,
+      })
 
       return result.value
     }),

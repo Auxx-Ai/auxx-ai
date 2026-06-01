@@ -1,4 +1,5 @@
 import {
+  createAuditLog,
   createEventJob,
   createTimelineEvent,
   handleEntityTriggers,
@@ -26,6 +27,7 @@ const eventHandlersJobMappings = {
   sendInvitationUserJob,
   updateWebhookLastTriggeredAt,
   createTimelineEvent,
+  createAuditLog,
   triggerResourceWorkflows,
   triggerAgents,
   handleFieldTriggerJob,

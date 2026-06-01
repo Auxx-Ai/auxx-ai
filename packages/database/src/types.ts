@@ -181,6 +181,7 @@ export type StandardType = (typeof Enums.StandardTypeValues)[number] | null
 
 export type { ApprovalRequestEntity } from './db/schema/approval-request'
 export type { AttachmentEntity } from './db/schema/attachment'
+export type { AuditLogEntity } from './db/schema/audit-log'
 export type { CommentEntity } from './db/schema/comment'
 export type { CommentReactionEntity } from './db/schema/comment-reaction'
 export type { CustomFieldEntity } from './db/schema/custom-field'

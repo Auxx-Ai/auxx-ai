@@ -5,6 +5,7 @@ import { isAdminOrOwner } from '@auxx/lib/members'
 import { SETTINGS_CATALOG, SettingsService } from '@auxx/lib/settings'
 import { createScopedLogger } from '@auxx/logger'
 import { z } from 'zod'
+import { recordAuditFromCtx } from '~/server/api/audit-context'
 import { createTRPCRouter, notDemo, protectedProcedure } from '~/server/api/trpc'
 
 const logger = createScopedLogger('api-settings')
@@ -104,6 +105,14 @@ export const settingsRouter = createTRPCRouter({
 
       await onCacheEvent('org.settings.changed', { orgId: organizationId, broadcastUserKeys: true })
 
+      await recordAuditFromCtx(ctx, {
+        category: 'settings',
+        action: 'setting.changed',
+        targetType: 'OrganizationSetting',
+        targetId: key,
+        newState: { value, allowUserOverride },
+      })
+
       return { success: true }
     }),
 
@@ -171,6 +180,14 @@ export const settingsRouter = createTRPCRouter({
       await settingsService.batchUpdateOrganizationSettings({ organizationId, settings })
 
       await onCacheEvent('org.settings.changed', { orgId: organizationId, broadcastUserKeys: true })
+
+      await recordAuditFromCtx(ctx, {
+        category: 'settings',
+        action: 'setting.batch_changed',
+        targetType: 'OrganizationSetting',
+        newState: { keys: settings.map((s) => s.key) },
+        metadata: { count: settings.length },
+      })
 
       return { success: true }
     }),
