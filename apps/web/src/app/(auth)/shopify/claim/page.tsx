@@ -83,26 +83,10 @@ export default async function ShopifyClaimPage({ searchParams }: PageProps) {
       sub.shopifyShopDomain === claim.shop &&
       sub.status !== 'canceled' &&
       sub.status !== 'incomplete'
-    logger.info('Claim short-circuit eval', {
-      claimShop: claim.shop,
-      organizationId: m.organizationId,
-      billingProvider: sub?.billingProvider ?? null,
-      shopifyShopDomain: sub?.shopifyShopDomain ?? null,
-      status: sub?.status ?? null,
-      isLiveLink,
-    })
     if (isLiveLink) {
       liveLinkedOrgIds.push(m.organizationId)
     }
   }
-
-  logger.info('Claim short-circuit decision', {
-    claimShop: claim.shop,
-    userId: session.user.id,
-    activeMembershipCount: activeMemberships.length,
-    liveLinkedOrgIds,
-    willRedirect: liveLinkedOrgIds.length === 1,
-  })
 
   if (liveLinkedOrgIds.length === 1) {
     const targetOrgId = liveLinkedOrgIds[0]

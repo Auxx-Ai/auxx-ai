@@ -5,10 +5,12 @@ import { Button } from '@auxx/ui/components/button'
 import { CardContent, CardFooter, CardHeader } from '@auxx/ui/components/card'
 import { toastError } from '@auxx/ui/components/toast'
 import { cn } from '@auxx/ui/lib/utils'
-import { Check, Sparkles } from 'lucide-react'
+import { Check, ExternalLink, Sparkles } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
+import { useIsShopifyBilling } from '~/providers/dehydrated-state-provider'
 import { api } from '~/trpc/react'
+import { getPlanCta } from './plan-cta'
 import { showCelebrationConfetti } from './show-confetti'
 
 type PlanCardProps = {
@@ -48,6 +50,10 @@ export function PlanCard({
   const router = useRouter()
   const utils = api.useUtils()
 
+  // Shopify hosts plan selection + trials on its own pricing page, so we skip the
+  // in-app trial CTA and signal the external redirect (see plan-cta.ts).
+  const isShopify = useIsShopifyBilling()
+
   const [trialEligible, setTrialEligible] = useState(false)
 
   // Fetch subscription data
@@ -56,10 +62,17 @@ export function PlanCard({
 
   const currentPlanLevel = subscription?.plan?.hierarchyLevel ?? -1
 
-  // Check trial eligibility
+  // Check trial eligibility — Stripe-only; Shopify applies per-plan trials automatically.
   const { data: eligibilityData } = api.billing.checkTrialEligibility.useQuery(
     { planId: plan.id },
-    { enabled: showTrialOption && plan.trialDays > 0 && !plan.isCustomPricing && !isCurrentPlan }
+    {
+      enabled:
+        !isShopify &&
+        showTrialOption &&
+        plan.trialDays > 0 &&
+        !plan.isCustomPricing &&
+        !isCurrentPlan,
+    }
   )
 
   useEffect(() => {
@@ -104,27 +117,13 @@ export function PlanCard({
       : []
 
   // --- Determine Button Text & Action ---
-  let buttonText = 'Select Plan' // Default text
-  let actionType: 'current' | 'upgrade' | 'downgrade' | 'contact' | 'select' = 'select' // Default action type
-
-  if (plan.isCustomPricing) {
-    buttonText = 'Contact Sales'
-    actionType = 'contact'
-  } else if (isCurrentPlan) {
-    buttonText = 'Current Plan'
-    actionType = 'current'
-  } else if (currentPlanLevel === -1) {
-    // If no current plan, default action is 'select' or 'subscribe'
-    // If trial is available, specific buttons handle it. Otherwise, main button.
-    buttonText = 'Select Plan'
-    actionType = 'select' // Or 'subscribe' if you prefer
-  } else if (plan.hierarchyLevel > currentPlanLevel) {
-    buttonText = 'Upgrade Plan'
-    actionType = 'upgrade'
-  } else if (plan.hierarchyLevel < currentPlanLevel) {
-    buttonText = 'Downgrade Plan'
-    actionType = 'downgrade'
-  }
+  const cta = getPlanCta({
+    isCustomPricing: plan.isCustomPricing,
+    isCurrentPlan,
+    planLevel: plan.hierarchyLevel,
+    currentPlanLevel,
+    isShopify,
+  })
 
   const handleSelectPlan = () => {
     // If onPlanSelect callback provided (dialog mode), use it instead
@@ -232,18 +231,18 @@ export function PlanCard({
         </CardContent>
 
         <CardFooter className='flex flex-col gap-2 p-3 pt-0'>
-          {actionType === 'contact' ? (
+          {cta.action === 'contact' ? (
             <Button
               variant={btnVariant}
               className='w-full'
               onClick={() => router.push('/contact-sales')}>
               Contact Sales
             </Button>
-          ) : actionType === 'current' ? (
+          ) : cta.action === 'current' ? (
             <Button className='w-full' disabled>
               Current Plan
             </Button>
-          ) : trialEligible && plan.hasTrial && plan.trialDays > 0 ? (
+          ) : !isShopify && trialEligible && plan.hasTrial && plan.trialDays > 0 ? (
             <Button
               className='w-full'
               onClick={handleStartTrial}
@@ -259,8 +258,9 @@ export function PlanCard({
               onClick={handleSelectPlan}
               variant={btnVariant}
               loading={isProcessing}
-              loadingText='Processing...'>
-              {buttonText}
+              loadingText={cta.loadingText}>
+              {cta.text}
+              {cta.external && <ExternalLink />}
             </Button>
           )}
         </CardFooter>
