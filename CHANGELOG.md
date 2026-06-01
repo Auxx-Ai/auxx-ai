@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.154](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.153...auxx-v0.1.154) (2026-06-01)
+
+
+### Bug Fixes
+
+* **chat:** make geo entrypoint reachable in api and drop root via gosu for Railway volume ([#714](https://github.com/Auxx-Ai/auxx-ai/issues/714)) ([b206cd5](https://github.com/Auxx-Ai/auxx-ai/commit/b206cd5fce975ea00f50a0c163b00ccea976fbcd))
+
 ## [0.1.153](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.152...auxx-v0.1.153) (2026-06-01)
 
 
