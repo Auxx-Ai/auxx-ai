@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.152](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.151...auxx-v0.1.152) (2026-06-01)
+
+
+### Bug Fixes
+
+* **kb:** externalize imapflow/pino/thread-stream in container build ([#710](https://github.com/Auxx-Ai/auxx-ai/issues/710)) ([5664ccf](https://github.com/Auxx-Ai/auxx-ai/commit/5664ccf42f77c1d3fc0ff408e5cbde280cff8d37))
+
 ## [0.1.151](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.150...auxx-v0.1.151) (2026-06-01)
 
 
