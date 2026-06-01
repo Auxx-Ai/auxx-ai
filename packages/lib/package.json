@@ -118,6 +118,12 @@
       "import": "./dist/audit-log/index.mjs",
       "default": "./src/audit-log/index.ts"
     },
+    "./audit-log/client": {
+      "types": "./src/audit-log/client.ts",
+      "source": "./src/audit-log/client.ts",
+      "import": "./dist/audit-log/client.mjs",
+      "default": "./src/audit-log/client.ts"
+    },
     "./cache": {
       "types": "./src/cache/index.ts",
       "source": "./src/cache/index.ts",

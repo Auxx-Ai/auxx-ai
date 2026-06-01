@@ -28,9 +28,13 @@ function toDayKey(date: Date): string {
 }
 
 /**
- * Reports **one** idempotent `seat_day` usage event for an org on a given day, with
- * `value = PlanSubscription.seats`. Per-org-per-day (not per-member) — idempotency is keyed
+ * Reports **one** idempotent `seat_days` usage event for an org on a given day, with
+ * `value = PlanSubscription.seats - 1`. Per-org-per-day (not per-member) — idempotency is keyed
  * on `(org, day)`, so cron retries / worker restarts / lookback re-sends never double-bill.
+ *
+ * The `-1` reflects the hybrid pricing shape (plan 14 §3.4, Option B): the recurring base price
+ * covers the first seat, so only seats 2..N are metered. A 1-seat org meters nothing (we skip the
+ * POST rather than send `value: 0`).
  *
  * Reads the seat count and Shop GID off the local row; lazily fetches+caches the GID from
  * the Admin API (`query { shop { id } }`) the first time. No-ops (returns `skipped`) for
@@ -67,6 +71,11 @@ export async function reportOrgSeatDay(
   if (!row.shopifyShopDomain) return skip('no_shop_domain')
   if (row.status === 'canceled') return skip('canceled')
 
+  // Hybrid pricing (plan 14 §3.4, Option B): the recurring base covers seat 1, so the meter only
+  // bills the incremental seats 2..N. A solo org meters nothing — skip rather than POST `value: 0`.
+  const billableSeats = Math.max(0, row.seats - 1)
+  if (billableSeats === 0) return skip('no_billable_seats')
+
   const shopGid = await resolveShopGid(db, {
     subscriptionId: row.id,
     organizationId: input.organizationId,
@@ -79,7 +88,7 @@ export async function reportOrgSeatDay(
     // Noon UTC keeps the timestamp comfortably inside the billing day regardless of tz.
     timestamp: `${date}T12:00:00.000Z`,
     idempotencyKey: `seat_day:${input.organizationId}:${date}`,
-    value: row.seats,
+    value: billableSeats,
   })
 
   return { orgId: input.organizationId, date, seats: row.seats, status }

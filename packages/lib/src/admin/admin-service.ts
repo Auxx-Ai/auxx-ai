@@ -96,6 +96,8 @@ export interface OrganizationDetails {
     id: string
     plan: string
     status: string
+    billingProvider: string
+    shopifyShopDomain: string | null
     billingCycle: string
     seats: number
     creditsBalance: number
@@ -372,6 +374,8 @@ export class AdminService {
         id: schema.PlanSubscription.id,
         plan: schema.Plan.name,
         status: schema.PlanSubscription.status,
+        billingProvider: schema.PlanSubscription.billingProvider,
+        shopifyShopDomain: schema.PlanSubscription.shopifyShopDomain,
         billingCycle: schema.PlanSubscription.billingCycle,
         seats: schema.PlanSubscription.seats,
         creditsBalance: schema.PlanSubscription.creditsBalance,
@@ -404,6 +408,8 @@ export class AdminService {
             id: subscription.id,
             plan: subscription.plan,
             status: subscription.status,
+            billingProvider: subscription.billingProvider,
+            shopifyShopDomain: subscription.shopifyShopDomain,
             billingCycle: subscription.billingCycle,
             seats: subscription.seats,
             creditsBalance: subscription.creditsBalance,

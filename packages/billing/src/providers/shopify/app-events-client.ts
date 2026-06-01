@@ -19,14 +19,35 @@ const logger = createScopedLogger('billing/shopify/app-events')
  * See plans/billing/v2/14-shopify-per-seat-usage-meter-hack.md §3.1, §5.1.
  */
 
-const APP_EVENTS_VERSION = '2026-04'
+// The App Events API uses its own `unstable` version channel (not the dated Admin API
+// version like `2026-04`) — verified live: a dated version 404s. Ref §8.
+const APP_EVENTS_VERSION = 'unstable'
 const TOKEN_URL = 'https://api.shopify.com/auth/access_token'
 const EVENTS_URL = `https://api.shopify.com/app/${APP_EVENTS_VERSION}/events`
 
 /** Refresh the 60-min token this far before expiry so an in-flight POST never races a stale token. */
 const TOKEN_REFRESH_SKEW_MS = 5 * 60 * 1000
 
+/** Fallback TTL if the JWT `exp` can't be read (token lives ~60 min — verified live). */
+const FALLBACK_TOKEN_TTL_MS = 55 * 60 * 1000
+
 let cachedToken: { token: string; expiresAt: number } | null = null
+
+/**
+ * Reads the `exp` (epoch seconds) claim from a JWT access token. The `/auth/access_token`
+ * response is `{ access_token, token_type }` only — no `expires_in` — so expiry comes from
+ * the token itself (verified live: 60-min TTL). Returns ms-epoch, or null if unparseable.
+ */
+function readJwtExpiryMs(token: string): number | null {
+  const parts = token.split('.')
+  if (parts.length !== 3) return null
+  try {
+    const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString()) as { exp?: number }
+    return typeof payload.exp === 'number' ? payload.exp * 1000 : null
+  } catch {
+    return null
+  }
+}
 
 /**
  * Mints (or returns the cached) app-scoped client-credentials token. Pass `force` to
@@ -60,10 +81,10 @@ async function getAppToken(force = false): Promise<string> {
     throw new Error(`Shopify app token mint failed (${res.status}): ${body}`)
   }
 
-  const json = (await res.json()) as { access_token: string; expires_in: number }
+  const json = (await res.json()) as { access_token: string; token_type?: string }
   cachedToken = {
     token: json.access_token,
-    expiresAt: now + json.expires_in * 1000,
+    expiresAt: readJwtExpiryMs(json.access_token) ?? now + FALLBACK_TOKEN_TTL_MS,
   }
   return cachedToken.token
 }
@@ -80,14 +101,14 @@ export interface SeatDayEvent {
   idempotencyKey: string
   /** Quantity to ADD to the meter — the org's current `PlanSubscription.seats`. */
   value: number
-  /** Meter handle configured in the Partner Dashboard. Defaults to `seat_day`. */
+  /** Meter handle configured in the Partner Dashboard. Defaults to `seat_days`. */
   eventHandle?: string
 }
 
 function buildBody(event: SeatDayEvent): string {
   return JSON.stringify({
     shop_id: event.shopGid,
-    event_handle: event.eventHandle ?? 'seat_day',
+    event_handle: event.eventHandle ?? 'seat_days',
     timestamp: event.timestamp,
     idempotency_key: event.idempotencyKey,
     attributes: { value: event.value },
