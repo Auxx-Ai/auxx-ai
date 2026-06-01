@@ -6,6 +6,7 @@ const nextConfig: NextConfig = {
   reactStrictMode: true,
   output: 'standalone',
   cacheComponents: true,
+  serverExternalPackages: ['imapflow', 'pino', 'thread-stream'],
   transpilePackages: ['@auxx/database', '@auxx/config', '@auxx/lib', '@auxx/ui', '@auxx/utils'],
   images: {
     unoptimized: true,

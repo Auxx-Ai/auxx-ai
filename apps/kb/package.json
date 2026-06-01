@@ -18,13 +18,16 @@
     "@auxx/redis": "workspace:*",
     "@auxx/ui": "workspace:*",
     "drizzle-orm": "catalog:",
+    "imapflow": "^1.2.13",
     "lucide-react": "catalog:",
     "minisearch": "catalog:",
     "next": "catalog:",
     "pg": "catalog:",
+    "pino": "^10.3.1",
     "react": "catalog:",
     "react-dom": "catalog:",
-    "sharp": "catalog:"
+    "sharp": "catalog:",
+    "thread-stream": "^4.0.0"
   },
   "devDependencies": {
     "@types/react": "catalog:",
