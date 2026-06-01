@@ -134,16 +134,6 @@ export async function GET(request: NextRequest) {
       throw new Error('Token response missing access_token')
     }
 
-    // Surface whether Shopify honored the expiring-token opt-in — if refresh_token is
-    // absent the app is still on a non-expiring token and Admin API calls will 403.
-    logger.info('Shopify token exchange result', {
-      shop,
-      hasAccessToken: !!tokens.access_token,
-      hasRefreshToken: !!tokens.refresh_token,
-      expiresIn: tokens.expires_in ?? null,
-      refreshTokenExpiresIn: tokens.refresh_token_expires_in ?? null,
-    })
-
     const expiresAtIso = tokens.expires_in
       ? new Date(Date.now() + tokens.expires_in * 1000).toISOString()
       : undefined

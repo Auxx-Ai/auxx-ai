@@ -126,6 +126,12 @@ export interface DehydratedOrganization {
     planId: string | null
     seats: number
     billingCycle: 'MONTHLY' | 'ANNUAL'
+
+    // Billing provider routing (client-safe — no Stripe/Shopify secrets)
+    billingProvider: 'stripe' | 'shopify'
+    shopifyShopDomain: string | null
+    capabilities: import('@auxx/billing').BillingCapabilities
+
     periodStart: string | null
     periodEnd: string | null
     cancelAtPeriodEnd: boolean

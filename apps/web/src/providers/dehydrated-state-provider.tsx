@@ -205,3 +205,27 @@ export function useDehydratedSettings(): Record<string, any> {
   const org = useDehydratedOrganization(organizationId)
   return org?.settings ?? {}
 }
+
+/**
+ * Hook to access the current organization's dehydrated subscription.
+ * Returns null when there's no subscription row (fresh org) or no current org.
+ */
+export function useDehydratedSubscription(): DehydratedOrganization['subscription'] {
+  const organizationId = useDehydratedOrganizationId()
+  return useDehydratedOrganization(organizationId)?.subscription ?? null
+}
+
+/**
+ * Hook to access the billing provider for the current organization.
+ * Returns null when there's no subscription yet — treat null as "not Shopify".
+ */
+export function useBillingProvider(): 'stripe' | 'shopify' | null {
+  return useDehydratedSubscription()?.billingProvider ?? null
+}
+
+/**
+ * Convenience boolean for the common Shopify-billing branch.
+ */
+export function useIsShopifyBilling(): boolean {
+  return useBillingProvider() === 'shopify'
+}

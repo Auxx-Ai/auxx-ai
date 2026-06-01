@@ -7,6 +7,8 @@ import { Button } from '@auxx/ui/components/button'
 import { CountrySelect } from '@auxx/ui/components/country-select'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@auxx/ui/components/dialog'
 import { Input } from '@auxx/ui/components/input'
+import { InputGroup } from '@auxx/ui/components/input-group'
+import { NumberInput, NumberInputArrows, NumberInputField } from '@auxx/ui/components/input-number'
 import { Label } from '@auxx/ui/components/label'
 import { RadioTab, RadioTabItem } from '@auxx/ui/components/radio-tab'
 import { Skeleton } from '@auxx/ui/components/skeleton'
@@ -409,15 +411,18 @@ function PlanChangeSummaryContent({
   const total = preview ? preview.renewal.total / 100 : subtotal + tax
   const adjustmentDueToday = preview?.proration?.amount || 0
 
-  // Determine action type from backend or calculate locally
-  const actionType = preview?.transition || 'continue'
-  let actionTitle = `Continue with ${selectedPlan.name}`
-
-  if (actionType === 'upgrade') {
-    actionTitle = `Upgrade to ${selectedPlan.name}`
-  } else if (actionType === 'downgrade') {
-    actionTitle = `Downgrade to ${selectedPlan.name}`
-  }
+  // Derive the action from a synchronous plan-hierarchy comparison rather than the async
+  // preview's `transition`. `calculatePreview` is a mutation, so its `.data` clears while a
+  // new preview is in flight — driving the title off it made the header flicker through
+  // "Continue with …" on every seat change. Hierarchy is known instantly and never flickers.
+  const currentPlanLevel = currentSubscription?.plan?.hierarchyLevel ?? -1
+  const isUpgrade = currentPlanLevel !== -1 && selectedPlan.hierarchyLevel > currentPlanLevel
+  const isDowngrade = currentPlanLevel !== -1 && selectedPlan.hierarchyLevel < currentPlanLevel
+  const actionTitle = isUpgrade
+    ? `Upgrade to ${selectedPlan.name}`
+    : isDowngrade
+      ? `Downgrade to ${selectedPlan.name}`
+      : `Continue with ${selectedPlan.name}`
 
   // Annual savings calculation
   const monthlyCost = monthlyPrice * 12
@@ -511,14 +516,17 @@ function PlanChangeSummaryContent({
                 </span>
               </div>
             </div>
-            <Input
-              type='number'
+            <NumberInput
+              value={seats}
+              onValueChange={(v) => setSeats(Math.max(selectedPlan.minSeats ?? 1, v ?? 1))}
               min={selectedPlan.minSeats}
               max={selectedPlan.maxSeats}
-              value={seats}
-              onChange={(e) => setSeats(Math.max(1, parseInt(e.target.value, 10) || 1))}
-              className='w-20'
-            />
+              step={1}>
+              <InputGroup className='w-32'>
+                <NumberInputField id='seats' />
+                <NumberInputArrows />
+              </InputGroup>
+            </NumberInput>
           </div>
 
           {/* Billing Information — hidden for providers that don't manage card-on-file. */}
@@ -758,7 +766,7 @@ function PlanChangeSummaryContent({
             </div>
 
             {/* Action-specific messaging */}
-            {actionType === 'downgrade' && preview?.renewal?.date && (
+            {isDowngrade && preview?.renewal?.date && (
               <Alert className='p-2' variant='comparison'>
                 <AlertDescription className='text-xs'>
                   Your plan will downgrade to {selectedPlan.name} on{' '}
@@ -768,7 +776,7 @@ function PlanChangeSummaryContent({
               </Alert>
             )}
 
-            {actionType === 'upgrade' &&
+            {isUpgrade &&
               currentSubscription?.billingCycle === 'MONTHLY' &&
               billingCycle === 'ANNUAL' && (
                 <Alert className='p-2' variant='comparison'>
