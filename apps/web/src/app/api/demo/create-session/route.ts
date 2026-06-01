@@ -59,7 +59,8 @@ export async function POST(request: NextRequest) {
       .from(schema.Organization)
       .where(gt(schema.Organization.demoExpiresAt, new Date()))
 
-    if ((activeDemoResult?.count ?? 0) >= 100) {
+    const activeDemoCount = activeDemoResult?.count ?? 0
+    if (activeDemoCount >= 100) {
       logger.warn('Demo concurrent limit reached', { activeDemoCount })
       return NextResponse.json(
         { error: 'Demo is currently at capacity. Please try again in a few minutes.' },
