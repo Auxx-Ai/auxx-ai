@@ -2,11 +2,23 @@
 
 import { getProvider, verifyShopifyHmac } from '@auxx/billing'
 import { database } from '@auxx/database'
+import { recordAudit } from '@auxx/lib/audit-log'
 import { onCacheEvent } from '@auxx/lib/cache'
 import { createScopedLogger } from '@auxx/logger'
 import { type NextRequest, NextResponse } from 'next/server'
 
 const logger = createScopedLogger('shopify/billing-webhook')
+
+/**
+ * Maps a Shopify billing topic to an audit action. Shopify collapses
+ * create/approve/change into one `app_subscriptions/update` topic, so that maps to
+ * `subscription.updated`; the only distinct lifecycle signal is uninstall → canceled.
+ */
+function shopifyBillingAction(topic: string): string | null {
+  if (topic === 'app_subscriptions/update') return 'subscription.updated'
+  if (topic === 'app/uninstalled') return 'subscription.canceled'
+  return null
+}
 
 export async function POST(req: NextRequest) {
   const rawBody = await req.text()
@@ -30,6 +42,21 @@ export async function POST(req: NextRequest) {
     // app (and the claim-page short-circuit) sees the new status without waiting on TTL.
     if (result.organizationId) {
       await onCacheEvent('plan.changed', { orgId: result.organizationId })
+
+      const action = shopifyBillingAction(topic)
+      if (action) {
+        await recordAudit({
+          organizationId: result.organizationId,
+          category: 'billing',
+          action,
+          actorType: 'integration',
+          actorId: null,
+          targetType: 'Subscription',
+          targetId: shopDomain || null,
+          metadata: { provider: 'shopify', topic, shopDomain },
+          context: { ipAddress: null, userAgent: null, sessionId: null },
+        })
+      }
     }
     return new NextResponse('ok', { status: 200 })
   } catch (error) {

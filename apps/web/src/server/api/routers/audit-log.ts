@@ -11,6 +11,7 @@ import {
 } from '@auxx/lib/audit-log'
 import { TRPCError } from '@trpc/server'
 import { z } from 'zod'
+import { recordAuditFromCtx } from '~/server/api/audit-context'
 import { adminProcedure, createTRPCRouter, superAdminProcedure } from '~/server/api/trpc'
 
 const categoryEnum = z.enum(AUDIT_CATEGORIES as unknown as [string, ...string[]])
@@ -93,6 +94,20 @@ export const auditLogRouter = createTRPCRouter({
       if (result.isErr()) {
         throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: result.error.message })
       }
+
+      await recordAuditFromCtx(ctx, {
+        category: 'data_export',
+        action: 'audit.exported',
+        targetType: 'AuditLog',
+        metadata: {
+          rowCount: result.value.count,
+          format: input.format ?? 'csv',
+          category: input.category ?? null,
+          from: input.from?.toISOString() ?? null,
+          to: input.to?.toISOString() ?? null,
+        },
+      })
+
       return result.value
     }),
 
@@ -108,7 +123,7 @@ export const auditLogRouter = createTRPCRouter({
         to: z.coerce.date().optional(),
       })
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
       const result = await exportAuditEvents({
         organizationId: input.organizationId,
         category: input.category as never,
@@ -120,6 +135,25 @@ export const auditLogRouter = createTRPCRouter({
       if (result.isErr()) {
         throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: result.error.message })
       }
+
+      await recordAuditFromCtx(ctx, {
+        organizationId: input.organizationId ?? null,
+        category: 'data_export',
+        action: 'audit.exported_all',
+        actorType: 'admin',
+        visibility: 'internal',
+        targetType: 'AuditLog',
+        metadata: {
+          rowCount: result.value.count,
+          format: input.format ?? 'csv',
+          scopedOrganizationId: input.organizationId ?? null,
+          category: input.category ?? null,
+          visibilityFilter: input.visibility ?? null,
+          from: input.from?.toISOString() ?? null,
+          to: input.to?.toISOString() ?? null,
+        },
+      })
+
       return result.value
     }),
 })

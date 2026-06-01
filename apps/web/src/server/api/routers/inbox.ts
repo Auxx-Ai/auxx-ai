@@ -4,6 +4,7 @@ import { InboxService } from '@auxx/lib/inboxes'
 import { recordIdSchema, toRecordId } from '@auxx/types/resource'
 import { TRPCError } from '@trpc/server'
 import { z } from 'zod'
+import { recordAuditFromCtx } from '~/server/api/audit-context'
 import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
 
 /** Schema for creating an inbox */
@@ -60,7 +61,15 @@ export const inboxRouter = createTRPCRouter({
     const userId = ctx.session.user.id
     const inboxService = new InboxService(ctx.db, organizationId, userId)
 
-    return inboxService.createInbox(input)
+    const created = await inboxService.createInbox(input)
+    await recordAuditFromCtx(ctx, {
+      category: 'integrations',
+      action: 'inbox.created',
+      targetType: 'Inbox',
+      targetId: (created as { id?: string } | null)?.id ?? null,
+      metadata: { name: input.name },
+    })
+    return created
   }),
 
   /**
@@ -74,6 +83,12 @@ export const inboxRouter = createTRPCRouter({
       const inboxService = new InboxService(ctx.db, organizationId, userId)
 
       await inboxService.deleteInboxById(input.inboxId)
+      await recordAuditFromCtx(ctx, {
+        category: 'integrations',
+        action: 'inbox.deleted',
+        targetType: 'Inbox',
+        targetId: input.inboxId,
+      })
       return { success: true }
     }),
 
@@ -85,12 +100,20 @@ export const inboxRouter = createTRPCRouter({
     const userId = ctx.session.user.id
     const inboxService = new InboxService(ctx.db, organizationId, userId)
 
-    return inboxService.addIntegration(
+    const result = await inboxService.addIntegration(
       input.recordId,
       input.integrationId,
       input.isDefault,
       input.settings
     )
+    await recordAuditFromCtx(ctx, {
+      category: 'integrations',
+      action: 'inbox.integration_added',
+      targetType: 'Inbox',
+      targetId: String(input.recordId),
+      metadata: { integrationId: input.integrationId },
+    })
+    return result
   }),
 
   /**
@@ -104,7 +127,15 @@ export const inboxRouter = createTRPCRouter({
       const inboxService = new InboxService(ctx.db, organizationId, userId)
 
       const recordId = toRecordId('inbox', input.inboxId)
-      return inboxService.removeIntegration(recordId, input.integrationId)
+      const result = await inboxService.removeIntegration(recordId, input.integrationId)
+      await recordAuditFromCtx(ctx, {
+        category: 'integrations',
+        action: 'inbox.integration_removed',
+        targetType: 'Inbox',
+        targetId: input.inboxId,
+        metadata: { integrationId: input.integrationId },
+      })
+      return result
     }),
 
   /**
@@ -118,6 +149,14 @@ export const inboxRouter = createTRPCRouter({
     const { inboxId, ...accessData } = input
     const recordId = toRecordId('inbox', inboxId)
 
-    return inboxService.updateInboxAccess(recordId, accessData)
+    const result = await inboxService.updateInboxAccess(recordId, accessData)
+    await recordAuditFromCtx(ctx, {
+      category: 'integrations',
+      action: 'inbox.access_changed',
+      targetType: 'Inbox',
+      targetId: inboxId,
+      metadata: { visibility: accessData.visibility ?? null },
+    })
+    return result
   }),
 })

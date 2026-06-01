@@ -12,6 +12,7 @@ import { FeatureKey, FeaturePermissionService } from '@auxx/lib/permissions'
 import { checkSlugExists } from '@auxx/services/entity-definitions'
 import { and, count, eq, isNull } from 'drizzle-orm'
 import { z } from 'zod'
+import { recordAuditFromCtx } from '../audit-context'
 import { createTRPCRouter, protectedProcedure } from '../trpc'
 
 export const entityDefinitionRouter = createTRPCRouter({
@@ -108,7 +109,15 @@ export const entityDefinitionRouter = createTRPCRouter({
       )
 
       const service = new EntityDefinitionService(ctx.session.organizationId, ctx.session.user.id)
-      return await service.create(input)
+      const created = await service.create(input)
+      await recordAuditFromCtx(ctx, {
+        category: 'settings',
+        action: 'entityDef.created',
+        targetType: 'EntityDefinition',
+        targetId: created.id,
+        metadata: { apiSlug: input.apiSlug, singular: input.singular },
+      })
+      return created
     }),
 
   /**
@@ -124,7 +133,14 @@ export const entityDefinitionRouter = createTRPCRouter({
     )
     .mutation(async ({ ctx, input }) => {
       const service = new EntityDefinitionService(ctx.session.organizationId, ctx.session.user.id)
-      return await service.update(input.id, input.data)
+      const updated = await service.update(input.id, input.data)
+      await recordAuditFromCtx(ctx, {
+        category: 'settings',
+        action: 'entityDef.updated',
+        targetType: 'EntityDefinition',
+        targetId: input.id,
+      })
+      return updated
     }),
 
   /**
@@ -135,7 +151,14 @@ export const entityDefinitionRouter = createTRPCRouter({
     .input(z.object({ id: z.string() }))
     .mutation(async ({ ctx, input }) => {
       const service = new EntityDefinitionService(ctx.session.organizationId, ctx.session.user.id)
-      return await service.archive(input.id)
+      const archived = await service.archive(input.id)
+      await recordAuditFromCtx(ctx, {
+        category: 'settings',
+        action: 'entityDef.archived',
+        targetType: 'EntityDefinition',
+        targetId: input.id,
+      })
+      return archived
     }),
 
   /**
@@ -146,7 +169,14 @@ export const entityDefinitionRouter = createTRPCRouter({
     .input(z.object({ id: z.string() }))
     .mutation(async ({ ctx, input }) => {
       const service = new EntityDefinitionService(ctx.session.organizationId, ctx.session.user.id)
-      return await service.restore(input.id)
+      const restored = await service.restore(input.id)
+      await recordAuditFromCtx(ctx, {
+        category: 'settings',
+        action: 'entityDef.restored',
+        targetType: 'EntityDefinition',
+        targetId: input.id,
+      })
+      return restored
     }),
 
   /**
@@ -156,7 +186,14 @@ export const entityDefinitionRouter = createTRPCRouter({
     .input(z.object({ id: z.string() }))
     .mutation(async ({ ctx, input }) => {
       const service = new EntityDefinitionService(ctx.session.organizationId, ctx.session.user.id)
-      return await service.delete(input.id)
+      const deleted = await service.delete(input.id)
+      await recordAuditFromCtx(ctx, {
+        category: 'settings',
+        action: 'entityDef.deleted',
+        targetType: 'EntityDefinition',
+        targetId: input.id,
+      })
+      return deleted
     }),
 
   /**

@@ -10,6 +10,7 @@ import {
   updateTemplate,
 } from '@auxx/services/workflow-templates'
 import { z } from 'zod'
+import { recordAuditFromCtx } from '~/server/api/audit-context'
 import { createTRPCRouter, superAdminProcedure } from '~/server/api/trpc'
 
 /**
@@ -96,12 +97,22 @@ export const adminWorkflowTemplatesRouter = createTRPCRouter({
         popularity: z.number().optional(),
       })
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
       const result = await createTemplate(input)
       if (result.isErr()) {
         throw new Error(result.error.message)
       }
       await getAppCache().invalidateAndRecompute(['workflowTemplates'])
+      await recordAuditFromCtx(ctx, {
+        organizationId: null,
+        category: 'apps',
+        action: 'workflowTemplate.created',
+        actorType: 'admin',
+        visibility: 'internal',
+        targetType: 'WorkflowTemplate',
+        targetId: result.value.id,
+        metadata: { name: input.name, status: input.status ?? null },
+      })
       return result.value
     }),
 
@@ -148,12 +159,21 @@ export const adminWorkflowTemplatesRouter = createTRPCRouter({
         popularity: z.number().optional(),
       })
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
       const result = await updateTemplate(input)
       if (result.isErr()) {
         throw new Error(result.error.message)
       }
       await getAppCache().invalidateAndRecompute(['workflowTemplates'])
+      await recordAuditFromCtx(ctx, {
+        organizationId: null,
+        category: 'apps',
+        action: 'workflowTemplate.updated',
+        actorType: 'admin',
+        visibility: 'internal',
+        targetType: 'WorkflowTemplate',
+        targetId: input.id,
+      })
       return result.value
     }),
 
@@ -166,12 +186,21 @@ export const adminWorkflowTemplatesRouter = createTRPCRouter({
         id: z.string(),
       })
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
       const result = await deleteTemplate(input.id)
       if (result.isErr()) {
         throw new Error(result.error.message)
       }
       await getAppCache().invalidateAndRecompute(['workflowTemplates'])
+      await recordAuditFromCtx(ctx, {
+        organizationId: null,
+        category: 'apps',
+        action: 'workflowTemplate.deleted',
+        actorType: 'admin',
+        visibility: 'internal',
+        targetType: 'WorkflowTemplate',
+        targetId: input.id,
+      })
       return { success: true }
     }),
 

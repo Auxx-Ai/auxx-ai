@@ -3,6 +3,7 @@
 // client-safe unions from ./constants.
 
 import type { AuditContext, AuditLogEntity } from '@auxx/database'
+import type { AuditAction } from './audit-actions'
 import type { AuditActorType, AuditCategory, AuditVisibility } from './constants'
 
 export type { AuditContext, AuditLogEntity }
@@ -12,7 +13,8 @@ export interface AuditInput {
   /** NULL = platform-level event (super-admin only). */
   organizationId: string | null
   category: AuditCategory
-  action: string
+  /** Known action (autocomplete) or any ad-hoc string — stays plain text in the DB. */
+  action: AuditAction
   actorType: AuditActorType
   actorId?: string | null
   targetType?: string | null

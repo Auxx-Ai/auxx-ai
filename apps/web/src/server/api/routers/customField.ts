@@ -12,6 +12,7 @@ import {
 import { fieldIdSchema, resourceFieldIdSchema } from '@auxx/types/field'
 import type { RecordId } from '@auxx/types/resource'
 import { z } from 'zod'
+import { recordAuditFromCtx } from '../audit-context'
 import { createTRPCRouter, protectedProcedure } from '../trpc'
 
 export const customFieldRouter = createTRPCRouter({
@@ -74,7 +75,19 @@ export const customFieldRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const { organizationId, userId } = ctx.session
       const service = new CustomFieldService(organizationId, userId, ctx.db)
-      return await service.createField(input)
+      const created = await service.createField(input)
+      await recordAuditFromCtx(ctx, {
+        category: 'settings',
+        action: 'customField.created',
+        targetType: 'CustomField',
+        targetId: (created as { id?: string } | null)?.id ?? null,
+        metadata: {
+          name: input.name,
+          type: input.type,
+          entityDefinitionId: input.entityDefinitionId,
+        },
+      })
+      return created
     }),
 
   /**
@@ -103,7 +116,14 @@ export const customFieldRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const { organizationId, userId } = ctx.session
       const service = new CustomFieldService(organizationId, userId, ctx.db)
-      return await service.updateField(input)
+      const updated = await service.updateField(input)
+      await recordAuditFromCtx(ctx, {
+        category: 'settings',
+        action: 'customField.updated',
+        targetType: 'CustomField',
+        targetId: String(input.resourceFieldId),
+      })
+      return updated
     }),
 
   /**
@@ -114,7 +134,14 @@ export const customFieldRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const { organizationId, userId } = ctx.session
       const service = new CustomFieldService(organizationId, userId, ctx.db)
-      return await service.deleteField(input.resourceFieldId)
+      const deleted = await service.deleteField(input.resourceFieldId)
+      await recordAuditFromCtx(ctx, {
+        category: 'settings',
+        action: 'customField.deleted',
+        targetType: 'CustomField',
+        targetId: String(input.resourceFieldId),
+      })
+      return deleted
     }),
 
   /**

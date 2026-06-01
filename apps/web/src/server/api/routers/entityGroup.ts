@@ -9,6 +9,7 @@ import {
 import * as groups from '@auxx/lib/groups'
 import type { GroupContext } from '@auxx/types/groups'
 import { z } from 'zod'
+import { recordAuditFromCtx } from '../audit-context'
 import { createTRPCRouter, protectedProcedure } from '../trpc'
 
 /**
@@ -68,7 +69,15 @@ export const entityGroupRouter = createTRPCRouter({
     )
     .mutation(async ({ ctx, input }) => {
       const groupCtx = toGroupContext(ctx)
-      return groups.createGroup(groupCtx, input)
+      const created = await groups.createGroup(groupCtx, input)
+      await recordAuditFromCtx(ctx, {
+        category: 'settings',
+        action: 'group.created',
+        targetType: 'EntityGroup',
+        targetId: (created as { id?: string } | null)?.id ?? null,
+        metadata: { name: input.name, visibility: input.visibility },
+      })
+      return created
     }),
 
   /** Delete a group */
@@ -77,6 +86,12 @@ export const entityGroupRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const groupCtx = toGroupContext(ctx)
       await groups.deleteGroup(groupCtx, input.groupId)
+      await recordAuditFromCtx(ctx, {
+        category: 'settings',
+        action: 'group.deleted',
+        targetType: 'EntityGroup',
+        targetId: input.groupId,
+      })
       return { success: true }
     }),
 
@@ -113,7 +128,15 @@ export const entityGroupRouter = createTRPCRouter({
     )
     .mutation(async ({ ctx, input }) => {
       const groupCtx = toGroupContext(ctx)
-      return groups.addMembers(groupCtx, input)
+      const result = await groups.addMembers(groupCtx, input)
+      await recordAuditFromCtx(ctx, {
+        category: 'settings',
+        action: 'group.member_added',
+        targetType: 'EntityGroup',
+        targetId: input.groupId,
+        metadata: { memberCount: input.members.length },
+      })
+      return result
     }),
 
   /** Remove members from a group */
@@ -132,6 +155,13 @@ export const entityGroupRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const groupCtx = toGroupContext(ctx)
       const removed = await groups.removeMembers(groupCtx, input.groupId, input.members)
+      await recordAuditFromCtx(ctx, {
+        category: 'settings',
+        action: 'group.member_removed',
+        targetType: 'EntityGroup',
+        targetId: input.groupId,
+        metadata: { memberCount: input.members.length },
+      })
       return { removed }
     }),
 
@@ -184,7 +214,19 @@ export const entityGroupRouter = createTRPCRouter({
     )
     .mutation(async ({ ctx, input }) => {
       const groupCtx = toGroupContext(ctx)
-      return groups.grantPermission(groupCtx, input)
+      const result = await groups.grantPermission(groupCtx, input)
+      await recordAuditFromCtx(ctx, {
+        category: 'security',
+        action: 'group.permission_granted',
+        targetType: 'EntityGroup',
+        targetId: input.groupId,
+        metadata: {
+          granteeType: input.granteeType,
+          granteeId: input.granteeId,
+          permission: input.permission,
+        },
+      })
+      return result
     }),
 
   /** Revoke permission on a group */
@@ -209,6 +251,13 @@ export const entityGroupRouter = createTRPCRouter({
         input.granteeType,
         input.granteeId
       )
+      await recordAuditFromCtx(ctx, {
+        category: 'security',
+        action: 'group.permission_revoked',
+        targetType: 'EntityGroup',
+        targetId: input.groupId,
+        metadata: { granteeType: input.granteeType, granteeId: input.granteeId },
+      })
       return { revoked }
     }),
 

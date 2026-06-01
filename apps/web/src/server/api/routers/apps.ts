@@ -687,6 +687,14 @@ export const appsRouter = createTRPCRouter({
         })
       }
 
+      await recordAuditFromCtx(ctx, {
+        category: 'apps',
+        action: 'app.settings_changed',
+        targetType: 'App',
+        targetId: app.app.id,
+        metadata: { appSlug, installationType, settingKeys: Object.keys(settings) },
+      })
+
       return { success: true }
     }),
 })

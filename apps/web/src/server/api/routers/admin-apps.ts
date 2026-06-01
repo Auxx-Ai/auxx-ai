@@ -406,6 +406,16 @@ export const adminAppsRouter = createTRPCRouter({
 
       await invalidateAppCatalog()
 
+      await recordAuditFromCtx(ctx, {
+        organizationId: null,
+        category: 'apps',
+        action: 'app.unpublished',
+        actorType: 'admin',
+        visibility: 'internal',
+        targetType: 'App',
+        targetId: input.appId,
+      })
+
       return { success: true }
     }),
 })

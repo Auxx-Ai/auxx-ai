@@ -15,6 +15,7 @@ import { createScopedLogger } from '@auxx/logger'
 import { TRPCError } from '@trpc/server'
 import { and, desc, eq, isNull, lt } from 'drizzle-orm'
 import { z } from 'zod'
+import { recordAuditFromCtx } from '~/server/api/audit-context'
 import { createTRPCRouter, notDemo, protectedProcedure } from '~/server/api/trpc'
 
 const logger = createScopedLogger('billing-router')
@@ -364,6 +365,15 @@ export const billingRouter = createTRPCRouter({
 
         await onCacheEvent('plan.canceled', { orgId: organizationId })
 
+        // User *intent* to cancel; the provider webhook later confirms `subscription.canceled`.
+        await recordAuditFromCtx(ctx, {
+          organizationId,
+          category: 'billing',
+          action: 'subscription.cancel_requested',
+          targetType: 'Subscription',
+          metadata: { provider: provider.id },
+        })
+
         return { success: true }
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : ''
@@ -528,6 +538,15 @@ export const billingRouter = createTRPCRouter({
           },
         })
 
+        await recordAuditFromCtx(ctx, {
+          organizationId,
+          category: 'billing',
+          action: 'billingAddress.updated',
+          targetType: 'Customer',
+          targetId: subscription.stripeCustomerId,
+          metadata: { provider: 'stripe' },
+        })
+
         return { success: true }
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : ''
@@ -610,6 +629,15 @@ export const billingRouter = createTRPCRouter({
         }
         await provider.setDefaultPaymentMethod!(organizationId, input.paymentMethodId)
 
+        await recordAuditFromCtx(ctx, {
+          organizationId,
+          category: 'billing',
+          action: 'paymentMethod.added',
+          targetType: 'PaymentMethod',
+          targetId: input.paymentMethodId,
+          metadata: { provider: 'stripe' },
+        })
+
         return { success: true }
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : ''
@@ -639,6 +667,15 @@ export const billingRouter = createTRPCRouter({
           )
         }
         await provider.deletePaymentMethod!(organizationId, input.paymentMethodId)
+
+        await recordAuditFromCtx(ctx, {
+          organizationId,
+          category: 'billing',
+          action: 'paymentMethod.removed',
+          targetType: 'PaymentMethod',
+          targetId: input.paymentMethodId,
+          metadata: { provider: 'stripe' },
+        })
 
         return { success: true }
       } catch (error: unknown) {
@@ -760,6 +797,15 @@ export const billingRouter = createTRPCRouter({
       }
 
       await onCacheEvent('plan.changed', { orgId: organizationId })
+
+      await recordAuditFromCtx(ctx, {
+        organizationId,
+        category: 'billing',
+        action: 'subscription.scheduled_change_canceled',
+        targetType: 'Subscription',
+        targetId: cachedSub.id,
+        metadata: { revertedToPlanId: cachedSub.planId },
+      })
 
       return { success: true }
     } catch (error: unknown) {

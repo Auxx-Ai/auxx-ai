@@ -88,6 +88,9 @@ export const userProfileProvider: CacheProvider<DehydratedUser> = {
       hasPassword,
       isSuperAdmin: user.isSuperAdmin,
       registrationMethod,
+      userType: user.userType,
+      banned: user.banned,
+      forcePasswordChange: user.forcePasswordChange,
       memberships: memberships.map((m) => ({
         id: m.id,
         userId: m.userId,
