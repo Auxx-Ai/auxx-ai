@@ -94,7 +94,10 @@ ENV GIT_SHA=$GIT_SHA
 ENV APP_VERSION=$APP_VERSION
 ENV BUILD_TIME=$BUILD_TIME
 
-RUN apt-get update && apt-get install -y --no-install-recommends curl \
+# curl: healthcheck + GeoLite2 download. gosu: drop root → api before exec'ing
+# node when Railway starts us as root (RAILWAY_RUN_UID=0) so the geo block can
+# write to a root-owned volume mount. See docker-entrypoint.sh Block 2.
+RUN apt-get update && apt-get install -y --no-install-recommends curl gosu \
     && rm -rf /var/lib/apt/lists/*
 
 RUN groupadd --system --gid 1001 nodejs && \
