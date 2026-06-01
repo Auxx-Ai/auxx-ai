@@ -27,7 +27,10 @@ import { useRouter } from 'next/navigation'
 import type { ReactNode } from 'react'
 import { useState } from 'react'
 import { useAnalytics } from '~/hooks/use-analytics'
-import { useDehydratedOrganization } from '~/providers/dehydrated-state-provider'
+import {
+  useDehydratedOrganization,
+  useIsShopifyBilling,
+} from '~/providers/dehydrated-state-provider'
 import { useOrganizationIdContext } from '~/providers/feature-flag-provider'
 import { api } from '~/trpc/react'
 
@@ -60,9 +63,9 @@ export function CancelSubscriptionDialog() {
   const { organizationId } = useOrganizationIdContext()
   const organization = useDehydratedOrganization(organizationId)
   const subscription = organization?.subscription
+  const isShopifyBilling = useIsShopifyBilling()
 
-  const { data: subscriptionData, isLoading } = api.billing.getCurrentSubscription.useQuery()
-  console.log(subscriptionData)
+  const { isLoading } = api.billing.getCurrentSubscription.useQuery()
   const cancelSubscription = api.billing.cancelSubscription.useMutation({
     onSuccess: () => {
       setIsDialogOpen(false)
@@ -129,6 +132,12 @@ export function CancelSubscriptionDialog() {
       setFeedback('')
       setConfirmationText('')
     }
+  }
+
+  // Shopify-billed orgs manage cancellation from Shopify Admin (Settings → Apps → Auxx).
+  // The cancel/restore provider methods throw for Shopify, so hide the controls entirely.
+  if (isShopifyBilling) {
+    return null
   }
 
   let dialogHeader: ReactNode = null
