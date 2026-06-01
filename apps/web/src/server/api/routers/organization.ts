@@ -13,6 +13,7 @@ import { and, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { recordAuditFromCtx } from '~/server/api/audit-context'
 import { createTRPCRouter, notDemo, protectedProcedure, publicProcedure } from '~/server/api/trpc'
+import { setUserDefaultOrganization } from '~/server/auth/set-default-organization'
 
 const logger = createScopedLogger('api-organization')
 
@@ -329,15 +330,9 @@ export const organizationRouter = createTRPCRouter({
         throw new TRPCError({ code: 'FORBIDDEN', message: 'Not a member of this organization' })
       }
 
-      // Update default organization
-      await ctx.db
-        .update(schema.User)
-        .set({ defaultOrganizationId: organizationId, updatedAt: new Date() })
-        .where(eq(schema.User.id, userId))
-
-      // Invalidate dehydration cache so client gets fresh data on reload
-      const dehydrationService = new DehydrationService(ctx.db)
-      await dehydrationService.invalidateUser(userId)
+      // Update default organization + bust the user cache so the next session read
+      // (customSession derives defaultOrganizationId from the cached userProfile) reflects it.
+      await setUserDefaultOrganization(ctx.db, userId, organizationId)
 
       await recordAuditFromCtx(ctx, {
         category: 'auth',

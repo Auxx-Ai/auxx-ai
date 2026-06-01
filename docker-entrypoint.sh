@@ -50,10 +50,11 @@ replace_in_next() {
     {} + 2>/dev/null || true
 }
 
-if [ ! -d "${NEXT_DIR}" ]; then
-  echo "[entrypoint] No .next directory found — skipping replacements."
-  exec "$@"
-fi
+# Block 1 only applies to Next.js images (web/homepage/docs/build). Non-Next
+# images (api, worker) have no .next dir — skip the URL replacements but FALL
+# THROUGH to Block 2 (geo) and the privilege drop below. (This previously
+# `exec`-ed here, which silently skipped the geo download in the api image.)
+if [ -d "${NEXT_DIR}" ]; then
 
 replaced=false
 
@@ -99,6 +100,10 @@ else
   echo "[entrypoint] No replacements needed (DOMAIN=${DOMAIN:-<unset>}, APP_URL=${APP_URL:-<unset>})."
 fi
 
+else
+  echo "[entrypoint] No .next directory found — skipping URL replacements."
+fi
+
 # ─────────────────────────────────────────────────────────────────────
 # Block 2 — Optional GeoLite2-City download
 # ─────────────────────────────────────────────────────────────────────
@@ -122,9 +127,13 @@ else
     if tar -xzf /tmp/geolite2.tar.gz -C /tmp 2>/dev/null; then
       mmdb=$(find /tmp -maxdepth 3 -name 'GeoLite2-City.mmdb' -print -quit)
       if [ -n "${mmdb}" ]; then
-        mv "${mmdb}" "${GEO_FILE}"
-        rm -rf /tmp/geolite2.tar.gz /tmp/GeoLite2-City_*
-        echo "[geo] installed at ${GEO_FILE}"
+        if mv "${mmdb}" "${GEO_FILE}"; then
+          rm -rf /tmp/geolite2.tar.gz /tmp/GeoLite2-City_*
+          echo "[geo] installed at ${GEO_FILE}"
+        else
+          echo "[geo] failed to write ${GEO_FILE} — geo lookups will be disabled"
+          rm -f /tmp/geolite2.tar.gz
+        fi
       else
         echo "[geo] mmdb not found inside archive — geo lookups will be disabled"
         rm -f /tmp/geolite2.tar.gz
@@ -135,6 +144,25 @@ else
     fi
   else
     echo "[geo] download failed — geo lookups will be disabled"
+  fi
+fi
+
+# ─────────────────────────────────────────────────────────────────────
+# Drop root → app user before exec'ing the app.
+# ─────────────────────────────────────────────────────────────────────
+# Railway mounts volumes owned by root, and a non-root image can't write to
+# the mount — so the api service sets RAILWAY_RUN_UID=0 to let the geo block
+# above download into /app/geo. The app itself must NOT run as root, so we
+# hand the geo dir to the app user and drop privileges here.
+#
+# Generic across every image: we drop to whoever owns /app (each image chowns
+# its files to its own app user). Images that already start non-root never
+# enter this branch, so it's a no-op for them.
+if [ "$(id -u)" = "0" ] && command -v gosu >/dev/null 2>&1; then
+  app_uid=$(stat -c '%u' /app 2>/dev/null || echo 0)
+  if [ "${app_uid}" != "0" ]; then
+    chown -R "${app_uid}" "${GEO_DIR}" 2>/dev/null || true
+    exec gosu "${app_uid}" "$@"
   fi
 fi
 

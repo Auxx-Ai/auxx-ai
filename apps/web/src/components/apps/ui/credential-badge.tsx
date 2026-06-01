@@ -74,7 +74,7 @@ function renderLabel(status: BoundCredentialStatus, label: string | null): strin
     case 'connected':
       return label ?? 'Connected'
     case 'expired':
-      return `${label ?? 'Connection'} (expired)`
+      return 'Expired'
     case 'gone':
     case 'not_connected':
       return 'Disconnected'

@@ -2,7 +2,6 @@ import { getProvider, type ShopifyBillingProvider, stripeClient } from '@auxx/bi
 import { WEBAPP_URL } from '@auxx/config/server'
 import { database as db, schema } from '@auxx/database'
 import { getOrgCache, isOrgMember, onCacheEvent, resolveAppSlug } from '@auxx/lib/cache'
-import { DehydrationService } from '@auxx/lib/dehydration'
 import { BadRequestError, ConflictError } from '@auxx/lib/errors'
 import { getQueue, Queues } from '@auxx/lib/jobs/queues'
 import { OrganizationService } from '@auxx/lib/organizations'
@@ -15,6 +14,7 @@ import { TRPCError } from '@trpc/server'
 import { and, count, desc, eq } from 'drizzle-orm'
 import { cookies } from 'next/headers'
 import { z } from 'zod'
+import { setUserDefaultOrganization } from '~/server/auth/set-default-organization'
 import { adminProcedure, createTRPCRouter, notDemo, protectedProcedure } from '../trpc'
 
 const CLAIM_COOKIE_NAME = 'shopify_claim_token'
@@ -671,11 +671,7 @@ export const shopifyRouter = createTRPCRouter({
         // Activate the picked workspace before sending them in, so `/app` opens it
         // rather than the user's current default org.
         if (ctx.session.user.defaultOrganizationId !== organizationId) {
-          await db
-            .update(schema.User)
-            .set({ defaultOrganizationId: organizationId, updatedAt: new Date() })
-            .where(eq(schema.User.id, userId))
-          await new DehydrationService(db).invalidateUser(userId)
+          await setUserDefaultOrganization(db, userId, organizationId)
         }
         return { redirectUrl: '/app', shop: claim.shop }
       }
