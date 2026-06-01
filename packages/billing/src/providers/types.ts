@@ -10,6 +10,8 @@ export interface BillingCapabilities {
   selfServeBillingPortal: boolean
   prorationPreview: boolean
   arbitraryBillingCycles: boolean
+  /** Whether annual billing is offered. Shopify is monthly-only (usage charges can't ride an annual cycle). */
+  annualBillingCycle: boolean
   trialWithoutPaymentMethod: boolean
   immediateCancellation: boolean
   scheduledDowngrade: boolean

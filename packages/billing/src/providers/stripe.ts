@@ -28,6 +28,7 @@ export class StripeBillingProvider implements BillingProvider {
     selfServeBillingPortal: true,
     prorationPreview: true,
     arbitraryBillingCycles: true,
+    annualBillingCycle: true,
     trialWithoutPaymentMethod: true,
     immediateCancellation: true,
     scheduledDowngrade: true,

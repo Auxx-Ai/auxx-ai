@@ -13,6 +13,11 @@ export {
   getActiveSubscription,
   type LocalStatus as ShopifyLocalStatus,
   mapActiveSubscriptionToStatus,
+  postSeatDayEvent,
+  reportOrgSeatDay,
+  type SeatDayEvent,
+  type SeatDayEventStatus,
+  type SeatDayReport,
   ShopifyBillingProvider,
   verifyShopifyHmac,
 } from './providers/shopify'

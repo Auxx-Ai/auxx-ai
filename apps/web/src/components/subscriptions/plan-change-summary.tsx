@@ -20,6 +20,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Controller, useForm } from 'react-hook-form'
 import { useAnalytics } from '~/hooks/use-analytics'
 import { getStripePromise } from '~/lib/stripe'
+import { useDehydratedSubscription } from '~/providers/dehydrated-state-provider'
 import { api } from '~/trpc/react'
 import { type Plan, PlanComparison } from './plan-comparison'
 
@@ -58,6 +59,9 @@ export function PlanChangeSummary({ open, onOpenChange, initialPlan }: PlanChang
   const [billingCycle, setBillingCycle] = useState<'MONTHLY' | 'ANNUAL'>('MONTHLY')
   const [seats, setSeats] = useState(1)
 
+  // Shopify is monthly-only; default a missing capability to `true` (Stripe/unknown). Plan 15.
+  const annualBillingCycle = useDehydratedSubscription()?.capabilities.annualBillingCycle ?? true
+
   const { data: subscription } = api.billing.getCurrentSubscription.useQuery(undefined, {
     enabled: open,
   })
@@ -74,8 +78,9 @@ export function PlanChangeSummary({ open, onOpenChange, initialPlan }: PlanChang
   // Set initial plan, billing cycle, and seats from current subscription
   useEffect(() => {
     if (subscription && plans) {
-      // Always update billing cycle and seats from subscription to prevent race conditions
-      setBillingCycle(subscription.billingCycle || 'MONTHLY')
+      // Always update billing cycle and seats from subscription to prevent race conditions.
+      // Monthly-only providers (Shopify) hard-pin MONTHLY so a stale ANNUAL row can't leak in.
+      setBillingCycle(annualBillingCycle ? subscription.billingCycle || 'MONTHLY' : 'MONTHLY')
       setSeats(subscription.seats || 1)
 
       // Only set plan if not already selected
@@ -86,7 +91,7 @@ export function PlanChangeSummary({ open, onOpenChange, initialPlan }: PlanChang
         }
       }
     }
-  }, [subscription, plans, selectedPlan])
+  }, [subscription, plans, selectedPlan, annualBillingCycle])
 
   /** Handle plan selection from PlanComparison */
   const handlePlanSelect = (plan: Plan) => {
@@ -168,6 +173,9 @@ function PlanChangeSummaryContent({
   const posthog = useAnalytics()
   const stripe = useStripe()
   const elements = useElements()
+
+  // Shopify is monthly-only; default a missing capability to `true` (Stripe/unknown). Plan 15.
+  const annualBillingCycle = useDehydratedSubscription()?.capabilities.annualBillingCycle ?? true
 
   const {
     register,
@@ -474,33 +482,42 @@ function PlanChangeSummaryContent({
           {/* Billing Period */}
           <div className='space-y-2'>
             <Label>Billing period</Label>
-            <div className='relative w-full'>
-              <RadioTab
-                className='w-full'
-                radioGroupClassName='w-full '
-                value={billingCycle}
-                onValueChange={(v) => setBillingCycle(v as any)}>
-                <RadioTabItem value='MONTHLY'>
-                  <span className='hidden sm:inline'>
-                    Monthly (${monthlyPricePerMonth.toFixed(0)} / user / month)
-                  </span>
-                  <span className='sm:hidden'>Monthly ${monthlyPricePerMonth.toFixed(0)}/mo</span>
-                </RadioTabItem>
-                <RadioTabItem value='ANNUAL'>
-                  <div className='flex items-center gap-2'>
+            {annualBillingCycle ? (
+              <div className='relative w-full'>
+                <RadioTab
+                  className='w-full'
+                  radioGroupClassName='w-full '
+                  value={billingCycle}
+                  onValueChange={(v) => setBillingCycle(v as any)}>
+                  <RadioTabItem value='MONTHLY'>
                     <span className='hidden sm:inline'>
-                      Annually (${annualPricePerMonth.toFixed(0)} / user / month)
+                      Monthly (${monthlyPricePerMonth.toFixed(0)} / user / month)
                     </span>
-                    <span className='sm:hidden'>Annual ${annualPricePerMonth.toFixed(0)}/mo</span>
-                    {savingsPercentage > 0 && (
-                      <Badge size='xs' variant='blue' className='absolute -right-4 -top-4'>
-                        {savingsPercentage}% off
-                      </Badge>
-                    )}
-                  </div>
-                </RadioTabItem>
-              </RadioTab>
-            </div>
+                    <span className='sm:hidden'>Monthly ${monthlyPricePerMonth.toFixed(0)}/mo</span>
+                  </RadioTabItem>
+                  <RadioTabItem value='ANNUAL'>
+                    <div className='flex items-center gap-2'>
+                      <span className='hidden sm:inline'>
+                        Annually (${annualPricePerMonth.toFixed(0)} / user / month)
+                      </span>
+                      <span className='sm:hidden'>Annual ${annualPricePerMonth.toFixed(0)}/mo</span>
+                      {savingsPercentage > 0 && (
+                        <Badge size='xs' variant='blue' className='absolute -right-4 -top-4'>
+                          {savingsPercentage}% off
+                        </Badge>
+                      )}
+                    </div>
+                  </RadioTabItem>
+                </RadioTab>
+              </div>
+            ) : (
+              <div className='rounded-2xl border py-2 px-3'>
+                <div className='text-sm font-medium'>Billed monthly</div>
+                <div className='text-xs text-muted-foreground'>
+                  Annual billing isn't available on Shopify plans
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Seats Card */}

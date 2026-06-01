@@ -38,7 +38,8 @@ export class ShopifyBillingProvider implements BillingProvider {
     managedPaymentMethods: false, // Shopify Admin owns the card
     selfServeBillingPortal: false, // No portal API — we deep-link to Shopify Admin org billing
     prorationPreview: false, // Shopify prorates but does not preview
-    arbitraryBillingCycles: false, // Monthly + annual only
+    arbitraryBillingCycles: false, // Monthly only — per-seat is billed as usage, which can't ride an annual cycle (plan 14 §6 Q3)
+    annualBillingCycle: false, // Usage charges must be tied to a monthly cycle; annual is Stripe-only
     trialWithoutPaymentMethod: true, // Per-plan trial in Partner Dashboard
     immediateCancellation: false, // Cancellations land at end of cycle
     scheduledDowngrade: true, // Downgrade-to-free is a scheduled cancel

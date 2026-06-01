@@ -50,6 +50,11 @@ export {
   shopifyBillingSyncJob,
 } from './billing/shopify-billing-sync-job'
 export {
+  type ShopifySeatUsageJobData,
+  type ShopifySeatUsageResult,
+  shopifySeatUsageJob,
+} from './billing/shopify-seat-usage-job'
+export {
   type StripeSubscriptionSyncJobData,
   type StripeSubscriptionSyncResult,
   stripeSubscriptionSyncJob,

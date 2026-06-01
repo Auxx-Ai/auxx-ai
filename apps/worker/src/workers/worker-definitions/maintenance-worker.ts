@@ -25,6 +25,7 @@ import {
   sendMidTrialEmailsJob,
   sendTrialConversionEmailsJob,
   shopifyBillingSyncJob,
+  shopifySeatUsageJob,
   storageCleanupJob,
   stripeSubscriptionSyncJob,
   taskDeadlineScannerJob,
@@ -105,6 +106,7 @@ const jobMappings = {
   applyScheduledSubscriptionChangesJob: cloudOnly(applyScheduledSubscriptionChangesJob),
   stripeSubscriptionSyncJob: cloudOnly(stripeSubscriptionSyncJob),
   shopifyBillingSyncJob: cloudOnly(shopifyBillingSyncJob),
+  shopifySeatUsageJob: cloudOnly(shopifySeatUsageJob),
 
   // Account management jobs (cloud-only)
   demoCleanupJob: cloudOnly(demoCleanupJob),
