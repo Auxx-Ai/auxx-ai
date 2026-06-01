@@ -135,10 +135,16 @@ export const auth = betterAuth({
   trustedOrigins,
   hooks: {
     before: createAuthMiddleware(async (ctx) => {
+      // `ctx.request` is only populated for HTTP-driven calls. Server-side
+      // `auth.api.*` invocations (e.g. the demo create-session route) pass only
+      // `headers`, leaving `ctx.request` undefined — so resolve from `ctx.headers`.
+      const requestHeaders = ctx.headers ?? ctx.request?.headers
+      if (!requestHeaders) return
+
       // Agent guard: if a request resolves to an AGENT user OR targets a
       // path that mutates auth state, look up the resolved user and reject.
       if (AGENT_BLOCKED_AUTH_PATHS.has(ctx.path)) {
-        const session = await auth.api.getSession({ headers: ctx.request.headers })
+        const session = await auth.api.getSession({ headers: requestHeaders })
         const sessionUser = session?.user as
           | (typeof session extends null ? never : { id: string })
           | undefined
@@ -159,7 +165,7 @@ export const auth = betterAuth({
       if (!DEMO_BLOCKED_AUTH_PATHS.has(ctx.path)) return
 
       // Session isn't resolved yet in before hooks — resolve from request headers
-      const session = await auth.api.getSession({ headers: ctx.request.headers })
+      const session = await auth.api.getSession({ headers: requestHeaders })
       if (!session?.user) return
 
       const user = session.user as typeof session.user & {
