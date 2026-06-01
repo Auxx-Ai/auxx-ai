@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.155](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.154...auxx-v0.1.155) (2026-06-01)
+
+
+### Bug Fixes
+
+* **api:** install ca-certificates in runner stage for GeoLite2 download ([#716](https://github.com/Auxx-Ai/auxx-ai/issues/716)) ([79e83c3](https://github.com/Auxx-Ai/auxx-ai/commit/79e83c3c6fa7f243bb32152ef83e15f64b6b1ee9))
+* **billing:** hide cancel-subscription dialog for Shopify-billed orgs ([#718](https://github.com/Auxx-Ai/auxx-ai/issues/718)) ([7b079de](https://github.com/Auxx-Ai/auxx-ai/commit/7b079decadd7491f6a62d8c50bfc8b29c2ed98cb))
+
 ## [0.1.154](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.153...auxx-v0.1.154) (2026-06-01)
 
 
