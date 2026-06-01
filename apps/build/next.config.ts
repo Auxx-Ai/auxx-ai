@@ -2,7 +2,7 @@ import type { NextConfig } from 'next'
 
 const nextConfig: NextConfig = {
   output: 'standalone',
-  serverExternalPackages: ['sharp'],
+  serverExternalPackages: ['sharp', 'imapflow', 'pino', 'thread-stream'],
   transpilePackages: [
     '@auxx/config',
     '@auxx/credentials',
