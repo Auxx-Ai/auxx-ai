@@ -9,6 +9,7 @@ import {
 } from '@auxx/config/server'
 import { configService } from '@auxx/credentials'
 import { database, schema } from '@auxx/database' // Drizzle database for services
+import { recordAudit } from '@auxx/lib/audit-log'
 import { onCacheEvent } from '@auxx/lib/cache'
 import { enqueueEmailJob } from '@auxx/lib/jobs'
 import { seedNewUserDatabase } from '@auxx/lib/seed'
@@ -29,6 +30,7 @@ import {
 } from 'better-auth/plugins'
 import { eq } from 'drizzle-orm'
 import { isValidPhoneNumber } from 'libphonenumber-js'
+import { requestAuditContext } from '~/server/api/audit-context'
 
 const logger = createScopedLogger('auth')
 const isProduction = configService.get<string>('NODE_ENV') === 'production'
@@ -99,6 +101,18 @@ const AGENT_BLOCKED_AUTH_PATHS = new Set([
   '/phone-number/verify',
 ])
 
+/**
+ * Security-sensitive auth paths with no native better-auth lifecycle hook.
+ * 2FA + passkey mutations are audited from the `hooks.after` wrapper, keyed on the
+ * request path and only when the endpoint returned successfully (not an APIError).
+ */
+const SECURITY_AUDIT_PATHS: Record<string, string> = {
+  '/two-factor/enable': '2fa.enabled',
+  '/two-factor/disable': '2fa.disabled',
+  '/passkey/verify-registration': 'passkey.added',
+  '/passkey/delete-passkey': 'passkey.removed',
+}
+
 // export auth.api
 export const auth = betterAuth({
   database: drizzleAdapter(database, { provider: 'pg', schema }), // use your dialect
@@ -152,6 +166,32 @@ export const auth = betterAuth({
             'This action is not available in demo mode. Sign up for a free account to manage your security settings.',
         })
       }
+    }),
+    // Audit 2FA / passkey changes — these endpoints have no native lifecycle hook,
+    // so we observe them here. The after hook runs even on failure, so we skip
+    // any request whose endpoint returned an APIError.
+    after: createAuthMiddleware(async (ctx) => {
+      const action = SECURITY_AUDIT_PATHS[ctx.path]
+      if (!action) return
+      if (ctx.context.returned instanceof APIError) return
+
+      const headers = ctx.request?.headers
+      const session = headers ? await auth.api.getSession({ headers }) : null
+      const actor = session?.user as
+        | { id: string; defaultOrganizationId?: string | null }
+        | undefined
+      if (!actor?.id) return
+
+      await recordAudit({
+        organizationId: actor.defaultOrganizationId ?? null,
+        category: 'security',
+        action,
+        actorType: 'user',
+        actorId: actor.id,
+        targetType: 'User',
+        targetId: actor.id,
+        context: requestAuditContext(headers),
+      })
     }),
   },
   databaseHooks: {
@@ -207,6 +247,18 @@ export const auth = betterAuth({
               userId: account.userId,
             })
           }
+
+          // No request context here — databaseHooks don't receive the HTTP request.
+          await recordAudit({
+            organizationId: user?.defaultOrganizationId ?? null,
+            category: 'auth',
+            action: 'oauth.linked',
+            actorType: 'user',
+            actorId: account.userId,
+            targetType: 'User',
+            targetId: account.userId,
+            metadata: { provider: account.providerId },
+          })
         },
       },
     },
@@ -229,6 +281,18 @@ export const auth = betterAuth({
         resetLink: url,
         source: 'auth.server',
       })
+
+      await recordAudit({
+        organizationId:
+          (user as { defaultOrganizationId?: string | null }).defaultOrganizationId ?? null,
+        category: 'auth',
+        action: 'password.reset_requested',
+        actorType: 'user',
+        actorId: user.id,
+        targetType: 'User',
+        targetId: user.id,
+        context: requestAuditContext(request?.headers),
+      })
     },
     onPasswordReset: async ({ user }, request) => {
       logger.info('Password reset completed', { userId: user.id })
@@ -247,6 +311,31 @@ export const auth = betterAuth({
       await enqueueEmailJob('password-reset-notify', {
         recipient: { email: user.email!, name: user.name! },
         source: 'auth.server',
+      })
+
+      const organizationId =
+        (user as { defaultOrganizationId?: string | null }).defaultOrganizationId ?? null
+      const context = requestAuditContext(request?.headers)
+      await recordAudit({
+        organizationId,
+        category: 'auth',
+        action: 'password.reset_completed',
+        actorType: 'user',
+        actorId: user.id,
+        targetType: 'User',
+        targetId: user.id,
+        context,
+      })
+      await recordAudit({
+        organizationId,
+        category: 'security',
+        action: 'sessions.invalidated',
+        actorType: 'user',
+        actorId: user.id,
+        targetType: 'User',
+        targetId: user.id,
+        reason: 'password_reset',
+        context,
       })
     },
   }, // enable email/password auth
@@ -289,7 +378,19 @@ export const auth = betterAuth({
         source: 'auth.server',
       })
     },
-    onEmailVerification: async (user, request) => {},
+    onEmailVerification: async (user, request) => {
+      await recordAudit({
+        organizationId:
+          (user as { defaultOrganizationId?: string | null }).defaultOrganizationId ?? null,
+        category: 'auth',
+        action: 'email.verified',
+        actorType: 'user',
+        actorId: user.id,
+        targetType: 'User',
+        targetId: user.id,
+        context: requestAuditContext(request?.headers),
+      })
+    },
   },
   rateLimit: {
     // Global defaults (per IP+path)
@@ -337,6 +438,19 @@ export const auth = betterAuth({
           newEmail,
           verificationLink: url,
           source: 'auth.server',
+        })
+
+        await recordAudit({
+          organizationId:
+            (user as { defaultOrganizationId?: string | null }).defaultOrganizationId ?? null,
+          category: 'auth',
+          action: 'email.change_requested',
+          actorType: 'user',
+          actorId: user.id,
+          targetType: 'User',
+          targetId: user.id,
+          newState: { newEmail },
+          context: requestAuditContext(request?.headers),
         })
       },
     },
@@ -409,7 +523,7 @@ export const auth = betterAuth({
       //   userVerification: 'preferred',
       // },
     }),
-    customSession(async ({ user, session }) => {
+    customSession(async ({ user, session }, ctx) => {
       // Cast user to include additional fields
       const extendedUser = user as typeof user & {
         defaultOrganizationId?: string | null
@@ -469,6 +583,19 @@ export const auth = betterAuth({
 
         // Update in-memory to prevent multiple updates within the same session
         extendedUser.lastLoginAt = new Date()
+
+        // Throttled to the lastLoginAt cadence (≤ once/hour), so this is the
+        // "active login" signal. Fire-and-forget — never block session hydration.
+        void recordAudit({
+          organizationId: extendedUser.defaultOrganizationId ?? null,
+          category: 'auth',
+          action: 'auth.login',
+          actorType: 'user',
+          actorId: extendedUser.id,
+          targetType: 'User',
+          targetId: extendedUser.id,
+          context: requestAuditContext(ctx?.request?.headers),
+        })
       }
 
       // Fetch avatar URL if user has an avatar asset

@@ -6,6 +6,7 @@ import { createScopedLogger } from '@auxx/logger'
 import { eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { auth } from '~/auth/server'
+import { recordAuditFromCtx } from '~/server/api/audit-context'
 import { createTRPCRouter, notDemo, protectedProcedure } from '~/server/api/trpc'
 
 const logger = createScopedLogger('api-auth')
@@ -30,6 +31,13 @@ export const authRouter = createTRPCRouter({
       // Invalidate dehydrated cache to update hasPassword flag
       const dehydrationService = new DehydrationService(ctx.db)
       await dehydrationService.invalidateUser(ctx.session.userId)
+
+      await recordAuditFromCtx(ctx, {
+        category: 'auth',
+        action: 'password.changed',
+        targetType: 'User',
+        targetId: ctx.session.user.id,
+      })
 
       return { success: true }
       // return result

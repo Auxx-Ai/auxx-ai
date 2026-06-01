@@ -6,6 +6,7 @@ import { handleFieldTriggerJob } from '../../field-hooks/field-hook-job'
 import { getQueue } from '../../jobs/queues'
 import { Queues } from '../../jobs/queues/types'
 import type { AuxxEvent, IEventsHandlers } from '../types'
+import { createAuditLog } from './create-audit-log'
 import { createTimelineEvent } from './create-timeline-event'
 import { publishThreadEventToRealtime } from './publish-thread-event-to-realtime'
 import { sendInvitationUserJob } from './send-invitation-user-job'
@@ -18,7 +19,7 @@ export const EventHandlers: IEventsHandlers = {
   'user:created': [],
   'project:created': [],
 
-  'membership:created': [sendInvitationUserJob],
+  'membership:created': [sendInvitationUserJob, createAuditLog],
 
   // Ticket events → CREATE TIMELINE
   'ticket:created': [createTimelineEvent, triggerResourceWorkflows, triggerAgents],
@@ -139,10 +140,10 @@ export const EventHandlers: IEventsHandlers = {
   // Field trigger events → FIELD TRIGGER HANDLERS
   'field:trigger': [handleFieldTriggerJob],
 
-  // Integration events (analytics-only, no handlers needed)
-  'integration:connected': [],
-  'integration:connection_failed': [],
-  'shopify:connected': [],
+  // Integration events → AUDIT LOG (+ analytics)
+  'integration:connected': [createAuditLog],
+  'integration:connection_failed': [createAuditLog],
+  'shopify:connected': [createAuditLog],
 }
 
 export const publishEventJob = async (job: Job<AuxxEvent>) => {

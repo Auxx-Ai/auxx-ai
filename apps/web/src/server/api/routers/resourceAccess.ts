@@ -17,6 +17,7 @@ import {
 } from '@auxx/lib/resource-access'
 import type { RecordId } from '@auxx/types/resource'
 import { z } from 'zod'
+import { recordAuditFromCtx } from '~/server/api/audit-context'
 import { createTRPCRouter, protectedProcedure } from '../trpc'
 
 /** Convert tRPC context to ResourceAccessContext */
@@ -58,6 +59,18 @@ export const resourceAccessRouter = createTRPCRouter({
         granteeId: input.granteeId,
         permission: input.permission,
       })
+      await recordAuditFromCtx(ctx, {
+        category: 'security',
+        action: 'permission.granted',
+        targetType: 'Resource',
+        targetId: input.recordId,
+        metadata: {
+          scope: 'instance',
+          granteeType: input.granteeType,
+          granteeId: input.granteeId,
+          permission: input.permission,
+        },
+      })
       return { success: true }
     }),
 
@@ -82,6 +95,18 @@ export const resourceAccessRouter = createTRPCRouter({
     )
     .mutation(async ({ ctx, input }) => {
       await grantTypeAccess(toContext(ctx), input)
+      await recordAuditFromCtx(ctx, {
+        category: 'security',
+        action: 'permission.granted',
+        targetType: 'EntityDefinition',
+        targetId: input.entityDefinitionId,
+        metadata: {
+          scope: 'type',
+          granteeType: input.granteeType,
+          granteeId: input.granteeId,
+          permission: input.permission,
+        },
+      })
       return { success: true }
     }),
 
@@ -105,6 +130,17 @@ export const resourceAccessRouter = createTRPCRouter({
         granteeType: input.granteeType,
         granteeId: input.granteeId,
       })
+      await recordAuditFromCtx(ctx, {
+        category: 'security',
+        action: 'permission.revoked',
+        targetType: 'Resource',
+        targetId: input.recordId,
+        metadata: {
+          scope: 'instance',
+          granteeType: input.granteeType,
+          granteeId: input.granteeId,
+        },
+      })
       return { revoked }
     }),
 
@@ -124,6 +160,17 @@ export const resourceAccessRouter = createTRPCRouter({
     )
     .mutation(async ({ ctx, input }) => {
       const revoked = await revokeTypeAccess(toContext(ctx), input)
+      await recordAuditFromCtx(ctx, {
+        category: 'security',
+        action: 'permission.revoked',
+        targetType: 'EntityDefinition',
+        targetId: input.entityDefinitionId,
+        metadata: {
+          scope: 'type',
+          granteeType: input.granteeType,
+          granteeId: input.granteeId,
+        },
+      })
       return { revoked }
     }),
 
@@ -157,6 +204,14 @@ export const resourceAccessRouter = createTRPCRouter({
         input.granteeType,
         input.grants
       )
+      await recordAuditFromCtx(ctx, {
+        category: 'security',
+        action: 'permission.set',
+        targetType: 'Resource',
+        targetId: input.recordId,
+        newState: { granteeType: input.granteeType, grants: input.grants },
+        metadata: { scope: 'instance' },
+      })
       return { success: true }
     }),
 
@@ -185,6 +240,14 @@ export const resourceAccessRouter = createTRPCRouter({
     )
     .mutation(async ({ ctx, input }) => {
       await setTypeAccess(toContext(ctx), input.entityDefinitionId, input.granteeType, input.grants)
+      await recordAuditFromCtx(ctx, {
+        category: 'security',
+        action: 'permission.set',
+        targetType: 'EntityDefinition',
+        targetId: input.entityDefinitionId,
+        newState: { granteeType: input.granteeType, grants: input.grants },
+        metadata: { scope: 'type' },
+      })
       return { success: true }
     }),
 

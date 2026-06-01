@@ -9,6 +9,7 @@ import { createScopedLogger } from '@auxx/logger'
 import { TRPCError } from '@trpc/server'
 import { and, eq, ilike, or } from 'drizzle-orm'
 import { z } from 'zod'
+import { recordAuditFromCtx } from '~/server/api/audit-context'
 import { createTRPCRouter, notDemo, protectedProcedure } from '~/server/api/trpc'
 
 const logger = createScopedLogger('api-member')
@@ -174,6 +175,13 @@ export const memberRouter = createTRPCRouter({
         userId: input.memberId,
       })
 
+      await recordAuditFromCtx(ctx, {
+        category: 'members',
+        action: 'member.removed',
+        targetType: 'OrganizationMember',
+        targetId: input.memberId,
+      })
+
       return result
     }),
 
@@ -198,6 +206,14 @@ export const memberRouter = createTRPCRouter({
       await onCacheEvent('member.role.changed', {
         orgId: ctx.session.organizationId,
         userId: input.memberId,
+      })
+
+      await recordAuditFromCtx(ctx, {
+        category: 'members',
+        action: 'member.role_changed',
+        targetType: 'OrganizationMember',
+        targetId: input.memberId,
+        newState: { role: input.role },
       })
 
       return result

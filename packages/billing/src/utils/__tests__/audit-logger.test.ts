@@ -4,11 +4,15 @@ import type { Database } from '@auxx/database'
 import { describe, expect, it, vi } from 'vitest'
 import { auditLog } from '../audit-logger'
 
-vi.mock('@auxx/database', () => ({
-  schema: {
-    AdminActionLog: 'AdminActionLog',
-  },
-}))
+// Stub the AuditLog table but use the real (pure, dependency-free) toAuditRow so
+// we exercise the actual row mapping without pulling in the DB client.
+vi.mock('@auxx/database', async () => {
+  const { toAuditRow } = await import('../../../../database/src/db/audit/to-audit-row')
+  return {
+    AuditLog: 'AuditLog',
+    toAuditRow,
+  }
+})
 
 function createMockDb() {
   const valuesMock = vi.fn().mockResolvedValue(undefined)
@@ -21,7 +25,7 @@ function createMockDb() {
 }
 
 describe('auditLog', () => {
-  it('inserts correct record into AdminActionLog table', async () => {
+  it('maps an admin billing action into a billing/internal AuditLog row', async () => {
     const { db, valuesMock } = createMockDb()
 
     await auditLog(db, {
@@ -40,19 +44,23 @@ describe('auditLog', () => {
 
     expect(valuesMock).toHaveBeenCalledTimes(1)
     const record = valuesMock.mock.calls[0][0]
-    expect(record.adminUserId).toBe('user_1')
-    expect(record.actionType).toBe('PLAN_CHANGE')
+    expect(record.category).toBe('billing')
+    expect(record.visibility).toBe('internal')
+    expect(record.actorType).toBe('admin')
+    expect(record.actorId).toBe('user_1')
+    expect(record.action).toBe('PLAN_CHANGE')
     expect(record.targetType).toBe('subscription')
     expect(record.targetId).toBe('sub_1')
     expect(record.organizationId).toBe('org_1')
-    expect(record.details).toEqual({ from: 'starter', to: 'pro' })
+    expect(record.metadata).toEqual({ from: 'starter', to: 'pro' })
     expect(record.reason).toBe('User requested upgrade')
+    expect(record.previousState).toEqual({ plan: 'starter' })
+    expect(record.newState).toEqual({ plan: 'pro' })
     expect(record.ipAddress).toBe('127.0.0.1')
     expect(record.userAgent).toBe('Mozilla/5.0')
-    expect(record.createdAt).toBeInstanceOf(Date)
   })
 
-  it('handles optional fields as null', async () => {
+  it('normalizes optional fields to null', async () => {
     const { db, valuesMock } = createMockDb()
 
     await auditLog(db, {
@@ -64,7 +72,7 @@ describe('auditLog', () => {
 
     const record = valuesMock.mock.calls[0][0]
     expect(record.organizationId).toBeNull()
-    expect(record.details).toBeNull()
+    expect(record.metadata).toBeNull()
     expect(record.reason).toBeNull()
     expect(record.previousState).toBeNull()
     expect(record.newState).toBeNull()

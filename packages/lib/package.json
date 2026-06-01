@@ -112,6 +112,12 @@
       "import": "./dist/apps/index.mjs",
       "default": "./src/apps/index.ts"
     },
+    "./audit-log": {
+      "types": "./src/audit-log/index.ts",
+      "source": "./src/audit-log/index.ts",
+      "import": "./dist/audit-log/index.mjs",
+      "default": "./src/audit-log/index.ts"
+    },
     "./cache": {
       "types": "./src/cache/index.ts",
       "source": "./src/cache/index.ts",

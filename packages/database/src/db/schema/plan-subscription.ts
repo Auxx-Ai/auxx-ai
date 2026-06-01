@@ -43,6 +43,7 @@ export const PlanSubscription = pgTable(
     stripeCustomerId: text(),
     stripeSubscriptionId: text(),
     shopifyShopDomain: text(), // 'acme.myshopify.com' — drives the Admin API read (createShopifyAdminClient), the APP_UNINSTALLED fan-out, and the ?shop= redirect param. Nullable (Stripe rows have none).
+    shopifyShopGid: text(), // 'gid://shopify/Shop/<id>' — the App Events API needs this as `shop_id` for the per-seat usage drip. Lazily fetched+cached from the Admin API (`query { shop { id } }`) by the seat-usage reporter. Nullable (Stripe rows have none).
     periodStart: timestamp({ precision: 3 }).defaultNow(),
     periodEnd: timestamp({ precision: 3 }),
     cancelAtPeriodEnd: boolean().default(false).notNull(),

@@ -6,6 +6,7 @@ import { createScopedLogger } from '@auxx/logger'
 import { TRPCError } from '@trpc/server'
 import { and, eq } from 'drizzle-orm'
 import { z } from 'zod'
+import { recordAuditFromCtx } from '../audit-context'
 import { createTRPCRouter, notDemo, protectedProcedure } from '../trpc'
 
 const logger = createScopedLogger('Api Key Action')
@@ -190,16 +191,27 @@ export const apiKeyRouter = createTRPCRouter({
       const encryptedSecret =
         input.type === 'chat' ? CredentialService.encrypt({ value: secretKey }) : null
 
-      await ctx.db.insert(schema.ApiKey).values({
-        userId,
-        organizationId: orgId,
-        name: input.name || defaultName,
-        hashedKey,
-        encryptedSecret,
-        isActive: true,
-        type: input.type,
-        referenceId,
-        updatedAt: new Date(),
+      const [created] = await ctx.db
+        .insert(schema.ApiKey)
+        .values({
+          userId,
+          organizationId: orgId,
+          name: input.name || defaultName,
+          hashedKey,
+          encryptedSecret,
+          isActive: true,
+          type: input.type,
+          referenceId,
+          updatedAt: new Date(),
+        })
+        .returning({ id: schema.ApiKey.id })
+
+      await recordAuditFromCtx(ctx, {
+        category: 'security',
+        action: 'apiKey.created',
+        targetType: 'ApiKey',
+        targetId: created?.id ?? null,
+        metadata: { type: input.type, name: input.name || defaultName, referenceId },
       })
 
       return { secretKey }
@@ -227,5 +239,13 @@ export const apiKeyRouter = createTRPCRouter({
         .update(schema.ApiKey)
         .set({ isActive: false, updatedAt: new Date() })
         .where(and(eq(schema.ApiKey.id, input.id), eq(schema.ApiKey.organizationId, orgId)))
+
+      await recordAuditFromCtx(ctx, {
+        category: 'security',
+        action: 'apiKey.revoked',
+        targetType: 'ApiKey',
+        targetId: input.id,
+        metadata: { type: existing?.type },
+      })
     }),
 })

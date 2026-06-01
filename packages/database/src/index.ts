@@ -1,6 +1,13 @@
 // packages/database/src/index.ts
 // Public exports for the database package: schema and (future) client
 
+// Audit-log row builder + types (shared across all write paths)
+export {
+  type AuditContext,
+  type AuditRow,
+  type AuditRowInput,
+  toAuditRow,
+} from './db/audit/to-audit-row'
 export type { Database, Transaction } from './db/client'
 export { closePools, database } from './db/client'
 export * as schema from './db/schema'

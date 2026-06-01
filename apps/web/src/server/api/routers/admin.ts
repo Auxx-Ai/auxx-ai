@@ -747,31 +747,33 @@ export const adminRouter = createTRPCRouter({
         const { eq, desc } = await import('drizzle-orm')
 
         // Query logs with manual join to User table
+        // Reads from the unified AuditLog (AdminActionLog was folded into it).
+        // Columns are aliased back to the legacy names so the response shape is unchanged.
         const logs = await ctx.db
           .select({
-            id: schema.AdminActionLog.id,
-            adminUserId: schema.AdminActionLog.adminUserId,
-            actionType: schema.AdminActionLog.actionType,
-            targetType: schema.AdminActionLog.targetType,
-            targetId: schema.AdminActionLog.targetId,
-            organizationId: schema.AdminActionLog.organizationId,
-            details: schema.AdminActionLog.details,
-            reason: schema.AdminActionLog.reason,
-            previousState: schema.AdminActionLog.previousState,
-            newState: schema.AdminActionLog.newState,
-            ipAddress: schema.AdminActionLog.ipAddress,
-            userAgent: schema.AdminActionLog.userAgent,
-            createdAt: schema.AdminActionLog.createdAt,
+            id: schema.AuditLog.id,
+            adminUserId: schema.AuditLog.actorId,
+            actionType: schema.AuditLog.action,
+            targetType: schema.AuditLog.targetType,
+            targetId: schema.AuditLog.targetId,
+            organizationId: schema.AuditLog.organizationId,
+            details: schema.AuditLog.metadata,
+            reason: schema.AuditLog.reason,
+            previousState: schema.AuditLog.previousState,
+            newState: schema.AuditLog.newState,
+            ipAddress: schema.AuditLog.ipAddress,
+            userAgent: schema.AuditLog.userAgent,
+            createdAt: schema.AuditLog.createdAt,
             adminUser: {
               id: schema.User.id,
               name: schema.User.name,
               email: schema.User.email,
             },
           })
-          .from(schema.AdminActionLog)
-          .leftJoin(schema.User, eq(schema.AdminActionLog.adminUserId, schema.User.id))
-          .where(eq(schema.AdminActionLog.organizationId, input.organizationId))
-          .orderBy(desc(schema.AdminActionLog.createdAt))
+          .from(schema.AuditLog)
+          .leftJoin(schema.User, eq(schema.AuditLog.actorId, schema.User.id))
+          .where(eq(schema.AuditLog.organizationId, input.organizationId))
+          .orderBy(desc(schema.AuditLog.createdAt))
           .limit(input.limit)
 
         return logs
