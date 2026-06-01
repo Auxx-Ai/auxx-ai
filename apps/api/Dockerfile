@@ -94,10 +94,12 @@ ENV GIT_SHA=$GIT_SHA
 ENV APP_VERSION=$APP_VERSION
 ENV BUILD_TIME=$BUILD_TIME
 
-# curl: healthcheck + GeoLite2 download. gosu: drop root → api before exec'ing
-# node when Railway starts us as root (RAILWAY_RUN_UID=0) so the geo block can
-# write to a root-owned volume mount. See docker-entrypoint.sh Block 2.
-RUN apt-get update && apt-get install -y --no-install-recommends curl gosu \
+# curl: healthcheck + GeoLite2 download. ca-certificates: system CA bundle so
+# curl can verify TLS for the HTTPS GeoLite2 download (bookworm-slim ships none,
+# and --no-install-recommends won't pull it in — without it the download fails
+# the TLS handshake). gosu: drop root → api before exec'ing node when Railway
+# starts us as root (RAILWAY_RUN_UID=0). See docker-entrypoint.sh Block 2.
+RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates gosu \
     && rm -rf /var/lib/apt/lists/*
 
 RUN groupadd --system --gid 1001 nodejs && \
