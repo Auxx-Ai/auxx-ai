@@ -74,7 +74,7 @@ export function KopilotMock() {
       ? {}
       : {
           animate: { y: [0, -amplitude, 0] },
-          transition: { duration: 7, repeat: Infinity, ease: 'easeInOut', delay },
+          transition: { duration: 7, repeat: Infinity, ease: 'easeInOut' as const, delay },
         }
 
   return (

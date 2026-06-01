@@ -1,6 +1,6 @@
 // packages/chat/src/transport/passport.ts
 
-import { buildUserDataEnvelope, getApiBase } from '~/shared/runtime-config'
+import { buildUserDataEnvelope, getApiBase } from '../shared/runtime-config'
 
 const STORAGE_PREFIX = 'auxx_passport_chat_'
 const EXPIRY_BUFFER_MS = 5 * 60 * 1000
