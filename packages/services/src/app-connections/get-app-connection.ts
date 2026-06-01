@@ -59,7 +59,9 @@ import { fromDatabase } from '../shared/utils'
  * }
  */
 export async function getAppConnection(appId: string, organizationId: string, userId: string) {
-  // Try user-scoped connection first
+  // Try user-scoped connection first. Newest wins — duplicates can accumulate (e.g. an
+  // OAuth provider that issues a fresh token per (re)connect), and an older row's token
+  // is typically revoked once a newer one is issued.
   const userConnectionResult = await fromDatabase(
     database.query.WorkflowCredentials.findFirst({
       where: (creds, { eq, and }) =>
@@ -69,6 +71,7 @@ export async function getAppConnection(appId: string, organizationId: string, us
           eq(creds.userId, userId),
           eq(creds.type, 'app-connection')
         ),
+      orderBy: (creds, { desc }) => desc(creds.createdAt),
     }),
     'get-user-connection'
   )
@@ -84,7 +87,7 @@ export async function getAppConnection(appId: string, organizationId: string, us
     return ok(credentialData)
   }
 
-  // Fall back to organization-scoped connection
+  // Fall back to organization-scoped connection. Newest wins — see note above.
   const organizationConnectionResult = await fromDatabase(
     database.query.WorkflowCredentials.findFirst({
       where: (creds, { eq, and, isNull }) =>
@@ -94,6 +97,7 @@ export async function getAppConnection(appId: string, organizationId: string, us
           isNull(creds.userId), // Organization connection has no userId
           eq(creds.type, 'app-connection')
         ),
+      orderBy: (creds, { desc }) => desc(creds.createdAt),
     }),
     'get-org-connection'
   )

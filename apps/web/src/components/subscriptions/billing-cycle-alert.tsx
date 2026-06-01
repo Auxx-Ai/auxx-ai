@@ -35,6 +35,11 @@ export function BillingCycleAlert() {
     return null
   }
 
+  // Shopify Admin owns the billing schedule — no in-app billing-cycle banner.
+  if (subscription.billingProvider === 'shopify') {
+    return null
+  }
+
   const isTrial = subscription.status === 'trialing'
   const now = new Date()
   const hasPaymentMethod = Boolean(paymentMethods && paymentMethods.length > 0)

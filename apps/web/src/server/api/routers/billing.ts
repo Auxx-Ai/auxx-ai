@@ -550,9 +550,9 @@ export const billingRouter = createTRPCRouter({
 
       const provider = await resolveBillingProvider(ctx.db, organizationId)
       if (!provider.capabilities.managedPaymentMethods) {
-        throw new BadRequestError(
-          'Payment methods are managed in Shopify Admin for this organization.'
-        )
+        // Provider manages payment methods externally (e.g. Shopify Admin).
+        // The UI gates the card on this capability — degrade to empty, don't throw.
+        return []
       }
       return await provider.listPaymentMethods!(organizationId)
     } catch (error: unknown) {

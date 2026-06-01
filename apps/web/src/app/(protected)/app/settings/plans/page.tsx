@@ -2,19 +2,18 @@
 
 import { isSelfHosted } from '@auxx/deployment'
 import { Skeleton } from '@auxx/ui/components/skeleton'
-import { Receipt, Wallet } from 'lucide-react'
+import { Receipt } from 'lucide-react'
 import { redirect } from 'next/navigation'
 import { Suspense } from 'react'
 import SettingsPage from '~/components/global/settings-page'
-import { BillingAddressCard } from '~/components/subscriptions/billing-address-card'
 import {
   BillingCycleAlert,
   BillingCycleAlertSkeleton,
 } from '~/components/subscriptions/billing-cycle-alert'
 import { CancelSubscriptionDialog } from '~/components/subscriptions/cancel-subscription-dialog'
 import { InvoiceList } from '~/components/subscriptions/invoice-list'
-import { PaymentMethodsCard } from '~/components/subscriptions/payment-methods-card'
 import { PlanChangeCard } from '~/components/subscriptions/plan-change-card'
+import { BillingDetailsSection } from './_components/billing-details-section'
 import { DemoBillingCycleGuard } from './_components/demo-billing-cycle-guard'
 import { PlanViewTracker } from './_components/plan-view-tracker'
 import { ShopifyAdminBillingBannerWrapper } from './_components/shopify-admin-billing-banner-wrapper'
@@ -44,24 +43,7 @@ export default function PlansPage() {
 
         <ShopifyAdminBillingBannerWrapper />
 
-        <div id='billing-details' className='@container space-y-3'>
-          <div className='space-y-1'>
-            <div className='flex items-center gap-2 leading-none tracking-tight font-semibold text-foreground'>
-              <Wallet className='size-4' /> Billing Details
-            </div>
-            <div className='text-sm text-muted-foreground mb-4'>
-              Manage your payment methods and billing information
-            </div>
-          </div>
-          <div className='grid grid-cols-1 @lg:grid-cols-2 gap-6'>
-            <Suspense fallback={<BillingCardSkeleton />}>
-              <BillingAddressCard />
-            </Suspense>
-            <Suspense fallback={<BillingCardSkeleton />}>
-              <PaymentMethodsCard />
-            </Suspense>
-          </div>
-        </div>
+        <BillingDetailsSection />
 
         <div className='space-y-3'>
           <div className='space-y-1'>
@@ -120,28 +102,6 @@ function InvoiceListSkeleton() {
               <Skeleton className='h-3 w-24' />
             </div>
             <Skeleton className='h-4 w-20' />
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}
-
-function BillingCardSkeleton() {
-  return (
-    <div className='rounded-2xl border p-6 space-y-4'>
-      <div className='flex items-center justify-between'>
-        <div className='space-y-2'>
-          <Skeleton className='h-5 w-24' />
-          <Skeleton className='h-4 w-48' />
-        </div>
-        <Skeleton className='size-8 rounded' />
-      </div>
-      <div className='space-y-3'>
-        {[1, 2, 3].map((i) => (
-          <div key={i} className='grid grid-cols-[100px_1fr] gap-4'>
-            <Skeleton className='h-4 w-20' />
-            <Skeleton className='h-4 w-full' />
           </div>
         ))}
       </div>

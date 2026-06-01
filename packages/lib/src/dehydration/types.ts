@@ -39,6 +39,9 @@ export interface DehydratedEnvironment {
   // Captcha
   turnstileSiteKey: string
 
+  /** Shopify app slug — builds Admin deep-links (e.g. the app subscription page). */
+  shopifyAppHandle: string
+
   // External services
   stripe: {
     publishableKey: string

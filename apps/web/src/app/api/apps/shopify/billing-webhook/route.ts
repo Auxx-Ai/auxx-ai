@@ -2,6 +2,7 @@
 
 import { getProvider, verifyShopifyHmac } from '@auxx/billing'
 import { database } from '@auxx/database'
+import { onCacheEvent } from '@auxx/lib/cache'
 import { createScopedLogger } from '@auxx/logger'
 import { type NextRequest, NextResponse } from 'next/server'
 
@@ -19,12 +20,17 @@ export async function POST(req: NextRequest) {
   const shopDomain = req.headers.get('x-shopify-shop-domain') ?? ''
 
   try {
-    await getProvider('shopify').processWebhook({
+    const result = await getProvider('shopify').processWebhook({
       db: database,
       rawBody,
       topic,
       shopDomain,
     })
+    // Refresh the org's cached subscription/features after a billing state change so the
+    // app (and the claim-page short-circuit) sees the new status without waiting on TTL.
+    if (result.organizationId) {
+      await onCacheEvent('plan.changed', { orgId: result.organizationId })
+    }
     return new NextResponse('ok', { status: 200 })
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)

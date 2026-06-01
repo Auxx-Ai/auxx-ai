@@ -102,7 +102,10 @@ export async function GET(request: NextRequest) {
     const resolved = interpolateConnectionFields(connDef, { shop: shopSubdomain })
 
     // Exchange code for token. Shopify accepts both form-encoded and JSON; use JSON to
-    // match Shopify's documented example and the legacy route.
+    // match Shopify's documented example and the legacy route. `expiring: '1'` opts into
+    // expiring offline access tokens — Shopify no longer accepts non-expiring offline
+    // tokens for the Admin API, so the response now carries a refresh_token + expires_in.
+    // https://shopify.dev/docs/apps/build/authentication-authorization/access-tokens/offline-access-tokens
     const tokenResponse = await fetch(resolved.accessTokenUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
@@ -110,6 +113,7 @@ export async function GET(request: NextRequest) {
         client_id: resolved.clientId,
         client_secret: resolved.clientSecret,
         code,
+        expiring: '1',
       }),
     })
 
@@ -122,10 +126,27 @@ export async function GET(request: NextRequest) {
     const tokens = (await tokenResponse.json()) as {
       access_token?: string
       scope?: string
+      refresh_token?: string
+      expires_in?: number
+      refresh_token_expires_in?: number
     }
     if (!tokens.access_token) {
       throw new Error('Token response missing access_token')
     }
+
+    // Surface whether Shopify honored the expiring-token opt-in — if refresh_token is
+    // absent the app is still on a non-expiring token and Admin API calls will 403.
+    logger.info('Shopify token exchange result', {
+      shop,
+      hasAccessToken: !!tokens.access_token,
+      hasRefreshToken: !!tokens.refresh_token,
+      expiresIn: tokens.expires_in ?? null,
+      refreshTokenExpiresIn: tokens.refresh_token_expires_in ?? null,
+    })
+
+    const expiresAtIso = tokens.expires_in
+      ? new Date(Date.now() + tokens.expires_in * 1000).toISOString()
+      : undefined
 
     // Park pending claim. claimToken is independent of the OAuth state to avoid
     // ever exposing the state value past callback termination. A shop can be
@@ -134,6 +155,8 @@ export async function GET(request: NextRequest) {
     const claimPayload = {
       shop,
       accessToken: tokens.access_token,
+      refreshToken: tokens.refresh_token,
+      expiresAt: expiresAtIso,
       scope: tokens.scope,
       connectionDefinitionId: connDef.id,
       createdAt: new Date().toISOString(),

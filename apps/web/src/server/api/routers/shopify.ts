@@ -2,6 +2,7 @@ import { getProvider, type ShopifyBillingProvider, stripeClient } from '@auxx/bi
 import { WEBAPP_URL } from '@auxx/config/server'
 import { database as db, schema } from '@auxx/database'
 import { getOrgCache, isOrgMember, onCacheEvent, resolveAppSlug } from '@auxx/lib/cache'
+import { DehydrationService } from '@auxx/lib/dehydration'
 import { BadRequestError, ConflictError } from '@auxx/lib/errors'
 import { getQueue, Queues } from '@auxx/lib/jobs/queues'
 import { OrganizationService } from '@auxx/lib/organizations'
@@ -476,6 +477,8 @@ export const shopifyRouter = createTRPCRouter({
       const claim = JSON.parse(raw) as {
         shop: string
         accessToken: string
+        refreshToken?: string
+        expiresAt?: string
         scope?: string
         connectionDefinitionId: string
       }
@@ -532,6 +535,24 @@ export const shopifyRouter = createTRPCRouter({
         seed: claim.shop,
       })
 
+      // Reuse the single org-scoped Shopify connection if one already exists. Without
+      // this, every App Store (re)install inserts a fresh WorkflowCredentials row — and
+      // since Shopify revokes the old token whenever it issues a new one, getAppConnection
+      // can hand a stale (revoked) row to the Admin API read, 401-ing the billing sync so
+      // the PlanSubscription never leaves `incomplete`. One shop = one org-scoped token,
+      // updated in place.
+      const existingConn = await db.query.WorkflowCredentials.findFirst({
+        where: (c, { eq: e, and: a, isNull }) =>
+          a(
+            e(c.appId, appId),
+            e(c.organizationId, organizationId),
+            isNull(c.userId),
+            e(c.type, 'app-connection')
+          ),
+        orderBy: (c, { desc: d }) => d(c.createdAt),
+        columns: { id: true },
+      })
+
       const saveResult = await saveAppConnection(
         appId,
         installationId,
@@ -541,11 +562,14 @@ export const shopifyRouter = createTRPCRouter({
         null, // org-scoped
         {
           accessToken: claim.accessToken,
+          refreshToken: claim.refreshToken,
+          expiresAt: claim.expiresAt,
           metadata: {
             scope: claim.scope,
             shopDomain: claim.shop,
           },
-        }
+        },
+        existingConn ? { connectionId: existingConn.id } : undefined
       )
 
       if (saveResult.isErr()) {
@@ -626,9 +650,34 @@ export const shopifyRouter = createTRPCRouter({
         }
         await db.delete(schema.PlanSubscription).where(eq(schema.PlanSubscription.id, existing.id))
       } else if (existing?.billingProvider === 'shopify' && existing.status !== 'canceled') {
-        throw new ConflictError(
-          'This organization already has an active Shopify subscription. Contact support if this is unexpected.'
-        )
+        // The selected workspace is already billed through Shopify. Don't try to
+        // re-link it — decide where to send the merchant based on the existing row.
+        if (existing.shopifyShopDomain !== claim.shop) {
+          // One org bills exactly one shop. Re-claiming a *different* shop into an
+          // already-billed workspace is a genuine conflict — name the shop that holds it.
+          throw new ConflictError(
+            `This workspace already bills through Shopify for ${existing.shopifyShopDomain}. Choose a different workspace for this shop.`
+          )
+        }
+
+        // Same shop, already linked. An `incomplete` row means the merchant never
+        // approved a plan on Shopify's hosted page — resume plan selection. Any live
+        // status (active/trialing/past_due/paused) just opens their workspace.
+        if (existing.status === 'incomplete') {
+          const provider = getProvider('shopify') as ShopifyBillingProvider
+          const redirectUrl = await provider.getPlanSelectionUrl(organizationId)
+          return { redirectUrl, shop: claim.shop }
+        }
+        // Activate the picked workspace before sending them in, so `/app` opens it
+        // rather than the user's current default org.
+        if (ctx.session.user.defaultOrganizationId !== organizationId) {
+          await db
+            .update(schema.User)
+            .set({ defaultOrganizationId: organizationId, updatedAt: new Date() })
+            .where(eq(schema.User.id, userId))
+          await new DehydrationService(db).invalidateUser(userId)
+        }
+        return { redirectUrl: '/app', shop: claim.shop }
       }
       // 'shopify' + 'canceled' (reinstall) falls through to the upsert below — the
       // merchant re-enters Shopify's picker and we observe the fresh contract on return.

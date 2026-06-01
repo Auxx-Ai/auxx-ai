@@ -56,6 +56,7 @@ export enum FeatureKey {
   datasetsLimit = 'datasetsLimit',
   entities = 'entities',
   importRowsLimit = 'importRowsLimit',
+  agentsLimit = 'agentsLimit',
   monthlyAiCredits = 'monthlyAiCredits',
 
   // ── Usage limits (per billing cycle, Soft + Hard) ──
@@ -215,6 +216,13 @@ export const FEATURE_REGISTRY: FeatureMetadata[] = [
     group: 'Data',
     unit: 'rows',
     perOperation: true,
+  },
+  {
+    key: FeatureKey.agentsLimit,
+    type: 'static',
+    label: 'Agents',
+    group: 'AI',
+    unit: 'agents',
   },
   {
     key: FeatureKey.monthlyAiCredits,

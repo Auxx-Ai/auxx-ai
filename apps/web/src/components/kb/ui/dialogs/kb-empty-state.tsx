@@ -49,7 +49,7 @@ export function KBEmptyState() {
             for your customers.
           </p>
           <Button className='mt-6' onClick={() => setShowDialog(true)} loading={isCreating}>
-            <Plus className='mr-2 h-4 w-4' />
+            <Plus />
             Create Knowledge Base
           </Button>
         </div>

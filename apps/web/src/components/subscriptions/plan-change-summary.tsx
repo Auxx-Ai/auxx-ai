@@ -646,7 +646,7 @@ function PlanChangeSummaryContent({
             <div className='space-y-2 text-sm'>
               {/* Seat change indicator */}
               {currentSubscription && seats !== currentSubscription.seats && (
-                <div className='flex justify-between text-xs text-muted-foreground'>
+                <div className='flex h-4 items-center justify-between text-xs text-muted-foreground'>
                   <span>Seat change</span>
                   <span>
                     {currentSubscription.seats} → {seats} (
@@ -657,10 +657,10 @@ function PlanChangeSummaryContent({
               )}
 
               {/* Line item */}
-              <div className='flex justify-between'>
+              <div className='flex min-h-5 items-center justify-between'>
                 <span className='text-muted-foreground'>
                   {isLoadingPreview ? (
-                    <Skeleton className='h-[20px] w-32' />
+                    <Skeleton className='h-3.5 w-32' />
                   ) : (
                     <>
                       {seats} seat × {selectedPlan.name}
@@ -668,14 +668,14 @@ function PlanChangeSummaryContent({
                   )}
                 </span>
                 {isLoadingPreview ? (
-                  <Skeleton className='h-[20px] w-16' />
+                  <Skeleton className='h-3.5 w-16' />
                 ) : (
                   <span className='font-medium'>${subtotal.toFixed(2)}</span>
                 )}
               </div>
-              <div className='text-xs text-muted-foreground'>
+              <div className='flex min-h-4 items-center text-xs text-muted-foreground'>
                 {isLoadingPreview ? (
-                  <Skeleton className='h-[16px] w-24' />
+                  <Skeleton className='h-3 w-24' />
                 ) : (
                   <>
                     at ${(selectedPrice / 100).toFixed(2)} /{' '}
@@ -685,30 +685,30 @@ function PlanChangeSummaryContent({
               </div>
 
               {/* Subtotal */}
-              <div className='border-t pt-2 flex justify-between'>
+              <div className='border-t pt-2 flex items-center justify-between'>
                 <span className='text-muted-foreground'>Subtotal</span>
                 {isLoadingPreview ? (
-                  <Skeleton className='h-[20px] w-16' />
+                  <Skeleton className='h-3.5 w-16' />
                 ) : (
                   <span className='font-medium'>${subtotal.toFixed(2)}</span>
                 )}
               </div>
 
               {/* Tax */}
-              <div className='flex justify-between'>
+              <div className='flex items-center justify-between'>
                 <span className='text-muted-foreground'>Tax</span>
                 {isLoadingPreview ? (
-                  <Skeleton className='h-[20px] w-16' />
+                  <Skeleton className='h-3.5 w-16' />
                 ) : (
                   <span className='font-medium'>${tax.toFixed(2)}</span>
                 )}
               </div>
 
               {/* Total at renewal */}
-              <div className='border-t pt-2 flex justify-between font-semibold'>
+              <div className='border-t pt-2 flex items-center justify-between font-semibold'>
                 <span>Total at renewal</span>
                 {isLoadingPreview ? (
-                  <Skeleton className='h-[20px] w-16' />
+                  <Skeleton className='h-3.5 w-16' />
                 ) : (
                   <span>${total.toFixed(2)}</span>
                 )}
@@ -721,7 +721,7 @@ function PlanChangeSummaryContent({
                 </div>
               ) : (
                 <>
-                  <div className='flex justify-between text-xs'>
+                  <div className='flex h-4 items-center justify-between text-xs'>
                     <span className='text-muted-foreground'>
                       {preview?.transition === 'seat_addition' && 'Prorated seat addition'}
                       {preview?.transition === 'seat_reduction' && 'Prorated seat reduction'}
@@ -731,7 +731,7 @@ function PlanChangeSummaryContent({
                         'Adjustment due today'}
                     </span>
                     {isLoadingPreview ? (
-                      <Skeleton className='h-[16px] w-12' />
+                      <Skeleton className='h-3 w-12' />
                     ) : (
                       <span>${adjustmentDueToday.toFixed(2)}</span>
                     )}

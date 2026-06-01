@@ -9,7 +9,7 @@ export {
   createChannel,
   linkChannelToInbox,
 } from './lifecycle'
-export { getProviderType, list } from './list'
+export { countBillableChannels, getProviderType, list } from './list'
 export { getAuthUrl } from './oauth'
 export {
   addExcludedSender,

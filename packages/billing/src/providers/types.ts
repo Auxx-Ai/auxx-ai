@@ -135,7 +135,9 @@ export interface BillingProvider {
   createSubscription(input: CreateSubscriptionInput): Promise<CreateSubscriptionResult>
   cancelSubscription(input: CancelSubscriptionInput): Promise<void>
   restoreSubscription(input: RestoreSubscriptionInput): Promise<void>
-  processWebhook(input: ProcessWebhookInput): Promise<{ success: boolean }>
+  processWebhook(
+    input: ProcessWebhookInput
+  ): Promise<{ success: boolean; organizationId?: string | null }>
 
   updateSubscriptionDirect?(
     input: UpdateSubscriptionDirectInput
