@@ -22,6 +22,7 @@ import {
 } from '@auxx/services/apps'
 import { TRPCError } from '@trpc/server'
 import { z } from 'zod'
+import { recordAuditFromCtx } from '~/server/api/audit-context'
 import { adminProcedure, createTRPCRouter, notDemo, protectedProcedure } from '~/server/api/trpc'
 
 const logger = createScopedLogger('trpc-apps')
@@ -163,6 +164,14 @@ export const appsRouter = createTRPCRouter({
 
       await onCacheEvent('app.installed', { orgId: organizationId })
 
+      await recordAuditFromCtx(ctx, {
+        category: 'apps',
+        action: 'app.installed',
+        targetType: 'App',
+        targetId: cachedApp.id,
+        metadata: { appSlug, appName: cachedApp.title, installationType: type! },
+      })
+
       return result.value
     }),
 
@@ -206,6 +215,14 @@ export const appsRouter = createTRPCRouter({
       }
 
       await onCacheEvent('app.uninstalled', { orgId: organizationId })
+
+      await recordAuditFromCtx(ctx, {
+        category: 'apps',
+        action: 'app.uninstalled',
+        targetType: 'App',
+        targetId: cachedApp.id,
+        metadata: { appSlug, appName: cachedApp.title, installationType: type },
+      })
 
       return result.value
     }),

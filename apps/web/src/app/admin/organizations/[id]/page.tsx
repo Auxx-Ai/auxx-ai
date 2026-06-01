@@ -657,23 +657,47 @@ export default function OrganizationDetailsPage() {
                             </TableRow>
                             <TableRow className='*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r'>
                               <TableCell className='bg-muted/50 py-2 font-medium'>
+                                Billing Provider
+                              </TableCell>
+                              <TableCell className='py-2'>
+                                <div className='flex items-center gap-2'>
+                                  <Badge variant='outline' className='uppercase text-xs'>
+                                    {org.subscription.billingProvider}
+                                  </Badge>
+                                  {org.subscription.billingProvider === 'shopify' &&
+                                    org.subscription.shopifyShopDomain && (
+                                      <span className='font-mono text-xs text-muted-foreground'>
+                                        {org.subscription.shopifyShopDomain}
+                                      </span>
+                                    )}
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                            <TableRow className='*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r'>
+                              <TableCell className='bg-muted/50 py-2 font-medium'>
                                 Billing Cycle
                               </TableCell>
                               <TableCell className='py-2'>
-                                <Select
-                                  value={org.subscription.billingCycle}
-                                  onValueChange={(value) =>
-                                    handleBillingCycleChange(value as 'MONTHLY' | 'ANNUAL')
-                                  }
-                                  disabled={changePlan.isPending}>
-                                  <SelectTrigger>
-                                    <SelectValue />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value='MONTHLY'>Monthly</SelectItem>
-                                    <SelectItem value='ANNUAL'>Annual</SelectItem>
-                                  </SelectContent>
-                                </Select>
+                                {org.subscription.billingProvider === 'shopify' ? (
+                                  // Shopify is monthly-only (annualBillingCycle: false) and Shopify
+                                  // owns the cycle — show it read-only, no annual option.
+                                  <span className='text-sm'>Monthly</span>
+                                ) : (
+                                  <Select
+                                    value={org.subscription.billingCycle}
+                                    onValueChange={(value) =>
+                                      handleBillingCycleChange(value as 'MONTHLY' | 'ANNUAL')
+                                    }
+                                    disabled={changePlan.isPending}>
+                                    <SelectTrigger>
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value='MONTHLY'>Monthly</SelectItem>
+                                      <SelectItem value='ANNUAL'>Annual</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                )}
                               </TableCell>
                             </TableRow>
                             <TableRow className='*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r'>
