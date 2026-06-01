@@ -634,10 +634,11 @@ export const auth = betterAuth({
         return null
       }
 
-      // Hydrate org id from the profile when the cookie session predates it (rare cold path).
-      if (!extendedUser.defaultOrganizationId) {
-        extendedUser.defaultOrganizationId = userProfile.defaultOrganizationId
-      }
+      // `userProfile` (Redis-backed, invalidated on every default-org change via
+      // `setUserDefaultOrganization`) is the source of truth for the active org. Always take it
+      // from the profile rather than the better-auth session, whose 5-min cookie cache otherwise
+      // serves a stale `defaultOrganizationId` for up to 5 minutes after an org switch.
+      extendedUser.defaultOrganizationId = userProfile.defaultOrganizationId
 
       // Track the "active login" signal (lastLoginAt write + auth.login audit) at most
       // once/hour per user. Gate on a dedicated Redis NX key, NOT a cached/cookie

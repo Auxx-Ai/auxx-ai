@@ -814,6 +814,10 @@ export class MemberService {
           .update(schema.User)
           .set({ defaultOrganizationId: organizationId })
           .where(eq(schema.User.id, acceptingUserId))
+        // customSession derives defaultOrganizationId from the cached userProfile — flush the
+        // user cache so the new default org is reflected on the next session read.
+        const { getUserCache } = await import('../cache')
+        await getUserCache().invalidateUser(acceptingUserId)
         logger.info('Helper: Set default organization for user', {
           userId: acceptingUserId,
           organizationId,

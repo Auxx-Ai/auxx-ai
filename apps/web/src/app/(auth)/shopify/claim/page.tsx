@@ -2,13 +2,14 @@
 
 import { database, schema } from '@auxx/database'
 import { getOrgCache, getUserCache } from '@auxx/lib/cache'
-import { DehydrationService } from '@auxx/lib/dehydration'
 import { createScopedLogger } from '@auxx/logger'
 import { getRedisClient } from '@auxx/redis'
-import { eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { cookies, headers } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { auth } from '~/auth/server'
+import { setUserDefaultOrganization } from '~/server/auth/set-default-organization'
+import { confirmAndSyncShopifySubscription } from '~/server/billing/confirm-shopify-subscription'
 import { ClaimExpired } from './_components/claim-expired'
 import { ClaimFlow } from './_components/claim-flow'
 
@@ -62,6 +63,34 @@ export default async function ShopifyClaimPage({ searchParams }: PageProps) {
 
   const claim = JSON.parse(raw) as { shop: string }
 
+  // Shopify returns the merchant here (via install → OAuth → claim) right after they approve a
+  // plan on the hosted Managed Pricing page. The `app_subscriptions/update` webhook that flips the
+  // row `incomplete → active` may not have arrived yet, so the short-circuit below would read a
+  // stale `incomplete` from cache and re-show the picker. Confirm + sync against the Admin API
+  // first (busts the org cache) so the short-circuit sees the live status on the first return.
+  const [shopSub] = await database
+    .select({
+      organizationId: schema.PlanSubscription.organizationId,
+      status: schema.PlanSubscription.status,
+    })
+    .from(schema.PlanSubscription)
+    .where(
+      and(
+        eq(schema.PlanSubscription.shopifyShopDomain, claim.shop),
+        eq(schema.PlanSubscription.billingProvider, 'shopify')
+      )
+    )
+    .limit(1)
+  if (shopSub?.status === 'incomplete') {
+    // Short poll: right after approval the Admin API already reflects the contract, so a couple
+    // of attempts catch it without making a not-yet-approved merchant wait the full window.
+    await confirmAndSyncShopifySubscription({
+      organizationId: shopSub.organizationId,
+      shopDomain: claim.shop,
+      maxAttempts: 2,
+    })
+  }
+
   // Cached user→org memberships (one Redis lookup).
   const memberships = await getUserCache().get(session.user.id, 'userMemberships')
   const activeMemberships = memberships.filter((m) => m.status === 'ACTIVE')
@@ -93,11 +122,7 @@ export default async function ShopifyClaimPage({ searchParams }: PageProps) {
     // Make the linked workspace active before bouncing into the app, otherwise `/app`
     // would open whatever the user's current default org is.
     if (defaultOrgId !== targetOrgId) {
-      await database
-        .update(schema.User)
-        .set({ defaultOrganizationId: targetOrgId, updatedAt: new Date() })
-        .where(eq(schema.User.id, session.user.id))
-      await new DehydrationService(database).invalidateUser(session.user.id)
+      await setUserDefaultOrganization(database, session.user.id, targetOrgId)
     }
     redirect('/app')
   }
