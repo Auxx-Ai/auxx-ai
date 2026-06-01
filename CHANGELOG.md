@@ -1,5 +1,73 @@
 # Changelog
 
+## [0.1.151](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.150...auxx-v0.1.151) (2026-06-01)
+
+
+### Features
+
+* **audit,billing:** activity-log UI + shopify per-seat billing fixes ([#706](https://github.com/Auxx-Ai/auxx-ai/issues/706)) ([23c821a](https://github.com/Auxx-Ai/auxx-ai/commit/23c821a97d1946a835350ec3015bacfc5631481e))
+* **audit:** activity events across routers + session-revocation cache ([#707](https://github.com/Auxx-Ai/auxx-ai/issues/707)) ([e9c840c](https://github.com/Auxx-Ai/auxx-ai/commit/e9c840c02b80d79f831e0d5bc7f354c612e4fe71))
+* **audit:** unified AuditLog table replacing AdminActionLog ([#704](https://github.com/Auxx-Ai/auxx-ai/issues/704)) ([762ce69](https://github.com/Auxx-Ai/auxx-ai/commit/762ce69fa7efb2467de8bea8955b72802545d4cc))
+* **billing:** Shopify App Billing as a provider alongside Stripe ([#701](https://github.com/Auxx-Ai/auxx-ai/issues/701)) ([e241166](https://github.com/Auxx-Ai/auxx-ai/commit/e241166b6226d1f1d07e1d75d9a4e054d9de3bb0))
+* **billing:** shopify billing follow-ups — expiring tokens, webhooks, agent limit ([#702](https://github.com/Auxx-Ai/auxx-ai/issues/702)) ([1223923](https://github.com/Auxx-Ai/auxx-ai/commit/1223923239a4fe685b6b707787e899342a306c03))
+* **billing:** shopify per-seat usage drip via app events ([#705](https://github.com/Auxx-Ai/auxx-ai/issues/705)) ([1741f79](https://github.com/Auxx-Ai/auxx-ai/commit/1741f79146f022ab981efab3bff443985348501c))
+* **billing:** shopify-aware plan CTAs + trim noisy install/claim logs ([#703](https://github.com/Auxx-Ai/auxx-ai/issues/703)) ([d69312f](https://github.com/Auxx-Ai/auxx-ai/commit/d69312fc08d7f5863fc66400d449dfe2f84dca87))
+* **chat-widget:** channel audience policy (visitors/both/users) ([#693](https://github.com/Auxx-Ai/auxx-ai/issues/693)) ([dc8aa44](https://github.com/Auxx-Ai/auxx-ai/commit/dc8aa44787ef894fe0b3764f7d6c2f5862f577ee))
+* **chat-widget:** dedicated AI section in settings ([#694](https://github.com/Auxx-Ai/auxx-ai/issues/694)) ([14bc3dd](https://github.com/Auxx-Ai/auxx-ai/commit/14bc3dda42e137aea93ad2f42409520bab030203))
+* **chat-widget:** framework-specific setup snippets + JWT middleware fix ([#692](https://github.com/Auxx-Ai/auxx-ai/issues/692)) ([188ed59](https://github.com/Auxx-Ai/auxx-ai/commit/188ed59421ea277fdfdc42e59eece1348b3026b8))
+* **chat-widget:** kb search + thread handoff control refactor ([#681](https://github.com/Auxx-Ai/auxx-ai/issues/681)) ([d8cb913](https://github.com/Auxx-Ai/auxx-ai/commit/d8cb913819ecc06f9fd7772d1ae1ca5dd4e739a0))
+* **chat-widget:** live preview pane in settings + setup section ([#690](https://github.com/Auxx-Ai/auxx-ai/issues/690)) ([be03411](https://github.com/Auxx-Ai/auxx-ai/commit/be034115e11edf58de85445b322a4bcc21d532d1))
+* **chat+drawers:** optimistic send refactor, attachment realtime, drawer action registry ([#682](https://github.com/Auxx-Ai/auxx-ai/issues/682)) ([8adf67c](https://github.com/Auxx-Ai/auxx-ai/commit/8adf67cd2c8693122a2c065570a2ffe6bad1d9cc))
+* **chat:** admin handoff display UI (Phase 4b-i) ([#666](https://github.com/Auxx-Ai/auxx-ai/issues/666)) ([d40dd0d](https://github.com/Auxx-Ai/auxx-ai/commit/d40dd0dc90ec1254dde98a52654a9458dad3591b))
+* **chat:** chat duty toggle + duty-aware UI (P4c) ([#668](https://github.com/Auxx-Ai/auxx-ai/issues/668)) ([00326d8](https://github.com/Auxx-Ai/auxx-ai/commit/00326d852be5472ffa3cb8f8b43dea0a4c2276f2))
+* **chat:** floating, draggable widget window (P6) ([#670](https://github.com/Auxx-Ai/auxx-ai/issues/670)) ([390bec2](https://github.com/Auxx-Ai/auxx-ai/commit/390bec2cfd295aa3592ec8f5fd38f381cfe2c84c))
+* **chat:** friendly visitor labels (Chat user #xxxx) ([#673](https://github.com/Auxx-Ai/auxx-ai/issues/673)) ([366c570](https://github.com/Auxx-Ai/auxx-ai/commit/366c570130df2fe3525a96ea340c15e37844108f))
+* **chat:** group consecutive same-sender chat bubbles ([#647](https://github.com/Auxx-Ai/auxx-ai/issues/647)) ([e8bf2ef](https://github.com/Auxx-Ai/auxx-ai/commit/e8bf2efef7aafad92156f5815565e840d6347ca3))
+* **chat:** identity rotation guard + cross-device thread ownership ([#697](https://github.com/Auxx-Ai/auxx-ai/issues/697)) ([517c149](https://github.com/Auxx-Ai/auxx-ai/commit/517c14938cc1b9bf4ad503d956160e9634fdbc19))
+* **chat:** lazy attachment URLs, paginated history, visitor label cleanup ([#679](https://github.com/Auxx-Ai/auxx-ai/issues/679)) ([83286b6](https://github.com/Auxx-Ai/auxx-ai/commit/83286b6fa20f9c6037da1ecec575932785c60fa5))
+* **chat:** org presence + widget polish ([#674](https://github.com/Auxx-Ai/auxx-ai/issues/674)) ([0a6dd41](https://github.com/Auxx-Ai/auxx-ai/commit/0a6dd415ad719489fb67345dc62ddd9eb5a33ad7))
+* **chat:** promote chat-widget to @auxx/chat npm package ([#688](https://github.com/Auxx-Ai/auxx-ai/issues/688)) ([d644065](https://github.com/Auxx-Ai/auxx-ai/commit/d64406567b71da3ee040d5cbe3a629ed861e066c))
+* **chat:** shopify app proxy jwt mint + visitor geo + friendly handles ([#699](https://github.com/Auxx-Ai/auxx-ai/issues/699)) ([52d87e2](https://github.com/Auxx-Ai/auxx-ai/commit/52d87e225ddeb8526207718532e107e59b4ecc5a))
+* **chat:** thread events + realtime publish (P4.3) ([#664](https://github.com/Auxx-Ai/auxx-ai/issues/664)) ([34b98ae](https://github.com/Auxx-Ai/auxx-ai/commit/34b98aeb0c07a0d837bfad1086f45f33ffd61e72))
+* **chat:** thread handoff state + take over button (P4.2) ([#663](https://github.com/Auxx-Ai/auxx-ai/issues/663)) ([b8bab3f](https://github.com/Auxx-Ai/auxx-ai/commit/b8bab3f5f3d139f7c1e190e4ca150dcdf9e86c88))
+* **chat:** tinted token system + clearable header color ([#672](https://github.com/Auxx-Ai/auxx-ai/issues/672)) ([7ff3f44](https://github.com/Auxx-Ai/auxx-ai/commit/7ff3f4483c2eefd008c51cb99004bb74c47d6aa9))
+* **chat:** v4 — @auxx/chat npm boot API + JWT identity verification ([#689](https://github.com/Auxx-Ai/auxx-ai/issues/689)) ([65d4265](https://github.com/Auxx-Ai/auxx-ai/commit/65d42653ebb5cc13d21105a644fe808e8271274f))
+* **chat:** welcome bubble + agent identity (P4.1) ([#667](https://github.com/Auxx-Ai/auxx-ai/issues/667)) ([dc9d439](https://github.com/Auxx-Ai/auxx-ai/commit/dc9d439d9d8c54e577cae6d2f6119efbad14e1cd))
+* **chat:** widget dark mode ([#655](https://github.com/Auxx-Ai/auxx-ai/issues/655)) ([5f3833b](https://github.com/Auxx-Ai/auxx-ai/commit/5f3833b7043dcb9a822d4a79c957bf1f6db8beb9))
+* **chat:** widget Home hero, header color, thread-only expand ([#654](https://github.com/Auxx-Ai/auxx-ai/issues/654)) ([48ad9d5](https://github.com/Auxx-Ai/auxx-ai/commit/48ad9d5360815801095a9c9829521950c1f30373))
+* **chat:** widget logos, rate limits, /threads/:id/messages route ([#652](https://github.com/Auxx-Ai/auxx-ai/issues/652)) ([3fbf347](https://github.com/Auxx-Ai/auxx-ai/commit/3fbf34730fe046cc8b08a53669b33f3fabac99af))
+* **chat:** widget privacy banner + thread tombstones, shell polish ([#658](https://github.com/Auxx-Ai/auxx-ai/issues/658)) ([3f4400b](https://github.com/Auxx-Ai/auxx-ai/commit/3f4400bcac6f92b865c0f83e6573c0f150fbf326))
+* **chat:** widget renders thread events (P4.4) ([#665](https://github.com/Auxx-Ai/auxx-ai/issues/665)) ([71f64f5](https://github.com/Auxx-Ai/auxx-ai/commit/71f64f5b501cac83a4d96fe0c4928f6481b35b9d))
+* **chat:** widget suggested replies + KB markdown polish ([#657](https://github.com/Auxx-Ai/auxx-ai/issues/657)) ([4c633d9](https://github.com/Auxx-Ai/auxx-ai/commit/4c633d97c5212c488a80026bf96438e8cdd2deb0))
+* **chat:** widget v2 Home tab — greeting, KB cards, recent message ([#649](https://github.com/Auxx-Ai/auxx-ai/issues/649)) ([e36f474](https://github.com/Auxx-Ai/auxx-ai/commit/e36f4746bd9ee1aab393c2aa2c554980c084f967))
+* **chat:** widget v2 KB tab — section browse + article reader ([#650](https://github.com/Auxx-Ai/auxx-ai/issues/650)) ([5f8bc6b](https://github.com/Auxx-Ai/auxx-ai/commit/5f8bc6b9ee981631d07484adf19cdd53ed29438d))
+* **chat:** widget v2 Messages tab, conversation view, visitor channel ([#651](https://github.com/Auxx-Ai/auxx-ai/issues/651)) ([d693809](https://github.com/Auxx-Ai/auxx-ai/commit/d6938090c15583052cf91918d1b887e468527816))
+* **chat:** widget v2 schema, identify() API, and agent ChatPanel ([#648](https://github.com/Auxx-Ai/auxx-ai/issues/648)) ([fb51a17](https://github.com/Auxx-Ai/auxx-ai/commit/fb51a17b1d2640c1eb80ff48daeba4cc6bececbc))
+* **geo:** visitor city for chat widget + shopify reserved-namespace metafields ([#698](https://github.com/Auxx-Ai/auxx-ai/issues/698)) ([67b1674](https://github.com/Auxx-Ai/auxx-ai/commit/67b1674d1d4e01929c2c428e7d9140998821557e))
+* **homepage:** default to light theme + gradient card polish ([#677](https://github.com/Auxx-Ai/auxx-ai/issues/677)) ([d43df43](https://github.com/Auxx-Ai/auxx-ai/commit/d43df4392ec1891afb27f61cef21ebdc3646474f))
+* **homepage:** hero v2 with kopilot mock + 3D overflow support ([#676](https://github.com/Auxx-Ai/auxx-ai/issues/676)) ([31dee74](https://github.com/Auxx-Ai/auxx-ai/commit/31dee743738455bacea3041668d2c936a5172cde))
+* **inbox:** treat inbox as entity (visual ref, picker fix, drop bespoke router) ([#685](https://github.com/Auxx-Ai/auxx-ai/issues/685)) ([e91408d](https://github.com/Auxx-Ai/auxx-ai/commit/e91408d8239ec196aa27675f557b1457c54850d0))
+* **ingest+compose:** inbox sync-completed event, serial batch drain, default channel picker ([#683](https://github.com/Auxx-Ai/auxx-ai/issues/683)) ([44a60dc](https://github.com/Auxx-Ai/auxx-ai/commit/44a60dcceb27aa73e9763cc3006a1c0a1e0dcd79))
+* **kopilot:** app icons on tool pills + agent UI polish ([#638](https://github.com/Auxx-Ai/auxx-ai/issues/638)) ([8f50770](https://github.com/Auxx-Ai/auxx-ai/commit/8f507709315245e52f51af8b13e13848a4370aec))
+* **mail:** participant drawer + thread-header participant chip ([#686](https://github.com/Auxx-Ai/auxx-ai/issues/686)) ([cfe491c](https://github.com/Auxx-Ai/auxx-ai/commit/cfe491cf3e50ad07d297ec7791b220ff67111374))
+* **threads:** denormalize merge state into mergeData jsonb ([#696](https://github.com/Auxx-Ai/auxx-ai/issues/696)) ([50156cd](https://github.com/Auxx-Ai/auxx-ai/commit/50156cd1721a130bfc080835300d3746808627e7))
+* **threads:** soft-merge with 24h unmerge window ([#695](https://github.com/Auxx-Ai/auxx-ai/issues/695)) ([e4a3fb5](https://github.com/Auxx-Ai/auxx-ai/commit/e4a3fb5366ae0d369f4360c6900e5861c5ee9a36))
+
+
+### Bug Fixes
+
+* **build:** declare imapflow/pino/thread-stream as direct deps of @auxx/build ([#709](https://github.com/Auxx-Ai/auxx-ai/issues/709)) ([ead6be1](https://github.com/Auxx-Ai/auxx-ai/commit/ead6be14b7555bdf92272a0baefdda5ddd16dcec))
+* **build:** resolve container build failures across homepage, build, chat ([#708](https://github.com/Auxx-Ai/auxx-ai/issues/708)) ([99b70a5](https://github.com/Auxx-Ai/auxx-ai/commit/99b70a5f936af8d027baeec9a79bea9bc18b200d))
+* **chat:** P4 realtime + reconcile fixes ([#669](https://github.com/Auxx-Ai/auxx-ai/issues/669)) ([980b1b5](https://github.com/Auxx-Ai/auxx-ai/commit/980b1b51861f8500a2a0c6d8e8626252b51db309))
+* **chat:** prevent workspace-only @auxx/* leaking into published dist ([#691](https://github.com/Auxx-Ai/auxx-ai/issues/691)) ([cb484ab](https://github.com/Auxx-Ai/auxx-ai/commit/cb484abf7f74c400e81c3709120d9b99f57db3d6))
+* **chat:** visitor label + snippets in inbox, widget polish ([#675](https://github.com/Auxx-Ai/auxx-ai/issues/675)) ([35d815a](https://github.com/Auxx-Ai/auxx-ai/commit/35d815a89bd458119148c2da24f8d5df0d11dfcf))
+* **homepage:** hide kopilot mock on mobile, refactor tilt classes ([#678](https://github.com/Auxx-Ai/auxx-ai/issues/678)) ([830ba4b](https://github.com/Auxx-Ai/auxx-ai/commit/830ba4ba18032b8d369e2dabb6c0625159c192d4))
+* **homepage:** paginated mobile logo cloud, hero blur, looping kopilot ([#680](https://github.com/Auxx-Ai/auxx-ai/issues/680)) ([ece8c6b](https://github.com/Auxx-Ai/auxx-ai/commit/ece8c6b8fe4c6d6b68448c096a405f9883e74fc0))
+* **signatures:** prefix systemAttributes + fix appendSignature + backfill ([#684](https://github.com/Auxx-Ai/auxx-ai/issues/684)) ([5f61621](https://github.com/Auxx-Ai/auxx-ai/commit/5f61621aaa3d84bd73d83c49708c809e15dcc699))
+* visible turnstile + correct agentId in kopilot stream ([#636](https://github.com/Auxx-Ai/auxx-ai/issues/636)) ([5dd2a7b](https://github.com/Auxx-Ai/auxx-ai/commit/5dd2a7bab583a6fc5844af58d71885080b526a42))
+* **widget+picker:** reset widget storage, opt-out badge hover card ([#687](https://github.com/Auxx-Ai/auxx-ai/issues/687)) ([35e7aef](https://github.com/Auxx-Ai/auxx-ai/commit/35e7aef861d427e448e68e265b366730f24726a1))
+* **workflow:** AI v2 nodes — built-in capabilities + explicit appAccounts ([#662](https://github.com/Auxx-Ai/auxx-ai/issues/662)) ([556f7d6](https://github.com/Auxx-Ai/auxx-ai/commit/556f7d632fc330fcb09253e93ae7212e6aa9dba6))
+
 ## [0.1.150](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.149...auxx-v0.1.150) (2026-05-20)
 
 
