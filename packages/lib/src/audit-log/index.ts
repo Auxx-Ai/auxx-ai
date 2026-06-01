@@ -3,6 +3,7 @@
 // writing, listing, and exporting immutable audit rows. For client-safe types/enums,
 // import from @auxx/lib/audit-log/client instead.
 
+export { AUDIT_ACTIONS, type AuditAction } from './audit-actions'
 export {
   AUDIT_ACTOR_TYPES,
   AUDIT_CATEGORIES,

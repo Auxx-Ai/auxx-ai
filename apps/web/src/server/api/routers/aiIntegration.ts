@@ -14,6 +14,7 @@ import { onCacheEvent } from '@auxx/lib/cache'
 import { TRPCError } from '@trpc/server'
 import { and, eq } from 'drizzle-orm'
 import { z } from 'zod'
+import { recordAuditFromCtx } from '~/server/api/audit-context'
 import { createTRPCRouter, notDemo, protectedProcedure } from '~/server/api/trpc'
 
 export const aiIntegrationRouter = createTRPCRouter({
@@ -60,6 +61,15 @@ export const aiIntegrationRouter = createTRPCRouter({
 
       const providerManager = new ProviderManager(ctx.db, organizationId, userId)
       await providerManager.toggleModel(input.provider, input.model, input.enabled)
+
+      await recordAuditFromCtx(ctx, {
+        organizationId,
+        category: 'settings',
+        action: 'aiModel.toggled',
+        targetType: 'AiModel',
+        targetId: `${input.provider}:${input.model}`,
+        metadata: { provider: input.provider, model: input.model, enabled: input.enabled },
+      })
 
       return { success: true }
     }),
@@ -152,6 +162,15 @@ export const aiIntegrationRouter = createTRPCRouter({
         // Both create and edit modes can use the same saveProvider method
         await providerManager.saveProvider(provider, credentials)
 
+        await recordAuditFromCtx(ctx, {
+          organizationId,
+          category: 'settings',
+          action: mode === 'create' ? 'aiCredential.added' : 'aiProvider.configured',
+          targetType: 'AiProvider',
+          targetId: provider,
+          metadata: { provider, mode },
+        })
+
         return {
           success: true,
           provider,
@@ -190,6 +209,15 @@ export const aiIntegrationRouter = createTRPCRouter({
 
       const providerManager = new ProviderManager(ctx.db, organizationId, userId)
       const result = await providerManager.removeCustomCredentials(input.provider)
+
+      await recordAuditFromCtx(ctx, {
+        organizationId,
+        category: 'settings',
+        action: 'aiCredential.removed',
+        targetType: 'AiProvider',
+        targetId: input.provider,
+        metadata: { provider: input.provider },
+      })
 
       return {
         success: true,

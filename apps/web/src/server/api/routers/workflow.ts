@@ -31,6 +31,7 @@ import { generateId } from '@auxx/utils/generateId'
 import { TRPCError } from '@trpc/server'
 import { and, count, eq } from 'drizzle-orm'
 import { z } from 'zod'
+import { recordAuditFromCtx } from '~/server/api/audit-context'
 import { createTRPCRouter, notDemo, protectedProcedure } from '~/server/api/trpc'
 import { workflowTemplatesRouter } from './workflow-templates'
 
@@ -401,10 +402,18 @@ export const workflowRouter = createTRPCRouter({
       }
 
       // Create the workflow with optional template data
-      return await workflowService.create(ctx.session.organizationId, ctx.session.userId, {
+      const created = await workflowService.create(ctx.session.organizationId, ctx.session.userId, {
         ...input,
         ...templateData, // Spread template data if it exists
       })
+      await recordAuditFromCtx(ctx, {
+        category: 'apps',
+        action: 'workflow.created',
+        targetType: 'WorkflowApp',
+        targetId: (created as { id?: string } | null)?.id ?? null,
+        metadata: { name: input.name, templateId: input.templateId ?? null },
+      })
+      return created
     } catch (error) {
       if (error instanceof TRPCError) {
         throw error
@@ -445,7 +454,14 @@ export const workflowRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const workflowService = new WorkflowService(ctx.db)
       try {
-        return await workflowService.delete(input.id, ctx.session.organizationId)
+        const result = await workflowService.delete(input.id, ctx.session.organizationId)
+        await recordAuditFromCtx(ctx, {
+          category: 'apps',
+          action: 'workflow.deleted',
+          targetType: 'WorkflowApp',
+          targetId: input.id,
+        })
+        return result
       } catch (error) {
         if (error instanceof Error && error.message === 'Workflow not found') {
           throw new TRPCError({ code: 'NOT_FOUND', message: 'Workflow not found' })
@@ -607,11 +623,19 @@ export const workflowRouter = createTRPCRouter({
           })
         }
         // If validation passes, proceed with publishing
-        return await versionService.publish(
+        const published = await versionService.publish(
           input.workflowId,
           ctx.session.organizationId,
           input.versionTitle
         )
+        await recordAuditFromCtx(ctx, {
+          category: 'apps',
+          action: 'workflow.published',
+          targetType: 'WorkflowApp',
+          targetId: input.workflowId,
+          metadata: { versionTitle: input.versionTitle ?? null },
+        })
+        return published
       } catch (error) {
         // Re-throw TRPCError instances
         if (error instanceof TRPCError) {
@@ -1019,6 +1043,13 @@ export const workflowRouter = createTRPCRouter({
         .where(eq(schema.WorkflowApp.id, id))
         .returning()
 
+      await recordAuditFromCtx(ctx, {
+        category: 'apps',
+        action: 'workflow.share_token_generated',
+        targetType: 'WorkflowApp',
+        targetId: id,
+      })
+
       return updated
     }),
 
@@ -1053,6 +1084,13 @@ export const workflowRouter = createTRPCRouter({
         })
         .where(eq(schema.WorkflowApp.id, id))
         .returning()
+
+      await recordAuditFromCtx(ctx, {
+        category: 'apps',
+        action: 'workflow.share_token_revoked',
+        targetType: 'WorkflowApp',
+        targetId: id,
+      })
 
       return updated
     }),

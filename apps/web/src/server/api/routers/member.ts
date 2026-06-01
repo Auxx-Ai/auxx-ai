@@ -314,6 +314,14 @@ export const memberRouter = createTRPCRouter({
         const dehydrationService = new DehydrationService(ctx.db)
         await dehydrationService.refreshUser(ctx.session.user.id)
 
+        await recordAuditFromCtx(ctx, {
+          organizationId: result.organizationId,
+          category: 'members',
+          action: 'invitation.accepted',
+          targetType: 'Organization',
+          targetId: result.organizationId,
+        })
+
         return result
       } catch (error) {
         if (error instanceof TRPCError) throw error
@@ -344,6 +352,14 @@ export const memberRouter = createTRPCRouter({
         const dehydrationService = new DehydrationService(ctx.db)
         await dehydrationService.refreshUser(ctx.session.user.id)
 
+        await recordAuditFromCtx(ctx, {
+          organizationId: result.organizationId,
+          category: 'members',
+          action: 'invitation.accepted',
+          targetType: 'Invitation',
+          targetId: input.invitationId,
+        })
+
         return result
       } catch (error) {
         if (error instanceof TRPCError) throw error
@@ -365,11 +381,18 @@ export const memberRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const memberService = new MemberService(ctx.db)
       try {
-        return await memberService.cancelInvitation({
+        const result = await memberService.cancelInvitation({
           invitationId: input.invitationId,
           cancellerUserId: ctx.session.user.id,
           organizationId: ctx.session.organizationId,
         })
+        await recordAuditFromCtx(ctx, {
+          category: 'members',
+          action: 'invitation.canceled',
+          targetType: 'Invitation',
+          targetId: input.invitationId,
+        })
+        return result
       } catch (error) {
         if (error instanceof TRPCError) throw error
         logger.error('Unexpected error during cancelInvitation:', {
@@ -389,11 +412,18 @@ export const memberRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const memberService = new MemberService(ctx.db)
       try {
-        return await memberService.resendInvitation({
+        const result = await memberService.resendInvitation({
           invitationId: input.invitationId,
           resenderUserId: ctx.session.user.id,
           organizationId: ctx.session.organizationId,
         })
+        await recordAuditFromCtx(ctx, {
+          category: 'members',
+          action: 'invitation.resent',
+          targetType: 'Invitation',
+          targetId: input.invitationId,
+        })
+        return result
       } catch (error) {
         if (error instanceof TRPCError) throw error
         logger.error('Unexpected error during resendInvitation:', {

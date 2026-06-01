@@ -15,6 +15,7 @@ import { FeatureKey, FeaturePermissionService, handlePlanDowngrade } from '@auxx
 import { createUsageGuard, type UsageMetric, type UsageStatus } from '@auxx/lib/usage'
 import { and, eq, ilike, or, sql } from 'drizzle-orm'
 import { z } from 'zod'
+import { recordAuditFromCtx } from '~/server/api/audit-context'
 import { createTRPCRouter, superAdminProcedure } from '~/server/api/trpc'
 import { adminAppsRouter } from './admin-apps'
 import { adminHealthRouter } from './admin-health'
@@ -81,6 +82,15 @@ export const adminRouter = createTRPCRouter({
       const adminService = new AdminService(ctx.db)
       await adminService.deleteOrganization(input.id)
       await flushOrganization(input.id)
+      await recordAuditFromCtx(ctx, {
+        organizationId: input.id,
+        category: 'settings',
+        action: 'org.deleted',
+        actorType: 'admin',
+        visibility: 'internal',
+        targetType: 'Organization',
+        targetId: input.id,
+      })
       return { success: true }
     }),
 
@@ -142,6 +152,15 @@ export const adminRouter = createTRPCRouter({
       const adminService = new AdminService(ctx.db)
       await adminService.deleteUser(input.id)
       await getUserCache().invalidateUser(input.id)
+      await recordAuditFromCtx(ctx, {
+        organizationId: null,
+        category: 'security',
+        action: 'user.deleted',
+        actorType: 'admin',
+        visibility: 'internal',
+        targetType: 'User',
+        targetId: input.id,
+      })
       return { success: true }
     }),
 
@@ -154,6 +173,15 @@ export const adminRouter = createTRPCRouter({
       const adminService = new AdminService(ctx.db)
       await adminService.verifyUserEmail(input.id)
       await getUserCache().invalidateAndRecompute(input.id, ['userProfile'])
+      await recordAuditFromCtx(ctx, {
+        organizationId: null,
+        category: 'security',
+        action: 'user.email_verified_by_admin',
+        actorType: 'admin',
+        visibility: 'internal',
+        targetType: 'User',
+        targetId: input.id,
+      })
       return { success: true }
     }),
 
@@ -172,6 +200,16 @@ export const adminRouter = createTRPCRouter({
       await auth.api.requestPasswordReset({
         body: { email: user.email, redirectTo: '/reset-password' },
       })
+      await recordAuditFromCtx(ctx, {
+        organizationId: null,
+        category: 'security',
+        action: 'user.password_reset_forced',
+        actorType: 'admin',
+        visibility: 'internal',
+        targetType: 'User',
+        targetId: input.id,
+        metadata: { method: 'reset_email' },
+      })
       return { success: true }
     }),
 
@@ -184,6 +222,15 @@ export const adminRouter = createTRPCRouter({
       const adminService = new AdminService(ctx.db)
       await adminService.revokeAllSessions(input.id)
       await getUserCache().invalidateAndRecompute(input.id, ['userProfile'])
+      await recordAuditFromCtx(ctx, {
+        organizationId: null,
+        category: 'security',
+        action: 'user.sessions_revoked',
+        actorType: 'admin',
+        visibility: 'internal',
+        targetType: 'User',
+        targetId: input.id,
+      })
       return { success: true }
     }),
 
@@ -196,6 +243,15 @@ export const adminRouter = createTRPCRouter({
       const adminService = new AdminService(ctx.db)
       await adminService.disableTwoFactor(input.id)
       await getUserCache().invalidateAndRecompute(input.id, ['userProfile'])
+      await recordAuditFromCtx(ctx, {
+        organizationId: null,
+        category: 'security',
+        action: 'user.2fa_disabled_by_admin',
+        actorType: 'admin',
+        visibility: 'internal',
+        targetType: 'User',
+        targetId: input.id,
+      })
       return { success: true }
     }),
 
@@ -208,6 +264,16 @@ export const adminRouter = createTRPCRouter({
       const adminService = new AdminService(ctx.db)
       await adminService.forcePasswordChange(input.id)
       await getUserCache().invalidateAndRecompute(input.id, ['userProfile'])
+      await recordAuditFromCtx(ctx, {
+        organizationId: null,
+        category: 'security',
+        action: 'user.password_reset_forced',
+        actorType: 'admin',
+        visibility: 'internal',
+        targetType: 'User',
+        targetId: input.id,
+        metadata: { method: 'force_change' },
+      })
       return { success: true }
     }),
 
@@ -226,6 +292,16 @@ export const adminRouter = createTRPCRouter({
       const adminService = new AdminService(ctx.db)
       await adminService.setUserBanned(input.id, input.banned, input.reason)
       await getUserCache().invalidateAndRecompute(input.id, ['userProfile'])
+      await recordAuditFromCtx(ctx, {
+        organizationId: null,
+        category: 'security',
+        action: input.banned ? 'user.banned' : 'user.unbanned',
+        actorType: 'admin',
+        visibility: 'internal',
+        targetType: 'User',
+        targetId: input.id,
+        reason: input.reason,
+      })
       return { success: true }
     }),
 
@@ -243,6 +319,15 @@ export const adminRouter = createTRPCRouter({
       const adminService = new AdminService(ctx.db)
       await adminService.setUserSuperAdmin(input.id, input.isSuperAdmin)
       await getUserCache().invalidateAndRecompute(input.id, ['userProfile'])
+      await recordAuditFromCtx(ctx, {
+        organizationId: null,
+        category: 'security',
+        action: input.isSuperAdmin ? 'user.superadmin_granted' : 'user.superadmin_revoked',
+        actorType: 'admin',
+        visibility: 'internal',
+        targetType: 'User',
+        targetId: input.id,
+      })
       return { success: true }
     }),
 
@@ -299,6 +384,17 @@ export const adminRouter = createTRPCRouter({
       // Invalidate cached feature permissions and dehydrated state
       await onCacheEvent('plan.changed', { orgId: input.organizationId })
 
+      await recordAuditFromCtx(ctx, {
+        organizationId: input.organizationId,
+        category: 'billing',
+        action: 'org.plan_changed',
+        actorType: 'admin',
+        visibility: 'internal',
+        targetType: 'Organization',
+        targetId: input.organizationId,
+        metadata: { planName: input.planName, billingCycle: input.billingCycle ?? null },
+      })
+
       return { success: true }
     }),
 
@@ -316,10 +412,21 @@ export const adminRouter = createTRPCRouter({
           .default('demo'),
       })
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
       const { OrganizationSeeder } = await import('@auxx/seed')
       await OrganizationSeeder.seedOrganization(input.organizationId, input.mode, input.scenario)
       await flushOrganization(input.organizationId)
+
+      await recordAuditFromCtx(ctx, {
+        organizationId: input.organizationId,
+        category: 'settings',
+        action: 'org.seeded',
+        actorType: 'admin',
+        visibility: 'internal',
+        targetType: 'Organization',
+        targetId: input.organizationId,
+        metadata: { mode: input.mode, scenario: input.scenario },
+      })
 
       return {
         success: true,
@@ -589,6 +696,21 @@ export const adminRouter = createTRPCRouter({
         })
 
         await onCacheEvent('plan.changed', { orgId: input.organizationId })
+
+        await recordAuditFromCtx(ctx, {
+          organizationId: input.organizationId,
+          category: 'billing',
+          action: 'subscription.created_by_admin',
+          actorType: 'admin',
+          visibility: 'internal',
+          targetType: 'Organization',
+          targetId: input.organizationId,
+          metadata: {
+            planName: input.planName,
+            billingCycle: input.billingCycle,
+            status: input.status,
+          },
+        })
 
         return { success: true }
       }),
@@ -1291,8 +1413,17 @@ export const adminRouter = createTRPCRouter({
    */
   flushOrgCache: superAdminProcedure
     .input(z.object({ organizationId: z.string() }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
       await flushOrganization(input.organizationId)
+      await recordAuditFromCtx(ctx, {
+        organizationId: input.organizationId,
+        category: 'settings',
+        action: 'org.cache_flushed',
+        actorType: 'admin',
+        visibility: 'internal',
+        targetType: 'Organization',
+        targetId: input.organizationId,
+      })
       return { success: true }
     }),
 
@@ -1317,10 +1448,30 @@ export const adminRouter = createTRPCRouter({
 
       if (input?.organizationId) {
         const result = await runEntityMigrationsForOrg(ctx.db, input.organizationId)
+        await recordAuditFromCtx(ctx, {
+          organizationId: input.organizationId,
+          category: 'settings',
+          action: 'org.migrations_run',
+          actorType: 'admin',
+          visibility: 'internal',
+          targetType: 'Organization',
+          targetId: input.organizationId,
+          metadata: { scope: 'single' },
+        })
         return { migrations, results: [result] }
       }
 
       const results = await runAllEntityMigrations(ctx.db)
+      await recordAuditFromCtx(ctx, {
+        organizationId: null,
+        category: 'settings',
+        action: 'org.migrations_run',
+        actorType: 'admin',
+        visibility: 'internal',
+        targetType: 'Organization',
+        targetId: null,
+        metadata: { scope: 'all', orgCount: results.length },
+      })
       return { migrations, results }
     }),
 })

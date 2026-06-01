@@ -47,6 +47,14 @@ export const organizationRouter = createTRPCRouter({
           type,
           website,
         })
+        await recordAuditFromCtx(ctx, {
+          organizationId: result.id,
+          category: 'settings',
+          action: 'org.created',
+          targetType: 'Organization',
+          targetId: result.id,
+          metadata: { name, handle, type },
+        })
         return result
       } catch (error) {
         logger.error('Failed to create organization', { error, userId, name, handle })
@@ -415,6 +423,14 @@ export const organizationRouter = createTRPCRouter({
 
       await onCacheEvent('member.removed', { orgId: organizationId, userId })
 
+      await recordAuditFromCtx(ctx, {
+        organizationId,
+        category: 'members',
+        action: 'member.left',
+        targetType: 'User',
+        targetId: userId,
+      })
+
       return { success: true }
     }),
 
@@ -443,6 +459,14 @@ export const organizationRouter = createTRPCRouter({
           const dehydrationService = new DehydrationService(ctx.db)
           await dehydrationService.invalidateUser(sessionUser.id)
         }
+
+        await recordAuditFromCtx(ctx, {
+          organizationId: input.organizationId,
+          category: 'settings',
+          action: 'org.delete_requested',
+          targetType: 'Organization',
+          targetId: input.organizationId,
+        })
 
         return result
       } catch (error) {

@@ -10,11 +10,13 @@ import {
 import { configService } from '@auxx/credentials'
 import { database, schema } from '@auxx/database' // Drizzle database for services
 import { recordAudit } from '@auxx/lib/audit-log'
-import { onCacheEvent } from '@auxx/lib/cache'
+import { getUserCache, onCacheEvent } from '@auxx/lib/cache'
+import type { DehydratedUser } from '@auxx/lib/dehydration'
 import { enqueueEmailJob } from '@auxx/lib/jobs'
 import { seedNewUserDatabase } from '@auxx/lib/seed'
 import { getUserById } from '@auxx/lib/users'
 import { createScopedLogger } from '@auxx/logger'
+import { getRedisClient } from '@auxx/redis'
 import { passkey } from '@better-auth/passkey'
 import { betterAuth } from 'better-auth' // core lib
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
@@ -113,6 +115,18 @@ const SECURITY_AUDIT_PATHS: Record<string, string> = {
   '/passkey/delete-passkey': 'passkey.removed',
 }
 
+/**
+ * Auth paths whose failures are recorded as `auth.signin_failed` (security). The
+ * `hooks.after` wrapper runs even on failure, so we audit when one of these returns an
+ * APIError. Email/password is the brute-force surface; 2FA verify covers failed second
+ * factors. OAuth failures mostly surface at the callback, so coverage there is partial.
+ */
+const SIGNIN_FAILURE_PATHS = new Set([
+  '/sign-in/email',
+  '/sign-in/social',
+  '/two-factor/verify-totp',
+])
+
 // export auth.api
 export const auth = betterAuth({
   database: drizzleAdapter(database, { provider: 'pg', schema }), // use your dialect
@@ -171,6 +185,32 @@ export const auth = betterAuth({
     // so we observe them here. The after hook runs even on failure, so we skip
     // any request whose endpoint returned an APIError.
     after: createAuthMiddleware(async (ctx) => {
+      // Failed sign-in attempts (security). The after hook runs on failure too, so a
+      // sign-in path that returned an APIError is a rejected authentication. No
+      // authenticated identity exists, so we log the attempted email + IP/UA for review
+      // rather than a real actor. Internal visibility keeps the noise out of the customer
+      // feed; no email→userId lookup, to avoid DB amplification during a brute-force burst.
+      if (SIGNIN_FAILURE_PATHS.has(ctx.path) && ctx.context.returned instanceof APIError) {
+        const attemptedEmail = (ctx.body as { email?: unknown } | undefined)?.email
+        await recordAudit({
+          organizationId: null,
+          category: 'auth',
+          action: 'auth.signin_failed',
+          actorType: 'user',
+          actorId: null,
+          targetType: 'User',
+          targetId: null,
+          visibility: 'internal',
+          metadata: {
+            attemptedEmail: typeof attemptedEmail === 'string' ? attemptedEmail : null,
+            reason: ctx.context.returned.message ?? null,
+            path: ctx.path,
+          },
+          context: requestAuditContext(ctx.request?.headers),
+        })
+        return
+      }
+
       const action = SECURITY_AUDIT_PATHS[ctx.path]
       if (!action) return
       if (ctx.context.returned instanceof APIError) return
@@ -258,6 +298,31 @@ export const auth = betterAuth({
             targetType: 'User',
             targetId: account.userId,
             metadata: { provider: account.providerId },
+          })
+        },
+      },
+    },
+    session: {
+      create: {
+        // Fires once per real authentication (every provider, after 2FA), so this is the
+        // authoritative "user signed in" record — distinct from the throttled `auth.login`
+        // session-activity heartbeat in customSession. better-auth persists ipAddress/userAgent
+        // on the Session row, so we keep IP/UA here even though databaseHooks get no HTTP request.
+        after: async (session) => {
+          const user = await getUserById(session.userId)
+          await recordAudit({
+            organizationId: user?.defaultOrganizationId ?? null,
+            category: 'auth',
+            action: 'auth.signin',
+            actorType: 'user',
+            actorId: session.userId,
+            targetType: 'User',
+            targetId: session.userId,
+            context: {
+              ipAddress: session.ipAddress ?? null,
+              userAgent: session.userAgent ?? null,
+              sessionId: session.id,
+            },
           })
         },
       },
@@ -536,43 +601,55 @@ export const auth = betterAuth({
         preferredTimezone?: string | null
       }
 
-      // Verify user still exists in DB (session may reference a deleted user)
-      const dbUser = await getUserById(extendedUser.id)
-      if (!dbUser) {
+      // Load the cached user profile (Redis-backed, ~1-day TTL) instead of a per-request
+      // `getUserById` DB SELECT. This callback runs on every getSession (every page load,
+      // tRPC call, API route), so that query was the hottest read in the app. The profile
+      // carries existence, userType, and auth metadata. `userProfileProvider.compute`
+      // throws when the user no longer exists, so a throw means the session references a
+      // deleted user — invalidate it. The cache is flushed on user delete/ban/etc.
+      // (getUserCache().invalidateUser), so revocation stays prompt.
+      let userProfile: DehydratedUser
+      try {
+        userProfile = await getUserCache().get(extendedUser.id, 'userProfile')
+      } catch (error) {
         logger.warn('Session references non-existent user, invalidating', {
           userId: extendedUser.id,
+          error: error instanceof Error ? error.message : String(error),
         })
         return null
       }
 
       // Agents never have sessions. If a session was somehow created against
       // an AGENT user, invalidate it.
-      if ((dbUser as { userType?: string }).userType === 'AGENT') {
+      if (userProfile.userType === 'AGENT') {
         logger.warn('Session references AGENT user, invalidating', {
           userId: extendedUser.id,
         })
         return null
       }
 
+      // Hydrate org id from the profile when the cookie session predates it (rare cold path).
       if (!extendedUser.defaultOrganizationId) {
-        Object.assign(extendedUser, dbUser)
+        extendedUser.defaultOrganizationId = userProfile.defaultOrganizationId
       }
 
-      // Update lastLoginAt only if cache is expired (respects session.cookieCache.maxAge)
-      // This prevents database writes on every request while still tracking login activity
-      const shouldUpdateLogin =
-        !extendedUser.lastLoginAt ||
-        new Date().getTime() - new Date(extendedUser.lastLoginAt).getTime() > 3600000 // 1 hour
+      // Track the "active login" signal (lastLoginAt write + auth.login audit) at most
+      // once/hour per user. Gate on a dedicated Redis NX key, NOT a cached/cookie
+      // lastLoginAt: the fire-and-forget write below doesn't refresh those, so gating on
+      // them re-fires every request (the audit-row spam we saw). `getRedisClient(false)`
+      // returns undefined on outage → we skip the side effect rather than block session
+      // hydration or spam audits.
+      const redis = await getRedisClient(false)
+      const isFirstLoginThisHour =
+        (await redis?.set(`auth:login-throttle:${extendedUser.id}`, '1', 'NX', 'EX', 3600)) === 'OK'
 
-      if (shouldUpdateLogin) {
+      if (isFirstLoginThisHour) {
         const { eq } = await import('drizzle-orm')
-        // Fire-and-forget to avoid blocking the session response
+        const now = new Date()
+        // Fire-and-forget to avoid blocking the session response.
         database
           .update(schema.User)
-          .set({
-            lastLoginAt: new Date(),
-            updatedAt: new Date(),
-          })
+          .set({ lastLoginAt: now, updatedAt: now })
           .where(eq(schema.User.id, extendedUser.id))
           .catch((error) => {
             logger.error('Failed to update lastLoginAt', {
@@ -580,12 +657,9 @@ export const auth = betterAuth({
               error: error instanceof Error ? error.message : String(error),
             })
           })
+        extendedUser.lastLoginAt = now
 
-        // Update in-memory to prevent multiple updates within the same session
-        extendedUser.lastLoginAt = new Date()
-
-        // Throttled to the lastLoginAt cadence (≤ once/hour), so this is the
-        // "active login" signal. Fire-and-forget — never block session hydration.
+        // Throttled to ≤ once/hour — the "active login" signal. Fire-and-forget.
         void recordAudit({
           organizationId: extendedUser.defaultOrganizationId ?? null,
           category: 'auth',
@@ -598,7 +672,7 @@ export const auth = betterAuth({
         })
       }
 
-      // Fetch avatar URL if user has an avatar asset
+      // Avatar URL — keep the cookie value (the MediaAssetService path remains a TODO).
       const avatarUrl: string | null = extendedUser.image || null
       // if (extendedUser.avatarAssetId && extendedUser.defaultOrganizationId) {
       //   const { MediaAssetService } = await import('@auxx/lib/files')
@@ -610,24 +684,16 @@ export const auth = betterAuth({
       //   avatarUrl = await mediaAssetService.getDownloadUrl(extendedUser.avatarAssetId)
       // }
 
-      // Get user's authentication providers from cache (avoids 12+ redundant DB queries per page load)
-      const { getUserCache } = await import('@auxx/lib/cache')
-      const userProfile = await getUserCache().get(extendedUser.id, 'userProfile')
-
-      const oauthProviders = userProfile?.providers ?? []
-      const hasPassword = userProfile?.hasPassword ?? false
-      const registrationMethod = userProfile?.registrationMethod ?? 'oauth'
-
       return {
         ...session,
         user: {
           ...extendedUser,
-          image: avatarUrl, // Replace image with avatarUrl from MediaAssetService
-          providers: oauthProviders,
-          registrationMethod,
-          hasPassword,
+          image: avatarUrl,
+          providers: userProfile.providers,
+          registrationMethod: userProfile.registrationMethod,
+          hasPassword: userProfile.hasPassword,
           preferredTimezone: extendedUser.preferredTimezone || 'UTC',
-          lastLoginAt: extendedUser.lastLoginAt,
+          lastLoginAt: extendedUser.lastLoginAt ?? userProfile.lastLoginAt,
           forcePasswordChange: extendedUser.forcePasswordChange ?? false,
         },
       }

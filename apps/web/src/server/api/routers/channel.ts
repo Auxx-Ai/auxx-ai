@@ -247,6 +247,14 @@ export const channelRouter = createTRPCRouter({
 
       await onCacheEvent('channel.connected', { orgId: organizationId })
 
+      await recordAuditFromCtx(ctx, {
+        category: 'integrations',
+        action: 'integration.connected',
+        targetType: 'Channel',
+        targetId: (result as { id?: string } | null)?.id ?? null,
+        metadata: { provider: 'openphone', phoneNumber: input.phoneNumber },
+      })
+
       return result
     }),
 
@@ -319,6 +327,14 @@ export const channelRouter = createTRPCRouter({
       })
 
       await onCacheEvent('channel.connected', { orgId: organizationId })
+
+      await recordAuditFromCtx(ctx, {
+        category: 'integrations',
+        action: 'integration.connected',
+        targetType: 'Channel',
+        targetId: integrationId,
+        metadata: { provider: 'chat', name: input.name },
+      })
 
       return { success: true, integrationId }
     }),
@@ -514,6 +530,14 @@ export const channelRouter = createTRPCRouter({
       })
 
       await onCacheEvent('channel.connected', { orgId: organizationId })
+
+      await recordAuditFromCtx(ctx, {
+        category: 'integrations',
+        action: 'integration.connected',
+        targetType: 'Channel',
+        targetId: channelId,
+        metadata: { provider: 'chat', name: widgetName },
+      })
 
       return { channelId }
     }),

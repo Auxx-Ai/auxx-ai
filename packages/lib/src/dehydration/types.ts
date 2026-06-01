@@ -94,6 +94,11 @@ export interface DehydratedUser {
   hasPassword: boolean
   isSuperAdmin: boolean
   registrationMethod: 'oauth' | 'email' | 'phone' | 'mixed'
+  // Session revocation metadata — lets the auth session callback validate the user
+  // (existence, type, ban/force-change) from this cache instead of a per-request DB read.
+  userType: 'USER' | 'SYSTEM' | 'AGENT'
+  banned: boolean
+  forcePasswordChange: boolean
   memberships: Array<{
     id: string
     userId: string
