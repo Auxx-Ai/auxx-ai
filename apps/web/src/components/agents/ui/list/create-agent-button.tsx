@@ -1,6 +1,7 @@
 // apps/web/src/components/agents/ui/list/create-agent-button.tsx
 'use client'
 
+import { FeatureKey } from '@auxx/lib/permissions/client'
 import { AnimatedGradientText } from '@auxx/ui/components/animated-gradient-text'
 import { Button } from '@auxx/ui/components/button'
 import {
@@ -12,7 +13,10 @@ import {
 import { Bot, LayoutTemplate, Plus } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useCallback, useState } from 'react'
+import { LimitReachedDialog } from '~/components/subscriptions/limit-reached-dialog'
+import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { useAgentMutations } from '../../hooks/use-agent-mutations'
+import { useAgentStore } from '../../store/agent-store'
 import { AgentTemplateDialog } from '../dialogs/agent-template-dialog'
 
 /**
@@ -26,6 +30,14 @@ export function CreateAgentButton() {
   const { createAgent, isCreating } = useAgentMutations()
   const [isRedirecting, setIsRedirecting] = useState(false)
   const [templateDialogOpen, setTemplateDialogOpen] = useState(false)
+  const [limitDialogOpen, setLimitDialogOpen] = useState(false)
+
+  const { isAtLimit, getLimit } = useFeatureFlags()
+  const agentCount = useAgentStore(
+    (s) => s.agents.filter((a) => !s.optimisticArchived.has(a.id)).length
+  )
+  const atLimit = isAtLimit(FeatureKey.agentsLimit, agentCount)
+  const agentLimit = getLimit(FeatureKey.agentsLimit)
 
   const isBusy = isCreating || isRedirecting
 
@@ -41,6 +53,30 @@ export function CreateAgentButton() {
     // this one tears down the state. Clearing it now would flash the
     // button back to idle while the next route bootstraps.
   }, [createAgent, router])
+
+  // No allowance on the current plan — gate creation behind an upgrade prompt.
+  if (atLimit) {
+    const hasNoAllowance = agentLimit === 0 || agentLimit === false
+    return (
+      <>
+        <Button size='sm' onClick={() => setLimitDialogOpen(true)}>
+          <Plus />
+          Create agent
+        </Button>
+        <LimitReachedDialog
+          open={limitDialogOpen}
+          onOpenChange={setLimitDialogOpen}
+          icon={Bot}
+          title={hasNoAllowance ? 'Agents Not Available' : 'Agent Limit Reached'}
+          description={
+            hasNoAllowance
+              ? 'Creating AI agents isn’t included in your current plan. Upgrade to build your own agents.'
+              : `You've reached the maximum of ${agentLimit} agents on your current plan.`
+          }
+        />
+      </>
+    )
+  }
 
   return (
     <>

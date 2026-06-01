@@ -6,6 +6,7 @@ import { onCacheEvent, storeOAuthCsrfToken } from '@auxx/lib/cache'
 import {
   addExcludedSender as addExcludedSenderToChannel,
   addOpenPhoneChannel,
+  countBillableChannels,
   createChannel,
   disconnect as disconnectChannel,
   getAllStats,
@@ -51,15 +52,7 @@ async function checkChannelLimit(db: Database, organizationId: string) {
   const featureService = new FeaturePermissionService(db)
   const limit = await featureService.getLimit(organizationId, FeatureKey.channels)
   if (typeof limit === 'number' && limit >= 0) {
-    const [{ value: current }] = await db
-      .select({ value: count() })
-      .from(schema.Integration)
-      .where(
-        and(
-          eq(schema.Integration.organizationId, organizationId),
-          isNull(schema.Integration.deletedAt)
-        )
-      )
+    const current = await countBillableChannels(db, organizationId)
     if (current >= limit) {
       throw new TRPCError({
         code: 'FORBIDDEN',

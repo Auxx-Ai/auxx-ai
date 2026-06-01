@@ -5,6 +5,7 @@ import { isSelfHosted } from '@auxx/deployment'
 import { and, count, eq, isNull } from 'drizzle-orm'
 import { getAppCache } from '../cache'
 import { getOrgCache } from '../cache/singletons'
+import { countBillableChannels } from '../channels'
 import { createScopedLogger } from '../logger'
 import type { FeatureDefinition } from './types'
 import { FEATURE_REGISTRY_MAP, FeatureKey, parseFeatureLimits } from './types'
@@ -230,18 +231,8 @@ export class OverageDetectionService {
         return result?.value ?? 0
       }
 
-      case FeatureKey.channels: {
-        const [result] = await this.db
-          .select({ value: count() })
-          .from(schema.Integration)
-          .where(
-            and(
-              eq(schema.Integration.organizationId, organizationId),
-              isNull(schema.Integration.deletedAt)
-            )
-          )
-        return result?.value ?? 0
-      }
+      case FeatureKey.channels:
+        return countBillableChannels(this.db, organizationId)
 
       case FeatureKey.workflowsLimit: {
         const [result] = await this.db

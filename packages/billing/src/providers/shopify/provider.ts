@@ -3,6 +3,7 @@
 import { configService } from '@auxx/credentials'
 import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
+import { createScopedLogger } from '@auxx/logger'
 import { eq } from 'drizzle-orm'
 import { computePlanPreviewBase } from '../../services/preview-base'
 import { BillingError, ErrorCode } from '../../utils/error-codes'
@@ -20,7 +21,9 @@ import type {
 } from '../types'
 import { type ActiveSubscription, getActiveSubscription } from './active-subscription'
 import { mapActiveSubscriptionToStatus } from './status-mapping'
-import { dispatchShopifyBillingWebhook } from './webhook'
+import { cancelSubscriptionByShop, resolveOrgIdByShopDomain } from './webhook'
+
+const logger = createScopedLogger('billing/shopify/provider')
 
 /**
  * Shopify App Pricing adapter. Plans live in the Partner Dashboard; Shopify hosts the
@@ -33,7 +36,7 @@ export class ShopifyBillingProvider implements BillingProvider {
   readonly id = 'shopify' as const
   readonly capabilities: BillingCapabilities = {
     managedPaymentMethods: false, // Shopify Admin owns the card
-    selfServeBillingPortal: false, // No portal URL — we deep-link to /admin/charges
+    selfServeBillingPortal: false, // No portal API — we deep-link to Shopify Admin org billing
     prorationPreview: false, // Shopify prorates but does not preview
     arbitraryBillingCycles: false, // Monthly + annual only
     trialWithoutPaymentMethod: true, // Per-plan trial in Partner Dashboard
@@ -80,7 +83,7 @@ export class ShopifyBillingProvider implements BillingProvider {
     throw new BillingError(
       ErrorCode.OPERATION_NOT_SUPPORTED,
       'Shopify subscriptions are canceled by the merchant from Shopify Admin. ' +
-        'Direct them to https://{shop}/admin/charges to manage.'
+        'Direct them to Settings → Apps → Auxx to manage the subscription.'
     )
   }
 
@@ -99,7 +102,8 @@ export class ShopifyBillingProvider implements BillingProvider {
     if (!row?.shopifyShopDomain) {
       throw new BillingError(ErrorCode.NO_CUSTOMER_FOUND, 'No Shopify shop linked to this org')
     }
-    return { url: `https://${row.shopifyShopDomain}/admin/charges` }
+    const storeHandle = extractStoreHandle(row.shopifyShopDomain)
+    return { url: `https://admin.shopify.com/store/${storeHandle}/settings/organization-billing` }
   }
 
   async calculatePreview(input: PreviewInput): Promise<PreviewResult> {
@@ -128,16 +132,51 @@ export class ShopifyBillingProvider implements BillingProvider {
     }
   }
 
-  async processWebhook(input: ProcessWebhookInput): Promise<{ success: boolean }> {
+  /**
+   * Dispatches a Shopify billing webhook by topic. Contrary to the original App Pricing
+   * assumption, Shopify DOES deliver `app_subscriptions/update` (on approve/change/cancel)
+   * and `app/uninstalled`. Topics arrive in the REST header form (lowercase + slash), not
+   * the GraphQL enum. HMAC is pre-verified by the route. Returns the affected
+   * `organizationId` so the caller can invalidate org cache.
+   */
+  async processWebhook(
+    input: ProcessWebhookInput
+  ): Promise<{ success: boolean; organizationId?: string | null }> {
     if (input.rawBody == null || input.topic == null) {
       throw new Error('Shopify webhook requires rawBody and topic')
     }
-    return dispatchShopifyBillingWebhook({
-      db: input.db,
-      rawBody: input.rawBody,
-      topic: input.topic,
-      shopDomain: input.shopDomain ?? '',
-    })
+    const shopDomain = input.shopDomain ?? ''
+    const organizationId = await resolveOrgIdByShopDomain(input.db, shopDomain)
+
+    switch (input.topic) {
+      // Subscription created/approved/changed/cancelled on Shopify. Re-read the Admin API
+      // for the authoritative contract + plan resolution (reuses syncFromAdminApi).
+      case 'app_subscriptions/update':
+        if (organizationId) {
+          // Don't 500 the webhook on a transient Admin API failure (e.g. token mid-
+          // rotation) — Shopify would retry noisily and the 15-min worker poll backstops.
+          try {
+            await this.syncFromAdminApi(organizationId)
+          } catch (err) {
+            logger.error('syncFromAdminApi failed handling app_subscriptions/update', {
+              organizationId,
+              error: err instanceof Error ? err.message : String(err),
+            })
+          }
+        } else {
+          logger.warn('app_subscriptions/update for unknown shop', { shopDomain })
+        }
+        return { success: true, organizationId }
+
+      // Token is revoked at uninstall, so cancel directly rather than via the Admin API.
+      case 'app/uninstalled':
+        await cancelSubscriptionByShop(input.db, shopDomain)
+        return { success: true, organizationId }
+
+      default:
+        logger.info('Unhandled Shopify billing webhook topic', { topic: input.topic })
+        return { success: true, organizationId }
+    }
   }
 
   /**

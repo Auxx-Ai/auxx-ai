@@ -26,37 +26,28 @@ export function verifyShopifyHmac(rawBody: string, hmacHeader: string | null | u
   }
 }
 
-export interface DispatchShopifyWebhookInput {
-  db: Database
-  rawBody: string
-  topic: string
-  shopDomain: string
-}
-
-export async function dispatchShopifyBillingWebhook(
-  input: DispatchShopifyWebhookInput
-): Promise<{ success: boolean }> {
-  const { db, topic, shopDomain } = input
-
-  switch (topic) {
-    case 'APP_UNINSTALLED':
-      return handleAppUninstalled(db, shopDomain)
-    default:
-      // App Pricing delivers no billing webhooks to apps enrolled after April 2026.
-      // Subscription state changes are read from the Admin API (see provider's
-      // syncFromAdminApi + the worker poll). Uninstall is the only kept webhook.
-      logger.info('Unhandled Shopify billing webhook topic', { topic })
-      return { success: true }
-  }
-}
-
-async function handleAppUninstalled(
+/** Resolves the org that owns a shop from the denormalized PlanSubscription row. */
+export async function resolveOrgIdByShopDomain(
   db: Database,
   shopDomain: string
-): Promise<{ success: boolean }> {
+): Promise<string | null> {
+  if (!shopDomain) return null
+  const row = await db.query.PlanSubscription.findFirst({
+    where: (s, { eq: e }) => e(s.shopifyShopDomain, shopDomain),
+    columns: { organizationId: true },
+  })
+  return row?.organizationId ?? null
+}
+
+/**
+ * Cancels the Shopify subscription for a shop. Used on `app/uninstalled` — the access
+ * token is revoked at uninstall, so we cannot read the Admin API and must mark the row
+ * canceled directly.
+ */
+export async function cancelSubscriptionByShop(db: Database, shopDomain: string): Promise<void> {
   if (!shopDomain) {
-    logger.warn('APP_UNINSTALLED with no shopDomain header')
-    return { success: true }
+    logger.warn('Uninstall webhook with no shopDomain header')
+    return
   }
   const now = new Date()
   const result = await db
@@ -65,6 +56,8 @@ async function handleAppUninstalled(
     .where(eq(schema.PlanSubscription.shopifyShopDomain, shopDomain))
     .returning({ id: schema.PlanSubscription.id })
 
-  logger.info('APP_UNINSTALLED fan-out applied', { shopDomain, rowsUpdated: result.length })
-  return { success: true }
+  logger.info('Shopify subscription canceled on uninstall', {
+    shopDomain,
+    rowsUpdated: result.length,
+  })
 }

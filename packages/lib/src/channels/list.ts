@@ -1,7 +1,7 @@
 // packages/lib/src/channels/list.ts
 
-import { schema } from '@auxx/database'
-import { and, eq, inArray, isNull } from 'drizzle-orm'
+import { type Database, schema } from '@auxx/database'
+import { and, count, eq, inArray, isNull, sql } from 'drizzle-orm'
 import { getOrgCache } from '../cache'
 import { getImportCacheSize } from '../email/polling-import-cache'
 import { NotFoundError } from '../errors'
@@ -80,6 +80,30 @@ export async function list(ctx: ChannelCtx) {
   })
 
   return { channels }
+}
+
+/**
+ * Count channels that consume the org's `channels` plan limit.
+ *
+ * Excludes auto-provisioned channels the user didn't create and shouldn't be
+ * billed for: the system-managed `*@mail.auxx.ai` forwarding address
+ * (`metadata.systemManaged === true`) and seeded example integrations
+ * (`isExample`). Soft-deleted rows are excluded too. Used by both the
+ * channel-create guard and overage detection so the two stay in sync.
+ */
+export async function countBillableChannels(db: Database, organizationId: string): Promise<number> {
+  const [result] = await db
+    .select({ value: count() })
+    .from(schema.Integration)
+    .where(
+      and(
+        eq(schema.Integration.organizationId, organizationId),
+        isNull(schema.Integration.deletedAt),
+        eq(schema.Integration.isExample, false),
+        sql`coalesce(${schema.Integration.metadata}->>'systemManaged', 'false') <> 'true'`
+      )
+    )
+  return result?.value ?? 0
 }
 
 /**

@@ -149,9 +149,12 @@ export function IdentitySection({ widget, channelId }: IdentitySectionProps) {
             stateLabel={stateLabel}
             stateBadgeVariant={stateBadgeVariant}
             canEnforce={canEnforce}
+            hasKeys={chatKeys.length > 0}
+            creatingKey={createKey.isPending}
             isPending={updateChannel.isPending}
             disabled={audienceDisabled}
             onOpenGeneral={() => setActiveSection('general')}
+            onCreateKey={handleCreate}
             onTransition={(next) =>
               updateChannel.mutate({ integrationId: channelId, identityVerification: next })
             }
@@ -308,10 +311,13 @@ interface EnforcementCardProps {
   stateLabel: string
   stateBadgeVariant: 'gray' | 'amber' | 'green'
   canEnforce: boolean
+  hasKeys: boolean
+  creatingKey: boolean
   isPending: boolean
   disabled?: boolean
   onTransition: (next: EnforcementState) => void
   onOpenSetup: () => void
+  onCreateKey: () => void
   onOpenGeneral?: () => void
 }
 
@@ -320,10 +326,13 @@ function EnforcementCard({
   stateLabel,
   stateBadgeVariant,
   canEnforce,
+  hasKeys,
+  creatingKey,
   isPending,
   disabled,
   onTransition,
   onOpenSetup,
+  onCreateKey,
   onOpenGeneral,
 }: EnforcementCardProps) {
   return (
@@ -345,38 +354,57 @@ function EnforcementCard({
             'All chat write requests must carry a valid JWT. Visitors without one are rejected.'}
         </p>
 
-        <div className='mt-4 flex items-center gap-3 rounded-md border border-border bg-background px-3 py-2 text-xs'>
-          <div
-            className={
-              canEnforce
-                ? 'flex size-6 shrink-0 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-700 ring-1 ring-emerald-500/20 dark:text-emerald-400'
-                : 'flex size-6 shrink-0 items-center justify-center rounded-full bg-background text-xs font-medium ring-1 ring-border'
-            }>
-            {canEnforce ? <Check className='size-3.5' /> : '1'}
-          </div>
-          <div className='flex-1'>
-            <div className='text-sm font-medium text-foreground'>
-              {canEnforce ? 'JWT-signed traffic seen' : 'Wire up your widget with a userJwt'}
+        <div className='mt-4 space-y-2'>
+          <div className='flex items-center gap-3 rounded-md border border-border bg-background px-3 py-2 text-xs'>
+            <StepBadge done={hasKeys} index={1} />
+            <div className='flex-1'>
+              <div className='text-sm font-medium text-foreground'>
+                {hasKeys ? 'Signing key created' : 'Create a signing key'}
+              </div>
+              <div className='text-muted-foreground'>
+                {hasKeys
+                  ? 'Your server can sign JWTs with this per-channel secret.'
+                  : 'Create a per-channel secret your server signs JWTs with.'}
+              </div>
             </div>
-            <div className='text-muted-foreground'>
-              {canEnforce
-                ? 'Your widget is sending signed visitors. Safe to enforce.'
-                : 'Use the Verified setup snippet — server signs a JWT, widget boots with it.'}
-            </div>
+            {!hasKeys && (
+              <button
+                type='button'
+                onClick={onCreateKey}
+                disabled={creatingKey}
+                className='inline-flex shrink-0 items-center gap-1 font-medium text-primary hover:underline disabled:opacity-50'>
+                {creatingKey ? 'Creating…' : 'Create key'}
+              </button>
+            )}
           </div>
-          <button
-            type='button'
-            onClick={onOpenSetup}
-            className='inline-flex shrink-0 items-center gap-1 font-medium text-primary hover:underline'>
-            Open Setup
-            <ArrowUpRight className='size-3' />
-          </button>
+
+          <div className='flex items-center gap-3 rounded-md border border-border bg-background px-3 py-2 text-xs'>
+            <StepBadge done={canEnforce} index={2} />
+            <div className='flex-1'>
+              <div className='text-sm font-medium text-foreground'>
+                {canEnforce ? 'JWT-signed traffic seen' : 'Wire up your widget with a userJwt'}
+              </div>
+              <div className='text-muted-foreground'>
+                {canEnforce
+                  ? 'Your widget is sending signed visitors. Safe to enforce.'
+                  : 'Use the Verified setup snippet — server signs a JWT, widget boots with it.'}
+              </div>
+            </div>
+            <button
+              type='button'
+              onClick={onOpenSetup}
+              className='inline-flex shrink-0 items-center gap-1 font-medium text-primary hover:underline'>
+              Open Setup
+              <ArrowUpRight className='size-3' />
+            </button>
+          </div>
         </div>
 
         <div className='mt-3 flex items-center justify-end'>
           <EnforceActions
             state={state}
             canEnforce={canEnforce}
+            hasKeys={hasKeys}
             isPending={isPending}
             onTransition={onTransition}
           />
@@ -396,13 +424,38 @@ function EnforcementCard({
   )
 }
 
+function StepBadge({ done, index }: { done: boolean; index: number }) {
+  return (
+    <div
+      className={
+        done
+          ? 'flex size-6 shrink-0 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-700 ring-1 ring-emerald-500/20 dark:text-emerald-400'
+          : 'flex size-6 shrink-0 items-center justify-center rounded-full bg-background text-xs font-medium ring-1 ring-border'
+      }>
+      {done ? <Check className='size-3.5' /> : index}
+    </div>
+  )
+}
+
 function EnforceActions({
   state,
   canEnforce,
+  hasKeys,
   isPending,
   onTransition,
-}: Pick<EnforcementCardProps, 'state' | 'canEnforce' | 'isPending' | 'onTransition'>) {
+}: Pick<EnforcementCardProps, 'state' | 'canEnforce' | 'hasKeys' | 'isPending' | 'onTransition'>) {
   if (state === 'off') {
+    if (!hasKeys) {
+      return (
+        <Tooltip content='Create a signing key first — rollout signs JWTs with it.'>
+          <span>
+            <Button size='xs' variant='outline' disabled>
+              Start rollout
+            </Button>
+          </span>
+        </Tooltip>
+      )
+    }
     return (
       <Button
         size='xs'

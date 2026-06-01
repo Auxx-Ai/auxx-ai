@@ -11,6 +11,7 @@ import {
   listAgents,
   updateAgent as updateAgentService,
 } from '@auxx/lib/agents'
+import { FeatureKey, FeaturePermissionService } from '@auxx/lib/permissions'
 import { createScopedLogger } from '@auxx/logger'
 import { TRPCError } from '@trpc/server'
 import { z } from 'zod'
@@ -78,6 +79,13 @@ export const agentRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const { organizationId, userId } = ctx.session
       const args = input ?? {}
+
+      // Gate creation on the plan's agent allowance (0 on Free).
+      await new FeaturePermissionService().requireLimit(
+        organizationId,
+        FeatureKey.agentsLimit,
+        async () => (await listAgents(organizationId)).length
+      )
 
       if (args.slug && (await isAgentSlugTaken(organizationId, args.slug))) {
         throw new TRPCError({ code: 'CONFLICT', message: 'Slug already in use' })

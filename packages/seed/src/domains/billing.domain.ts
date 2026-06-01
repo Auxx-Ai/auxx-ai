@@ -55,17 +55,19 @@ const STATIC_LIMITS = {
     datasetsLimit: 1,
     entities: 5,
     importRowsLimit: 50,
+    agentsLimit: 2,
   },
   free: {
     teammates: 1,
     channels: 1,
     workflowsLimit: 3,
     savedViews: 10,
-    knowledgeBases: 0,
-    kbPublishedArticles: 0,
+    knowledgeBases: 1,
+    kbPublishedArticles: 8,
     datasetsLimit: 0,
     entities: 3,
     importRowsLimit: 50,
+    agentsLimit: 0,
   },
   starter: {
     teammates: -1,
@@ -77,6 +79,7 @@ const STATIC_LIMITS = {
     datasetsLimit: 5,
     entities: 10,
     importRowsLimit: 500,
+    agentsLimit: 5,
   },
   growth: {
     teammates: -1,
@@ -88,6 +91,7 @@ const STATIC_LIMITS = {
     datasetsLimit: -1,
     entities: -1,
     importRowsLimit: 1000,
+    agentsLimit: -1,
   },
   enterprise: {
     teammates: -1,
@@ -99,6 +103,7 @@ const STATIC_LIMITS = {
     datasetsLimit: -1,
     entities: -1,
     importRowsLimit: -1,
+    agentsLimit: -1,
   },
 } as const
 
@@ -123,7 +128,7 @@ const BOOLEAN_GATES = {
     agents: true,
   },
   free: {
-    knowledgeBase: false,
+    knowledgeBase: true,
     apiAccess: false,
     workflows: true,
     aiAgent: false,

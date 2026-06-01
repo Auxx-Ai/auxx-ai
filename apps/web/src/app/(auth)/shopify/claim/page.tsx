@@ -1,8 +1,11 @@
 // apps/web/src/app/(auth)/shopify/claim/page.tsx
 
+import { database, schema } from '@auxx/database'
 import { getOrgCache, getUserCache } from '@auxx/lib/cache'
+import { DehydrationService } from '@auxx/lib/dehydration'
 import { createScopedLogger } from '@auxx/logger'
 import { getRedisClient } from '@auxx/redis'
+import { eq } from 'drizzle-orm'
 import { cookies, headers } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { auth } from '~/auth/server'
@@ -59,20 +62,70 @@ export default async function ShopifyClaimPage({ searchParams }: PageProps) {
 
   const claim = JSON.parse(raw) as { shop: string }
 
-  // Cached user→org memberships (one Redis lookup) + per-org profile (cached).
-  // A Shopify store can be attached to more than one Auxx org, so we always show
-  // the picker with every workspace the user is in.
+  // Cached user→org memberships (one Redis lookup).
   const memberships = await getUserCache().get(session.user.id, 'userMemberships')
   const activeMemberships = memberships.filter((m) => m.status === 'ACTIVE')
+
+  const defaultOrgId =
+    (session.user as { defaultOrganizationId?: string | null }).defaultOrganizationId ?? null
+
+  // Short-circuit the picker when this shop is already linked to a single *live*
+  // workspace. Shopify's "Open app" re-runs the install → OAuth → claim round-trip on
+  // every open, so an already-billed merchant lands here repeatedly; drop them straight
+  // into that workspace instead of re-picking it. `incomplete`/`canceled` rows are
+  // excluded — those still belong in the picker → finalizeAppStoreInstall flow (resume
+  // plan selection / fresh link). A shop attached to >1 live org stays ambiguous → picker.
+  const liveLinkedOrgIds: string[] = []
+  for (const m of activeMemberships) {
+    const sub = await getOrgCache().get(m.organizationId, 'subscription')
+    const isLiveLink =
+      sub?.billingProvider === 'shopify' &&
+      sub.shopifyShopDomain === claim.shop &&
+      sub.status !== 'canceled' &&
+      sub.status !== 'incomplete'
+    logger.info('Claim short-circuit eval', {
+      claimShop: claim.shop,
+      organizationId: m.organizationId,
+      billingProvider: sub?.billingProvider ?? null,
+      shopifyShopDomain: sub?.shopifyShopDomain ?? null,
+      status: sub?.status ?? null,
+      isLiveLink,
+    })
+    if (isLiveLink) {
+      liveLinkedOrgIds.push(m.organizationId)
+    }
+  }
+
+  logger.info('Claim short-circuit decision', {
+    claimShop: claim.shop,
+    userId: session.user.id,
+    activeMembershipCount: activeMemberships.length,
+    liveLinkedOrgIds,
+    willRedirect: liveLinkedOrgIds.length === 1,
+  })
+
+  if (liveLinkedOrgIds.length === 1) {
+    const targetOrgId = liveLinkedOrgIds[0]
+    // Make the linked workspace active before bouncing into the app, otherwise `/app`
+    // would open whatever the user's current default org is.
+    if (defaultOrgId !== targetOrgId) {
+      await database
+        .update(schema.User)
+        .set({ defaultOrganizationId: targetOrgId, updatedAt: new Date() })
+        .where(eq(schema.User.id, session.user.id))
+      await new DehydrationService(database).invalidateUser(session.user.id)
+    }
+    redirect('/app')
+  }
+
+  // A Shopify store can be attached to more than one Auxx org, so show the picker with
+  // every workspace the user is in (per-org profile is cached).
   const orgs = await Promise.all(
     activeMemberships.map(async (m) => {
       const profile = await getOrgCache().get(m.organizationId, 'orgProfile')
       return { id: profile.id, name: profile.name, handle: profile.handle }
     })
   )
-
-  const defaultOrgId =
-    (session.user as { defaultOrganizationId?: string | null }).defaultOrganizationId ?? null
 
   return (
     <ClaimFlow

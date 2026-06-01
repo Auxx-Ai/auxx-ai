@@ -66,6 +66,7 @@ export function GeneralSection({ widget, channelId, onDelete }: GeneralSectionPr
   const update = api.channel.updateChatWidgetIntegration.useMutation({
     onSuccess: () => {
       utils.channel.getChatWidgetIntegration.invalidate({ integrationId: channelId })
+      utils.channel.getChatIdentityState.invalidate({ channelId })
       utils.channel.list.invalidate()
     },
     onError: (e) => toastError({ title: 'Failed to save', description: e.message }),
@@ -284,7 +285,13 @@ export function GeneralSection({ widget, channelId, onDelete }: GeneralSectionPr
               <>
                 <RadioTab
                   value={field.value}
-                  onValueChange={(v) => field.onChange(v as ChatAudience)}
+                  onValueChange={(v) => {
+                    const next = v as ChatAudience
+                    field.onChange(next)
+                    // Persist immediately (like inbox/privacy/domains) so the
+                    // Identity tab unlocks without a separate "Save Changes".
+                    update.mutate({ integrationId: channelId, chatAudience: next })
+                  }}
                   size='sm'
                   radioGroupClassName='grid w-full grid-cols-3'
                   className='border border-primary-200 flex w-full mb-3'>
