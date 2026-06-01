@@ -13,6 +13,12 @@ export {
 } from './shopify-billing-sync-job'
 
 export {
+  type ShopifySeatUsageJobData,
+  type ShopifySeatUsageResult,
+  shopifySeatUsageJob,
+} from './shopify-seat-usage-job'
+
+export {
   type StripeSubscriptionSyncJobData,
   type StripeSubscriptionSyncResult,
   stripeSubscriptionSyncJob,

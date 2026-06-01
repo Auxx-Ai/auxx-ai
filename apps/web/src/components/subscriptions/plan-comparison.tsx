@@ -4,6 +4,7 @@
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { useEffect, useState } from 'react'
 import { useUser } from '~/hooks/use-user'
+import { useDehydratedSubscription } from '~/providers/dehydrated-state-provider'
 import { api } from '~/trpc/react'
 import { BillingCycleToggle } from './billing-cycle-toggle'
 import { HorizontalPlanCard } from './horizontal-plan-card'
@@ -54,6 +55,10 @@ export function PlanComparison({
 
   const [billingCycle, setBillingCycle] = useState<'MONTHLY' | 'ANNUAL'>('MONTHLY')
 
+  // Shopify is monthly-only (per-seat is billed as usage, which can't ride an annual cycle).
+  // Default a missing capability to `true` (Stripe/unknown → annual offered). See plan 15.
+  const annualBillingCycle = useDehydratedSubscription()?.capabilities.annualBillingCycle ?? true
+
   const [initialCycleSet, setInitialCycleSet] = useState(false) // Flag to set default only once
 
   const { data: plans, isLoading: plansLoading } = api.billing.getPlans.useQuery()
@@ -66,6 +71,12 @@ export function PlanComparison({
   useEffect(() => {
     // Only run if subscription data is loaded and we haven't set the initial cycle yet
     if (!subscriptionLoading && !initialCycleSet) {
+      // Monthly-only providers (Shopify) stay pinned to MONTHLY — never copy a cycle in.
+      if (!annualBillingCycle) {
+        setBillingCycle('MONTHLY')
+        setInitialCycleSet(true)
+        return
+      }
       // Check if there's an active, non-trial subscription with a billing cycle
       if (
         subscription?.billingCycle &&
@@ -81,7 +92,7 @@ export function PlanComparison({
       // Mark that we've attempted to set the initial state
       setInitialCycleSet(true)
     }
-  }, [subscription, subscriptionLoading, initialCycleSet]) // Dependencies
+  }, [subscription, subscriptionLoading, initialCycleSet, annualBillingCycle]) // Dependencies
 
   // Filter out internal plans (e.g. Demo), then separate free and paid
   const availablePlans = plans?.filter((plan) => plan.hierarchyLevel >= 0) ?? []
@@ -90,9 +101,11 @@ export function PlanComparison({
 
   return (
     <div className={inDialog ? '' : 'p-6'}>
-      <div className='flex flex-col gap-4 justify-center items-center'>
-        <BillingCycleToggle value={billingCycle} onChange={setBillingCycle} variant={variant} />
-      </div>
+      {annualBillingCycle && (
+        <div className='flex flex-col gap-4 justify-center items-center'>
+          <BillingCycleToggle value={billingCycle} onChange={setBillingCycle} variant={variant} />
+        </div>
+      )}
 
       {isLoading && !initialCycleSet ? (
         <div>

@@ -744,12 +744,16 @@ export class MemberService {
         where: (sub, { eq }) => eq(sub.organizationId, organizationId),
         columns: {
           stripeSubscriptionId: true,
+          billingProvider: true,
           plan: true,
           billingCycle: true,
         },
       })
 
-      if (subscription?.stripeSubscriptionId) {
+      // The seat bump above is provider-agnostic — Shopify bills it via the daily seat-day
+      // usage drip (no quantity line). Only push to Stripe for Stripe-billed orgs. Gate on
+      // billingProvider explicitly so a stray Stripe id on a Shopify row can't trigger a push.
+      if (subscription?.stripeSubscriptionId && subscription.billingProvider !== 'shopify') {
         const billingCycle = subscription.billingCycle
         if (billingCycle !== 'MONTHLY' && billingCycle !== 'ANNUAL') {
           logger.warn('Skipping Stripe seat update due to unsupported billing cycle', {

@@ -341,6 +341,25 @@ export async function setupSchedules() {
       }
     )
 
+    // Shopify per-seat usage drip
+    // Daily at 04:00 UTC - Report each Shopify-billed org's seat count to the App Events
+    // `seat_day` meter (value = PlanSubscription.seats). Idempotent per (org, day) with a
+    // lookback to self-heal a missed run. See plans/billing/v2/14-shopify-per-seat-usage-meter-hack.md.
+    await maintenanceQueue.upsertJobScheduler(
+      'shopifySeatUsageJob',
+      { pattern: '0 4 * * *', tz: 'UTC' },
+      {
+        data: { batchSize: 200, lookbackDays: 1 },
+        opts: {
+          attempts: 2,
+          backoff: { type: 'exponential', delay: 60000 },
+          priority: 6,
+          removeOnComplete: { count: 7 },
+          removeOnFail: { count: 30 },
+        },
+      }
+    )
+
     // Demo cleanup job
     // Every 15 minutes - Clean up expired demo organizations
     await maintenanceQueue.upsertJobScheduler(
