@@ -585,6 +585,8 @@ export interface AgentSummary {
   slug: string
   description: string | null
   avatarUrl: string | null
+  /** Invocation surface — `'internal'` (default) or `'chat'`. Immutable. */
+  kind: AgentKind
   mentionable: boolean
   modelId: string | null
   /** ISO string when chat-driven setup completed; null while in setup mode. */
@@ -616,6 +618,7 @@ function toAgentSummary(a: {
   slug: string
   description: string | null
   avatarUrl: string | null
+  kind: AgentKind
   mentionable: boolean
   modelId: string | null
   setupCompletedAt: string | null
@@ -631,6 +634,7 @@ function toAgentSummary(a: {
     slug: a.slug,
     description: a.description,
     avatarUrl: a.avatarUrl,
+    kind: a.kind,
     mentionable: a.mentionable,
     modelId: a.modelId,
     setupCompletedAt: a.setupCompletedAt,

@@ -8,9 +8,11 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
-import { Bot, LayoutTemplate, Plus } from 'lucide-react'
+import { Bot, LayoutTemplate, MessageCircle, Plus } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useCallback, useState } from 'react'
 import { LimitReachedDialog } from '~/components/subscriptions/limit-reached-dialog'
@@ -30,6 +32,7 @@ export function CreateAgentButton() {
   const { createAgent, isCreating } = useAgentMutations()
   const [isRedirecting, setIsRedirecting] = useState(false)
   const [templateDialogOpen, setTemplateDialogOpen] = useState(false)
+  const [templateKind, setTemplateKind] = useState<'internal' | 'chat'>('internal')
   const [limitDialogOpen, setLimitDialogOpen] = useState(false)
 
   const { isAtLimit, getLimit } = useFeatureFlags()
@@ -41,18 +44,26 @@ export function CreateAgentButton() {
 
   const isBusy = isCreating || isRedirecting
 
-  const handleCreateFromScratch = useCallback(async () => {
-    setIsRedirecting(true)
-    const created = await createAgent()
-    if (!created) {
-      setIsRedirecting(false)
-      return
-    }
-    router.push(`/app/agents/${created.slug}`)
-    // Keep isRedirecting true — the unmount when the new page replaces
-    // this one tears down the state. Clearing it now would flash the
-    // button back to idle while the next route bootstraps.
-  }, [createAgent, router])
+  const handleCreateFromScratch = useCallback(
+    async (kind: 'internal' | 'chat') => {
+      setIsRedirecting(true)
+      const created = await createAgent({ kind })
+      if (!created) {
+        setIsRedirecting(false)
+        return
+      }
+      router.push(`/app/agents/${created.slug}`)
+      // Keep isRedirecting true — the unmount when the new page replaces
+      // this one tears down the state. Clearing it now would flash the
+      // button back to idle while the next route bootstraps.
+    },
+    [createAgent, router]
+  )
+
+  const openTemplateDialog = useCallback((kind: 'internal' | 'chat') => {
+    setTemplateKind(kind)
+    setTemplateDialogOpen(true)
+  }, [])
 
   // No allowance on the current plan — gate creation behind an upgrade prompt.
   if (atLimit) {
@@ -87,13 +98,33 @@ export function CreateAgentButton() {
             Create agent
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align='end' className='w-50'>
-          <DropdownMenuItem onClick={handleCreateFromScratch} disabled={isBusy}>
+        <DropdownMenuContent align='end' className='w-56'>
+          <DropdownMenuLabel className='text-xs text-muted-foreground'>
+            Internal agent
+          </DropdownMenuLabel>
+          <DropdownMenuItem onClick={() => handleCreateFromScratch('internal')} disabled={isBusy}>
             <Bot />
             Create from scratch
           </DropdownMenuItem>
           <DropdownMenuItem
-            onClick={() => setTemplateDialogOpen(true)}
+            onClick={() => openTemplateDialog('internal')}
+            disabled={isBusy}
+            className='data-highlighted:bg-[#ffaa40]/10'>
+            <LayoutTemplate className='text-[#ffaa40]' />
+            <AnimatedGradientText>Create from template</AnimatedGradientText>
+          </DropdownMenuItem>
+
+          <DropdownMenuSeparator />
+
+          <DropdownMenuLabel className='text-xs text-muted-foreground'>
+            Chat agent
+          </DropdownMenuLabel>
+          <DropdownMenuItem onClick={() => handleCreateFromScratch('chat')} disabled={isBusy}>
+            <MessageCircle />
+            Create from scratch
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onClick={() => openTemplateDialog('chat')}
             disabled={isBusy}
             className='data-highlighted:bg-[#ffaa40]/10'>
             <LayoutTemplate className='text-[#ffaa40]' />
@@ -102,7 +133,11 @@ export function CreateAgentButton() {
         </DropdownMenuContent>
       </DropdownMenu>
 
-      <AgentTemplateDialog open={templateDialogOpen} onOpenChange={setTemplateDialogOpen} />
+      <AgentTemplateDialog
+        open={templateDialogOpen}
+        onOpenChange={setTemplateDialogOpen}
+        kind={templateKind}
+      />
     </>
   )
 }

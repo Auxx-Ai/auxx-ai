@@ -85,6 +85,13 @@ export interface ActorPickerContentProps {
   excludeIds?: ActorId[]
 
   /**
+   * Optional predicate to narrow which agents appear (by their ActorId).
+   * Applied to the agent group only — users/groups are untouched. Used by
+   * the chat-widget settings to surface chat-kind agents only.
+   */
+  agentFilter?: (actorId: ActorId) => boolean
+
+  /**
    * Show a "Current user" pseudo-row. Selecting it toggles `CURRENT_USER_ACTOR_ID`
    * in `value` via the normal onChange — the picker does not know about filter
    * semantics. Only intended for filter-builder contexts (tables, mail views).
@@ -126,6 +133,7 @@ export function ActorPickerContent({
   isLoading: externalLoading = false,
   className,
   excludeIds = EMPTY_EXCLUDE_IDS,
+  agentFilter,
   allowCurrentUser = false,
   externalSearch,
   showInput = true,
@@ -206,10 +214,12 @@ export function ActorPickerContent({
   // Group available items by type
   const groupedAvailable = useMemo(() => {
     const users = availableItems.filter((a) => a.type === 'user')
-    const agents = availableItems.filter((a) => a.type === 'agent')
+    const agents = availableItems.filter(
+      (a) => a.type === 'agent' && (!agentFilter || agentFilter(a.actorId))
+    )
     const groups = availableItems.filter((a) => a.type === 'group')
     return { users, agents, groups }
-  }, [availableItems])
+  }, [availableItems, agentFilter])
 
   /**
    * Toggle selection of an actor

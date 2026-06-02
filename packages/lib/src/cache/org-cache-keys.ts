@@ -2,6 +2,7 @@
 
 import type {
   AgentConfig,
+  AgentKind,
   AppAccountBinding,
   CatalogAction,
   CatalogAgentTool,
@@ -142,6 +143,8 @@ export interface CachedAgent {
   slug: string
   description: string | null
   avatarUrl: string | null
+  /** Invocation surface — `'internal'` (default) or `'chat'`. Immutable after creation. */
+  kind: AgentKind
   mentionable: boolean
   /** Tiptap doc; empty object when no prompt has been authored. */
   prompt: Record<string, unknown>

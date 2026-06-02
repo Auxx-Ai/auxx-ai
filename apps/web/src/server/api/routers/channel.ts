@@ -2,7 +2,7 @@
 
 import { ConfigStorage, CredentialService, configService } from '@auxx/credentials'
 import { type Database, database, schema } from '@auxx/database'
-import { onCacheEvent, storeOAuthCsrfToken } from '@auxx/lib/cache'
+import { getCachedAgentById, onCacheEvent, storeOAuthCsrfToken } from '@auxx/lib/cache'
 import {
   addExcludedSender as addExcludedSenderToChannel,
   addOpenPhoneChannel,
@@ -408,6 +408,22 @@ export const channelRouter = createTRPCRouter({
       await requireAdminAccess(userId, organizationId)
 
       const { integrationId, ...updateData } = input
+
+      // Only chat-kind agents can answer visitor chat. Reject a bind to an
+      // internal agent so phase 3's runtime never has to defend against a
+      // mis-bound widget. See plans/chat/v5 phase-2 §9.
+      if (updateData.agentId) {
+        const agent = await getCachedAgentById(organizationId, updateData.agentId)
+        if (!agent) {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'Agent not found' })
+        }
+        if (agent.kind !== 'chat') {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: 'AGENT_NOT_CHAT_KIND: Only chat agents can be bound to a chat widget.',
+          })
+        }
+      }
 
       // Safety rail for `in_progress → enforced`: require at least one
       // successfully-verified JWT inside the success-counter TTL before the

@@ -68,6 +68,12 @@ export const agentRouter = createTRPCRouter({
           modelId: z.string().max(120).optional().nullable(),
           mentionable: z.boolean().optional(),
           /**
+           * Invocation surface. Chosen once at creation and immutable
+           * thereafter (`update` has no `kind` field). Defaults to
+           * `'internal'`; the Create dropdown sends `'chat'` for chat agents.
+           */
+          kind: z.enum(['internal', 'chat']).default('internal'),
+          /**
            * Initial toolset slugs to enable. When omitted, `createAgent`
            * resolves defaults and tags the rows `source='auto_default'`. When
            * provided, every slug lands as `source='manual'`.
@@ -100,6 +106,7 @@ export const agentRouter = createTRPCRouter({
         prompt: args.prompt,
         modelId: args.modelId ?? null,
         mentionable: args.mentionable ?? true,
+        kind: args.kind ?? 'internal',
         toolsetSlugs: args.toolsetSlugs,
       })
 

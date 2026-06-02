@@ -4,41 +4,81 @@
 import { useMemo } from 'react'
 import { useAgentSearch } from '../../hooks/use-agent-search'
 import { useAgents } from '../../hooks/use-agents'
+import type { AgentListItem } from '../../store/agent-store'
 import { filterAgents } from '../../utils/filter-agents'
 import { AgentCard } from './agent-card'
 import { AgentsEmptyState } from './agents-empty-state'
+
+/**
+ * Drafts (`setupCompletedAt == null`) bubble to the top by `createdAt desc` so
+ * resuming the last build is the obvious first action. Everything else keeps
+ * the agents-list default order from the store. Applied per section.
+ */
+function sortDraftFirst(list: AgentListItem[]): AgentListItem[] {
+  const drafts: AgentListItem[] = []
+  const rest: AgentListItem[] = []
+  for (const a of list) {
+    if (a.setupCompletedAt == null && a.archivedAt == null) drafts.push(a)
+    else rest.push(a)
+  }
+  drafts.sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0))
+  return [...drafts, ...rest]
+}
+
+function AgentGrid({ agents }: { agents: AgentListItem[] }) {
+  return (
+    <div className='grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'>
+      {agents.map((agent) => (
+        <AgentCard key={agent.id} agent={agent} />
+      ))}
+    </div>
+  )
+}
 
 export function AgentsGridView() {
   const { agents, hasLoadedOnce } = useAgents()
   const { search } = useAgentSearch()
 
-  // Drafts (`setupCompletedAt == null`) bubble to the top by `createdAt desc`
-  // so resuming the last build is the obvious first action. Everything else
-  // keeps the agents-list default order from the store.
-  const filtered = useMemo(() => {
+  const { chat, internal } = useMemo(() => {
     const matched = filterAgents(agents, search)
-    const drafts: typeof matched = []
-    const rest: typeof matched = []
-    for (const a of matched) {
-      if (a.setupCompletedAt == null && a.archivedAt == null) drafts.push(a)
-      else rest.push(a)
+    return {
+      chat: sortDraftFirst(matched.filter((a) => a.kind === 'chat')),
+      internal: sortDraftFirst(matched.filter((a) => a.kind !== 'chat')),
     }
-    drafts.sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0))
-    return [...drafts, ...rest]
   }, [agents, search])
 
   if (!hasLoadedOnce) {
     return <div className='p-6 text-sm text-muted-foreground'>Loading agents…</div>
   }
-  if (filtered.length === 0) {
+
+  // Truly empty (no agents in org) or no search matches — the onboarding /
+  // no-results empty state covers both. The sectioned layout only kicks in
+  // once there's at least one matching agent to show.
+  if (chat.length === 0 && internal.length === 0) {
     return <AgentsEmptyState isFirstRun={agents.length === 0} />
   }
 
   return (
-    <div className='grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'>
-      {filtered.map((agent) => (
-        <AgentCard key={agent.id} agent={agent} />
-      ))}
+    <div className='flex flex-col gap-8'>
+      {/* Chat section is always shown so the chat-agent capability stays
+          discoverable, even before any chat agent exists. */}
+      <section className='flex flex-col gap-4'>
+        <h2 className='text-sm font-semibold text-muted-foreground'>Chat agents</h2>
+        {chat.length > 0 ? (
+          <AgentGrid agents={chat} />
+        ) : (
+          <p className='text-sm text-muted-foreground'>
+            No chat agents yet — create one to answer visitors in your chat widget.
+          </p>
+        )}
+      </section>
+
+      {internal.length > 0 ? (
+        <section className='flex flex-col gap-4'>
+          <h2 className='text-sm font-semibold text-muted-foreground'>Internal agents</h2>
+          <AgentGrid agents={internal} />
+        </section>
+      ) : null}
     </div>
   )
 }

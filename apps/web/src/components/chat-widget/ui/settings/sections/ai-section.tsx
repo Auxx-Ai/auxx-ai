@@ -15,6 +15,7 @@ import {
 import { toastError } from '@auxx/ui/components/toast'
 import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
 import { BookOpen, Bot, Home, Sparkles } from 'lucide-react'
+import { useCallback, useMemo } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { ActorPicker } from '~/components/pickers/actor-picker'
@@ -61,6 +62,22 @@ export function AiSection({ widget, channelId }: AiSectionProps) {
     },
     onError: (e) => toastError({ title: 'Failed to save', description: e.message }),
   })
+
+  // Only chat-kind agents can answer visitor chat — surface them only in the
+  // picker. The server-side bind validation is the hard guard; this is the
+  // matching UX. See plans/chat/v5 phase-2 §9.
+  const { data: agents } = api.agent.list.useQuery()
+  const chatAgentActorIds = useMemo(
+    () =>
+      new Set<ActorId>(
+        (agents ?? []).filter((a) => a.kind === 'chat').map((a) => toActorId('agent', a.id))
+      ),
+    [agents]
+  )
+  const agentFilter = useCallback(
+    (actorId: ActorId) => chatAgentActorIds.has(actorId),
+    [chatAgentActorIds]
+  )
 
   const cw = widget.chatWidget
   const rawAgentId = cw?.agentId ?? null
@@ -117,6 +134,7 @@ export function AiSection({ widget, channelId }: AiSectionProps) {
                 onChange={handleAgentChange}
                 multi={false}
                 target='agent'
+                agentFilter={agentFilter}
                 emptyLabel='Choose an agent…'
                 disabled={update.isPending}
                 triggerProps={{ className: 'w-full ps-0 pe-1' }}

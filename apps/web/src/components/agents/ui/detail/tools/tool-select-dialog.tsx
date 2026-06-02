@@ -44,6 +44,8 @@ interface ToolSelectDialogProps {
    * for this app id. The Back button still returns to the Apps list.
    */
   initialAppId?: string
+  /** Clamp the catalog to chat-safe tools (chat-kind agents). See plans/chat/v5 phase-2 §5. */
+  chatSafeOnly?: boolean
 }
 
 type ViewMode = 'list' | 'app-detail'
@@ -69,8 +71,9 @@ export function ToolSelectDialog({
   open,
   onOpenChange,
   initialAppId,
+  chatSafeOnly = false,
 }: ToolSelectDialogProps) {
-  const { catalog: catalogData, isLoading: catalogIsLoading } = useToolCatalog()
+  const { catalog: catalogData, isLoading: catalogIsLoading } = useToolCatalog({ chatSafeOnly })
 
   const [viewMode, setViewMode] = useState<ViewMode>('list')
   const [tab, setTab] = useState<ListTab>('all')

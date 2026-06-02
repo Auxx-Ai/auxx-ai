@@ -10,7 +10,7 @@ import {
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
 import { LastUpdated } from '@auxx/ui/components/last-updated'
-import { Archive, ArchiveRestore, MoreVertical, Pencil, Trash2 } from 'lucide-react'
+import { Archive, ArchiveRestore, MessageCircle, MoreVertical, Pencil, Trash2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { Tooltip } from '~/components/global/tooltip'
 import { useConfirm } from '~/hooks/use-confirm'
@@ -117,9 +117,17 @@ export function AgentCard({ agent }: AgentCardProps) {
         </p>
 
         <div className='flex items-center justify-between mt-auto gap-2'>
-          <Badge variant='pill' size='sm' className='shrink-0'>
-            {agent.modelId ?? 'Default model'}
-          </Badge>
+          <div className='flex items-center gap-1 min-w-0'>
+            <Badge variant='pill' size='sm' className='shrink-0'>
+              {agent.modelId ?? 'Default model'}
+            </Badge>
+            {agent.kind === 'chat' ? (
+              <Badge variant='outline' size='sm' className='shrink-0'>
+                <MessageCircle />
+                Chat
+              </Badge>
+            ) : null}
+          </div>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button

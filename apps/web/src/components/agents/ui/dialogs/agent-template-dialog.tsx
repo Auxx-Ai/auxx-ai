@@ -75,6 +75,8 @@ type AgentCategoryValue = (typeof constants.agentTemplateCategories)[number]['va
 interface AgentTemplateDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
+  /** Scopes the dialog to one agent kind; templates are filtered to it. */
+  kind: 'internal' | 'chat'
 }
 
 /**
@@ -84,7 +86,7 @@ interface AgentTemplateDialogProps {
  * `AgentDockedChat` picks the param up and auto-submits the template prompt
  * as the first builder-chat turn.
  */
-export function AgentTemplateDialog({ open, onOpenChange }: AgentTemplateDialogProps) {
+export function AgentTemplateDialog({ open, onOpenChange, kind }: AgentTemplateDialogProps) {
   const router = useRouter()
   const { createAgent } = useAgentMutations()
   const searchInputRef = useRef<HTMLInputElement>(null)
@@ -92,8 +94,12 @@ export function AgentTemplateDialog({ open, onOpenChange }: AgentTemplateDialogP
   const [selectedCategory, setSelectedCategory] = useState<AgentCategoryValue>('all')
   const [creatingTemplateId, setCreatingTemplateId] = useState<string | null>(null)
 
+  // Kind is the primary filter (set by the Create dropdown); the category
+  // sidebar is an orthogonal topic filter applied on top.
+  const kindTemplates = useMemo(() => agentTemplates.filter((t) => t.kind === kind), [kind])
+
   const filteredTemplates = useMemo(() => {
-    let list: AgentTemplate[] = agentTemplates
+    let list: AgentTemplate[] = kindTemplates
 
     if (selectedCategory !== 'all') {
       list = list.filter((t) => t.categories.includes(selectedCategory as AgentTemplateCategory))
@@ -107,12 +113,12 @@ export function AgentTemplateDialog({ open, onOpenChange }: AgentTemplateDialogP
     }
 
     return list
-  }, [searchQuery, selectedCategory])
+  }, [searchQuery, selectedCategory, kindTemplates])
 
   async function handleSelectTemplate(template: AgentTemplate) {
     if (creatingTemplateId) return
     setCreatingTemplateId(template.id)
-    const created = await createAgent()
+    const created = await createAgent({ kind: template.kind })
     if (!created) {
       setCreatingTemplateId(null)
       return
@@ -168,8 +174,8 @@ export function AgentTemplateDialog({ open, onOpenChange }: AgentTemplateDialogP
                     {constants.agentTemplateCategories.map((category) => {
                       const count =
                         category.value === 'all'
-                          ? agentTemplates.length
-                          : agentTemplates.filter((t) =>
+                          ? kindTemplates.length
+                          : kindTemplates.filter((t) =>
                               t.categories.includes(category.value as AgentTemplateCategory)
                             ).length
 

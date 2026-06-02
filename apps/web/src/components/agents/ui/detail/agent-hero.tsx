@@ -3,9 +3,10 @@
 
 import { agentSlugSchema } from '@auxx/lib/agents/client'
 import { AutosizeInput, type AutosizeInputRef } from '@auxx/ui/components/autosize-input'
+import { Badge } from '@auxx/ui/components/badge'
 import { Spinner } from '@auxx/ui/components/spinner'
 import { cn } from '@auxx/ui/lib/utils'
-import { Bot, Check, X } from 'lucide-react'
+import { Bot, Check, MessageCircle, X } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { type KeyboardEvent, useCallback, useEffect, useRef, useState } from 'react'
 import { Tooltip } from '~/components/global/tooltip'
@@ -72,6 +73,14 @@ export function AgentHero({ agent }: AgentHeroProps) {
             initialName={agent.name}
             onCommit={(next) => updateAgent(agent.id, { name: next })}
           />
+          {agent.kind === 'chat' ? (
+            <Tooltip content='Chat agent — answers visitors in your chat widget'>
+              <Badge variant='outline' size='sm' className='shrink-0'>
+                <MessageCircle />
+                Chat
+              </Badge>
+            </Tooltip>
+          ) : null}
         </div>
         <div className='flex items-center text-xs text-neutral-500 min-w-0 gap-1'>
           <InlineSlugField
