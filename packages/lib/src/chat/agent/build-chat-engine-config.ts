@@ -18,6 +18,7 @@ import {
 } from '../../ai/kopilot'
 import { ModelType } from '../../ai/providers/types'
 import { getCachedDefaultModel } from '../../cache/org-cache-helpers'
+import { createChatHandoffTool } from './tools/handoff'
 
 /** Split a `provider:model` string; null when unset / malformed. */
 function parseProviderModel(
@@ -111,10 +112,16 @@ export async function buildChatEngineConfig(
   const enabledTools = filterToolsByToolsets(registry.getTools('__none__'), agentConfig)
   const chatSafeTools = enabledTools.filter((t) => t.chatSafe === true)
 
+  // Escalation (`chat_handoff`) is always available to a chat agent — you never
+  // want one unable to hand off to a human — so it's appended unconditionally
+  // rather than gated behind a toolset toggle. The "when" is authored in the
+  // persona. See plans/chat/v5 escalation.md §1.
+  const tools = [...chatSafeTools, createChatHandoffTool()]
+
   const domainConfig = createKopilotDomainConfig({
     capabilityRegistry: registry,
     page: '__none__',
-    tools: chatSafeTools,
+    tools,
     defaultModel: model,
     defaultProvider: provider,
     agentConfig,
