@@ -184,6 +184,8 @@ export interface CachedInstalledAppLike {
     name: string
     description: string
     toolsetSlug: string
+    /** Mirrors `AgentToolDefinition.chatSafe` — surfaces the tool in the chat-kind catalog. */
+    chatSafe?: boolean
   }>
 }
 
@@ -331,6 +333,7 @@ export function buildCatalogTreeFromInstallations(
         name: tool.id,
         displayName: tool.name,
         description: shortDescription(tool.description),
+        chatSafe: tool.chatSafe,
       })
       toolsBySlug.set(tool.toolsetSlug, arr)
     }

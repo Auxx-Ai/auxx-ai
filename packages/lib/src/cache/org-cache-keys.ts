@@ -227,6 +227,12 @@ export interface CachedSystemModelDefault {
 export interface CachedAgentTool extends CatalogAgentTool {
   registeredName: string
   iconId: string
+  /**
+   * Mirrors `AgentToolDefinition.chatSafe`. Surfaces the tool in the chat-kind
+   * agent toolset catalog (the picker filters by it). Absent ⇒ not chat-safe.
+   * See plans/chat/v5.
+   */
+  chatSafe?: boolean
 }
 
 /**

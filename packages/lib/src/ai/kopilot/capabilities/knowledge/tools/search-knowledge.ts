@@ -25,6 +25,10 @@ export function createSearchKnowledgeTool(getDeps: GetToolDeps): AgentToolDefini
     displayName: 'Search knowledge',
     toolsetSlug: 'auxx:knowledge',
     idempotent: true,
+    // Safe for visitor-facing chat agents. In chat context (`ctx.invocation`
+    // set) the search is clamped to PUBLIC knowledge bases and RAG datasets
+    // are excluded — see the execute clamp below. See plans/chat/v5 phase-4.
+    chatSafe: true,
     outputDigestSchema: ArticleSearchDigest,
     buildDigest: (output) => {
       const out = (output ?? {}) as {
@@ -88,11 +92,21 @@ export function createSearchKnowledgeTool(getDeps: GetToolDeps): AgentToolDefini
     execute: async (args, agentDeps) => {
       const { db } = getDeps()
       const query = args.query as string
-      const source = ((args.source as Source) ?? 'both') as Source
+      const requestedSource = ((args.source as Source) ?? 'both') as Source
       const knowledgeBaseId = args.knowledgeBaseId as string | undefined
       const requestedDatasetIds = args.datasetIds as string[] | undefined
       const recordIds = args.recordIds as string[] | undefined
       const limit = Math.min((args.limit as number) || DEFAULT_RESULTS, MAX_RESULTS)
+
+      // Chat clamp (decision 6): a visitor-initiated turn carries
+      // `ctx.invocation`. Force source to PUBLIC KB only — RAG datasets are
+      // internal uploads with no visibility tier, so they're excluded, and the
+      // KB set is restricted to PUBLIC knowledge bases. A visitor-supplied
+      // `knowledgeBaseId` still composes, but only narrows *within* the PUBLIC
+      // ceiling (an INTERNAL KB id resolves to no datasets). Internal kopilot /
+      // autonomous runs leave `invocation` undefined and keep full access.
+      const isChat = agentDeps.invocation !== undefined
+      const source: Source = isChat ? 'kb' : requestedSource
 
       try {
         const datasetIds = await resolveDatasetIds({
@@ -101,6 +115,7 @@ export function createSearchKnowledgeTool(getDeps: GetToolDeps): AgentToolDefini
           source,
           knowledgeBaseId,
           requestedDatasetIds,
+          publicOnly: isChat,
         })
 
         if (datasetIds.length === 0) {
@@ -229,11 +244,13 @@ async function resolveDatasetIds(args: {
   source: Source
   knowledgeBaseId?: string
   requestedDatasetIds?: string[]
+  /** Chat clamp — restrict managed datasets to PUBLIC knowledge bases. */
+  publicOnly?: boolean
 }): Promise<string[]> {
-  const { db, organizationId, source, knowledgeBaseId, requestedDatasetIds } = args
+  const { db, organizationId, source, knowledgeBaseId, requestedDatasetIds, publicOnly } = args
 
   if (source === 'kb') {
-    return collectManagedDatasetIds(db, organizationId, knowledgeBaseId)
+    return collectManagedDatasetIds(db, organizationId, knowledgeBaseId, publicOnly)
   }
   if (source === 'rag') {
     const rows = await db
@@ -273,7 +290,8 @@ async function resolveDatasetIds(args: {
 async function collectManagedDatasetIds(
   db: import('@auxx/database').Database,
   organizationId: string,
-  knowledgeBaseId?: string
+  knowledgeBaseId?: string,
+  publicOnly?: boolean
 ): Promise<string[]> {
   if (knowledgeBaseId) {
     const [kb] = await db
@@ -282,11 +300,28 @@ async function collectManagedDatasetIds(
       .where(
         and(
           eq(schema.KnowledgeBase.id, knowledgeBaseId),
-          eq(schema.KnowledgeBase.organizationId, organizationId)
+          eq(schema.KnowledgeBase.organizationId, organizationId),
+          // Chat clamp — an INTERNAL KB id resolves to no datasets.
+          publicOnly ? eq(schema.KnowledgeBase.visibility, 'PUBLIC') : undefined
         )
       )
       .limit(1)
     return kb?.datasetId ? [kb.datasetId] : []
+  }
+  // Chat clamp — restrict to datasets backing PUBLIC knowledge bases (RAG
+  // datasets are excluded entirely by forcing source='kb' upstream). Internal
+  // callers get every managed dataset.
+  if (publicOnly) {
+    const rows = await db
+      .select({ datasetId: schema.KnowledgeBase.datasetId })
+      .from(schema.KnowledgeBase)
+      .where(
+        and(
+          eq(schema.KnowledgeBase.organizationId, organizationId),
+          eq(schema.KnowledgeBase.visibility, 'PUBLIC')
+        )
+      )
+    return rows.map((r) => r.datasetId).filter((id): id is string => Boolean(id))
   }
   const rows = await db
     .select({ id: schema.Dataset.id })
