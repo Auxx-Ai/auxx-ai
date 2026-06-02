@@ -3,7 +3,7 @@
 import type { Database } from '@auxx/database'
 import type { z } from 'zod'
 import type { Message, ModelParameters, Tool, ToolCall, UsageMetrics } from '../clients/base/types'
-import type { ToolContext, WorkflowToolContext } from './tool-context'
+import type { ChatInvocationContext, ToolContext, WorkflowToolContext } from './tool-context'
 
 // ===== CONTENT PARTS =====
 
@@ -711,6 +711,13 @@ export interface AgentEngineConfig {
    * context without forming a hard dependency on `@auxx/lib/workflow-engine`.
    */
   workflow?: WorkflowToolContext
+  /**
+   * Present iff this engine run was kicked off by an inbound chat message on a
+   * chat-kind agent. The engine copies it onto every tool's `ToolContext` so
+   * chat-safe tools can clamp queries to the visitor's scope. Undefined for
+   * kopilot / builder / autonomous-trigger runs. See plans/chat/v5.
+   */
+  invocation?: ChatInvocationContext
 }
 
 // ===== AGENT DEPENDENCIES =====
