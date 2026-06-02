@@ -1,6 +1,7 @@
 // apps/web/src/components/kb/ui/editor/article-editor.tsx
 'use client'
 
+import { Button } from '@auxx/ui/components/button'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { toastSuccess } from '@auxx/ui/components/toast'
 import { useHotkey } from '@tanstack/react-hotkeys'
@@ -13,7 +14,9 @@ import { KopilotContext } from '~/components/kopilot/context/kopilot-context'
 import { KopilotSuggestion } from '~/components/kopilot/suggestions'
 import { useArticleContent } from '../../hooks/use-article-content'
 import { useArticleMutations } from '../../hooks/use-article-mutations'
+import { useDiffParam } from '../../hooks/use-diff-param'
 import { useKbArticleChannel } from '../../hooks/use-kb-article-channel'
+import { useKopilotReview } from '../../hooks/use-kopilot-review'
 import type { ArticleMeta } from '../../store/article-store'
 import { ArticleEditorFooter } from './article-editor-footer'
 import { ArticleEditorHeader } from './article-editor-header'
@@ -38,6 +41,11 @@ export function ArticleEditor({ article, knowledgeBaseId }: ArticleEditorProps) 
   // picks up the new doc. The `locked` flag flips while Kopilot holds a
   // write turn so the editor goes read-only.
   const { locked } = useKbArticleChannel({ articleId: article.id, knowledgeBaseId })
+
+  // Post-turn review: after Kopilot edits, offer Review / Keep / Undo until the
+  // user commits or rolls back.
+  const [, setDiff] = useDiffParam()
+  const review = useKopilotReview({ articleId: article.id, draftContentJson, locked })
 
   const bodyEditorRef = useRef<Editor | null>(null)
 
@@ -80,6 +88,24 @@ export function ArticleEditor({ article, knowledgeBaseId }: ArticleEditorProps) 
       <KopilotSuggestion text='Suggest related articles' icon='list' autoSubmit />
       <KopilotSuggestion text='Improve this article' icon='sparkle' />
       <ArticleEditorHeader article={article} knowledgeBaseId={knowledgeBaseId} />
+      {review.pending && (
+        <div className='flex items-center gap-3 border-b bg-primary-150 px-7 py-2 text-sm'>
+          <span className='text-foreground'>
+            Kopilot changed {review.changeCount} {review.changeCount === 1 ? 'block' : 'blocks'}.
+          </span>
+          <div className='ml-auto flex items-center gap-2'>
+            <Button variant='outline' size='xs' onClick={() => setDiff('kopilot')}>
+              Review
+            </Button>
+            <Button variant='outline' size='xs' loading={review.isBusy} onClick={review.onKeep}>
+              Keep
+            </Button>
+            <Button variant='outline' size='xs' loading={review.isBusy} onClick={review.onUndo}>
+              Undo
+            </Button>
+          </div>
+        </div>
+      )}
       <ScrollArea className='flex-1'>
         <div className='flex min-h-min flex-1 flex-col'>
           <div className='relative mx-auto flex h-full w-full max-w-3xl flex-1 flex-col px-7'>

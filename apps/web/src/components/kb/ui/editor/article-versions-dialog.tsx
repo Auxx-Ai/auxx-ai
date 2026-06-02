@@ -13,12 +13,13 @@ import { Input } from '@auxx/ui/components/input'
 import { getFullSlugPath } from '@auxx/ui/components/kb'
 import { getKbPreviewHref } from '@auxx/ui/components/kb/utils'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
-import { Check, ExternalLink, Loader2, Pencil, Undo2, X } from 'lucide-react'
+import { Check, ExternalLink, GitCompare, Loader2, Pencil, Undo2, X } from 'lucide-react'
 import { useState } from 'react'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
 import { useArticleList } from '../../hooks/use-article-list'
 import { useArticleMutations } from '../../hooks/use-article-mutations'
+import { useDiffParam } from '../../hooks/use-diff-param'
 
 interface ArticleVersionsDialogProps {
   open: boolean
@@ -50,6 +51,12 @@ export function ArticleVersionsDialog({
   const utils = api.useUtils()
   const { restoreArticleVersion } = useArticleMutations(knowledgeBaseId)
   const [confirm, ConfirmDialog] = useConfirm()
+  const [, setDiff] = useDiffParam()
+
+  const handleDiff = (versionId: string) => {
+    setDiff(`v:${versionId}`)
+    onOpenChange(false)
+  }
 
   const versionsQuery = api.kb.getArticleVersions.useQuery({ articleId }, { enabled: open })
   const article = api.kb.getArticleById.useQuery(
@@ -215,6 +222,11 @@ export function ArticleVersionsDialog({
                             </a>
                           </Button>
                         ) : null}
+                        {!isCurrent && (
+                          <Button size='sm' variant='ghost' onClick={() => handleDiff(v.id)}>
+                            <GitCompare /> Diff
+                          </Button>
+                        )}
                         {!isCurrent && (
                           <Button
                             size='sm'

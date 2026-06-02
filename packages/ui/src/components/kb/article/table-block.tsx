@@ -3,11 +3,20 @@
 import type { ReactNode } from 'react'
 import { BlockRenderer } from './block-renderer'
 import styles from './kb-article-renderer.module.css'
-import type { BlockJSON, DocJSON, ResolveAuxxHref, TableCellJSON, TableJSON } from './types'
+import type {
+  BlockJSON,
+  DiffDecorations,
+  DocJSON,
+  ResolveAuxxHref,
+  TableCellJSON,
+  TableJSON,
+} from './types'
 
 interface TableBlockProps {
   node: TableJSON
   resolveAuxxHref?: ResolveAuxxHref
+  /** Diff decorations for cell-nested leaves; absent on the normal render path. */
+  decorations?: DiffDecorations
 }
 
 /**
@@ -15,7 +24,7 @@ interface TableBlockProps {
  * `<thead>` (when the first row is all `tableHeader`) and `<tbody>`. Cell
  * content recurses through `BlockRenderer`.
  */
-export function TableBlock({ node, resolveAuxxHref }: TableBlockProps): ReactNode {
+export function TableBlock({ node, resolveAuxxHref, decorations }: TableBlockProps): ReactNode {
   if (!Array.isArray(node.content) || node.content.length === 0) return null
 
   const [firstRow, ...restRows] = node.content
@@ -39,6 +48,7 @@ export function TableBlock({ node, resolveAuxxHref }: TableBlockProps): ReactNod
             idx={i}
             doc={subDoc}
             resolveAuxxHref={resolveAuxxHref}
+            decorations={decorations}
           />
         ))}
       </Tag>

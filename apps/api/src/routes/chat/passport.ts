@@ -338,7 +338,14 @@ passportRoute.post('/', async (c) => {
           email: claims.email,
         })
         const participantUpdates: Record<string, unknown> = { updatedAt: new Date() }
-        if (!participant.entityInstanceId) {
+        // Verified JWT wins: a Shopify-signed customer identity is higher-trust
+        // than any prior link (e.g. a stale OTP link), and a different
+        // `jwtUserId` is a different person who must not inherit the old link.
+        // Always overwrite so the issued passport's `contactId` and the
+        // Participant link can never diverge. (Anonymous/OTP linking — which
+        // only fills an empty `entityInstanceId` — lives outside this
+        // verified-JWT branch.)
+        if (participant.entityInstanceId !== resolved.contactId) {
           participantUpdates.entityInstanceId = resolved.contactId
         }
         if (displayName) {

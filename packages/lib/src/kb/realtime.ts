@@ -47,6 +47,13 @@ export type KbArticleEvent =
       by: 'kopilot'
       turnId: string
       expiresAt?: number
+      /**
+       * Set on the unlock (`locked: false`) emitted by `finalizeKopilotKbTurn`:
+       * the pre-turn snapshot is kept, so the turn is reviewable (Keep / Undo).
+       * Absent/false on the revert unlock (snapshot already cleared). Clients
+       * use it as a liveness signal to refresh the turn-review state.
+       */
+      reviewable?: boolean
     }
 
 /**

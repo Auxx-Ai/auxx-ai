@@ -1,0 +1,160 @@
+/* apps/web/src/components/kb/ui/editor/article-diff-view.module.css */
+
+/*
+ * The diff body renders through the shared KB `BlockRenderer` (same components
+ * as the public site), but we restyle its output to match the Tiptap *editor*
+ * the user edits in — same font size, heading scale, and tight line spacing —
+ * rather than the looser published-article look. Metrics mirror
+ * `editor/kb-article/block-node-view.module.css`.
+ */
+.body {
+  font-size: 0.875rem;
+  line-height: 24px;
+  letter-spacing: -0.01em;
+  color: var(--color-foreground);
+}
+
+/* Paragraphs: no inter-block margin — blocks stack tightly like the editor. */
+.body :global(p) {
+  margin: 0;
+}
+
+/* Headings — BlockRenderer maps level 1/2/3 to <h2>/<h3>/<h4>. Values match the
+   editor's h1/h2/h3 density vars. */
+.body :global(h2) {
+  font-size: 24px;
+  line-height: 28px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin: 1.5rem 0 0.5rem;
+}
+.body :global(h3) {
+  font-size: 20px;
+  line-height: 24px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  margin: 1.25rem 0 0.375rem;
+}
+.body :global(h4) {
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  margin: 1rem 0 0.25rem;
+}
+
+/* Collapse the leading block's top margin so it hugs the diff bar. */
+.body > .block:first-child :global(h2),
+.body > .block:first-child :global(h3),
+.body > .block:first-child :global(h4) {
+  margin-top: 0;
+}
+
+/* Links + inline code: editor tokens, not the undefined --kb-* renderer vars. */
+.body :global(.kb-link),
+.body :global(a) {
+  color: var(--color-primary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.body :global(.kb-inline-code) {
+  font-size: 0.8125rem;
+  background-color: var(--color-muted);
+  border: 1px solid var(--color-border);
+  padding: 0.125rem 0.375rem;
+  border-radius: 0.375rem;
+}
+.body :global(blockquote) {
+  color: var(--color-muted-foreground);
+}
+
+/* ── Block-level diff decorators ──────────────────────────────────────── */
+
+.block {
+  position: relative;
+  padding: 1px 0 1px 0.75rem;
+  margin-left: -0.75rem;
+  border-left: 3px solid transparent;
+}
+
+.added {
+  border-left-color: var(--color-emerald-500, #10b981);
+  background-color: color-mix(in srgb, var(--color-emerald-500, #10b981) 8%, transparent);
+}
+
+.removed {
+  border-left-color: var(--color-red-500, #ef4444);
+  background-color: color-mix(in srgb, var(--color-red-500, #ef4444) 6%, transparent);
+  opacity: 0.65;
+}
+
+.modified {
+  border-left-color: var(--color-amber-500, #f59e0b);
+  background-color: color-mix(in srgb, var(--color-amber-500, #f59e0b) 6%, transparent);
+}
+
+/*
+ * Within a modified block the inline content is rebuilt from the word diff:
+ * inserted words carry a `highlight` mark (<mark class="kb-mark">), deleted
+ * words a `strike` mark (<s>). Restyle those specifically as ins/del.
+ */
+.modified :global(.kb-mark) {
+  background-color: color-mix(in srgb, var(--color-emerald-500, #10b981) 22%, transparent);
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: var(--color-emerald-600, #059669);
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
+.modified s {
+  color: var(--color-red-600, #dc2626);
+  text-decoration-color: var(--color-red-500, #ef4444);
+  opacity: 0.85;
+}
+
+/* ── Container-nested leaf decorators ─────────────────────────────────── */
+
+/*
+ * Blocks inside a modified table/tabs/accordion are wrapped by BlockRenderer
+ * in `<div class="kb-diff-block" data-diff-status="…">` so changes show per
+ * leaf instead of only framing the whole container. Same colour language as
+ * the top-level decorators, scaled down to sit inside cells/panels.
+ */
+.body :global(.kb-diff-block) {
+  border-left: 3px solid transparent;
+  padding-left: 0.5rem;
+  margin-left: -0.5rem;
+}
+
+.body :global(.kb-diff-block[data-diff-status='added']) {
+  border-left-color: var(--color-emerald-500, #10b981);
+  background-color: color-mix(in srgb, var(--color-emerald-500, #10b981) 8%, transparent);
+}
+
+.body :global(.kb-diff-block[data-diff-status='removed']) {
+  border-left-color: var(--color-red-500, #ef4444);
+  background-color: color-mix(in srgb, var(--color-red-500, #ef4444) 6%, transparent);
+  opacity: 0.65;
+}
+
+.body :global(.kb-diff-block[data-diff-status='modified']) {
+  border-left-color: var(--color-amber-500, #f59e0b);
+  background-color: color-mix(in srgb, var(--color-amber-500, #f59e0b) 6%, transparent);
+}
+
+/* Word-level ins/del baked into modified nested text (same marks as top level). */
+.body :global(.kb-diff-block[data-diff-status='modified'] .kb-mark) {
+  background-color: color-mix(in srgb, var(--color-emerald-500, #10b981) 22%, transparent);
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: var(--color-emerald-600, #059669);
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
+.body :global(.kb-diff-block[data-diff-status='modified'] s) {
+  color: var(--color-red-600, #dc2626);
+  text-decoration-color: var(--color-red-500, #ef4444);
+  opacity: 0.85;
+}

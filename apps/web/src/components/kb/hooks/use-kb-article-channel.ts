@@ -70,6 +70,12 @@ export function useKbArticleChannel({
 
       if (eventType === 'kb-article-lock' && event.type === 'kb-article-lock') {
         setLocked(event.locked)
+        // Liveness for the turn-review banner: a finalize unlock keeps the
+        // snapshot (reviewable), a revert unlock clears it. Either way refresh
+        // the recovery query so the banner appears/disappears without a poll.
+        if (!event.locked && articleId) {
+          void utils.kb.getKopilotTurnReview.invalidate({ articleId })
+        }
         return
       }
 
@@ -85,7 +91,13 @@ export function useKbArticleChannel({
 
       logger.debug('Unhandled KB article event', { eventType })
     },
-    [articleId, knowledgeBaseId, utils.kb.getArticleById, utils.kb.getArticles]
+    [
+      articleId,
+      knowledgeBaseId,
+      utils.kb.getArticleById,
+      utils.kb.getArticles,
+      utils.kb.getKopilotTurnReview,
+    ]
   )
 
   useSSE(config, onEvent)

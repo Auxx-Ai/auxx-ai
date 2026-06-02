@@ -388,6 +388,11 @@ async function buildKopilotShapedConfig(
     // Long-running plans (≥30 steps × ~1–2 LLM rounds each) need
     // headroom past the framework's small-loop default.
     maxIterations: 30,
+    // Scope the turn-end KB lifecycle hook so the worker path finalizes/reverts
+    // too (the latent bug this de-hack fixes).
+    db: database,
+    organizationId: params.organizationId,
+    userId: params.userId,
   })
 }
 

@@ -8,8 +8,10 @@ import { useQueryState } from 'nuqs'
 import { useMemo } from 'react'
 import { LoadingSpinner } from '~/components/global/loading-content'
 import { useArticleList, useIsArticleListLoaded } from '../../hooks/use-article-list'
+import { useDiffParam } from '../../hooks/use-diff-param'
 import { useKnowledgeBase } from '../../hooks/use-knowledge-base'
 import { KBPreview } from '../preview/kb-preview'
+import { ArticleDiffPane } from './article-diff-pane'
 import { ArticleEditor } from './article-editor'
 import { ContainerArticlePlaceholder } from './container-article-placeholder'
 
@@ -53,6 +55,7 @@ interface KBEditorBodyProps {
 function KBEditorBody({ knowledgeBaseId, slug, hasArticlesLoaded }: KBEditorBodyProps) {
   const articles = useArticleList(knowledgeBaseId)
   const { knowledgeBase } = useKnowledgeBase(knowledgeBaseId)
+  const [diffValue, setDiff] = useDiffParam()
 
   const currentArticle = useMemo(() => {
     if (!articles || articles.length === 0 || !slug || slug.length === 0) return undefined
@@ -66,6 +69,16 @@ function KBEditorBody({ knowledgeBaseId, slug, hasArticlesLoaded }: KBEditorBody
     if (kind === ArticleKind.tab || kind === ArticleKind.header || kind === ArticleKind.link) {
       return (
         <ContainerArticlePlaceholder article={currentArticle} knowledgeBaseId={knowledgeBaseId} />
+      )
+    }
+    if (diffValue) {
+      return (
+        <ArticleDiffPane
+          article={currentArticle}
+          knowledgeBaseId={knowledgeBaseId}
+          diffValue={diffValue}
+          onClose={() => setDiff(null)}
+        />
       )
     }
     return <ArticleEditor article={currentArticle} knowledgeBaseId={knowledgeBaseId} />

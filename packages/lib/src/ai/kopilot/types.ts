@@ -84,4 +84,11 @@ export interface KopilotDomainState {
   capabilities?: string[]
   /** Active plan, persisted across iterations and turns until replaced */
   plan?: PlanState
+  /**
+   * KB article ids written by a tool this turn, recorded from block-CRUD tool
+   * results in `onToolResult`. Drives the turn-end finalize/revert in
+   * `onTurnEnd` without duck-typing the request context. Per-turn — cleared at
+   * the start of each new user turn via `resetTurnDomainState`.
+   */
+  kbTouchedArticleIds?: string[]
 }

@@ -93,6 +93,12 @@ export class AgentEngine {
       approvalsThisTurn: 0,
       turnSnapshots: createEmptyTurnSnapshots(),
       capturedActions: [],
+      // Clear per-turn domain state (e.g. KB articles touched this turn). Only
+      // on a fresh user turn — resume() continues the same turn and must keep it.
+      domainState:
+        this.config.domainConfig.resetTurnDomainState?.(
+          this.state.domainState as Record<string, unknown>
+        ) ?? this.state.domainState,
     }
 
     logger.info('Turn submitted', {
@@ -111,7 +117,7 @@ export class AgentEngine {
     }
 
     try {
-      yield* this.tagTurnId(this.runPipeline(configWithAbort))
+      yield* this.withTurnEnd(this.tagTurnId(this.runPipeline(configWithAbort)))
     } finally {
       this.abortController = null
     }
@@ -158,7 +164,7 @@ export class AgentEngine {
     }
 
     try {
-      yield* this.tagTurnId(this.runResume(opts, route, configWithAbort))
+      yield* this.withTurnEnd(this.tagTurnId(this.runResume(opts, route, configWithAbort)))
     } finally {
       this.abortController = null
     }
@@ -646,6 +652,50 @@ export class AgentEngine {
   private async *tagTurnId(gen: AsyncGenerator<AgentEvent>): AsyncGenerator<AgentEvent> {
     for await (const event of gen) {
       yield this.tagEvent(event)
+    }
+  }
+
+  /**
+   * Wrap a turn's event stream so the domain's `onTurnEnd` hook fires exactly
+   * once with the resolved outcome, before the terminal event is yielded.
+   *
+   * Terminal events drive the normal path (`turn-completed` → 'completed',
+   * `turn-error` → 'error'). An abnormal close that yields no terminal event —
+   * abort, client disconnect, a thrown error — fires 'error' from the finally
+   * guard so locks release and the turn rolls back. The one exception is an
+   * approval pause: it returns without a terminal event but the turn isn't
+   * over, so `waitingForApproval` suppresses the guard.
+   *
+   * A hook failure is logged and swallowed; it must never mask the turn result.
+   */
+  private async *withTurnEnd(gen: AsyncGenerator<AgentEvent>): AsyncGenerator<AgentEvent> {
+    const hook = this.config.domainConfig.onTurnEnd
+    if (!hook) {
+      yield* gen
+      return
+    }
+    let fired = false
+    const fire = async (outcome: 'completed' | 'error') => {
+      if (fired) return
+      fired = true
+      try {
+        await hook(this.getState(), outcome)
+      } catch (err) {
+        logger.error('onTurnEnd hook failed', {
+          turnId: this.turnId,
+          outcome,
+          error: err instanceof Error ? err.message : String(err),
+        })
+      }
+    }
+    try {
+      for await (const event of gen) {
+        if (event.type === 'turn-completed') await fire('completed')
+        else if (event.type === 'turn-error') await fire('error')
+        yield event
+      }
+    } finally {
+      if (!fired && !this.state.waitingForApproval) await fire('error')
     }
   }
 

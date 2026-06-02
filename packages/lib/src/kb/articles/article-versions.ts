@@ -1,12 +1,13 @@
 // @auxx/lib/kb/articles/article-versions.ts
 import { schema } from '@auxx/database'
 import { TRPCError } from '@trpc/server'
-import { and, desc, eq, sql } from 'drizzle-orm'
+import { and, desc, eq, inArray, sql } from 'drizzle-orm'
 import { resolveDb } from '../internal/context'
 import { createNotFoundError, handleError } from '../internal/errors'
 import { reloadFlat } from '../internal/flatten-article'
 import { verifyArticleExists } from '../internal/validate-existence'
 import { clearKopilotSnapshot } from '../kopilot-snapshot'
+import type { ArticleNodeJSON } from '../markdown/types'
 import { syncArticleDenormalizedFields } from '../sync-article-denormalized-fields'
 import type { ArticleListItem, KBContext } from '../types'
 
@@ -27,6 +28,88 @@ export async function getArticleVersions(ctx: KBContext, articleId: string) {
     return handleError(error, ctx.organizationId, 'Error fetching article versions', {
       articleId,
     })
+  }
+}
+
+/** One side of a diff: a revision's body + identifying metadata. */
+export interface ArticleRevisionBody {
+  id: string
+  versionNumber: number | null
+  label: string | null
+  title: string
+  contentJson: ArticleNodeJSON[] | null
+  createdAt: Date
+}
+
+/**
+ * Resolve two revisions of an article for diffing. `base`/`compare` accept the
+ * sentinels `'draft'` / `'published'` (resolved against the article's current
+ * draft/published revision ids) or a literal revision id. Every revision is
+ * org-scoped and validated to belong to `articleId`, so an id from another
+ * article resolves to `null`.
+ */
+export async function getArticleDiff(
+  ctx: KBContext,
+  articleId: string,
+  base: string,
+  compare: string
+): Promise<{ base: ArticleRevisionBody | null; compare: ArticleRevisionBody | null }> {
+  const db = resolveDb(ctx)
+  try {
+    await verifyArticleExists(db, ctx.organizationId, articleId)
+    const article = await db.query.Article.findFirst({
+      where: and(
+        eq(schema.Article.id, articleId),
+        eq(schema.Article.organizationId, ctx.organizationId)
+      ),
+      columns: { draftRevisionId: true, publishedRevisionId: true },
+    })
+    if (!article) throw createNotFoundError(`Article with ID '${articleId}' not found`)
+
+    const resolveRef = (ref: string): string | null =>
+      ref === 'draft'
+        ? article.draftRevisionId
+        : ref === 'published'
+          ? article.publishedRevisionId
+          : ref
+    const baseId = resolveRef(base)
+    const compareId = resolveRef(compare)
+
+    const ids = [...new Set([baseId, compareId].filter((x): x is string => !!x))]
+    const rows = ids.length
+      ? await db.query.ArticleRevision.findMany({
+          where: and(
+            eq(schema.ArticleRevision.articleId, articleId),
+            eq(schema.ArticleRevision.organizationId, ctx.organizationId),
+            inArray(schema.ArticleRevision.id, ids)
+          ),
+          columns: {
+            id: true,
+            versionNumber: true,
+            label: true,
+            title: true,
+            contentJson: true,
+            createdAt: true,
+          },
+        })
+      : []
+
+    const byId = new Map(rows.map((r) => [r.id, r]))
+    const toBody = (id: string | null): ArticleRevisionBody | null => {
+      const r = id ? byId.get(id) : undefined
+      if (!r) return null
+      return {
+        id: r.id,
+        versionNumber: r.versionNumber,
+        label: r.label,
+        title: r.title,
+        contentJson: (r.contentJson as ArticleNodeJSON[] | null) ?? null,
+        createdAt: r.createdAt,
+      }
+    }
+    return { base: toBody(baseId), compare: toBody(compareId) }
+  } catch (error) {
+    return handleError(error, ctx.organizationId, 'Error fetching article diff', { articleId })
   }
 }
 

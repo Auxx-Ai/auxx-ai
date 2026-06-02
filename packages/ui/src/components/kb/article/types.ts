@@ -32,6 +32,8 @@ export interface CardData {
 }
 
 export interface BlockAttrs {
+  /** Stable id, copied verbatim across versions; keys the version diff. */
+  id?: string | null
   blockType: BlockType
   level?: number | null
   checked?: boolean
@@ -145,3 +147,14 @@ export interface DocJSON {
  * their own URL prefix.
  */
 export type ResolveAuxxHref = (articleId: string) => string
+
+/** Diff status of a block, mirrored from `@auxx/lib/kb/blocks` to avoid a cross-package dep. */
+export type DiffStatus = 'added' | 'removed' | 'modified' | 'moved' | 'unchanged'
+
+/**
+ * Container-nested leaf decorations keyed by `attrs.id`. When provided to the
+ * renderer, leaf blocks whose id appears here are wrapped with a
+ * `data-diff-status` attribute so the diff surface can border-decorate them.
+ * Top-level block decoration is handled by the diff view, not this map.
+ */
+export type DiffDecorations = ReadonlyMap<string, DiffStatus>
