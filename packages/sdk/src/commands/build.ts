@@ -5,6 +5,7 @@ import { Command } from 'commander'
 import type { Message } from 'esbuild'
 import { isErrored } from '../errors.js'
 import { ensureAppEntryPoint } from '../util/ensure-app-entry-point.js'
+import { ensureAppFieldsTypes } from '../util/ensure-app-fields-types.js'
 import { printJsError, printTsError } from '../util/error-reporting.js'
 import { generateAppEnvTypes } from '../util/generate-app-env-types.js'
 import { hardExit } from '../util/hard-exit.js'
@@ -49,6 +50,9 @@ export const build = new Command('build')
           )
         )
       }
+
+      // Layer 2 — narrow value-I/O signatures to this app's declared fields.
+      await ensureAppFieldsTypes()
 
       const tsResult = await spinnerify(
         'Validating TypeScript...',

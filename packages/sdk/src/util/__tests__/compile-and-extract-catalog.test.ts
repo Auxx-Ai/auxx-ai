@@ -126,5 +126,27 @@ describe('compileAndExtractCatalog', () => {
         'message.send': 'send_message',
       },
     })
+
+    // App-registered custom fields — projected from `app.fields[]`. Carries the
+    // catalog the platform provisions on install/connect (Phase 5/7).
+    expect(catalog.fields).toHaveLength(2)
+    expect(catalog.fields?.[0]).toMatchObject({
+      appFieldKey: 'customerId',
+      type: 'TEXT',
+      targetEntity: 'contact',
+      scope: 'connection',
+      name: 'Customer ID',
+      capabilities: { hidden: true, updatable: false },
+    })
+    expect(catalog.fields?.[1]).toMatchObject({
+      appFieldKey: 'tier',
+      type: 'SINGLE_SELECT',
+      targetEntity: 'contact',
+      scope: 'installation',
+      options: [
+        { value: 'gold', label: 'Gold' },
+        { value: 'silver', label: 'Silver' },
+      ],
+    })
   })
 })
