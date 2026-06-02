@@ -13,6 +13,8 @@ interface CreateAgentInput {
   /** Omit to let the server default `slug = id`. */
   slug?: string
   description?: string | null
+  /** Invocation surface. Defaults to `'internal'` server-side when omitted. */
+  kind?: 'internal' | 'chat'
 }
 
 interface UpdateAgentInput {
@@ -54,6 +56,7 @@ export function useAgentMutations(): UseAgentMutationsResult {
           name: input?.name,
           slug: input?.slug,
           description: input?.description ?? undefined,
+          kind: input?.kind ?? 'internal',
         })
         // Skip pre-redirect list invalidate so the agents grid below the
         // create button doesn't pop in a "Setting up" card before navigation

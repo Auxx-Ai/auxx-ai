@@ -40,7 +40,9 @@ export function ToolsSectionContent({
   onAutosaveChange,
   onAddToApp,
 }: ToolsSectionContentProps) {
-  const { catalog, isLoading: catalogIsLoading } = useToolCatalog()
+  const { catalog, isLoading: catalogIsLoading } = useToolCatalog({
+    chatSafeOnly: agent.kind === 'chat',
+  })
 
   const handleSavingChange = useCallback(
     (saving: boolean) => {

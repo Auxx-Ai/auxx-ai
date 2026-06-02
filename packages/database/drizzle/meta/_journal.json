@@ -1345,6 +1345,13 @@
       "when": 1780367431612,
       "tag": "0191_app_owned_custom_fields",
       "breakpoints": true
+    },
+    {
+      "idx": 192,
+      "version": "7",
+      "when": 1780422309284,
+      "tag": "0192_add_agent_kind",
+      "breakpoints": true
     }
   ]
 }

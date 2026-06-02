@@ -70,6 +70,7 @@ function buildBuiltinAgentTools(): CachedAgentTool[] {
         // the LLM actually invokes.
         registeredName: tool.name,
         iconId: lookupIconForSlug(tool.toolsetSlug),
+        chatSafe: tool.chatSafe,
       })
     }
   }

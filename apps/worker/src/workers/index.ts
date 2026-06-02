@@ -5,6 +5,7 @@ import { startAiAgentWorker } from './worker-definitions/ai-agent-worker'
 import { startAiAutofillWorker } from './worker-definitions/ai-autofill-worker'
 import { startAppTriggerWorker } from './worker-definitions/app-trigger-worker'
 import { startCalendarSyncWorker } from './worker-definitions/calendar-sync-worker'
+import { startChatAgentWorker } from './worker-definitions/chat-agent-worker'
 import { startDataImportWorker } from './worker-definitions/data-import-worker'
 import { startDatasetEmbeddingWorker } from './worker-definitions/dataset-embedding-worker'
 import { startDatasetMaintenanceWorker } from './worker-definitions/dataset-maintenance-worker'
@@ -82,6 +83,9 @@ export async function startWorkers() {
   // AI agent worker (Kopilot, Builder session processing)
   const aiAgentWorker = startAiAgentWorker()
 
+  // Chat-agent worker (visitor chat turns; dedicated lane, isolated from ai-agent)
+  const chatAgentWorker = startChatAgentWorker()
+
   // AI autofill worker (per-field AI generation)
   const aiAutofillWorker = startAiAutofillWorker()
 
@@ -117,6 +121,7 @@ export async function startWorkers() {
     appTriggerWorker,
     pollingTriggerWorker,
     aiAgentWorker,
+    chatAgentWorker,
     aiAutofillWorker,
     recordingBotWorker,
     recordingProcessingWorker,

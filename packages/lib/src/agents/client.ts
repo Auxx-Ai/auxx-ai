@@ -13,6 +13,14 @@ export interface ToolCatalogEntry {
   /** Short, human-friendly label for chips, pickers, and audit UI. */
   displayName: string
   description: string
+  /**
+   * Opt-in: this tool is safe to register on a chat-kind (visitor-facing)
+   * agent. Mirrors `AgentToolDefinition.chatSafe`. Absent / false ⇒ the tool
+   * is hidden from the chat-kind toolset catalog. Phase 4 is the first to
+   * populate this through the projection; until then the chat catalog is
+   * empty. See plans/chat/v5.
+   */
+  chatSafe?: boolean
 }
 
 /**
@@ -124,6 +132,27 @@ export function flattenCatalogToToolsets(roots: CatalogNode[]): FlatToolsetCatal
 }
 
 /**
+ * Prune a catalog tree to only the tools that are `chatSafe`, dropping any
+ * toolset left with zero tools and any container left with no children. Used
+ * by the agent detail UI to clamp a chat-kind agent's toolset catalog to the
+ * visitor-safe surface. Pure — returns fresh nodes, never mutates the input.
+ *
+ * Until the first `chatSafe` tool ships (phase 4) this returns `[]` for every
+ * input, which is the intended phase-2 behavior. See plans/chat/v5 phase-2 §5.
+ */
+export function filterCatalogToChatSafe(roots: CatalogNode[]): CatalogNode[] {
+  const pruneNode = (node: CatalogNode): CatalogNode | null => {
+    if (node.kind === 'toolset') {
+      const tools = node.tools.filter((t) => t.chatSafe === true)
+      return tools.length > 0 ? { ...node, tools } : null
+    }
+    const children = node.children.map(pruneNode).filter((n): n is CatalogNode => n !== null)
+    return children.length > 0 ? { ...node, children } : null
+  }
+  return roots.map(pruneNode).filter((n): n is CatalogNode => n !== null)
+}
+
+/**
  * Structural subtype of `CachedInstalledApp` covering exactly what
  * `buildCatalogTreeFromInstallations` needs to read. Defining it here in the
  * client subpath avoids dragging the full `CachedInstalledApp` type (which
@@ -155,6 +184,8 @@ export interface CachedInstalledAppLike {
     name: string
     description: string
     toolsetSlug: string
+    /** Mirrors `AgentToolDefinition.chatSafe` — surfaces the tool in the chat-kind catalog. */
+    chatSafe?: boolean
   }>
 }
 
@@ -302,6 +333,7 @@ export function buildCatalogTreeFromInstallations(
         name: tool.id,
         displayName: tool.name,
         description: shortDescription(tool.description),
+        chatSafe: tool.chatSafe,
       })
       toolsBySlug.set(tool.toolsetSlug, arr)
     }

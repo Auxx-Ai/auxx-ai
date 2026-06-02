@@ -21,8 +21,14 @@ export { processAgentMessage } from './process-agent-job'
 
 export { agentQueryLoop } from './query-loop'
 export { withAgentRunLog } from './run-log'
+export { buildCatchupMessages } from './sessions/catchup-replay'
+export type {
+  ChatTriggerContext,
+  FindOrCreateThreadSessionInput,
+} from './sessions/find-or-create-thread-session'
+export { findOrCreateThreadSession } from './sessions/find-or-create-thread-session'
 export { executeToolCall } from './tool-bridge'
-export type { ToolContext, WorkflowToolContext } from './tool-context'
+export type { ChatInvocationContext, ToolContext, WorkflowToolContext } from './tool-context'
 
 export type {
   AgentDefinition,

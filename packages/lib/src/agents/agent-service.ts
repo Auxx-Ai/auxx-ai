@@ -2,6 +2,7 @@
 
 import {
   type AgentConfig,
+  type AgentKind,
   type AppAccountBinding,
   type Database,
   database as defaultDb,
@@ -42,6 +43,12 @@ export interface CreateAgentInput {
   prompt?: Record<string, unknown>
   modelId?: string | null
   mentionable?: boolean
+  /**
+   * Invocation surface — `'internal'` (default) or `'chat'`. Immutable after
+   * creation; `updateAgent` rejects changes. Phase 2's Create UI is the only
+   * caller that sends `'chat'`. See plans/chat/v5.
+   */
+  kind?: AgentKind
   /**
    * Initial toolset slugs to enable. When omitted, defaults from
    * `resolveDefaultToolsets(orgId)` are inserted with `source='auto_default'`.
@@ -101,6 +108,7 @@ export async function createAgent(
     prompt = {},
     modelId = null,
     mentionable = true,
+    kind = 'internal',
   } = input
 
   const now = new Date()
@@ -131,6 +139,7 @@ export async function createAgent(
         slug: slugPlaceholder,
         description,
         prompt,
+        kind,
         toolsets: toolsetEntries,
         knowledge: [],
         modelId,
@@ -239,6 +248,14 @@ export async function updateAgent(
   input: UpdateAgentInput,
   db: Database = defaultDb as Database
 ): Promise<void> {
+  // `kind` is chosen once at creation and immutable thereafter — it changes
+  // an agent's whole invocation surface (toolset catalog, runtime path). It
+  // is intentionally absent from `UpdateAgentInput`; this guard defends the
+  // contract against untyped / pass-through callers (e.g. tRPC input bleed).
+  if ('kind' in input) {
+    throw new BadRequestError("An agent's kind cannot be changed after creation.")
+  }
+
   const now = new Date()
   const archiveTransition = 'archivedAt' in input
 
@@ -568,6 +585,8 @@ export interface AgentSummary {
   slug: string
   description: string | null
   avatarUrl: string | null
+  /** Invocation surface — `'internal'` (default) or `'chat'`. Immutable. */
+  kind: AgentKind
   mentionable: boolean
   modelId: string | null
   /** ISO string when chat-driven setup completed; null while in setup mode. */
@@ -599,6 +618,7 @@ function toAgentSummary(a: {
   slug: string
   description: string | null
   avatarUrl: string | null
+  kind: AgentKind
   mentionable: boolean
   modelId: string | null
   setupCompletedAt: string | null
@@ -614,6 +634,7 @@ function toAgentSummary(a: {
     slug: a.slug,
     description: a.description,
     avatarUrl: a.avatarUrl,
+    kind: a.kind,
     mentionable: a.mentionable,
     modelId: a.modelId,
     setupCompletedAt: a.setupCompletedAt,

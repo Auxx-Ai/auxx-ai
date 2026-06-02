@@ -65,6 +65,14 @@ export function AgentDetailTabs({ agent, onAutosaveChange }: AgentDetailTabsProp
   })
   const isProgrammaticScrollRef = useRef(false)
 
+  // Chat-kind agents fire from their `ChatWidget.agentId` binding, not from
+  // AgentTrigger rows — there are no user-configurable triggers in v5, so the
+  // Triggers tab is hidden outright. See plans/chat/v5 phase-2 §7.
+  const tabs = useMemo(
+    () => (agent.kind === 'chat' ? AGENT_TABS.filter((t) => t !== 'triggers') : AGENT_TABS),
+    [agent.kind]
+  )
+
   const scrollToSection = useCallback((value: string) => {
     const target = sectionRefs.current[value as AgentTab]
     const container = scrollContainerRef.current
@@ -105,7 +113,7 @@ export function AgentDetailTabs({ agent, onAutosaveChange }: AgentDetailTabsProp
         const containerRect = container.getBoundingClientRect()
         const activationY = containerRect.top + STICKY_OFFSET + 8
         let best: AgentTab | null = null
-        for (const t of AGENT_TABS) {
+        for (const t of tabs) {
           const el = sectionRefs.current[t]
           if (!el) continue
           const rect = el.getBoundingClientRect()
@@ -123,7 +131,7 @@ export function AgentDetailTabs({ agent, onAutosaveChange }: AgentDetailTabsProp
       container.removeEventListener('scroll', onScroll)
       if (raf) cancelAnimationFrame(raf)
     }
-  }, [setTab, tab])
+  }, [setTab, tab, tabs])
 
   const assignRef = (value: AgentTab) => (el: HTMLDivElement | null) => {
     sectionRefs.current[value] = el
@@ -142,7 +150,7 @@ export function AgentDetailTabs({ agent, onAutosaveChange }: AgentDetailTabsProp
           <div className='bg-background border-b'>
             <Tabs value={tab} onValueChange={handleTabChange}>
               <TabsList className='w-full justify-start rounded-none bg-primary-150 px-2'>
-                {AGENT_TABS.map((value) => {
+                {tabs.map((value) => {
                   const Icon = SECTION_ICONS[value]
                   return (
                     <TabsTrigger key={value} value={value} variant='outline'>
@@ -182,45 +190,47 @@ export function AgentDetailTabs({ agent, onAutosaveChange }: AgentDetailTabsProp
           </Section>
         </div>
 
-        <div ref={assignRef('triggers')}>
-          <Section
-            title='Triggers'
-            icon={<Zap className='size-4' />}
-            className='[&>[data-slot=section]>[data-slot=section-content]]:-mx-3'
-            initialOpen
-            description='Autonomous triggers fire this agent on a schedule, on a record event, or on an app event.'
-            collapsible={false}
-            actions={
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant='ghost' size='xs'>
-                    <Plus />
-                    Add trigger
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align='end'>
-                  <DropdownMenuItem onClick={() => setAddingKind('scheduled')}>
-                    <Clock />
-                    Scheduled
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setAddingKind('event')}>
-                    <Zap />
-                    Event
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setAddingKind('app')}>
-                    <Plug />
-                    App
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            }>
-            <TriggersSectionContent
-              agent={agent}
-              addingKind={addingKind}
-              onAddingKindChange={setAddingKind}
-            />
-          </Section>
-        </div>
+        {agent.kind !== 'chat' ? (
+          <div ref={assignRef('triggers')}>
+            <Section
+              title='Triggers'
+              icon={<Zap className='size-4' />}
+              className='[&>[data-slot=section]>[data-slot=section-content]]:-mx-3'
+              initialOpen
+              description='Autonomous triggers fire this agent on a schedule, on a record event, or on an app event.'
+              collapsible={false}
+              actions={
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant='ghost' size='xs'>
+                      <Plus />
+                      Add trigger
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align='end'>
+                    <DropdownMenuItem onClick={() => setAddingKind('scheduled')}>
+                      <Clock />
+                      Scheduled
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setAddingKind('event')}>
+                      <Zap />
+                      Event
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setAddingKind('app')}>
+                      <Plug />
+                      App
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              }>
+              <TriggersSectionContent
+                agent={agent}
+                addingKind={addingKind}
+                onAddingKindChange={setAddingKind}
+              />
+            </Section>
+          </div>
+        ) : null}
 
         {/* Spacer so the last section can scroll up to the activation line. */}
         <div className='h-[40vh]' />
@@ -288,6 +298,7 @@ function ToolsSection({ agent, onAutosaveChange }: ToolsSectionProps) {
       <ToolSelectDialog
         installedToolsets={agent.toolsets}
         boundAppIds={boundAppIds}
+        chatSafeOnly={agent.kind === 'chat'}
         onToggleToolset={toggleToolset}
         onToggleToolsets={toggleToolsets}
         open={dialogOpen}

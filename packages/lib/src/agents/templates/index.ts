@@ -15,6 +15,13 @@ export type AgentTemplateCategory = 'support' | 'sales' | 'operations' | 'intern
 export interface AgentTemplate {
   /** Stable kebab-case slug. Used as the URL search param value. */
   id: string
+  /**
+   * Which agent kind this template produces. The Create dropdown opens the
+   * template dialog pre-scoped to a kind and filters by this field. Existing
+   * templates are all `'internal'`; chat-kind templates are visitor-facing
+   * personas. Orthogonal to `categories` (a topic filter). See plans/chat/v5.
+   */
+  kind: 'internal' | 'chat'
   /** Display title in the row. */
   name: string
   /** One-line tagline rendered under the name. */
@@ -37,6 +44,7 @@ export interface AgentTemplate {
 export const agentTemplates: AgentTemplate[] = [
   {
     id: 'support-triage',
+    kind: 'internal',
     name: 'Customer support triage',
     description: 'Classify new tickets by urgency and route them to the right team.',
     prompt:
@@ -48,6 +56,7 @@ export const agentTemplates: AgentTemplate[] = [
   },
   {
     id: 'refund-handler',
+    kind: 'internal',
     name: 'Refund request handler',
     description: 'Detect refund requests, look up the order, and draft a reply.',
     prompt:
@@ -59,6 +68,7 @@ export const agentTemplates: AgentTemplate[] = [
   },
   {
     id: 'vip-escalation',
+    kind: 'internal',
     name: 'VIP customer escalation',
     description: 'Spot high-value customers and escalate their tickets immediately.',
     prompt:
@@ -70,6 +80,7 @@ export const agentTemplates: AgentTemplate[] = [
   },
   {
     id: 'sales-lead-qualifier',
+    kind: 'internal',
     name: 'Sales lead qualifier',
     description: 'Score inbound leads and hand the hot ones to sales.',
     prompt:
@@ -81,6 +92,7 @@ export const agentTemplates: AgentTemplate[] = [
   },
   {
     id: 'quote-followup',
+    kind: 'internal',
     name: 'Quote follow-up reminder',
     description: 'Nudge prospects whose quotes are about to expire.',
     prompt:
@@ -92,6 +104,7 @@ export const agentTemplates: AgentTemplate[] = [
   },
   {
     id: 'weekly-metrics-digest',
+    kind: 'internal',
     name: 'Weekly metrics digest',
     description: 'Scheduled summary of ticket volume, response time, and trends.',
     prompt:
@@ -103,6 +116,7 @@ export const agentTemplates: AgentTemplate[] = [
   },
   {
     id: 'daily-standup',
+    kind: 'internal',
     name: 'Daily standup summarizer',
     description: 'Roll up yesterday’s activity into a quick standup post.',
     prompt:
@@ -114,6 +128,7 @@ export const agentTemplates: AgentTemplate[] = [
   },
   {
     id: 'onboarding-buddy',
+    kind: 'internal',
     name: 'New-hire onboarding buddy',
     description: 'Answer onboarding questions from internal knowledge base.',
     prompt:
@@ -122,5 +137,48 @@ export const agentTemplates: AgentTemplate[] = [
     icon: 'GraduationCap',
     color: 'pink',
     avatarId: 'dog',
+  },
+
+  // ── Chat-kind starters ───────────────────────────────────────────────
+  // Visitor-facing personas. Persona-shaped, not toolset-shaped — until the
+  // first chat-safe tool lands there's no chat toolset to reference, so
+  // escalation/tone guidance is folded inline into the persona prose. The
+  // `chat.handoff` tool ships separately; the prompt tells the agent when to
+  // reach for it. See plans/chat/v5 phase-2 §2.
+  {
+    id: 'storefront-support-concierge',
+    kind: 'chat',
+    name: 'Storefront support concierge',
+    description: 'Answers common questions from your knowledge base and hands off when stuck.',
+    prompt:
+      "Build me a storefront support concierge for our chat widget. It greets visitors warmly, answers their questions using our public knowledge base, and keeps replies short and friendly. If the visitor is frustrated, explicitly asks for a human, or the answer isn't in the knowledge base, it should hand the conversation off to a teammate rather than guess.",
+    categories: ['support'],
+    icon: 'Headphones',
+    color: 'blue',
+    avatarId: 'fox',
+  },
+  {
+    id: 'order-status-assistant',
+    kind: 'chat',
+    name: 'Order status assistant',
+    description: 'Helps visitors check “where’s my order?” and escalates edge cases.',
+    prompt:
+      "Build me an order status assistant for our chat widget. When a visitor asks about their order, it helps them find the status of their own orders only. It never asks for or trusts an order number or email a visitor types to look up someone else's account. If the visitor needs a refund, a change to an order, or anything it can't resolve, it hands off to a human teammate.",
+    categories: ['support'],
+    icon: 'RefreshCcw',
+    color: 'amber',
+    avatarId: 'sparkle',
+  },
+  {
+    id: 'presales-product-qa',
+    kind: 'chat',
+    name: 'Pre-sales product Q&A',
+    description: 'Answers product questions for shoppers browsing your store.',
+    prompt:
+      'Build me a pre-sales product Q&A agent for our chat widget. It answers shoppers’ questions about our products, shipping, and policies using our public knowledge base, and nudges them toward a purchase when it makes sense. Keep the tone helpful and concise. If a shopper asks something the knowledge base doesn’t cover or wants to talk to sales, hand the conversation off to a teammate.',
+    categories: ['sales'],
+    icon: 'Target',
+    color: 'green',
+    avatarId: 'rocket',
   },
 ]

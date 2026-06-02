@@ -37,6 +37,9 @@ export enum Queues {
   appPollingTriggerQueue = 'app-polling-trigger-queue',
   // AI agent session processing queue (Kopilot, Builder)
   aiAgentQueue = 'ai-agent',
+  // Dedicated chat-agent queue — visitor chat turns run here, isolated from
+  // the shared ai-agent pool so a burst elsewhere can't delay a live reply.
+  chatAgentQueue = 'chat-agent',
   // Recording bot queue (schedule, webhook handling, polling, timeouts)
   recordingBotQueue = 'recording-bot',
   // Recording media processing queue (download + S3 upload)

@@ -4,7 +4,8 @@ import { database as db, schema } from '@auxx/database'
 import { IntegrationProviderType, ThreadStatus } from '@auxx/database/enums'
 import { createScopedLogger } from '@auxx/logger'
 import { and, asc, eq, inArray, sql } from 'drizzle-orm'
-import { getOrgCache } from '../../cache'
+import { getCachedAgentById, getOrgCache } from '../../cache'
+import { enqueueChatTurn } from '../../chat/agent/enqueue-chat-turn'
 import { publishChatMessageCreated, publishChatMessageReceiptUpdated } from '../../chat/realtime'
 import type { ChatAttachment } from '../../chat/types'
 import { getRealtimeService } from '../../realtime'
@@ -387,11 +388,14 @@ export class ChatProvider extends BaseMessageProvider implements MessageProvider
   }
 
   /**
-   * Reads `ChatWidget.agentId` for the thread's channel and, if set, enqueues
-   * an agent run job. The agent-framework's enqueue helper expects an
-   * `AgentSession` id — chat doesn't have one yet, so this hook is a stub:
-   * follow-up work will create the session (or short-circuit through a
-   * chat-aware engine entry point) before enqueueing.
+   * The phase-3 gate: decide whether an inbound visitor message fires the
+   * bound chat-kind agent, and if so enqueue the turn onto the dedicated
+   * `chat-agent` queue. `receiveMessageInternal` only ever calls this for an
+   * inbound (visitor) message, so author disambiguation isn't needed — agent
+   * and teammate replies go through the send path, never here.
+   *
+   * `contactId` stays null until promotion (phase 5); every identity-required
+   * chat-safe tool short-circuits while it's null. See plans/chat/v5 phase-3.
    */
   private async maybeEnqueueAgentRun(args: {
     threadId: string
@@ -421,14 +425,26 @@ export class ChatProvider extends BaseMessageProvider implements MessageProvider
       const agentId = channel?.chatWidget?.agentId ?? null
       if (!agentId) return
 
-      // TODO(chat-agent): enqueueAgentJob expects an AgentSession id. The chat
-      // → agent run path needs a session creation step (or a chat-specific
-      // engine entry point). For phase 4a, leave this as a logged TODO so the
-      // unblock work is visible.
-      logger.warn('Chat widget has agentId but agent enqueue path not yet wired', {
+      // Defensive chat-kind assert. Phase 2's `chatWidget.update` validation
+      // guarantees only chat-kind agents are bindable, so this should never
+      // fail — but a stale binding (agent kind can't change, but the agent
+      // could be archived/deleted) shouldn't run a non-chat agent on a visitor.
+      const agent = await getCachedAgentById(this.organizationId, agentId)
+      if (!agent || agent.kind !== 'chat' || !agent.userId) {
+        logger.warn('Chat widget agentId does not resolve to a live chat-kind agent — skipping', {
+          agentId,
+          threadId: args.threadId,
+        })
+        return
+      }
+
+      await enqueueChatTurn({
+        organizationId: this.organizationId,
         agentId,
         threadId: args.threadId,
-        messageId: args.messageId,
+        // Null until OTP promotion (phase 5) resolves the visitor to a Contact.
+        contactId: null,
+        inboundMessageId: args.messageId,
       })
     } catch (error) {
       logger.error('Failed to evaluate widget agent for inbound chat message', {
