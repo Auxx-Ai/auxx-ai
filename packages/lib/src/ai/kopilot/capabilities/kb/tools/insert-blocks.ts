@@ -1,10 +1,12 @@
 // packages/lib/src/ai/kopilot/capabilities/kb/tools/insert-blocks.ts
 
 import type { BlockAnchor } from '../../../../../kb/blocks/patch-types'
+import { parseStringArg } from '../../../../agent-framework/tool-inputs'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
 import type { GetToolDeps } from '../../types'
 import {
   buildOpToolResult,
+  EXPECTED_HASH_PARAM,
   expandBlockInputs,
   parseBlockInputs,
   runBlockCrudOp,
@@ -32,6 +34,7 @@ export function createInsertBlocksTool(getDeps: GetToolDeps): AgentToolDefinitio
             "Block payloads — { kind: 'markdown', markdown } or { kind: 'block', block: BlockJSON }",
           items: { type: 'object', additionalProperties: true },
         },
+        expectedHash: EXPECTED_HASH_PARAM,
       },
       required: ['anchor', 'blocks'],
       additionalProperties: false,
@@ -43,9 +46,15 @@ export function createInsertBlocksTool(getDeps: GetToolDeps): AgentToolDefinitio
       if (!anchor || typeof anchor !== 'object' || typeof anchor.at !== 'string') {
         return { ok: false, error: 'anchor must be { at, blockId? | containerId? }' }
       }
+      const expectedHash = parseStringArg(args.expectedHash, { name: 'expectedHash', max: 200 })
+      if (!expectedHash.ok) return { ok: false, error: expectedHash.error }
       return {
         ok: true,
-        args: { ...args, blocks: blocks.value as unknown as Record<string, unknown>[] },
+        args: {
+          ...args,
+          blocks: blocks.value as unknown as Record<string, unknown>[],
+          expectedHash: expectedHash.value,
+        },
       }
     },
     execute: async (args, agentDeps) => {
@@ -61,6 +70,7 @@ export function createInsertBlocksTool(getDeps: GetToolDeps): AgentToolDefinitio
         toolDeps,
         patch: { op: 'insert', anchor, blocks },
         opIndex: 0,
+        expectedHash: args.expectedHash as string | undefined,
       })
       return buildOpToolResult('insert', result)
     },

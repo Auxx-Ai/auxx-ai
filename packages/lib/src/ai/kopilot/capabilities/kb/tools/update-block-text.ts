@@ -5,7 +5,7 @@ import type { InlineJSON } from '../../../../../kb/markdown/types'
 import { parseStringArg } from '../../../../agent-framework/tool-inputs'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
 import type { GetToolDeps } from '../../types'
-import { buildOpToolResult, runBlockCrudOp } from './write-helpers'
+import { buildOpToolResult, EXPECTED_HASH_PARAM, runBlockCrudOp } from './write-helpers'
 
 /**
  * Convenience write tool for prose blocks: pass markdown text, server
@@ -24,6 +24,7 @@ export function createUpdateBlockTextTool(getDeps: GetToolDeps): AgentToolDefini
       properties: {
         blockId: { type: 'string', description: 'Id of the block to edit' },
         markdown: { type: 'string', description: 'New inline content (markdown)' },
+        expectedHash: EXPECTED_HASH_PARAM,
       },
       required: ['blockId', 'markdown'],
       additionalProperties: false,
@@ -33,23 +34,38 @@ export function createUpdateBlockTextTool(getDeps: GetToolDeps): AgentToolDefini
       if (!id.ok) return { ok: false, error: id.error }
       const md = parseStringArg(args.markdown, { name: 'markdown', required: true, max: 50_000 })
       if (!md.ok) return { ok: false, error: md.error }
-      return { ok: true, args: { ...args, blockId: id.value, markdown: md.value } }
+      const expectedHash = parseStringArg(args.expectedHash, { name: 'expectedHash', max: 200 })
+      if (!expectedHash.ok) return { ok: false, error: expectedHash.error }
+      return {
+        ok: true,
+        args: { ...args, blockId: id.value, markdown: md.value, expectedHash: expectedHash.value },
+      }
     },
     execute: async (args, agentDeps) => {
       const toolDeps = getDeps()
       const blockId = args.blockId as string
       const markdown = args.markdown as string
       const nodes = mdToBlocks(markdown)
-      // Take inline content from the first block of the parsed nodes; if
-      // the markdown produces multiple blocks, the agent should use
-      // replace_block / insert_blocks instead.
-      const first = nodes.find((n) => n.type === 'block')
-      const inline = (first && first.type === 'block' ? first.content : []) as InlineJSON[]
+      // This tool edits a SINGLE block's inline text. If the markdown parses
+      // to more than one block (or to a structural/container node), bail with
+      // guidance instead of silently dropping the extra content.
+      const first = nodes[0]
+      if (nodes.length !== 1 || !first || first.type !== 'block') {
+        return {
+          success: false,
+          output: null,
+          error:
+            `update_block_text edits a single block's inline text, but the markdown parsed to ${nodes.length} ` +
+            'block(s)/structural content. Use replace_block to rewrite this block, or insert_blocks to add new blocks.',
+        }
+      }
+      const inline = first.content as InlineJSON[]
       const result = await runBlockCrudOp({
         agentDeps,
         toolDeps,
         patch: { op: 'updateText', blockId, content: inline },
         opIndex: 0,
+        expectedHash: args.expectedHash as string | undefined,
       })
       return buildOpToolResult('updateText', result)
     },
