@@ -10,6 +10,15 @@ const tsconfigSchema = z
   })
   .passthrough()
 
+/**
+ * Recursive include glob for the hidden `.auxx` dir. A bare `.auxx` entry in
+ * `include` does NOT load the directory's contents — TypeScript skips
+ * dot-prefixed directories during include expansion, so the generated `.d.ts`
+ * augmentations under `.auxx` would silently never reach the program. The
+ * explicit recursive glob is required for them to be type-checked.
+ */
+const AUXX_INCLUDE_GLOB = `${HIDDEN_AUXX_DIRECTORY}/**/*`
+
 export async function addAuxxHiddenDirectoryToTsConfig() {
   const tsconfigPath = path.resolve('./tsconfig.json')
   const tsconfigContentResult = await fromPromise(fs.readFile(tsconfigPath, 'utf-8'))
@@ -26,12 +35,17 @@ export async function addAuxxHiddenDirectoryToTsConfig() {
   if (isErrored(tsconfigResult)) {
     return errored({ code: 'FAILED_TO_PARSE_TSCONFIG' })
   }
-  if (tsconfigResult.value.include.includes(HIDDEN_AUXX_DIRECTORY)) {
+  if (tsconfigResult.value.include.includes(AUXX_INCLUDE_GLOB)) {
     return complete(false)
   }
+  // Drop any legacy bare `.auxx` entry (which never loaded the dir) and add the
+  // working glob instead.
   const updatedTsconfig = {
     ...tsconfigResult.value,
-    include: [...tsconfigResult.value.include, HIDDEN_AUXX_DIRECTORY],
+    include: [
+      ...tsconfigResult.value.include.filter((entry) => entry !== HIDDEN_AUXX_DIRECTORY),
+      AUXX_INCLUDE_GLOB,
+    ],
   }
   const writeResult = await fromPromise(
     fs.writeFile(tsconfigPath, JSON.stringify(updatedTsconfig, null, 2))

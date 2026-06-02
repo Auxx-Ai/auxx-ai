@@ -94,4 +94,25 @@ export const app = {
       },
     ],
   },
+  fields: [
+    {
+      appFieldKey: 'customerId',
+      type: 'TEXT',
+      targetEntity: 'contact',
+      scope: 'connection',
+      name: 'Customer ID',
+      capabilities: { hidden: true, updatable: false },
+    },
+    {
+      appFieldKey: 'tier',
+      type: 'SINGLE_SELECT',
+      targetEntity: 'contact',
+      scope: 'installation',
+      name: 'Tier',
+      options: [
+        { value: 'gold', label: 'Gold' },
+        { value: 'silver', label: 'Silver' },
+      ],
+    },
+  ],
 }

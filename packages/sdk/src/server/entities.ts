@@ -10,10 +10,12 @@
  *
  * All implementations are injected by the Auxx platform at runtime via the
  * `AUXX_SERVER_SDK` global (same mechanism as `@auxx/sdk/server` settings /
- * connections). The generated per-app `auxx-env.d.ts` narrows these permissive
- * signatures to the app's own `appFieldKey` union and per-field value types.
+ * connections). The generated per-app `.auxx/app-fields.d.ts` augments
+ * {@link AppOwnedFieldRegistry}, narrowing these permissive signatures to the
+ * app's own `appFieldKey` union and per-field value types (Layer 2).
  */
 
+import type { AppFieldDefinition, AppFieldValues } from '../root/fields/define-field.js'
 import type { EntityRefKind } from '../root/tools/types.js'
 
 /** Permissive write value — the route routes it to the field's typed column. */
@@ -21,6 +23,55 @@ export type FieldValueInput = string | number | boolean | Date | Record<string, 
 
 /** Permissive read value — narrowed per-field by the generated app types. */
 export type FieldValueOut = string | number | boolean | Record<string, unknown> | null
+
+/**
+ * Per-app field registry seam (Layer 2). The base SDK ships this **empty**; the
+ * generated `.auxx/app-fields.d.ts` augments it with `fields: typeof app['fields']`
+ * so the value-I/O functions below narrow to the app's declared keys and value
+ * types. An app that declares no fields — and the base package itself — falls
+ * back to the permissive signatures.
+ *
+ * @see generate-app-fields-types.ts (emits the augmentation)
+ */
+// biome-ignore lint/suspicious/noEmptyInterface: augmentation seam — populated per-app by codegen.
+export interface AppOwnedFieldRegistry {}
+
+/**
+ * The app's declared `fields[]` when the registry is augmented, else `null`
+ * (→ permissive fallback). An empty `fields: []` is also treated as unregistered
+ * so a zero-field app keeps today's permissive behavior.
+ */
+type RegisteredFields = AppOwnedFieldRegistry extends {
+  fields: infer F extends readonly AppFieldDefinition[]
+}
+  ? F extends readonly []
+    ? null
+    : F
+  : null
+
+/** `appFieldKey → value` write map — permissive record when unregistered. */
+type WriteMap = RegisteredFields extends readonly AppFieldDefinition[]
+  ? Partial<AppFieldValues<RegisteredFields>>
+  : Record<string, FieldValueInput>
+
+/** Union of the app's declared `appFieldKey`s — any string when unregistered. */
+type FieldKey = RegisteredFields extends readonly AppFieldDefinition[]
+  ? keyof AppFieldValues<RegisteredFields> & string
+  : string
+
+/** Read value type for a single key — per-field (nullable) when registered. */
+type ReadValue<K extends FieldKey> = RegisteredFields extends readonly AppFieldDefinition[]
+  ? K extends keyof AppFieldValues<RegisteredFields>
+    ? AppFieldValues<RegisteredFields>[K] | null
+    : FieldValueOut | null
+  : FieldValueOut | null
+
+/** Read map type for a bulk read — per-field (nullable) when registered. */
+type ReadValuesMap = RegisteredFields extends readonly AppFieldDefinition[]
+  ? Partial<{
+      [K in keyof AppFieldValues<RegisteredFields>]: AppFieldValues<RegisteredFields>[K] | null
+    }>
+  : Record<string, FieldValueOut | null>
 
 /** A resolved auxx record reference + its display name. */
 export interface EntityRef {
@@ -52,16 +103,13 @@ function sdkOrThrow(): any {
  * ])
  * ```
  */
+export async function setFieldValues(recordId: string, values: WriteMap): Promise<void>
 export async function setFieldValues(
-  recordId: string,
-  values: Record<string, FieldValueInput>
+  entries: Array<{ recordId: string; values: WriteMap }>
 ): Promise<void>
 export async function setFieldValues(
-  entries: Array<{ recordId: string; values: Record<string, FieldValueInput> }>
-): Promise<void>
-export async function setFieldValues(
-  recordIdOrEntries: string | Array<{ recordId: string; values: Record<string, FieldValueInput> }>,
-  values?: Record<string, FieldValueInput>
+  recordIdOrEntries: string | Array<{ recordId: string; values: WriteMap }>,
+  values?: WriteMap
 ): Promise<void> {
   return sdkOrThrow().setFieldValues(recordIdOrEntries, values)
 }
@@ -76,10 +124,10 @@ export async function setFieldValues(
  * const customerId = await getFieldValue(recordId, 'customerId')
  * ```
  */
-export async function getFieldValue(
+export async function getFieldValue<K extends FieldKey>(
   recordId: string,
-  fieldKey: string
-): Promise<FieldValueOut | null> {
+  fieldKey: K
+): Promise<ReadValue<K>> {
   return sdkOrThrow().getFieldValue(recordId, fieldKey)
 }
 
@@ -89,8 +137,8 @@ export async function getFieldValue(
  */
 export async function getFieldValues(
   recordId: string,
-  fieldKeys?: string[]
-): Promise<Record<string, FieldValueOut | null>> {
+  fieldKeys?: FieldKey[]
+): Promise<ReadValuesMap> {
   return sdkOrThrow().getFieldValues(recordId, fieldKeys)
 }
 
@@ -100,7 +148,7 @@ export async function getFieldValues(
  */
 export async function findRecordByFieldValue(input: {
   targetEntity: EntityRefKind
-  fieldKey: string
+  fieldKey: FieldKey
   value: string
 }): Promise<EntityRef | null> {
   return sdkOrThrow().findRecordByFieldValue(input)

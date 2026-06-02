@@ -9,6 +9,7 @@ import { isErrored } from '../errors.js'
 import { printUploadError } from '../print-errors.js'
 import { addAuxxHiddenDirectoryToTsConfig } from '../util/add-auxx-hidden-directory-to-ts-config.js'
 import { ensureAppEntryPoint } from '../util/ensure-app-entry-point.js'
+import { ensureAppFieldsTypes } from '../util/ensure-app-fields-types.js'
 import { generateAppEnvTypes } from '../util/generate-app-env-types.js'
 import { generateGitignore } from '../util/generate-gitignore.js'
 
@@ -83,6 +84,7 @@ export const dev = new Command('dev')
         )
       )
     }
+    await ensureAppFieldsTypes()
     if (USE_SETTINGS) {
       const updateTsconfigResult = await addAuxxHiddenDirectoryToTsConfig()
       if (isErrored(updateTsconfigResult)) {

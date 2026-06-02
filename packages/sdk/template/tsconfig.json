@@ -38,5 +38,5 @@
     "types": ["@auxx/sdk/client"]
   },
   "exclude": ["node_modules"],
-  "include": ["src", ".auxx"]
+  "include": ["src", ".auxx/**/*"]
 }
