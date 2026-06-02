@@ -81,16 +81,17 @@ setValues.post('/set-values', async (c) => {
   }
 
   // Attribute writes to the org system user; realtime echo-suppression is
-  // web-only, so no socketId.
+  // web-only, so no socketId. Per-record value maps go through the shared
+  // applyBulk orchestration (mode defaults to 'set').
   const systemUserId = await getOrgCache().get(auth.organizationId, 'systemUser')
   const service = new FieldValueService(auth.organizationId, systemUserId)
 
-  for (const entry of resolved) {
-    await service.setValuesForEntity({
+  await service.applyBulk({
+    items: resolved.map((entry) => ({
       recordId: entry.recordId as RecordId,
       values: entry.values,
-    })
-  }
+    })),
+  })
 
   return c.json({ ok: true })
 })

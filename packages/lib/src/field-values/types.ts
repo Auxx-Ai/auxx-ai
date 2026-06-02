@@ -146,6 +146,41 @@ export interface RemoveRelationValuesBulkInput {
   skipPublishEvents?: boolean
 }
 
+/** Per-item write mode for {@link ApplyBulkInput}. */
+export type BulkWriteMode = 'set' | 'add' | 'remove'
+
+/**
+ * One field write inside a bulk operation. `mode` defaults to `'set'`
+ * (replace); `'add'` / `'remove'` append / delete values on multi-value fields.
+ */
+export interface BulkValueItem {
+  fieldId: string
+  value: unknown
+  mode?: BulkWriteMode
+}
+
+/**
+ * Input for {@link FieldValueService.applyBulk}. Two shapes:
+ * - **uniform** — the same `values` applied across every record in `recordIds`.
+ * - **per-record** — each `items` entry carries its own record + value map, so
+ *   different records get different values in one call.
+ */
+export type ApplyBulkInput =
+  | { recordIds: RecordId[]; values: BulkValueItem[]; ai?: boolean }
+  | { items: Array<{ recordId: RecordId; values: BulkValueItem[] }>; ai?: boolean }
+
+/**
+ * Result of {@link FieldValueService.applyBulk}. `count` is the number of `set`
+ * operations (records for the uniform path, items for the per-record path) —
+ * unchanged from the legacy `setBulk` return. `added` / `removed` are present
+ * only when the call included `add` / `remove` items.
+ */
+export interface ApplyBulkResult {
+  count: number
+  added?: number
+  removed?: number
+}
+
 /**
  * Result state for field value mutations.
  * `'generating'` is only surfaced when the caller passed `ai: true` —

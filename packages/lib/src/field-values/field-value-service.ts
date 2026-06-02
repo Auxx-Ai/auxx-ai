@@ -16,6 +16,8 @@ import type {
   AddRelationValuesBulkInput,
   AddRelationValuesInput,
   AddValueInput,
+  ApplyBulkInput,
+  ApplyBulkResult,
   BatchFieldValueResult,
   BatchGetValuesInput,
   DeleteValueInput,
@@ -235,6 +237,21 @@ export class FieldValueService {
    */
   setBulkValues(params: SetBulkValuesInput): Promise<{ count: number }> {
     return mutations.setBulkValues(this.ctx, params)
+  }
+
+  /**
+   * Single entry point for bulk field-value writes. Owns the set/add/remove
+   * bucketing and fan-out for both the uniform shape (same values across many
+   * records) and the per-record shape (each record its own value map).
+   *
+   * Used by the `fieldValue.setBulk` tRPC router and the app-facing
+   * `set-values` route so the orchestration lives in one place.
+   *
+   * @param params - {@link ApplyBulkInput}
+   * @returns set count plus optional add/remove totals
+   */
+  applyBulk(params: ApplyBulkInput): Promise<ApplyBulkResult> {
+    return mutations.applyBulk(this.ctx, params)
   }
 
   // ─────────────────────────────────────────────────────────────

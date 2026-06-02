@@ -88,6 +88,8 @@ import type {
   AddRelationValuesBulkInput,
   AddRelationValuesInput,
   AddValueInput,
+  ApplyBulkInput,
+  ApplyBulkResult,
   DeleteValueInput,
   FieldValueRow,
   RemoveRelationValuesBulkInput,
@@ -2294,6 +2296,138 @@ export async function setBulkValues(
   }
 
   return { count }
+}
+
+/** Coerce a bulk value to the array form the multi-value primitives expect. */
+function toValueArray(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : [value]
+}
+
+/**
+ * Single entry point for bulk field-value writes. Owns the set/add/remove
+ * mode bucketing and fan-out that used to live in the `fieldValue.setBulk`
+ * tRPC router, so the router, the app-facing `set-values` route, and platform
+ * writes all share one orchestration path.
+ *
+ * Two input shapes (see {@link ApplyBulkInput}):
+ * - **uniform** — same values across many records; delegates to the vectorized
+ *   `setBulkValues` / `addValuesBulk` / `removeValuesBulk` primitives.
+ * - **per-record** — each item carries its own value map; loops the
+ *   single-record `setValuesForEntity` / `addValues` / `removeValues`.
+ *
+ * Not wrapped in an outer transaction: the underlying primitives each open
+ * their own `ctx.db.transaction` and publish realtime / field-trigger events
+ * inline, so an enclosing transaction would nest connections and emit events
+ * before commit. The fan-out is therefore resilient (a failed record/field
+ * does not roll back its siblings), matching the legacy `setBulk` behavior.
+ */
+export async function applyBulk(
+  ctx: FieldValueContext,
+  params: ApplyBulkInput
+): Promise<ApplyBulkResult> {
+  // AI stage-1 ignores mode — every (record, field) pair is an autofill
+  // request routed through the short-circuit path in `setBulkValues`.
+  const ai = params.ai === true
+
+  // ── Uniform: same values across many records ──────────────────────────────
+  if ('recordIds' in params) {
+    const { recordIds, values } = params
+    if (recordIds.length === 0 || values.length === 0) return { count: 0 }
+
+    if (ai) {
+      return setBulkValues(ctx, {
+        recordIds,
+        values: values.map((v) => ({ fieldId: v.fieldId, value: v.value ?? null })),
+        ai: true,
+      })
+    }
+
+    const setItems = values.filter((v) => (v.mode ?? 'set') === 'set')
+    const addItems = values.filter((v) => v.mode === 'add')
+    const removeItems = values.filter((v) => v.mode === 'remove')
+
+    let count = 0
+    let added = 0
+    let removed = 0
+
+    if (setItems.length > 0) {
+      const res = await setBulkValues(ctx, {
+        recordIds,
+        values: setItems.map((v) => ({ fieldId: v.fieldId, value: v.value ?? null })),
+      })
+      count = res.count
+    }
+    for (const { fieldId, value } of addItems) {
+      const res = await addValuesBulk(ctx, { recordIds, fieldId, values: toValueArray(value) })
+      added += res.inserted
+    }
+    for (const { fieldId, value } of removeItems) {
+      const res = await removeValuesBulk(ctx, { recordIds, fieldId, values: toValueArray(value) })
+      removed += res.removed
+    }
+
+    return {
+      count,
+      ...(addItems.length > 0 ? { added } : {}),
+      ...(removeItems.length > 0 ? { removed } : {}),
+    }
+  }
+
+  // ── Per-record: each item gets its own value map ──────────────────────────
+  const { items } = params
+  if (items.length === 0) return { count: 0 }
+
+  let count = 0
+  let added = 0
+  let removed = 0
+  let sawAdd = false
+  let sawRemove = false
+
+  for (const item of items) {
+    if (ai) {
+      const res = await setBulkValues(ctx, {
+        recordIds: [item.recordId],
+        values: item.values.map((v) => ({ fieldId: v.fieldId, value: v.value ?? null })),
+        ai: true,
+      })
+      count += res.count
+      continue
+    }
+
+    const setItems = item.values.filter((v) => (v.mode ?? 'set') === 'set')
+    const addItems = item.values.filter((v) => v.mode === 'add')
+    const removeItems = item.values.filter((v) => v.mode === 'remove')
+
+    if (setItems.length > 0) {
+      await setValuesForEntity(ctx, {
+        recordId: item.recordId,
+        values: setItems.map((v) => ({ fieldId: v.fieldId, value: v.value ?? null })),
+      })
+      count += 1
+    }
+    // The single-record add/remove primitives don't return a delta (addValues
+    // returns the full resulting array, removeValues returns void), so the
+    // per-record path reports values *requested* rather than net rows changed.
+    // The uniform path above reports exact inserted/removed deltas.
+    for (const { fieldId, value } of addItems) {
+      sawAdd = true
+      const vals = toValueArray(value)
+      await addValues(ctx, { recordId: item.recordId, fieldId, values: vals })
+      added += vals.length
+    }
+    for (const { fieldId, value } of removeItems) {
+      sawRemove = true
+      const vals = toValueArray(value)
+      await removeValues(ctx, { recordId: item.recordId, fieldId, values: vals })
+      removed += vals.length
+    }
+  }
+
+  return {
+    count,
+    ...(sawAdd ? { added } : {}),
+    ...(sawRemove ? { removed } : {}),
+  }
 }
 
 /**
