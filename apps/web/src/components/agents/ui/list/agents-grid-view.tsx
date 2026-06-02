@@ -2,6 +2,7 @@
 'use client'
 
 import { useMemo } from 'react'
+import { LoadingSpinner } from '~/components/global/loading-content'
 import { useAgentSearch } from '../../hooks/use-agent-search'
 import { useAgents } from '../../hooks/use-agents'
 import type { AgentListItem } from '../../store/agent-store'
@@ -48,7 +49,7 @@ export function AgentsGridView() {
   }, [agents, search])
 
   if (!hasLoadedOnce) {
-    return <div className='p-6 text-sm text-muted-foreground'>Loading agents…</div>
+    return <LoadingSpinner />
   }
 
   // Truly empty (no agents in org) or no search matches — the onboarding /
