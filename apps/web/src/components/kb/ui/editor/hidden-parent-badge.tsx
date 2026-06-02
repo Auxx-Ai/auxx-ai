@@ -39,7 +39,7 @@ export function HiddenParentBadge({ article, knowledgeBaseId }: HiddenParentBadg
 
   return (
     <Tooltip content={message}>
-      <Badge variant='amber'>
+      <Badge variant='amber' className='shrink-0'>
         <TriangleAlert />
         Parent hidden
       </Badge>

@@ -142,6 +142,8 @@ export function ArticleDiffPane({
   return (
     <ArticleDiffView
       diff={diff}
+      article={article}
+      knowledgeBaseId={knowledgeBaseId}
       baseLabel={resolved.baseLabel}
       compareLabel={resolved.compareLabel}
       kbTheme={kbTheme}

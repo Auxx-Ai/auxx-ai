@@ -126,7 +126,7 @@ export function ArticlePublishCluster({ article, knowledgeBaseId }: ArticlePubli
   return (
     <>
       <DropdownMenu open={isMenuOpen} onOpenChange={setIsMenuOpen}>
-        <ButtonGroup>
+        <ButtonGroup className='shrink-0'>
           <Button
             size='xs'
             variant='outline'
