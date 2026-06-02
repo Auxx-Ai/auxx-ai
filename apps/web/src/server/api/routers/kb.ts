@@ -418,6 +418,67 @@ export const knowledgeBaseRouter = createTRPCRouter({
       return result
     }),
 
+  /**
+   * Recover a pending Kopilot turn review for an article. Returns the pre-turn
+   * snapshot's `base` content (the diff's "before" side; the editor already has
+   * the current draft as the "after") or `null` when nothing is pending. Backs
+   * the post-turn banner — both the live signal and recovery-on-mount after a
+   * refresh (the snapshot survives reload, the agent event does not).
+   */
+  getKopilotTurnReview: protectedProcedure
+    .input(z.object({ articleId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const organizationId = getUserOrganizationId(ctx.session)
+      // Snapshots are keyed by articleId alone in Redis — gate on org ownership
+      // so a guessed id can't read another org's draft content.
+      const article = await ctx.db.query.Article.findFirst({
+        where: and(
+          eq(schema.Article.id, input.articleId),
+          eq(schema.Article.organizationId, organizationId)
+        ),
+        columns: { id: true },
+      })
+      if (!article) return null
+      const { readKopilotSnapshot } = await import('@auxx/lib/kb')
+      const snapshot = await readKopilotSnapshot(input.articleId)
+      if (!snapshot) return null
+      return {
+        turnId: snapshot.turnId,
+        base: snapshot.contentJson,
+        capturedAt: snapshot.capturedAt,
+      }
+    }),
+
+  /**
+   * Commit a Kopilot turn — the user is happy with the edits. Clears the
+   * pre-turn snapshot (removes the Undo affordance); the lock was already
+   * released by `finalizeKopilotKbTurn`. Turn-pinned: a stale Keep button won't
+   * clobber a newer turn's snapshot.
+   */
+  keepKopilotTurn: protectedProcedure
+    .input(z.object({ articleId: z.string(), turnId: z.string().optional() }))
+    .mutation(async ({ ctx, input }) => {
+      const organizationId = getUserOrganizationId(ctx.session)
+      const article = await ctx.db.query.Article.findFirst({
+        where: and(
+          eq(schema.Article.id, input.articleId),
+          eq(schema.Article.organizationId, organizationId)
+        ),
+        columns: { id: true },
+      })
+      if (!article) return { ok: false as const, reason: 'not_found' as const }
+      const { readKopilotSnapshot, clearKopilotSnapshot } = await import('@auxx/lib/kb')
+      const snapshot = await readKopilotSnapshot(input.articleId, input.turnId)
+      if (!snapshot) {
+        return {
+          ok: false as const,
+          reason: input.turnId ? ('turn_mismatch' as const) : ('no_snapshot' as const),
+        }
+      }
+      await clearKopilotSnapshot(input.articleId)
+      return { ok: true as const }
+    }),
+
   moveArticle: protectedProcedure
     .input(
       z.object({
@@ -469,6 +530,19 @@ export const knowledgeBaseRouter = createTRPCRouter({
     .input(z.object({ articleId: z.string() }))
     .query(async ({ ctx, input }) => {
       return await getKBService(ctx).getArticleVersions(input.articleId)
+    }),
+
+  getArticleDiff: protectedProcedure
+    .input(
+      z.object({
+        articleId: z.string(),
+        // Older side and newer side. Sentinels 'draft'/'published' or a revision id.
+        base: z.string(),
+        compare: z.string(),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      return await getKBService(ctx).getArticleDiff(input.articleId, input.base, input.compare)
     }),
 
   exportArticleMarkdown: protectedProcedure

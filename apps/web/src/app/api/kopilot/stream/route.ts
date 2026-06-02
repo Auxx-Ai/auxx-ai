@@ -73,22 +73,6 @@ function renderDmInstructions(instructions: Record<string, unknown> | null): str
   return text.length > 0 ? text : null
 }
 
-/**
- * Pull the active article id out of the raw request context. Mirrors the
- * server-side `findRef(ctx, 'article')` precedence (mention wins) without
- * dragging the kopilot lib types into the route handler.
- */
-function findActiveArticleIdInContext(
-  context: Record<string, unknown> | undefined
-): string | undefined {
-  const refs = (context as { references?: SessionRefLike[] } | undefined)?.references
-  if (!Array.isArray(refs)) return undefined
-  const mention = refs.find((r) => r?.kind === 'article' && r?.origin === 'mention')
-  if (mention?.id) return mention.id
-  const any = refs.find((r) => r?.kind === 'article')
-  return any?.id
-}
-
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
@@ -393,46 +377,14 @@ export async function POST(request: NextRequest) {
           await runPath()
         }
 
-        // Kopilot KB turn finalization: if this turn touched the active
-        // article (a pre-turn snapshot exists in Redis), release the lock
-        // so the editor goes editable again. The snapshot stays for the
-        // user to click Undo.
-        const activeArticleId = findActiveArticleIdInContext(context)
-        if (activeArticleId && page === 'kb') {
-          const { finalizeKopilotKbTurn } = await import(
-            '@auxx/lib/ai/kopilot/capabilities/kb/tools/write-helpers'
-          )
-          await finalizeKopilotKbTurn({ articleId: activeArticleId })
-        }
-
-        // Send terminal event
+        // KB turn lifecycle (lock release on success, auto-revert on error)
+        // now runs inside the engine's onTurnEnd hook — for both the
+        // in-process and worker paths. The route no longer owns it.
         send({ type: 'done' })
       } catch (error) {
         logger.error('Kopilot stream error', {
           error: error instanceof Error ? error.message : String(error),
         })
-        // Auto-revert on agent failure: half-applied state is hostile.
-        // If the turn captured a snapshot, restore it before the editor
-        // releases its lock.
-        const activeArticleId = findActiveArticleIdInContext(context)
-        if (activeArticleId && page === 'kb') {
-          try {
-            const { revertKopilotKbTurn } = await import(
-              '@auxx/lib/ai/kopilot/capabilities/kb/tools/write-helpers'
-            )
-            await revertKopilotKbTurn({
-              db,
-              organizationId,
-              userId,
-              articleId: activeArticleId,
-            })
-          } catch (revertError) {
-            logger.error('Auto-revert failed', {
-              error: revertError instanceof Error ? revertError.message : String(revertError),
-              articleId: activeArticleId,
-            })
-          }
-        }
         const errName = error instanceof Error ? error.name : ''
         const isQuotaExhaustion = errName === 'QuotaExceededError'
         const isRateLimited = errName === 'UsageLimitError' || errName === 'RateLimitError'
@@ -645,6 +597,11 @@ async function runInProcessPath(params: {
     maxIterations: 30,
     agentConfig,
     triggerContext,
+    // Turn-end KB lifecycle (finalize on success, revert on failure) runs from
+    // the engine's onTurnEnd hook — these scope it.
+    db,
+    organizationId,
+    userId,
   })
 
   // Create LLM adapter

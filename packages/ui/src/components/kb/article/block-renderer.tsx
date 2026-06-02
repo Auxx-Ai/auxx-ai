@@ -1,5 +1,6 @@
 // packages/ui/src/components/kb/article/block-renderer.tsx
 
+import type { ReactNode } from 'react'
 import { parseEmbedUrl } from '../utils/embed'
 import { walkInlineToText } from '../utils/inline-text'
 import { CalloutIcon } from './callout-icon'
@@ -7,7 +8,14 @@ import { CardItem } from './card-item'
 import { ImageZoomable } from './image-zoomable'
 import { InlineRenderer } from './inline-renderer'
 import styles from './kb-article-renderer.module.css'
-import type { BlockJSON, CalloutVariant, CardData, DocJSON, ResolveAuxxHref } from './types'
+import type {
+  BlockJSON,
+  CalloutVariant,
+  CardData,
+  DiffDecorations,
+  DocJSON,
+  ResolveAuxxHref,
+} from './types'
 
 interface BlockRendererProps {
   node: BlockJSON
@@ -15,9 +23,34 @@ interface BlockRendererProps {
   doc: DocJSON
   headingIds?: Record<number, string>
   resolveAuxxHref?: ResolveAuxxHref
+  /** Diff decorations for container-nested leaves; absent on the normal render path. */
+  decorations?: DiffDecorations
 }
 
-export function BlockRenderer({ node, idx, doc, headingIds, resolveAuxxHref }: BlockRendererProps) {
+/**
+ * Render a leaf block. When `decorations` flags this block's id (diff surface
+ * only), the output is wrapped with a `data-diff-status` attribute so the diff
+ * view can border-decorate container-nested changes.
+ */
+export function BlockRenderer(props: BlockRendererProps) {
+  const el = renderBlock(props)
+  const id = props.node.attrs?.id
+  const status = id && props.decorations ? props.decorations.get(id) : undefined
+  if (!status) return el
+  return (
+    <div className='kb-diff-block' data-diff-status={status}>
+      {el}
+    </div>
+  )
+}
+
+function renderBlock({
+  node,
+  idx,
+  doc,
+  headingIds,
+  resolveAuxxHref,
+}: BlockRendererProps): ReactNode {
   const inline = <InlineRenderer content={node.content} resolveAuxxHref={resolveAuxxHref} />
   const blockType = node.attrs?.blockType ?? 'text'
 

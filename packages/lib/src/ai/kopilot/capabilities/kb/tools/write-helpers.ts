@@ -310,6 +310,8 @@ export async function finalizeKopilotKbTurn(args: { articleId: string }): Promis
     locked: false,
     by: 'kopilot',
     turnId: snapshot.turnId,
+    // Snapshot is kept (not cleared) so the user can review/undo this turn.
+    reviewable: true,
   })
 }
 

@@ -8,6 +8,7 @@
 import type { Database } from '@auxx/database'
 import { archiveArticle, unarchiveArticle } from './articles/archive-article'
 import {
+  getArticleDiff,
   getArticleVersions,
   renameArticleVersion,
   restoreArticleVersion,
@@ -172,6 +173,9 @@ export class KBService {
 
   getArticleVersions(articleId: string) {
     return getArticleVersions(this.ctx, articleId)
+  }
+  getArticleDiff(articleId: string, base: string, compare: string) {
+    return getArticleDiff(this.ctx, articleId, base, compare)
   }
   renameArticleVersion(versionId: string, label: string | null) {
     return renameArticleVersion(this.ctx, versionId, label)

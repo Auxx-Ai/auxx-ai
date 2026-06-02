@@ -623,6 +623,26 @@ export interface AgentDomainConfig<TDomainState = Record<string, unknown>> {
   summarizeContext?: (
     context: Record<string, unknown> | undefined
   ) => Record<string, unknown> | undefined
+  /**
+   * Optional hook fired once at the end of a turn, after final state is
+   * computed and before the terminal event is yielded. Runs in whatever
+   * process executes the engine (web route for in-process, worker for the
+   * BullMQ path), so a domain can commit or roll back side-effects keyed off
+   * domain state regardless of where the turn ran.
+   *
+   * `outcome` is `'completed'` for a clean finish and `'error'` for a
+   * turn-error, an aborted run, or a client disconnect. It does NOT fire when
+   * a turn pauses for approval (the turn isn't over). Must not throw — the
+   * engine wraps it in try/catch so a hook failure can't mask the turn result.
+   */
+  onTurnEnd?: (state: AgentState, outcome: 'completed' | 'error') => Promise<void>
+  /**
+   * Optional hook to clear per-turn domain state at the start of a NEW user
+   * turn (`submitMessage`) — NOT on approval-resume, which continues the same
+   * turn. Mirrors the engine's reset of `turnSnapshots` / `capturedActions`.
+   * Return a fresh domainState (or the same reference when nothing to clear).
+   */
+  resetTurnDomainState?: (domainState: Record<string, unknown>) => Record<string, unknown>
 }
 
 /** Return shape from `postProcessFinalContent`. */

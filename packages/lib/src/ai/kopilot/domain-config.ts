@@ -1,5 +1,6 @@
 // packages/lib/src/ai/kopilot/domain-config.ts
 
+import type { Database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import type { ResolvedAgentConfig } from '../../agents'
 import type {
@@ -54,6 +55,15 @@ export interface KopilotDomainConfigOptions {
    * prompt. Chat runs leave this undefined.
    */
   triggerContext?: TriggerContext
+  /**
+   * Scope + DB handle for the turn-end KB lifecycle hook (finalize on success,
+   * revert on failure). Both the web route and the worker job construct the
+   * config and pass these. When omitted, `onTurnEnd` finalize still runs but a
+   * failure can't roll back (logged).
+   */
+  db?: Database
+  organizationId?: string
+  userId?: string
 }
 
 /**
@@ -76,6 +86,9 @@ export function createKopilotDomainConfig(
     maxIterations = 30,
     agentConfig,
     triggerContext,
+    db,
+    organizationId,
+    userId,
   } = options
 
   // Resolve tools: if the caller passed `tools`, use them verbatim (pre-filtered
@@ -155,6 +168,21 @@ export function createKopilotDomainConfig(
         mineDocSnapshots(result.output, snapshots)
       }
       let next: AgentState = { ...state, turnSnapshots: snapshots }
+
+      // KB block-CRUD tools surface the article they wrote on their result
+      // output. Record it on domain state so `onTurnEnd` can finalize/revert
+      // the right article(s) without duck-typing the request context.
+      const touchedArticleId = kbTouchedArticleId(result)
+      if (touchedArticleId) {
+        const ds = next.domainState as KopilotDomainState
+        const touched = ds.kbTouchedArticleIds ?? []
+        if (!touched.includes(touchedArticleId)) {
+          next = {
+            ...next,
+            domainState: { ...ds, kbTouchedArticleIds: [...touched, touchedArticleId] },
+          }
+        }
+      }
 
       // Plan tools: mutate domainState.plan.
       if (toolName === 'plan_create') {
@@ -258,7 +286,59 @@ export function createKopilotDomainConfig(
         ? { content: next, linkSnapshots }
         : { content: next }
     },
+    resetTurnDomainState(domainState: Record<string, unknown>): Record<string, unknown> {
+      const ds = domainState as KopilotDomainState
+      if (!ds.kbTouchedArticleIds?.length) return domainState
+      return { ...ds, kbTouchedArticleIds: [] }
+    },
+    async onTurnEnd(state: AgentState, outcome: 'completed' | 'error'): Promise<void> {
+      const ids = (state.domainState as KopilotDomainState).kbTouchedArticleIds ?? []
+      if (ids.length === 0) return
+
+      // Lazy import keeps the framework→kb edge out of the module graph until a
+      // turn actually touched KB. `finalizeKopilotKbTurn` only releases the lock
+      // (snapshot kept for Undo); `revertKopilotKbTurn` restores the pre-turn
+      // snapshot and unlocks.
+      const { finalizeKopilotKbTurn, revertKopilotKbTurn } = await import(
+        './capabilities/kb/tools/write-helpers'
+      )
+      for (const articleId of ids) {
+        try {
+          if (outcome === 'completed') {
+            await finalizeKopilotKbTurn({ articleId })
+          } else if (db && organizationId && userId) {
+            await revertKopilotKbTurn({ db, organizationId, userId, articleId })
+          } else {
+            logger.warn('Kopilot turn failed but revert deps missing; lock may leak', {
+              articleId,
+            })
+          }
+        } catch (err) {
+          logger.error('Kopilot turn-end KB lifecycle failed', {
+            articleId,
+            outcome,
+            error: err instanceof Error ? err.message : String(err),
+          })
+        }
+      }
+    },
   }
+}
+
+/**
+ * Extract the article id from a KB block-CRUD tool result. These tools return
+ * `{ ok, op, articleId, preHash, postHash, affectedBlockIds }` (see
+ * `buildOpToolResult`); shape-match on `op` + `affectedBlockIds` so an
+ * unrelated tool that happens to carry an `articleId` doesn't trip it.
+ */
+function kbTouchedArticleId(result: AgentToolResult): string | undefined {
+  if (!result.success) return undefined
+  const output = result.output as Record<string, unknown> | null
+  if (!output || typeof output !== 'object') return undefined
+  const articleId = output.articleId
+  if (typeof articleId !== 'string' || articleId.length === 0) return undefined
+  if (typeof output.op !== 'string' || !Array.isArray(output.affectedBlockIds)) return undefined
+  return articleId
 }
 
 /**

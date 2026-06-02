@@ -13,10 +13,20 @@ import {
 } from '@auxx/ui/components/dropdown-menu'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@auxx/ui/components/tooltip'
 import { cn } from '@auxx/ui/lib/utils'
-import { Archive, ArchiveRestore, ChevronDown, History, Send, Trash2, Undo2 } from 'lucide-react'
+import {
+  Archive,
+  ArchiveRestore,
+  ChevronDown,
+  GitCompare,
+  History,
+  Send,
+  Trash2,
+  Undo2,
+} from 'lucide-react'
 import { useState } from 'react'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useArticleMutations } from '../../hooks/use-article-mutations'
+import { useDiffParam } from '../../hooks/use-diff-param'
 import { usePublishWithConfirm } from '../../hooks/use-publish-with-confirm'
 import type { ArticleMeta } from '../../store/article-store'
 import { ArticleVersionsDialog } from './article-versions-dialog'
@@ -36,6 +46,7 @@ export function ArticlePublishCluster({ article, knowledgeBaseId }: ArticlePubli
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const [isVersionsOpen, setIsVersionsOpen] = useState(false)
   const [confirm, ConfirmDialog] = useConfirm()
+  const [, setDiff] = useDiffParam()
 
   const { archiveArticle, unarchiveArticle, discardArticleDraft, deleteArticle } =
     useArticleMutations(knowledgeBaseId)
@@ -127,6 +138,20 @@ export function ArticlePublishCluster({ article, knowledgeBaseId }: ArticlePubli
 
           {isPublished && hasUnsaved && (
             <>
+              <ButtonGroupSeparator />
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    size='xs'
+                    variant='outline'
+                    className='border-r-0 px-1.5'
+                    onClick={() => setDiff('review')}
+                    aria-label='Review changes'>
+                    <GitCompare />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Review changes</TooltipContent>
+              </Tooltip>
               <ButtonGroupSeparator />
               <Button
                 size='xs'

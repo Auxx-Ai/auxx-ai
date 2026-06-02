@@ -6,6 +6,7 @@ export { extractKBHeadings, type KBHeading } from './extract-headings'
 export { ImageZoomable } from './image-zoomable'
 export { InlineRenderer } from './inline-renderer'
 export { KBArticleCopyMenu } from './kb-article-copy-menu'
+export { KBArticleNode } from './kb-article-node'
 export { KBArticlePager } from './kb-article-pager'
 export { KBArticleRenderer } from './kb-article-renderer'
 export { KBArticleWithToc } from './kb-article-with-toc'
@@ -19,6 +20,8 @@ export type {
   CalloutVariant,
   CardData,
   ContainerBlockJSON,
+  DiffDecorations,
+  DiffStatus,
   DocJSON,
   EmbedAspect,
   EmbedProvider,
