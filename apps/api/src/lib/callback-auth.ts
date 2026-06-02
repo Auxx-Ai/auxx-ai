@@ -16,7 +16,7 @@ import { errorResponse } from './response'
 export function verifyCallbackAuth(
   c: Context,
   scope: CallbackScope
-): { installationId: string; organizationId: string } | null {
+): { installationId: string; organizationId: string; connectionId?: string } | null {
   const installationId = c.req.header('X-App-Installation-Id')
 
   if (!installationId) {
@@ -51,5 +51,9 @@ export function verifyCallbackAuth(
     return null
   }
 
-  return { installationId, organizationId: result.organizationId ?? '' }
+  return {
+    installationId,
+    organizationId: result.organizationId ?? '',
+    connectionId: result.connectionId,
+  }
 }

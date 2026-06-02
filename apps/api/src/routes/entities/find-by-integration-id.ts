@@ -15,6 +15,7 @@
  */
 
 import { database, schema } from '@auxx/database'
+import { getCachedEntityDefId } from '@auxx/lib/cache'
 import { and, eq } from 'drizzle-orm'
 import { Hono } from 'hono'
 import { z } from 'zod'
@@ -23,18 +24,6 @@ import { errorResponse } from '../../lib/response'
 import type { AppContext } from '../../types/context'
 
 const entities = new Hono<AppContext>()
-
-/** Map of refs.entity('<kind>') → EntityDefinition selector */
-const KIND_TO_SELECTOR: Record<string, { entityType?: string; standardType?: string }> = {
-  contact: { entityType: 'contact' },
-  company: { standardType: 'company' },
-  deal: { standardType: 'deal' },
-  ticket: { entityType: 'ticket' },
-  task: { standardType: 'task' },
-  user: { entityType: 'user' },
-  thread: { entityType: 'thread' },
-  article: { entityType: 'article' },
-}
 
 const FindByIntegrationIdSchema = z.object({
   kind: z.string(),
@@ -59,35 +48,12 @@ entities.post('/find-by-integration-id', async (c) => {
   }
   const { kind, source, externalId } = parsed.data
 
-  const selector = KIND_TO_SELECTOR[kind]
-  if (!selector) {
-    return c.json(errorResponse('BAD_REQUEST', `Unsupported kind: ${kind}`), 400)
-  }
-
-  // Resolve the org's EntityDefinition for this semantic kind.
-  // Asserts findOne semantics — see plans/kopilot/apps/refs.md §11.
-  const defConditions = [eq(schema.EntityDefinition.organizationId, auth.organizationId)]
-  if (selector.entityType) {
-    defConditions.push(eq(schema.EntityDefinition.entityType, selector.entityType))
-  }
-  if (selector.standardType) {
-    defConditions.push(eq(schema.EntityDefinition.standardType, selector.standardType))
-  }
-  const defs = await database.query.EntityDefinition.findMany({
-    where: and(...defConditions),
-    columns: { id: true },
-  })
-  if (defs.length === 0) {
+  // `kind` is the EntityDefinition.entityType. Resolve via the org cache (one
+  // defId per entityType — no ambiguity), like the sibling find-contact routes.
+  const defId = await getCachedEntityDefId(auth.organizationId, kind)
+  if (!defId) {
     return c.json({ entity: null })
   }
-  if (defs.length > 1) {
-    // Loud failure rather than silent winner-pick.
-    return c.json(
-      errorResponse('AMBIGUOUS_DEFINITION', `Multiple entity defs match kind '${kind}'`),
-      500
-    )
-  }
-  const defId = defs[0]!.id
 
   const instance = await database.query.EntityInstance.findFirst({
     where: and(

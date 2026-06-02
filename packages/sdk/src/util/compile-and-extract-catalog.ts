@@ -97,6 +97,43 @@ export interface CatalogBlock {
   refs: Array<{ path: string[]; kind: string }>
 }
 
+/**
+ * An app-registered custom field, projected from the app's `fields[]`
+ * declaration. Provisioned on install (`installation` scope) or per connected
+ * account (`connection` scope), optionally hidden, removed on uninstall. See
+ * app-registered custom fields.
+ */
+export interface CatalogAppField {
+  /** App-stable id (e.g. 'customerId') — idempotency + reverse-lookup key. */
+  appFieldKey: string
+  /** `installation` (one per install) or `connection` (one per connected account). */
+  scope: 'installation' | 'connection'
+  /** Target entity kind (EntityRefKind) — resolved to entityDefinitionId on provision. */
+  targetEntity: string
+  /** Platform FieldType (e.g. 'TEXT', 'SINGLE_SELECT'). */
+  type: string
+  /** Display name — used only when not hidden. */
+  name: string
+  description?: string
+  /** Select options for SINGLE_SELECT / MULTI_SELECT / TAGS. */
+  options?: Array<{ value: string; label?: string; color?: string }>
+  /** Relationship config for RELATIONSHIP fields. */
+  relationship?: { targetEntity: string; cardinality: 'one' | 'many' }
+  /** Calc config for CALC fields. */
+  calc?: { expression: string }
+  /** Author-settable capabilities (hidden, filterable, updatable, …). */
+  capabilities?: {
+    filterable?: boolean
+    sortable?: boolean
+    creatable?: boolean
+    updatable?: boolean
+    required?: boolean
+    unique?: boolean
+    computed?: boolean
+    hidden?: boolean
+  }
+}
+
 export interface CatalogPayload {
   tools: CatalogTool[]
   triggers: CatalogTrigger[]
@@ -111,6 +148,8 @@ export interface CatalogPayload {
     toolsets: CatalogToolset[]
   }
   actions: CatalogAction[]
+  /** App-registered custom fields (optional — older catalogs omit it). */
+  fields?: CatalogAppField[]
 }
 
 export type CompileAndExtractCatalogError =
@@ -257,13 +296,15 @@ export async function compileAndExtractCatalog(): Promise<
   const toolsetsArr = (app.toolsets ?? []) as RawToolset[]
   const workflowBlocksArr = (app.workflow?.blocks ?? []) as RawBlock[]
   const workflowTriggersArr = (app.workflow?.triggers ?? []) as RawTrigger[]
+  const fieldsArr = (app.fields ?? []) as RawAppField[]
 
   // Empty app — nothing to publish.
   if (
     !toolsArr.length &&
     !toolsetsArr.length &&
     !workflowBlocksArr.length &&
-    !workflowTriggersArr.length
+    !workflowTriggersArr.length &&
+    !fieldsArr.length
   ) {
     return complete(undefined)
   }
@@ -405,6 +446,37 @@ export async function compileAndExtractCatalog(): Promise<
     })
   }
 
+  // Project app-registered custom fields. Validation here is light — the SDK
+  // `defineField` discriminated union already enforces shape at author time;
+  // the platform re-validates at provision time via createCustomField.
+  const cataloguedFields: CatalogAppField[] = []
+  const seenFieldKeys = new Set<string>()
+  for (const field of fieldsArr) {
+    if (!field?.appFieldKey) {
+      return errored({ code: 'CATALOG_VALIDATION_FAILED', message: 'Field is missing appFieldKey' })
+    }
+    const dedupeKey = `${field.targetEntity}:${field.appFieldKey}`
+    if (seenFieldKeys.has(dedupeKey)) {
+      return errored({
+        code: 'CATALOG_VALIDATION_FAILED',
+        message: `Duplicate field "${field.appFieldKey}" on entity "${field.targetEntity}"`,
+      })
+    }
+    seenFieldKeys.add(dedupeKey)
+    cataloguedFields.push({
+      appFieldKey: field.appFieldKey,
+      scope: field.scope,
+      targetEntity: field.targetEntity,
+      type: field.type,
+      name: field.name,
+      description: field.description,
+      options: field.options,
+      relationship: field.relationship,
+      calc: field.calc,
+      capabilities: field.capabilities,
+    })
+  }
+
   const catalog: CatalogPayload = {
     tools: cataloguedTools,
     triggers: cataloguedTriggers,
@@ -419,6 +491,7 @@ export async function compileAndExtractCatalog(): Promise<
       toolsets: cataloguedToolsets,
     },
     actions: cataloguedActions,
+    fields: cataloguedFields,
   }
 
   // Roundtrip-serializable check — catches non-serializable values left on
@@ -519,6 +592,19 @@ interface RawWorkflowSchema {
   inputs?: Record<string, unknown>
 }
 
+interface RawAppField {
+  appFieldKey: string
+  scope: 'installation' | 'connection'
+  targetEntity: string
+  type: string
+  name: string
+  description?: string
+  options?: Array<{ value: string; label?: string; color?: string }>
+  relationship?: { targetEntity: string; cardinality: 'one' | 'many' }
+  calc?: { expression: string }
+  capabilities?: CatalogAppField['capabilities']
+}
+
 interface RawApp {
   tools?: ReadonlyArray<unknown>
   toolsets?: ReadonlyArray<unknown>
@@ -526,4 +612,5 @@ interface RawApp {
     blocks?: ReadonlyArray<unknown>
     triggers?: ReadonlyArray<unknown>
   }
+  fields?: ReadonlyArray<unknown>
 }

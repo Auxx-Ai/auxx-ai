@@ -32,9 +32,10 @@ export const ExecutionContextSchema = z.object({
     .object({
       webhooks: z.string(),
       settings: z.string(),
-      // Tool executions get an additional `entities` scope used by
-      // `ctx.entities.findByIntegrationId`. See
-      // plans/kopilot/apps/credentials.md §3.6.
+      // Tool executions get an additional `entities` scope authorizing the
+      // `@auxx/sdk/server` entity value-I/O functions (setFieldValues,
+      // getFieldValue, findByIntegrationId, …). May carry a signed bound
+      // connectionId. See plans/kopilot/apps/credentials.md §3.6.
       entities: z.string().optional(),
     })
     .optional(),

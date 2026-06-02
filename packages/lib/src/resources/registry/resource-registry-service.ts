@@ -91,6 +91,9 @@ type CustomFieldRecord = {
   isComputed: boolean
   isSortable: boolean
   isFilterable: boolean
+  isHidden: boolean
+  // App ownership (app-registered custom fields)
+  appInstallationId: string | null
 }
 
 /** EntityDefinition with display field relations and customFields loaded */
@@ -845,9 +848,15 @@ export class ResourceRegistryService {
 
       if (staticField) {
         matchedAttributes.add(dbField.systemAttribute!)
-        // DB field takes priority, enrich with static-only properties
+        // DB field takes priority, enrich with static-only properties.
+        // System fields are addressed by their logical registry id everywhere
+        // (values, filters, display config, columns), so adopt the static id
+        // and resourceFieldId rather than keeping the DB CustomField row id —
+        // otherwise metadata lookups by `<entity>:<key>` miss the field.
         return {
           ...dbField,
+          id: staticField.id,
+          resourceFieldId: toResourceFieldId(entityDefinitionId, staticField.id),
           key: staticField.key,
           dbColumn: staticField.dbColumn,
           dynamicOptionsKey: staticField.dynamicOptionsKey,
@@ -985,10 +994,14 @@ export class ResourceRegistryService {
       // A field is only a system field if it has a systemAttribute set
       // Custom fields added to any entity (system or custom) should never be marked as system
       const isSystemField = !!field.systemAttribute
+      const isAppOwned = !!field.appInstallationId
 
-      // System fields cannot have their definition configured
-      // But their values can still be updated (e.g., you can change an email value, but not rename the "Email" field)
-      const isConfigurable = !isSystemField
+      // System and app-owned fields cannot have their definition configured.
+      // Values may still be updatable (gated separately by isUpdatable); this
+      // only governs editing the field definition (name, type, options). Once
+      // this is false the existing UI edit/delete gating turns off with no
+      // frontend change.
+      const isConfigurable = !isSystemField && !isAppOwned
 
       return {
         // Core identifiers
@@ -1008,6 +1021,11 @@ export class ResourceRegistryService {
         showInPanel: true, // All fields shown in panel
         systemAttribute: field.systemAttribute ?? undefined,
 
+        // App ownership — surfaced so consumers can reason about ownership
+        // (e.g. the v5 chat fence) and the UI knows the field is app-managed.
+        isAppOwned,
+        appInstallationId: field.appInstallationId ?? undefined,
+
         // Convenience properties (avoid needing transforms)
         name: field.name,
         sortOrder: field.sortOrder ?? undefined,
@@ -1025,6 +1043,7 @@ export class ResourceRegistryService {
           required: field.required,
           computed: field.isComputed,
           unique: field.isUnique,
+          hidden: field.isHidden, // app/system fields can be invisible in all UI
         },
 
         // Top-level relationship for workflow engine

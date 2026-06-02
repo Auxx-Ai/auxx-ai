@@ -289,7 +289,9 @@ export const ModelTypeMeta: Record<
     plural: 'Knowledge Bases',
     icon: 'book-open',
     color: 'violet',
-    apiSlug: 'knowledge-bases',
+    // apiSlug must match the in-app route segment (/app/kb/<id>), since
+    // getRecordLink derives record hrefs as `/app/<apiSlug>/<id>`.
+    apiSlug: 'kb',
     dbTable: 'KnowledgeBase',
   },
 }

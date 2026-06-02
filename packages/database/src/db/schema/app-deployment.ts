@@ -92,6 +92,43 @@ export interface CatalogBlock {
   refs: Array<{ path: string[]; kind: string }>
 }
 
+/**
+ * An app-registered custom field, projected from the app's `fields[]`
+ * declaration. Provisioned on install (`installation` scope) or per connected
+ * account (`connection` scope), optionally hidden, removed on uninstall. See
+ * app-registered custom fields.
+ */
+export interface CatalogAppField {
+  /** App-stable id (e.g. 'customerId') — idempotency + reverse-lookup key. */
+  appFieldKey: string
+  /** `installation` (one per install) or `connection` (one per connected account). */
+  scope: 'installation' | 'connection'
+  /** Target entity kind (EntityRefKind) — resolved to entityDefinitionId on provision. */
+  targetEntity: string
+  /** Platform FieldType (e.g. 'TEXT', 'SINGLE_SELECT'). */
+  type: string
+  /** Display name — used only when not hidden. */
+  name: string
+  description?: string
+  /** Select options for SINGLE_SELECT / MULTI_SELECT / TAGS. */
+  options?: Array<{ value: string; label?: string; color?: string }>
+  /** Relationship config for RELATIONSHIP fields. */
+  relationship?: { targetEntity: string; cardinality: 'one' | 'many' }
+  /** Calc config for CALC fields. */
+  calc?: { expression: string }
+  /** Author-settable capabilities (hidden, filterable, updatable, …). */
+  capabilities?: {
+    filterable?: boolean
+    sortable?: boolean
+    creatable?: boolean
+    updatable?: boolean
+    required?: boolean
+    unique?: boolean
+    computed?: boolean
+    hidden?: boolean
+  }
+}
+
 export interface CatalogPayload {
   tools: CatalogTool[]
   triggers: CatalogTrigger[]
@@ -106,6 +143,8 @@ export interface CatalogPayload {
     toolsets: CatalogToolset[]
   }
   actions: CatalogAction[]
+  /** App-registered custom fields (optional — older catalogs omit it). */
+  fields?: CatalogAppField[]
 }
 
 /** Drizzle table for AppDeployment */

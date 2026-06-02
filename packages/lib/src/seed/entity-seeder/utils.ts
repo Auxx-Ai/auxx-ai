@@ -59,9 +59,9 @@ export function buildFieldOptions(field: ResourceField): FieldOptions {
  *   filterable, sortable, creatable, updatable, configurable, required, unique, computed
  *
  * CustomField columns:
- *   required, isUnique, isCreatable, isUpdatable, isComputed, isSortable, isFilterable
+ *   required, isUnique, isCreatable, isUpdatable, isComputed, isSortable, isFilterable, isHidden
  *
- * Note: `configurable` has no column - derived from !systemAttribute at runtime
+ * Note: `configurable` has no column - derived from !systemAttribute && !appInstallationId at runtime
  */
 export function mapCapabilities(capabilities?: FieldCapabilities) {
   return {
@@ -72,6 +72,7 @@ export function mapCapabilities(capabilities?: FieldCapabilities) {
     isComputed: capabilities?.computed ?? false,
     isSortable: capabilities?.sortable ?? true,
     isFilterable: capabilities?.filterable ?? true,
+    isHidden: capabilities?.hidden ?? false,
   }
 }
 

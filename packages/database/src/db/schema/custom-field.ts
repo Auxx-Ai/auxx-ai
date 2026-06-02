@@ -10,12 +10,15 @@ import {
   index,
   jsonb,
   pgTable,
+  sql,
   text,
   timestamp,
   uniqueIndex,
 } from './_shared'
+import { AppInstallation } from './app-installation'
 import { EntityDefinition } from './entity-definition'
 import { Organization } from './organization'
+import { WorkflowCredentials } from './workflow-credentials'
 
 /** Drizzle table for customField */
 export const CustomField = pgTable(
@@ -71,18 +74,67 @@ export const CustomField = pgTable(
 
     /** Whether this field can be used in filters (default: true) */
     isFilterable: boolean().default(true).notNull(),
+
+    // ========================================
+    // App ownership (app-registered custom fields)
+    // ========================================
+
+    /** Owning app installation. NULL = a normal user/system field. When set,
+     *  the field is app-owned: user-read-only, removed on uninstall. */
+    appInstallationId: text().references((): AnyPgColumn => AppInstallation.id, {
+      onUpdate: 'cascade',
+      onDelete: 'cascade', // safety; uninstall is a soft-delete so we also delete explicitly
+    }),
+
+    /** Owning connection (WorkflowCredentials.id / credId) for
+     *  `scope: 'connection'` fields — one field def per connected account.
+     *  NULL for installation-scoped and non-app fields. Deleted on
+     *  connection-removed. */
+    connectionId: text().references((): AnyPgColumn => WorkflowCredentials.id, {
+      onUpdate: 'cascade',
+      onDelete: 'cascade',
+    }),
+
+    /** App-stable identifier for idempotent provisioning + reverse lookup
+     *  (e.g. 'customerId'). Distinct from the display `name`. NULL for
+     *  non-app fields. */
+    appFieldKey: text(),
+
+    /** Field exists in registry + DB but is invisible in every user-facing
+     *  surface; system code can still read/write it. Persists the
+     *  FieldCapabilities.hidden capability. The capability key stays `hidden`,
+     *  bridged by mapCapabilities. Default false. */
+    isHidden: boolean().default(false).notNull(),
   },
   (table) => [
     index('CustomField_modelType_idx').using('btree', table.modelType.asc().nullsLast()),
-    // Unique constraint scoped by organization, modelType, AND entityDefinitionId
-    // This allows same field name across different entities/model types
-    uniqueIndex('CustomField_name_org_model_entity_key').using(
-      'btree',
-      table.name.asc().nullsLast(),
-      table.organizationId.asc().nullsLast(),
-      table.modelType.asc().nullsLast(),
-      table.entityDefinitionId.asc().nullsLast()
-    ),
+    // User/system fields — dedupe by display name within org/model/entity,
+    // exactly as before. Partial so app fields (NULL name-collision allowed)
+    // don't disable dedup for user fields via distinct NULLs.
+    uniqueIndex('CustomField_name_org_model_entity_key')
+      .using(
+        'btree',
+        table.name.asc().nullsLast(),
+        table.organizationId.asc().nullsLast(),
+        table.modelType.asc().nullsLast(),
+        table.entityDefinitionId.asc().nullsLast()
+      )
+      .where(sql`${table.appInstallationId} IS NULL`),
+    // App fields — dedupe by owner (+ connection) + stable key. connectionId
+    // is COALESCE'd so installation-scoped fields (NULL connectionId) dedupe by
+    // (appInstallationId, appFieldKey), while connection-scoped fields get one
+    // row per connection. Display name may collide with a user field — separate
+    // namespaces.
+    uniqueIndex('CustomField_app_field_key')
+      .using(
+        'btree',
+        table.appInstallationId.asc().nullsLast(),
+        sql`COALESCE(${table.connectionId}, '')`,
+        table.appFieldKey.asc().nullsLast(),
+        table.modelType.asc().nullsLast(),
+        table.entityDefinitionId.asc().nullsLast()
+      )
+      .where(sql`${table.appInstallationId} IS NOT NULL`),
     index('CustomField_organizationId_idx').using('btree', table.organizationId.asc().nullsLast()),
     index('CustomField_entityDefinitionId_idx').using(
       'btree',

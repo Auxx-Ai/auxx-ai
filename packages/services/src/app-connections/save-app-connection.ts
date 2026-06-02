@@ -6,6 +6,7 @@ import { and, eq } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import { triggerAppEvent } from '../app-events'
 import { resolveActiveInstallationId } from '../app-installations/resolve-active-installation'
+import { getInstallationCatalog, provisionAppFields } from '../custom-fields/app-field-provisioning'
 import { fromDatabase } from '../shared/utils'
 import { logger, safeSerializeMetadata } from './utils'
 
@@ -225,6 +226,31 @@ export async function saveAppConnection(
   }
 
   logger.info('Successfully created app connection:', { credentialId: created.id })
+
+  // Provision this app's connection-scoped custom fields for the new account
+  // (app-registered custom fields §5, decisions 7–8). Only org-scoped
+  // connections (userId === null) qualify — a visitor's identity must be one
+  // truth for the org, not vary by teammate. Best-effort: a provisioning
+  // failure is logged but does not fail the connection save (same posture as
+  // the connection-added event below). Connection-scoped field rows are removed
+  // automatically when the connection is deleted (CustomField.connectionId FK
+  // is ON DELETE CASCADE).
+  if (userId === null) {
+    try {
+      const catalog = await getInstallationCatalog(appInstallationId)
+      await provisionAppFields(catalog, 'connection', {
+        appInstallationId,
+        organizationId,
+        connectionId: created.id,
+      })
+    } catch (error) {
+      logger.error('Failed to provision connection-scoped app fields', {
+        error: error instanceof Error ? error.message : String(error),
+        credentialId: created.id,
+        appInstallationId,
+      })
+    }
+  }
 
   // Trigger connection-added event
   // Determine connection type based on what data we have

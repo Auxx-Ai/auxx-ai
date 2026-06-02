@@ -19,6 +19,20 @@ export type {
   WorkflowOutput,
 } from '../server/workflow/index.js'
 export type { App, AppSettings, Permission } from './app.js'
+// Fields surface — `import { defineField, defineFields } from '@auxx/sdk/fields'`
+export {
+  type AppFieldDefinition,
+  type AppFieldValues,
+  defineField,
+  defineFields,
+  FIELD_TYPES,
+  type FieldCapabilities,
+  type FieldScope,
+  type FieldSelectOption,
+  type FieldType,
+  type FieldTypeValueMap,
+  type FieldValueType,
+} from './fields/index.js'
 export { Settings } from './settings/index.js'
 // Export settings schema types and namespace
 export type {

@@ -161,6 +161,32 @@ export interface ServerSDK {
   getOrganizationSettings: () => Promise<Record<string, any>>
   setOrganizationSetting: (key: string, value: any) => Promise<void>
   setOrganizationSettings: (settings: Record<string, any>) => Promise<void>
+  // Entity value I/O (app-owned custom fields). Backed by /api/v1/sdk/entities.
+  setFieldValues: (
+    recordIdOrEntries: string | Array<{ recordId: string; values: Record<string, unknown> }>,
+    values?: Record<string, unknown>
+  ) => Promise<void>
+  getFieldValue: (recordId: string, fieldKey: string) => Promise<unknown | null>
+  getFieldValues: (
+    recordId: string,
+    fieldKeys?: string[]
+  ) => Promise<Record<string, unknown | null>>
+  findRecordByFieldValue: (input: {
+    targetEntity: string
+    fieldKey: string
+    value: string
+  }) => Promise<{ recordId: string; displayName: string | null } | null>
+  findByIntegrationId: (input: {
+    kind: string
+    source: string
+    externalId: string
+  }) => Promise<{ recordId: string; displayName: string | null } | null>
+  findContactByEmail: (input: {
+    email: string
+  }) => Promise<{ recordId: string; displayName: string | null } | null>
+  findContactByPhone: (input: {
+    phone: string
+  }) => Promise<{ recordId: string; displayName: string | null } | null>
 }
 
 /**
@@ -271,7 +297,7 @@ export function createServerSDK(context: RuntimeContext): ServerSDK {
    * Build callback headers for SDK → API requests.
    * Uses scoped callback tokens when available, falls back to installation ID only.
    */
-  function getCallbackHeaders(scope: 'webhooks' | 'settings'): Record<string, string> {
+  function getCallbackHeaders(scope: 'webhooks' | 'settings' | 'entities'): Record<string, string> {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       'X-App-Installation-Id': context.app.installationId,
@@ -741,6 +767,149 @@ export function createServerSDK(context: RuntimeContext): ServerSDK {
         console.error('[ServerSDK] setOrganizationSettings error:', error)
         throw error
       }
+    },
+
+    // ── Entity value I/O (app-owned custom fields) ──
+
+    /**
+     * Write field values for one record (map form) or many records (entries
+     * form). The app may only write fields it owns; the route enforces (403).
+     */
+    setFieldValues: async (
+      recordIdOrEntries: string | Array<{ recordId: string; values: Record<string, unknown> }>,
+      values?: Record<string, unknown>
+    ): Promise<void> => {
+      const body =
+        typeof recordIdOrEntries === 'string'
+          ? { entries: [{ recordId: recordIdOrEntries, values: values ?? {} }] }
+          : { entries: recordIdOrEntries }
+
+      const response = await sdkFetch({
+        method: 'POST',
+        url: `${context.apiUrl}/api/v1/sdk/entities/set-values`,
+        headers: getCallbackHeaders('entities'),
+        body,
+      })
+      if (response.status !== 200) {
+        console.error('[ServerSDK] setFieldValues failed:', {
+          status: response.status,
+          data: response.data,
+        })
+        throw new Error(`Failed to set field values: ${response.status}`)
+      }
+    },
+
+    /** Read a single owned field's value for a record (null when unset). */
+    getFieldValue: async (recordId: string, fieldKey: string): Promise<unknown | null> => {
+      const response = await sdkFetch({
+        method: 'POST',
+        url: `${context.apiUrl}/api/v1/sdk/entities/get-values`,
+        headers: getCallbackHeaders('entities'),
+        body: { recordId, fieldKeys: [fieldKey] },
+      })
+      if (response.status !== 200) {
+        throw new Error(`Failed to get field value: ${response.status}`)
+      }
+      const data = response.data as { values: Record<string, unknown | null> }
+      return data.values?.[fieldKey] ?? null
+    },
+
+    /** Read owned field values for a record. Omit `fieldKeys` for all owned. */
+    getFieldValues: async (
+      recordId: string,
+      fieldKeys?: string[]
+    ): Promise<Record<string, unknown | null>> => {
+      const response = await sdkFetch({
+        method: 'POST',
+        url: `${context.apiUrl}/api/v1/sdk/entities/get-values`,
+        headers: getCallbackHeaders('entities'),
+        body: { recordId, fieldKeys },
+      })
+      if (response.status !== 200) {
+        throw new Error(`Failed to get field values: ${response.status}`)
+      }
+      const data = response.data as { values: Record<string, unknown | null> }
+      return data.values ?? {}
+    },
+
+    /** Reverse lookup: which record holds this value on an owned field? */
+    findRecordByFieldValue: async (input: {
+      targetEntity: string
+      fieldKey: string
+      value: string
+    }): Promise<{ recordId: string; displayName: string | null } | null> => {
+      const response = await sdkFetch({
+        method: 'POST',
+        url: `${context.apiUrl}/api/v1/sdk/entities/find-by-value`,
+        headers: getCallbackHeaders('entities'),
+        body: input,
+      })
+      if (response.status !== 200) {
+        throw new Error(`Failed to find record by value: ${response.status}`)
+      }
+      const data = response.data as {
+        entity: { recordId: string; displayName: string | null } | null
+      }
+      return data.entity ?? null
+    },
+
+    /** Resolve a record by its integration external id. */
+    findByIntegrationId: async (input: {
+      kind: string
+      source: string
+      externalId: string
+    }): Promise<{ recordId: string; displayName: string | null } | null> => {
+      const response = await sdkFetch({
+        method: 'POST',
+        url: `${context.apiUrl}/api/v1/sdk/entities/find-by-integration-id`,
+        headers: getCallbackHeaders('entities'),
+        body: input,
+      })
+      if (response.status !== 200) {
+        throw new Error(`Failed to find by integration id: ${response.status}`)
+      }
+      const data = response.data as {
+        entity: { recordId: string; displayName: string | null } | null
+      }
+      return data.entity ?? null
+    },
+
+    /** Resolve a contact by primary email. */
+    findContactByEmail: async (input: {
+      email: string
+    }): Promise<{ recordId: string; displayName: string | null } | null> => {
+      const response = await sdkFetch({
+        method: 'POST',
+        url: `${context.apiUrl}/api/v1/sdk/entities/find-contact-by-email`,
+        headers: getCallbackHeaders('entities'),
+        body: input,
+      })
+      if (response.status !== 200) {
+        throw new Error(`Failed to find contact by email: ${response.status}`)
+      }
+      const data = response.data as {
+        entity: { recordId: string; displayName: string | null } | null
+      }
+      return data.entity ?? null
+    },
+
+    /** Resolve a contact by primary phone (normalized server-side). */
+    findContactByPhone: async (input: {
+      phone: string
+    }): Promise<{ recordId: string; displayName: string | null } | null> => {
+      const response = await sdkFetch({
+        method: 'POST',
+        url: `${context.apiUrl}/api/v1/sdk/entities/find-contact-by-phone`,
+        headers: getCallbackHeaders('entities'),
+        body: input,
+      })
+      if (response.status !== 200) {
+        throw new Error(`Failed to find contact by phone: ${response.status}`)
+      }
+      const data = response.data as {
+        entity: { recordId: string; displayName: string | null } | null
+      }
+      return data.entity ?? null
     },
   }
 }

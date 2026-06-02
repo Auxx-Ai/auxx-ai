@@ -164,6 +164,8 @@ export async function createAppCapabilities(deps: {
           userConnection: resolved.userConnection,
           organizationConnection: resolved.organizationConnection,
           includeEntitiesScope: true,
+          // Bind connection-scoped field I/O to the agent's pinned connection.
+          boundConnectionId: boundCredId ?? undefined,
         })
 
         return {

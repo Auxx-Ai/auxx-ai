@@ -211,10 +211,10 @@ export interface Toolset {
 }
 
 /**
- * Lambda-side execution context for tools. The full surface lives in
- * the lambda runtime SDK (auth, fetch, connections, entities). This type
- * is intentionally permissive at the SDK layer — runtime injects the real
- * implementations. See plans/kopilot/agents/tool-loading-and-execution.md §7.
+ * Lambda-side execution context for tools. Intentionally minimal — entity
+ * lookups and value I/O are delivered as `@auxx/sdk/server` functions
+ * (`findByIntegrationId`, `getFieldValue`, `setFieldValues`, …), not on `ctx`.
+ * See plans/kopilot/agents/tool-loading-and-execution.md §7.
  */
 export interface ToolExecuteContext {
   readonly organizationId: string
@@ -223,34 +223,4 @@ export interface ToolExecuteContext {
   readonly sessionId: string
   readonly agentId: string | null
   readonly triggerId: string | null
-  /**
-   * Lookup helper for `refs.entity('...')` resolution from integration ids.
-   * Returns the auxx record (`<defId>:<instId>`) or null when not imported.
-   * See plans/kopilot/apps/refs.md §4.1.
-   */
-  readonly entities: {
-    findByIntegrationId: (input: {
-      kind: EntityRefKind
-      source: string
-      externalId: string
-    }) => Promise<{ recordId: string; displayName: string | null } | null>
-    /**
-     * Lookup helper for `refs.entity('contact')` resolution by primary email.
-     * Used by integrations that don't have a contact-import source path
-     * (e.g. Slack, Gmail). See plans/kopilot/apps/slack-overhaul.md §6 and
-     * refs.md §9.
-     */
-    findContactByEmail: (input: {
-      email: string
-    }) => Promise<{ recordId: string; displayName: string | null } | null>
-    /**
-     * Lookup helper for `refs.entity('contact')` resolution by primary phone.
-     * Input is normalized to E.164 server-side and matched against any
-     * PHONE_INTL-type contact field. Used by phone-keyed integrations
-     * (WhatsApp, Twilio). See plans/kopilot/apps/whatsapp-overhaul.md §6.
-     */
-    findContactByPhone: (input: {
-      phone: string
-    }) => Promise<{ recordId: string; displayName: string | null } | null>
-  }
 }

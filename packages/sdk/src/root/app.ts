@@ -1,6 +1,7 @@
 // packages/sdk/src/root/app.ts
 
 import type { BulkRecordAction, RecordAction, RecordWidget } from '../client/record-actions.js'
+import type { AppFieldDefinition } from './fields/index.js'
 import type { ScopedSettingsSchema } from './settings/settings-schema.js'
 import type { ToolDefinition, Toolset } from './tools/types.js'
 import type { Trigger, WorkflowBlock } from './workflow/types.js'
@@ -104,6 +105,14 @@ export interface App {
    * Toolsets that group `tools` for agent-side enablement filters.
    */
   readonly toolsets?: ReadonlyArray<Toolset>
+
+  /**
+   * Custom fields this app owns on the platform's entities. Declared via
+   * `defineFields([...])`, provisioned on install (`installation` scope) or per
+   * connected account (`connection` scope), optionally hidden, and removed on
+   * uninstall. See app-registered custom fields.
+   */
+  readonly fields?: ReadonlyArray<AppFieldDefinition>
 
   readonly settings?: {
     readonly organization?: ScopedSettingsSchema
