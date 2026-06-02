@@ -2,19 +2,22 @@
 'use client'
 
 import type { ArticleDiff, BlockDiff } from '@auxx/lib/kb/blocks'
-import { Button } from '@auxx/ui/components/button'
 import { KBThemeProvider, type KBThemeProviderProps } from '@auxx/ui/components/kb'
 import type { ArticleNodeJSON, DiffDecorations, DocJSON } from '@auxx/ui/components/kb/article'
 import { KBArticleNode, kbArticleContainerClass } from '@auxx/ui/components/kb/article'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { cn } from '@auxx/ui/lib/utils'
-import { ArrowLeft } from 'lucide-react'
 import { useMemo } from 'react'
+import type { ArticleMeta } from '../../store/article-store'
 import { buildDiffRender } from './article-diff-tree'
 import styles from './article-diff-view.module.css'
+import { ArticleEditorHeader } from './article-editor-header'
 
 interface ArticleDiffViewProps {
   diff: ArticleDiff
+  /** Article whose editor header is reused as the diff bar. */
+  article: ArticleMeta
+  knowledgeBaseId: string
   /** Older side label, e.g. "Published" / "v3" / "Before". */
   baseLabel?: string
   /** Newer side label, e.g. "Draft" / "Kopilot". */
@@ -38,6 +41,8 @@ interface ArticleDiffViewProps {
  */
 export function ArticleDiffView({
   diff,
+  article,
+  knowledgeBaseId,
   baseLabel = 'Before',
   compareLabel = 'After',
   kbTheme,
@@ -58,19 +63,11 @@ export function ArticleDiffView({
 
   return (
     <KBThemeProvider kb={kbTheme}>
-      <div className='flex w-full items-center gap-3 border-b bg-primary-150 px-3 py-1.5'>
-        <Button variant='outline' size='xs' onClick={onClose}>
-          <ArrowLeft /> Back
-        </Button>
-        <span className='text-xs text-muted-foreground'>
-          {baseLabel} <span className='px-1'>→</span> {compareLabel}
-        </span>
-        <div className='ml-auto flex items-center gap-3 text-xs text-muted-foreground'>
-          <LegendChip color='emerald' label='Added' count={added} />
-          <LegendChip color='red' label='Removed' count={removed} />
-          <LegendChip color='amber' label='Changed' count={modified} />
-        </div>
-      </div>
+      <ArticleEditorHeader
+        article={article}
+        knowledgeBaseId={knowledgeBaseId}
+        diff={{ baseLabel, compareLabel, stats: diff.stats, onClose }}
+      />
 
       <ScrollArea className='flex-1'>
         <div className='mx-auto w-full max-w-3xl px-7 py-6'>
@@ -116,26 +113,6 @@ function DiffBlock({
     <div className={cn(styles.block, decorated)}>
       <KBArticleNode node={node} idx={idx} doc={doc} decorations={decorations} />
     </div>
-  )
-}
-
-function LegendChip({
-  color,
-  label,
-  count,
-}: {
-  color: 'emerald' | 'red' | 'amber'
-  label: string
-  count: number
-}) {
-  const dot =
-    color === 'emerald' ? 'bg-emerald-500' : color === 'red' ? 'bg-red-500' : 'bg-amber-500'
-  return (
-    <span className='inline-flex items-center gap-1.5'>
-      <span className={cn('inline-block size-2 rounded-full', dot)} />
-      {label}
-      {count > 0 ? <span className='font-medium text-foreground'>{count}</span> : null}
-    </span>
   )
 }
 
