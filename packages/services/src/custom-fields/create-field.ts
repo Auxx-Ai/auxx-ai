@@ -9,7 +9,7 @@ import { getModelType } from '@auxx/types/resource'
 import { getInverseCardinality } from '@auxx/utils'
 import { validateCalcExpression } from '@auxx/utils/calc-expression'
 import { generateKeyBetween } from '@auxx/utils/fractional-indexing'
-import { and, desc, eq } from 'drizzle-orm'
+import { and, desc, eq, isNull } from 'drizzle-orm'
 import { err, ok } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
 import {
@@ -88,6 +88,22 @@ export interface CreateCustomFieldInput {
   isCreatable?: boolean
   /** Whether this field can be modified after creation (default: true) */
   isUpdatable?: boolean
+  /** Whether this field is computed/derived (default: false) */
+  isComputed?: boolean
+  /** Whether this field can be used for sorting (default: true) */
+  isSortable?: boolean
+  /** Whether this field can be used in filters (default: true) */
+  isFilterable?: boolean
+  /** Hidden from every user-facing surface; system/app code still reads it. Default false. */
+  isHidden?: boolean
+
+  // --- App ownership (app-registered custom fields) ---
+  /** Owning app installation. Set => app-owned: user-read-only, removed on uninstall. */
+  appInstallationId?: string
+  /** Owning connection (WorkflowCredentials.id / credId) for scope:'connection' fields. */
+  connectionId?: string
+  /** App-stable field key for idempotent provisioning + reverse lookup (e.g. 'customerId'). */
+  appFieldKey?: string
 }
 
 /**
@@ -165,6 +181,13 @@ export async function createCustomField(input: CreateCustomFieldInput, tx?: Tran
     systemAttribute,
     isCreatable,
     isUpdatable,
+    isComputed,
+    isSortable,
+    isFilterable,
+    isHidden,
+    appInstallationId,
+    connectionId,
+    appFieldKey,
   } = input
 
   // Use provided transaction or default to global database
@@ -174,12 +197,24 @@ export async function createCustomField(input: CreateCustomFieldInput, tx?: Tran
   const modelType = entityDefinitionId ? getModelType(entityDefinitionId) : ModelTypes.CONTACT
   const dbModelType = modelType
 
-  // Check for existing field with same name
-  // Prefer entityDefinitionId if available, otherwise use modelType
-  const duplicateConditions = [
-    eq(schema.CustomField.name, name),
-    eq(schema.CustomField.organizationId, organizationId),
-  ]
+  // Check for an existing field. App-owned fields are a separate namespace:
+  // they dedupe by (appInstallationId, connectionId?, appFieldKey) and may
+  // share a display name with a user field. User/system fields dedupe by
+  // display name and must ignore app rows (the partial unique indexes mirror
+  // this split — see custom-field.ts).
+  const duplicateConditions = appInstallationId
+    ? [
+        eq(schema.CustomField.appInstallationId, appInstallationId),
+        eq(schema.CustomField.appFieldKey, appFieldKey ?? ''),
+        connectionId
+          ? eq(schema.CustomField.connectionId, connectionId)
+          : isNull(schema.CustomField.connectionId),
+      ]
+    : [
+        eq(schema.CustomField.name, name),
+        eq(schema.CustomField.organizationId, organizationId),
+        isNull(schema.CustomField.appInstallationId),
+      ]
   if (entityDefinitionId) {
     duplicateConditions.push(eq(schema.CustomField.entityDefinitionId, entityDefinitionId))
   } else {
@@ -190,10 +225,17 @@ export async function createCustomField(input: CreateCustomFieldInput, tx?: Tran
   })
 
   if (existingField) {
-    return err({
-      code: 'DUPLICATE_FIELD_NAME' as const,
-      message: `A field named "${name}" already exists`,
-    })
+    return err(
+      appInstallationId
+        ? {
+            code: 'DUPLICATE_FIELD_NAME' as const,
+            message: `App field "${appFieldKey}" already exists for this installation`,
+          }
+        : {
+            code: 'DUPLICATE_FIELD_NAME' as const,
+            message: `A field named "${name}" already exists`,
+          }
+    )
   }
 
   // Validate isUnique is only set for allowed types
@@ -379,6 +421,10 @@ export async function createCustomField(input: CreateCustomFieldInput, tx?: Tran
     ...(isCalcField && { isComputed: true }),
     ...(isCreatable !== undefined && { isCreatable }),
     ...(isUpdatable !== undefined && { isUpdatable }),
+    ...(isComputed !== undefined && { isComputed }),
+    ...(isSortable !== undefined && { isSortable }),
+    ...(isFilterable !== undefined && { isFilterable }),
+    ...(isHidden !== undefined && { isHidden }),
     ...(isCalcField && isCreatable === undefined && { isCreatable: false }),
     ...(isCalcField && isUpdatable === undefined && { isUpdatable: false }),
   }
@@ -400,6 +446,9 @@ export async function createCustomField(input: CreateCustomFieldInput, tx?: Tran
         entityDefinitionId: entityDefinitionId || null,
         isUnique,
         systemAttribute,
+        appInstallationId: appInstallationId ?? null,
+        connectionId: connectionId ?? null,
+        appFieldKey: appFieldKey ?? null,
         updatedAt: new Date(),
         ...capabilityFlags,
       })

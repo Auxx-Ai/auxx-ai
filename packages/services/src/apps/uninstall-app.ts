@@ -3,6 +3,7 @@
 import { database, schema, type Transaction } from '@auxx/database'
 import { eq } from 'drizzle-orm'
 import { err, ok } from 'neverthrow'
+import { deleteAppFields } from '../custom-fields/delete-field'
 import { fromDatabase } from '../shared/utils'
 
 /**
@@ -115,6 +116,16 @@ export async function uninstallApp(input: UninstallAppInput) {
       if (!updated) {
         throw new Error('Failed to uninstall app')
       }
+
+      // Hard-delete the app's registered custom fields and their values
+      // (app-registered custom fields §7). This is a DELIBERATE exception to the
+      // "preserve app data on uninstall" behavior above: stale identity links
+      // (e.g. a contact↔Shopify-customer link the chat fence trusts) are a
+      // correctness hazard, so app fields are removed rather than preserved. The
+      // soft-delete keeps the same installationId, so reinstall re-creates the
+      // field *definitions*; their *values* are re-derived from the next
+      // verified boot. FieldValue rows cascade via the existing FK.
+      await deleteAppFields({ appInstallationId: installation.id }, tx)
 
       // Log event
       await tx.insert(schema.AppEventLog).values({

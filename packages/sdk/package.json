@@ -42,6 +42,10 @@
       "types": "./lib/root/tools/index.d.ts",
       "import": "./lib/root/tools/index.js"
     },
+    "./fields": {
+      "types": "./lib/root/fields/index.d.ts",
+      "import": "./lib/root/fields/index.js"
+    },
     "./shared": {
       "types": "./lib/shared/index.d.ts",
       "import": "./lib/shared/index.js"

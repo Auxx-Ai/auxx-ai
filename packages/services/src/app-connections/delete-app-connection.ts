@@ -90,7 +90,11 @@ export async function deleteAppConnection(credentialId: string, organizationId: 
     })
   }
 
-  // Delete the connection
+  // Delete the connection. Connection-scoped app-registered custom fields
+  // (CustomField.connectionId → this credential, ON DELETE CASCADE) and their
+  // FieldValue rows are removed automatically by the FK cascade — disconnecting
+  // one store drops only that store's identity fields (app-registered custom
+  // fields §5/§7). No explicit cleanup needed here.
   const deleteResult = await fromDatabase(
     database
       .delete(schema.WorkflowCredentials)

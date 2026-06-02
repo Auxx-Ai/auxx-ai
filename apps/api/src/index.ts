@@ -20,8 +20,11 @@ import chat from './routes/chat'
 import deployments from './routes/deployments'
 import developers from './routes/developers'
 import entitiesFindByIntegrationId from './routes/entities/find-by-integration-id'
+import entitiesFindByValue from './routes/entities/find-by-value'
 import entitiesFindContactByEmail from './routes/entities/find-contact-by-email'
 import entitiesFindContactByPhone from './routes/entities/find-contact-by-phone'
+import entitiesGetValues from './routes/entities/get-values'
+import entitiesSetValues from './routes/entities/set-values'
 import freeToolLeads from './routes/free-tool-leads'
 // Routes
 import health from './routes/health'
@@ -83,6 +86,9 @@ async function main() {
   app.route('/api/v1/sdk/entities', entitiesFindByIntegrationId) // SDK callback: Lambda → API (AI tools)
   app.route('/api/v1/sdk/entities', entitiesFindContactByEmail) // SDK callback: Lambda → API (AI tools, slack)
   app.route('/api/v1/sdk/entities', entitiesFindContactByPhone) // SDK callback: Lambda → API (AI tools, whatsapp)
+  app.route('/api/v1/sdk/entities', entitiesGetValues) // SDK callback: read app-owned field values
+  app.route('/api/v1/sdk/entities', entitiesSetValues) // SDK callback: write app-owned field values
+  app.route('/api/v1/sdk/entities', entitiesFindByValue) // SDK callback: reverse value lookup
   app.route('/api/v1/workflows', workflows) // Workflow execution routes
   app.route('/api/chat', chat) // Visitor-facing chat widget routes (passport-gated)
   app.route('/api/kb', kb) // Visitor-facing KB browse/read routes (passport-gated)

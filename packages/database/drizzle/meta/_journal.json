@@ -1338,6 +1338,13 @@
       "when": 1780292949463,
       "tag": "0190_drop_admin_action_log",
       "breakpoints": true
+    },
+    {
+      "idx": 191,
+      "version": "7",
+      "when": 1780367431612,
+      "tag": "0191_app_owned_custom_fields",
+      "breakpoints": true
     }
   ]
 }

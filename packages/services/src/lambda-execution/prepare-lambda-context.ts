@@ -25,10 +25,16 @@ export function prepareLambdaContext(params: {
   organizationConnection?: any
   /**
    * Set true for AI tool invocations to mint an additional `entities`
-   * callback token that authorizes `ctx.entities.findByIntegrationId`.
-   * See plans/kopilot/apps/credentials.md §3.6.
+   * callback token that authorizes the `@auxx/sdk/server` entity value-I/O
+   * functions. See plans/kopilot/apps/credentials.md §3.6.
    */
   includeEntitiesScope?: boolean
+  /**
+   * Agent-bound connection id, signed into the `entities` token so the
+   * value-I/O routes scope connection-scoped fields to the bound store.
+   * Only meaningful alongside `includeEntitiesScope`.
+   */
+  boundConnectionId?: string
 }) {
   // Generate scoped callback tokens for SDK → API authentication
   const secret = process.env.LAMBDA_INVOKE_SECRET
@@ -45,6 +51,9 @@ export function prepareLambdaContext(params: {
         organizationId: params.organizationId,
         scope,
         secret,
+        // Bind the connection only on the entities token (the only scope that
+        // resolves connection-scoped fields).
+        connectionId: scope === 'entities' ? params.boundConnectionId : undefined,
       })
     }
   }

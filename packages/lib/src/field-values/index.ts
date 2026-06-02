@@ -1,5 +1,6 @@
 // packages/lib/src/field-values/index.ts
 
+export type { TypedFieldValue } from '@auxx/types'
 export type { RecordId } from '@auxx/types/resource'
 // CALC expression evaluator - re-exported from @auxx/utils
 export {

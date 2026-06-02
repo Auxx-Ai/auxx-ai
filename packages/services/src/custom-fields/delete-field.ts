@@ -1,6 +1,6 @@
 // packages/services/src/custom-fields/delete-field.ts
 
-import { database, schema } from '@auxx/database'
+import { type Database, database, schema, type Transaction } from '@auxx/database'
 import type { CalcOptions } from '@auxx/types/custom-field'
 import { isResourceFieldId, parseResourceFieldId, type ResourceFieldId } from '@auxx/types/field'
 import { and, eq, or } from 'drizzle-orm'
@@ -8,6 +8,7 @@ import { err, ok } from 'neverthrow'
 import { clearDisplayValues } from '../entity-instances/batch-update-display-values'
 import { fromDatabase } from '../shared/utils'
 import type { AccessDeniedError, CustomFieldNotFoundError } from './errors'
+import { isProtectedField } from './ownership'
 import { getInverseFieldId, type RelationshipConfig } from './types'
 
 /**
@@ -16,6 +17,12 @@ import { getInverseFieldId, type RelationshipConfig } from './types'
 export interface DeleteCustomFieldInput {
   resourceFieldId: ResourceFieldId
   organizationId: string
+  /**
+   * Internal bypass for the app lifecycle (uninstall / connection-removed),
+   * which legitimately removes app-owned fields. NOT exposed to the tRPC layer
+   * — user-facing deletes never set this, so protected fields stay read-only.
+   */
+  allowProtectedDeletion?: boolean
 }
 
 /**
@@ -26,7 +33,7 @@ export interface DeleteCustomFieldInput {
  * @returns Result with success status
  */
 export async function deleteCustomField(input: DeleteCustomFieldInput) {
-  const { resourceFieldId, organizationId } = input
+  const { resourceFieldId, organizationId, allowProtectedDeletion = false } = input
 
   // Parse ResourceFieldId to get components
   const { fieldId: id } = parseResourceFieldId(resourceFieldId)
@@ -54,6 +61,18 @@ export async function deleteCustomField(input: DeleteCustomFieldInput) {
     return err({
       code: 'ACCESS_DENIED',
       message: 'Access denied',
+    } as AccessDeniedError)
+  }
+
+  // Protected fields (system + app-owned) are user-read-only. Only the app
+  // lifecycle (uninstall / connection-removed) may delete app-owned fields,
+  // and it sets `allowProtectedDeletion`. System fields are never deletable.
+  if (!allowProtectedDeletion && isProtectedField(field)) {
+    return err({
+      code: 'ACCESS_DENIED',
+      message: field.appInstallationId
+        ? 'This field is managed by an installed app and cannot be deleted'
+        : 'System fields cannot be deleted',
     } as AccessDeniedError)
   }
 
@@ -171,6 +190,35 @@ export async function deleteCustomField(input: DeleteCustomFieldInput) {
   }
 
   return ok(deleteResult.value)
+}
+
+/**
+ * Hard-delete app-owned custom fields for the lifecycle paths (uninstall sweep,
+ * connection-removed). Deletes by ownership directly — `FieldValue` rows cascade
+ * via the existing `onDelete: 'cascade'` FK. Pass a `connectionId` to scope to a
+ * single connection's fields (connection-removed); omit it to remove every field
+ * the installation owns (uninstall).
+ *
+ * This is the only sanctioned way to remove a protected app field; user-facing
+ * `deleteCustomField` rejects them. Accepts a transaction so the uninstall flow
+ * can run it inside its existing tx.
+ */
+export async function deleteAppFields(
+  params: { appInstallationId: string; connectionId?: string },
+  tx: Database | Transaction = database
+) {
+  const { appInstallationId, connectionId } = params
+  const where = connectionId
+    ? and(
+        eq(schema.CustomField.appInstallationId, appInstallationId),
+        eq(schema.CustomField.connectionId, connectionId)
+      )
+    : eq(schema.CustomField.appInstallationId, appInstallationId)
+
+  return fromDatabase(
+    tx.delete(schema.CustomField).where(where).returning({ id: schema.CustomField.id }),
+    'delete-app-fields'
+  )
 }
 
 /**

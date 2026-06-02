@@ -1,5 +1,13 @@
 // packages/services/src/custom-fields/index.ts
 
+// App-registered custom field provisioning
+export {
+  getInstallationCatalog,
+  type ProvisionContext,
+  provisionAppField,
+  provisionAppFields,
+  resolveEntityDefinitionIdByKind,
+} from './app-field-provisioning'
 // Uniqueness checks
 export {
   type CheckUniqueValueInput,
@@ -8,7 +16,7 @@ export {
   type UniqueViolation,
 } from './check-unique-value'
 export { type CreateCustomFieldInput, createCustomField } from './create-field'
-export { type DeleteCustomFieldInput, deleteCustomField } from './delete-field'
+export { type DeleteCustomFieldInput, deleteAppFields, deleteCustomField } from './delete-field'
 // Errors
 export type {
   AccessDeniedError,
@@ -24,6 +32,7 @@ export { type FindByUniqueValueInput, findByUniqueValue } from './find-by-unique
 // Note: getCustomFields and getFieldsByIds removed — use org cache via @auxx/lib/cache
 // Relationship helper
 export { type GetRelationshipPairInput, getRelationshipPair } from './get-relationship-pair'
+export { isProtectedField } from './ownership'
 // Relationship types
 export type { RelationshipConfig, RelationshipOptions } from './types'
 // Types - unified types from @auxx/database

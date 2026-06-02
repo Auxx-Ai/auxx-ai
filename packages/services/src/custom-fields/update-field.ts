@@ -10,6 +10,7 @@ import { err, ok } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
 import { checkExistingDuplicates } from './check-unique-value'
 import type { CustomFieldNotFoundError } from './errors'
+import { isProtectedField } from './ownership'
 import {
   type ActorOptions,
   canFieldBeUnique,
@@ -92,6 +93,7 @@ export async function updateCustomField(input: UpdateCustomFieldInput) {
         modelType: schema.CustomField.modelType,
         entityDefinitionId: schema.CustomField.entityDefinitionId,
         systemAttribute: schema.CustomField.systemAttribute,
+        appInstallationId: schema.CustomField.appInstallationId,
       })
       .from(schema.CustomField)
       .where(
@@ -112,6 +114,20 @@ export async function updateCustomField(input: UpdateCustomFieldInput) {
       message: 'Field not found',
       fieldId: id as string,
     } as CustomFieldNotFoundError)
+  }
+
+  // Protected fields (system + app-owned) are user-read-only at the definition
+  // level. There was previously no backend guard here — the API trusted the
+  // frontend and only stripped `systemAttribute` from the patch below. This
+  // closes that hole and extends it to app-owned fields (only uninstall edits
+  // those).
+  if (isProtectedField(currentField)) {
+    return err({
+      code: 'ACCESS_DENIED' as const,
+      message: currentField.appInstallationId
+        ? 'This field is managed by an installed app and cannot be edited'
+        : 'System fields cannot be edited',
+    })
   }
 
   const fieldType = type || currentField.type

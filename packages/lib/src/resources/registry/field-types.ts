@@ -272,6 +272,21 @@ export interface ResourceField {
    * NOTE: isSystem can be derived: isSystem = !!systemAttribute
    */
   systemAttribute?: SystemAttribute
+
+  /**
+   * True for app-registered custom fields (owned by an installed app).
+   * App-owned fields are user-read-only at the definition level and removed on
+   * uninstall. Derivable from `appInstallationId`. See app-registered custom
+   * fields.
+   */
+  isAppOwned?: boolean
+
+  /**
+   * Owning app installation id for app-registered fields (undefined for
+   * user/system fields). Lets consumers (e.g. the v5 chat fence) scope to the
+   * fields a given installation owns.
+   */
+  appInstallationId?: string
 }
 
 /**

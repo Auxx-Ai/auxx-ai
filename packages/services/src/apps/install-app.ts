@@ -1,8 +1,9 @@
 // packages/services/src/apps/install-app.ts
 
-import { database, schema, type Transaction } from '@auxx/database'
+import { type CatalogPayload, database, schema, type Transaction } from '@auxx/database'
 import { and, eq, isNotNull } from 'drizzle-orm'
 import { err, ok } from 'neverthrow'
+import { provisionAppFields } from '../custom-fields/app-field-provisioning'
 import { fromDatabase } from '../shared/utils'
 import type { InstallAppInput } from './schemas'
 
@@ -244,6 +245,17 @@ export async function installApp(input: InstallAppInput) {
         }
         installation = created
       }
+
+      // Provision the app's installation-scoped custom fields (app-registered
+      // custom fields §5). Connection-scoped fields are provisioned later, per
+      // connected account, off connection-added. Idempotent, so reinstall
+      // re-creating the same definitions is a no-op.
+      await provisionAppFields(
+        selectedDeployment!.catalog as CatalogPayload | null,
+        'installation',
+        { appInstallationId: installation.id, organizationId },
+        tx
+      )
 
       // Log event
       await tx.insert(schema.AppEventLog).values({
