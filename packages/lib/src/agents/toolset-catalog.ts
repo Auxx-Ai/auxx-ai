@@ -6,6 +6,7 @@ import {
   type CatalogContainerNode,
   type CatalogNode,
   type CatalogToolsetNode,
+  filterCatalogToChatSafe,
   type ToolCatalogEntry,
 } from './client'
 
@@ -74,6 +75,21 @@ export async function getOrgCatalogTree(organizationId: string): Promise<Catalog
  */
 export async function getOrgToolsetCatalog(organizationId: string): Promise<ToolsetCatalogEntry[]> {
   const tree = await getOrgCatalogTree(organizationId)
+  return flattenToolsets(tree)
+}
+
+/**
+ * Chat-safe flat toolset catalog — the same projection as
+ * `getOrgToolsetCatalog`, clamped to `chatSafe` tools only (toolsets left with
+ * zero safe tools are dropped). Used by the chat-kind agent builder so its
+ * persona prompt advertises — and `set_agent_toolsets` validates against —
+ * exactly the toolsets that survive `buildChatEngineConfig`'s runtime chat-safe
+ * filter. See plans/chat/v5 phase-2b.
+ */
+export async function getOrgChatSafeToolsetCatalog(
+  organizationId: string
+): Promise<ToolsetCatalogEntry[]> {
+  const tree = filterCatalogToChatSafe(await getOrgCatalogTree(organizationId))
   return flattenToolsets(tree)
 }
 

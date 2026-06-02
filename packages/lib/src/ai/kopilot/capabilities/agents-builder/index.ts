@@ -1,8 +1,13 @@
 // packages/lib/src/ai/kopilot/capabilities/agents-builder/index.ts
 
-import { getOrgToolsetCatalog } from '../../../../agents/toolset-catalog'
+import {
+  getOrgChatSafeToolsetCatalog,
+  getOrgToolsetCatalog,
+} from '../../../../agents/toolset-catalog'
+import { getCachedAgentById } from '../../../../cache'
+import { findRef } from '../../context-refs'
 import type { GetToolDeps, PageCapability } from '../types'
-import { buildBuilderPersonaPrompt } from './persona-prompt'
+import { buildBuilderPersonaPrompt, buildChatBuilderPersonaPrompt } from './persona-prompt'
 import { createCompleteAgentSetupTool } from './tools/complete-agent-setup'
 import { createSetAgentPromptTool } from './tools/set-agent-prompt'
 import { createSetAgentResourceScopeTool } from './tools/set-agent-resource-scope'
@@ -20,28 +25,53 @@ export const AGENTS_BUILDER_PAGE = 'agents.builder'
  * `findRef(ctx, 'agent')` without taking an agentId argument.
  *
  * Persona prompt inlines the org's toolset catalog so the LLM can recommend
- * concrete toolsets by slug without needing a separate discovery tool. The
- * caller must pre-fetch the catalog via `getOrgToolsetCatalog` and pass it
- * in — keeps this factory synchronous to match the rest of the registry.
+ * concrete toolsets by slug without needing a separate discovery tool.
+ *
+ * Branches on the session agent's `kind` (resolved from the `agent` session
+ * ref): a `chat`-kind agent gets the chat-safe toolset catalog, a chat-shaped
+ * persona prompt, and a reduced tool set (no triggers / resource-scope);
+ * `internal` agents keep the full triage builder. See plans/chat/v5 phase-2b.
  */
 export async function createAgentsBuilderCapabilities(
   getDeps: GetToolDeps,
   organizationId: string
 ): Promise<PageCapability> {
-  const catalog = await getOrgToolsetCatalog(organizationId)
+  // Resolve the agent being built so the builder branches on `kind`. The agent
+  // is in the session refs (the same ref every setter tool resolves via
+  // `findRef`). `kind` is immutable, so resolving once per session build is
+  // safe. A chat-kind agent is visitor-facing: chat-safe toolsets only, a
+  // chat-shaped persona, and no triggers / resource-scope. See plans/chat/v5
+  // phase-2b.
+  const agentRef = findRef(getDeps().sessionContext, 'agent')
+  const agent = agentRef?.id ? await getCachedAgentById(organizationId, agentRef.id) : null
+  const isChat = agent?.kind === 'chat'
+
+  const catalog = isChat
+    ? await getOrgChatSafeToolsetCatalog(organizationId)
+    : await getOrgToolsetCatalog(organizationId)
+
+  // Chat agents run on the inbound-message gate, never autonomously, and don't
+  // read records — drop `set_agent_triggers` + `set_agent_resource_scope`.
+  const tools = [
+    createUpdateAgentIdentityTool(getDeps),
+    createSetAgentPromptTool(getDeps),
+    createSetAgentToolsetsTool(getDeps),
+    ...(isChat
+      ? []
+      : [createSetAgentResourceScopeTool(getDeps), createSetAgentTriggersTool(getDeps)]),
+    createCompleteAgentSetupTool(getDeps),
+  ]
+
   return {
     page: AGENTS_BUILDER_PAGE,
-    tools: [
-      createUpdateAgentIdentityTool(getDeps),
-      createSetAgentPromptTool(getDeps),
-      createSetAgentToolsetsTool(getDeps),
-      createSetAgentResourceScopeTool(getDeps),
-      createSetAgentTriggersTool(getDeps),
-      createCompleteAgentSetupTool(getDeps),
-    ],
+    tools,
     excludeGlobalTools: BUILDER_GLOBAL_TOOL_EXCLUDES,
-    systemPromptAddition: buildBuilderPersonaPrompt({ catalog }),
-    capabilities: ['Edit one agent in this workspace — name, prompt, tools, knowledge scope'],
+    systemPromptAddition: isChat
+      ? buildChatBuilderPersonaPrompt({ catalog })
+      : buildBuilderPersonaPrompt({ catalog }),
+    capabilities: isChat
+      ? ['Configure this visitor chat agent — name, persona, knowledge, escalation']
+      : ['Edit one agent in this workspace — name, prompt, tools, knowledge scope'],
   }
 }
 

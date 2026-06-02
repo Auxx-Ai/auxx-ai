@@ -9,6 +9,7 @@
 // Consumed by `src/util/__tests__/compile-and-extract-catalog.test.ts` to pin
 // the catalog projection per impl plan §5.6.
 
+import { defineFields } from '@auxx/sdk/fields'
 import { z } from 'zod/v4'
 import sendMessage from './send-message.tool.server'
 
@@ -94,7 +95,10 @@ export const app = {
       },
     ],
   },
-  fields: [
+  // Imported via `@auxx/sdk/fields` (not inlined) so catalog extraction
+  // exercises the real `defineFields` runtime — guards the esbuild resolver
+  // mapping for `@auxx/sdk/fields` (see compile-and-extract-catalog.ts).
+  fields: defineFields([
     {
       appFieldKey: 'customerId',
       type: 'TEXT',
@@ -114,5 +118,5 @@ export const app = {
         { value: 'silver', label: 'Silver' },
       ],
     },
-  ],
+  ]),
 }

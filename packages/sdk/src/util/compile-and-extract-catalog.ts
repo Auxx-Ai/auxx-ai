@@ -215,11 +215,12 @@ export async function compileAndExtractCatalog(): Promise<
   // map most subpaths to types-only (e.g. `@auxx/sdk/client`, `@auxx/sdk/server`),
   // so there's no runtime file to load. We resolve the real entry points we
   // need (bare + `/tools` + `/workflow`) and stub the rest with an empty
-  // module — the catalog extractor only reads `app.{tools,toolsets,workflow}`,
+  // module — the catalog extractor only reads `app.{tools,toolsets,workflow,fields}`,
   // so other surfaces don't need real runtime.
   const SDK_REAL_BARE = path.join(SDK_ROOT, 'lib', 'root', 'index.js')
   const SDK_REAL_TOOLS = path.join(SDK_ROOT, 'lib', 'root', 'tools', 'index.js')
   const SDK_REAL_WORKFLOW = path.join(SDK_ROOT, 'lib', 'root', 'workflow', 'index.js')
+  const SDK_REAL_FIELDS = path.join(SDK_ROOT, 'lib', 'root', 'fields', 'index.js')
   const stubSdkSubpaths: esbuild.Plugin = {
     name: 'auxx-stub-sdk-subpaths',
     setup(build) {
@@ -227,6 +228,11 @@ export async function compileAndExtractCatalog(): Promise<
         if (args.path === '@auxx/sdk') return { path: SDK_REAL_BARE }
         if (args.path === '@auxx/sdk/tools') return { path: SDK_REAL_TOOLS }
         if (args.path === '@auxx/sdk/workflow') return { path: SDK_REAL_WORKFLOW }
+        // `defineFields` runs at module load to build the catalog, so it must
+        // resolve to real runtime — the no-op stub Proxy has no own enumerable
+        // keys, so esbuild's CJS→ESM interop drops the named export and the
+        // call throws `defineFields is not a function`.
+        if (args.path === '@auxx/sdk/fields') return { path: SDK_REAL_FIELDS }
         return { path: args.path, namespace: 'auxx-sdk-stub' }
       })
       // CJS module shape with a Proxy: any named import becomes a no-op

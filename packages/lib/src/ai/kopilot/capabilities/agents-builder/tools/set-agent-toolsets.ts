@@ -2,9 +2,11 @@
 
 import { batchUpdateAgentToolsets } from '../../../../../agents/agent-toolset-service'
 import {
+  getOrgChatSafeToolsetCatalog,
   getOrgToolsetCatalog,
   type ToolsetCatalogEntry,
 } from '../../../../../agents/toolset-catalog'
+import { getCachedAgentById } from '../../../../../cache'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
 import { findRef } from '../../../context-refs'
 import type { GetToolDeps } from '../../types'
@@ -76,7 +78,16 @@ to change; omitted slugs are left alone.`,
         return { success: false, output: null, error: 'toolsets array must have at least one row' }
       }
 
-      const catalog = await getOrgToolsetCatalog(agentDeps.organizationId)
+      // Chat-kind agents validate against the chat-safe catalog only — the
+      // same surface their builder persona advertised and the only toolsets
+      // that survive `buildChatEngineConfig`'s runtime filter. A non-safe slug
+      // for a chat agent therefore errors here instead of being silently
+      // dropped at chat runtime. See plans/chat/v5 phase-2b.
+      const agent = await getCachedAgentById(agentDeps.organizationId, agentRef.id)
+      const catalog =
+        agent?.kind === 'chat'
+          ? await getOrgChatSafeToolsetCatalog(agentDeps.organizationId)
+          : await getOrgToolsetCatalog(agentDeps.organizationId)
       const catalogBySlug = new Map<string, ToolsetCatalogEntry>(
         catalog.map((entry) => [entry.slug, entry])
       )
