@@ -1,8 +1,9 @@
 // packages/lib/src/ai/kopilot/capabilities/kb/tools/delete-blocks.ts
 
+import { parseStringArg } from '../../../../agent-framework/tool-inputs'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
 import type { GetToolDeps } from '../../types'
-import { buildOpToolResult, runBlockCrudOp } from './write-helpers'
+import { buildOpToolResult, EXPECTED_HASH_PARAM, runBlockCrudOp } from './write-helpers'
 
 export function createDeleteBlocksTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
@@ -19,6 +20,7 @@ export function createDeleteBlocksTool(getDeps: GetToolDeps): AgentToolDefinitio
           items: { type: 'string' },
           description: 'Block ids to delete',
         },
+        expectedHash: EXPECTED_HASH_PARAM,
       },
       required: ['blockIds'],
       additionalProperties: false,
@@ -33,7 +35,9 @@ export function createDeleteBlocksTool(getDeps: GetToolDeps): AgentToolDefinitio
           return { ok: false, error: `blockIds[${i}] must be a non-empty string` }
         }
       }
-      return { ok: true, args }
+      const expectedHash = parseStringArg(args.expectedHash, { name: 'expectedHash', max: 200 })
+      if (!expectedHash.ok) return { ok: false, error: expectedHash.error }
+      return { ok: true, args: { ...args, expectedHash: expectedHash.value } }
     },
     execute: async (args, agentDeps) => {
       const toolDeps = getDeps()
@@ -43,6 +47,7 @@ export function createDeleteBlocksTool(getDeps: GetToolDeps): AgentToolDefinitio
         toolDeps,
         patch: { op: 'delete', blockIds },
         opIndex: 0,
+        expectedHash: args.expectedHash as string | undefined,
       })
       return buildOpToolResult('delete', result)
     },

@@ -3,7 +3,7 @@
 import { parseStringArg } from '../../../../agent-framework/tool-inputs'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
 import type { GetToolDeps } from '../../types'
-import { buildOpToolResult, runBlockCrudOp } from './write-helpers'
+import { buildOpToolResult, EXPECTED_HASH_PARAM, runBlockCrudOp } from './write-helpers'
 
 export function createUpdateBlockAttrsTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
@@ -21,6 +21,7 @@ export function createUpdateBlockAttrsTool(getDeps: GetToolDeps): AgentToolDefin
           description: 'Partial attrs to merge (id is silently dropped)',
           additionalProperties: true,
         },
+        expectedHash: EXPECTED_HASH_PARAM,
       },
       required: ['blockId', 'attrs'],
       additionalProperties: false,
@@ -31,7 +32,9 @@ export function createUpdateBlockAttrsTool(getDeps: GetToolDeps): AgentToolDefin
       if (!args.attrs || typeof args.attrs !== 'object') {
         return { ok: false, error: 'attrs must be an object' }
       }
-      return { ok: true, args: { ...args, blockId: id.value } }
+      const expectedHash = parseStringArg(args.expectedHash, { name: 'expectedHash', max: 200 })
+      if (!expectedHash.ok) return { ok: false, error: expectedHash.error }
+      return { ok: true, args: { ...args, blockId: id.value, expectedHash: expectedHash.value } }
     },
     execute: async (args, agentDeps) => {
       const toolDeps = getDeps()
@@ -42,6 +45,7 @@ export function createUpdateBlockAttrsTool(getDeps: GetToolDeps): AgentToolDefin
         toolDeps,
         patch: { op: 'updateAttrs', blockId, attrs },
         opIndex: 0,
+        expectedHash: args.expectedHash as string | undefined,
       })
       return buildOpToolResult('updateAttrs', result)
     },

@@ -8,7 +8,7 @@ export { InlineRenderer } from './inline-renderer'
 export { KBArticleCopyMenu } from './kb-article-copy-menu'
 export { KBArticleNode } from './kb-article-node'
 export { KBArticlePager } from './kb-article-pager'
-export { KBArticleRenderer } from './kb-article-renderer'
+export { KBArticleRenderer, kbArticleContainerClass } from './kb-article-renderer'
 export { KBArticleWithToc } from './kb-article-with-toc'
 export { KBTableOfContents } from './kb-toc'
 export type {

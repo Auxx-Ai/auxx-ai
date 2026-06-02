@@ -3,8 +3,9 @@
 
 import type { ArticleDiff, BlockDiff } from '@auxx/lib/kb/blocks'
 import { Button } from '@auxx/ui/components/button'
+import { KBThemeProvider, type KBThemeProviderProps } from '@auxx/ui/components/kb'
 import type { ArticleNodeJSON, DiffDecorations, DocJSON } from '@auxx/ui/components/kb/article'
-import { KBArticleNode } from '@auxx/ui/components/kb/article'
+import { KBArticleNode, kbArticleContainerClass } from '@auxx/ui/components/kb/article'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { cn } from '@auxx/ui/lib/utils'
 import { ArrowLeft } from 'lucide-react'
@@ -18,6 +19,12 @@ interface ArticleDiffViewProps {
   baseLabel?: string
   /** Newer side label, e.g. "Draft" / "Kopilot". */
   compareLabel?: string
+  /**
+   * KB theme to render the blocks under, so callouts/tables/code/links match
+   * the published article (their colors come from `--kb-*` tokens injected by
+   * `KBThemeProvider`). Map a store KnowledgeBase with `mapKBForPreview`.
+   */
+  kbTheme: KBThemeProviderProps['kb']
   /** Clears the `?diff=` param and returns to the editor. */
   onClose: () => void
 }
@@ -33,6 +40,7 @@ export function ArticleDiffView({
   diff,
   baseLabel = 'Before',
   compareLabel = 'After',
+  kbTheme,
   onClose,
 }: ArticleDiffViewProps) {
   // The nodes to render, with modified text blocks rebuilt to carry their word
@@ -49,7 +57,7 @@ export function ArticleDiffView({
   const hasChanges = added + removed + modified + moved > 0
 
   return (
-    <div className='flex min-h-0 flex-1 flex-col'>
+    <KBThemeProvider kb={kbTheme}>
       <div className='flex w-full items-center gap-3 border-b bg-primary-150 px-3 py-1.5'>
         <Button variant='outline' size='xs' onClick={onClose}>
           <ArrowLeft /> Back
@@ -67,7 +75,7 @@ export function ArticleDiffView({
       <ScrollArea className='flex-1'>
         <div className='mx-auto w-full max-w-3xl px-7 py-6'>
           {hasChanges ? (
-            <article className={styles.body}>
+            <article className={cn(kbArticleContainerClass, styles.body)}>
               {diff.blocks.map((d, idx) => (
                 <DiffBlock
                   key={d.id || idx}
@@ -86,7 +94,7 @@ export function ArticleDiffView({
           )}
         </div>
       </ScrollArea>
-    </div>
+    </KBThemeProvider>
   )
 }
 

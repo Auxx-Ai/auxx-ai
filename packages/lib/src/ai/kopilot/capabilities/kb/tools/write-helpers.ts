@@ -36,6 +36,19 @@ export type BlockInput =
 const ALLOWED_NODE_TYPES = new Set(['block', 'table', 'tabs', 'accordion'])
 
 /**
+ * Optional concurrency guard shared by every KB write tool. The agent passes
+ * back the `postHash` it received from its previous edit on the same article;
+ * `runBlockCrudOp` rejects the op if the draft changed since (a concurrent
+ * write), so the agent re-reads instead of patching stale content. Omit on the
+ * first edit of a turn.
+ */
+export const EXPECTED_HASH_PARAM = {
+  type: 'string',
+  description:
+    'Optional concurrency guard. Pass the `postHash` returned by your previous edit to this article; if the article changed since then, the edit is rejected so you can re-read (get_article / get_article_section) and retry. Omit on your first edit of a turn.',
+} as const
+
+/**
  * Expand a list of BlockInput into a flat ArticleNodeJSON[] with ids
  * stamped. Used by insert / replace tools that accept the mixed payload
  * shape. Containers (table/tabs/accordion) flow through as-is so they
@@ -76,21 +89,25 @@ export interface KopilotWriteContext {
  *  6. Publish the kb-article-patch event.
  *  7. Return the new content hash so the agent can validate.
  *
- * Hash discipline: we don't enforce a `turnExpectedHash` precondition
- * here yet (the lock prevents user races; future work adds it for
- * cross-session safety). Manual edits clear the snapshot and the next
- * write fails-soft via the apply-patch error path.
+ * Hash discipline (CAS): when the caller passes `expectedHash` (the
+ * `postHash` the agent last saw for this article), we compare it against the
+ * live draft hash BEFORE applying. On mismatch the op is rejected fail-soft
+ * with a re-read instruction — a concurrent write won't get clobbered. The
+ * lock still guards in-turn races; this adds cross-session safety. Omitting
+ * `expectedHash` preserves the old unconditional behavior (e.g. the first
+ * write of a turn, which has no prior hash to chain from).
  */
 export async function runBlockCrudOp(args: {
   agentDeps: AgentDeps
   toolDeps: ToolDeps
   patch: ArticlePatch
   opIndex: number
+  expectedHash?: string
 }): Promise<
   | { ok: true; ctx: KopilotWriteContext; effect: { blockIds: string[] } }
   | { ok: false; error: string }
 > {
-  const { agentDeps, toolDeps, patch, opIndex } = args
+  const { agentDeps, toolDeps, patch, opIndex, expectedHash } = args
   const articleId = findRef(toolDeps.sessionContext, 'article')?.id
   if (!articleId) {
     return { ok: false, error: 'no active article' }
@@ -113,6 +130,18 @@ export async function runBlockCrudOp(args: {
   const knowledgeBaseId = article.knowledgeBaseId
   const draftJson = (article.draftRevision.contentJson as ArticleNodeJSON[] | null) ?? []
   const preHash = computeArticleJsonHash(draftJson)
+
+  // CAS precondition: if the agent told us the hash it last observed and the
+  // draft has since changed (a concurrent edit), reject before capturing a
+  // snapshot, locking, or applying — so we never patch stale content.
+  if (expectedHash && expectedHash !== preHash) {
+    return {
+      ok: false,
+      error:
+        `stale_content: the article changed since your last edit (you expected hash ${expectedHash}, current is ${preHash}). ` +
+        'Re-read it with get_article or get_article_section, then retry your edit against the fresh content.',
+    }
+  }
 
   // First-write-of-turn: capture snapshot + emit lock event. We use the
   // existing snapshot key as a soft idempotency guard — if a snapshot

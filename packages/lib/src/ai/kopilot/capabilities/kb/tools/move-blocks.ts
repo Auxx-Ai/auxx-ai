@@ -1,9 +1,10 @@
 // packages/lib/src/ai/kopilot/capabilities/kb/tools/move-blocks.ts
 
 import type { BlockAnchor } from '../../../../../kb/blocks/patch-types'
+import { parseStringArg } from '../../../../agent-framework/tool-inputs'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
 import type { GetToolDeps } from '../../types'
-import { buildOpToolResult, runBlockCrudOp } from './write-helpers'
+import { buildOpToolResult, EXPECTED_HASH_PARAM, runBlockCrudOp } from './write-helpers'
 
 export function createMoveBlocksTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
@@ -26,6 +27,7 @@ export function createMoveBlocksTool(getDeps: GetToolDeps): AgentToolDefinition 
             "Where to drop them: { at: 'start'|'end' } | { at: 'before'|'after', blockId } | { at: 'startOf'|'endOf', containerId }",
           additionalProperties: true,
         },
+        expectedHash: EXPECTED_HASH_PARAM,
       },
       required: ['blockIds', 'anchor'],
       additionalProperties: false,
@@ -44,7 +46,9 @@ export function createMoveBlocksTool(getDeps: GetToolDeps): AgentToolDefinition 
       if (!anchor || typeof anchor !== 'object' || typeof anchor.at !== 'string') {
         return { ok: false, error: 'anchor must be { at, blockId? | containerId? }' }
       }
-      return { ok: true, args }
+      const expectedHash = parseStringArg(args.expectedHash, { name: 'expectedHash', max: 200 })
+      if (!expectedHash.ok) return { ok: false, error: expectedHash.error }
+      return { ok: true, args: { ...args, expectedHash: expectedHash.value } }
     },
     execute: async (args, agentDeps) => {
       const toolDeps = getDeps()
@@ -55,6 +59,7 @@ export function createMoveBlocksTool(getDeps: GetToolDeps): AgentToolDefinition 
         toolDeps,
         patch: { op: 'move', blockIds, anchor },
         opIndex: 0,
+        expectedHash: args.expectedHash as string | undefined,
       })
       return buildOpToolResult('move', result)
     },

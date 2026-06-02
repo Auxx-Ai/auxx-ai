@@ -9,6 +9,15 @@ import styles from './kb-article-renderer.module.css'
 import { KBTableOfContentsDrawer } from './kb-toc-drawer'
 import type { DocJSON, ResolveAuxxHref } from './types'
 
+/**
+ * The container class that establishes KB article base typography (font,
+ * size, color via `--kb-*` tokens) and the descendant `.kb-link` /
+ * `.kb-inline-code` / `.kb-mark` styling. Apply it to any element that renders
+ * `KBArticleNode` children outside of `KBArticleRenderer` (e.g. the diff view)
+ * so the output matches the published article instead of inheriting nothing.
+ */
+export const kbArticleContainerClass = styles.article
+
 export interface KBArticleRendererProps {
   doc: DocJSON | null | undefined
   /** Optional title rendered as <h1>; the doc's heading levels start at <h2>. */

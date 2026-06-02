@@ -71,11 +71,12 @@ function KBEditorBody({ knowledgeBaseId, slug, hasArticlesLoaded }: KBEditorBody
         <ContainerArticlePlaceholder article={currentArticle} knowledgeBaseId={knowledgeBaseId} />
       )
     }
-    if (diffValue) {
+    if (diffValue && knowledgeBase) {
       return (
         <ArticleDiffPane
           article={currentArticle}
           knowledgeBaseId={knowledgeBaseId}
+          knowledgeBase={knowledgeBase}
           diffValue={diffValue}
           onClose={() => setDiff(null)}
         />

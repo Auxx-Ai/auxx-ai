@@ -8,11 +8,15 @@ import { useEffect, useMemo } from 'react'
 import { api } from '~/trpc/react'
 import { useArticleContent } from '../../hooks/use-article-content'
 import type { ArticleMeta } from '../../store/article-store'
+import type { KnowledgeBase } from '../../store/knowledge-base-store'
+import { mapKBForPreview } from '../preview/map-kb-for-preview'
 import { ArticleDiffView } from './article-diff-view'
 
 interface ArticleDiffPaneProps {
   article: ArticleMeta
   knowledgeBaseId: string
+  /** KB whose theme tokens style the rendered blocks (matches the published article). */
+  knowledgeBase: KnowledgeBase
   /** The raw `?diff=` value: `review` | `v:<revisionId>` | `kopilot`. */
   diffValue: string
   onClose: () => void
@@ -27,9 +31,11 @@ interface ArticleDiffPaneProps {
 export function ArticleDiffPane({
   article,
   knowledgeBaseId,
+  knowledgeBase,
   diffValue,
   onClose,
 }: ArticleDiffPaneProps) {
+  const kbTheme = useMemo(() => mapKBForPreview(knowledgeBase), [knowledgeBase])
   const isVersion = diffValue.startsWith('v:')
   const revisionId = isVersion ? diffValue.slice(2) : null
   const isKopilot = diffValue === 'kopilot'
@@ -138,6 +144,7 @@ export function ArticleDiffPane({
       diff={diff}
       baseLabel={resolved.baseLabel}
       compareLabel={resolved.compareLabel}
+      kbTheme={kbTheme}
       onClose={onClose}
     />
   )
