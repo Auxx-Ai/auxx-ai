@@ -296,6 +296,14 @@ export interface AgentToolDefinition {
    */
   toolsetSlug?: string
   /**
+   * Opt-in: tool is safe to register on a chat-kind agent (visitor-facing).
+   * Defaults to false. The chat-kind agent toolset catalog filters by this
+   * flag (`tools.filter(t => t.chatSafe)`), so a tool that doesn't set it is
+   * never exposed to an anonymous visitor. New tools must explicitly opt in.
+   * See plans/chat/v5 — phase 4 ships the first `chatSafe` tool (`kb.search`).
+   */
+  chatSafe?: boolean
+  /**
    * Capture-mode hook: predict the tool's output without executing.
    *
    * When the engine runs in `approvalMode: 'capture'`, approval-required tools

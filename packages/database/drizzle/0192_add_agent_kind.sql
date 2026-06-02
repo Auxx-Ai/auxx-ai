@@ -1,0 +1,1 @@
+ALTER TABLE "Agent" ADD COLUMN "kind" text DEFAULT 'internal' NOT NULL;

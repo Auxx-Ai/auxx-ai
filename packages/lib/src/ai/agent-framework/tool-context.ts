@@ -19,6 +19,14 @@ export interface ToolContext extends AgentDeps {
   /** Stable id tying this tool call to its enclosing AI run for log / audit correlation. */
   traceId?: string
   /**
+   * Present iff this run was kicked off by an inbound chat message on a
+   * chat-kind agent. Chat-safe tools read this to clamp queries to the
+   * visitor's scope (and to ignore any visitor-supplied identity claims).
+   * Internal / kopilot / autonomous-trigger runs leave this undefined.
+   * See plans/chat/v5.
+   */
+  invocation?: ChatInvocationContext
+  /**
    * Workflow handle — populated only when the engine is running inside a
    * workflow AI node. Lets workflow-native tools (e.g. `assign_variable`)
    * reach the active node's execution context without the agent framework
@@ -27,6 +35,19 @@ export interface ToolContext extends AgentDeps {
    * passes its `ExecutionContextManager` here at call time.
    */
   workflow?: WorkflowToolContext
+}
+
+/**
+ * Identity + scope of a visitor-initiated chat run, threaded onto every
+ * tool call as `ToolContext.invocation`. Chat-safe tools read this instead
+ * of trusting visitor-supplied arguments: `threadId` scopes the query to
+ * the active thread, and `contactId` is the verified contact (null until
+ * the visitor is promoted/verified — every `requiresIdentity` tool
+ * short-circuits while it is null). See plans/chat/v5.
+ */
+export interface ChatInvocationContext {
+  threadId: string
+  contactId: string | null
 }
 
 /**

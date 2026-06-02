@@ -75,6 +75,15 @@ export interface AgentConfig {
 }
 
 /**
+ * Discriminates an agent's invocation surface. `'internal'` agents run from
+ * Kopilot / triggers / autonomous runs (admin-facing). `'chat'` agents are
+ * visitor-facing: they run on inbound chat messages, get a filtered
+ * (chat-safe) toolset, and carry a `ChatInvocationContext` on every tool
+ * call. Chosen at creation and immutable thereafter. See plans/chat/v5.
+ */
+export type AgentKind = 'internal' | 'chat'
+
+/**
  * A user-authored Kopilot agent. Backed by a synthetic User row
  * (userType = 'AGENT'). Optional configuration layer on top of the
  * master Kopilot runtime.
@@ -118,6 +127,14 @@ export const Agent = pgTable(
 
     slug: text().notNull(),
     description: text(),
+
+    /**
+     * Invocation-surface discriminator — see `AgentKind`. Defaults to
+     * `'internal'` so every existing agent backfills to internal and the
+     * chat runtime stays dormant until phase 3. Immutable after creation
+     * (enforced by `updateAgent`).
+     */
+    kind: text().$type<AgentKind>().notNull().default('internal'),
 
     prompt: jsonb().$type<Record<string, unknown>>().default({}).notNull(),
 
