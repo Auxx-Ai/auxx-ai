@@ -25,7 +25,9 @@ export async function enqueueSourceSync(data: {
     await queue.add(
       'source-sync',
       { type: 'source-sync', sourceId: data.sourceId, organizationId: data.organizationId },
-      { jobId: `source-sync:${data.sourceId}` }
+      // BullMQ rejects ':' in custom job ids — keep it hyphenated. Coalesces
+      // duplicate manual "Sync now" clicks for the same source.
+      { jobId: `source-sync-manual-${data.sourceId}` }
     )
   } catch (error) {
     logger.error('Failed to enqueue source sync job', {

@@ -11,6 +11,7 @@ import {
   DialogTitle,
 } from '@auxx/ui/components/dialog'
 import { Input } from '@auxx/ui/components/input'
+import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { Label } from '@auxx/ui/components/label'
 import { Textarea } from '@auxx/ui/components/textarea'
 import { toastError } from '@auxx/ui/components/toast'
@@ -19,8 +20,8 @@ import { useState } from 'react'
 import { api } from '~/trpc/react'
 
 interface CreateKnowledgeSourceDialogProps {
-  /** Target KB — the source's articles home here. */
-  knowledgeBaseId: string
+  /** Optional KB to pre-link the new source into (when opened from a KB editor). */
+  knowledgeBaseId?: string
   open: boolean
   onOpenChange: (open: boolean) => void
 }
@@ -51,9 +52,10 @@ function slugify(s: string): string {
 }
 
 /**
- * Minimal manual-source form (Phase 1). Name + paste rows → create a manual
- * KnowledgeSource targeting the current KB, then trigger a sync. The full
- * Sources tab/wizard is a later phase (see plans/kb/sources/ui-sources.md).
+ * Minimal manual-source form. Name + paste rows → create a standalone manual
+ * KnowledgeSource (its own hidden KB), then trigger a sync. When opened from a KB
+ * editor, the source is also linked into that KB. Manage links later in the source
+ * workspace.
  */
 export function CreateKnowledgeSourceDialog({
   knowledgeBaseId,
@@ -113,14 +115,14 @@ export function CreateKnowledgeSourceDialog({
       const source = await createSource.mutateAsync({
         name: trimmedName,
         type: 'manual',
-        targetKnowledgeBaseId: knowledgeBaseId,
         surface: 'publishable',
         config: { items },
+        ...(knowledgeBaseId ? { linkKnowledgeBaseIds: [knowledgeBaseId] } : {}),
       })
       await syncNow.mutateAsync({ id: source.id })
-      // The sync runs in the background worker; nudge the sidebar to pick up the
-      // new managed articles once it lands.
-      void utils.kb.getArticles.invalidate({ knowledgeBaseId })
+      // The sync runs in the background worker; nudge the sidebar of the linked KB to
+      // pick up the new articles once it lands.
+      if (knowledgeBaseId) void utils.kb.getArticles.invalidate({ knowledgeBaseId })
       void utils.knowledgeSource.list.invalidate()
       onOpenChange(false)
       reset()
@@ -143,8 +145,8 @@ export function CreateKnowledgeSourceDialog({
         <DialogHeader>
           <DialogTitle>New manual source</DialogTitle>
           <DialogDescription>
-            Paste content as items. Each becomes a locked, source-managed article in this knowledge
-            base. Re-syncing overwrites managed articles; detach one to edit it.
+            Paste content as items. Each becomes a locked, source-managed article in this source.
+            Re-syncing overwrites managed articles; detach one to edit it.
           </DialogDescription>
         </DialogHeader>
 
@@ -199,11 +201,21 @@ export function CreateKnowledgeSourceDialog({
         </div>
 
         <DialogFooter>
-          <Button variant='outline' onClick={() => onOpenChange(false)} disabled={isSubmitting}>
-            Cancel
+          <Button
+            size='sm'
+            variant='ghost'
+            onClick={() => onOpenChange(false)}
+            disabled={isSubmitting}>
+            Cancel <Kbd shortcut='esc' variant='ghost' size='sm' />
           </Button>
-          <Button onClick={handleSubmit} loading={isSubmitting} loadingText='Creating...'>
-            Create & sync
+          <Button
+            size='sm'
+            variant='outline'
+            onClick={handleSubmit}
+            loading={isSubmitting}
+            loadingText='Creating...'
+            data-dialog-submit>
+            Create & sync <KbdSubmit variant='outline' size='sm' />
           </Button>
         </DialogFooter>
       </DialogContent>

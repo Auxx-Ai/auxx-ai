@@ -95,8 +95,8 @@ export const knowledgeSourceRelations = relations(KnowledgeSource, ({ one, many 
     fields: [KnowledgeSource.organizationId],
     references: [Organization.id],
   }),
-  targetKnowledgeBase: one(KnowledgeBase, {
-    fields: [KnowledgeSource.targetKnowledgeBaseId],
+  ownedKnowledgeBase: one(KnowledgeBase, {
+    fields: [KnowledgeSource.ownedKnowledgeBaseId],
     references: [KnowledgeBase.id],
   }),
   rootFolderArticle: one(Article, {

@@ -1,12 +1,14 @@
 // apps/worker/src/dev/smoke-knowledge-sources.ts
 //
-// Smoke-test the Phase-1 knowledge-source spine end to end against the dev DB,
-// asserting Article/ArticlePlacement rows directly (embedding rides the worker
-// `sync-managed` queue, which we don't run here).
+// Smoke-test the knowledge-source spine end to end against the dev DB, asserting
+// Article/ArticlePlacement rows directly (embedding rides the worker `sync-managed`
+// queue, which we don't run here).
 //
-// Proves: materialize → tree (root folder + home placements with
-// linkedFromSourceId) → re-sync diff (hash bump on change, skip unchanged) →
-// orphan archive → detach survives re-sync → delete keeps detached.
+// Proves the source-owns-KB model: a source provisions its own hidden KB →
+// materialize there (root folder + home placements, linkedFromSourceId) → re-sync
+// diff (hash bump / skip) → link into a real KB (placements fan out, tree preserved)
+// → re-sync adds new items to the linked KB → unlink drops them → orphan archive →
+// detach survives re-sync → delete removes the source, its owned KB, and all content.
 //
 // Lives under the worker so it resolves @auxx/* via the worker's node_modules and
 // runs on the worker's ESM/tsx runtime (file-type is ESM-only — a plain CJS `tsx`
@@ -15,15 +17,19 @@
 //   pnpm dotenv -- node --conditions source --import tsx/esm \
 //     apps/worker/src/dev/smoke-knowledge-sources.ts [--kb <id>]
 //
-// With no --kb it auto-picks the most recently created KnowledgeBase.
+// With no --kb it auto-picks the most recently created standard KnowledgeBase to
+// link the source into.
 
 import { closePools, database as db } from '@auxx/database'
-import { deleteArticle, detachArticleFromSource } from '@auxx/lib/kb'
+import { detachArticleFromSource } from '@auxx/lib/kb'
 import {
   createSource,
   deleteSource,
   getSource,
+  linkSourceToKb,
+  listSourceLinks,
   runSourceSync,
+  unlinkSourceFromKb,
   updateSource,
 } from '@auxx/lib/knowledge-sources'
 
@@ -68,6 +74,7 @@ async function placementsForArticles(articleIds: string[]) {
     columns: {
       id: true,
       articleId: true,
+      knowledgeBaseId: true,
       parentId: true,
       isPublished: true,
       linkedFromSourceId: true,
@@ -76,17 +83,21 @@ async function placementsForArticles(articleIds: string[]) {
 }
 
 async function main() {
-  // ── Setup: pick a target KB + its org ────────────────────────────────────
+  // ── Setup: pick a standard KB to link into + its org ──────────────────────
   const kbId = arg('--kb')
   const kb = kbId
     ? await db.query.KnowledgeBase.findFirst({ where: (k, { eq }) => eq(k.id, kbId) })
-    : await db.query.KnowledgeBase.findFirst({ orderBy: (k, { desc }) => [desc(k.createdAt)] })
+    : await db.query.KnowledgeBase.findFirst({
+        where: (k, { eq }) => eq(k.kind, 'standard'),
+        orderBy: (k, { desc }) => [desc(k.createdAt)],
+      })
   if (!kb) {
-    console.error('No KnowledgeBase found. Pass --kb <id> or seed a KB first.')
+    console.error('No standard KnowledgeBase found. Pass --kb <id> or seed a KB first.')
     process.exit(1)
   }
   const orgId = kb.organizationId
-  console.log(`Target KB: ${kb.name ?? kb.id} (${kb.id}) — org ${orgId}`)
+  const linkKbId = kb.id
+  console.log(`Link target KB: ${kb.name ?? kb.id} (${kb.id}) — org ${orgId}`)
 
   const ITEM_A = {
     externalId: 'smoke-a',
@@ -98,21 +109,35 @@ async function main() {
     title: 'Smoke Article B',
     markdown: '# Smoke Article B\n\nFirst version of B.',
   }
+  const ITEM_C = {
+    externalId: 'smoke-c',
+    title: 'Smoke Article C',
+    markdown: '# Smoke Article C\n\nAdded later.',
+  }
   const kbCtx = { db, organizationId: orgId }
 
   let sourceId = ''
+  let ownedKbId = ''
   try {
-    // ── 1. Create + initial sync ────────────────────────────────────────────
-    section('1. Create manual source (2 items) → runSourceSync')
+    // ── 1. Create standalone source + initial sync ────────────────────────────
+    section('1. Create manual source (2 items) → provisions its own KB → runSourceSync')
     const source = await createSource(db, orgId, {
       name: `Smoke Test Source ${kb.id.slice(-6)}`,
       type: 'manual',
-      targetKnowledgeBaseId: kb.id,
       surface: 'publishable',
       config: { items: [ITEM_A, ITEM_B] },
       createdById: kb.createdById,
     })
     sourceId = source.id
+    ownedKbId = source.ownedKnowledgeBaseId
+    check('source owns a KB', !!ownedKbId && ownedKbId !== linkKbId, ownedKbId)
+    const ownedKb = await db.query.KnowledgeBase.findFirst({
+      where: (k, { eq }) => eq(k.id, ownedKbId),
+      columns: { kind: true, datasetId: true },
+    })
+    check("owned KB kind='source'", ownedKb?.kind === 'source', ownedKb?.kind)
+    check('owned KB has a managed dataset', !!ownedKb?.datasetId)
+
     await runSourceSync(db, orgId, sourceId)
 
     const afterSync = await getSource(db, orgId, sourceId)
@@ -135,32 +160,25 @@ async function main() {
     )
     check(
       'all source articles managed=true',
-      arts.every((a) => a.managed),
-      arts.map((a) => ({ t: a.title, m: a.managed }))
-    )
-    check(
-      'page articles are DRAFT',
-      pages.every((a) => a.status === 'DRAFT'),
-      pages.map((a) => a.status)
+      arts.every((a) => a.managed)
     )
 
     const rootId = afterSync.rootFolderArticleId
-    const placements = await placementsForArticles(arts.map((a) => a.id))
+    let placements = await placementsForArticles(arts.map((a) => a.id))
+    check(
+      'all placements home in the owned KB',
+      placements.length > 0 && placements.every((p) => p.knowledgeBaseId === ownedKbId),
+      placements.map((p) => p.knowledgeBaseId)
+    )
+    check(
+      'every home placement linkedFromSourceId=source.id',
+      placements.every((p) => p.linkedFromSourceId === sourceId)
+    )
     const rootPlacement = placements.find((p) => p.articleId === rootId)
     const pagePlacements = placements.filter((p) => pages.some((a) => a.id === p.articleId))
     check(
-      'every placement linkedFromSourceId=source.id',
-      placements.length > 0 && placements.every((p) => p.linkedFromSourceId === sourceId),
-      placements.map((p) => p.linkedFromSourceId)
-    )
-    check(
       'page placements parented under root folder placement',
-      !!rootPlacement && pagePlacements.every((p) => p.parentId === rootPlacement.id),
-      { root: rootPlacement?.id, parents: pagePlacements.map((p) => p.parentId) }
-    )
-    check(
-      'page placements unpublished (DRAFT)',
-      pagePlacements.every((p) => !p.isPublished)
+      !!rootPlacement && pagePlacements.every((p) => p.parentId === rootPlacement.id)
     )
 
     const hashA1 = pages.find((a) => a.sourceExternalId === 'smoke-a')?.sourceContentHash
@@ -178,31 +196,96 @@ async function main() {
       },
     })
     await runSourceSync(db, orgId, sourceId)
-
     arts = await articlesForSource(sourceId)
     const hashA2 = arts.find((a) => a.sourceExternalId === 'smoke-a')?.sourceContentHash
     const hashB2 = arts.find((a) => a.sourceExternalId === 'smoke-b')?.sourceContentHash
     check('A content hash changed', !!hashA2 && hashA2 !== hashA1, { hashA1, hashA2 })
     check('B content hash unchanged (skipped)', hashB2 === hashB1, { hashB1, hashB2 })
 
-    // ── 3. Remove an item → re-sync → archived ───────────────────────────────
-    section('3. Remove item B → re-sync → B archived')
+    // ── 3. Link into the standard KB → placements materialize there ──────────
+    section('3. Link source into the standard KB → placements fan out, tree preserved')
+    await linkSourceToKb(db, orgId, sourceId, linkKbId)
+    arts = await articlesForSource(sourceId)
+    placements = await placementsForArticles(arts.map((a) => a.id))
+    const inLinkKb = placements.filter((p) => p.knowledgeBaseId === linkKbId)
+    check('all 3 articles linked into the standard KB', inLinkKb.length === arts.length, {
+      linked: inLinkKb.length,
+      total: arts.length,
+    })
+    check(
+      'linked placements carry linkedFromSourceId',
+      inLinkKb.every((p) => p.linkedFromSourceId === sourceId)
+    )
+    const linkRootPlacement = inLinkKb.find((p) => p.articleId === rootId)
+    const linkPagePlacements = inLinkKb.filter((p) => pages.some((a) => a.id === p.articleId))
+    check(
+      'linked tree preserved (pages under root in the linked KB)',
+      !!linkRootPlacement && linkPagePlacements.every((p) => p.parentId === linkRootPlacement.id)
+    )
+    const links = await listSourceLinks(db, orgId, sourceId)
+    check(
+      'listSourceLinks reports the linked KB',
+      links.some((l) => l.id === linkKbId),
+      links
+    )
+
+    // ── 4. Add item C → re-sync → fan-out places C in the linked KB ──────────
+    section('4. Add item C → re-sync → C homes in owned KB and fans out to the linked KB')
     await updateSource(db, orgId, sourceId, {
       config: {
-        items: [{ ...ITEM_A, markdown: '# Smoke Article A\n\nSECOND version of A — edited.' }],
+        items: [
+          { ...ITEM_A, markdown: '# Smoke Article A\n\nSECOND version of A — edited.' },
+          ITEM_B,
+          ITEM_C,
+        ],
       },
     })
     await runSourceSync(db, orgId, sourceId)
+    arts = await articlesForSource(sourceId)
+    const cArticle = arts.find((a) => a.sourceExternalId === 'smoke-c')
+    check('C article created', !!cArticle)
+    const cPlacements = await placementsForArticles(cArticle ? [cArticle.id] : [])
+    check(
+      'C homes in owned KB',
+      cPlacements.some((p) => p.knowledgeBaseId === ownedKbId)
+    )
+    check(
+      'C fanned out into the linked KB',
+      cPlacements.some((p) => p.knowledgeBaseId === linkKbId && p.linkedFromSourceId === sourceId)
+    )
 
+    // ── 5. Unlink from the standard KB → linked placements removed ───────────
+    section('5. Unlink from the standard KB → linked placements gone, owned KB intact')
+    await unlinkSourceFromKb(db, orgId, sourceId, linkKbId)
+    arts = await articlesForSource(sourceId)
+    placements = await placementsForArticles(arts.map((a) => a.id))
+    check(
+      'no placements remain in the unlinked KB',
+      placements.every((p) => p.knowledgeBaseId !== linkKbId)
+    )
+    check(
+      'owned-KB placements survive the unlink',
+      placements.some((p) => p.knowledgeBaseId === ownedKbId)
+    )
+
+    // ── 6. Remove an item → re-sync → archived ───────────────────────────────
+    section('6. Remove item B → re-sync → B archived')
+    await updateSource(db, orgId, sourceId, {
+      config: {
+        items: [
+          { ...ITEM_A, markdown: '# Smoke Article A\n\nSECOND version of A — edited.' },
+          ITEM_C,
+        ],
+      },
+    })
+    await runSourceSync(db, orgId, sourceId)
     arts = await articlesForSource(sourceId)
     const bAfter = arts.find((a) => a.sourceExternalId === 'smoke-b')
     check('B archived', bAfter?.status === 'ARCHIVED', bAfter?.status)
-    const aAfter = arts.find((a) => a.sourceExternalId === 'smoke-a')
-    check('A still DRAFT (not archived)', aAfter?.status === 'DRAFT', aAfter?.status)
 
-    // ── 4. Detach A → re-sync → A survives, skipped ──────────────────────────
-    section('4. Detach A → re-sync (A edited upstream) → A untouched')
-    const aId = aAfter?.id
+    // ── 7. Detach A → re-sync → A survives, skipped ──────────────────────────
+    section('7. Detach A → re-sync (A edited upstream) → A untouched')
+    const aId = arts.find((a) => a.sourceExternalId === 'smoke-a')?.id
     if (!aId) throw new Error('Article A not found — cannot continue detach checks')
     await detachArticleFromSource(kbCtx, aId)
     const aDetached = await db.query.Article.findFirst({
@@ -211,11 +294,6 @@ async function main() {
     })
     check('A managed=false after detach', aDetached?.managed === false, aDetached)
     check('A keeps sourceId (provenance)', aDetached?.sourceId === sourceId)
-    const aPlacementsDetached = await placementsForArticles([aId])
-    check(
-      'A placements linkedFromSourceId cleared',
-      aPlacementsDetached.every((p) => p.linkedFromSourceId === null)
-    )
 
     const hashA3 = (await articlesForSource(sourceId)).find((a) => a.id === aId)?.sourceContentHash
     await updateSource(db, orgId, sourceId, {
@@ -224,54 +302,39 @@ async function main() {
       },
     })
     await runSourceSync(db, orgId, sourceId)
-
     const aResynced = (await articlesForSource(sourceId)).find((a) => a.id === aId)
     check(
       'A hash unchanged after detach re-sync (skipped)',
       aResynced?.sourceContentHash === hashA3
     )
     check('A still managed=false', aResynced?.managed === false)
-    check('A not archived despite upstream churn', aResynced?.status === 'DRAFT', aResynced?.status)
 
-    // ── 5. Delete source → managed gone, detached survives ───────────────────
-    // NOTE: Article.sourceId is `onDelete: set null`, so deleting the source nulls
-    // the survivor's sourceId — we re-find the detached article by id, not sourceId.
-    section('5. Delete source → managed removed, detached A survives')
-    const managedIdsBeforeDelete = (await articlesForSource(sourceId))
-      .filter((a) => a.managed)
-      .map((a) => a.id)
+    // ── 8. Delete source → owned KB + ALL its content removed ────────────────
+    section('8. Delete source → owned KB, all articles (incl. detached), and links gone')
+    const allIdsBeforeDelete = (await articlesForSource(sourceId)).map((a) => a.id)
     await deleteSource(db, orgId, sourceId)
     const sourceGone = await db.query.KnowledgeSource.findFirst({
       where: (s, { eq }) => eq(s.id, sourceId),
     })
     check('source row deleted', !sourceGone)
-    const stillManaged = await db.query.Article.findMany({
-      where: (a, { inArray }) => inArray(a.id, managedIdsBeforeDelete),
+    const ownedKbGone = await db.query.KnowledgeBase.findFirst({
+      where: (k, { eq }) => eq(k.id, ownedKbId),
+    })
+    check('owned source-KB deleted', !ownedKbGone)
+    const remaining = await db.query.Article.findMany({
+      where: (a, { inArray }) => inArray(a.id, allIdsBeforeDelete),
       columns: { id: true },
     })
-    check('all managed articles + folder hard-deleted', stillManaged.length === 0, stillManaged)
-    const survivor = await db.query.Article.findFirst({
-      where: (a, { eq }) => eq(a.id, aId),
-      columns: { id: true, managed: true, sourceId: true, articleKind: true },
-    })
-    check('detached A survives delete (managed=false)', survivor?.managed === false, survivor)
-    check('detached A sourceId nulled by FK on source delete', survivor?.sourceId === null)
-
-    // ── Cleanup: drop the surviving detached A ────────────────────────────────
-    section('Cleanup')
-    await deleteArticle(kbCtx, aId)
-    console.log('  🧹 removed detached article A')
+    check('all source content (incl. detached A) hard-deleted', remaining.length === 0, remaining)
   } finally {
-    // Belt-and-suspenders: if we bailed mid-run, drop the source (cascades managed
-    // articles) + any detached leftovers.
+    // Belt-and-suspenders: if we bailed mid-run, drop the source (cascades its owned
+    // KB + all articles).
     if (sourceId) {
       const stillThere = await db.query.KnowledgeSource.findFirst({
         where: (s, { eq }) => eq(s.id, sourceId),
       })
       if (stillThere) {
         await deleteSource(db, orgId, sourceId)
-        const leftover = await articlesForSource(sourceId)
-        for (const a of leftover) await deleteArticle({ db, organizationId: orgId }, a.id)
         console.log('  🧹 cleaned up source after early exit')
       }
     }

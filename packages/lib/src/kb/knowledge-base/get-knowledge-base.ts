@@ -29,7 +29,12 @@ export async function listKnowledgeBases(ctx: KBContext): Promise<KnowledgeBase[
   const db = resolveDb(ctx)
   try {
     return await db.query.KnowledgeBase.findMany({
-      where: eq(schema.KnowledgeBase.organizationId, ctx.organizationId),
+      // kind='source' KBs are hidden containers owned by KnowledgeSources — never
+      // surfaced in KB lists, pickers, or the public site.
+      where: and(
+        eq(schema.KnowledgeBase.organizationId, ctx.organizationId),
+        eq(schema.KnowledgeBase.kind, 'standard')
+      ),
       orderBy: asc(schema.KnowledgeBase.name),
     })
   } catch (error) {

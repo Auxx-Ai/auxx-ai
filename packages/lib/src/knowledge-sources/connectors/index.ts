@@ -2,13 +2,16 @@
 
 import { manualConnector } from './manual'
 import type { SourceConnector } from './types'
+import { websiteConnector } from './website'
 
 export { manualConnector } from './manual'
-export type { SourceConnector } from './types'
+export type { CrawlConnector, ListConnector, SourceConnector } from './types'
+export { websiteConnector } from './website'
 
 const connectors: Record<string, SourceConnector> = {
   manual: manualConnector,
-  // website (Phase 2), shopify (Phase 5), file (Phase 6), notion/confluence/zendesk (Phase 7)
+  website: websiteConnector,
+  // shopify (Phase 5), file (Phase 6), notion/confluence/zendesk (Phase 7)
 }
 
 /** Resolve the connector for a source type, or throw if unsupported. */

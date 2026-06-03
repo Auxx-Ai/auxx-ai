@@ -82,7 +82,14 @@ export async function getKBVisibility(
     })
     .from(KnowledgeBase)
     .innerJoin(Organization, eq(Organization.id, KnowledgeBase.organizationId))
-    .where(and(eq(Organization.handle, orgSlug), eq(KnowledgeBase.slug, kbSlug)))
+    .where(
+      and(
+        eq(Organization.handle, orgSlug),
+        eq(KnowledgeBase.slug, kbSlug),
+        // Never resolve a source's hidden container as a public KB.
+        eq(KnowledgeBase.kind, 'standard')
+      )
+    )
     .limit(1)
   return row ?? null
 }
@@ -126,7 +133,14 @@ export async function loadKBPayload(
     })
     .from(KnowledgeBase)
     .innerJoin(Organization, eq(Organization.id, KnowledgeBase.organizationId))
-    .where(and(eq(Organization.handle, orgSlug), eq(KnowledgeBase.slug, kbSlug)))
+    .where(
+      and(
+        eq(Organization.handle, orgSlug),
+        eq(KnowledgeBase.slug, kbSlug),
+        // Never resolve a source's hidden container as a public KB.
+        eq(KnowledgeBase.kind, 'standard')
+      )
+    )
     .limit(1)
 
   const row = rows[0]

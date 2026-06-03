@@ -43,7 +43,7 @@ export async function listArticlesBySource(ctx: SyncCtx) {
   })
 }
 
-/** Mark an article's placement in the source's target KB as a live source link. */
+/** Mark an article's home placement in the owned source-KB as a live source link. */
 export async function markPlacementLinked(ctx: SyncCtx, articleId: string) {
   await ctx.db
     .update(schema.ArticlePlacement)
@@ -51,7 +51,7 @@ export async function markPlacementLinked(ctx: SyncCtx, articleId: string) {
     .where(
       and(
         eq(schema.ArticlePlacement.articleId, articleId),
-        eq(schema.ArticlePlacement.knowledgeBaseId, ctx.source.targetKnowledgeBaseId)
+        eq(schema.ArticlePlacement.knowledgeBaseId, ctx.kb.id)
       )
     )
 }
@@ -71,7 +71,7 @@ export async function ensureRootFolder(ctx: SyncCtx): Promise<string> {
 
   const root = await createArticle(
     kbCtx(ctx),
-    ctx.source.targetKnowledgeBaseId,
+    ctx.kb.id,
     {
       articleKind: 'category',
       title: ctx.source.name,
@@ -118,7 +118,7 @@ export async function ensurePathFolders(
     }
     const folder = await createArticle(
       kbCtx(ctx),
-      ctx.source.targetKnowledgeBaseId,
+      ctx.kb.id,
       {
         articleKind: 'category',
         title: segment,

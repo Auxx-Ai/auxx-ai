@@ -6,6 +6,7 @@ import type { SourceItem } from '../sinks/types'
 import type { SourceConnector } from './types'
 
 export const manualConnector: SourceConnector = {
+  mode: 'list',
   type: 'manual',
   async fetchItems(source) {
     const items = (source.config as { items?: SourceItem[] })?.items
