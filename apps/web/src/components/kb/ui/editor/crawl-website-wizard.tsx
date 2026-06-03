@@ -13,10 +13,12 @@ import {
 import { Input } from '@auxx/ui/components/input'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { Label } from '@auxx/ui/components/label'
-import { Switch } from '@auxx/ui/components/switch'
+import { ScrollArea } from '@auxx/ui/components/scroll-area'
+import { Separator } from '@auxx/ui/components/separator'
 import { Textarea } from '@auxx/ui/components/textarea'
 import { toastError } from '@auxx/ui/components/toast'
-import { Check, Globe } from 'lucide-react'
+import { ToggleCard } from '@auxx/ui/components/toggle-card'
+import { Check, ChevronLeft, Globe } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { api } from '~/trpc/react'
 import { CrawlSectionTree, countPages, type SitemapNode } from './crawl-section-picker'
@@ -30,6 +32,16 @@ interface CrawlWebsiteWizardProps {
 }
 
 type Step = 'connect' | 'pages' | 'target' | 'review'
+
+/** Wizard order — drives the header breadcrumb label and Back navigation. */
+const STEP_ORDER: Step[] = ['connect', 'pages', 'target', 'review']
+
+const STEP_TITLES: Record<Step, string> = {
+  connect: 'Crawl a website',
+  pages: 'Pages',
+  target: 'Target',
+  review: 'Review',
+}
 
 /**
  * Website crawler wizard: Connect → Pages → Target → Review. Discovers a sitemap via the
@@ -171,175 +183,181 @@ export function CrawlWebsiteWizard({
     .filter((kb) => linkKbIds.includes(kb.id))
     .map((kb) => kb.name)
 
+  const goBack = () => {
+    const idx = STEP_ORDER.indexOf(step)
+    if (idx > 0) setStep(STEP_ORDER[idx - 1]!)
+  }
+
   return (
     <Dialog open={open} onOpenChange={close}>
-      <DialogContent className='max-w-2xl'>
-        <DialogHeader>
-          <DialogTitle className='flex items-center gap-2'>
-            <Globe className='size-4' /> Crawl a website
-          </DialogTitle>
-          <DialogDescription>
-            Discover a site, pick the sections to ingest, and the crawler files each page as a
-            locked, source-managed article in its own source — optionally linked into your knowledge
-            bases.
-          </DialogDescription>
-        </DialogHeader>
-
-        {step === 'connect' && (
-          <div className='flex flex-col gap-3'>
-            <div className='flex flex-col gap-1.5'>
-              <Label htmlFor='crawl-url'>Website URL</Label>
-              <Input
-                id='crawl-url'
-                value={url}
-                onChange={(e) => setUrl(e.target.value)}
-                placeholder='https://docs.example.com'
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') void handleConnect()
-                }}
-              />
-              <p className='text-muted-foreground text-xs'>
-                We map the site and show its sections — no pages are ingested yet.
-              </p>
-            </div>
-          </div>
-        )}
-
-        {step === 'pages' && (
-          <div className='flex flex-col gap-4'>
-            <div className='flex flex-col gap-1.5'>
-              <div className='flex items-center justify-between'>
-                <Label>Sections to crawl</Label>
-                <span className='text-muted-foreground text-xs'>
-                  {selectedPageCount} page{selectedPageCount === 1 ? '' : 's'} selected
-                </span>
-              </div>
-              <CrawlSectionTree
-                sections={sections}
-                selectedPaths={selectedPaths}
-                onToggle={toggleSection}
-              />
-            </div>
-
-            <div className='flex items-center justify-between rounded-md border p-3'>
-              <div className='flex flex-col'>
-                <Label htmlFor='main-content'>Only main page content</Label>
-                <p className='text-muted-foreground text-xs'>Strip nav, headers, and footers.</p>
-              </div>
-              <Switch
-                id='main-content'
-                checked={mainContentOnly}
-                onCheckedChange={setMainContentOnly}
-              />
-            </div>
-
-            <div className='flex flex-col gap-1.5'>
-              <Label htmlFor='exclude'>Exclude URLs (optional)</Label>
-              <Textarea
-                id='exclude'
-                value={excludeText}
-                onChange={(e) => setExcludeText(e.target.value)}
-                placeholder='/blog&#10;/changelog'
-                rows={2}
-                className='font-mono text-sm'
-              />
-              <p className='text-muted-foreground text-xs'>
-                One path or URL per line — these are never ingested.
-              </p>
-            </div>
-          </div>
-        )}
-
-        {step === 'target' && (
-          <div className='flex flex-col gap-4'>
-            <div className='flex flex-col gap-1.5'>
-              <Label htmlFor='source-name'>Source name</Label>
-              <Input
-                id='source-name'
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder='e.g. Docs site'
-              />
-            </div>
-            <div className='flex flex-col gap-1.5'>
-              <Label>Link into knowledge bases (optional)</Label>
-              <p className='text-muted-foreground text-xs'>
-                The crawl becomes its own source. Pick any knowledge bases to surface it in — you
-                can change this anytime in the source settings.
-              </p>
-              <div className='flex max-h-48 flex-col gap-0.5 overflow-auto rounded-md border p-1'>
-                {(knowledgeBases.data ?? []).length === 0 ? (
-                  <p className='px-2 py-1.5 text-muted-foreground text-xs'>
-                    No knowledge bases yet.
-                  </p>
-                ) : (
-                  (knowledgeBases.data ?? []).map((kb) => {
-                    const checked = linkKbIds.includes(kb.id)
-                    return (
-                      <button
-                        key={kb.id}
-                        type='button'
-                        onClick={() => toggleLink(kb.id)}
-                        className={`flex items-center justify-between rounded px-2 py-1.5 text-left text-sm hover:bg-muted ${
-                          checked ? 'bg-muted' : ''
-                        }`}>
-                        <span className='truncate'>{kb.name}</span>
-                        {checked && <Check className='size-4 text-info' />}
-                      </button>
-                    )
-                  })
-                )}
-              </div>
-            </div>
-            <SyncFrequencyPicker value={schedule} onChange={setSchedule} />
-            <div className='flex items-center justify-between rounded-md border border-dashed p-3 opacity-70'>
-              <div className='flex flex-col'>
-                <Label>AI-only (catalog)</Label>
-                <p className='text-muted-foreground text-xs'>
-                  Embed without tree articles — coming in a later phase.
-                </p>
-              </div>
-              <Switch disabled />
-            </div>
-          </div>
-        )}
-
-        {step === 'review' && (
-          <div className='flex flex-col gap-2 rounded-md border p-4 text-sm'>
-            <Row label='URL' value={url.trim()} />
-            <Row label='Name' value={name.trim()} />
-            <Row
-              label='Sections'
-              value={`${selectedPaths.length} selected · ~${selectedPageCount} pages`}
-            />
-            <Row
-              label='Link into'
-              value={linkKbNames.length > 0 ? linkKbNames.join(', ') : 'Not linked (source only)'}
-            />
-            <Row label='Sync' value={describeSchedule(schedule)} />
-            <Row label='Main content only' value={mainContentOnly ? 'Yes' : 'No'} />
-            <p className='text-muted-foreground pt-2 text-xs'>
-              The crawl runs in the background. Pages appear as locked articles once the worker
-              finishes.
-            </p>
-          </div>
-        )}
-
-        <DialogFooter className='justify-between sm:justify-between'>
-          <div>
-            {step !== 'connect' && (
-              <Button
-                size='sm'
-                variant='ghost'
-                onClick={() =>
-                  setStep(step === 'review' ? 'target' : step === 'target' ? 'pages' : 'connect')
-                }
-                disabled={isSubmitting}>
-                Back
+      <DialogContent className='h-dvh sm:h-[560px]' innerClassName='p-0' position='tc' size='sm'>
+        <div className='flex flex-1 flex-col min-h-0'>
+          {/* Header bar — Back + breadcrumb */}
+          <DialogHeader className='mb-0 flex h-10 flex-row items-center justify-start border-b px-3'>
+            <div className='flex items-center gap-1'>
+              {step !== 'connect' && (
+                <>
+                  <Button variant='ghost' size='sm' onClick={goBack} disabled={isSubmitting}>
+                    <ChevronLeft />
+                    Back
+                  </Button>
+                  <Separator orientation='vertical' className='h-5' />
+                </>
+              )}
+              <Button variant='ghost' size='sm'>
+                <Globe />
+                {STEP_TITLES[step]}
               </Button>
-            )}
-          </div>
-          <div className='flex gap-2'>
+              <DialogTitle className='sr-only'>Crawl a website</DialogTitle>
+              <DialogDescription className='sr-only'>
+                Discover a site, pick the sections to ingest, and the crawler files each page as a
+                locked, source-managed article in its own source — optionally linked into your
+                knowledge bases.
+              </DialogDescription>
+            </div>
+          </DialogHeader>
+
+          {/* Body */}
+          <ScrollArea className='flex-1'>
+            <div className='flex flex-col gap-4 p-3'>
+              {step === 'connect' && (
+                <div className='flex flex-col gap-1.5'>
+                  <Label htmlFor='crawl-url'>Website URL</Label>
+                  <Input
+                    id='crawl-url'
+                    value={url}
+                    onChange={(e) => setUrl(e.target.value)}
+                    placeholder='https://docs.example.com'
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') void handleConnect()
+                    }}
+                  />
+                  <p className='text-muted-foreground text-xs'>
+                    We map the site and show its sections — no pages are ingested yet.
+                  </p>
+                </div>
+              )}
+
+              {step === 'pages' && (
+                <>
+                  <div className='flex flex-col gap-1.5'>
+                    <div className='flex items-center justify-between'>
+                      <Label>Sections to crawl</Label>
+                      <span className='text-muted-foreground text-xs'>
+                        {selectedPageCount} page{selectedPageCount === 1 ? '' : 's'} selected
+                      </span>
+                    </div>
+                    <CrawlSectionTree
+                      sections={sections}
+                      selectedPaths={selectedPaths}
+                      onToggle={toggleSection}
+                    />
+                  </div>
+
+                  <ToggleCard
+                    title='Only main page content'
+                    description='Strip nav, headers, and footers.'
+                    checked={mainContentOnly}
+                    onCheckedChange={setMainContentOnly}
+                  />
+
+                  <div className='flex flex-col gap-1.5'>
+                    <Label htmlFor='exclude'>Exclude URLs (optional)</Label>
+                    <Textarea
+                      id='exclude'
+                      value={excludeText}
+                      onChange={(e) => setExcludeText(e.target.value)}
+                      placeholder='/blog&#10;/changelog'
+                      rows={2}
+                      className='font-mono text-sm'
+                    />
+                    <p className='text-muted-foreground text-xs'>
+                      One path or URL per line — these are never ingested.
+                    </p>
+                  </div>
+                </>
+              )}
+
+              {step === 'target' && (
+                <>
+                  <div className='flex flex-col gap-1.5'>
+                    <Label htmlFor='source-name'>Source name</Label>
+                    <Input
+                      id='source-name'
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      placeholder='e.g. Docs site'
+                    />
+                  </div>
+                  <div className='flex flex-col gap-1.5'>
+                    <Label>Link into knowledge bases (optional)</Label>
+                    <p className='text-muted-foreground text-xs'>
+                      The crawl becomes its own source. Pick any knowledge bases to surface it in —
+                      you can change this anytime in the source settings.
+                    </p>
+                    <div className='flex max-h-48 flex-col gap-0.5 overflow-auto rounded-md border p-1'>
+                      {(knowledgeBases.data ?? []).length === 0 ? (
+                        <p className='px-2 py-1.5 text-muted-foreground text-xs'>
+                          No knowledge bases yet.
+                        </p>
+                      ) : (
+                        (knowledgeBases.data ?? []).map((kb) => {
+                          const checked = linkKbIds.includes(kb.id)
+                          return (
+                            <button
+                              key={kb.id}
+                              type='button'
+                              onClick={() => toggleLink(kb.id)}
+                              className={`flex items-center justify-between rounded px-2 py-1.5 text-left text-sm hover:bg-muted ${
+                                checked ? 'bg-muted' : ''
+                              }`}>
+                              <span className='truncate'>{kb.name}</span>
+                              {checked && <Check className='size-4 text-info' />}
+                            </button>
+                          )
+                        })
+                      )}
+                    </div>
+                  </div>
+                  <SyncFrequencyPicker value={schedule} onChange={setSchedule} />
+                  <ToggleCard
+                    title='AI-only (catalog)'
+                    description='Embed without tree articles — coming in a later phase.'
+                    checked={false}
+                    onCheckedChange={() => {}}
+                    disabled
+                    className='border-dashed opacity-70'
+                  />
+                </>
+              )}
+
+              {step === 'review' && (
+                <div className='flex flex-col gap-2 rounded-md border p-4 text-sm'>
+                  <Row label='URL' value={url.trim()} />
+                  <Row label='Name' value={name.trim()} />
+                  <Row
+                    label='Sections'
+                    value={`${selectedPaths.length} selected · ~${selectedPageCount} pages`}
+                  />
+                  <Row
+                    label='Link into'
+                    value={
+                      linkKbNames.length > 0 ? linkKbNames.join(', ') : 'Not linked (source only)'
+                    }
+                  />
+                  <Row label='Sync' value={describeSchedule(schedule)} />
+                  <Row label='Main content only' value={mainContentOnly ? 'Yes' : 'No'} />
+                  <p className='text-muted-foreground pt-2 text-xs'>
+                    The crawl runs in the background. Pages appear as locked articles once the
+                    worker finishes.
+                  </p>
+                </div>
+              )}
+            </div>
+          </ScrollArea>
+
+          {/* Footer */}
+          <DialogFooter className='mt-0 border-t p-3'>
             <Button size='sm' variant='ghost' onClick={() => close(false)} disabled={isSubmitting}>
               Cancel <Kbd shortcut='esc' variant='ghost' size='sm' />
             </Button>
@@ -384,8 +402,8 @@ export function CrawlWebsiteWizard({
                 Create & crawl <KbdSubmit variant='outline' size='sm' />
               </Button>
             )}
-          </div>
-        </DialogFooter>
+          </DialogFooter>
+        </div>
       </DialogContent>
     </Dialog>
   )

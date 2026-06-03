@@ -22,9 +22,9 @@ interface RestrictionsSectionContentProps {
   /** Controlled add/edit dialog open state — the "Add restriction" trigger lives in `<Section actions>`. */
   dialogOpen: boolean
   onDialogOpenChange: (open: boolean) => void
-  /** Which restriction is being edited (`null` ⇒ adding a new one). */
-  editing: { registeredName: string; arg: string } | null
-  onEditingChange: (editing: { registeredName: string; arg: string } | null) => void
+  /** Which tool's restrictions are being edited (`null` ⇒ adding a new one). */
+  editing: { registeredName: string } | null
+  onEditingChange: (editing: { registeredName: string } | null) => void
 }
 
 /** Render a restriction's bound value as a short label for the row secondary. */
@@ -110,13 +110,11 @@ export function RestrictionsSectionContent({
     [unboundIdentityByTool, toolMeta.byRegisteredName]
   )
 
-  const handleSaveOne = async (
-    registeredName: string,
-    arg: string,
-    restriction: ArgRestriction
-  ) => {
+  const handleSaveTool = async (registeredName: string, byArg: Record<string, ArgRestriction>) => {
     const next: ToolRestrictionMap = { ...restrictions }
-    next[registeredName] = { ...(next[registeredName] ?? {}), [arg]: restriction }
+    // Full-replace this tool's map; drop the key entirely when nothing is left.
+    if (Object.keys(byArg).length === 0) delete next[registeredName]
+    else next[registeredName] = byArg
     await save(next)
   }
 
@@ -140,14 +138,10 @@ export function RestrictionsSectionContent({
     await save(next)
   }
 
-  const openEdit = (registeredName: string, arg: string) => {
-    onEditingChange({ registeredName, arg })
+  const openEdit = (registeredName: string) => {
+    onEditingChange({ registeredName })
     onDialogOpenChange(true)
   }
-
-  const editingRestriction = editing
-    ? restrictions[editing.registeredName]?.[editing.arg]
-    : undefined
 
   if (toolMeta.isLoading) {
     return <EmptySection loading className='mx-3' />
@@ -214,7 +208,7 @@ export function RestrictionsSectionContent({
                       restriction={restriction}
                       valueLabel={valueLabelFor(restriction, varLabelById)}
                       isIdentityArg={isIdentityArg}
-                      onEdit={() => openEdit(registeredName, arg)}
+                      onEdit={() => openEdit(registeredName)}
                       onDelete={() => handleDelete(registeredName, arg, isIdentityArg)}
                     />
                   )
@@ -237,8 +231,7 @@ export function RestrictionsSectionContent({
         agent={agent}
         toolMeta={toolMeta}
         editing={editing}
-        editingRestriction={editingRestriction}
-        onSave={handleSaveOne}
+        onSave={handleSaveTool}
       />
       <ConfirmDialog />
     </div>

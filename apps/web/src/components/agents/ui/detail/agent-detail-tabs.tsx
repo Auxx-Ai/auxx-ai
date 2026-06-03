@@ -254,7 +254,7 @@ export function AgentDetailTabs({ agent, onAutosaveChange }: AgentDetailTabsProp
  */
 function RestrictionsSection({ agent }: { agent: AgentDetail }) {
   const [dialogOpen, setDialogOpen] = useState(false)
-  const [editing, setEditing] = useState<{ registeredName: string; arg: string } | null>(null)
+  const [editing, setEditing] = useState<{ registeredName: string } | null>(null)
   return (
     <Section
       title='Restrictions'

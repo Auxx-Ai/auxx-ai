@@ -1,8 +1,8 @@
 // apps/web/src/components/agents/ui/detail/restrictions/add-restriction-dialog.tsx
 'use client'
 
-import type { ArgRestriction, RestrictionSource } from '@auxx/lib/agents/restrictions/client'
-import { Badge } from '@auxx/ui/components/badge'
+import type { ArgRestriction } from '@auxx/lib/agents/restrictions/client'
+import { fieldTypeOptions } from '@auxx/lib/custom-fields/types'
 import { Button } from '@auxx/ui/components/button'
 import {
   Dialog,
@@ -12,18 +12,17 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@auxx/ui/components/dialog'
-import { Label } from '@auxx/ui/components/label'
-import { RadioGroup, RadioGroupItem } from '@auxx/ui/components/radio-group'
+import { EntityIcon } from '@auxx/ui/components/icons'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
-import { Switch } from '@auxx/ui/components/switch'
 import { ChevronLeft } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
-import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
+import { type ReactNode, useEffect, useMemo, useState } from 'react'
 import { ToolReferenceList } from '~/components/pickers/tool-picker/tool-reference-list'
+import { VarEditorField, VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
 import { argToFieldType } from '~/lib/agents/restrictions/arg-to-field-type'
 import type { AgentDetail } from '../../../store/agent-store'
 import type { ToolMeta, UseToolMetaResult } from './hooks/use-tool-meta'
-import { RestrictionVarPicker } from './restriction-var-picker'
+import { RestrictionRequiredBadge } from './restriction-required-badge'
+import { RestrictionValueEditor } from './restriction-value-editor'
 import { type ToolArgInfo, topLevelArgs } from './tool-args'
 
 interface AddRestrictionDialogProps {
@@ -32,27 +31,64 @@ interface AddRestrictionDialogProps {
   agent: AgentDetail
   toolMeta: UseToolMetaResult
   /**
-   * Pre-fill for edit mode — the tool's registered name + arg name. When set,
-   * the dialog skips the tool/arg steps and opens directly on the per-arg
-   * control with the existing restriction loaded.
+   * Pre-fill for edit mode — the tool's registered name. When set, the dialog
+   * skips the tool step and opens directly on the all-args panel, seeded from
+   * the tool's existing restrictions.
    */
-  editing?: { registeredName: string; arg: string } | null
-  /** Current restriction for the editing target (so the control pre-fills). */
-  editingRestriction?: ArgRestriction
-  /** Commit one arg's restriction. The parent merges it into the full map. */
-  onSave: (registeredName: string, arg: string, restriction: ArgRestriction) => void
+  editing?: { registeredName: string } | null
+  /** Commit the whole tool's arg→restriction map (full-replace for that tool). */
+  onSave: (registeredName: string, byArg: Record<string, ArgRestriction>) => void
 }
 
-type Step = 'tool' | 'arg' | 'control'
+type Step = 'tool' | 'args'
+
+/** Default restriction for an arg the admin hasn't touched. */
+const MODEL_DECIDES: ArgRestriction = { source: 'model', required: false }
 
 /**
- * Add/edit one tool-argument restriction. Three steps:
+ * Render the platform-`FieldType` icon for a tool-arg restriction row — the
+ * same `fieldTypeOptions` icon map the field picker uses. Falls back to a
+ * neutral `circle` for unknown/structured args. See plans/chat/v6 phase-4
+ * redesign.
+ */
+function fieldTypeIcon(fieldType?: string): ReactNode {
+  const iconId =
+    (fieldType && fieldTypeOptions[fieldType as keyof typeof fieldTypeOptions]?.iconId) || 'circle'
+  return <EntityIcon iconId={iconId} size='xs' className='text-muted-foreground' />
+}
+
+/**
+ * Seed a tool's draft from its persisted restrictions, ensuring identity args
+ * carry a default binding (suggested var, required) so chat never fail-closes.
+ */
+function seedDraft(tool: ToolMeta, persisted: Record<string, ArgRestriction>) {
+  const draft: Record<string, ArgRestriction> = { ...persisted }
+  for (const id of tool.identityScopedInputs ?? []) {
+    if (!draft[id.name]) {
+      draft[id.name] = id.suggestedVar
+        ? { source: 'var', var: id.suggestedVar, required: true }
+        : { source: 'var', required: true }
+    }
+  }
+  return draft
+}
+
+/** True when a restriction is bound but missing its value/var (can't save). */
+function isIncomplete(r: ArgRestriction): boolean {
+  if (r.source === 'var') return !r.var
+  if (r.source === 'constant') return r.value === undefined || r.value === null || r.value === ''
+  return false
+}
+
+/**
+ * Add/edit a tool's argument restrictions. Two steps:
  *   1. Tool select — reuses `ToolReferenceList`, scoped to enabled tools.
- *   2. Argument list — top-level scalar props of the tool's JSON Schema.
- *   3. Per-arg control — Source (Model / Dynamic var / Constant) + Required.
+ *   2. All-args panel — every top-level arg as a `VarEditorField` row with an
+ *      inline constant⇄dynamic value editor + a Required pill. Empty rows mean
+ *      "model decides" and are pruned on save.
  *
- * Identity-scoped args default to their suggested visitor var. See
- * plans/chat/v6 phase-4.
+ * Identity-scoped args are pre-seeded to their suggested var and locked
+ * required. See plans/chat/v6 phase-4 redesign.
  */
 export function AddRestrictionDialog({
   open,
@@ -60,18 +96,11 @@ export function AddRestrictionDialog({
   agent,
   toolMeta,
   editing,
-  editingRestriction,
   onSave,
 }: AddRestrictionDialogProps) {
   const [step, setStep] = useState<Step>('tool')
   const [registeredName, setRegisteredName] = useState<string | null>(null)
-  const [argName, setArgName] = useState<string | null>(null)
-
-  // Per-arg control state.
-  const [source, setSource] = useState<RestrictionSource>('model')
-  const [varId, setVarId] = useState<string | undefined>(undefined)
-  const [constantValue, setConstantValue] = useState<unknown>(undefined)
-  const [required, setRequired] = useState(false)
+  const [draft, setDraft] = useState<Record<string, ArgRestriction>>({})
 
   const selectedTool: ToolMeta | undefined = registeredName
     ? toolMeta.byRegisteredName.get(registeredName)
@@ -87,36 +116,20 @@ export function AddRestrictionDialog({
     [selectedTool]
   )
 
-  // Identity-scoped args must resolve to a platform value (var/constant); the
-  // runtime author-floor refuses a `model` binding for them. Hide that option so
-  // an admin can't author a binding the engine will fail closed on. See
-  // plans/chat/v6 phase-3 + apply.ts.
-  const isIdentityArg = argName ? identityArgNames.has(argName) : false
-
-  const selectedArg = useMemo(() => args.find((a) => a.name === argName), [args, argName])
-  const argFieldTypeResult = selectedArg ? argToFieldType(selectedArg.schema) : undefined
-
   // Initialize on open / edit.
   // biome-ignore lint/correctness/useExhaustiveDependencies: re-init only when the dialog opens or the edit target changes.
   useEffect(() => {
     if (!open) return
     if (editing) {
       setRegisteredName(editing.registeredName)
-      setArgName(editing.arg)
-      setStep('control')
-      const r = editingRestriction
-      setSource(r?.source ?? 'model')
-      setVarId(r?.var)
-      setConstantValue(r?.value)
-      setRequired(r?.required ?? false)
+      const tool = toolMeta.byRegisteredName.get(editing.registeredName)
+      const persisted = agent.toolRestrictions?.[editing.registeredName] ?? {}
+      setDraft(tool ? seedDraft(tool, persisted) : { ...persisted })
+      setStep('args')
     } else {
       setRegisteredName(null)
-      setArgName(null)
+      setDraft({})
       setStep('tool')
-      setSource('model')
-      setVarId(undefined)
-      setConstantValue(undefined)
-      setRequired(false)
     }
   }, [open, editing])
 
@@ -125,70 +138,49 @@ export function AddRestrictionDialog({
     const catalogName = chipId.replace(/^tool:/, '')
     const resolved = toolMeta.registeredNameByCatalogName.get(catalogName)
     if (!resolved) return
+    const tool = toolMeta.byRegisteredName.get(resolved)
+    const persisted = agent.toolRestrictions?.[resolved] ?? {}
     setRegisteredName(resolved)
-    setStep('arg')
+    setDraft(tool ? seedDraft(tool, persisted) : { ...persisted })
+    setStep('args')
   }
 
-  const handleSelectArg = (arg: ToolArgInfo) => {
-    setArgName(arg.name)
-    // Identity-scoped arg with a suggested var → default to that var binding.
-    const suggested = selectedTool?.identityScopedInputs?.find((i) => i.name === arg.name)
-    if (suggested?.suggestedVar) {
-      setSource('var')
-      setVarId(suggested.suggestedVar)
-      setRequired(true)
-    } else {
-      setSource('model')
-      setVarId(undefined)
-      setConstantValue(undefined)
-      setRequired(false)
-    }
-    setStep('control')
-  }
+  const setRow = (arg: string, next: ArgRestriction) => setDraft((d) => ({ ...d, [arg]: next }))
+
+  const canSave = !!registeredName && !Object.values(draft).some((r) => isIncomplete(r))
 
   const handleSave = () => {
-    if (!registeredName || !argName) return
-    const restriction: ArgRestriction = { source, required }
-    if (source === 'var') restriction.var = varId
-    if (source === 'constant') restriction.value = constantValue
-    onSave(registeredName, argName, restriction)
+    if (!registeredName) return
+    const byArg: Record<string, ArgRestriction> = {}
+    for (const [arg, r] of Object.entries(draft)) {
+      // Prune pure model-decides — only persist real restrictions.
+      if (r.source === 'model' && !r.required) continue
+      byArg[arg] = r
+    }
+    onSave(registeredName, byArg)
     onOpenChange(false)
   }
-
-  const canSave =
-    !!registeredName &&
-    !!argName &&
-    // Identity args can't be left to the model — the runtime floor refuses it.
-    !(isIdentityArg && source === 'model') &&
-    (source !== 'var' || !!varId) &&
-    (source !== 'constant' || constantValue !== undefined)
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className='max-w-lg'>
         <DialogHeader>
           <DialogTitle className='flex items-center gap-2'>
-            {step !== 'tool' && !editing ? (
+            {step === 'args' && !editing ? (
               <button
                 type='button'
                 aria-label='Back'
                 className='rounded-md p-0.5 hover:bg-primary/5'
-                onClick={() => setStep(step === 'control' ? 'arg' : 'tool')}>
+                onClick={() => setStep('tool')}>
                 <ChevronLeft className='size-4 text-muted-foreground' />
               </button>
             ) : null}
-            {step === 'tool'
-              ? 'Add restriction'
-              : step === 'arg'
-                ? (selectedTool?.displayName ?? 'Choose an argument')
-                : `${selectedTool?.displayName ?? ''} · ${argName ?? ''}`}
+            {step === 'tool' ? 'Add restriction' : (selectedTool?.displayName ?? 'Restrictions')}
           </DialogTitle>
           <DialogDescription>
             {step === 'tool'
-              ? 'Pick a tool, then lock one of its arguments.'
-              : step === 'arg'
-                ? 'Choose the argument to restrict. Only scalar arguments can be bound.'
-                : 'Bind this argument to a value, or just mark it required.'}
+              ? 'Pick a tool, then bind its arguments.'
+              : 'Pin each argument to a value, or leave it for the model to decide.'}
           </DialogDescription>
         </DialogHeader>
 
@@ -200,112 +192,71 @@ export function AddRestrictionDialog({
           />
         ) : null}
 
-        {step === 'arg' ? (
-          <ScrollArea className='max-h-80'>
-            <div className='flex flex-col gap-1 pe-2'>
+        {step === 'args' ? (
+          <ScrollArea className='max-h-[28rem]'>
+            <div className='pe-2'>
               {args.length === 0 ? (
                 <p className='px-2 py-4 text-sm text-muted-foreground'>
                   This tool has no top-level arguments.
                 </p>
               ) : (
-                args.map((arg) => {
-                  const mapped = argToFieldType(arg.schema)
-                  const disabled = !mapped.supported
-                  const isIdentity = identityArgNames.has(arg.name)
-                  return (
-                    <button
-                      key={arg.name}
-                      type='button'
-                      disabled={disabled}
-                      onClick={() => handleSelectArg(arg)}
-                      className='flex flex-col items-start gap-0.5 rounded-md px-2 py-2 text-left hover:bg-primary/5 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-transparent'>
-                      <span className='flex items-center gap-2'>
-                        <span className='text-sm font-medium'>{arg.name}</span>
-                        <span className='text-xs text-muted-foreground'>{arg.typeLabel}</span>
-                        {isIdentity ? (
-                          <Badge variant='amber' size='sm'>
-                            needs binding
-                          </Badge>
-                        ) : null}
-                      </span>
-                      {arg.schema.description ? (
-                        <span className='text-xs text-muted-foreground'>
-                          {arg.schema.description}
-                        </span>
-                      ) : null}
-                      {disabled && !mapped.supported ? (
-                        <span className='text-xs text-muted-foreground italic'>
-                          {mapped.reason}
-                        </span>
-                      ) : null}
-                    </button>
-                  )
-                })
+                <VarEditorField className='p-0'>
+                  {args.map((arg) => {
+                    const mapped = argToFieldType(arg.schema)
+                    const isIdentity = identityArgNames.has(arg.name)
+                    const r = draft[arg.name] ?? MODEL_DECIDES
+                    const suggested = selectedTool?.identityScopedInputs.find(
+                      (i) => i.name === arg.name
+                    )?.suggestedVar
+
+                    return (
+                      <VarEditorFieldRow
+                        key={arg.name}
+                        title={arg.name}
+                        description={arg.schema.description}
+                        icon={fieldTypeIcon(mapped.supported ? mapped.fieldType : undefined)}
+                        showIcon
+                        isRequired={r.required}
+                        onClear={
+                          !isIdentity && r.source !== 'model'
+                            ? () => setRow(arg.name, { source: 'model', required: r.required })
+                            : undefined
+                        }>
+                        {mapped.supported ? (
+                          <div className='relative'>
+                            <div className='absolute right-full top-1/2 z-10 -translate-y-1/2 me-0.5'>
+                              <RestrictionRequiredBadge
+                                required={!!r.required}
+                                isIdentityArg={isIdentity}
+                                onChange={(req) => setRow(arg.name, { ...r, required: req })}
+                              />
+                            </div>
+                            <RestrictionValueEditor
+                              restriction={r}
+                              onChange={(next) => setRow(arg.name, next)}
+                              argFieldType={mapped.fieldType}
+                              fieldOptions={mapped.options}
+                              agentId={agent.id}
+                              agentKind={agent.kind}
+                              isIdentityArg={isIdentity}
+                              suggestedVar={suggested}
+                            />
+                          </div>
+                        ) : (
+                          <p className='py-2 text-xs italic text-muted-foreground'>
+                            {mapped.reason}
+                          </p>
+                        )}
+                      </VarEditorFieldRow>
+                    )
+                  })}
+                </VarEditorField>
               )}
             </div>
           </ScrollArea>
         ) : null}
 
-        {step === 'control' ? (
-          <div className='flex flex-col gap-4'>
-            <div className='flex flex-col gap-2'>
-              <Label>Value source</Label>
-              <RadioGroup
-                value={source}
-                onValueChange={(v) => setSource(v as RestrictionSource)}
-                className='flex flex-col gap-2'>
-                {isIdentityArg ? null : (
-                  <label className='flex items-center gap-2 text-sm'>
-                    <RadioGroupItem value='model' />
-                    Model decides (default)
-                  </label>
-                )}
-                <label className='flex items-center gap-2 text-sm'>
-                  <RadioGroupItem value='var' />
-                  Dynamic value
-                </label>
-                <label className='flex items-center gap-2 text-sm'>
-                  <RadioGroupItem value='constant' />
-                  Constant
-                </label>
-              </RadioGroup>
-            </div>
-
-            {source === 'var' ? (
-              <RestrictionVarPicker
-                value={varId}
-                onChange={setVarId}
-                agentId={agent.id}
-                agentKind={agent.kind}
-                argFieldType={
-                  argFieldTypeResult?.supported ? argFieldTypeResult.fieldType : undefined
-                }
-              />
-            ) : null}
-
-            {source === 'constant' && argFieldTypeResult?.supported ? (
-              <FieldInputAdapter
-                fieldType={argFieldTypeResult.fieldType}
-                fieldOptions={argFieldTypeResult.options}
-                value={constantValue}
-                onChange={setConstantValue}
-                placeholder='Enter a value…'
-              />
-            ) : null}
-
-            <label className='flex items-center justify-between rounded-md border px-3 py-2'>
-              <span className='flex flex-col'>
-                <span className='text-sm font-medium'>Required</span>
-                <span className='text-xs text-muted-foreground'>
-                  Refuse the call when this value can't be resolved.
-                </span>
-              </span>
-              <Switch checked={required} onCheckedChange={setRequired} />
-            </label>
-          </div>
-        ) : null}
-
-        {step === 'control' ? (
+        {step === 'args' ? (
           <DialogFooter>
             <Button variant='ghost' onClick={() => onOpenChange(false)}>
               Cancel

@@ -26,7 +26,7 @@ export function SourcesTab() {
             ))}
           </div>
         ) : items.length === 0 ? (
-          <div className='flex h-full items-center justify-center p-6'>
+          <div className='flex h-full flex-1 items-center justify-center p-6'>
             <SourcesEmptyState />
           </div>
         ) : (

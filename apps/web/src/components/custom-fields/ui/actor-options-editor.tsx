@@ -4,7 +4,6 @@
 import type { FieldOptions } from '@auxx/lib/field-values/client'
 import type { ActorFieldOptions } from '@auxx/types/field'
 import { Checkbox } from '@auxx/ui/components/checkbox'
-import { AnimatedCollapsibleContent } from '@auxx/ui/components/collapsible'
 import { Label } from '@auxx/ui/components/label'
 import {
   Select,
@@ -13,7 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@auxx/ui/components/select'
-import { Switch } from '@auxx/ui/components/switch'
+import { ToggleCard } from '@auxx/ui/components/toggle-card'
 
 // Re-export ActorFieldOptions for convenience
 export type { ActorFieldOptions }
@@ -117,28 +116,15 @@ export function ActorOptionsEditor({ options, onChange, mode }: ActorOptionsEdit
       )}
 
       {/* Multiple Switch */}
-      <div
-        className={`flex flex-row items-center justify-between space-y-0 rounded-xl border px-3 py-2.5${isEditMode ? '' : ' cursor-pointer'}`}
-        onClick={
-          isEditMode ? undefined : () => updateOption('multiple', !(options.multiple ?? false))
-        }>
-        <div className='space-y-0.5 leading-none'>
-          <Label className={isEditMode ? undefined : 'cursor-pointer'}>
-            Allow Multiple Selection
-          </Label>
-          <p className='text-xs text-muted-foreground'>
-            {options.multiple ? 'Multiple users can be assigned' : 'Only one user can be assigned'}
-          </p>
-        </div>
-        <div onClick={(e) => e.stopPropagation()}>
-          <Switch
-            size='sm'
-            checked={options.multiple}
-            onCheckedChange={(checked) => updateOption('multiple', checked)}
-            disabled={isEditMode}
-          />
-        </div>
-      </div>
+      <ToggleCard
+        title='Allow Multiple Selection'
+        description={
+          options.multiple ? 'Multiple users can be assigned' : 'Only one user can be assigned'
+        }
+        checked={options.multiple ?? false}
+        onCheckedChange={(checked) => updateOption('multiple', checked)}
+        disabled={isEditMode}
+      />
       {isEditMode && options.multiple !== undefined && (
         <p className='text-xs text-muted-foreground -mt-2 px-1'>
           Selection mode cannot be changed after field creation.
@@ -147,40 +133,27 @@ export function ActorOptionsEditor({ options, onChange, mode }: ActorOptionsEdit
 
       {/* Roles Filter (optional) */}
       {showRolesFilter && (
-        <div className='rounded-xl border px-3 py-2.5'>
-          <div
-            className='flex cursor-pointer items-center justify-between'
-            onClick={() => updateOption('roles', options.roles === undefined ? [] : undefined)}>
-            <div className='space-y-0.5 leading-none'>
-              <Label className='cursor-pointer text-sm font-medium'>Limit to Roles</Label>
-              <p className='text-xs text-muted-foreground'>
-                {options.roles === undefined
-                  ? 'All roles can be assigned'
-                  : 'Only selected roles can be assigned'}
-              </p>
-            </div>
-            <div onClick={(e) => e.stopPropagation()}>
-              <Switch
-                size='sm'
-                checked={options.roles !== undefined}
-                onCheckedChange={(checked) => updateOption('roles', checked ? [] : undefined)}
+        <ToggleCard
+          title='Limit to Roles'
+          description={
+            options.roles === undefined
+              ? 'All roles can be assigned'
+              : 'Only selected roles can be assigned'
+          }
+          checked={options.roles !== undefined}
+          onCheckedChange={(checked) => updateOption('roles', checked ? [] : undefined)}
+          collapsible
+          contentClassName='flex flex-wrap gap-4'>
+          {ROLE_OPTIONS.map((role) => (
+            <label key={role.value} className='flex cursor-pointer items-center gap-2'>
+              <Checkbox
+                checked={options.roles?.includes(role.value) ?? false}
+                onCheckedChange={() => toggleRole(role.value)}
               />
-            </div>
-          </div>
-          <AnimatedCollapsibleContent open={options.roles !== undefined}>
-            <div className='mt-3 flex flex-wrap gap-4 border-t pt-3'>
-              {ROLE_OPTIONS.map((role) => (
-                <label key={role.value} className='flex cursor-pointer items-center gap-2'>
-                  <Checkbox
-                    checked={options.roles?.includes(role.value) ?? false}
-                    onCheckedChange={() => toggleRole(role.value)}
-                  />
-                  <span className='text-sm'>{role.label}</span>
-                </label>
-              ))}
-            </div>
-          </AnimatedCollapsibleContent>
-        </div>
+              <span className='text-sm'>{role.label}</span>
+            </label>
+          ))}
+        </ToggleCard>
       )}
     </div>
   )

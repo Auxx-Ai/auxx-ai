@@ -4,7 +4,6 @@ export { InboxService } from './inbox-service'
 export type {
   CreateInboxInput,
   Inbox,
-  InboxAccessInput,
   InboxIntegration,
   InboxStatus,
   InboxVisibility,

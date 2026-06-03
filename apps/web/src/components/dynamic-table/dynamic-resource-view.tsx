@@ -69,6 +69,13 @@ export interface DynamicResourceViewProps<TRow extends RecordMeta = RecordMeta> 
   emptyState: ReactNode
   /** Docked side panels (e.g. the record drawer when docked). */
   dockedPanels?: DockedPanelConfig[]
+  /**
+   * Skip the `MainPageContent` (PanelFrame) wrapper. Use when the caller already
+   * provides the page-content frame — e.g. `ArticlesView` mounted inside
+   * `KBLandingShell`'s tab strip — so the rounded card isn't double-rendered.
+   * Docked panels are not supported in embedded mode.
+   */
+  embedded?: boolean
   /** Selection change callback (passthrough from DynamicView). */
   onRowSelectionChange?: (rows: Set<string>) => void
   /** Add-new button handler (primary column "+ New" / empty-state CTA). */
@@ -98,6 +105,7 @@ export function DynamicResourceView<TRow extends RecordMeta = RecordMeta>({
   renderSearchBar,
   emptyState,
   dockedPanels,
+  embedded = false,
   onRowSelectionChange,
   onAddNew,
   entityLabel,
@@ -265,62 +273,63 @@ export function DynamicResourceView<TRow extends RecordMeta = RecordMeta>({
   }, [customFields, resource, createEntityFieldColumn, entityDefinitionId, primaryCellRender])
 
   if (isLoading) {
-    return (
-      <MainPageContent>
-        <div className='flex h-full items-center justify-center'>
-          <Loader size='sm' title='Loading records...' subtitle='Please wait' />
-        </div>
-      </MainPageContent>
+    const loader = (
+      <div className='flex h-full items-center justify-center'>
+        <Loader size='sm' title='Loading records...' subtitle='Please wait' />
+      </div>
     )
+    return embedded ? loader : <MainPageContent>{loader}</MainPageContent>
   }
 
   if (!resource || !entityDefinitionId) return null
 
-  return (
-    <MainPageContent dockedPanels={dockedPanels}>
-      <div className='flex-1 overflow-hidden rounded-lg bg-primary-50 dark:bg-background flex-col flex'>
-        <DynamicView
-          data={records as TRow[]}
-          className='h-full flex-1'
-          tableId={tableId}
-          bulkActions={bulkActions}
-          renderSearch={renderSearchBar}
-          columns={columns}
-          enableSorting
-          enableFiltering
-          isLoading={instancesLoading || isLoadingRecords}
-          onRowSelectionChange={onRowSelectionChange}
-          showRowNumbers={false}
-          importHref={importHref}
-          onScrollToBottom={handleScrollToBottom}
-          emptyState={emptyState}
-          cellSelection={cellSelection}
-          entityLabel={entityLabel ?? resource.label}
-          onAddNew={onAddNew}
-          onCardClick={onCardClick}
-          onAddCard={onAddCard}
-          entityDefinitionId={entityDefinitionId}
-          selectedKanbanCardIds={selectedKanbanCardIds}
-          onSelectedKanbanCardIdsChange={onSelectedKanbanCardIdsChange}>
-          <DynamicTableFooter>
-            <div className='flex items-center justify-between px-4 py-2 text-sm'>
-              <div>
-                {records.length}{' '}
-                {records.length === 1
-                  ? resource.label.toLowerCase()
-                  : resource.plural.toLowerCase()}
-                {hasNextPage && <span className='ml-2'>(more available)</span>}
-              </div>
-              {isFetchingNextPage && (
-                <div className='flex items-center gap-2'>
-                  <div className='h-3 w-3 animate-spin rounded-full border-2 border-primary border-t-transparent' />
-                  <span>Loading more...</span>
-                </div>
-              )}
+  const tableBody = (
+    <div className='flex-1 overflow-hidden rounded-lg bg-primary-50 dark:bg-background flex-col flex min-h-0'>
+      <DynamicView
+        data={records as TRow[]}
+        className='h-full flex-1'
+        tableId={tableId}
+        bulkActions={bulkActions}
+        renderSearch={renderSearchBar}
+        columns={columns}
+        enableSorting
+        enableFiltering
+        isLoading={instancesLoading || isLoadingRecords}
+        onRowSelectionChange={onRowSelectionChange}
+        showRowNumbers={false}
+        importHref={importHref}
+        onScrollToBottom={handleScrollToBottom}
+        emptyState={emptyState}
+        cellSelection={cellSelection}
+        entityLabel={entityLabel ?? resource.label}
+        onAddNew={onAddNew}
+        onCardClick={onCardClick}
+        onAddCard={onAddCard}
+        entityDefinitionId={entityDefinitionId}
+        selectedKanbanCardIds={selectedKanbanCardIds}
+        onSelectedKanbanCardIdsChange={onSelectedKanbanCardIdsChange}>
+        <DynamicTableFooter>
+          <div className='flex items-center justify-between px-4 py-2 text-sm'>
+            <div>
+              {records.length}{' '}
+              {records.length === 1 ? resource.label.toLowerCase() : resource.plural.toLowerCase()}
+              {hasNextPage && <span className='ml-2'>(more available)</span>}
             </div>
-          </DynamicTableFooter>
-        </DynamicView>
-      </div>
-    </MainPageContent>
+            {isFetchingNextPage && (
+              <div className='flex items-center gap-2'>
+                <div className='h-3 w-3 animate-spin rounded-full border-2 border-primary border-t-transparent' />
+                <span>Loading more...</span>
+              </div>
+            )}
+          </div>
+        </DynamicTableFooter>
+      </DynamicView>
+    </div>
+  )
+
+  return embedded ? (
+    tableBody
+  ) : (
+    <MainPageContent dockedPanels={dockedPanels}>{tableBody}</MainPageContent>
   )
 }
