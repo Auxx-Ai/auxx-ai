@@ -7,13 +7,8 @@ import type { DocJSON } from '@auxx/lib/kb/markdown'
 import type { SystemTemplateGalleryItem } from '@auxx/lib/prompt-templates'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@auxx/ui/components/dialog'
+import { Dialog, DialogContent } from '@auxx/ui/components/dialog'
+import { DialogNav } from '@auxx/ui/components/dialog-nav'
 import {
   Empty,
   EmptyDescription,
@@ -28,7 +23,6 @@ import { RadioGroupItemCard } from '@auxx/ui/components/radio-group-item'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import {
   Check,
-  ChevronLeft,
   Handshake,
   Headphones,
   LayoutGrid,
@@ -152,17 +146,11 @@ export function PromptTemplateDialog({ open, onOpenChange }: PromptTemplateDialo
           {viewMode === 'list' ? (
             <>
               {/* LIST VIEW */}
-              <DialogHeader className='border-b px-3 h-10 flex flex-row items-center justify-start mb-0'>
-                <div>
-                  <Button variant='ghost' size='sm'>
-                    Prompt templates
-                  </Button>
-                  <DialogTitle className='sr-only'>Prompt Templates</DialogTitle>
-                  <DialogDescription className='sr-only'>
-                    Browse and install prompt templates
-                  </DialogDescription>
-                </div>
-              </DialogHeader>
+              <DialogNav
+                title='Prompt Templates'
+                description='Browse and install prompt templates'
+                crumbs={[{ label: 'Prompt templates' }]}
+              />
 
               <div className='flex flex-1 flex-row justify-start w-full min-h-0'>
                 {/* Sidebar */}
@@ -293,20 +281,15 @@ export function PromptTemplateDialog({ open, onOpenChange }: PromptTemplateDialo
           ) : (
             <>
               {/* DETAIL VIEW */}
-              <DialogHeader className='border-b px-3 h-10 flex flex-row items-center justify-start mb-0'>
-                <div className='flex items-center gap-1'>
-                  <Button variant='ghost' size='sm' onClick={handleBack}>
-                    <ChevronLeft className='size-4' />
-                    Back
-                  </Button>
-                  <span className='text-muted-foreground'>/</span>
-                  <span className='text-sm font-medium truncate max-w-[300px]'>
-                    {selectedTemplate?.name}
-                  </span>
-                  <DialogTitle className='sr-only'>{selectedTemplate?.name}</DialogTitle>
-                  <DialogDescription className='sr-only'>Prompt template details</DialogDescription>
-                </div>
-              </DialogHeader>
+              <DialogNav
+                title={selectedTemplate?.name ?? 'Prompt template'}
+                description='Prompt template details'
+                onBack={handleBack}
+                crumbs={[
+                  { label: 'Prompt templates', onClick: handleBack },
+                  { label: selectedTemplate?.name ?? 'Template' },
+                ]}
+              />
 
               {selectedTemplate && (
                 <div className='flex flex-col flex-1 min-h-0'>

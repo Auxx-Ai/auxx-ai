@@ -59,7 +59,7 @@ function DialogOverlay({
 DialogOverlay.displayName = DialogPrimitive.Overlay.displayName
 
 const dialogVariants = cva(
-  'relative z-50 grid w-full p-[4px] focus:ring-ring/20 focus:outline-none shadow-xl dark:shadow-black/40 duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 sm:rounded-[20px]',
+  'relative z-50 grid p-[4px] focus:ring-ring/20 focus:outline-none shadow-xl dark:shadow-black/40 duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 sm:rounded-[20px]',
   {
     variants: {
       variant: {
@@ -74,22 +74,46 @@ const dialogVariants = cva(
         br: 'right-6 bottom-6 data-[state=closed]:slide-out-to-bottom-16 data-[state=open]:slide-in-from-bottom-16',
         tc: 'left-[50%] top-[10%] translate-x-[-50%] data-[state=closed]:slide-out-to-top-16  data-[state=open]:slide-in-from-top-16  data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95',
       },
+      // `w-full` lives on each size token (not the cva base) so the content-sized
+      // `content` token can use `w-fit` without a conflicting `w-full`.
       size: {
-        default: 'max-w-lg',
-        xs: 'max-w-sm',
-        sm: 'max-w-md',
-        md: 'max-w-lg',
-        lg: 'max-w-xl',
-        xl: 'max-w-2xl',
-        xxl: 'max-w-3xl',
-        '3xl': 'max-w-4xl',
+        default: 'w-full max-w-lg',
+        xs: 'w-full max-w-sm',
+        sm: 'w-full max-w-md',
+        md: 'w-full max-w-lg',
+        lg: 'w-full max-w-xl',
+        xl: 'w-full max-w-2xl',
+        xxl: 'w-full max-w-3xl',
+        '3xl': 'w-full max-w-4xl',
         fullscreen: 'w-screen h-screen',
+        // Shrink-wraps to the widest child (capped at 95vw). Use for dialogs whose
+        // width is driven by their content — e.g. an animated `DialogNavPages` body.
+        content: 'w-fit max-w-[95vw]',
       },
     },
     defaultVariants: { variant: 'default', position: 'default', size: 'default' },
   }
 )
 //before:content-[''] before:absolute before:-top-[5%] before:left-[10%] before:w-[80%] before:h-[30%] before:-z-0 before:rounded-full before:bg-linear-to-r before:from-[#ffc58b] before:via-[#e1a6ff] before:to-[#352cee] before:opacity-100 before:blur-2xl before:mix-blend-color-dodge before:transition-opacity before:duration-1000 before:delay-1000
+
+/** Fixed, max-width dialog size tokens (excludes `fullscreen`/`content`). */
+export type DialogSize = 'xs' | 'sm' | 'md' | 'lg' | 'xl' | 'xxl' | '3xl'
+
+/**
+ * rem widths matching each `DialogSize` token's `max-w-*` class in
+ * `dialogVariants` above. Hand-synced — Tailwind JIT needs the literal class
+ * strings, so these can't be derived from the map. Keep the two in step.
+ */
+export const dialogSizeRem: Record<DialogSize, number> = {
+  xs: 24, // max-w-sm
+  sm: 28, // max-w-md
+  md: 32, // max-w-lg
+  lg: 36, // max-w-xl
+  xl: 42, // max-w-2xl
+  xxl: 48, // max-w-3xl
+  '3xl': 56, // max-w-4xl
+}
+
 export interface DialogContentProps
   extends React.ComponentProps<typeof DialogPrimitive.Content>,
     VariantProps<typeof dialogVariants> {

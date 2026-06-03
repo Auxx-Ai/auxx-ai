@@ -9,13 +9,8 @@ import { getRelatedEntityDefinitionId, type RelationshipConfig } from '@auxx/typ
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { Checkbox } from '@auxx/ui/components/checkbox'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@auxx/ui/components/dialog'
+import { Dialog, DialogContent } from '@auxx/ui/components/dialog'
+import { DialogNav } from '@auxx/ui/components/dialog-nav'
 import {
   Empty,
   EmptyDescription,
@@ -28,11 +23,9 @@ import { InputSearch } from '@auxx/ui/components/input-search'
 import { RadioGroup } from '@auxx/ui/components/radio-group'
 import { RadioGroupItemCard } from '@auxx/ui/components/radio-group-item'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
-import { Separator } from '@auxx/ui/components/separator'
 import { toastError } from '@auxx/ui/components/toast'
 import { cn } from '@auxx/ui/lib/utils'
 import {
-  ChevronLeft,
   Headphones,
   LayoutGrid,
   Link2,
@@ -502,17 +495,11 @@ export function EntityTemplateDialog({
             {viewMode === 'list' ? (
               <>
                 {/* LIST VIEW */}
-                <DialogHeader className='border-b px-3 h-10 flex flex-row items-center justify-start mb-0'>
-                  <div>
-                    <Button variant='ghost' size='sm'>
-                      Entity templates
-                    </Button>
-                    <DialogTitle className='sr-only'>Create from template</DialogTitle>
-                    <DialogDescription className='sr-only'>
-                      Select an entity template to scaffold
-                    </DialogDescription>
-                  </div>
-                </DialogHeader>
+                <DialogNav
+                  title='Create from template'
+                  description='Select an entity template to scaffold'
+                  crumbs={[{ label: 'Entity templates' }]}
+                />
 
                 <div className='flex flex-1 flex-col sm:flex-row justify-start w-full min-h-0'>
                   {/* Sidebar */}
@@ -650,26 +637,16 @@ export function EntityTemplateDialog({
             ) : (
               <>
                 {/* DETAIL VIEW */}
-                <DialogHeader className='border-b px-3 py-2 mb-0 h-10'>
-                  <div className='flex items-center gap-1'>
-                    <Button
-                      variant='ghost'
-                      size='sm'
-                      onClick={handleBackToList}
-                      disabled={installTemplates.isPending}>
-                      <ChevronLeft />
-                      Back
-                    </Button>
-                    <Separator orientation='vertical' className='h-5' />
-                    <Button variant='ghost' size='sm'>
-                      {templateDetail?.name ?? 'Loading...'}
-                    </Button>
-                    <DialogTitle className='sr-only'>Template Detail</DialogTitle>
-                    <DialogDescription className='sr-only'>
-                      Preview and install template
-                    </DialogDescription>
-                  </div>
-                </DialogHeader>
+                <DialogNav
+                  title='Template Detail'
+                  description='Preview and install template'
+                  onBack={handleBackToList}
+                  backDisabled={installTemplates.isPending}
+                  crumbs={[
+                    { label: 'Entity templates', onClick: handleBackToList },
+                    { label: templateDetail?.name ?? 'Loading...' },
+                  ]}
+                />
 
                 <div className='flex flex-col sm:flex-row flex-1 min-h-0 overflow-hidden'>
                   {/* Left: Preview cards — horizontally scrollable */}
