@@ -4,13 +4,8 @@
 import { constants } from '@auxx/config/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@auxx/ui/components/dialog'
+import { Dialog, DialogContent } from '@auxx/ui/components/dialog'
+import { DialogNav } from '@auxx/ui/components/dialog-nav'
 import {
   Empty,
   EmptyDescription,
@@ -24,12 +19,10 @@ import { Label } from '@auxx/ui/components/label'
 import { RadioGroup } from '@auxx/ui/components/radio-group'
 import { RadioGroupItemCard } from '@auxx/ui/components/radio-group-item'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
-import { Separator } from '@auxx/ui/components/separator'
 import { Textarea } from '@auxx/ui/components/textarea'
 import { toastError } from '@auxx/ui/components/toast'
 import {
   AlertTriangle,
-  ChevronLeft,
   GitBranch,
   Headphones,
   Image as ImageIcon,
@@ -299,16 +292,11 @@ export function WorkflowTemplateDialog({
             {viewMode === 'list' ? (
               <>
                 {/* LIST VIEW */}
-                <DialogHeader className='border-b px-3 h-10 flex flex-row items-center justify-start mb-0'>
-                  <div>
-                    <Button variant='ghost' size='sm'>
-                      Template selector
-                    </Button>
-
-                    <DialogTitle className='sr-only'>Use Template</DialogTitle>
-                    <DialogDescription className='sr-only'>Template selector</DialogDescription>
-                  </div>
-                </DialogHeader>
+                <DialogNav
+                  title='Use Template'
+                  description='Template selector'
+                  crumbs={[{ label: 'Template selector' }]}
+                />
 
                 {/* Search Bar */}
 
@@ -459,27 +447,16 @@ export function WorkflowTemplateDialog({
             ) : (
               <>
                 {/* DETAIL VIEW */}
-                <DialogHeader className='border-b px-3 py-2 mb-0 h-10 '>
-                  <div className='flex items-center gap-1'>
-                    <Button
-                      variant='ghost'
-                      size='sm'
-                      onClick={handleBackToList}
-                      disabled={createWorkflow.isPending}>
-                      <ChevronLeft />
-                      Back
-                    </Button>
-                    <Separator orientation='vertical' className='h-5' />
-                    <Button variant='ghost' size='sm'>
-                      {selectedTemplate.name}
-                    </Button>
-
-                    <div>
-                      <DialogTitle className='sr-only'>Use Template</DialogTitle>
-                      <DialogDescription className='sr-only'>Template selector</DialogDescription>
-                    </div>
-                  </div>
-                </DialogHeader>
+                <DialogNav
+                  title='Use Template'
+                  description='Template selector'
+                  onBack={handleBackToList}
+                  backDisabled={createWorkflow.isPending}
+                  crumbs={[
+                    { label: 'Template selector', onClick: handleBackToList },
+                    { label: selectedTemplate.name },
+                  ]}
+                />
 
                 <div className='flex flex-col sm:flex-row flex-1 overflow-hidden min-h-0'>
                   {/* Preview (top on mobile, left 2/3 on desktop) */}

@@ -8,14 +8,8 @@ import {
   agentTemplates,
 } from '@auxx/lib/agents/client'
 import { Badge } from '@auxx/ui/components/badge'
-import { Button } from '@auxx/ui/components/button'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@auxx/ui/components/dialog'
+import { Dialog, DialogContent } from '@auxx/ui/components/dialog'
+import { DialogNav } from '@auxx/ui/components/dialog-nav'
 import {
   Empty,
   EmptyDescription,
@@ -148,17 +142,11 @@ export function AgentTemplateDialog({ open, onOpenChange, kind }: AgentTemplateD
           searchInputRef.current?.focus()
         }}>
         <div className='flex flex-col flex-1 min-h-0'>
-          <DialogHeader className='border-b px-3 h-10 flex flex-row items-center justify-start mb-0'>
-            <div>
-              <Button variant='ghost' size='sm'>
-                Agent templates
-              </Button>
-              <DialogTitle className='sr-only'>Create from template</DialogTitle>
-              <DialogDescription className='sr-only'>
-                Select an agent template to scaffold
-              </DialogDescription>
-            </div>
-          </DialogHeader>
+          <DialogNav
+            title='Create from template'
+            description='Select an agent template to scaffold'
+            crumbs={[{ label: 'Agent templates' }]}
+          />
 
           <div className='flex flex-1 flex-col sm:flex-row justify-start w-full min-h-0'>
             {/* Sidebar */}
