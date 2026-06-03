@@ -5,9 +5,9 @@
 // route resolves the id to the canonical `/orgSlug/kbSlug/slug-path` URL
 // at click time and 308-redirects.
 
-import { Article, database, KnowledgeBase, Organization } from '@auxx/database'
+import { ArticlePlacement, database, KnowledgeBase, Organization } from '@auxx/database'
 import { isOrgMember } from '@auxx/lib/cache'
-import { and, eq } from 'drizzle-orm'
+import { and, desc, eq } from 'drizzle-orm'
 import { redirect } from 'next/navigation'
 import { type NextRequest, NextResponse } from 'next/server'
 import { getLocalSession, getLoginUrl } from '~/lib/auth'
@@ -22,21 +22,23 @@ export async function GET(_req: NextRequest, ctx: RouteContext): Promise<Respons
 
   const [row] = await database
     .select({
-      id: Article.id,
-      slug: Article.slug,
-      parentId: Article.parentId,
-      isPublished: Article.isPublished,
-      knowledgeBaseId: Article.knowledgeBaseId,
-      organizationId: Article.organizationId,
+      id: ArticlePlacement.id,
+      slug: ArticlePlacement.slug,
+      parentId: ArticlePlacement.parentId,
+      isPublished: ArticlePlacement.isPublished,
+      knowledgeBaseId: ArticlePlacement.knowledgeBaseId,
+      organizationId: ArticlePlacement.organizationId,
       kbSlug: KnowledgeBase.slug,
       kbVisibility: KnowledgeBase.visibility,
       kbPublishStatus: KnowledgeBase.publishStatus,
       orgSlug: Organization.handle,
     })
-    .from(Article)
-    .innerJoin(KnowledgeBase, eq(KnowledgeBase.id, Article.knowledgeBaseId))
+    .from(ArticlePlacement)
+    .innerJoin(KnowledgeBase, eq(KnowledgeBase.id, ArticlePlacement.knowledgeBaseId))
     .innerJoin(Organization, eq(Organization.id, KnowledgeBase.organizationId))
-    .where(eq(Article.id, articleId))
+    .where(eq(ArticlePlacement.articleId, articleId))
+    // Prefer a published placement when the article is multi-homed.
+    .orderBy(desc(ArticlePlacement.isPublished))
     .limit(1)
 
   if (!row) return NextResponse.json({ error: 'Not found' }, { status: 404 })
@@ -62,20 +64,25 @@ export async function GET(_req: NextRequest, ctx: RouteContext): Promise<Respons
  * Walk parent chain to assemble the article's full slug path. Tiny lookup
  * (depth ~3-5) — fine to do per redirect.
  */
-async function buildSlugPath(articleId: string, knowledgeBaseId: string): Promise<string> {
+async function buildSlugPath(placementId: string, knowledgeBaseId: string): Promise<string> {
   const rows = await database
     .select({
-      id: Article.id,
-      slug: Article.slug,
-      parentId: Article.parentId,
+      id: ArticlePlacement.id,
+      slug: ArticlePlacement.slug,
+      parentId: ArticlePlacement.parentId,
     })
-    .from(Article)
-    .where(and(eq(Article.knowledgeBaseId, knowledgeBaseId), eq(Article.isPublished, true)))
+    .from(ArticlePlacement)
+    .where(
+      and(
+        eq(ArticlePlacement.knowledgeBaseId, knowledgeBaseId),
+        eq(ArticlePlacement.isPublished, true)
+      )
+    )
 
   const byId = new Map(rows.map((r) => [r.id, r]))
   const parts: string[] = []
   const seen = new Set<string>()
-  let cursor: string | null = articleId
+  let cursor: string | null = placementId
   while (cursor) {
     if (seen.has(cursor)) break
     seen.add(cursor)

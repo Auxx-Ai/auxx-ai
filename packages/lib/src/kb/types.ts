@@ -36,11 +36,35 @@ export interface ArticleRevisionMeta {
   coverImageId: string | null
 }
 
+/**
+ * A single placement of an article into a KnowledgeBase. The `placements[]`
+ * array on an article enumerates every KB it's linked into. Hydrated on-demand
+ * (editor / a dedicated query) — never in the sidebar list payload, which would
+ * N+1 over the tree. Length 1 for a simple native (single-home) article.
+ */
+export interface ArticlePlacementRef {
+  placementId: string
+  knowledgeBaseId: string
+  slug: string
+  isPublished: boolean
+  /** null = native placement; set = a live link from a KnowledgeSource. */
+  linkedFromSourceId: string | null
+}
+
 export interface ArticleListItem {
   id: string
+  /**
+   * The KB whose tree this row represents. Article content is canonical and
+   * can live in multiple KBs (see {@link ArticlePlacementRef}); this field +
+   * `slug`/`parentId`/`sortOrder`/`isPublished` are sourced from the
+   * placement in that KB.
+   */
   knowledgeBaseId: string
+  /** The placement row backing this tree node (per-KB write handle). */
+  placementId: string
   organizationId: string
   slug: string
+  /** Parent's *article* id (article-id space, so the FE tree is unchanged). */
   parentId: string | null
   sortOrder: string
   articleKind: ArticleKindType
@@ -51,6 +75,11 @@ export interface ArticleListItem {
   publishedAt: Date | null
   publishedRevisionId: string | null
   draftRevisionId: string | null
+  /**
+   * Every KB this article is placed into. Hydrated on-demand only (editor /
+   * `getArticlePlacements`); `undefined` on the sidebar list payload.
+   */
+  placements?: ArticlePlacementRef[]
   // Display fields — derived from the draft revision (current working state).
   title: string
   emoji: string | null

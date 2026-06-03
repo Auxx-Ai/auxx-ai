@@ -4,7 +4,7 @@ import { database, schema } from '@auxx/database'
 import { getCachedAgentById, getCachedOrgProfile } from '@auxx/lib/cache'
 import type { ChatAttachment } from '@auxx/lib/chat'
 import { listOnDutyUserIds } from '@auxx/lib/chat-duty'
-import { and, asc, eq, inArray, sql } from 'drizzle-orm'
+import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm'
 import type { Context } from 'hono'
 
 /**
@@ -340,15 +340,20 @@ export async function loadHomeKnowledgeBase(
 
   const articles = await database
     .select({
-      id: schema.Article.id,
+      id: schema.ArticlePlacement.articleId,
       title: schema.Article.title,
       emoji: schema.Article.emoji,
     })
-    .from(schema.Article)
+    .from(schema.ArticlePlacement)
+    .innerJoin(schema.Article, eq(schema.Article.id, schema.ArticlePlacement.articleId))
     .where(
-      and(eq(schema.Article.knowledgeBaseId, knowledgeBaseId), eq(schema.Article.isPublished, true))
+      and(
+        eq(schema.ArticlePlacement.knowledgeBaseId, knowledgeBaseId),
+        eq(schema.ArticlePlacement.isPublished, true),
+        isNull(schema.Article.archivedAt)
+      )
     )
-    .orderBy(asc(schema.Article.sortOrder))
+    .orderBy(asc(schema.ArticlePlacement.sortOrder))
 
   const rootArticles = articles
     .filter((a) => a.title)
@@ -368,17 +373,19 @@ export async function loadHomeFeaturedArticles(
   if (featuredArticleIds.length === 0) return []
   const rows = await database
     .select({
-      id: schema.Article.id,
+      id: schema.ArticlePlacement.articleId,
       title: schema.Article.title,
       excerpt: schema.Article.excerpt,
       emoji: schema.Article.emoji,
     })
-    .from(schema.Article)
+    .from(schema.ArticlePlacement)
+    .innerJoin(schema.Article, eq(schema.Article.id, schema.ArticlePlacement.articleId))
     .where(
       and(
-        eq(schema.Article.organizationId, organizationId),
-        eq(schema.Article.isPublished, true),
-        inArray(schema.Article.id, featuredArticleIds)
+        eq(schema.ArticlePlacement.organizationId, organizationId),
+        eq(schema.ArticlePlacement.isPublished, true),
+        inArray(schema.ArticlePlacement.articleId, featuredArticleIds),
+        isNull(schema.Article.archivedAt)
       )
     )
 

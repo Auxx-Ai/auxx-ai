@@ -4,6 +4,7 @@
 import { relations } from 'drizzle-orm/relations'
 import {
   Article,
+  ArticlePlacement,
   ArticleRevision,
   Comment,
   CommentReaction,
@@ -25,31 +26,14 @@ export const articleRelations = relations(Article, ({ one, many }) => ({
     references: [User.id],
     relationName: 'article_authorId_user_id',
   }),
-  publishedBy: one(User, {
-    fields: [Article.publishedById],
-    references: [User.id],
-    relationName: 'article_publishedById_user_id',
-  }),
-  knowledgeBase: one(KnowledgeBase, {
-    fields: [Article.knowledgeBaseId],
+  home: one(KnowledgeBase, {
+    fields: [Article.homeKnowledgeBaseId],
     references: [KnowledgeBase.id],
+    relationName: 'article_homeKnowledgeBaseId_knowledgeBase_id',
   }),
   organization: one(Organization, {
     fields: [Article.organizationId],
     references: [Organization.id],
-  }),
-  parent: one(Article, {
-    fields: [Article.parentId],
-    references: [Article.id],
-    relationName: 'article_parentId_article_id',
-  }),
-  children: many(Article, {
-    relationName: 'article_parentId_article_id',
-  }),
-  publishedRevision: one(ArticleRevision, {
-    fields: [Article.publishedRevisionId],
-    references: [ArticleRevision.id],
-    relationName: 'article_publishedRevisionId_articleRevision_id',
   }),
   draftRevision: one(ArticleRevision, {
     fields: [Article.draftRevisionId],
@@ -59,11 +43,48 @@ export const articleRelations = relations(Article, ({ one, many }) => ({
   revisions: many(ArticleRevision, {
     relationName: 'articleRevision_articleId_article_id',
   }),
+  placements: many(ArticlePlacement),
   files: many(File),
 }))
 
+export const articlePlacementRelations = relations(ArticlePlacement, ({ one, many }) => ({
+  article: one(Article, {
+    fields: [ArticlePlacement.articleId],
+    references: [Article.id],
+  }),
+  knowledgeBase: one(KnowledgeBase, {
+    fields: [ArticlePlacement.knowledgeBaseId],
+    references: [KnowledgeBase.id],
+  }),
+  organization: one(Organization, {
+    fields: [ArticlePlacement.organizationId],
+    references: [Organization.id],
+  }),
+  parent: one(ArticlePlacement, {
+    fields: [ArticlePlacement.parentId],
+    references: [ArticlePlacement.id],
+    relationName: 'articlePlacement_parentId_articlePlacement_id',
+  }),
+  children: many(ArticlePlacement, {
+    relationName: 'articlePlacement_parentId_articlePlacement_id',
+  }),
+  publishedRevision: one(ArticleRevision, {
+    fields: [ArticlePlacement.publishedRevisionId],
+    references: [ArticleRevision.id],
+    relationName: 'articlePlacement_publishedRevisionId_articleRevision_id',
+  }),
+  publishedBy: one(User, {
+    fields: [ArticlePlacement.publishedById],
+    references: [User.id],
+    relationName: 'articlePlacement_publishedById_user_id',
+  }),
+}))
+
 export const knowledgeBaseRelations = relations(KnowledgeBase, ({ one, many }) => ({
-  articles: many(Article),
+  articlePlacements: many(ArticlePlacement),
+  homeArticles: many(Article, {
+    relationName: 'article_homeKnowledgeBaseId_knowledgeBase_id',
+  }),
   logoDarkAsset: one(MediaAsset, {
     fields: [KnowledgeBase.logoDarkId],
     references: [MediaAsset.id],

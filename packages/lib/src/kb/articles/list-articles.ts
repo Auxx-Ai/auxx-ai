@@ -1,19 +1,20 @@
 // @auxx/lib/kb/articles/list-articles.ts
-import { schema } from '@auxx/database'
+import { type Database, schema, type Transaction } from '@auxx/database'
 import type { RecordId } from '@auxx/types/resource'
 import { and, asc, eq } from 'drizzle-orm'
 import { batchGetArticleTagIds } from '../../field-values/relationship-queries'
 import { resolveDb } from '../internal/context'
 import { handleError } from '../internal/errors'
 import { coverIdsForArticle, flattenForList } from '../internal/flatten-article'
+import { toFlattenRow } from '../internal/placement'
 import { resolveCoverUrls } from '../internal/resolve-cover-urls'
 import { verifyKnowledgeBaseExists } from '../internal/validate-existence'
 import type { ArticleListItem, ArticleListOptions, KBContext } from '../types'
 
 /**
- * List articles for a KB. Each row's title/emoji/etc. is sourced from the
- * published revision when available, falling back to the draft revision
- * (so unpublished articles still show their authoring title in the sidebar).
+ * List articles for a KB as placement-backed tree nodes. Each row's
+ * title/emoji/etc. comes from the draft revision (current working state);
+ * `parentId` is remapped to article-id space so the frontend tree is unchanged.
  */
 export async function getArticles(
   ctx: KBContext,
@@ -23,34 +24,16 @@ export async function getArticles(
   const db = resolveDb(ctx)
   try {
     await verifyKnowledgeBaseExists(db, ctx.organizationId, knowledgeBaseId)
-    const articles = await db.query.Article.findMany({
+    const placements = await db.query.ArticlePlacement.findMany({
       where: and(
-        eq(schema.Article.knowledgeBaseId, knowledgeBaseId),
-        eq(schema.Article.organizationId, ctx.organizationId),
-        options.includeUnpublished ? undefined : eq(schema.Article.isPublished, true)
+        eq(schema.ArticlePlacement.knowledgeBaseId, knowledgeBaseId),
+        eq(schema.ArticlePlacement.organizationId, ctx.organizationId),
+        options.includeUnpublished ? undefined : eq(schema.ArticlePlacement.isPublished, true)
       ),
-      orderBy: [asc(schema.Article.parentId), asc(schema.Article.sortOrder)],
-      with: { publishedRevision: true, draftRevision: true },
+      orderBy: [asc(schema.ArticlePlacement.parentId), asc(schema.ArticlePlacement.sortOrder)],
+      with: { article: { with: { draftRevision: true } }, publishedRevision: true },
     })
-    const tagIdMap = await batchGetArticleTagIds(
-      db,
-      articles.map((a) => a.id),
-      ctx.organizationId
-    )
-    // Batch-resolve every cover URL in one parallel fan-out so an N-article
-    // KB makes O(unique-asset-count) round-trips, not O(N). resolveCoverUrls
-    // de-dupes by id, so passing draft + published per article costs nothing
-    // when they share the same asset (the common case).
-    const urlMap = await resolveCoverUrls(
-      db,
-      ctx.organizationId,
-      articles.flatMap((a) => coverIdsForArticle(a))
-    )
-    return await Promise.all(
-      articles.map((a) =>
-        flattenForList(db, ctx.organizationId, a, (tagIdMap.get(a.id) ?? []) as RecordId[], urlMap)
-      )
-    )
+    return await flattenPlacementList(db, ctx.organizationId, placements)
   } catch (error) {
     return handleError(error, ctx.organizationId, 'Error fetching knowledge base articles', {
       knowledgeBaseId,
@@ -59,10 +42,8 @@ export async function getArticles(
 }
 
 /**
- * Return every article in the org, across all knowledge bases. Same row
- * shape as {@link getArticles}; `knowledgeBaseId` on each row is how the
- * caller disambiguates. Used by global tools that operate across KBs
- * when the user isn't focused on one in particular.
+ * Every article placement in the org, across all KBs. Same row shape as
+ * {@link getArticles}; `knowledgeBaseId` on each row disambiguates.
  */
 export async function getAllArticles(
   ctx: KBContext,
@@ -70,34 +51,58 @@ export async function getAllArticles(
 ): Promise<ArticleListItem[]> {
   const db = resolveDb(ctx)
   try {
-    const articles = await db.query.Article.findMany({
+    const placements = await db.query.ArticlePlacement.findMany({
       where: and(
-        eq(schema.Article.organizationId, ctx.organizationId),
-        options.includeUnpublished ? undefined : eq(schema.Article.isPublished, true)
+        eq(schema.ArticlePlacement.organizationId, ctx.organizationId),
+        options.includeUnpublished ? undefined : eq(schema.ArticlePlacement.isPublished, true)
       ),
       orderBy: [
-        asc(schema.Article.knowledgeBaseId),
-        asc(schema.Article.parentId),
-        asc(schema.Article.sortOrder),
+        asc(schema.ArticlePlacement.knowledgeBaseId),
+        asc(schema.ArticlePlacement.parentId),
+        asc(schema.ArticlePlacement.sortOrder),
       ],
-      with: { publishedRevision: true, draftRevision: true },
+      with: { article: { with: { draftRevision: true } }, publishedRevision: true },
     })
-    const tagIdMap = await batchGetArticleTagIds(
-      db,
-      articles.map((a) => a.id),
-      ctx.organizationId
-    )
-    const urlMap = await resolveCoverUrls(
-      db,
-      ctx.organizationId,
-      articles.flatMap((a) => coverIdsForArticle(a))
-    )
-    return await Promise.all(
-      articles.map((a) =>
-        flattenForList(db, ctx.organizationId, a, (tagIdMap.get(a.id) ?? []) as RecordId[], urlMap)
-      )
-    )
+    return await flattenPlacementList(db, ctx.organizationId, placements)
   } catch (error) {
     return handleError(error, ctx.organizationId, 'Error fetching all articles')
   }
+}
+
+type PlacementWith = typeof schema.ArticlePlacement.$inferSelect & {
+  article: typeof schema.Article.$inferSelect & {
+    draftRevision: typeof schema.ArticleRevision.$inferSelect | null
+  }
+  publishedRevision: typeof schema.ArticleRevision.$inferSelect | null
+}
+
+/** Shared flatten for a list of placement rows: remap parentId, batch covers + tags. */
+async function flattenPlacementList(
+  db: Database | Transaction,
+  organizationId: string,
+  placements: PlacementWith[]
+): Promise<ArticleListItem[]> {
+  // placementId → articleId, so parentId can be remapped to article-id space.
+  const idMap = new Map(placements.map((p) => [p.id, p.articleId]))
+  const rows = placements.map((p) =>
+    toFlattenRow(p.article, p, {
+      parentArticleId: p.parentId ? (idMap.get(p.parentId) ?? null) : null,
+    })
+  )
+  const tagIdMap = await batchGetArticleTagIds(
+    db as Database,
+    rows.map((r) => r.id),
+    organizationId
+  )
+  // Batch-resolve every cover URL in one parallel fan-out (de-duped by id).
+  const urlMap = await resolveCoverUrls(
+    db,
+    organizationId,
+    rows.flatMap((r) => coverIdsForArticle(r))
+  )
+  return await Promise.all(
+    rows.map((r) =>
+      flattenForList(db, organizationId, r, (tagIdMap.get(r.id) ?? []) as RecordId[], urlMap)
+    )
+  )
 }

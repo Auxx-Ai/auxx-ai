@@ -5,7 +5,7 @@
 // path and 308-redirects to `/preview/kb/{targetKbId}/{slugPath}` — the
 // target's *actual* KB id, so cross-KB internal links navigate correctly.
 
-import { Article, database, KnowledgeBase } from '@auxx/database'
+import { ArticlePlacement, database } from '@auxx/database'
 import { eq } from 'drizzle-orm'
 import { headers } from 'next/headers'
 import { type NextRequest, NextResponse } from 'next/server'
@@ -16,7 +16,7 @@ interface RouteContext {
 }
 
 export async function GET(req: NextRequest, ctx: RouteContext): Promise<Response> {
-  const { articleId } = await ctx.params
+  const { knowledgeBaseId, articleId } = await ctx.params
   if (!articleId) {
     return NextResponse.json({ error: 'Missing article id' }, { status: 400 })
   }
@@ -28,17 +28,17 @@ export async function GET(req: NextRequest, ctx: RouteContext): Promise<Response
     )
   }
 
-  const [row] = await database
+  // Resolve the article's placement — prefer the link's source KB, else any.
+  const placements = await database
     .select({
-      id: Article.id,
-      knowledgeBaseId: Article.knowledgeBaseId,
-      organizationId: Article.organizationId,
+      id: ArticlePlacement.id,
+      knowledgeBaseId: ArticlePlacement.knowledgeBaseId,
+      organizationId: ArticlePlacement.organizationId,
     })
-    .from(Article)
-    .innerJoin(KnowledgeBase, eq(KnowledgeBase.id, Article.knowledgeBaseId))
-    .where(eq(Article.id, articleId))
-    .limit(1)
+    .from(ArticlePlacement)
+    .where(eq(ArticlePlacement.articleId, articleId))
 
+  const row = placements.find((p) => p.knowledgeBaseId === knowledgeBaseId) ?? placements[0]
   if (!row) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
   // Authorize against the *target* article's org. Cross-org leakage would
@@ -57,20 +57,21 @@ export async function GET(req: NextRequest, ctx: RouteContext): Promise<Response
   )
 }
 
-async function buildSlugPath(articleId: string, knowledgeBaseId: string): Promise<string> {
+/** Walk the placement-tree up from `placementId`, collecting slugs. */
+async function buildSlugPath(placementId: string, knowledgeBaseId: string): Promise<string> {
   const rows = await database
     .select({
-      id: Article.id,
-      slug: Article.slug,
-      parentId: Article.parentId,
+      id: ArticlePlacement.id,
+      slug: ArticlePlacement.slug,
+      parentId: ArticlePlacement.parentId,
     })
-    .from(Article)
-    .where(eq(Article.knowledgeBaseId, knowledgeBaseId))
+    .from(ArticlePlacement)
+    .where(eq(ArticlePlacement.knowledgeBaseId, knowledgeBaseId))
 
   const byId = new Map(rows.map((r) => [r.id, r]))
   const parts: string[] = []
   const seen = new Set<string>()
-  let cursor: string | null = articleId
+  let cursor: string | null = placementId
   while (cursor) {
     if (seen.has(cursor)) break
     seen.add(cursor)

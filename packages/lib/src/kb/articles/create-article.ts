@@ -4,10 +4,16 @@ import { ArticleKind, ArticleStatus } from '@auxx/database/enums'
 import type { ArticleKind as ArticleKindType } from '@auxx/database/types'
 import { generateId, generateKeyBetween } from '@auxx/utils'
 import { and, asc, eq, isNull } from 'drizzle-orm'
-import { findNextPageNumber, getNextArticleSortOrder } from '../internal/article-sort-order'
+import { findNextPageNumber } from '../internal/article-sort-order'
 import { resolveDb } from '../internal/context'
 import { handleError } from '../internal/errors'
 import { flattenForList } from '../internal/flatten-article'
+import {
+  getNextPlacementSortOrder,
+  parentArticleIdOf,
+  resolvePlacement,
+  toFlattenRow,
+} from '../internal/placement'
 import {
   validateArticleKind,
   verifyKnowledgeBaseExists,
@@ -22,7 +28,9 @@ import { syncArticleDenormalizedFields } from '../sync-article-denormalized-fiel
 import type { ArticleCreateInput, ArticleListItem, KBContext } from '../types'
 
 /**
- * Create a new article + its initial draft revision in one transaction.
+ * Create a new article (content) + its initial draft revision + one placement
+ * into `knowledgeBaseId`, in one transaction. The KB is also the article's
+ * canonical embedding home (`homeKnowledgeBaseId`).
  */
 export async function createArticle(
   ctx: KBContext,
@@ -56,43 +64,45 @@ export async function createArticle(
       articleInput.slug = await generateUniqueSlugFromTitle(db, articleInput.title, knowledgeBaseId)
     }
     await validateArticleSlugAvailability(db, articleInput.slug!, knowledgeBaseId)
+
+    // `input.parentId` is a parent *article* id (article-id space). Resolve it
+    // to the parent placement in this KB.
     const parent = articleInput.parentId
       ? await verifyParentArticleExists(db, articleInput.parentId, knowledgeBaseId)
       : null
     validateArticleKind(kind, parent)
+    let parentPlacementId: string | null = parent?.placementId ?? null
+
     let sortOrder: string
     if (orderInfo) {
-      const adjacent = await db.query.Article.findFirst({
-        where: eq(schema.Article.id, orderInfo.adjacentId),
-        columns: { sortOrder: true, parentId: true },
-      })
+      const adjacent = await resolvePlacement(
+        db,
+        ctx.organizationId,
+        orderInfo.adjacentId,
+        knowledgeBaseId
+      )
       if (!adjacent) {
-        sortOrder = await getNextArticleSortOrder(
-          db,
-          knowledgeBaseId,
-          articleInput.parentId ?? null
-        )
+        sortOrder = await getNextPlacementSortOrder(db, knowledgeBaseId, parentPlacementId)
       } else {
-        if (articleInput.parentId === undefined) articleInput.parentId = adjacent.parentId
-        const targetParentId = articleInput.parentId ?? null
-        const siblings = await db.query.Article.findMany({
+        if (articleInput.parentId === undefined) parentPlacementId = adjacent.parentId
+        const siblings = await db.query.ArticlePlacement.findMany({
           where: and(
-            eq(schema.Article.knowledgeBaseId, knowledgeBaseId),
-            targetParentId === null
-              ? isNull(schema.Article.parentId)
-              : eq(schema.Article.parentId, targetParentId)
+            eq(schema.ArticlePlacement.knowledgeBaseId, knowledgeBaseId),
+            parentPlacementId === null
+              ? isNull(schema.ArticlePlacement.parentId)
+              : eq(schema.ArticlePlacement.parentId, parentPlacementId)
           ),
-          orderBy: asc(schema.Article.sortOrder),
+          orderBy: asc(schema.ArticlePlacement.sortOrder),
           columns: { id: true, sortOrder: true },
         })
-        const idx = siblings.findIndex((s) => s.id === orderInfo.adjacentId)
+        const idx = siblings.findIndex((s) => s.id === adjacent.id)
         const before = orderInfo.position === 'before'
         const lo = before ? (siblings[idx - 1]?.sortOrder ?? null) : adjacent.sortOrder
         const hi = before ? adjacent.sortOrder : (siblings[idx + 1]?.sortOrder ?? null)
         sortOrder = generateKeyBetween(lo, hi)
       }
     } else {
-      sortOrder = await getNextArticleSortOrder(db, knowledgeBaseId, articleInput.parentId ?? null)
+      sortOrder = await getNextPlacementSortOrder(db, knowledgeBaseId, parentPlacementId)
     }
 
     const seededContentJson = articleInput.contentJson
@@ -100,23 +110,19 @@ export async function createArticle(
       : null
 
     const result = await db.transaction(async (tx) => {
-      // 1. Insert Article with NULL revision pointers (FKs are nullable)
+      // 1. Insert Article (content) with NULL revision pointer.
       const [newArticle] = await tx
         .insert(schema.Article)
         .values({
-          slug: articleInput.slug || '',
           articleKind: kind,
-          parentId: articleInput.parentId ?? null,
-          isPublished: false,
           status: ArticleStatus.DRAFT,
-          sortOrder,
-          knowledgeBaseId,
+          homeKnowledgeBaseId: knowledgeBaseId,
           organizationId: ctx.organizationId,
           authorId,
           updatedAt: new Date(),
-          hasUnpublishedChanges: false,
         })
         .returning()
+      if (!newArticle) throw new Error('Failed to insert article')
 
       // 2. Insert the initial draft revision
       const [newRevision] = await tx
@@ -135,22 +141,44 @@ export async function createArticle(
           editorId: authorId,
         })
         .returning()
+      if (!newRevision) throw new Error('Failed to insert article revision')
 
-      // 3. Wire the pointer
+      // 3. Wire the draft pointer
       const [withPointer] = await tx
         .update(schema.Article)
         .set({ draftRevisionId: newRevision.id })
         .where(eq(schema.Article.id, newArticle.id))
         .returning()
+      if (!withPointer) throw new Error('Failed to wire draft pointer')
+
+      // 4. Insert the placement (tree position + publish state in this KB)
+      const [placement] = await tx
+        .insert(schema.ArticlePlacement)
+        .values({
+          organizationId: ctx.organizationId,
+          articleId: newArticle.id,
+          knowledgeBaseId,
+          slug: articleInput.slug || '',
+          parentId: parentPlacementId,
+          sortOrder,
+          isPublished: false,
+          hasUnpublishedChanges: false,
+          updatedAt: new Date(),
+        })
+        .returning()
+      if (!placement) throw new Error('Failed to insert article placement')
+
       await syncArticleDenormalizedFields(newArticle.id, tx)
-      return { article: withPointer, draftRevision: newRevision }
+      return { article: withPointer, draftRevision: newRevision, placement }
     })
 
-    return await flattenForList(db, ctx.organizationId, {
-      ...result.article,
-      publishedRevision: null,
-      draftRevision: result.draftRevision,
-    })
+    const parentArticleId = await parentArticleIdOf(db, result.placement)
+    const row = toFlattenRow(
+      { ...result.article, draftRevision: result.draftRevision },
+      { ...result.placement, publishedRevision: null },
+      { parentArticleId }
+    )
+    return await flattenForList(db, ctx.organizationId, row)
   } catch (error) {
     return handleError(error, ctx.organizationId, 'Error creating article', {
       input,

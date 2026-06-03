@@ -1352,6 +1352,20 @@
       "when": 1780422309284,
       "tag": "0192_add_agent_kind",
       "breakpoints": true
+    },
+    {
+      "idx": 194,
+      "version": "7",
+      "when": 1780448829519,
+      "tag": "0194_article_placement",
+      "breakpoints": true
+    },
+    {
+      "idx": 195,
+      "version": "7",
+      "when": 1780452518180,
+      "tag": "0195_document_kb_article_id_idx",
+      "breakpoints": true
     }
   ]
 }

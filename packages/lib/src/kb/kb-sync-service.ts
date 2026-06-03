@@ -46,11 +46,7 @@ export class KBSyncService {
         eq(schema.Article.id, articleId),
         eq(schema.Article.organizationId, this.organizationId)
       ),
-      with: {
-        publishedRevision: true,
-        draftRevision: true,
-        knowledgeBase: true,
-      },
+      with: { draftRevision: true },
     })
 
     if (!article) {
@@ -58,15 +54,29 @@ export class KBSyncService {
       return
     }
 
-    if (!article.isPublished) {
-      logger.info('syncArticle: article is not published, skipping', { articleId })
-      return
-    }
-
     // Link articles have no body to embed — they're external pointers, not
     // indexable content. Skip the dataset write.
     if (article.articleKind === 'link') {
       logger.info('syncArticle: link kind has no body, skipping', { articleId })
+      return
+    }
+
+    // Content embeds once into the home KB's managed Dataset. Publish state is
+    // per-placement; index when the home placement is published (behavior
+    // parity with the pre-placement single-home model).
+    const homePlacement = await this.db.query.ArticlePlacement.findFirst({
+      where: and(
+        eq(schema.ArticlePlacement.articleId, articleId),
+        eq(schema.ArticlePlacement.knowledgeBaseId, article.homeKnowledgeBaseId)
+      ),
+      with: { publishedRevision: true },
+    })
+    if (!homePlacement) {
+      logger.warn('syncArticle: article has no home placement', { articleId })
+      return
+    }
+    if (!homePlacement.isPublished) {
+      logger.info('syncArticle: home placement not published, skipping', { articleId })
       return
     }
 
@@ -84,15 +94,17 @@ export class KBSyncService {
       return
     }
 
-    const revision = article.publishedRevision ?? article.draftRevision
+    const revision = homePlacement.publishedRevision ?? article.draftRevision
     if (!revision) {
       logger.warn('syncArticle: article has no revision', { articleId })
       return
     }
 
-    const kb = article.knowledgeBase
+    const kb = await this.db.query.KnowledgeBase.findFirst({
+      where: eq(schema.KnowledgeBase.id, article.homeKnowledgeBaseId),
+    })
     if (!kb) {
-      logger.warn('syncArticle: article has no KB', { articleId })
+      logger.warn('syncArticle: article has no home KB', { articleId })
       return
     }
 
@@ -122,13 +134,13 @@ export class KBSyncService {
     }
 
     const checksum = createHash('sha256').update(`${articleId}:${md}`, 'utf8').digest('hex')
-    const slugPath = (await kbService.getArticleSlugPath(articleId)) ?? article.slug
+    const slugPath = (await kbService.getArticleSlugPath(articleId)) ?? homePlacement.slug
 
     const baseMetadata = {
       source: 'kb' as const,
       articleId,
       kbId: kb.id,
-      articleSlug: article.slug,
+      articleSlug: homePlacement.slug,
       articleSlugPath: slugPath,
       kbSlug: kb.slug,
       links: [] as Array<{ recordId: string; recordType?: string }>,
@@ -150,7 +162,7 @@ export class KBSyncService {
       : await this.insertDocument({
           datasetId,
           title: revision.title,
-          filename: `${article.slug}.md`,
+          filename: `${homePlacement.slug}.md`,
           size: Buffer.byteLength(md, 'utf8'),
           checksum,
           metadata: documentMetadata,
@@ -202,58 +214,73 @@ export class KBSyncService {
         eq(schema.Article.id, articleId),
         eq(schema.Article.organizationId, this.organizationId)
       ),
-      with: {
-        publishedRevision: true,
-        draftRevision: true,
-        knowledgeBase: true,
-      },
+      with: { draftRevision: true },
     })
-    if (!article || !article.knowledgeBase) return
+    if (!article) return
+
+    // Placement and KB both key only off article.homeKnowledgeBaseId — fetch
+    // them concurrently.
+    const [homePlacement, kb] = await Promise.all([
+      this.db.query.ArticlePlacement.findFirst({
+        where: and(
+          eq(schema.ArticlePlacement.articleId, articleId),
+          eq(schema.ArticlePlacement.knowledgeBaseId, article.homeKnowledgeBaseId)
+        ),
+        with: { publishedRevision: true },
+      }),
+      this.db.query.KnowledgeBase.findFirst({
+        where: eq(schema.KnowledgeBase.id, article.homeKnowledgeBaseId),
+      }),
+    ])
+    if (!homePlacement) return
+    if (!kb) return
 
     const doc = await this.findArticleDocumentByArticleId(articleId)
     if (!doc) return
 
-    const revision = article.publishedRevision ?? article.draftRevision
+    const revision = homePlacement.publishedRevision ?? article.draftRevision
     const title = revision?.title ?? doc.title
     const kbService = new KBService(this.db, this.organizationId)
-    const slugPath = (await kbService.getArticleSlugPath(articleId)) ?? article.slug
+    const slugPath = (await kbService.getArticleSlugPath(articleId)) ?? homePlacement.slug
 
     const prev = (doc.metadata as any) ?? {}
     const prevKb = prev.kb ?? {}
     const newKbMeta = {
       ...prevKb,
       title,
-      articleSlug: article.slug,
+      articleSlug: homePlacement.slug,
       articleSlugPath: slugPath,
-      kbSlug: article.knowledgeBase.slug,
+      kbSlug: kb.slug,
     }
 
-    await this.db
-      .update(schema.Document)
-      .set({
-        title,
-        filename: `${article.slug}.md`,
-        metadata: { ...prev, kb: newKbMeta },
-        updatedAt: new Date(),
-      })
-      .where(eq(schema.Document.id, doc.id))
-
-    // Segment metadata mirrors the Document's kb metadata so search results
-    // can deep-link without re-resolving the article.
-    await this.db
-      .update(schema.DocumentSegment)
-      .set({
-        metadata: sql`
+    // Document and its segments are independent rows — update both concurrently.
+    // Segment metadata mirrors the Document's kb metadata so search results can
+    // deep-link without re-resolving the article.
+    await Promise.all([
+      this.db
+        .update(schema.Document)
+        .set({
+          title,
+          filename: `${homePlacement.slug}.md`,
+          metadata: { ...prev, kb: newKbMeta },
+          updatedAt: new Date(),
+        })
+        .where(eq(schema.Document.id, doc.id)),
+      this.db
+        .update(schema.DocumentSegment)
+        .set({
+          metadata: sql`
           COALESCE(${schema.DocumentSegment.metadata}, '{}'::jsonb) ||
           jsonb_build_object(
-            'articleSlug', ${article.slug}::text,
+            'articleSlug', ${homePlacement.slug}::text,
             'articleSlugPath', ${slugPath}::text,
-            'kbSlug', ${article.knowledgeBase.slug}::text
+            'kbSlug', ${kb.slug}::text
           )
         `,
-        updatedAt: new Date(),
-      })
-      .where(eq(schema.DocumentSegment.documentId, doc.id))
+          updatedAt: new Date(),
+        })
+        .where(eq(schema.DocumentSegment.documentId, doc.id)),
+    ])
   }
 
   // ─── internals ────────────────────────────────────────────────────────

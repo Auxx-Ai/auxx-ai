@@ -17,18 +17,27 @@ export async function discardArticleDraft(ctx: KBContext, id: string): Promise<A
   try {
     const article = await db.query.Article.findFirst({
       where: and(eq(schema.Article.id, id), eq(schema.Article.organizationId, ctx.organizationId)),
-      with: { publishedRevision: true },
+      columns: { draftRevisionId: true, homeKnowledgeBaseId: true },
     })
     if (!article) throw createNotFoundError(`Article with ID '${id}' not found`)
-    if (!article.publishedRevision || !article.draftRevisionId) {
+    // Discard reverts the canonical draft to the home placement's published
+    // baseline (publish is per-placement; the home is the canonical one).
+    const homePlacement = await db.query.ArticlePlacement.findFirst({
+      where: and(
+        eq(schema.ArticlePlacement.articleId, id),
+        eq(schema.ArticlePlacement.knowledgeBaseId, article.homeKnowledgeBaseId)
+      ),
+      with: { publishedRevision: true },
+    })
+    if (!homePlacement?.publishedRevision || !article.draftRevisionId) {
       // Nothing to discard back to; just clear the dirty flag for tidiness.
       await db
-        .update(schema.Article)
+        .update(schema.ArticlePlacement)
         .set({ hasUnpublishedChanges: false, updatedAt: new Date() })
-        .where(eq(schema.Article.id, id))
+        .where(eq(schema.ArticlePlacement.articleId, id))
       return await reloadFlat(db, ctx.organizationId, id)
     }
-    const pub = article.publishedRevision
+    const pub = homePlacement.publishedRevision
     await db.transaction(async (tx) => {
       await tx
         .update(schema.ArticleRevision)
@@ -45,9 +54,9 @@ export async function discardArticleDraft(ctx: KBContext, id: string): Promise<A
         })
         .where(eq(schema.ArticleRevision.id, article.draftRevisionId!))
       await tx
-        .update(schema.Article)
+        .update(schema.ArticlePlacement)
         .set({ hasUnpublishedChanges: false, updatedAt: new Date() })
-        .where(eq(schema.Article.id, id))
+        .where(eq(schema.ArticlePlacement.articleId, id))
       await syncArticleDenormalizedFields(id, tx)
     })
     void clearKopilotSnapshot(id)

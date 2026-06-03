@@ -1,7 +1,7 @@
 // apps/api/src/routes/kb/tree.ts
 
 import { database, schema } from '@auxx/database'
-import { and, asc, eq } from 'drizzle-orm'
+import { and, asc, eq, isNull } from 'drizzle-orm'
 import { Hono } from 'hono'
 import { applyChatCorsHeaders } from '../chat/lib'
 import { forbidden, loadWidgetKnowledgeBase, notFound } from './lib'
@@ -31,22 +31,29 @@ treeRoute.get('/', async (c) => {
 
   const rows = await database
     .select({
-      id: schema.Article.id,
-      parentId: schema.Article.parentId,
+      id: schema.ArticlePlacement.articleId,
+      placementId: schema.ArticlePlacement.id,
+      parentPlacementId: schema.ArticlePlacement.parentId,
       title: schema.Article.title,
       emoji: schema.Article.emoji,
       articleKind: schema.Article.articleKind,
-      sortOrder: schema.Article.sortOrder,
+      sortOrder: schema.ArticlePlacement.sortOrder,
     })
-    .from(schema.Article)
+    .from(schema.ArticlePlacement)
+    .innerJoin(schema.Article, eq(schema.Article.id, schema.ArticlePlacement.articleId))
     .where(
       and(
-        eq(schema.Article.knowledgeBaseId, kb.knowledgeBaseId),
-        eq(schema.Article.organizationId, kb.organizationId),
-        eq(schema.Article.isPublished, true)
+        eq(schema.ArticlePlacement.knowledgeBaseId, kb.knowledgeBaseId),
+        eq(schema.ArticlePlacement.organizationId, kb.organizationId),
+        eq(schema.ArticlePlacement.isPublished, true),
+        isNull(schema.Article.archivedAt)
       )
     )
-    .orderBy(asc(schema.Article.parentId), asc(schema.Article.sortOrder))
+    .orderBy(asc(schema.ArticlePlacement.parentId), asc(schema.ArticlePlacement.sortOrder))
+
+  // Tree nodes are keyed by article id (so `/api/kb/articles/:id` resolves);
+  // remap parentId from placement-id space to article-id space.
+  const toArticleId = new Map(rows.map((r) => [r.placementId, r.id]))
 
   c.header('Cache-Control', 'public, max-age=60')
   return c.json({
@@ -59,7 +66,7 @@ treeRoute.get('/', async (c) => {
       },
       nodes: rows.map((r) => ({
         id: r.id,
-        parentId: r.parentId,
+        parentId: r.parentPlacementId ? (toArticleId.get(r.parentPlacementId) ?? null) : null,
         title: r.title ?? 'Untitled',
         emoji: r.emoji ?? undefined,
         articleKind: r.articleKind,
