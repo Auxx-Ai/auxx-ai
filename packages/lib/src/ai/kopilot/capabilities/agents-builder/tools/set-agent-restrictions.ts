@@ -38,6 +38,8 @@ export function createSetAgentRestrictionsTool(getDeps: GetToolDeps): AgentToolD
   return {
     name: 'set_agent_restrictions',
     displayName: 'Set agent restrictions',
+    // Builder-only meta-tool. See plans/chat/v6/chat-tool-availability.md.
+    surfaces: ['builder'],
     description: `Lock individual tool arguments to a fixed value or a visitor/thread var. FULL REPLACE — send every restriction you want to keep; an empty array clears them all.
 
 Each row:

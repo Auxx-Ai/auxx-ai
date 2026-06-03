@@ -22,6 +22,9 @@ export function createSetAgentPromptTool(getDeps: GetToolDeps): AgentToolDefinit
   return {
     name: 'set_agent_prompt',
     displayName: 'Set agent prompt',
+    // Builder-only meta-tool — configures another agent. Never offered on a
+    // chat/internal/email agent. See plans/chat/v6/chat-tool-availability.md.
+    surfaces: ['builder'],
     description: `Replace the agent's persona prompt with a markdown document.
 
 The persona prompt is the agent's instructions: tone, role, constraints,

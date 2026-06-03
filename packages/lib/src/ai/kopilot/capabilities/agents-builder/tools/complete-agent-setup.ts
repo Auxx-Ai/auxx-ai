@@ -15,6 +15,8 @@ export function createCompleteAgentSetupTool(getDeps: GetToolDeps): AgentToolDef
   return {
     name: 'complete_agent_setup',
     displayName: 'Complete agent setup',
+    // Builder-only meta-tool. See plans/chat/v6/chat-tool-availability.md.
+    surfaces: ['builder'],
     description: `Mark this agent's chat-driven setup as complete.
 
 Call this as the LAST step of the three-phase build, after:

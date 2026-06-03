@@ -23,6 +23,8 @@ export function createSetAgentResourceScopeTool(getDeps: GetToolDeps): AgentTool
   return {
     name: 'set_agent_resource_scope',
     displayName: 'Set agent resource scope',
+    // Builder-only meta-tool. See plans/chat/v6/chat-tool-availability.md.
+    surfaces: ['builder'],
     description: `Update the agent's resource-scope rows (which records / entity types it can read).
 
 Pass the FULL desired set of scopes. Rows in the DB that aren't in this list

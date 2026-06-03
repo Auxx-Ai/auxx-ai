@@ -3,7 +3,7 @@
 
 import { TreeRow } from '@auxx/ui/components/tree-row'
 import { pluralize } from '@auxx/utils/strings'
-import { Lock } from 'lucide-react'
+import { AlertTriangle, Lock } from 'lucide-react'
 import { AppIcon } from '~/components/apps/ui/app-icon'
 import { Tooltip } from '~/components/global/tooltip'
 import { RemoveButton } from './remove-button'
@@ -19,6 +19,12 @@ export interface ToolsetRowProps {
   source: 'manual' | 'mention' | 'auto_default'
   /** Read-only restriction count for this toolset; ≥1 shows a lock badge. */
   restrictionCount?: number
+  /**
+   * Chat/email warning — this toolset has ≥1 tool not verified safe for an
+   * untrusted visitor (`externalSafe` absent). Shows an `AlertTriangle`. See
+   * plans/chat/v6/chat-tool-availability.md.
+   */
+  warn?: boolean
   depth?: number
   onRemove?: () => void
 }
@@ -37,6 +43,7 @@ export function ToolsetRow({
   toolCount,
   source,
   restrictionCount = 0,
+  warn = false,
   depth = 0,
   onRemove,
 }: ToolsetRowProps) {
@@ -54,6 +61,13 @@ export function ToolsetRow({
       secondary={
         <span className='inline-flex items-center gap-2'>
           <span>{`${toolCount} ${toolCount === 1 ? 'tool' : 'tools'}`}</span>
+          {warn ? (
+            <Tooltip content='Not verified safe for visitor chat — scope its arguments under Restrictions.'>
+              <span className='inline-flex'>
+                <AlertTriangle className='size-3 text-amber-500' />
+              </span>
+            </Tooltip>
+          ) : null}
           {restrictionCount > 0 ? (
             <Tooltip
               content={`${restrictionCount} ${pluralize(restrictionCount, 'restricted argument')}`}>

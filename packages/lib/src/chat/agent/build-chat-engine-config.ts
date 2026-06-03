@@ -2,6 +2,7 @@
 
 import { type Database, database } from '@auxx/database'
 import { filterToolsByToolsets, resolveAgentConfig } from '../../agents'
+import { ALL_SURFACES } from '../../agents/client'
 import { buildApplyToolRestrictions } from '../../agents/restrictions/apply'
 import { projectToolsSchemas } from '../../agents/restrictions/project-schema'
 import { buildResolveVar } from '../../agents/restrictions/var-registry'
@@ -51,10 +52,12 @@ export interface BuildChatEngineConfigInput {
  * kopilot-shaped config (`process-agent-job.ts`) with three chat-specific
  * differences (plans/chat/v5 phase-3b §3):
  *
- *   1. **Chat-safe tool gate** — the agent's enabled toolsets are further
- *      filtered to `chatSafe` tools only. Until phase 4 ships the first
- *      chat-safe tool this yields an empty toolset (a persona-only responder),
- *      which is the intended phase-3b behavior.
+ *   1. **Surface gate** — the agent's enabled toolsets are further filtered to
+ *      tools offered on the `chat` surface (`surfaces` absent ⇒ all surfaces,
+ *      so this only drops tools explicitly narrowed away from chat). The real
+ *      "is it available" gate is the admin enabling the toolset; tools that
+ *      aren't `externalSafe` run but are flagged in the UI. See
+ *      plans/chat/v6/chat-tool-availability.md.
  *   2. **`approvalMode: 'auto'`** — no admin is watching a visitor turn to
  *      approve tool calls; the chat-safe + row-level scope gate *is* the
  *      approval. Never `'pause'` (that would hang the turn forever).
@@ -118,10 +121,12 @@ export async function buildChatEngineConfig(
     })
   )
 
-  // Agent's enabled toolsets ∩ chat-safe tools. The chat-safe gate happens
-  // before the engine ever sees a non-safe tool.
+  // Agent's enabled toolsets ∩ tools offered on the `chat` surface. With the
+  // default-all `surfaces`, this only drops tools explicitly narrowed off chat
+  // (e.g. builder meta-tools — which aren't registered here anyway). `surfaces`
+  // is not the security boundary; the admin enabling the toolset is.
   const enabledTools = filterToolsByToolsets(registry.getTools('__none__'), agentConfig)
-  const chatSafeTools = enabledTools.filter((t) => t.chatSafe === true)
+  const chatTools = enabledTools.filter((t) => (t.surfaces ?? ALL_SURFACES).includes('chat'))
 
   // Escalation (`chat_handoff`) is always available to a chat agent — you never
   // want one unable to hand off to a human — so it's appended unconditionally
@@ -131,7 +136,7 @@ export async function buildChatEngineConfig(
   // visible, drop from `required`, and get an annotated description. Pure
   // comprehension hint; the runtime clamp below is the actual guarantee.
   const tools = projectToolsSchemas(
-    [...chatSafeTools, createChatHandoffTool()],
+    [...chatTools, createChatHandoffTool()],
     agentConfig.toolRestrictions
   )
 

@@ -6,7 +6,12 @@ import path from 'path'
 import { fileURLToPath, pathToFileURL } from 'url'
 import { HIDDEN_AUXX_DIRECTORY } from '../constants/hidden-auxx-directory.js'
 import { complete, errored, type Result } from '../errors.js'
-import type { ToolActionSurface, ToolAgentSurface, ToolConfig } from '../root/tools/types.js'
+import type {
+  AgentSurface,
+  ToolActionSurface,
+  ToolAgentSurface,
+  ToolConfig,
+} from '../root/tools/types.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -46,11 +51,17 @@ export interface CatalogAgentTool extends CatalogTool {
   toolsetSlug: string
   idempotent?: boolean
   /**
-   * Soft hint surfaced to the chat-kind agent catalog (builder recommendations
-   * + picker declutter). Carried verbatim from `tool.agent.chatSafe`. Absent ⇒
-   * not chat-safe. NOT a runtime gate. See plans/chat/v6 phase-3.
+   * Surfaces this tool is offered on, carried verbatim from
+   * `tool.agent.surfaces`. Absent ⇒ all surfaces. NOT a runtime gate. See
+   * plans/chat/v6/chat-tool-availability.md.
    */
-  chatSafe?: boolean
+  surfaces?: AgentSurface[]
+  /**
+   * Advisory chat/email-warning flag, carried verbatim from
+   * `tool.agent.externalSafe`. Absent ⇒ warn. NOT a gate. See
+   * plans/chat/v6/chat-tool-availability.md.
+   */
+  externalSafe?: boolean
   /**
    * Identity/record-scope args the engine fail-closes on in a visitor turn.
    * Carried verbatim from `tool.agent.identityScopedInputs`. See plans/chat/v6
@@ -385,7 +396,8 @@ export async function compileAndExtractCatalog(): Promise<
         agentDescription: tool.agent.description ?? tool.description,
         toolsetSlug,
         idempotent: tool.agent.idempotent ?? tool.config?.idempotent,
-        chatSafe: tool.agent.chatSafe,
+        surfaces: tool.agent.surfaces,
+        externalSafe: tool.agent.externalSafe,
         identityScopedInputs: tool.agent.identityScopedInputs,
       })
     }

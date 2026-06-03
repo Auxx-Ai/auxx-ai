@@ -2,11 +2,12 @@
 
 import { getOrgCache } from '../cache'
 import {
+  type AgentSurface,
   buildCatalogTreeFromInstallations,
   type CatalogContainerNode,
   type CatalogNode,
   type CatalogToolsetNode,
-  filterCatalogToChatSafe,
+  filterCatalogToSurface,
   type ToolCatalogEntry,
 } from './client'
 
@@ -79,17 +80,19 @@ export async function getOrgToolsetCatalog(organizationId: string): Promise<Tool
 }
 
 /**
- * Chat-safe flat toolset catalog — the same projection as
- * `getOrgToolsetCatalog`, clamped to `chatSafe` tools only (toolsets left with
- * zero safe tools are dropped). Used by the chat-kind agent builder so its
- * persona prompt advertises — and `set_agent_toolsets` validates against —
- * exactly the toolsets that survive `buildChatEngineConfig`'s runtime chat-safe
- * filter. See plans/chat/v5 phase-2b.
+ * Flat toolset catalog clamped to one surface — the same projection as
+ * `getOrgToolsetCatalog`, dropping tools not offered on `surface` (and toolsets
+ * left empty). Used by the agent builder so a chat agent's persona advertises —
+ * and `set_agent_toolsets` validates against — exactly the toolsets that survive
+ * `buildChatEngineConfig`'s runtime surface filter. With default-all `surfaces`,
+ * this only drops surface-narrowed tools (e.g. builder meta-tools). See
+ * plans/chat/v6/chat-tool-availability.md.
  */
-export async function getOrgChatSafeToolsetCatalog(
-  organizationId: string
+export async function getOrgToolsetCatalogForSurface(
+  organizationId: string,
+  surface: AgentSurface
 ): Promise<ToolsetCatalogEntry[]> {
-  const tree = filterCatalogToChatSafe(await getOrgCatalogTree(organizationId))
+  const tree = filterCatalogToSurface(await getOrgCatalogTree(organizationId), surface)
   return flattenToolsets(tree)
 }
 

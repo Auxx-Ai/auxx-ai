@@ -32,6 +32,9 @@ export interface CatalogTool {
   refs: Array<{ path: string[]; kind: string }>
 }
 
+/** Where an agent tool may run — mirrors `@auxx/lib` `AgentSurface`. */
+export type AgentSurface = 'internal' | 'chat' | 'email' | 'builder'
+
 export interface CatalogAgentTool extends CatalogTool {
   /** LLM-facing name (snake_case). May differ from CatalogTool.name. */
   agentName: string
@@ -40,13 +43,18 @@ export interface CatalogAgentTool extends CatalogTool {
   toolsetSlug: string
   idempotent?: boolean
   /**
-   * Soft hint surfaced to the chat-kind agent catalog (builder recommendations
-   * + picker declutter), carried verbatim from the SDK's `tool.agent.chatSafe`.
-   * Absent ⇒ not chat-safe. NOT a runtime gate. The installed-apps cache
-   * forwards it onto `CachedAgentTool.chatSafe` via spread. See plans/chat/v6
-   * phase-3.
+   * Surfaces this tool is offered on, carried verbatim from the SDK's
+   * `tool.agent.surfaces`. Absent ⇒ all surfaces. NOT a runtime gate. The
+   * installed-apps cache forwards it onto `CachedAgentTool` via spread. See
+   * plans/chat/v6/chat-tool-availability.md.
    */
-  chatSafe?: boolean
+  surfaces?: AgentSurface[]
+  /**
+   * Advisory chat/email-warning flag, carried verbatim from the SDK's
+   * `tool.agent.externalSafe`. Absent ⇒ warn. NOT a gate. See
+   * plans/chat/v6/chat-tool-availability.md.
+   */
+  externalSafe?: boolean
   /**
    * Identity/record-scope args the engine fail-closes on in a visitor turn —
    * carried verbatim from the SDK's `tool.agent.identityScopedInputs`. The

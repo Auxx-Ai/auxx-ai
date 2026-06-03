@@ -11,6 +11,9 @@ export function createListEntitiesTool(_getDeps: GetToolDeps): AgentToolDefiniti
     displayName: 'List entity types',
     toolsetSlug: 'auxx:entities:search',
     idempotent: true,
+    // Schema only — entity TYPES, no record data — so safe for an external
+    // caller. See plans/chat/v6/chat-tool-availability.md.
+    externalSafe: true,
     outputDigestSchema: ListEntitiesDigest,
     buildDigest: (output) => {
       const out = (output ?? {}) as { entities?: Array<{ apiSlug?: string; label?: string }> }

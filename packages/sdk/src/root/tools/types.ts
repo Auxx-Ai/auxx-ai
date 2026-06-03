@@ -97,6 +97,14 @@ export interface ToolConfig {
 }
 
 /**
+ * Where an agent tool may run — mirrors the host's `AgentSurface`. An app tool
+ * is offered on every surface by default; narrow it only when it makes no sense
+ * in a context. NOT a security boundary. See
+ * plans/chat/v6/chat-tool-availability.md.
+ */
+export type AgentSurface = 'internal' | 'chat' | 'email' | 'builder'
+
+/**
  * Agent-surface projection of a tool — opt in by setting `tool.agent = {…}`.
  * Presence of this key exposes the tool to the LLM as a callable function.
  */
@@ -112,14 +120,20 @@ export interface ToolAgentSurface {
   /** LLM hint for read-only tools. */
   readonly idempotent?: boolean
   /**
-   * Soft hint: is this tool appropriate to *recommend* for a visitor-facing
-   * chat-kind agent? Default (absent) = false. NOT a security gate in v6 — the
-   * admin explicitly adding a tool is the coarse gate. Drives builder-Kopilot
-   * recommendations and picker decluttering only. Read-only customer-scoped
-   * reads set `true`; mutating/admin tools set `false`. See plans/chat/v6
-   * phase-3.
+   * Surfaces this tool is offered on (allow-list). Absent ⇒ every surface.
+   * Narrow it only when the tool makes no sense in a context. NOT a security
+   * gate — the admin adding the tool to an agent is. See
+   * plans/chat/v6/chat-tool-availability.md.
    */
-  readonly chatSafe?: boolean
+  readonly surfaces?: AgentSurface[]
+  /**
+   * Advisory: verified safe for an untrusted, externally-identified caller
+   * (anonymous chat visitor / email sender). Absent ⇒ the chat/email Tools UI
+   * flags it with a warning. Identity-scoped reads (see `identityScopedInputs`)
+   * are the typical opt-in. Replaces `chatSafe`; not a gate. See
+   * plans/chat/v6/chat-tool-availability.md.
+   */
+  readonly externalSafe?: boolean
   /**
    * Input args that carry caller identity / record scope. In a visitor (chat)
    * invocation each MUST be bound to a restriction or the engine refuses the

@@ -198,6 +198,12 @@ export async function createAppCapabilities(deps: {
         // plans/kopilot/agents/README.md §2 decision #12.
         requiresApproval: false,
         toolsetSlug: tool.toolsetSlug,
+        // Surface allow-list + chat/email warning flag (carried from the cached
+        // catalog) so the runtime surface filter honours an app that narrows a
+        // tool off chat. Absent ⇒ all surfaces. See
+        // plans/chat/v6/chat-tool-availability.md.
+        surfaces: tool.surfaces,
+        externalSafe: tool.externalSafe,
         // Author-floor: identity/record-scope args the engine fail-closes on in
         // a visitor turn (carried from the cached catalog). See plans/chat/v6
         // phase-3.

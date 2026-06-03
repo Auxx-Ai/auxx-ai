@@ -8,19 +8,35 @@
 
 export type AgentScopeMode = 'include_descendants' | 'include_one' | 'exclude'
 
+/**
+ * Where a tool may run — mirrors `AgentKind` (`internal | chat`) plus the
+ * agent-builder Kopilot and the future email agent. A tool's `surfaces` is an
+ * allow-list; absent ⇒ {@link ALL_SURFACES} (offered everywhere). NOT a
+ * security boundary — adding a toolset to an agent (admin act) + the
+ * restriction engine are. See plans/chat/v6/chat-tool-availability.md.
+ */
+export type AgentSurface = 'internal' | 'chat' | 'email' | 'builder'
+
+/** Default `surfaces` when a tool declares none — offered on every surface. */
+export const ALL_SURFACES: readonly AgentSurface[] = ['internal', 'chat', 'email', 'builder']
+
 export interface ToolCatalogEntry {
   name: string
   /** Short, human-friendly label for chips, pickers, and audit UI. */
   displayName: string
   description: string
   /**
-   * Opt-in: this tool is safe to register on a chat-kind (visitor-facing)
-   * agent. Mirrors `AgentToolDefinition.chatSafe`. Absent / false ⇒ the tool
-   * is hidden from the chat-kind toolset catalog. Phase 4 is the first to
-   * populate this through the projection; until then the chat catalog is
-   * empty. See plans/chat/v5.
+   * Surfaces this tool is offered on. Absent ⇒ {@link ALL_SURFACES}. Mirrors
+   * `AgentToolDefinition.surfaces`; drives `filterCatalogToSurface`. Not a gate.
    */
-  chatSafe?: boolean
+  surfaces?: AgentSurface[]
+  /**
+   * Advisory: verified safe for an untrusted, externally-identified caller
+   * (anonymous/just-verified chat visitor, email sender). Absent ⇒ the
+   * chat/email Tools UI flags the tool with a warning. Replaces `chatSafe`.
+   * Not a gate. See plans/chat/v6/chat-tool-availability.md.
+   */
+  externalSafe?: boolean
 }
 
 /**
@@ -132,18 +148,17 @@ export function flattenCatalogToToolsets(roots: CatalogNode[]): FlatToolsetCatal
 }
 
 /**
- * Prune a catalog tree to only the tools that are `chatSafe`, dropping any
- * toolset left with zero tools and any container left with no children. Used
- * by the agent detail UI to clamp a chat-kind agent's toolset catalog to the
- * visitor-safe surface. Pure — returns fresh nodes, never mutates the input.
- *
- * Until the first `chatSafe` tool ships (phase 4) this returns `[]` for every
- * input, which is the intended phase-2 behavior. See plans/chat/v5 phase-2 §5.
+ * Prune a catalog tree to the tools offered on `surface`, dropping any toolset
+ * left with zero tools and any container left with no children. A tool with no
+ * `surfaces` defaults to {@link ALL_SURFACES} (offered everywhere), so with
+ * today's tools this only drops builder-only tools from non-builder surfaces.
+ * Pure — returns fresh nodes, never mutates the input. See
+ * plans/chat/v6/chat-tool-availability.md.
  */
-export function filterCatalogToChatSafe(roots: CatalogNode[]): CatalogNode[] {
+export function filterCatalogToSurface(roots: CatalogNode[], surface: AgentSurface): CatalogNode[] {
   const pruneNode = (node: CatalogNode): CatalogNode | null => {
     if (node.kind === 'toolset') {
-      const tools = node.tools.filter((t) => t.chatSafe === true)
+      const tools = node.tools.filter((t) => (t.surfaces ?? ALL_SURFACES).includes(surface))
       return tools.length > 0 ? { ...node, tools } : null
     }
     const children = node.children.map(pruneNode).filter((n): n is CatalogNode => n !== null)
@@ -184,8 +199,10 @@ export interface CachedInstalledAppLike {
     name: string
     description: string
     toolsetSlug: string
-    /** Mirrors `AgentToolDefinition.chatSafe` — surfaces the tool in the chat-kind catalog. */
-    chatSafe?: boolean
+    /** Mirrors `AgentToolDefinition.surfaces` — where the tool is offered. Absent ⇒ all. */
+    surfaces?: AgentSurface[]
+    /** Mirrors `AgentToolDefinition.externalSafe` — drives the chat/email warning. */
+    externalSafe?: boolean
     /**
      * Identity/record-scope args the engine fail-closes on in a visitor turn.
      * See plans/chat/v6 phase-3.
@@ -338,7 +355,8 @@ export function buildCatalogTreeFromInstallations(
         name: tool.id,
         displayName: tool.name,
         description: shortDescription(tool.description),
-        chatSafe: tool.chatSafe,
+        surfaces: tool.surfaces,
+        externalSafe: tool.externalSafe,
       })
       toolsBySlug.set(tool.toolsetSlug, arr)
     }

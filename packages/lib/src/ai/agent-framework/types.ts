@@ -2,6 +2,7 @@
 
 import type { Database } from '@auxx/database'
 import type { z } from 'zod'
+import type { AgentSurface } from '../../agents/client'
 import type { Message, ModelParameters, Tool, ToolCall, UsageMetrics } from '../clients/base/types'
 import type { ChatInvocationContext, ToolContext, WorkflowToolContext } from './tool-context'
 
@@ -296,13 +297,21 @@ export interface AgentToolDefinition {
    */
   toolsetSlug?: string
   /**
-   * Opt-in: tool is safe to register on a chat-kind agent (visitor-facing).
-   * Defaults to false. The chat-kind agent toolset catalog filters by this
-   * flag (`tools.filter(t => t.chatSafe)`), so a tool that doesn't set it is
-   * never exposed to an anonymous visitor. New tools must explicitly opt in.
-   * See plans/chat/v5 — phase 4 ships the first `chatSafe` tool (`kb.search`).
+   * Surfaces this tool is offered on (allow-list). Absent ⇒ every surface
+   * (the permissive default). Narrow it only when a tool makes no sense in a
+   * context — e.g. the agent-builder meta-tools set `['builder']`. NOT a
+   * security boundary: the admin adding a toolset to an agent + the restriction
+   * engine are. See plans/chat/v6/chat-tool-availability.md.
    */
-  chatSafe?: boolean
+  surfaces?: AgentSurface[]
+  /**
+   * Advisory: verified safe for an untrusted, externally-identified caller
+   * (anonymous/just-verified chat visitor, email sender) — either self-clamps
+   * on a visitor turn (`search_knowledge`) or is identity-scoped. Absent ⇒ the
+   * chat/email Tools UI flags it with a warning. Replaces `chatSafe`; not a
+   * gate. See plans/chat/v6/chat-tool-availability.md.
+   */
+  externalSafe?: boolean
   /**
    * Input args carrying caller identity / record scope. In a visitor (chat)
    * invocation each MUST be bound to a restriction or the engine refuses the

@@ -23,6 +23,8 @@ export function createUpdateAgentIdentityTool(getDeps: GetToolDeps): AgentToolDe
   return {
     name: 'update_agent_identity',
     displayName: 'Update agent identity',
+    // Builder-only meta-tool. See plans/chat/v6/chat-tool-availability.md.
+    surfaces: ['builder'],
     description: `Update the agent's identity — any subset of name, description, avatarSlug.
 
 Provide ONLY the fields you want to change; omitted fields are left alone. At

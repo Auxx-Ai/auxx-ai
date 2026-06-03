@@ -25,10 +25,12 @@ export function createSearchKnowledgeTool(getDeps: GetToolDeps): AgentToolDefini
     displayName: 'Search knowledge',
     toolsetSlug: 'auxx:knowledge',
     idempotent: true,
-    // Safe for visitor-facing chat agents. In chat context (`ctx.invocation`
-    // set) the search is clamped to PUBLIC knowledge bases and RAG datasets
-    // are excluded — see the execute clamp below. See plans/chat/v5 phase-4.
-    chatSafe: true,
+    // Verified safe for an untrusted external caller: in chat context
+    // (`ctx.invocation` set) the search self-clamps to PUBLIC knowledge bases
+    // and excludes RAG datasets — see the execute clamp below. Offered on all
+    // surfaces (default); `externalSafe` drops the chat/email warning. See
+    // plans/chat/v6/chat-tool-availability.md.
+    externalSafe: true,
     outputDigestSchema: ArticleSearchDigest,
     buildDigest: (output) => {
       const out = (output ?? {}) as {

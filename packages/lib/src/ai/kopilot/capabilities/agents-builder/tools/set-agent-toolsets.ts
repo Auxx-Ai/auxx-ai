@@ -2,8 +2,8 @@
 
 import { batchUpdateAgentToolsets } from '../../../../../agents/agent-toolset-service'
 import {
-  getOrgChatSafeToolsetCatalog,
   getOrgToolsetCatalog,
+  getOrgToolsetCatalogForSurface,
   type ToolsetCatalogEntry,
 } from '../../../../../agents/toolset-catalog'
 import { getCachedAgentById } from '../../../../../cache'
@@ -22,6 +22,8 @@ export function createSetAgentToolsetsTool(getDeps: GetToolDeps): AgentToolDefin
   return {
     name: 'set_agent_toolsets',
     displayName: 'Set agent toolsets',
+    // Builder-only meta-tool. See plans/chat/v6/chat-tool-availability.md.
+    surfaces: ['builder'],
     description: `Update the agent's toolset configuration.
 
 Each row patches the agent's record for one toolset slug:
@@ -78,15 +80,15 @@ to change; omitted slugs are left alone.`,
         return { success: false, output: null, error: 'toolsets array must have at least one row' }
       }
 
-      // Chat-kind agents validate against the chat-safe catalog only — the
-      // same surface their builder persona advertised and the only toolsets
-      // that survive `buildChatEngineConfig`'s runtime filter. A non-safe slug
-      // for a chat agent therefore errors here instead of being silently
-      // dropped at chat runtime. See plans/chat/v5 phase-2b.
+      // Chat-kind agents validate against the chat-surface catalog — the same
+      // toolsets their builder persona advertised and the only ones that survive
+      // `buildChatEngineConfig`'s runtime surface filter. A slug narrowed off
+      // chat therefore errors here instead of being silently dropped at runtime.
+      // See plans/chat/v6/chat-tool-availability.md.
       const agent = await getCachedAgentById(agentDeps.organizationId, agentRef.id)
       const catalog =
         agent?.kind === 'chat'
-          ? await getOrgChatSafeToolsetCatalog(agentDeps.organizationId)
+          ? await getOrgToolsetCatalogForSurface(agentDeps.organizationId, 'chat')
           : await getOrgToolsetCatalog(agentDeps.organizationId)
       const catalogBySlug = new Map<string, ToolsetCatalogEntry>(
         catalog.map((entry) => [entry.slug, entry])

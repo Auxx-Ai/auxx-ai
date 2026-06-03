@@ -23,7 +23,10 @@ export function createChatHandoffTool(): AgentToolDefinition {
     name: 'chat_handoff',
     displayName: 'Hand off to a teammate',
     toolsetSlug: 'auxx:chat',
-    chatSafe: true,
+    // The escalation path — only meaningful on a visitor chat turn, and safe for
+    // an anonymous visitor (it just flags the thread for a human).
+    surfaces: ['chat'],
+    externalSafe: true,
     description:
       'Hand the conversation to a human teammate. Call this when you cannot ' +
       'help, when the visitor explicitly asks for a human, or when an ' +

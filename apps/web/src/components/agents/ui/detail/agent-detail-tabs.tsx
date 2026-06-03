@@ -184,15 +184,7 @@ export function AgentDetailTabs({ agent, onAutosaveChange }: AgentDetailTabsProp
         </div>
 
         <div ref={assignRef('restrictions')}>
-          <Section
-            title='Restrictions'
-            icon={<ShieldCheck className='size-4' />}
-            className='[&>[data-slot=section]>[data-slot=section-content]]:-mx-3'
-            initialOpen
-            description='Pin or require tool arguments so this agent stays scoped — lock identity args for chat.'
-            collapsible={false}>
-            <RestrictionsSectionContent agent={agent} />
-          </Section>
+          <RestrictionsSection agent={agent} />
         </div>
 
         <div ref={assignRef('knowledge')}>
@@ -255,6 +247,45 @@ export function AgentDetailTabs({ agent, onAutosaveChange }: AgentDetailTabsProp
   )
 }
 
+/**
+ * Restrictions tab wrapper. Owns the add/edit dialog state so the "Add
+ * restriction" trigger can sit in `<Section actions>` alongside Tools and
+ * Triggers, while the dialog itself renders inside the section content.
+ */
+function RestrictionsSection({ agent }: { agent: AgentDetail }) {
+  const [dialogOpen, setDialogOpen] = useState(false)
+  const [editing, setEditing] = useState<{ registeredName: string; arg: string } | null>(null)
+  return (
+    <Section
+      title='Restrictions'
+      icon={<ShieldCheck className='size-4' />}
+      className='[&>[data-slot=section]>[data-slot=section-content]]:-mx-3'
+      initialOpen
+      description='Pin or require tool arguments so this agent stays scoped — lock identity args for chat.'
+      collapsible={false}
+      actions={
+        <Button
+          variant='ghost'
+          size='xs'
+          onClick={() => {
+            setEditing(null)
+            setDialogOpen(true)
+          }}>
+          <Plus />
+          Add restriction
+        </Button>
+      }>
+      <RestrictionsSectionContent
+        agent={agent}
+        dialogOpen={dialogOpen}
+        onDialogOpenChange={setDialogOpen}
+        editing={editing}
+        onEditingChange={setEditing}
+      />
+    </Section>
+  )
+}
+
 interface ToolsSectionProps {
   agent: AgentDetail
   onAutosaveChange?: (state: AutosaveState) => void
@@ -314,7 +345,7 @@ function ToolsSection({ agent, onAutosaveChange }: ToolsSectionProps) {
       <ToolSelectDialog
         installedToolsets={agent.toolsets}
         boundAppIds={boundAppIds}
-        chatSafeOnly={agent.kind === 'chat'}
+        surface={agent.kind === 'chat' ? 'chat' : undefined}
         onToggleToolset={toggleToolset}
         onToggleToolsets={toggleToolsets}
         open={dialogOpen}

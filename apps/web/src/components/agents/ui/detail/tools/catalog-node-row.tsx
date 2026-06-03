@@ -4,7 +4,7 @@
 import type { CatalogNode, CatalogToolsetNode } from '@auxx/lib/agents/client'
 import { TreeRow } from '@auxx/ui/components/tree-row'
 import { pluralize } from '@auxx/utils/strings'
-import { Lock, Plus, Settings } from 'lucide-react'
+import { AlertTriangle, Lock, Plus, Settings } from 'lucide-react'
 import { useBoundCredential } from '~/components/apps/hooks/use-bound-credential'
 import { AppIcon } from '~/components/apps/ui/app-icon'
 import { AppWithStatusIcon } from '~/components/apps/ui/app-with-status-icon'
@@ -59,6 +59,12 @@ interface CatalogNodeRowProps {
    * `AppWithStatusIcon`. See plans/kopilot/apps/agent-credentials.md §5.6.
    */
   boundCredIdByApp?: Record<string, string | undefined>
+  /**
+   * Flag toolsets containing tools not verified safe for an untrusted visitor
+   * (`externalSafe` absent). Set for chat-kind agents. See
+   * plans/chat/v6/chat-tool-availability.md.
+   */
+  warnNotExternalSafe?: boolean
 }
 
 /**
@@ -81,6 +87,7 @@ export function CatalogNodeRow({
   onAddToApp,
   onOpenAccountPicker,
   boundCredIdByApp,
+  warnNotExternalSafe,
 }: CatalogNodeRowProps) {
   const iconId = node.iconId ?? inheritedIconId
   const color = node.color ?? inheritedColor
@@ -97,6 +104,7 @@ export function CatalogNodeRow({
         toolCount={node.tools.length}
         source={state.source}
         restrictionCount={restrictionCountBySlug?.get(node.slug) ?? 0}
+        warn={Boolean(warnNotExternalSafe) && hasUnverifiedTool(node)}
         onRemove={onRemove ? () => onRemove(node) : undefined}
       />
     )
@@ -105,6 +113,7 @@ export function CatalogNodeRow({
   const isOpen = !collapsed.has(node.id)
   const stats = summarizeContainer(node, stateBySlug)
   const restrictionCount = countRestrictions(node, restrictionCountBySlug)
+  const containerWarn = Boolean(warnNotExternalSafe) && hasUnverifiedTool(node)
   const isApp = node.kind === 'app'
   const isInstalledApp = isApp && !node.isBuiltin
   // App container nodes carry the prefixed id `app:<appId>` so the tree can
@@ -131,6 +140,7 @@ export function CatalogNodeRow({
               {stats.enabled} {pluralize(stats.enabled, 'tool')}
             </span>
             {restrictionCount > 0 ? <RestrictionLockBadge count={restrictionCount} /> : null}
+            {containerWarn ? <ChatWarnBadge /> : null}
             <span className='text-muted-foreground'>·</span>
             <CredentialBadge
               credId={boundCredId}
@@ -143,6 +153,7 @@ export function CatalogNodeRow({
               {stats.enabled} {pluralize(stats.enabled, 'tool')}
             </span>
             {restrictionCount > 0 ? <RestrictionLockBadge count={restrictionCount} /> : null}
+            {containerWarn ? <ChatWarnBadge /> : null}
           </span>
         )
       }
@@ -174,9 +185,29 @@ export function CatalogNodeRow({
           onAddToApp={onAddToApp}
           onOpenAccountPicker={onOpenAccountPicker}
           boundCredIdByApp={boundCredIdByApp}
+          warnNotExternalSafe={warnNotExternalSafe}
         />
       ))}
     </TreeRow>
+  )
+}
+
+/** True when any toolset leaf under `node` has a tool that isn't `externalSafe`. */
+function hasUnverifiedTool(node: CatalogNode): boolean {
+  for (const leaf of collectLeaves(node)) {
+    if (leaf.tools.some((t) => t.externalSafe !== true)) return true
+  }
+  return false
+}
+
+/** Amber warning badge for toolsets not verified safe for visitor chat. */
+function ChatWarnBadge() {
+  return (
+    <Tooltip content='Not verified safe for visitor chat — scope its arguments under Restrictions.'>
+      <span className='inline-flex'>
+        <AlertTriangle className='size-3 text-amber-500' />
+      </span>
+    </Tooltip>
   )
 }
 
