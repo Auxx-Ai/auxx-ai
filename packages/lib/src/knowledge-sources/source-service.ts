@@ -3,20 +3,47 @@
 // subtree + its Documents while preserving any detached articles.
 
 import { type Database, schema } from '@auxx/database'
+import { generateId } from '@auxx/utils'
 import { and, eq, inArray } from 'drizzle-orm'
+import { DatasetService } from '../datasets/services/dataset-service'
 import { NotFoundError } from '../errors'
-import { enqueueKBSync } from '../kb/kb-sync-queue'
+import {
+  createKnowledgeBase,
+  ensureManagedDataset,
+} from '../kb/knowledge-base/create-knowledge-base'
+import { deleteKnowledgeBase } from '../kb/knowledge-base/delete-knowledge-base'
+import type { ScheduledTriggerConfig } from '../workflows/cron-pattern'
+import { removeSourceScheduler, syncSourceScheduler } from './source-scheduler'
 
 export type KnowledgeSourceRow = typeof schema.KnowledgeSource.$inferSelect
 
 export interface CreateSourceInput {
   name: string
   type: KnowledgeSourceRow['type']
-  targetKnowledgeBaseId: string
   surface?: 'publishable' | 'ai-only'
   config?: Record<string, unknown>
   syncBehavior?: 'manual' | 'scheduled' | 'webhook'
+  scheduleConfig?: ScheduledTriggerConfig | null
   createdById?: string | null
+}
+
+/**
+ * Resolve a non-null creator for the owned source-KB (KnowledgeBase.createdById is
+ * NOT NULL). Sources created via tRPC always carry the session user; the fallback
+ * covers headless callers (smoke test / future webhooks).
+ */
+async function resolveCreatorId(
+  db: Database,
+  organizationId: string,
+  createdById?: string | null
+): Promise<string> {
+  if (createdById) return createdById
+  const member = await db.query.OrganizationMember.findFirst({
+    where: eq(schema.OrganizationMember.organizationId, organizationId),
+    columns: { userId: true },
+  })
+  if (!member) throw new NotFoundError(`No members found for organization '${organizationId}'`)
+  return member.userId
 }
 
 async function loadSource(
@@ -39,6 +66,26 @@ export async function createSource(
   organizationId: string,
   input: CreateSourceInput
 ): Promise<KnowledgeSourceRow> {
+  const creatorId = await resolveCreatorId(db, organizationId, input.createdById)
+
+  // A source owns a hidden KB (kind='source'): its synced articles home + embed here,
+  // then link into user-facing KBs. INTERNAL + DRAFT so it can never leak to the public
+  // site; the `__source-` slug keeps it out of any human slug space.
+  const ownedKb = await createKnowledgeBase(
+    { db, organizationId },
+    {
+      name: input.name,
+      slug: `__source-${generateId()}`,
+      kind: 'source',
+      visibility: 'INTERNAL',
+      publishStatus: 'DRAFT',
+    },
+    creatorId
+  )
+  // Awaited (createKnowledgeBase fires this best-effort/async) so the first sync, which
+  // embeds immediately, always has a dataset to write into.
+  await ensureManagedDataset({ db, organizationId }, ownedKb, creatorId)
+
   const [row] = await db
     .insert(schema.KnowledgeSource)
     .values({
@@ -47,14 +94,16 @@ export async function createSource(
       name: input.name,
       surface: input.surface ?? 'publishable',
       config: input.config ?? {},
-      targetKnowledgeBaseId: input.targetKnowledgeBaseId,
+      ownedKnowledgeBaseId: ownedKb.id,
       syncBehavior: input.syncBehavior ?? 'manual',
+      scheduleConfig: input.scheduleConfig ?? null,
       status: 'pending',
       createdById: input.createdById ?? null,
       updatedAt: new Date(),
     })
     .returning()
   if (!row) throw new Error('Failed to create knowledge source')
+  await syncSourceScheduler(row)
   return row
 }
 
@@ -91,74 +140,96 @@ export async function updateSource(
     .where(eq(schema.KnowledgeSource.id, sourceId))
     .returning()
   if (!row) throw new Error('Failed to update knowledge source')
+  // Re-register/remove the scheduler to match the (possibly changed) cadence.
+  await syncSourceScheduler(row)
+  return row
+}
+
+/** Pause a source: stop scheduled fires without losing the configured cadence. */
+export async function pauseSource(
+  db: Database,
+  organizationId: string,
+  sourceId: string
+): Promise<KnowledgeSourceRow> {
+  await loadSource(db, organizationId, sourceId)
+  const [row] = await db
+    .update(schema.KnowledgeSource)
+    .set({ status: 'paused', updatedAt: new Date() })
+    .where(eq(schema.KnowledgeSource.id, sourceId))
+    .returning()
+  if (!row) throw new Error('Failed to pause knowledge source')
+  await removeSourceScheduler(sourceId)
+  return row
+}
+
+/** Resume a paused source: re-register its scheduler if one is configured. */
+export async function resumeSource(
+  db: Database,
+  organizationId: string,
+  sourceId: string
+): Promise<KnowledgeSourceRow> {
+  await loadSource(db, organizationId, sourceId)
+  const [row] = await db
+    .update(schema.KnowledgeSource)
+    .set({ status: 'live', updatedAt: new Date() })
+    .where(eq(schema.KnowledgeSource.id, sourceId))
+    .returning()
+  if (!row) throw new Error('Failed to resume knowledge source')
+  await syncSourceScheduler(row)
   return row
 }
 
 /**
- * Delete a source and its managed (publishable) content. Detached articles
- * (`managed=false`) survive: their placements are lifted to top-level first so the
- * managed-subtree cascade doesn't take them. Documents are dropped via kb-sync.
+ * Delete a source: removes its owned (hidden) KnowledgeBase and everything homed in it —
+ * managed **and** detached articles, their placements (including links into user KBs),
+ * and the owned dataset's embedding Documents. Deleting a source is total; "detach" only
+ * unlocks editing while the source still exists.
  */
 export async function deleteSource(
   db: Database,
   organizationId: string,
   sourceId: string
 ): Promise<{ success: boolean }> {
-  await loadSource(db, organizationId, sourceId)
+  const source = await loadSource(db, organizationId, sourceId)
 
-  const managed = await db.query.Article.findMany({
+  // Drop the scheduler before the row goes, so no fire can land mid-delete.
+  await removeSourceScheduler(sourceId)
+
+  const articles = await db.query.Article.findMany({
     where: and(
       eq(schema.Article.organizationId, organizationId),
-      eq(schema.Article.sourceId, sourceId),
-      eq(schema.Article.managed, true)
-    ),
-    columns: { id: true, homeKnowledgeBaseId: true },
-  })
-  const detached = await db.query.Article.findMany({
-    where: and(
-      eq(schema.Article.organizationId, organizationId),
-      eq(schema.Article.sourceId, sourceId),
-      eq(schema.Article.managed, false)
+      eq(schema.Article.sourceId, sourceId)
     ),
     columns: { id: true },
   })
-  const managedIds = managed.map((a) => a.id)
-  const detachedIds = detached.map((a) => a.id)
+  const articleIds = articles.map((a) => a.id)
 
   await db.transaction(async (tx) => {
-    // Keep detached articles: lift their placements out of the managed subtree so
-    // the parent-cascade delete below doesn't remove them.
-    if (detachedIds.length > 0) {
-      await tx
-        .update(schema.ArticlePlacement)
-        .set({ parentId: null, updatedAt: new Date() })
-        .where(inArray(schema.ArticlePlacement.articleId, detachedIds))
-    }
-    if (managedIds.length > 0) {
-      // Drop revision pointers first to clear the circular FK, then delete the
-      // articles (cascades placements + revisions).
+    if (articleIds.length > 0) {
+      // Clear the circular Article<->ArticleRevision FK before deleting the content; the
+      // delete then cascades every placement (home + links) and revision.
       await tx
         .update(schema.ArticlePlacement)
         .set({ publishedRevisionId: null })
-        .where(inArray(schema.ArticlePlacement.articleId, managedIds))
+        .where(inArray(schema.ArticlePlacement.articleId, articleIds))
       await tx
         .update(schema.Article)
         .set({ draftRevisionId: null })
-        .where(inArray(schema.Article.id, managedIds))
-      await tx.delete(schema.Article).where(inArray(schema.Article.id, managedIds))
+        .where(inArray(schema.Article.id, articleIds))
+      await tx.delete(schema.Article).where(inArray(schema.Article.id, articleIds))
     }
     await tx.delete(schema.KnowledgeSource).where(eq(schema.KnowledgeSource.id, sourceId))
   })
 
-  // Drop the managed articles' Documents from the dataset (outside the tx).
-  for (const article of managed) {
-    void enqueueKBSync({
-      type: 'delete',
-      articleId: article.id,
-      kbId: article.homeKnowledgeBaseId,
-      organizationId,
-    })
+  // Drop the owned KB + its managed dataset (cascades the embedding Documents).
+  const ownedKb = await db.query.KnowledgeBase.findFirst({
+    where: eq(schema.KnowledgeBase.id, source.ownedKnowledgeBaseId),
+    columns: { id: true, datasetId: true },
+  })
+  if (ownedKb?.datasetId) {
+    await new DatasetService(db).delete(ownedKb.datasetId, organizationId)
   }
+  await deleteKnowledgeBase({ db, organizationId }, source.ownedKnowledgeBaseId)
 
   return { success: true }
 }

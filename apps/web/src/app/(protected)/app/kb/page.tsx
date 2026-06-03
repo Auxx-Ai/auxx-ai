@@ -1,7 +1,7 @@
 // apps/web/src/app/(protected)/app/kb/page.tsx
 
-import { ArticlesView } from '~/components/kb/ui/articles/articles-view'
 import { KBEmptyState } from '~/components/kb/ui/dialogs/kb-empty-state'
+import { KBLandingShell } from '~/components/kb/ui/landing/kb-landing-shell'
 import { api } from '~/trpc/server'
 
 export default async function KBMain() {
@@ -11,5 +11,5 @@ export default async function KBMain() {
     return <KBEmptyState />
   }
 
-  return <ArticlesView />
+  return <KBLandingShell />
 }

@@ -140,6 +140,8 @@ export interface KBFields {
   name?: string
   slug?: string
   description?: string
+  /** 'standard' = user-facing KB; 'source' = a KnowledgeSource's hidden container. */
+  kind?: 'standard' | 'source'
   publishStatus?: KBPublishStatus
   visibility?: 'PUBLIC' | 'INTERNAL'
   customDomain?: string

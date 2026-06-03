@@ -7,6 +7,7 @@ import {
   boolean,
   index,
   jsonb,
+  kbKind,
   kbPublishStatus,
   kbVisibility,
   pgTable,
@@ -30,6 +31,8 @@ export const KnowledgeBase = pgTable(
     name: text().notNull(),
     slug: text().notNull(),
     description: text(),
+    /** 'standard' = user-facing KB; 'source' = a KnowledgeSource's hidden container. */
+    kind: kbKind().default('standard').notNull(),
     publishStatus: kbPublishStatus().default('DRAFT').notNull(),
     publishedAt: timestamp({ precision: 3 }),
     lastPublishedAt: timestamp({ precision: 3 }),

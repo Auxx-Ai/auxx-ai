@@ -53,17 +53,23 @@ export const KnowledgeSource = pgTable(
     surface: knowledgeSourceSurface().default('publishable').notNull(),
     /** Per-type config: { url, selectedPaths[], ... } | { shopifyDomain, kinds[] } | { items[] } | ... */
     config: jsonb().$type<Record<string, unknown>>().default({}).notNull(),
-    targetKnowledgeBaseId: text()
+    /**
+     * The hidden KnowledgeBase (kind='source') this source owns. Its synced articles
+     * home here and embed once into this KB's dataset; they are then *linked* into
+     * user-facing KBs via ArticlePlacement.linkedFromSourceId. Deleting the source
+     * deletes this KB (handled explicitly in deleteSource).
+     */
+    ownedKnowledgeBaseId: text()
       .notNull()
       .references((): AnyPgColumn => KnowledgeBase.id, {
         onUpdate: 'cascade',
         onDelete: 'cascade',
       }),
     /**
-     * The source's root category Article (its home placement lives in
-     * targetKnowledgeBaseId). Children of the source nest under it in that KB's tree.
-     * `set null` + Article.sourceId `set null` break the reference cycle on delete;
-     * the orchestrator deletes managed articles explicitly on source delete.
+     * The source's root category Article (its home placement lives in the owned KB).
+     * Children of the source nest under it in that KB's tree. `set null` +
+     * Article.sourceId `set null` break the reference cycle on delete; the orchestrator
+     * deletes managed articles explicitly on source delete.
      */
     rootFolderArticleId: text().references((): AnyPgColumn => Article.id, {
       onUpdate: 'cascade',
@@ -89,9 +95,9 @@ export const KnowledgeSource = pgTable(
       'btree',
       table.organizationId.asc().nullsLast()
     ),
-    index('KnowledgeSource_targetKnowledgeBaseId_idx').using(
+    index('KnowledgeSource_ownedKnowledgeBaseId_idx').using(
       'btree',
-      table.targetKnowledgeBaseId.asc().nullsLast()
+      table.ownedKnowledgeBaseId.asc().nullsLast()
     ),
   ]
 )

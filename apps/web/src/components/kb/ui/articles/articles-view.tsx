@@ -11,22 +11,13 @@
 
 import type { ConditionGroup } from '@auxx/lib/conditions/client'
 import { converters } from '@auxx/lib/field-values/client'
-import { FeatureKey } from '@auxx/lib/permissions/client'
 import type { RecordId, ResourceField } from '@auxx/lib/resources/client'
 import { toFieldId, toResourceFieldId } from '@auxx/types/field'
-import { Button } from '@auxx/ui/components/button'
 import { DropdownMenuItem, DropdownMenuSeparator } from '@auxx/ui/components/dropdown-menu'
-import {
-  MainPage,
-  MainPageBreadcrumb,
-  MainPageBreadcrumbDropdown,
-  MainPageBreadcrumbItem,
-  MainPageHeader,
-} from '@auxx/ui/components/main-page'
 import { toastError } from '@auxx/ui/components/toast'
-import { Archive, Book, FileText, Globe, GlobeLock, Plus, Trash2 } from 'lucide-react'
+import { Archive, FileText, Globe, GlobeLock, Trash2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useMemo, useRef } from 'react'
 import type { CellSelectionConfig } from '~/components/dynamic-table'
 import { PrimaryFieldCell } from '~/components/dynamic-table'
 import {
@@ -46,16 +37,8 @@ import { type RecordMeta, toRecordId, useResource } from '~/components/resources
 import { useSaveFieldValue } from '~/components/resources/hooks/use-save-field-value'
 import { useRelationshipStore } from '~/components/resources/store/relationship-store'
 import { useResourceStore } from '~/components/resources/store/resource-store'
-import { LimitReachedDialog } from '~/components/subscriptions/limit-reached-dialog'
 import { useConfirm } from '~/hooks/use-confirm'
-import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { api } from '~/trpc/react'
-import { useKnowledgeBaseMutations } from '../../hooks/use-knowledge-base-mutations'
-import {
-  KnowledgeBaseDialog,
-  type KnowledgeBaseFormValues,
-} from '../dialogs/kb-knowledge-base-dialog'
-import { KBSwitcherDropdownContent } from '../sidebar/kb-switcher'
 
 /** The resource slug + (system) tableId for articles. */
 const ARTICLE_SLUG = 'article'
@@ -133,37 +116,6 @@ export function ArticlesView() {
   }, [searchGroup])
 
   const [confirm, ConfirmDialog] = useConfirm()
-  const [isCreateKBOpen, setIsCreateKBOpen] = useState(false)
-  const [limitDialogOpen, setLimitDialogOpen] = useState(false)
-  const { createKnowledgeBase, isCreating } = useKnowledgeBaseMutations()
-
-  const { isAtLimit, getLimit } = useFeatureFlags()
-  // The /app/kb route doesn't hydrate the KB store, so read the count straight
-  // from kb.list (warmed server-side by page.tsx).
-  const kbList = api.kb.list.useQuery(undefined, { staleTime: 5 * 60 * 1000 })
-  const kbCount = kbList.data?.length ?? 0
-  const atLimit = isAtLimit(FeatureKey.knowledgeBases, kbCount)
-  const kbLimit = getLimit(FeatureKey.knowledgeBases)
-
-  // No allowance on the current plan — gate creation behind an upgrade prompt.
-  const handleCreateClick = useCallback(() => {
-    if (atLimit) {
-      setLimitDialogOpen(true)
-    } else {
-      setIsCreateKBOpen(true)
-    }
-  }, [atLimit])
-
-  const handleCreateKB = useCallback(
-    async (values: KnowledgeBaseFormValues) => {
-      const created = await createKnowledgeBase({ name: values.name, slug: values.slug })
-      if (created) {
-        setIsCreateKBOpen(false)
-        router.push(`/app/kb/${created.id}/editor`)
-      }
-    },
-    [createKnowledgeBase, router]
-  )
 
   const refresh = useCallback(() => viewRef.current?.refresh(), [])
 
@@ -449,65 +401,21 @@ export function ArticlesView() {
     []
   )
 
+  // Chrome (MainPage header, breadcrumb + KB switcher, the Create-KB action) is
+  // owned by KBLandingShell — this view is just the Articles table now.
   return (
     <>
-      <MainPage>
-        <MainPageHeader
-          action={
-            <Button size='sm' className='h-7 rounded-lg' onClick={handleCreateClick}>
-              <Plus />
-              Create Knowledge Base
-            </Button>
-          }>
-          <MainPageBreadcrumb>
-            <MainPageBreadcrumbItem
-              title='Knowledge Bases'
-              href='/app/kb'
-              className='hidden sm:inline-flex'
-            />
-            <MainPageBreadcrumbDropdown
-              label='Open a knowledge base'
-              icon={<Book className='size-3.5' />}
-              last
-              contentClassName='w-72'>
-              <KBSwitcherDropdownContent />
-            </MainPageBreadcrumbDropdown>
-          </MainPageBreadcrumb>
-        </MainPageHeader>
-        <DynamicResourceView<ArticleRow>
-          viewRef={viewRef}
-          slug={ARTICLE_SLUG}
-          tableId={ARTICLE_TABLE_ID}
-          baselineFilter={baselineFilter}
-          primaryCellRender={primaryCellRender}
-          columnOverrides={columnOverrides}
-          cellSelection={cellSelectionConfig}
-          bulkActions={[]}
-          renderSearchBar={renderSearchBar}
-          emptyState={emptyState}
-        />
-      </MainPage>
-      <KnowledgeBaseDialog
-        open={isCreateKBOpen}
-        onOpenChange={setIsCreateKBOpen}
-        onSubmit={handleCreateKB}
-        isSubmitting={isCreating}
-        mode='create'
-      />
-      <LimitReachedDialog
-        open={limitDialogOpen}
-        onOpenChange={setLimitDialogOpen}
-        icon={Book}
-        title={
-          kbLimit === 0 || kbLimit === false
-            ? 'Knowledge Bases Not Available'
-            : 'Knowledge Base Limit Reached'
-        }
-        description={
-          kbLimit === 0 || kbLimit === false
-            ? 'Creating knowledge bases isn’t included in your current plan. Upgrade to start building one.'
-            : `You've reached the maximum of ${kbLimit} knowledge bases on your current plan.`
-        }
+      <DynamicResourceView<ArticleRow>
+        viewRef={viewRef}
+        slug={ARTICLE_SLUG}
+        tableId={ARTICLE_TABLE_ID}
+        baselineFilter={baselineFilter}
+        primaryCellRender={primaryCellRender}
+        columnOverrides={columnOverrides}
+        cellSelection={cellSelectionConfig}
+        bulkActions={[]}
+        renderSearchBar={renderSearchBar}
+        emptyState={emptyState}
       />
       <ConfirmDialog />
     </>

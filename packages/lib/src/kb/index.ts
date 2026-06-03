@@ -1,5 +1,7 @@
 // @auxx/lib/kb/index.ts
 
+export type { AddPlacementInput } from './articles/add-placement'
+export { addPlacement } from './articles/add-placement'
 export { archiveArticle, unarchiveArticle } from './articles/archive-article'
 export {
   getArticleVersions,

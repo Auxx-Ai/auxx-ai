@@ -9,6 +9,7 @@ import { updateArticleDraft } from '../../kb/articles/update-article'
 import { enqueueKBSync } from '../../kb/kb-sync-queue'
 import { computeContentHash } from '../../kb/markdown/hash'
 import { mdToBlocks } from '../../kb/markdown/md-to-blocks'
+import { linkSourceToKb } from '../source-links'
 import {
   ensurePathFolders,
   ensureRootFolder,
@@ -32,7 +33,7 @@ export const articleSink: SourceSink = {
     if (!existing) {
       const created = await createArticle(
         kbCtx(ctx),
-        ctx.source.targetKnowledgeBaseId,
+        ctx.kb.id,
         {
           articleKind: 'page',
           parentId,
@@ -58,7 +59,7 @@ export const articleSink: SourceSink = {
         existing.id,
         { title: item.title, contentJson, sourceContentHash: hash },
         ctx.kb.createdById,
-        ctx.source.targetKnowledgeBaseId
+        ctx.kb.id
       )
       articleId = existing.id
     } else {
@@ -69,7 +70,7 @@ export const articleSink: SourceSink = {
     await enqueueKBSync({
       type: 'sync-managed',
       articleId,
-      kbId: ctx.source.targetKnowledgeBaseId,
+      kbId: ctx.kb.id,
       organizationId: ctx.orgId,
     })
   },
@@ -77,13 +78,22 @@ export const articleSink: SourceSink = {
   async archiveItem(ctx, externalId) {
     const art = await findManagedArticle(ctx, externalId)
     if (!art?.managed) return // detached or gone — leave it alone
+    // Article-wide archive unpublishes every placement (home + links).
     await archiveArticle(kbCtx(ctx), art.id)
     await enqueueKBSync({
       type: 'unpublish',
       articleId: art.id,
-      kbId: ctx.source.targetKnowledgeBaseId,
+      kbId: ctx.kb.id,
       organizationId: ctx.orgId,
     })
+  },
+
+  // After the item loop, backfill any KB this source is linked into with placements for
+  // new articles (idempotent, parent-first). Keeps linked KBs in sync on every re-sync.
+  async reconcileLinks(ctx) {
+    for (const kbId of ctx.linkedKbIds) {
+      await linkSourceToKb(ctx.db, ctx.orgId, ctx.source.id, kbId)
+    }
   },
 
   async listExisting(ctx) {

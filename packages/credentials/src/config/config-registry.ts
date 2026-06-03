@@ -895,6 +895,34 @@ export const CONFIG_VARIABLES = {
     isEnvOnly: true,
   },
 
+  // ── CRAWL (Website crawler) ──────────────────────────────
+  CRAWL_PROVIDER: {
+    key: 'CRAWL_PROVIDER',
+    description: 'Website crawl provider for knowledge sources',
+    type: ConfigVariableType.STRING,
+    group: ConfigVariableGroup.CRAWL,
+    defaultValue: 'firecrawl',
+    isSensitive: false,
+    isEnvOnly: false,
+  },
+  FIRECRAWL_API_KEY: {
+    key: 'FIRECRAWL_API_KEY',
+    description: 'Firecrawl API key (website crawl provider)',
+    type: ConfigVariableType.STRING,
+    group: ConfigVariableGroup.CRAWL,
+    isSensitive: true,
+    isEnvOnly: false,
+  },
+  FIRECRAWL_BASE_URL: {
+    key: 'FIRECRAWL_BASE_URL',
+    description: 'Firecrawl API base URL',
+    type: ConfigVariableType.STRING,
+    group: ConfigVariableGroup.CRAWL,
+    defaultValue: 'https://api.firecrawl.dev',
+    isSensitive: false,
+    isEnvOnly: false,
+  },
+
   // ── ANALYTICS ────────────────────────────────────────────
   POSTHOG_KEY: {
     key: 'POSTHOG_KEY',

@@ -39,6 +39,10 @@ export const articleStatus = pgEnum('ArticleStatus', ['DRAFT', 'PUBLISHED', 'ARC
 export const articleKind = pgEnum('articleKind', ['page', 'category', 'header', 'tab', 'link'])
 export const kbPublishStatus = pgEnum('KBPublishStatus', ['DRAFT', 'PUBLISHED', 'UNLISTED'])
 export const kbVisibility = pgEnum('KBVisibility', ['PUBLIC', 'INTERNAL'])
+// 'standard' = a user-facing KB; 'source' = the hidden container a KnowledgeSource owns.
+// Source-KBs hold a source's synced articles (embed-once) and are filtered out of every
+// KB list, picker, and the public site. See plans/kb/sources/source-owns-kb-REFACTOR.md.
+export const kbKind = pgEnum('KBKind', ['standard', 'source'])
 // Knowledge Sources — ingest external content into a KB (see plans/kb/sources/).
 // NB: `type` (the connector kind) is a text() column, not a pgEnum — the connector
 // list grows over time and we don't want an enum-alter migration per new connector.

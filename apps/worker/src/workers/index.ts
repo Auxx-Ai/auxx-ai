@@ -1,6 +1,8 @@
 import { constants } from '@auxx/config'
+import { database } from '@auxx/database'
 import { isSelfHosted } from '@auxx/deployment'
 import { getQueue, Queues } from '@auxx/lib/jobs/queues'
+import { reconcileSourceSchedulers } from '@auxx/lib/knowledge-sources'
 import { startAiAgentWorker } from './worker-definitions/ai-agent-worker'
 import { startAiAutofillWorker } from './worker-definitions/ai-autofill-worker'
 import { startAppTriggerWorker } from './worker-definitions/app-trigger-worker'
@@ -679,6 +681,12 @@ export async function setupSchedules() {
       },
     }
   )
+
+  // ── Knowledge Source Schedules ───────────────────────────────
+  // Re-register per-source re-sync schedulers so a cleared Redis can't silently
+  // stop them firing. Idempotent (upsert by source-sync-{id}), so re-running on
+  // every boot is a no-op when Redis already holds them.
+  await reconcileSourceSchedulers(database)
 }
 
 //   // Every 10 minutes

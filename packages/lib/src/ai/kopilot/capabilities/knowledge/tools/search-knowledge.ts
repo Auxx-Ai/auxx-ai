@@ -1,7 +1,7 @@
 // packages/lib/src/ai/kopilot/capabilities/knowledge/tools/search-knowledge.ts
 
 import { schema } from '@auxx/database'
-import { and, eq, inArray } from 'drizzle-orm'
+import { and, eq, inArray, isNotNull } from 'drizzle-orm'
 import { SearchService } from '../../../../../datasets/services/search.service'
 import { parseStringArg } from '../../../../agent-framework/tool-inputs'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
@@ -308,7 +308,44 @@ async function collectManagedDatasetIds(
         )
       )
       .limit(1)
-    return kb?.datasetId ? [kb.datasetId] : []
+    if (!kb) return []
+    const datasetIds = kb.datasetId ? [kb.datasetId] : []
+
+    // Federate: a source linked into this KB embeds its content once in its own hidden
+    // KB's dataset, so include those datasets here. Search stays embed-once.
+    const linkRows = await db
+      .selectDistinct({ sourceId: schema.ArticlePlacement.linkedFromSourceId })
+      .from(schema.ArticlePlacement)
+      .where(
+        and(
+          eq(schema.ArticlePlacement.knowledgeBaseId, knowledgeBaseId),
+          eq(schema.ArticlePlacement.organizationId, organizationId),
+          isNotNull(schema.ArticlePlacement.linkedFromSourceId)
+        )
+      )
+    const sourceIds = linkRows.map((r) => r.sourceId).filter((id): id is string => Boolean(id))
+    if (sourceIds.length > 0) {
+      const sources = await db
+        .select({ ownedKnowledgeBaseId: schema.KnowledgeSource.ownedKnowledgeBaseId })
+        .from(schema.KnowledgeSource)
+        .where(
+          and(
+            inArray(schema.KnowledgeSource.id, sourceIds),
+            eq(schema.KnowledgeSource.organizationId, organizationId)
+          )
+        )
+      const ownedKbIds = sources.map((s) => s.ownedKnowledgeBaseId)
+      if (ownedKbIds.length > 0) {
+        const ownedKbs = await db
+          .select({ datasetId: schema.KnowledgeBase.datasetId })
+          .from(schema.KnowledgeBase)
+          .where(inArray(schema.KnowledgeBase.id, ownedKbIds))
+        datasetIds.push(
+          ...ownedKbs.map((k) => k.datasetId).filter((id): id is string => Boolean(id))
+        )
+      }
+    }
+    return [...new Set(datasetIds)]
   }
   // Chat clamp — restrict to datasets backing PUBLIC knowledge bases (RAG
   // datasets are excluded entirely by forcing source='kb' upstream). Internal
