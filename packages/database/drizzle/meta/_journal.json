@@ -1354,6 +1354,13 @@
       "breakpoints": true
     },
     {
+      "idx": 193,
+      "version": "7",
+      "when": 1780444911406,
+      "tag": "0193_agent_tool_restrictions",
+      "breakpoints": true
+    },
+    {
       "idx": 194,
       "version": "7",
       "when": 1780448829519,

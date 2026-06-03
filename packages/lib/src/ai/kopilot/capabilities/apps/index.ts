@@ -198,6 +198,10 @@ export async function createAppCapabilities(deps: {
         // plans/kopilot/agents/README.md §2 decision #12.
         requiresApproval: false,
         toolsetSlug: tool.toolsetSlug,
+        // Author-floor: identity/record-scope args the engine fail-closes on in
+        // a visitor turn (carried from the cached catalog). See plans/chat/v6
+        // phase-3.
+        identityScopedInputs: tool.identityScopedInputs,
         buildDigest: (output: unknown) =>
           buildAppToolDigest(output, { appSlug, toolId }, refDescriptors),
         execute,

@@ -6,6 +6,7 @@ import path from 'path'
 import { fileURLToPath, pathToFileURL } from 'url'
 import { HIDDEN_AUXX_DIRECTORY } from '../constants/hidden-auxx-directory.js'
 import { complete, errored, type Result } from '../errors.js'
+import type { ToolActionSurface, ToolAgentSurface, ToolConfig } from '../root/tools/types.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -44,6 +45,18 @@ export interface CatalogAgentTool extends CatalogTool {
   agentDescription: string
   toolsetSlug: string
   idempotent?: boolean
+  /**
+   * Soft hint surfaced to the chat-kind agent catalog (builder recommendations
+   * + picker declutter). Carried verbatim from `tool.agent.chatSafe`. Absent ⇒
+   * not chat-safe. NOT a runtime gate. See plans/chat/v6 phase-3.
+   */
+  chatSafe?: boolean
+  /**
+   * Identity/record-scope args the engine fail-closes on in a visitor turn.
+   * Carried verbatim from `tool.agent.identityScopedInputs`. See plans/chat/v6
+   * phase-3.
+   */
+  identityScopedInputs?: ReadonlyArray<{ name: string; suggestedVar?: string }>
 }
 
 export interface CatalogAction {
@@ -372,6 +385,8 @@ export async function compileAndExtractCatalog(): Promise<
         agentDescription: tool.agent.description ?? tool.description,
         toolsetSlug,
         idempotent: tool.agent.idempotent ?? tool.config?.idempotent,
+        chatSafe: tool.agent.chatSafe,
+        identityScopedInputs: tool.agent.identityScopedInputs,
       })
     }
 
@@ -534,33 +549,18 @@ function serializeWorkflowSchemaInputs(
 // --- Raw types projected out of the imported bundle ---------------------------
 // The bundle is loaded at runtime, so the types here are intentionally narrow.
 
+// Loosened input shape for casting the `unknown[]` registry. The drift-prone
+// surface sub-shapes are derived from the canonical `../root/tools/types.ts`
+// interfaces so adding a field there can't silently break this reader.
 interface RawTool {
   id: string
   name: string
   description: string
   inputs: unknown
   outputs: unknown
-  config?: {
-    requiresConnection?: boolean
-    timeout?: number
-    streaming?: boolean
-    idempotent?: boolean
-  }
-  agent?: {
-    name?: string
-    description?: string
-    toolsetSlug?: string
-    streaming?: boolean
-    idempotent?: boolean
-  }
-  action?: {
-    label: string
-    description?: string
-    color?: string
-    surface: 'ticket-header' | 'email-editor'
-    requiresConfirmation?: boolean
-    confirmationMessage?: string
-  }
+  config?: ToolConfig
+  agent?: ToolAgentSurface
+  action?: ToolActionSurface
 }
 
 interface RawToolset {

@@ -54,6 +54,28 @@ export interface AppAccountBinding {
 }
 
 /**
+ * One restriction inside `Agent.toolRestrictions`. Pins a single tool argument
+ * to a platform-resolved value (constant / dynamic var) or marks it required.
+ *
+ * Structural mirror of `ArgRestriction` from
+ * `@auxx/lib/agents/restrictions/client` — duplicated here (rather than
+ * imported) to keep the dependency direction clean: schema is tier-1 and must
+ * not import from lib (tier-3). See plans/chat/v6 phase-1.
+ */
+export interface ArgRestriction {
+  source: 'model' | 'var' | 'constant'
+  var?: string
+  value?: unknown
+  required?: boolean
+}
+
+/**
+ * `Agent.toolRestrictions` shape — tool registered-name → arg name →
+ * restriction. The engine applies this map immediately before a tool runs.
+ */
+export type ToolRestrictionMap = Record<string, Record<string, ArgRestriction>>
+
+/**
  * Optional identity/presentation bag stored on the Agent row itself.
  *
  * During draft (`Agent.userId IS NULL`) this is the **only** source of these
@@ -162,6 +184,15 @@ export const Agent = pgTable(
       .$type<Record<string, AppAccountBinding>>()
       .default(sql`'{}'::jsonb`)
       .notNull(),
+
+    /**
+     * Per-agent tool restriction map — tool registered-name → arg name →
+     * restriction. The engine clamps each tool call's args against this map
+     * immediately before the tool runs (constant / dynamic-var override, or a
+     * required binding). Empty for the master Kopilot runtime. See
+     * plans/chat/v6 phase-1.
+     */
+    toolRestrictions: jsonb().$type<ToolRestrictionMap>().default(sql`'{}'::jsonb`).notNull(),
 
     mentionable: boolean().default(true).notNull(),
 

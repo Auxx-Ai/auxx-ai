@@ -11,7 +11,7 @@ import {
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Section } from '@auxx/ui/components/section'
 import { Tabs, TabsList, TabsTrigger } from '@auxx/ui/components/tabs'
-import { BookOpen, Clock, FileText, Plug, Plus, Wrench, Zap } from 'lucide-react'
+import { BookOpen, Clock, FileText, Plug, Plus, ShieldCheck, Wrench, Zap } from 'lucide-react'
 import { useQueryState } from 'nuqs'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AGENT_TABS, type AgentTab, DEFAULT_AGENT_TAB } from '../../constant'
@@ -20,6 +20,7 @@ import type { AutosaveState } from '../shared/autosave-indicator'
 import { AgentHero } from './agent-hero'
 import { KnowledgeSectionContent } from './knowledge/knowledge-section-content'
 import { PersonaEditor } from './prompt/persona-editor'
+import { RestrictionsSectionContent } from './restrictions/restrictions-section-content'
 import { ToolSelectDialog } from './tools/tool-select-dialog'
 import { ToolsSectionContent } from './tools/tools-section-content'
 import { useToolsetMutations } from './tools/use-toolset-mutations'
@@ -28,6 +29,7 @@ import { TriggersSectionContent } from './triggers/triggers-section-content'
 const SECTION_ICONS: Record<AgentTab, React.ComponentType<{ className?: string }>> = {
   prompt: FileText,
   tools: Wrench,
+  restrictions: ShieldCheck,
   knowledge: BookOpen,
   triggers: Zap,
 }
@@ -35,6 +37,7 @@ const SECTION_ICONS: Record<AgentTab, React.ComponentType<{ className?: string }
 const SECTION_LABELS: Record<AgentTab, string> = {
   prompt: 'Prompt',
   tools: 'Tools',
+  restrictions: 'Restrictions',
   knowledge: 'Knowledge',
   triggers: 'Triggers',
 }
@@ -60,6 +63,7 @@ export function AgentDetailTabs({ agent, onAutosaveChange }: AgentDetailTabsProp
   const sectionRefs = useRef<Record<AgentTab, HTMLDivElement | null>>({
     prompt: null,
     tools: null,
+    restrictions: null,
     knowledge: null,
     triggers: null,
   })
@@ -177,6 +181,18 @@ export function AgentDetailTabs({ agent, onAutosaveChange }: AgentDetailTabsProp
 
         <div ref={assignRef('tools')}>
           <ToolsSection agent={agent} onAutosaveChange={onAutosaveChange} />
+        </div>
+
+        <div ref={assignRef('restrictions')}>
+          <Section
+            title='Restrictions'
+            icon={<ShieldCheck className='size-4' />}
+            className='[&>[data-slot=section]>[data-slot=section-content]]:-mx-3'
+            initialOpen
+            description='Pin or require tool arguments so this agent stays scoped — lock identity args for chat.'
+            collapsible={false}>
+            <RestrictionsSectionContent agent={agent} />
+          </Section>
         </div>
 
         <div ref={assignRef('knowledge')}>

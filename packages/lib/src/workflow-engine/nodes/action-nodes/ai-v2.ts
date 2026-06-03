@@ -532,6 +532,7 @@ export class AIProcessorV2 extends BaseAiNodeProcessor {
       description: null,
       toolsets,
       appAccounts: config.appAccounts ?? {},
+      toolRestrictions: {},
       modelId: null,
     } as ResolvedAgentConfig
   }

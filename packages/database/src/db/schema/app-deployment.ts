@@ -39,6 +39,21 @@ export interface CatalogAgentTool extends CatalogTool {
   agentDescription: string
   toolsetSlug: string
   idempotent?: boolean
+  /**
+   * Soft hint surfaced to the chat-kind agent catalog (builder recommendations
+   * + picker declutter), carried verbatim from the SDK's `tool.agent.chatSafe`.
+   * Absent ⇒ not chat-safe. NOT a runtime gate. The installed-apps cache
+   * forwards it onto `CachedAgentTool.chatSafe` via spread. See plans/chat/v6
+   * phase-3.
+   */
+  chatSafe?: boolean
+  /**
+   * Identity/record-scope args the engine fail-closes on in a visitor turn —
+   * carried verbatim from the SDK's `tool.agent.identityScopedInputs`. The
+   * restrictions UI reads this to flag args that must be bound for chat. See
+   * plans/chat/v6 phase-3 / phase-4.
+   */
+  identityScopedInputs?: ReadonlyArray<{ name: string; suggestedVar?: string }>
 }
 
 export interface CatalogAction {

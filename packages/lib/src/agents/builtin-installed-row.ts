@@ -71,6 +71,7 @@ function buildBuiltinAgentTools(): CachedAgentTool[] {
         registeredName: tool.name,
         iconId: lookupIconForSlug(tool.toolsetSlug),
         chatSafe: tool.chatSafe,
+        identityScopedInputs: tool.identityScopedInputs,
       })
     }
   }

@@ -1,18 +1,26 @@
 // packages/lib/src/agents/agent-toolset-service.ts
 
 import {
+  type AgentKind,
   type AppAccountBinding,
   type Database,
   database as defaultDb,
   schema,
+  type ToolRestrictionMap,
   type ToolsetEntry,
   type Transaction,
 } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { eq } from 'drizzle-orm'
-import { onCacheEvent } from '../cache'
+import { getOrgCache, onCacheEvent } from '../cache'
 import { getRealtimeService, publishAgentUpdated } from '../realtime'
 import type { AgentToolsetConfig } from './agent-toolset-types'
+import {
+  type AutoRestrictionTool,
+  buildResolvableVarIdSet,
+  computeAutoRestrictions,
+} from './compute-auto-restrictions'
+import { buildRestrictionVarRegistry } from './restrictions'
 import { getOrgToolsetCatalog } from './toolset-catalog'
 
 const logger = createScopedLogger('agent-toolset-service')
@@ -84,8 +92,10 @@ export function applyToolsetPatch(
 }
 
 interface AgentToolsetRow {
+  kind: AgentKind
   toolsets: ToolsetEntry[]
   appAccounts: Record<string, AppAccountBinding>
+  toolRestrictions: ToolRestrictionMap
 }
 
 async function loadAgentForToolsetUpdate(
@@ -94,8 +104,10 @@ async function loadAgentForToolsetUpdate(
 ): Promise<AgentToolsetRow> {
   const [row] = await tx
     .select({
+      kind: schema.Agent.kind,
       toolsets: schema.Agent.toolsets,
       appAccounts: schema.Agent.appAccounts,
+      toolRestrictions: schema.Agent.toolRestrictions,
     })
     .from(schema.Agent)
     .where(eq(schema.Agent.id, agentId))
@@ -103,8 +115,10 @@ async function loadAgentForToolsetUpdate(
     .limit(1)
   if (!row) throw new Error(`Agent not found: ${agentId}`)
   return {
+    kind: row.kind,
     toolsets: row.toolsets ?? [],
     appAccounts: row.appAccounts ?? {},
+    toolRestrictions: row.toolRestrictions ?? {},
   }
 }
 
@@ -155,6 +169,72 @@ async function clearOrphanedAppAccounts(
 }
 
 /**
+ * Build the `toolsetSlug → tools` map the auto-create pass reads, sourced from
+ * the org installed-apps cache. Each `CachedAgentTool` already carries its
+ * `registeredName` (the `toolRestrictions` key) and `identityScopedInputs`, so
+ * native and app tools project uniformly. Cache-backed read — done before the
+ * transaction.
+ */
+async function buildToolsBySlug(
+  organizationId: string
+): Promise<Map<string, AutoRestrictionTool[]>> {
+  const installedApps = await getOrgCache().get(organizationId, 'installedApps')
+  const bySlug = new Map<string, AutoRestrictionTool[]>()
+  for (const app of installedApps) {
+    for (const tool of app.agentTools ?? []) {
+      if (!tool.identityScopedInputs || tool.identityScopedInputs.length === 0) continue
+      const list = bySlug.get(tool.toolsetSlug) ?? []
+      list.push({
+        registeredName: tool.registeredName,
+        identityScopedInputs: tool.identityScopedInputs,
+      })
+      bySlug.set(tool.toolsetSlug, list)
+    }
+  }
+  return bySlug
+}
+
+/**
+ * Resolve the merged `toolRestrictions` for a chat-kind enable transition.
+ * Returns the current map unchanged for internal agents, plain re-saves, or when
+ * no identity-scoped binding can be auto-created. Reads the installed-apps cache
+ * and var registry once (outside the tx) so the write stays a pure merge.
+ */
+async function resolveAutoRestrictions(
+  organizationId: string,
+  row: AgentToolsetRow,
+  nextToolsets: ToolsetEntry[]
+): Promise<ToolRestrictionMap> {
+  if (row.kind !== 'chat') return row.toolRestrictions
+
+  const toolsBySlug = await buildToolsBySlug(organizationId)
+  if (toolsBySlug.size === 0) return row.toolRestrictions
+
+  const registry = await buildRestrictionVarRegistry(organizationId)
+  const suggestedVars: string[] = []
+  for (const tools of toolsBySlug.values()) {
+    for (const tool of tools) {
+      for (const input of tool.identityScopedInputs ?? []) {
+        if (input.suggestedVar) suggestedVars.push(input.suggestedVar)
+      }
+    }
+  }
+  const resolvableVarIds = buildResolvableVarIdSet(
+    registry.map((v) => v.id),
+    suggestedVars
+  )
+
+  return computeAutoRestrictions(
+    row.kind,
+    row.toolsets,
+    nextToolsets,
+    row.toolRestrictions,
+    toolsBySlug,
+    resolvableVarIds
+  )
+}
+
+/**
  * Update one toolset entry on an agent. Read-modify-write of `Agent.toolsets`
  * under a row lock so concurrent autosaves don't drop edits.
  */
@@ -174,11 +254,15 @@ export async function updateAgentToolset(
       row.appAccounts,
       [patch]
     )
+    const nextRestrictions = await resolveAutoRestrictions(organizationId, row, next)
     await tx
       .update(schema.Agent)
       .set({
         toolsets: next,
         ...(nextAppAccounts === row.appAccounts ? {} : { appAccounts: nextAppAccounts }),
+        ...(nextRestrictions === row.toolRestrictions
+          ? {}
+          : { toolRestrictions: nextRestrictions }),
         updatedAt: new Date(),
       })
       .where(eq(schema.Agent.id, agentId))
@@ -220,11 +304,15 @@ export async function batchUpdateAgentToolsets(
       row.appAccounts,
       patches
     )
+    const nextRestrictions = await resolveAutoRestrictions(organizationId, row, next)
     await tx
       .update(schema.Agent)
       .set({
         toolsets: next,
         ...(nextAppAccounts === row.appAccounts ? {} : { appAccounts: nextAppAccounts }),
+        ...(nextRestrictions === row.toolRestrictions
+          ? {}
+          : { toolRestrictions: nextRestrictions }),
         updatedAt: new Date(),
       })
       .where(eq(schema.Agent.id, agentId))

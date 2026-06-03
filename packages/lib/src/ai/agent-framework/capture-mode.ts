@@ -44,7 +44,12 @@ export async function processCaptureToolCalls(
   ctx: ToolContext,
   idempotentCache: Map<string, ToolExecResult>,
   existingCaptures: CapturedAction[],
-  transformInput?: (toolName: string, args: Record<string, unknown>) => Record<string, unknown>
+  transformInput?: (toolName: string, args: Record<string, unknown>) => Record<string, unknown>,
+  applyToolRestrictions?: (
+    toolName: string,
+    args: Record<string, unknown>,
+    ctx: ToolContext
+  ) => Promise<{ ok: true; args: Record<string, unknown> } | { ok: false; error: string }>
 ): Promise<{
   events: AgentEvent[]
   results: CaptureExecResult[]
@@ -93,6 +98,30 @@ export async function processCaptureToolCalls(
           captured: false,
         })
         continue
+      }
+
+      // Per-agent restriction clamp (capture, approval-required).
+      if (applyToolRestrictions) {
+        const r = await applyToolRestrictions(toolName, args, ctx)
+        if (!r.ok) {
+          events.push(toolStartedEvent(toolCall.id, toolName, agentName, args))
+          events.push(toolFailedEvent(toolCall.id, agentName, r.error))
+          logger.info('applyToolRestrictions refused (capture, approval-required)', {
+            agent: agentName,
+            tool: toolName,
+            error: r.error,
+          })
+          results.push({
+            toolCallId: toolCall.id,
+            toolName,
+            output: { error: r.error },
+            success: false,
+            error: r.error,
+            captured: false,
+          })
+          continue
+        }
+        args = r.args
       }
 
       if (tool.validateInputs) {
@@ -183,6 +212,30 @@ export async function processCaptureToolCalls(
     }
 
     // Non-approval tool — execute normally.
+    // Per-agent restriction clamp (capture, non-approval).
+    if (applyToolRestrictions) {
+      const r = await applyToolRestrictions(toolName, args, ctx)
+      if (!r.ok) {
+        events.push(toolStartedEvent(toolCall.id, toolName, agentName, args))
+        events.push(toolFailedEvent(toolCall.id, agentName, r.error))
+        logger.info('applyToolRestrictions refused (capture, non-approval)', {
+          agent: agentName,
+          tool: toolName,
+          error: r.error,
+        })
+        results.push({
+          toolCallId: toolCall.id,
+          toolName,
+          output: { error: r.error },
+          success: false,
+          error: r.error,
+          captured: false,
+        })
+        continue
+      }
+      args = r.args
+    }
+
     if (tool.validateInputs) {
       const v = await tool.validateInputs(args, ctx)
       if (!v.ok) {

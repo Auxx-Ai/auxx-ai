@@ -1,6 +1,6 @@
 // packages/lib/src/agents/resolve-agent-config.ts
 
-import type { Database } from '@auxx/database'
+import type { Database, ToolRestrictionMap } from '@auxx/database'
 import { database as defaultDb } from '@auxx/database'
 import { loadMasterKopilotSettings } from '../ai/kopilot/load-master-settings'
 import { getCachedAgents } from '../cache/org-cache-helpers'
@@ -37,6 +37,11 @@ export interface ResolvedAgentConfig {
    * appId = app's tools off for this session.
    */
   appAccounts: Record<string, { credId: string }>
+  /**
+   * Per-agent tool restriction map — tool name → arg → restriction. Empty for
+   * master Kopilot sessions. See plans/chat/v6 phase-1.
+   */
+  toolRestrictions: ToolRestrictionMap
   /** Per-agent / per-master override. null = inherit org/system default. */
   modelId: string | null
 }
@@ -67,6 +72,7 @@ export async function resolveAgentConfig(
       description: null,
       toolsets,
       appAccounts: master.appAccounts,
+      toolRestrictions: {},
       modelId: master.modelId,
     }
   }
@@ -99,6 +105,7 @@ export async function resolveAgentConfig(
     description: agent.description,
     toolsets,
     appAccounts: agent.appAccounts ?? {},
+    toolRestrictions: agent.toolRestrictions ?? {},
     modelId: agent.modelId,
   }
 }

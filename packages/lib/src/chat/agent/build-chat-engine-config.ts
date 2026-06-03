@@ -2,6 +2,9 @@
 
 import { type Database, database } from '@auxx/database'
 import { filterToolsByToolsets, resolveAgentConfig } from '../../agents'
+import { buildApplyToolRestrictions } from '../../agents/restrictions/apply'
+import { projectToolsSchemas } from '../../agents/restrictions/project-schema'
+import { buildResolveVar } from '../../agents/restrictions/var-registry'
 import {
   type AgentEngineConfig,
   type ChatInvocationContext,
@@ -66,6 +69,14 @@ export async function buildChatEngineConfig(
 ): Promise<AgentEngineConfig> {
   const { organizationId, agentId, agentUserId, sessionId, invocation, signal } = input
 
+  // Invariant: a chat-kind agent is visitor-facing by definition, so the
+  // author-floor fail-closed check keys on `ctx.invocation`. "No invocation"
+  // must never silently mean "no enforcement" — hard-fail the turn. See
+  // plans/chat/v6 phase-3 (chat-kind requires invocation).
+  if (!invocation || !invocation.threadId) {
+    throw new Error('chat engine requires an invocation context')
+  }
+
   // Resolve default provider/model: the agent's pinned model, else the org's
   // system default LLM.
   const agentConfig = await resolveAgentConfig(organizationId, agentId)
@@ -116,7 +127,21 @@ export async function buildChatEngineConfig(
   // want one unable to hand off to a human — so it's appended unconditionally
   // rather than gated behind a toolset toggle. The "when" is authored in the
   // persona. See plans/chat/v5 escalation.md §1.
-  const tools = [...chatSafeTools, createChatHandoffTool()]
+  // Project tool schemas per the agent's restriction map — bound args stay
+  // visible, drop from `required`, and get an annotated description. Pure
+  // comprehension hint; the runtime clamp below is the actual guarantee.
+  const tools = projectToolsSchemas(
+    [...chatSafeTools, createChatHandoffTool()],
+    agentConfig.toolRestrictions
+  )
+
+  // Author-floor map: tool registered-name → identity-scoped args. On a visitor
+  // turn the engine fail-closes on any unbound entry. See plans/chat/v6 phase-3.
+  const identityScopedInputsByTool = Object.fromEntries(
+    tools
+      .filter((t) => t.identityScopedInputs?.length)
+      .map((t) => [t.name, t.identityScopedInputs] as const)
+  )
 
   const domainConfig = createKopilotDomainConfig({
     capabilityRegistry: registry,
@@ -149,5 +174,13 @@ export async function buildChatEngineConfig(
     signal,
     approvalMode: 'auto',
     invocation,
+    // Clamp tool args per the agent's restriction map before each call. The
+    // `var` resolver projects values off the chat invocation (visitor / thread
+    // anchors) — built once per turn, called per restricted arg. See phase 2.
+    applyToolRestrictions: buildApplyToolRestrictions(
+      agentConfig.toolRestrictions,
+      buildResolveVar(organizationId, { appAccounts: agentConfig.appAccounts }),
+      identityScopedInputsByTool
+    ),
   }
 }

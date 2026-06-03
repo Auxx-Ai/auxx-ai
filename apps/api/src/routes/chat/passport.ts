@@ -3,7 +3,11 @@
 import { randomUUID } from 'node:crypto'
 import { issueChatPassport } from '@auxx/credentials/passport'
 import { database, schema } from '@auxx/database'
-import { resolveChatAttributes, verifyChannelUserJwt } from '@auxx/lib/chat'
+import {
+  resolveChatAttributes,
+  verifyChannelUserJwt,
+  writeShopifyCustomerIdField,
+} from '@auxx/lib/chat'
 import { findOrCreateVisitorParticipant } from '@auxx/lib/chat-widget/visitor'
 import { type GeoLocation, lookupIp } from '@auxx/lib/geo'
 import { findOrCreateContactFromJwt } from '@auxx/lib/ingest'
@@ -357,6 +361,32 @@ passportRoute.post('/', async (c) => {
             .update(schema.Participant)
             .set(participantUpdates)
             .where(eq(schema.Participant.id, participant.id))
+        }
+
+        // Shopify storefront identity (plans/chat/v6 phase-5 §2): write the
+        // verified visitor's Shopify customer id onto their contact's
+        // connection-scoped `customerId` app field, so the chat restriction
+        // engine can resolve `visitor:<…customerId…>` and clamp the order
+        // tools' scope arg to this visitor. Both values come from the
+        // App-Proxy-SIGNED JWT claims (set in shopify-proxy.ts) — never from a
+        // spoofable client attribute. Best-effort: a failure never blocks mint.
+        const shopDomain = claims.attributes.shopify_shop_domain
+        const shopifyCustomerId = claims.attributes.shopify_customer_id
+        if (typeof shopDomain === 'string' && typeof shopifyCustomerId === 'string') {
+          try {
+            await writeShopifyCustomerIdField({
+              organizationId: widget.organizationId,
+              contactId: resolved.contactId,
+              shopDomain,
+              shopifyCustomerId,
+            })
+          } catch (error) {
+            log.warn('Failed to write Shopify customerId identity field', {
+              channelId,
+              contactId: resolved.contactId,
+              error: error instanceof Error ? error.message : String(error),
+            })
+          }
         }
       } catch (error) {
         const e = error as Error & { cause?: unknown; code?: string }
