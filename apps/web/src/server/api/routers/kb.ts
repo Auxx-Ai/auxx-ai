@@ -346,7 +346,8 @@ export const knowledgeBaseRouter = createTRPCRouter({
       const result = await getKBService(ctx).publishArticle(
         input.id,
         ctx.session.user.id,
-        input.ancestorIds
+        input.ancestorIds,
+        input.knowledgeBaseId
       )
       await onCacheEvent('article.published', { orgId: organizationId })
       await revalidateForArticle(ctx, input.knowledgeBaseId, input.id)
@@ -360,7 +361,7 @@ export const knowledgeBaseRouter = createTRPCRouter({
     .input(z.object({ id: z.string(), knowledgeBaseId: z.string().optional() }))
     .use(notDemo('unpublish knowledge base articles'))
     .mutation(async ({ ctx, input }) => {
-      const result = await getKBService(ctx).unpublishArticle(input.id)
+      const result = await getKBService(ctx).unpublishArticle(input.id, input.knowledgeBaseId)
       const organizationId = getUserOrganizationId(ctx.session)
       await onCacheEvent('article.unpublished', { orgId: organizationId })
       await revalidateForArticle(ctx, input.knowledgeBaseId, input.id)

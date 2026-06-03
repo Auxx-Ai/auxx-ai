@@ -62,15 +62,24 @@ export async function getArticleDiff(
         eq(schema.Article.id, articleId),
         eq(schema.Article.organizationId, ctx.organizationId)
       ),
-      columns: { draftRevisionId: true, publishedRevisionId: true },
+      columns: { draftRevisionId: true, homeKnowledgeBaseId: true },
     })
     if (!article) throw createNotFoundError(`Article with ID '${articleId}' not found`)
+    // `published` resolves against the home placement's published revision
+    // (publish is per-placement; the home is the canonical baseline).
+    const homePlacement = await db.query.ArticlePlacement.findFirst({
+      where: and(
+        eq(schema.ArticlePlacement.articleId, articleId),
+        eq(schema.ArticlePlacement.knowledgeBaseId, article.homeKnowledgeBaseId)
+      ),
+      columns: { publishedRevisionId: true },
+    })
 
     const resolveRef = (ref: string): string | null =>
       ref === 'draft'
         ? article.draftRevisionId
         : ref === 'published'
-          ? article.publishedRevisionId
+          ? (homePlacement?.publishedRevisionId ?? null)
           : ref
     const baseId = resolveRef(base)
     const compareId = resolveRef(compare)
@@ -183,10 +192,11 @@ export async function restoreArticleVersion(
           updatedAt: new Date(),
         })
         .where(eq(schema.ArticleRevision.id, article.draftRevisionId!))
+      // Restoring rewrites the canonical draft → every placement now lags it.
       await tx
-        .update(schema.Article)
+        .update(schema.ArticlePlacement)
         .set({ hasUnpublishedChanges: true, updatedAt: new Date() })
-        .where(eq(schema.Article.id, article.id))
+        .where(eq(schema.ArticlePlacement.articleId, article.id))
       await syncArticleDenormalizedFields(article.id, tx)
     })
     void clearKopilotSnapshot(article.id)

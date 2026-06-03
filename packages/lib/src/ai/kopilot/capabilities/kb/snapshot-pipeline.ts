@@ -67,6 +67,15 @@ export async function buildActiveArticleSnapshot(args: {
   })
   if (!article || !article.draftRevision) return null
 
+  // Slug + publish state live on the home placement now.
+  const homePlacement = await db.query.ArticlePlacement.findFirst({
+    where: (p, { and, eq }) =>
+      and(eq(p.articleId, articleId), eq(p.knowledgeBaseId, article.homeKnowledgeBaseId)),
+    columns: { slug: true, hasUnpublishedChanges: true },
+  })
+  const slug = homePlacement?.slug ?? ''
+  const hasUnpublishedChanges = homePlacement?.hasUnpublishedChanges ?? false
+
   const draft = article.draftRevision
   const rawContentJson = (draft.contentJson as ArticleNodeJSON[] | null | undefined) ?? []
 
@@ -85,7 +94,7 @@ export async function buildActiveArticleSnapshot(args: {
         articleId,
         { contentJson: content as unknown as ArticleNodeJSON[] },
         article.authorId ?? draft.editorId ?? organizationId,
-        article.knowledgeBaseId
+        article.homeKnowledgeBaseId
       )
     }
     contentJson = content
@@ -97,21 +106,21 @@ export async function buildActiveArticleSnapshot(args: {
 
   const articleEntityDefinitionId = await getCachedEntityDefId(organizationId, 'article')
   const title = draft.title ?? ''
-  const displayName = title || article.slug
+  const displayName = title || slug
 
   return {
     recordId: articleEntityDefinitionId
       ? `${articleEntityDefinitionId}:${article.id}`
       : `article:${article.id}`,
     displayName,
-    secondaryInfo: article.slug,
+    secondaryInfo: slug,
     articleId: article.id,
-    knowledgeBaseId: article.knowledgeBaseId,
+    knowledgeBaseId: article.homeKnowledgeBaseId,
     title,
-    slug: article.slug,
+    slug,
     description: draft.description ?? null,
     status: article.status as 'DRAFT' | 'PUBLISHED' | 'UNLISTED',
-    hasUnpublishedChanges: article.hasUnpublishedChanges,
+    hasUnpublishedChanges,
     contentHash: computeArticleJsonHash(contentJson),
     bodyMarkdown: body,
     bodyTruncated: truncated,

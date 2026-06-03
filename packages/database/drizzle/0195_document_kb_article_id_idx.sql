@@ -1,0 +1,1 @@
+CREATE INDEX "Document_kb_articleId_idx" ON "Document" USING btree ("organizationId",(("metadata"->'kb'->>'articleId'))) WHERE "metadata"->'kb'->>'articleId' IS NOT NULL;

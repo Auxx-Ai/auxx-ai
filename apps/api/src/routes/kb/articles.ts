@@ -32,20 +32,21 @@ articlesRoute.get('/:id', async (c) => {
   }
 
   const articleId = c.req.param('id')
-  const article = await database.query.Article.findFirst({
+  const placement = await database.query.ArticlePlacement.findFirst({
     where: and(
-      eq(schema.Article.id, articleId),
-      eq(schema.Article.knowledgeBaseId, kb.knowledgeBaseId),
-      eq(schema.Article.organizationId, kb.organizationId),
-      eq(schema.Article.isPublished, true)
+      eq(schema.ArticlePlacement.articleId, articleId),
+      eq(schema.ArticlePlacement.knowledgeBaseId, kb.knowledgeBaseId),
+      eq(schema.ArticlePlacement.organizationId, kb.organizationId),
+      eq(schema.ArticlePlacement.isPublished, true)
     ),
-    with: { publishedRevision: true },
+    with: { publishedRevision: true, article: true },
   })
-  if (!article || !article.publishedRevision) {
+  if (!placement || !placement.publishedRevision || placement.article.archivedAt) {
     return notFound(c, 'Article not found')
   }
 
-  const rev = article.publishedRevision
+  const article = placement.article
+  const rev = placement.publishedRevision
   const contentJson = (rev.contentJson ?? []) as
     | ArticleNodeJSON[]
     | { type: 'doc'; content: ArticleNodeJSON[] }

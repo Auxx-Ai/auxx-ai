@@ -10,6 +10,12 @@ type Db = Database | Transaction
 type KnowledgeBase = typeof schema.KnowledgeBase.$inferSelect
 type ArticleRow = typeof schema.Article.$inferSelect
 
+/** A resolved parent placement + the parent article's kind (for kind rules). */
+export interface ParentPlacement {
+  placementId: string
+  articleKind: ArticleKindType
+}
+
 export async function verifyKnowledgeBaseExists(
   db: Db,
   organizationId: string,
@@ -37,24 +43,31 @@ export async function verifyArticleExists(
   return article
 }
 
+/**
+ * Resolve a parent by its *article* id within a KB (the frontend addresses
+ * parents in article-id space). Returns the parent placement id + the parent
+ * article's kind. Relies on ≤1 placement per (article, KB).
+ */
 export async function verifyParentArticleExists(
   db: Db,
-  parentId: string,
+  parentArticleId: string,
   knowledgeBaseId: string
-): Promise<ArticleRow> {
-  const parentExists = await db.query.Article.findFirst({
+): Promise<ParentPlacement> {
+  const parent = await db.query.ArticlePlacement.findFirst({
     where: and(
-      eq(schema.Article.id, parentId),
-      eq(schema.Article.knowledgeBaseId, knowledgeBaseId)
+      eq(schema.ArticlePlacement.articleId, parentArticleId),
+      eq(schema.ArticlePlacement.knowledgeBaseId, knowledgeBaseId)
     ),
+    columns: { id: true },
+    with: { article: { columns: { articleKind: true } } },
   })
-  if (!parentExists) {
+  if (!parent) {
     throw new TRPCError({
       code: 'BAD_REQUEST',
-      message: `Parent article with ID '${parentId}' not found`,
+      message: `Parent article with ID '${parentArticleId}' not found`,
     })
   }
-  return parentExists
+  return { placementId: parent.id, articleKind: parent.article.articleKind }
 }
 
 /**
@@ -63,7 +76,7 @@ export async function verifyParentArticleExists(
  * only sit at the root or directly under a tab — never nested inside other
  * containers.
  */
-export function validateArticleKind(kind: ArticleKindType, parent: ArticleRow | null): void {
+export function validateArticleKind(kind: ArticleKindType, parent: ParentPlacement | null): void {
   if (kind === ArticleKind.tab) {
     if (parent !== null) {
       throw new TRPCError({

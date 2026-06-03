@@ -82,6 +82,14 @@ export const Document = pgTable(
     index('idx_document_dataset_enabled')
       .using('btree', table.datasetId.asc())
       .where(sql`enabled = true`),
+
+    // Expression index for KB-article document lookups. The KB sync service
+    // finds the Document backing an article via metadata->'kb'->>'articleId'
+    // on every sync/unpublish/delete/metadata-update; without this it's a
+    // sequential scan. Scoped by org to match the finder predicates.
+    index('Document_kb_articleId_idx')
+      .using('btree', table.organizationId.asc(), sql`(("metadata"->'kb'->>'articleId'))`)
+      .where(sql`"metadata"->'kb'->>'articleId' IS NOT NULL`),
   ]
 )
 

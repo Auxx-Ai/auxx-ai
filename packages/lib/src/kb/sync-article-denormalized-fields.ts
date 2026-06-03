@@ -14,44 +14,34 @@ export async function syncArticleDenormalizedFields(
   articleId: string,
   db: Database | Transaction
 ): Promise<void> {
+  // Single round-trip: the article with its draft revision and every placement's
+  // published revision. Published metadata is per-placement now; we denormalize
+  // from the home placement's published revision (the canonical published
+  // baseline), falling back to the draft per-field.
+  const revisionCols = { title: true, excerpt: true, emoji: true, color: true } as const
   const article = await db.query.Article.findFirst({
     where: eq(schema.Article.id, articleId),
-    columns: { publishedRevisionId: true, draftRevisionId: true },
+    columns: { homeKnowledgeBaseId: true },
+    with: {
+      draftRevision: { columns: revisionCols },
+      placements: {
+        columns: { knowledgeBaseId: true },
+        with: { publishedRevision: { columns: revisionCols } },
+      },
+    },
   })
   if (!article) return
 
-  let title: string | null = null
-  let excerpt: string | null = null
-  let emoji: string | null = null
-  let color: string | null = null
+  const pub = article.placements.find(
+    (p) => p.knowledgeBaseId === article.homeKnowledgeBaseId
+  )?.publishedRevision
+  const draft = article.draftRevision
 
-  if (article.publishedRevisionId) {
-    const pub = await db.query.ArticleRevision.findFirst({
-      where: eq(schema.ArticleRevision.id, article.publishedRevisionId),
-      columns: { title: true, excerpt: true, emoji: true, color: true },
-    })
-    if (pub) {
-      title = pub.title ?? null
-      excerpt = pub.excerpt ?? null
-      emoji = pub.emoji ?? null
-      color = pub.color ?? null
-    }
-  }
-  if (
-    (title === null || excerpt === null || emoji === null || color === null) &&
-    article.draftRevisionId
-  ) {
-    const draft = await db.query.ArticleRevision.findFirst({
-      where: eq(schema.ArticleRevision.id, article.draftRevisionId),
-      columns: { title: true, excerpt: true, emoji: true, color: true },
-    })
-    if (draft) {
-      if (title === null) title = draft.title ?? null
-      if (excerpt === null) excerpt = draft.excerpt ?? null
-      if (emoji === null) emoji = draft.emoji ?? null
-      if (color === null) color = draft.color ?? null
-    }
-  }
+  // Prefer the published value per-field, fall back to the draft.
+  const title = pub?.title ?? draft?.title ?? null
+  const excerpt = pub?.excerpt ?? draft?.excerpt ?? null
+  const emoji = pub?.emoji ?? draft?.emoji ?? null
+  const color = pub?.color ?? draft?.color ?? null
 
   await db
     .update(schema.Article)

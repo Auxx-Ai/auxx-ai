@@ -1,13 +1,13 @@
 // @auxx/lib/kb/internal/flatten-article.ts
-import { type Database, schema, type Transaction } from '@auxx/database'
+import type { Database, schema, Transaction } from '@auxx/database'
 import type { RecordId } from '@auxx/types/resource'
 import { TRPCError } from '@trpc/server'
-import { eq } from 'drizzle-orm'
 import { computeArticleJsonHash } from '../markdown/hash'
 import type { ArticleNodeJSON } from '../markdown/types'
 import type { ArticleEditorView, ArticleListItem, ArticleRevisionMeta } from '../types'
 import { createNotFoundError } from './errors'
 import { loadArticleTagRecordIds } from './load-article-tags'
+import { loadArticlePlacementRow, toFlattenRow } from './placement'
 import { resolveCoverUrls } from './resolve-cover-urls'
 
 type Db = Database | Transaction
@@ -74,6 +74,7 @@ export async function flattenForList(
   return {
     id: a.id,
     knowledgeBaseId: a.knowledgeBaseId,
+    placementId: a.placementId,
     organizationId: a.organizationId,
     slug: a.slug,
     parentId: a.parentId,
@@ -86,6 +87,7 @@ export async function flattenForList(
     publishedAt: a.publishedAt,
     publishedRevisionId: a.publishedRevisionId,
     draftRevisionId: a.draftRevisionId,
+    placements: a.placements,
     // Sidebar reflects the current working state — always the draft.
     title: draft.title,
     emoji: draft.emoji,
@@ -123,6 +125,7 @@ export async function flattenForEditor(
   return {
     id: a.id,
     knowledgeBaseId: a.knowledgeBaseId,
+    placementId: a.placementId,
     organizationId: a.organizationId,
     slug: a.slug,
     parentId: a.parentId,
@@ -135,6 +138,7 @@ export async function flattenForEditor(
     publishedAt: a.publishedAt,
     publishedRevisionId: a.publishedRevisionId,
     draftRevisionId: a.draftRevisionId,
+    placements: a.placements,
     title: draftMeta.title,
     emoji: draftMeta.emoji,
     description: draftMeta.description,
@@ -169,17 +173,21 @@ export async function flattenForEditor(
   }
 }
 
-/** Re-query the article and return the flat list-shape. */
+/**
+ * Re-query the article + a placement and return the flat list-shape.
+ * `knowledgeBaseId` picks the placement; omitted → the article's home placement.
+ */
 export async function reloadFlat(
   db: Db,
   organizationId: string,
-  id: string
+  id: string,
+  knowledgeBaseId?: string
 ): Promise<ArticleListItem> {
-  const reloaded = await db.query.Article.findFirst({
-    where: eq(schema.Article.id, id),
-    with: { publishedRevision: true, draftRevision: true },
-  })
-  if (!reloaded) throw createNotFoundError(`Article with ID '${id}' not found`)
+  const loaded = await loadArticlePlacementRow(db, organizationId, id, knowledgeBaseId)
+  if (!loaded) throw createNotFoundError(`Article with ID '${id}' not found`)
   const tagIds = await loadArticleTagRecordIds(db, organizationId, id)
-  return await flattenForList(db, organizationId, reloaded, tagIds)
+  const row = toFlattenRow(loaded.article, loaded.placement, {
+    parentArticleId: loaded.parentArticleId,
+  })
+  return await flattenForList(db, organizationId, row, tagIds)
 }

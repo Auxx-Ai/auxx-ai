@@ -8,7 +8,7 @@
 import { database, schema } from '@auxx/database'
 import type { ArticleNodeJSON } from '@auxx/lib/kb/markdown'
 import { extractHeadings, extractPlainText } from '@auxx/lib/kb/markdown'
-import { and, eq } from 'drizzle-orm'
+import { and, eq, isNull } from 'drizzle-orm'
 import MiniSearch from 'minisearch'
 
 const INDEX_TTL_MS = 60_000
@@ -93,18 +93,20 @@ async function getOrBuildIndex(
 async function buildIndex(knowledgeBaseId: string, organizationId: string): Promise<CachedIndex> {
   const rows = await database
     .select({
-      id: schema.Article.id,
+      id: schema.ArticlePlacement.articleId,
       title: schema.Article.title,
       emoji: schema.Article.emoji,
       articleKind: schema.Article.articleKind,
-      publishedRevisionId: schema.Article.publishedRevisionId,
+      publishedRevisionId: schema.ArticlePlacement.publishedRevisionId,
     })
-    .from(schema.Article)
+    .from(schema.ArticlePlacement)
+    .innerJoin(schema.Article, eq(schema.Article.id, schema.ArticlePlacement.articleId))
     .where(
       and(
-        eq(schema.Article.knowledgeBaseId, knowledgeBaseId),
-        eq(schema.Article.organizationId, organizationId),
-        eq(schema.Article.isPublished, true)
+        eq(schema.ArticlePlacement.knowledgeBaseId, knowledgeBaseId),
+        eq(schema.ArticlePlacement.organizationId, organizationId),
+        eq(schema.ArticlePlacement.isPublished, true),
+        isNull(schema.Article.archivedAt)
       )
     )
 

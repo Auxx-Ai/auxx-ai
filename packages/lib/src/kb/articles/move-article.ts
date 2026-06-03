@@ -3,11 +3,11 @@ import { schema } from '@auxx/database'
 import { generateKeyBetween } from '@auxx/utils'
 import { TRPCError } from '@trpc/server'
 import { and, asc, eq, isNull, ne } from 'drizzle-orm'
-import { getNextArticleSortOrder } from '../internal/article-sort-order'
 import { resolveDb } from '../internal/context'
 import { createNotFoundError, handleError } from '../internal/errors'
 import { reloadFlat } from '../internal/flatten-article'
 import { enqueueSubtreeMetadataSync } from '../internal/metadata-sync'
+import { getNextPlacementSortOrder, resolvePlacement } from '../internal/placement'
 import {
   validateArticleKind,
   verifyKnowledgeBaseExists,
@@ -16,10 +16,9 @@ import {
 import type { ArticleListItem, KBContext, MoveArticleInput } from '../types'
 
 /**
- * Move an article — change its parent and/or its position among siblings.
- * Single-row write; computes sortOrder via fractional indexing. Tabs are
- * just root articles (`parentId === null`, `articleKind === 'tab'`); they
- * use the same primitive.
+ * Move a placement — change its parent and/or position among siblings within a
+ * KB. `input.id`/`input.parentId` are *article* ids (frontend space); they're
+ * resolved to placements here. Tabs are root placements (`parentId === null`).
  */
 export async function moveArticle(
   ctx: KBContext,
@@ -29,12 +28,11 @@ export async function moveArticle(
   const db = resolveDb(ctx)
   try {
     await verifyKnowledgeBaseExists(db, ctx.organizationId, knowledgeBaseId)
+    const placement = await resolvePlacement(db, ctx.organizationId, input.id, knowledgeBaseId)
+    if (!placement) throw createNotFoundError(`Article with ID '${input.id}' not found`)
     const article = await db.query.Article.findFirst({
-      where: and(
-        eq(schema.Article.id, input.id),
-        eq(schema.Article.knowledgeBaseId, knowledgeBaseId),
-        eq(schema.Article.organizationId, ctx.organizationId)
-      ),
+      where: eq(schema.Article.id, input.id),
+      columns: { articleKind: true },
     })
     if (!article) throw createNotFoundError(`Article with ID '${input.id}' not found`)
 
@@ -42,62 +40,62 @@ export async function moveArticle(
       ? await verifyParentArticleExists(db, input.parentId, knowledgeBaseId)
       : null
     validateArticleKind(article.articleKind, parent)
+    const parentPlacementId = parent?.placementId ?? null
 
     let sortOrder: string
     if (input.sortOrder !== undefined) {
       sortOrder = input.sortOrder
     } else if (input.adjacentId && input.position) {
-      const adjacent = await db.query.Article.findFirst({
-        where: and(
-          eq(schema.Article.id, input.adjacentId),
-          eq(schema.Article.knowledgeBaseId, knowledgeBaseId)
-        ),
-        columns: { sortOrder: true, parentId: true },
-      })
+      const adjacent = await resolvePlacement(
+        db,
+        ctx.organizationId,
+        input.adjacentId,
+        knowledgeBaseId
+      )
       if (!adjacent) {
         throw new TRPCError({
           code: 'BAD_REQUEST',
           message: `Adjacent article '${input.adjacentId}' not found`,
         })
       }
-      const siblings = await db.query.Article.findMany({
+      const siblings = await db.query.ArticlePlacement.findMany({
         where: and(
-          eq(schema.Article.knowledgeBaseId, knowledgeBaseId),
-          input.parentId === null
-            ? isNull(schema.Article.parentId)
-            : eq(schema.Article.parentId, input.parentId),
-          ne(schema.Article.id, input.id)
+          eq(schema.ArticlePlacement.knowledgeBaseId, knowledgeBaseId),
+          parentPlacementId === null
+            ? isNull(schema.ArticlePlacement.parentId)
+            : eq(schema.ArticlePlacement.parentId, parentPlacementId),
+          ne(schema.ArticlePlacement.id, placement.id)
         ),
-        orderBy: asc(schema.Article.sortOrder),
+        orderBy: asc(schema.ArticlePlacement.sortOrder),
         columns: { id: true, sortOrder: true },
       })
-      const idx = siblings.findIndex((s) => s.id === input.adjacentId)
+      const idx = siblings.findIndex((s) => s.id === adjacent.id)
       const before = input.position === 'before'
       const lo = before ? (siblings[idx - 1]?.sortOrder ?? null) : adjacent.sortOrder
       const hi = before ? adjacent.sortOrder : (siblings[idx + 1]?.sortOrder ?? null)
       sortOrder = generateKeyBetween(lo, hi)
     } else {
-      sortOrder = await getNextArticleSortOrder(db, knowledgeBaseId, input.parentId)
+      sortOrder = await getNextPlacementSortOrder(db, knowledgeBaseId, parentPlacementId)
     }
 
     await db
-      .update(schema.Article)
-      .set({ parentId: input.parentId, sortOrder, updatedAt: new Date() })
-      .where(eq(schema.Article.id, input.id))
+      .update(schema.ArticlePlacement)
+      .set({ parentId: parentPlacementId, sortOrder, updatedAt: new Date() })
+      .where(eq(schema.ArticlePlacement.id, placement.id))
 
     // Reparenting shifts the slugPath of the entire subtree — refresh
     // metadata for the moved node and every published descendant.
-    if (article.parentId !== input.parentId) {
+    if (placement.parentId !== parentPlacementId) {
       enqueueSubtreeMetadataSync(
         db,
         ctx.organizationId,
         input.id,
         knowledgeBaseId,
-        article.isPublished
+        placement.isPublished
       )
     }
 
-    return await reloadFlat(db, ctx.organizationId, input.id)
+    return await reloadFlat(db, ctx.organizationId, input.id, knowledgeBaseId)
   } catch (error) {
     return handleError(error, ctx.organizationId, 'Error moving article', { input })
   }

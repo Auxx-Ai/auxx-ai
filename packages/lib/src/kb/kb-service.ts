@@ -16,7 +16,12 @@ import {
 import { createArticle } from './articles/create-article'
 import { deleteArticle } from './articles/delete-article'
 import { discardArticleDraft } from './articles/discard-article-draft'
-import { getArticleById, getArticleBySlug, getArticleSlugPath } from './articles/get-article'
+import {
+  getArticleById,
+  getArticleBySlug,
+  getArticlePlacements,
+  getArticleSlugPath,
+} from './articles/get-article'
 import { getAllArticles, getArticles } from './articles/list-articles'
 import { moveArticle } from './articles/move-article'
 import { publishArticle, unpublishArticle } from './articles/publish-article'
@@ -111,6 +116,9 @@ export class KBService {
   getArticleSlugPath(articleId: string) {
     return getArticleSlugPath(this.ctx, articleId)
   }
+  getArticlePlacements(articleId: string) {
+    return getArticlePlacements(this.ctx, articleId)
+  }
 
   // ─── Article writes ─────────────────────────────────────────────────
 
@@ -147,11 +155,16 @@ export class KBService {
 
   // ─── Publish state transitions ──────────────────────────────────────
 
-  publishArticle(id: string, editorId: string, ancestorIds: string[] = []) {
-    return publishArticle(this.ctx, id, editorId, ancestorIds)
+  publishArticle(
+    id: string,
+    editorId: string,
+    ancestorIds: string[] = [],
+    knowledgeBaseId?: string
+  ) {
+    return publishArticle(this.ctx, id, editorId, ancestorIds, knowledgeBaseId)
   }
-  unpublishArticle(id: string) {
-    return unpublishArticle(this.ctx, id)
+  unpublishArticle(id: string, knowledgeBaseId?: string) {
+    return unpublishArticle(this.ctx, id, knowledgeBaseId)
   }
   archiveArticle(id: string) {
     return archiveArticle(this.ctx, id)

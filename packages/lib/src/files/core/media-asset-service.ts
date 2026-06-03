@@ -1022,21 +1022,116 @@ export class MediaAssetService
     try {
       const entity = await this.get(id)
       if (!entity) return null
-
-      const currentVersion = await this.getCurrentVersion(id)
-      if (!currentVersion || !currentVersion.storageLocationId) return null
-
-      // For public assets with external URLs, return the durable URL directly
-      if (!entity.isPrivate && currentVersion.storageLocation?.externalUrl) {
-        return currentVersion.storageLocation.externalUrl
-      }
-
-      // Otherwise, get presigned URL from storage manager
-      const downloadRef = await this.getDownloadRef(id)
-      return downloadRef.type === 'url' ? downloadRef.url : null
+      const currentVersion = await this.resolveCurrentVersion(entity)
+      return this.downloadUrlFor(entity, currentVersion)
     } catch (error) {
       return null
     }
+  }
+
+  /**
+   * Batch-resolve download URLs for many asset ids in a fixed number of DB
+   * round-trips (one for assets, up to two for their versions) instead of the
+   * per-id `getDownloadUrl` fan-out. Returns a Map keyed by id; ids that are
+   * missing, deleted, or have no storage location resolve to null. Presigning
+   * stays per-asset but is an in-memory signing op, not a DB call.
+   */
+  async getDownloadUrls(ids: string[]): Promise<Map<string, string | null>> {
+    const result = new Map<string, string | null>()
+    const unique = Array.from(new Set(ids.filter((id): id is string => !!id)))
+    if (unique.length === 0) return result
+
+    const filters: SQL[] = [
+      inArray(schema.MediaAsset.id, unique),
+      isNull(schema.MediaAsset.deletedAt),
+    ]
+    if (this.organizationId) {
+      filters.push(eq(schema.MediaAsset.organizationId, this.organizationId))
+    }
+    const assets = await this.db.query.MediaAsset.findMany({ where: and(...filters) })
+
+    // Resolve every asset's current version in at most two queries: one by
+    // explicit currentVersionId, one by assetId (latest) for assets without it.
+    const withCurrent = assets.filter((a) => (a as any).currentVersionId)
+    const withoutCurrent = assets.filter((a) => !(a as any).currentVersionId)
+    const versionById = new Map<string, any>()
+    const latestByAsset = new Map<string, any>()
+
+    const [byId, byAsset] = await Promise.all([
+      withCurrent.length
+        ? this.db.query.MediaAssetVersion.findMany({
+            where: inArray(
+              schema.MediaAssetVersion.id,
+              withCurrent.map((a) => (a as any).currentVersionId as string)
+            ),
+            with: { storageLocation: true },
+          })
+        : Promise.resolve([]),
+      withoutCurrent.length
+        ? this.db.query.MediaAssetVersion.findMany({
+            where: inArray(
+              schema.MediaAssetVersion.assetId,
+              withoutCurrent.map((a) => a.id)
+            ),
+            orderBy: desc(schema.MediaAssetVersion.versionNumber),
+            with: { storageLocation: true },
+          })
+        : Promise.resolve([]),
+    ])
+    for (const v of byId) versionById.set(v.id, v)
+    for (const v of byAsset) {
+      // ordered by version desc → first seen per asset is the latest
+      if (!latestByAsset.has(v.assetId)) latestByAsset.set(v.assetId, v)
+    }
+
+    await Promise.all(
+      assets.map(async (entity) => {
+        const version = (entity as any).currentVersionId
+          ? versionById.get((entity as any).currentVersionId)
+          : latestByAsset.get(entity.id)
+        result.set(entity.id, await this.downloadUrlFor(entity, version))
+      })
+    )
+    for (const id of unique) if (!result.has(id)) result.set(id, null)
+    return result
+  }
+
+  /**
+   * Turn an already-loaded asset + its current version into a download URL.
+   * Public assets with a durable external URL return it directly; otherwise a
+   * presigned URL is generated. Shared by `getDownloadUrl`/`getDownloadUrls`
+   * so neither re-fetches the entity or version.
+   */
+  private async downloadUrlFor(entity: MediaAsset, currentVersion: any): Promise<string | null> {
+    if (!currentVersion || !currentVersion.storageLocationId) return null
+    if (!entity.isPrivate && currentVersion.storageLocation?.externalUrl) {
+      return currentVersion.storageLocation.externalUrl
+    }
+    const storageManager = await this.getStorageManager()
+    const downloadRef = await storageManager.getDownloadRef({
+      locationId: currentVersion.storageLocationId,
+      filename: entity.name || undefined,
+      mimeType: entity.mimeType || undefined,
+    })
+    return downloadRef.type === 'url' ? downloadRef.url : null
+  }
+
+  /**
+   * Resolve the current version for an already-loaded asset without re-fetching
+   * the asset row (unlike `getCurrentVersion`, which re-`get`s by id).
+   */
+  private async resolveCurrentVersion(entity: MediaAsset): Promise<any> {
+    if ((entity as any).currentVersionId) {
+      return this.db.query.MediaAssetVersion.findFirst({
+        where: eq(schema.MediaAssetVersion.id, (entity as any).currentVersionId),
+        with: { storageLocation: true },
+      })
+    }
+    return this.db.query.MediaAssetVersion.findFirst({
+      where: eq(schema.MediaAssetVersion.assetId, entity.id),
+      orderBy: desc(schema.MediaAssetVersion.versionNumber),
+      with: { storageLocation: true },
+    })
   }
 
   /**
@@ -1084,25 +1179,7 @@ export class MediaAssetService
     if (!entity) {
       throw new Error(`${this.getEntityName()} not found`)
     }
-
-    // If entity has currentVersionId, fetch that version
-    if ((entity as any).currentVersionId) {
-      return this.db.query.MediaAssetVersion.findFirst({
-        where: eq(schema.MediaAssetVersion.id, (entity as any).currentVersionId),
-        with: {
-          storageLocation: true,
-        },
-      })
-    }
-
-    // Otherwise, get the latest version
-    return this.db.query.MediaAssetVersion.findFirst({
-      where: eq(schema.MediaAssetVersion.assetId, entityId),
-      orderBy: desc(schema.MediaAssetVersion.versionNumber),
-      with: {
-        storageLocation: true,
-      },
-    })
+    return this.resolveCurrentVersion(entity)
   }
 
   /**

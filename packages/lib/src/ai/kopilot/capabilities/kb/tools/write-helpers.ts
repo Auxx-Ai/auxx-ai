@@ -127,7 +127,7 @@ export async function runBlockCrudOp(args: {
   if (!article || !article.draftRevision) {
     return { ok: false, error: 'article not found' }
   }
-  const knowledgeBaseId = article.knowledgeBaseId
+  const knowledgeBaseId = article.homeKnowledgeBaseId
   const draftJson = (article.draftRevision.contentJson as ArticleNodeJSON[] | null) ?? []
   const preHash = computeArticleJsonHash(draftJson)
 

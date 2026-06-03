@@ -5,6 +5,7 @@ type Db = Database | Transaction
 
 type AssetService = {
   getDownloadUrl: (id: string) => Promise<string | null>
+  getDownloadUrls: (ids: string[]) => Promise<Map<string, string | null>>
 }
 
 /**
@@ -60,8 +61,11 @@ export async function resolveCoverUrls(
   ids: Array<string | null | undefined>
 ): Promise<Map<string, string | null>> {
   const unique = Array.from(new Set(ids.filter((id): id is string => !!id)))
-  const entries = await Promise.all(
-    unique.map(async (id) => [id, await resolveCoverUrl(db, organizationId, id)] as const)
-  )
-  return new Map(entries)
+  if (unique.length === 0) return new Map()
+  try {
+    const assetService = await getAssetService(db, organizationId)
+    return await assetService.getDownloadUrls(unique)
+  } catch {
+    return new Map(unique.map((id) => [id, null]))
+  }
 }

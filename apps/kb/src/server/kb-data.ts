@@ -1,11 +1,18 @@
 // apps/kb/src/server/kb-data.ts
 
-import { Article, ArticleRevision, database, KnowledgeBase, Organization } from '@auxx/database'
+import {
+  Article,
+  ArticlePlacement,
+  ArticleRevision,
+  database,
+  KnowledgeBase,
+  Organization,
+} from '@auxx/database'
 import type { ArticleKind } from '@auxx/database/types'
 import { isOrgMember } from '@auxx/lib/cache'
 import { MediaAssetService } from '@auxx/lib/files/server'
 import type { ArticleNodeJSON, KBLayoutKB } from '@auxx/ui/components/kb'
-import { and, eq } from 'drizzle-orm'
+import { and, eq, isNull } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 
 export interface PublicArticleListItem {
@@ -135,23 +142,48 @@ export async function loadKBPayload(
   }
 
   const pub = alias(ArticleRevision, 'pub')
-  const rawArticles = await database
+  const rawPlacements = await database
     .select({
-      id: Article.id,
-      knowledgeBaseId: Article.knowledgeBaseId,
-      slug: Article.slug,
-      parentId: Article.parentId,
+      placementId: ArticlePlacement.id,
+      articleId: ArticlePlacement.articleId,
+      knowledgeBaseId: ArticlePlacement.knowledgeBaseId,
+      slug: ArticlePlacement.slug,
+      parentPlacementId: ArticlePlacement.parentId,
       articleKind: Article.articleKind,
-      sortOrder: Article.sortOrder,
-      isPublished: Article.isPublished,
+      sortOrder: ArticlePlacement.sortOrder,
+      isPublished: ArticlePlacement.isPublished,
       title: pub.title,
       emoji: pub.emoji,
       description: pub.description,
       excerpt: pub.excerpt,
     })
-    .from(Article)
-    .innerJoin(pub, eq(pub.id, Article.publishedRevisionId))
-    .where(and(eq(Article.knowledgeBaseId, kb.id), eq(Article.isPublished, true)))
+    .from(ArticlePlacement)
+    .innerJoin(Article, eq(Article.id, ArticlePlacement.articleId))
+    .innerJoin(pub, eq(pub.id, ArticlePlacement.publishedRevisionId))
+    .where(
+      and(
+        eq(ArticlePlacement.knowledgeBaseId, kb.id),
+        eq(ArticlePlacement.isPublished, true),
+        isNull(Article.archivedAt) // archive is article-wide; hide every placement
+      )
+    )
+
+  // Remap parentId to article-id space so the tree (and filterVisibleSubtree)
+  // works exactly as before — the public node id stays the article id.
+  const toArticleId = new Map(rawPlacements.map((p) => [p.placementId, p.articleId]))
+  const rawArticles: PublicArticleListItem[] = rawPlacements.map((p) => ({
+    id: p.articleId,
+    knowledgeBaseId: p.knowledgeBaseId,
+    title: p.title,
+    slug: p.slug,
+    emoji: p.emoji,
+    parentId: p.parentPlacementId ? (toArticleId.get(p.parentPlacementId) ?? null) : null,
+    articleKind: p.articleKind,
+    sortOrder: p.sortOrder,
+    isPublished: p.isPublished,
+    description: p.description,
+    excerpt: p.excerpt,
+  }))
 
   const articles = filterVisibleSubtree(rawArticles)
 
@@ -208,7 +240,16 @@ export async function loadKBPayloadWithContent(
   const pub = alias(ArticleRevision, 'pub')
   const rows = await database
     .select({
-      article: Article,
+      placementId: ArticlePlacement.id,
+      articleId: ArticlePlacement.articleId,
+      knowledgeBaseId: ArticlePlacement.knowledgeBaseId,
+      slug: ArticlePlacement.slug,
+      parentPlacementId: ArticlePlacement.parentId,
+      articleKind: Article.articleKind,
+      sortOrder: ArticlePlacement.sortOrder,
+      isPublished: ArticlePlacement.isPublished,
+      publishedAt: ArticlePlacement.publishedAt,
+      updatedAt: Article.updatedAt,
       pubTitle: pub.title,
       pubEmoji: pub.emoji,
       pubDescription: pub.description,
@@ -217,9 +258,16 @@ export async function loadKBPayloadWithContent(
       pubContentJson: pub.contentJson,
       pubCoverImageId: pub.coverImageId,
     })
-    .from(Article)
-    .innerJoin(pub, eq(pub.id, Article.publishedRevisionId))
-    .where(and(eq(Article.knowledgeBaseId, kb.id), eq(Article.isPublished, true)))
+    .from(ArticlePlacement)
+    .innerJoin(Article, eq(Article.id, ArticlePlacement.articleId))
+    .innerJoin(pub, eq(pub.id, ArticlePlacement.publishedRevisionId))
+    .where(
+      and(
+        eq(ArticlePlacement.knowledgeBaseId, kb.id),
+        eq(ArticlePlacement.isPublished, true),
+        isNull(Article.archivedAt)
+      )
+    )
 
   // Resolve cover URLs in a single fan-out so the SSR pass makes
   // O(unique-covers) S3 round-trips instead of O(articles).
@@ -238,23 +286,24 @@ export async function loadKBPayloadWithContent(
   )
   const coverUrlMap = new Map(coverUrlEntries)
 
+  const toArticleId = new Map(rows.map((r) => [r.placementId, r.articleId]))
   const fullArticles: PublicArticleFull[] = rows.map((r) => ({
-    id: r.article.id,
-    knowledgeBaseId: r.article.knowledgeBaseId,
+    id: r.articleId,
+    knowledgeBaseId: r.knowledgeBaseId,
     title: r.pubTitle,
-    slug: r.article.slug,
+    slug: r.slug,
     emoji: r.pubEmoji,
-    parentId: r.article.parentId,
-    articleKind: r.article.articleKind,
-    sortOrder: r.article.sortOrder,
-    isPublished: r.article.isPublished,
+    parentId: r.parentPlacementId ? (toArticleId.get(r.parentPlacementId) ?? null) : null,
+    articleKind: r.articleKind,
+    sortOrder: r.sortOrder,
+    isPublished: r.isPublished,
     description: r.pubDescription,
     excerpt: r.pubExcerpt,
     content: r.pubContent,
     contentJson: (r.pubContentJson as ArticleNodeJSON[] | null) ?? null,
     coverImage: r.pubCoverImageId ? (coverUrlMap.get(r.pubCoverImageId) ?? null) : null,
-    publishedAt: r.article.publishedAt,
-    updatedAt: r.article.updatedAt,
+    publishedAt: r.publishedAt,
+    updatedAt: r.updatedAt,
   }))
 
   return { kb, articles: filterVisibleSubtree(fullArticles) }
