@@ -12,6 +12,7 @@ import {
   Dataset,
   File,
   KnowledgeBase,
+  KnowledgeSource,
   MediaAsset,
   Organization,
   PromptTemplate,
@@ -45,6 +46,11 @@ export const articleRelations = relations(Article, ({ one, many }) => ({
   }),
   placements: many(ArticlePlacement),
   files: many(File),
+  source: one(KnowledgeSource, {
+    fields: [Article.sourceId],
+    references: [KnowledgeSource.id],
+    relationName: 'article_sourceId_knowledgeSource_id',
+  }),
 }))
 
 export const articlePlacementRelations = relations(ArticlePlacement, ({ one, many }) => ({
@@ -78,6 +84,34 @@ export const articlePlacementRelations = relations(ArticlePlacement, ({ one, man
     references: [User.id],
     relationName: 'articlePlacement_publishedById_user_id',
   }),
+  linkedSource: one(KnowledgeSource, {
+    fields: [ArticlePlacement.linkedFromSourceId],
+    references: [KnowledgeSource.id],
+  }),
+}))
+
+export const knowledgeSourceRelations = relations(KnowledgeSource, ({ one, many }) => ({
+  organization: one(Organization, {
+    fields: [KnowledgeSource.organizationId],
+    references: [Organization.id],
+  }),
+  targetKnowledgeBase: one(KnowledgeBase, {
+    fields: [KnowledgeSource.targetKnowledgeBaseId],
+    references: [KnowledgeBase.id],
+  }),
+  rootFolderArticle: one(Article, {
+    fields: [KnowledgeSource.rootFolderArticleId],
+    references: [Article.id],
+    relationName: 'knowledgeSource_rootFolderArticleId_article_id',
+  }),
+  createdBy: one(User, {
+    fields: [KnowledgeSource.createdById],
+    references: [User.id],
+  }),
+  managedArticles: many(Article, {
+    relationName: 'article_sourceId_knowledgeSource_id',
+  }),
+  linkedPlacements: many(ArticlePlacement),
 }))
 
 export const knowledgeBaseRelations = relations(KnowledgeBase, ({ one, many }) => ({

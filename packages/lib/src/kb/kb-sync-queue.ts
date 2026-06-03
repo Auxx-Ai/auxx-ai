@@ -5,7 +5,7 @@ import { getQueue, Queues } from '../jobs/queues'
 
 const logger = createScopedLogger('kb-sync-queue')
 
-export type KBSyncJobType = 'sync' | 'unpublish' | 'delete' | 'metadata'
+export type KBSyncJobType = 'sync' | 'sync-managed' | 'unpublish' | 'delete' | 'metadata'
 
 export interface KBSyncJobData {
   type: KBSyncJobType

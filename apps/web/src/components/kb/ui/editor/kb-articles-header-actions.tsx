@@ -12,14 +12,15 @@ import {
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
 import { toastError } from '@auxx/ui/components/toast'
-import { FileText, FolderClosed, Heading, Link2, Plus, Upload } from 'lucide-react'
-import { useCallback, useRef } from 'react'
+import { Database, FileText, FolderClosed, Heading, Link2, Plus, Upload } from 'lucide-react'
+import { useCallback, useRef, useState } from 'react'
 import { useActiveArticle } from '../../hooks/use-active-article'
 import { useActiveTabId } from '../../hooks/use-active-tab'
 import { useArticleList } from '../../hooks/use-article-list'
 import { useArticleMutations } from '../../hooks/use-article-mutations'
 import { usePendingInsertStore } from '../../store/pending-insert-store'
 import { inferCreateParent } from '../../utils/infer-create-parent'
+import { CreateKnowledgeSourceDialog } from './create-knowledge-source-dialog'
 
 interface KBArticlesHeaderActionsProps {
   knowledgeBaseId: string
@@ -32,6 +33,7 @@ export function KBArticlesHeaderActions({ knowledgeBaseId }: KBArticlesHeaderAct
   const { createArticle, isCreating } = useArticleMutations(knowledgeBaseId)
   const setPending = usePendingInsertStore((s) => s.setPending)
   const importInputRef = useRef<HTMLInputElement>(null)
+  const [isSourceDialogOpen, setIsSourceDialogOpen] = useState(false)
 
   const handleCreateInTab = useCallback(
     (articleKind: ArticleKindType = ArticleKind.page) => {
@@ -117,8 +119,16 @@ export function KBArticlesHeaderActions({ knowledgeBaseId }: KBArticlesHeaderAct
           <DropdownMenuItem onClick={() => importInputRef.current?.click()}>
             <Upload /> Import .md
           </DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => setIsSourceDialogOpen(true)}>
+            <Database /> New source
+          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
+      <CreateKnowledgeSourceDialog
+        knowledgeBaseId={knowledgeBaseId}
+        open={isSourceDialogOpen}
+        onOpenChange={setIsSourceDialogOpen}
+      />
       <input
         ref={importInputRef}
         type='file'

@@ -3,21 +3,24 @@
 
 import { Button } from '@auxx/ui/components/button'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
-import { toastSuccess } from '@auxx/ui/components/toast'
+import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { useHotkey } from '@tanstack/react-hotkeys'
 import type { JSONContent } from '@tiptap/core'
 import type { Editor } from '@tiptap/react'
+import { Lock } from 'lucide-react'
 import { useCallback, useRef } from 'react'
 import { useDebounceCallback } from 'usehooks-ts'
 import { KBArticleEditor } from '~/components/editor/kb-article'
 import { KopilotContext } from '~/components/kopilot/context/kopilot-context'
 import { KopilotSuggestion } from '~/components/kopilot/suggestions'
+import { useConfirm } from '~/hooks/use-confirm'
+import { api } from '~/trpc/react'
 import { useArticleContent } from '../../hooks/use-article-content'
 import { useArticleMutations } from '../../hooks/use-article-mutations'
 import { useDiffParam } from '../../hooks/use-diff-param'
 import { useKbArticleChannel } from '../../hooks/use-kb-article-channel'
 import { useKopilotReview } from '../../hooks/use-kopilot-review'
-import type { ArticleMeta } from '../../store/article-store'
+import { type ArticleMeta, getArticleStoreState } from '../../store/article-store'
 import { ArticleEditorFooter } from './article-editor-footer'
 import { ArticleEditorHeader } from './article-editor-header'
 import { ArticleEditorTop } from './article-editor-top'
@@ -30,11 +33,16 @@ interface ArticleEditorProps {
 }
 
 export function ArticleEditor({ article, knowledgeBaseId }: ArticleEditorProps) {
-  const { draftContentJson, isLoading: isContentLoading } = useArticleContent(
-    article.id,
-    knowledgeBaseId
-  )
+  const {
+    draftContentJson,
+    isLoading: isContentLoading,
+    managed,
+    sourceName,
+  } = useArticleContent(article.id, knowledgeBaseId)
   const { updateArticleDraft, updateArticleContent } = useArticleMutations(knowledgeBaseId)
+  const utils = api.useUtils()
+  const [confirm, ConfirmDialog] = useConfirm()
+  const detachArticle = api.knowledgeSource.detachArticle.useMutation()
   // Cross-tab sync + Kopilot lock signal. Self-originated resyncs are
   // dropped server-side by session id; cross-tab edits invalidate the
   // article-content query and the editor's `useExternalContentSync` hook
@@ -78,6 +86,33 @@ export function ArticleEditor({ article, knowledgeBaseId }: ArticleEditorProps) 
     await updateArticleDraft(article.id, changes)
   }
 
+  // Managed (source-owned) articles are read-only until detached. Detach is
+  // article-wide in Phase 1: flips `managed=false` so future syncs skip it.
+  const handleDetach = async () => {
+    const ok = await confirm({
+      title: 'Edit this article?',
+      description: sourceName
+        ? `This article is synced from "${sourceName}". Editing detaches it — future syncs won't overwrite your changes.`
+        : "This article is synced from a knowledge source. Editing detaches it — future syncs won't overwrite your changes.",
+      confirmText: 'Edit & detach',
+      cancelText: 'Cancel',
+    })
+    if (!ok) return
+    try {
+      await detachArticle.mutateAsync({ articleId: article.id })
+      // Unlock the editor (re-reads managed=false) + clear the sidebar glyph.
+      getArticleStoreState().applyArticleMetadataFromServer(article.id, { managed: false })
+      await utils.kb.getArticleById.invalidate({ id: article.id, knowledgeBaseId })
+    } catch (error) {
+      toastError({
+        title: "Couldn't detach article",
+        description: error instanceof Error ? error.message : 'Unknown error occurred',
+      })
+    }
+  }
+
+  const bodyReadOnly = locked || managed
+
   return (
     <div className='flex min-h-0 flex-1 flex-col'>
       <KopilotContext
@@ -88,6 +123,23 @@ export function ArticleEditor({ article, knowledgeBaseId }: ArticleEditorProps) 
       <KopilotSuggestion text='Suggest related articles' icon='list' autoSubmit />
       <KopilotSuggestion text='Improve this article' icon='sparkle' />
       <ArticleEditorHeader article={article} knowledgeBaseId={knowledgeBaseId} />
+      {managed && (
+        <div className='flex items-center gap-3 border-b bg-amber-500/10 px-7 py-2 text-sm'>
+          <Lock className='size-4 shrink-0 text-amber-700 dark:text-amber-300' />
+          <span className='text-foreground'>
+            Managed by {sourceName ? <span className='font-medium'>{sourceName}</span> : 'a source'}
+            <span className='ml-1 text-muted-foreground'>— this article is read-only.</span>
+          </span>
+          <Button
+            variant='outline'
+            size='xs'
+            className='ml-auto'
+            loading={detachArticle.isPending}
+            onClick={handleDetach}>
+            Edit / detach
+          </Button>
+        </div>
+      )}
       {review.pending && (
         <div className='flex items-center gap-3 border-b bg-primary-150 px-7 py-2 text-sm'>
           <span className='text-foreground'>
@@ -115,6 +167,7 @@ export function ArticleEditor({ article, knowledgeBaseId }: ArticleEditorProps) 
                 knowledgeBaseId={knowledgeBaseId}
                 onUpdateMetadata={handleMetadataUpdate}
                 onAdvanceToContent={focusBodyEditor}
+                readOnly={managed}
               />
               <div className='relative flex min-h-0 min-w-0 flex-1 flex-col items-stretch'>
                 {!isContentLoading && (
@@ -123,7 +176,7 @@ export function ArticleEditor({ article, knowledgeBaseId }: ArticleEditorProps) 
                     onChange={debouncedPersist}
                     knowledgeBaseId={knowledgeBaseId}
                     onReady={handleBodyEditorReady}
-                    readOnly={locked}
+                    readOnly={bodyReadOnly}
                   />
                 )}
                 {locked && (
@@ -137,6 +190,7 @@ export function ArticleEditor({ article, knowledgeBaseId }: ArticleEditorProps) 
           </div>
         </div>
       </ScrollArea>
+      <ConfirmDialog />
     </div>
   )
 }

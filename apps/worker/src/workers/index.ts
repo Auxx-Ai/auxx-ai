@@ -13,6 +13,7 @@ import { startDocumentProcessingWorker } from './worker-definitions/document-pro
 import { startEmailWorker } from './worker-definitions/email-worker'
 import { startEventHandlersWorker, startEventsWorker } from './worker-definitions/events-worker'
 import { startKBSyncWorker } from './worker-definitions/kb-sync-worker'
+import { startKnowledgeSourceWorker } from './worker-definitions/knowledge-source-worker'
 import { startMaintenanceWorker } from './worker-definitions/maintenance-worker'
 import { startMessageProcessingWorker } from './worker-definitions/message-processing-worker'
 import { startMessageSyncWorker } from './worker-definitions/message-sync-worker'
@@ -98,6 +99,9 @@ export async function startWorkers() {
   // KB article → managed-dataset sync worker
   const kbSyncWorker = startKBSyncWorker()
 
+  // Knowledge Source ingest/re-sync orchestration worker
+  const knowledgeSourceWorker = startKnowledgeSourceWorker()
+
   const workers = [
     // defaultWorker,
     eventsWorker,
@@ -126,6 +130,7 @@ export async function startWorkers() {
     recordingBotWorker,
     recordingProcessingWorker,
     kbSyncWorker,
+    knowledgeSourceWorker,
   ]
 
   return Promise.all(workers)

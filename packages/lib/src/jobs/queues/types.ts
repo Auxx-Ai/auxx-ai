@@ -48,4 +48,6 @@ export enum Queues {
   aiAutofillQueue = 'ai-autofill',
   // KB article → managed-dataset sync queue
   kbSyncQueue = 'kb-sync',
+  // Knowledge Source orchestration (crawl/ingest re-sync) queue
+  knowledgeSourceQueue = 'knowledge-source',
 }

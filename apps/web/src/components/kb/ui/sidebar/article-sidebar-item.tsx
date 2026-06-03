@@ -37,6 +37,7 @@ import {
   FolderOpen,
   GripVertical,
   Link2,
+  Lock,
   MoreVertical,
   Pencil,
   Send,
@@ -522,6 +523,14 @@ export function ArticleSidebarItem({
                   hasUnpublishedChanges={article.hasUnpublishedChanges}
                   isArchived={isArchived}
                 />
+              )}
+              {article.managed && (
+                <Tooltip content='Managed by a knowledge source'>
+                  <Lock
+                    className='ml-1 size-3 shrink-0 text-muted-foreground'
+                    aria-label='Managed by a knowledge source'
+                  />
+                </Tooltip>
               )}
               {!isHeader && isCategory && (
                 <button

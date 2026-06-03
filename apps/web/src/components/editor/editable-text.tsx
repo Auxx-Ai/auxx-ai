@@ -18,6 +18,8 @@ interface EditableTextProps {
   placeholderColor?: string // New prop for placeholder color
   maxWidth?: string
   containerClassName?: string
+  /** When true, the text renders statically — no click-to-edit, no hover affordance. */
+  readOnly?: boolean
 }
 
 export const EditableText = forwardRef<EditableTextHandle, EditableTextProps>(function EditableText(
@@ -29,6 +31,7 @@ export const EditableText = forwardRef<EditableTextHandle, EditableTextProps>(fu
     placeholderColor = 'text-gray-500', // Default placeholder color
     maxWidth = '100%',
     containerClassName = '',
+    readOnly = false,
   },
   ref
 ) {
@@ -74,6 +77,7 @@ export const EditableText = forwardRef<EditableTextHandle, EditableTextProps>(fu
   }, [isEditing]) // Dependency remains the same
 
   const handleClick = () => {
+    if (readOnly) return
     // Update width just before switching to editing mode
     if (textRef.current) {
       setMinWidth(textRef.current.offsetWidth)
@@ -85,6 +89,7 @@ export const EditableText = forwardRef<EditableTextHandle, EditableTextProps>(fu
 
   useImperativeHandle(ref, () => ({
     enterEdit: () => {
+      if (readOnly) return
       if (textRef.current) {
         setMinWidth(textRef.current.offsetWidth)
       }
@@ -156,7 +161,8 @@ export const EditableText = forwardRef<EditableTextHandle, EditableTextProps>(fu
           ref={textRef}
           onClick={handleClick}
           className={cn(
-            `cursor-pointer whitespace-pre-wrap break-words rounded-2xl border border-transparent px-2 py-1 hover:border-gray-300 hover:dark:border-primary-300`,
+            'whitespace-pre-wrap break-words rounded-2xl border border-transparent px-2 py-1',
+            !readOnly && 'cursor-pointer hover:border-gray-300 hover:dark:border-primary-300',
             className, // Apply user-provided class names
             // Apply placeholderColor class only when placeholder is shown
             showPlaceholder && placeholderColor

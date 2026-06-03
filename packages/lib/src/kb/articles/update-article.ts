@@ -109,7 +109,13 @@ export async function updateArticleDraft(
         .where(eq(schema.ArticlePlacement.articleId, id))
       await tx
         .update(schema.Article)
-        .set({ updatedAt: new Date() })
+        .set({
+          updatedAt: new Date(),
+          // Article sink bumps the source hash alongside the content overwrite.
+          ...(fields.sourceContentHash !== undefined
+            ? { sourceContentHash: fields.sourceContentHash }
+            : {}),
+        })
         .where(eq(schema.Article.id, id))
       await syncArticleDenormalizedFields(id, tx)
     })

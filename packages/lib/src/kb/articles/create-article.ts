@@ -119,6 +119,10 @@ export async function createArticle(
           homeKnowledgeBaseId: knowledgeBaseId,
           organizationId: ctx.organizationId,
           authorId,
+          managed: articleInput.managed ?? false,
+          sourceId: articleInput.sourceId ?? null,
+          sourceExternalId: articleInput.sourceExternalId ?? null,
+          sourceContentHash: articleInput.sourceContentHash ?? null,
           updatedAt: new Date(),
         })
         .returning()

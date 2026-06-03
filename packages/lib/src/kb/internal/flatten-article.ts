@@ -1,7 +1,8 @@
 // @auxx/lib/kb/internal/flatten-article.ts
-import type { Database, schema, Transaction } from '@auxx/database'
+import { type Database, schema, type Transaction } from '@auxx/database'
 import type { RecordId } from '@auxx/types/resource'
 import { TRPCError } from '@trpc/server'
+import { eq } from 'drizzle-orm'
 import { computeArticleJsonHash } from '../markdown/hash'
 import type { ArticleNodeJSON } from '../markdown/types'
 import type { ArticleEditorView, ArticleListItem, ArticleRevisionMeta } from '../types'
@@ -87,6 +88,8 @@ export async function flattenForList(
     publishedAt: a.publishedAt,
     publishedRevisionId: a.publishedRevisionId,
     draftRevisionId: a.draftRevisionId,
+    managed: a.managed ?? false,
+    sourceId: a.sourceId ?? null,
     placements: a.placements,
     // Sidebar reflects the current working state — always the draft.
     title: draft.title,
@@ -122,6 +125,15 @@ export async function flattenForEditor(
   ])
   const draftMeta = buildRevisionMeta(draft, urlMap)!
   const publishedMeta = buildRevisionMeta(pub, urlMap)
+  // Resolve the owning source's display name for the "Managed by {source}" banner.
+  const sourceName = a.sourceId
+    ? ((
+        await db.query.KnowledgeSource.findFirst({
+          where: eq(schema.KnowledgeSource.id, a.sourceId),
+          columns: { name: true },
+        })
+      )?.name ?? null)
+    : null
   return {
     id: a.id,
     knowledgeBaseId: a.knowledgeBaseId,
@@ -138,6 +150,9 @@ export async function flattenForEditor(
     publishedAt: a.publishedAt,
     publishedRevisionId: a.publishedRevisionId,
     draftRevisionId: a.draftRevisionId,
+    managed: a.managed ?? false,
+    sourceId: a.sourceId ?? null,
+    sourceName,
     placements: a.placements,
     title: draftMeta.title,
     emoji: draftMeta.emoji,

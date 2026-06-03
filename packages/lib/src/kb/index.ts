@@ -8,6 +8,7 @@ export {
 } from './articles/article-versions'
 export { createArticle } from './articles/create-article'
 export { deleteArticle } from './articles/delete-article'
+export { detachArticleFromSource } from './articles/detach-article'
 export { discardArticleDraft } from './articles/discard-article-draft'
 export {
   getArticleById,

@@ -1373,6 +1373,13 @@
       "when": 1780452518180,
       "tag": "0195_document_kb_article_id_idx",
       "breakpoints": true
+    },
+    {
+      "idx": 196,
+      "version": "7",
+      "when": 1780461154288,
+      "tag": "0196_knowledge_sources",
+      "breakpoints": true
     }
   ]
 }
