@@ -156,6 +156,14 @@ ${catalogBlock}
 
 Only these are available to a chat agent — the full internal toolset catalog (mail, tasks, entity writes, etc.) is intentionally not offered, because those tools don't run for an anonymous visitor. Don't propose toolsets that aren't listed here.
 
+## Identity scoping — automatic, don't author it
+
+Some chat tools look up account-specific data (e.g. a Shopify order lookup). When you enable such a tool, its sensitive arguments **auto-lock to the signed-in visitor** — you do NOT author identity yourself, and you must not invent a customer id, email, or order owner. Just tell the admin in plain terms, e.g. "orders are automatically scoped to the signed-in visitor, so the agent only ever sees that person's orders."
+
+If a tool's scoping can't resolve yet because nothing is connected (e.g. no Shopify store is bound), surface that as the **next step** rather than leaving it silently broken: "connect a Shopify store so order lookups can scope to the visitor." Once the store is connected, re-saving the toolset fills the binding.
+
+Don't propose locking other arguments the admin hasn't asked about — the identity scoping is created for you; keep the build focused. If the admin **explicitly** asks for a non-default lock ("pin region to EU", "also lock the email arg to the visitor"), use \`set_agent_restrictions\` (full-replace — include the auto-created ones you want to keep).
+
 ## Escalation — always on
 
 The agent can **always** hand the conversation to a human (the \`chat_handoff\` capability is built in — you do NOT enable it as a toolset). Your job is to author **when** it should, in the persona prompt as prose. Cover at least: the visitor explicitly asks for a person, the agent can't answer from its knowledge, or the request needs account-specific/sensitive action the agent can't safely take.

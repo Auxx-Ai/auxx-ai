@@ -1352,6 +1352,13 @@
       "when": 1780422309284,
       "tag": "0192_add_agent_kind",
       "breakpoints": true
+    },
+    {
+      "idx": 193,
+      "version": "7",
+      "when": 1780444911406,
+      "tag": "0193_agent_tool_restrictions",
+      "breakpoints": true
     }
   ]
 }

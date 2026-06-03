@@ -11,6 +11,7 @@ import { buildBuilderPersonaPrompt, buildChatBuilderPersonaPrompt } from './pers
 import { createCompleteAgentSetupTool } from './tools/complete-agent-setup'
 import { createSetAgentPromptTool } from './tools/set-agent-prompt'
 import { createSetAgentResourceScopeTool } from './tools/set-agent-resource-scope'
+import { createSetAgentRestrictionsTool } from './tools/set-agent-restrictions'
 import { createSetAgentToolsetsTool } from './tools/set-agent-toolsets'
 import { createSetAgentTriggersTool } from './tools/set-agent-triggers'
 import { createSuggestRepliesTool } from './tools/suggest-replies'
@@ -56,6 +57,9 @@ export async function createAgentsBuilderCapabilities(
     createUpdateAgentIdentityTool(getDeps),
     createSetAgentPromptTool(getDeps),
     createSetAgentToolsetsTool(getDeps),
+    // Bespoke arg-locking, available to both kinds. Most identity scoping is
+    // auto-created on tool enablement (phase-6 §1); this covers explicit asks.
+    createSetAgentRestrictionsTool(getDeps),
     ...(isChat
       ? []
       : [createSetAgentResourceScopeTool(getDeps), createSetAgentTriggersTool(getDeps)]),

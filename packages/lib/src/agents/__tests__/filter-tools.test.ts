@@ -23,6 +23,7 @@ const masterEmpty: ResolvedAgentConfig = {
   description: null,
   toolsets: [],
   appAccounts: {},
+  toolRestrictions: {},
   modelId: null,
 }
 
@@ -38,6 +39,7 @@ function agent(toolsets: Array<{ slug: string; disabledTools?: string[] }>): Res
       disabledTools: new Set(t.disabledTools ?? []),
     })),
     appAccounts: {},
+    toolRestrictions: {},
     modelId: null,
   }
 }

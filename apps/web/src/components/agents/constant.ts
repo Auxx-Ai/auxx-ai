@@ -4,5 +4,5 @@
 export const DEFAULT_AGENT_TAB = 'prompt'
 
 /** Tab keys used by the agent detail page. */
-export const AGENT_TABS = ['prompt', 'tools', 'knowledge', 'triggers'] as const
+export const AGENT_TABS = ['prompt', 'tools', 'restrictions', 'knowledge', 'triggers'] as const
 export type AgentTab = (typeof AGENT_TABS)[number]

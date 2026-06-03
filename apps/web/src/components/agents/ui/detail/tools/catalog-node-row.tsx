@@ -26,6 +26,13 @@ interface CatalogNodeRowProps {
   /** Resolved color — current node's `color` or nearest ancestor's. */
   inheritedColor: string | null
   stateBySlug: Map<string, ToolsetRowState>
+  /**
+   * Read-only restriction count per toolset slug. When a leaf has ≥1, a lock
+   * badge renders; container rows roll up descendant counts into `secondary`.
+   * Managing restrictions happens in the Restrictions section. See
+   * plans/chat/v6 phase-4.
+   */
+  restrictionCountBySlug?: Map<string, number>
   /** Presence = collapsed. Stable Set instance — child reads `.has()`. */
   collapsed: Set<string>
   onToggleCollapsed: (id: string) => void
@@ -67,6 +74,7 @@ export function CatalogNodeRow({
   inheritedIconId,
   inheritedColor,
   stateBySlug,
+  restrictionCountBySlug,
   collapsed,
   onToggleCollapsed,
   onRemove,
@@ -88,6 +96,7 @@ export function CatalogNodeRow({
         description={node.description}
         toolCount={node.tools.length}
         source={state.source}
+        restrictionCount={restrictionCountBySlug?.get(node.slug) ?? 0}
         onRemove={onRemove ? () => onRemove(node) : undefined}
       />
     )
@@ -95,6 +104,7 @@ export function CatalogNodeRow({
 
   const isOpen = !collapsed.has(node.id)
   const stats = summarizeContainer(node, stateBySlug)
+  const restrictionCount = countRestrictions(node, restrictionCountBySlug)
   const isApp = node.kind === 'app'
   const isInstalledApp = isApp && !node.isBuiltin
   // App container nodes carry the prefixed id `app:<appId>` so the tree can
@@ -120,6 +130,7 @@ export function CatalogNodeRow({
             <span>
               {stats.enabled} {pluralize(stats.enabled, 'tool')}
             </span>
+            {restrictionCount > 0 ? <RestrictionLockBadge count={restrictionCount} /> : null}
             <span className='text-muted-foreground'>·</span>
             <CredentialBadge
               credId={boundCredId}
@@ -127,7 +138,12 @@ export function CatalogNodeRow({
             />
           </span>
         ) : (
-          `${stats.enabled} ${pluralize(stats.enabled, 'tool')}`
+          <span className='inline-flex items-center gap-2'>
+            <span>
+              {stats.enabled} {pluralize(stats.enabled, 'tool')}
+            </span>
+            {restrictionCount > 0 ? <RestrictionLockBadge count={restrictionCount} /> : null}
+          </span>
         )
       }
       expandable
@@ -151,6 +167,7 @@ export function CatalogNodeRow({
           inheritedIconId={iconId}
           inheritedColor={color}
           stateBySlug={stateBySlug}
+          restrictionCountBySlug={restrictionCountBySlug}
           collapsed={collapsed}
           onToggleCollapsed={onToggleCollapsed}
           onRemove={onRemove}
@@ -209,6 +226,29 @@ function summarizeContainer(
     else removable++
   }
   return { total, enabled, removable, locked }
+}
+
+/** Sum the restriction counts of every toolset leaf under a node. */
+function countRestrictions(
+  node: CatalogNode,
+  restrictionCountBySlug: Map<string, number> | undefined
+): number {
+  if (!restrictionCountBySlug) return 0
+  let total = 0
+  for (const leaf of collectLeaves(node)) total += restrictionCountBySlug.get(leaf.slug) ?? 0
+  return total
+}
+
+/** Small read-only lock badge + count, reusing the mention-lock `Lock` glyph. */
+function RestrictionLockBadge({ count }: { count: number }) {
+  return (
+    <Tooltip content={`${count} ${pluralize(count, 'restricted argument')}`}>
+      <span className='inline-flex items-center gap-0.5 text-[11px] text-muted-foreground'>
+        <Lock className='size-3' />
+        {count}
+      </span>
+    </Tooltip>
+  )
 }
 
 export function* collectLeaves(node: CatalogNode): IterableIterator<CatalogToolsetNode> {

@@ -391,6 +391,42 @@ export class AgentEngine {
         invocation: config.invocation,
       }
 
+      // Per-agent restriction clamp (approval-resume) — pins / overrides args
+      // before validateInputs / execute, so a pinned arg can't be smuggled in
+      // via an amended approval.
+      if (config.applyToolRestrictions) {
+        const r = await config.applyToolRestrictions(pending.toolName, finalArgs, ctx)
+        if (!r.ok) {
+          logger.info('applyToolRestrictions refused approved tool', {
+            turnId: this.turnId,
+            tool: pending.toolName,
+            error: r.error,
+          })
+          this.mutatePart(pending.messageId, pending.partIndex, (p) => {
+            const tc = p as ToolCallPart
+            tc.status = 'error'
+            tc.error = r.error
+            tc.args = finalArgs
+            if (opts.inputAmendment) tc.inputAmendment = opts.inputAmendment
+          })
+          yield this.tagEvent({
+            type: 'tool-call-failed',
+            messageId: pending.messageId,
+            partIndex: pending.partIndex,
+            toolCallId: pending.toolCallId,
+            agent: pending.agentName,
+            error: r.error,
+          })
+          this.state = {
+            ...this.state,
+            waitingForApproval: false,
+            pendingToolCall: undefined,
+          }
+          return
+        }
+        finalArgs = r.args
+      }
+
       // Re-run input validation on merged args.
       if (tool.validateInputs) {
         const v = await tool.validateInputs(finalArgs, ctx)

@@ -2,7 +2,10 @@
 'use client'
 
 import { TreeRow } from '@auxx/ui/components/tree-row'
+import { pluralize } from '@auxx/utils/strings'
+import { Lock } from 'lucide-react'
 import { AppIcon } from '~/components/apps/ui/app-icon'
+import { Tooltip } from '~/components/global/tooltip'
 import { RemoveButton } from './remove-button'
 
 export interface ToolsetRowProps {
@@ -14,6 +17,8 @@ export interface ToolsetRowProps {
   description?: string
   toolCount: number
   source: 'manual' | 'mention' | 'auto_default'
+  /** Read-only restriction count for this toolset; ≥1 shows a lock badge. */
+  restrictionCount?: number
   depth?: number
   onRemove?: () => void
 }
@@ -31,6 +36,7 @@ export function ToolsetRow({
   description,
   toolCount,
   source,
+  restrictionCount = 0,
   depth = 0,
   onRemove,
 }: ToolsetRowProps) {
@@ -45,7 +51,20 @@ export function ToolsetRow({
       icon={<AppIcon iconId={iconId} color={color ?? undefined} size='sm' />}
       title={label}
       description={description || undefined}
-      secondary={`${toolCount} ${toolCount === 1 ? 'tool' : 'tools'}`}
+      secondary={
+        <span className='inline-flex items-center gap-2'>
+          <span>{`${toolCount} ${toolCount === 1 ? 'tool' : 'tools'}`}</span>
+          {restrictionCount > 0 ? (
+            <Tooltip
+              content={`${restrictionCount} ${pluralize(restrictionCount, 'restricted argument')}`}>
+              <span className='inline-flex items-center gap-0.5 text-[11px] text-muted-foreground'>
+                <Lock className='size-3' />
+                {restrictionCount}
+              </span>
+            </Tooltip>
+          ) : null}
+        </span>
+      }
       actions={
         onRemove && <RemoveButton enabled={removable} tooltip={tooltip} onClick={onRemove} />
       }

@@ -1,0 +1,1 @@
+ALTER TABLE "Agent" ADD COLUMN "toolRestrictions" jsonb DEFAULT '{}'::jsonb NOT NULL;

@@ -12,6 +12,7 @@ import { AppAccountDialog } from '~/components/apps/ui/app-account-dialog'
 import { api } from '~/trpc/react'
 import type { AgentDetail } from '../../../store/agent-store'
 import type { AutosaveState } from '../../shared/autosave-indicator'
+import { useToolMeta } from '../restrictions/hooks/use-tool-meta'
 import {
   CatalogNodeRow,
   collectLeaves,
@@ -64,6 +65,23 @@ export function ToolsSectionContent({
     }
     return map
   }, [agent.toolsets])
+
+  // Read-only restriction counts per toolset slug, so the Tools tree can show a
+  // lock badge next to toolsets that carry restrictions. Derived from
+  // `agent.toolRestrictions` (keyed by registered name) via the tool-meta
+  // lookup. Managing the rules still lives in the Restrictions section.
+  const { byRegisteredName } = useToolMeta(agent)
+  const restrictionCountBySlug = useMemo<Map<string, number>>(() => {
+    const map = new Map<string, number>()
+    for (const [registeredName, perTool] of Object.entries(agent.toolRestrictions ?? {})) {
+      const argCount = Object.keys(perTool).length
+      if (argCount === 0) continue
+      const slug = byRegisteredName.get(registeredName)?.toolsetSlug
+      if (!slug) continue
+      map.set(slug, (map.get(slug) ?? 0) + argCount)
+    }
+    return map
+  }, [agent.toolRestrictions, byRegisteredName])
 
   const installedTree = useMemo(
     () => pruneToInstalled(catalog, stateBySlug),
@@ -195,6 +213,7 @@ export function ToolsSectionContent({
           inheritedIconId={root.iconId ?? 'package'}
           inheritedColor={root.color}
           stateBySlug={stateBySlug}
+          restrictionCountBySlug={restrictionCountBySlug}
           collapsed={collapsed}
           onToggleCollapsed={toggleCollapsed}
           onRemove={handleRemove}

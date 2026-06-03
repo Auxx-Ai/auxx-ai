@@ -9,8 +9,10 @@ import {
   getAgentDetailByIdOrSlug,
   isAgentSlugTaken,
   listAgents,
+  setAgentToolRestrictions,
   updateAgent as updateAgentService,
 } from '@auxx/lib/agents'
+import { buildRestrictionVarRegistry } from '@auxx/lib/agents/restrictions'
 import { FeatureKey, FeaturePermissionService } from '@auxx/lib/permissions'
 import { createScopedLogger } from '@auxx/logger'
 import { TRPCError } from '@trpc/server'
@@ -212,5 +214,56 @@ export const agentRouter = createTRPCRouter({
         excludeAgentId: input.excludeAgentId,
       })
       return { available: !taken }
+    }),
+
+  /**
+   * Project the org's dynamic vars (visitor / thread anchor fields) for the
+   * phase-4 restrictions picker. A var binds a `source: 'var'` restriction to a
+   * read-only value reachable from the chat invocation. The `agentId` input is
+   * reserved (phase 4 greys `visitor.*` vars for internal agents) and currently
+   * ignored — the projection is org-wide. See plans/chat/v6 phase-2.
+   */
+  listRestrictionVars: adminProcedure
+    .input(z.object({ agentId: z.string().min(1).optional() }).optional())
+    .query(async ({ ctx }) => {
+      const vars = await buildRestrictionVarRegistry(ctx.session.organizationId)
+      return { vars }
+    }),
+
+  /**
+   * Full-replace write of an agent's `toolRestrictions` map (the phase-4
+   * Restrictions section). The client sends the complete `tool → arg →
+   * ArgRestriction` map; the service overwrites the column wholesale and busts
+   * the org agents cache. Mirrors `set_agent_toolsets` semantics — no merge, no
+   * pruning of disabled-tool entries. See plans/chat/v6 phase-4.
+   */
+  setToolRestrictions: adminProcedure
+    .input(
+      z.object({
+        agentId: z.string().min(1),
+        restrictions: z.record(
+          z.string(),
+          z.record(
+            z.string(),
+            z.object({
+              source: z.enum(['model', 'var', 'constant']),
+              var: z.string().optional(),
+              value: z.unknown().optional(),
+              required: z.boolean().optional(),
+            })
+          )
+        ),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { organizationId } = ctx.session
+      if (!(await agentExistsInOrg(organizationId, input.agentId))) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Agent not found' })
+      }
+      await setAgentToolRestrictions({
+        organizationId,
+        agentId: input.agentId,
+        restrictions: input.restrictions,
+      })
     }),
 })

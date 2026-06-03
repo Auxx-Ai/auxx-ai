@@ -186,6 +186,11 @@ export interface CachedInstalledAppLike {
     toolsetSlug: string
     /** Mirrors `AgentToolDefinition.chatSafe` — surfaces the tool in the chat-kind catalog. */
     chatSafe?: boolean
+    /**
+     * Identity/record-scope args the engine fail-closes on in a visitor turn.
+     * See plans/chat/v6 phase-3.
+     */
+    identityScopedInputs?: ReadonlyArray<{ name: string; suggestedVar?: string }>
   }>
 }
 

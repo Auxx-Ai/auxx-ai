@@ -469,7 +469,8 @@ export async function* agentQueryLoop(
         config.domainConfig.transformToolInput
           ? (toolName, args) =>
               config.domainConfig.transformToolInput!(toolName, args, currentState)
-          : undefined
+          : undefined,
+        config.applyToolRestrictions
       )
       // Forward each event mapped onto the appropriate tool_call part.
       for (const ev of captureRun.events) {
@@ -583,6 +584,52 @@ export async function* agentQueryLoop(
         }
         currentState = upsertAssistantMessage()
         continue
+      }
+
+      // Per-agent restriction clamp (pre-pause) — pins / overrides args before
+      // the approval card is shown and before validateInputs runs, so a pinned
+      // arg can't be smuggled in via an amended approval.
+      if (config.applyToolRestrictions) {
+        const r = await config.applyToolRestrictions(approvalTool.function.name, approvalArgs, ctx)
+        if (!r.ok) {
+          logger.info('applyToolRestrictions refused approval-required call', {
+            turnId,
+            agent: agent.name,
+            tool: approvalTool.function.name,
+            error: r.error,
+          })
+          ;(parts[approvalPartIndex] as ToolCallPart).status = 'error'
+          ;(parts[approvalPartIndex] as ToolCallPart).error = r.error
+          yield {
+            type: 'tool-call-failed',
+            messageId,
+            partIndex: approvalPartIndex,
+            toolCallId: approvalTool.id,
+            agent: agent.name,
+            error: r.error,
+          }
+          for (let k = 0; k < toolPartIndexes.length; k++) {
+            if (k === approvalIdx) continue
+            const idx = toolPartIndexes[k]!
+            const p = parts[idx] as ToolCallPart
+            if (p.status === 'running') {
+              p.status = 'error'
+              p.error = 'Skipped — upstream tool failed validation'
+              yield {
+                type: 'tool-call-failed',
+                messageId,
+                partIndex: idx,
+                toolCallId: p.toolCallId,
+                agent: agent.name,
+                error: p.error,
+              }
+            }
+          }
+          currentState = upsertAssistantMessage()
+          continue
+        }
+        approvalArgs = r.args
+        ;(parts[approvalPartIndex] as ToolCallPart).args = approvalArgs
       }
 
       // Pre-pause input validation.
@@ -766,7 +813,8 @@ export async function* agentQueryLoop(
       idempotentCache,
       config.domainConfig.transformToolInput
         ? (toolName, args) => config.domainConfig.transformToolInput!(toolName, args, currentState)
-        : undefined
+        : undefined,
+      config.applyToolRestrictions
     )
     let collectedToolResults: ToolExecResult[] = []
     while (true) {
@@ -1001,7 +1049,8 @@ async function* executeToolCalls(
   messageId: string,
   ctx: ToolContext,
   idempotentCache: Map<string, ToolExecResult>,
-  transformInput?: (toolName: string, args: Record<string, unknown>) => Record<string, unknown>
+  transformInput?: (toolName: string, args: Record<string, unknown>) => Record<string, unknown>,
+  applyToolRestrictions?: AgentEngineConfig['applyToolRestrictions']
 ): AsyncGenerator<AgentEvent, ToolExecResult[]> {
   const toolMap = new Map(agentTools.map((t) => [t.name, t]))
   const results: ToolExecResult[] = []
@@ -1037,6 +1086,37 @@ async function* executeToolCalls(
 
     // Approval-required tools never reach here.
     if (needsApproval(tool, args)) continue
+
+    // Per-agent restriction clamp — pins / overrides args before the tool
+    // validates or executes. The rewritten object is the one that flows on.
+    if (applyToolRestrictions) {
+      const r = await applyToolRestrictions(toolName, args, ctx)
+      if (!r.ok) {
+        yield {
+          type: 'tool-call-failed',
+          messageId,
+          partIndex,
+          toolCallId: toolCall.id,
+          agent: agentName,
+          error: r.error,
+        }
+        logger.info('applyToolRestrictions refused call', {
+          agent: agentName,
+          tool: toolName,
+          error: r.error,
+        })
+        results.push({
+          toolCallId: toolCall.id,
+          toolName,
+          output: { error: r.error },
+          success: false,
+          error: r.error,
+        })
+        continue
+      }
+      args = r.args
+      ;(parts[partIndex] as ToolCallPart).args = args
+    }
 
     // Input validation + normalization.
     if (tool.validateInputs) {

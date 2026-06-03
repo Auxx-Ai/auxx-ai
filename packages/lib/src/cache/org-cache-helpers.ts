@@ -6,6 +6,7 @@ import type { Resource } from '../resources/registry/types'
 import type {
   CachedAgent,
   CachedGroup,
+  CachedInstalledApp,
   DehydratedOrgProfile,
   OrgMemberInfo,
 } from './org-cache-keys'
@@ -230,6 +231,29 @@ export async function getCachedAgentsByIds(
 export async function isAgentUser(orgId: string, userId: string): Promise<boolean> {
   const agents = await getOrgCache().get(orgId, 'agents')
   return agents.some((a) => a.userId === userId)
+}
+
+// ── Installed-apps cache helpers ──
+
+/**
+ * Get the org's installed apps (cached). Includes the synthetic built-in `auxx`
+ * row plus every third-party installation with its catalog projections.
+ */
+export async function getCachedInstalledApps(orgId: string): Promise<CachedInstalledApp[]> {
+  return getOrgCache().get(orgId, 'installedApps')
+}
+
+/**
+ * Resolve an `appInstallationId` to its app slug + title via the installed-apps
+ * cache. Returns null when no live installation matches (uninstalled / unknown).
+ */
+export async function getCachedAppByInstallationId(
+  orgId: string,
+  installationId: string
+): Promise<{ slug: string; title: string } | null> {
+  const apps = await getCachedInstalledApps(orgId)
+  const match = apps.find((a) => a.installationId === installationId)
+  return match ? { slug: match.app.slug, title: match.app.title } : null
 }
 
 // ── Channel cache helpers ──

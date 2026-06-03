@@ -18,6 +18,7 @@ import { BadRequestError, ForbiddenError } from '../errors'
 import { getRealtimeService, publishAgentUpdated } from '../realtime'
 import { resolveDefaultToolsets } from './default-toolsets'
 import { reconcilePromptMentions, type ToolsetSource } from './prompt-mention-reconciler'
+import type { ToolRestrictionMap } from './restrictions/client'
 import { getOrgToolCatalog } from './toolset-catalog'
 
 const logger = createScopedLogger('agent-service')
@@ -655,6 +656,13 @@ export interface AgentDetail extends AgentSummary {
   toolsets: ToolsetEntry[]
   knowledge: KnowledgeEntry[]
   appAccounts: Record<string, AppAccountBinding>
+  /**
+   * Per-tool, per-argument restriction map (`tool → arg → ArgRestriction`).
+   * Pins or marks-required tool arguments before the engine runs the tool.
+   * Surfaced so the agent detail UI can render the Restrictions section.
+   * See plans/chat/v6 phase-4.
+   */
+  toolRestrictions: ToolRestrictionMap
 }
 
 /**
@@ -690,6 +698,7 @@ export async function getAgentDetail(
     toolsets: cached.toolsets,
     knowledge: cached.knowledge,
     appAccounts: cached.appAccounts,
+    toolRestrictions: cached.toolRestrictions,
   }
 }
 

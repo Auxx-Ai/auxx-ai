@@ -304,6 +304,13 @@ export interface AgentToolDefinition {
    */
   chatSafe?: boolean
   /**
+   * Input args carrying caller identity / record scope. In a visitor (chat)
+   * invocation each MUST be bound to a restriction or the engine refuses the
+   * call (fail-closed). Ignored on internal invocations. Scalar top-level arg
+   * names only (v6). See plans/chat/v6 phase-3.
+   */
+  identityScopedInputs?: ReadonlyArray<{ name: string; suggestedVar?: string }>
+  /**
    * Capture-mode hook: predict the tool's output without executing.
    *
    * When the engine runs in `approvalMode: 'capture'`, approval-required tools
@@ -718,6 +725,25 @@ export interface AgentEngineConfig {
    * kopilot / builder / autonomous-trigger runs. See plans/chat/v5.
    */
   invocation?: ChatInvocationContext
+  /**
+   * Applied to every tool call's args immediately before validateInputs /
+   * execute, in both the live and approval-resume paths. Lets the caller
+   * clamp arguments per the agent's restriction map (constant / dynamic-var
+   * override) and refuse the call when a required binding can't resolve.
+   * Caller-provided so the engine stays free of the var registry. See
+   * plans/chat/v6 phase-1.
+   *
+   * On `{ ok: false }` the engine short-circuits the call exactly like a
+   * `validateInputs` failure (emits tool-call-failed, skips execute, counts
+   * as one iteration). On `{ ok: true }` the returned `args` object MUST be
+   * the one threaded into validateInputs / execute / prepareLambdaCall — the
+   * engine never re-reads the pre-clamp args.
+   */
+  applyToolRestrictions?: (
+    toolName: string,
+    args: Record<string, unknown>,
+    ctx: ToolContext
+  ) => Promise<{ ok: true; args: Record<string, unknown> } | { ok: false; error: string }>
 }
 
 // ===== AGENT DEPENDENCIES =====
