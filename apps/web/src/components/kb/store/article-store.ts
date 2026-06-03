@@ -48,6 +48,10 @@ export interface ArticleMeta {
   publishedAt: Date | null
   publishedRevisionId: string | null
   draftRevisionId: string | null
+  /** true = Locked/source-owned (read-only). Drives the sidebar lock glyph. */
+  managed: boolean
+  /** Owning KnowledgeSource id, or null for hand-authored articles. */
+  sourceId: string | null
   draft: ArticleRevisionMeta
   published: ArticleRevisionMeta | null
   /** Tag RecordIds applied to this article. Empty array if untagged. */

@@ -15,6 +15,8 @@ interface ArticleEditorTopProps {
   knowledgeBaseId: string
   onUpdateMetadata?: (changes: { title?: string; description?: string }) => void
   onAdvanceToContent?: () => void
+  /** Source-managed article — title/description/emoji are read-only. */
+  readOnly?: boolean
 }
 
 export function ArticleEditorTop({
@@ -22,6 +24,7 @@ export function ArticleEditorTop({
   knowledgeBaseId,
   onUpdateMetadata,
   onAdvanceToContent,
+  readOnly = false,
 }: ArticleEditorTopProps) {
   const descriptionRef = useRef<EditableTextHandle>(null)
   const { updateArticleDraft } = useArticleMutations(knowledgeBaseId)
@@ -48,10 +51,7 @@ export function ArticleEditorTop({
               <div className='flex items-start justify-between'>
                 <div className='flex h-full flex-1 items-center self-stretch'>
                   <div className=' flex shrink-0 items-center'>
-                    <IconPicker
-                      value={pickedEmoji ? { icon: pickedEmoji, color: 'gray' } : undefined}
-                      onChange={(v) => handleEmojiChange(v.icon)}
-                      hideColors>
+                    {readOnly ? (
                       <div>
                         {pickedEmoji ? (
                           <EntityIcon
@@ -65,12 +65,32 @@ export function ArticleEditorTop({
                           <Smile className='size-6!' />
                         )}
                       </div>
-                    </IconPicker>
+                    ) : (
+                      <IconPicker
+                        value={pickedEmoji ? { icon: pickedEmoji, color: 'gray' } : undefined}
+                        onChange={(v) => handleEmojiChange(v.icon)}
+                        hideColors>
+                        <div>
+                          {pickedEmoji ? (
+                            <EntityIcon
+                              iconId={pickedEmoji}
+                              variant='full'
+                              color='gray'
+                              size='xl'
+                              className='[&_svg]:size-6!'
+                            />
+                          ) : (
+                            <Smile className='size-6!' />
+                          )}
+                        </div>
+                      </IconPicker>
+                    )}
                   </div>
                   <div className='relative flex h-full w-full items-center overflow-hidden text-2xl font-semibold lg:text-4xl'>
                     <EditableText
                       className='leading-snug focus:ring-0 py-0'
                       containerClassName='w-full'
+                      readOnly={readOnly}
                       initialText={article.title}
                       placeholderColor='text-muted-foreground'
                       placeholder='Title goes here'
@@ -91,6 +111,7 @@ export function ArticleEditorTop({
                   <div className='mt-2 max-h-[2.5rem] flex-1 overflow-y-scroll text-muted-foreground'>
                     <EditableText
                       ref={descriptionRef}
+                      readOnly={readOnly}
                       placeholder='Add a description...'
                       placeholderColor='text-muted-foreground'
                       className='leading-snug focus:ring-0'

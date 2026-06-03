@@ -36,6 +36,10 @@ interface UseArticleContentResult {
   historicalCoverImage: string | null
   /** Resolved version number when mode is historical; null otherwise. */
   previewVersionNumber: number | null
+  /** true = Locked/source-owned (read-only editor). */
+  managed: boolean
+  /** Owning KnowledgeSource display name — for the "Managed by {source}" banner. */
+  sourceName: string | null
   isLoading: boolean
 }
 
@@ -128,6 +132,8 @@ export function useArticleContent(
     historicalEmoji,
     historicalCoverImage,
     previewVersionNumber,
+    managed: !!data?.managed,
+    sourceName: data?.sourceName ?? null,
     isLoading: baseQuery.isLoading || (isHistorical && versionQuery.isLoading),
   }
 }

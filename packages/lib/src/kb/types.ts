@@ -76,6 +76,14 @@ export interface ArticleListItem {
   publishedRevisionId: string | null
   draftRevisionId: string | null
   /**
+   * Source provenance (content-level). `true` = Locked/source-owned (read-only
+   * in the editor); flips `false` on detach. `sourceId` keeps the owning
+   * KnowledgeSource id for provenance even after detach. See
+   * plans/kb/sources/phase-1-spine.md.
+   */
+  managed: boolean
+  sourceId: string | null
+  /**
    * Every KB this article is placed into. Hydrated on-demand only (editor /
    * `getArticlePlacements`); `undefined` on the sidebar list payload.
    */
@@ -99,6 +107,9 @@ export interface ArticleListItem {
 }
 
 export interface ArticleEditorView extends ArticleListItem {
+  /** Display name of the owning KnowledgeSource — for the "Managed by {source}"
+   *  editor banner. Null when `managed` is false / hand-authored. */
+  sourceName: string | null
   // Always the draft fields, plus the heavy content
   content: string
   contentJson: ArticleNodeJSON[] | null
@@ -189,6 +200,12 @@ export interface ArticleCreateInput {
   coverImageId?: string | null
   articleKind?: ArticleKindType
   parentId?: string | null
+  // Source provenance (set by the Knowledge Sources article sink; null for
+  // hand-authored articles). See plans/kb/sources/phase-1-spine.md.
+  managed?: boolean
+  sourceId?: string | null
+  sourceExternalId?: string | null
+  sourceContentHash?: string | null
 }
 
 export interface ArticleDraftFields {
@@ -199,6 +216,8 @@ export interface ArticleDraftFields {
   content?: string
   contentJson?: ArticleNodeJSON[] | null
   coverImageId?: string | null
+  /** Bumped by the article sink on a content-changing re-sync (Article row). */
+  sourceContentHash?: string | null
 }
 
 export interface ArticleStructureFields {

@@ -496,6 +496,18 @@
       "import": "./dist/kb/markdown/index.mjs",
       "default": "./src/kb/markdown/index.ts"
     },
+    "./knowledge-sources": {
+      "types": "./src/knowledge-sources/index.ts",
+      "source": "./src/knowledge-sources/index.ts",
+      "import": "./dist/knowledge-sources/index.mjs",
+      "default": "./src/knowledge-sources/index.ts"
+    },
+    "./knowledge-sources/run-source-sync": {
+      "types": "./src/knowledge-sources/run-source-sync.ts",
+      "source": "./src/knowledge-sources/run-source-sync.ts",
+      "import": "./dist/knowledge-sources/run-source-sync.mjs",
+      "default": "./src/knowledge-sources/run-source-sync.ts"
+    },
     "./mail-domains": {
       "types": "./src/mail-domains/index.ts",
       "source": "./src/mail-domains/index.ts",

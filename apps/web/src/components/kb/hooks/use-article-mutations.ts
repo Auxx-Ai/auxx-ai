@@ -113,6 +113,8 @@ export function useArticleMutations(knowledgeBaseId: string): UseArticleMutation
         publishedAt: null,
         publishedRevisionId: null,
         draftRevisionId: null,
+        managed: false,
+        sourceId: null,
         draft: optimisticDraft,
         published: null,
         tagIds: [],

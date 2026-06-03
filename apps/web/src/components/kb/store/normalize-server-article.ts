@@ -44,6 +44,8 @@ export function normalizeServerArticle(server: any): ArticleMeta {
     publishedAt: server.publishedAt ? new Date(server.publishedAt) : null,
     publishedRevisionId: server.publishedRevisionId ?? null,
     draftRevisionId: server.draftRevisionId ?? null,
+    managed: !!server.managed,
+    sourceId: server.sourceId ?? null,
     draft,
     published,
     tagIds: (server.tagIds ?? []) as ArticleMeta['tagIds'],

@@ -279,6 +279,23 @@ export const knowledgeBaseRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      // Guard managed (source-owned) articles at the user-facing edge only —
+      // the article sink writes managed drafts through the lib fn directly, so
+      // this must NOT live inside KBService. Detach (managed=false) re-opens edits.
+      const organizationId = getUserOrganizationId(ctx.session)
+      const target = await ctx.db.query.Article.findFirst({
+        where: and(
+          eq(schema.Article.id, input.id),
+          eq(schema.Article.organizationId, organizationId)
+        ),
+        columns: { managed: true },
+      })
+      if (target?.managed) {
+        throw new TRPCError({
+          code: 'FORBIDDEN',
+          message: 'This article is managed by a knowledge source. Detach it to edit.',
+        })
+      }
       return await getKBService(ctx).updateArticleDraft(
         input.id,
         input.data as Parameters<ReturnType<typeof getKBService>['updateArticleDraft']>[1],

@@ -39,6 +39,23 @@ export const articleStatus = pgEnum('ArticleStatus', ['DRAFT', 'PUBLISHED', 'ARC
 export const articleKind = pgEnum('articleKind', ['page', 'category', 'header', 'tab', 'link'])
 export const kbPublishStatus = pgEnum('KBPublishStatus', ['DRAFT', 'PUBLISHED', 'UNLISTED'])
 export const kbVisibility = pgEnum('KBVisibility', ['PUBLIC', 'INTERNAL'])
+// Knowledge Sources — ingest external content into a KB (see plans/kb/sources/).
+// NB: `type` (the connector kind) is a text() column, not a pgEnum — the connector
+// list grows over time and we don't want an enum-alter migration per new connector.
+// The allowed values + union type live on the KnowledgeSource schema file.
+export const knowledgeSourceSurface = pgEnum('KnowledgeSourceSurface', ['publishable', 'ai-only'])
+export const knowledgeSourceSyncBehavior = pgEnum('KnowledgeSourceSyncBehavior', [
+  'manual',
+  'scheduled',
+  'webhook',
+])
+export const knowledgeSourceStatus = pgEnum('KnowledgeSourceStatus', [
+  'pending',
+  'syncing',
+  'live',
+  'error',
+  'paused',
+])
 export const assetVersionStatus = pgEnum('AssetVersionStatus', [
   'PENDING',
   'PROCESSING',

@@ -9,6 +9,7 @@ import { type AnyPgColumn, boolean, index, pgTable, text, timestamp, uniqueIndex
 import { Article } from './article'
 import { ArticleRevision } from './article-revision'
 import { KnowledgeBase } from './knowledge-base'
+import { KnowledgeSource } from './knowledge-source'
 import { Organization } from './organization'
 import { User } from './user'
 
@@ -50,10 +51,14 @@ export const ArticlePlacement = pgTable(
     hasUnpublishedChanges: boolean().default(false).notNull(),
     /**
      * Set when this placement is a live link to a KnowledgeSource's content
-     * (null = native placement). No FK yet — the KnowledgeSource table lands in
-     * the Sources phase; add `.references(() => KnowledgeSource.id)` then.
+     * (null = native placement). The article sink sets this on source-article
+     * placements; detach clears it. Distinct from {@link Article.sourceId}, which
+     * marks content provenance — this marks the *position* as source-managed.
      */
-    linkedFromSourceId: text(),
+    linkedFromSourceId: text().references((): AnyPgColumn => KnowledgeSource.id, {
+      onUpdate: 'cascade',
+      onDelete: 'set null',
+    }),
     createdAt: timestamp({ precision: 3 }).defaultNow().notNull(),
     updatedAt: timestamp({ precision: 3 }).notNull(),
   },

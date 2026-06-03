@@ -22,6 +22,9 @@ async function handleKBSync(ctx: JobContext<KBSyncJobData>) {
     case 'sync':
       await service.syncArticle(articleId)
       break
+    case 'sync-managed':
+      await service.syncManaged(articleId)
+      break
     case 'unpublish':
       await service.unpublishArticle(articleId)
       break
@@ -40,6 +43,7 @@ async function handleKBSync(ctx: JobContext<KBSyncJobData>) {
 
 const jobMappings = {
   'kb-sync:sync': handleKBSync,
+  'kb-sync:sync-managed': handleKBSync,
   'kb-sync:unpublish': handleKBSync,
   'kb-sync:delete': handleKBSync,
   'kb-sync:metadata': handleKBSync,

@@ -108,78 +108,86 @@ export class KBSyncService {
       return
     }
 
-    // Build the indexed markdown — title prepended for recall.
-    const body = articleToMarkdown(
-      {
-        title: revision.title,
-        contentJson: revision.contentJson as ArticleNodeJSON[] | null,
-      },
-      { placeholders: 'literal' }
-    )
-    const md = `# ${revision.title}\n\n${body}`.trim()
-    const contentHash = computeContentHash(md)
-
-    const kbService = new KBService(this.db, this.organizationId)
-    const datasetId = await kbService.ensureManagedDataset(kb, kb.createdById)
-
-    // Lookup an existing Document for this article in this dataset.
-    const existing = await this.findArticleDocument(datasetId, articleId)
-
-    if (existing) {
-      const prevHash = (existing.metadata as any)?.kb?.contentHash as string | undefined
-      if (prevHash === contentHash && existing.enabled) {
-        logger.info('syncArticle: hash unchanged, skipping', { articleId })
-        return
-      }
-    }
-
-    const checksum = createHash('sha256').update(`${articleId}:${md}`, 'utf8').digest('hex')
-    const slugPath = (await kbService.getArticleSlugPath(articleId)) ?? homePlacement.slug
-
-    const baseMetadata = {
-      source: 'kb' as const,
+    await this.embed({
       articleId,
-      kbId: kb.id,
-      articleSlug: homePlacement.slug,
-      articleSlugPath: slugPath,
-      kbSlug: kb.slug,
-      links: [] as Array<{ recordId: string; recordType?: string }>,
+      kb,
+      homePlacementSlug: homePlacement.slug,
+      revision,
+      logLabel: 'syncArticle',
+    })
+  }
+
+  /**
+   * Embed a *managed* (source-owned) article's DRAFT into its home KB's managed
+   * Dataset, **bypassing the publish gate** — source content is searchable as soon
+   * as it syncs, before any human publish. The article sink enqueues this per item.
+   * Mirrors {@link syncArticle}'s self-heal on `aiEnabled` and its hash-skip.
+   */
+  async syncManaged(articleId: string): Promise<void> {
+    const article = await this.db.query.Article.findFirst({
+      where: and(
+        eq(schema.Article.id, articleId),
+        eq(schema.Article.organizationId, this.organizationId)
+      ),
+      with: { draftRevision: true },
+    })
+
+    if (!article) {
+      logger.warn('syncManaged: article not found', { articleId })
+      return
+    }
+    if (article.articleKind === 'link') return
+    if (!article.managed) {
+      logger.info('syncManaged: article not managed, skipping', { articleId })
+      return
     }
 
-    const documentMetadata = {
-      kb: { ...baseMetadata, contentHash, title: revision.title },
-      contentSource: 'kb-article',
+    // Self-heal: if aiEnabled is off, converge to a disabled Document (same as
+    // syncArticle), so toggling AI off drops managed source content from search too.
+    if (!article.aiEnabled) {
+      const doc = await this.findArticleDocumentByArticleId(articleId)
+      if (doc?.enabled) {
+        await this.db
+          .update(schema.Document)
+          .set({ enabled: false, updatedAt: new Date() })
+          .where(eq(schema.Document.id, doc.id))
+      }
+      return
     }
 
-    const documentId = existing
-      ? await this.updateExistingDocument(existing.id, {
-          title: revision.title,
-          checksum,
-          size: Buffer.byteLength(md, 'utf8'),
-          metadata: documentMetadata,
-          enabled: true,
-        })
-      : await this.insertDocument({
-          datasetId,
-          title: revision.title,
-          filename: `${homePlacement.slug}.md`,
-          size: Buffer.byteLength(md, 'utf8'),
-          checksum,
-          metadata: documentMetadata,
-        })
+    // Managed content lives in the draft — embed it regardless of publish state.
+    const revision = article.draftRevision
+    if (!revision) {
+      logger.warn('syncManaged: article has no draft revision', { articleId })
+      return
+    }
 
-    await DocumentProcessor.processInlineContent(
-      {
-        documentId,
-        datasetId,
-        organizationId: this.organizationId,
-        userId: kb.createdById,
-        content: md,
-        contentMetadata: documentMetadata,
-        baseMetadata,
-      },
-      new NullDocumentExecutionReporter()
-    )
+    const homePlacement = await this.db.query.ArticlePlacement.findFirst({
+      where: and(
+        eq(schema.ArticlePlacement.articleId, articleId),
+        eq(schema.ArticlePlacement.knowledgeBaseId, article.homeKnowledgeBaseId)
+      ),
+    })
+    if (!homePlacement) {
+      logger.warn('syncManaged: article has no home placement', { articleId })
+      return
+    }
+
+    const kb = await this.db.query.KnowledgeBase.findFirst({
+      where: eq(schema.KnowledgeBase.id, article.homeKnowledgeBaseId),
+    })
+    if (!kb) {
+      logger.warn('syncManaged: article has no home KB', { articleId })
+      return
+    }
+
+    await this.embed({
+      articleId,
+      kb,
+      homePlacementSlug: homePlacement.slug,
+      revision,
+      logLabel: 'syncManaged',
+    })
   }
 
   /**
@@ -284,6 +292,95 @@ export class KBSyncService {
   }
 
   // ─── internals ────────────────────────────────────────────────────────
+
+  /**
+   * The shared embed core for both {@link syncArticle} (publish-gated) and
+   * {@link syncManaged} (draft, managed). Builds title-prefixed markdown, hash-skips
+   * unchanged content, upserts the article's `Document` in the home KB's managed
+   * Dataset, and enqueues segment embeddings. Callers own the gating; this just embeds.
+   */
+  private async embed(params: {
+    articleId: string
+    kb: typeof schema.KnowledgeBase.$inferSelect
+    homePlacementSlug: string
+    revision: typeof schema.ArticleRevision.$inferSelect
+    logLabel: string
+  }): Promise<void> {
+    const { articleId, kb, homePlacementSlug, revision, logLabel } = params
+
+    // Build the indexed markdown — title prepended for recall.
+    const body = articleToMarkdown(
+      {
+        title: revision.title,
+        contentJson: revision.contentJson as ArticleNodeJSON[] | null,
+      },
+      { placeholders: 'literal' }
+    )
+    const md = `# ${revision.title}\n\n${body}`.trim()
+    const contentHash = computeContentHash(md)
+
+    const kbService = new KBService(this.db, this.organizationId)
+    const datasetId = await kbService.ensureManagedDataset(kb, kb.createdById)
+
+    // Lookup an existing Document for this article in this dataset.
+    const existing = await this.findArticleDocument(datasetId, articleId)
+
+    if (existing) {
+      const prevHash = (existing.metadata as any)?.kb?.contentHash as string | undefined
+      if (prevHash === contentHash && existing.enabled) {
+        logger.info(`${logLabel}: hash unchanged, skipping`, { articleId })
+        return
+      }
+    }
+
+    const checksum = createHash('sha256').update(`${articleId}:${md}`, 'utf8').digest('hex')
+    const slugPath = (await kbService.getArticleSlugPath(articleId)) ?? homePlacementSlug
+
+    const baseMetadata = {
+      source: 'kb' as const,
+      articleId,
+      kbId: kb.id,
+      articleSlug: homePlacementSlug,
+      articleSlugPath: slugPath,
+      kbSlug: kb.slug,
+      links: [] as Array<{ recordId: string; recordType?: string }>,
+    }
+
+    const documentMetadata = {
+      kb: { ...baseMetadata, contentHash, title: revision.title },
+      contentSource: 'kb-article',
+    }
+
+    const documentId = existing
+      ? await this.updateExistingDocument(existing.id, {
+          title: revision.title,
+          checksum,
+          size: Buffer.byteLength(md, 'utf8'),
+          metadata: documentMetadata,
+          enabled: true,
+        })
+      : await this.insertDocument({
+          datasetId,
+          title: revision.title,
+          filename: `${homePlacementSlug}.md`,
+          size: Buffer.byteLength(md, 'utf8'),
+          checksum,
+          metadata: documentMetadata,
+        })
+
+    await DocumentProcessor.processInlineContent(
+      {
+        documentId,
+        datasetId,
+        organizationId: this.organizationId,
+        userId: kb.createdById,
+        content: md,
+        contentMetadata: documentMetadata,
+        baseMetadata,
+      },
+      new NullDocumentExecutionReporter()
+    )
+  }
 
   private async findArticleDocument(datasetId: string, articleId: string) {
     const [row] = await this.db

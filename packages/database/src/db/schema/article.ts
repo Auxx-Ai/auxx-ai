@@ -15,6 +15,7 @@ import {
 } from './_shared'
 import { ArticleRevision } from './article-revision'
 import { KnowledgeBase } from './knowledge-base'
+import { KnowledgeSource } from './knowledge-source'
 import { Organization } from './organization'
 import { User } from './user'
 
@@ -67,6 +68,24 @@ export const Article = pgTable(
       onUpdate: 'cascade',
     }),
     aiEnabled: boolean().default(true).notNull(),
+    /**
+     * Source provenance (content-level). Set when this article's *content* was
+     * ingested from a KnowledgeSource. Distinct from tree placement: link-ness of a
+     * *position* lives on {@link ArticlePlacement.linkedFromSourceId}.
+     *   hand-authored ⇒ sourceId=null, managed=false
+     *   synced        ⇒ sourceId=X,    managed=true  (Locked/read-only)
+     *   detached      ⇒ sourceId=X,    managed=false (keeps provenance; re-sync skips)
+     */
+    sourceId: text().references((): AnyPgColumn => KnowledgeSource.id, {
+      onUpdate: 'cascade',
+      onDelete: 'set null',
+    }),
+    /** Stable id at source: normalized URL / shopify GID / file checksum / manual key. */
+    sourceExternalId: text(),
+    /** Last-synced content hash — skip unchanged items on re-sync. */
+    sourceContentHash: text(),
+    /** true = Locked (source-owned, read-only); flips false on detach. */
+    managed: boolean().default(false).notNull(),
   },
   (table) => [
     index('Article_articleKind_idx').using('btree', table.articleKind.asc().nullsLast()),
@@ -76,5 +95,10 @@ export const Article = pgTable(
     ),
     index('Article_title_idx').using('btree', table.title.asc().nullsLast()),
     index('Article_archived_at_idx').using('btree', table.archivedAt.asc().nullsLast()),
+    index('Article_source_idx').using(
+      'btree',
+      table.sourceId.asc().nullsLast(),
+      table.sourceExternalId.asc().nullsLast()
+    ),
   ]
 )
