@@ -203,6 +203,36 @@ function toSystemResourceBase(tableId: TableId): Omit<SystemResource, 'fields'> 
 }
 
 /**
+ * Re-point a system resource's display-field ids at the MERGED field ids.
+ *
+ * The static display config (`RESOURCE_DISPLAY_CONFIG`) resolves display fields against the
+ * static registry, so each `DisplayFieldConfig.id` is the static field id (== the field key).
+ * After merging with DB CustomField rows a system field's canonical id becomes the DB row id,
+ * so the static display id no longer matches `fields[].id` — which silently breaks the
+ * primary-cell match in the table (`f.id === primaryDisplayField.id`). Re-point each display
+ * field to the merged field that shares its key, keeping display identity consistent with the
+ * merged field identity. No-op for system types whose fields keep the static id.
+ */
+function reconcileSystemDisplayFields(
+  display: Omit<SystemResource, 'fields'>['display'],
+  fields: ResourceField[]
+): Omit<SystemResource, 'fields'>['display'] {
+  const repoint = (cfg: DisplayFieldConfig | null): DisplayFieldConfig | null => {
+    if (!cfg) return cfg
+    // cfg.id is the static field id (== key for system registry fields). Prefer an exact
+    // id match (already consistent); else match by key (id became a row id after merge).
+    const merged = fields.find((f) => f.id === cfg.id) ?? fields.find((f) => f.key === cfg.id)
+    return merged ? { ...cfg, id: merged.id } : cfg
+  }
+  return {
+    ...display,
+    primaryDisplayField: repoint(display.primaryDisplayField),
+    secondaryDisplayField: repoint(display.secondaryDisplayField),
+    avatarField: repoint(display.avatarField),
+  }
+}
+
+/**
  * Build a SystemResource from registry entry and display config (with static fields only)
  * Used for synchronous access when custom fields are not needed
  */
@@ -310,15 +340,18 @@ export class ResourceRegistryService {
       const staticFields = fieldRegistry ? Object.values(fieldRegistry) : []
       const orgCustomFields = fieldsByModelType.get(tableId) ?? []
 
+      const fields = sortFieldsWithMetadataLast(
+        this.mergeSystemAndCustomFields(
+          staticFields,
+          orgCustomFields,
+          systemResourceBase.entityDefinitionId
+        )
+      )
+
       return {
         ...systemResourceBase,
-        fields: sortFieldsWithMetadataLast(
-          this.mergeSystemAndCustomFields(
-            staticFields,
-            orgCustomFields,
-            systemResourceBase.entityDefinitionId
-          )
-        ),
+        display: reconcileSystemDisplayFields(systemResourceBase.display, fields),
+        fields,
       }
     })
 
@@ -543,13 +576,15 @@ export class ResourceRegistryService {
         orderBy: (f, { asc }) => [asc(f.sortOrder)],
       })
 
+      const mergedFields = this.mergeSystemAndCustomFields(
+        staticFields,
+        customFields as CustomFieldRecord[],
+        systemResourceBase.entityDefinitionId
+      )
       resource = {
         ...systemResourceBase,
-        fields: this.mergeSystemAndCustomFields(
-          staticFields,
-          customFields as CustomFieldRecord[],
-          systemResourceBase.entityDefinitionId
-        ),
+        display: reconcileSystemDisplayFields(systemResourceBase.display, mergedFields),
+        fields: mergedFields,
       }
     } else {
       // Custom entity - treat as EntityDefinitionId (UUID) - no entity_ prefix needed
@@ -848,15 +883,13 @@ export class ResourceRegistryService {
 
       if (staticField) {
         matchedAttributes.add(dbField.systemAttribute!)
-        // DB field takes priority, enrich with static-only properties.
-        // System fields are addressed by their logical registry id everywhere
-        // (values, filters, display config, columns), so adopt the static id
-        // and resourceFieldId rather than keeping the DB CustomField row id —
-        // otherwise metadata lookups by `<entity>:<key>` miss the field.
+        // Identity stays the DB CustomField row id (`dbField.id`/`dbField.resourceFieldId`)
+        // so it matches `FieldValue.fieldId` — values, columns, and store keys all agree on
+        // one id. We adopt the static field's display/behaviour metadata only. Resolution by
+        // `<entity>:<key>` still works because every read site dual-matches `f.id || f.key`
+        // and `key` below stays the stable static key.
         return {
           ...dbField,
-          id: staticField.id,
-          resourceFieldId: toResourceFieldId(entityDefinitionId, staticField.id),
           key: staticField.key,
           dbColumn: staticField.dbColumn,
           dynamicOptionsKey: staticField.dynamicOptionsKey,
