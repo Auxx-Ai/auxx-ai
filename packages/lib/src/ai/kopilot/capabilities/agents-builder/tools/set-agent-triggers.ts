@@ -55,6 +55,8 @@ export function createSetAgentTriggersTool(getDeps: GetToolDeps): AgentToolDefin
   return {
     name: 'set_agent_triggers',
     displayName: 'Set agent triggers',
+    // Builder-only meta-tool. See plans/chat/v6/chat-tool-availability.md.
+    surfaces: ['builder'],
     description: `Replace the agent's trigger set with the provided list.
 
 Triggers tell the agent when to run autonomously. Default: no triggers — the

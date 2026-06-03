@@ -1,8 +1,8 @@
 // packages/lib/src/ai/kopilot/capabilities/agents-builder/index.ts
 
 import {
-  getOrgChatSafeToolsetCatalog,
   getOrgToolsetCatalog,
+  getOrgToolsetCatalogForSurface,
 } from '../../../../agents/toolset-catalog'
 import { getCachedAgentById } from '../../../../cache'
 import { findRef } from '../../context-refs'
@@ -48,7 +48,7 @@ export async function createAgentsBuilderCapabilities(
   const isChat = agent?.kind === 'chat'
 
   const catalog = isChat
-    ? await getOrgChatSafeToolsetCatalog(organizationId)
+    ? await getOrgToolsetCatalogForSurface(organizationId, 'chat')
     : await getOrgToolsetCatalog(organizationId)
 
   // Chat agents run on the inbound-message gate, never autonomously, and don't

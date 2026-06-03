@@ -2,20 +2,22 @@
 'use client'
 
 import {
+  type AgentSurface,
   buildCatalogTreeFromInstallations,
   type CatalogNode,
-  filterCatalogToChatSafe,
+  filterCatalogToSurface,
 } from '@auxx/lib/agents/client'
 import { useMemo } from 'react'
 import { useExtensionsContext } from '~/providers/extensions/extensions-context'
 
 interface UseToolCatalogOptions {
   /**
-   * Clamp the catalog to chat-safe tools only — set for chat-kind agents so
-   * the picker can't surface tools that aren't safe for an anonymous visitor.
-   * See plans/chat/v5 phase-2 §5.
+   * Clamp the catalog to tools offered on this surface — set to `'chat'` for
+   * chat-kind agents so the picker only shows what survives the runtime surface
+   * filter. Absent ⇒ the full catalog (admin/internal view). See
+   * plans/chat/v6/chat-tool-availability.md.
    */
-  chatSafeOnly?: boolean
+  surface?: AgentSurface
 }
 
 /**
@@ -29,11 +31,11 @@ export function useToolCatalog(options: UseToolCatalogOptions = {}): {
   catalog: CatalogNode[]
   isLoading: boolean
 } {
-  const { chatSafeOnly = false } = options
+  const { surface } = options
   const { appInstallations, isLoading } = useExtensionsContext()
   const catalog = useMemo(() => {
     const tree = buildCatalogTreeFromInstallations(appInstallations)
-    return chatSafeOnly ? filterCatalogToChatSafe(tree) : tree
-  }, [appInstallations, chatSafeOnly])
+    return surface ? filterCatalogToSurface(tree, surface) : tree
+  }, [appInstallations, surface])
   return { catalog, isLoading }
 }

@@ -42,7 +42,7 @@ export function ToolsSectionContent({
   onAddToApp,
 }: ToolsSectionContentProps) {
   const { catalog, isLoading: catalogIsLoading } = useToolCatalog({
-    chatSafeOnly: agent.kind === 'chat',
+    surface: agent.kind === 'chat' ? 'chat' : undefined,
   })
 
   const handleSavingChange = useCallback(
@@ -220,6 +220,7 @@ export function ToolsSectionContent({
           onAddToApp={onAddToApp}
           onOpenAccountPicker={setAccountPickerAppId}
           boundCredIdByApp={boundCredIdByApp}
+          warnNotExternalSafe={agent.kind === 'chat'}
         />
       ))}
       <AppAccountDialog

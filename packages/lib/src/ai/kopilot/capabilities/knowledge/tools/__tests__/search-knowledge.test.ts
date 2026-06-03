@@ -42,9 +42,11 @@ beforeEach(() => {
 })
 
 describe('search_knowledge chat clamp', () => {
-  it('is marked chatSafe', () => {
+  it('is marked externalSafe (offered on chat by default)', () => {
     const tool = createSearchKnowledgeTool(() => ({}) as never)
-    expect(tool.chatSafe).toBe(true)
+    expect(tool.externalSafe).toBe(true)
+    // Default `surfaces` (absent) ⇒ offered everywhere, including chat.
+    expect(tool.surfaces).toBeUndefined()
   })
 
   it('with a chat invocation, searches only PUBLIC knowledge-base datasets (no RAG)', async () => {

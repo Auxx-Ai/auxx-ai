@@ -2,12 +2,11 @@
 'use client'
 
 import type { ArgRestriction, ToolRestrictionMap } from '@auxx/lib/agents/restrictions/client'
-import { Button } from '@auxx/ui/components/button'
 import { EmptySection } from '@auxx/ui/components/section'
 import { TreeRow } from '@auxx/ui/components/tree-row'
 import { pluralize } from '@auxx/utils/strings'
-import { AlertTriangle, Plus, ShieldCheck } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { AlertTriangle, ShieldCheck } from 'lucide-react'
+import { useMemo } from 'react'
 import { AppIcon } from '~/components/apps/ui/app-icon'
 import { Tooltip } from '~/components/global/tooltip'
 import { useConfirm } from '~/hooks/use-confirm'
@@ -20,6 +19,12 @@ import { RestrictionRow } from './restriction-row'
 
 interface RestrictionsSectionContentProps {
   agent: AgentDetail
+  /** Controlled add/edit dialog open state — the "Add restriction" trigger lives in `<Section actions>`. */
+  dialogOpen: boolean
+  onDialogOpenChange: (open: boolean) => void
+  /** Which restriction is being edited (`null` ⇒ adding a new one). */
+  editing: { registeredName: string; arg: string } | null
+  onEditingChange: (editing: { registeredName: string; arg: string } | null) => void
 }
 
 /** Render a restriction's bound value as a short label for the row secondary. */
@@ -42,10 +47,14 @@ function valueLabelFor(restriction: ArgRestriction, varLabelById: Map<string, st
  * identity arg is unbound (fail-closed). Disabled-tool entries are kept in the
  * map but hidden. See plans/chat/v6 phase-4.
  */
-export function RestrictionsSectionContent({ agent }: RestrictionsSectionContentProps) {
+export function RestrictionsSectionContent({
+  agent,
+  dialogOpen,
+  onDialogOpenChange,
+  editing,
+  onEditingChange,
+}: RestrictionsSectionContentProps) {
   const [confirm, ConfirmDialog] = useConfirm()
-  const [dialogOpen, setDialogOpen] = useState(false)
-  const [editing, setEditing] = useState<{ registeredName: string; arg: string } | null>(null)
 
   const toolMeta = useToolMeta(agent)
   const { restrictions, save } = useRestrictions(agent)
@@ -131,13 +140,9 @@ export function RestrictionsSectionContent({ agent }: RestrictionsSectionContent
     await save(next)
   }
 
-  const openAdd = () => {
-    setEditing(null)
-    setDialogOpen(true)
-  }
   const openEdit = (registeredName: string, arg: string) => {
-    setEditing({ registeredName, arg })
-    setDialogOpen(true)
+    onEditingChange({ registeredName, arg })
+    onDialogOpenChange(true)
   }
 
   const editingRestriction = editing
@@ -226,16 +231,9 @@ export function RestrictionsSectionContent({ agent }: RestrictionsSectionContent
         </p>
       ) : null}
 
-      <div className='px-3'>
-        <Button variant='ghost' size='xs' onClick={openAdd}>
-          <Plus />
-          Add restriction
-        </Button>
-      </div>
-
       <AddRestrictionDialog
         open={dialogOpen}
-        onOpenChange={setDialogOpen}
+        onOpenChange={onDialogOpenChange}
         agent={agent}
         toolMeta={toolMeta}
         editing={editing}

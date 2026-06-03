@@ -1,7 +1,7 @@
 // apps/web/src/components/agents/ui/detail/tools/tool-select-dialog.tsx
 'use client'
 
-import type { CatalogContainerNode, CatalogNode } from '@auxx/lib/agents/client'
+import type { AgentSurface, CatalogContainerNode, CatalogNode } from '@auxx/lib/agents/client'
 import { flattenCatalogToToolsets } from '@auxx/lib/agents/client'
 import { Button } from '@auxx/ui/components/button'
 import {
@@ -44,8 +44,11 @@ interface ToolSelectDialogProps {
    * for this app id. The Back button still returns to the Apps list.
    */
   initialAppId?: string
-  /** Clamp the catalog to chat-safe tools (chat-kind agents). See plans/chat/v5 phase-2 §5. */
-  chatSafeOnly?: boolean
+  /**
+   * Clamp the catalog to one surface (e.g. `'chat'` for chat-kind agents). See
+   * plans/chat/v6/chat-tool-availability.md.
+   */
+  surface?: AgentSurface
 }
 
 type ViewMode = 'list' | 'app-detail'
@@ -71,9 +74,9 @@ export function ToolSelectDialog({
   open,
   onOpenChange,
   initialAppId,
-  chatSafeOnly = false,
+  surface,
 }: ToolSelectDialogProps) {
-  const { catalog: catalogData, isLoading: catalogIsLoading } = useToolCatalog({ chatSafeOnly })
+  const { catalog: catalogData, isLoading: catalogIsLoading } = useToolCatalog({ surface })
 
   const [viewMode, setViewMode] = useState<ViewMode>('list')
   const [tab, setTab] = useState<ListTab>('all')
