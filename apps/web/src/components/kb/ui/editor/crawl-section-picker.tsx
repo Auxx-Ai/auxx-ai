@@ -4,6 +4,7 @@
 import { Badge } from '@auxx/ui/components/badge'
 import { Checkbox } from '@auxx/ui/components/checkbox'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
+import { TreeRow } from '@auxx/ui/components/tree-row'
 
 /** Local mirror of the crawl provider's SitemapNode (recursive, render-only). */
 export interface SitemapNode {
@@ -40,26 +41,34 @@ export function CrawlSectionTree({
 }: CrawlSectionTreeProps) {
   return (
     <ScrollArea className={`${className} rounded-md border`}>
-      <div className='flex flex-col gap-1 p-2'>
+      <div className='flex flex-col gap-0.5 p-1.5'>
         {sections.length === 0 && (
           <p className='text-muted-foreground p-2 text-sm'>
             No sub-sections found — the whole site will be crawled.
           </p>
         )}
-        {sections.map((section) => (
-          <label
-            key={section.path}
-            className='hover:bg-muted/50 flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5'>
-            <Checkbox
-              checked={selectedPaths.includes(section.path)}
-              onCheckedChange={(c) => onToggle(section.path, c === true)}
+        {sections.map((section) => {
+          const checked = selectedPaths.includes(section.path)
+          return (
+            <TreeRow
+              key={section.path}
+              icon={
+                <Checkbox
+                  checked={checked}
+                  onCheckedChange={(c) => onToggle(section.path, c === true)}
+                />
+              }
+              title={section.title ?? section.path}
+              onTitleClick={() => onToggle(section.path, !checked)}
+              rowClassName='hover:bg-muted/50'
+              actions={
+                <Badge variant='secondary' className='shrink-0'>
+                  {countPages(section)}
+                </Badge>
+              }
             />
-            <span className='flex-1 truncate text-sm'>{section.title ?? section.path}</span>
-            <Badge variant='secondary' className='shrink-0'>
-              {countPages(section)}
-            </Badge>
-          </label>
-        ))}
+          )
+        })}
       </div>
     </ScrollArea>
   )

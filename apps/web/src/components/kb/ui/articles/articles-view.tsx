@@ -407,6 +407,7 @@ export function ArticlesView() {
     <>
       <DynamicResourceView<ArticleRow>
         viewRef={viewRef}
+        embedded
         slug={ARTICLE_SLUG}
         tableId={ARTICLE_TABLE_ID}
         baselineFilter={baselineFilter}

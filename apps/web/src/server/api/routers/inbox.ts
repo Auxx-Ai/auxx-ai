@@ -17,14 +17,6 @@ const createInboxSchema = z.object({
   settings: z.record(z.string(), z.unknown()).optional(),
 })
 
-/** Schema for updating inbox access */
-const inboxAccessSchema = z.object({
-  inboxId: z.string(),
-  visibility: z.enum(['org_members', 'private', 'custom']).optional(),
-  memberIds: z.array(z.string()).optional(),
-  groupIds: z.array(z.string()).optional(),
-})
-
 /** Schema for managing integrations - uses RecordId for consistency */
 const integrationSchema = z.object({
   recordId: recordIdSchema,
@@ -137,26 +129,4 @@ export const inboxRouter = createTRPCRouter({
       })
       return result
     }),
-
-  /**
-   * Update inbox access settings
-   */
-  updateAccess: protectedProcedure.input(inboxAccessSchema).mutation(async ({ ctx, input }) => {
-    const { organizationId } = ctx.session
-    const userId = ctx.session.user.id
-    const inboxService = new InboxService(ctx.db, organizationId, userId)
-
-    const { inboxId, ...accessData } = input
-    const recordId = toRecordId('inbox', inboxId)
-
-    const result = await inboxService.updateInboxAccess(recordId, accessData)
-    await recordAuditFromCtx(ctx, {
-      category: 'integrations',
-      action: 'inbox.access_changed',
-      targetType: 'Inbox',
-      targetId: inboxId,
-      metadata: { visibility: accessData.visibility ?? null },
-    })
-    return result
-  }),
 })

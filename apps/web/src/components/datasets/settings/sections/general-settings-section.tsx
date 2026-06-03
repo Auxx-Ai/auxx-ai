@@ -6,17 +6,16 @@ import { Button } from '@auxx/ui/components/button'
 import {
   Form,
   FormControl,
-  FormDescription,
   FormField,
   FormItem,
   FormLabel,
   FormMessage,
 } from '@auxx/ui/components/form'
 import { Input } from '@auxx/ui/components/input'
-import { Switch } from '@auxx/ui/components/switch'
 import { Table, TableBody, TableCell, TableRow } from '@auxx/ui/components/table'
 import { Textarea } from '@auxx/ui/components/textarea'
 import { toastError } from '@auxx/ui/components/toast'
+import { ToggleCard } from '@auxx/ui/components/toggle-card'
 import { formatBytes } from '@auxx/utils/file'
 import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
 import { Activity, Calendar, Database, FileText, Hash, Settings } from 'lucide-react'
@@ -148,21 +147,15 @@ export function GeneralSettingsSection({
                 control={form.control}
                 name='isActive'
                 render={({ field }) => (
-                  <FormItem className='flex items-center justify-between rounded-xl border px-3 py-1 bg-primary-100'>
-                    <div className='space-y-0.5'>
-                      <FormLabel className='text-sm'>Active</FormLabel>
-                      <FormDescription>
-                        Enable this dataset for use in queries and searches
-                      </FormDescription>
-                    </div>
-                    <FormControl>
-                      <Switch
-                        checked={field.value}
-                        onCheckedChange={field.onChange}
-                        disabled={readOnly}
-                      />
-                    </FormControl>
-                  </FormItem>
+                  <ToggleCard
+                    title='Active'
+                    description='Enable this dataset for use in queries and searches'
+                    checked={field.value}
+                    onCheckedChange={field.onChange}
+                    disabled={readOnly}
+                    switchSize='default'
+                    className='bg-primary-100'
+                  />
                 )}
               />
             </div>

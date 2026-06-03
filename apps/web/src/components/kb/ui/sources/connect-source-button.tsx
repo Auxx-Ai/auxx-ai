@@ -46,13 +46,6 @@ export function ConnectSourceButton({
           <DropdownMenuItem onSelect={() => setManualOpen(true)}>
             <ClipboardPaste /> Manual paste
           </DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem disabled>
-            <FileText /> File upload (soon)
-          </DropdownMenuItem>
-          <DropdownMenuItem disabled>
-            <ShoppingBag /> Shopify (soon)
-          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
       <CrawlWebsiteWizard open={crawlOpen} onOpenChange={setCrawlOpen} />

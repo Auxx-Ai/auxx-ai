@@ -16,7 +16,6 @@ import { listAll, UnifiedCrudHandler } from '../resources/crud'
 import type {
   CreateInboxInput,
   Inbox,
-  InboxAccessInput,
   InboxVisibility,
   InboxWithIntegrations,
   UpdateInboxInput,
@@ -221,34 +220,6 @@ export class InboxService {
   // ═══════════════════════════════════════════════════════════════════════════
   // ACCESS CONTROL
   // ═══════════════════════════════════════════════════════════════════════════
-
-  /**
-   * Update inbox access (groups, members, visibility)
-   */
-  async updateInboxAccess(recordId: RecordId, accessData: InboxAccessInput): Promise<Inbox> {
-    if (accessData.visibility !== undefined) {
-      await this.crudHandler.setFieldValue(recordId, 'inbox_visibility', accessData.visibility)
-      await this.setVisibilityAccess(recordId, accessData.visibility)
-    }
-    if (accessData.memberIds !== undefined) {
-      await setInstanceAccess(
-        this.ctx,
-        recordId,
-        ResourceGranteeType.user,
-        accessData.memberIds.map((id) => ({ granteeId: id, permission: ResourcePermission.view }))
-      )
-    }
-    if (accessData.groupIds !== undefined) {
-      await setInstanceAccess(
-        this.ctx,
-        recordId,
-        ResourceGranteeType.group,
-        accessData.groupIds.map((id) => ({ granteeId: id, permission: ResourcePermission.view }))
-      )
-    }
-
-    return this.resolveInbox(recordId)
-  }
 
   /**
    * Set role-based access based on visibility setting

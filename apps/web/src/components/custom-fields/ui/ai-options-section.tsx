@@ -4,10 +4,9 @@
 
 import type { FieldType } from '@auxx/database/types'
 import type { AiOptions, AiTriggerOn, RichReferencePrompt } from '@auxx/types/custom-field'
-import { AnimatedCollapsibleContent } from '@auxx/ui/components/collapsible'
 import { Label } from '@auxx/ui/components/label'
 import { RadioGroup, RadioGroupItem } from '@auxx/ui/components/radio-group'
-import { Switch } from '@auxx/ui/components/switch'
+import { ToggleCard } from '@auxx/ui/components/toggle-card'
 import { Sparkles } from 'lucide-react'
 import { AiPromptEditor } from './ai-prompt-editor'
 import { AiPreviewPanel } from './ai-prompt-editor/ai-preview-panel'
@@ -90,61 +89,47 @@ export function AiOptionsSection({
   }
 
   return (
-    <div className='rounded-xl border px-3 py-2.5'>
-      <div
-        className='flex cursor-pointer items-center justify-between'
-        onClick={() => handleToggle(!state.enabled)}>
-        <div className='space-y-0.5'>
-          <Label className='flex cursor-pointer items-center gap-1.5 text-sm font-medium'>
-            <Sparkles className='size-3.5 text-muted-foreground' />
-            AI generation
-          </Label>
-          <p className='text-xs text-muted-foreground'>
-            Generate this field's value from a prompt that references other fields.
-          </p>
-        </div>
-        <div onClick={(e) => e.stopPropagation()}>
-          <Switch size='sm' checked={state.enabled} onCheckedChange={handleToggle} />
-        </div>
+    <ToggleCard
+      title='AI generation'
+      description="Generate this field's value from a prompt that references other fields."
+      icon={<Sparkles className='size-3.5 text-muted-foreground' />}
+      checked={state.enabled}
+      onCheckedChange={handleToggle}
+      collapsible
+      contentClassName='space-y-3'>
+      <AiPromptEditor
+        prompt={state.prompt}
+        onChange={(prompt) => onChange({ ...state, prompt })}
+        entityDefinitionId={entityDefinitionId}
+        currentFieldId={currentFieldId}
+        excludeFieldIds={aiSiblingFieldIds}
+      />
+
+      <div className='space-y-2 hidden'>
+        <Label className='text-xs text-muted-foreground'>Trigger</Label>
+        <RadioGroup
+          value={state.triggerOn}
+          onValueChange={(v) => onChange({ ...state, triggerOn: v as AiTriggerOn })}
+          className='gap-2'>
+          <label className='flex items-center gap-2 text-sm'>
+            <RadioGroupItem value='manual' />
+            Manual (click to generate)
+          </label>
+          <label className='flex items-center gap-2 text-sm text-muted-foreground'>
+            <RadioGroupItem value='create' disabled />
+            On record create
+            <span className='rounded bg-muted px-1.5 py-0.5 text-xs'>coming soon</span>
+          </label>
+        </RadioGroup>
       </div>
 
-      <AnimatedCollapsibleContent open={state.enabled}>
-        <div className='mt-3 space-y-3 border-t pt-3'>
-          <AiPromptEditor
-            prompt={state.prompt}
-            onChange={(prompt) => onChange({ ...state, prompt })}
-            entityDefinitionId={entityDefinitionId}
-            currentFieldId={currentFieldId}
-            excludeFieldIds={aiSiblingFieldIds}
-          />
-
-          <div className='space-y-2 hidden'>
-            <Label className='text-xs text-muted-foreground'>Trigger</Label>
-            <RadioGroup
-              value={state.triggerOn}
-              onValueChange={(v) => onChange({ ...state, triggerOn: v as AiTriggerOn })}
-              className='gap-2'>
-              <label className='flex items-center gap-2 text-sm'>
-                <RadioGroupItem value='manual' />
-                Manual (click to generate)
-              </label>
-              <label className='flex items-center gap-2 text-sm text-muted-foreground'>
-                <RadioGroupItem value='create' disabled />
-                On record create
-                <span className='rounded bg-muted px-1.5 py-0.5 text-xs'>coming soon</span>
-              </label>
-            </RadioGroup>
-          </div>
-
-          <AiPreviewPanel
-            type={fieldType}
-            options={fieldOptions}
-            prompt={state.prompt}
-            name={fieldName}
-            entityDefinitionId={entityDefinitionId}
-          />
-        </div>
-      </AnimatedCollapsibleContent>
-    </div>
+      <AiPreviewPanel
+        type={fieldType}
+        options={fieldOptions}
+        prompt={state.prompt}
+        name={fieldName}
+        entityDefinitionId={entityDefinitionId}
+      />
+    </ToggleCard>
   )
 }

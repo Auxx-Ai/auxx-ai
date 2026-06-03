@@ -8,34 +8,27 @@ import {
   type RelationUpdateMode as RelationUpdateModeType,
 } from '@auxx/types/custom-field'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
-import { cn } from '@auxx/ui/lib/utils'
 import type React from 'react'
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { ModeBadge } from '~/components/shared/mode-badge'
 import { BaseType, VAR_MODE } from '~/components/workflow/types'
 import { VarEditor } from '~/components/workflow/ui/input-editor/var-editor'
 
 /** Mode display configuration */
-const MODE_CONFIG: Record<
-  RelationUpdateModeType,
-  { letter: string; label: string; className: string }
-> = {
+const MODE_CONFIG: Record<RelationUpdateModeType, { label: string; className: string }> = {
   [RelationUpdateMode.REPLACE]: {
-    letter: 'R',
     label: 'Replace',
     className: 'bg-blue-500/15 text-blue-700 dark:bg-blue-500/10 dark:text-blue-400',
   },
   [RelationUpdateMode.ADD]: {
-    letter: 'A',
     label: 'Add',
     className: 'bg-green-500/15 text-green-700 dark:bg-green-500/10 dark:text-green-400',
   },
   [RelationUpdateMode.REMOVE]: {
-    letter: 'R',
     label: 'Remove',
     className: 'bg-red-500/15 text-red-700 dark:bg-red-500/10 dark:text-red-400',
   },
   [RelationUpdateMode.DYNAMIC]: {
-    letter: 'D',
     label: 'Dynamic',
     className: 'bg-amber-500/15 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400',
   },
@@ -107,28 +100,12 @@ const RelationUpdateModeButton: React.FC<RelationUpdateModeButtonProps> = ({
   )
 
   const badge = (
-    <button
-      type='button'
+    <ModeBadge
+      label={config.label}
+      className={config.className}
       onClick={handleClick}
       onContextMenu={handleContextMenu}
-      className={cn(
-        'group/mode',
-        'flex h-5 shrink-0 items-center rounded-md px-1',
-        'text-[10px] font-semibold uppercase leading-none',
-        'cursor-pointer select-none',
-        'overflow-hidden whitespace-nowrap',
-        'transition-all duration-200 ease-out',
-        config.className
-      )}>
-      <span
-        className={cn(
-          'inline-block overflow-hidden whitespace-nowrap',
-          'max-w-[7px] transition-all duration-200 ease-out',
-          'group-hover/mode:max-w-20'
-        )}>
-        {config.label}
-      </span>
-    </button>
+    />
   )
 
   // Always wrap in Popover when in dynamic mode (popover controlled by state)

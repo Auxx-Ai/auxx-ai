@@ -64,10 +64,3 @@ export interface InboxIntegration {
 export interface InboxWithIntegrations extends Inbox {
   integrations: InboxIntegration[]
 }
-
-/** Inbox access update input */
-export interface InboxAccessInput {
-  visibility?: InboxVisibility
-  memberIds?: string[]
-  groupIds?: string[]
-}

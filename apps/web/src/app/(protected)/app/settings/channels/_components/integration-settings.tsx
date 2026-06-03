@@ -26,8 +26,8 @@ import {
   SelectValue,
 } from '@auxx/ui/components/select'
 import { Separator } from '@auxx/ui/components/separator'
-import { Switch } from '@auxx/ui/components/switch'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
+import { ToggleCard } from '@auxx/ui/components/toggle-card'
 import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
 import { Clock, Mail, MailCheck, RefreshCw, User } from 'lucide-react'
 // ~/app/(protected)/app/settings/integrations/_components/integration-settings.tsx
@@ -334,17 +334,13 @@ export default function IntegrationSettings({ integration }: IntegrationSettings
                   control={phoneForm.control}
                   name='autoReply'
                   render={({ field }) => (
-                    <FormItem className='flex flex-row items-center justify-between rounded-lg border p-4'>
-                      <div className='space-y-0.5'>
-                        <FormLabel className='text-base'>Auto-Reply</FormLabel>
-                        <FormDescription>
-                          Automatically respond to incoming messages
-                        </FormDescription>
-                      </div>
-                      <FormControl>
-                        <Switch checked={field.value} onCheckedChange={field.onChange} />
-                      </FormControl>
-                    </FormItem>
+                    <ToggleCard
+                      title='Auto-Reply'
+                      description='Automatically respond to incoming messages'
+                      checked={field.value}
+                      onCheckedChange={field.onChange}
+                      switchSize='default'
+                    />
                   )}
                 />
 
