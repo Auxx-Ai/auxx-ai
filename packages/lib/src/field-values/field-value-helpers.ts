@@ -1235,7 +1235,7 @@ export async function getFieldInfoFromRegistry(
   organizationId: string,
   entityDefinitionId: string,
   fieldId: string
-): Promise<{ fieldType: FieldType; fieldOptions?: FieldOptions }> {
+): Promise<{ fieldId: string; fieldType: FieldType; fieldOptions?: FieldOptions }> {
   const resource = await findCachedResource(organizationId, entityDefinitionId)
   if (!resource) {
     console.error('[getFieldInfoFromRegistry] entity not found', {
@@ -1272,5 +1272,8 @@ export async function getFieldInfoFromRegistry(
     throw new Error(`Field "${fieldId}" missing fieldType on entity "${entityDefinitionId}"`)
   }
 
-  return { fieldType: field.fieldType, fieldOptions: field.options }
+  // Return the canonical field id (`field.id`) — the DB CustomField row id for
+  // system fields. Callers key FieldValue queries / maps by this so a static-form
+  // ref (e.g. `contact:firstName`) resolves to the same id values are stored under.
+  return { fieldId: field.id, fieldType: field.fieldType, fieldOptions: field.options }
 }

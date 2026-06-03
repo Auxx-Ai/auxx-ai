@@ -244,21 +244,21 @@ async function batchGetAllDirectFieldValues(
     instanceToRecordId.set(entityInstanceId, rid)
   }
 
-  // Parse all field refs to get fieldIds and build ref lookup
+  // Resolve each ref to its canonical field id (DB row id for system fields) and key
+  // every lookup by it. This is what lets a static-form ref (`contact:firstName`) and a
+  // row-id ref both query FieldValue under the id values are actually stored under.
+  // `fieldIdToRef` keeps the *original* ref as its value so the response echoes the form
+  // the client requested (its store key agrees).
   const fieldIdToRef = new Map<string, ResourceFieldId>()
   const allFieldIds: string[] = []
-  for (const ref of fieldRefs) {
-    const { fieldId } = parseResourceFieldId(ref)
-    fieldIdToRef.set(fieldId, ref)
-    allFieldIds.push(fieldId)
-  }
-
-  // Resolve field types + options from registry
   const fieldTypeMap = new Map<string, FieldType>()
   const fieldOptionsMap = new Map<string, FieldOptions | undefined>()
   for (const ref of fieldRefs) {
-    const { entityDefinitionId, fieldId } = parseResourceFieldId(ref)
-    const info = await getFieldInfoFromRegistry(ctx.organizationId, entityDefinitionId, fieldId)
+    const { entityDefinitionId, fieldId: rawFieldId } = parseResourceFieldId(ref)
+    const info = await getFieldInfoFromRegistry(ctx.organizationId, entityDefinitionId, rawFieldId)
+    const fieldId = info.fieldId // canonical
+    fieldIdToRef.set(fieldId, ref)
+    allFieldIds.push(fieldId)
     fieldTypeMap.set(fieldId, info.fieldType)
     fieldOptionsMap.set(fieldId, info.fieldOptions)
   }
@@ -365,10 +365,13 @@ async function categorizeFields(
   fieldTypeMap: Map<string, FieldType>,
   fieldOptionsMap: Map<string, FieldOptions | undefined>
 ): Promise<CategorizedFields> {
+  // `isSystem` (old system types: thread/user/…) gates the system-table (Layer 1) and
+  // virtual (Layer 2) categorization. But canonical-id resolution must run for ANY
+  // registered resource — including EntityDefinition-backed ones (contact/ticket), which
+  // are NOT `isSystemResourceId` yet still have system fields whose row id ≠ static key.
+  // So always load the cached resource to map a static-key ref → its canonical row id.
   const isSystem = isSystemResourceId(entityDefinitionId)
-  const cachedResource = isSystem
-    ? await findCachedResource(ctx.organizationId, entityDefinitionId)
-    : null
+  const cachedResource = await findCachedResource(ctx.organizationId, entityDefinitionId)
 
   const systemDbFields: SystemFieldDescriptor[] = []
   const virtualFields: CategorizedFields['virtualFields'] = []
@@ -376,39 +379,40 @@ async function categorizeFields(
   const fieldIdToKeyMap = new Map<string, string>()
 
   for (const ref of fieldRefs) {
-    const { fieldId } = parseResourceFieldId(ref)
+    const { fieldId: rawFieldId } = parseResourceFieldId(ref)
+    const cachedField = cachedResource?.fields.find(
+      (f) => f.id === rawFieldId || f.key === rawFieldId
+    )
+    // Canonical id: the DB row id (cachedField.id) where a CustomField row exists, else the
+    // parsed id. Static-key refs (e.g. `contact:firstName`) resolve to the row id values are
+    // stored under; all maps + the FieldValue query key by it.
+    const fieldId = cachedField?.id ?? rawFieldId
     const fieldType = fieldTypeMap.get(fieldId)
 
     // Skip NAME fields (handled separately)
     if (!fieldType || fieldType === FieldTypeEnum.NAME) continue
 
-    if (isSystem && cachedResource) {
-      const cachedField = cachedResource.fields.find((f) => f.id === fieldId || f.key === fieldId)
-
-      if (cachedField?.dbColumn) {
-        systemDbFields.push({
-          fieldKey: cachedField.key,
-          fieldId,
-          fieldRef: ref,
-          fieldType,
-          fieldOptions: fieldOptionsMap.get(fieldId),
-          dbColumn: cachedField.dbColumn,
-          relationship: cachedField.relationship,
-        })
-      } else if (cachedField && isVirtualField(entityDefinitionId, cachedField.key)) {
-        virtualFields.push({
-          fieldKey: cachedField.key,
-          fieldId,
-          fieldRef: ref,
-          fieldType,
-          fieldOptions: fieldOptionsMap.get(fieldId),
-        })
-        fieldIdToKeyMap.set(cachedField.key, fieldId)
-      } else {
-        // System field stored in FieldValue (e.g. tags) or unknown
-        fieldValueFieldIds.push(fieldId)
-      }
+    if (isSystem && cachedField?.dbColumn) {
+      systemDbFields.push({
+        fieldKey: cachedField.key,
+        fieldId,
+        fieldRef: ref,
+        fieldType,
+        fieldOptions: fieldOptionsMap.get(fieldId),
+        dbColumn: cachedField.dbColumn,
+        relationship: cachedField.relationship,
+      })
+    } else if (isSystem && cachedField && isVirtualField(entityDefinitionId, cachedField.key)) {
+      virtualFields.push({
+        fieldKey: cachedField.key,
+        fieldId,
+        fieldRef: ref,
+        fieldType,
+        fieldOptions: fieldOptionsMap.get(fieldId),
+      })
+      fieldIdToKeyMap.set(cachedField.key, fieldId)
     } else {
+      // System field stored in FieldValue (e.g. tags), or a custom/non-system field.
       fieldValueFieldIds.push(fieldId)
     }
   }
@@ -603,12 +607,19 @@ async function resolveFieldReference(
     terminalEntityId,
     terminalFieldId
   )
+  // Canonical id (row id for system fields) — query/compose values under the id they're
+  // stored under, even when the ref arrived in static-key form.
+  const canonicalTerminalFieldId = terminalFieldInfo.fieldId
   const terminalFieldType = terminalFieldInfo.fieldType
   const terminalFieldOptions = terminalFieldInfo.fieldOptions
 
   // Handle NAME fields
   if (terminalFieldType === FieldTypeEnum.NAME && currentRecordIds.length > 0) {
-    const terminalValues = await resolveNameFieldValues(ctx, currentRecordIds, terminalFieldId)
+    const terminalValues = await resolveNameFieldValues(
+      ctx,
+      currentRecordIds,
+      canonicalTerminalFieldId
+    )
     return mapResultsToSources(
       sourceRecordIds,
       traversalMaps,
@@ -625,7 +636,7 @@ async function resolveFieldReference(
           ctx,
           currentRecordIds,
           terminalEntityId,
-          terminalFieldId,
+          canonicalTerminalFieldId,
           terminalResourceFieldId,
           terminalFieldType,
           terminalFieldOptions
@@ -652,18 +663,23 @@ async function fetchRelationshipHop(
   recordIds: RecordId[],
   resourceFieldId: ResourceFieldId
 ): Promise<Map<RecordId, RecordId[]>> {
-  const { entityDefinitionId: hopEntityDefId, fieldId } = parseResourceFieldId(resourceFieldId)
+  const { entityDefinitionId: hopEntityDefId, fieldId: rawFieldId } =
+    parseResourceFieldId(resourceFieldId)
 
   if (isSystemResourceId(hopEntityDefId)) {
     const hopResource = await findCachedResource(ctx.organizationId, hopEntityDefId)
-    const cachedField = hopResource?.fields.find((f) => f.id === fieldId || f.key === fieldId)
+    const cachedField = hopResource?.fields.find((f) => f.id === rawFieldId || f.key === rawFieldId)
 
     if (cachedField?.dbColumn && cachedField.relationship) {
       return batchFetchSystemRelationships(ctx, recordIds, cachedField, hopEntityDefId)
     }
+
+    // FieldValue-backed system relationship — query by canonical row id so a
+    // static-key hop ref still finds the stored relationships.
+    return batchFetchRelationships(ctx, recordIds, cachedField?.id ?? rawFieldId)
   }
 
-  return batchFetchRelationships(ctx, recordIds, fieldId)
+  return batchFetchRelationships(ctx, recordIds, rawFieldId)
 }
 
 /**
