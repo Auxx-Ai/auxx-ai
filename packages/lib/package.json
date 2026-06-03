@@ -34,6 +34,18 @@
       "import": "./dist/agents/client.mjs",
       "default": "./src/agents/client.ts"
     },
+    "./agents/restrictions": {
+      "types": "./src/agents/restrictions/index.ts",
+      "source": "./src/agents/restrictions/index.ts",
+      "import": "./dist/agents/restrictions/index.mjs",
+      "default": "./src/agents/restrictions/index.ts"
+    },
+    "./agents/restrictions/client": {
+      "types": "./src/agents/restrictions/client.ts",
+      "source": "./src/agents/restrictions/client.ts",
+      "import": "./dist/agents/restrictions/client.mjs",
+      "default": "./src/agents/restrictions/client.ts"
+    },
     "./ai": {
       "types": "./src/ai/index.ts",
       "source": "./src/ai/index.ts",

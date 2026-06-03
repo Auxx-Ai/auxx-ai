@@ -10,6 +10,8 @@ import {
   getOrgToolsetCatalog,
   resolveAgentConfig,
 } from '../../agents'
+import { buildApplyToolRestrictions } from '../../agents/restrictions/apply'
+import { projectToolsSchemas } from '../../agents/restrictions/project-schema'
 import type { JobContext } from '../../jobs/types'
 import { docToText } from '../../tiptap'
 import {
@@ -139,6 +141,10 @@ async function processAgentMessageInternal(ctx: JobContext<AgentJobPayload>) {
     forceSystem: domain === 'builder',
   })
 
+  // 3b. Resolve the agent's restriction map (cached read; empty for master).
+  // Clamps tool args before each call across all internal agent paths.
+  const { toolRestrictions } = await resolveAgentConfig(organizationId, agentId)
+
   // 4. Create engine with saved state
   const engineConfig: AgentEngineConfig = {
     organizationId,
@@ -148,6 +154,14 @@ async function processAgentMessageInternal(ctx: JobContext<AgentJobPayload>) {
     domainConfig,
     callModel,
     signal,
+    // Constant / required sources only here. No var resolver is wired for
+    // internal turns: `visitor.*` vars resolve null off-chat (no
+    // `ctx.invocation`), so resolution is chat-only (build-chat-engine-config).
+    // A no-op for the master Kopilot runtime (empty restriction map).
+    // The author-floor map is omitted: internal is fail-open (no
+    // `ctx.invocation`), so the fail-closed check never fires. See
+    // plans/chat/v6 phase-3 ("why internal is fail-open").
+    applyToolRestrictions: buildApplyToolRestrictions(toolRestrictions),
     // Kopilot domain: long-running plans routinely chain >5 approvals
     // (one per ticket reply, etc.) and need iteration headroom for plan
     // step churn. Other domains stay on framework defaults.
@@ -376,11 +390,15 @@ async function buildKopilotShapedConfig(
   const agentConfig = await resolveAgentConfig(params.organizationId, params.agentId)
   const resolvedPage = params.page ?? '__none__'
   const filteredTools = filterToolsByToolsets(registry.getTools(resolvedPage), agentConfig)
+  // Project tool schemas per the agent's restriction map (bound args stay
+  // visible, drop from `required`, get an annotated description). For master
+  // sessions the map is empty so this is a no-op.
+  const tools = projectToolsSchemas(filteredTools, agentConfig.toolRestrictions)
 
   return createKopilotDomainConfig({
     capabilityRegistry: registry,
     page: resolvedPage,
-    tools: filteredTools,
+    tools,
     defaultModel: defaults.model,
     defaultProvider: defaults.provider,
     agentConfig,

@@ -21,6 +21,13 @@ export interface ToolReferenceListProps {
   /** Selection callback — receives the chip id (`tool:<name>`). */
   onSelectSingle: (id: string) => void
   className?: string
+  /**
+   * Optional allow-list of tool `name`s to show. When set, the list is scoped
+   * to these entries (used by the restrictions dialog to limit selection to an
+   * agent's enabled tools). Unset = the full org-wide catalog (default behavior
+   * for the ReferencePicker). See plans/chat/v6 phase-4.
+   */
+  filterNames?: ReadonlySet<string>
 }
 
 /**
@@ -34,13 +41,15 @@ export function ToolReferenceList({
   externalSearch = '',
   onSelectSingle,
   className,
+  filterNames,
 }: ToolReferenceListProps) {
   const catalogQuery = api.agentToolset.listTools.useQuery(undefined, {
     staleTime: 60_000,
   })
 
   const filtered = useMemo<FlatToolCatalogEntry[]>(() => {
-    const items = catalogQuery.data ?? []
+    const all = catalogQuery.data ?? []
+    const items = filterNames ? all.filter((e) => filterNames.has(e.name)) : all
     const q = externalSearch.trim().toLowerCase()
     if (!q) return items
     return items.filter((entry) => {
@@ -50,7 +59,7 @@ export function ToolReferenceList({
       if (entry.description.toLowerCase().includes(q)) return true
       return false
     })
-  }, [catalogQuery.data, externalSearch])
+  }, [catalogQuery.data, externalSearch, filterNames])
 
   const isLoading = catalogQuery.isLoading
   const showEmpty = !isLoading && filtered.length === 0 && (catalogQuery.data?.length ?? 0) > 0

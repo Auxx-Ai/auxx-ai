@@ -111,6 +111,30 @@ export interface ToolAgentSurface {
   readonly streaming?: boolean
   /** LLM hint for read-only tools. */
   readonly idempotent?: boolean
+  /**
+   * Soft hint: is this tool appropriate to *recommend* for a visitor-facing
+   * chat-kind agent? Default (absent) = false. NOT a security gate in v6 — the
+   * admin explicitly adding a tool is the coarse gate. Drives builder-Kopilot
+   * recommendations and picker decluttering only. Read-only customer-scoped
+   * reads set `true`; mutating/admin tools set `false`. See plans/chat/v6
+   * phase-3.
+   */
+  readonly chatSafe?: boolean
+  /**
+   * Input args that carry caller identity / record scope. In a visitor (chat)
+   * invocation each MUST be bound to a restriction or the engine refuses the
+   * call (fail-closed). Ignored on internal invocations. Scalar top-level arg
+   * names only in v6. `suggestedVar` lets the app point an arg at the var it
+   * itself contributes (phase 2) so the UI can pre-fill the binding at
+   * tool-enable time — e.g. Shopify's `list_customer_orders` declares
+   * `{ name: 'customerId', suggestedVar: 'visitor.shopify.customerId' }`.
+   * See plans/chat/v6 phase-3.
+   */
+  readonly identityScopedInputs?: ReadonlyArray<{
+    name: string
+    /** Registry var key to pre-fill in the Add-Restriction flow. */
+    suggestedVar?: string
+  }>
 }
 
 /**

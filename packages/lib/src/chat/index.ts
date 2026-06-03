@@ -23,6 +23,7 @@ export type {
   InitializeChatThreadResult,
 } from './session'
 export { initializeOrResumeChatThread } from './session'
+export { writeShopifyCustomerIdField } from './shopify-identity-field'
 export type { SignChannelUserJwtOptions, SignChannelUserJwtPayload } from './sign-jwt'
 export { signChannelUserJwt } from './sign-jwt'
 export type { ChatAttachment, ServiceContext, VisitInfo } from './types'
