@@ -267,6 +267,26 @@ function isFieldContentEqual(a: ResourceField, b: ResourceField): boolean {
 }
 
 /**
+ * For a system field whose canonical id is the DB row id (post #734), compute the
+ * static-key form `<entity>:<key>` so callers addressing fields by their stable static
+ * key still resolve. Returns undefined when the canonical id already equals the key
+ * (custom fields, or system fields without a DB CustomField row).
+ *
+ * This mirrors the server-side interchangeable resolution (`f.id || f.key`): the
+ * canonical key stays the row id, the static-key form is registered as an alias to
+ * the same field object.
+ */
+function staticKeyAliasId(
+  canonicalKey: ResourceFieldId,
+  field: ResourceField
+): ResourceFieldId | undefined {
+  if (!field.key) return undefined
+  const { entityDefinitionId, fieldId } = parseResourceFieldId(canonicalKey)
+  if (field.key === fieldId) return undefined
+  return toResourceFieldId(entityDefinitionId, field.key)
+}
+
+/**
  * Build fieldMap with optimistic overlay applied.
  * This is the effective view of all fields (server + pending changes).
  */
@@ -311,6 +331,19 @@ function buildEffectiveFieldMap(
   >) {
     if (!optimisticDeletedFields.has(key)) {
       newFieldMap[key] = field
+    }
+  }
+
+  // Register static-key aliases so a field resolves by either its canonical row id or
+  // its `<entity>:<key>` form. Second pass over the resolved entries (not serverFieldMap)
+  // so the alias points at the effective, overlay-applied object. Never overwrite a real
+  // canonical entry.
+  for (const [key, field] of Object.entries(newFieldMap) as Array<
+    [ResourceFieldId, ResourceField]
+  >) {
+    const aliasKey = staticKeyAliasId(key, field)
+    if (aliasKey && !newFieldMap[aliasKey]) {
+      newFieldMap[aliasKey] = field
     }
   }
 
