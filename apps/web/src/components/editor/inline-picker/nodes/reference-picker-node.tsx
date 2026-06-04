@@ -38,6 +38,11 @@ export type ReferenceTab =
   | 'tools'
   | 'resources'
   | 'fields'
+  // v9 procedure step tabs — opt-in, only the procedure editor passes these.
+  | 'routing'
+  | 'code'
+  | 'subprocedure'
+  | 'condition'
 
 /**
  * Default tab set rendered by `@`-pickers. Opt-in tabs (currently just
@@ -56,6 +61,10 @@ export const TAB_LABEL: Record<ReferenceTab, string> = {
   tools: 'Tools',
   resources: 'Resources',
   fields: 'Fields',
+  routing: 'Routing',
+  code: 'Code',
+  subprocedure: 'Sub-procedure',
+  condition: 'Condition',
 }
 
 /** Resolve digit (1–9) → tab from the configured tab list. */

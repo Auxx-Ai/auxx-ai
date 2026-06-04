@@ -3,6 +3,7 @@ import { createCallerFactory, createTRPCRouter } from '~/server/api/trpc'
 import { actorRouter } from './routers/actor'
 import { adminRouter } from './routers/admin'
 import { agentRouter } from './routers/agent'
+import { agentProcedureRouter } from './routers/agent-procedure'
 import { agentScopeRouter } from './routers/agent-scope'
 import { agentToolsetRouter } from './routers/agent-toolset'
 import { agentTriggerRouter } from './routers/agent-trigger'
@@ -54,6 +55,7 @@ import { notificationRouter } from './routers/notification'
 import { orderRouter } from './routers/order'
 import { organizationRouter } from './routers/organization'
 import { participantRouter } from './routers/participant'
+import { procedureRouter } from './routers/procedure'
 import { productRouter } from './routers/product'
 import { promptTemplateRouter } from './routers/promptTemplate'
 import { quickActionRouter } from './routers/quick-actions'
@@ -91,6 +93,7 @@ export const appRouter = createTRPCRouter({
   actor: actorRouter,
   admin: adminRouter,
   agent: agentRouter,
+  agentProcedure: agentProcedureRouter,
   agentScope: agentScopeRouter,
   agentToolset: agentToolsetRouter,
   agentTrigger: agentTriggerRouter,
@@ -142,6 +145,7 @@ export const appRouter = createTRPCRouter({
   order: orderRouter,
   organization: organizationRouter,
   participant: participantRouter,
+  procedure: procedureRouter,
   product: productRouter,
   promptTemplate: promptTemplateRouter,
   quickAction: quickActionRouter,

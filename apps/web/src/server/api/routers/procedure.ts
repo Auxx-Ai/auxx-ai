@@ -1,0 +1,252 @@
+// apps/web/src/server/api/routers/procedure.ts
+
+import {
+  compileProcedure,
+  createProcedure,
+  deleteProcedure,
+  getProcedureById,
+  getProcedureVersionById,
+  listProcedures,
+  listProcedureVersions,
+  publishProcedure,
+  revertProcedure,
+  type TiptapDoc,
+  updateDraftDoc,
+  updateProcedure,
+} from '@auxx/lib/agents/procedures'
+import { createScopedLogger } from '@auxx/logger'
+import { TRPCError } from '@trpc/server'
+import { z } from 'zod'
+import { adminProcedure, createTRPCRouter, protectedProcedure } from '../trpc'
+
+const logger = createScopedLogger('procedure-router')
+
+/** Unwrap a neverthrow Result, mapping an error to a TRPCError. */
+function unwrap<T>(
+  result: { isErr(): boolean; value?: T; error?: { message?: string } | Error },
+  message: string
+): T {
+  if (result.isErr()) {
+    const detail =
+      (result.error as { message?: string } | undefined)?.message ?? String(result.error)
+    throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: `${message}: ${detail}` })
+  }
+  return result.value as T
+}
+
+const triggerExampleSchema = z.object({
+  text: z.string(),
+  behavior: z.enum(['use', 'avoid']),
+})
+
+/**
+ * Org-level standalone procedures (v9). The editor autosaves the DRAFT version's
+ * `doc` + the procedure's trigger DEFAULTS here; `publish` snapshots an immutable
+ * version and repoints the active pointer; `revert` repoints to an older version.
+ *
+ * Note: the org-cache `agents` projection + the `procedure.updated` cache bust are
+ * Phase 4 (the live selection/stepper path). Until then publish/revert change only
+ * the DB; nothing consumes the active version yet.
+ */
+export const procedureRouter = createTRPCRouter({
+  // Org-wide list — drives the routing-step `switch` picker + the library view.
+  list: protectedProcedure.query(async ({ ctx }) => {
+    const { organizationId } = ctx.session
+    const rows = unwrap(await listProcedures({ organizationId }), 'list procedures')
+    return rows.map((row) => ({
+      id: row.id,
+      name: row.name,
+      whenToUse: row.whenToUse,
+      hasUnpublishedChanges: row.hasUnpublishedChanges,
+      activeVersionId: row.activeVersionId,
+      updatedAt: row.updatedAt.toISOString(),
+    }))
+  }),
+
+  // Full procedure + its draft doc — the editor's load.
+  getById: protectedProcedure
+    .input(z.object({ id: z.string().min(1) }))
+    .query(async ({ ctx, input }) => {
+      const { organizationId } = ctx.session
+      const procedure = unwrap(
+        await getProcedureById({ organizationId, procedureId: input.id }),
+        'get procedure'
+      )
+      if (!procedure) throw new TRPCError({ code: 'NOT_FOUND', message: 'Procedure not found' })
+      const draft = procedure.draftVersionId
+        ? unwrap(
+            await getProcedureVersionById({
+              organizationId,
+              procedureVersionId: procedure.draftVersionId,
+            }),
+            'get draft version'
+          )
+        : null
+      return {
+        id: procedure.id,
+        name: procedure.name,
+        whenToUse: procedure.whenToUse,
+        triggerExamples: procedure.triggerExamples,
+        ruleset: procedure.ruleset,
+        activeVersionId: procedure.activeVersionId,
+        hasUnpublishedChanges: procedure.hasUnpublishedChanges,
+        draftDoc: (draft?.doc ?? null) as Record<string, unknown> | null,
+      }
+    }),
+
+  create: adminProcedure
+    .input(z.object({ name: z.string().min(1) }))
+    .mutation(async ({ ctx, input }) => {
+      const { organizationId } = ctx.session
+      const row = unwrap(
+        await createProcedure({ organizationId, name: input.name }),
+        'create procedure'
+      )
+      return { id: row.id }
+    }),
+
+  // DRAFT autosave target — patches the draft `doc` and/or trigger defaults.
+  // Never touches the published `compiled`/`version` (STACK #10).
+  update: adminProcedure
+    .input(
+      z.object({
+        id: z.string().min(1),
+        name: z.string().optional(),
+        whenToUse: z.string().optional(),
+        triggerExamples: z.array(triggerExampleSchema).optional(),
+        ruleset: z.array(z.unknown()).optional(),
+        doc: z.record(z.string(), z.unknown()).optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { organizationId } = ctx.session
+      const { id, doc, ...meta } = input
+      if (
+        meta.name !== undefined ||
+        meta.whenToUse !== undefined ||
+        meta.triggerExamples !== undefined ||
+        meta.ruleset !== undefined
+      ) {
+        unwrap(
+          await updateProcedure({
+            organizationId,
+            procedureId: id,
+            patch: {
+              name: meta.name,
+              whenToUse: meta.whenToUse,
+              triggerExamples: meta.triggerExamples,
+              ruleset: meta.ruleset,
+            },
+          }),
+          'update procedure'
+        )
+      }
+      if (doc !== undefined) {
+        unwrap(
+          await updateDraftDoc({ organizationId, procedureId: id, doc: doc as TiptapDoc }),
+          'update draft doc'
+        )
+      }
+      return { ok: true as const }
+    }),
+
+  delete: adminProcedure
+    .input(z.object({ id: z.string().min(1) }))
+    .mutation(async ({ ctx, input }) => {
+      const { organizationId } = ctx.session
+      unwrap(await deleteProcedure({ organizationId, procedureId: input.id }), 'delete procedure')
+      return { ok: true as const }
+    }),
+
+  // Published version history (newest first) for the revert UI.
+  listVersions: protectedProcedure
+    .input(z.object({ id: z.string().min(1) }))
+    .query(async ({ input }) => {
+      const rows = unwrap(
+        await listProcedureVersions({ procedureId: input.id }),
+        'list procedure versions'
+      )
+      return rows.map((row) => ({
+        id: row.id,
+        versionNumber: row.versionNumber,
+        label: row.label,
+        createdAt: row.createdAt.toISOString(),
+      }))
+    }),
+
+  /**
+   * Compile the draft → snapshot an immutable version → repoint the active
+   * pointer. Enforces non-empty `whenToUse` and surfaces compile errors.
+   *
+   * The Phase-4 cache bust (`onCacheEvent('procedure.updated')`) + the org-cache
+   * `agents` projection are NOT wired yet, so this only mutates the DB — no live
+   * run reads the active version until Phase 4.
+   */
+  publish: adminProcedure
+    .input(z.object({ id: z.string().min(1) }))
+    .mutation(async ({ ctx, input }) => {
+      const { organizationId } = ctx.session
+      const procedure = unwrap(
+        await getProcedureById({ organizationId, procedureId: input.id }),
+        'get procedure'
+      )
+      if (!procedure) throw new TRPCError({ code: 'NOT_FOUND', message: 'Procedure not found' })
+      if (procedure.whenToUse.trim() === '') {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'Set "when to use" before publishing.',
+        })
+      }
+      if (!procedure.draftVersionId) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Procedure has no draft to publish.' })
+      }
+      const draft = unwrap(
+        await getProcedureVersionById({
+          organizationId,
+          procedureVersionId: procedure.draftVersionId,
+        }),
+        'get draft version'
+      )
+      if (!draft) throw new TRPCError({ code: 'NOT_FOUND', message: 'Draft version not found' })
+
+      const { compiled, errors } = compileProcedure(draft.doc as TiptapDoc)
+      if (errors && errors.length > 0) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: `Procedure has errors: ${errors[0]!.message}`,
+        })
+      }
+
+      const version = unwrap(
+        await publishProcedure({
+          organizationId,
+          procedureId: input.id,
+          doc: draft.doc as TiptapDoc,
+          compiled,
+          editorId: ctx.session.userId,
+        }),
+        'publish procedure'
+      )
+      logger.info('Procedure published', {
+        organizationId,
+        procedureId: input.id,
+        versionNumber: version.versionNumber,
+      })
+      return { versionNumber: version.versionNumber, procedureVersionId: version.id }
+    }),
+
+  revert: adminProcedure
+    .input(z.object({ id: z.string().min(1), toVersionId: z.string().min(1) }))
+    .mutation(async ({ ctx, input }) => {
+      const { organizationId } = ctx.session
+      unwrap(
+        await revertProcedure({
+          organizationId,
+          procedureId: input.id,
+          toVersionId: input.toVersionId,
+        }),
+        'revert procedure'
+      )
+      return { ok: true as const }
+    }),
+})

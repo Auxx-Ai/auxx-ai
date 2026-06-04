@@ -5,6 +5,10 @@
 import { parseRecordId, type RecordId } from '@auxx/lib/resources/client'
 import type { ActorId } from '@auxx/types/actor'
 import { cn } from '@auxx/ui/lib/utils'
+import {
+  isProcedureStepId,
+  ProcedureStepBadge,
+} from '~/components/agents/procedures/nodes/procedure-step-badge'
 import { ToolBadge } from '~/components/pickers/tool-picker/tool-badge'
 import { ToolsetBadge } from '~/components/pickers/toolset-picker/toolset-badge'
 import { ActorBadge } from '~/components/resources/ui/actor-badge'
@@ -21,6 +25,11 @@ const referenceBadgeRing = 'transition-all inline-flex'
  * editor, agent persona editor).
  */
 export function renderReferenceBadge({ id, selected }: { id: string; selected: boolean }) {
+  // v9 procedure step badges (`route:`/`code:`/`subprocedure:`) — only present in
+  // the procedure editor; resolve names + drill via ProcedureEditorContext.
+  if (isProcedureStepId(id)) {
+    return <ProcedureStepBadge id={id} selected={selected} />
+  }
   const ring = cn(referenceBadgeRing, selected && 'ring-2 ring-primary ring-offset-1')
   if (id.startsWith('user:') || id.startsWith('group:') || id.startsWith('agent:')) {
     return <ActorBadge actorId={id as ActorId} className={ring} />

@@ -15,6 +15,10 @@ import { Decoration, DecorationSet } from '@tiptap/pm/view'
 import { useEditor, useEditorState } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { ConditionBlock } from '~/components/agents/procedures/nodes/condition-block-node'
+import { ConditionCase } from '~/components/agents/procedures/nodes/condition-case-node'
+import { ConditionElse } from '~/components/agents/procedures/nodes/condition-else-node'
+import { ConditionPredicate } from '~/components/agents/procedures/nodes/condition-predicate-node'
 import { Table, TableCell, TableHeader, TableRow } from '../extensions/table'
 import {
   createPlaceholderNode,
@@ -33,14 +37,20 @@ import { Panel } from '../kb-article/panel-node'
 import { Tabs } from '../kb-article/tabs-node'
 import { buildReferencePickerExtensions } from './reference-picker-extensions'
 
-const Doc = Node.create({
-  name: 'doc',
-  topNode: true,
-  // PM resolves a bare `block` token to the NODE named `block` (which we have),
-  // not the group. So we have to list `table` explicitly even though it's in
-  // `group: 'block'` — node-name resolution takes precedence over group.
-  content: '(block | containerBlock | table)+',
-})
+// The `doc` content union. `procedureBlock` is only a valid token when at least
+// one node declares `group: 'procedureBlock'` (PM rejects an empty group), so the
+// alternative is added ONLY when the procedure nodes are mounted (§1.2). PM
+// resolves a bare `block` token to the NODE named `block`, not the group, so
+// `table` is listed explicitly even though it's in `group: 'block'`.
+function createDoc(enableProcedureNodes: boolean) {
+  return Node.create({
+    name: 'doc',
+    topNode: true,
+    content: enableProcedureNodes
+      ? '(block | containerBlock | procedureBlock | table)+'
+      : '(block | containerBlock | table)+',
+  })
+}
 
 const FocusClasses = Extension.create({
   name: 'focus-classes',
@@ -112,6 +122,15 @@ export interface UseRichTextEditorOptions {
    * the reference-picker extensions. Defaults to `[]`.
    */
   inlineExtensions?: Extension[]
+  /**
+   * Mount the v9 procedure control-flow nodes (conditionBlock / conditionCase /
+   * conditionElse / conditionPredicate) and extend the `doc` content union with
+   * the `procedureBlock` group. The step "nodes" (tool / code / routing /
+   * sub-procedure) are inline reference badges, not block nodes. Defaults to `false`
+   * — only the procedure editor opts in; KB / persona / mail schemas are
+   * untouched (no procedure node types in their autosave payloads).
+   */
+  enableProcedureNodes?: boolean
 }
 
 /**
@@ -134,6 +153,7 @@ export function useRichTextEditor({
   editable = true,
   placeholderText,
   inlineExtensions,
+  enableProcedureNodes = false,
 }: UseRichTextEditorOptions) {
   const normalizedInitialContent = useMemo<JSONContent>(() => {
     const migrated = migrateLegacyContent(initialContent)
@@ -175,7 +195,7 @@ export function useRichTextEditor({
       immediatelyRender: false,
       editable,
       extensions: [
-        Doc,
+        createDoc(enableProcedureNodes),
         StarterKit.configure({
           document: false,
           heading: false,
@@ -213,6 +233,9 @@ export function useRichTextEditor({
         // via the Placeholder extension's CSS pseudo-element (which would
         // overlap the line gutter). See block-node-view.tsx `showPlaceholder`.
         ...(slashCommand ? [slashCommand.slashCommandExtension] : []),
+        ...(enableProcedureNodes
+          ? [ConditionBlock, ConditionCase, ConditionElse, ConditionPredicate]
+          : []),
         ...referencePickerExtensions,
         ...(inlineExtensions ?? []),
         placeholderNodeExtension,

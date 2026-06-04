@@ -2,12 +2,18 @@
 'use client'
 
 import { cn } from '@auxx/ui/lib/utils'
-import { Clipboard, ClipboardCheck, Maximize2, Minimize2 } from 'lucide-react'
+import { ChevronLeft, Clipboard, ClipboardCheck, Maximize2, Minimize2 } from 'lucide-react'
 import React from 'react'
 import { Tooltip } from '~/components/global/tooltip'
 
 interface PromptEditorHeaderProps {
   title: string
+  /**
+   * When set, a back `ActionButton` renders before the title (used by the
+   * procedure editor's drill-in NavStack to pop a level). Omit for the flat
+   * persona / workflow headers.
+   */
+  onBack?: () => void
   /**
    * Character-count slot — rendered as-is between the title and the
    * action buttons. Passed in by the parent (typically `PromptCharacterCount`)
@@ -45,6 +51,7 @@ ActionButton.displayName = 'ActionButton'
 
 export const PromptEditorHeader = React.memo(function PromptEditorHeader({
   title,
+  onBack,
   countSlot,
   isExpanded,
   setExpanded,
@@ -60,7 +67,14 @@ export const PromptEditorHeader = React.memo(function PromptEditorHeader({
         isExpanded && 'h-10',
         headerClassName
       )}>
-      <div className='flex gap-2'>
+      <div className='flex items-center gap-1'>
+        {onBack && (
+          <Tooltip content='Back'>
+            <ActionButton onClick={onBack} aria-label='Back' className='-ml-1.5'>
+              <ChevronLeft className='size-4' />
+            </ActionButton>
+          </Tooltip>
+        )}
         <div
           className={cn(
             'text-xs font-semibold uppercase leading-4 text-primary-500',
