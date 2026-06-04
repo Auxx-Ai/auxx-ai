@@ -1,7 +1,14 @@
 // packages/lib/src/agents/procedures/index.ts
 
+export {
+  type ClassifierCandidate,
+  type ClassifyDeps,
+  type ConversationMessage,
+  classifyProcedure,
+} from './classify'
 export type { CompileError, CompileResult } from './compile'
 export { compileProcedure } from './compile'
+export { buildProcedureFieldResolver } from './context'
 export {
   type CodeStepAttrs,
   type ConditionCaseAttrs,
@@ -38,6 +45,12 @@ export {
   updateDraftDoc,
   updateProcedure,
 } from './queries'
+export {
+  type ResolvedCandidate,
+  type SelectionResult,
+  type SelectProcedureArgs,
+  selectProcedure,
+} from './select'
 export {
   atDepthCap,
   clear,
