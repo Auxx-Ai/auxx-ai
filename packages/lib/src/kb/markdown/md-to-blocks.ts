@@ -3,11 +3,12 @@
 // Parses markdown (Auxx MD dialect — GFM + remark-directive) into the KB
 // editor's BlockJSON shape. See plans/kb/markdown-support.md for the spec.
 
-import { generateId } from '@auxx/utils'
+import { createIdAllocator, generateId } from '@auxx/utils'
 import remarkDirective from 'remark-directive'
 import remarkGfm from 'remark-gfm'
 import remarkParse from 'remark-parse'
 import { unified } from 'unified'
+import { BLOCK_ID_PREFIX, reassignIds } from './block-id'
 import type {
   AccordionJSON,
   ArticleNodeJSON,
@@ -82,7 +83,20 @@ function isReferenceUrl(url: string): boolean {
 
 const parser = unified().use(remarkParse).use(remarkGfm).use(remarkDirective)
 
+/**
+ * Parse Auxx markdown into article nodes with short, sequential ids
+ * (`b1`, `b2`, …). The internal walk stamps throwaway ids as it goes; this
+ * wrapper reassigns clean sequential ids over the whole tree once, so the
+ * output is self-consistent regardless of how many recursive sub-parses
+ * (HTML tables, `<details>`) ran underneath. Downstream authorities
+ * (`stampBlockIds` on persist, `blockIdPlugin` in the editor, the agent
+ * insert re-stamp) preserve these ids or re-seed them above an existing doc.
+ */
 export function mdToBlocks(markdown: string): ArticleNodeJSON[] {
+  return reassignIds(parseMarkdown(markdown), createIdAllocator(BLOCK_ID_PREFIX))
+}
+
+function parseMarkdown(markdown: string): ArticleNodeJSON[] {
   const cleaned = stripFrontmatter(markdown ?? '')
   if (!cleaned.trim()) return emptyContent()
 
@@ -931,7 +945,7 @@ function parseTableRowHtml(
     const trimmed = inner.trim()
     let cellContent: BlockJSON[] = []
     if (trimmed) {
-      const sub = mdToBlocks(trimmed)
+      const sub = parseMarkdown(trimmed)
       cellContent = sub.filter((n): n is BlockJSON => n.type === 'block')
     }
     if (cellContent.length === 0) {
@@ -958,7 +972,7 @@ function tryParseDetailsHtml(raw: string): PanelJSON | null {
   // produce real blocks.
   let panelContent: BlockJSON[] = []
   if (body) {
-    const sub = mdToBlocks(body)
+    const sub = parseMarkdown(body)
     panelContent = sub.filter((n): n is BlockJSON => n.type === 'block')
   }
   if (panelContent.length === 0) {

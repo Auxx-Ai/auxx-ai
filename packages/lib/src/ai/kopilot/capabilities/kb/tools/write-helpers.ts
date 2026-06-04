@@ -10,30 +10,17 @@ import {
   type KopilotPreTurnSnapshot,
   readKopilotSnapshot,
 } from '../../../../../kb/kopilot-snapshot'
+import { createBlockIdAllocator, reassignIds } from '../../../../../kb/markdown/block-id'
 import { computeArticleJsonHash } from '../../../../../kb/markdown/hash'
 import { mdToBlocks } from '../../../../../kb/markdown/md-to-blocks'
-import { stampBlockIds } from '../../../../../kb/markdown/stamp-ids'
-import type { ArticleNodeJSON, BlockJSON, PanelJSON } from '../../../../../kb/markdown/types'
+import type { ArticleNodeJSON, PanelJSON } from '../../../../../kb/markdown/types'
 import { publishKbArticleEvent } from '../../../../../kb/realtime'
 import type { AgentDeps, AgentToolResult } from '../../../../agent-framework/types'
 import { findRef } from '../../../context-refs'
 import type { ToolDeps } from '../../types'
+import { planMarkdownReplace } from './replace-plan'
 
 const logger = createScopedLogger('kb-write-helpers')
-
-/**
- * Block-input payload accepted by write tools — agents pass either a
- * markdown string (server expands to one or more nodes) or a structured
- * node JSON. `kind:'block'` accepts any top-level article node:
- * `type:'block'` (leaf), `type:'table'`, `type:'tabs'`, or `type:'accordion'`.
- * Containers can only be inserted at top-level anchors (panels/cells
- * hold leaf blocks only).
- */
-export type BlockInput =
-  | { kind: 'markdown'; markdown: string }
-  | { kind: 'block'; block: ArticleNodeJSON }
-
-const ALLOWED_NODE_TYPES = new Set(['block', 'table', 'tabs', 'accordion'])
 
 /**
  * Optional concurrency guard shared by every KB write tool. The agent passes
@@ -49,25 +36,70 @@ export const EXPECTED_HASH_PARAM = {
 } as const
 
 /**
- * Expand a list of BlockInput into a flat ArticleNodeJSON[] with ids
- * stamped. Used by insert / replace tools that accept the mixed payload
- * shape. Containers (table/tabs/accordion) flow through as-is so they
- * can be inserted at top-level anchors; `applyPatch` rejects them at
- * nested anchors with a clear error.
+ * Parse an agent-supplied markdown string into article nodes. The write
+ * tools speak markdown only — `mdToBlocks` already stamps a fresh id on
+ * every parsed block/panel, and containers (table/tabs/accordion) flow
+ * through as top-level nodes. `applyPatch` rejects containers at nested
+ * anchors with a clear error.
  */
-export function expandBlockInputs(inputs: BlockInput[]): ArticleNodeJSON[] {
-  const out: ArticleNodeJSON[] = []
-  for (const input of inputs) {
-    if (input.kind === 'markdown') {
-      const nodes = mdToBlocks(input.markdown)
-      for (const node of nodes) out.push(node)
-      continue
-    }
-    // Stamp ids on agent-supplied node (recurses into panels / table cells).
-    const { content } = stampBlockIds([input.block])
-    if (content[0]) out.push(content[0])
+export function expandMarkdown(markdown: string): ArticleNodeJSON[] {
+  return mdToBlocks(markdown)
+}
+
+/**
+ * Run `replace_block` from a markdown string. Expands the markdown, plans
+ * the patch sequence (see {@link planMarkdownReplace}), and applies each op
+ * in order — threading the CAS hash so the final `postHash` reflects the
+ * fully-spliced result and the agent can chain its next edit.
+ */
+export async function runMarkdownReplace(args: {
+  agentDeps: AgentDeps
+  toolDeps: ToolDeps
+  blockId: string
+  markdown: string
+  expectedHash?: string
+}): Promise<
+  | { ok: true; ctx: KopilotWriteContext; effect: { blockIds: string[] } }
+  | { ok: false; error: string }
+> {
+  const { agentDeps, toolDeps, blockId, markdown, expectedHash } = args
+  // Empty/whitespace markdown removes the block — short-circuit to zero nodes
+  // before parsing, since `mdToBlocks('')` yields a stray empty paragraph.
+  const nodes = markdown.trim() === '' ? [] : expandMarkdown(markdown)
+  const patches = planMarkdownReplace(blockId, nodes)
+  return runPatchSequence({ agentDeps, toolDeps, patches, expectedHash })
+}
+
+/**
+ * Apply a sequence of patches as one logical edit. Each op chains the prior
+ * op's `postHash` as its CAS `expectedHash`, so a concurrent write between
+ * ops is still caught. Returns the last op's context with the union of all
+ * affected block ids. Bails on the first failure.
+ */
+async function runPatchSequence(args: {
+  agentDeps: AgentDeps
+  toolDeps: ToolDeps
+  patches: ArticlePatch[]
+  expectedHash?: string
+}): Promise<
+  | { ok: true; ctx: KopilotWriteContext; effect: { blockIds: string[] } }
+  | { ok: false; error: string }
+> {
+  const { agentDeps, toolDeps, patches } = args
+  let expectedHash = args.expectedHash
+  let ctx: KopilotWriteContext | undefined
+  const blockIds = new Set<string>()
+  let opIndex = 0
+  for (const patch of patches) {
+    const res = await runBlockCrudOp({ agentDeps, toolDeps, patch, opIndex, expectedHash })
+    if (!res.ok) return res
+    expectedHash = res.ctx.postHash
+    ctx = res.ctx
+    for (const id of res.effect.blockIds) blockIds.add(id)
+    opIndex++
   }
-  return out
+  if (!ctx) return { ok: false, error: 'no patches to apply' }
+  return { ok: true, ctx, effect: { blockIds: [...blockIds] } }
 }
 
 export interface KopilotWriteContext {
@@ -131,6 +163,16 @@ export async function runBlockCrudOp(args: {
   const draftJson = (article.draftRevision.contentJson as ArticleNodeJSON[] | null) ?? []
   const preHash = computeArticleJsonHash(draftJson)
 
+  // Insert blocks arrive with sequential ids minted by `mdToBlocks` against a
+  // fresh `b1…` counter, so they can collide with ids already in the draft.
+  // Re-stamp them above the draft's current max BEFORE applying, so the
+  // persisted content and the patch we publish to editors carry the same
+  // final ids (no divergence, and the CAS hash we return stays authoritative).
+  const effectivePatch: ArticlePatch =
+    patch.op === 'insert'
+      ? { ...patch, blocks: reassignIds(patch.blocks, createBlockIdAllocator(draftJson)) }
+      : patch
+
   // CAS precondition: if the agent told us the hash it last observed and the
   // draft has since changed (a concurrent edit), reject before capturing a
   // snapshot, locking, or applying — so we never patch stale content.
@@ -169,7 +211,7 @@ export async function runBlockCrudOp(args: {
   let nextContent: ArticleNodeJSON[]
   let effectIds: string[]
   try {
-    const result = applyPatch(draftJson, patch)
+    const result = applyPatch(draftJson, effectivePatch)
     nextContent = result.content
     effectIds = result.effect.blockIds
   } catch (error) {
@@ -197,7 +239,7 @@ export async function runBlockCrudOp(args: {
   void publishKbArticleEvent(articleId, {
     type: 'kb-article-patch',
     articleId,
-    patch,
+    patch: effectivePatch,
     preHash,
     postHash,
     cause: { kind: 'kopilot', turnId, opIndex },
@@ -242,85 +284,6 @@ export function buildOpToolResult(
       affectedBlockIds: result.effect.blockIds,
     },
   }
-}
-
-/**
- * Type guard — ensure agent-supplied input matches BlockInput shape.
- * Returns a normalized array or an error string.
- */
-export function parseBlockInputs(
-  raw: unknown,
-  fieldName: string
-):
-  | {
-      ok: true
-      value: BlockInput[]
-    }
-  | { ok: false; error: string } {
-  if (!Array.isArray(raw)) {
-    return { ok: false, error: `${fieldName} must be an array` }
-  }
-  const out: BlockInput[] = []
-  for (let i = 0; i < raw.length; i++) {
-    const entry = raw[i]
-    if (!entry || typeof entry !== 'object') {
-      return { ok: false, error: `${fieldName}[${i}] must be an object` }
-    }
-    const kind = (entry as { kind?: unknown }).kind
-    if (kind === 'markdown') {
-      const md = (entry as { markdown?: unknown }).markdown
-      if (typeof md !== 'string' || md.length === 0) {
-        return { ok: false, error: `${fieldName}[${i}].markdown must be a non-empty string` }
-      }
-      out.push({ kind: 'markdown', markdown: md })
-      continue
-    }
-    if (kind === 'block') {
-      const block = (entry as { block?: unknown }).block
-      const nodeType = (block as { type?: unknown } | null | undefined)?.type
-      if (
-        !block ||
-        typeof block !== 'object' ||
-        typeof nodeType !== 'string' ||
-        !ALLOWED_NODE_TYPES.has(nodeType)
-      ) {
-        return {
-          ok: false,
-          error: `${fieldName}[${i}].block must have type ∈ {'block','table','tabs','accordion'}`,
-        }
-      }
-      out.push({ kind: 'block', block: block as ArticleNodeJSON })
-      continue
-    }
-    return { ok: false, error: `${fieldName}[${i}].kind must be 'markdown' or 'block'` }
-  }
-  return { ok: true, value: out }
-}
-
-/**
- * For tools where the client passes a full BlockJSON (replace), validate
- * shape and stamp an id if missing.
- */
-export function parseSingleBlock(
-  raw: unknown,
-  fieldName: string
-):
-  | {
-      ok: true
-      value: BlockJSON
-    }
-  | { ok: false; error: string } {
-  if (!raw || typeof raw !== 'object') {
-    return { ok: false, error: `${fieldName} must be an object` }
-  }
-  if ((raw as { type?: unknown }).type !== 'block') {
-    return { ok: false, error: `${fieldName}.type must be 'block'` }
-  }
-  const { content } = stampBlockIds([raw as BlockJSON])
-  if (content[0]?.type !== 'block') {
-    return { ok: false, error: `${fieldName} did not normalize to a block` }
-  }
-  return { ok: true, value: content[0] as BlockJSON }
 }
 
 /**

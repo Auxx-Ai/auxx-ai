@@ -29,6 +29,34 @@ export interface SystemPromptAdditionContext {
   toolNames: Set<string>
 }
 
+/**
+ * Turn-scoped deps handed to a capability's lifecycle hooks. A capability
+ * already reaches `db` / `sessionContext` / `organizationId` / `userId` through
+ * its own `GetToolDeps` closure — `turnId` is the one piece of engine-owned,
+ * turn-ephemeral identity it can't source itself, so it's the only field here.
+ */
+export interface CapabilityTurnDeps {
+  /** Engine-assigned id for the turn that just ended. Scopes per-turn lookups. */
+  turnId: string
+}
+
+/**
+ * Optional turn-lifecycle hooks a capability can declare to finalize or revert
+ * its own turn-scoped resources. The domain config fans its engine-level
+ * lifecycle out to every registered capability that declares one, so
+ * capability-specific cleanup lives with the capability instead of leaking into
+ * the capability-agnostic domain config.
+ */
+export interface CapabilityLifecycle {
+  /**
+   * Fired once at the end of a turn. `outcome` mirrors the engine
+   * (`'completed'` for a clean finish, `'error'` for a turn-error / abort /
+   * disconnect). Sources everything but `turnId` from the capability's own
+   * `GetToolDeps` closure. Must not throw — the domain config wraps it.
+   */
+  onTurnEnd?(outcome: 'completed' | 'error', deps: CapabilityTurnDeps): Promise<void>
+}
+
 /** A page capability set — tools available on a specific page */
 export interface PageCapability {
   /** Page identifier (e.g. 'mail', 'contacts', 'workflows') */
@@ -57,6 +85,13 @@ export interface PageCapability {
    * `*` for prefix match (e.g. `'mail_*'`).
    */
   excludeGlobalTools?: string[] | ((toolName: string) => boolean)
+  /**
+   * Optional turn-lifecycle hooks. A capability with turn-scoped side-effects
+   * (e.g. the KB write transaction's snapshot + lock) declares them here; the
+   * domain config fans its own engine lifecycle out to each registered
+   * capability that has one. Declarative capabilities omit this.
+   */
+  lifecycle?: CapabilityLifecycle
 }
 
 /** Registry mapping pages to their capabilities */
@@ -75,6 +110,12 @@ export interface CapabilityRegistry {
   getCapabilitiesSummary(ctx?: SystemPromptAdditionContext): string[]
   /** Names of global tools the page chose to exclude — for debugging / logging */
   getExcludedGlobalToolNames(page: string): string[]
+  /**
+   * Turn-lifecycle hooks from every registered capability that declared one,
+   * in registration order. The domain config fans its engine `onTurnEnd` out
+   * to these so capability-scoped cleanup stays with the capability.
+   */
+  getLifecycles(): CapabilityLifecycle[]
   /** Register a page's capabilities */
   register(capability: PageCapability): void
 }

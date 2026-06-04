@@ -28,6 +28,8 @@ export {
   getInitials,
   getInitialsFromName,
 } from './contact'
+// Counter utilities
+export { createCounter, createIdAllocator } from './counter'
 // Currency utilities
 export {
   type CurrencyDisplayOptions,

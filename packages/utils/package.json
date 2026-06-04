@@ -28,6 +28,12 @@
       "import": "./dist/contact.js",
       "default": "./src/contact.ts"
     },
+    "./counter": {
+      "types": "./src/counter.ts",
+      "source": "./src/counter.ts",
+      "import": "./dist/counter.js",
+      "default": "./src/counter.ts"
+    },
     "./currency": {
       "types": "./src/currency.ts",
       "source": "./src/currency.ts",

@@ -13,7 +13,11 @@ const AUXX_KB_PREFIX = 'auxx://kb/article/'
 const defaultResolveAuxxHref: ResolveAuxxHref = (id) => `/r/${id}`
 
 export function InlineRenderer({ content, resolveAuxxHref }: InlineRendererProps) {
-  if (!content || content.length === 0) return null
+  if (!content) return null
+  // Defensive: a non-array `content` (object/string) would crash `.map`. Bail
+  // gracefully — a malformed block should render nothing, not throw.
+  if (!Array.isArray(content)) return null
+  if (content.length === 0) return null
   const resolver = resolveAuxxHref ?? defaultResolveAuxxHref
   return (
     <>

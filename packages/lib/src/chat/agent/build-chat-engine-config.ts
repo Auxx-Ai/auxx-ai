@@ -157,9 +157,6 @@ export async function buildChatEngineConfig(
     agentConfig,
     // No `triggerContext` — chat is not an AgentTrigger run; the autonomous-run
     // prompt section stays off (escalation guidance lives in the persona).
-    db,
-    organizationId,
-    userId: agentUserId,
   })
 
   const callModel = createCallModel({

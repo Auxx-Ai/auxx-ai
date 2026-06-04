@@ -597,11 +597,6 @@ async function runInProcessPath(params: {
     maxIterations: 30,
     agentConfig,
     triggerContext,
-    // Turn-end KB lifecycle (finalize on success, revert on failure) runs from
-    // the engine's onTurnEnd hook — these scope it.
-    db,
-    organizationId,
-    userId,
   })
 
   // Create LLM adapter

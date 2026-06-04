@@ -255,9 +255,11 @@ const TOOL_COMMANDS: SlashCommandItem[] = [
 const TOOL_IDS = new Set(TOOL_COMMANDS.map((t) => t.id))
 
 function makeEmptyPanelJSON(label: string) {
+  // No explicit id — the `blockIdPlugin` stamps a sequential `b<n>` id on the
+  // panel (and its child block) once the container is inserted.
   return {
     type: 'panel' as const,
-    attrs: { id: generateId(), label },
+    attrs: { label },
     content: [{ type: 'block' as const, attrs: { blockType: 'text' as const }, content: [] }],
   }
 }
