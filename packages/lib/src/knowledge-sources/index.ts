@@ -14,7 +14,11 @@ export type {
   SourceSink,
   SyncCtx,
 } from './sinks/types'
-export { linkSourceToKb, listSourceLinks, unlinkSourceFromKb } from './source-links'
+export {
+  listSourceLinks,
+  unlinkSourceArticleFromKb,
+  unlinkSourceFromKb,
+} from './source-links'
 export {
   reconcileSourceSchedulers,
   removeSourceScheduler,

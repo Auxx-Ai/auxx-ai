@@ -11,6 +11,7 @@ import Link from 'next/link'
 import { useMemo } from 'react'
 import { useArticleList } from '../../hooks/use-article-list'
 import type { ArticleMeta } from '../../store/article-store'
+import { useArticleEditorSurface } from './article-editor-surface'
 
 interface ArticleEditorFooterProps {
   article: ArticleMeta
@@ -19,6 +20,7 @@ interface ArticleEditorFooterProps {
 
 export function ArticleEditorFooter({ article, knowledgeBaseId }: ArticleEditorFooterProps) {
   const articles = useArticleList(knowledgeBaseId)
+  const { buildHref: hrefOverride } = useArticleEditorSurface()
 
   const { prevArticle, nextArticle } = useMemo(() => {
     const tree = buildArticleTree(articles)
@@ -31,12 +33,12 @@ export function ArticleEditorFooter({ article, knowledgeBaseId }: ArticleEditorF
   }, [articles, article.id])
 
   const basePath = `/app/kb/${knowledgeBaseId}`
-  const prevHref = prevArticle
-    ? `${basePath}/editor/~/${getFullSlugPath(prevArticle, articles)}?panel=articles`
-    : '#'
-  const nextHref = nextArticle
-    ? `${basePath}/editor/~/${getFullSlugPath(nextArticle, articles)}?panel=articles`
-    : '#'
+  const buildHref = (a: ArticleMeta) =>
+    hrefOverride
+      ? hrefOverride(a)
+      : `${basePath}/editor/~/${getFullSlugPath(a, articles)}?panel=articles`
+  const prevHref = prevArticle ? buildHref(prevArticle) : '#'
+  const nextHref = nextArticle ? buildHref(nextArticle) : '#'
 
   return (
     <div className='relative mx-auto mt-6 flex w-full max-w-3xl'>

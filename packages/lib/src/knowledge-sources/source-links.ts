@@ -1,14 +1,14 @@
 // packages/lib/src/knowledge-sources/source-links.ts
 // Link a source's content into user-facing KnowledgeBases. A source homes (and embeds)
-// its articles once in its own hidden KB; "linking" materializes ArticlePlacement rows of
-// those articles into a target KB (linkedFromSourceId = source.id), preserving the tree.
-// Unlinking drops just those placements. See plans/kb/sources/source-owns-kb-REFACTOR.md.
+// its articles once in its own hidden KB; "linking" materializes ArticlePlacement rows for
+// individually chosen articles into a target KB (linkedFromSourceId = source.id), placed
+// under a chosen parent (e.g. the active tab). Only `page` articles are linkable — never
+// categories/structural folders. Unlinking drops just those placements.
+// See plans/kb/sources/source-owns-kb-REFACTOR.md.
 
 import { type Database, schema } from '@auxx/database'
 import { and, eq, isNotNull, ne } from 'drizzle-orm'
 import { NotFoundError } from '../errors'
-import { addPlacement } from '../kb/articles/add-placement'
-import { getArticles } from '../kb/articles/list-articles'
 
 async function loadSource(db: Database, organizationId: string, sourceId: string) {
   const source = await db.query.KnowledgeSource.findFirst({
@@ -22,50 +22,26 @@ async function loadSource(db: Database, organizationId: string, sourceId: string
   return source
 }
 
-/**
- * Materialize placements of every article in the source's owned KB into `targetKbId`,
- * preserving the tree (parents before children). Idempotent — re-linking is a no-op for
- * articles already placed there (so it doubles as the re-sync fan-out backfill).
- */
-export async function linkSourceToKb(
+/** Remove a single linked article's placement from one KB (source content untouched). */
+export async function unlinkSourceArticleFromKb(
   db: Database,
   organizationId: string,
   sourceId: string,
+  articleId: string,
   targetKbId: string
-): Promise<{ linked: number }> {
-  const source = await loadSource(db, organizationId, sourceId)
-  if (targetKbId === source.ownedKnowledgeBaseId) return { linked: 0 }
-
-  const ctx = { db, organizationId }
-  const items = await getArticles(ctx, source.ownedKnowledgeBaseId, { includeUnpublished: true })
-
-  // Place parent-first so each child's parentPlacementId resolves to the new placement.
-  const newPlacementByArticle = new Map<string, string>()
-  const remaining = [...items]
-  let linked = 0
-  let progress = true
-  while (remaining.length > 0 && progress) {
-    progress = false
-    for (let i = remaining.length - 1; i >= 0; i--) {
-      const item = remaining[i]!
-      if (item.parentId && !newPlacementByArticle.has(item.parentId)) continue
-      const placement = await addPlacement(ctx, {
-        articleId: item.id,
-        knowledgeBaseId: targetKbId,
-        parentPlacementId: item.parentId
-          ? (newPlacementByArticle.get(item.parentId) ?? null)
-          : null,
-        sortOrder: item.sortOrder,
-        linkedFromSourceId: sourceId,
-        isPublished: false,
-      })
-      newPlacementByArticle.set(item.id, placement.id)
-      remaining.splice(i, 1)
-      linked++
-      progress = true
-    }
-  }
-  return { linked }
+): Promise<{ success: boolean }> {
+  await loadSource(db, organizationId, sourceId)
+  await db
+    .delete(schema.ArticlePlacement)
+    .where(
+      and(
+        eq(schema.ArticlePlacement.organizationId, organizationId),
+        eq(schema.ArticlePlacement.linkedFromSourceId, sourceId),
+        eq(schema.ArticlePlacement.articleId, articleId),
+        eq(schema.ArticlePlacement.knowledgeBaseId, targetKbId)
+      )
+    )
+  return { success: true }
 }
 
 /** Remove a source's links from one KB (deletes those placements; cascades children). */

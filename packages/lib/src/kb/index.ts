@@ -17,6 +17,7 @@ export {
   getArticleBySlug,
   getArticleSlugPath,
 } from './articles/get-article'
+export { linkArticlesIntoKb } from './articles/link-articles-into-kb'
 export { getAllArticles, getArticles } from './articles/list-articles'
 export { moveArticle } from './articles/move-article'
 export { publishArticle, unpublishArticle } from './articles/publish-article'

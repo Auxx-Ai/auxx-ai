@@ -43,6 +43,13 @@ interface KBArticleEditorProps {
   onReady?: (editor: Editor) => void
   /** When true, switches the editor to read-only — used while Kopilot is in a write turn. */
   readOnly?: boolean
+  /**
+   * Collapse the left block gutter (numbers + drag handles) and its pull-left
+   * margin so the body lines up flush under the title. Set on read-only viewers
+   * like the source workspace where the gutter rail is never shown — without it
+   * the body sits left of the title.
+   */
+  hideGutter?: boolean
 }
 
 interface LinkPopoverState {
@@ -64,6 +71,7 @@ export function KBArticleEditor({
   knowledgeBaseId,
   onReady,
   readOnly,
+  hideGutter,
 }: KBArticleEditorProps) {
   const wrapperRef = useRef<HTMLDivElement>(null)
   const referencePickerRef = useRef<ReferencePickerHandle | null>(null)
@@ -230,7 +238,9 @@ export function KBArticleEditor({
         onMouseDown={handleWrapperMouseDown}
         onContextMenu={handleContextMenu}
         style={
-          { '--editor-gutter-min-width': `calc(${gutterCharWidth}ch + 1rem)` } as CSSProperties
+          (hideGutter
+            ? { '--editor-gutter-min-width': '0px', '--editor-gutter-pull-left': '0' }
+            : { '--editor-gutter-min-width': `calc(${gutterCharWidth}ch + 1rem)` }) as CSSProperties
         }>
         <div className={styles.editorContainer}>
           <EditorContent editor={editor} className={styles.editorContent} />

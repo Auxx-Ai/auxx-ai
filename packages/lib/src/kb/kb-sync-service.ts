@@ -322,8 +322,16 @@ export class KBSyncService {
     const kbService = new KBService(this.db, this.organizationId)
     const datasetId = await kbService.ensureManagedDataset(kb, kb.createdById)
 
-    // Lookup an existing Document for this article in this dataset.
-    const existing = await this.findArticleDocument(datasetId, articleId)
+    const checksum = createHash('sha256').update(`${articleId}:${md}`, 'utf8').digest('hex')
+
+    // Lookup an existing Document for this article in this dataset. Fall back to
+    // the (datasetId, checksum) unique key: a row whose `kb` metadata block was
+    // stripped (e.g. by the processing pipeline) is invisible to the articleId
+    // lookup but still occupies the unique slot — adopt it instead of colliding
+    // on insert.
+    const existing =
+      (await this.findArticleDocument(datasetId, articleId)) ??
+      (await this.findArticleDocumentByChecksum(datasetId, checksum))
 
     if (existing) {
       const prevHash = (existing.metadata as any)?.kb?.contentHash as string | undefined
@@ -333,7 +341,6 @@ export class KBSyncService {
       }
     }
 
-    const checksum = createHash('sha256').update(`${articleId}:${md}`, 'utf8').digest('hex')
     const slugPath = (await kbService.getArticleSlugPath(articleId)) ?? homePlacementSlug
 
     const baseMetadata = {
@@ -391,6 +398,21 @@ export class KBSyncService {
           eq(schema.Document.datasetId, datasetId),
           eq(schema.Document.organizationId, this.organizationId),
           sql`${schema.Document.metadata}->'kb'->>'articleId' = ${articleId}`
+        )
+      )
+      .limit(1)
+    return row ?? null
+  }
+
+  private async findArticleDocumentByChecksum(datasetId: string, checksum: string) {
+    const [row] = await this.db
+      .select()
+      .from(schema.Document)
+      .where(
+        and(
+          eq(schema.Document.datasetId, datasetId),
+          eq(schema.Document.organizationId, this.organizationId),
+          eq(schema.Document.checksum, checksum)
         )
       )
       .limit(1)

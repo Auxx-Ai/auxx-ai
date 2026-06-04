@@ -4,7 +4,7 @@ import { schema } from '@auxx/database'
 import { ArticleStatus } from '@auxx/database/enums'
 import { onCacheEvent } from '@auxx/lib/cache'
 import { getUserOrganizationId } from '@auxx/lib/email'
-import { articleToMarkdown, KBService } from '@auxx/lib/kb'
+import { articleToMarkdown, KBService, linkArticlesIntoKb } from '@auxx/lib/kb'
 import { FeatureKey, FeaturePermissionService } from '@auxx/lib/permissions'
 import { TRPCError } from '@trpc/server'
 import { and, count, eq } from 'drizzle-orm'
@@ -225,6 +225,29 @@ export const knowledgeBaseRouter = createTRPCRouter({
     .query(async ({ ctx, input }) => {
       return await getKBService(ctx).getArticles(input.knowledgeBaseId, {
         includeUnpublished: input.includeUnpublished,
+      })
+    }),
+
+  // Link individually-chosen `page` articles from any KB into this KB, placed under
+  // `targetParentArticleId` (e.g. the active tab) or the KB root. Idempotent.
+  linkArticles: protectedProcedure
+    .input(
+      z.object({
+        knowledgeBaseId: z.string().min(1),
+        articleIds: z.array(z.string().min(1)).min(1),
+        targetParentArticleId: z.string().min(1).nullish(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const organizationId = getUserOrganizationId(ctx.session)
+      if (!organizationId) {
+        throw new TRPCError({
+          code: 'UNAUTHORIZED',
+          message: 'User organization context not found',
+        })
+      }
+      return linkArticlesIntoKb(ctx.db, organizationId, input.knowledgeBaseId, input.articleIds, {
+        targetParentArticleId: input.targetParentArticleId,
       })
     }),
 

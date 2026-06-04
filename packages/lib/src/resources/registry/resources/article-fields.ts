@@ -265,7 +265,10 @@ export const ARTICLE_FIELDS: Record<string, ResourceField> = {
     isSystem: true,
     systemAttribute: 'article_kb',
     systemSortOrder: 'a4',
-    dbColumn: 'knowledgeBaseId',
+    // The article's canonical owner KB. Tree placement (and multi-KB membership)
+    // moved to the ArticlePlacement table, so there is no `knowledgeBaseId` column
+    // on Article — `homeKnowledgeBaseId` is the single owning KB this column shows.
+    dbColumn: 'homeKnowledgeBaseId',
     nullable: false,
     capabilities: {
       filterable: true,

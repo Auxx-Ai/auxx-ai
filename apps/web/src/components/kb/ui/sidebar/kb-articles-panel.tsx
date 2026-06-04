@@ -14,7 +14,16 @@ import { getFullSlugPath } from '@auxx/ui/components/kb/utils'
 import { cn } from '@auxx/ui/lib/utils'
 import { DndContext, DragOverlay } from '@dnd-kit/core'
 import { restrictToVerticalAxis, restrictToWindowEdges } from '@dnd-kit/modifiers'
-import { Archive, FileText, FolderClosed, Heading, Link2, Loader2, Plus } from 'lucide-react'
+import {
+  Archive,
+  Database,
+  FileText,
+  FolderClosed,
+  Heading,
+  Link2,
+  Loader2,
+  Plus,
+} from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useActiveArticle } from '../../hooks/use-active-article'
@@ -27,6 +36,7 @@ import { inferCreateParent } from '../../utils/infer-create-parent'
 import { ArticleSidebarItemPreview } from './article-sidebar-item'
 import { ArticleTreeSection } from './article-tree-section'
 import { KBTabStrip } from './kb-tab-strip'
+import { LinkArticlePicker } from './link-article-picker'
 
 interface KBArticlesPanelProps {
   knowledgeBaseId: string
@@ -59,6 +69,11 @@ export function KBArticlesPanel({ knowledgeBaseId }: KBArticlesPanelProps) {
   const setPending = usePendingInsertStore((s) => s.setPending)
   const clearPending = usePendingInsertStore((s) => s.clearPending)
   const pending = usePendingInsertStore((s) => s.pending)
+
+  // The Add menu morphs in place: 'menu' shows the create/link actions, 'link' swaps the
+  // content to the cross-KB article picker (no separate dialog).
+  const [addMenuOpen, setAddMenuOpen] = useState(false)
+  const [addMenuMode, setAddMenuMode] = useState<'menu' | 'link'>('menu')
 
   const archivedKey = `kb-${knowledgeBaseId}-show-archived`
   const [showArchived, setShowArchived] = useState<boolean>(() => {
@@ -326,7 +341,12 @@ export function KBArticlesPanel({ knowledgeBaseId }: KBArticlesPanelProps) {
 
       <div className='mt-2 px-2'>
         {tabSubtree.length > 0 && (
-          <DropdownMenu>
+          <DropdownMenu
+            open={addMenuOpen}
+            onOpenChange={(open) => {
+              setAddMenuOpen(open)
+              if (!open) setAddMenuMode('menu')
+            }}>
             <DropdownMenuTrigger asChild>
               <Button
                 className='w-full justify-start text-muted-foreground'
@@ -340,20 +360,42 @@ export function KBArticlesPanel({ knowledgeBaseId }: KBArticlesPanelProps) {
             </DropdownMenuTrigger>
             <DropdownMenuContent
               align='start'
-              className='w-48'
+              className={addMenuMode === 'link' ? 'w-72 p-0' : 'w-48'}
               onCloseAutoFocus={(e) => e.preventDefault()}>
-              <DropdownMenuItem onSelect={() => void handleCreateInTab(ArticleKind.page)}>
-                <FileText /> Page
-              </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => void handleCreateInTab(ArticleKind.category)}>
-                <FolderClosed /> Category
-              </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => void handleCreateInTab(ArticleKind.link)}>
-                <Link2 /> Link
-              </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => void handleCreateInTab(ArticleKind.header)}>
-                <Heading /> Section header
-              </DropdownMenuItem>
+              {addMenuMode === 'menu' ? (
+                <>
+                  <DropdownMenuItem onSelect={() => void handleCreateInTab(ArticleKind.page)}>
+                    <FileText /> Page
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => void handleCreateInTab(ArticleKind.category)}>
+                    <FolderClosed /> Category
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => void handleCreateInTab(ArticleKind.link)}>
+                    <Link2 /> Link
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => void handleCreateInTab(ArticleKind.header)}>
+                    <Heading /> Section header
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onSelect={(e) => {
+                      // Keep the menu open and swap to the picker instead of closing.
+                      e.preventDefault()
+                      setAddMenuMode('link')
+                    }}>
+                    <Database /> Link an article
+                  </DropdownMenuItem>
+                </>
+              ) : (
+                // Stop keydown from reaching Radix's menu typeahead/roving focus so the
+                // embedded cmdk Command owns arrow/enter/typing.
+                <div onKeyDown={(e) => e.stopPropagation()}>
+                  <LinkArticlePicker
+                    knowledgeBaseId={knowledgeBaseId}
+                    targetParentArticleId={effectiveTabId}
+                    onClose={() => setAddMenuOpen(false)}
+                  />
+                </div>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
         )}

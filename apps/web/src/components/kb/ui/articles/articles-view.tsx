@@ -52,9 +52,10 @@ const TAGS_COLUMN_ID = toResourceFieldId(ARTICLE_SLUG, toFieldId('tags'))
  * row into RecordMeta, so kb id / slug / publish state are top-level.
  */
 interface ArticleRow extends RecordMeta {
-  slug?: string
-  knowledgeBaseId?: string
-  isPublished?: boolean
+  /** The article's owning KB (Article.homeKnowledgeBaseId) — always present on the row. */
+  homeKnowledgeBaseId?: string
+  /** Article-level publish status (Article.status). */
+  status?: 'DRAFT' | 'PUBLISHED' | 'ARCHIVED'
   articleKind?: string
 }
 
@@ -149,8 +150,8 @@ export function ArticlesView() {
 
   const handlePublishToggle = useCallback(
     (row: ArticleRow) => {
-      const input = { id: row.id, knowledgeBaseId: row.knowledgeBaseId }
-      if (row.isPublished) {
+      const input = { id: row.id, knowledgeBaseId: row.homeKnowledgeBaseId }
+      if (row.status === 'PUBLISHED') {
         unpublishArticle.mutate(input)
       } else {
         publishArticle.mutate({ ...input, ancestorIds: [] })
@@ -168,14 +169,14 @@ export function ArticlesView() {
         destructive: true,
       })
       if (!ok) return
-      archiveArticle.mutate({ id: row.id, knowledgeBaseId: row.knowledgeBaseId })
+      archiveArticle.mutate({ id: row.id, knowledgeBaseId: row.homeKnowledgeBaseId })
     },
     [archiveArticle, confirm]
   )
 
   const handleDelete = useCallback(
     async (row: ArticleRow) => {
-      if (!row.knowledgeBaseId) return
+      if (!row.homeKnowledgeBaseId) return
       const ok = await confirm({
         title: 'Delete article?',
         description: 'This action cannot be undone.',
@@ -183,7 +184,7 @@ export function ArticlesView() {
         destructive: true,
       })
       if (!ok) return
-      deleteArticle.mutate({ id: row.id, knowledgeBaseId: row.knowledgeBaseId })
+      deleteArticle.mutate({ id: row.id, knowledgeBaseId: row.homeKnowledgeBaseId })
     },
     [deleteArticle, confirm]
   )
@@ -192,25 +193,26 @@ export function ArticlesView() {
   const primaryCellRender = useCallback(
     (row: ArticleRow) => {
       const resourceFieldId = toResourceFieldId(ARTICLE_SLUG, toFieldId('title'))
-      const canOpenEditor = !!row.knowledgeBaseId && !!row.slug
+      // The row carries the article's home KB but not its placement slug, so route by
+      // id through the editor's id→slug redirect handler.
       return (
         <PrimaryFieldCell
           resourceFieldId={resourceFieldId}
           rowId={row.id}
           onTitleClick={() => {
-            if (!canOpenEditor) return
-            router.push(`/app/kb/${row.knowledgeBaseId}/editor/${row.slug}`)
+            if (!row.homeKnowledgeBaseId) return
+            router.push(`/app/kb/${row.homeKnowledgeBaseId}/editor/r/${row.id}`)
           }}>
-          {row.knowledgeBaseId &&
+          {row.homeKnowledgeBaseId &&
             (row.articleKind === 'page' || row.articleKind === 'category') && (
               <FavoriteToggleMenuItem
                 targetType='ARTICLE'
-                targetIds={{ articleId: row.id, knowledgeBaseId: row.knowledgeBaseId }}
+                targetIds={{ articleId: row.id, knowledgeBaseId: row.homeKnowledgeBaseId }}
               />
             )}
           <DropdownMenuItem onSelect={() => handlePublishToggle(row)}>
-            {row.isPublished ? <GlobeLock /> : <Globe />}
-            {row.isPublished ? 'Unpublish' : 'Publish'}
+            {row.status === 'PUBLISHED' ? <GlobeLock /> : <Globe />}
+            {row.status === 'PUBLISHED' ? 'Unpublish' : 'Publish'}
           </DropdownMenuItem>
           <DropdownMenuItem onSelect={() => handleArchive(row)}>
             <Archive />

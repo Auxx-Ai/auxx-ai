@@ -6,9 +6,10 @@
 //
 // Proves the source-owns-KB model: a source provisions its own hidden KB →
 // materialize there (root folder + home placements, linkedFromSourceId) → re-sync
-// diff (hash bump / skip) → link into a real KB (placements fan out, tree preserved)
-// → re-sync adds new items to the linked KB → unlink drops them → orphan archive →
-// detach survives re-sync → delete removes the source, its owned KB, and all content.
+// diff (hash bump / skip) → link INDIVIDUAL articles into a real KB (flat per-article
+// placements; categories never linked) → new items do NOT auto-join (per-article, no
+// fan-out) → unlink drops them → orphan archive → detach survives re-sync → delete
+// removes the source, its owned KB, and all content.
 //
 // Lives under the worker so it resolves @auxx/* via the worker's node_modules and
 // runs on the worker's ESM/tsx runtime (file-type is ESM-only — a plain CJS `tsx`
@@ -21,12 +22,11 @@
 // link the source into.
 
 import { closePools, database as db } from '@auxx/database'
-import { detachArticleFromSource } from '@auxx/lib/kb'
+import { detachArticleFromSource, linkArticlesIntoKb } from '@auxx/lib/kb'
 import {
   createSource,
   deleteSource,
   getSource,
-  linkSourceToKb,
   listSourceLinks,
   runSourceSync,
   unlinkSourceFromKb,
@@ -202,26 +202,39 @@ async function main() {
     check('A content hash changed', !!hashA2 && hashA2 !== hashA1, { hashA1, hashA2 })
     check('B content hash unchanged (skipped)', hashB2 === hashB1, { hashB1, hashB2 })
 
-    // ── 3. Link into the standard KB → placements materialize there ──────────
-    section('3. Link source into the standard KB → placements fan out, tree preserved')
-    await linkSourceToKb(db, orgId, sourceId, linkKbId)
+    // ── 3. Link individual articles into the standard KB (per-article) ───────
+    section('3. Link the page articles into the standard KB → flat per-article placements')
+    const pageIdsToLink = pages.map((a) => a.id)
+    await linkArticlesIntoKb(db, orgId, linkKbId, pageIdsToLink)
     arts = await articlesForSource(sourceId)
     placements = await placementsForArticles(arts.map((a) => a.id))
     const inLinkKb = placements.filter((p) => p.knowledgeBaseId === linkKbId)
-    check('all 3 articles linked into the standard KB', inLinkKb.length === arts.length, {
-      linked: inLinkKb.length,
-      total: arts.length,
-    })
+    check(
+      'only the page articles linked (root category excluded)',
+      inLinkKb.length === pageIdsToLink.length,
+      {
+        linked: inLinkKb.length,
+        pages: pageIdsToLink.length,
+      }
+    )
+    check('root category was NOT linked', !inLinkKb.some((p) => p.articleId === rootId))
     check(
       'linked placements carry linkedFromSourceId',
       inLinkKb.every((p) => p.linkedFromSourceId === sourceId)
     )
-    const linkRootPlacement = inLinkKb.find((p) => p.articleId === rootId)
-    const linkPagePlacements = inLinkKb.filter((p) => pages.some((a) => a.id === p.articleId))
     check(
-      'linked tree preserved (pages under root in the linked KB)',
-      !!linkRootPlacement && linkPagePlacements.every((p) => p.parentId === linkRootPlacement.id)
+      'linked pages sit at KB root (flat — no category mirrored)',
+      inLinkKb.every((p) => p.parentId === null)
     )
+    // Re-link is idempotent — no duplicate placements.
+    await linkArticlesIntoKb(db, orgId, linkKbId, pageIdsToLink)
+    const inLinkKbAgain = (await placementsForArticles(arts.map((a) => a.id))).filter(
+      (p) => p.knowledgeBaseId === linkKbId
+    )
+    check('re-linking is idempotent (no dupes)', inLinkKbAgain.length === inLinkKb.length, {
+      before: inLinkKb.length,
+      after: inLinkKbAgain.length,
+    })
     const links = await listSourceLinks(db, orgId, sourceId)
     check(
       'listSourceLinks reports the linked KB',
@@ -229,8 +242,8 @@ async function main() {
       links
     )
 
-    // ── 4. Add item C → re-sync → fan-out places C in the linked KB ──────────
-    section('4. Add item C → re-sync → C homes in owned KB and fans out to the linked KB')
+    // ── 4. Add item C → re-sync → C homes in owned KB but does NOT auto-join ──
+    section('4. Add item C → re-sync → C homes in owned KB; NOT auto-linked (per-article)')
     await updateSource(db, orgId, sourceId, {
       config: {
         items: [
@@ -250,8 +263,15 @@ async function main() {
       cPlacements.some((p) => p.knowledgeBaseId === ownedKbId)
     )
     check(
-      'C fanned out into the linked KB',
-      cPlacements.some((p) => p.knowledgeBaseId === linkKbId && p.linkedFromSourceId === sourceId)
+      'C did NOT auto-join the linked KB (no whole-source fan-out)',
+      !cPlacements.some((p) => p.knowledgeBaseId === linkKbId)
+    )
+    // Explicitly link C → now it appears in the linked KB.
+    if (cArticle) await linkArticlesIntoKb(db, orgId, linkKbId, [cArticle.id])
+    const cAfterLink = await placementsForArticles(cArticle ? [cArticle.id] : [])
+    check(
+      'C appears in the linked KB after an explicit per-article link',
+      cAfterLink.some((p) => p.knowledgeBaseId === linkKbId && p.linkedFromSourceId === sourceId)
     )
 
     // ── 5. Unlink from the standard KB → linked placements removed ───────────
