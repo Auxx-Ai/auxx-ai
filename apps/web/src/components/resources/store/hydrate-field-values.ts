@@ -118,13 +118,6 @@ export function hydrateMultipleRecords(
         const valueKey = field.dbColumn || getFieldOutputKey(field)
         rawValue = record.data[valueKey]
       }
-      // console.log('Hydrating field', {
-      //   recordId: record.recordId,
-      //   fieldKey: field.key,
-      //   rawValue,
-      //   'record.data': record.data,
-      //   field,
-      // })
       if (rawValue === undefined) continue
 
       if (Array.isArray(rawValue) && field.relationship) {

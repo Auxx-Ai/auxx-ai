@@ -3,7 +3,7 @@
 
 import { formatToDisplayValue } from '@auxx/lib/field-values/client'
 import { parseResourceFieldId, type ResourceFieldId } from '@auxx/types/field'
-import type { TypedFieldValue } from '@auxx/types/field-value'
+import { extractValue, type TypedFieldValue } from '@auxx/types/field-value'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { memo, type ReactNode, useMemo } from 'react'
 import { toRecordId, useRecord, useResource } from '~/components/resources'
@@ -64,13 +64,19 @@ export const PrimaryFieldCell = memo(function PrimaryFieldCell({
   // Format value for display
   const displayValue: string | null = useMemo(() => {
     if (value == null) return null
-    if (!fieldType) return String(value)
-    // Handle TypedFieldValue from store using centralized formatter
+    // TypedFieldValue from store: format with the field type when known. If the field
+    // metadata hasn't resolved yet (fieldType undefined), fall back to the value's own
+    // primitive so we never stringify the object into "[object Object]".
     if (typeof value === 'object' && 'type' in value) {
-      const formatted = formatToDisplayValue(value as TypedFieldValue, fieldType)
-      return typeof formatted === 'string' ? formatted : null
+      if (fieldType) {
+        const formatted = formatToDisplayValue(value as TypedFieldValue, fieldType)
+        return typeof formatted === 'string' ? formatted : null
+      }
+      const raw = extractValue(value as TypedFieldValue)
+      return typeof raw === 'object' ? null : String(raw)
     }
-    // Handle raw value (fallback)
+    // Arrays (multi-value) or other objects: avoid "[object Object]"
+    if (typeof value === 'object') return null
     return String(value)
   }, [value, fieldType])
 
