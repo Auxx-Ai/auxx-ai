@@ -30,8 +30,9 @@ const MAX_LABEL_LEN = 200
  * Create or replace the active plan for the kopilot session.
  *
  * Output shape: `{ plan: PlanState }` — the canonical plan the agent should
- * mirror verbatim into an `auxx:plan-steps` fence in its final reply. The
- * kopilot domain's `onToolResult` lifts the plan into `domainState.plan`.
+ * mirror verbatim into an `auxx:plan-steps` fence in its final reply. The plan
+ * is persisted to `var:plan` via `ctx.context`, so `plan_update_step` (and
+ * later turns) can read and patch it — no bespoke `domainState.plan` machinery.
  */
 export function createPlanCreateTool(_getDeps: GetToolDeps): AgentToolDefinition {
   return {
@@ -62,7 +63,7 @@ export function createPlanCreateTool(_getDeps: GetToolDeps): AgentToolDefinition
       required: ['steps'],
       additionalProperties: false,
     },
-    execute: async (args) => {
+    execute: async (args, ctx) => {
       const rawSteps = (args.steps as Array<{ label: string; detail?: string }>) ?? []
       if (rawSteps.length === 0) {
         return { success: false, output: null, error: 'plan must have at least one step' }
@@ -81,10 +82,9 @@ export function createPlanCreateTool(_getDeps: GetToolDeps): AgentToolDefinition
         status: 'pending' as const,
         ...(s.detail ? { detail: s.detail } : {}),
       }))
-      return {
-        success: true,
-        output: { plan: { steps, createdAt: now, updatedAt: now } },
-      }
+      const plan = { steps, createdAt: now, updatedAt: now }
+      await ctx.context.write('var:plan', plan)
+      return { success: true, output: { plan } }
     },
   }
 }

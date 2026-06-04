@@ -2,8 +2,10 @@
 
 import { createScopedLogger } from '@auxx/logger'
 import { generateId } from '@auxx/utils/generateId'
+import { KopilotContextStore, readContextSlice, syncContextSlice } from './context'
 import { manageContext } from './context-manager'
 import { type AgentQueryResumeHint, agentQueryLoop } from './query-loop'
+import type { ToolContext } from './tool-context'
 import {
   type AgentDefinition,
   type AgentEngineConfig,
@@ -379,7 +381,7 @@ export class AgentEngine {
       let finalArgs = opts.inputAmendment
         ? { ...pending.args, ...opts.inputAmendment }
         : pending.args
-      const ctx = {
+      const baseCtx = {
         db: config.db,
         organizationId: config.organizationId,
         userId: config.userId,
@@ -390,6 +392,19 @@ export class AgentEngine {
         workflow: config.workflow,
         subject: config.subject,
         appAccounts: config.appAccounts,
+        agentName: pending.agentName,
+        now: Date.now(),
+      }
+      // Fresh ctx on resume — rehydrate the context store from the persisted
+      // slice so captures made before the approval pause survive the resume.
+      const ctx: ToolContext = {
+        ...baseCtx,
+        context:
+          config.context ??
+          new KopilotContextStore({
+            ctx: baseCtx as ToolContext,
+            initial: readContextSlice(this.state.domainState as Record<string, unknown>),
+          }),
       }
 
       // Per-agent restriction clamp (approval-resume) — pins / overrides args
@@ -489,6 +504,13 @@ export class AgentEngine {
         const result = await executeToolWithProgress(tool, finalArgs, ctx)
         const digest = result.success ? buildToolDigest(tool, result.output, logger) : undefined
 
+        // Capture the approved tool's result into the context store before
+        // domain hooks. Persisted below so the re-entered query loop — which
+        // rehydrates its own store from `domainState` — sees this capture.
+        if (result.success) {
+          ctx.context.captureToolResult(pending.toolCallId, pending.toolName, result.output)
+        }
+
         // Domain state mining + transform.
         let postHookState = this.state
         if (result.success && config.domainConfig.onToolResult) {
@@ -505,6 +527,14 @@ export class AgentEngine {
         }
 
         this.state = postHookState
+
+        // Persist the context slice (incl. the capture above) so the re-entered
+        // query loop rehydrates it from `domainState`. No-op for the workflow ECM.
+        if (ctx.context instanceof KopilotContextStore) {
+          const domainState = { ...(this.state.domainState as Record<string, unknown>) }
+          syncContextSlice(domainState, ctx.context)
+          this.state = { ...this.state, domainState }
+        }
 
         // Mutate the part in place.
         this.mutatePart(pending.messageId, pending.partIndex, (p) => {

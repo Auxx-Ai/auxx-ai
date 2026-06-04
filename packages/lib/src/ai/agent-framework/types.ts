@@ -5,6 +5,7 @@ import type { VarSource } from '@auxx/types/field'
 import type { z } from 'zod'
 import type { AgentSurface } from '../../agents/client'
 import type { Message, ModelParameters, Tool, ToolCall, UsageMetrics } from '../clients/base/types'
+import type { ContextManager } from './context/context-manager'
 import type { Subject, ToolContext, WorkflowToolContext } from './tool-context'
 
 // ===== CONTENT PARTS =====
@@ -758,6 +759,14 @@ export interface AgentEngineConfig {
    * var segment to the agent's connection at turn time (plans/chat/v8 phase-2).
    */
   appAccounts?: Record<string, { credId: string }>
+  /**
+   * The execution-context manager to thread onto every tool's `ToolContext` as
+   * `ctx.context` (chat v9). Set by a workflow AI node to its live
+   * `ExecutionContextManager` (which conforms to `ContextManager`); left unset
+   * by chat / job / headless runs, where the engine builds a fresh
+   * `KopilotContextStore` hydrated from `domainState.__context`.
+   */
+  context?: ContextManager
   /**
    * Applied to every tool call's args immediately before validateInputs /
    * execute, in both the live and approval-resume paths. Lets the caller

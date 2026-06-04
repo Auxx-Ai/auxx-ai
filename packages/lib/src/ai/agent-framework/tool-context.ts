@@ -2,6 +2,7 @@
 
 import type { Database } from '@auxx/database'
 import type { RecordId } from '@auxx/types/resource'
+import type { ContextManager } from './context/context-manager'
 import type { AgentDeps } from './types'
 
 /**
@@ -46,6 +47,25 @@ export interface ToolContext extends AgentDeps {
    * passes its `ExecutionContextManager` here at call time.
    */
   workflow?: WorkflowToolContext
+  /**
+   * The shared execution-context manager (chat v9). Always present — kopilot /
+   * chat / internal runs get a {@link ContextManager} backed by a
+   * `KopilotContextStore`; a workflow AI node passes its live
+   * `ExecutionContextManager` (which conforms to the same interface). Tools read
+   * and write turn state — `var:*`, `sys:*`, captured `tool:*`, and v8 fields —
+   * uniformly through `ctx.context`, regardless of caller.
+   */
+  context: ContextManager
+  /**
+   * Display name of the active agent — surfaced to tools as `sys:agentName` via
+   * the context store. Populated at every ctx-build site.
+   */
+  agentName?: string
+  /**
+   * Turn-build timestamp in epoch ms — surfaced as `sys:now`. Captured once at
+   * ctx-build so every `sys:now` read within a turn is stable.
+   */
+  now?: number
 }
 
 /**

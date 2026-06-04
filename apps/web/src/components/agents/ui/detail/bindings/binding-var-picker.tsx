@@ -66,7 +66,7 @@ export function BindingVarPicker({
 
   return (
     <Select value={value} onValueChange={onChange} disabled={disabled}>
-      <SelectTrigger className='w-full'>
+      <SelectTrigger className='w-full' variant='transparent'>
         <SelectValue placeholder='Select a dynamic value…' />
       </SelectTrigger>
       <SelectContent>
