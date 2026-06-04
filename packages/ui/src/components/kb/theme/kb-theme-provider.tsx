@@ -7,10 +7,23 @@ export interface KBThemeProviderProps {
   kb: KBThemeInput & { defaultMode?: string | null }
   /** Override the mode (admin preview uses this). */
   mode?: KBMode
+  /**
+   * Whether to sync `data-kb-mode` from the `kb-mode-{id}` cookie before paint.
+   * On for the public site (lets the KB's own mode toggle stick). Surfaces that
+   * pin the mode to an external source — e.g. the editor diff view, which
+   * follows the app's light/dark — pass `false` so the cookie can't override the
+   * forced `mode`.
+   */
+  syncModeFromCookie?: boolean
   children: ReactNode
 }
 
-export function KBThemeProvider({ kb, mode, children }: KBThemeProviderProps) {
+export function KBThemeProvider({
+  kb,
+  mode,
+  syncModeFromCookie = true,
+  children,
+}: KBThemeProviderProps) {
   const css = buildKBCss(kb)
   const initialMode = mode ?? normalizeMode(kb.defaultMode)
   const theme = sanitizeTheme(kb.theme)
@@ -24,7 +37,7 @@ export function KBThemeProvider({ kb, mode, children }: KBThemeProviderProps) {
       className='flex min-h-0 flex-1 flex-col'
       style={{ background: 'var(--kb-page-bg)' }}>
       <style dangerouslySetInnerHTML={{ __html: css }} />
-      <NoFlashModeScript kbId={kb.id} />
+      {syncModeFromCookie && <NoFlashModeScript kbId={kb.id} />}
       {children}
     </div>
   )

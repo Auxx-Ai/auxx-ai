@@ -7,6 +7,7 @@ import type { ArticleNodeJSON, DiffDecorations, DocJSON } from '@auxx/ui/compone
 import { KBArticleNode, kbArticleContainerClass } from '@auxx/ui/components/kb/article'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { cn } from '@auxx/ui/lib/utils'
+import { useTheme } from 'next-themes'
 import { useMemo } from 'react'
 import type { ArticleMeta } from '../../store/article-store'
 import { buildDiffRender } from './article-diff-tree'
@@ -26,6 +27,8 @@ interface ArticleDiffViewProps {
    * KB theme to render the blocks under, so callouts/tables/code/links match
    * the published article (their colors come from `--kb-*` tokens injected by
    * `KBThemeProvider`). Map a store KnowledgeBase with `mapKBForPreview`.
+   * Light/dark follows the app — not the KB's own mode — since the diff lives
+   * in the editor pane.
    */
   kbTheme: KBThemeProviderProps['kb']
   /** Clears the `?diff=` param and returns to the editor. */
@@ -61,8 +64,15 @@ export function ArticleDiffView({
   const { added, removed, modified, moved } = diff.stats
   const hasChanges = added + removed + modified + moved > 0
 
+  // The diff renders in the editor pane, so its light/dark should track the app
+  // (not the KB's stored mode). Pin the provider mode to the app's resolved
+  // theme and disable cookie sync so the KB's own mode preference can't override
+  // it. KB *colors* still come from `kbTheme`.
+  const { resolvedTheme } = useTheme()
+  const appMode = resolvedTheme === 'dark' ? 'dark' : 'light'
+
   return (
-    <KBThemeProvider kb={kbTheme}>
+    <KBThemeProvider kb={kbTheme} mode={appMode} syncModeFromCookie={false}>
       <ArticleEditorHeader
         article={article}
         knowledgeBaseId={knowledgeBaseId}
