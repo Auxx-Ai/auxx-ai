@@ -40,6 +40,12 @@
       "import": "./dist/agents/bindings/client.mjs",
       "default": "./src/agents/bindings/client.ts"
     },
+    "./agents/procedures": {
+      "types": "./src/agents/procedures/index.ts",
+      "source": "./src/agents/procedures/index.ts",
+      "import": "./dist/agents/procedures/index.mjs",
+      "default": "./src/agents/procedures/index.ts"
+    },
     "./agents/client": {
       "types": "./src/agents/client.ts",
       "source": "./src/agents/client.ts",
