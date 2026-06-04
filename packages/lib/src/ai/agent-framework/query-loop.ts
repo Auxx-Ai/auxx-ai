@@ -4,6 +4,7 @@ import { createScopedLogger } from '@auxx/logger'
 import { generateId } from '@auxx/utils/generateId'
 import type { ToolCall, UsageMetrics } from '../clients/base/types'
 import { processCaptureToolCalls } from './capture-mode'
+import { KopilotContextStore, readContextSlice, syncContextSlice } from './context'
 import type { ToolContext } from './tool-context'
 import type {
   AgentDefinition,
@@ -68,6 +69,19 @@ export interface AgentQueryResumeHint {
   iterations: IterationUsage[]
 }
 
+/**
+ * Persist the kopilot context store's state (var:* scratch + turn captures)
+ * into `domainState.__context` so it rides the existing domainState persistence
+ * across turns and an approval pause. No-op for the workflow `ExecutionContextManager`,
+ * which persists through the workflow engine instead.
+ */
+function syncStoreSlice(ctx: ToolContext, state: AgentState): AgentState {
+  if (!(ctx.context instanceof KopilotContextStore)) return state
+  const domainState = { ...(state.domainState as Record<string, unknown>) }
+  syncContextSlice(domainState, ctx.context)
+  return { ...state, domainState }
+}
+
 export async function* agentQueryLoop(
   agent: AgentDefinition,
   state: AgentState,
@@ -76,7 +90,7 @@ export async function* agentQueryLoop(
   resumeFrom?: AgentQueryResumeHint
 ): AsyncGenerator<AgentEvent, AgentState> {
   const maxIterations = agent.maxIterations ?? DEFAULT_MAX_ITERATIONS
-  const ctx: ToolContext = {
+  const baseCtx = {
     db: config.db,
     organizationId: config.organizationId,
     userId: config.userId,
@@ -87,6 +101,19 @@ export async function* agentQueryLoop(
     workflow: config.workflow,
     subject: config.subject,
     appAccounts: config.appAccounts,
+    agentName: agent.name,
+    now: Date.now(),
+  }
+  const ctx: ToolContext = {
+    ...baseCtx,
+    // Workflow AI nodes pass their live ExecutionContextManager via config.context;
+    // every other caller gets a fresh store hydrated from domainState.__context.
+    context:
+      config.context ??
+      new KopilotContextStore({
+        ctx: baseCtx as ToolContext,
+        initial: readContextSlice(state.domainState as Record<string, unknown>),
+      }),
   }
 
   const minToolCalls = agent.minToolCalls ?? 0
@@ -481,6 +508,12 @@ export async function* agentQueryLoop(
         if (mapped) yield mapped
       }
 
+      // Capture successful tool results into the context store (tool:*/call:*)
+      // before domain hooks so `onToolResult` can read them back.
+      for (const r of captureRun.results) {
+        if (r.success) ctx.context.captureToolResult(r.toolCallId, r.toolName, r.output)
+      }
+
       // Mine state updates.
       if (config.domainConfig.onToolResult) {
         for (const r of captureRun.results) {
@@ -493,6 +526,7 @@ export async function* agentQueryLoop(
           currentState = config.domainConfig.onToolResult(r.toolName, toolResult, currentState)
         }
       }
+      currentState = syncStoreSlice(ctx, currentState)
 
       // Update each tool_call part with the result.
       for (let k = 0; k < captureRun.results.length; k++) {
@@ -828,6 +862,13 @@ export async function* agentQueryLoop(
     }
     const toolResults = { results: collectedToolResults }
 
+    // Capture successful tool results into the context store (tool:*/call:*)
+    // before domain hooks. Captures the raw output, not the `transformToolResult`
+    // rewrite (which only adjusts the LLM-visible payload).
+    for (const r of toolResults.results) {
+      if (r.success) ctx.context.captureToolResult(r.toolCallId, r.toolName, r.output)
+    }
+
     // Domain `onToolResult` hook (state mining).
     if (config.domainConfig.onToolResult) {
       for (const r of toolResults.results) {
@@ -840,6 +881,7 @@ export async function* agentQueryLoop(
         currentState = config.domainConfig.onToolResult(r.toolName, toolResult, currentState)
       }
     }
+    currentState = syncStoreSlice(ctx, currentState)
 
     // Domain `transformToolResult` hook (rewrite LLM-visible payload).
     if (config.domainConfig.transformToolResult) {

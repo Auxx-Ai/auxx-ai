@@ -2,6 +2,7 @@
 
 import { createScopedLogger } from '@auxx/logger'
 import type { ResolvedAgentConfig } from '../../agents'
+import { CONTEXT_SLICE_KEY, readContextSlice } from '../agent-framework/context'
 import type {
   AgentDomainConfig,
   AgentState,
@@ -17,7 +18,7 @@ import { createEmptyTurnSnapshots, runSnapshotWalker } from './blocks/snapshot-w
 import type { CapabilityRegistry } from './capabilities/types'
 import { applyContextDefaults } from './context-refs'
 import type { TriggerContext } from './prompts/trigger-context'
-import type { KopilotDomainState, PlanState, PlanStepStatus, SessionRef } from './types'
+import type { KopilotDomainState, SessionRef } from './types'
 
 const logger = createScopedLogger('kopilot-domain-config')
 
@@ -154,84 +155,9 @@ export function createKopilotDomainConfig(
       if (toolName === 'search_docs' || toolName === 'search_knowledge') {
         mineDocSnapshots(result.output, snapshots)
       }
-      let next: AgentState = { ...state, turnSnapshots: snapshots }
-
-      // Plan tools: mutate domainState.plan.
-      if (toolName === 'plan_create') {
-        const plan = (result.output as { plan?: PlanState } | null)?.plan
-        if (plan) {
-          next = {
-            ...next,
-            domainState: { ...(next.domainState as KopilotDomainState), plan },
-          }
-        }
-        return next
-      }
-      if (toolName === 'plan_update_step') {
-        const patch = (
-          result.output as {
-            _planPatch?: { stepId: string; status: PlanStepStatus; detail?: string }
-          } | null
-        )?._planPatch
-        const ds = next.domainState as KopilotDomainState
-        const current = ds.plan
-        if (patch && current) {
-          const idx = current.steps.findIndex((s) => s.id === patch.stepId)
-          if (idx >= 0) {
-            const steps = current.steps.map((s, i) =>
-              i === idx
-                ? {
-                    ...s,
-                    status: patch.status,
-                    ...(patch.detail !== undefined ? { detail: patch.detail } : {}),
-                  }
-                : s
-            )
-            next = {
-              ...next,
-              domainState: {
-                ...ds,
-                plan: { ...current, steps, updatedAt: Date.now() },
-              },
-            }
-          }
-          // Unknown stepId → leave plan unchanged; transformToolResult below
-          // surfaces an explicit error to the LLM with the canonical plan.
-        }
-        return next
-      }
-
-      return next
-    },
-    transformToolResult(
-      toolName: string,
-      result: AgentToolResult,
-      state: AgentState
-    ): AgentToolResult | undefined {
-      if (toolName === 'plan_create') {
-        // Raw output already carries `{ plan }`; no rewrite needed.
-        return undefined
-      }
-      if (toolName === 'plan_update_step') {
-        const ds = state.domainState as KopilotDomainState
-        const patch = (result.output as { _planPatch?: { stepId: string } } | null)?._planPatch
-        if (!ds.plan) {
-          return {
-            success: false,
-            output: { plan: null },
-            error: 'no active plan; call plan_create first',
-          }
-        }
-        if (patch && !ds.plan.steps.some((s) => s.id === patch.stepId)) {
-          return {
-            success: false,
-            output: { plan: ds.plan },
-            error: `no plan step with id "${patch.stepId}"; current plan attached`,
-          }
-        }
-        return { success: true, output: { plan: ds.plan } }
-      }
-      return undefined
+      // Plan state now lives in `var:plan` (managed by the plan tools via
+      // ctx.context) — no bespoke domainState.plan mutation here.
+      return { ...state, turnSnapshots: snapshots }
     },
     summarizeContext(context: Record<string, unknown> | undefined) {
       if (!context) return undefined
@@ -280,6 +206,13 @@ export function createKopilotDomainConfig(
           })
         }
       }
+    },
+    resetTurnDomainState(domainState: Record<string, unknown>): Record<string, unknown> {
+      // Drop the turn-scoped context capture (tool:*/call:*) on a new user turn
+      // while preserving `var:*` scratch (incl. var:plan, promoted captures).
+      const slice = readContextSlice(domainState)
+      if (!slice?.turn) return domainState
+      return { ...domainState, [CONTEXT_SLICE_KEY]: { vars: slice.vars } }
     },
   }
 }

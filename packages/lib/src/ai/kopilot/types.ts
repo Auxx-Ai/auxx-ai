@@ -74,14 +74,13 @@ export interface PlanState {
  * Holds:
  *   - UI context (replaced wholesale on each message via applyContext)
  *   - Static capability descriptions
- *   - The active multi-step plan (persists across iterations and turns;
- *     undefined until `plan_create` is called)
+ *
+ * The active multi-step plan now lives in `var:plan` (chat v9 context store),
+ * managed by the plan tools via `ctx.context` — not on domainState.
  */
 export interface KopilotDomainState {
   /** UI context — replaced wholesale on each message via applyContext */
   context: SessionContext
   /** Human-friendly capability descriptions surfaced when the user asks what Kopilot can do */
   capabilities?: string[]
-  /** Active plan, persisted across iterations and turns until replaced */
-  plan?: PlanState
 }

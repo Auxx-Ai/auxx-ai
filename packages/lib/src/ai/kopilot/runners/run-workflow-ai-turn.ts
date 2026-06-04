@@ -1,6 +1,7 @@
 // packages/lib/src/ai/kopilot/runners/run-workflow-ai-turn.ts
 
 import { database } from '@auxx/database'
+import type { ContextManager } from '../../agent-framework/context/context-manager'
 import { AgentEngine } from '../../agent-framework/engine'
 import { createCallModel } from '../../agent-framework/llm-adapter'
 import type { WorkflowToolContext } from '../../agent-framework/tool-context'
@@ -37,6 +38,13 @@ export interface RunWorkflowAiTurnArgs {
   messages: Message[]
   /** Workflow handle threaded into every tool's `ctx`. */
   workflow: WorkflowToolContext
+  /**
+   * The run's live `ExecutionContextManager` (conforms to `ContextManager`),
+   * threaded onto every tool's `ctx.context` so the shared context tools
+   * (`assign_variable`, etc.) read/write the workflow's variables directly
+   * instead of an ephemeral kopilot store. See plans/chat/v9 phase-2b.
+   */
+  context: ContextManager
   /** Optional model parameters (temperature, max_tokens, …). */
   parameters?: Record<string, unknown>
   /** Cap on tool-loop iterations. Defaults to 10. */
@@ -86,6 +94,7 @@ export async function runWorkflowAiTurn(
     model,
     messages,
     workflow,
+    context,
     parameters,
     maxIterations = 10,
     signal,
@@ -117,6 +126,9 @@ export async function runWorkflowAiTurn(
     callModel,
     signal,
     workflow,
+    // The live ECM becomes ctx.context — workflow tools read/write the run's
+    // variables directly (chat v9 phase-2b), not an ephemeral kopilot store.
+    context,
     // AI nodes don't pause for approval today — Q-1.
     approvalMode: 'auto',
   })

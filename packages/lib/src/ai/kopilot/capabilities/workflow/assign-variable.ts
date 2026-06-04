@@ -15,11 +15,11 @@ const AssignVariableOutput = z.object({
  * Native workflow tool — set a variable on the active workflow run's context
  * so downstream nodes (and later iterations of the same AI node) can read it.
  *
- * The tool is intentionally minimal: it forwards to
- * `ctx.workflow.contextManager.assignVariable(name, value)` and never touches
- * the DB. The workflow engine threads `ctx.workflow` through at call time —
- * outside a workflow run, the tool returns a clean `success: false` payload
- * instead of throwing so the model gets an actionable signal.
+ * The tool is intentionally minimal: it forwards to `ctx.context.write` and
+ * never touches the DB. `ctx.context` is always present (chat v9) — a workflow
+ * AI node's ctx carries the run's `ExecutionContextManager`, so the value lands
+ * on the workflow's variables for downstream nodes; chat / internal runs write
+ * to their `var:*` scratch instead. Works the same everywhere.
  */
 export function assignVariableTool(_deps: GetToolDeps): AgentToolDefinition {
   return {
@@ -51,13 +51,7 @@ export function assignVariableTool(_deps: GetToolDeps): AgentToolDefinition {
     },
     execute: async (args, ctx) => {
       const { name, value } = args as { name: string; value: unknown }
-      if (!ctx.workflow) {
-        return {
-          success: false,
-          output: { error: 'assign_variable called outside a workflow context' },
-        }
-      }
-      ctx.workflow.contextManager.assignVariable(name, value)
+      await ctx.context.write(`var:${name}`, value)
       return { success: true, output: { name, value } }
     },
   }

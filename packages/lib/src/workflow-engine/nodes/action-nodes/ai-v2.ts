@@ -421,6 +421,8 @@ export class AIProcessorV2 extends BaseAiNodeProcessor {
       model: { provider, model },
       messages,
       workflow: { nodeId: node.nodeId, contextManager },
+      // The ECM conforms to ContextManager — hand it through as ctx.context.
+      context: contextManager,
       parameters: config.model?.completion_params,
       maxIterations: config.maxIterations ?? 10,
       onEvent: (ev) => this.writeAgentEventToWorkflowLog(ev, contextManager, node.nodeId),

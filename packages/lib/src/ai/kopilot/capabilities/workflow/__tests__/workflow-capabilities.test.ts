@@ -17,21 +17,20 @@ const getDeps: GetToolDeps = () => ({}) as unknown as ToolDeps
 
 function makeCtx(overrides: Partial<ToolContext> = {}): {
   ctx: ToolContext
-  assignVariable: ReturnType<typeof vi.fn>
+  write: ReturnType<typeof vi.fn>
 } {
-  const assignVariable = vi.fn()
+  const write = vi.fn()
   const ctx = {
     organizationId: 'org-1',
     userId: 'user-1',
     sessionId: 'session-1',
     db: {} as ToolContext['db'],
-    workflow: {
-      nodeId: 'node-1',
-      contextManager: { assignVariable },
-    },
+    // assign_variable now writes through ctx.context (chat v9). In a workflow
+    // run this is the live ECM; here a minimal ContextManager stub.
+    context: { write } as unknown as ToolContext['context'],
     ...overrides,
   } as ToolContext
-  return { ctx, assignVariable }
+  return { ctx, write }
 }
 
 async function runExecute(
@@ -59,22 +58,20 @@ describe('createNativeWorkflowCapabilities', () => {
 })
 
 describe('assignVariableTool', () => {
-  it('forwards (name, value) to ctx.workflow.contextManager.assignVariable and returns success', async () => {
-    const { ctx, assignVariable } = makeCtx()
+  it('writes (var:name, value) through ctx.context and returns success', async () => {
+    const { ctx, write } = makeCtx()
     const result = await runExecute({ name: 'foo', value: 42 }, ctx)
 
-    expect(assignVariable).toHaveBeenCalledTimes(1)
-    expect(assignVariable).toHaveBeenCalledWith('foo', 42)
+    expect(write).toHaveBeenCalledTimes(1)
+    expect(write).toHaveBeenCalledWith('var:foo', 42)
     expect(result).toEqual({ success: true, output: { name: 'foo', value: 42 } })
   })
 
-  it('returns success: false when ctx.workflow is missing (no throw)', async () => {
-    const { ctx } = makeCtx({ workflow: undefined })
-    const result = await runExecute({ name: 'foo', value: 42 }, ctx)
+  it('works outside a workflow run (writes to ctx.context regardless)', async () => {
+    const { ctx, write } = makeCtx({ workflow: undefined })
+    const result = await runExecute({ name: 'bar', value: 'x' }, ctx)
 
-    expect(result.success).toBe(false)
-    expect(result.output).toEqual({
-      error: 'assign_variable called outside a workflow context',
-    })
+    expect(write).toHaveBeenCalledWith('var:bar', 'x')
+    expect(result.success).toBe(true)
   })
 })

@@ -6,6 +6,7 @@ type DraftRow = typeof schema.Draft.$inferSelect
 
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq } from 'drizzle-orm'
+import { KopilotContextStore } from '../ai/agent-framework/context/context-store'
 import type { ToolContext } from '../ai/agent-framework/tool-context'
 import type { AgentToolDefinition } from '../ai/agent-framework/types'
 import {
@@ -398,7 +399,7 @@ export function buildApprovalToolContext(args: {
   traceId?: string
   signal?: AbortSignal
 }): ToolContext {
-  return {
+  const baseCtx = {
     db: args.db,
     organizationId: args.organizationId,
     userId: args.userId,
@@ -406,6 +407,13 @@ export function buildApprovalToolContext(args: {
     traceId: args.traceId,
     turnId: args.traceId,
     signal: args.signal,
+    now: Date.now(),
+  }
+  // Approval-time execution has no persisted domain state to hydrate from; a
+  // fresh store gives `sys:*` and (subject-less) field reads their gate-by-absence.
+  return {
+    ...baseCtx,
+    context: new KopilotContextStore({ ctx: baseCtx as ToolContext }),
   }
 }
 
