@@ -1,19 +1,31 @@
 // packages/lib/src/ai/kopilot/capabilities/mail/tools/update-thread.ts
 
 import { toRecordId } from '@auxx/types/resource'
+import { z } from 'zod'
 import { requireCachedEntityDefId } from '../../../../../cache'
 import { ThreadMutationService } from '../../../../../threads'
 import { parseStringArg } from '../../../../agent-framework/tool-inputs'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
-import { UpdateThreadDigest } from '../../../digests'
 import type { GetToolDeps } from '../../types'
+
+/** Full success output of `update_thread` — the applied status/assignee/tag changes. */
+const UpdateThreadOutput = z.object({
+  threadId: z.string(),
+  updated: z.boolean(),
+  changes: z.object({
+    status: z.string().optional(),
+    assigneeId: z.string().optional(),
+    addedTags: z.array(z.string()).optional(),
+    removedTags: z.array(z.string()).optional(),
+  }),
+})
 
 export function createUpdateThreadTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'update_thread',
     displayName: 'Update thread',
     toolsetSlug: 'auxx:mail:threads',
-    outputDigestSchema: UpdateThreadDigest,
+    outputSchema: UpdateThreadOutput,
     buildDigest: (output) => {
       const out = (output ?? {}) as { threadId?: string; changes?: Record<string, unknown> }
       const changes: string[] = []

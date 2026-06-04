@@ -1,9 +1,25 @@
 // packages/lib/src/ai/kopilot/capabilities/entities/tools/list-entities.ts
 
+import { z } from 'zod'
 import { getCachedResources } from '../../../../../cache/org-cache-helpers'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
-import { ListEntitiesDigest } from '../../../digests'
 import type { GetToolDeps } from '../../types'
+
+/** Full success output of `list_entities` — discovered entity TYPES (not records). */
+const ListEntitiesOutput = z.object({
+  entities: z.array(
+    z.object({
+      id: z.string(),
+      apiSlug: z.string(),
+      label: z.string(),
+      plural: z.string(),
+      entityType: z.string().nullable(),
+      icon: z.string(),
+      color: z.string(),
+    })
+  ),
+  count: z.number(),
+})
 
 export function createListEntitiesTool(_getDeps: GetToolDeps): AgentToolDefinition {
   return {
@@ -14,7 +30,7 @@ export function createListEntitiesTool(_getDeps: GetToolDeps): AgentToolDefiniti
     // Schema only — entity TYPES, no record data — so safe for an external
     // caller. See plans/chat/v6/chat-tool-availability.md.
     externalSafe: true,
-    outputDigestSchema: ListEntitiesDigest,
+    outputSchema: ListEntitiesOutput,
     buildDigest: (output) => {
       const out = (output ?? {}) as { entities?: Array<{ apiSlug?: string; label?: string }> }
       return {

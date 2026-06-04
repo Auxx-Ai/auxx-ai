@@ -234,22 +234,28 @@ export interface AgentToolDefinition {
    */
   idempotent?: boolean
   /**
-   * Optional Zod schema for the tool's success `output`. Reserved for future
-   * runtime validation + inference; today the snapshot walker uses structural
-   * probes instead. Optional so migration is incremental.
+   * Zod schema for the **full** shape of the tool's success `output` — the same
+   * value persisted on `ToolCallPart.output` and replayed to the model. This is
+   * the single source of truth for the output's shape.
+   *
+   * **Declarative, not enforced:** the engine does NOT parse/throw against this at
+   * execute time (output stays `unknown` on the wire). It exists so consumers can
+   * (a) type/enumerate an addressable `tool:<name>.<path>` ref for the prompt's
+   * available-context section, (b) let v8 bind a later tool's input to an earlier
+   * tool's output, and (c) declare a connector referenceable before it is called
+   * (lazy fetch-on-read). See plans/chat/v9/OUTPUT-SCHEMAS.md.
+   *
+   * The small UI render projection is `buildDigest` — a *projection of this
+   * schema*, not a competing one. Optional so migration is incremental.
    */
   outputSchema?: z.ZodType
   /**
-   * Schema describing the display projection of the tool's output. Persisted
-   * alongside the tool message; status pills and approval/result cards render
-   * from this. When omitted, falls through to a generic pill rendering name +
-   * args summary.
-   */
-  outputDigestSchema?: z.ZodType
-  /**
-   * Build the digest from the raw output. Called once at tool-completion time;
-   * the result is stored on the tool message and re-emitted on session reload.
-   * MUST be deterministic and pure.
+   * Build the small display projection of the tool's output. Called once at
+   * tool-completion time; the result is persisted on `ToolCallPart.digest` and
+   * re-emitted on session reload — status pills and approval/result cards render
+   * from it. A projection of `outputSchema` (the single source of truth); trusted
+   * as-is (not re-validated). When omitted, the UI falls through to a generic
+   * pill rendering name + args summary. MUST be deterministic and pure.
    */
   buildDigest?: (output: unknown) => unknown
   /**

@@ -1,14 +1,21 @@
 // packages/lib/src/ai/kopilot/capabilities/mail/tools/list-drafts.ts
 
 import { generateId } from '@auxx/utils'
+import { z } from 'zod'
 import type { Condition, ConditionGroup } from '../../../../../conditions'
 import { DraftService } from '../../../../../drafts'
 import { ThreadQueryService } from '../../../../../threads'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
-import { type DraftDigestSnapshot, ListDraftsDigest, takeSample } from '../../../digests'
+import { DraftDigestSnapshot, takeSample } from '../../../digests'
 import type { GetToolDeps } from '../../types'
 
 const MAX_RESULTS = 25
+
+/** Full success output of `list_drafts` — the user's unsent drafts (reply + standalone). */
+const ListDraftsOutput = z.object({
+  drafts: z.array(DraftDigestSnapshot),
+  count: z.number(),
+})
 
 /**
  * Build ConditionGroups for the DRAFTS context. Always anchored on
@@ -58,7 +65,7 @@ export function createListDraftsTool(getDeps: GetToolDeps): AgentToolDefinition 
     displayName: 'List drafts',
     toolsetSlug: 'auxx:mail:drafts',
     idempotent: true,
-    outputDigestSchema: ListDraftsDigest,
+    outputSchema: ListDraftsOutput,
     buildDigest: (output) => {
       const out = (output ?? {}) as { drafts?: DraftDigestSnapshot[]; count?: number }
       const drafts = Array.isArray(out.drafts) ? out.drafts : []

@@ -1,10 +1,37 @@
 // packages/lib/src/ai/kopilot/capabilities/entities/tools/list-entity-fields.ts
 
+import { z } from 'zod'
 import { findCachedResource, getCachedResources } from '../../../../../cache/org-cache-helpers'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
-import { ListEntityFieldsDigest } from '../../../digests'
 import type { GetToolDeps } from '../../types'
 import { buildListEntityFieldsOutput } from './list-entity-fields-output'
+
+/** Full success output of `list_entity_fields` — field definitions + create-time summaries. */
+const ListEntityFieldsOutput = z.object({
+  entityDefinitionId: z.string(),
+  requiredOnCreate: z.array(z.string()),
+  autoFilled: z.array(z.string()),
+  fields: z.array(
+    z.object({
+      id: z.string(),
+      label: z.string(),
+      fieldType: z.string().optional(),
+      required: z.literal(true).optional(),
+      unique: z.literal(true).optional(),
+      readOnly: z.literal(true).optional(),
+      createOnly: z.literal(true).optional(),
+      options: z.array(z.object({ value: z.string(), label: z.string() })).optional(),
+      moreOptions: z.literal(true).optional(),
+      totalOptions: z.number().optional(),
+      relationship: z
+        .object({
+          targetEntityDefinitionId: z.string().nullable(),
+          relationshipType: z.string(),
+        })
+        .optional(),
+    })
+  ),
+})
 
 export function createListEntityFieldsTool(_getDeps: GetToolDeps): AgentToolDefinition {
   return {
@@ -15,7 +42,7 @@ export function createListEntityFieldsTool(_getDeps: GetToolDeps): AgentToolDefi
     // Schema only — field definitions, no record data — so safe for an external
     // caller. See plans/chat/v6/chat-tool-availability.md.
     externalSafe: true,
-    outputDigestSchema: ListEntityFieldsDigest,
+    outputSchema: ListEntityFieldsOutput,
     buildDigest: (output) => {
       const out = (output ?? {}) as { entityDefinitionId?: string; fields?: unknown[] }
       return {

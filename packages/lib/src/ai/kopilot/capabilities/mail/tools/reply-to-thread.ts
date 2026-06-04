@@ -7,7 +7,6 @@ import { MessageQueryService, MessageSenderService } from '../../../../../messag
 import { ParticipantService } from '../../../../../participants'
 import { ThreadQueryService } from '../../../../../threads'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
-import { EmailWriteDigest } from '../../../digests'
 import type { GetToolDeps } from '../../types'
 import { type ResolvedRecipient, resolveRecipients } from '../recipient-resolver'
 import { stripSignOff } from './strip-sign-off'
@@ -22,6 +21,31 @@ interface ReplyArgs {
   bcc?: string[]
   attachments?: string[]
 }
+
+/**
+ * Full success output of `reply_to_thread`. Two shapes share one object: the
+ * draft branch sets `draftId` + `status: 'draft_saved'`; the send branch sets
+ * `messageId` + the provider `sendStatus`.
+ */
+const ReplyToThreadOutput = z.object({
+  draftId: z.string().optional(),
+  messageId: z.string().optional(),
+  threadId: z.string(),
+  subject: z.string().optional(),
+  body: z.string(),
+  mode: z.enum(['draft', 'send']),
+  resolvedRecipients: z.array(
+    z.object({
+      recordId: z.string().optional(),
+      participantId: z.string().optional(),
+      identifier: z.string(),
+      identifierType: z.string(),
+      role: z.enum(['to', 'cc', 'bcc']),
+      displayName: z.string().optional(),
+    })
+  ),
+  status: z.string(),
+})
 
 const ReplyAmendmentSchema = z.object({
   mode: z.enum(['draft', 'send']),
@@ -38,7 +62,7 @@ export function createReplyToThreadTool(getDeps: GetToolDeps): AgentToolDefiniti
     toolsetSlug: 'auxx:mail:compose',
     requiresApproval: true,
     inputAmendmentSchema: ReplyAmendmentSchema,
-    outputDigestSchema: EmailWriteDigest,
+    outputSchema: ReplyToThreadOutput,
     buildDigest: (output) => {
       const out = (output ?? {}) as {
         threadId?: string

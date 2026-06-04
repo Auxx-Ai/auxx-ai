@@ -1,16 +1,43 @@
 // packages/lib/src/ai/kopilot/capabilities/entities/tools/list-notes.ts
 
+import { z } from 'zod'
 import { getCachedMembersByUserIds } from '../../../../../cache/org-cache-helpers'
 import { CommentService } from '../../../../../comments'
 import type { RecordId } from '../../../../../resources/resource-id'
 import { docToText } from '../../../../../tiptap'
 import { getKnownDefIds, normalizeRecordIdArg } from '../../../../agent-framework/tool-inputs'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
-import { ListNotesDigest } from '../../../digests'
 import type { GetToolDeps } from '../../types'
 
 const MAX_LIMIT = 50
 const MAX_CONTENT_LENGTH = 600
+
+/** Recursive note shape — top-level notes carry nested `replies` or a `replyCount`. */
+const NoteDigestSchema: z.ZodType<{
+  id: string
+  content: string
+  by: { userId: string; name: string | null }
+  at: string
+  parentId: string | null
+  isPinned: boolean
+  replyCount?: number
+  replies?: unknown[]
+}> = z.object({
+  id: z.string(),
+  content: z.string(),
+  by: z.object({ userId: z.string(), name: z.string().nullable() }),
+  at: z.string(),
+  parentId: z.string().nullable(),
+  isPinned: z.boolean(),
+  replyCount: z.number().optional(),
+  replies: z.array(z.lazy(() => NoteDigestSchema)).optional(),
+})
+
+/** Full success output of `list_notes` — top-level notes (most-recent first) + pagination flag. */
+const ListNotesOutput = z.object({
+  notes: z.array(NoteDigestSchema),
+  hasMore: z.boolean(),
+})
 
 interface NoteDigest {
   id: string
@@ -34,7 +61,7 @@ export function createListNotesTool(getDeps: GetToolDeps): AgentToolDefinition {
     displayName: 'List notes',
     toolsetSlug: 'auxx:comments:read',
     idempotent: true,
-    outputDigestSchema: ListNotesDigest,
+    outputSchema: ListNotesOutput,
     buildDigest: (output) => {
       const out = (output ?? {}) as { notes?: unknown[] }
       return { count: Array.isArray(out.notes) ? out.notes.length : 0 }

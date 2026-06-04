@@ -1,10 +1,33 @@
 // packages/lib/src/ai/kopilot/capabilities/knowledge/tools/search-docs.ts
 
 import { DOCS_URL } from '@auxx/config/urls'
+import { z } from 'zod'
 import { parseStringArg } from '../../../../agent-framework/tool-inputs'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
-import { ArticleSearchDigest, takeSample } from '../../../digests'
+import { takeSample } from '../../../digests'
 import type { GetToolDeps } from '../../types'
+
+/**
+ * Full success output of `search_docs`. NOTE the two-shape `articles`: the
+ * empty-result branch returns `articles: []` (array), while the populated
+ * branch returns the articles joined into a single delimited string.
+ */
+const SearchDocsOutput = z.object({
+  count: z.number(),
+  articles: z.union([z.string(), z.array(z.unknown())]),
+  message: z.string().optional(),
+  query: z.string().optional(),
+  docs: z
+    .array(
+      z.object({
+        slug: z.string(),
+        title: z.string(),
+        url: z.string(),
+        description: z.string().optional(),
+      })
+    )
+    .optional(),
+})
 
 interface SortedResult {
   id: string
@@ -28,7 +51,7 @@ export function createSearchDocsTool(_getDeps: GetToolDeps): AgentToolDefinition
     displayName: 'Search docs',
     toolsetSlug: 'auxx:docs',
     idempotent: true,
-    outputDigestSchema: ArticleSearchDigest,
+    outputSchema: SearchDocsOutput,
     buildDigest: (output) => {
       const out = (output ?? {}) as { articles?: string; count?: number }
       const titles =

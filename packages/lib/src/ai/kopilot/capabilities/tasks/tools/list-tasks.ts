@@ -1,9 +1,27 @@
 // packages/lib/src/ai/kopilot/capabilities/tasks/tools/list-tasks.ts
 
+import { z } from 'zod'
 import { createTaskService } from '../../../../../tasks/task-service'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
-import { ListTasksDigest, takeSample } from '../../../digests'
+import { takeSample } from '../../../digests'
 import type { GetToolDeps } from '../../types'
+
+/** Full success output of `list_tasks` — matched tasks with a count. */
+const ListTasksOutput = z.object({
+  tasks: z.array(
+    z.object({
+      id: z.string(),
+      title: z.string(),
+      deadline: z.string().nullable(),
+      priority: z.string().nullable(),
+      completedAt: z.string().nullable(),
+      assignees: z.array(z.string()),
+      referenceCount: z.number(),
+    })
+  ),
+  count: z.number(),
+  hasMore: z.boolean(),
+})
 
 export function createListTasksTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
@@ -11,7 +29,7 @@ export function createListTasksTool(getDeps: GetToolDeps): AgentToolDefinition {
     displayName: 'List tasks',
     toolsetSlug: 'auxx:tasks:read',
     idempotent: true,
-    outputDigestSchema: ListTasksDigest,
+    outputSchema: ListTasksOutput,
     buildDigest: (output) => {
       const out = (output ?? {}) as {
         tasks?: Array<{

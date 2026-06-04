@@ -2,14 +2,40 @@
 
 import { parseRecordId } from '@auxx/types/resource'
 import { generateId } from '@auxx/utils'
+import { z } from 'zod'
 import type { Condition, ConditionGroup } from '../../../../../conditions'
 import { TagService } from '../../../../../tags'
 import { ThreadQueryService } from '../../../../../threads'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
-import { FindThreadsDigest, takeSample } from '../../../digests'
+import { takeSample } from '../../../digests'
 import type { GetToolDeps } from '../../types'
 
 const MAX_RESULTS = 25
+
+/** Full success output of `find_threads` — matching thread summaries with resolved tags. */
+const FindThreadsOutput = z.object({
+  threads: z.array(
+    z.object({
+      id: z.string(),
+      subject: z.string(),
+      status: z.string(),
+      assigneeId: z.string().nullable(),
+      lastMessageAt: z.string(),
+      messageCount: z.number(),
+      isUnread: z.boolean(),
+      tagIds: z.array(z.string()),
+      tags: z.array(
+        z.object({
+          id: z.string(),
+          name: z.string(),
+          color: z.string(),
+          emoji: z.string().nullable(),
+        })
+      ),
+    })
+  ),
+  count: z.number(),
+})
 
 /**
  * Build ConditionGroups from flat search args.
@@ -88,7 +114,7 @@ export function createFindThreadsTool(getDeps: GetToolDeps): AgentToolDefinition
     displayName: 'Find threads',
     toolsetSlug: 'auxx:mail:threads',
     idempotent: true,
-    outputDigestSchema: FindThreadsDigest,
+    outputSchema: FindThreadsOutput,
     buildDigest: (output) => {
       const out = (output ?? {}) as { threads?: Array<Record<string, unknown>>; count?: number }
       const threads = Array.isArray(out.threads) ? out.threads : []

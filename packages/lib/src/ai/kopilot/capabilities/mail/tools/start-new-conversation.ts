@@ -5,7 +5,6 @@ import { getCachedIntegrationCatalog } from '../../../../../cache/integration-ca
 import { DraftService } from '../../../../../drafts'
 import { MessageSenderService } from '../../../../../messages'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
-import { EmailWriteDigest } from '../../../digests'
 import type { GetToolDeps } from '../../types'
 import { resolveRecipients } from '../recipient-resolver'
 import { stripSignOff } from './strip-sign-off'
@@ -21,6 +20,31 @@ interface StartArgs {
   mode?: 'draft' | 'send'
   attachments?: string[]
 }
+
+/**
+ * Full success output of `start_new_conversation`. Two shapes share one object:
+ * the draft branch sets `draftId` + `status: 'draft_saved'`; the send branch
+ * sets `messageId` + `threadId` + the provider `sendStatus`.
+ */
+const StartNewConversationOutput = z.object({
+  draftId: z.string().optional(),
+  messageId: z.string().optional(),
+  threadId: z.string().optional(),
+  subject: z.string().optional(),
+  body: z.string(),
+  mode: z.enum(['draft', 'send']),
+  resolvedRecipients: z.array(
+    z.object({
+      recordId: z.string().optional(),
+      participantId: z.string().optional(),
+      identifier: z.string(),
+      identifierType: z.string(),
+      role: z.enum(['to', 'cc', 'bcc']),
+      displayName: z.string().optional(),
+    })
+  ),
+  status: z.string(),
+})
 
 const StartAmendmentSchema = z.object({
   mode: z.enum(['draft', 'send']),
@@ -38,7 +62,7 @@ export function createStartNewConversationTool(getDeps: GetToolDeps): AgentToolD
     toolsetSlug: 'auxx:mail:compose',
     requiresApproval: true,
     inputAmendmentSchema: StartAmendmentSchema,
-    outputDigestSchema: EmailWriteDigest,
+    outputSchema: StartNewConversationOutput,
     buildDigest: (output) => {
       const out = (output ?? {}) as {
         threadId?: string

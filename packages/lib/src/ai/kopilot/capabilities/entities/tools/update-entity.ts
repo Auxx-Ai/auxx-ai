@@ -1,12 +1,19 @@
 // packages/lib/src/ai/kopilot/capabilities/entities/tools/update-entity.ts
 
+import { z } from 'zod'
 import { findCachedResource } from '../../../../../cache/org-cache-helpers'
 import { UnifiedCrudHandler } from '../../../../../resources/crud'
 import { getDefinitionId } from '../../../../../resources/resource-id'
 import { getKnownDefIds, normalizeRecordIdArg } from '../../../../agent-framework/tool-inputs'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
-import { UpdateEntityDigest } from '../../../digests'
 import type { GetToolDeps } from '../../types'
+
+/** Full success output of `update_entity` — the updated record and human-readable field labels. */
+const UpdateEntityOutput = z.object({
+  recordId: z.string(),
+  updatedFields: z.array(z.string()),
+})
+
 import {
   formatUnknownFieldsError,
   resolveFieldLabels,
@@ -19,7 +26,7 @@ export function createUpdateEntityTool(getDeps: GetToolDeps): AgentToolDefinitio
     name: 'update_entity',
     displayName: 'Update record',
     toolsetSlug: 'auxx:entities:write',
-    outputDigestSchema: UpdateEntityDigest,
+    outputSchema: UpdateEntityOutput,
     buildDigest: (output) => {
       const out = (output ?? {}) as { recordId?: string; updatedFields?: string[] }
       return {

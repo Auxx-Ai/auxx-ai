@@ -3,16 +3,27 @@
 import { schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq } from 'drizzle-orm'
+import { z } from 'zod'
 import { RecordPickerService } from '../../../../../resources/picker'
 import { parseRecordId } from '../../../../../resources/resource-id'
 import { getKnownDefIds, normalizeRecordIdArg } from '../../../../agent-framework/tool-inputs'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
-import { GetEntityDigest } from '../../../digests'
 import type { GetToolDeps } from '../../types'
 import { enrichEntitiesWithFieldValues } from '../enrich-entity-fields'
-import { formatEnrichedFields } from '../format-enriched-fields'
+import { FormattedFieldSchema, formatEnrichedFields } from '../format-enriched-fields'
 
 const logger = createScopedLogger('kopilot-get-entity')
+
+/** Full success output of `get_entity` — one enriched record. */
+const GetEntityOutput = z.object({
+  recordId: z.string(),
+  displayName: z.string(),
+  secondaryInfo: z.string().nullable(),
+  avatarUrl: z.string().nullable(),
+  fields: z.record(z.string(), FormattedFieldSchema),
+  createdAt: z.date(),
+  updatedAt: z.date(),
+})
 
 export function createGetEntityTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
@@ -20,7 +31,7 @@ export function createGetEntityTool(getDeps: GetToolDeps): AgentToolDefinition {
     displayName: 'Get record',
     toolsetSlug: 'auxx:entities:search',
     idempotent: true,
-    outputDigestSchema: GetEntityDigest,
+    outputSchema: GetEntityOutput,
     buildDigest: (output) => {
       const out = (output ?? {}) as {
         recordId?: string

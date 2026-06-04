@@ -1,12 +1,18 @@
 // packages/lib/src/ai/kopilot/capabilities/entities/tools/create-entity.ts
 
+import { z } from 'zod'
 import { findCachedResource, getCachedResources } from '../../../../../cache/org-cache-helpers'
 import { UnprocessableEntityError } from '../../../../../errors'
 import { UnifiedCrudHandler } from '../../../../../resources/crud'
 import { parseStringArg } from '../../../../agent-framework/tool-inputs'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
-import { CreateEntityDigest } from '../../../digests'
 import type { GetToolDeps } from '../../types'
+
+/** Full success output of `create_entity` — the new record's id. */
+const CreateEntityOutput = z.object({
+  recordId: z.string(),
+})
+
 import { formatUnknownFieldsError, validateFieldKeys } from './field-label-helpers'
 import { formatActorResolutionError, resolveActorValues } from './resolve-actor-values'
 
@@ -15,7 +21,7 @@ export function createCreateEntityTool(getDeps: GetToolDeps): AgentToolDefinitio
     name: 'create_entity',
     displayName: 'Create record',
     toolsetSlug: 'auxx:entities:write',
-    outputDigestSchema: CreateEntityDigest,
+    outputSchema: CreateEntityOutput,
     buildDigest: (output) => {
       const out = (output ?? {}) as { recordId?: string }
       const recordId = String(out.recordId ?? '')

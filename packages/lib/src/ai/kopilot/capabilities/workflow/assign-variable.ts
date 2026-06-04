@@ -1,8 +1,15 @@
 // packages/lib/src/ai/kopilot/capabilities/workflow/assign-variable.ts
 
+import { z } from 'zod'
 import type { AgentToolDefinition } from '../../../agent-framework/types'
 import type { GetToolDeps } from '../types'
 import { WORKFLOW_NATIVE_TOOLSET_SLUG } from './index'
+
+/** Success output of `assign_variable` — the assigned name and its arbitrary value. */
+const AssignVariableOutput = z.object({
+  name: z.string(),
+  value: z.unknown(),
+})
 
 /**
  * Native workflow tool — set a variable on the active workflow run's context
@@ -36,6 +43,7 @@ export function assignVariableTool(_deps: GetToolDeps): AgentToolDefinition {
       additionalProperties: false,
     },
     idempotent: false,
+    outputSchema: AssignVariableOutput,
     toolsetSlug: WORKFLOW_NATIVE_TOOLSET_SLUG,
     buildDigest: (output) => {
       const out = (output ?? {}) as { name?: string }

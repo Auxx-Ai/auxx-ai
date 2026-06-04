@@ -1,9 +1,24 @@
 // packages/lib/src/ai/kopilot/capabilities/actors/tools/list-members.ts
 
+import { z } from 'zod'
 import { ActorService } from '../../../../../actors/actor-service'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
-import { ListMembersDigest, takeSample } from '../../../digests'
+import { takeSample } from '../../../digests'
 import type { GetToolDeps } from '../../types'
+
+/** Full success output of `list_members` — matched workspace members with a count. */
+const ListMembersOutput = z.object({
+  members: z.array(
+    z.object({
+      actorId: z.string(),
+      name: z.string(),
+      email: z.string(),
+      role: z.enum(['OWNER', 'ADMIN', 'USER']),
+      avatarUrl: z.string().nullable(),
+    })
+  ),
+  count: z.number(),
+})
 
 export function createListMembersTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
@@ -11,7 +26,7 @@ export function createListMembersTool(getDeps: GetToolDeps): AgentToolDefinition
     displayName: 'List members',
     toolsetSlug: 'auxx:actors',
     idempotent: true,
-    outputDigestSchema: ListMembersDigest,
+    outputSchema: ListMembersOutput,
     buildDigest: (output) => {
       const out = (output ?? {}) as {
         members?: Array<{ name?: string | null }>
