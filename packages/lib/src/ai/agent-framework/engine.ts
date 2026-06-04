@@ -388,7 +388,8 @@ export class AgentEngine {
         turnId: this.turnId ?? undefined,
         traceId: this.turnId ?? undefined,
         workflow: config.workflow,
-        invocation: config.invocation,
+        subject: config.subject,
+        appAccounts: config.appAccounts,
       }
 
       // Per-agent restriction clamp (approval-resume) — pins / overrides args

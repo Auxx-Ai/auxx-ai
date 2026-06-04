@@ -203,11 +203,6 @@ export interface CachedInstalledAppLike {
     surfaces?: AgentSurface[]
     /** Mirrors `AgentToolDefinition.externalSafe` — drives the chat/email warning. */
     externalSafe?: boolean
-    /**
-     * Identity/record-scope args the engine fail-closes on in a visitor turn.
-     * See plans/chat/v6 phase-3.
-     */
-    identityScopedInputs?: ReadonlyArray<{ name: string; suggestedVar?: string }>
   }>
 }
 

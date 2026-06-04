@@ -1,5 +1,6 @@
 // packages/lib/src/chat/agent/tools/handoff.ts
 
+import { parseRecordId } from '@auxx/types/resource'
 import type { AgentToolDefinition } from '../../../ai/agent-framework/types'
 import { flipHandoffState } from '../handoff'
 
@@ -43,9 +44,11 @@ export function createChatHandoffTool(): AgentToolDefinition {
       additionalProperties: false,
     },
     execute: async (args, ctx) => {
-      // Only meaningful inside a visitor chat run — `ctx.invocation` carries the
-      // thread to escalate. Internal/kopilot runs have no thread to hand off.
-      if (!ctx.invocation) {
+      // Only meaningful inside a visitor chat run — the subject's `thread`
+      // anchor carries the thread to escalate. Internal/kopilot runs have no
+      // subject (so no thread to hand off).
+      const threadAnchor = ctx.subject?.anchors.thread
+      if (!threadAnchor) {
         return {
           success: false,
           output: {},
@@ -54,7 +57,10 @@ export function createChatHandoffTool(): AgentToolDefinition {
       }
       const reason = typeof args.reason === 'string' ? args.reason : undefined
       await flipHandoffState(
-        { threadId: ctx.invocation.threadId, organizationId: ctx.organizationId },
+        {
+          threadId: parseRecordId(threadAnchor).entityInstanceId,
+          organizationId: ctx.organizationId,
+        },
         ctx.db
       )
       return { success: true, output: { handedOff: true, reason } }

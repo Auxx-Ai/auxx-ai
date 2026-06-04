@@ -2,15 +2,13 @@
 
 import { type Database, database } from '@auxx/database'
 import { filterToolsByToolsets, resolveAgentConfig } from '../../agents'
-import { ALL_SURFACES } from '../../agents/client'
-import { buildApplyToolRestrictions } from '../../agents/restrictions/apply'
-import { projectToolsSchemas } from '../../agents/restrictions/project-schema'
-import { buildResolveVar } from '../../agents/restrictions/var-registry'
 import {
-  type AgentEngineConfig,
-  type ChatInvocationContext,
-  createCallModel,
-} from '../../ai/agent-framework'
+  buildApplyBindings,
+  computeEffectiveBindings,
+  projectBindingSchemas,
+} from '../../agents/bindings'
+import { ALL_SURFACES } from '../../agents/client'
+import { type AgentEngineConfig, createCallModel, type Subject } from '../../ai/agent-framework'
 import {
   createAppCapabilities,
   createCapabilityRegistry,
@@ -42,8 +40,8 @@ export interface BuildChatEngineConfigInput {
   agentUserId: string
   /** The thread's long-lived `AiAgentSession` id. */
   sessionId: string
-  /** Visitor scope threaded onto every tool's `ToolContext`. */
-  invocation: ChatInvocationContext
+  /** The turn's subject (anchors + identityVerified) threaded onto every tool's `ToolContext`. */
+  subject: Subject
   signal?: AbortSignal
 }
 
@@ -59,9 +57,10 @@ export interface BuildChatEngineConfigInput {
  *      aren't `externalSafe` run but are flagged in the UI. See
  *      plans/chat/v6/chat-tool-availability.md.
  *   2. **`approvalMode: 'auto'`** — no admin is watching a visitor turn to
- *      approve tool calls; the chat-safe + row-level scope gate *is* the
+ *      approve tool calls; the binding clamp + row-level scope gate *is* the
  *      approval. Never `'pause'` (that would hang the turn forever).
- *   3. **`invocation`** — the `ChatInvocationContext` chat-safe tools clamp on.
+ *   3. **`subject`** — the turn's subject (anchors + identityVerified) tool
+ *      bindings resolve identity/scope inputs against. See plans/chat/v8.
  *
  * App capabilities run with `userId: null` (like autonomous triggers) — there
  * is no human in the loop, so user-scope tools are hidden by the bridge.
@@ -70,14 +69,14 @@ export async function buildChatEngineConfig(
   input: BuildChatEngineConfigInput,
   db: Database = database
 ): Promise<AgentEngineConfig> {
-  const { organizationId, agentId, agentUserId, sessionId, invocation, signal } = input
+  const { organizationId, agentId, agentUserId, sessionId, subject, signal } = input
 
-  // Invariant: a chat-kind agent is visitor-facing by definition, so the
-  // author-floor fail-closed check keys on `ctx.invocation`. "No invocation"
-  // must never silently mean "no enforcement" — hard-fail the turn. See
-  // plans/chat/v6 phase-3 (chat-kind requires invocation).
-  if (!invocation || !invocation.threadId) {
-    throw new Error('chat engine requires an invocation context')
+  // Invariant: a chat-kind agent is visitor-facing by definition, so it always
+  // runs with a subject carrying the thread + participant anchors (contact is
+  // optional — absent on an anonymous turn, by design). "No subject" must never
+  // silently mean "no scoping" — hard-fail the turn. See plans/chat/v8 phase-1.
+  if (!subject || !subject.anchors.thread || !subject.anchors.participant) {
+    throw new Error('chat engine requires a subject with thread + participant anchors')
   }
 
   // Resolve default provider/model: the agent's pinned model, else the org's
@@ -132,21 +131,19 @@ export async function buildChatEngineConfig(
   // want one unable to hand off to a human — so it's appended unconditionally
   // rather than gated behind a toolset toggle. The "when" is authored in the
   // persona. See plans/chat/v5 escalation.md §1.
-  // Project tool schemas per the agent's restriction map — bound args stay
-  // visible, drop from `required`, and get an annotated description. Pure
-  // comprehension hint; the runtime clamp below is the actual guarantee.
-  const tools = projectToolsSchemas(
-    [...chatTools, createChatHandoffTool()],
-    agentConfig.toolRestrictions
-  )
+  const allTools = [...chatTools, createChatHandoffTool()]
 
-  // Author-floor map: tool registered-name → identity-scoped args. On a visitor
-  // turn the engine fail-closes on any unbound entry. See plans/chat/v6 phase-3.
-  const identityScopedInputsByTool = Object.fromEntries(
-    tools
-      .filter((t) => t.identityScopedInputs?.length)
-      .map((t) => [t.name, t.identityScopedInputs] as const)
-  )
+  // Effective bindings = admin override ?? tool-author default (plans/chat/v8
+  // phase-4). `agentConfig.toolRestrictions` is the thin per-agent override map
+  // (usually empty), so the common result is just the author defaults each tool
+  // ships via `inputBindings`.
+  const effectiveBindings = computeEffectiveBindings(allTools, agentConfig.toolRestrictions)
+
+  // Project tool schemas per the effective bindings — bound inputs stay
+  // visible, `const` inputs drop from `required`, and bound inputs get an
+  // annotated description. Pure comprehension hint; the runtime clamp below is
+  // the actual guarantee. See plans/chat/v8 phase-4.
+  const tools = projectBindingSchemas(allTools, effectiveBindings)
 
   const domainConfig = createKopilotDomainConfig({
     capabilityRegistry: registry,
@@ -175,14 +172,14 @@ export async function buildChatEngineConfig(
     callModel,
     signal,
     approvalMode: 'auto',
-    invocation,
-    // Clamp tool args per the agent's restriction map before each call. The
-    // `var` resolver projects values off the chat invocation (visitor / thread
-    // anchors) — built once per turn, called per restricted arg. See phase 2.
-    applyToolRestrictions: buildApplyToolRestrictions(
-      agentConfig.toolRestrictions,
-      buildResolveVar(organizationId, { appAccounts: agentConfig.appAccounts }),
-      identityScopedInputsByTool
-    ),
+    subject,
+    // The agent's bound app accounts, so the binding resolver can scope an
+    // `@app:<slug>:<key>` var segment to the agent's connection at turn time.
+    appAccounts: agentConfig.appAccounts,
+    // Clamp tool args per the effective bindings before each call — the
+    // resolver derives each value off a subject anchor (built per call from
+    // ctx, which carries appAccounts for `@app:` segments). See plans/chat/v8
+    // phase-4.
+    applyToolRestrictions: buildApplyBindings(effectiveBindings),
   }
 }

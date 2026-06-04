@@ -3,6 +3,7 @@
 import type {
   AgentConfig,
   AgentKind,
+  AgentToolBindings,
   AppAccountBinding,
   CatalogAction,
   CatalogAgentTool,
@@ -10,7 +11,6 @@ import type {
   CatalogToolset,
   CatalogTriggerProjection,
   KnowledgeEntry,
-  ToolRestrictionMap,
   ToolsetEntry,
 } from '@auxx/database'
 import type {
@@ -155,8 +155,8 @@ export interface CachedAgent {
   knowledge: KnowledgeEntry[]
   /** Per-agent app account bindings keyed by app id (slug). See plans/kopilot/apps/agent-credentials.md §2. */
   appAccounts: Record<string, AppAccountBinding>
-  /** Per-agent tool restriction map — tool name → arg → restriction. See plans/chat/v6 phase-1. */
-  toolRestrictions: ToolRestrictionMap
+  /** Per-agent tool-binding override map — tool name → input → VarSource. See plans/chat/v8. */
+  toolRestrictions: AgentToolBindings
 
   /** Per-agent model override in `provider:model` format; null = inherit. */
   modelId: string | null

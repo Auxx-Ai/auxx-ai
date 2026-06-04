@@ -379,6 +379,10 @@ export class ChatProvider extends BaseMessageProvider implements MessageProvider
         messageId: messageRowId,
         integrationId,
         handoffState: thread.handoffState,
+        participantId: params.fromParticipantId,
+        contactId: params.contactId ?? null,
+        identityVerified: params.identityVerified ?? false,
+        claimed: params.claimed,
       })
 
       return Result.ok({ messageId: messageRowId, threadId: thread.id })
@@ -403,6 +407,14 @@ export class ChatProvider extends BaseMessageProvider implements MessageProvider
     integrationId: string
     /** Read from the same Thread row receiveMessage already loaded. */
     handoffState: 'ai' | 'human'
+    /** The inbound sender — the subject's `participant` anchor. */
+    participantId: string
+    /** Verified contact id from the passport; null when anonymous/unverified. */
+    contactId: string | null
+    /** `true` only when the passport was crypto-verified. */
+    identityVerified: boolean
+    /** Untrusted `identify()` claim — display only, never an anchor. */
+    claimed?: { name?: string; email?: string }
   }): Promise<void> {
     try {
       // P4.2 gate — if a human took over this thread, never run the AI agent.
@@ -442,8 +454,12 @@ export class ChatProvider extends BaseMessageProvider implements MessageProvider
         organizationId: this.organizationId,
         agentId,
         threadId: args.threadId,
-        // Null until OTP promotion (phase 5) resolves the visitor to a Contact.
-        contactId: null,
+        participantId: args.participantId,
+        // Verified-only: contactId is non-null/identityVerified solely when the
+        // passport was crypto-verified (plans/chat/v8 phase-1 trust invariant).
+        contactId: args.contactId,
+        identityVerified: args.identityVerified,
+        ...(args.claimed ? { claimed: args.claimed } : {}),
         inboundMessageId: args.messageId,
       })
     } catch (error) {

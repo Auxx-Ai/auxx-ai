@@ -152,6 +152,16 @@ export interface ReceiveMessageParams {
   /** Client-generated id for idempotency on retries. */
   clientMessageId?: string
   attachmentIds?: string[]
+  /**
+   * Verified-passport identity for a chat visitor turn (plans/chat/v8 phase-1).
+   * Threaded onto the chat-turn job so the worker can build the subject; the
+   * worker never sees the passport. Absent for non-chat providers.
+   */
+  contactId?: string | null
+  /** `true` only when the visitor passport was crypto-verified (chat). */
+  identityVerified?: boolean
+  /** Untrusted `identify()` claim carried from the passport (chat) — display only. */
+  claimed?: { name?: string; email?: string }
 }
 
 /**

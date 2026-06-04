@@ -16,9 +16,9 @@ import { and, eq, inArray, isNull, or } from 'drizzle-orm'
 import { getAllCachedAgents, getCachedAgentById, getCachedAgents, onCacheEvent } from '../cache'
 import { BadRequestError, ForbiddenError } from '../errors'
 import { getRealtimeService, publishAgentUpdated } from '../realtime'
+import type { ToolBindingMap } from './bindings'
 import { resolveDefaultToolsets } from './default-toolsets'
 import { reconcilePromptMentions, type ToolsetSource } from './prompt-mention-reconciler'
-import type { ToolRestrictionMap } from './restrictions/client'
 import { getOrgToolCatalog } from './toolset-catalog'
 
 const logger = createScopedLogger('agent-service')
@@ -657,12 +657,12 @@ export interface AgentDetail extends AgentSummary {
   knowledge: KnowledgeEntry[]
   appAccounts: Record<string, AppAccountBinding>
   /**
-   * Per-tool, per-argument restriction map (`tool → arg → ArgRestriction`).
-   * Pins or marks-required tool arguments before the engine runs the tool.
-   * Surfaced so the agent detail UI can render the Restrictions section.
-   * See plans/chat/v6 phase-4.
+   * Per-agent tool-binding **override** map (`tool → input → VarSource`).
+   * Usually empty — author defaults (`inputBindings`) cover the common case.
+   * Surfaced so the agent detail UI can render the Bindings section.
+   * See plans/chat/v8 phase-5.
    */
-  toolRestrictions: ToolRestrictionMap
+  toolRestrictions: ToolBindingMap
 }
 
 /**
@@ -698,7 +698,7 @@ export async function getAgentDetail(
     toolsets: cached.toolsets,
     knowledge: cached.knowledge,
     appAccounts: cached.appAccounts,
-    toolRestrictions: cached.toolRestrictions,
+    toolRestrictions: cached.toolRestrictions as ToolBindingMap,
   }
 }
 

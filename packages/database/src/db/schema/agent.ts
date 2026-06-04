@@ -54,26 +54,28 @@ export interface AppAccountBinding {
 }
 
 /**
- * One restriction inside `Agent.toolRestrictions`. Pins a single tool argument
- * to a platform-resolved value (constant / dynamic var) or marks it required.
+ * Source of a platform-resolved tool-input binding (plans/chat/v8 phase-2).
  *
- * Structural mirror of `ArgRestriction` from
- * `@auxx/lib/agents/restrictions/client` — duplicated here (rather than
- * imported) to keep the dependency direction clean: schema is tier-1 and must
- * not import from lib (tier-3). See plans/chat/v6 phase-1.
+ * Structural mirror of `@auxx/types/field`'s `VarSource` — duplicated here
+ * (rather than imported) to keep the dependency direction clean: schema is
+ * tier-1 and `@auxx/types` is not a dependency. The runtime narrows `ref` to a
+ * `VarRef` (`ResourceFieldId | FieldPath`).
  */
-export interface ArgRestriction {
-  source: 'model' | 'var' | 'constant'
-  var?: string
-  value?: unknown
-  required?: boolean
-}
+export type AgentVarSource =
+  | { kind: 'var'; ref: string | string[] }
+  | { kind: 'const'; value: unknown }
+  | { kind: 'model' }
 
 /**
- * `Agent.toolRestrictions` shape — tool registered-name → arg name →
- * restriction. The engine applies this map immediately before a tool runs.
+ * `Agent.toolRestrictions` shape — the thin per-agent **override** map (tool
+ * registered-name → input name → {@link AgentVarSource}). Stores only
+ * deliberate admin overrides; the common case is empty because each tool ships
+ * its own author-default `inputBindings`. Effective binding = override ??
+ * author-default, resolved per turn. See plans/chat/v8 phase-4/phase-5.
+ *
+ * (The column name is retained from v6; its contents are the v8 binding map.)
  */
-export type ToolRestrictionMap = Record<string, Record<string, ArgRestriction>>
+export type AgentToolBindings = Record<string, Record<string, AgentVarSource>>
 
 /**
  * Optional identity/presentation bag stored on the Agent row itself.
@@ -100,8 +102,9 @@ export interface AgentConfig {
  * Discriminates an agent's invocation surface. `'internal'` agents run from
  * Kopilot / triggers / autonomous runs (admin-facing). `'chat'` agents are
  * visitor-facing: they run on inbound chat messages, get a filtered
- * (chat-safe) toolset, and carry a `ChatInvocationContext` on every tool
- * call. Chosen at creation and immutable thereafter. See plans/chat/v5.
+ * (chat-safe) toolset, and carry a `Subject` (anchors + identityVerified) on
+ * every tool call. Chosen at creation and immutable thereafter. See
+ * plans/chat/v5, plans/chat/v8.
  */
 export type AgentKind = 'internal' | 'chat'
 
@@ -186,13 +189,13 @@ export const Agent = pgTable(
       .notNull(),
 
     /**
-     * Per-agent tool restriction map — tool registered-name → arg name →
-     * restriction. The engine clamps each tool call's args against this map
-     * immediately before the tool runs (constant / dynamic-var override, or a
-     * required binding). Empty for the master Kopilot runtime. See
-     * plans/chat/v6 phase-1.
+     * Per-agent tool-binding **override** map — tool registered-name → input →
+     * {@link AgentVarSource}. The engine resolves `override ?? author-default`
+     * per turn and clamps it onto the args before the tool runs. Usually empty
+     * (author defaults cover the common case); empty for master Kopilot. Column
+     * name retained from v6; contents are the v8 binding map. See plans/chat/v8.
      */
-    toolRestrictions: jsonb().$type<ToolRestrictionMap>().default(sql`'{}'::jsonb`).notNull(),
+    toolRestrictions: jsonb().$type<AgentToolBindings>().default(sql`'{}'::jsonb`).notNull(),
 
     mentionable: boolean().default(true).notNull(),
 

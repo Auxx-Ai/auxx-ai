@@ -9,10 +9,10 @@ import {
   getAgentDetailByIdOrSlug,
   isAgentSlugTaken,
   listAgents,
-  setAgentToolRestrictions,
+  setAgentToolBindings,
   updateAgent as updateAgentService,
 } from '@auxx/lib/agents'
-import { buildRestrictionVarRegistry } from '@auxx/lib/agents/restrictions'
+import { availableFieldsForAnchor } from '@auxx/lib/agents/bindings'
 import { FeatureKey, FeaturePermissionService } from '@auxx/lib/permissions'
 import { createScopedLogger } from '@auxx/logger'
 import { TRPCError } from '@trpc/server'
@@ -217,40 +217,42 @@ export const agentRouter = createTRPCRouter({
     }),
 
   /**
-   * Project the org's dynamic vars (visitor / thread anchor fields) for the
-   * phase-4 restrictions picker. A var binds a `source: 'var'` restriction to a
-   * read-only value reachable from the chat invocation. The `agentId` input is
-   * reserved (phase 4 greys `visitor.*` vars for internal agents) and currently
-   * ignored — the projection is org-wide. See plans/chat/v6 phase-2.
+   * Project the bindable fields for an anchor (`contact` / `participant` /
+   * `thread`) for the Bindings override picker. Each entry is a `VarRef` (as a
+   * string) + label + field type; app-owned fields appear as their
+   * `@app:<slug>:<key>` ref (resolved to a concrete field at turn time). See
+   * plans/chat/v8 phase-5.
    */
-  listRestrictionVars: adminProcedure
-    .input(z.object({ agentId: z.string().min(1).optional() }).optional())
-    .query(async ({ ctx }) => {
-      const vars = await buildRestrictionVarRegistry(ctx.session.organizationId)
-      return { vars }
+  listBindingFields: adminProcedure
+    .input(z.object({ anchor: z.enum(['contact', 'participant', 'thread']) }))
+    .query(async ({ ctx, input }) => {
+      const fields = await availableFieldsForAnchor(ctx.session.organizationId, input.anchor)
+      return { fields }
     }),
 
   /**
-   * Full-replace write of an agent's `toolRestrictions` map (the phase-4
-   * Restrictions section). The client sends the complete `tool → arg →
-   * ArgRestriction` map; the service overwrites the column wholesale and busts
-   * the org agents cache. Mirrors `set_agent_toolsets` semantics — no merge, no
-   * pruning of disabled-tool entries. See plans/chat/v6 phase-4.
+   * Full-replace write of an agent's `toolRestrictions` **override** map (the
+   * Bindings section). The client sends only the deliberate overrides (tool →
+   * input → VarSource); the service overwrites the column wholesale and busts
+   * the org agents cache. An empty map means "everything runs on author
+   * defaults". See plans/chat/v8 phase-5.
    */
-  setToolRestrictions: adminProcedure
+  setToolBindings: adminProcedure
     .input(
       z.object({
         agentId: z.string().min(1),
-        restrictions: z.record(
+        bindings: z.record(
           z.string(),
           z.record(
             z.string(),
-            z.object({
-              source: z.enum(['model', 'var', 'constant']),
-              var: z.string().optional(),
-              value: z.unknown().optional(),
-              required: z.boolean().optional(),
-            })
+            z.discriminatedUnion('kind', [
+              z.object({
+                kind: z.literal('var'),
+                ref: z.union([z.string(), z.array(z.string())]),
+              }),
+              z.object({ kind: z.literal('const'), value: z.unknown() }),
+              z.object({ kind: z.literal('model') }),
+            ])
           )
         ),
       })
@@ -260,10 +262,10 @@ export const agentRouter = createTRPCRouter({
       if (!(await agentExistsInOrg(organizationId, input.agentId))) {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Agent not found' })
       }
-      await setAgentToolRestrictions({
+      await setAgentToolBindings({
         organizationId,
         agentId: input.agentId,
-        restrictions: input.restrictions,
+        bindings: input.bindings,
       })
     }),
 })

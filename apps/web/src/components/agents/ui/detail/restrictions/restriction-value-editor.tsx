@@ -1,7 +1,7 @@
 // apps/web/src/components/agents/ui/detail/restrictions/restriction-value-editor.tsx
 'use client'
 
-import type { ArgRestriction } from '@auxx/lib/agents/restrictions/client'
+import type { VarSource } from '@auxx/lib/agents/bindings/client'
 import type { FieldOptions } from '@auxx/lib/field-values/client'
 import { Button } from '@auxx/ui/components/button'
 import { ChevronsLeftRightEllipsis } from 'lucide-react'
@@ -11,74 +11,48 @@ import { Tooltip } from '~/components/global/tooltip'
 import { RestrictionVarPicker } from './restriction-var-picker'
 
 interface RestrictionValueEditorProps {
-  /** The arg's working restriction (`{ source, required, var?, value? }`). */
-  restriction: ArgRestriction
-  onChange: (next: ArgRestriction) => void
-  /** The arg's mapped platform `FieldType` (constant input + var type filter). */
+  /** The input's working binding (`VarSource`). */
+  source: VarSource
+  onChange: (next: VarSource) => void
+  /** The input's mapped platform `FieldType` (constant input + var type filter). */
   argFieldType?: string
   /** `FieldOptions` for the constant adapter (enum options for selects, etc.). */
   fieldOptions?: FieldOptions
-  agentId: string
-  agentKind: 'internal' | 'chat'
-  /** Identity args force a binding — model-decides (empty) is forbidden. */
-  isIdentityArg: boolean
-  /** Identity-arg default var to re-seed when toggling back to dynamic mode. */
-  suggestedVar?: string
   disabled?: boolean
 }
 
 type Mode = 'constant' | 'var'
 
 /**
- * The inline value control for one tool arg, placed inside a
- * `VarEditorFieldRow`. Visual analogue of the workflow `VarEditor`: a left
- * mode-toggle (constant ⇄ dynamic registry var) plus the active input. The
- * empty state means **"model decides"** — the row's hover `X` (provided by
- * `VarEditorFieldRow.onClear`) returns a bound arg to it. Identity args can
- * never land on model. See plans/chat/v6 phase-4 redesign.
+ * The inline value control for one tool input, placed inside a
+ * `VarEditorFieldRow`. A left mode-toggle (constant ⇄ dynamic field) plus the
+ * active input. The empty state means **"model decides"** (`{ kind:'model' }`)
+ * — the row's hover `X` returns a bound input to it. See plans/chat/v8 phase-5.
  */
 export function RestrictionValueEditor({
-  restriction,
+  source,
   onChange,
   argFieldType,
   fieldOptions,
-  agentId,
-  agentKind,
-  isIdentityArg,
-  suggestedVar,
   disabled,
 }: RestrictionValueEditorProps) {
-  const [mode, setMode] = useState<Mode>(restriction.source === 'var' ? 'var' : 'constant')
-  const required = restriction.required
-
+  const [mode, setMode] = useState<Mode>(source.kind === 'var' ? 'var' : 'constant')
   const isConstant = mode === 'constant'
 
   const toggleMode = () => {
     const next: Mode = isConstant ? 'var' : 'constant'
     setMode(next)
-    // Toggling drops the now-inactive source's value. Non-identity args return
-    // to model-decides until new content; identity args stay bound to the new
-    // mode (re-seeding the suggested var) since model is forbidden.
-    if (next === 'var') {
-      onChange(
-        isIdentityArg
-          ? { source: 'var', var: suggestedVar, required }
-          : { source: 'model', required }
-      )
-    } else {
-      onChange(isIdentityArg ? { source: 'constant', required } : { source: 'model', required })
-    }
+    // Toggling drops the now-inactive source's value → model-decides until new
+    // content is entered.
+    onChange({ kind: 'model' })
   }
 
   const handleConstantChange = (value: unknown) => {
-    if (value === undefined || value === null || value === '') {
-      // Empty constant ⇒ model-decides, unless identity (kept incomplete so the
-      // dialog blocks save until a value is entered).
-      onChange(isIdentityArg ? { source: 'constant', required } : { source: 'model', required })
-    } else {
-      onChange({ source: 'constant', value, required })
-    }
+    if (value === undefined || value === null || value === '') onChange({ kind: 'model' })
+    else onChange({ kind: 'const', value })
   }
+
+  const refValue = source.kind === 'var' && typeof source.ref === 'string' ? source.ref : undefined
 
   return (
     <div className='flex min-h-8 w-full items-stretch gap-0.5'>
@@ -102,17 +76,15 @@ export function RestrictionValueEditor({
           <FieldInputAdapter
             fieldType={argFieldType ?? 'TEXT'}
             fieldOptions={fieldOptions}
-            value={restriction.source === 'constant' ? restriction.value : undefined}
+            value={source.kind === 'const' ? source.value : undefined}
             onChange={handleConstantChange}
-            placeholder={restriction.source === 'model' ? 'Model decides' : 'Enter value'}
+            placeholder={source.kind === 'model' ? 'Model decides' : 'Enter value'}
             disabled={disabled}
           />
         ) : (
           <RestrictionVarPicker
-            value={restriction.source === 'var' ? restriction.var : undefined}
-            onChange={(varId) => onChange({ source: 'var', var: varId, required })}
-            agentId={agentId}
-            agentKind={agentKind}
+            value={refValue}
+            onChange={(ref) => onChange({ kind: 'var', ref })}
             argFieldType={argFieldType}
             disabled={disabled}
           />

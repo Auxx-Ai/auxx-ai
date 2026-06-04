@@ -129,25 +129,31 @@ export interface ToolAgentSurface {
   /**
    * Advisory: verified safe for an untrusted, externally-identified caller
    * (anonymous chat visitor / email sender). Absent ⇒ the chat/email Tools UI
-   * flags it with a warning. Identity-scoped reads (see `identityScopedInputs`)
-   * are the typical opt-in. Replaces `chatSafe`; not a gate. See
+   * flags it with a warning. An identity-scoped read (see `inputBindings`) is
+   * the typical opt-in. Replaces `chatSafe`; not a gate. See
    * plans/chat/v6/chat-tool-availability.md.
    */
   readonly externalSafe?: boolean
   /**
-   * Input args that carry caller identity / record scope. In a visitor (chat)
-   * invocation each MUST be bound to a restriction or the engine refuses the
-   * call (fail-closed). Ignored on internal invocations. Scalar top-level arg
-   * names only in v6. `suggestedVar` lets the app point an arg at the var it
-   * itself contributes (phase 2) so the UI can pre-fill the binding at
-   * tool-enable time — e.g. Shopify's `list_customer_orders` declares
-   * `{ name: 'customerId', suggestedVar: 'visitor.shopify.customerId' }`.
-   * See plans/chat/v6 phase-3.
+   * Per-input **default** binding (plans/chat/v8 phase-3). The platform resolves
+   * each from the turn's subject and clamps it onto the args before `execute`;
+   * the model never supplies a bound input. The admin can override per agent.
+   * Absence ⇒ the model supplies the input normally.
+   *
+   * An app tool references a field it owns via the `@app:<slug>:<key>` segment —
+   * the author knows its own slug + field key at author time; the *connection*
+   * is resolved at turn time. Top-level scalar input names only.
+   *
+   * e.g. Shopify's order lookup ships
+   * `{ name: 'customerId', default: { kind: 'var', ref: 'contact:@app:shopify:customerId' } }`.
+   * Structurally typed here — the runtime narrows `ref` to a `VarRef`.
    */
-  readonly identityScopedInputs?: ReadonlyArray<{
+  readonly inputBindings?: ReadonlyArray<{
     name: string
-    /** Registry var key to pre-fill in the Add-Restriction flow. */
-    suggestedVar?: string
+    default:
+      | { kind: 'var'; ref: string | readonly string[] }
+      | { kind: 'const'; value: unknown }
+      | { kind: 'model' }
   }>
 }
 

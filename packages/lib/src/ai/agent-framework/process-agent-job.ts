@@ -10,8 +10,11 @@ import {
   getOrgToolsetCatalog,
   resolveAgentConfig,
 } from '../../agents'
-import { buildApplyToolRestrictions } from '../../agents/restrictions/apply'
-import { projectToolsSchemas } from '../../agents/restrictions/project-schema'
+import {
+  buildApplyBindings,
+  computeEffectiveBindings,
+  projectBindingSchemas,
+} from '../../agents/bindings'
 import type { JobContext } from '../../jobs/types'
 import { docToText } from '../../tiptap'
 import {
@@ -141,8 +144,8 @@ async function processAgentMessageInternal(ctx: JobContext<AgentJobPayload>) {
     forceSystem: domain === 'builder',
   })
 
-  // 3b. Resolve the agent's restriction map (cached read; empty for master).
-  // Clamps tool args before each call across all internal agent paths.
+  // 3b. Resolve the agent's binding override map (cached read; empty for
+  // master). Combined with each tool's author defaults to clamp args per call.
   const { toolRestrictions } = await resolveAgentConfig(organizationId, agentId)
 
   // 4. Create engine with saved state
@@ -154,14 +157,14 @@ async function processAgentMessageInternal(ctx: JobContext<AgentJobPayload>) {
     domainConfig,
     callModel,
     signal,
-    // Constant / required sources only here. No var resolver is wired for
-    // internal turns: `visitor.*` vars resolve null off-chat (no
-    // `ctx.invocation`), so resolution is chat-only (build-chat-engine-config).
-    // A no-op for the master Kopilot runtime (empty restriction map).
-    // The author-floor map is omitted: internal is fail-open (no
-    // `ctx.invocation`), so the fail-closed check never fires. See
-    // plans/chat/v6 phase-3 ("why internal is fail-open").
-    applyToolRestrictions: buildApplyToolRestrictions(toolRestrictions),
+    // Clamp tool args per the effective bindings (override ?? author-default).
+    // Internal turns carry no subject, so `var` bindings resolve to nothing and
+    // the input falls through to the model; a `const` override still applies.
+    // No-op for master Kopilot (no tools declare bindings + empty overrides).
+    // See plans/chat/v8 phase-4.
+    applyToolRestrictions: buildApplyBindings(
+      computeEffectiveBindings(domainConfig.tools, toolRestrictions)
+    ),
     // Kopilot domain: long-running plans routinely chain >5 approvals
     // (one per ticket reply, etc.) and need iteration headroom for plan
     // step churn. Other domains stay on framework defaults.
@@ -390,10 +393,13 @@ async function buildKopilotShapedConfig(
   const agentConfig = await resolveAgentConfig(params.organizationId, params.agentId)
   const resolvedPage = params.page ?? '__none__'
   const filteredTools = filterToolsByToolsets(registry.getTools(resolvedPage), agentConfig)
-  // Project tool schemas per the agent's restriction map (bound args stay
-  // visible, drop from `required`, get an annotated description). For master
-  // sessions the map is empty so this is a no-op.
-  const tools = projectToolsSchemas(filteredTools, agentConfig.toolRestrictions)
+  // Project tool schemas per the effective bindings (author defaults ⊕ admin
+  // overrides). Internal turns have no subject, so bound inputs fall through to
+  // the model at clamp time — but a `const` override still drops from required.
+  // For master sessions there are no bindings, so this is a no-op. See
+  // plans/chat/v8 phase-4.
+  const effectiveBindings = computeEffectiveBindings(filteredTools, agentConfig.toolRestrictions)
+  const tools = projectBindingSchemas(filteredTools, effectiveBindings)
 
   return createKopilotDomainConfig({
     capabilityRegistry: registry,

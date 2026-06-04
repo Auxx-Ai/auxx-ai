@@ -355,12 +355,22 @@ threadsRoute.post('/:threadId/messages', async (c) => {
       )
     }
 
+    // Verified identity from the (per-request re-verified) passport flows down
+    // to the chat-turn subject — the worker never sees the passport. The
+    // chat-jwt middleware already rejects a stale/swapped passport with
+    // IDENTITY_MISMATCH, so `chat.contactId` / `chat.identityVerified` are
+    // trustworthy here. See plans/chat/v8 phase-1.
     const result = await provider.receiveMessage({
       threadId,
       fromParticipantId: chat.visitorParticipantId,
       content: body.content,
       clientMessageId: body.clientMessageId,
       attachmentIds: body.attachmentIds,
+      contactId: chat.contactId ?? null,
+      identityVerified: chat.identityVerified ?? false,
+      ...(chat.identify
+        ? { claimed: { name: chat.identify.name, email: chat.identify.email } }
+        : {}),
     })
 
     return c.json({

@@ -28,7 +28,7 @@ export type {
 } from './sessions/find-or-create-thread-session'
 export { findOrCreateThreadSession } from './sessions/find-or-create-thread-session'
 export { executeToolCall } from './tool-bridge'
-export type { ChatInvocationContext, ToolContext, WorkflowToolContext } from './tool-context'
+export type { Subject, ToolContext, WorkflowToolContext } from './tool-context'
 
 export type {
   AgentDefinition,

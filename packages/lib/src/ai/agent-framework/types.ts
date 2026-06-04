@@ -1,10 +1,11 @@
 // packages/lib/src/ai/agent-framework/types.ts
 
 import type { Database } from '@auxx/database'
+import type { VarSource } from '@auxx/types/field'
 import type { z } from 'zod'
 import type { AgentSurface } from '../../agents/client'
 import type { Message, ModelParameters, Tool, ToolCall, UsageMetrics } from '../clients/base/types'
-import type { ChatInvocationContext, ToolContext, WorkflowToolContext } from './tool-context'
+import type { Subject, ToolContext, WorkflowToolContext } from './tool-context'
 
 // ===== CONTENT PARTS =====
 
@@ -313,12 +314,17 @@ export interface AgentToolDefinition {
    */
   externalSafe?: boolean
   /**
-   * Input args carrying caller identity / record scope. In a visitor (chat)
-   * invocation each MUST be bound to a restriction or the engine refuses the
-   * call (fail-closed). Ignored on internal invocations. Scalar top-level arg
-   * names only (v6). See plans/chat/v6 phase-3.
+   * Per-input **default** binding declared by the tool/app author (plans/chat/v8
+   * phase-3). The platform resolves each from the subject (phase-1/2) and clamps
+   * it onto the args before `execute`; the model never supplies a bound input.
+   * The admin can override per agent (phase-5). Absence ⇒ the model supplies the
+   * input normally.
+   *
+   * Carried verbatim from the SDK's `tool.agent.inputBindings` for app tools, or
+   * set directly on a native definition. Top-level scalar input names only
+   * (structured paths are a follow-up).
    */
-  identityScopedInputs?: ReadonlyArray<{ name: string; suggestedVar?: string }>
+  inputBindings?: ReadonlyArray<{ name: string; default: VarSource }>
   /**
    * Capture-mode hook: predict the tool's output without executing.
    *
@@ -733,12 +739,19 @@ export interface AgentEngineConfig {
    */
   workflow?: WorkflowToolContext
   /**
-   * Present iff this engine run was kicked off by an inbound chat message on a
-   * chat-kind agent. The engine copies it onto every tool's `ToolContext` so
-   * chat-safe tools can clamp queries to the visitor's scope. Undefined for
-   * kopilot / builder / autonomous-trigger runs. See plans/chat/v5.
+   * The turn's **subject** — the ambient records in scope. The engine copies it
+   * onto every tool's `ToolContext` so tool bindings can clamp identity / scope
+   * inputs to a subject-derived record. Undefined for kopilot / builder /
+   * autonomous-trigger runs (bound inputs then fall through to the model).
+   * See plans/chat/v8.
    */
-  invocation?: ChatInvocationContext
+  subject?: Subject
+  /**
+   * The agent's bound app accounts (`Agent.appAccounts`), copied onto every
+   * tool's `ToolContext` so the binding resolver can scope an `@app:<slug>:<key>`
+   * var segment to the agent's connection at turn time (plans/chat/v8 phase-2).
+   */
+  appAccounts?: Record<string, { credId: string }>
   /**
    * Applied to every tool call's args immediately before validateInputs /
    * execute, in both the live and approval-resume paths. Lets the caller

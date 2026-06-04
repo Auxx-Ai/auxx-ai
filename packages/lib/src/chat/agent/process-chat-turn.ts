@@ -14,6 +14,7 @@ import type { JobContext } from '../../jobs/types'
 import { createScopedLogger } from '../../logger'
 import { sendAgentChatMessage } from '../outbound'
 import { buildChatEngineConfig } from './build-chat-engine-config'
+import { buildChatSubjectFromPassport } from './build-chat-subject'
 import type { ChatTurnJobPayload } from './enqueue-chat-turn'
 
 const logger = createScopedLogger('process-chat-turn')
@@ -25,7 +26,16 @@ const logger = createScopedLogger('process-chat-turn')
  */
 export async function processChatTurn(ctx: JobContext<ChatTurnJobPayload>): Promise<void> {
   const { data, signal } = ctx
-  const { organizationId, agentId, threadId, contactId, inboundMessageId } = data
+  const {
+    organizationId,
+    agentId,
+    threadId,
+    participantId,
+    contactId,
+    identityVerified,
+    claimed,
+    inboundMessageId,
+  } = data
 
   logger.info('Processing chat turn', { organizationId, agentId, threadId, inboundMessageId })
 
@@ -102,12 +112,23 @@ export async function processChatTurn(ctx: JobContext<ChatTurnJobPayload>): Prom
     excludeMessageId: inboundMessageId,
   })
 
+  // Build the turn's subject from the verified-passport inputs threaded onto
+  // the job. `buildChatSubjectFromPassport` is the sole producer of the
+  // `contact` anchor + `identityVerified` (plans/chat/v8 phase-1 trust invariant).
+  const subject = buildChatSubjectFromPassport({
+    threadId,
+    participantId,
+    contactId,
+    identityVerified,
+    claimed,
+  })
+
   const config = await buildChatEngineConfig({
     organizationId,
     agentId,
     agentUserId,
     sessionId: session.id,
-    invocation: { threadId, contactId },
+    subject,
     signal,
   })
 
