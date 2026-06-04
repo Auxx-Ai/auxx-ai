@@ -14,8 +14,9 @@ import {
   useState,
 } from 'react'
 
-/** App-wide spring, shared with `dialog-nav`. */
-const SPRING = { type: 'spring', stiffness: 300, damping: 30 } as const
+/** App-wide spring. `damping: 38` is past critical (~35 at this stiffness) so the
+ * panel settles cleanly with no end-bounce/overshoot, while staying snappy. */
+const SPRING = { type: 'spring', stiffness: 300, damping: 38 } as const
 
 /** Parallax depth: the back screen travels this far while the front travels 100%. Tune on device. */
 const PARALLAX = '-30%'
@@ -208,6 +209,10 @@ export interface NavStackPanelsProps {
  * during a transition, the panel beneath it (the parallax target). Does not
  * manage its own scroll or height — the active panel's content defines the
  * height; place inside a parent `ScrollArea`.
+ *
+ * Note: this clips both axes, so a `position: sticky` bar must NOT live inside a
+ * panel — it would stick to this (unscrollable) box and scroll away. Put the bar
+ * outside, in a sticky `<NavStackBar>`, so it pins to the outer `ScrollArea`.
  */
 export function NavStackPanels({ className }: NavStackPanelsProps) {
   const { top, direction } = useNavStack()
@@ -215,6 +220,16 @@ export function NavStackPanels({ className }: NavStackPanelsProps) {
   const reduce = useReducedMotion()
   const active = panels.find((p) => p.value === top)
   const variants = reduce ? fadeVariants : slideVariants
+
+  // Stack panels by their declaration order (= depth): the deeper panel always
+  // sits above the shallower one, so the FRONT screen occludes the BACK during
+  // BOTH push and pop. Without this, the in-flow (entering) panel and the
+  // popLayout-absolute (leaving) panel have no defined order and bleed through
+  // each other. `relative` is required for z-index to apply to the in-flow panel.
+  const activeIndex = Math.max(
+    0,
+    panels.findIndex((p) => p.value === top)
+  )
 
   return (
     <div className={cn('relative overflow-hidden', className)}>
@@ -227,7 +242,11 @@ export function NavStackPanels({ className }: NavStackPanelsProps) {
           animate='center'
           exit='exit'
           transition={reduce ? { duration: 0.15 } : SPRING}
-          className={cn('w-full shadow-[-8px_0_24px_rgba(0,0,0,0.08)]', active?.className)}>
+          style={{ zIndex: activeIndex }}
+          className={cn(
+            'relative w-full bg-background shadow-[-8px_0_24px_rgba(0,0,0,0.08)]',
+            active?.className
+          )}>
           {active?.children}
         </motion.div>
       </AnimatePresence>

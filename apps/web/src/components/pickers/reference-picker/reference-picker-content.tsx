@@ -6,6 +6,12 @@ import type { RecordId } from '@auxx/lib/resources/client'
 import { cn } from '@auxx/ui/lib/utils'
 import { useEffect, useImperativeHandle, useMemo, useRef } from 'react'
 import {
+  CodePickerList,
+  ConditionPickerList,
+  RoutingPickerList,
+  SubProcedurePickerList,
+} from '~/components/agents/procedures/ui/procedure-picker-lists'
+import {
   DEFAULT_TABS,
   type ReferenceTab,
   TAB_LABEL,
@@ -224,6 +230,20 @@ export function ReferencePickerContent({
             onSelectSingle={(id) => onSelect(id as unknown as RecordId)}
           />
         )}
+        {/* v9 procedure step tabs — insertion via the same `@` picker (plan §5). */}
+        {tab === 'routing' && (
+          <RoutingPickerList query={query} onSelect={(id) => onSelect(id as unknown as RecordId)} />
+        )}
+        {tab === 'subprocedure' && (
+          <SubProcedurePickerList
+            query={query}
+            onSelect={(id) => onSelect(id as unknown as RecordId)}
+          />
+        )}
+        {tab === 'code' && (
+          <CodePickerList query={query} onSelect={(id) => onSelect(id as unknown as RecordId)} />
+        )}
+        {tab === 'condition' && <ConditionPickerList />}
       </div>
     </div>
   )

@@ -8,13 +8,29 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
+import { NavStack, NavStackBar, NavStackPanel, NavStackPanels } from '@auxx/ui/components/nav-stack'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Section } from '@auxx/ui/components/section'
 import { Tabs, TabsList, TabsTrigger } from '@auxx/ui/components/tabs'
-import { BookOpen, Clock, FileText, Plug, Plus, ShieldCheck, Wrench, Zap } from 'lucide-react'
+import { toastError } from '@auxx/ui/components/toast'
+import {
+  BookOpen,
+  Clock,
+  FileText,
+  ListChecks,
+  Plug,
+  Plus,
+  ShieldCheck,
+  Wrench,
+  Zap,
+} from 'lucide-react'
 import { useQueryState } from 'nuqs'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { api } from '~/trpc/react'
 import { AGENT_TABS, type AgentTab, DEFAULT_AGENT_TAB } from '../../constant'
+import { ProcedureDetailBar } from '../../procedures/ui/procedure-detail-bar'
+import { ProcedureEditor } from '../../procedures/ui/procedure-editor'
+import { ProceduresSectionContent } from '../../procedures/ui/procedures-section-content'
 import type { AgentDetail } from '../../store/agent-store'
 import type { AutosaveState } from '../shared/autosave-indicator'
 import { AgentHero } from './agent-hero'
@@ -31,6 +47,7 @@ const SECTION_ICONS: Record<AgentTab, React.ComponentType<{ className?: string }
   tools: Wrench,
   restrictions: ShieldCheck,
   knowledge: BookOpen,
+  procedures: ListChecks,
   triggers: Zap,
 }
 
@@ -39,6 +56,7 @@ const SECTION_LABELS: Record<AgentTab, string> = {
   tools: 'Tools',
   restrictions: 'Bindings',
   knowledge: 'Knowledge',
+  procedures: 'Procedures',
   triggers: 'Triggers',
 }
 
@@ -58,13 +76,19 @@ interface AgentDetailTabsProps {
  */
 export function AgentDetailTabs({ agent, onAutosaveChange }: AgentDetailTabsProps) {
   const [tab, setTab] = useQueryState('tab', { defaultValue: DEFAULT_AGENT_TAB })
+  // The pushed procedure detail. Set ⇒ NavStack shows ['root','procedure']; cleared ⇒ ['root'].
+  const [selectedProcedureId, setSelectedProcedureId] = useQueryState('procedure')
   const [addingKind, setAddingKind] = useState<'scheduled' | 'event' | 'app' | null>(null)
+  // Lifted from the pushed ProcedureEditor so the detail bar (rendered by
+  // <NavStackBar>, a separate subtree) can show live Saving…/Saved next to Publish.
+  const [procedureAutosave, setProcedureAutosave] = useState<AutosaveState>({ kind: 'idle' })
   const scrollContainerRef = useRef<HTMLDivElement | null>(null)
   const sectionRefs = useRef<Record<AgentTab, HTMLDivElement | null>>({
     prompt: null,
     tools: null,
     restrictions: null,
     knowledge: null,
+    procedures: null,
     triggers: null,
   })
   const isProgrammaticScrollRef = useRef(false)
@@ -95,10 +119,12 @@ export function AgentDetailTabs({ agent, onAutosaveChange }: AgentDetailTabsProp
 
   const handleTabChange = useCallback(
     (value: string) => {
+      // Selecting any tab while in the detail pops back to root, then scrolls.
+      void setSelectedProcedureId(null)
       setTab(value)
       scrollToSection(value)
     },
-    [setTab, scrollToSection]
+    [setTab, setSelectedProcedureId, scrollToSection]
   )
 
   // Scroll-spy: as the user scrolls, switch the active tab to whichever
@@ -150,100 +176,188 @@ export function AgentDetailTabs({ agent, onAutosaveChange }: AgentDetailTabsProp
         noFade>
         <AgentHero agent={agent} />
 
-        <div className='sticky top-0 z-10'>
-          <div className='bg-background border-b'>
-            <Tabs value={tab} onValueChange={handleTabChange}>
-              <TabsList className='w-full justify-start rounded-none bg-primary-150 px-2'>
-                {tabs.map((value) => {
-                  const Icon = SECTION_ICONS[value]
-                  return (
-                    <TabsTrigger key={value} value={value} variant='outline'>
-                      <Icon />
-                      {SECTION_LABELS[value]}
-                    </TabsTrigger>
-                  )
-                })}
-              </TabsList>
-            </Tabs>
+        {/* Shared-bar layout: the sticky bar (NavStackBar) lives OUTSIDE NavStackPanels
+            so it pins to this ScrollArea, while the panels slide cleanly under it
+            (NavStackPanels is overflow-hidden — a sticky bar inside a panel would
+            scroll away). The bar's content cross-fades root↔procedure; the section
+            column / editor below it does the horizontal push/pop. The hero stays
+            above + scrolls away in both levels. Stack ⇄ the `procedure` nuqs param. */}
+        <NavStack
+          stack={selectedProcedureId ? ['root', 'procedure'] : ['root']}
+          onStackChange={(next) => {
+            if (next.length === 1) void setSelectedProcedureId(null)
+          }}>
+          {/* The shared bar surface lives on the persistent <NavStackBar> frame, so
+              the bg stays constant root↔procedure and only the foreground content
+              cross-fades over it (no see-through to the page during the fade). Both
+              bars' own content is therefore transparent. */}
+          <div className='sticky top-0 z-10'>
+            <NavStackBar className='border-b bg-primary-150' />
+            <div className='pointer-events-none h-3 bg-gradient-to-b from-neutral-100 to-transparent dark:from-background' />
           </div>
-          <div className='pointer-events-none h-3 bg-gradient-to-b from-background to-transparent' />
-        </div>
-
-        <div ref={assignRef('prompt')}>
-          <Section
-            title='Prompt'
-            icon={<FileText className='size-4' />}
-            initialOpen
-            collapsible={false}>
-            <PersonaEditor agent={agent} onAutosaveChange={onAutosaveChange} />
-          </Section>
-        </div>
-
-        <div ref={assignRef('tools')}>
-          <ToolsSection agent={agent} onAutosaveChange={onAutosaveChange} />
-        </div>
-
-        <div ref={assignRef('restrictions')}>
-          <BindingsSection agent={agent} />
-        </div>
-
-        <div ref={assignRef('knowledge')}>
-          <Section
-            title='Knowledge'
-            icon={<BookOpen className='size-4' />}
-            className='[&>[data-slot=section]>[data-slot=section-content]]:-mx-3'
-            initialOpen
-            collapsible={false}>
-            <KnowledgeSectionContent agent={agent} onAutosaveChange={onAutosaveChange} />
-          </Section>
-        </div>
-
-        {agent.kind !== 'chat' ? (
-          <div ref={assignRef('triggers')}>
-            <Section
-              title='Triggers'
-              icon={<Zap className='size-4' />}
-              className='[&>[data-slot=section]>[data-slot=section-content]]:-mx-3'
-              initialOpen
-              description='Autonomous triggers fire this agent on a schedule, on a record event, or on an app event.'
-              collapsible={false}
-              actions={
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant='ghost' size='xs'>
-                      <Plus />
-                      Add trigger
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align='end'>
-                    <DropdownMenuItem onClick={() => setAddingKind('scheduled')}>
-                      <Clock />
-                      Scheduled
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => setAddingKind('event')}>
-                      <Zap />
-                      Event
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => setAddingKind('app')}>
-                      <Plug />
-                      App
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+          <NavStackPanels>
+            <NavStackPanel
+              value='root'
+              className='min-h-dvh bg-neutral-100 dark:bg-background'
+              bar={
+                <Tabs value={tab} onValueChange={handleTabChange}>
+                  <TabsList className='w-full justify-start rounded-none bg-transparent px-2'>
+                    {tabs.map((value) => {
+                      const Icon = SECTION_ICONS[value]
+                      return (
+                        <TabsTrigger key={value} value={value} variant='outline'>
+                          <Icon />
+                          {SECTION_LABELS[value]}
+                        </TabsTrigger>
+                      )
+                    })}
+                  </TabsList>
+                </Tabs>
               }>
-              <TriggersSectionContent
-                agent={agent}
-                addingKind={addingKind}
-                onAddingKindChange={setAddingKind}
-              />
-            </Section>
-          </div>
-        ) : null}
+              <div ref={assignRef('prompt')}>
+                <Section
+                  title='Prompt'
+                  icon={<FileText className='size-4' />}
+                  initialOpen
+                  collapsible={false}>
+                  <PersonaEditor agent={agent} onAutosaveChange={onAutosaveChange} />
+                </Section>
+              </div>
 
-        {/* Spacer so the last section can scroll up to the activation line. */}
-        <div className='h-[40vh]' />
+              <div ref={assignRef('procedures')}>
+                <ProceduresSection agent={agent} onSelect={setSelectedProcedureId} />
+              </div>
+
+              <div ref={assignRef('tools')}>
+                <ToolsSection agent={agent} onAutosaveChange={onAutosaveChange} />
+              </div>
+
+              <div ref={assignRef('restrictions')}>
+                <BindingsSection agent={agent} />
+              </div>
+
+              <div ref={assignRef('knowledge')}>
+                <Section
+                  title='Knowledge'
+                  icon={<BookOpen className='size-4' />}
+                  className='[&>[data-slot=section]>[data-slot=section-content]]:-mx-3'
+                  initialOpen
+                  collapsible={false}>
+                  <KnowledgeSectionContent agent={agent} onAutosaveChange={onAutosaveChange} />
+                </Section>
+              </div>
+
+              {agent.kind !== 'chat' ? (
+                <div ref={assignRef('triggers')}>
+                  <Section
+                    title='Triggers'
+                    icon={<Zap className='size-4' />}
+                    className='[&>[data-slot=section]>[data-slot=section-content]]:-mx-3'
+                    initialOpen
+                    description='Autonomous triggers fire this agent on a schedule, on a record event, or on an app event.'
+                    collapsible={false}
+                    actions={
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant='ghost' size='xs'>
+                            <Plus />
+                            Add trigger
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align='end'>
+                          <DropdownMenuItem onClick={() => setAddingKind('scheduled')}>
+                            <Clock />
+                            Scheduled
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => setAddingKind('event')}>
+                            <Zap />
+                            Event
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => setAddingKind('app')}>
+                            <Plug />
+                            App
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    }>
+                    <TriggersSectionContent
+                      agent={agent}
+                      addingKind={addingKind}
+                      onAddingKindChange={setAddingKind}
+                    />
+                  </Section>
+                </div>
+              ) : null}
+
+              {/* Spacer so the last section can scroll up to the activation line. */}
+              <div className='h-[40vh]' />
+            </NavStackPanel>
+
+            <NavStackPanel
+              value='procedure'
+              className='min-h-dvh bg-neutral-100 dark:bg-background'
+              bar={
+                selectedProcedureId ? (
+                  <ProcedureDetailBar
+                    procedureId={selectedProcedureId}
+                    autosave={procedureAutosave}
+                  />
+                ) : null
+              }>
+              {selectedProcedureId ? (
+                <ProcedureEditor
+                  procedureId={selectedProcedureId}
+                  onAutosaveChange={setProcedureAutosave}
+                />
+              ) : null}
+            </NavStackPanel>
+          </NavStackPanels>
+        </NavStack>
       </ScrollArea>
     </div>
+  )
+}
+
+/**
+ * Procedures tab wrapper. Owns the "Add procedure" action (in `<Section actions>`)
+ * which creates + attaches a fresh procedure and drills into it. The list itself
+ * renders inside; both chat and internal agents get this section.
+ */
+function ProceduresSection({
+  agent,
+  onSelect,
+}: {
+  agent: AgentDetail
+  onSelect: (procedureId: string) => void
+}) {
+  const utils = api.useUtils()
+  const createAndAttach = api.agentProcedure.createAndAttach.useMutation({
+    onSuccess: ({ procedureId }) => {
+      void utils.agentProcedure.list.invalidate({ agentId: agent.id })
+      onSelect(procedureId)
+    },
+    onError: (err) => toastError({ title: 'Failed to add procedure', description: err.message }),
+  })
+  return (
+    <Section
+      title='Procedures'
+      icon={<ListChecks className='size-4' />}
+      className='[&>[data-slot=section]>[data-slot=section-content]]:-mx-3'
+      initialOpen
+      description='Step-by-step playbooks the agent follows for specific situations.'
+      collapsible={false}
+      actions={
+        <Button
+          variant='ghost'
+          size='xs'
+          loading={createAndAttach.isPending}
+          onClick={() => createAndAttach.mutate({ agentId: agent.id, name: 'New procedure' })}>
+          <Plus />
+          Add procedure
+        </Button>
+      }>
+      <ProceduresSectionContent agent={agent} onOpen={onSelect} />
+    </Section>
   )
 }
 

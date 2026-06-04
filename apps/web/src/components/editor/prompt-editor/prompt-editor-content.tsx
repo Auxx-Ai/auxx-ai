@@ -61,6 +61,8 @@ interface PromptEditorContentProps {
    * (e.g. the workflow `{`-variable picker). Defaults to `[]`.
    */
   inlineExtensions?: Extension[]
+  /** Mount the v9 procedure control-flow nodes. Forwarded to `useRichTextEditor`. */
+  enableProcedureNodes?: boolean
 }
 
 interface LinkPopoverState {
@@ -93,6 +95,7 @@ export const PromptEditorContent = memo(function PromptEditorContent({
   editable = true,
   placeholderText,
   inlineExtensions,
+  enableProcedureNodes,
 }: PromptEditorContentProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [linkPopover, setLinkPopover] = useState<LinkPopoverState | null>(null)
@@ -119,6 +122,7 @@ export const PromptEditorContent = memo(function PromptEditorContent({
     editable,
     placeholderText,
     inlineExtensions,
+    enableProcedureNodes,
   })
 
   const activePicker = useActivePicker(editor)

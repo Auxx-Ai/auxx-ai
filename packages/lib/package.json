@@ -46,6 +46,18 @@
       "import": "./dist/agents/client.mjs",
       "default": "./src/agents/client.ts"
     },
+    "./agents/procedures": {
+      "types": "./src/agents/procedures/index.ts",
+      "source": "./src/agents/procedures/index.ts",
+      "import": "./dist/agents/procedures/index.mjs",
+      "default": "./src/agents/procedures/index.ts"
+    },
+    "./agents/procedures/client": {
+      "types": "./src/agents/procedures/client.ts",
+      "source": "./src/agents/procedures/client.ts",
+      "import": "./dist/agents/procedures/client.mjs",
+      "default": "./src/agents/procedures/client.ts"
+    },
     "./ai": {
       "types": "./src/ai/index.ts",
       "source": "./src/ai/index.ts",
