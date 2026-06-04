@@ -1,4 +1,4 @@
-// apps/web/src/components/agents/ui/detail/restrictions/restriction-value-editor.tsx
+// apps/web/src/components/agents/ui/detail/bindings/binding-value-editor.tsx
 'use client'
 
 import type { VarSource } from '@auxx/lib/agents/bindings/client'
@@ -8,9 +8,9 @@ import { ChevronsLeftRightEllipsis } from 'lucide-react'
 import { useState } from 'react'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { Tooltip } from '~/components/global/tooltip'
-import { RestrictionVarPicker } from './restriction-var-picker'
+import { BindingVarPicker } from './binding-var-picker'
 
-interface RestrictionValueEditorProps {
+interface BindingValueEditorProps {
   /** The input's working binding (`VarSource`). */
   source: VarSource
   onChange: (next: VarSource) => void
@@ -29,13 +29,13 @@ type Mode = 'constant' | 'var'
  * active input. The empty state means **"model decides"** (`{ kind:'model' }`)
  * — the row's hover `X` returns a bound input to it. See plans/chat/v8 phase-5.
  */
-export function RestrictionValueEditor({
+export function BindingValueEditor({
   source,
   onChange,
   argFieldType,
   fieldOptions,
   disabled,
-}: RestrictionValueEditorProps) {
+}: BindingValueEditorProps) {
   const [mode, setMode] = useState<Mode>(source.kind === 'var' ? 'var' : 'constant')
   const isConstant = mode === 'constant'
 
@@ -82,7 +82,7 @@ export function RestrictionValueEditor({
             disabled={disabled}
           />
         ) : (
-          <RestrictionVarPicker
+          <BindingVarPicker
             value={refValue}
             onChange={(ref) => onChange({ kind: 'var', ref })}
             argFieldType={argFieldType}

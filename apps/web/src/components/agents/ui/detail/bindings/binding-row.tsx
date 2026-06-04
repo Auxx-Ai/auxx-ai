@@ -1,11 +1,11 @@
-// apps/web/src/components/agents/ui/detail/restrictions/restriction-row.tsx
+// apps/web/src/components/agents/ui/detail/bindings/binding-row.tsx
 'use client'
 
 import { TreeRow } from '@auxx/ui/components/tree-row'
 import { Pencil, Trash2 } from 'lucide-react'
 import { Tooltip } from '~/components/global/tooltip'
 
-interface RestrictionRowProps {
+interface BindingRowProps {
   /** Bound input name. */
   arg: string
   /** Resolved label for the bound value (field label or constant rendering). */
@@ -19,7 +19,7 @@ interface RestrictionRowProps {
  * `Pencil` / `Trash2` action treatment. The secondary slot renders the binding
  * target. See plans/chat/v8 phase-5.
  */
-export function RestrictionRow({ arg, valueLabel, onEdit, onDelete }: RestrictionRowProps) {
+export function BindingRow({ arg, valueLabel, onEdit, onDelete }: BindingRowProps) {
   return (
     <TreeRow
       depth={1}

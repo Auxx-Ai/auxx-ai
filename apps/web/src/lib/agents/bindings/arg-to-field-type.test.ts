@@ -1,4 +1,4 @@
-// apps/web/src/lib/agents/restrictions/arg-to-field-type.test.ts
+// apps/web/src/lib/agents/bindings/arg-to-field-type.test.ts
 
 import { FieldType } from '@auxx/database/enums'
 import { describe, expect, it } from 'vitest'

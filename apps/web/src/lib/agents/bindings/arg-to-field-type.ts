@@ -1,4 +1,4 @@
-// apps/web/src/lib/agents/restrictions/arg-to-field-type.ts
+// apps/web/src/lib/agents/bindings/arg-to-field-type.ts
 
 import { FieldType } from '@auxx/database/enums'
 import type { FieldOptions } from '@auxx/lib/field-values/client'

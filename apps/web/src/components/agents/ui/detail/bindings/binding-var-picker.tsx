@@ -1,4 +1,4 @@
-// apps/web/src/components/agents/ui/detail/restrictions/restriction-var-picker.tsx
+// apps/web/src/components/agents/ui/detail/bindings/binding-var-picker.tsx
 'use client'
 
 import type { AvailableField } from '@auxx/lib/agents/bindings/client'
@@ -12,10 +12,10 @@ import {
   SelectValue,
 } from '@auxx/ui/components/select'
 import { useMemo } from 'react'
-import { isVarFieldTypeCompatible } from '~/lib/agents/restrictions/arg-to-field-type'
+import { isVarFieldTypeCompatible } from '~/lib/agents/bindings/arg-to-field-type'
 import { api } from '~/trpc/react'
 
-interface RestrictionVarPickerProps {
+interface BindingVarPickerProps {
   /** Currently-bound field ref (`{ kind:'var' }.ref` as a string), or undefined. */
   value?: string
   onChange: (ref: string) => void
@@ -36,12 +36,12 @@ const ANCHORS = ['contact', 'participant', 'thread'] as const
  * Binds a `{ kind:'var', ref }` override. App-owned fields appear as their
  * `@app:<slug>:<key>` ref (resolved at turn time). See plans/chat/v8 phase-5.
  */
-export function RestrictionVarPicker({
+export function BindingVarPicker({
   value,
   onChange,
   argFieldType,
   disabled,
-}: RestrictionVarPickerProps) {
+}: BindingVarPickerProps) {
   const contact = api.agent.listBindingFields.useQuery({ anchor: 'contact' })
   const participant = api.agent.listBindingFields.useQuery({ anchor: 'participant' })
   const thread = api.agent.listBindingFields.useQuery({ anchor: 'thread' })

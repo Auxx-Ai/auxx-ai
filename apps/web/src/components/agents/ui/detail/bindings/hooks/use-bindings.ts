@@ -1,4 +1,4 @@
-// apps/web/src/components/agents/ui/detail/restrictions/hooks/use-restrictions.ts
+// apps/web/src/components/agents/ui/detail/bindings/hooks/use-bindings.ts
 'use client'
 
 import type { ToolBindingMap } from '@auxx/lib/agents/bindings/client'

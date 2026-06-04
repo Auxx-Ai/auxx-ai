@@ -18,9 +18,9 @@ import { AGENT_TABS, type AgentTab, DEFAULT_AGENT_TAB } from '../../constant'
 import type { AgentDetail } from '../../store/agent-store'
 import type { AutosaveState } from '../shared/autosave-indicator'
 import { AgentHero } from './agent-hero'
+import { BindingsSectionContent } from './bindings/bindings-section-content'
 import { KnowledgeSectionContent } from './knowledge/knowledge-section-content'
 import { PersonaEditor } from './prompt/persona-editor'
-import { RestrictionsSectionContent } from './restrictions/restrictions-section-content'
 import { ToolSelectDialog } from './tools/tool-select-dialog'
 import { ToolsSectionContent } from './tools/tools-section-content'
 import { useToolsetMutations } from './tools/use-toolset-mutations'
@@ -184,7 +184,7 @@ export function AgentDetailTabs({ agent, onAutosaveChange }: AgentDetailTabsProp
         </div>
 
         <div ref={assignRef('restrictions')}>
-          <RestrictionsSection agent={agent} />
+          <BindingsSection agent={agent} />
         </div>
 
         <div ref={assignRef('knowledge')}>
@@ -248,11 +248,11 @@ export function AgentDetailTabs({ agent, onAutosaveChange }: AgentDetailTabsProp
 }
 
 /**
- * Restrictions tab wrapper. Owns the add/edit dialog state so the "Add
- * restriction" trigger can sit in `<Section actions>` alongside Tools and
- * Triggers, while the dialog itself renders inside the section content.
+ * Bindings tab wrapper. Owns the add/edit dialog state so the "Add binding"
+ * trigger can sit in `<Section actions>` alongside Tools and Triggers, while
+ * the dialog itself renders inside the section content.
  */
-function RestrictionsSection({ agent }: { agent: AgentDetail }) {
+function BindingsSection({ agent }: { agent: AgentDetail }) {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editing, setEditing] = useState<{ registeredName: string } | null>(null)
   return (
@@ -275,7 +275,7 @@ function RestrictionsSection({ agent }: { agent: AgentDetail }) {
           Add override
         </Button>
       }>
-      <RestrictionsSectionContent
+      <BindingsSectionContent
         agent={agent}
         dialogOpen={dialogOpen}
         onDialogOpenChange={setDialogOpen}

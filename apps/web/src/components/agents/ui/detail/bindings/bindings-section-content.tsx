@@ -1,4 +1,4 @@
-// apps/web/src/components/agents/ui/detail/restrictions/restrictions-section-content.tsx
+// apps/web/src/components/agents/ui/detail/bindings/bindings-section-content.tsx
 'use client'
 
 import type { ToolBindingMap, VarSource } from '@auxx/lib/agents/bindings/client'
@@ -6,17 +6,17 @@ import { EmptySection } from '@auxx/ui/components/section'
 import { TreeRow } from '@auxx/ui/components/tree-row'
 import { pluralize } from '@auxx/utils/strings'
 import { ShieldCheck } from 'lucide-react'
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { AppIcon } from '~/components/apps/ui/app-icon'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
 import type { AgentDetail } from '../../../store/agent-store'
-import { AddRestrictionDialog } from './add-restriction-dialog'
-import { useBindings } from './hooks/use-restrictions'
+import { AddBindingDialog } from './add-binding-dialog'
+import { BindingRow } from './binding-row'
+import { useBindings } from './hooks/use-bindings'
 import { type ToolMeta, useToolMeta } from './hooks/use-tool-meta'
-import { RestrictionRow } from './restriction-row'
 
-interface RestrictionsSectionContentProps {
+interface BindingsSectionContentProps {
   agent: AgentDetail
   /** Controlled add/edit dialog open state — the "Add binding" trigger lives in `<Section actions>`. */
   dialogOpen: boolean
@@ -47,14 +47,17 @@ function valueLabelFor(source: VarSource, refLabelById: Map<string, string>): st
  * case). Disabled-tool entries are kept in the map but hidden. See
  * plans/chat/v8 phase-5.
  */
-export function RestrictionsSectionContent({
+export function BindingsSectionContent({
   agent,
   dialogOpen,
   onDialogOpenChange,
   editing,
   onEditingChange,
-}: RestrictionsSectionContentProps) {
+}: BindingsSectionContentProps) {
   const [, ConfirmDialog] = useConfirm()
+  // Per-tool expand state, keyed by registered name. Tools default to collapsed;
+  // an explicit `true` expands one.
+  const [openTools, setOpenTools] = useState<Record<string, boolean>>({})
 
   const toolMeta = useToolMeta(agent)
   const { bindings, save } = useBindings(agent)
@@ -126,6 +129,7 @@ export function RestrictionsSectionContent({
         <div className='flex flex-col pe-4'>
           {enabledEntries.map(([registeredName, meta, perTool]) => {
             const count = Object.keys(perTool).length
+            const isOpen = !!openTools[registeredName]
             return (
               <TreeRow
                 key={registeredName}
@@ -133,10 +137,12 @@ export function RestrictionsSectionContent({
                 title={meta.displayName}
                 secondary={`${count} ${pluralize(count, 'override')}`}
                 expandable
-                isOpen
-                onToggleOpen={() => {}}>
+                isOpen={isOpen}
+                onToggleOpen={() =>
+                  setOpenTools((prev) => ({ ...prev, [registeredName]: !prev[registeredName] }))
+                }>
                 {Object.entries(perTool).map(([arg, source]) => (
-                  <RestrictionRow
+                  <BindingRow
                     key={arg}
                     arg={arg}
                     valueLabel={valueLabelFor(source, refLabelById)}
@@ -156,7 +162,7 @@ export function RestrictionsSectionContent({
         </p>
       ) : null}
 
-      <AddRestrictionDialog
+      <AddBindingDialog
         open={dialogOpen}
         onOpenChange={onDialogOpenChange}
         agent={agent}

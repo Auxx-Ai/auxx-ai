@@ -19,4 +19,4 @@ export { features } from './features'
 export { detectTimezone, IANA_TIME_ZONES, type IANATimeZone, isValidTimezone } from './timezones'
 // Build-safe config exports for tooling and build-time consumers.
 // Do not export runtime loaders from this entrypoint.
-export * from './url'
+export * from './urls'
