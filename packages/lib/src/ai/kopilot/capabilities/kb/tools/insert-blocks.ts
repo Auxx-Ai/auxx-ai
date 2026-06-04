@@ -7,8 +7,7 @@ import type { GetToolDeps } from '../../types'
 import {
   buildOpToolResult,
   EXPECTED_HASH_PARAM,
-  expandBlockInputs,
-  parseBlockInputs,
+  expandMarkdown,
   runBlockCrudOp,
 } from './write-helpers'
 
@@ -18,7 +17,7 @@ export function createInsertBlocksTool(getDeps: GetToolDeps): AgentToolDefinitio
     displayName: 'Insert article blocks',
     toolsetSlug: 'auxx:kb:write',
     description:
-      "Insert one or more blocks at the given anchor in the active article.\n\nAnchors:\n  { at: 'start' | 'end' } — top/bottom of doc\n  { at: 'before' | 'after', blockId } — relative to any block id (top-level or inside a panel/cell)\n  { at: 'startOf' | 'endOf', containerId } — inside a panel by panel id\n\nBlock payloads are mixed: { kind: 'markdown', markdown } for prose / GFM (paragraphs, headings, lists, code, blockquotes, tables, etc.) — preferred when possible; { kind: 'block', block } for explicit node JSON. The `block` field accepts:\n  - { type: 'block', attrs:{ blockType }, content } — leaf blocks (text, heading, bulletListItem, numberedListItem, todoListItem, quote, callout, codeBlock, divider, image, embed, cards)\n  - { type: 'table', content: [{ type:'tableRow', content: [{ type:'tableCell'|'tableHeader', content: [BlockJSON,...] }, ...] }, ...] }\n  - { type: 'tabs', attrs:{ activeTab:null }, content: [{ type:'panel', attrs:{ id, label }, content:[BlockJSON,...] }, ...] }\n  - { type: 'accordion', attrs:{ allowMultiple:true }, content: [{ type:'panel', ... }, ...] }\n\nContainers (table/tabs/accordion) can ONLY be inserted at top-level anchors (start/end, or before/after a top-level block). Panels and table cells hold leaf blocks only. Block ids are stamped server-side — you may omit them.",
+      "Insert content at the given anchor in the active article. Pass the content as Auxx markdown — it expands to one or more blocks.\n\nAnchors:\n  { at: 'start' | 'end' } — top/bottom of doc\n  { at: 'before' | 'after', blockId } — relative to any block id (top-level or inside a panel/cell)\n  { at: 'startOf' | 'endOf', containerId } — inside a panel by panel id\n\nMarkdown supports rich blocks via fences: callouts (`:::info … :::`), tabs (`::::tabs` / `:::tab{label=\"…\"}`), accordions (`::::accordion` / `:::item{label=\"…\"}`), cards (`:::cards` / `::card{title=\"…\"}`), images (`![](url){width= align=}`), embeds (`::embed{url=\"…\"}`), and GFM tables. Containers (table/tabs/accordion) can ONLY be inserted at top-level anchors (start/end, or before/after a top-level block) — panels and table cells hold leaf blocks only. Block ids are stamped server-side.",
     parameters: {
       type: 'object',
       properties: {
@@ -28,20 +27,18 @@ export function createInsertBlocksTool(getDeps: GetToolDeps): AgentToolDefinitio
             "Where to insert: { at: 'start'|'end' } | { at: 'before'|'after', blockId } | { at: 'startOf'|'endOf', containerId }",
           additionalProperties: true,
         },
-        blocks: {
-          type: 'array',
-          description:
-            "Block payloads — { kind: 'markdown', markdown } or { kind: 'block', block: BlockJSON }",
-          items: { type: 'object', additionalProperties: true },
+        markdown: {
+          type: 'string',
+          description: 'Content to insert as Auxx markdown (expands to one or more blocks)',
         },
         expectedHash: EXPECTED_HASH_PARAM,
       },
-      required: ['anchor', 'blocks'],
+      required: ['anchor', 'markdown'],
       additionalProperties: false,
     },
     validateInputs: async (args) => {
-      const blocks = parseBlockInputs(args.blocks, 'blocks')
-      if (!blocks.ok) return { ok: false, error: blocks.error }
+      const md = parseStringArg(args.markdown, { name: 'markdown', required: true, max: 50_000 })
+      if (!md.ok) return { ok: false, error: md.error }
       const anchor = args.anchor as BlockAnchor | undefined
       if (!anchor || typeof anchor !== 'object' || typeof anchor.at !== 'string') {
         return { ok: false, error: 'anchor must be { at, blockId? | containerId? }' }
@@ -50,19 +47,14 @@ export function createInsertBlocksTool(getDeps: GetToolDeps): AgentToolDefinitio
       if (!expectedHash.ok) return { ok: false, error: expectedHash.error }
       return {
         ok: true,
-        args: {
-          ...args,
-          blocks: blocks.value as unknown as Record<string, unknown>[],
-          expectedHash: expectedHash.value,
-        },
+        args: { ...args, markdown: md.value, expectedHash: expectedHash.value },
       }
     },
     execute: async (args, agentDeps) => {
       const toolDeps = getDeps()
-      const inputs = args.blocks as unknown as Parameters<typeof expandBlockInputs>[0]
-      const blocks = expandBlockInputs(inputs)
+      const blocks = expandMarkdown(args.markdown as string)
       if (blocks.length === 0) {
-        return { success: false, output: null, error: 'no blocks to insert' }
+        return { success: false, output: null, error: 'markdown parsed to zero blocks' }
       }
       const anchor = args.anchor as BlockAnchor
       const result = await runBlockCrudOp({

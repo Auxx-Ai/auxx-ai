@@ -1,5 +1,8 @@
 // packages/lib/src/ai/kopilot/capabilities/kb/index.ts
 
+import { createScopedLogger } from '@auxx/logger'
+import { readKopilotSnapshot } from '../../../../kb/kopilot-snapshot'
+import { findRef } from '../../context-refs'
 import type { GetToolDeps, PageCapability, SystemPromptAdditionContext } from '../types'
 import { createDeleteBlocksTool } from './tools/delete-blocks'
 import { createGetArticleTool } from './tools/get-article'
@@ -9,11 +12,12 @@ import { createListArticlesTool } from './tools/list-articles'
 import { createMoveBlocksTool } from './tools/move-blocks'
 import { createReplaceBlockTool } from './tools/replace-block'
 import { createResolveBlockByHeadingTool } from './tools/resolve-block-by-heading'
-import { createUpdateBlockAttrsTool } from './tools/update-block-attrs'
-import { createUpdateBlockTextTool } from './tools/update-block-text'
+import { finalizeKopilotKbTurn, revertKopilotKbTurn } from './tools/write-helpers'
 
 export const KB_PAGE = 'kb'
 const GLOBAL_PAGE = '__global__'
+
+const logger = createScopedLogger('kb-capability-lifecycle')
 
 export function createKbCapabilities(getDeps: GetToolDeps): PageCapability {
   return {
@@ -25,19 +29,62 @@ export function createKbCapabilities(getDeps: GetToolDeps): PageCapability {
       // Writes (block-CRUD)
       createInsertBlocksTool(getDeps),
       createReplaceBlockTool(getDeps),
-      createUpdateBlockTextTool(getDeps),
-      createUpdateBlockAttrsTool(getDeps),
       createDeleteBlocksTool(getDeps),
       createMoveBlocksTool(getDeps),
     ],
     systemPromptAddition: [
-      'You can read and edit the active KB article. Reads (get_article, list_articles, get_article_section, resolve_block_by_heading) are free; writes (insert_blocks, replace_block, update_block_text, update_block_attrs, delete_blocks, move_blocks) commit straight to the draft and the user gets a per-turn Undo button.',
-      "Address blocks by their id (returned in every tool output). Block ids are stable across edits — preserve them on replace/update. Anchors for insert/move: { at: 'start' | 'end' } (top of doc / bottom of doc), { at: 'before' | 'after', blockId } (relative to a known block, top-level OR inside a panel/cell), { at: 'startOf' | 'endOf', containerId } (inside a panel by panel id).",
-      "Block payload format is mixed: pass `{ kind: 'markdown', markdown: string }` for plain prose (text, headings, lists, blockquotes, code blocks) — the server expands it into one or more BlockJSON nodes. Pass `{ kind: 'block', block: BlockJSON }` for rich blocks (callout, embed, image, cards, tabs, accordion, table) where you need to set specific attrs.",
-      'Top-level containers (table, tabs, accordion) are addressable by id like any block — the outline shows a row for each container with its id. Call delete_blocks with the container id to remove it, or move_blocks to reorder it at the top level. Containers cannot move into a panel or table cell, and replace_block does not accept them — to swap a container, delete it and insert the replacement.',
+      'You can read and edit the active KB article. Reads (get_article, list_articles, get_article_section, resolve_block_by_heading) are free; writes commit straight to the draft and the user gets a per-turn Undo button.',
+      'You edit with **markdown only**. There are exactly four write tools, all addressed by block id:\n  - `insert_blocks(anchor, markdown)` — insert content at an anchor\n  - `replace_block(blockId, markdown)` — rewrite a block (its id is preserved; markdown may expand to several blocks — the first keeps the id, the rest are inserted after). Pass empty markdown (`""`) to remove the block — same as `delete_blocks([blockId])`.\n  - `delete_blocks(blockIds)` — remove blocks (or top-level containers) by id\n  - `move_blocks(blockIds, anchor)` — reorder blocks',
+      "Address blocks by their id (returned in every tool output and the get_article outline). Block ids are stable across edits. Anchors: { at: 'start' | 'end' } (top/bottom of doc), { at: 'before' | 'after', blockId } (relative to a known block, top-level OR inside a panel/cell), { at: 'startOf' | 'endOf', containerId } (inside a panel by panel id).",
+      'Markdown supports rich blocks via fences:\n  - callout: `:::info … :::` (variants: `info`, `warn`, `error`, `tip`, `success`)\n  - tabs: `::::tabs` then `:::tab{label="Setup"} … :::` for each tab … `::::`\n  - accordion: `::::accordion` then `:::item{label="Question?"} … :::` for each item … `::::`\n  - cards: `:::cards` then `::card{title="…" href="…" icon="…"}` per card … `:::`\n  - image: `![](https://…){width=600 align=left}`\n  - embed: `::embed{url="https://youtu.be/…"}` (or paste the URL on its own line)\n  - table: a GFM pipe table\nPreserve any `@[…]` reference chips verbatim when rewriting a block (e.g. `@[field:ticket:status]`, `@[user:u_1]`) — copy the token exactly, never reformat the id.',
+      'Worked examples:\n  - replace_block("blk_42", ":::warn\\nBack up your data before upgrading.\\n:::")\n  - insert_blocks({ at: "after", blockId: "blk_7" }, "## Troubleshooting\\n\\n- Restart the app\\n- Clear the cache")',
+      'Top-level containers (table, tabs, accordion) are addressable by id like any block — the outline shows a row for each. delete_blocks(containerId) removes one; move_blocks reorders it at the top level. Containers cannot move into a panel or table cell. To swap a container, delete it and insert the replacement.',
       'Never invent block ids — use the ones from get_article. Never invent slugs — look them up via list_articles. Edits go to the draft; the user publishes manually.',
     ].join('\n\n'),
     capabilities: ['Read, rewrite, and restructure the active knowledge-base article'],
+    lifecycle: {
+      // A KB turn runs a turn-scoped transaction against the active article: the
+      // first write captures a pre-turn snapshot in Redis and locks the article;
+      // turn end must finalize (release lock, keep snapshot for Undo) or revert
+      // (restore snapshot, unlock). Every block-CRUD write resolves its target
+      // from `findRef(sessionContext, 'article')`, so a turn touches exactly one
+      // article — the active one. The snapshot keyed by `(articleId, turnId)` is
+      // already the "did THIS turn write it" record: `readKopilotSnapshot` with
+      // the turn id returns null unless this turn wrote the article, which also
+      // stops a prior turn's still-pending review snapshot (24h TTL) from being
+      // finalized/reverted here.
+      async onTurnEnd(outcome, { turnId }) {
+        const { db, organizationId, userId, sessionContext } = getDeps()
+        const articleId = findRef(sessionContext, 'article')?.id
+        if (!articleId) return
+        const snapshot = await readKopilotSnapshot(articleId, turnId)
+        if (!snapshot) return
+        try {
+          if (outcome === 'completed') {
+            await finalizeKopilotKbTurn({ articleId })
+          } else {
+            // `expectedTurnId` is load-bearing now that we derive `articleId`
+            // from `sessionContext` rather than a per-turn touched list: it
+            // rejects a stale (prior-turn) snapshot so a later failed turn can't
+            // roll back an article it never wrote.
+            await revertKopilotKbTurn({
+              db,
+              organizationId,
+              userId,
+              articleId,
+              expectedTurnId: turnId,
+            })
+          }
+        } catch (err) {
+          logger.error('Kopilot turn-end KB lifecycle failed', {
+            articleId,
+            turnId,
+            outcome,
+            error: err instanceof Error ? err.message : String(err),
+          })
+        }
+      },
+    },
   }
 }
 

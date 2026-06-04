@@ -1,7 +1,12 @@
 // packages/lib/src/ai/kopilot/capabilities/registry.ts
 
 import type { AgentToolDefinition } from '../../agent-framework/types'
-import type { CapabilityRegistry, PageCapability, SystemPromptAdditionContext } from './types'
+import type {
+  CapabilityLifecycle,
+  CapabilityRegistry,
+  PageCapability,
+  SystemPromptAdditionContext,
+} from './types'
 
 /** Registration key meaning "applies to every page". */
 const GLOBAL_PAGE = '__global__'
@@ -77,6 +82,10 @@ function compileExcludePredicate(
  */
 export function createCapabilityRegistry(): CapabilityRegistry {
   const pages = new Map<string, StoredPage>()
+  // Lifecycles are global, not page-scoped: a turn ends once regardless of the
+  // active page, and each lifecycle self-guards (e.g. KB returns early unless
+  // this turn wrote the active article). Kept in registration order.
+  const lifecycles: CapabilityLifecycle[] = []
 
   return {
     getTools(page: string): AgentToolDefinition[] {
@@ -114,6 +123,10 @@ export function createCapabilityRegistry(): CapabilityRegistry {
       return [...pages.keys()]
     },
 
+    getLifecycles(): CapabilityLifecycle[] {
+      return lifecycles
+    },
+
     getSystemPromptAddition(page: string, ctx: SystemPromptAdditionContext): string | undefined {
       const rendered: string[] = []
       const global = pages.get(GLOBAL_PAGE)
@@ -147,6 +160,7 @@ export function createCapabilityRegistry(): CapabilityRegistry {
     register(capability: PageCapability): void {
       const existing = pages.get(capability.page)
       const compiledExclude = compileExcludePredicate(capability.excludeGlobalTools)
+      if (capability.lifecycle) lifecycles.push(capability.lifecycle)
       if (existing) {
         existing.tools.push(...capability.tools)
         if (capability.systemPromptAddition) {

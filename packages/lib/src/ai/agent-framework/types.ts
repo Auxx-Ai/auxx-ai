@@ -658,8 +658,13 @@ export interface AgentDomainConfig<TDomainState = Record<string, unknown>> {
    * turn-error, an aborted run, or a client disconnect. It does NOT fire when
    * a turn pauses for approval (the turn isn't over). Must not throw — the
    * engine wraps it in try/catch so a hook failure can't mask the turn result.
+   *
+   * `turnId` is the engine's id for the turn that just ended (undefined only if
+   * no turn was active). Domains that scope per-turn side-effects by turn id —
+   * e.g. fanning the hook out to capability lifecycles — read it here instead of
+   * smuggling turn-ephemeral identity through the persisted `domainState`.
    */
-  onTurnEnd?: (state: AgentState, outcome: 'completed' | 'error') => Promise<void>
+  onTurnEnd?: (state: AgentState, outcome: 'completed' | 'error', turnId?: string) => Promise<void>
   /**
    * Optional hook to clear per-turn domain state at the start of a NEW user
    * turn (`submitMessage`) — NOT on approval-resume, which continues the same

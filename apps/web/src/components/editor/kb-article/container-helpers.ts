@@ -3,9 +3,9 @@
 // PM transaction helpers for `tabs` / `accordion` containers.
 // Reorder, add, and remove `panel` children of a container node.
 
-import { generateId } from '@auxx/utils'
 import type { Node as PMNode } from '@tiptap/pm/model'
 import type { Editor } from '@tiptap/react'
+import { nextBlockId } from './block-id'
 
 export interface PanelLite {
   id: string
@@ -40,7 +40,7 @@ function makeEmptyPanel(editor: Editor, label: string, id: string): PMNode {
 export function addPanel(editor: Editor, containerPos: number, label: string): string | null {
   const container = editor.state.doc.nodeAt(containerPos)
   if (!container) return null
-  const id = generateId()
+  const id = nextBlockId(editor.state.doc)
   const panel = makeEmptyPanel(editor, label, id)
   // Insert at the end of the container (just before its closing token).
   // No `scrollIntoView()` — that scrolls the doc to the new node, which

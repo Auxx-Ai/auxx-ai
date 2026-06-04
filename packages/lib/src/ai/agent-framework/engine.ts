@@ -716,7 +716,7 @@ export class AgentEngine {
       if (fired) return
       fired = true
       try {
-        await hook(this.getState(), outcome)
+        await hook(this.getState(), outcome, this.turnId ?? undefined)
       } catch (err) {
         logger.error('onTurnEnd hook failed', {
           turnId: this.turnId,

@@ -496,6 +496,12 @@
       "import": "./dist/kb/markdown/index.mjs",
       "default": "./src/kb/markdown/index.ts"
     },
+    "./kb/markdown/block-id": {
+      "types": "./src/kb/markdown/block-id.ts",
+      "source": "./src/kb/markdown/block-id.ts",
+      "import": "./dist/kb/markdown/block-id.mjs",
+      "default": "./src/kb/markdown/block-id.ts"
+    },
     "./knowledge-sources": {
       "types": "./src/knowledge-sources/index.ts",
       "source": "./src/knowledge-sources/index.ts",

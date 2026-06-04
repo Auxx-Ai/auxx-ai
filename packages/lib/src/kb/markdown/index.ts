@@ -1,6 +1,13 @@
 // packages/lib/src/kb/markdown/index.ts
 
 export { articleToMarkdown } from './article-to-markdown'
+export {
+  BLOCK_ID_PREFIX,
+  blockIdNumber,
+  createBlockIdAllocator,
+  maxBlockNumber,
+  reassignIds,
+} from './block-id'
 export { type BlocksToMdOptions, blocksToMd } from './blocks-to-md'
 export { computeArticleJsonHash, computeContentHash } from './hash'
 export { type FrontmatterFields, mdToBlocks, parseFrontmatter } from './md-to-blocks'
