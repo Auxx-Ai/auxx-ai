@@ -20,8 +20,6 @@ import { useState } from 'react'
 import { api } from '~/trpc/react'
 
 interface CreateKnowledgeSourceDialogProps {
-  /** Optional KB to pre-link the new source into (when opened from a KB editor). */
-  knowledgeBaseId?: string
   open: boolean
   onOpenChange: (open: boolean) => void
 }
@@ -53,12 +51,10 @@ function slugify(s: string): string {
 
 /**
  * Minimal manual-source form. Name + paste rows → create a standalone manual
- * KnowledgeSource (its own hidden KB), then trigger a sync. When opened from a KB
- * editor, the source is also linked into that KB. Manage links later in the source
- * workspace.
+ * KnowledgeSource (its own hidden KB), then trigger a sync. The source's articles are
+ * linked into real KBs afterward (per-article) from each KB's Add menu.
  */
 export function CreateKnowledgeSourceDialog({
-  knowledgeBaseId,
   open,
   onOpenChange,
 }: CreateKnowledgeSourceDialogProps) {
@@ -117,12 +113,8 @@ export function CreateKnowledgeSourceDialog({
         type: 'manual',
         surface: 'publishable',
         config: { items },
-        ...(knowledgeBaseId ? { linkKnowledgeBaseIds: [knowledgeBaseId] } : {}),
       })
       await syncNow.mutateAsync({ id: source.id })
-      // The sync runs in the background worker; nudge the sidebar of the linked KB to
-      // pick up the new articles once it lands.
-      if (knowledgeBaseId) void utils.kb.getArticles.invalidate({ knowledgeBaseId })
       void utils.knowledgeSource.list.invalidate()
       onOpenChange(false)
       reset()

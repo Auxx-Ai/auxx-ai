@@ -4,24 +4,20 @@
 import { ArticleKind } from '@auxx/database/enums'
 import type { ArticleKind as ArticleKindType } from '@auxx/database/types'
 import { Button } from '@auxx/ui/components/button'
-import {
-  Command,
-  CommandGroup,
-  CommandGroupLabel,
-  CommandItem,
-  CommandList,
-  CommandSeparator,
-} from '@auxx/ui/components/command'
 import { EntityIcon, getIcon } from '@auxx/ui/components/icons'
 import { getFullSlugPath } from '@auxx/ui/components/kb/utils'
+import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
-import { ExternalLink, FileText, FolderClosed, Heading, Link2 } from 'lucide-react'
+import { TreeRow } from '@auxx/ui/components/tree-row'
+import { cn } from '@auxx/ui/lib/utils'
+import { Database, ExternalLink, FileText, FolderClosed, Heading, Link2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-import { useCallback, useMemo, useRef } from 'react'
+import { forwardRef, useCallback, useMemo, useRef, useState } from 'react'
 import { useArticleList } from '../../hooks/use-article-list'
 import { useArticleMutations } from '../../hooks/use-article-mutations'
 import type { ArticleMeta } from '../../store/article-store'
 import { usePendingInsertStore } from '../../store/pending-insert-store'
+import { LinkArticlePicker } from '../sidebar/link-article-picker'
 import { ArticleEditorHeader } from './article-editor-header'
 import { ArticleEditorTop } from './article-editor-top'
 
@@ -54,7 +50,8 @@ const HEADER_OPTIONS: QuickCreateOption[] = [
  * container (`tab`, `header`, or `link`). Reuses the article editor's
  * header + top blocks so the surface matches a real article — same
  * page-settings cluster, same icon/title/description chrome — then
- * swaps the body for a quick-create Command list (tab/header) or an
+ * swaps the body for a quick-create list of tree rows (tab/header) — create
+ * actions, a "Link an article" popover, and the existing children — or an
  * Open-link CTA (link). `ArticleCoverStrip` self-gates for these
  * kinds, so the cover slot is hidden automatically.
  */
@@ -66,8 +63,9 @@ export function ContainerArticlePlaceholder({
   const articles = useArticleList(knowledgeBaseId)
   const { isCreating, updateArticleDraft } = useArticleMutations(knowledgeBaseId)
   const setPending = usePendingInsertStore((s) => s.setPending)
-  const commandWrapperRef = useRef<HTMLDivElement>(null)
+  const optionsRef = useRef<HTMLDivElement>(null)
   const linkButtonRef = useRef<HTMLAnchorElement>(null)
+  const [linkOpen, setLinkOpen] = useState(false)
 
   const children = useMemo(
     () =>
@@ -124,8 +122,7 @@ export function ContainerArticlePlaceholder({
       linkButtonRef.current?.focus()
       return
     }
-    const first = commandWrapperRef.current?.querySelector<HTMLElement>('[cmdk-item]')
-    first?.focus()
+    optionsRef.current?.querySelector<HTMLElement>('button')?.focus()
   }, [isLink])
 
   const handleCreate = (kind: ArticleKindType) => {
@@ -168,45 +165,57 @@ export function ContainerArticlePlaceholder({
                   )}
                 </div>
               ) : options ? (
-                <div ref={commandWrapperRef} className='mt-4 w-full text-left'>
-                  <Command className='overflow-hidden rounded-xl border'>
-                    <CommandList>
-                      <CommandGroup>
-                        <CommandGroupLabel>
-                          {article.articleKind === ArticleKind.tab
-                            ? 'Add to this tab'
-                            : 'Add to this section header'}
-                        </CommandGroupLabel>
-                        {options.map(({ kind, label, Icon }) => (
-                          <CommandItem
-                            key={kind}
-                            value={`create-${kind}`}
-                            disabled={isCreating}
-                            onSelect={() => handleCreate(kind)}>
-                            <Icon className='size-4 text-muted-foreground' />
-                            <span>{label}</span>
-                          </CommandItem>
+                <div
+                  ref={optionsRef}
+                  className='mt-4 w-full overflow-hidden rounded-xl border text-left'>
+                  <GroupLabel>
+                    {article.articleKind === ArticleKind.tab
+                      ? 'Add to this tab'
+                      : 'Add to this section header'}
+                  </GroupLabel>
+                  <div className='flex flex-col p-1'>
+                    {options.map(({ kind, label, Icon }) => (
+                      <RowButton
+                        key={kind}
+                        disabled={isCreating}
+                        onClick={() => handleCreate(kind)}>
+                        <TreeRow
+                          icon={<Icon className='size-4 text-muted-foreground' />}
+                          title={label}
+                        />
+                      </RowButton>
+                    ))}
+                    <Popover open={linkOpen} onOpenChange={setLinkOpen}>
+                      <PopoverTrigger asChild>
+                        <RowButton>
+                          <TreeRow
+                            icon={<Database className='size-4 text-muted-foreground' />}
+                            title='Link an article'
+                          />
+                        </RowButton>
+                      </PopoverTrigger>
+                      <PopoverContent align='start' className='w-72 p-0'>
+                        <LinkArticlePicker
+                          knowledgeBaseId={knowledgeBaseId}
+                          targetParentArticleId={article.id}
+                          onClose={() => setLinkOpen(false)}
+                        />
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+                  {children.length > 0 && (
+                    <>
+                      <div className='border-t' />
+                      <GroupLabel>Inside</GroupLabel>
+                      <div className='flex flex-col p-1'>
+                        {children.map((child) => (
+                          <RowButton key={child.id} onClick={() => handleOpenChild(child)}>
+                            <TreeRow icon={childIcon(child)} title={child.title || 'Untitled'} />
+                          </RowButton>
                         ))}
-                      </CommandGroup>
-                      {children.length > 0 && (
-                        <>
-                          <CommandSeparator />
-                          <CommandGroup>
-                            <CommandGroupLabel>Inside</CommandGroupLabel>
-                            {children.map((child) => (
-                              <CommandItem
-                                key={child.id}
-                                value={`open-${child.id}`}
-                                onSelect={() => handleOpenChild(child)}>
-                                {childIcon(child)}
-                                <span className='truncate'>{child.title || 'Untitled'}</span>
-                              </CommandItem>
-                            ))}
-                          </CommandGroup>
-                        </>
-                      )}
-                    </CommandList>
-                  </Command>
+                      </div>
+                    </>
+                  )}
                 </div>
               ) : null}
             </div>
@@ -216,3 +225,27 @@ export function ContainerArticlePlaceholder({
     </div>
   )
 }
+
+/** Small uppercase-ish group heading, mirrors the old CommandGroup label. */
+function GroupLabel({ children }: { children: React.ReactNode }) {
+  return <div className='px-2 py-1.5 text-xs font-medium text-muted-foreground'>{children}</div>
+}
+
+/**
+ * Full-width clickable row wrapping a {@link TreeRow}. forwardRef so it can be a
+ * `PopoverTrigger asChild` (Radix needs the ref + click props on the trigger).
+ */
+const RowButton = forwardRef<HTMLButtonElement, React.ComponentProps<'button'>>(function RowButton(
+  { className, children, ...props },
+  ref
+) {
+  return (
+    <button
+      ref={ref}
+      type='button'
+      className={cn('block w-full rounded-md text-left disabled:opacity-50', className)}
+      {...props}>
+      {children}
+    </button>
+  )
+})

@@ -23,8 +23,6 @@ export interface SyncCtx {
   source: KnowledgeSourceRow
   /** The source's owned (hidden) KB — articles home + embed here. */
   kb: KnowledgeBaseRow
-  /** User-facing KBs this source is linked into — new/updated items fan out to these. */
-  linkedKbIds: string[]
 }
 
 export interface SourceSink {
@@ -32,6 +30,4 @@ export interface SourceSink {
   archiveItem(ctx: SyncCtx, externalId: string): Promise<void>
   /** Existing items for orphan reconciliation — content items only, no structural folders. */
   listExisting(ctx: SyncCtx): Promise<{ externalId: string; contentHash: string }[]>
-  /** Optional post-pass: propagate the synced tree into any linked user-facing KBs. */
-  reconcileLinks?(ctx: SyncCtx): Promise<void>
 }

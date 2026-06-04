@@ -11,11 +11,11 @@ import {
   enqueueSourceSync,
   getCrawlProvider,
   getSource,
-  linkSourceToKb,
   listSourceLinks,
   listSources,
   pauseSource,
   resumeSource,
+  unlinkSourceArticleFromKb,
   unlinkSourceFromKb,
   updateSource,
 } from '@auxx/lib/knowledge-sources'
@@ -69,13 +69,9 @@ const scheduleFields = {
   scheduleConfig: scheduleConfigSchema.nullish(),
 }
 
-// Optional: link the new source's content into these user-facing KBs right after create.
-const linkKnowledgeBaseIds = z.array(z.string().min(1)).optional()
-
 const manualSourceSchema = z.object({
   name: z.string().min(1),
   type: z.literal('manual'),
-  linkKnowledgeBaseIds,
   surface: surfaceSchema,
   config: z.object({ items: z.array(manualItemSchema).default([]) }).default({ items: [] }),
   ...scheduleFields,
@@ -84,7 +80,6 @@ const manualSourceSchema = z.object({
 const websiteSourceSchema = z.object({
   name: z.string().min(1),
   type: z.literal('website'),
-  linkKnowledgeBaseIds,
   surface: surfaceSchema,
   config: z.object({
     url: z.string().url(),
@@ -128,7 +123,9 @@ export const knowledgeSourceRouter = createTRPCRouter({
       })
     }
     const organizationId = requireOrgId(ctx.session)
-    const source = await createSource(ctx.db, organizationId, {
+    // Linking is a post-sync, per-article action (from the KB side) — there are no
+    // articles to pick until the first sync completes, so create never pre-links.
+    return createSource(ctx.db, organizationId, {
       name: input.name,
       type: input.type,
       surface: input.surface,
@@ -137,11 +134,6 @@ export const knowledgeSourceRouter = createTRPCRouter({
       scheduleConfig: input.scheduleConfig,
       createdById: ctx.session.user.id,
     })
-    // Pre-link into chosen KBs (content materializes on the first sync's reconcile pass).
-    for (const kbId of input.linkKnowledgeBaseIds ?? []) {
-      await linkSourceToKb(ctx.db, organizationId, source.id, kbId)
-    }
-    return source
   }),
 
   update: protectedProcedure
@@ -176,16 +168,26 @@ export const knowledgeSourceRouter = createTRPCRouter({
       return listSourceLinks(ctx.db, requireOrgId(ctx.session), input.id)
     }),
 
-  linkToKnowledgeBases: protectedProcedure
-    .input(z.object({ id: z.string(), knowledgeBaseIds: z.array(z.string().min(1)).min(1) }))
+  // Remove one linked article's placement from a KB (source content untouched).
+  unlinkArticle: protectedProcedure
+    .input(
+      z.object({
+        id: z.string(),
+        knowledgeBaseId: z.string().min(1),
+        articleId: z.string().min(1),
+      })
+    )
     .mutation(async ({ ctx, input }) => {
-      const organizationId = requireOrgId(ctx.session)
-      for (const kbId of input.knowledgeBaseIds) {
-        await linkSourceToKb(ctx.db, organizationId, input.id, kbId)
-      }
-      return { success: true }
+      return unlinkSourceArticleFromKb(
+        ctx.db,
+        requireOrgId(ctx.session),
+        input.id,
+        input.articleId,
+        input.knowledgeBaseId
+      )
     }),
 
+  // Bulk-unlink: remove ALL of a source's articles from one KB.
   unlinkFromKnowledgeBase: protectedProcedure
     .input(z.object({ id: z.string(), knowledgeBaseId: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {

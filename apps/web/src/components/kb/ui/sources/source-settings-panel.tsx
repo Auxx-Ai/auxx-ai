@@ -7,17 +7,10 @@ import { Button } from '@auxx/ui/components/button'
 import { LastUpdated } from '@auxx/ui/components/last-updated'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Section } from '@auxx/ui/components/section'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@auxx/ui/components/select'
 import { Tabs, TabsList, TabsTrigger } from '@auxx/ui/components/tabs'
 import { Textarea } from '@auxx/ui/components/textarea'
 import { toastError } from '@auxx/ui/components/toast'
-import { Cog, ScrollText, X } from 'lucide-react'
+import { Cog, FileText, ScrollText, X } from 'lucide-react'
 import { parseAsStringLiteral, useQueryState } from 'nuqs'
 import { useMemo, useState } from 'react'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
@@ -26,9 +19,10 @@ import { VarEditorField, VarEditorFieldRow } from '~/components/workflow/ui/inpu
 import { api } from '~/trpc/react'
 import { CrawlSectionTree, type SitemapNode } from '../editor/crawl-section-picker'
 import { type ScheduleConfig, SyncFrequencyPicker } from '../editor/sync-frequency-picker'
+import { SourceArticleTree } from './source-article-tree'
 import type { KnowledgeSource, SourceStatus } from './sources-provider'
 
-const PANEL_VALUES = ['general', 'runs'] as const
+const PANEL_VALUES = ['general', 'articles', 'runs'] as const
 
 const STATUS_PILL: Record<SourceStatus, { label: string; className: string }> = {
   live: { label: 'Live', className: 'bg-good-500/15 text-good-600' },
@@ -55,6 +49,7 @@ export function SourceSettingsPanel({ source }: { source: KnowledgeSource }) {
     'panel',
     parseAsStringLiteral(PANEL_VALUES).withDefault('general')
   )
+  const hasArticles = source.surface !== 'ai-only'
 
   return (
     <div className='flex flex-1 flex-col overflow-hidden'>
@@ -64,6 +59,12 @@ export function SourceSettingsPanel({ source }: { source: KnowledgeSource }) {
             <Cog />
             General
           </TabsTrigger>
+          {hasArticles && (
+            <TabsTrigger value='articles' variant='outline'>
+              <FileText />
+              Articles
+            </TabsTrigger>
+          )}
           <TabsTrigger value='runs' variant='outline'>
             <ScrollText />
             Runs
@@ -71,7 +72,13 @@ export function SourceSettingsPanel({ source }: { source: KnowledgeSource }) {
         </TabsList>
       </Tabs>
 
-      {panel === 'general' ? <GeneralPanel source={source} /> : <RunsPanel source={source} />}
+      {panel === 'articles' && hasArticles ? (
+        <SourceArticleTree source={source} />
+      ) : panel === 'runs' ? (
+        <RunsPanel source={source} />
+      ) : (
+        <GeneralPanel source={source} />
+      )}
     </div>
   )
 }
@@ -318,27 +325,21 @@ function GeneralPanel({ source }: { source: KnowledgeSource }) {
   )
 }
 
-/** Manage which user-facing KBs this source's content is linked into. */
+/**
+ * Read-only summary of which user-facing KBs this source is linked into, with a bulk
+ * "remove from KB" action. Linking itself is per-article and initiated from the target
+ * KB's Add menu (you pick individual articles there) — not from here.
+ */
 function LinkedKnowledgeBases({ source }: { source: KnowledgeSource }) {
   const utils = api.useUtils()
   const links = api.knowledgeSource.listLinks.useQuery({ id: source.id })
-  const kbList = api.kb.list.useQuery(undefined, { staleTime: 5 * 60 * 1000 })
 
-  const linkedIds = new Set((links.data ?? []).map((l) => l.id))
-  const available = (kbList.data ?? []).filter((kb) => !linkedIds.has(kb.id))
-
-  const invalidate = () => {
-    void utils.knowledgeSource.listLinks.invalidate({ id: source.id })
-  }
-  const link = api.knowledgeSource.linkToKnowledgeBases.useMutation({
-    onSuccess: invalidate,
-    onError: (e) => toastError({ title: 'Could not link', description: e.message }),
-  })
   const unlink = api.knowledgeSource.unlinkFromKnowledgeBase.useMutation({
-    onSuccess: invalidate,
+    onSuccess: () => {
+      void utils.knowledgeSource.listLinks.invalidate({ id: source.id })
+    },
     onError: (e) => toastError({ title: 'Could not unlink', description: e.message }),
   })
-  const busy = link.isPending || unlink.isPending
 
   return (
     <div className='flex flex-col gap-3'>
@@ -350,7 +351,7 @@ function LinkedKnowledgeBases({ source }: { source: KnowledgeSource }) {
               <button
                 type='button'
                 className='text-muted-foreground hover:text-foreground'
-                disabled={busy}
+                disabled={unlink.isPending}
                 onClick={() => unlink.mutate({ id: source.id, knowledgeBaseId: kb.id })}>
                 <X className='size-3' />
               </button>
@@ -360,24 +361,11 @@ function LinkedKnowledgeBases({ source }: { source: KnowledgeSource }) {
       ) : (
         <p className='text-sm text-muted-foreground'>Not linked into any knowledge base yet.</p>
       )}
-
-      {available.length > 0 && (
-        <Select
-          value=''
-          disabled={busy}
-          onValueChange={(kbId) => link.mutate({ id: source.id, knowledgeBaseIds: [kbId] })}>
-          <SelectTrigger className='w-full'>
-            <SelectValue placeholder='Link into a knowledge base…' />
-          </SelectTrigger>
-          <SelectContent>
-            {available.map((kb) => (
-              <SelectItem key={kb.id} value={kb.id}>
-                {kb.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      )}
+      <p className='text-xs text-muted-foreground'>
+        Link articles from a knowledge base's{' '}
+        <span className='font-medium'>Add → Link a source</span> menu. Removing a knowledge base
+        here unlinks all of this source's articles from it.
+      </p>
     </div>
   )
 }

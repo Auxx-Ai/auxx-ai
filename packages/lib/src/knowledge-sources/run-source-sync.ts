@@ -4,7 +4,7 @@
 
 import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { and, eq, isNotNull, ne } from 'drizzle-orm'
+import { and, eq, ne } from 'drizzle-orm'
 import { connectorFor } from './connectors'
 import { sinkForSurface } from './sinks'
 import type { SyncCtx } from './sinks/types'
@@ -49,22 +49,7 @@ export async function runSourceSync(
     })
     if (!kb) throw new Error(`Owned KnowledgeBase ${source.ownedKnowledgeBaseId} not found`)
 
-    // KBs this source is already linked into — new/changed items fan out to each so a
-    // linked KB stays in sync without a re-link. Derived from existing linked placements.
-    const linkRows = await db
-      .selectDistinct({ knowledgeBaseId: schema.ArticlePlacement.knowledgeBaseId })
-      .from(schema.ArticlePlacement)
-      .where(
-        and(
-          eq(schema.ArticlePlacement.organizationId, organizationId),
-          eq(schema.ArticlePlacement.linkedFromSourceId, sourceId),
-          isNotNull(schema.ArticlePlacement.linkedFromSourceId),
-          ne(schema.ArticlePlacement.knowledgeBaseId, source.ownedKnowledgeBaseId)
-        )
-      )
-    const linkedKbIds = linkRows.map((r) => r.knowledgeBaseId)
-
-    const ctx: SyncCtx = { db, orgId: organizationId, source, kb, linkedKbIds }
+    const ctx: SyncCtx = { db, orgId: organizationId, source, kb }
     const connector = connectorFor(source.type)
     const sink = sinkForSurface(source)
 
@@ -91,9 +76,6 @@ export async function runSourceSync(
     for (const { externalId } of existing) {
       if (!seen.has(externalId)) await sink.archiveItem(ctx, externalId)
     }
-
-    // Propagate the freshly-synced tree into any KBs this source is linked into.
-    await sink.reconcileLinks?.(ctx)
 
     const itemCount = seen.size
     await db

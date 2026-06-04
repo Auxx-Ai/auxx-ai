@@ -129,16 +129,8 @@ export function KBArticlesHeaderActions({ knowledgeBaseId }: KBArticlesHeaderAct
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
-      <CreateKnowledgeSourceDialog
-        knowledgeBaseId={knowledgeBaseId}
-        open={isSourceDialogOpen}
-        onOpenChange={setIsSourceDialogOpen}
-      />
-      <CrawlWebsiteWizard
-        knowledgeBaseId={knowledgeBaseId}
-        open={isCrawlWizardOpen}
-        onOpenChange={setIsCrawlWizardOpen}
-      />
+      <CreateKnowledgeSourceDialog open={isSourceDialogOpen} onOpenChange={setIsSourceDialogOpen} />
+      <CrawlWebsiteWizard open={isCrawlWizardOpen} onOpenChange={setIsCrawlWizardOpen} />
       <input
         ref={importInputRef}
         type='file'

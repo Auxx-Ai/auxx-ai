@@ -10,15 +10,13 @@ import { Label } from '@auxx/ui/components/label'
 import { Textarea } from '@auxx/ui/components/textarea'
 import { toastError } from '@auxx/ui/components/toast'
 import { ToggleCard } from '@auxx/ui/components/toggle-card'
-import { Check, Globe } from 'lucide-react'
+import { Globe } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { api } from '~/trpc/react'
 import { CrawlSectionTree, countPages, type SitemapNode } from './crawl-section-picker'
 import { type ScheduleConfig, SyncFrequencyPicker } from './sync-frequency-picker'
 
 interface CrawlWebsiteWizardProps {
-  /** Optional KB to pre-link the new source into (when opened from a KB editor). */
-  knowledgeBaseId?: string
   open: boolean
   onOpenChange: (open: boolean) => void
 }
@@ -39,14 +37,10 @@ const STEP_TITLES: Record<Step, string> = {
  * Website crawler wizard: Connect → Pages → Target → Review. Discovers a sitemap via the
  * crawl provider, lets the user pick top-level sections, then creates a `website`
  * KnowledgeSource (its own hidden KB) and triggers a sync. Crawled pages materialize as
- * Locked managed articles in the source; the Target step optionally links the source into
- * existing knowledge bases.
+ * Locked managed articles in the source; once synced, individual articles are linked into
+ * real KBs from that KB's Add menu (per-article, post-sync).
  */
-export function CrawlWebsiteWizard({
-  knowledgeBaseId,
-  open,
-  onOpenChange,
-}: CrawlWebsiteWizardProps) {
+export function CrawlWebsiteWizard({ open, onOpenChange }: CrawlWebsiteWizardProps) {
   const [step, setStep] = useState<Step>('connect')
   const [url, setUrl] = useState('')
   const [name, setName] = useState('')
@@ -54,11 +48,9 @@ export function CrawlWebsiteWizard({
   const [selectedPaths, setSelectedPaths] = useState<string[]>([])
   const [excludeText, setExcludeText] = useState('')
   const [mainContentOnly, setMainContentOnly] = useState(true)
-  const [linkKbIds, setLinkKbIds] = useState<string[]>(knowledgeBaseId ? [knowledgeBaseId] : [])
   const [schedule, setSchedule] = useState<ScheduleConfig | null>(null)
 
   const utils = api.useUtils()
-  const knowledgeBases = api.kb.list.useQuery()
   const checkUrl = api.knowledgeSource.checkUrl.useMutation()
   const getSitemapTree = api.knowledgeSource.getSitemapTree.useMutation()
   const createSource = api.knowledgeSource.create.useMutation()
@@ -83,14 +75,8 @@ export function CrawlWebsiteWizard({
     setSelectedPaths([])
     setExcludeText('')
     setMainContentOnly(true)
-    setLinkKbIds(knowledgeBaseId ? [knowledgeBaseId] : [])
     setSchedule(null)
   }
-
-  const toggleLink = (kbId: string) =>
-    setLinkKbIds((prev) =>
-      prev.includes(kbId) ? prev.filter((id) => id !== kbId) : [...prev, kbId]
-    )
 
   const close = (next: boolean) => {
     if (!next) reset()
@@ -157,10 +143,8 @@ export function CrawlWebsiteWizard({
         },
         syncBehavior: schedule ? 'scheduled' : 'manual',
         scheduleConfig: schedule,
-        ...(linkKbIds.length > 0 ? { linkKnowledgeBaseIds: linkKbIds } : {}),
       })
       await syncNow.mutateAsync({ id: source.id })
-      for (const kbId of linkKbIds) void utils.kb.getArticles.invalidate({ knowledgeBaseId: kbId })
       void utils.knowledgeSource.list.invalidate()
       close(false)
     } catch (error) {
@@ -170,10 +154,6 @@ export function CrawlWebsiteWizard({
       })
     }
   }
-
-  const linkKbNames = (knowledgeBases.data ?? [])
-    .filter((kb) => linkKbIds.includes(kb.id))
-    .map((kb) => kb.name)
 
   const goBack = () => {
     const idx = STEP_ORDER.indexOf(step)
@@ -186,7 +166,7 @@ export function CrawlWebsiteWizard({
         <div className='flex flex-col'>
           <DialogNav
             title='Crawl a website'
-            description='Discover a site, pick the sections to ingest, and the crawler files each page as a locked, source-managed article in its own source — optionally linked into your knowledge bases.'
+            description='Discover a site, pick the sections to ingest, and the crawler files each page as a locked, source-managed article in its own source. Link articles into a knowledge base afterward from that KB.'
             onBack={step === 'connect' ? undefined : goBack}
             backDisabled={isSubmitting}
             crumbs={[{ label: STEP_TITLES[step], icon: <Globe /> }]}
@@ -213,7 +193,7 @@ export function CrawlWebsiteWizard({
             </DialogNavPage>
 
             <DialogNavPage value='pages' size='lg'>
-              <div className='flex flex-col gap-4 p-3'>
+              <div className='flex flex-col gap-4 p-3 pe-3'>
                 <div className='flex flex-col gap-1.5'>
                   <div className='flex items-center justify-between'>
                     <Label>Sections to crawl</Label>
@@ -263,36 +243,10 @@ export function CrawlWebsiteWizard({
                     placeholder='e.g. Docs site'
                   />
                 </div>
-                <div className='flex flex-col gap-1.5'>
-                  <Label>Link into knowledge bases (optional)</Label>
-                  <p className='text-muted-foreground text-xs'>
-                    The crawl becomes its own source. Pick any knowledge bases to surface it in —
-                    you can change this anytime in the source settings.
-                  </p>
-                  <div className='flex max-h-48 flex-col gap-0.5 overflow-auto rounded-md border p-1'>
-                    {(knowledgeBases.data ?? []).length === 0 ? (
-                      <p className='px-2 py-1.5 text-muted-foreground text-xs'>
-                        No knowledge bases yet.
-                      </p>
-                    ) : (
-                      (knowledgeBases.data ?? []).map((kb) => {
-                        const checked = linkKbIds.includes(kb.id)
-                        return (
-                          <button
-                            key={kb.id}
-                            type='button'
-                            onClick={() => toggleLink(kb.id)}
-                            className={`flex items-center justify-between rounded px-2 py-1.5 text-left text-sm hover:bg-muted ${
-                              checked ? 'bg-muted' : ''
-                            }`}>
-                            <span className='truncate'>{kb.name}</span>
-                            {checked && <Check className='size-4 text-info' />}
-                          </button>
-                        )
-                      })
-                    )}
-                  </div>
-                </div>
+                <p className='text-muted-foreground text-xs'>
+                  The crawl becomes its own source. Once it finishes, link individual articles into
+                  a knowledge base from that KB's <span className='font-medium'>Add</span> menu.
+                </p>
                 <SyncFrequencyPicker value={schedule} onChange={setSchedule} />
                 <ToggleCard
                   title='AI-only (catalog)'
@@ -313,12 +267,6 @@ export function CrawlWebsiteWizard({
                   <Row
                     label='Sections'
                     value={`${selectedPaths.length} selected · ~${selectedPageCount} pages`}
-                  />
-                  <Row
-                    label='Link into'
-                    value={
-                      linkKbNames.length > 0 ? linkKbNames.join(', ') : 'Not linked (source only)'
-                    }
                   />
                   <Row label='Sync' value={describeSchedule(schedule)} />
                   <Row label='Main content only' value={mainContentOnly ? 'Yes' : 'No'} />

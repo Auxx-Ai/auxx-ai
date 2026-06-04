@@ -14,10 +14,12 @@ import {
   useCommandNavigation,
 } from '@auxx/ui/components/command'
 import { EntityIcon } from '@auxx/ui/components/icons'
-import { ChevronRight, CornerDownRight } from 'lucide-react'
+import { ChevronRight, CornerDownRight, Loader2 } from 'lucide-react'
 import { type KeyboardEvent, useCallback, useMemo, useState } from 'react'
+import { api } from '~/trpc/react'
 import { useArticleList } from '../../hooks/use-article-list'
 import { useKnowledgeBases } from '../../hooks/use-knowledge-bases'
+import { normalizeServerArticle } from '../../store/normalize-server-article'
 
 interface NavItem {
   /** When `kind` is omitted, this entry is a KB root (cross-KB picker). */
@@ -52,6 +54,14 @@ export interface ArticlePickerProps {
    * navigation still works when the search is empty.
    */
   flattenSearch?: boolean
+  /**
+   * Cross-KB mode only (no `knowledgeBaseId`): list these KBs at the root instead of
+   * `useKnowledgeBases()`. Lets callers include KBs the default list hides — e.g. sources'
+   * hidden KBs (`api.kb.list` only returns `kind='standard'`).
+   */
+  knowledgeBasesOverride?: { id: string; name: string }[]
+  /** Focus the search input on mount (e.g. when embedded in a morphing dropdown). */
+  autoFocusSearch?: boolean
   onPick: (articleId: string) => void
   onClose: () => void
 }
@@ -76,6 +86,8 @@ function ArticlePickerContent({
   rootLabel = 'Pick an article',
   searchPlaceholder,
   flattenSearch,
+  knowledgeBasesOverride,
+  autoFocusSearch,
   onPick,
   onClose,
 }: ArticlePickerProps) {
@@ -86,12 +98,27 @@ function ArticlePickerContent({
   // Cross-KB scope: when no `knowledgeBaseId` is provided, the root is a KB
   // list and we drill into a KB on select. Inside a KB, behave like the
   // single-KB form.
+  const isCrossKb = !knowledgeBaseId
   const { knowledgeBases } = useKnowledgeBases()
+  const kbList = knowledgeBasesOverride ?? knowledgeBases
   const activeKbId =
     knowledgeBaseId ??
     (stack[0]?.kind === 'kb' ? stack[0].id : isAtRoot ? null : (current?.id ?? null))
 
-  const articles = useArticleList(activeKbId)
+  // Single-KB mode reads the global store (reflects optimistic moves). Cross-KB mode
+  // fetches the drilled-into KB directly — loading a second KB into the shared store
+  // would clobber `parentId` for articles shared across KBs (see plan, constraint 2).
+  const storeArticles = useArticleList(knowledgeBaseId)
+  const crossKbArticles = api.kb.getArticles.useQuery(
+    { knowledgeBaseId: activeKbId ?? '', includeUnpublished: true },
+    { enabled: isCrossKb && !!activeKbId }
+  )
+  const fetchedArticles = useMemo(
+    () => ((crossKbArticles.data as unknown[]) ?? []).map(normalizeServerArticle),
+    [crossKbArticles.data]
+  )
+  const articles = isCrossKb ? fetchedArticles : storeArticles
+  const articlesLoading = isCrossKb && !!activeKbId && crossKbArticles.isLoading
 
   const allowedSet = useMemo(() => new Set(allowedKinds), [allowedKinds])
   const drillableSet = useMemo(() => new Set(drillableKinds), [drillableKinds])
@@ -139,8 +166,8 @@ function ArticlePickerContent({
 
   const visibleKbs = useMemo(() => {
     if (knowledgeBaseId || activeKbId) return []
-    return knowledgeBases.filter((kb) => !q || (kb.name ?? '').toLowerCase().includes(q))
-  }, [knowledgeBaseId, activeKbId, knowledgeBases, q])
+    return kbList.filter((kb) => !q || (kb.name ?? '').toLowerCase().includes(q))
+  }, [knowledgeBaseId, activeKbId, kbList, q])
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLDivElement>) => {
@@ -176,9 +203,14 @@ function ArticlePickerContent({
   return (
     <Command className='w-72 overflow-hidden' shouldFilter={false} onKeyDown={handleKeyDown}>
       <CommandBreadcrumb rootLabel={rootLabel} />
-      <CommandInput placeholder={placeholder} value={search} onValueChange={setSearch} />
+      <CommandInput
+        placeholder={placeholder}
+        value={search}
+        onValueChange={setSearch}
+        autoFocus={autoFocusSearch}
+      />
       <CommandList>
-        <CommandEmpty>No matches.</CommandEmpty>
+        {!articlesLoading && <CommandEmpty>No matches.</CommandEmpty>}
 
         {!insideKb && visibleKbs.length > 0 && (
           <CommandGroup heading='Knowledge bases'>
@@ -201,7 +233,13 @@ function ArticlePickerContent({
           </CommandGroup>
         )}
 
-        {insideKb && (
+        {insideKb && articlesLoading && (
+          <div className='flex items-center justify-center py-6'>
+            <Loader2 className='size-4 animate-spin text-muted-foreground' />
+          </div>
+        )}
+
+        {insideKb && !articlesLoading && (
           <CommandGroup
             heading={
               current?.kind === 'tab' || current?.kind === 'category' ? current.label : 'Articles'

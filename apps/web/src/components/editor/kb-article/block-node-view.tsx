@@ -236,6 +236,7 @@ export function BlockNodeView({
   const isEmpty = node.content.size === 0
   const isFirstBlock = pos === 0
   const showPlaceholder =
+    editor.isEditable &&
     isEmpty &&
     !isDivider &&
     !isImage &&

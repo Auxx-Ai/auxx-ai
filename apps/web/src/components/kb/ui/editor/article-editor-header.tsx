@@ -9,6 +9,7 @@ import { Cog, Eye, X } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useArticleList } from '../../hooks/use-article-list'
 import type { ArticleMeta } from '../../store/article-store'
+import { useArticleEditorSurface } from './article-editor-surface'
 import { ArticlePublishCluster } from './article-publish-cluster'
 import { ArticleSettingsDialog } from './article-settings-dialog'
 import { HiddenParentBadge } from './hidden-parent-badge'
@@ -39,6 +40,9 @@ interface ArticleEditorHeaderProps {
 export function ArticleEditorHeader({ article, knowledgeBaseId, diff }: ArticleEditorHeaderProps) {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const articles = useArticleList(knowledgeBaseId)
+  // Source-owned KBs aren't independently publishable, so the embedding surface
+  // hides the publish cluster + Preview link entirely.
+  const { hidePublishing } = useArticleEditorSurface()
 
   const previewHref = useMemo(
     () => getKbPreviewHref(knowledgeBaseId, getFullSlugPath(article, articles)),
@@ -54,7 +58,9 @@ export function ArticleEditorHeader({ article, knowledgeBaseId, diff }: ArticleE
         onClick={() => setIsSettingsOpen(true)}>
         <Cog /> Page settings
       </Button>
-      <ArticlePublishCluster article={article} knowledgeBaseId={knowledgeBaseId} />
+      {!hidePublishing && (
+        <ArticlePublishCluster article={article} knowledgeBaseId={knowledgeBaseId} />
+      )}
       <HiddenParentBadge article={article} knowledgeBaseId={knowledgeBaseId} />
       {diff ? (
         <>
@@ -75,7 +81,7 @@ export function ArticleEditorHeader({ article, knowledgeBaseId, diff }: ArticleE
             <LegendChip color='amber' label='Changed' count={diff.stats.modified} />
           </div>
         </>
-      ) : (
+      ) : hidePublishing ? null : (
         <Button variant='outline' size='xs' className='ml-auto shrink-0' asChild>
           <a href={previewHref} target='_blank' rel='noopener'>
             <Eye /> Preview

@@ -9,7 +9,6 @@ import { updateArticleDraft } from '../../kb/articles/update-article'
 import { enqueueKBSync } from '../../kb/kb-sync-queue'
 import { computeContentHash } from '../../kb/markdown/hash'
 import { mdToBlocks } from '../../kb/markdown/md-to-blocks'
-import { linkSourceToKb } from '../source-links'
 import {
   ensurePathFolders,
   ensureRootFolder,
@@ -88,13 +87,10 @@ export const articleSink: SourceSink = {
     })
   },
 
-  // After the item loop, backfill any KB this source is linked into with placements for
-  // new articles (idempotent, parent-first). Keeps linked KBs in sync on every re-sync.
-  async reconcileLinks(ctx) {
-    for (const kbId of ctx.linkedKbIds) {
-      await linkSourceToKb(ctx.db, ctx.orgId, ctx.source.id, kbId)
-    }
-  },
+  // Links are per-article now: a linked placement points at the same Article, so content
+  // edits flow through on re-sync without any fan-out, and archive/delete cascades clean up
+  // the placement. New source articles do NOT auto-join — they're linked manually per KB.
+  // (No reconcileLinks needed; the SourceSink interface leaves it optional.)
 
   async listExisting(ctx) {
     const arts = await listArticlesBySource(ctx)

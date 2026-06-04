@@ -16,9 +16,16 @@ import { useMemo } from 'react'
 import { LoadingSpinner } from '~/components/global/loading-content'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
-import { SourceContentList } from './source-content-list'
+import { KnowledgeBaseProvider } from '../../providers/knowledge-base-provider'
+import type { ArticleMeta } from '../../store/article-store'
+import { ArticleEditorSurfaceProvider } from '../editor/article-editor-surface'
+import { KBPreviewHintProvider } from '../preview/preview-hint-context'
+import { SourceArticleView } from './source-article-view'
 import { SourceSettingsPanel } from './source-settings-panel'
 import type { SourceStatus } from './sources-provider'
+
+/** Keep article nav inside the source workspace (stable ref so the surface memo holds). */
+const buildSourceArticleHref = (a: ArticleMeta) => `?panel=articles&article=${a.id}`
 
 const STATUS_PILL: Record<SourceStatus, { label: string; className: string }> = {
   live: { label: 'Live', className: 'bg-good-500/15 text-good-600' },
@@ -116,9 +123,21 @@ export function SourceWorkspace({ sourceId }: { sourceId: string }) {
         </MainPageBreadcrumb>
       </MainPageHeader>
 
-      <MainPageContent leftPanels={leftPanels}>
-        {source ? <SourceContentList source={source} /> : <LoadingSpinner />}
-      </MainPageContent>
+      {source ? (
+        <KnowledgeBaseProvider knowledgeBaseId={source.ownedKnowledgeBaseId}>
+          <KBPreviewHintProvider>
+            <ArticleEditorSurfaceProvider buildHref={buildSourceArticleHref} hidePublishing>
+              <MainPageContent leftPanels={leftPanels}>
+                <SourceArticleView source={source} />
+              </MainPageContent>
+            </ArticleEditorSurfaceProvider>
+          </KBPreviewHintProvider>
+        </KnowledgeBaseProvider>
+      ) : (
+        <MainPageContent leftPanels={leftPanels}>
+          <LoadingSpinner />
+        </MainPageContent>
+      )}
     </MainPage>
   )
 }

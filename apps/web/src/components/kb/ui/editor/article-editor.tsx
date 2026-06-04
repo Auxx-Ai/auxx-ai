@@ -177,6 +177,7 @@ export function ArticleEditor({ article, knowledgeBaseId }: ArticleEditorProps) 
                     knowledgeBaseId={knowledgeBaseId}
                     onReady={handleBodyEditorReady}
                     readOnly={bodyReadOnly}
+                    hideGutter={managed}
                   />
                 )}
                 {locked && (

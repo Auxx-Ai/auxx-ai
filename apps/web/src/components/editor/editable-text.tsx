@@ -130,8 +130,9 @@ export const EditableText = forwardRef<EditableTextHandle, EditableTextProps>(fu
     }
   }
 
-  // Determine if the placeholder should be shown in the display view
-  const showPlaceholder = !text && placeholder
+  // Determine if the placeholder should be shown in the display view. A read-only
+  // field with no value renders nothing — the placeholder is an editing affordance.
+  const showPlaceholder = !text && placeholder && !readOnly
 
   return (
     <div className={cn('relative inline-block', containerClassName)}>

@@ -4,17 +4,11 @@
 import type { ArgRestriction } from '@auxx/lib/agents/restrictions/client'
 import { fieldTypeOptions } from '@auxx/lib/custom-fields/types'
 import { Button } from '@auxx/ui/components/button'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@auxx/ui/components/dialog'
+import { Dialog, DialogContent, DialogFooter } from '@auxx/ui/components/dialog'
+import { DialogNav, DialogNavPage, DialogNavPages } from '@auxx/ui/components/dialog-nav'
 import { EntityIcon } from '@auxx/ui/components/icons'
+import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
-import { ChevronLeft } from 'lucide-react'
 import { type ReactNode, useEffect, useMemo, useState } from 'react'
 import { ToolReferenceList } from '~/components/pickers/tool-picker/tool-reference-list'
 import { VarEditorField, VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
@@ -163,109 +157,123 @@ export function AddRestrictionDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className='max-w-lg'>
-        <DialogHeader>
-          <DialogTitle className='flex items-center gap-2'>
-            {step === 'args' && !editing ? (
-              <button
-                type='button'
-                aria-label='Back'
-                className='rounded-md p-0.5 hover:bg-primary/5'
-                onClick={() => setStep('tool')}>
-                <ChevronLeft className='size-4 text-muted-foreground' />
-              </button>
-            ) : null}
-            {step === 'tool' ? 'Add restriction' : (selectedTool?.displayName ?? 'Restrictions')}
-          </DialogTitle>
-          <DialogDescription>
-            {step === 'tool'
-              ? 'Pick a tool, then bind its arguments.'
-              : 'Pin each argument to a value, or leave it for the model to decide.'}
-          </DialogDescription>
-        </DialogHeader>
-
-        {step === 'tool' ? (
-          <ToolReferenceList
-            filterNames={toolMeta.enabledCatalogNames}
-            onSelectSingle={handleSelectTool}
-            className='border'
+      <DialogContent innerClassName='p-0' position='tc' size='content'>
+        <div className='flex flex-col'>
+          <DialogNav
+            title='Add restriction'
+            description='Pick a tool, then bind each of its arguments to a fixed value or leave it for the model to decide.'
+            onBack={step === 'args' && !editing ? () => setStep('tool') : undefined}
+            crumbs={[
+              {
+                label:
+                  step === 'tool'
+                    ? 'Add restriction'
+                    : (selectedTool?.displayName ?? 'Restrictions'),
+                icon:
+                  step === 'args' && selectedTool ? (
+                    <EntityIcon iconId={selectedTool.iconId} size='xs' />
+                  ) : undefined,
+              },
+            ]}
           />
-        ) : null}
 
-        {step === 'args' ? (
-          <ScrollArea className='max-h-[28rem]'>
-            <div className='pe-2'>
-              {args.length === 0 ? (
-                <p className='px-2 py-4 text-sm text-muted-foreground'>
-                  This tool has no top-level arguments.
-                </p>
-              ) : (
-                <VarEditorField className='p-0'>
-                  {args.map((arg) => {
-                    const mapped = argToFieldType(arg.schema)
-                    const isIdentity = identityArgNames.has(arg.name)
-                    const r = draft[arg.name] ?? MODEL_DECIDES
-                    const suggested = selectedTool?.identityScopedInputs.find(
-                      (i) => i.name === arg.name
-                    )?.suggestedVar
+          {/* Body — width/height springs between steps */}
+          <DialogNavPages value={step}>
+            <DialogNavPage value='tool' size='md'>
+              <div className='p-3'>
+                <ToolReferenceList
+                  filterNames={toolMeta.enabledCatalogNames}
+                  onSelectSingle={handleSelectTool}
+                  className='border'
+                />
+              </div>
+            </DialogNavPage>
 
-                    return (
-                      <VarEditorFieldRow
-                        key={arg.name}
-                        title={arg.name}
-                        description={arg.schema.description}
-                        icon={fieldTypeIcon(mapped.supported ? mapped.fieldType : undefined)}
-                        showIcon
-                        isRequired={r.required}
-                        onClear={
-                          !isIdentity && r.source !== 'model'
-                            ? () => setRow(arg.name, { source: 'model', required: r.required })
-                            : undefined
-                        }>
-                        {mapped.supported ? (
-                          <div className='relative'>
-                            <div className='absolute right-full top-1/2 z-10 -translate-y-1/2 me-0.5'>
-                              <RestrictionRequiredBadge
-                                required={!!r.required}
-                                isIdentityArg={isIdentity}
-                                onChange={(req) => setRow(arg.name, { ...r, required: req })}
-                              />
-                            </div>
-                            <RestrictionValueEditor
-                              restriction={r}
-                              onChange={(next) => setRow(arg.name, next)}
-                              argFieldType={mapped.fieldType}
-                              fieldOptions={mapped.options}
-                              agentId={agent.id}
-                              agentKind={agent.kind}
-                              isIdentityArg={isIdentity}
-                              suggestedVar={suggested}
-                            />
-                          </div>
-                        ) : (
-                          <p className='py-2 text-xs italic text-muted-foreground'>
-                            {mapped.reason}
-                          </p>
-                        )}
-                      </VarEditorFieldRow>
-                    )
-                  })}
-                </VarEditorField>
-              )}
-            </div>
-          </ScrollArea>
-        ) : null}
+            <DialogNavPage value='args' size='md'>
+              <ScrollArea className='max-h-[28rem]'>
+                <div className='p-3'>
+                  <p className='pb-2 text-muted-foreground text-xs'>
+                    Pin each argument to a value, or leave it for the model to decide.
+                  </p>
+                  {args.length === 0 ? (
+                    <p className='px-2 py-4 text-sm text-muted-foreground'>
+                      This tool has no top-level arguments.
+                    </p>
+                  ) : (
+                    <VarEditorField className='p-0'>
+                      {args.map((arg) => {
+                        const mapped = argToFieldType(arg.schema)
+                        const isIdentity = identityArgNames.has(arg.name)
+                        const r = draft[arg.name] ?? MODEL_DECIDES
+                        const suggested = selectedTool?.identityScopedInputs.find(
+                          (i) => i.name === arg.name
+                        )?.suggestedVar
 
-        {step === 'args' ? (
-          <DialogFooter>
-            <Button variant='ghost' onClick={() => onOpenChange(false)}>
-              Cancel
+                        return (
+                          <VarEditorFieldRow
+                            key={arg.name}
+                            title={arg.name}
+                            description={arg.schema.description}
+                            icon={fieldTypeIcon(mapped.supported ? mapped.fieldType : undefined)}
+                            showIcon
+                            isRequired={r.required}
+                            onClear={
+                              !isIdentity && r.source !== 'model'
+                                ? () => setRow(arg.name, { source: 'model', required: r.required })
+                                : undefined
+                            }>
+                            {mapped.supported ? (
+                              <div className='relative'>
+                                <div className='absolute right-full top-1/2 z-10 -translate-y-1/2 me-0.5'>
+                                  <RestrictionRequiredBadge
+                                    required={!!r.required}
+                                    isIdentityArg={isIdentity}
+                                    onChange={(req) => setRow(arg.name, { ...r, required: req })}
+                                  />
+                                </div>
+                                <RestrictionValueEditor
+                                  restriction={r}
+                                  onChange={(next) => setRow(arg.name, next)}
+                                  argFieldType={mapped.fieldType}
+                                  fieldOptions={mapped.options}
+                                  agentId={agent.id}
+                                  agentKind={agent.kind}
+                                  isIdentityArg={isIdentity}
+                                  suggestedVar={suggested}
+                                />
+                              </div>
+                            ) : (
+                              <p className='py-2 text-xs italic text-muted-foreground'>
+                                {mapped.reason}
+                              </p>
+                            )}
+                          </VarEditorFieldRow>
+                        )
+                      })}
+                    </VarEditorField>
+                  )}
+                </div>
+              </ScrollArea>
+            </DialogNavPage>
+          </DialogNavPages>
+
+          {/* Footer */}
+          <DialogFooter className='mt-0 p-3 pt-0'>
+            <Button size='sm' variant='ghost' onClick={() => onOpenChange(false)}>
+              Cancel <Kbd shortcut='esc' variant='ghost' size='sm' />
             </Button>
-            <Button onClick={handleSave} disabled={!canSave}>
-              {editing ? 'Save' : 'Add restriction'}
-            </Button>
+            {step === 'args' && (
+              <Button
+                size='sm'
+                variant='outline'
+                onClick={handleSave}
+                disabled={!canSave}
+                data-dialog-submit>
+                {editing ? 'Save' : 'Add restriction'} <KbdSubmit variant='outline' size='sm' />
+              </Button>
+            )}
           </DialogFooter>
-        ) : null}
+        </div>
       </DialogContent>
     </Dialog>
   )

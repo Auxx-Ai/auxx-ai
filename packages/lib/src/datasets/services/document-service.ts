@@ -7,7 +7,7 @@ import type {
   DocumentType,
 } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
-import { and, asc, count, desc, eq, gte, ilike, inArray, lte, or } from 'drizzle-orm'
+import { and, asc, count, desc, eq, gte, ilike, inArray, lte, or, sql } from 'drizzle-orm'
 import { MediaAssetService } from '../../files/core/media-asset-service'
 import type {
   BatchProcessingRequest,
@@ -141,7 +141,7 @@ export class DocumentService {
       enabled?: boolean
       /** Pass partial settings to update, null to clear override, or undefined to leave unchanged */
       chunkSettings?: Partial<ChunkSettings> | null
-      /** Document metadata (replaces existing metadata) */
+      /** Document metadata — shallow-merged into existing metadata (top-level keys win) */
       metadata?: Record<string, unknown>
       /** Total number of chunks/segments */
       totalChunks?: number
@@ -177,7 +177,10 @@ export class DocumentService {
         updateData.chunkSettings = data.chunkSettings
       }
       if (data.metadata !== undefined) {
-        updateData.metadata = data.metadata
+        // Shallow-merge into existing metadata so processing-status writers
+        // (segmentCount, processingTime, error, …) don't clobber keys set
+        // elsewhere — notably the `kb` block that KB sync dedup relies on.
+        updateData.metadata = sql`COALESCE(${schema.Document.metadata}, '{}'::jsonb) || ${JSON.stringify(data.metadata)}::jsonb`
       }
       if (data.totalChunks !== undefined) {
         updateData.totalChunks = data.totalChunks
