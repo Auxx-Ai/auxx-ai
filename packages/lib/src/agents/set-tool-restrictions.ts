@@ -1,10 +1,10 @@
 // packages/lib/src/agents/set-tool-restrictions.ts
 
 import {
+  type AgentToolBindings,
   type Database,
   database as defaultDb,
   schema,
-  type ToolRestrictionMap,
 } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq } from 'drizzle-orm'
@@ -12,46 +12,47 @@ import { onCacheEvent } from '../cache'
 import { BadRequestError, NotFoundError } from '../errors'
 import { getRealtimeService, publishAgentUpdated } from '../realtime'
 
-const logger = createScopedLogger('set-tool-restrictions')
+const logger = createScopedLogger('set-tool-bindings')
 
-export interface SetAgentToolRestrictionsInput {
+export interface SetAgentToolBindingsInput {
   organizationId: string
   agentId: string
-  /** Full-replace map (`tool registered-name → arg → ArgRestriction`). */
-  restrictions: ToolRestrictionMap
+  /**
+   * Full-replace OVERRIDE map (`tool registered-name → input → VarSource`),
+   * in the persisted structural shape (`ref` as `string | string[]`).
+   */
+  bindings: AgentToolBindings
 }
 
 /**
- * Full-replace write of `Agent.toolRestrictions`. Mirrors the
- * `set_agent_toolsets` semantics — the caller sends the complete map and it
- * overwrites the column wholesale (no merge, no pruning of disabled-tool
- * entries; kept restrictions stay inert per plans/chat/v6 phase-4 lifecycle).
+ * Full-replace write of `Agent.toolRestrictions` (the v8 per-agent **override**
+ * map). The caller sends the complete override map and it overwrites the column
+ * wholesale — no merge. An entry exists only when an admin deliberately changed
+ * an input away from its author default; an empty map means "everything runs on
+ * author defaults".
  *
- * Validation is intentionally **warn-not-reject** on drift so phase-5 hidden
- * app fields and tool-schema changes don't hard-fail a save:
- *   - `source: 'var'` — the var id must parse to a known anchor (`visitor` /
- *     `thread`) with a non-empty ref. We do NOT gate on registry membership:
- *     hidden-but-resolvable app fields (e.g. Shopify's `customerId`) are
- *     excluded from the picker registry yet must still bind. A malformed id is
- *     the only hard reject.
- *   - `source: 'constant'` — a `value` must be present (a constant with no
- *     value is a no-op that would silently behave like `model`).
- *   - arg/tool existence against the current schema is the UI's concern (it
- *     only offers current args); stale entries are kept and re-validated on
- *     re-add, never rejected here.
+ * Validation hard-rejects only the structurally-broken cases:
+ *   - `var` — must carry a non-empty `ref` (a `ResourceFieldId` string or a
+ *     `FieldPath` array of length ≥ 1).
+ *   - `const` — must carry a `value` (a const with no value is a no-op that
+ *     would silently behave like `model`).
+ *   - `model` — always valid (un-binds the author default).
  *
- * Reused by the phase-4 admin mutation and phase-6 builder Kopilot.
+ * Input/tool existence against the current schema is the UI's concern (it only
+ * offers current inputs); stale entries are kept and re-validated on re-add.
+ *
+ * See plans/chat/v8 phase-5.
  */
-export async function setAgentToolRestrictions(
-  { organizationId, agentId, restrictions }: SetAgentToolRestrictionsInput,
+export async function setAgentToolBindings(
+  { organizationId, agentId, bindings }: SetAgentToolBindingsInput,
   db: Database = defaultDb as Database
 ): Promise<void> {
-  validateRestrictions(restrictions)
+  validateBindings(bindings)
 
   const now = new Date()
   const result = await db
     .update(schema.Agent)
-    .set({ toolRestrictions: restrictions, updatedAt: now })
+    .set({ toolRestrictions: bindings, updatedAt: now })
     .where(and(eq(schema.Agent.id, agentId), eq(schema.Agent.organizationId, organizationId)))
     .returning({ id: schema.Agent.id })
 
@@ -62,7 +63,7 @@ export async function setAgentToolRestrictions(
   try {
     await onCacheEvent('agent.updated', { orgId: organizationId })
   } catch (err) {
-    logger.warn('Failed to invalidate caches after tool-restrictions update', {
+    logger.warn('Failed to invalidate caches after tool-bindings update', {
       organizationId,
       agentId,
       error: err instanceof Error ? err.message : String(err),
@@ -71,36 +72,21 @@ export async function setAgentToolRestrictions(
   await publishAgentUpdated(getRealtimeService(), organizationId, { agentId })
 }
 
-/** Hard-reject only the structurally-broken cases; warn on everything else. */
-function validateRestrictions(restrictions: ToolRestrictionMap): void {
-  for (const [toolName, perTool] of Object.entries(restrictions)) {
-    for (const [arg, r] of Object.entries(perTool)) {
-      if (r.source === 'var') {
-        if (!r.var || !parsesAsVarId(r.var)) {
-          throw new BadRequestError(
-            `Invalid var binding for ${toolName}.${arg}: "${r.var ?? ''}" is not a valid var id`
-          )
+/** Hard-reject only the structurally-broken bindings; everything else is valid. */
+function validateBindings(bindings: AgentToolBindings): void {
+  for (const [toolName, perTool] of Object.entries(bindings)) {
+    for (const [input, source] of Object.entries(perTool)) {
+      if (source.kind === 'var') {
+        const ref = source.ref
+        const ok = Array.isArray(ref) ? ref.length > 0 : typeof ref === 'string' && ref.length > 0
+        if (!ok) {
+          throw new BadRequestError(`Var binding for ${toolName}.${input} is missing a ref`)
         }
-      } else if (r.source === 'constant') {
-        if (r.value === undefined) {
-          throw new BadRequestError(
-            `Constant restriction for ${toolName}.${arg} is missing a value`
-          )
+      } else if (source.kind === 'const') {
+        if (source.value === undefined) {
+          throw new BadRequestError(`Constant binding for ${toolName}.${input} is missing a value`)
         }
       }
     }
   }
-}
-
-/**
- * A var id is `<anchor>:<ref>` with `anchor ∈ {visitor, thread}` and a
- * non-empty `ref` (which may itself contain colons, e.g.
- * `visitor:contact:primary_email`). Mirrors `parseVarId` in `var-registry.ts`
- * — kept inline so this server module stays free of the resolver's deps.
- */
-function parsesAsVarId(varId: string): boolean {
-  const idx = varId.indexOf(':')
-  if (idx <= 0 || idx === varId.length - 1) return false
-  const anchor = varId.slice(0, idx)
-  return anchor === 'visitor' || anchor === 'thread'
 }

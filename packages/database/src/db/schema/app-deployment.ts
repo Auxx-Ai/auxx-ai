@@ -56,12 +56,19 @@ export interface CatalogAgentTool extends CatalogTool {
    */
   externalSafe?: boolean
   /**
-   * Identity/record-scope args the engine fail-closes on in a visitor turn —
-   * carried verbatim from the SDK's `tool.agent.identityScopedInputs`. The
-   * restrictions UI reads this to flag args that must be bound for chat. See
-   * plans/chat/v6 phase-3 / phase-4.
+   * Per-input default binding, carried verbatim from the SDK's
+   * `tool.agent.inputBindings`. The installed-apps cache forwards it onto
+   * `CachedAgentTool` via spread; the engine resolves + clamps it from the
+   * turn's subject before execute. Structurally typed (the runtime narrows
+   * `ref` to a `VarRef`). See plans/chat/v8 phase-3.
    */
-  identityScopedInputs?: ReadonlyArray<{ name: string; suggestedVar?: string }>
+  inputBindings?: ReadonlyArray<{
+    name: string
+    default:
+      | { kind: 'var'; ref: string | readonly string[] }
+      | { kind: 'const'; value: unknown }
+      | { kind: 'model' }
+  }>
 }
 
 export interface CatalogAction {

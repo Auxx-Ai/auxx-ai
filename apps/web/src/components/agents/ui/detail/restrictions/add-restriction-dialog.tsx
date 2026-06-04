@@ -1,7 +1,7 @@
 // apps/web/src/components/agents/ui/detail/restrictions/add-restriction-dialog.tsx
 'use client'
 
-import type { ArgRestriction } from '@auxx/lib/agents/restrictions/client'
+import type { VarSource } from '@auxx/lib/agents/bindings/client'
 import { fieldTypeOptions } from '@auxx/lib/custom-fields/types'
 import { Button } from '@auxx/ui/components/button'
 import { Dialog, DialogContent, DialogFooter } from '@auxx/ui/components/dialog'
@@ -15,7 +15,6 @@ import { VarEditorField, VarEditorFieldRow } from '~/components/workflow/ui/inpu
 import { argToFieldType } from '~/lib/agents/restrictions/arg-to-field-type'
 import type { AgentDetail } from '../../../store/agent-store'
 import type { ToolMeta, UseToolMetaResult } from './hooks/use-tool-meta'
-import { RestrictionRequiredBadge } from './restriction-required-badge'
 import { RestrictionValueEditor } from './restriction-value-editor'
 import { type ToolArgInfo, topLevelArgs } from './tool-args'
 
@@ -26,24 +25,23 @@ interface AddRestrictionDialogProps {
   toolMeta: UseToolMetaResult
   /**
    * Pre-fill for edit mode — the tool's registered name. When set, the dialog
-   * skips the tool step and opens directly on the all-args panel, seeded from
-   * the tool's existing restrictions.
+   * skips the tool step and opens directly on the all-inputs panel, seeded from
+   * the tool's existing overrides.
    */
   editing?: { registeredName: string } | null
-  /** Commit the whole tool's arg→restriction map (full-replace for that tool). */
-  onSave: (registeredName: string, byArg: Record<string, ArgRestriction>) => void
+  /** Commit the whole tool's input→VarSource override map (full-replace). */
+  onSave: (registeredName: string, byArg: Record<string, VarSource>) => void
 }
 
 type Step = 'tool' | 'args'
 
-/** Default restriction for an arg the admin hasn't touched. */
-const MODEL_DECIDES: ArgRestriction = { source: 'model', required: false }
+/** Default for an input the admin hasn't overridden — model decides (no override). */
+const MODEL_DECIDES: VarSource = { kind: 'model' }
 
 /**
- * Render the platform-`FieldType` icon for a tool-arg restriction row — the
- * same `fieldTypeOptions` icon map the field picker uses. Falls back to a
- * neutral `circle` for unknown/structured args. See plans/chat/v6 phase-4
- * redesign.
+ * Render the platform-`FieldType` icon for a tool-input row — the same
+ * `fieldTypeOptions` icon map the field picker uses. Falls back to a neutral
+ * `circle` for unknown/structured inputs.
  */
 function fieldTypeIcon(fieldType?: string): ReactNode {
   const iconId =
@@ -51,38 +49,24 @@ function fieldTypeIcon(fieldType?: string): ReactNode {
   return <EntityIcon iconId={iconId} size='xs' className='text-muted-foreground' />
 }
 
-/**
- * Seed a tool's draft from its persisted restrictions, ensuring identity args
- * carry a default binding (suggested var, required) so chat never fail-closes.
- */
-function seedDraft(tool: ToolMeta, persisted: Record<string, ArgRestriction>) {
-  const draft: Record<string, ArgRestriction> = { ...persisted }
-  for (const id of tool.identityScopedInputs ?? []) {
-    if (!draft[id.name]) {
-      draft[id.name] = id.suggestedVar
-        ? { source: 'var', var: id.suggestedVar, required: true }
-        : { source: 'var', required: true }
-    }
+/** True when a binding is set but missing its value/ref (can't save). */
+function isIncomplete(source: VarSource): boolean {
+  if (source.kind === 'var') {
+    return Array.isArray(source.ref) ? source.ref.length === 0 : !source.ref
   }
-  return draft
-}
-
-/** True when a restriction is bound but missing its value/var (can't save). */
-function isIncomplete(r: ArgRestriction): boolean {
-  if (r.source === 'var') return !r.var
-  if (r.source === 'constant') return r.value === undefined || r.value === null || r.value === ''
+  if (source.kind === 'const') {
+    return source.value === undefined || source.value === null || source.value === ''
+  }
   return false
 }
 
 /**
- * Add/edit a tool's argument restrictions. Two steps:
+ * Add/edit a tool's input **overrides**. Two steps:
  *   1. Tool select — reuses `ToolReferenceList`, scoped to enabled tools.
- *   2. All-args panel — every top-level arg as a `VarEditorField` row with an
- *      inline constant⇄dynamic value editor + a Required pill. Empty rows mean
- *      "model decides" and are pruned on save.
- *
- * Identity-scoped args are pre-seeded to their suggested var and locked
- * required. See plans/chat/v6 phase-4 redesign.
+ *   2. All-inputs panel — every top-level input as a `VarEditorField` row with
+ *      an inline constant⇄dynamic value editor. Empty rows mean "model decides"
+ *      (no override) and are pruned on save, leaving the tool on its author
+ *      defaults. See plans/chat/v8 phase-5.
  */
 export function AddRestrictionDialog({
   open,
@@ -94,7 +78,7 @@ export function AddRestrictionDialog({
 }: AddRestrictionDialogProps) {
   const [step, setStep] = useState<Step>('tool')
   const [registeredName, setRegisteredName] = useState<string | null>(null)
-  const [draft, setDraft] = useState<Record<string, ArgRestriction>>({})
+  const [draft, setDraft] = useState<Record<string, VarSource>>({})
 
   const selectedTool: ToolMeta | undefined = registeredName
     ? toolMeta.byRegisteredName.get(registeredName)
@@ -105,20 +89,13 @@ export function AddRestrictionDialog({
     [selectedTool]
   )
 
-  const identityArgNames = useMemo(
-    () => new Set((selectedTool?.identityScopedInputs ?? []).map((i) => i.name)),
-    [selectedTool]
-  )
-
   // Initialize on open / edit.
   // biome-ignore lint/correctness/useExhaustiveDependencies: re-init only when the dialog opens or the edit target changes.
   useEffect(() => {
     if (!open) return
     if (editing) {
       setRegisteredName(editing.registeredName)
-      const tool = toolMeta.byRegisteredName.get(editing.registeredName)
-      const persisted = agent.toolRestrictions?.[editing.registeredName] ?? {}
-      setDraft(tool ? seedDraft(tool, persisted) : { ...persisted })
+      setDraft({ ...(agent.toolRestrictions?.[editing.registeredName] ?? {}) })
       setStep('args')
     } else {
       setRegisteredName(null)
@@ -132,24 +109,22 @@ export function AddRestrictionDialog({
     const catalogName = chipId.replace(/^tool:/, '')
     const resolved = toolMeta.registeredNameByCatalogName.get(catalogName)
     if (!resolved) return
-    const tool = toolMeta.byRegisteredName.get(resolved)
-    const persisted = agent.toolRestrictions?.[resolved] ?? {}
     setRegisteredName(resolved)
-    setDraft(tool ? seedDraft(tool, persisted) : { ...persisted })
+    setDraft({ ...(agent.toolRestrictions?.[resolved] ?? {}) })
     setStep('args')
   }
 
-  const setRow = (arg: string, next: ArgRestriction) => setDraft((d) => ({ ...d, [arg]: next }))
+  const setRow = (arg: string, next: VarSource) => setDraft((d) => ({ ...d, [arg]: next }))
 
-  const canSave = !!registeredName && !Object.values(draft).some((r) => isIncomplete(r))
+  const canSave = !!registeredName && !Object.values(draft).some((s) => isIncomplete(s))
 
   const handleSave = () => {
     if (!registeredName) return
-    const byArg: Record<string, ArgRestriction> = {}
-    for (const [arg, r] of Object.entries(draft)) {
-      // Prune pure model-decides — only persist real restrictions.
-      if (r.source === 'model' && !r.required) continue
-      byArg[arg] = r
+    const byArg: Record<string, VarSource> = {}
+    for (const [arg, source] of Object.entries(draft)) {
+      // Prune model-decides — it means "no override, inherit the author default".
+      if (source.kind === 'model') continue
+      byArg[arg] = source
     }
     onSave(registeredName, byArg)
     onOpenChange(false)
@@ -160,15 +135,12 @@ export function AddRestrictionDialog({
       <DialogContent innerClassName='p-0' position='tc' size='content'>
         <div className='flex flex-col'>
           <DialogNav
-            title='Add restriction'
-            description='Pick a tool, then bind each of its arguments to a fixed value or leave it for the model to decide.'
+            title='Add override'
+            description='Pick a tool, then override an input — pin a fixed value or bind it to the visitor. Untouched inputs keep their built-in scoping.'
             onBack={step === 'args' && !editing ? () => setStep('tool') : undefined}
             crumbs={[
               {
-                label:
-                  step === 'tool'
-                    ? 'Add restriction'
-                    : (selectedTool?.displayName ?? 'Restrictions'),
+                label: step === 'tool' ? 'Add override' : (selectedTool?.displayName ?? 'Bindings'),
                 icon:
                   step === 'args' && selectedTool ? (
                     <EntityIcon iconId={selectedTool.iconId} size='xs' />
@@ -193,21 +165,17 @@ export function AddRestrictionDialog({
               <ScrollArea className='max-h-[28rem]'>
                 <div className='p-3'>
                   <p className='pb-2 text-muted-foreground text-xs'>
-                    Pin each argument to a value, or leave it for the model to decide.
+                    Override an input, or leave it for its built-in scoping / the model.
                   </p>
                   {args.length === 0 ? (
                     <p className='px-2 py-4 text-sm text-muted-foreground'>
-                      This tool has no top-level arguments.
+                      This tool has no top-level inputs.
                     </p>
                   ) : (
                     <VarEditorField className='p-0'>
                       {args.map((arg) => {
                         const mapped = argToFieldType(arg.schema)
-                        const isIdentity = identityArgNames.has(arg.name)
-                        const r = draft[arg.name] ?? MODEL_DECIDES
-                        const suggested = selectedTool?.identityScopedInputs.find(
-                          (i) => i.name === arg.name
-                        )?.suggestedVar
+                        const source = draft[arg.name] ?? MODEL_DECIDES
 
                         return (
                           <VarEditorFieldRow
@@ -216,32 +184,18 @@ export function AddRestrictionDialog({
                             description={arg.schema.description}
                             icon={fieldTypeIcon(mapped.supported ? mapped.fieldType : undefined)}
                             showIcon
-                            isRequired={r.required}
                             onClear={
-                              !isIdentity && r.source !== 'model'
-                                ? () => setRow(arg.name, { source: 'model', required: r.required })
+                              source.kind !== 'model'
+                                ? () => setRow(arg.name, { kind: 'model' })
                                 : undefined
                             }>
                             {mapped.supported ? (
-                              <div className='relative'>
-                                <div className='absolute right-full top-1/2 z-10 -translate-y-1/2 me-0.5'>
-                                  <RestrictionRequiredBadge
-                                    required={!!r.required}
-                                    isIdentityArg={isIdentity}
-                                    onChange={(req) => setRow(arg.name, { ...r, required: req })}
-                                  />
-                                </div>
-                                <RestrictionValueEditor
-                                  restriction={r}
-                                  onChange={(next) => setRow(arg.name, next)}
-                                  argFieldType={mapped.fieldType}
-                                  fieldOptions={mapped.options}
-                                  agentId={agent.id}
-                                  agentKind={agent.kind}
-                                  isIdentityArg={isIdentity}
-                                  suggestedVar={suggested}
-                                />
-                              </div>
+                              <RestrictionValueEditor
+                                source={source}
+                                onChange={(next) => setRow(arg.name, next)}
+                                argFieldType={mapped.fieldType}
+                                fieldOptions={mapped.options}
+                              />
                             ) : (
                               <p className='py-2 text-xs italic text-muted-foreground'>
                                 {mapped.reason}
@@ -269,7 +223,7 @@ export function AddRestrictionDialog({
                 onClick={handleSave}
                 disabled={!canSave}
                 data-dialog-submit>
-                {editing ? 'Save' : 'Add restriction'} <KbdSubmit variant='outline' size='sm' />
+                {editing ? 'Save' : 'Add override'} <KbdSubmit variant='outline' size='sm' />
               </Button>
             )}
           </DialogFooter>

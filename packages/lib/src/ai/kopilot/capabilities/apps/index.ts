@@ -204,10 +204,10 @@ export async function createAppCapabilities(deps: {
         // plans/chat/v6/chat-tool-availability.md.
         surfaces: tool.surfaces,
         externalSafe: tool.externalSafe,
-        // Author-floor: identity/record-scope args the engine fail-closes on in
-        // a visitor turn (carried from the cached catalog). See plans/chat/v6
-        // phase-3.
-        identityScopedInputs: tool.identityScopedInputs,
+        // Per-input default bindings (plans/chat/v8 phase-3), carried from the
+        // cached catalog. The catalog stores `ref` structurally (string|string[]);
+        // the runtime narrows it to a `VarRef`.
+        inputBindings: tool.inputBindings as AgentToolDefinition['inputBindings'],
         buildDigest: (output: unknown) =>
           buildAppToolDigest(output, { appSlug, toolId }, refDescriptors),
         execute,

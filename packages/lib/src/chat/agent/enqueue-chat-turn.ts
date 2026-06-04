@@ -9,8 +9,17 @@ export interface ChatTurnJobPayload {
   agentId: string
   /** The chat `Thread` the visitor messaged on. */
   threadId: string
-  /** Verified contact id, when the visitor has been promoted; else null. */
+  /**
+   * The `Participant` that sent the inbound message — the subject's
+   * `participant` anchor (plans/chat/v8 phase-1).
+   */
+  participantId: string
+  /** Verified contact id, baked from a crypto-verified passport; else null. */
   contactId: string | null
+  /** `true` only when the passport was minted with a valid customer JWT. */
+  identityVerified: boolean
+  /** Untrusted `identify()` claim — display only, never an anchor. */
+  claimed?: { name?: string; email?: string }
   /** The inbound `Message` that triggered this turn (fed to the engine). */
   inboundMessageId: string
 }

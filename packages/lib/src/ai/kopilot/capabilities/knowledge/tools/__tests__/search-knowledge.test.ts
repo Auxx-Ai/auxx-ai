@@ -49,10 +49,13 @@ describe('search_knowledge chat clamp', () => {
     expect(tool.surfaces).toBeUndefined()
   })
 
-  it('with a chat invocation, searches only PUBLIC knowledge-base datasets (no RAG)', async () => {
+  it('with a chat subject, searches only PUBLIC knowledge-base datasets (no RAG)', async () => {
     const fromTables: unknown[] = []
     await runTool(makeFakeDb(fromTables), {
-      invocation: { threadId: 't_1', contactId: null },
+      subject: {
+        anchors: { thread: 'thread:t_1', participant: 'participant:p_1' } as never,
+        identityVerified: false,
+      },
     })
 
     // The PUBLIC-clamp path queries KnowledgeBase (visibility filter), never
@@ -64,7 +67,7 @@ describe('search_knowledge chat clamp', () => {
     expect(searchArgs.datasetIds).toEqual(['ds_public'])
   })
 
-  it('without an invocation (internal kopilot), searches all managed + RAG datasets', async () => {
+  it('without a subject (internal kopilot), searches all managed + RAG datasets', async () => {
     const fromTables: unknown[] = []
     await runTool(makeFakeDb(fromTables), {})
 

@@ -63,11 +63,17 @@ export interface CatalogAgentTool extends CatalogTool {
    */
   externalSafe?: boolean
   /**
-   * Identity/record-scope args the engine fail-closes on in a visitor turn.
-   * Carried verbatim from `tool.agent.identityScopedInputs`. See plans/chat/v6
-   * phase-3.
+   * Per-input default binding, carried verbatim from `tool.agent.inputBindings`.
+   * The platform resolves + clamps it from the turn's subject before execute.
+   * See plans/chat/v8 phase-3.
    */
-  identityScopedInputs?: ReadonlyArray<{ name: string; suggestedVar?: string }>
+  inputBindings?: ReadonlyArray<{
+    name: string
+    default:
+      | { kind: 'var'; ref: string | readonly string[] }
+      | { kind: 'const'; value: unknown }
+      | { kind: 'model' }
+  }>
 }
 
 export interface CatalogAction {
@@ -398,7 +404,7 @@ export async function compileAndExtractCatalog(): Promise<
         idempotent: tool.agent.idempotent ?? tool.config?.idempotent,
         surfaces: tool.agent.surfaces,
         externalSafe: tool.agent.externalSafe,
-        identityScopedInputs: tool.agent.identityScopedInputs,
+        inputBindings: tool.agent.inputBindings,
       })
     }
 

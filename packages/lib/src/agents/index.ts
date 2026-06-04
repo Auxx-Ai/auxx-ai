@@ -74,8 +74,8 @@ export {
 } from './prompt-mention-reconciler'
 export { type ResolvedAgentConfig, resolveAgentConfig } from './resolve-agent-config'
 export {
-  type SetAgentToolRestrictionsInput,
-  setAgentToolRestrictions,
+  type SetAgentToolBindingsInput,
+  setAgentToolBindings,
 } from './set-tool-restrictions'
 export { AGENT_SLUG_MAX, AGENT_SLUG_REGEX, agentSlugSchema } from './slug-schema'
 export {

@@ -37,7 +37,7 @@ const SECTION_ICONS: Record<AgentTab, React.ComponentType<{ className?: string }
 const SECTION_LABELS: Record<AgentTab, string> = {
   prompt: 'Prompt',
   tools: 'Tools',
-  restrictions: 'Restrictions',
+  restrictions: 'Bindings',
   knowledge: 'Knowledge',
   triggers: 'Triggers',
 }
@@ -257,11 +257,11 @@ function RestrictionsSection({ agent }: { agent: AgentDetail }) {
   const [editing, setEditing] = useState<{ registeredName: string } | null>(null)
   return (
     <Section
-      title='Restrictions'
+      title='Bindings'
       icon={<ShieldCheck className='size-4' />}
       className='[&>[data-slot=section]>[data-slot=section-content]]:-mx-3'
       initialOpen
-      description='Pin or require tool arguments so this agent stays scoped — lock identity args for chat.'
+      description='Tools are scoped by their built-in defaults. Override an input to pin a value or rebind it.'
       collapsible={false}
       actions={
         <Button
@@ -272,7 +272,7 @@ function RestrictionsSection({ agent }: { agent: AgentDetail }) {
             setDialogOpen(true)
           }}>
           <Plus />
-          Add restriction
+          Add override
         </Button>
       }>
       <RestrictionsSectionContent

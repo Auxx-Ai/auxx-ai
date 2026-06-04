@@ -72,7 +72,8 @@ function buildBuiltinAgentTools(): CachedAgentTool[] {
         iconId: lookupIconForSlug(tool.toolsetSlug),
         surfaces: tool.surfaces,
         externalSafe: tool.externalSafe,
-        identityScopedInputs: tool.identityScopedInputs,
+        // Per-input author-default bindings (plans/chat/v8 phase-3).
+        inputBindings: tool.inputBindings,
       })
     }
   }

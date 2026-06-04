@@ -57,6 +57,37 @@ export type FieldPath = [ResourceFieldId, ...ResourceFieldId[]] // At least 1 el
  */
 export type FieldReference = FieldId | ResourceFieldId | FieldPath
 
+/**
+ * A variable reference for a tool-input binding (plans/chat/v8 phase-2).
+ *
+ * It is a normal `FieldReference` rooted at an anchor entity, **except** a
+ * segment's field part may be the connection-late-bound app form
+ * `@app:<slug>:<key>` — resolved to a concrete `ResourceFieldId` at turn time
+ * against the agent's bound connection:
+ *
+ * - `'contact:primary_email'`                                system field
+ * - `'contact:<uuid>'`                                       custom field
+ * - `'contact:@app:shopify:customerId'`                      app field on contact
+ * - `['contact:company', 'company:@app:shopify:vendorTier']` app field on a traversal target
+ * - `'contact:self'`                                         the anchor's own record id
+ *
+ * The anchor is **derived** from the ref's root entity (`getRootEntityId`) — it
+ * is never stored separately, so an `{ anchor, ref }` mismatch is unrepresentable.
+ */
+export type VarRef = ResourceFieldId | FieldPath
+
+/**
+ * Source of a platform-resolved tool-input binding (plans/chat/v8 phase-2).
+ *
+ * - `var`   — a read-only value reached from the subject via a {@link VarRef}.
+ * - `const` — an admin-pinned constant.
+ * - `model` — explicitly left to the LLM (also the way to un-bind an author default).
+ */
+export type VarSource =
+  | { kind: 'var'; ref: VarRef }
+  | { kind: 'const'; value: unknown }
+  | { kind: 'model' }
+
 export type {
   ActorFieldOptions,
   ActorFieldValue,

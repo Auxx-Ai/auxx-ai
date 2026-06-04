@@ -1,10 +1,11 @@
 // packages/lib/src/agents/resolve-agent-config.ts
 
-import type { Database, ToolRestrictionMap } from '@auxx/database'
+import type { Database } from '@auxx/database'
 import { database as defaultDb } from '@auxx/database'
 import { loadMasterKopilotSettings } from '../ai/kopilot/load-master-settings'
 import { getCachedAgents } from '../cache/org-cache-helpers'
 import type { AgentToolsetConfig } from './agent-toolset-types'
+import type { ToolBindingMap } from './bindings'
 import type { ToolsetEntry } from './prompt-mention-reconciler'
 import { getOrgToolsetCatalog, type ToolsetCatalogEntry } from './toolset-catalog'
 
@@ -38,10 +39,11 @@ export interface ResolvedAgentConfig {
    */
   appAccounts: Record<string, { credId: string }>
   /**
-   * Per-agent tool restriction map — tool name → arg → restriction. Empty for
-   * master Kopilot sessions. See plans/chat/v6 phase-1.
+   * Per-agent tool-binding **override** map — tool name → input → VarSource.
+   * Usually empty (author defaults cover the common case); empty for master
+   * Kopilot sessions. See plans/chat/v8 phase-5.
    */
-  toolRestrictions: ToolRestrictionMap
+  toolRestrictions: ToolBindingMap
   /** Per-agent / per-master override. null = inherit org/system default. */
   modelId: string | null
 }
@@ -105,7 +107,9 @@ export async function resolveAgentConfig(
     description: agent.description,
     toolsets,
     appAccounts: agent.appAccounts ?? {},
-    toolRestrictions: agent.toolRestrictions ?? {},
+    // The DB stores `ref` structurally (string | string[]); the runtime narrows
+    // it to a `VarRef`.
+    toolRestrictions: (agent.toolRestrictions ?? {}) as ToolBindingMap,
     modelId: agent.modelId,
   }
 }

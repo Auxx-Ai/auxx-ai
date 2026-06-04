@@ -26,7 +26,7 @@ export function createSearchKnowledgeTool(getDeps: GetToolDeps): AgentToolDefini
     toolsetSlug: 'auxx:knowledge',
     idempotent: true,
     // Verified safe for an untrusted external caller: in chat context
-    // (`ctx.invocation` set) the search self-clamps to PUBLIC knowledge bases
+    // (`ctx.subject` set) the search self-clamps to PUBLIC knowledge bases
     // and excludes RAG datasets — see the execute clamp below. Offered on all
     // surfaces (default); `externalSafe` drops the chat/email warning. See
     // plans/chat/v6/chat-tool-availability.md.
@@ -100,14 +100,14 @@ export function createSearchKnowledgeTool(getDeps: GetToolDeps): AgentToolDefini
       const recordIds = args.recordIds as string[] | undefined
       const limit = Math.min((args.limit as number) || DEFAULT_RESULTS, MAX_RESULTS)
 
-      // Chat clamp (decision 6): a visitor-initiated turn carries
-      // `ctx.invocation`. Force source to PUBLIC KB only — RAG datasets are
-      // internal uploads with no visibility tier, so they're excluded, and the
-      // KB set is restricted to PUBLIC knowledge bases. A visitor-supplied
-      // `knowledgeBaseId` still composes, but only narrows *within* the PUBLIC
-      // ceiling (an INTERNAL KB id resolves to no datasets). Internal kopilot /
-      // autonomous runs leave `invocation` undefined and keep full access.
-      const isChat = agentDeps.invocation !== undefined
+      // Chat clamp (decision 6): a visitor-initiated turn carries a `subject`.
+      // Force source to PUBLIC KB only — RAG datasets are internal uploads with
+      // no visibility tier, so they're excluded, and the KB set is restricted to
+      // PUBLIC knowledge bases. A visitor-supplied `knowledgeBaseId` still
+      // composes, but only narrows *within* the PUBLIC ceiling (an INTERNAL KB
+      // id resolves to no datasets). Internal kopilot / autonomous runs leave
+      // `subject` undefined and keep full access.
+      const isChat = agentDeps.subject !== undefined
       const source: Source = isChat ? 'kb' : requestedSource
 
       try {

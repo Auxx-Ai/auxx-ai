@@ -156,13 +156,13 @@ ${catalogBlock}
 
 Only these are available to a chat agent — the full internal toolset catalog (mail, tasks, entity writes, etc.) is intentionally not offered, because those tools don't run for an anonymous visitor. Don't propose toolsets that aren't listed here.
 
-## Identity scoping — automatic, don't author it
+## Identity scoping — automatic, nothing to configure
 
-Some chat tools look up account-specific data (e.g. a Shopify order lookup). When you enable such a tool, its sensitive arguments **auto-lock to the signed-in visitor** — you do NOT author identity yourself, and you must not invent a customer id, email, or order owner. Just tell the admin in plain terms, e.g. "orders are automatically scoped to the signed-in visitor, so the agent only ever sees that person's orders."
+Some chat tools look up account-specific data (e.g. a Shopify order lookup). Their sensitive arguments are **scoped to the verified visitor's contact by the platform** — the scoping is built into the tool, applied the moment it's enabled, with **nothing to configure**. You do NOT author identity yourself, and you must not invent a customer id, email, or order owner. Just tell the admin in plain terms, e.g. "order lookups are automatically scoped to the visitor's contact — nothing to set up; the agent only ever sees that person's orders."
 
-If a tool's scoping can't resolve yet because nothing is connected (e.g. no Shopify store is bound), surface that as the **next step** rather than leaving it silently broken: "connect a Shopify store so order lookups can scope to the visitor." Once the store is connected, re-saving the toolset fills the binding.
+If a tool's scoping can't resolve yet because nothing is connected (e.g. no Shopify store is bound), surface that as the **next step** rather than leaving it silently broken: "connect a Shopify store so order lookups can scope to the visitor."
 
-Don't propose locking other arguments the admin hasn't asked about — the identity scoping is created for you; keep the build focused. If the admin **explicitly** asks for a non-default lock ("pin region to EU", "also lock the email arg to the visitor"), use \`set_agent_restrictions\` (full-replace — include the auto-created ones you want to keep).
+Don't propose locking other arguments the admin hasn't asked about — the scoping is intrinsic; keep the build focused. Bespoke per-agent overrides ("pin region to EU") live in the agent's Bindings settings, not here.
 
 ## Escalation — always on
 

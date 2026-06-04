@@ -5,21 +5,14 @@ import { useMemo } from 'react'
 import { useExtensionsContext } from '~/providers/extensions/extensions-context'
 import type { AgentDetail } from '../../../../store/agent-store'
 
-/** One identity-scoped arg the engine fail-closes on for a visitor turn. */
-export interface IdentityScopedInput {
-  name: string
-  suggestedVar?: string
-}
-
 /**
  * Resolved metadata for one tool, keyed by its **registered name** (the
- * LLM-facing name, `<appSlug>_<toolId>`) — the same key used in
- * `Agent.toolRestrictions`. Pulled from the installed-apps cache so the
- * restrictions UI can read a tool's parameter schema + identity args without a
- * server round-trip.
+ * LLM-facing name, `<appSlug>_<toolId>`) — the same key used in the agent's
+ * binding override map. Pulled from the installed-apps cache so the Bindings
+ * UI can read a tool's parameter schema without a server round-trip.
  */
 export interface ToolMeta {
-  /** Restriction-map key (`<appSlug>_<toolId>`). */
+  /** Binding-map key (`<appSlug>_<toolId>`). */
   registeredName: string
   /** Catalog `name` for selection — what `ToolReferenceList` emits as `tool:<name>`. */
   catalogName: string
@@ -31,8 +24,6 @@ export interface ToolMeta {
   toolsetSlug: string
   /** The tool's `inputsJsonSchema` (JSON Schema `parameters`). */
   inputsJsonSchema: Record<string, unknown>
-  /** Args the author marked identity-scoped (chat fail-closes when unbound). */
-  identityScopedInputs: IdentityScopedInput[]
   /** Whether the tool is enabled on the agent (in an enabled toolset). */
   enabled: boolean
 }
@@ -48,13 +39,12 @@ export interface UseToolMetaResult {
 }
 
 /**
- * Build the tool-metadata lookups the Restrictions UI needs from the
- * installed-apps cache + the agent's toolset state.
+ * Build the tool-metadata lookups the Bindings UI needs from the installed-apps
+ * cache + the agent's toolset state.
  *
- * `ToolReferenceList` emits `tool:<catalogName>` where `catalogName` is the
- * raw tool id; restrictions are keyed by the registered name. This hook bridges
- * the two and exposes each tool's parameter schema + identity args. See
- * plans/chat/v6 phase-4.
+ * `ToolReferenceList` emits `tool:<catalogName>` where `catalogName` is the raw
+ * tool id; bindings are keyed by the registered name. This hook bridges the two
+ * and exposes each tool's parameter schema. See plans/chat/v8 phase-5.
  */
 export function useToolMeta(agent: AgentDetail): UseToolMetaResult {
   const { appInstallations, isLoading } = useExtensionsContext()
@@ -78,7 +68,6 @@ export function useToolMeta(agent: AgentDetail): UseToolMetaResult {
           iconId: tool.iconId,
           toolsetSlug: tool.toolsetSlug,
           inputsJsonSchema: (tool.inputsJsonSchema ?? {}) as Record<string, unknown>,
-          identityScopedInputs: [...(tool.identityScopedInputs ?? [])],
           enabled,
         }
         byRegisteredName.set(tool.registeredName, meta)

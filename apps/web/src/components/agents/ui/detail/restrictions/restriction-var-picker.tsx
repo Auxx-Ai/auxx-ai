@@ -1,7 +1,7 @@
 // apps/web/src/components/agents/ui/detail/restrictions/restriction-var-picker.tsx
 'use client'
 
-import type { RestrictionVar } from '@auxx/lib/agents/restrictions/client'
+import type { AvailableField } from '@auxx/lib/agents/bindings/client'
 import {
   Select,
   SelectContent,
@@ -12,60 +12,57 @@ import {
   SelectValue,
 } from '@auxx/ui/components/select'
 import { useMemo } from 'react'
-import { Tooltip } from '~/components/global/tooltip'
 import { isVarFieldTypeCompatible } from '~/lib/agents/restrictions/arg-to-field-type'
 import { api } from '~/trpc/react'
 
 interface RestrictionVarPickerProps {
-  /** Currently-bound var id (`ArgRestriction.var`), or undefined when unset. */
+  /** Currently-bound field ref (`{ kind:'var' }.ref` as a string), or undefined. */
   value?: string
-  onChange: (varId: string) => void
-  /** The agent id — reserved; the query projection is org-wide. */
-  agentId: string
+  onChange: (ref: string) => void
   /**
-   * The agent's invocation surface. On `internal` agents `visitor.*` vars
-   * resolve null off-chat, so they're greyed with a tooltip.
-   */
-  agentKind: 'internal' | 'chat'
-  /**
-   * The arg's mapped platform FieldType — only type-compatible vars are
+   * The input's mapped platform FieldType — only type-compatible fields are
    * offered. Pass undefined to offer all.
    */
   argFieldType?: string
   disabled?: boolean
 }
 
+/** Anchors a chat subject provides — the override picker offers fields from each. */
+const ANCHORS = ['contact', 'participant', 'thread'] as const
+
 /**
- * Grouped Select over the phase-2 var registry (`api.agent.listRestrictionVars`),
- * grouped by `var.group` (Visitor / Thread / App). Binds a `source: 'var'`
- * restriction. `visitor.*` vars are greyed (with a tooltip) on internal agents
- * since they resolve null off-chat. See plans/chat/v6 phase-4.
+ * Grouped Select over the bindable subject fields (`api.agent.listBindingFields`
+ * per anchor), grouped by field `group` (Contact / Participant / Thread / App).
+ * Binds a `{ kind:'var', ref }` override. App-owned fields appear as their
+ * `@app:<slug>:<key>` ref (resolved at turn time). See plans/chat/v8 phase-5.
  */
 export function RestrictionVarPicker({
   value,
   onChange,
-  agentId,
-  agentKind,
   argFieldType,
   disabled,
 }: RestrictionVarPickerProps) {
-  const varsQuery = api.agent.listRestrictionVars.useQuery({ agentId })
+  const contact = api.agent.listBindingFields.useQuery({ anchor: 'contact' })
+  const participant = api.agent.listBindingFields.useQuery({ anchor: 'participant' })
+  const thread = api.agent.listBindingFields.useQuery({ anchor: 'thread' })
+  const byAnchor = { contact, participant, thread }
 
   const grouped = useMemo(() => {
-    const vars = (varsQuery.data?.vars ?? []).filter((v) =>
-      argFieldType ? isVarFieldTypeCompatible(argFieldType, v.fieldType) : true
-    )
-    const groups = new Map<string, RestrictionVar[]>()
-    for (const v of vars) {
-      const arr = groups.get(v.group) ?? []
-      arr.push(v)
-      groups.set(v.group, arr)
+    const fields: AvailableField[] = []
+    for (const anchor of ANCHORS) {
+      for (const f of byAnchor[anchor].data?.fields ?? []) {
+        if (!argFieldType || isVarFieldTypeCompatible(argFieldType, f.fieldType)) fields.push(f)
+      }
+    }
+    const groups = new Map<string, AvailableField[]>()
+    for (const f of fields) {
+      const arr = groups.get(f.group) ?? []
+      arr.push(f)
+      groups.set(f.group, arr)
     }
     return [...groups.entries()]
-  }, [varsQuery.data, argFieldType])
-
-  const isVisitorVarDisabledOnInternal = (v: RestrictionVar) =>
-    agentKind === 'internal' && v.anchor === 'visitor'
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [contact.data, participant.data, thread.data, argFieldType])
 
   return (
     <Select value={value} onValueChange={onChange} disabled={disabled}>
@@ -76,26 +73,14 @@ export function RestrictionVarPicker({
         {grouped.length === 0 ? (
           <div className='px-2 py-1.5 text-xs text-muted-foreground'>No matching values</div>
         ) : (
-          grouped.map(([group, vars]) => (
+          grouped.map(([group, fields]) => (
             <SelectGroup key={group}>
               <SelectLabel>{group}</SelectLabel>
-              {vars.map((v) => {
-                const greyed = isVisitorVarDisabledOnInternal(v)
-                const item = (
-                  <SelectItem key={v.id} value={v.id} disabled={greyed}>
-                    {v.label}
-                  </SelectItem>
-                )
-                if (!greyed) return item
-                return (
-                  <Tooltip
-                    key={v.id}
-                    side='left'
-                    content="Visitor values resolve only in a chat turn — they're null for an internal agent.">
-                    <span className='inline-block w-full'>{item}</span>
-                  </Tooltip>
-                )
-              })}
+              {fields.map((f) => (
+                <SelectItem key={f.ref} value={f.ref}>
+                  {f.label}
+                </SelectItem>
+              ))}
             </SelectGroup>
           ))
         )}
