@@ -1,17 +1,40 @@
 // packages/lib/src/ai/kopilot/capabilities/entities/tools/search-entities.ts
 
 import type { RecordId } from '@auxx/types/resource'
+import { z } from 'zod'
 import { findCachedResource, getCachedResources } from '../../../../../cache/org-cache-helpers'
 import { RecordPickerService } from '../../../../../resources/picker'
 import { parseRecordId } from '../../../../../resources/resource-id'
 import { parseStringArg } from '../../../../agent-framework/tool-inputs'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
-import { SearchEntitiesDigest, takeSample } from '../../../digests'
+import { takeSample } from '../../../digests'
 import type { GetToolDeps } from '../../types'
 import { enrichEntitiesWithFieldValues } from '../enrich-entity-fields'
-import { formatEnrichedFields } from '../format-enriched-fields'
+import { FormattedFieldSchema, formatEnrichedFields } from '../format-enriched-fields'
 
 const MAX_RESULTS = 25
+
+/**
+ * Full success output of `search_entities`. Each item always has
+ * recordId/displayName/entityType/secondaryInfo; when the result set is small
+ * (≤5) items are auto-enriched with `fields` plus `createdAt`/`updatedAt`.
+ * Empty results additionally carry a `suggestion` string.
+ */
+const SearchEntitiesOutput = z.object({
+  items: z.array(
+    z.object({
+      recordId: z.string(),
+      displayName: z.string(),
+      entityType: z.string().nullable(),
+      secondaryInfo: z.string().nullable(),
+      fields: z.record(z.string(), FormattedFieldSchema).optional(),
+      createdAt: z.date().optional(),
+      updatedAt: z.date().optional(),
+    })
+  ),
+  count: z.number(),
+  suggestion: z.string().optional(),
+})
 
 export function createSearchEntitiesTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
@@ -19,7 +42,7 @@ export function createSearchEntitiesTool(getDeps: GetToolDeps): AgentToolDefinit
     displayName: 'Search records',
     toolsetSlug: 'auxx:entities:search',
     idempotent: true,
-    outputDigestSchema: SearchEntitiesDigest,
+    outputSchema: SearchEntitiesOutput,
     buildDigest: (output) => {
       const out = (output ?? {}) as {
         items?: Array<Record<string, unknown>>

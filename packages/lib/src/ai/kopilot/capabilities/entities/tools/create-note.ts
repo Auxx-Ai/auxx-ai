@@ -1,5 +1,6 @@
 // packages/lib/src/ai/kopilot/capabilities/entities/tools/create-note.ts
 
+import { z } from 'zod'
 import { CommentService } from '../../../../../comments'
 import type { RecordId } from '../../../../../resources/resource-id'
 import { textToDoc } from '../../../../../tiptap'
@@ -9,15 +10,21 @@ import {
   parseStringArg,
 } from '../../../../agent-framework/tool-inputs'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
-import { CreateNoteDigest } from '../../../digests'
 import type { GetToolDeps } from '../../types'
+
+/** Full success output of `create_note` — the created comment id and a content preview. */
+const CreateNoteOutput = z.object({
+  commentId: z.string(),
+  recordId: z.string(),
+  contentPreview: z.string(),
+})
 
 export function createCreateNoteTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
     name: 'create_note',
     displayName: 'Add note',
     toolsetSlug: 'auxx:comments:write',
-    outputDigestSchema: CreateNoteDigest,
+    outputSchema: CreateNoteOutput,
     buildDigest: (output) => {
       const out = (output ?? {}) as { commentId?: string; recordId?: string }
       return {

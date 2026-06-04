@@ -2,6 +2,7 @@
 
 import { schema } from '@auxx/database'
 import { and, desc, eq, gte, inArray } from 'drizzle-orm'
+import { z } from 'zod'
 import { getCachedMembersByUserIds } from '../../../../../cache/org-cache-helpers'
 import type {
   TimelineFieldChangeSnapshot,
@@ -9,10 +10,27 @@ import type {
 } from '../../../../../timeline/field-change-snapshot'
 import { parseStringArg } from '../../../../agent-framework/tool-inputs'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
-import { ListFieldChangesDigest, takeSample } from '../../../digests'
+import { takeSample } from '../../../digests'
 import type { GetToolDeps } from '../../types'
 
 const MAX_LIMIT = 50
+
+/** Full success output of `list_field_changes` — recent custom-field changes from timeline. */
+const ListFieldChangesOutput = z.object({
+  changes: z.array(
+    z.object({
+      fieldSystemAttribute: z.string(),
+      oldDisplay: z.string().nullable(),
+      newDisplay: z.string().nullable(),
+      at: z.string(),
+      by: z.object({
+        actorType: z.string().nullable(),
+        userId: z.string().nullable(),
+        name: z.string().nullable(),
+      }),
+    })
+  ),
+})
 
 /** Field-update event types across system + custom entities. */
 const FIELD_UPDATE_EVENT_TYPES = [
@@ -75,7 +93,7 @@ export function createListFieldChangesTool(getDeps: GetToolDeps): AgentToolDefin
     name: 'list_field_changes',
     displayName: 'List field changes',
     toolsetSlug: 'auxx:entities:search',
-    outputDigestSchema: ListFieldChangesDigest,
+    outputSchema: ListFieldChangesOutput,
     buildDigest: (output) => {
       const out = (output ?? {}) as {
         changes?: Array<{

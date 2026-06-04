@@ -1,12 +1,21 @@
 // packages/lib/src/ai/kopilot/capabilities/entities/tools/bulk-update-entity.ts
 
+import { z } from 'zod'
 import { findCachedResource } from '../../../../../cache/org-cache-helpers'
 import { FieldValueService } from '../../../../../field-values/field-value-service'
 import { getDefinitionId } from '../../../../../resources/resource-id'
 import { getKnownDefIds, normalizeRecordIdArrayArg } from '../../../../agent-framework/tool-inputs'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
-import { BulkUpdateEntityDigest } from '../../../digests'
 import type { GetToolDeps } from '../../types'
+
+/** Full success output of `bulk_update_entity` — record counts and updated field labels. */
+const BulkUpdateEntityOutput = z.object({
+  total: z.number(),
+  approved: z.number(),
+  updated: z.number(),
+  updatedFields: z.array(z.string()),
+})
+
 import {
   formatUnknownFieldsError,
   resolveFieldLabels,
@@ -19,7 +28,7 @@ export function createBulkUpdateEntityTool(getDeps: GetToolDeps): AgentToolDefin
     name: 'bulk_update_entity',
     displayName: 'Bulk update records',
     toolsetSlug: 'auxx:entities:write',
-    outputDigestSchema: BulkUpdateEntityDigest,
+    outputSchema: BulkUpdateEntityOutput,
     buildDigest: (output) => {
       const out = (output ?? {}) as { updated?: number; updatedFields?: string[] }
       return {

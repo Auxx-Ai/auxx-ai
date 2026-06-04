@@ -1,8 +1,25 @@
 // packages/lib/src/ai/kopilot/capabilities/kopilot/tools/plan-create.ts
 
 import { generateId } from '@auxx/utils/generateId'
+import { z } from 'zod'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
 import type { GetToolDeps } from '../../types'
+
+/** Success output of `plan_create` — the canonical plan with timestamped steps. */
+const PlanCreateOutput = z.object({
+  plan: z.object({
+    steps: z.array(
+      z.object({
+        id: z.string(),
+        label: z.string(),
+        status: z.literal('pending'),
+        detail: z.string().optional(),
+      })
+    ),
+    createdAt: z.number(),
+    updatedAt: z.number(),
+  }),
+})
 
 /** Hard upper bound on plan size — beyond this, the agent should split tasks. */
 const MAX_STEPS = 30
@@ -20,6 +37,7 @@ export function createPlanCreateTool(_getDeps: GetToolDeps): AgentToolDefinition
   return {
     name: 'plan_create',
     displayName: 'Create plan',
+    outputSchema: PlanCreateOutput,
     description:
       "Create or replace the active plan for this session. Call when the user asks for a multi-step task (review N tickets, process a list, multi-stage research). Each step is a short imperative title; statuses start as 'pending'. Returns the canonical plan you should mirror in the auxx:plan-steps fence.",
     usageNotes:

@@ -2,11 +2,51 @@
 
 import { schema } from '@auxx/database'
 import { and, eq, inArray, isNotNull } from 'drizzle-orm'
+import { z } from 'zod'
 import { SearchService } from '../../../../../datasets/services/search.service'
 import { parseStringArg } from '../../../../agent-framework/tool-inputs'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
-import { ArticleSearchDigest, takeSample } from '../../../digests'
+import { takeSample } from '../../../digests'
 import type { GetToolDeps } from '../../types'
+
+/**
+ * Full success output of `search_knowledge`. Empty-result branches return just
+ * `{ results: [], count: 0, message }`; the populated branch adds `total` and
+ * `docs`, and either branch may carry `warnings` when one search lane failed.
+ */
+const SearchKnowledgeOutput = z.object({
+  results: z.array(
+    z.object({
+      id: z.string(),
+      source: z.enum(['kb', 'rag']),
+      content: z.string(),
+      score: z.number(),
+      documentTitle: z.string(),
+      datasetName: z.string(),
+      datasetId: z.string(),
+      articleId: z.string().optional(),
+      articleSlug: z.string().optional(),
+      articleSlugPath: z.string().optional(),
+      kbId: z.string().optional(),
+      kbSlug: z.string().optional(),
+      docSlug: z.string().optional(),
+      searchType: z.string(),
+    })
+  ),
+  count: z.number(),
+  total: z.number().optional(),
+  message: z.string().optional(),
+  docs: z
+    .array(
+      z.object({
+        slug: z.string(),
+        title: z.string(),
+        description: z.string(),
+      })
+    )
+    .optional(),
+  warnings: z.array(z.string()).optional(),
+})
 
 const MAX_RESULTS = 10
 const DEFAULT_RESULTS = 5
@@ -31,7 +71,7 @@ export function createSearchKnowledgeTool(getDeps: GetToolDeps): AgentToolDefini
     // surfaces (default); `externalSafe` drops the chat/email warning. See
     // plans/chat/v6/chat-tool-availability.md.
     externalSafe: true,
-    outputDigestSchema: ArticleSearchDigest,
+    outputSchema: SearchKnowledgeOutput,
     buildDigest: (output) => {
       const out = (output ?? {}) as {
         results?: Array<Record<string, unknown>>

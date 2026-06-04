@@ -2,13 +2,36 @@
 
 import { schema } from '@auxx/database'
 import { and, asc, eq } from 'drizzle-orm'
+import { z } from 'zod'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
-import { GetTranscriptDigest } from '../../../digests'
 import type { GetToolDeps } from '../../types'
 
 const DEFAULT_MAX_TOKENS = 4000
 /** Rough char→token ratio for safe truncation. */
 const CHARS_PER_TOKEN = 4
+
+/**
+ * Full success output of `get_transcript`. Two shapes by granularity:
+ * `full_text` returns `fullText` + `totalWords`; `utterances` returns the
+ * `utterances` array. `fullText`/`totalWords` and `utterances` are mutually
+ * exclusive per call.
+ */
+const GetTranscriptOutput = z.object({
+  transcriptId: z.string(),
+  truncated: z.boolean(),
+  fullText: z.string().optional(),
+  totalWords: z.number().optional(),
+  utterances: z
+    .array(
+      z.object({
+        speakerName: z.string().nullable(),
+        text: z.string(),
+        startMs: z.number(),
+        endMs: z.number(),
+      })
+    )
+    .optional(),
+})
 
 export function createGetTranscriptTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
@@ -16,7 +39,7 @@ export function createGetTranscriptTool(getDeps: GetToolDeps): AgentToolDefiniti
     displayName: 'Get transcript',
     toolsetSlug: 'auxx:entities:search',
     idempotent: true,
-    outputDigestSchema: GetTranscriptDigest,
+    outputSchema: GetTranscriptOutput,
     buildDigest: (output) => {
       const out = (output ?? {}) as { transcriptId?: string }
       return {

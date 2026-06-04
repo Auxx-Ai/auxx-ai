@@ -2,12 +2,32 @@
 
 import { schema } from '@auxx/database'
 import { and, desc, eq, gte, inArray, isNotNull, or } from 'drizzle-orm'
+import { z } from 'zod'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
-import { ListTranscriptsForEntityDigest, takeSample } from '../../../digests'
+import { takeSample } from '../../../digests'
 import type { GetToolDeps } from '../../types'
 
 const MAX_LIMIT = 25
 const SNIPPET_LENGTH = 100
+
+/** Full success output of `list_transcripts_for_entity` — transcript metadata (no text). */
+const ListTranscriptsForEntityOutput = z.object({
+  transcripts: z.array(
+    z.object({
+      transcriptId: z.string(),
+      callRecordingId: z.string(),
+      meetingId: z.string(),
+      meetingTitle: z.string().nullable(),
+      at: z.string().nullable(),
+      durationMin: z.number().nullable(),
+      participantNames: z.array(z.string()),
+      speakerCount: z.number(),
+      wordCount: z.number(),
+      status: z.string(),
+      snippet: z.string(),
+    })
+  ),
+})
 
 export function createListTranscriptsForEntityTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
@@ -15,7 +35,7 @@ export function createListTranscriptsForEntityTool(getDeps: GetToolDeps): AgentT
     displayName: 'List transcripts',
     toolsetSlug: 'auxx:entities:search',
     idempotent: true,
-    outputDigestSchema: ListTranscriptsForEntityDigest,
+    outputSchema: ListTranscriptsForEntityOutput,
     buildDigest: (output) => {
       const out = (output ?? {}) as { transcripts?: Array<{ transcriptId?: string }> }
       const transcripts = Array.isArray(out.transcripts) ? out.transcripts : []

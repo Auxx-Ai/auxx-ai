@@ -1,8 +1,22 @@
 // packages/lib/src/ai/kopilot/capabilities/kopilot/tools/plan-update-step.ts
 
+import { z } from 'zod'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
 import type { PlanStepStatus } from '../../../types'
 import type { GetToolDeps } from '../../types'
+
+/**
+ * Raw success output of `plan_update_step` — the `_planPatch` sentinel the
+ * kopilot domain's `transformToolResult` hook expands into `{ plan }` before
+ * the LLM sees it. This schema describes what the tool itself emits.
+ */
+const PlanUpdateStepOutput = z.object({
+  _planPatch: z.object({
+    stepId: z.string(),
+    status: z.enum(['pending', 'running', 'completed', 'failed']),
+    detail: z.string().optional(),
+  }),
+})
 
 /** Statuses accepted by `plan_update_step` — must match `PlanStepStatus`. */
 const VALID_STATUSES: PlanStepStatus[] = ['pending', 'running', 'completed', 'failed']
@@ -20,6 +34,7 @@ export function createPlanUpdateStepTool(_getDeps: GetToolDeps): AgentToolDefini
   return {
     name: 'plan_update_step',
     displayName: 'Update plan step',
+    outputSchema: PlanUpdateStepOutput,
     description:
       'Update the status (and optional one-line detail) of a single plan step. Use to mark a step running before you start it, completed when done, or failed if it hit a blocker. Returns the full updated plan.',
     parameters: {

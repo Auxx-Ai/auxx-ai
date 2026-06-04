@@ -1,7 +1,18 @@
 // packages/lib/src/ai/kopilot/capabilities/entities/format-enriched-fields.ts
 
 import type { FieldType } from '@auxx/database/types'
+import { z } from 'zod'
 import type { EnrichedField } from './enrich-entity-fields'
+
+/** Zod shape of {@link FormattedField} — the addressable per-field cell shape. */
+export const FormattedFieldSchema = z.object({
+  text: z.string(),
+  type: z.string().optional(),
+  actorId: z.string().optional(),
+  tags: z.array(z.object({ label: z.string(), color: z.string().optional() })).optional(),
+  recordId: z.string().optional(),
+  recordIds: z.array(z.string()).optional(),
+})
 
 /** Maps FieldType → cell type hint for the auxx:table block */
 const FIELD_TYPE_TO_CELL_TYPE: Partial<Record<FieldType, string>> = {

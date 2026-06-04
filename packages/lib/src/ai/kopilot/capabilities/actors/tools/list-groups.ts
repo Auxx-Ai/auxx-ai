@@ -1,9 +1,24 @@
 // packages/lib/src/ai/kopilot/capabilities/actors/tools/list-groups.ts
 
+import { z } from 'zod'
 import { ActorService } from '../../../../../actors/actor-service'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
-import { ListGroupsDigest, takeSample } from '../../../digests'
+import { takeSample } from '../../../digests'
 import type { GetToolDeps } from '../../types'
+
+/** Full success output of `list_groups` — matched groups with a count. */
+const ListGroupsOutput = z.object({
+  groups: z.array(
+    z.object({
+      actorId: z.string(),
+      name: z.string(),
+      description: z.string().nullable(),
+      memberCount: z.number(),
+      visibility: z.enum(['public', 'private']),
+    })
+  ),
+  count: z.number(),
+})
 
 export function createListGroupsTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
@@ -11,7 +26,7 @@ export function createListGroupsTool(getDeps: GetToolDeps): AgentToolDefinition 
     displayName: 'List groups',
     toolsetSlug: 'auxx:actors',
     idempotent: true,
-    outputDigestSchema: ListGroupsDigest,
+    outputSchema: ListGroupsOutput,
     buildDigest: (output) => {
       const out = (output ?? {}) as {
         groups?: Array<{ name?: string | null }>

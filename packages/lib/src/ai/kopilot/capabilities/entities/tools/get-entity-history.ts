@@ -2,6 +2,7 @@
 
 import { schema } from '@auxx/database'
 import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, ne, or } from 'drizzle-orm'
+import { z } from 'zod'
 import { getCachedMembersByUserIds } from '../../../../../cache/org-cache-helpers'
 import type {
   TimelineFieldChangeSnapshot,
@@ -9,8 +10,87 @@ import type {
 } from '../../../../../timeline/field-change-snapshot'
 import { docToText } from '../../../../../tiptap'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
-import { GetEntityHistoryDigest } from '../../../digests'
 import type { GetToolDeps } from '../../types'
+
+/** Full success output of `get_entity_history` — a token-bounded recent-activity digest. */
+const GetEntityHistoryOutput = z.object({
+  entity: z.object({
+    id: z.string(),
+    entityDefinitionId: z.string(),
+    primaryDisplay: z.string().nullable(),
+    secondaryDisplay: z.string().nullable(),
+    createdAt: z.string(),
+    lastActivityAt: z.string().nullable(),
+  }),
+  threads: z.array(
+    z.object({
+      id: z.string(),
+      subject: z.string(),
+      lastMessageAt: z.string().nullable(),
+      messageCount: z.number(),
+      lastMessageSnippet: z.string().nullable(),
+      role: z.enum(['primary', 'secondary']),
+    })
+  ),
+  recentComments: z.array(
+    z.object({
+      id: z.string(),
+      content: z.string(),
+      by: z.string().nullable(),
+      byUserId: z.string().nullable(),
+      at: z.string(),
+      parentId: z.string().nullable(),
+    })
+  ),
+  recentTimelineEvents: z.array(
+    z.object({
+      type: z.string(),
+      at: z.string(),
+      by: z.string().nullable(),
+      byUserId: z.string().nullable(),
+      payloadSummary: z.string(),
+    })
+  ),
+  openTasks: z.array(
+    z.object({
+      id: z.string(),
+      title: z.string(),
+      deadline: z.string().nullable(),
+      assignees: z.array(z.string()),
+    })
+  ),
+  recentFieldChanges: z.array(
+    z.object({
+      fieldSystemAttribute: z.string(),
+      oldDisplay: z.string().nullable(),
+      newDisplay: z.string().nullable(),
+      at: z.string(),
+      by: z.string().nullable(),
+      byUserId: z.string().nullable(),
+    })
+  ),
+  relatedEntities: z.array(
+    z.object({
+      id: z.string(),
+      entityDefinitionId: z.string(),
+      primaryDisplay: z.string().nullable(),
+      relationship: z.literal('shares-thread'),
+    })
+  ),
+  meetings: z.array(
+    z.object({
+      id: z.string(),
+      callRecordingId: z.string(),
+      title: z.string().nullable(),
+      at: z.string().nullable(),
+      durationMin: z.number().nullable(),
+      participantNames: z.array(z.string()),
+      transcriptAvailable: z.boolean(),
+      transcriptId: z.string().nullable(),
+    })
+  ),
+  truncated: z.boolean(),
+})
 
 const FIELD_UPDATE_EVENT_TYPES = [
   'contact:field:updated',
@@ -84,7 +164,7 @@ export function createGetEntityHistoryTool(getDeps: GetToolDeps): AgentToolDefin
     displayName: 'Get record history',
     toolsetSlug: 'auxx:entities:search',
     idempotent: true,
-    outputDigestSchema: GetEntityHistoryDigest,
+    outputSchema: GetEntityHistoryOutput,
     buildDigest: (output) => {
       const out = (output ?? {}) as {
         entity?: { id?: string }

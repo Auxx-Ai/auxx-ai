@@ -1,13 +1,49 @@
 // packages/lib/src/ai/kopilot/capabilities/mail/tools/get-thread-detail.ts
 
 import { parseRecordId } from '@auxx/types/resource'
+import { z } from 'zod'
 import { MessageQueryService } from '../../../../../messages'
 import { TagService } from '../../../../../tags'
 import { ThreadQueryService } from '../../../../../threads'
 import { parseStringArg } from '../../../../agent-framework/tool-inputs'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
-import { GetThreadDetailDigest } from '../../../digests'
 import type { GetToolDeps } from '../../types'
+
+/** Full success output of `get_thread_detail` — thread metadata plus recent messages. */
+const GetThreadDetailOutput = z.object({
+  thread: z.object({
+    id: z.string(),
+    subject: z.string(),
+    status: z.string(),
+    assigneeId: z.string().nullable(),
+    lastMessageAt: z.string(),
+    messageCount: z.number(),
+    isUnread: z.boolean(),
+    tagIds: z.array(z.string()),
+    tags: z.array(
+      z.object({
+        id: z.string(),
+        name: z.string(),
+        color: z.string(),
+        emoji: z.string().nullable(),
+      })
+    ),
+    integrationId: z.string(),
+  }),
+  messages: z.array(
+    z.object({
+      id: z.string(),
+      subject: z.string().nullable(),
+      snippet: z.string().nullable(),
+      textPlain: z.string(),
+      isInbound: z.boolean(),
+      hasAttachments: z.boolean(),
+      sentAt: z.string().nullable(),
+      participants: z.array(z.string()),
+    })
+  ),
+  totalMessages: z.number(),
+})
 
 const MAX_MESSAGES = 20
 const MAX_BODY_LENGTH = 500
@@ -23,7 +59,7 @@ export function createGetThreadDetailTool(getDeps: GetToolDeps): AgentToolDefini
     displayName: 'Read thread',
     toolsetSlug: 'auxx:mail:threads',
     idempotent: true,
-    outputDigestSchema: GetThreadDetailDigest,
+    outputSchema: GetThreadDetailOutput,
     buildDigest: (output) => {
       const out = (output ?? {}) as {
         thread?: { id?: string; subject?: string | null; lastMessageAt?: string | null }

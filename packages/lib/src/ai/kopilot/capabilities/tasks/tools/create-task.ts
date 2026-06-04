@@ -2,6 +2,7 @@
 
 import { toActorId } from '@auxx/types/actor'
 import type { AbsoluteDate, RelativeDate } from '@auxx/types/task'
+import { z } from 'zod'
 import { createTaskService } from '../../../../../tasks/task-service'
 import {
   getKnownDefIds,
@@ -11,8 +12,16 @@ import {
   parseStringArg,
 } from '../../../../agent-framework/tool-inputs'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
-import { CreateTaskDigest } from '../../../digests'
 import type { GetToolDeps } from '../../types'
+
+/** Full success output of `create_task` — the created task summary. */
+const CreateTaskOutput = z.object({
+  taskId: z.string(),
+  title: z.string(),
+  deadline: z.string().nullable(),
+  priority: z.enum(['low', 'medium', 'high']).nullable(),
+  assignees: z.array(z.string()),
+})
 
 export function createCreateTaskTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
@@ -22,7 +31,7 @@ export function createCreateTaskTool(getDeps: GetToolDeps): AgentToolDefinition 
     description:
       'Create a new task. Resolving names: try list_members first for the assignee — assignees are workspace members (teammates), not contacts. If the name does not match any member, fall back to search_entities — the person is likely a contact (or the subject is a company/record). Pass the matched recordId to linkedRecordIds and leave assigneeIds empty so the task is assigned to the caller. Use search_entities for any other referenced records (products, orders, etc.). Supports natural language deadlines like "next Friday", "in 3 days", "end of week".',
     requiresApproval: true,
-    outputDigestSchema: CreateTaskDigest,
+    outputSchema: CreateTaskOutput,
     buildDigest: (output) => {
       const out = (output ?? {}) as {
         taskId?: string

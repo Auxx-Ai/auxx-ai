@@ -2,6 +2,7 @@
 
 import type { ResourceFieldId } from '@auxx/types/field'
 import { toResourceFieldId } from '@auxx/types/field'
+import { z } from 'zod'
 import { findCachedResource, getCachedResources } from '../../../../../cache/org-cache-helpers'
 import type { Condition, ConditionGroup } from '../../../../../conditions'
 import {
@@ -20,7 +21,7 @@ import { getFieldOptions } from '../../../../../resources/registry/option-helper
 import type { Resource } from '../../../../../resources/registry/types'
 import { toRecordId } from '../../../../../resources/resource-id'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
-import { QueryRecordsDigest, takeSample } from '../../../digests'
+import { takeSample } from '../../../digests'
 import type { GetToolDeps } from '../../types'
 
 interface SimplifiedFilter {
@@ -28,6 +29,46 @@ interface SimplifiedFilter {
   operator: string
   value?: unknown
 }
+
+/** Dropped-filter warning surfaced to the LLM (mirrors `QueryWarning`). */
+const QueryWarningSchema = z.object({
+  kind: z.string(),
+  field: z.string().optional(),
+  operator: z.string().optional(),
+  fieldType: z.string().optional(),
+  value: z.unknown().optional(),
+  validValues: z.array(z.string()).optional(),
+  from: z.string().optional(),
+  to: z.string().optional(),
+  hint: z.string(),
+})
+
+/**
+ * Full success output of `query_records`. Two shapes:
+ * countOnly mode returns `{ entityType, total_matching, warnings? }`;
+ * full mode adds `items`, `returned_count`, and `hasMore`. Each item carries
+ * `recordId`/`displayName` plus dynamic label-keyed field values from the
+ * matched record (and an unknown-record fallback that only has recordId +
+ * displayName).
+ */
+const QueryRecordsOutput = z.object({
+  entityType: z.string(),
+  total_matching: z.number(),
+  returned_count: z.number().optional(),
+  hasMore: z.boolean().optional(),
+  warnings: z.array(QueryWarningSchema).optional(),
+  items: z
+    .array(
+      z
+        .object({
+          recordId: z.string(),
+          displayName: z.string(),
+          secondaryInfo: z.string().nullable().optional(),
+        })
+        .catchall(z.unknown())
+    )
+    .optional(),
+})
 
 type QueryWarning =
   | { kind: 'unknown_field'; field: string; hint: string }
@@ -56,7 +97,7 @@ export function createQueryRecordsTool(getDeps: GetToolDeps): AgentToolDefinitio
     displayName: 'Filter records',
     toolsetSlug: 'auxx:entities:search',
     idempotent: true,
-    outputDigestSchema: QueryRecordsDigest,
+    outputSchema: QueryRecordsOutput,
     buildDigest: (output) => {
       const out = (output ?? {}) as {
         items?: Array<Record<string, unknown>>

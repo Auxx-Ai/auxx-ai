@@ -1,9 +1,25 @@
 // packages/lib/src/ai/kopilot/capabilities/mail/tools/list-tags.ts
 
+import { z } from 'zod'
 import { TagService } from '../../../../../tags'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
-import { ListTagsDigest, takeSample } from '../../../digests'
+import { takeSample } from '../../../digests'
 import type { GetToolDeps } from '../../types'
+
+/** Full success output of `list_tags` — the workspace's tags with hierarchy. */
+const ListTagsOutput = z.object({
+  tags: z.array(
+    z.object({
+      id: z.string(),
+      name: z.string(),
+      color: z.string(),
+      emoji: z.string().nullable(),
+      isSystemTag: z.boolean(),
+      parentId: z.string().nullable(),
+    })
+  ),
+  count: z.number(),
+})
 
 const DEFAULT_LIMIT = 50
 const MAX_LIMIT = 200
@@ -14,7 +30,7 @@ export function createListTagsTool(getDeps: GetToolDeps): AgentToolDefinition {
     displayName: 'List tags',
     toolsetSlug: 'auxx:mail:threads',
     idempotent: true,
-    outputDigestSchema: ListTagsDigest,
+    outputSchema: ListTagsOutput,
     buildDigest: (output) => {
       const out = (output ?? {}) as {
         tags?: Array<{ name?: string | null }>
