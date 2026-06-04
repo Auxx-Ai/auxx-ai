@@ -1,4 +1,4 @@
-// apps/web/src/components/agents/ui/detail/restrictions/add-restriction-dialog.tsx
+// apps/web/src/components/agents/ui/detail/bindings/add-binding-dialog.tsx
 'use client'
 
 import type { VarSource } from '@auxx/lib/agents/bindings/client'
@@ -12,13 +12,13 @@ import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { type ReactNode, useEffect, useMemo, useState } from 'react'
 import { ToolReferenceList } from '~/components/pickers/tool-picker/tool-reference-list'
 import { VarEditorField, VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
-import { argToFieldType } from '~/lib/agents/restrictions/arg-to-field-type'
+import { argToFieldType } from '~/lib/agents/bindings/arg-to-field-type'
 import type { AgentDetail } from '../../../store/agent-store'
+import { BindingValueEditor } from './binding-value-editor'
 import type { ToolMeta, UseToolMetaResult } from './hooks/use-tool-meta'
-import { RestrictionValueEditor } from './restriction-value-editor'
 import { type ToolArgInfo, topLevelArgs } from './tool-args'
 
-interface AddRestrictionDialogProps {
+interface AddBindingDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   agent: AgentDetail
@@ -68,14 +68,14 @@ function isIncomplete(source: VarSource): boolean {
  *      (no override) and are pruned on save, leaving the tool on its author
  *      defaults. See plans/chat/v8 phase-5.
  */
-export function AddRestrictionDialog({
+export function AddBindingDialog({
   open,
   onOpenChange,
   agent,
   toolMeta,
   editing,
   onSave,
-}: AddRestrictionDialogProps) {
+}: AddBindingDialogProps) {
   const [step, setStep] = useState<Step>('tool')
   const [registeredName, setRegisteredName] = useState<string | null>(null)
   const [draft, setDraft] = useState<Record<string, VarSource>>({})
@@ -190,7 +190,7 @@ export function AddRestrictionDialog({
                                 : undefined
                             }>
                             {mapped.supported ? (
-                              <RestrictionValueEditor
+                              <BindingValueEditor
                                 source={source}
                                 onChange={(next) => setRow(arg.name, next)}
                                 argFieldType={mapped.fieldType}

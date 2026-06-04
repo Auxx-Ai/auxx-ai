@@ -15,6 +15,11 @@ import {
 } from '@auxx/types/field'
 import { parseRecordId, type RecordId, toRecordId } from '@auxx/types/resource'
 import { LRUCache } from 'lru-cache'
+import type {
+  ContextEntryDescriptor,
+  ContextManager,
+  ContextRef,
+} from '../../ai/agent-framework/context'
 import { getCachedResourceFields } from '../../cache'
 import type { FieldOptions } from '../../custom-fields/field-options'
 import {
@@ -88,9 +93,34 @@ interface RecordFieldEntry {
 }
 
 /**
- * Manages workflow execution context including variables, state, and logging
+ * Map a chat-v9 {@link ContextRef} onto the flat workflow path strings this
+ * manager already resolves (`var:x` → `x`, `sys:userId` → `sys.userId`). A
+ * small pure helper — the kopilot store parses refs richly; the workflow engine
+ * only needs the legacy path form, since its `tool:*` capture is a Phase-3
+ * concern and `var:`/`sys:` cover what workflow tools use today.
  */
-export class ExecutionContextManager {
+function refToWorkflowPath(ref: ContextRef): string {
+  if (Array.isArray(ref)) {
+    // FieldPath traversal — workflow paths are dot-joined.
+    return ref.join('.')
+  }
+  if (ref.startsWith('var:')) return ref.slice('var:'.length)
+  if (ref.startsWith('sys:')) return `sys.${ref.slice('sys:'.length)}`
+  if (ref.startsWith('tool:')) return ref.slice('tool:'.length)
+  if (ref.startsWith('call:')) return ref.slice('call:'.length)
+  return ref
+}
+
+/**
+ * Manages workflow execution context including variables, state, and logging.
+ *
+ * Conforms to the chat-v9 {@link ContextManager} contract (the `read`/`write`/
+ * `interpolate`/`captureToolResult`/`list` adapters below) so workflow AI nodes
+ * can hand their live execution context to the agent framework as
+ * `ToolContext.context`. The adapters are thin wrappers over the existing
+ * methods — no behavior change. See plans/chat/v9/CONTEXT-VARIABLES-IMPLEMENTATION.md.
+ */
+export class ExecutionContextManager implements ContextManager {
   private context: ExecutionContext
   private userEmail?: string
   private userName?: string
@@ -194,6 +224,43 @@ export class ExecutionContextManager {
    */
   assignVariable(name: string, value: unknown): void {
     this.setVariable(name, value)
+  }
+
+  // ===========================================================================
+  // ContextManager conformance (chat v9) — thin adapters, no behavior change
+  // ===========================================================================
+
+  /** {@link ContextManager.read} — resolve a `ContextRef` via the workflow path resolver. */
+  async read(ref: ContextRef): Promise<unknown> {
+    return this.resolveVariablePath(refToWorkflowPath(ref))
+  }
+
+  /** {@link ContextManager.write} — set a `var:*` (or legacy) ref into a workflow variable. */
+  async write(ref: ContextRef, value: unknown): Promise<void> {
+    this.setVariable(refToWorkflowPath(ref), value)
+  }
+
+  /** {@link ContextManager.interpolate} — delegate to the existing `{{path}}` interpolation. */
+  async interpolate(text: string): Promise<string> {
+    return this.interpolateVariables(text)
+  }
+
+  /**
+   * {@link ContextManager.captureToolResult} — no-op in the workflow engine.
+   * Workflow tool outputs are exposed as node variables, not the turn-scoped
+   * `tool:*` capture store; generic capture is a kopilot-store concern (Phase 3).
+   */
+  captureToolResult(_toolCallId: string, _toolName: string, _result: unknown): void {
+    // intentionally empty — see method doc
+  }
+
+  /** {@link ContextManager.list} — enumerate current variables as resolvable refs. */
+  list(): ContextEntryDescriptor[] {
+    return Object.keys(this.context.variables).map((key) =>
+      key.startsWith('sys.')
+        ? { ref: `sys:${key.slice('sys.'.length)}` as ContextRef, kind: 'sys' as const }
+        : { ref: `var:${key}` as ContextRef, kind: 'var' as const }
+    )
   }
 
   /**

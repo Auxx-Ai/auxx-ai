@@ -18,7 +18,7 @@ export {
 export { features } from './features'
 export { detectTimezone, IANA_TIME_ZONES, type IANATimeZone, isValidTimezone } from './timezones'
 
-export * from './url'
+export * from './urls'
 
 /** Returns build metadata for display in UI and debugging */
 export function getAppVersion() {

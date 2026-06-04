@@ -12,7 +12,7 @@ import { AppAccountDialog } from '~/components/apps/ui/app-account-dialog'
 import { api } from '~/trpc/react'
 import type { AgentDetail } from '../../../store/agent-store'
 import type { AutosaveState } from '../../shared/autosave-indicator'
-import { useToolMeta } from '../restrictions/hooks/use-tool-meta'
+import { useToolMeta } from '../bindings/hooks/use-tool-meta'
 import {
   CatalogNodeRow,
   collectLeaves,

@@ -29,10 +29,10 @@
       "default": "./src/build.ts"
     },
     "./urls": {
-      "types": "./src/url.ts",
-      "source": "./src/url.ts",
-      "import": "./dist/url.mjs",
-      "default": "./src/url.ts"
+      "types": "./src/urls.ts",
+      "source": "./src/urls.ts",
+      "import": "./dist/urls.mjs",
+      "default": "./src/urls.ts"
     }
   },
   "scripts": {

@@ -1,4 +1,4 @@
-// apps/web/src/components/agents/ui/detail/restrictions/hooks/use-tool-meta.ts
+// apps/web/src/components/agents/ui/detail/bindings/hooks/use-tool-meta.ts
 'use client'
 
 import { useMemo } from 'react'

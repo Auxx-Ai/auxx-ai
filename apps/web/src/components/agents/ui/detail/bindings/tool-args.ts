@@ -1,6 +1,6 @@
-// apps/web/src/components/agents/ui/detail/restrictions/tool-args.ts
+// apps/web/src/components/agents/ui/detail/bindings/tool-args.ts
 
-import type { ToolArgSchema } from '~/lib/agents/restrictions/arg-to-field-type'
+import type { ToolArgSchema } from '~/lib/agents/bindings/arg-to-field-type'
 
 /** One top-level argument of a tool, extracted from its `inputsJsonSchema`. */
 export interface ToolArgInfo {
