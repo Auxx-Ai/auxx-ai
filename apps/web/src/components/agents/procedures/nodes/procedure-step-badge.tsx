@@ -5,7 +5,7 @@ import { cn } from '@auxx/ui/lib/utils'
 import { ArrowRight, Code2, CornerDownRight, Hand, Settings2, Square, Workflow } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { api } from '~/trpc/react'
-import { useProcedureEditorContext } from '../ui/procedure-editor-context'
+import { useProcedureEditorContext } from '../ui/procedure-draft-provider'
 
 const PILL =
   'inline-flex items-center gap-1 align-baseline rounded-md px-1.5 py-0 text-sm bg-primary-100 text-primary-700 ring-1 ring-primary-200 transition-all'
@@ -85,7 +85,7 @@ function SubProcedureBadge({ subId, selected }: { subId: string; selected: boole
     <Pill
       icon={<Workflow className='size-3.5' />}
       selected={selected}
-      onCog={ctx ? () => ctx.drillInto(`sub:${subId}`) : undefined}>
+      onCog={ctx ? () => ctx.openDrill(`sub:${subId}`) : undefined}>
       {name}
       <ArrowRight className='ml-0.5 inline size-3 opacity-60' />
     </Pill>
@@ -99,7 +99,7 @@ function CodeBadge({ codeId, selected }: { codeId: string; selected: boolean }) 
     <Pill
       icon={<Code2 className='size-3.5' />}
       selected={selected}
-      onCog={ctx ? () => ctx.drillInto(`code:${codeId}`) : undefined}>
+      onCog={ctx ? () => ctx.openDrill(`code:${codeId}`) : undefined}>
       {name}
     </Pill>
   )

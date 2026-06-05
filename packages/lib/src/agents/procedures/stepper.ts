@@ -2,7 +2,7 @@
 
 import type { ToolContext } from '../../ai/agent-framework/tool-context'
 import { evaluateConditions } from '../../conditions/evaluate'
-import { buildProcedurePredicateResolver, readProcedureRef, writeProcedureVar } from './context'
+import { buildCodeInputs, buildProcedurePredicateResolver, writeProcedureVar } from './context'
 import { PROC_SIGNAL_KEY, type ProcedureSignal } from './control-tools'
 import { buildReanchorBreadcrumb } from './re-anchor'
 import { atDepthCap, clear, pop, push, replaceTop, top } from './stack'
@@ -333,9 +333,9 @@ async function pickConditionBranch(
 }
 
 /**
- * Run a `code` step: resolve its inputs through the shared {@link readProcedureRef}
- * (so a local `var:*` written by an earlier code step is visible, and a CRM field on an
- * internal run gates to `undefined`), invoke the sandbox, then apply D5/D6:
+ * Run a `code` step: build the ambient `inputs` bag via {@link buildCodeInputs} (every
+ * declared local attribute read LIVE — a `var:*` written by an earlier code step is visible,
+ * an unwritten one gates to `undefined`), invoke the sandbox, then apply D5/D6:
  *
  *  - **ok** → write each declared output to its scoped `var:*`; collect the
  *    `surfaceToModel` ones (skipping `undefined`, so we never claim a value was computed
@@ -365,11 +365,7 @@ async function runCodeStep(
     return
   }
 
-  const codeInput: Record<string, unknown> = {}
-  for (const input of step.inputs) {
-    codeInput[input.name] = await readProcedureRef(deps.ctx, frame, input.ref)
-  }
-
+  const codeInput = await buildCodeInputs(deps.ctx, frame, compiled.localAttributes)
   const outcome = await deps.runCode({ code: block.code }, codeInput)
   if (!outcome.ok) {
     await clearOutputs(outcome.error)

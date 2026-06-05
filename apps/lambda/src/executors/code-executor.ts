@@ -246,7 +246,6 @@ export async function executeCode(options: CodeExecutionEvent): Promise<Executio
     variables,
     timeout, // Default provided by Zod schema
   } = options
-  console.log('LALAALAL', codeInput, inputsConfig)
   console.log('[CodeExecutor] Executing code:', {
     language: codeLanguage,
     timeout,

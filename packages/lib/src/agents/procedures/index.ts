@@ -15,6 +15,7 @@ export {
 export type { CompileError, CompileResult } from './compile'
 export { compileProcedure } from './compile'
 export {
+  buildCodeInputs,
   buildProcedureFieldResolver,
   buildProcedurePredicateResolver,
   readProcedureRef,
@@ -118,7 +119,6 @@ export {
 } from './turn-wiring'
 export type {
   ArgBindingMap,
-  CodeInput,
   CodeOutput,
   CompiledProcedure,
   LocalAttribute,

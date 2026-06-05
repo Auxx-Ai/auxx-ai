@@ -26,7 +26,7 @@ import {
 import type { ReactNode } from 'react'
 import { api } from '~/trpc/react'
 import { newConditionBlock } from '../nodes/condition-helpers'
-import { useProcedureEditorContext } from './procedure-editor-context'
+import { useProcedureEditorContext } from './procedure-draft-provider'
 
 /**
  * The `@`-picker lists for the v9 procedure step tabs (plan §5). Every insertion
@@ -115,7 +115,7 @@ export function SubProcedurePickerList({ query, onSelect }: PickerListProps) {
     if (!ctx) return
     const id = ctx.createSubProcedure(query)
     onSelect(`subprocedure:${id}`)
-    ctx.drillInto(`sub:${id}`)
+    ctx.openDrill(`sub:${id}`)
   }
 
   return (
@@ -152,7 +152,7 @@ export function CodePickerList({ query, onSelect }: PickerListProps) {
     if (!ctx) return
     const id = ctx.createCodeBlock(query)
     onSelect(`code:${id}`)
-    ctx.drillInto(`code:${id}`)
+    ctx.openDrill(`code:${id}`)
   }
 
   return (
