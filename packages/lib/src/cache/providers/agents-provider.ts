@@ -2,9 +2,11 @@
 
 import { type AgentConfig, schema } from '@auxx/database'
 import { eq } from 'drizzle-orm'
+import type { CompiledProcedure, TriggerExample } from '../../agents/procedures/types'
+import type { ConditionGroup } from '../../conditions/types'
 import { MediaAssetService } from '../../files'
 import { createScopedLogger } from '../../logger'
-import type { CachedAgent, CachedAgentTrigger } from '../org-cache-keys'
+import type { CachedAgent, CachedAgentProcedure, CachedAgentTrigger } from '../org-cache-keys'
 import type { CacheProvider } from '../org-cache-provider'
 
 const logger = createScopedLogger('agents-provider')
@@ -30,7 +32,7 @@ const logger = createScopedLogger('agents-provider')
  */
 export const agentsProvider: CacheProvider<CachedAgent[]> = {
   async compute(orgId, db) {
-    const [agents, triggers] = await Promise.all([
+    const [agents, triggers, procedures] = await Promise.all([
       db
         .select({
           id: schema.Agent.id,
@@ -75,6 +77,35 @@ export const agentsProvider: CacheProvider<CachedAgent[]> = {
         })
         .from(schema.AgentTrigger)
         .where(eq(schema.AgentTrigger.organizationId, orgId)),
+      // Procedures projection: each AgentProcedure link → its Procedure → that
+      // procedure's ACTIVE published version. The inner join on
+      // `Procedure.activeVersionId` carries exactly the active version's
+      // `compiled` and DROPS procedures never published (activeVersionId IS NULL
+      // → no join row). Phase 4 §4.2.
+      db
+        .select({
+          linkId: schema.AgentProcedure.id,
+          agentId: schema.AgentProcedure.agentId,
+          procedureId: schema.Procedure.id,
+          enabled: schema.AgentProcedure.enabled,
+          priority: schema.AgentProcedure.priority,
+          // defaults (Procedure) + overrides (link) — resolved `override ?? default` below
+          whenToUseDefault: schema.Procedure.whenToUse,
+          whenToUseOverride: schema.AgentProcedure.whenToUseOverride,
+          examplesDefault: schema.Procedure.triggerExamples,
+          examplesOverride: schema.AgentProcedure.triggerExamplesOverride,
+          rulesetDefault: schema.Procedure.ruleset,
+          rulesetOverride: schema.AgentProcedure.rulesetOverride,
+          activeVersionId: schema.Procedure.activeVersionId,
+          compiled: schema.ProcedureVersion.compiled,
+        })
+        .from(schema.AgentProcedure)
+        .innerJoin(schema.Procedure, eq(schema.Procedure.id, schema.AgentProcedure.procedureId))
+        .innerJoin(
+          schema.ProcedureVersion,
+          eq(schema.ProcedureVersion.id, schema.Procedure.activeVersionId)
+        )
+        .where(eq(schema.AgentProcedure.organizationId, orgId)),
     ])
 
     const triggersByAgent = new Map<string, CachedAgentTrigger[]>()
@@ -95,6 +126,26 @@ export const agentsProvider: CacheProvider<CachedAgent[]> = {
         instructions: (t.instructions ?? null) as Record<string, unknown> | null,
       })
       triggersByAgent.set(t.agentId, list)
+    }
+
+    const proceduresByAgent = new Map<string, CachedAgentProcedure[]>()
+    for (const p of procedures) {
+      // The inner join guarantees a non-null active version for every row.
+      if (!p.activeVersionId) continue
+      const list = proceduresByAgent.get(p.agentId) ?? []
+      list.push({
+        linkId: p.linkId,
+        procedureId: p.procedureId,
+        enabled: p.enabled,
+        priority: p.priority,
+        // Resolve `override ?? default` here so consumers read a single value.
+        whenToUse: p.whenToUseOverride ?? p.whenToUseDefault,
+        triggerExamples: (p.examplesOverride ?? p.examplesDefault ?? []) as TriggerExample[],
+        ruleset: (p.rulesetOverride ?? p.rulesetDefault ?? []) as ConditionGroup[],
+        activeVersionId: p.activeVersionId,
+        compiled: (p.compiled ?? {}) as unknown as CompiledProcedure,
+      })
+      proceduresByAgent.set(p.agentId, list)
     }
 
     return Promise.all(
@@ -144,6 +195,7 @@ export const agentsProvider: CacheProvider<CachedAgent[]> = {
           setupCompletedAt: row.setupCompletedAt ? row.setupCompletedAt.toISOString() : null,
           archivedAt: row.archivedAt ? row.archivedAt.toISOString() : null,
           triggers: agentTriggers,
+          procedures: proceduresByAgent.get(row.id) ?? [],
           dmEnabled: dm?.enabled ?? false,
           dmInstructions: dm?.instructions ?? null,
           dmTriggerId: dm?.id ?? null,

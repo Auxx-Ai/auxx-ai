@@ -95,7 +95,7 @@ export type PrepareResult =
       breadcrumb?: string
     }
   /** Stack emptied / handoff cleared → persona-only, no procedure section this turn (#9). */
-  | { kind: 'free-form'; stack: ProcedureStack }
+  | { kind: 'free-form'; stack: ProcedureStack; handoff?: boolean }
 
 export interface InterpretResult {
   stack: ProcedureStack
@@ -105,6 +105,13 @@ export interface InterpretResult {
   endTurn: boolean
   /** Re-run the loop WITHOUT a procedure section this turn (persona-only) and re-interpret (#9). */
   inlineFallback?: boolean
+  /**
+   * Escalate to a human — set by both handoff paths (routing `handoff` outcome in
+   * `prepareTurn`, the `handoff_to_human` control tool in `interpretSignal`). The
+   * caller flips the thread to the human queue; internal runs have no queue and
+   * ignore it. The stack is already cleared. See plans/chat/v9 §6 reconciliation.
+   */
+  handoff?: boolean
 }
 
 /** Runaway guards — a valid compiled tree threads `next` acyclically, so these never trip. */
@@ -154,8 +161,9 @@ export async function prepareTurn(
       }
 
       case 'handoff':
-        // Routing handoff leaves the agent — clear the stack, fall to persona-only.
-        return { kind: 'free-form', stack: clear(working) }
+        // Routing handoff leaves the agent — clear the stack, escalate to a human,
+        // fall to persona-only for this turn's closing message.
+        return { kind: 'free-form', stack: clear(working), handoff: true }
 
       case 'switch': {
         const target = await deps.loadActiveVersion(action.toProcedureId)
@@ -346,7 +354,7 @@ export async function interpretSignal(
     }
 
     case 'handoff':
-      return { stack: clear(stack), reinvoke: false, endTurn: true }
+      return { stack: clear(stack), reinvoke: false, endTurn: true, handoff: true }
 
     case 'end':
       // Pop, resume parent at its parked cursor next prepareTurn. (A digression's

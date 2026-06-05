@@ -15,6 +15,13 @@ import {
   computeEffectiveBindings,
   projectBindingSchemas,
 } from '../../agents/bindings'
+import {
+  type ConversationMessage,
+  PROCEDURE_CONTROL_TOOLS,
+  runProcedureTurn,
+  sessionMessagesToConversation,
+} from '../../agents/procedures'
+import { getCachedAgentById } from '../../cache'
 import type { JobContext } from '../../jobs/types'
 import { docToText } from '../../tiptap'
 import {
@@ -32,12 +39,14 @@ import type { UsageTrackingRequest } from '../orchestrator/types'
 import { getModelCreditMultiplier } from '../quota/credit-multiplier'
 import { UsageTrackingService } from '../usage/usage-tracking-service'
 import { BUILDER_MODEL } from './builder-model'
+import { KopilotContextStore, readContextSlice } from './context'
 import { AgentEngine } from './engine'
 import type { AgentJobPayload } from './enqueue-agent-job'
 import { createAgentEventPublisher } from './event-publisher'
 import { createCallModel } from './llm-adapter'
 import { withAgentRunLog } from './run-log'
-import type { AgentEngineConfig, SessionMessage } from './types'
+import type { Subject, ToolContext } from './tool-context'
+import type { AgentEngineConfig, AgentEvent, SessionMessage } from './types'
 
 const logger = createScopedLogger('agent-job')
 
@@ -113,6 +122,13 @@ async function processAgentMessageInternal(ctx: JobContext<AgentJobPayload>) {
   // is read back.
   const agentId = session.agentId ?? data.agentId ?? null
 
+  // v9 procedures: load the agent's projected procedures (org-cache). Only
+  // agent-bound runs can carry procedures; master/builder runs (no agentId)
+  // project to none. `[]` for an agent with no published procedures.
+  const agent = agentId ? await getCachedAgentById(organizationId, agentId) : null
+  const procedures = agent?.procedures ?? []
+  const hasProcedures = procedures.length > 0
+
   // 1b. Resolve trigger context for autonomous runs. The trigger row is
   // re-fetched (not passed via the job payload) so operator edits to
   // `instructions` between enqueue and execution are picked up.
@@ -133,6 +149,9 @@ async function processAgentMessageInternal(ctx: JobContext<AgentJobPayload>) {
     modelId,
     agentId,
     triggerContext,
+    // Mount the procedure control tools when this agent has procedures (inert
+    // without an active step in the prompt — same gating as the chat path).
+    hasProcedures,
   })
 
   // 3. Create LLM adapter
@@ -146,7 +165,8 @@ async function processAgentMessageInternal(ctx: JobContext<AgentJobPayload>) {
 
   // 3b. Resolve the agent's binding override map (cached read; empty for
   // master). Combined with each tool's author defaults to clamp args per call.
-  const { toolRestrictions } = await resolveAgentConfig(organizationId, agentId)
+  const agentConfig = await resolveAgentConfig(organizationId, agentId)
+  const { toolRestrictions } = agentConfig
 
   // 4. Create engine with saved state
   const engineConfig: AgentEngineConfig = {
@@ -184,50 +204,115 @@ async function processAgentMessageInternal(ctx: JobContext<AgentJobPayload>) {
   const sessionContext = { page, ...(context ?? {}) }
   const usageEntries: UsageTrackingRequest[] = []
 
-  const generator =
-    type === 'approval'
-      ? engine.resume({
-          action: data.approvalAction ?? 'approve',
-          inputAmendment: data.inputAmendment,
-          context: sessionContext,
-        })
-      : engine.submitMessage(message, sessionContext)
+  // Drain one engine pass: publish every event, accumulate per-call usage, and
+  // return the final assistant text. Called once for a plain turn, or once per
+  // stepper phase by `runProcedureTurn` (each re-drain bills its own iterations).
+  const drain = async (gen: AsyncGenerator<AgentEvent>): Promise<string> => {
+    let text = ''
+    for await (const event of gen) {
+      if (signal?.aborted) {
+        engine.interrupt()
+        break
+      }
 
-  for await (const event of generator) {
-    if (signal?.aborted) {
-      engine.interrupt()
-      break
+      // Per-LLM-call billing breakdown lives on `event.iterations` (one entry
+      // per agent iteration). Iterate to push one usage record per call with
+      // correct SYSTEM-vs-CUSTOM credit gating — BYOK customers consume no
+      // credits. Drain on both `paused` and `finished`: pre-pause iterations
+      // ride on `paused`, post-resume iterations on `finished`. Each event
+      // carries only segment-fresh iterations so no double-billing.
+      if (
+        (event.type === 'assistant-message-finished' ||
+          event.type === 'assistant-message-paused') &&
+        event.iterations?.length
+      ) {
+        for (const it of event.iterations) {
+          usageEntries.push({
+            organizationId,
+            userId,
+            provider: it.provider,
+            model: it.model,
+            usage: it.usage,
+            timestamp: new Date(),
+            source: 'agent',
+            sourceId: sessionId,
+            providerType: it.providerType,
+            credentialSource: it.credentialSource,
+            creditsUsed:
+              it.providerType === 'SYSTEM' ? getModelCreditMultiplier(it.provider, it.model) : 0,
+          })
+        }
+      }
+
+      if (event.type === 'assistant-message-finished') {
+        const t = event.parts
+          .filter((p): p is Extract<typeof p, { type: 'text' }> => p.type === 'text')
+          .map((p) => p.text)
+          .join('')
+        if (t.trim()) text = t
+      }
+
+      await publisher.publish(event)
     }
+    return text
+  }
 
-    // Per-LLM-call billing breakdown lives on `event.iterations` (one entry
-    // per agent iteration). Iterate to push one usage record per call with
-    // correct SYSTEM-vs-CUSTOM credit gating — BYOK customers consume no
-    // credits. Drain on both `paused` and `finished`: pre-pause iterations
-    // ride on `paused`, post-resume iterations on `finished`. Each event
-    // carries only segment-fresh iterations so no double-billing.
-    if (
-      (event.type === 'assistant-message-finished' || event.type === 'assistant-message-paused') &&
-      event.iterations?.length
-    ) {
-      for (const it of event.iterations) {
-        usageEntries.push({
-          organizationId,
-          userId,
-          provider: it.provider,
-          model: it.model,
-          usage: it.usage,
-          timestamp: new Date(),
-          source: 'agent',
-          sourceId: sessionId,
-          providerType: it.providerType,
-          credentialSource: it.credentialSource,
-          creditsUsed:
-            it.providerType === 'SYSTEM' ? getModelCreditMultiplier(it.provider, it.model) : 0,
-        })
+  // v9 procedures: an agent with published procedures sandwiches the engine drain
+  // between selection + the stepper (`runProcedureTurn`), exactly like the chat
+  // path. Internal runs carry an empty-anchors subject, so every procedure field
+  // resolves to `undefined` (gate-by-absence) and there's no human queue to flip
+  // (no `onHandoff`). Approval-resume turns skip the sandwich — they continue a
+  // paused tool, not a fresh customer message (job-path resume verify is §2.2).
+  if (hasProcedures && type !== 'approval') {
+    const subject: Subject = { anchors: {}, identityVerified: false }
+    const conversation: ConversationMessage[] = [
+      ...sessionMessagesToConversation((session.messages ?? []) as SessionMessage[]),
+      { role: 'user', content: message },
+    ]
+    const buildCtx = (): ToolContext => {
+      const base = {
+        db: database,
+        organizationId,
+        userId,
+        sessionId,
+        signal,
+        subject,
+        appAccounts: agentConfig.appAccounts,
+      }
+      return {
+        ...base,
+        context: new KopilotContextStore({
+          ctx: base as ToolContext,
+          initial: readContextSlice(engine.getState().domainState as Record<string, unknown>),
+        }),
       }
     }
-
-    await publisher.publish(event)
+    await runProcedureTurn({
+      engine,
+      inboundText: message,
+      procedures,
+      subject,
+      conversation,
+      classifyDeps: {
+        db: database,
+        organizationId,
+        userId,
+        model: domainConfig.defaultModel ?? 'claude-haiku-4-5',
+        provider: domainConfig.defaultProvider ?? 'anthropic',
+      },
+      buildCtx,
+      drain,
+    })
+  } else {
+    const generator =
+      type === 'approval'
+        ? engine.resume({
+            action: data.approvalAction ?? 'approve',
+            inputAmendment: data.inputAmendment,
+            context: sessionContext,
+          })
+        : engine.submitMessage(message, sessionContext)
+    await drain(generator)
   }
 
   // 7. Save final state to DB. Strip `thinking` parts on stored messages
@@ -299,6 +384,7 @@ async function buildDomainConfig(
     modelId?: string
     agentId: string | null
     triggerContext: TriggerContext | undefined
+    hasProcedures?: boolean
   }
 ) {
   switch (domain) {
@@ -363,6 +449,7 @@ async function buildKopilotShapedConfig(
     signal?: AbortSignal
     agentId: string | null
     triggerContext: TriggerContext | undefined
+    hasProcedures?: boolean
   },
   defaults: { provider: string | undefined; model: string | undefined }
 ) {
@@ -393,13 +480,19 @@ async function buildKopilotShapedConfig(
   const agentConfig = await resolveAgentConfig(params.organizationId, params.agentId)
   const resolvedPage = params.page ?? '__none__'
   const filteredTools = filterToolsByToolsets(registry.getTools(resolvedPage), agentConfig)
+  // Mount the v9 procedure control tools when this agent has procedures — inert
+  // without an active step in the prompt, so gating keeps zero-procedure runs on
+  // the unchanged tool list (mirrors `buildChatEngineConfig`).
+  const allTools = params.hasProcedures
+    ? [...filteredTools, ...PROCEDURE_CONTROL_TOOLS]
+    : filteredTools
   // Project tool schemas per the effective bindings (author defaults ⊕ admin
   // overrides). Internal turns have no subject, so bound inputs fall through to
   // the model at clamp time — but a `const` override still drops from required.
   // For master sessions there are no bindings, so this is a no-op. See
   // plans/chat/v8 phase-4.
-  const effectiveBindings = computeEffectiveBindings(filteredTools, agentConfig.toolRestrictions)
-  const tools = projectBindingSchemas(filteredTools, effectiveBindings)
+  const effectiveBindings = computeEffectiveBindings(allTools, agentConfig.toolRestrictions)
+  const tools = projectBindingSchemas(allTools, effectiveBindings)
 
   return createKopilotDomainConfig({
     capabilityRegistry: registry,

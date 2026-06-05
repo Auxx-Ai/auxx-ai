@@ -11,7 +11,7 @@ import {
   renderSectionsToBlocks,
   serializePromptBlocks,
 } from './sections/render'
-import type { PromptCtx, RunMode } from './sections/types'
+import type { ProcedureStepInput, PromptCtx, RunMode } from './sections/types'
 
 export type { PromptBlock } from './sections/render'
 export { CACHE_BREAK_SENTINEL, stripCacheBreakSentinels } from './sections/render'
@@ -37,6 +37,12 @@ export interface BuildKopilotPromptArgs {
    * chips fall back to the default `[reference](id)` form.
    */
   instructionsReferences?: (id: string) => string
+  /**
+   * The top frame's active procedure step (v9 procedures). Set by the Phase-4
+   * turn preamble (read off `domainState[PROCEDURE_STEP_KEY]`) while a frame is
+   * active; unset on free-form turns so `agentProcedureStep` renders `null`.
+   */
+  procedureStep?: ProcedureStepInput
 }
 
 /**
@@ -109,6 +115,7 @@ function buildPromptCtx(args: BuildKopilotPromptArgs): PromptCtx {
     capabilities: args.capabilities,
     instructionsReferences: args.instructionsReferences,
     triggerContext: args.triggerContext,
+    procedureStep: args.procedureStep,
   }
 }
 

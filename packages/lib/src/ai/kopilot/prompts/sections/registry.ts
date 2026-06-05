@@ -2,6 +2,7 @@
 
 import { activeRefs } from './active-refs'
 import { agentPersona } from './agent-persona'
+import { agentProcedureStep } from './agent-procedure-step'
 import { approval } from './approval'
 import { blockCatalog } from './block-catalog'
 import { callerPreamble } from './caller-preamble'
@@ -63,12 +64,14 @@ export const SYSTEM_PROMPT_SECTIONS: readonly PromptSection[] = [
   triggerFired,
   contextSection,
   activeRefs,
+  agentProcedureStep, // active procedure step (top frame only) + breadcrumb; stability: 'turn'
   callerPreamble,
 ]
 
 const ABOVE_CORE_IDS = new Set([
   'master-persona',
   'agent-persona',
+  'agent-procedure-step', // agent-specific (like agent-persona) — excluded from the core slice
   'master-capabilities',
   'trigger-fired',
   'trigger-acting-as',
