@@ -205,8 +205,14 @@ export async function processChatTurn(ctx: JobContext<ChatTurnJobPayload>): Prom
         db: database,
         organizationId,
         userId: agentUserId,
-        model: config.domainConfig.defaultModel ?? 'claude-haiku-4-5',
-        provider: config.domainConfig.defaultProvider ?? 'anthropic',
+        // Low-stakes routing/classification runs on the cheap utility tier, not
+        // the customer-facing reply model. See `ai/providers/utility-model.ts`.
+        model:
+          config.domainConfig.utilityModel ??
+          config.domainConfig.defaultModel ??
+          'claude-haiku-4-5',
+        provider:
+          config.domainConfig.utilityProvider ?? config.domainConfig.defaultProvider ?? 'anthropic',
       },
       buildCtx,
       drain,

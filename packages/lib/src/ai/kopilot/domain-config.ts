@@ -12,6 +12,7 @@ import type {
   PostProcessResult,
   TurnSnapshots,
 } from '../agent-framework/types'
+import { resolveUtilityModel } from '../providers/utility-model'
 import { createKopilotAgent } from './agents/agent'
 import { extractLinkSnapshots } from './blocks/extract-link-snapshots'
 import { injectSnapshotsIntoFinal } from './blocks/inject-snapshots'
@@ -80,6 +81,11 @@ export function createKopilotDomainConfig(
     triggerContext,
   } = options
 
+  // Cheap same-provider sibling for low-stakes internal LLM tasks (procedure
+  // selection/routing, goal-met checks). Returns the primary unchanged when it's
+  // already tier-1. See `ai/providers/utility-model.ts`.
+  const utility = resolveUtilityModel({ provider: defaultProvider, model: defaultModel })
+
   // Resolve tools: if the caller passed `tools`, use them verbatim (pre-filtered
   // path). Otherwise fall back to the registry's page-scoped tools so the
   // master-session default is byte-equivalent to today.
@@ -121,6 +127,8 @@ export function createKopilotDomainConfig(
     type: 'kopilot',
     defaultModel,
     defaultProvider,
+    utilityModel: utility.model,
+    utilityProvider: utility.provider,
     // supervisorAgent intentionally omitted — solo-agent domain
     agents: {
       agent,

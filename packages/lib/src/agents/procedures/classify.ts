@@ -25,9 +25,11 @@ export interface ClassifyDeps {
   organizationId: string
   userId: string
   /**
-   * Resolved BY THE CALLER (Phase 4) from the agent's pinned model
-   * ([[feedback_kopilot_byo_model]] — one model per turn, no per-agent tiering),
-   * falling back to a cheap default (`claude-haiku-4-5`) for this low-stakes routing.
+   * The cheap UTILITY tier, resolved by the caller via `resolveUtilityModel`
+   * (`ai/providers/utility-model.ts`): a same-provider sibling of the agent's
+   * primary model for this low-stakes routing. Does NOT violate
+   * [[feedback_kopilot_byo_model]] — the customer-facing reply still runs on the
+   * primary; only internal classification drops a tier.
    */
   model: string
   provider: string

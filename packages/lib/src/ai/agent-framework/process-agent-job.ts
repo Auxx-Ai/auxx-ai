@@ -297,8 +297,10 @@ async function processAgentMessageInternal(ctx: JobContext<AgentJobPayload>) {
         db: database,
         organizationId,
         userId,
-        model: domainConfig.defaultModel ?? 'claude-haiku-4-5',
-        provider: domainConfig.defaultProvider ?? 'anthropic',
+        // Low-stakes routing/classification runs on the cheap utility tier, not
+        // the customer-facing reply model. See `ai/providers/utility-model.ts`.
+        model: domainConfig.utilityModel ?? domainConfig.defaultModel ?? 'claude-haiku-4-5',
+        provider: domainConfig.utilityProvider ?? domainConfig.defaultProvider ?? 'anthropic',
       },
       buildCtx,
       drain,

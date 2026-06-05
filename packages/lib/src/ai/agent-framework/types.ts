@@ -611,6 +611,16 @@ export interface AgentDomainConfig<TDomainState = Record<string, unknown>> {
   /** Default provider for agents that don't override */
   defaultProvider: string
   /**
+   * Cheap same-provider sibling of {@link defaultModel}, auto-derived via
+   * `resolveUtilityModel`, for low-stakes internal LLM tasks (procedure
+   * selection/routing, goal-met checks) — never the customer-facing reply.
+   * Optional: producers that don't set it leave callers to fall back to the
+   * primary. See `ai/providers/utility-model.ts`.
+   */
+  utilityModel?: string
+  /** Provider for {@link utilityModel} (same family as {@link defaultProvider}). */
+  utilityProvider?: string
+  /**
    * Optional hook called after every successful tool result. Lets a domain mine
    * snapshot data (e.g. `turnSnapshots`) out of tool outputs without the
    * framework knowing the tool's shape. Must return a fresh state object.
