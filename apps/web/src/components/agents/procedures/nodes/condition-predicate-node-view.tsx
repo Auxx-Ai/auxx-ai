@@ -4,30 +4,17 @@
 import { cn } from '@auxx/ui/lib/utils'
 import type { NodeViewProps } from '@tiptap/react'
 import { NodeViewContent, NodeViewWrapper } from '@tiptap/react'
-import { useMemo } from 'react'
-import { nodePos } from './condition-helpers'
 
 /**
  * `conditionPredicate` view — the natural-language predicate writer. Renders as a
  * bordered box with a placeholder hint; its `inline*` content holds the prose +
- * attribute badges (`@`). Hidden when the parent {@link ConditionCase} is in
- * `structured` mode (the builder takes over there) — detected by walking the PM
- * parent for its `mode` attr (same technique as panel-node-view.tsx).
+ * attribute badges (`@`). Hidden when the arm is in `structured` mode (the builder
+ * takes over there). Reads its own `mode` attr, kept in lockstep with the parent
+ * arm by `applyBlockMode` so the toggle re-renders (and hides) this node.
  */
-export function ConditionPredicateNodeView({ node, editor, getPos }: NodeViewProps) {
-  // biome-ignore lint/correctness/useExhaustiveDependencies: `node` re-resolves parent mode on each doc change
-  const parentMode = useMemo(() => {
-    const pos = nodePos(getPos)
-    if (pos == null) return 'text'
-    try {
-      return (editor.state.doc.resolve(pos).parent.attrs.mode as string) ?? 'text'
-    } catch {
-      return 'text'
-    }
-  }, [editor, getPos, node])
-
+export function ConditionPredicateNodeView({ node }: NodeViewProps) {
   const isEmpty = node.content.size === 0
-  const hidden = parentMode === 'structured'
+  const hidden = node.attrs.mode === 'structured'
 
   return (
     <NodeViewWrapper

@@ -14,7 +14,6 @@ import type { Editor } from '@tiptap/react'
 import { ListChecks } from 'lucide-react'
 import { useCallback, useMemo, useRef, useState } from 'react'
 import { useDebounceCallback } from 'usehooks-ts'
-import { DEFAULT_TABS } from '~/components/editor/inline-picker'
 import type { ReferenceTab } from '~/components/editor/inline-picker/nodes/reference-picker-node'
 import {
   PromptCharacterCount,
@@ -35,8 +34,10 @@ const COLLAPSED_MIN_HEIGHT = 120
 // Procedures opt into the admin tabs (Tools, Resources, Fields) exactly like the
 // persona editor, PLUS the procedure step tabs (Routing, Code, Sub-procedure,
 // Condition, Attribute) — the `@` picker is the only insertion surface (plan §5).
+// The CRM/inbox tabs from DEFAULT_TABS (people, records, messages) are dropped —
+// they're meaningless inside a procedure; only `articles` carries over.
 const PROCEDURE_REFERENCE_TABS: ReferenceTab[] = [
-  ...DEFAULT_TABS,
+  'articles',
   'tools',
   'resources',
   'fields',
@@ -345,7 +346,7 @@ export function ProcedureEditor({ procedureId, onAutosaveChange }: ProcedureEdit
   const canvas = (
     <NavStack stack={drillStack} onStackChange={setDrillStack} className='w-full'>
       <NavStackPanels>
-        <NavStackPanel value='root'>
+        <NavStackPanel value='root' className='bg-transparent dark:bg-transparent shadow-none'>
           <PromptEditorContent
             initialContent={mainContentRef.current}
             onChange={handleMainChange}
@@ -358,7 +359,10 @@ export function ProcedureEditor({ procedureId, onAutosaveChange }: ProcedureEdit
           />
         </NavStackPanel>
         {subProcedures.map((s) => (
-          <NavStackPanel key={s.id} value={`sub:${s.id}`}>
+          <NavStackPanel
+            key={s.id}
+            value={`sub:${s.id}`}
+            className='bg-transparent dark:bg-transparent shadow-none'>
             <PromptEditorContent
               initialContent={s.content}
               onChange={makeSubChange(s.id)}
@@ -372,7 +376,10 @@ export function ProcedureEditor({ procedureId, onAutosaveChange }: ProcedureEdit
           </NavStackPanel>
         ))}
         {codeBlocks.map((c) => (
-          <NavStackPanel key={c.id} value={`code:${c.id}`}>
+          <NavStackPanel
+            key={c.id}
+            value={`code:${c.id}`}
+            className='bg-transparent dark:bg-transparent shadow-none'>
             <CodeBlockEditor code={c.code} onChange={(code) => handleCodeChange(c.id, code)} />
           </NavStackPanel>
         ))}
@@ -380,6 +387,7 @@ export function ProcedureEditor({ procedureId, onAutosaveChange }: ProcedureEdit
     </NavStack>
   )
 
+  console.log('isFocused', isFocused)
   if (isLoading || !meta) return <EmptySection loading className='mx-3 my-3' />
 
   return (
@@ -403,7 +411,7 @@ export function ProcedureEditor({ procedureId, onAutosaveChange }: ProcedureEdit
             isFocused && !isExpanded
               ? 'bg-gradient-to-r from-[#0ba5ec] to-[#155aef]'
               : 'bg-transparent',
-            '!rounded-[9px] p-0.5'
+            '!rounded-[9px] p-0.5 me-1'
           )}>
           <div
             className={cn(isFocused ? 'bg-background' : 'bg-primary-200/30', 'rounded-lg border')}>

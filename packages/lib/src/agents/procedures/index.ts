@@ -33,9 +33,11 @@ export type {
 } from './queries'
 export {
   attachProcedure,
+  countAgentsUsingProcedure,
   createProcedure,
   deleteProcedure,
   detachProcedure,
+  discardProcedureDraft,
   getProcedureById,
   getProcedureVersionById,
   listAgentProcedures,

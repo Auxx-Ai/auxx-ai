@@ -77,6 +77,24 @@ export function ConditionCaseNodeView({ node, editor, getPos, updateAttributes }
   const removeArm = () => {
     const pos = nodePos(getPos)
     if (pos == null) return
+    // Removing the last IF/ELSE-IF arm would leave the block with no case (the
+    // schema requires `(conditionCase | conditionElse)+`, and an else-only block
+    // is meaningless), so deleting just the arm no-ops. Delete the whole block.
+    const parent = findParentBlock(editor, getPos)
+    if (parent) {
+      let caseCount = 0
+      parent.node.forEach((child) => {
+        if (child.type.name === 'conditionCase') caseCount++
+      })
+      if (caseCount <= 1) {
+        editor
+          .chain()
+          .focus()
+          .deleteRange({ from: parent.pos, to: parent.pos + parent.node.nodeSize })
+          .run()
+        return
+      }
+    }
     editor
       .chain()
       .focus()

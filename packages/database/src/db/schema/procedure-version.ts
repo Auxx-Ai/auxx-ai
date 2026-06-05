@@ -52,6 +52,18 @@ export const ProcedureVersion = pgTable(
     doc: jsonb().$type<Record<string, unknown>>().default({}).notNull(),
     compiled: jsonb().$type<Record<string, unknown>>(),
 
+    /**
+     * Selection criteria snapshotted at publish (the versioned model): the live
+     * selection path reads these off the ACTIVE version, not the mutable
+     * {@link Procedure} row, so a republish/revert moves selection behaviour in
+     * lockstep with the executed build. Per-agent overrides still apply live on
+     * top (see {@link AgentProcedure}). Generic jsonb for the same reason as
+     * `doc`/`compiled` — `@auxx/database` can't see lib's types.
+     */
+    whenToUse: text().notNull().default(''),
+    triggerExamples: jsonb().$type<unknown[]>().default([]).notNull(),
+    ruleset: jsonb().$type<unknown[]>().default([]).notNull(),
+
     editorId: text().references((): AnyPgColumn => User.id, {
       onUpdate: 'cascade',
       onDelete: 'set null',

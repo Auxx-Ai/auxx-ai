@@ -33,11 +33,14 @@ export const Procedure = pgTable(
     name: text().notNull(),
 
     /**
-     * Selection DEFAULTS (per-agent overrides live on {@link AgentProcedure};
-     * null/empty = no gate). `@auxx/database` depends on neither `@auxx/lib`
-     * nor `@auxx/types`, so these stay GENERIC jsonb (mirror AgentTrigger's
-     * `config: $type<Record<string, unknown>>()`); the service layer casts
-     * `triggerExamples` → `TriggerExample[]` and `ruleset` → `ConditionGroup[]`.
+     * Selection criteria — the editable DRAFT working copy (per-agent overrides
+     * live on {@link AgentProcedure}; null/empty = no gate). Publish snapshots
+     * these into {@link ProcedureVersion}; the live selection path reads the
+     * ACTIVE version's snapshot, not this row, so editing here marks the
+     * procedure dirty (`hasUnpublishedChanges`) until republished. `@auxx/database`
+     * depends on neither `@auxx/lib` nor `@auxx/types`, so these stay GENERIC
+     * jsonb; the service layer casts `triggerExamples` → `TriggerExample[]` and
+     * `ruleset` → `ConditionGroup[]`.
      */
     whenToUse: text().notNull().default(''),
     triggerExamples: jsonb().$type<unknown[]>().default([]).notNull(),

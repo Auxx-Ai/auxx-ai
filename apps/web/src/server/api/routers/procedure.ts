@@ -2,8 +2,10 @@
 
 import {
   compileProcedure,
+  countAgentsUsingProcedure,
   createProcedure,
   deleteProcedure,
+  discardProcedureDraft,
   getProcedureById,
   getProcedureVersionById,
   listProcedures,
@@ -172,6 +174,43 @@ export const procedureRouter = createTRPCRouter({
       const { organizationId } = ctx.session
       unwrap(await deleteProcedure({ organizationId, procedureId: input.id }), 'delete procedure')
       return { ok: true as const }
+    }),
+
+  // How many agents have this procedure attached — drives the Delete blast-radius
+  // confirm in the publish cluster (delete is org-wide + cascade-detaches).
+  agentUsageCount: protectedProcedure
+    .input(z.object({ id: z.string().min(1) }))
+    .query(async ({ ctx, input }) => {
+      const { organizationId } = ctx.session
+      return unwrap(
+        await countAgentsUsingProcedure({ organizationId, procedureId: input.id }),
+        'count agents using procedure'
+      )
+    }),
+
+  /**
+   * Discard draft edits: copy the active version's `doc` back into the draft and
+   * clear `hasUnpublishedChanges`. Returns the meta projection (same as `getById`
+   * minus `draftDoc`) so the client settles its optimistic store on truth; the
+   * caller invalidates `getById` to reload the rewritten draft doc.
+   */
+  discardDraft: adminProcedure
+    .input(z.object({ id: z.string().min(1) }))
+    .mutation(async ({ ctx, input }) => {
+      const { organizationId } = ctx.session
+      const procedure = unwrap(
+        await discardProcedureDraft({ organizationId, procedureId: input.id }),
+        'discard procedure draft'
+      )
+      return {
+        id: procedure.id,
+        name: procedure.name,
+        whenToUse: procedure.whenToUse,
+        triggerExamples: procedure.triggerExamples,
+        ruleset: procedure.ruleset,
+        activeVersionId: procedure.activeVersionId,
+        hasUnpublishedChanges: procedure.hasUnpublishedChanges,
+      }
     }),
 
   // Published version history (newest first) for the revert UI.
