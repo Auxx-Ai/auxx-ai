@@ -54,4 +54,33 @@ describe('agentProcedureStep', () => {
     expect(out).toContain("You'll return to: your cancellation.")
     expect(out).toContain('Current step: Verify identity.')
   })
+
+  it('surfaces code outputs as labeled context (D4)', () => {
+    const out = agentProcedureStep.render(
+      ctxWith({
+        activeStep: { doc: frag('Offer the discount.') },
+        depth: 1,
+        codeOutputs: [
+          { name: 'discountTier', value: 'gold' },
+          { name: 'pct', value: 20 },
+        ],
+      })
+    )
+    expect(out).toContain('Computed: `discountTier` = `gold`')
+    expect(out).toContain('Computed: `pct` = `20`')
+    expect(out).toContain('Current step: Offer the discount.')
+  })
+
+  it('renders a caution note for a failed code step (D5)', () => {
+    const out = agentProcedureStep.render(
+      ctxWith({
+        activeStep: { doc: frag('Confirm eligibility.') },
+        depth: 1,
+        codeErrors: [{ codeBlockId: 'c1', error: 'timeout' }],
+      })
+    )
+    expect(out).toContain('⚠️')
+    expect(out).toContain('offer to escalate')
+    expect(out).toContain('Current step: Confirm eligibility.')
+  })
 })

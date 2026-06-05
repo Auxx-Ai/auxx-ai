@@ -1,7 +1,12 @@
 // apps/web/src/components/agents/procedures/ui/procedure-editor.tsx
 'use client'
 
-import { type LocalAttribute, parseStepBadgeId } from '@auxx/lib/agents/procedures/client'
+import {
+  type CodeInput,
+  type CodeOutput,
+  type LocalAttribute,
+  parseStepBadgeId,
+} from '@auxx/lib/agents/procedures/client'
 import { Dialog, DialogContent, DialogTitle } from '@auxx/ui/components/dialog'
 import { NavStack, NavStackPanel, NavStackPanels } from '@auxx/ui/components/nav-stack'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
@@ -24,6 +29,7 @@ import type { ReferencePickerHandle } from '~/components/pickers/reference-picke
 import type { AutosaveState } from '../../ui/shared/autosave-indicator'
 import { useProcedure } from '../hooks/use-procedure'
 import { useProcedureMutations } from '../hooks/use-procedure-mutations'
+import { CodeBindingsEditor } from './code-bindings-editor'
 import { CodeBlockEditor } from './code-block-editor'
 import { ProcedureEditorProvider } from './procedure-editor-context'
 import { ProcedureTriggerHeader } from './procedure-trigger-header'
@@ -56,6 +62,10 @@ interface CodeBlockEntry {
   name: string
   language: 'javascript'
   code: string
+  /** Per-block input bindings → `main(codeInput)` (compiled onto the `code` step). */
+  inputs?: CodeInput[]
+  /** Per-block output bindings → `var:*` (compiled onto the `code` step). */
+  outputs?: CodeOutput[]
 }
 
 interface DraftDoc {
@@ -196,6 +206,16 @@ export function ProcedureEditor({ procedureId, onAutosaveChange }: ProcedureEdit
   const handleCodeChange = useCallback(
     (id: string, code: string) => {
       codeRef.current = codeRef.current.map((c) => (c.id === id ? { ...c, code } : c))
+      commit()
+    },
+    [commit]
+  )
+
+  // Input/output bindings ride the code-block map entry (the compiler lifts them onto
+  // the emitted `code` step). Written to `codeRef`, the save source — same as the body.
+  const handleCodeBindingsChange = useCallback(
+    (id: string, bindings: { inputs: CodeInput[]; outputs: CodeOutput[] }) => {
+      codeRef.current = codeRef.current.map((c) => (c.id === id ? { ...c, ...bindings } : c))
       commit()
     },
     [commit]
@@ -383,17 +403,26 @@ export function ProcedureEditor({ procedureId, onAutosaveChange }: ProcedureEdit
               />
             </NavStackPanel>
           ))}
-          {codeBlocks.map((c) => (
-            <NavStackPanel
-              key={c.id}
-              value={`code:${c.id}`}
-              className='bg-transparent dark:bg-transparent shadow-none'>
-              <CodeBlockEditor
-                code={codeRef.current.find((r) => r.id === c.id)?.code ?? c.code}
-                onChange={(code) => handleCodeChange(c.id, code)}
-              />
-            </NavStackPanel>
-          ))}
+          {codeBlocks.map((c) => {
+            const entry = codeRef.current.find((r) => r.id === c.id)
+            return (
+              <NavStackPanel
+                key={c.id}
+                value={`code:${c.id}`}
+                className='bg-transparent dark:bg-transparent shadow-none'>
+                <CodeBindingsEditor
+                  initialInputs={entry?.inputs ?? []}
+                  initialOutputs={entry?.outputs ?? []}
+                  localAttributes={localAttributes}
+                  onChange={(bindings) => handleCodeBindingsChange(c.id, bindings)}
+                />
+                <CodeBlockEditor
+                  code={entry?.code ?? c.code}
+                  onChange={(code) => handleCodeChange(c.id, code)}
+                />
+              </NavStackPanel>
+            )
+          })}
         </NavStackPanels>
       </NavStack>
     ),
@@ -401,9 +430,11 @@ export function ProcedureEditor({ procedureId, onAutosaveChange }: ProcedureEdit
       drillStack,
       subProcedures,
       codeBlocks,
+      localAttributes,
       handleMainChange,
       makeSubChange,
       handleCodeChange,
+      handleCodeBindingsChange,
       handleEditorReady,
     ]
   )

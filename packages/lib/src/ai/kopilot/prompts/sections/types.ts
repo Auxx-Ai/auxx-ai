@@ -48,6 +48,10 @@ export interface ProcedureStepInput {
   readonly returnToLabel?: string
   /** Re-anchor line on a pop-resume turn (PROCEDURE-STACK §5). */
   readonly breadcrumb?: string
+  /** `surfaceToModel` outputs computed by `code` steps walked this turn (v9 Phase 5, D4). */
+  readonly codeOutputs?: { name: string; value: unknown }[]
+  /** Failure notes from `code` steps that threw/timed out this turn (v9 Phase 5, D5). */
+  readonly codeErrors?: { codeBlockId: string; error: string }[]
 }
 
 /**

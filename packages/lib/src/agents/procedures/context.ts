@@ -133,6 +133,57 @@ export function scopedVar(frame: ProcedureFrame, name: string): string {
 }
 
 /**
+ * Resolve ONE procedure ref off the running frame + the turn's subject — the single
+ * resolution path BOTH in-procedure conditions and `code`-step inputs go through, so
+ * the two never diverge:
+ *
+ *  - `var:<name>` — a declared local attribute, read LIVE from the version-scoped store
+ *    key ({@link scopedVar}). Live (no caching) because a `code` step writes one and a
+ *    downstream condition reads it within the SAME frame walk (compute→branch).
+ *  - any other ref — a CRM `FieldReference` resolved off `ctx.subject.anchors` by the v8
+ *    resolver, exactly like selection.
+ *
+ * Gate-by-absence: an unknown/absent ref (a local var not yet written, a CRM field on an
+ * internal run, a bare un-rootable id, or a missing subject) resolves to `undefined` and
+ * never throws.
+ */
+export async function readProcedureRef(
+  ctx: ToolContext,
+  frame: ProcedureFrame,
+  ref: string | string[]
+): Promise<unknown> {
+  if (typeof ref === 'string' && ref.startsWith(LOCAL_ATTR_PREFIX)) {
+    try {
+      return await ctx.context.read(scopedVar(frame, ref.slice(LOCAL_ATTR_PREFIX.length)))
+    } catch {
+      return undefined
+    }
+  }
+  const varRef = toVarRef(ref)
+  if (!varRef || !ctx.subject) return undefined
+  try {
+    return await buildResolveVarSource(ctx)({ kind: 'var', ref: varRef }, ctx.subject)
+  } catch {
+    // Best-effort — a resolver misconfig gates by absence rather than throwing the turn.
+    return undefined
+  }
+}
+
+/**
+ * The symmetric writer — the FIRST thing in v9 to write a scoped local `var:*`. A
+ * `code` step writes its outputs through this; it is also the seam a later
+ * tool-result→`var:*` binding writes through. Pairs with {@link readProcedureRef}.
+ */
+export function writeProcedureVar(
+  ctx: ToolContext,
+  frame: ProcedureFrame,
+  name: string,
+  value: unknown
+): Promise<void> {
+  return ctx.context.write(scopedVar(frame, name), value)
+}
+
+/**
  * Build the synchronous {@link FieldResolver} an in-procedure `condition` step
  * evaluates against. Unlike selection's resolver ({@link buildProcedureFieldResolver}),
  * this one ALSO reads procedure-local `var:*` scratch — the procedure is running,
@@ -160,39 +211,22 @@ export function buildProcedurePredicateResolver(
   ctx: ToolContext,
   frame: ProcedureFrame
 ): { resolver: FieldResolver<unknown>; prime: (groups: ConditionGroup[]) => Promise<void> } {
-  const resolveVar = buildResolveVarSource(ctx)
-  const subject = ctx.subject
   const values = new Map<string, unknown>()
   const seen = new Set<string>()
-
-  const resolveOne = async (fieldId: string | string[]): Promise<unknown> => {
-    // Declared local attribute (`var:<name>`) — read the version-scoped store key.
-    if (typeof fieldId === 'string' && fieldId.startsWith(LOCAL_ATTR_PREFIX)) {
-      try {
-        return await ctx.context.read(scopedVar(frame, fieldId.slice(LOCAL_ATTR_PREFIX.length)))
-      } catch {
-        return undefined
-      }
-    }
-    // CRM FieldReference — resolve off subject anchors (v8), gate-by-absence. A bare
-    // legacy id (no entity root) or a missing subject yields `undefined`.
-    const ref = toVarRef(fieldId)
-    if (!ref || !subject) return undefined
-    try {
-      return await resolveVar({ kind: 'var', ref }, subject)
-    } catch {
-      // In-procedure predicates are best-effort — a misconfig gates by absence
-      // rather than throwing the turn.
-      return undefined
-    }
-  }
 
   const prime = async (groups: ConditionGroup[]): Promise<void> => {
     for (const fieldId of collectFieldRefs(groups)) {
       const key = simpleKey(fieldId)
-      if (seen.has(key)) continue
-      seen.add(key)
-      values.set(key, await resolveOne(fieldId))
+      // CRM fields memo on `seen` (the expensive `batchGetValues`). Local `var:*` are
+      // DELIBERATELY NOT memoed: a `code` step mutates one mid-walk and a downstream
+      // condition must re-read the fresh value — caching it would serve the pre-write
+      // stale value. The store read is cheap, so re-resolving every prime costs nothing.
+      const isLocal = typeof fieldId === 'string' && fieldId.startsWith(LOCAL_ATTR_PREFIX)
+      if (!isLocal) {
+        if (seen.has(key)) continue
+        seen.add(key)
+      }
+      values.set(key, await readProcedureRef(ctx, frame, fieldId))
     }
   }
 

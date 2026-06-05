@@ -137,9 +137,32 @@ function makeDeps(
     pickTextBranch: async () => null,
     checkGoalMet: async () => true,
     classifyBackstop: async () => ({ onProcedure: true, multiTurn: false }),
+    runCode: async () => ({ ok: true, result: {} }),
     ...overrides,
   }
 }
+
+/** A `code` step fixture — runs `codeBlockId`, binds `inputs`, writes `outputs`, threads `next`. */
+const codeStep = (
+  id: string,
+  codeBlockId: string,
+  next: string | null,
+  inputs: { name: string; ref: string }[] = [],
+  outputs: { name: string; surfaceToModel: boolean }[] = []
+): ProcedureStep => ({ id, kind: 'code', codeBlockId, inputs, outputs, next })
+
+/** Build a compiled procedure that carries code blocks (the default `build` has none). */
+const buildWithCode = (
+  entryStepId: string,
+  steps: ProcedureStep[],
+  codeBlocks: CompiledProcedure['codeBlocks']
+): CompiledProcedure => ({
+  entryStepId,
+  steps: Object.fromEntries(steps.map((s) => [s.id, s])),
+  codeBlocks,
+  subProcedures: {},
+  localAttributes: [],
+})
 
 const asInject = (r: PrepareResult): Extract<PrepareResult, { kind: 'inject' }> => {
   if (r.kind !== 'inject') throw new Error(`expected inject, got ${r.kind}`)
@@ -434,6 +457,131 @@ describe('prepareTurn — depth cap & pin integrity', () => {
     const r = await prepareTurn(stackOf(frame('gone', 'x')), makeDeps({}))
     expect(r.kind).toBe('free-form')
     expect(r.stack.frames).toHaveLength(0)
+  })
+})
+
+describe('prepareTurn — code steps (deterministic execution)', () => {
+  it('runs the block ONCE, writes its outputs to scoped vars, and lands on the next instruction', async () => {
+    const compiled = buildWithCode(
+      'code',
+      [
+        codeStep('code', 'c1', 'after', [], [{ name: 'tier', surfaceToModel: true }]),
+        instruction('after', null),
+      ],
+      { c1: { language: 'javascript', code: 'noop' } }
+    )
+    const runCode = vi.fn(async () => ({ ok: true as const, result: { tier: 'gold' } }))
+    const r = asInject(
+      await prepareTurn(stackOf(frame('v1', 'code')), makeDeps({ v1: compiled }, { runCode }))
+    )
+    expect(runCode).toHaveBeenCalledTimes(1)
+    expect(r.activeStep.id).toBe('after')
+    expect(varStore['var:__la:v1:tier']).toBe('gold')
+    // surfaceToModel output is carried on the inject result (D4).
+    expect(r.codeOutputs).toEqual([{ name: 'tier', value: 'gold' }])
+  })
+
+  it('compute→branch: a code output feeds a downstream structured condition LIVE', async () => {
+    const compiled = buildWithCode(
+      'code',
+      [
+        codeStep('code', 'c1', 'cond', [], [{ name: 'tier', surfaceToModel: false }]),
+        structured(
+          'cond',
+          [{ thenStep: 'goldArm', varName: 'tier', value: 'gold' }],
+          'elseArm',
+          null
+        ),
+        instruction('goldArm', null),
+        instruction('elseArm', null),
+      ],
+      { c1: { language: 'javascript', code: 'noop' } }
+    )
+    const runCode = vi.fn(async () => ({ ok: true as const, result: { tier: 'gold' } }))
+    const r = asInject(
+      await prepareTurn(stackOf(frame('v1', 'code')), makeDeps({ v1: compiled }, { runCode }))
+    )
+    expect(r.activeStep.id).toBe('goldArm') // the freshly-computed var routed the branch
+  })
+
+  it('feeds resolved inputs to the block; an absent local var gates to undefined', async () => {
+    varStore['var:__la:v1:known'] = 42
+    const compiled = buildWithCode(
+      'code',
+      [
+        codeStep('code', 'c1', 'after', [
+          { name: 'a', ref: 'var:known' },
+          { name: 'b', ref: 'var:missing' },
+        ]),
+        instruction('after', null),
+      ],
+      { c1: { language: 'javascript', code: 'noop' } }
+    )
+    const runCode = vi.fn(async () => ({ ok: true as const, result: {} }))
+    await prepareTurn(stackOf(frame('v1', 'code')), makeDeps({ v1: compiled }, { runCode }))
+    expect(runCode).toHaveBeenCalledWith({ code: 'noop' }, { a: 42, b: undefined })
+  })
+
+  it('failure (D5/D6): clears the output var, takes the else-arm, carries an error note', async () => {
+    // Seed a stale prior-success value — a loop re-run that fails must NOT branch on it.
+    varStore['var:__la:v1:tier'] = 'gold'
+    const compiled = buildWithCode(
+      'code',
+      [
+        codeStep('code', 'c1', 'cond', [], [{ name: 'tier', surfaceToModel: false }]),
+        structured(
+          'cond',
+          [{ thenStep: 'goldArm', varName: 'tier', value: 'gold' }],
+          'elseArm',
+          null
+        ),
+        instruction('goldArm', null),
+        instruction('elseArm', null),
+      ],
+      { c1: { language: 'javascript', code: 'noop' } }
+    )
+    const runCode = vi.fn(async () => ({ ok: false as const, error: 'boom' }))
+    const r = asInject(
+      await prepareTurn(stackOf(frame('v1', 'code')), makeDeps({ v1: compiled }, { runCode }))
+    )
+    expect(varStore['var:__la:v1:tier']).toBeUndefined() // cleared, not left stale
+    expect(r.activeStep.id).toBe('elseArm') // gate-by-absence → else
+    expect(r.codeErrors).toEqual([{ codeBlockId: 'c1', error: 'boom' }])
+  })
+
+  it('does NOT re-fire on resume — the cursor rests on the instruction after the code step', async () => {
+    const compiled = buildWithCode(
+      'code',
+      [
+        codeStep('code', 'c1', 'after', [], [{ name: 'tier', surfaceToModel: false }]),
+        instruction('after', null),
+      ],
+      { c1: { language: 'javascript', code: 'noop' } }
+    )
+    const runCode = vi.fn(async () => ({ ok: true as const, result: { tier: 'gold' } }))
+    const deps = makeDeps({ v1: compiled }, { runCode })
+    const first = asInject(await prepareTurn(stackOf(frame('v1', 'code')), deps))
+    // Resume from the landed cursor (what the caller persists) — the code is behind it.
+    const second = asInject(await prepareTurn(first.stack, deps))
+    expect(second.activeStep.id).toBe('after')
+    expect(runCode).toHaveBeenCalledTimes(1) // not re-run on resume
+  })
+
+  it('a false surfaceToModel output is written but not surfaced to the model', async () => {
+    const compiled = buildWithCode(
+      'code',
+      [
+        codeStep('code', 'c1', 'after', [], [{ name: 'tier', surfaceToModel: false }]),
+        instruction('after', null),
+      ],
+      { c1: { language: 'javascript', code: 'noop' } }
+    )
+    const runCode = vi.fn(async () => ({ ok: true as const, result: { tier: 'gold' } }))
+    const r = asInject(
+      await prepareTurn(stackOf(frame('v1', 'code')), makeDeps({ v1: compiled }, { runCode }))
+    )
+    expect(varStore['var:__la:v1:tier']).toBe('gold') // still written (branch-readable)
+    expect(r.codeOutputs).toBeUndefined() // but not surfaced
   })
 })
 

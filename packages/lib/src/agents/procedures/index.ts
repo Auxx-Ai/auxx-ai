@@ -17,7 +17,9 @@ export { compileProcedure } from './compile'
 export {
   buildProcedureFieldResolver,
   buildProcedurePredicateResolver,
+  readProcedureRef,
   scopedVar,
+  writeProcedureVar,
 } from './context'
 export {
   advanceProcedure,
@@ -39,6 +41,7 @@ export {
   type ParsedStepBadge,
   PROCEDURE_NODE_TYPES,
   type ProcedureNodeType,
+  parseCodeBindings,
   parseStepBadgeId,
   STEP_BADGE_PREFIXES,
   type SubProcedureMapEntry,
@@ -96,6 +99,8 @@ export {
   top,
 } from './stack'
 export {
+  type CodeErrorNote,
+  type CodeOutputValue,
   type InterpretResult,
   interpretSignal,
   type PrepareResult,
@@ -113,6 +118,8 @@ export {
 } from './turn-wiring'
 export type {
   ArgBindingMap,
+  CodeInput,
+  CodeOutput,
   CompiledProcedure,
   LocalAttribute,
   ProcedureFrame,

@@ -100,6 +100,8 @@ export function buildActiveStepInput(args: {
   compiled: CompiledProcedure
   stack: ProcedureStack
   breadcrumb?: string
+  codeOutputs?: { name: string; value: unknown }[]
+  codeErrors?: { codeBlockId: string; error: string }[]
 }): ProcedureStepInput {
   return {
     activeStep: { doc: args.activeStep.doc },
@@ -112,6 +114,8 @@ export function buildActiveStepInput(args: {
     },
     depth: depth(args.stack),
     breadcrumb: args.breadcrumb,
+    codeOutputs: args.codeOutputs,
+    codeErrors: args.codeErrors,
   }
 }
 
@@ -203,6 +207,43 @@ export function buildStepperDeps(args: BuildStepperDepsArgs): StepperDeps {
     pickTextBranch: (predicates) => classifyTextBranch(conversation, predicates, classifyDeps),
     checkGoalMet: (reply, activeStep) => goalMetCheck(reply, activeStep, classifyDeps),
     classifyBackstop: (reply, activeStep) => backstopClassify(reply, activeStep, classifyDeps),
+    runCode,
+  }
+}
+
+/**
+ * The {@link StepperDeps.runCode} adapter over `invokeLambdaExecutor` — the same JS
+ * sandbox the workflow code node uses (`workflow-engine/nodes/action-nodes/code.ts`).
+ * Dynamically imported to keep `@auxx/services` off the import graph until a code step
+ * actually runs. Unwraps the neverthrow `Result` + the structured runtime/validation
+ * errors into the stepper's `{ ok, error }` contract; NEVER throws (a thrown adapter
+ * would surface as an unhandled turn failure instead of D5 gate-by-absence).
+ */
+const runCode: StepperDeps['runCode'] = async (block, codeInput) => {
+  try {
+    const { invokeLambdaExecutor } = await import('@auxx/services/lambda-execution')
+    const result = await invokeLambdaExecutor({
+      caller: 'procedure-stepper',
+      payload: {
+        type: 'code',
+        code: block.code,
+        codeLanguage: 'javascript',
+        codeInput,
+        inputsConfig: [],
+        variables: {},
+        timeout: 30000,
+      },
+    })
+    if (result.isErr()) return { ok: false, error: result.error.message }
+    const meta = result.value.metadata
+    if (meta?.runtime_error) return { ok: false, error: meta.runtime_error.message }
+    if (meta?.validation_error) return { ok: false, error: meta.validation_error.message }
+    const execResult = result.value.execution_result
+    const out =
+      execResult && typeof execResult === 'object' ? (execResult as Record<string, unknown>) : {}
+    return { ok: true, result: out }
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) }
   }
 }
 
@@ -343,5 +384,7 @@ async function resolveActiveStepInput(
     compiled: version.compiled,
     stack: prep.stack,
     breadcrumb: prep.breadcrumb,
+    codeOutputs: prep.codeOutputs,
+    codeErrors: prep.codeErrors,
   })
 }

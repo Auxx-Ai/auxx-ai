@@ -5,7 +5,7 @@ import type { LocalAttribute, TriggerExample } from '@auxx/lib/agents/procedures
 import type { ConditionGroup } from '@auxx/lib/conditions/client'
 import { AutosizeTextarea } from '@auxx/ui/components/autosize-textarea'
 import { Section } from '@auxx/ui/components/section'
-import { Filter, Info, Tags } from 'lucide-react'
+import { Clock, Filter, Tags } from 'lucide-react'
 import { memo, useMemo, useRef, useState } from 'react'
 import { ConditionContainer, ConditionProvider } from '~/components/conditions'
 import CollapseWrap from '~/components/workflow/ui/collapse-wrap'
@@ -84,7 +84,14 @@ export const ProcedureTriggerHeader = memo(function ProcedureTriggerHeader({
 
   return (
     <>
-      <div className='pe-4 border-b'>
+      <Section
+        title='When to run'
+        icon={<Clock className='size-4' />}
+        collapsible={false}
+        isRequired
+        className='[&>[data-slot=section]]:pb-0 [&_[data-slot=section-content]]:-ms-2 [&_[data-slot=section-content]]:-mt-2'
+        description='Describe when this procedure should run…'
+        initialOpen={true}>
         <CollapseWrap
           minHeight={60}
           isCollapsed={isDescCollapsed}
@@ -108,7 +115,7 @@ export const ProcedureTriggerHeader = memo(function ProcedureTriggerHeader({
         {whenToUseEmpty && (
           <span className='ps-2 mt-0.5 text-xs text-amber-600'>Required to publish.</span>
         )}
-      </div>
+      </Section>
 
       <Section
         title='Trigger examples'
