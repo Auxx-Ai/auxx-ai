@@ -175,14 +175,32 @@ describe('buildProcedurePredicateResolver', () => {
     expect(evaluateConditions(subject, groups, resolver)).toBe(false)
   })
 
-  it('prime is incremental + idempotent — each distinct field resolved once across calls', async () => {
+  it('re-reads local var:* LIVE on every prime (no memo) — for compute→branch', async () => {
     const reads: string[] = []
-    const ctxV = makeCtx({ 'var:__la:v1:a': 1, 'var:__la:v1:b': 2 }, reads)
+    const store: Record<string, unknown> = { 'var:__la:v1:a': 1, 'var:__la:v1:b': 2 }
+    const ctxV = makeCtx(store, reads)
     const { prime, resolver } = buildProcedurePredicateResolver(ctxV, frame)
     await prime([group([cond('var:a', 'is', 1)])])
-    await prime([group([cond('var:a', 'is', 1), cond('var:b', 'is', 2)])]) // a repeated, b new
-    expect(reads).toEqual(['var:__la:v1:a', 'var:__la:v1:b']) // a read once, b once
-    expect(resolver(subject, 'a')).toBe(1)
+    // A code step mutates the var between primes — the next prime MUST see the new value.
+    store['var:__la:v1:a'] = 99
+    await prime([group([cond('var:a', 'is', 99), cond('var:b', 'is', 2)])])
+    // `a` is re-read each prime (live), `b` once — locals are never memoized.
+    expect(reads).toEqual(['var:__la:v1:a', 'var:__la:v1:a', 'var:__la:v1:b'])
+    expect(resolver(subject, 'a')).toBe(99) // fresh value, not the stale 1
     expect(resolver(subject, 'b')).toBe(2)
+  })
+
+  it('memoizes CRM fields — a repeated FieldReference resolves once across primes', async () => {
+    resolveMap['contact:status'] = 'OPEN'
+    const resolveSpy = vi.fn(
+      async (source: { ref: string | string[] }) => resolveMap[String(source.ref)]
+    )
+    const mod = await import('../../bindings/resolve')
+    vi.mocked(mod.buildResolveVarSource).mockReturnValue(resolveSpy as never)
+    const { prime, resolver } = buildProcedurePredicateResolver(makeCtx({}), frame)
+    await prime([group([cond('contact:status', 'is', 'OPEN')])])
+    await prime([group([cond('contact:status', 'is', 'OPEN')])]) // repeated — must NOT re-resolve
+    expect(resolveSpy).toHaveBeenCalledTimes(1)
+    expect(resolver(subject, 'status')).toBe('OPEN')
   })
 })

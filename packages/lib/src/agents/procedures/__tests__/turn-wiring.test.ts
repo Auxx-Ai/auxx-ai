@@ -10,7 +10,7 @@ import type { CompiledProcedure, ProcedureFrame } from '../types'
 const compiled: CompiledProcedure = {
   entryStepId: 's1',
   steps: { s1: { id: 's1', kind: 'instruction', doc: { t: 'hi' }, next: null } },
-  codeBlocks: { c1: { language: 'javascript', code: '', inputs: [], outputs: [] } },
+  codeBlocks: { c1: { language: 'javascript', code: '' } },
   subProcedures: { sub1: { id: 'sub1', name: 'Refund flow', entryStepId: 's1' } },
   localAttributes: [],
 }

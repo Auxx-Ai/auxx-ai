@@ -3,7 +3,7 @@
 import type { FieldType } from '@auxx/database/types'
 import type { ConditionGroup } from '../../conditions/types'
 import type { FieldOptions } from '../../custom-fields/field-options'
-import type { LocalAttribute, SubProcedureId } from './types'
+import type { CodeInput, CodeOutput, LocalAttribute, SubProcedureId } from './types'
 
 /**
  * The TipTap node JSON contract the v2 compiler consumes. The v2 editor
@@ -37,12 +37,19 @@ export interface SubProcedureMapEntry {
   content: TiptapNode[]
 }
 
-/** A doc-level code block — a named JavaScript snippet referenced by inline `code:<id>` badges. */
+/**
+ * A doc-level code block — a named JavaScript snippet referenced by inline `code:<id>`
+ * badges. Beyond the source, it carries the per-block input/output bindings the §5 UI
+ * authors: which refs feed `main(codeInput)` and which result keys land in `var:*`. The
+ * compiler lifts these onto the emitted `code` step ({@link parseCodeBindings}).
+ */
 export interface CodeBlockMapEntry {
   id: string
   name: string
   language: 'javascript'
   code: string
+  inputs?: CodeInput[]
+  outputs?: CodeOutput[]
 }
 
 /**
@@ -118,9 +125,41 @@ export function parseStepBadgeId(id: string): ParsedStepBadge | null {
   return null
 }
 
-/** Whether an inline badge is an **own-step** badge (splits the prose chain) vs. an inline op. */
+/**
+ * Whether an inline badge is an **own-step** badge (splits the prose chain) vs. an inline op.
+ * `code:` is an own step (D2) — it compiles to a deterministic `code` step the stepper walks
+ * through, NOT an inline hint left in an instruction's prose.
+ */
 export function isOwnStepBadge(id: string): boolean {
-  return id.startsWith(STEP_BADGE_PREFIXES.subProcedure) || id.startsWith(STEP_BADGE_PREFIXES.route)
+  return (
+    id.startsWith(STEP_BADGE_PREFIXES.subProcedure) ||
+    id.startsWith(STEP_BADGE_PREFIXES.route) ||
+    id.startsWith(STEP_BADGE_PREFIXES.code)
+  )
+}
+
+/**
+ * Parse the input/output bindings carried on a doc-level `codeBlocks` map entry (authored
+ * by the §5 binding UI). Tolerant: a malformed or absent entry is dropped, so a
+ * half-authored block compiles to a code step with the bindings it does have (the compiler
+ * then `validate`s the survivors). PURE.
+ */
+export function parseCodeBindings(entry: { inputs?: unknown; outputs?: unknown } | undefined): {
+  inputs: CodeInput[]
+  outputs: CodeOutput[]
+} {
+  const inputs: CodeInput[] = []
+  for (const raw of Array.isArray(entry?.inputs) ? entry.inputs : []) {
+    const name = typeof (raw as CodeInput)?.name === 'string' ? (raw as CodeInput).name : ''
+    const ref = typeof (raw as CodeInput)?.ref === 'string' ? (raw as CodeInput).ref : ''
+    if (name && ref) inputs.push({ name, ref })
+  }
+  const outputs: CodeOutput[] = []
+  for (const raw of Array.isArray(entry?.outputs) ? entry.outputs : []) {
+    const name = typeof (raw as CodeOutput)?.name === 'string' ? (raw as CodeOutput).name : ''
+    if (name) outputs.push({ name, surfaceToModel: (raw as CodeOutput)?.surfaceToModel === true })
+  }
+  return { inputs, outputs }
 }
 
 // ── per-node attr shapes (documentation of the contract) ─────────────────

@@ -2,7 +2,7 @@
 
 import type { ToolContext } from '../../ai/agent-framework/tool-context'
 import { evaluateConditions } from '../../conditions/evaluate'
-import { buildProcedurePredicateResolver } from './context'
+import { buildProcedurePredicateResolver, readProcedureRef, writeProcedureVar } from './context'
 import { PROC_SIGNAL_KEY, type ProcedureSignal } from './control-tools'
 import { buildReanchorBreadcrumb } from './re-anchor'
 import { atDepthCap, clear, pop, push, replaceTop, top } from './stack'
@@ -26,12 +26,17 @@ type BackstopVerdict = { onProcedure: boolean; multiTurn: boolean }
  * op) until it reaches an `instruction` step to inject, or the stack empties
  * (free-form). `interpretSignal` (the post-turn half) lands in a later step.
  *
- * **Invariant: `prepareTurn` is pure navigation — it executes NO tools or code.**
- * An `instruction` step's inline `tool:`/`code:` references are hints the MODEL
- * acts on inside the engine loop; the stepper only injects the step prose. This
- * is load-bearing: `prepareTurn` re-runs from `frame.cursor` on every resume, so
- * any side effect here would re-fire each turn. The only state it mutates is the
- * cursor + the stack (pop/push/replace/clear from routing terminals).
+ * **Invariant: `prepareTurn` is pure navigation EXCEPT for `code` steps.** An
+ * `instruction` step's inline `tool:` references are hints the MODEL acts on inside the
+ * engine loop. A `code` step is the ONE deterministic side effect the stepper performs
+ * (D1): it runs the block (a real Lambda call) and writes its outputs to `var:*`. This
+ * is safe against the resume re-fire hazard because the stepper walks *through* a code
+ * step (advances to `next`, never rests on it), so the cursor always rests on the next
+ * `instruction`; on resume `prepareTurn` re-enters there, behind the code, and it does
+ * NOT re-fire (plan §"Why deterministic"). A genuine graph loop back through the block
+ * re-runs it (desired); a crash after the run but before cursor-persist gives
+ * at-least-once on retry (same as the workflow code node). Aside from code outputs, the
+ * only state it mutates is the cursor + the stack (pop/push/replace/clear from routing).
  *
  * The module is what Phase 4 calls; it does not touch the turn processor.
  * See plans/chat/v9/phase-3-stepper-and-stack.md §2.
@@ -84,7 +89,22 @@ export interface StepperDeps {
    * reply stay on the active step? Backed by `classifier.ts` `backstopClassify`.
    */
   classifyBackstop: (reply: string, activeStep: InstructionStep) => Promise<BackstopVerdict>
+  /**
+   * Run a `code` step's block in the sandbox and return its result (D1). Injected so
+   * the stepper stays free of `@auxx/services` — Phase 4 binds the `invokeLambdaExecutor`
+   * adapter (`turn-wiring.ts`). A throw / timeout / runtime error resolves to
+   * `{ ok: false, error }` (never rejects), so the stepper applies D5/D6 gate-by-absence.
+   */
+  runCode: (
+    block: { code: string },
+    codeInput: Record<string, unknown>
+  ) => Promise<{ ok: true; result: Record<string, unknown> } | { ok: false; error: string }>
 }
+
+/** A surfaced (`surfaceToModel`) code output the walk produced on its way to the landed step (D4). */
+export type CodeOutputValue = { name: string; value: unknown }
+/** A failed code step's note, surfaced to the model so it can cope honestly (D5). */
+export type CodeErrorNote = { codeBlockId: string; error: string }
 
 export type PrepareResult =
   | {
@@ -93,6 +113,10 @@ export type PrepareResult =
       activeStep: Extract<ProcedureStep, { kind: 'instruction' }>
       /** Re-anchor line when this turn resumed a parent after a `digression` pop (§5). */
       breadcrumb?: string
+      /** `surfaceToModel` outputs computed by `code` steps walked this turn (D4). */
+      codeOutputs?: CodeOutputValue[]
+      /** Failure notes from `code` steps that threw/timed out this turn (D5). */
+      codeErrors?: CodeErrorNote[]
     }
   /** Stack emptied / handoff cleared → persona-only, no procedure section this turn (#9). */
   | { kind: 'free-form'; stack: ProcedureStack; handoff?: boolean }
@@ -131,6 +155,9 @@ export async function prepareTurn(
   // The most recent `digression` frame popped THIS turn — its parent gets a
   // re-anchor breadcrumb on the instruction we eventually inject (§5).
   let poppedDigression: ProcedureFrame | null = null
+  // Accumulates code effects across EVERY frame walked this turn (a code step may sit in
+  // a sub-procedure frame, its branch land in the parent) — surfaced on the inject result.
+  const codeAcc: CodeAccumulator = { outputs: [], errors: [] }
 
   for (let i = 0; i < MAX_FRAME_TRANSITIONS; i++) {
     const frame = top(working)
@@ -143,14 +170,21 @@ export async function prepareTurn(
       continue
     }
 
-    const action = await advanceFrame(frame, version.compiled, deps)
+    const action = await advanceFrame(frame, version.compiled, deps, codeAcc)
 
     switch (action.type) {
       case 'instruction': {
         const breadcrumb = poppedDigression
           ? buildReanchorBreadcrumb(action.step, poppedDigression) || undefined
           : undefined
-        return { kind: 'inject', stack: working, activeStep: action.step, breadcrumb }
+        return {
+          kind: 'inject',
+          stack: working,
+          activeStep: action.step,
+          breadcrumb,
+          ...(codeAcc.outputs.length > 0 ? { codeOutputs: codeAcc.outputs } : {}),
+          ...(codeAcc.errors.length > 0 ? { codeErrors: codeAcc.errors } : {}),
+        }
       }
 
       case 'pop': {
@@ -214,16 +248,21 @@ type FrameAction =
   | { type: 'switch'; toProcedureId: string }
   | { type: 'call'; subProcedureId: string }
 
+/** Code effects collected as the stepper walks through `code` steps this turn. */
+type CodeAccumulator = { outputs: CodeOutputValue[]; errors: CodeErrorNote[] }
+
 /**
  * Walk one frame's cursor through deterministic steps until an `instruction` (stop)
  * or a terminal. Mutates `frame.cursor` in place (the stack is rehydrated per turn
  * and re-serialized after). For a `call`, parks `frame.cursor` at the routing step's
- * `next` so the parent resumes there when the child pops.
+ * `next` so the parent resumes there when the child pops. A `code` step is RUN here
+ * (the one side effect) and its results pushed into `codeAcc`.
  */
 async function advanceFrame(
   frame: ProcedureFrame,
   compiled: CompiledProcedure,
-  deps: StepperDeps
+  deps: StepperDeps,
+  codeAcc: CodeAccumulator
 ): Promise<FrameAction> {
   const predicate = buildProcedurePredicateResolver(deps.ctx, frame)
   const entity = deps.ctx.subject ?? {}
@@ -237,6 +276,12 @@ async function advanceFrame(
     if (step.kind === 'instruction') {
       frame.cursor = cursor
       return { type: 'instruction', step }
+    }
+
+    if (step.kind === 'code') {
+      await runCodeStep(step, compiled, frame, deps, codeAcc)
+      cursor = step.next // deterministic — always advance, never rest on the code step
+      continue
     }
 
     if (step.kind === 'routing') {
@@ -285,6 +330,58 @@ async function pickConditionBranch(
   const idx = await deps.pickTextBranch(step.cases.map((c) => c.predicate ?? ''))
   if (idx !== null && idx >= 0 && idx < step.cases.length) return step.cases[idx]!.thenStep
   return step.elseStep ?? step.next
+}
+
+/**
+ * Run a `code` step: resolve its inputs through the shared {@link readProcedureRef}
+ * (so a local `var:*` written by an earlier code step is visible, and a CRM field on an
+ * internal run gates to `undefined`), invoke the sandbox, then apply D5/D6:
+ *
+ *  - **ok** → write each declared output to its scoped `var:*`; collect the
+ *    `surfaceToModel` ones (skipping `undefined`, so we never claim a value was computed
+ *    that wasn't).
+ *  - **err** → CLEAR each declared output (`var:* = undefined`) and collect an error
+ *    note. Clearing is load-bearing: `var:*` persists across turns, so on a loop re-run
+ *    a stale prior-success value would otherwise survive and a downstream condition would
+ *    branch on it instead of taking its else-arm. Clearing makes gate-by-absence (D6)
+ *    actually hold on re-run, not just on first execution.
+ */
+async function runCodeStep(
+  step: Extract<ProcedureStep, { kind: 'code' }>,
+  compiled: CompiledProcedure,
+  frame: ProcedureFrame,
+  deps: StepperDeps,
+  codeAcc: CodeAccumulator
+): Promise<void> {
+  const block = compiled.codeBlocks[step.codeBlockId]
+  const clearOutputs = async (error: string) => {
+    for (const output of step.outputs)
+      await writeProcedureVar(deps.ctx, frame, output.name, undefined)
+    codeAcc.errors.push({ codeBlockId: step.codeBlockId, error })
+  }
+
+  if (!block) {
+    await clearOutputs(`code block "${step.codeBlockId}" not found`)
+    return
+  }
+
+  const codeInput: Record<string, unknown> = {}
+  for (const input of step.inputs) {
+    codeInput[input.name] = await readProcedureRef(deps.ctx, frame, input.ref)
+  }
+
+  const outcome = await deps.runCode({ code: block.code }, codeInput)
+  if (!outcome.ok) {
+    await clearOutputs(outcome.error)
+    return
+  }
+
+  for (const output of step.outputs) {
+    const value = outcome.result[output.name]
+    await writeProcedureVar(deps.ctx, frame, output.name, value)
+    if (output.surfaceToModel && value !== undefined)
+      codeAcc.outputs.push({ name: output.name, value })
+  }
 }
 
 /** A fresh running frame at `cursor`, pushed by `pushedBy`. */

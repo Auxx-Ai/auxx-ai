@@ -30,14 +30,37 @@ export type ArgBindingMap = Record<
 >
 
 /**
- * The compiled runtime step. The v2 union is `instruction | condition | routing`
- * (decision D4): **tool calls and code execution are inline ops** carried inside
- * an `instruction` step's `doc` (reference badges the Phase-3 stepper executes in
- * place; a tool result binds to a local attribute), NOT their own steps. Only
- * sub-procedure calls and routing/terminals are own steps.
+ * One resolved input passed to a code block's `main(codeInput)`. `ref` is the SAME
+ * string shape {@link readProcedureRef} branches on: a local `var:<name>` (read from
+ * the version-scoped local store) or a CRM `FieldReference` (resolved off the subject).
+ */
+export type CodeInput = { name: string; ref: string }
+
+/**
+ * One declared output of a code block. `name` MUST be a declared {@link LocalAttribute}
+ * — `result[name]` writes to `var:<name>`. `surfaceToModel` (D4) decides whether the
+ * value is fed into the model's prose context or stays branch-only.
+ */
+export type CodeOutput = { name: string; surfaceToModel: boolean }
+
+/**
+ * The compiled runtime step. The v9 union is `instruction | condition | routing | code`.
+ * **Tool calls stay inline ops** carried inside an `instruction` step's `doc` (the model
+ * acts on them inside the engine loop; a tool result binds to a local attribute). **Code
+ * is its OWN deterministic step** (D2): the stepper walks *through* it — runs the block,
+ * writes its outputs to `var:*`, advances to `next`, never rests on it — so on resume the
+ * cursor is past the code and it does not re-fire (plan §"Why deterministic").
  */
 export type ProcedureStep =
   | { id: StepId; kind: 'instruction'; doc: unknown /* TiptapFragment */; next: StepId | null }
+  | {
+      id: StepId
+      kind: 'code'
+      codeBlockId: string // → compiled.codeBlocks[id]
+      inputs: CodeInput[] // resolved at run time, passed as main(codeInput)
+      outputs: CodeOutput[] // result[name] → scopedVar(frame, name)
+      next: StepId | null // deterministic — always advances, never stops
+    }
   | {
       id: StepId
       kind: 'condition'
@@ -104,10 +127,8 @@ export interface CompiledProcedure {
   entryStepId: StepId
   /** Shared by the main body AND every sub-procedure — one flat map. */
   steps: Record<StepId, ProcedureStep>
-  codeBlocks: Record<
-    string,
-    { language: 'javascript'; code: string; inputs: unknown[]; outputs: unknown[] }
-  >
+  /** Doc-level code sources; per-invocation input/output bindings live on the `code` step. */
+  codeBlocks: Record<string, { language: 'javascript'; code: string }>
   /** Named local sub-procedures; each `entryStepId` ∈ `steps`. */
   subProcedures: Record<SubProcedureId, SubProcedure>
   /**

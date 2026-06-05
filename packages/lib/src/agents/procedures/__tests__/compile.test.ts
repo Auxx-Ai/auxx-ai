@@ -51,11 +51,20 @@ const sub = (id: string, name: string, content: TiptapNode[]): SubProcedureMapEn
   content,
 })
 
-const code = (id: string, name: string): CodeBlockMapEntry => ({
+const code = (
+  id: string,
+  name: string,
+  bindings?: {
+    inputs?: { name: string; ref: string }[]
+    outputs?: { name: string; surfaceToModel: boolean }[]
+  }
+): CodeBlockMapEntry => ({
   id,
   name,
   language: 'javascript',
   code: 'return 1',
+  ...(bindings?.inputs ? { inputs: bindings.inputs } : {}),
+  ...(bindings?.outputs ? { outputs: bindings.outputs } : {}),
 })
 
 type Condition = Extract<ProcedureStep, { kind: 'condition' }>
@@ -77,7 +86,7 @@ describe('compileProcedure', () => {
     expect(instructions).toHaveLength(1)
   })
 
-  it('keeps inline tool/code reference badges inside the instruction doc (no split)', () => {
+  it('keeps an inline tool badge in prose but splits a code badge into its own step', () => {
     const { compiled, errors } = compileProcedure(
       doc(
         [
@@ -95,9 +104,12 @@ describe('compileProcedure', () => {
       )
     )
     expect(errors).toBeUndefined()
-    // a single instruction — neither tool nor code split the chain.
+    // tool stays inline (one instruction), code splits out into a deterministic code step.
     const instructions = Object.values(compiled.steps).filter((s) => s.kind === 'instruction')
     expect(instructions).toHaveLength(1)
+    const codeSteps = Object.values(compiled.steps).filter((s) => s.kind === 'code')
+    expect(codeSteps).toHaveLength(1)
+    expect((codeSteps[0] as Extract<ProcedureStep, { kind: 'code' }>).codeBlockId).toBe('c1')
   })
 
   it('splits the prose chain on an own-step route badge (terminal)', () => {
@@ -276,9 +288,54 @@ describe('compileProcedure', () => {
     expect(errors?.some((e) => e.code === 'UNCALLED_SUBPROCEDURE')).toBe(true)
   })
 
-  it('errors on an inline code badge with no matching code block', () => {
+  it('errors on a code step with no matching code block', () => {
     const { errors } = compileProcedure(doc([badge('code:ghost')]))
     expect(errors?.some((e) => e.code === 'UNKNOWN_CODE_BLOCK')).toBe(true)
+  })
+
+  it('compiles a code badge to a code step threading next with bindings from the code-block entry', () => {
+    const { compiled, errors } = compileProcedure(
+      doc([badge('code:c1'), prose('after')], {
+        codeBlocks: [
+          code('c1', 'Compute', {
+            inputs: [{ name: 'total', ref: 'var:cartTotal' }],
+            outputs: [{ name: 'tier', surfaceToModel: true }],
+          }),
+        ],
+        localAttributes: [
+          { name: 'cartTotal', dataType: 'NUMBER' },
+          { name: 'tier', dataType: 'TEXT' },
+        ],
+      })
+    )
+    expect(errors).toBeUndefined()
+    const step = compiled.steps[compiled.entryStepId] as Extract<ProcedureStep, { kind: 'code' }>
+    expect(step.kind).toBe('code')
+    expect(step.codeBlockId).toBe('c1')
+    expect(step.inputs).toEqual([{ name: 'total', ref: 'var:cartTotal' }])
+    expect(step.outputs).toEqual([{ name: 'tier', surfaceToModel: true }])
+    // deterministic — threads to the following instruction.
+    expect(compiled.steps[step.next!]!.kind).toBe('instruction')
+  })
+
+  it('errors on a code output that is not a declared local attribute', () => {
+    const { errors } = compileProcedure(
+      doc([badge('code:c1')], {
+        codeBlocks: [
+          code('c1', 'Compute', { outputs: [{ name: 'ghostAttr', surfaceToModel: false }] }),
+        ],
+      })
+    )
+    expect(errors?.some((e) => e.code === 'UNKNOWN_OUTPUT_ATTRIBUTE')).toBe(true)
+  })
+
+  it('errors on a code input with an unresolvable (bare) ref', () => {
+    const { errors } = compileProcedure(
+      doc([badge('code:c1')], {
+        codeBlocks: [code('c1', 'Compute', { inputs: [{ name: 'x', ref: 'bareToken' }] })],
+      })
+    )
+    expect(errors?.some((e) => e.code === 'BAD_INPUT_REF')).toBe(true)
   })
 
   it('errors on a structured arm with no conditions', () => {

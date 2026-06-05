@@ -36,7 +36,33 @@ export const agentProcedureStep: PromptSection = {
       if (lines.length > 0) lines.push('')
     }
     if (proc.breadcrumb) lines.push(proc.breadcrumb, '')
+
+    // Computed values (D4) — let the model speak the transformed result.
+    for (const out of proc.codeOutputs ?? []) {
+      lines.push(`Computed: \`${out.name}\` = \`${formatValue(out.value)}\``)
+    }
+    // Failure notes (D5) — the compute couldn't run; cope honestly, don't invent a value.
+    for (const _err of proc.codeErrors ?? []) {
+      lines.push(
+        '⚠️ A computation for this step failed — explain you couldn’t verify it and offer to escalate rather than guessing.'
+      )
+    }
+    if ((proc.codeOutputs?.length ?? 0) > 0 || (proc.codeErrors?.length ?? 0) > 0) lines.push('')
+
     lines.push(`Current step: ${body}`)
     return lines.join('\n').trim()
   },
+}
+
+/** Render a code output value compactly for the prompt — primitives verbatim, objects as JSON. */
+function formatValue(value: unknown): string {
+  if (value === null) return 'null'
+  if (typeof value === 'object') {
+    try {
+      return JSON.stringify(value)
+    } catch {
+      return String(value)
+    }
+  }
+  return String(value)
 }

@@ -26,6 +26,8 @@ export {
 } from './nodes'
 export type {
   ArgBindingMap,
+  CodeInput,
+  CodeOutput,
   CompiledProcedure,
   LocalAttribute,
   ProcedureFrame,
