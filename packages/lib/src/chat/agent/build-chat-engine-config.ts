@@ -8,6 +8,7 @@ import {
   projectBindingSchemas,
 } from '../../agents/bindings'
 import { ALL_SURFACES } from '../../agents/client'
+import { PROCEDURE_CONTROL_TOOLS } from '../../agents/procedures/control-tools'
 import { type AgentEngineConfig, createCallModel, type Subject } from '../../ai/agent-framework'
 import {
   createAppCapabilities,
@@ -43,6 +44,13 @@ export interface BuildChatEngineConfigInput {
   /** The turn's subject (anchors + identityVerified) threaded onto every tool's `ToolContext`. */
   subject: Subject
   signal?: AbortSignal
+  /**
+   * Mount the v9 procedure control tools (`advance_procedure` / `await_customer` /
+   * `digress` / `handoff_to_human` / `end_procedure`) when this agent has published
+   * procedures. They're inert without an active procedure step in the prompt, so
+   * gating keeps zero-procedure agents on the unchanged tool list.
+   */
+  hasProcedures?: boolean
 }
 
 /**
@@ -69,7 +77,7 @@ export async function buildChatEngineConfig(
   input: BuildChatEngineConfigInput,
   db: Database = database
 ): Promise<AgentEngineConfig> {
-  const { organizationId, agentId, agentUserId, sessionId, subject, signal } = input
+  const { organizationId, agentId, agentUserId, sessionId, subject, signal, hasProcedures } = input
 
   // Invariant: a chat-kind agent is visitor-facing by definition, so it always
   // runs with a subject carrying the thread + participant anchors (contact is
@@ -131,7 +139,11 @@ export async function buildChatEngineConfig(
   // want one unable to hand off to a human — so it's appended unconditionally
   // rather than gated behind a toolset toggle. The "when" is authored in the
   // persona. See plans/chat/v5 escalation.md §1.
-  const allTools = [...chatTools, createChatHandoffTool()]
+  const allTools = [
+    ...chatTools,
+    createChatHandoffTool(),
+    ...(hasProcedures ? PROCEDURE_CONTROL_TOOLS : []),
+  ]
 
   // Effective bindings = admin override ?? tool-author default (plans/chat/v8
   // phase-4). `agentConfig.toolRestrictions` is the thin per-agent override map

@@ -16,6 +16,7 @@ import {
   updateDraftDoc,
   updateProcedure,
 } from '@auxx/lib/agents/procedures'
+import { onCacheEvent } from '@auxx/lib/cache'
 import { createScopedLogger } from '@auxx/logger'
 import { TRPCError } from '@trpc/server'
 import { z } from 'zod'
@@ -231,11 +232,10 @@ export const procedureRouter = createTRPCRouter({
 
   /**
    * Compile the draft → snapshot an immutable version → repoint the active
-   * pointer. Enforces non-empty `whenToUse` and surfaces compile errors.
-   *
-   * The Phase-4 cache bust (`onCacheEvent('procedure.updated')`) + the org-cache
-   * `agents` projection are NOT wired yet, so this only mutates the DB — no live
-   * run reads the active version until Phase 4.
+   * pointer. Enforces non-empty `whenToUse` and surfaces compile errors. Busts
+   * the `agents` org-cache projection so the next selection runs the new active
+   * version (`procedure.updated → ['agents']`; only publish/revert bust — drafts
+   * never affect live runs).
    */
   publish: adminProcedure
     .input(z.object({ id: z.string().min(1) }))
@@ -282,6 +282,7 @@ export const procedureRouter = createTRPCRouter({
         }),
         'publish procedure'
       )
+      await onCacheEvent('procedure.updated', { orgId: organizationId })
       logger.info('Procedure published', {
         organizationId,
         procedureId: input.id,
@@ -302,6 +303,7 @@ export const procedureRouter = createTRPCRouter({
         }),
         'revert procedure'
       )
+      await onCacheEvent('procedure.updated', { orgId: organizationId })
       return { ok: true as const }
     }),
 })

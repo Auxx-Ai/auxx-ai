@@ -315,7 +315,7 @@ describe('prepareTurn — routing & stack ops', () => {
     expect(r.stack.frames).toHaveLength(0)
   })
 
-  it('handoff routing clears the stack → free-form', async () => {
+  it('handoff routing clears the stack → free-form + flags handoff', async () => {
     const compiled = build('h', [routing('h', 'handoff')])
     const r = await prepareTurn(
       stackOf(frame('v1', 'a'), frame('v1', 'h')),
@@ -323,6 +323,7 @@ describe('prepareTurn — routing & stack ops', () => {
     )
     expect(r.kind).toBe('free-form')
     expect(r.stack.frames).toHaveLength(0)
+    expect(r.kind === 'free-form' && r.handoff).toBe(true)
   })
 
   it('switch replaces the top frame with the target procedure’s pinned active version', async () => {
@@ -518,14 +519,14 @@ describe('interpretSignal', () => {
     expect(selectOther).not.toHaveBeenCalled()
   })
 
-  it('handoff → clears the stack', async () => {
+  it('handoff → clears the stack + flags handoff for escalation', async () => {
     setSignal({ kind: 'handoff' })
     const r = await interpretSignal(
       stackOf(frame('v1', 'i0')),
       'Escalating.',
       makeDeps({ v1: basic() })
     )
-    expect(r).toMatchObject({ reinvoke: false, endTurn: true })
+    expect(r).toMatchObject({ reinvoke: false, endTurn: true, handoff: true })
     expect(r.stack.frames).toHaveLength(0)
   })
 

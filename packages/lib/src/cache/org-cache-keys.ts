@@ -18,7 +18,9 @@ import type {
   OrganizationMemberInfo,
   OrganizationRole,
 } from '@auxx/database/types'
+import type { CompiledProcedure, TriggerExample } from '../agents/procedures/types'
 import type { CredentialsResponse, ProviderConfiguration } from '../ai/providers/types'
+import type { ConditionGroup } from '../conditions/types'
 import type { DehydratedOrganization } from '../dehydration/types'
 import type { Inbox } from '../inboxes/types'
 import type { Overage } from '../permissions/overage-detection-service'
@@ -129,6 +131,30 @@ export interface CachedAgentTrigger {
   instructions: Record<string, unknown> | null
 }
 
+/**
+ * One agent↔procedure LINK projected for the cache, fully resolved for selection.
+ * Carries the link's per-agent overrides already collapsed onto the procedure
+ * defaults (`override ?? default`), plus the procedure's ACTIVE published version
+ * (its `compiled` tree, pinned by `activeVersionId`). Drives Phase-1 selection and
+ * the Phase-3 stepper. See plans/chat/v9/phase-4-wiring.md §4.1.
+ */
+export interface CachedAgentProcedure {
+  // link
+  linkId: string
+  procedureId: string
+  enabled: boolean
+  priority: number
+  // resolved trigger (override ?? default — precomputed at projection time)
+  whenToUse: string
+  triggerExamples: TriggerExample[]
+  /** `[]` = no deterministic gate. */
+  ruleset: ConditionGroup[]
+  // pinned build — only procedures with an ACTIVE published version are projected
+  activeVersionId: string
+  /** The ACTIVE version's compiled step tree. */
+  compiled: CompiledProcedure
+}
+
 /** Cached agent (JSON-serializable) */
 export interface CachedAgent {
   id: string
@@ -166,6 +192,14 @@ export interface CachedAgent {
   archivedAt: string | null
   /** All AgentTrigger rows owned by this agent (active + disabled). Consumers filter. */
   triggers: CachedAgentTrigger[]
+  /**
+   * This agent's linked procedures: the link (enabled/priority/resolved trigger)
+   * + its ACTIVE published version's compiled tree. One entry per `AgentProcedure`
+   * link whose procedure has an `activeVersionId`; unpublished procedures are
+   * excluded. `[]` for agents with no published procedures (the zero-procedure
+   * short-circuit reads this). Drives selection + the stepper (Phase 4 §4).
+   */
+  procedures: CachedAgentProcedure[]
   /** Derived from triggers — whether direct messages to this agent are enabled. */
   dmEnabled: boolean
   /** Derived from triggers — DM trigger instructions (Tiptap doc); null if no addendum. */

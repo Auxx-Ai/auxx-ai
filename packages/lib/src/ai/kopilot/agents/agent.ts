@@ -3,6 +3,7 @@
 import { createScopedLogger } from '@auxx/logger'
 import { toActorId } from '@auxx/types/actor'
 import { getOrgToolCatalog, getOrgToolsetCatalog, type ResolvedAgentConfig } from '../../../agents'
+import { PROCEDURE_STEP_KEY } from '../../../agents/procedures/persist'
 import { getCachedIntegrationCatalog } from '../../../cache/integration-catalog'
 import { getCachedMembersByUserIds, getCachedResources } from '../../../cache/org-cache-helpers'
 import type {
@@ -16,6 +17,7 @@ import type { Message, ToolCall } from '../../clients/base/types'
 import { transformAssistantContentForLLM } from '../blocks/transform-for-llm'
 import { buildKopilotPromptSerialized } from '../prompts/build-kopilot-prompt'
 import { buildInstructionReferenceResolver } from '../prompts/resolve-instruction-references'
+import type { ProcedureStepInput } from '../prompts/sections/types'
 import type { CurrentUserInfo } from '../prompts/shared-types'
 import type { TriggerContext } from '../prompts/trigger-context'
 import type { KopilotDomainState } from '../types'
@@ -104,6 +106,14 @@ export function createKopilotAgent(
         ? buildInstructionReferenceResolver({ toolCatalog, toolsetCatalog })
         : undefined
 
+      // The Phase-4 turn preamble stashes the active procedure step here before
+      // the engine drains; absent (or on a free-form turn) the section drops out.
+      // `domainState` is treated as a Record for slice reads (as the context
+      // store does) — the typed interface has no index signature.
+      const procedureStep = (state.domainState as Record<string, unknown>)[PROCEDURE_STEP_KEY] as
+        | ProcedureStepInput
+        | undefined
+
       const systemPrompt = buildKopilotPromptSerialized({
         domainState: state.domainState,
         entityCatalog,
@@ -115,6 +125,7 @@ export function createKopilotAgent(
         agentConfig,
         triggerContext,
         instructionsReferences,
+        procedureStep,
       })
 
       // Full conversation for tool-loop continuity. Each persisted assistant

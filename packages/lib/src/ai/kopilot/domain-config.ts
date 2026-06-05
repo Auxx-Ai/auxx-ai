@@ -2,6 +2,7 @@
 
 import { createScopedLogger } from '@auxx/logger'
 import type { ResolvedAgentConfig } from '../../agents'
+import { PROCEDURE_SLICE_KEY } from '../../agents/procedures/persist'
 import { CONTEXT_SLICE_KEY, readContextSlice } from '../agent-framework/context'
 import type {
   AgentDomainConfig,
@@ -210,9 +211,20 @@ export function createKopilotDomainConfig(
     resetTurnDomainState(domainState: Record<string, unknown>): Record<string, unknown> {
       // Drop the turn-scoped context capture (tool:*/call:*) on a new user turn
       // while preserving `var:*` scratch (incl. var:plan, promoted captures).
+      // The procedure stack is cross-turn CONTROL state — exempt it from the
+      // reset (the next customer turn resumes from it), exactly as `vars` is
+      // preserved. Returning `domainState` unchanged already preserves it; only
+      // the rebuild branch below (which spreads into a fresh object, dropping
+      // un-listed keys) must re-add `procedure` explicitly or the stack is wiped
+      // each turn (plans/chat/v9/phase-4-wiring.md §2.1).
       const slice = readContextSlice(domainState)
       if (!slice?.turn) return domainState
-      return { ...domainState, [CONTEXT_SLICE_KEY]: { vars: slice.vars } }
+      const procedure = domainState[PROCEDURE_SLICE_KEY]
+      return {
+        ...domainState,
+        [CONTEXT_SLICE_KEY]: { vars: slice.vars },
+        ...(procedure !== undefined ? { [PROCEDURE_SLICE_KEY]: procedure } : {}),
+      }
     },
   }
 }

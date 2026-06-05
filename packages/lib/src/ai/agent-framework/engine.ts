@@ -172,6 +172,45 @@ export class AgentEngine {
     }
   }
 
+  /**
+   * Re-run the query loop in the SAME customer turn WITHOUT appending a user
+   * message or resetting turn-scoped state.
+   *
+   * The v9 procedure stepper calls this for a same-turn `reinvoke`
+   * (advance/digress/end): the caller has already mutated `domainState` (advanced
+   * the procedure stack + the active step the prompt reads), and wants the model
+   * to generate again against the NEW system prompt with no phantom customer
+   * message. Unlike {@link submitMessage} it does NOT append a `user` message,
+   * does NOT call `resetTurnDomainState`, and does NOT reset turn usage/snapshots/
+   * captures — they ACCUMULATE across continuations so the turn budget bounds a
+   * runaway reinvoke loop. The current `turnId` is reused (it's one logical turn).
+   *
+   * Pre-launch invariant: the caller is responsible for ensuring the stack
+   * genuinely changed before re-invoking (the stepper's `reinvoke` flag), or the
+   * model would regenerate against an unchanged prompt.
+   */
+  async *continueTurn(): AsyncGenerator<AgentEvent> {
+    if (!this.turnId) this.turnId = generateId('turn')
+
+    this.abortController = new AbortController()
+    const configWithAbort: AgentEngineConfig = {
+      ...this.config,
+      signal: this.abortController.signal,
+    }
+
+    logger.info('Turn continued (no new user message)', {
+      turnId: this.turnId,
+      sessionId: this.config.sessionId,
+      totalMessages: this.state.messages.length,
+    })
+
+    try {
+      yield* this.withTurnEnd(this.tagTurnId(this.runPipeline(configWithAbort)))
+    } finally {
+      this.abortController = null
+    }
+  }
+
   /** Abort the current turn execution. */
   interrupt(): void {
     this.abortController?.abort()

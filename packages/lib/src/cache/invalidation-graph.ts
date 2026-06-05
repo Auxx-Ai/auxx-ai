@@ -54,6 +54,10 @@ export const INVALIDATION_GRAPH: Record<string, InvalidationMapping> = {
   'agent.archived': ['agents'],
   'agent.deleted': ['agents'],
 
+  // Only PUBLISH/REVERT busts the agents projection — drafts never affect live
+  // runs (the projection joins `activeVersionId`). See phase-4-wiring.md §4.4.
+  'procedure.updated': ['agents'],
+
   'inbox.created': ['inboxes'],
   'inbox.updated': ['inboxes'],
   'inbox.deleted': ['inboxes'],

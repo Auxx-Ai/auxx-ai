@@ -4,11 +4,19 @@ import { database, schema } from '@auxx/database'
 import { saveSessionMessages, updateSessionDomainState } from '@auxx/services'
 import { and, desc, eq, gt } from 'drizzle-orm'
 import {
+  type ConversationMessage,
+  runProcedureTurn,
+  sessionMessagesToConversation,
+} from '../../agents/procedures'
+import {
   AgentEngine,
+  type AgentEvent,
   buildCatchupMessages,
   findOrCreateThreadSession,
   type SessionMessage,
 } from '../../ai/agent-framework'
+import { KopilotContextStore, readContextSlice } from '../../ai/agent-framework/context'
+import type { ToolContext } from '../../ai/agent-framework/tool-context'
 import { getCachedAgentById } from '../../cache'
 import type { JobContext } from '../../jobs/types'
 import { createScopedLogger } from '../../logger'
@@ -16,6 +24,7 @@ import { sendAgentChatMessage } from '../outbound'
 import { buildChatEngineConfig } from './build-chat-engine-config'
 import { buildChatSubjectFromPassport } from './build-chat-subject'
 import type { ChatTurnJobPayload } from './enqueue-chat-turn'
+import { flipHandoffState } from './handoff'
 
 const logger = createScopedLogger('process-chat-turn')
 
@@ -130,6 +139,7 @@ export async function processChatTurn(ctx: JobContext<ChatTurnJobPayload>): Prom
     sessionId: session.id,
     subject,
     signal,
+    hasProcedures: agent.procedures.length > 0,
   })
 
   const engine = new AgentEngine(config, {
@@ -137,22 +147,86 @@ export async function processChatTurn(ctx: JobContext<ChatTurnJobPayload>): Prom
     domainState: (session.domainState ?? {}) as Record<string, unknown>,
   })
 
-  // Drain the turn, accumulating the final assistant text (last responder
-  // message wins). Delivery is a single Pusher push on completion — no
-  // per-delta streaming for v5.
-  let finalText = ''
-  for await (const event of engine.submitMessage(inboundText, {})) {
-    if (signal?.aborted) {
-      engine.interrupt()
-      break
+  // Drain one engine pass, accumulating the final assistant text (last responder
+  // message wins). Delivery is a single Pusher push on completion — no per-delta
+  // streaming for v5.
+  const drain = async (gen: AsyncGenerator<AgentEvent>): Promise<string> => {
+    let text = ''
+    for await (const event of gen) {
+      if (signal?.aborted) {
+        engine.interrupt()
+        break
+      }
+      if (event.type === 'assistant-message-finished') {
+        const t = event.parts
+          .filter((p): p is Extract<typeof p, { type: 'text' }> => p.type === 'text')
+          .map((p) => p.text)
+          .join('')
+        if (t.trim()) text = t
+      }
     }
-    if (event.type === 'assistant-message-finished') {
-      const text = event.parts
-        .filter((p): p is Extract<typeof p, { type: 'text' }> => p.type === 'text')
-        .map((p) => p.text)
-        .join('')
-      if (text.trim()) finalText = text
+    return text
+  }
+
+  // v9 procedures: when the agent has published procedures, sandwich the engine
+  // drain between selection + the stepper (`runProcedureTurn`). Zero-procedure
+  // agents run the unchanged single drain (provable no-op for today's agents).
+  let finalText: string
+  if (agent.procedures.length > 0) {
+    const conversation: ConversationMessage[] = [
+      ...sessionMessagesToConversation([...existingMessages, ...catchup]),
+      { role: 'user', content: inboundText },
+    ]
+    const buildCtx = (): ToolContext => {
+      const base = {
+        db: database,
+        organizationId,
+        userId: agentUserId,
+        sessionId: session.id,
+        signal,
+        subject,
+        appAccounts: config.appAccounts,
+      }
+      return {
+        ...base,
+        context: new KopilotContextStore({
+          ctx: base as ToolContext,
+          initial: readContextSlice(engine.getState().domainState as Record<string, unknown>),
+        }),
+      }
     }
+    finalText = await runProcedureTurn({
+      engine,
+      inboundText,
+      procedures: agent.procedures,
+      subject,
+      conversation,
+      classifyDeps: {
+        db: database,
+        organizationId,
+        userId: agentUserId,
+        model: config.domainConfig.defaultModel ?? 'claude-haiku-4-5',
+        provider: config.domainConfig.defaultProvider ?? 'anthropic',
+      },
+      buildCtx,
+      drain,
+      // Procedure escalation: a routing `handoff` step or the `handoff_to_human`
+      // control tool flips this thread to the human queue (same sink as the
+      // `chat_handoff` persona tool). Best-effort — a flip failure must not drop
+      // the customer's closing reply.
+      onHandoff: async () => {
+        try {
+          await flipHandoffState({ threadId, organizationId })
+        } catch (err) {
+          logger.error('Procedure handoff failed to flip thread', {
+            threadId,
+            error: err instanceof Error ? err.message : String(err),
+          })
+        }
+      },
+    })
+  } else {
+    finalText = await drain(engine.submitMessage(inboundText, {}))
   }
 
   const finalState = engine.getState()

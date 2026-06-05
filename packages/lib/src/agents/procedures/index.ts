@@ -29,6 +29,7 @@ export {
   PROCEDURE_CONTROL_TOOLS,
   type ProcedureSignal,
 } from './control-tools'
+export { sessionMessagesToConversation } from './conversation'
 export {
   type CodeBlockMapEntry,
   type ConditionBlockAttrs,
@@ -44,6 +45,12 @@ export {
   type TiptapDoc,
   type TiptapNode,
 } from './nodes'
+export {
+  PROCEDURE_SLICE_KEY,
+  PROCEDURE_STEP_KEY,
+  readProcedureSlice,
+  writeProcedureSlice,
+} from './persist'
 export type {
   AgentProcedureEntity,
   AgentProcedureOverrides,
@@ -95,6 +102,15 @@ export {
   prepareTurn,
   type StepperDeps,
 } from './stepper'
+export {
+  applySelection,
+  type BuildStepperDepsArgs,
+  buildActiveStepInput,
+  buildStepperDeps,
+  type RunProcedureTurnArgs,
+  resolveCandidatesFromCache,
+  runProcedureTurn,
+} from './turn-wiring'
 export type {
   ArgBindingMap,
   CompiledProcedure,
