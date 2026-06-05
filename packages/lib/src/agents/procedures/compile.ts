@@ -45,7 +45,6 @@ export interface CompileError {
     | 'UNCALLED_SUBPROCEDURE'
     | 'UNKNOWN_CODE_BLOCK'
     | 'UNKNOWN_OUTPUT_ATTRIBUTE'
-    | 'BAD_INPUT_REF'
     | 'EMPTY_CONDITION_GROUP'
     | 'EMPTY_PREDICATE'
     | 'DANGLING_REF'
@@ -129,25 +128,23 @@ export function compileProcedure(doc: TiptapDoc): CompileResult {
     return out
   }
 
-  // Per-block input/output bindings, lifted from the doc-level `codeBlocks` map onto each
-  // emitted `code` step (the compiled block holds source only; bindings live on the step).
-  const codeBindingsById = new Map(
-    (doc.codeBlocks ?? []).filter((cb) => cb?.id).map((cb) => [cb.id, parseCodeBindings(cb)])
+  // Per-block output bindings, lifted from the doc-level `codeBlocks` map onto each emitted
+  // `code` step (the compiled block holds source only; the declared outputs live on the step).
+  const codeOutputsById = new Map(
+    (doc.codeBlocks ?? [])
+      .filter((cb) => cb?.id)
+      .map((cb) => [cb.id, parseCodeBindings(cb).outputs])
   )
 
   /** Compile one `subprocedure:`/`route:`/`code:` own-step badge, linking to `continuation`. */
   const compileBadge = (badge: ParsedStepBadge, continuation: StepId | null): StepId => {
     if (badge.kind === 'code') {
-      // A deterministic code step — its bindings come from the doc-level code-block entry.
-      const { inputs, outputs } = codeBindingsById.get(badge.codeBlockId) ?? {
-        inputs: [],
-        outputs: [],
-      }
+      // A deterministic code step — its declared outputs come from the doc-level code-block entry.
+      const outputs = codeOutputsById.get(badge.codeBlockId) ?? []
       return emit({
         id: generateId(),
         kind: 'code',
         codeBlockId: badge.codeBlockId,
-        inputs,
         outputs,
         next: continuation,
       })
@@ -291,16 +288,6 @@ export function compileProcedure(doc: TiptapDoc): CompileResult {
   return { compiled, contentHash, ...(errors.length > 0 ? { errors } : {}) }
 }
 
-/**
- * A code-input `ref` resolves iff it's a local `var:<name>` or a CRM `FieldReference`
- * rootable at a subject anchor (carries a `:` segment) — the exact shapes
- * `readProcedureRef` branches on. A bare token has no source and gates by absence at
- * run time, so we reject it at publish.
- */
-function isResolvableRef(ref: string): boolean {
-  return ref.startsWith('var:') || ref.includes(':')
-}
-
 /** Render a `conditionCase`'s `conditionPredicate` child to a plain NL test string. */
 function predicateText(caseNode: TiptapNode): string {
   const pred = (caseNode.content ?? []).find(
@@ -387,8 +374,8 @@ function validate(compiled: CompiledProcedure): CompileError[] {
       }
     }
 
-    // a `code` step must reference a known block, write only declared attributes, and
-    // bind inputs to a resolvable ref (local `var:<name>` or a rootable CRM FieldReference).
+    // a `code` step must reference a known block and write only declared attributes.
+    // Inputs are gone in v9 — the block reads the ambient `inputs` bag, no per-block refs.
     if (step.kind === 'code') {
       if (!(step.codeBlockId in codeBlocks)) {
         errors.push({
@@ -402,15 +389,6 @@ function validate(compiled: CompiledProcedure): CompileError[] {
           errors.push({
             code: 'UNKNOWN_OUTPUT_ATTRIBUTE',
             message: `Code output "${output.name}" is not a declared local attribute.`,
-            stepId: step.id,
-          })
-        }
-      }
-      for (const input of step.inputs) {
-        if (!isResolvableRef(input.ref)) {
-          errors.push({
-            code: 'BAD_INPUT_REF',
-            message: `Code input "${input.name}" has an unresolvable ref "${input.ref}".`,
             stepId: step.id,
           })
         }

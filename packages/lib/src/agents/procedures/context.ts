@@ -5,7 +5,7 @@ import type { Subject, ToolContext } from '../../ai/agent-framework/tool-context
 import type { FieldResolver } from '../../conditions/evaluate'
 import type { ConditionGroup } from '../../conditions/types'
 import { buildResolveVarSource } from '../bindings/resolve'
-import type { ProcedureFrame } from './types'
+import type { LocalAttribute, ProcedureFrame } from './types'
 
 /**
  * The deterministic selection pre-filter (`select.ts`) gates candidate procedures
@@ -167,6 +167,26 @@ export async function readProcedureRef(
     // Best-effort — a resolver misconfig gates by absence rather than throwing the turn.
     return undefined
   }
+}
+
+/**
+ * Build the ambient `inputs` bag a code block's `main(inputs)` receives. `vars` = every
+ * declared local attribute, read LIVE from the version-scoped store ({@link scopedVar}) so
+ * an earlier code step's write is visible (no memo — a code step's own prior writes must be
+ * seen). An unwritten attribute reads `undefined` (gate-by-absence, never throws). `subject`
+ * — the anchored records — lands in a follow-up (bulk-anchor read); empty `{}` for now, the
+ * contract fixed today so it's non-breaking.
+ */
+export async function buildCodeInputs(
+  ctx: ToolContext,
+  frame: ProcedureFrame,
+  localAttributes: LocalAttribute[]
+): Promise<{ vars: Record<string, unknown>; subject: Record<string, unknown> }> {
+  const vars: Record<string, unknown> = {}
+  for (const attr of localAttributes) {
+    vars[attr.name] = await readProcedureRef(ctx, frame, `var:${attr.name}`)
+  }
+  return { vars, subject: {} }
 }
 
 /**

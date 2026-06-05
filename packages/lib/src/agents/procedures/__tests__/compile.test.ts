@@ -55,7 +55,6 @@ const code = (
   id: string,
   name: string,
   bindings?: {
-    inputs?: { name: string; ref: string }[]
     outputs?: { name: string; surfaceToModel: boolean }[]
   }
 ): CodeBlockMapEntry => ({
@@ -63,7 +62,6 @@ const code = (
   name,
   language: 'javascript',
   code: 'return 1',
-  ...(bindings?.inputs ? { inputs: bindings.inputs } : {}),
   ...(bindings?.outputs ? { outputs: bindings.outputs } : {}),
 })
 
@@ -293,26 +291,21 @@ describe('compileProcedure', () => {
     expect(errors?.some((e) => e.code === 'UNKNOWN_CODE_BLOCK')).toBe(true)
   })
 
-  it('compiles a code badge to a code step threading next with bindings from the code-block entry', () => {
+  it('compiles a code badge to a code step threading next with outputs from the code-block entry', () => {
     const { compiled, errors } = compileProcedure(
       doc([badge('code:c1'), prose('after')], {
         codeBlocks: [
           code('c1', 'Compute', {
-            inputs: [{ name: 'total', ref: 'var:cartTotal' }],
             outputs: [{ name: 'tier', surfaceToModel: true }],
           }),
         ],
-        localAttributes: [
-          { name: 'cartTotal', dataType: 'NUMBER' },
-          { name: 'tier', dataType: 'TEXT' },
-        ],
+        localAttributes: [{ name: 'tier', dataType: 'TEXT' }],
       })
     )
     expect(errors).toBeUndefined()
     const step = compiled.steps[compiled.entryStepId] as Extract<ProcedureStep, { kind: 'code' }>
     expect(step.kind).toBe('code')
     expect(step.codeBlockId).toBe('c1')
-    expect(step.inputs).toEqual([{ name: 'total', ref: 'var:cartTotal' }])
     expect(step.outputs).toEqual([{ name: 'tier', surfaceToModel: true }])
     // deterministic — threads to the following instruction.
     expect(compiled.steps[step.next!]!.kind).toBe('instruction')
@@ -327,15 +320,6 @@ describe('compileProcedure', () => {
       })
     )
     expect(errors?.some((e) => e.code === 'UNKNOWN_OUTPUT_ATTRIBUTE')).toBe(true)
-  })
-
-  it('errors on a code input with an unresolvable (bare) ref', () => {
-    const { errors } = compileProcedure(
-      doc([badge('code:c1')], {
-        codeBlocks: [code('c1', 'Compute', { inputs: [{ name: 'x', ref: 'bareToken' }] })],
-      })
-    )
-    expect(errors?.some((e) => e.code === 'BAD_INPUT_REF')).toBe(true)
   })
 
   it('errors on a structured arm with no conditions', () => {

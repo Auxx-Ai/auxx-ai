@@ -218,6 +218,11 @@ export function buildStepperDeps(args: BuildStepperDepsArgs): StepperDeps {
  * actually runs. Unwraps the neverthrow `Result` + the structured runtime/validation
  * errors into the stepper's `{ ok, error }` contract; NEVER throws (a thrown adapter
  * would surface as an unhandled turn failure instead of D5 gate-by-absence).
+ *
+ * The executor builds `main(...)`'s arg list positionally from `inputsConfig` (it does
+ * NOT pass `codeInput` whole). We wrap the v9 `{ vars, subject }` bag under ONE named
+ * input — `codeInput.inputs` — so the wrapper emits `main(codeInput.inputs)` and the
+ * author's `function main(inputs)` receives the bag (the executor stays untouched).
  */
 const runCode: StepperDeps['runCode'] = async (block, codeInput) => {
   try {
@@ -228,8 +233,8 @@ const runCode: StepperDeps['runCode'] = async (block, codeInput) => {
         type: 'code',
         code: block.code,
         codeLanguage: 'javascript',
-        codeInput,
-        inputsConfig: [],
+        codeInput: { inputs: codeInput },
+        inputsConfig: [{ name: 'inputs', variableId: 'inputs' }],
         variables: {},
         timeout: 30000,
       },

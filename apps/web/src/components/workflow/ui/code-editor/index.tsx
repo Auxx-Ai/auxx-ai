@@ -38,5 +38,5 @@ export {
   transformWorkflowVariableSyntax,
 } from './monaco-workflow-completions'
 // Export types
-export type { CodeEditorProps } from './types'
+export type { CodeEditorInput, CodeEditorOutput, CodeEditorProps } from './types'
 export { CodeLanguage, languageMap } from './types'

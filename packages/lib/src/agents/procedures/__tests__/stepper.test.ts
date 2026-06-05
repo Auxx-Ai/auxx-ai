@@ -142,26 +142,26 @@ function makeDeps(
   }
 }
 
-/** A `code` step fixture — runs `codeBlockId`, binds `inputs`, writes `outputs`, threads `next`. */
+/** A `code` step fixture — runs `codeBlockId`, writes `outputs`, threads `next` (no inputs in v9). */
 const codeStep = (
   id: string,
   codeBlockId: string,
   next: string | null,
-  inputs: { name: string; ref: string }[] = [],
   outputs: { name: string; surfaceToModel: boolean }[] = []
-): ProcedureStep => ({ id, kind: 'code', codeBlockId, inputs, outputs, next })
+): ProcedureStep => ({ id, kind: 'code', codeBlockId, outputs, next })
 
 /** Build a compiled procedure that carries code blocks (the default `build` has none). */
 const buildWithCode = (
   entryStepId: string,
   steps: ProcedureStep[],
-  codeBlocks: CompiledProcedure['codeBlocks']
+  codeBlocks: CompiledProcedure['codeBlocks'],
+  localAttributes: CompiledProcedure['localAttributes'] = []
 ): CompiledProcedure => ({
   entryStepId,
   steps: Object.fromEntries(steps.map((s) => [s.id, s])),
   codeBlocks,
   subProcedures: {},
-  localAttributes: [],
+  localAttributes,
 })
 
 const asInject = (r: PrepareResult): Extract<PrepareResult, { kind: 'inject' }> => {
@@ -465,7 +465,7 @@ describe('prepareTurn — code steps (deterministic execution)', () => {
     const compiled = buildWithCode(
       'code',
       [
-        codeStep('code', 'c1', 'after', [], [{ name: 'tier', surfaceToModel: true }]),
+        codeStep('code', 'c1', 'after', [{ name: 'tier', surfaceToModel: true }]),
         instruction('after', null),
       ],
       { c1: { language: 'javascript', code: 'noop' } }
@@ -485,7 +485,7 @@ describe('prepareTurn — code steps (deterministic execution)', () => {
     const compiled = buildWithCode(
       'code',
       [
-        codeStep('code', 'c1', 'cond', [], [{ name: 'tier', surfaceToModel: false }]),
+        codeStep('code', 'c1', 'cond', [{ name: 'tier', surfaceToModel: false }]),
         structured(
           'cond',
           [{ thenStep: 'goldArm', varName: 'tier', value: 'gold' }],
@@ -504,22 +504,23 @@ describe('prepareTurn — code steps (deterministic execution)', () => {
     expect(r.activeStep.id).toBe('goldArm') // the freshly-computed var routed the branch
   })
 
-  it('feeds resolved inputs to the block; an absent local var gates to undefined', async () => {
+  it('feeds the ambient bag: vars from declared attributes (unwritten → undefined), subject {}', async () => {
     varStore['var:__la:v1:known'] = 42
     const compiled = buildWithCode(
       'code',
+      [codeStep('code', 'c1', 'after'), instruction('after', null)],
+      { c1: { language: 'javascript', code: 'noop' } },
       [
-        codeStep('code', 'c1', 'after', [
-          { name: 'a', ref: 'var:known' },
-          { name: 'b', ref: 'var:missing' },
-        ]),
-        instruction('after', null),
-      ],
-      { c1: { language: 'javascript', code: 'noop' } }
+        { name: 'known', dataType: 'NUMBER' },
+        { name: 'missing', dataType: 'NUMBER' },
+      ]
     )
     const runCode = vi.fn(async () => ({ ok: true as const, result: {} }))
     await prepareTurn(stackOf(frame('v1', 'code')), makeDeps({ v1: compiled }, { runCode }))
-    expect(runCode).toHaveBeenCalledWith({ code: 'noop' }, { a: 42, b: undefined })
+    expect(runCode).toHaveBeenCalledWith(
+      { code: 'noop' },
+      { vars: { known: 42, missing: undefined }, subject: {} }
+    )
   })
 
   it('failure (D5/D6): clears the output var, takes the else-arm, carries an error note', async () => {
@@ -528,7 +529,7 @@ describe('prepareTurn — code steps (deterministic execution)', () => {
     const compiled = buildWithCode(
       'code',
       [
-        codeStep('code', 'c1', 'cond', [], [{ name: 'tier', surfaceToModel: false }]),
+        codeStep('code', 'c1', 'cond', [{ name: 'tier', surfaceToModel: false }]),
         structured(
           'cond',
           [{ thenStep: 'goldArm', varName: 'tier', value: 'gold' }],
@@ -553,7 +554,7 @@ describe('prepareTurn — code steps (deterministic execution)', () => {
     const compiled = buildWithCode(
       'code',
       [
-        codeStep('code', 'c1', 'after', [], [{ name: 'tier', surfaceToModel: false }]),
+        codeStep('code', 'c1', 'after', [{ name: 'tier', surfaceToModel: false }]),
         instruction('after', null),
       ],
       { c1: { language: 'javascript', code: 'noop' } }
@@ -571,7 +572,7 @@ describe('prepareTurn — code steps (deterministic execution)', () => {
     const compiled = buildWithCode(
       'code',
       [
-        codeStep('code', 'c1', 'after', [], [{ name: 'tier', surfaceToModel: false }]),
+        codeStep('code', 'c1', 'after', [{ name: 'tier', surfaceToModel: false }]),
         instruction('after', null),
       ],
       { c1: { language: 'javascript', code: 'noop' } }

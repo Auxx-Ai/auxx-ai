@@ -30,13 +30,6 @@ export type ArgBindingMap = Record<
 >
 
 /**
- * One resolved input passed to a code block's `main(codeInput)`. `ref` is the SAME
- * string shape {@link readProcedureRef} branches on: a local `var:<name>` (read from
- * the version-scoped local store) or a CRM `FieldReference` (resolved off the subject).
- */
-export type CodeInput = { name: string; ref: string }
-
-/**
  * One declared output of a code block. `name` MUST be a declared {@link LocalAttribute}
  * — `result[name]` writes to `var:<name>`. `surfaceToModel` (D4) decides whether the
  * value is fed into the model's prose context or stays branch-only.
@@ -50,6 +43,10 @@ export type CodeOutput = { name: string; surfaceToModel: boolean }
  * is its OWN deterministic step** (D2): the stepper walks *through* it — runs the block,
  * writes its outputs to `var:*`, advances to `next`, never rests on it — so on resume the
  * cursor is past the code and it does not re-fire (plan §"Why deterministic").
+ *
+ * A `code` step carries NO input config: the block's `main(inputs)` receives a whole-procedure
+ * ambient `inputs` bag (`{ vars, subject }`, built by `buildCodeInputs`), reaching values by
+ * path rather than pre-wired refs. Outputs stay declared (`result[name]` → `var:<name>`).
  */
 export type ProcedureStep =
   | { id: StepId; kind: 'instruction'; doc: unknown /* TiptapFragment */; next: StepId | null }
@@ -57,7 +54,6 @@ export type ProcedureStep =
       id: StepId
       kind: 'code'
       codeBlockId: string // → compiled.codeBlocks[id]
-      inputs: CodeInput[] // resolved at run time, passed as main(codeInput)
       outputs: CodeOutput[] // result[name] → scopedVar(frame, name)
       next: StepId | null // deterministic — always advances, never stops
     }

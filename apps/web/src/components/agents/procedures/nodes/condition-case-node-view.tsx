@@ -10,7 +10,7 @@ import { GitBranch, X } from 'lucide-react'
 import { ConditionContainer, ConditionProvider } from '~/components/conditions'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useProcedureConditionConfig } from '../hooks/use-procedure-condition-config'
-import { useProcedureEditorContext } from '../ui/procedure-editor-context'
+import { useProcedureEditorContext } from '../ui/procedure-draft-provider'
 import { applyBlockMode, findParentBlock, nodePos, switchLosesData } from './condition-helpers'
 
 /**

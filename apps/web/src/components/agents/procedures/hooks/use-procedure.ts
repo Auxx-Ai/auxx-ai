@@ -28,8 +28,13 @@ interface UseProcedureResult {
  * consumers therefore share one fetch and one optimistic overlay. Mirrors KB's
  * `useArticle` + the query that feeds it.
  */
-export function useProcedure(procedureId: string): UseProcedureResult {
-  const query = api.procedure.getById.useQuery({ id: procedureId })
+export function useProcedure(procedureId: string | null | undefined): UseProcedureResult {
+  // Gated so the always-mounted draft provider can call this at the `root` level (no
+  // procedure selected) without firing a bad empty-id query.
+  const query = api.procedure.getById.useQuery(
+    { id: procedureId ?? '' },
+    { enabled: !!procedureId }
+  )
 
   useEffect(() => {
     if (query.data) {
@@ -37,7 +42,7 @@ export function useProcedure(procedureId: string): UseProcedureResult {
     }
   }, [query.data])
 
-  const meta = useProcedureStore(useShallow((s) => selectProcedure(s, procedureId)))
+  const meta = useProcedureStore(useShallow((s) => selectProcedure(s, procedureId ?? '')))
 
   return {
     meta,

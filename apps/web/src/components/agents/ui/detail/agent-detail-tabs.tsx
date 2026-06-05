@@ -27,6 +27,8 @@ import { useQueryState } from 'nuqs'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AGENT_TABS, type AgentTab, DEFAULT_AGENT_TAB } from '../../constant'
 import { ProcedureDetailBar } from '../../procedures/ui/procedure-detail-bar'
+import { ProcedureDraftProvider } from '../../procedures/ui/procedure-draft-provider'
+import { ProcedureDrillPanel } from '../../procedures/ui/procedure-drill-panel'
 import { ProcedureEditor } from '../../procedures/ui/procedure-editor'
 import { ProceduresSection } from '../../procedures/ui/procedures-section'
 import type { AgentDetail } from '../../store/agent-store'
@@ -72,8 +74,11 @@ interface AgentDetailTabsProps {
  */
 export function AgentDetailTabs({ agent, onAutosaveChange }: AgentDetailTabsProps) {
   const [tab, setTab] = useQueryState('tab', { defaultValue: DEFAULT_AGENT_TAB })
-  // The pushed procedure detail. Set ⇒ NavStack shows ['root','procedure']; cleared ⇒ ['root'].
+  // The outer NavStack is a three-level drill: root → procedure → drilled body.
+  //   selectedProcedureId set  ⇒ push 'procedure'
+  //   drill set (sub:/code:)   ⇒ push 'drill' (a sub-procedure or code body)
   const [selectedProcedureId, setSelectedProcedureId] = useQueryState('procedure')
+  const [drill, setDrill] = useQueryState('drill')
   const [addingKind, setAddingKind] = useState<'scheduled' | 'event' | 'app' | null>(null)
   // Lifted from the pushed ProcedureEditor so the detail bar (rendered by
   // <NavStackBar>, a separate subtree) can show live Saving…/Saved next to Publish.
@@ -118,12 +123,14 @@ export function AgentDetailTabs({ agent, onAutosaveChange }: AgentDetailTabsProp
 
   const handleTabChange = useCallback(
     (value: string) => {
-      // Selecting any tab while in the detail pops back to root, then scrolls.
+      // The tab strip is only the root panel's bar, so this fires at root — clearing
+      // the drill params is defensive. Scroll the chosen section into view.
       void setSelectedProcedureId(null)
+      void setDrill(null)
       setTab(value)
       scrollToSection(value)
     },
-    [setTab, setSelectedProcedureId, scrollToSection]
+    [setTab, setSelectedProcedureId, setDrill, scrollToSection]
   )
 
   // Scroll-spy: as the user scrolls, switch the active tab to whichever
@@ -160,44 +167,58 @@ export function AgentDetailTabs({ agent, onAutosaveChange }: AgentDetailTabsProp
       container.removeEventListener('scroll', onScroll)
       if (raf) cancelAnimationFrame(raf)
     }
-  }, [setTab, tab, tabs])
+    // `selectedProcedureId`/`drill` are deps so the listener re-attaches to the root
+    // panel's ScrollArea after it remounts on return from a procedure/drill panel
+    // (NavStackPanels only mounts the top panel, so the root viewport is recreated).
+  }, [setTab, tab, tabs, selectedProcedureId, drill])
 
   const assignRef = (value: AgentTab) => (el: HTMLDivElement | null) => {
     sectionRefs.current[value] = el
   }
 
+  const stack = !selectedProcedureId
+    ? ['root']
+    : !drill
+      ? ['root', 'procedure']
+      : ['root', 'procedure', 'drill']
+
+  const detailBar = selectedProcedureId ? (
+    <ProcedureDetailBar
+      procedureId={selectedProcedureId}
+      autosave={procedureAutosave}
+      onReload={() => setProcedureReloadKey((k) => k + 1)}
+    />
+  ) : null
+
+  // Bounded-flex layout (§3a): the parent PanelFrame already constrains height, so we
+  // derive everything from the flex chain (no `dvh`). The hero is pinned above the
+  // NavStack; the shared bar is `shrink-0`; the panels fill the rest and EACH owns its
+  // scroll (a code drill needs a full-height, internally-scrolling Monaco — an outer
+  // page scroll can't bound it). The draft owner is lifted ABOVE the NavStack so it
+  // survives procedure↔drill switches; keyed per procedure (+ reload token) to re-seed.
   return (
     <div className='flex flex-col flex-1 min-h-0'>
-      <ScrollArea
-        viewportRef={scrollContainerRef}
-        className='flex-1 min-h-0'
-        scrollbarClassName='w-1.5 z-20'
-        noFade>
-        <AgentHero agent={agent} />
-
-        {/* Shared-bar layout: the sticky bar (NavStackBar) lives OUTSIDE NavStackPanels
-            so it pins to this ScrollArea, while the panels slide cleanly under it
-            (NavStackPanels is overflow-hidden — a sticky bar inside a panel would
-            scroll away). The bar's content cross-fades root↔procedure; the section
-            column / editor below it does the horizontal push/pop. The hero stays
-            above + scrolls away in both levels. Stack ⇄ the `procedure` nuqs param. */}
+      <AgentHero agent={agent} />
+      <ProcedureDraftProvider
+        procedureId={selectedProcedureId}
+        reloadKey={procedureReloadKey}
+        onAutosaveChange={setProcedureAutosave}>
         <NavStack
-          stack={selectedProcedureId ? ['root', 'procedure'] : ['root']}
+          stack={stack}
           onStackChange={(next) => {
-            if (next.length === 1) void setSelectedProcedureId(null)
-          }}>
-          {/* The shared bar surface lives on the persistent <NavStackBar> frame, so
-              the bg stays constant root↔procedure and only the foreground content
-              cross-fades over it (no see-through to the page during the fade). Both
-              bars' own content is therefore transparent. */}
-          <div className='sticky top-0 z-10'>
-            <NavStackBar className='border-b bg-primary-150' />
-            {/* <div className='pointer-events-none h-3 bg-gradient-to-b from-neutral-100 to-transparent dark:from-background' /> */}
-          </div>
-          <NavStackPanels>
+            if (next.length <= 1) {
+              void setSelectedProcedureId(null)
+              void setDrill(null)
+            } else if (next.length === 2) {
+              void setDrill(null)
+            }
+          }}
+          className='flex flex-col flex-1 min-h-0'>
+          <NavStackBar className='shrink-0 border-b bg-primary-150' />
+          <NavStackPanels className='flex-1 min-h-0'>
             <NavStackPanel
               value='root'
-              className='min-h-dvh bg-neutral-100 dark:bg-background'
+              className='h-full bg-neutral-100 dark:bg-background'
               bar={
                 <Tabs value={tab} onValueChange={handleTabChange}>
                   <TabsList className='w-full justify-start rounded-none bg-transparent px-2'>
@@ -213,108 +234,113 @@ export function AgentDetailTabs({ agent, onAutosaveChange }: AgentDetailTabsProp
                   </TabsList>
                 </Tabs>
               }>
-              <div ref={assignRef('prompt')}>
-                <Section
-                  title='Prompt'
-                  icon={<FileText className='size-4' />}
-                  initialOpen
-                  collapsible={false}>
-                  <PersonaEditor agent={agent} onAutosaveChange={onAutosaveChange} />
-                </Section>
-              </div>
-
-              <div ref={assignRef('procedures')}>
-                <ProceduresSection agent={agent} onSelect={setSelectedProcedureId} />
-              </div>
-
-              <div ref={assignRef('tools')}>
-                <ToolsSection agent={agent} onAutosaveChange={onAutosaveChange} />
-              </div>
-
-              <div ref={assignRef('restrictions')}>
-                <BindingsSection agent={agent} />
-              </div>
-
-              <div ref={assignRef('knowledge')}>
-                <Section
-                  title='Knowledge'
-                  icon={<BookOpen className='size-4' />}
-                  className='[&>[data-slot=section]>[data-slot=section-content]]:-mx-3'
-                  initialOpen
-                  collapsible={false}>
-                  <KnowledgeSectionContent agent={agent} onAutosaveChange={onAutosaveChange} />
-                </Section>
-              </div>
-
-              {agent.kind !== 'chat' ? (
-                <div ref={assignRef('triggers')}>
+              <ScrollArea
+                viewportRef={scrollContainerRef}
+                className='h-full'
+                scrollbarClassName='w-1.5 z-20'
+                noFade>
+                <div ref={assignRef('prompt')}>
                   <Section
-                    title='Triggers'
-                    icon={<Zap className='size-4' />}
-                    className='[&>[data-slot=section]>[data-slot=section-content]]:-mx-3'
+                    title='Prompt'
+                    icon={<FileText className='size-4' />}
                     initialOpen
-                    description='Autonomous triggers fire this agent on a schedule, on a record event, or on an app event.'
-                    collapsible={false}
-                    actions={
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant='ghost' size='xs'>
-                            <Plus />
-                            Add trigger
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align='end'>
-                          <DropdownMenuItem onClick={() => setAddingKind('scheduled')}>
-                            <Clock />
-                            Scheduled
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => setAddingKind('event')}>
-                            <Zap />
-                            Event
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => setAddingKind('app')}>
-                            <Plug />
-                            App
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    }>
-                    <TriggersSectionContent
-                      agent={agent}
-                      addingKind={addingKind}
-                      onAddingKindChange={setAddingKind}
-                    />
+                    collapsible={false}>
+                    <PersonaEditor agent={agent} onAutosaveChange={onAutosaveChange} />
                   </Section>
                 </div>
-              ) : null}
 
-              {/* Spacer so the last section can scroll up to the activation line. */}
-              <div className='h-[40vh]' />
+                <div ref={assignRef('procedures')}>
+                  <ProceduresSection agent={agent} onSelect={setSelectedProcedureId} />
+                </div>
+
+                <div ref={assignRef('tools')}>
+                  <ToolsSection agent={agent} onAutosaveChange={onAutosaveChange} />
+                </div>
+
+                <div ref={assignRef('restrictions')}>
+                  <BindingsSection agent={agent} />
+                </div>
+
+                <div ref={assignRef('knowledge')}>
+                  <Section
+                    title='Knowledge'
+                    icon={<BookOpen className='size-4' />}
+                    className='[&>[data-slot=section]>[data-slot=section-content]]:-mx-3'
+                    initialOpen
+                    collapsible={false}>
+                    <KnowledgeSectionContent agent={agent} onAutosaveChange={onAutosaveChange} />
+                  </Section>
+                </div>
+
+                {agent.kind !== 'chat' ? (
+                  <div ref={assignRef('triggers')}>
+                    <Section
+                      title='Triggers'
+                      icon={<Zap className='size-4' />}
+                      className='[&>[data-slot=section]>[data-slot=section-content]]:-mx-3'
+                      initialOpen
+                      description='Autonomous triggers fire this agent on a schedule, on a record event, or on an app event.'
+                      collapsible={false}
+                      actions={
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant='ghost' size='xs'>
+                              <Plus />
+                              Add trigger
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align='end'>
+                            <DropdownMenuItem onClick={() => setAddingKind('scheduled')}>
+                              <Clock />
+                              Scheduled
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => setAddingKind('event')}>
+                              <Zap />
+                              Event
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => setAddingKind('app')}>
+                              <Plug />
+                              App
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      }>
+                      <TriggersSectionContent
+                        agent={agent}
+                        addingKind={addingKind}
+                        onAddingKindChange={setAddingKind}
+                      />
+                    </Section>
+                  </div>
+                ) : null}
+
+                {/* Spacer so the last section can scroll up to the activation line. */}
+                <div className='h-[40vh]' />
+              </ScrollArea>
             </NavStackPanel>
 
             <NavStackPanel
               value='procedure'
-              className='min-h-dvh bg-neutral-100 dark:bg-background'
-              bar={
-                selectedProcedureId ? (
-                  <ProcedureDetailBar
-                    procedureId={selectedProcedureId}
-                    autosave={procedureAutosave}
-                    onReload={() => setProcedureReloadKey((k) => k + 1)}
-                  />
-                ) : null
-              }>
-              {selectedProcedureId ? (
-                <ProcedureEditor
-                  key={`${selectedProcedureId}:${procedureReloadKey}`}
-                  procedureId={selectedProcedureId}
-                  onAutosaveChange={setProcedureAutosave}
-                />
-              ) : null}
+              className='h-full bg-neutral-100 dark:bg-background'
+              bar={detailBar}>
+              <ScrollArea className='h-full' scrollbarClassName='w-1.5 z-20' noFade>
+                {selectedProcedureId ? (
+                  <ProcedureEditor key={`${selectedProcedureId}:${procedureReloadKey}`} />
+                ) : null}
+              </ScrollArea>
+            </NavStackPanel>
+
+            <NavStackPanel
+              value='drill'
+              className='h-full flex flex-col bg-neutral-100 dark:bg-background'
+              bar={detailBar}>
+              {/* Keyed by the drill target (+ procedure / reload token) so switching the
+                  drilled body remounts the editor onto the fresh slice. */}
+              <ProcedureDrillPanel key={`${selectedProcedureId}:${drill}:${procedureReloadKey}`} />
             </NavStackPanel>
           </NavStackPanels>
         </NavStack>
-      </ScrollArea>
+      </ProcedureDraftProvider>
     </div>
   )
 }
