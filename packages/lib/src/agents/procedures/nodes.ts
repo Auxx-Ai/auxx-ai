@@ -3,15 +3,22 @@
 import type { FieldType } from '@auxx/database/types'
 import type { ConditionGroup } from '../../conditions/types'
 import type { FieldOptions } from '../../custom-fields/field-options'
-import type { ArgBindingMap, LocalAttribute, SubProcedureId } from './types'
+import type { LocalAttribute, SubProcedureId } from './types'
 
 /**
- * The TipTap node JSON contract the compiler consumes (Phase 2 builds the editor
- * that produces it). Mirror `kb-article/{block,panel}-node.ts` JSON shape:
- * `{ type, attrs?, content? }`. These are SHAPES only — the compiler walks the
- * generic {@link TiptapNode} tree and reads the attrs documented below.
+ * The TipTap node JSON contract the v2 compiler consumes. The v2 editor
+ * (`phase-2-authoring-v2.md`) replaced the v1 control-flow block nodes with
+ * **inline badges + doc-level maps + dual-mode conditions**. There are now only
+ * four structural node types — the IF/ELSE-IF/ELSE construct (`conditionBlock`,
+ * `conditionCase`, `conditionElse`, `conditionPredicate`). Everything else is
+ * authored as prose carrying **inline step badges** (`reference` nodes whose
+ * `attrs.id` is a prefixed string — see {@link parseStepBadgeId}) plus two
+ * **doc-level maps** on {@link TiptapDoc} (`subProcedures` / `codeBlocks`).
  *
- * See plans/chat/v9/phase-0-schema-types-compiler.md §3.
+ * These are SHAPES only — the compiler walks the generic {@link TiptapNode} tree
+ * and reads the attrs documented below.
+ *
+ * See plans/chat/v9/phase-2-fix-compiler-conditions.md §1 and §3.1.
  */
 
 /** A generic TipTap node. The compiler narrows by `type` and reads `attrs`. */
@@ -23,57 +30,119 @@ export interface TiptapNode {
   marks?: { type: string; attrs?: Record<string, unknown> }[]
 }
 
+/** A doc-level sub-procedure definition — a named, drillable body of prose. */
+export interface SubProcedureMapEntry {
+  id: SubProcedureId
+  name: string
+  content: TiptapNode[]
+}
+
+/** A doc-level code block — a named JavaScript snippet referenced by inline `code:<id>` badges. */
+export interface CodeBlockMapEntry {
+  id: string
+  name: string
+  language: 'javascript'
+  code: string
+}
+
 /**
- * The authored procedure document. Beyond the node tree (`content`), it carries
- * top-level declared assets referenced by id/name — the create/consume pairs:
- * `localAttributes` ("Create attribute") and `subProcedures` register here
- * (the latter also appears inline as `subProcedure` nodes whose `block+`
- * children compile into steps).
+ * The authored procedure document. Beyond the prose tree (`content`), it carries
+ * the v2 doc-level maps and declared scratch:
+ *
+ * - `localAttributes` — declared `var:*` scratch, lifted verbatim into `compiled`.
+ * - `subProcedures` — named bodies reached by drilling in; **referenced** from
+ *   prose by inline `subprocedure:<id>` badges (NOT inline nodes).
+ * - `codeBlocks` — named JS snippets; **referenced** from prose by inline
+ *   `code:<id>` badges (NOT inline nodes).
  */
 export interface TiptapDoc {
   type: 'doc'
   content?: TiptapNode[]
   /** Declared scratch variables, lifted verbatim into `CompiledProcedure.localAttributes`. */
   localAttributes?: LocalAttribute[]
+  /** Doc-level sub-procedure bodies, compiled into the shared `steps` map. */
+  subProcedures?: SubProcedureMapEntry[]
+  /** Doc-level code blocks, lifted into `CompiledProcedure.codeBlocks`. */
+  codeBlocks?: CodeBlockMapEntry[]
+}
+
+// ── inline step-badge grammar ─────────────────────────────────────────────
+//
+// Inline badges are `reference` nodes whose `attrs.id` is a prefixed string. The
+// editor's canonical prefix test lives in `procedure-step-badge.tsx`
+// (`isProcedureStepId`); this is the pure lib twin the compiler shares.
+
+/** Inline-badge id prefixes (the lib twin of the editor's `procedure-step-badge.tsx`). */
+export const STEP_BADGE_PREFIXES = {
+  subProcedure: 'subprocedure:',
+  code: 'code:',
+  route: 'route:',
+} as const
+
+/** A parsed inline step badge. `route` carries the terminal/switch outcome. */
+export type ParsedStepBadge =
+  | { kind: 'subprocedure'; subProcedureId: SubProcedureId }
+  | { kind: 'code'; codeBlockId: string }
+  | { kind: 'route'; outcome: 'finished' | 'handoff' }
+  | { kind: 'route'; outcome: 'switch'; switchToProcedureId: string }
+
+/**
+ * Parse a `reference` node's `attrs.id` into a step badge, or `null` if the id is
+ * a plain reference (a `field:` / `entity:` / `tool:` / record id, etc.). PURE —
+ * the lib twin of the editor's `isProcedureStepId`/`ProcedureStepBadge`. Used by
+ * the compiler (split the prose chain) and `doc-to-text` (render markers).
+ */
+export function parseStepBadgeId(id: string): ParsedStepBadge | null {
+  if (id.startsWith(STEP_BADGE_PREFIXES.subProcedure)) {
+    return {
+      kind: 'subprocedure',
+      subProcedureId: id.slice(STEP_BADGE_PREFIXES.subProcedure.length),
+    }
+  }
+  if (id.startsWith(STEP_BADGE_PREFIXES.code)) {
+    return { kind: 'code', codeBlockId: id.slice(STEP_BADGE_PREFIXES.code.length) }
+  }
+  if (id.startsWith(STEP_BADGE_PREFIXES.route)) {
+    const payload = id.slice(STEP_BADGE_PREFIXES.route.length)
+    if (payload === 'handoff') return { kind: 'route', outcome: 'handoff' }
+    if (payload.startsWith('switch:')) {
+      return {
+        kind: 'route',
+        outcome: 'switch',
+        switchToProcedureId: payload.slice('switch:'.length),
+      }
+    }
+    // `route:finished` and any unknown route payload → a terminal end.
+    return { kind: 'route', outcome: 'finished' }
+  }
+  return null
+}
+
+/** Whether an inline badge is an **own-step** badge (splits the prose chain) vs. an inline op. */
+export function isOwnStepBadge(id: string): boolean {
+  return id.startsWith(STEP_BADGE_PREFIXES.subProcedure) || id.startsWith(STEP_BADGE_PREFIXES.route)
 }
 
 // ── per-node attr shapes (documentation of the contract) ─────────────────
 
-/** `conditionCase` node: one IF / ELSE-IF arm carrying a single `ConditionGroup`. */
+/**
+ * `conditionBlock` node — the dual-mode IF/ELSE-IF/ELSE construct. `mode` is a
+ * **block-level** attr (decision D1): the whole construct is either a `text` gate
+ * (NL predicates) or a `structured` gate (ConditionGroups); every arm shares it.
+ */
+export interface ConditionBlockAttrs {
+  id: string
+  mode: 'text' | 'structured'
+}
+
+/**
+ * `conditionCase` node — one IF / ELSE-IF arm. In `structured` mode `group` holds
+ * the builder state; in `text` mode the leading `conditionPredicate` child holds
+ * the NL test instead. Arm order = precedence; there is no `kind` attr.
+ */
 export interface ConditionCaseAttrs {
-  group: ConditionGroup
-}
-
-/** `routingStep` leaf — a terminal/branching outcome for the frame. */
-export interface RoutingStepAttrs {
-  outcome: 'finished' | 'handoff' | 'switch' | 'call'
-  /** when `outcome: 'call'` — the local sub-procedure to run. */
-  subProcedureId?: SubProcedureId
-  /** when `outcome: 'switch'` — the standalone Procedure to replace the frame with. */
-  switchToProcedureId?: string
-  toolName?: string
-}
-
-/** `codeStep` leaf — an inline JavaScript block (compiles to a `code` step + `codeBlocks` entry). */
-export interface CodeStepAttrs {
-  codeBlockId: string
-  language: 'javascript'
-  code: string
-  inputs: unknown[]
-  outputs: unknown[]
-}
-
-/** `toolStep` leaf — a single tool call; `assignTo` names the `localAttribute` its result writes into. */
-export interface ToolStepAttrs {
-  toolName: string
-  argBindings?: ArgBindingMap
-  assignTo?: string
-}
-
-/** `subProcedure` container — the "Create sub-procedure" definition; its `block+` children compile into `steps`. */
-export interface SubProcedureNodeAttrs {
-  subProcedureId: SubProcedureId
-  name: string
+  id: string
+  group?: ConditionGroup
 }
 
 /** `localAttribute` declaration — the "Create attribute" definition (same `dataType`/`options` a CustomField uses). */
@@ -88,10 +157,7 @@ export const PROCEDURE_NODE_TYPES = {
   conditionBlock: 'conditionBlock',
   conditionCase: 'conditionCase',
   conditionElse: 'conditionElse',
-  routingStep: 'routingStep',
-  codeStep: 'codeStep',
-  toolStep: 'toolStep',
-  subProcedure: 'subProcedure',
+  conditionPredicate: 'conditionPredicate',
 } as const
 
 export type ProcedureNodeType = (typeof PROCEDURE_NODE_TYPES)[keyof typeof PROCEDURE_NODE_TYPES]

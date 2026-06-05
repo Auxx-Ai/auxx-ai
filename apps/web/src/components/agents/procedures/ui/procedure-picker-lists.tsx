@@ -1,6 +1,7 @@
 // apps/web/src/components/agents/procedures/ui/procedure-picker-lists.tsx
 'use client'
 
+import type { FieldType } from '@auxx/database/types'
 import {
   Command,
   CommandGroup,
@@ -8,7 +9,20 @@ import {
   CommandList,
   CommandPlaceholder,
 } from '@auxx/ui/components/command'
-import { Code2, CornerDownRight, GitBranch, Hand, Plus, Square, Workflow } from 'lucide-react'
+import {
+  Calendar,
+  CheckSquare,
+  Code2,
+  CornerDownRight,
+  GitBranch,
+  Hand,
+  Hash,
+  Plus,
+  Square,
+  Type,
+  Variable,
+  Workflow,
+} from 'lucide-react'
 import type { ReactNode } from 'react'
 import { api } from '~/trpc/react'
 import { newConditionBlock } from '../nodes/condition-helpers'
@@ -161,6 +175,71 @@ export function CodePickerList({ query, onSelect }: PickerListProps) {
             onSelect={create}
           />
         </CommandGroup>
+      </CommandList>
+    </Command>
+  )
+}
+
+/** The curated `dataType` choices the Create-attribute tab offers. */
+const ATTRIBUTE_TYPES: { dataType: FieldType; label: string; icon: ReactNode }[] = [
+  { dataType: 'TEXT', label: 'Text', icon: <Type className='size-4' /> },
+  { dataType: 'NUMBER', label: 'Number', icon: <Hash className='size-4' /> },
+  { dataType: 'CHECKBOX', label: 'Checkbox', icon: <CheckSquare className='size-4' /> },
+  { dataType: 'DATE', label: 'Date', icon: <Calendar className='size-4' /> },
+]
+
+/**
+ * Attribute tab (plan §4 seam 1) — declares a procedure-local `var:*` scratch
+ * variable. Unlike the other tabs it inserts NO prose badge: the typed query is
+ * the name, each row a `dataType`; selecting one calls `ctx.addLocalAttribute`
+ * and closes the picker. The new `var:*` field then appears in script-mode
+ * condition builders. Existing attributes are listed for reference (no-op).
+ */
+export function AttributePickerList({ query }: { query: string }) {
+  const ctx = useProcedureEditorContext()
+  const name = query.trim()
+  const existing = (ctx?.localAttributes ?? []).filter((a) => matches(a.name, query))
+  const taken = (ctx?.localAttributes ?? []).some((a) => a.name === name)
+
+  const create = (dataType: FieldType) => {
+    if (!ctx || !name || taken) return
+    ctx.addLocalAttribute({ name, dataType })
+    ctx.closePicker()
+  }
+
+  return (
+    <Command shouldFilter={false} className='rounded-lg'>
+      <CommandList>
+        {!ctx && <CommandPlaceholder>Unavailable</CommandPlaceholder>}
+        {ctx && !name && (
+          <CommandPlaceholder>Type a name to create an attribute…</CommandPlaceholder>
+        )}
+        {ctx && name && !taken && (
+          <CommandGroup aria-label='Create attribute'>
+            {ATTRIBUTE_TYPES.map((t) => (
+              <Row
+                key={t.dataType}
+                icon={t.icon}
+                label={`Create “${name}” as ${t.label}`}
+                value={`__create-attribute-${t.dataType}`}
+                onSelect={() => create(t.dataType)}
+              />
+            ))}
+          </CommandGroup>
+        )}
+        {ctx && existing.length > 0 && (
+          <CommandGroup aria-label='Attributes'>
+            {existing.map((a) => (
+              <Row
+                key={a.name}
+                icon={<Variable className='size-4' />}
+                label={a.name}
+                value={`attribute:${a.name}`}
+                onSelect={() => ctx.closePicker()}
+              />
+            ))}
+          </CommandGroup>
+        )}
       </CommandList>
     </Command>
   )

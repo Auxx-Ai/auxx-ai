@@ -1,8 +1,7 @@
 // apps/web/src/components/agents/procedures/ui/procedure-editor.tsx
 'use client'
 
-import type { LocalAttribute, TriggerExample } from '@auxx/lib/agents/procedures/client'
-import type { ConditionGroup } from '@auxx/lib/conditions/client'
+import { type LocalAttribute, parseStepBadgeId } from '@auxx/lib/agents/procedures/client'
 import { Dialog, DialogContent, DialogTitle } from '@auxx/ui/components/dialog'
 import { NavStack, NavStackPanel, NavStackPanels } from '@auxx/ui/components/nav-stack'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
@@ -14,6 +13,7 @@ import type { JSONContent } from '@tiptap/core'
 import type { Editor } from '@tiptap/react'
 import { ListChecks } from 'lucide-react'
 import { useCallback, useMemo, useRef, useState } from 'react'
+import { useDebounceCallback } from 'usehooks-ts'
 import { DEFAULT_TABS } from '~/components/editor/inline-picker'
 import type { ReferenceTab } from '~/components/editor/inline-picker/nodes/reference-picker-node'
 import {
@@ -23,9 +23,9 @@ import {
 } from '~/components/editor/prompt-editor'
 import type { ReferencePickerHandle } from '~/components/pickers/reference-picker/reference-picker-content'
 import CollapseWrap from '~/components/workflow/ui/collapse-wrap'
-import { api } from '~/trpc/react'
 import type { AutosaveState } from '../../ui/shared/autosave-indicator'
-import { useProcedureAutosave } from '../hooks/use-procedure-autosave'
+import { useProcedure } from '../hooks/use-procedure'
+import { useProcedureMutations } from '../hooks/use-procedure-mutations'
 import { CodeBlockEditor } from './code-block-editor'
 import { ProcedureEditorProvider } from './procedure-editor-context'
 import { ProcedureTriggerHeader } from './procedure-trigger-header'
@@ -34,7 +34,7 @@ const COLLAPSED_MIN_HEIGHT = 120
 
 // Procedures opt into the admin tabs (Tools, Resources, Fields) exactly like the
 // persona editor, PLUS the procedure step tabs (Routing, Code, Sub-procedure,
-// Condition) — the `@` picker is the only insertion surface (plan §5).
+// Condition, Attribute) — the `@` picker is the only insertion surface (plan §5).
 const PROCEDURE_REFERENCE_TABS: ReferenceTab[] = [
   ...DEFAULT_TABS,
   'tools',
@@ -44,6 +44,7 @@ const PROCEDURE_REFERENCE_TABS: ReferenceTab[] = [
   'code',
   'subprocedure',
   'condition',
+  'attribute',
 ]
 
 interface SubProcedureEntry {
@@ -76,6 +77,22 @@ function readContent(content: unknown): JSONContent[] {
   return Array.isArray(content) ? (content as JSONContent[]) : []
 }
 
+/** Collect the sub-procedure / code ids referenced by inline step badges in a prose tree. */
+function collectStepRefs(nodes: JSONContent[]): { subs: Set<string>; codes: Set<string> } {
+  const subs = new Set<string>()
+  const codes = new Set<string>()
+  const walk = (node: JSONContent) => {
+    if (node.type === 'reference' && typeof node.attrs?.id === 'string') {
+      const badge = parseStepBadgeId(node.attrs.id)
+      if (badge?.kind === 'subprocedure') subs.add(badge.subProcedureId)
+      else if (badge?.kind === 'code') codes.add(badge.codeBlockId)
+    }
+    if (Array.isArray(node.content)) for (const child of node.content) walk(child)
+  }
+  for (const node of nodes) walk(node)
+  return { subs, codes }
+}
+
 /**
  * The procedure authoring canvas. Visual structure is the **persona editor**
  * (`persona-editor.tsx`) verbatim — focus-gradient border, header with copy +
@@ -90,9 +107,11 @@ function readContent(content: unknown): JSONContent[] {
  */
 export function ProcedureEditor({ procedureId, onAutosaveChange }: ProcedureEditorProps) {
   const referencePickerRef = useRef<ReferencePickerHandle | null>(null)
-  const { patch } = useProcedureAutosave(procedureId, { onStateChange: onAutosaveChange })
-  const query = api.procedure.getById.useQuery({ id: procedureId })
-  const data = query.data
+  const { meta, draftDoc, isLoading, isLoaded } = useProcedure(procedureId)
+  const { patchMeta, saveDoc } = useProcedureMutations({ onStateChange: onAutosaveChange })
+  // The heavy doc debounces at the editor level (KB's article-editor pattern);
+  // the light trigger meta debounces inside `patchMeta`.
+  const debouncedSaveDoc = useDebounceCallback(saveDoc, 1500)
 
   const [isExpanded, setExpanded] = useState(false)
   const [isFocused, setFocused] = useState(false)
@@ -116,9 +135,9 @@ export function ProcedureEditor({ procedureId, onAutosaveChange }: ProcedureEdit
 
   // Seed every slice once per loaded procedure (async query → can't be a ref
   // initializer; seeding in render guarantees the canvas mounts with content).
-  if (data && loadedRef.current !== procedureId) {
+  if (isLoaded && loadedRef.current !== procedureId) {
     loadedRef.current = procedureId
-    const doc = (data.draftDoc ?? null) as DraftDoc | null
+    const doc = (draftDoc ?? null) as DraftDoc | null
     mainContentRef.current = readContent(doc?.content)
     localAttrRef.current = doc?.localAttributes ?? []
     subRef.current = (doc?.subProcedures ?? []).map((s) => ({
@@ -132,19 +151,23 @@ export function ProcedureEditor({ procedureId, onAutosaveChange }: ProcedureEdit
   }
 
   const commit = useCallback(() => {
-    patch(
-      {
-        doc: {
-          type: 'doc',
-          content: mainContentRef.current,
-          localAttributes: localAttrRef.current,
-          subProcedures: subRef.current,
-          codeBlocks: codeRef.current,
-        },
-      },
-      { debounceMs: 1500 }
-    )
-  }, [patch])
+    const content = mainContentRef.current
+    const subs = subRef.current
+    const codes = codeRef.current
+    // Orphan sweep (plan §4 seam 5): persist only map entries still referenced by
+    // a badge somewhere in the prose (main body + every sub-procedure body). We
+    // filter the SAVED snapshot, not the in-memory refs, so a just-created entry
+    // whose badge insert lands a tick later is never dropped (the debounce
+    // coalesces to the final snapshot, which has both).
+    const referenced = collectStepRefs([...content, ...subs.flatMap((s) => s.content)])
+    debouncedSaveDoc(procedureId, {
+      type: 'doc',
+      content,
+      localAttributes: localAttrRef.current,
+      subProcedures: subs.filter((s) => referenced.subs.has(s.id)),
+      codeBlocks: codes.filter((c) => referenced.codes.has(c.id)),
+    })
+  }, [debouncedSaveDoc, procedureId])
 
   const handleMainChange = useCallback(
     ({ json }: { json: JSONContent; html: string }) => {
@@ -357,16 +380,17 @@ export function ProcedureEditor({ procedureId, onAutosaveChange }: ProcedureEdit
     </NavStack>
   )
 
-  if (query.isLoading || !data) return <EmptySection loading className='mx-3 my-3' />
+  if (isLoading || !meta) return <EmptySection loading className='mx-3 my-3' />
 
   return (
     <ProcedureEditorProvider value={ctxValue}>
       <ProcedureTriggerHeader
-        whenToUse={data.whenToUse}
-        triggerExamples={(data.triggerExamples ?? []) as TriggerExample[]}
-        ruleset={(data.ruleset ?? []) as ConditionGroup[]}
+        key={procedureId}
+        whenToUse={meta.whenToUse}
+        triggerExamples={meta.triggerExamples}
+        ruleset={meta.ruleset}
         localAttributes={localAttributes}
-        onPatch={patch}
+        onPatch={(p) => patchMeta(procedureId, p)}
       />
       <Section
         title='When to use'
@@ -391,7 +415,7 @@ export function ProcedureEditor({ procedureId, onAutosaveChange }: ProcedureEdit
                 onCollapsedChange={setCollapsed}
                 className='px-3'
                 gradientClassName='from-primary-200/30 dark:from-primary-200/30'>
-                <div className='relative flex w-full bg-red-500'>{canvas}</div>
+                <div className='relative flex w-full'>{canvas}</div>
               </CollapseWrap>
             )}
           </div>

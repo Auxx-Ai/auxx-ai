@@ -29,34 +29,39 @@ export type ArgBindingMap = Record<
   { kind: 'const' | 'var' | 'model'; ref?: string; value?: unknown }
 >
 
+/**
+ * The compiled runtime step. The v2 union is `instruction | condition | routing`
+ * (decision D4): **tool calls and code execution are inline ops** carried inside
+ * an `instruction` step's `doc` (reference badges the Phase-3 stepper executes in
+ * place; a tool result binds to a local attribute), NOT their own steps. Only
+ * sub-procedure calls and routing/terminals are own steps.
+ */
 export type ProcedureStep =
   | { id: StepId; kind: 'instruction'; doc: unknown /* TiptapFragment */; next: StepId | null }
   | {
       id: StepId
       kind: 'condition'
-      // IF / ELSE-IF chain, evaluated in array order, first match wins. Each
-      // case = ONE ConditionGroup (single-group builder); `group.case_id` is the
-      // arm id. `thenStep` = first step of the arm's body.
-      cases: { group: ConditionGroup; thenStep: StepId | null }[]
+      // The block-level evaluation mode (decision D1/D3). BOTH modes branch via
+      // `thenStep`/`elseStep` — the bodies are always real steps; only HOW the
+      // predicate is tested differs.
+      //   'structured' → each case carries a `group: ConditionGroup`, evaluated by
+      //                  `evaluateConditions` (deterministic, first true arm wins).
+      //   'text'       → each case carries a `predicate: string` (the compiled NL
+      //                  test); the stepper picks the arm via a classify-style call.
+      mode: 'text' | 'structured'
+      // IF / ELSE-IF chain, evaluated in array order, first match wins.
+      // `thenStep` = first step of the arm's body.
+      cases: { thenStep: StepId | null; group?: ConditionGroup; predicate?: string }[]
       elseStep: StepId | null // ELSE fallthrough (no test)
       next: StepId | null // join after the block
     }
-  | {
-      id: StepId
-      kind: 'tool'
-      toolName: string
-      argBindings?: ArgBindingMap
-      assignTo?: string // the localAttribute name its result is written into
-      next: StepId | null
-    }
-  | { id: StepId; kind: 'code'; codeBlockId: string; next: StepId | null }
   | {
       id: StepId
       kind: 'routing'
       outcome: 'finished' | 'handoff' | 'switch' | 'call'
       // 'call'   → run a LOCAL sub-procedure (subProcedureId), same version, return to `next` on finish.
       // 'switch' → replace the frame with another standalone Procedure (switchToProcedureId), NO return.
-      toolName?: string
+      // 'finished'/'handoff' → terminal end-reasons for the frame (`next: null`).
       switchToProcedureId?: string
       subProcedureId?: SubProcedureId
       next: StepId | null
@@ -67,8 +72,8 @@ export type ProcedureStep =
  * compiles to a `var:<name>` ref in the Context-Variables store. This is the
  * ONLY way a tool/connector result becomes addressable in procedure logic — we
  * deliberately do NOT key procedure reads by `tool:<name>` (latest-wins is
- * ambiguous when a tool is called more than once). A `tool` step's `assignTo`
- * and a `code` step's outputs write into these; `condition`/prose read them.
+ * ambiguous when a tool is called more than once). An inline tool op's bound
+ * result and a code block's outputs write into these; `condition`/prose read them.
  *
  * `dataType` is the app-wide `FieldType` (`@auxx/database`), so a `var:<name>`
  * ref becomes a conditions-UI `FieldDefinition` for free (`fieldType = dataType`,
@@ -110,7 +115,8 @@ export interface CompiledProcedure {
    * namespaces each `var:<name>` under the running `procedureVersionId` (Phase 3),
    * so a LOCAL sub-procedure (same version) SHARES this namespace with the body
    * while a CROSS-procedure push (`switch`/`digression`, a different version)
-   * gets an isolated one. `tool.assignTo` and condition/prose refs must name one.
+   * gets an isolated one. An inline tool op's bound result and condition/prose
+   * refs must name one.
    */
   localAttributes: LocalAttribute[]
 }

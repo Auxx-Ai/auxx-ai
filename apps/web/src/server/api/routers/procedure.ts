@@ -147,7 +147,23 @@ export const procedureRouter = createTRPCRouter({
           'update draft doc'
         )
       }
-      return { ok: true as const }
+      // Re-read and return the authoritative meta (same projection as getById
+      // minus draftDoc) so the client's optimistic store settles on truth —
+      // notably `hasUnpublishedChanges`, which flips on a doc save.
+      const procedure = unwrap(
+        await getProcedureById({ organizationId, procedureId: id }),
+        'get procedure'
+      )
+      if (!procedure) throw new TRPCError({ code: 'NOT_FOUND', message: 'Procedure not found' })
+      return {
+        id: procedure.id,
+        name: procedure.name,
+        whenToUse: procedure.whenToUse,
+        triggerExamples: procedure.triggerExamples,
+        ruleset: procedure.ruleset,
+        activeVersionId: procedure.activeVersionId,
+        hasUnpublishedChanges: procedure.hasUnpublishedChanges,
+      }
     }),
 
   delete: adminProcedure

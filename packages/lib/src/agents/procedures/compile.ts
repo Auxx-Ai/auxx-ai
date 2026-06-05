@@ -3,23 +3,37 @@
 import { createHash } from 'node:crypto'
 import { generateId } from '@auxx/utils'
 import type { ConditionGroup } from '../../conditions/types'
-import { PROCEDURE_NODE_TYPES, type TiptapDoc, type TiptapNode } from './nodes'
-import type {
-  ArgBindingMap,
-  CompiledProcedure,
-  LocalAttribute,
-  ProcedureStep,
-  StepId,
-  SubProcedureId,
-} from './types'
+import { collectReferenceIds, docToText } from '../../tiptap'
+import {
+  isOwnStepBadge,
+  type ParsedStepBadge,
+  PROCEDURE_NODE_TYPES,
+  parseStepBadgeId,
+  type TiptapDoc,
+  type TiptapNode,
+} from './nodes'
+import type { CompiledProcedure, ProcedureStep, StepId, SubProcedureId } from './types'
 
 /**
- * Compile an authored procedure TipTap doc into the runtime step tree. PURE:
- * no DB, no I/O. Coalesces contiguous prose into single `instruction` steps,
- * threads `next` tree-structured (no gotos), lifts declared assets, and returns
- * `errors[]` (never throws) for any structural problem that should block publish.
+ * Compile an authored v2 procedure TipTap doc into the runtime step tree. PURE:
+ * no DB, no I/O. The v2 doc shape (plan §1):
  *
- * See plans/chat/v9/phase-0-schema-types-compiler.md §4.
+ * - **prose + inline badges** — contiguous prose coalesces into `instruction`
+ *   steps; `@tool` / `code:` reference badges **stay inline** in the step's `doc`,
+ *   while a `subprocedure:` or `route:` badge is an **own step** that flushes the
+ *   prose and emits its own `routing` step (D4/D5).
+ * - **doc-level maps** — `doc.subProcedures[]` bodies compile into the shared
+ *   `steps` map (reached only via a `call`); `doc.codeBlocks[]` lift into
+ *   `compiled.codeBlocks` (referenced by inline `code:<id>` badges).
+ * - **dual-mode conditions** — a `conditionBlock` always compiles to a real
+ *   `condition` step (a gate); `mode` is block-level, each case carries a
+ *   `group` (structured) or a compiled `predicate` string (text). Bodies are
+ *   always separate steps (D1/D2/D3).
+ *
+ * `next` is threaded tree-structured (no gotos). Returns `errors[]` (never
+ * throws) for any structural problem that should block publish.
+ *
+ * See plans/chat/v9/phase-2-fix-compiler-conditions.md §3.3.
  */
 
 export interface CompileError {
@@ -29,7 +43,8 @@ export interface CompileError {
     | 'UNKNOWN_SUBPROCEDURE'
     | 'UNCALLED_SUBPROCEDURE'
     | 'UNKNOWN_CODE_BLOCK'
-    | 'UNKNOWN_ATTRIBUTE'
+    | 'EMPTY_CONDITION_GROUP'
+    | 'EMPTY_PREDICATE'
     | 'DANGLING_REF'
     | 'CYCLE'
   message: string
@@ -42,14 +57,6 @@ export interface CompileResult {
   contentHash: string
   errors?: CompileError[]
 }
-
-const STRUCTURAL = new Set<string>([
-  PROCEDURE_NODE_TYPES.conditionBlock,
-  PROCEDURE_NODE_TYPES.routingStep,
-  PROCEDURE_NODE_TYPES.codeStep,
-  PROCEDURE_NODE_TYPES.toolStep,
-  PROCEDURE_NODE_TYPES.subProcedure,
-])
 
 export function compileProcedure(doc: TiptapDoc): CompileResult {
   const contentHash = createHash('sha256').update(JSON.stringify(doc), 'utf8').digest('hex')
@@ -72,109 +79,161 @@ export function compileProcedure(doc: TiptapDoc): CompileResult {
       next: continuation,
     })
 
-  /**
-   * Compile a linear list of nodes into a chain of steps whose final step's
-   * `next` is `continuation`. Returns the chain's entry step id (or `continuation`
-   * if the list produces no body steps). `subProcedure` nodes are skipped — they
-   * are compiled separately and reachable only via a `call`.
-   */
-  const compileSequence = (nodes: TiptapNode[], continuation: StepId | null): StepId | null => {
-    // Partition into ordered units: maximal prose runs vs single structural nodes.
-    type Unit = { prose: TiptapNode[] } | { node: TiptapNode }
-    const units: Unit[] = []
-    let proseRun: TiptapNode[] = []
+  // ── prose-vs-control segmentation ──────────────────────────────────────
+  // An own-step badge or a conditionBlock can be nested anywhere in the prose
+  // tree (the `@` picker inserts inline references mid-paragraph). `splitNode`
+  // walks a node and hoists those out, re-wrapping the surrounding prose in
+  // copies of the container so the instruction `doc` keeps its block structure.
+  type Segment =
+    | { type: 'prose'; node: TiptapNode }
+    | { type: 'ownStep'; badge: ParsedStepBadge }
+    | { type: 'condition'; node: TiptapNode }
+
+  const splitNode = (node: TiptapNode): Segment[] => {
+    if (node.type === PROCEDURE_NODE_TYPES.conditionBlock) {
+      return [{ type: 'condition', node }]
+    }
+    if (node.type === 'reference') {
+      const id = typeof node.attrs?.id === 'string' ? node.attrs.id : ''
+      if (id && isOwnStepBadge(id)) {
+        const badge = parseStepBadgeId(id)
+        if (badge) return [{ type: 'ownStep', badge }]
+      }
+      return [{ type: 'prose', node }] // plain reference / inline op stays in prose
+    }
+    if (!node.content || node.content.length === 0) return [{ type: 'prose', node }]
+
+    const childSegments = node.content.flatMap(splitNode)
+    if (childSegments.every((s) => s.type === 'prose')) return [{ type: 'prose', node }]
+
+    const out: Segment[] = []
+    let buffer: TiptapNode[] = []
     const flush = () => {
-      if (proseRun.length > 0) {
-        units.push({ prose: proseRun })
-        proseRun = []
+      if (buffer.length > 0) {
+        out.push({ type: 'prose', node: { ...node, content: buffer } })
+        buffer = []
       }
     }
-    for (const node of nodes) {
-      if (node.type === PROCEDURE_NODE_TYPES.subProcedure) continue // compiled separately
-      if (STRUCTURAL.has(node.type)) {
-        flush()
-        units.push({ node })
+    for (const seg of childSegments) {
+      if (seg.type === 'prose') {
+        buffer.push(seg.node)
       } else {
-        proseRun.push(node)
+        flush()
+        out.push(seg)
       }
     }
     flush()
+    return out
+  }
+
+  /** Compile one `subprocedure:`/`route:` own-step badge, linking to `continuation`. */
+  const compileBadge = (badge: ParsedStepBadge, continuation: StepId | null): StepId => {
+    if (badge.kind === 'subprocedure') {
+      // a call returns to `continuation` after the sub-procedure finishes.
+      return emit({
+        id: generateId(),
+        kind: 'routing',
+        outcome: 'call',
+        subProcedureId: badge.subProcedureId,
+        next: continuation,
+      })
+    }
+    if (badge.kind === 'route') {
+      // every terminal ends the frame — `next` is null regardless of `continuation`.
+      if (badge.outcome === 'switch') {
+        return emit({
+          id: generateId(),
+          kind: 'routing',
+          outcome: 'switch',
+          switchToProcedureId: badge.switchToProcedureId,
+          next: null,
+        })
+      }
+      return emit({ id: generateId(), kind: 'routing', outcome: badge.outcome, next: null })
+    }
+    // `code:` badges are inline ops, never own-steps — unreachable, but keep the chain intact.
+    return emitTrivial(continuation)
+  }
+
+  /** Compile a `conditionBlock` → a real `condition` step (a gate); bodies are own steps. */
+  const compileCondition = (node: TiptapNode, continuation: StepId | null): StepId => {
+    const id = generateId()
+    const mode = node.attrs?.mode === 'structured' ? 'structured' : 'text'
+    const cases: { thenStep: StepId | null; group?: ConditionGroup; predicate?: string }[] = []
+    let elseStep: StepId | null = null
+
+    for (const child of node.content ?? []) {
+      if (child.type === PROCEDURE_NODE_TYPES.conditionCase) {
+        // The arm body = the case's children minus the leading `conditionPredicate`.
+        const body = (child.content ?? []).filter(
+          (c) => c.type !== PROCEDURE_NODE_TYPES.conditionPredicate
+        )
+        const thenStep = compileSequence(body, continuation)
+        if (mode === 'structured') {
+          cases.push({ thenStep, group: (child.attrs?.group ?? {}) as ConditionGroup })
+        } else {
+          cases.push({ thenStep, predicate: predicateText(child) })
+        }
+      } else if (child.type === PROCEDURE_NODE_TYPES.conditionElse) {
+        elseStep = compileSequence(child.content ?? [], continuation)
+      }
+    }
+
+    return emit({ id, kind: 'condition', mode, cases, elseStep, next: continuation })
+  }
+
+  /**
+   * Compile a linear list of nodes into a chain of steps whose final step's
+   * `next` is `continuation`. Returns the chain's entry step id (or `continuation`
+   * if the list produces no body steps).
+   */
+  const compileSequence = (nodes: TiptapNode[], continuation: StepId | null): StepId | null => {
+    const segments = nodes.flatMap(splitNode)
+
+    // Coalesce contiguous prose; control segments break the run.
+    type Unit =
+      | { kind: 'prose'; nodes: TiptapNode[] }
+      | { kind: 'ownStep'; badge: ParsedStepBadge }
+      | { kind: 'condition'; node: TiptapNode }
+    const units: Unit[] = []
+    let proseRun: TiptapNode[] = []
+    const flushProse = () => {
+      if (proseRun.length > 0) {
+        units.push({ kind: 'prose', nodes: proseRun })
+        proseRun = []
+      }
+    }
+    for (const seg of segments) {
+      if (seg.type === 'prose') {
+        proseRun.push(seg.node)
+      } else if (seg.type === 'ownStep') {
+        flushProse()
+        units.push({ kind: 'ownStep', badge: seg.badge })
+      } else {
+        flushProse()
+        units.push({ kind: 'condition', node: seg.node })
+      }
+    }
+    flushProse()
 
     // Thread back-to-front so each unit's tail points at the entry of the rest.
     let nextEntry = continuation
     for (let i = units.length - 1; i >= 0; i--) {
       const unit = units[i]!
-      nextEntry =
-        'prose' in unit
-          ? emit({
-              id: generateId(),
-              kind: 'instruction',
-              doc: { type: 'fragment', content: unit.prose },
-              next: nextEntry,
-            })
-          : compileNode(unit.node, nextEntry)
+      if (unit.kind === 'prose') {
+        nextEntry = emit({
+          id: generateId(),
+          kind: 'instruction',
+          doc: { type: 'fragment', content: unit.nodes },
+          next: nextEntry,
+        })
+      } else if (unit.kind === 'condition') {
+        nextEntry = compileCondition(unit.node, nextEntry)
+      } else {
+        nextEntry = compileBadge(unit.badge, nextEntry)
+      }
     }
     return nextEntry
-  }
-
-  /** Compile one structural node, linking its tail to `continuation`. Returns its entry id. */
-  const compileNode = (node: TiptapNode, continuation: StepId | null): StepId => {
-    const attrs = node.attrs ?? {}
-    switch (node.type) {
-      case PROCEDURE_NODE_TYPES.conditionBlock: {
-        const id = generateId()
-        const cases: { group: ConditionGroup; thenStep: StepId | null }[] = []
-        let elseStep: StepId | null = null
-        for (const child of node.content ?? []) {
-          if (child.type === PROCEDURE_NODE_TYPES.conditionCase) {
-            cases.push({
-              group: (child.attrs?.group ?? {}) as ConditionGroup,
-              thenStep: compileSequence(child.content ?? [], continuation),
-            })
-          } else if (child.type === PROCEDURE_NODE_TYPES.conditionElse) {
-            elseStep = compileSequence(child.content ?? [], continuation)
-          }
-        }
-        return emit({ id, kind: 'condition', cases, elseStep, next: continuation })
-      }
-      case PROCEDURE_NODE_TYPES.routingStep: {
-        const outcome = attrs.outcome as 'finished' | 'handoff' | 'switch' | 'call'
-        // 'call' returns to `continuation`; every other outcome ends this frame.
-        const next = outcome === 'call' ? continuation : null
-        return emit({
-          id: generateId(),
-          kind: 'routing',
-          outcome,
-          toolName: attrs.toolName as string | undefined,
-          switchToProcedureId: attrs.switchToProcedureId as string | undefined,
-          subProcedureId: attrs.subProcedureId as SubProcedureId | undefined,
-          next,
-        })
-      }
-      case PROCEDURE_NODE_TYPES.codeStep: {
-        const codeBlockId = (attrs.codeBlockId as string | undefined) ?? generateId()
-        codeBlocks[codeBlockId] = {
-          language: 'javascript',
-          code: (attrs.code as string | undefined) ?? '',
-          inputs: (attrs.inputs as unknown[] | undefined) ?? [],
-          outputs: (attrs.outputs as unknown[] | undefined) ?? [],
-        }
-        return emit({ id: generateId(), kind: 'code', codeBlockId, next: continuation })
-      }
-      case PROCEDURE_NODE_TYPES.toolStep: {
-        return emit({
-          id: generateId(),
-          kind: 'tool',
-          toolName: (attrs.toolName as string | undefined) ?? '',
-          argBindings: attrs.argBindings as ArgBindingMap | undefined,
-          assignTo: attrs.assignTo as string | undefined,
-          next: continuation,
-        })
-      }
-      default:
-        // Unknown structural node — treat as an empty instruction so the chain stays intact.
-        return emitTrivial(continuation)
-    }
   }
 
   // ── body ──────────────────────────────────────────────────────────────
@@ -182,39 +241,52 @@ export function compileProcedure(doc: TiptapDoc): CompileResult {
   let entryStepId = compileSequence(topLevel, null)
   if (entryStepId === null) entryStepId = emitTrivial(null)
 
-  // ── sub-procedures (compiled into the shared `steps` map, reached only via `call`) ──
-  for (const node of topLevel) {
-    if (node.type !== PROCEDURE_NODE_TYPES.subProcedure) continue
-    const subProcedureId = node.attrs?.subProcedureId as SubProcedureId | undefined
-    if (!subProcedureId) continue
-    const name = (node.attrs?.name as string | undefined) ?? ''
-    let subEntry = compileSequence(node.content ?? [], null)
-    if (subEntry === null) subEntry = emitTrivial(null)
-    subProcedures[subProcedureId] = { id: subProcedureId, name, entryStepId: subEntry }
+  // ── code blocks (doc-level map → compiled.codeBlocks, referenced by `code:` badges) ──
+  for (const cb of doc.codeBlocks ?? []) {
+    if (!cb?.id) continue
+    codeBlocks[cb.id] = {
+      language: cb.language ?? 'javascript',
+      code: cb.code ?? '',
+      inputs: [],
+      outputs: [],
+    }
   }
 
-  const localAttributes: LocalAttribute[] = doc.localAttributes ?? []
+  // ── sub-procedures (doc-level map → shared `steps`, reached only via a `call`) ──
+  for (const sp of doc.subProcedures ?? []) {
+    if (!sp?.id) continue
+    let subEntry = compileSequence(sp.content ?? [], null)
+    if (subEntry === null) subEntry = emitTrivial(null)
+    subProcedures[sp.id] = { id: sp.id, name: sp.name ?? '', entryStepId: subEntry }
+  }
 
   const compiled: CompiledProcedure = {
     entryStepId,
     steps,
     codeBlocks,
     subProcedures,
-    localAttributes,
+    localAttributes: doc.localAttributes ?? [],
   }
 
   const errors = validate(compiled)
   return { compiled, contentHash, ...(errors.length > 0 ? { errors } : {}) }
 }
 
+/** Render a `conditionCase`'s `conditionPredicate` child to a plain NL test string. */
+function predicateText(caseNode: TiptapNode): string {
+  const pred = (caseNode.content ?? []).find(
+    (c) => c.type === PROCEDURE_NODE_TYPES.conditionPredicate
+  )
+  return pred ? docToText(pred) : ''
+}
+
 // ── validation ────────────────────────────────────────────────────────────
 
 function validate(compiled: CompiledProcedure): CompileError[] {
-  const { steps, codeBlocks, subProcedures, localAttributes } = compiled
+  const { steps, codeBlocks, subProcedures } = compiled
   const errors: CompileError[] = []
 
   const subProcIds = new Set(Object.keys(subProcedures))
-  const attrNames = new Set(localAttributes.map((a) => a.name))
   const calledSubProcs = new Set<SubProcedureId>()
 
   const exists = (ref: StepId | null): boolean => ref === null || ref in steps
@@ -232,6 +304,27 @@ function validate(compiled: CompiledProcedure): CompileError[] {
           message: `Step references unknown step "${ref}".`,
           stepId: step.id,
         })
+      }
+    }
+
+    if (step.kind === 'condition') {
+      for (const c of step.cases) {
+        if (step.mode === 'structured') {
+          const conditions = c.group?.conditions
+          if (!Array.isArray(conditions) || conditions.length === 0) {
+            errors.push({
+              code: 'EMPTY_CONDITION_GROUP',
+              message: 'A Rules-mode condition arm has no conditions.',
+              stepId: step.id,
+            })
+          }
+        } else if (!c.predicate || c.predicate.trim().length === 0) {
+          errors.push({
+            code: 'EMPTY_PREDICATE',
+            message: 'A Text-mode condition arm has an empty predicate.',
+            stepId: step.id,
+          })
+        }
       }
     }
 
@@ -264,23 +357,17 @@ function validate(compiled: CompiledProcedure): CompileError[] {
       }
     }
 
-    if (step.kind === 'code' && !(step.codeBlockId in codeBlocks)) {
-      errors.push({
-        code: 'UNKNOWN_CODE_BLOCK',
-        message: `Code step references unknown code block "${step.codeBlockId}".`,
-        stepId: step.id,
-      })
-    }
-
-    if (step.kind === 'tool' && step.assignTo) {
-      // assignTo must name a declared local attribute or look like a CRM FieldReference.
-      const looksLikeFieldRef = /[.:]/.test(step.assignTo)
-      if (!attrNames.has(step.assignTo) && !looksLikeFieldRef) {
-        errors.push({
-          code: 'UNKNOWN_ATTRIBUTE',
-          message: `Tool step assigns to undeclared attribute "${step.assignTo}".`,
-          stepId: step.id,
-        })
+    // inline `code:<id>` badges in an instruction's `doc` must resolve to a code block.
+    if (step.kind === 'instruction') {
+      for (const id of collectReferenceIds(step.doc)) {
+        const badge = parseStepBadgeId(id)
+        if (badge?.kind === 'code' && !(badge.codeBlockId in codeBlocks)) {
+          errors.push({
+            code: 'UNKNOWN_CODE_BLOCK',
+            message: `Instruction references unknown code block "${badge.codeBlockId}".`,
+            stepId: step.id,
+          })
+        }
       }
     }
   }
