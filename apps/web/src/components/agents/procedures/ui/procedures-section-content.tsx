@@ -3,6 +3,7 @@
 
 import { EmptySection } from '@auxx/ui/components/section'
 import { toastError } from '@auxx/ui/components/toast'
+import { ListChecks } from 'lucide-react'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
 import type { AgentDetail } from '../../store/agent-store'
@@ -53,9 +54,13 @@ export function ProceduresSectionContent({ agent, onOpen }: ProceduresSectionCon
 
   if (rows.length === 0) {
     return (
-      <p className='px-3 py-6 text-center text-sm text-muted-foreground'>
-        No procedures yet. Add one to give this agent a step-by-step playbook.
-      </p>
+      <div className='px-3 py-2'>
+        <EmptySection
+          icon={<ListChecks className='size-5' />}
+          title='No procedures yet'
+          description='Add one to give this agent a step-by-step playbook for specific situations.'
+        />
+      </div>
     )
   }
 

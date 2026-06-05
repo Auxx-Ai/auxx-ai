@@ -27,6 +27,30 @@ export const AUTONOMOUS_ONLY: ReadonlySet<RunMode> = new Set(['autonomous'])
 export type Stability = 'static' | 'org' | 'turn'
 
 /**
+ * The top frame's active procedure step for the `agentProcedureStep` section (v9
+ * procedures, Phase 3). Phase 4 populates this from `prepareTurn`'s result while a
+ * frame is active; it is left unset on free-form / persona-only turns so the section
+ * drops out (PROCEDURE-STACK #9).
+ */
+export interface ProcedureStepInput {
+  /** The active `instruction` step to inject — its TipTap `doc` is rendered via `docToText`. */
+  readonly activeStep: { readonly doc: unknown }
+  /** The pinned version's doc-level maps so inline `subprocedure:`/`code:` badges render names. */
+  readonly procedureMaps?: {
+    subProcedures?: { id: string; name: string }[]
+    codeBlocks?: { id: string; name: string }[]
+  }
+  /** Stack depth — `> 1` renders the thin "side request" breadcrumb. */
+  readonly depth: number
+  /** Depth > 1: a short label for the side request being handled. */
+  readonly topicLabel?: string
+  /** Depth > 1: a short label for what the agent returns to. */
+  readonly returnToLabel?: string
+  /** Re-anchor line on a pop-resume turn (PROCEDURE-STACK §5). */
+  readonly breadcrumb?: string
+}
+
+/**
  * Read-only inputs each section can use. Built once per turn at the top of
  * `buildKopilotPrompt` and passed verbatim to every section. Pre-computed
  * fields (`toolNames`) avoid recomputing in each section.
@@ -46,6 +70,8 @@ export interface PromptCtx {
   readonly instructionsReferences?: (id: string) => string
   // Trigger inputs (Phase D)
   readonly triggerContext: TriggerContext | undefined
+  // Procedure stepper (Phase 3) — set by Phase 4 only while a frame is active.
+  readonly procedureStep?: ProcedureStepInput
 }
 
 export interface PromptSection {
