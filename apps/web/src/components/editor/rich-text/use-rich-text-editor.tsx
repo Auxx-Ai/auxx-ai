@@ -79,7 +79,13 @@ const emptyBody: JSONContent[] = [{ type: 'block', attrs: { blockType: 'text' },
 
 export interface UseRichTextEditorOptions {
   initialContent: JSONContent[] | null
-  onChange: (content: { json: JSONContent; html: string }) => void
+  /**
+   * Fired on every doc change. `html` is a LAZY getter — TipTap's HTML
+   * serialization is skipped unless a consumer actually calls it (only KB's
+   * article autosave does). Procedure / persona surfaces read `json` only, so
+   * they never pay the per-keystroke serialize cost.
+   */
+  onChange: (content: { json: JSONContent; getHTML: () => string }) => void
   /**
    * Optional slash-command bundle from `useSlashCommand()`. When set, mounts
    * the slash extension and wires open-state guards into onUpdate so typing
@@ -252,13 +258,12 @@ export function useRichTextEditor({
         if (!transaction.docChanged) return
         if (slashCommandRef.current?.isOpenRef.current) return
         const json = editor.getJSON()
-        const html = editor.getHTML()
         // Defer one tick so Suggestion plugin's onStart can mark isOpenRef
         // before we propagate the change.
         setTimeout(() => {
           if (slashCommandRef.current?.isOpenRef.current) return
           externalSyncRef.current.markLocalEdit(stableStringify(json))
-          onChangeRef.current({ json, html })
+          onChangeRef.current({ json, getHTML: () => editor.getHTML() })
         }, 0)
       },
     },
@@ -315,7 +320,7 @@ export function useRichTextEditor({
   useEffect(() => {
     const isOpen = slashCommand?.suggestionState.isOpen ?? false
     if (prevOpen.current && !isOpen && editor) {
-      onChangeRef.current({ json: editor.getJSON(), html: editor.getHTML() })
+      onChangeRef.current({ json: editor.getJSON(), getHTML: () => editor.getHTML() })
     }
     prevOpen.current = isOpen
   }, [slashCommand?.suggestionState.isOpen, editor])

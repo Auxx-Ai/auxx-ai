@@ -92,7 +92,7 @@ export function PersonaEditor({ agent, onAutosaveChange }: PersonaEditorProps) {
   const [activeEditor, setActiveEditor] = useState<Editor | null>(null)
 
   const handleChange = useCallback(
-    ({ json }: { json: JSONContent; html: string }) => {
+    ({ json }: { json: JSONContent; getHTML: () => string }) => {
       const content = Array.isArray(json.content) ? (json.content as JSONContent[]) : null
       currentDocRef.current = content
       // 1500ms matches the KB article editor's autosave window. Pairs with

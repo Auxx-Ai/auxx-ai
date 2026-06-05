@@ -36,7 +36,8 @@ import { useKBArticleEditor } from './use-kb-article-editor'
 
 interface KBArticleEditorProps {
   initialContent: JSONContent[] | null
-  onChange: (content: { json: JSONContent; html: string }) => void
+  /** `html` is a lazy getter — see `UseRichTextEditorOptions.onChange`. */
+  onChange: (content: { json: JSONContent; getHTML: () => string }) => void
   /** Knowledge base id — scopes the article-link picker to a single KB by default. */
   knowledgeBaseId?: string
   /** Fired once when the underlying Tiptap editor instance is ready. */

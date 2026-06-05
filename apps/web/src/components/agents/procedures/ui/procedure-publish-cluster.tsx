@@ -105,7 +105,11 @@ export function ProcedurePublishCluster({ procedureId, onReload }: ProcedurePubl
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <span className='inline-flex'>
-                      <Button size='xs' variant='outline' className='border-r-0' disabled>
+                      <Button
+                        size='xs'
+                        variant='outline'
+                        className='rounded-none border-x-0'
+                        disabled>
                         <Send /> {publishLabel}
                       </Button>
                     </span>

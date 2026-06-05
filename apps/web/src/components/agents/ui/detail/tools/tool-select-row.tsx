@@ -2,6 +2,7 @@
 'use client'
 
 import { Badge } from '@auxx/ui/components/badge'
+import { TreeRowButton } from '@auxx/ui/components/tree-row'
 import { pluralize } from '@auxx/utils/strings'
 import { Check, Trash2 } from 'lucide-react'
 import { AppIcon } from '~/components/apps/ui/app-icon'
@@ -69,7 +70,7 @@ export function ToolSelectRow({
     <button
       type='button'
       onClick={onSelect}
-      className='group flex w-full items-center gap-3 rounded-lg px-1 py-1 text-left hover:bg-primary-100/80'>
+      className='group/tree-row flex w-full items-center gap-3 rounded-lg px-1 py-1 text-left hover:bg-primary-100/80'>
       <div className='relative shrink-0'>
         <AppIcon
           iconId={iconId}
@@ -119,22 +120,22 @@ export function ToolSelectRow({
       {installed &&
         onRemove &&
         (removable ? (
-          <span
-            role='button'
+          <TreeRowButton
+            variant='destructive'
             tabIndex={-1}
             aria-label='Remove toolset'
+            className='ml-2'
             onClick={(e) => {
               e.stopPropagation()
               onRemove()
-            }}
-            className='ml-2 inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground opacity-0 transition-opacity hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100'>
-            <Trash2 className='size-3.5' />
-          </span>
+            }}>
+            <Trash2 />
+          </TreeRowButton>
         ) : (
           <Tooltip side='left' content={lockedTooltip}>
             <span
               aria-label='Toolset locked'
-              className='ml-2 inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground/60 opacity-0 group-hover:opacity-100'>
+              className='ml-2 inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground/60 opacity-0 group-hover/tree-row:opacity-100'>
               <Trash2 className='size-3.5' />
             </span>
           </Tooltip>

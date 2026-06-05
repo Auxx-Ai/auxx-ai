@@ -12,7 +12,6 @@ import { NavStack, NavStackBar, NavStackPanel, NavStackPanels } from '@auxx/ui/c
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Section } from '@auxx/ui/components/section'
 import { Tabs, TabsList, TabsTrigger } from '@auxx/ui/components/tabs'
-import { toastError } from '@auxx/ui/components/toast'
 import {
   BookOpen,
   Clock,
@@ -26,20 +25,17 @@ import {
 } from 'lucide-react'
 import { useQueryState } from 'nuqs'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { api } from '~/trpc/react'
 import { AGENT_TABS, type AgentTab, DEFAULT_AGENT_TAB } from '../../constant'
 import { ProcedureDetailBar } from '../../procedures/ui/procedure-detail-bar'
 import { ProcedureEditor } from '../../procedures/ui/procedure-editor'
-import { ProceduresSectionContent } from '../../procedures/ui/procedures-section-content'
+import { ProceduresSection } from '../../procedures/ui/procedures-section'
 import type { AgentDetail } from '../../store/agent-store'
 import type { AutosaveState } from '../shared/autosave-indicator'
 import { AgentHero } from './agent-hero'
-import { BindingsSectionContent } from './bindings/bindings-section-content'
+import { BindingsSection } from './bindings/bindings-section'
 import { KnowledgeSectionContent } from './knowledge/knowledge-section-content'
 import { PersonaEditor } from './prompt/persona-editor'
-import { ToolSelectDialog } from './tools/tool-select-dialog'
-import { ToolsSectionContent } from './tools/tools-section-content'
-import { useToolsetMutations } from './tools/use-toolset-mutations'
+import { ToolsSection } from './tools/tools-section'
 import { TriggersSectionContent } from './triggers/triggers-section-content'
 
 const SECTION_ICONS: Record<AgentTab, React.ComponentType<{ className?: string }>> = {
@@ -196,7 +192,7 @@ export function AgentDetailTabs({ agent, onAutosaveChange }: AgentDetailTabsProp
               bars' own content is therefore transparent. */}
           <div className='sticky top-0 z-10'>
             <NavStackBar className='border-b bg-primary-150' />
-            <div className='pointer-events-none h-3 bg-gradient-to-b from-neutral-100 to-transparent dark:from-background' />
+            {/* <div className='pointer-events-none h-3 bg-gradient-to-b from-neutral-100 to-transparent dark:from-background' /> */}
           </div>
           <NavStackPanels>
             <NavStackPanel
@@ -320,160 +316,5 @@ export function AgentDetailTabs({ agent, onAutosaveChange }: AgentDetailTabsProp
         </NavStack>
       </ScrollArea>
     </div>
-  )
-}
-
-/**
- * Procedures tab wrapper. Owns the "Add procedure" action (in `<Section actions>`)
- * which creates + attaches a fresh procedure and drills into it. The list itself
- * renders inside; both chat and internal agents get this section.
- */
-function ProceduresSection({
-  agent,
-  onSelect,
-}: {
-  agent: AgentDetail
-  onSelect: (procedureId: string) => void
-}) {
-  const utils = api.useUtils()
-  const createAndAttach = api.agentProcedure.createAndAttach.useMutation({
-    onSuccess: ({ procedureId }) => {
-      void utils.agentProcedure.list.invalidate({ agentId: agent.id })
-      onSelect(procedureId)
-    },
-    onError: (err) => toastError({ title: 'Failed to add procedure', description: err.message }),
-  })
-  return (
-    <Section
-      title='Procedures'
-      icon={<ListChecks className='size-4' />}
-      className='[&>[data-slot=section]>[data-slot=section-content]]:-mx-3'
-      initialOpen
-      description='Step-by-step playbooks the agent follows for specific situations.'
-      collapsible={false}
-      actions={
-        <Button
-          variant='ghost'
-          size='xs'
-          loading={createAndAttach.isPending}
-          onClick={() => createAndAttach.mutate({ agentId: agent.id, name: 'New procedure' })}>
-          <Plus />
-          Add procedure
-        </Button>
-      }>
-      <ProceduresSectionContent agent={agent} onOpen={onSelect} />
-    </Section>
-  )
-}
-
-/**
- * Bindings tab wrapper. Owns the add/edit dialog state so the "Add binding"
- * trigger can sit in `<Section actions>` alongside Tools and Triggers, while
- * the dialog itself renders inside the section content.
- */
-function BindingsSection({ agent }: { agent: AgentDetail }) {
-  const [dialogOpen, setDialogOpen] = useState(false)
-  const [editing, setEditing] = useState<{ registeredName: string } | null>(null)
-  return (
-    <Section
-      title='Bindings'
-      icon={<ShieldCheck className='size-4' />}
-      className='[&>[data-slot=section]>[data-slot=section-content]]:-mx-3'
-      initialOpen
-      description='Tools are scoped by their built-in defaults. Override an input to pin a value or rebind it.'
-      collapsible={false}
-      actions={
-        <Button
-          variant='ghost'
-          size='xs'
-          onClick={() => {
-            setEditing(null)
-            setDialogOpen(true)
-          }}>
-          <Plus />
-          Add override
-        </Button>
-      }>
-      <BindingsSectionContent
-        agent={agent}
-        dialogOpen={dialogOpen}
-        onDialogOpenChange={setDialogOpen}
-        editing={editing}
-        onEditingChange={setEditing}
-      />
-    </Section>
-  )
-}
-
-interface ToolsSectionProps {
-  agent: AgentDetail
-  onAutosaveChange?: (state: AutosaveState) => void
-}
-
-/**
- * Tools tab wrapper. Owns the `ToolSelectDialog` state so the "Add tools"
- * trigger can sit in `<Section actions>` while the dialog renders alongside
- * the installed-tools list.
- */
-function ToolsSection({ agent, onAutosaveChange }: ToolsSectionProps) {
-  const [dialogOpen, setDialogOpen] = useState(false)
-  const [pendingAppId, setPendingAppId] = useState<string | null>(null)
-  const handleSavingChange = useCallback(
-    (saving: boolean) =>
-      onAutosaveChange?.(saving ? { kind: 'saving' } : { kind: 'saved', at: Date.now() }),
-    [onAutosaveChange]
-  )
-  const { toggleToolset, toggleToolsets } = useToolsetMutations(
-    agent.id,
-    agent.slug,
-    handleSavingChange
-  )
-  const boundAppIds = useMemo(
-    () => new Set(Object.keys(agent.appAccounts ?? {})),
-    [agent.appAccounts]
-  )
-  return (
-    <>
-      <Section
-        title='Tools'
-        icon={<Wrench className='size-4' />}
-        className='[&>[data-slot=section]>[data-slot=section-content]]:-mx-3'
-        initialOpen
-        collapsible={false}
-        actions={
-          <Button
-            size='xs'
-            variant='ghost'
-            onClick={() => {
-              setPendingAppId(null)
-              setDialogOpen(true)
-            }}>
-            <Plus />
-            Add tools
-          </Button>
-        }>
-        <ToolsSectionContent
-          agent={agent}
-          onAutosaveChange={onAutosaveChange}
-          onAddToApp={(appId) => {
-            setPendingAppId(appId)
-            setDialogOpen(true)
-          }}
-        />
-      </Section>
-      <ToolSelectDialog
-        installedToolsets={agent.toolsets}
-        boundAppIds={boundAppIds}
-        surface={agent.kind === 'chat' ? 'chat' : undefined}
-        onToggleToolset={toggleToolset}
-        onToggleToolsets={toggleToolsets}
-        open={dialogOpen}
-        onOpenChange={(next) => {
-          setDialogOpen(next)
-          if (!next) setPendingAppId(null)
-        }}
-        initialAppId={pendingAppId ?? undefined}
-      />
-    </>
   )
 }

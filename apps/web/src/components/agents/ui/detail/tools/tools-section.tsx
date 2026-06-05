@@ -1,11 +1,12 @@
-// apps/web/src/components/agents/ui/detail/tools/tools-section-content.tsx
+// apps/web/src/components/agents/ui/detail/tools/tools-section.tsx
 'use client'
 
 import type { CatalogNode } from '@auxx/lib/agents/client'
-import { EmptySection } from '@auxx/ui/components/section'
+import { Button } from '@auxx/ui/components/button'
+import { EmptySection, Section } from '@auxx/ui/components/section'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { toastError } from '@auxx/ui/components/toast'
-import { Wrench } from 'lucide-react'
+import { Plus, Wrench } from 'lucide-react'
 import { useCallback, useMemo, useState } from 'react'
 import { useToolCatalog } from '~/components/agents/hooks/use-tool-catalog'
 import { AppAccountDialog } from '~/components/apps/ui/app-account-dialog'
@@ -19,28 +20,21 @@ import {
   pruneToInstalled,
   type ToolsetRowState,
 } from './catalog-node-row'
+import { ToolSelectDialog } from './tool-select-dialog'
 import { useToolsetMutations } from './use-toolset-mutations'
 
-interface ToolsSectionContentProps {
+interface ToolsSectionProps {
   agent: AgentDetail
   onAutosaveChange?: (state: AutosaveState) => void
-  /** Invoked when a top-level app row's "Add" button is clicked. */
-  onAddToApp?: (appId: string) => void
 }
 
 /**
- * Tools tab body — renders only the toolsets currently installed on the
- * agent, as a pruned App → SubGroup → Toolset tree. The catalog browser and
- * the "Add tools" trigger live one level up in `ToolsSection`
- * (`agent-detail-tabs.tsx`); this component intentionally has no header so
- * the action sits inside `<Section actions>`. See
- * `plans/kopilot/agents/tools/tool-select-dialog.md`.
+ * Tools section — owns the `<Section>` shell (with the "Add tools" action), the
+ * `ToolSelectDialog` catalog browser, and the installed-tools tree. Renders only
+ * the toolsets currently installed on the agent as a pruned App → SubGroup →
+ * Toolset tree. See `plans/kopilot/agents/tools/tool-select-dialog.md`.
  */
-export function ToolsSectionContent({
-  agent,
-  onAutosaveChange,
-  onAddToApp,
-}: ToolsSectionContentProps) {
+export function ToolsSection({ agent, onAutosaveChange }: ToolsSectionProps) {
   const { catalog, isLoading: catalogIsLoading } = useToolCatalog({
     surface: agent.kind === 'chat' ? 'chat' : undefined,
   })
@@ -56,6 +50,15 @@ export function ToolsSectionContent({
     agent.id,
     agent.slug,
     handleSavingChange
+  )
+
+  // "Add tools" dialog state. `pendingAppId` pre-selects an app when the user
+  // clicks "Add" on a top-level app row instead of the section action.
+  const [dialogOpen, setDialogOpen] = useState(false)
+  const [pendingAppId, setPendingAppId] = useState<string | null>(null)
+  const boundAppIds = useMemo(
+    () => new Set(Object.keys(agent.appAccounts ?? {})),
+    [agent.appAccounts]
   )
 
   const stateBySlug = useMemo<Map<string, ToolsetRowState>>(() => {
@@ -176,66 +179,97 @@ export function ToolsSectionContent({
     [stateBySlug, toggleToolset, toggleToolsets]
   )
 
-  if (catalogIsLoading) {
-    return (
-      <div className='flex flex-col pe-4'>
-        {[0, 1, 2].map((i) => (
-          <div key={i} className='ps-2'>
-            <div className='flex items-center gap-2 px-1 h-9'>
-              <Skeleton className='size-5 rounded-md' />
-              <Skeleton className='h-4 w-32' />
-            </div>
-          </div>
-        ))}
-      </div>
-    )
-  }
-
-  if (installedTree.length === 0) {
-    return (
-      <div className='px-3 py-2'>
-        <EmptySection
-          icon={<Wrench className='size-5' />}
-          title='No tools yet'
-          description='Add tools to give this agent capabilities.'
-        />
-      </div>
-    )
-  }
-
   return (
-    <div className='flex flex-col pe-4'>
-      {installedTree.map((root) => (
-        <CatalogNodeRow
-          key={root.id}
-          node={root}
-          depth={0}
-          inheritedIconId={root.iconId ?? 'package'}
-          inheritedColor={root.color}
-          stateBySlug={stateBySlug}
-          restrictionCountBySlug={restrictionCountBySlug}
-          collapsed={collapsed}
-          onToggleCollapsed={toggleCollapsed}
-          onRemove={handleRemove}
-          onAddToApp={onAddToApp}
-          onOpenAccountPicker={setAccountPickerAppId}
-          boundCredIdByApp={boundCredIdByApp}
-          warnNotExternalSafe={agent.kind === 'chat'}
-        />
-      ))}
-      <AppAccountDialog
-        appId={accountPickerAppId}
-        value={accountPickerAppId ? boundCredIdByApp[accountPickerAppId] : undefined}
-        onSubmit={(next) => {
-          if (accountPickerAppId && typeof next === 'string') {
-            void bindAgentCredId(accountPickerAppId, next)
-          }
+    <>
+      <Section
+        title='Tools'
+        icon={<Wrench className='size-4' />}
+        className='[&>[data-slot=section]>[data-slot=section-content]]:-mx-3'
+        initialOpen
+        collapsible={false}
+        actions={
+          <Button
+            size='xs'
+            variant='ghost'
+            onClick={() => {
+              setPendingAppId(null)
+              setDialogOpen(true)
+            }}>
+            <Plus />
+            Add tools
+          </Button>
+        }>
+        {catalogIsLoading ? (
+          <div className='flex flex-col pe-4'>
+            {[0, 1, 2].map((i) => (
+              <div key={i} className='ps-2'>
+                <div className='flex items-center gap-2 px-1 h-9'>
+                  <Skeleton className='size-5 rounded-md' />
+                  <Skeleton className='h-4 w-32' />
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : installedTree.length === 0 ? (
+          <div className='px-3 py-2'>
+            <EmptySection
+              icon={<Wrench className='size-5' />}
+              title='No tools yet'
+              description='Add tools to give this agent capabilities.'
+            />
+          </div>
+        ) : (
+          <div className='flex flex-col ps-2 pe-4'>
+            {installedTree.map((root) => (
+              <CatalogNodeRow
+                key={root.id}
+                node={root}
+                depth={0}
+                inheritedIconId={root.iconId ?? 'package'}
+                inheritedColor={root.color}
+                stateBySlug={stateBySlug}
+                restrictionCountBySlug={restrictionCountBySlug}
+                collapsed={collapsed}
+                onToggleCollapsed={toggleCollapsed}
+                onRemove={handleRemove}
+                onAddToApp={(appId) => {
+                  setPendingAppId(appId)
+                  setDialogOpen(true)
+                }}
+                onOpenAccountPicker={setAccountPickerAppId}
+                boundCredIdByApp={boundCredIdByApp}
+                warnNotExternalSafe={agent.kind === 'chat'}
+              />
+            ))}
+            <AppAccountDialog
+              appId={accountPickerAppId}
+              value={accountPickerAppId ? boundCredIdByApp[accountPickerAppId] : undefined}
+              onSubmit={(next) => {
+                if (accountPickerAppId && typeof next === 'string') {
+                  void bindAgentCredId(accountPickerAppId, next)
+                }
+              }}
+              open={accountPickerAppId !== null}
+              onOpenChange={(open) => {
+                if (!open) setAccountPickerAppId(null)
+              }}
+            />
+          </div>
+        )}
+      </Section>
+      <ToolSelectDialog
+        installedToolsets={agent.toolsets}
+        boundAppIds={boundAppIds}
+        surface={agent.kind === 'chat' ? 'chat' : undefined}
+        onToggleToolset={toggleToolset}
+        onToggleToolsets={toggleToolsets}
+        open={dialogOpen}
+        onOpenChange={(next) => {
+          setDialogOpen(next)
+          if (!next) setPendingAppId(null)
         }}
-        open={accountPickerAppId !== null}
-        onOpenChange={(open) => {
-          if (!open) setAccountPickerAppId(null)
-        }}
+        initialAppId={pendingAppId ?? undefined}
       />
-    </div>
+    </>
   )
 }

@@ -7,7 +7,8 @@ import { useRichTextEditor } from '../rich-text/use-rich-text-editor'
 
 interface UseKBArticleEditorOptions {
   initialContent: JSONContent[] | null
-  onChange: (content: { json: JSONContent; html: string }) => void
+  /** `html` is a lazy getter — see `UseRichTextEditorOptions.onChange`. */
+  onChange: (content: { json: JSONContent; getHTML: () => string }) => void
   /** Forwarded to the inline `@`-mention picker chip — typically delegates to the popover's keyboard handle. */
   onPickerEnter?: () => boolean
   onPickerArrowVertical?: (direction: 1 | -1) => boolean

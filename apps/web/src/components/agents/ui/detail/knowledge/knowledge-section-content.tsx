@@ -66,7 +66,7 @@ export function KnowledgeSectionContent({ agent, onAutosaveChange }: KnowledgeSe
   }
 
   return (
-    <div className='pe-4'>
+    <div className='ps-2 pe-4'>
       {orderedTypes.map((resource) => (
         <ResourceTypeBranch
           key={resource.id}

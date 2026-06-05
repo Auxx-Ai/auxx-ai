@@ -3,11 +3,12 @@
 
 import type { LocalAttribute, TriggerExample } from '@auxx/lib/agents/procedures/client'
 import type { ConditionGroup } from '@auxx/lib/conditions/client'
+import { AutosizeTextarea } from '@auxx/ui/components/autosize-textarea'
 import { Section } from '@auxx/ui/components/section'
-import { Textarea } from '@auxx/ui/components/textarea'
 import { Filter, Info, Tags } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { memo, useMemo, useRef, useState } from 'react'
 import { ConditionContainer, ConditionProvider } from '~/components/conditions'
+import CollapseWrap from '~/components/workflow/ui/collapse-wrap'
 import { useProcedureConditionConfig } from '../hooks/use-procedure-condition-config'
 import { TriggerExamplesEditor } from './trigger-examples-editor'
 
@@ -30,7 +31,7 @@ interface ProcedureTriggerHeaderProps {
  * conditions builder as the `conditionCase` arms, but multi-group). All three
  * write through the same debounced autosave patch.
  */
-export function ProcedureTriggerHeader({
+export const ProcedureTriggerHeader = memo(function ProcedureTriggerHeader({
   whenToUse,
   triggerExamples,
   ruleset,
@@ -54,6 +55,20 @@ export function ProcedureTriggerHeader({
     onPatch({ whenToUse: value })
   }
 
+  // Collapse the description to `minHeight` until focused — the base-panel node
+  // pattern. Escape reverts to the value captured on focus (and re-patches so the
+  // store stays in sync) then blurs.
+  const [isDescCollapsed, setIsDescCollapsed] = useState(true)
+  const preFocusRef = useRef(whenToUseDraft)
+  const handleWhenToUseKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Escape') {
+      e.preventDefault()
+      e.stopPropagation()
+      handleWhenToUse(preFocusRef.current)
+      e.currentTarget.blur()
+    }
+  }
+
   const groups = useMemo(() => (ruleset.length > 0 ? ruleset : []), [ruleset])
   const allConditions = useMemo(() => groups.flatMap((g) => g.conditions ?? []), [groups])
   const whenToUseEmpty = whenToUseDraft.trim() === ''
@@ -69,23 +84,31 @@ export function ProcedureTriggerHeader({
 
   return (
     <>
-      <Section
-        title='When to use'
-        icon={<Info className='size-4' />}
-        description='Describe the situation that should select this procedure.'
-        isRequired={whenToUseEmpty}
-        initialOpen
-        collapsible={false}>
-        <Textarea
-          value={whenToUseDraft}
-          onChange={(e) => handleWhenToUse(e.target.value)}
-          placeholder='Describe when this procedure should run…'
-          className='min-h-16 text-sm'
-        />
+      <div className='pe-4 border-b'>
+        <CollapseWrap
+          minHeight={60}
+          isCollapsed={isDescCollapsed}
+          onCollapsedChange={setIsDescCollapsed}>
+          <div className='leading-0 group flex rounded-lg px-1 py-[5px]'>
+            <AutosizeTextarea
+              minHeight={1}
+              value={whenToUseDraft}
+              onChange={(e) => handleWhenToUse(e.target.value)}
+              onFocus={() => {
+                preFocusRef.current = whenToUseDraft
+                setIsDescCollapsed(false)
+              }}
+              onBlur={() => setIsDescCollapsed(true)}
+              onKeyDown={handleWhenToUseKeyDown}
+              className='w-full px-1 py-1 bg-transparent dark:bg-transparent border-none resize-none appearance-none text-sm leading-[18px] caret-[#295EFF] outline-none'
+              placeholder='Describe when this procedure should run…'
+            />
+          </div>
+        </CollapseWrap>
         {whenToUseEmpty && (
-          <span className='mt-1.5 text-xs text-amber-600'>Required to publish.</span>
+          <span className='ps-2 mt-0.5 text-xs text-amber-600'>Required to publish.</span>
         )}
-      </Section>
+      </div>
 
       <Section
         title='Trigger examples'
@@ -123,4 +146,4 @@ export function ProcedureTriggerHeader({
       </Section>
     </>
   )
-}
+})
