@@ -29,8 +29,15 @@ export interface UseProcedureMutationsResult {
   /** Persist the heavy draft doc — no optimistic store write (the editor owns the doc). */
   saveDoc: (id: string, doc: Record<string, unknown>) => Promise<void>
   publish: (id: string) => Promise<void>
-  revert: (id: string, toVersionId: string) => Promise<void>
+  /** Repoint to an older version + reload its doc into the draft. Resolves `true` on success. */
+  revert: (id: string, toVersionId: string) => Promise<boolean>
+  /** Drop draft edits back to the live version. Resolves `true` on success. */
+  discardDraft: (id: string) => Promise<boolean>
+  /** Delete the procedure org-wide (cascade-detaches every agent). Resolves `true` on success. */
+  deleteProcedure: (id: string) => Promise<boolean>
   isPublishing: boolean
+  isDiscarding: boolean
+  isDeleting: boolean
 }
 
 const META_DEBOUNCE_MS = 800
@@ -58,6 +65,8 @@ export function useProcedureMutations({
   const updateProcedure = api.procedure.update.useMutation()
   const publishMutation = api.procedure.publish.useMutation()
   const revertMutation = api.procedure.revert.useMutation()
+  const discardMutation = api.procedure.discardDraft.useMutation()
+  const deleteMutation = api.procedure.delete.useMutation()
 
   const [autosave, setAutosave] = useState<AutosaveState>({ kind: 'idle' })
 
@@ -72,6 +81,10 @@ export function useProcedureMutations({
   publishAsyncRef.current = publishMutation.mutateAsync
   const revertAsyncRef = useRef(revertMutation.mutateAsync)
   revertAsyncRef.current = revertMutation.mutateAsync
+  const discardAsyncRef = useRef(discardMutation.mutateAsync)
+  discardAsyncRef.current = discardMutation.mutateAsync
+  const deleteAsyncRef = useRef(deleteMutation.mutateAsync)
+  deleteAsyncRef.current = deleteMutation.mutateAsync
 
   const setAutosaveAndNotify = useCallback((next: AutosaveState) => {
     setAutosave(next)
@@ -164,13 +177,55 @@ export function useProcedureMutations({
   const revert = useCallback<UseProcedureMutationsResult['revert']>(async (id, toVersionId) => {
     try {
       await revertAsyncRef.current({ id, toVersionId })
-      utilsRef.current.procedure.getById.invalidate({ id })
+      getProcedureStoreState().applyMetadataFromServer(id, {
+        activeVersionId: toVersionId,
+        hasUnpublishedChanges: false,
+      })
+      // Await the refetch so the rewritten draft doc is in cache BEFORE the
+      // caller remounts the editor (the reload token) — otherwise the remount
+      // re-seeds from the stale cached doc. listVersions/agentProcedure can
+      // settle in the background.
+      await utilsRef.current.procedure.getById.invalidate({ id })
       utilsRef.current.procedure.listVersions.invalidate({ id })
       utilsRef.current.agentProcedure.list.invalidate()
+      return true
     } catch (err) {
       toastError({ title: 'Revert failed', description: (err as Error).message })
+      return false
     }
   }, [])
+
+  const discardDraft = useCallback<UseProcedureMutationsResult['discardDraft']>(async (id) => {
+    try {
+      const server = await discardAsyncRef.current({ id })
+      getProcedureStoreState().applyMetadataFromServer(id, {
+        hasUnpublishedChanges: !!server.hasUnpublishedChanges,
+      })
+      // The draft doc was rewritten server-side; await the refetch so the
+      // caller's editor remount re-seeds from the live doc, not the stale one.
+      await utilsRef.current.procedure.getById.invalidate({ id })
+      utilsRef.current.agentProcedure.list.invalidate()
+      return true
+    } catch (err) {
+      toastError({ title: 'Discard failed', description: (err as Error).message })
+      return false
+    }
+  }, [])
+
+  const deleteProcedure = useCallback<UseProcedureMutationsResult['deleteProcedure']>(
+    async (id) => {
+      try {
+        await deleteAsyncRef.current({ id })
+        utilsRef.current.agentProcedure.list.invalidate()
+        utilsRef.current.procedure.list.invalidate()
+        return true
+      } catch (err) {
+        toastError({ title: 'Delete failed', description: (err as Error).message })
+        return false
+      }
+    },
+    []
+  )
 
   // Flush any queued meta on unmount so an in-progress edit isn't lost. `flushMeta`
   // is identity-stable, so this cleanup fires ONLY on real unmount — not per render.
@@ -186,6 +241,10 @@ export function useProcedureMutations({
     saveDoc,
     publish,
     revert,
+    discardDraft,
+    deleteProcedure,
     isPublishing: publishMutation.isPending,
+    isDiscarding: discardMutation.isPending,
+    isDeleting: deleteMutation.isPending,
   }
 }

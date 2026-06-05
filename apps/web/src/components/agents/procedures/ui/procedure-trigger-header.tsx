@@ -58,6 +58,15 @@ export function ProcedureTriggerHeader({
   const allConditions = useMemo(() => groups.flatMap((g) => g.conditions ?? []), [groups])
   const whenToUseEmpty = whenToUseDraft.trim() === ''
 
+  // Rules are opt-in — off by default, enabled only when a saved ruleset exists.
+  // Seeded once per procedure (this header is keyed by `procedureId`). Toggling
+  // off clears the ruleset so selection falls back to the description + examples.
+  const [rulesEnabled, setRulesEnabled] = useState(ruleset.length > 0)
+  const handleRulesEnable = (checked: boolean) => {
+    setRulesEnabled(checked)
+    if (!checked) onPatch({ ruleset: [] })
+  }
+
   return (
     <>
       <Section
@@ -82,8 +91,7 @@ export function ProcedureTriggerHeader({
         title='Trigger examples'
         icon={<Tags className='size-4' />}
         description='Use / avoid examples that sharpen selection. Aim for 10 or more.'
-        initialOpen
-        collapsible={false}>
+        initialOpen={false}>
         <TriggerExamplesEditor
           value={triggerExamples}
           onChange={(triggerExamples) => onPatch({ triggerExamples })}
@@ -94,8 +102,10 @@ export function ProcedureTriggerHeader({
         title='Rules'
         icon={<Filter className='size-4' />}
         description='Structured conditions that must hold for this procedure to run.'
-        initialOpen
-        collapsible={false}>
+        showEnable
+        enabled={rulesEnabled}
+        onEnableChange={handleRulesEnable}
+        initialOpen={false}>
         <ConditionProvider
           conditions={allConditions}
           groups={groups}

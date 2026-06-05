@@ -38,7 +38,7 @@ export function newConditionCase() {
       mode: 'text',
       group: { id: generateId(), conditions: [], logicalOperator: 'AND' },
     },
-    content: [{ type: 'conditionPredicate', content: [] }, emptyBlock()],
+    content: [{ type: 'conditionPredicate', attrs: { mode: 'text' }, content: [] }, emptyBlock()],
   }
 }
 
@@ -90,6 +90,16 @@ export function applyBlockMode(editor: Editor, blockPos: number, mode: 'text' | 
       block.forEach((child) => {
         if (child.type.name === 'conditionCase') {
           tr.setNodeMarkup(childPos, undefined, { ...child.attrs, mode })
+          // Mirror onto the leading predicate child so its node-view re-renders
+          // (and hides/shows) on toggle. setNodeMarkup preserves sizes, so these
+          // positions stay valid within this transaction.
+          let grandPos = childPos + 1
+          child.forEach((grandchild) => {
+            if (grandchild.type.name === 'conditionPredicate') {
+              tr.setNodeMarkup(grandPos, undefined, { ...grandchild.attrs, mode })
+            }
+            grandPos += grandchild.nodeSize
+          })
         }
         childPos += child.nodeSize
       })

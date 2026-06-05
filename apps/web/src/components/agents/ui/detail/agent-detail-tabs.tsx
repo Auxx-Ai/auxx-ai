@@ -82,6 +82,9 @@ export function AgentDetailTabs({ agent, onAutosaveChange }: AgentDetailTabsProp
   // Lifted from the pushed ProcedureEditor so the detail bar (rendered by
   // <NavStackBar>, a separate subtree) can show live Saving…/Saved next to Publish.
   const [procedureAutosave, setProcedureAutosave] = useState<AutosaveState>({ kind: 'idle' })
+  // Reload token — bumped by the publish cluster after revert/discard (which
+  // rewrite the draft doc server-side) to remount the editor onto the fresh doc.
+  const [procedureReloadKey, setProcedureReloadKey] = useState(0)
   const scrollContainerRef = useRef<HTMLDivElement | null>(null)
   const sectionRefs = useRef<Record<AgentTab, HTMLDivElement | null>>({
     prompt: null,
@@ -301,11 +304,13 @@ export function AgentDetailTabs({ agent, onAutosaveChange }: AgentDetailTabsProp
                   <ProcedureDetailBar
                     procedureId={selectedProcedureId}
                     autosave={procedureAutosave}
+                    onReload={() => setProcedureReloadKey((k) => k + 1)}
                   />
                 ) : null
               }>
               {selectedProcedureId ? (
                 <ProcedureEditor
+                  key={`${selectedProcedureId}:${procedureReloadKey}`}
                   procedureId={selectedProcedureId}
                   onAutosaveChange={setProcedureAutosave}
                 />

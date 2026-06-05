@@ -101,13 +101,23 @@ export async function getProcedureById(input: { organizationId: string; procedur
   return ok(result.value ?? null)
 }
 
-/** Update name + trigger DEFAULTS only (never touches version pointers). */
+/**
+ * Update name + trigger DEFAULTS only (never touches version pointers). Editing a
+ * selection-criteria field (whenToUse/triggerExamples/ruleset) marks the
+ * procedure dirty so the publish pill flips amber — those fields are versioned and
+ * only go live on publish. A name-only change does NOT flip the flag (name isn't
+ * versioned).
+ */
 export async function updateProcedure(input: {
   organizationId: string
   procedureId: string
   patch: { name?: string } & ProcedureDefaults
 }) {
   const { organizationId, procedureId, patch } = input
+  const criteriaChanged =
+    patch.whenToUse !== undefined ||
+    patch.triggerExamples !== undefined ||
+    patch.ruleset !== undefined
   const result = await fromDatabase(
     database
       .update(schema.Procedure)
@@ -116,6 +126,7 @@ export async function updateProcedure(input: {
         ...(patch.whenToUse !== undefined ? { whenToUse: patch.whenToUse } : {}),
         ...(patch.triggerExamples !== undefined ? { triggerExamples: patch.triggerExamples } : {}),
         ...(patch.ruleset !== undefined ? { ruleset: patch.ruleset } : {}),
+        ...(criteriaChanged ? { hasUnpublishedChanges: true } : {}),
         updatedAt: new Date(),
       })
       .where(
@@ -169,6 +180,93 @@ export async function updateDraftDoc(input: {
   )
   if (result.isErr()) return err(result.error)
   return ok(undefined)
+}
+
+/**
+ * Throw away draft edits: copy the active version's `doc` back into the draft
+ * version AND its selection criteria (whenToUse/triggerExamples/ruleset) back
+ * onto the procedure row, then clear `hasUnpublishedChanges`. With nothing
+ * published yet there's no live snapshot to revert to, so we just clear the flag.
+ * Sibling of {@link revertProcedure}, but it never repoints `activeVersionId` — a
+ * dedicated discard reads cleaner than a self-targeted revert.
+ */
+export async function discardProcedureDraft(input: {
+  organizationId: string
+  procedureId: string
+}) {
+  const { organizationId, procedureId } = input
+
+  const result = await fromDatabase(
+    database.transaction(async (tx) => {
+      const procedure = await tx.query.Procedure.findFirst({
+        where: and(
+          eq(schema.Procedure.id, procedureId),
+          eq(schema.Procedure.organizationId, organizationId)
+        ),
+        columns: { activeVersionId: true, draftVersionId: true },
+      })
+      if (!procedure) throw new Error('PROCEDURE_NOT_FOUND')
+
+      let criteria: {
+        whenToUse: string
+        triggerExamples: unknown[]
+        ruleset: unknown[]
+      } | null = null
+      if (procedure.activeVersionId && procedure.draftVersionId) {
+        const active = await tx.query.ProcedureVersion.findFirst({
+          where: eq(schema.ProcedureVersion.id, procedure.activeVersionId),
+          columns: { doc: true, whenToUse: true, triggerExamples: true, ruleset: true },
+        })
+        if (active) {
+          await tx
+            .update(schema.ProcedureVersion)
+            .set({ doc: active.doc })
+            .where(eq(schema.ProcedureVersion.id, procedure.draftVersionId))
+          criteria = {
+            whenToUse: active.whenToUse,
+            triggerExamples: active.triggerExamples,
+            ruleset: active.ruleset,
+          }
+        }
+      }
+
+      const [updated] = await tx
+        .update(schema.Procedure)
+        .set({
+          ...(criteria ?? {}),
+          hasUnpublishedChanges: false,
+          updatedAt: new Date(),
+        })
+        .where(eq(schema.Procedure.id, procedureId))
+        .returning()
+      if (!updated) throw new Error('Failed to clear draft flag')
+      return updated
+    }),
+    'discard-procedure-draft'
+  )
+  if (result.isErr()) return err(result.error)
+  return ok(result.value)
+}
+
+/** How many agents have this procedure attached — the delete blast-radius. */
+export async function countAgentsUsingProcedure(input: {
+  organizationId: string
+  procedureId: string
+}) {
+  const result = await fromDatabase(
+    database
+      .select({ count: sql<number>`count(*)::int` })
+      .from(schema.AgentProcedure)
+      .where(
+        and(
+          eq(schema.AgentProcedure.procedureId, input.procedureId),
+          eq(schema.AgentProcedure.organizationId, input.organizationId)
+        )
+      ),
+    'count-agents-using-procedure'
+  )
+  if (result.isErr()) return err(result.error)
+  return ok(result.value[0]?.count ?? 0)
 }
 
 export async function deleteProcedure(input: { organizationId: string; procedureId: string }) {
@@ -235,9 +333,11 @@ export function readCompiled(version: ProcedureVersionEntity): CompiledProcedure
 }
 
 /**
- * Snapshot the draft into a new numbered version (with its compiled tree) and
- * repoint `activeVersionId`. No-op republish: if the draft's `doc` is identical
- * to the active version's, skip the new version and return the active one.
+ * Snapshot the draft into a new numbered version — its compiled tree AND the
+ * procedure row's current selection criteria (whenToUse/triggerExamples/ruleset,
+ * the draft working copy) — then repoint `activeVersionId`. No-op republish: if
+ * the draft's `doc` AND all three criteria already match the active version, skip
+ * the new version and return the active one.
  */
 export async function publishProcedure(input: {
   organizationId: string
@@ -259,14 +359,21 @@ export async function publishProcedure(input: {
       })
       if (!procedure) throw new Error('PROCEDURE_NOT_FOUND')
 
-      // No-op republish: if the draft is identical to the active version's doc,
-      // skip the new snapshot, just clear the dirty flag, and return the active
-      // version (doc-equality is equivalent to the compiler's contentHash check).
+      // No-op republish: skip the new snapshot only if BOTH the doc and all three
+      // selection criteria are identical to the active version — otherwise a
+      // criteria-only edit (doc unchanged) would silently drop its snapshot. Then
+      // just clear the dirty flag and return the active version.
       if (procedure.activeVersionId) {
         const active = await tx.query.ProcedureVersion.findFirst({
           where: eq(schema.ProcedureVersion.id, procedure.activeVersionId),
         })
-        if (active && JSON.stringify(active.doc) === JSON.stringify(doc)) {
+        const unchanged =
+          active &&
+          JSON.stringify(active.doc) === JSON.stringify(doc) &&
+          active.whenToUse === procedure.whenToUse &&
+          JSON.stringify(active.triggerExamples) === JSON.stringify(procedure.triggerExamples) &&
+          JSON.stringify(active.ruleset) === JSON.stringify(procedure.ruleset)
+        if (unchanged) {
           if (procedure.hasUnpublishedChanges) {
             await tx
               .update(schema.Procedure)
@@ -293,6 +400,9 @@ export async function publishProcedure(input: {
           label: label ?? null,
           doc: doc as Jsonb,
           compiled: compiled as unknown as Jsonb,
+          whenToUse: procedure.whenToUse,
+          triggerExamples: procedure.triggerExamples,
+          ruleset: procedure.ruleset,
           editorId: editorId ?? null,
         })
         .returning()
@@ -311,7 +421,11 @@ export async function publishProcedure(input: {
   return ok(result.value)
 }
 
-/** Repoint `activeVersionId` at an older published version + copy its doc into the draft. */
+/**
+ * Repoint `activeVersionId` at an older published version, copy its `doc` into the
+ * draft version, AND restore its selection criteria onto the procedure row (so the
+ * draft working copy matches the version the user restored).
+ */
 export async function revertProcedure(input: {
   organizationId: string
   procedureId: string
@@ -340,7 +454,14 @@ export async function revertProcedure(input: {
 
       await tx
         .update(schema.Procedure)
-        .set({ activeVersionId: toVersionId, hasUnpublishedChanges: false, updatedAt: new Date() })
+        .set({
+          activeVersionId: toVersionId,
+          whenToUse: target.whenToUse,
+          triggerExamples: target.triggerExamples,
+          ruleset: target.ruleset,
+          hasUnpublishedChanges: false,
+          updatedAt: new Date(),
+        })
         .where(eq(schema.Procedure.id, procedureId))
 
       if (procedure.draftVersionId) {

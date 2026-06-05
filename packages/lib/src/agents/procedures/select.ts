@@ -30,12 +30,15 @@ export type SelectionResult =
  * `agents` org-cache projection; Phase 1 can read them via the Phase 0 `queries.ts`
  * (`listAgentProcedures` + `getProcedureById` + `getProcedureVersionById`) as a
  * stand-in — `ResolvedCandidate[]` is the stable seam, so the swap is one line in the
- * caller. `resolved` is `override ?? default` for each trigger field.
+ * caller. `resolved` is `link.*Override ?? activeVersion.<field>` for each trigger
+ * field — the criteria DEFAULTS are read off the ACTIVE VERSION's snapshot (the
+ * versioned model), NOT the mutable procedure row, so unpublished edits never reach
+ * a live run.
  */
 export interface ResolvedCandidate {
   link: AgentProcedureEntity // enabled, priority, *Override fields
-  procedure: ProcedureEntity // defaults (whenToUse/triggerExamples/ruleset) + activeVersionId
-  activeVersion: ProcedureVersionEntity & { compiled: CompiledProcedure } // the pinned build
+  procedure: ProcedureEntity // id + activeVersionId (criteria DEFAULTS come from activeVersion)
+  activeVersion: ProcedureVersionEntity & { compiled: CompiledProcedure } // pinned build + criteria snapshot
   resolved: {
     whenToUse: string
     triggerExamples: TriggerExample[]
