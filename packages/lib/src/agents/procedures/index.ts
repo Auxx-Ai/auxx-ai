@@ -10,16 +10,19 @@ export type { CompileError, CompileResult } from './compile'
 export { compileProcedure } from './compile'
 export { buildProcedureFieldResolver } from './context'
 export {
-  type CodeStepAttrs,
+  type CodeBlockMapEntry,
+  type ConditionBlockAttrs,
   type ConditionCaseAttrs,
+  isOwnStepBadge,
   type LocalAttributeNodeAttrs,
+  type ParsedStepBadge,
   PROCEDURE_NODE_TYPES,
   type ProcedureNodeType,
-  type RoutingStepAttrs,
-  type SubProcedureNodeAttrs,
+  parseStepBadgeId,
+  STEP_BADGE_PREFIXES,
+  type SubProcedureMapEntry,
   type TiptapDoc,
   type TiptapNode,
-  type ToolStepAttrs,
 } from './nodes'
 export type {
   AgentProcedureEntity,

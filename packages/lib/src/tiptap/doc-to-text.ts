@@ -19,6 +19,43 @@ interface DocToTextOptions {
    * workflow nodes.
    */
   variables?: (variableId: string) => string
+  /**
+   * Optional v9-procedure doc-level maps, used to resolve the human name of an
+   * inline step badge (`subprocedure:<id>` / `code:<id>`). When unset, badges
+   * render with a generic marker (`[run sub-procedure]`, `[run code]`). Pure
+   * additive option — non-procedure docs ignore it entirely.
+   */
+  procedureMaps?: {
+    subProcedures?: { id: string; name: string }[]
+    codeBlocks?: { id: string; name: string }[]
+  }
+}
+
+/**
+ * Render an inline procedure step badge (`reference` node whose `attrs.id` is a
+ * step prefix) to a one-line human marker. Returns `null` for a plain reference
+ * id so the caller falls through to ordinary reference rendering. The prefix
+ * grammar mirrors `agents/procedures/nodes.ts` `parseStepBadgeId` — inlined here
+ * because the `tiptap` module must not import other lib modules (file header).
+ */
+function renderStepBadge(id: string, maps: DocToTextOptions['procedureMaps']): string | null {
+  if (id.startsWith('subprocedure:')) {
+    const subId = id.slice('subprocedure:'.length)
+    const name = maps?.subProcedures?.find((s) => s.id === subId)?.name
+    return name ? `[run sub-procedure ${name}]` : '[run sub-procedure]'
+  }
+  if (id.startsWith('code:')) {
+    const codeId = id.slice('code:'.length)
+    const name = maps?.codeBlocks?.find((c) => c.id === codeId)?.name
+    return name ? `[run code ${name}]` : '[run code]'
+  }
+  if (id.startsWith('route:')) {
+    const payload = id.slice('route:'.length)
+    if (payload === 'handoff') return '[hand off]'
+    if (payload.startsWith('switch:')) return '[switch procedure]'
+    return '[end]' // route:finished + any unknown route payload
+  }
+  return null
 }
 
 /**
@@ -53,12 +90,6 @@ const BLOCK_CONTAINER_TYPES = new Set([
   // KB block schema — `Doc -> block -> inline`. Each `block` is a block-
   // level container that should join its siblings with newlines.
   'block',
-  // v9 procedure condition arms — `conditionBlock -> (conditionCase | conditionElse) -> block+`.
-  // The arm bodies are block-level; join their children with newlines like any block container.
-  'conditionCase',
-  'conditionElse',
-  // A named local sub-procedure body is block-level prose too.
-  'subProcedure',
 ])
 
 // Inline containers whose children are inline (text + chips) — join with ''.
@@ -110,7 +141,12 @@ function summarizeGroup(group: unknown): string {
   return parts.join(' ')
 }
 
-function walkNode(node: TiptapNode, options: DocToTextOptions, caseIdx?: number): string {
+function walkNode(
+  node: TiptapNode,
+  options: DocToTextOptions,
+  caseIdx?: number,
+  blockMode?: 'text' | 'structured'
+): string {
   if (typeof node.text === 'string') return node.text
   if (node.type === 'mention' || node.type === 'mentionRecord' || node.type === 'mentionAgent') {
     const label = (node.attrs?.label as string | undefined) ?? ''
@@ -119,6 +155,9 @@ function walkNode(node: TiptapNode, options: DocToTextOptions, caseIdx?: number)
   if (node.type === 'reference') {
     const id = typeof node.attrs?.id === 'string' ? (node.attrs.id as string) : ''
     if (!id) return ''
+    // v9 procedure inline step badges → a human marker; plain refs fall through.
+    const badge = renderStepBadge(id, options.procedureMaps)
+    if (badge !== null) return badge
     return options.references ? options.references(id) : `[reference](${id})`
   }
   if (node.type === 'variable-node') {
@@ -131,19 +170,31 @@ function walkNode(node: TiptapNode, options: DocToTextOptions, caseIdx?: number)
   // ── v9 procedure control-flow nodes ──────────────────────────────────────
   // The IF / ELSE IF keyword comes from each `conditionCase`'s POSITION in the
   // block (there is no `kind` attr) — the block handler threads the running index.
+  // `mode` is block-level (decision D1): text → render the NL `conditionPredicate`
+  // child; structured → summarize the case's `group`.
   if (node.type === 'conditionBlock') {
+    const mode = node.attrs?.mode === 'structured' ? 'structured' : 'text'
     let idx = 0
     return (node.content ?? [])
       .map((arm) =>
-        arm.type === 'conditionCase' ? walkNode(arm, options, idx++) : walkNode(arm, options)
+        arm.type === 'conditionCase' ? walkNode(arm, options, idx++, mode) : walkNode(arm, options)
       )
       .filter((s) => s.length > 0)
       .join('\n')
   }
   if (node.type === 'conditionCase') {
     const kw = (caseIdx ?? 0) === 0 ? 'IF' : 'ELSE IF'
-    const pred = summarizeGroup(node.attrs?.group)
+    const pred =
+      blockMode === 'structured'
+        ? summarizeGroup(node.attrs?.group)
+        : (node.content ?? [])
+            .filter((c) => c.type === 'conditionPredicate')
+            .map((c) => walkNode(c, options))
+            .join(' ')
+            .trim()
+    // Body = the arm's children EXCEPT the leading `conditionPredicate` writer.
     const body = (node.content ?? [])
+      .filter((c) => c.type !== 'conditionPredicate')
       .map((c) => walkNode(c, options))
       .filter((s) => s.length > 0)
       .join('\n')
@@ -156,18 +207,12 @@ function walkNode(node: TiptapNode, options: DocToTextOptions, caseIdx?: number)
       .join('\n')
     return `ELSE:\n${indent(body)}`
   }
-  // Step leaves — one-line markers for the read-only overview.
-  if (node.type === 'routingStep') {
-    const outcome = node.attrs?.outcome
-    if (outcome === 'handoff') return '[handoff]'
-    if (outcome === 'switch') return '[switch procedure]'
-    if (outcome === 'call') return '[run sub-procedure]'
-    return '[end]'
-  }
-  if (node.type === 'codeStep') return '[run code]'
-  if (node.type === 'toolStep') {
-    const toolName = typeof node.attrs?.toolName === 'string' ? node.attrs.toolName : ''
-    return toolName ? `[call ${toolName}]` : '[call tool]'
+  // `conditionPredicate` holds inline NL text + `@` attribute badges — join inline.
+  if (node.type === 'conditionPredicate') {
+    return (node.content ?? [])
+      .map((c) => walkNode(c, options))
+      .filter((s) => s.length > 0)
+      .join('')
   }
 
   if (Array.isArray(node.content)) {

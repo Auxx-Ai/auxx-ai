@@ -6,7 +6,7 @@ import type { ConditionGroup } from '@auxx/lib/conditions/client'
 import { Section } from '@auxx/ui/components/section'
 import { Textarea } from '@auxx/ui/components/textarea'
 import { Filter, Info, Tags } from 'lucide-react'
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { ConditionContainer, ConditionProvider } from '~/components/conditions'
 import { useProcedureConditionConfig } from '../hooks/use-procedure-condition-config'
 import { TriggerExamplesEditor } from './trigger-examples-editor'
@@ -42,9 +42,21 @@ export function ProcedureTriggerHeader({
     false
   )
 
+  // `whenToUse` is a continuously-typed field, so it keeps LOCAL state rather
+  // than binding to the async optimistic store value — a server response (or a
+  // background refetch) settling mid-keystroke can never clobber the textarea.
+  // The store overlay still updates via `onPatch` (the detail-bar's Publish gate
+  // reads it). Seeded once per procedure via the `key` the editor sets, so a
+  // procedure switch remounts this header with the new value.
+  const [whenToUseDraft, setWhenToUseDraft] = useState(whenToUse)
+  const handleWhenToUse = (value: string) => {
+    setWhenToUseDraft(value)
+    onPatch({ whenToUse: value })
+  }
+
   const groups = useMemo(() => (ruleset.length > 0 ? ruleset : []), [ruleset])
   const allConditions = useMemo(() => groups.flatMap((g) => g.conditions ?? []), [groups])
-  const whenToUseEmpty = whenToUse.trim() === ''
+  const whenToUseEmpty = whenToUseDraft.trim() === ''
 
   return (
     <>
@@ -56,8 +68,8 @@ export function ProcedureTriggerHeader({
         initialOpen
         collapsible={false}>
         <Textarea
-          value={whenToUse}
-          onChange={(e) => onPatch({ whenToUse: e.target.value })}
+          value={whenToUseDraft}
+          onChange={(e) => handleWhenToUse(e.target.value)}
           placeholder='Describe when this procedure should run…'
           className='min-h-16 text-sm'
         />

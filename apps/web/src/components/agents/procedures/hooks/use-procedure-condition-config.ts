@@ -9,7 +9,10 @@ import { useCallback, useMemo } from 'react'
 import type { ConditionSystemConfig, FieldDefinition } from '~/components/conditions'
 import { useResourceFields } from '~/components/resources/hooks/use-resource-fields'
 
-/** CRM entity slugs whose fields back the STRUCTURED condition mode. */
+// CRM entity keys whose fields back the STRUCTURED condition mode. These are the
+// singular `entityType` values (`packages/database/enums.ts` SystemEntityTypes),
+// which the resource store indexes alongside id / apiSlug — confirmed valid
+// `resourceMap` lookup keys for the system contact + thread resources.
 const CONTACT_SLUG = 'contact'
 const THREAD_SLUG = 'thread'
 
@@ -43,11 +46,9 @@ function localToField(attr: LocalAttribute): FieldDefinition {
  * predicate mode — the trigger ruleset (multi-group: `singleGroup=false`) and
  * each `conditionCase` arm (single group: `singleGroup=true`). Fields are the CRM
  * contact/thread resource fields plus the procedure's declared `localAttributes`
- * (the `var:*` "Temporary" group).
- *
- * NOTE: reconstruction of the original (untracked) hook — CRM resolution follows
- * the records-searchbar `toConditionFields` pattern; the contact/thread slugs may
- * need tuning to your entity-definition slugs.
+ * (the `var:*` "Temporary" group). CRM resolution follows the records-searchbar
+ * `toConditionFields` pattern; the contact/thread keys are the system
+ * `entityType` values the resource store indexes (confirmed valid lookup keys).
  */
 export function useProcedureConditionConfig(
   localAttributes: LocalAttribute[],

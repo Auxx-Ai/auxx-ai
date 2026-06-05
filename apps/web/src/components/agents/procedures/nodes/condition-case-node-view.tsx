@@ -8,9 +8,10 @@ import type { NodeViewProps } from '@tiptap/react'
 import { NodeViewContent, NodeViewWrapper } from '@tiptap/react'
 import { GitBranch, X } from 'lucide-react'
 import { ConditionContainer, ConditionProvider } from '~/components/conditions'
+import { useConfirm } from '~/hooks/use-confirm'
 import { useProcedureConditionConfig } from '../hooks/use-procedure-condition-config'
 import { useProcedureEditorContext } from '../ui/procedure-editor-context'
-import { nodePos } from './condition-helpers'
+import { applyBlockMode, findParentBlock, nodePos, switchLosesData } from './condition-helpers'
 
 /**
  * `conditionCase` view — one IF / ELSE-IF arm. The gutter badge + keyword reflect
@@ -23,11 +24,37 @@ import { nodePos } from './condition-helpers'
  */
 export function ConditionCaseNodeView({ node, editor, getPos, updateAttributes }: NodeViewProps) {
   const ctx = useProcedureEditorContext()
+  const [confirm, ConfirmDialog] = useConfirm()
   const mode = (node.attrs.mode as string) ?? 'text'
   const { config, getAvailableFields, getFieldDefinition } = useProcedureConditionConfig(
     ctx?.localAttributes ?? [],
     true
   )
+
+  // The toggle is rendered per-arm but writes the PARENT block's `mode` and
+  // mirrors it onto every arm (decision D1 — flip one → all flip). Gated by a
+  // confirm when authored data in the current mode would be left unused.
+  const changeMode = async (next: 'text' | 'structured') => {
+    if (next === mode) return
+    const parent = findParentBlock(editor, getPos)
+    if (!parent) {
+      updateAttributes({ mode: next }) // fallback: at least flip this arm
+      return
+    }
+    if (switchLosesData(parent.node, next)) {
+      const ok = await confirm({
+        title: 'Switch condition mode?',
+        description:
+          next === 'structured'
+            ? 'All branches switch to Rules. The text predicates you wrote stay saved but are ignored until you switch back.'
+            : 'All branches switch to Text. The rules you built stay saved but are ignored until you switch back.',
+        confirmText: 'Switch',
+        cancelText: 'Cancel',
+      })
+      if (!ok) return
+    }
+    applyBlockMode(editor, parent.pos, next)
+  }
 
   const ordinal = (() => {
     const pos = nodePos(getPos)
@@ -67,7 +94,7 @@ export function ConditionCaseNodeView({ node, editor, getPos, updateAttributes }
           {ordinal === 0 ? 'If' : 'Else if'}
         </span>
         <div className='ml-auto flex items-center gap-1'>
-          <ModeToggle mode={mode} onChange={(next) => updateAttributes({ mode: next })} />
+          <ModeToggle mode={mode} onChange={changeMode} />
           <button
             type='button'
             onClick={removeArm}
@@ -95,11 +122,18 @@ export function ConditionCaseNodeView({ node, editor, getPos, updateAttributes }
         )}
         <NodeViewContent />
       </div>
+      <ConfirmDialog />
     </NodeViewWrapper>
   )
 }
 
-function ModeToggle({ mode, onChange }: { mode: string; onChange: (mode: string) => void }) {
+function ModeToggle({
+  mode,
+  onChange,
+}: {
+  mode: string
+  onChange: (mode: 'text' | 'structured') => void
+}) {
   return (
     <div
       className='flex items-center rounded-md border border-border p-0.5 text-[11px]'

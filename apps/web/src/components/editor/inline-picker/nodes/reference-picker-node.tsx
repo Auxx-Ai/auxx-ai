@@ -43,6 +43,7 @@ export type ReferenceTab =
   | 'code'
   | 'subprocedure'
   | 'condition'
+  | 'attribute'
 
 /**
  * Default tab set rendered by `@`-pickers. Opt-in tabs (currently just
@@ -65,6 +66,7 @@ export const TAB_LABEL: Record<ReferenceTab, string> = {
   code: 'Code',
   subprocedure: 'Sub-procedure',
   condition: 'Condition',
+  attribute: 'Attribute',
 }
 
 /** Resolve digit (1–9) → tab from the configured tab list. */

@@ -27,6 +27,14 @@ export const ConditionBlock = Node.create({
         parseHTML: (el) => el.getAttribute('data-id'),
         renderHTML: (attrs) => (attrs.id ? { 'data-id': attrs.id } : {}),
       },
+      // Block-level evaluation mode (decision D1) — the compiler's source of
+      // truth for the whole IF/ELSE-IF/ELSE construct. The per-arm toggle mirrors
+      // it onto every `conditionCase` (flip one → all flip) for reactive rendering.
+      mode: {
+        default: 'text',
+        parseHTML: (el) => el.getAttribute('data-mode') ?? 'text',
+        renderHTML: (attrs) => ({ 'data-mode': attrs.mode ?? 'text' }),
+      },
     }
   },
 

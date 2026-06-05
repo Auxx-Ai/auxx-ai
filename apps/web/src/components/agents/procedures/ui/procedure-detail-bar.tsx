@@ -3,11 +3,10 @@
 
 import { Button } from '@auxx/ui/components/button'
 import { useNavStack } from '@auxx/ui/components/nav-stack'
-import { toastError } from '@auxx/ui/components/toast'
 import { ChevronLeft } from 'lucide-react'
-import { useCallback } from 'react'
-import { api } from '~/trpc/react'
 import { AutosaveIndicator, type AutosaveState } from '../../ui/shared/autosave-indicator'
+import { useProcedure } from '../hooks/use-procedure'
+import { useProcedureMutations } from '../hooks/use-procedure-mutations'
 
 interface ProcedureDetailBarProps {
   procedureId: string
@@ -26,23 +25,13 @@ interface ProcedureDetailBarProps {
  */
 export function ProcedureDetailBar({ procedureId, autosave }: ProcedureDetailBarProps) {
   const { pop } = useNavStack()
-  const utils = api.useUtils()
-  const query = api.procedure.getById.useQuery({ id: procedureId })
-  const publish = api.procedure.publish.useMutation()
+  // Store-backed (optimistic) meta — the title + Publish-enabled state track
+  // live edits because both read the same overlay the editor writes to.
+  const { meta } = useProcedure(procedureId)
+  const { publish, isPublishing } = useProcedureMutations()
 
-  const data = query.data
-  const name = data?.name ?? 'Procedure'
-  const whenToUseEmpty = (data?.whenToUse ?? '').trim() === ''
-
-  const handlePublish = useCallback(async () => {
-    try {
-      await publish.mutateAsync({ id: procedureId })
-      await utils.procedure.getById.invalidate({ id: procedureId })
-      await utils.procedure.listVersions.invalidate({ id: procedureId })
-    } catch (err) {
-      toastError({ title: 'Publish failed', description: (err as Error).message })
-    }
-  }, [publish, procedureId, utils])
+  const name = meta?.name ?? 'Procedure'
+  const whenToUseEmpty = (meta?.whenToUse ?? '').trim() === ''
 
   return (
     <div className='flex h-9 items-center gap-2 px-2'>
@@ -56,10 +45,10 @@ export function ProcedureDetailBar({ procedureId, autosave }: ProcedureDetailBar
         {/* TODO: version-history dropdown (procedure.listVersions + revert) lands here. */}
         <Button
           size='sm'
-          loading={publish.isPending}
+          loading={isPublishing}
           loadingText='Publishing…'
           disabled={whenToUseEmpty}
-          onClick={handlePublish}>
+          onClick={() => void publish(procedureId)}>
           Publish
         </Button>
       </div>

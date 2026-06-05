@@ -6,6 +6,7 @@ import type { RecordId } from '@auxx/lib/resources/client'
 import { cn } from '@auxx/ui/lib/utils'
 import { useEffect, useImperativeHandle, useMemo, useRef } from 'react'
 import {
+  AttributePickerList,
   CodePickerList,
   ConditionPickerList,
   RoutingPickerList,
@@ -244,6 +245,7 @@ export function ReferencePickerContent({
           <CodePickerList query={query} onSelect={(id) => onSelect(id as unknown as RecordId)} />
         )}
         {tab === 'condition' && <ConditionPickerList />}
+        {tab === 'attribute' && <AttributePickerList query={query} />}
       </div>
     </div>
   )
