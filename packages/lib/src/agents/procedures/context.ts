@@ -5,6 +5,7 @@ import type { Subject, ToolContext } from '../../ai/agent-framework/tool-context
 import type { FieldResolver } from '../../conditions/evaluate'
 import type { ConditionGroup } from '../../conditions/types'
 import { buildResolveVarSource } from '../bindings/resolve'
+import type { ProcedureFrame } from './types'
 
 /**
  * The deterministic selection pre-filter (`select.ts`) gates candidate procedures
@@ -105,4 +106,95 @@ export async function buildProcedureFieldResolver(
   // The evaluator hands us the already-simplified field id (`extractFieldId`); the
   // `entity` arg is ignored — we read the pre-resolved map.
   return (_entity, fieldId) => values.get(fieldId)
+}
+
+// ── Phase 3: in-procedure `condition` predicates ───────────────────────────
+
+/** The `var:` prefix a declared local-attribute condition field carries (`use-procedure-condition-config.ts`). */
+const LOCAL_ATTR_PREFIX = 'var:'
+
+/**
+ * The Context-Variables store key a declared procedure-local attribute resolves
+ * to — namespaced by the **running procedure version**, NOT the frame. The same
+ * `procedureVersionId` is deliberate both ways (README / PROCEDURE-STACK #5):
+ *
+ *  - a LOCAL `call` frame carries the *same* `procedureVersionId` as its caller,
+ *    so a sub-procedure **shares** the parent's locals (how it returns a value);
+ *  - a CROSS-procedure push (`switch` / `digression`) carries a *different*
+ *    `procedureVersionId`, so it gets an **isolated** scope and can't clobber a
+ *    parent's `var:*`.
+ *
+ * Colons stay inside the store key's `root` (`parseContextRef` only splits a
+ * `var:` ref on `.` / `[`), so this is a single flat key. `name` is expected to
+ * be a plain identifier; a name containing `.`/`[` would nest (authoring contract).
+ */
+export function scopedVar(frame: ProcedureFrame, name: string): string {
+  return `var:__la:${frame.procedureVersionId}:${name}`
+}
+
+/**
+ * Build the synchronous {@link FieldResolver} an in-procedure `condition` step
+ * evaluates against. Unlike selection's resolver ({@link buildProcedureFieldResolver}),
+ * this one ALSO reads procedure-local `var:*` scratch — the procedure is running,
+ * so its declared `localAttributes` are readable (PROCEDURE-STACK #5). It reads:
+ *
+ *  - `var:<name>` — a declared local attribute, via `ctx.context.read` of the
+ *    version-scoped key ({@link scopedVar}); absent → `undefined` (gate-by-absence).
+ *  - any other `fieldId` — a CRM `FieldReference` resolved off `ctx.subject.anchors`
+ *    by the v8 resolver, exactly like selection.
+ *
+ * It deliberately does NOT resolve `tool:*` / `call:*` — those are latest-wins,
+ * turn-scoped captures, ambiguous when a tool runs more than once. Procedure logic
+ * reads named attributes only; a tool result reaches a condition solely by being
+ * written into a `localAttribute`.
+ *
+ * `evaluateConditions` is **synchronous** but reads (store + v8 resolver) are
+ * **async**, so the caller {@link prime}s every referenced field into an in-memory
+ * map first; the returned `resolver` is then a pure `Map.get` keyed by the
+ * evaluator's *simple* field id (`var:cancel_result` → `cancel_result`, byte-for-byte
+ * aligned with `evaluate.ts` `extractFieldId`). `prime` is incremental + idempotent
+ * (a field is resolved once), so the stepper can call it per `condition` step as it
+ * advances through several in one turn, accumulating into the shared map.
+ */
+export function buildProcedurePredicateResolver(
+  ctx: ToolContext,
+  frame: ProcedureFrame
+): { resolver: FieldResolver<unknown>; prime: (groups: ConditionGroup[]) => Promise<void> } {
+  const resolveVar = buildResolveVarSource(ctx)
+  const subject = ctx.subject
+  const values = new Map<string, unknown>()
+  const seen = new Set<string>()
+
+  const resolveOne = async (fieldId: string | string[]): Promise<unknown> => {
+    // Declared local attribute (`var:<name>`) — read the version-scoped store key.
+    if (typeof fieldId === 'string' && fieldId.startsWith(LOCAL_ATTR_PREFIX)) {
+      try {
+        return await ctx.context.read(scopedVar(frame, fieldId.slice(LOCAL_ATTR_PREFIX.length)))
+      } catch {
+        return undefined
+      }
+    }
+    // CRM FieldReference — resolve off subject anchors (v8), gate-by-absence. A bare
+    // legacy id (no entity root) or a missing subject yields `undefined`.
+    const ref = toVarRef(fieldId)
+    if (!ref || !subject) return undefined
+    try {
+      return await resolveVar({ kind: 'var', ref }, subject)
+    } catch {
+      // In-procedure predicates are best-effort — a misconfig gates by absence
+      // rather than throwing the turn.
+      return undefined
+    }
+  }
+
+  const prime = async (groups: ConditionGroup[]): Promise<void> => {
+    for (const fieldId of collectFieldRefs(groups)) {
+      const key = simpleKey(fieldId)
+      if (seen.has(key)) continue
+      seen.add(key)
+      values.set(key, await resolveOne(fieldId))
+    }
+  }
+
+  return { resolver: (_entity, fieldId) => values.get(fieldId), prime }
 }

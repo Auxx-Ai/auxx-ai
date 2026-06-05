@@ -4,7 +4,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Subject, ToolContext } from '../../../ai/agent-framework/tool-context'
 import { evaluateConditions } from '../../../conditions/evaluate'
 import type { Condition, ConditionGroup } from '../../../conditions/types'
-import { buildProcedureFieldResolver } from '../context'
+import { buildProcedureFieldResolver, buildProcedurePredicateResolver, scopedVar } from '../context'
+import type { ProcedureFrame } from '../types'
 
 // The v8 binding resolver is mocked: it returns whatever `resolveMap` holds for the
 // ref (joined for FieldPath), so the test controls "what the subject resolves to".
@@ -93,5 +94,95 @@ describe('buildProcedureFieldResolver', () => {
     ])
     expect(resolver(subject, 'status')).toBe('x')
     expect(innerCalls).toHaveLength(1) // deduped by simple key
+  })
+})
+
+const frame: ProcedureFrame = {
+  procedureId: 'p1',
+  procedureVersionId: 'v1',
+  cursor: 's0',
+  status: 'running',
+  history: [],
+  pushedBy: 'selection',
+}
+
+/** A ToolContext whose `context.read` serves `store` and whose `subject` is the empty subject. */
+function makeCtx(store: Record<string, unknown>, reads?: string[]): ToolContext {
+  return {
+    subject,
+    context: {
+      read: async (ref: string) => {
+        reads?.push(ref)
+        return store[ref]
+      },
+    },
+  } as unknown as ToolContext
+}
+
+describe('scopedVar', () => {
+  it('namespaces a local attribute under the procedure VERSION as a flat var key', () => {
+    expect(scopedVar(frame, 'cancel_result')).toBe('var:__la:v1:cancel_result')
+  })
+
+  it('a different procedureVersionId yields an isolated key (cross-procedure push)', () => {
+    const other: ProcedureFrame = { ...frame, procedureVersionId: 'v2' }
+    expect(scopedVar(other, 'cancel_result')).toBe('var:__la:v2:cancel_result')
+    expect(scopedVar(other, 'cancel_result')).not.toBe(scopedVar(frame, 'cancel_result'))
+  })
+})
+
+describe('buildProcedurePredicateResolver', () => {
+  it('reads a declared local attribute from the VERSION-scoped store key', async () => {
+    const ctxV = makeCtx({ 'var:__la:v1:cancel_result': 'done' })
+    const { resolver, prime } = buildProcedurePredicateResolver(ctxV, frame)
+    const groups = [group([cond('var:cancel_result', 'is', 'done')])]
+    await prime(groups)
+    // The evaluator strips `var:` → looks up the simple `cancel_result`.
+    expect(resolver(subject, 'cancel_result')).toBe('done')
+    expect(evaluateConditions(subject, groups, resolver)).toBe(true)
+  })
+
+  it('isolates locals by version — a v2 frame does not see a v1 write', async () => {
+    const ctxV = makeCtx({ 'var:__la:v1:cancel_result': 'done' })
+    const v2Frame: ProcedureFrame = { ...frame, procedureVersionId: 'v2' }
+    const { resolver, prime } = buildProcedurePredicateResolver(ctxV, v2Frame)
+    await prime([group([cond('var:cancel_result', 'is', 'done')])])
+    expect(resolver(subject, 'cancel_result')).toBeUndefined() // v2 key is empty
+  })
+
+  it('resolves CRM FieldReferences off the subject, same as selection', async () => {
+    resolveMap['contact:status'] = 'OPEN'
+    const { resolver, prime } = buildProcedurePredicateResolver(makeCtx({}), frame)
+    await prime([group([cond('contact:status', 'is', 'OPEN')])])
+    expect(resolver(subject, 'status')).toBe('OPEN')
+  })
+
+  it('mixes a local var and a CRM field in one group', async () => {
+    resolveMap['contact:status'] = 'OPEN'
+    const ctxV = makeCtx({ 'var:__la:v1:verified': true })
+    const { resolver, prime } = buildProcedurePredicateResolver(ctxV, frame)
+    const groups = [group([cond('contact:status', 'is', 'OPEN'), cond('var:verified', 'is', true)])]
+    await prime(groups)
+    expect(evaluateConditions(subject, groups, resolver)).toBe(true)
+  })
+
+  it('gate-by-absence: an unwritten local attribute is undefined, never throws', async () => {
+    const ctxV = makeCtx({}) // store empty
+    const { resolver, prime } = buildProcedurePredicateResolver(ctxV, frame)
+    const groups = [group([cond('var:cancel_result', 'is', 'done')])]
+    await prime(groups)
+    expect(resolver(subject, 'cancel_result')).toBeUndefined()
+    expect(evaluateConditions(subject, groups, resolver)).toBe(false)
+  })
+
+  it('prime is incremental + idempotent — each distinct field resolved once across calls', async () => {
+    const reads: string[] = []
+    const ctxV = makeCtx({ 'var:__la:v1:a': 1, 'var:__la:v1:b': 2 }, reads)
+    const { prime, resolver } = buildProcedurePredicateResolver(ctxV, frame)
+    await prime([group([cond('var:a', 'is', 1)])])
+    await prime([group([cond('var:a', 'is', 1), cond('var:b', 'is', 2)])]) // a repeated, b new
+    expect(reads).toEqual(['var:__la:v1:a', 'var:__la:v1:b']) // a read once, b once
+    expect(resolver(subject, 'a')).toBe(1)
+    expect(resolver(subject, 'b')).toBe(2)
   })
 })

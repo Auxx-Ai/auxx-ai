@@ -1,6 +1,12 @@
 // packages/lib/src/agents/procedures/index.ts
 
 export {
+  type BackstopVerdict,
+  backstopClassify,
+  classifyTextBranch,
+  goalMetCheck,
+} from './classifier'
+export {
   type ClassifierCandidate,
   type ClassifyDeps,
   type ConversationMessage,
@@ -8,7 +14,21 @@ export {
 } from './classify'
 export type { CompileError, CompileResult } from './compile'
 export { compileProcedure } from './compile'
-export { buildProcedureFieldResolver } from './context'
+export {
+  buildProcedureFieldResolver,
+  buildProcedurePredicateResolver,
+  scopedVar,
+} from './context'
+export {
+  advanceProcedure,
+  awaitCustomer,
+  digress,
+  endProcedure,
+  handoffToHuman,
+  PROC_SIGNAL_KEY,
+  PROCEDURE_CONTROL_TOOLS,
+  type ProcedureSignal,
+} from './control-tools'
 export {
   type CodeBlockMapEntry,
   type ConditionBlockAttrs,
@@ -50,6 +70,7 @@ export {
   updateDraftDoc,
   updateProcedure,
 } from './queries'
+export { buildReanchorBreadcrumb } from './re-anchor'
 export {
   type ResolvedCandidate,
   type SelectionResult,
@@ -67,6 +88,13 @@ export {
   replaceTop,
   top,
 } from './stack'
+export {
+  type InterpretResult,
+  interpretSignal,
+  type PrepareResult,
+  prepareTurn,
+  type StepperDeps,
+} from './stepper'
 export type {
   ArgBindingMap,
   CompiledProcedure,
