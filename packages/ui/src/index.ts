@@ -359,6 +359,8 @@ export {
 export { Toggle, toggleVariants } from './components/toggle'
 export { ToggleGroup, ToggleGroupItem } from './components/toggle-group'
 export {
+  SimpleTooltip,
+  type SimpleTooltipProps,
   Tooltip,
   TooltipContent,
   TooltipExplanation,

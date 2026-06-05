@@ -21,15 +21,12 @@ import {
   PromptEditorHeader,
 } from '~/components/editor/prompt-editor'
 import type { ReferencePickerHandle } from '~/components/pickers/reference-picker/reference-picker-content'
-import CollapseWrap from '~/components/workflow/ui/collapse-wrap'
 import type { AutosaveState } from '../../ui/shared/autosave-indicator'
 import { useProcedure } from '../hooks/use-procedure'
 import { useProcedureMutations } from '../hooks/use-procedure-mutations'
 import { CodeBlockEditor } from './code-block-editor'
 import { ProcedureEditorProvider } from './procedure-editor-context'
 import { ProcedureTriggerHeader } from './procedure-trigger-header'
-
-const COLLAPSED_MIN_HEIGHT = 120
 
 // Procedures opt into the admin tabs (Tools, Resources, Fields) exactly like the
 // persona editor, PLUS the procedure step tabs (Routing, Code, Sub-procedure,
@@ -97,8 +94,8 @@ function collectStepRefs(nodes: JSONContent[]): { subs: Set<string>; codes: Set<
 /**
  * The procedure authoring canvas. Visual structure is the **persona editor**
  * (`persona-editor.tsx`) verbatim — focus-gradient border, header with copy +
- * expand actions, `CollapseWrap`, the expand-to-dialog two-editor pattern — with
- * the procedure step nodes enabled and `@` as the only insertion surface.
+ * expand actions, the expand-to-dialog two-editor pattern — with the procedure
+ * step nodes enabled and `@` as the only insertion surface.
  *
  * Drill-in: sub-procedure / code-block bodies live OUTSIDE the prose tree in the
  * doc-level `subProcedures` / `codeBlocks` maps (plan §6). The inline badge cog
@@ -110,13 +107,9 @@ export function ProcedureEditor({ procedureId, onAutosaveChange }: ProcedureEdit
   const referencePickerRef = useRef<ReferencePickerHandle | null>(null)
   const { meta, draftDoc, isLoading, isLoaded } = useProcedure(procedureId)
   const { patchMeta, saveDoc } = useProcedureMutations({ onStateChange: onAutosaveChange })
-  // The heavy doc debounces at the editor level (KB's article-editor pattern);
-  // the light trigger meta debounces inside `patchMeta`.
-  const debouncedSaveDoc = useDebounceCallback(saveDoc, 1500)
 
   const [isExpanded, setExpanded] = useState(false)
   const [isFocused, setFocused] = useState(false)
-  const [isCollapsed, setCollapsed] = useState(true)
   const [isCopied, setIsCopied] = useState(false)
   const [activeEditor, setActiveEditor] = useState<Editor | null>(null)
   const [drillStack, setDrillStack] = useState<string[]>(['root'])
@@ -151,51 +144,58 @@ export function ProcedureEditor({ procedureId, onAutosaveChange }: ProcedureEdit
     setCodeBlocks(codeRef.current)
   }
 
-  const commit = useCallback(() => {
+  // Build + persist the draft from the current refs. The whole-tree orphan sweep
+  // runs HERE — inside the debounced flush — so it executes once per idle save,
+  // not on every keystroke. Reads the live refs at flush time, so a just-created
+  // entry whose badge insert lands a tick later is never dropped.
+  const flush = useCallback(() => {
     const content = mainContentRef.current
     const subs = subRef.current
     const codes = codeRef.current
     // Orphan sweep (plan §4 seam 5): persist only map entries still referenced by
-    // a badge somewhere in the prose (main body + every sub-procedure body). We
-    // filter the SAVED snapshot, not the in-memory refs, so a just-created entry
-    // whose badge insert lands a tick later is never dropped (the debounce
-    // coalesces to the final snapshot, which has both).
+    // a badge somewhere in the prose (main body + every sub-procedure body).
     const referenced = collectStepRefs([...content, ...subs.flatMap((s) => s.content)])
-    debouncedSaveDoc(procedureId, {
+    saveDoc(procedureId, {
       type: 'doc',
       content,
       localAttributes: localAttrRef.current,
       subProcedures: subs.filter((s) => referenced.subs.has(s.id)),
       codeBlocks: codes.filter((c) => referenced.codes.has(c.id)),
     })
-  }, [debouncedSaveDoc, procedureId])
+  }, [saveDoc, procedureId])
+
+  // The heavy doc debounces here (KB's article-editor pattern); the light trigger
+  // meta debounces inside `patchMeta`. Change handlers only touch refs + `commit()`.
+  const commit = useDebounceCallback(flush, 1500)
 
   const handleMainChange = useCallback(
-    ({ json }: { json: JSONContent; html: string }) => {
+    ({ json }: { json: JSONContent }) => {
       mainContentRef.current = readContent(json.content)
       commit()
     },
     [commit]
   )
 
+  // Content edits write only to `subRef` (the save source) — NOT React state.
+  // Sub-procedure bodies aren't read during render (each panel is seeded once
+  // from the ref), so skipping the setState keeps every keystroke from
+  // re-rendering the whole editor. State changes only on create/delete.
   const makeSubChange = useCallback(
     (id: string) =>
-      ({ json }: { json: JSONContent; html: string }) => {
-        const next = subRef.current.map((s) =>
+      ({ json }: { json: JSONContent }) => {
+        subRef.current = subRef.current.map((s) =>
           s.id === id ? { ...s, content: readContent(json.content) } : s
         )
-        subRef.current = next
-        setSubProcedures(next)
         commit()
       },
     [commit]
   )
 
+  // Same as sub-procedures: code text lives in `codeRef`; the textarea owns its
+  // own local state for responsiveness, so no per-keystroke parent re-render.
   const handleCodeChange = useCallback(
     (id: string, code: string) => {
-      const next = codeRef.current.map((c) => (c.id === id ? { ...c, code } : c))
-      codeRef.current = next
-      setCodeBlocks(next)
+      codeRef.current = codeRef.current.map((c) => (c.id === id ? { ...c, code } : c))
       commit()
     },
     [commit]
@@ -275,8 +275,6 @@ export function ProcedureEditor({ procedureId, onAutosaveChange }: ProcedureEdit
     setTimeout(() => setIsCopied(false), 2000)
   }, [activeEditor])
 
-  const handleUserActivity = useCallback(() => setCollapsed(false), [])
-
   // NavStack keeps the exiting panel mounted during the slide, so the old
   // editor's unmount cleanup (`onEditorReady(null)`) can land AFTER the new one
   // registered. Keep the newest live editor: ignore a null when the current one
@@ -343,51 +341,78 @@ export function ProcedureEditor({ procedureId, onAutosaveChange }: ProcedureEdit
   // PromptEditorContent on its slice; code → the code editor. NavStackPanels only
   // mounts the top panel (+ the one beneath during a transition), so editor
   // instances stay ~1-2 at a time despite the dynamic declaration.
-  const canvas = (
-    <NavStack stack={drillStack} onStackChange={setDrillStack} className='w-full'>
-      <NavStackPanels>
-        <NavStackPanel value='root' className='bg-transparent dark:bg-transparent shadow-none'>
-          <PromptEditorContent
-            initialContent={mainContentRef.current}
-            onChange={handleMainChange}
-            onEditorReady={handleEditorReady}
-            onFocusChange={setFocused}
-            onUserActivity={handleUserActivity}
-            referencePickerRef={referencePickerRef}
-            referenceTabs={PROCEDURE_REFERENCE_TABS}
-            enableProcedureNodes
-          />
-        </NavStackPanel>
-        {subProcedures.map((s) => (
+  //
+  // Memoized so it survives parent re-renders (e.g. trigger-header keystrokes that
+  // bump the meta store). Recomputes only on create/delete/drill — never on a body
+  // keystroke, since those write to refs, not state. Each panel's `initialContent`
+  // is read from the REF (the live source) so a remount after drill re-seeds the
+  // latest body, not the stale state snapshot.
+  const canvas = useMemo(
+    () => (
+      <NavStack
+        stack={drillStack}
+        onStackChange={setDrillStack}
+        className='w-full flex-1 flex flex-col'>
+        <NavStackPanels className='flex-1 flex flex-col'>
           <NavStackPanel
-            key={s.id}
-            value={`sub:${s.id}`}
-            className='bg-transparent dark:bg-transparent shadow-none'>
+            value='root'
+            className='flex-1 flex-col flex bg-transparent dark:bg-transparent shadow-none'>
             <PromptEditorContent
-              initialContent={s.content}
-              onChange={makeSubChange(s.id)}
+              initialContent={mainContentRef.current}
+              onChange={handleMainChange}
               onEditorReady={handleEditorReady}
               onFocusChange={setFocused}
-              onUserActivity={handleUserActivity}
               referencePickerRef={referencePickerRef}
               referenceTabs={PROCEDURE_REFERENCE_TABS}
               enableProcedureNodes
             />
           </NavStackPanel>
-        ))}
-        {codeBlocks.map((c) => (
-          <NavStackPanel
-            key={c.id}
-            value={`code:${c.id}`}
-            className='bg-transparent dark:bg-transparent shadow-none'>
-            <CodeBlockEditor code={c.code} onChange={(code) => handleCodeChange(c.id, code)} />
-          </NavStackPanel>
-        ))}
-      </NavStackPanels>
-    </NavStack>
+          {subProcedures.map((s) => (
+            <NavStackPanel
+              key={s.id}
+              value={`sub:${s.id}`}
+              className='flex-1 flex-col flex bg-transparent dark:bg-transparent shadow-none'>
+              <PromptEditorContent
+                initialContent={subRef.current.find((r) => r.id === s.id)?.content ?? s.content}
+                onChange={makeSubChange(s.id)}
+                onEditorReady={handleEditorReady}
+                onFocusChange={setFocused}
+                referencePickerRef={referencePickerRef}
+                referenceTabs={PROCEDURE_REFERENCE_TABS}
+                enableProcedureNodes
+              />
+            </NavStackPanel>
+          ))}
+          {codeBlocks.map((c) => (
+            <NavStackPanel
+              key={c.id}
+              value={`code:${c.id}`}
+              className='bg-transparent dark:bg-transparent shadow-none'>
+              <CodeBlockEditor
+                code={codeRef.current.find((r) => r.id === c.id)?.code ?? c.code}
+                onChange={(code) => handleCodeChange(c.id, code)}
+              />
+            </NavStackPanel>
+          ))}
+        </NavStackPanels>
+      </NavStack>
+    ),
+    [
+      drillStack,
+      subProcedures,
+      codeBlocks,
+      handleMainChange,
+      makeSubChange,
+      handleCodeChange,
+      handleEditorReady,
+    ]
   )
 
-  console.log('isFocused', isFocused)
+  const handlePatch = useCallback(
+    (p: Parameters<typeof patchMeta>[1]) => patchMeta(procedureId, p),
+    [patchMeta, procedureId]
+  )
+
   if (isLoading || !meta) return <EmptySection loading className='mx-3 my-3' />
 
   return (
@@ -398,10 +423,10 @@ export function ProcedureEditor({ procedureId, onAutosaveChange }: ProcedureEdit
         triggerExamples={meta.triggerExamples}
         ruleset={meta.ruleset}
         localAttributes={localAttributes}
-        onPatch={(p) => patchMeta(procedureId, p)}
+        onPatch={handlePatch}
       />
       <Section
-        title='When to use'
+        title='Procedure'
         icon={<ListChecks className='size-4' />}
         description='Describe the situation that should select this procedure.'
         initialOpen
@@ -417,14 +442,9 @@ export function ProcedureEditor({ procedureId, onAutosaveChange }: ProcedureEdit
             className={cn(isFocused ? 'bg-background' : 'bg-primary-200/30', 'rounded-lg border')}>
             {header}
             {!isExpanded && (
-              <CollapseWrap
-                minHeight={COLLAPSED_MIN_HEIGHT}
-                isCollapsed={isCollapsed}
-                onCollapsedChange={setCollapsed}
-                className='px-3'
-                gradientClassName='from-primary-200/30 dark:from-primary-200/30'>
-                <div className='relative flex w-full'>{canvas}</div>
-              </CollapseWrap>
+              <div className='px-3'>
+                <div className='relative flex w-full min-h-[300px]'>{canvas}</div>
+              </div>
             )}
           </div>
         </div>

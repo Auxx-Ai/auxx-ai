@@ -35,7 +35,8 @@ import styles from './prompt-editor.module.css'
 interface PromptEditorContentProps {
   /** Snapshot read on mount. Subsequent `agent.prompt` changes don't re-init the editor. */
   initialContent: JSONContent[] | null
-  onChange: (content: { json: JSONContent; html: string }) => void
+  /** `html` is a lazy getter — see `UseRichTextEditorOptions.onChange`. */
+  onChange: (content: { json: JSONContent; getHTML: () => string }) => void
   /**
    * Fired with the new editor on mount and `null` on unmount. The parent
    * uses this to drive header widgets (character count, copy) and to keep

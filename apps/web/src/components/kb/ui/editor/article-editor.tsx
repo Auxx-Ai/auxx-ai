@@ -66,10 +66,10 @@ export function ArticleEditor({ article, knowledgeBaseId }: ArticleEditorProps) 
   }, [])
 
   const persist = useCallback(
-    async (payload: { json: JSONContent; html: string }) => {
+    async (payload: { json: JSONContent; getHTML: () => string }) => {
       const body = (payload.json.content ?? []) as JSONContent[]
       await updateArticleContent(article.id, {
-        content: payload.html,
+        content: payload.getHTML(),
         contentJson: body,
       })
     },

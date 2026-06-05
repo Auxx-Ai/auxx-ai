@@ -12,7 +12,8 @@ import { PromptEditorContent } from './prompt-editor-content'
 export interface PromptEditorProps {
   /** Snapshot read on mount. Subsequent identity changes do NOT re-init the editor. */
   initialContent: JSONContent[] | null
-  onChange: (content: { json: JSONContent; html: string }) => void
+  /** `html` is a lazy getter — see `UseRichTextEditorOptions.onChange`. */
+  onChange: (content: { json: JSONContent; getHTML: () => string }) => void
   /**
    * Reference-picker tabs the editor exposes. Defaults to `DEFAULT_TABS`;
    * pass `[...DEFAULT_TABS, 'tools', 'resources', 'fields']` for the

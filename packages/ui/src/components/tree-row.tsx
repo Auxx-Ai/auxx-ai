@@ -1,8 +1,9 @@
 // packages/ui/src/components/tree-row.tsx
 'use client'
 
-import { TooltipExplanation } from '@auxx/ui/components/tooltip'
+import { SimpleTooltip, TooltipExplanation } from '@auxx/ui/components/tooltip'
 import { cn } from '@auxx/ui/lib/utils'
+import { cva, type VariantProps } from 'class-variance-authority'
 import { ChevronRight } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import React from 'react'
@@ -70,7 +71,7 @@ export function TreeRow({
   className,
   rowClassName,
 }: TreeRowProps) {
-  const paddingLeftRem = 0.5 + depth * INDENT_REM
+  const paddingLeftRem = 0 + depth * INDENT_REM
   // Connector sits on this row's icon center: paddingLeft + row px-1 (0.25rem) +
   // half of size-7 (0.875rem) = paddingLeft + 1.125rem. Child rows are one
   // INDENT_REM further in, so the gap between connector and child row is
@@ -178,5 +179,53 @@ export function TreeRow({
     </div>
   )
 }
+
+/**
+ * Hover-revealed icon button for a TreeRow's `actions`/`trailing` slot. Holds
+ * the text color (so `<Trash2 />` needs no class) and sizes child svgs to 3.5.
+ * Fades in on row hover via the `group/tree-row` group. Pass `tooltipText` to
+ * wrap it in a left-side tooltip; omit it for no tooltip.
+ */
+const treeRowButtonVariants = cva(
+  'inline-flex shrink-0 items-center justify-center rounded-md p-1 text-muted-foreground opacity-0 transition-opacity group-hover/tree-row:opacity-100 [&_svg]:size-3.5',
+  {
+    variants: {
+      variant: {
+        default: 'hover:bg-primary/5 hover:text-foreground',
+        destructive: 'hover:bg-destructive/10 hover:text-destructive',
+      },
+    },
+    defaultVariants: { variant: 'default' },
+  }
+)
+
+export interface TreeRowButtonProps
+  extends React.ComponentPropsWithoutRef<'button'>,
+    VariantProps<typeof treeRowButtonVariants> {
+  /** Tooltip text shown on the left. When omitted, no tooltip is rendered. */
+  tooltipText?: string
+}
+
+export function TreeRowButton({
+  variant,
+  className,
+  tooltipText,
+  type = 'button',
+  ...props
+}: TreeRowButtonProps) {
+  const button = (
+    <button type={type} className={cn(treeRowButtonVariants({ variant }), className)} {...props} />
+  )
+
+  if (!tooltipText) return button
+
+  return (
+    <SimpleTooltip side='left' content={tooltipText} allowInteraction>
+      {button}
+    </SimpleTooltip>
+  )
+}
+
+export { treeRowButtonVariants }
 
 export default React.memo(TreeRow)
