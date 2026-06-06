@@ -8,6 +8,7 @@ import { VisuallyHidden } from '@auxx/ui/components/visually-hidden'
 import { cn } from '@auxx/ui/lib/utils'
 import { ListChecks } from 'lucide-react'
 import { useCallback, useMemo, useState } from 'react'
+import { PROCEDURE_BLOCKS } from '~/components/editor/blocks/allowed-blocks'
 import type { ReferenceTab } from '~/components/editor/inline-picker/nodes/reference-picker-node'
 import {
   PromptCharacterCount,
@@ -33,6 +34,10 @@ export const PROCEDURE_REFERENCE_TABS: ReferenceTab[] = [
   'condition',
   'attribute',
 ]
+
+// Empty-block hint. Slash is dropped in procedures (`@` is the only insertion
+// surface), so the default "Press '/' for commands" placeholder would be wrong.
+export const PROCEDURE_PLACEHOLDER = 'Write a step, or type @ to add a tool, condition, or field…'
 
 /**
  * The procedure authoring canvas — slimmed to the ROOT prose surface (v9 Phase 6).
@@ -104,7 +109,9 @@ function ProcedureEditorBody({ draft }: { draft: ProcedureDraftContextValue }) {
       onFocusChange={setFocused}
       referencePickerRef={referencePickerRef}
       referenceTabs={PROCEDURE_REFERENCE_TABS}
-      enableProcedureNodes
+      allowedBlocks={PROCEDURE_BLOCKS}
+      slash={false}
+      placeholderText={PROCEDURE_PLACEHOLDER}
     />
   )
 

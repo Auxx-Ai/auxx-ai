@@ -1,6 +1,7 @@
 // apps/web/src/components/editor/slash-commands/block-commands.ts
 
 import type { Editor } from '@tiptap/react'
+import type { EditorBlock } from '../blocks/allowed-blocks'
 import type { SlashCommandItem } from './slash-command-picker'
 
 export type SlashRange = { from: number; to: number }
@@ -27,6 +28,29 @@ export interface BlockCommandDef extends SlashCommandItem {
   /** Free-form action — used when the insert is more than an attr swap
    *  (divider, image, table, etc.). */
   custom?: (editor: Editor, range: SlashRange) => void
+  /**
+   * The block kind this command produces, used for `allowedBlocks` filtering.
+   * For `spec`-based commands it defaults to `spec.blockType`; set it
+   * explicitly on `custom` commands (divider, table, tabs, …).
+   */
+  kind?: EditorBlock
+}
+
+/** The block kind a command produces (for allowlist filtering). */
+export function blockCommandKind(def: BlockCommandDef): EditorBlock | undefined {
+  return def.kind ?? (def.spec?.blockType as EditorBlock | undefined)
+}
+
+/** Drop commands whose produced kind isn't in `allowed`. Untagged commands pass. */
+export function filterBlockCommands(
+  defs: BlockCommandDef[],
+  allowed: EditorBlock[]
+): BlockCommandDef[] {
+  const allow = new Set(allowed)
+  return defs.filter((def) => {
+    const kind = blockCommandKind(def)
+    return kind ? allow.has(kind) : true
+  })
 }
 
 /** Basic block set shared by every slash-menu surface. */
@@ -109,6 +133,7 @@ export const BASIC_BLOCK_COMMANDS: BlockCommandDef[] = [
     description: 'Visual separator',
     keywords: ['hr', 'horizontal', 'rule', 'line'],
     iconId: 'minus',
+    kind: 'divider',
     custom: (editor, range) => {
       editor
         .chain()

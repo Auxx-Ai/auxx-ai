@@ -1,7 +1,8 @@
 // apps/web/src/components/editor/kb-article/markdown-paste.ts
 
-import { type Editor, Extension } from '@tiptap/core'
+import { type Editor, Extension, type JSONContent } from '@tiptap/core'
 import { Plugin, PluginKey } from '@tiptap/pm/state'
+import { coerceBlocks, DEFAULT_BLOCKS, type EditorBlock } from '../blocks/allowed-blocks'
 
 // Blocks whose shape forbids "lift out and insert N new blocks" semantics.
 // Pasting markdown inside one of these falls through to PM's plain-text
@@ -42,16 +43,31 @@ function looksLikeMarkdown(text: string): boolean {
   return MARKDOWN_HEURISTIC.some((re) => re.test(text))
 }
 
+export interface MarkdownPasteOptions {
+  /**
+   * Block kinds this editor allows. Parsed markdown is run through
+   * `coerceBlocks` against this set, so a disallowed heading/list collapses to
+   * `text` and a disallowed table/container is dropped — paste follows the
+   * same allowlist as every other entry point.
+   */
+  allowed: EditorBlock[]
+}
+
 /**
  * Intercepts plain-text clipboard payloads that look like markdown and
  * replaces them with parsed BlockJSON. The converter is loaded via
  * dynamic import on first use so it stays out of the cold editor bundle.
  */
-export const MarkdownPaste = Extension.create({
+export const MarkdownPaste = Extension.create<MarkdownPasteOptions>({
   name: 'markdown-paste',
+
+  addOptions() {
+    return { allowed: DEFAULT_BLOCKS }
+  },
 
   addProseMirrorPlugins() {
     const editor = this.editor
+    const allowed = this.options.allowed
     return [
       new Plugin({
         key: new PluginKey('markdown-paste'),
@@ -91,7 +107,7 @@ export const MarkdownPaste = Extension.create({
             if (!looksLikeMarkdown(text)) return false
 
             event.preventDefault()
-            void importAndInsert(editor, text)
+            void importAndInsert(editor, text, allowed)
             return true
           },
         },
@@ -100,18 +116,26 @@ export const MarkdownPaste = Extension.create({
   },
 })
 
-async function importAndInsert(editor: Editor, text: string): Promise<void> {
-  let parsed: unknown[] | null = null
+async function importAndInsert(
+  editor: Editor,
+  text: string,
+  allowed: EditorBlock[]
+): Promise<void> {
+  let parsed: JSONContent[] | null = null
   try {
     const { mdToBlocks } = await import('@auxx/lib/kb/markdown')
-    parsed = mdToBlocks(text)
+    parsed = mdToBlocks(text) as JSONContent[]
   } catch (error) {
     console.error('Markdown parse failed; falling back to plain text paste', error)
     insertPlainText(editor, text)
     return
   }
 
-  if (!parsed || parsed.length === 0) {
+  // Coerce the parsed blocks to fit the surface's allowed set — disallowed
+  // headings/lists collapse to text, disallowed tables/containers drop out.
+  const blocks = coerceBlocks(parsed, allowed)
+
+  if (blocks.length === 0) {
     insertPlainText(editor, text)
     return
   }
@@ -120,7 +144,7 @@ async function importAndInsert(editor: Editor, text: string): Promise<void> {
     editor
       .chain()
       .focus()
-      .insertContent(parsed as never[])
+      .insertContent(blocks as never[])
       .run()
   } catch (error) {
     console.error('Markdown insert failed; falling back to plain text paste', error)

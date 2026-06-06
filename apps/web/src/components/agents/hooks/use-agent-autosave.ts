@@ -86,11 +86,17 @@ export function useAgentAutosave(
   )
 
   // Flush any pending patch on unmount so a fast tab-away doesn't drop edits.
+  // `flush` is rebuilt every render (it closes over `updateAgent`), so this
+  // effect must NOT depend on it — otherwise the cleanup runs on every render
+  // and immediately flushes any queued patch, defeating the debounce. Read the
+  // latest `flush` via a ref and run the cleanup on real unmount only.
+  const flushRef = useRef(flush)
+  flushRef.current = flush
   useEffect(() => {
     return () => {
-      if (queuedPatchRef.current) void flush()
+      if (queuedPatchRef.current) void flushRef.current()
     }
-  }, [flush])
+  }, [])
 
   return { state, patch, flush }
 }

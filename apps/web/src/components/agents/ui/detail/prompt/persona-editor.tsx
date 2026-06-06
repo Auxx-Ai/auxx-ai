@@ -8,6 +8,7 @@ import { cn } from '@auxx/ui/lib/utils'
 import type { JSONContent } from '@tiptap/core'
 import type { Editor } from '@tiptap/react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { PERSONA_BLOCKS } from '~/components/editor/blocks/allowed-blocks'
 import { DEFAULT_TABS } from '~/components/editor/inline-picker'
 import type { ReferenceTab } from '~/components/editor/inline-picker/nodes/reference-picker-node'
 import {
@@ -164,6 +165,7 @@ export function PersonaEditor({ agent, onAutosaveChange }: PersonaEditorProps) {
                   onUserActivity={handleUserActivity}
                   referencePickerRef={referencePickerRef}
                   referenceTabs={PERSONA_REFERENCE_TABS}
+                  allowedBlocks={PERSONA_BLOCKS}
                 />
               </div>
             </CollapseWrap>
@@ -192,6 +194,7 @@ export function PersonaEditor({ agent, onAutosaveChange }: PersonaEditorProps) {
                   onUserActivity={handleUserActivity}
                   referencePickerRef={referencePickerRef}
                   referenceTabs={PERSONA_REFERENCE_TABS}
+                  allowedBlocks={PERSONA_BLOCKS}
                 />
               )}
             </ScrollArea>

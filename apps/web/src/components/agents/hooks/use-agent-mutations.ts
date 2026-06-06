@@ -190,7 +190,16 @@ export function useAgentMutations(): UseAgentMutationsResult {
         return false
       }
     },
-    [updateMutation, utils.agent.list, utils.agent.getById, utils.agentToolset.listTools]
+    // Depend on the stable `mutateAsync`, not the whole `updateMutation` object
+    // (React Query returns a new object every render). Keeping `updateAgent`
+    // stable stops the autosave `patch`/`flush` callbacks — and the persona
+    // editor's `onChange` memo — from being rebuilt on every render.
+    [
+      updateMutation.mutateAsync,
+      utils.agent.list,
+      utils.agent.getById,
+      utils.agentToolset.listTools,
+    ]
   )
 
   const archiveAgent = useCallback<UseAgentMutationsResult['archiveAgent']>(

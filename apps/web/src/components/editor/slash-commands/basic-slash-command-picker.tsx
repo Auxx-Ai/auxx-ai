@@ -3,7 +3,13 @@
 
 import type { Editor } from '@tiptap/react'
 import { useEffect, useMemo, useState } from 'react'
-import { BASIC_BLOCK_COMMANDS, type BlockCommandDef, runBlockCommand } from './block-commands'
+import { DEFAULT_BLOCKS, type EditorBlock } from '../blocks/allowed-blocks'
+import {
+  BASIC_BLOCK_COMMANDS,
+  type BlockCommandDef,
+  filterBlockCommands,
+  runBlockCommand,
+} from './block-commands'
 import {
   type SlashCommandItem,
   SlashCommandPicker,
@@ -16,6 +22,8 @@ interface BasicSlashCommandPickerProps {
   query: string
   onExecute: (command: (editor: Editor, range: Range) => void) => void
   onClose: () => void
+  /** Block kinds to show. Defaults to the full set. */
+  allowedBlocks?: EditorBlock[]
 }
 
 /**
@@ -27,6 +35,7 @@ export function BasicSlashCommandPicker({
   query,
   onExecute,
   onClose,
+  allowedBlocks = DEFAULT_BLOCKS,
 }: BasicSlashCommandPickerProps) {
   const [searchQuery, setSearchQuery] = useState(query)
 
@@ -41,11 +50,11 @@ export function BasicSlashCommandPicker({
       {
         id: 'blocks',
         heading: 'Blocks',
-        items: BASIC_BLOCK_COMMANDS,
+        items: filterBlockCommands(BASIC_BLOCK_COMMANDS, allowedBlocks),
         onSelect: (item) => onExecute(runBlockCommand(item as BlockCommandDef)),
       },
     ],
-    [onExecute]
+    [onExecute, allowedBlocks]
   )
 
   return (
