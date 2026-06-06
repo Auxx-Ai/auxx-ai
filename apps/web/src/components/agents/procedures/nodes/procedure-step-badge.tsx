@@ -80,7 +80,7 @@ function Pill({
 
 function SubProcedureBadge({ subId, selected }: { subId: string; selected: boolean }) {
   const ctx = useProcedureEditorContext()
-  const name = ctx?.subProcedures.find((s) => s.id === subId)?.name ?? 'Sub-procedure'
+  const name = ctx?.subProcedures.find((s) => s.id === subId)?.name?.trim() || 'Sub-procedure'
   return (
     <Pill
       icon={<Workflow className='size-3.5' />}
@@ -94,7 +94,7 @@ function SubProcedureBadge({ subId, selected }: { subId: string; selected: boole
 
 function CodeBadge({ codeId, selected }: { codeId: string; selected: boolean }) {
   const ctx = useProcedureEditorContext()
-  const name = ctx?.codeBlocks.find((c) => c.id === codeId)?.name ?? 'Code'
+  const name = ctx?.codeBlocks.find((c) => c.id === codeId)?.name?.trim() || 'Code'
   return (
     <Pill
       icon={<Code2 className='size-3.5' />}

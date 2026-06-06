@@ -8,13 +8,19 @@ export {
   AuxxUnexpectedTransportError,
   BlockRuntimeError,
   BlockValidationError,
+  ConflictError,
   ConnectionExpiredError,
   ExtensionInitError,
   ExtensionLoadError,
+  InsufficientPermissionsError,
+  InvalidInputError,
   MessageError,
+  NotFoundError,
+  RateLimitError,
   RenderError,
   ServerFunctionError,
   SurfaceError,
+  UpstreamServiceError,
 } from './errors.js'
 // Export fetchable state utilities
 export {

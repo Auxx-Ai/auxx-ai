@@ -112,6 +112,8 @@ export interface ProcedureDraftContextValue {
   addLocalAttribute: (attr: LocalAttribute) => void
   createSubProcedure: (name: string) => string
   createCodeBlock: (name: string) => string
+  renameSubProcedure: (id: string, name: string) => void
+  renameCodeBlock: (id: string, name: string) => void
 
   // ── the `@` picker / shared-editor seam ──
   activeEditor: Editor | null
@@ -344,6 +346,29 @@ export function ProcedureDraftProvider({
     [commit]
   )
 
+  // Rename a drilled body. Writes the ref (save source) AND the render state, so the
+  // drill header AND the inline badge (which resolves its label from `subProcedures` /
+  // `codeBlocks`) both reflect the new name live.
+  const renameSubProcedure = useCallback(
+    (id: string, name: string) => {
+      const next = subRef.current.map((s) => (s.id === id ? { ...s, name } : s))
+      subRef.current = next
+      setSubProcedures(next)
+      commit()
+    },
+    [commit]
+  )
+
+  const renameCodeBlock = useCallback(
+    (id: string, name: string) => {
+      const next = codeRef.current.map((c) => (c.id === id ? { ...c, name } : c))
+      codeRef.current = next
+      setCodeBlocks(next)
+      commit()
+    },
+    [commit]
+  )
+
   const insertBlock = useCallback(
     (node: Record<string, unknown>) => {
       if (!activeEditor) return
@@ -411,6 +436,8 @@ export function ProcedureDraftProvider({
             addLocalAttribute,
             createSubProcedure,
             createCodeBlock,
+            renameSubProcedure,
+            renameCodeBlock,
             activeEditor,
             handleEditorReady,
             referencePickerRef,
@@ -437,6 +464,8 @@ export function ProcedureDraftProvider({
       addLocalAttribute,
       createSubProcedure,
       createCodeBlock,
+      renameSubProcedure,
+      renameCodeBlock,
       activeEditor,
       handleEditorReady,
       insertBlock,

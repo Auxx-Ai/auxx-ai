@@ -112,7 +112,7 @@ export async function triggerAppEvent(params: {
   if (!serverBundle) {
     // No server bundle - app doesn't have event handlers
     logger.info('No server bundle for app, skipping event', { appInstallationId })
-    return ok(undefined)
+    return ok({ result: undefined })
   }
 
   // Build context and invoke Lambda via shared helper
@@ -151,5 +151,7 @@ export async function triggerAppEvent(params: {
   }
 
   logger.info('Event execution completed', { appInstallationId, eventType })
-  return ok(undefined)
+  // Surface the handler's return value so callers (e.g. saveAppConnection
+  // reading a `connection-added` { label }) can act on it.
+  return ok({ result: lambdaResult.value.execution_result })
 }

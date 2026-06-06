@@ -8,6 +8,7 @@ import { triggerAppEvent } from '../app-events'
 import { resolveActiveInstallationId } from '../app-installations/resolve-active-installation'
 import { getInstallationCatalog, provisionAppFields } from '../custom-fields/app-field-provisioning'
 import { fromDatabase } from '../shared/utils'
+import { renameAppConnection } from './rename-app-connection'
 import { logger, safeSerializeMetadata } from './utils'
 
 /**
@@ -181,10 +182,12 @@ export async function saveAppConnection(
   // Create new connection with auto-generated label
   logger.info('Creating new app connection')
 
-  // Generate auto-increment label
+  // Generate the initial label. Defaults to the app name, deduped within this
+  // connection's own visibility scope (see dedupeLabel). An app's
+  // connection-added handler may replace it with something meaningful below.
   const label =
     options?.label ||
-    (await generateConnectionLabel(appName, organizationId, appId, appInstallationId))
+    (await dedupeLabel(appName, { organizationId, appId, appInstallationId, userId }))
 
   // Parse expiresAt for database field (duplicate from encrypted data for querying)
   const expiresAt = connectionData.expiresAt ? new Date(connectionData.expiresAt) : null
@@ -280,36 +283,85 @@ export async function saveAppConnection(
     })
   } else {
     logger.info('Triggered connection-added event', { credentialId: created.id })
+
+    // An app's connection-added handler may return `{ label }` to name the
+    // connection meaningfully — the shop domain, the authenticated email, the
+    // workspace name. An explicit caller-provided label (options.label) wins.
+    // Best-effort: a missing/failed handler or rename leaves the autoincrement
+    // label intact and never fails the connection save.
+    if (!options?.label) {
+      const handlerResult = eventResult.value.result
+      const handlerLabel =
+        handlerResult && typeof handlerResult === 'object' && 'label' in handlerResult
+          ? String((handlerResult as { label?: unknown }).label ?? '').trim()
+          : ''
+
+      if (handlerLabel) {
+        const deduped = await dedupeLabel(
+          handlerLabel,
+          { organizationId, appId, appInstallationId, userId },
+          created.id
+        )
+        const renamed = await renameAppConnection(created.id, deduped, organizationId)
+        if (renamed.isErr()) {
+          logger.error('Failed to apply handler connection label', {
+            credentialId: created.id,
+            error: renamed.error,
+          })
+        }
+      }
+    }
   }
 
   return ok(created.id)
 }
 
 /**
- * Generate an auto-incrementing connection label.
- * First connection: "AppName", second: "AppName (2)", etc.
+ * Make a desired connection label unique within its visibility scope by
+ * appending the lowest free `(n)` suffix: "Gmail", "Gmail (2)", "Gmail (3)".
+ *
+ * Scope is matched to how the connections UI renders rows — Personal rows are
+ * filtered to a single user, Workspace rows are org-wide — so dedup counts only
+ * rows the same viewer would see:
+ *  - `userId === null`  → workspace scope (other org-wide rows)
+ *  - `userId === <id>`  → that user's personal rows
+ *
+ * `excludeId` skips a just-inserted row when re-deriving its own label.
  */
-async function generateConnectionLabel(
-  appName: string,
-  organizationId: string,
-  appId: string,
-  appInstallationId: string
+async function dedupeLabel(
+  desired: string,
+  scope: {
+    organizationId: string
+    appId: string
+    appInstallationId: string
+    userId: string | null
+  },
+  excludeId?: string
 ): Promise<string> {
   const existingResult = await fromDatabase(
     database.query.WorkflowCredentials.findMany({
-      where: (creds, { eq, and, isNull }) =>
+      where: (creds, { eq, and, isNull, ne }) =>
         and(
-          eq(creds.organizationId, organizationId),
-          eq(creds.appId, appId),
-          eq(creds.appInstallationId, appInstallationId),
+          eq(creds.organizationId, scope.organizationId),
+          eq(creds.appId, scope.appId),
+          eq(creds.appInstallationId, scope.appInstallationId),
           eq(creds.type, 'app-connection'),
-          isNull(creds.userId)
+          scope.userId === null ? isNull(creds.userId) : eq(creds.userId, scope.userId),
+          excludeId ? ne(creds.id, excludeId) : undefined
         ),
-      columns: { id: true },
+      columns: { label: true },
     }),
-    'count-existing-connections'
+    'dedupe-connection-label'
   )
 
-  const count = existingResult.isOk() ? existingResult.value.length : 0
-  return count === 0 ? appName : `${appName} (${count + 1})`
+  const taken = new Set(
+    (existingResult.isOk() ? existingResult.value : [])
+      .map((row) => row.label)
+      .filter((l): l is string => !!l)
+  )
+
+  if (!taken.has(desired)) return desired
+  let n = 2
+  while (taken.has(`${desired} (${n})`)) n++
+  return `${desired} (${n})`
 }

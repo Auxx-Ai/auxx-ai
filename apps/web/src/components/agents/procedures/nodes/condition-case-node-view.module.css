@@ -1,0 +1,77 @@
+/* apps/web/src/components/agents/procedures/nodes/condition-case-node-view.module.css */
+
+/* The arm's editable content hole holds the predicate (first child) followed by
+   the instruction `block`s. Tiptap renders the hole as `.armContent` wrapping an
+   internal content-holder div; `display: contents` on BOTH removes their boxes
+   so the predicate and the step blocks become flex items of the arm row (the
+   NodeViewWrapper) — letting the predicate sit inline on the keyword line while
+   the steps drop to their own lines below. No schema change. */
+.armContent,
+.armContent > div {
+  display: contents;
+}
+
+/* Predicate — fills line 1 between the keyword and the toggle. */
+.armContent :global(.node-conditionPredicate) {
+  flex: 1 1 0%;
+  min-width: 0;
+}
+
+/* Steps — `order` pushes them past the line-1 chrome (toggle / ✕); `flex-basis`
+   forces each onto its own full-width line; the left padding lines their gutter
+   up with the start of the "If" keyword (label 1.5rem + icon 1.5rem + 2 gaps). */
+.armContent :global(.node-block) {
+  order: 1;
+  flex-basis: 100%;
+  width: 100%;
+  padding-left: 4rem;
+}
+
+/* First-arm label doubles as the drag handle for the whole condition block.
+   Mirrors the block gutter: shows the "6.1" number at rest, swaps to a 6-dot
+   grab grid on hover. */
+.armDragHandle {
+  position: relative;
+  cursor: grab;
+  transition: color 0.15s;
+}
+
+.armDragHandle:active {
+  cursor: grabbing;
+}
+
+.armDragHandle::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  right: 5px;
+  --dot-size: 2px;
+  --dot-gap: 4px;
+  width: var(--dot-size);
+  height: var(--dot-size);
+  border-radius: 50%;
+  background-color: var(--color-muted-foreground);
+  box-shadow:
+    0 var(--dot-gap) 0 var(--color-muted-foreground),
+    0 calc(var(--dot-gap) * -1) 0 var(--color-muted-foreground),
+    calc(var(--dot-gap) * -1) 0 0 var(--color-muted-foreground),
+    calc(var(--dot-gap) * -1) var(--dot-gap) 0 var(--color-muted-foreground),
+    calc(var(--dot-gap) * -1) calc(var(--dot-gap) * -1) 0 var(--color-muted-foreground);
+  transform: translateY(-50%);
+  opacity: 0;
+  transition: opacity 0.15s;
+  pointer-events: none;
+}
+
+@media (hover: hover) {
+  .armDragHandle:hover {
+    color: transparent;
+  }
+  .armDragHandle:hover::before {
+    opacity: 0.7;
+  }
+}
+
+:global(body.is-block-dragging) .armDragHandle::before {
+  opacity: 0 !important;
+}

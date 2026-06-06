@@ -6,6 +6,21 @@ import type { Result } from 'neverthrow'
 import { err, ok } from 'neverthrow'
 
 /**
+ * Stable HTTP status for the typed `@auxx/sdk` provider-call error codes. The
+ * lambda transport always returns 500 on a thrown error, so we re-derive a
+ * meaningful status from the error code. Connection errors are handled
+ * separately (mapped to CONNECTION_REQUIRED / 403) and are intentionally absent.
+ */
+export const KNOWN_ERROR_STATUS: Record<string, number> = {
+  INSUFFICIENT_PERMISSIONS: 403,
+  RATE_LIMIT: 429,
+  UPSTREAM_ERROR: 502,
+  INVALID_INPUT: 400,
+  RESOURCE_NOT_FOUND: 404,
+  CONFLICT: 409,
+}
+
+/**
  * Console log entry from Lambda execution
  */
 export interface ConsoleLog {
@@ -119,12 +134,17 @@ export async function invokeLambdaExecutor(params: {
         })
       }
 
-      // Other errors
+      // Other errors. Known typed `@auxx/sdk` errors get a stable HTTP status so
+      // downstream consumers (kopilot bridge, workflow engine, UI) can branch on
+      // the code without inspecting the (always-500) lambda transport status.
+      // Only the connection errors above trigger `markAppConnectionExpired` — a
+      // 403/429/4xx/5xx from the provider must NOT brick a healthy connection.
+      const errorCode = errorData.error?.code || 'EXECUTION_ERROR'
       return err({
-        code: errorData.error?.code || 'EXECUTION_ERROR',
+        code: errorCode,
         message: errorData.error?.message || 'Lambda execution failed',
         details: errorData.error?.details,
-        statusCode: lambdaResponse.status,
+        statusCode: KNOWN_ERROR_STATUS[errorCode] ?? lambdaResponse.status,
         consoleLogs: errorConsoleLogs,
       })
     }

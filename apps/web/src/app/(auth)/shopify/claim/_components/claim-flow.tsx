@@ -12,23 +12,30 @@ import { api } from '~/trpc/react'
 
 interface ClaimFlowProps {
   shop: string
-  orgs: { id: string; name: string | null; handle: string | null }[]
+  orgs: { id: string; name: string | null; handle: string | null; stripeBilled: boolean }[]
   defaultOrganizationId: string | null
   claimToken: string
 }
 
 /**
- * Workspace picker for an App-Store-initiated install. Under Shopify App Pricing the
- * plan picker lives on Shopify's hosted page, so this flow only chooses which Auxx
- * workspace the shop attaches to (a shop can belong to more than one). Clicking
- * "Continue to plan selection" finalizes the install and browser-redirects to Shopify's
- * pricing page; the merchant picks + approves there and returns to
- * `/billing/subscription/activated`.
+ * Workspace picker for an App-Store-initiated install. This flow only chooses which Auxx
+ * workspace the shop attaches to (a shop can belong to more than one) — the outcome depends
+ * on the selected workspace's billing:
+ * - Workspace with no/dead billing (new App Store merchant): finalize redirects to Shopify's
+ *   hosted plan picker; the merchant approves there and returns to
+ *   `/billing/subscription/activated`.
+ * - Workspace already on live Stripe billing: per the §4.5 operating model, connecting
+ *   Shopify keeps Stripe untouched — no plan picker. Finalize just attaches the data
+ *   integration and drops them on the Shopify app page.
  */
 export function ClaimFlow({ shop, orgs, defaultOrganizationId, claimToken }: ClaimFlowProps) {
   const [selectedOrgId, setSelectedOrgId] = useState<string | null>(
     defaultOrganizationId ?? orgs[0]?.id ?? null
   )
+
+  // When the picked workspace already bills through Stripe, this install just connects the
+  // shop (no plan selection) — drives the copy below.
+  const keepsBilling = orgs.find((o) => o.id === selectedOrgId)?.stripeBilled ?? false
 
   const finalize = api.shopify.finalizeAppStoreInstall.useMutation({
     onSuccess: ({ redirectUrl }) => {
@@ -64,7 +71,9 @@ export function ClaimFlow({ shop, orgs, defaultOrganizationId, claimToken }: Cla
                 Connect <span className='font-mono text-base'>{shop}</span> to Auxx
               </CardTitle>
               <CardDescription>
-                Choose the workspace for this shop. You'll pick a plan on Shopify next.
+                {keepsBilling
+                  ? 'Choose the workspace for this shop. Your current billing stays unchanged.'
+                  : "Choose the workspace for this shop. You'll pick a plan on Shopify next."}
               </CardDescription>
             </CardHeader>
             <CardContent className='flex flex-col gap-6'>
@@ -122,7 +131,7 @@ export function ClaimFlow({ shop, orgs, defaultOrganizationId, claimToken }: Cla
                 disabled={finalizeDisabled}
                 loading={finalize.isPending}
                 loadingText='Connecting…'>
-                Continue to plan selection
+                {keepsBilling ? 'Connect shop' : 'Continue to plan selection'}
               </Button>
             </CardContent>
           </Card>

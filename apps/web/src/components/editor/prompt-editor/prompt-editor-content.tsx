@@ -74,6 +74,11 @@ interface PromptEditorContentProps {
    * surfaces where `@` is the only insertion affordance (procedures).
    */
   slash?: boolean
+  /**
+   * Show the gutter line numbers at rest instead of only on hover/focus.
+   * Defaults to `false`. Forwarded to `useRichTextEditor`.
+   */
+  alwaysShowLineNumbers?: boolean
 }
 
 interface LinkPopoverState {
@@ -108,6 +113,7 @@ export const PromptEditorContent = memo(function PromptEditorContent({
   inlineExtensions,
   allowedBlocks = DEFAULT_BLOCKS,
   slash = true,
+  alwaysShowLineNumbers = false,
 }: PromptEditorContentProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [linkPopover, setLinkPopover] = useState<LinkPopoverState | null>(null)
@@ -137,6 +143,7 @@ export const PromptEditorContent = memo(function PromptEditorContent({
     placeholderText,
     inlineExtensions,
     allowedBlocks,
+    alwaysShowLineNumbers,
   })
 
   const activePicker = useActivePicker(editor)

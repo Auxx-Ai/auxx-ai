@@ -20,24 +20,53 @@ interface DraggingState {
   slice: Slice
 }
 
-function getBlockEl(target: EventTarget | null): HTMLElement | null {
+interface DragHandle {
+  el: HTMLElement
+  /**
+   * `'condition'` resolves to the enclosing `conditionBlock` directly (the arm
+   * label is the handle for the whole construct). `'block'` uses the generic
+   * outermost-draggable walk below.
+   */
+  kind: 'block' | 'condition'
+}
+
+function getDragHandle(target: EventTarget | null): DragHandle | null {
   if (!(target instanceof HTMLElement)) return null
-  const gutter = target.closest<HTMLElement>('[data-block-drag-handle]')
-  if (!gutter) return null
+  const handle = target.closest<HTMLElement>('[data-block-drag-handle]')
+  if (!handle) return null
+  const attr = handle.getAttribute('data-block-drag-handle')
   // Article-level drag handles live on `[data-block]`. In-container
   // (panel) drag handles use a different attribute and are handled by
   // their own dnd-kit instance — bail out so we don't grab the panel
   // through this plugin.
-  if (gutter.getAttribute('data-block-drag-handle') === 'panel') return null
+  if (attr === 'panel') return null
+  // Procedure condition arms: the arm label drags the whole `conditionBlock`.
+  // Resolved separately from the generic walk so the per-step gutters INSIDE
+  // an arm still drag the individual step, not the whole construct.
+  if (attr === 'condition') {
+    const el = handle.closest<HTMLElement>('[data-condition-block]')
+    return el ? { el, kind: 'condition' } : null
+  }
   // Match either a flat block or a container element. Containers render
   // their own outer wrapper with `data-tabs` / `data-accordion` / `data-table`.
-  return gutter.closest<HTMLElement>('[data-block], [data-tabs], [data-accordion], [data-table]')
+  const el = handle.closest<HTMLElement>(
+    '[data-block], [data-tabs], [data-accordion], [data-table]'
+  )
+  return el ? { el, kind: 'block' } : null
 }
 
-function blockPos(view: EditorView, blockEl: HTMLElement): number | null {
-  const pos = view.posAtDOM(blockEl, 0)
+function resolveDragPos(view: EditorView, handle: DragHandle): number | null {
+  const pos = view.posAtDOM(handle.el, 0)
   if (pos == null || pos < 0) return null
   const $pos = view.state.doc.resolve(pos)
+  // Condition handle: target the enclosing `conditionBlock` exactly (not the
+  // outermost draggable), so the move grabs the whole if/else construct.
+  if (handle.kind === 'condition') {
+    for (let depth = $pos.depth; depth >= 0; depth--) {
+      if ($pos.node(depth).type.name === 'conditionBlock') return $pos.before(depth)
+    }
+    return null
+  }
   // Walk up to the OUTERMOST draggable so clicking the gutter next to a
   // tabs/accordion container grabs the whole container, not the active
   // panel's first paragraph.
@@ -64,13 +93,14 @@ export function blockDragPlugin() {
 
       const onDragStart = (event: DragEvent) => {
         console.log(`${tag} dragstart on view.dom`, event.target)
-        const blockEl = getBlockEl(event.target)
-        if (!blockEl || !event.dataTransfer) {
-          console.log(`${tag} dragstart bailed: no blockEl or dataTransfer`)
+        const handle = getDragHandle(event.target)
+        if (!handle || !event.dataTransfer) {
+          console.log(`${tag} dragstart bailed: no handle or dataTransfer`)
           return
         }
+        const blockEl = handle.el
 
-        const pos = blockPos(editorView, blockEl)
+        const pos = resolveDragPos(editorView, handle)
         if (pos == null) {
           console.log(`${tag} dragstart bailed: no pos`)
           return

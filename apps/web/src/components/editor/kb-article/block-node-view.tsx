@@ -18,10 +18,15 @@ import type {
 import { CalloutIcon } from '@auxx/ui/components/kb/article'
 import { parseEmbedUrl } from '@auxx/ui/components/kb/utils'
 import type { NodeViewProps } from '@tiptap/react'
-import { NodeViewContent, NodeViewWrapper } from '@tiptap/react'
+import { NodeViewContent, NodeViewWrapper, useEditorState } from '@tiptap/react'
 import { Check, ChevronDown } from 'lucide-react'
 import type React from 'react'
 import { useState } from 'react'
+import {
+  computeOutlinePath,
+  defaultNumberPolicy,
+  flatLineNumberFormatter,
+} from '../rich-text/outline-numbering'
 import type { BlockOptions } from './block-node'
 import styles from './block-node-view.module.css'
 import { CardsBlockView } from './cards-block-view'
@@ -201,25 +206,41 @@ export function BlockNodeView({
     }
   }
 
-  let lineNumber: number | null = null
+  // Gutter label. The path math is factored into `computeOutlinePath`; the
+  // per-surface formatter (flat by default, hierarchical for procedures) turns
+  // it into the displayed string. See `outline-numbering.ts`.
+  //
+  // Read through `useEditorState` so the label re-renders whenever it changes —
+  // including position-only shifts (a block inserted / removed / reordered
+  // elsewhere) that don't touch THIS node and so wouldn't otherwise re-render
+  // its node view, leaving the number stale.
+  const blockOptions = extension.options as BlockOptions
+  const lineLabel = useEditorState({
+    editor,
+    selector: ({ editor }) => {
+      const p = typeof getPos === 'function' ? getPos() : null
+      if (typeof p !== 'number') return null
+      const policy = blockOptions.numberPolicy ?? defaultNumberPolicy
+      const formatter = blockOptions.lineNumberFormatter ?? flatLineNumberFormatter
+      const path = computeOutlinePath(editor.state.doc, p, policy)
+      return formatter({ path, nodeName: node.type.name, blockType, depth: path.length - 1 })
+    },
+  })
+
   let numberedIndex = 1
-  if (typeof pos === 'number') {
+  if (typeof pos === 'number' && blockType === 'numberedListItem') {
     const doc = editor.state.doc
     const myIndex = doc.resolve(pos).index(0)
-    lineNumber = myIndex + 1
-
-    if (blockType === 'numberedListItem') {
-      const myLevel = level ?? 1
-      let count = 1
-      for (let i = myIndex - 1; i >= 0; i--) {
-        const sibling = doc.child(i)
-        if (sibling.type.name !== 'block') break
-        if (sibling.attrs.blockType !== 'numberedListItem') break
-        if ((sibling.attrs.level ?? 1) !== myLevel) break
-        count++
-      }
-      numberedIndex = count
+    const myLevel = level ?? 1
+    let count = 1
+    for (let i = myIndex - 1; i >= 0; i--) {
+      const sibling = doc.child(i)
+      if (sibling.type.name !== 'block') break
+      if (sibling.attrs.blockType !== 'numberedListItem') break
+      if ((sibling.attrs.level ?? 1) !== myLevel) break
+      count++
     }
+    numberedIndex = count
   }
 
   const isFocused =
@@ -326,7 +347,7 @@ export function BlockNodeView({
           draggable={true}
           data-block-drag-handle='true'
           onClick={selectThisBlock}>
-          <div className={`${styles.lineNumber} text-xs tabular-nums`}>{lineNumber ?? ''}</div>
+          <div className={`${styles.lineNumber} text-xs tabular-nums`}>{lineLabel ?? ''}</div>
         </div>
 
         <div

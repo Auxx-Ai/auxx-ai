@@ -4,6 +4,7 @@ import {
   markAppConnectionExpired,
   resolveAppConnectionForRuntime,
 } from '@auxx/services/app-connections'
+import type { ConsoleLog } from '@auxx/services/apps'
 import {
   invokeLambdaExecutor,
   invokeLambdaExecutorStreaming,
@@ -90,9 +91,41 @@ export async function createAppCapabilities(deps: {
     if (!installation.currentDeployment) continue
 
     const serverBundleSha = installation.currentDeployment.serverBundleSha
+    const appDeploymentId = installation.currentDeployment.id
     const appId = installation.app.id
     const appSlug = installation.app.slug
     const installationId = installation.installationId
+
+    // Persist a tool invocation's captured console logs to AppEventLog so they
+    // surface in the dev-portal logs viewer (/apps/<slug>/logs). The agent tool
+    // path doesn't route through apps/api like server-functions / workflow
+    // blocks do, so it must write directly — mirrors quick-action-executor.
+    // Never let logging failure (or empty logs) affect the tool result.
+    const persistAppLogs = async (toolId: string, consoleLogs: unknown, durationMs?: number) => {
+      if (!Array.isArray(consoleLogs) || consoleLogs.length === 0) return
+      try {
+        const { logAppExecution } = await import('@auxx/services/apps')
+        await logAppExecution({
+          appId,
+          organizationId,
+          appDeploymentId,
+          userId: userId ?? '',
+          installationId,
+          consoleLogs: consoleLogs as ConsoleLog[],
+          durationMs,
+          execution: {
+            type: 'tool',
+            toolId,
+            invocationKind: 'agent',
+            sessionId,
+            agentId: agentId ?? null,
+            triggerId: triggerId ?? null,
+          },
+        })
+      } catch {
+        // Logging is best-effort; swallow so it never breaks tool execution.
+      }
+    }
 
     // Per plans/kopilot/apps/agent-credentials.md §3.5 — registration is
     // gated on the bound credId from the agent's (or master's)
@@ -281,7 +314,31 @@ export async function createAppCapabilities(deps: {
                     error: `${res.error.code}: ${res.error.message}`,
                   }
                 } else {
-                  final = { success: true, output: res.value.finalResult }
+                  // The streaming `event: result` frame carries the full
+                  // ExecutionResult (`{ result, metadata: { consoleLogs } }`), not
+                  // the bare tool output — unwrap it so the LLM sees `result`, and
+                  // persist the captured console logs.
+                  const execResult = res.value.finalResult as
+                    | {
+                        result?: unknown
+                        metadata?: {
+                          consoleLogs?: ConsoleLog[]
+                          console_logs?: ConsoleLog[]
+                          duration?: number
+                        }
+                      }
+                    | undefined
+                  const isWrapped =
+                    !!execResult && typeof execResult === 'object' && 'result' in execResult
+                  await persistAppLogs(
+                    toolId,
+                    execResult?.metadata?.consoleLogs ?? execResult?.metadata?.console_logs,
+                    execResult?.metadata?.duration
+                  )
+                  final = {
+                    success: true,
+                    output: isWrapped ? execResult.result : res.value.finalResult,
+                  }
                 }
                 queue.push({ kind: 'done', result: final })
                 wake()
@@ -333,6 +390,9 @@ export async function createAppCapabilities(deps: {
 
             if (lambdaResult.isErr()) {
               const lambdaError = lambdaResult.error
+              // Persist any console output captured before the failure (e.g. the
+              // ServerSDK / provider error logs) so failed calls show in the viewer.
+              await persistAppLogs(toolId, lambdaError.consoleLogs)
               if (prep.resolvedConnectionId && lambdaError.code === 'CONNECTION_REQUIRED') {
                 await markAppConnectionExpired({
                   credentialId: prep.resolvedConnectionId,
@@ -346,6 +406,11 @@ export async function createAppCapabilities(deps: {
               }
             }
             const value = lambdaResult.value
+            await persistAppLogs(
+              toolId,
+              value.metadata?.consoleLogs ?? value.metadata?.console_logs,
+              value.metadata?.duration
+            )
             // Runtime errors thrown via BlockRuntimeError surface here.
             if (value.metadata?.runtime_error) {
               return {

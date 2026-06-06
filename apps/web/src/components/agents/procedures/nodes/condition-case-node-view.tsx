@@ -5,12 +5,18 @@ import type { ConditionGroup } from '@auxx/lib/conditions/client'
 import { cn } from '@auxx/ui/lib/utils'
 import { generateId } from '@auxx/utils'
 import type { NodeViewProps } from '@tiptap/react'
-import { NodeViewContent, NodeViewWrapper } from '@tiptap/react'
+import { NodeViewContent, NodeViewWrapper, useEditorState } from '@tiptap/react'
 import { GitBranch, X } from 'lucide-react'
 import { ConditionContainer, ConditionProvider } from '~/components/conditions'
+import {
+  computeOutlinePath,
+  procedureLineNumberFormatter,
+  procedureNumberPolicy,
+} from '~/components/editor/rich-text/outline-numbering'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useProcedureConditionConfig } from '../hooks/use-procedure-condition-config'
 import { useProcedureEditorContext } from '../ui/procedure-draft-provider'
+import styles from './condition-case-node-view.module.css'
 import { applyBlockMode, findParentBlock, nodePos, switchLosesData } from './condition-helpers'
 
 /**
@@ -56,15 +62,38 @@ export function ConditionCaseNodeView({ node, editor, getPos, updateAttributes }
     applyBlockMode(editor, parent.pos, next)
   }
 
-  const ordinal = (() => {
-    const pos = nodePos(getPos)
-    if (pos == null) return 0
-    try {
-      return editor.state.doc.resolve(pos).index()
-    } catch {
-      return 0
-    }
-  })()
+  // Arm position + hierarchical label, read through `useEditorState` so they
+  // re-render when the doc shifts around this arm (e.g. another arm or a
+  // top-level step removed) — a node view isn't re-rendered for position-only
+  // changes, which would otherwise leave "If"/"Else if" and the number stale.
+  const isFirstArm = useEditorState({
+    editor,
+    selector: ({ editor }) => {
+      const pos = nodePos(getPos)
+      if (pos == null) return false
+      try {
+        return editor.state.doc.resolve(pos).index() === 0
+      } catch {
+        return false
+      }
+    },
+  })
+
+  // `{blockNum}.{armNum}` (e.g. "6.1"). Display-only (plan §3.1, drag variant
+  // D1): the whole conditionBlock moves, not the arm.
+  const armLabel = useEditorState({
+    editor,
+    selector: ({ editor }) => {
+      const pos = nodePos(getPos)
+      if (pos == null) return null
+      const path = computeOutlinePath(editor.state.doc, pos, procedureNumberPolicy)
+      return procedureLineNumberFormatter({
+        path,
+        nodeName: node.type.name,
+        depth: path.length - 1,
+      })
+    },
+  })
 
   const group: ConditionGroup =
     (node.attrs.group as ConditionGroup | null) ??
@@ -102,43 +131,66 @@ export function ConditionCaseNodeView({ node, editor, getPos, updateAttributes }
       .run()
   }
 
+  // The arm is a single flex-wrap row. The chrome (label, icon, keyword,
+  // toggle) and the editable content hole share it: `display: contents` on the
+  // hole lifts its children (predicate, then steps) into this flex row, so the
+  // predicate box lands inline on line 1 next to the keyword while each step is
+  // forced to its own line below (`basis-full` + `pl-8`, see the CSS module).
   return (
-    <NodeViewWrapper as='div' className='my-1.5'>
-      <div className='flex items-center gap-2' contentEditable={false}>
-        <span className='flex size-6 shrink-0 items-center justify-center rounded-md bg-primary-100 text-primary-700'>
-          <GitBranch className='size-3.5' />
-        </span>
-        <span className='text-xs font-semibold uppercase tracking-wide text-foreground'>
-          {ordinal === 0 ? 'If' : 'Else if'}
-        </span>
-        <div className='ml-auto flex items-center gap-1'>
-          <ModeToggle mode={mode} onChange={changeMode} />
-          <button
-            type='button'
-            onClick={removeArm}
-            aria-label='Remove branch'
-            className='rounded p-0.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive'>
-            <X className='size-3.5' />
-          </button>
-        </div>
-      </div>
-
-      <div className='pl-8'>
-        {mode === 'structured' && (
-          <div className='my-1.5' contentEditable={false}>
-            <ConditionProvider
-              conditions={group.conditions}
-              groups={[group]}
-              config={config}
-              onConditionsChange={() => {}}
-              onGroupsChange={onGroupsChange}
-              getAvailableFields={getAvailableFields}
-              getFieldDefinition={getFieldDefinition}>
-              <ConditionContainer showAddButton emptyStateText='Add a condition' />
-            </ConditionProvider>
-          </div>
+    <NodeViewWrapper as='div' className='my-1.5 flex flex-wrap items-start gap-x-2 gap-y-1'>
+      {/* First arm only: this label is the drag handle for the WHOLE condition
+          block (the plugin resolves `data-block-drag-handle="condition"` up to
+          the conditionBlock). Else-if / else labels stay plain — arms can't be
+          reordered or moved on their own. */}
+      <span
+        className={cn(
+          'min-w-6 shrink-0 pt-0.5 text-right text-xs tabular-nums text-muted-foreground',
+          isFirstArm && styles.armDragHandle
         )}
-        <NodeViewContent />
+        contentEditable={false}
+        draggable={isFirstArm}
+        data-block-drag-handle={isFirstArm ? 'condition' : undefined}>
+        {armLabel}
+      </span>
+      <span
+        className='flex size-6 shrink-0 items-center justify-center rounded-md bg-primary-100 text-primary-700'
+        contentEditable={false}>
+        <GitBranch className='size-3.5' />
+      </span>
+      <span
+        className='pt-0.5 text-xs font-semibold uppercase tracking-wide text-foreground'
+        contentEditable={false}>
+        {isFirstArm ? 'If' : 'Else if'}
+      </span>
+
+      {mode === 'structured' && (
+        <div className='min-w-0 flex-1' contentEditable={false}>
+          <ConditionProvider
+            conditions={group.conditions}
+            groups={[group]}
+            config={config}
+            onConditionsChange={() => {}}
+            onGroupsChange={onGroupsChange}
+            getAvailableFields={getAvailableFields}
+            getFieldDefinition={getFieldDefinition}>
+            <ConditionContainer showAddButton emptyStateText='Add a condition' />
+          </ConditionProvider>
+        </div>
+      )}
+
+      {/* `display: contents` — predicate + steps become flex items of this row.
+          The predicate (first child) is flex-1 on line 1; steps drop below. */}
+      <NodeViewContent className={styles.armContent} />
+
+      <div className='ml-auto flex shrink-0 items-center gap-1' contentEditable={false}>
+        <ModeToggle mode={mode} onChange={changeMode} />
+        <button
+          type='button'
+          onClick={removeArm}
+          aria-label='Remove branch'
+          className='rounded p-0.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive'>
+          <X className='size-3.5' />
+        </button>
       </div>
       <ConfirmDialog />
     </NodeViewWrapper>

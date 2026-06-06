@@ -124,6 +124,120 @@ export class ConnectionExpiredError extends AuxxError {
 }
 
 // ============================================================
+// Provider call errors (thrown by app tools/blocks when an
+// external API call fails). Detection across the Lambda sandbox /
+// module boundary uses `error.name` / `error.code`, NOT `instanceof`.
+//
+// NOTE: some names (NotFoundError, ConflictError, RateLimitError)
+// collide with `@auxx/lib/errors` — those are the platform/tRPC
+// classes in a DIFFERENT package. These are the app-facing
+// `@auxx/sdk` contract; import them from `@auxx/sdk/server`.
+// ============================================================
+
+/**
+ * Throw when the provider rejects the request because the connected account
+ * lacks the required permission/scope (typically HTTP 403).
+ *
+ * Distinct from {@link ConnectionExpiredError}: the token is VALID, it just
+ * can't perform this action. The platform does NOT mark the connection
+ * expired — an admin re-authorizes the app with the missing scopes.
+ */
+export class InsufficientPermissionsError extends AuxxError {
+  readonly scope: 'user' | 'organization'
+  readonly requiredScopes?: string[]
+
+  constructor(scope: 'user' | 'organization' = 'organization', requiredScopes?: string[]) {
+    super(
+      `The connected account lacks the required permission${
+        requiredScopes?.length ? ` (${requiredScopes.join(', ')})` : ''
+      }. An admin may need to re-authorize the app with additional scopes.`,
+      'INSUFFICIENT_PERMISSIONS'
+    )
+    this.name = 'InsufficientPermissionsError'
+    this.scope = scope
+    this.requiredScopes = requiredScopes
+  }
+}
+
+/**
+ * Throw when the provider rate-limits the request (HTTP 429). Transient — the
+ * platform surfaces `retryAfterSeconds` to the caller and does NOT mark the
+ * connection expired. Not auto-retried: write operations may be non-idempotent,
+ * so the caller decides whether to retry.
+ */
+export class RateLimitError extends AuxxError {
+  readonly retryAfterSeconds?: number
+
+  constructor(retryAfterSeconds?: number) {
+    super(
+      `Rate limited by the provider${retryAfterSeconds ? `; retry in ~${retryAfterSeconds}s` : ''}.`,
+      'RATE_LIMIT'
+    )
+    this.name = 'RateLimitError'
+    this.retryAfterSeconds = retryAfterSeconds
+  }
+}
+
+/**
+ * Throw when the provider returns a server-side failure (HTTP 5xx) or the
+ * request never completed (network/transport error, connection refused).
+ * Transient and retryable; the connection is NOT marked expired.
+ */
+export class UpstreamServiceError extends AuxxError {
+  readonly statusCode?: number
+
+  constructor(message = 'The provider is temporarily unavailable.', statusCode?: number) {
+    super(message, 'UPSTREAM_ERROR')
+    this.name = 'UpstreamServiceError'
+    this.statusCode = statusCode
+  }
+}
+
+/**
+ * Throw when the provider rejects the request as invalid (HTTP 400/422) — bad
+ * arguments supplied by the caller. The message is surfaced to the agent so it
+ * can correct its input and retry. Nothing is marked expired.
+ *
+ * For workflow-block field-level validation use {@link BlockValidationError}.
+ */
+export class InvalidInputError extends AuxxError {
+  readonly fields?: Array<{ field: string; message: string }>
+
+  constructor(message: string, fields?: Array<{ field: string; message: string }>) {
+    super(message, 'INVALID_INPUT')
+    this.name = 'InvalidInputError'
+    this.fields = fields
+  }
+}
+
+/**
+ * Throw when the requested resource does not exist (HTTP 404). Distinct from
+ * {@link ConnectionNotFoundError} (that's the connection itself) — this lets the
+ * agent report "not found" cleanly instead of surfacing a tool failure.
+ */
+export class NotFoundError extends AuxxError {
+  readonly resource?: string
+
+  constructor(message = 'The requested resource was not found.', resource?: string) {
+    super(message, 'RESOURCE_NOT_FOUND')
+    this.name = 'NotFoundError'
+    this.resource = resource
+  }
+}
+
+/**
+ * Throw when the request conflicts with the resource's current state (HTTP 409)
+ * — e.g. an order already refunded, a duplicate create. Signals the caller it is
+ * a state conflict, not something to blindly retry.
+ */
+export class ConflictError extends AuxxError {
+  constructor(message = 'The request conflicts with the current state of the resource.') {
+    super(message, 'CONFLICT')
+    this.name = 'ConflictError'
+  }
+}
+
+// ============================================================
 // Workflow block execution errors (thrown inside execute())
 // ============================================================
 

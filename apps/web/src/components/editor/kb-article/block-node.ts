@@ -4,6 +4,7 @@ import { type Editor, mergeAttributes, Node } from '@tiptap/core'
 import type { ResolvedPos } from '@tiptap/pm/model'
 import { ReactNodeViewRenderer } from '@tiptap/react'
 import { selectAncestorContent } from '../keymap-helpers'
+import type { LineNumberFormatter, NumberPolicy } from '../rich-text/outline-numbering'
 import { blockDragPlugin } from './block-drag-plugin'
 import { blockIdPlugin } from './block-id-plugin'
 import { BlockNodeView } from './block-node-view'
@@ -53,6 +54,14 @@ const escapeBlockDownward = (editor: Editor, depth: number): boolean => {
 
 export interface BlockOptions {
   placeholderText: string
+  /**
+   * Per-surface gutter label policy. Defaults (undefined) to the flat
+   * top-level number — KB / persona / triggers stay byte-for-byte unchanged.
+   * Procedures inject the hierarchical formatter + policy via
+   * `useRichTextEditor` when condition nodes are mounted.
+   */
+  lineNumberFormatter?: LineNumberFormatter
+  numberPolicy?: NumberPolicy
 }
 
 export const Block = Node.create<BlockOptions>({

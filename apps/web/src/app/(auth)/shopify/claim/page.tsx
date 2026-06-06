@@ -98,24 +98,43 @@ export default async function ShopifyClaimPage({ searchParams }: PageProps) {
   const defaultOrgId =
     (session.user as { defaultOrganizationId?: string | null }).defaultOrganizationId ?? null
 
+  // Per-org profile + billing for every workspace the user is in (all cached — one Redis
+  // lookup each). `stripeBilled` drives the claim copy: an org already on live Stripe
+  // billing keeps it (no plan picker), so the flow says "connect" not "pick a plan".
+  // `isLiveShopifyLink` short-circuits the picker when the shop is already attached.
+  const orgInfos = await Promise.all(
+    activeMemberships.map(async (m) => {
+      const [profile, sub] = await Promise.all([
+        getOrgCache().get(m.organizationId, 'orgProfile'),
+        getOrgCache().get(m.organizationId, 'subscription'),
+      ])
+      const stripeBilled =
+        sub?.billingProvider === 'stripe' &&
+        sub.status !== 'incomplete' &&
+        sub.status !== 'canceled' &&
+        sub.status !== 'incomplete_expired'
+      const isLiveShopifyLink =
+        sub?.billingProvider === 'shopify' &&
+        sub.shopifyShopDomain === claim.shop &&
+        sub.status !== 'canceled' &&
+        sub.status !== 'incomplete'
+      return {
+        id: profile.id,
+        name: profile.name,
+        handle: profile.handle,
+        stripeBilled,
+        isLiveShopifyLink,
+      }
+    })
+  )
+
   // Short-circuit the picker when this shop is already linked to a single *live*
   // workspace. Shopify's "Open app" re-runs the install → OAuth → claim round-trip on
   // every open, so an already-billed merchant lands here repeatedly; drop them straight
   // into that workspace instead of re-picking it. `incomplete`/`canceled` rows are
   // excluded — those still belong in the picker → finalizeAppStoreInstall flow (resume
   // plan selection / fresh link). A shop attached to >1 live org stays ambiguous → picker.
-  const liveLinkedOrgIds: string[] = []
-  for (const m of activeMemberships) {
-    const sub = await getOrgCache().get(m.organizationId, 'subscription')
-    const isLiveLink =
-      sub?.billingProvider === 'shopify' &&
-      sub.shopifyShopDomain === claim.shop &&
-      sub.status !== 'canceled' &&
-      sub.status !== 'incomplete'
-    if (isLiveLink) {
-      liveLinkedOrgIds.push(m.organizationId)
-    }
-  }
+  const liveLinkedOrgIds = orgInfos.filter((o) => o.isLiveShopifyLink).map((o) => o.id)
 
   if (liveLinkedOrgIds.length === 1) {
     const targetOrgId = liveLinkedOrgIds[0]
@@ -128,13 +147,13 @@ export default async function ShopifyClaimPage({ searchParams }: PageProps) {
   }
 
   // A Shopify store can be attached to more than one Auxx org, so show the picker with
-  // every workspace the user is in (per-org profile is cached).
-  const orgs = await Promise.all(
-    activeMemberships.map(async (m) => {
-      const profile = await getOrgCache().get(m.organizationId, 'orgProfile')
-      return { id: profile.id, name: profile.name, handle: profile.handle }
-    })
-  )
+  // every workspace the user is in (profile + billing already resolved above).
+  const orgs = orgInfos.map((o) => ({
+    id: o.id,
+    name: o.name,
+    handle: o.handle,
+    stripeBilled: o.stripeBilled,
+  }))
 
   return (
     <ClaimFlow

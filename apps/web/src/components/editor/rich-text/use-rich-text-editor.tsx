@@ -43,6 +43,7 @@ import { MarkdownPaste } from '../kb-article/markdown-paste'
 import { migrateLegacyContent } from '../kb-article/migrate-legacy-content'
 import { Panel } from '../kb-article/panel-node'
 import { Tabs } from '../kb-article/tabs-node'
+import { procedureLineNumberFormatter, procedureNumberPolicy } from './outline-numbering'
 import { buildReferencePickerExtensions } from './reference-picker-extensions'
 
 // The `doc` content union is derived from the surface's allowed block set (see
@@ -142,6 +143,14 @@ export interface UseRichTextEditorOptions {
    * (replacing the old `enableProcedureNodes` flag).
    */
   allowedBlocks?: EditorBlock[]
+  /**
+   * When `true`, the gutter line numbers are visible at rest instead of fading
+   * in only on hover/focus. Adds a class to the `.ProseMirror` root that flips
+   * the resting opacity custom property; every existing hover / focus / drag
+   * rule keeps working on top. Defaults to `false` (today's behavior). Opt-in
+   * the same way as a procedure block set — used by the procedure editor.
+   */
+  alwaysShowLineNumbers?: boolean
 }
 
 /**
@@ -167,6 +176,7 @@ export function useRichTextEditor({
   placeholderText,
   inlineExtensions,
   allowedBlocks = DEFAULT_BLOCKS,
+  alwaysShowLineNumbers = false,
 }: UseRichTextEditorOptions) {
   const normalizedInitialContent = useMemo<JSONContent>(() => {
     const migrated = migrateLegacyContent(initialContent)
@@ -203,10 +213,21 @@ export function useRichTextEditor({
   const slashCommandRef = useRef(slashCommand)
   slashCommandRef.current = slashCommand
 
+  // Presentation classes on the `.ProseMirror` root — each flips a CSS custom
+  // property consumed by the block renderer. Set on the root (not a wrapper) so
+  // they reach blocks in both the inline card and the portaled expand dialog.
+  const rootClass = [
+    alwaysShowLineNumbers && 'alwaysShowLineNumbers', // resting line-number opacity
+    allowsConditions(allowedBlocks) && 'procedureBlockSpacing', // per-step vertical rhythm
+  ]
+    .filter(Boolean)
+    .join(' ')
+
   const editor = useEditor(
     {
       immediatelyRender: false,
       editable,
+      ...(rootClass ? { editorProps: { attributes: { class: rootClass } } } : {}),
       extensions: [
         createDoc(allowedBlocks),
         StarterKit.configure({
@@ -222,7 +243,18 @@ export function useRichTextEditor({
           history: undefined,
           // Marks stay enabled (bold, italic, strike, code).
         }),
-        placeholderText ? Block.configure({ placeholderText }) : Block,
+        // Hierarchical gutter numbering rides on the same `conditionBlock`
+        // opt-in as the procedure nodes; every other surface keeps the default
+        // flat formatter (set in BlockOptions). placeholderText merges in too.
+        Block.configure({
+          ...(placeholderText ? { placeholderText } : {}),
+          ...(allowsConditions(allowedBlocks)
+            ? {
+                lineNumberFormatter: procedureLineNumberFormatter,
+                numberPolicy: procedureNumberPolicy,
+              }
+            : {}),
+        }),
         // Container nodes (Panel/Tabs/Accordion) and Table are separate PM
         // nodes — mounting them is the enforcement. Not in `allowedBlocks` →
         // not in the schema → unreachable from paste / drag / programmatic.

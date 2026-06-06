@@ -26,7 +26,7 @@ export function ConditionBlockNodeView({ node, editor, getPos }: NodeViewProps) 
   }
 
   return (
-    <NodeViewWrapper as='div' className='my-2'>
+    <NodeViewWrapper as='div' className='my-2' data-condition-block=''>
       <NodeViewContent />
       <div className='mt-1 flex items-center gap-2 pl-8' contentEditable={false}>
         <Button variant='ghost' size='xs' onClick={addCase}>
