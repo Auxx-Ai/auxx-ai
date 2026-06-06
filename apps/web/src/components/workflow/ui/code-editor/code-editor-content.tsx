@@ -68,6 +68,7 @@ const CodeEditorContent: React.FC = () => {
     height,
     minHeight,
     isExpanded,
+    fill,
     isFocused,
     setIsFocused,
     editorRef,
@@ -219,8 +220,9 @@ const CodeEditorContent: React.FC = () => {
     <WorkflowCompletionsBridge contextRef={workflowContextRef} />
   ) : null
 
-  // When expanded, use full height layout without resize wrapper
-  if (isExpanded) {
+  // When expanded OR fill, use the full-height layout (no resize wrapper) — the
+  // editor fills its bounded parent instead of growing with content.
+  if (isExpanded || fill) {
     return (
       <>
         {bridgeElement}

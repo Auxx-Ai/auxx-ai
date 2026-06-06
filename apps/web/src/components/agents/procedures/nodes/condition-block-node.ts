@@ -12,12 +12,17 @@ import { ConditionBlockNodeView } from './condition-block-node-view'
  * fixed child type). The two child node NAMES are listed explicitly in `content`
  * because PM resolves bare tokens to node names before groups.
  *
+ * The grammar `conditionCase+ conditionElse?` enforces the construct structurally:
+ * at least one IF/ELSE-IF arm, and AT MOST ONE ELSE that must come LAST. PM rejects
+ * a second else or an else-before-case at the schema level (the footer's `!hasElse`
+ * guard is the matching soft UI gate).
+ *
  * See plans/chat/v9/phase-2-authoring.md §1.1 and phase-0 §3.
  */
 export const ConditionBlock = Node.create({
   name: 'conditionBlock',
   group: 'procedureBlock',
-  content: '(conditionCase | conditionElse)+',
+  content: 'conditionCase+ conditionElse?',
   defining: true,
 
   addAttributes() {

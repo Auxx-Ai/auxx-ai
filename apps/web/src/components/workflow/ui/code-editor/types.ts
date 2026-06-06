@@ -56,6 +56,13 @@ export interface CodeEditorProps {
   className?: string
   noWrapper?: boolean
   isExpand?: boolean
+  /**
+   * Fill the parent's height instead of growing with content. Renders the
+   * full-height flex layout (no resize handle) for embedding in a flex column
+   * that bounds the height — e.g. the procedure code drill panel. Default is
+   * the content-sized, user-resizable inline box.
+   */
+  fill?: boolean
   tip?: React.ReactNode
   gradientBorder?: boolean
 

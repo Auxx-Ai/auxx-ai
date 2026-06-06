@@ -42,7 +42,6 @@ export interface CompileError {
     | 'MISSING_SWITCH_TARGET'
     | 'MISSING_CALL_TARGET'
     | 'UNKNOWN_SUBPROCEDURE'
-    | 'UNCALLED_SUBPROCEDURE'
     | 'UNKNOWN_CODE_BLOCK'
     | 'UNKNOWN_OUTPUT_ATTRIBUTE'
     | 'EMPTY_CONDITION_GROUP'
@@ -54,10 +53,23 @@ export interface CompileError {
   subProcedureId?: SubProcedureId
 }
 
+/**
+ * Non-blocking compile signals — surfaced for authoring lint, but they do NOT
+ * block publish. `UNCALLED_SUBPROCEDURE` is intentionally a warning: a procedure's
+ * sub-procedures / code blocks are first-class building blocks that persist even
+ * when no badge references them (authored via the Building blocks popover).
+ */
+export interface CompileWarning {
+  code: 'UNCALLED_SUBPROCEDURE'
+  message: string
+  subProcedureId?: SubProcedureId
+}
+
 export interface CompileResult {
   compiled: CompiledProcedure
   contentHash: string
   errors?: CompileError[]
+  warnings?: CompileWarning[]
 }
 
 export function compileProcedure(doc: TiptapDoc): CompileResult {
@@ -284,8 +296,13 @@ export function compileProcedure(doc: TiptapDoc): CompileResult {
     localAttributes: doc.localAttributes ?? [],
   }
 
-  const errors = validate(compiled)
-  return { compiled, contentHash, ...(errors.length > 0 ? { errors } : {}) }
+  const { errors, warnings } = validate(compiled)
+  return {
+    compiled,
+    contentHash,
+    ...(errors.length > 0 ? { errors } : {}),
+    ...(warnings.length > 0 ? { warnings } : {}),
+  }
 }
 
 /** Render a `conditionCase`'s `conditionPredicate` child to a plain NL test string. */
@@ -298,9 +315,13 @@ function predicateText(caseNode: TiptapNode): string {
 
 // ── validation ────────────────────────────────────────────────────────────
 
-function validate(compiled: CompiledProcedure): CompileError[] {
+function validate(compiled: CompiledProcedure): {
+  errors: CompileError[]
+  warnings: CompileWarning[]
+} {
   const { steps, codeBlocks, subProcedures, localAttributes } = compiled
   const errors: CompileError[] = []
+  const warnings: CompileWarning[] = []
 
   const subProcIds = new Set(Object.keys(subProcedures))
   const calledSubProcs = new Set<SubProcedureId>()
@@ -396,10 +417,11 @@ function validate(compiled: CompiledProcedure): CompileError[] {
     }
   }
 
-  // a declared sub-procedure that is never called (the run-time 422, surfaced at compile)
+  // A declared sub-procedure that is never called. NON-BLOCKING (warning, not
+  // error): unreferenced building blocks are kept on purpose — see CompileWarning.
   for (const id of subProcIds) {
     if (!calledSubProcs.has(id)) {
-      errors.push({
+      warnings.push({
         code: 'UNCALLED_SUBPROCEDURE',
         message: `Sub-procedure "${id}" is declared but never called.`,
         subProcedureId: id,
@@ -410,7 +432,7 @@ function validate(compiled: CompiledProcedure): CompileError[] {
   // cycle detection over the call graph (a sub-procedure that call's itself transitively)
   errors.push(...detectCallCycles(compiled))
 
-  return errors
+  return { errors, warnings }
 }
 
 /** Steps reachable from `entry` following `next` / condition branches (NOT crossing `call`). */

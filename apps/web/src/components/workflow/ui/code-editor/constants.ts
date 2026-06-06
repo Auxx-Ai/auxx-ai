@@ -6,6 +6,13 @@ export const DEFAULT_MIN_HEIGHT = 100
 export const DEFAULT_EDITOR_OPTIONS = {
   readOnly: false,
   domReadOnly: true,
+  // Use the legacy hidden <textarea> input path instead of the EditContext API
+  // (Monaco's default since 0.52). With EditContext on, the focused editable
+  // element is a <div class="native-edit-context"> — NOT a textarea/contentEditable
+  // — so @tanstack/react-hotkeys' input detection (isInputElement) misses it and
+  // global single-key shortcuts ('c' compose, etc.) fire while typing in the editor.
+  // The textarea path is correctly detected and suppresses those hotkeys.
+  editContext: false,
   quickSuggestions: false,
   minimap: { enabled: false },
   lineNumbersMinChars: 1,

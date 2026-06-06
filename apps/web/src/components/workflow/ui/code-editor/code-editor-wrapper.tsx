@@ -22,6 +22,7 @@ const CodeEditorWrapper: React.FC = () => {
     isFocused,
     gradientBorder,
     noWrapper,
+    fill,
     nodeId,
     enableWorkflowCompletions,
     language,
@@ -48,13 +49,17 @@ const CodeEditorWrapper: React.FC = () => {
           isFocused
             ? gradientBorder && 'bg-gradient-to-r from-[#0ba5ec] to-[#155aef]'
             : 'bg-transparent',
-          '!rounded-[9px] p-0.5 w-full'
+          '!rounded-[9px] p-0.5 w-full',
+          // Fill mode: stretch through the bounded parent so the content's
+          // full-height flex layout has a height to resolve against.
+          fill && 'flex min-h-0 flex-1 flex-col'
         )}>
         <div
           className={cn(
             isFocused ? 'bg-background' : 'bg-primary-100',
             'rounded-lg border',
-            shouldAllowOverflow ? 'overflow-visible' : 'overflow-hidden'
+            shouldAllowOverflow ? 'overflow-visible' : 'overflow-hidden',
+            fill && 'flex min-h-0 flex-1 flex-col'
           )}>
           <CodeEditorHeader />
           {!isExpanded && <CodeEditorContent />}

@@ -5,7 +5,13 @@ import { Button } from '@auxx/ui/components/button'
 import type { NodeViewProps } from '@tiptap/react'
 import { NodeViewContent, NodeViewWrapper } from '@tiptap/react'
 import { Plus } from 'lucide-react'
-import { appendChild, newConditionCase, newConditionElse, nodePos } from './condition-helpers'
+import {
+  appendChild,
+  insertConditionCase,
+  newConditionCase,
+  newConditionElse,
+  nodePos,
+} from './condition-helpers'
 
 /**
  * `conditionBlock` view — an IF / ELSE-IF / ELSE construct rendered inline-expanded
@@ -18,7 +24,7 @@ export function ConditionBlockNodeView({ node, editor, getPos }: NodeViewProps) 
 
   const addCase = () => {
     const pos = nodePos(getPos)
-    if (pos != null) appendChild(editor, pos, newConditionCase())
+    if (pos != null) insertConditionCase(editor, pos, newConditionCase())
   }
   const addElse = () => {
     const pos = nodePos(getPos)

@@ -32,6 +32,7 @@ interface CodeEditorContextType {
   headerRight?: React.ReactNode
   tip?: React.ReactNode
   noWrapper?: boolean
+  fill?: boolean
 
   // UI State
   isExpanded: boolean
@@ -98,6 +99,7 @@ export const CodeEditorProvider = ({
   headerRight,
   tip,
   noWrapper = false,
+  fill = false,
   className,
   gradientBorder = true,
   isExpand = false,
@@ -189,6 +191,7 @@ export const CodeEditorProvider = ({
       headerRight,
       tip,
       noWrapper,
+      fill,
 
       // UI State
       isExpanded: isExpand || isExpanded,
@@ -239,6 +242,7 @@ export const CodeEditorProvider = ({
       headerRight,
       tip,
       noWrapper,
+      fill,
       isExpand,
       isExpanded,
       setIsExpanded,

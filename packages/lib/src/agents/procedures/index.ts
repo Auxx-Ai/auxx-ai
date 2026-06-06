@@ -12,7 +12,7 @@ export {
   type ConversationMessage,
   classifyProcedure,
 } from './classify'
-export type { CompileError, CompileResult } from './compile'
+export type { CompileError, CompileResult, CompileWarning } from './compile'
 export { compileProcedure } from './compile'
 export {
   buildCodeInputs,

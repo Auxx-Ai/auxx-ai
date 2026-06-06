@@ -2,7 +2,6 @@
 'use client'
 
 import type { CodeOutput, LocalAttribute, TriggerExample } from '@auxx/lib/agents/procedures/client'
-import { parseStepBadgeId } from '@auxx/lib/agents/procedures/client'
 import type { ConditionGroup } from '@auxx/lib/conditions/client'
 import { generateId } from '@auxx/utils'
 import type { JSONContent } from '@tiptap/core'
@@ -155,22 +154,6 @@ function readContent(content: unknown): JSONContent[] {
   return Array.isArray(content) ? (content as JSONContent[]) : []
 }
 
-/** Collect the sub-procedure / code ids referenced by inline step badges in a prose tree. */
-function collectStepRefs(nodes: JSONContent[]): { subs: Set<string>; codes: Set<string> } {
-  const subs = new Set<string>()
-  const codes = new Set<string>()
-  const walk = (node: JSONContent) => {
-    if (node.type === 'reference' && typeof node.attrs?.id === 'string') {
-      const badge = parseStepBadgeId(node.attrs.id)
-      if (badge?.kind === 'subprocedure') subs.add(badge.subProcedureId)
-      else if (badge?.kind === 'code') codes.add(badge.codeBlockId)
-    }
-    if (Array.isArray(node.content)) for (const child of node.content) walk(child)
-  }
-  for (const node of nodes) walk(node)
-  return { subs, codes }
-}
-
 interface ProcedureDraftProviderProps {
   /** Null on the `root` panel — context is null, but this component stays mounted. */
   procedureId: string | null
@@ -215,10 +198,6 @@ export function ProcedureDraftProvider({
   const subRef = useRef<SubProcedureEntry[]>([])
   const codeRef = useRef<CodeBlockEntry[]>([])
   const loadedRef = useRef<string | null>(null)
-  // The open drill id, mirrored in a ref so `flush` (debounced) reads the live value
-  // for the orphan-sweep pin without re-creating the callback on every drill change.
-  const drillRef = useRef<string | null>(drill)
-  drillRef.current = drill
 
   // Seed every slice once per loaded procedure (async query → can't be a ref
   // initializer; seeding in render guarantees the canvas mounts with content). Keyed by
@@ -239,26 +218,18 @@ export function ProcedureDraftProvider({
     setCodeBlocks(codeRef.current)
   }
 
-  // Build + persist the draft from the live refs. The whole-tree orphan sweep runs
-  // HERE (inside the debounced flush), once per idle save. The currently-open drill id
-  // is PINNED through the sweep even if its badge was just deleted from prose, so
-  // editing it never yanks the panel out; it drops on the next flush after the drill
-  // closes (when `drillRef` is null).
+  // Build + persist the draft from the live refs. EVERY building block is kept —
+  // sub-procedures and code blocks are first-class parts of the procedure (authored
+  // via the Building blocks popover), so they persist even when no badge references
+  // them. Deleting the last badge no longer deletes the block. (No orphan sweep.)
   const flush = useCallback(() => {
     if (!procedureId) return
-    const content = mainContentRef.current
-    const subs = subRef.current
-    const codes = codeRef.current
-    const referenced = collectStepRefs([...content, ...subs.flatMap((s) => s.content)])
-    const open = drillRef.current
-    const pinnedSub = open?.startsWith('sub:') ? open.slice('sub:'.length) : null
-    const pinnedCode = open?.startsWith('code:') ? open.slice('code:'.length) : null
     saveDoc(procedureId, {
       type: 'doc',
-      content,
+      content: mainContentRef.current,
       localAttributes: localAttrRef.current,
-      subProcedures: subs.filter((s) => referenced.subs.has(s.id) || s.id === pinnedSub),
-      codeBlocks: codes.filter((c) => referenced.codes.has(c.id) || c.id === pinnedCode),
+      subProcedures: subRef.current,
+      codeBlocks: codeRef.current,
     })
   }, [saveDoc, procedureId])
 
@@ -396,11 +367,7 @@ export function ProcedureDraftProvider({
   }, [])
 
   const openDrill = useCallback((key: string) => void setDrill(key), [setDrill])
-  const closeDrill = useCallback(() => {
-    void setDrill(null)
-    // Flush soon so the orphan sweep (now un-pinned) drops a body whose badge is gone.
-    commit()
-  }, [setDrill, commit])
+  const closeDrill = useCallback(() => void setDrill(null), [setDrill])
 
   const patchMeta = useCallback(
     (fields: MetaPatch) => {

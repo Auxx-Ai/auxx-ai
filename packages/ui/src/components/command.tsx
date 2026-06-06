@@ -505,6 +505,36 @@ function CommandItem({ className, ...props }: React.ComponentProps<typeof Comman
   )
 }
 
+/**
+ * A {@link CommandItem} with a leading muted icon and a single truncating label —
+ * the common "icon + text" row used across pickers (procedure step pickers, the
+ * building-blocks popover). `value` feeds cmdk selection/filtering; `onSelect`
+ * fires on click / Enter.
+ */
+function CommandIconItem({
+  icon,
+  label,
+  value,
+  onSelect,
+  className,
+}: {
+  icon: React.ReactNode
+  label: string
+  value: string
+  onSelect: () => void
+  className?: string
+}) {
+  return (
+    <CommandItem
+      value={value}
+      onSelect={onSelect}
+      className={cn('flex items-center gap-2', className)}>
+      <span className='text-muted-foreground'>{icon}</span>
+      <span className='truncate text-sm'>{label}</span>
+    </CommandItem>
+  )
+}
+
 function CommandShortcut({ className, ...props }: React.HTMLAttributes<HTMLSpanElement>) {
   return (
     <span
@@ -902,6 +932,7 @@ export {
   CommandGroup,
   CommandGroupLabel,
   CommandItem,
+  CommandIconItem,
   CommandShortcut,
   CommandSeparator,
   CommandDescription,

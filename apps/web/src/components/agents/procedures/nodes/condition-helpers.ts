@@ -29,6 +29,27 @@ export function appendChild(
   editor.chain().focus().insertContentAt(insertAt, child).run()
 }
 
+/**
+ * Insert a new IF/ELSE-IF arm into the `conditionBlock` at `containerPos`, keeping
+ * arm precedence intact: if the block ends in an ELSE fallthrough, the case lands
+ * just BEFORE it (a trailing else must stay last — it's the compiler's catch-all);
+ * otherwise it appends at the end.
+ */
+export function insertConditionCase(
+  editor: Editor,
+  containerPos: number,
+  child: Record<string, unknown>
+): void {
+  const node = editor.state.doc.nodeAt(containerPos)
+  if (!node) return
+  const lastChild = node.lastChild
+  const insertAt =
+    lastChild?.type.name === 'conditionElse'
+      ? containerPos + node.nodeSize - 1 - lastChild.nodeSize
+      : containerPos + node.nodeSize - 1
+  editor.chain().focus().insertContentAt(insertAt, child).run()
+}
+
 /** A fresh `conditionCase` arm: empty text predicate (text mode) + one empty body block. */
 export function newConditionCase() {
   return {

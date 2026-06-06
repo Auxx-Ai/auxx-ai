@@ -2,7 +2,6 @@
 'use client'
 
 import type { FieldType } from '@auxx/database/types'
-import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import CodeEditor, {
   type CodeEditorOutput,
   CodeLanguage,
@@ -76,38 +75,39 @@ export function ProcedureDrillPanel() {
       type: dataTypeToJs(a.dataType),
     }))
     return (
-      <ScrollArea className='h-full' scrollbarClassName='w-1.5 z-20' noFade>
-        <div className='flex flex-col gap-2 p-3'>
+      <div className='flex flex-1 flex-col gap-2 min-h-0 p-3'>
+        <div className='shrink-0'>
           <CodeOutputsEditor
             initialOutputs={entry?.outputs ?? []}
             localAttributes={localAttributes}
             onChange={(outputs) => handleCodeOutputsChange(id, outputs)}
           />
-          <CodeEditor
-            title={name}
-            language={CodeLanguage.javascript}
-            value={entry?.code ?? ''}
-            onChange={(code) => handleCodeChange(id, code)}
-            enableWorkflowCompletions={false}
-            placeholder='// function main(inputs) { … return { <attr>: value } }'
-            codeInputs={[
-              {
-                name: 'inputs',
-                description:
-                  'inputs.vars.<attr> (declared attributes), inputs.subject.<anchor>.<field> (record fields)',
-              },
-            ]}
-            codeOutputs={codeOutputs}
-            tip={
-              <p className='text-xs text-muted-foreground'>
-                <code>main(inputs)</code> receives <code>inputs.vars.&lt;attr&gt;</code> and{' '}
-                <code>inputs.subject.&lt;anchor&gt;.&lt;field&gt;</code>; return{' '}
-                <code>{'{ <attr>: value }'}</code> to write declared outputs.
-              </p>
-            }
-          />
         </div>
-      </ScrollArea>
+        <CodeEditor
+          fill
+          title={name}
+          language={CodeLanguage.javascript}
+          value={entry?.code ?? ''}
+          onChange={(code) => handleCodeChange(id, code)}
+          enableWorkflowCompletions={false}
+          placeholder='// function main(inputs) { … return { <attr>: value } }'
+          codeInputs={[
+            {
+              name: 'inputs',
+              description:
+                'inputs.vars.<attr> (declared attributes), inputs.subject.<anchor>.<field> (record fields)',
+            },
+          ]}
+          codeOutputs={codeOutputs}
+          tip={
+            <p className='text-xs text-muted-foreground'>
+              <code>main(inputs)</code> receives <code>inputs.vars.&lt;attr&gt;</code> and{' '}
+              <code>inputs.subject.&lt;anchor&gt;.&lt;field&gt;</code>; return{' '}
+              <code>{'{ <attr>: value }'}</code> to write declared outputs.
+            </p>
+          }
+        />
+      </div>
     )
   }
 
