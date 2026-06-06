@@ -10,7 +10,7 @@ import {
 import { EntityIcon } from '@auxx/ui/components/icons'
 import type { Editor } from '@tiptap/react'
 import { useEditorState } from '@tiptap/react'
-import { ChevronDown } from 'lucide-react'
+import { DEFAULT_BLOCKS, type EditorBlock } from '../../blocks/allowed-blocks'
 import { BubbleSection } from '../bubble-menu'
 import { useBubbleSubPopover } from '../bubble-menu-context'
 import { BubbleToggleButton } from '../ui/bubble-toggle-button'
@@ -88,6 +88,8 @@ const TURN_INTO_OPTIONS: TurnIntoOption[] = [
 
 interface TurnIntoSectionProps {
   editor: Editor
+  /** Block kinds this editor allows. Options producing other kinds are hidden. */
+  allowedBlocks?: EditorBlock[]
 }
 
 interface SelectionBlocks {
@@ -130,7 +132,7 @@ function labelForBlockType(blockType: string, editor: Editor, pos?: number): str
   return opt?.label ?? blockType
 }
 
-export function TurnIntoSection({ editor }: TurnIntoSectionProps) {
+export function TurnIntoSection({ editor, allowedBlocks = DEFAULT_BLOCKS }: TurnIntoSectionProps) {
   const onOpenChange = useBubbleSubPopover()
   const selection = useEditorState({
     editor,
@@ -141,9 +143,14 @@ export function TurnIntoSection({ editor }: TurnIntoSectionProps) {
       a.positions.every((p, i) => p === b.positions[i]),
   })
 
+  // Only show options for kinds this surface allows.
+  const allow = new Set(allowedBlocks)
+  const options = TURN_INTO_OPTIONS.filter((o) => allow.has(o.blockType as EditorBlock))
+
   // Hide entirely if the selection has no convertible blocks (e.g. only
-  // crossed table cells, or no shared type to derive a label from).
-  if (selection.positions.length === 0) return null
+  // crossed table cells), or there's nothing meaningful to turn into (≤1
+  // allowed option, e.g. a procedure surface that only permits `text`).
+  if (selection.positions.length === 0 || options.length <= 1) return null
 
   const apply = (option: TurnIntoOption) => {
     const chain = editor.chain().focus()
@@ -173,7 +180,7 @@ export function TurnIntoSection({ editor }: TurnIntoSectionProps) {
           </BubbleToggleButton>
         </DropdownMenuTrigger>
         <DropdownMenuContent align='start' className='max-h-72 w-48 overflow-y-auto'>
-          {TURN_INTO_OPTIONS.map((opt) => (
+          {options.map((opt) => (
             <DropdownMenuItem
               key={opt.id}
               onSelect={() => apply(opt)}

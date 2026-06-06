@@ -2,12 +2,18 @@
 
 import { Extension, InputRule } from '@tiptap/core'
 import type { Node as PMNode, ResolvedPos } from '@tiptap/pm/model'
+import { DEFAULT_BLOCKS, type EditorBlock } from '../blocks/allowed-blocks'
 import type { BlockType } from './block-node'
 
 interface BlockSpec {
   blockType: BlockType
   level?: number | null
   checked?: boolean
+}
+
+export interface MarkdownInputRulesOptions {
+  /** Block kinds this editor allows. Rules that produce a disallowed kind are skipped. */
+  allowed: EditorBlock[]
 }
 
 /**
@@ -18,23 +24,40 @@ interface BlockSpec {
  * Rules only apply when the block is currently a plain `text` block — we
  * don't auto-convert headings into lists mid-stream. To revert, the user
  * can hit Backspace immediately after typing (Tiptap default).
+ *
+ * A rule is only registered when its target kind is in `options.allowed`, so
+ * a restricted surface (e.g. procedures, `allowed: ['text', 'conditionBlock']`)
+ * gets no block-producing shortcuts at all.
  */
-export const MarkdownInputRules = Extension.create({
+export const MarkdownInputRules = Extension.create<MarkdownInputRulesOptions>({
   name: 'markdown-input-rules',
 
+  addOptions() {
+    return { allowed: DEFAULT_BLOCKS }
+  },
+
   addInputRules() {
-    return [
-      headingRule(/^#\s$/, 1),
-      headingRule(/^##\s$/, 2),
-      headingRule(/^###\s$/, 3),
-      blockRule(/^[-*]\s$/, { blockType: 'bulletListItem', level: 1 }),
-      blockRule(/^1\.\s$/, { blockType: 'numberedListItem', level: 1 }),
-      blockRule(/^\[\s?\]\s$/, { blockType: 'todoListItem', checked: false, level: 1 }),
-      blockRule(/^\[x\]\s$/i, { blockType: 'todoListItem', checked: true, level: 1 }),
-      blockRule(/^>\s$/, { blockType: 'quote' }),
-      blockRule(/^```$/, { blockType: 'codeBlock' }),
-      dividerRule(),
-    ]
+    const allow = new Set(this.options.allowed)
+    const rules: InputRule[] = []
+    if (allow.has('heading')) {
+      rules.push(headingRule(/^#\s$/, 1), headingRule(/^##\s$/, 2), headingRule(/^###\s$/, 3))
+    }
+    if (allow.has('bulletListItem')) {
+      rules.push(blockRule(/^[-*]\s$/, { blockType: 'bulletListItem', level: 1 }))
+    }
+    if (allow.has('numberedListItem')) {
+      rules.push(blockRule(/^1\.\s$/, { blockType: 'numberedListItem', level: 1 }))
+    }
+    if (allow.has('todoListItem')) {
+      rules.push(
+        blockRule(/^\[\s?\]\s$/, { blockType: 'todoListItem', checked: false, level: 1 }),
+        blockRule(/^\[x\]\s$/i, { blockType: 'todoListItem', checked: true, level: 1 })
+      )
+    }
+    if (allow.has('quote')) rules.push(blockRule(/^>\s$/, { blockType: 'quote' }))
+    if (allow.has('codeBlock')) rules.push(blockRule(/^```$/, { blockType: 'codeBlock' }))
+    if (allow.has('divider')) rules.push(dividerRule())
+    return rules
   },
 })
 

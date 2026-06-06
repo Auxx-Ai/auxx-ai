@@ -8,6 +8,10 @@ export { getAppConnectionDefinition } from './get-app-connection-definition'
 // Export interpolation utilities
 export { extractPlaceholders, interpolateConnectionFields } from './interpolate-connection'
 export { listAppConnections } from './list-app-connections'
+export {
+  CONNECTION_CIRCUIT_OPEN_THRESHOLD,
+  markAppConnectionExpired,
+} from './mark-app-connection-expired'
 export { renameAppConnection } from './rename-app-connection'
 export { resolveAppConnectionForRuntime } from './resolve-app-connection-for-runtime'
 export { saveAppConnection } from './save-app-connection'

@@ -5,6 +5,7 @@ import { database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { ok, type Result } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
+import { CONNECTION_CIRCUIT_OPEN_THRESHOLD } from './mark-app-connection-expired'
 import type { AppConnection, DecryptedConnectionData } from './types'
 
 const logger = createScopedLogger('list-app-connections')
@@ -102,6 +103,14 @@ export async function listAppConnections(organizationId: string, userId?: string
     // Determine status by checking expiration
     let status: 'connected' | 'not_connected' | 'expired' = 'connected'
     let expiresAt: Date | undefined
+
+    // Circuit-breaker: a connection whose refresh circuit is open — or that was
+    // marked failed at tool-execution time via `markAppConnectionExpired` — is
+    // surfaced as expired even when the token itself carries no expiry (e.g.
+    // Shopify offline tokens, which never expire but can be revoked).
+    if (cred.consecutiveRefreshFailures >= CONNECTION_CIRCUIT_OPEN_THRESHOLD) {
+      status = 'expired'
+    }
 
     // Check if OAuth2 token is expired
     try {

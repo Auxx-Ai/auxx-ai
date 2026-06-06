@@ -26,6 +26,30 @@ import type { RuntimeContext } from '../types.ts'
 import { parseError } from '../utils.ts'
 
 /**
+ * Minimal local mirror of `@auxx/sdk`'s `ConnectionExpiredError`.
+ *
+ * `@auxx/sdk/server` is types-only at build time — the whole module is
+ * externalized to the `AUXX_SERVER_SDK` global, so a `new ConnectionExpiredError()`
+ * in app code compiles to `AUXX_SERVER_SDK.ConnectionExpiredError`. The class
+ * therefore has to be a real member of the injected global, not just a type.
+ *
+ * Mirrors `packages/sdk/src/shared/errors.ts`. The executors detect this across
+ * the sandbox / module boundary by `error.name === 'ConnectionExpiredError'`
+ * and `error.code === 'CONNECTION_EXPIRED'` (see `parseError` in `../utils.ts`),
+ * not `instanceof` — so the class extends `Error` directly.
+ */
+class ConnectionExpiredError extends Error {
+  readonly code: string
+  readonly scope: 'user' | 'organization'
+  constructor(scope: 'user' | 'organization' = 'organization') {
+    super(`${scope} connection expired or revoked. Please reconnect your account.`)
+    this.name = 'ConnectionExpiredError'
+    this.code = 'CONNECTION_EXPIRED'
+    this.scope = scope
+  }
+}
+
+/**
  * Connection interface (matches @auxx/sdk/server/connections)
  *
  * Represents an external service connection (OAuth2 or secret-based).
@@ -187,6 +211,9 @@ export interface ServerSDK {
   findContactByPhone: (input: {
     phone: string
   }) => Promise<{ recordId: string; displayName: string | null } | null>
+  // Error classes re-exported from `@auxx/sdk/server`. App code constructs these
+  // via the externalized global, so they must be real constructors here.
+  ConnectionExpiredError: typeof ConnectionExpiredError
 }
 
 /**
@@ -911,5 +938,13 @@ export function createServerSDK(context: RuntimeContext): ServerSDK {
       }
       return data.entity ?? null
     },
+
+    /**
+     * Error class re-exported from `@auxx/sdk/server`. Exposed on the global so
+     * `new ConnectionExpiredError(scope)` in app code resolves to a real
+     * constructor — the platform catches it (by name/code) and prompts the user
+     * to reconnect instead of surfacing a raw execution error.
+     */
+    ConnectionExpiredError,
   }
 }

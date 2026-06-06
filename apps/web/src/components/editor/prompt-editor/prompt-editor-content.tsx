@@ -13,6 +13,7 @@ import type { Editor } from '@tiptap/react'
 import { EditorContent } from '@tiptap/react'
 import { Link as LinkIcon } from 'lucide-react'
 import { memo, useCallback, useEffect, useRef, useState } from 'react'
+import { DEFAULT_BLOCKS, type EditorBlock } from '~/components/editor/blocks/allowed-blocks'
 import {
   EditorBubbleMenu,
   InlineMarksSection,
@@ -62,8 +63,17 @@ interface PromptEditorContentProps {
    * (e.g. the workflow `{`-variable picker). Defaults to `[]`.
    */
   inlineExtensions?: Extension[]
-  /** Mount the v9 procedure control-flow nodes. Forwarded to `useRichTextEditor`. */
-  enableProcedureNodes?: boolean
+  /**
+   * The block kinds this editor exposes. Forwarded to `useRichTextEditor` and
+   * used to filter the slash menu + "Turn into" options. Defaults to the full
+   * KB set. Spread a preset (`PERSONA_BLOCKS`, `PROCEDURE_BLOCKS`, …).
+   */
+  allowedBlocks?: EditorBlock[]
+  /**
+   * Mount the slash (`/`) command menu. Defaults to `true`. Set `false` on
+   * surfaces where `@` is the only insertion affordance (procedures).
+   */
+  slash?: boolean
 }
 
 interface LinkPopoverState {
@@ -96,11 +106,14 @@ export const PromptEditorContent = memo(function PromptEditorContent({
   editable = true,
   placeholderText,
   inlineExtensions,
-  enableProcedureNodes,
+  allowedBlocks = DEFAULT_BLOCKS,
+  slash = true,
 }: PromptEditorContentProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [linkPopover, setLinkPopover] = useState<LinkPopoverState | null>(null)
 
+  // `useSlashCommand` is a hook — always called — but only wired into the
+  // editor / mounted as a popover when `slash` is on.
   const slashCommand = useSlashCommand()
 
   const onPickerEnter = useCallback(
@@ -115,7 +128,7 @@ export const PromptEditorContent = memo(function PromptEditorContent({
   const { editor } = useRichTextEditor({
     initialContent,
     onChange,
-    slashCommand,
+    slashCommand: slash ? slashCommand : undefined,
     enableReferencePicker: true,
     onPickerEnter,
     onPickerArrowVertical,
@@ -123,7 +136,7 @@ export const PromptEditorContent = memo(function PromptEditorContent({
     editable,
     placeholderText,
     inlineExtensions,
-    enableProcedureNodes,
+    allowedBlocks,
   })
 
   const activePicker = useActivePicker(editor)
@@ -224,20 +237,25 @@ export const PromptEditorContent = memo(function PromptEditorContent({
       <EditorBubbleMenu
         editor={editor}
         renderBlockSection={({ editor }) => <KBBlockSection editor={editor} />}
-        renderTurnInto={({ editor }) => <TurnIntoSection editor={editor} />}
+        renderTurnInto={({ editor }) => (
+          <TurnIntoSection editor={editor} allowedBlocks={allowedBlocks} />
+        )}
         renderInlineMarks={({ editor }) => <InlineMarksSection editor={editor} />}
         renderLink={({ editor }) => <LinkButton editor={editor} onRequest={handleLinkRequest} />}
       />
-      <InlinePickerPopover
-        state={slashCommand.suggestionState}
-        onClose={slashCommand.closePicker}
-        width={288}>
-        <BasicSlashCommandPicker
-          query={slashCommand.suggestionState.query}
-          onExecute={slashCommand.executeCommand}
+      {slash && (
+        <InlinePickerPopover
+          state={slashCommand.suggestionState}
           onClose={slashCommand.closePicker}
-        />
-      </InlinePickerPopover>
+          width={288}>
+          <BasicSlashCommandPicker
+            query={slashCommand.suggestionState.query}
+            onExecute={slashCommand.executeCommand}
+            onClose={slashCommand.closePicker}
+            allowedBlocks={allowedBlocks}
+          />
+        </InlinePickerPopover>
+      )}
       <InlinePickerPopover
         state={{
           isOpen: !!activePicker,

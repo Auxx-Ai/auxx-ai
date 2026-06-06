@@ -19,6 +19,14 @@ import { ConditionBlock } from '~/components/agents/procedures/nodes/condition-b
 import { ConditionCase } from '~/components/agents/procedures/nodes/condition-case-node'
 import { ConditionElse } from '~/components/agents/procedures/nodes/condition-else-node'
 import { ConditionPredicate } from '~/components/agents/procedures/nodes/condition-predicate-node'
+import {
+  allowsConditions,
+  allowsContainers,
+  allowsTable,
+  DEFAULT_BLOCKS,
+  docContentExpr,
+  type EditorBlock,
+} from '../blocks/allowed-blocks'
 import { Table, TableCell, TableHeader, TableRow } from '../extensions/table'
 import {
   createPlaceholderNode,
@@ -37,18 +45,15 @@ import { Panel } from '../kb-article/panel-node'
 import { Tabs } from '../kb-article/tabs-node'
 import { buildReferencePickerExtensions } from './reference-picker-extensions'
 
-// The `doc` content union. `procedureBlock` is only a valid token when at least
-// one node declares `group: 'procedureBlock'` (PM rejects an empty group), so the
-// alternative is added ONLY when the procedure nodes are mounted (§1.2). PM
-// resolves a bare `block` token to the NODE named `block`, not the group, so
-// `table` is listed explicitly even though it's in `group: 'block'`.
-function createDoc(enableProcedureNodes: boolean) {
+// The `doc` content union is derived from the surface's allowed block set (see
+// `docContentExpr`). A group token (`containerBlock` / `procedureBlock`) is only
+// valid when ≥1 member node is mounted, so each is included only when the
+// corresponding nodes are allowed below.
+function createDoc(allowedBlocks: EditorBlock[]) {
   return Node.create({
     name: 'doc',
     topNode: true,
-    content: enableProcedureNodes
-      ? '(block | containerBlock | procedureBlock | table)+'
-      : '(block | containerBlock | table)+',
+    content: docContentExpr(allowedBlocks),
   })
 }
 
@@ -129,14 +134,14 @@ export interface UseRichTextEditorOptions {
    */
   inlineExtensions?: Extension[]
   /**
-   * Mount the v9 procedure control-flow nodes (conditionBlock / conditionCase /
-   * conditionElse / conditionPredicate) and extend the `doc` content union with
-   * the `procedureBlock` group. The step "nodes" (tool / code / routing /
-   * sub-procedure) are inline reference badges, not block nodes. Defaults to `false`
-   * — only the procedure editor opts in; KB / persona / mail schemas are
-   * untouched (no procedure node types in their autosave payloads).
+   * The block kinds this editor exposes — the single source of truth for the
+   * schema (which separate nodes mount), markdown rules/paste, and the bubble
+   * "Turn into" menu. Defaults to {@link DEFAULT_BLOCKS} (the full KB set).
+   * Spread a preset: `KB_BLOCKS`, `PERSONA_BLOCKS`, `PROCEDURE_BLOCKS`.
+   * `conditionBlock` in the set mounts the v9 procedure control-flow nodes
+   * (replacing the old `enableProcedureNodes` flag).
    */
-  enableProcedureNodes?: boolean
+  allowedBlocks?: EditorBlock[]
 }
 
 /**
@@ -144,9 +149,11 @@ export interface UseRichTextEditorOptions {
  * - `useKBArticleEditor` (thin shim — adds KB-specific picker / link popover)
  * - `PersonaEditor` (agent persona prompt, no slash menu)
  *
- * Mounts the full block set (StarterKit + Block / Panel / Tabs / Accordion /
- * Table), the markdown input/paste rules, the focus decoration plugin, and —
- * by default — the inline reference picker. Slash command is opt-in.
+ * Mounts StarterKit + the `block` node, the markdown input/paste rules, the
+ * focus decoration plugin, and — by default — the inline reference picker.
+ * The separate structural nodes (Panel / Tabs / Accordion / Table / procedure
+ * condition nodes) mount only when their kind is in `allowedBlocks`. Slash
+ * command is opt-in.
  */
 export function useRichTextEditor({
   initialContent,
@@ -159,7 +166,7 @@ export function useRichTextEditor({
   editable = true,
   placeholderText,
   inlineExtensions,
-  enableProcedureNodes = false,
+  allowedBlocks = DEFAULT_BLOCKS,
 }: UseRichTextEditorOptions) {
   const normalizedInitialContent = useMemo<JSONContent>(() => {
     const migrated = migrateLegacyContent(initialContent)
@@ -201,7 +208,7 @@ export function useRichTextEditor({
       immediatelyRender: false,
       editable,
       extensions: [
-        createDoc(enableProcedureNodes),
+        createDoc(allowedBlocks),
         StarterKit.configure({
           document: false,
           heading: false,
@@ -216,18 +223,18 @@ export function useRichTextEditor({
           // Marks stay enabled (bold, italic, strike, code).
         }),
         placeholderText ? Block.configure({ placeholderText }) : Block,
-        Panel,
-        Tabs,
-        Accordion,
-        MarkdownInputRules,
-        MarkdownPaste,
+        // Container nodes (Panel/Tabs/Accordion) and Table are separate PM
+        // nodes — mounting them is the enforcement. Not in `allowedBlocks` →
+        // not in the schema → unreachable from paste / drag / programmatic.
+        // Panel is the child of Tabs/Accordion, so it rides along whenever any
+        // container is allowed.
+        ...(allowsContainers(allowedBlocks) ? [Panel, Tabs, Accordion] : []),
+        MarkdownInputRules.configure({ allowed: allowedBlocks }),
+        MarkdownPaste.configure({ allowed: allowedBlocks }),
         // Column resizing is disabled — the React NodeView (TableNodeView)
         // owns the table chrome and column resize is a follow-up. Reorder +
         // add/remove are handled via table-helpers.ts.
-        Table,
-        TableRow,
-        TableHeader,
-        TableCell,
+        ...(allowsTable(allowedBlocks) ? [Table, TableRow, TableHeader, TableCell] : []),
         Underline,
         TextStyle,
         Color,
@@ -239,7 +246,7 @@ export function useRichTextEditor({
         // via the Placeholder extension's CSS pseudo-element (which would
         // overlap the line gutter). See block-node-view.tsx `showPlaceholder`.
         ...(slashCommand ? [slashCommand.slashCommandExtension] : []),
-        ...(enableProcedureNodes
+        ...(allowsConditions(allowedBlocks)
           ? [ConditionBlock, ConditionCase, ConditionElse, ConditionPredicate]
           : []),
         ...referencePickerExtensions,

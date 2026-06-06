@@ -2,6 +2,7 @@
 'use client'
 
 import type { FieldType } from '@auxx/database/types'
+import { PROCEDURE_BLOCKS } from '~/components/editor/blocks/allowed-blocks'
 import { PromptEditorContent } from '~/components/editor/prompt-editor'
 import CodeEditor, {
   type CodeEditorOutput,
@@ -9,7 +10,7 @@ import CodeEditor, {
 } from '~/components/workflow/ui/code-editor'
 import { CodeOutputsEditor } from './code-outputs-editor'
 import { useProcedureDraft } from './procedure-draft-provider'
-import { PROCEDURE_REFERENCE_TABS } from './procedure-editor'
+import { PROCEDURE_PLACEHOLDER, PROCEDURE_REFERENCE_TABS } from './procedure-editor'
 
 /**
  * The full-height drilled body (v9 Phase 6) — the `drill` panel on the outer
@@ -53,7 +54,9 @@ export function ProcedureDrillPanel() {
           onFocusChange={() => {}}
           referencePickerRef={referencePickerRef}
           referenceTabs={PROCEDURE_REFERENCE_TABS}
-          enableProcedureNodes
+          allowedBlocks={PROCEDURE_BLOCKS}
+          slash={false}
+          placeholderText={PROCEDURE_PLACEHOLDER}
         />
       </div>
     )

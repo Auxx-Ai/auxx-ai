@@ -1,6 +1,9 @@
 // packages/lib/src/ai/kopilot/capabilities/apps/index.ts
 
-import { resolveAppConnectionForRuntime } from '@auxx/services/app-connections'
+import {
+  markAppConnectionExpired,
+  resolveAppConnectionForRuntime,
+} from '@auxx/services/app-connections'
 import {
   invokeLambdaExecutor,
   invokeLambdaExecutorStreaming,
@@ -170,6 +173,10 @@ export async function createAppCapabilities(deps: {
 
         return {
           ok: true as const,
+          // The credential the tool will actually run against — used to mark the
+          // connection expired if the provider later rejects its token.
+          resolvedConnectionId:
+            resolved.organizationConnection?.id ?? resolved.userConnection?.id ?? null,
           payload: {
             type: 'tool' as const,
             serverBundleSha,
@@ -259,9 +266,15 @@ export async function createAppCapabilities(deps: {
                 // Result below — we don't push them through the queue.
               },
             })
-              .then((res) => {
+              .then(async (res) => {
                 let final: AgentToolResult
                 if (res.isErr()) {
+                  if (prep.resolvedConnectionId && res.error.code === 'CONNECTION_REQUIRED') {
+                    await markAppConnectionExpired({
+                      credentialId: prep.resolvedConnectionId,
+                      organizationId,
+                    })
+                  }
                   final = {
                     success: false,
                     output: null,
@@ -320,6 +333,12 @@ export async function createAppCapabilities(deps: {
 
             if (lambdaResult.isErr()) {
               const lambdaError = lambdaResult.error
+              if (prep.resolvedConnectionId && lambdaError.code === 'CONNECTION_REQUIRED') {
+                await markAppConnectionExpired({
+                  credentialId: prep.resolvedConnectionId,
+                  organizationId,
+                })
+              }
               return {
                 success: false,
                 output: null,
