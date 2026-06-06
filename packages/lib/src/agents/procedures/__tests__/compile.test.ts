@@ -279,11 +279,15 @@ describe('compileProcedure', () => {
     expect(errors?.some((e) => e.code === 'UNKNOWN_SUBPROCEDURE')).toBe(true)
   })
 
-  it('errors on a declared sub-procedure that is never called', () => {
-    const { errors } = compileProcedure(
+  it('warns (does NOT block publish) on a declared sub-procedure that is never called', () => {
+    const { errors, warnings, compiled } = compileProcedure(
       doc([prose('body')], { subProcedures: [sub('orphan', 'Orphan', [prose('x')])] })
     )
-    expect(errors?.some((e) => e.code === 'UNCALLED_SUBPROCEDURE')).toBe(true)
+    // Unreferenced building blocks are kept on purpose — a warning, not an error.
+    expect(errors?.some((e) => e.code === 'UNCALLED_SUBPROCEDURE')).toBeFalsy()
+    expect(warnings?.some((w) => w.code === 'UNCALLED_SUBPROCEDURE')).toBe(true)
+    // …and the sub-procedure is still compiled into the published output.
+    expect(compiled.subProcedures.orphan).toBeDefined()
   })
 
   it('errors on a code step with no matching code block', () => {

@@ -6,7 +6,10 @@ import { database as db } from '@auxx/database'
 import { resolveAppSlug } from '@auxx/lib/cache'
 import { createScopedLogger } from '@auxx/logger'
 import { getRedisClient } from '@auxx/redis'
-import { interpolateConnectionFields } from '@auxx/services/app-connections'
+import {
+  interpolateConnectionFields,
+  resolveAppConnectionForRuntime,
+} from '@auxx/services/app-connections'
 import crypto from 'crypto'
 
 const OAUTH_REDIRECT_BASE = process.env.NGROK_URL || WEBAPP_URL
@@ -133,11 +136,30 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       codeVerifier = crypto.randomBytes(96).toString('base64url')
     }
 
+    // On reconnect, reuse the variables saved with the existing connection (e.g. the
+    // Shopify shop) so the user isn't asked for them again. Explicit query params still win.
+    let storedVariables: Record<string, string> = {}
+    if (connectionId) {
+      const resolved = await resolveAppConnectionForRuntime({
+        appId,
+        organizationId,
+        userId: session.user.id,
+        connectionId,
+      })
+      if (resolved.isOk()) {
+        const conn = resolved.value.userConnection ?? resolved.value.organizationConnection
+        const vars = conn?.metadata?.connectionVariables
+        if (vars && typeof vars === 'object') {
+          storedVariables = vars as Record<string, string>
+        }
+      }
+    }
+
     // Extract connection variables from query params (allowlisted by definitions)
     const connectionVariables: Record<string, string> = {}
     const connectionVarDefs = features.connectionVariables ?? []
     for (const varDef of connectionVarDefs) {
-      const value = searchParams.get(`var_${varDef.key}`)
+      const value = searchParams.get(`var_${varDef.key}`) ?? storedVariables[varDef.key]
       if (!value && varDef.required !== false) {
         return NextResponse.json(
           { error: `Missing required variable: ${varDef.label}` },

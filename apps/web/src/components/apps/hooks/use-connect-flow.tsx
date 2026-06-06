@@ -224,7 +224,9 @@ export function useConnectFlow(options: UseConnectFlowOptions = {}): UseConnectF
       if (def.connectionType === 'oauth2-code') {
         const vars: ConnectionVariable[] =
           (def.oauth2Features as OAuth2Features | null)?.connectionVariables ?? []
-        if (vars.length > 0) {
+        // Reconnect reuses the stored variables (e.g. the Shopify shop) server-side,
+        // so only prompt for them on a fresh connect.
+        if (vars.length > 0 && !next.connectionId) {
           setVariableOpen(true)
         } else {
           kickOauth(next)

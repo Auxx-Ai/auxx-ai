@@ -4,6 +4,7 @@
 import Section, { EmptySection } from '@auxx/ui/components/section'
 import { ListChecks } from 'lucide-react'
 import { useCallback } from 'react'
+import { ProcedureBlocksPopover } from './procedure-blocks-popover'
 import { type ProcedureDraftContextValue, useProcedureDraft } from './procedure-draft-provider'
 import { ProcedureTriggerHeader } from './procedure-trigger-header'
 import { ProseEditorCard } from './prose-editor-card'
@@ -60,6 +61,7 @@ function ProcedureEditorBody({ draft }: { draft: ProcedureDraftContextValue }) {
         title='Procedure'
         icon={<ListChecks className='size-4' />}
         description='Describe the situation that should select this procedure.'
+        actions={<ProcedureBlocksPopover />}
         initialOpen
         collapsible={false}>
         <ProseEditorCard

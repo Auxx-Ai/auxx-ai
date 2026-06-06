@@ -9,7 +9,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
-import { MoreHorizontal, Pencil, Plus, Unplug, User, Users } from 'lucide-react'
+import { MoreHorizontal, Pencil, Plus, RefreshCw, Unplug, User, Users } from 'lucide-react'
 import { useSearchParams } from 'next/navigation'
 import { useEffect } from 'react'
 import { useUser } from '~/hooks/use-user'
@@ -225,6 +225,7 @@ function ConnectionSection({
                               onClick={() =>
                                 flow.start({ target, scope, returnTo, connectionId: conn.id })
                               }>
+                              <RefreshCw />
                               Reconnect
                             </DropdownMenuItem>
                           )}

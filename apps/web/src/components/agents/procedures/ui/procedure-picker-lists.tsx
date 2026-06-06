@@ -5,7 +5,7 @@ import type { FieldType } from '@auxx/database/types'
 import {
   Command,
   CommandGroup,
-  CommandItem,
+  CommandIconItem,
   CommandList,
   CommandPlaceholder,
 } from '@auxx/ui/components/command'
@@ -34,6 +34,8 @@ import { useProcedureEditorContext } from './procedure-draft-provider'
  * `routing` / `code` / `subprocedure` / `condition` tabs and act on the
  * {@link useProcedureEditorContext} (create / drill / insert). Terminal picks call
  * `onSelect(id)` → an inline reference badge; `condition` inserts a block node.
+ *
+ * Rows are the shared {@link CommandIconItem} (icon + truncating label).
  */
 
 interface PickerListProps {
@@ -41,25 +43,6 @@ interface PickerListProps {
   query: string
   /** Insert an inline badge with this id (→ `confirmReferencePicker`). */
   onSelect: (id: string) => void
-}
-
-function Row({
-  icon,
-  label,
-  value,
-  onSelect,
-}: {
-  icon: ReactNode
-  label: string
-  value: string
-  onSelect: () => void
-}) {
-  return (
-    <CommandItem value={value} onSelect={onSelect} className='flex items-center gap-2'>
-      <span className='text-muted-foreground'>{icon}</span>
-      <span className='truncate text-sm'>{label}</span>
-    </CommandItem>
-  )
 }
 
 function matches(label: string, query: string) {
@@ -76,7 +59,7 @@ export function RoutingPickerList({ query, onSelect }: PickerListProps) {
       <CommandList>
         <CommandGroup aria-label='Routing'>
           {matches('End procedure', query) && (
-            <Row
+            <CommandIconItem
               icon={<Square className='size-4' />}
               label='End procedure'
               value='route:finished'
@@ -84,7 +67,7 @@ export function RoutingPickerList({ query, onSelect }: PickerListProps) {
             />
           )}
           {matches('Hand off to human', query) && (
-            <Row
+            <CommandIconItem
               icon={<Hand className='size-4' />}
               label='Hand off to human'
               value='route:handoff'
@@ -92,7 +75,7 @@ export function RoutingPickerList({ query, onSelect }: PickerListProps) {
             />
           )}
           {switchTargets.map((p) => (
-            <Row
+            <CommandIconItem
               key={p.id}
               icon={<CornerDownRight className='size-4' />}
               label={`Switch to ${p.name}`}
@@ -123,7 +106,7 @@ export function SubProcedurePickerList({ query, onSelect }: PickerListProps) {
       <CommandList>
         <CommandGroup aria-label='Sub-procedures'>
           {existing.map((s) => (
-            <Row
+            <CommandIconItem
               key={s.id}
               icon={<Workflow className='size-4' />}
               label={s.name}
@@ -131,7 +114,7 @@ export function SubProcedurePickerList({ query, onSelect }: PickerListProps) {
               onSelect={() => onSelect(`subprocedure:${s.id}`)}
             />
           ))}
-          <Row
+          <CommandIconItem
             icon={<Plus className='size-4' />}
             label={query.trim() ? `Create sub-procedure “${query.trim()}”` : 'Create sub-procedure'}
             value='__create-subprocedure'
@@ -160,7 +143,7 @@ export function CodePickerList({ query, onSelect }: PickerListProps) {
       <CommandList>
         <CommandGroup aria-label='Code'>
           {existing.map((c) => (
-            <Row
+            <CommandIconItem
               key={c.id}
               icon={<Code2 className='size-4' />}
               label={c.name}
@@ -168,7 +151,7 @@ export function CodePickerList({ query, onSelect }: PickerListProps) {
               onSelect={() => onSelect(`code:${c.id}`)}
             />
           ))}
-          <Row
+          <CommandIconItem
             icon={<Plus className='size-4' />}
             label={query.trim() ? `Create code block “${query.trim()}”` : 'Create code block'}
             value='__create-code'
@@ -217,7 +200,7 @@ export function AttributePickerList({ query }: { query: string }) {
         {ctx && name && !taken && (
           <CommandGroup aria-label='Create attribute'>
             {ATTRIBUTE_TYPES.map((t) => (
-              <Row
+              <CommandIconItem
                 key={t.dataType}
                 icon={t.icon}
                 label={`Create “${name}” as ${t.label}`}
@@ -230,7 +213,7 @@ export function AttributePickerList({ query }: { query: string }) {
         {ctx && existing.length > 0 && (
           <CommandGroup aria-label='Attributes'>
             {existing.map((a) => (
-              <Row
+              <CommandIconItem
                 key={a.name}
                 icon={<Variable className='size-4' />}
                 label={a.name}
@@ -254,7 +237,7 @@ export function ConditionPickerList() {
         {!ctx && <CommandPlaceholder>Unavailable</CommandPlaceholder>}
         {ctx && (
           <CommandGroup aria-label='Condition'>
-            <Row
+            <CommandIconItem
               icon={<GitBranch className='size-4' />}
               label='Insert condition (IF / ELSE)'
               value='__insert-condition'

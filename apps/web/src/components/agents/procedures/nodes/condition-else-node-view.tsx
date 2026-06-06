@@ -58,7 +58,7 @@ export function ConditionElseNodeView({ node, editor, getPos }: NodeViewProps) {
           <X className='size-3.5' />
         </button>
       </div>
-      <div className='pl-8'>
+      <div className='pl-16'>
         <NodeViewContent />
       </div>
     </NodeViewWrapper>
