@@ -8,6 +8,9 @@
    Gutter / left rail:
      --editor-gutter-min-width      (24px)
      --editor-gutter-margin-right   (0.75rem)
+   Per-block vertical rhythm (text blocks; headings keep their own margins):
+     --editor-block-margin-top      (0)
+     --editor-block-margin-bottom   (0)
    Body text:
      --editor-text-font-size        (0.875rem)
      --editor-text-line-height      (24px)
@@ -53,6 +56,11 @@
   flex-direction: row;
   overflow: visible;
   max-width: 100%;
+  /* Vertical rhythm — defaults to 0 (no gap). The heading variants below set
+     their own margins and override these. Procedures opt into a little spacing
+     via the `.procedureBlockSpacing` root class. */
+  margin-top: var(--editor-block-margin-top, 0);
+  margin-bottom: var(--editor-block-margin-bottom, 0);
 }
 
 /* ============================================
@@ -132,11 +140,29 @@
   text-align: right;
   color: var(--color-muted-foreground);
   line-height: 24px;
-  opacity: 0;
+  /* Resting opacity is a custom property so the always-show class can flip it
+     without a second `opacity` declaration — the hover / focus / drag rules
+     below set `opacity` directly at higher specificity and always win. */
+  opacity: var(--ln-rest-opacity, 0);
   transition: opacity 0.15s, color 0.15s;
   position: relative;
   pointer-events: none;
   user-select: none;
+}
+
+/* `alwaysShowLineNumbers` (a class on the `.ProseMirror` root, set by
+   useRichTextEditor) raises only the resting opacity — the gutter-hover →
+   drag-dot swap is untouched. Used by the procedure editor. */
+:global(.alwaysShowLineNumbers) {
+  --ln-rest-opacity: 0.5;
+}
+
+/* Procedure surface — give each step a little breathing room. A class on the
+   `.ProseMirror` root (set by useRichTextEditor) so it reaches blocks in both
+   the inline card and the portaled expand dialog. */
+:global(.procedureBlockSpacing) {
+  --editor-block-margin-top: 0.25rem;
+  --editor-block-margin-bottom: 0.25rem;
 }
 
 @media (hover: hover) {

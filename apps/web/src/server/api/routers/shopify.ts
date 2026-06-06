@@ -2,7 +2,7 @@ import { getProvider, type ShopifyBillingProvider, stripeClient } from '@auxx/bi
 import { WEBAPP_URL } from '@auxx/config/server'
 import { database as db, schema } from '@auxx/database'
 import { getOrgCache, isOrgMember, onCacheEvent, resolveAppSlug } from '@auxx/lib/cache'
-import { BadRequestError, ConflictError } from '@auxx/lib/errors'
+import { ConflictError } from '@auxx/lib/errors'
 import { getQueue, Queues } from '@auxx/lib/jobs/queues'
 import { OrganizationService } from '@auxx/lib/organizations'
 import { disableWebhooks, isShopifyConnected, SyncManager } from '@auxx/lib/shopify'
@@ -423,11 +423,16 @@ export const shopifyRouter = createTRPCRouter({
    * Reads the claim token from the `shopify_claim_token` cookie (or the cross-device
    * `claimToken` input), validates the user is a member of `organizationId`, lazily
    * creates the AppInstallation, writes the WorkflowCredentials + ShopifyIntegration
-   * rows, reconciles any pre-existing PlanSubscription row (the shopify-claim signupSource
-   * skips the Stripe trial seed, so the hot path is no-op; the fallback path covers an
-   * existing Auxx user signing in to claim), upserts the Shopify PlanSubscription row
-   * (status `incomplete`, `planId` null until the merchant picks, `shopifyShopDomain` set
-   * for the Admin API read), and returns `{ redirectUrl }`.
+   * rows, then reconciles any pre-existing PlanSubscription row:
+   * - **No row** (the shopify-claim signupSource skips the Stripe trial seed — the hot path
+   *   for a fresh App Store merchant): upsert the Shopify row + return the hosted plan-picker
+   *   URL.
+   * - **Live Stripe row** (existing Auxx customer installing via the App Store): keep Stripe
+   *   billing untouched, skip the plan picker, return `{ redirectUrl: '/app' }`. Per the §4.5
+   *   operating model, connecting Shopify never changes an existing billing relationship.
+   * - **Dead Stripe row** (incomplete/canceled): drop it and fall through to the Shopify upsert.
+   * The upserted Shopify row is `status: 'incomplete'`, `planId` null until the merchant picks,
+   * `shopifyShopDomain` set for the Admin API read.
    */
   finalizeAppStoreInstall: protectedProcedure
     .input(
@@ -567,6 +572,12 @@ export const shopifyRouter = createTRPCRouter({
           metadata: {
             scope: claim.scope,
             shopDomain: claim.shop,
+            // The hourly token refresh interpolates {shop} in the ConnectionDefinition's
+            // access-token URL from `connectionVariables` (oauth2-workflow.service.ts).
+            // Without this the App-Store-saved credential refreshes against a literal
+            // `https://{shop}.myshopify.com/...` URL and the connection dies an hour after
+            // install — store the subdomain exactly as the in-app OAuth callback does.
+            connectionVariables: { shop: claim.shop.replace(/\.myshopify\.com$/, '') },
           },
         },
         existingConn ? { connectionId: existingConn.id } : undefined
@@ -622,20 +633,33 @@ export const shopifyRouter = createTRPCRouter({
       })
 
       if (existing?.billingProvider === 'stripe') {
-        const reusable =
-          existing.status === 'trialing' ||
-          existing.status === 'incomplete' ||
-          existing.status === 'canceled' ||
-          existing.status === 'incomplete_expired'
-        if (!reusable) {
-          throw new BadRequestError(
-            'This organization has an active paid Stripe subscription. Cancel it before switching to Shopify billing.'
-          )
+        // Operating model (plans/billing/00-multi-provider-billing-overview.md §4.5): an
+        // existing Stripe-billed org that connects Shopify keeps its Stripe billing. We
+        // honor that on the App Store install path too — rather than forcing a provider
+        // switch (or dead-ending on an active sub), attach the Shopify data integration
+        // (credentials + ShopifyIntegration already saved above) and leave billing
+        // untouched: no Shopify PlanSubscription row, no hosted plan picker.
+        const stripeIsLive =
+          existing.status !== 'incomplete' &&
+          existing.status !== 'canceled' &&
+          existing.status !== 'incomplete_expired'
+        if (stripeIsLive) {
+          // Activate the picked workspace first so the apps page opens it rather than the
+          // user's current default org, then drop them on the Shopify app's connections
+          // page — the data integration is now connected and billing is unchanged.
+          if (ctx.session.user.defaultOrganizationId !== organizationId) {
+            await setUserDefaultOrganization(db, userId, organizationId)
+          }
+          return {
+            redirectUrl: '/app/settings/apps/installed/shopify/connections',
+            shop: claim.shop,
+          }
         }
-        // Cancel the auto-created Stripe trial (or whatever Stripe sub is sitting here)
-        // and delete the local row. Calling Stripe directly — not via
-        // resolveBillingProvider — because we're explicitly reconciling that row; the
-        // resolver picks the provider based on the current row, which is exactly the
+        // Dead Stripe row (incomplete / canceled / incomplete_expired) — no working
+        // billing. Cancel any lingering Stripe sub and drop the row so the Shopify upsert
+        // below can establish billing through the App Store path. Calling Stripe directly —
+        // not via resolveBillingProvider — because we're explicitly reconciling that row;
+        // the resolver picks the provider based on the current row, which is exactly the
         // value we're about to change. Done this way once at this site only.
         if (existing.stripeSubscriptionId) {
           try {

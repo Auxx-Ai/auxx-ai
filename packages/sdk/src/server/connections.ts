@@ -33,6 +33,28 @@ export interface Connection {
 }
 
 /**
+ * Optional value an app's `connection-added` event handler may return to name
+ * the connection. The platform dedupes this against existing connections in the
+ * same scope (appending " (2)", " (3)", …) and falls back to the app name when
+ * no label is returned.
+ *
+ * @example
+ * // src/events/connection-added.event.ts
+ * export default async function connectionAdded(
+ *   { connection }: { connection: Connection },
+ * ): Promise<ConnectionAddedResult> {
+ *   const me = await fetch('https://api.example.com/me', {
+ *     headers: { Authorization: `Bearer ${connection.value}` },
+ *   }).then((r) => r.json())
+ *   return { label: me.email }
+ * }
+ */
+export interface ConnectionAddedResult {
+  /** Human-readable label for this connection (email, shop domain, workspace name). */
+  label?: string
+}
+
+/**
  * Error thrown when connection is not found.
  * Platform catches this and prompts user to authenticate.
  */

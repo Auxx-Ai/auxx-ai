@@ -17,6 +17,7 @@ import {
 import Link from 'next/link'
 // ~/app/(protected)/app/settings/integrations/_components/integration-list.tsx
 import { useLayoutEffect, useRef, useState } from 'react'
+import { dedupeInstallationsByApp } from '~/components/apps/dedupe-installations'
 import { AppIcon } from '~/components/apps/ui/app-icon'
 import { AppListCard } from '~/components/apps/ui/app-list-card'
 import SettingsPage from '~/components/global/settings-page'
@@ -48,7 +49,8 @@ export default function IntegrationList() {
   const { data: installedResult } = api.apps.listInstalled.useQuery({
     // type filter is optional - omitting it returns all installations (both dev and production)
   })
-  const installed = installedResult?.installations ?? []
+  // Collapse dev+production installs of the same app to one entry (see helper).
+  const installed = dedupeInstallationsByApp(installedResult?.installations ?? [])
   const apps = results?.apps ?? []
 
   // Search state

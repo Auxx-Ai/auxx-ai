@@ -7,7 +7,15 @@
  * All implementations are provided by the Auxx platform at runtime.
  */
 
-export { ConnectionExpiredError } from '../shared/errors.js'
+export {
+  ConflictError,
+  ConnectionExpiredError,
+  InsufficientPermissionsError,
+  InvalidInputError,
+  NotFoundError,
+  RateLimitError,
+  UpstreamServiceError,
+} from '../shared/errors.js'
 export * from './auth.js'
 export * from './connections.js'
 export * from './database.js'

@@ -2,26 +2,28 @@
 'use client'
 
 import type { FieldType } from '@auxx/database/types'
-import { PROCEDURE_BLOCKS } from '~/components/editor/blocks/allowed-blocks'
-import { PromptEditorContent } from '~/components/editor/prompt-editor'
+import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import CodeEditor, {
   type CodeEditorOutput,
   CodeLanguage,
 } from '~/components/workflow/ui/code-editor'
 import { CodeOutputsEditor } from './code-outputs-editor'
 import { useProcedureDraft } from './procedure-draft-provider'
-import { PROCEDURE_PLACEHOLDER, PROCEDURE_REFERENCE_TABS } from './procedure-editor'
+import { ProseEditorCard } from './prose-editor-card'
 
 /**
  * The full-height drilled body (v9 Phase 6) — the `drill` panel on the outer
- * `agent-detail-tabs` NavStack. ONE bar above it (the shared `ProcedureDetailBar`), so
- * no inner header. Reads the `drill` param + the live entry from the lifted draft owner:
+ * `agent-detail-tabs` NavStack. The shared `ProcedureDetailBar` sits above it; each body
+ * carries its OWN editor wrapper + header (titled with the block name) so the drilled view
+ * reads as a first-class editor, not a bare canvas. Reads the `drill` param + the live
+ * entry from the lifted draft owner:
  *
- *  - `sub:<id>` → a bare full-height prose editor on that sub-procedure's slice (no
- *    header; the detail bar is the only chrome). `@` picker + procedure nodes on.
- *  - `code:<id>` → the {@link CodeOutputsEditor} (declared outputs) above a full-height
- *    Monaco editor over the block's JavaScript. AI codegen is seeded from the declared
- *    local attributes (offered as outputs); a tip documents the ambient `inputs` bag.
+ *  - `sub:<id>` → the shared {@link ProseEditorCard} (focus-gradient border + header with
+ *    copy / char-count / expand) filling the panel height. `@` picker + procedure nodes on.
+ *  - `code:<id>` → the {@link CodeOutputsEditor} (declared outputs) above the `CodeEditor`
+ *    in its OWN wrapper (gradient border + header with format / copy / expand). AI codegen
+ *    is seeded from the declared local attributes (offered as outputs); a tip documents the
+ *    ambient `inputs` bag.
  */
 export function ProcedureDrillPanel() {
   // Null during the procedure→root pop where this panel is still mounted by
@@ -37,6 +39,9 @@ export function ProcedureDrillPanel() {
     handleCodeChange,
     handleCodeOutputsChange,
     localAttributes,
+    subProcedures,
+    codeBlocks,
+    activeEditor,
     handleEditorReady,
     referencePickerRef,
   } = draft
@@ -45,18 +50,17 @@ export function ProcedureDrillPanel() {
 
   if (drill.startsWith('sub:')) {
     const id = drill.slice('sub:'.length)
+    const name = subProcedures.find((s) => s.id === id)?.name ?? 'Sub-procedure'
     return (
-      <div className='flex flex-1 flex-col min-h-0 px-3 py-2'>
-        <PromptEditorContent
+      <div className='flex flex-1 flex-col min-h-0 p-3'>
+        <ProseEditorCard
+          fill
+          title={name}
           initialContent={getSubContent(id)}
           onChange={makeSubChange(id)}
+          activeEditor={activeEditor}
           onEditorReady={handleEditorReady}
-          onFocusChange={() => {}}
           referencePickerRef={referencePickerRef}
-          referenceTabs={PROCEDURE_REFERENCE_TABS}
-          allowedBlocks={PROCEDURE_BLOCKS}
-          slash={false}
-          placeholderText={PROCEDURE_PLACEHOLDER}
         />
       </div>
     )
@@ -65,24 +69,22 @@ export function ProcedureDrillPanel() {
   if (drill.startsWith('code:')) {
     const id = drill.slice('code:'.length)
     const entry = getCodeEntry(id)
+    const name = codeBlocks.find((c) => c.id === id)?.name ?? 'Code'
     // AI codegen — offer the declared attributes as the block's outputs.
     const codeOutputs: CodeEditorOutput[] = localAttributes.map((a) => ({
       name: a.name,
       type: dataTypeToJs(a.dataType),
     }))
     return (
-      <div className='flex flex-1 flex-col min-h-0'>
-        <div className='shrink-0 px-3 pt-2'>
+      <ScrollArea className='h-full' scrollbarClassName='w-1.5 z-20' noFade>
+        <div className='flex flex-col gap-2 p-3'>
           <CodeOutputsEditor
             initialOutputs={entry?.outputs ?? []}
             localAttributes={localAttributes}
             onChange={(outputs) => handleCodeOutputsChange(id, outputs)}
           />
-        </div>
-        <div className='flex flex-1 flex-col min-h-0'>
           <CodeEditor
-            noWrapper
-            isExpand
+            title={name}
             language={CodeLanguage.javascript}
             value={entry?.code ?? ''}
             onChange={(code) => handleCodeChange(id, code)}
@@ -105,7 +107,7 @@ export function ProcedureDrillPanel() {
             }
           />
         </div>
-      </div>
+      </ScrollArea>
     )
   }
 

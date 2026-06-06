@@ -1,8 +1,12 @@
 // src/events/connection-added.event.ts
 import { createWebhookHandler, updateWebhookHandler } from '@auxx/sdk/server'
-import type { Connection } from '@auxx/sdk/server'
+import type { Connection, ConnectionAddedResult } from '@auxx/sdk/server'
 
-export default async function connectionAdded({ connection }: { connection: Connection }) {
+export default async function connectionAdded({
+  connection,
+}: {
+  connection: Connection
+}): Promise<ConnectionAddedResult> {
   // You can create multiple webhook handlers for the same file
   const webhookHandler = await createWebhookHandler({
     fileName: 'example',
@@ -31,4 +35,15 @@ export default async function connectionAdded({ connection }: { connection: Conn
   await updateWebhookHandler(webhookHandler.id, {
     externalWebhookId: 'someId', //body.webhookId,
   })
+
+  // Optionally name this connection so it's recognizable in the connections
+  // list (otherwise it falls back to the app name, e.g. "Acme (2)"). Use
+  // whatever identifies the account — the authenticated email, a workspace
+  // name, a shop domain, etc. Returning nothing keeps the default label.
+  // const profile = await fetch('https://api.acmeinc.com/me', {
+  //   headers: { Authorization: `Bearer ${connection.value}` },
+  // }).then((r) => r.json())
+  // return { label: profile.email }
+
+  return {}
 }

@@ -20,13 +20,13 @@ export function ConditionPredicateNodeView({ node }: NodeViewProps) {
     <NodeViewWrapper
       as='div'
       className={cn(
-        'relative my-1.5 rounded-lg border border-border bg-background px-3 py-2 text-sm',
+        'relative rounded-lg border border-border bg-background px-3 py-1 text-sm',
         hidden && 'hidden'
       )}>
       <NodeViewContent className='min-h-5 outline-none' />
       {isEmpty && (
         <span
-          className='pointer-events-none absolute left-3 top-2 select-none text-muted-foreground/60'
+          className='pointer-events-none absolute left-3 top-1 select-none text-muted-foreground/60'
           contentEditable={false}
           aria-hidden='true'>
           Write a condition in natural language, type “@” to insert attribute.

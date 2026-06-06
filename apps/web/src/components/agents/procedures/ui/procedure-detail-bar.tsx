@@ -4,11 +4,12 @@
 import { AutosizeInput, type AutosizeInputRef } from '@auxx/ui/components/autosize-input'
 import { Button } from '@auxx/ui/components/button'
 import { useNavStack } from '@auxx/ui/components/nav-stack'
-import { ChevronLeft } from 'lucide-react'
+import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { AutosaveIndicator, type AutosaveState } from '../../ui/shared/autosave-indicator'
 import { useProcedure } from '../hooks/use-procedure'
 import { useProcedureMutations } from '../hooks/use-procedure-mutations'
+import { useProcedureDraft } from './procedure-draft-provider'
 import { ProcedurePublishCluster } from './procedure-publish-cluster'
 
 interface ProcedureDetailBarProps {
@@ -21,10 +22,15 @@ interface ProcedureDetailBarProps {
 
 /**
  * The procedure-detail nav bar: the shared-bar content for the pushed `procedure`
- * NavStack level. Same height as the agent tab strip (`h-9`) so the shared
- * `<NavStackBar>` frame doesn't jump as the two cross-fade. Carries Back, the
- * editable procedure name, autosave status, and the publish cluster (status pill +
- * publish/changes/discard + `⌄`: version history / delete).
+ * AND `drill` NavStack levels (same instance). Same height as the agent tab strip
+ * (`h-9`) so the shared `<NavStackBar>` frame doesn't jump as the levels cross-fade.
+ * Carries Back, the editable name, autosave status, and the publish cluster (status
+ * pill + publish/changes/discard + `⌄`: version history / delete).
+ *
+ * Context-aware title: at the `procedure` level the input renames the procedure; when
+ * drilled into a `sub:`/`code:` body it renames THAT block (via the lifted draft owner)
+ * and shows the procedure name as a back-crumb. One header for the whole stack — no
+ * second name field inside the panel.
  *
  * Rendered by `<NavStackBar>` (which sits OUTSIDE `NavStackPanels`' `overflow-hidden`),
  * so the page-level sticky bar pins to the outer `ScrollArea` while the panels slide.
@@ -35,13 +41,27 @@ export function ProcedureDetailBar({ procedureId, autosave, onReload }: Procedur
   // the same overlay the rename writes to.
   const { meta } = useProcedure(procedureId)
   const { patchMeta } = useProcedureMutations()
+  const draft = useProcedureDraft()
 
-  const name = meta?.name ?? 'Procedure'
+  // Which entity the bar is titling: the drilled block when drilled, else the procedure.
+  const drill = draft?.drill ?? null
+  const subId = drill?.startsWith('sub:') ? drill.slice('sub:'.length) : null
+  const codeId = drill?.startsWith('code:') ? drill.slice('code:'.length) : null
+  const isDrilled = Boolean(subId || codeId)
 
-  // Local draft so typing stays smooth; the optimistic store update lands via
-  // `patchMeta`. Re-seed from `name` when it changes externally (procedure switch
-  // or background refetch) but never while the field is focused — that would
-  // clobber an in-progress edit. The bar is reused across procedures (not keyed).
+  const procedureName = meta?.name ?? 'Procedure'
+  const blockName = subId
+    ? draft?.subProcedures.find((s) => s.id === subId)?.name
+    : codeId
+      ? draft?.codeBlocks.find((c) => c.id === codeId)?.name
+      : undefined
+  const name = isDrilled ? (blockName ?? '') : procedureName
+  const placeholder = subId ? 'Sub-procedure name' : codeId ? 'Code block name' : 'Procedure name'
+
+  // Local draft so typing stays smooth; the optimistic update lands via the right
+  // writer. Re-seed from `name` when it changes externally (procedure switch, drill
+  // change, or background refetch) but never while focused — that would clobber an
+  // in-progress edit. The bar is reused across levels (not keyed).
   const inputRef = useRef<AutosizeInputRef>(null)
   const [editValue, setEditValue] = useState(name)
   const [focused, setFocused] = useState(false)
@@ -56,7 +76,9 @@ export function ProcedureDetailBar({ procedureId, autosave, onReload }: Procedur
       setEditValue(name)
       return
     }
-    patchMeta(procedureId, { name: trimmed })
+    if (subId && draft) draft.renameSubProcedure(subId, trimmed)
+    else if (codeId && draft) draft.renameCodeBlock(codeId, trimmed)
+    else patchMeta(procedureId, { name: trimmed })
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -76,6 +98,17 @@ export function ProcedureDetailBar({ procedureId, autosave, onReload }: Procedur
       <Button variant='ghost' size='icon-xs' className='rounded-md' onClick={() => pop()}>
         <ChevronLeft />
       </Button>
+      {isDrilled && (
+        <>
+          <button
+            type='button'
+            onClick={() => pop()}
+            className='shrink-0 truncate max-w-[140px] text-sm text-muted-foreground hover:text-foreground'>
+            {procedureName}
+          </button>
+          <ChevronRight className='size-3.5 shrink-0 text-muted-foreground' />
+        </>
+      )}
       <AutosizeInput
         ref={inputRef}
         value={editValue}
@@ -86,7 +119,7 @@ export function ProcedureDetailBar({ procedureId, autosave, onReload }: Procedur
           commitName()
         }}
         onKeyDown={handleKeyDown}
-        placeholder='Procedure name'
+        placeholder={placeholder}
         inputClassName='text-sm font-medium text-foreground bg-transparent outline-none truncate placeholder:text-muted-foreground'
         minWidth={40}
         maxWidth={240}

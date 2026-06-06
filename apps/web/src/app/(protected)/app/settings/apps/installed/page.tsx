@@ -3,6 +3,7 @@ import { Input } from '@auxx/ui/components/input'
 // apps/web/src/app/(protected)/app/settings/apps/installed/page.tsx
 import { Code } from 'lucide-react'
 import { useState } from 'react'
+import { dedupeInstallationsByApp } from '~/components/apps/dedupe-installations'
 import { AppIcon } from '~/components/apps/ui/app-icon'
 import { AppListCard } from '~/components/apps/ui/app-list-card'
 import SettingsPage from '~/components/global/settings-page'
@@ -18,7 +19,8 @@ export default function AppsInstalledListPage() {
   })
   const { data: results } = api.apps.list.useQuery({})
 
-  const installed = installedResult?.installations ?? []
+  // Collapse dev+production installs of the same app to one entry (see helper).
+  const installed = dedupeInstallationsByApp(installedResult?.installations ?? [])
   const apps = results?.apps ?? []
 
   // Search state

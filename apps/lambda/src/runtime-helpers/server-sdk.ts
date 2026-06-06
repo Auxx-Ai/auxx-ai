@@ -50,6 +50,81 @@ class ConnectionExpiredError extends Error {
 }
 
 /**
+ * Local mirrors of the provider-call errors in `@auxx/sdk`'s shared errors.
+ * Same rationale as {@link ConnectionExpiredError}: `@auxx/sdk/server` is
+ * externalized to `AUXX_SERVER_SDK`, so `new RateLimitError()` in app code
+ * compiles to `AUXX_SERVER_SDK.RateLimitError` and the class must be a real
+ * member of the injected global. Detection is by `name`/`code`, so these only
+ * need matching `name` + `code` + the structured fields the platform forwards.
+ * Mirrors `packages/sdk/src/shared/errors.ts`.
+ */
+class InsufficientPermissionsError extends Error {
+  readonly code = 'INSUFFICIENT_PERMISSIONS'
+  readonly scope: 'user' | 'organization'
+  readonly requiredScopes?: string[]
+  constructor(scope: 'user' | 'organization' = 'organization', requiredScopes?: string[]) {
+    super(
+      `The connected account lacks the required permission${
+        requiredScopes?.length ? ` (${requiredScopes.join(', ')})` : ''
+      }. An admin may need to re-authorize the app with additional scopes.`
+    )
+    this.name = 'InsufficientPermissionsError'
+    this.scope = scope
+    this.requiredScopes = requiredScopes
+  }
+}
+
+class RateLimitError extends Error {
+  readonly code = 'RATE_LIMIT'
+  readonly retryAfterSeconds?: number
+  constructor(retryAfterSeconds?: number) {
+    super(
+      `Rate limited by the provider${retryAfterSeconds ? `; retry in ~${retryAfterSeconds}s` : ''}.`
+    )
+    this.name = 'RateLimitError'
+    this.retryAfterSeconds = retryAfterSeconds
+  }
+}
+
+class UpstreamServiceError extends Error {
+  readonly code = 'UPSTREAM_ERROR'
+  readonly statusCode?: number
+  constructor(message = 'The provider is temporarily unavailable.', statusCode?: number) {
+    super(message)
+    this.name = 'UpstreamServiceError'
+    this.statusCode = statusCode
+  }
+}
+
+class InvalidInputError extends Error {
+  readonly code = 'INVALID_INPUT'
+  readonly fields?: Array<{ field: string; message: string }>
+  constructor(message: string, fields?: Array<{ field: string; message: string }>) {
+    super(message)
+    this.name = 'InvalidInputError'
+    this.fields = fields
+  }
+}
+
+class NotFoundError extends Error {
+  readonly code = 'RESOURCE_NOT_FOUND'
+  readonly resource?: string
+  constructor(message = 'The requested resource was not found.', resource?: string) {
+    super(message)
+    this.name = 'NotFoundError'
+    this.resource = resource
+  }
+}
+
+class ConflictError extends Error {
+  readonly code = 'CONFLICT'
+  constructor(message = 'The request conflicts with the current state of the resource.') {
+    super(message)
+    this.name = 'ConflictError'
+  }
+}
+
+/**
  * Connection interface (matches @auxx/sdk/server/connections)
  *
  * Represents an external service connection (OAuth2 or secret-based).
@@ -214,6 +289,12 @@ export interface ServerSDK {
   // Error classes re-exported from `@auxx/sdk/server`. App code constructs these
   // via the externalized global, so they must be real constructors here.
   ConnectionExpiredError: typeof ConnectionExpiredError
+  InsufficientPermissionsError: typeof InsufficientPermissionsError
+  RateLimitError: typeof RateLimitError
+  UpstreamServiceError: typeof UpstreamServiceError
+  InvalidInputError: typeof InvalidInputError
+  NotFoundError: typeof NotFoundError
+  ConflictError: typeof ConflictError
 }
 
 /**
@@ -946,5 +1027,11 @@ export function createServerSDK(context: RuntimeContext): ServerSDK {
      * to reconnect instead of surfacing a raw execution error.
      */
     ConnectionExpiredError,
+    InsufficientPermissionsError,
+    RateLimitError,
+    UpstreamServiceError,
+    InvalidInputError,
+    NotFoundError,
+    ConflictError,
   }
 }

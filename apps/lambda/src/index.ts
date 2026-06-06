@@ -251,7 +251,7 @@ export async function handler(
     }
   } catch (error: unknown) {
     const duration = Date.now() - startTime
-    const { message, code, stack, scope } = parseError(error)
+    const { message, code, stack, scope, details } = parseError(error)
 
     console.error('[Lambda] Execution failed:', {
       error: message,
@@ -279,6 +279,7 @@ export async function handler(
           message,
           code,
           scope,
+          details,
           stack: Deno.env.get('NODE_ENV') === 'development' ? stack : undefined,
         },
         metadata: {

@@ -19,6 +19,7 @@ import { INTERNAL_LAMBDA_URL } from '@auxx/config/server'
 import { signInboundRequest } from '@auxx/credentials/lambda-auth'
 import type { Result } from 'neverthrow'
 import { err, ok } from 'neverthrow'
+import { KNOWN_ERROR_STATUS } from './invoke-lambda-executor'
 
 export interface StreamEvent {
   event: string
@@ -169,7 +170,7 @@ export async function invokeLambdaExecutorStreaming(params: {
       return err({
         code: isConnectionError ? 'CONNECTION_REQUIRED' : code,
         message,
-        statusCode: isConnectionError ? 403 : 500,
+        statusCode: isConnectionError ? 403 : (KNOWN_ERROR_STATUS[code] ?? 500),
       })
     }
 
