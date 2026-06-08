@@ -23,6 +23,12 @@ interface AppAccountPopoverProps {
   triggerClassName?: string
   /** Passed through to the picker. Defaults to true. See `AppAccountPicker`. */
   allowPersonal?: boolean
+  /**
+   * When true, the popover content matches the trigger button's width instead
+   * of the default fixed width. Useful when the trigger is full-width (e.g.
+   * inside a form field).
+   */
+  matchTriggerWidth?: boolean
 }
 
 /**
@@ -40,6 +46,7 @@ export function AppAccountPopover({
   placeholder = 'Choose account',
   triggerClassName,
   allowPersonal = true,
+  matchTriggerWidth = false,
 }: AppAccountPopoverProps) {
   const [open, setOpen] = useState(false)
   const { appConnections, appInstallations } = useExtensionsContext()
@@ -69,7 +76,9 @@ export function AppAccountPopover({
           <span className='truncate'>{triggerLabel}</span>
         </PickerTrigger>
       </PopoverTrigger>
-      <PopoverContentDialogAware className='p-0' align='start'>
+      <PopoverContentDialogAware
+        className={matchTriggerWidth ? 'p-0 w-[var(--radix-popover-trigger-width)]' : 'p-0 w-80'}
+        align='start'>
         <AppAccountPicker
           appId={appId}
           value={value}

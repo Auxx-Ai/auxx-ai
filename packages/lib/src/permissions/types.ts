@@ -31,7 +31,6 @@ export enum FeatureKey {
   knowledgeBase = 'knowledgeBase',
   apiAccess = 'apiAccess',
   workflows = 'workflows',
-  aiAgent = 'aiAgent',
   sso = 'sso',
   datasets = 'datasets',
   files = 'files',
@@ -45,6 +44,7 @@ export enum FeatureKey {
   callRecordings = 'callRecordings',
   todayInbox = 'todayInbox',
   agents = 'agents',
+  agentProcedures = 'agentProcedures',
 
   // ── Static limits (count of things, not time-based) ──
   teammates = 'teammates',
@@ -114,7 +114,6 @@ export const FEATURE_REGISTRY: FeatureMetadata[] = [
   },
   { key: FeatureKey.apiAccess, type: 'boolean', label: 'API Access', group: 'Integrations' },
   { key: FeatureKey.workflows, type: 'boolean', label: 'Workflows', group: 'Automation' },
-  { key: FeatureKey.aiAgent, type: 'boolean', label: 'AI Agent', group: 'AI' },
   { key: FeatureKey.sso, type: 'boolean', label: 'SSO', group: 'Security' },
   { key: FeatureKey.datasets, type: 'boolean', label: 'Datasets', group: 'Data' },
   { key: FeatureKey.files, type: 'boolean', label: 'Files', group: 'Storage' },
@@ -155,6 +154,13 @@ export const FEATURE_REGISTRY: FeatureMetadata[] = [
     type: 'boolean',
     label: 'Agents',
     description: 'User-authored Kopilot agents (CRUD + runtime targeting).',
+    group: 'AI',
+  },
+  {
+    key: FeatureKey.agentProcedures,
+    type: 'boolean',
+    label: 'Agent Procedures',
+    description: 'Step-by-step agent playbooks (beta).',
     group: 'AI',
   },
 

@@ -34,14 +34,14 @@ export function UpcomingMeetingsWidget({ limit = 5 }: { limit?: number }) {
   }
 
   return (
-    <div className='bg-primary-50 border-b px-4 py-3 sm:px-6'>
+    <div className='bg-primary-50 border-b px-3 py-3 sm:px-4'>
       <div className='mb-2 flex items-center gap-2 text-sm font-medium'>
         <CalendarDays className='size-4' />
         Upcoming Meetings
       </div>
 
       {!hasCalendarIntegration && !isLoading ? (
-        <div className='flex items-center gap-3 rounded-lg border border-dashed bg-background p-3'>
+        <div className='flex items-center gap-3 rounded-2xl border border-dashed bg-background px-3 py-1'>
           <p className='text-sm text-muted-foreground'>
             Connect Google Calendar to start syncing meetings.
           </p>

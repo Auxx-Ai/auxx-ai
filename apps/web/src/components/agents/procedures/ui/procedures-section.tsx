@@ -1,11 +1,13 @@
 // apps/web/src/components/agents/procedures/ui/procedures-section.tsx
 'use client'
 
+import { FeatureKey } from '@auxx/lib/permissions/client'
 import { Button } from '@auxx/ui/components/button'
 import { EmptySection, Section } from '@auxx/ui/components/section'
 import { toastError } from '@auxx/ui/components/toast'
 import { ListChecks, Plus } from 'lucide-react'
 import { useConfirm } from '~/hooks/use-confirm'
+import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { api } from '~/trpc/react'
 import type { AgentDetail } from '../../store/agent-store'
 import { ProcedureRow } from './procedure-row'
@@ -26,6 +28,10 @@ interface ProceduresSectionProps {
 export function ProceduresSection({ agent, onSelect }: ProceduresSectionProps) {
   const [confirm, ConfirmDialog] = useConfirm()
   const utils = api.useUtils()
+  // Beta gate — also enforced on the tab visibility + backend mutations. Hides the
+  // "Add procedure" action if the org loses entitlement while this view is mounted.
+  const { hasAccess } = useFeatureFlags()
+  const canEdit = hasAccess(FeatureKey.agentProcedures)
 
   const procedures = api.agentProcedure.list.useQuery({ agentId: agent.id })
   const invalidate = () => utils.agentProcedure.list.invalidate({ agentId: agent.id })
@@ -68,14 +74,16 @@ export function ProceduresSection({ agent, onSelect }: ProceduresSectionProps) {
       description='Step-by-step playbooks the agent follows for specific situations.'
       collapsible={false}
       actions={
-        <Button
-          variant='ghost'
-          size='xs'
-          loading={createAndAttach.isPending}
-          onClick={() => createAndAttach.mutate({ agentId: agent.id, name: 'New procedure' })}>
-          <Plus />
-          Add procedure
-        </Button>
+        canEdit ? (
+          <Button
+            variant='ghost'
+            size='xs'
+            loading={createAndAttach.isPending}
+            onClick={() => createAndAttach.mutate({ agentId: agent.id, name: 'New procedure' })}>
+            <Plus />
+            Add procedure
+          </Button>
+        ) : null
       }>
       {procedures.isLoading ? (
         <EmptySection loading className='mx-3' />
