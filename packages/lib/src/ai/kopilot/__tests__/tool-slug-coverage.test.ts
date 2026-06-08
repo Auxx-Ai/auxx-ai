@@ -32,7 +32,13 @@ const KNOWN_SLUGS = new Set<string>([
   'workflow.variable',
 ])
 
-const ALWAYS_ON_TOOLS = new Set<string>(['plan_create', 'plan_update_step'])
+const ALWAYS_ON_TOOLS = new Set<string>([
+  'plan_create',
+  'plan_update_step',
+  // Global chip-rendering tool (page `__global__`), reusable across every
+  // Kopilot surface — not gated by an org toolset.
+  'suggest_replies',
+])
 
 const CAPABILITIES_DIR = join(__dirname, '..', 'capabilities')
 
@@ -54,6 +60,8 @@ interface ToolDecl {
   file: string
   name: string
   toolsetSlug: string | null
+  /** Builder-surface meta-tools configure another agent; they are NOT org-toolset-gated. */
+  builderSurface: boolean
 }
 
 /**
@@ -81,6 +89,7 @@ function extractToolDecls(file: string): ToolDecl[] {
       file,
       name,
       toolsetSlug: slugMatch ? (slugMatch[1] ?? null) : null,
+      builderSurface: /surfaces:\s*\[\s*['"]builder['"]\s*\]/.test(window),
     })
   }
   return out
@@ -97,6 +106,10 @@ describe('tool slug coverage', () => {
   it('every native tool carries a known toolsetSlug or is in the always-on allowlist', () => {
     const offenders: string[] = []
     for (const decl of decls) {
+      // Builder-surface meta-tools (the agents.builder page capability) configure
+      // ANOTHER agent and are mounted by page, not gated by an org toolset — they
+      // legitimately carry no `toolsetSlug`.
+      if (decl.builderSurface) continue
       if (decl.toolsetSlug === null) {
         if (!ALWAYS_ON_TOOLS.has(decl.name)) {
           offenders.push(`${decl.name} — no toolsetSlug and not in ALWAYS_ON_TOOLS`)

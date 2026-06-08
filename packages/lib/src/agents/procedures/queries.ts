@@ -1,6 +1,11 @@
 // packages/lib/src/agents/procedures/queries.ts
 
-import type { AgentProcedureEntity, ProcedureEntity, ProcedureVersionEntity } from '@auxx/database'
+import type {
+  AgentProcedureEntity,
+  ProcedureEntity,
+  ProcedureVersionEntity,
+  Transaction,
+} from '@auxx/database'
 import { database, schema } from '@auxx/database'
 import { fromDatabase } from '@auxx/services/shared/utils'
 import { and, desc, eq, isNotNull, sql } from 'drizzle-orm'
@@ -29,49 +34,76 @@ export interface ProcedureDefaults {
   ruleset?: unknown[]
 }
 
+export interface CreateProcedureTxInput {
+  organizationId: string
+  name: string
+  defaults?: ProcedureDefaults
+  /** Seed the draft version with this doc instead of an empty one. */
+  doc?: TiptapDoc
+  /** Flag the procedure as having unpublished changes (e.g. when a body is seeded). */
+  markDirty?: boolean
+}
+
+/**
+ * Insert a Procedure + its draft ProcedureVersion and wire `draftVersionId`, on a
+ * caller-provided transaction so it can be composed atomically with other writes
+ * (e.g. an agent attach + initial doc — see `authoring/queries.ts`). Throws on
+ * failure so the outer transaction rolls back. The public {@link createProcedure}
+ * is the thin standalone wrapper.
+ */
+export async function createProcedureTx(tx: Transaction, input: CreateProcedureTxInput) {
+  const { organizationId, name, defaults, doc, markDirty } = input
+
+  const [procedure] = await tx
+    .insert(schema.Procedure)
+    .values({
+      organizationId,
+      name,
+      whenToUse: defaults?.whenToUse ?? '',
+      triggerExamples: defaults?.triggerExamples ?? [],
+      ruleset: defaults?.ruleset ?? [],
+      updatedAt: new Date(),
+    })
+    .returning()
+  if (!procedure) throw new Error('Failed to insert procedure')
+
+  const [draft] = await tx
+    .insert(schema.ProcedureVersion)
+    .values({
+      organizationId,
+      procedureId: procedure.id,
+      versionNumber: null,
+      doc: (doc ?? {}) as Jsonb,
+    })
+    .returning()
+  if (!draft) throw new Error('Failed to insert draft version')
+
+  const [withPointer] = await tx
+    .update(schema.Procedure)
+    .set({
+      draftVersionId: draft.id,
+      ...(markDirty ? { hasUnpublishedChanges: true } : {}),
+      updatedAt: new Date(),
+    })
+    .where(eq(schema.Procedure.id, procedure.id))
+    .returning()
+  if (!withPointer) throw new Error('Failed to wire draft pointer')
+
+  return { procedure: withPointer, draftVersionId: draft.id }
+}
+
 /** Insert a Procedure + its empty draft ProcedureVersion, then wire `draftVersionId`. */
 export async function createProcedure(input: {
   organizationId: string
   name: string
   defaults?: ProcedureDefaults
 }) {
-  const { organizationId, name, defaults } = input
-
   const result = await fromDatabase(
-    database.transaction(async (tx) => {
-      const [procedure] = await tx
-        .insert(schema.Procedure)
-        .values({
-          organizationId,
-          name,
-          whenToUse: defaults?.whenToUse ?? '',
-          triggerExamples: defaults?.triggerExamples ?? [],
-          ruleset: defaults?.ruleset ?? [],
-          updatedAt: new Date(),
-        })
-        .returning()
-      if (!procedure) throw new Error('Failed to insert procedure')
-
-      const [draft] = await tx
-        .insert(schema.ProcedureVersion)
-        .values({ organizationId, procedureId: procedure.id, versionNumber: null, doc: {} })
-        .returning()
-      if (!draft) throw new Error('Failed to insert draft version')
-
-      const [withPointer] = await tx
-        .update(schema.Procedure)
-        .set({ draftVersionId: draft.id, updatedAt: new Date() })
-        .where(eq(schema.Procedure.id, procedure.id))
-        .returning()
-      if (!withPointer) throw new Error('Failed to wire draft pointer')
-
-      return withPointer
-    }),
+    database.transaction((tx) => createProcedureTx(tx, input)),
     'create-procedure'
   )
-
   if (result.isErr()) return err(result.error)
-  return ok(result.value)
+  return ok(result.value.procedure)
 }
 
 export async function listProcedures(input: { organizationId: string }) {
@@ -148,6 +180,26 @@ export async function updateProcedure(input: {
   return ok(updated)
 }
 
+/**
+ * Write a known draft version's `doc` in place and flag the procedure dirty, on a
+ * caller-provided transaction. The caller supplies `draftVersionId` (it has already
+ * resolved/locked it), so this skips the lookup — letting the authoring
+ * compare-and-set reuse the exact write path. Throws on failure.
+ */
+export async function writeDraftDocTx(
+  tx: Transaction,
+  input: { procedureId: string; draftVersionId: string; doc: TiptapDoc }
+) {
+  await tx
+    .update(schema.ProcedureVersion)
+    .set({ doc: input.doc as Jsonb })
+    .where(eq(schema.ProcedureVersion.id, input.draftVersionId))
+  await tx
+    .update(schema.Procedure)
+    .set({ hasUnpublishedChanges: true, updatedAt: new Date() })
+    .where(eq(schema.Procedure.id, input.procedureId))
+}
+
 /** Write the draft version's `doc` in place and flag `hasUnpublishedChanges`. Never publishes. */
 export async function updateDraftDoc(input: {
   organizationId: string
@@ -167,14 +219,7 @@ export async function updateDraftDoc(input: {
       })
       if (!procedure?.draftVersionId) throw new Error('PROCEDURE_OR_DRAFT_NOT_FOUND')
 
-      await tx
-        .update(schema.ProcedureVersion)
-        .set({ doc: doc as Jsonb })
-        .where(eq(schema.ProcedureVersion.id, procedure.draftVersionId))
-      await tx
-        .update(schema.Procedure)
-        .set({ hasUnpublishedChanges: true, updatedAt: new Date() })
-        .where(eq(schema.Procedure.id, procedureId))
+      await writeDraftDocTx(tx, { procedureId, draftVersionId: procedure.draftVersionId, doc })
     }),
     'update-draft-doc'
   )
@@ -498,40 +543,47 @@ export interface AgentProcedureOverrides {
   rulesetOverride?: unknown[] | null
 }
 
-export async function attachProcedure(input: {
+export interface AttachProcedureInput {
   organizationId: string
   agentId: string
   procedureId: string
   enabled?: boolean
   priority?: number
   overrides?: AgentProcedureOverrides
-}) {
+}
+
+/**
+ * Insert an AgentProcedure link on a caller-provided transaction, so an attach can
+ * be composed atomically with a procedure create (see `authoring/queries.ts`).
+ * Throws on failure. The public {@link attachProcedure} is the standalone wrapper.
+ */
+export async function attachProcedureTx(tx: Transaction, input: AttachProcedureInput) {
   const { organizationId, agentId, procedureId, enabled, priority, overrides } = input
+  const [row] = await tx
+    .insert(schema.AgentProcedure)
+    .values({
+      organizationId,
+      agentId,
+      procedureId,
+      enabled: enabled ?? true,
+      priority: priority ?? 0,
+      whenToUseOverride: overrides?.whenToUseOverride ?? null,
+      triggerExamplesOverride: overrides?.triggerExamplesOverride ?? null,
+      rulesetOverride: overrides?.rulesetOverride ?? null,
+      updatedAt: new Date(),
+    })
+    .returning()
+  if (!row) throw new Error('Failed to attach procedure')
+  return row
+}
+
+export async function attachProcedure(input: AttachProcedureInput) {
   const result = await fromDatabase(
-    database
-      .insert(schema.AgentProcedure)
-      .values({
-        organizationId,
-        agentId,
-        procedureId,
-        enabled: enabled ?? true,
-        priority: priority ?? 0,
-        whenToUseOverride: overrides?.whenToUseOverride ?? null,
-        triggerExamplesOverride: overrides?.triggerExamplesOverride ?? null,
-        rulesetOverride: overrides?.rulesetOverride ?? null,
-        updatedAt: new Date(),
-      })
-      .returning(),
+    database.transaction((tx) => attachProcedureTx(tx, input)),
     'attach-procedure'
   )
   if (result.isErr()) return err(result.error)
-  const row = result.value[0]
-  if (!row)
-    return err({
-      code: 'AGENT_PROCEDURE_CREATE_FAILED' as const,
-      message: 'Failed to attach procedure',
-    })
-  return ok(row)
+  return ok(result.value)
 }
 
 export async function updateAgentProcedure(input: {

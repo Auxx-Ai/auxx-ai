@@ -5,14 +5,13 @@ import { generateId } from '@auxx/utils'
 import type { ConditionGroup } from '../../conditions/types'
 import { docToText } from '../../tiptap'
 import {
-  isOwnStepBadge,
   type ParsedStepBadge,
   PROCEDURE_NODE_TYPES,
   parseCodeBindings,
-  parseStepBadgeId,
   type TiptapDoc,
   type TiptapNode,
 } from './nodes'
+import { segmentNodes } from './segment'
 import type { CompiledProcedure, ProcedureStep, StepId, SubProcedureId } from './types'
 
 /**
@@ -93,52 +92,7 @@ export function compileProcedure(doc: TiptapDoc): CompileResult {
       next: continuation,
     })
 
-  // ── prose-vs-control segmentation ──────────────────────────────────────
-  // An own-step badge or a conditionBlock can be nested anywhere in the prose
-  // tree (the `@` picker inserts inline references mid-paragraph). `splitNode`
-  // walks a node and hoists those out, re-wrapping the surrounding prose in
-  // copies of the container so the instruction `doc` keeps its block structure.
-  type Segment =
-    | { type: 'prose'; node: TiptapNode }
-    | { type: 'ownStep'; badge: ParsedStepBadge }
-    | { type: 'condition'; node: TiptapNode }
-
-  const splitNode = (node: TiptapNode): Segment[] => {
-    if (node.type === PROCEDURE_NODE_TYPES.conditionBlock) {
-      return [{ type: 'condition', node }]
-    }
-    if (node.type === 'reference') {
-      const id = typeof node.attrs?.id === 'string' ? node.attrs.id : ''
-      if (id && isOwnStepBadge(id)) {
-        const badge = parseStepBadgeId(id)
-        if (badge) return [{ type: 'ownStep', badge }]
-      }
-      return [{ type: 'prose', node }] // plain reference / inline op stays in prose
-    }
-    if (!node.content || node.content.length === 0) return [{ type: 'prose', node }]
-
-    const childSegments = node.content.flatMap(splitNode)
-    if (childSegments.every((s) => s.type === 'prose')) return [{ type: 'prose', node }]
-
-    const out: Segment[] = []
-    let buffer: TiptapNode[] = []
-    const flush = () => {
-      if (buffer.length > 0) {
-        out.push({ type: 'prose', node: { ...node, content: buffer } })
-        buffer = []
-      }
-    }
-    for (const seg of childSegments) {
-      if (seg.type === 'prose') {
-        buffer.push(seg.node)
-      } else {
-        flush()
-        out.push(seg)
-      }
-    }
-    flush()
-    return out
-  }
+  // Prose-vs-control segmentation is shared with `doc-to-dsl.ts` — see `segment.ts`.
 
   // Per-block output bindings, lifted from the doc-level `codeBlocks` map onto each emitted
   // `code` step (the compiled block holds source only; the declared outputs live on the step).
@@ -221,33 +175,7 @@ export function compileProcedure(doc: TiptapDoc): CompileResult {
    * if the list produces no body steps).
    */
   const compileSequence = (nodes: TiptapNode[], continuation: StepId | null): StepId | null => {
-    const segments = nodes.flatMap(splitNode)
-
-    // Coalesce contiguous prose; control segments break the run.
-    type Unit =
-      | { kind: 'prose'; nodes: TiptapNode[] }
-      | { kind: 'ownStep'; badge: ParsedStepBadge }
-      | { kind: 'condition'; node: TiptapNode }
-    const units: Unit[] = []
-    let proseRun: TiptapNode[] = []
-    const flushProse = () => {
-      if (proseRun.length > 0) {
-        units.push({ kind: 'prose', nodes: proseRun })
-        proseRun = []
-      }
-    }
-    for (const seg of segments) {
-      if (seg.type === 'prose') {
-        proseRun.push(seg.node)
-      } else if (seg.type === 'ownStep') {
-        flushProse()
-        units.push({ kind: 'ownStep', badge: seg.badge })
-      } else {
-        flushProse()
-        units.push({ kind: 'condition', node: seg.node })
-      }
-    }
-    flushProse()
+    const units = segmentNodes(nodes)
 
     // Thread back-to-front so each unit's tail points at the entry of the rest.
     let nextEntry = continuation

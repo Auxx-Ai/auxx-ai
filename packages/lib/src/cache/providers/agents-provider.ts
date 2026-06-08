@@ -82,6 +82,13 @@ export const agentsProvider: CacheProvider<CachedAgent[]> = {
       // `Procedure.activeVersionId` carries exactly the active version's
       // `compiled` and DROPS procedures never published (activeVersionId IS NULL
       // → no join row). Phase 4 §4.2.
+      //
+      // Selection criteria (whenToUse/triggerExamples/ruleset) are read off the
+      // ACTIVE VERSION's snapshot, NOT the mutable `Procedure` draft row — so an
+      // unpublished draft edit (which only touches the `Procedure` row) cannot
+      // leak into the live runtime candidate until publish, even if an unrelated
+      // `agents` cache rebuild fires in between. Phase 7 §4. Link overrides remain
+      // mutable by design (an editor-only per-agent authoring surface).
       db
         .select({
           linkId: schema.AgentProcedure.id,
@@ -89,12 +96,12 @@ export const agentsProvider: CacheProvider<CachedAgent[]> = {
           procedureId: schema.Procedure.id,
           enabled: schema.AgentProcedure.enabled,
           priority: schema.AgentProcedure.priority,
-          // defaults (Procedure) + overrides (link) — resolved `override ?? default` below
-          whenToUseDefault: schema.Procedure.whenToUse,
+          // defaults (active ProcedureVersion snapshot) + overrides (link) — resolved `override ?? default` below
+          whenToUseDefault: schema.ProcedureVersion.whenToUse,
           whenToUseOverride: schema.AgentProcedure.whenToUseOverride,
-          examplesDefault: schema.Procedure.triggerExamples,
+          examplesDefault: schema.ProcedureVersion.triggerExamples,
           examplesOverride: schema.AgentProcedure.triggerExamplesOverride,
-          rulesetDefault: schema.Procedure.ruleset,
+          rulesetDefault: schema.ProcedureVersion.ruleset,
           rulesetOverride: schema.AgentProcedure.rulesetOverride,
           activeVersionId: schema.Procedure.activeVersionId,
           compiled: schema.ProcedureVersion.compiled,
