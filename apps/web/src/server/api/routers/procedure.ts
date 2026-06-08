@@ -17,12 +17,23 @@ import {
   updateProcedure,
 } from '@auxx/lib/agents/procedures'
 import { onCacheEvent } from '@auxx/lib/cache'
+import { FeaturePermissionService } from '@auxx/lib/permissions'
+import { FeatureKey } from '@auxx/lib/permissions/client'
 import { createScopedLogger } from '@auxx/logger'
 import { TRPCError } from '@trpc/server'
 import { z } from 'zod'
 import { adminProcedure, createTRPCRouter, protectedProcedure } from '../trpc'
 
 const logger = createScopedLogger('procedure-router')
+
+/** adminProcedure + a beta gate: requires the `agentProcedures` feature on the org's plan. */
+const agentProceduresAdminProcedure = adminProcedure.use(async ({ ctx, next }) => {
+  await new FeaturePermissionService().requireAccess(
+    ctx.session.organizationId,
+    FeatureKey.agentProcedures
+  )
+  return next()
+})
 
 /** Unwrap a neverthrow Result, mapping an error to a TRPCError. */
 function unwrap<T>(
@@ -97,7 +108,7 @@ export const procedureRouter = createTRPCRouter({
       }
     }),
 
-  create: adminProcedure
+  create: agentProceduresAdminProcedure
     .input(z.object({ name: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
@@ -110,7 +121,7 @@ export const procedureRouter = createTRPCRouter({
 
   // DRAFT autosave target — patches the draft `doc` and/or trigger defaults.
   // Never touches the published `compiled`/`version` (STACK #10).
-  update: adminProcedure
+  update: agentProceduresAdminProcedure
     .input(
       z.object({
         id: z.string().min(1),
@@ -169,7 +180,7 @@ export const procedureRouter = createTRPCRouter({
       }
     }),
 
-  delete: adminProcedure
+  delete: agentProceduresAdminProcedure
     .input(z.object({ id: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
@@ -195,7 +206,7 @@ export const procedureRouter = createTRPCRouter({
    * minus `draftDoc`) so the client settles its optimistic store on truth; the
    * caller invalidates `getById` to reload the rewritten draft doc.
    */
-  discardDraft: adminProcedure
+  discardDraft: agentProceduresAdminProcedure
     .input(z.object({ id: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
@@ -237,7 +248,7 @@ export const procedureRouter = createTRPCRouter({
    * version (`procedure.updated → ['agents']`; only publish/revert bust — drafts
    * never affect live runs).
    */
-  publish: adminProcedure
+  publish: agentProceduresAdminProcedure
     .input(z.object({ id: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
@@ -291,7 +302,7 @@ export const procedureRouter = createTRPCRouter({
       return { versionNumber: version.versionNumber, procedureVersionId: version.id }
     }),
 
-  revert: adminProcedure
+  revert: agentProceduresAdminProcedure
     .input(z.object({ id: z.string().min(1), toVersionId: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
       const { organizationId } = ctx.session

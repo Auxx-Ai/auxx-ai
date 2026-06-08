@@ -1,6 +1,7 @@
 // apps/web/src/components/agents/ui/detail/agent-detail-tabs.tsx
 'use client'
 
+import { FeatureKey } from '@auxx/lib/permissions/client'
 import { Button } from '@auxx/ui/components/button'
 import {
   DropdownMenu,
@@ -25,6 +26,7 @@ import {
 } from 'lucide-react'
 import { useQueryState } from 'nuqs'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { AGENT_TABS, type AgentTab, DEFAULT_AGENT_TAB } from '../../constant'
 import { ProcedureDetailBar } from '../../procedures/ui/procedure-detail-bar'
 import { ProcedureDraftProvider } from '../../procedures/ui/procedure-draft-provider'
@@ -58,8 +60,12 @@ const SECTION_LABELS: Record<AgentTab, string> = {
   triggers: 'Triggers',
 }
 
-// Sticky tab strip height + small buffer — used as the scroll-spy activation point.
-const STICKY_OFFSET = 56
+// The tab strip lives in <NavStackBar>, OUTSIDE/above the ScrollArea viewport, so the
+// viewport's top edge already starts below the tabs — no offset is needed to land a
+// section flush at the top. Kept at 0; only the scroll-spy line adds a tiny buffer.
+const SCROLL_BUFFER = 0
+// Activate a tab once its section crosses just past the top edge.
+const SPY_BUFFER = 8
 
 interface AgentDetailTabsProps {
   agent: AgentDetail
@@ -97,12 +103,21 @@ export function AgentDetailTabs({ agent, onAutosaveChange }: AgentDetailTabsProp
   })
   const isProgrammaticScrollRef = useRef(false)
 
+  // Procedures is a beta feature gated per-plan: hide the tab + section outright
+  // for orgs without the `agentProcedures` entitlement (backend mutations also
+  // enforce it). Self-hosted is unlimited, so the gate is a no-op there.
+  const { hasAccess } = useFeatureFlags()
+  const canProcedures = hasAccess(FeatureKey.agentProcedures)
+
   // Chat-kind agents fire from their `ChatWidget.agentId` binding, not from
   // AgentTrigger rows — there are no user-configurable triggers in v5, so the
   // Triggers tab is hidden outright. See plans/chat/v5 phase-2 §7.
   const tabs = useMemo(
-    () => (agent.kind === 'chat' ? AGENT_TABS.filter((t) => t !== 'triggers') : AGENT_TABS),
-    [agent.kind]
+    () =>
+      AGENT_TABS.filter(
+        (t) => (t !== 'triggers' || agent.kind !== 'chat') && (t !== 'procedures' || canProcedures)
+      ),
+    [agent.kind, canProcedures]
   )
 
   const scrollToSection = useCallback((value: string) => {
@@ -113,7 +128,7 @@ export function AgentDetailTabs({ agent, onAutosaveChange }: AgentDetailTabsProp
     const targetRect = target.getBoundingClientRect()
     const containerRect = container.getBoundingClientRect()
     container.scrollTo({
-      top: container.scrollTop + (targetRect.top - containerRect.top) - STICKY_OFFSET,
+      top: container.scrollTop + (targetRect.top - containerRect.top) - SCROLL_BUFFER,
       behavior: 'smooth',
     })
     window.setTimeout(() => {
@@ -147,7 +162,7 @@ export function AgentDetailTabs({ agent, onAutosaveChange }: AgentDetailTabsProp
       if (raf) cancelAnimationFrame(raf)
       raf = requestAnimationFrame(() => {
         const containerRect = container.getBoundingClientRect()
-        const activationY = containerRect.top + STICKY_OFFSET + 8
+        const activationY = containerRect.top + SPY_BUFFER
         let best: AgentTab | null = null
         for (const t of tabs) {
           const el = sectionRefs.current[t]
@@ -249,9 +264,11 @@ export function AgentDetailTabs({ agent, onAutosaveChange }: AgentDetailTabsProp
                   </Section>
                 </div>
 
-                <div ref={assignRef('procedures')}>
-                  <ProceduresSection agent={agent} onSelect={setSelectedProcedureId} />
-                </div>
+                {canProcedures ? (
+                  <div ref={assignRef('procedures')}>
+                    <ProceduresSection agent={agent} onSelect={setSelectedProcedureId} />
+                  </div>
+                ) : null}
 
                 <div ref={assignRef('tools')}>
                   <ToolsSection agent={agent} onAutosaveChange={onAutosaveChange} />

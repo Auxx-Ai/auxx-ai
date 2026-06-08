@@ -1,6 +1,7 @@
 // apps/web/src/components/apps/ui/app-account-picker.tsx
 'use client'
 
+import { Button } from '@auxx/ui/components/button'
 import {
   Command,
   CommandGroup,
@@ -8,14 +9,13 @@ import {
   CommandList,
   CommandSeparator,
 } from '@auxx/ui/components/command'
-import { Check, User as UserIcon, Users } from 'lucide-react'
+import { Check, TriangleAlert, User as UserIcon, Users } from 'lucide-react'
 import { useMemo } from 'react'
 import { useUser } from '~/hooks/use-user'
 import { type AppConnection, useExtensionsContext } from '~/providers/extensions/extensions-context'
 import { useAppCredentialOptions } from '../hooks/use-app-credential-options'
 import { useBoundCredential } from '../hooks/use-bound-credential'
 import { type ConnectTarget, useConnectFlow } from '../hooks/use-connect-flow'
-import { AppIcon } from './app-icon'
 import { type AppConnectionStatus, AppWithStatusIcon } from './app-with-status-icon'
 
 interface AppAccountPickerProps {
@@ -78,6 +78,15 @@ export function AppAccountPicker({
   const isSelected = (credId: string) =>
     Array.isArray(value) ? value.includes(credId) : value === credId
 
+  // Reconnect reuses the stored connection (and its variables) server-side, so
+  // it only needs the existing credId. Returns undefined when reconnect isn't
+  // possible — no target, or a workspace cred the current user can't manage.
+  const reconnectHandler = (credId: string, scope: 'user' | 'organization') => {
+    if (!target) return undefined
+    if (scope === 'organization' && !isAdminOrOwner) return undefined
+    return () => flow.start({ target, scope, connectionId: credId })
+  }
+
   return (
     <>
       <Command className='w-full'>
@@ -91,6 +100,7 @@ export function AppAccountPicker({
                   avatarUrl={avatarUrl}
                   selected={isSelected(c.id)}
                   onSelect={() => onPick(c.id)}
+                  onReconnect={reconnectHandler(c.id, 'user')}
                 />
               ))}
             </CommandGroup>
@@ -105,6 +115,7 @@ export function AppAccountPicker({
                   avatarUrl={avatarUrl}
                   selected={isSelected(c.id)}
                   onSelect={() => onPick(c.id)}
+                  onReconnect={reconnectHandler(c.id, 'organization')}
                 />
               ))}
             </CommandGroup>
@@ -143,11 +154,14 @@ function AccountRow({
   avatarUrl,
   selected,
   onSelect,
+  onReconnect,
 }: {
   cred: AppConnection
   avatarUrl: string | null
   selected: boolean
   onSelect: () => void
+  /** When set, the row shows a "Reconnect" action for expired/disconnected creds. */
+  onReconnect?: () => void
 }) {
   const bound = useBoundCredential(cred.id)
   const status: AppConnectionStatus =
@@ -156,19 +170,36 @@ function AccountRow({
       : bound.status === 'expired'
         ? 'expired'
         : 'not_connected'
+  const needsReconnect = status !== 'connected'
 
   return (
     <CommandItem
       value={cred.label ?? cred.appName ?? cred.id}
       onSelect={onSelect}
       className='cursor-pointer h-7.5'>
-      <AppIcon iconId={avatarUrl ?? 'package'} size='sm' />
+      <AppWithStatusIcon iconId={avatarUrl ?? 'package'} size='sm' status={status} />
       <span className='truncate'>{cred.label ?? cred.appName}</span>
-      {selected && (
-        <div className='ml-auto rounded-full size-4 bg-info flex items-center justify-center border border-blue-800'>
-          <Check className='size-2.5! text-white' strokeWidth={4} />
-        </div>
-      )}
+      {needsReconnect && <TriangleAlert className='size-3.5 shrink-0 text-amber-600' />}
+      <div className='ml-auto flex items-center gap-1.5'>
+        {selected && (
+          <div className='rounded-full size-4 bg-info flex items-center justify-center border border-blue-800'>
+            <Check className='size-2.5! text-white' strokeWidth={4} />
+          </div>
+        )}
+        {needsReconnect && onReconnect && (
+          <Button
+            type='button'
+            variant='ghost'
+            size='sm'
+            className='h-6 px-2 text-amber-600 hover:text-amber-700'
+            onClick={(e) => {
+              e.stopPropagation()
+              onReconnect()
+            }}>
+            Reconnect
+          </Button>
+        )}
+      </div>
     </CommandItem>
   )
 }

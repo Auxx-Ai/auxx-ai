@@ -9,9 +9,20 @@ import {
   listProcedures,
   updateAgentProcedure,
 } from '@auxx/lib/agents/procedures'
+import { FeaturePermissionService } from '@auxx/lib/permissions'
+import { FeatureKey } from '@auxx/lib/permissions/client'
 import { TRPCError } from '@trpc/server'
 import { z } from 'zod'
 import { adminProcedure, createTRPCRouter, protectedProcedure } from '../trpc'
+
+/** adminProcedure + a beta gate: requires the `agentProcedures` feature on the org's plan. */
+const agentProceduresAdminProcedure = adminProcedure.use(async ({ ctx, next }) => {
+  await new FeaturePermissionService().requireAccess(
+    ctx.session.organizationId,
+    FeatureKey.agentProcedures
+  )
+  return next()
+})
 
 /** Unwrap a neverthrow Result, mapping an error to a TRPCError. */
 function unwrap<T>(
@@ -70,7 +81,7 @@ export const agentProcedureRouter = createTRPCRouter({
     }),
 
   // "Add procedure": create a new standalone procedure and attach it to the agent.
-  createAndAttach: adminProcedure
+  createAndAttach: agentProceduresAdminProcedure
     .input(z.object({ agentId: z.string().min(1), name: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
@@ -91,7 +102,7 @@ export const agentProcedureRouter = createTRPCRouter({
     }),
 
   // Attach an EXISTING procedure to the agent.
-  attach: adminProcedure
+  attach: agentProceduresAdminProcedure
     .input(z.object({ agentId: z.string().min(1), procedureId: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
@@ -107,7 +118,7 @@ export const agentProcedureRouter = createTRPCRouter({
       return { linkId: link.id }
     }),
 
-  update: adminProcedure
+  update: agentProceduresAdminProcedure
     .input(
       z.object({
         id: z.string().min(1),
@@ -125,7 +136,7 @@ export const agentProcedureRouter = createTRPCRouter({
       return { ok: true as const }
     }),
 
-  detach: adminProcedure
+  detach: agentProceduresAdminProcedure
     .input(z.object({ id: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
       const { organizationId } = ctx.session

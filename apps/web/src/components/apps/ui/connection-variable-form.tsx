@@ -8,12 +8,15 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from '@auxx/ui/components/dialog'
 import { Field, FieldDescription, FieldLabel } from '@auxx/ui/components/field'
 import { Input } from '@auxx/ui/components/input'
+import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { toastError } from '@auxx/ui/components/toast'
+import type React from 'react'
 import { useState } from 'react'
 
 interface ConnectionVariableFormProps {
@@ -43,7 +46,8 @@ export function ConnectionVariableForm({
     setValues({})
   }
 
-  const handleSubmit = () => {
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
     for (const v of variables) {
       if (v.required !== false && !values[v.key]?.trim()) {
         toastError({
@@ -64,36 +68,40 @@ export function ConnectionVariableForm({
         if (!next) handleClose()
         else onOpenChange(true)
       }}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Connection Details</DialogTitle>
-          <DialogDescription>
-            Provide the following details to connect {appTitle}.
-          </DialogDescription>
-        </DialogHeader>
-        <div className='space-y-4'>
-          {variables.map((v) => (
-            <Field key={v.key}>
-              <FieldLabel>
-                {v.label}
-                {v.required !== false && <span className='text-destructive ml-1'>*</span>}
-              </FieldLabel>
-              <Input
-                type={v.secret ? 'password' : 'text'}
-                placeholder={v.placeholder}
-                value={values[v.key] ?? ''}
-                onChange={(e) => setValues((prev) => ({ ...prev, [v.key]: e.target.value }))}
-              />
-              {v.description && <FieldDescription>{v.description}</FieldDescription>}
-            </Field>
-          ))}
-          <div className='flex justify-end gap-2 pt-2'>
-            <Button variant='ghost' onClick={handleClose}>
-              Cancel
-            </Button>
-            <Button onClick={handleSubmit}>Connect</Button>
+      <DialogContent position='tc' size='sm'>
+        <form onSubmit={handleSubmit}>
+          <DialogHeader>
+            <DialogTitle>Connection Details</DialogTitle>
+            <DialogDescription>
+              Provide the following details to connect {appTitle}.
+            </DialogDescription>
+          </DialogHeader>
+          <div className='space-y-4'>
+            {variables.map((v) => (
+              <Field key={v.key}>
+                <FieldLabel>
+                  {v.label}
+                  {v.required !== false && <span className='text-destructive ml-1'>*</span>}
+                </FieldLabel>
+                <Input
+                  type={v.secret ? 'password' : 'text'}
+                  placeholder={v.placeholder}
+                  value={values[v.key] ?? ''}
+                  onChange={(e) => setValues((prev) => ({ ...prev, [v.key]: e.target.value }))}
+                />
+                {v.description && <FieldDescription>{v.description}</FieldDescription>}
+              </Field>
+            ))}
           </div>
-        </div>
+          <DialogFooter>
+            <Button type='button' variant='ghost' size='sm' onClick={handleClose}>
+              Cancel <Kbd shortcut='esc' variant='ghost' size='sm' />
+            </Button>
+            <Button type='submit' variant='outline' size='sm'>
+              Connect <KbdSubmit variant='outline' size='sm' />
+            </Button>
+          </DialogFooter>
+        </form>
       </DialogContent>
     </Dialog>
   )
