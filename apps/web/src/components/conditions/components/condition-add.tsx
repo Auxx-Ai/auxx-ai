@@ -9,6 +9,7 @@ import { memo, useCallback, useState } from 'react'
 import { useConditionContext } from '../condition-context'
 import type { ConditionAddProps, FieldDefinition } from '../types'
 import { NavigableFieldSelector } from './navigable-field-selector'
+import { ProcedureFieldSelector } from './procedure-field-selector'
 import ResourceFieldSelector from './resource-field-selector'
 import VariableFieldSelector from './variable-field-selector'
 
@@ -28,6 +29,7 @@ const ConditionAdd = memo(
     const { config, addCondition, getAvailableFields, nodeId } = useConditionContext()
 
     const useNavigable = config.mode === 'resource' && !!config.entityDefinitionId
+    const useMultiRoot = config.mode === 'resource' && !!config.rootEntities?.length
 
     /** Handle field selection from legacy selectors */
     const handleFieldSelect = useCallback(
@@ -69,6 +71,20 @@ const ConditionAdd = memo(
           value=''
           onChange={handleFieldSelect}
           nodeId={nodeId}
+          renderTrigger={renderTrigger}
+        />
+      )
+    }
+
+    if (useMultiRoot) {
+      return (
+        <ProcedureFieldSelector
+          rootEntities={config.rootEntities!}
+          tempFields={getAvailableFields().filter((f) => f.id.startsWith('var:'))}
+          onSelect={handleNavigableFieldSelect}
+          disabled={disabled}
+          open={open}
+          onOpenChange={setOpen}
           renderTrigger={renderTrigger}
         />
       )

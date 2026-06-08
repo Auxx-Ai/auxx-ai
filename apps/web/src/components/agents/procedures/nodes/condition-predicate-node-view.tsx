@@ -20,7 +20,7 @@ export function ConditionPredicateNodeView({ node }: NodeViewProps) {
     <NodeViewWrapper
       as='div'
       className={cn(
-        'relative rounded-lg border border-border bg-background px-3 py-1 text-sm',
+        'relative rounded-lg border border-border border-dashed bg-background/40 px-3 py-1 text-sm',
         hidden && 'hidden'
       )}>
       <NodeViewContent className='min-h-5 outline-none' />

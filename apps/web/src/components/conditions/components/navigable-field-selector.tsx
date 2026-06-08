@@ -3,8 +3,6 @@
 'use client'
 
 import type { ResourceField } from '@auxx/lib/resources/client'
-import { getFieldOperators } from '@auxx/lib/resources/client'
-import { getRelatedEntityDefinitionId, type RelationshipConfig } from '@auxx/types/custom-field'
 import type { FieldReference, ResourceFieldId } from '@auxx/types/field'
 import { isFieldPath } from '@auxx/types/field'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
@@ -14,6 +12,7 @@ import { useCallback, useMemo, useState } from 'react'
 import { FieldPickerContent } from '~/components/pickers/field-picker'
 import { useFields } from '~/components/resources/hooks/use-field'
 import type { FieldDefinition } from '../types'
+import { resourceFieldToFieldDef } from './field-def-helpers'
 
 interface NavigableFieldSelectorProps {
   /** Current condition fieldId — real FieldReference, NOT encoded */
@@ -31,30 +30,6 @@ interface NavigableFieldSelectorProps {
   /** Controlled open state */
   open?: boolean
   onOpenChange?: (open: boolean) => void
-}
-
-/**
- * Convert a ResourceField from the picker into a FieldDefinition for the condition system.
- */
-function resourceFieldToFieldDef(
-  field: ResourceField,
-  fieldReference: FieldReference
-): FieldDefinition {
-  const id = Array.isArray(fieldReference) ? fieldReference.join('::') : (fieldReference as string)
-
-  return {
-    id,
-    label: field.label,
-    type: field.type,
-    fieldType: field.fieldType,
-    operators: getFieldOperators(field) as any[],
-    options: field.options,
-    fieldKey: field.key,
-    fieldReference: field.resourceFieldId,
-    targetEntityDefinitionId: field.relationship
-      ? (getRelatedEntityDefinitionId(field.relationship as RelationshipConfig) ?? undefined)
-      : undefined,
-  }
 }
 
 /**

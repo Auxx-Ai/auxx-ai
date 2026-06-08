@@ -26,6 +26,15 @@ import type { LocalAttribute, ProcedureFrame } from './types'
  * name. This MUST stay byte-for-byte aligned with `evaluate.ts`'s `extractFieldId` /
  * `extractSimpleField`, or the pre-resolved map is keyed differently than the
  * evaluator reads it and every lookup silently returns `undefined`.
+ *
+ * KNOWN LIMITATION (narrow): two ruleset conditions on same-simple-name fields of
+ * DIFFERENT entities (`contact:email` + `thread:email`) collapse to one map key, so the
+ * `seen` dedupe below resolves the first and the second silently reuses its value.
+ * Custom fields use unique cuids so they never collide; only system fields sharing a
+ * simple name do. Fixing it properly means evolving the shared `FieldResolver` contract
+ * (`evaluate.ts`) to pass the un-stripped `fieldId`, which ripples across every
+ * conditions consumer — deferred until a procedure actually needs to gate on the same
+ * simple field name across two entities.
  */
 function simpleKey(fieldId: string | string[]): string {
   if (Array.isArray(fieldId)) return stripEntityDef(fieldId[fieldId.length - 1] ?? '')
