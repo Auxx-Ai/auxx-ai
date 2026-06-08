@@ -1,5 +1,6 @@
 // packages/lib/src/ai/kopilot/capabilities/agents-builder/index.ts
 
+import { listAgentProceduresForAuthoring } from '../../../../agents/procedures/authoring'
 import {
   getOrgToolsetCatalog,
   getOrgToolsetCatalogForSurface,
@@ -9,6 +10,10 @@ import { findRef } from '../../context-refs'
 import type { GetToolDeps, PageCapability } from '../types'
 import { buildBuilderPersonaPrompt, buildChatBuilderPersonaPrompt } from './persona-prompt'
 import { createCompleteAgentSetupTool } from './tools/complete-agent-setup'
+import { createCreateProcedureTool } from './tools/procedure-create'
+import { createReadProcedureTool } from './tools/procedure-read'
+import { createSetProcedureBodyTool } from './tools/procedure-set-body'
+import { createUpdateProcedureCriteriaTool } from './tools/procedure-update-criteria'
 import { createSetAgentPromptTool } from './tools/set-agent-prompt'
 import { createSetAgentResourceScopeTool } from './tools/set-agent-resource-scope'
 import { createSetAgentToolsetsTool } from './tools/set-agent-toolsets'
@@ -29,8 +34,9 @@ export const AGENTS_BUILDER_PAGE = 'agents.builder'
  *
  * Branches on the session agent's `kind` (resolved from the `agent` session
  * ref): a `chat`-kind agent gets the chat-safe toolset catalog, a chat-shaped
- * persona prompt, and a reduced tool set (no triggers / resource-scope);
- * `internal` agents keep the full triage builder. See plans/chat/v5 phase-2b.
+ * persona prompt, and a reduced tool set (no triggers / resource-scope, but
+ * procedure authoring is shared); `internal` agents keep the full triage
+ * builder. See plans/chat/v5 phase-2b.
  */
 export async function createAgentsBuilderCapabilities(
   getDeps: GetToolDeps,
@@ -40,8 +46,8 @@ export async function createAgentsBuilderCapabilities(
   // is in the session refs (the same ref every setter tool resolves via
   // `findRef`). `kind` is immutable, so resolving once per session build is
   // safe. A chat-kind agent is visitor-facing: chat-safe toolsets only, a
-  // chat-shaped persona, and no triggers / resource-scope. See plans/chat/v5
-  // phase-2b.
+  // chat-shaped persona, and no triggers / resource-scope (procedure authoring
+  // is shared with internal agents). See plans/chat/v5 phase-2b.
   const agentRef = findRef(getDeps().sessionContext, 'agent')
   const agent = agentRef?.id ? await getCachedAgentById(organizationId, agentRef.id) : null
   const isChat = agent?.kind === 'chat'
@@ -50,8 +56,17 @@ export async function createAgentsBuilderCapabilities(
     ? await getOrgToolsetCatalogForSurface(organizationId, 'chat')
     : await getOrgToolsetCatalog(organizationId)
 
-  // Chat agents run on the inbound-message gate, never autonomously, and don't
-  // read records — drop `set_agent_triggers` + `set_agent_resource_scope`.
+  // Procedures: resolve the agent's ATTACHED procedures — including unpublished
+  // drafts — so the persona prompt can inline what exists and the model knows
+  // whether to edit one vs create a new one. Both kinds: the chat runtime runs
+  // attached procedures too (`runProcedureTurn`). Phase 7 §5.
+  const procedures = agentRef?.id
+    ? (await listAgentProceduresForAuthoring({ organizationId, agentId: agentRef.id })).match(
+        (rows) => rows,
+        () => []
+      )
+    : []
+
   const tools = [
     createUpdateAgentIdentityTool(getDeps),
     createSetAgentPromptTool(getDeps),
@@ -60,6 +75,16 @@ export async function createAgentsBuilderCapabilities(
     // tool (author `inputBindings`), so enabling a toolset yields its scoped
     // behavior with zero config. Bespoke per-agent overrides live in the
     // phase-5 admin UI. See plans/chat/v8 phase-6 §2.
+    //
+    // Procedure authoring — both internal and chat agents. The chat runtime
+    // executes attached procedures (`runProcedureTurn`), so chat agents can
+    // follow deterministic playbooks (refunds, returns, escalations). Phase 7 §5.
+    createCreateProcedureTool(getDeps),
+    createSetProcedureBodyTool(getDeps),
+    createReadProcedureTool(getDeps),
+    createUpdateProcedureCriteriaTool(getDeps),
+    // Triggers + resource-scope stay internal-only: chat agents run on the
+    // inbound-message gate, never autonomously, and don't read internal records.
     ...(isChat
       ? []
       : [createSetAgentResourceScopeTool(getDeps), createSetAgentTriggersTool(getDeps)]),
@@ -71,8 +96,8 @@ export async function createAgentsBuilderCapabilities(
     tools,
     excludeGlobalTools: BUILDER_GLOBAL_TOOL_EXCLUDES,
     systemPromptAddition: isChat
-      ? buildChatBuilderPersonaPrompt({ catalog })
-      : buildBuilderPersonaPrompt({ catalog }),
+      ? buildChatBuilderPersonaPrompt({ catalog, procedures })
+      : buildBuilderPersonaPrompt({ catalog, procedures }),
     capabilities: isChat
       ? ['Configure this visitor chat agent — name, persona, knowledge, escalation']
       : ['Edit one agent in this workspace — name, prompt, tools, knowledge scope'],

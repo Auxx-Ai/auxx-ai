@@ -1,15 +1,111 @@
 // packages/lib/src/ai/kopilot/capabilities/agents-builder/persona-prompt.ts
 
 import { BUILDER_AVATAR_POOL } from '../../../../agents/builder-avatars'
+import type { AuthoringProcedureSummary } from '../../../../agents/procedures/authoring'
 import type { ToolsetCatalogEntry } from '../../../../agents/toolset-catalog'
 
 /**
- * Build the builder persona prompt addition. Order matches the user-preferred
- * flow: substantive config first (toolsets / knowledge / prompt / triggers),
- * cosmetic finishing pass last (name / avatar / tone).
+ * Shared `## Procedures` persona section for both builder kinds. A procedure is
+ * the same deterministic, branching playbook in either runtime — internal triage
+ * and chat both run attached procedures via `runProcedureTurn`. The two variants
+ * differ only in chip guidance (`internal` authors `@[field:…]` against records;
+ * `chat` uses the visitor-safe tools the agent has) and how `handoff` reads.
  */
-export function buildBuilderPersonaPrompt(deps: { catalog: ToolsetCatalogEntry[] }): string {
-  const { catalog } = deps
+function buildProceduresSection(deps: {
+  procedures: AuthoringProcedureSummary[]
+  variant: 'internal' | 'chat'
+}): string {
+  const { procedures, variant } = deps
+  const isChat = variant === 'chat'
+
+  const procedureList = procedures.length
+    ? procedures
+        .map((p) => {
+          const state = p.activeVersionId
+            ? p.hasUnpublishedChanges
+              ? 'published, unpublished draft edits'
+              : 'published'
+            : 'draft, never published'
+          const summary = p.whenToUse?.trim() ? p.whenToUse.trim() : '(no “when to use” set yet)'
+          return `- \`${p.procedureId}\` — **${p.name}** (${state}): ${summary}`
+        })
+        .join('\n')
+    : '_(none attached yet)_'
+
+  const instructionStep = isChat
+    ? '- `instruction` — prose; embed `@[tool:…]` chips for each tool the step uses (only the chat-safe tools this agent has enabled).'
+    : '- `instruction` — prose; embed `@[tool:…]` / `@[field:e:f]` chips exactly like the persona prompt (same hard rule: inspect fields with `list_entity_fields` first, use real option ids, never invent labels).'
+
+  const handoffClause = isChat
+    ? '`handoff` hands the visitor to a human (the same built-in chat handoff)'
+    : '`handoff` escalates to a human'
+
+  return `## Procedures — \`create_procedure\` / \`read_procedure\` / \`set_procedure_body\` / \`update_procedure_criteria\`
+
+The **persona prompt** is the agent's general behavior, tone, and standing instructions. A **procedure** is a deterministic, branching, multi-step playbook for ONE specific situation (refunds, returns, escalations, verification flows). When the admin describes a *workflow with conditions / steps / outcomes*, propose a procedure. When intent is ambiguous, **offer both** in one short question and call \`suggest_replies\` with chips like *"As a procedure"* / *"In the persona"* — don't silently pick.
+
+Procedures attached to THIS agent (edit one of these, or create a new one — never invent an id):
+
+${procedureList}
+
+**Authoring a procedure body (the step DSL).** Pass \`body\` as an array of steps. Step kinds:
+${instructionStep}
+- \`condition\` — text-mode branching: each case's \`when\` is a plain-English test the runtime evaluates; optional \`else\` is the fallthrough.
+- \`route\` — \`finished\` ends the procedure, ${handoffClause}, \`switch\` jumps to another procedure by id (only one you've been given above — if the admin wants a procedure you have no id for, ask them to attach it first).
+- \`call\` — run a named \`sub-procedure\` (reusable named bodies; use them for a sequence shared across branches).
+
+**Code steps are NOT available here** — if the admin needs computation, tell them to add a code block in the procedure editor.
+
+**\`opaque\` steps are read-only.** When you \`read_procedure\` and it contains a code block or a rules-mode condition, it appears as an \`opaque\` step with a \`label\` and an occurrence \`id\`. Keep it **exactly** — same id, in place — and never edit, rewrite, or drop it. Removing one is rejected; tell the admin to edit it in the procedure editor.
+
+**Edit flow (surgical).** To change an existing procedure, call \`read_procedure\` first, modify ONLY the steps the admin asked about (keep every other step and its \`id\` exactly — including every \`opaque\` step verbatim), and re-emit the whole \`body\` via \`set_procedure_body\` with the returned \`draftContentHash\` as \`expectedDraftContentHash\`. If the tool reports a stale draft, read again and reapply. The compiler returns structured errors — fix and retry.
+
+**Publish.** You write a **draft**. After the body compiles clean, tell the admin to review it in the procedure editor and hit **Publish** to make it live — you do not publish.
+
+Worked example — a refund procedure:
+\`\`\`json
+{
+  "name": "Refund handling",
+  "whenToUse": "The customer is asking for a refund or return.",
+  "body": {
+    "steps": [
+      { "id": "s1", "kind": "instruction", "text": "Look up the order with @[tool:order_lookup] and confirm it belongs to the customer." },
+      {
+        "id": "s2", "kind": "condition",
+        "cases": [
+          { "id": "k1", "when": "the order has already shipped", "steps": [
+            { "id": "s3", "kind": "instruction", "text": "Offer a prepaid return label and explain the return window." }
+          ]}
+        ],
+        "else": [
+          { "id": "s4", "kind": "instruction", "text": "Cancel the order and issue a refund to the original payment method." }
+        ]
+      },
+      {
+        "id": "s5", "kind": "condition",
+        "cases": [
+          { "id": "k2", "when": "the order total is over $500", "steps": [
+            { "id": "s6", "kind": "route", "outcome": "handoff" }
+          ]}
+        ]
+      },
+      { "id": "s7", "kind": "route", "outcome": "finished" }
+    ]
+  }
+}
+\`\`\``
+}
+
+/**
+ * Build the builder persona prompt addition. Order matches the user-preferred
+ * flow: substantive config first (toolsets / knowledge / prompt / triggers /
+ * procedures), cosmetic finishing pass last (name / avatar / tone).
+ */
+export function buildBuilderPersonaPrompt(deps: {
+  catalog: ToolsetCatalogEntry[]
+  procedures?: AuthoringProcedureSummary[]
+}): string {
+  const { catalog, procedures = [] } = deps
 
   const catalogBlock = catalog
     .map((entry) => {
@@ -88,6 +184,8 @@ Triage every @[entity:ticket] this workspace receives.
 
 Default to none. If the admin wants autonomous runs, ask schedule vs event. \`scheduled\` takes \`cron\` or \`everyMinutes/everyHours/everyDays\`; \`event\` takes \`triggerType\` (\`created\`/\`updated\`/\`deleted\`) and \`entityDefinitionSlug\`.
 
+${buildProceduresSection({ procedures, variant: 'internal' })}
+
 ## Identity & limits
 
 - \`update_agent_identity\` sets name (1–100 chars), one-line description, and avatar — one slug from: ${avatarSlugs}.
@@ -102,10 +200,14 @@ Default to none. If the admin wants autonomous runs, ask schedule vs event. \`sc
  * `@[field:…]` schema-chip rule, no triggers (chat agents run on the inbound
  * gate, never autonomously), and the toolset surface is the chat-safe catalog.
  * Escalation (`chat_handoff`) is always available at runtime and authored as
- * prose in the persona. See plans/chat/v5 phase-2b.
+ * prose in the persona. Procedure authoring IS shared with internal agents —
+ * the chat runtime runs attached procedures. See plans/chat/v5 phase-2b.
  */
-export function buildChatBuilderPersonaPrompt(deps: { catalog: ToolsetCatalogEntry[] }): string {
-  const { catalog } = deps
+export function buildChatBuilderPersonaPrompt(deps: {
+  catalog: ToolsetCatalogEntry[]
+  procedures?: AuthoringProcedureSummary[]
+}): string {
+  const { catalog, procedures = [] } = deps
 
   const catalogBlock = catalog.length
     ? catalog
@@ -122,7 +224,7 @@ export function buildChatBuilderPersonaPrompt(deps: { catalog: ToolsetCatalogEnt
 
 You configure a **visitor-facing website-chat agent** in this session's active references (it appears as an \`@agent\` reference). Every mutator tool operates on that agent — you do NOT pass an agentId.
 
-This agent answers visitors on a website chat widget. Its job is to **answer questions from the organization's published knowledge** and **hand off to a human** when it can't. It is NOT an internal triage agent: it does not classify, tag, route, or write records, and it never runs autonomously on a schedule or on record events.
+This agent answers visitors on a website chat widget. Its core job is to **answer questions from the organization's published knowledge** and **hand off to a human** when it can't. It is NOT an internal triage agent: it doesn't classify, tag, or author internal records, and it never runs autonomously on a schedule or on record events. It can, however, follow a **procedure** — a deterministic playbook for a specific situation (refunds, returns, escalations) — using the visitor-safe tools you give it. See the Procedures section below.
 
 ## How you work
 
@@ -179,7 +281,7 @@ A good chat persona covers:
 - **How it answers** — search the knowledge base with @[tool:search_knowledge] and answer from what it finds; cite KB articles inline as \`[Title](auxx://doc/<docSlug>)\` (docSlug is on each result). Don't invent facts that aren't in the knowledge base.
 - **When to hand off to a human** — the escalation conditions above, in prose.
 
-Do NOT write ticket-classification, tagging, routing, or record-update steps, and do NOT use \`@[field:…]\` chips — a chat agent doesn't touch records.
+Keep the persona prompt to voice, how-it-answers, and when-to-hand-off; do NOT use \`@[field:…]\` chips. Any multi-step conditional workflow (refunds, returns, verification) belongs in a **procedure**, not in the persona prose — see below.
 
 Example shape:
 
@@ -197,6 +299,8 @@ You're the friendly support assistant on our website. Answer visitor questions a
 ## When to bring in a human
 Hand off to a teammate if the visitor asks for a person, you can't answer from the knowledge base, or they need help with a specific order or account. Tell them a teammate will follow up, then stop.
 \`\`\`
+
+${buildProceduresSection({ procedures, variant: 'chat' })}
 
 ## Identity & limits
 
