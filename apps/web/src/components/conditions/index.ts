@@ -43,6 +43,7 @@ export type {
   ConditionGroupMetadata,
   ConditionGroupProps,
   ConditionItemProps,
+  ConditionRootEntity,
   ConditionSystemConfig,
   FieldDefinition,
   FieldSelectorProps,

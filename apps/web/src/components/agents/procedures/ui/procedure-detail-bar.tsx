@@ -3,10 +3,17 @@
 
 import { AutosizeInput, type AutosizeInputRef } from '@auxx/ui/components/autosize-input'
 import { Button } from '@auxx/ui/components/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@auxx/ui/components/dropdown-menu'
 import { useNavStack } from '@auxx/ui/components/nav-stack'
-import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { ChevronLeft, ChevronRight, MoreHorizontal, Trash2 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { AutosaveIndicator, type AutosaveState } from '../../ui/shared/autosave-indicator'
+import { useDeleteBuildingBlock } from '../hooks/use-delete-building-block'
 import { useProcedure } from '../hooks/use-procedure'
 import { useProcedureMutations } from '../hooks/use-procedure-mutations'
 import { useProcedureDraft } from './procedure-draft-provider'
@@ -42,6 +49,7 @@ export function ProcedureDetailBar({ procedureId, autosave, onReload }: Procedur
   const { meta } = useProcedure(procedureId)
   const { patchMeta } = useProcedureMutations()
   const draft = useProcedureDraft()
+  const { requestDelete, ConfirmDialog } = useDeleteBuildingBlock()
 
   // Which entity the bar is titling: the drilled block when drilled, else the procedure.
   const drill = draft?.drill ?? null
@@ -93,6 +101,11 @@ export function ProcedureDetailBar({ procedureId, autosave, onReload }: Procedur
     }
   }
 
+  // When drilled, the bar titles a building block — offer to delete THAT block (not the
+  // procedure; that lives in the publish cluster's `⌄` menu).
+  const blockKind = subId ? 'sub' : codeId ? 'code' : null
+  const blockId = subId ?? codeId
+
   return (
     <div className='flex h-9 items-center gap-2 px-2 no-scrollbar overflow-y-auto'>
       <Button variant='ghost' size='icon-xs' className='rounded-md' onClick={() => pop()}>
@@ -124,10 +137,31 @@ export function ProcedureDetailBar({ procedureId, autosave, onReload }: Procedur
         minWidth={40}
         maxWidth={240}
       />
+      {isDrilled && blockKind && blockId && (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant='ghost'
+              size='icon-xs'
+              className='rounded-md shrink-0'
+              aria-label={subId ? 'Sub-procedure actions' : 'Code block actions'}>
+              <MoreHorizontal />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align='start'>
+            <DropdownMenuItem
+              variant='destructive'
+              onClick={() => void requestDelete(blockKind, blockId, blockName ?? '')}>
+              <Trash2 /> Delete {subId ? 'sub-procedure' : 'code block'}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
       <div className='ml-auto flex items-center gap-2 pr-2 shrink-0'>
         <AutosaveIndicator state={autosave} />
         <ProcedurePublishCluster procedureId={procedureId} onReload={onReload} />
       </div>
+      <ConfirmDialog />
     </div>
   )
 }

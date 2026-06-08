@@ -6,7 +6,12 @@ import type { Operator } from '@auxx/lib/conditions/client'
 import type { ResourceField } from '@auxx/lib/resources/client'
 import { BaseType } from '@auxx/lib/workflow-engine/client'
 import { useCallback, useMemo } from 'react'
-import type { ConditionSystemConfig, FieldDefinition } from '~/components/conditions'
+import type {
+  ConditionRootEntity,
+  ConditionSystemConfig,
+  FieldDefinition,
+} from '~/components/conditions'
+import { useResourceProperty } from '~/components/resources'
 import { useResourceFields } from '~/components/resources/hooks/use-resource-fields'
 
 // CRM entity keys whose fields back the STRUCTURED condition mode. These are the
@@ -16,12 +21,21 @@ import { useResourceFields } from '~/components/resources/hooks/use-resource-fie
 const CONTACT_SLUG = 'contact'
 const THREAD_SLUG = 'thread'
 
-/** ResourceField[] → FieldDefinition[] for the ConditionProvider (records-searchbar pattern). */
+/**
+ * ResourceField[] → FieldDefinition[] for the ConditionProvider.
+ *
+ * `id` is the entity-scoped `resourceFieldId` (`contact:email`), NOT the bare field
+ * key (`email`): bare keys collide across entities (contact + thread both expose
+ * `email`/`name`), and at runtime the selection resolver
+ * (`agents/procedures/context.ts` `toVarRef`) needs the `entityDef:` prefix to root
+ * the ref at a subject anchor — a bare key resolves to `undefined` and the rule never
+ * matches.
+ */
 function toConditionFields(fields: ResourceField[]): FieldDefinition[] {
   return fields
     .filter((f) => f.capabilities?.filterable && !f.capabilities?.hidden)
     .map((f) => ({
-      id: f.id,
+      id: f.resourceFieldId,
       label: f.label,
       type: f.type,
       fieldType: f.fieldType,
@@ -56,6 +70,8 @@ export function useProcedureConditionConfig(
 ) {
   const contact = useResourceFields(CONTACT_SLUG)
   const thread = useResourceFields(THREAD_SLUG)
+  const contactMeta = useResourceProperty(CONTACT_SLUG, ['entityDefinitionId', 'label'])
+  const threadMeta = useResourceProperty(THREAD_SLUG, ['entityDefinitionId', 'label'])
 
   const fields = useMemo<FieldDefinition[]>(
     () => [
@@ -65,6 +81,20 @@ export function useProcedureConditionConfig(
     ],
     [contact.filterableFields, thread.filterableFields, localAttributes]
   )
+
+  // The drill-down roots: Contact + Thread (whichever resolve from the store). The
+  // multi-root `ProcedureFieldSelector` lists these, then drills into each entity's
+  // fields — instead of one flat concatenated list with duplicate labels.
+  const rootEntities = useMemo<ConditionRootEntity[]>(() => {
+    const out: ConditionRootEntity[] = []
+    if (contactMeta?.entityDefinitionId) {
+      out.push({ entityDefinitionId: contactMeta.entityDefinitionId, label: contactMeta.label })
+    }
+    if (threadMeta?.entityDefinitionId) {
+      out.push({ entityDefinitionId: threadMeta.entityDefinitionId, label: threadMeta.label })
+    }
+    return out
+  }, [contactMeta, threadMeta])
 
   const getAvailableFields = useCallback(() => fields, [fields])
 
@@ -80,6 +110,7 @@ export function useProcedureConditionConfig(
     () => ({
       mode: 'resource',
       fields,
+      rootEntities,
       showLogicalOperators: true,
       showGrouping: !singleGroup,
       allowGroupNaming: false,
@@ -90,7 +121,7 @@ export function useProcedureConditionConfig(
       allowConstantToggle: false,
       display: 'inline',
     }),
-    [fields, singleGroup]
+    [fields, rootEntities, singleGroup]
   )
 
   return { config, getAvailableFields, getFieldDefinition }

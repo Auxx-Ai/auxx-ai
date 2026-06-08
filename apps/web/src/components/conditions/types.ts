@@ -82,6 +82,14 @@ export interface FieldDefinition {
 }
 
 /**
+ * A top-level entity offered by the multi-root field picker (procedure rules).
+ */
+export interface ConditionRootEntity {
+  entityDefinitionId: string
+  label: string
+}
+
+/**
  * Configuration for condition system behavior
  */
 export interface ConditionSystemConfig {
@@ -89,6 +97,13 @@ export interface ConditionSystemConfig {
   fields: FieldDefinition[] | 'dynamic'
   /** When set with mode:'resource', enables NavigableFieldSelector with drill-down */
   entityDefinitionId?: string
+  /**
+   * Multi-root drill-down (procedures span Contact + Thread). When set with
+   * mode:'resource', ConditionAdd renders the multi-root `ProcedureFieldSelector`
+   * (entity list → fields) instead of the single-root selectors. Each selection
+   * stores an entity-scoped `ResourceFieldId` so the runtime resolver can root it.
+   */
+  rootEntities?: ConditionRootEntity[]
   allowNesting?: boolean
   allowReordering?: boolean
   showLogicalOperators?: boolean

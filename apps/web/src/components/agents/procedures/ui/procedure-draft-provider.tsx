@@ -41,6 +41,21 @@ import type { ProcedureMeta } from '../store/procedure-store'
  * `useProcedureEditorContext()` hook (now backed by this provider).
  */
 
+/**
+ * Starter source seeded into a new code block. Matches the runtime contract: the lambda
+ * executor requires a `main(inputs)` entry point, inputs arrive as `inputs.vars.<attr>`
+ * (declared local attributes; unwritten → undefined), and declared outputs are read from
+ * the returned object's keys.
+ */
+export const DEFAULT_CODE_BLOCK_SOURCE = `function main(inputs) {
+  // Read declared attributes (unwritten → undefined):
+  //   const tier = inputs.vars.tier
+
+  // Return declared outputs (only keys bound in the Outputs tab are stored):
+  return {}
+}
+`
+
 interface SubProcedureEntry {
   id: string
   name: string
@@ -98,6 +113,8 @@ export interface ProcedureDraftContextValue {
   handleMainChange: (e: { json: JSONContent }) => void
 
   // ── drilled bodies (live, read from the save-source refs) ──
+  /** Live main-body content (read from the save-source ref) — for reference scans. */
+  getMainContent: () => JSONContent[]
   getSubContent: (id: string) => JSONContent[]
   makeSubChange: (id: string) => (e: { json: JSONContent }) => void
   getCodeEntry: (id: string) => CodeBlockEntry | undefined
@@ -113,6 +130,8 @@ export interface ProcedureDraftContextValue {
   createCodeBlock: (name: string) => string
   renameSubProcedure: (id: string, name: string) => void
   renameCodeBlock: (id: string, name: string) => void
+  deleteSubProcedure: (id: string) => void
+  deleteCodeBlock: (id: string) => void
 
   // ── the `@` picker / shared-editor seam ──
   activeEditor: Editor | null
@@ -306,7 +325,7 @@ export function ProcedureDraftProvider({
         id,
         name: name.trim() || 'Code',
         language: 'javascript',
-        code: '',
+        code: DEFAULT_CODE_BLOCK_SOURCE,
       }
       const next = [...codeRef.current, entry]
       codeRef.current = next
@@ -376,11 +395,35 @@ export function ProcedureDraftProvider({
     [patchMetaRaw, procedureId]
   )
 
+  const getMainContent = useCallback(() => mainContentRef.current, [])
   const getSubContent = useCallback(
     (id: string) => subRef.current.find((s) => s.id === id)?.content ?? [],
     []
   )
   const getCodeEntry = useCallback((id: string) => codeRef.current.find((c) => c.id === id), [])
+
+  // Drop a building block from the doc. Callers gate this on a zero-reference check
+  // (see `useDeleteBuildingBlock`), so there's no orphan badge to sweep here. If the
+  // deleted block is the one currently drilled into, pop back to the procedure level.
+  const deleteSubProcedure = useCallback(
+    (id: string) => {
+      subRef.current = subRef.current.filter((s) => s.id !== id)
+      setSubProcedures(subRef.current)
+      if (drill === `sub:${id}`) closeDrill()
+      commit()
+    },
+    [commit, drill, closeDrill]
+  )
+
+  const deleteCodeBlock = useCallback(
+    (id: string) => {
+      codeRef.current = codeRef.current.filter((c) => c.id !== id)
+      setCodeBlocks(codeRef.current)
+      if (drill === `code:${id}`) closeDrill()
+      commit()
+    },
+    [commit, drill, closeDrill]
+  )
 
   const value = useMemo<ProcedureDraftContextValue | null>(
     () =>
@@ -392,6 +435,7 @@ export function ProcedureDraftProvider({
             isLoading,
             mainContent: mainContentRef.current,
             handleMainChange,
+            getMainContent,
             getSubContent,
             makeSubChange,
             getCodeEntry,
@@ -405,6 +449,8 @@ export function ProcedureDraftProvider({
             createCodeBlock,
             renameSubProcedure,
             renameCodeBlock,
+            deleteSubProcedure,
+            deleteCodeBlock,
             activeEditor,
             handleEditorReady,
             referencePickerRef,
@@ -420,6 +466,7 @@ export function ProcedureDraftProvider({
       meta,
       isLoading,
       handleMainChange,
+      getMainContent,
       getSubContent,
       makeSubChange,
       getCodeEntry,
@@ -433,6 +480,8 @@ export function ProcedureDraftProvider({
       createCodeBlock,
       renameSubProcedure,
       renameCodeBlock,
+      deleteSubProcedure,
+      deleteCodeBlock,
       activeEditor,
       handleEditorReady,
       insertBlock,
