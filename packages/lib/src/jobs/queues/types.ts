@@ -1,6 +1,8 @@
 export enum Queues {
   defaultQueue = 'default',
   // evaluationsQueue = 'evaluations',
+  /** Agent-Simulation eval runs (and their watchdog), bounded apart from the AI pool. */
+  evalRunQueue = 'eval-run',
   eventHandlersQueue = 'eventHandlers',
   eventsQueue = 'events',
   // liveEvaluationsQueue = 'liveEvaluations',

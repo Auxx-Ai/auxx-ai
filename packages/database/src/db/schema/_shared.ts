@@ -674,6 +674,25 @@ export const aiProcessingStatus = pgEnum('AiProcessingStatus', [
   'failed',
 ])
 
+// ---- Evals ----
+export const evalKind = pgEnum('EvalKind', ['agent_simulation', 'workflow', 'recorded_ticket'])
+export const evalRunStatus = pgEnum('EvalRunStatus', [
+  'queued',
+  'running',
+  'passed',
+  'failed',
+  'error',
+  'cancelled',
+  'timed_out',
+])
+export const evalSuiteRunStatus = pgEnum('EvalSuiteRunStatus', [
+  'queued',
+  'running',
+  'completed',
+  'cancelled',
+  'error',
+])
+
 export { sql } from 'drizzle-orm'
 // Re-export builders and sql for consumers
 export {
