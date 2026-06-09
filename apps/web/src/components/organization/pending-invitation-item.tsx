@@ -2,7 +2,7 @@
 'use client'
 
 import { Button } from '@auxx/ui/components/button'
-import { formatDistanceToNow } from 'date-fns'
+import { formatRelativeTime } from '@auxx/utils/date'
 import { Building, Check } from 'lucide-react'
 import Image from 'next/image'
 import type { PendingInvitation } from './types'
@@ -11,17 +11,6 @@ interface PendingInvitationItemProps {
   invitation: PendingInvitation
   onAccept: () => void
   isAccepting: boolean
-}
-
-/** Formats a date as a relative time string */
-function formatRelativeDate(date: Date | undefined | null): string {
-  if (!date) return '-'
-  try {
-    const dateObj = date instanceof Date ? date : new Date(date)
-    return formatDistanceToNow(dateObj, { addSuffix: true })
-  } catch {
-    return 'Invalid Date'
-  }
 }
 
 /** Displays a single pending invitation with accept action */
@@ -57,8 +46,8 @@ export function PendingInvitationItem({
             as a(n) <span className='font-semibold'>{invitation.role}</span>.
           </p>
           <p className='text-xs text-muted-foreground'>
-            Invited {formatRelativeDate(invitation.createdAt)} • Expires{' '}
-            {formatRelativeDate(invitation.expiresAt)}
+            Invited {formatRelativeTime(invitation.createdAt)} • Expires{' '}
+            {formatRelativeTime(invitation.expiresAt)}
           </p>
         </div>
       </div>
