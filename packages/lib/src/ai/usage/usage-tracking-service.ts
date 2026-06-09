@@ -5,6 +5,7 @@ import { isSelfHosted } from '@auxx/deployment'
 import { and, count, eq, gte, lte, sql, sum } from 'drizzle-orm'
 import type { UsageSource, UsageTrackingRequest } from '../orchestrator/types'
 import { getModelCreditMultiplier } from '../quota/credit-multiplier'
+import { estimateUsageCostUsd } from '../quota/estimate-cost'
 import { QuotaService } from '../quota/quota-service'
 
 /** Entry for usage grouped by day */
@@ -82,7 +83,9 @@ export class UsageTrackingService {
       inputTokens,
       outputTokens,
       totalTokens,
-      cost: undefined,
+      cachedInputTokens: request.usage.cached_input_tokens || 0,
+      cacheWriteTokens: request.usage.cache_write_tokens || 0,
+      cost: estimateUsageCostUsd(request.provider, request.model, request.usage),
       endpoint: undefined,
       requestId: undefined,
       responseTime: undefined,
@@ -116,6 +119,10 @@ export class UsageTrackingService {
       {
         inputTokens: number
         outputTokens: number
+        cachedInputTokens: number
+        cacheWriteTokens: number
+        cost: number
+        hasCost: boolean
         creditsUsed: number
         ref: UsageTrackingRequest
       }
@@ -126,37 +133,58 @@ export class UsageTrackingService {
       const existing = grouped.get(key)
       const inputTokens = req.usage.prompt_tokens || 0
       const outputTokens = req.usage.completion_tokens || 0
+      const cachedInputTokens = req.usage.cached_input_tokens || 0
+      const cacheWriteTokens = req.usage.cache_write_tokens || 0
+      const callCost = estimateUsageCostUsd(req.provider, req.model, req.usage)
       const multiplier = getModelCreditMultiplier(req.provider, req.model)
       const credits = req.creditsUsed ?? multiplier
 
       if (existing) {
         existing.inputTokens += inputTokens
         existing.outputTokens += outputTokens
+        existing.cachedInputTokens += cachedInputTokens
+        existing.cacheWriteTokens += cacheWriteTokens
         existing.creditsUsed += credits
+        if (callCost !== undefined) {
+          existing.cost += callCost
+          existing.hasCost = true
+        }
       } else {
-        grouped.set(key, { inputTokens, outputTokens, creditsUsed: credits, ref: req })
+        grouped.set(key, {
+          inputTokens,
+          outputTokens,
+          cachedInputTokens,
+          cacheWriteTokens,
+          cost: callCost ?? 0,
+          hasCost: callCost !== undefined,
+          creditsUsed: credits,
+          ref: req,
+        })
       }
     }
 
-    const rows = [...grouped.values()].map(({ inputTokens, outputTokens, creditsUsed, ref }) => ({
-      organizationId: ref.organizationId,
-      userId: ref.userId,
-      provider: ref.provider,
-      model: ref.model,
+    const rows = [...grouped.values()].map((g) => ({
+      organizationId: g.ref.organizationId,
+      userId: g.ref.userId,
+      provider: g.ref.provider,
+      model: g.ref.model,
       modelType: 'llm' as const,
-      inputTokens,
-      outputTokens,
-      totalTokens: inputTokens + outputTokens,
-      createdAt: ref.timestamp || new Date(),
-      providerType: (ref.providerType ?? 'CUSTOM') as 'SYSTEM' | 'CUSTOM',
-      credentialSource: (ref.credentialSource ?? 'CUSTOM') as
+      inputTokens: g.inputTokens,
+      outputTokens: g.outputTokens,
+      totalTokens: g.inputTokens + g.outputTokens,
+      cachedInputTokens: g.cachedInputTokens,
+      cacheWriteTokens: g.cacheWriteTokens,
+      cost: g.hasCost ? g.cost : undefined,
+      createdAt: g.ref.timestamp || new Date(),
+      providerType: (g.ref.providerType ?? 'CUSTOM') as 'SYSTEM' | 'CUSTOM',
+      credentialSource: (g.ref.credentialSource ?? 'CUSTOM') as
         | 'SYSTEM'
         | 'CUSTOM'
         | 'MODEL_SPECIFIC'
         | 'LOAD_BALANCED',
-      creditsUsed,
-      source: ref.source ?? 'other',
-      sourceId: ref.sourceId ?? null,
+      creditsUsed: g.creditsUsed,
+      source: g.ref.source ?? 'other',
+      sourceId: g.ref.sourceId ?? null,
     }))
 
     await this.database.insert(schema.AiUsage).values(rows)

@@ -123,6 +123,10 @@ export class AnthropicLLMClient extends LLMClient {
       })
 
       let inputTokens = 0
+      // Prompt-cache accounting arrives on message_start (reads/writes), not
+      // message_delta. Capture both so the unified usage carries cache splits.
+      let cachedInputTokens = 0
+      let cacheWriteTokens = 0
 
       for await (const event of stream as any) {
         chunkCount++
@@ -133,6 +137,8 @@ export class AnthropicLLMClient extends LLMClient {
             if (event.message?.usage?.input_tokens) {
               inputTokens = event.message.usage.input_tokens
             }
+            cachedInputTokens = event.message?.usage?.cache_read_input_tokens || 0
+            cacheWriteTokens = event.message?.usage?.cache_creation_input_tokens || 0
             break
 
           case 'content_block_delta':
@@ -191,6 +197,8 @@ export class AnthropicLLMClient extends LLMClient {
                 prompt_tokens: inputTokens,
                 completion_tokens: outputTokens,
                 total_tokens: inputTokens + outputTokens,
+                cached_input_tokens: cachedInputTokens,
+                cache_write_tokens: cacheWriteTokens,
               }
             }
             if (event.delta?.stop_reason) {
@@ -908,6 +916,10 @@ export class AnthropicLLMClient extends LLMClient {
       prompt_tokens: usage.input_tokens || 0,
       completion_tokens: usage.output_tokens || 0,
       total_tokens: (usage.input_tokens || 0) + (usage.output_tokens || 0),
+      // Anthropic's input_tokens already EXCLUDES cached reads; surface the cache
+      // splits separately so we can measure hit rate and rate-limit-effective cost.
+      cached_input_tokens: usage.cache_read_input_tokens || 0,
+      cache_write_tokens: usage.cache_creation_input_tokens || 0,
     }
   }
 

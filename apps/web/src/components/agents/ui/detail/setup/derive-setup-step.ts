@@ -2,39 +2,34 @@
 
 import type { AgentDetail } from '../../../store/agent-store'
 
-export type SetupStep = 'alignment' | 'onboarding' | 'personalization'
+export type SetupStep = 'scoping' | 'capabilities' | 'behavior' | 'identity'
 
-export interface SetupCopy {
+export interface SetupStepCopy {
   step: SetupStep
-  index: 1 | 2 | 3
   title: string
   subtitle: string
   description: string
+  /** True once this step's artifact exists on the agent. */
+  done: boolean
 }
 
-const COPY: Record<SetupStep, SetupCopy> = {
-  alignment: {
-    step: 'alignment',
-    index: 1,
-    title: 'Alignment',
-    subtitle: 'Agent Alignment',
-    description: 'Learning about your use case and setting objectives.',
-  },
-  onboarding: {
-    step: 'onboarding',
-    index: 2,
-    title: 'Onboarding',
-    subtitle: 'Agent Onboarding',
-    description: 'Wiring up toolsets, knowledge, and the persona prompt.',
-  },
-  personalization: {
-    step: 'personalization',
-    index: 3,
-    title: 'Personalization',
-    subtitle: 'Agent Personalization',
-    description: 'Finalizing name, avatar, and tone.',
-  },
+export interface SetupProgress {
+  /** All four steps, in order, each flagged done/not-done. */
+  steps: SetupStepCopy[]
+  /** The active step — lowest-index step that isn't done yet (or the last when all done). */
+  current: SetupStepCopy
+  /** 1-based index of `current`. 4 once everything is done. */
+  index: 1 | 2 | 3 | 4
+  /**
+   * Completeness for the progress bar, in [0, 1]. Finished steps count fully;
+   * the active step counts as half so the bar always shows motion — even on
+   * step 1 before anything lands. Reaches exactly 1 only when all steps are done.
+   */
+  completeness: number
 }
+
+/** Partial credit the in-progress step contributes to the bar (so it's never empty). */
+const IN_PROGRESS_CREDIT = 0.5
 
 function isEmptyTiptapDoc(doc: Record<string, unknown> | null | undefined): boolean {
   if (!doc) return true
@@ -50,27 +45,91 @@ function isEmptyTiptapDoc(doc: Record<string, unknown> | null | undefined): bool
   return false
 }
 
-/**
- * Derive the current setup step from agent shape. Mirrors the persona's
- * three phases (alignment → onboarding → personalization) — the prompt and
- * toolsets are the Onboarding deliverable, the name is the Personalization
- * deliverable.
- */
-export function deriveSetupStep(agent: AgentDetail): SetupCopy {
-  if (isEmptyTiptapDoc(agent.prompt) || (agent.toolsets ?? []).length === 0) {
-    return COPY.alignment
-  }
-  if (!agent.name || agent.name.trim() === '') return COPY.onboarding
-  return COPY.personalization
-}
+// Every agent is born with default toolsets (`source: 'auto_default'`, seeded by
+// `createAgent` → `resolveDefaultToolsets`), so mere presence means nothing.
+// Capabilities count as configured only once the builder deliberately picks
+// toolsets — `set_agent_toolsets` inserts/promotes entries to `source: 'manual'`
+// (and prompt `@[tool:…]` chips add `source: 'mention'`). Both are non-default.
+const hasToolsets = (a: AgentDetail): boolean =>
+  (a.toolsets ?? []).some((t) => t.source !== 'auto_default')
+const hasPrompt = (a: AgentDetail): boolean => !isEmptyTiptapDoc(a.prompt)
+const hasName = (a: AgentDetail): boolean => Boolean(a.name?.trim())
+
+/** True once the builder has produced any deliverable — i.e. building has begun. */
+const hasAnyArtifact = (a: AgentDetail): boolean => hasToolsets(a) || hasPrompt(a) || hasName(a)
 
 /**
- * Completeness score for the progress strip — 0..1.
- * `(promptScore + toolsetScore + nameScore) / 3`, each in [0, 1].
+ * The four setup steps, in the order the builder persona authors them
+ * (`agents-builder/persona-prompt.ts`): interview → toolsets → persona → identity.
+ * Each step's `done` is a pure readout of the agent's current data, so the order
+ * the builder *actually* writes fields in never matters.
+ *
+ * `scoping` has no durable artifact (the interview leaves nothing on the agent),
+ * so it's "done" the moment any later artifact lands — i.e. it's the active phase
+ * until building starts, then it's behind us.
  */
-export function computeCompleteness(agent: AgentDetail): number {
-  const promptScore = isEmptyTiptapDoc(agent.prompt) ? 0 : 1
-  const toolsetScore = Math.min(1, (agent.toolsets?.length ?? 0) / 1)
-  const nameScore = agent.name ? 1 : 0
-  return (promptScore + toolsetScore + nameScore) / 3
+const STEP_DEFS: Array<{
+  step: SetupStep
+  title: string
+  subtitle: string
+  description: string
+  isDone: (a: AgentDetail) => boolean
+}> = [
+  {
+    step: 'scoping',
+    title: 'Scoping',
+    subtitle: 'Scoping the agent',
+    description: 'Understanding your use case and goals.',
+    isDone: hasAnyArtifact,
+  },
+  {
+    step: 'capabilities',
+    title: 'Capabilities',
+    subtitle: 'Connecting capabilities',
+    description: 'Wiring up the tools your agent can use.',
+    isDone: hasToolsets,
+  },
+  {
+    step: 'behavior',
+    title: 'Behavior',
+    subtitle: 'Defining behavior',
+    description: "Writing the agent's instructions and persona.",
+    isDone: hasPrompt,
+  },
+  {
+    step: 'identity',
+    title: 'Identity',
+    subtitle: 'Adding identity',
+    description: 'Finalizing the name and avatar.',
+    isDone: hasName,
+  },
+]
+
+/**
+ * Derive the setup progress from the agent's current shape — monotonic and
+ * order-independent. A step is `done` when its artifact exists; `current` is the
+ * lowest-index step not yet done; `completeness` is `doneCount / 4`.
+ */
+export function deriveSetupProgress(agent: AgentDetail): SetupProgress {
+  const steps: SetupStepCopy[] = STEP_DEFS.map((def) => ({
+    step: def.step,
+    title: def.title,
+    subtitle: def.subtitle,
+    description: def.description,
+    done: def.isDone(agent),
+  }))
+
+  const doneCount = steps.filter((s) => s.done).length
+  const firstUndone = steps.findIndex((s) => !s.done)
+  const allDone = firstUndone === -1
+  const currentIdx = allDone ? steps.length - 1 : firstUndone
+
+  const completeness = (doneCount + (allDone ? 0 : IN_PROGRESS_CREDIT)) / steps.length
+
+  return {
+    steps,
+    current: steps[currentIdx]!,
+    index: (currentIdx + 1) as 1 | 2 | 3 | 4,
+    completeness,
+  }
 }

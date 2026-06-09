@@ -123,3 +123,41 @@ export function stripCacheBreakSentinels(text: string): string {
   if (!text.includes(CACHE_BREAK_SENTINEL)) return text
   return text.split(`\n\n${CACHE_BREAK_SENTINEL}\n\n`).join('\n\n')
 }
+
+/**
+ * Provider-neutral size breakdown of the assembled prompt blocks, for cache
+ * instrumentation. Reports per-tier character counts and a rough token estimate
+ * (chars/4) plus which tiers carry a cache breakpoint. Lets us see how much of
+ * the prompt is static (inter-org cacheable) vs org-scoped vs per-turn without
+ * pulling in a tokenizer. See plans/kopilot/cache/.
+ */
+export function summarizePromptBlocks(blocks: readonly PromptBlock[]): {
+  tiers: { stability: Stability; chars: number; estTokens: number; cached: boolean }[]
+  totalChars: number
+  totalEstTokens: number
+  cachedChars: number
+  cachedEstTokens: number
+} {
+  const tiers = blocks.map((b) => ({
+    stability: b.stability,
+    chars: b.text.length,
+    estTokens: Math.round(b.text.length / 4),
+    cached: !!b.cache,
+  }))
+  const totalChars = tiers.reduce((n, t) => n + t.chars, 0)
+  // Cached = every block up to and including the last block carrying a cache
+  // marker (the cacheable prefix), since cache breakpoints are cumulative.
+  const lastCachedIdx = (() => {
+    for (let i = tiers.length - 1; i >= 0; i--) if (tiers[i].cached) return i
+    return -1
+  })()
+  const cachedChars =
+    lastCachedIdx >= 0 ? tiers.slice(0, lastCachedIdx + 1).reduce((n, t) => n + t.chars, 0) : 0
+  return {
+    tiers,
+    totalChars,
+    totalEstTokens: Math.round(totalChars / 4),
+    cachedChars,
+    cachedEstTokens: Math.round(cachedChars / 4),
+  }
+}

@@ -6,6 +6,19 @@ export interface UsageMetrics {
   prompt_tokens: number
   completion_tokens: number
   total_tokens: number
+  /**
+   * Provider-neutral prompt-cache accounting. Optional because not every
+   * provider reports it (and some only report reads). Populated by each
+   * provider client from its native usage shape:
+   * - Anthropic: cache_read_input_tokens / cache_creation_input_tokens
+   * - OpenAI:    prompt_tokens_details.cached_tokens (reads only; writes implicit)
+   * Used to measure cache hit rate and effective rate-limit cost, since on most
+   * providers cached reads do NOT count toward input-token rate limits.
+   */
+  /** Input tokens served from the provider's prompt cache (rate-limit-free on most providers). */
+  cached_input_tokens?: number
+  /** Input tokens written to the provider's prompt cache this request (these DO count toward rate limits). */
+  cache_write_tokens?: number
 }
 
 export interface ModelValidationResult {
