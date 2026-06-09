@@ -232,7 +232,7 @@ export async function POST(request: NextRequest) {
           // the DM kind on subsequent sends without re-reading the agent.
           let createAgentTriggerId: string | null = null
           let createTriggerContext: Record<string, unknown> | null = null
-          if (body.triggerKind === 'dm' && sessionAgentId) {
+          if (body.triggerKind === 'dm' && sessionType !== 'builder' && sessionAgentId) {
             const cachedAgent = await getCachedAgentById(organizationId, sessionAgentId)
             if (!cachedAgent) {
               send({ type: 'turn-error', error: 'Agent not found', code: 'not_found' })
@@ -289,7 +289,16 @@ export async function POST(request: NextRequest) {
 
         // Existing-session DM gate: re-resolve the cached agent on every send
         // so disabling DM mid-thread surfaces a fresh 403, not a stale OK.
-        if (body.triggerKind === 'dm' && sessionAgentId && !inProcessTriggerContext) {
+        // Builder sessions can never carry a DM trigger — their agentConfig is
+        // forced to the master sentinel (agentId null), which `buildKopilotPrompt`
+        // rejects alongside a triggerContext. A `dm` flag on a builder session is
+        // always a stale-client artifact; drop it and run a normal builder turn.
+        if (
+          body.triggerKind === 'dm' &&
+          sessionType !== 'builder' &&
+          sessionAgentId &&
+          !inProcessTriggerContext
+        ) {
           const cachedAgent = await getCachedAgentById(organizationId, sessionAgentId)
           if (!cachedAgent) {
             send({ type: 'turn-error', error: 'Agent not found', code: 'not_found' })

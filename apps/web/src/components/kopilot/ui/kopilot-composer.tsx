@@ -395,7 +395,13 @@ export function KopilotComposer({ ref, page, onSend, contentClassName }: Kopilot
 
     // Sender pick — lock takes precedence over in-flight selection. Master
     // Kopilot leaves both null and sends without `agentId` / `triggerKind`.
-    const senderAgentId = displayActorId ? parseActorId(displayActorId).id : null
+    // Gated on `allowSenderPicker`: only the master surface infers a DM sender
+    // from the session. The docked tabs disable the picker — Build never DMs,
+    // and Chat passes `triggerKind` via prop. Without this gate a builder
+    // session (whose `agentId` is the edit subject, not a responder) would lock
+    // the sender and stamp every build turn as `triggerKind: 'dm'`.
+    const senderAgentId =
+      allowSenderPicker && displayActorId ? parseActorId(displayActorId).id : null
 
     onSend({
       sessionId: activeSessionId ?? undefined,
@@ -427,6 +433,7 @@ export function KopilotComposer({ ref, page, onSend, contentClassName }: Kopilot
     templateDisplayMap,
     selectedModelId,
     allowReferencePicker,
+    allowSenderPicker,
     displayActorId,
   ])
 
