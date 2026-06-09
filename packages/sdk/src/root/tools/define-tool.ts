@@ -25,5 +25,28 @@ export function defineTool<TInput extends z.ZodTypeAny, TOutput extends z.ZodTyp
   if (!TOOL_ID_RE.test(tool.id)) {
     throw new Error(`defineTool: invalid id "${tool.id}" — must match ${TOOL_ID_RE.source}`)
   }
+
+  if (tool.exampleOutput !== undefined) {
+    const parsed = tool.outputs.safeParse(tool.exampleOutput)
+    if (!parsed.success) {
+      throw new Error(
+        `defineTool: tool "${tool.id}" exampleOutput does not satisfy its outputs schema — ${parsed.error.message}`
+      )
+    }
+    // JSON-serializability guard — examples ride the catalog jsonb, so a
+    // circular ref / BigInt would only fail at deploy time without this.
+    try {
+      if (JSON.stringify(tool.exampleOutput) === undefined) {
+        throw new Error('serializes to undefined (function or top-level undefined)')
+      }
+    } catch (err) {
+      throw new Error(
+        `defineTool: tool "${tool.id}" exampleOutput is not JSON-serializable — ${
+          err instanceof Error ? err.message : String(err)
+        }`
+      )
+    }
+  }
+
   return tool
 }

@@ -51,6 +51,11 @@ describe('compileAndExtractCatalog', () => {
       },
     })
 
+    // exampleOutput rides the catalog verbatim (deep-cloned, serializable).
+    expect(catalog.tools[0]?.exampleOutput).toEqual({ messageId: 'msg_abc123' })
+    // It also surfaces on the agent projection (CatalogAgentTool extends CatalogTool).
+    expect(catalog.agent.tools[0]?.exampleOutput).toEqual({ messageId: 'msg_abc123' })
+
     expect(catalog.toolsets).toEqual([
       {
         slug: 'app:fixture:messaging',

@@ -41,6 +41,13 @@ export interface CatalogTool {
   timeoutMs: number
   streaming: boolean
   refs: Array<{ path: string[]; kind: string }>
+  /**
+   * One realistic example of the tool's success output, carried verbatim from
+   * the SDK `tool.exampleOutput` (validated against `outputs` at author time).
+   * JSON value (object or array). Absent ⇒ consumers fall back (scaffold / AI /
+   * record). See plans/evals/tool-example-outputs.md.
+   */
+  exampleOutput?: unknown
 }
 
 export interface CatalogAgentTool extends CatalogTool {
@@ -391,6 +398,11 @@ export async function compileAndExtractCatalog(): Promise<
       timeoutMs: tool.config?.timeout ?? 15000,
       streaming: Boolean(tool.agent?.streaming ?? tool.config?.streaming),
       refs: outputs.refs,
+      // Deep-clone via JSON so the catalog carries a plain, serializable copy
+      // (the top-level JSON.stringify check below still guards the payload).
+      ...(tool.exampleOutput !== undefined
+        ? { exampleOutput: JSON.parse(JSON.stringify(tool.exampleOutput)) }
+        : {}),
     }
     cataloguedTools.push(baseTool)
 
@@ -576,6 +588,7 @@ interface RawTool {
   description: string
   inputs: unknown
   outputs: unknown
+  exampleOutput?: unknown
   config?: ToolConfig
   agent?: ToolAgentSurface
   action?: ToolActionSurface

@@ -115,6 +115,33 @@ export function createFindThreadsTool(getDeps: GetToolDeps): AgentToolDefinition
     toolsetSlug: 'auxx:mail:threads',
     idempotent: true,
     outputSchema: FindThreadsOutput,
+    exampleOutput: {
+      threads: [
+        {
+          id: 'thread_8fK2pQ',
+          subject: 'Where is my order #1042?',
+          status: 'OPEN',
+          assigneeId: null,
+          lastMessageAt: '2026-06-05T14:22:00.000Z',
+          messageCount: 2,
+          isUnread: true,
+          tagIds: ['tag_shipping'],
+          tags: [{ id: 'tag_shipping', name: 'Shipping', color: 'blue', emoji: null }],
+        },
+        {
+          id: 'thread_3aZ9rL',
+          subject: 'Request to change delivery address',
+          status: 'OPEN',
+          assigneeId: 'user_7Hd2',
+          lastMessageAt: '2026-06-04T09:10:00.000Z',
+          messageCount: 4,
+          isUnread: false,
+          tagIds: [],
+          tags: [],
+        },
+      ],
+      count: 2,
+    } satisfies z.output<typeof FindThreadsOutput>,
     buildDigest: (output) => {
       const out = (output ?? {}) as { threads?: Array<Record<string, unknown>>; count?: number }
       const threads = Array.isArray(out.threads) ? out.threads : []

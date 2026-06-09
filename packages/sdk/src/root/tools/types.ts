@@ -209,6 +209,15 @@ export interface ToolDefinition<
   /** Zod output schema. Output refs marker-fields are mined for fences. */
   readonly outputs: TOutput
 
+  /**
+   * One realistic example of this tool's success output. Authored once by the
+   * tool owner; reused by eval autofill, capture/headless mode, and docs.
+   * Must satisfy `outputs` (validated at compile/extract time) and be
+   * JSON-serializable. For outputs containing `refs.entity(...)` marker fields,
+   * use `null` or a sample `RecordId`. See plans/evals/tool-example-outputs.md.
+   */
+  readonly exampleOutput?: z.output<TOutput>
+
   /** Runtime/auth configuration. */
   readonly config?: ToolConfig
 
