@@ -129,14 +129,37 @@ export function shallowEqual(a: any, b: any): boolean {
 }
 
 /**
- * Deep equality check using JSON serialization.
- * Fast but doesn't handle functions, undefined values, or circular references.
- * Good enough for comparing plain data structures.
+ * Order-independent structural deep equality for JSON-like values.
+ *
+ * - Object key order does NOT matter; array order does.
+ * - `Date`s compare by timestamp.
+ * - Differing `typeof`, a lone `null`, or array-vs-non-array all fail fast.
+ * - Symbols (and other primitives) compare by identity via the `Object.is`
+ *   short-circuit, so sentinel symbols are only ever equal to themselves.
+ *
+ * Does not handle circular references, `Map`/`Set`, or class instances.
  */
-export function deepEqual(a: any, b: any): boolean {
-  if (a === b) return true
-  if (a === null || a === undefined || b === null || b === undefined) {
-    return a === b
+export function deepEqual(a: unknown, b: unknown): boolean {
+  if (Object.is(a, b)) return true
+  if (typeof a !== typeof b) return false
+  if (a === null || b === null || typeof a !== 'object') return false
+
+  if (a instanceof Date || b instanceof Date) {
+    return a instanceof Date && b instanceof Date && a.getTime() === b.getTime()
   }
-  return JSON.stringify(a) === JSON.stringify(b)
+
+  const aArr = Array.isArray(a)
+  const bArr = Array.isArray(b)
+  if (aArr !== bArr) return false
+  if (aArr && bArr) {
+    if (a.length !== b.length) return false
+    return a.every((v, i) => deepEqual(v, b[i]))
+  }
+
+  const ao = a as Record<string, unknown>
+  const bo = b as Record<string, unknown>
+  const aKeys = Object.keys(ao)
+  const bKeys = Object.keys(bo)
+  if (aKeys.length !== bKeys.length) return false
+  return aKeys.every((k) => Object.hasOwn(bo, k) && deepEqual(ao[k], bo[k]))
 }

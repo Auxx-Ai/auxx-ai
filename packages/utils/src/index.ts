@@ -129,7 +129,7 @@ export { validateRedirectPath } from './oauth'
 // Object utilities
 export { cloneDeep, deepMerge, getByPath } from './objects'
 // Parse utilities
-export { parseBoolean } from './parse'
+export { parseBoolean, toNumeric } from './parse'
 // Relationship utilities
 export {
   getInverseCardinality,

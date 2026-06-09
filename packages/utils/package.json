@@ -82,6 +82,18 @@
       "import": "./dist/headers.js",
       "default": "./src/headers.ts"
     },
+    "./json": {
+      "types": "./src/json.ts",
+      "source": "./src/json.ts",
+      "import": "./dist/json.js",
+      "default": "./src/json.ts"
+    },
+    "./hash": {
+      "types": "./src/hash.ts",
+      "source": "./src/hash.ts",
+      "import": "./dist/hash.js",
+      "default": "./src/hash.ts"
+    },
     "./mime": {
       "types": "./src/mime.ts",
       "source": "./src/mime.ts",
@@ -99,6 +111,12 @@
       "source": "./src/parse.ts",
       "import": "./dist/parse.js",
       "default": "./src/parse.ts"
+    },
+    "./redact": {
+      "types": "./src/redact.ts",
+      "source": "./src/redact.ts",
+      "import": "./dist/redact.js",
+      "default": "./src/redact.ts"
     },
     "./retry": {
       "types": "./src/retry.ts",

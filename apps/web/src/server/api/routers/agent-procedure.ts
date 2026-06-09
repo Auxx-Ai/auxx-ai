@@ -14,6 +14,7 @@ import { FeatureKey } from '@auxx/lib/permissions/client'
 import { TRPCError } from '@trpc/server'
 import { z } from 'zod'
 import { adminProcedure, createTRPCRouter, protectedProcedure } from '../trpc'
+import { unwrap } from '../unwrap'
 
 /** adminProcedure + a beta gate: requires the `agentProcedures` feature on the org's plan. */
 const agentProceduresAdminProcedure = adminProcedure.use(async ({ ctx, next }) => {
@@ -23,19 +24,6 @@ const agentProceduresAdminProcedure = adminProcedure.use(async ({ ctx, next }) =
   )
   return next()
 })
-
-/** Unwrap a neverthrow Result, mapping an error to a TRPCError. */
-function unwrap<T>(
-  result: { isErr(): boolean; value?: T; error?: { message?: string } | Error },
-  message: string
-): T {
-  if (result.isErr()) {
-    const detail =
-      (result.error as { message?: string } | undefined)?.message ?? String(result.error)
-    throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: `${message}: ${detail}` })
-  }
-  return result.value as T
-}
 
 async function ensureAgentInOrg(organizationId: string, agentId: string): Promise<void> {
   if (!(await agentExistsInOrg(organizationId, agentId))) {
