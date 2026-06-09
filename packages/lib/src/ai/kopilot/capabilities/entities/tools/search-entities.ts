@@ -41,6 +41,7 @@ export function createSearchEntitiesTool(getDeps: GetToolDeps): AgentToolDefinit
     name: 'search_entities',
     displayName: 'Search records',
     toolsetSlug: 'auxx:entities:search',
+    category: 'system',
     idempotent: true,
     outputSchema: SearchEntitiesOutput,
     exampleOutput: {

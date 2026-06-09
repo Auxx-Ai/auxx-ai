@@ -163,6 +163,7 @@ export function createGetEntityHistoryTool(getDeps: GetToolDeps): AgentToolDefin
     name: 'get_entity_history',
     displayName: 'Get record history',
     toolsetSlug: 'auxx:entities:search',
+    category: 'system',
     idempotent: true,
     outputSchema: GetEntityHistoryOutput,
     buildDigest: (output) => {

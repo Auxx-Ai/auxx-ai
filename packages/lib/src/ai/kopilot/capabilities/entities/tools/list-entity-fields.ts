@@ -38,6 +38,7 @@ export function createListEntityFieldsTool(_getDeps: GetToolDeps): AgentToolDefi
     name: 'list_entity_fields',
     displayName: 'List entity fields',
     toolsetSlug: 'auxx:entities:search',
+    category: 'system',
     idempotent: true,
     // Schema only — field definitions, no record data — so safe for an external
     // caller. See plans/chat/v6/chat-tool-availability.md.

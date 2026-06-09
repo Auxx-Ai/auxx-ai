@@ -32,6 +32,7 @@ const emptyParams = { type: 'object', properties: {}, additionalProperties: fals
 export const advanceProcedure: AgentToolDefinition = {
   name: 'advance_procedure',
   displayName: 'Advance procedure',
+  category: 'control',
   description:
     'Call when THIS step of the procedure is complete and the conversation should move on to the next step.',
   parameters: emptyParams,
@@ -44,6 +45,7 @@ export const advanceProcedure: AgentToolDefinition = {
 export const awaitCustomer: AgentToolDefinition = {
   name: 'await_customer',
   displayName: 'Await customer',
+  category: 'control',
   description:
     'Call when you need more information from the customer before this step can complete.',
   parameters: emptyParams,
@@ -56,6 +58,7 @@ export const awaitCustomer: AgentToolDefinition = {
 export const digress: AgentToolDefinition = {
   name: 'digress',
   displayName: 'Digress',
+  category: 'control',
   description:
     'Call when the customer asked for something THIS procedure does not cover. Do NOT answer the side request yourself — signalling routes it.',
   parameters: {
@@ -78,6 +81,7 @@ export const digress: AgentToolDefinition = {
 export const handoffToHuman: AgentToolDefinition = {
   name: 'handoff_to_human',
   displayName: 'Hand off to a human',
+  category: 'control',
   description: 'Call to escalate this conversation to a human agent and stop the procedure.',
   parameters: emptyParams,
   execute: async (_args, ctx) => {
@@ -89,6 +93,7 @@ export const handoffToHuman: AgentToolDefinition = {
 export const endProcedure: AgentToolDefinition = {
   name: 'end_procedure',
   displayName: 'End procedure',
+  category: 'control',
   description:
     'Call when the whole procedure is finished and the conversation should return to where it was before.',
   parameters: emptyParams,

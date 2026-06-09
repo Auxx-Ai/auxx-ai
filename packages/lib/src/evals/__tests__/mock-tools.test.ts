@@ -162,6 +162,32 @@ describe('wrapToolsWithMocks', () => {
     expect(writeTool.execute).not.toHaveBeenCalled()
     expect(sink.unmatched).toEqual(['send_reply'])
   })
+
+  // control tools (procedure/plan signals) must bypass wrapping entirely — they
+  // aren't idempotent, so wrapping would fail the first unmatched advance closed.
+  for (const policy of ['error', 'passthrough_readonly'] as const) {
+    it(`control tools pass through unwrapped under ${policy} policy`, async () => {
+      const sink = collect()
+      const control = fakeTool({
+        name: 'advance_procedure',
+        category: 'control',
+        idempotent: false,
+        execute: vi.fn(async () => ({ success: true, output: { signal: 'advance' } })),
+      })
+      const [wrapped] = wrapToolsWithMocks([control], {
+        // a mock authored against the control tool must NOT intercept it
+        mocks: [mock({ toolName: 'advance_procedure', output: { hijacked: true } })],
+        unmatchedPolicy: policy,
+        ...sink,
+      })
+      expect(wrapped).toBe(control) // same reference — not wrapped
+      const res = await asResult(wrapped!.execute({}, ctx))
+      expect(res).toEqual({ success: true, output: { signal: 'advance' } })
+      expect(control.execute).toHaveBeenCalledOnce()
+      expect(sink.records).toHaveLength(0) // no invocation record
+      expect(sink.unmatched).toHaveLength(0) // never fails closed
+    })
+  }
 })
 
 describe('validateMockOutput', () => {

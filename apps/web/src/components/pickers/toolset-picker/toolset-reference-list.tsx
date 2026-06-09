@@ -2,7 +2,11 @@
 
 'use client'
 
-import { type FlatToolsetCatalogEntry, flattenCatalogToToolsets } from '@auxx/lib/agents/client'
+import {
+  type FlatToolsetCatalogEntry,
+  flattenCatalogToToolsets,
+  matchesToolsetSearch,
+} from '@auxx/lib/agents/client'
 import {
   Command,
   CommandGroup,
@@ -46,16 +50,10 @@ export function ToolsetReferenceList({
     [catalog]
   )
 
-  const filtered = useMemo<FlatToolsetCatalogEntry[]>(() => {
-    const q = externalSearch.trim().toLowerCase()
-    if (!q) return flat
-    return flat.filter((entry) => {
-      if (entry.slug.toLowerCase().includes(q)) return true
-      if (entry.label.toLowerCase().includes(q)) return true
-      if (entry.fullLabel.toLowerCase().includes(q)) return true
-      return entry.tools.some((t) => t.name.toLowerCase().includes(q))
-    })
-  }, [flat, externalSearch])
+  const filtered = useMemo<FlatToolsetCatalogEntry[]>(
+    () => flat.filter((entry) => matchesToolsetSearch(entry, externalSearch)),
+    [flat, externalSearch]
+  )
 
   const showEmpty = !isLoading && filtered.length === 0 && flat.length > 0
   const showEmptyInitial = !isLoading && flat.length === 0

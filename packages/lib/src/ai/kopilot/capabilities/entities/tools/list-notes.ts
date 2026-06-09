@@ -60,6 +60,7 @@ export function createListNotesTool(getDeps: GetToolDeps): AgentToolDefinition {
     name: 'list_notes',
     displayName: 'List notes',
     toolsetSlug: 'auxx:comments:read',
+    category: 'system',
     idempotent: true,
     outputSchema: ListNotesOutput,
     buildDigest: (output) => {

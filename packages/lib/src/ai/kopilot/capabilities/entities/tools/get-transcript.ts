@@ -38,6 +38,7 @@ export function createGetTranscriptTool(getDeps: GetToolDeps): AgentToolDefiniti
     name: 'get_transcript',
     displayName: 'Get transcript',
     toolsetSlug: 'auxx:entities:search',
+    category: 'system',
     idempotent: true,
     outputSchema: GetTranscriptOutput,
     buildDigest: (output) => {

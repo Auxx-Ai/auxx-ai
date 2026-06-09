@@ -30,6 +30,7 @@ export function createGetEntityTool(getDeps: GetToolDeps): AgentToolDefinition {
     name: 'get_entity',
     displayName: 'Get record',
     toolsetSlug: 'auxx:entities:search',
+    category: 'system',
     idempotent: true,
     outputSchema: GetEntityOutput,
     buildDigest: (output) => {

@@ -34,6 +34,7 @@ export function createListTranscriptsForEntityTool(getDeps: GetToolDeps): AgentT
     name: 'list_transcripts_for_entity',
     displayName: 'List transcripts',
     toolsetSlug: 'auxx:entities:search',
+    category: 'system',
     idempotent: true,
     outputSchema: ListTranscriptsForEntityOutput,
     buildDigest: (output) => {
