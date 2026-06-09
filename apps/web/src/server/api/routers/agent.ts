@@ -5,6 +5,7 @@ import {
   agentSlugSchema,
   completeAgentSetup,
   createAgent as createAgentService,
+  deleteAgent as deleteAgentService,
   deleteDraftAgent,
   getAgentDetailByIdOrSlug,
   isAgentSlugTaken,
@@ -152,6 +153,20 @@ export const agentRouter = createTRPCRouter({
           code: 'BAD_REQUEST',
           message: 'Agent is not a draft or does not exist',
         })
+      }
+    }),
+
+  /**
+   * Permanently delete an agent in any state (active or archived). Drops the
+   * `Agent` row and its synthetic `User`; conversation history is preserved
+   * orphaned. Use `deleteDraft` only for incomplete drafts.
+   */
+  delete: adminProcedure
+    .input(z.object({ agentId: z.string().min(1) }))
+    .mutation(async ({ ctx, input }) => {
+      const result = await deleteAgentService(input.agentId, ctx.session.organizationId)
+      if (!result.deleted) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Agent not found' })
       }
     }),
 
