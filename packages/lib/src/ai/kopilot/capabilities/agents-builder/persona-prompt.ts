@@ -12,11 +12,32 @@ import type { ToolsetCatalogEntry } from '../../../../agents/toolset-catalog'
  * `chat` uses the visitor-safe tools the agent has) and how `handoff` reads.
  */
 function buildProceduresSection(deps: {
+  catalog: ToolsetCatalogEntry[]
   procedures: AuthoringProcedureSummary[]
   variant: 'internal' | 'chat'
 }): string {
-  const { procedures, variant } = deps
+  const { catalog, procedures, variant } = deps
   const isChat = variant === 'chat'
+
+  // The model authors `@[tool:…]` chips in instruction steps, so it needs the
+  // tool names right here — not just up in the `set_agent_toolsets` section. We
+  // inline the SAME catalog the persona section uses: during the setup phase no
+  // toolset is enabled on the agent yet, so the full org catalog is the only
+  // useful surface. For a chat agent this `catalog` is already surface-filtered
+  // (`getOrgToolsetCatalogForSurface(..., 'chat')`), so app actions that don't
+  // run for an anonymous visitor are already dropped.
+  const toolCatalogBlock = catalog.length
+    ? catalog
+        .map((entry) => {
+          const toolNames = entry.tools.map((t) => t.name).join(', ')
+          return `- \`${entry.slug}\` — ${entry.label}\n    tools: ${toolNames}`
+        })
+        .join('\n')
+    : '_(no tools installed yet)_'
+
+  const toolCatalogIntro = isChat
+    ? 'Tools you may chip (`@[tool:<name>]`) in an `instruction` step — the **visitor-safe** tools available to a chat agent. Tools not listed here aren’t available on the chat surface (some app actions only run for internal agents). Don’t invent a tool name that isn’t below.'
+    : 'Tools you may chip (`@[tool:<name>]`) in an `instruction` step. The agent runs each step with the tools from the toolsets it’s been given; this is the full installed catalog to draw from. If a step needs a tool from a toolset the agent doesn’t have yet (e.g. a Shopify action), tell the admin to enable that toolset via `set_agent_toolsets`. Don’t invent a tool name that isn’t below.'
 
   const procedureList = procedures.length
     ? procedures
@@ -48,11 +69,41 @@ Procedures attached to THIS agent (edit one of these, or create a new one — ne
 
 ${procedureList}
 
+**${toolCatalogIntro}**
+
+${toolCatalogBlock}
+
 **Authoring a procedure body (the step DSL).** Pass \`body\` as an array of steps. Step kinds:
 ${instructionStep}
 - \`condition\` — text-mode branching: each case's \`when\` is a plain-English test the runtime evaluates; optional \`else\` is the fallthrough.
 - \`route\` — \`finished\` ends the procedure, ${handoffClause}, \`switch\` jumps to another procedure by id (only one you've been given above — if the admin wants a procedure you have no id for, ask them to attach it first).
-- \`call\` — run a named \`sub-procedure\` (reusable named bodies; use them for a sequence shared across branches).
+- \`call\` — run a named \`sub-procedure\` (a reusable body declared in the top-level \`subProcedures\` array; use them for a sequence shared across branches or to hold branching that can't be nested — see next rule).
+
+**Conditions cannot be nested.** A \`condition\` arm (each case's \`steps\`, and \`else\`) may contain only \`instruction\`, \`route\`, and \`call\` steps — **never another \`condition\`**. The editor renders a single level of branching, and the compiler rejects a nested condition. When a branch needs its own branching, declare a named body in the top-level \`subProcedures\` array and invoke it from the arm with a \`call\` step. That sub-procedure body may have its own top-level \`condition\` (which likewise can't nest — chain another \`call\` to go deeper).
+
+Extracting a nested branch into a sub-procedure:
+\`\`\`json
+{
+  "steps": [
+    { "id": "s1", "kind": "condition", "cases": [
+      { "id": "k1", "when": "the customer wants a return", "steps": [
+        { "id": "s2", "kind": "call", "subProcedureId": "sp_returns" }
+      ]}
+    ]}
+  ],
+  "subProcedures": [
+    { "id": "sp_returns", "name": "Returns flow", "steps": [
+      { "id": "s3", "kind": "condition", "cases": [
+        { "id": "k2", "when": "within the 30-day window", "steps": [
+          { "id": "s4", "kind": "instruction", "text": "Send a prepaid return label." }
+        ]}
+      ], "else": [
+        { "id": "s5", "kind": "instruction", "text": "Explain the window has closed and offer store credit." }
+      ]}
+    ]}
+  ]
+}
+\`\`\`
 
 **Code steps are NOT available here** — if the admin needs computation, tell them to add a code block in the procedure editor.
 
@@ -184,7 +235,7 @@ Triage every @[entity:ticket] this workspace receives.
 
 Default to none. If the admin wants autonomous runs, ask schedule vs event. \`scheduled\` takes \`cron\` or \`everyMinutes/everyHours/everyDays\`; \`event\` takes \`triggerType\` (\`created\`/\`updated\`/\`deleted\`) and \`entityDefinitionSlug\`.
 
-${buildProceduresSection({ procedures, variant: 'internal' })}
+${buildProceduresSection({ catalog, procedures, variant: 'internal' })}
 
 ## Identity & limits
 
@@ -300,7 +351,7 @@ You're the friendly support assistant on our website. Answer visitor questions a
 Hand off to a teammate if the visitor asks for a person, you can't answer from the knowledge base, or they need help with a specific order or account. Tell them a teammate will follow up, then stop.
 \`\`\`
 
-${buildProceduresSection({ procedures, variant: 'chat' })}
+${buildProceduresSection({ catalog, procedures, variant: 'chat' })}
 
 ## Identity & limits
 
