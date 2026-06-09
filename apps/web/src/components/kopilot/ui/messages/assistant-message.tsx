@@ -237,6 +237,16 @@ export function AssistantMessage({
     [runs]
   )
 
+  // The per-run indicators (ThinkingSteps spinner, StreamingText reveal) go
+  // dark during the LLM round-trip between a tool finishing and the next part
+  // arriving — a 16–38s dead zone in multi-tool turns where nothing on screen
+  // moves. Show a trailing working status whenever we're streaming and the last
+  // run isn't already spinning (a running tool run owns its own spinner). The
+  // `runs.length === 0` case is handled by the dedicated branch below.
+  const lastRun = runs[runs.length - 1]
+  const showTrailingStatus =
+    isStreaming && runs.length > 0 && !(lastRun?.kind === 'tool_calls' && lastRun.isRunning)
+
   return (
     <div className='group/message flex gap-2'>
       <SparkleIcon />
@@ -286,6 +296,7 @@ export function AssistantMessage({
             )
           })
         )}
+        {showTrailingStatus && !message.error && <AssistantThinkingStatus />}
         {!isStreaming && !message.error && (
           <MessageActions
             role='assistant'
