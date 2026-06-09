@@ -10,6 +10,7 @@ import {
   type ValidationResult,
 } from '../base/types'
 import { type ModelCapabilities, ModelType } from '../types'
+import { createObservingFetch } from '../utils'
 import { KIMI_CAPABILITIES, KIMI_MODELS } from './kimi-defaults'
 import { KimiLLMClient } from './kimi-llm-client'
 
@@ -128,6 +129,7 @@ export class KimiClient extends ProviderClient {
     return new OpenAI({
       apiKey: credentials.kimi_api_key as string,
       baseURL: KIMI_BASE_URL,
+      fetch: createObservingFetch('kimi'),
     })
   }
 

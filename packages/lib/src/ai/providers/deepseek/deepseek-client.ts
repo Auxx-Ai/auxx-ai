@@ -10,6 +10,7 @@ import {
   type ValidationResult,
 } from '../base/types'
 import { type ModelCapabilities, ModelType } from '../types'
+import { createObservingFetch } from '../utils'
 import { DEEPSEEK_CAPABILITIES, DEEPSEEK_MODELS } from './deepseek-defaults'
 import { DeepSeekLLMClient } from './deepseek-llm-client'
 
@@ -128,6 +129,7 @@ export class DeepSeekClient extends ProviderClient {
     return new OpenAI({
       apiKey: this.requireApiKey(credentials, 'deepseek_api_key'),
       baseURL: DEEPSEEK_BASE_URL,
+      fetch: createObservingFetch('deepseek'),
     })
   }
 

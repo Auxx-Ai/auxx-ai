@@ -11,6 +11,7 @@ import {
   type ValidationResult,
 } from '../base/types'
 import { type ModelCapabilities, ModelType } from '../types'
+import { createObservingFetch } from '../utils'
 import { ANTHROPIC_CAPABILITIES, ANTHROPIC_MODELS } from './anthropic-defaults'
 import { AnthropicLLMClient } from './anthropic-llm-client'
 import { VoyageEmbeddingClient } from './voyage-embedding-client'
@@ -131,6 +132,11 @@ export class AnthropicClient extends ProviderClient {
   getApiClient(credentials: ProviderCredentials): Anthropic {
     return new Anthropic({
       apiKey: this.requireApiKey(credentials, 'anthropic_api_key'),
+      // Tee every HTTP attempt (incl. the SDK's silent 4xx/5xx retries) with its
+      // status, latency, and diagnostic headers (rate-limit, retry-after, auth)
+      // into the agent-session trace, so a throttle-and-retry or auth failure is
+      // distinguishable from genuine model latency.
+      fetch: createObservingFetch('anthropic'),
     })
   }
 
