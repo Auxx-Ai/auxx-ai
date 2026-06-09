@@ -35,6 +35,7 @@ import { draftRouter } from './routers/draft'
 import { emailTemplateRouter } from './routers/emailTemplate'
 import { entityDefinitionRouter } from './routers/entityDefinition'
 import { entityGroupRouter } from './routers/entityGroup'
+import { evalRouter } from './routers/eval'
 import { extensionRouter } from './routers/extension'
 import { favoriteRouter } from './routers/favorite'
 import { featurePermissionsRouter } from './routers/featurePermissions'
@@ -125,6 +126,7 @@ export const appRouter = createTRPCRouter({
   mediaAsset: mediaAssetRouter,
   customer: customerRouter,
   emailTemplate: emailTemplateRouter,
+  eval: evalRouter,
   entityDefinition: entityDefinitionRouter,
   entityGroup: entityGroupRouter,
   extension: extensionRouter,

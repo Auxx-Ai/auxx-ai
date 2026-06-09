@@ -432,7 +432,8 @@ export class AgentEngine {
         subject: config.subject,
         appAccounts: config.appAccounts,
         agentName: pending.agentName,
-        now: Date.now(),
+        now: config.nowMs ?? Date.now(),
+        evalFieldResolver: config.evalFieldResolver,
       }
       // Fresh ctx on resume — rehydrate the context store from the persisted
       // slice so captures made before the approval pause survive the resume.

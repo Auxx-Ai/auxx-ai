@@ -49,6 +49,7 @@ export {
   type TiptapDoc,
   type TiptapNode,
 } from './nodes'
+export type { ProcedureObserver, ProcedureTransitionEvent } from './observer'
 export {
   PROCEDURE_SLICE_KEY,
   PROCEDURE_STEP_KEY,

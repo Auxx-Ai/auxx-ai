@@ -15,6 +15,12 @@ vi.mock('../../bindings/resolve', () => ({
     () => async (source: { kind: string; ref: string | string[] }) =>
       resolveMap[Array.isArray(source.ref) ? source.ref.join('|') : source.ref]
   ),
+  // CRM `FieldReference` reads now route through the v8 subject resolver (the 1.5
+  // shared seam). This wholesale mock must stub EVERY export `context.ts` imports
+  // or the missing one resolves `undefined` and silently breaks field resolution.
+  buildSubjectFieldResolver: vi.fn(
+    () => async (ref: string | string[]) => resolveMap[Array.isArray(ref) ? ref.join('|') : ref]
+  ),
 }))
 
 // ── fixture builders ───────────────────────────────────────────────────────

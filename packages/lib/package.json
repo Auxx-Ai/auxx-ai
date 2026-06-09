@@ -310,6 +310,18 @@
       "import": "./dist/errors.mjs",
       "default": "./src/errors.ts"
     },
+    "./evals": {
+      "types": "./src/evals/index.ts",
+      "source": "./src/evals/index.ts",
+      "import": "./dist/evals/index.mjs",
+      "default": "./src/evals/index.ts"
+    },
+    "./evals/worker": {
+      "types": "./src/evals/worker/index.ts",
+      "source": "./src/evals/worker/index.ts",
+      "import": "./dist/evals/worker/index.mjs",
+      "default": "./src/evals/worker/index.ts"
+    },
     "./events": {
       "types": "./src/events/index.ts",
       "source": "./src/events/index.ts",

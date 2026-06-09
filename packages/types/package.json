@@ -22,6 +22,18 @@
       "import": "./dist/custom-field/index.mjs",
       "default": "./custom-field/index.ts"
     },
+    "./evals": {
+      "types": "./evals/index.ts",
+      "source": "./evals/index.ts",
+      "import": "./dist/evals/index.mjs",
+      "default": "./evals/index.ts"
+    },
+    "./evals/schema": {
+      "types": "./evals/schema.ts",
+      "source": "./evals/schema.ts",
+      "import": "./dist/evals/schema.mjs",
+      "default": "./evals/schema.ts"
+    },
     "./field": {
       "types": "./field/index.ts",
       "source": "./field/index.ts",

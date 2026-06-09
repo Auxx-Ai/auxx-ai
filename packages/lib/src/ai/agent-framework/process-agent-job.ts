@@ -4,42 +4,22 @@ import { database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { getSessionById, saveSessionMessages, updateSessionDomainState } from '@auxx/services'
 import { and, eq } from 'drizzle-orm'
-import {
-  filterToolsByToolsets,
-  getOrgToolCatalog,
-  getOrgToolsetCatalog,
-  resolveAgentConfig,
-} from '../../agents'
-import {
-  buildApplyBindings,
-  computeEffectiveBindings,
-  projectBindingSchemas,
-} from '../../agents/bindings'
+import { getOrgToolCatalog, getOrgToolsetCatalog } from '../../agents'
 import {
   type ConversationMessage,
-  PROCEDURE_CONTROL_TOOLS,
   runProcedureTurn,
   sessionMessagesToConversation,
 } from '../../agents/procedures'
 import { getCachedAgentById } from '../../cache'
 import type { JobContext } from '../../jobs/types'
 import { docToText } from '../../tiptap'
-import {
-  createAppCapabilities,
-  createCapabilityRegistry,
-  createEntityCapabilities,
-  createKopilotCapabilities,
-  createKopilotDomainConfig,
-  createMailCapabilities,
-  createToolDepsFactory,
-} from '../kopilot'
 import { buildInstructionReferenceResolver } from '../kopilot/prompts/resolve-instruction-references'
 import type { TriggerContext, TriggerKind } from '../kopilot/prompts/trigger-context'
 import type { UsageTrackingRequest } from '../orchestrator/types'
 import { getModelCreditMultiplier } from '../quota/credit-multiplier'
 import { UsageTrackingService } from '../usage/usage-tracking-service'
-import { BUILDER_MODEL } from './builder-model'
 import { KopilotContextStore, readContextSlice } from './context'
+import { type AgentRuntimeDomain, buildEffectiveAgentRuntime } from './effective-runtime'
 import { AgentEngine } from './engine'
 import type { AgentJobPayload } from './enqueue-agent-job'
 import { createAgentEventPublisher } from './event-publisher'
@@ -49,20 +29,6 @@ import type { Subject, ToolContext } from './tool-context'
 import type { AgentEngineConfig, AgentEvent, SessionMessage } from './types'
 
 const logger = createScopedLogger('agent-job')
-
-/**
- * Split a stored `provider:model` model id into its parts. Returns null for
- * unset or malformed values so callers fall through to the next precedence
- * tier (system default).
- */
-function parseProviderModel(
-  pinned: string | null | undefined
-): { provider: string; model: string } | null {
-  if (!pinned) return null
-  const idx = pinned.indexOf(':')
-  if (idx <= 0 || idx === pinned.length - 1) return null
-  return { provider: pinned.slice(0, idx), model: pinned.slice(idx + 1) }
-}
 
 /**
  * BullMQ job handler for processing agent messages.
@@ -138,21 +104,28 @@ async function processAgentMessageInternal(ctx: JobContext<AgentJobPayload>) {
     sessionTriggerContext: session.triggerContext as Record<string, unknown> | null,
   })
 
-  // 2. Build domain config based on domain type
-  const domainConfig = await buildDomainConfig(domain, {
+  // 2. Build the effective agent runtime (model precedence, capability registry,
+  // toolset-filtered + binding-projected tools, domain config, and binding
+  // clamp) — the shared builder used by both this job and the eval Simulation
+  // engine, so there is no divergent second copy.
+  if (domain !== 'kopilot' && domain !== 'builder') {
+    throw new Error(`Unknown agent domain: ${domain}`)
+  }
+  const runtime = await buildEffectiveAgentRuntime({
     organizationId,
     userId,
     sessionId,
-    page,
-    context,
+    agentId,
+    domain: domain as AgentRuntimeDomain,
     signal,
     modelId,
-    agentId,
-    triggerContext,
     // Mount the procedure control tools when this agent has procedures (inert
     // without an active step in the prompt — same gating as the chat path).
     hasProcedures,
+    page,
+    triggerContext,
   })
+  const { domainConfig, agentConfig } = runtime
 
   // 3. Create LLM adapter
   const callModel = createCallModel({
@@ -162,11 +135,6 @@ async function processAgentMessageInternal(ctx: JobContext<AgentJobPayload>) {
     sourceId: sessionId,
     forceSystem: domain === 'builder',
   })
-
-  // 3b. Resolve the agent's binding override map (cached read; empty for
-  // master). Combined with each tool's author defaults to clamp args per call.
-  const agentConfig = await resolveAgentConfig(organizationId, agentId)
-  const { toolRestrictions } = agentConfig
 
   // 4. Create engine with saved state
   const engineConfig: AgentEngineConfig = {
@@ -182,9 +150,7 @@ async function processAgentMessageInternal(ctx: JobContext<AgentJobPayload>) {
     // the input falls through to the model; a `const` override still applies.
     // No-op for master Kopilot (no tools declare bindings + empty overrides).
     // See plans/chat/v8 phase-4.
-    applyToolRestrictions: buildApplyBindings(
-      computeEffectiveBindings(domainConfig.tools, toolRestrictions)
-    ),
+    applyToolRestrictions: runtime.applyToolRestrictions,
     // Kopilot domain: long-running plans routinely chain >5 approvals
     // (one per ticket reply, etc.) and need iteration headroom for plan
     // step churn. Other domains stay on framework defaults.
@@ -369,145 +335,6 @@ async function processAgentMessageInternal(ctx: JobContext<AgentJobPayload>) {
   }
 
   logger.info('Agent message processed', { sessionId, domain })
-}
-
-/**
- * Build the appropriate domain config based on the session type.
- */
-async function buildDomainConfig(
-  domain: string,
-  params: {
-    organizationId: string
-    userId: string
-    sessionId: string
-    page?: string
-    context?: Record<string, unknown>
-    signal?: AbortSignal
-    modelId?: string
-    agentId: string | null
-    triggerContext: TriggerContext | undefined
-    hasProcedures?: boolean
-  }
-) {
-  switch (domain) {
-    case 'kopilot': {
-      // Resolve model precedence:
-      //   per-turn/per-session (`params.modelId`)
-      //     → agent/master pin (`agentConfig.modelId`)
-      //     → org system default
-      // Master pin is provider:model (see plans/kopilot/settings/04-runtime-activation.md
-      // §C5); agent pins follow the same shape.
-      let defaultModel: string | undefined
-      let defaultProvider: string | undefined
-      const pinned = params.modelId ?? null
-      if (pinned) {
-        const parsed = parseProviderModel(pinned)
-        if (parsed) {
-          defaultProvider = parsed.provider
-          defaultModel = parsed.model
-        }
-      } else {
-        const agentConfigForModel = await resolveAgentConfig(params.organizationId, params.agentId)
-        const fromConfig = parseProviderModel(agentConfigForModel.modelId)
-        if (fromConfig) {
-          defaultProvider = fromConfig.provider
-          defaultModel = fromConfig.model
-        } else {
-          const { getCachedDefaultModel } = await import('../../cache/org-cache-helpers')
-          const { ModelType } = await import('../providers/types')
-          const systemDefault = await getCachedDefaultModel(params.organizationId, ModelType.LLM)
-          if (systemDefault) {
-            defaultProvider = systemDefault.provider
-            defaultModel = systemDefault.model
-          }
-        }
-      }
-
-      return buildKopilotShapedConfig(params, {
-        provider: defaultProvider,
-        model: defaultModel,
-      })
-    }
-    case 'builder': {
-      // Builder pins BUILDER_MODEL and ignores params.modelId — paired with
-      // forceSystem on the call-model side so SYSTEM credentials are used
-      // regardless of the org's provider-type preference.
-      return buildKopilotShapedConfig(params, {
-        provider: BUILDER_MODEL.provider,
-        model: BUILDER_MODEL.model,
-      })
-    }
-    default:
-      throw new Error(`Unknown agent domain: ${domain}`)
-  }
-}
-
-async function buildKopilotShapedConfig(
-  params: {
-    organizationId: string
-    userId: string
-    sessionId: string
-    page?: string
-    signal?: AbortSignal
-    agentId: string | null
-    triggerContext: TriggerContext | undefined
-    hasProcedures?: boolean
-  },
-  defaults: { provider: string | undefined; model: string | undefined }
-) {
-  const getToolDeps = createToolDepsFactory({
-    organizationId: params.organizationId,
-    userId: params.userId,
-    sessionId: params.sessionId,
-    signal: params.signal,
-  })
-
-  const registry = createCapabilityRegistry()
-  registry.register(createEntityCapabilities(getToolDeps))
-  registry.register(createMailCapabilities(getToolDeps))
-  registry.register(createKopilotCapabilities(getToolDeps))
-  registry.register(
-    await createAppCapabilities({
-      organizationId: params.organizationId,
-      // Background agent jobs run autonomously — no human in the loop.
-      // User-scope tools are hidden by the bridge (decision A2).
-      userId: null,
-      agentId: params.agentId,
-      triggerId: null,
-      sessionId: params.sessionId,
-      getToolDeps,
-    })
-  )
-
-  const agentConfig = await resolveAgentConfig(params.organizationId, params.agentId)
-  const resolvedPage = params.page ?? '__none__'
-  const filteredTools = filterToolsByToolsets(registry.getTools(resolvedPage), agentConfig)
-  // Mount the v9 procedure control tools when this agent has procedures — inert
-  // without an active step in the prompt, so gating keeps zero-procedure runs on
-  // the unchanged tool list (mirrors `buildChatEngineConfig`).
-  const allTools = params.hasProcedures
-    ? [...filteredTools, ...PROCEDURE_CONTROL_TOOLS]
-    : filteredTools
-  // Project tool schemas per the effective bindings (author defaults ⊕ admin
-  // overrides). Internal turns have no subject, so bound inputs fall through to
-  // the model at clamp time — but a `const` override still drops from required.
-  // For master sessions there are no bindings, so this is a no-op. See
-  // plans/chat/v8 phase-4.
-  const effectiveBindings = computeEffectiveBindings(allTools, agentConfig.toolRestrictions)
-  const tools = projectBindingSchemas(allTools, effectiveBindings)
-
-  return createKopilotDomainConfig({
-    capabilityRegistry: registry,
-    page: resolvedPage,
-    tools,
-    defaultModel: defaults.model,
-    defaultProvider: defaults.provider,
-    agentConfig,
-    triggerContext: params.triggerContext,
-    // Long-running plans (≥30 steps × ~1–2 LLM rounds each) need
-    // headroom past the framework's small-loop default.
-    maxIterations: 30,
-  })
 }
 
 /**

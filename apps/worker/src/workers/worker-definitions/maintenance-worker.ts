@@ -1,5 +1,6 @@
 import { isSelfHosted } from '@auxx/deployment'
 import { isDemoEnabled } from '@auxx/lib/demo'
+import { evalRunWatchdog } from '@auxx/lib/evals/worker'
 import {
   deletedFileCleanupJob,
   orphanedFileCleanupJob,
@@ -92,6 +93,9 @@ function cloudOnly(handler: JobHandler): JobHandler {
 }
 
 const jobMappings = {
+  // Eval-run watchdog — times out abandoned queued/running runs
+  evalRunWatchdog,
+
   // File cleanup jobs
   orphanedFileCleanupJob,
   deletedFileCleanupJob,

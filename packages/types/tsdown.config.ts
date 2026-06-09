@@ -6,6 +6,8 @@ export default defineConfig({
     'index.ts',
     'actor/index.ts',
     'custom-field/index.ts',
+    'evals/index.ts',
+    'evals/schema.ts',
     'field/index.ts',
     'field-value/index.ts',
     'file-ref/index.ts',

@@ -13,6 +13,7 @@ import { startDatasetEmbeddingWorker } from './worker-definitions/dataset-embedd
 import { startDatasetMaintenanceWorker } from './worker-definitions/dataset-maintenance-worker'
 import { startDocumentProcessingWorker } from './worker-definitions/document-processing-worker'
 import { startEmailWorker } from './worker-definitions/email-worker'
+import { startEvalRunWorker } from './worker-definitions/eval-run-worker'
 import { startEventHandlersWorker, startEventsWorker } from './worker-definitions/events-worker'
 import { startKBSyncWorker } from './worker-definitions/kb-sync-worker'
 import { startKnowledgeSourceWorker } from './worker-definitions/knowledge-source-worker'
@@ -89,6 +90,9 @@ export async function startWorkers() {
   // Chat-agent worker (visitor chat turns; dedicated lane, isolated from ai-agent)
   const chatAgentWorker = startChatAgentWorker()
 
+  // Eval-run worker (agent-Simulation eval runs; bounded apart from ai-agent)
+  const evalRunWorker = startEvalRunWorker()
+
   // AI autofill worker (per-field AI generation)
   const aiAutofillWorker = startAiAutofillWorker()
 
@@ -128,6 +132,7 @@ export async function startWorkers() {
     pollingTriggerWorker,
     aiAgentWorker,
     chatAgentWorker,
+    evalRunWorker,
     aiAutofillWorker,
     recordingBotWorker,
     recordingProcessingWorker,
@@ -187,6 +192,21 @@ export async function setupSchedules() {
         priority: 7,
         removeOnComplete: { count: 60 },
         removeOnFail: { count: 100 },
+      },
+    }
+  )
+
+  // Eval-run watchdog — every 5 minutes. Times out runs whose heartbeat went
+  // stale (worker died mid-run) or that were never claimed off the queue.
+  await maintenanceQueue.upsertJobScheduler(
+    'evalRunWatchdog',
+    { pattern: '*/5 * * * *' },
+    {
+      opts: {
+        attempts: 1,
+        priority: 8,
+        removeOnComplete: { count: 30 },
+        removeOnFail: { count: 50 },
       },
     }
   )
