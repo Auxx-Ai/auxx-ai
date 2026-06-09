@@ -8,6 +8,7 @@ import type { ProcedureStepInput } from '../../ai/kopilot/prompts/sections/types
 import type { CachedAgentProcedure } from '../../cache/org-cache-keys'
 import { backstopClassify, classifyTextBranch, goalMetCheck } from './classifier'
 import type { ClassifyDeps, ConversationMessage } from './classify'
+import type { ProcedureObserver } from './observer'
 import { PROCEDURE_STEP_KEY, readProcedureSlice, writeProcedureSlice } from './persist'
 import type { AgentProcedureEntity, ProcedureEntity, ProcedureVersionEntity } from './queries'
 import { getProcedureById, getProcedureVersionById, readCompiled } from './queries'
@@ -130,6 +131,8 @@ export interface BuildStepperDepsArgs {
   conversation: ConversationMessage[]
   /** Model/provider/org/user resolved by the caller (turn model — BYO-model). */
   classifyDeps: ClassifyDeps
+  /** Optional eval-only transition observer (no-op in production). */
+  observer?: ProcedureObserver
 }
 
 /**
@@ -140,7 +143,7 @@ export interface BuildStepperDepsArgs {
  * conversation + model.
  */
 export function buildStepperDeps(args: BuildStepperDepsArgs): StepperDeps {
-  const { ctx, subject, candidates, conversation, classifyDeps } = args
+  const { ctx, subject, candidates, conversation, classifyDeps, observer } = args
   const { organizationId } = classifyDeps
 
   // Pinned-version read: projection hit when the pin == an attached procedure's
@@ -208,6 +211,7 @@ export function buildStepperDeps(args: BuildStepperDepsArgs): StepperDeps {
     checkGoalMet: (reply, activeStep) => goalMetCheck(reply, activeStep, classifyDeps),
     classifyBackstop: (reply, activeStep) => backstopClassify(reply, activeStep, classifyDeps),
     runCode,
+    ...(observer ? { onTransition: observer } : {}),
   }
 }
 
@@ -283,6 +287,11 @@ export interface RunProcedureTurnArgs {
    * and omit it. The stack is already cleared by the stepper. See §6 reconciliation.
    */
   onHandoff?: () => Promise<void> | void
+  /**
+   * Optional eval-only transition observer (no-op in production). Threaded into
+   * the stepper deps so a Simulation can derive the explicit terminal outcome.
+   */
+  observer?: ProcedureObserver
 }
 
 /**
@@ -307,7 +316,14 @@ export async function runProcedureTurn(args: RunProcedureTurnArgs): Promise<stri
   const liveDomainState = () => engine.getState().domainState as Record<string, unknown>
 
   const makeDeps = (ctx: ToolContext): StepperDeps =>
-    buildStepperDeps({ ctx, subject, candidates, conversation, classifyDeps })
+    buildStepperDeps({
+      ctx,
+      subject,
+      candidates,
+      conversation,
+      classifyDeps,
+      observer: args.observer,
+    })
 
   // 1. selection — sticky resume / fresh frame 0 / none.
   let stack = readProcedureSlice(liveDomainState()) ?? emptyStack()

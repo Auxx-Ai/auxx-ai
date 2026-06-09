@@ -1,6 +1,7 @@
 // apps/web/src/components/dynamic-table/utils/view-config.ts
 
 import type { ConditionGroup } from '@auxx/lib/conditions/client'
+import { deepEqual } from '@auxx/utils/objects'
 import type {
   ColumnOrderState,
   ColumnPinningState,
@@ -228,59 +229,4 @@ function resolveColumnId(column: ExtendedColumnDef): string | undefined {
     return column.accessorKey
   }
   return undefined
-}
-
-/**
- * Deep comparison helper for the small collection-like structures used in view configs.
- */
-function deepEqual(left: unknown, right: unknown): boolean {
-  if (Object.is(left, right)) {
-    return true
-  }
-
-  if (typeof left !== typeof right) {
-    return false
-  }
-
-  if (left === null || right === null || typeof left !== 'object') {
-    return false
-  }
-
-  if (left instanceof Date && right instanceof Date) {
-    return left.getTime() === right.getTime()
-  }
-
-  if (Array.isArray(left) && Array.isArray(right)) {
-    if (left.length !== right.length) {
-      return false
-    }
-    for (let index = 0; index < left.length; index += 1) {
-      if (!deepEqual(left[index], right[index])) {
-        return false
-      }
-    }
-    return true
-  }
-
-  if (Array.isArray(left) || Array.isArray(right)) {
-    return false
-  }
-
-  const leftEntries = Object.entries(left as Record<string, unknown>)
-  const rightEntries = Object.entries(right as Record<string, unknown>)
-
-  if (leftEntries.length !== rightEntries.length) {
-    return false
-  }
-
-  for (const [key, value] of leftEntries) {
-    if (!Object.hasOwn(right, key)) {
-      return false
-    }
-    if (!deepEqual(value, (right as Record<string, unknown>)[key])) {
-      return false
-    }
-  }
-
-  return true
 }

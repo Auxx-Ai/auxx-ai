@@ -195,26 +195,8 @@ export const PROCEDURE_NODE_TYPES = {
 
 export type ProcedureNodeType = (typeof PROCEDURE_NODE_TYPES)[keyof typeof PROCEDURE_NODE_TYPES]
 
-/**
- * Deterministic, key-order-independent JSON serialization — used to content-hash
- * a {@link TiptapDoc} so the hash is stable across a Postgres `jsonb` round-trip.
- * `jsonb` does NOT preserve object key insertion order (it stores keys sorted by
- * length then bytewise), so a plain `JSON.stringify` hash of an in-memory doc
- * won't match the hash of the same doc read back from the column. This sorts
- * object keys recursively so both serializations are identical. Mirrors
- * `JSON.stringify` (drops `undefined` object values); array order is preserved
- * (jsonb preserves it too). PURE.
- */
-export function stableStringify(value: unknown): string {
-  if (value === null || typeof value !== 'object') return JSON.stringify(value) ?? 'null'
-  if (Array.isArray(value)) {
-    return `[${value.map((v) => stableStringify(v === undefined ? null : v)).join(',')}]`
-  }
-  const obj = value as Record<string, unknown>
-  const parts: string[] = []
-  for (const key of Object.keys(obj).sort()) {
-    if (obj[key] === undefined) continue
-    parts.push(`${JSON.stringify(key)}:${stableStringify(obj[key])}`)
-  }
-  return `{${parts.join(',')}}`
-}
+// Deterministic, key-order-independent JSON serialization — used to content-hash
+// a {@link TiptapDoc} so the hash is stable across a Postgres `jsonb` round-trip.
+// Lives in @auxx/utils/json now; re-exported so existing `import { stableStringify }
+// from './nodes'` call sites keep working.
+export { stableStringify } from '@auxx/utils/json'

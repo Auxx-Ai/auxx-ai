@@ -102,7 +102,10 @@ export async function* agentQueryLoop(
     subject: config.subject,
     appAccounts: config.appAccounts,
     agentName: agent.name,
-    now: Date.now(),
+    // Eval Simulations pin a frozen clock (`timeFrozenAt`); production uses the wall clock.
+    now: config.nowMs ?? Date.now(),
+    // Eval-only `startingFields` overlay; undefined on production (subject resolver reads anchors).
+    evalFieldResolver: config.evalFieldResolver,
   }
   const ctx: ToolContext = {
     ...baseCtx,

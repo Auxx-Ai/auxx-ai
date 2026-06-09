@@ -6,7 +6,7 @@ import type { z } from 'zod'
 import type { AgentSurface } from '../../agents/client'
 import type { Message, ModelParameters, Tool, ToolCall, UsageMetrics } from '../clients/base/types'
 import type { ContextManager } from './context/context-manager'
-import type { Subject, ToolContext, WorkflowToolContext } from './tool-context'
+import type { EvalFieldResolver, Subject, ToolContext, WorkflowToolContext } from './tool-context'
 
 // ===== CONTENT PARTS =====
 
@@ -805,6 +805,18 @@ export interface AgentEngineConfig {
     args: Record<string, unknown>,
     ctx: ToolContext
   ) => Promise<{ ok: true; args: Record<string, unknown> } | { ok: false; error: string }>
+  /**
+   * Eval-only frozen framework clock (epoch ms). When set, every tool `ToolContext.now`
+   * and the framework `sys:now` read this instead of the wall clock, so a Simulation's
+   * `timeFrozenAt` makes time deterministic. Absent on every production run.
+   */
+  nowMs?: number
+  /**
+   * Eval-only subject field overlay. When set, the engine copies it onto every tool's
+   * `ToolContext.evalFieldResolver` so `startingFields` override CRM reads without a
+   * write. Absent on every production run (the subject resolver reads `subject.anchors`).
+   */
+  evalFieldResolver?: EvalFieldResolver
 }
 
 // ===== AGENT DEPENDENCIES =====

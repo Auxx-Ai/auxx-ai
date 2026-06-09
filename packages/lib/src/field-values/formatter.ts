@@ -9,6 +9,7 @@ import {
   isArrayReturnFieldType as isArrayReturnType,
   isMultiValueFieldType as isMultiValueType,
 } from '@auxx/types/field-value'
+import { deepEqual } from '@auxx/utils/objects'
 
 /**
  * Options for field type checking.
@@ -292,29 +293,6 @@ export function areValuesEqual(value1: unknown, value2: unknown, fieldType: Fiel
 
   // Primitive comparison
   return raw1 === raw2
-}
-
-/**
- * Deep equality check for objects and arrays.
- */
-function deepEqual(a: unknown, b: unknown): boolean {
-  if (a === b) return true
-  if (a === null || b === null) return false
-  if (typeof a !== 'object' || typeof b !== 'object') return a === b
-
-  const keysA = Object.keys(a as object)
-  const keysB = Object.keys(b as object)
-
-  if (keysA.length !== keysB.length) return false
-
-  for (const key of keysA) {
-    if (!keysB.includes(key)) return false
-    if (!deepEqual((a as Record<string, unknown>)[key], (b as Record<string, unknown>)[key])) {
-      return false
-    }
-  }
-
-  return true
 }
 
 // Re-export types for convenience
