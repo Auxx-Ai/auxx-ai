@@ -5,6 +5,7 @@ import { getAttachedProcedureDraft } from '../../../../../agents/procedures/auth
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
 import type { GetToolDeps } from '../../types'
 import { resolveProcedureAuthoring } from './procedure-authoring-guard'
+import { validateTriggerExamples } from './trigger-examples'
 
 /**
  * Update a procedure's name / selection criteria (`whenToUse` / `triggerExamples`).
@@ -49,6 +50,10 @@ export function createUpdateProcedureCriteriaTool(getDeps: GetToolDeps): AgentTo
 
       const name = typeof args.name === 'string' ? args.name : undefined
       const whenToUse = typeof args.whenToUse === 'string' ? args.whenToUse : undefined
+      if (args.triggerExamples !== undefined) {
+        const teError = validateTriggerExamples(args.triggerExamples)
+        if (teError) return { success: false, output: null, error: teError }
+      }
       const triggerExamples = Array.isArray(args.triggerExamples)
         ? (args.triggerExamples as unknown[])
         : undefined
