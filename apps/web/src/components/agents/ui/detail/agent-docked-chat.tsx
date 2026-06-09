@@ -3,10 +3,11 @@
 
 import { agentTemplates } from '@auxx/lib/agents/client'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@auxx/ui/components/tabs'
-import { MessageSquareOff, Settings2 } from 'lucide-react'
+import { FlaskConical, MessageSquare, MessageSquareOff, Settings2 } from 'lucide-react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { parseAsStringLiteral, useQueryState } from 'nuqs'
 import { useEffect, useState } from 'react'
+import { SimulationsTab } from '~/components/evals/ui/simulations-tab'
 import { KopilotContext } from '~/components/kopilot/context'
 import { KopilotChatProvider } from '~/components/kopilot/options'
 import { KopilotSuggestion } from '~/components/kopilot/suggestions/kopilot-suggestion'
@@ -18,8 +19,8 @@ interface AgentDockedChatProps {
   agentId: string
 }
 
-type Panel = 'build' | 'chat'
-const PANELS: readonly Panel[] = ['build', 'chat'] as const
+type Panel = 'build' | 'chat' | 'simulations'
+const PANELS: readonly Panel[] = ['build', 'chat', 'simulations'] as const
 
 /**
  * Docked Kopilot chat scoped to one agent. Two tabs:
@@ -57,10 +58,16 @@ export function AgentDockedChat({ agentId }: AgentDockedChatProps) {
       {!isFreshAgent && (
         <TabsList variant='outline'>
           <TabsTrigger value='build' variant='outline'>
+            <Settings2 />
             Build
           </TabsTrigger>
           <TabsTrigger value='chat' variant='outline'>
+            <MessageSquare />
             Chat
+          </TabsTrigger>
+          <TabsTrigger value='simulations' variant='outline'>
+            <FlaskConical />
+            Simulations
           </TabsTrigger>
         </TabsList>
       )}
@@ -75,6 +82,9 @@ export function AgentDockedChat({ agentId }: AgentDockedChatProps) {
           isFreshAgent={isFreshAgent}
           onJumpToBuild={() => setPanel('build')}
         />
+      </TabsContent>
+      <TabsContent value='simulations' className='flex-1 overflow-hidden'>
+        <SimulationsTab agentId={agentId} />
       </TabsContent>
     </Tabs>
   )

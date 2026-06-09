@@ -20,7 +20,7 @@ import {
   agentEvalTargetSchema,
   simulationConfigSchema,
 } from '@auxx/types/evals/schema'
-import { and, desc, eq, lt } from 'drizzle-orm'
+import { and, desc, eq, inArray, lt } from 'drizzle-orm'
 import { err, ok } from 'neverthrow'
 import { hashSnapshots } from './snapshots'
 import type { EvalServiceError } from './types'
@@ -320,6 +320,50 @@ export async function listEvalRuns(input: {
   )
   if (result.isErr()) return err(result.error)
   return ok(result.value as EvalRunEntity[])
+}
+
+/** A compact latest-run summary for the suite-list rows (status pill + last-run time). */
+export interface LatestRunSummary {
+  caseId: string
+  runId: string
+  status: EvalRunEntity['status']
+  createdAt: Date
+  completedAt: Date | null
+}
+
+/**
+ * The most recent run per case for a set of case ids, in ONE query
+ * (`DISTINCT ON (caseId) … ORDER BY caseId, createdAt DESC`). Powers the suite
+ * list's status pills without an N+1 over `listEvalRuns`. Cases with no runs are
+ * simply absent from the result.
+ */
+export async function getLatestRunsByCaseIds(input: { organizationId: string; caseIds: string[] }) {
+  if (input.caseIds.length === 0) return ok([] as LatestRunSummary[])
+
+  const result = await fromDatabase(
+    database
+      .selectDistinctOn([schema.EvalRun.caseId], {
+        caseId: schema.EvalRun.caseId,
+        runId: schema.EvalRun.id,
+        status: schema.EvalRun.status,
+        createdAt: schema.EvalRun.createdAt,
+        completedAt: schema.EvalRun.completedAt,
+      })
+      .from(schema.EvalRun)
+      .where(
+        and(
+          eq(schema.EvalRun.organizationId, input.organizationId),
+          inArray(schema.EvalRun.caseId, input.caseIds)
+        )
+      )
+      .orderBy(schema.EvalRun.caseId, desc(schema.EvalRun.createdAt)),
+    'latest-runs-by-case-ids'
+  )
+  if (result.isErr()) return err(result.error)
+  // `caseId` is nullable on the column type but never null here (we filter by ids).
+  return ok(
+    result.value.filter((r): r is LatestRunSummary => r.caseId != null) as LatestRunSummary[]
+  )
 }
 
 export async function getEvalRun(input: { organizationId: string; runId: string }) {
