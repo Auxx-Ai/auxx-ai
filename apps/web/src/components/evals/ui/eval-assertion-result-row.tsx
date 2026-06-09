@@ -55,15 +55,18 @@ function formatValue(value: unknown): string {
 
 interface EvalAssertionResultRowProps {
   result: AssertionResult
+  /** 0-based indent; also aligns the expanded detail under the row title. */
+  depth?: number
 }
 
-export function EvalAssertionResultRow({ result }: EvalAssertionResultRowProps) {
+export function EvalAssertionResultRow({ result, depth = 0 }: EvalAssertionResultRowProps) {
   const [open, setOpen] = useState(false)
   const expected = expectedSummary(result)
   const hasDetail = Boolean(result.note) || result.actual !== undefined
 
   return (
     <TreeRow
+      depth={depth}
       icon={<EvalStatusDot status={result.status} />}
       title={typeLabel(result.type)}
       secondary={
@@ -75,7 +78,9 @@ export function EvalAssertionResultRow({ result }: EvalAssertionResultRowProps) 
       expandable={hasDetail}
       isOpen={open}
       onToggleOpen={() => setOpen((v) => !v)}>
-      <div className='space-y-2 px-2 py-1.5 text-xs'>
+      <div
+        className='space-y-2 py-1.5 pe-2 text-xs'
+        style={{ paddingLeft: `${0.5 + (depth + 1) * 1.5}rem` }}>
         {result.actual !== undefined ? (
           <div>
             <span className='text-muted-foreground'>Actual: </span>

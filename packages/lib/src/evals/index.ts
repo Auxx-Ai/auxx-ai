@@ -22,6 +22,7 @@ export { type CompareOutcome, evaluateComparator, MISSING } from './comparators'
 export {
   type EditorToolEntry,
   listAgentEffectiveTools,
+  projectEditorToolEntries,
   validateAgentToolMock,
 } from './editor-support'
 export {
@@ -109,6 +110,13 @@ export {
   stableHash,
   stripSecrets,
 } from './snapshots'
+export {
+  renderProcedureText,
+  type SimulationSuggestion,
+  type SuggestAgentSimulationsInput,
+  type SuggestResult,
+  suggestAgentSimulations,
+} from './suggestions'
 export { getToolExampleOutput } from './tool-examples'
 export type {
   EvalRunErrorCode,

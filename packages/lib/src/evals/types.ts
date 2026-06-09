@@ -12,6 +12,13 @@ export type EvalServiceError =
   | { code: 'EVAL_CASE_NOT_FOUND'; message: string }
   | { code: 'EVAL_RUN_NOT_FOUND'; message: string }
   | { code: 'EVAL_SUITE_RUN_NOT_FOUND'; message: string }
+  /**
+   * The suggestion call itself was unusable — model error, truncated output, or
+   * unparseable top-level JSON. Per-item problems never produce this; they
+   * increment the result's `dropped` count. Zero valid suggestions is NOT an
+   * error: that returns `{ suggestions: [], dropped: n }`.
+   */
+  | { code: 'EVAL_SUGGESTION_FAILED'; message: string; cause?: unknown }
 
 /**
  * Run-level execution/grading failure codes (persisted to `EvalRun.errorCode`).

@@ -62,6 +62,15 @@ export interface AgentRuntimeSnapshotV1 {
   mockPolicy: 'error' | 'passthrough_readonly'
   limits: { maxCustomerTurns: number; maxReinvokes: number; maxIterations: number }
   time: { frozenAt: string | null; scope: 'framework_visible' }
+  /**
+   * Which procedure source the run executed. `'pinned'` (default) runs the case's
+   * pinned `procedureVersionId`; `'draft'` runs the attached draft compiled
+   * in-memory at prepare time. Stamped so historical runs stay attributable
+   * (like `test_version_id`); the run detail shows a Draft badge from this.
+   */
+  runMode: 'pinned' | 'draft'
+  /** The compiler's stable `contentHash` of the draft, present only for `runMode: 'draft'`. */
+  draftContentHash?: string
 }
 
 /** Deployed code revision, read from the standard platform env vars (best-effort). */
@@ -103,6 +112,10 @@ export interface CreateAgentRuntimeSnapshotInput {
   limits: { maxCustomerTurns: number; maxReinvokes: number; maxIterations: number }
   time: { frozenAt: string | null }
   codeRevision?: string
+  /** Defaults to `'pinned'`. */
+  runMode?: 'pinned' | 'draft'
+  /** The compiler's stable `contentHash` of the draft (draft mode only). */
+  draftContentHash?: string
 }
 
 /**
@@ -135,6 +148,8 @@ export function createAgentRuntimeSnapshot(
     mockPolicy: input.mockPolicy,
     limits: input.limits,
     time: { frozenAt: input.time.frozenAt, scope: 'framework_visible' },
+    runMode: input.runMode ?? 'pinned',
+    ...(input.draftContentHash ? { draftContentHash: input.draftContentHash } : {}),
   }
 }
 

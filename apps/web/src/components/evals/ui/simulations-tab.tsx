@@ -13,17 +13,22 @@ import { EvalSuitePanel } from './eval-suite-panel'
 
 /**
  * The **Simulations** tab body: a NavStack drill that keeps the narrow agent
- * drawer single-column (list → case editor → run detail). Procedure scope comes
- * from the shared `?procedure` URL param the main detail panel already owns —
- * selecting a procedure there scopes this list automatically. The `'new'`
- * sentinel opens the editor in create mode.
+ * drawer single-column (list → case editor → run detail). The list shows both
+ * agent- and procedure-scoped cases (the `?procedure` page param does not filter
+ * it). The `'new'` sentinel opens the editor in create mode; a new case's scope
+ * comes from `newCaseProcedureId` (a chosen procedure, or `null` for agent).
  *
  * See plans/evals/ui-plan.md §"Agent Simulations (Phase 1B)".
  */
 export function SimulationsTab({ agentId }: { agentId: string }) {
-  const [procedureId] = useQueryState('procedure')
   const [caseId, setCaseId] = useState<string | null>(null)
+  // Procedure pinned for a NEW case (chosen from the Procedure-section "New"
+  // menu); `null` ⇒ agent scope. Only meaningful while `caseId === 'new'`.
+  const [newCaseProcedureId, setNewCaseProcedureId] = useState<string | null>(null)
   const [runId, setRunId] = useState<string | null>(null)
+  // The page's selected procedure (shared `?procedure` param) — gates the
+  // Suggested Simulations section to the procedure-scoped view.
+  const [selectedProcedureId] = useQueryState('procedure')
   const utils = api.useUtils()
 
   // Stack shape: a run can be reached from a case (list→case→run) or straight
@@ -54,10 +59,13 @@ export function SimulationsTab({ agentId }: { agentId: string }) {
           <ScrollArea className='h-full' scrollbarClassName='w-1.5'>
             <EvalSuitePanel
               agentId={agentId}
-              procedureId={procedureId}
               onOpenCase={setCaseId}
-              onNewCase={() => setCaseId('new')}
+              onNewCase={(pid) => {
+                setNewCaseProcedureId(pid)
+                setCaseId('new')
+              }}
               onOpenRun={setRunId}
+              selectedProcedureId={selectedProcedureId}
             />
           </ScrollArea>
         </NavStackPanel>
@@ -65,10 +73,10 @@ export function SimulationsTab({ agentId }: { agentId: string }) {
         <NavStackPanel value='case' className='flex h-full flex-col'>
           {caseId ? (
             <EvalCaseDrawer
-              key={caseId}
+              key={caseId === 'new' ? `new-${newCaseProcedureId ?? 'agent'}` : caseId}
               agentId={agentId}
               caseId={caseId === 'new' ? null : caseId}
-              procedureId={procedureId}
+              procedureId={caseId === 'new' ? newCaseProcedureId : null}
               onSaved={() => void utils.eval.list.invalidate({ agentId })}
               onOpenRun={setRunId}
             />
