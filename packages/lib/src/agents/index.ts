@@ -19,6 +19,7 @@ export {
   type CreatedAgent,
   completeAgentSetup,
   createAgent,
+  deleteAgent,
   deleteDraftAgent,
   getAgentDetail,
   getAgentDetailByIdOrSlug,

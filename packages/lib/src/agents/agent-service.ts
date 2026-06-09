@@ -561,6 +561,56 @@ export async function deleteDraftAgent(
 }
 
 /**
+ * Permanently delete an agent, regardless of setup state. Used by the agents
+ * list overflow "Delete" item and the detail-page actions menu. Unlike
+ * `deleteDraftAgent`, this also removes completed agents.
+ *
+ * The `Agent` row is dropped — `AgentTrigger` / `AgentProcedure` cascade off it,
+ * while `AiAgentSession` / `ChatWidget` references are nulled (FK set-null), so
+ * conversation history survives orphaned. The synthetic `User` (present once an
+ * agent completes setup) is deleted too, which cascades its `OrganizationMember`
+ * row. No Stripe / seat changes — completion never incremented seats.
+ */
+export async function deleteAgent(
+  agentId: string,
+  organizationId: string,
+  db: Database = defaultDb as Database
+): Promise<{ deleted: boolean }> {
+  const result = await db.transaction(async (tx) => {
+    const [agent] = await tx
+      .select({ id: schema.Agent.id, userId: schema.Agent.userId })
+      .from(schema.Agent)
+      .where(and(eq(schema.Agent.id, agentId), eq(schema.Agent.organizationId, organizationId)))
+      .limit(1)
+    if (!agent) return { deleted: false, hadUser: false }
+
+    await tx.delete(schema.Agent).where(eq(schema.Agent.id, agentId))
+    if (agent.userId) {
+      await tx.delete(schema.User).where(eq(schema.User.id, agent.userId))
+    }
+    return { deleted: true, hadUser: agent.userId !== null }
+  })
+
+  if (!result.deleted) return { deleted: false }
+
+  try {
+    if (result.hadUser) {
+      await onCacheEvent('member.removed', { orgId: organizationId })
+    }
+    await onCacheEvent('agent.deleted', { orgId: organizationId })
+  } catch (err) {
+    logger.warn('Failed to invalidate caches after agent delete', {
+      organizationId,
+      agentId,
+      error: err instanceof Error ? err.message : String(err),
+    })
+  }
+  await publishAgentUpdated(getRealtimeService(), organizationId, { agentId })
+
+  return { deleted: true }
+}
+
+/**
  * Archive an agent (soft delete). Thin wrapper around `updateAgent` for
  * non-router callers; the tRPC layer drives archive via `updateAgent`
  * directly.

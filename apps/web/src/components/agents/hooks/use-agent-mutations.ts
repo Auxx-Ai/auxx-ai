@@ -33,6 +33,7 @@ interface UseAgentMutationsResult {
   updateAgent: (id: string, patch: UpdateAgentInput) => Promise<boolean>
   archiveAgent: (id: string) => Promise<boolean>
   unarchiveAgent: (id: string) => Promise<boolean>
+  deleteAgent: (id: string) => Promise<boolean>
   discardDraft: (id: string) => Promise<boolean>
   isCreating: boolean
   isUpdating: boolean
@@ -48,6 +49,7 @@ export function useAgentMutations(): UseAgentMutationsResult {
   const createMutation = api.agent.create.useMutation()
   const updateMutation = api.agent.update.useMutation()
   const discardDraftMutation = api.agent.deleteDraft.useMutation()
+  const deleteMutation = api.agent.delete.useMutation()
 
   const createAgent = useCallback<UseAgentMutationsResult['createAgent']>(
     async (input) => {
@@ -219,6 +221,23 @@ export function useAgentMutations(): UseAgentMutationsResult {
     [updateAgent]
   )
 
+  const deleteAgent = useCallback<UseAgentMutationsResult['deleteAgent']>(
+    async (id) => {
+      try {
+        await deleteMutation.mutateAsync({ agentId: id })
+        await utils.agent.list.invalidate()
+        return true
+      } catch (error) {
+        toastError({
+          title: 'Failed to delete agent',
+          description: error instanceof Error ? error.message : 'Unknown error occurred',
+        })
+        return false
+      }
+    },
+    [deleteMutation, utils.agent.list]
+  )
+
   const discardDraft = useCallback<UseAgentMutationsResult['discardDraft']>(
     async (id) => {
       try {
@@ -241,6 +260,7 @@ export function useAgentMutations(): UseAgentMutationsResult {
     updateAgent,
     archiveAgent,
     unarchiveAgent,
+    deleteAgent,
     discardDraft,
     isCreating: createMutation.isPending,
     isUpdating: updateMutation.isPending,

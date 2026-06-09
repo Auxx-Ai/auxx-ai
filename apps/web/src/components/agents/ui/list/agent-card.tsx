@@ -7,6 +7,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
 import { LastUpdated } from '@auxx/ui/components/last-updated'
@@ -24,7 +25,7 @@ interface AgentCardProps {
 
 export function AgentCard({ agent }: AgentCardProps) {
   const router = useRouter()
-  const { archiveAgent, unarchiveAgent, discardDraft } = useAgentMutations()
+  const { archiveAgent, unarchiveAgent, deleteAgent, discardDraft } = useAgentMutations()
   const [confirm, ConfirmDialog] = useConfirm()
 
   const archived = agent.archivedAt != null
@@ -57,6 +58,17 @@ export function AgentCard({ agent }: AgentCardProps) {
       destructive: false,
     })
     if (ok) await archiveAgent(agent.id)
+  }
+
+  const handleDelete = async () => {
+    const ok = await confirm({
+      title: 'Delete agent permanently?',
+      description: `"${displayName}" and its triggers will be permanently removed. This cannot be undone.`,
+      confirmText: 'Delete',
+      cancelText: 'Cancel',
+      destructive: true,
+    })
+    if (ok) await deleteAgent(agent.id)
   }
 
   const handleDiscardDraft = async () => {
@@ -148,16 +160,25 @@ export function AgentCard({ agent }: AgentCardProps) {
                   <Trash2 />
                   Discard draft
                 </DropdownMenuItem>
-              ) : archived ? (
-                <DropdownMenuItem onClick={wrap(() => unarchiveAgent(agent.id))}>
-                  <ArchiveRestore />
-                  Unarchive
-                </DropdownMenuItem>
               ) : (
-                <DropdownMenuItem onClick={wrap(handleArchive)}>
-                  <Archive />
-                  Archive
-                </DropdownMenuItem>
+                <>
+                  {archived ? (
+                    <DropdownMenuItem onClick={wrap(() => unarchiveAgent(agent.id))}>
+                      <ArchiveRestore />
+                      Unarchive
+                    </DropdownMenuItem>
+                  ) : (
+                    <DropdownMenuItem onClick={wrap(handleArchive)}>
+                      <Archive />
+                      Archive
+                    </DropdownMenuItem>
+                  )}
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem variant='destructive' onClick={wrap(handleDelete)}>
+                    <Trash2 />
+                    Delete
+                  </DropdownMenuItem>
+                </>
               )}
             </DropdownMenuContent>
           </DropdownMenu>
