@@ -227,11 +227,25 @@ export async function createAppCapabilities(deps: {
         }
       }
 
+      // Author-declared realistic success output (from the SDK catalog). Used
+      // to seed eval tool-response mocks (via getToolExampleOutput) and, when
+      // present, as the capture-mode synthesizer. NOTE: app tools are
+      // `requiresApproval: false`, and capture-mode only invokes `captureMint`
+      // for approval-required tools — so this is inert in real headless capture
+      // today. It's wired here so the field is the single capture source if an
+      // app tool ever becomes approval-gated. See plans/evals/tool-example-outputs.md.
+      const exampleOutput = tool.exampleOutput
+
       const buildAgentTool = (execute: AgentToolDefinition['execute']): AgentToolDefinition => ({
         name: registeredName,
         displayName: tool.name || registeredName,
         description: tool.description,
         parameters: tool.inputsJsonSchema,
+        exampleOutput,
+        // App tools have no native captureMint; fall back to the declared
+        // example (args-agnostic) so capture mode can predict output. The
+        // engine wraps the return value with `_captured: true`.
+        ...(exampleOutput !== undefined ? { captureMint: () => exampleOutput } : {}),
         // App-backed tools never require per-call approval — toolset enablement
         // at agent-creation time is the approval gate. See
         // plans/kopilot/apps/gog-calendar-overhaul.md §3 decision #3 and

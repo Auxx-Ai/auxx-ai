@@ -30,6 +30,13 @@ export interface CatalogTool {
   timeoutMs: number
   streaming: boolean
   refs: Array<{ path: string[]; kind: string }>
+  /**
+   * One realistic example of the tool's success output, carried verbatim from
+   * the SDK `tool.exampleOutput` (validated against `outputs` at author time).
+   * JSON value (object or array). Absent ⇒ consumers fall back (scaffold / AI /
+   * record). See plans/evals/tool-example-outputs.md.
+   */
+  exampleOutput?: unknown
 }
 
 /** Where an agent tool may run — mirrors `@auxx/lib` `AgentSurface`. */

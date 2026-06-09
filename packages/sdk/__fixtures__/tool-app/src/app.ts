@@ -26,6 +26,9 @@ export const app = {
       outputs: z.object({
         messageId: z.string(),
       }),
+      exampleOutput: {
+        messageId: 'msg_abc123',
+      },
       config: {
         requiresConnection: true,
         timeout: 20000,

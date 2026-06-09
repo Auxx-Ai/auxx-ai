@@ -251,6 +251,15 @@ export interface AgentToolDefinition {
    */
   outputSchema?: z.ZodType
   /**
+   * One realistic example of this tool's success `output` — the same shape as
+   * `outputSchema` describes. Authored once by the tool owner; consumed by eval
+   * autofill (seeds a tool-response mock) via `getToolExampleOutput`. Must be
+   * JSON-serializable; for app-backed tools it is carried verbatim from the
+   * SDK `tool.exampleOutput` through the catalog. Declarative, optional, and
+   * never enforced at runtime. See plans/evals/tool-example-outputs.md.
+   */
+  exampleOutput?: unknown
+  /**
    * Build the small display projection of the tool's output. Called once at
    * tool-completion time; the result is persisted on `ToolCallPart.digest` and
    * re-emitted on session reload — status pills and approval/result cards render

@@ -43,6 +43,23 @@ export function createSearchEntitiesTool(getDeps: GetToolDeps): AgentToolDefinit
     toolsetSlug: 'auxx:entities:search',
     idempotent: true,
     outputSchema: SearchEntitiesOutput,
+    exampleOutput: {
+      items: [
+        {
+          recordId: 'contact:9aB3xY',
+          displayName: 'Jane Cooper',
+          entityType: 'contact',
+          secondaryInfo: 'jane@example.com',
+        },
+        {
+          recordId: 'contact:4dF7mN',
+          displayName: 'Jane Doe',
+          entityType: 'contact',
+          secondaryInfo: 'jane.doe@acme.com',
+        },
+      ],
+      count: 2,
+    } satisfies z.output<typeof SearchEntitiesOutput>,
     buildDigest: (output) => {
       const out = (output ?? {}) as {
         items?: Array<Record<string, unknown>>

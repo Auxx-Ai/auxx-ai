@@ -60,6 +60,45 @@ export function createGetThreadDetailTool(getDeps: GetToolDeps): AgentToolDefini
     toolsetSlug: 'auxx:mail:threads',
     idempotent: true,
     outputSchema: GetThreadDetailOutput,
+    exampleOutput: {
+      thread: {
+        id: 'thread_8fK2pQ',
+        subject: 'Where is my order #1042?',
+        status: 'OPEN',
+        assigneeId: null,
+        lastMessageAt: '2026-06-05T14:22:00.000Z',
+        messageCount: 2,
+        isUnread: true,
+        tagIds: ['tag_shipping'],
+        tags: [{ id: 'tag_shipping', name: 'Shipping', color: 'blue', emoji: null }],
+        integrationId: 'gmail_AbC123',
+      },
+      messages: [
+        {
+          id: 'msg_01',
+          subject: 'Where is my order #1042?',
+          snippet: "Hi, I ordered last week and haven't received any shipping update…",
+          textPlain:
+            "Hi, I ordered last week and haven't received any shipping update yet. Order number is 1042. Can you tell me when it will arrive?",
+          isInbound: true,
+          hasAttachments: false,
+          sentAt: '2026-06-05T13:40:00.000Z',
+          participants: ['jane@example.com', 'support@store.com'],
+        },
+        {
+          id: 'msg_02',
+          subject: 'Re: Where is my order #1042?',
+          snippet: 'Thanks for reaching out — let me check on that for you…',
+          textPlain:
+            'Thanks for reaching out — let me check on that for you and get back with a tracking update shortly.',
+          isInbound: false,
+          hasAttachments: false,
+          sentAt: '2026-06-05T14:22:00.000Z',
+          participants: ['support@store.com', 'jane@example.com'],
+        },
+      ],
+      totalMessages: 2,
+    } satisfies z.output<typeof GetThreadDetailOutput>,
     buildDigest: (output) => {
       const out = (output ?? {}) as {
         thread?: { id?: string; subject?: string | null; lastMessageAt?: string | null }
