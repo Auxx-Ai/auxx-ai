@@ -5,7 +5,7 @@ import { database, schema } from '@auxx/database'
 import { fromDatabase } from '@auxx/services/shared/utils'
 import { and, eq } from 'drizzle-orm'
 import { err, ok } from 'neverthrow'
-import type { TiptapDoc } from '../nodes'
+import { stableStringify, type TiptapDoc } from '../nodes'
 import {
   attachProcedureTx,
   createProcedureTx,
@@ -22,9 +22,15 @@ import {
  * guard). All return `neverthrow` Results, mirroring `../queries`.
  */
 
-/** SHA-256 of a draft doc — the content hash used for the tools' compare-and-set. Matches `compileProcedure().contentHash`. */
+/**
+ * SHA-256 of a draft doc — the content hash used for the tools' compare-and-set.
+ * Matches `compileProcedure().contentHash`. Serializes with {@link stableStringify}
+ * (sorted keys) so the hash is stable across the `jsonb` round-trip: a write
+ * returns the hash of the in-memory doc, and the next read recomputes it from the
+ * key-reordered jsonb column — they must agree or the model gets a false stale.
+ */
 export function hashDoc(doc: TiptapDoc): string {
-  return createHash('sha256').update(JSON.stringify(doc), 'utf8').digest('hex')
+  return createHash('sha256').update(stableStringify(doc), 'utf8').digest('hex')
 }
 
 export interface AttachedProcedureDraft {

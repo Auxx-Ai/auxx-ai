@@ -8,6 +8,7 @@ import {
   type ParsedStepBadge,
   PROCEDURE_NODE_TYPES,
   parseCodeBindings,
+  stableStringify,
   type TiptapDoc,
   type TiptapNode,
 } from './nodes'
@@ -72,7 +73,8 @@ export interface CompileResult {
 }
 
 export function compileProcedure(doc: TiptapDoc): CompileResult {
-  const contentHash = createHash('sha256').update(JSON.stringify(doc), 'utf8').digest('hex')
+  // Stable across the jsonb round-trip (sorted keys) — see `stableStringify`.
+  const contentHash = createHash('sha256').update(stableStringify(doc), 'utf8').digest('hex')
 
   const steps: Record<StepId, ProcedureStep> = {}
   const codeBlocks: CompiledProcedure['codeBlocks'] = {}

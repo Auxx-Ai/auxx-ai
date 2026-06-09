@@ -2,7 +2,13 @@
 
 import { describe, expect, it } from 'vitest'
 import { compileProcedure } from '../compile'
-import type { CodeBlockMapEntry, SubProcedureMapEntry, TiptapDoc, TiptapNode } from '../nodes'
+import {
+  type CodeBlockMapEntry,
+  type SubProcedureMapEntry,
+  stableStringify,
+  type TiptapDoc,
+  type TiptapNode,
+} from '../nodes'
 import type { ProcedureStep } from '../types'
 
 const prose = (text: string): TiptapNode => ({
@@ -382,5 +388,42 @@ describe('compileProcedure', () => {
     expect(a.contentHash).toBe(b.contentHash)
     const c = compileProcedure(doc([prose('different')]))
     expect(c.contentHash).not.toBe(a.contentHash)
+  })
+
+  // jsonb reorders object keys on the DB round-trip, so the contentHash must be
+  // key-order-independent or the tools' compare-and-set false-staleses every edit.
+  it('produces the same contentHash regardless of object key order (jsonb round-trip)', () => {
+    const inMem = {
+      type: 'doc',
+      content: [prose('hi')],
+      localAttributes: [],
+      codeBlocks: [],
+      subProcedures: [],
+    } as unknown as TiptapDoc
+    const reordered = {
+      subProcedures: [],
+      codeBlocks: [],
+      content: [prose('hi')],
+      localAttributes: [],
+      type: 'doc',
+    } as unknown as TiptapDoc
+    expect(compileProcedure(inMem).contentHash).toBe(compileProcedure(reordered).contentHash)
+  })
+})
+
+describe('stableStringify', () => {
+  it('is independent of object key order at every depth', () => {
+    const a = { type: 'doc', attrs: { id: '1', mode: 'text' }, content: [{ a: 1, b: 2 }] }
+    const b = { content: [{ b: 2, a: 1 }], attrs: { mode: 'text', id: '1' }, type: 'doc' }
+    expect(stableStringify(a)).toBe(stableStringify(b))
+  })
+
+  it('preserves array order and distinguishes different values', () => {
+    expect(stableStringify([1, 2, 3])).not.toBe(stableStringify([3, 2, 1]))
+    expect(stableStringify({ a: 1 })).not.toBe(stableStringify({ a: 2 }))
+  })
+
+  it('drops undefined object values like JSON.stringify', () => {
+    expect(stableStringify({ a: 1, b: undefined })).toBe(stableStringify({ a: 1 }))
   })
 })
