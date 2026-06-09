@@ -1,7 +1,7 @@
 // packages/lib/src/agents/procedures/__tests__/authoring-dsl.test.ts
 
 import { describe, expect, it } from 'vitest'
-import { DSL_MAX_DEPTH, type ProcedureDsl, validateProcedureDsl } from '../authoring/dsl'
+import { type ProcedureDsl, validateProcedureDsl } from '../authoring/dsl'
 
 const valid: ProcedureDsl = {
   steps: [
@@ -82,17 +82,65 @@ describe('validateProcedureDsl', () => {
     expect(errs.some((e) => e.includes('non-empty array'))).toBe(true)
   })
 
-  it('rejects nesting beyond the depth cap', () => {
-    let inner: ProcedureDsl['steps'][number] = { id: 'leaf', kind: 'instruction', text: 'x' }
-    for (let i = 0; i < DSL_MAX_DEPTH + 2; i++) {
-      inner = {
-        id: `c${i}`,
-        kind: 'condition',
-        cases: [{ id: `k${i}`, when: 'w', steps: [inner] }],
-      }
+  it('rejects a condition nested inside a condition case', () => {
+    const errs = validateProcedureDsl({
+      steps: [
+        {
+          id: 'outer',
+          kind: 'condition',
+          cases: [
+            {
+              id: 'k1',
+              when: 'a',
+              steps: [
+                {
+                  id: 'inner',
+                  kind: 'condition',
+                  cases: [{ id: 'k2', when: 'b', steps: [] }],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    })
+    expect(errs.some((e) => e.includes('cannot be nested inside another condition'))).toBe(true)
+  })
+
+  it('rejects a condition nested inside a condition else', () => {
+    const errs = validateProcedureDsl({
+      steps: [
+        {
+          id: 'outer',
+          kind: 'condition',
+          cases: [{ id: 'k1', when: 'a', steps: [] }],
+          else: [{ id: 'inner', kind: 'condition', cases: [{ id: 'k2', when: 'b', steps: [] }] }],
+        },
+      ],
+    })
+    expect(errs.some((e) => e.includes('cannot be nested inside another condition'))).toBe(true)
+  })
+
+  it('accepts a condition inside a sub-procedure invoked from a condition arm', () => {
+    const doc: ProcedureDsl = {
+      steps: [
+        {
+          id: 'outer',
+          kind: 'condition',
+          cases: [
+            { id: 'k1', when: 'a', steps: [{ id: 'c1', kind: 'call', subProcedureId: 'sp1' }] },
+          ],
+        },
+      ],
+      subProcedures: [
+        {
+          id: 'sp1',
+          name: 'Nested',
+          steps: [{ id: 's1', kind: 'condition', cases: [{ id: 'k2', when: 'b', steps: [] }] }],
+        },
+      ],
     }
-    const errs = validateProcedureDsl({ steps: [inner] })
-    expect(errs.some((e) => e.includes('max depth'))).toBe(true)
+    expect(validateProcedureDsl(doc)).toEqual([])
   })
 
   it('accepts an opaque step (shape only — resolution checked at build time)', () => {

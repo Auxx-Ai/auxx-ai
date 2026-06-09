@@ -3,7 +3,6 @@
 export { buildProcedureDoc, emptyDoc, ProcedureBuildError } from './build-doc'
 export { docToDsl } from './doc-to-dsl'
 export {
-  DSL_MAX_DEPTH,
   DSL_MAX_STEPS,
   DSL_MAX_SUBPROCEDURES,
   DSL_MAX_TEXT_LEN,

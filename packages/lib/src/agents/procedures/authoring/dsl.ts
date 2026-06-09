@@ -53,9 +53,7 @@ export interface ProcedureDsl {
 
 // ── invariants ─────────────────────────────────────────────────────────────
 
-/** Max nesting depth of condition arms (a guard against pathological model output). */
-export const DSL_MAX_DEPTH = 8
-/** Max total authored steps across the whole document (main + all sub-procedures + nesting). */
+/** Max total authored steps across the whole document (main + all sub-procedures + arm bodies). */
 export const DSL_MAX_STEPS = 400
 /** Max number of named sub-procedures. */
 export const DSL_MAX_SUBPROCEDURES = 50
@@ -87,9 +85,10 @@ const ALLOWED_KEYS: Record<string, ReadonlySet<string>> = {
  * Validate a value as a {@link ProcedureDsl}. Returns `[]` when valid, else a
  * list of human-readable error strings. Enforces the §3.1 invariants: known
  * discriminants, non-empty ids/text/predicates, globally-unique ids, valid route
- * fields, calls targeting a declared sub-procedure, bounded nesting/total step
- * count, and no unknown properties. Do NOT rely on the model provider to honor
- * the tool JSON Schema — this runs server-side before lowering.
+ * fields, calls targeting a declared sub-procedure, no condition nested inside
+ * another condition (extract into a sub-procedure), a bounded total step count,
+ * and no unknown properties. Do NOT rely on the model provider to honor the tool
+ * JSON Schema — this runs server-side before lowering.
  *
  * Opaque occurrence-key resolution against the persisted draft (unknown /
  * duplicate / missing keys) is validated separately in `buildProcedureDoc`,
@@ -140,12 +139,8 @@ export function validateProcedureDsl(value: unknown): string[] {
     if (isPlainObject(sp) && typeof sp.id === 'string') declaredSubProcIds.add(sp.id)
   }
 
-  const validateStep = (raw: unknown, where: string, depth: number): void => {
+  const validateStep = (raw: unknown, where: string, insideCondition: boolean): void => {
     stepCount++
-    if (depth > DSL_MAX_DEPTH) {
-      errors.push(`${where}: nesting exceeds the max depth of ${DSL_MAX_DEPTH}.`)
-      return
-    }
     if (!isPlainObject(raw)) {
       errors.push(`${where} must be an object.`)
       return
@@ -196,6 +191,16 @@ export function validateProcedureDsl(value: unknown): string[] {
       }
     } else if (kind === 'condition') {
       assertKeys(step, ALLOWED_KEYS.condition, here, errors)
+      // Conditions cannot be nested: the editor renders a single level of
+      // branching (a case body holds only instruction/route/call nodes, never
+      // another condition). Reject it here so the model gets a retry signal and
+      // extracts the inner branching into a sub-procedure instead.
+      if (insideCondition) {
+        errors.push(
+          `${here}: a condition cannot be nested inside another condition. Extract this branch into a named entry in "subProcedures" and run it with a "call" step.`
+        )
+        return
+      }
       if (!Array.isArray(step.cases) || step.cases.length === 0) {
         errors.push(`${here}: condition "cases" must be a non-empty array.`)
       } else {
@@ -223,7 +228,7 @@ export function validateProcedureDsl(value: unknown): string[] {
             if (!Array.isArray(armSteps)) {
               errors.push(`${cWhere}: "steps" must be an array when present.`)
             } else {
-              for (const s of armSteps) validateStep(s, `${cWhere} step`, depth + 1)
+              for (const s of armSteps) validateStep(s, `${cWhere} step`, true)
             }
           }
         }
@@ -232,14 +237,14 @@ export function validateProcedureDsl(value: unknown): string[] {
         if (!Array.isArray(step.else)) {
           errors.push(`${here}: "else" must be an array when present.`)
         } else {
-          for (const s of step.else) validateStep(s, `${here} else step`, depth + 1)
+          for (const s of step.else) validateStep(s, `${here} else step`, true)
         }
       }
     }
   }
 
   if (Array.isArray(root.steps)) {
-    for (const s of root.steps) validateStep(s, 'top-level step', 0)
+    for (const s of root.steps) validateStep(s, 'top-level step', false)
   }
 
   for (let i = 0; i < subProcedures.length; i++) {
@@ -262,7 +267,7 @@ export function validateProcedureDsl(value: unknown): string[] {
     if (!Array.isArray(record.steps)) {
       errors.push(`${where}: "steps" must be an array.`)
     } else {
-      for (const s of record.steps) validateStep(s, `${where} step`, 0)
+      for (const s of record.steps) validateStep(s, `${where} step`, false)
     }
   }
 
@@ -363,13 +368,19 @@ export const PROCEDURE_DSL_SCHEMA = {
                 description:
                   'Plain-English test the runtime evaluates, e.g. "the order has shipped".',
               },
-              steps: { type: 'array', items: { $ref: '#/$defs/step' } },
+              steps: {
+                type: 'array',
+                description:
+                  'Arm body — instruction/route/call steps only. A condition may NOT be nested here; extract nested branching into a sub-procedure and invoke it with a "call" step.',
+                items: { $ref: '#/$defs/step' },
+              },
             },
           },
         },
         else: {
           type: 'array',
-          description: 'condition: the fallthrough body when no case matches.',
+          description:
+            'condition: the fallthrough body when no case matches. instruction/route/call steps only — no nested condition (use a sub-procedure + "call").',
           items: { $ref: '#/$defs/step' },
         },
       },
