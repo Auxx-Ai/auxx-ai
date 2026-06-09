@@ -18,6 +18,7 @@ import crypto from 'crypto'
 import { and, count, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { type createTRPCContext, createTRPCRouter, notDemo, protectedProcedure } from '../trpc'
+import { unwrap } from '../unwrap'
 
 /**
  * Shared pagination input for calendar event listings.
@@ -38,7 +39,7 @@ export const calendarRouter = createTRPCRouter({
    */
   list: protectedProcedure.input(listCalendarEventsInputSchema).query(async ({ ctx, input }) => {
     const result = await listCalendarEvents(ctx.session.organizationId, input)
-    return unwrapResult(result, 'Failed to list calendar events')
+    return unwrap(result, 'Failed to list calendar events')
   }),
 
   /**
@@ -50,7 +51,7 @@ export const calendarRouter = createTRPCRouter({
       const result = await getUpcomingMeetings(ctx.session.organizationId, {
         limit: input?.limit ?? 5,
       })
-      return unwrapResult(result, 'Failed to load upcoming meetings')
+      return unwrap(result, 'Failed to load upcoming meetings')
     }),
 
   /**
@@ -58,7 +59,7 @@ export const calendarRouter = createTRPCRouter({
    */
   getById: protectedProcedure.input(z.object({ id: z.string() })).query(async ({ ctx, input }) => {
     const result = await getCalendarEventById(input.id, ctx.session.organizationId)
-    return unwrapResult(result, 'Failed to load calendar event')
+    return unwrap(result, 'Failed to load calendar event')
   }),
 
   /**
@@ -71,7 +72,7 @@ export const calendarRouter = createTRPCRouter({
         input.calendarEventId,
         ctx.session.organizationId
       )
-      return unwrapResult(result, 'Failed to load calendar participants')
+      return unwrap(result, 'Failed to load calendar participants')
     }),
 
   /**
@@ -251,7 +252,7 @@ export const calendarRouter = createTRPCRouter({
         ctx.session.organizationId
       )
 
-      return unwrapResult(result, 'Failed to link calendar event to meeting')
+      return unwrap(result, 'Failed to link calendar event to meeting')
     }),
 
   /**
@@ -308,27 +309,6 @@ async function assertGoogleIntegration(
   }
 
   return integration
-}
-
-/**
- * Convert a neverthrow Result into a plain tRPC payload or throw a typed error.
- */
-function unwrapResult<T>(result: unknown, message: string): T {
-  const candidate = result as {
-    isErr(): boolean
-    error?: Error
-    value?: T
-  }
-
-  if (candidate.isErr()) {
-    throw new TRPCError({
-      code: 'INTERNAL_SERVER_ERROR',
-      message: message,
-      cause: candidate.error,
-    })
-  }
-
-  return candidate.value as T
 }
 
 /**
