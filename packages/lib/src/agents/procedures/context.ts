@@ -1,10 +1,10 @@
 // packages/lib/src/agents/procedures/context.ts
 
-import type { VarRef } from '@auxx/types/field'
+import type { FieldReference, VarRef } from '@auxx/types/field'
 import type { Subject, ToolContext } from '../../ai/agent-framework/tool-context'
 import type { FieldResolver } from '../../conditions/evaluate'
 import type { ConditionGroup } from '../../conditions/types'
-import { buildResolveVarSource } from '../bindings/resolve'
+import { buildResolveVarSource, buildSubjectFieldResolver } from '../bindings/resolve'
 import type { LocalAttribute, ProcedureFrame } from './types'
 
 /**
@@ -91,6 +91,13 @@ export async function buildProcedureFieldResolver(
   allGroups: ConditionGroup[]
 ): Promise<FieldResolver<Subject>> {
   const resolveVar = buildResolveVarSource(ctx)
+  // Simulation overlay: when an eval sets `ctx.evalFieldResolver`, route selection
+  // ruleset reads through it too, so a case's `startingFields` gate agent-scope
+  // routing exactly as they gate in-procedure conditions. Undefined on production,
+  // where the `resolveVar` path is byte-identical to before. (The overlay and the
+  // passed `subject` resolve against the same anchors — identical at the eval call
+  // site.) See plans/evals/phase-1-agent-simulation.md §1.5/§1.7.
+  const overlay = ctx.evalFieldResolver
   const values = new Map<string, unknown>()
   const seen = new Set<string>()
 
@@ -104,7 +111,12 @@ export async function buildProcedureFieldResolver(
       continue
     }
     try {
-      values.set(key, await resolveVar({ kind: 'var', ref }, subject))
+      values.set(
+        key,
+        overlay
+          ? await overlay(fieldId as FieldReference)
+          : await resolveVar({ kind: 'var', ref }, subject)
+      )
     } catch {
       // Selection is best-effort routing — a resolver misconfig gates by absence
       // rather than throwing the whole turn.
@@ -169,9 +181,13 @@ export async function readProcedureRef(
     }
   }
   const varRef = toVarRef(ref)
-  if (!varRef || !ctx.subject) return undefined
+  if (!varRef) return undefined
   try {
-    return await buildResolveVarSource(ctx)({ kind: 'var', ref: varRef }, ctx.subject)
+    // The shared subject resolver: production reads `ctx.subject.anchors`; a
+    // Simulation overlay (`ctx.evalFieldResolver`) short-circuits here, so a
+    // case's `startingFields` apply to in-procedure conditions and code inputs
+    // too — without the `!ctx.subject` gate hiding them.
+    return await buildSubjectFieldResolver(ctx)(varRef)
   } catch {
     // Best-effort — a resolver misconfig gates by absence rather than throwing the turn.
     return undefined

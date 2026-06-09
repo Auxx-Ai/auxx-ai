@@ -162,21 +162,8 @@ export function makeContentApplier<TContent>(
   }
 }
 
-/**
- * Stable, key-order-insensitive stringify for use as a canonical key in
- * `useExternalContentSync` / `makeContentApplier`. Required because the
- * server round-trips `contentJson` through a JSONB column, which doesn't
- * preserve insertion order — plain `JSON.stringify` returns different
- * strings for the same logical doc and breaks the inbound-skip path.
- */
-export function stableStringify(value: unknown): string {
-  if (value === null || value === undefined) return JSON.stringify(value ?? null)
-  if (typeof value !== 'object') return JSON.stringify(value)
-  if (Array.isArray(value)) {
-    return `[${value.map(stableStringify).join(',')}]`
-  }
-  const entries = Object.keys(value as Record<string, unknown>)
-    .sort()
-    .map((k) => `${JSON.stringify(k)}:${stableStringify((value as Record<string, unknown>)[k])}`)
-  return `{${entries.join(',')}}`
-}
+// Stable, key-order-insensitive stringify used as a canonical key here and in
+// `makeContentApplier` — required because the server round-trips `contentJson`
+// through a JSONB column, which doesn't preserve key insertion order. Lives in
+// @auxx/utils/json now; re-exported so the inline-picker barrel keeps exposing it.
+export { stableStringify } from '@auxx/utils/json'

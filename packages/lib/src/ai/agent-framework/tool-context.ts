@@ -1,9 +1,21 @@
 // packages/lib/src/ai/agent-framework/tool-context.ts
 
 import type { Database } from '@auxx/database'
+import type { FieldReference } from '@auxx/types/field'
 import type { RecordId } from '@auxx/types/resource'
 import type { ContextManager } from './context/context-manager'
 import type { AgentDeps } from './types'
+
+/**
+ * Eval-only field overlay. When present on a {@link ToolContext}, the shared
+ * subject field resolver short-circuits to this resolver instead of reading
+ * `subject.anchors` directly — the Simulation overlay layers a case's
+ * `startingFields` over the configured subject records WITHOUT writing CRM data,
+ * then delegates the rest to the normal subject resolver. Absent on every
+ * production run, so current behavior is preserved. See
+ * plans/evals/phase-1-agent-simulation.md §1.5.
+ */
+export type EvalFieldResolver = (ref: FieldReference) => Promise<unknown>
 
 /**
  * Caller-agnostic context every tool's `execute()` receives. Built fresh by
@@ -66,6 +78,12 @@ export interface ToolContext extends AgentDeps {
    * ctx-build so every `sys:now` read within a turn is stable.
    */
   now?: number
+  /**
+   * Eval-only field overlay (see {@link EvalFieldResolver}). Set by the
+   * Simulation executor so `startingFields` override CRM reads; `undefined` on
+   * every production run, where the subject resolver reads `subject.anchors`.
+   */
+  evalFieldResolver?: EvalFieldResolver
 }
 
 /**

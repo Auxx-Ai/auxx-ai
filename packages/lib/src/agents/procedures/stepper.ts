@@ -4,6 +4,7 @@ import type { ToolContext } from '../../ai/agent-framework/tool-context'
 import { evaluateConditions } from '../../conditions/evaluate'
 import { buildCodeInputs, buildProcedurePredicateResolver, writeProcedureVar } from './context'
 import { PROC_SIGNAL_KEY, type ProcedureSignal } from './control-tools'
+import type { ProcedureObserver } from './observer'
 import { buildReanchorBreadcrumb } from './re-anchor'
 import { atDepthCap, clear, pop, push, replaceTop, top } from './stack'
 import type {
@@ -99,6 +100,12 @@ export interface StepperDeps {
     block: { code: string },
     codeInput: Record<string, unknown>
   ) => Promise<{ ok: true; result: Record<string, unknown> } | { ok: false; error: string }>
+  /**
+   * Optional, eval-only transition observer. Production omits it (no-op). The
+   * Simulation executor installs one to derive an explicit terminal outcome and
+   * the selected procedure. Best-effort and synchronous — must never throw.
+   */
+  onTransition?: ProcedureObserver
 }
 
 /** A surfaced (`surfaceToModel`) code output the walk produced on its way to the landed step (D4). */
@@ -267,14 +274,34 @@ async function advanceFrame(
   const predicate = buildProcedurePredicateResolver(deps.ctx, frame)
   const entity = deps.ctx.subject ?? {}
   let cursor: StepId | null = frame.cursor
+  const emit = deps.onTransition
+  const finished = (reason: 'routing' | 'chain_end' | 'missing_step'): FrameAction => {
+    emit?.({
+      type: 'procedure_finished',
+      procedureId: frame.procedureId,
+      procedureVersionId: frame.procedureVersionId,
+      reason,
+    })
+    return { type: 'pop' }
+  }
 
   for (let i = 0; i < MAX_STEPS_PER_FRAME; i++) {
     if (cursor === null) break
     const step = compiled.steps[cursor]
-    if (!step) break // dangling ref → treat as finished
+    if (!step) {
+      // dangling ref → treat as finished
+      frame.cursor = null
+      return finished('missing_step')
+    }
 
     if (step.kind === 'instruction') {
       frame.cursor = cursor
+      emit?.({
+        type: 'step_entered',
+        procedureId: frame.procedureId,
+        procedureVersionId: frame.procedureVersionId,
+        stepId: cursor,
+      })
       return { type: 'instruction', step }
     }
 
@@ -285,9 +312,17 @@ async function advanceFrame(
     }
 
     if (step.kind === 'routing') {
+      emit?.({
+        type: 'routing',
+        procedureId: frame.procedureId,
+        procedureVersionId: frame.procedureVersionId,
+        stepId: step.id,
+        outcome: step.outcome,
+        targetId: step.switchToProcedureId ?? step.subProcedureId,
+      })
       switch (step.outcome) {
         case 'finished':
-          return { type: 'pop' }
+          return finished('routing')
         case 'handoff':
           return { type: 'handoff' }
         case 'switch':
@@ -303,7 +338,7 @@ async function advanceFrame(
   }
 
   frame.cursor = null
-  return { type: 'pop' } // chain ended without a terminal → frame finished
+  return finished('chain_end') // chain ended without a terminal → frame finished
 }
 
 /**

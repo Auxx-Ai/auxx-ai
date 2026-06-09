@@ -1,7 +1,13 @@
 // packages/lib/src/agents/bindings/resolve.ts
 
 import { extractValue, type TypedFieldValue } from '@auxx/types'
-import type { FieldPath, ResourceFieldId, VarRef, VarSource } from '@auxx/types/field'
+import type {
+  FieldPath,
+  FieldReference,
+  ResourceFieldId,
+  VarRef,
+  VarSource,
+} from '@auxx/types/field'
 import {
   getFieldDefinitionId,
   getFieldId,
@@ -66,6 +72,35 @@ export function buildResolveVarSource(
       fieldReferences: [ref],
     })
     return firstScalar(result.values)
+  }
+}
+
+/**
+ * The single field-resolution helper that BOTH the kopilot context store
+ * ({@link buildFieldSource}) and procedure refs ({@link readProcedureRef}) go
+ * through, so production and the eval Simulation never diverge. Returns a
+ * resolver closure built once per consumer.
+ *
+ * - Production: no overlay — a bare `FieldReference` resolves off
+ *   `subject.anchors` via {@link buildResolveVarSource}; a missing subject (or
+ *   absent anchor) gates to `undefined`, exactly as before.
+ * - Simulation: `ctx.evalFieldResolver` is set, so the whole subject path is
+ *   short-circuited to the overlay — which layers `startingFields` and then
+ *   delegates to the subject resolver itself (see the Simulation field
+ *   resolver). plans/evals/phase-1-agent-simulation.md §1.5.
+ */
+export function buildSubjectFieldResolver(
+  ctx: ToolContext
+): (ref: FieldReference) => Promise<unknown> {
+  if (ctx.evalFieldResolver) {
+    const overlay = ctx.evalFieldResolver
+    return (ref) => overlay(ref)
+  }
+  const resolve = buildResolveVarSource(ctx)
+  return async (ref) => {
+    // No subject → no anchors to resolve against → gate by absence.
+    if (!ctx.subject) return undefined
+    return resolve({ kind: 'var', ref: ref as VarRef }, ctx.subject)
   }
 }
 

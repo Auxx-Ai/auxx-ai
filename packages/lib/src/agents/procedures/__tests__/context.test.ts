@@ -9,13 +9,27 @@ import type { ProcedureFrame } from '../types'
 
 // The v8 binding resolver is mocked: it returns whatever `resolveMap` holds for the
 // ref (joined for FieldPath), so the test controls "what the subject resolves to".
+// `buildSubjectFieldResolver` (the shared helper readProcedureRef now goes through)
+// is mirrored faithfully so it routes back through the mocked `buildResolveVarSource`.
 const { resolveMap } = vi.hoisted(() => ({ resolveMap: {} as Record<string, unknown> }))
-vi.mock('../../bindings/resolve', () => ({
-  buildResolveVarSource: vi.fn(
+vi.mock('../../bindings/resolve', () => {
+  const buildResolveVarSource = vi.fn(
     () => async (source: { kind: string; ref: string | string[] }) =>
       resolveMap[Array.isArray(source.ref) ? source.ref.join('|') : source.ref]
-  ),
-}))
+  )
+  const buildSubjectFieldResolver = (ctx: ToolContext) => {
+    if (ctx.evalFieldResolver) {
+      const overlay = ctx.evalFieldResolver
+      return (ref: unknown) => overlay(ref as never)
+    }
+    const resolve = buildResolveVarSource(ctx as never)
+    return async (ref: string | string[]) => {
+      if (!ctx.subject) return undefined
+      return resolve({ kind: 'var', ref })
+    }
+  }
+  return { buildResolveVarSource, buildSubjectFieldResolver }
+})
 
 const ctx = {} as ToolContext
 const subject: Subject = { anchors: {}, identityVerified: false }
