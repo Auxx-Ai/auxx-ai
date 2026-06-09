@@ -80,6 +80,11 @@ export {
 } from './set-tool-restrictions'
 export { AGENT_SLUG_MAX, AGENT_SLUG_REGEX, agentSlugSchema } from './slug-schema'
 export {
+  isToolVisibleOn,
+  type ToolVisibilitySurface,
+  toolCategory,
+} from './tool-visibility'
+export {
   type CatalogContainerNode,
   type CatalogNode,
   type CatalogToolsetNode,

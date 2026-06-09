@@ -10,6 +10,7 @@
 import type { AgentEvalAssertion, AgentEvalTarget, SimulationConfig } from '@auxx/types/evals'
 import type { CompiledProcedure } from '../agents/procedures'
 import { getProcedureVersionById, readCompiled } from '../agents/procedures'
+import { toolCategory } from '../agents/tool-visibility'
 import { buildEffectiveAgentRuntime } from '../ai/agent-framework/effective-runtime'
 import { getCachedAgentById } from '../cache'
 
@@ -71,12 +72,22 @@ export async function validateEvalCase(
       hasProcedures: compiledSet.length > 0,
     })
     const toolNames = new Set(runtime.tools.map((t) => t.name))
+    // Control tools (procedure/plan signals) pass through unwrapped in sims, so a
+    // mock against one can never match. Possible only for legacy rows — the editor
+    // no longer offers them.
+    const controlToolNames = new Set(
+      runtime.tools.filter((t) => toolCategory(t) === 'control').map((t) => t.name)
+    )
 
     // Mocks targeting a tool the agent can't call are dead config.
     const seen = new Set<string>()
     for (const mock of config.connectorMocks) {
       if (!toolNames.has(mock.toolName)) {
         warnings.push(`Mock targets tool "${mock.toolName}" which is not in the effective toolset`)
+      } else if (controlToolNames.has(mock.toolName)) {
+        warnings.push(
+          `Mock targets control tool "${mock.toolName}"; control tools run unwrapped in simulations, so the mock will never match`
+        )
       }
       seen.add(mock.toolName)
     }

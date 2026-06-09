@@ -12,6 +12,7 @@
 import type { ArgMatch, SimulationToolMock } from '@auxx/types/evals'
 import { deepEqual } from '@auxx/utils/objects'
 import type { z } from 'zod'
+import { toolCategory } from '../../agents/tool-visibility'
 import type { ToolContext } from '../../ai/agent-framework/tool-context'
 import type {
   AgentToolDefinition,
@@ -111,13 +112,24 @@ export interface WrapToolsDeps {
  * runs for real ONLY when `tool.idempotent === true` (read-only) — writes are
  * always bypassed. Gate strictly on the tool's own `idempotent` flag, never a
  * name list (conventions §6).
+ *
+ * `category: 'control'` tools (procedure/plan signals) pass through UNWRAPPED:
+ * their `execute` is an in-memory signal write (`PROC_SIGNAL_KEY`) the stepper
+ * needs and which is offline-safe. They aren't `idempotent`, so wrapping them
+ * would fail the first unmatched `advance_procedure` closed and a procedure sim
+ * could never advance past step 1. Same spirit as the `idempotent` carve-out:
+ * gate on the tool's own declared `category`, not a name list. No invocation
+ * record is emitted for them — the stepper-observer transition events are the
+ * trace's representation of control flow.
  */
 export function wrapToolsWithMocks(
   tools: AgentToolDefinition[],
   deps: WrapToolsDeps
 ): AgentToolDefinition[] {
   const resolver = createMockResolver(deps.mocks)
-  return tools.map((tool) => wrapTool(tool, resolver, deps))
+  return tools.map((tool) =>
+    toolCategory(tool) === 'control' ? tool : wrapTool(tool, resolver, deps)
+  )
 }
 
 function wrapTool(

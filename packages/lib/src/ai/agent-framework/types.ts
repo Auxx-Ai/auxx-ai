@@ -196,6 +196,13 @@ export type LLMStreamEvent =
 // ===== TOOL TYPES =====
 
 /** A tool available to an agent, built from node processors or custom definitions */
+/**
+ * UI visibility class for a tool. Declared at the definition site so new tools
+ * self-classify in the PR that adds them — no central name list to drift. See
+ * `agents/tool-visibility.ts` for the policy that consumes it.
+ */
+export type ToolCategory = 'control' | 'system' | 'capability'
+
 export interface AgentToolDefinition {
   /** Unique tool name (e.g. 'find_threads', 'reply_to_thread') */
   name: string
@@ -329,6 +336,18 @@ export interface AgentToolDefinition {
    * gate. See plans/chat/v6/chat-tool-availability.md.
    */
   externalSafe?: boolean
+  /**
+   * Classifies the tool for UI visibility policy (see
+   * `agents/tool-visibility.ts`). NOT a security boundary.
+   * - `'control'`: agent-loop plumbing (plan/procedure signals). Hidden from all
+   *   user-facing tool lists; exempt from eval mock wrapping (its `execute` is an
+   *   in-memory signal write, offline-safe).
+   * - `'system'`: platform built-ins (entity reads) whose data is better supplied
+   *   by the eval subject/field overlay. Collapsed by default in the mock editor,
+   *   visible in pickers/toolset settings.
+   * - `'capability'` (default when absent): ordinary user-meaningful tool.
+   */
+  category?: ToolCategory
   /**
    * Per-input **default** binding declared by the tool/app author (plans/chat/v8
    * phase-3). The platform resolves each from the subject (phase-1/2) and clamps

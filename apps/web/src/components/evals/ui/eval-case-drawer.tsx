@@ -15,15 +15,27 @@ import { EmptySection, Section } from '@auxx/ui/components/section'
 import { Switch } from '@auxx/ui/components/switch'
 import { toastError } from '@auxx/ui/components/toast'
 import { generateId } from '@auxx/utils'
-import { FlaskConical, ListChecks, Play, Plus, User, Wrench } from 'lucide-react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import {
+  Ban,
+  Flag,
+  FlaskConical,
+  ListChecks,
+  MessageSquareText,
+  Play,
+  Plus,
+  User,
+  Wrench,
+} from 'lucide-react'
+import type { ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { VarEditorField, VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
 import { api } from '~/trpc/react'
 import { AutosaveIndicator, type AutosaveState } from '../../agents/ui/shared/autosave-indicator'
-import { useToolIconMap } from '../hooks/use-tool-icon-map'
+import { useToolGroups } from '../hooks/use-tool-groups'
 import { EvalDrillBar } from './eval-drill-bar'
 import { EvalToolResponses } from './eval-tool-responses'
+import { ToolSelect } from './tool-select'
 
 /**
  * Level 2 of the Simulations drill: the case editor. Inline, stacked `Section`s
@@ -47,6 +59,18 @@ const DEFAULT_CONFIG: SimulationConfig = {
   unmatchedToolPolicy: 'error',
   connectorMocks: [],
 }
+
+/** New cases start with one assertion so they're runnable and satisfy `min(1)`. */
+const seedAssertions = (): AgentEvalAssertion[] => [
+  { id: generateId('asrt'), type: 'terminal_outcome', data: { outcome: 'finished' } },
+]
+
+/** Stable content key for the autosave change-detector (target is not editable). */
+const serializeDraft = (d: {
+  name: string
+  config: SimulationConfig
+  assertions: AgentEvalAssertion[]
+}): string => JSON.stringify({ name: d.name, config: d.config, assertions: d.assertions })
 
 const CHANNEL_OPTIONS = [
   { value: 'chat', label: 'Chat' },
@@ -126,7 +150,7 @@ export function EvalCaseDrawer({
       initialCaseId={caseId}
       initialName={loaded?.name ?? ''}
       initialConfig={loaded?.config ?? DEFAULT_CONFIG}
-      initialAssertions={loaded?.assertions ?? []}
+      initialAssertions={loaded?.assertions ?? seedAssertions()}
       target={target}
       onSaved={onSaved}
       onOpenRun={onOpenRun}
@@ -177,16 +201,27 @@ function EvalCaseForm({
   latest.current = { caseId, name, config, assertions, target }
   const onSavedRef = useRef(onSaved)
   onSavedRef.current = onSaved
+  // Mutation objects change identity on every state transition (idle→pending→
+  // success). Reaching them through a ref keeps `saveNow` stable, so the autosave
+  // effect re-runs only on real edits — not on the save's own lifecycle (which
+  // would otherwise loop forever).
+  const mutationsRef = useRef({ create, update })
+  mutationsRef.current = { create, update }
+  // Serialized snapshot of what's persisted. Autosave fires only when the live
+  // draft actually differs — a `firstRun` flag skips just one effect tick, but
+  // field widgets can emit a normalizing `onChange` after mount, which would
+  // otherwise trigger a spurious save on open. Seeded with the initial values.
+  const savedSnapshot = useRef(serializeDraft({ name, config, assertions }))
 
   /** Persist the current snapshot now; returns the case id (creating if needed). */
   const saveNow = useCallback(async (): Promise<string | null> => {
     const cur = latest.current
-    if (name.trim().length === 0 || cur.config.openingMessage.trim().length === 0) return null
+    if (cur.name.trim().length === 0 || cur.config.openingMessage.trim().length === 0) return null
     setAutosave({ kind: 'saving' })
     try {
       let id = cur.caseId
       if (id == null) {
-        const res = await create.mutateAsync({
+        const res = await mutationsRef.current.create.mutateAsync({
           name: cur.name,
           target: cur.target,
           config: cur.config,
@@ -195,11 +230,12 @@ function EvalCaseForm({
         id = res.id
         setCaseId(id)
       } else {
-        await update.mutateAsync({
+        await mutationsRef.current.update.mutateAsync({
           id,
           patch: { name: cur.name, config: cur.config, assertions: cur.assertions },
         })
       }
+      savedSnapshot.current = serializeDraft(cur)
       onSavedRef.current()
       setAutosave({ kind: 'saved', at: Date.now() })
       return id
@@ -211,20 +247,18 @@ function EvalCaseForm({
       })
       return null
     }
-    // saveNow reads from `latest`, so only `name` (gating canSave) is a real dep.
-  }, [name, create, update])
+    // Everything is read through refs (`latest`/`mutationsRef`/`onSavedRef`), so
+    // `saveNow` is intentionally stable.
+  }, [])
 
-  // Debounced autosave on any change (skips the initial mount). name/config/
-  // assertions are intentional change-triggers even though the body reads them
-  // through `latest` — re-running on each edit is the point.
-  const firstRun = useRef(true)
-  // biome-ignore lint/correctness/useExhaustiveDependencies: name/config/assertions are autosave triggers
+  // Debounced autosave whenever the draft diverges from what's persisted.
+  // name/config/assertions are intentional change-triggers even though the body
+  // reads them through `latest` — re-running on each edit is the point. The
+  // content diff (vs `savedSnapshot`) means a mount-time normalizing onChange
+  // that produces equivalent data won't save on open.
   useEffect(() => {
-    if (firstRun.current) {
-      firstRun.current = false
-      return
-    }
     if (!canSave) return
+    if (serializeDraft({ name, config, assertions }) === savedSnapshot.current) return
     const t = setTimeout(() => void saveNow(), 800)
     return () => clearTimeout(t)
   }, [name, config, assertions, canSave, saveNow])
@@ -294,22 +328,24 @@ function EvalCaseForm({
 
         {/* Execution policy */}
         <Section title='Execution' icon={<Wrench className='size-4' />}>
-          <div className='flex items-center justify-between px-1 py-1'>
-            <div>
-              <div className='text-sm'>Run read-only tools for real</div>
-              <p className='text-xs text-muted-foreground'>
-                Passthrough lets idempotent tools execute; writes are always mocked. Off = fully
-                offline (unmatched calls fail closed).
-              </p>
-            </div>
-            <Switch
-              size='sm'
-              checked={config.unmatchedToolPolicy === 'passthrough_readonly'}
-              onCheckedChange={(checked) =>
-                setConfigField('unmatchedToolPolicy', checked ? 'passthrough_readonly' : 'error')
-              }
-            />
-          </div>
+          <VarEditorField className='p-0 **:data-[slot=field-row-label]:w-auto! @sm:**:data-[slot=field-row-label]:w-auto! **:data-[slot=field-row-content]:flex **:data-[slot=field-row-content]:justify-end **:data-[slot=field-row-content]:pe-3'>
+            <VarEditorFieldRow
+              title='Execute read-only tools live'
+              description='Passthrough lets idempotent tools execute; writes are always mocked. Off = fully offline (unmatched calls fail closed).'>
+              <div className='flex h-8 items-center'>
+                <Switch
+                  size='sm'
+                  checked={config.unmatchedToolPolicy === 'passthrough_readonly'}
+                  onCheckedChange={(checked) =>
+                    setConfigField(
+                      'unmatchedToolPolicy',
+                      checked ? 'passthrough_readonly' : 'error'
+                    )
+                  }
+                />
+              </div>
+            </VarEditorFieldRow>
+          </VarEditorField>
         </Section>
 
         {/* Tool responses */}
@@ -356,16 +392,23 @@ interface AssertionsSectionProps {
 }
 
 function AssertionsSection({ agentId, assertions, onChange }: AssertionsSectionProps) {
-  // The agent's effective toolset, for the tool-call assertion pickers (deduped
-  // with the Tool responses query on the same key). Options carry the catalog
-  // icon so the picker shows real app icons.
-  const toolsetQuery = api.eval.agentToolset.useQuery({ agentId })
-  const iconMap = useToolIconMap()
-  const toolOptions = (toolsetQuery.data?.tools ?? []).map((t) => ({
-    value: t.name,
-    label: t.displayName,
-    icon: iconMap.get(t.name)?.iconId,
-  }))
+  // The agent's effective toolset, grouped by toolset (shared with the Tool
+  // responses section via one `useToolGroups` hook — the `agentToolset` query is
+  // deduped on its key). The SINGLE_SELECT widget has no grouped-option support,
+  // so we prefix each label with its toolset (`Entities — Search · List
+  // transcripts`) and keep the catalog icon — context the bare displayName lacked.
+  const { groups, ungroupedTools, index } = useToolGroups(agentId)
+  const toolOptions = useMemo(() => {
+    const all = [...groups.flatMap((g) => g.tools), ...ungroupedTools]
+    return all.map((t) => {
+      const meta = index.get(t.name)
+      return {
+        value: t.name,
+        label: meta ? `${meta.toolsetLabel} · ${t.displayName}` : t.displayName,
+        icon: meta?.iconId,
+      }
+    })
+  }, [groups, ungroupedTools, index])
 
   const add = (a: AgentEvalAssertion) => onChange([...assertions, a])
   const remove = (id: string) => onChange(assertions.filter((a) => a.id !== id))
@@ -393,25 +436,29 @@ function AssertionsSection({ agentId, assertions, onChange }: AssertionsSectionP
                   data: { outcome: 'finished' },
                 })
               }>
-              Terminal outcome
+              {ASSERTION_META.terminal_outcome.icon}
+              {ASSERTION_META.terminal_outcome.label}
             </DropdownMenuItem>
             <DropdownMenuItem
               onClick={() =>
                 add({ id: generateId('asrt'), type: 'response_criteria', data: { criteria: [] } })
               }>
-              Response criteria
+              {ASSERTION_META.response_criteria.icon}
+              {ASSERTION_META.response_criteria.label}
             </DropdownMenuItem>
             <DropdownMenuItem
               onClick={() =>
                 add({ id: generateId('asrt'), type: 'tool_called', data: { toolName: '' } })
               }>
-              Tool called
+              {ASSERTION_META.tool_called.icon}
+              {ASSERTION_META.tool_called.label}
             </DropdownMenuItem>
             <DropdownMenuItem
               onClick={() =>
                 add({ id: generateId('asrt'), type: 'tool_not_called', data: { toolName: '' } })
               }>
-              Tool not called
+              {ASSERTION_META.tool_not_called.icon}
+              {ASSERTION_META.tool_not_called.label}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -423,30 +470,54 @@ function AssertionsSection({ agentId, assertions, onChange }: AssertionsSectionP
           description='A case must assert at least one outcome before it can pass.'
         />
       ) : (
-        <VarEditorField orientation='vertical' className='p-0'>
-          {assertions.map((a) => (
-            <VarEditorFieldRow
-              key={a.id}
-              title={LABEL[a.type] ?? a.type}
-              onClear={() => remove(a.id)}>
-              <AssertionEditor
-                assertion={a}
-                toolOptions={toolOptions}
-                onChange={(next) => patch(a.id, next)}
-              />
-            </VarEditorFieldRow>
-          ))}
+        <VarEditorField className='p-0'>
+          {assertions.map((a) => {
+            const meta = ASSERTION_META[a.type]
+            return (
+              <VarEditorFieldRow
+                key={a.id}
+                title={meta?.label ?? a.type}
+                description={meta?.description}
+                icon={meta?.icon}
+                showIcon={meta != null}
+                onClear={() => remove(a.id)}>
+                <AssertionEditor
+                  assertion={a}
+                  toolOptions={toolOptions}
+                  onChange={(next) => patch(a.id, next)}
+                />
+              </VarEditorFieldRow>
+            )
+          })}
         </VarEditorField>
       )}
     </Section>
   )
 }
 
-const LABEL: Record<string, string> = {
-  terminal_outcome: 'Terminal outcome',
-  response_criteria: 'Response criteria',
-  tool_called: 'Tool called',
-  tool_not_called: 'Tool not called',
+/** Label, icon, and hover description for each assertion type in the editor. */
+const ASSERTION_META: Record<string, { label: string; description: string; icon: ReactNode }> = {
+  terminal_outcome: {
+    label: 'Terminal outcome',
+    description:
+      'How the conversation must end — finished, handed off to a human, or switched to another procedure.',
+    icon: <Flag className='size-3.5 text-muted-foreground' />,
+  },
+  response_criteria: {
+    label: 'Response criteria',
+    description: "Natural-language criteria the agent's replies must satisfy (LLM-judged).",
+    icon: <MessageSquareText className='size-3.5 text-muted-foreground' />,
+  },
+  tool_called: {
+    label: 'Tool called',
+    description: 'The agent must call this tool at least once during the run.',
+    icon: <Wrench className='size-3.5 text-muted-foreground' />,
+  },
+  tool_not_called: {
+    label: 'Tool not called',
+    description: 'The agent must never call this tool during the run.',
+    icon: <Ban className='size-3.5 text-muted-foreground' />,
+  },
 }
 
 function AssertionEditor({
@@ -460,27 +531,27 @@ function AssertionEditor({
 }) {
   if (assertion.type === 'terminal_outcome') {
     return (
-      <div className='w-40'>
-        <FieldInputAdapter
-          fieldType={FieldType.SINGLE_SELECT}
-          fieldOptions={{ options: OUTCOME_OPTIONS }}
-          value={assertion.data.outcome}
-          onChange={(v) =>
-            onChange({
-              ...assertion,
-              data: {
-                outcome: ((v as string[])[0] as 'finished' | 'handoff' | 'switch') ?? 'finished',
-              },
-            })
-          }
-        />
-      </div>
+      <FieldInputAdapter
+        fieldType={FieldType.SINGLE_SELECT}
+        fieldOptions={{ options: OUTCOME_OPTIONS }}
+        triggerProps={{ className: 'w-full ps-0 pe-1' }}
+        value={assertion.data.outcome}
+        onChange={(v) =>
+          onChange({
+            ...assertion,
+            data: {
+              outcome: ((v as string[])[0] as 'finished' | 'handoff' | 'switch') ?? 'finished',
+            },
+          })
+        }
+      />
     )
   }
   if (assertion.type === 'response_criteria') {
     return (
       <FieldInputAdapter
         fieldType={FieldType.RICH_TEXT}
+        triggerProps={{ className: 'w-full ps-0 pe-1' }}
         value={assertion.data.criteria.join('\n')}
         onChange={(v) =>
           onChange({
@@ -499,17 +570,10 @@ function AssertionEditor({
   }
   if (assertion.type === 'tool_called' || assertion.type === 'tool_not_called') {
     return (
-      <FieldInputAdapter
-        fieldType={FieldType.SINGLE_SELECT}
-        fieldOptions={{ options: toolOptions }}
+      <ToolSelect
+        options={toolOptions}
         value={assertion.data.toolName}
-        onChange={(v) =>
-          onChange({
-            ...assertion,
-            data: { ...assertion.data, toolName: (v as string[])[0] ?? '' },
-          })
-        }
-        placeholder='Pick a tool'
+        onChange={(toolName) => onChange({ ...assertion, data: { ...assertion.data, toolName } })}
       />
     )
   }

@@ -9,26 +9,25 @@ import { TreeRow, TreeRowButton } from '@auxx/ui/components/tree-row'
 import { cn } from '@auxx/ui/lib/utils'
 import { generateId } from '@auxx/utils'
 import { Sparkles, Trash2, Wand2, Wrench } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { AppIcon } from '~/components/apps/ui/app-icon'
 import { CodeEditor, CodeLanguage } from '~/components/workflow/ui/code-editor'
 import type { RouterOutputs } from '~/trpc/react'
 import { api } from '~/trpc/react'
-import { type ToolIcon, useToolIconMap } from '../hooks/use-tool-icon-map'
-
-/** A tool's catalog icon, falling back to a generic wrench when unknown. */
-function ToolIconView({ icon }: { icon?: ToolIcon }) {
-  if (!icon?.iconId) return <Wrench className='size-4 text-muted-foreground' />
-  return <AppIcon iconId={icon.iconId} color={icon.color || undefined} size='sm' />
-}
+import { type EditorToolGroup, useToolGroups } from '../hooks/use-tool-groups'
 
 /**
  * The load-bearing case-editor section: per-tool mock responses over the agent's
- * EFFECTIVE toolset. Each tool seeds from its declared `exampleOutput`, falls
- * back to a schema scaffold, and validates against `outputSchema` on edit. One
- * `repeat` response per tool in v1 (arg-matched multi-response is a follow-up).
+ * EFFECTIVE toolset, grouped by toolset. The catalog defines icons per toolset
+ * (never per tool), so the icon belongs to a group header and the rows beneath
+ * read as members — entity-read tools no longer render the same icon N times.
+ * Each tool seeds from its declared `exampleOutput`, falls back to a schema
+ * scaffold, and validates against `outputSchema` on edit. One `repeat` response
+ * per tool in v1 (arg-matched multi-response is a follow-up).
  *
- * See plans/evals/ui-plan.md §"Tool responses".
+ * `control` tools are dropped server-side; `system` (platform read) toolsets sort
+ * to the bottom and collapse by default. See plans/evals/tool-responses-grouping.md
+ * and tool-visibility-plan.md.
  */
 
 type ToolEntry = RouterOutputs['eval']['agentToolset']['tools'][number]
@@ -40,9 +39,13 @@ interface EvalToolResponsesProps {
 }
 
 export function EvalToolResponses({ agentId, mocks, onChange }: EvalToolResponsesProps) {
+  const { groups, ungroupedTools, isLoading } = useToolGroups(agentId)
+  // `null` ⇒ uninitialized: fall back to the default-open group. Once the user
+  // toggles anything, the explicit set takes over.
+  const [openGroups, setOpenGroups] = useState<Set<string> | null>(null)
   const [openTool, setOpenTool] = useState<string | null>(null)
-  const toolsetQuery = api.eval.agentToolset.useQuery({ agentId })
-  const iconMap = useToolIconMap()
+
+  const hasMock = (toolName: string) => mocks.some((m) => m.toolName === toolName)
 
   const upsert = (toolName: string, output: unknown) => {
     const existing = mocks.find((m) => m.toolName === toolName)
@@ -54,35 +57,116 @@ export function EvalToolResponses({ agentId, mocks, onChange }: EvalToolResponse
   }
   const remove = (toolName: string) => onChange(mocks.filter((m) => m.toolName !== toolName))
 
-  const tools = toolsetQuery.data?.tools ?? []
+  // Default: open the first non-system (capability) group; system groups and the
+  // "Other" bucket stay collapsed until the user expands them.
+  const defaultOpenSlug = useMemo(() => groups.find((grp) => !grp.isSystem)?.slug ?? null, [groups])
+
+  const isGroupOpen = (slug: string) =>
+    openGroups ? openGroups.has(slug) : slug === defaultOpenSlug
+  const toggleGroup = (slug: string) => {
+    setOpenGroups((prev) => {
+      const base = prev ?? new Set(defaultOpenSlug ? [defaultOpenSlug] : [])
+      const next = new Set(base)
+      if (next.has(slug)) next.delete(slug)
+      else next.add(slug)
+      return next
+    })
+  }
+
+  const renderTool = (tool: ToolEntry) => (
+    <ToolResponseRow
+      key={tool.name}
+      agentId={agentId}
+      tool={tool}
+      mock={mocks.find((m) => m.toolName === tool.name) ?? null}
+      isOpen={openTool === tool.name}
+      onToggle={() => setOpenTool((t) => (t === tool.name ? null : tool.name))}
+      onUpsert={(output) => upsert(tool.name, output)}
+      onRemove={() => remove(tool.name)}
+    />
+  )
+
+  const isEmpty = !isLoading && groups.length === 0 && ungroupedTools.length === 0
 
   return (
     <Section title='Tool responses' icon={<Wrench className='size-4' />}>
-      {toolsetQuery.isLoading || tools.length === 0 ? (
+      {isLoading || isEmpty ? (
         <EmptySection
           icon={<Wrench className='size-4' />}
-          title={toolsetQuery.isLoading ? 'Loading tools…' : 'No tools to mock'}
-          description={toolsetQuery.isLoading ? undefined : 'This agent has no tools.'}
-          loading={toolsetQuery.isLoading}
+          title={isLoading ? 'Loading tools…' : 'No tools to mock'}
+          description={isLoading ? undefined : 'This agent has no tools.'}
+          loading={isLoading}
         />
       ) : (
         <div className='space-y-0.5'>
-          {tools.map((tool) => (
-            <ToolResponseRow
-              key={tool.name}
-              agentId={agentId}
-              tool={tool}
-              icon={iconMap.get(tool.name)}
-              mock={mocks.find((m) => m.toolName === tool.name) ?? null}
-              isOpen={openTool === tool.name}
-              onToggle={() => setOpenTool((t) => (t === tool.name ? null : tool.name))}
-              onUpsert={(output) => upsert(tool.name, output)}
-              onRemove={() => remove(tool.name)}
-            />
+          {groups.map((group) => (
+            <ToolGroupRow
+              key={group.slug}
+              group={group}
+              mockedCount={group.tools.filter((t) => hasMock(t.name)).length}
+              isOpen={isGroupOpen(group.slug)}
+              onToggle={() => toggleGroup(group.slug)}>
+              {group.tools.map(renderTool)}
+            </ToolGroupRow>
           ))}
+          {ungroupedTools.length > 0 ? (
+            <ToolGroupRow
+              group={{
+                slug: '__other',
+                fullLabel: 'Other',
+                iconId: 'wrench',
+                color: '',
+              }}
+              mockedCount={ungroupedTools.filter((t) => hasMock(t.name)).length}
+              total={ungroupedTools.length}
+              isOpen={isGroupOpen('__other')}
+              onToggle={() => toggleGroup('__other')}>
+              {ungroupedTools.map(renderTool)}
+            </ToolGroupRow>
+          ) : null}
         </div>
       )}
     </Section>
+  )
+}
+
+// ── Toolset group header ─────────────────────────────────────────────────────
+
+interface ToolGroupRowProps {
+  group: Pick<EditorToolGroup, 'slug' | 'fullLabel' | 'iconId' | 'color'> & {
+    tools?: EditorToolGroup['tools']
+  }
+  mockedCount: number
+  /** Override the denominator (the "Other" bucket isn't a real toolset). */
+  total?: number
+  isOpen: boolean
+  onToggle: () => void
+  children: React.ReactNode
+}
+
+function ToolGroupRow({
+  group,
+  mockedCount,
+  total,
+  isOpen,
+  onToggle,
+  children,
+}: ToolGroupRowProps) {
+  const count = total ?? group.tools?.length ?? 0
+  return (
+    <TreeRow
+      icon={<AppIcon iconId={group.iconId} color={group.color || undefined} size='sm' />}
+      title={group.fullLabel}
+      secondary={
+        <span className='text-xs text-muted-foreground'>
+          {mockedCount} mocked / {count}
+        </span>
+      }
+      expandable
+      isOpen={isOpen}
+      onToggleOpen={onToggle}>
+      {children}
+    </TreeRow>
   )
 }
 
@@ -91,7 +175,6 @@ export function EvalToolResponses({ agentId, mocks, onChange }: EvalToolResponse
 interface ToolResponseRowProps {
   agentId: string
   tool: ToolEntry
-  icon?: ToolIcon
   mock: SimulationToolMock | null
   isOpen: boolean
   onToggle: () => void
@@ -102,7 +185,6 @@ interface ToolResponseRowProps {
 function ToolResponseRow({
   agentId,
   tool,
-  icon,
   mock,
   isOpen,
   onToggle,
@@ -157,7 +239,8 @@ function ToolResponseRow({
 
   return (
     <TreeRow
-      icon={<ToolIconView icon={icon} />}
+      depth={1}
+      icon={<span className='size-1.5 rounded-full bg-muted-foreground/40' />}
       title={tool.displayName}
       secondary={
         <span className='flex items-center gap-1.5 text-xs'>
@@ -180,7 +263,7 @@ function ToolResponseRow({
           </TreeRowButton>
         ) : undefined
       }>
-      <div className='space-y-2 px-2 py-1.5'>
+      <div className='space-y-2 py-1.5 pe-2 ps-12'>
         {!mock && draft.trim() === '' ? (
           <div className='flex flex-wrap items-center gap-2'>
             {seedExample ? (

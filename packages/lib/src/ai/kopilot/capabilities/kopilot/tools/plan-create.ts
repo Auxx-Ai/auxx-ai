@@ -38,6 +38,7 @@ export function createPlanCreateTool(_getDeps: GetToolDeps): AgentToolDefinition
   return {
     name: 'plan_create',
     displayName: 'Create plan',
+    category: 'control',
     outputSchema: PlanCreateOutput,
     description:
       "Create or replace the active plan for this session. Call when the user asks for a multi-step task (review N tickets, process a list, multi-stage research). Each step is a short imperative title; statuses start as 'pending'. Returns the canonical plan you should mirror in the auxx:plan-steps fence.",

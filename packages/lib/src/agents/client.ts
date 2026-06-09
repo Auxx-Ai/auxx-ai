@@ -148,6 +148,27 @@ export function flattenCatalogToToolsets(roots: CatalogNode[]): FlatToolsetCatal
 }
 
 /**
+ * Shared search predicate over a flat toolset entry — the union of fields the
+ * Tools tab and the toolset picker were each filtering on independently: slug,
+ * both labels, description, ancestor path, and member tool names. An empty query
+ * matches everything.
+ */
+export function matchesToolsetSearch(entry: FlatToolsetCatalogEntry, query: string): boolean {
+  const q = query.trim().toLowerCase()
+  if (!q) return true
+  return (
+    entry.slug.toLowerCase().includes(q) ||
+    entry.label.toLowerCase().includes(q) ||
+    entry.fullLabel.toLowerCase().includes(q) ||
+    entry.description.toLowerCase().includes(q) ||
+    entry.path.join(' ').toLowerCase().includes(q) ||
+    entry.tools.some(
+      (t) => t.name.toLowerCase().includes(q) || t.displayName.toLowerCase().includes(q)
+    )
+  )
+}
+
+/**
  * Prune a catalog tree to the tools offered on `surface`, dropping any toolset
  * left with zero tools and any container left with no children. A tool with no
  * `surfaces` defaults to {@link ALL_SURFACES} (offered everywhere), so with

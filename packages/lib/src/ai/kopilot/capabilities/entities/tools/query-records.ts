@@ -96,6 +96,7 @@ export function createQueryRecordsTool(getDeps: GetToolDeps): AgentToolDefinitio
     name: 'query_records',
     displayName: 'Filter records',
     toolsetSlug: 'auxx:entities:search',
+    category: 'system',
     idempotent: true,
     outputSchema: QueryRecordsOutput,
     buildDigest: (output) => {

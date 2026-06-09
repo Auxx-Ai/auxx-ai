@@ -2,7 +2,7 @@
 'use client'
 
 import type { AgentSurface, CatalogContainerNode, CatalogNode } from '@auxx/lib/agents/client'
-import { flattenCatalogToToolsets } from '@auxx/lib/agents/client'
+import { flattenCatalogToToolsets, matchesToolsetSearch } from '@auxx/lib/agents/client'
 import { Button } from '@auxx/ui/components/button'
 import {
   Dialog,
@@ -244,17 +244,10 @@ function ListView({
   onRemove,
   onOpenApp,
 }: ListViewProps) {
-  const filteredFlat = useMemo(() => {
-    if (!search.trim()) return flat
-    const q = search.trim().toLowerCase()
-    return flat.filter(
-      (e) =>
-        e.label.toLowerCase().includes(q) ||
-        e.fullLabel.toLowerCase().includes(q) ||
-        e.description.toLowerCase().includes(q) ||
-        e.path.join(' ').toLowerCase().includes(q)
-    )
-  }, [flat, search])
+  const filteredFlat = useMemo(
+    () => flat.filter((e) => matchesToolsetSearch(e, search)),
+    [flat, search]
+  )
 
   const popular = filteredFlat.filter((e) => e.isPopular)
   const all = filteredFlat

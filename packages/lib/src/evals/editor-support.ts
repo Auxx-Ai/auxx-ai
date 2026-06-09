@@ -8,8 +8,9 @@
 // server-side — the wire carries only JSON. See plans/evals/phase-1-agent-simulation.md
 // §1.6 and ui-plan.md §"Tool responses".
 
+import { isToolVisibleOn, toolCategory } from '../agents/tool-visibility'
 import { buildEffectiveAgentRuntime } from '../ai/agent-framework/effective-runtime'
-import type { AgentToolDefinition } from '../ai/agent-framework/types'
+import type { AgentToolDefinition, ToolCategory } from '../ai/agent-framework/types'
 import { getCachedAgentById } from '../cache'
 import { scaffoldFromSchema, validateMockOutput } from './simulation/mock-tools'
 import { getToolExampleOutput } from './tool-examples'
@@ -18,6 +19,12 @@ export interface EditorToolEntry {
   name: string
   displayName: string
   description: string
+  /**
+   * Visibility class. `control` tools are dropped before this projection; the
+   * editor receives only `capability` and `system`. The UI collapses `system`
+   * into a default-closed group ("run live against the subject record").
+   */
+  category: ToolCategory
   /** Read-only tools may run for real under `passthrough_readonly`. */
   idempotent: boolean
   hasOutputSchema: boolean
@@ -57,18 +64,28 @@ export async function listAgentEffectiveTools(input: {
   agentId: string
 }): Promise<EditorToolEntry[]> {
   const tools = await resolveToolset(input)
-  return tools.map((t) => {
-    const example = getToolExampleOutput(t)
-    return {
-      name: t.name,
-      displayName: t.displayName,
-      description: t.description,
-      idempotent: t.idempotent ?? false,
-      hasOutputSchema: t.outputSchema != null,
-      example,
-      scaffold:
-        example === undefined && t.outputSchema ? scaffoldFromSchema(t.outputSchema) : undefined,
-    }
+  const entries = tools
+    // Drop control tools — they have no meaningful mock and run unwrapped in sims.
+    .filter((t) => isToolVisibleOn(t, 'mockEditor'))
+    .map((t) => {
+      const example = getToolExampleOutput(t)
+      return {
+        name: t.name,
+        displayName: t.displayName,
+        description: t.description,
+        category: toolCategory(t),
+        idempotent: t.idempotent ?? false,
+        hasOutputSchema: t.outputSchema != null,
+        example,
+        scaffold:
+          example === undefined && t.outputSchema ? scaffoldFromSchema(t.outputSchema) : undefined,
+      }
+    })
+  // `capability` first, `system` after (the UI groups by toolset, but this is the
+  // wire-order fallback); alpha within each band.
+  return entries.sort((a, b) => {
+    if (a.category !== b.category) return a.category === 'system' ? 1 : -1
+    return a.displayName.localeCompare(b.displayName)
   })
 }
 
