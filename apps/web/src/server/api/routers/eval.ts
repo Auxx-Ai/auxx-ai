@@ -11,11 +11,14 @@ import {
   getEvalCaseById,
   getEvalRun,
   getEvalSuiteRun,
+  getLatestRunsByCaseIds,
+  listAgentEffectiveTools,
   listEvalCasesByAgent,
   listEvalRuns,
   type PreparedRunSnapshots,
   prepareRunSnapshots,
   updateEvalCase,
+  validateAgentToolMock,
   validateEvalCase,
 } from '@auxx/lib/evals'
 import { enqueueEvalRun } from '@auxx/lib/evals/worker'
@@ -57,15 +60,42 @@ export const evalRouter = createTRPCRouter({
   list: protectedProcedure
     .input(z.object({ agentId: z.string().min(1), procedureId: z.string().min(1).optional() }))
     .query(async ({ ctx, input }) => {
+      const { organizationId } = ctx.session
       const cases = unwrap(
         await listEvalCasesByAgent({
-          organizationId: ctx.session.organizationId,
+          organizationId,
           agentId: input.agentId,
           procedureId: input.procedureId,
         }),
         'list eval cases'
       )
-      return cases
+
+      // One extra query attaches each case's most recent run (status pill + last-run time).
+      const latest = unwrap(
+        await getLatestRunsByCaseIds({ organizationId, caseIds: cases.map((c) => c.id) }),
+        'list latest eval runs'
+      )
+      const byCase = new Map(latest.map((r) => [r.caseId, r]))
+
+      return cases.map((row) => {
+        const target = agentEvalTargetSchema.parse(row.target)
+        const run = byCase.get(row.id)
+        return {
+          id: row.id,
+          name: row.name,
+          scope: target.scope,
+          procedureId: target.scope === 'procedure' ? target.procedureId : null,
+          createdAt: row.createdAt.toISOString(),
+          updatedAt: row.updatedAt.toISOString(),
+          latestRun: run
+            ? {
+                runId: run.runId,
+                status: run.status,
+                at: (run.completedAt ?? run.createdAt).toISOString(),
+              }
+            : null,
+        }
+      })
     }),
 
   getById: protectedProcedure
@@ -76,7 +106,7 @@ export const evalRouter = createTRPCRouter({
         'get eval case'
       )
       if (!found) throw new TRPCError({ code: 'NOT_FOUND', message: 'Eval case not found' })
-      return found
+      return parseCase(found)
     }),
 
   create: evalAdminProcedure
@@ -136,6 +166,36 @@ export const evalRouter = createTRPCRouter({
       )
       return { ok: true as const }
     }),
+
+  // ── Editor support (tool responses) ───────────────────────────────────────
+  agentToolset: protectedProcedure
+    .input(z.object({ agentId: z.string().min(1) }))
+    .query(async ({ ctx, input }) => {
+      const tools = await listAgentEffectiveTools({
+        organizationId: ctx.session.organizationId,
+        userId: ctx.session.userId,
+        agentId: input.agentId,
+      })
+      return { tools }
+    }),
+
+  validateMock: protectedProcedure
+    .input(
+      z.object({
+        agentId: z.string().min(1),
+        toolName: z.string().min(1),
+        output: z.unknown(),
+      })
+    )
+    .query(async ({ ctx, input }) =>
+      validateAgentToolMock({
+        organizationId: ctx.session.organizationId,
+        userId: ctx.session.userId,
+        agentId: input.agentId,
+        toolName: input.toolName,
+        output: input.output,
+      })
+    ),
 
   // ── Validation ──────────────────────────────────────────────────────────
   validate: protectedProcedure

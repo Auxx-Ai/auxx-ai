@@ -20,6 +20,11 @@ export {
 } from './agent-grader'
 export { type CompareOutcome, evaluateComparator, MISSING } from './comparators'
 export {
+  type EditorToolEntry,
+  listAgentEffectiveTools,
+  validateAgentToolMock,
+} from './editor-support'
+export {
   cancelEvalRun,
   checkpointEvalTrace,
   claimEvalRun,
@@ -45,6 +50,8 @@ export {
   getEvalCaseById,
   getEvalRun,
   getEvalSuiteRun,
+  getLatestRunsByCaseIds,
+  type LatestRunSummary,
   listEvalCasesByAgent,
   listEvalRuns,
   type UpdateEvalCaseInput,
