@@ -8,7 +8,7 @@ import { Sparkles } from 'lucide-react'
 import { useCallback } from 'react'
 import { api } from '~/trpc/react'
 import type { AgentDetail } from '../../../store/agent-store'
-import { computeCompleteness, deriveSetupStep } from './derive-setup-step'
+import { deriveSetupProgress } from './derive-setup-step'
 import { SetupProgressBar } from './setup-progress-bar'
 
 interface AgentSetupModeProps {
@@ -37,21 +37,20 @@ export function AgentSetupMode({ agent }: AgentSetupModeProps) {
     }
   }, [agent.id, completeSetup, utils.agent.getById, utils.agent.list])
 
-  const step = deriveSetupStep(agent)
-  const completeness = computeCompleteness(agent)
+  const { current, index, completeness } = deriveSetupProgress(agent)
 
   return (
     <ScrollArea className='flex-1 min-h-0'>
       <div className='mx-auto flex-1 flex max-w-2xl flex-col items-center justify-between gap-8 px-6 pt-12 pb-6 text-center'>
         <div className='flex flex-col items-center gap-1'>
           <p className='text-xs font-mono uppercase tracking-widest text-muted-foreground '>
-            Step {step.index} of 3
+            Step {index} of 4
           </p>
-          <p className='text-sm font-mono'>{step.subtitle}</p>
+          <p className='text-sm font-mono'>{current.subtitle}</p>
         </div>
         <div className='flex flex-col items-center justify-center gap-4'>
           <SetupProgressBar value={completeness} />
-          <p className='text-xs italic text-muted-foreground'>{step.description}</p>
+          <p className='text-xs italic text-muted-foreground'>{current.description}</p>
         </div>
         <div className='pt-4'>
           <Button

@@ -832,10 +832,16 @@ export class OpenAILLMClient extends LLMClient {
   }
 
   private convertUsage(usage: any): UsageMetrics {
+    // OpenAI prompt caching is automatic (prefix-based). It reports cached reads
+    // under prompt_tokens_details.cached_tokens and has no explicit "write" field
+    // (cache population is implicit). Note: unlike Anthropic, OpenAI's
+    // prompt_tokens INCLUDES the cached portion, so cached_input_tokens is a
+    // subset of prompt_tokens here, not additive.
     return {
       prompt_tokens: usage?.prompt_tokens || 0,
       completion_tokens: usage?.completion_tokens || 0,
       total_tokens: usage?.total_tokens || 0,
+      cached_input_tokens: usage?.prompt_tokens_details?.cached_tokens || 0,
     }
   }
 

@@ -1,5 +1,6 @@
 // packages/lib/src/ai/kopilot/prompts/build-kopilot-prompt.ts
 
+import { createScopedLogger } from '@auxx/logger'
 import type { ResolvedAgentConfig } from '../../../agents'
 import type { IntegrationCatalogEntry } from '../../../cache/integration-catalog'
 import type { AgentToolDefinition } from '../../agent-framework/types'
@@ -10,6 +11,7 @@ import {
   renderSections,
   renderSectionsToBlocks,
   serializePromptBlocks,
+  summarizePromptBlocks,
 } from './sections/render'
 import type { ProcedureStepInput, PromptCtx, RunMode } from './sections/types'
 
@@ -86,8 +88,17 @@ export function buildKopilotPromptBlocks(args: BuildKopilotPromptArgs): PromptBl
  * `buildKopilotPrompt` when there are no cached tiers.
  */
 export function buildKopilotPromptSerialized(args: BuildKopilotPromptArgs): string {
-  return serializePromptBlocks(buildKopilotPromptBlocks(args))
+  const blocks = buildKopilotPromptBlocks(args)
+  // Opt-in prompt-size instrumentation for the caching investigation. Logs the
+  // static/org/turn split and the cacheable-prefix size so we can see how much
+  // of the prompt is inter-org shareable. Gated to keep normal logs quiet.
+  if (process.env.KOPILOT_PROMPT_METRICS === '1') {
+    promptMetricsLogger.info('Kopilot prompt blocks', summarizePromptBlocks(blocks))
+  }
+  return serializePromptBlocks(blocks)
 }
+
+const promptMetricsLogger = createScopedLogger('kopilot-prompt-metrics')
 
 function buildPromptCtx(args: BuildKopilotPromptArgs): PromptCtx {
   // DM is an interactive trigger — a human is in the loop, just authored on a

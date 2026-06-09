@@ -29,6 +29,11 @@ export const AiUsage = pgTable(
     provider: text().notNull(),
     model: text().notNull(),
     totalTokens: integer().default(0).notNull(),
+    /** Input tokens served from the provider's prompt cache (rate-limit-free on most providers). Subset of inputTokens on OpenAI; additive on Anthropic. */
+    cachedInputTokens: integer().default(0).notNull(),
+    /** Input tokens written to the provider's prompt cache this request (these DO count toward rate limits and are billed at a premium). */
+    cacheWriteTokens: integer().default(0).notNull(),
+    /** Estimated provider COGS in USD (list price, not invoiced). Includes prompt-cache read/write multipliers. */
     cost: doublePrecision(),
     organizationId: text()
       .notNull()

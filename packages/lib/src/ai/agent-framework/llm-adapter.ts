@@ -240,6 +240,39 @@ export function createCallModel(config: LLMAdapterConfig) {
       truncated,
     })
 
+    // Prompt-cache instrumentation (provider-neutral). Reads the unified cache
+    // fields each provider client populates on UsageMetrics. Keys are chosen to
+    // avoid the logger's `token`/`secret`/`apikey` redaction markers so the
+    // counts actually survive into the log (the `usage` object above is
+    // redacted because its keys contain "token"). See plans/kopilot/cache/.
+    if (lastUsage.total_tokens > 0) {
+      const cachedInput = lastUsage.cached_input_tokens ?? 0
+      const cacheWrite = lastUsage.cache_write_tokens ?? 0
+      const promptInput = lastUsage.prompt_tokens
+      // Provider semantics differ: OpenAI's prompt_tokens INCLUDES cached reads;
+      // Anthropic's EXCLUDES them. Normalize to a single total + rate-limit cost.
+      const includesCached = (provider ?? '').toLowerCase().includes('openai')
+      const totalInput = includesCached
+        ? promptInput + cacheWrite
+        : promptInput + cachedInput + cacheWrite
+      // Input that actually counts toward the provider's input rate limit
+      // (cached reads are free on Anthropic/OpenAI; cache writes are not).
+      const rateLimitInput = includesCached
+        ? promptInput - cachedInput + cacheWrite
+        : promptInput + cacheWrite
+      logger.info('LLM cache metrics', {
+        provider,
+        model,
+        promptInput,
+        cachedInput,
+        cacheWrite,
+        outputCount: lastUsage.completion_tokens,
+        totalInput,
+        rateLimitInput,
+        cachedPct: totalInput > 0 ? Math.round((cachedInput / totalInput) * 100) : 0,
+      })
+    }
+
     if (truncated) {
       logger.warn('LLM response was truncated by max_tokens — tool_use input may be incomplete', {
         model,
