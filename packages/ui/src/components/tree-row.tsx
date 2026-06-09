@@ -112,13 +112,15 @@ export function TreeRow({
           onClick={expandable ? onToggleOpen : undefined}>
           <div className='flex items-center flex-1 min-w-0'>
             {icon !== undefined && (
-              <span className='flex items-center justify-center px-1 size-7 text-muted-foreground'>
+              <span className='flex items-center justify-center px-1 size-7 text-muted-foreground shrink-0'>
                 {icon}
               </span>
             )}
 
             {titleNode}
-            {description && <TooltipExplanation text={description} className='text-primary-400' />}
+            {description && (
+              <TooltipExplanation text={description} className='text-primary-400 shrink-0' />
+            )}
             {secondary && (
               <span className='ml-1 truncate text-primary-400 text-sm'>{secondary}</span>
             )}

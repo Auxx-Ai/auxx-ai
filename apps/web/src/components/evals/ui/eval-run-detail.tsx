@@ -3,11 +3,11 @@
 
 import type { EvalRunStatus } from '@auxx/types/evals'
 import { Alert, AlertDescription } from '@auxx/ui/components/alert'
+import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
-import { RadioTab, RadioTabItem } from '@auxx/ui/components/radio-tab'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
-import { EmptySection } from '@auxx/ui/components/section'
+import { EmptySection, Section } from '@auxx/ui/components/section'
 import { Spinner } from '@auxx/ui/components/spinner'
 import { cn } from '@auxx/ui/lib/utils'
 import { formatRelativeTime } from '@auxx/utils'
@@ -34,6 +34,12 @@ const TERMINAL: ReadonlySet<EvalRunStatus> = new Set<EvalRunStatus>([
   'timed_out',
 ])
 
+/**
+ * Bleeds a `Section`'s content past its `p-3` padding so tree rows span full
+ * width; the inner `ps-2 pe-4` div re-pads. Mirrors the suite panel.
+ */
+const SECTION_BLEED = '[&>[data-slot=section]>[data-slot=section-content]]:-mx-3'
+
 type AlertVariant = 'good' | 'destructive' | 'warning' | 'blue' | 'default'
 
 const BANNER: Record<EvalRunStatus, { variant: AlertVariant; sentence: string }> = {
@@ -49,8 +55,6 @@ const BANNER: Record<EvalRunStatus, { variant: AlertVariant; sentence: string }>
   timed_out: { variant: 'warning', sentence: 'Timed out before reaching a verdict.' },
 }
 
-type Tab = 'verdict' | 'trace' | 'snapshot'
-
 interface EvalRunDetailProps {
   runId: string
   /** Switches the detail to another run from the same case's history. */
@@ -58,7 +62,6 @@ interface EvalRunDetailProps {
 }
 
 export function EvalRunDetail({ runId, onSelectRun }: EvalRunDetailProps) {
-  const [tab, setTab] = useState<Tab>('verdict')
   const runQuery = api.eval.getRun.useQuery({ runId })
   const live = useEvalRunState(runId)
   const { connect, hydrateFromRun } = useEvalRunActions()
@@ -107,62 +110,73 @@ export function EvalRunDetail({ runId, onSelectRun }: EvalRunDetailProps) {
   const isLive = !TERMINAL.has(status)
   const banner = BANNER[status]
   const assertions = live.assertionResults.length ? live.assertionResults : []
+  // The run executed the draft (not the pinned version) when prepared in draft mode.
+  const ranDraft = (row.runtimeSnapshot as { runMode?: string }).runMode === 'draft'
 
   return (
-    <div className='space-y-3 p-3'>
+    <div>
       {/* Verdict banner + run-history switcher */}
-      <Alert variant={banner.variant} className='flex items-start justify-between gap-2'>
-        <AlertDescription className='flex items-center gap-2'>
-          <EvalStatusPill status={status} />
-          <span>{row.error ? `${banner.sentence} ${row.error}` : banner.sentence}</span>
-        </AlertDescription>
-        {caseId ? (
-          <RunHistoryPopover caseId={caseId} activeRunId={runId} onSelectRun={onSelectRun} />
-        ) : null}
-      </Alert>
+      <div className='p-3'>
+        <Alert variant={banner.variant} className='flex items-start justify-between gap-2'>
+          <AlertDescription className='flex items-center gap-2'>
+            <EvalStatusPill status={status} />
+            {ranDraft ? (
+              <Badge variant='pill' size='sm'>
+                Draft
+              </Badge>
+            ) : null}
+            <span>{row.error ? `${banner.sentence} ${row.error}` : banner.sentence}</span>
+          </AlertDescription>
+          {caseId ? (
+            <RunHistoryPopover caseId={caseId} activeRunId={runId} onSelectRun={onSelectRun} />
+          ) : null}
+        </Alert>
+      </div>
 
-      <RadioTab
-        value={tab}
-        onValueChange={(v) => setTab(v as Tab)}
-        size='sm'
-        radioGroupClassName='grid w-full grid-cols-3'
-        className='h-8 w-full'>
-        <RadioTabItem value='verdict' size='sm' className='gap-1'>
-          <ListChecks className='size-3.5!' />
-          Verdict
-        </RadioTabItem>
-        <RadioTabItem value='trace' size='sm' className='gap-1'>
-          <History className='size-3.5!' />
-          Trace
-        </RadioTabItem>
-        <RadioTabItem value='snapshot' size='sm' className='gap-1'>
-          <FileJson className='size-3.5!' />
-          Snapshot
-        </RadioTabItem>
-      </RadioTab>
+      <Section
+        title='Verdict'
+        icon={<ListChecks className='size-4' />}
+        description='Per-assertion pass/fail for this run.'
+        className={SECTION_BLEED}
+        collapsible>
+        <div className='flex flex-col ps-2 pe-4'>
+          {assertions.length ? (
+            assertions.map((r) => <EvalAssertionResultRow key={r.assertionId} result={r} />)
+          ) : (
+            <EmptySection
+              icon={<ListChecks className='size-4' />}
+              title={isLive ? 'Grading pending' : 'No assertion results'}
+              description={
+                isLive ? 'Assertions are graded once the conversation completes.' : undefined
+              }
+              loading={isLive}
+            />
+          )}
+        </div>
+      </Section>
 
-      {tab === 'verdict' ? (
-        assertions.length ? (
-          <div className='space-y-0.5'>
-            {assertions.map((r) => (
-              <EvalAssertionResultRow key={r.assertionId} result={r} />
-            ))}
-          </div>
-        ) : (
-          <EmptySection
-            icon={<ListChecks className='size-4' />}
-            title={isLive ? 'Grading pending' : 'No assertion results'}
-            description={
-              isLive ? 'Assertions are graded once the conversation completes.' : undefined
-            }
-            loading={isLive}
-          />
-        )
-      ) : null}
+      <Section
+        title='Trace'
+        icon={<History className='size-4' />}
+        description='The conversation and tool calls, in order.'
+        className={SECTION_BLEED}
+        collapsible>
+        <div className='flex flex-col ps-2 pe-4'>
+          <EvalTraceView trace={live.trace} isLive={isLive} />
+        </div>
+      </Section>
 
-      {tab === 'trace' ? <EvalTraceView trace={live.trace} isLive={isLive} /> : null}
-
-      {tab === 'snapshot' ? <SnapshotTab runtimeSnapshot={row.runtimeSnapshot} /> : null}
+      <Section
+        title='Snapshot'
+        icon={<FileJson className='size-4' />}
+        description='The exact runtime that executed — models, limits, mock policy.'
+        className={SECTION_BLEED}
+        collapsible
+        initialOpen={false}>
+        <div className='flex flex-col ps-2 pe-4'>
+          <SnapshotTab runtimeSnapshot={row.runtimeSnapshot} />
+        </div>
+      </Section>
     </div>
   )
 }
@@ -182,6 +196,8 @@ interface RuntimeSnapshotView {
   mockPolicy?: string
   limits?: { maxCustomerTurns?: number; maxReinvokes?: number; maxIterations?: number }
   time?: { frozenAt?: string | null }
+  runMode?: string
+  draftContentHash?: string
 }
 
 function modelLabel(m?: ProviderModel): string {
@@ -194,6 +210,7 @@ function SnapshotTab({ runtimeSnapshot }: { runtimeSnapshot: Record<string, unkn
   const rows: { label: string; value: string }[] = [
     { label: 'Code revision', value: s.codeRevision ?? '—' },
     { label: 'Scope', value: s.scope ?? '—' },
+    { label: 'Run mode', value: s.runMode ?? 'pinned' },
     { label: 'Agent model', value: modelLabel(s.agent?.model) },
     { label: 'Utility model', value: modelLabel(s.agent?.utilityModel) },
     { label: 'Customer (persona)', value: modelLabel(s.personaModel) },

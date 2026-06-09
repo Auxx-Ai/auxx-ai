@@ -54,16 +54,14 @@ async function resolveToolset(input: {
 }
 
 /**
- * The editor-facing projection of the agent's effective toolset: enough to list
- * each tool, seed a mock (example → scaffold), and flag read-only tools. Schemas
- * themselves never cross the wire; example/scaffold are precomputed here.
+ * Pure projection of an effective toolset into editor entries (mockEditor-visible
+ * only): enough to list each tool, seed a mock (example → scaffold), and flag
+ * read-only tools. Control tools are dropped. Schemas never cross the wire;
+ * example/scaffold are precomputed here. Extracted so the suggester (which
+ * resolves the runtime once for tools + `utilityModel` together) can reuse it
+ * without re-resolving the runtime.
  */
-export async function listAgentEffectiveTools(input: {
-  organizationId: string
-  userId: string
-  agentId: string
-}): Promise<EditorToolEntry[]> {
-  const tools = await resolveToolset(input)
+export function projectEditorToolEntries(tools: AgentToolDefinition[]): EditorToolEntry[] {
   const entries = tools
     // Drop control tools — they have no meaningful mock and run unwrapped in sims.
     .filter((t) => isToolVisibleOn(t, 'mockEditor'))
@@ -87,6 +85,19 @@ export async function listAgentEffectiveTools(input: {
     if (a.category !== b.category) return a.category === 'system' ? 1 : -1
     return a.displayName.localeCompare(b.displayName)
   })
+}
+
+/**
+ * The editor-facing projection of the agent's effective toolset: enough to list
+ * each tool, seed a mock (example → scaffold), and flag read-only tools. Schemas
+ * themselves never cross the wire; example/scaffold are precomputed here.
+ */
+export async function listAgentEffectiveTools(input: {
+  organizationId: string
+  userId: string
+  agentId: string
+}): Promise<EditorToolEntry[]> {
+  return projectEditorToolEntries(await resolveToolset(input))
 }
 
 /** Validate one authored mock output against its tool's declared `outputSchema`. */

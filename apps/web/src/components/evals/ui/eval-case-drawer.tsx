@@ -268,7 +268,8 @@ function EvalCaseForm({
 
   const runNow = async () => {
     const id = await saveNow()
-    if (id) run.mutate({ id })
+    // The drawer is the editor surface — always run the current draft.
+    if (id) run.mutate({ id, useDraft: true })
   }
 
   return (

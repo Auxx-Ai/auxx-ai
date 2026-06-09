@@ -17,6 +17,7 @@ import {
   listEvalRuns,
   type PreparedRunSnapshots,
   prepareRunSnapshots,
+  suggestAgentSimulations,
   updateEvalCase,
   validateAgentToolMock,
   validateEvalCase,
@@ -85,6 +86,8 @@ export const evalRouter = createTRPCRouter({
           name: row.name,
           scope: target.scope,
           procedureId: target.scope === 'procedure' ? target.procedureId : null,
+          // Provenance for client-side dedup of already-accepted suggestions.
+          suggestionId: row.suggestionId ?? null,
           createdAt: row.createdAt.toISOString(),
           updatedAt: row.updatedAt.toISOString(),
           latestRun: run
@@ -116,6 +119,8 @@ export const evalRouter = createTRPCRouter({
         target: agentEvalTargetSchema,
         config: simulationConfigSchema,
         assertions: agentEvalAssertionsSchema,
+        /** Provenance when the case was accepted from a suggestion. */
+        suggestionId: z.string().min(1).optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -127,6 +132,7 @@ export const evalRouter = createTRPCRouter({
           target: input.target,
           config: input.config,
           assertions: input.assertions,
+          suggestionId: input.suggestionId,
         }),
         'create eval case'
       )
@@ -263,14 +269,21 @@ export const evalRouter = createTRPCRouter({
 
   // ── Execute ───────────────────────────────────────────────────────────────
   run: evalAdminProcedure
-    .input(z.object({ id: z.string().min(1) }))
+    // `useDraft`: run the current draft (the Simulations editor surface always
+    // passes true); headless/CI default to the pinned version (regression gate).
+    .input(z.object({ id: z.string().min(1), useDraft: z.boolean().optional() }))
     .mutation(async ({ ctx, input }) => {
       const { organizationId, userId } = ctx.session
       const found = unwrap(await getEvalCaseById({ organizationId, id: input.id }), 'get eval case')
       if (!found) throw new TRPCError({ code: 'NOT_FOUND', message: 'Eval case not found' })
       const parsed = parseCase(found)
 
-      const prepared = await prepareRunSnapshots({ organizationId, userId, case: parsed })
+      const prepared = await prepareRunSnapshots({
+        organizationId,
+        userId,
+        case: parsed,
+        mode: input.useDraft ? 'draft' : 'pinned',
+      })
       if (prepared.isErr()) {
         throw new TRPCError({
           code: 'BAD_REQUEST',
@@ -312,6 +325,7 @@ export const evalRouter = createTRPCRouter({
         agentId: z.string().min(1),
         procedureId: z.string().min(1).optional(),
         caseIds: z.array(z.string().min(1)).optional(),
+        useDraft: z.boolean().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -336,7 +350,12 @@ export const evalRouter = createTRPCRouter({
         []
       for (const row of selected) {
         const prepared: PreparedRunSnapshots = unwrap(
-          await prepareRunSnapshots({ organizationId, userId, case: parseCase(row) }),
+          await prepareRunSnapshots({
+            organizationId,
+            userId,
+            case: parseCase(row),
+            mode: input.useDraft ? 'draft' : 'pinned',
+          }),
           `prepare eval run for case ${row.id}`
         )
         children.push({
@@ -383,4 +402,31 @@ export const evalRouter = createTRPCRouter({
       if (!cancelled) throw new TRPCError({ code: 'NOT_FOUND', message: 'Eval run not found' })
       return { status: cancelled.status }
     }),
+
+  // ── Suggestions ───────────────────────────────────────────────────────────
+  // Mutation, not query: it spends tokens and is non-idempotent. The client holds
+  // the result keyed by the returned `draftHash` rather than auto-refetching.
+  // `evalAdminProcedure` gates the spend; org/agent scoping is enforced inside the
+  // service by `getAttachedProcedureDraft`.
+  suggest: evalAdminProcedure
+    .input(
+      z.object({
+        agentId: z.string().min(1),
+        procedureId: z.string().min(1),
+        /** Bypass the draft-hash cache and regenerate (Refresh). */
+        force: z.boolean().optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) =>
+      unwrap(
+        await suggestAgentSimulations({
+          organizationId: ctx.session.organizationId,
+          userId: ctx.session.userId,
+          agentId: input.agentId,
+          procedureId: input.procedureId,
+          force: input.force,
+        }),
+        'suggest simulations'
+      )
+    ),
 })

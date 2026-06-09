@@ -8,7 +8,8 @@
 
 import type { AgentEvalAssertion, AgentEvalTarget, SimulationConfig } from '@auxx/types/evals'
 import { err, ok, type Result } from 'neverthrow'
-import { getProcedureVersionById, readCompiled } from '../agents/procedures'
+import { compileProcedure, getProcedureVersionById, readCompiled } from '../agents/procedures'
+import { getAttachedProcedureDraft } from '../agents/procedures/authoring/queries'
 import { buildEffectiveAgentRuntime } from '../ai/agent-framework/effective-runtime'
 import { getCachedAgentById } from '../cache'
 import {
@@ -35,6 +36,14 @@ export interface PrepareRunInput {
     config: SimulationConfig
     assertions: AgentEvalAssertion[]
   }
+  /**
+   * `'pinned'` (default) runs the case's pinned `procedureVersionId` — the
+   * regression-gate semantics headless/CI callers rely on. `'draft'` (the
+   * Simulations editor surface) compiles the attached draft in-memory and runs
+   * that, stamping the snapshot so the run stays attributable. `scope: 'agent'`
+   * is unaffected by the mode in v1.
+   */
+  mode?: 'pinned' | 'draft'
 }
 
 /**
@@ -49,11 +58,12 @@ export async function prepareRunSnapshots(
   const { organizationId, userId } = input
   const { id, name, createdAt, target, config, assertions } = input.case
   const agentId = target.agentId
+  const mode = input.mode ?? 'pinned'
 
-  // Pin the compiled procedure set.
-  const procResult = await resolvePinnedProcedures(organizationId, target)
+  // Pin the compiled procedure set (or the compiled draft, in draft mode).
+  const procResult = await resolveProcedures(organizationId, target, mode)
   if (procResult.isErr()) return err(procResult.error)
-  const procedures = procResult.value
+  const { procedures, runMode, draftContentHash } = procResult.value
 
   // Resolve the effective runtime via the shared builder (no divergent copy).
   const runtime = await buildEffectiveAgentRuntime({
@@ -82,6 +92,8 @@ export async function prepareRunSnapshots(
     limits: { maxCustomerTurns: config.maxCustomerTurns, maxReinvokes: 8, maxIterations: 100 },
     time: { frozenAt: config.timeFrozenAt },
     codeRevision: getCodeRevision(),
+    runMode,
+    draftContentHash,
   })
 
   const definitionSnapshot = buildDefinitionSnapshot({
@@ -96,12 +108,28 @@ export async function prepareRunSnapshots(
   return ok({ definitionSnapshot, runtimeSnapshot })
 }
 
-/** Pin the compiled procedure(s) the run executes against. */
-async function resolvePinnedProcedures(
+interface ResolvedProcedures {
+  procedures: AgentRuntimeSnapshotV1['procedures']
+  runMode: 'pinned' | 'draft'
+  /** Present only when a draft was actually compiled and pinned. */
+  draftContentHash?: string
+}
+
+/** Resolve the compiled procedure(s) the run executes against, honoring `mode`. */
+async function resolveProcedures(
   organizationId: string,
-  target: AgentEvalTarget
-): Promise<Result<AgentRuntimeSnapshotV1['procedures'], EvalServiceError>> {
+  target: AgentEvalTarget,
+  mode: 'pinned' | 'draft'
+): Promise<Result<ResolvedProcedures, EvalServiceError>> {
   if (target.scope === 'procedure') {
+    // Draft mode: compile the attached draft in-memory and pin THAT, leaving the
+    // case's pinned `procedureVersionId` untouched as the record-keeping anchor.
+    if (mode === 'draft') {
+      const drafted = await resolveDraftProcedure(organizationId, target)
+      // No draft / not attached → fall back to pinned (preserves regression-gate).
+      if (drafted) return drafted
+    }
+
     const version = await getProcedureVersionById({
       organizationId,
       procedureVersionId: target.procedureVersionId,
@@ -120,16 +148,50 @@ async function resolvePinnedProcedures(
         message: `Pinned procedure version is not compiled: ${target.procedureVersionId}`,
       })
     }
-    return ok([{ id: target.procedureId, versionId: target.procedureVersionId, compiled }])
+    return ok({
+      procedures: [{ id: target.procedureId, versionId: target.procedureVersionId, compiled }],
+      runMode: 'pinned',
+    })
   }
 
   // Agent scope: pin every procedure the agent can select, each at its run-time
   // (currently active) compiled version — read from the org cache projection.
+  // Unchanged by the run mode in v1.
   const agent = await getCachedAgentById(organizationId, target.agentId)
   const procedures = (agent?.procedures ?? []).map((p) => ({
     id: p.procedureId,
     versionId: p.activeVersionId,
     compiled: p.compiled,
   }))
-  return ok(procedures)
+  return ok({ procedures, runMode: 'pinned' })
+}
+
+/**
+ * Compile the attached draft for a procedure-scope target and pin it. Returns
+ * `null` when no usable draft exists (the caller then falls back to the pinned
+ * version); a draft that fails to compile is a hard `EVAL_VALIDATION` so the run
+ * doesn't silently execute a different graph.
+ */
+async function resolveDraftProcedure(
+  organizationId: string,
+  target: Extract<AgentEvalTarget, { scope: 'procedure' }>
+): Promise<Result<ResolvedProcedures, EvalServiceError> | null> {
+  const draftResult = await getAttachedProcedureDraft({
+    organizationId,
+    agentId: target.agentId,
+    procedureId: target.procedureId,
+  })
+  if (draftResult.isErr()) return null
+  const { compiled, contentHash, errors } = compileProcedure(draftResult.value.draftDoc)
+  if (errors && errors.length > 0) {
+    return err({
+      code: 'EVAL_VALIDATION',
+      message: `Draft does not compile: ${errors.map((e) => e.message).join('; ')}`,
+    })
+  }
+  return ok({
+    procedures: [{ id: target.procedureId, versionId: target.procedureVersionId, compiled }],
+    runMode: 'draft',
+    draftContentHash: contentHash,
+  })
 }
