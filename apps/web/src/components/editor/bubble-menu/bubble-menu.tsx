@@ -51,10 +51,13 @@ export function EditorBubbleMenu({
     setSubPopoverCount((n) => Math.max(0, open ? n + 1 : n - 1))
   }, [])
 
+  const contentRef = useRef<HTMLDivElement>(null)
+
   const state = useBubbleMenuState({
     editor,
     shouldShow,
     forceOpen: subPopoverCount > 0,
+    getMenuEl: () => contentRef.current,
   })
 
   const virtualRef = useRef<{ getBoundingClientRect: () => DOMRect }>({
@@ -75,6 +78,7 @@ export function EditorBubbleMenu({
         <Popover open={state.open} onOpenChange={() => {}}>
           <PopoverAnchor virtualRef={virtualRef} />
           <PopoverContentDialogAware
+            ref={contentRef}
             side='top'
             align='start'
             sideOffset={8}
