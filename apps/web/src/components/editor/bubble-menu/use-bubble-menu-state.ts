@@ -2,7 +2,7 @@
 'use client'
 
 import type { Editor } from '@tiptap/react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 export interface BubbleMenuRange {
   from: number
@@ -22,6 +22,10 @@ interface UseBubbleMenuStateOptions {
    *  the editor loses focus — used while a nested popover (color picker, turn
    *  into menu) is open and steals focus from the editor. */
   forceOpen?: boolean
+  /** Returns the bubble popover content element. Used to keep the menu open
+   *  when focus lives inside it (e.g. focus returned to a bubble button after a
+   *  sub-popover closed) and to ignore clicks landing on it. */
+  getMenuEl?: () => HTMLElement | null
 }
 
 let emptyRect: DOMRect | null = null
@@ -67,6 +71,7 @@ export function useBubbleMenuState({
   editor,
   shouldShow = defaultShouldShow,
   forceOpen = false,
+  getMenuEl,
 }: UseBubbleMenuStateOptions): BubbleMenuState {
   const [state, setState] = useState<BubbleMenuState>({
     open: false,
@@ -74,16 +79,32 @@ export function useBubbleMenuState({
     range: { from: 0, to: 0 },
   })
 
+  // Read latest values inside the effect's listeners without re-subscribing.
+  const forceOpenRef = useRef(forceOpen)
+  forceOpenRef.current = forceOpen
+  const getMenuElRef = useRef(getMenuEl)
+  getMenuElRef.current = getMenuEl
+
   useEffect(() => {
     if (!editor) return
 
     let rafId: number | null = null
 
+    // The bubble follows the text selection, which ProseMirror keeps intact on
+    // blur — so selection alone can't tell us the user clicked away. Keep it
+    // open only while focus is in the editor, a sub-popover is open, or focus
+    // returned to the bubble itself.
+    const hasFocus = () => {
+      if (editor.isFocused || forceOpenRef.current) return true
+      const active = typeof document !== 'undefined' ? document.activeElement : null
+      return !!(active && getMenuElRef.current?.()?.contains(active))
+    }
+
     const compute = () => {
       rafId = null
       if (editor.isDestroyed) return
       const { from, to } = editor.state.selection
-      const ok = shouldShow({ editor, from, to })
+      const ok = hasFocus() && shouldShow({ editor, from, to })
       if (!ok) {
         setState((prev) => (prev.open ? { ...prev, open: false } : prev))
         return
@@ -101,6 +122,21 @@ export function useBubbleMenuState({
       rafId = window.requestAnimationFrame(compute)
     }
 
+    // Close on a click outside the editor and outside any popover (the bubble
+    // itself or a sub-popover). Needed because when the editor is already
+    // blurred — e.g. focus sits on a bubble button after a sub-popover closed —
+    // clicking away fires no editor `blur`, so `compute` would never run.
+    const onPointerDown = (e: PointerEvent) => {
+      if (editor.isDestroyed) return
+      const target = e.target as Element | null
+      if (!target) return
+      if (editor.view.dom.contains(target)) return
+      if (getMenuElRef.current?.()?.contains(target)) return
+      // Radix portals popovers to <body>; ignore clicks inside any of them.
+      if (target.closest('[data-radix-popper-content-wrapper]')) return
+      setState((prev) => (prev.open ? { ...prev, open: false } : prev))
+    }
+
     editor.on('selectionUpdate', schedule)
     editor.on('transaction', schedule)
     editor.on('blur', schedule)
@@ -109,6 +145,7 @@ export function useBubbleMenuState({
     // Reposition on viewport changes too.
     window.addEventListener('scroll', schedule, true)
     window.addEventListener('resize', schedule)
+    document.addEventListener('pointerdown', onPointerDown, true)
 
     schedule()
 
@@ -120,6 +157,7 @@ export function useBubbleMenuState({
       editor.off('focus', schedule)
       window.removeEventListener('scroll', schedule, true)
       window.removeEventListener('resize', schedule)
+      document.removeEventListener('pointerdown', onPointerDown, true)
     }
   }, [editor, shouldShow])
 
