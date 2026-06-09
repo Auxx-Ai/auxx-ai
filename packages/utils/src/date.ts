@@ -1,54 +1,40 @@
 /**
- * Returns a relative time string (e.g., "3 hours ago")
- * @param date - The date to format
- * @returns A relative time string
+ * Returns a relative time string (e.g., "3 hours ago", "in 2 days").
+ * Past dates read "<n> <unit> ago", future dates "in <n> <unit>". In `short`
+ * mode the direction is dropped ("3h", "2d"). Nullish/invalid input returns "-".
+ *
+ * @param date - The date to format (Date, ISO/parsable string, epoch number)
+ * @param short - Compact, direction-less form for tight UI
  */
-export function formatRelativeTime(date: Date | string, short: boolean = false): string {
-  const d = new Date(date)
-  const now = new Date()
-  const diffInSeconds = Math.floor((now.getTime() - d.getTime()) / 1000)
+export function formatRelativeTime(
+  date: Date | string | number | null | undefined,
+  short: boolean = false
+): string {
+  if (date === null || date === undefined) return '-'
+  const d = date instanceof Date ? date : new Date(date)
+  if (Number.isNaN(d.getTime())) return '-'
 
-  if (diffInSeconds < 60) {
-    return `${diffInSeconds} ${short ? 's' : 'seconds ago'}`
+  const diffInSeconds = Math.floor((Date.now() - d.getTime()) / 1000)
+  const isPast = diffInSeconds >= 0
+  const abs = Math.abs(diffInSeconds)
+
+  const phrase = (value: number, unit: string, shortUnit: string): string => {
+    if (short) return `${value}${shortUnit}`
+    const label = `${unit}${value === 1 ? '' : 's'}`
+    return isPast ? `${value} ${label} ago` : `in ${value} ${label}`
   }
 
-  const diffInMinutes = Math.floor(diffInSeconds / 60)
-  if (diffInMinutes < 60) {
-    if (short) {
-      return `${diffInMinutes}m`
-    }
-    return `${diffInMinutes} minute${diffInMinutes === 1 ? '' : 's'} ago`
-  }
-
-  const diffInHours = Math.floor(diffInMinutes / 60)
-  if (diffInHours < 24) {
-    if (short) {
-      return `${diffInHours}h`
-    }
-    return `${diffInHours} hour${diffInHours === 1 ? '' : 's'} ago`
-  }
-
-  const diffInDays = Math.floor(diffInHours / 24)
-  if (diffInDays < 30) {
-    if (short) {
-      return `${diffInDays}d`
-    }
-    return `${diffInDays} day${diffInDays === 1 ? '' : 's'} ago`
-  }
-
-  const diffInMonths = Math.floor(diffInDays / 30)
-  if (diffInMonths < 12) {
-    if (short) {
-      return `${diffInMonths}mo`
-    }
-    return `${diffInMonths} month${diffInMonths === 1 ? '' : 's'} ago`
-  }
-
-  const diffInYears = Math.floor(diffInMonths / 12)
-  if (short) {
-    return `${diffInYears}y`
-  }
-  return `${diffInYears} year${diffInYears === 1 ? '' : 's'} ago`
+  if (abs < 60) return phrase(abs, 'second', 's')
+  const minutes = Math.floor(abs / 60)
+  if (minutes < 60) return phrase(minutes, 'minute', 'm')
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return phrase(hours, 'hour', 'h')
+  const days = Math.floor(hours / 24)
+  if (days < 30) return phrase(days, 'day', 'd')
+  const months = Math.floor(days / 30)
+  if (months < 12) return phrase(months, 'month', 'mo')
+  const years = Math.floor(months / 12)
+  return phrase(years, 'year', 'y')
 }
 
 /**

@@ -28,7 +28,7 @@ import {
   SelectValue,
 } from '@auxx/ui/components/select'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
-import { formatDistanceToNow } from 'date-fns' // For showing relative time
+import { formatRelativeTime } from '@auxx/utils/date'
 import {
   Clock,
   Copy,
@@ -278,17 +278,6 @@ export function MemberList({
     }
     return email?.[0].toUpperCase() || '?'
   }
-  const formatRelativeDate = (date: Date | undefined | null): string => {
-    if (!date) return '-'
-    try {
-      // Make sure it's a Date object
-      const dateObj = date instanceof Date ? date : new Date(date)
-      return formatDistanceToNow(dateObj, { addSuffix: true })
-    } catch (e) {
-      console.error('Error formatting date:', e)
-      return 'Invalid Date'
-    }
-  }
   return (
     <div className='p-3 sm:p-6'>
       <div className='space-y-4'>
@@ -341,8 +330,8 @@ export function MemberList({
                       </div>
                     ) : (
                       <div className='flex flex-row gap-1 '>
-                        <span className=''>Invited {formatRelativeDate(item.data.createdAt)}</span>
-                        <span>Expires {formatRelativeDate(item.data.expiresAt)}</span>
+                        <span className=''>Invited {formatRelativeTime(item.data.createdAt)}</span>
+                        <span>Expires {formatRelativeTime(item.data.expiresAt)}</span>
                       </div>
                     )}
                   </div>

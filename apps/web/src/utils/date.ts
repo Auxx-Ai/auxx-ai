@@ -1,14 +1,5 @@
 import { format, isToday, isYesterday } from 'date-fns'
 
-export function internalDateToDate(internalDate?: string | null): Date {
-  if (!internalDate) return new Date()
-
-  const date = new Date(+internalDate)
-  if (Number.isNaN(date.getTime())) return new Date()
-
-  return date
-}
-
 export const formatRelativeDate = (date: Date | number): string => {
   const dateObj = date instanceof Date ? date : new Date(date)
 
