@@ -14,6 +14,7 @@ import type { AgentToolDefinition } from '../../../../agent-framework/types'
 import type { GetToolDeps } from '../../types'
 import { resolveProcedureAuthoring } from './procedure-authoring-guard'
 import { validateSchemaReferences } from './schema-references'
+import { validateTriggerExamples } from './trigger-examples'
 
 const triggerExampleSchema = {
   type: 'object',
@@ -73,6 +74,10 @@ Optionally pass \`body\` (the step DSL) to seed the procedure now, or omit it an
       if (!name) return { success: false, output: null, error: 'name must be a non-empty string.' }
 
       const whenToUse = typeof args.whenToUse === 'string' ? args.whenToUse : undefined
+      if (args.triggerExamples !== undefined) {
+        const teError = validateTriggerExamples(args.triggerExamples)
+        if (teError) return { success: false, output: null, error: teError }
+      }
       const triggerExamples = Array.isArray(args.triggerExamples)
         ? (args.triggerExamples as unknown[])
         : undefined
