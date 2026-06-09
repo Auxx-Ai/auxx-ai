@@ -10,6 +10,7 @@ import {
   type ValidationResult,
 } from '../base/types'
 import { type ModelCapabilities, ModelType } from '../types'
+import { createObservingFetch } from '../utils'
 import { QWEN_CAPABILITIES, QWEN_MODELS } from './qwen-defaults'
 import { QwenLLMClient } from './qwen-llm-client'
 
@@ -139,6 +140,7 @@ export class QwenClient extends ProviderClient {
     return new OpenAI({
       apiKey: this.requireApiKey(credentials, 'qwen_api_key'),
       baseURL: (credentials.qwen_api_base as string) || QWEN_DEFAULT_BASE_URL,
+      fetch: createObservingFetch('qwen'),
     })
   }
 

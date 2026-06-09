@@ -18,6 +18,106 @@ import {
 
 const logger = createScopedLogger('ProviderUtils')
 
+// ===== LLM HTTP OBSERVABILITY =====
+
+/**
+ * Scoped to `agent-llm` on purpose: the per-session agent run-log only tees
+ * `agent-*` / `kopilot-*` scopes (provider-client scopes are dropped), so these
+ * lines land next to the existing `Calling LLM` / `LLM complete` entries. The
+ * `ProviderUtils` logger above would never reach that file.
+ */
+const llmHttpLogger = createScopedLogger('agent-llm')
+
+/**
+ * Headers always surfaced regardless of the rate-limit name pattern — request
+ * correlation, throttle backoff, and auth-challenge details.
+ */
+const ALWAYS_LOG_HEADERS = new Set([
+  'retry-after',
+  'retry-after-ms', // OpenAI's calibrated backoff hint — not covered by the *ratelimit* pattern
+  'request-id',
+  'x-request-id',
+  'www-authenticate',
+])
+
+type ObservingFetch = (url: RequestInfo | URL, init?: RequestInit) => Promise<Response>
+
+/**
+ * Wrap a provider SDK's `fetch` so every HTTP attempt — including the SDK's
+ * silent 4xx/5xx retries — logs its status, latency, and diagnostic headers into
+ * the agent-session trace. Pass the result as the SDK client's `fetch` option.
+ *
+ * Captures the full failure surface, not just throttling: auth failures (401/403
+ * + `www-authenticate`), bad requests (400), server/overload errors (5xx/529),
+ * and rate limits (429 + `retry-after` + `*-remaining`). Header capture is
+ * name-pattern based (`*ratelimit*` / `*rate-limit*` plus the always-log set), so
+ * it's provider-agnostic: Anthropic emits `anthropic-ratelimit-*`, OpenAI-family
+ * SDKs emit `x-ratelimit-*`.
+ *
+ * Reading the result:
+ * - Two attempts split by a long timestamp gap + a `retry-after` value ⇒ the
+ *   request was *parked* by rate limiting, not the model thinking.
+ * - A 401/403 with `www-authenticate` ⇒ a credential/auth problem.
+ * - One attempt with healthy `*-remaining` ⇒ genuine model latency.
+ *
+ * `latencyMs` is time-to-response-headers. For a streaming 200 that's fast even
+ * when first-token is slow (the body streams separately) — so trust the
+ * attempt count + status + `retry-after`, not `latencyMs`, to spot a throttle.
+ *
+ * Provider variance (status is universal — `429` everywhere — but the rest is not):
+ * - OpenAI: `x-ratelimit-*` + `retry-after-ms`. Anthropic: `anthropic-ratelimit-*`
+ *   + `retry-after`, `529` for overload.
+ * - DeepSeek throttles by holding the connection open and streaming keep-alives,
+ *   NOT by returning `429` — so a throttle there looks like a slow `200`.
+ * - Kimi's `429` is ambiguous (rate-limit vs quota vs account); the reason lives
+ *   in the response body's `error.type`, which this wrapper does not read.
+ * - DeepSeek/Qwen/Kimi don't document `*ratelimit*` quota headers; expect only
+ *   status + latency from them.
+ *
+ * @param provider - provider label included in each line (e.g. `'anthropic'`)
+ * @param baseFetch - underlying fetch (defaults to global `fetch`)
+ */
+export function createObservingFetch(
+  provider: string,
+  baseFetch: ObservingFetch = fetch
+): ObservingFetch {
+  return async (url, init) => {
+    const startedAt = Date.now()
+    const response = await baseFetch(url, init)
+
+    try {
+      const diagnosticHeaders: Record<string, string> = {}
+      response.headers.forEach((value, key) => {
+        const name = key.toLowerCase()
+        if (
+          name.includes('ratelimit') ||
+          name.includes('rate-limit') ||
+          ALWAYS_LOG_HEADERS.has(name)
+        ) {
+          diagnosticHeaders[key] = value
+        }
+      })
+
+      const meta = {
+        provider,
+        status: response.status,
+        latencyMs: Date.now() - startedAt,
+        ...diagnosticHeaders,
+      }
+
+      if (response.status >= 400) {
+        llmHttpLogger.warn('LLM HTTP error response', meta)
+      } else {
+        llmHttpLogger.info('LLM HTTP response', meta)
+      }
+    } catch {
+      // Observability must never break the request path.
+    }
+
+    return response
+  }
+}
+
 // ===== PROVIDER SORTING UTILITIES =====
 
 /**
