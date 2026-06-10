@@ -386,7 +386,13 @@ const SYSTEM_PROMPT = [
   '  shape, e.g. "{\\"status\\":\\"shipped\\"}".',
   '- Set customerContext so the persona can actually play the path (what they',
   '  know, what they want, what they refuse to provide).',
+  '- When the path needs the customer to provide identity, set "claimed" with a',
+  '  concrete, realistic name/email; for any other identifier the path needs (order',
+  '  number, account id) state a concrete value in customerContext. NEVER use a',
+  '  placeholder or redaction like "[email redacted]" — the agent needs usable values.',
   '- channel is "chat" unless the procedure is clearly about email.',
+  '- name: a short label of at most 5 words naming the path under test',
+  '  (e.g. "Happy path", "Missing order number", "Refund refusal"). Not a sentence.',
   '- rationale: one line naming the step/branch the simulation exercises.',
   '- Every simulation must include at least one assertion.',
 ].join('\n')
@@ -459,6 +465,7 @@ const SUGGESTIONS_RESPONSE_SCHEMA = {
               'rationale',
               'openingMessage',
               'customerContext',
+              'claimed',
               'channel',
               'maxCustomerTurns',
               'mocks',
@@ -469,6 +476,17 @@ const SUGGESTIONS_RESPONSE_SCHEMA = {
               rationale: { type: 'string' },
               openingMessage: { type: 'string' },
               customerContext: { type: ['string', 'null'] },
+              // The identity the customer states when asked. Concrete values, never
+              // placeholders — an unfilled path emits `null` for both.
+              claimed: {
+                type: 'object',
+                additionalProperties: false,
+                required: ['name', 'email'],
+                properties: {
+                  name: { type: ['string', 'null'] },
+                  email: { type: ['string', 'null'] },
+                },
+              },
               channel: { type: 'string', enum: ['chat', 'email'] },
               maxCustomerTurns: { type: 'integer' },
               mocks: {
@@ -529,8 +547,9 @@ const SUGGESTIONS_RESPONSE_SCHEMA = {
  * with a `superRefine` that requires exactly the field each `type` needs — so a
  * `terminal_outcome` without `outcome` fails. `type` is a closed enum (no
  * `crm_field`/`local_variable`/`procedure_selected`) and the suggestion object is
- * `.strict()` (no `startingFields`/`subject`/`timeFrozenAt`), so any stray output
- * fails the item's parse and is dropped. This IS the v1 allowlist; no strip pass.
+ * `.strict()` (claimed name/email is allowed; no `startingFields`/`subject`/
+ * `timeFrozenAt`), so any stray output fails the item's parse and is dropped.
+ * This IS the v1 allowlist; no strip pass.
  */
 const authoringAssertionSchema = z
   .object({
@@ -558,6 +577,12 @@ const authoringSuggestionSchema = z
     rationale: z.string().min(1),
     openingMessage: z.string().min(1),
     customerContext: z.string().nullable(),
+    claimed: z
+      .object({
+        name: z.string().nullish(),
+        email: z.string().nullish(),
+      })
+      .nullish(),
     channel: z.enum(['chat', 'email']),
     maxCustomerTurns: z.number().int(),
     mocks: z.array(
@@ -636,7 +661,18 @@ function mapAndValidateItem(
     })
   }
 
-  // 5. Map to persisted shapes.
+  // 5. Map to persisted shapes. Keep only the claimed fields the model actually
+  //    filled — an unused identity path emits `null` for both.
+  const claimedName = item.claimed?.name ?? undefined
+  const claimedEmail = item.claimed?.email ?? undefined
+  const claimed =
+    claimedName || claimedEmail
+      ? {
+          ...(claimedName ? { name: claimedName } : {}),
+          ...(claimedEmail ? { email: claimedEmail } : {}),
+        }
+      : undefined
+
   const assertions: AgentEvalAssertion[] = item.assertions.map((a) => mapAssertion(a))
   const config: SimulationConfig = {
     openingMessage: item.openingMessage,
@@ -644,7 +680,7 @@ function mapAndValidateItem(
     channel: item.channel,
     timeFrozenAt: null,
     maxCustomerTurns: Math.min(8, Math.max(1, item.maxCustomerTurns)),
-    subject: { recordIds: [], identityVerified: false },
+    subject: { recordIds: [], identityVerified: false, ...(claimed ? { claimed } : {}) },
     startingFields: [],
     // Mocked-path suggestions should fail loudly on an unexpected tool call.
     unmatchedToolPolicy: 'error',

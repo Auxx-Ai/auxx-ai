@@ -3,7 +3,8 @@
 // The synthetic customer. `LlmPersonaConversationSource` returns the case's
 // `openingMessage` verbatim on the first turn, then generates each subsequent
 // customer turn with the configured persona model from the redacted visible
-// conversation plus the customer context. It stops when the procedure reaches a
+// conversation plus the customer context and the case's claimed identity. It
+// stops when the procedure reaches a
 // terminal outcome (the executor stops calling it) or the persona itself decides
 // the conversation is resolved (`done`). See plans/evals/phase-1-agent-simulation.md §1.7.
 
@@ -66,6 +67,12 @@ export interface LlmPersonaConfig {
   openingMessage: string
   customerContext: string | null
   channel: 'chat' | 'email'
+  /**
+   * Curated identity the customer states verbatim when asked (from the case's
+   * `subject.claimed`). Keeps the persona from improvising — or, on a
+   * safety-tuned model, redacting — values the scenario already pins.
+   */
+  identity?: { name?: string; email?: string }
   model: { provider: string; model: string }
   callModel: CallModel
   signal?: AbortSignal
@@ -103,14 +110,26 @@ export class LlmPersonaConversationSource implements AgentConversationSource {
       ? `Your situation:\n${this.config.customerContext}`
       : 'You have an ordinary customer support need.'
 
+    const identityLines: string[] = []
+    if (this.config.identity?.name) identityLines.push(`- Name: ${this.config.identity.name}`)
+    if (this.config.identity?.email) identityLines.push(`- Email: ${this.config.identity.email}`)
+    const identityBlock =
+      identityLines.length > 0
+        ? `Your identity (use these EXACT values when the agent asks):\n${identityLines.join('\n')}`
+        : null
+
     const system: Message = {
       role: 'system',
       content: [
         'You are role-playing a CUSTOMER contacting a support agent. Stay in character.',
         channelNote,
         context,
+        ...(identityBlock ? [identityBlock] : []),
         'Reply ONLY as the customer, in the first person. Keep messages short and natural.',
         'Do not narrate, do not act as the agent, do not break character.',
+        'Never reply with placeholders, brackets, or redactions (e.g. "[email redacted]", "XXX", "your-email@example.com") — the agent needs real, usable values.',
+        'State any identity value you were given exactly. If the scenario needs an identifier you were not given (an email, order number, account id), invent a concrete, realistic one once and reuse it consistently.',
+        "Still honestly model what you genuinely don't have — if you truly lack a piece of information, say so rather than fabricating facts the scenario says you lack.",
         'When your issue is resolved or you have nothing left to ask, set "done" to true.',
       ].join('\n'),
     }

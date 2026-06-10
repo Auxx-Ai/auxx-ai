@@ -4,6 +4,7 @@
 import {
   Command,
   CommandEmpty,
+  CommandGroup,
   CommandIconItem,
   CommandInput,
   CommandList,
@@ -19,12 +20,14 @@ export interface ToolSelectOption {
   label: string
   /** AppIcon iconId (lucide name, URL, or emoji); falls back to a wrench. */
   icon?: string
+  /** Toolset brand color used to tint the icon. */
+  iconColor?: string
 }
 
 /** A tool's catalog icon, falling back to a generic wrench when unknown. */
-function OptionIcon({ icon }: { icon?: string }) {
+function OptionIcon({ icon, iconColor }: { icon?: string; iconColor?: string }) {
   if (!icon) return <Wrench className='size-4 text-muted-foreground' />
-  return <AppIcon iconId={icon} size='sm' />
+  return <AppIcon iconId={icon} color={iconColor} size='sm' />
 }
 
 /**
@@ -57,7 +60,7 @@ export function ToolSelect({
           placeholder={placeholder}
           asCombobox
           className='ps-0 pe-1 w-full'>
-          <OptionIcon icon={selected?.icon} />
+          <OptionIcon icon={selected?.icon} iconColor={selected?.iconColor} />
           <span className='truncate text-sm'>{selected?.label}</span>
         </PickerTrigger>
       </PopoverTrigger>
@@ -66,19 +69,21 @@ export function ToolSelect({
           <CommandInput placeholder='Search tools...' />
           <CommandList>
             <CommandEmpty>No tools found.</CommandEmpty>
-            {options.map((o) => (
-              <CommandIconItem
-                key={o.value}
-                // Search matches on both the human label and the tool name.
-                value={`${o.label} ${o.value}`}
-                icon={<OptionIcon icon={o.icon} />}
-                label={o.label}
-                onSelect={() => {
-                  onChange(o.value)
-                  setOpen(false)
-                }}
-              />
-            ))}
+            <CommandGroup>
+              {options.map((o) => (
+                <CommandIconItem
+                  key={o.value}
+                  // Search matches on both the human label and the tool name.
+                  value={`${o.label} ${o.value}`}
+                  icon={<OptionIcon icon={o.icon} iconColor={o.iconColor} />}
+                  label={o.label}
+                  onSelect={() => {
+                    onChange(o.value)
+                    setOpen(false)
+                  }}
+                />
+              ))}
+            </CommandGroup>
           </CommandList>
         </Command>
       </PopoverContent>

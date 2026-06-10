@@ -3,7 +3,6 @@
 
 import type { EvalRunStatus } from '@auxx/types/evals'
 import { Alert, AlertDescription } from '@auxx/ui/components/alert'
-import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
@@ -16,6 +15,7 @@ import { useEffect, useState } from 'react'
 import { api } from '~/trpc/react'
 import { useEvalRunActions, useEvalRunState } from '../stores/use-eval-run-store'
 import { EvalAssertionResultRow } from './eval-assertion-result-row'
+import { EvalDrillBar } from './eval-drill-bar'
 import { EvalStatusDot, EvalStatusPill } from './eval-status-pill'
 import { EvalTraceView } from './eval-trace-view'
 
@@ -89,20 +89,39 @@ export function EvalRunDetail({ runId, onSelectRun }: EvalRunDetailProps) {
     if (live.connectionStatus === 'error') void runQuery.refetch()
   }, [live.connectionStatus, runQuery])
 
+  // The back bar carries the run-history switcher on its right; it stays mounted
+  // across loading / not-found so navigation never disappears.
+  const bar = (
+    <EvalDrillBar
+      title='Run detail'
+      actions={
+        caseId ? (
+          <RunHistoryPopover caseId={caseId} activeRunId={runId} onSelectRun={onSelectRun} />
+        ) : null
+      }
+    />
+  )
+
   if (runQuery.isLoading) {
     return (
-      <div className='flex h-40 items-center justify-center'>
-        <Spinner className='size-5 text-muted-foreground' />
-      </div>
+      <>
+        {bar}
+        <div className='flex h-40 items-center justify-center'>
+          <Spinner className='size-5 text-muted-foreground' />
+        </div>
+      </>
     )
   }
   if (!row) {
     return (
-      <EmptySection
-        icon={<CircleDot className='size-4' />}
-        title='Run not found'
-        description='This run may have been removed.'
-      />
+      <>
+        {bar}
+        <EmptySection
+          icon={<CircleDot className='size-4' />}
+          title='Run not found'
+          description='This run may have been removed.'
+        />
+      </>
     )
   }
 
@@ -110,74 +129,67 @@ export function EvalRunDetail({ runId, onSelectRun }: EvalRunDetailProps) {
   const isLive = !TERMINAL.has(status)
   const banner = BANNER[status]
   const assertions = live.assertionResults.length ? live.assertionResults : []
-  // The run executed the draft (not the pinned version) when prepared in draft mode.
-  const ranDraft = (row.runtimeSnapshot as { runMode?: string }).runMode === 'draft'
 
   return (
-    <div>
-      {/* Verdict banner + run-history switcher */}
-      <div className='p-3'>
-        <Alert variant={banner.variant} className='flex items-start justify-between gap-2'>
-          <AlertDescription className='flex items-center gap-2'>
-            <EvalStatusPill status={status} />
-            {ranDraft ? (
-              <Badge variant='pill' size='sm'>
-                Draft
-              </Badge>
-            ) : null}
-            <span>{row.error ? `${banner.sentence} ${row.error}` : banner.sentence}</span>
-          </AlertDescription>
-          {caseId ? (
-            <RunHistoryPopover caseId={caseId} activeRunId={runId} onSelectRun={onSelectRun} />
-          ) : null}
-        </Alert>
-      </div>
-
-      <Section
-        title='Verdict'
-        icon={<ListChecks className='size-4' />}
-        description='Per-assertion pass/fail for this run.'
-        className={SECTION_BLEED}
-        collapsible>
-        <div className='flex flex-col ps-2 pe-4'>
-          {assertions.length ? (
-            assertions.map((r) => <EvalAssertionResultRow key={r.assertionId} result={r} />)
-          ) : (
-            <EmptySection
-              icon={<ListChecks className='size-4' />}
-              title={isLive ? 'Grading pending' : 'No assertion results'}
-              description={
-                isLive ? 'Assertions are graded once the conversation completes.' : undefined
-              }
-              loading={isLive}
-            />
-          )}
+    <>
+      {bar}
+      <ScrollArea className='min-h-0 flex-1' scrollbarClassName='w-1.5'>
+        {/* Verdict banner */}
+        <div className='p-3'>
+          <Alert variant={banner.variant}>
+            <AlertDescription className='flex flex-wrap items-center gap-2 opacity-100'>
+              <EvalStatusPill status={status} />
+              <span>{row.error ? `${banner.sentence} ${row.error}` : banner.sentence}</span>
+            </AlertDescription>
+          </Alert>
         </div>
-      </Section>
 
-      <Section
-        title='Trace'
-        icon={<History className='size-4' />}
-        description='The conversation and tool calls, in order.'
-        className={SECTION_BLEED}
-        collapsible>
-        <div className='flex flex-col ps-2 pe-4'>
-          <EvalTraceView trace={live.trace} isLive={isLive} />
-        </div>
-      </Section>
+        <Section
+          title='Verdict'
+          icon={<ListChecks className='size-4' />}
+          description='Per-assertion pass/fail for this run.'
+          className={SECTION_BLEED}
+          collapsible>
+          <div className='flex flex-col ps-2 pe-4'>
+            {assertions.length ? (
+              assertions.map((r) => <EvalAssertionResultRow key={r.assertionId} result={r} />)
+            ) : (
+              <EmptySection
+                icon={<ListChecks className='size-4' />}
+                title={isLive ? 'Grading pending' : 'No assertion results'}
+                description={
+                  isLive ? 'Assertions are graded once the conversation completes.' : undefined
+                }
+                loading={isLive}
+              />
+            )}
+          </div>
+        </Section>
 
-      <Section
-        title='Snapshot'
-        icon={<FileJson className='size-4' />}
-        description='The exact runtime that executed — models, limits, mock policy.'
-        className={SECTION_BLEED}
-        collapsible
-        initialOpen={false}>
-        <div className='flex flex-col ps-2 pe-4'>
-          <SnapshotTab runtimeSnapshot={row.runtimeSnapshot} />
-        </div>
-      </Section>
-    </div>
+        <Section
+          title='Trace'
+          icon={<History className='size-4' />}
+          description='The conversation and tool calls, in order.'
+          className={SECTION_BLEED}
+          collapsible>
+          <div className='flex flex-col ps-2 pe-4'>
+            <EvalTraceView trace={live.trace} isLive={isLive} />
+          </div>
+        </Section>
+
+        <Section
+          title='Snapshot'
+          icon={<FileJson className='size-4' />}
+          description='The exact runtime that executed — models, limits, mock policy.'
+          className={SECTION_BLEED}
+          collapsible
+          initialOpen={false}>
+          <div className='flex flex-col ps-2 pe-4'>
+            <SnapshotTab runtimeSnapshot={row.runtimeSnapshot} />
+          </div>
+        </Section>
+      </ScrollArea>
+    </>
   )
 }
 

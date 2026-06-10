@@ -53,6 +53,27 @@ function formatValue(value: unknown): string {
   return JSON.stringify(value)
 }
 
+/** LLM-judge verdict shape (response_criteria / terminal_outcome / …). */
+type JudgeActual = { rationale: string; evidenceEventIds: string[] }
+function asJudgeActual(value: unknown): JudgeActual | null {
+  if (value == null || typeof value !== 'object') return null
+  const v = value as Record<string, unknown>
+  if (typeof v.rationale !== 'string') return null
+  const ids = Array.isArray(v.evidenceEventIds)
+    ? v.evidenceEventIds.filter((x): x is string => typeof x === 'string')
+    : []
+  return { rationale: v.rationale, evidenceEventIds: ids }
+}
+
+/** Tool-match verdict shape (tool_called / tool_not_called). */
+type ToolActual = { toolName: string; args?: unknown }
+function asToolActual(value: unknown): ToolActual | null {
+  if (value == null || typeof value !== 'object') return null
+  const v = value as Record<string, unknown>
+  if (typeof v.toolName !== 'string') return null
+  return { toolName: v.toolName, args: v.args }
+}
+
 interface EvalAssertionResultRowProps {
   result: AssertionResult
   /** 0-based indent; also aligns the expanded detail under the row title. */
@@ -62,7 +83,9 @@ interface EvalAssertionResultRowProps {
 export function EvalAssertionResultRow({ result, depth = 0 }: EvalAssertionResultRowProps) {
   const [open, setOpen] = useState(false)
   const expected = expectedSummary(result)
-  const hasDetail = Boolean(result.note) || result.actual !== undefined
+  const judge = asJudgeActual(result.actual)
+  const tool = asToolActual(result.actual)
+  const hasDetail = Boolean(result.note) || result.actual != null
 
   return (
     <TreeRow
@@ -81,13 +104,46 @@ export function EvalAssertionResultRow({ result, depth = 0 }: EvalAssertionResul
       <div
         className='space-y-2 py-1.5 pe-2 text-xs'
         style={{ paddingLeft: `${0.5 + (depth + 1) * 1.5}rem` }}>
-        {result.actual !== undefined ? (
+        {judge ? (
+          <>
+            <p className={result.status === 'error' ? 'text-amber-600' : 'text-foreground'}>
+              {judge.rationale}
+            </p>
+            {judge.evidenceEventIds.length > 0 ? (
+              <div className='flex flex-wrap items-center gap-1'>
+                <span className='text-muted-foreground'>Evidence:</span>
+                {judge.evidenceEventIds.map((id) => (
+                  <span
+                    key={id}
+                    title={id}
+                    className='rounded bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground'>
+                    {id.replace(/^evt-/, '').slice(0, 6)}
+                  </span>
+                ))}
+              </div>
+            ) : null}
+          </>
+        ) : tool ? (
+          <div className='space-y-1'>
+            <div>
+              <span className='text-muted-foreground'>Tool: </span>
+              <span className='font-mono'>{tool.toolName}</span>
+            </div>
+            {tool.args !== undefined ? (
+              <pre className='overflow-x-auto rounded bg-muted px-2 py-1.5 font-mono text-[11px]'>
+                {JSON.stringify(tool.args, null, 2)}
+              </pre>
+            ) : null}
+          </div>
+        ) : result.actual !== undefined ? (
           <div>
             <span className='text-muted-foreground'>Actual: </span>
             <span className='font-mono break-all'>{formatValue(result.actual)}</span>
           </div>
         ) : null}
-        {result.note ? (
+        {/* `note` duplicates the judge rationale on a failed criterion — only show it
+            when there's no judge verdict already rendering that text. */}
+        {result.note && !judge ? (
           <p className={result.status === 'error' ? 'text-amber-600' : 'text-muted-foreground'}>
             {result.status === 'error' ? 'Grading could not complete: ' : ''}
             {result.note}

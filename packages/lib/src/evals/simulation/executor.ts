@@ -377,6 +377,7 @@ export async function runAgentSimulation(
     openingMessage: config.openingMessage,
     customerContext: config.customerContext,
     channel: config.channel,
+    identity: config.subject.claimed,
     model: runtimeSnapshot.personaModel,
     callModel,
     signal,

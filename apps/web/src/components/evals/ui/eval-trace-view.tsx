@@ -4,13 +4,17 @@
 import type { EvalTraceEvent } from '@auxx/types/evals'
 import { EmptySection } from '@auxx/ui/components/section'
 import { Activity } from 'lucide-react'
-import { EvalTraceEventCard } from './eval-trace-event-card'
+import { EvalAgentMessage } from './messages/eval-agent-message'
+import { EvalCustomerMessage } from './messages/eval-customer-message'
+import { groupTrace } from './messages/eval-trace-grouping'
 
 /**
- * The chronological trace of an agent simulation run — a stacked list of
- * {@link EvalTraceEventCard}s in sequence order. Live (via the run store) or
- * replayed from the persisted row; the view itself is a pure render of whatever
- * events it's handed.
+ * The chronological trace of an agent simulation run, rendered as a
+ * conversation — the customer's turns as right-aligned bubbles, the agent's
+ * replies/tool work/notices in a sparkle-avatar column, matching the kopilot
+ * transcript (`kopilot-message-list.tsx`). Live (via the run store) or replayed
+ * from the persisted row; the view is a pure render of whatever events it's
+ * handed via {@link groupTrace}.
  */
 
 interface EvalTraceViewProps {
@@ -35,13 +39,17 @@ export function EvalTraceView({ trace, isLive }: EvalTraceViewProps) {
     )
   }
 
-  const ordered = [...trace].sort((a, b) => a.sequence - b.sequence)
+  const turns = groupTrace(trace)
 
   return (
-    <div className='space-y-1.5'>
-      {ordered.map((event) => (
-        <EvalTraceEventCard key={event.id} event={event} />
-      ))}
+    <div className='flex flex-col gap-3'>
+      {turns.map((turn) =>
+        turn.kind === 'customer' ? (
+          <EvalCustomerMessage key={turn.id} text={turn.text} />
+        ) : (
+          <EvalAgentMessage key={turn.id} runs={turn.runs} />
+        )
+      )}
       {isLive ? (
         <div className='flex items-center gap-2 px-2.5 py-1.5 text-xs text-muted-foreground'>
           <span className='inline-block size-2 animate-pulse rounded-full bg-blue-500' />
