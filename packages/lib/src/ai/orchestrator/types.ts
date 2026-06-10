@@ -161,7 +161,11 @@ export interface UsageTrackingRequest {
   providerType?: ProviderTypeValue
   /** Detailed credential source: SYSTEM, CUSTOM, MODEL_SPECIFIC, or LOAD_BALANCED */
   credentialSource?: CredentialSourceType
-  /** Credits consumed for this request (default 1 for system providers) */
+  /**
+   * Explicit credit charge override for non-token-metered SYSTEM calls (e.g.
+   * audio transcription, priced per minute). When omitted, SYSTEM LLM calls are
+   * metered from real USD COGS; CUSTOM/BYO calls always charge 0.
+   */
   creditsUsed?: number
   /** Source of the AI usage: compose, workflow, dataset, chat, other */
   source?: UsageSource
@@ -174,8 +178,7 @@ export interface UsageTrackingService {
   trackUsageBatch?(requests: UsageTrackingRequest[]): Promise<void>
   checkQuotaAvailable?(
     organizationId: string,
-    provider: string,
-    estimatedTokens: number
+    provider: string
   ): Promise<{
     available: boolean
     reason?: string

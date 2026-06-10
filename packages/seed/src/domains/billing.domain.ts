@@ -209,11 +209,11 @@ const BOOLEAN_GATES = {
 /**
  * Usage limits (per billing cycle) keyed by plan tier.
  *
- * `monthlyAiCredits` is the primary AI credit pool — LLM calls decrement it
- * by the model's credit multiplier (1/3/8 for small/medium/large tiers).
+ * `monthlyAiCredits` is the primary AI credit pool — LLM calls decrement it by
+ * actual USD COGS metered from token usage (`1 credit = $0.0001` of list price).
  *
  * `aiCompletionsPerMonthHard` is an abuse-prevention ceiling on raw call count
- * (sized at ~10× the credit pool). Hitting it is an exceptional event.
+ * (independent of credit cost). Hitting it is an exceptional event.
  */
 const USAGE_LIMITS = {
   demo: {
@@ -223,7 +223,7 @@ const USAGE_LIMITS = {
     outboundEmailsPerMonthSoft: 0,
     workflowRunsPerMonthHard: 10,
     workflowRunsPerMonthSoft: 8,
-    monthlyAiCredits: 20,
+    monthlyAiCredits: 2_000,
     aiCompletionsPerMonthHard: 200,
     aiCompletionsPerMonthSoft: 160,
     aiTranscriptionsPerMonthHard: 50,
@@ -242,7 +242,7 @@ const USAGE_LIMITS = {
     outboundEmailsPerMonthSoft: 80,
     workflowRunsPerMonthHard: 100,
     workflowRunsPerMonthSoft: 80,
-    monthlyAiCredits: 50,
+    monthlyAiCredits: 5_000,
     aiCompletionsPerMonthHard: 500,
     aiCompletionsPerMonthSoft: 400,
     aiTranscriptionsPerMonthHard: 100,
@@ -261,7 +261,7 @@ const USAGE_LIMITS = {
     outboundEmailsPerMonthSoft: 800,
     workflowRunsPerMonthHard: 5000,
     workflowRunsPerMonthSoft: 4000,
-    monthlyAiCredits: 600,
+    monthlyAiCredits: 60_000,
     aiCompletionsPerMonthHard: 6000,
     aiCompletionsPerMonthSoft: 4800,
     aiTranscriptionsPerMonthHard: 1500,
@@ -280,7 +280,7 @@ const USAGE_LIMITS = {
     outboundEmailsPerMonthSoft: 8000,
     workflowRunsPerMonthHard: 15000,
     workflowRunsPerMonthSoft: 12000,
-    monthlyAiCredits: 1500,
+    monthlyAiCredits: 150_000,
     aiCompletionsPerMonthHard: 15000,
     aiCompletionsPerMonthSoft: 12000,
     aiTranscriptionsPerMonthHard: 5000,
@@ -314,10 +314,11 @@ const USAGE_LIMITS = {
 } as const
 
 /**
- * Trial credit override: trial users get 200 credits regardless of which plan
- * they are trialing. This is read in the quota-service when a trial starts.
+ * Trial credit override: trial users get 20,000 credits (≈ $2 of AI COGS)
+ * regardless of which plan they are trialing. Read in the quota-service when a
+ * trial starts.
  */
-export const TRIAL_MONTHLY_AI_CREDITS = 200
+export const TRIAL_MONTHLY_AI_CREDITS = 20_000
 export const TRIAL_AI_COMPLETIONS_HARD = 2000
 
 /**

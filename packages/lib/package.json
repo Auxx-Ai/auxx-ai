@@ -130,6 +130,12 @@
       "import": "./dist/ai/quota/index.mjs",
       "default": "./src/ai/quota/index.ts"
     },
+    "./ai/quota/client": {
+      "types": "./src/ai/quota/client.ts",
+      "source": "./src/ai/quota/client.ts",
+      "import": "./dist/ai/quota/client.mjs",
+      "default": "./src/ai/quota/client.ts"
+    },
     "./approvals": {
       "types": "./src/approvals/index.ts",
       "source": "./src/approvals/index.ts",

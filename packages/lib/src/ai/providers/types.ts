@@ -72,13 +72,30 @@ export interface ModelCapabilities {
     systemMessages: boolean
     fileInput: boolean
   }
-  costPer1kTokens?: { input: number; output: number }
   /**
-   * Multiplier applied to the org credit pool when this model is used
-   * for a SYSTEM LLM call. Small tier = 1, medium = 3, large = 5.
-   * Defaults to 1 when unset.
+   * Model list price per 1k tokens (USD COGS). Required for any model offerable
+   * on SYSTEM credentials — credits are metered from this. A model without it
+   * can only run on a customer's own (BYO) key.
+   *
+   * `cachedInput`/`cacheWrite` are the published prompt-cache read/write prices;
+   * omit them when the provider doesn't publish cache pricing for the model.
+   * `longContext` holds higher-price tiers (ascending by `over` threshold) for
+   * providers that bill long-context requests at a premium; the whole call is
+   * billed at the tier matching its total input size.
    */
-  creditMultiplier?: 1 | 3 | 5
+  costPer1kTokens?: {
+    input: number
+    output: number
+    cachedInput?: number
+    cacheWrite?: number
+    longContext?: Array<{
+      over: number
+      input: number
+      output: number
+      cachedInput?: number
+      cacheWrite?: number
+    }>
+  }
   deprecated?: boolean
   retired?: boolean
   replacement?: string
@@ -516,14 +533,14 @@ export const HIDDEN_VALUE = '__HIDDEN__'
 
 /**
  * Default credit limits by quota type.
- * Credits are deducted per LLM invocation × model multiplier (1/3/8 for small/medium/large).
- * Plan-specific values come from the plan's `monthlyAiCredits` feature limit; these are only
+ * Credits meter actual USD COGS (`1 credit = $0.0001` of list price). Plan-specific
+ * values come from the plan's `monthlyAiCredits` feature limit; these are only
  * fallbacks when no plan is resolved.
  */
 export const DEFAULT_QUOTA_LIMITS = {
-  [ProviderQuotaType.TRIAL]: 200,
-  [ProviderQuotaType.FREE]: 50,
-  [ProviderQuotaType.PAID]: 600,
+  [ProviderQuotaType.TRIAL]: 20_000,
+  [ProviderQuotaType.FREE]: 5_000,
+  [ProviderQuotaType.PAID]: 60_000,
 } as const
 
 export const DEFAULT_CACHE_TTL = {

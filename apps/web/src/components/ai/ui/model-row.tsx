@@ -7,11 +7,11 @@ import { cn } from '@auxx/ui/lib/utils'
 import { Settings } from 'lucide-react'
 import type React from 'react'
 import { useState } from 'react'
+import { ModelCostBadge } from '~/components/ai/ui/model-cost-badge'
 import { ModelToggle } from '~/components/ai/ui/model-toggle'
 import { Tooltip } from '~/components/global/tooltip'
 import ModelIcon from '~/components/workflow/ui/model-parameter/model-icon'
 import { CredentialConfigurationDialog } from './credential-configuration-dialog'
-import { CreditMultiplierBadge } from './credit-multiplier-badge'
 import { FeatureBadges } from './feature-badges'
 import { FetchFrom, type ModelData, type ProviderConfiguration } from './utils'
 
@@ -69,7 +69,7 @@ export const ModelRow: React.FC<ModelRowProps> = ({
               C
             </span>
           )}
-          {model.creditMultiplier && <CreditMultiplierBadge multiplier={model.creditMultiplier} />}
+          <ModelCostBadge costPer1kTokens={model.costPer1kTokens} />
           {/* Feature badges */}
           <FeatureBadges
             features={model.features}

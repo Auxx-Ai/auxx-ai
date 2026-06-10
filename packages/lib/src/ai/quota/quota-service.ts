@@ -200,10 +200,15 @@ export class QuotaService {
   }
 
   /**
-   * Atomically consume credits from monthly pool first, then bonus pool.
+   * Atomically consume metered credits: monthly pool first, then bonus pool,
+   * then **overdraft**. Called from `UsageTrackingService` on SYSTEM calls with
+   * the actual USD-COGS-metered credit amount.
    *
-   * Called from `UsageTrackingService.trackUsage` on SYSTEM calls.
-   * The amount is `modelMultiplier` — 1/3/8 for small/medium/large tiers.
+   * Soft-landing model: a run that starts with a positive balance always
+   * finishes. Spend order is monthly → bonus → remainder. The bonus pool floors
+   * at 0, but any final remainder is still added to `quotaUsed`, so `quotaUsed`
+   * may exceed `quotaLimit` (the overdraft). The next run's turn-start check
+   * (`hasAvailableQuota`) then blocks until the cycle resets.
    *
    * Returns the split between pools for logging/analytics.
    */
@@ -235,20 +240,11 @@ export class QuotaService {
 
       const monthlyAvailable = Math.max(0, row.quotaLimit - row.quotaUsed)
       const fromMonthly = Math.min(amount, monthlyAvailable)
-      const remaining = amount - fromMonthly
-
-      if (fromMonthly > 0) {
-        await tx
-          .update(schema.OrganizationAiQuota)
-          .set({
-            quotaUsed: sql`${schema.OrganizationAiQuota.quotaUsed} + ${fromMonthly}`,
-          })
-          .where(eq(schema.OrganizationAiQuota.organizationId, this.organizationId))
-      }
+      let remaining = amount - fromMonthly
 
       let fromBonus = 0
       if (remaining > 0) {
-        // Spend from bonus pool; floor at 0 (no overdraft).
+        // Spend from bonus pool; floor at 0.
         const [sub] = await tx
           .select()
           .from(schema.PlanSubscription)
@@ -264,6 +260,19 @@ export class QuotaService {
             })
             .where(eq(schema.PlanSubscription.id, sub.id))
         }
+        remaining -= fromBonus
+      }
+
+      // Increment quotaUsed by what monthly covered PLUS any overdraft remainder
+      // (the part neither pool could absorb). quotaUsed may exceed quotaLimit.
+      const monthlyIncrement = fromMonthly + remaining
+      if (monthlyIncrement > 0) {
+        await tx
+          .update(schema.OrganizationAiQuota)
+          .set({
+            quotaUsed: sql`${schema.OrganizationAiQuota.quotaUsed} + ${monthlyIncrement}`,
+          })
+          .where(eq(schema.OrganizationAiQuota.organizationId, this.organizationId))
       }
 
       return { fromMonthly, fromBonus }

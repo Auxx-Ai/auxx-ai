@@ -46,7 +46,6 @@ export const ANTHROPIC_MODELS: Record<string, ModelCapabilities> = {
   'claude-opus-4-6': {
     provider: 'anthropic',
     modelId: 'claude-opus-4-6',
-    creditMultiplier: 5,
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
     displayName: 'Claude Opus 4.6',
     icon: 'anthropic',
@@ -63,7 +62,7 @@ export const ANTHROPIC_MODELS: Record<string, ModelCapabilities> = {
       systemMessages: true,
       fileInput: true,
     },
-    costPer1kTokens: { input: 0.015, output: 0.075 },
+    costPer1kTokens: { input: 0.005, output: 0.025, cachedInput: 0.0005, cacheWrite: 0.00625 },
     description: 'Claude Opus 4.6 - most powerful model with advanced reasoning',
     parameterRules: [
       {
@@ -107,7 +106,6 @@ export const ANTHROPIC_MODELS: Record<string, ModelCapabilities> = {
   'claude-sonnet-4-6': {
     provider: 'anthropic',
     modelId: 'claude-sonnet-4-6',
-    creditMultiplier: 3,
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
     displayName: 'Claude Sonnet 4.6',
     icon: 'anthropic',
@@ -124,7 +122,7 @@ export const ANTHROPIC_MODELS: Record<string, ModelCapabilities> = {
       systemMessages: true,
       fileInput: true,
     },
-    costPer1kTokens: { input: 0.003, output: 0.015 },
+    costPer1kTokens: { input: 0.003, output: 0.015, cachedInput: 0.0003, cacheWrite: 0.00375 },
     description: 'Claude Sonnet 4.6 - latest generation with enhanced capabilities',
     parameterRules: [
       {
@@ -168,7 +166,6 @@ export const ANTHROPIC_MODELS: Record<string, ModelCapabilities> = {
   'claude-sonnet-4-5-20250929': {
     provider: 'anthropic',
     modelId: 'claude-sonnet-4-5-20250929',
-    creditMultiplier: 3,
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
     displayName: 'Claude Sonnet 4.5',
     icon: 'anthropic',
@@ -185,7 +182,7 @@ export const ANTHROPIC_MODELS: Record<string, ModelCapabilities> = {
       systemMessages: true,
       fileInput: true,
     },
-    costPer1kTokens: { input: 0.003, output: 0.015 },
+    costPer1kTokens: { input: 0.003, output: 0.015, cachedInput: 0.0003, cacheWrite: 0.00375 },
     description: 'Claude Sonnet 4.5 - balanced performance and capability',
     parameterRules: [
       {
@@ -229,7 +226,6 @@ export const ANTHROPIC_MODELS: Record<string, ModelCapabilities> = {
   'claude-haiku-4-5-20251001': {
     provider: 'anthropic',
     modelId: 'claude-haiku-4-5-20251001',
-    creditMultiplier: 1,
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
     displayName: 'Claude Haiku 4.5',
     icon: 'anthropic',
@@ -246,7 +242,7 @@ export const ANTHROPIC_MODELS: Record<string, ModelCapabilities> = {
       systemMessages: true,
       fileInput: true,
     },
-    costPer1kTokens: { input: 0.001, output: 0.005 },
+    costPer1kTokens: { input: 0.001, output: 0.005, cachedInput: 0.0001, cacheWrite: 0.00125 },
     description: 'Claude Haiku 4.5 - fastest model with strong capability',
     parameterRules: [
       {
@@ -290,7 +286,8 @@ export const ANTHROPIC_MODELS: Record<string, ModelCapabilities> = {
   'claude-sonnet-4-20250514': {
     provider: 'anthropic',
     modelId: 'claude-sonnet-4-20250514',
-    creditMultiplier: 3,
+    deprecated: true,
+    replacement: 'claude-sonnet-4-6',
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
     displayName: 'Claude Sonnet 4',
     icon: 'anthropic',
@@ -307,7 +304,7 @@ export const ANTHROPIC_MODELS: Record<string, ModelCapabilities> = {
       systemMessages: true,
       fileInput: true,
     },
-    costPer1kTokens: { input: 0.003, output: 0.015 },
+    costPer1kTokens: { input: 0.003, output: 0.015, cachedInput: 0.0003, cacheWrite: 0.00375 },
     description: 'Claude Sonnet 4 - latest generation with enhanced capabilities',
     parameterRules: [
       {
@@ -351,7 +348,8 @@ export const ANTHROPIC_MODELS: Record<string, ModelCapabilities> = {
   'claude-opus-4-20250514': {
     provider: 'anthropic',
     modelId: 'claude-opus-4-20250514',
-    creditMultiplier: 5,
+    deprecated: true,
+    replacement: 'claude-opus-4-6',
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
     displayName: 'Claude Opus 4',
     icon: 'anthropic',
@@ -368,7 +366,7 @@ export const ANTHROPIC_MODELS: Record<string, ModelCapabilities> = {
       systemMessages: true,
       fileInput: true,
     },
-    costPer1kTokens: { input: 0.015, output: 0.075 },
+    costPer1kTokens: { input: 0.015, output: 0.075, cachedInput: 0.0015, cacheWrite: 0.01875 },
     description: 'Claude Opus 4 - most powerful model with advanced reasoning',
     parameterRules: [
       {
@@ -412,7 +410,8 @@ export const ANTHROPIC_MODELS: Record<string, ModelCapabilities> = {
   'claude-3-7-sonnet-20250219': {
     provider: 'anthropic',
     modelId: 'claude-3-7-sonnet-20250219',
-    creditMultiplier: 3,
+    retired: true,
+    replacement: 'claude-sonnet-4-6',
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
     displayName: 'Claude 3.7 Sonnet',
     icon: 'anthropic',
@@ -429,7 +428,7 @@ export const ANTHROPIC_MODELS: Record<string, ModelCapabilities> = {
       systemMessages: true,
       fileInput: true,
     },
-    costPer1kTokens: { input: 0.003, output: 0.015 },
+    costPer1kTokens: { input: 0.003, output: 0.015, cachedInput: 0.0003, cacheWrite: 0.00375 },
     description: 'Latest Claude model with enhanced reasoning capabilities',
     parameterRules: [
       {
@@ -461,7 +460,8 @@ export const ANTHROPIC_MODELS: Record<string, ModelCapabilities> = {
   'claude-3-5-sonnet-20241022': {
     provider: 'anthropic',
     modelId: 'claude-3-5-sonnet-20241022',
-    creditMultiplier: 3,
+    retired: true,
+    replacement: 'claude-sonnet-4-6',
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
     displayName: 'Claude 3.5 Sonnet (Oct 2024)',
     icon: 'anthropic',
@@ -478,7 +478,7 @@ export const ANTHROPIC_MODELS: Record<string, ModelCapabilities> = {
       systemMessages: true,
       fileInput: true,
     },
-    costPer1kTokens: { input: 0.003, output: 0.015 },
+    costPer1kTokens: { input: 0.003, output: 0.015, cachedInput: 0.0003, cacheWrite: 0.00375 },
     description: 'Claude 3.5 Sonnet with computer use and vision capabilities',
     parameterRules: [
       {
@@ -522,7 +522,8 @@ export const ANTHROPIC_MODELS: Record<string, ModelCapabilities> = {
   'claude-3-5-haiku-20241022': {
     provider: 'anthropic',
     modelId: 'claude-3-5-haiku-20241022',
-    creditMultiplier: 1,
+    retired: true,
+    replacement: 'claude-haiku-4-5-20251001',
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
     displayName: 'Claude 3.5 Haiku',
     icon: 'anthropic',
@@ -539,7 +540,7 @@ export const ANTHROPIC_MODELS: Record<string, ModelCapabilities> = {
       systemMessages: true,
       fileInput: true,
     },
-    costPer1kTokens: { input: 0.001, output: 0.005 },
+    costPer1kTokens: { input: 0.0008, output: 0.004, cachedInput: 0.00008, cacheWrite: 0.001 },
     description: 'Claude 3.5 Haiku - enhanced speed and capability',
     parameterRules: [
       {
@@ -625,7 +626,7 @@ export const ANTHROPIC_MODELS: Record<string, ModelCapabilities> = {
       systemMessages: false,
       fileInput: false,
     },
-    costPer1kTokens: { input: 0.00015, output: 0 },
+    costPer1kTokens: { input: 0.00012, output: 0 },
     description: 'Voyage AI large context embedding model',
     parameterRules: [],
   },
@@ -790,7 +791,7 @@ export const ANTHROPIC_MODELS: Record<string, ModelCapabilities> = {
       systemMessages: false,
       fileInput: false,
     },
-    costPer1kTokens: { input: 0.00018, output: 0 },
+    costPer1kTokens: { input: 0.00012, output: 0 },
     description: 'Voyage Finance 2 - optimized for financial documents (fixed 1024 dimensions)',
     parameterRules: [],
   },
@@ -814,7 +815,7 @@ export const ANTHROPIC_MODELS: Record<string, ModelCapabilities> = {
       systemMessages: false,
       fileInput: false,
     },
-    costPer1kTokens: { input: 0.00018, output: 0 },
+    costPer1kTokens: { input: 0.00012, output: 0 },
     description: 'Voyage Law 2 - optimized for legal documents (fixed 1024 dimensions)',
     parameterRules: [],
   },

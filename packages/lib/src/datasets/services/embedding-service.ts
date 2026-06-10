@@ -399,8 +399,7 @@ export class EmbeddingService {
    */
   private async checkQuotaForSystemProvider(
     provider: string,
-    providerType: ProviderTypeValue,
-    estimatedCredits: number = 1
+    providerType: ProviderTypeValue
   ): Promise<void> {
     // Only check quota for SYSTEM providers
     if (providerType !== 'SYSTEM') {
@@ -412,11 +411,7 @@ export class EmbeddingService {
       return
     }
 
-    const quotaCheck = await this.usageTracker.checkQuotaAvailable(
-      this.organizationId,
-      provider,
-      estimatedCredits
-    )
+    const quotaCheck = await this.usageTracker.checkQuotaAvailable(this.organizationId, provider)
 
     if (!quotaCheck.available) {
       const status = await new QuotaService(this.db, this.organizationId).getQuotaStatus()

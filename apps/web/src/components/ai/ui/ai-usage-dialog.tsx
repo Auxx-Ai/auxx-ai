@@ -17,7 +17,7 @@ import {
   SelectValue,
 } from '@auxx/ui/components/select'
 import { StatCard } from '@auxx/ui/components/stat-card'
-import { Activity, Zap } from 'lucide-react'
+import { Activity, Coins, Zap } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { api } from '~/trpc/react'
 import { AiUsageChart } from './ai-usage-chart'
@@ -103,17 +103,19 @@ export function AiUsageDialog({ trigger, open, onOpenChange }: AiUsageDialogProp
 
   // Calculate summary stats
   const summary = useMemo(() => {
-    if (!filteredData) return { totalRuns: 0, totalTokens: 0 }
+    if (!filteredData) return { totalRuns: 0, totalTokens: 0, totalCredits: 0 }
 
     let totalRuns = 0
     let totalTokens = 0
+    let totalCredits = 0
 
     for (const entry of filteredData.totalUsageForPeriod) {
       totalRuns += entry.runCount
       totalTokens += entry.totalTokens
+      totalCredits += entry.creditsUsed ?? 0
     }
 
-    return { totalRuns, totalTokens }
+    return { totalRuns, totalTokens, totalCredits }
   }, [filteredData])
 
   return (
@@ -182,13 +184,23 @@ export function AiUsageDialog({ trigger, open, onOpenChange }: AiUsageDialogProp
         </div>
 
         {/* Row 2: Stats Cards */}
-        <div className='flex gap-2 mb-10 md:w-1/2'>
+        <div className='flex gap-2 mb-10'>
           <StatCard
             title='Total Runs'
             icon={<Zap className='size-4' />}
             body={isLoading ? '--' : summary.totalRuns.toLocaleString()}
             description='AI invocations'
             color='text-comparison-500'
+            first
+            loading={isLoading}
+            className='flex-1 rounded-xl border bg-primary-50'
+          />
+          <StatCard
+            title='Credits Used'
+            icon={<Coins className='size-4' />}
+            body={isLoading ? '--' : summary.totalCredits.toLocaleString()}
+            description='Charged to your pool'
+            color='text-primary-500'
             first
             loading={isLoading}
             className='flex-1 rounded-xl border bg-primary-50'

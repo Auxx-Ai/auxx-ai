@@ -35,7 +35,6 @@ import {
   resolveContinuationSurface,
 } from '@auxx/lib/ai/kopilot'
 import { createToolDepsFactory } from '@auxx/lib/ai/kopilot/capabilities'
-import { getModelCreditMultiplier } from '@auxx/lib/ai/quota'
 import { getCachedAgentById } from '@auxx/lib/cache'
 import { ForbiddenError } from '@auxx/lib/errors'
 import { FeatureKey, FeaturePermissionService } from '@auxx/lib/permissions'
@@ -758,8 +757,7 @@ async function runInProcessPath(params: {
           sourceId: sessionId,
           providerType: it.providerType,
           credentialSource: it.credentialSource,
-          creditsUsed:
-            it.providerType === 'SYSTEM' ? getModelCreditMultiplier(it.provider, it.model) : 0,
+          // creditsUsed omitted: metered from USD COGS per call (0 for BYO).
         })
       }
     }

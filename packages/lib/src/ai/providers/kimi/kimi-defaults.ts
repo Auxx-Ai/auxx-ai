@@ -148,7 +148,7 @@ export const KIMI_MODELS: Record<string, ModelCapabilities> = {
       systemMessages: true,
       fileInput: false,
     },
-    costPer1kTokens: { input: 0.0006, output: 0.0025 },
+    costPer1kTokens: { input: 0.0006, output: 0.003, cachedInput: 0.0001 },
     description:
       'Moonshot AI most capable model with 262K context, native multimodal support, tool calling, and structured output. Sampling parameters (temperature, top_p) are fixed by the model.',
     parameterRestrictions: KIMI_RESTRICTED_PARAMS,
@@ -157,6 +157,8 @@ export const KIMI_MODELS: Record<string, ModelCapabilities> = {
   'kimi-k2-0905-preview': {
     provider: 'kimi',
     modelId: 'kimi-k2-0905-preview',
+    retired: true,
+    replacement: 'kimi-k2.5',
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
     displayName: 'Kimi K2 0905',
     icon: 'kimi',
@@ -173,7 +175,7 @@ export const KIMI_MODELS: Record<string, ModelCapabilities> = {
       systemMessages: true,
       fileInput: false,
     },
-    costPer1kTokens: { input: 0.0008, output: 0.00225 },
+    costPer1kTokens: { input: 0.0006, output: 0.0025, cachedInput: 0.00015 },
     description:
       'Enhanced agentic coding model with full parameter support. 256K context, 1T parameters (32B active MoE).',
     parameterRules: KIMI_PARAMETER_RULES,
@@ -181,6 +183,8 @@ export const KIMI_MODELS: Record<string, ModelCapabilities> = {
   'kimi-k2-turbo-preview': {
     provider: 'kimi',
     modelId: 'kimi-k2-turbo-preview',
+    retired: true,
+    replacement: 'kimi-k2.5',
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
     displayName: 'Kimi K2 Turbo',
     icon: 'kimi',
@@ -197,7 +201,7 @@ export const KIMI_MODELS: Record<string, ModelCapabilities> = {
       systemMessages: true,
       fileInput: false,
     },
-    costPer1kTokens: { input: 0.0006, output: 0.0025 },
+    costPer1kTokens: { input: 0.00115, output: 0.008, cachedInput: 0.00015 },
     description:
       'High-speed model with output up to 60-100 tokens/sec. 256K context. Sampling parameters are fixed by the model.',
     parameterRestrictions: KIMI_RESTRICTED_PARAMS,
@@ -206,6 +210,8 @@ export const KIMI_MODELS: Record<string, ModelCapabilities> = {
   'kimi-k2-thinking': {
     provider: 'kimi',
     modelId: 'kimi-k2-thinking',
+    retired: true,
+    replacement: 'kimi-k2.5',
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
     displayName: 'Kimi K2 Thinking',
     icon: 'kimi',
@@ -222,7 +228,7 @@ export const KIMI_MODELS: Record<string, ModelCapabilities> = {
       systemMessages: true,
       fileInput: false,
     },
-    costPer1kTokens: { input: 0.0006, output: 0.0025 },
+    costPer1kTokens: { input: 0.0006, output: 0.0025, cachedInput: 0.00015 },
     description:
       'Deep reasoning model for complex multi-step tasks. 256K context. Built-in thinking mode with extended chain-of-thought.',
     parameterRestrictions: {
@@ -235,6 +241,8 @@ export const KIMI_MODELS: Record<string, ModelCapabilities> = {
   'kimi-k2-thinking-turbo': {
     provider: 'kimi',
     modelId: 'kimi-k2-thinking-turbo',
+    retired: true,
+    replacement: 'kimi-k2.5',
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
     displayName: 'Kimi K2 Thinking Turbo',
     icon: 'kimi',
@@ -251,7 +259,7 @@ export const KIMI_MODELS: Record<string, ModelCapabilities> = {
       systemMessages: true,
       fileInput: false,
     },
-    costPer1kTokens: { input: 0.0006, output: 0.0025 },
+    costPer1kTokens: { input: 0.00115, output: 0.008, cachedInput: 0.00015 },
     description:
       'Fast reasoning model with output up to 60-100 tokens/sec. 256K context. Built-in thinking mode with high-speed chain-of-thought.',
     parameterRestrictions: {

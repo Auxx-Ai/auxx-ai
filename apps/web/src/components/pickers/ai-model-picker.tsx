@@ -286,7 +286,7 @@ export function AiModelPicker({
                       showMode={!compact}
                       showModelType={!compact}
                       showFeatures={!compact}
-                      showCreditMultiplier
+                      showCost
                     />
                   </>
                 ) : (
@@ -365,7 +365,7 @@ export function AiModelPicker({
                             className='truncate'
                             showMode
                             showModelType
-                            showCreditMultiplier
+                            showCost
                           />
                           {model.deprecated && (
                             <Tooltip
@@ -378,12 +378,13 @@ export function AiModelPicker({
                             </Tooltip>
                           )}
                         </div>
-                        <Check
+                        <div
                           className={cn(
-                            'size-4 shrink-0',
+                            'rounded-full size-4 shrink-0 bg-info flex items-center justify-center border border-blue-800',
                             value === model.id ? 'opacity-100' : 'opacity-0'
-                          )}
-                        />
+                          )}>
+                          <Check className='size-2.5! text-white' strokeWidth={4} />
+                        </div>
                       </CommandItem>
                     ))}
                   </CommandGroup>

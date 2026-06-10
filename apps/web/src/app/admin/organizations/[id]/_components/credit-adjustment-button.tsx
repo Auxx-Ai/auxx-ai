@@ -1,6 +1,7 @@
 // apps/web/src/app/admin/organizations/[id]/_components/credit-adjustment-button.tsx
 'use client'
 
+import { CREDIT_USD_VALUE } from '@auxx/lib/ai/quota/client'
 import { Button } from '@auxx/ui/components/button'
 import {
   Dialog,
@@ -89,10 +90,11 @@ export function CreditAdjustmentButton({
         </DialogTrigger>
         <DialogContent className='sm:max-w-md'>
           <DialogHeader>
-            <DialogTitle>Adjust credits — {organizationName ?? 'Organization'}</DialogTitle>
+            <DialogTitle>Adjust bonus credits — {organizationName ?? 'Organization'}</DialogTitle>
             <DialogDescription>
-              Current balance: <span className='font-mono'>{currentBalance}</span>. Positive amounts
-              add credits, negative amounts deduct.
+              Current balance: <span className='font-mono'>{currentBalance.toLocaleString()}</span>{' '}
+              credits (≈ ${(currentBalance * CREDIT_USD_VALUE).toFixed(2)} of AI usage). Positive
+              amounts add bonus credits, negative amounts deduct. 10,000 credits = $1 of COGS.
             </DialogDescription>
           </DialogHeader>
           <div className='space-y-4'>
@@ -102,7 +104,7 @@ export function CreditAdjustmentButton({
                 id='credit-amount'
                 type='number'
                 step={1}
-                placeholder='e.g. 100 or -50'
+                placeholder='e.g. 20000 or -5000'
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
                 disabled={applyCredit.isPending}

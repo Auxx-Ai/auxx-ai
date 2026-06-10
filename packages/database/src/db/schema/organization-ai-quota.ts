@@ -11,7 +11,8 @@ import { Organization } from './organization'
  *
  * - `quotaLimit` is the monthly allowance set from the active plan's `monthlyAiCredits`.
  *   `-1` means unlimited (enterprise / self-hosted).
- * - `quotaUsed` is monotonically incremented by LLM calls × model multiplier.
+ * - `quotaUsed` is incremented by metered USD COGS (`1 credit = $0.0001` of list
+ *   price). Soft-landing overdraft means it may exceed `quotaLimit`.
  * - `quotaPeriod*` defines the current cycle; reset by the daily cron and
  *   Stripe `invoice.paid` webhook.
  */

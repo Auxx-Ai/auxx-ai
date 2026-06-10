@@ -16,7 +16,6 @@ import { docToText } from '../../tiptap'
 import { buildInstructionReferenceResolver } from '../kopilot/prompts/resolve-instruction-references'
 import type { TriggerContext, TriggerKind } from '../kopilot/prompts/trigger-context'
 import type { UsageTrackingRequest } from '../orchestrator/types'
-import { getModelCreditMultiplier } from '../quota/credit-multiplier'
 import { UsageTrackingService } from '../usage/usage-tracking-service'
 import { KopilotContextStore, readContextSlice } from './context'
 import { type AgentRuntimeDomain, buildEffectiveAgentRuntime } from './effective-runtime'
@@ -204,8 +203,7 @@ async function processAgentMessageInternal(ctx: JobContext<AgentJobPayload>) {
             sourceId: sessionId,
             providerType: it.providerType,
             credentialSource: it.credentialSource,
-            creditsUsed:
-              it.providerType === 'SYSTEM' ? getModelCreditMultiplier(it.provider, it.model) : 0,
+            // creditsUsed omitted: metered from USD COGS per call (0 for BYO).
           })
         }
       }

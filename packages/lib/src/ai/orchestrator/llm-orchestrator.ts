@@ -164,8 +164,8 @@ export class LLMOrchestrator {
           // Pass provider type for quota tracking - SYSTEM providers decrement the credit pool.
           providerType,
           credentialSource,
-          // creditsUsed is left undefined so UsageTrackingService resolves it
-          // via the model credit multiplier (1/3/8 for small/medium/large tiers).
+          // creditsUsed left undefined: UsageTrackingService meters it from the
+          // real USD COGS of this call (0 for CUSTOM/BYO).
           source,
           sourceId,
         })
