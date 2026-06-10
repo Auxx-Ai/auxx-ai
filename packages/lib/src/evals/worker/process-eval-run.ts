@@ -17,12 +17,27 @@ import { runAgentSimulation } from '../simulation/executor'
 import type { AgentDefinitionSnapshotV1 } from '../snapshots'
 import type { EvalRunJobData } from './enqueue-eval-run'
 import { createEvalRunPublisher } from './publisher'
+import { withEvalRunLog } from './run-log'
 
 const logger = createScopedLogger('worker:eval-run')
 
 const CHECKPOINT_BATCH = 10
 
 export async function processEvalRun(ctx: JobContext<EvalRunJobData>): Promise<void> {
+  const { runId } = ctx.data
+  const run = () => processEvalRunInternal(ctx)
+
+  // Dev only: tee eval-relevant logs (orchestration + the inner agent engine)
+  // to a per-run file under `.logs/eval-runs`, alongside agent-session traces.
+  // Gated on `!== 'production'` so the worker dev script (which doesn't set
+  // NODE_ENV) still gets traces — same convention as `processAgentMessage`.
+  if (process.env.NODE_ENV !== 'production') {
+    return withEvalRunLog(runId, run)
+  }
+  return run()
+}
+
+async function processEvalRunInternal(ctx: JobContext<EvalRunJobData>): Promise<void> {
   const { organizationId, userId, runId } = ctx.data
 
   // 1. Atomically claim `queued|running → running` (bumps attempt). A terminal

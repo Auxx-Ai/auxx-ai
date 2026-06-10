@@ -7,6 +7,7 @@ import {
   detachProcedure,
   listAgentProcedures,
   listProcedures,
+  reconcileAgentProcedureMentions,
   updateAgentProcedure,
 } from '@auxx/lib/agents/procedures'
 import { FeaturePermissionService } from '@auxx/lib/permissions'
@@ -86,6 +87,9 @@ export const agentProcedureRouter = createTRPCRouter({
         }),
         'attach procedure'
       )
+      // A fresh procedure has an empty doc, but reconcile anyway so the agent's
+      // `'procedure'` tag is initialized (and stays correct if the create seeds a body).
+      await reconcileAgentProcedureMentions(organizationId, input.agentId)
       return { linkId: link.id, procedureId: procedure.id }
     }),
 
@@ -103,6 +107,9 @@ export const agentProcedureRouter = createTRPCRouter({
         }),
         'attach procedure'
       )
+      // Attaching an existing (possibly published) procedure can lock new
+      // toolsets/knowledge on the agent — reconcile its `'procedure'` tag.
+      await reconcileAgentProcedureMentions(organizationId, input.agentId)
       return { linkId: link.id }
     }),
 
@@ -120,7 +127,16 @@ export const agentProcedureRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
       const { id, ...patch } = input
-      unwrap(await updateAgentProcedure({ organizationId, id, patch }), 'update agent procedure')
+      const row = unwrap(
+        await updateAgentProcedure({ organizationId, id, patch }),
+        'update agent procedure'
+      )
+      // Only an enabled flip changes the agent's effective procedure set;
+      // priority/override edits don't. Reconcile is idempotent, so re-running on a
+      // no-op enabled patch is harmless — gate on the field being present.
+      if (input.enabled !== undefined) {
+        await reconcileAgentProcedureMentions(organizationId, row.agentId)
+      }
       return { ok: true as const }
     }),
 
@@ -128,7 +144,13 @@ export const agentProcedureRouter = createTRPCRouter({
     .input(z.object({ id: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
-      unwrap(await detachProcedure({ organizationId, id: input.id }), 'detach procedure')
+      // detach returns the removed link's agentId so we can reconcile its
+      // `'procedure'` tag AFTER the delete (the link is now excluded).
+      const agentId = unwrap(
+        await detachProcedure({ organizationId, id: input.id }),
+        'detach procedure'
+      )
+      if (agentId) await reconcileAgentProcedureMentions(organizationId, agentId)
       return { ok: true as const }
     }),
 })

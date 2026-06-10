@@ -1,9 +1,9 @@
 // packages/lib/src/agents/prompt-mention-reconciler.ts
 
-import type { KnowledgeEntry, ToolsetEntry } from '@auxx/database'
+import type { KnowledgeEntry, MentionSource, ToolsetEntry } from '@auxx/database'
 import type { FlatToolCatalogEntry } from './toolset-catalog'
 
-export type { KnowledgeEntry, ToolsetEntry }
+export type { KnowledgeEntry, MentionSource, ToolsetEntry }
 export type ToolsetSource = ToolsetEntry['source']
 export type KnowledgeMode = KnowledgeEntry['mode']
 export type KnowledgeSource = KnowledgeEntry['source']
@@ -83,69 +83,119 @@ export function walkPromptDoc(
 }
 
 /**
- * Reconcile `Agent.toolsets` against the set of mentioned toolset slugs.
- *
- * - Stale `mention` rows (slug no longer mentioned) are dropped.
- * - When a slug is mentioned, the row is promoted to `source: 'mention'` and
- *   `enabled: true`, regardless of whether a prior manual / auto_default row
- *   existed (including one left at `enabled: false` from a previous trash).
- *   This makes "mentioned in prompt = locked" hold unconditionally.
- * - New mention rows are inserted when no row covers the slug.
+ * Walk several Tiptap docs and return the union of their mentioned toolset slugs
+ * and record ids. Used by the procedure side, where an agent's enabled attached
+ * procedures contribute many docs (each procedure's draft + active version) that
+ * collectively lock toolsets/knowledge. Pure.
  */
-export function reconcileToolsets(
+export function walkPromptDocs(
+  docs: Record<string, unknown>[],
+  toolCatalog: FlatToolCatalogEntry[]
+): WalkedPrompt {
+  const toolsetSlugs = new Set<string>()
+  const recordIds = new Set<string>()
+  for (const doc of docs) {
+    const walk = walkPromptDoc(doc, toolCatalog)
+    for (const slug of walk.toolsetSlugs) toolsetSlugs.add(slug)
+    for (const id of walk.recordIds) recordIds.add(id)
+  }
+  return { toolsetSlugs, recordIds }
+}
+
+/** De-dupe + drop a tag from a `mentionedBy` set; returns a fresh minimal array. */
+function withTag(mentionedBy: MentionSource[] | undefined, tag: MentionSource): MentionSource[] {
+  return mentionedBy?.includes(tag) ? mentionedBy : [...(mentionedBy ?? []), tag]
+}
+function withoutTag(mentionedBy: MentionSource[] | undefined, tag: MentionSource): MentionSource[] {
+  return (mentionedBy ?? []).filter((t) => t !== tag)
+}
+
+/**
+ * Reconcile `Agent.toolsets` against the slugs mentioned by a **single input**
+ * (`tag` = `'prompt'` or `'procedure'`). Touches only that tag's provenance and
+ * leaves the other input's lock intact, so the two sources reconcile
+ * independently — the prompt-autosave path can never drop a procedure-locked
+ * toolset and vice-versa.
+ *
+ * - A mentioned slug ensures `tag ∈ mentionedBy`, promotes any manual/auto_default
+ *   row to `source:'mention'`, and forces `enabled:true` (mentioned = locked).
+ * - An un-mentioned `mention` row loses `tag`; it drops only when `mentionedBy`
+ *   empties (the other tag may still hold it). Manual/auto_default rows are
+ *   never touched when not mentioned.
+ * - New mention rows are inserted for any slug not already covered.
+ */
+export function reconcileToolsetMentions(
   current: ToolsetEntry[],
-  mentionedSlugs: Set<string>
+  mentionedSlugs: Set<string>,
+  tag: MentionSource
 ): ToolsetEntry[] {
-  const kept = current
-    .filter((t) => t.source !== 'mention' || mentionedSlugs.has(t.slug))
-    .map((t) =>
-      mentionedSlugs.has(t.slug) ? { ...t, source: 'mention' as const, enabled: true } : t
-    )
+  const next = current.map((t): ToolsetEntry => {
+    const mentioned = mentionedSlugs.has(t.slug)
+    if (t.source === 'mention') {
+      return mentioned
+        ? { ...t, enabled: true, mentionedBy: withTag(t.mentionedBy, tag) }
+        : { ...t, mentionedBy: withoutTag(t.mentionedBy, tag) }
+    }
+    // manual / auto_default — promote to a mention lock while mentioned, else leave.
+    return mentioned ? { ...t, source: 'mention', enabled: true, mentionedBy: [tag] } : t
+  })
+  const kept = next.filter((t) => t.source !== 'mention' || (t.mentionedBy?.length ?? 0) > 0)
   const known = new Set(kept.map((t) => t.slug))
   const added: ToolsetEntry[] = []
   for (const slug of mentionedSlugs) {
     if (known.has(slug)) continue
-    added.push({ slug, config: {}, enabled: true, source: 'mention' })
+    added.push({ slug, config: {}, enabled: true, source: 'mention', mentionedBy: [tag] })
   }
   return [...kept, ...added]
 }
 
 /**
- * Reconcile `Agent.knowledge` against the set of mentioned recordIds.
+ * Reconcile `Agent.knowledge` against the recordIds mentioned by a **single
+ * input** (`tag`). Symmetric to {@link reconcileToolsetMentions}: per-tag, the
+ * other source's lock survives.
  *
- * - Existing `mention` entries are dropped — the walked set is authoritative.
- * - Manual `exclude` entries that collide with a mention are dropped (mention
- *   wins, per locked-from-prompt §3.3).
- * - Surviving manual entries suppress the duplicate mention insert.
+ * - A mentioned `mention` row keeps/gains `tag`; an un-mentioned one loses `tag`
+ *   and drops when `mentionedBy` empties.
+ * - A manual `exclude` colliding with a mention is dropped (mention wins). Other
+ *   manual entries survive and suppress the duplicate mention insert.
  * - New mention entries land with `mode='include_one'`, `source='mention'`.
  */
-export function reconcileKnowledge(
+export function reconcileKnowledgeMentions(
   current: KnowledgeEntry[],
-  mentionedRecordIds: Set<string>
+  mentionedRecordIds: Set<string>,
+  tag: MentionSource
 ): KnowledgeEntry[] {
-  const manualOrDefault = current.filter((k) => k.source !== 'mention')
-  const mentionEntries: KnowledgeEntry[] = [...mentionedRecordIds].map((recordId) => ({
-    recordId,
-    mode: 'include_one',
-    source: 'mention',
-  }))
-  const mentionKeys = new Set(mentionEntries.map((m) => m.recordId))
-  const survivors = manualOrDefault.filter(
-    (k) => !(k.mode === 'exclude' && mentionKeys.has(k.recordId))
-  )
-  const survivorKeys = new Set(survivors.map((k) => k.recordId))
-  const newMentionEntries = mentionEntries.filter((m) => !survivorKeys.has(m.recordId))
-  return [...survivors, ...newMentionEntries]
+  const kept: KnowledgeEntry[] = []
+  for (const k of current) {
+    const mentioned = mentionedRecordIds.has(k.recordId)
+    if (k.source === 'mention') {
+      const mentionedBy = mentioned ? withTag(k.mentionedBy, tag) : withoutTag(k.mentionedBy, tag)
+      if (mentionedBy.length > 0) kept.push({ ...k, mentionedBy })
+      continue
+    }
+    // manual: an exclude colliding with a mention is dropped (mention wins).
+    if (mentioned && k.mode === 'exclude') continue
+    kept.push(k)
+  }
+  const known = new Set(kept.map((k) => k.recordId))
+  const added: KnowledgeEntry[] = []
+  for (const recordId of mentionedRecordIds) {
+    if (known.has(recordId)) continue
+    added.push({ recordId, mode: 'include_one', source: 'mention', mentionedBy: [tag] })
+  }
+  return [...kept, ...added]
 }
 
 /**
- * Reconcile both toolsets and knowledge against a prompt doc. Returns the next
- * state for the agent row; caller writes one UPDATE.
+ * Reconcile both toolsets and knowledge against the **agent prompt** doc (the
+ * `'prompt'` tag). Returns the next state for the agent row; caller writes one
+ * UPDATE. The procedure side runs the same per-tag reconcilers under the
+ * `'procedure'` tag — see `reconcileAgentProcedureMentions`.
  */
 export function reconcilePromptMentions(input: ReconcileMentionsInput): ReconcileMentionsOutput {
   const walk = walkPromptDoc(input.prompt, input.toolCatalog)
   return {
-    toolsets: reconcileToolsets(input.current.toolsets, walk.toolsetSlugs),
-    knowledge: reconcileKnowledge(input.current.knowledge, walk.recordIds),
+    toolsets: reconcileToolsetMentions(input.current.toolsets, walk.toolsetSlugs, 'prompt'),
+    knowledge: reconcileKnowledgeMentions(input.current.knowledge, walk.recordIds, 'prompt'),
   }
 }

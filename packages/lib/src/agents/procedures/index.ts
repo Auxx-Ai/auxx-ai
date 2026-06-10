@@ -34,6 +34,12 @@ export {
 } from './control-tools'
 export { sessionMessagesToConversation } from './conversation'
 export {
+  listAgentIdsForProcedure,
+  reconcileAgentProcedureMentions,
+  reconcileProcedureMentionsForAgents,
+  reconcileProcedureMentionsForAllAgents,
+} from './mention-reconcile'
+export {
   type CodeBlockMapEntry,
   type ConditionBlockAttrs,
   type ConditionCaseAttrs,

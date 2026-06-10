@@ -16,6 +16,14 @@ import { Organization } from './organization'
 import { User } from './user'
 
 /**
+ * Which input locks a mention-sourced toolset/knowledge entry. A `tool:`/record
+ * chip enables its target from the agent **prompt** or from any enabled attached
+ * **procedure** doc; the two reconcile independently so the hot prompt-autosave
+ * path never reads procedures. See plans/evals/procedure-mention-toolset-reconciliation-plan.md.
+ */
+export type MentionSource = 'prompt' | 'procedure'
+
+/**
  * One entry inside `Agent.toolsets`. Replaces the old `AgentToolset` join
  * table. See plans/kopilot/agents/ui/single-row-agent.md §1.
  */
@@ -27,6 +35,12 @@ export interface ToolsetEntry {
   config: Record<string, unknown>
   enabled: boolean
   source: 'manual' | 'mention' | 'auto_default'
+  /**
+   * When `source === 'mention'`, the inputs that lock this toolset. Non-empty ⇒
+   * mention-locked + enabled. Cleared per-source by the matching reconciler; the
+   * row drops when it empties. Absent on manual/auto_default rows.
+   */
+  mentionedBy?: MentionSource[]
 }
 
 /**
@@ -41,6 +55,12 @@ export interface KnowledgeEntry {
   recordId: string
   mode: 'include_descendants' | 'include_one' | 'exclude'
   source: 'manual' | 'mention'
+  /**
+   * When `source === 'mention'`, the inputs that lock this record (prompt and/or
+   * an enabled attached procedure doc). Same semantics as
+   * {@link ToolsetEntry.mentionedBy}. Absent on manual rows.
+   */
+  mentionedBy?: MentionSource[]
 }
 
 /**

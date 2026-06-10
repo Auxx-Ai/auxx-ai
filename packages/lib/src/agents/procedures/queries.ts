@@ -635,11 +635,15 @@ export async function detachProcedure(input: { organizationId: string; id: strin
           eq(schema.AgentProcedure.id, input.id),
           eq(schema.AgentProcedure.organizationId, input.organizationId)
         )
-      ),
+      )
+      .returning({ agentId: schema.AgentProcedure.agentId }),
     'detach-procedure'
   )
   if (result.isErr()) return err(result.error)
-  return ok(undefined)
+  // The deleted link's agentId — the caller reconciles its `'procedure'` tag
+  // AFTER the delete commits (so the now-removed link is excluded). Null if the
+  // link was already gone.
+  return ok(result.value[0]?.agentId ?? null)
 }
 
 export type { AgentProcedureEntity, ProcedureEntity, ProcedureVersionEntity }

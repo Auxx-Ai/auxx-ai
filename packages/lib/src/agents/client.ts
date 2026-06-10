@@ -440,10 +440,12 @@ export type {
  * same functions on flush, so client and server agree by construction.
  */
 export {
-  reconcileKnowledge,
+  type MentionSource,
+  reconcileKnowledgeMentions,
   reconcilePromptMentions,
-  reconcileToolsets,
+  reconcileToolsetMentions,
   walkPromptDoc,
+  walkPromptDocs,
 } from './prompt-mention-reconciler'
 export { AGENT_SLUG_MAX, AGENT_SLUG_REGEX, agentSlugSchema } from './slug-schema'
 export {
