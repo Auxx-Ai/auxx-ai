@@ -7,10 +7,11 @@ import { EmptySection } from '@auxx/ui/components/section'
 import { Spinner } from '@auxx/ui/components/spinner'
 import { TreeRow } from '@auxx/ui/components/tree-row'
 import { formatRelativeTime } from '@auxx/utils'
-import { History } from 'lucide-react'
+import { History, Wrench } from 'lucide-react'
 import { useState } from 'react'
 import { api } from '~/trpc/react'
-import { canShowSuiteDiff } from '../utils/loop-logic'
+import { buildFixSeedMessage, suiteChildrenToFixRuns } from '../hooks/build-fix-seed'
+import { canShowSuiteDiff, TERMINAL_SUITE_STATUSES } from '../utils/loop-logic'
 import { EvalDrillBar } from './eval-drill-bar'
 import { EvalDraftBadge, EvalStatusDot } from './eval-status-pill'
 import { EvalSuiteDiffCard } from './eval-suite-diff-card'
@@ -26,9 +27,16 @@ interface EvalSuiteHistoryProps {
   agentId: string
   procedureId?: string | null
   onOpenRun: (runId: string) => void
+  /** Seeds the builder chat with every failing run in a suite (Phase 2.5). */
+  onFixWithKopilot?: (seed: string) => void
 }
 
-export function EvalSuiteHistory({ agentId, procedureId, onOpenRun }: EvalSuiteHistoryProps) {
+export function EvalSuiteHistory({
+  agentId,
+  procedureId,
+  onOpenRun,
+  onFixWithKopilot,
+}: EvalSuiteHistoryProps) {
   const historyQuery = api.eval.listSuiteRuns.useInfiniteQuery(
     { agentId, procedureId: procedureId ?? undefined },
     { getNextPageParam: (last) => last.nextCursor }
@@ -53,7 +61,12 @@ export function EvalSuiteHistory({ agentId, procedureId, onOpenRun }: EvalSuiteH
             />
           ) : (
             suiteRuns.map((suite) => (
-              <SuiteHistoryRow key={suite.id} suite={suite} onOpenRun={onOpenRun} />
+              <SuiteHistoryRow
+                key={suite.id}
+                suite={suite}
+                onOpenRun={onOpenRun}
+                onFixWithKopilot={onFixWithKopilot}
+              />
             ))
           )}
           {historyQuery.hasNextPage && (
@@ -88,11 +101,15 @@ type SuiteRunRow = {
 function SuiteHistoryRow({
   suite,
   onOpenRun,
+  onFixWithKopilot,
 }: {
   suite: SuiteRunRow
   onOpenRun: (runId: string) => void
+  onFixWithKopilot?: (seed: string) => void
 }) {
+  const utils = api.useUtils()
   const [isOpen, setIsOpen] = useState(false)
+  const [seeding, setSeeding] = useState(false)
   const childrenQuery = api.eval.listSuiteChildRuns.useQuery(
     { suiteRunId: suite.id },
     { enabled: isOpen }
@@ -105,6 +122,23 @@ function SuiteHistoryRow({
   ].join(' · ')
 
   const showDiff = canShowSuiteDiff(suite, suite.baselineSuiteRunId)
+  const failureCount = suite.failedCount + suite.errorCount
+  // The fix CTA needs the failing children's assertions; fetch on click so a
+  // collapsed row can still seed without pre-loading every suite's children.
+  const showFix =
+    onFixWithKopilot != null && TERMINAL_SUITE_STATUSES.has(suite.status) && failureCount > 0
+
+  const handleFix = async () => {
+    if (!onFixWithKopilot) return
+    setSeeding(true)
+    try {
+      const children = await utils.eval.listSuiteChildRuns.fetch({ suiteRunId: suite.id })
+      const runs = suiteChildrenToFixRuns(children)
+      if (runs.length > 0) onFixWithKopilot(buildFixSeedMessage({ suiteRunId: suite.id, runs }))
+    } finally {
+      setSeeding(false)
+    }
+  }
 
   return (
     <TreeRow
@@ -128,6 +162,17 @@ function SuiteHistoryRow({
             candidateSuiteRunId={suite.id}
             onOpenRun={onOpenRun}
           />
+        )}
+        {showFix && (
+          <Button
+            variant='outline'
+            size='xs'
+            className='self-start'
+            loading={seeding}
+            onClick={handleFix}>
+            <Wrench />
+            Fix {failureCount} {failureCount === 1 ? 'failure' : 'failures'} with Kopilot
+          </Button>
         )}
         {childrenQuery.isLoading ? (
           <span className='text-xs text-muted-foreground'>Loading runs…</span>

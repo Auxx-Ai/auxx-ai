@@ -104,6 +104,7 @@ export function SimulationsTab({
               agentId={agentId}
               procedureId={selectedProcedureId}
               onOpenRun={setRunId}
+              onFixWithKopilot={onFixWithKopilot}
             />
           ) : null}
         </NavStackPanel>

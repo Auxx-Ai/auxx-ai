@@ -25,6 +25,31 @@ function capNote(note: string): string {
   return flat.length > NOTE_MAX ? `${flat.slice(0, NOTE_MAX)}…` : flat
 }
 
+/** A suite child-run summary (`eval.listSuiteChildRuns` row). */
+export interface SuiteChildRunLike {
+  id: string
+  caseName: string
+  status: string
+  assertionResults: { type: string; status: string; note?: string | null }[]
+}
+
+/**
+ * Project a suite's child runs into `FixSeedRun[]`, keeping only the failed /
+ * errored ones (Phase 2.5). Each run carries its non-passed assertions so the
+ * suite-level "Fix N failures with Kopilot" seed covers every failure at once.
+ */
+export function suiteChildrenToFixRuns(children: SuiteChildRunLike[]): FixSeedRun[] {
+  return children
+    .filter((c) => c.status !== 'passed')
+    .map((c) => ({
+      runId: c.id,
+      caseName: c.caseName || 'Deleted case',
+      failedAssertions: c.assertionResults
+        .filter((a) => a.status !== 'passed')
+        .map((a) => ({ type: a.type, note: a.note })),
+    }))
+}
+
 /**
  * Build the seeded builder-chat message for one or more failing runs.
  * Stable, plain-text formatting — the model parses this, not a human.

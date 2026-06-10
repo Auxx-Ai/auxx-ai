@@ -80,6 +80,10 @@ export function EvalRunDetail({ runId, onSelectRun, onFixWithKopilot }: EvalRunD
   const row = runQuery.data
   const caseId = row?.caseId ?? null
 
+  // Roll up AI credits once the run is terminal (usage rows are all written by then).
+  const runTerminal = row ? TERMINAL.has(row.status) : false
+  const creditsQuery = api.eval.getRunCredits.useQuery({ runId }, { enabled: runTerminal })
+
   // Deleting the run pops back to the previous panel (the run no longer exists)
   // and refreshes the case's run list + latest-run pill.
   const deleteRun = api.eval.deleteRun.useMutation({
@@ -204,6 +208,12 @@ export function EvalRunDetail({ runId, onSelectRun, onFixWithKopilot }: EvalRunD
           {isDraftRun && (
             <p className='text-[11px] text-muted-foreground'>
               Ran against the draft (not the published version).
+            </p>
+          )}
+          {creditsQuery.data && creditsQuery.data.creditsUsed > 0 && (
+            <p className='text-[11px] text-muted-foreground'>
+              This run used {creditsQuery.data.creditsUsed.toLocaleString()} credits ·{' '}
+              {creditsQuery.data.totalTokens.toLocaleString()} tokens.
             </p>
           )}
           {onFixWithKopilot && (status === 'failed' || status === 'error') && (

@@ -10,6 +10,7 @@ import {
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
 import { EmptySection, Section } from '@auxx/ui/components/section'
+import { Spinner } from '@auxx/ui/components/spinner'
 import { toastError } from '@auxx/ui/components/toast'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@auxx/ui/components/tooltip'
 import { TreeRow } from '@auxx/ui/components/tree-row'
@@ -17,7 +18,9 @@ import { FlaskConical, History, Play, Plus, X } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
+import { anySuiteRunning, selectActiveSuite } from '../utils/loop-logic'
 import { EvalCaseRow } from './eval-case-row'
+import { EvalDraftBadge } from './eval-status-pill'
 import { EvalSuggestionsSection } from './eval-suggestions-section'
 
 /**
@@ -93,6 +96,21 @@ export function EvalSuitePanel({
     onError: (err) => toastError({ title: 'Failed to run simulations', description: err.message }),
   })
 
+  // Suite awareness (Phase 2.1): poll the suite list while one is running so the
+  // panel reflects a suite started here OR from Kopilot. Scoped to the selected
+  // procedure when set (dedupes with ProcedureLoopBanner's identical query).
+  const suitesQuery = api.eval.listSuiteRuns.useQuery(
+    { agentId, procedureId: selectedProcedureId ?? undefined },
+    { refetchInterval: (q) => (anySuiteRunning(q.state.data?.suiteRuns) ? 4000 : false) }
+  )
+  // The list row carries live `completedCount`/`requestedCount` (the 4s poll
+  // above refreshes them), so no separate per-suite query is needed.
+  const activeSuite = selectActiveSuite(suitesQuery.data?.suiteRuns)
+  const suiteRunning = activeSuite != null
+  // A suite this panel's own "Run all" started carries that suiteRunId on the
+  // mutation result; anything else running is a Kopilot-triggered suite.
+  const startedFromKopilot = suiteRunning && activeSuite.id !== runAll.data?.suiteRunId
+
   const cases = casesQuery.data ?? []
   const agentScoped = cases.filter((c) => c.scope === 'agent')
   const procedureScoped = cases.filter((c) => c.scope === 'procedure')
@@ -148,12 +166,19 @@ export function EvalSuitePanel({
     <>
       <ConfirmDialog />
 
+      {/* Live suite banner (Phase 2.3) — shows for panel- AND Kopilot-started
+          suites, regardless of procedure selection. */}
+      {suiteRunning ? (
+        <SuiteRunningBanner activeSuite={activeSuite} startedFromKopilot={startedFromKopilot} />
+      ) : null}
+
       {/* Loop nudges + draft re-run for the selected procedure (5D.2 / 5D.6). */}
       {selectedProcedureId ? (
         <ProcedureLoopBanner
           agentId={agentId}
           procedureId={selectedProcedureId}
           runAll={runAll}
+          suiteRunning={suiteRunning}
           onOpenHistory={onOpenHistory}
         />
       ) : onOpenHistory ? (
@@ -180,7 +205,7 @@ export function EvalSuitePanel({
             <Button
               variant='ghost'
               size='xs'
-              disabled={agentScoped.length === 0 || runningAll}
+              disabled={agentScoped.length === 0 || runningAll || suiteRunning}
               loading={runningAll}
               onClick={() =>
                 runAll.mutate({ agentId, caseIds: agentScoped.map((c) => c.id), useDraft: true })
@@ -220,7 +245,7 @@ export function EvalSuitePanel({
             <Button
               variant='ghost'
               size='xs'
-              disabled={procedureScoped.length === 0 || runningAll}
+              disabled={procedureScoped.length === 0 || runningAll || suiteRunning}
               loading={runningAll}
               onClick={() =>
                 runAll.mutate({
@@ -302,6 +327,48 @@ export function EvalSuitePanel({
   )
 }
 
+// ── Live suite banner (Phase 2.3) ───────────────────────────────────────────
+
+/**
+ * Spinner + live `{completed}/{requested}` counters while a suite orchestrates.
+ * Counts come straight off the suite-list row (the panel's 4s poll keeps
+ * `completedCount` fresh). Draft badge + hash when the suite ran the draft; a
+ * subtle hint when it wasn't started here.
+ */
+function SuiteRunningBanner({
+  activeSuite,
+  startedFromKopilot,
+}: {
+  activeSuite: {
+    runMode: string
+    draftContentHash: string | null
+    requestedCount: number
+    completedCount: number
+  }
+  startedFromKopilot: boolean
+}) {
+  const completed = activeSuite.completedCount
+  const requested = activeSuite.requestedCount
+  return (
+    <div className='px-3 pt-2'>
+      <Alert variant='blue'>
+        <AlertDescription className='flex items-center gap-2 opacity-100'>
+          <Spinner className='size-3.5 text-muted-foreground' />
+          <span className='flex-1 text-xs'>
+            Suite running — {completed}/{requested}
+          </span>
+          {activeSuite.runMode === 'draft' && (
+            <EvalDraftBadge contentHash={activeSuite.draftContentHash} />
+          )}
+          {startedFromKopilot && (
+            <span className='text-[11px] text-muted-foreground'>started from Kopilot</span>
+          )}
+        </AlertDescription>
+      </Alert>
+    </div>
+  )
+}
+
 // ── Improvement-loop banner (5D.2 / 5D.6) ───────────────────────────────────
 
 const TERMINAL_SUITE = new Set(['completed', 'cancelled', 'error'])
@@ -310,6 +377,8 @@ interface ProcedureLoopBannerProps {
   agentId: string
   procedureId: string
   runAll: ReturnType<typeof api.eval.runAll.useMutation>
+  /** A suite is already orchestrating — one suite at a time (Phase 2.3). */
+  suiteRunning: boolean
   onOpenHistory?: () => void
 }
 
@@ -324,6 +393,7 @@ function ProcedureLoopBanner({
   agentId,
   procedureId,
   runAll,
+  suiteRunning,
   onOpenHistory,
 }: ProcedureLoopBannerProps) {
   const [dismissed, setDismissed] = useState<'publish' | 'confirm' | null>(null)
@@ -366,7 +436,7 @@ function ProcedureLoopBanner({
               <Button
                 variant='ghost'
                 size='xs'
-                disabled={!hasDraft || runAll.isPending}
+                disabled={!hasDraft || runAll.isPending || suiteRunning}
                 loading={runAll.isPending}
                 onClick={runOnDraft}>
                 <Play />
@@ -422,6 +492,7 @@ function ProcedureLoopBanner({
               variant='outline'
               size='xs'
               loading={runAll.isPending}
+              disabled={runAll.isPending || suiteRunning}
               onClick={() =>
                 runAll.mutate({ agentId, procedureId, baselineSuiteRunId: latestSuite?.id })
               }>

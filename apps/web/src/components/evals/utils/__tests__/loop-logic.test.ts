@@ -1,8 +1,10 @@
 // apps/web/src/components/evals/utils/__tests__/loop-logic.test.ts
 
 import {
+  anySuiteRunning,
   type CasePillRun,
   canShowSuiteDiff,
+  selectActiveSuite,
   selectCasePills,
   suiteProgressRefetchInterval,
 } from '../loop-logic'
@@ -32,6 +34,35 @@ describe('canShowSuiteDiff', () => {
   it('gates on the baseline status when the baseline row is known', () => {
     expect(canShowSuiteDiff({ status: 'completed' }, 'b', { status: 'running' })).toBe(false)
     expect(canShowSuiteDiff({ status: 'completed' }, 'b', { status: 'completed' })).toBe(true)
+  })
+})
+
+describe('selectActiveSuite / anySuiteRunning', () => {
+  const suite = (id: string, status: string) => ({ id, status })
+
+  it('returns null / false for an empty or undefined list', () => {
+    expect(selectActiveSuite(undefined)).toBeNull()
+    expect(selectActiveSuite([])).toBeNull()
+    expect(anySuiteRunning(undefined)).toBe(false)
+    expect(anySuiteRunning([])).toBe(false)
+  })
+
+  it('returns null / false when every suite is terminal', () => {
+    const suites = [suite('a', 'completed'), suite('b', 'error'), suite('c', 'cancelled')]
+    expect(selectActiveSuite(suites)).toBeNull()
+    expect(anySuiteRunning(suites)).toBe(false)
+  })
+
+  it('returns the first non-terminal suite (newest-first list ⇒ the active one)', () => {
+    const suites = [suite('a', 'running'), suite('b', 'completed')]
+    expect(selectActiveSuite(suites)).toEqual(suite('a', 'running'))
+    expect(anySuiteRunning(suites)).toBe(true)
+  })
+
+  it('finds a running suite below terminal rows', () => {
+    const suites = [suite('a', 'completed'), suite('b', 'queued')]
+    expect(selectActiveSuite(suites)?.id).toBe('b')
+    expect(anySuiteRunning(suites)).toBe(true)
   })
 })
 

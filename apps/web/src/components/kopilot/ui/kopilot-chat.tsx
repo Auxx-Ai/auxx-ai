@@ -219,9 +219,21 @@ export function KopilotChat({
 
   const handleApprovalAction = useCallback(
     (request: KopilotRequest) => {
-      setPendingRequest(augmentRequest(request))
+      // Approvals resume a paused turn whose pending tool was registered for a
+      // specific page. Attach the live surface (same as a normal send) so the
+      // server rebuilds the page-scoped toolset and resume can find the tool.
+      // The client's context is fresher than the persisted fallback; the
+      // server-side restore covers the headless task-notification drain.
+      const store = useKopilotStore.getState()
+      const merged = applyChipDismissals(
+        selectMergedContext(store.contextSlices),
+        store.dismissedChipKeys
+      )
+      setPendingRequest(
+        augmentRequest({ ...request, page: request.page ?? merged.page ?? page, context: merged })
+      )
     },
-    [augmentRequest, setPendingRequest]
+    [augmentRequest, setPendingRequest, page]
   )
 
   const handleEditMessage = useCallback(

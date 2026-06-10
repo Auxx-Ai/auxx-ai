@@ -9,6 +9,7 @@
 
 import type { ComponentType } from 'react'
 import { useEffect } from 'react'
+import { invalidateAfterSuiteTerminal } from '~/components/evals/utils/suite-invalidation'
 import { api } from '~/trpc/react'
 import { type TaskWatch, taskWatchKey, useTaskWatchStore } from '../stores/task-watch-store'
 
@@ -26,6 +27,7 @@ const EVAL_SUITE_TERMINAL = new Set(['completed', 'cancelled', 'error'])
  */
 function EvalSuiteWatcher({ watch }: TaskWatcherProps) {
   const markTerminal = useTaskWatchStore((s) => s.markTerminal)
+  const utils = api.useUtils()
   const watching = watch.state === 'watching'
 
   const suite = api.eval.getSuiteRun.useQuery(
@@ -33,12 +35,22 @@ function EvalSuiteWatcher({ watch }: TaskWatcherProps) {
     { enabled: watching, refetchInterval: watching ? 4000 : false }
   )
 
+  // A Kopilot-triggered suite is created after the Simulations tab's last fetch,
+  // so it's invisible until something invalidates. Surface it the moment a
+  // watch mounts (Phase 2.2 discovery bridge).
+  useEffect(() => {
+    void utils.eval.listSuiteRuns.invalidate()
+  }, [utils])
+
   const status = suite.data?.status
   useEffect(() => {
     if (watching && status && EVAL_SUITE_TERMINAL.has(status)) {
       markTerminal(taskWatchKey(watch))
+      // Refresh the suite list, case pills, and run feed so the tab flips from
+      // running → diff card without a manual refetch.
+      invalidateAfterSuiteTerminal(utils)
     }
-  }, [watching, status, markTerminal, watch])
+  }, [watching, status, markTerminal, watch, utils])
 
   return null
 }

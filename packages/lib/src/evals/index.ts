@@ -59,6 +59,7 @@ export {
   deleteEvalRun,
   getEvalCaseById,
   getEvalRun,
+  getEvalRunCredits,
   getEvalSuiteRun,
   getLatestRunsByCaseIds,
   type LatestRunSummary,

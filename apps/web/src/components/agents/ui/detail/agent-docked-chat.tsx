@@ -9,18 +9,22 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@auxx/ui/components/resizable'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@auxx/ui/components/tabs'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@auxx/ui/components/tooltip'
 import {
   FlaskConical,
   MessageSquare,
   MessageSquareOff,
   MoreHorizontal,
+  Rows2,
   Settings2,
   SquarePen,
 } from 'lucide-react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import { parseAsStringLiteral, useQueryState } from 'nuqs'
+import { parseAsBoolean, parseAsStringLiteral, useQueryState } from 'nuqs'
 import { useCallback, useEffect, useState } from 'react'
+import { useActiveSuite } from '~/components/evals/hooks/use-active-suite'
 import { SimulationsTab } from '~/components/evals/ui/simulations-tab'
 import { KopilotContext } from '~/components/kopilot/context'
 import { KopilotChatProvider } from '~/components/kopilot/options'
@@ -29,6 +33,7 @@ import { KopilotSuggestion } from '~/components/kopilot/suggestions/kopilot-sugg
 import { KopilotChat } from '~/components/kopilot/ui/kopilot-chat'
 import { api } from '~/trpc/react'
 import { useAgent } from '../../hooks/use-agent'
+import { resolveDockLayout } from '../../utils/dock-layout'
 
 interface AgentDockedChatProps {
   agentId: string
@@ -86,6 +91,22 @@ export function AgentDockedChat({ agentId }: AgentDockedChatProps) {
     'panel',
     parseAsStringLiteral(PANELS).withDefault(defaultPanel)
   )
+  // Opt-in vertical split (Phase 3): Simulations (top) + Build (bottom) at once.
+  // `panel` records which pane the user came from so exiting restores it.
+  const [split, setSplit] = useQueryState('split', parseAsBoolean.withDefault(false))
+  const layout = resolveDockLayout({ panel, split, isFreshAgent })
+
+  // Tabs are the split's exit, the toggle is its entrance. A tab click always
+  // drops the split and selects that panel (covers clicking the already-active
+  // tab, where onValueChange wouldn't fire).
+  const exitToPanel = useCallback(
+    (next: Panel) => {
+      void setSplit(false)
+      void setPanel(next)
+    },
+    [setSplit, setPanel]
+  )
+  const toggleSplit = useCallback(() => void setSplit((s) => !s), [setSplit])
 
   const [freshChats, setFreshChats] = useState<FreshChatState>(INITIAL_FRESH_STATE)
 
@@ -108,82 +129,144 @@ export function AgentDockedChat({ agentId }: AgentDockedChatProps) {
   )
   const dmEnabled = triggersQuery.data?.find((t) => t.kind === 'dm')?.enabled ?? false
 
+  // Pulse the Simulations trigger while a suite runs, so the state is visible
+  // from the Build/Chat tabs (Phase 2.4). Only the tab bar (and thus this) is
+  // present once setup is done.
+  const activeSuite = useActiveSuite(agentId, !isFreshAgent)
+
+  // "Fix with Kopilot" (evals 5D.1): queue the seed for the builder chat. In
+  // split mode the build pane is already mounted and consumes it in place
+  // (Phase 3.3 payoff — the failure list stays visible); otherwise switch to
+  // Build so its KopilotChat mounts and picks up the seed.
+  const handleFix = useCallback(
+    (seed: string) => {
+      useKopilotStore.getState().setPendingSeed({ page: 'agents.builder', text: seed })
+      if (layout.mode !== 'split') void setPanel('build')
+    },
+    [layout.mode, setPanel]
+  )
+
+  // Same elements in both the tab and split branches (extracted so they're
+  // identical). Toggling split remounts them (different parent) — acceptable:
+  // session state is server-persisted and reloads fast.
+  const buildPanelElement = (
+    <BuildPanel
+      agentId={agentId}
+      isFreshAgent={isFreshAgent}
+      agentName={agent?.name ?? null}
+      fresh={freshChats.build.pending}
+      epoch={freshChats.build.epoch}
+      onSessionEstablished={settleBuild}
+    />
+  )
+  const simulationsElement = <SimulationsTab agentId={agentId} onFixWithKopilot={handleFix} />
+
   return (
     <Tabs
       value={panel}
-      onValueChange={(v) => setPanel(v as Panel)}
+      onValueChange={(v) => exitToPanel(v as Panel)}
       className='flex h-full flex-col'>
       {!isFreshAgent && (
         <TabsList variant='outline'>
-          <TabsTrigger value='build' variant='outline'>
+          <TabsTrigger value='build' variant='outline' onClick={() => exitToPanel('build')}>
             <Settings2 />
             Build
           </TabsTrigger>
-          <TabsTrigger value='chat' variant='outline'>
+          <TabsTrigger value='chat' variant='outline' onClick={() => exitToPanel('chat')}>
             <MessageSquare />
             Chat
           </TabsTrigger>
-          <TabsTrigger value='simulations' variant='outline'>
+          <TabsTrigger
+            value='simulations'
+            variant='outline'
+            onClick={() => exitToPanel('simulations')}>
             <FlaskConical />
             Simulations
+            {activeSuite && (
+              <span
+                className='size-1.5 shrink-0 rounded-full bg-blue-500 animate-pulse'
+                aria-label='Suite running'
+              />
+            )}
           </TabsTrigger>
-          {panel !== 'simulations' && (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant='ghost'
-                  size='icon-xs'
-                  className='ml-auto rounded-md shrink-0'
-                  aria-label='Chat actions'>
-                  <MoreHorizontal />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align='end'>
-                <DropdownMenuItem
-                  disabled={panel === 'chat' && !dmEnabled}
-                  onClick={() => startNewChat(panel)}>
-                  <SquarePen />
-                  Start new chat
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          )}
+          <div className='ml-auto flex items-center'>
+            {layout.panel !== 'chat' && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant={split ? 'secondary' : 'ghost'}
+                    size='icon-xs'
+                    className='rounded-md shrink-0'
+                    aria-label='Split Simulations and Build'
+                    aria-pressed={split}
+                    onClick={toggleSplit}>
+                    <Rows2 />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side='bottom'>
+                  {split ? 'Exit split view' : 'Split Simulations + Build'}
+                </TooltipContent>
+              </Tooltip>
+            )}
+            {panel !== 'simulations' && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant='ghost'
+                    size='icon-xs'
+                    className='rounded-md shrink-0'
+                    aria-label='Chat actions'>
+                    <MoreHorizontal />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align='end'>
+                  <DropdownMenuItem
+                    disabled={panel === 'chat' && !dmEnabled}
+                    onClick={() => startNewChat(panel)}>
+                    <SquarePen />
+                    Start new chat
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+          </div>
         </TabsList>
       )}
-      <TabsContent value='build' className='flex-1 overflow-hidden'>
-        <BuildPanel
-          agentId={agentId}
-          isFreshAgent={isFreshAgent}
-          agentName={agent?.name ?? null}
-          fresh={freshChats.build.pending}
-          epoch={freshChats.build.epoch}
-          onSessionEstablished={settleBuild}
-        />
-      </TabsContent>
-      <TabsContent value='chat' className='flex-1 overflow-hidden'>
-        <ChatPanel
-          agentId={agentId}
-          agentName={agent?.name ?? null}
-          agentDescription={detail?.description ?? null}
-          isFreshAgent={isFreshAgent}
-          onJumpToBuild={() => setPanel('build')}
-          fresh={freshChats.chat.pending}
-          epoch={freshChats.chat.epoch}
-          onSessionEstablished={settleChat}
-        />
-      </TabsContent>
-      <TabsContent value='simulations' className='flex-1 overflow-hidden'>
-        <SimulationsTab
-          agentId={agentId}
-          // "Fix with Kopilot" (evals 5D.1): queue the seed for the builder
-          // chat, then switch tabs — the build panel's KopilotChat consumes it
-          // once its session load settles.
-          onFixWithKopilot={(seed) => {
-            useKopilotStore.getState().setPendingSeed({ page: 'agents.builder', text: seed })
-            void setPanel('build')
-          }}
-        />
-      </TabsContent>
+      {layout.mode === 'split' ? (
+        <ResizablePanelGroup
+          direction='vertical'
+          autoSaveId='agent-eval-split'
+          className='flex-1 overflow-hidden'>
+          <ResizablePanel minSize={25} defaultSize={45} className='overflow-hidden'>
+            {simulationsElement}
+          </ResizablePanel>
+          <ResizableHandle withHandle />
+          <ResizablePanel minSize={30} className='overflow-hidden'>
+            {buildPanelElement}
+          </ResizablePanel>
+        </ResizablePanelGroup>
+      ) : (
+        <>
+          <TabsContent value='build' className='flex-1 overflow-hidden'>
+            {buildPanelElement}
+          </TabsContent>
+          <TabsContent value='chat' className='flex-1 overflow-hidden'>
+            <ChatPanel
+              agentId={agentId}
+              agentName={agent?.name ?? null}
+              agentDescription={detail?.description ?? null}
+              isFreshAgent={isFreshAgent}
+              onJumpToBuild={() => setPanel('build')}
+              fresh={freshChats.chat.pending}
+              epoch={freshChats.chat.epoch}
+              onSessionEstablished={settleChat}
+            />
+          </TabsContent>
+          <TabsContent value='simulations' className='flex-1 overflow-hidden'>
+            {simulationsElement}
+          </TabsContent>
+        </>
+      )}
     </Tabs>
   )
 }

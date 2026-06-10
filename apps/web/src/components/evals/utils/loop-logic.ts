@@ -1,8 +1,8 @@
 // apps/web/src/components/evals/utils/loop-logic.ts
 //
 // Pure decision logic for the improvement-loop UX (phase 5D), kept free of
-// component/tRPC imports so it is unit-testable. Consumed by
-// use-suite-progress, eval-suite-diff-card, and eval-case-row.
+// component/tRPC imports so it is unit-testable. Consumed by the suite panel,
+// the active-suite hook, eval-suite-diff-card, and eval-case-row.
 
 import type { EvalRunStatus } from '@auxx/types/evals'
 
@@ -20,6 +20,26 @@ export const TERMINAL_SUITE_STATUSES: ReadonlySet<string> = new Set([
 export function suiteProgressRefetchInterval(status: string | undefined): number | false {
   if (status !== undefined && TERMINAL_SUITE_STATUSES.has(status)) return false
   return 4000
+}
+
+/**
+ * The first still-orchestrating suite in a list, or null (Phase 2). One suite
+ * runs at a time, so "first non-terminal" is the active suite regardless of who
+ * started it. Shared by the panel and the tab-indicator hook.
+ */
+export function selectActiveSuite<T extends { status: string }>(
+  suites: readonly T[] | undefined
+): T | null {
+  return suites?.find((s) => !TERMINAL_SUITE_STATUSES.has(s.status)) ?? null
+}
+
+/**
+ * List-level poll gate (Phase 2): true while any suite in the list is still
+ * orchestrating. Generalizes `suiteProgressRefetchInterval` to a collection so
+ * the Simulations tab polls `listSuiteRuns` only while something is running.
+ */
+export function anySuiteRunning(suites: readonly { status: string }[] | undefined): boolean {
+  return selectActiveSuite(suites) != null
 }
 
 /**

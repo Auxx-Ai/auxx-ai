@@ -479,6 +479,37 @@ export async function getEvalRun(input: { organizationId: string; runId: string 
   return ok((result.value ?? null) as EvalRunEntity | null)
 }
 
+/**
+ * Aggregate the AI credits + tokens a single eval run consumed. Eval usage is
+ * logged under `source='eval'`, `sourceId='eval-run-${runId}'` (the deterministic
+ * simulation session id), so this rolls those rows up for the run-detail view.
+ */
+export async function getEvalRunCredits(input: { organizationId: string; runId: string }) {
+  const sessionId = `eval-run-${input.runId}`
+  const result = await fromDatabase(
+    database
+      .select({
+        creditsUsed: sql<number>`COALESCE(SUM(${schema.AiUsage.creditsUsed}), 0)`,
+        totalTokens: sql<number>`COALESCE(SUM(${schema.AiUsage.totalTokens}), 0)`,
+      })
+      .from(schema.AiUsage)
+      .where(
+        and(
+          eq(schema.AiUsage.organizationId, input.organizationId),
+          eq(schema.AiUsage.source, 'eval'),
+          eq(schema.AiUsage.sourceId, sessionId)
+        )
+      ),
+    'get-eval-run-credits'
+  )
+  if (result.isErr()) return err(result.error)
+  const row = result.value[0]
+  return ok({
+    creditsUsed: Number(row?.creditsUsed ?? 0),
+    totalTokens: Number(row?.totalTokens ?? 0),
+  })
+}
+
 /** A suite child run without trace/snapshots — the diff + iteration-history payload. */
 export interface SuiteChildRunSummary {
   id: string
