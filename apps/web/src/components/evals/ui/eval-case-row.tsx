@@ -1,10 +1,12 @@
 // apps/web/src/components/evals/ui/eval-case-row.tsx
 'use client'
 
+import { toastError } from '@auxx/ui/components/toast'
 import { TreeRow, TreeRowButton } from '@auxx/ui/components/tree-row'
 import { formatRelativeTime } from '@auxx/utils'
 import { ChevronRight, Cog, FlaskConical, Play, Trash2 } from 'lucide-react'
 import { useState } from 'react'
+import { useConfirm } from '~/hooks/use-confirm'
 import { api, type RouterOutputs } from '~/trpc/react'
 import { EvalStatusDot, EvalStatusPill, evalStatusVisual } from './eval-status-pill'
 
@@ -46,82 +48,116 @@ export function EvalCaseRow({
   const runsQuery = api.eval.listRuns.useQuery({ caseId: item.id }, { enabled: isOpen })
   const lastRun = item.latestRun
 
+  const utils = api.useUtils()
+  const [confirm, ConfirmDialog] = useConfirm()
+  const deleteRun = api.eval.deleteRun.useMutation({
+    onSuccess: () => {
+      void utils.eval.listRuns.invalidate({ caseId: item.id })
+      void utils.eval.list.invalidate()
+    },
+    onError: (err) => toastError({ title: 'Failed to delete run', description: err.message }),
+  })
+
+  const handleDeleteRun = async (runId: string) => {
+    const confirmed = await confirm({
+      title: 'Delete run?',
+      description: 'This run and its trace will be removed. This cannot be undone.',
+      confirmText: 'Delete',
+      cancelText: 'Cancel',
+      destructive: true,
+    })
+    if (confirmed) deleteRun.mutate({ runId })
+  }
+
   return (
-    <TreeRow
-      icon={<FlaskConical className='size-4 text-muted-foreground' />}
-      title={item.name}
-      depth={depth}
-      rowClassName='hover:bg-primary-100'
-      expandable
-      isOpen={isOpen}
-      onToggleOpen={() => setIsOpen((o) => !o)}
-      secondary={
-        <span className='flex items-center gap-1.5'>
-          <EvalStatusPill status={lastRun?.status ?? null} />
-          {lastRun ? (
-            <span className='text-xs text-muted-foreground'>
-              {formatRelativeTime(lastRun.at, true)}
-            </span>
-          ) : null}
-        </span>
-      }
-      actions={
-        <div className='flex items-center gap-0'>
-          <TreeRowButton tooltipText='Edit' onClick={onEdit} aria-label='Edit simulation'>
-            <Cog />
-          </TreeRowButton>
-          <TreeRowButton
-            tooltipText='Run'
-            onClick={onRun}
-            disabled={isRunning}
-            aria-label='Run simulation'>
-            <Play />
-          </TreeRowButton>
-          <TreeRowButton
-            variant='destructive'
-            tooltipText='Delete'
-            onClick={onDelete}
-            disabled={isDeleting}
-            aria-label='Delete simulation'>
-            <Trash2 />
-          </TreeRowButton>
-        </div>
-      }>
-      {runsQuery.isLoading ? (
-        <TreeRow
-          depth={depth + 1}
-          title={<span className='text-xs text-muted-foreground'>Loading runs…</span>}
-        />
-      ) : runsQuery.data?.runs.length ? (
-        runsQuery.data.runs.map((run) => (
-          <TreeRow
-            key={run.id}
-            depth={depth + 1}
-            rowClassName='hover:bg-primary-100'
-            icon={<EvalStatusDot status={run.status} />}
-            title={evalStatusVisual(run.status).label}
-            secondary={
+    <>
+      <ConfirmDialog />
+      <TreeRow
+        icon={<FlaskConical className='size-4 text-muted-foreground' />}
+        title={item.name}
+        depth={depth}
+        rowClassName='hover:bg-primary-100'
+        expandable
+        isOpen={isOpen}
+        onToggleOpen={() => setIsOpen((o) => !o)}
+        secondary={
+          <span className='flex items-center gap-1.5'>
+            <EvalStatusPill status={lastRun?.status ?? null} />
+            {lastRun ? (
               <span className='text-xs text-muted-foreground'>
-                {formatRelativeTime(run.createdAt, true)}
+                {formatRelativeTime(lastRun.at, true)}
               </span>
-            }
-            onTitleClick={() => onOpenRun(run.id)}
-            actions={
-              <TreeRowButton
-                tooltipText='View run'
-                onClick={() => onOpenRun(run.id)}
-                aria-label='View run detail'>
-                <ChevronRight />
-              </TreeRowButton>
-            }
+            ) : null}
+          </span>
+        }
+        actions={
+          <div className='flex items-center gap-0'>
+            <TreeRowButton tooltipText='Edit' onClick={onEdit} aria-label='Edit simulation'>
+              <Cog />
+            </TreeRowButton>
+            <TreeRowButton
+              tooltipText='Run'
+              onClick={onRun}
+              disabled={isRunning}
+              aria-label='Run simulation'>
+              <Play />
+            </TreeRowButton>
+            <TreeRowButton
+              variant='destructive'
+              tooltipText='Delete'
+              onClick={onDelete}
+              disabled={isDeleting}
+              aria-label='Delete simulation'>
+              <Trash2 />
+            </TreeRowButton>
+          </div>
+        }>
+        {runsQuery.isLoading ? (
+          <TreeRow
+            depth={depth + 1}
+            title={<span className='text-xs text-muted-foreground'>Loading runs…</span>}
           />
-        ))
-      ) : (
-        <TreeRow
-          depth={depth + 1}
-          title={<span className='text-xs text-muted-foreground'>No runs yet.</span>}
-        />
-      )}
-    </TreeRow>
+        ) : runsQuery.data?.runs.length ? (
+          runsQuery.data.runs.map((run) => (
+            <TreeRow
+              key={run.id}
+              depth={depth + 1}
+              rowClassName='hover:bg-primary-100'
+              icon={<EvalStatusDot status={run.status} />}
+              title={evalStatusVisual(run.status).label}
+              secondary={
+                <span className='text-xs text-muted-foreground'>
+                  {formatRelativeTime(run.createdAt, true)}
+                </span>
+              }
+              onTitleClick={() => onOpenRun(run.id)}
+              actions={
+                <div className='flex items-center gap-0'>
+                  <TreeRowButton
+                    variant='destructive'
+                    tooltipText='Delete run'
+                    onClick={() => handleDeleteRun(run.id)}
+                    disabled={deleteRun.isPending && deleteRun.variables?.runId === run.id}
+                    aria-label='Delete run'>
+                    <Trash2 />
+                  </TreeRowButton>
+                  <TreeRowButton
+                    tooltipText='View run'
+                    onClick={() => onOpenRun(run.id)}
+                    aria-label='View run detail'>
+                    <ChevronRight />
+                  </TreeRowButton>
+                </div>
+              }
+            />
+          ))
+        ) : (
+          <TreeRow
+            depth={depth + 1}
+            title={<span className='text-xs text-muted-foreground'>No runs yet.</span>}
+          />
+        )}
+      </TreeRow>
+    </>
   )
 }

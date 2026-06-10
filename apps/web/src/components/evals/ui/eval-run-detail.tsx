@@ -4,14 +4,17 @@
 import type { EvalRunStatus } from '@auxx/types/evals'
 import { Alert, AlertDescription } from '@auxx/ui/components/alert'
 import { Button } from '@auxx/ui/components/button'
+import { useNavStack } from '@auxx/ui/components/nav-stack'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { EmptySection, Section } from '@auxx/ui/components/section'
 import { Spinner } from '@auxx/ui/components/spinner'
+import { toastError } from '@auxx/ui/components/toast'
 import { cn } from '@auxx/ui/lib/utils'
 import { formatRelativeTime } from '@auxx/utils'
-import { CircleDot, FileJson, History, ListChecks } from 'lucide-react'
+import { CircleDot, FileJson, History, ListChecks, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
+import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
 import { useEvalRunActions, useEvalRunState } from '../stores/use-eval-run-store'
 import { EvalAssertionResultRow } from './eval-assertion-result-row'
@@ -65,9 +68,34 @@ export function EvalRunDetail({ runId, onSelectRun }: EvalRunDetailProps) {
   const runQuery = api.eval.getRun.useQuery({ runId })
   const live = useEvalRunState(runId)
   const { connect, hydrateFromRun } = useEvalRunActions()
+  const utils = api.useUtils()
+  const { pop } = useNavStack()
+  const [confirm, ConfirmDialog] = useConfirm()
 
   const row = runQuery.data
   const caseId = row?.caseId ?? null
+
+  // Deleting the run pops back to the previous panel (the run no longer exists)
+  // and refreshes the case's run list + latest-run pill.
+  const deleteRun = api.eval.deleteRun.useMutation({
+    onSuccess: () => {
+      if (caseId) void utils.eval.listRuns.invalidate({ caseId })
+      void utils.eval.list.invalidate()
+      pop()
+    },
+    onError: (err) => toastError({ title: 'Failed to delete run', description: err.message }),
+  })
+
+  const handleDelete = async () => {
+    const confirmed = await confirm({
+      title: 'Delete run?',
+      description: 'This run and its trace will be removed. This cannot be undone.',
+      confirmText: 'Delete',
+      cancelText: 'Cancel',
+      destructive: true,
+    })
+    if (confirmed) deleteRun.mutate({ runId })
+  }
 
   // Seed the store from the authoritative row whenever it (re)loads.
   useEffect(() => {
@@ -92,14 +120,28 @@ export function EvalRunDetail({ runId, onSelectRun }: EvalRunDetailProps) {
   // The back bar carries the run-history switcher on its right; it stays mounted
   // across loading / not-found so navigation never disappears.
   const bar = (
-    <EvalDrillBar
-      title='Run detail'
-      actions={
-        caseId ? (
-          <RunHistoryPopover caseId={caseId} activeRunId={runId} onSelectRun={onSelectRun} />
-        ) : null
-      }
-    />
+    <>
+      <ConfirmDialog />
+      <EvalDrillBar
+        title='Run detail'
+        actions={
+          <>
+            {caseId ? (
+              <RunHistoryPopover caseId={caseId} activeRunId={runId} onSelectRun={onSelectRun} />
+            ) : null}
+            <Button
+              variant='ghost'
+              size='icon-xs'
+              className='text-muted-foreground hover:text-destructive'
+              loading={deleteRun.isPending}
+              onClick={handleDelete}
+              aria-label='Delete run'>
+              <Trash2 />
+            </Button>
+          </>
+        }
+      />
+    </>
   )
 
   if (runQuery.isLoading) {

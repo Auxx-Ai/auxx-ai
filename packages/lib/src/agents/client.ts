@@ -218,6 +218,15 @@ export interface CachedInstalledAppLike {
   agentTools?: ReadonlyArray<{
     id: string
     name: string
+    /**
+     * LLM-facing name the bridge registers this tool under
+     * (`getRegisteredToolName(appSlug, id)` for app tools, the bare name for
+     * built-ins). This — not the raw manifest `id` — is the catalog entry's
+     * `name`, so `tool:<name>` chips, system-prompt references, eval mocks, and
+     * the runtime toolset all speak one name. See
+     * plans/kopilot/agents/tool-chip-registered-name.md.
+     */
+    registeredName: string
     description: string
     toolsetSlug: string
     /** Mirrors `AgentToolDefinition.surfaces` — where the tool is offered. Absent ⇒ all. */
@@ -368,7 +377,7 @@ export function buildCatalogTreeFromInstallations(
     for (const tool of agentTools) {
       const arr = toolsBySlug.get(tool.toolsetSlug) ?? []
       arr.push({
-        name: tool.id,
+        name: tool.registeredName,
         displayName: tool.name,
         description: shortDescription(tool.description),
         surfaces: tool.surfaces,

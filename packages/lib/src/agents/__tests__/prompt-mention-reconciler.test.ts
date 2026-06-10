@@ -32,6 +32,28 @@ const TOOL_CATALOG: FlatToolCatalogEntry[] = [
     toolsetColor: '',
     path: [],
   },
+  // App-tool entries carry the registered name (`<slug>_<id>`), so two apps
+  // publishing the same manifest id (`send_message`) stay distinguishable.
+  {
+    name: 'slack_send_message',
+    displayName: 'Send message',
+    description: '',
+    toolsetSlug: 'app:slack:messages',
+    toolsetLabel: '',
+    toolsetIconId: '',
+    toolsetColor: '',
+    path: [],
+  },
+  {
+    name: 'teams_send_message',
+    displayName: 'Send message',
+    description: '',
+    toolsetSlug: 'app:teams:messages',
+    toolsetLabel: '',
+    toolsetIconId: '',
+    toolsetColor: '',
+    path: [],
+  },
 ]
 
 function doc(...children: unknown[]): Record<string, unknown> {
@@ -57,6 +79,19 @@ describe('walkPromptDoc', () => {
     const result = walkPromptDoc(doc(paragraph(reference('tool:list_threads'))), TOOL_CATALOG)
     expect([...result.toolsetSlugs]).toEqual(['auxx:mail:threads'])
     expect(result.recordIds.size).toBe(0)
+  })
+
+  it('maps an app-tool registered-name chip to its toolset slug', () => {
+    const result = walkPromptDoc(doc(paragraph(reference('tool:slack_send_message'))), TOOL_CATALOG)
+    expect([...result.toolsetSlugs]).toEqual(['app:slack:messages'])
+  })
+
+  it('resolves a same-id collision unambiguously by registered name', () => {
+    const result = walkPromptDoc(
+      doc(paragraph(reference('tool:slack_send_message'), reference('tool:teams_send_message'))),
+      TOOL_CATALOG
+    )
+    expect([...result.toolsetSlugs].sort()).toEqual(['app:slack:messages', 'app:teams:messages'])
   })
 
   it('accepts direct toolset: references', () => {
