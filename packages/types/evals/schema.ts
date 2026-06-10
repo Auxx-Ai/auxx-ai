@@ -136,6 +136,9 @@ export const simulationConfigSchema = z.object({
     recordIds: z.array(recordIdSchema),
     identityVerified: z.boolean(),
     claimed: z.object({ name: z.string().optional(), email: z.string().optional() }).optional(),
+    claimedManual: z
+      .object({ name: z.boolean().optional(), email: z.boolean().optional() })
+      .optional(),
   }),
   startingFields: z.array(z.object({ ref: fieldReferenceSchema, value: z.unknown() })),
   unmatchedToolPolicy: z.enum(['error', 'passthrough_readonly']),

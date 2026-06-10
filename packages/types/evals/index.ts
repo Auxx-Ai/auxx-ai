@@ -123,6 +123,13 @@ export type SimulationConfig = {
     recordIds: RecordId[]
     identityVerified: boolean
     claimed?: { name?: string; email?: string }
+    /**
+     * Per-field override of the auto-from-contact resolution. A field is auto
+     * (resolved from the subject contact into `claimed`) unless flagged manual
+     * here. Only meaningful when a contact is selected; without one every field
+     * is plain manual.
+     */
+    claimedManual?: { name?: boolean; email?: boolean }
   }
   startingFields: { ref: FieldReference; value: unknown }[]
   /** `passthrough_readonly` is opt-in and makes the run non-offline. Default `error`. */

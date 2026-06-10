@@ -120,6 +120,65 @@ describe('wrapToolsWithMocks', () => {
     expect(sink.records[0]).toMatchObject({ resolution: 'mock', mockId: 'm1', captured: false })
   })
 
+  it('falls back to the live exampleOutput when no literal mock matches', async () => {
+    const sink = collect()
+    const tool = fakeTool({ exampleOutput: { threads: [] } })
+    const [wrapped] = wrapToolsWithMocks([tool], {
+      mocks: [],
+      unmatchedPolicy: 'error',
+      ...sink,
+    })
+    const res = await asResult(wrapped!.execute({ q: 'x' }, ctx))
+    expect(res).toEqual({ success: true, output: { threads: [] } })
+    expect(tool.execute).not.toHaveBeenCalled()
+    expect(sink.unmatched).toHaveLength(0)
+    expect(sink.records[0]).toMatchObject({
+      resolution: 'tool_example',
+      mockId: null,
+      captured: false,
+    })
+  })
+
+  it('a literal mock wins over the exampleOutput', async () => {
+    const sink = collect()
+    const tool = fakeTool({ exampleOutput: { from: 'example' } })
+    const [wrapped] = wrapToolsWithMocks([tool], {
+      mocks: [mock({ output: { from: 'literal' } })],
+      unmatchedPolicy: 'error',
+      ...sink,
+    })
+    const res = await asResult(wrapped!.execute({}, ctx))
+    expect(res.output).toEqual({ from: 'literal' })
+    expect(sink.records[0]).toMatchObject({ resolution: 'mock', mockId: 'm1' })
+  })
+
+  it('a consumed once mock falls through to the exampleOutput on later calls', async () => {
+    const sink = collect()
+    const tool = fakeTool({ exampleOutput: { from: 'example' } })
+    const [wrapped] = wrapToolsWithMocks([tool], {
+      mocks: [mock({ usage: 'once', output: { from: 'literal' } })],
+      unmatchedPolicy: 'error',
+      ...sink,
+    })
+    expect((await asResult(wrapped!.execute({}, ctx))).output).toEqual({ from: 'literal' })
+    expect((await asResult(wrapped!.execute({}, ctx))).output).toEqual({ from: 'example' })
+    expect(sink.records.map((r) => r.resolution)).toEqual(['mock', 'tool_example'])
+  })
+
+  it('the exampleOutput wins over passthrough_readonly — run stays offline', async () => {
+    const sink = collect()
+    const tool = fakeTool({ idempotent: true, exampleOutput: { offline: true } })
+    const [wrapped] = wrapToolsWithMocks([tool], {
+      mocks: [],
+      unmatchedPolicy: 'passthrough_readonly',
+      ...sink,
+    })
+    const res = await asResult(wrapped!.execute({}, ctx))
+    expect(res).toEqual({ success: true, output: { offline: true } })
+    expect(tool.execute).not.toHaveBeenCalled()
+    expect(sink.passthrough).toHaveLength(0)
+  })
+
   it('fails closed on unmatched under error policy', async () => {
     const sink = collect()
     const tool = fakeTool({})
@@ -161,6 +220,33 @@ describe('wrapToolsWithMocks', () => {
     expect(res.success).toBe(false)
     expect(writeTool.execute).not.toHaveBeenCalled()
     expect(sink.unmatched).toEqual(['send_reply'])
+  })
+
+  it('captureMint falls back to the exampleOutput when the tool has no own mint', () => {
+    const sink = collect()
+    const tool = fakeTool({ exampleOutput: { minted: 'example' } })
+    const [wrapped] = wrapToolsWithMocks([tool], {
+      mocks: [],
+      unmatchedPolicy: 'error',
+      ...sink,
+    })
+    expect(wrapped!.captureMint?.({}, { localIndex: 0 })).toEqual({ minted: 'example' })
+    expect(sink.records[0]).toMatchObject({ resolution: 'tool_example', captured: true })
+  })
+
+  it("captureMint prefers the tool's own (args-aware) mint over the exampleOutput", () => {
+    const sink = collect()
+    const tool = fakeTool({
+      exampleOutput: { minted: 'example' },
+      captureMint: (args) => ({ minted: args.title }),
+    })
+    const [wrapped] = wrapToolsWithMocks([tool], {
+      mocks: [],
+      unmatchedPolicy: 'error',
+      ...sink,
+    })
+    expect(wrapped!.captureMint?.({ title: 'T' }, { localIndex: 0 })).toEqual({ minted: 'T' })
+    expect(sink.records).toHaveLength(0) // own-mint path emits no record (unchanged)
   })
 
   // control tools (procedure/plan signals) must bypass wrapping entirely — they
