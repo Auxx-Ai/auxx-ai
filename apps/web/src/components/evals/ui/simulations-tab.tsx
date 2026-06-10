@@ -7,7 +7,6 @@ import { useQueryState } from 'nuqs'
 import { useState } from 'react'
 import { api } from '~/trpc/react'
 import { EvalCaseDrawer } from './eval-case-drawer'
-import { EvalDrillBar } from './eval-drill-bar'
 import { EvalRunDetail } from './eval-run-detail'
 import { EvalSuitePanel } from './eval-suite-panel'
 
@@ -84,10 +83,7 @@ export function SimulationsTab({ agentId }: { agentId: string }) {
         </NavStackPanel>
 
         <NavStackPanel value='run' className='flex h-full flex-col'>
-          <EvalDrillBar title='Run detail' />
-          <ScrollArea className='min-h-0 flex-1' scrollbarClassName='w-1.5'>
-            {runId ? <EvalRunDetail runId={runId} onSelectRun={setRunId} /> : null}
-          </ScrollArea>
+          {runId ? <EvalRunDetail runId={runId} onSelectRun={setRunId} /> : null}
         </NavStackPanel>
       </NavStackPanels>
     </NavStack>

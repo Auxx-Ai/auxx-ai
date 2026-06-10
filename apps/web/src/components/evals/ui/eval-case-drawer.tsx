@@ -2,40 +2,26 @@
 'use client'
 
 import { FieldType } from '@auxx/database/enums'
+import type { RecordId } from '@auxx/lib/resources/client'
 import type { AgentEvalAssertion, AgentEvalTarget, SimulationConfig } from '@auxx/types/evals'
 import { Button } from '@auxx/ui/components/button'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@auxx/ui/components/dropdown-menu'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { EmptySection, Section } from '@auxx/ui/components/section'
 import { Switch } from '@auxx/ui/components/switch'
 import { toastError } from '@auxx/ui/components/toast'
 import { generateId } from '@auxx/utils'
-import {
-  Ban,
-  Flag,
-  FlaskConical,
-  ListChecks,
-  MessageSquareText,
-  Play,
-  Plus,
-  User,
-  Wrench,
-} from 'lucide-react'
-import type { ReactNode } from 'react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { FlaskConical, Play, User, Wrench } from 'lucide-react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
+import { useRecord, useResourceProperty } from '~/components/resources'
+import { MultiRelationInput } from '~/components/shared/multi-relation-input'
+import { AutoResolveBadge } from '~/components/workflow/nodes/core/answer/components/auto-resolve-badge'
 import { VarEditorField, VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
 import { api } from '~/trpc/react'
 import { AutosaveIndicator, type AutosaveState } from '../../agents/ui/shared/autosave-indicator'
-import { useToolGroups } from '../hooks/use-tool-groups'
+import { AssertionsSection } from './assertions-section'
 import { EvalDrillBar } from './eval-drill-bar'
 import { EvalToolResponses } from './eval-tool-responses'
-import { ToolSelect } from './tool-select'
 
 /**
  * Level 2 of the Simulations drill: the case editor. Inline, stacked `Section`s
@@ -47,6 +33,9 @@ import { ToolSelect } from './tool-select'
  * `crm_field`/`local_variable`, `procedure_selected`, subject pickers) are a
  * follow-up. See plans/evals/ui-plan.md §"Level 2 — case editor".
  */
+
+/** The contact entity slug — the subject record the persona "is". */
+const CONTACT_SLUG = 'contact'
 
 const DEFAULT_CONFIG: SimulationConfig = {
   openingMessage: '',
@@ -75,12 +64,6 @@ const serializeDraft = (d: {
 const CHANNEL_OPTIONS = [
   { value: 'chat', label: 'Chat' },
   { value: 'email', label: 'Email' },
-]
-
-const OUTCOME_OPTIONS = [
-  { value: 'finished', label: 'Finished' },
-  { value: 'handoff', label: 'Handoff' },
-  { value: 'switch', label: 'Switch' },
 ]
 
 interface EvalCaseDrawerProps {
@@ -266,6 +249,38 @@ function EvalCaseForm({
   const setConfigField = <K extends keyof SimulationConfig>(key: K, value: SimulationConfig[K]) =>
     setConfig((c) => ({ ...c, [key]: value }))
 
+  // ── Test customer (subject) ──
+  const contactEntityDefId = useResourceProperty(CONTACT_SLUG, 'entityDefinitionId')
+  const subjectRecordId = (config.subject.recordIds[0] as RecordId | undefined) ?? null
+  const { record: subjectRecord } = useRecord({ recordId: subjectRecordId })
+
+  // The picked contact's display values — used to seed a field when it's switched
+  // to manual. `displayName`/`secondaryInfo` are what RecordBadge shows; treat
+  // secondaryInfo as the email only if it reads like one.
+  const resolvedName =
+    typeof subjectRecord?.displayName === 'string' ? subjectRecord.displayName : undefined
+  const resolvedSecondary =
+    typeof subjectRecord?.secondaryInfo === 'string' ? subjectRecord.secondaryInfo : undefined
+  const resolvedEmail = resolvedSecondary?.includes('@') ? resolvedSecondary : undefined
+
+  const setSubjectRecords = (recordIds: RecordId[]) =>
+    setConfig((c) => ({ ...c, subject: { ...c.subject, recordIds } }))
+
+  // claimed.<key> === undefined ⇒ auto (the persona supplies its own value); a
+  // string (including '') ⇒ manual (pinned, stated verbatim).
+  const setClaimed = (key: 'name' | 'email', value: string | undefined) =>
+    setConfig((c) => {
+      const merged = { ...c.subject.claimed, [key]: value }
+      const claimed: { name?: string; email?: string } = {}
+      if (merged.name !== undefined) claimed.name = merged.name
+      if (merged.email !== undefined) claimed.email = merged.email
+      const hasAny = claimed.name !== undefined || claimed.email !== undefined
+      return { ...c, subject: { ...c.subject, claimed: hasAny ? claimed : undefined } }
+    })
+
+  const emailIsAuto = config.subject.claimed?.email === undefined
+  const nameIsAuto = config.subject.claimed?.name === undefined
+
   const runNow = async () => {
     const id = await saveNow()
     // The drawer is the editor surface — always run the current draft.
@@ -288,43 +303,126 @@ function EvalCaseForm({
 
       <ScrollArea className='min-h-0 flex-1' scrollbarClassName='w-1.5'>
         {/* Customer */}
-        <Section title='Customer' icon={<User className='size-4' />}>
-          <VarEditorField className='p-0'>
-            <VarEditorFieldRow title='Opening message' isRequired>
-              <FieldInputAdapter
-                fieldType={FieldType.RICH_TEXT}
-                value={config.openingMessage}
-                onChange={(v) => setConfigField('openingMessage', (v as string) ?? '')}
-                placeholder='I want to cancel my order'
-              />
-            </VarEditorFieldRow>
-            <VarEditorFieldRow title='Customer context' description='Background the persona knows.'>
-              <FieldInputAdapter
-                fieldType={FieldType.RICH_TEXT}
-                value={config.customerContext ?? ''}
-                onChange={(v) => setConfigField('customerContext', (v as string) || null)}
-                placeholder='Has not received an order confirmation.'
-              />
-            </VarEditorFieldRow>
-            <VarEditorFieldRow title='Channel'>
-              <FieldInputAdapter
-                fieldType={FieldType.SINGLE_SELECT}
-                fieldOptions={{ options: CHANNEL_OPTIONS }}
-                triggerProps={{ className: 'w-full pe-1 ps-0' }}
-                value={config.channel}
-                onChange={(v) =>
-                  setConfigField('channel', ((v as string[])[0] as 'chat' | 'email') ?? 'chat')
-                }
-              />
-            </VarEditorFieldRow>
-            <VarEditorFieldRow title='Max customer turns'>
-              <FieldInputAdapter
-                fieldType={FieldType.NUMBER}
-                value={config.maxCustomerTurns}
-                onChange={(v) => setConfigField('maxCustomerTurns', Number(v) || 1)}
-              />
-            </VarEditorFieldRow>
-          </VarEditorField>
+        <Section
+          title='Customer'
+          icon={<User className='size-4' />}
+          className='[&>[data-slot=section]>[data-slot=section-content]]:-mx-3'>
+          <div className='flex flex-col ps-2 pe-4'>
+            <VarEditorField className='p-0'>
+              <VarEditorFieldRow title='Opening message' isRequired>
+                <FieldInputAdapter
+                  fieldType={FieldType.RICH_TEXT}
+                  value={config.openingMessage}
+                  onChange={(v) => setConfigField('openingMessage', (v as string) ?? '')}
+                  placeholder='I want to cancel my order'
+                />
+              </VarEditorFieldRow>
+              <VarEditorFieldRow
+                title='Customer context'
+                description='Background the persona knows.'>
+                <FieldInputAdapter
+                  fieldType={FieldType.RICH_TEXT}
+                  value={config.customerContext ?? ''}
+                  onChange={(v) => setConfigField('customerContext', (v as string) || null)}
+                  placeholder='Has not received an order confirmation.'
+                />
+              </VarEditorFieldRow>
+              <VarEditorFieldRow
+                title='Customer record'
+                description='Simulate as this contact — the agent resolves its data.'>
+                <MultiRelationInput
+                  entityDefinitionId={contactEntityDefId}
+                  value={config.subject.recordIds as RecordId[]}
+                  onChange={setSubjectRecords}
+                  multi={false}
+                  placeholder='Select a contact'
+                  triggerProps={{ className: 'w-full ps-0' }}
+                />
+              </VarEditorFieldRow>
+              <VarEditorFieldRow
+                title='Email'
+                description='The email the customer gives when asked.'>
+                <div className='relative flex items-center'>
+                  <div className='z-10 me-0.5 shrink-0 @sm:absolute @sm:right-full @sm:top-1/2 @sm:-translate-y-1/2'>
+                    <AutoResolveBadge
+                      isAuto={emailIsAuto}
+                      onChange={(isAuto) =>
+                        setClaimed('email', isAuto ? undefined : (resolvedEmail ?? ''))
+                      }
+                    />
+                  </div>
+                  {emailIsAuto ? (
+                    <span className='flex h-8 items-center gap-1.5 px-2 text-xs'>
+                      {resolvedEmail ? (
+                        <>
+                          <span className='truncate text-foreground'>{resolvedEmail}</span>
+                          <span className='shrink-0 text-muted-foreground'>(auto resolved)</span>
+                        </>
+                      ) : (
+                        <span className='text-muted-foreground'>Auto resolved</span>
+                      )}
+                    </span>
+                  ) : (
+                    <FieldInputAdapter
+                      fieldType={FieldType.EMAIL}
+                      value={config.subject.claimed?.email ?? ''}
+                      onChange={(v) => setClaimed('email', (v as string) ?? '')}
+                      placeholder='jordan.lee@example.com'
+                    />
+                  )}
+                </div>
+              </VarEditorFieldRow>
+              <VarEditorFieldRow title='Name'>
+                <div className='relative flex items-center'>
+                  <div className='z-10 me-0.5 shrink-0 @sm:absolute @sm:right-full @sm:top-1/2 @sm:-translate-y-1/2'>
+                    <AutoResolveBadge
+                      isAuto={nameIsAuto}
+                      onChange={(isAuto) =>
+                        setClaimed('name', isAuto ? undefined : (resolvedName ?? ''))
+                      }
+                    />
+                  </div>
+                  {nameIsAuto ? (
+                    <span className='flex h-8 items-center gap-1.5 px-2 text-xs'>
+                      {resolvedName ? (
+                        <>
+                          <span className='truncate text-foreground'>{resolvedName}</span>
+                          <span className='shrink-0 text-muted-foreground'>(auto resolved)</span>
+                        </>
+                      ) : (
+                        <span className='text-muted-foreground'>Auto resolved</span>
+                      )}
+                    </span>
+                  ) : (
+                    <FieldInputAdapter
+                      fieldType={FieldType.TEXT}
+                      value={config.subject.claimed?.name ?? ''}
+                      onChange={(v) => setClaimed('name', (v as string) ?? '')}
+                      placeholder='Jordan Lee'
+                    />
+                  )}
+                </div>
+              </VarEditorFieldRow>
+              <VarEditorFieldRow title='Channel'>
+                <FieldInputAdapter
+                  fieldType={FieldType.SINGLE_SELECT}
+                  fieldOptions={{ options: CHANNEL_OPTIONS }}
+                  triggerProps={{ className: 'w-full pe-1 ps-0' }}
+                  value={config.channel}
+                  onChange={(v) =>
+                    setConfigField('channel', ((v as string[])[0] as 'chat' | 'email') ?? 'chat')
+                  }
+                />
+              </VarEditorFieldRow>
+              <VarEditorFieldRow title='Max customer turns'>
+                <FieldInputAdapter
+                  fieldType={FieldType.NUMBER}
+                  value={config.maxCustomerTurns}
+                  onChange={(v) => setConfigField('maxCustomerTurns', Number(v) || 1)}
+                />
+              </VarEditorFieldRow>
+            </VarEditorField>
+          </div>
         </Section>
 
         {/* Execution policy */}
@@ -381,202 +479,4 @@ function EvalCaseForm({
       </div>
     </>
   )
-}
-
-// ── Assertions ─────────────────────────────────────────────────────────────
-
-interface AssertionsSectionProps {
-  agentId: string
-  scope: 'agent' | 'procedure'
-  assertions: AgentEvalAssertion[]
-  onChange: (next: AgentEvalAssertion[]) => void
-}
-
-function AssertionsSection({ agentId, assertions, onChange }: AssertionsSectionProps) {
-  // The agent's effective toolset, grouped by toolset (shared with the Tool
-  // responses section via one `useToolGroups` hook — the `agentToolset` query is
-  // deduped on its key). The SINGLE_SELECT widget has no grouped-option support,
-  // so we prefix each label with its toolset (`Entities — Search · List
-  // transcripts`) and keep the catalog icon — context the bare displayName lacked.
-  const { groups, ungroupedTools, index } = useToolGroups(agentId)
-  const toolOptions = useMemo(() => {
-    const all = [...groups.flatMap((g) => g.tools), ...ungroupedTools]
-    return all.map((t) => {
-      const meta = index.get(t.name)
-      return {
-        value: t.name,
-        label: meta ? `${meta.toolsetLabel} · ${t.displayName}` : t.displayName,
-        icon: meta?.iconId,
-      }
-    })
-  }, [groups, ungroupedTools, index])
-
-  const add = (a: AgentEvalAssertion) => onChange([...assertions, a])
-  const remove = (id: string) => onChange(assertions.filter((a) => a.id !== id))
-  const patch = (id: string, next: AgentEvalAssertion) =>
-    onChange(assertions.map((a) => (a.id === id ? next : a)))
-
-  return (
-    <Section
-      title='Assertions'
-      collapsible={false}
-      actions={
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant='ghost' size='xs'>
-              <Plus />
-              Add assertion
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align='end'>
-            <DropdownMenuItem
-              onClick={() =>
-                add({
-                  id: generateId('asrt'),
-                  type: 'terminal_outcome',
-                  data: { outcome: 'finished' },
-                })
-              }>
-              {ASSERTION_META.terminal_outcome.icon}
-              {ASSERTION_META.terminal_outcome.label}
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              onClick={() =>
-                add({ id: generateId('asrt'), type: 'response_criteria', data: { criteria: [] } })
-              }>
-              {ASSERTION_META.response_criteria.icon}
-              {ASSERTION_META.response_criteria.label}
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              onClick={() =>
-                add({ id: generateId('asrt'), type: 'tool_called', data: { toolName: '' } })
-              }>
-              {ASSERTION_META.tool_called.icon}
-              {ASSERTION_META.tool_called.label}
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              onClick={() =>
-                add({ id: generateId('asrt'), type: 'tool_not_called', data: { toolName: '' } })
-              }>
-              {ASSERTION_META.tool_not_called.icon}
-              {ASSERTION_META.tool_not_called.label}
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      }>
-      {assertions.length === 0 ? (
-        <EmptySection
-          icon={<ListChecks className='size-4' />}
-          title='No assertions yet'
-          description='A case must assert at least one outcome before it can pass.'
-        />
-      ) : (
-        <VarEditorField className='p-0'>
-          {assertions.map((a) => {
-            const meta = ASSERTION_META[a.type]
-            return (
-              <VarEditorFieldRow
-                key={a.id}
-                title={meta?.label ?? a.type}
-                description={meta?.description}
-                icon={meta?.icon}
-                showIcon={meta != null}
-                onClear={() => remove(a.id)}>
-                <AssertionEditor
-                  assertion={a}
-                  toolOptions={toolOptions}
-                  onChange={(next) => patch(a.id, next)}
-                />
-              </VarEditorFieldRow>
-            )
-          })}
-        </VarEditorField>
-      )}
-    </Section>
-  )
-}
-
-/** Label, icon, and hover description for each assertion type in the editor. */
-const ASSERTION_META: Record<string, { label: string; description: string; icon: ReactNode }> = {
-  terminal_outcome: {
-    label: 'Terminal outcome',
-    description:
-      'How the conversation must end — finished, handed off to a human, or switched to another procedure.',
-    icon: <Flag className='size-3.5 text-muted-foreground' />,
-  },
-  response_criteria: {
-    label: 'Response criteria',
-    description: "Natural-language criteria the agent's replies must satisfy (LLM-judged).",
-    icon: <MessageSquareText className='size-3.5 text-muted-foreground' />,
-  },
-  tool_called: {
-    label: 'Tool called',
-    description: 'The agent must call this tool at least once during the run.',
-    icon: <Wrench className='size-3.5 text-muted-foreground' />,
-  },
-  tool_not_called: {
-    label: 'Tool not called',
-    description: 'The agent must never call this tool during the run.',
-    icon: <Ban className='size-3.5 text-muted-foreground' />,
-  },
-}
-
-function AssertionEditor({
-  assertion,
-  toolOptions,
-  onChange,
-}: {
-  assertion: AgentEvalAssertion
-  toolOptions: { value: string; label: string; icon?: string }[]
-  onChange: (next: AgentEvalAssertion) => void
-}) {
-  if (assertion.type === 'terminal_outcome') {
-    return (
-      <FieldInputAdapter
-        fieldType={FieldType.SINGLE_SELECT}
-        fieldOptions={{ options: OUTCOME_OPTIONS }}
-        triggerProps={{ className: 'w-full ps-0 pe-1' }}
-        value={assertion.data.outcome}
-        onChange={(v) =>
-          onChange({
-            ...assertion,
-            data: {
-              outcome: ((v as string[])[0] as 'finished' | 'handoff' | 'switch') ?? 'finished',
-            },
-          })
-        }
-      />
-    )
-  }
-  if (assertion.type === 'response_criteria') {
-    return (
-      <FieldInputAdapter
-        fieldType={FieldType.RICH_TEXT}
-        triggerProps={{ className: 'w-full ps-0 pe-1' }}
-        value={assertion.data.criteria.join('\n')}
-        onChange={(v) =>
-          onChange({
-            ...assertion,
-            data: {
-              criteria: ((v as string) ?? '')
-                .split('\n')
-                .map((s) => s.trim())
-                .filter(Boolean),
-            },
-          })
-        }
-        placeholder='One criterion per line'
-      />
-    )
-  }
-  if (assertion.type === 'tool_called' || assertion.type === 'tool_not_called') {
-    return (
-      <ToolSelect
-        options={toolOptions}
-        value={assertion.data.toolName}
-        onChange={(toolName) => onChange({ ...assertion, data: { ...assertion.data, toolName } })}
-      />
-    )
-  }
-  return null
 }

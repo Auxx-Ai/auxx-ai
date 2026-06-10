@@ -26,6 +26,8 @@ export interface EditorToolGroup {
 export interface ToolMetaEntry {
   toolsetLabel: string
   iconId: string
+  /** Toolset brand color (empty when none) — used to tint the catalog icon. */
+  color: string
 }
 
 /**
@@ -112,6 +114,7 @@ export function useToolGroups(agentId: string): {
       index.set(name, {
         toolsetLabel: toolsetMeta.get(meta.toolsetSlug)?.fullLabel ?? meta.toolsetSlug,
         iconId: meta.iconId,
+        color: toolsetMeta.get(meta.toolsetSlug)?.color ?? '',
       })
     }
 

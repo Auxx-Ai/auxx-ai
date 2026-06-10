@@ -2,6 +2,7 @@
 'use client'
 
 import type { AgentEvalTarget } from '@auxx/types/evals'
+import { AnimatedGradientText } from '@auxx/ui/components/animated-gradient-text'
 import { Button } from '@auxx/ui/components/button'
 import { EmptySection, Section } from '@auxx/ui/components/section'
 import { toastError } from '@auxx/ui/components/toast'
@@ -9,6 +10,7 @@ import { TreeRow, TreeRowButton } from '@auxx/ui/components/tree-row'
 import { Plus, RefreshCw, Sparkles, Trash2 } from 'lucide-react'
 import { useEffect } from 'react'
 import { api, type RouterOutputs } from '~/trpc/react'
+import { SparkleIcon } from '../../kopilot/ui/sparkle-icon'
 import {
   useEvalSuggestionsActions,
   useSuggestionsEntry,
@@ -197,8 +199,9 @@ function SuggestionRow({ suggestion, onAdd, onDismiss, isAdding }: SuggestionRow
 
   return (
     <TreeRow
-      icon={<Sparkles className='size-4 text-muted-foreground/60 shrink-0' />}
-      title={suggestion.name}
+      icon={<SparkleIcon className='shrink-0' />}
+      title={<AnimatedGradientText>{suggestion.name}</AnimatedGradientText>}
+      onTitleClick={isAdding ? undefined : onAdd}
       description={suggestion.rationale}
       rowClassName='hover:bg-primary-100'
       secondary={<span className='truncate text-xs text-muted-foreground'>{hint}</span>}
