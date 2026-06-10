@@ -1,7 +1,6 @@
 // packages/lib/src/ai/agent-framework/run-log.ts
 
-import path from 'node:path'
-import { type RunLogFilter, withRunLog } from '@auxx/logger/run-log'
+import { type RunLogFilter, runLogPath, withRunLog } from '@auxx/logger/run-log'
 
 /**
  * Scope prefixes considered relevant to an agent-session trace. Logs from any
@@ -32,21 +31,16 @@ const agentRunLogFilter: RunLogFilter = ({ scope, level }) => {
  * The path, scope allowlist, and level threshold are all decided here so the
  * logger package stays domain-blind.
  *
- * File layout: `agent-sessions/<YYYY-MM-DD>/<HH-mm-ss-SSSZ>__<sessionId>.log`.
- * Date-bucketed so a day's runs sort lexically; session id stays in the
- * filename for grep + multi-turn lookup. Colons replaced with hyphens so the
- * names work on every filesystem.
+ * File layout: `<root>/.logs/agent-sessions/<YYYY-MM-DD>/<HH-mm-ss-SSSZ>__<sessionId>.log`.
+ * The root `.logs` is shared across apps (see `runLogPath`), so web- and
+ * worker-originated sessions sit together. Date-bucketed so a day's runs sort
+ * lexically; session id stays in the filename for grep + multi-turn lookup.
+ * Colons replaced with hyphens so the names work on every filesystem.
  */
 export function withAgentRunLog<T>(sessionId: string, fn: () => T): T {
   const now = new Date()
   const datePart = now.toISOString().slice(0, 10) // YYYY-MM-DD
   const timePart = now.toISOString().slice(11, 23).replace(/[:.]/g, '-') // HH-mm-ss-SSS
-  const logFile = path.join(
-    process.cwd(),
-    '.logs',
-    'agent-sessions',
-    datePart,
-    `${timePart}Z__${sessionId}.log`
-  )
+  const logFile = runLogPath('agent-sessions', datePart, `${timePart}Z__${sessionId}.log`)
   return withRunLog(sessionId, logFile, fn, { filter: agentRunLogFilter })
 }

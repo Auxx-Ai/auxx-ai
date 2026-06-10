@@ -71,6 +71,11 @@ describe('createAgentRuntimeSnapshot', () => {
     // No function leaked into the persisted manifest.
     expect(JSON.stringify(snap)).not.toContain('function')
   })
+
+  it('stamps the customer envelope so the executor reproduces it on retry', () => {
+    const snap = createAgentRuntimeSnapshot(baseInput([tool({})]))
+    expect(snap.envelope).toBe('customer')
+  })
 })
 
 describe('verifyRuntimeAgainstSnapshot', () => {

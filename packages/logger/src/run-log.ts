@@ -24,6 +24,34 @@ export interface WithRunLogOptions {
 
 const runLogStorage = new AsyncLocalStorage<RunLogContext>()
 
+const WORKSPACE_MARKER = 'pnpm-workspace.yaml'
+let cachedRunLogRoot: string | undefined
+
+/**
+ * Resolve the directory that hosts the shared `.logs` folder, then join the
+ * given segments onto `<root>/.logs`. Walks up from cwd to the monorepo root
+ * (the dir holding `pnpm-workspace.yaml`) so run-log files from every app
+ * (web, worker, …) land in ONE place — a single root-level `.logs` — instead of
+ * a per-app `.logs` under each process's cwd. Falls back to cwd when the marker
+ * isn't found (e.g. a standalone deploy). Cached per process; the root is fixed.
+ */
+export function runLogPath(...segments: string[]): string {
+  if (cachedRunLogRoot === undefined) {
+    let dir = process.cwd()
+    cachedRunLogRoot = dir
+    while (true) {
+      if (fs.existsSync(path.join(dir, WORKSPACE_MARKER))) {
+        cachedRunLogRoot = dir
+        break
+      }
+      const parent = path.dirname(dir)
+      if (parent === dir) break // hit fs root → keep cwd fallback
+      dir = parent
+    }
+  }
+  return path.join(cachedRunLogRoot, '.logs', ...segments)
+}
+
 /** Strip ANSI escape codes from a string. */
 function stripAnsi(str: string): string {
   // biome-ignore lint/suspicious/noControlCharactersInRegex: stripping ANSI codes

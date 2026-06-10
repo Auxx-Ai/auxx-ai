@@ -92,6 +92,30 @@ export async function validateEvalCase(
       seen.add(mock.toolName)
     }
 
+    // Tools the procedure references that have no literal mock ride the live
+    // example default (or run live under passthrough) — surface it so a
+    // contradictory canned example doesn't silently poison the conversation
+    // (the scenario says order #10483, the example says #2088). Scoped to
+    // `tool:` chips in the compiled docs; un-referenced tools stay quiet (the
+    // trace's resolution badge self-explains at run time).
+    const referenced = collectReferencedToolNames(compiledSet)
+    for (const tool of runtime.tools) {
+      if (!referenced.has(tool.name) || seen.has(tool.name)) continue
+      if (toolCategory(tool) === 'control') continue
+      if (tool.exampleOutput !== undefined) {
+        warnings.push(
+          `Tool "${tool.name}" has no mock; it will return its live default example — verify the example is consistent with this scenario (ids, amounts, names)`
+        )
+      } else if (
+        config.unmatchedToolPolicy === 'passthrough_readonly' &&
+        tool.idempotent === true
+      ) {
+        warnings.push(
+          `Tool "${tool.name}" has no mock and no default example; it will execute for real (read-only passthrough)`
+        )
+      }
+    }
+
     // Assertions referencing a tool absent from the toolset can never pass.
     for (const a of assertions) {
       if (
@@ -117,4 +141,31 @@ export async function validateEvalCase(
   if (assertions.length === 0) errors.push('A case must declare at least one assertion')
 
   return { ok: errors.length === 0, errors, warnings }
+}
+
+/**
+ * Collect the tool names referenced by `tool:<name>` chips in the compiled
+ * procedures' instruction docs. Pure; unknown node shapes are ignored.
+ */
+export function collectReferencedToolNames(compiledSet: CompiledProcedure[]): Set<string> {
+  const names = new Set<string>()
+  const visit = (node: unknown): void => {
+    if (!node || typeof node !== 'object') return
+    const n = node as { type?: string; attrs?: { id?: unknown }; content?: unknown[] }
+    if (
+      n.type === 'reference' &&
+      typeof n.attrs?.id === 'string' &&
+      n.attrs.id.startsWith('tool:')
+    ) {
+      const name = n.attrs.id.slice('tool:'.length)
+      if (name) names.add(name)
+    }
+    if (Array.isArray(n.content)) for (const child of n.content) visit(child)
+  }
+  for (const compiled of compiledSet) {
+    for (const step of Object.values(compiled.steps)) {
+      if (step.kind === 'instruction') visit(step.doc)
+    }
+  }
+  return names
 }
