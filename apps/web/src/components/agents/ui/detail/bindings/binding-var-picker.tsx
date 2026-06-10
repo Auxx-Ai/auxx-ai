@@ -27,14 +27,17 @@ import {
 } from '@auxx/ui/components/command'
 import { EntityIcon } from '@auxx/ui/components/icons'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
+import { cn } from '@auxx/ui/lib/utils'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import { useCallback, useMemo, useState } from 'react'
 import type { FieldPickerNavigationItem } from '~/components/pickers/field-picker'
 import { FieldPickerInnerContent } from '~/components/pickers/field-picker'
 import { useResourceProperty } from '~/components/resources'
+import { FieldBadge } from '~/components/resources/ui/field-badge'
+import { recordBadgeVariants } from '~/components/resources/ui/record-badge'
 import { isVarFieldTypeCompatible } from '~/lib/agents/bindings/arg-to-field-type'
 import { api } from '~/trpc/react'
-import { useBindingRefLabel } from './hooks/use-binding-ref-label'
+import { useBindingRefBadgeKey, useBindingRefLabel } from './hooks/use-binding-ref-label'
 
 interface BindingVarPickerProps {
   /** Currently-bound field ref (`{ kind:'var' }.ref` — single segment or FieldPath). */
@@ -77,7 +80,12 @@ export function BindingVarPicker({
 }: BindingVarPickerProps) {
   const [open, setOpen] = useState(false)
   const refLabel = useBindingRefLabel()
-  const label = value ? refLabel(value) : undefined
+  const toBadgeKey = useBindingRefBadgeKey()
+  const badgeKey = value ? toBadgeKey(value) : null
+  const rootEntity = value
+    ? parseResourceFieldId((Array.isArray(value) ? value[0]! : value) as ResourceFieldId)
+        .entityDefinitionId
+    : ''
 
   const handleSelect = (ref: VarRef) => {
     onChange(ref)
@@ -93,8 +101,13 @@ export function BindingVarPicker({
           size='sm'
           disabled={disabled}
           className='h-8 w-full justify-between px-2 font-normal'>
-          {label ? (
-            <span className='truncate'>{label}</span>
+          {value ? (
+            badgeKey ? (
+              <FieldBadge id={badgeKey} entityDefinitionId={rootEntity} />
+            ) : (
+              // `self` refs aren't real fields — same badge shell, entity icon + label.
+              <SelfRefBadge rootEntity={rootEntity} label={refLabel(value)} />
+            )
           ) : (
             <span className='text-muted-foreground'>Select a dynamic value…</span>
           )}
@@ -296,6 +309,20 @@ function AnchorItem({
       </div>
       <ChevronRight className='size-4 opacity-50' />
     </CommandItem>
+  )
+}
+
+/**
+ * Trigger badge for a bound `self` ref — not a real field, so `FieldBadge`
+ * can't resolve it. Same `recordBadgeVariants` shell, entity icon + label.
+ */
+function SelfRefBadge({ rootEntity, label }: { rootEntity: string; label: string }) {
+  const entityProps = useResourceProperty(rootEntity, ['icon', 'color'])
+  return (
+    <span data-slot='field-badge' className={cn(recordBadgeVariants({}), 'font-normal')}>
+      <EntityIcon iconId={entityProps?.icon ?? 'circle'} color={entityProps?.color} size='xs' />
+      <span className='truncate'>{label}</span>
+    </span>
   )
 }
 

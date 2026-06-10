@@ -1,6 +1,10 @@
 // apps/web/src/components/resources/ui/field-badge.tsx
 'use client'
 
+import { getEffectiveFieldType } from '@auxx/lib/custom-fields/client'
+import { fieldTypeOptions } from '@auxx/lib/custom-fields/types'
+import type { ResourceField } from '@auxx/lib/resources/client'
+import { getRelatedEntityDefinitionId, type RelationshipConfig } from '@auxx/types/custom-field'
 import {
   type FieldPath,
   isFieldPath,
@@ -11,13 +15,18 @@ import {
   toResourceFieldId,
 } from '@auxx/types/field'
 import { Badge } from '@auxx/ui/components/badge'
+import { EntityIcon } from '@auxx/ui/components/icons'
+import { Skeleton } from '@auxx/ui/components/skeleton'
 import { type BreadcrumbSegment, SmartBreadcrumb } from '@auxx/ui/components/smart-breadcrumb'
 import { cn } from '@auxx/ui/lib/utils'
-import { AlertTriangle } from 'lucide-react'
+import type { VariantProps } from 'class-variance-authority'
+import { AlertTriangle, X } from 'lucide-react'
 import { useMemo } from 'react'
-import { useField, useFields } from '~/components/resources/hooks/use-field'
+import { useField, useFields, useResourceProperty } from '~/components/resources/hooks/use-field'
+import { useResourceStore } from '~/components/resources/store/resource-store'
+import { recordBadgeVariants } from './record-badge'
 
-interface FieldBadgeProps {
+interface FieldBadgeProps extends Pick<VariantProps<typeof recordBadgeVariants>, 'size'> {
   /**
    * Encoded `FieldReference` key produced by `fieldRefToKey`. Three
    * accepted shapes (decoded via `keyToFieldRef`):
@@ -29,16 +38,29 @@ interface FieldBadgeProps {
   /** Entity context for plain-`FieldId` resolution. */
   entityDefinitionId: string
   selected?: boolean
+  /** Whether to show the field-type icon (default: true). */
+  showIcon?: boolean
+  /** When set, renders a trailing X button that fires this handler on click. */
+  onRemove?: () => void
   className?: string
 }
 
 /**
  * Display badge for a field reference inside an editor (CALC formulas, AI
- * prompts, future filter chips). Self-fetches its labels from the
- * resource store via `useField`/`useFields` — callers don't hand
- * `availableFields` arrays anymore.
+ * prompts, binding pickers, filter chips). Self-fetches its labels from the
+ * resource store via `useField`/`useFields`. Shares `recordBadgeVariants` and
+ * the `skeleton`/`record-remove` data-slot structure with `RecordBadge`, so
+ * field and record chips render identically side by side.
  */
-export function FieldBadge({ id, entityDefinitionId, selected, className }: FieldBadgeProps) {
+export function FieldBadge({
+  id,
+  entityDefinitionId,
+  selected,
+  showIcon = true,
+  onRemove,
+  size,
+  className,
+}: FieldBadgeProps) {
   const ref: ResourceFieldId | FieldPath = useMemo(() => {
     if (isPlainFieldId(id)) {
       return toResourceFieldId(entityDefinitionId, toFieldId(id))
@@ -50,19 +72,52 @@ export function FieldBadge({ id, entityDefinitionId, selected, className }: Fiel
   // branch and useField/useFields handle it.
   const singleField = useField(isFieldPath(ref) ? null : ref)
   const pathFields = useFields(isFieldPath(ref) ? ref : [])
+  const hasLoadedOnce = useResourceStore((s) => s.hasLoadedOnce)
+
+  const terminalField = isFieldPath(ref) ? pathFields[pathFields.length - 1] : singleField
+
+  const badgeClasses = cn(
+    recordBadgeVariants({ size }),
+    'font-normal',
+    selected && 'ring-2 ring-primary ring-offset-1',
+    className
+  )
+
+  // Store not hydrated yet — skeleton instead of flashing the unknown badge.
+  if (!hasLoadedOnce && !terminalField) {
+    return (
+      <span data-slot='field-badge' aria-busy className={badgeClasses}>
+        {showIcon && <Skeleton />}
+        <Skeleton />
+      </span>
+    )
+  }
+
+  if (!isFieldPath(ref) && !singleField) {
+    return <UnknownBadge id={id} selected={selected} className={className} />
+  }
+
+  const remove = onRemove && (
+    <button
+      type='button'
+      data-slot='record-remove'
+      aria-label='Remove'
+      onClick={(e) => {
+        e.preventDefault()
+        e.stopPropagation()
+        onRemove()
+      }}>
+      <X />
+    </button>
+  )
 
   if (!isFieldPath(ref)) {
-    if (!singleField) return <UnknownBadge id={id} selected={selected} className={className} />
     return (
-      <Badge
-        variant='secondary'
-        className={cn(
-          fieldBadgeBaseClasses,
-          selected && 'ring-2 ring-primary ring-offset-1',
-          className
-        )}>
-        {singleField.label}
-      </Badge>
+      <span data-slot='field-badge' className={badgeClasses}>
+        {showIcon && <FieldBadgeIcon field={singleField} />}
+        <span className='truncate'>{singleField!.label}</span>
+        {remove}
+      </span>
     )
   }
 
@@ -74,35 +129,41 @@ export function FieldBadge({ id, entityDefinitionId, selected, className }: Fiel
   }))
 
   return (
-    <Badge
-      variant='secondary'
-      className={cn(
-        fieldBadgeBaseClasses,
-        'max-w-[280px]',
-        selected && 'ring-2 ring-primary ring-offset-1',
-        className
-      )}>
+    <span data-slot='field-badge' className={cn(badgeClasses, 'max-w-[280px]')}>
+      {showIcon && <FieldBadgeIcon field={terminalField} />}
       <SmartBreadcrumb
         segments={segments}
         mode='display'
         size='sm'
         className='[&_[data-slot=breadcrumb-list]]:m-0! [&_[data-slot=breadcrumb-list]]:p-0!'
       />
-    </Badge>
+      {remove}
+    </span>
   )
 }
 
 /**
- * Shared base classes mirroring `RecordBadge`'s default variant + default
- * size, so field badges sit visually next to record badges in editors and
- * filter chips without drift.
+ * Leading icon for the (terminal) field — the field-type icon from
+ * `fieldTypeOptions`, or the target entity's icon for relationship terminals,
+ * mirroring how `FieldItem` rows render in the pickers.
  */
-const fieldBadgeBaseClasses = cn(
-  'flex items-center rounded-[5px] ring-1 py-0',
-  'cursor-default ring-neutral-300 bg-neutral-100 text-neutral-600',
-  'dark:text-neutral-100 dark:bg-muted dark:ring-neutral-800',
-  'h-5 gap-1.5 ps-0.5 pe-1.5 text-sm font-normal'
-)
+function FieldBadgeIcon({ field }: { field: ResourceField | undefined }) {
+  const relatedEntityDefinitionId = field?.relationship
+    ? getRelatedEntityDefinitionId(field.relationship as RelationshipConfig)
+    : null
+  const targetProps = useResourceProperty(relatedEntityDefinitionId, ['icon', 'color'])
+
+  if (field?.relationship && targetProps) {
+    return <EntityIcon iconId={targetProps.icon} color={targetProps.color} size='xs' />
+  }
+
+  const effectiveFieldType = field ? getEffectiveFieldType(field) : undefined
+  const iconId =
+    (effectiveFieldType &&
+      fieldTypeOptions[effectiveFieldType as keyof typeof fieldTypeOptions]?.iconId) ||
+    'circle'
+  return <EntityIcon iconId={iconId} size='xs' className='text-muted-foreground' />
+}
 
 function UnknownBadge({
   id,
