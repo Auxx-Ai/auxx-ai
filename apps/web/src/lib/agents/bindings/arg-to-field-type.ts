@@ -2,6 +2,7 @@
 
 import { FieldType } from '@auxx/database/enums'
 import type { FieldOptions } from '@auxx/lib/field-values/client'
+import { isTypeCompatible, mapFieldTypeToBaseType } from '@auxx/lib/workflow-engine/client'
 
 /**
  * A single top-level property of a tool's `inputsJsonSchema`, in the minimal
@@ -91,24 +92,14 @@ export function argToFieldType(arg: ToolArgSchema): ArgFieldTypeResult {
 
 /**
  * True when a var's `fieldType` is compatible with an arg's mapped FieldType.
- * Lenient by design: any TEXT-ish var (TEXT/EMAIL/URL/PHONE/…) may bind a
- * string arg, since the value is a scalar the tool ultimately coerces. Exact
- * match otherwise. See plans/chat/v6 phase-4 var-picker type-match.
+ * Delegates to the workflow engine's coercion-aware `TYPE_COMPATIBILITY_MAP`
+ * (`isTypeCompatible`) over `BaseType`s — the same matrix the workflow variable
+ * picker uses — so binding and workflow type-matching never diverge. The arg's
+ * FieldType is the destination; the field's FieldType is the source.
  */
 export function isVarFieldTypeCompatible(argFieldType: string, varFieldType: string): boolean {
   if (argFieldType === varFieldType) return true
-  if (argFieldType === FieldType.TEXT) {
-    return TEXT_LIKE_FIELD_TYPES.has(varFieldType)
-  }
-  return false
+  return isTypeCompatible(mapFieldTypeToBaseType(varFieldType), [
+    mapFieldTypeToBaseType(argFieldType),
+  ])
 }
-
-/** FieldTypes whose stored scalar is a plain string — interchangeable with TEXT. */
-const TEXT_LIKE_FIELD_TYPES: ReadonlySet<string> = new Set([
-  FieldType.TEXT,
-  FieldType.EMAIL,
-  FieldType.URL,
-  FieldType.PHONE_INTL,
-  FieldType.RICH_TEXT,
-  FieldType.SINGLE_SELECT,
-])
