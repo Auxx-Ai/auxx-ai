@@ -94,6 +94,7 @@ type CustomFieldRecord = {
   isHidden: boolean
   // App ownership (app-registered custom fields)
   appInstallationId: string | null
+  appFieldKey: string | null
 }
 
 /** EntityDefinition with display field relations and customFields loaded */
@@ -1058,6 +1059,7 @@ export class ResourceRegistryService {
         // (e.g. the v5 chat fence) and the UI knows the field is app-managed.
         isAppOwned,
         appInstallationId: field.appInstallationId ?? undefined,
+        appFieldKey: field.appFieldKey ?? undefined,
 
         // Convenience properties (avoid needing transforms)
         name: field.name,

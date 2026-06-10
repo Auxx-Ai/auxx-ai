@@ -13,7 +13,6 @@ import {
   setAgentToolBindings,
   updateAgent as updateAgentService,
 } from '@auxx/lib/agents'
-import { availableFieldsForAnchor } from '@auxx/lib/agents/bindings'
 import { FeatureKey, FeaturePermissionService } from '@auxx/lib/permissions'
 import { createScopedLogger } from '@auxx/logger'
 import { TRPCError } from '@trpc/server'
@@ -229,20 +228,6 @@ export const agentRouter = createTRPCRouter({
         excludeAgentId: input.excludeAgentId,
       })
       return { available: !taken }
-    }),
-
-  /**
-   * Project the bindable fields for an anchor (`contact` / `participant` /
-   * `thread`) for the Bindings override picker. Each entry is a `VarRef` (as a
-   * string) + label + field type; app-owned fields appear as their
-   * `@app:<slug>:<key>` ref (resolved to a concrete field at turn time). See
-   * plans/chat/v8 phase-5.
-   */
-  listBindingFields: adminProcedure
-    .input(z.object({ anchor: z.enum(['contact', 'participant', 'thread']) }))
-    .query(async ({ ctx, input }) => {
-      const fields = await availableFieldsForAnchor(ctx.session.organizationId, input.anchor)
-      return { fields }
     }),
 
   /**

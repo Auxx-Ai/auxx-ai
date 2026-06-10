@@ -20,20 +20,3 @@ export type { VarRef, VarSource }
  * input name → resolved {@link VarSource} (`override ?? authorDefault`).
  */
 export type ToolBindingMap = Record<string, Record<string, VarSource>>
-
-/**
- * One bindable field on an anchor, for the admin override picker (plans/chat/v8
- * phase-5). App-owned fields appear as their `@app:<slug>:<key>` ref (the
- * connection is resolved at turn time). Pure type — lives here so the web UI
- * can import it client-side without pulling the server-only projection.
- */
-export interface AvailableField {
-  /** The `VarRef` (as a string) to store in a `{ kind:'var', ref }` binding. */
-  ref: string
-  /** Human-readable label for the picker. */
-  label: string
-  /** Picker group heading — the anchor label, or the app title for app fields. */
-  group: string
-  /** Terminal field type (`TEXT`, `NUMBER`, …) so the UI can type-match the input. */
-  fieldType: string
-}

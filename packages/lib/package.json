@@ -28,12 +28,6 @@
       "import": "./dist/agents/index.mjs",
       "default": "./src/agents/index.ts"
     },
-    "./agents/bindings": {
-      "types": "./src/agents/bindings/index.ts",
-      "source": "./src/agents/bindings/index.ts",
-      "import": "./dist/agents/bindings/index.mjs",
-      "default": "./src/agents/bindings/index.ts"
-    },
     "./agents/bindings/client": {
       "types": "./src/agents/bindings/client.ts",
       "source": "./src/agents/bindings/client.ts",

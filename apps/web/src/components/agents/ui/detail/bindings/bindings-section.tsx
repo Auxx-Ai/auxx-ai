@@ -10,10 +10,10 @@ import { Plus, ShieldCheck } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { AppIcon } from '~/components/apps/ui/app-icon'
 import { useConfirm } from '~/hooks/use-confirm'
-import { api } from '~/trpc/react'
 import type { AgentDetail } from '../../../store/agent-store'
 import { AddBindingDialog } from './add-binding-dialog'
 import { BindingRow } from './binding-row'
+import { useBindingRefLabel } from './hooks/use-binding-ref-label'
 import { useBindings } from './hooks/use-bindings'
 import { type ToolMeta, useToolMeta } from './hooks/use-tool-meta'
 
@@ -22,10 +22,9 @@ interface BindingsSectionProps {
 }
 
 /** Render a binding's bound value as a short label for the row secondary. */
-function valueLabelFor(source: VarSource, refLabelById: Map<string, string>): string {
+function valueLabelFor(source: VarSource, refLabel: (ref: string | string[]) => string): string {
   if (source.kind === 'var') {
-    const ref = typeof source.ref === 'string' ? source.ref : source.ref.join(' → ')
-    return refLabelById.get(ref) ?? ref
+    return refLabel(source.ref)
   }
   if (source.kind === 'const') {
     const v = source.value
@@ -53,17 +52,7 @@ export function BindingsSection({ agent }: BindingsSectionProps) {
 
   const toolMeta = useToolMeta(agent)
   const { bindings, save } = useBindings(agent)
-  const contact = api.agent.listBindingFields.useQuery({ anchor: 'contact' })
-  const participant = api.agent.listBindingFields.useQuery({ anchor: 'participant' })
-  const thread = api.agent.listBindingFields.useQuery({ anchor: 'thread' })
-
-  const refLabelById = useMemo(() => {
-    const map = new Map<string, string>()
-    for (const q of [contact.data, participant.data, thread.data]) {
-      for (const f of q?.fields ?? []) map.set(f.ref, f.label)
-    }
-    return map
-  }, [contact.data, participant.data, thread.data])
+  const refLabel = useBindingRefLabel()
 
   // Split overrides into enabled-tool entries (shown) vs disabled-tool entries
   // (kept inert, hidden — surfaced only as a count).
@@ -155,7 +144,7 @@ export function BindingsSection({ agent }: BindingsSectionProps) {
                       <BindingRow
                         key={arg}
                         arg={arg}
-                        valueLabel={valueLabelFor(source, refLabelById)}
+                        valueLabel={valueLabelFor(source, refLabel)}
                         onEdit={() => openEdit(registeredName)}
                         onDelete={() => handleDelete(registeredName, arg)}
                       />
