@@ -83,6 +83,19 @@ describe('filterToolsByToolsets', () => {
     expect(result.map((t) => t.name)).toEqual(['get_thread_detail'])
   })
 
+  it('disables an app tool by its registered name', () => {
+    // Runtime app tools are named by the registered name (`<slug>_<id>`); now
+    // that the catalog/builder persist that same name into `disabledTools`,
+    // per-tool disable lands instead of silently no-op'ing on the manifest id.
+    const findOrder = tool('shopify_find_shopify_order', 'app:shopify:orders.read')
+    const cancelOrder = tool('shopify_cancel_shopify_order', 'app:shopify:orders.read')
+    const result = filterToolsByToolsets(
+      [findOrder, cancelOrder],
+      agent([{ slug: 'app:shopify:orders.read', disabledTools: ['shopify_find_shopify_order'] }])
+    )
+    expect(result.map((t) => t.name)).toEqual(['shopify_cancel_shopify_order'])
+  })
+
   it('silently ignores unknown slugs in config', () => {
     const result = filterToolsByToolsets(
       [findThreads],

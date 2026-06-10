@@ -146,6 +146,29 @@ export async function deleteEvalCase(input: { organizationId: string; id: string
   return ok(undefined)
 }
 
+/** Delete one run. Trace and assertion results are inline jsonb, so this is a single row delete. */
+export async function deleteEvalRun(input: { organizationId: string; runId: string }) {
+  const result = await fromDatabase(
+    database
+      .delete(schema.EvalRun)
+      .where(
+        and(
+          eq(schema.EvalRun.id, input.runId),
+          eq(schema.EvalRun.organizationId, input.organizationId)
+        )
+      )
+      .returning({ id: schema.EvalRun.id }),
+    'delete-eval-run'
+  )
+  if (result.isErr()) return err(result.error)
+  if (!result.value[0])
+    return err({
+      code: 'EVAL_RUN_NOT_FOUND' as const,
+      message: `Eval run not found: ${input.runId}`,
+    })
+  return ok(undefined)
+}
+
 /**
  * Cases for an agent. Omit `procedureId` for the agent-root view (every case,
  * for grouping); pass it to scope to one procedure's procedure-scoped cases.

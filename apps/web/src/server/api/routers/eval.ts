@@ -7,6 +7,7 @@ import {
   createQueuedEvalRun,
   createSuiteRunWithChildren,
   deleteEvalCase,
+  deleteEvalRun,
   failQueuedEvalRun,
   getEvalCaseById,
   getEvalRun,
@@ -401,6 +402,16 @@ export const evalRouter = createTRPCRouter({
       )
       if (!cancelled) throw new TRPCError({ code: 'NOT_FOUND', message: 'Eval run not found' })
       return { status: cancelled.status }
+    }),
+
+  deleteRun: evalAdminProcedure
+    .input(z.object({ runId: z.string().min(1) }))
+    .mutation(async ({ ctx, input }) => {
+      unwrap(
+        await deleteEvalRun({ organizationId: ctx.session.organizationId, runId: input.runId }),
+        'delete eval run'
+      )
+      return { ok: true as const }
     }),
 
   // ── Suggestions ───────────────────────────────────────────────────────────

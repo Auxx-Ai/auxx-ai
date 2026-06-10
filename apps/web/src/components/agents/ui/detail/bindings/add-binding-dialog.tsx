@@ -105,10 +105,10 @@ export function AddBindingDialog({
   }, [open, editing])
 
   const handleSelectTool = (chipId: string) => {
-    // ToolReferenceList emits `tool:<catalogName>`; map to the registered name.
-    const catalogName = chipId.replace(/^tool:/, '')
-    const resolved = toolMeta.registeredNameByCatalogName.get(catalogName)
-    if (!resolved) return
+    // ToolReferenceList emits `tool:<registeredName>` — the chip tail IS the
+    // binding-map key, no catalog→registered translation needed.
+    const resolved = chipId.replace(/^tool:/, '')
+    if (!toolMeta.byRegisteredName.has(resolved)) return
     setRegisteredName(resolved)
     setDraft({ ...(agent.toolRestrictions?.[resolved] ?? {}) })
     setStep('args')
@@ -154,7 +154,7 @@ export function AddBindingDialog({
             <DialogNavPage value='tool' size='md'>
               <div className='p-3'>
                 <ToolReferenceList
-                  filterNames={toolMeta.enabledCatalogNames}
+                  filterNames={toolMeta.enabledToolNames}
                   onSelectSingle={handleSelectTool}
                   className='border'
                 />

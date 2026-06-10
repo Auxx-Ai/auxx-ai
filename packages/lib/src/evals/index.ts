@@ -48,6 +48,7 @@ export {
   createQueuedEvalRun,
   createSuiteRunWithChildren,
   deleteEvalCase,
+  deleteEvalRun,
   getEvalCaseById,
   getEvalRun,
   getEvalSuiteRun,

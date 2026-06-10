@@ -620,12 +620,14 @@ type AuthoringSuggestion = z.infer<typeof authoringSuggestionSchema>
 // ── Per-item mapping + validation (the drop pipeline) ──────────────────────
 
 /**
- * Resolve a model-emitted tool name to a canonical registered name. App tools
- * register as `<appSlug>_<toolId>` and the toolId often already contains the app
- * name (`shopify_find_shopify_order`) — small utility models reliably "simplify"
- * those to the natural tail (`find_shopify_order`) despite the exactly-as-written
- * prompt rule. An exact hit wins; otherwise a UNIQUE `_`-boundary suffix match
- * rescues the name. Ambiguity (or no match) stays `null` → the item is dropped.
+ * Resolve a model-emitted tool name to a canonical registered name. The
+ * procedure text now renders `tool:` chips as their registered names
+ * (`shopify_find_shopify_order`), so the exact-match path is the norm. The
+ * suffix rescue stays as a belt: small utility models still sometimes "simplify"
+ * an app tool to its natural tail (`find_shopify_order`) despite the
+ * exactly-as-written prompt rule. An exact hit wins; otherwise a UNIQUE
+ * `_`-boundary suffix match rescues the name. Ambiguity (or no match) stays
+ * `null` → the item is dropped.
  */
 function resolveToolName(name: string, toolMap: Map<string, AgentToolDefinition>): string | null {
   if (toolMap.has(name)) return name

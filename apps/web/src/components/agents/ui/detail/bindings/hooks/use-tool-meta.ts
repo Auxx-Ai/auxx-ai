@@ -12,10 +12,8 @@ import type { AgentDetail } from '../../../../store/agent-store'
  * UI can read a tool's parameter schema without a server round-trip.
  */
 export interface ToolMeta {
-  /** Binding-map key (`<appSlug>_<toolId>`). */
+  /** Binding-map key (`<appSlug>_<toolId>`) — also the catalog `name` and chip tail. */
   registeredName: string
-  /** Catalog `name` for selection — what `ToolReferenceList` emits as `tool:<name>`. */
-  catalogName: string
   /** Human-friendly tool label. */
   displayName: string
   /** Resolved icon id (toolset iconKey → app avatar → 'package'). */
@@ -31,10 +29,8 @@ export interface ToolMeta {
 export interface UseToolMetaResult {
   /** Lookup keyed by registered name. */
   byRegisteredName: Map<string, ToolMeta>
-  /** Lookup keyed by catalog name (`tool.id`) → registered name, for the dialog. */
-  registeredNameByCatalogName: Map<string, string>
-  /** Catalog names of tools in an enabled toolset — feeds the picker `filterNames`. */
-  enabledCatalogNames: ReadonlySet<string>
+  /** Registered names of tools in an enabled toolset — feeds the picker `filterNames`. */
+  enabledToolNames: ReadonlySet<string>
   isLoading: boolean
 }
 
@@ -42,9 +38,10 @@ export interface UseToolMetaResult {
  * Build the tool-metadata lookups the Bindings UI needs from the installed-apps
  * cache + the agent's toolset state.
  *
- * `ToolReferenceList` emits `tool:<catalogName>` where `catalogName` is the raw
- * tool id; bindings are keyed by the registered name. This hook bridges the two
- * and exposes each tool's parameter schema. See plans/chat/v8 phase-5.
+ * Catalog chips, bindings, and the runtime toolset all key on the registered
+ * name now, so `ToolReferenceList` emits `tool:<registeredName>` and the binding
+ * map keys match without translation. This hook exposes each tool's parameter
+ * schema keyed by that one name. See plans/kopilot/agents/tool-chip-registered-name.md.
  */
 export function useToolMeta(agent: AgentDetail): UseToolMetaResult {
   const { appInstallations, isLoading } = useExtensionsContext()
@@ -55,15 +52,13 @@ export function useToolMeta(agent: AgentDetail): UseToolMetaResult {
     )
 
     const byRegisteredName = new Map<string, ToolMeta>()
-    const registeredNameByCatalogName = new Map<string, string>()
-    const enabledCatalogNames = new Set<string>()
+    const enabledToolNames = new Set<string>()
 
     for (const inst of appInstallations) {
       for (const tool of inst.agentTools ?? []) {
         const enabled = enabledToolsetSlugs.has(tool.toolsetSlug)
         const meta: ToolMeta = {
           registeredName: tool.registeredName,
-          catalogName: tool.id,
           displayName: tool.name,
           iconId: tool.iconId,
           toolsetSlug: tool.toolsetSlug,
@@ -71,11 +66,10 @@ export function useToolMeta(agent: AgentDetail): UseToolMetaResult {
           enabled,
         }
         byRegisteredName.set(tool.registeredName, meta)
-        registeredNameByCatalogName.set(tool.id, tool.registeredName)
-        if (enabled) enabledCatalogNames.add(tool.id)
+        if (enabled) enabledToolNames.add(tool.registeredName)
       }
     }
 
-    return { byRegisteredName, registeredNameByCatalogName, enabledCatalogNames, isLoading }
+    return { byRegisteredName, enabledToolNames, isLoading }
   }, [appInstallations, agent.toolsets, isLoading])
 }
