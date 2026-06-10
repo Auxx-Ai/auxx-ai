@@ -16,6 +16,7 @@ import { AvatarUpload } from '../../../file-upload/ui/avatar-upload'
 import { useAgentMutations } from '../../hooks/use-agent-mutations'
 import type { AgentDetail } from '../../store/agent-store'
 import { toSlug } from '../../utils/agent-slug'
+import { AgentModelBadge } from './agent-model-badge'
 
 interface AgentHeroProps {
   agent: AgentDetail
@@ -81,6 +82,7 @@ export function AgentHero({ agent }: AgentHeroProps) {
               </Badge>
             </Tooltip>
           ) : null}
+          <AgentModelBadge agent={agent} />
         </div>
         <div className='flex items-center text-xs text-neutral-500 min-w-0 gap-1'>
           <InlineSlugField

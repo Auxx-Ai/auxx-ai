@@ -10,9 +10,10 @@ import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { EmptySection, Section } from '@auxx/ui/components/section'
 import { Spinner } from '@auxx/ui/components/spinner'
 import { toastError } from '@auxx/ui/components/toast'
+import { useCopy } from '@auxx/ui/hooks/use-copy'
 import { cn } from '@auxx/ui/lib/utils'
 import { formatRelativeTime } from '@auxx/utils'
-import { CircleDot, FileJson, History, ListChecks, Trash2 } from 'lucide-react'
+import { Check, CircleDot, Copy, FileJson, History, ListChecks, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
@@ -21,6 +22,7 @@ import { EvalAssertionResultRow } from './eval-assertion-result-row'
 import { EvalDrillBar } from './eval-drill-bar'
 import { EvalStatusDot, EvalStatusPill } from './eval-status-pill'
 import { EvalTraceView } from './eval-trace-view'
+import { type TraceMarkdownMeta, traceToMarkdown } from './messages/eval-trace-markdown'
 
 /**
  * Level 3 of the Simulations drill: one run's verdict, trace, and snapshot.
@@ -171,6 +173,13 @@ export function EvalRunDetail({ runId, onSelectRun }: EvalRunDetailProps) {
   const isLive = !TERMINAL.has(status)
   const banner = BANNER[status]
   const assertions = live.assertionResults.length ? live.assertionResults : []
+  const assertionTally = assertions.reduce(
+    (acc, r) => {
+      acc[r.status] += 1
+      return acc
+    },
+    { passed: 0, failed: 0, error: 0 }
+  )
 
   return (
     <>
@@ -213,6 +222,16 @@ export function EvalRunDetail({ runId, onSelectRun }: EvalRunDetailProps) {
           icon={<History className='size-4' />}
           description='The conversation and tool calls, in order.'
           className={SECTION_BLEED}
+          actions={
+            <CopyTraceButton
+              trace={live.trace}
+              meta={{
+                status,
+                summary: row.error ? `${banner.sentence} ${row.error}` : banner.sentence,
+                assertions: assertionTally,
+              }}
+            />
+          }
           collapsible>
           <div className='flex flex-col ps-2 pe-4'>
             <EvalTraceView trace={live.trace} isLive={isLive} />
@@ -232,6 +251,35 @@ export function EvalRunDetail({ runId, onSelectRun }: EvalRunDetailProps) {
         </Section>
       </ScrollArea>
     </>
+  )
+}
+
+// ── Copy-trace action ────────────────────────────────────────────────────────
+
+/**
+ * Header action for the Trace section — copies the full trace as Markdown
+ * (metadata header + conversation + tool args/output/badge + notices). Sits in
+ * the section `actions` slot, outside the collapse trigger, so it never toggles
+ * the section. Disabled until there are events to copy.
+ */
+function CopyTraceButton({
+  trace,
+  meta,
+}: {
+  trace: React.ComponentProps<typeof EvalTraceView>['trace']
+  meta: TraceMarkdownMeta
+}) {
+  const copy = useCopy({ toastMessage: 'Trace copied as Markdown' })
+  return (
+    <Button
+      variant='ghost'
+      size='icon-xs'
+      className='text-muted-foreground'
+      disabled={trace.length === 0}
+      onClick={() => copy.copy(traceToMarkdown(trace, meta))}
+      aria-label='Copy trace as Markdown'>
+      {copy.copied ? <Check /> : <Copy />}
+    </Button>
   )
 }
 

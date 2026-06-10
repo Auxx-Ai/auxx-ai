@@ -66,12 +66,14 @@ export {
   type KnowledgeEntry,
   type KnowledgeMode,
   type KnowledgeSource,
-  reconcileKnowledge,
+  type MentionSource,
+  reconcileKnowledgeMentions,
   reconcilePromptMentions,
-  reconcileToolsets,
+  reconcileToolsetMentions,
   type ToolsetEntry,
   type ToolsetSource,
   walkPromptDoc,
+  walkPromptDocs,
 } from './prompt-mention-reconciler'
 export { type ResolvedAgentConfig, resolveAgentConfig } from './resolve-agent-config'
 export {

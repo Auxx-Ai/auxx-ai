@@ -8,9 +8,12 @@ import {
   discardProcedureDraft,
   getProcedureById,
   getProcedureVersionById,
+  listAgentIdsForProcedure,
   listProcedures,
   listProcedureVersions,
   publishProcedure,
+  reconcileProcedureMentionsForAgents,
+  reconcileProcedureMentionsForAllAgents,
   revertProcedure,
   type TiptapDoc,
   updateDraftDoc,
@@ -148,6 +151,9 @@ export const procedureRouter = createTRPCRouter({
           await updateDraftDoc({ organizationId, procedureId: id, doc: doc as TiptapDoc }),
           'update draft doc'
         )
+        // A draft doc edit can add/remove `tool:`/record chips — fan the
+        // `'procedure'` tag out to every agent this procedure is attached to.
+        await reconcileProcedureMentionsForAllAgents(organizationId, id)
       }
       // Re-read and return the authoritative meta (same projection as getById
       // minus draftDoc) so the client's optimistic store settles on truth —
@@ -172,7 +178,11 @@ export const procedureRouter = createTRPCRouter({
     .input(z.object({ id: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
+      // Capture the attached agents BEFORE the delete cascade-detaches the links,
+      // then reconcile each AFTER so the gone procedure drops out of their tag.
+      const agentIds = await listAgentIdsForProcedure(organizationId, input.id)
       unwrap(await deleteProcedure({ organizationId, procedureId: input.id }), 'delete procedure')
+      await reconcileProcedureMentionsForAgents(organizationId, agentIds)
       return { ok: true as const }
     }),
 
@@ -202,6 +212,9 @@ export const procedureRouter = createTRPCRouter({
         await discardProcedureDraft({ organizationId, procedureId: input.id }),
         'discard procedure draft'
       )
+      // Draft doc was rewritten back to the active version — the draft+active
+      // union may have changed, so re-fan the `'procedure'` tag.
+      await reconcileProcedureMentionsForAllAgents(organizationId, input.id)
       return {
         id: procedure.id,
         name: procedure.name,
@@ -282,6 +295,9 @@ export const procedureRouter = createTRPCRouter({
         'publish procedure'
       )
       await onCacheEvent('procedure.updated', { orgId: organizationId })
+      // Publish moves the active version — fan the `'procedure'` tag out so the
+      // runtime toolsets of every attached agent track the new active doc.
+      await reconcileProcedureMentionsForAllAgents(organizationId, input.id)
       logger.info('Procedure published', {
         organizationId,
         procedureId: input.id,
@@ -303,6 +319,8 @@ export const procedureRouter = createTRPCRouter({
         'revert procedure'
       )
       await onCacheEvent('procedure.updated', { orgId: organizationId })
+      // Revert repoints the active version + rewrites the draft — re-fan the tag.
+      await reconcileProcedureMentionsForAllAgents(organizationId, input.id)
       return { ok: true as const }
     }),
 })

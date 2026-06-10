@@ -3,11 +3,12 @@
 import { describe, expect, it } from 'vitest'
 import {
   type KnowledgeEntry,
-  reconcileKnowledge,
+  reconcileKnowledgeMentions,
   reconcilePromptMentions,
-  reconcileToolsets,
+  reconcileToolsetMentions,
   type ToolsetEntry,
   walkPromptDoc,
+  walkPromptDocs,
 } from '../prompt-mention-reconciler'
 import type { FlatToolCatalogEntry } from '../toolset-catalog'
 
@@ -134,114 +135,216 @@ describe('walkPromptDoc', () => {
   })
 })
 
-describe('reconcileToolsets', () => {
-  function ts(slug: string, source: ToolsetEntry['source']): ToolsetEntry {
-    return { slug, config: {}, enabled: true, source }
-  }
-
-  it('inserts a new mention row when slug is not covered', () => {
-    const next = reconcileToolsets([], new Set(['auxx:mail:threads']))
-    expect(next).toEqual([ts('auxx:mail:threads', 'mention')])
-  })
-
-  it('drops stale mention rows', () => {
-    const next = reconcileToolsets([ts('auxx:mail:threads', 'mention')], new Set())
-    expect(next).toEqual([])
-  })
-
-  it('promotes a manual row to mention when its slug is mentioned', () => {
-    const next = reconcileToolsets(
-      [ts('auxx:mail:threads', 'manual')],
-      new Set(['auxx:mail:threads'])
+describe('walkPromptDocs', () => {
+  it('unions slugs and recordIds across many docs', () => {
+    const result = walkPromptDocs(
+      [
+        doc(paragraph(reference('tool:list_threads'), reference('article:abc'))),
+        doc(paragraph(reference('tool:search_articles'), reference('article:abc'))),
+      ],
+      TOOL_CATALOG
     )
-    expect(next).toEqual([ts('auxx:mail:threads', 'mention')])
+    expect([...result.toolsetSlugs].sort()).toEqual(['auxx:knowledge', 'auxx:mail:threads'])
+    expect([...result.recordIds]).toEqual(['article:abc'])
   })
 
-  it('promotes an auto_default row to mention when its slug is mentioned', () => {
-    const next = reconcileToolsets(
-      [ts('auxx:mail:threads', 'auto_default')],
-      new Set(['auxx:mail:threads'])
+  it('resolves a same-id collision across docs by registered name', () => {
+    const result = walkPromptDocs(
+      [
+        doc(paragraph(reference('tool:slack_send_message'))),
+        doc(paragraph(reference('tool:teams_send_message'))),
+      ],
+      TOOL_CATALOG
     )
-    expect(next).toEqual([ts('auxx:mail:threads', 'mention')])
+    expect([...result.toolsetSlugs].sort()).toEqual(['app:slack:messages', 'app:teams:messages'])
   })
 
-  it('re-enables a disabled manual row when its slug is mentioned', () => {
-    const next = reconcileToolsets(
-      [{ slug: 'auxx:mail:threads', config: {}, enabled: false, source: 'manual' }],
-      new Set(['auxx:mail:threads'])
-    )
-    expect(next).toEqual([ts('auxx:mail:threads', 'mention')])
-  })
-
-  it('handles a mention→remove cycle', () => {
-    const first = reconcileToolsets([], new Set(['auxx:knowledge']))
-    const second = reconcileToolsets(first, new Set())
-    expect(second).toEqual([])
+  it('returns empty for no docs', () => {
+    const result = walkPromptDocs([], TOOL_CATALOG)
+    expect(result.toolsetSlugs.size).toBe(0)
+    expect(result.recordIds.size).toBe(0)
   })
 })
 
-describe('reconcileKnowledge', () => {
+describe('reconcileToolsetMentions', () => {
+  function ts(
+    slug: string,
+    source: ToolsetEntry['source'],
+    mentionedBy?: ToolsetEntry['mentionedBy']
+  ): ToolsetEntry {
+    return { slug, config: {}, enabled: true, source, ...(mentionedBy ? { mentionedBy } : {}) }
+  }
+
+  it('inserts a new prompt-tagged mention row when slug is not covered', () => {
+    const next = reconcileToolsetMentions([], new Set(['auxx:mail:threads']), 'prompt')
+    expect(next).toEqual([ts('auxx:mail:threads', 'mention', ['prompt'])])
+  })
+
+  it('drops a prompt-only mention row when no longer mentioned', () => {
+    const next = reconcileToolsetMentions(
+      [ts('auxx:mail:threads', 'mention', ['prompt'])],
+      new Set(),
+      'prompt'
+    )
+    expect(next).toEqual([])
+  })
+
+  it('promotes a manual row to a tagged mention when mentioned', () => {
+    const next = reconcileToolsetMentions(
+      [ts('auxx:mail:threads', 'manual')],
+      new Set(['auxx:mail:threads']),
+      'procedure'
+    )
+    expect(next).toEqual([ts('auxx:mail:threads', 'mention', ['procedure'])])
+  })
+
+  it('re-enables a disabled manual row when mentioned', () => {
+    const next = reconcileToolsetMentions(
+      [{ slug: 'auxx:mail:threads', config: {}, enabled: false, source: 'manual' }],
+      new Set(['auxx:mail:threads']),
+      'prompt'
+    )
+    expect(next).toEqual([ts('auxx:mail:threads', 'mention', ['prompt'])])
+  })
+
+  it('a prompt-only call leaves a procedure-tagged row intact', () => {
+    const next = reconcileToolsetMentions(
+      [ts('app:shopify:orders.read', 'mention', ['procedure'])],
+      new Set(),
+      'prompt'
+    )
+    expect(next).toEqual([ts('app:shopify:orders.read', 'mention', ['procedure'])])
+  })
+
+  it('a procedure-only call leaves a prompt-tagged row intact', () => {
+    const next = reconcileToolsetMentions(
+      [ts('auxx:mail:threads', 'mention', ['prompt'])],
+      new Set(),
+      'procedure'
+    )
+    expect(next).toEqual([ts('auxx:mail:threads', 'mention', ['prompt'])])
+  })
+
+  it('a slug locked by both tags survives clearing one tag', () => {
+    const both = ts('app:shopify:orders.read', 'mention', ['prompt', 'procedure'])
+    const afterPrompt = reconcileToolsetMentions([both], new Set(), 'prompt')
+    expect(afterPrompt).toEqual([ts('app:shopify:orders.read', 'mention', ['procedure'])])
+    // ...and drops only when the other tag is cleared too.
+    const afterBoth = reconcileToolsetMentions(afterPrompt, new Set(), 'procedure')
+    expect(afterBoth).toEqual([])
+  })
+
+  it('adds the second tag when both inputs mention the same slug', () => {
+    const promptOnly = reconcileToolsetMentions([], new Set(['auxx:knowledge']), 'prompt')
+    const both = reconcileToolsetMentions(promptOnly, new Set(['auxx:knowledge']), 'procedure')
+    expect(both).toEqual([ts('auxx:knowledge', 'mention', ['prompt', 'procedure'])])
+  })
+})
+
+describe('reconcileKnowledgeMentions', () => {
   function k(
     recordId: string,
     mode: KnowledgeEntry['mode'],
-    source: KnowledgeEntry['source']
+    source: KnowledgeEntry['source'],
+    mentionedBy?: KnowledgeEntry['mentionedBy']
   ): KnowledgeEntry {
-    return { recordId, mode, source }
+    return { recordId, mode, source, ...(mentionedBy ? { mentionedBy } : {}) }
   }
 
-  it('inserts a new mention entry when recordId is not covered', () => {
-    const next = reconcileKnowledge([], new Set(['article:abc']))
-    expect(next).toEqual([k('article:abc', 'include_one', 'mention')])
+  it('inserts a new prompt-tagged mention entry when not covered', () => {
+    const next = reconcileKnowledgeMentions([], new Set(['article:abc']), 'prompt')
+    expect(next).toEqual([k('article:abc', 'include_one', 'mention', ['prompt'])])
   })
 
-  it('drops stale mention entries', () => {
-    const next = reconcileKnowledge([k('article:abc', 'include_one', 'mention')], new Set())
+  it('drops a prompt-only mention entry when no longer mentioned', () => {
+    const next = reconcileKnowledgeMentions(
+      [k('article:abc', 'include_one', 'mention', ['prompt'])],
+      new Set(),
+      'prompt'
+    )
     expect(next).toEqual([])
   })
 
   it('keeps manual include entries and skips the duplicate mention', () => {
-    const next = reconcileKnowledge(
+    const next = reconcileKnowledgeMentions(
       [k('article:abc', 'include_descendants', 'manual')],
-      new Set(['article:abc'])
+      new Set(['article:abc']),
+      'procedure'
     )
     expect(next).toEqual([k('article:abc', 'include_descendants', 'manual')])
   })
 
-  it('drops a manual exclude when conflicting with a mention (mention wins)', () => {
-    const next = reconcileKnowledge(
+  it('drops a manual exclude colliding with a mention (mention wins)', () => {
+    const next = reconcileKnowledgeMentions(
       [k('article:abc', 'exclude', 'manual')],
-      new Set(['article:abc'])
+      new Set(['article:abc']),
+      'procedure'
     )
-    expect(next).toEqual([k('article:abc', 'include_one', 'mention')])
+    expect(next).toEqual([k('article:abc', 'include_one', 'mention', ['procedure'])])
   })
 
-  it('preserves manual entries on unrelated keys when reconciling mentions', () => {
-    const next = reconcileKnowledge(
-      [
-        k('article:keep', 'include_descendants', 'manual'),
-        k('article:stale', 'include_one', 'mention'),
-      ],
-      new Set(['article:new'])
+  it('a prompt-only call leaves a procedure-tagged record intact', () => {
+    const next = reconcileKnowledgeMentions(
+      [k('article:abc', 'include_one', 'mention', ['procedure'])],
+      new Set(),
+      'prompt'
     )
-    expect(next.sort((a, b) => a.recordId.localeCompare(b.recordId))).toEqual([
-      k('article:keep', 'include_descendants', 'manual'),
-      k('article:new', 'include_one', 'mention'),
-    ])
+    expect(next).toEqual([k('article:abc', 'include_one', 'mention', ['procedure'])])
+  })
+
+  it('a record locked by both tags survives clearing one tag', () => {
+    const both = k('article:abc', 'include_one', 'mention', ['prompt', 'procedure'])
+    const afterProcedure = reconcileKnowledgeMentions([both], new Set(), 'procedure')
+    expect(afterProcedure).toEqual([k('article:abc', 'include_one', 'mention', ['prompt'])])
   })
 })
 
 describe('reconcilePromptMentions', () => {
-  it('returns combined next state', () => {
+  it('returns combined next state tagged prompt', () => {
     const result = reconcilePromptMentions({
       prompt: doc(paragraph(reference('tool:list_threads'), reference('article:abc'))),
       current: { toolsets: [], knowledge: [] },
       toolCatalog: TOOL_CATALOG,
     })
     expect(result.toolsets).toEqual([
-      { slug: 'auxx:mail:threads', config: {}, enabled: true, source: 'mention' },
+      {
+        slug: 'auxx:mail:threads',
+        config: {},
+        enabled: true,
+        source: 'mention',
+        mentionedBy: ['prompt'],
+      },
     ])
     expect(result.knowledge).toEqual([
-      { recordId: 'article:abc', mode: 'include_one', source: 'mention' },
+      { recordId: 'article:abc', mode: 'include_one', source: 'mention', mentionedBy: ['prompt'] },
+    ])
+  })
+
+  it('does not clear a procedure-tagged toolset (regression guard)', () => {
+    const result = reconcilePromptMentions({
+      prompt: doc(), // empty prompt — no mentions
+      current: {
+        toolsets: [
+          {
+            slug: 'app:shopify:orders.read',
+            config: {},
+            enabled: true,
+            source: 'mention',
+            mentionedBy: ['procedure'],
+          },
+        ],
+        knowledge: [],
+      },
+      toolCatalog: TOOL_CATALOG,
+    })
+    expect(result.toolsets).toEqual([
+      {
+        slug: 'app:shopify:orders.read',
+        config: {},
+        enabled: true,
+        source: 'mention',
+        mentionedBy: ['procedure'],
+      },
     ])
   })
 })
