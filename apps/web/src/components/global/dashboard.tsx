@@ -26,6 +26,7 @@ import { useFavoriteDragEnd } from '~/components/favorites/hooks/use-favorite-dr
 import { FavoriteDragOverlay } from '~/components/favorites/ui/favorite-drag-overlay'
 import AppSidebar from '~/components/global/sidebar'
 import { KopilotDock } from '~/components/kopilot/ui/kopilot-dock'
+import { KopilotRuntime } from '~/components/kopilot/ui/kopilot-runtime'
 import MailThreadItemDragOverlay from '~/components/mail/mail-thread-item-drag-overlay'
 import { useThreadMutation } from '~/components/threads/hooks'
 import { useOverages } from '~/hooks/use-overages'
@@ -135,6 +136,10 @@ export const Dashboard = ({
               {children}
             </SidebarInset>
             <KopilotDock />
+            {/* Headless turn runner + task-notification watches. Sibling of the
+                dock — it must stay alive when the dock renders null (kopilot
+                page, panel closed). */}
+            <KopilotRuntime />
           </div>
         </DndStateProvider>
         {portalContainer &&

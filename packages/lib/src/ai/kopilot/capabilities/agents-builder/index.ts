@@ -14,6 +14,7 @@ import { createCreateProcedureTool } from './tools/procedure-create'
 import { createReadProcedureTool } from './tools/procedure-read'
 import { createSetProcedureBodyTool } from './tools/procedure-set-body'
 import { createUpdateProcedureCriteriaTool } from './tools/procedure-update-criteria'
+import { createRunEvalSuiteTool } from './tools/run-eval-suite'
 import { createSetAgentPromptTool } from './tools/set-agent-prompt'
 import { createSetAgentResourceScopeTool } from './tools/set-agent-resource-scope'
 import { createSetAgentToolsetsTool } from './tools/set-agent-toolsets'
@@ -83,6 +84,9 @@ export async function createAgentsBuilderCapabilities(
     createSetProcedureBodyTool(getDeps),
     createReadProcedureTool(getDeps),
     createUpdateProcedureCriteriaTool(getDeps),
+    // Async eval batch — returns a taskNotification ref; results land as a
+    // <task-notification> message (plans/kopilot/task-notifications/plan.md).
+    createRunEvalSuiteTool(getDeps),
     // Triggers + resource-scope stay internal-only: chat agents run on the
     // inbound-message gate, never autonomously, and don't read internal records.
     ...(isChat

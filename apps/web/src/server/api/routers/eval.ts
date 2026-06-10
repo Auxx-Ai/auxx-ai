@@ -5,7 +5,6 @@ import {
   cancelEvalRun,
   createEvalCase,
   createQueuedEvalRun,
-  createSuiteRunWithChildren,
   deleteEvalCase,
   deleteEvalRun,
   failQueuedEvalRun,
@@ -16,13 +15,13 @@ import {
   listAgentEffectiveTools,
   listEvalCasesByAgent,
   listEvalRuns,
-  type PreparedRunSnapshots,
   prepareRunSnapshots,
   suggestAgentSimulations,
   updateEvalCase,
   validateAgentToolMock,
   validateEvalCase,
 } from '@auxx/lib/evals'
+import { startAgentSuiteRun } from '@auxx/lib/evals/start-suite-run'
 import { enqueueEvalRun } from '@auxx/lib/evals/worker'
 import { FeaturePermissionService } from '@auxx/lib/permissions'
 import { FeatureKey } from '@auxx/lib/permissions/client'
@@ -332,65 +331,23 @@ export const evalRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const { organizationId, userId } = ctx.session
 
-      // Resolve the selected cases (explicit ids, else every case under the scope).
-      const all = unwrap(
-        await listEvalCasesByAgent({
-          organizationId,
-          agentId: input.agentId,
-          procedureId: input.procedureId,
-        }),
-        'list eval cases'
-      )
-      const selected = input.caseIds ? all.filter((c) => input.caseIds?.includes(c.id)) : all
-      if (selected.length === 0) {
-        throw new TRPCError({ code: 'BAD_REQUEST', message: 'No eval cases selected' })
-      }
-
-      // Build snapshots for every case BEFORE the transaction.
-      const children: { caseId: string; definitionSnapshot: unknown; runtimeSnapshot: unknown }[] =
-        []
-      for (const row of selected) {
-        const prepared: PreparedRunSnapshots = unwrap(
-          await prepareRunSnapshots({
-            organizationId,
-            userId,
-            case: parseCase(row),
-            mode: input.useDraft ? 'draft' : 'pinned',
-          }),
-          `prepare eval run for case ${row.id}`
-        )
-        children.push({
-          caseId: row.id,
-          definitionSnapshot: prepared.definitionSnapshot,
-          runtimeSnapshot: prepared.runtimeSnapshot,
+      // Shared with the Kopilot `run_eval_suite` tool — selection, snapshots,
+      // atomic suite creation, and per-child enqueue all live in the lib recipe.
+      const result = await startAgentSuiteRun({
+        organizationId,
+        userId,
+        agentId: input.agentId,
+        procedureId: input.procedureId,
+        caseIds: input.caseIds,
+        useDraft: input.useDraft,
+      })
+      if (result.isErr()) {
+        throw new TRPCError({
+          code: result.error.code === 'EVAL_VALIDATION' ? 'BAD_REQUEST' : 'INTERNAL_SERVER_ERROR',
+          message: result.error.message,
         })
       }
-
-      const created = unwrap(
-        await createSuiteRunWithChildren({
-          organizationId,
-          kind: 'agent_simulation',
-          createdById: userId,
-          selectionSnapshot: { caseIds: selected.map((c) => c.id) },
-          children,
-        }),
-        'create eval suite run'
-      )
-
-      // Enqueue each child; a per-child enqueue failure fails that child only.
-      for (const run of created.runs) {
-        try {
-          await enqueueEvalRun({ organizationId, userId, runId: run.id })
-        } catch (error) {
-          await failQueuedEvalRun({
-            runId: run.id,
-            errorCode: 'ENQUEUE_FAILED',
-            error: error instanceof Error ? error.message : String(error),
-          })
-        }
-      }
-
-      return { suiteRunId: created.suiteRun.id, runIds: created.runs.map((r) => r.id) }
+      return { suiteRunId: result.value.suiteRun.id, runIds: result.value.runIds }
     }),
 
   cancelRun: evalAdminProcedure

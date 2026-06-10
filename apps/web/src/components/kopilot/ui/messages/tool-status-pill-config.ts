@@ -213,6 +213,19 @@ const configs: Record<string, ToolPillConfig> = {
       error: () => ({ label: 'Failed to update records' }),
     },
   },
+  run_eval_suite: {
+    icon: 'FlaskConical',
+    labels: {
+      running: () => ({ label: 'Starting simulation suite' }),
+      // "Completed" here means the batch was FIRED — results arrive later as a
+      // task-notification chip in the conversation.
+      completed: () => ({
+        label: 'Simulation suite running',
+        secondary: 'results will arrive here',
+      }),
+      error: () => ({ label: 'Failed to start simulation suite' }),
+    },
+  },
 }
 
 /** Convert snake_case tool name to a readable label */

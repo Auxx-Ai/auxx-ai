@@ -65,7 +65,11 @@ export class AgentEngine {
    */
   async *submitMessage(
     userMessage: string,
-    context?: Record<string, unknown>
+    context?: Record<string, unknown>,
+    opts?: {
+      /** Stamped onto the user message record (e.g. task-notification origin markers). */
+      metadata?: Record<string, unknown>
+    }
   ): AsyncGenerator<AgentEvent> {
     this.turnId = generateId('turn')
     this.resetTurnUsage()
@@ -82,6 +86,7 @@ export class AgentEngine {
       role: 'user',
       content: userMessage,
       timestamp: Date.now(),
+      ...(opts?.metadata ? { metadata: opts.metadata } : {}),
     }
     // A fresh user message means the user is abandoning whatever was paused.
     // Drop pendingToolCall (the paused message already lives in state.messages
