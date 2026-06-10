@@ -1,14 +1,17 @@
 // apps/web/src/components/evals/hooks/build-fix-seed.ts
 //
 // Pure builder for the "Fix with Kopilot" seed message (phase 5D.1). The text
-// embeds the references the 5C.5 contract expects — case name(s), run id(s),
-// suite run id, failed-assertion one-liners — so Kopilot's first turn can call
-// `get_eval_run` directly without a `list_eval_cases` round-trip.
+// embeds the references the 5C.5 contract expects — case name(s), case id(s),
+// run id(s), suite run id, failed-assertion one-liners — so Kopilot's first
+// turn can call `get_eval_run` directly without a `list_eval_cases` round-trip,
+// and targeted re-runs can pass the case ids straight to `run_eval_suite`.
 
 const NOTE_MAX = 160
 
 export interface FixSeedRun {
   runId: string
+  /** Null when the case was deleted after the run. */
+  caseId: string | null
   caseName: string
   /** Non-passed assertions; `note` is the grader's reason when present. */
   failedAssertions: { type: string; note?: string | null }[]
@@ -28,6 +31,7 @@ function capNote(note: string): string {
 /** A suite child-run summary (`eval.listSuiteChildRuns` row). */
 export interface SuiteChildRunLike {
   id: string
+  caseId: string | null
   caseName: string
   status: string
   assertionResults: { type: string; status: string; note?: string | null }[]
@@ -43,6 +47,7 @@ export function suiteChildrenToFixRuns(children: SuiteChildRunLike[]): FixSeedRu
     .filter((c) => c.status !== 'passed')
     .map((c) => ({
       runId: c.id,
+      caseId: c.caseId,
       caseName: c.caseName || 'Deleted case',
       failedAssertions: c.assertionResults
         .filter((a) => a.status !== 'passed')
@@ -61,7 +66,8 @@ export function buildFixSeedMessage(input: FixSeedInput): string {
 
   for (const run of input.runs) {
     lines.push('')
-    lines.push(`Case "${run.caseName}" failed (run ${run.runId}):`)
+    const ids = run.caseId ? `case ${run.caseId}, run ${run.runId}` : `run ${run.runId}`
+    lines.push(`Case "${run.caseName}" failed (${ids}):`)
     if (run.failedAssertions.length === 0) {
       lines.push('- execution error (no assertion results)')
     }

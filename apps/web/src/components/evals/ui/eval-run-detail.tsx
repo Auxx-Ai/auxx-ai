@@ -228,6 +228,7 @@ export function EvalRunDetail({ runId, onSelectRun, onFixWithKopilot }: EvalRunD
                     runs: [
                       {
                         runId: row.id,
+                        caseId,
                         caseName,
                         failedAssertions: assertions
                           .filter((a) => a.status !== 'passed')
