@@ -48,7 +48,7 @@ export const AiUsage = pgTable(
     outputTokens: integer().default(0).notNull(),
     requestId: text(),
     responseTime: integer(),
-    /** Credits consumed for this request (default 1 for system providers) */
+    /** Credits actually charged for this request — USD COGS metered from token usage (0 for CUSTOM/BYO rows). */
     creditsUsed: integer().default(1),
     /** Which credential type was used: SYSTEM (platform-provided) or CUSTOM (user-provided API key) */
     providerType: providerType('providerType'),

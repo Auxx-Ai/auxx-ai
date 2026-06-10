@@ -294,15 +294,26 @@ describe('OpenAI model restrictions', () => {
   // ── GPT-5.4 pricing ────────────────────────────────────────────
 
   it('GPT-5.4 models have correct pricing', () => {
-    expect(OPENAI_MODELS['gpt-5.4'].costPer1kTokens).toEqual({ input: 0.0025, output: 0.015 })
+    expect(OPENAI_MODELS['gpt-5.4'].costPer1kTokens).toEqual({
+      input: 0.0025,
+      output: 0.015,
+      cachedInput: 0.00025,
+      longContext: [{ over: 272000, input: 0.005, output: 0.0225, cachedInput: 0.0005 }],
+    })
     expect(OPENAI_MODELS['gpt-5.4-mini'].costPer1kTokens).toEqual({
       input: 0.00075,
       output: 0.0045,
+      cachedInput: 0.000075,
     })
     expect(OPENAI_MODELS['gpt-5.4-nano'].costPer1kTokens).toEqual({
       input: 0.0002,
       output: 0.00125,
+      cachedInput: 0.00002,
     })
-    expect(OPENAI_MODELS['gpt-5.4-pro'].costPer1kTokens).toEqual({ input: 0.03, output: 0.18 })
+    expect(OPENAI_MODELS['gpt-5.4-pro'].costPer1kTokens).toEqual({
+      input: 0.03,
+      output: 0.18,
+      longContext: [{ over: 272000, input: 0.06, output: 0.27 }],
+    })
   })
 })

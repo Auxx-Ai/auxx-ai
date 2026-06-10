@@ -140,7 +140,12 @@ export const QWEN_MODELS: Record<string, ModelCapabilities> = {
       systemMessages: true,
       fileInput: false,
     },
-    costPer1kTokens: { input: 0.0004, output: 0.0012 },
+    costPer1kTokens: {
+      input: 0.0004,
+      output: 0.0012,
+      cachedInput: 0.00008,
+      longContext: [{ over: 256000, input: 0.0012, output: 0.0036, cachedInput: 0.00024 }],
+    },
     description: 'Qwen Plus for the US (Virginia) region. Use with the US region endpoint.',
     parameterRules: QWEN_PARAMETER_RULES,
   },
@@ -163,7 +168,12 @@ export const QWEN_MODELS: Record<string, ModelCapabilities> = {
       systemMessages: true,
       fileInput: false,
     },
-    costPer1kTokens: { input: 0.000115, output: 0.000688 },
+    costPer1kTokens: {
+      input: 0.0004,
+      output: 0.0024,
+      cachedInput: 0.00008,
+      longContext: [{ over: 256000, input: 0.0005, output: 0.003, cachedInput: 0.0001 }],
+    },
     description:
       'Latest generation Qwen model with vision support. Available in Singapore and China regions.',
     parameterRules: QWEN_35_PARAMETER_RULES,
@@ -187,7 +197,7 @@ export const QWEN_MODELS: Record<string, ModelCapabilities> = {
       systemMessages: true,
       fileInput: false,
     },
-    costPer1kTokens: { input: 0.000029, output: 0.000287 },
+    costPer1kTokens: { input: 0.0001, output: 0.0004, cachedInput: 0.00002 },
     description:
       'Budget-friendly Qwen 3.5 model with wide availability. Available in Singapore, China, Hong Kong, and EU regions.',
     parameterRules: QWEN_35_PARAMETER_RULES,
@@ -211,7 +221,15 @@ export const QWEN_MODELS: Record<string, ModelCapabilities> = {
       systemMessages: true,
       fileInput: false,
     },
-    costPer1kTokens: { input: 0.000359, output: 0.001434 },
+    costPer1kTokens: {
+      input: 0.0012,
+      output: 0.006,
+      cachedInput: 0.00024,
+      longContext: [
+        { over: 32000, input: 0.0024, output: 0.012, cachedInput: 0.00048 },
+        { over: 128000, input: 0.003, output: 0.015, cachedInput: 0.0006 },
+      ],
+    },
     description:
       'Most capable Qwen 3 model. Available in Singapore, China, Hong Kong, and EU regions.',
     parameterRules: QWEN_PARAMETER_RULES,
@@ -235,7 +253,12 @@ export const QWEN_MODELS: Record<string, ModelCapabilities> = {
       systemMessages: true,
       fileInput: false,
     },
-    costPer1kTokens: { input: 0.000022, output: 0.000216 },
+    costPer1kTokens: {
+      input: 0.00005,
+      output: 0.0004,
+      cachedInput: 0.00001,
+      longContext: [{ over: 256000, input: 0.00025, output: 0.002, cachedInput: 0.00005 }],
+    },
     description:
       'Cheapest Qwen model with the widest region availability. Available in US, Singapore, and China regions.',
     parameterRules: QWEN_PARAMETER_RULES,
@@ -259,7 +282,12 @@ export const QWEN_MODELS: Record<string, ModelCapabilities> = {
       systemMessages: true,
       fileInput: false,
     },
-    costPer1kTokens: { input: 0.0004, output: 0.0012 },
+    costPer1kTokens: {
+      input: 0.0004,
+      output: 0.0012,
+      cachedInput: 0.00008,
+      longContext: [{ over: 256000, input: 0.0012, output: 0.0036, cachedInput: 0.00024 }],
+    },
     description:
       'Qwen Plus for Singapore (International) and China regions. Not available in the US region.',
     parameterRules: QWEN_PARAMETER_RULES,

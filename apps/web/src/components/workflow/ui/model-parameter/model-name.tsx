@@ -2,7 +2,7 @@
 
 import { cn } from '@auxx/ui/lib/utils'
 import { Computer, Eye, FileText, Image, MessageCircle, Settings2, Volume2 } from 'lucide-react'
-import { CreditMultiplierBadge } from '~/components/ai/ui/credit-multiplier-badge'
+import { ModelCostBadge } from '~/components/ai/ui/model-cost-badge'
 import ModelBadge from './model-badge'
 import type { ModelData } from './types'
 
@@ -16,7 +16,7 @@ type ModelNameProps = {
   showFeatures?: boolean
   featuresClassName?: string
   showContextSize?: boolean
-  showCreditMultiplier?: boolean
+  showCost?: boolean
   children?: React.ReactNode
 }
 
@@ -30,7 +30,7 @@ const ModelName = ({
   showFeatures,
   featuresClassName,
   showContextSize,
-  showCreditMultiplier,
+  showCost,
   children,
 }: ModelNameProps): JSX.Element | null => {
   if (!modelItem) return null
@@ -85,9 +85,7 @@ const ModelName = ({
             {formatModelType(modelItem.modelType)}
           </ModelBadge>
         )}
-        {showCreditMultiplier && modelItem.creditMultiplier && (
-          <CreditMultiplierBadge multiplier={modelItem.creditMultiplier} />
-        )}
+        {showCost && <ModelCostBadge costPer1kTokens={modelItem.costPer1kTokens} />}
         {showFeatures &&
           modelItem.features?.map((feature) => (
             <ModelBadge key={feature} className={cn('p-1', featuresClassName)}>

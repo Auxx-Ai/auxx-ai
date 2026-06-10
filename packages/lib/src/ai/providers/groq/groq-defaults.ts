@@ -61,6 +61,7 @@ export const GROQ_MODELS: Record<string, ModelCapabilities> = {
       systemMessages: true,
       fileInput: false,
     },
+    costPer1kTokens: { input: 0.00059, output: 0.00079 },
     description: 'High-speed inference on Groq hardware',
     parameterRules: [
       {

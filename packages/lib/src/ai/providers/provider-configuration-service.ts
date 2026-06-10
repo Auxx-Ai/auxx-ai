@@ -10,7 +10,6 @@ import type {
 } from '@auxx/database/types'
 import { and, eq } from 'drizzle-orm'
 import { createScopedLogger } from '../../logger'
-import { getModelCreditMultiplier } from '../quota/credit-multiplier'
 import { UsageTrackingService } from '../usage/usage-tracking-service'
 import { ProviderRegistry } from './provider-registry'
 import {
@@ -1440,12 +1439,21 @@ export class ProviderConfigurationService {
         // `isProviderConfigured` is hoisted above the .map — invariant per provider.
         const modelEnabled = modelConfig?.enabled ?? true // Default: enabled
 
-        // Determine model status (priority: retired > disabled > deprecated > active)
+        // A SYSTEM-credentialed LLM with no list price can't be metered, so it
+        // can't run on platform credits (BYO key only). Block its selection.
+        const unpricedOnSystem =
+          basicConfig.usingProviderType === ProviderType.SYSTEM &&
+          modelCapabilities.modelType === ModelType.LLM &&
+          !modelCapabilities.costPer1kTokens
+
+        // Determine model status (priority: retired > unpriced-on-system > disabled > deprecated > active)
         let modelStatus: 'active' | 'disabled' | 'not_configured' | 'deprecated' | 'retired'
         if (!isProviderConfigured) {
           modelStatus = 'not_configured'
         } else if (modelCapabilities.retired) {
           modelStatus = 'retired'
+        } else if (unpricedOnSystem) {
+          modelStatus = 'disabled'
         } else if (modelConfig?.enabled === false) {
           modelStatus = 'disabled'
         } else if (modelCapabilities.deprecated) {
@@ -1460,17 +1468,11 @@ export class ProviderConfigurationService {
             (ms) => ms.model === modelName && ms.loadBalancingConfigs.length > 1
           ) || false
 
-        // Resolve credit multiplier for LLM models (explicit registry value or heuristic)
-        const creditMultiplier =
-          modelCapabilities.modelType === ModelType.LLM
-            ? (modelCapabilities.creditMultiplier ?? getModelCreditMultiplier(provider, modelName))
-            : undefined
-
-        // Return complete ModelData with all ModelCapabilities
+        // Return complete ModelData with all ModelCapabilities. `costPer1kTokens`
+        // flows through the spread and drives the model-cost badge in the UI.
         return {
           ...modelCapabilities,
           fetchFrom: modelCapabilities.fetchFrom,
-          creditMultiplier,
           // Additional model state fields
           modelId: modelName,
           enabled: modelEnabled,

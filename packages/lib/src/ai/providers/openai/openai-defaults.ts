@@ -278,7 +278,6 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
   'gpt-4-turbo': {
     provider: 'openai',
     modelId: 'gpt-4-turbo',
-    creditMultiplier: 3,
     deprecated: true,
     replacement: 'gpt-5.4-nano',
     displayName: 'GPT-4 Turbo',
@@ -341,7 +340,6 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
   'gpt-5-chat-latest': {
     provider: 'openai',
     modelId: 'gpt-5-chat-latest',
-    creditMultiplier: 3,
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
     displayName: 'GPT-5 Chat (Latest)',
     icon: 'openai',
@@ -358,7 +356,7 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
       systemMessages: true,
       fileInput: true,
     },
-    costPer1kTokens: { input: 0.01, output: 0.04 },
+    costPer1kTokens: { input: 0.00125, output: 0.01, cachedInput: 0.000125 },
     description: 'Latest GPT-5 model optimized for chat with advanced reasoning',
     parameterRules: [
       {
@@ -415,7 +413,6 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
   'gpt-5': {
     provider: 'openai',
     modelId: 'gpt-5',
-    creditMultiplier: 3,
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
     displayName: 'GPT-5',
     icon: 'openai',
@@ -432,7 +429,7 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
       systemMessages: true,
       fileInput: true,
     },
-    costPer1kTokens: { input: 0.01, output: 0.04 },
+    costPer1kTokens: { input: 0.00125, output: 0.01, cachedInput: 0.000125 },
     description: 'GPT-5 base model with enhanced reasoning and multimodal capabilities',
     parameterRules: [
       {
@@ -489,7 +486,6 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
   'gpt-5.2-chat-latest': {
     provider: 'openai',
     modelId: 'gpt-5.2-chat-latest',
-    creditMultiplier: 3,
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
     displayName: 'GPT-5.2 Chat (Latest)',
     icon: 'openai',
@@ -506,7 +502,7 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
       systemMessages: true,
       fileInput: true,
     },
-    costPer1kTokens: { input: 0.01, output: 0.04 },
+    costPer1kTokens: { input: 0.00175, output: 0.014, cachedInput: 0.000175 },
     description: 'Latest GPT-5.2 chat alias for broad capability and reasoning',
     parameterRules: gpt5Params(128000),
     parameterRestrictions: GPT5_CONDITIONAL_RESTRICTIONS,
@@ -514,7 +510,6 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
   'gpt-5.2': {
     provider: 'openai',
     modelId: 'gpt-5.2',
-    creditMultiplier: 3,
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
     displayName: 'GPT-5.2',
     icon: 'openai',
@@ -531,7 +526,7 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
       systemMessages: true,
       fileInput: true,
     },
-    costPer1kTokens: { input: 0.01, output: 0.04 },
+    costPer1kTokens: { input: 0.00175, output: 0.014, cachedInput: 0.000175 },
     description: 'GPT-5.2 general-purpose model with updated reasoning controls',
     parameterRules: gpt5Params(128000),
     parameterRestrictions: GPT5_CONDITIONAL_RESTRICTIONS,
@@ -539,7 +534,6 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
   'gpt-5.4': {
     provider: 'openai',
     modelId: 'gpt-5.4',
-    creditMultiplier: 3,
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
     displayName: 'GPT-5.4',
     icon: 'openai',
@@ -556,7 +550,12 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
       systemMessages: true,
       fileInput: true,
     },
-    costPer1kTokens: { input: 0.0025, output: 0.015 },
+    costPer1kTokens: {
+      input: 0.0025,
+      output: 0.015,
+      cachedInput: 0.00025,
+      longContext: [{ over: 272000, input: 0.005, output: 0.0225, cachedInput: 0.0005 }],
+    },
     description: 'GPT-5.4 frontier model with 1M context and advanced reasoning',
     parameterRules: gpt5Params(128000),
     parameterRestrictions: GPT5_CONDITIONAL_RESTRICTIONS,
@@ -564,7 +563,6 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
   'gpt-5.4-mini': {
     provider: 'openai',
     modelId: 'gpt-5.4-mini',
-    creditMultiplier: 1,
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
     displayName: 'GPT-5.4 Mini',
     icon: 'openai',
@@ -581,7 +579,7 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
       systemMessages: true,
       fileInput: true,
     },
-    costPer1kTokens: { input: 0.00075, output: 0.0045 },
+    costPer1kTokens: { input: 0.00075, output: 0.0045, cachedInput: 0.000075 },
     description: 'GPT-5.4 Mini — efficient model with 400K context and reasoning',
     parameterRules: gpt5Params(128000),
     parameterRestrictions: GPT5_CONDITIONAL_RESTRICTIONS,
@@ -589,7 +587,6 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
   'gpt-5.4-nano': {
     provider: 'openai',
     modelId: 'gpt-5.4-nano',
-    creditMultiplier: 1,
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
     displayName: 'GPT-5.4 Nano',
     icon: 'openai',
@@ -606,7 +603,7 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
       systemMessages: true,
       fileInput: true,
     },
-    costPer1kTokens: { input: 0.0002, output: 0.00125 },
+    costPer1kTokens: { input: 0.0002, output: 0.00125, cachedInput: 0.00002 },
     description: 'GPT-5.4 Nano — cheapest GPT-5.4 model for cost-sensitive workloads',
     parameterRules: gpt5Params(128000),
     parameterRestrictions: GPT5_CONDITIONAL_RESTRICTIONS,
@@ -614,7 +611,6 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
   'gpt-5.4-pro': {
     provider: 'openai',
     modelId: 'gpt-5.4-pro',
-    creditMultiplier: 5,
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
     displayName: 'GPT-5.4 Pro',
     icon: 'openai',
@@ -631,7 +627,11 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
       systemMessages: true,
       fileInput: true,
     },
-    costPer1kTokens: { input: 0.03, output: 0.18 },
+    costPer1kTokens: {
+      input: 0.03,
+      output: 0.18,
+      longContext: [{ over: 272000, input: 0.06, output: 0.27 }],
+    },
     description: 'GPT-5.4 Pro — maximum capability, always-on reasoning (medium/high/xhigh)',
     parameterRules: [REASONING_EFFORT_PRO, VERBOSITY_RULE, maxCompletionTokensRule(128000)],
     parameterRestrictions: PRO_REASONING_RESTRICTIONS,
@@ -639,7 +639,6 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
   'gpt-5.5': {
     provider: 'openai',
     modelId: 'gpt-5.5',
-    creditMultiplier: 3,
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
     displayName: 'GPT-5.5',
     icon: 'openai',
@@ -656,7 +655,12 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
       systemMessages: true,
       fileInput: true,
     },
-    costPer1kTokens: { input: 0.005, output: 0.03 },
+    costPer1kTokens: {
+      input: 0.005,
+      output: 0.03,
+      cachedInput: 0.0005,
+      longContext: [{ over: 272000, input: 0.01, output: 0.045, cachedInput: 0.001 }],
+    },
     description: 'GPT-5.5 — first fully retrained base since GPT-4.5, 1M context, agentic tool use',
     parameterRules: gpt5Params(128000),
     parameterRestrictions: GPT5_CONDITIONAL_RESTRICTIONS,
@@ -664,7 +668,6 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
   'gpt-5.5-pro': {
     provider: 'openai',
     modelId: 'gpt-5.5-pro',
-    creditMultiplier: 8,
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
     displayName: 'GPT-5.5 Pro',
     icon: 'openai',
@@ -689,7 +692,6 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
   'gpt-5.3-chat-latest': {
     provider: 'openai',
     modelId: 'gpt-5.3-chat-latest',
-    creditMultiplier: 3,
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
     displayName: 'GPT-5.3 Chat (Latest)',
     icon: 'openai',
@@ -706,7 +708,7 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
       systemMessages: true,
       fileInput: true,
     },
-    costPer1kTokens: { input: 0.00175, output: 0.014 },
+    costPer1kTokens: { input: 0.00175, output: 0.014, cachedInput: 0.000175 },
     description: 'GPT-5.3 Chat latest alias with conditional reasoning controls',
     parameterRules: gpt5Params(128000),
     parameterRestrictions: GPT5_CONDITIONAL_RESTRICTIONS,
@@ -714,7 +716,6 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
   'gpt-5.3-codex': {
     provider: 'openai',
     modelId: 'gpt-5.3-codex',
-    creditMultiplier: 3,
     retired: true,
     replacement: 'gpt-5.4',
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
@@ -741,7 +742,6 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
   'gpt-5.1': {
     provider: 'openai',
     modelId: 'gpt-5.1',
-    creditMultiplier: 3,
     deprecated: true,
     replacement: 'gpt-5.4-mini',
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
@@ -760,7 +760,7 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
       systemMessages: true,
       fileInput: true,
     },
-    costPer1kTokens: { input: 0.01, output: 0.04 },
+    costPer1kTokens: { input: 0.00125, output: 0.01, cachedInput: 0.000125 },
     description: 'GPT-5.1 model for compatibility with previous GPT-5 configurations',
     parameterRules: [
       {
@@ -856,7 +856,6 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
   'gpt-5-mini': {
     provider: 'openai',
     modelId: 'gpt-5-mini',
-    creditMultiplier: 1,
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
     displayName: 'GPT-5 Mini',
     icon: 'openai',
@@ -873,7 +872,7 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
       systemMessages: true,
       fileInput: true,
     },
-    costPer1kTokens: { input: 0.002, output: 0.008 },
+    costPer1kTokens: { input: 0.00025, output: 0.002, cachedInput: 0.000025 },
     description: 'Efficient GPT-5 mini model with core capabilities',
     parameterRules: [
       {
@@ -930,7 +929,6 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
   'gpt-5-mini-2025-08-07': {
     provider: 'openai',
     modelId: 'gpt-5-mini-2025-08-07',
-    creditMultiplier: 1,
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
     displayName: 'GPT-5 Mini (2025-08-07)',
     icon: 'openai',
@@ -947,7 +945,7 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
       systemMessages: true,
       fileInput: true,
     },
-    costPer1kTokens: { input: 0.002, output: 0.008 },
+    costPer1kTokens: { input: 0.00025, output: 0.002, cachedInput: 0.000025 },
     description: 'GPT-5 Mini snapshot from August 7, 2025',
     parameterRules: [
       {
@@ -1004,7 +1002,6 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
   'gpt-5-nano': {
     provider: 'openai',
     modelId: 'gpt-5-nano',
-    creditMultiplier: 1,
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
     displayName: 'GPT-5 Nano',
     icon: 'openai',
@@ -1021,7 +1018,7 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
       systemMessages: true,
       fileInput: true,
     },
-    costPer1kTokens: { input: 0.0005, output: 0.002 },
+    costPer1kTokens: { input: 0.00005, output: 0.0004, cachedInput: 0.000005 },
     description: 'Ultra-efficient GPT-5 nano model for simple tasks',
     parameterRules: [
       {
@@ -1078,7 +1075,6 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
   'gpt-5-nano-2025-08-07': {
     provider: 'openai',
     modelId: 'gpt-5-nano-2025-08-07',
-    creditMultiplier: 1,
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
     displayName: 'GPT-5 Nano (2025-08-07)',
     icon: 'openai',
@@ -1095,7 +1091,7 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
       systemMessages: true,
       fileInput: true,
     },
-    costPer1kTokens: { input: 0.0005, output: 0.002 },
+    costPer1kTokens: { input: 0.00005, output: 0.0004, cachedInput: 0.000005 },
     description: 'GPT-5 Nano snapshot from August 7, 2025',
     parameterRules: [
       {
@@ -1152,7 +1148,6 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
   'gpt-4.1': {
     provider: 'openai',
     modelId: 'gpt-4.1',
-    creditMultiplier: 3,
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
     displayName: 'GPT-4.1',
     icon: 'openai',
@@ -1169,7 +1164,7 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
       systemMessages: true,
       fileInput: true,
     },
-    costPer1kTokens: { input: 0.005, output: 0.015 },
+    costPer1kTokens: { input: 0.002, output: 0.008, cachedInput: 0.0005 },
     description: 'GPT-4.1 with enhanced capabilities and improved efficiency',
     parameterRules: [
       {
@@ -1223,7 +1218,6 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
   'gpt-4.1-2025-04-14': {
     provider: 'openai',
     modelId: 'gpt-4.1-2025-04-14',
-    creditMultiplier: 3,
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
     displayName: 'GPT-4.1 (2025-04-14)',
     icon: 'openai',
@@ -1240,7 +1234,7 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
       systemMessages: true,
       fileInput: true,
     },
-    costPer1kTokens: { input: 0.005, output: 0.015 },
+    costPer1kTokens: { input: 0.002, output: 0.008, cachedInput: 0.0005 },
     description: 'GPT-4.1 snapshot from April 14, 2025',
     parameterRules: [
       {
@@ -1294,7 +1288,6 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
   'gpt-4.1-mini': {
     provider: 'openai',
     modelId: 'gpt-4.1-mini',
-    creditMultiplier: 1,
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
     displayName: 'GPT-4.1 Mini',
     icon: 'openai',
@@ -1311,7 +1304,7 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
       systemMessages: true,
       fileInput: true,
     },
-    costPer1kTokens: { input: 0.001, output: 0.004 },
+    costPer1kTokens: { input: 0.0004, output: 0.0016, cachedInput: 0.0001 },
     description: 'Efficient GPT-4.1 mini model',
     parameterRules: [
       {
@@ -1355,7 +1348,6 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
   'gpt-4.1-mini-2025-04-14': {
     provider: 'openai',
     modelId: 'gpt-4.1-mini-2025-04-14',
-    creditMultiplier: 1,
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
     displayName: 'GPT-4.1 Mini (2025-04-14)',
     icon: 'openai',
@@ -1372,7 +1364,7 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
       systemMessages: true,
       fileInput: true,
     },
-    costPer1kTokens: { input: 0.001, output: 0.004 },
+    costPer1kTokens: { input: 0.0004, output: 0.0016, cachedInput: 0.0001 },
     description: 'GPT-4.1 Mini snapshot from April 14, 2025',
     parameterRules: [
       {
@@ -1416,7 +1408,6 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
   'gpt-4.1-nano': {
     provider: 'openai',
     modelId: 'gpt-4.1-nano',
-    creditMultiplier: 1,
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
     displayName: 'GPT-4.1 Nano',
     icon: 'openai',
@@ -1433,7 +1424,7 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
       systemMessages: true,
       fileInput: true,
     },
-    costPer1kTokens: { input: 0.0003, output: 0.0012 },
+    costPer1kTokens: { input: 0.0001, output: 0.0004, cachedInput: 0.000025 },
     description: 'Ultra-efficient GPT-4.1 nano model',
     parameterRules: [
       {
@@ -1477,7 +1468,6 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
   'gpt-4.1-nano-2025-04-14': {
     provider: 'openai',
     modelId: 'gpt-4.1-nano-2025-04-14',
-    creditMultiplier: 1,
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
     displayName: 'GPT-4.1 Nano (2025-04-14)',
     icon: 'openai',
@@ -1494,7 +1484,7 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
       systemMessages: true,
       fileInput: true,
     },
-    costPer1kTokens: { input: 0.0003, output: 0.0012 },
+    costPer1kTokens: { input: 0.0001, output: 0.0004, cachedInput: 0.000025 },
     description: 'GPT-4.1 Nano snapshot from April 14, 2025',
     parameterRules: [
       {
@@ -1538,7 +1528,6 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
   'chatgpt-4o-latest': {
     provider: 'openai',
     modelId: 'chatgpt-4o-latest',
-    creditMultiplier: 3,
     retired: true,
     replacement: 'gpt-5.3-chat-latest',
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
@@ -1611,7 +1600,6 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
   'gpt-4o': {
     provider: 'openai',
     modelId: 'gpt-4o',
-    creditMultiplier: 3,
     deprecated: true,
     replacement: 'gpt-5.4-nano',
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
@@ -1630,7 +1618,7 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
       systemMessages: true,
       fileInput: true,
     },
-    costPer1kTokens: { input: 0.0025, output: 0.01 },
+    costPer1kTokens: { input: 0.0025, output: 0.01, cachedInput: 0.00125 },
     description: 'Most advanced GPT-4 model with vision and structured output support',
     parameterRules: [
       {
@@ -1708,7 +1696,6 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
   'gpt-4o-mini': {
     provider: 'openai',
     modelId: 'gpt-4o-mini',
-    creditMultiplier: 1,
     deprecated: true,
     replacement: 'gpt-5.4-nano',
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
@@ -1727,7 +1714,7 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
       systemMessages: true,
       fileInput: true,
     },
-    costPer1kTokens: { input: 0.00015, output: 0.0006 },
+    costPer1kTokens: { input: 0.00015, output: 0.0006, cachedInput: 0.000075 },
     description: 'Cost-effective GPT-4 model with full feature support',
     parameterRules: [
       {
@@ -1771,7 +1758,6 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
   'gpt-4o-2024-05-13': {
     provider: 'openai',
     modelId: 'gpt-4o-2024-05-13',
-    creditMultiplier: 3,
     deprecated: true,
     replacement: 'gpt-5.4-nano',
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
@@ -1844,7 +1830,6 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
   'gpt-4o-2024-08-06': {
     provider: 'openai',
     modelId: 'gpt-4o-2024-08-06',
-    creditMultiplier: 3,
     deprecated: true,
     replacement: 'gpt-5.4-nano',
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
@@ -1863,7 +1848,7 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
       systemMessages: true,
       fileInput: true,
     },
-    costPer1kTokens: { input: 0.0025, output: 0.01 },
+    costPer1kTokens: { input: 0.0025, output: 0.01, cachedInput: 0.00125 },
     description: 'GPT-4o snapshot from August 6, 2024',
     parameterRules: [
       {
@@ -1917,7 +1902,6 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
   'gpt-4o-2024-11-20': {
     provider: 'openai',
     modelId: 'gpt-4o-2024-11-20',
-    creditMultiplier: 3,
     deprecated: true,
     replacement: 'gpt-5.4-nano',
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
@@ -1936,7 +1920,7 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
       systemMessages: true,
       fileInput: true,
     },
-    costPer1kTokens: { input: 0.0025, output: 0.01 },
+    costPer1kTokens: { input: 0.0025, output: 0.01, cachedInput: 0.00125 },
     description: 'GPT-4o snapshot from November 20, 2024',
     parameterRules: [
       {
@@ -1990,7 +1974,6 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
   'gpt-4o-audio-preview': {
     provider: 'openai',
     modelId: 'gpt-4o-audio-preview',
-    creditMultiplier: 3,
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
     displayName: 'GPT-4o Audio Preview',
     icon: 'openai',
@@ -2051,7 +2034,6 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
   'gpt-4o-audio-preview-2025-06-03': {
     provider: 'openai',
     modelId: 'gpt-4o-audio-preview-2025-06-03',
-    creditMultiplier: 3,
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
     displayName: 'GPT-4o Audio Preview (2025-06-03)',
     icon: 'openai',
@@ -2112,7 +2094,6 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
   'gpt-4o-mini-2024-07-18': {
     provider: 'openai',
     modelId: 'gpt-4o-mini-2024-07-18',
-    creditMultiplier: 1,
     deprecated: true,
     replacement: 'gpt-5.4-nano',
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
@@ -2131,7 +2112,7 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
       systemMessages: true,
       fileInput: true,
     },
-    costPer1kTokens: { input: 0.00015, output: 0.0006 },
+    costPer1kTokens: { input: 0.00015, output: 0.0006, cachedInput: 0.000075 },
     description: 'GPT-4o Mini snapshot from July 18, 2024',
     parameterRules: [
       {
@@ -2175,7 +2156,6 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
   'o4-mini': {
     provider: 'openai',
     modelId: 'o4-mini',
-    creditMultiplier: 5,
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
     displayName: 'O4 Mini',
     icon: 'openai',
@@ -2192,7 +2172,7 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
       systemMessages: true,
       fileInput: true,
     },
-    costPer1kTokens: { input: 0.001, output: 0.004 },
+    costPer1kTokens: { input: 0.0011, output: 0.0044, cachedInput: 0.000275 },
     description: 'O4 Mini model with enhanced reasoning capabilities',
     parameterRules: oSeriesParams(100000),
     parameterRestrictions: O_SERIES_RESTRICTIONS,
@@ -2200,7 +2180,6 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
   'o4-mini-2025-04-16': {
     provider: 'openai',
     modelId: 'o4-mini-2025-04-16',
-    creditMultiplier: 5,
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
     displayName: 'O4 Mini (2025-04-16)',
     icon: 'openai',
@@ -2217,7 +2196,7 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
       systemMessages: true,
       fileInput: true,
     },
-    costPer1kTokens: { input: 0.001, output: 0.004 },
+    costPer1kTokens: { input: 0.0011, output: 0.0044, cachedInput: 0.000275 },
     description: 'O4 Mini snapshot from April 16, 2025',
     parameterRules: oSeriesParams(100000),
     parameterRestrictions: O_SERIES_RESTRICTIONS,
@@ -2225,7 +2204,6 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
   o3: {
     provider: 'openai',
     modelId: 'o3',
-    creditMultiplier: 5,
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
     displayName: 'O3',
     icon: 'openai',
@@ -2242,7 +2220,7 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
       systemMessages: true,
       fileInput: true,
     },
-    costPer1kTokens: { input: 0.01, output: 0.04 },
+    costPer1kTokens: { input: 0.002, output: 0.008, cachedInput: 0.0005 },
     description: 'O3 model with advanced reasoning capabilities',
     parameterRules: oSeriesParams(100000),
     parameterRestrictions: O_SERIES_RESTRICTIONS,
@@ -2250,7 +2228,6 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
   'o3-2025-04-16': {
     provider: 'openai',
     modelId: 'o3-2025-04-16',
-    creditMultiplier: 5,
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
     displayName: 'O3 (2025-04-16)',
     icon: 'openai',
@@ -2267,7 +2244,7 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
       systemMessages: true,
       fileInput: true,
     },
-    costPer1kTokens: { input: 0.01, output: 0.04 },
+    costPer1kTokens: { input: 0.002, output: 0.008, cachedInput: 0.0005 },
     description: 'O3 snapshot from April 16, 2025',
     parameterRules: oSeriesParams(100000),
     parameterRestrictions: O_SERIES_RESTRICTIONS,
@@ -2275,7 +2252,6 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
   'o3-mini': {
     provider: 'openai',
     modelId: 'o3-mini',
-    creditMultiplier: 5,
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
     displayName: 'O3 Mini',
     icon: 'openai',
@@ -2292,7 +2268,7 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
       systemMessages: true,
       fileInput: true,
     },
-    costPer1kTokens: { input: 0.002, output: 0.008 },
+    costPer1kTokens: { input: 0.0011, output: 0.0044, cachedInput: 0.00055 },
     description: 'O3 Mini model with efficient reasoning',
     parameterRules: oSeriesParams(100000),
     parameterRestrictions: O_SERIES_RESTRICTIONS,
@@ -2300,7 +2276,6 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
   'o3-mini-2025-01-31': {
     provider: 'openai',
     modelId: 'o3-mini-2025-01-31',
-    creditMultiplier: 5,
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
     displayName: 'O3 Mini (2025-01-31)',
     icon: 'openai',
@@ -2317,7 +2292,7 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
       systemMessages: true,
       fileInput: true,
     },
-    costPer1kTokens: { input: 0.002, output: 0.008 },
+    costPer1kTokens: { input: 0.0011, output: 0.0044, cachedInput: 0.00055 },
     description: 'O3 Mini snapshot from January 31, 2025',
     parameterRules: oSeriesParams(100000),
     parameterRestrictions: O_SERIES_RESTRICTIONS,
@@ -2325,7 +2300,6 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
   'o3-pro': {
     provider: 'openai',
     modelId: 'o3-pro',
-    creditMultiplier: 5,
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
     displayName: 'O3 Pro',
     icon: 'openai',
@@ -2350,7 +2324,6 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
   'o3-pro-2025-06-10': {
     provider: 'openai',
     modelId: 'o3-pro-2025-06-10',
-    creditMultiplier: 5,
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
     displayName: 'O3 Pro (2025-06-10)',
     icon: 'openai',
@@ -2375,7 +2348,6 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
   o1: {
     provider: 'openai',
     modelId: 'o1',
-    creditMultiplier: 5,
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
     displayName: 'O1',
     icon: 'openai',
@@ -2392,7 +2364,7 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
       systemMessages: false,
       fileInput: false,
     },
-    costPer1kTokens: { input: 0.015, output: 0.06 },
+    costPer1kTokens: { input: 0.015, output: 0.06, cachedInput: 0.0075 },
     description: 'O1 reasoning model for complex problem solving',
     parameterRules: [maxCompletionTokensRule(32768, 16384)],
     parameterRestrictions: O_SERIES_RESTRICTIONS,
@@ -2400,7 +2372,6 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
   'o1-mini': {
     provider: 'openai',
     modelId: 'o1-mini',
-    creditMultiplier: 5,
     retired: true,
     replacement: 'o4-mini',
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
@@ -2439,7 +2410,6 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
   'o1-mini-2024-09-12': {
     provider: 'openai',
     modelId: 'o1-mini-2024-09-12',
-    creditMultiplier: 5,
     retired: true,
     replacement: 'o4-mini',
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
@@ -2478,7 +2448,6 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
   'o1-preview': {
     provider: 'openai',
     modelId: 'o1-preview',
-    creditMultiplier: 5,
     retired: true,
     replacement: 'o3',
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
@@ -2517,7 +2486,6 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
   'o1-preview-2024-09-12': {
     provider: 'openai',
     modelId: 'o1-preview-2024-09-12',
-    creditMultiplier: 5,
     deprecated: true,
     fetchFrom: FetchFrom.PREDEFINED_MODEL,
     displayName: 'O1 Preview (2024-09-12)',
@@ -2535,7 +2503,7 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
       systemMessages: false,
       fileInput: false,
     },
-    costPer1kTokens: { input: 0.015, output: 0.06 },
+    costPer1kTokens: { input: 0.015, output: 0.06, cachedInput: 0.0075 },
     description: 'O1 Preview snapshot from September 12, 2024',
     parameterRules: [
       {
@@ -2619,7 +2587,8 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
       systemMessages: false,
       fileInput: false,
     },
-    costPer1kTokens: { input: 0.00015, output: 0 },
+    // $1.25/M audio-input tokens, $5/M text-output tokens (~$0.003/min)
+    costPer1kTokens: { input: 0.00125, output: 0.005 },
     description: 'GPT-4o Mini optimized for speech transcription',
     parameterRules: [],
   },
@@ -2642,7 +2611,8 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
       systemMessages: false,
       fileInput: false,
     },
-    costPer1kTokens: { input: 0.0025, output: 0 },
+    // $2.50/M audio-input tokens, $10/M text-output tokens (~$0.006/min)
+    costPer1kTokens: { input: 0.0025, output: 0.01 },
     description: 'GPT-4o optimized for speech transcription',
     parameterRules: [],
   },
@@ -2665,6 +2635,8 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
       systemMessages: false,
       fileInput: false,
     },
+    // whisper-1 is billed per MINUTE ($0.006/min), not per token; value kept as a
+    // nominal placeholder — STT charges a flat credit per call, not token-metered
     costPer1kTokens: { input: 0.006, output: 0 },
     description: 'Whisper speech recognition model',
     parameterRules: [
@@ -2822,7 +2794,8 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
       systemMessages: false,
       fileInput: false,
     },
-    costPer1kTokens: { input: 0.00015, output: 0 },
+    // $0.60/M text-input tokens, $12/M audio-output tokens
+    costPer1kTokens: { input: 0.0006, output: 0.012 },
     description: 'GPT-4o Mini optimized for text-to-speech synthesis',
     parameterRules: [
       {
@@ -2878,6 +2851,7 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
       systemMessages: false,
       fileInput: false,
     },
+    // billed per 1M CHARACTERS ($30/M chars), recorded per-1k-chars
     costPer1kTokens: { input: 0.03, output: 0 },
     description: 'High-definition text-to-speech model',
     parameterRules: [
@@ -2934,6 +2908,7 @@ export const OPENAI_MODELS: Record<string, ModelCapabilities> = {
       systemMessages: false,
       fileInput: false,
     },
+    // billed per 1M CHARACTERS ($15/M chars), recorded per-1k-chars
     costPer1kTokens: { input: 0.015, output: 0 },
     description: 'Standard text-to-speech model',
     parameterRules: [

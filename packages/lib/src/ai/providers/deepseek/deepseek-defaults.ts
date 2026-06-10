@@ -61,7 +61,7 @@ export const DEEPSEEK_MODELS: Record<string, ModelCapabilities> = {
       systemMessages: true,
       fileInput: false,
     },
-    costPer1kTokens: { input: 0.00028, output: 0.00042 },
+    costPer1kTokens: { input: 0.00014, output: 0.00028, cachedInput: 0.0000028 },
     description: 'DeepSeek V3.2 conversational AI model with tool calling and JSON mode support',
     parameterRules: [
       {
@@ -145,7 +145,7 @@ export const DEEPSEEK_MODELS: Record<string, ModelCapabilities> = {
       systemMessages: true,
       fileInput: false,
     },
-    costPer1kTokens: { input: 0.00028, output: 0.00042 },
+    costPer1kTokens: { input: 0.00014, output: 0.00028, cachedInput: 0.0000028 },
     description:
       'DeepSeek V3.2 reasoning model with chain-of-thought capabilities. Sampling parameters (temperature, top_p) are ignored.',
     parameterRestrictions: {

@@ -29,14 +29,12 @@ export function CreditBalance({ balance }: CreditBalanceProps) {
     return null
   }
 
-  const formattedCredits = (credits / 100).toFixed(2)
-
   return (
     <Alert className='border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-900'>
       <PiggyBank className='h-4 w-4 text-green-600 dark:text-green-300' />
-      <AlertTitle>Credits Balance: ${formattedCredits}</AlertTitle>
+      <AlertTitle>Bonus credits: {credits.toLocaleString()}</AlertTitle>
       <AlertDescription className='text-green-700 dark:text-green-300'>
-        These credits will be automatically applied to your next invoice
+        Bonus AI credits are spent after your monthly allowance runs out.
       </AlertDescription>
     </Alert>
   )

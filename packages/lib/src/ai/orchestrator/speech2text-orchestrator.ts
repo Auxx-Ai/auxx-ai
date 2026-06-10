@@ -94,8 +94,10 @@ export class Speech2TextOrchestrator {
           },
           providerType,
           credentialSource,
-          // v1: every transcription call costs 1 credit, regardless of audio length.
-          creditsUsed: 1,
+          // Transcription is priced per minute, not per token, so it can't be
+          // token-metered: charge a flat 100 credits (≈ $0.01) per call via the
+          // explicit override, regardless of audio length.
+          creditsUsed: 100,
           source: 'transcription',
         })
       }

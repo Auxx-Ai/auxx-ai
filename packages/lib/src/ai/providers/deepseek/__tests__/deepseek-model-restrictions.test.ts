@@ -83,12 +83,14 @@ describe('DeepSeek model restrictions', () => {
 
   it('both models have cost per 1k tokens', () => {
     expect(DEEPSEEK_MODELS['deepseek-chat'].costPer1kTokens).toEqual({
-      input: 0.00028,
-      output: 0.00042,
+      input: 0.00014,
+      output: 0.00028,
+      cachedInput: 0.0000028,
     })
     expect(DEEPSEEK_MODELS['deepseek-reasoner'].costPer1kTokens).toEqual({
-      input: 0.00028,
-      output: 0.00042,
+      input: 0.00014,
+      output: 0.00028,
+      cachedInput: 0.0000028,
     })
   })
 

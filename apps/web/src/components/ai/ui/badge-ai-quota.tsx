@@ -6,6 +6,10 @@ import { cn } from '@auxx/ui/lib/utils'
 import { formatDistance, isValid, parseISO } from 'date-fns'
 import { Tooltip } from '~/components/global/tooltip'
 
+/** Compact credit count for the badge face, e.g. 5_200 → "5.2k". */
+const compactCredits = (n: number): string =>
+  new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 }).format(n)
+
 interface BadgeAiQuotaProps {
   /** Type of quota: trial, paid, free */
   quotaType: string | null
@@ -61,9 +65,9 @@ export function BadgeAiQuota({
     tooltipLines.push('Unlimited credits')
   } else {
     tooltipLines.push(
-      `${monthlyRemaining} monthly credits (of ${quotaLimit}, ${usagePercent}% used)`
+      `${monthlyRemaining.toLocaleString()} monthly credits (of ${quotaLimit.toLocaleString()}, ${usagePercent}% used)`
     )
-    if (bonus > 0) tooltipLines.push(`${bonus} bonus credits`)
+    if (bonus > 0) tooltipLines.push(`${bonus.toLocaleString()} bonus credits`)
     if (resetText) tooltipLines.push(resetText)
   }
   const tooltipText = tooltipLines.join(' · ')
@@ -75,7 +79,7 @@ export function BadgeAiQuota({
           'Unlimited'
         ) : (
           <>
-            {totalRemaining}
+            {compactCredits(totalRemaining)}
             <span className='ms-1 font-semibold'>credits</span>
           </>
         )}
