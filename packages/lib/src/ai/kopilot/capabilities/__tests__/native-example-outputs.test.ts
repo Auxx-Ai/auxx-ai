@@ -1,6 +1,10 @@
 // packages/lib/src/ai/kopilot/capabilities/__tests__/native-example-outputs.test.ts
 
 import { describe, expect, it } from 'vitest'
+import { createGetEvalRunTool } from '../agents-builder/tools/get-eval-run'
+import { createGetSuiteDiffTool } from '../agents-builder/tools/get-suite-diff'
+import { createListEvalCasesTool } from '../agents-builder/tools/list-eval-cases'
+import { createRunEvalSuiteTool } from '../agents-builder/tools/run-eval-suite'
 import { createSearchEntitiesTool } from '../entities/tools/search-entities'
 import { createFindThreadsTool } from '../mail/tools/find-threads'
 import { createGetThreadDetailTool } from '../mail/tools/get-thread-detail'
@@ -16,6 +20,10 @@ describe('native exampleOutput conforms to outputSchema', () => {
     createFindThreadsTool(getDeps),
     createGetThreadDetailTool(getDeps),
     createSearchEntitiesTool(getDeps),
+    createListEvalCasesTool(getDeps),
+    createGetEvalRunTool(getDeps),
+    createGetSuiteDiffTool(getDeps),
+    createRunEvalSuiteTool(getDeps),
   ]
 
   for (const tool of tools) {

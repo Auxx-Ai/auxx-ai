@@ -8,7 +8,8 @@ import { ChevronRight, Cog, FlaskConical, Play, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api, type RouterOutputs } from '~/trpc/react'
-import { EvalStatusDot, EvalStatusPill, evalStatusVisual } from './eval-status-pill'
+import { selectCasePills } from '../utils/loop-logic'
+import { EvalDraftBadge, EvalStatusDot, EvalStatusPill, evalStatusVisual } from './eval-status-pill'
 
 /** One enriched case from `eval.list` (carries its latest-run summary). */
 export type EvalCaseListItem = RouterOutputs['eval']['list'][number]
@@ -46,7 +47,7 @@ export function EvalCaseRow({
 }: EvalCaseRowProps) {
   const [isOpen, setIsOpen] = useState(false)
   const runsQuery = api.eval.listRuns.useQuery({ caseId: item.id }, { enabled: isOpen })
-  const lastRun = item.latestRun
+  const { primary, draft } = selectCasePills(item.latestRun, item.latestPinnedRun)
 
   const utils = api.useUtils()
   const [confirm, ConfirmDialog] = useConfirm()
@@ -82,10 +83,16 @@ export function EvalCaseRow({
         onToggleOpen={() => setIsOpen((o) => !o)}
         secondary={
           <span className='flex items-center gap-1.5'>
-            <EvalStatusPill status={lastRun?.status ?? null} />
-            {lastRun ? (
+            <EvalStatusPill status={primary?.status ?? null} />
+            {draft ? (
+              <span className='flex items-center gap-1'>
+                <EvalDraftBadge />
+                <EvalStatusDot status={draft.status} />
+              </span>
+            ) : null}
+            {(draft ?? primary) ? (
               <span className='text-xs text-muted-foreground'>
-                {formatRelativeTime(lastRun.at, true)}
+                {formatRelativeTime((draft ?? primary)!.at, true)}
               </span>
             ) : null}
           </span>

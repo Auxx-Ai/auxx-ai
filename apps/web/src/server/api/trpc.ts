@@ -93,13 +93,17 @@ const t = initTRPC.context<typeof createTRPCContext>().create({
     }
 
     // Check for custom error codes from service layer
-    const cause = error.cause as { code?: string } | undefined
+    const cause = error.cause as { code?: string; errors?: unknown[] } | undefined
     if (cause?.code) {
       return {
         ...shape,
         data: {
           ...shape.data,
           code: cause.code,
+          // Per-node compile errors for the draft-run 422 (evals phase-5A.2′).
+          ...(cause.code === 'DRAFT_COMPILE_FAILED' && Array.isArray(cause.errors)
+            ? { compileErrors: cause.errors }
+            : {}),
         },
       }
     }

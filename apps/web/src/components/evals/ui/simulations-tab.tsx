@@ -8,6 +8,7 @@ import { useState } from 'react'
 import { api } from '~/trpc/react'
 import { EvalCaseDrawer } from './eval-case-drawer'
 import { EvalRunDetail } from './eval-run-detail'
+import { EvalSuiteHistory } from './eval-suite-history'
 import { EvalSuitePanel } from './eval-suite-panel'
 
 /**
@@ -19,26 +20,39 @@ import { EvalSuitePanel } from './eval-suite-panel'
  *
  * See plans/evals/ui-plan.md §"Agent Simulations (Phase 1B)".
  */
-export function SimulationsTab({ agentId }: { agentId: string }) {
+export function SimulationsTab({
+  agentId,
+  onFixWithKopilot,
+}: {
+  agentId: string
+  /** Hands a failing run to the Build tab's chat with a seeded message (5D.1). */
+  onFixWithKopilot?: (seed: string) => void
+}) {
   const [caseId, setCaseId] = useState<string | null>(null)
   // Procedure pinned for a NEW case (chosen from the Procedure-section "New"
   // menu); `null` ⇒ agent scope. Only meaningful while `caseId === 'new'`.
   const [newCaseProcedureId, setNewCaseProcedureId] = useState<string | null>(null)
   const [runId, setRunId] = useState<string | null>(null)
+  const [showHistory, setShowHistory] = useState(false)
   // The page's selected procedure (shared `?procedure` param) — gates the
   // Suggested Simulations section to the procedure-scoped view.
   const [selectedProcedureId] = useQueryState('procedure')
   const utils = api.useUtils()
 
-  // Stack shape: a run can be reached from a case (list→case→run) or straight
-  // from a list row (list→run). Derive purely from the two selections.
+  // Stack shape: a run can be reached from a case (list→case→run), straight
+  // from a list row (list→run), or out of the suite history
+  // (list→history→run). Derive purely from the selections.
   const stack = runId
     ? caseId
       ? ['list', 'case', 'run']
-      : ['list', 'run']
+      : showHistory
+        ? ['list', 'history', 'run']
+        : ['list', 'run']
     : caseId
       ? ['list', 'case']
-      : ['list']
+      : showHistory
+        ? ['list', 'history']
+        : ['list']
 
   return (
     <NavStack
@@ -48,7 +62,8 @@ export function SimulationsTab({ agentId }: { agentId: string }) {
         if (top === 'list') {
           setCaseId(null)
           setRunId(null)
-        } else if (top === 'case') {
+          setShowHistory(false)
+        } else if (top === 'case' || top === 'history') {
           setRunId(null)
         }
       }}
@@ -64,6 +79,7 @@ export function SimulationsTab({ agentId }: { agentId: string }) {
                 setCaseId('new')
               }}
               onOpenRun={setRunId}
+              onOpenHistory={() => setShowHistory(true)}
               selectedProcedureId={selectedProcedureId}
             />
           </ScrollArea>
@@ -82,8 +98,24 @@ export function SimulationsTab({ agentId }: { agentId: string }) {
           ) : null}
         </NavStackPanel>
 
+        <NavStackPanel value='history' className='flex h-full flex-col'>
+          {showHistory ? (
+            <EvalSuiteHistory
+              agentId={agentId}
+              procedureId={selectedProcedureId}
+              onOpenRun={setRunId}
+            />
+          ) : null}
+        </NavStackPanel>
+
         <NavStackPanel value='run' className='flex h-full flex-col'>
-          {runId ? <EvalRunDetail runId={runId} onSelectRun={setRunId} /> : null}
+          {runId ? (
+            <EvalRunDetail
+              runId={runId}
+              onSelectRun={setRunId}
+              onFixWithKopilot={onFixWithKopilot}
+            />
+          ) : null}
         </NavStackPanel>
       </NavStackPanels>
     </NavStack>

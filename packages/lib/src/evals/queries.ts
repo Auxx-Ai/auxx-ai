@@ -12,16 +12,20 @@ import { fromDatabase } from '@auxx/services/shared/utils'
 import type {
   AgentEvalAssertion,
   AgentEvalTarget,
+  AssertionResult,
   EvalKind,
+  EvalRunMode,
   SimulationConfig,
 } from '@auxx/types/evals'
 import {
   agentEvalAssertionsSchema,
   agentEvalTargetSchema,
+  assertionResultSchema,
   simulationConfigSchema,
 } from '@auxx/types/evals/schema'
-import { and, desc, eq, inArray, lt } from 'drizzle-orm'
+import { and, desc, eq, inArray, lt, sql } from 'drizzle-orm'
 import { err, ok } from 'neverthrow'
+import { z } from 'zod'
 import { hashSnapshots } from './snapshots'
 import type { EvalServiceError } from './types'
 
@@ -221,6 +225,8 @@ export interface CreateQueuedEvalRunInput {
   /** A typed `AgentRuntimeSnapshotV1` (kept `unknown` here to avoid a heavy import cycle). */
   runtimeSnapshot: unknown
   suiteRunId?: string | null
+  /** Denormalized `runtimeSnapshot.runMode`; defaults to `'pinned'` (headless callers). */
+  runMode?: EvalRunMode
 }
 
 /**
@@ -240,6 +246,7 @@ export async function createQueuedEvalRun(input: CreateQueuedEvalRunInput) {
         suiteRunId: input.suiteRunId ?? null,
         kind: input.kind,
         status: 'queued',
+        runMode: input.runMode ?? 'pinned',
         definitionSnapshot: input.definitionSnapshot as Jsonb,
         runtimeSnapshot: input.runtimeSnapshot as Jsonb,
         snapshotHash,
@@ -257,10 +264,21 @@ export interface CreateSuiteRunWithChildrenInput {
   createdById?: string | null
   /** Ordered case ids selected for the batch (recorded into `selectionSnapshot`). */
   selectionSnapshot: Jsonb
+  /** Denormalized batch mode; defaults to `'pinned'`. */
+  runMode?: EvalRunMode
+  /** Compiler `contentHash` of the draft a draft suite tested. */
+  draftContentHash?: string | null
+  /** Denormalized selection keys for per-agent/procedure suite listing. */
+  agentId?: string | null
+  procedureId?: string | null
+  /** Org-validated by the caller — comparison anchor for the verdict diff. */
+  baselineSuiteRunId?: string | null
   children: {
     caseId: string
     definitionSnapshot: unknown
     runtimeSnapshot: unknown
+    /** Denormalized from the child's `runtimeSnapshot.runMode`; defaults to `'pinned'`. */
+    runMode?: EvalRunMode
   }[]
 }
 
@@ -278,6 +296,11 @@ export async function createSuiteRunWithChildren(input: CreateSuiteRunWithChildr
           organizationId: input.organizationId,
           kind: input.kind,
           status: 'running',
+          runMode: input.runMode ?? 'pinned',
+          draftContentHash: input.draftContentHash ?? null,
+          agentId: input.agentId ?? null,
+          procedureId: input.procedureId ?? null,
+          baselineSuiteRunId: input.baselineSuiteRunId ?? null,
           requestedCount: input.children.length,
           selectionSnapshot: input.selectionSnapshot,
           createdById: input.createdById ?? null,
@@ -296,6 +319,7 @@ export async function createSuiteRunWithChildren(input: CreateSuiteRunWithChildr
             suiteRunId: suite.id,
             kind: input.kind,
             status: 'queued',
+            runMode: child.runMode ?? 'pinned',
             definitionSnapshot: child.definitionSnapshot as Jsonb,
             runtimeSnapshot: child.runtimeSnapshot as Jsonb,
             snapshotHash: hashSnapshots(child.definitionSnapshot, child.runtimeSnapshot),
@@ -350,28 +374,60 @@ export interface LatestRunSummary {
   caseId: string
   runId: string
   status: EvalRunEntity['status']
+  runMode: EvalRunMode
   createdAt: Date
   completedAt: Date | null
 }
 
+/** A case's latest run, plus the last-verified pinned run when the latest is a draft run. */
+export interface CaseLatestRuns extends LatestRunSummary {
+  /**
+   * Present only when the latest overall run is `runMode: 'draft'` — draft runs
+   * never become a case's authoritative status, so the pinned verdict rides
+   * along (last-verified semantics, phase-5a §5A.5).
+   */
+  latestPinned?: LatestRunSummary
+}
+
 /**
- * The most recent run per case for a set of case ids, in ONE query
+ * Attach each draft-latest case's most recent pinned run. Pure — exported for
+ * tests (no DB harness; see project conventions).
+ */
+export function mergeLatestWithPinned(
+  latest: LatestRunSummary[],
+  latestPinned: LatestRunSummary[]
+): CaseLatestRuns[] {
+  const pinnedByCase = new Map(latestPinned.map((r) => [r.caseId, r]))
+  return latest.map((run) => {
+    if (run.runMode !== 'draft') return run
+    const pinned = pinnedByCase.get(run.caseId)
+    return pinned ? { ...run, latestPinned: pinned } : run
+  })
+}
+
+/**
+ * The most recent run per case for a set of case ids
  * (`DISTINCT ON (caseId) … ORDER BY caseId, createdAt DESC`). Powers the suite
  * list's status pills without an N+1 over `listEvalRuns`. Cases with no runs are
- * simply absent from the result.
+ * simply absent from the result. When a case's latest run is a draft run, its
+ * latest PINNED run is also returned (`latestPinned`) so draft iterations never
+ * displace the authoritative status.
  */
 export async function getLatestRunsByCaseIds(input: { organizationId: string; caseIds: string[] }) {
-  if (input.caseIds.length === 0) return ok([] as LatestRunSummary[])
+  if (input.caseIds.length === 0) return ok([] as CaseLatestRuns[])
+
+  const selection = {
+    caseId: schema.EvalRun.caseId,
+    runId: schema.EvalRun.id,
+    status: schema.EvalRun.status,
+    runMode: schema.EvalRun.runMode,
+    createdAt: schema.EvalRun.createdAt,
+    completedAt: schema.EvalRun.completedAt,
+  }
 
   const result = await fromDatabase(
     database
-      .selectDistinctOn([schema.EvalRun.caseId], {
-        caseId: schema.EvalRun.caseId,
-        runId: schema.EvalRun.id,
-        status: schema.EvalRun.status,
-        createdAt: schema.EvalRun.createdAt,
-        completedAt: schema.EvalRun.completedAt,
-      })
+      .selectDistinctOn([schema.EvalRun.caseId], selection)
       .from(schema.EvalRun)
       .where(
         and(
@@ -384,9 +440,29 @@ export async function getLatestRunsByCaseIds(input: { organizationId: string; ca
   )
   if (result.isErr()) return err(result.error)
   // `caseId` is nullable on the column type but never null here (we filter by ids).
-  return ok(
-    result.value.filter((r): r is LatestRunSummary => r.caseId != null) as LatestRunSummary[]
+  const latest = result.value.filter((r): r is LatestRunSummary => r.caseId != null)
+
+  const draftCaseIds = latest.filter((r) => r.runMode === 'draft').map((r) => r.caseId)
+  if (draftCaseIds.length === 0) return ok(latest as CaseLatestRuns[])
+
+  const pinnedResult = await fromDatabase(
+    database
+      .selectDistinctOn([schema.EvalRun.caseId], selection)
+      .from(schema.EvalRun)
+      .where(
+        and(
+          eq(schema.EvalRun.organizationId, input.organizationId),
+          inArray(schema.EvalRun.caseId, draftCaseIds),
+          eq(schema.EvalRun.runMode, 'pinned')
+        )
+      )
+      .orderBy(schema.EvalRun.caseId, desc(schema.EvalRun.createdAt)),
+    'latest-pinned-runs-by-case-ids'
   )
+  if (pinnedResult.isErr()) return err(pinnedResult.error)
+  const latestPinned = pinnedResult.value.filter((r): r is LatestRunSummary => r.caseId != null)
+
+  return ok(mergeLatestWithPinned(latest, latestPinned))
 }
 
 export async function getEvalRun(input: { organizationId: string; runId: string }) {
@@ -401,6 +477,100 @@ export async function getEvalRun(input: { organizationId: string; runId: string 
   )
   if (result.isErr()) return err(result.error)
   return ok((result.value ?? null) as EvalRunEntity | null)
+}
+
+/** A suite child run without trace/snapshots — the diff + iteration-history payload. */
+export interface SuiteChildRunSummary {
+  id: string
+  caseId: string | null
+  status: EvalRunEntity['status']
+  runMode: EvalRunMode
+  assertionResults: AssertionResult[]
+  /** Snapshot-backed (`definitionSnapshot.case.name`) — survives case deletion. */
+  caseName: string
+}
+
+const assertionResultsArraySchema = z.array(assertionResultSchema)
+
+/**
+ * Child runs of a suite WITHOUT `trace` / `runtimeSnapshot` / the bulk of
+ * `definitionSnapshot` — those jsonb blobs are large and the diff never needs
+ * them. Explicit column select; the case name is extracted in SQL.
+ */
+export async function listSuiteChildRunSummaries(input: {
+  organizationId: string
+  suiteRunId: string
+}) {
+  const result = await fromDatabase(
+    database
+      .select({
+        id: schema.EvalRun.id,
+        caseId: schema.EvalRun.caseId,
+        status: schema.EvalRun.status,
+        runMode: schema.EvalRun.runMode,
+        assertionResults: schema.EvalRun.assertionResults,
+        caseName: sql<string | null>`${schema.EvalRun.definitionSnapshot}->'case'->>'name'`.as(
+          'caseName'
+        ),
+      })
+      .from(schema.EvalRun)
+      .where(
+        and(
+          eq(schema.EvalRun.organizationId, input.organizationId),
+          eq(schema.EvalRun.suiteRunId, input.suiteRunId)
+        )
+      )
+      .orderBy(schema.EvalRun.createdAt),
+    'list-suite-child-run-summaries'
+  )
+  if (result.isErr()) return err(result.error)
+  return ok(
+    result.value.map((row): SuiteChildRunSummary => {
+      // Malformed/legacy blobs degrade to "no assertion detail", never an error —
+      // the run's status still buckets; only the drill-down loses rows.
+      const parsed = assertionResultsArraySchema.safeParse(row.assertionResults)
+      return {
+        id: row.id,
+        caseId: row.caseId,
+        status: row.status,
+        runMode: row.runMode,
+        assertionResults: parsed.success ? parsed.data : [],
+        caseName: row.caseName ?? '',
+      }
+    })
+  )
+}
+
+/**
+ * Suite runs for an agent (optionally one procedure), newest first — the
+ * iteration-history feed. Uses the `(agentId, createdAt desc)` index.
+ */
+export async function listEvalSuiteRuns(input: {
+  organizationId: string
+  agentId: string
+  procedureId?: string
+  limit?: number
+  before?: Date
+}) {
+  const limit = Math.min(input.limit ?? 20, 100)
+  const conditions = [
+    eq(schema.EvalSuiteRun.organizationId, input.organizationId),
+    eq(schema.EvalSuiteRun.agentId, input.agentId),
+  ]
+  if (input.procedureId) conditions.push(eq(schema.EvalSuiteRun.procedureId, input.procedureId))
+  if (input.before) conditions.push(lt(schema.EvalSuiteRun.createdAt, input.before))
+
+  const result = await fromDatabase(
+    database
+      .select()
+      .from(schema.EvalSuiteRun)
+      .where(and(...conditions))
+      .orderBy(desc(schema.EvalSuiteRun.createdAt))
+      .limit(limit),
+    'list-eval-suite-runs'
+  )
+  if (result.isErr()) return err(result.error)
+  return ok(result.value as EvalSuiteRunEntity[])
 }
 
 export async function getEvalSuiteRun(input: { organizationId: string; suiteRunId: string }) {

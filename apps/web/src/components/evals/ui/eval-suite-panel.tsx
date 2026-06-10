@@ -1,6 +1,7 @@
 // apps/web/src/components/evals/ui/eval-suite-panel.tsx
 'use client'
 
+import { Alert, AlertDescription } from '@auxx/ui/components/alert'
 import { Button } from '@auxx/ui/components/button'
 import {
   DropdownMenu,
@@ -10,8 +11,9 @@ import {
 } from '@auxx/ui/components/dropdown-menu'
 import { EmptySection, Section } from '@auxx/ui/components/section'
 import { toastError } from '@auxx/ui/components/toast'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@auxx/ui/components/tooltip'
 import { TreeRow } from '@auxx/ui/components/tree-row'
-import { FlaskConical, Play, Plus } from 'lucide-react'
+import { FlaskConical, History, Play, Plus, X } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
@@ -38,6 +40,8 @@ interface EvalSuitePanelProps {
   /** `procedureId` pins a new procedure-scoped case; `null` ⇒ agent scope. */
   onNewCase: (procedureId: string | null) => void
   onOpenRun: (runId: string) => void
+  /** Drills into the suite-run iteration history (5D.5). */
+  onOpenHistory?: () => void
   /** The page's `?procedure` selection — gates the Suggested Simulations section. */
   selectedProcedureId?: string | null
 }
@@ -47,6 +51,7 @@ export function EvalSuitePanel({
   onOpenCase,
   onNewCase,
   onOpenRun,
+  onOpenHistory,
   selectedProcedureId,
 }: EvalSuitePanelProps) {
   const utils = api.useUtils()
@@ -79,8 +84,13 @@ export function EvalSuitePanel({
   })
 
   const runAll = api.eval.runAll.useMutation({
-    onSuccess: () => void invalidate(),
-    onError: (err) => toastError({ title: 'Failed to run all', description: err.message }),
+    onSuccess: () => {
+      void invalidate()
+      void utils.eval.listSuiteRuns.invalidate({ agentId })
+    },
+    // A 422 here is a non-compiling draft — the message carries the joined
+    // compile errors (structured list rides in `data.compileErrors` for later).
+    onError: (err) => toastError({ title: 'Failed to run simulations', description: err.message }),
   })
 
   const cases = casesQuery.data ?? []
@@ -137,6 +147,27 @@ export function EvalSuitePanel({
   return (
     <>
       <ConfirmDialog />
+
+      {/* Loop nudges + draft re-run for the selected procedure (5D.2 / 5D.6). */}
+      {selectedProcedureId ? (
+        <ProcedureLoopBanner
+          agentId={agentId}
+          procedureId={selectedProcedureId}
+          runAll={runAll}
+          onOpenHistory={onOpenHistory}
+        />
+      ) : onOpenHistory ? (
+        <div className='flex justify-end px-3 pt-2'>
+          <Button
+            variant='ghost'
+            size='xs'
+            className='text-muted-foreground'
+            onClick={onOpenHistory}>
+            <History />
+            History
+          </Button>
+        </div>
+      ) : null}
 
       {/* Agent simulations — whole-conversation tests */}
       <Section
@@ -268,5 +299,144 @@ export function EvalSuitePanel({
         />
       ) : null}
     </>
+  )
+}
+
+// ── Improvement-loop banner (5D.2 / 5D.6) ───────────────────────────────────
+
+const TERMINAL_SUITE = new Set(['completed', 'cancelled', 'error'])
+
+interface ProcedureLoopBannerProps {
+  agentId: string
+  procedureId: string
+  runAll: ReturnType<typeof api.eval.runAll.useMutation>
+  onOpenHistory?: () => void
+}
+
+/**
+ * The selected procedure's loop affordances: "Run on draft" (with the previous
+ * suite as the diff baseline), suite history, and the publish-nudge banners —
+ * "draft passing → publish", then "run confirmation on the published version".
+ * Nudges are dismissible per mount (component state, deliberately
+ * unpersisted).
+ */
+function ProcedureLoopBanner({
+  agentId,
+  procedureId,
+  runAll,
+  onOpenHistory,
+}: ProcedureLoopBannerProps) {
+  const [dismissed, setDismissed] = useState<'publish' | 'confirm' | null>(null)
+
+  const procedureQuery = api.procedure.getById.useQuery({ id: procedureId })
+  const suitesQuery = api.eval.listSuiteRuns.useQuery({ agentId, procedureId })
+  const publish = api.procedure.publish.useMutation({
+    onSuccess: () => void procedureQuery.refetch(),
+    onError: (err) => toastError({ title: 'Failed to publish', description: err.message }),
+  })
+
+  const hasDraft = procedureQuery.data?.hasUnpublishedChanges === true
+  const latestSuite = suitesQuery.data?.suiteRuns[0] ?? null
+  const latestTerminal = latestSuite != null && TERMINAL_SUITE.has(latestSuite.status)
+
+  const runOnDraft = () =>
+    runAll.mutate({
+      agentId,
+      procedureId,
+      useDraft: true,
+      baselineSuiteRunId: latestTerminal ? latestSuite.id : undefined,
+    })
+
+  // Draft suite green + draft still unpublished → nudge publish (5D.6).
+  const draftPassing =
+    latestTerminal &&
+    latestSuite.runMode === 'draft' &&
+    latestSuite.failedCount + latestSuite.errorCount === 0
+  const showPublishNudge = draftPassing && hasDraft && dismissed !== 'publish'
+  // Published, but the latest suite still tested the draft → nudge a pinned
+  // confirmation run with the draft suite as baseline.
+  const showConfirmNudge = draftPassing && !hasDraft && dismissed !== 'confirm'
+
+  return (
+    <div className='flex flex-col gap-2 px-3 pt-2'>
+      <div className='flex items-center justify-end gap-1.5'>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span>
+              <Button
+                variant='ghost'
+                size='xs'
+                disabled={!hasDraft || runAll.isPending}
+                loading={runAll.isPending}
+                onClick={runOnDraft}>
+                <Play />
+                Run on draft
+              </Button>
+            </span>
+          </TooltipTrigger>
+          <TooltipContent side='bottom'>
+            {hasDraft
+              ? 'Run this procedure’s simulations against the unpublished draft.'
+              : 'No unpublished changes — the draft matches the published version.'}
+          </TooltipContent>
+        </Tooltip>
+        {onOpenHistory ? (
+          <Button
+            variant='ghost'
+            size='xs'
+            className='text-muted-foreground'
+            onClick={onOpenHistory}>
+            <History />
+            History
+          </Button>
+        ) : null}
+      </div>
+
+      {showPublishNudge ? (
+        <Alert variant='good'>
+          <AlertDescription className='flex items-center gap-2 opacity-100'>
+            <span className='flex-1 text-xs'>Draft passing — publish to make it live.</span>
+            <Button
+              variant='outline'
+              size='xs'
+              loading={publish.isPending}
+              onClick={() => publish.mutate({ id: procedureId })}>
+              Publish
+            </Button>
+            <Button
+              variant='ghost'
+              size='icon-xs'
+              aria-label='Dismiss'
+              onClick={() => setDismissed('publish')}>
+              <X />
+            </Button>
+          </AlertDescription>
+        </Alert>
+      ) : showConfirmNudge ? (
+        <Alert variant='blue'>
+          <AlertDescription className='flex items-center gap-2 opacity-100'>
+            <span className='flex-1 text-xs'>
+              Published — run a confirmation suite on the published version.
+            </span>
+            <Button
+              variant='outline'
+              size='xs'
+              loading={runAll.isPending}
+              onClick={() =>
+                runAll.mutate({ agentId, procedureId, baselineSuiteRunId: latestSuite?.id })
+              }>
+              Run confirmation
+            </Button>
+            <Button
+              variant='ghost'
+              size='icon-xs'
+              aria-label='Dismiss'
+              onClick={() => setDismissed('confirm')}>
+              <X />
+            </Button>
+          </AlertDescription>
+        </Alert>
+      ) : null}
+    </div>
   )
 }

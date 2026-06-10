@@ -205,6 +205,18 @@ export function KopilotChat({
     handleSuggestionClick(initialMessage, true)
   }, [initialMessage, initialSessionId, handleSuggestionClick])
 
+  // Consume a store-queued seed addressed to this surface (Fix-with-Kopilot).
+  // Unlike `initialMessage` this submits into an EXISTING session, so it waits
+  // until the panel's target session is the active one (load settled).
+  const pendingSeed = useKopilotStore((s) => s.pendingSeed)
+  const setPendingSeed = useKopilotStore((s) => s.setPendingSeed)
+  useEffect(() => {
+    if (!pendingSeed || pendingSeed.page !== page) return
+    if (initialSessionId && activeSessionId !== initialSessionId) return
+    setPendingSeed(null)
+    handleSuggestionClick(pendingSeed.text, true)
+  }, [pendingSeed, page, initialSessionId, activeSessionId, setPendingSeed, handleSuggestionClick])
+
   const handleApprovalAction = useCallback(
     (request: KopilotRequest) => {
       setPendingRequest(augmentRequest(request))

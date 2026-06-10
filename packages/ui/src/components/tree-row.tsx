@@ -222,7 +222,7 @@ export function TreeRowButton({
   if (!tooltipText) return button
 
   return (
-    <SimpleTooltip side='left' content={tooltipText} allowInteraction>
+    <SimpleTooltip side='left' content={tooltipText} allowInteraction delayDuration={500}>
       {button}
     </SimpleTooltip>
   )

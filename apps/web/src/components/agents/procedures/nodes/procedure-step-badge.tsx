@@ -1,14 +1,26 @@
 // apps/web/src/components/agents/procedures/nodes/procedure-step-badge.tsx
 'use client'
 
+import {
+  getColorBadgeClasses,
+  getColorSelectedBorderClasses,
+  type SelectOptionColor,
+} from '@auxx/lib/custom-fields/client'
 import { cn } from '@auxx/ui/lib/utils'
-import { ArrowRight, Code2, CornerDownRight, Hand, Settings2, Square, Workflow } from 'lucide-react'
+import { Code2, CornerDownRight, Hand, Settings2, Square, Workflow } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { api } from '~/trpc/react'
 import { useProcedureEditorContext } from '../ui/procedure-draft-provider'
 
+// Layout only — bg/text/border come from the option-color palette per tone.
+// `border-black/10` is a fallback for tones (gray) that lack a border color.
 const PILL =
-  'inline-flex items-center gap-1 align-baseline rounded-md px-1.5 py-0 text-sm bg-primary-100 text-primary-700 ring-1 ring-primary-200 transition-all'
+  'inline-flex items-center gap-1 align-baseline rounded-md border border-black/10 px-1.5 py-0 text-sm transition-all dark:border-white/10'
+
+/** Tone-aware pill classes from the shared select-option color palette. */
+function pillClasses(tone: SelectOptionColor, selected: boolean) {
+  return cn(PILL, getColorBadgeClasses(tone), selected && getColorSelectedBorderClasses(tone))
+}
 
 /**
  * Inline step badges for the v9 procedure editor — one badge system, the kind
@@ -32,7 +44,7 @@ export function ProcedureStepBadge({ id, selected }: { id: string; selected: boo
   if (id.startsWith('route:')) {
     return <RouteBadge payload={id.slice('route:'.length)} selected={selected} />
   }
-  return <span className={cn(PILL, selected && 'ring-primary-400')}>{id}</span>
+  return <span className={pillClasses('gray', selected)}>{id}</span>
 }
 
 /** Detects whether a given prefixed id is a procedure step badge (vs. a plain reference). */
@@ -41,18 +53,20 @@ export function isProcedureStepId(id: string): boolean {
 }
 
 function Pill({
+  tone,
   icon,
   selected,
   onCog,
   children,
 }: {
+  tone: SelectOptionColor
   icon: ReactNode
   selected: boolean
   onCog?: () => void
   children: ReactNode
 }) {
   return (
-    <span className={cn(PILL, selected && 'ring-primary-400')}>
+    <span className={pillClasses(tone, selected)}>
       <span className='shrink-0 opacity-70'>{icon}</span>
       <span className='truncate'>{children}</span>
       {onCog && (
@@ -70,7 +84,7 @@ function Pill({
             e.stopPropagation()
             onCog()
           }}
-          className='ml-0.5 inline-flex size-4 shrink-0 items-center justify-center rounded-sm opacity-60 hover:bg-primary-200 hover:opacity-100'>
+          className='ml-0.5 inline-flex size-4 shrink-0 items-center justify-center rounded-sm opacity-60 hover:bg-current/15 hover:opacity-100'>
           <Settings2 className='size-3' />
         </button>
       )}
@@ -83,11 +97,11 @@ function SubProcedureBadge({ subId, selected }: { subId: string; selected: boole
   const name = ctx?.subProcedures.find((s) => s.id === subId)?.name?.trim() || 'Sub-procedure'
   return (
     <Pill
+      tone='forest'
       icon={<Workflow className='size-3.5' />}
       selected={selected}
       onCog={ctx ? () => ctx.openDrill(`sub:${subId}`) : undefined}>
       {name}
-      <ArrowRight className='ml-0.5 inline size-3 opacity-60' />
     </Pill>
   )
 }
@@ -97,6 +111,7 @@ function CodeBadge({ codeId, selected }: { codeId: string; selected: boolean }) 
   const name = ctx?.codeBlocks.find((c) => c.id === codeId)?.name?.trim() || 'Code'
   return (
     <Pill
+      tone='indigo'
       icon={<Code2 className='size-3.5' />}
       selected={selected}
       onCog={ctx ? () => ctx.openDrill(`code:${codeId}`) : undefined}>
@@ -108,14 +123,14 @@ function CodeBadge({ codeId, selected }: { codeId: string; selected: boolean }) 
 function RouteBadge({ payload, selected }: { payload: string; selected: boolean }) {
   if (payload === 'finished') {
     return (
-      <Pill icon={<Square className='size-3.5' />} selected={selected}>
+      <Pill tone='red' icon={<Square className='size-3.5' />} selected={selected}>
         End procedure
       </Pill>
     )
   }
   if (payload === 'handoff') {
     return (
-      <Pill icon={<Hand className='size-3.5' />} selected={selected}>
+      <Pill tone='red' icon={<Hand className='size-3.5' />} selected={selected}>
         Hand off to human
       </Pill>
     )
@@ -124,7 +139,7 @@ function RouteBadge({ payload, selected }: { payload: string; selected: boolean 
     return <SwitchBadge procId={payload.slice('switch:'.length)} selected={selected} />
   }
   return (
-    <Pill icon={<CornerDownRight className='size-3.5' />} selected={selected}>
+    <Pill tone='red' icon={<CornerDownRight className='size-3.5' />} selected={selected}>
       {payload}
     </Pill>
   )
@@ -134,7 +149,7 @@ function SwitchBadge({ procId, selected }: { procId: string; selected: boolean }
   const list = api.procedure.list.useQuery()
   const name = list.data?.find((p) => p.id === procId)?.name ?? 'Procedure'
   return (
-    <Pill icon={<CornerDownRight className='size-3.5' />} selected={selected}>
+    <Pill tone='red' icon={<CornerDownRight className='size-3.5' />} selected={selected}>
       Switch to {name}
     </Pill>
   )

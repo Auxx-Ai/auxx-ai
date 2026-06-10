@@ -50,6 +50,11 @@ The results arrive automatically as a \`<task-notification>\` message in a later
           description:
             'Run against the attached procedure DRAFT instead of the pinned (published) version. Use after editing a procedure to verify the draft before the user publishes.',
         },
+        baselineSuiteRunId: {
+          type: 'string',
+          description:
+            'A prior suite run to diff against. Pass the suite that exposed the failures when re-running after an edit, then compare with `get_suite_diff` when the notification arrives.',
+        },
       },
     },
     outputSchema,
@@ -76,6 +81,10 @@ The results arrive automatically as a \`<task-notification>\` message in a later
         ? args.caseIds.filter((id): id is string => typeof id === 'string' && id.length > 0)
         : undefined
       const useDraft = args.useDraft === true
+      const baselineSuiteRunId =
+        typeof args.baselineSuiteRunId === 'string' && args.baselineSuiteRunId.length > 0
+          ? args.baselineSuiteRunId
+          : undefined
 
       const started = await startAgentSuiteRun({
         organizationId: agentDeps.organizationId,
@@ -84,6 +93,7 @@ The results arrive automatically as a \`<task-notification>\` message in a later
         procedureId,
         caseIds,
         useDraft,
+        baselineSuiteRunId,
       })
       if (started.isErr()) {
         return {

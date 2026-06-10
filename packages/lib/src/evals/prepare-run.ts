@@ -6,7 +6,12 @@
 // snapshots before the queued row is inserted. Enqueue happens afterward (in the
 // router). See plans/evals/phase-1-agent-simulation.md §1.3/§1.10 and conventions.md §4.
 
-import type { AgentEvalAssertion, AgentEvalTarget, SimulationConfig } from '@auxx/types/evals'
+import type {
+  AgentEvalAssertion,
+  AgentEvalTarget,
+  EvalRunMode,
+  SimulationConfig,
+} from '@auxx/types/evals'
 import { err, ok, type Result } from 'neverthrow'
 import { compileProcedure, getProcedureVersionById, readCompiled } from '../agents/procedures'
 import { getAttachedProcedureDraft } from '../agents/procedures/authoring/queries'
@@ -43,7 +48,7 @@ export interface PrepareRunInput {
    * that, stamping the snapshot so the run stays attributable. `scope: 'agent'`
    * is unaffected by the mode in v1.
    */
-  mode?: 'pinned' | 'draft'
+  mode?: EvalRunMode
 }
 
 /**
@@ -110,7 +115,7 @@ export async function prepareRunSnapshots(
 
 interface ResolvedProcedures {
   procedures: AgentRuntimeSnapshotV1['procedures']
-  runMode: 'pinned' | 'draft'
+  runMode: EvalRunMode
   /** Present only when a draft was actually compiled and pinned. */
   draftContentHash?: string
 }
@@ -119,7 +124,7 @@ interface ResolvedProcedures {
 async function resolveProcedures(
   organizationId: string,
   target: AgentEvalTarget,
-  mode: 'pinned' | 'draft'
+  mode: EvalRunMode
 ): Promise<Result<ResolvedProcedures, EvalServiceError>> {
   if (target.scope === 'procedure') {
     // Draft mode: compile the attached draft in-memory and pin THAT, leaving the
@@ -185,8 +190,9 @@ async function resolveDraftProcedure(
   const { compiled, contentHash, errors } = compileProcedure(draftResult.value.draftDoc)
   if (errors && errors.length > 0) {
     return err({
-      code: 'EVAL_VALIDATION',
+      code: 'DRAFT_COMPILE_FAILED',
       message: `Draft does not compile: ${errors.map((e) => e.message).join('; ')}`,
+      errors,
     })
   }
   return ok({

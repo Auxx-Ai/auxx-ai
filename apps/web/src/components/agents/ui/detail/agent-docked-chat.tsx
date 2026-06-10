@@ -173,7 +173,16 @@ export function AgentDockedChat({ agentId }: AgentDockedChatProps) {
         />
       </TabsContent>
       <TabsContent value='simulations' className='flex-1 overflow-hidden'>
-        <SimulationsTab agentId={agentId} />
+        <SimulationsTab
+          agentId={agentId}
+          // "Fix with Kopilot" (evals 5D.1): queue the seed for the builder
+          // chat, then switch tabs — the build panel's KopilotChat consumes it
+          // once its session load settles.
+          onFixWithKopilot={(seed) => {
+            useKopilotStore.getState().setPendingSeed({ page: 'agents.builder', text: seed })
+            void setPanel('build')
+          }}
+        />
       </TabsContent>
     </Tabs>
   )

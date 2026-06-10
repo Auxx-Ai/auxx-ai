@@ -10,6 +10,9 @@ import { findRef } from '../../context-refs'
 import type { GetToolDeps, PageCapability } from '../types'
 import { buildBuilderPersonaPrompt, buildChatBuilderPersonaPrompt } from './persona-prompt'
 import { createCompleteAgentSetupTool } from './tools/complete-agent-setup'
+import { createGetEvalRunTool } from './tools/get-eval-run'
+import { createGetSuiteDiffTool } from './tools/get-suite-diff'
+import { createListEvalCasesTool } from './tools/list-eval-cases'
 import { createCreateProcedureTool } from './tools/procedure-create'
 import { createReadProcedureTool } from './tools/procedure-read'
 import { createSetProcedureBodyTool } from './tools/procedure-set-body'
@@ -84,8 +87,13 @@ export async function createAgentsBuilderCapabilities(
     createSetProcedureBodyTool(getDeps),
     createReadProcedureTool(getDeps),
     createUpdateProcedureCriteriaTool(getDeps),
-    // Async eval batch — returns a taskNotification ref; results land as a
-    // <task-notification> message (plans/kopilot/task-notifications/plan.md).
+    // Eval improvement loop (phase 5C): read-only context tools + the async
+    // suite trigger. No tool can write eval tables — fixing goes through the
+    // build-editing tools above; results land as a <task-notification> message
+    // (plans/kopilot/task-notifications/plan.md).
+    createListEvalCasesTool(getDeps),
+    createGetEvalRunTool(getDeps),
+    createGetSuiteDiffTool(getDeps),
     createRunEvalSuiteTool(getDeps),
     // Triggers + resource-scope stay internal-only: chat agents run on the
     // inbound-message gate, never autonomously, and don't read internal records.

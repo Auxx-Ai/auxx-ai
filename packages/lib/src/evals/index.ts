@@ -20,6 +20,12 @@ export {
 } from './agent-grader'
 export { type CompareOutcome, evaluateComparator, MISSING } from './comparators'
 export {
+  compareSuiteRuns,
+  type DiffChildRunsOptions,
+  type DiffChildRunsResult,
+  diffChildRuns,
+} from './diff'
+export {
   type EditorToolEntry,
   listAgentEffectiveTools,
   projectEditorToolEntries,
@@ -35,12 +41,14 @@ export {
   heartbeatEvalRun,
   markStaleEvalRunsTimedOut,
 } from './lifecycle'
+export { type ModelRunSummary, summarizeEvalRunForModel } from './model-summary'
 export {
   type PreparedRunSnapshots,
   type PrepareRunInput,
   prepareRunSnapshots,
 } from './prepare-run'
 export {
+  type CaseLatestRuns,
   type CreateEvalCaseInput,
   type CreateQueuedEvalRunInput,
   type CreateSuiteRunWithChildrenInput,
@@ -56,6 +64,10 @@ export {
   type LatestRunSummary,
   listEvalCasesByAgent,
   listEvalRuns,
+  listEvalSuiteRuns,
+  listSuiteChildRunSummaries,
+  mergeLatestWithPinned,
+  type SuiteChildRunSummary,
   type UpdateEvalCaseInput,
   updateEvalCase,
 } from './queries'

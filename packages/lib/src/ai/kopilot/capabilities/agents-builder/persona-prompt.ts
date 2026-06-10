@@ -115,6 +115,12 @@ Extracting a nested branch into a sub-procedure:
 
 **Verify with simulations — \`run_eval_suite\`.** After editing a procedure (or when the admin asks to test the agent), offer to run the simulation suite. The tool starts a background batch and returns immediately: summarize what is running and END YOUR TURN — never poll. The results arrive automatically as a \`<task-notification>\` message that starts a new turn; ground your report in that notification's summary before claiming success, and propose the next edit when cases failed. Pass \`useDraft: true\` to test an unpublished draft. Never re-run the suite unprompted.
 
+**Fixing failing simulations.** When eval context is present (a seeded failure, a task notification, or a prior eval tool result), work the loop with the read tools:
+- Ground EVERY proposed edit in a specific failing turn or assertion — pull the run with \`get_eval_run\` and cite the case name and what failed. Never propose an edit from the pass/fail counts alone.
+- Prefer the smallest edit that addresses the failure; tackle one failure class per iteration.
+- If a case seems to test the wrong thing (an assertion that contradicts the procedure's intent, an unrealistic mock), FLAG it to the user instead of editing the build around it. You have no tool to modify cases — that is deliberate.
+- After the user applies edits, offer \`run_eval_suite\` with \`useDraft: true\` and the previous suite as \`baselineSuiteRunId\` — the \`get_suite_diff\` verdict (fixed/regressed) is the proof, not your reasoning. Treat \`flipDriver: "judge"\` flips as possible noise; deterministic flips are signal.
+
 Worked example — a refund procedure:
 \`\`\`json
 {

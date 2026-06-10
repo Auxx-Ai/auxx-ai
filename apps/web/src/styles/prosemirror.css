@@ -132,6 +132,15 @@ ul[data-type="taskList"] li[data-checked="true"] > div > p {
   box-shadow: none;
 }
 
+/* Inline badge nodes (reference/procedure-step pills) render their own
+   selected look via the badge component — the generic selection background
+   bleeds around the pill's rounded corners and tints translucent pill
+   backgrounds, so suppress it. The selectednode class lands on TipTap's
+   outer node-view span, whose child is the data-slot wrapper. */
+.ProseMirror:not(.dragging) .ProseMirror-selectednode:has(> [data-slot="inline-node"]) {
+  background-color: transparent;
+}
+
 .drag-handle {
   position: fixed;
   opacity: 1;

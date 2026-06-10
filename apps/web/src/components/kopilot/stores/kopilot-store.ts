@@ -340,6 +340,16 @@ interface KopilotState {
   setPendingRequest: (request: KopilotRequest | null) => void
 
   /**
+   * A message queued for a SPECIFIC chat surface (matched by `page`) — e.g.
+   * "Fix with Kopilot" seeds the builder chat from the Simulations tab before
+   * switching panels. Consumed once by the matching `KopilotChat` after its
+   * initial session load settles, then cleared. Unlike `initialMessage`, this
+   * works against an existing session.
+   */
+  pendingSeed: { page: string; text: string } | null
+  setPendingSeed: (seed: { page: string; text: string } | null) => void
+
+  /**
    * A task-notification turn ran while the panel was closed. Cleared when the
    * panel opens. Rendered as a dot on the Kopilot launcher.
    */
@@ -630,6 +640,9 @@ export const useKopilotStore = create<KopilotState>()(
       // Outgoing request (consumed by KopilotRuntime)
       pendingRequest: null,
       setPendingRequest: (pendingRequest) => set({ pendingRequest }),
+
+      pendingSeed: null,
+      setPendingSeed: (pendingSeed) => set({ pendingSeed }),
 
       // Unread task-notification indicator
       hasUnreadNotification: false,

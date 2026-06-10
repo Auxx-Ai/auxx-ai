@@ -13,14 +13,15 @@ import { toastError } from '@auxx/ui/components/toast'
 import { useCopy } from '@auxx/ui/hooks/use-copy'
 import { cn } from '@auxx/ui/lib/utils'
 import { formatRelativeTime } from '@auxx/utils'
-import { Check, CircleDot, Copy, FileJson, History, ListChecks, Trash2 } from 'lucide-react'
+import { Check, CircleDot, Copy, FileJson, History, ListChecks, Trash2, Wrench } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
+import { buildFixSeedMessage } from '../hooks/build-fix-seed'
 import { useEvalRunActions, useEvalRunState } from '../stores/use-eval-run-store'
 import { EvalAssertionResultRow } from './eval-assertion-result-row'
 import { EvalDrillBar } from './eval-drill-bar'
-import { EvalStatusDot, EvalStatusPill } from './eval-status-pill'
+import { EvalDraftBadge, EvalStatusDot, EvalStatusPill } from './eval-status-pill'
 import { EvalTraceView } from './eval-trace-view'
 import { type TraceMarkdownMeta, traceToMarkdown } from './messages/eval-trace-markdown'
 
@@ -64,9 +65,11 @@ interface EvalRunDetailProps {
   runId: string
   /** Switches the detail to another run from the same case's history. */
   onSelectRun?: (runId: string) => void
+  /** Hands a failing run to the builder chat with a seeded message (5D.1). */
+  onFixWithKopilot?: (seed: string) => void
 }
 
-export function EvalRunDetail({ runId, onSelectRun }: EvalRunDetailProps) {
+export function EvalRunDetail({ runId, onSelectRun, onFixWithKopilot }: EvalRunDetailProps) {
   const runQuery = api.eval.getRun.useQuery({ runId })
   const live = useEvalRunState(runId)
   const { connect, hydrateFromRun } = useEvalRunActions()
@@ -172,6 +175,10 @@ export function EvalRunDetail({ runId, onSelectRun }: EvalRunDetailProps) {
   const status = live.status ?? row.status
   const isLive = !TERMINAL.has(status)
   const banner = BANNER[status]
+  const isDraftRun = row.runMode === 'draft'
+  const snapshot = row.runtimeSnapshot as { draftContentHash?: string } | null
+  const caseName =
+    (row.definitionSnapshot as { case?: { name?: string } } | null)?.case?.name ?? 'Simulation'
   const assertions = live.assertionResults.length ? live.assertionResults : []
   const assertionTally = assertions.reduce(
     (acc, r) => {
@@ -186,13 +193,44 @@ export function EvalRunDetail({ runId, onSelectRun }: EvalRunDetailProps) {
       {bar}
       <ScrollArea className='min-h-0 flex-1' scrollbarClassName='w-1.5'>
         {/* Verdict banner */}
-        <div className='p-3'>
+        <div className='flex flex-col gap-2 p-3'>
           <Alert variant={banner.variant}>
             <AlertDescription className='flex flex-wrap items-center gap-2 opacity-100'>
               <EvalStatusPill status={status} />
+              {isDraftRun && <EvalDraftBadge contentHash={snapshot?.draftContentHash} />}
               <span>{row.error ? `${banner.sentence} ${row.error}` : banner.sentence}</span>
             </AlertDescription>
           </Alert>
+          {isDraftRun && (
+            <p className='text-[11px] text-muted-foreground'>
+              Ran against the draft (not the published version).
+            </p>
+          )}
+          {onFixWithKopilot && (status === 'failed' || status === 'error') && (
+            <Button
+              variant='outline'
+              size='sm'
+              className='self-start'
+              onClick={() =>
+                onFixWithKopilot(
+                  buildFixSeedMessage({
+                    suiteRunId: row.suiteRunId,
+                    runs: [
+                      {
+                        runId: row.id,
+                        caseName,
+                        failedAssertions: assertions
+                          .filter((a) => a.status !== 'passed')
+                          .map((a) => ({ type: a.type, note: a.note })),
+                      },
+                    ],
+                  })
+                )
+              }>
+              <Wrench />
+              Fix with Kopilot
+            </Button>
+          )}
         </div>
 
         <Section

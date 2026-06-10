@@ -14,10 +14,13 @@ import type {
   ArgMatch,
   AssertionResult,
   Comparator,
+  EvalRunMode,
   EvalTraceEvent,
   SimulationConfig,
   SimulationToolMock,
 } from './index'
+
+export const evalRunModeSchema = z.enum(['pinned', 'draft']) satisfies z.ZodType<EvalRunMode>
 
 /**
  * `FieldReference` is `FieldId | ResourceFieldId | FieldPath` — a plain string
