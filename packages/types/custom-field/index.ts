@@ -29,6 +29,7 @@ export const SELECT_OPTION_COLORS = [
   'orange',
   'amber',
   'green',
+  'forest',
   'teal',
   'blue',
   'indigo',

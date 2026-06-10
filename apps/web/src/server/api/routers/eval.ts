@@ -3,6 +3,7 @@
 import type { EvalCaseEntity } from '@auxx/database'
 import {
   cancelEvalRun,
+  compareSuiteRuns,
   createEvalCase,
   createQueuedEvalRun,
   deleteEvalCase,
@@ -15,6 +16,8 @@ import {
   listAgentEffectiveTools,
   listEvalCasesByAgent,
   listEvalRuns,
+  listEvalSuiteRuns,
+  listSuiteChildRunSummaries,
   prepareRunSnapshots,
   suggestAgentSimulations,
   updateEvalCase,
@@ -94,7 +97,17 @@ export const evalRouter = createTRPCRouter({
             ? {
                 runId: run.runId,
                 status: run.status,
+                runMode: run.runMode,
                 at: (run.completedAt ?? run.createdAt).toISOString(),
+              }
+            : null,
+          // Last-verified: when the latest run is a draft run, the most recent
+          // PINNED run stays the authoritative status (5A.5).
+          latestPinnedRun: run?.latestPinned
+            ? {
+                runId: run.latestPinned.runId,
+                status: run.latestPinned.status,
+                at: (run.latestPinned.completedAt ?? run.latestPinned.createdAt).toISOString(),
               }
             : null,
         }
@@ -267,6 +280,72 @@ export const evalRouter = createTRPCRouter({
       return suite
     }),
 
+  /** Iteration-history feed: suite runs for an agent (optionally one procedure), newest first. */
+  listSuiteRuns: protectedProcedure
+    .input(
+      z.object({
+        agentId: z.string().min(1),
+        procedureId: z.string().min(1).optional(),
+        cursor: z.string().optional(),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      const limit = 20
+      const suiteRuns = unwrap(
+        await listEvalSuiteRuns({
+          organizationId: ctx.session.organizationId,
+          agentId: input.agentId,
+          procedureId: input.procedureId,
+          limit: limit + 1,
+          before: input.cursor ? new Date(input.cursor) : undefined,
+        }),
+        'list eval suite runs'
+      )
+      const hasMore = suiteRuns.length > limit
+      const page = hasMore ? suiteRuns.slice(0, limit) : suiteRuns
+      const nextCursor = hasMore ? page[page.length - 1]?.createdAt.toISOString() : undefined
+      return { suiteRuns: page, nextCursor }
+    }),
+
+  /** Child runs of a suite without trace/snapshot payloads (suite detail view). */
+  listSuiteChildRuns: protectedProcedure
+    .input(z.object({ suiteRunId: z.string().min(1) }))
+    .query(async ({ ctx, input }) => {
+      return unwrap(
+        await listSuiteChildRunSummaries({
+          organizationId: ctx.session.organizationId,
+          suiteRunId: input.suiteRunId,
+        }),
+        'list suite child runs'
+      )
+    }),
+
+  /** Verdict diff of two terminal suites (5B). Read-only; computed on request. */
+  compareSuiteRuns: protectedProcedure
+    .input(
+      z.object({
+        baselineSuiteRunId: z.string().min(1),
+        candidateSuiteRunId: z.string().min(1),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      const result = await compareSuiteRuns({
+        organizationId: ctx.session.organizationId,
+        baselineSuiteRunId: input.baselineSuiteRunId,
+        candidateSuiteRunId: input.candidateSuiteRunId,
+      })
+      if (result.isErr()) {
+        const code =
+          result.error.code === 'EVAL_SUITE_RUN_NOT_FOUND'
+            ? 'NOT_FOUND'
+            : result.error.code === 'SUITE_NOT_TERMINAL'
+              ? 'PRECONDITION_FAILED'
+              : 'INTERNAL_SERVER_ERROR'
+        throw new TRPCError({ code, message: result.error.message })
+      }
+      return result.value
+    }),
+
   // ── Execute ───────────────────────────────────────────────────────────────
   run: evalAdminProcedure
     // `useDraft`: run the current draft (the Simulations editor surface always
@@ -285,6 +364,15 @@ export const evalRouter = createTRPCRouter({
         mode: input.useDraft ? 'draft' : 'pinned',
       })
       if (prepared.isErr()) {
+        // A non-compiling draft is user-correctable — 422 with the structured
+        // CompileError[] (the formatter forwards them as `data.compileErrors`).
+        if (prepared.error.code === 'DRAFT_COMPILE_FAILED') {
+          throw new TRPCError({
+            code: 'UNPROCESSABLE_CONTENT',
+            message: prepared.error.message,
+            cause: prepared.error,
+          })
+        }
         throw new TRPCError({
           code: 'BAD_REQUEST',
           message: `Cannot run eval case: ${prepared.error.message}`,
@@ -298,6 +386,9 @@ export const evalRouter = createTRPCRouter({
           kind: 'agent_simulation',
           definitionSnapshot: prepared.value.definitionSnapshot,
           runtimeSnapshot: prepared.value.runtimeSnapshot,
+          // Snapshot truth, not the request: a draft request with no attached
+          // draft falls back to pinned, and the column must match the snapshot.
+          runMode: prepared.value.runtimeSnapshot.runMode,
         }),
         'create queued eval run'
       )
@@ -326,6 +417,7 @@ export const evalRouter = createTRPCRouter({
         procedureId: z.string().min(1).optional(),
         caseIds: z.array(z.string().min(1)).optional(),
         useDraft: z.boolean().optional(),
+        baselineSuiteRunId: z.string().min(1).optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -340,8 +432,16 @@ export const evalRouter = createTRPCRouter({
         procedureId: input.procedureId,
         caseIds: input.caseIds,
         useDraft: input.useDraft,
+        baselineSuiteRunId: input.baselineSuiteRunId,
       })
       if (result.isErr()) {
+        if (result.error.code === 'DRAFT_COMPILE_FAILED') {
+          throw new TRPCError({
+            code: 'UNPROCESSABLE_CONTENT',
+            message: result.error.message,
+            cause: result.error,
+          })
+        }
         throw new TRPCError({
           code: result.error.code === 'EVAL_VALIDATION' ? 'BAD_REQUEST' : 'INTERNAL_SERVER_ERROR',
           message: result.error.message,

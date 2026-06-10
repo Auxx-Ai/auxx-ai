@@ -119,17 +119,21 @@ describe('prepareRunSnapshots — run mode', () => {
     expect(snap.procedures).toEqual([{ id: 'p', versionId: 'v1', compiled: DRAFT_COMPILED }])
   })
 
-  it('fails with EVAL_VALIDATION when the draft does not compile', async () => {
+  it('fails with DRAFT_COMPILE_FAILED carrying the structured CompileError[] when the draft does not compile', async () => {
     mockedDraft.mockResolvedValue(ok({ draftDoc: { type: 'doc', content: [] } }))
     mockedCompile.mockReturnValue({
       compiled: DRAFT_COMPILED,
       contentHash: 'dhash',
-      errors: [{ code: 'CYCLE', message: 'cycle detected' }],
+      errors: [{ code: 'CYCLE', message: 'cycle detected', stepId: 's1' }],
     })
 
     const result = await prepare('draft')
     expect(result.isErr()).toBe(true)
-    expect(result._unsafeUnwrapErr().code).toBe('EVAL_VALIDATION')
+    const error = result._unsafeUnwrapErr()
+    expect(error.code).toBe('DRAFT_COMPILE_FAILED')
+    if (error.code !== 'DRAFT_COMPILE_FAILED') throw new Error('unreachable')
+    expect(error.message).toContain('cycle detected')
+    expect(error.errors).toEqual([{ code: 'CYCLE', message: 'cycle detected', stepId: 's1' }])
   })
 
   it('falls back to the pinned version when no draft is available', async () => {

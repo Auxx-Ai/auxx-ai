@@ -44,11 +44,18 @@ export const evalSuiteTaskNotificationHandler: TaskNotificationKindHandler = {
     if (suite.cancelledCount > 0) counts.push(`${suite.cancelledCount} cancelled`)
     if (suite.timedOutCount > 0) counts.push(`${suite.timedOutCount} timed out`)
 
+    const modeNote = suite.runMode === 'draft' ? ' (draft run)' : ''
+    const diffHint = suite.baselineSuiteRunId
+      ? ` Compare against the baseline with get_suite_diff (baselineSuiteRunId: ${suite.baselineSuiteRunId}, candidateSuiteRunId: ${suite.id}) and report fixed/regressed counts.`
+      : ' If this re-ran a prior suite, compare with get_suite_diff.'
+
     return {
       status: suite.status,
-      summary: `${suite.requestedCount} run${suite.requestedCount === 1 ? '' : 's'}: ${counts.join(' · ')}`,
+      summary: `${suite.requestedCount} run${suite.requestedCount === 1 ? '' : 's'}: ${counts.join(' · ')}${modeNote}`,
       instruction:
-        'The eval suite has finished. Report the outcome to the user and propose next steps. ' +
+        `The eval suite has finished.${diffHint} ` +
+        'Pull a failing run with get_eval_run before proposing an edit. ' +
+        'Report the outcome to the user and propose next steps. ' +
         'Do not re-run the suite unless the user asks.',
     }
   },

@@ -2,8 +2,6 @@
 
 'use client'
 
-import { Badge } from '@auxx/ui/components/badge'
-import { cn } from '@auxx/ui/lib/utils'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { useToolAppResolver } from '~/components/kopilot/hooks/use-tool-app-resolver'
@@ -47,7 +45,7 @@ export function EvalAgentMessage({ runs }: { runs: Run[] }) {
                 {run.calls.map((call) => {
                   const resolved = resolve(call.name)
                   return (
-                    <div key={call.id} className='flex items-center gap-1.5'>
+                    <div key={call.id}>
                       <ToolStatusPill
                         step={{
                           id: call.id,
@@ -61,19 +59,9 @@ export function EvalAgentMessage({ runs }: { runs: Run[] }) {
                         iconId={resolved?.iconId}
                         color={resolved?.color}
                         displayName={resolved?.displayName}
+                        expandableOutput={call.output}
+                        badge={call.badge}
                       />
-                      <Badge
-                        variant='outline'
-                        className={cn(
-                          'h-4 px-1 text-[10px]',
-                          call.badge.live
-                            ? 'border-amber-500/40 text-amber-600'
-                            : call.badge.label === 'default'
-                              ? 'border-blue-500/40 text-blue-600'
-                              : 'text-muted-foreground'
-                        )}>
-                        {call.badge.label}
-                      </Badge>
                     </div>
                   )
                 })}

@@ -55,6 +55,13 @@ export const EvalRun = pgTable(
     kind: evalKind().notNull(),
     status: evalRunStatus().notNull(),
 
+    /**
+     * Denormalized `runtimeSnapshot.runMode` (`@auxx/types/evals` `EvalRunMode`,
+     * inlined — tier-1, see the `agent.ts` precedent) so list/detail badging
+     * never parses the snapshot jsonb.
+     */
+    runMode: text().$type<'pinned' | 'draft'>().notNull().default('pinned'),
+
     definitionSnapshot: jsonb().$type<Record<string, unknown>>().notNull(),
     runtimeSnapshot: jsonb().$type<Record<string, unknown>>().notNull(),
     snapshotHash: text().notNull(),

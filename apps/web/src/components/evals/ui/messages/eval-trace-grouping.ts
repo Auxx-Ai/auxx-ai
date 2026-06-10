@@ -21,8 +21,10 @@ export interface ToolCallView {
   args: Record<string, unknown>
   /** One-line output preview, already coerced to a string. */
   summary?: string
-  /** Where the tool result came from — drives the small trailing badge. */
-  badge: { label: 'mock' | 'default' | 'live' | 'captured'; live: boolean }
+  /** Raw executor output payload — drives the pill's expandable JSON panel. */
+  output?: unknown
+  /** Where the tool result came from — drives the pill's trailing badge. */
+  badge: { label: 'mock' | 'default' | 'live' | 'captured'; tone: 'muted' | 'info' | 'warn' }
 }
 
 export type Run =
@@ -59,6 +61,7 @@ function toToolCallView(event: EvalTraceEvent): ToolCallView {
     name: str(data.toolName) ?? 'tool',
     args: (data.args as Record<string, unknown>) ?? {},
     summary: summaryString(data.outputSummary),
+    output: data.outputSummary ?? undefined,
     badge: {
       // `default` = the tool's live exampleOutput (offline, unauthored) — keep it
       // distinct from `mock` so authors can see what wasn't pinned for the case.
@@ -69,7 +72,7 @@ function toToolCallView(event: EvalTraceEvent): ToolCallView {
           : live
             ? 'live'
             : 'mock',
-      live,
+      tone: live ? 'warn' : resolution === 'tool_example' ? 'info' : 'muted',
     },
   }
 }

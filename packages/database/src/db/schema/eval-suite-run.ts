@@ -41,6 +41,23 @@ export const EvalSuiteRun = pgTable(
     kind: evalKind().notNull(),
     status: evalSuiteRunStatus().notNull(),
 
+    /** Denormalized batch run mode — `'draft'` when any child ran a compiled draft. */
+    runMode: text().$type<'pinned' | 'draft'>().notNull().default('pinned'),
+    /** Compiler `contentHash` of the draft a draft suite tested (iteration history). */
+    draftContentHash: text(),
+    /** Comparison anchor for the suite verdict diff — navigation only. */
+    baselineSuiteRunId: text().references((): AnyPgColumn => EvalSuiteRun.id, {
+      onUpdate: 'cascade',
+      onDelete: 'set null',
+    }),
+    /**
+     * Denormalized from the `runAll` selection so suites list per agent/procedure
+     * (`selectionSnapshot` holds only case ids). No FK — suite history outlives
+     * deleted agents/procedures, like `EvalRun.caseId`'s retention policy.
+     */
+    agentId: text(),
+    procedureId: text(),
+
     requestedCount: integer().notNull().default(0),
     completedCount: integer().notNull().default(0),
     passedCount: integer().notNull().default(0),
@@ -67,6 +84,12 @@ export const EvalSuiteRun = pgTable(
       table.createdAt.desc().nullsLast()
     ),
     index('EvalSuiteRun_status_idx').using('btree', table.status.asc().nullsLast()),
+    // Per-agent/procedure suite listing (iteration history, diff navigation).
+    index('EvalSuiteRun_agentId_createdAt_idx').using(
+      'btree',
+      table.agentId.asc().nullsLast(),
+      table.createdAt.desc().nullsLast()
+    ),
   ]
 )
 

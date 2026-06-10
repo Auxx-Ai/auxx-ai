@@ -4,14 +4,23 @@
 // those live in `@auxx/types/evals`). See plans/evals/phase-1-agent-simulation.md §1.3.
 
 import type { DatabaseError } from '@auxx/services'
+import type { CompileError } from '../agents/procedures'
 
 /** Not-found / validation failures returned by the eval service layer. */
 export type EvalServiceError =
   | DatabaseError
   | { code: 'EVAL_VALIDATION'; message: string; cause?: unknown }
+  /**
+   * A draft failed to compile at prepare time. User-correctable (the router maps
+   * it to 422, never 500); carries the per-node `CompileError[]` so the editor
+   * can render an inline error list.
+   */
+  | { code: 'DRAFT_COMPILE_FAILED'; message: string; errors: CompileError[] }
   | { code: 'EVAL_CASE_NOT_FOUND'; message: string }
   | { code: 'EVAL_RUN_NOT_FOUND'; message: string }
   | { code: 'EVAL_SUITE_RUN_NOT_FOUND'; message: string }
+  /** A suite verdict diff was requested while one side is still queued/running. */
+  | { code: 'SUITE_NOT_TERMINAL'; message: string }
   /**
    * The suggestion call itself was unusable — model error, truncated output, or
    * unparseable top-level JSON. Per-item problems never produce this; they

@@ -10,6 +10,7 @@
 //
 // See plans/evals/phase-1-agent-simulation.md §1.4 and conventions.md §4/§5.
 
+import type { EvalRunMode } from '@auxx/types/evals'
 import type { CompiledProcedure } from '../agents/procedures'
 import {
   buildEffectiveAgentRuntime,
@@ -69,7 +70,7 @@ export interface AgentRuntimeSnapshotV1 {
    * in-memory at prepare time. Stamped so historical runs stay attributable
    * (like `test_version_id`); the run detail shows a Draft badge from this.
    */
-  runMode: 'pinned' | 'draft'
+  runMode: EvalRunMode
   /** The compiler's stable `contentHash` of the draft, present only for `runMode: 'draft'`. */
   draftContentHash?: string
   /**
@@ -122,7 +123,7 @@ export interface CreateAgentRuntimeSnapshotInput {
   time: { frozenAt: string | null }
   codeRevision?: string
   /** Defaults to `'pinned'`. */
-  runMode?: 'pinned' | 'draft'
+  runMode?: EvalRunMode
   /** The compiler's stable `contentHash` of the draft (draft mode only). */
   draftContentHash?: string
 }

@@ -191,6 +191,11 @@ export function ThinkingSteps({
                     toolCall.digest
                   )
                   const resolved = resolve(toolCall.name)
+                  // Async tools carry a watch ref — the pill upgrades to a live
+                  // progress secondary for kinds it knows (eval-suite).
+                  const taskNotification = (
+                    toolCall.output as { taskNotification?: { kind: string; ref: string } } | null
+                  )?.taskNotification
                   return (
                     <motion.div
                       key={step.id}
@@ -206,6 +211,7 @@ export function ThinkingSteps({
                             status: pillStatus,
                             summary,
                             entities,
+                            taskNotification,
                           },
                         }}
                         iconId={resolved?.iconId}

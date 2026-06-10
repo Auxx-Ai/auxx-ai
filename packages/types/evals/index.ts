@@ -25,6 +25,14 @@ export type EvalRunStatus =
 
 export type EvalSuiteRunStatus = 'queued' | 'running' | 'completed' | 'cancelled' | 'error'
 
+/**
+ * Which procedure source a run executed: the case's pinned `procedureVersionId`
+ * (regression-gate semantics) or the attached draft compiled in-memory at
+ * prepare time. Denormalized onto `EvalRun.runMode` / `EvalSuiteRun.runMode`
+ * from the runtime snapshot.
+ */
+export type EvalRunMode = 'pinned' | 'draft'
+
 /** Whether a simulation unit-tests one pinned procedure or runs the whole agent. */
 export type AgentEvalScope = 'procedure' | 'agent'
 
@@ -155,4 +163,54 @@ export type AssertionResult = {
   status: 'passed' | 'failed' | 'error'
   actual?: unknown
   note?: string
+}
+
+// ---- Suite verdict diff (phase 5B) ----
+//
+// Read-side comparison of two terminal suite runs over the same case set.
+// Computed on read — nothing here is persisted.
+
+export type SuiteDiffBucket =
+  | 'fixed' // baseline failed → candidate passed
+  | 'regressed' // baseline passed → candidate failed
+  | 'still_failing'
+  | 'still_passing'
+  | 'incomparable' // error | cancelled | timed_out on either side
+  | 'uncompared' // caseId present in only one suite
+
+/**
+ * What drove a fixed/regressed flip: `'judge'` when only LLM-graded
+ * `response_criteria` assertions changed (single flips can be noise),
+ * `'deterministic'` when none did (signal), `'mixed'` otherwise.
+ */
+export type SuiteDiffFlipDriver = 'deterministic' | 'judge' | 'mixed'
+
+export type SuiteDiffEntry = {
+  caseId: string
+  /** From the run's `definitionSnapshot` — survives case deletion. */
+  caseName: string
+  bucket: SuiteDiffBucket
+  baseline?: { runId: string; status: EvalRunStatus }
+  candidate?: { runId: string; status: EvalRunStatus }
+  /** Present for fixed/regressed: which assertions changed status. */
+  assertionFlips?: {
+    assertionId: string
+    type: string
+    from: AssertionResult['status']
+    to: AssertionResult['status']
+  }[]
+  flipDriver?: SuiteDiffFlipDriver
+}
+
+export type SuiteDiffSummary = {
+  baselineSuiteRunId: string
+  candidateSuiteRunId: string
+  baselineRunMode: EvalRunMode
+  candidateRunMode: EvalRunMode
+  counts: Record<SuiteDiffBucket, number>
+  /** Candidate − baseline pass-rate over comparable cases only; null when none. */
+  passRateDelta: number | null
+  /** Fixed/regressed entries whose flips were judge-graded only (noise caveat). */
+  judgeOnlyFlips: number
+  entries: SuiteDiffEntry[]
 }
