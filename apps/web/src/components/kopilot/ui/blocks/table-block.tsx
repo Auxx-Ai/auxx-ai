@@ -19,6 +19,7 @@ import { ActionButton } from '~/components/workflow/ui/action-button'
 import { BlockCard } from './block-card'
 import type { BlockRendererProps } from './block-registry'
 import type { TableBlockData, TableCellData, TableColumnData } from './block-schemas'
+import { tableBodyCellClass, tableClass, tableHeaderCellClass, tableRowClass } from './table-styles'
 
 function CellContent({ cell }: { cell: TableCellData }) {
   // Entity record link
@@ -146,14 +147,14 @@ function getColumnAlign(
 
 function TableContent({ columns, rows }: { columns: TableColumnData[]; rows: TableCellData[][] }) {
   return (
-    <table className='w-full text-sm' style={{ borderCollapse: 'separate', borderSpacing: 0 }}>
+    <table className={tableClass} style={{ borderCollapse: 'separate', borderSpacing: 0 }}>
       <thead>
         <tr>
           {columns.map((col, i) => (
             <th
               key={i}
               className={cn(
-                'text-muted-foreground whitespace-nowrap border-b bg-muted px-3 py-2 font-medium',
+                tableHeaderCellClass,
                 'sticky top-0 z-10',
                 i === 0 && 'left-0 z-20 rounded-tl-2xl shadow-[2px_0_4px_-2px_rgba(0,0,0,0.06)]',
                 i === columns.length - 1 && 'rounded-tr-2xl'
@@ -166,12 +167,12 @@ function TableContent({ columns, rows }: { columns: TableColumnData[]; rows: Tab
       </thead>
       <tbody>
         {rows.map((row, rowIdx) => (
-          <tr key={rowIdx} className='hover:bg-muted/30 transition-colors'>
+          <tr key={rowIdx} className={tableRowClass}>
             {row.map((cell, colIdx) => (
               <td
                 key={colIdx}
                 className={cn(
-                  'max-w-[280px] break-words px-3 py-2 align-top',
+                  tableBodyCellClass,
                   rowIdx < rows.length - 1 && 'border-b',
                   colIdx === 0 &&
                     'sticky left-0 z-10 bg-card shadow-[2px_0_4px_-2px_rgba(0,0,0,0.06)]',
@@ -189,7 +190,7 @@ function TableContent({ columns, rows }: { columns: TableColumnData[]; rows: Tab
   )
 }
 
-function ExpandButton({
+export function ExpandButton({
   isExpanded,
   onExpandChange,
   insetHeader,
