@@ -72,6 +72,7 @@ export function FieldPickerInnerContent({
   entityDefinitionId,
   fieldReferences = [],
   excludeFields,
+  filterField,
   onSelect,
   mode = 'single',
   closeOnSelect = mode === 'single',
@@ -81,6 +82,7 @@ export function FieldPickerInnerContent({
   onBackFromRoot,
   externalNavigation,
   renderAdditionalContent,
+  renderHeaderContent,
   showBreadcrumb = true,
 }: FieldPickerInnerContentProps) {
   const [search, setSearch] = useState('')
@@ -107,12 +109,15 @@ export function FieldPickerInnerContent({
       // Skip inactive fields
       if (field.active === false) return false
 
+      // Apply caller predicate (e.g. type compatibility for binding targets)
+      if (filterField && !filterField(field)) return false
+
       // Apply search filter
       if (search && !field.label.toLowerCase().includes(search.toLowerCase())) return false
 
       return true
     })
-  }, [fields, excludeFields, search])
+  }, [fields, excludeFields, filterField, search])
 
   /**
    * Check if a field is currently selected
@@ -286,6 +291,9 @@ export function FieldPickerInnerContent({
 
       <CommandList>
         <CommandEmpty>No fields found.</CommandEmpty>
+
+        {/* Header content (e.g. anchor self rows for the binding picker) */}
+        {renderHeaderContent?.(search)}
 
         {/* When drilled into a relationship, show entity selector first */}
         {!isAtRoot && current && entityProps && (

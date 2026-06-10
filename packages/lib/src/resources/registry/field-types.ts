@@ -287,6 +287,13 @@ export interface ResourceField {
    * fields a given installation owns.
    */
   appInstallationId?: string
+
+  /**
+   * Stable per-app field key for app-registered fields (undefined for
+   * user/system fields). Combined with the app slug, this builds the
+   * connection-late-bound `@app:<slug>:<key>` var ref.
+   */
+  appFieldKey?: string
 }
 
 /**

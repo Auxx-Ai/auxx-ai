@@ -52,7 +52,7 @@ export function BindingValueEditor({
     else onChange({ kind: 'const', value })
   }
 
-  const refValue = source.kind === 'var' && typeof source.ref === 'string' ? source.ref : undefined
+  const refValue = source.kind === 'var' ? source.ref : undefined
 
   return (
     <div className='flex min-h-8 w-full items-stretch gap-0.5'>

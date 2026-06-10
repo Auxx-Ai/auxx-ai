@@ -28,6 +28,13 @@ export interface FieldPickerContentProps {
   /** Fields to exclude from display */
   excludeFields?: ExcludeFilter[]
 
+  /**
+   * Predicate applied after excludeFields/active checks — return false to hide
+   * a field. The caller decides relationship handling (e.g. keep relationships
+   * visible for drill-down even when their own type doesn't match).
+   */
+  filterField?: (field: ResourceField) => boolean
+
   /** Callback when a field is selected */
   onSelect: (fieldReference: FieldReference, field: ResourceField) => void
 
@@ -121,6 +128,9 @@ export interface FieldPickerInnerContentProps extends FieldPickerContentProps {
 
   /** Additional content rendered at end of CommandList (e.g., Functions group for CALC) */
   renderAdditionalContent?: (search: string) => React.ReactNode
+
+  /** Content rendered at the top of CommandList, before the fields group (e.g. anchor self rows) */
+  renderHeaderContent?: (search: string) => React.ReactNode
 
   /** Show breadcrumb in standalone mode (default: true) */
   showBreadcrumb?: boolean

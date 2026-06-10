@@ -22,5 +22,3 @@ export type VarSource =
 
 /** Per-agent override map: tool registered-name → input → {@link VarSource}. */
 export type ToolBindingMap = Record<string, Record<string, VarSource>>
-
-export type { AvailableField } from './types'
