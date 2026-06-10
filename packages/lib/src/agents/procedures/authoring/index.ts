@@ -28,5 +28,6 @@ export {
   hashDoc,
   listAgentProceduresForAuthoring,
   StaleDraftError,
+  updateAttachedProcedureCriteria,
   updateAttachedProcedureDraftIfHash,
 } from './queries'

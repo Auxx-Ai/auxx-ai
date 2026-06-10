@@ -324,3 +324,32 @@ export async function publishAgentUpdated(
     .publish(rooms.orgPresence(organizationId), 'agent:updated', { agentId: args.agentId }, options)
     .catch(() => {})
 }
+
+/**
+ * Publish `procedure:updated` on the org channel. Fires from server-side
+ * procedure writes that happen OUTSIDE the editor's own save path (today: the
+ * Kopilot authoring tools) so an open editor refreshes its meta and re-seeds
+ * the draft doc. The editor's own tRPC autosave must NOT emit this — it would
+ * invalidate the author's in-flight editing.
+ *
+ * Gated on `realtimeSync` — orgs without realtime fall back to React Query's
+ * stale-time / focus-refetch behavior. Fire-and-forget: errors are swallowed
+ * so a Pusher hiccup never blocks the underlying procedure write.
+ */
+export async function publishProcedureUpdated(
+  realtimeService: RealtimeService,
+  organizationId: string,
+  args: { procedureId: string; agentId: string },
+  options?: { excludeSocketId?: string }
+) {
+  const { features } = await getOrgCache().getOrRecompute(organizationId, ['features'])
+  if (!features?.realtimeSync) return
+  await realtimeService
+    .publish(
+      rooms.orgPresence(organizationId),
+      'procedure:updated',
+      { procedureId: args.procedureId, agentId: args.agentId },
+      options
+    )
+    .catch(() => {})
+}

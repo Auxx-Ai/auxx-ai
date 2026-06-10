@@ -28,6 +28,7 @@ import { useQueryState } from 'nuqs'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { AGENT_TABS, type AgentTab, DEFAULT_AGENT_TAB } from '../../constant'
+import { useProcedureRealtime } from '../../procedures/hooks/use-procedure-realtime'
 import { ProcedureDetailBar } from '../../procedures/ui/procedure-detail-bar'
 import { ProcedureDraftProvider } from '../../procedures/ui/procedure-draft-provider'
 import { ProcedureDrillPanel } from '../../procedures/ui/procedure-drill-panel'
@@ -92,6 +93,14 @@ export function AgentDetailTabs({ agent, onAutosaveChange }: AgentDetailTabsProp
   // Reload token — bumped by the publish cluster after revert/discard (which
   // rewrite the draft doc server-side) to remount the editor onto the fresh doc.
   const [procedureReloadKey, setProcedureReloadKey] = useState(0)
+
+  // Remount the open editor when Kopilot rewrites its draft server-side
+  // (`procedure:updated`); fires only after the refetch resolves so the
+  // re-seed reads the fresh doc, not the stale cache.
+  useProcedureRealtime({
+    selectedProcedureId,
+    onExternalDraftChange: useCallback(() => setProcedureReloadKey((k) => k + 1), []),
+  })
   const scrollContainerRef = useRef<HTMLDivElement | null>(null)
   const sectionRefs = useRef<Record<AgentTab, HTMLDivElement | null>>({
     prompt: null,

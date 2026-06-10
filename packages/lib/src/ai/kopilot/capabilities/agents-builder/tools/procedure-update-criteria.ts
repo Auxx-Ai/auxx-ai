@@ -1,7 +1,9 @@
 // packages/lib/src/ai/kopilot/capabilities/agents-builder/tools/procedure-update-criteria.ts
 
-import { updateProcedure } from '../../../../../agents/procedures'
-import { getAttachedProcedureDraft } from '../../../../../agents/procedures/authoring'
+import {
+  getAttachedProcedureDraft,
+  updateAttachedProcedureCriteria,
+} from '../../../../../agents/procedures/authoring'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
 import type { GetToolDeps } from '../../types'
 import { resolveProcedureAuthoring } from './procedure-authoring-guard'
@@ -10,8 +12,9 @@ import { validateTriggerExamples } from './trigger-examples'
 /**
  * Update a procedure's name / selection criteria (`whenToUse` / `triggerExamples`).
  * Draft-only: criteria are versioned and only go live on publish, so this never
- * fires the runtime cache event. `ruleset` (the deterministic pre-filter) stays
- * editor-only in v1. See Phase 7 §4.4.
+ * fires the runtime cache event — but the write emits the `procedure:updated`
+ * UI-refresh event so an open editor/rail refreshes. `ruleset` (the deterministic
+ * pre-filter) stays editor-only in v1. See Phase 7 §4.4.
  */
 export function createUpdateProcedureCriteriaTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
@@ -79,8 +82,9 @@ export function createUpdateProcedureCriteriaTool(getDeps: GetToolDeps): AgentTo
         }
       }
 
-      const updated = await updateProcedure({
+      const updated = await updateAttachedProcedureCriteria({
         organizationId: agentDeps.organizationId,
+        agentId: ctx.agentId,
         procedureId,
         patch: { name, whenToUse, triggerExamples },
       })

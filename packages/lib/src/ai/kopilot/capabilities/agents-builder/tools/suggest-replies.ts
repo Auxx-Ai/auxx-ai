@@ -17,6 +17,9 @@ export function createSuggestRepliesTool(_getDeps: GetToolDeps): AgentToolDefini
   return {
     name: 'suggest_replies',
     displayName: 'Suggest replies',
+    // Every legitimate use means "I'm done, waiting for the admin" — the chips
+    // are for the client, not the model, so the call terminates the turn.
+    endsTurn: true,
     description: `Suggest 2–4 short reply chips for the user.
 
 The client renders these above the composer; tapping a chip sends \`label\`

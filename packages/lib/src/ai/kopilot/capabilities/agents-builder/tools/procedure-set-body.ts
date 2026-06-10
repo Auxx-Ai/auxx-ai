@@ -25,7 +25,9 @@ const STALE_HINT =
  * other step + its id, INCLUDING every `opaque` step verbatim), re-emit here with
  * the read's `draftContentHash` as `expectedDraftContentHash`. Carries code blocks
  * / rules conditions through losslessly and refuses to remove them. Writes a
- * draft; never publishes; never fires the runtime cache event. See Phase 7 §4.2.
+ * draft; never publishes; never fires the runtime cache event — but the write
+ * emits the `procedure:updated` UI-refresh event so an open editor re-seeds.
+ * See Phase 7 §4.2.
  */
 export function createSetProcedureBodyTool(getDeps: GetToolDeps): AgentToolDefinition {
   return {
