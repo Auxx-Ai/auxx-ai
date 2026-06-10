@@ -42,7 +42,110 @@ export const ANTHROPIC_CAPABILITIES: ProviderCapabilities = {
     'Get your API key from the Anthropic console at https://console.anthropic.com/',
 }
 
+/**
+ * Fable 5 / Opus 4.8 / Opus 4.7 remove sampling parameters — sending
+ * `temperature`, `top_p`, or `top_k` returns a 400 (`invalid_request_error`).
+ * Sampling is steered by prompting + effort on these models. The Anthropic
+ * client reads `unsupportedParams` and strips these at the wire boundary.
+ */
+const CLAUDE_NO_SAMPLING_PARAMS: ModelCapabilities['parameterRestrictions'] = {
+  isReasoningModel: false, // thinking is off-by-default; we don't send a thinking block
+  supportedParams: ['max_tokens'],
+  unsupportedParams: ['temperature', 'top_p', 'top_k'],
+}
+
+/** Max-tokens-only rules for sampling-restricted Claude models (hides temp/top_p in the UI). */
+const CLAUDE_MAXTOKENS_ONLY_RULES = [
+  {
+    name: 'max_tokens',
+    type: 'int' as const,
+    label: 'Max Tokens',
+    help: 'Maximum number of tokens to generate in the response.',
+    default: 16384,
+    min: 1,
+    max: 128000,
+    precision: 0,
+    required: false,
+    template: 'max_tokens',
+  },
+]
+
 export const ANTHROPIC_MODELS: Record<string, ModelCapabilities> = {
+  'claude-fable-5': {
+    provider: 'anthropic',
+    modelId: 'claude-fable-5',
+    fetchFrom: FetchFrom.PREDEFINED_MODEL,
+    displayName: 'Claude Fable 5',
+    icon: 'anthropic',
+    color: '#D97706',
+    contextLength: 200000,
+    maxTokens: 128000,
+    modelType: ModelType.LLM,
+    features: ['chat', 'tools', 'computer_use'],
+    supports: {
+      streaming: true,
+      structured: true,
+      vision: true,
+      toolCalling: true,
+      systemMessages: true,
+      fileInput: true,
+    },
+    costPer1kTokens: { input: 0.01, output: 0.05, cachedInput: 0.001, cacheWrite: 0.0125 },
+    description:
+      'Claude Fable 5 — most powerful Anthropic model, tier above Opus. Sampling parameters (temperature, top_p) are fixed by the model.',
+    parameterRestrictions: CLAUDE_NO_SAMPLING_PARAMS,
+    parameterRules: CLAUDE_MAXTOKENS_ONLY_RULES,
+  },
+  'claude-opus-4-8': {
+    provider: 'anthropic',
+    modelId: 'claude-opus-4-8',
+    fetchFrom: FetchFrom.PREDEFINED_MODEL,
+    displayName: 'Claude Opus 4.8',
+    icon: 'anthropic',
+    color: '#D97706',
+    contextLength: 200000,
+    maxTokens: 128000,
+    modelType: ModelType.LLM,
+    features: ['chat', 'tools', 'computer_use'],
+    supports: {
+      streaming: true,
+      structured: true,
+      vision: true,
+      toolCalling: true,
+      systemMessages: true,
+      fileInput: true,
+    },
+    costPer1kTokens: { input: 0.005, output: 0.025, cachedInput: 0.0005, cacheWrite: 0.00625 },
+    description:
+      'Claude Opus 4.8 — most capable Opus: autonomous long-horizon agentic work. Sampling parameters (temperature, top_p) are fixed by the model.',
+    parameterRestrictions: CLAUDE_NO_SAMPLING_PARAMS,
+    parameterRules: CLAUDE_MAXTOKENS_ONLY_RULES,
+  },
+  'claude-opus-4-7': {
+    provider: 'anthropic',
+    modelId: 'claude-opus-4-7',
+    fetchFrom: FetchFrom.PREDEFINED_MODEL,
+    displayName: 'Claude Opus 4.7',
+    icon: 'anthropic',
+    color: '#D97706',
+    contextLength: 200000,
+    maxTokens: 128000,
+    modelType: ModelType.LLM,
+    features: ['chat', 'tools', 'computer_use'],
+    supports: {
+      streaming: true,
+      structured: true,
+      vision: true,
+      toolCalling: true,
+      systemMessages: true,
+      fileInput: true,
+    },
+    costPer1kTokens: { input: 0.005, output: 0.025, cachedInput: 0.0005, cacheWrite: 0.00625 },
+    description:
+      'Claude Opus 4.7 — previous-generation Opus; strong long-horizon agentic and vision work. Sampling parameters (temperature, top_p) are fixed by the model.',
+    parameterRestrictions: CLAUDE_NO_SAMPLING_PARAMS,
+    parameterRules: CLAUDE_MAXTOKENS_ONLY_RULES,
+  },
   'claude-opus-4-6': {
     provider: 'anthropic',
     modelId: 'claude-opus-4-6',
