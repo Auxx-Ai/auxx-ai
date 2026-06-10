@@ -242,6 +242,14 @@ export interface AgentToolDefinition {
    */
   idempotent?: boolean
   /**
+   * Marks this tool as a turn-terminal UI directive: its output is consumed by
+   * the client (chips, panels), not by the model. When an iteration's tool calls
+   * are ALL endsTurn tools and ALL succeed, the query loop finalizes the turn
+   * after executing them instead of re-invoking the LLM — the text the model
+   * emitted alongside the call becomes the final reply.
+   */
+  endsTurn?: boolean
+  /**
    * Zod schema for the **full** shape of the tool's success `output` — the same
    * value persisted on `ToolCallPart.output` and replayed to the model. This is
    * the single source of truth for the output's shape.

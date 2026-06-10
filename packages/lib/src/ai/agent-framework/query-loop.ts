@@ -37,6 +37,11 @@ const DEFAULT_MAX_ITERATIONS = 10
 // Number of consecutive iterations in which the same tool fails (and only
 // that tool runs) before we bail out of the turn.
 const SAME_TOOL_FAILURE_LIMIT = 3
+// Number of consecutive iterations in which the same tool SUCCEEDS with
+// identical args (only that tool runs, and the model also emitted text)
+// before we conclude the model is done and repeating itself, and finalize
+// the turn gracefully with its text as the final reply.
+const SAME_TOOL_SUCCESS_LIMIT = 3
 
 /**
  * Core agent query loop — emits one assistant message per turn with a
@@ -126,6 +131,12 @@ export async function* agentQueryLoop(
   let totalToolCallCount = 0
   let failingToolName: string | null = null
   let failingToolStreak = 0
+  let repeatSuccessKey: string | null = null
+  let repeatSuccessStreak = 0
+
+  // Tools that terminate the turn when an iteration consists solely of
+  // successful calls to them (see `AgentToolDefinition.endsTurn`).
+  const endsTurnToolNames = new Set(agent.tools.filter((t) => t.endsTurn).map((t) => t.name))
 
   /** Per-turn cache of idempotent tool results. */
   const idempotentCache = new Map<string, ToolExecResult>()
@@ -196,6 +207,59 @@ export async function* agentQueryLoop(
         ? [...currentState.messages, draft]
         : currentState.messages.map((m) => (m.id === messageId ? draft : m))
     return { ...currentState, messages: next }
+  }
+
+  /**
+   * Finalize the turn: run the domain post-process on the joined text
+   * projection, collapse text parts if the rewrite differs, commit the
+   * message with turn-total metadata, and return the terminal
+   * `assistant-message-finished` event for the caller to yield before
+   * breaking the loop. Pass `runProcessResult: false` on paths where
+   * `agent.processResult` already ran for this iteration (the post-tool
+   * paths call it right after tool execution) — it must not run twice.
+   */
+  const finalizeTurn = async (opts: {
+    runProcessResult: boolean
+    toolCalls: ToolCall[]
+  }): Promise<AgentEvent> => {
+    const joinedText = parts
+      .filter((p): p is TextPart => p.type === 'text')
+      .map((p) => p.text)
+      .join('')
+
+    let postProcessed: PostProcessResult | undefined
+    if (config.domainConfig.postProcessFinalContent && joinedText.length > 0) {
+      postProcessed = config.domainConfig.postProcessFinalContent(joinedText, currentState)
+    }
+    const finalText = postProcessed?.content ?? joinedText
+    if (postProcessed && postProcessed.content !== joinedText) {
+      collapseTextParts(parts, postProcessed.content, agent.name)
+    }
+
+    currentState = upsertAssistantMessage({
+      linkSnapshots: postProcessed?.linkSnapshots,
+      metadata: {
+        agent: agent.name,
+        modelId: lastModelId,
+        usage: turnUsage,
+        ...(truncated ? { truncated: true } : {}),
+        ...(turnIterations.length > 0 ? { iterations: [...turnIterations] } : {}),
+      },
+    })
+    if (opts.runProcessResult) {
+      currentState = await agent.processResult(finalText, opts.toolCalls, currentState, ctx)
+    }
+
+    return {
+      type: 'assistant-message-finished',
+      messageId,
+      agent: agent.name,
+      parts: parts.map((p) => ({ ...p })),
+      ...(postProcessed?.linkSnapshots ? { linkSnapshots: postProcessed.linkSnapshots } : {}),
+      usage: turnUsage,
+      ...(truncated ? { truncated: true } : {}),
+      ...(segmentIterations.length > 0 ? { iterations: [...segmentIterations] } : {}),
+    }
   }
 
   while (iteration < maxIterations) {
@@ -390,6 +454,9 @@ export async function* agentQueryLoop(
         // Reset open positions so next iteration opens fresh parts.
         openTextIdx = -1
         openThinkingIdx = -1
+        // A zero-tool iteration breaks any identical-call repetition pattern.
+        repeatSuccessKey = null
+        repeatSuccessStreak = 0
         continue
       }
 
@@ -402,42 +469,7 @@ export async function* agentQueryLoop(
       // The LLM stopped calling tools — finalize the turn. Run the domain
       // post-process on the joined text projection, collapse all text parts
       // into a single canonical text part if the rewrite differs.
-      const joinedText = parts
-        .filter((p): p is TextPart => p.type === 'text')
-        .map((p) => p.text)
-        .join('')
-
-      let postProcessed: PostProcessResult | undefined
-      if (config.domainConfig.postProcessFinalContent && joinedText.length > 0) {
-        postProcessed = config.domainConfig.postProcessFinalContent(joinedText, currentState)
-      }
-      const finalText = postProcessed?.content ?? joinedText
-      if (postProcessed && postProcessed.content !== joinedText) {
-        collapseTextParts(parts, postProcessed.content, agent.name)
-      }
-
-      currentState = upsertAssistantMessage({
-        linkSnapshots: postProcessed?.linkSnapshots,
-        metadata: {
-          agent: agent.name,
-          modelId: lastModelId,
-          usage: turnUsage,
-          ...(truncated ? { truncated: true } : {}),
-          ...(turnIterations.length > 0 ? { iterations: [...turnIterations] } : {}),
-        },
-      })
-      currentState = await agent.processResult(finalText, toolCalls, currentState, ctx)
-
-      yield {
-        type: 'assistant-message-finished',
-        messageId,
-        agent: agent.name,
-        parts: parts.map((p) => ({ ...p })),
-        ...(postProcessed?.linkSnapshots ? { linkSnapshots: postProcessed.linkSnapshots } : {}),
-        usage: turnUsage,
-        ...(truncated ? { truncated: true } : {}),
-        ...(segmentIterations.length > 0 ? { iterations: [...segmentIterations] } : {}),
-      }
+      yield await finalizeTurn({ runProcessResult: true, toolCalls })
       break
     }
 
@@ -554,6 +586,22 @@ export async function* agentQueryLoop(
       }
       currentState = upsertAssistantMessage()
       currentState = await agent.processResult(content, toolCalls, currentState, ctx)
+
+      // endsTurn terminal tools apply in capture mode too — pure-UX tools
+      // (no DB writes) execute here rather than being captured, so without
+      // this check a simulated turn replays the same re-invoke loop.
+      if (
+        toolCalls.every((tc) => endsTurnToolNames.has(tc.function.name)) &&
+        captureRun.results.every((r) => r.success)
+      ) {
+        logger.debug('All tool calls are endsTurn — finalizing turn (capture mode)', {
+          turnId,
+          agent: agent.name,
+          tools: toolCalls.map((tc) => tc.function.name),
+        })
+        yield await finalizeTurn({ runProcessResult: false, toolCalls })
+        break
+      }
       continue
     }
 
@@ -924,6 +972,24 @@ export async function* agentQueryLoop(
     currentState = upsertAssistantMessage()
     currentState = await agent.processResult(content, toolCalls, currentState, ctx)
 
+    // ===== endsTurn TERMINAL TOOLS =====
+    // An iteration whose tool calls are ALL turn-terminal UI directives and
+    // ALL succeeded ends the turn: their output is for the client, not the
+    // model, so there is nothing for the LLM to read back — the text it
+    // emitted alongside the calls is the final reply.
+    if (
+      toolCalls.every((tc) => endsTurnToolNames.has(tc.function.name)) &&
+      toolResults.results.every((r) => r.success)
+    ) {
+      logger.debug('All tool calls are endsTurn — finalizing turn', {
+        turnId,
+        agent: agent.name,
+        tools: toolCalls.map((tc) => tc.function.name),
+      })
+      yield await finalizeTurn({ runProcessResult: false, toolCalls })
+      break
+    }
+
     // Same-tool failure streak detector.
     const allFailed = toolResults.results.length > 0 && toolResults.results.every((r) => !r.success)
     const distinctNames = new Set(toolResults.results.map((r) => r.toolName))
@@ -958,6 +1024,41 @@ export async function* agentQueryLoop(
       failingToolName = null
       failingToolStreak = 0
     }
+
+    // Same-tool identical-args SUCCESS streak — the model is plainly done and
+    // repeating itself (wrap-up text + the same call, round after round).
+    // Unlike the failure streak this is not an error: finalize gracefully and
+    // commit its text as the final reply. Requiring assistant text in the
+    // iteration matches that signature and keeps a hypothetical poll loop
+    // (same read tool, identical args, no narration) out of the blast radius.
+    const allSucceeded =
+      toolResults.results.length > 0 && toolResults.results.every((r) => r.success)
+    if (allSucceeded && distinctNames.size === 1 && content.length > 0) {
+      // Sorted-key serialization so arg key order can't defeat the comparison.
+      const streakKey = stableStringify([
+        [...distinctNames][0],
+        toolCalls.map((tc) => parseToolArgs(tc)),
+      ])
+      repeatSuccessStreak = streakKey === repeatSuccessKey ? repeatSuccessStreak + 1 : 1
+      repeatSuccessKey = streakKey
+      if (repeatSuccessStreak >= SAME_TOOL_SUCCESS_LIMIT) {
+        logger.warn('Same-tool identical-args success streak — finalizing turn', {
+          turnId,
+          agent: agent.name,
+          tool: [...distinctNames][0],
+          streak: repeatSuccessStreak,
+          iteration,
+        })
+        // Each redundant round repeated the wrap-up verbatim; drop the
+        // duplicate text parts so the final reply carries it once.
+        dedupeRepeatedTextParts(parts)
+        yield await finalizeTurn({ runProcessResult: false, toolCalls })
+        break
+      }
+    } else {
+      repeatSuccessKey = null
+      repeatSuccessStreak = 0
+    }
   }
 
   // Loop exit (max iterations hit without natural termination, or aborted).
@@ -983,6 +1084,26 @@ export async function* agentQueryLoop(
 }
 
 // ===== HELPERS =====
+
+/**
+ * Drop text parts whose content exactly repeats the previous text part's
+ * (ignoring non-text parts between them). Used by the success-streak guard:
+ * a model stuck repeating itself emits identical wrap-up text each round, and
+ * joining the parts verbatim would put it in the final reply N times.
+ */
+function dedupeRepeatedTextParts(parts: ContentPart[]): void {
+  let prevText: string | null = null
+  for (let i = 0; i < parts.length; i++) {
+    const p = parts[i]!
+    if (p.type !== 'text') continue
+    if (p.text === prevText) {
+      parts.splice(i, 1)
+      i--
+      continue
+    }
+    prevText = p.text
+  }
+}
 
 function agentToolsToLLMTools(tools: AgentToolDefinition[]) {
   return tools.map((t) => ({

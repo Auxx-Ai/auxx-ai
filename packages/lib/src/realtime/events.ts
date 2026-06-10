@@ -325,3 +325,13 @@ export interface AgentUpdatedEvent {
   event: 'agent:updated'
   data: { agentId: string }
 }
+
+/**
+ * A procedure's draft or admin fields changed server-side outside the editor's
+ * own save path (today: Kopilot authoring tools — create / set body / criteria).
+ * Refresh signal only; the payload carries nothing the client applies directly.
+ */
+export interface ProcedureUpdatedEvent {
+  event: 'procedure:updated'
+  data: { procedureId: string; agentId: string }
+}

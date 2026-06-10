@@ -82,7 +82,7 @@ export function ProcedurePublishCluster({ procedureId, onReload }: ProcedurePubl
     if (success) pop()
   }
 
-  const publishLabel = isPublished ? 'Publish changes' : 'Publish'
+  const publishLabel = 'Publish'
   const publishBusy = isPublishing || isDeleting
 
   return (

@@ -10,6 +10,7 @@ import {
   attachProcedureTx,
   createProcedureTx,
   type ProcedureDefaults,
+  updateProcedure,
   writeDraftDocTx,
 } from '../queries'
 
@@ -31,6 +32,21 @@ import {
  */
 export function hashDoc(doc: TiptapDoc): string {
   return createHash('sha256').update(stableStringify(doc), 'utf8').digest('hex')
+}
+
+/**
+ * Emit the `procedure:updated` UI-refresh event after a chat-authoring write.
+ * Lazily imports the realtime module — a static import would pull the
+ * realtime→cache graph into this module at load time and create an import
+ * cycle back into the kopilot capability modules that import these queries
+ * (same pattern as `cache/providers/ai-provider-configs-provider.ts`).
+ */
+async function emitProcedureUpdated(
+  organizationId: string,
+  data: { procedureId: string; agentId: string }
+): Promise<void> {
+  const { getRealtimeService, publishProcedureUpdated } = await import('../../../realtime')
+  await publishProcedureUpdated(getRealtimeService(), organizationId, data)
 }
 
 export interface AttachedProcedureDraft {
@@ -187,6 +203,11 @@ export async function createAttachedProcedureDraft(input: {
     'create-attached-procedure-draft'
   )
   if (result.isErr()) return err(result.error)
+  // UI refresh signal for an open editor/rail — only after the tx committed.
+  await emitProcedureUpdated(organizationId, {
+    procedureId: result.value.procedureId,
+    agentId,
+  })
   return ok(result.value)
 }
 
@@ -195,8 +216,9 @@ export async function createAttachedProcedureDraft(input: {
  * the draft version, recompute its content hash, reject on mismatch (a concurrent
  * editor autosave / chat edit landed since the read), else write the new doc and
  * flag `hasUnpublishedChanges`. This is the authoritative lost-update guard — an
- * earlier in-tool hash check is only advisory. Never publishes; never fires the
- * runtime cache event (drafts can't affect live runs).
+ * earlier in-tool hash check is only advisory. Never publishes the procedure;
+ * never fires the runtime cache event (drafts can't affect live runs) — but does
+ * emit the `procedure:updated` UI-refresh event so an open editor re-seeds.
  */
 export async function updateAttachedProcedureDraftIfHash(input: {
   organizationId: string
@@ -250,12 +272,37 @@ export async function updateAttachedProcedureDraftIfHash(input: {
     'update-attached-procedure-draft-if-hash'
   )
   if (result.isErr()) {
-    if (result.error instanceof StaleDraftError) {
-      return err({ code: 'STALE_DRAFT' as const, message: result.error.message })
+    // `fromDatabase` wraps the thrown error as `{ code: 'DATABASE_ERROR', cause }`
+    // — the StaleDraftError instance is on `cause`, not the result error itself.
+    if (result.error.cause instanceof StaleDraftError) {
+      return err({ code: 'STALE_DRAFT' as const, message: result.error.cause.message })
     }
     return err(result.error)
   }
+  // UI refresh signal for an open editor/rail — only after the tx committed.
+  await emitProcedureUpdated(organizationId, { procedureId, agentId })
   return ok(result.value)
+}
+
+/**
+ * Update a procedure's name / selection criteria from the chat-authoring path.
+ * A thin wrapper over `updateProcedure` that also emits the `procedure:updated`
+ * UI-refresh event. The editor's own tRPC save path calls `updateProcedure`
+ * directly and must NOT emit — it would invalidate the author's own in-flight
+ * editing. Attachment must already be verified by the caller (the tools
+ * authorize via `getAttachedProcedureDraft`).
+ */
+export async function updateAttachedProcedureCriteria(input: {
+  organizationId: string
+  agentId: string
+  procedureId: string
+  patch: { name?: string } & ProcedureDefaults
+}) {
+  const { organizationId, agentId, procedureId, patch } = input
+  const result = await updateProcedure({ organizationId, procedureId, patch })
+  if (result.isErr()) return result
+  await emitProcedureUpdated(organizationId, { procedureId, agentId })
+  return result
 }
 
 /** Thrown inside the compare-and-set txn when the persisted draft moved since the read. */
