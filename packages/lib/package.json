@@ -112,6 +112,12 @@
       "import": "./dist/ai/kopilot/capabilities/kb/tools/write-helpers.mjs",
       "default": "./src/ai/kopilot/capabilities/kb/tools/write-helpers.ts"
     },
+    "./ai/kopilot/task-notifications": {
+      "types": "./src/ai/kopilot/task-notifications/index.ts",
+      "source": "./src/ai/kopilot/task-notifications/index.ts",
+      "import": "./dist/ai/kopilot/task-notifications/index.mjs",
+      "default": "./src/ai/kopilot/task-notifications/index.ts"
+    },
     "./ai/providers/types": {
       "types": "./src/ai/providers/types.ts",
       "source": "./src/ai/providers/types.ts",
@@ -315,6 +321,12 @@
       "source": "./src/evals/index.ts",
       "import": "./dist/evals/index.mjs",
       "default": "./src/evals/index.ts"
+    },
+    "./evals/start-suite-run": {
+      "types": "./src/evals/start-suite-run.ts",
+      "source": "./src/evals/start-suite-run.ts",
+      "import": "./dist/evals/start-suite-run.mjs",
+      "default": "./src/evals/start-suite-run.ts"
     },
     "./evals/worker": {
       "types": "./src/evals/worker/index.ts",

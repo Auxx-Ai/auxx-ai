@@ -69,8 +69,12 @@ export interface KopilotMessage {
   timestamp: number
   /** Parent message ID — null for root messages */
   parentId: string | null
-  /** Agent metadata — last agent that contributed to this turn. */
-  metadata?: { agent?: string; modelId?: string }
+  /**
+   * Agent metadata — last agent that contributed to this turn. Task-notification
+   * user messages additionally carry `origin: 'task-notification'` + kind/ref
+   * (server-stamped; rendered as a system chip, never a user bubble).
+   */
+  metadata?: { agent?: string; modelId?: string; origin?: string; kind?: string; ref?: string }
   /** Approval state — present when this message represents a tool approval request */
   approval?: {
     toolName: string
@@ -98,6 +102,42 @@ export interface KopilotStreamState {
   currentRoute: string | null
   /** Tools currently executing */
   activeTools: Array<{ tool: string; agent: string }>
+}
+
+/**
+ * Outgoing request for the Kopilot stream route. Lives in the store (not the
+ * SSE hook) so any surface can submit while the single app-level
+ * `KopilotRuntime` owns the connection — turns keep running with the panel
+ * closed (task notifications).
+ */
+export interface KopilotRequest {
+  sessionId?: string
+  message: string
+  type?: 'message' | 'approval'
+  page?: string
+  context?: Record<string, unknown>
+  /** Approval action — required when type is 'approval' */
+  approvalAction?: 'approve' | 'reject'
+  /** Input amendment for approval actions (e.g. { mode: 'draft' }) */
+  inputAmendment?: Record<string, unknown>
+  /** Model override in "provider:model" format — omit to use system default */
+  modelId?: string
+  /** Target a user-authored agent on session create; ignored on existing sessions. */
+  agentId?: string | null
+  /** Session-domain discriminator on session create. Defaults to 'kopilot' server-side. */
+  sessionType?: 'kopilot' | 'builder'
+  /**
+   * Trigger discriminator. 'dm' means the request originated from the agent
+   * Chat tab or the composer sender picker; the SSE route gates the agent's
+   * `dm` AgentTrigger and layers DM trigger-instructions into the prompt.
+   */
+  triggerKind?: 'dm'
+  /**
+   * Async-task continuation: the route rewrites `message` from DB truth and
+   * stamps the persisted user message. Requires `task`.
+   */
+  origin?: 'task-notification'
+  task?: { kind: string; ref: string }
 }
 
 /** Compute the visible message path by walking the tree from root to leaf */
@@ -290,6 +330,21 @@ interface KopilotState {
   // Status
   isStreaming: boolean
   setIsStreaming: (streaming: boolean) => void
+
+  /**
+   * The request the app-level `KopilotRuntime` should send next. Set by any
+   * chat surface (composer, approval card, task-notification drain); cleared
+   * by the runtime once the SSE connection starts.
+   */
+  pendingRequest: KopilotRequest | null
+  setPendingRequest: (request: KopilotRequest | null) => void
+
+  /**
+   * A task-notification turn ran while the panel was closed. Cleared when the
+   * panel opens. Rendered as a dot on the Kopilot launcher.
+   */
+  hasUnreadNotification: boolean
+  setHasUnreadNotification: (unread: boolean) => void
 
   // Lifecycle
   reset: () => void
@@ -571,6 +626,14 @@ export const useKopilotStore = create<KopilotState>()(
       // Status
       isStreaming: false,
       setIsStreaming: (isStreaming) => set({ isStreaming }),
+
+      // Outgoing request (consumed by KopilotRuntime)
+      pendingRequest: null,
+      setPendingRequest: (pendingRequest) => set({ pendingRequest }),
+
+      // Unread task-notification indicator
+      hasUnreadNotification: false,
+      setHasUnreadNotification: (hasUnreadNotification) => set({ hasUnreadNotification }),
 
       // Lifecycle
       reset: () =>

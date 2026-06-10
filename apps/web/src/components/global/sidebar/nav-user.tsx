@@ -80,6 +80,7 @@ export function NavUser({ user }: Prop) {
   const { hasAccess } = useFeatureFlags()
   const kopilotEnabled = hasAccess('kopilot')
   const toggleKopilot = useKopilotStore((s) => s.togglePanel)
+  const hasUnreadNotification = useKopilotStore((s) => s.hasUnreadNotification)
 
   // const session = await auth();
   const {
@@ -346,9 +347,15 @@ export function NavUser({ user }: Prop) {
             <Tooltip content='Kopilot' shortcut={['⌘', '⇧', 'K']}>
               <button
                 type='button'
-                className='shrink-0 flex items-center justify-center size-8 rounded-2xl text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors group-data-[collapsible=icon]:hidden'
+                className='relative shrink-0 flex items-center justify-center size-8 rounded-2xl text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors group-data-[collapsible=icon]:hidden'
                 onClick={toggleKopilot}>
                 <Sparkles className='size-4' />
+                {hasUnreadNotification && (
+                  <span
+                    aria-label='Unread Kopilot notification'
+                    className='absolute right-1 top-1 size-2 rounded-full bg-primary'
+                  />
+                )}
               </button>
             </Tooltip>
           )}

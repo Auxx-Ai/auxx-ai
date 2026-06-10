@@ -3,10 +3,9 @@
 'use client'
 
 import { generateId } from '@auxx/utils/generateId'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import { useLoadSession } from '../hooks/use-kopilot-sessions'
-import { type KopilotRequest, useKopilotSSE } from '../hooks/use-kopilot-sse'
-import { useKopilotStore } from '../stores/kopilot-store'
+import { type KopilotRequest, useKopilotStore } from '../stores/kopilot-store'
 import { applyChipDismissals, selectMergedContext } from '../stores/select-context'
 import './blocks/register-blocks'
 import { api } from '~/trpc/react'
@@ -73,13 +72,9 @@ export function KopilotChat({
 
   const composerRef = useRef<KopilotComposerHandle>(null)
   const messageListRef = useRef<KopilotMessageListHandle>(null)
-  const [pendingRequest, setPendingRequest] = useState<KopilotRequest | null>(null)
-
-  // SSE hook
-  useKopilotSSE({
-    pendingRequest,
-    onRequestSent: () => setPendingRequest(null),
-  })
+  // Submissions go through the store; the app-level KopilotRuntime owns the
+  // SSE connection so turns keep streaming when this surface unmounts.
+  const setPendingRequest = useKopilotStore((s) => s.setPendingRequest)
 
   // Session loading
   const loadSession = useLoadSession()
@@ -156,7 +151,7 @@ export function KopilotChat({
     (request: KopilotRequest) => {
       setPendingRequest(augmentRequest(request))
     },
-    [augmentRequest]
+    [augmentRequest, setPendingRequest]
   )
 
   const handleSuggestionClick = useCallback(
@@ -194,7 +189,7 @@ export function KopilotChat({
         })
       )
     },
-    [addMessage, page, augmentRequest]
+    [addMessage, page, augmentRequest, setPendingRequest]
   )
 
   // Auto-submit `initialMessage` once on mount when no existing session.
@@ -214,7 +209,7 @@ export function KopilotChat({
     (request: KopilotRequest) => {
       setPendingRequest(augmentRequest(request))
     },
-    [augmentRequest]
+    [augmentRequest, setPendingRequest]
   )
 
   const handleEditMessage = useCallback(
@@ -247,7 +242,7 @@ export function KopilotChat({
         })
       )
     },
-    [messageMap, activeSessionId, page, augmentRequest]
+    [messageMap, activeSessionId, page, augmentRequest, setPendingRequest]
   )
 
   return (

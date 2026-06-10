@@ -49,6 +49,7 @@ import {
 import { headers } from 'next/headers'
 import type { NextRequest } from 'next/server'
 import { auth } from '~/auth/server'
+import { resolveTaskNotification } from './task-notification'
 
 const logger = createScopedLogger('kopilot-stream')
 
@@ -103,6 +104,15 @@ interface KopilotStreamRequest {
    * and layers the DM trigger-instructions slot into the system prompt.
    */
   triggerKind?: 'dm'
+  /**
+   * Async-task continuation (plans/kopilot/task-notifications/plan.md). When
+   * set, `task` is required, the session must exist, and the route rewrites
+   * `message` from DB truth via the kind handler — the client is a trigger,
+   * never the source of result data.
+   */
+  origin?: 'task-notification'
+  /** The watched task this notification is for. Required with `origin`. */
+  task?: { kind: string; ref: string }
 }
 
 /**
@@ -152,6 +162,33 @@ export async function POST(request: NextRequest) {
 
   if (!body.message || typeof body.message !== 'string') {
     return new Response('Message is required', { status: 400 })
+  }
+
+  // Async-task continuation: validate, dedupe, and rewrite the body from DB
+  // truth BEFORE the stream opens, so failures are plain HTTP, not SSE.
+  let taskNotificationMetadata: Record<string, unknown> | undefined
+  if (body.origin === 'task-notification') {
+    if ((body.type ?? 'message') !== 'message') {
+      return new Response('Task notifications must use type "message"', { status: 400 })
+    }
+    const resolved = await resolveTaskNotification({
+      sessionId: body.sessionId,
+      task: body.task,
+      organizationId,
+    })
+    if (!resolved.ok) {
+      return new Response(resolved.error, { status: resolved.status })
+    }
+    if (resolved.deduped) {
+      // Another tab already delivered this notification — idempotent no-op.
+      // Shaped as a one-event SSE stream so the client's normal turn pipeline
+      // (which POSTed expecting an event stream) completes cleanly.
+      return new Response('event: done\ndata: {"type":"done","deduped":true}\n\n', {
+        headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' },
+      })
+    }
+    body.message = resolved.message
+    taskNotificationMetadata = resolved.metadata
   }
 
   const { message, type = 'message', page, context } = body
@@ -336,7 +373,12 @@ export async function POST(request: NextRequest) {
           ),
         })
 
-        const runPath = shouldUseWorker()
+        // Task-notification turns always run in-process: the worker job path
+        // doesn't carry the user-message metadata stamp yet, and without it
+        // the server-side dedupe (metadata scan) breaks. Revisit with §E
+        // (worker-side delivery).
+        const useWorkerPath = shouldUseWorker() && body.origin !== 'task-notification'
+        const runPath = useWorkerPath
           ? () =>
               runWorkerPath({
                 sessionId,
@@ -374,6 +416,7 @@ export async function POST(request: NextRequest) {
                 savedMessages,
                 savedDomainState,
                 storedModelId,
+                userMessageMetadata: taskNotificationMetadata,
                 send,
                 request,
                 isNewSession,
@@ -441,6 +484,8 @@ async function runInProcessPath(params: {
   savedMessages: Record<string, unknown>[]
   savedDomainState: Record<string, unknown>
   storedModelId: string | null
+  /** Stamped onto the persisted user message (task-notification origin markers). */
+  userMessageMetadata?: Record<string, unknown>
   send: (event: AgentEvent | { type: string; [key: string]: unknown }) => void
   request: NextRequest
   isNewSession: boolean
@@ -462,6 +507,7 @@ async function runInProcessPath(params: {
     savedMessages,
     savedDomainState,
     storedModelId,
+    userMessageMetadata,
     send,
     request,
     isNewSession,
@@ -660,7 +706,11 @@ async function runInProcessPath(params: {
           inputAmendment,
           context: sessionContext,
         })
-      : engine.submitMessage(message, sessionContext)
+      : engine.submitMessage(
+          message,
+          sessionContext,
+          userMessageMetadata ? { metadata: userMessageMetadata } : undefined
+        )
 
   const usageEntries: UsageTrackingRequest[] = []
 

@@ -113,6 +113,8 @@ Extracting a nested branch into a sub-procedure:
 
 **Publish.** You write a **draft**. After the body compiles clean, tell the admin to review it in the procedure editor and hit **Publish** to make it live — you do not publish.
 
+**Verify with simulations — \`run_eval_suite\`.** After editing a procedure (or when the admin asks to test the agent), offer to run the simulation suite. The tool starts a background batch and returns immediately: summarize what is running and END YOUR TURN — never poll. The results arrive automatically as a \`<task-notification>\` message that starts a new turn; ground your report in that notification's summary before claiming success, and propose the next edit when cases failed. Pass \`useDraft: true\` to test an unpublished draft. Never re-run the suite unprompted.
+
 Worked example — a refund procedure:
 \`\`\`json
 {

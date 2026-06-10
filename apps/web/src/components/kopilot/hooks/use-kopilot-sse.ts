@@ -4,32 +4,13 @@ import { generateId } from '@auxx/utils/generateId'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { type SSEConfig, useSSE } from '~/hooks/use-sse'
 import { api } from '~/trpc/react'
+import type { KopilotRequest } from '../stores/kopilot-store'
 import { useKopilotStore } from '../stores/kopilot-store'
 import { patchSessionTitleInListCache, upsertSessionInListCache } from './kopilot-session-cache'
 
-export interface KopilotRequest {
-  sessionId?: string
-  message: string
-  type?: 'message' | 'approval'
-  page?: string
-  context?: Record<string, unknown>
-  /** Approval action — required when type is 'approval' */
-  approvalAction?: 'approve' | 'reject'
-  /** Input amendment for approval actions (e.g. { mode: 'draft' }) */
-  inputAmendment?: Record<string, unknown>
-  /** Model override in "provider:model" format — omit to use system default */
-  modelId?: string
-  /** Target a user-authored agent on session create; ignored on existing sessions. */
-  agentId?: string | null
-  /** Session-domain discriminator on session create. Defaults to 'kopilot' server-side. */
-  sessionType?: 'kopilot' | 'builder'
-  /**
-   * Trigger discriminator. 'dm' means the request originated from the agent
-   * Chat tab or the composer sender picker; the SSE route gates the agent's
-   * `dm` AgentTrigger and layers DM trigger-instructions into the prompt.
-   */
-  triggerKind?: 'dm'
-}
+// The request shape lives in the store (the single app-level KopilotRuntime
+// consumes `pendingRequest` from there). Re-exported for existing importers.
+export type { KopilotRequest } from '../stores/kopilot-store'
 
 interface UseKopilotSSEOptions {
   /** Request to send (triggers SSE connection when non-null) */

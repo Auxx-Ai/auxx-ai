@@ -394,7 +394,18 @@ export interface AgentToolDefinition {
   summary?: (args: Record<string, unknown>) => string
 }
 
-/** Result from executing a tool */
+/**
+ * Result from executing a tool.
+ *
+ * Async-task convention: a tool that fires background work (BullMQ job,
+ * minutes-long batch) returns immediately and includes
+ * `taskNotification: { kind, ref }` in its success `output`, plus a sentence
+ * telling the model results arrive later so it ends its turn. The client
+ * watches the ref and injects a `<task-notification>` message when the task
+ * completes. The `kind` must have a registered handler in
+ * `@auxx/lib/ai/kopilot/task-notifications`. See
+ * plans/kopilot/task-notifications/convention.md.
+ */
 export interface AgentToolResult {
   success: boolean
   output: unknown

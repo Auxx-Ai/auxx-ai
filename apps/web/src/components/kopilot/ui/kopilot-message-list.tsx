@@ -18,10 +18,12 @@ import {
 import type { KopilotRequest } from '../hooks/use-kopilot-sse'
 import { useKopilotChatOptions } from '../options'
 import { type KopilotMessage, useKopilotStore } from '../stores/kopilot-store'
+import { isTaskNotificationMessage } from '../utils/task-notifications'
 import { KopilotEmptyState } from './kopilot-empty-state'
 import { AssistantMessage, type InlineApprovalLookup } from './messages/assistant-message'
 import { AssistantThinkingStatus } from './messages/assistant-thinking-status'
 import { BranchNavigator } from './messages/branch-navigator'
+import { TaskNotificationChip } from './messages/task-notification-chip'
 import { UserMessage } from './messages/user-message'
 import { SparkleIcon } from './sparkle-icon'
 
@@ -341,6 +343,13 @@ export function KopilotMessageList({
 
     switch (message.role) {
       case 'user':
+        // Task notifications are machine-injected continuations stamped with
+        // an origin marker — render a muted system chip, never a user bubble,
+        // and exclude them from edit/retry affordances.
+        if (isTaskNotificationMessage(message)) {
+          messageEl = <TaskNotificationChip message={message} />
+          break
+        }
         messageEl = (
           <UserMessage
             message={message}

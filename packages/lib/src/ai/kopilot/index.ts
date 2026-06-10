@@ -39,6 +39,17 @@ export {
   type ToolCallSummary,
 } from './runners'
 export { generateSessionTitle } from './session-title'
+export {
+  buildTaskNotificationBody,
+  EVAL_SUITE_TASK_KIND,
+  getTaskNotificationHandler,
+  listTaskNotificationKinds,
+  type TaskNotificationBodyInput,
+  type TaskNotificationKindHandler,
+  type TaskNotificationRef,
+  type TaskNotificationSummary,
+  type TaskSnapshot,
+} from './task-notifications'
 export type {
   KopilotDomainState,
   PlanState,
