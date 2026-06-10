@@ -581,12 +581,19 @@ export class AnthropicLLMClient extends LLMClient {
       anthropicParams.system = buildSystemBlocks(systemMessage)
     }
 
-    // Add optional parameters
-    if (parameters?.temperature !== undefined) {
+    // Add optional sampling parameters, but only when the model accepts them.
+    // Fable 5 / Opus 4.8 / Opus 4.7 remove temperature/top_p/top_k and 400 if
+    // they're sent — strip anything the model lists in `unsupportedParams`.
+    // This gate covers every caller (including the agent-framework summarizer's
+    // hardcoded temperature: 0) since both invoke paths funnel through here.
+    const modelConfig = ANTHROPIC_MODELS[params.model]
+    const unsupportedParams = new Set(modelConfig?.parameterRestrictions?.unsupportedParams ?? [])
+
+    if (parameters?.temperature !== undefined && !unsupportedParams.has('temperature')) {
       anthropicParams.temperature = parameters.temperature
     }
 
-    if (parameters?.top_p !== undefined) {
+    if (parameters?.top_p !== undefined && !unsupportedParams.has('top_p')) {
       anthropicParams.top_p = parameters.top_p
     }
 

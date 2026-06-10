@@ -6,10 +6,10 @@ import { OpenAILLMClient } from '../openai/openai-llm-client'
 /**
  * Kimi LLM client that extends OpenAI's client.
  *
- * Kimi's API is OpenAI-compatible. For kimi-k2.5, the OpenAI-compatible
+ * Kimi's API is OpenAI-compatible. For kimi-k2.5 / kimi-k2.6, the OpenAI-compatible
  * client handles everything (chat, tools, structured output, vision).
  *
- * kimi-k2.5 has thinking/reasoning enabled by default. The API returns
+ * kimi-k2.5 / kimi-k2.6 have thinking/reasoning enabled by default. The API returns
  * `reasoning_content` in responses and requires it in subsequent assistant
  * messages — Kimi requires reasoning_content on ALL assistant messages
  * in multi-turn conversations.

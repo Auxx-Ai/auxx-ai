@@ -76,7 +76,7 @@ export class KimiClient extends ProviderClient {
     try {
       const extractedCreds = this.extractCredentials(credentials)
       const client = this.getApiClient(extractedCreds)
-      const testModel = model || 'kimi-k2.5'
+      const testModel = model || 'kimi-k2.6'
 
       await client.chat.completions.create({
         model: testModel,

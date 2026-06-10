@@ -1,7 +1,7 @@
 // packages/lib/src/ai/providers/anthropic/__tests__/anthropic-llm-client.test.ts
 
 import Anthropic from '@anthropic-ai/sdk'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { DEFAULT_CLIENT_CONFIG } from '../../../clients/base/types'
 import { AnthropicLLMClient } from '../anthropic-llm-client'
 
@@ -126,4 +126,74 @@ describe.skipIf(!apiKey)('AnthropicLLMClient integration', () => {
     expect(response.content).toBeTruthy()
     expect(response.content.length).toBeGreaterThan(5)
   }, 15_000)
+})
+
+/**
+ * Unit tests for sampling-parameter handling. No API key required — the
+ * Anthropic SDK is mocked so we can inspect the exact request payload.
+ *
+ * Fable 5 / Opus 4.8 / Opus 4.7 reject temperature/top_p/top_k with a 400.
+ * The client must strip them; unrestricted models must keep them.
+ */
+describe('AnthropicLLMClient sampling-parameter stripping', () => {
+  function createClientWithSpy() {
+    const create = vi.fn(async (params: any) => ({
+      id: 'msg_test',
+      model: params.model,
+      content: [{ type: 'text', text: 'ok' }],
+      usage: { input_tokens: 10, output_tokens: 2 },
+      stop_reason: 'end_turn',
+    }))
+
+    const mockAnthropic = { messages: { create } } as unknown as Anthropic
+    const client = new AnthropicLLMClient(mockAnthropic, {
+      ...DEFAULT_CLIENT_CONFIG,
+      retries: { ...DEFAULT_CLIENT_CONFIG.retries, maxAttempts: 1 },
+    })
+    return { client, create }
+  }
+
+  it('strips temperature/top_p for sampling-restricted models (Opus 4.8)', async () => {
+    const { client, create } = createClientWithSpy()
+
+    await client.invoke({
+      model: 'claude-opus-4-8',
+      messages: [{ role: 'user', content: 'Hi' }],
+      parameters: { max_tokens: 32, temperature: 0, top_p: 0.9 },
+    })
+
+    const sent = create.mock.calls[0][0]
+    expect(sent.temperature).toBeUndefined()
+    expect(sent.top_p).toBeUndefined()
+  })
+
+  it('strips sampling params for Fable 5 and Opus 4.7', async () => {
+    for (const model of ['claude-fable-5', 'claude-opus-4-7']) {
+      const { client, create } = createClientWithSpy()
+
+      await client.invoke({
+        model,
+        messages: [{ role: 'user', content: 'Hi' }],
+        parameters: { max_tokens: 32, temperature: 0.7, top_p: 0.95 },
+      })
+
+      const sent = create.mock.calls[0][0]
+      expect(sent.temperature, model).toBeUndefined()
+      expect(sent.top_p, model).toBeUndefined()
+    }
+  })
+
+  it('keeps temperature/top_p for unrestricted models (Sonnet 4.6)', async () => {
+    const { client, create } = createClientWithSpy()
+
+    await client.invoke({
+      model: 'claude-sonnet-4-6',
+      messages: [{ role: 'user', content: 'Hi' }],
+      parameters: { max_tokens: 32, temperature: 0.5, top_p: 0.9 },
+    })
+
+    const sent = create.mock.calls[0][0]
+    expect(sent.temperature).toBe(0.5)
+    expect(sent.top_p).toBe(0.9)
+  })
 })

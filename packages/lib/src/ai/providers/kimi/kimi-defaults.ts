@@ -8,7 +8,7 @@ export const KIMI_CAPABILITIES: ProviderCapabilities = {
   icon: 'kimi',
   color: '#027AFF',
   supportedModelTypes: [ModelType.LLM],
-  defaultModel: 'kimi-k2.5',
+  defaultModel: 'kimi-k2.6',
   requiresApiKey: true,
   toolFormat: 'openai',
   configurateMethods: ['predefined-model', 'customizable-model'],
@@ -129,6 +129,31 @@ const KIMI_RESTRICTED_PARAMS = {
 }
 
 export const KIMI_MODELS: Record<string, ModelCapabilities> = {
+  'kimi-k2.6': {
+    provider: 'kimi',
+    modelId: 'kimi-k2.6',
+    fetchFrom: FetchFrom.PREDEFINED_MODEL,
+    displayName: 'Kimi K2.6',
+    icon: 'kimi',
+    color: '#027AFF',
+    contextLength: 262144,
+    maxTokens: 262144,
+    modelType: ModelType.LLM,
+    features: ['chat', 'code', 'vision'],
+    supports: {
+      streaming: true,
+      structured: true,
+      vision: true,
+      toolCalling: true,
+      systemMessages: true,
+      fileInput: false,
+    },
+    costPer1kTokens: { input: 0.00095, output: 0.004, cachedInput: 0.00016 },
+    description:
+      'Moonshot AI flagship multimodal model: 262K context, image + video input, tool calling, structured output, and built-in thinking. Sampling parameters (temperature, top_p) are fixed by the model.',
+    parameterRestrictions: KIMI_RESTRICTED_PARAMS,
+    parameterRules: KIMI_K25_PARAMETER_RULES,
+  },
   'kimi-k2.5': {
     provider: 'kimi',
     modelId: 'kimi-k2.5',
