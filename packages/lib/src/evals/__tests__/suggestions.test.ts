@@ -58,6 +58,14 @@ const TOOLS = [
     displayName: 'Issue refund',
     description: 'Refund an order',
   },
+  // App tool whose registered name doubles the app slug — the shape small models
+  // "simplify" back to the toolId tail.
+  {
+    name: 'shopify_find_shopify_order',
+    displayName: 'Find Shopify order',
+    description: 'Find an order in Shopify',
+    exampleOutput: { id: 'gid://shopify/Order/1' },
+  },
   {
     name: 'advance_procedure',
     displayName: 'Advance procedure',
@@ -289,6 +297,40 @@ describe('suggestAgentSimulations — drop pipeline', () => {
   it('drops an item with no assertions', async () => {
     await dropCase(validItem({ assertions: [] }))
   })
+
+  it('rescues a mock toolName emitted as the unprefixed tail', async () => {
+    const result = await run(
+      envelope([
+        validItem({
+          mocks: [{ toolName: 'find_shopify_order', output: JSON.stringify({ id: 'o1' }) }],
+        }),
+      ])
+    )
+    const value = result._unsafeUnwrap()
+    expect(value.dropped).toBe(0)
+    expect(value.suggestions[0]?.config.connectorMocks[0]?.toolName).toBe(
+      'shopify_find_shopify_order'
+    )
+  })
+
+  it('rescues a tool_called assertion toolName emitted as the unprefixed tail', async () => {
+    const result = await run(
+      envelope([
+        validItem({ assertions: [{ type: 'tool_called', toolName: 'find_shopify_order' }] }),
+      ])
+    )
+    const value = result._unsafeUnwrap()
+    expect(value.dropped).toBe(0)
+    expect(value.suggestions[0]?.assertions[0]).toMatchObject({
+      type: 'tool_called',
+      data: { toolName: 'shopify_find_shopify_order' },
+    })
+  })
+
+  it('drops an ambiguous tail name instead of guessing', async () => {
+    // Both get_order and shopify_find_shopify_order end with `_order`.
+    await dropCase(validItem({ mocks: [{ toolName: 'order', output: '{}' }] }))
+  })
 })
 
 describe('suggestAgentSimulations — draft-hash cache', () => {
@@ -310,6 +352,15 @@ describe('suggestAgentSimulations — draft-hash cache', () => {
       callModel: stubModel(envelope([validItem({ name: 'A' }), validItem({ name: 'B' })])),
     })
     expect(refreshed._unsafeUnwrap().suggestions).toHaveLength(2)
+  })
+
+  it('does not cache a fully-dropped generation', async () => {
+    const first = await run(envelope([validItem({ mocks: [{ toolName: 'nope', output: '{}' }] })]))
+    expect(first._unsafeUnwrap()).toMatchObject({ suggestions: [], dropped: 1 })
+
+    // The next call must re-invoke the model, not serve the empty result.
+    const second = await run(envelope([validItem()]))
+    expect(second._unsafeUnwrap().suggestions).toHaveLength(1)
   })
 
   it('regenerates when the draft hash changes (new cache key)', async () => {

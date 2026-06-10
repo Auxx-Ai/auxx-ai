@@ -2,14 +2,29 @@
 'use client'
 
 import { agentTemplates } from '@auxx/lib/agents/client'
+import { Button } from '@auxx/ui/components/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@auxx/ui/components/dropdown-menu'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@auxx/ui/components/tabs'
-import { FlaskConical, MessageSquare, MessageSquareOff, Settings2 } from 'lucide-react'
+import {
+  FlaskConical,
+  MessageSquare,
+  MessageSquareOff,
+  MoreHorizontal,
+  Settings2,
+  SquarePen,
+} from 'lucide-react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { parseAsStringLiteral, useQueryState } from 'nuqs'
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { SimulationsTab } from '~/components/evals/ui/simulations-tab'
 import { KopilotContext } from '~/components/kopilot/context'
 import { KopilotChatProvider } from '~/components/kopilot/options'
+import { useKopilotStore } from '~/components/kopilot/stores/kopilot-store'
 import { KopilotSuggestion } from '~/components/kopilot/suggestions/kopilot-suggestion'
 import { KopilotChat } from '~/components/kopilot/ui/kopilot-chat'
 import { api } from '~/trpc/react'
@@ -21,6 +36,21 @@ interface AgentDockedChatProps {
 
 type Panel = 'build' | 'chat' | 'simulations'
 const PANELS: readonly Panel[] = ['build', 'chat', 'simulations'] as const
+
+type ChatTab = Exclude<Panel, 'simulations'>
+
+/**
+ * Per-tab "start new chat" state. `epoch` keys the KopilotChat instance so a
+ * bump forces the remount its ref-guarded mount effect requires; `pending`
+ * means the fresh chat hasn't received its server-created session yet, so the
+ * panel passes `initialSessionId={null}` instead of the latest thread.
+ */
+type FreshChatState = Record<ChatTab, { epoch: number; pending: boolean }>
+
+const INITIAL_FRESH_STATE: FreshChatState = {
+  build: { epoch: 0, pending: false },
+  chat: { epoch: 0, pending: false },
+}
 
 /**
  * Docked Kopilot chat scoped to one agent. Two tabs:
@@ -34,6 +64,13 @@ const PANELS: readonly Panel[] = ['build', 'chat', 'simulations'] as const
  * Default tab follows `setupCompletedAt`: agents that finished setup land
  * on Chat (first instinct is to test); agents mid-setup land on Build.
  * The current panel is persisted in `?panel=` so a refresh round-trips.
+ *
+ * Each chat tab resolves its thread as the latest `(user, agent, type)`
+ * session (`listSessions` limit 1, `updatedAt` desc) — nothing stores a
+ * session id on the agent. The tab-bar menu's "Start new chat" simply stops
+ * pointing at that thread: the panel passes `initialSessionId={null}` and the
+ * stream route creates a new session on the first send, which then wins the
+ * latest-first lookup. Old threads stay in the DB as history.
  *
  * Build-tab specifics (preserved from the pre-tabs implementation):
  * fresh agents get two seed-prompt suggestion chips, and a templated
@@ -49,6 +86,27 @@ export function AgentDockedChat({ agentId }: AgentDockedChatProps) {
     'panel',
     parseAsStringLiteral(PANELS).withDefault(defaultPanel)
   )
+
+  const [freshChats, setFreshChats] = useState<FreshChatState>(INITIAL_FRESH_STATE)
+
+  const startNewChat = useCallback((tab: ChatTab) => {
+    setFreshChats((s) => ({ ...s, [tab]: { epoch: s[tab].epoch + 1, pending: true } }))
+  }, [])
+
+  const settleFreshChat = useCallback((tab: ChatTab) => {
+    setFreshChats((s) => (s[tab].pending ? { ...s, [tab]: { ...s[tab], pending: false } } : s))
+  }, [])
+
+  const settleBuild = useCallback(() => settleFreshChat('build'), [settleFreshChat])
+  const settleChat = useCallback(() => settleFreshChat('chat'), [settleFreshChat])
+
+  // Same input as ChatPanel's query — React Query dedupes the fetch. Used only
+  // to disable "Start new chat" on the Chat tab when DMs are off.
+  const triggersQuery = api.agentTrigger.list.useQuery(
+    { agentId },
+    { staleTime: 30_000, enabled: !isFreshAgent }
+  )
+  const dmEnabled = triggersQuery.data?.find((t) => t.kind === 'dm')?.enabled ?? false
 
   return (
     <Tabs
@@ -69,10 +127,38 @@ export function AgentDockedChat({ agentId }: AgentDockedChatProps) {
             <FlaskConical />
             Simulations
           </TabsTrigger>
+          {panel !== 'simulations' && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant='ghost'
+                  size='icon-xs'
+                  className='ml-auto rounded-md shrink-0'
+                  aria-label='Chat actions'>
+                  <MoreHorizontal />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align='end'>
+                <DropdownMenuItem
+                  disabled={panel === 'chat' && !dmEnabled}
+                  onClick={() => startNewChat(panel)}>
+                  <SquarePen />
+                  Start new chat
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
         </TabsList>
       )}
       <TabsContent value='build' className='flex-1 overflow-hidden'>
-        <BuildPanel agentId={agentId} isFreshAgent={isFreshAgent} agentName={agent?.name ?? null} />
+        <BuildPanel
+          agentId={agentId}
+          isFreshAgent={isFreshAgent}
+          agentName={agent?.name ?? null}
+          fresh={freshChats.build.pending}
+          epoch={freshChats.build.epoch}
+          onSessionEstablished={settleBuild}
+        />
       </TabsContent>
       <TabsContent value='chat' className='flex-1 overflow-hidden'>
         <ChatPanel
@@ -81,6 +167,9 @@ export function AgentDockedChat({ agentId }: AgentDockedChatProps) {
           agentDescription={detail?.description ?? null}
           isFreshAgent={isFreshAgent}
           onJumpToBuild={() => setPanel('build')}
+          fresh={freshChats.chat.pending}
+          epoch={freshChats.chat.epoch}
+          onSessionEstablished={settleChat}
         />
       </TabsContent>
       <TabsContent value='simulations' className='flex-1 overflow-hidden'>
@@ -90,15 +179,72 @@ export function AgentDockedChat({ agentId }: AgentDockedChatProps) {
   )
 }
 
+// ── Fresh-session tracking ─────────────────────────────────────────────────
+
+/**
+ * While a "start new chat" is pending, watches the kopilot store for the
+ * server-created session id (set by the `session-created` SSE event) and, once
+ * it appears, invalidates the panel's `limit: 1` session lookup — the SSE
+ * cache patch only covers the master list, so without this the scoped query
+ * stays stale for its 30s staleTime — then reports back so the parent clears
+ * the pending flag (keeping it set would wipe the new thread on the next
+ * remount).
+ *
+ * The store is read imperatively inside the effect rather than from the
+ * subscribed value: at the commit where `fresh` flips on, the subscription
+ * still holds whatever session another surface left behind, but KopilotChat's
+ * mount effect (a child, so it runs first) has already wiped it by the time
+ * this effect executes. Only a genuinely new id — non-null and different from
+ * the latest persisted thread — counts as established.
+ */
+function useFreshSessionEstablished({
+  fresh,
+  latestSessionId,
+  sessionType,
+  agentId,
+  onEstablished,
+}: {
+  fresh: boolean
+  latestSessionId: string | null
+  sessionType: 'kopilot' | 'builder'
+  agentId: string
+  onEstablished: () => void
+}) {
+  const utils = api.useUtils()
+
+  useEffect(() => {
+    if (!fresh) return
+    let done = false
+    const check = (current: string | null) => {
+      if (done || !current || current === latestSessionId) return
+      done = true
+      void utils.kopilot.listSessions.invalidate({ type: sessionType, agentId, limit: 1 })
+      onEstablished()
+    }
+    check(useKopilotStore.getState().activeSessionId)
+    return useKopilotStore.subscribe((state) => check(state.activeSessionId))
+  }, [fresh, latestSessionId, sessionType, agentId, utils, onEstablished])
+}
+
 // ── Build tab ──────────────────────────────────────────────────────────────
 
 interface BuildPanelProps {
   agentId: string
   isFreshAgent: boolean
   agentName: string | null
+  fresh: boolean
+  epoch: number
+  onSessionEstablished: () => void
 }
 
-function BuildPanel({ agentId, isFreshAgent, agentName }: BuildPanelProps) {
+function BuildPanel({
+  agentId,
+  isFreshAgent,
+  agentName,
+  fresh,
+  epoch,
+  onSessionEstablished,
+}: BuildPanelProps) {
   const { data, isLoading } = api.kopilot.listSessions.useQuery(
     { type: 'builder', agentId, limit: 1 },
     { staleTime: 30_000 }
@@ -120,9 +266,19 @@ function BuildPanel({ agentId, isFreshAgent, agentName }: BuildPanelProps) {
     }
   }, [pathname, router, searchParams])
 
+  const latestSessionId = data?.items[0]?.id ?? null
+
+  useFreshSessionEstablished({
+    fresh,
+    latestSessionId,
+    sessionType: 'builder',
+    agentId,
+    onEstablished: onSessionEstablished,
+  })
+
   if (isLoading) return <div className='h-full' />
 
-  const initialSessionId = data?.items[0]?.id ?? null
+  const initialSessionId = fresh ? null : latestSessionId
   const hasTemplate = isFreshAgent && capturedTemplate !== null
 
   return (
@@ -159,6 +315,7 @@ function BuildPanel({ agentId, isFreshAgent, agentName }: BuildPanelProps) {
       )}
       <div className='h-full flex flex-col'>
         <KopilotChat
+          key={epoch}
           page='agents.builder'
           agentId={agentId}
           sessionType='builder'
@@ -178,6 +335,9 @@ interface ChatPanelProps {
   agentDescription: string | null
   isFreshAgent: boolean
   onJumpToBuild: () => void
+  fresh: boolean
+  epoch: number
+  onSessionEstablished: () => void
 }
 
 function ChatPanel({
@@ -186,9 +346,12 @@ function ChatPanel({
   agentDescription,
   isFreshAgent,
   onJumpToBuild,
+  fresh,
+  epoch,
+  onSessionEstablished,
 }: ChatPanelProps) {
-  // The DM session is a kopilot session bound to (user, agent). One rolling
-  // thread per pair in v1; "Start new chat" lands later.
+  // The DM session is a kopilot session bound to (user, agent). The panel
+  // shows the latest thread; "Start new chat" in the tab-bar menu rotates it.
   const sessionsQuery = api.kopilot.listSessions.useQuery(
     { type: 'kopilot', agentId, limit: 1 },
     { staleTime: 30_000, enabled: !isFreshAgent }
@@ -197,6 +360,16 @@ function ChatPanel({
     { agentId },
     { staleTime: 30_000, enabled: !isFreshAgent }
   )
+
+  const latestSessionId = sessionsQuery.data?.items[0]?.id ?? null
+
+  useFreshSessionEstablished({
+    fresh,
+    latestSessionId,
+    sessionType: 'kopilot',
+    agentId,
+    onEstablished: onSessionEstablished,
+  })
 
   if (isFreshAgent) {
     return (
@@ -225,7 +398,7 @@ function ChatPanel({
     )
   }
 
-  const initialSessionId = sessionsQuery.data?.items[0]?.id ?? null
+  const initialSessionId = fresh ? null : latestSessionId
 
   return (
     <KopilotChatProvider
@@ -247,6 +420,7 @@ function ChatPanel({
       />
       <div className='h-full flex flex-col'>
         <KopilotChat
+          key={epoch}
           page='agents.dm'
           agentId={agentId}
           sessionType='kopilot'

@@ -21,9 +21,14 @@ import { type EditorToolGroup, useToolGroups } from '../hooks/use-tool-groups'
  * EFFECTIVE toolset, grouped by toolset. The catalog defines icons per toolset
  * (never per tool), so the icon belongs to a group header and the rows beneath
  * read as members — entity-read tools no longer render the same icon N times.
- * Each tool seeds from its declared `exampleOutput`, falls back to a schema
- * scaffold, and validates against `outputSchema` on edit. One `repeat` response
- * per tool in v1 (arg-matched multi-response is a follow-up).
+ * A tool with a declared `exampleOutput` is on its live default (the runtime
+ * returns the example when no literal mock matches — see
+ * plans/evals/live-tool-default-mocks-plan.md): the row shows a read-only
+ * preview with an Override button that pins an editable literal seeded from the
+ * current live value, and Reset to default drops the literal again. Tools
+ * without an example seed from a schema scaffold. Literal output validates
+ * against `outputSchema` on edit. One `repeat` response per tool in v1
+ * (arg-matched multi-response is a follow-up).
  *
  * `control` tools are dropped server-side; `system` (platform read) toolsets sort
  * to the bottom and collapse by default. See plans/evals/tool-responses-grouping.md
@@ -46,6 +51,9 @@ export function EvalToolResponses({ agentId, mocks, onChange }: EvalToolResponse
   const [openTool, setOpenTool] = useState<string | null>(null)
 
   const hasMock = (toolName: string) => mocks.some((m) => m.toolName === toolName)
+  // On its live default: no literal mock, but the tool declares an example the
+  // runtime will return.
+  const isDefault = (tool: ToolEntry) => !hasMock(tool.name) && tool.example !== undefined
 
   const upsert = (toolName: string, output: unknown) => {
     const existing = mocks.find((m) => m.toolName === toolName)
@@ -104,6 +112,7 @@ export function EvalToolResponses({ agentId, mocks, onChange }: EvalToolResponse
               key={group.slug}
               group={group}
               mockedCount={group.tools.filter((t) => hasMock(t.name)).length}
+              defaultCount={group.tools.filter(isDefault).length}
               isOpen={isGroupOpen(group.slug)}
               onToggle={() => toggleGroup(group.slug)}>
               {group.tools.map(renderTool)}
@@ -118,6 +127,7 @@ export function EvalToolResponses({ agentId, mocks, onChange }: EvalToolResponse
                 color: '',
               }}
               mockedCount={ungroupedTools.filter((t) => hasMock(t.name)).length}
+              defaultCount={ungroupedTools.filter(isDefault).length}
               total={ungroupedTools.length}
               isOpen={isGroupOpen('__other')}
               onToggle={() => toggleGroup('__other')}>
@@ -137,6 +147,8 @@ interface ToolGroupRowProps {
     tools?: EditorToolGroup['tools']
   }
   mockedCount: number
+  /** Tools on their live default (example, no literal mock). */
+  defaultCount: number
   /** Override the denominator (the "Other" bucket isn't a real toolset). */
   total?: number
   isOpen: boolean
@@ -147,6 +159,7 @@ interface ToolGroupRowProps {
 function ToolGroupRow({
   group,
   mockedCount,
+  defaultCount,
   total,
   isOpen,
   onToggle,
@@ -159,7 +172,7 @@ function ToolGroupRow({
       title={group.fullLabel}
       secondary={
         <span className='text-xs text-muted-foreground'>
-          {mockedCount} mocked / {count}
+          {mockedCount} mocked{defaultCount > 0 ? ` · ${defaultCount} default` : ''} / {count}
         </span>
       }
       expandable
@@ -197,8 +210,10 @@ function ToolResponseRow({
   const [validation, setValidation] = useState<{ error?: string; warning?: string } | null>(null)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const seedExample = tool.example !== undefined
-  const seedScaffold = !seedExample && tool.scaffold !== undefined && tool.scaffold !== null
+  const hasExample = tool.example !== undefined
+  const seedScaffold = tool.scaffold !== undefined && tool.scaffold !== null
+  // No literal mock + a declared example ⇒ the runtime serves the live default.
+  const onDefault = !mock && hasExample
 
   const applyDraft = (text: string) => {
     setDraft(text)
@@ -237,6 +252,23 @@ function ToolResponseRow({
     applyDraft(text)
   }
 
+  // Drop the literal mock AND the local draft — `draft` alone keeps the editor
+  // mounted, so without clearing it the row never returns to the default view.
+  const clearMock = () => {
+    setDraft('')
+    setParseError(null)
+    setValidation(null)
+    onRemove()
+  }
+
+  const status = mock
+    ? hasExample
+      ? 'override'
+      : 'mocked'
+    : hasExample
+      ? 'default'
+      : 'no response'
+
   return (
     <TreeRow
       depth={1}
@@ -244,12 +276,12 @@ function ToolResponseRow({
       title={tool.displayName}
       secondary={
         <span className='flex items-center gap-1.5 text-xs'>
-          <span className={cn(mock ? 'text-green-600' : 'text-muted-foreground')}>
-            {mock ? 'mocked' : 'no response'}
+          <span
+            className={cn(
+              mock ? 'text-green-600' : hasExample ? 'text-blue-600' : 'text-muted-foreground'
+            )}>
+            {status}
           </span>
-          {mock && tool.example !== undefined ? (
-            <span className='text-muted-foreground/70'>(example)</span>
-          ) : null}
           {tool.idempotent ? <span className='text-muted-foreground/70'>· read-only</span> : null}
         </span>
       }
@@ -258,53 +290,81 @@ function ToolResponseRow({
       onToggleOpen={onToggle}
       actions={
         mock ? (
-          <TreeRowButton variant='destructive' tooltipText='Clear response' onClick={onRemove}>
+          <TreeRowButton
+            variant='destructive'
+            tooltipText={hasExample ? 'Reset to default' : 'Clear response'}
+            onClick={clearMock}>
             <Trash2 />
           </TreeRowButton>
         ) : undefined
       }>
       <div className='space-y-2 py-1.5 pe-2 ps-12'>
-        {!mock && draft.trim() === '' ? (
-          <div className='flex flex-wrap items-center gap-2'>
-            {seedExample ? (
+        {onDefault ? (
+          <>
+            <div className='flex items-center justify-between gap-2'>
+              <span className='text-xs text-muted-foreground'>
+                Tool default (live) — stays in sync with the tool's example
+              </span>
               <Button variant='outline' size='xs' onClick={() => seed(tool.example)}>
                 <Sparkles />
-                From example
+                Override
               </Button>
+            </div>
+            <CodeEditor
+              language={CodeLanguage.json}
+              value={JSON.stringify(tool.example, null, 2)}
+              readOnly
+              minHeight={120}
+            />
+          </>
+        ) : (
+          <>
+            {!mock && draft.trim() === '' ? (
+              <div className='flex flex-wrap items-center gap-2'>
+                {seedScaffold ? (
+                  <Button variant='outline' size='xs' onClick={() => seed(tool.scaffold)}>
+                    <Wand2 />
+                    Scaffold
+                  </Button>
+                ) : null}
+                <Button variant='ghost' size='xs' onClick={() => applyDraft('{}')}>
+                  Start blank
+                </Button>
+              </div>
             ) : null}
-            {seedScaffold ? (
-              <Button variant='outline' size='xs' onClick={() => seed(tool.scaffold)}>
-                <Wand2 />
-                Scaffold
-              </Button>
+
+            {mock && hasExample ? (
+              <div className='flex items-center justify-between gap-2'>
+                <span className='text-xs text-muted-foreground'>Override (pinned)</span>
+                <Button variant='ghost' size='xs' onClick={clearMock}>
+                  Reset to default
+                </Button>
+              </div>
             ) : null}
-            <Button variant='ghost' size='xs' onClick={() => applyDraft('{}')}>
-              Start blank
-            </Button>
-          </div>
-        ) : null}
 
-        {draft.trim() !== '' || mock ? (
-          <CodeEditor
-            language={CodeLanguage.json}
-            value={draft}
-            onChange={applyDraft}
-            minHeight={120}
-            placeholder='{}'
-          />
-        ) : null}
+            {draft.trim() !== '' || mock ? (
+              <CodeEditor
+                language={CodeLanguage.json}
+                value={draft}
+                onChange={applyDraft}
+                minHeight={120}
+                placeholder='{}'
+              />
+            ) : null}
 
-        {parseError ? (
-          <Alert variant='bad'>
-            <AlertDescription>{parseError}</AlertDescription>
-          </Alert>
-        ) : validation?.error ? (
-          <Alert variant='bad'>
-            <AlertDescription>{validation.error}</AlertDescription>
-          </Alert>
-        ) : validation?.warning ? (
-          <p className='text-xs text-muted-foreground'>{validation.warning}</p>
-        ) : null}
+            {parseError ? (
+              <Alert variant='bad'>
+                <AlertDescription>{parseError}</AlertDescription>
+              </Alert>
+            ) : validation?.error ? (
+              <Alert variant='bad'>
+                <AlertDescription>{validation.error}</AlertDescription>
+              </Alert>
+            ) : validation?.warning ? (
+              <p className='text-xs text-muted-foreground'>{validation.warning}</p>
+            ) : null}
+          </>
+        )}
       </div>
     </TreeRow>
   )

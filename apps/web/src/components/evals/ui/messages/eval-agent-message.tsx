@@ -68,7 +68,9 @@ export function EvalAgentMessage({ runs }: { runs: Run[] }) {
                           'h-4 px-1 text-[10px]',
                           call.badge.live
                             ? 'border-amber-500/40 text-amber-600'
-                            : 'text-muted-foreground'
+                            : call.badge.label === 'default'
+                              ? 'border-blue-500/40 text-blue-600'
+                              : 'text-muted-foreground'
                         )}>
                         {call.badge.label}
                       </Badge>

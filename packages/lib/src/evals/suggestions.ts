@@ -212,7 +212,9 @@ export async function suggestAgentSimulations(
 
   logger.info('suggestions generated', { kept: suggestions.length, dropped, usage })
   const out: SuggestResult = { draftHash, suggestions, dropped }
-  await writeCachedSuggestions(cacheKey, out)
+  // A fully-dropped generation is a model failure, not the draft's truth — don't
+  // pin an empty list to the cache for an hour; the next request retries.
+  if (suggestions.length > 0 || dropped === 0) await writeCachedSuggestions(cacheKey, out)
   return ok(out)
 }
 
@@ -381,7 +383,11 @@ const SYSTEM_PROMPT = [
   '- Each simulation must exercise a DISTINCT path: the happy path, each major',
   '  condition arm, a customer missing required information, an edge/refusal case.',
   '- Do not duplicate the existing simulations listed.',
-  '- toolName values must come from the tool list, exactly as written.',
+  '- toolName values must be the exact backticked identifier from the tool list,',
+  '  copied verbatim — never shortened, reordered, or re-derived from the label.',
+  '- A tool listed with an example output returns that example automatically; only',
+  '  provide a mock when the path needs a DIFFERENT output (e.g. order not found,',
+  '  refund ineligible). Tools with no example need a mock if the path calls them.',
   '- Each mock "output" must be a JSON STRING following the tool\'s example output',
   '  shape, e.g. "{\\"status\\":\\"shipped\\"}".',
   '- Set customerContext so the persona can actually play the path (what they',
@@ -411,7 +417,10 @@ function buildUserMessage(
               example === undefined
                 ? 'none declared'
                 : truncate(JSON.stringify(example), MAX_EXAMPLE_CHARS)
-            return `### ${t.displayName} (\`${t.name}\`)\n${t.description}\nExample output: ${exampleText}`
+            // Exact name first — models copy headings far more reliably than
+            // parentheticals, and registered app names double the app slug
+            // (`shopify_find_shopify_order`), which invites "simplification".
+            return `### \`${t.name}\` — ${t.displayName}\n${t.description}\nExample output: ${exampleText}`
           })
           .join('\n\n')
       : 'No tools are available to this agent.'
@@ -611,6 +620,20 @@ type AuthoringSuggestion = z.infer<typeof authoringSuggestionSchema>
 // ── Per-item mapping + validation (the drop pipeline) ──────────────────────
 
 /**
+ * Resolve a model-emitted tool name to a canonical registered name. App tools
+ * register as `<appSlug>_<toolId>` and the toolId often already contains the app
+ * name (`shopify_find_shopify_order`) — small utility models reliably "simplify"
+ * those to the natural tail (`find_shopify_order`) despite the exactly-as-written
+ * prompt rule. An exact hit wins; otherwise a UNIQUE `_`-boundary suffix match
+ * rescues the name. Ambiguity (or no match) stays `null` → the item is dropped.
+ */
+function resolveToolName(name: string, toolMap: Map<string, AgentToolDefinition>): string | null {
+  if (toolMap.has(name)) return name
+  const matches = [...toolMap.keys()].filter((n) => n.endsWith(`_${name}`))
+  return matches.length === 1 ? (matches[0] ?? null) : null
+}
+
+/**
  * Map+validate one raw item into a persisted-shape suggestion. First failure
  * drops the item (returns null) and logs `{ index, reason }`. Order matches
  * phase-3a §3.6.
@@ -626,21 +649,28 @@ function mapAndValidateItem(
     return drop(index, `invalid shape: ${parsed.error.issues[0]?.message ?? 'parse error'}`)
   const item: AuthoringSuggestion = parsed.data
 
-  // 2. Tool-name existence (mocks + tool_(not_)called assertions).
+  // 2. Tool-name existence + canonicalization (mocks + tool_(not_)called
+  //    assertions) — near-miss names are rescued by `resolveToolName`.
+  const mocks: AuthoringSuggestion['mocks'] = []
   for (const mock of item.mocks) {
-    if (!toolMap.has(mock.toolName)) return drop(index, `unknown mock tool "${mock.toolName}"`)
+    const canonical = resolveToolName(mock.toolName, toolMap)
+    if (!canonical) return drop(index, `unknown mock tool "${mock.toolName}"`)
+    mocks.push({ ...mock, toolName: canonical })
   }
+  const itemAssertions: AuthoringSuggestion['assertions'] = []
   for (const a of item.assertions) {
     if (a.type === 'tool_called' || a.type === 'tool_not_called') {
       // toolName presence is guaranteed by the schema's superRefine.
-      if (!a.toolName || !toolMap.has(a.toolName)) {
-        return drop(index, `unknown assertion tool "${a.toolName}"`)
-      }
+      const canonical = a.toolName ? resolveToolName(a.toolName, toolMap) : null
+      if (!canonical) return drop(index, `unknown assertion tool "${a.toolName}"`)
+      itemAssertions.push({ ...a, toolName: canonical })
+    } else {
+      itemAssertions.push(a)
     }
   }
 
   // 3. Mock outputs against each tool's declared outputSchema (warning is fine).
-  for (const mock of item.mocks) {
+  for (const mock of mocks) {
     const tool = toolMap.get(mock.toolName)!
     const validation = validateMockOutput(tool, mock.output)
     if (!validation.ok)
@@ -650,7 +680,7 @@ function mapAndValidateItem(
   // 4. Dedupe mocks by toolName (first wins — drawer's one-mock-per-tool model).
   const seenTools = new Set<string>()
   const connectorMocks: SimulationToolMock[] = []
-  for (const mock of item.mocks) {
+  for (const mock of mocks) {
     if (seenTools.has(mock.toolName)) continue
     seenTools.add(mock.toolName)
     connectorMocks.push({
@@ -673,7 +703,7 @@ function mapAndValidateItem(
         }
       : undefined
 
-  const assertions: AgentEvalAssertion[] = item.assertions.map((a) => mapAssertion(a))
+  const assertions: AgentEvalAssertion[] = itemAssertions.map((a) => mapAssertion(a))
   const config: SimulationConfig = {
     openingMessage: item.openingMessage,
     customerContext: item.customerContext,

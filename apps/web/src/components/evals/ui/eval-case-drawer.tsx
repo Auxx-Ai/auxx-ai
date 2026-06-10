@@ -13,7 +13,8 @@ import { generateId } from '@auxx/utils'
 import { FlaskConical, Play, User, Wrench } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
-import { useRecord, useResourceProperty } from '~/components/resources'
+import { useResourceProperty } from '~/components/resources'
+import { useSystemValues } from '~/components/resources/hooks/use-system-values'
 import { MultiRelationInput } from '~/components/shared/multi-relation-input'
 import { AutoResolveBadge } from '~/components/workflow/nodes/core/answer/components/auto-resolve-badge'
 import { VarEditorField, VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
@@ -36,6 +37,21 @@ import { EvalToolResponses } from './eval-tool-responses'
 
 /** The contact entity slug — the subject record the persona "is". */
 const CONTACT_SLUG = 'contact'
+
+/** System attributes read off the subject contact to fill the persona identity. */
+const CONTACT_IDENTITY_ATTRS: ('full_name' | 'primary_email')[] = ['full_name', 'primary_email']
+
+/** Coerce a system value (string, or a `{ firstName, lastName }` NAME) to a line. */
+function valueToString(value: unknown): string | undefined {
+  if (typeof value === 'string') return value.trim() || undefined
+  if (Array.isArray(value)) return valueToString(value.find((v) => v != null))
+  if (value && typeof value === 'object') {
+    const n = value as { firstName?: string; lastName?: string }
+    const joined = [n.firstName, n.lastName].filter(Boolean).join(' ').trim()
+    return joined || undefined
+  }
+  return undefined
+}
 
 const DEFAULT_CONFIG: SimulationConfig = {
   openingMessage: '',
@@ -252,22 +268,20 @@ function EvalCaseForm({
   // ── Test customer (subject) ──
   const contactEntityDefId = useResourceProperty(CONTACT_SLUG, 'entityDefinitionId')
   const subjectRecordId = (config.subject.recordIds[0] as RecordId | undefined) ?? null
-  const { record: subjectRecord } = useRecord({ recordId: subjectRecordId })
+  const hasContact = subjectRecordId != null
 
-  // The picked contact's display values — used to seed a field when it's switched
-  // to manual. `displayName`/`secondaryInfo` are what RecordBadge shows; treat
-  // secondaryInfo as the email only if it reads like one.
-  const resolvedName =
-    typeof subjectRecord?.displayName === 'string' ? subjectRecord.displayName : undefined
-  const resolvedSecondary =
-    typeof subjectRecord?.secondaryInfo === 'string' ? subjectRecord.secondaryInfo : undefined
-  const resolvedEmail = resolvedSecondary?.includes('@') ? resolvedSecondary : undefined
+  // The subject contact's real name + email, read off its system fields and
+  // resolved into `claimed` while a field is auto.
+  const { values: contactValues } = useSystemValues(subjectRecordId, CONTACT_IDENTITY_ATTRS, {
+    autoFetch: true,
+    enabled: hasContact,
+  })
+  const resolvedName = valueToString(contactValues.full_name)
+  const resolvedEmail = valueToString(contactValues.primary_email)
 
   const setSubjectRecords = (recordIds: RecordId[]) =>
     setConfig((c) => ({ ...c, subject: { ...c.subject, recordIds } }))
 
-  // claimed.<key> === undefined ⇒ auto (the persona supplies its own value); a
-  // string (including '') ⇒ manual (pinned, stated verbatim).
   const setClaimed = (key: 'name' | 'email', value: string | undefined) =>
     setConfig((c) => {
       const merged = { ...c.subject.claimed, [key]: value }
@@ -278,8 +292,41 @@ function EvalCaseForm({
       return { ...c, subject: { ...c.subject, claimed: hasAny ? claimed : undefined } }
     })
 
-  const emailIsAuto = config.subject.claimed?.email === undefined
-  const nameIsAuto = config.subject.claimed?.name === undefined
+  const setClaimedManual = (key: 'name' | 'email', manual: boolean) =>
+    setConfig((c) => {
+      const next = { ...c.subject.claimedManual, [key]: manual || undefined }
+      const claimedManual = next.name || next.email ? next : undefined
+      return { ...c, subject: { ...c.subject, claimedManual } }
+    })
+
+  // A field is auto only while a contact is selected and it hasn't been flagged
+  // manual; without a contact there's nothing to resolve, so it's plain manual.
+  const emailIsAuto = hasContact && !config.subject.claimedManual?.email
+  const nameIsAuto = hasContact && !config.subject.claimedManual?.name
+
+  // Keep auto fields synced to the contact's resolved values (persisted into
+  // `claimed`, so the persona states exactly what the editor shows). Snapshot-like:
+  // re-syncs on open and whenever the contact changes. Returns the config
+  // unchanged when there's nothing to update, so it never triggers a spurious save.
+  useEffect(() => {
+    setConfig((c) => {
+      const claimed = c.subject.claimed
+      const wantEmail = emailIsAuto && resolvedEmail && claimed?.email !== resolvedEmail
+      const wantName = nameIsAuto && resolvedName && claimed?.name !== resolvedName
+      if (!wantEmail && !wantName) return c
+      return {
+        ...c,
+        subject: {
+          ...c.subject,
+          claimed: {
+            ...claimed,
+            ...(wantEmail ? { email: resolvedEmail } : {}),
+            ...(wantName ? { name: resolvedName } : {}),
+          },
+        },
+      }
+    })
+  }, [emailIsAuto, nameIsAuto, resolvedEmail, resolvedName])
 
   const runNow = async () => {
     const id = await saveNow()
@@ -343,14 +390,14 @@ function EvalCaseForm({
                 title='Email'
                 description='The email the customer gives when asked.'>
                 <div className='relative flex items-center'>
-                  <div className='z-10 me-0.5 shrink-0 @sm:absolute @sm:right-full @sm:top-1/2 @sm:-translate-y-1/2'>
-                    <AutoResolveBadge
-                      isAuto={emailIsAuto}
-                      onChange={(isAuto) =>
-                        setClaimed('email', isAuto ? undefined : (resolvedEmail ?? ''))
-                      }
-                    />
-                  </div>
+                  {hasContact && (
+                    <div className='z-10 me-0.5 shrink-0 @sm:absolute @sm:right-full @sm:top-1/2 @sm:-translate-y-1/2'>
+                      <AutoResolveBadge
+                        isAuto={emailIsAuto}
+                        onChange={(isAuto) => setClaimedManual('email', !isAuto)}
+                      />
+                    </div>
+                  )}
                   {emailIsAuto ? (
                     <span className='flex h-8 items-center gap-1.5 px-2 text-xs'>
                       {resolvedEmail ? (
@@ -374,14 +421,14 @@ function EvalCaseForm({
               </VarEditorFieldRow>
               <VarEditorFieldRow title='Name'>
                 <div className='relative flex items-center'>
-                  <div className='z-10 me-0.5 shrink-0 @sm:absolute @sm:right-full @sm:top-1/2 @sm:-translate-y-1/2'>
-                    <AutoResolveBadge
-                      isAuto={nameIsAuto}
-                      onChange={(isAuto) =>
-                        setClaimed('name', isAuto ? undefined : (resolvedName ?? ''))
-                      }
-                    />
-                  </div>
+                  {hasContact && (
+                    <div className='z-10 me-0.5 shrink-0 @sm:absolute @sm:right-full @sm:top-1/2 @sm:-translate-y-1/2'>
+                      <AutoResolveBadge
+                        isAuto={nameIsAuto}
+                        onChange={(isAuto) => setClaimedManual('name', !isAuto)}
+                      />
+                    </div>
+                  )}
                   {nameIsAuto ? (
                     <span className='flex h-8 items-center gap-1.5 px-2 text-xs'>
                       {resolvedName ? (

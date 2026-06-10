@@ -34,9 +34,9 @@ export interface ToolInvocationRecord {
   toolName: string
   args: Record<string, unknown>
   output: unknown
-  /** Which mock matched, or `null` for passthrough / unmatched. */
+  /** Which mock matched, or `null` for tool-example / passthrough / unmatched. */
   mockId: string | null
-  resolution: 'mock' | 'passthrough' | 'unmatched_error' | 'recorded'
+  resolution: 'mock' | 'tool_example' | 'passthrough' | 'unmatched_error' | 'recorded'
   /** True iff produced through the capture path (engine wraps with `_captured`). */
   captured: boolean
 }
@@ -107,11 +107,12 @@ export interface WrapToolsDeps {
 
 /**
  * Wrap a resolved effective toolset so each tool returns mocked data. The real
- * `execute` is bypassed: a matched mock returns `{ success: true, output }`. An
- * unmatched call fails closed (`error` policy) or, under `passthrough_readonly`,
- * runs for real ONLY when `tool.idempotent === true` (read-only) — writes are
- * always bypassed. Gate strictly on the tool's own `idempotent` flag, never a
- * name list (conventions §6).
+ * `execute` is bypassed. Resolution order per call: (1) a matched literal mock
+ * returns `{ success: true, output }`; (2) a tool declaring `exampleOutput`
+ * returns it (live default — repeat, any args); (3) the unmatched policy: fail
+ * closed (`error`) or, under `passthrough_readonly`, run for real ONLY when
+ * `tool.idempotent === true` (read-only) — writes are always bypassed. Gate
+ * strictly on the tool's own `idempotent` flag, never a name list (conventions §6).
  *
  * `category: 'control'` tools (procedure/plan signals) pass through UNWRAPPED:
  * their `execute` is an in-memory signal write (`PROC_SIGNAL_KEY`) the stepper
@@ -149,6 +150,23 @@ function wrapTool(
         captured: false,
       })
       return { success: true, output: match.output }
+    }
+
+    // Live default: a tool that declares an `exampleOutput` returns it when no
+    // literal mock matched. Referenced live from the rebuilt runtime (snapshots
+    // store a manifest only), so it never goes stale. Deliberately wins over
+    // `passthrough_readonly` — the offline, deterministic example beats a real
+    // read-only call. See plans/evals/live-tool-default-mocks-plan.md.
+    if (tool.exampleOutput !== undefined) {
+      deps.onInvocation({
+        toolName: tool.name,
+        args,
+        output: tool.exampleOutput,
+        mockId: null,
+        resolution: 'tool_example',
+        captured: false,
+      })
+      return { success: true, output: tool.exampleOutput }
     }
 
     // Unmatched. `passthrough_readonly` lets a genuinely read-only tool run for
@@ -198,8 +216,23 @@ function wrapTool(
       })
       return match.output
     }
-    // Fall back to the tool's own mint (or the engine's placeholder if absent).
-    return tool.captureMint?.(args, mintCtx)
+    // Prefer the tool's own mint — it can be args-aware (e.g. create-task echoes
+    // its input), which a static example can't match. App tools' bridged mint IS
+    // their example, so order only matters for native tools.
+    if (tool.captureMint) return tool.captureMint(args, mintCtx)
+    // Live-default fallback, mirroring `execute` (engine placeholder if absent).
+    if (tool.exampleOutput !== undefined) {
+      deps.onInvocation({
+        toolName: tool.name,
+        args,
+        output: tool.exampleOutput,
+        mockId: null,
+        resolution: 'tool_example',
+        captured: true,
+      })
+      return tool.exampleOutput
+    }
+    return undefined
   }
 
   return { ...tool, execute, captureMint }

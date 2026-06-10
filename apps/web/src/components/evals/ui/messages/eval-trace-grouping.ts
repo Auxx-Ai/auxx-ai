@@ -22,7 +22,7 @@ export interface ToolCallView {
   /** One-line output preview, already coerced to a string. */
   summary?: string
   /** Where the tool result came from — drives the small trailing badge. */
-  badge: { label: 'mock' | 'live' | 'captured'; live: boolean }
+  badge: { label: 'mock' | 'default' | 'live' | 'captured'; live: boolean }
 }
 
 export type Run =
@@ -60,7 +60,15 @@ function toToolCallView(event: EvalTraceEvent): ToolCallView {
     args: (data.args as Record<string, unknown>) ?? {},
     summary: summaryString(data.outputSummary),
     badge: {
-      label: captured ? 'captured' : live ? 'live' : 'mock',
+      // `default` = the tool's live exampleOutput (offline, unauthored) — keep it
+      // distinct from `mock` so authors can see what wasn't pinned for the case.
+      label: captured
+        ? 'captured'
+        : resolution === 'tool_example'
+          ? 'default'
+          : live
+            ? 'live'
+            : 'mock',
       live,
     },
   }
