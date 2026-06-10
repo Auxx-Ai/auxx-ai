@@ -399,10 +399,31 @@ export class AgentEngine {
       const agent = config.domainConfig.agents[pending.agentName]
       const tool = agent?.tools.find((t) => t.name === pending.toolName)
       if (!tool) {
-        yield this.tagEvent({
-          type: 'turn-error',
-          error: `Tool "${pending.toolName}" not found on agent "${pending.agentName}"`,
+        // The resumed turn was rebuilt with a toolset that no longer contains
+        // the paused tool (e.g. a continuation that lost its page surface).
+        // Settle the part as an error WITH an output so it projects a valid
+        // `tool_result` — leaving it 'awaiting-approval' dangles the
+        // `tool_use` and the next turn 400s on the provider. Mirrors the
+        // restriction-error path below.
+        const notFoundError = `Tool "${pending.toolName}" not found on agent "${pending.agentName}"`
+        this.mutatePart(pending.messageId, pending.partIndex, (p) => {
+          const tc = p as ToolCallPart
+          tc.status = 'error'
+          tc.error = notFoundError
         })
+        yield this.tagEvent({
+          type: 'tool-call-failed',
+          messageId: pending.messageId,
+          partIndex: pending.partIndex,
+          toolCallId: pending.toolCallId,
+          agent: pending.agentName,
+          error: notFoundError,
+        })
+        this.state = {
+          ...this.state,
+          waitingForApproval: false,
+          pendingToolCall: undefined,
+        }
         return
       }
 

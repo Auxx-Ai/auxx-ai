@@ -11,6 +11,7 @@ import {
   failQueuedEvalRun,
   getEvalCaseById,
   getEvalRun,
+  getEvalRunCredits,
   getEvalSuiteRun,
   getLatestRunsByCaseIds,
   listAgentEffectiveTools,
@@ -264,6 +265,19 @@ export const evalRouter = createTRPCRouter({
       )
       if (!run) throw new TRPCError({ code: 'NOT_FOUND', message: 'Eval run not found' })
       return run
+    }),
+
+  /** AI credits + tokens a single eval run consumed (rolled up from AiUsage). */
+  getRunCredits: protectedProcedure
+    .input(z.object({ runId: z.string().min(1) }))
+    .query(async ({ ctx, input }) => {
+      return unwrap(
+        await getEvalRunCredits({
+          organizationId: ctx.session.organizationId,
+          runId: input.runId,
+        }),
+        'get eval run credits'
+      )
     }),
 
   getSuiteRun: protectedProcedure

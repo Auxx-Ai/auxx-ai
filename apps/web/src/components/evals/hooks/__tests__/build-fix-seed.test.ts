@@ -1,6 +1,6 @@
 // apps/web/src/components/evals/hooks/__tests__/build-fix-seed.test.ts
 
-import { buildFixSeedMessage } from '../build-fix-seed'
+import { buildFixSeedMessage, suiteChildrenToFixRuns } from '../build-fix-seed'
 
 describe('buildFixSeedMessage', () => {
   it('embeds case names, run ids, the suite id, and failed-assertion lines', () => {
@@ -55,5 +55,44 @@ describe('buildFixSeedMessage', () => {
     expect(line?.length).toBeLessThan(200)
     expect(line).toContain('x y')
     expect(line?.endsWith('…')).toBe(true)
+  })
+})
+
+describe('suiteChildrenToFixRuns', () => {
+  const child = (
+    id: string,
+    status: string,
+    assertionResults: { type: string; status: string; note?: string | null }[] = [],
+    caseName = `case ${id}`
+  ) => ({ id, status, caseName, assertionResults })
+
+  it('keeps only failed/errored children and their non-passed assertions', () => {
+    const runs = suiteChildrenToFixRuns([
+      child('r1', 'failed', [
+        { type: 'response_criteria', status: 'failed', note: 'missed timeline' },
+        { type: 'tool_called', status: 'passed' },
+      ]),
+      child('r2', 'passed', [{ type: 'crm_field', status: 'passed' }]),
+      child('r3', 'error', []),
+    ])
+
+    expect(runs.map((r) => r.runId)).toEqual(['r1', 'r3'])
+    expect(runs[0]?.failedAssertions).toEqual([
+      { type: 'response_criteria', note: 'missed timeline' },
+    ])
+    expect(runs[1]?.failedAssertions).toEqual([])
+  })
+
+  it('feeds a multi-run suite seed with case names, run ids, and the suite id', () => {
+    const runs = suiteChildrenToFixRuns([
+      child('r1', 'failed', [{ type: 'response_criteria', status: 'failed', note: 'a' }], 'Refund'),
+      child('r2', 'error', [], ''),
+    ])
+    const seed = buildFixSeedMessage({ suiteRunId: 'esr_9', runs })
+
+    expect(seed).toContain('2 failing simulations')
+    expect(seed).toContain('Case "Refund" failed (run r1):')
+    expect(seed).toContain('Case "Deleted case" failed (run r2):')
+    expect(seed).toContain('Suite run: esr_9')
   })
 })

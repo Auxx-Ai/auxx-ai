@@ -30,6 +30,9 @@ import {
   createSuggestRepliesGlobalCapability,
   createTaskCapabilities,
   generateSessionTitle,
+  LAST_CONTEXT_KEY,
+  LAST_PAGE_KEY,
+  resolveContinuationSurface,
 } from '@auxx/lib/ai/kopilot'
 import { createToolDepsFactory } from '@auxx/lib/ai/kopilot/capabilities'
 import { getModelCreditMultiplier } from '@auxx/lib/ai/quota'
@@ -242,6 +245,7 @@ export async function POST(request: NextRequest) {
         let sessionAgentId: string | null = null
         let sessionType: 'kopilot' | 'builder' = 'kopilot'
         let resolvedPage: string | undefined = page
+        let resolvedContext: Record<string, unknown> | undefined = context
         // Computed when body.triggerKind === 'dm'. Threaded to the engine so the
         // system prompt's trigger-instructions slot renders. Gate is re-run on
         // every send so disabling DM mid-thread surfaces a 403.
@@ -259,6 +263,23 @@ export async function POST(request: NextRequest) {
           storedModelId = sessionResult.value.modelId ?? null
           sessionAgentId = sessionResult.value.agentId ?? null
           sessionType = (sessionResult.value.type ?? 'kopilot') as 'kopilot' | 'builder'
+
+          // Continuation turns (approval resumes, task-notification drains)
+          // arrive without `page`/`context` — the originating surface isn't on
+          // screen. Restore it from the persisted state so the toolset is
+          // rebuilt the same way the proposing turn had it; otherwise resume
+          // can't find the page-scoped tool it paused on and the turn wedges.
+          // Request values always win; this fallback never applies to a fresh
+          // page-less message (which must keep getting __global__ tools only).
+          const isContinuation = type === 'approval' || body.origin === 'task-notification'
+          const surface = resolveContinuationSurface({
+            requestPage: resolvedPage,
+            requestContext: resolvedContext,
+            isContinuation,
+            domainState: savedDomainState,
+          })
+          resolvedPage = surface.page
+          resolvedContext = surface.context
         } else {
           const placeholderTitle = message.slice(0, 100)
           sessionAgentId = body.agentId ?? null
@@ -362,15 +383,15 @@ export async function POST(request: NextRequest) {
 
         logger.info('Kopilot turn context', {
           sessionId,
-          page,
-          references: (context as { references?: SessionRefLike[] } | undefined)?.references?.map(
-            (r) => ({
-              kind: r?.kind,
-              id: r?.id,
-              origin: r?.origin,
-              label: (r as { label?: string } | undefined)?.label ?? null,
-            })
-          ),
+          page: resolvedPage,
+          references: (
+            resolvedContext as { references?: SessionRefLike[] } | undefined
+          )?.references?.map((r) => ({
+            kind: r?.kind,
+            id: r?.id,
+            origin: r?.origin,
+            label: (r as { label?: string } | undefined)?.label ?? null,
+          })),
         })
 
         // Task-notification turns always run in-process: the worker job path
@@ -387,7 +408,7 @@ export async function POST(request: NextRequest) {
                 message,
                 type,
                 page: resolvedPage,
-                context,
+                context: resolvedContext,
                 approvalAction: body.approvalAction,
                 inputAmendment: body.inputAmendment,
                 modelId: body.modelId,
@@ -406,7 +427,7 @@ export async function POST(request: NextRequest) {
                 message,
                 type,
                 page: resolvedPage,
-                context,
+                context: resolvedContext,
                 approvalAction: body.approvalAction,
                 inputAmendment: body.inputAmendment,
                 modelId: body.modelId,
@@ -753,6 +774,11 @@ async function runInProcessPath(params: {
     _waitingForApproval: finalState.waitingForApproval ?? false,
     _pendingToolCall: finalState.pendingToolCall ?? null,
     _currentRoute: finalState.currentRoute ?? null,
+    // Stash the surface this turn ran with so the next continuation (approval
+    // resume / task-notification drain) can restore page + references and
+    // rebuild the same toolset. See resolveContinuationSurface.
+    [LAST_PAGE_KEY]: page ?? null,
+    [LAST_CONTEXT_KEY]: context ?? null,
   }
   await saveSessionMessages({
     sessionId,

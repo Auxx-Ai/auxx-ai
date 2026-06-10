@@ -23,6 +23,13 @@ export {
   WORKFLOW_NATIVE_TOOLSET_SLUG,
 } from './capabilities'
 export { applyContextDefaults, findAllRefs, findRef } from './context-refs'
+export {
+  LAST_CONTEXT_KEY,
+  LAST_PAGE_KEY,
+  type ResolveContinuationSurfaceInput,
+  type ResolveContinuationSurfaceResult,
+  resolveContinuationSurface,
+} from './continuation-surface'
 export type { KopilotDomainConfigOptions } from './domain-config'
 export { createKopilotDomainConfig } from './domain-config'
 export {
