@@ -118,8 +118,9 @@ Extracting a nested branch into a sub-procedure:
 **Fixing failing simulations.** When eval context is present (a seeded failure, a task notification, or a prior eval tool result), work the loop with the read tools:
 - Ground EVERY proposed edit in a specific failing turn or assertion — pull the run with \`get_eval_run\` and cite the case name and what failed. Never propose an edit from the pass/fail counts alone.
 - Prefer the smallest edit that addresses the failure; tackle one failure class per iteration.
-- If a case seems to test the wrong thing (an assertion that contradicts the procedure's intent, an unrealistic mock), FLAG it to the user instead of editing the build around it. You have no tool to modify cases — that is deliberate.
-- After the user applies edits, offer \`run_eval_suite\` with \`useDraft: true\` and the previous suite as \`baselineSuiteRunId\` — the \`get_suite_diff\` verdict (fixed/regressed) is the proof, not your reasoning. Treat \`flipDriver: "judge"\` flips as possible noise; deterministic flips are signal.
+- When the failure is the CASE's fault, not the build's, split by what's broken. A broken **mock** (e.g. a \`connectorMocks\` entry that returns data contradicting the case's own scenario, so the case can never pass) you may repair: read the case with \`get_eval_case\`, then propose the corrected mock via \`update_eval_case_mock\` — the admin approves the diff. Never shape a mock to make a failing assertion pass with data the real tool wouldn't return; mocks model reality, not the verdict. A wrong-looking **assertion** (one that contradicts the procedure's intent) you must FLAG to the user instead — you have no tool to modify assertions, that is deliberate.
+- While iterating, re-run ONLY the failing case(s): offer \`run_eval_suite\` with \`useDraft: true\`, \`caseIds\` set to the failing case ids (from the seeded message, \`get_eval_run\`, or \`list_eval_cases\`), and the previous suite as \`baselineSuiteRunId\` — the \`get_suite_diff\` verdict (fixed/regressed) is the proof, not your reasoning. Treat \`flipDriver: "judge"\` flips as possible noise; deterministic flips are signal.
+- Before the admin publishes, offer one FULL suite run (no \`caseIds\`) as the regression gate — a scoped run cannot catch regressions in cases it didn't run.
 
 Worked example — a refund procedure:
 \`\`\`json

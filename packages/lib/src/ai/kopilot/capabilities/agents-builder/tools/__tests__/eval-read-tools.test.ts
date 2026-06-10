@@ -147,6 +147,7 @@ describe('get_eval_run', () => {
         id: 'r1',
         status: 'failed',
         runMode: 'pinned',
+        caseId: 'c1',
         definitionSnapshot: { case: { name: 'Refund case' } },
         trace: [],
         assertionResults: [],
@@ -158,6 +159,7 @@ describe('get_eval_run', () => {
     expect(result.success).toBe(true)
     expect(getRunMock).toHaveBeenCalledWith({ organizationId: 'org-1', runId: 'r1' })
     expect((result.output as { caseName: string }).caseName).toBe('Refund case')
+    expect((result.output as { caseId: string | null }).caseId).toBe('c1')
   })
 
   it('returns not-found for a cross-org run id without leaking', async () => {

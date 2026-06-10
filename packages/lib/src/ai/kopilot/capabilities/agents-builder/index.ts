@@ -10,6 +10,7 @@ import { findRef } from '../../context-refs'
 import type { GetToolDeps, PageCapability } from '../types'
 import { buildBuilderPersonaPrompt, buildChatBuilderPersonaPrompt } from './persona-prompt'
 import { createCompleteAgentSetupTool } from './tools/complete-agent-setup'
+import { createGetEvalCaseTool } from './tools/get-eval-case'
 import { createGetEvalRunTool } from './tools/get-eval-run'
 import { createGetSuiteDiffTool } from './tools/get-suite-diff'
 import { createListEvalCasesTool } from './tools/list-eval-cases'
@@ -24,6 +25,7 @@ import { createSetAgentToolsetsTool } from './tools/set-agent-toolsets'
 import { createSetAgentTriggersTool } from './tools/set-agent-triggers'
 import { createSuggestRepliesTool } from './tools/suggest-replies'
 import { createUpdateAgentIdentityTool } from './tools/update-agent-identity'
+import { createUpdateEvalCaseMockTool } from './tools/update-eval-case-mock'
 
 export const AGENTS_BUILDER_PAGE = 'agents.builder'
 
@@ -87,14 +89,18 @@ export async function createAgentsBuilderCapabilities(
     createSetProcedureBodyTool(getDeps),
     createReadProcedureTool(getDeps),
     createUpdateProcedureCriteriaTool(getDeps),
-    // Eval improvement loop (phase 5C): read-only context tools + the async
-    // suite trigger. No tool can write eval tables — fixing goes through the
-    // build-editing tools above; results land as a <task-notification> message
-    // (plans/kopilot/task-notifications/plan.md).
+    // Eval improvement loop (phase 5C): read context tools + the async suite
+    // trigger. The ONLY eval write surface is `update_eval_case_mock` —
+    // approval-gated fixture repair on `connectorMocks`; assertions stay
+    // tRPC/editor-only so the model can't grade its own homework. Fixing
+    // otherwise goes through the build-editing tools above; results land as a
+    // <task-notification> message (plans/kopilot/task-notifications/plan.md).
     createListEvalCasesTool(getDeps),
+    createGetEvalCaseTool(getDeps),
     createGetEvalRunTool(getDeps),
     createGetSuiteDiffTool(getDeps),
     createRunEvalSuiteTool(getDeps),
+    createUpdateEvalCaseMockTool(getDeps),
     // Triggers + resource-scope stay internal-only: chat agents run on the
     // inbound-message gate, never autonomously, and don't read internal records.
     ...(isChat

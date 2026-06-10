@@ -14,6 +14,8 @@ export interface ModelRunSummary {
   runId: string
   status: EvalRunEntity['status']
   runMode: EvalRunMode
+  /** Null when the case was deleted after the run. */
+  caseId: string | null
   caseName: string
   /** Non-passed assertion results (failed AND errored — both block a pass). */
   failedAssertions: {
@@ -72,6 +74,7 @@ export function summarizeEvalRunForModel(
       runId: run.id,
       status: run.status,
       runMode: run.runMode,
+      caseId: run.caseId,
       caseName,
       failedAssertions,
       transcript: transcript
@@ -85,6 +88,7 @@ export function summarizeEvalRunForModel(
     runId: run.id,
     status: run.status,
     runMode: run.runMode,
+    caseId: run.caseId,
     caseName,
     failedAssertions,
     transcript,

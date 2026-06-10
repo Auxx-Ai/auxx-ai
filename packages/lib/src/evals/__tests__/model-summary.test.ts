@@ -74,6 +74,7 @@ describe('summarizeEvalRunForModel', () => {
       'Agent: Refund issued.',
       '[terminal] outcome=finished capExceeded=false customerTurns=1',
     ])
+    expect(summary.caseId).toBe('c1')
     expect(summary.caseName).toBe('Refund case')
     expect(summary.runMode).toBe('draft')
     expect(summary.truncated).toBe(false)

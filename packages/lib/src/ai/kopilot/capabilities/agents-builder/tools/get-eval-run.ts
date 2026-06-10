@@ -11,6 +11,7 @@ const outputSchema = z.object({
   runId: z.string(),
   status: z.string(),
   runMode: z.string(),
+  caseId: z.string().nullable(),
   caseName: z.string(),
   failedAssertions: z.array(
     z.object({
@@ -37,7 +38,7 @@ export function createGetEvalRunTool(getDeps: GetToolDeps): AgentToolDefinition 
     displayName: 'Read simulation run',
     surfaces: ['builder'],
     idempotent: true,
-    description: `Read a simulation run's condensed transcript and failed assertions. Use it to ground a proposed fix in the SPECIFIC failing turn or assertion — cite the case name and what failed. \`truncated: true\` means the middle of a long transcript was dropped.`,
+    description: `Read a simulation run's condensed transcript and failed assertions. Use it to ground a proposed fix in the SPECIFIC failing turn or assertion — cite the case name and what failed. \`truncated: true\` means the middle of a long transcript was dropped. \`caseId\` is what you pass to \`run_eval_suite\`'s \`caseIds\` for a targeted re-run.`,
     parameters: {
       type: 'object',
       additionalProperties: false,
@@ -51,6 +52,7 @@ export function createGetEvalRunTool(getDeps: GetToolDeps): AgentToolDefinition 
       runId: 'run_example',
       status: 'failed',
       runMode: 'draft',
+      caseId: 'case_example',
       caseName: 'Refund for damaged item',
       failedAssertions: [
         {
