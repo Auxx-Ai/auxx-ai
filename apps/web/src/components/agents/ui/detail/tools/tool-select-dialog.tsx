@@ -4,22 +4,16 @@
 import type { AgentSurface, CatalogContainerNode, CatalogNode } from '@auxx/lib/agents/client'
 import { flattenCatalogToToolsets, matchesToolsetSearch } from '@auxx/lib/agents/client'
 import { Button } from '@auxx/ui/components/button'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@auxx/ui/components/dialog'
+import { Dialog, DialogContent } from '@auxx/ui/components/dialog'
+import { DialogNav, DialogNavPage, DialogNavPages } from '@auxx/ui/components/dialog-nav'
 import { InputSearch } from '@auxx/ui/components/input-search'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
-import { Separator } from '@auxx/ui/components/separator'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { Tabs, TabsList, TabsTrigger } from '@auxx/ui/components/tabs'
 import { pluralize } from '@auxx/utils/strings'
-import { ChevronLeft } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useToolCatalog } from '~/components/agents/hooks/use-tool-catalog'
+import { AppIcon } from '~/components/apps/ui/app-icon'
 import { ToolSelectRow, toolCountBadge } from './tool-select-row'
 
 export interface InstalledToolsetEntry {
@@ -163,50 +157,75 @@ export function ToolSelectDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className='h-dvh sm:h-[600px]'
         innerClassName='p-0'
         position='tc'
-        size='lg'
+        size='content'
         onOpenAutoFocus={(e) => {
           e.preventDefault()
           searchInputRef.current?.focus()
         }}>
-        <div className='flex flex-1 flex-col min-h-0'>
-          {viewMode === 'list' ? (
-            <ListView
-              tab={tab}
-              onTabChange={setTab}
-              search={search}
-              onSearchChange={setSearch}
-              searchInputRef={searchInputRef}
-              catalog={catalog}
-              flat={flat}
-              isLoading={catalogIsLoading}
-              isInstalled={isInstalled}
-              sourceOf={sourceOf}
-              onToggle={handleToolsetClick}
-              onRemove={handleRemove}
-              onOpenApp={handleOpenApp}
-            />
-          ) : selectedApp ? (
-            <AppDetailView
-              app={selectedApp}
-              onBack={handleBack}
-              isInstalled={isInstalled}
-              sourceOf={sourceOf}
-              onToggle={handleToolsetClick}
-              onRemove={handleRemove}
-              onAddAll={(slugs) => {
-                if (slugs.length === 0) return
-                void onToggleToolsets(slugs.map((slug) => ({ slug, enabled: true })))
-              }}
-              hasBoundAccount={boundAppIds.has(selectedApp.id.replace(/^app:/, ''))}
-            />
-          ) : (
-            <div className='flex flex-1 items-center justify-center p-8'>
-              <Skeleton className='h-12 w-full max-w-sm rounded-lg' />
-            </div>
-          )}
+        <div className='flex flex-col'>
+          <DialogNav
+            title='Add tools'
+            description='Browse the toolset catalog and add tools to this agent.'
+            onBack={viewMode === 'app-detail' ? handleBack : undefined}
+            crumbs={[
+              viewMode === 'app-detail' && selectedApp
+                ? {
+                    label: selectedApp.label,
+                    icon: (
+                      <AppIcon
+                        iconId={selectedApp.iconId ?? 'package'}
+                        color={selectedApp.color}
+                        size='xs'
+                      />
+                    ),
+                  }
+                : { label: 'Add tools' },
+            ]}
+          />
+
+          {/* Body — width/height springs between list and app-detail */}
+          <DialogNavPages value={viewMode}>
+            <DialogNavPage value='list' size='lg'>
+              <ListView
+                tab={tab}
+                onTabChange={setTab}
+                search={search}
+                onSearchChange={setSearch}
+                searchInputRef={searchInputRef}
+                catalog={catalog}
+                flat={flat}
+                isLoading={catalogIsLoading}
+                isInstalled={isInstalled}
+                sourceOf={sourceOf}
+                onToggle={handleToolsetClick}
+                onRemove={handleRemove}
+                onOpenApp={handleOpenApp}
+              />
+            </DialogNavPage>
+
+            <DialogNavPage value='app-detail' size='lg'>
+              {selectedApp ? (
+                <AppDetailView
+                  app={selectedApp}
+                  isInstalled={isInstalled}
+                  sourceOf={sourceOf}
+                  onToggle={handleToolsetClick}
+                  onRemove={handleRemove}
+                  onAddAll={(slugs) => {
+                    if (slugs.length === 0) return
+                    void onToggleToolsets(slugs.map((slug) => ({ slug, enabled: true })))
+                  }}
+                  hasBoundAccount={boundAppIds.has(selectedApp.id.replace(/^app:/, ''))}
+                />
+              ) : (
+                <div className='flex items-center justify-center p-8'>
+                  <Skeleton className='h-12 w-full max-w-sm rounded-lg' />
+                </div>
+              )}
+            </DialogNavPage>
+          </DialogNavPages>
         </div>
       </DialogContent>
     </Dialog>
@@ -262,18 +281,6 @@ function ListView({
 
   return (
     <>
-      <DialogHeader className='mb-0 flex h-10 flex-row items-center justify-between border-b px-3'>
-        <div>
-          <Button variant='ghost' size='sm'>
-            Add tools
-          </Button>
-          <DialogTitle className='sr-only'>Add tools</DialogTitle>
-          <DialogDescription className='sr-only'>
-            Browse the toolset catalog and add tools to this agent.
-          </DialogDescription>
-        </div>
-      </DialogHeader>
-
       <div className='flex items-center justify-between gap-2 border-b px-3 py-2'>
         <Tabs value={tab} onValueChange={(v) => onTabChange(v as ListTab)}>
           <TabsList>
@@ -292,7 +299,7 @@ function ListView({
         </div>
       </div>
 
-      <ScrollArea className='flex-1' scrollbarClassName='w-1!'>
+      <ScrollArea className='max-h-[32rem]' scrollbarClassName='w-1!'>
         <div className='py-3 px-3'>
           {isLoading ? (
             <div className='space-y-2'>
@@ -378,7 +385,6 @@ function ListView({
 
 interface AppDetailViewProps {
   app: CatalogContainerNode
-  onBack: () => void
   isInstalled: (slug: string) => boolean
   sourceOf: (slug: string) => InstalledState['source'] | undefined
   onToggle: (slug: string) => void
@@ -390,7 +396,6 @@ interface AppDetailViewProps {
 
 function AppDetailView({
   app,
-  onBack,
   isInstalled,
   sourceOf,
   onToggle,
@@ -405,23 +410,6 @@ function AppDetailView({
 
   return (
     <>
-      <DialogHeader className='mb-0 flex h-10 flex-row items-center border-b px-3'>
-        <div className='flex items-center gap-1'>
-          <Button variant='ghost' size='sm' onClick={onBack}>
-            <ChevronLeft />
-            Back
-          </Button>
-          <Separator orientation='vertical' className='h-5' />
-          <Button variant='ghost' size='sm'>
-            {app.label}
-          </Button>
-          <DialogTitle className='sr-only'>{app.label}</DialogTitle>
-          <DialogDescription className='sr-only'>
-            Toolsets exposed by {app.label}.
-          </DialogDescription>
-        </div>
-      </DialogHeader>
-
       <div className='flex items-center justify-between border-b ps-3 pe-2 py-1'>
         <span className='text-xs text-muted-foreground'>
           {installedCount}/{total} {pluralize(total, 'tool')} installed
@@ -435,7 +423,7 @@ function AppDetailView({
         </Button>
       </div>
 
-      <ScrollArea className='flex-1' scrollbarClassName='w-1!'>
+      <ScrollArea className='max-h-[32rem]' scrollbarClassName='w-1!'>
         <div className='p-3'>
           {leaves.map((entry) => (
             <ToolSelectRow

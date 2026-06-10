@@ -37,7 +37,7 @@ import {
 import { createToolDepsFactory } from '@auxx/lib/ai/kopilot/capabilities'
 import { getCachedAgentById } from '@auxx/lib/cache'
 import { ForbiddenError } from '@auxx/lib/errors'
-import { FeatureKey, FeaturePermissionService } from '@auxx/lib/permissions'
+import { FeatureKey, FeaturePermissionService, PermissionService } from '@auxx/lib/permissions'
 import { docToText } from '@auxx/lib/tiptap'
 import { createScopedLogger } from '@auxx/logger'
 import {
@@ -99,6 +99,14 @@ interface KopilotStreamRequest {
    * Ignored when sessionId is provided (existing session keeps its type).
    */
   sessionType?: 'kopilot' | 'builder'
+  /**
+   * Agent Chat-tab test-run flag: resolve the agent's UNPUBLISHED draft config
+   * instead of the active version (build-plan §4.2). Honored only for admins
+   * (agent-edit permission) on a non-builder agent session — silently ignored
+   * otherwise, so a non-admin DMing the agent can't probe unpublished config.
+   * Per-request, never sticky: no session row stores it.
+   */
+  useDraft?: boolean
   /**
    * Trigger discriminator for the run. 'dm' means the request originated
    * from the agent Chat tab or the composer sender picker; the route
@@ -432,6 +440,7 @@ export async function POST(request: NextRequest) {
                 modelId: body.modelId,
                 agentId: sessionAgentId,
                 sessionType,
+                useDraft: body.useDraft,
                 triggerContext: inProcessTriggerContext,
                 savedMessages,
                 savedDomainState,
@@ -500,6 +509,8 @@ async function runInProcessPath(params: {
   modelId?: string
   agentId: string | null
   sessionType: 'kopilot' | 'builder'
+  /** Resolve the agent's draft config instead of the active version (admin-gated below). */
+  useDraft?: boolean
   triggerContext?: TriggerContext
   savedMessages: Record<string, unknown>[]
   savedDomainState: Record<string, unknown>
@@ -653,7 +664,17 @@ async function runInProcessPath(params: {
   // addition — the target agent is the subject of editing (passed via the
   // `agent` active reference), not the persona to adopt. Passing its real
   // agentConfig would render two competing "You are X." personas.
-  const agentConfig = await resolveAgentConfig(organizationId, isBuilder ? null : agentId)
+  // Draft test-runs (build-plan §4.2): the agent Chat tab may request the
+  // unpublished draft view, but only for admins (agent-edit permission) and never
+  // for master/builder sessions. Per-request — nothing here is persisted.
+  let agentConfigSource: 'active' | 'draft' = 'active'
+  if (params.useDraft && !isBuilder && agentId) {
+    const isAdmin = await new PermissionService(organizationId, userId, db).isAdmin()
+    if (isAdmin) agentConfigSource = 'draft'
+  }
+  const agentConfig = await resolveAgentConfig(organizationId, isBuilder ? null : agentId, db, {
+    source: agentConfigSource,
+  })
   const resolvedPage = page ?? '__none__'
   // Pre-filter tools by the agent's enabled toolsets before handing them to
   // the domain config. Master sessions pass through untouched. Future filter

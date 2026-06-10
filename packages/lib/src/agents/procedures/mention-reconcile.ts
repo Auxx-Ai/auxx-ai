@@ -1,10 +1,12 @@
 // packages/lib/src/agents/procedures/mention-reconcile.ts
 
-import { database, schema } from '@auxx/database'
+import type { KnowledgeEntry } from '@auxx/database'
+import { database, schema, type ToolsetEntry } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq, or } from 'drizzle-orm'
 import { onCacheEvent } from '../../cache'
 import { getRealtimeService, publishAgentUpdated } from '../../realtime'
+import { hashAgentConfig } from '../agent-config-snapshot'
 import {
   reconcileKnowledgeMentions,
   reconcileToolsetMentions,
@@ -59,7 +61,11 @@ export async function reconcileAgentProcedureMentions(
 
   await database.transaction(async (tx) => {
     const [agent] = await tx
-      .select({ toolsets: schema.Agent.toolsets, knowledge: schema.Agent.knowledge })
+      .select({
+        toolsets: schema.Agent.toolsets,
+        knowledge: schema.Agent.knowledge,
+        activeVersionId: schema.Agent.activeVersionId,
+      })
       .from(schema.Agent)
       .where(and(eq(schema.Agent.id, agentId), eq(schema.Agent.organizationId, organizationId)))
       .for('update')
@@ -68,10 +74,47 @@ export async function reconcileAgentProcedureMentions(
 
     const toolsets = reconcileToolsetMentions(agent.toolsets ?? [], toolsetSlugs, 'procedure')
     const knowledge = reconcileKnowledgeMentions(agent.knowledge ?? [], recordIds, 'procedure')
+    // No dirty flag: the same derived change lands on BOTH the row and the active
+    // version, so row-vs-active equality (and the no-op-publish hash) is preserved.
     await tx
       .update(schema.Agent)
       .set({ toolsets, knowledge, updatedAt: new Date() })
       .where(eq(schema.Agent.id, agentId))
+
+    // Immutability exception (build-plan §3): amend ONLY the derived
+    // (`source: 'mention'`) rows on the active version in place so the live
+    // runtime reflects today's procedures without a republish, then recompute
+    // its `configHash` so the no-op-publish check stays honest. Never touches
+    // authored config.
+    if (agent.activeVersionId) {
+      const active = await tx.query.AgentVersion.findFirst({
+        where: eq(schema.AgentVersion.id, agent.activeVersionId),
+      })
+      if (active) {
+        const versionToolsets = reconcileToolsetMentions(
+          (active.toolsets ?? []) as ToolsetEntry[],
+          toolsetSlugs,
+          'procedure'
+        )
+        const versionKnowledge = reconcileKnowledgeMentions(
+          (active.knowledge ?? []) as KnowledgeEntry[],
+          recordIds,
+          'procedure'
+        )
+        await tx
+          .update(schema.AgentVersion)
+          .set({
+            toolsets: versionToolsets,
+            knowledge: versionKnowledge,
+            configHash: hashAgentConfig({
+              ...active,
+              toolsets: versionToolsets,
+              knowledge: versionKnowledge,
+            }),
+          })
+          .where(eq(schema.AgentVersion.id, active.id))
+      }
+    }
   })
 
   try {

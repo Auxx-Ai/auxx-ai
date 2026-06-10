@@ -6,13 +6,16 @@
 // snapshots before the queued row is inserted. Enqueue happens afterward (in the
 // router). See plans/evals/phase-1-agent-simulation.md §1.3/§1.10 and conventions.md §4.
 
+import { database, schema } from '@auxx/database'
 import type {
   AgentEvalAssertion,
   AgentEvalTarget,
   EvalRunMode,
   SimulationConfig,
 } from '@auxx/types/evals'
+import { and, eq } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
+import { hashAgentConfig } from '../agents/agent-config-snapshot'
 import { compileProcedure, getProcedureVersionById, readCompiled } from '../agents/procedures'
 import { getAttachedProcedureDraft } from '../agents/procedures/authoring/queries'
 import { buildEffectiveAgentRuntime } from '../ai/agent-framework/effective-runtime'
@@ -70,6 +73,10 @@ export async function prepareRunSnapshots(
   if (procResult.isErr()) return err(procResult.error)
   const { procedures, runMode, draftContentHash } = procResult.value
 
+  // Agent config follows the run mode: a draft run resolves the live Agent row,
+  // a pinned run the active version. See build-plan §5.
+  const agentConfigSource: 'active' | 'draft' = mode === 'draft' ? 'draft' : 'active'
+
   // Resolve the effective runtime via the shared builder (no divergent copy).
   const runtime = await buildEffectiveAgentRuntime({
     organizationId,
@@ -78,10 +85,34 @@ export async function prepareRunSnapshots(
     agentId,
     domain: 'kopilot',
     hasProcedures: procedures.length > 0,
+    agentConfigSource,
   })
 
   const cachedAgent = await getCachedAgentById(organizationId, agentId)
   const agentKind: 'internal' | 'chat' = cachedAgent?.kind === 'chat' ? 'chat' : 'internal'
+
+  // Pin the agent version (pinned mode) or stamp the draft config hash (draft mode)
+  // so the run stays attributable to the exact config it exercised.
+  const agentVersionId =
+    agentConfigSource === 'active' ? (cachedAgent?.activeVersionId ?? null) : null
+  const agentVersionNumber =
+    agentConfigSource === 'active' ? (cachedAgent?.activeVersionNumber ?? null) : null
+  let agentConfigHash: string | undefined
+  if (agentConfigSource === 'draft') {
+    const [row] = await database
+      .select({
+        prompt: schema.Agent.prompt,
+        toolsets: schema.Agent.toolsets,
+        knowledge: schema.Agent.knowledge,
+        appAccounts: schema.Agent.appAccounts,
+        toolRestrictions: schema.Agent.toolRestrictions,
+        modelId: schema.Agent.modelId,
+      })
+      .from(schema.Agent)
+      .where(and(eq(schema.Agent.id, agentId), eq(schema.Agent.organizationId, organizationId)))
+      .limit(1)
+    if (row) agentConfigHash = hashAgentConfig(row)
+  }
 
   const runtimeSnapshot = createAgentRuntimeSnapshot({
     runtime,
@@ -99,6 +130,9 @@ export async function prepareRunSnapshots(
     codeRevision: getCodeRevision(),
     runMode,
     draftContentHash,
+    agentVersionId,
+    agentVersionNumber,
+    agentConfigHash,
   })
 
   const definitionSnapshot = buildDefinitionSnapshot({

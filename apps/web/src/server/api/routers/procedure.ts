@@ -14,7 +14,8 @@ import {
   publishProcedure,
   reconcileProcedureMentionsForAgents,
   reconcileProcedureMentionsForAllAgents,
-  revertProcedure,
+  renameProcedureVersion,
+  restoreProcedureVersion,
   type TiptapDoc,
   updateDraftDoc,
   updateProcedure,
@@ -238,6 +239,7 @@ export const procedureRouter = createTRPCRouter({
         id: row.id,
         versionNumber: row.versionNumber,
         label: row.label,
+        editorName: row.editorName,
         createdAt: row.createdAt.toISOString(),
       }))
     }),
@@ -306,21 +308,47 @@ export const procedureRouter = createTRPCRouter({
       return { versionNumber: version.versionNumber, procedureVersionId: version.id }
     }),
 
-  revert: agentProceduresAdminProcedure
+  // Restore-as-draft: load an older version into the draft + mark dirty. Does
+  // NOT repoint the active version — live behavior is unchanged until publish.
+  restoreVersion: agentProceduresAdminProcedure
     .input(z.object({ id: z.string().min(1), toVersionId: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
       unwrap(
-        await revertProcedure({
+        await restoreProcedureVersion({
           organizationId,
           procedureId: input.id,
           toVersionId: input.toVersionId,
         }),
-        'revert procedure'
+        'restore procedure version'
       )
       await onCacheEvent('procedure.updated', { orgId: organizationId })
-      // Revert repoints the active version + rewrites the draft — re-fan the tag.
+      // Restore rewrites the draft doc/criteria — re-fan the `'procedure'` tag so
+      // attached agents' draft mention rows track the restored doc.
       await reconcileProcedureMentionsForAllAgents(organizationId, input.id)
+      return { ok: true as const }
+    }),
+
+  // Rename a published version's label (annotation only).
+  renameVersion: agentProceduresAdminProcedure
+    .input(
+      z.object({
+        id: z.string().min(1),
+        versionId: z.string().min(1),
+        label: z.string().max(120).nullable(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { organizationId } = ctx.session
+      unwrap(
+        await renameProcedureVersion({
+          organizationId,
+          procedureId: input.id,
+          versionId: input.versionId,
+          label: input.label,
+        }),
+        'rename procedure version'
+      )
       return { ok: true as const }
     }),
 })

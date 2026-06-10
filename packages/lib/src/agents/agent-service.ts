@@ -12,10 +12,11 @@ import {
 } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { generateId } from '@auxx/utils'
-import { and, eq, inArray, isNull, or } from 'drizzle-orm'
+import { and, eq, inArray, isNull, or, sql } from 'drizzle-orm'
 import { getAllCachedAgents, getCachedAgentById, getCachedAgents, onCacheEvent } from '../cache'
 import { BadRequestError, ForbiddenError } from '../errors'
 import { getRealtimeService, publishAgentUpdated } from '../realtime'
+import { publishAgentTx } from './agent-version-service'
 import type { ToolBindingMap } from './bindings'
 import { resolveDefaultToolsets } from './default-toolsets'
 import { reconcilePromptMentions, type ToolsetSource } from './prompt-mention-reconciler'
@@ -310,6 +311,17 @@ export async function updateAgent(
       patch.knowledge = reconciled.knowledge
     }
 
+    // Flip the dirty flag only for versioned behavior fields (prompt drags its
+    // reconciled toolsets/knowledge with it; modelId and appAccounts are
+    // versioned too). Identity/lifecycle edits (name/slug/description/
+    // mentionable/archivedAt) never mark dirty. The SQL guard sets it true only
+    // when an active version exists — pre-setup drafts have no baseline.
+    const behaviorChanged =
+      input.prompt !== undefined || input.modelId !== undefined || input.appAccounts !== undefined
+    if (behaviorChanged) {
+      patch.hasUnpublishedChanges = sql`${schema.Agent.activeVersionId} is not null`
+    }
+
     if (input.name !== undefined && !current.userId) {
       // Pre-setup: stash the name on Agent.config. After completion the
       // builder/admin paths write through to User.name and the read path
@@ -424,12 +436,14 @@ export async function completeAgentSetup(
     if (!row) return false
     if (row.setupCompletedAt) return false
 
-    // If a User already exists (legacy pre-D draft) just flip the flag.
+    // If a User already exists (legacy pre-D draft) just flip the flag, then
+    // publish v1 so every set-up agent always has an active version.
     if (row.userId) {
       await tx
         .update(schema.Agent)
         .set({ setupCompletedAt: now, updatedAt: now })
         .where(eq(schema.Agent.id, agentId))
+      await publishAgentTx(tx, { organizationId, agentId, label: 'Initial version' })
       return true
     }
 
@@ -465,6 +479,10 @@ export async function completeAgentSetup(
       .update(schema.Agent)
       .set({ userId: user.id, setupCompletedAt: now, updatedAt: now })
       .where(eq(schema.Agent.id, agentId))
+
+    // Auto-publish v1 inside the same transaction so production always runs a
+    // frozen version (see plans/agents/agent-versions/build-plan.md §2.2).
+    await publishAgentTx(tx, { organizationId, agentId, label: 'Initial version' })
 
     return true
   })
@@ -713,6 +731,12 @@ export interface AgentDetail extends AgentSummary {
    * See plans/chat/v8 phase-5.
    */
   toolRestrictions: ToolBindingMap
+  /** The published version production runs; `null` while a pre-setup draft. */
+  activeVersionId: string | null
+  /** Number of {@link activeVersionId}; `null` when never published. */
+  activeVersionNumber: number | null
+  /** Whether the draft (this view's behavior fields) diverges from the active version. */
+  hasUnpublishedChanges: boolean
 }
 
 /**
@@ -736,19 +760,47 @@ export async function getAgentDetailByIdOrSlug(
 export async function getAgentDetail(
   organizationId: string,
   agentId: string,
-  _db: Database = defaultDb as Database
+  db: Database = defaultDb as Database
 ): Promise<AgentDetail | null> {
   const cached = await getCachedAgentById(organizationId, agentId)
   if (!cached) return null
 
+  // The cache serves the ACTIVE-version view; the builder must edit the DRAFT.
+  // Overlay the six behavior fields plus version metadata from a direct Agent-row
+  // read (one indexed PK select + a LEFT join for the active version number).
+  // Identity/presentation (name, avatarUrl, triggers, procedures) keep the
+  // cached values. See plans/agents/agent-versions/build-plan.md §4.2′.
+  const [row] = await db
+    .select({
+      prompt: schema.Agent.prompt,
+      toolsets: schema.Agent.toolsets,
+      knowledge: schema.Agent.knowledge,
+      appAccounts: schema.Agent.appAccounts,
+      toolRestrictions: schema.Agent.toolRestrictions,
+      modelId: schema.Agent.modelId,
+      activeVersionId: schema.Agent.activeVersionId,
+      hasUnpublishedChanges: schema.Agent.hasUnpublishedChanges,
+      activeVersionNumber: schema.AgentVersion.versionNumber,
+    })
+    .from(schema.Agent)
+    .leftJoin(schema.AgentVersion, eq(schema.AgentVersion.id, schema.Agent.activeVersionId))
+    .where(and(eq(schema.Agent.id, agentId), eq(schema.Agent.organizationId, organizationId)))
+    .limit(1)
+  if (!row) return null
+
   return {
     ...toAgentSummary(cached),
     organizationId,
-    prompt: cached.prompt,
-    toolsets: cached.toolsets,
-    knowledge: cached.knowledge,
-    appAccounts: cached.appAccounts,
-    toolRestrictions: cached.toolRestrictions as ToolBindingMap,
+    // Draft view (the Agent row) — overrides the cached active-view behavior.
+    prompt: (row.prompt ?? {}) as Record<string, unknown>,
+    toolsets: row.toolsets ?? [],
+    knowledge: row.knowledge ?? [],
+    appAccounts: row.appAccounts ?? {},
+    toolRestrictions: (row.toolRestrictions ?? {}) as ToolBindingMap,
+    modelId: row.modelId ?? null,
+    activeVersionId: row.activeVersionId ?? null,
+    activeVersionNumber: row.activeVersionNumber ?? null,
+    hasUnpublishedChanges: row.hasUnpublishedChanges,
   }
 }
 

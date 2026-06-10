@@ -50,6 +50,14 @@ export interface AgentRuntimeSnapshotV1 {
   agent: {
     id: string
     kind: 'internal' | 'chat'
+    /**
+     * The pinned agent version this run executed under (`runMode: 'pinned'`):
+     * the active `AgentVersion` at prepare time. Absent/null for draft runs and
+     * for snapshots created before agent versioning. See
+     * plans/agents/agent-versions/build-plan.md §5.
+     */
+    versionId?: string | null
+    versionNumber?: number | null
     model: ProviderModel
     utilityModel: ProviderModel
     toolManifest: ToolManifestEntry[]
@@ -73,6 +81,14 @@ export interface AgentRuntimeSnapshotV1 {
   runMode: EvalRunMode
   /** The compiler's stable `contentHash` of the draft, present only for `runMode: 'draft'`. */
   draftContentHash?: string
+  /**
+   * Stable hash of the agent's DRAFT behavior config (the Agent row's six
+   * versioned fields), present only when the agent config was resolved from the
+   * draft — i.e. for an agent-draft run. Lets draft runs stay attributable to the
+   * exact unpublished config they exercised, paralleling `draftContentHash` for
+   * the procedure. See plans/agents/agent-versions/build-plan.md §5.
+   */
+  agentConfigHash?: string
   /**
    * Prompt envelope the run executed under. `'customer'` = the autonomous
    * customer-conversation envelope (synthetic `customer_message` trigger
@@ -126,6 +142,11 @@ export interface CreateAgentRuntimeSnapshotInput {
   runMode?: EvalRunMode
   /** The compiler's stable `contentHash` of the draft (draft mode only). */
   draftContentHash?: string
+  /** Pinned active agent version (pinned mode). */
+  agentVersionId?: string | null
+  agentVersionNumber?: number | null
+  /** Stable hash of the agent's draft config (agent-draft mode only). */
+  agentConfigHash?: string
 }
 
 /**
@@ -146,6 +167,8 @@ export function createAgentRuntimeSnapshot(
     agent: {
       id: input.agentId,
       kind: input.agentKind,
+      versionId: input.agentVersionId ?? null,
+      versionNumber: input.agentVersionNumber ?? null,
       model: runtime.model,
       utilityModel: runtime.utilityModel,
       toolManifest: buildToolManifest(runtime.tools),
@@ -160,6 +183,7 @@ export function createAgentRuntimeSnapshot(
     time: { frozenAt: input.time.frozenAt, scope: 'framework_visible' },
     runMode: input.runMode ?? 'pinned',
     ...(input.draftContentHash ? { draftContentHash: input.draftContentHash } : {}),
+    ...(input.agentConfigHash ? { agentConfigHash: input.agentConfigHash } : {}),
     envelope: 'customer',
   }
 }
@@ -212,6 +236,12 @@ export async function buildEffectiveAgentRuntimeFromSnapshot(args: {
     signal: args.signal,
     modelId: `${snapshot.agent.model.provider}:${snapshot.agent.model.model}`,
     hasProcedures: snapshot.procedures.length > 0,
+    // An agent-draft run (marked by a recorded `agentConfigHash`) reconstructs
+    // from the live Agent row so the re-resolved tools match the draft config the
+    // snapshot recorded; otherwise use the active version (its derived rows are
+    // kept fresh by the mention reconciler). Keyed off `agentConfigHash` — not
+    // `runMode`, which tracks only the PROCEDURE source and can diverge.
+    agentConfigSource: snapshot.agentConfigHash ? 'draft' : 'active',
     wrapTools: args.wrapTools,
     triggerContext: args.triggerContext,
   })

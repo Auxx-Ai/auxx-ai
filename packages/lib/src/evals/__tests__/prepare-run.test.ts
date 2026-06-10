@@ -18,6 +18,21 @@ vi.mock('../../cache', () => ({
   getCachedAgentById: vi.fn(),
 }))
 
+// Draft-mode agent-config hashing reads the Agent row directly; stub the query
+// chain (the rows are set per-test via `agentRowRef`). schema columns are only
+// used to build the (unexecuted) where clause, so a Proxy of empty objects suffices.
+const { agentRowRef } = vi.hoisted(() => ({
+  agentRowRef: { rows: [] as Record<string, unknown>[] },
+}))
+vi.mock('@auxx/database', () => ({
+  database: {
+    select: () => ({
+      from: () => ({ where: () => ({ limit: () => Promise.resolve(agentRowRef.rows) }) }),
+    }),
+  },
+  schema: { Agent: new Proxy({}, { get: () => ({}) }) },
+}))
+
 import { compileProcedure, getProcedureVersionById, readCompiled } from '../../agents/procedures'
 import { getAttachedProcedureDraft } from '../../agents/procedures/authoring/queries'
 import { buildEffectiveAgentRuntime } from '../../ai/agent-framework/effective-runtime'
@@ -84,13 +99,19 @@ beforeEach(() => {
   ]) {
     m.mockReset()
   }
+  agentRowRef.rows = []
   mockedRuntime.mockResolvedValue({
     tools: [],
     model: { provider: 'p', model: 'm' },
     utilityModel: { provider: 'p', model: 'mu' },
     agentConfig: { appAccounts: {}, toolRestrictions: null },
   })
-  mockedAgent.mockResolvedValue({ kind: 'internal', procedures: [] })
+  mockedAgent.mockResolvedValue({
+    kind: 'internal',
+    procedures: [],
+    activeVersionId: 'av1',
+    activeVersionNumber: 3,
+  })
   mockedGetVersion.mockResolvedValue(ok({ id: 'v1' }))
   mockedReadCompiled.mockReturnValue(PINNED_COMPILED)
 })
@@ -104,11 +125,25 @@ describe('prepareRunSnapshots — run mode', () => {
     expect(snap.draftContentHash).toBeUndefined()
     expect(snap.procedures).toEqual([{ id: 'p', versionId: 'v1', compiled: PINNED_COMPILED }])
     expect(mockedDraft).not.toHaveBeenCalled()
+    // Pinned runs record the active agent version; no draft config hash.
+    expect(snap.agent.versionId).toBe('av1')
+    expect(snap.agent.versionNumber).toBe(3)
+    expect(snap.agentConfigHash).toBeUndefined()
   })
 
   it('compiles and pins the draft in draft mode, stamping runMode + content hash', async () => {
     mockedDraft.mockResolvedValue(ok({ draftDoc: { type: 'doc', content: [] } }))
     mockedCompile.mockReturnValue({ compiled: DRAFT_COMPILED, contentHash: 'dhash', errors: [] })
+    agentRowRef.rows = [
+      {
+        prompt: {},
+        toolsets: [],
+        knowledge: [],
+        appAccounts: {},
+        toolRestrictions: {},
+        modelId: null,
+      },
+    ]
 
     const result = await prepare('draft')
     expect(result.isOk()).toBe(true)
@@ -117,6 +152,9 @@ describe('prepareRunSnapshots — run mode', () => {
     expect(snap.draftContentHash).toBe('dhash')
     // The pinned versionId remains the record-keeping anchor; the compiled graph is the draft's.
     expect(snap.procedures).toEqual([{ id: 'p', versionId: 'v1', compiled: DRAFT_COMPILED }])
+    // Draft runs stamp the row config hash and do NOT pin an agent version.
+    expect(snap.agentConfigHash).toBeDefined()
+    expect(snap.agent.versionId).toBeNull()
   })
 
   it('fails with DRAFT_COMPILE_FAILED carrying the structured CompileError[] when the draft does not compile', async () => {

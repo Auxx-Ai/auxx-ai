@@ -173,6 +173,14 @@ export interface CachedAgent {
   /** Invocation surface — `'internal'` (default) or `'chat'`. Immutable after creation. */
   kind: AgentKind
   mentionable: boolean
+  // ── Versioned behavior fields: the ACTIVE-VERSION view ──
+  // For a set-up agent these six fields reflect the published `AgentVersion`
+  // (`activeVersion.<field> ?? Agent.row.<field>` when never published). Every
+  // runtime consumer (`resolveAgentConfig`, worker dispatchers, chat runtime,
+  // procedure selection) is therefore version-pinned with zero call-site changes.
+  // The DRAFT view is NOT cached — authoring surfaces read the Agent row directly
+  // (`getAgentDetail`, `resolveAgentConfig(..., { source: 'draft' })`).
+  // See plans/agents/agent-versions/build-plan.md §4.1.
   /** Tiptap doc; empty object when no prompt has been authored. */
   prompt: Record<string, unknown>
   /** Per-agent toolset configuration. Mention-sourced entries are reconciled from the prompt. */
@@ -186,6 +194,10 @@ export interface CachedAgent {
 
   /** Per-agent model override in `provider:model` format; null = inherit. */
   modelId: string | null
+  /** The published version production runs; `null` while the agent is a pre-setup draft. */
+  activeVersionId: string | null
+  /** Number of {@link activeVersionId}; `null` when never published. */
+  activeVersionNumber: number | null
   /** ISO string when chat-driven setup completed; null while in setup mode. */
   setupCompletedAt: string | null
   /** ISO string when archived; null when active. */

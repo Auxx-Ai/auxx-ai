@@ -7,17 +7,24 @@ import {
   createAgent as createAgentService,
   deleteAgent as deleteAgentService,
   deleteDraftAgent,
+  discardAgentDraft,
   getAgentDetailByIdOrSlug,
   isAgentSlugTaken,
   listAgents,
+  listAgentVersions,
+  publishAgent,
+  renameAgentVersion,
+  restoreAgentVersion,
   setAgentToolBindings,
   updateAgent as updateAgentService,
 } from '@auxx/lib/agents'
 import { FeatureKey, FeaturePermissionService } from '@auxx/lib/permissions'
+import { getRealtimeService, publishAgentUpdated } from '@auxx/lib/realtime'
 import { createScopedLogger } from '@auxx/logger'
 import { TRPCError } from '@trpc/server'
 import { z } from 'zod'
 import { adminProcedure, createTRPCRouter } from '../trpc'
+import { unwrap } from '../unwrap'
 
 const logger = createScopedLogger('agent-router')
 
@@ -267,5 +274,115 @@ export const agentRouter = createTRPCRouter({
         agentId: input.agentId,
         bindings: input.bindings,
       })
+    }),
+
+  // ── Versions (draft / publish lifecycle) ──────────────────────────────
+  // Mirror the procedure version endpoints. The Agent row IS the draft;
+  // publishing snapshots its six behavior fields into a numbered AgentVersion.
+  // `getById` already returns `activeVersionId`/`hasUnpublishedChanges`/active
+  // `versionNumber` via `getAgentDetail`. See
+  // plans/agents/agent-versions/build-plan.md §6.
+
+  /** Snapshot the draft as a new version (or no-op republish). Human-only. */
+  publish: adminProcedure
+    .input(z.object({ agentId: z.string().min(1), label: z.string().max(120).optional() }))
+    .mutation(async ({ ctx, input }) => {
+      const { organizationId, userId } = ctx.session
+      if (!(await agentExistsInOrg(organizationId, input.agentId))) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Agent not found' })
+      }
+      const version = unwrap(
+        await publishAgent({
+          organizationId,
+          agentId: input.agentId,
+          editorId: userId,
+          label: input.label ?? null,
+        }),
+        'publish agent'
+      )
+      await publishAgentUpdated(getRealtimeService(), organizationId, { agentId: input.agentId })
+      return { versionId: version.id, versionNumber: version.versionNumber }
+    }),
+
+  /** Discard draft edits — restore the active version onto the row. */
+  discardChanges: adminProcedure
+    .input(z.object({ agentId: z.string().min(1) }))
+    .mutation(async ({ ctx, input }) => {
+      const { organizationId } = ctx.session
+      if (!(await agentExistsInOrg(organizationId, input.agentId))) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Agent not found' })
+      }
+      unwrap(
+        await discardAgentDraft({ organizationId, agentId: input.agentId }),
+        'discard agent draft'
+      )
+      await publishAgentUpdated(getRealtimeService(), organizationId, { agentId: input.agentId })
+      return { ok: true as const }
+    }),
+
+  /** Restore-as-draft: load a past version into the draft + mark dirty. */
+  restoreVersion: adminProcedure
+    .input(z.object({ agentId: z.string().min(1), toVersionId: z.string().min(1) }))
+    .mutation(async ({ ctx, input }) => {
+      const { organizationId } = ctx.session
+      if (!(await agentExistsInOrg(organizationId, input.agentId))) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Agent not found' })
+      }
+      unwrap(
+        await restoreAgentVersion({
+          organizationId,
+          agentId: input.agentId,
+          toVersionId: input.toVersionId,
+        }),
+        'restore agent version'
+      )
+      await publishAgentUpdated(getRealtimeService(), organizationId, { agentId: input.agentId })
+      return { ok: true as const }
+    }),
+
+  /** Rename a published version's label (annotation only). */
+  renameVersion: adminProcedure
+    .input(
+      z.object({
+        agentId: z.string().min(1),
+        versionId: z.string().min(1),
+        label: z.string().max(120).nullable(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { organizationId } = ctx.session
+      if (!(await agentExistsInOrg(organizationId, input.agentId))) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Agent not found' })
+      }
+      unwrap(
+        await renameAgentVersion({
+          organizationId,
+          agentId: input.agentId,
+          versionId: input.versionId,
+          label: input.label,
+        }),
+        'rename agent version'
+      )
+      return { ok: true as const }
+    }),
+
+  /** Published version history (newest first) with editor names. */
+  listVersions: adminProcedure
+    .input(z.object({ agentId: z.string().min(1) }))
+    .query(async ({ ctx, input }) => {
+      const rows = unwrap(
+        await listAgentVersions({
+          organizationId: ctx.session.organizationId,
+          agentId: input.agentId,
+        }),
+        'list agent versions'
+      )
+      return rows.map((row) => ({
+        id: row.id,
+        versionNumber: row.versionNumber,
+        label: row.label,
+        editorName: row.editorName,
+        createdAt: row.createdAt.toISOString(),
+      }))
     }),
 })

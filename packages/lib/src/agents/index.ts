@@ -1,6 +1,11 @@
 // packages/lib/src/agents/index.ts
 
 export {
+  type AgentConfigSnapshot,
+  hashAgentConfig,
+  snapshotAgentConfig,
+} from './agent-config-snapshot'
+export {
   type AgentScopeMode,
   type AgentScopeRemoveInput,
   type AgentScopeUpsertInput,
@@ -54,6 +59,15 @@ export {
   type ScheduledTriggerInput,
   type UpdateAgentTriggerInput,
 } from './agent-trigger-service'
+export {
+  type AgentVersionMeta,
+  discardAgentDraft,
+  listAgentVersions,
+  publishAgent,
+  publishAgentTx,
+  renameAgentVersion,
+  restoreAgentVersion,
+} from './agent-version-service'
 export {
   type BuildDmTriggerContextResult,
   buildDmTriggerContext,

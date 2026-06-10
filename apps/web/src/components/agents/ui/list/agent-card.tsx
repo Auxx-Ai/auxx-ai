@@ -25,7 +25,7 @@ interface AgentCardProps {
 
 export function AgentCard({ agent }: AgentCardProps) {
   const router = useRouter()
-  const { archiveAgent, unarchiveAgent, deleteAgent, discardDraft } = useAgentMutations()
+  const { archiveAgent, unarchiveAgent, deleteAgent, deleteSetupDraft } = useAgentMutations()
   const [confirm, ConfirmDialog] = useConfirm()
 
   const archived = agent.archivedAt != null
@@ -79,7 +79,7 @@ export function AgentCard({ agent }: AgentCardProps) {
       cancelText: 'Cancel',
       destructive: true,
     })
-    if (ok) await discardDraft(agent.id)
+    if (ok) await deleteSetupDraft(agent.id)
   }
 
   return (

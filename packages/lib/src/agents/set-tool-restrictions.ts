@@ -7,7 +7,7 @@ import {
   schema,
 } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { and, eq } from 'drizzle-orm'
+import { and, eq, sql } from 'drizzle-orm'
 import { onCacheEvent } from '../cache'
 import { BadRequestError, NotFoundError } from '../errors'
 import { getRealtimeService, publishAgentUpdated } from '../realtime'
@@ -52,7 +52,12 @@ export async function setAgentToolBindings(
   const now = new Date()
   const result = await db
     .update(schema.Agent)
-    .set({ toolRestrictions: bindings, updatedAt: now })
+    .set({
+      toolRestrictions: bindings,
+      // Versioned behavior field — mark dirty when a published baseline exists.
+      hasUnpublishedChanges: sql`${schema.Agent.activeVersionId} is not null`,
+      updatedAt: now,
+    })
     .where(and(eq(schema.Agent.id, agentId), eq(schema.Agent.organizationId, organizationId)))
     .returning({ id: schema.Agent.id })
 
