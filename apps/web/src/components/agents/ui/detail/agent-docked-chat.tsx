@@ -517,6 +517,8 @@ function ChatPanel({
           agentId={agentId}
           sessionType='kopilot'
           triggerKind='dm'
+          // Test the unpublished draft from the agent Chat tab (server admin-gated).
+          useDraft
           initialSessionId={initialSessionId}
         />
       </div>

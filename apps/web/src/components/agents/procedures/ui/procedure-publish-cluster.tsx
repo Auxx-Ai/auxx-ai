@@ -1,20 +1,11 @@
 // apps/web/src/components/agents/procedures/ui/procedure-publish-cluster.tsx
 'use client'
 
-import { Button } from '@auxx/ui/components/button'
-import { ButtonGroup, ButtonGroupSeparator } from '@auxx/ui/components/button-group'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@auxx/ui/components/dropdown-menu'
+import { DropdownMenuItem, DropdownMenuSeparator } from '@auxx/ui/components/dropdown-menu'
 import { useNavStack } from '@auxx/ui/components/nav-stack'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@auxx/ui/components/tooltip'
-import { cn } from '@auxx/ui/lib/utils'
-import { ChevronDown, History, Send, Trash2, Undo2 } from 'lucide-react'
+import { History, Trash2 } from 'lucide-react'
 import { useState } from 'react'
+import { PublishClusterShell } from '~/components/versioning/ui/publish-cluster-shell'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
 import { useProcedure } from '../hooks/use-procedure'
@@ -23,19 +14,19 @@ import { ProcedureVersionsDialog } from './procedure-versions-dialog'
 
 interface ProcedurePublishClusterProps {
   procedureId: string
-  /** Bumped after revert/discard so the editor canvas remounts onto the new draft. */
+  /** Bumped after restore/discard so the editor canvas remounts onto the new draft. */
   onReload?: () => void
 }
 
 /**
- * The procedure publish cluster — a trimmed `article-publish-cluster`. Derives a
- * three-state status pill (Draft / Live / Live·unsaved) from `meta.activeVersionId`
- * + `meta.hasUnpublishedChanges` and offers Publish / Publish-changes / Discard,
- * with a `⌄` menu for Version history + Delete (org-wide, blast-radius confirm).
- * No archive / unpublish / aiEnabled — procedures have a simpler lifecycle.
+ * Procedure publish cluster — a {@link PublishClusterShell} consumer. Derives a
+ * three-state status (Draft / Live / Live·unsaved) from `meta.activeVersionId` +
+ * `meta.hasUnpublishedChanges`, gates publish on a non-empty `whenToUse`, and
+ * offers Discard + a `⌄` menu (Version history + org-wide Delete with a
+ * blast-radius confirm). No archive/unpublish — procedures have a simpler
+ * lifecycle. See plans/agents/agent-versions/ui-plan.md §3.1.
  */
 export function ProcedurePublishCluster({ procedureId, onReload }: ProcedurePublishClusterProps) {
-  const [isMenuOpen, setIsMenuOpen] = useState(false)
   const [isVersionsOpen, setIsVersionsOpen] = useState(false)
   const [confirm, ConfirmDialog] = useConfirm()
   const { pop } = useNavStack()
@@ -48,9 +39,6 @@ export function ProcedurePublishCluster({ procedureId, onReload }: ProcedurePubl
   const isPublished = !!meta?.activeVersionId
   const hasUnsaved = !!meta?.hasUnpublishedChanges
   const whenToUseEmpty = (meta?.whenToUse ?? '').trim() === ''
-
-  const dotClass = isPublished ? (hasUnsaved ? 'bg-amber-500' : 'bg-emerald-500') : 'bg-slate-400'
-  const pillLabel = isPublished ? 'Live' : 'Draft'
 
   const handleDiscard = async () => {
     const ok = await confirm({
@@ -82,98 +70,24 @@ export function ProcedurePublishCluster({ procedureId, onReload }: ProcedurePubl
     if (success) pop()
   }
 
-  const publishLabel = 'Publish'
-  const publishBusy = isPublishing || isDeleting
-
   return (
     <>
-      <DropdownMenu open={isMenuOpen} onOpenChange={setIsMenuOpen}>
-        <ButtonGroup className='shrink-0'>
-          <Button
-            size='xs'
-            variant='outline'
-            className='gap-2 border-r-0'
-            onClick={() => setIsMenuOpen((prev) => !prev)}>
-            <span className={cn('inline-block size-2 rounded-full', dotClass)} />
-            {pillLabel}
-          </Button>
-
-          {(!isPublished || hasUnsaved) && (
-            <>
-              <ButtonGroupSeparator />
-              {whenToUseEmpty ? (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <span className='inline-flex'>
-                      <Button
-                        size='xs'
-                        variant='outline'
-                        className='rounded-none border-x-0'
-                        disabled>
-                        <Send /> {publishLabel}
-                      </Button>
-                    </span>
-                  </TooltipTrigger>
-                  <TooltipContent>Set "when to use" before publishing</TooltipContent>
-                </Tooltip>
-              ) : (
-                <Button
-                  size='xs'
-                  variant='outline'
-                  className='border-r-0'
-                  loading={isPublishing}
-                  loadingText='Publishing…'
-                  onClick={() => void publish(procedureId)}>
-                  <Send /> {publishLabel}
-                </Button>
-              )}
-            </>
-          )}
-
-          {isPublished && hasUnsaved && (
-            <>
-              <ButtonGroupSeparator />
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    size='xs'
-                    variant='outline'
-                    className='border-r-0 px-1.5'
-                    loading={isDiscarding}
-                    loadingText=''
-                    onClick={handleDiscard}
-                    aria-label='Discard changes'>
-                    <Undo2 />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>Discard changes</TooltipContent>
-              </Tooltip>
-            </>
-          )}
-
-          <ButtonGroupSeparator />
-          <DropdownMenuTrigger asChild>
-            <Button
-              size='xs'
-              variant='outline'
-              className='px-1.5'
-              disabled={publishBusy}
-              aria-label='Publish menu'>
-              <ChevronDown />
-            </Button>
-          </DropdownMenuTrigger>
-        </ButtonGroup>
-
-        <DropdownMenuContent align='end' className='w-56'>
-          <DropdownMenuItem onClick={() => setIsVersionsOpen(true)}>
-            <History /> Version history
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={handleDelete} variant='destructive'>
-            <Trash2 /> Delete
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
+      <PublishClusterShell
+        status={{ isPublished, hasUnsaved }}
+        publish={{
+          onClick: () => void publish(procedureId),
+          isPending: isPublishing,
+          disabledReason: whenToUseEmpty ? 'Set "when to use" before publishing' : undefined,
+        }}
+        discard={{ onClick: handleDiscard, isPending: isDiscarding }}>
+        <DropdownMenuItem onClick={() => setIsVersionsOpen(true)}>
+          <History /> Version history
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onClick={handleDelete} variant='destructive' disabled={isDeleting}>
+          <Trash2 /> Delete
+        </DropdownMenuItem>
+      </PublishClusterShell>
 
       <ProcedureVersionsDialog
         open={isVersionsOpen}

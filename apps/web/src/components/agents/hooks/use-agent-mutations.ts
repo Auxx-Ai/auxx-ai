@@ -34,9 +34,24 @@ interface UseAgentMutationsResult {
   archiveAgent: (id: string) => Promise<boolean>
   unarchiveAgent: (id: string) => Promise<boolean>
   deleteAgent: (id: string) => Promise<boolean>
-  discardDraft: (id: string) => Promise<boolean>
+  /**
+   * Hard-delete a pre-`completeAgentSetup` draft agent (the agents-list "Discard
+   * draft" item). NOT the version-draft action — that's {@link discardChanges}.
+   */
+  deleteSetupDraft: (id: string) => Promise<boolean>
+  /** Publish the agent's draft as a new version. */
+  publishAgent: (id: string, label?: string) => Promise<boolean>
+  /** Restore a past version into the draft (marks dirty; does not go live). */
+  restoreVersion: (id: string, toVersionId: string) => Promise<boolean>
+  /** Rename a published version's label. */
+  renameVersion: (agentId: string, versionId: string, label: string | null) => Promise<void>
+  /** Discard unpublished draft changes (restore the active version onto the row). */
+  discardChanges: (id: string) => Promise<boolean>
   isCreating: boolean
   isUpdating: boolean
+  isPublishing: boolean
+  isRestoring: boolean
+  isDiscarding: boolean
 }
 
 /**
@@ -48,8 +63,12 @@ export function useAgentMutations(): UseAgentMutationsResult {
   const utils = api.useUtils()
   const createMutation = api.agent.create.useMutation()
   const updateMutation = api.agent.update.useMutation()
-  const discardDraftMutation = api.agent.deleteDraft.useMutation()
+  const deleteSetupDraftMutation = api.agent.deleteDraft.useMutation()
   const deleteMutation = api.agent.delete.useMutation()
+  const publishMutation = api.agent.publish.useMutation()
+  const restoreVersionMutation = api.agent.restoreVersion.useMutation()
+  const renameVersionMutation = api.agent.renameVersion.useMutation()
+  const discardChangesMutation = api.agent.discardChanges.useMutation()
 
   const createAgent = useCallback<UseAgentMutationsResult['createAgent']>(
     async (input) => {
@@ -120,6 +139,10 @@ export function useAgentMutations(): UseAgentMutationsResult {
             prompt: patch.prompt as AgentDetail['prompt'],
             toolsets: reconciled.toolsets,
             knowledge: reconciled.knowledge,
+            // Keep the publish pill in sync on the autosave fast path: a prompt
+            // edit makes the draft dirty when a published baseline exists (the
+            // server sets the same flag). See ui-plan §2.1.
+            ...(prev.activeVersionId ? { hasUnpublishedChanges: true } : {}),
           }
         }
         // Splice BEFORE awaiting — the whole point is to take the autosave
@@ -169,9 +192,16 @@ export function useAgentMutations(): UseAgentMutationsResult {
       if (patch.modelId !== undefined) detailPatch.modelId = patch.modelId
       if (patch.mentionable !== undefined) detailPatch.mentionable = patch.mentionable
       if (patch.archivedAt !== undefined) detailPatch.archivedAt = patch.archivedAt
+      // Behavior-field edits (prompt/modelId) flip the dirty pill when a
+      // published baseline exists; identity edits (name/slug/description) don't.
+      const behaviorChanged = patch.prompt !== undefined || patch.modelId !== undefined
       const spliceDetail = (prev: AgentDetail | undefined): AgentDetail | undefined => {
         if (!prev) return prev
-        return { ...prev, ...detailPatch }
+        return {
+          ...prev,
+          ...detailPatch,
+          ...(behaviorChanged && prev.activeVersionId ? { hasUnpublishedChanges: true } : {}),
+        }
       }
       utils.agent.getById.setData({ agentId: id }, spliceDetail)
       if (slug && slug !== id) {
@@ -238,10 +268,10 @@ export function useAgentMutations(): UseAgentMutationsResult {
     [deleteMutation, utils.agent.list]
   )
 
-  const discardDraft = useCallback<UseAgentMutationsResult['discardDraft']>(
+  const deleteSetupDraft = useCallback<UseAgentMutationsResult['deleteSetupDraft']>(
     async (id) => {
       try {
-        await discardDraftMutation.mutateAsync({ agentId: id })
+        await deleteSetupDraftMutation.mutateAsync({ agentId: id })
         await utils.agent.list.invalidate()
         return true
       } catch (error) {
@@ -252,7 +282,81 @@ export function useAgentMutations(): UseAgentMutationsResult {
         return false
       }
     },
-    [discardDraftMutation, utils.agent.list]
+    [deleteSetupDraftMutation, utils.agent.list]
+  )
+
+  // Version mutations all refresh `agent.getById` (the pill + draft view) and
+  // `agent.list`; cross-client refresh rides the existing `agent:updated`
+  // realtime event. `renameVersion` touches only `agent.listVersions`.
+  const invalidateAgent = useCallback(
+    () => Promise.all([utils.agent.list.invalidate(), utils.agent.getById.invalidate()]),
+    [utils.agent.list, utils.agent.getById]
+  )
+
+  const publishAgent = useCallback<UseAgentMutationsResult['publishAgent']>(
+    async (id, label) => {
+      try {
+        await publishMutation.mutateAsync({ agentId: id, label })
+        await invalidateAgent()
+        return true
+      } catch (error) {
+        toastError({
+          title: 'Failed to publish agent',
+          description: error instanceof Error ? error.message : 'Unknown error occurred',
+        })
+        return false
+      }
+    },
+    [publishMutation, invalidateAgent]
+  )
+
+  const restoreVersion = useCallback<UseAgentMutationsResult['restoreVersion']>(
+    async (id, toVersionId) => {
+      try {
+        await restoreVersionMutation.mutateAsync({ agentId: id, toVersionId })
+        await invalidateAgent()
+        return true
+      } catch (error) {
+        toastError({
+          title: 'Failed to restore version',
+          description: error instanceof Error ? error.message : 'Unknown error occurred',
+        })
+        return false
+      }
+    },
+    [restoreVersionMutation, invalidateAgent]
+  )
+
+  const discardChanges = useCallback<UseAgentMutationsResult['discardChanges']>(
+    async (id) => {
+      try {
+        await discardChangesMutation.mutateAsync({ agentId: id })
+        await invalidateAgent()
+        return true
+      } catch (error) {
+        toastError({
+          title: 'Failed to discard changes',
+          description: error instanceof Error ? error.message : 'Unknown error occurred',
+        })
+        return false
+      }
+    },
+    [discardChangesMutation, invalidateAgent]
+  )
+
+  const renameVersion = useCallback<UseAgentMutationsResult['renameVersion']>(
+    async (agentId, versionId, label) => {
+      try {
+        await renameVersionMutation.mutateAsync({ agentId, versionId, label })
+        await utils.agent.listVersions.invalidate({ agentId })
+      } catch (error) {
+        toastError({
+          title: 'Failed to rename version',
+          description: error instanceof Error ? error.message : 'Unknown error occurred',
+        })
+      }
+    },
+    [renameVersionMutation, utils.agent.listVersions]
   )
 
   return {
@@ -261,8 +365,15 @@ export function useAgentMutations(): UseAgentMutationsResult {
     archiveAgent,
     unarchiveAgent,
     deleteAgent,
-    discardDraft,
+    deleteSetupDraft,
+    publishAgent,
+    restoreVersion,
+    renameVersion,
+    discardChanges,
     isCreating: createMutation.isPending,
     isUpdating: updateMutation.isPending,
+    isPublishing: publishMutation.isPending,
+    isRestoring: restoreVersionMutation.isPending,
+    isDiscarding: discardChangesMutation.isPending,
   }
 }

@@ -232,7 +232,7 @@ export async function updateDraftDoc(input: {
  * version AND its selection criteria (whenToUse/triggerExamples/ruleset) back
  * onto the procedure row, then clear `hasUnpublishedChanges`. With nothing
  * published yet there's no live snapshot to revert to, so we just clear the flag.
- * Sibling of {@link revertProcedure}, but it never repoints `activeVersionId` — a
+ * Sibling of {@link restoreProcedureVersion}, but it never repoints `activeVersionId` — a
  * dedicated discard reads cleaner than a self-targeted revert.
  */
 export async function discardProcedureDraft(input: {
@@ -332,12 +332,23 @@ export async function deleteProcedure(input: { organizationId: string; procedure
 
 // ── versions (history + revert + run-pin read) ──────────────────────────
 
-/** Published versions (versionNumber not null), newest first. */
+/**
+ * Published versions (versionNumber not null), newest first, with the editor's
+ * name joined (the `editorId → User` join the versions dialog now renders).
+ */
 export async function listProcedureVersions(input: { procedureId: string }) {
   const result = await fromDatabase(
     database
-      .select()
+      .select({
+        id: schema.ProcedureVersion.id,
+        versionNumber: schema.ProcedureVersion.versionNumber,
+        label: schema.ProcedureVersion.label,
+        editorId: schema.ProcedureVersion.editorId,
+        editorName: schema.User.name,
+        createdAt: schema.ProcedureVersion.createdAt,
+      })
       .from(schema.ProcedureVersion)
+      .leftJoin(schema.User, eq(schema.User.id, schema.ProcedureVersion.editorId))
       .where(
         and(
           eq(schema.ProcedureVersion.procedureId, input.procedureId),
@@ -349,6 +360,37 @@ export async function listProcedureVersions(input: { procedureId: string }) {
   )
   if (result.isErr()) return err(result.error)
   return ok(result.value)
+}
+
+/**
+ * Rename a published procedure version's `label` (annotation metadata —
+ * immutability exception, like the agent version `renameVersion`). Org-scoped.
+ */
+export async function renameProcedureVersion(input: {
+  organizationId: string
+  procedureId: string
+  versionId: string
+  label: string | null
+}) {
+  const { organizationId, procedureId, versionId, label } = input
+  const result = await fromDatabase(
+    database
+      .update(schema.ProcedureVersion)
+      .set({ label: label?.trim() || null })
+      .where(
+        and(
+          eq(schema.ProcedureVersion.id, versionId),
+          eq(schema.ProcedureVersion.procedureId, procedureId),
+          eq(schema.ProcedureVersion.organizationId, organizationId)
+        )
+      )
+      .returning({ id: schema.ProcedureVersion.id }),
+    'rename-procedure-version'
+  )
+  if (result.isErr()) return err(result.error)
+  if (result.value.length === 0)
+    return err({ code: 'VERSION_NOT_FOUND' as const, message: `Version not found: ${versionId}` })
+  return ok(undefined)
 }
 
 /**
@@ -467,11 +509,15 @@ export async function publishProcedure(input: {
 }
 
 /**
- * Repoint `activeVersionId` at an older published version, copy its `doc` into the
- * draft version, AND restore its selection criteria onto the procedure row (so the
- * draft working copy matches the version the user restored).
+ * Restore-as-draft (article semantic, unified across all three versioned
+ * entities — see plans/agents/agent-versions/ui-plan.md §4.1): copy an older
+ * published version's `doc` into the draft version AND its selection criteria
+ * onto the `Procedure` row, then set `hasUnpublishedChanges = true`. The active
+ * version is **NOT** repointed — nothing goes live until the user publishes.
+ * (Formerly `revertProcedure`, which repointed `activeVersionId` immediately
+ * while its confirm copy falsely promised "publish to make it live".)
  */
-export async function revertProcedure(input: {
+export async function restoreProcedureVersion(input: {
   organizationId: string
   procedureId: string
   toVersionId: string
@@ -500,11 +546,11 @@ export async function revertProcedure(input: {
       await tx
         .update(schema.Procedure)
         .set({
-          activeVersionId: toVersionId,
+          // activeVersionId deliberately untouched — restore-as-draft.
           whenToUse: target.whenToUse,
           triggerExamples: target.triggerExamples,
           ruleset: target.ruleset,
-          hasUnpublishedChanges: false,
+          hasUnpublishedChanges: true,
           updatedAt: new Date(),
         })
         .where(eq(schema.Procedure.id, procedureId))
@@ -516,7 +562,7 @@ export async function revertProcedure(input: {
           .where(eq(schema.ProcedureVersion.id, procedure.draftVersionId))
       }
     }),
-    'revert-procedure'
+    'restore-procedure-version'
   )
   if (result.isErr()) return err(result.error)
   return ok(undefined)

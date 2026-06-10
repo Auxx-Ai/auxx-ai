@@ -8,11 +8,17 @@ import {
   type Transaction,
 } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { eq } from 'drizzle-orm'
+import { eq, sql } from 'drizzle-orm'
 import { onCacheEvent } from '../cache'
 import { getRealtimeService, publishAgentUpdated } from '../realtime'
 
 const logger = createScopedLogger('agent-scope-service')
+
+/**
+ * Mark the draft dirty, but only when an active version exists to be dirty
+ * against. See plans/agents/agent-versions/build-plan.md §2.1.
+ */
+const MARK_DIRTY_IF_PUBLISHED = sql`${schema.Agent.activeVersionId} is not null`
 
 export type AgentScopeMode = 'include_descendants' | 'include_one' | 'exclude'
 
@@ -79,7 +85,11 @@ export async function upsertAgentScopeRow(
     const merged = idx >= 0 ? current.map((k, i) => (i === idx ? next : k)) : [...current, next]
     await tx
       .update(schema.Agent)
-      .set({ knowledge: merged, updatedAt: new Date() })
+      .set({
+        knowledge: merged,
+        hasUnpublishedChanges: MARK_DIRTY_IF_PUBLISHED,
+        updatedAt: new Date(),
+      })
       .where(eq(schema.Agent.id, input.agentId))
   })
   await fireAgentUpdated(organizationId, input.agentId)
@@ -107,7 +117,11 @@ export async function removeAgentScopeRow(
     const merged = current.filter((_, i) => i !== idx)
     await tx
       .update(schema.Agent)
-      .set({ knowledge: merged, updatedAt: new Date() })
+      .set({
+        knowledge: merged,
+        hasUnpublishedChanges: MARK_DIRTY_IF_PUBLISHED,
+        updatedAt: new Date(),
+      })
       .where(eq(schema.Agent.id, input.agentId))
   })
   await fireAgentUpdated(organizationId, input.agentId)
@@ -154,7 +168,11 @@ export async function batchSetAgentResourceScopes(
     }
     await tx
       .update(schema.Agent)
-      .set({ knowledge: next, updatedAt: new Date() })
+      .set({
+        knowledge: next,
+        hasUnpublishedChanges: MARK_DIRTY_IF_PUBLISHED,
+        updatedAt: new Date(),
+      })
       .where(eq(schema.Agent.id, agentId))
   })
 

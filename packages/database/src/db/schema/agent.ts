@@ -222,6 +222,26 @@ export const Agent = pgTable(
     modelId: text(),
 
     /**
+     * Pointer into {@link AgentVersion} — the published config production runs.
+     * Nullable with NO DB-level FK (same circularity rationale as
+     * `Procedure.activeVersionId`); `null` = never published (pre-setup draft).
+     * The Agent row itself is the draft working copy — there is deliberately no
+     * `draftVersionId` (see plans/agents/agent-versions/build-plan.md, the
+     * convention rule). `completeAgentSetup` publishes v1, so every set-up agent
+     * always has an active version.
+     */
+    activeVersionId: text(),
+
+    /**
+     * True when the draft (this row's behavior fields) has diverged from the
+     * active {@link AgentVersion}. Set by user-facing behavior mutations
+     * (prompt/toolsets/knowledge/appAccounts/toolRestrictions/modelId);
+     * identity/lifecycle edits and the mention reconciler never set it.
+     * Cleared on publish/discard. Only meaningful while `activeVersionId` is set.
+     */
+    hasUnpublishedChanges: boolean().notNull().default(false),
+
+    /**
      * Optional identity/presentation bag — see `AgentConfig` above. Holds
      * fields that don't live on User (`color`, `iconId`) plus pre-setup
      * values for fields that eventually move to User (`name`,

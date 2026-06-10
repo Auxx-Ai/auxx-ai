@@ -12,6 +12,7 @@ import {
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@auxx/ui/components/tooltip'
+import { formatRelativeTime } from '@auxx/utils'
 import { Check, ChevronDown, GitBranch, Loader2 } from 'lucide-react'
 import { useState } from 'react'
 import { api } from '~/trpc/react'
@@ -45,20 +46,6 @@ function modeLabel(mode: PreviewMode, activeVersionLabel: string | null): string
   return activeVersionLabel
     ? `v${mode.versionNumber} — ${activeVersionLabel}`
     : `v${mode.versionNumber}`
-}
-
-function relativeTime(date: Date | string): string {
-  const ts = typeof date === 'string' ? new Date(date) : date
-  const diff = Date.now() - ts.getTime()
-  const sec = Math.round(diff / 1000)
-  const min = Math.round(sec / 60)
-  const hr = Math.round(min / 60)
-  const day = Math.round(hr / 24)
-  if (sec < 60) return 'just now'
-  if (min < 60) return `${min}m ago`
-  if (hr < 24) return `${hr}h ago`
-  if (day < 7) return `${day}d ago`
-  return ts.toLocaleDateString()
 }
 
 function isHistorical(mode: PreviewMode): mode is { versionNumber: number } {
@@ -166,7 +153,7 @@ export function PreviewVersionPicker({
                   ) : null}
                 </div>
                 <span className='ml-2 shrink-0 text-xs text-muted-foreground'>
-                  {relativeTime(v.createdAt)}
+                  {formatRelativeTime(v.createdAt, true)}
                 </span>
               </DropdownMenuItem>
             )

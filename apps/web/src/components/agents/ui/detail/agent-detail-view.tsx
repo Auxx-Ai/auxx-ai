@@ -13,10 +13,11 @@ import { useMedia } from '~/hooks/use-media'
 import { useDockStore } from '~/stores/dock-store'
 import type { AgentDetail } from '../../store/agent-store'
 import { AutosaveIndicator, type AutosaveState } from '../shared/autosave-indicator'
-import { AgentActionsMenu } from './agent-actions-menu'
 import { AgentBreadcrumbSwitcher } from './agent-breadcrumb-switcher'
 import { AgentDetailTabs } from './agent-detail-tabs'
 import { AgentDockedChat } from './agent-docked-chat'
+import { AgentPublishCluster } from './agent-publish-cluster'
+import { AgentSetupDiscardButton } from './agent-setup-discard-button'
 import { AgentSetupMode } from './setup/agent-setup-mode'
 
 interface AgentDetailViewProps {
@@ -38,13 +39,17 @@ export function AgentDetailView({ agent }: AgentDetailViewProps) {
         action={
           <div className='flex items-center gap-2'>
             <AutosaveIndicator state={autosave} />
-            <AgentActionsMenu
-              agent={agent}
-              onSavingChange={(saving) =>
-                setAutosave(saving ? { kind: 'saving' } : { kind: 'saved', at: Date.now() })
-              }
-              onSaved={() => setAutosave({ kind: 'saved', at: Date.now() })}
-            />
+            {agent.setupCompletedAt != null ? (
+              <AgentPublishCluster
+                agentId={agent.id}
+                onSavingChange={(saving) =>
+                  setAutosave(saving ? { kind: 'saving' } : { kind: 'saved', at: Date.now() })
+                }
+                onSaved={() => setAutosave({ kind: 'saved', at: Date.now() })}
+              />
+            ) : (
+              <AgentSetupDiscardButton agentId={agent.id} name={agent.name} />
+            )}
           </div>
         }>
         <MainPageBreadcrumb>

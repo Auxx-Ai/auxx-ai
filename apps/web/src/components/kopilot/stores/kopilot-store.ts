@@ -133,6 +133,12 @@ export interface KopilotRequest {
    */
   triggerKind?: 'dm'
   /**
+   * Agent Chat-tab test-run flag: resolve the agent's unpublished draft config
+   * instead of the active version. Honored only for admins on a non-builder
+   * agent session (server-gated). See plans/agents/agent-versions/build-plan.md §4.2.
+   */
+  useDraft?: boolean
+  /**
    * Async-task continuation: the route rewrites `message` from DB truth and
    * stamps the persisted user message. Requires `task`.
    */

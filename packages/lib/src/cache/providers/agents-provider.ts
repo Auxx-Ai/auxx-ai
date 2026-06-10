@@ -55,9 +55,21 @@ export const agentsProvider: CacheProvider<CachedAgent[]> = {
           updatedAt: schema.Agent.updatedAt,
           userName: schema.User.name,
           userAvatarAssetId: schema.User.avatarAssetId,
+          // Active-version view (LEFT join — pre-setup drafts have no active
+          // version and must stay listable for the builder UI). When present,
+          // these published columns override the row's draft behavior fields.
+          activeVersionId: schema.Agent.activeVersionId,
+          activeVersionNumber: schema.AgentVersion.versionNumber,
+          versionPrompt: schema.AgentVersion.prompt,
+          versionToolsets: schema.AgentVersion.toolsets,
+          versionKnowledge: schema.AgentVersion.knowledge,
+          versionAppAccounts: schema.AgentVersion.appAccounts,
+          versionToolRestrictions: schema.AgentVersion.toolRestrictions,
+          versionModelId: schema.AgentVersion.modelId,
         })
         .from(schema.Agent)
         .leftJoin(schema.User, eq(schema.User.id, schema.Agent.userId))
+        .leftJoin(schema.AgentVersion, eq(schema.AgentVersion.id, schema.Agent.activeVersionId))
         .where(eq(schema.Agent.organizationId, orgId)),
       db
         .select({
@@ -183,6 +195,13 @@ export const agentsProvider: CacheProvider<CachedAgent[]> = {
         const agentTriggers = triggersByAgent.get(row.id) ?? []
         const dm = agentTriggers.find((t) => t.kind === 'dm')
 
+        // Active-version view: when the agent has an active version, ALL six
+        // behavior fields come from that version (including a null `modelId`,
+        // which means "inherit" — a per-field `?? row.modelId` would wrongly
+        // resurrect the draft's value). Pre-setup drafts fall back to the row.
+        const activeVersionId = row.activeVersionId ?? null
+        const hasActiveVersion = activeVersionId !== null
+
         return {
           id: row.id,
           userId: row.userId,
@@ -192,12 +211,22 @@ export const agentsProvider: CacheProvider<CachedAgent[]> = {
           description: row.description ?? null,
           kind: row.kind,
           avatarUrl,
-          prompt: (row.prompt ?? {}) as Record<string, unknown>,
-          toolsets: row.toolsets ?? [],
-          knowledge: row.knowledge ?? [],
-          appAccounts: row.appAccounts ?? {},
-          toolRestrictions: row.toolRestrictions ?? {},
-          modelId: row.modelId ?? null,
+          prompt: ((hasActiveVersion ? row.versionPrompt : row.prompt) ?? {}) as Record<
+            string,
+            unknown
+          >,
+          toolsets: ((hasActiveVersion ? row.versionToolsets : row.toolsets) ??
+            []) as CachedAgent['toolsets'],
+          knowledge: ((hasActiveVersion ? row.versionKnowledge : row.knowledge) ??
+            []) as CachedAgent['knowledge'],
+          appAccounts: ((hasActiveVersion ? row.versionAppAccounts : row.appAccounts) ??
+            {}) as CachedAgent['appAccounts'],
+          toolRestrictions: ((hasActiveVersion
+            ? row.versionToolRestrictions
+            : row.toolRestrictions) ?? {}) as CachedAgent['toolRestrictions'],
+          modelId: (hasActiveVersion ? row.versionModelId : row.modelId) ?? null,
+          activeVersionId,
+          activeVersionNumber: row.activeVersionNumber ?? null,
           mentionable: row.mentionable,
           setupCompletedAt: row.setupCompletedAt ? row.setupCompletedAt.toISOString() : null,
           archivedAt: row.archivedAt ? row.archivedAt.toISOString() : null,

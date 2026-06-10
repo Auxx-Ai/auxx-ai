@@ -29,8 +29,13 @@ export interface UseProcedureMutationsResult {
   /** Persist the heavy draft doc — no optimistic store write (the editor owns the doc). */
   saveDoc: (id: string, doc: Record<string, unknown>) => Promise<void>
   publish: (id: string) => Promise<void>
-  /** Repoint to an older version + reload its doc into the draft. Resolves `true` on success. */
-  revert: (id: string, toVersionId: string) => Promise<boolean>
+  /**
+   * Restore an older version into the draft + mark dirty (restore-as-draft —
+   * the active version is unchanged until publish). Resolves `true` on success.
+   */
+  restoreVersion: (id: string, toVersionId: string) => Promise<boolean>
+  /** Rename a published version's label. */
+  renameVersion: (id: string, versionId: string, label: string | null) => Promise<void>
   /** Drop draft edits back to the live version. Resolves `true` on success. */
   discardDraft: (id: string) => Promise<boolean>
   /** Delete the procedure org-wide (cascade-detaches every agent). Resolves `true` on success. */
@@ -64,7 +69,8 @@ export function useProcedureMutations({
   const utils = api.useUtils()
   const updateProcedure = api.procedure.update.useMutation()
   const publishMutation = api.procedure.publish.useMutation()
-  const revertMutation = api.procedure.revert.useMutation()
+  const restoreVersionMutation = api.procedure.restoreVersion.useMutation()
+  const renameVersionMutation = api.procedure.renameVersion.useMutation()
   const discardMutation = api.procedure.discardDraft.useMutation()
   const deleteMutation = api.procedure.delete.useMutation()
 
@@ -79,8 +85,10 @@ export function useProcedureMutations({
   updateAsyncRef.current = updateProcedure.mutateAsync
   const publishAsyncRef = useRef(publishMutation.mutateAsync)
   publishAsyncRef.current = publishMutation.mutateAsync
-  const revertAsyncRef = useRef(revertMutation.mutateAsync)
-  revertAsyncRef.current = revertMutation.mutateAsync
+  const restoreVersionAsyncRef = useRef(restoreVersionMutation.mutateAsync)
+  restoreVersionAsyncRef.current = restoreVersionMutation.mutateAsync
+  const renameVersionAsyncRef = useRef(renameVersionMutation.mutateAsync)
+  renameVersionAsyncRef.current = renameVersionMutation.mutateAsync
   const discardAsyncRef = useRef(discardMutation.mutateAsync)
   discardAsyncRef.current = discardMutation.mutateAsync
   const deleteAsyncRef = useRef(deleteMutation.mutateAsync)
@@ -174,26 +182,40 @@ export function useProcedureMutations({
     }
   }, [])
 
-  const revert = useCallback<UseProcedureMutationsResult['revert']>(async (id, toVersionId) => {
-    try {
-      await revertAsyncRef.current({ id, toVersionId })
-      getProcedureStoreState().applyMetadataFromServer(id, {
-        activeVersionId: toVersionId,
-        hasUnpublishedChanges: false,
-      })
-      // Await the refetch so the rewritten draft doc is in cache BEFORE the
-      // caller remounts the editor (the reload token) — otherwise the remount
-      // re-seeds from the stale cached doc. listVersions/agentProcedure can
-      // settle in the background.
-      await utilsRef.current.procedure.getById.invalidate({ id })
-      utilsRef.current.procedure.listVersions.invalidate({ id })
-      utilsRef.current.agentProcedure.list.invalidate()
-      return true
-    } catch (err) {
-      toastError({ title: 'Revert failed', description: (err as Error).message })
-      return false
-    }
-  }, [])
+  const restoreVersion = useCallback<UseProcedureMutationsResult['restoreVersion']>(
+    async (id, toVersionId) => {
+      try {
+        await restoreVersionAsyncRef.current({ id, toVersionId })
+        // Restore-as-draft: the active version is unchanged; the draft is now
+        // dirty (it holds the restored doc/criteria) until the user publishes.
+        getProcedureStoreState().applyMetadataFromServer(id, { hasUnpublishedChanges: true })
+        // Await the refetch so the rewritten draft doc is in cache BEFORE the
+        // caller remounts the editor (the reload token) — otherwise the remount
+        // re-seeds from the stale cached doc. listVersions/agentProcedure can
+        // settle in the background.
+        await utilsRef.current.procedure.getById.invalidate({ id })
+        utilsRef.current.procedure.listVersions.invalidate({ id })
+        utilsRef.current.agentProcedure.list.invalidate()
+        return true
+      } catch (err) {
+        toastError({ title: 'Restore failed', description: (err as Error).message })
+        return false
+      }
+    },
+    []
+  )
+
+  const renameVersion = useCallback<UseProcedureMutationsResult['renameVersion']>(
+    async (id, versionId, label) => {
+      try {
+        await renameVersionAsyncRef.current({ id, versionId, label })
+        utilsRef.current.procedure.listVersions.invalidate({ id })
+      } catch (err) {
+        toastError({ title: 'Rename failed', description: (err as Error).message })
+      }
+    },
+    []
+  )
 
   const discardDraft = useCallback<UseProcedureMutationsResult['discardDraft']>(async (id) => {
     try {
@@ -240,7 +262,8 @@ export function useProcedureMutations({
     patchMeta,
     saveDoc,
     publish,
-    revert,
+    restoreVersion,
+    renameVersion,
     discardDraft,
     deleteProcedure,
     isPublishing: publishMutation.isPending,

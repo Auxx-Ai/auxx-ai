@@ -58,6 +58,13 @@ export interface BuildEffectiveAgentRuntimeArgs {
   /** Present iff kicked off by an AgentTrigger — renders the autonomous-run prompt section. */
   triggerContext?: TriggerContext
   /**
+   * Which agent behavior view to run (build-plan §4.2). `'active'` (default) is
+   * the published version production runs; `'draft'` resolves the live Agent row
+   * (builder Chat tab, draft eval runs). Master Kopilot (`agentId === null`)
+   * ignores this.
+   */
+  agentConfigSource?: 'active' | 'draft'
+  /**
    * Eval-only seam: transform the resolved effective toolset before it is baked
    * into the domain config — the Simulation engine wraps each tool with its mock
    * resolver here so the domain agents execute mocks, not real backends. Omitted
@@ -90,7 +97,12 @@ export function parseProviderModel(
  */
 async function resolveModelDefaults(
   domain: AgentRuntimeDomain,
-  args: { organizationId: string; agentId: string | null; modelId?: string }
+  args: {
+    organizationId: string
+    agentId: string | null
+    modelId?: string
+    source?: 'active' | 'draft'
+  }
 ): Promise<{ provider?: string; model?: string }> {
   if (domain === 'builder') {
     return { provider: BUILDER_MODEL.provider, model: BUILDER_MODEL.model }
@@ -103,7 +115,14 @@ async function resolveModelDefaults(
     return parsed ? { provider: parsed.provider, model: parsed.model } : {}
   }
 
-  const agentConfigForModel = await resolveAgentConfig(args.organizationId, args.agentId)
+  const agentConfigForModel = await resolveAgentConfig(
+    args.organizationId,
+    args.agentId,
+    undefined,
+    {
+      source: args.source ?? 'active',
+    }
+  )
   const fromConfig = parseProviderModel(agentConfigForModel.modelId)
   if (fromConfig) return { provider: fromConfig.provider, model: fromConfig.model }
 
@@ -129,10 +148,13 @@ export async function buildEffectiveAgentRuntime(
 ): Promise<EffectiveAgentRuntime> {
   const { organizationId, userId, sessionId, agentId, domain, signal, hasProcedures } = args
 
+  const source = args.agentConfigSource ?? 'active'
+
   const defaults = await resolveModelDefaults(domain, {
     organizationId,
     agentId,
     modelId: args.modelId,
+    source,
   })
 
   const getToolDeps = createToolDepsFactory({ organizationId, userId, sessionId, signal })
@@ -154,7 +176,7 @@ export async function buildEffectiveAgentRuntime(
     })
   )
 
-  const agentConfig = await resolveAgentConfig(organizationId, agentId)
+  const agentConfig = await resolveAgentConfig(organizationId, agentId, undefined, { source })
   const resolvedPage = args.page ?? '__none__'
   const filteredTools = filterToolsByToolsets(registry.getTools(resolvedPage), agentConfig)
   // Mount procedure-control tools when this agent has procedures — inert without

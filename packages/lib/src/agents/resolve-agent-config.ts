@@ -1,7 +1,8 @@
 // packages/lib/src/agents/resolve-agent-config.ts
 
 import type { Database } from '@auxx/database'
-import { database as defaultDb } from '@auxx/database'
+import { database as defaultDb, schema } from '@auxx/database'
+import { and, eq } from 'drizzle-orm'
 import { loadMasterKopilotSettings } from '../ai/kopilot/load-master-settings'
 import { getCachedAgents } from '../cache/org-cache-helpers'
 import type { AgentToolsetConfig } from './agent-toolset-types'
@@ -53,12 +54,19 @@ export interface ResolvedAgentConfig {
  * org-scoped `kopilot.*` settings (with catalog defaults). Agent sessions
  * read the cached Agent row; toolsets live on the row itself (no DB round trip).
  *
+ * `opts.source` selects the agent behavior view (build-plan §4.2):
+ *  - `'active'` (default): the cached active-version view — what production runs.
+ *  - `'draft'`: the live Agent row, read directly from the DB (authoring path;
+ *    the draft view is deliberately not cached). Identity fields still resolve
+ *    through the same cache fallbacks.
+ *
  * Throws if the agent does not exist in the org, or if it has been archived.
  */
 export async function resolveAgentConfig(
   orgId: string,
   agentId: string | null,
-  _db: Database = defaultDb as Database
+  db: Database = defaultDb as Database,
+  opts?: { source?: 'active' | 'draft' }
 ): Promise<ResolvedAgentConfig> {
   if (agentId === null) {
     const [master, catalog] = await Promise.all([
@@ -85,7 +93,39 @@ export async function resolveAgentConfig(
     throw new Error(`Agent not found in org ${orgId}: ${agentId}`)
   }
 
-  const toolsets = agent.toolsets
+  // Behavior fields default to the cached active-version view; in draft mode
+  // overlay them with a direct Agent-row read (identity stays cache-resolved).
+  let behavior = {
+    prompt: agent.prompt as Record<string, unknown>,
+    toolsets: agent.toolsets,
+    appAccounts: agent.appAccounts ?? {},
+    toolRestrictions: (agent.toolRestrictions ?? {}) as ToolBindingMap,
+    modelId: agent.modelId,
+  }
+  if (opts?.source === 'draft') {
+    const [row] = await db
+      .select({
+        prompt: schema.Agent.prompt,
+        toolsets: schema.Agent.toolsets,
+        appAccounts: schema.Agent.appAccounts,
+        toolRestrictions: schema.Agent.toolRestrictions,
+        modelId: schema.Agent.modelId,
+      })
+      .from(schema.Agent)
+      .where(and(eq(schema.Agent.id, agentId), eq(schema.Agent.organizationId, orgId)))
+      .limit(1)
+    if (row) {
+      behavior = {
+        prompt: (row.prompt ?? {}) as Record<string, unknown>,
+        toolsets: row.toolsets ?? [],
+        appAccounts: row.appAccounts ?? {},
+        toolRestrictions: (row.toolRestrictions ?? {}) as ToolBindingMap,
+        modelId: row.modelId ?? null,
+      }
+    }
+  }
+
+  const toolsets = behavior.toolsets
     .filter((t) => t.enabled)
     .map((t) => {
       const config = (t.config ?? {}) as AgentToolsetConfig
@@ -103,14 +143,14 @@ export async function resolveAgentConfig(
     // honest fallback.
     name: agent.name ?? 'Untitled agent',
     userId: agent.userId,
-    prompt: agent.prompt,
+    prompt: behavior.prompt,
     description: agent.description,
     toolsets,
-    appAccounts: agent.appAccounts ?? {},
+    appAccounts: behavior.appAccounts,
     // The DB stores `ref` structurally (string | string[]); the runtime narrows
     // it to a `VarRef`.
-    toolRestrictions: (agent.toolRestrictions ?? {}) as ToolBindingMap,
-    modelId: agent.modelId,
+    toolRestrictions: behavior.toolRestrictions,
+    modelId: behavior.modelId,
   }
 }
 

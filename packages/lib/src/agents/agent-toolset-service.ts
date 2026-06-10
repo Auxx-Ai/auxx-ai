@@ -10,10 +10,18 @@ import {
   type Transaction,
 } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { eq } from 'drizzle-orm'
+import { eq, sql } from 'drizzle-orm'
 import { onCacheEvent } from '../cache'
 import { getRealtimeService, publishAgentUpdated } from '../realtime'
 import type { AgentToolsetConfig } from './agent-toolset-types'
+
+/**
+ * Mark the draft dirty, but only when an active version exists to be dirty
+ * against (pre-setup drafts have no published baseline). Reused by every
+ * toolset write below. See plans/agents/agent-versions/build-plan.md §2.1.
+ */
+const MARK_DIRTY_IF_PUBLISHED = sql`${schema.Agent.activeVersionId} is not null`
+
 import { getOrgToolsetCatalog } from './toolset-catalog'
 
 const logger = createScopedLogger('agent-toolset-service')
@@ -187,6 +195,7 @@ export async function updateAgentToolset(
       .set({
         toolsets: next,
         ...(nextAppAccounts === row.appAccounts ? {} : { appAccounts: nextAppAccounts }),
+        hasUnpublishedChanges: MARK_DIRTY_IF_PUBLISHED,
         updatedAt: new Date(),
       })
       .where(eq(schema.Agent.id, agentId))
@@ -233,6 +242,7 @@ export async function batchUpdateAgentToolsets(
       .set({
         toolsets: next,
         ...(nextAppAccounts === row.appAccounts ? {} : { appAccounts: nextAppAccounts }),
+        hasUnpublishedChanges: MARK_DIRTY_IF_PUBLISHED,
         updatedAt: new Date(),
       })
       .where(eq(schema.Agent.id, agentId))

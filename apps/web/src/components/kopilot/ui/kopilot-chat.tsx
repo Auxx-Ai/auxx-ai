@@ -44,6 +44,13 @@ export interface KopilotChatProps {
    */
   triggerKind?: 'dm'
   /**
+   * Agent Chat-tab test-run flag — sends `useDraft: true` so the run resolves the
+   * agent's unpublished draft config (server admin-gated). Only the agent detail
+   * Chat tab sets this; composer DMs to an agent leave it off (they run the live
+   * version). See plans/agents/agent-versions/build-plan.md §4.2.
+   */
+  useDraft?: boolean
+  /**
    * If set AND `initialSessionId` is null, this text is auto-submitted as the
    * first user turn after mount — same path as clicking an `autoSubmit`
    * suggestion chip, no chip rendered. Used by the agent builder to fire a
@@ -60,6 +67,7 @@ export function KopilotChat({
   agentId,
   sessionType,
   triggerKind,
+  useDraft,
   initialMessage,
 }: KopilotChatProps) {
   const activeSessionId = useKopilotStore((s) => s.activeSessionId)
@@ -143,8 +151,9 @@ export function KopilotChat({
       ...(agentId ? { agentId } : {}),
       ...(sessionType ? { sessionType } : {}),
       ...(triggerKind ? { triggerKind } : {}),
+      ...(useDraft ? { useDraft: true } : {}),
     }),
-    [agentId, sessionType, triggerKind]
+    [agentId, sessionType, triggerKind, useDraft]
   )
 
   const handleSend = useCallback(
