@@ -5,6 +5,7 @@
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { useToolAppResolver } from '~/components/kopilot/hooks/use-tool-app-resolver'
+import { proseTableComponents } from '~/components/kopilot/ui/messages/prose-table'
 import { ToolStatusPill } from '~/components/kopilot/ui/messages/tool-status-pill'
 import { SparkleIcon } from '~/components/kopilot/ui/sparkle-icon'
 import type { Run } from './eval-trace-grouping'
@@ -35,7 +36,9 @@ export function EvalAgentMessage({ runs }: { runs: Run[] }) {
               <div
                 key={run.id}
                 className='kopilot-prose w-fit max-w-[90%] rounded-r-xl rounded-bl rounded-tl-xl border bg-card px-3 py-2 text-sm/5 shadow-sm'>
-                <Markdown remarkPlugins={[remarkGfm]}>{run.text}</Markdown>
+                <Markdown remarkPlugins={[remarkGfm]} components={proseTableComponents}>
+                  {run.text}
+                </Markdown>
               </div>
             )
           }

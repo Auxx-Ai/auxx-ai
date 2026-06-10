@@ -124,13 +124,22 @@ interface SplitOpts {
  * Split the currently-displayed string into a stable markdown prefix and a
  * trailing window of up to `tailWords` words for per-word animation. Holds the
  * tail empty while inside an unclosed ```auxx:` fence so partial JSON stays in
- * the prefix where the code-block renderer can show a partial card.
+ * the prefix where the code-block renderer can show a partial card, and
+ * whenever the tail would contain a GFM table row — the tail renders as raw
+ * spans outside the markdown tree, so table text in it would show as literal
+ * pipe characters below the styled table.
  */
 export function splitAtHorizon(displayed: string, opts?: SplitOpts): StreamSplit {
   const tailWords = opts?.tailWords ?? 12
 
-  if (hasOpenAuxxFence(displayed)) {
-    return { prefix: displayed, tail: '', prefixWordCount: countWords(displayed) }
+  const allPrefix: StreamSplit = {
+    prefix: displayed,
+    tail: '',
+    prefixWordCount: countWords(displayed),
+  }
+
+  if (hasOpenAuxxFence(displayed) || endsInsideGfmTable(displayed)) {
+    return allPrefix
   }
 
   const wordPositions: number[] = []
@@ -142,16 +151,35 @@ export function splitAtHorizon(displayed: string, opts?: SplitOpts): StreamSplit
 
   const total = wordPositions.length
   if (total <= tailWords) {
+    if (TABLE_LINE_RE.test(displayed)) return allPrefix
     return { prefix: '', tail: displayed, prefixWordCount: 0 }
   }
 
   const splitIdx = total - tailWords
   const splitAt = wordPositions[splitIdx]!
+  const tail = displayed.slice(splitAt)
+  // A table ended fewer than `tailWords` words ago — keep its rows out of the
+  // raw tail until enough prose has accumulated after it.
+  if (TABLE_LINE_RE.test(tail)) return allPrefix
   return {
     prefix: displayed.slice(0, splitAt),
-    tail: displayed.slice(splitAt),
+    tail,
     prefixWordCount: splitIdx,
   }
+}
+
+/** Matches a line that begins a GFM table row (start-of-string or after \n). */
+const TABLE_LINE_RE = /(^|\n)\s*\|/
+
+/**
+ * Whether the displayed string currently ends inside a GFM table: its last
+ * non-empty line is a table row. Trailing whitespace is ignored so the hold
+ * survives the newline gap between one row's closing `|` and the next row.
+ */
+function endsInsideGfmTable(s: string): boolean {
+  const trimmed = s.trimEnd()
+  const lastLine = trimmed.slice(trimmed.lastIndexOf('\n') + 1)
+  return lastLine.trimStart().startsWith('|')
 }
 
 /**

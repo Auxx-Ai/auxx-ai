@@ -15,6 +15,7 @@ import { SparkleIcon } from '../sparkle-icon'
 import { AssistantThinkingStatus } from './assistant-thinking-status'
 import { AuxxInlineLink } from './auxx-inline-link'
 import { MessageActions } from './message-actions'
+import { proseTableComponents } from './prose-table'
 import { StreamingText } from './streaming-text'
 import { type ThinkingPillStep, ThinkingSteps } from './thinking-steps'
 
@@ -87,6 +88,7 @@ function buildMarkdownComponents(
       }
       return <pre {...props} />
     },
+    ...proseTableComponents,
     a({ href, children }) {
       if (typeof href === 'string' && href.startsWith('auxx://')) {
         const label =
