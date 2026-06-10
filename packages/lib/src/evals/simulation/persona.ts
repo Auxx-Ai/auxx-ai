@@ -130,6 +130,8 @@ export class LlmPersonaConversationSource implements AgentConversationSource {
         'Never reply with placeholders, brackets, or redactions (e.g. "[email redacted]", "XXX", "your-email@example.com") — the agent needs real, usable values.',
         'State any identity value you were given exactly. If the scenario needs an identifier you were not given (an email, order number, account id), invent a concrete, realistic one once and reuse it consistently.',
         "Still honestly model what you genuinely don't have — if you truly lack a piece of information, say so rather than fabricating facts the scenario says you lack.",
+        'Everything you have stated in this conversation — your identity, order numbers, items, amounts, including values you invented earlier — is ground truth. If the agent says something that contradicts it (a different order number, different items, a different total), do NOT confirm it. React like a real customer: point out the mismatch or question it.',
+        'Never confirm a detail you did not provide and cannot verify from your situation. "Hm, that does not match what I have" is a perfectly good customer reply.',
         'When your issue is resolved or you have nothing left to ask, set "done" to true.',
       ].join('\n'),
     }

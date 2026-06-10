@@ -4,6 +4,7 @@
 import { FieldType } from '@auxx/database/enums'
 import type { RecordId } from '@auxx/lib/resources/client'
 import type { AgentEvalAssertion, AgentEvalTarget, SimulationConfig } from '@auxx/types/evals'
+import { Alert, AlertDescription } from '@auxx/ui/components/alert'
 import { Button } from '@auxx/ui/components/button'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { EmptySection, Section } from '@auxx/ui/components/section'
@@ -186,8 +187,11 @@ function EvalCaseForm({
   const [assertions, setAssertions] = useState<AgentEvalAssertion[]>(initialAssertions)
   const [autosave, setAutosave] = useState<AutosaveState>({ kind: 'idle' })
 
+  const utils = api.useUtils()
   const create = api.eval.create.useMutation()
   const update = api.eval.update.useMutation()
+  // Pre-run diagnostics for the persisted row — refreshed after every autosave.
+  const validation = api.eval.validate.useQuery({ id: caseId! }, { enabled: caseId != null })
   const run = api.eval.run.useMutation({
     onSuccess: ({ runId }) => onOpenRun(runId),
     onError: (err) => toastError({ title: 'Failed to run', description: err.message }),
@@ -206,6 +210,8 @@ function EvalCaseForm({
   // would otherwise loop forever).
   const mutationsRef = useRef({ create, update })
   mutationsRef.current = { create, update }
+  const utilsRef = useRef(utils)
+  utilsRef.current = utils
   // Serialized snapshot of what's persisted. Autosave fires only when the live
   // draft actually differs — a `firstRun` flag skips just one effect tick, but
   // field widgets can emit a normalizing `onChange` after mount, which would
@@ -237,6 +243,7 @@ function EvalCaseForm({
       savedSnapshot.current = serializeDraft(cur)
       onSavedRef.current()
       setAutosave({ kind: 'saved', at: Date.now() })
+      void utilsRef.current.eval.validate.invalidate({ id })
       return id
     } catch (err) {
       setAutosave({ kind: 'idle' })
@@ -349,6 +356,34 @@ function EvalCaseForm({
       />
 
       <ScrollArea className='min-h-0 flex-1' scrollbarClassName='w-1.5'>
+        {/* Pre-run diagnostics (errors block nothing here; Run surfaces hard failures) */}
+        {validation.data && validation.data.errors.length + validation.data.warnings.length > 0 && (
+          <div className='flex flex-col gap-2 px-3 pt-3'>
+            {validation.data.errors.length > 0 && (
+              <Alert variant='destructive'>
+                <AlertDescription>
+                  <ul className='list-disc space-y-1 ps-4'>
+                    {validation.data.errors.map((message) => (
+                      <li key={message}>{message}</li>
+                    ))}
+                  </ul>
+                </AlertDescription>
+              </Alert>
+            )}
+            {validation.data.warnings.length > 0 && (
+              <Alert variant='warning'>
+                <AlertDescription>
+                  <ul className='list-disc space-y-1 ps-4'>
+                    {validation.data.warnings.map((message) => (
+                      <li key={message}>{message}</li>
+                    ))}
+                  </ul>
+                </AlertDescription>
+              </Alert>
+            )}
+          </div>
+        )}
+
         {/* Customer */}
         <Section
           title='Customer'

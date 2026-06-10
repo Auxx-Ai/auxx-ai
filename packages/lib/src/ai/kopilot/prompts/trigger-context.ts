@@ -12,7 +12,14 @@
  * See plans/kopilot/agents/trigger-instructions.md for the design.
  */
 
-export type TriggerKind = 'scheduled' | 'event' | 'app' | 'mention' | 'assignment' | 'dm'
+export type TriggerKind =
+  | 'scheduled'
+  | 'event'
+  | 'app'
+  | 'mention'
+  | 'assignment'
+  | 'dm'
+  | 'customer_message'
 
 export interface TriggerContext {
   kind: TriggerKind
@@ -70,6 +77,8 @@ export function renderTriggerKindBlock(triggerContext: TriggerContext): string {
       return renderAssignmentBlock(payload)
     case 'dm':
       return renderDmBlock(payload)
+    case 'customer_message':
+      return renderCustomerMessageBlock(payload)
   }
 }
 
@@ -156,6 +165,21 @@ function renderDmBlock(payload: Record<string, unknown>): string {
   return lines.join('\n')
 }
 
+function renderCustomerMessageBlock(payload: Record<string, unknown>): string {
+  const channel = asString(payload.channel)
+  const firedAt = asString(payload.firedAt) ?? new Date().toISOString()
+  const lines = [
+    '## Trigger fired',
+    '',
+    'Kind: `customer_message`',
+    channel ? `Channel: \`${channel}\`` : '',
+    `Fired at: ${firedAt}`,
+    '',
+    'An inbound customer message started or continued this conversation. Every `user` message in this conversation is the customer speaking in their own words — reply to the customer directly.',
+  ].filter(Boolean)
+  return lines.join('\n')
+}
+
 function renderAssignmentBlock(payload: Record<string, unknown>): string {
   const threadRecordId = asString(payload.threadRecordId)
   const assignerUserId = asString(payload.assignerUserId)
@@ -185,6 +209,17 @@ export function renderTriggerInstructions(instructions: string): string {
 
 /** "## Run mode" block — per-trigger-kind banner; static prose per kind. */
 export function renderTriggerRunModeBanner(kind: TriggerKind): string {
+  if (kind === 'customer_message') {
+    return `## Run mode
+
+You are running autonomously, handling a live customer conversation. No workspace member is reading this turn — but the customer is. Every \`user\` message is the customer speaking; your prose replies go straight to them.
+
+Approval-gated tools that were enabled on this agent at setup time will execute without confirmation. User-scope tools (anything that needs a workspace member in the loop) are not registered for this run — if you can't see a tool you expect, that's why.
+
+The tools available to you for this run are listed under "How tools surface results" below. The set is already filtered to this agent's enabled toolsets; no need to ask permission to call any of them.
+
+Speak to the customer plainly: no internal ids, no tool names, no workspace link syntax. Ask the customer for whatever you genuinely need from them. Only state that something was done when a tool call in this conversation actually did it.`
+  }
   return `## Run mode
 
 You are running autonomously, fired by a \`${kind}\` trigger. No human is reading this turn. The user message ("Trigger fired. Follow your trigger instructions.") is a system nudge — your real intent is the **Trigger instructions** section above (or, if none were configured, infer from the **Trigger fired** context).

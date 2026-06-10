@@ -47,6 +47,7 @@ import {
 } from '../runtime-snapshot'
 import type { AgentDefinitionSnapshotV1 } from '../snapshots'
 import type { EvalRunErrorCode } from '../types'
+import { buildSimulationTriggerContext } from './customer-envelope'
 import { buildSimulationFieldResolver } from './field-resolver'
 import { type ToolInvocationRecord, wrapToolsWithMocks } from './mock-tools'
 import { LlmPersonaConversationSource } from './persona'
@@ -151,7 +152,15 @@ export async function runAgentSimulation(
       },
     })
 
-  // 1–4. Reconstruct the runtime + verify against the snapshot.
+  // Frozen framework clock (epoch ms) — drives ctx.now + sys:now + classifiers,
+  // and stamps the synthetic trigger context's firedAt.
+  const nowMs = config.timeFrozenAt ? Date.parse(config.timeFrozenAt) : undefined
+  const frozenNow = nowMs !== undefined && !Number.isNaN(nowMs) ? nowMs : undefined
+
+  // 1–4. Reconstruct the runtime + verify against the snapshot. Envelope-stamped
+  // snapshots get the production customer-conversation envelope via a synthetic
+  // trigger context; pre-envelope snapshots retry under their original
+  // (interactive) envelope.
   const { runtime, verification } = await buildEffectiveAgentRuntimeFromSnapshot({
     snapshot: runtimeSnapshot,
     organizationId,
@@ -159,6 +168,10 @@ export async function runAgentSimulation(
     sessionId,
     signal,
     wrapTools,
+    triggerContext:
+      runtimeSnapshot.envelope === 'customer'
+        ? buildSimulationTriggerContext({ channel: config.channel, nowMs: frozenNow })
+        : undefined,
   })
 
   const baseResult = (over: Partial<AgentSimulationResult>): AgentSimulationResult => ({
@@ -251,10 +264,6 @@ export async function runAgentSimulation(
   }
   const overlay = overlayResult.value
   const subject: Subject = overlay.subject
-
-  // Frozen framework clock (epoch ms) — drives ctx.now + sys:now + classifiers.
-  const nowMs = config.timeFrozenAt ? Date.parse(config.timeFrozenAt) : undefined
-  const frozenNow = nowMs !== undefined && !Number.isNaN(nowMs) ? nowMs : undefined
 
   // A standalone ctx the overlay resolver delegates to for subject reads (it is
   // assigned as `ctx.evalFieldResolver` on every engine-built ctx, so it must be
@@ -359,10 +368,14 @@ export async function runAgentSimulation(
         break
       }
       if (event.type === 'assistant-message-finished') {
+        // Paragraph-break between text parts: a turn's parts interleave around
+        // tool calls, and joining with '' glues independent passages into one
+        // run-on blob (for the persona, the grader, AND the trace).
         const t = event.parts
           .filter((p): p is Extract<typeof p, { type: 'text' }> => p.type === 'text')
-          .map((p) => p.text)
-          .join('')
+          .map((p) => p.text.trim())
+          .filter(Boolean)
+          .join('\n\n')
         if (t.trim()) text = t
         if (event.usage) {
           totalTokens += event.usage.total_tokens ?? 0

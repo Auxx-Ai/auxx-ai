@@ -16,6 +16,7 @@ import {
   type EffectiveAgentRuntime,
 } from '../ai/agent-framework/effective-runtime'
 import type { AgentToolDefinition } from '../ai/agent-framework/types'
+import type { TriggerContext } from '../ai/kopilot/prompts/trigger-context'
 import { canonicalize, stableHash, stripSecrets } from './snapshots'
 
 export interface ProviderModel {
@@ -71,6 +72,14 @@ export interface AgentRuntimeSnapshotV1 {
   runMode: 'pinned' | 'draft'
   /** The compiler's stable `contentHash` of the draft, present only for `runMode: 'draft'`. */
   draftContentHash?: string
+  /**
+   * Prompt envelope the run executed under. `'customer'` = the autonomous
+   * customer-conversation envelope (synthetic `customer_message` trigger
+   * context). Absent on snapshots created before the envelope work — those runs
+   * executed with the legacy interactive (docked-chat) envelope and a retry
+   * keeps it, so historical traces stay honest.
+   */
+  envelope?: 'customer'
 }
 
 /** Deployed code revision, read from the standard platform env vars (best-effort). */
@@ -150,6 +159,7 @@ export function createAgentRuntimeSnapshot(
     time: { frozenAt: input.time.frozenAt, scope: 'framework_visible' },
     runMode: input.runMode ?? 'pinned',
     ...(input.draftContentHash ? { draftContentHash: input.draftContentHash } : {}),
+    envelope: 'customer',
   }
 }
 
@@ -188,6 +198,8 @@ export async function buildEffectiveAgentRuntimeFromSnapshot(args: {
   signal?: AbortSignal
   /** Wrap the reconstructed toolset with mock execution (the Simulation always does). */
   wrapTools?: (tools: AgentToolDefinition[]) => AgentToolDefinition[]
+  /** Synthetic customer-conversation trigger context (envelope-stamped snapshots only). */
+  triggerContext?: TriggerContext
 }): Promise<ReconstructedRuntime> {
   const { snapshot } = args
   const runtime = await buildEffectiveAgentRuntime({
@@ -200,6 +212,7 @@ export async function buildEffectiveAgentRuntimeFromSnapshot(args: {
     modelId: `${snapshot.agent.model.provider}:${snapshot.agent.model.model}`,
     hasProcedures: snapshot.procedures.length > 0,
     wrapTools: args.wrapTools,
+    triggerContext: args.triggerContext,
   })
 
   const verification = verifyRuntimeAgainstSnapshot(runtime, snapshot)

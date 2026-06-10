@@ -57,6 +57,25 @@ describe('renderTriggerSection', () => {
     expect(out).toContain('Fired at: 2026-05-15T10:00:00.000Z')
   })
 
+  it('renders the customer_message block and conversation-appropriate banner', () => {
+    const out = renderTriggerSection({
+      kind: 'customer_message',
+      instructions: null,
+      payload: { channel: 'chat', firedAt: '2026-06-09T10:00:00.000Z', simulated: true },
+    })
+    expect(out).toContain('Kind: `customer_message`')
+    expect(out).toContain('Channel: `chat`')
+    expect(out).toContain('Fired at: 2026-06-09T10:00:00.000Z')
+    expect(out).toContain('## Run mode')
+    expect(out).toContain('customer conversation')
+    // The fire-and-forget banner would sabotage a live conversation.
+    expect(out).not.toContain('there is no caller')
+    expect(out).not.toContain('Follow your trigger instructions')
+    // It must invite asking the customer, and forbid fabricated action claims.
+    expect(out).toContain('Ask the customer')
+    expect(out).toContain('a tool call in this conversation actually did it')
+  })
+
   it('renders scheduled instructions when set', () => {
     const out = renderTriggerSection({
       kind: 'scheduled',

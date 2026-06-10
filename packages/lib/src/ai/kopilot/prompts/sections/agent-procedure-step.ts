@@ -50,6 +50,10 @@ export const agentProcedureStep: PromptSection = {
     if ((proc.codeOutputs?.length ?? 0) > 0 || (proc.codeErrors?.length ?? 0) > 0) lines.push('')
 
     lines.push(`Current step: ${body}`)
+    lines.push(
+      '',
+      'Step discipline: the step’s conditions and branches describe *possible* cases — never assert one as this customer’s actual situation until they (or a tool result) establish it. End each turn by either advancing the procedure (signal via its control tools), asking one concrete question that unblocks this step, or handing off. Nothing happens between turns unless a tool call did it — do not promise offline follow-up or reviews.'
+    )
     return lines.join('\n').trim()
   },
 }

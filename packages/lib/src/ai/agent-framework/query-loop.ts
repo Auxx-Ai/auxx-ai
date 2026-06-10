@@ -222,6 +222,7 @@ export async function* agentQueryLoop(
     runProcessResult: boolean
     toolCalls: ToolCall[]
   }): Promise<AgentEvent> => {
+    dropRestatedTextParts(parts)
     const joinedText = parts
       .filter((p): p is TextPart => p.type === 'text')
       .map((p) => p.text)
@@ -1143,6 +1144,38 @@ function markRunningPartsAsError(parts: ContentPart[], reason: string): void {
       p.error = reason
     }
   }
+}
+
+/**
+ * Drop an earlier `text` part when a later text part of the same turn restates
+ * it verbatim (normalized containment — whitespace squashed, markdown emphasis
+ * stripped). A known model repetition mode: prose written alongside a tool call
+ * gets re-emitted, lightly reformatted, after the result. Deliberately NOT
+ * fuzzy — a paraphrase is left alone; only content fully contained in a later
+ * part is dropped, so no words are ever lost. Min-length guard keeps short
+ * legitimate echoes ("Done.") intact.
+ */
+export function dropRestatedTextParts(parts: ContentPart[]): void {
+  const normalize = (s: string) => s.replace(/[*_]+/g, '').replace(/\s+/g, ' ').trim()
+  const texts = parts
+    .map((part, idx) =>
+      part.type === 'text' ? { idx, norm: normalize((part as TextPart).text) } : null
+    )
+    .filter((t): t is { idx: number; norm: string } => t !== null)
+  if (texts.length < 2) return
+
+  const drop: number[] = []
+  for (let a = 0; a < texts.length; a++) {
+    const earlier = texts[a]!
+    if (earlier.norm.length < 20) continue
+    for (let b = a + 1; b < texts.length; b++) {
+      if (texts[b]!.norm.includes(earlier.norm)) {
+        drop.push(earlier.idx)
+        break
+      }
+    }
+  }
+  for (let i = drop.length - 1; i >= 0; i--) parts.splice(drop[i]!, 1)
 }
 
 /**
