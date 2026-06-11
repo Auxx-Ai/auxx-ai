@@ -13,6 +13,7 @@ import {
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { useState } from 'react'
 import type { Condition } from '~/components/conditions'
+import { api } from '~/trpc/react'
 import { CreateTaskButton } from './create-task-button'
 import { TaskFilterBar } from './task-filter-bar'
 import { TasksList } from './tasks-list'
@@ -30,8 +31,8 @@ export function TasksPage() {
   })
   const [includeCompleted, setIncludeCompleted] = useState(true)
 
-  // TODO: Fetch stats from API (deferred)
-  const stats = null
+  // Org-wide task counts for the overview header (independent of the filter bar)
+  const { data: stats } = api.task.stats.useQuery()
 
   return (
     <MainPage>
@@ -44,7 +45,7 @@ export function TasksPage() {
 
       <MainPageContent>
         {/* Stats Cards */}
-        <TasksStatsCards stats={stats} />
+        <TasksStatsCards stats={stats ?? null} />
 
         {/* Filter Bar + Task List */}
         <ScrollArea className='flex-1 min-h-0 bg-muted dark:bg-[#1e2227] @container'>

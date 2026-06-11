@@ -198,4 +198,14 @@ export const taskRouter = createTRPCRouter({
 
     return await taskService.getGroupedTasks(organizationId)
   }),
+
+  /**
+   * Get org-wide aggregate task counts for the overview header
+   */
+  stats: protectedProcedure.query(async ({ ctx }) => {
+    const { organizationId } = ctx.session
+    const taskService = createTaskService(ctx.db)
+
+    return await taskService.getTaskStats(organizationId)
+  }),
 })

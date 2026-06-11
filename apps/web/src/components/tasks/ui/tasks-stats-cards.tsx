@@ -2,18 +2,9 @@
 
 'use client'
 
+import type { TaskStats } from '@auxx/lib/tasks/client'
 import { type StatCardData, StatCards } from '@auxx/ui/components/stat-card'
-import { AlertTriangle, CheckCircle, Clock, ListTodo } from 'lucide-react'
-
-/**
- * Stats for the tasks page
- */
-export interface TaskStats {
-  total: number
-  dueToday: number
-  completed: number
-  overdue: number
-}
+import { AlertTriangle, Clock, ListTodo, UserX } from 'lucide-react'
 
 interface TasksStatsCardsProps {
   stats: TaskStats | null
@@ -25,8 +16,8 @@ interface TasksStatsCardsProps {
 export function TasksStatsCards({ stats }: TasksStatsCardsProps) {
   const cards: StatCardData[] = [
     {
-      title: 'Total Tasks',
-      body: stats?.total.toString() || '0',
+      title: 'Open',
+      body: stats?.open.toString() || '0',
       icon: <ListTodo className='size-4' />,
       description: 'Active tasks',
       color: 'text-accent-500',
@@ -41,19 +32,19 @@ export function TasksStatsCards({ stats }: TasksStatsCardsProps) {
       iconPosition: 'right',
     },
     {
-      title: 'Completed',
-      body: stats?.completed.toString() || '0',
-      icon: <CheckCircle className='size-4' />,
-      description: 'This week',
-      color: 'text-good-500',
-      iconPosition: 'right',
-    },
-    {
       title: 'Overdue',
       body: stats?.overdue.toString() || '0',
       icon: <AlertTriangle className='size-4' />,
       description: stats && stats.overdue > 0 ? 'Needs attention' : 'All on track',
       color: 'text-bad-500',
+      iconPosition: 'right',
+    },
+    {
+      title: 'Unassigned',
+      body: stats?.unassigned.toString() || '0',
+      icon: <UserX className='size-4' />,
+      description: stats && stats.unassigned > 0 ? 'Needs an owner' : 'All assigned',
+      color: 'text-good-500',
       iconPosition: 'right',
     },
   ]

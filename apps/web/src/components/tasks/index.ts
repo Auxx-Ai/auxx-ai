@@ -8,6 +8,7 @@ export {
   TASK_SORT_OPTIONS,
   type TaskSortConfig,
   type TaskSortField,
+  type TaskStats,
 } from '@auxx/lib/tasks/client'
 export { useTask } from './hooks/use-task'
 export { useTaskMutations } from './hooks/use-task-mutations'
@@ -26,7 +27,6 @@ export {
   TaskFilterBar,
   TaskItem,
   TaskSortSelect,
-  type TaskStats,
   TasksList,
   TasksListHeader,
   TasksPage,

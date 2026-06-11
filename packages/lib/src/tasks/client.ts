@@ -42,3 +42,4 @@ export {
   TextDateParser,
   type TextDateParserOptions,
 } from './text-date-parser'
+export type { TaskStats } from './types'

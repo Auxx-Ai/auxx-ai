@@ -34,6 +34,7 @@ export type {
   TaskListResponse,
   TaskPriority,
   TaskReferenceWithEntity,
+  TaskStats,
   TaskWithRelations,
   UpdateTaskInput,
 } from './types'
