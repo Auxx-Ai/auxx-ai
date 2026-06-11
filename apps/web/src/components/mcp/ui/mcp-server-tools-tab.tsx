@@ -1,10 +1,13 @@
 // apps/web/src/components/mcp/ui/mcp-server-tools-tab.tsx
 'use client'
 
+import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { Switch } from '@auxx/ui/components/switch'
 import { toastError } from '@auxx/ui/components/toast'
-import { AlertTriangle, Pencil, RefreshCw, Wrench } from 'lucide-react'
+import { ToggleCard } from '@auxx/ui/components/toggle-card'
+import { TreeRow } from '@auxx/ui/components/tree-row'
+import { AlertTriangle, Pencil, RefreshCw, ShieldCheck, Wrench } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { api } from '~/trpc/react'
 import type { McpDetailServer } from './mcp-server-detail'
@@ -112,52 +115,53 @@ export function McpServerToolsTab({ server, onChanged }: McpServerToolsTabProps)
         </div>
       )}
 
-      <div className='flex items-center justify-between rounded-lg border bg-primary-50 p-3'>
-        <div className='flex flex-col'>
-          <span className='text-sm font-medium'>Trust all tools</span>
-          <span className='text-xs text-muted-foreground'>
-            Trusted tools run without approval. Which agents get the tools is configured per agent.
-          </span>
-        </div>
-        <Switch
-          checked={allTrusted}
-          onCheckedChange={toggleAll}
-          disabled={update.isPending || server.tools.length === 0}
-        />
-      </div>
+      <ToggleCard
+        title='Trust all tools'
+        description='Trusted tools run without approval. Which agents get the tools is configured per agent.'
+        icon={<ShieldCheck className='size-3.5' />}
+        checked={allTrusted}
+        onCheckedChange={toggleAll}
+        disabled={update.isPending || server.tools.length === 0}
+        switchSize='sm'
+        className='bg-primary-50'
+      />
 
-      <div className='flex flex-col divide-y rounded-lg border'>
+      <div className='flex flex-col gap-0.5'>
         {server.tools.length === 0 ? (
           <div className='p-4 text-center text-sm text-muted-foreground'>
             No tools — connect and refresh to populate the list.
           </div>
         ) : (
           server.tools.map((tool) => (
-            <div key={tool.name} className='flex items-center justify-between gap-3 p-3'>
-              <div className='flex min-w-0 flex-col'>
-                <div className='flex items-center gap-2'>
-                  <span className='truncate text-sm font-medium'>{tool.title ?? tool.name}</span>
-                  <span
-                    className='inline-flex items-center gap-1 rounded border px-1 text-[10px] text-muted-foreground'
-                    title={
-                      tool.readOnlyHint
-                        ? 'Read-only tool'
-                        : 'Write tool — requires approval unless trusted'
-                    }>
-                    {tool.readOnlyHint ? 'Read' : <Pencil className='size-2.5' />}
-                    {tool.readOnlyHint ? '' : 'Write'}
-                  </span>
-                </div>
-                {tool.description && (
-                  <span className='truncate text-xs text-muted-foreground'>{tool.description}</span>
-                )}
-              </div>
-              <Switch
-                checked={trusted.has(tool.name)}
-                onCheckedChange={(on) => toggleTool(tool.name, on)}
-                disabled={update.isPending}
-              />
-            </div>
+            <TreeRow
+              rowClassName='bg-primary-100/50 hover:bg-primary-100'
+              key={tool.name}
+              icon={<Wrench className='size-4 text-muted-foreground' />}
+              title={tool.title ?? tool.name}
+              description={tool.description}
+              onToggleOpen={() => toggleTool(tool.name, !trusted.has(tool.name))}
+              secondary={
+                <Badge
+                  variant='outline'
+                  size='xs'
+                  title={
+                    tool.readOnlyHint
+                      ? 'Read-only tool'
+                      : 'Write tool — requires approval unless trusted'
+                  }>
+                  {tool.readOnlyHint ? 'Read' : <Pencil className='size-2.5' />}
+                  {tool.readOnlyHint ? '' : 'Write'}
+                </Badge>
+              }
+              actions={
+                <Switch
+                  size='xs'
+                  checked={trusted.has(tool.name)}
+                  onCheckedChange={(on) => toggleTool(tool.name, on)}
+                  disabled={update.isPending}
+                />
+              }
+            />
           ))
         )}
       </div>

@@ -29,7 +29,10 @@ export interface TreeRowProps {
   expandable?: boolean
   /** Controlled expand state. */
   isOpen?: boolean
-  /** Click handler for the chevron. */
+  /**
+   * Fired by the chevron and by a click anywhere on the row. Supply it without
+   * `expandable` to make the whole row a toggle (e.g. flip a trailing switch).
+   */
   onToggleOpen?: () => void
 
   /** Click on the title text — useful for "click row to toggle checkbox" UX. */
@@ -78,6 +81,9 @@ export function TreeRow({
   // INDENT_REM - 1.125 — consistent at every depth.
   const connectorLeftRem = paddingLeftRem + 1.125
   const showChildren = expandable ? !!isOpen : (isOpen ?? children !== undefined)
+  // The whole row is clickable whenever a toggle handler is supplied — `expandable`
+  // only controls the chevron, not whether clicking the row does something.
+  const rowClickable = onToggleOpen !== undefined
 
   const titleNode = (
     <span
@@ -106,10 +112,10 @@ export function TreeRow({
           className={cn(
             'group/tree-row flex items-center justify-between rounded-md text-sm px-1',
             'text-muted-foreground hover:bg-background',
-            expandable && 'cursor-pointer',
+            rowClickable && 'cursor-pointer',
             rowClassName
           )}
-          onClick={expandable ? onToggleOpen : undefined}>
+          onClick={rowClickable ? onToggleOpen : undefined}>
           <div className='flex items-center flex-1 min-w-0'>
             {icon !== undefined && (
               <span className='flex items-center justify-center px-1 size-7 text-muted-foreground shrink-0'>
