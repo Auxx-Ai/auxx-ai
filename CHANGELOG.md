@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.162](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.161...auxx-v0.1.162) (2026-06-11)
+
+
+### Features
+
+* sdk one-shot publish, auto-update installations, and mcp manual oauth callback flow ([#816](https://github.com/Auxx-Ai/auxx-ai/issues/816)) ([c212100](https://github.com/Auxx-Ai/auxx-ai/commit/c21210079a409d5b243e716ceccc96ac585ceb77))
+
 ## [0.1.161](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.160...auxx-v0.1.161) (2026-06-11)
 
 
