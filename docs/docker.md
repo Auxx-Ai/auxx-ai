@@ -40,7 +40,7 @@ Required environment variables (see `.env.example`):
 | `DATABASE_PASSWORD` | Postgres password |
 | `REDIS_PASSWORD` | Redis password |
 | `BETTER_AUTH_SECRET` | Auth secret |
-| `WORKFLOW_CREDENTIAL_ENCRYPTION_KEY` | Credential encryption key |
+| `CREDENTIAL_ENCRYPTION_KEY` | Credential encryption key (64 hex chars, `openssl rand -hex 32`) |
 | `PUBLIC_WORKFLOW_JWT_SECRET` | Workflow JWT secret |
 | `API_KEY_SALT` | API key salt |
 | `LAMBDA_INVOKE_SECRET` | Lambda invoke secret |

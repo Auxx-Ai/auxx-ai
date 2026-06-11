@@ -58,13 +58,10 @@ export function encryptSecrets(secrets: Record<string, unknown>): string {
   }
 }
 
-/**
- * Decrypt a payload produced by encryptSecrets, or — for not-yet-backfilled
- * rows — a legacy-format payload (routed by the absence of the `v2:` prefix).
- */
+/** Decrypt a payload produced by encryptSecrets. */
 export function decryptSecrets<T = Record<string, unknown>>(payload: string): T {
   if (!isV2Payload(payload)) {
-    return decryptLegacySecrets<T>(payload)
+    throw new Error('Unrecognized credential payload format (expected v2 prefix)')
   }
 
   try {
@@ -83,40 +80,6 @@ export function decryptSecrets<T = Record<string, unknown>>(payload: string): T 
       throw error
     }
     logger.error('Failed to decrypt credential secrets')
-    throw new Error('Failed to decrypt credential secrets')
-  }
-}
-
-/**
- * Decrypt the pre-v2 format (16-byte IV, optional auth tag, key = first 32
- * utf-8 chars of WORKFLOW_CREDENTIAL_ENCRYPTION_KEY). Exists ONLY for the
- * phase-3 backfill and not-yet-backfilled rows — deleted in phase 6.
- */
-export function decryptLegacySecrets<T = Record<string, unknown>>(payload: string): T {
-  try {
-    const legacyKey = configService.get<string>('WORKFLOW_CREDENTIAL_ENCRYPTION_KEY')
-    if (!legacyKey) {
-      throw new Error('WORKFLOW_CREDENTIAL_ENCRYPTION_KEY is required to decrypt legacy secrets')
-    }
-
-    const combined = Buffer.from(payload, 'base64')
-    const iv = combined.subarray(0, 16)
-    const authTag = combined.subarray(16, 32)
-    const ciphertext = combined.subarray(32)
-
-    const decipher = crypto.createDecipheriv(ALGORITHM, legacyKey.substring(0, 32), iv)
-    if (authTag.length > 0) {
-      decipher.setAuthTag(authTag)
-    }
-
-    let decrypted = decipher.update(ciphertext, undefined, 'utf8')
-    decrypted += decipher.final('utf8')
-    return JSON.parse(decrypted) as T
-  } catch (error) {
-    if (error instanceof Error && error.message.includes('WORKFLOW_CREDENTIAL_ENCRYPTION_KEY')) {
-      throw error
-    }
-    logger.error('Failed to decrypt legacy credential secrets')
     throw new Error('Failed to decrypt credential secrets')
   }
 }

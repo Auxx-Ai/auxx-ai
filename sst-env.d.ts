@@ -54,6 +54,10 @@ declare module "sst" {
       "type": "sst.sst.Secret"
       "value": string
     }
+    "CREDENTIAL_ENCRYPTION_KEY": {
+      "type": "sst.sst.Secret"
+      "value": string
+    }
     "DROPBOX_CLIENT_ID": {
       "type": "sst.sst.Secret"
       "value": string
@@ -252,10 +256,6 @@ declare module "sst" {
       "type": "sst.aws.Function"
     }
     "TURNSTILE_SECRET_KEY": {
-      "type": "sst.sst.Secret"
-      "value": string
-    }
-    "WORKFLOW_CREDENTIAL_ENCRYPTION_KEY": {
       "type": "sst.sst.Secret"
       "value": string
     }

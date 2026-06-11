@@ -22,7 +22,6 @@ export {
 export { ConfigStorage } from './config/config-storage'
 // Crypto (versioned secret box)
 export {
-  decryptLegacySecrets,
   decryptSecrets,
   encryptSecrets,
   isV2Payload,
@@ -34,7 +33,6 @@ export { issueLoginToken, verifyLoginToken } from './login-token'
 export * from './manager'
 // Export everything from service
 export * from './service'
-export { CredentialService } from './service/credential-service'
 export type {
   ConnectionTestResult,
   ProviderAuth,

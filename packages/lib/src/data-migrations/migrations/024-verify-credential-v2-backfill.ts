@@ -29,11 +29,10 @@ const CHECKS: { table: string; sql: ReturnType<typeof sql> }[] = [
 ]
 
 /**
- * Assert-only guard: fails until the manual v2 backfill (scripts/backfill-credential-v2.ts) has
- * re-encrypted every ciphertext row across all four tables. This surfaces the manual backfill as
- * ledger state — the admin data-migrations panel stays red (and fail-stop blocks later
- * migrations) until the backfill has run in this environment. The green row is the explicit gate
- * for shipping phase 6 (legacy-decrypt deletion). Read-only; writes nothing.
+ * Assert-only guard: fails if any ciphertext row across the four tables is still in the pre-v2
+ * format. The backfill ran and was verified in all existing environments (Release 1, 2026-06-11);
+ * legacy decryption support has since been removed, so a fresh environment passes trivially and a
+ * failure here means restored pre-v2 data that can no longer be decrypted. Read-only; writes nothing.
  */
 export const migration024VerifyCredentialV2Backfill: DataMigrationDef = {
   id: '024-verify-credential-v2-backfill',
@@ -48,7 +47,8 @@ export const migration024VerifyCredentialV2Backfill: DataMigrationDef = {
     if (remaining.length > 0) {
       throw new Error(
         `Credential v2 backfill incomplete — legacy ciphertext remains: ${remaining.join(', ')}. ` +
-          'Run packages/credentials/scripts/backfill-credential-v2.ts --execute against this database.'
+          'Legacy decryption was removed in credentials v2 Release 2; these rows cannot be ' +
+          'decrypted by current code (see plans/mcp/v2/README.md).'
       )
     }
   },

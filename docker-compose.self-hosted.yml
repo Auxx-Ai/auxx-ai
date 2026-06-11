@@ -15,7 +15,7 @@ x-common-env: &common-env
   NODE_ENV: production
   IS_CONFIG_VARIABLES_IN_DB_ENABLED: "true"
   BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?Run ./setup.sh to generate secrets}
-  WORKFLOW_CREDENTIAL_ENCRYPTION_KEY: ${WORKFLOW_CREDENTIAL_ENCRYPTION_KEY:?Run ./setup.sh --self-hosted to generate secrets}
+  CREDENTIAL_ENCRYPTION_KEY: ${CREDENTIAL_ENCRYPTION_KEY:?Run ./setup.sh --self-hosted to generate secrets}
   PUBLIC_WORKFLOW_JWT_SECRET: ${PUBLIC_WORKFLOW_JWT_SECRET:?Run ./setup.sh --self-hosted to generate secrets}
   API_KEY_SALT: ${API_KEY_SALT:?Run ./setup.sh to generate secrets}
   LAMBDA_INVOKE_SECRET: ${LAMBDA_INVOKE_SECRET:?Run ./setup.sh to generate secrets}

@@ -65,7 +65,7 @@ REDIS_PASSWORD=$(generate_secret 16)
 BETTER_AUTH_SECRET=$(generate_secret 32)
 API_KEY_SALT=$(generate_secret 16)
 LAMBDA_INVOKE_SECRET=$(generate_secret 32)
-WORKFLOW_CREDENTIAL_ENCRYPTION_KEY=$(generate_secret 16)
+CREDENTIAL_ENCRYPTION_KEY=$(generate_secret 32)
 PUBLIC_WORKFLOW_JWT_SECRET=$(generate_secret 32)
 SDK_CLIENT_SECRET=$(generate_secret 32)
 
@@ -110,7 +110,7 @@ if [ "$FILL_MODE" = true ]; then
   fill_if_empty "BETTER_AUTH_SECRET" "$BETTER_AUTH_SECRET"
   fill_if_empty "API_KEY_SALT" "$API_KEY_SALT"
   fill_if_empty "LAMBDA_INVOKE_SECRET" "$LAMBDA_INVOKE_SECRET"
-  fill_if_empty "WORKFLOW_CREDENTIAL_ENCRYPTION_KEY" "$WORKFLOW_CREDENTIAL_ENCRYPTION_KEY"
+  fill_if_empty "CREDENTIAL_ENCRYPTION_KEY" "$CREDENTIAL_ENCRYPTION_KEY"
   fill_if_empty "PUBLIC_WORKFLOW_JWT_SECRET" "$PUBLIC_WORKFLOW_JWT_SECRET"
   fill_if_empty "SDK_CLIENT_SECRET" "$SDK_CLIENT_SECRET"
   fill_if_empty "LOGIN_TOKEN_PRIVATE_KEY" "$LOGIN_TOKEN_PRIVATE_KEY"
@@ -205,7 +205,7 @@ do_sed "s|^REDIS_PASSWORD=.*|REDIS_PASSWORD=${REDIS_PASSWORD}|" .env
 do_sed "s|^BETTER_AUTH_SECRET=.*|BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET}|" .env
 do_sed "s|^API_KEY_SALT=.*|API_KEY_SALT=${API_KEY_SALT}|" .env
 do_sed "s|^LAMBDA_INVOKE_SECRET=.*|LAMBDA_INVOKE_SECRET=${LAMBDA_INVOKE_SECRET}|" .env
-do_sed "s|^WORKFLOW_CREDENTIAL_ENCRYPTION_KEY=.*|WORKFLOW_CREDENTIAL_ENCRYPTION_KEY=${WORKFLOW_CREDENTIAL_ENCRYPTION_KEY}|" .env
+do_sed "s|^CREDENTIAL_ENCRYPTION_KEY=.*|CREDENTIAL_ENCRYPTION_KEY=${CREDENTIAL_ENCRYPTION_KEY}|" .env
 do_sed "s|^PUBLIC_WORKFLOW_JWT_SECRET=.*|PUBLIC_WORKFLOW_JWT_SECRET=${PUBLIC_WORKFLOW_JWT_SECRET}|" .env
 do_sed "s|^SDK_CLIENT_SECRET=.*|SDK_CLIENT_SECRET=${SDK_CLIENT_SECRET}|" .env
 do_sed "s|^LOGIN_TOKEN_PRIVATE_KEY=.*|LOGIN_TOKEN_PRIVATE_KEY=${LOGIN_TOKEN_PRIVATE_KEY}|" .env
@@ -238,7 +238,7 @@ echo "    REDIS_PASSWORD      (used by Redis)"
 echo "    BETTER_AUTH_SECRET  (used by BetterAuth)"
 echo "    API_KEY_SALT        (used for API key generation)"
 echo "    LAMBDA_INVOKE_SECRET (used for Lambda executor auth)"
-echo "    WORKFLOW_CREDENTIAL_ENCRYPTION_KEY (used for credential encryption)"
+echo "    CREDENTIAL_ENCRYPTION_KEY (used for credential secret encryption)"
 echo "    PUBLIC_WORKFLOW_JWT_SECRET (used for workflow passport signing)"
 echo "    SDK_CLIENT_SECRET       (used for SDK OIDC/JWT signing)"
 echo "    LOGIN_TOKEN_PRIVATE_KEY (Ed25519 private key for cross-app login tokens)"
