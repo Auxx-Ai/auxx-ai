@@ -11,7 +11,7 @@ import { type AppConnection, useExtensionsContext } from '~/providers/extensions
  * plans/kopilot/apps/agent-credentials.md §3.3.
  *
  * - `unbound`   — no binding has been set on the agent yet (credId undefined)
- * - `gone`      — credId set but the WorkflowCredentials row is missing
+ * - `gone`      — credId set but the Credential row is missing
  * - `connected` — row exists and `connectionStatus === 'connected'`
  * - `expired`   — row exists and `connectionStatus === 'expired'`
  * - `not_connected` — row exists but never authenticated (rare path)

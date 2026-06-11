@@ -4,7 +4,7 @@ import { database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { eq } from 'drizzle-orm'
 import { google } from 'googleapis'
-import { ChannelTokenAccessor } from '../../providers/channel-token-accessor'
+import { getChannelTokens } from '../../providers/channel-token-accessor'
 import { GoogleOAuthService } from '../../providers/google/google-oauth'
 import { ReauthenticationRequiredError } from '../errors-handlers'
 import type { LabelProvider, ProviderLabel } from './label-provider.interface'
@@ -36,7 +36,7 @@ export class GmailLabelProvider implements LabelProvider {
       }
 
       // Get tokens from encrypted credentials
-      const tokens = await ChannelTokenAccessor.getTokens(this.integrationId)
+      const tokens = await getChannelTokens(this.integrationId)
 
       // Get authenticated client from the OAuth service
       const { client: authClient } = await GoogleOAuthService.getAuthenticatedClientForOrg(

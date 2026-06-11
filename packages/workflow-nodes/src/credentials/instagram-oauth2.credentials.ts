@@ -68,7 +68,7 @@ export class InstagramOAuth2Api implements ICredentialType {
    * This could be used to refresh tokens or validate credentials
    */
   authenticate?(credentials: Record<string, any>): Record<string, any> {
-    // The OAuth2WorkflowService will handle token refresh automatically
+    // Token refresh is handled automatically by the OAuth2 refresh job
     // This method could add computed fields if needed
     return credentials
   }

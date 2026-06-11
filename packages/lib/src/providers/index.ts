@@ -3,7 +3,11 @@ export {
   PROVIDER_IMPORT_BATCH_SIZE,
 } from './channel-provider.interface'
 export type { ChannelTokens } from './channel-token-accessor'
-export { ChannelTokenAccessor } from './channel-token-accessor'
+export {
+  deleteChannelTokens,
+  getChannelTokens,
+  setChannelTokens,
+} from './channel-token-accessor'
 export { EmailForwardingProvider } from './email'
 export type { FacebookIntegrationMetadata } from './facebook/facebook-oauth'
 export { FacebookOAuthService } from './facebook/facebook-oauth'

@@ -67,9 +67,9 @@ export class CredentialService {
   /**
    * Decrypt credential data
    */
-  public static decrypt(encryptedData: string): NodeData {
+  public static decrypt(encryptedSecrets: string): NodeData {
     try {
-      const combined = Buffer.from(encryptedData, 'base64')
+      const combined = Buffer.from(encryptedSecrets, 'base64')
 
       const iv = combined.subarray(0, 16)
       const authTag = combined.subarray(16, 32)
@@ -130,17 +130,18 @@ export class CredentialService {
       const encrypted = CredentialService.encrypt(data)
 
       const [credential] = await db
-        .insert(schema.WorkflowCredentials)
+        .insert(schema.Credential)
         .values({
           organizationId,
           createdById,
+          kind: 'workflow',
           type: credentialType,
           name,
-          encryptedData: encrypted,
+          encryptedSecrets: encrypted,
           createdAt: new Date(),
           updatedAt: new Date(),
         })
-        .returning({ id: schema.WorkflowCredentials.id })
+        .returning({ id: schema.Credential.id })
 
       logger.info('Created workflow credential successfully', {
         credentialId: credential!.id,
@@ -166,11 +167,11 @@ export class CredentialService {
     try {
       const [credential] = await db
         .select()
-        .from(schema.WorkflowCredentials)
+        .from(schema.Credential)
         .where(
           and(
-            eq(schema.WorkflowCredentials.id, credentialId),
-            eq(schema.WorkflowCredentials.organizationId, organizationId)
+            eq(schema.Credential.id, credentialId),
+            eq(schema.Credential.organizationId, organizationId)
           )
         )
         .limit(1)
@@ -183,7 +184,7 @@ export class CredentialService {
         throw new Error('Credential not found or access denied')
       }
 
-      const decryptedData = CredentialService.decrypt(credential.encryptedData)
+      const decryptedData = CredentialService.decrypt(credential.encryptedSecrets)
 
       logger.debug('Loaded credential successfully', {
         credentialId,
@@ -212,23 +213,23 @@ export class CredentialService {
     try {
       const credentials = await db
         .select({
-          id: schema.WorkflowCredentials.id,
-          name: schema.WorkflowCredentials.name,
-          type: schema.WorkflowCredentials.type,
-          createdAt: schema.WorkflowCredentials.createdAt,
+          id: schema.Credential.id,
+          name: schema.Credential.name,
+          type: schema.Credential.type,
+          createdAt: schema.Credential.createdAt,
           createdBy: {
             name: schema.User.name,
           },
         })
-        .from(schema.WorkflowCredentials)
-        .leftJoin(schema.User, eq(schema.WorkflowCredentials.createdById, schema.User.id))
+        .from(schema.Credential)
+        .leftJoin(schema.User, eq(schema.Credential.createdById, schema.User.id))
         .where(
           and(
-            eq(schema.WorkflowCredentials.organizationId, organizationId),
-            credentialType ? eq(schema.WorkflowCredentials.type, credentialType) : undefined
+            eq(schema.Credential.organizationId, organizationId),
+            credentialType ? eq(schema.Credential.type, credentialType) : undefined
           )
         )
-        .orderBy(desc(schema.WorkflowCredentials.createdAt))
+        .orderBy(desc(schema.Credential.createdAt))
 
       logger.debug('Listed credentials', {
         organizationId,
@@ -267,14 +268,14 @@ export class CredentialService {
         // Get existing credential to determine type for validation and to merge sensitive fields
         const [existingCredential] = await db
           .select({
-            type: schema.WorkflowCredentials.type,
-            encryptedData: schema.WorkflowCredentials.encryptedData,
+            type: schema.Credential.type,
+            encryptedSecrets: schema.Credential.encryptedSecrets,
           })
-          .from(schema.WorkflowCredentials)
+          .from(schema.Credential)
           .where(
             and(
-              eq(schema.WorkflowCredentials.id, credentialId),
-              eq(schema.WorkflowCredentials.organizationId, organizationId)
+              eq(schema.Credential.id, credentialId),
+              eq(schema.Credential.organizationId, organizationId)
             )
           )
           .limit(1)
@@ -284,7 +285,7 @@ export class CredentialService {
         }
 
         // Decrypt existing data to preserve sensitive fields
-        const existingData = CredentialService.decrypt(existingCredential.encryptedData)
+        const existingData = CredentialService.decrypt(existingCredential.encryptedSecrets)
 
         // Merge update data with existing data, preserving existing sensitive values when new values are empty
         const mergedData = CredentialService.mergeCredentialData(
@@ -305,16 +306,16 @@ export class CredentialService {
           }
         }
 
-        updateData.encryptedData = CredentialService.encrypt(mergedData)
+        updateData.encryptedSecrets = CredentialService.encrypt(mergedData)
       }
 
       const result = await db
-        .update(schema.WorkflowCredentials)
+        .update(schema.Credential)
         .set(updateData)
         .where(
           and(
-            eq(schema.WorkflowCredentials.id, credentialId),
-            eq(schema.WorkflowCredentials.organizationId, organizationId)
+            eq(schema.Credential.id, credentialId),
+            eq(schema.Credential.organizationId, organizationId)
             // Note: Not restricting to createdById for now - all org members can edit
           )
         )
@@ -354,10 +355,10 @@ export class CredentialService {
         throw new Error('Cannot delete credential: it is currently being used in workflows')
       }
 
-      await db.delete(schema.WorkflowCredentials).where(
+      await db.delete(schema.Credential).where(
         and(
-          eq(schema.WorkflowCredentials.id, credentialId),
-          eq(schema.WorkflowCredentials.organizationId, organizationId)
+          eq(schema.Credential.id, credentialId),
+          eq(schema.Credential.organizationId, organizationId)
           // Note: Not restricting to createdById for now - all org members can delete
         )
       )
@@ -467,15 +468,15 @@ export class CredentialService {
     try {
       const [credential] = await db
         .select({
-          id: schema.WorkflowCredentials.id,
-          name: schema.WorkflowCredentials.name,
-          type: schema.WorkflowCredentials.type,
+          id: schema.Credential.id,
+          name: schema.Credential.name,
+          type: schema.Credential.type,
         })
-        .from(schema.WorkflowCredentials)
+        .from(schema.Credential)
         .where(
           and(
-            eq(schema.WorkflowCredentials.id, credentialId),
-            eq(schema.WorkflowCredentials.organizationId, organizationId)
+            eq(schema.Credential.id, credentialId),
+            eq(schema.Credential.organizationId, organizationId)
           )
         )
         .limit(1)
@@ -503,22 +504,22 @@ export class CredentialService {
       // Get credential from database
       const [credential] = await db
         .select({
-          id: schema.WorkflowCredentials.id,
-          name: schema.WorkflowCredentials.name,
-          type: schema.WorkflowCredentials.type,
-          encryptedData: schema.WorkflowCredentials.encryptedData,
-          createdAt: schema.WorkflowCredentials.createdAt,
-          updatedAt: schema.WorkflowCredentials.updatedAt,
+          id: schema.Credential.id,
+          name: schema.Credential.name,
+          type: schema.Credential.type,
+          encryptedSecrets: schema.Credential.encryptedSecrets,
+          createdAt: schema.Credential.createdAt,
+          updatedAt: schema.Credential.updatedAt,
           createdBy: {
             name: schema.User.name,
           },
         })
-        .from(schema.WorkflowCredentials)
-        .leftJoin(schema.User, eq(schema.WorkflowCredentials.createdById, schema.User.id))
+        .from(schema.Credential)
+        .leftJoin(schema.User, eq(schema.Credential.createdById, schema.User.id))
         .where(
           and(
-            eq(schema.WorkflowCredentials.id, credentialId),
-            eq(schema.WorkflowCredentials.organizationId, organizationId)
+            eq(schema.Credential.id, credentialId),
+            eq(schema.Credential.organizationId, organizationId)
           )
         )
         .limit(1)
@@ -528,7 +529,7 @@ export class CredentialService {
       }
 
       // Decrypt the credential data
-      const decryptedData = CredentialService.decrypt(credential.encryptedData)
+      const decryptedData = CredentialService.decrypt(credential.encryptedSecrets)
 
       // Filter out sensitive fields based on field classification
       const nonSensitiveData = CredentialService.filterNonSensitiveFields(decryptedData)

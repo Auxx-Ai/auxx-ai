@@ -374,7 +374,7 @@ export interface CachedInstalledApp {
 
   /**
    * Org-scope connection presence + expiry (decision G2 split path).
-   * Populated via LEFT JOIN on `WorkflowCredentials WHERE userId IS NULL`.
+   * Populated via LEFT JOIN on `Credential WHERE userId IS NULL`.
    * User-scope presence is a per-request direct DB hit.
    */
   orgConnectionPresent: boolean

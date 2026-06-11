@@ -28,9 +28,12 @@ vi.mock('@auxx/credentials', () => ({
   configService: {
     get: vi.fn().mockReturnValue(undefined),
   },
-  CredentialService: {
-    loadCredential: vi.fn().mockResolvedValue({}),
-  },
+}))
+vi.mock('@auxx/credentials/store', () => ({
+  revealSecrets: vi.fn().mockResolvedValue({
+    isErr: () => false,
+    value: { record: { metadata: {} }, secrets: {} },
+  }),
 }))
 
 describe('Rate Limiter Integration Tests', () => {

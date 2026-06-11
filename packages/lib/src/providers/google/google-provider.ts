@@ -17,7 +17,7 @@ import type {
   MessageStatus,
   SendMessageOptions,
 } from '../channel-provider.interface'
-import { ChannelTokenAccessor } from '../channel-token-accessor'
+import { getChannelTokens, setChannelTokens } from '../channel-token-accessor'
 import {
   BaseMessageProvider,
   type MessageProvider,
@@ -126,7 +126,7 @@ export class GoogleProvider
       throw new Error(`Active Google integration not found or not enabled for ID: ${integrationId}`)
     }
     // Get tokens from encrypted credentials
-    const tokens = await ChannelTokenAccessor.getTokens(integrationId)
+    const tokens = await getChannelTokens(integrationId)
     if (!tokens.refreshToken) {
       this.resetState()
       throw new Error(`Missing refresh token for Google integration ID: ${integrationId}`)
@@ -309,7 +309,7 @@ export class GoogleProvider
       const integrationId = this.integrationId
       logger.info('Google OAuth tokens refreshed.', { integrationId })
 
-      const tokenUpdate: Parameters<typeof ChannelTokenAccessor.setTokens>[1] = {
+      const tokenUpdate: Parameters<typeof setChannelTokens>[1] = {
         accessToken: tokens.access_token ?? null,
         expiresAt: tokens.expiry_date ? new Date(tokens.expiry_date) : null,
       }
@@ -324,7 +324,7 @@ export class GoogleProvider
       }
 
       // Persist encrypted tokens asynchronously
-      ChannelTokenAccessor.setTokens(integrationId, tokenUpdate)
+      setChannelTokens(integrationId, tokenUpdate)
         .then(() => logger.debug('Successfully updated Google tokens.', { integrationId }))
         .catch((err) =>
           logger.error('Failed to update Google tokens', { integrationId, error: err })
@@ -364,7 +364,7 @@ export class GoogleProvider
 
     // Reload the persisted tokens into the in-memory OAuth2 client so the
     // upcoming Gmail API call uses the freshly-rotated access token.
-    const tokens = await ChannelTokenAccessor.getTokens(this.integrationId)
+    const tokens = await getChannelTokens(this.integrationId)
     this.client.setCredentials({
       refresh_token: tokens.refreshToken || undefined,
       access_token: tokens.accessToken || undefined,

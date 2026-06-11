@@ -54,16 +54,6 @@ export const CREDENTIAL_REGISTRY: CredentialTypeMetadata[] = [
     compatibleNodeTypes: ['http', 'email'],
   },
   {
-    id: 'app-connection',
-    displayName: 'App Connection',
-    description: 'App connection',
-    category: 'auth',
-    icon: PROVIDER_ICONS.google,
-    credentialType: new GoogleOAuth2Api(),
-    compatibleNodeTypes: ['http', 'email'],
-  },
-
-  {
     id: 'outlookOAuth2Api',
     displayName: 'Microsoft Outlook OAuth2',
     description: 'Connect to Microsoft Outlook and Exchange services with OAuth2 authentication',

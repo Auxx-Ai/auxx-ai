@@ -1,6 +1,6 @@
 // packages/lib/src/files/storage/storage-manager.ts
 
-import { CredentialService } from '@auxx/credentials'
+import { revealSecrets } from '@auxx/credentials/store'
 import type { StorageLocationEntity as StorageLocation } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
 import type {
@@ -905,7 +905,7 @@ export class StorageManager {
 
   /**
    * Get provider authentication for a specific adapter.
-   * 1. Explicit credentialId → user-connected provider (via CredentialService)
+   * 1. Explicit credentialId → user-connected provider (via the credential store)
    * 2. No credentialId → platform storage (via adapter.resolvePlatformAuth)
    */
   private async getProviderAuth(
@@ -921,20 +921,16 @@ export class StorageManager {
           new Error(`credentialId '${credentialId}' provided but organizationId is missing.`)
         )
       }
-      try {
-        const orgCredential = await CredentialService.loadCredential(
-          credentialId,
-          this.organizationId
-        )
-        return orgCredential as ProviderAuth
-      } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error)
+      const revealed = await revealSecrets(credentialId, this.organizationId)
+      if (revealed.isErr()) {
         throw new StorageAuthError(
           adapterId,
           'getProviderAuth',
-          new Error(`Failed to load credential for ${adapterId}: ${errorMessage}.`)
+          new Error(`Failed to load credential for ${adapterId}: ${revealed.error.message}.`)
         )
       }
+      const { record, secrets } = revealed.value
+      return { ...record.metadata, ...secrets } as ProviderAuth
     }
 
     // 2. Platform storage → ask adapter to resolve its own config

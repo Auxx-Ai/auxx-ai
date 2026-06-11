@@ -1,6 +1,11 @@
 // packages/lib/src/workflows/index.ts
 
-export { OAuth2WorkflowService } from './oauth2-workflow.service'
+export {
+  handleOAuth2Callback,
+  initiateOAuth,
+  type RefreshTokensResult,
+  refreshCredentialTokens,
+} from './oauth2-workflow'
 export type { WorkflowGraph } from './template-graph-transformer'
 export { TemplateGraphTransformer } from './template-graph-transformer'
 export {

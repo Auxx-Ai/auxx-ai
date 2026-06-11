@@ -5,6 +5,7 @@ import { relations } from 'drizzle-orm/relations'
 import {
   Article,
   Attachment,
+  Credential,
   Dataset,
   DatasetMetadata,
   DatasetSearchQuery,
@@ -24,7 +25,6 @@ import {
   StorageLocation,
   UploadSession,
   User,
-  WorkflowCredentials,
   WorkflowFile,
 } from '../schema'
 
@@ -85,9 +85,9 @@ export const mediaAssetVersionRelations = relations(MediaAssetVersion, ({ one, m
 
 export const storageLocationRelations = relations(StorageLocation, ({ one, many }) => ({
   assetVersions: many(MediaAssetVersion),
-  credential: one(WorkflowCredentials, {
+  credential: one(Credential, {
     fields: [StorageLocation.credentialId],
-    references: [WorkflowCredentials.id],
+    references: [Credential.id],
   }),
   fileVersions: many(FileVersion),
 }))

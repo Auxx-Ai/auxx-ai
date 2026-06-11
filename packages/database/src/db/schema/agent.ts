@@ -65,7 +65,7 @@ export interface KnowledgeEntry {
 
 /**
  * One entry inside `Agent.appAccounts`. Pins the agent's execution to a
- * specific `WorkflowCredentials.id` (workspace or personal — doesn't
+ * specific `Credential.id` (workspace or personal — doesn't
  * matter; the resolver doesn't branch). Keyed by app id (slug). See
  * plans/kopilot/apps/agent-credentials.md §2.
  */
@@ -199,7 +199,7 @@ export const Agent = pgTable(
 
     /**
      * Per-agent app account bindings. One entry per app id (slug). Each
-     * entry pins the agent's execution to a specific WorkflowCredentials
+     * entry pins the agent's execution to a specific Credential
      * row (workspace or personal). See
      * plans/kopilot/apps/agent-credentials.md §2.
      */

@@ -54,17 +54,17 @@ export const mcpServersProvider: CacheProvider<CachedMcpServer[]> = {
     // 4. Org-wide credential presence (never decrypt in a provider).
     const creds = await db
       .select({
-        mcpServerId: schema.WorkflowCredentials.mcpServerId,
-        expiresAt: schema.WorkflowCredentials.expiresAt,
-        consecutiveRefreshFailures: schema.WorkflowCredentials.consecutiveRefreshFailures,
+        mcpServerId: schema.Credential.mcpServerId,
+        expiresAt: schema.Credential.expiresAt,
+        consecutiveRefreshFailures: schema.Credential.consecutiveRefreshFailures,
       })
-      .from(schema.WorkflowCredentials)
+      .from(schema.Credential)
       .where(
         and(
-          inArray(schema.WorkflowCredentials.mcpServerId, serverIds),
-          eq(schema.WorkflowCredentials.organizationId, orgId),
-          isNull(schema.WorkflowCredentials.userId),
-          eq(schema.WorkflowCredentials.type, 'mcp-connection')
+          inArray(schema.Credential.mcpServerId, serverIds),
+          eq(schema.Credential.organizationId, orgId),
+          isNull(schema.Credential.userId),
+          eq(schema.Credential.kind, 'mcp')
         )
       )
     const credByServer = new Map(creds.filter((c) => c.mcpServerId).map((c) => [c.mcpServerId!, c]))

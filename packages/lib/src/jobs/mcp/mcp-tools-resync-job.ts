@@ -51,7 +51,7 @@ export const mcpToolsResyncJob = async (job: Job<McpToolsResyncJobData>) => {
       mcpServerId: schema.McpInstallation.mcpServerId,
       organizationId: schema.McpInstallation.organizationId,
       connectionType: schema.ConnectionDefinition.connectionType,
-      credentialId: schema.WorkflowCredentials.id,
+      credentialId: schema.Credential.id,
     })
     .from(schema.McpInstallation)
     .innerJoin(
@@ -59,11 +59,11 @@ export const mcpToolsResyncJob = async (job: Job<McpToolsResyncJobData>) => {
       eq(schema.ConnectionDefinition.mcpServerId, schema.McpInstallation.mcpServerId)
     )
     .leftJoin(
-      schema.WorkflowCredentials,
+      schema.Credential,
       and(
-        eq(schema.WorkflowCredentials.mcpServerId, schema.McpInstallation.mcpServerId),
-        eq(schema.WorkflowCredentials.organizationId, schema.McpInstallation.organizationId),
-        eq(schema.WorkflowCredentials.type, 'mcp-connection')
+        eq(schema.Credential.mcpServerId, schema.McpInstallation.mcpServerId),
+        eq(schema.Credential.organizationId, schema.McpInstallation.organizationId),
+        eq(schema.Credential.kind, 'mcp')
       )
     )
 

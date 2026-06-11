@@ -44,7 +44,7 @@ export interface ToolContext extends AgentDeps {
   subject?: Subject
   /**
    * The agent's bound app accounts (`Agent.appAccounts`), keyed by app slug →
-   * `{ credId }` (the bound connection's `WorkflowCredentials.id`). The binding
+   * `{ credId }` (the bound connection's `Credential.id`). The binding
    * resolver uses it to pick the connection-scoped `CustomField` row when an
    * `@app:<slug>:<key>` var segment is resolved at turn time (plans/chat/v8
    * phase-2). Absent on runs with no bound apps.

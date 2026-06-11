@@ -1,6 +1,6 @@
 // packages/lib/src/workflow-engine/index.ts
 
-export { CredentialService, CredentialTestingService, CredentialValidator } from '@auxx/credentials'
+export { CredentialTestingService } from '@auxx/credentials'
 // Constants
 export * from './constants'
 export { CancellationManager } from './core/cancellation-manager'
@@ -31,6 +31,7 @@ export {
   WorkflowGraphBuilder,
   WorkflowGraphHelper,
 } from './core/workflow-graph-builder'
+export { isCredentialInUse } from './credentials/is-credential-in-use'
 // Execution functions
 export { triggerManualResourceWorkflow } from './execution/trigger-manual-resource-workflow'
 export {

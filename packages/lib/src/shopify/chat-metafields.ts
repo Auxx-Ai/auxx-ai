@@ -1,6 +1,6 @@
 // packages/lib/src/shopify/chat-metafields.ts
 
-import { CredentialService } from '@auxx/credentials'
+import { listCredentials, revealSecrets } from '@auxx/credentials/store'
 import { database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq, sql } from 'drizzle-orm'
@@ -103,11 +103,10 @@ export async function writeAuxxChatMetafields(input: WriteAuxxChatMetafieldsInpu
 
 /**
  * Fan out a chat-widget audience change to every Shopify install that has
- * `chatChannelId === channelId` in its AppSetting. Looks up each install's
- * Shopify access token + shop domain by decrypting its
- * `WorkflowCredentials.encryptedData`, then writes the
- * `$app:chat.audience` metafield. Best-effort per install — one shop's
- * failure doesn't block the others.
+ * `chatChannelId === channelId` in its AppSetting. Resolves each install's
+ * Shopify access token (credential store) + shop domain (plaintext
+ * metadata), then writes the `$app:chat.audience` metafield. Best-effort
+ * per install — one shop's failure doesn't block the others.
  */
 export async function fanOutAuxxChatAudienceToShopify(params: {
   channelId: string
@@ -126,7 +125,8 @@ export async function fanOutAuxxChatAudienceToShopify(params: {
 
   const rows = await database
     .select({
-      encryptedData: schema.WorkflowCredentials.encryptedData,
+      credentialId: schema.Credential.id,
+      organizationId: schema.Credential.organizationId,
     })
     .from(schema.AppSetting)
     .innerJoin(
@@ -134,11 +134,11 @@ export async function fanOutAuxxChatAudienceToShopify(params: {
       eq(schema.AppInstallation.id, schema.AppSetting.appInstallationId)
     )
     .innerJoin(
-      schema.WorkflowCredentials,
+      schema.Credential,
       and(
-        eq(schema.WorkflowCredentials.appInstallationId, schema.AppInstallation.id),
-        eq(schema.WorkflowCredentials.appId, shopifyAppRow.id),
-        eq(schema.WorkflowCredentials.type, 'app-connection')
+        eq(schema.Credential.appInstallationId, schema.AppInstallation.id),
+        eq(schema.Credential.appId, shopifyAppRow.id),
+        eq(schema.Credential.kind, 'app')
       )
     )
     .where(
@@ -150,12 +150,19 @@ export async function fanOutAuxxChatAudienceToShopify(params: {
 
   for (const row of rows) {
     try {
-      const decrypted = CredentialService.decrypt(row.encryptedData) as {
-        accessToken?: string
-        metadata?: { shopDomain?: string }
+      const revealed = await revealSecrets<{ accessToken?: string }>(
+        row.credentialId,
+        row.organizationId
+      )
+      if (revealed.isErr()) {
+        logger.warn('Failed to reveal Shopify credential during audience fan-out', {
+          channelId,
+          error: revealed.error.message,
+        })
+        continue
       }
-      const accessToken = decrypted.accessToken
-      const shopDomain = decrypted.metadata?.shopDomain
+      const accessToken = revealed.value.secrets.accessToken
+      const shopDomain = revealed.value.record.metadata.shopDomain as string | undefined
       if (!accessToken || !shopDomain) {
         logger.warn('Shopify credential missing accessToken or shopDomain', { channelId })
         continue
@@ -172,9 +179,9 @@ export async function fanOutAuxxChatAudienceToShopify(params: {
 
 /**
  * Bind a chat channel to a specific Shopify install (an `AppInstallation`
- * for the `shopify` app). Resolves the install's access token + shop
- * domain by decrypting its org-scoped `WorkflowCredentials`, then writes
- * the `$app:chat.channel_id` and `$app:chat.audience` shop metafields in
+ * for the `shopify` app). Resolves the install's access token (credential
+ * store) + shop domain (plaintext metadata), then writes the
+ * `$app:chat.channel_id` and `$app:chat.audience` shop metafields in
  * the app-reserved namespace.
  *
  * Called from the chat-widget admin UI (phase 5) when the merchant picks
@@ -199,38 +206,37 @@ export async function bindChatChannelToShopifyInstall(params: {
     return { ok: false, reason: 'shopify_app_not_found' }
   }
 
-  const credential = await database.query.WorkflowCredentials.findFirst({
-    where: (creds, { and, eq, isNull }) =>
-      and(
-        eq(creds.appInstallationId, appInstallationId),
-        eq(creds.organizationId, organizationId),
-        eq(creds.appId, shopifyAppRow.id),
-        eq(creds.type, 'app-connection'),
-        isNull(creds.userId)
-      ),
-    columns: { encryptedData: true },
+  const credsResult = await listCredentials({
+    organizationId,
+    kind: 'app',
+    appId: shopifyAppRow.id,
+    appInstallationId,
+    userId: null,
   })
+  if (credsResult.isErr()) {
+    logger.error('Failed to list Shopify credentials for binding', {
+      organizationId,
+      appInstallationId,
+      error: credsResult.error.message,
+    })
+    return { ok: false, reason: 'shopify_connection_not_found' }
+  }
+  const credential = credsResult.value[0]
   if (!credential) {
     return { ok: false, reason: 'shopify_connection_not_found' }
   }
 
-  let accessToken: string | undefined
-  let shopDomain: string | undefined
-  try {
-    const decrypted = CredentialService.decrypt(credential.encryptedData) as {
-      accessToken?: string
-      metadata?: { shopDomain?: string }
-    }
-    accessToken = decrypted.accessToken
-    shopDomain = decrypted.metadata?.shopDomain
-  } catch (error) {
-    logger.error('Failed to decrypt Shopify credential for binding', {
+  const revealed = await revealSecrets<{ accessToken?: string }>(credential.id, organizationId)
+  if (revealed.isErr()) {
+    logger.error('Failed to reveal Shopify credential for binding', {
       organizationId,
       appInstallationId,
-      error,
+      error: revealed.error.message,
     })
     return { ok: false, reason: 'decryption_failed' }
   }
+  const accessToken = revealed.value.secrets.accessToken
+  const shopDomain = revealed.value.record.metadata.shopDomain as string | undefined
   if (!accessToken || !shopDomain) {
     return { ok: false, reason: 'credential_missing_shop_or_token' }
   }

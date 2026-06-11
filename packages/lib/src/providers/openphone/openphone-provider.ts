@@ -14,7 +14,7 @@ import type {
   MessageStatus, // Note: Most statuses don't map directly to OpenPhone
   SendMessageOptions,
 } from '../channel-provider.interface' // Adjust path
-import { ChannelTokenAccessor } from '../channel-token-accessor'
+import { getChannelTokens } from '../channel-token-accessor'
 import { BaseMessageProvider, type MessageProvider } from '../message-provider-interface'
 import { getProviderCapabilities, type ProviderCapabilities } from '../provider-capabilities'
 import type {
@@ -76,7 +76,7 @@ export class OpenPhoneProvider
       )
     }
     // Get API key from encrypted credentials
-    const tokens = await ChannelTokenAccessor.getTokens(integrationId)
+    const tokens = await getChannelTokens(integrationId)
     if (!tokens.accessToken) {
       this.resetState()
       throw new Error(`Missing API key for OpenPhone integration ID: ${integrationId}`)

@@ -4,7 +4,7 @@
 import { createId } from '@paralleldrive/cuid2'
 import { type AnyPgColumn, boolean, index, pgTable, text, timestamp, uniqueIndex } from './_shared'
 import { AppInstallation } from './app-installation'
-import { WorkflowCredentials } from './workflow-credentials'
+import { Credential } from './credential'
 
 /** Drizzle table for AppWebhookHandler */
 export const AppWebhookHandler = pgTable(
@@ -20,8 +20,8 @@ export const AppWebhookHandler = pgTable(
       .notNull()
       .references((): AnyPgColumn => AppInstallation.id, { onDelete: 'cascade' }),
 
-    // Connection (WorkflowCredentials) this webhook is scoped to
-    connectionId: text().references((): AnyPgColumn => WorkflowCredentials.id, {
+    // Connection (Credential) this webhook is scoped to
+    connectionId: text().references((): AnyPgColumn => Credential.id, {
       onUpdate: 'cascade',
       onDelete: 'cascade',
     }),

@@ -1,7 +1,7 @@
 // apps/web/src/app/api/workflows/oauth2/callback/route.ts
 
 import { WEBAPP_URL } from '@auxx/config/server'
-import { OAuth2WorkflowService } from '@auxx/lib/workflows'
+import { handleOAuth2Callback } from '@auxx/lib/workflows'
 import { createScopedLogger } from '@auxx/logger'
 import { type NextRequest, NextResponse } from 'next/server'
 
@@ -55,8 +55,7 @@ export async function GET(request: NextRequest) {
 
   try {
     // Process the OAuth callback
-    const oauth2Service = OAuth2WorkflowService.getInstance()
-    const result = await oauth2Service.handleCallback(code, state)
+    const result = await handleOAuth2Callback(code, state)
 
     if (result.success && result.credentialId) {
       logger.info('OAuth2 callback processed successfully', {
@@ -151,8 +150,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Process the OAuth callback
-    const oauth2Service = OAuth2WorkflowService.getInstance()
-    const result = await oauth2Service.handleCallback(code, state)
+    const result = await handleOAuth2Callback(code, state)
 
     if (result.success) {
       logger.info('OAuth2 POST callback processed successfully', {

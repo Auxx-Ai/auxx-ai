@@ -184,6 +184,14 @@ export const CONFIG_VARIABLES = {
     isSensitive: true,
     isEnvOnly: true,
   },
+  CREDENTIAL_ENCRYPTION_KEY: {
+    key: 'CREDENTIAL_ENCRYPTION_KEY',
+    description: 'AES-256-GCM key for credential secret storage (openssl rand -hex 32)',
+    type: ConfigVariableType.STRING,
+    group: ConfigVariableGroup.AUTH,
+    isSensitive: true,
+    isEnvOnly: true,
+  },
   PUBLIC_WORKFLOW_JWT_SECRET: {
     key: 'PUBLIC_WORKFLOW_JWT_SECRET',
     description: 'JWT secret for public workflow passports',

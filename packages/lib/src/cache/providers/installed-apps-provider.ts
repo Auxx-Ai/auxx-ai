@@ -16,7 +16,7 @@ import type { CacheProvider } from '../org-cache-provider'
  * (`agentTools`, `agentToolsets`, `agentTriggers`, `workflowBlocks`,
  * `workflowTriggers`, `actions`) plus a denormalized `orgConnectionPresent` /
  * `orgConnectionExpiresAt` via a left join on
- * `WorkflowCredentials WHERE userId IS NULL`. User-scope presence stays a
+ * `Credential WHERE userId IS NULL`. User-scope presence stays a
  * per-request direct DB hit (decision G2).
  */
 export const installedAppsProvider: CacheProvider<CachedInstalledApp[]> = {
@@ -56,16 +56,16 @@ export const installedAppsProvider: CacheProvider<CachedInstalledApp[]> = {
       appIds.length > 0
         ? await db
             .select({
-              appId: schema.WorkflowCredentials.appId,
-              expiresAt: schema.WorkflowCredentials.expiresAt,
+              appId: schema.Credential.appId,
+              expiresAt: schema.Credential.expiresAt,
             })
-            .from(schema.WorkflowCredentials)
+            .from(schema.Credential)
             .where(
               and(
-                inArray(schema.WorkflowCredentials.appId, appIds),
-                eq(schema.WorkflowCredentials.organizationId, orgId),
-                isNull(schema.WorkflowCredentials.userId),
-                eq(schema.WorkflowCredentials.type, 'app-connection')
+                inArray(schema.Credential.appId, appIds),
+                eq(schema.Credential.organizationId, orgId),
+                isNull(schema.Credential.userId),
+                eq(schema.Credential.kind, 'app')
               )
             )
         : []

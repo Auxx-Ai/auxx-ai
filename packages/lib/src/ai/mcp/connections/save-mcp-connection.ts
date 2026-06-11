@@ -1,20 +1,31 @@
 // packages/lib/src/ai/mcp/connections/save-mcp-connection.ts
 
-import { CredentialService } from '@auxx/credentials'
-import { database as db, schema } from '@auxx/database'
+import { insertCredential, rotateSecrets, updateCredential } from '@auxx/credentials/store'
 import { createScopedLogger } from '@auxx/logger'
-import { and, eq } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import type { McpConnectionError } from './types'
 
 const logger = createScopedLogger('save-mcp-connection')
 
+/** Pick the secret keys (present only) out of an MCP connection's credential data. */
+function pickSecrets(data: {
+  accessToken?: string
+  refreshToken?: string
+  secret?: string
+}): Record<string, unknown> {
+  const secrets: Record<string, unknown> = {}
+  if (data.accessToken !== undefined) secrets.accessToken = data.accessToken
+  if (data.refreshToken !== undefined) secrets.refreshToken = data.refreshToken
+  if (data.secret !== undefined) secrets.secret = data.secret
+  return secrets
+}
+
 /**
  * Save (or update on reconnect) the org-wide credential for an MCP server.
  *
- * Mirrors `saveAppConnection`'s direct insert into WorkflowCredentials — encrypts via
- * `CredentialService.encrypt` and hardcodes `type: 'mcp-connection'`. MCP connections are
- * org-wide only in v1 (`userId: null`).
+ * Mirrors `saveAppConnection`: secrets are encrypted via the credential store, non-secret data
+ * (e.g. connection variables, auth header name) goes in plaintext `metadata`, and `expiresAt`
+ * lives only as a column. MCP connections are org-wide only in v1 (`userId: null`).
  */
 export async function saveMcpConnection(input: {
   mcpServerId: string
@@ -34,55 +45,48 @@ export async function saveMcpConnection(input: {
   const { mcpServerId, serverName, organizationId, createdById, connectionData, connectionId } =
     input
 
-  // CredentialService.encrypt just JSON-serializes; the NodeData shape is stricter than our
-  // metadata bag, so cast through any (matches saveAppConnection).
-  const encrypted = CredentialService.encrypt(connectionData as any)
+  const secrets = pickSecrets(connectionData)
+  const metadata = (connectionData.metadata ?? {}) as Record<string, unknown>
   const expiresAt = connectionData.expiresAt ? new Date(connectionData.expiresAt) : null
-  const now = new Date()
 
-  try {
-    if (connectionId) {
-      await db
-        .update(schema.WorkflowCredentials)
-        .set({ encryptedData: encrypted, expiresAt, updatedAt: now })
-        .where(
-          and(
-            eq(schema.WorkflowCredentials.id, connectionId),
-            eq(schema.WorkflowCredentials.organizationId, organizationId)
-          )
-        )
-      logger.info('Reconnected MCP connection', { connectionId, mcpServerId })
-      return ok(connectionId)
-    }
-
-    const [created] = await db
-      .insert(schema.WorkflowCredentials)
-      .values({
-        organizationId,
-        createdById,
-        userId: null,
-        appId: null,
+  if (connectionId) {
+    const rotated = await rotateSecrets(connectionId, organizationId, secrets, { expiresAt })
+    if (rotated.isErr()) {
+      logger.error('Failed to reconnect MCP connection', {
+        connectionId,
         mcpServerId,
-        name: `${serverName} Connection`,
-        type: 'mcp-connection',
-        encryptedData: encrypted,
-        expiresAt,
-        createdAt: now,
-        updatedAt: now,
+        error: rotated.error.message,
       })
-      .returning({ id: schema.WorkflowCredentials.id })
-
-    if (!created) {
-      return err({ code: 'CONNECTION_CREATE_FAILED', message: 'Failed to create MCP connection' })
+      return err({ code: 'DATABASE_ERROR', message: 'Failed to save MCP connection' })
     }
+    const metaUpdated = await updateCredential(connectionId, organizationId, { metadata })
+    if (metaUpdated.isErr()) {
+      return err({ code: 'DATABASE_ERROR', message: 'Failed to save MCP connection' })
+    }
+    logger.info('Reconnected MCP connection', { connectionId, mcpServerId })
+    return ok(connectionId)
+  }
 
-    logger.info('Created MCP connection', { connectionId: created.id, mcpServerId })
-    return ok(created.id)
-  } catch (error) {
+  const created = await insertCredential({
+    organizationId,
+    createdById,
+    kind: 'mcp',
+    userId: null,
+    mcpServerId,
+    name: `${serverName} Connection`,
+    secrets,
+    metadata,
+    expiresAt,
+  })
+
+  if (created.isErr()) {
     logger.error('Failed to save MCP connection', {
       mcpServerId,
-      error: error instanceof Error ? error.message : String(error),
+      error: created.error.message,
     })
-    return err({ code: 'DATABASE_ERROR', message: 'Failed to save MCP connection' })
+    return err({ code: 'CONNECTION_CREATE_FAILED', message: 'Failed to create MCP connection' })
   }
+
+  logger.info('Created MCP connection', { connectionId: created.value.id, mcpServerId })
+  return ok(created.value.id)
 }

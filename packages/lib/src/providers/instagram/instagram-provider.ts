@@ -16,7 +16,7 @@ import type {
   MessageStatus,
   SendMessageOptions,
 } from '../channel-provider.interface' // Adjust path based on final structure
-import { ChannelTokenAccessor } from '../channel-token-accessor'
+import { getChannelTokens } from '../channel-token-accessor'
 import { BaseMessageProvider, type MessageProvider } from '../message-provider-interface'
 import { getProviderCapabilities, type ProviderCapabilities } from '../provider-capabilities'
 import { type InstagramIntegrationMetadata, InstagramOAuthService } from './instagram-oauth'
@@ -119,7 +119,7 @@ export class InstagramProvider
       )
     }
     // Get tokens from encrypted credentials
-    const tokens = await ChannelTokenAccessor.getTokens(integrationId)
+    const tokens = await getChannelTokens(integrationId)
     // Safely extract and validate metadata and token
     try {
       this.metadata = integration.metadata as unknown as InstagramIntegrationMetadata

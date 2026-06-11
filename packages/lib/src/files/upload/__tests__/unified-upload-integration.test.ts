@@ -130,13 +130,15 @@ vi.mock('@auxx/credentials', () => ({
   configService: {
     get: vi.fn().mockReturnValue(undefined),
   },
-  CredentialService: {
-    loadCredential: vi.fn().mockResolvedValue({
-      accessToken: 'mock-access-token',
-      region: 'us-east-1',
-      bucket: 'test-bucket',
-    }),
-  },
+}))
+vi.mock('@auxx/credentials/store', () => ({
+  revealSecrets: vi.fn().mockResolvedValue({
+    isErr: () => false,
+    value: {
+      record: { metadata: { region: 'us-east-1', bucket: 'test-bucket' } },
+      secrets: { accessToken: 'mock-access-token' },
+    },
+  }),
 }))
 
 // Mock @auxx/database/models to avoid loading real database client

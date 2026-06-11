@@ -1,14 +1,12 @@
 // packages/services/src/app-connections/list-app-connections.ts
 
-import { CredentialService } from '@auxx/credentials'
-import { database } from '@auxx/database'
-import { createScopedLogger } from '@auxx/logger'
-import { ok, type Result } from 'neverthrow'
+import { listCredentials } from '@auxx/credentials/store'
+import { database, schema } from '@auxx/database'
+import { inArray } from 'drizzle-orm'
+import { err, ok } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
 import { CONNECTION_CIRCUIT_OPEN_THRESHOLD } from './mark-app-connection-expired'
-import type { AppConnection, DecryptedConnectionData } from './types'
-
-const logger = createScopedLogger('list-app-connections')
+import type { AppConnection } from './types'
 
 /**
  * List active connections for an organization
@@ -61,87 +59,60 @@ const logger = createScopedLogger('list-app-connections')
  * }
  */
 export async function listAppConnections(organizationId: string, userId?: string) {
-  const credentialsResult = await fromDatabase(
-    database.query.WorkflowCredentials.findMany({
-      where: (creds, { eq, and, isNotNull }) => {
-        const conditions = [
-          eq(creds.organizationId, organizationId),
-          eq(creds.type, 'app-connection'),
-          isNotNull(creds.appId),
-        ]
-
-        // If userId provided, filter to user-specific connections
-        if (userId) {
-          conditions.push(eq(creds.userId, userId))
-        }
-
-        return and(...conditions)
-      },
-      with: {
-        app: {
-          columns: {
-            title: true,
-          },
-        },
-        createdBy: {
-          columns: {
-            name: true,
-          },
-        },
-      },
-    }),
-    'list-app-connections'
-  )
+  // userId provided → that user's connections; omitted → all (user- and org-scoped).
+  const credentialsResult = await listCredentials({
+    organizationId,
+    kind: 'app',
+    withCreatedBy: true,
+    ...(userId ? { userId } : {}),
+  })
 
   if (credentialsResult.isErr()) {
-    return credentialsResult
+    return err(credentialsResult.error)
   }
 
   const credentials = credentialsResult.value
 
-  const connections: AppConnection[] = credentials.map((cred) => {
-    // Determine status by checking expiration
-    let status: 'connected' | 'not_connected' | 'expired' = 'connected'
-    let expiresAt: Date | undefined
+  // App titles come from the App table (not a credential concern) — one batched lookup.
+  const appIds = [...new Set(credentials.map((c) => c.appId).filter((id): id is string => !!id))]
+  const titleById = new Map<string, string>()
+  if (appIds.length > 0) {
+    const appsResult = await fromDatabase(
+      database
+        .select({ id: schema.App.id, title: schema.App.title })
+        .from(schema.App)
+        .where(inArray(schema.App.id, appIds)),
+      'list-app-connection-titles'
+    )
+    if (appsResult.isErr()) {
+      return err(appsResult.error)
+    }
+    for (const app of appsResult.value) titleById.set(app.id, app.title)
+  }
 
+  const now = new Date()
+  const connections: AppConnection[] = credentials.map((cred) => {
     // Circuit-breaker: a connection whose refresh circuit is open — or that was
     // marked failed at tool-execution time via `markAppConnectionExpired` — is
     // surfaced as expired even when the token itself carries no expiry (e.g.
     // Shopify offline tokens, which never expire but can be revoked).
-    if (cred.consecutiveRefreshFailures >= CONNECTION_CIRCUIT_OPEN_THRESHOLD) {
+    let status: 'connected' | 'not_connected' | 'expired' =
+      cred.consecutiveRefreshFailures >= CONNECTION_CIRCUIT_OPEN_THRESHOLD ? 'expired' : 'connected'
+
+    // expiresAt is now a column — no decrypt needed for the status check.
+    const expiresAt = cred.expiresAt ?? undefined
+    if (expiresAt && expiresAt < now) {
       status = 'expired'
-    }
-
-    // Check if OAuth2 token is expired
-    try {
-      const decryptedData = CredentialService.decrypt(cred.encryptedData) as DecryptedConnectionData
-
-      if (decryptedData.expiresAt) {
-        expiresAt = new Date(decryptedData.expiresAt)
-        const now = new Date()
-
-        if (expiresAt < now) {
-          status = 'expired'
-        }
-      }
-    } catch (error) {
-      // If decryption fails, log but keep as connected (default status)
-      // We don't want to falsely mark new connections as expired
-      logger.warn('Failed to decrypt credential for status check', {
-        credentialId: cred.id,
-        error: error instanceof Error ? error.message : String(error),
-      })
-      // status remains 'connected' - only mark expired if we can verify the expiration date
     }
 
     return {
       id: cred.id,
       appId: cred.appId!,
       appInstallationId: cred.appInstallationId,
-      appName: cred.app?.title || 'Unknown App',
+      appName: (cred.appId && titleById.get(cred.appId)) || 'Unknown App',
       label: cred.label,
       connectionStatus: status,
-      connectedBy: cred.createdBy?.name || undefined,
+      connectedBy: cred.createdByName || undefined,
       connectedAt: cred.createdAt,
       expiresAt,
       global: !cred.userId, // If no userId, it's organization-scoped

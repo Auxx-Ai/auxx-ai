@@ -1,11 +1,8 @@
 // packages/services/src/app-connections/delete-app-connection.ts
 
-import { CredentialService } from '@auxx/credentials'
-import { database, schema } from '@auxx/database'
-import { and, eq } from 'drizzle-orm'
-import { err, ok, type Result } from 'neverthrow'
+import { deleteCredential, revealSecrets } from '@auxx/credentials/store'
+import { err, ok } from 'neverthrow'
 import { triggerAppEvent } from '../app-events'
-import { fromDatabase } from '../shared/utils'
 import type { DecryptedConnectionData } from './types'
 import { logger, safeSerializeMetadata } from './utils'
 
@@ -31,7 +28,7 @@ import { logger, safeSerializeMetadata } from './utils'
  * The connection will be removed from the database regardless of event success.
  *
  * @param {string} credentialId - The unique identifier of the connection to delete.
- *                                This is the WorkflowCredentials.id.
+ *                                This is the Credential.id.
  * @param {string} organizationId - The unique identifier of the organization.
  *                                  Required for access control - ensures users can only
  *                                  delete connections from their own organization.
@@ -61,76 +58,48 @@ import { logger, safeSerializeMetadata } from './utils'
  * }
  */
 export async function deleteAppConnection(credentialId: string, organizationId: string) {
-  // First, get the connection details before deleting (for event trigger)
-  const connectionResult = await fromDatabase(
-    database.query.WorkflowCredentials.findFirst({
-      where: (creds, { eq, and }) =>
-        and(eq(creds.id, credentialId), eq(creds.organizationId, organizationId)),
-      columns: {
-        id: true,
-        appInstallationId: true,
-        encryptedData: true,
-      },
-    }),
-    'get-connection-before-delete'
-  )
+  // First, get the connection details before deleting (for event trigger). The store reveal
+  // gives us the record (appInstallationId, metadata) and the decrypted secrets in one call.
+  const revealed = await revealSecrets<DecryptedConnectionData>(credentialId, organizationId)
 
-  if (connectionResult.isErr()) {
-    return connectionResult
+  if (revealed.isErr()) {
+    if (revealed.error.code === 'CREDENTIAL_NOT_FOUND') {
+      return err({
+        code: 'CONNECTION_NOT_FOUND',
+        message: 'Connection not found',
+        credentialId,
+        organizationId,
+      })
+    }
+    return err(revealed.error)
   }
 
-  const connection = connectionResult.value
-
-  if (!connection) {
-    return err({
-      code: 'CONNECTION_NOT_FOUND',
-      message: 'Connection not found',
-      credentialId,
-      organizationId,
-    })
-  }
+  const { record: connection, secrets } = revealed.value
 
   // Delete the connection. Connection-scoped app-registered custom fields
   // (CustomField.connectionId → this credential, ON DELETE CASCADE) and their
   // FieldValue rows are removed automatically by the FK cascade — disconnecting
   // one store drops only that store's identity fields (app-registered custom
   // fields §5/§7). No explicit cleanup needed here.
-  const deleteResult = await fromDatabase(
-    database
-      .delete(schema.WorkflowCredentials)
-      .where(
-        and(
-          eq(schema.WorkflowCredentials.id, credentialId),
-          eq(schema.WorkflowCredentials.organizationId, organizationId)
-        )
-      ),
-    'delete-connection'
-  )
+  const deleteResult = await deleteCredential(credentialId, organizationId)
 
   if (deleteResult.isErr()) {
-    return deleteResult
+    return err(deleteResult.error)
   }
 
   // Trigger connection-removed event (if we have appInstallationId)
   if (connection.appInstallationId) {
-    // Decrypt connection data to pass to event handler
-    const decryptedData = CredentialService.decrypt(
-      connection.encryptedData
-    ) as DecryptedConnectionData
-
-    const connectionType: 'oauth2-code' | 'secret' = decryptedData.accessToken
-      ? 'oauth2-code'
-      : 'secret'
-    const connectionValue = decryptedData.accessToken || decryptedData.secret || ''
+    const connectionType: 'oauth2-code' | 'secret' = secrets.accessToken ? 'oauth2-code' : 'secret'
+    const connectionValue = secrets.accessToken || secrets.secret || ''
 
     // Log the metadata before serialization
     logger.info('Connection metadata before serialization', {
       credentialId: connection.id,
-      metadataKeys: decryptedData.metadata ? Object.keys(decryptedData.metadata) : [],
-      metadata: decryptedData.metadata,
+      metadataKeys: Object.keys(connection.metadata),
+      metadata: connection.metadata,
     })
 
-    const serializedMetadata = safeSerializeMetadata(decryptedData.metadata)
+    const serializedMetadata = safeSerializeMetadata(connection.metadata)
 
     // Log the serialized metadata
     logger.info('Serialized metadata for event', {

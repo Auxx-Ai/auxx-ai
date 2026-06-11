@@ -1,9 +1,7 @@
 // packages/services/src/app-connections/get-app-connection.ts
 
-import { CredentialService, type NodeData } from '@auxx/credentials'
-import { database } from '@auxx/database'
-import { err, ok, type Result } from 'neverthrow'
-import { fromDatabase } from '../shared/utils'
+import { findCredential, revealSecrets } from '@auxx/credentials/store'
+import { err, ok } from 'neverthrow'
 
 /**
  * Get connection for app (used when executing app functions)
@@ -19,8 +17,8 @@ import { fromDatabase } from '../shared/utils'
  * - Personal user connections (e.g., personal Gmail account)
  * - Shared organization connections (e.g., company Gmail account)
  *
- * The function uses the CredentialService to decrypt the stored credentials, ensuring
- * that sensitive data like OAuth tokens and API secrets are never returned in encrypted form.
+ * The function uses the credential store's revealSecrets to decrypt the stored credentials,
+ * ensuring sensitive data like OAuth tokens and API secrets are never returned in encrypted form.
  *
  * This function is typically called during:
  * - Workflow execution when an app needs credentials to make API calls
@@ -59,68 +57,33 @@ import { fromDatabase } from '../shared/utils'
  * }
  */
 export async function getAppConnection(appId: string, organizationId: string, userId: string) {
-  // Try user-scoped connection first. Newest wins — duplicates can accumulate (e.g. an
-  // OAuth provider that issues a fresh token per (re)connect), and an older row's token
-  // is typically revoked once a newer one is issued.
-  const userConnectionResult = await fromDatabase(
-    database.query.WorkflowCredentials.findFirst({
-      where: (creds, { eq, and }) =>
-        and(
-          eq(creds.appId, appId),
-          eq(creds.organizationId, organizationId),
-          eq(creds.userId, userId),
-          eq(creds.type, 'app-connection')
-        ),
-      orderBy: (creds, { desc }) => desc(creds.createdAt),
-    }),
-    'get-user-connection'
-  )
+  // Try user-scoped connection first, then fall back to the org-scoped one. Newest wins —
+  // duplicates can accumulate (e.g. an OAuth provider that issues a fresh token per
+  // (re)connect), and an older row's token is typically revoked once a newer one is issued.
+  const userResult = await findCredential({ organizationId, kind: 'app', appId, userId })
+  if (userResult.isErr()) return err(userResult.error)
 
-  if (userConnectionResult.isErr()) {
-    return userConnectionResult
+  let record = userResult.value
+  if (!record) {
+    const orgResult = await findCredential({ organizationId, kind: 'app', appId, userId: null })
+    if (orgResult.isErr()) return err(orgResult.error)
+    record = orgResult.value
   }
 
-  const userConnection = userConnectionResult.value
-
-  if (userConnection) {
-    const credentialData = await CredentialService.loadCredential(userConnection.id, organizationId)
-    return ok(credentialData)
+  if (!record) {
+    return err({
+      code: 'CONNECTION_NOT_FOUND',
+      message: 'Connection not found',
+      appId,
+      organizationId,
+      userId,
+    })
   }
 
-  // Fall back to organization-scoped connection. Newest wins — see note above.
-  const organizationConnectionResult = await fromDatabase(
-    database.query.WorkflowCredentials.findFirst({
-      where: (creds, { eq, and, isNull }) =>
-        and(
-          eq(creds.appId, appId),
-          eq(creds.organizationId, organizationId),
-          isNull(creds.userId), // Organization connection has no userId
-          eq(creds.type, 'app-connection')
-        ),
-      orderBy: (creds, { desc }) => desc(creds.createdAt),
-    }),
-    'get-org-connection'
-  )
+  const revealed = await revealSecrets(record.id, organizationId)
+  if (revealed.isErr()) return err(revealed.error)
 
-  if (organizationConnectionResult.isErr()) {
-    return organizationConnectionResult
-  }
-
-  const organizationConnection = organizationConnectionResult.value
-
-  if (organizationConnection) {
-    const credentialData = await CredentialService.loadCredential(
-      organizationConnection.id,
-      organizationId
-    )
-    return ok(credentialData)
-  }
-
-  return err({
-    code: 'CONNECTION_NOT_FOUND',
-    message: 'Connection not found',
-    appId,
-    organizationId,
-    userId,
-  })
+  // Preserve the legacy "full data" shape: non-secret companion fields flattened to the top
+  // level, secrets layered on top (secrets win on key collisions).
+  return ok({ ...revealed.value.record.metadata, ...revealed.value.secrets })
 }

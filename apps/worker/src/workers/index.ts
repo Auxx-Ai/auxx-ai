@@ -525,7 +525,7 @@ export async function setupSchedules() {
     }
   )
 
-  // OAuth2 token refresh scanner (for WorkflowCredentials table)
+  // OAuth2 token refresh scanner (for Credential table)
 
   // Every 15 minutes - Scan for OAuth2 tokens that need refreshing
   await maintenanceQueue.upsertJobScheduler(

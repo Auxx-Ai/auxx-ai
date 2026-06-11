@@ -1457,6 +1457,20 @@
       "when": 1781146742373,
       "tag": "0207_add_data_migration_ledger",
       "breakpoints": true
+    },
+    {
+      "idx": 208,
+      "version": "7",
+      "when": 1781152425046,
+      "tag": "0208_rename_workflow_credentials_to_credential",
+      "breakpoints": true
+    },
+    {
+      "idx": 209,
+      "version": "7",
+      "when": 1781157835153,
+      "tag": "0209_credential_type_nullable",
+      "breakpoints": true
     }
   ]
 }

@@ -82,6 +82,11 @@ vi.mock('../sync', () => ({ syncMcpTools: (...a: unknown[]) => syncMcpTools(...a
 
 vi.mock('../../../cache/invalidate', () => ({ onCacheEvent: async () => undefined }))
 
+vi.mock('@auxx/credentials/store', async () => {
+  const { ok } = await import('neverthrow')
+  return { findCredential: async () => ok(null) }
+})
+
 import { ok } from 'neverthrow'
 import { connectCuratedMcpServer, createCustomMcpServer } from '../manage'
 

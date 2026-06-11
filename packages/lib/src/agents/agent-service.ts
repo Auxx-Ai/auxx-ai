@@ -827,7 +827,7 @@ export async function agentExistsInOrg(organizationId: string, agentId: string):
 
 /**
  * Verify each non-null appAccounts entry's `credId` resolves to a
- * `WorkflowCredentials` row in this org that is either workspace-scoped
+ * `Credential` row in this org that is either workspace-scoped
  * (`userId IS NULL`) or owned by the agent's creator. Rejects with
  * `ForbiddenError` for any cred pointing at a different teammate's
  * personal cred (or at a row in another org). See
@@ -850,19 +850,16 @@ async function validateAppAccountBindings(
 
   const rows = await db
     .select({
-      id: schema.WorkflowCredentials.id,
-      userId: schema.WorkflowCredentials.userId,
+      id: schema.Credential.id,
+      userId: schema.Credential.userId,
     })
-    .from(schema.WorkflowCredentials)
+    .from(schema.Credential)
     .where(
       and(
-        eq(schema.WorkflowCredentials.organizationId, organizationId),
-        eq(schema.WorkflowCredentials.type, 'app-connection'),
-        inArray(schema.WorkflowCredentials.id, credIds),
-        or(
-          isNull(schema.WorkflowCredentials.userId),
-          eq(schema.WorkflowCredentials.userId, createdById)
-        )
+        eq(schema.Credential.organizationId, organizationId),
+        eq(schema.Credential.kind, 'app'),
+        inArray(schema.Credential.id, credIds),
+        or(isNull(schema.Credential.userId), eq(schema.Credential.userId, createdById))
       )
     )
   const visible = new Set(rows.map((r) => r.id))

@@ -6,7 +6,7 @@ import { createScopedLogger } from '@auxx/logger'
 import crypto from 'crypto'
 import { and, eq } from 'drizzle-orm'
 import { InboxService } from '../../inboxes/inbox-service'
-import { ChannelTokenAccessor } from '../channel-token-accessor'
+import { deleteChannelTokens, getChannelTokens, setChannelTokens } from '../channel-token-accessor'
 
 const logger = createScopedLogger('facebook-oauth')
 const DEFAULT_API_VERSION = 'v19.0'
@@ -274,7 +274,7 @@ export class FacebookOAuthService {
           .returning()
         integration = updatedIntegration
 
-        await ChannelTokenAccessor.setTokens(
+        await setChannelTokens(
           existingIntegration.id,
           {
             refreshToken: longLivedUserToken || 'N/A',
@@ -296,7 +296,7 @@ export class FacebookOAuthService {
           .returning()
         integration = newIntegration
 
-        await ChannelTokenAccessor.setTokens(
+        await setChannelTokens(
           integration.id,
           {
             refreshToken: longLivedUserToken || 'N/A',
@@ -392,7 +392,7 @@ export class FacebookOAuthService {
       `'refreshTokens' called for Facebook integration ${integrationId}. Checking token validity.`
     )
 
-    const tokens = await ChannelTokenAccessor.getTokens(integrationId)
+    const tokens = await getChannelTokens(integrationId)
     if (!tokens.accessToken) {
       throw new Error('Integration or access token not found for refresh check.')
     }
@@ -467,7 +467,7 @@ export class FacebookOAuthService {
       }
 
       const metadata = integration.metadata as unknown as FacebookIntegrationMetadata
-      const tokens = await ChannelTokenAccessor.getTokens(integrationId)
+      const tokens = await getChannelTokens(integrationId)
       const pageAccessToken = tokens.accessToken
       const userAccessToken = tokens.refreshToken
       const pageId = metadata.pageId
@@ -512,7 +512,7 @@ export class FacebookOAuthService {
       }
 
       // 3. Delete encrypted credentials and disable integration
-      await ChannelTokenAccessor.deleteTokens(integrationId)
+      await deleteChannelTokens(integrationId)
       await db
         .update(schema.Integration)
         .set({
@@ -548,7 +548,7 @@ export class FacebookOAuthService {
       return null
     }
 
-    const tokens = await ChannelTokenAccessor.getTokens(integrationId)
+    const tokens = await getChannelTokens(integrationId)
     return tokens.accessToken
   }
 

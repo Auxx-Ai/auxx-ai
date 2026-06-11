@@ -13,6 +13,8 @@ export default defineConfig({
     'src/local-session/index.ts',
     'src/config/index.ts',
     'src/config/client.ts',
+    'src/crypto/index.ts',
+    'src/store/index.ts',
     'src/lambda-auth/index.ts',
   ],
   format: 'esm',

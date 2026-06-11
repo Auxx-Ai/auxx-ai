@@ -4,7 +4,7 @@ import { createScopedLogger } from '@auxx/logger'
 // TODO: Move credential-testers.ts to this package
 // import { SmtpTester, PostgresTester } from './credential-testers'
 import type { CredentialTestResult, ICredentialType } from '@auxx/workflow-nodes/types'
-import { CredentialService } from './credential-service'
+import { revealSecrets } from '../store'
 
 const logger = createScopedLogger('credential-testing-service')
 
@@ -77,18 +77,18 @@ export class CredentialTestingService {
 
       logger.info('Testing credential', { credentialId, organizationId })
 
-      // Load the credential data
-      const credentialData = await CredentialService.loadCredential(credentialId, organizationId)
-
-      // Get credential info to determine type
-      const credentialInfo = await CredentialService.getCredentialInfo(credentialId, organizationId)
-
-      if (!credentialInfo) {
-        throw new Error('Credential not found')
+      // Load the credential: record (type + plaintext metadata) and decrypted secrets
+      const revealed = await revealSecrets(credentialId, organizationId)
+      if (revealed.isErr()) {
+        throw new Error(revealed.error.message)
       }
+      const { record, secrets } = revealed.value
+      // Testers expect the full legacy bag — non-secret fields plus secrets
+      const credentialData = { ...record.metadata, ...secrets }
+      const credentialType = record.type ?? ''
 
       // Check if credential type supports testing
-      if (!CredentialTestingService.credentialSupportsTest(credentialInfo.type)) {
+      if (!CredentialTestingService.credentialSupportsTest(credentialType)) {
         return {
           success: true,
           message: 'Testing not supported for this credential type - credential format validated',
@@ -96,7 +96,7 @@ export class CredentialTestingService {
       }
 
       // Get the appropriate tester
-      const tester = CREDENTIAL_TESTERS[credentialInfo.type]
+      const tester = CREDENTIAL_TESTERS[credentialType]
       if (!tester) {
         return {
           success: true,
@@ -114,7 +114,7 @@ export class CredentialTestingService {
       logger.info('Credential test completed', {
         credentialId,
         organizationId,
-        type: credentialInfo.type,
+        type: credentialType,
         success: testResult.success,
         connectionTime: testResult.details?.connectionTime,
         errorType: testResult.error?.type,

@@ -5,7 +5,7 @@
 // drive end-to-end identity verification without leaving the app.
 
 import { signUserJwt } from '@auxx/chat/server'
-import { CredentialService } from '@auxx/credentials'
+import { decryptSecrets } from '@auxx/credentials/crypto'
 import { schema } from '@auxx/database'
 import { getUserOrganizationId, requireAdminAccess } from '@auxx/lib/email'
 import { createScopedLogger } from '@auxx/logger'
@@ -82,7 +82,7 @@ export const chatRouter = createTRPCRouter({
 
       let secret: string
       try {
-        const decrypted = CredentialService.decrypt(row.encryptedSecret)
+        const decrypted = decryptSecrets<{ value?: unknown }>(row.encryptedSecret)
         const value = decrypted.value
         if (typeof value !== 'string' || !value) {
           throw new Error('Decrypted payload missing value')

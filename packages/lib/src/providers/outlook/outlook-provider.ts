@@ -25,7 +25,7 @@ import {
   MessageStatus,
   type SendMessageOptions,
 } from '../channel-provider.interface' // Adjust path
-import { ChannelTokenAccessor } from '../channel-token-accessor'
+import { getChannelTokens } from '../channel-token-accessor'
 import {
   type AttachmentFile,
   BaseMessageProvider,
@@ -161,7 +161,7 @@ export class OutlookProvider
     this.integration = dbIntegration
 
     // Get tokens from encrypted credentials
-    const tokens = await ChannelTokenAccessor.getTokens(integrationId)
+    const tokens = await getChannelTokens(integrationId)
     if (!tokens.refreshToken) {
       this.resetState()
       throw new Error(`Missing refresh token for Outlook integration ID: ${integrationId}`)

@@ -1,8 +1,7 @@
 // packages/lib/src/ai/mcp/connections/mark-mcp-connection-failed.ts
 
-import { database as db, schema } from '@auxx/database'
+import { findCredential, recordRefreshFailure } from '@auxx/credentials/store'
 import { createScopedLogger } from '@auxx/logger'
-import { and, eq, isNull, sql } from 'drizzle-orm'
 
 const logger = createScopedLogger('mark-mcp-connection-failed')
 
@@ -17,20 +16,9 @@ export async function markMcpConnectionFailed(input: {
 }): Promise<void> {
   const { mcpServerId, organizationId } = input
   try {
-    await db
-      .update(schema.WorkflowCredentials)
-      .set({
-        consecutiveRefreshFailures: sql`${schema.WorkflowCredentials.consecutiveRefreshFailures} + 1`,
-        lastRefreshFailureAt: new Date(),
-      })
-      .where(
-        and(
-          eq(schema.WorkflowCredentials.mcpServerId, mcpServerId),
-          eq(schema.WorkflowCredentials.organizationId, organizationId),
-          isNull(schema.WorkflowCredentials.userId),
-          eq(schema.WorkflowCredentials.type, 'mcp-connection')
-        )
-      )
+    const found = await findCredential({ kind: 'mcp', mcpServerId, organizationId, userId: null })
+    if (found.isErr() || !found.value) return
+    await recordRefreshFailure(found.value.id, organizationId)
   } catch (error) {
     logger.warn('Failed to mark MCP connection failed', {
       mcpServerId,

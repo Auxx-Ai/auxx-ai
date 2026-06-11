@@ -1,7 +1,8 @@
 // apps/api/src/routes/chat/shopify-proxy.ts
 
 import { createHmac, timingSafeEqual } from 'node:crypto'
-import { CredentialService } from '@auxx/credentials'
+import { decryptSecrets } from '@auxx/credentials/crypto'
+import { listCredentials } from '@auxx/credentials/store'
 import { database, schema } from '@auxx/database'
 import { signChannelUserJwt } from '@auxx/lib/chat'
 import { shopifyExternalId } from '@auxx/lib/ingest'
@@ -46,8 +47,8 @@ function verifyAppProxyHmac(searchParams: URLSearchParams, secret: string): bool
  * the shop domain, the logged-in customer id, a signature, and a timestamp.
  *
  * Verifies the HMAC, resolves the chat channel's owning org, cross-checks
- * the shop ↔ channel binding by decrypting the org's Shopify
- * `WorkflowCredentials`, loads the channel's active chat signing key, and
+ * the shop ↔ channel binding against the org's Shopify `Credential`
+ * metadata, loads the channel's active chat signing key, and
  * mints a 1h user JWT with `user_id = "shopify:<shop>:<customerId>"`. The
  * widget's bootstrap then calls `/api/chat/passport` with this JWT, which
  * resolves it to a Contact via `findOrCreateContactFromJwt`.
@@ -93,9 +94,9 @@ shopifyProxyRoute.get('/jwt', async (c) => {
   }
   const orgId = integration.organizationId
 
-  // Cross-check shop ↔ channel binding. Decrypt the org's Shopify
-  // app-connection credentials (typically 1-3 rows) and verify one matches
-  // the proxy's `shop` param. Prevents shop A from passing shop B's
+  // Cross-check shop ↔ channel binding. Match the proxy's `shop` param
+  // against the org's Shopify app credentials' plaintext metadata (typically
+  // 1-3 rows, no decryption). Prevents shop A from passing shop B's
   // `channel_id` to mint JWTs against shop B's channel.
   const shopifyApp = await database.query.App.findFirst({
     where: (apps, { eq }) => eq(apps.slug, 'shopify'),
@@ -106,34 +107,21 @@ shopifyProxyRoute.get('/jwt', async (c) => {
     return c.json({ error: 'misconfigured' }, 500)
   }
 
-  const creds = await database.query.WorkflowCredentials.findMany({
-    where: (rows, { and, eq, isNull }) =>
-      and(
-        eq(rows.organizationId, orgId),
-        eq(rows.appId, shopifyApp.id),
-        eq(rows.type, 'app-connection'),
-        isNull(rows.userId)
-      ),
-    columns: { encryptedData: true },
+  const credsResult = await listCredentials({
+    organizationId: orgId,
+    kind: 'app',
+    appId: shopifyApp.id,
+    userId: null,
   })
-
-  let bound = false
-  for (const cred of creds) {
-    try {
-      const decrypted = CredentialService.decrypt(cred.encryptedData) as {
-        metadata?: { shopDomain?: string }
-      }
-      if (decrypted.metadata?.shopDomain === shop) {
-        bound = true
-        break
-      }
-    } catch (error) {
-      log.warn('Failed to decrypt Shopify credential during binding check', {
-        orgId,
-        error: (error as Error).message,
-      })
-    }
+  if (credsResult.isErr()) {
+    log.error('Failed to list Shopify credentials during binding check', {
+      orgId,
+      error: credsResult.error.message,
+    })
+    return c.json({ error: 'misconfigured' }, 500)
   }
+
+  const bound = credsResult.value.some((cred) => cred.metadata.shopDomain === shop)
   if (!bound) {
     log.warn('Shop ↔ channel binding mismatch', { shop, channelId, orgId })
     return c.json({ error: 'forbidden' }, 403)
@@ -157,8 +145,8 @@ shopifyProxyRoute.get('/jwt', async (c) => {
 
   let signingSecret: string
   try {
-    const decrypted = CredentialService.decrypt(apiKey.encryptedSecret)
-    const value = (decrypted as { value?: unknown }).value
+    const decrypted = decryptSecrets<{ value?: unknown }>(apiKey.encryptedSecret)
+    const value = decrypted.value
     if (typeof value !== 'string' || !value) {
       throw new Error('Decrypted payload missing value')
     }

@@ -1,6 +1,6 @@
 // packages/lib/src/providers/imap/types.ts
 
-/** Encrypted credential data stored in WorkflowCredentials.encryptedData */
+/** Encrypted credential data stored in Credential.encryptedSecrets */
 export interface ImapCredentialData {
   /** Auth mode: 'direct' = IMAP login, 'ldap' = LDAP bind then IMAP */
   authMode: 'direct' | 'ldap'

@@ -1,17 +1,25 @@
 // packages/services/src/app-connections/resolve-app-connection-for-runtime.ts
 
-import { CredentialService } from '@auxx/credentials'
+import { findCredential, revealSecrets } from '@auxx/credentials/store'
 import { database } from '@auxx/database'
-import { err, ok, type Result } from 'neverthrow'
+import { err, ok } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
 import type { DecryptedConnectionData, RuntimeConnectionData } from './types'
 import { logger } from './utils'
+
+/** Secrets no longer carry expiry/metadata — those come from the record columns. */
+type ConnectionSecrets = Pick<DecryptedConnectionData, 'accessToken' | 'refreshToken' | 'secret'>
+
+function secretValue(secrets: ConnectionSecrets): string {
+  return secrets.accessToken || secrets.secret || ''
+}
 
 /**
  * Resolve app connections for runtime execution.
  *
  * Fetches and decrypts both user-scoped and organization-scoped connections for an app,
- * preparing them for use in the runtime execution environment.
+ * preparing them for use in the runtime execution environment. Non-secret fields (scopes,
+ * account email, …) come from `record.metadata`; `expiresAt` from the column.
  */
 export async function resolveAppConnectionForRuntime(input: {
   appId: string
@@ -25,63 +33,55 @@ export async function resolveAppConnectionForRuntime(input: {
 
   // If connectionId provided, resolve that specific credential directly
   if (connectionId) {
-    const credResult = await fromDatabase(
-      database.query.WorkflowCredentials.findFirst({
-        where: (creds, { eq, and }) =>
-          and(
-            eq(creds.id, connectionId),
-            eq(creds.organizationId, organizationId),
-            eq(creds.type, 'app-connection')
-          ),
-      }),
-      'get-connection-by-id'
-    )
-
-    if (credResult.isErr()) {
-      return err({ code: 'DATABASE_ERROR', message: 'Failed to query connection by ID' })
+    const revealed = await revealSecrets<ConnectionSecrets>(connectionId, organizationId)
+    if (revealed.isErr()) {
+      if (revealed.error.code === 'CREDENTIAL_NOT_FOUND') {
+        return err({
+          code: 'CONNECTION_NOT_FOUND',
+          message: `Connection ${connectionId} not found`,
+        })
+      }
+      logger.error('Failed to reveal credential by ID', {
+        error: revealed.error,
+        credentialId: connectionId,
+      })
+      return err({ code: 'DECRYPTION_ERROR', message: 'Failed to decrypt credential' })
     }
 
-    const cred = credResult.value
-    if (!cred) {
+    const { record, secrets } = revealed.value
+    if (record.kind !== 'app') {
       return err({ code: 'CONNECTION_NOT_FOUND', message: `Connection ${connectionId} not found` })
     }
 
-    try {
-      const decryptedData = CredentialService.decrypt(cred.encryptedData) as DecryptedConnectionData
+    // Determine connection type from connection definition
+    const connDefResult = await fromDatabase(
+      database.query.ConnectionDefinition.findFirst({
+        where: (connDef, { eq }) => eq(connDef.appId, appId),
+        columns: { connectionType: true },
+      }),
+      'get-connection-definition-for-id'
+    )
 
-      // Determine connection type from connection definition
-      const connDefResult = await fromDatabase(
-        database.query.ConnectionDefinition.findFirst({
-          where: (connDef, { eq }) => eq(connDef.appId, appId),
-          columns: { connectionType: true },
-        }),
-        'get-connection-definition-for-id'
-      )
+    const connectionType =
+      connDefResult.isOk() && connDefResult.value
+        ? (connDefResult.value.connectionType as 'oauth2-code' | 'secret')
+        : secrets.accessToken
+          ? 'oauth2-code'
+          : 'secret'
 
-      const connectionType =
-        connDefResult.isOk() && connDefResult.value
-          ? (connDefResult.value.connectionType as 'oauth2-code' | 'secret')
-          : decryptedData.accessToken
-            ? 'oauth2-code'
-            : 'secret'
-
-      const resolved: RuntimeConnectionData = {
-        id: cred.id,
-        type: connectionType,
-        value: decryptedData.accessToken || decryptedData.secret || '',
-        metadata: decryptedData.metadata,
-        expiresAt: decryptedData.expiresAt,
-      }
-
-      // Return as organizationConnection if org-scoped, userConnection if user-scoped
-      if (cred.userId) {
-        return ok({ userConnection: resolved, organizationConnection: undefined })
-      }
-      return ok({ userConnection: undefined, organizationConnection: resolved })
-    } catch (error) {
-      logger.error('Failed to decrypt credential by ID', { error, credentialId: cred.id })
-      return err({ code: 'DECRYPTION_ERROR', message: 'Failed to decrypt credential' })
+    const resolved: RuntimeConnectionData = {
+      id: record.id,
+      type: connectionType,
+      value: secretValue(secrets),
+      metadata: record.metadata,
+      expiresAt: record.expiresAt?.toISOString(),
     }
+
+    // Return as organizationConnection if org-scoped, userConnection if user-scoped
+    if (record.userId) {
+      return ok({ userConnection: resolved, organizationConnection: undefined })
+    }
+    return ok({ userConnection: undefined, organizationConnection: resolved })
   }
 
   // 1. Get connection definitions for this app
@@ -131,103 +131,64 @@ export async function resolveAppConnectionForRuntime(input: {
 
   // 2. Fetch user connection (if app has user-scoped definition)
   if (userConnDef) {
-    const userCredResult = await fromDatabase(
-      database.query.WorkflowCredentials.findFirst({
-        where: (creds, { eq, and }) =>
-          and(
-            eq(creds.appId, appId),
-            eq(creds.organizationId, organizationId),
-            eq(creds.userId, userId),
-            eq(creds.type, 'app-connection')
-          ),
-      }),
-      'get-user-credential'
-    )
-
-    if (userCredResult.isErr()) {
-      return err({
-        code: 'DATABASE_ERROR',
-        message: 'Failed to query user credential',
-      })
+    const userResult = await findCredential({ organizationId, kind: 'app', appId, userId })
+    if (userResult.isErr()) {
+      return err({ code: 'DATABASE_ERROR', message: 'Failed to query user credential' })
     }
 
-    const userCred = userCredResult.value
-
-    if (userCred) {
-      try {
-        // Decrypt using CredentialService
-        const decryptedData = CredentialService.decrypt(
-          userCred.encryptedData
-        ) as DecryptedConnectionData
-
-        userConnection = {
-          id: userCred.id,
-          type: userConnDef.connectionType as 'oauth2-code' | 'secret',
-          value: decryptedData.accessToken || decryptedData.secret || '',
-          metadata: decryptedData.metadata,
-          expiresAt: decryptedData.expiresAt,
-        }
-
-        logger.info('User connection resolved', { credentialId: userCred.id })
-      } catch (error) {
-        logger.error('Failed to decrypt user credential', { error, credentialId: userCred.id })
-        return err({
-          code: 'DECRYPTION_ERROR',
-          message: 'Failed to decrypt user credential',
+    const userRecord = userResult.value
+    if (userRecord) {
+      const revealed = await revealSecrets<ConnectionSecrets>(userRecord.id, organizationId)
+      if (revealed.isErr()) {
+        logger.error('Failed to decrypt user credential', {
+          error: revealed.error,
+          credentialId: userRecord.id,
         })
+        return err({ code: 'DECRYPTION_ERROR', message: 'Failed to decrypt user credential' })
       }
+
+      userConnection = {
+        id: userRecord.id,
+        type: userConnDef.connectionType as 'oauth2-code' | 'secret',
+        value: secretValue(revealed.value.secrets),
+        metadata: userRecord.metadata,
+        expiresAt: userRecord.expiresAt?.toISOString(),
+      }
+
+      logger.info('User connection resolved', { credentialId: userRecord.id })
     }
   }
 
   // 3. Fetch organization connection (if app has org-scoped definition)
   if (orgConnDef) {
-    const orgCredResult = await fromDatabase(
-      database.query.WorkflowCredentials.findFirst({
-        where: (creds, { eq, and, isNull }) =>
-          and(
-            eq(creds.appId, appId),
-            eq(creds.organizationId, organizationId),
-            isNull(creds.userId), // Organization connection has no userId
-            eq(creds.type, 'app-connection')
-          ),
-      }),
-      'get-org-credential'
-    )
-
-    if (orgCredResult.isErr()) {
-      return err({
-        code: 'DATABASE_ERROR',
-        message: 'Failed to query organization credential',
-      })
+    const orgResult = await findCredential({ organizationId, kind: 'app', appId, userId: null })
+    if (orgResult.isErr()) {
+      return err({ code: 'DATABASE_ERROR', message: 'Failed to query organization credential' })
     }
 
-    const orgCred = orgCredResult.value
-
-    if (orgCred) {
-      try {
-        const decryptedData = CredentialService.decrypt(
-          orgCred.encryptedData
-        ) as DecryptedConnectionData
-
-        organizationConnection = {
-          id: orgCred.id,
-          type: orgConnDef.connectionType as 'oauth2-code' | 'secret',
-          value: decryptedData.accessToken || decryptedData.secret || '',
-          metadata: decryptedData.metadata,
-          expiresAt: decryptedData.expiresAt,
-        }
-
-        logger.info('Organization connection resolved', { credentialId: orgCred.id })
-      } catch (error) {
+    const orgRecord = orgResult.value
+    if (orgRecord) {
+      const revealed = await revealSecrets<ConnectionSecrets>(orgRecord.id, organizationId)
+      if (revealed.isErr()) {
         logger.error('Failed to decrypt organization credential', {
-          error,
-          credentialId: orgCred.id,
+          error: revealed.error,
+          credentialId: orgRecord.id,
         })
         return err({
           code: 'DECRYPTION_ERROR',
           message: 'Failed to decrypt organization credential',
         })
       }
+
+      organizationConnection = {
+        id: orgRecord.id,
+        type: orgConnDef.connectionType as 'oauth2-code' | 'secret',
+        value: secretValue(revealed.value.secrets),
+        metadata: orgRecord.metadata,
+        expiresAt: orgRecord.expiresAt?.toISOString(),
+      }
+
+      logger.info('Organization connection resolved', { credentialId: orgRecord.id })
     }
   }
 

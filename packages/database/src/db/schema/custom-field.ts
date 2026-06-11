@@ -16,9 +16,9 @@ import {
   uniqueIndex,
 } from './_shared'
 import { AppInstallation } from './app-installation'
+import { Credential } from './credential'
 import { EntityDefinition } from './entity-definition'
 import { Organization } from './organization'
-import { WorkflowCredentials } from './workflow-credentials'
 
 /** Drizzle table for customField */
 export const CustomField = pgTable(
@@ -86,11 +86,11 @@ export const CustomField = pgTable(
       onDelete: 'cascade', // safety; uninstall is a soft-delete so we also delete explicitly
     }),
 
-    /** Owning connection (WorkflowCredentials.id / credId) for
+    /** Owning connection (Credential.id / credId) for
      *  `scope: 'connection'` fields — one field def per connected account.
      *  NULL for installation-scoped and non-app fields. Deleted on
      *  connection-removed. */
-    connectionId: text().references((): AnyPgColumn => WorkflowCredentials.id, {
+    connectionId: text().references((): AnyPgColumn => Credential.id, {
       onUpdate: 'cascade',
       onDelete: 'cascade',
     }),

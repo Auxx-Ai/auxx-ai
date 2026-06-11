@@ -20,6 +20,13 @@ export {
   valueToString,
 } from './config'
 export { ConfigStorage } from './config/config-storage'
+// Crypto (versioned secret box)
+export {
+  decryptLegacySecrets,
+  decryptSecrets,
+  encryptSecrets,
+  isV2Payload,
+} from './crypto'
 export type { LoginTokenError, LoginTokenPayload, VerifiedLoginToken } from './login-token'
 // Login token
 export { issueLoginToken, verifyLoginToken } from './login-token'

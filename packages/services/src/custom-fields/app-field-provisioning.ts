@@ -77,7 +77,7 @@ function buildFieldOptions(field: CatalogAppField): CreateCustomFieldInput['opti
 export interface ProvisionContext {
   appInstallationId: string
   organizationId: string
-  /** WorkflowCredentials.id for `scope: 'connection'` fields; omit for installation scope. */
+  /** Credential.id for `scope: 'connection'` fields; omit for installation scope. */
   connectionId?: string
 }
 
@@ -140,7 +140,7 @@ export async function provisionAppField(
 /**
  * Provision every declared field of a given scope from a deployment catalog.
  * For `connection` scope the caller must assert the connection is org-scoped
- * (`WorkflowCredentials.userId IS NULL`) first — see decision 8.
+ * (`Credential.userId IS NULL`) first — see decision 8.
  */
 export async function provisionAppFields(
   catalog: CatalogPayload | null | undefined,
