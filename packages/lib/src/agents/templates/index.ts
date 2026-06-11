@@ -33,7 +33,7 @@ export interface AgentTemplate {
   prompt: string
   /** One or more categories. Drives the sidebar filter. */
   categories: AgentTemplateCategory[]
-  /** Lucide icon name (string). Rendered in the row's avatar slot. */
+  /** ICON_DATA iconId, rendered via EntityIcon in the row's avatar slot. */
   icon: string
   /** Color id from the EntityIcon palette, e.g. `'sky'`, `'amber'`. */
   color: string
@@ -50,7 +50,7 @@ export const agentTemplates: AgentTemplate[] = [
     prompt:
       'Build me a customer support triage agent. When a new email comes in, it should classify urgency, tag the ticket, and assign to the right team based on the subject and body. Use the email and entities toolsets.',
     categories: ['support'],
-    icon: 'Headphones',
+    icon: 'headphones',
     color: 'blue',
     avatarId: 'fox',
   },
@@ -62,7 +62,7 @@ export const agentTemplates: AgentTemplate[] = [
     prompt:
       "Build me a refund request handler. When a customer asks for a refund, look up their most recent Shopify order, check whether it falls inside the refund window, and draft a reply that either confirms the refund or explains why it can't be issued.",
     categories: ['support'],
-    icon: 'RefreshCcw',
+    icon: 'refresh',
     color: 'amber',
     avatarId: 'sparkle',
   },
@@ -74,7 +74,7 @@ export const agentTemplates: AgentTemplate[] = [
     prompt:
       "Build me a VIP escalation agent. When a new ticket arrives, check the contact's lifetime spend in Shopify. If it crosses our VIP threshold, tag the ticket as VIP, bump its priority, and notify the support lead.",
     categories: ['support'],
-    icon: 'Crown',
+    icon: 'crown',
     color: 'purple',
     avatarId: 'owl',
   },
@@ -86,7 +86,7 @@ export const agentTemplates: AgentTemplate[] = [
     prompt:
       'Build me a sales lead qualifier. When a new contact comes in through the website form, score the lead based on company size, industry, and message intent. Hot leads get assigned to the sales team; cold ones get a polite nurture reply.',
     categories: ['sales'],
-    icon: 'Target',
+    icon: 'target',
     color: 'green',
     avatarId: 'rocket',
   },
@@ -98,7 +98,7 @@ export const agentTemplates: AgentTemplate[] = [
     prompt:
       'Build me a quote follow-up agent. Each morning, find quotes that were sent more than three days ago without a reply and draft a short, friendly nudge for the sales rep to review and send.',
     categories: ['sales'],
-    icon: 'Send',
+    icon: 'send',
     color: 'teal',
     avatarId: 'cat',
   },
@@ -110,7 +110,7 @@ export const agentTemplates: AgentTemplate[] = [
     prompt:
       'Build me a scheduled agent that runs every Monday morning, pulls last week’s support metrics — ticket volume, average response time, top tags — and posts a digest summary to the team.',
     categories: ['operations'],
-    icon: 'BarChart3',
+    icon: 'bar-chart',
     color: 'indigo',
     avatarId: 'robot',
   },
@@ -122,7 +122,7 @@ export const agentTemplates: AgentTemplate[] = [
     prompt:
       "Build me a daily standup agent. Each weekday morning, summarize what happened in our team's tickets, threads, and tasks since the previous standup, and post it as a short async standup update.",
     categories: ['internal'],
-    icon: 'Sunrise',
+    icon: 'sunrise',
     color: 'orange',
     avatarId: 'turtle',
   },
@@ -134,7 +134,7 @@ export const agentTemplates: AgentTemplate[] = [
     prompt:
       'Build me an onboarding buddy agent. New hires should be able to ask it questions about our processes, tools, and policies, and it should answer from our knowledge base — citing the source doc — and escalate to a human when it isn’t sure.',
     categories: ['internal'],
-    icon: 'GraduationCap',
+    icon: 'graduation-cap',
     color: 'pink',
     avatarId: 'dog',
   },
@@ -153,7 +153,7 @@ export const agentTemplates: AgentTemplate[] = [
     prompt:
       "Build me a storefront support concierge for our chat widget. It greets visitors warmly, answers their questions using our public knowledge base, and keeps replies short and friendly. If the visitor is frustrated, explicitly asks for a human, or the answer isn't in the knowledge base, it should hand the conversation off to a teammate rather than guess.",
     categories: ['support'],
-    icon: 'Headphones',
+    icon: 'headphones',
     color: 'blue',
     avatarId: 'fox',
   },
@@ -165,7 +165,7 @@ export const agentTemplates: AgentTemplate[] = [
     prompt:
       "Build me an order status assistant for our chat widget. When a visitor asks about their order, it helps them find the status of their own orders only. It never asks for or trusts an order number or email a visitor types to look up someone else's account. If the visitor needs a refund, a change to an order, or anything it can't resolve, it hands off to a human teammate.",
     categories: ['support'],
-    icon: 'RefreshCcw',
+    icon: 'refresh',
     color: 'amber',
     avatarId: 'sparkle',
   },
@@ -177,7 +177,7 @@ export const agentTemplates: AgentTemplate[] = [
     prompt:
       'Build me a pre-sales product Q&A agent for our chat widget. It answers shoppers’ questions about our products, shipping, and policies using our public knowledge base, and nudges them toward a purchase when it makes sense. Keep the tone helpful and concise. If a shopper asks something the knowledge base doesn’t cover or wants to talk to sales, hand the conversation off to a teammate.',
     categories: ['sales'],
-    icon: 'Target',
+    icon: 'target',
     color: 'green',
     avatarId: 'rocket',
   },

@@ -225,7 +225,7 @@ export const SETTINGS_MENU: SidebarProps[] = [
       },
       {
         id: 'settings-apps',
-        label: 'Apps',
+        label: 'Apps & MCP',
         slug: 'apps',
         icon: <AppWindow />,
       },

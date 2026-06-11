@@ -36,40 +36,40 @@ export const constants = {
 
   /** Workflow template categories */
   workflowCategories: [
-    { value: 'all', label: 'All Templates', icon: 'LayoutGrid', color: 'zinc' },
-    { value: 'customer-service', label: 'Customer Service', icon: 'Headphones', color: 'blue' },
-    { value: 'shopify', label: 'Shopify', icon: 'ShoppingBag', color: 'green' },
-    { value: 'automation', label: 'Automation', icon: 'Zap', color: 'amber' },
-    { value: 'routing', label: 'Routing & Assignment', icon: 'GitBranch', color: 'purple' },
-    { value: 'ai', label: 'AI-Powered', icon: 'Sparkles', color: 'violet' },
-    { value: 'sales', label: 'Sales & Marketing', icon: 'TrendingUp', color: 'teal' },
+    { value: 'all', label: 'All Templates', icon: 'layout-grid', color: 'zinc' },
+    { value: 'customer-service', label: 'Customer Service', icon: 'headphones', color: 'blue' },
+    { value: 'shopify', label: 'Shopify', icon: 'shopping-bag', color: 'green' },
+    { value: 'automation', label: 'Automation', icon: 'zap', color: 'amber' },
+    { value: 'routing', label: 'Routing & Assignment', icon: 'git-branch', color: 'purple' },
+    { value: 'ai', label: 'AI-Powered', icon: 'sparkles', color: 'violet' },
+    { value: 'sales', label: 'Sales & Marketing', icon: 'trending-up', color: 'teal' },
   ] as const,
 
   /** Prompt template categories for Kopilot */
   promptTemplateCategories: [
-    { value: 'all', label: 'All Prompts', icon: 'LayoutGrid' },
-    { value: 'customer-support', label: 'Customer Support', icon: 'Headphones' },
-    { value: 'shopify', label: 'Shopify', icon: 'ShoppingBag' },
-    { value: 'sales', label: 'Sales', icon: 'Handshake' },
-    { value: 'general', label: 'General', icon: 'Sparkles' },
+    { value: 'all', label: 'All Prompts', icon: 'layout-grid' },
+    { value: 'customer-support', label: 'Customer Support', icon: 'headphones' },
+    { value: 'shopify', label: 'Shopify', icon: 'shopping-bag' },
+    { value: 'sales', label: 'Sales', icon: 'handshake' },
+    { value: 'general', label: 'General', icon: 'sparkles' },
   ] as const,
 
   /** Entity definition template categories */
   entityTemplateCategories: [
-    { value: 'all', label: 'All Templates', icon: 'LayoutGrid' },
-    { value: 'e-commerce', label: 'E-Commerce', icon: 'ShoppingBag' },
-    { value: 'crm', label: 'CRM & Sales', icon: 'Users' },
-    { value: 'operations', label: 'Operations', icon: 'Settings' },
-    { value: 'support', label: 'Support', icon: 'Headphones' },
+    { value: 'all', label: 'All Templates', icon: 'layout-grid' },
+    { value: 'e-commerce', label: 'E-Commerce', icon: 'shopping-bag' },
+    { value: 'crm', label: 'CRM & Sales', icon: 'users' },
+    { value: 'operations', label: 'Operations', icon: 'settings' },
+    { value: 'support', label: 'Support', icon: 'headphones' },
   ] as const,
 
   /** Agent template categories shown in the "Create from template" dialog */
   agentTemplateCategories: [
-    { value: 'all', label: 'All Templates', icon: 'LayoutGrid' },
-    { value: 'support', label: 'Support', icon: 'Headphones' },
-    { value: 'sales', label: 'Sales', icon: 'Handshake' },
-    { value: 'operations', label: 'Operations', icon: 'Settings' },
-    { value: 'internal', label: 'Internal', icon: 'Building2' },
+    { value: 'all', label: 'All Templates', icon: 'layout-grid' },
+    { value: 'support', label: 'Support', icon: 'headphones' },
+    { value: 'sales', label: 'Sales', icon: 'handshake' },
+    { value: 'operations', label: 'Operations', icon: 'settings' },
+    { value: 'internal', label: 'Internal', icon: 'building-2' },
   ] as const,
 
   PRIVACY_URL: `${HOMEPAGE_URL}/privacy-policy`,
