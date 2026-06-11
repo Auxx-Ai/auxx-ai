@@ -12,6 +12,8 @@ import { onCacheEvent } from '../../cache/invalidate'
 import { deleteMcpConnection, saveMcpConnection } from './connections'
 import { discoverMcpAuth, registerDcrClient } from './discovery'
 import { syncMcpTools } from './sync'
+import { mcpTemplates } from './templates/catalog'
+import { ensureCuratedMcpServer } from './templates/ensure'
 
 const logger = createScopedLogger('mcp-manage')
 const CALLBACK_BASE = process.env.NGROK_URL || WEBAPP_URL
@@ -53,36 +55,65 @@ function authorizeUrlFor(serverId: string, returnTo?: string): string {
   return `/api/mcp/${serverId}/oauth2/authorize${qs}`
 }
 
+/** Manual OAuth client config + endpoint overrides pasted in the create/edit dialog. */
+export interface McpOAuthConfigInput {
+  clientId?: string
+  clientSecret?: string
+  /** With `tokenUrl`, skips RFC 9728/8414 discovery entirely. */
+  authorizeUrl?: string
+  tokenUrl?: string
+  scopes?: string[]
+}
+
+/** name → value map from repeatable header rows. */
+function headerMap(headers: Array<{ name: string; value: string }>): Record<string, string> {
+  return Object.fromEntries(headers.map((h) => [h.name, h.value]))
+}
+
 /**
  * Create an org-owned custom MCP server from a pasted URL.
- *  - `auto` → discover auth posture.
- *  - bearer/none → save connection (bearer) + sync → `{ connected: true }`.
- *  - oauth → DCR (or pasted client creds) → `{ needsOAuth }`; DCR failure → `{ needsClientCredentials }`.
+ *  - `auto` → discover auth posture (none or oauth).
+ *  - bearer/headers/none → save connection + sync → `{ connected: true }`.
+ *  - oauth → pasted client creds / DCR → `{ needsOAuth }`; DCR failure → `{ needsClientCredentials }`.
+ *    Manual authorize/token URL overrides skip discovery for servers without OAuth metadata.
  */
 export async function createCustomMcpServer(input: {
   organizationId: string
   createdById: string
   name: string
   endpoint: string
-  auth: 'auto' | 'bearer' | 'none'
+  auth: 'auto' | 'oauth' | 'bearer' | 'headers' | 'none'
   token?: string
   /** Non-`Authorization` header name for the bearer token (e.g. `X-API-Key`). */
   authHeaderName?: string
+  /** Custom-header auth rows (`auth: 'headers'`). */
+  headers?: Array<{ name: string; value: string }>
+  /** OAuth client creds + endpoint overrides (`auth: 'oauth'`, or auto-discovered OAuth). */
+  oauth?: McpOAuthConfigInput
   /** Enrichment lifted from the resolved snippet (registry / favicon). */
   description?: string
   icon?: McpServerIcon
-  clientId?: string
-  clientSecret?: string
   returnTo?: string
 }): Promise<McpConnectOutcome & { serverId: string; slug: string }> {
-  let mode: 'none' | 'bearer' | 'oauth' = input.auth === 'auto' ? 'none' : input.auth
-  let discovered: Awaited<ReturnType<typeof discoverMcpAuth>> | null = null
-  if (input.auth === 'auto') {
-    discovered = await discoverMcpAuth(input.endpoint)
-    if (discovered.isOk()) mode = discovered.value.kind === 'oauth' ? 'oauth' : 'none'
-  }
+  let mode: 'none' | 'bearer' | 'headers' | 'oauth' = input.auth === 'auto' ? 'none' : input.auth
+  const hasOAuthOverrides = !!(input.oauth?.authorizeUrl && input.oauth?.tokenUrl)
 
-  const oauth = discovered?.isOk() && discovered.value.kind === 'oauth' ? discovered.value : null
+  // Discovery runs for auto (to learn the posture) and for explicit OAuth without manual URLs.
+  let discovered: Awaited<ReturnType<typeof discoverMcpAuth>> | null = null
+  if (input.auth === 'auto' || (input.auth === 'oauth' && !hasOAuthOverrides)) {
+    discovered = await discoverMcpAuth(input.endpoint)
+    if (input.auth === 'auto' && discovered.isOk()) {
+      mode = discovered.value.kind === 'oauth' ? 'oauth' : 'none'
+    }
+  }
+  const oauthMeta =
+    discovered?.isOk() && discovered.value.kind === 'oauth' ? discovered.value : null
+
+  if (input.auth === 'oauth' && !hasOAuthOverrides && !oauthMeta) {
+    throw new Error(
+      'OAuth discovery failed for this endpoint — provide the authorize and token URLs under Advanced OAuth settings.'
+    )
+  }
 
   // Retry-safe: an org server already pointing at this endpoint is reused (e.g. clicking Connect
   // again after a missed OAuth popup result) instead of inserting a duplicate.
@@ -100,15 +131,26 @@ export async function createCustomMcpServer(input: {
   if (existing) {
     serverId = existing.id
     slug = existing.slug
-    if (input.clientId) {
+    if (input.oauth && Object.values(input.oauth).some((v) => v !== undefined)) {
       await db
         .update(schema.ConnectionDefinition)
         .set({
-          oauth2ClientId: input.clientId,
-          oauth2ClientSecret: input.clientSecret ?? null,
+          ...(input.oauth.clientId !== undefined && { oauth2ClientId: input.oauth.clientId }),
+          // Blank/omitted secret keeps the stored (possibly DCR-minted) one.
+          ...(input.oauth.clientSecret !== undefined && {
+            oauth2ClientSecret: input.oauth.clientSecret,
+          }),
+          ...(input.oauth.authorizeUrl !== undefined && {
+            oauth2AuthorizeUrl: input.oauth.authorizeUrl,
+          }),
+          ...(input.oauth.tokenUrl !== undefined && {
+            oauth2AccessTokenUrl: input.oauth.tokenUrl,
+          }),
+          ...(input.oauth.scopes !== undefined && { oauth2Scopes: input.oauth.scopes }),
         })
         .where(eq(schema.ConnectionDefinition.mcpServerId, serverId))
-    } else {
+    }
+    if (!input.oauth?.clientId) {
       const def = await db.query.ConnectionDefinition.findFirst({
         where: eq(schema.ConnectionDefinition.mcpServerId, serverId),
         columns: { oauth2ClientId: true },
@@ -127,10 +169,10 @@ export async function createCustomMcpServer(input: {
         description: input.description ?? null,
         icon: input.icon ?? null,
         createdById: input.createdById,
-        authDiscovery: oauth
+        authDiscovery: oauthMeta
           ? {
-              authorizationServer: oauth.authorizationServer,
-              registrationEndpoint: oauth.registrationEndpoint,
+              authorizationServer: oauthMeta.authorizationServer,
+              registrationEndpoint: oauthMeta.registrationEndpoint,
               discoveredAt: new Date().toISOString(),
             }
           : null,
@@ -139,7 +181,8 @@ export async function createCustomMcpServer(input: {
     if (!server) throw new Error('Failed to create McpServer')
     serverId = server.id
 
-    const connectionType = mode === 'oauth' ? 'oauth2-code' : mode === 'bearer' ? 'secret' : 'none'
+    const connectionType =
+      mode === 'oauth' ? 'oauth2-code' : mode === 'bearer' || mode === 'headers' ? 'secret' : 'none'
     await db.insert(schema.ConnectionDefinition).values({
       mcpServerId: serverId,
       major: 1,
@@ -147,11 +190,11 @@ export async function createCustomMcpServer(input: {
       label: `${input.name} Connection`,
       global: true,
       createdById: input.createdById,
-      oauth2AuthorizeUrl: oauth?.authorizeUrl ?? null,
-      oauth2AccessTokenUrl: oauth?.tokenUrl ?? null,
-      oauth2Scopes: oauth?.scopesSupported ?? [],
-      oauth2ClientId: input.clientId ?? null,
-      oauth2ClientSecret: input.clientSecret ?? null,
+      oauth2AuthorizeUrl: input.oauth?.authorizeUrl ?? oauthMeta?.authorizeUrl ?? null,
+      oauth2AccessTokenUrl: input.oauth?.tokenUrl ?? oauthMeta?.tokenUrl ?? null,
+      oauth2Scopes: input.oauth?.scopes ?? oauthMeta?.scopesSupported ?? [],
+      oauth2ClientId: input.oauth?.clientId ?? null,
+      oauth2ClientSecret: input.oauth?.clientSecret ?? null,
       oauth2Features: { pkce: true },
     })
     await db.insert(schema.McpInstallation).values({
@@ -162,7 +205,7 @@ export async function createCustomMcpServer(input: {
 
   await onCacheEvent('mcp.server.changed', { orgId: input.organizationId })
 
-  if (mode === 'none' || mode === 'bearer') {
+  if (mode === 'none' || mode === 'bearer' || mode === 'headers') {
     if (mode === 'bearer' && input.token) {
       const saved = await saveMcpConnection({
         mcpServerId: serverId,
@@ -178,6 +221,22 @@ export async function createCustomMcpServer(input: {
       })
       if (saved.isErr()) throw new Error(saved.error.message)
     }
+    if (mode === 'headers' && input.headers?.length) {
+      const saved = await saveMcpConnection({
+        mcpServerId: serverId,
+        serverName: input.name,
+        organizationId: input.organizationId,
+        createdById: input.createdById,
+        connectionData: {
+          headers: headerMap(input.headers),
+          // Header NAMES are not secrets — kept in plaintext metadata so the edit
+          // dialog can prefill rows (and getBySlug can derive the auth posture)
+          // without decrypting.
+          metadata: { headerNames: input.headers.map((h) => h.name) },
+        },
+      })
+      if (saved.isErr()) throw new Error(saved.error.message)
+    }
     await syncMcpTools({ mcpServerId: serverId, organizationId: input.organizationId })
     await onCacheEvent('mcp.connection.changed', { orgId: input.organizationId })
     return { connected: true, serverId, slug }
@@ -188,12 +247,42 @@ export async function createCustomMcpServer(input: {
     serverId,
     organizationId: input.organizationId,
     serverName: input.name,
-    registrationEndpoint: oauth?.registrationEndpoint,
-    pastedClientId: input.clientId,
+    registrationEndpoint: oauthMeta?.registrationEndpoint,
+    pastedClientId: input.oauth?.clientId,
     existingClientId,
     returnTo: input.returnTo,
   })
   return { ...outcome, serverId, slug }
+}
+
+/**
+ * Connect a catalog template for an org: upsert the curated/global row from the template
+ * definition (so new templates work in every environment without a re-seed), then run the
+ * normal curated connect flow.
+ */
+export async function connectMcpTemplate(input: {
+  organizationId: string
+  createdById: string
+  templateId: string
+  connectionVariables?: Record<string, string>
+  token?: string
+  returnTo?: string
+}): Promise<McpConnectOutcome & { serverId: string; slug: string }> {
+  const template = mcpTemplates.find((t) => t.id === input.templateId)
+  if (!template) throw new Error(`Unknown MCP template '${input.templateId}'`)
+
+  const { serverId } = await ensureCuratedMcpServer(template)
+  await onCacheEvent('mcp.server.changed', { orgId: input.organizationId })
+
+  const outcome = await connectCuratedMcpServer({
+    organizationId: input.organizationId,
+    createdById: input.createdById,
+    serverId,
+    connectionVariables: input.connectionVariables,
+    token: input.token,
+    returnTo: input.returnTo,
+  })
+  return { ...outcome, serverId, slug: template.id }
 }
 
 /**
@@ -365,10 +454,10 @@ async function ensureOAuthClient(input: {
 }
 
 /**
- * Update an org-owned custom server (rename, endpoint, bearer/none auth) and/or its trust config;
- * busts the cache. OAuth (re)connection stays on the detail page's reconnect button — switching a
- * server *into* OAuth here is out of scope (the endpoint/name still update). `auth: 'auto'` leaves
- * the existing connection untouched.
+ * Update an org-owned custom server (rename, endpoint, auth) and/or its trust config; busts the
+ * cache. OAuth (re)connection stays on the detail page's reconnect button — `auth: 'oauth'` only
+ * updates the definition's client creds / endpoint overrides. `auth: 'auto'` leaves the existing
+ * connection untouched.
  */
 export async function updateMcpServer(input: {
   organizationId: string
@@ -377,9 +466,12 @@ export async function updateMcpServer(input: {
   updatedById?: string
   name?: string
   endpoint?: string
-  auth?: 'auto' | 'bearer' | 'none'
+  auth?: 'auto' | 'oauth' | 'bearer' | 'headers' | 'none'
   token?: string
   authHeaderName?: string
+  /** Custom-header rows — full replace when provided; omit to keep the existing headers. */
+  headers?: Array<{ name: string; value: string }>
+  oauth?: McpOAuthConfigInput
   trust?: { allTools?: boolean; tools?: string[] }
 }): Promise<void> {
   const serverPatch: { name?: string; endpoint?: string } = {}
@@ -399,7 +491,12 @@ export async function updateMcpServer(input: {
 
   await applyAuthUpdate(input)
 
-  if (input.endpoint || input.auth === 'bearer' || input.auth === 'none') {
+  if (
+    input.endpoint ||
+    input.auth === 'bearer' ||
+    input.auth === 'headers' ||
+    input.auth === 'none'
+  ) {
     // Endpoint or credential changed → re-probe tools (best-effort; ignore failures).
     await syncMcpTools({ mcpServerId: input.serverId, organizationId: input.organizationId })
   }
@@ -418,16 +515,42 @@ export async function updateMcpServer(input: {
   await onCacheEvent('mcp.tools.synced', { orgId: input.organizationId })
 }
 
-/** Apply a bearer/none auth change on update: re-save (or clear) the org secret + header metadata. */
+/** Apply an auth change on update: re-save (or clear) the org secret + definition type. */
 async function applyAuthUpdate(input: {
   organizationId: string
   serverId: string
   updatedById?: string
-  auth?: 'auto' | 'bearer' | 'none'
+  auth?: 'auto' | 'oauth' | 'bearer' | 'headers' | 'none'
   token?: string
   authHeaderName?: string
+  headers?: Array<{ name: string; value: string }>
+  oauth?: McpOAuthConfigInput
 }): Promise<void> {
-  if (input.auth !== 'bearer' && input.auth !== 'none') return
+  if (!input.auth || input.auth === 'auto') return
+
+  if (input.auth === 'oauth') {
+    // Definition-only: client creds / endpoint overrides. Reconnecting (the popup) stays on the
+    // detail page — provided fields update, omitted fields keep their (possibly DCR-minted) values.
+    await db
+      .update(schema.ConnectionDefinition)
+      .set({
+        connectionType: 'oauth2-code',
+        ...(input.oauth?.clientId !== undefined && { oauth2ClientId: input.oauth.clientId }),
+        // Blank/omitted secret keeps the stored (possibly DCR-minted) one.
+        ...(input.oauth?.clientSecret !== undefined && {
+          oauth2ClientSecret: input.oauth.clientSecret,
+        }),
+        ...(input.oauth?.authorizeUrl !== undefined && {
+          oauth2AuthorizeUrl: input.oauth.authorizeUrl,
+        }),
+        ...(input.oauth?.tokenUrl !== undefined && {
+          oauth2AccessTokenUrl: input.oauth.tokenUrl,
+        }),
+        ...(input.oauth?.scopes !== undefined && { oauth2Scopes: input.oauth.scopes }),
+      })
+      .where(eq(schema.ConnectionDefinition.mcpServerId, input.serverId))
+    return
+  }
 
   if (input.auth === 'none') {
     await db
@@ -439,12 +562,28 @@ async function applyAuthUpdate(input: {
     return
   }
 
-  // bearer — only re-save when a token was supplied (an empty token keeps the existing secret).
+  // bearer/headers — only re-save when new secret material was supplied (blank keeps existing).
   await db
     .update(schema.ConnectionDefinition)
     .set({ connectionType: 'secret' })
     .where(eq(schema.ConnectionDefinition.mcpServerId, input.serverId))
-  if (!input.token) return
+  const connectionData =
+    input.auth === 'bearer'
+      ? input.token
+        ? {
+            secret: input.token,
+            metadata: input.authHeaderName
+              ? { authHeader: { name: input.authHeaderName } }
+              : undefined,
+          }
+        : null
+      : input.headers?.length
+        ? {
+            headers: headerMap(input.headers),
+            metadata: { headerNames: input.headers.map((h) => h.name) },
+          }
+        : null
+  if (!connectionData) return
 
   const existing = await findCredential({
     kind: 'mcp',
@@ -462,10 +601,7 @@ async function applyAuthUpdate(input: {
     serverName: server?.name ?? 'MCP',
     organizationId: input.organizationId,
     createdById: input.updatedById ?? server?.createdById ?? '',
-    connectionData: {
-      secret: input.token,
-      metadata: input.authHeaderName ? { authHeader: { name: input.authHeaderName } } : undefined,
-    },
+    connectionData,
     connectionId: existingId,
   })
   if (saved.isErr()) throw new Error(saved.error.message)

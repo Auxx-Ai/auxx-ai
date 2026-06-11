@@ -1,9 +1,10 @@
 'use client'
 import { Input } from '@auxx/ui/components/input'
 // apps/web/src/app/(protected)/app/settings/apps/installed/page.tsx
-import { Code } from 'lucide-react'
+import { Code, Trash } from 'lucide-react'
 import { useState } from 'react'
 import { dedupeInstallationsByApp } from '~/components/apps/dedupe-installations'
+import { useUninstallApp } from '~/components/apps/hooks/use-uninstall-app'
 import { AppIcon } from '~/components/apps/ui/app-icon'
 import { AppListCard } from '~/components/apps/ui/app-list-card'
 import SettingsPage from '~/components/global/settings-page'
@@ -18,6 +19,7 @@ export default function AppsInstalledListPage() {
     // type filter is optional - omitting it returns all installations (both dev and production)
   })
   const { data: results } = api.apps.list.useQuery({})
+  const { uninstallApp, ConfirmDialog } = useUninstallApp()
 
   // Collapse dev+production installs of the same app to one entry (see helper).
   const installed = dedupeInstallationsByApp(installedResult?.installations ?? [])
@@ -60,6 +62,7 @@ export default function AppsInstalledListPage() {
         { title: 'Installed' },
       ]}
       button={<></>}>
+      <ConfirmDialog />
       <div className='flex flex-col flex-1 p-3 sm:p-6 space-y-6 @container'>
         <Input
           placeholder='Search installed apps'
@@ -80,7 +83,7 @@ export default function AppsInstalledListPage() {
           </div>
         ) : (
           <div className='grid w-full gap-2 @sm:grid-cols-1 @md:grid-cols-2 @2xl:grid-cols-3'>
-            {filteredInstalledApps.map(({ app }) => (
+            {filteredInstalledApps.map(({ app, installation }) => (
               <AppListCard
                 key={app.id}
                 title={app.title}
@@ -92,6 +95,14 @@ export default function AppsInstalledListPage() {
                 badges={[
                   ...(app.isDevelopment ? [{ icon: <Code className='size-3' /> }] : []),
                   ...(app.isInstalled ? [{ label: 'Installed' }] : []),
+                ]}
+                menuItems={[
+                  {
+                    label: 'Uninstall',
+                    icon: <Trash />,
+                    destructive: true,
+                    onClick: () => void uninstallApp(app.slug, installation.installationType),
+                  },
                 ]}
               />
             ))}

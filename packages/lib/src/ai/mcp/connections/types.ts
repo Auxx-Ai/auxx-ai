@@ -8,6 +8,8 @@ export interface DecryptedConnectionData {
   accessToken?: string
   refreshToken?: string
   secret?: string
+  /** Custom-header auth: full header name → value map (values are secrets). */
+  headers?: Record<string, string>
   metadata?: Record<string, unknown>
   expiresAt?: string
 }
@@ -19,6 +21,8 @@ export interface McpRuntimeConnection {
   id: string
   type: 'oauth2-code' | 'secret' | 'none'
   value: string
+  /** Custom-header auth — wins over the single-value Authorization path when present. */
+  headers?: Record<string, string>
   metadata?: Record<string, unknown>
   expiresAt?: string
 }

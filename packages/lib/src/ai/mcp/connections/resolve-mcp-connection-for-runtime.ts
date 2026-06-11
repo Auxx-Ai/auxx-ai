@@ -13,6 +13,7 @@ interface McpSecrets {
   accessToken?: string
   refreshToken?: string
   secret?: string
+  headers?: Record<string, string>
 }
 
 /**
@@ -76,6 +77,7 @@ export async function resolveMcpConnectionForRuntime(input: {
     id: record.id,
     type: connectionType,
     value: secrets.accessToken || secrets.secret || '',
+    headers: secrets.headers,
     metadata: record.metadata,
     expiresAt: record.expiresAt ? record.expiresAt.toISOString() : undefined,
   })

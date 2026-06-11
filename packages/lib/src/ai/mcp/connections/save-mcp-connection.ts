@@ -17,11 +17,13 @@ function pickSecrets(data: {
   accessToken?: string
   refreshToken?: string
   secret?: string
+  headers?: Record<string, string>
 }): Record<string, unknown> {
   const secrets: Record<string, unknown> = {}
   if (data.accessToken !== undefined) secrets.accessToken = data.accessToken
   if (data.refreshToken !== undefined) secrets.refreshToken = data.refreshToken
   if (data.secret !== undefined) secrets.secret = data.secret
+  if (data.headers !== undefined) secrets.headers = data.headers
   return secrets
 }
 
@@ -42,6 +44,7 @@ export async function saveMcpConnection(input: {
     refreshToken?: string
     expiresAt?: string
     secret?: string
+    headers?: Record<string, string>
     metadata?: Record<string, unknown>
   }
   /** When provided, update that credential row in place (reconnect flow). */

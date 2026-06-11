@@ -14,11 +14,13 @@ import {
   MessageSquare,
   Package,
   Phone,
+  Trash,
 } from 'lucide-react'
 import Link from 'next/link'
 // ~/app/(protected)/app/settings/integrations/_components/integration-list.tsx
 import { useLayoutEffect, useRef, useState } from 'react'
 import { dedupeInstallationsByApp } from '~/components/apps/dedupe-installations'
+import { useUninstallApp } from '~/components/apps/hooks/use-uninstall-app'
 import { AppIcon } from '~/components/apps/ui/app-icon'
 import { AppListCard } from '~/components/apps/ui/app-list-card'
 import SettingsPage from '~/components/global/settings-page'
@@ -50,6 +52,7 @@ export default function IntegrationList() {
   const { isAdminOrOwner } = useUser()
   const { hasAccess } = useFeatureFlags()
   const hasMcpAccess = hasAccess(FeatureKey.mcp)
+  const { uninstallApp, ConfirmDialog } = useUninstallApp()
   const { data: results } = api.apps.list.useQuery({}, { enabled: isAdminOrOwner })
   const { data: installedResult } = api.apps.listInstalled.useQuery({
     // type filter is optional - omitting it returns all installations (both dev and production)
@@ -236,6 +239,7 @@ export default function IntegrationList() {
       }
       breadcrumbs={[{ title: 'Settings', href: '/app/settings' }, { title: 'Apps' }]}
       button={<></>}>
+      <ConfirmDialog />
       <div className='flex flex-col flex-1 p-3 sm:p-6 space-y-8'>
         <div className='space-y-2'>
           <div className='flex items-center justify-between gap-2'>
@@ -255,7 +259,7 @@ export default function IntegrationList() {
             {isAdminOrOwner ? (
               installedAppsToShow.length > 0 ? (
                 <div className='grid w-full gap-2 @sm:grid-cols-1 @md:grid-cols-2 @2xl:grid-cols-3'>
-                  {installedAppsToShow.map(({ app }) => (
+                  {installedAppsToShow.map(({ app, installation }) => (
                     <AppListCard
                       key={app.id}
                       title={app.title}
@@ -269,6 +273,14 @@ export default function IntegrationList() {
                       badges={[
                         ...(app.isDevelopment ? [{ icon: <Code className='size-3' /> }] : []),
                         ...(app.isInstalled ? [{ label: 'Installed' }] : []),
+                      ]}
+                      menuItems={[
+                        {
+                          label: 'Uninstall',
+                          icon: <Trash />,
+                          destructive: true,
+                          onClick: () => void uninstallApp(app.slug, installation.installationType),
+                        },
                       ]}
                     />
                   ))}
@@ -390,6 +402,18 @@ export default function IntegrationList() {
                                       : []),
                                     ...(app.isInstalled ? [{ label: 'Installed' }] : []),
                                   ]}
+                                  menuItems={
+                                    app.isInstalled
+                                      ? [
+                                          {
+                                            label: 'Uninstall',
+                                            icon: <Trash />,
+                                            destructive: true,
+                                            onClick: () => void uninstallApp(app.slug),
+                                          },
+                                        ]
+                                      : undefined
+                                  }
                                 />
                               ))}
                             </div>

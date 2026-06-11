@@ -49,15 +49,22 @@ export function useMcpOAuthPopup() {
       teardown()
       setPending(true)
 
-      const handleDone = (payload: OAuthDonePayload) => {
+      let settled = false
+      let cancelTimer: ReturnType<typeof setTimeout> | null = null
+
+      /** Settle exactly once: a toast only on explicit failure (not on user cancel). */
+      const finish = (ok: boolean, error?: string | null) => {
+        if (settled) return
+        settled = true
         teardown()
-        if (!payload.ok) {
-          toastError({
-            title: 'Failed to connect',
-            description: payload.error || 'Connection failed',
-          })
+        if (!ok && error) {
+          toastError({ title: 'Failed to connect', description: error })
         }
-        onDone(payload.ok)
+        onDone(ok)
+      }
+
+      const handleDone = (payload: OAuthDonePayload) => {
+        finish(payload.ok, payload.ok ? undefined : payload.error || 'Connection failed')
       }
 
       const onMessage = (e: MessageEvent) => {
@@ -81,13 +88,19 @@ export function useMcpOAuthPopup() {
       }
 
       const closedInterval = setInterval(() => {
-        if (popup.closed) teardown()
+        if (!popup.closed) return
+        clearInterval(closedInterval)
+        // The callback page posts its result right before closing itself — give that message a
+        // beat to arrive before treating the close as a user cancel. Without this, cancelling
+        // never fires `onDone` and callers' per-row pending state sticks.
+        cancelTimer = setTimeout(() => finish(false), 750)
       }, 500)
 
       teardownRef.current = () => {
         window.removeEventListener('message', onMessage)
         bc?.close()
         clearInterval(closedInterval)
+        if (cancelTimer) clearTimeout(cancelTimer)
         try {
           if (!popup.closed) popup.close()
         } catch {
