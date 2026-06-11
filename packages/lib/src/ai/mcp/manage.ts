@@ -4,7 +4,7 @@
 // curated servers, refresh, rename, delete). Kept out of the router per the >20-line rule.
 
 import { WEBAPP_URL } from '@auxx/config/urls'
-import { database as db, schema } from '@auxx/database'
+import { database as db, type McpServerIcon, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq, isNull, or } from 'drizzle-orm'
 import { onCacheEvent } from '../../cache/invalidate'
@@ -65,6 +65,11 @@ export async function createCustomMcpServer(input: {
   endpoint: string
   auth: 'auto' | 'bearer' | 'none'
   token?: string
+  /** Non-`Authorization` header name for the bearer token (e.g. `X-API-Key`). */
+  authHeaderName?: string
+  /** Enrichment lifted from the resolved snippet (registry / favicon). */
+  description?: string
+  icon?: McpServerIcon
   clientId?: string
   clientSecret?: string
   returnTo?: string
@@ -87,6 +92,8 @@ export async function createCustomMcpServer(input: {
       slug,
       name: input.name,
       endpoint: input.endpoint,
+      description: input.description ?? null,
+      icon: input.icon ?? null,
       createdById: input.createdById,
       authDiscovery: oauth
         ? {
@@ -128,7 +135,12 @@ export async function createCustomMcpServer(input: {
         serverName: input.name,
         organizationId: input.organizationId,
         createdById: input.createdById,
-        connectionData: { secret: input.token },
+        connectionData: {
+          secret: input.token,
+          metadata: input.authHeaderName
+            ? { authHeader: { name: input.authHeaderName } }
+            : undefined,
+        },
       })
       if (saved.isErr()) throw new Error(saved.error.message)
     }
@@ -317,17 +329,31 @@ async function ensureOAuthClient(input: {
   return { needsOAuth: true, authorizeUrl: authorizeUrlFor(input.serverId, input.returnTo) }
 }
 
-/** Rename (org-owned only) and/or update the trust config; busts the cache. */
+/**
+ * Update an org-owned custom server (rename, endpoint, bearer/none auth) and/or its trust config;
+ * busts the cache. OAuth (re)connection stays on the detail page's reconnect button — switching a
+ * server *into* OAuth here is out of scope (the endpoint/name still update). `auth: 'auto'` leaves
+ * the existing connection untouched.
+ */
 export async function updateMcpServer(input: {
   organizationId: string
   serverId: string
+  /** The acting user — used as `createdById` when a fresh credential row is inserted. */
+  updatedById?: string
   name?: string
+  endpoint?: string
+  auth?: 'auto' | 'bearer' | 'none'
+  token?: string
+  authHeaderName?: string
   trust?: { allTools?: boolean; tools?: string[] }
 }): Promise<void> {
-  if (input.name) {
+  const serverPatch: { name?: string; endpoint?: string } = {}
+  if (input.name) serverPatch.name = input.name
+  if (input.endpoint) serverPatch.endpoint = input.endpoint
+  if (Object.keys(serverPatch).length) {
     await db
       .update(schema.McpServer)
-      .set({ name: input.name })
+      .set(serverPatch)
       .where(
         and(
           eq(schema.McpServer.id, input.serverId),
@@ -335,6 +361,14 @@ export async function updateMcpServer(input: {
         )
       )
   }
+
+  await applyAuthUpdate(input)
+
+  if (input.endpoint || input.auth === 'bearer' || input.auth === 'none') {
+    // Endpoint or credential changed → re-probe tools (best-effort; ignore failures).
+    await syncMcpTools({ mcpServerId: input.serverId, organizationId: input.organizationId })
+  }
+
   if (input.trust) {
     await db
       .update(schema.McpInstallation)
@@ -347,6 +381,61 @@ export async function updateMcpServer(input: {
       )
   }
   await onCacheEvent('mcp.tools.synced', { orgId: input.organizationId })
+}
+
+/** Apply a bearer/none auth change on update: re-save (or clear) the org secret + header metadata. */
+async function applyAuthUpdate(input: {
+  organizationId: string
+  serverId: string
+  updatedById?: string
+  auth?: 'auto' | 'bearer' | 'none'
+  token?: string
+  authHeaderName?: string
+}): Promise<void> {
+  if (input.auth !== 'bearer' && input.auth !== 'none') return
+
+  if (input.auth === 'none') {
+    await db
+      .update(schema.ConnectionDefinition)
+      .set({ connectionType: 'none' })
+      .where(eq(schema.ConnectionDefinition.mcpServerId, input.serverId))
+    await deleteMcpConnection({ mcpServerId: input.serverId, organizationId: input.organizationId })
+    await onCacheEvent('mcp.connection.changed', { orgId: input.organizationId })
+    return
+  }
+
+  // bearer — only re-save when a token was supplied (an empty token keeps the existing secret).
+  await db
+    .update(schema.ConnectionDefinition)
+    .set({ connectionType: 'secret' })
+    .where(eq(schema.ConnectionDefinition.mcpServerId, input.serverId))
+  if (!input.token) return
+
+  const existing = await db.query.WorkflowCredentials.findFirst({
+    where: and(
+      eq(schema.WorkflowCredentials.mcpServerId, input.serverId),
+      eq(schema.WorkflowCredentials.organizationId, input.organizationId),
+      eq(schema.WorkflowCredentials.type, 'mcp-connection')
+    ),
+    columns: { id: true },
+  })
+  const server = await db.query.McpServer.findFirst({
+    where: eq(schema.McpServer.id, input.serverId),
+    columns: { name: true, createdById: true },
+  })
+  const saved = await saveMcpConnection({
+    mcpServerId: input.serverId,
+    serverName: server?.name ?? 'MCP',
+    organizationId: input.organizationId,
+    createdById: input.updatedById ?? server?.createdById ?? '',
+    connectionData: {
+      secret: input.token,
+      metadata: input.authHeaderName ? { authHeader: { name: input.authHeaderName } } : undefined,
+    },
+    connectionId: existing?.id,
+  })
+  if (saved.isErr()) throw new Error(saved.error.message)
+  await onCacheEvent('mcp.connection.changed', { orgId: input.organizationId })
 }
 
 /** Disconnect/remove: delete the credential + installation; org-owned custom servers cascade. */

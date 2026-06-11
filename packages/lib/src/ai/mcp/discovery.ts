@@ -52,11 +52,12 @@ async function fetchJson(url: string): Promise<Record<string, unknown> | null> {
  *    endpoints.
  */
 export async function discoverMcpAuth(
-  endpoint: string
+  endpoint: string,
+  opts?: { headers?: Record<string, string> }
 ): Promise<Result<McpAuthDiscoveryResult, McpDiscoveryError>> {
-  // 1. Probe with no auth.
+  // 1. Probe with the pasted (non-placeholder) headers, if any.
   try {
-    await withMcpSession({ endpoint }, async (client) => client.listTools())
+    await withMcpSession({ endpoint, headers: opts?.headers }, async (client) => client.listTools())
     return ok({ kind: 'none' })
   } catch (error) {
     if (!(error instanceof McpAuthError)) {

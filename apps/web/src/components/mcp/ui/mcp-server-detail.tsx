@@ -3,15 +3,16 @@
 
 import { Button } from '@auxx/ui/components/button'
 import { toastError } from '@auxx/ui/components/toast'
-import { Plug, Trash2 } from 'lucide-react'
+import { Pencil, Plug, Trash2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-import { useCallback } from 'react'
+import { useCallback, useState } from 'react'
 import { AppIcon } from '~/components/apps/ui/app-icon'
 import SettingsPage from '~/components/global/settings-page'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useExtensionsContext } from '~/providers/extensions/extensions-context'
 import type { RouterOutputs } from '~/trpc/react'
 import { api } from '~/trpc/react'
+import { AddMcpServerDialog } from './add-mcp-server-dialog'
 import { McpServerConnectionTab } from './mcp-server-connection-tab'
 import { McpServerToolsTab } from './mcp-server-tools-tab'
 import { McpStatusPill } from './mcp-status-pill'
@@ -28,6 +29,7 @@ export function McpServerDetail({ initialServer }: { initialServer: McpDetailSer
   const router = useRouter()
   const utils = api.useUtils()
   const [confirm, ConfirmDialog] = useConfirm()
+  const [editOpen, setEditOpen] = useState(false)
   const { refreshMcpServers } = useExtensionsContext()
   const { data: server } = api.mcp.getBySlug.useQuery(
     { slug: initialServer.slug },
@@ -69,8 +71,8 @@ export function McpServerDetail({ initialServer }: { initialServer: McpDetailSer
     <SettingsPage
       icon={
         <div className='size-10 rounded-xl border flex items-center justify-center overflow-hidden'>
-          {current.iconUrl ? (
-            <AppIcon iconId={current.iconUrl} size='md' />
+          {current.icon?.iconId ? (
+            <AppIcon iconId={current.icon.iconId} color={current.icon.color} size='md' />
           ) : (
             <Plug className='size-5 text-muted-foreground' />
           )}
@@ -93,20 +95,42 @@ export function McpServerDetail({ initialServer }: { initialServer: McpDetailSer
         { title: current.name },
       ]}
       button={
-        <Button
-          variant='destructive'
-          size='sm'
-          onClick={handleRemove}
-          loading={remove.isPending}
-          loadingText='Uninstalling...'>
-          <Trash2 />
-          Uninstall
-        </Button>
+        <div className='flex items-center gap-2'>
+          {current.isCustom && (
+            <Button variant='outline' size='sm' onClick={() => setEditOpen(true)}>
+              <Pencil />
+              Edit
+            </Button>
+          )}
+          <Button
+            variant='destructive'
+            size='sm'
+            onClick={handleRemove}
+            loading={remove.isPending}
+            loadingText='Uninstalling...'>
+            <Trash2 />
+            Uninstall
+          </Button>
+        </div>
       }>
       <div className='flex flex-col flex-1 gap-8 p-6'>
         <McpServerConnectionTab server={current} onChanged={onChanged} />
         <McpServerToolsTab server={current} onChanged={onChanged} />
       </div>
+      {current.isCustom && (
+        <AddMcpServerDialog
+          open={editOpen}
+          onOpenChange={setEditOpen}
+          mode='update'
+          server={{
+            serverId: current.serverId,
+            name: current.name,
+            endpoint: current.endpoint ?? '',
+            connectionType: current.connectionType,
+          }}
+          onConnected={onChanged}
+        />
+      )}
       <ConfirmDialog />
     </SettingsPage>
   )

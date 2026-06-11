@@ -3,13 +3,16 @@
 import type { ConnectionVariable } from '@auxx/database'
 import { database as db, schema } from '@auxx/database'
 import {
+  checkMcpResolveRateLimit,
   connectCuratedMcpServer,
   createCustomMcpServer,
   deleteMcpServer,
+  resolveMcpSnippet,
   syncMcpTools,
   updateMcpServer,
 } from '@auxx/lib/ai/mcp'
 import { getOrgCache } from '@auxx/lib/cache'
+import { RateLimitError } from '@auxx/lib/errors'
 import { FeaturePermissionService } from '@auxx/lib/permissions'
 import { FeatureKey } from '@auxx/lib/permissions/client'
 import { createScopedLogger } from '@auxx/logger'
@@ -82,6 +85,21 @@ export const mcpRouter = createTRPCRouter({
       return { ...server, connectionVariables, endpoint }
     }),
 
+  /**
+   * Smart paste: resolve any pasted snippet (URL / JSON / TOML / CLI / deeplink / stdio config)
+   * into connectable remote candidates. Rate-limited per org — makes outbound fetches to
+   * user-controlled URLs. All logic lives in `@auxx/lib/ai/mcp`.
+   */
+  resolveSnippet: mcpAdminProcedure
+    .input(z.object({ snippet: z.string().min(1).max(10_000) }))
+    .mutation(async ({ ctx, input }) => {
+      const allowed = await checkMcpResolveRateLimit(ctx.session.organizationId)
+      if (!allowed) {
+        throw new RateLimitError('Too many resolve attempts. Wait a minute and try again.')
+      }
+      return resolveMcpSnippet(input.snippet)
+    }),
+
   /** Create a custom server from a pasted URL. */
   create: mcpAdminProcedure
     .input(
@@ -90,6 +108,15 @@ export const mcpRouter = createTRPCRouter({
         endpoint: z.string().url(),
         auth: z.enum(['auto', 'bearer', 'none']),
         token: z.string().optional(),
+        authHeaderName: z.string().optional(),
+        description: z.string().optional(),
+        icon: z
+          .object({
+            avatarAssetId: z.string().optional(),
+            color: z.string().optional(),
+            iconId: z.string().optional(),
+          })
+          .optional(),
         clientId: z.string().optional(),
         clientSecret: z.string().optional(),
         returnTo: z.string().optional(),
@@ -135,19 +162,27 @@ export const mcpRouter = createTRPCRouter({
       return result
     }),
 
-  /** Rename (custom only) and/or update trust config. */
+  /** Edit a custom server (name / endpoint / bearer auth) and/or update trust config. */
   update: mcpAdminProcedure
     .input(
       z.object({
         serverId: z.string(),
         name: z.string().min(1).max(120).optional(),
+        endpoint: z.string().url().optional(),
+        auth: z.enum(['auto', 'bearer', 'none']).optional(),
+        token: z.string().optional(),
+        authHeaderName: z.string().optional(),
         trust: z
           .object({ allTools: z.boolean().optional(), tools: z.array(z.string()).optional() })
           .optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
-      await updateMcpServer({ organizationId: ctx.session.organizationId, ...input })
+      await updateMcpServer({
+        organizationId: ctx.session.organizationId,
+        updatedById: ctx.session.user.id,
+        ...input,
+      })
       return { ok: true }
     }),
 

@@ -25,7 +25,7 @@ function server(overrides: Partial<CachedMcpServer> = {}): CachedMcpServer {
     slug: 'demo',
     name: 'Demo',
     description: null,
-    iconUrl: null,
+    icon: null,
     isCustom: true,
     toolsetSlug: 'mcp:srv-1',
     connectionType: 'secret',

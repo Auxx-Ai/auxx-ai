@@ -1,7 +1,7 @@
 // packages/seed/src/domains/mcp.domain.ts
 // Idempotent seeder for curated (global) MCP servers available to every organization.
 
-import type { ConnectionVariable, Database } from '@auxx/database'
+import type { ConnectionVariable, Database, McpServerIcon } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 
 const logger = createScopedLogger('mcp-domain')
@@ -11,7 +11,7 @@ interface CuratedMcpServer {
   slug: string
   name: string
   description: string
-  iconUrl?: string
+  icon?: McpServerIcon
   /** Streamable HTTP endpoint; may contain `{connectionVariable}` placeholders. */
   endpoint: string
   /** oauth2-code → OAuth 2.1 (client creds minted lazily via DCR on first connect). */
@@ -91,9 +91,10 @@ export class McpDomain {
         slug: curated.slug,
         name: curated.name,
         description: curated.description,
-        iconUrl: curated.iconUrl ?? null,
+        icon: curated.icon ?? null,
         endpoint: curated.endpoint,
-        createdById: 'system',
+        // Curated rows are seeded, not user-authored — `createdById` FKs to User (set null).
+        createdById: null,
       }
 
       let serverId: string

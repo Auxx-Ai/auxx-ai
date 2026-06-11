@@ -27,6 +27,7 @@ export {
   getConfigManager,
   RateLimiterConfigManager,
 } from './config-manager'
+export { checkFixedWindowLimit, type FixedWindowResult } from './fixed-window'
 export { MetricsCollector } from './metrics-collector'
 export { PriorityQueue } from './priority-queue'
 export {

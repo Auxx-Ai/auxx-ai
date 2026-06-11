@@ -92,7 +92,7 @@ export const mcpServersProvider: CacheProvider<CachedMcpServer[]> = {
         slug: server.slug,
         name: server.name,
         description: server.description ?? null,
-        iconUrl: server.iconUrl ?? null,
+        icon: server.icon ?? null,
         isCustom: server.organizationId != null,
         toolsetSlug: `mcp:${server.id}`,
         connectionType: connType,
