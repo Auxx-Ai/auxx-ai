@@ -1,6 +1,11 @@
 // packages/lib/src/ai/mcp/connections/save-mcp-connection.ts
 
-import { insertCredential, rotateSecrets, updateCredential } from '@auxx/credentials/store'
+import {
+  findCredential,
+  insertCredential,
+  rotateSecrets,
+  updateCredential,
+} from '@auxx/credentials/store'
 import { createScopedLogger } from '@auxx/logger'
 import { err, ok, type Result } from 'neverthrow'
 import type { McpConnectionError } from './types'
@@ -42,12 +47,24 @@ export async function saveMcpConnection(input: {
   /** When provided, update that credential row in place (reconnect flow). */
   connectionId?: string
 }): Promise<Result<string, McpConnectionError>> {
-  const { mcpServerId, serverName, organizationId, createdById, connectionData, connectionId } =
-    input
+  const { mcpServerId, serverName, organizationId, createdById, connectionData } = input
+  let { connectionId } = input
 
   const secrets = pickSecrets(connectionData)
   const metadata = (connectionData.metadata ?? {}) as Record<string, unknown>
   const expiresAt = connectionData.expiresAt ? new Date(connectionData.expiresAt) : null
+
+  // MCP connections are org-wide singletons per server — a repeat connect (e.g. retried OAuth)
+  // rotates the existing credential instead of stacking a second row.
+  if (!connectionId) {
+    const existing = await findCredential({
+      organizationId,
+      kind: 'mcp',
+      mcpServerId,
+      userId: null,
+    })
+    if (existing.isOk() && existing.value) connectionId = existing.value.id
+  }
 
   if (connectionId) {
     const rotated = await rotateSecrets(connectionId, organizationId, secrets, { expiresAt })

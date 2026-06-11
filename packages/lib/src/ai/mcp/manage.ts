@@ -75,8 +75,6 @@ export async function createCustomMcpServer(input: {
   clientSecret?: string
   returnTo?: string
 }): Promise<McpConnectOutcome & { serverId: string; slug: string }> {
-  const slug = await uniqueSlug(input.organizationId, slugify(input.name))
-
   let mode: 'none' | 'bearer' | 'oauth' = input.auth === 'auto' ? 'none' : input.auth
   let discovered: Awaited<ReturnType<typeof discoverMcpAuth>> | null = null
   if (input.auth === 'auto') {
@@ -86,53 +84,88 @@ export async function createCustomMcpServer(input: {
 
   const oauth = discovered?.isOk() && discovered.value.kind === 'oauth' ? discovered.value : null
 
-  const [server] = await db
-    .insert(schema.McpServer)
-    .values({
-      organizationId: input.organizationId,
-      slug,
-      name: input.name,
-      endpoint: input.endpoint,
-      description: input.description ?? null,
-      icon: input.icon ?? null,
-      createdById: input.createdById,
-      authDiscovery: oauth
-        ? {
-            authorizationServer: oauth.authorizationServer,
-            registrationEndpoint: oauth.registrationEndpoint,
-            discoveredAt: new Date().toISOString(),
-          }
-        : null,
-    })
-    .returning({ id: schema.McpServer.id })
-  if (!server) throw new Error('Failed to create McpServer')
+  // Retry-safe: an org server already pointing at this endpoint is reused (e.g. clicking Connect
+  // again after a missed OAuth popup result) instead of inserting a duplicate.
+  const existing = await db.query.McpServer.findFirst({
+    where: and(
+      eq(schema.McpServer.organizationId, input.organizationId),
+      eq(schema.McpServer.endpoint, input.endpoint)
+    ),
+    columns: { id: true, slug: true },
+  })
 
-  const connectionType = mode === 'oauth' ? 'oauth2-code' : mode === 'bearer' ? 'secret' : 'none'
-  await db.insert(schema.ConnectionDefinition).values({
-    mcpServerId: server.id,
-    major: 1,
-    connectionType,
-    label: `${input.name} Connection`,
-    global: true,
-    createdById: input.createdById,
-    oauth2AuthorizeUrl: oauth?.authorizeUrl ?? null,
-    oauth2AccessTokenUrl: oauth?.tokenUrl ?? null,
-    oauth2Scopes: oauth?.scopesSupported ?? [],
-    oauth2ClientId: input.clientId ?? null,
-    oauth2ClientSecret: input.clientSecret ?? null,
-    oauth2Features: { pkce: true },
-  })
-  await db.insert(schema.McpInstallation).values({
-    organizationId: input.organizationId,
-    mcpServerId: server.id,
-  })
+  let serverId: string
+  let slug: string
+  let existingClientId: string | null = null
+  if (existing) {
+    serverId = existing.id
+    slug = existing.slug
+    if (input.clientId) {
+      await db
+        .update(schema.ConnectionDefinition)
+        .set({
+          oauth2ClientId: input.clientId,
+          oauth2ClientSecret: input.clientSecret ?? null,
+        })
+        .where(eq(schema.ConnectionDefinition.mcpServerId, serverId))
+    } else {
+      const def = await db.query.ConnectionDefinition.findFirst({
+        where: eq(schema.ConnectionDefinition.mcpServerId, serverId),
+        columns: { oauth2ClientId: true },
+      })
+      existingClientId = def?.oauth2ClientId ?? null
+    }
+  } else {
+    slug = await uniqueSlug(input.organizationId, slugify(input.name))
+    const [server] = await db
+      .insert(schema.McpServer)
+      .values({
+        organizationId: input.organizationId,
+        slug,
+        name: input.name,
+        endpoint: input.endpoint,
+        description: input.description ?? null,
+        icon: input.icon ?? null,
+        createdById: input.createdById,
+        authDiscovery: oauth
+          ? {
+              authorizationServer: oauth.authorizationServer,
+              registrationEndpoint: oauth.registrationEndpoint,
+              discoveredAt: new Date().toISOString(),
+            }
+          : null,
+      })
+      .returning({ id: schema.McpServer.id })
+    if (!server) throw new Error('Failed to create McpServer')
+    serverId = server.id
+
+    const connectionType = mode === 'oauth' ? 'oauth2-code' : mode === 'bearer' ? 'secret' : 'none'
+    await db.insert(schema.ConnectionDefinition).values({
+      mcpServerId: serverId,
+      major: 1,
+      connectionType,
+      label: `${input.name} Connection`,
+      global: true,
+      createdById: input.createdById,
+      oauth2AuthorizeUrl: oauth?.authorizeUrl ?? null,
+      oauth2AccessTokenUrl: oauth?.tokenUrl ?? null,
+      oauth2Scopes: oauth?.scopesSupported ?? [],
+      oauth2ClientId: input.clientId ?? null,
+      oauth2ClientSecret: input.clientSecret ?? null,
+      oauth2Features: { pkce: true },
+    })
+    await db.insert(schema.McpInstallation).values({
+      organizationId: input.organizationId,
+      mcpServerId: serverId,
+    })
+  }
 
   await onCacheEvent('mcp.server.changed', { orgId: input.organizationId })
 
   if (mode === 'none' || mode === 'bearer') {
     if (mode === 'bearer' && input.token) {
       const saved = await saveMcpConnection({
-        mcpServerId: server.id,
+        mcpServerId: serverId,
         serverName: input.name,
         organizationId: input.organizationId,
         createdById: input.createdById,
@@ -145,21 +178,22 @@ export async function createCustomMcpServer(input: {
       })
       if (saved.isErr()) throw new Error(saved.error.message)
     }
-    await syncMcpTools({ mcpServerId: server.id, organizationId: input.organizationId })
+    await syncMcpTools({ mcpServerId: serverId, organizationId: input.organizationId })
     await onCacheEvent('mcp.connection.changed', { orgId: input.organizationId })
-    return { connected: true, serverId: server.id, slug }
+    return { connected: true, serverId, slug }
   }
 
-  // OAuth: ensure client creds (pasted or DCR).
+  // OAuth: ensure client creds (pasted, kept from a prior attempt, or DCR).
   const outcome = await ensureOAuthClient({
-    serverId: server.id,
+    serverId,
     organizationId: input.organizationId,
     serverName: input.name,
     registrationEndpoint: oauth?.registrationEndpoint,
     pastedClientId: input.clientId,
+    existingClientId,
     returnTo: input.returnTo,
   })
-  return { ...outcome, serverId: server.id, slug }
+  return { ...outcome, serverId, slug }
 }
 
 /**

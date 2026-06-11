@@ -168,7 +168,9 @@ export function useConnectFlow(options: UseConnectFlowOptions = {}): UseConnectF
       }
 
       const onMessage = (e: MessageEvent) => {
-        if (e.origin !== window.location.origin) return
+        // The callback page may live on a different origin in dev (NGROK_URL tunnel), so also
+        // trust messages coming from the popup window we opened ourselves.
+        if (e.source !== popup && e.origin !== window.location.origin) return
         if (!e.data || e.data.type !== 'oauth_done') return
         handleDone(e.data as OAuthDonePayload)
       }
