@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.1.160](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.159...auxx-v0.1.160) (2026-06-11)
+
+
+### Features
+
+* **credentials:** encrypt connection client credentials at rest ([#813](https://github.com/Auxx-Ai/auxx-ai/issues/813)) ([0fb0f4f](https://github.com/Auxx-Ai/auxx-ai/commit/0fb0f4f93e3054020a9a43e7476a358d60840195))
+* **mcp:** add templates, custom-header auth, and manual OAuth config ([#807](https://github.com/Auxx-Ai/auxx-ai/issues/807)) ([0790c8d](https://github.com/Auxx-Ai/auxx-ai/commit/0790c8d1d558cecde5d3a2404ff4532bdba856f8))
+* **tasks:** org-wide task stats in overview header ([#808](https://github.com/Auxx-Ai/auxx-ai/issues/808)) ([2f863e8](https://github.com/Auxx-Ai/auxx-ai/commit/2f863e8f590609302b729c3b4f4e58a431c6e518))
+
+
+### Bug Fixes
+
+* **mcp:** make MCP server connect retry-safe and simplify apps section ([#805](https://github.com/Auxx-Ai/auxx-ai/issues/805)) ([747e771](https://github.com/Auxx-Ai/auxx-ai/commit/747e771322a701480d0626fec9edeb1d8fd85f87))
+
 ## [0.1.159](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.158...auxx-v0.1.159) (2026-06-11)
 
 
