@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.157](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.156...auxx-v0.1.157) (2026-06-11)
+
+
+### Features
+
+* **data-migrations:** ledger + advisory lock + auto-run on boot ([#798](https://github.com/Auxx-Ai/auxx-ai/issues/798)) ([b126deb](https://github.com/Auxx-Ai/auxx-ai/commit/b126debf6e57ac6f7109dc2ef2fae589762d2ae9))
+
 ## [0.1.156](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.155...auxx-v0.1.156) (2026-06-11)
 
 
