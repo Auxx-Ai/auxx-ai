@@ -140,6 +140,7 @@ export function McpServerDetail({ initialServer }: { initialServer: McpDetailSer
             authHeaderName: current.authHeaderName,
             headerNames: current.headerNames,
             oauth: current.oauth,
+            redirectUri: current.redirectUri,
           }}
           secretRequired={current.templateSetup?.clientSecretRequired}
           onConnected={onChanged}

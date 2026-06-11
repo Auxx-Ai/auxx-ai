@@ -131,8 +131,10 @@ export const agentRouter = createTRPCRouter({
 
   /**
    * Flip an agent from setup mode → live tabs. Idempotent: re-calls on an
-   * already-completed agent no-op. Called by the `complete_agent_setup`
-   * builder tool and the rail's "Mark setup complete" escape hatch.
+   * already-completed agent no-op. Powers the rail's "Configure manually…"
+   * escape hatch, so it forces past the persona/toolset/name quality gates —
+   * the user finishes configuration in the live tabs. The AI chat-builder
+   * tool calls `completeAgentSetup` directly and keeps those gates.
    */
   completeSetup: adminProcedure
     .input(z.object({ agentId: z.string().min(1) }))
@@ -141,7 +143,7 @@ export const agentRouter = createTRPCRouter({
       if (!(await agentExistsInOrg(organizationId, input.agentId))) {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Agent not found' })
       }
-      await completeAgentSetup(input.agentId, organizationId)
+      await completeAgentSetup(input.agentId, organizationId, undefined, { force: true })
     }),
 
   /**

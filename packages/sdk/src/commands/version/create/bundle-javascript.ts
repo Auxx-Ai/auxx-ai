@@ -50,8 +50,16 @@ export async function bundleJavaScript() {
 
   // Extract surface catalog (publish-time materialization — see
   // plans/kopilot/agents/triggers/app-surface-implementation-plan.md §5.3).
+  // A failed extraction must abort: publishing without a catalog ships a
+  // deployment with no tools/triggers/actions.
   const catalogResult = await compileAndExtractCatalog()
-  const catalog = isErrored(catalogResult) ? undefined : catalogResult.value
+  if (isErrored(catalogResult)) {
+    return errored({
+      code: 'ERROR_EXTRACTING_CATALOG',
+      error: catalogResult.error,
+    })
+  }
+  const catalog = catalogResult.value
 
   return complete({
     bundles: [builds.client.outputFiles[0].text, builds.server.outputFiles[0].text],

@@ -22,12 +22,14 @@ import { loadAuxxCliVersion } from '../../util/load-auxx-cli-version.js'
 import { spinnerify } from '../../util/spinner.js'
 import { printJsError } from '../../util/typescript.js'
 import { uploadBundle } from '../../util/upload-bundle.js'
+import { validateTypeScriptOrExit } from '../build/validate-typescript.js'
 import { printBuildContextError } from '../dev/prepare-build-context.js'
 import { bundleJavaScript } from './create/bundle-javascript.js'
 
 export const versionCreate = new Command('create')
   .description('Create a new deployment of your auxx app')
-  .action(async () => {
+  .option('--publish', 'Submit the deployment for review and publish it once approved')
+  .action(async (options: { publish?: boolean }) => {
     if (USE_APP_TS) {
       const appEntryPointResult = await ensureAppEntryPoint()
       if (isErrored(appEntryPointResult)) {
@@ -40,6 +42,8 @@ export const versionCreate = new Command('create')
         exitWithMissingAppSettings()
       }
     }
+    // Full type check before bundling — esbuild alone bundles through type errors
+    await validateTypeScriptOrExit()
     await authenticator.ensureAuthed()
     const appSlugResult = await getAppSlugFromPackageJson()
     if (isErrored(appSlugResult)) {
@@ -69,6 +73,17 @@ export const versionCreate = new Command('create')
         } else {
           printBuildContextError(error)
         }
+      } else if (bundleResult.error.code === 'ERROR_EXTRACTING_CATALOG') {
+        const catalogError = bundleResult.error.error
+        const detail =
+          'message' in catalogError
+            ? catalogError.message
+            : 'error' in catalogError
+              ? catalogError.error.message
+              : ''
+        process.stderr.write(
+          `${chalk.red('✖ ')}Catalog extraction failed (${catalogError.code})${detail ? `: ${detail}` : ''}\n`
+        )
       } else {
         printBuildContextError(bundleResult.error.error)
       }
@@ -144,6 +159,7 @@ export const versionCreate = new Command('create')
         settingsSchema,
         catalog,
         metadata: { cliVersion },
+        publish: options.publish,
       })
       if (isErrored(result)) {
         printFetcherError('Error creating deployment', result)
@@ -159,8 +175,30 @@ export const versionCreate = new Command('create')
     }
 
     const deployment = deployResult.value
+
+    if (deployment.unchanged) {
+      process.stdout.write(
+        `\n${chalk.gray('●')} Unchanged — skipped (${deployment.version ?? deployment.deploymentId})\n\n`
+      )
+      process.exit(0)
+    }
+
     process.stdout.write(
-      `\nDeployment ${chalk.green(deployment.version ?? deployment.deploymentId)} created!\n\n`
+      `\nDeployment ${chalk.green(deployment.version ?? deployment.deploymentId)} created!\n`
     )
+    if (options.publish) {
+      if (deployment.publishError) {
+        process.stderr.write(`${chalk.red('✖ ')}Publish failed: ${deployment.publishError}\n`)
+        process.exit(1)
+      }
+      if (deployment.status === 'published') {
+        process.stdout.write(`${chalk.green('✓ ')}Published — live for installed organizations\n`)
+      } else if (deployment.status === 'pending-review') {
+        process.stdout.write(`${chalk.yellow('● ')}Submitted for review (publishes on approval)\n`)
+      } else if (deployment.status) {
+        process.stdout.write(`Status: ${deployment.status}\n`)
+      }
+    }
+    process.stdout.write('\n')
     process.exit(0)
   })

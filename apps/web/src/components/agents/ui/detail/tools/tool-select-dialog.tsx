@@ -46,7 +46,7 @@ interface ToolSelectDialogProps {
 }
 
 type ViewMode = 'list' | 'app-detail'
-type ListTab = 'all' | 'apps'
+type ListTab = 'all' | 'apps' | 'mcps'
 
 type InstalledState = Pick<InstalledToolsetEntry, 'enabled' | 'source'>
 
@@ -149,7 +149,7 @@ export function ToolSelectDialog({
 
   const handleBack = () => {
     setViewMode('list')
-    setTab('apps')
+    setTab(selectedApp?.origin === 'mcp' ? 'mcps' : 'apps')
     setSelectedAppId(null)
     setSearch('')
   }
@@ -269,11 +269,24 @@ function ListView({
   )
 
   const popular = filteredFlat.filter((e) => e.isPopular)
-  const all = filteredFlat
+  const appTools = filteredFlat.filter((e) => e.origin !== 'mcp')
+  const mcpTools = filteredFlat.filter((e) => e.origin === 'mcp')
 
   const apps = useMemo<CatalogContainerNode[]>(() => {
     if (!catalog) return []
-    const roots = catalog.filter((n): n is CatalogContainerNode => n.kind !== 'toolset')
+    const roots = catalog.filter(
+      (n): n is CatalogContainerNode => n.kind !== 'toolset' && n.origin !== 'mcp'
+    )
+    if (!search.trim()) return roots
+    const q = search.trim().toLowerCase()
+    return roots.filter((r) => r.label.toLowerCase().includes(q))
+  }, [catalog, search])
+
+  const mcpServers = useMemo<CatalogContainerNode[]>(() => {
+    if (!catalog) return []
+    const roots = catalog.filter(
+      (n): n is CatalogContainerNode => n.kind !== 'toolset' && n.origin === 'mcp'
+    )
     if (!search.trim()) return roots
     const q = search.trim().toLowerCase()
     return roots.filter((r) => r.label.toLowerCase().includes(q))
@@ -286,6 +299,7 @@ function ListView({
           <TabsList>
             <TabsTrigger value='all'>All</TabsTrigger>
             <TabsTrigger value='apps'>Apps</TabsTrigger>
+            <TabsTrigger value='mcps'>MCPs</TabsTrigger>
           </TabsList>
         </Tabs>
         <div className='flex-1 max-w-xs'>
@@ -299,7 +313,7 @@ function ListView({
         </div>
       </div>
 
-      <ScrollArea className='max-h-[32rem]' scrollbarClassName='w-1!'>
+      <ScrollArea viewportClassName='max-h-[32rem]' scrollbarClassName='w-1!'>
         <div className='py-3 px-3'>
           {isLoading ? (
             <div className='space-y-2'>
@@ -334,9 +348,9 @@ function ListView({
                     </div>
                   </Section>
                 )}
-                {all.length > 0 && (
-                  <Section title='All tools'>
-                    {all.map((entry) => (
+                {appTools.length > 0 && (
+                  <Section title='Apps'>
+                    {appTools.map((entry) => (
                       <ToolSelectRow
                         key={entry.slug}
                         id={entry.slug}
@@ -354,13 +368,34 @@ function ListView({
                     ))}
                   </Section>
                 )}
+                {mcpTools.length > 0 && (
+                  <Section title='MCP'>
+                    {mcpTools.map((entry) => (
+                      <ToolSelectRow
+                        key={entry.slug}
+                        id={entry.slug}
+                        iconId={entry.iconId}
+                        color={entry.color || null}
+                        label={entry.fullLabel}
+                        description={entry.description || undefined}
+                        badge={toolCountBadge(entry.tools.length) ?? undefined}
+                        toolNames={entry.tools.map((t) => t.displayName)}
+                        isMcp
+                        installed={isInstalled(entry.slug)}
+                        source={sourceOf(entry.slug)}
+                        onSelect={() => onToggle(entry.slug)}
+                        onRemove={() => onRemove(entry.slug)}
+                      />
+                    ))}
+                  </Section>
+                )}
               </div>
             )
-          ) : apps.length === 0 ? (
+          ) : (tab === 'mcps' ? mcpServers : apps).length === 0 ? (
             <EmptySearchResult search={search} />
           ) : (
             <div className='space-y-1'>
-              {apps.map((appNode) => {
+              {(tab === 'mcps' ? mcpServers : apps).map((appNode) => {
                 const counts = countLeaves(appNode, isInstalled)
                 return (
                   <ToolSelectRow
@@ -370,6 +405,7 @@ function ListView({
                     color={appNode.color}
                     label={appNode.label}
                     subtitle={`${counts.installed}/${counts.total} ${pluralize(counts.total, 'tool')} installed`}
+                    isMcp={tab === 'mcps'}
                     installed={false}
                     onSelect={() => onOpenApp(appNode)}
                   />
@@ -423,7 +459,7 @@ function AppDetailView({
         </Button>
       </div>
 
-      <ScrollArea className='max-h-[32rem]' scrollbarClassName='w-1!'>
+      <ScrollArea viewportClassName='max-h-[32rem]' scrollbarClassName='w-1!'>
         <div className='p-3'>
           {leaves.map((entry) => (
             <ToolSelectRow

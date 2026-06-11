@@ -162,7 +162,7 @@ export function AddBindingDialog({
             </DialogNavPage>
 
             <DialogNavPage value='args' size='md'>
-              <ScrollArea className='max-h-[28rem]'>
+              <ScrollArea viewportClassName='max-h-[28rem]'>
                 <div className='p-3'>
                   <p className='pb-2 text-muted-foreground text-xs'>
                     Override an input, or leave it for its built-in scoping / the model.

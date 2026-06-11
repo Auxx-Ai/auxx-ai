@@ -79,6 +79,9 @@ export const App = pgTable(
     // Auto-approve flag (bypasses manual review)
     autoApprove: boolean().notNull().default(false),
 
+    // Roll existing production installations forward to newly published deployments
+    autoUpdateInstallations: boolean().notNull().default(false),
+
     // Verified badge (shown in marketplace)
     verified: boolean().notNull().default(false),
 

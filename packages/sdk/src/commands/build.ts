@@ -5,13 +5,11 @@ import { Command } from 'commander'
 import type { Message } from 'esbuild'
 import { isErrored } from '../errors.js'
 import { ensureAppEntryPoint } from '../util/ensure-app-entry-point.js'
-import { ensureAppFieldsTypes } from '../util/ensure-app-fields-types.js'
-import { printJsError, printTsError } from '../util/error-reporting.js'
-import { generateAppEnvTypes } from '../util/generate-app-env-types.js'
+import { printJsError } from '../util/error-reporting.js'
 import { hardExit } from '../util/hard-exit.js'
 import { spinnerify } from '../util/spinner.js'
 import { buildJavaScript } from './build/build-javascript.js'
-import { validateTypeScript } from './build/validate-typescript.js'
+import { validateTypeScriptOrExit } from './build/validate-typescript.js'
 
 /**
  * Build command - compiles the Auxx app for production
@@ -36,54 +34,7 @@ export const build = new Command('build')
       }
 
       // Step 2: Validate TypeScript
-      const appEnvTypesResult = await generateAppEnvTypes()
-      if (isErrored(appEnvTypesResult)) {
-        process.stderr.write(
-          chalk.yellow(
-            `⚠ Could not generate src/auxx-env.d.ts at ${appEnvTypesResult.error.path}. TypeScript image imports may show warnings.\n`
-          )
-        )
-      } else if (appEnvTypesResult.value === 'skipped_unmanaged') {
-        process.stderr.write(
-          chalk.yellow(
-            '⚠ Skipping src/auxx-env.d.ts generation because the existing file is unmanaged.\n'
-          )
-        )
-      }
-
-      // Layer 2 — narrow value-I/O signatures to this app's declared fields.
-      await ensureAppFieldsTypes()
-
-      const tsResult = await spinnerify(
-        'Validating TypeScript...',
-        'TypeScript validation passed',
-        validateTypeScript
-      )
-
-      if (isErrored(tsResult)) {
-        if (tsResult.error.code === 'VALIDATE_TYPESCRIPT_ERROR') {
-          process.stdout.write('\n')
-          process.stderr.write(
-            chalk.red(`✖ Found ${tsResult.error.errors.length} TypeScript error(s):\n`)
-          )
-
-          // Print first 10 errors
-          const errorsToShow = tsResult.error.errors.slice(0, 10)
-          for (const error of errorsToShow) {
-            await printTsError(error)
-          }
-
-          if (tsResult.error.errors.length > 10) {
-            process.stderr.write(
-              chalk.yellow(`\n  ... and ${tsResult.error.errors.length - 10} more error(s)\n`)
-            )
-          }
-
-          process.exit(1)
-        }
-
-        hardExit('TypeScript validation failed: ' + tsResult.error.error.message)
-      }
+      await validateTypeScriptOrExit()
 
       // Step 3: Build JavaScript
       const buildResult = await spinnerify(

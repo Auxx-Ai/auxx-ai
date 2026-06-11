@@ -124,6 +124,12 @@
       "import": "./dist/ai/mcp/templates/catalog.mjs",
       "default": "./src/ai/mcp/templates/catalog.ts"
     },
+    "./ai/mcp/templates/client": {
+      "types": "./src/ai/mcp/templates/client.ts",
+      "source": "./src/ai/mcp/templates/client.ts",
+      "import": "./dist/ai/mcp/templates/client.mjs",
+      "default": "./src/ai/mcp/templates/client.ts"
+    },
     "./ai/providers/types": {
       "types": "./src/ai/providers/types.ts",
       "source": "./src/ai/providers/types.ts",

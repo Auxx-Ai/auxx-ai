@@ -1471,6 +1471,13 @@
       "when": 1781157835153,
       "tag": "0209_credential_type_nullable",
       "breakpoints": true
+    },
+    {
+      "idx": 210,
+      "version": "7",
+      "when": 1781216757464,
+      "tag": "0210_app_auto_update_installations",
+      "breakpoints": true
     }
   ]
 }

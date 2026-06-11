@@ -390,16 +390,22 @@ export async function updateAgent(
  * `Agent.config` (currently `name`, `avatarAssetId`); non-User-owned keys
  * (`color`, `iconId`) stay on `config`.
  *
- * Rejects with `BadRequestError` if the agent does not yet have the minimum
- * configuration the carousel was meant to enforce: a non-empty persona
- * prompt, at least one toolset, and a name. Guards both the chat-builder
- * tool and the rail's "Mark setup complete" escape hatch from shipping a
+ * When `force` is false (the AI chat-builder path), rejects with
+ * `BadRequestError` if the agent does not yet have the minimum configuration
+ * the carousel was meant to enforce: a non-empty persona prompt, at least one
+ * toolset, and a name. This guards the builder tool from shipping a
  * half-built agent past the carousel.
+ *
+ * The rail's "Configure manually…" escape hatch passes `force: true` to skip
+ * those gates — its whole purpose is to leave the wizard and finish setup in
+ * the live tabs, so a missing persona/toolset/name is expected. A blank name
+ * falls back to "Untitled agent" for the synthetic User row.
  */
 export async function completeAgentSetup(
   agentId: string,
   organizationId: string,
-  db: Database = defaultDb as Database
+  db: Database = defaultDb as Database,
+  options: { force?: boolean } = {}
 ): Promise<void> {
   const detail = await getAgentDetail(organizationId, agentId, db)
   if (!detail) throw new BadRequestError(`Agent not found: ${agentId}`)
@@ -407,17 +413,19 @@ export async function completeAgentSetup(
   // Already complete — preserve idempotent behavior.
   if (detail.setupCompletedAt) return
 
-  if (isEmptyPromptDoc(detail.prompt)) {
-    throw new BadRequestError('Add a persona prompt before completing setup.')
-  }
-  if ((detail.toolsets ?? []).length === 0) {
-    throw new BadRequestError('Enable at least one toolset before completing setup.')
-  }
-  if (!detail.name || detail.name.trim() === '') {
-    throw new BadRequestError('Give the agent a name before completing setup.')
+  if (!options.force) {
+    if (isEmptyPromptDoc(detail.prompt)) {
+      throw new BadRequestError('Add a persona prompt before completing setup.')
+    }
+    if ((detail.toolsets ?? []).length === 0) {
+      throw new BadRequestError('Enable at least one toolset before completing setup.')
+    }
+    if (!detail.name || detail.name.trim() === '') {
+      throw new BadRequestError('Give the agent a name before completing setup.')
+    }
   }
 
-  const name = detail.name.trim()
+  const name = detail.name?.trim() || 'Untitled agent'
   const now = new Date()
 
   const completed = await db.transaction(async (tx) => {

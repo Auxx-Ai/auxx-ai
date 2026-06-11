@@ -3,6 +3,7 @@
 import { AppDeployment, database } from '@auxx/database'
 import { eq } from 'drizzle-orm'
 import { err, ok } from 'neverthrow'
+import { rollForwardInstallations } from '../app-installations/roll-forward-installations'
 import { fromDatabase } from '../shared/utils'
 import { findActiveReviewDeployment, reconcileAppReviewState } from './reconcile-app-review-state'
 
@@ -129,6 +130,17 @@ export async function updateDeploymentStatus(params: {
   const reconcileResult = await reconcileAppReviewState({ appId: app.id })
   if (reconcileResult.isErr()) return reconcileResult
 
+  // Roll existing production installations onto the newly published deployment
+  let rolledForwardOrgIds: string[] = []
+  if (action === 'publish' && app.autoUpdateInstallations) {
+    const rollForwardResult = await rollForwardInstallations({
+      appId: app.id,
+      deploymentId,
+    })
+    if (rollForwardResult.isErr()) return err(rollForwardResult.error)
+    rolledForwardOrgIds = rollForwardResult.value.organizationIds
+  }
+
   const autoApproved = action === 'submit-for-review' && app.autoApprove === true
-  return ok({ deployment: updated, autoApproved })
+  return ok({ deployment: updated, autoApproved, rolledForwardOrgIds })
 }

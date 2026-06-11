@@ -46,7 +46,11 @@ export interface McpTemplate {
   clientRegistration?: 'dcr' | 'manual'
   /** Shown in the manual setup step (e.g. "GitHub does not support automatic registration…"). */
   setupHint?: string
-  /** Deep link to the provider's "create OAuth app" form. */
+  /**
+   * Deep link to the provider's "create OAuth app" form. May contain `{callbackUrl}` and
+   * `{origin}` placeholders, interpolated (URL-encoded) with the server's OAuth redirect URI
+   * via `buildCreateOAuthAppUrl` — use them to prefill the provider's form where supported.
+   */
   createOAuthAppUrl?: string
   /** Provider requires a client secret on token exchange (no public-client PKCE). */
   clientSecretRequired?: boolean
@@ -119,7 +123,8 @@ export const mcpTemplates: McpTemplate[] = [
     clientSecretRequired: true,
     setupHint:
       'GitHub does not support automatic client registration. Create an OAuth app on GitHub and paste its Client ID and Client Secret.',
-    createOAuthAppUrl: 'https://github.com/settings/applications/new',
+    createOAuthAppUrl:
+      'https://github.com/settings/applications/new?oauth_application[name]=Auxx&oauth_application[url]={origin}&oauth_application[callback_url]={callbackUrl}',
     docsUrl: 'https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/creating-an-oauth-app',
   },
   {
