@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.158](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.157...auxx-v0.1.158) (2026-06-11)
+
+
+### Features
+
+* **credentials:** unified credential store + crypto v2 ([#800](https://github.com/Auxx-Ai/auxx-ai/issues/800)) ([a91178c](https://github.com/Auxx-Ai/auxx-ai/commit/a91178cde2ef8e8084a55437f1adffa3aa183ee1))
+
 ## [0.1.157](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.156...auxx-v0.1.157) (2026-06-11)
 
 
