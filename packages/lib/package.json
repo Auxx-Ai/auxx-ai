@@ -256,6 +256,12 @@
       "import": "./dist/custom-fields/types.mjs",
       "default": "./src/custom-fields/types.ts"
     },
+    "./data-migrations": {
+      "types": "./src/data-migrations/index.ts",
+      "source": "./src/data-migrations/index.ts",
+      "import": "./dist/data-migrations/index.mjs",
+      "default": "./src/data-migrations/index.ts"
+    },
     "./datasets": {
       "types": "./src/datasets/index.ts",
       "source": "./src/datasets/index.ts",

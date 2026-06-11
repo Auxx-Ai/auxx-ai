@@ -9,6 +9,7 @@ export {
   type ChannelTokenRefreshScannerJobData,
   channelTokenRefreshScannerJob,
 } from './channel-token-refresh-scanner-job'
+export { dataMigrationsJob, enqueueDataMigrationsRun } from './data-migrations-job'
 export {
   type CleanupStats,
   expiredTrialAccountCleanupJob,

@@ -13,6 +13,7 @@ import {
   channelTokenRefreshScannerJob,
   cleanupExpiredMediaAssetsJob,
   type DemoSeedJobData,
+  dataMigrationsJob,
   demoCleanupJob,
   expiredTrialAccountCleanupJob,
   type JobHandler,
@@ -156,6 +157,9 @@ const jobMappings = {
 
   // Agent draft cleanup (daily; archives stale builder drafts with no chat)
   agentDraftCleanupJob,
+
+  // Data migrations runner (enqueued at boot + from the superadmin panel)
+  dataMigrationsJob,
 }
 
 export function startMaintenanceWorker() {

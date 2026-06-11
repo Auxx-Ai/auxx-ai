@@ -12,6 +12,7 @@ import {
   Building2,
   Code,
   CreditCard,
+  Database,
   LayoutDashboard,
   type LucideIcon,
   Package,
@@ -109,6 +110,12 @@ const ADMIN_NAV_GROUPS: NavGroup[] = [
         label: 'Config',
         slug: 'config',
         icon: Settings,
+      },
+      {
+        id: 'data-migrations',
+        label: 'Data Migrations',
+        slug: 'data-migrations',
+        icon: Database,
       },
       {
         id: 'health',

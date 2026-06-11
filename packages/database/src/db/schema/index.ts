@@ -39,6 +39,7 @@ export * from './comment-reference'
 export * from './connection-definition'
 export * from './custom-field'
 // CustomFieldValue table dropped — field values now stored in FieldValue
+export * from './data-migration'
 export * from './dataset'
 export * from './dataset-metadata'
 export * from './dataset-search-query'

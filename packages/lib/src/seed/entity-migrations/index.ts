@@ -59,6 +59,13 @@ const ALL_MIGRATIONS: EntityMigration[] = [
   migration023ContactVisitorGeoFields,
 ]
 
+/**
+ * The full ordered registry of entity migrations. Exposed so the data-migrations
+ * framework can wrap each one as a registered `DataMigrationDef` (see
+ * `@auxx/lib/data-migrations`).
+ */
+export const ALL_ENTITY_MIGRATIONS: readonly EntityMigration[] = ALL_MIGRATIONS
+
 // ─── Public API ──────────────────────────────────────────────────────
 
 /**
@@ -145,6 +152,76 @@ export async function runEntityMigrationsForOrg(
   }
 
   return result
+}
+
+/**
+ * Run a single entity migration across every organization.
+ *
+ * The transpose of {@link runEntityMigrationsForOrg} (one migration × all orgs vs.
+ * all migrations × one org): the data-migrations framework drives each registered
+ * migration independently, so it needs this shape. Preserves the per-org cache
+ * invalidation and the global flush of the per-all-orgs runner.
+ *
+ * Partial failure: collects per-org errors, runs the remaining orgs, then THROWS the
+ * aggregate so the ledger marks the migration `failed`. Retry is safe and cheap —
+ * succeeded orgs no-op via their own idempotency checks, only failed orgs redo work.
+ */
+export async function runEntityMigrationForAllOrgs(
+  db: Database,
+  migration: EntityMigration
+): Promise<void> {
+  const orgs = await db.select({ id: schema.Organization.id }).from(schema.Organization)
+
+  logger.info(`Running entity migration ${migration.id} for ${orgs.length} organizations`)
+
+  const errors: string[] = []
+  let totalCreated = 0
+
+  for (const org of orgs) {
+    try {
+      const result = await migration.up(db, org.id)
+      if (!result.alreadyUpToDate) {
+        totalCreated += result.entityDefsCreated + result.fieldsCreated
+        // Recompute this org's entity/field caches so it picks up the new definitions
+        await getOrgCache().invalidateAndRecompute(org.id, [
+          'entityDefs',
+          'entityDefSlugs',
+          'customFields',
+          'resources',
+        ])
+        logger.info(`Migration ${migration.id} applied`, {
+          organizationId: org.id,
+          entityDefsCreated: result.entityDefsCreated,
+          fieldsCreated: result.fieldsCreated,
+          relationshipsLinked: result.relationshipsLinked,
+        })
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      logger.error(`Migration ${migration.id} failed for org`, {
+        organizationId: org.id,
+        error: message,
+      })
+      errors.push(`${org.id}: ${message}`)
+    }
+  }
+
+  // Belt-and-braces global flush so every org picks up new definitions
+  if (totalCreated > 0) {
+    logger.info('Flushing entity and field caches for all orgs')
+    await getOrgCache().flushKeyForAllOrgs([
+      'entityDefs',
+      'entityDefSlugs',
+      'customFields',
+      'resources',
+    ])
+  }
+
+  if (errors.length > 0) {
+    throw new Error(
+      `Migration ${migration.id} failed for ${errors.length} org(s):\n${errors.join('\n')}`
+    )
+  }
 }
 
 /** List all registered migrations */

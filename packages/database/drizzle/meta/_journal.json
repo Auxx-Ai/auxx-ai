@@ -1450,6 +1450,13 @@
       "when": 1781139215447,
       "tag": "0206_mcp_server_icon_config_user_fk",
       "breakpoints": true
+    },
+    {
+      "idx": 207,
+      "version": "7",
+      "when": 1781146742373,
+      "tag": "0207_add_data_migration_ledger",
+      "breakpoints": true
     }
   ]
 }

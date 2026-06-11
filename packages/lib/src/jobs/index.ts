@@ -108,6 +108,10 @@ export {
   type ChannelTokenRefreshScannerJobData,
   channelTokenRefreshScannerJob,
 } from './maintenance/channel-token-refresh-scanner-job'
+export {
+  dataMigrationsJob,
+  enqueueDataMigrationsRun,
+} from './maintenance/data-migrations-job'
 export { type DemoCleanupStats, demoCleanupJob } from './maintenance/demo-cleanup-job'
 export { type DemoSeedJobData, demoSeedJob } from './maintenance/demo-seed-job'
 export {
