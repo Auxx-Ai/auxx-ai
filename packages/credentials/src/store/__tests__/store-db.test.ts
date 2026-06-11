@@ -54,7 +54,6 @@ import { rotateSecrets } from '../rotate-secrets'
 
 beforeEach(() => {
   vi.stubEnv('CREDENTIAL_ENCRYPTION_KEY', 'a'.repeat(64))
-  vi.stubEnv('WORKFLOW_CREDENTIAL_ENCRYPTION_KEY', '0123456789abcdef0123456789abcdef')
   state.selectRows = []
   state.writeReturning = []
   state.inserted = []

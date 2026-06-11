@@ -176,14 +176,6 @@ export const CONFIG_VARIABLES = {
     isSensitive: true,
     isEnvOnly: true,
   },
-  WORKFLOW_CREDENTIAL_ENCRYPTION_KEY: {
-    key: 'WORKFLOW_CREDENTIAL_ENCRYPTION_KEY',
-    description: 'Encryption key for workflow credential storage',
-    type: ConfigVariableType.STRING,
-    group: ConfigVariableGroup.AUTH,
-    isSensitive: true,
-    isEnvOnly: true,
-  },
   CREDENTIAL_ENCRYPTION_KEY: {
     key: 'CREDENTIAL_ENCRYPTION_KEY',
     description: 'AES-256-GCM key for credential secret storage (openssl rand -hex 32)',

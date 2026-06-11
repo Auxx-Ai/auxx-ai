@@ -23,9 +23,9 @@ export const secretsConfig = {
     secret: new sst.Secret('LAMBDA_INVOKE_SECRET'),
     description: 'Shared secret for authenticating lambda invocations',
   },
-  WORKFLOW_CREDENTIAL_ENCRYPTION_KEY: {
-    secret: new sst.Secret('WORKFLOW_CREDENTIAL_ENCRYPTION_KEY'),
-    description: 'Encryption key for workflow credential storage',
+  CREDENTIAL_ENCRYPTION_KEY: {
+    secret: new sst.Secret('CREDENTIAL_ENCRYPTION_KEY'),
+    description: 'AES-256-GCM key for credential secret storage',
   },
   PUBLIC_WORKFLOW_JWT_SECRET: {
     secret: new sst.Secret('PUBLIC_WORKFLOW_JWT_SECRET'),

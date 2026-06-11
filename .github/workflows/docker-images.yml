@@ -104,7 +104,7 @@ jobs:
           DATABASE_PASSWORD: test
           REDIS_PASSWORD: test
           BETTER_AUTH_SECRET: test
-          WORKFLOW_CREDENTIAL_ENCRYPTION_KEY: test
+          CREDENTIAL_ENCRYPTION_KEY: test
           PUBLIC_WORKFLOW_JWT_SECRET: test
           API_KEY_SALT: test
           LAMBDA_INVOKE_SECRET: test

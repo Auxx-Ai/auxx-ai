@@ -1,24 +1,12 @@
 // packages/credentials/src/crypto/__tests__/secret-box.test.ts
 
-import crypto from 'crypto'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { decryptLegacySecrets, decryptSecrets, encryptSecrets, isV2Payload } from '../secret-box'
+import { decryptSecrets, encryptSecrets, isV2Payload } from '../secret-box'
 
 const V2_KEY = 'a'.repeat(64) // 64 hex chars → 32 bytes
-const LEGACY_KEY = '0123456789abcdef0123456789abcdef' // 32 chars (openssl rand -hex 16)
-
-/** Encrypt with the pre-v2 algorithm, inline (not via CredentialService). */
-function legacyEncrypt(data: Record<string, unknown>, key: string): string {
-  const iv = crypto.randomBytes(16)
-  const cipher = crypto.createCipheriv('aes-256-gcm', key.substring(0, 32), iv)
-  const encrypted = Buffer.concat([cipher.update(JSON.stringify(data), 'utf8'), cipher.final()])
-  const authTag = cipher.getAuthTag()
-  return Buffer.concat([iv, authTag, encrypted]).toString('base64')
-}
 
 beforeEach(() => {
   vi.stubEnv('CREDENTIAL_ENCRYPTION_KEY', V2_KEY)
-  vi.stubEnv('WORKFLOW_CREDENTIAL_ENCRYPTION_KEY', LEGACY_KEY)
 })
 
 afterEach(() => {
@@ -58,7 +46,13 @@ describe('version prefix', () => {
 
   it('isV2Payload distinguishes formats', () => {
     expect(isV2Payload(encryptSecrets({ a: 1 }))).toBe(true)
-    expect(isV2Payload(legacyEncrypt({ a: 1 }, LEGACY_KEY))).toBe(false)
+    expect(isV2Payload('bm90LXYyLXBheWxvYWQ=')).toBe(false)
+  })
+
+  it('decryptSecrets rejects a non-prefixed payload', () => {
+    expect(() => decryptSecrets('bm90LXYyLXBheWxvYWQ=')).toThrow(
+      'Unrecognized credential payload format'
+    )
   })
 })
 
@@ -77,19 +71,6 @@ describe('tamper detection', () => {
     raw[12] ^= 0x01 // first auth-tag byte (after 12-byte IV)
     const tampered = `v2:${raw.toString('base64')}`
     expect(() => decryptSecrets(tampered)).toThrow('Failed to decrypt credential secrets')
-  })
-})
-
-describe('legacy decrypt', () => {
-  it('decryptSecrets routes a non-prefixed payload to the legacy path', () => {
-    const obj = { token: 'legacy-token', scope: 'read' }
-    const payload = legacyEncrypt(obj, LEGACY_KEY)
-    expect(decryptSecrets(payload)).toEqual(obj)
-  })
-
-  it('decryptLegacySecrets reads a legacy fixture directly', () => {
-    const obj = { password: 'p@ss' }
-    expect(decryptLegacySecrets(legacyEncrypt(obj, LEGACY_KEY))).toEqual(obj)
   })
 })
 
