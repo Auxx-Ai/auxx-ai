@@ -4,12 +4,14 @@ import type { SYNC_STATUS as SyncStatus } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq, inArray, isNull, lt, or } from 'drizzle-orm'
 import { type MessageSyncFailedEvent, type MessageSyncPendingEvent, publisher } from '../events'
+// Import from the defining job modules, not the '../jobs' barrel — the barrel
+// pulls every job handler into the module graph (heavy, breaks mocked tests).
+import type { MonitorMessageSyncJobData } from '../jobs/messages/monitor-message-sync-job'
 import {
   MONITOR_INITIAL_DELAY_MS,
-  type MonitorMessageSyncJobData,
   type StartMessageSyncJobData,
-  type SyncSingleIntegrationMessagesJobData,
-} from '../jobs'
+} from '../jobs/messages/sync-all-messages-job'
+import type { SyncSingleChannelMessagesJobData } from '../jobs/messages/sync-single-channel-messages-job'
 import { getQueue, Queues } from '../jobs/queues'
 import type { ChannelProviderType } from '../providers/types'
 
@@ -216,7 +218,7 @@ export class SyncMessages {
       }
 
       // Prepare job data for the single sync job
-      const singleSyncJobData: SyncSingleIntegrationMessagesJobData = {
+      const singleSyncJobData: SyncSingleChannelMessagesJobData = {
         syncJobId: syncJobId, // Pass the parent SyncJob ID
         organizationId,
         userId,

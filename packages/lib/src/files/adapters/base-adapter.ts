@@ -24,7 +24,7 @@ export type DownloadRef =
 
 /**
  * Provider authentication information
- * Maps credential data from CredentialService to adapter-specific format
+ * Maps credential data from the credential store to adapter-specific format
  */
 export interface ProviderAuth {
   accessToken?: string

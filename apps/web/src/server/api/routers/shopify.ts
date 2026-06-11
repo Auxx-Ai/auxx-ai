@@ -1,5 +1,6 @@
 import { getProvider, type ShopifyBillingProvider, stripeClient } from '@auxx/billing'
 import { WEBAPP_URL } from '@auxx/config/server'
+import { findCredential } from '@auxx/credentials/store'
 import { database as db, schema } from '@auxx/database'
 import { getOrgCache, isOrgMember, onCacheEvent, resolveAppSlug } from '@auxx/lib/cache'
 import { ConflictError } from '@auxx/lib/errors'
@@ -422,7 +423,7 @@ export const shopifyRouter = createTRPCRouter({
    *
    * Reads the claim token from the `shopify_claim_token` cookie (or the cross-device
    * `claimToken` input), validates the user is a member of `organizationId`, lazily
-   * creates the AppInstallation, writes the WorkflowCredentials + ShopifyIntegration
+   * creates the AppInstallation, writes the Credential + ShopifyIntegration
    * rows, then reconciles any pre-existing PlanSubscription row:
    * - **No row** (the shopify-claim signupSource skips the Stripe trial seed — the hot path
    *   for a fresh App Store merchant): upsert the Shopify row + return the hosted plan-picker
@@ -541,22 +542,18 @@ export const shopifyRouter = createTRPCRouter({
       })
 
       // Reuse the single org-scoped Shopify connection if one already exists. Without
-      // this, every App Store (re)install inserts a fresh WorkflowCredentials row — and
+      // this, every App Store (re)install inserts a fresh Credential row — and
       // since Shopify revokes the old token whenever it issues a new one, getAppConnection
       // can hand a stale (revoked) row to the Admin API read, 401-ing the billing sync so
       // the PlanSubscription never leaves `incomplete`. One shop = one org-scoped token,
       // updated in place.
-      const existingConn = await db.query.WorkflowCredentials.findFirst({
-        where: (c, { eq: e, and: a, isNull }) =>
-          a(
-            e(c.appId, appId),
-            e(c.organizationId, organizationId),
-            isNull(c.userId),
-            e(c.type, 'app-connection')
-          ),
-        orderBy: (c, { desc: d }) => d(c.createdAt),
-        columns: { id: true },
+      const existingConnResult = await findCredential({
+        organizationId,
+        kind: 'app',
+        appId,
+        userId: null,
       })
+      const existingConn = existingConnResult.isOk() ? existingConnResult.value : null
 
       const saveResult = await saveAppConnection(
         appId,
@@ -573,7 +570,7 @@ export const shopifyRouter = createTRPCRouter({
             scope: claim.scope,
             shopDomain: claim.shop,
             // The hourly token refresh interpolates {shop} in the ConnectionDefinition's
-            // access-token URL from `connectionVariables` (oauth2-workflow.service.ts).
+            // access-token URL from `connectionVariables` (oauth2-workflow.ts).
             // Without this the App-Store-saved credential refreshes against a literal
             // `https://{shop}.myshopify.com/...` URL and the connection dies an hour after
             // install — store the subdomain exactly as the in-app OAuth callback does.

@@ -4,6 +4,7 @@
 // curated servers, refresh, rename, delete). Kept out of the router per the >20-line rule.
 
 import { WEBAPP_URL } from '@auxx/config/urls'
+import { findCredential } from '@auxx/credentials/store'
 import { database as db, type McpServerIcon, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq, isNull, or } from 'drizzle-orm'
@@ -411,14 +412,13 @@ async function applyAuthUpdate(input: {
     .where(eq(schema.ConnectionDefinition.mcpServerId, input.serverId))
   if (!input.token) return
 
-  const existing = await db.query.WorkflowCredentials.findFirst({
-    where: and(
-      eq(schema.WorkflowCredentials.mcpServerId, input.serverId),
-      eq(schema.WorkflowCredentials.organizationId, input.organizationId),
-      eq(schema.WorkflowCredentials.type, 'mcp-connection')
-    ),
-    columns: { id: true },
+  const existing = await findCredential({
+    kind: 'mcp',
+    mcpServerId: input.serverId,
+    organizationId: input.organizationId,
+    userId: null,
   })
+  const existingId = existing.isOk() ? existing.value?.id : undefined
   const server = await db.query.McpServer.findFirst({
     where: eq(schema.McpServer.id, input.serverId),
     columns: { name: true, createdById: true },
@@ -432,7 +432,7 @@ async function applyAuthUpdate(input: {
       secret: input.token,
       metadata: input.authHeaderName ? { authHeader: { name: input.authHeaderName } } : undefined,
     },
-    connectionId: existing?.id,
+    connectionId: existingId,
   })
   if (saved.isErr()) throw new Error(saved.error.message)
   await onCacheEvent('mcp.connection.changed', { orgId: input.organizationId })

@@ -1,16 +1,15 @@
 // scripts/check-shopify-app-connection.ts
 //
-// Verify a Shopify *app-connection* (WorkflowCredentials, type 'app-connection')
-// by decrypting its stored token and making a live Shopify Admin API call.
-// Answers "is this token actually dead?" independently of the kopilot path.
+// Verify a Shopify *app connection* (Credential, kind 'app') by revealing
+// its stored token via the credential store and making a live Shopify
+// Admin API call. Answers "is this token actually dead?" independently of
+// the kopilot path.
 //
 // Usage:
 //   npx dotenv -- npx tsx scripts/check-shopify-app-connection.ts [organizationId] [appId]
 // Defaults: DemoOrg + the Shopify appId.
 
-import { CredentialService } from '@auxx/credentials'
-import { database, schema } from '@auxx/database'
-import { and, eq } from 'drizzle-orm'
+import { findCredential, revealSecrets } from '@auxx/credentials/store'
 
 const DEFAULT_ORG = 'abgwpa1l81reht2zmwrcihfu' // DemoOrg
 const DEFAULT_SHOPIFY_APP_ID = 'ni0jjtpn6sreobwrue44r8re'
@@ -29,16 +28,14 @@ function resolveShopDomain(metadata: Record<string, unknown> | undefined): strin
 async function main() {
   console.log({ organizationId, appId })
 
-  const cred = await database.query.WorkflowCredentials.findFirst({
-    where: and(
-      eq(schema.WorkflowCredentials.organizationId, organizationId),
-      eq(schema.WorkflowCredentials.appId, appId),
-      eq(schema.WorkflowCredentials.type, 'app-connection')
-    ),
-  })
-
+  const credResult = await findCredential({ organizationId, kind: 'app', appId })
+  if (credResult.isErr()) {
+    console.error('Credential lookup failed:', credResult.error.message)
+    process.exit(1)
+  }
+  const cred = credResult.value
   if (!cred) {
-    console.error('No app-connection credential found for that org + appId')
+    console.error('No app credential found for that org + appId')
     process.exit(1)
   }
 
@@ -53,24 +50,27 @@ async function main() {
     createdAt: cred.createdAt,
   })
 
-  const decrypted = CredentialService.decrypt(cred.encryptedData) as {
-    accessToken?: string
-    secret?: string
-    metadata?: Record<string, unknown>
-    expiresAt?: string
+  const revealed = await revealSecrets<{ accessToken?: string; secret?: string }>(
+    cred.id,
+    organizationId
+  )
+  if (revealed.isErr()) {
+    console.error('Failed to reveal secrets:', revealed.error.message)
+    process.exit(1)
   }
+  const { record, secrets } = revealed.value
 
-  const token = decrypted.accessToken ?? decrypted.secret
-  const shopDomain = resolveShopDomain(decrypted.metadata)
+  const token = secrets.accessToken ?? secrets.secret
+  const shopDomain = resolveShopDomain(record.metadata)
 
-  console.log('\n--- decrypted (sanitized) ---')
+  console.log('\n--- revealed (sanitized) ---')
   console.log({
     shopDomain,
     hasToken: Boolean(token),
     tokenPrefix: token ? `${token.slice(0, 8)}…` : null,
     tokenLength: token?.length ?? 0,
-    decryptedExpiresAt: decrypted.expiresAt ?? null,
-    metadataKeys: Object.keys(decrypted.metadata ?? {}),
+    expiresAt: record.expiresAt,
+    metadataKeys: Object.keys(record.metadata),
   })
 
   if (!token || !shopDomain) {

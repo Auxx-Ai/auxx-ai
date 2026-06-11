@@ -75,7 +75,7 @@ export interface UpdateStorageLocationRequest {
  * const locationWithCreds = await service.getWithCredentials('loc_123')
  * if (locationWithCreds?.credential) {
  *   console.log(`Using credential: ${locationWithCreds.credential.name}`)
- *   // Decrypt and use credential.encryptedData
+ *   // Reveal secrets via the credential store when auth is needed
  * }
  * ```
  */
@@ -83,8 +83,7 @@ export interface StorageLocationWithCredentials extends StorageLocationEntity {
   credential?: {
     id: string
     name: string
-    type: string
-    encryptedData: string
+    type: string | null
   } | null
 }
 /**
@@ -322,17 +321,13 @@ export class StorageLocationService {
           createdAt: schema.StorageLocation.createdAt,
           metadata: schema.StorageLocation.metadata,
           credential: {
-            id: schema.WorkflowCredentials.id,
-            name: schema.WorkflowCredentials.name,
-            type: schema.WorkflowCredentials.type,
-            encryptedData: schema.WorkflowCredentials.encryptedData,
+            id: schema.Credential.id,
+            name: schema.Credential.name,
+            type: schema.Credential.type,
           },
         })
         .from(schema.StorageLocation)
-        .leftJoin(
-          schema.WorkflowCredentials,
-          eq(schema.StorageLocation.credentialId, schema.WorkflowCredentials.id)
-        )
+        .leftJoin(schema.Credential, eq(schema.StorageLocation.credentialId, schema.Credential.id))
         .where(and(eq(schema.StorageLocation.id, id), isNull(schema.StorageLocation.deletedAt)))
         .limit(1)
       if (!result) return null

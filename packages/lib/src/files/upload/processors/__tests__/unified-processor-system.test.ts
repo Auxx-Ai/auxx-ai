@@ -95,7 +95,12 @@ vi.mock('@auxx/database/types', () => ({}))
 // Mock @auxx/credentials to avoid loading real credential service
 vi.mock('@auxx/credentials', () => ({
   configService: { get: vi.fn() },
-  CredentialService: { loadCredential: vi.fn().mockResolvedValue({}) },
+}))
+vi.mock('@auxx/credentials/store', () => ({
+  revealSecrets: vi.fn().mockResolvedValue({
+    isErr: () => false,
+    value: { record: { metadata: {} }, secrets: {} },
+  }),
 }))
 
 // Mock @auxx/redis

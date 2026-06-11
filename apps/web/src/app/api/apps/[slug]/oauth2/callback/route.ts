@@ -315,7 +315,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       }
     }
 
-    // Save connection to WorkflowCredentials
+    // Save connection to Credential
     const result = await saveAppConnection(
       metadata.appId,
       metadata.installationId,

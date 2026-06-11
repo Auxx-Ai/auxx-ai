@@ -12,6 +12,7 @@ import {
   AppSetting,
   AppWebhookHandler,
   ConnectionDefinition,
+  Credential,
   DeveloperAccount,
   DeveloperAccountInvite,
   DeveloperAccountMember,
@@ -19,7 +20,6 @@ import {
   Organization,
   oauthApplication,
   User,
-  WorkflowCredentials,
 } from '../schema'
 
 /** Relations for DeveloperAccount */
@@ -69,7 +69,7 @@ export const appRelations = relations(App, ({ one, many }) => ({
   marketplaceImages: many(AppMarketplaceImage),
   connectionDefinitions: many(ConnectionDefinition),
   eventLogs: many(AppEventLog),
-  connections: many(WorkflowCredentials),
+  connections: many(Credential),
 }))
 
 /** Relations for AppBundle */
@@ -122,7 +122,7 @@ export const appInstallationRelations = relations(AppInstallation, ({ one, many 
     fields: [AppInstallation.currentDeploymentId],
     references: [AppDeployment.id],
   }),
-  connections: many(WorkflowCredentials),
+  connections: many(Credential),
   webhookHandlers: many(AppWebhookHandler),
   settings: many(AppSetting),
 }))

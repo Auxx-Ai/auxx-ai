@@ -18,6 +18,7 @@ import {
   ChatWidget,
   Comment,
   CommentReaction,
+  Credential,
   CustomField,
   Dataset,
   DatasetSearchQuery,
@@ -92,7 +93,6 @@ import {
   WebhookEvent,
   Workflow,
   WorkflowApp,
-  WorkflowCredentials,
   WorkflowNodeExecution,
   WorkflowRun,
 } from '../schema'
@@ -175,7 +175,7 @@ export const userRelations = relations(User, ({ one, many }) => ({
   deletedFiles: many(File, {
     relationName: 'file_deletedById_user_id',
   }),
-  createdWorkflowCredentials: many(WorkflowCredentials),
+  createdCredential: many(Credential),
   createdDatasets: many(Dataset),
   datasetSearchQueries: many(DatasetSearchQuery),
   createdExternalSources: many(ExternalKnowledgeSource),
@@ -255,7 +255,7 @@ export const organizationRelations = relations(Organization, ({ one, many }) => 
   workflowNodeExecutions: many(WorkflowNodeExecution),
   approvalRequests: many(ApprovalRequest),
   files: many(File),
-  WorkflowCredentials: many(WorkflowCredentials),
+  Credential: many(Credential),
   datasets: many(Dataset),
   datasetSearchQueries: many(DatasetSearchQuery),
   externalKnowledgeSources: many(ExternalKnowledgeSource),

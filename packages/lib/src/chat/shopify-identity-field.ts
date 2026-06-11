@@ -1,6 +1,6 @@
 // packages/lib/src/chat/shopify-identity-field.ts
 
-import { CredentialService } from '@auxx/credentials'
+import { listCredentials } from '@auxx/credentials/store'
 import { type Database, database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { toRecordId } from '@auxx/types/resource'
@@ -35,9 +35,9 @@ interface WriteShopifyCustomerIdInput {
  *
  * Resolution chain (all org-scoped):
  *   1. Shopify `App` → its non-uninstalled `AppInstallation` for the org.
- *   2. The bound store connection: the `WorkflowCredentials` (app-connection)
- *      row whose decrypted `metadata.shopDomain` equals `shopDomain`. This is
- *      the same binding check `shopify-proxy.ts` performs at JWT mint.
+ *   2. The bound store connection: the `kind: 'app'` `Credential` row whose
+ *      plaintext `metadata.shopDomain` equals `shopDomain`. This is the same
+ *      binding check `shopify-proxy.ts` performs at JWT mint.
  *   3. The connection-scoped `CustomField` for
  *      `(appInstallationId, connectionId, appFieldKey='customerId')`.
  *   4. `FieldValueService.setValue` writes the value — the exact row the var
@@ -71,35 +71,23 @@ export async function writeShopifyCustomerIdField(
   })
   if (!installation) return false
 
-  // 2. Resolve the bound store connection by decrypting app-connection creds
-  //    and matching the trusted shop domain (mirrors shopify-proxy binding).
-  const creds = await db.query.WorkflowCredentials.findMany({
-    where: and(
-      eq(schema.WorkflowCredentials.organizationId, organizationId),
-      eq(schema.WorkflowCredentials.appId, shopifyApp.id),
-      eq(schema.WorkflowCredentials.type, 'app-connection'),
-      isNull(schema.WorkflowCredentials.userId)
-    ),
-    columns: { id: true, encryptedData: true },
+  // 2. Resolve the bound store connection by matching the trusted shop domain
+  //    against the plaintext credential metadata (mirrors shopify-proxy binding).
+  const credsResult = await listCredentials({
+    organizationId,
+    kind: 'app',
+    appId: shopifyApp.id,
+    userId: null,
   })
-
-  let connectionId: string | undefined
-  for (const cred of creds) {
-    try {
-      const decrypted = CredentialService.decrypt(cred.encryptedData) as {
-        metadata?: { shopDomain?: string }
-      }
-      if (decrypted.metadata?.shopDomain === shopDomain) {
-        connectionId = cred.id
-        break
-      }
-    } catch (error) {
-      log.warn('Failed to decrypt Shopify credential during identity-field write', {
-        organizationId,
-        error: (error as Error).message,
-      })
-    }
+  if (credsResult.isErr()) {
+    log.warn('Failed to list Shopify credentials during identity-field write', {
+      organizationId,
+      error: credsResult.error.message,
+    })
+    return false
   }
+
+  const connectionId = credsResult.value.find((cred) => cred.metadata.shopDomain === shopDomain)?.id
   if (!connectionId) {
     log.warn('No bound Shopify connection for shop domain — skipping customerId field write', {
       organizationId,

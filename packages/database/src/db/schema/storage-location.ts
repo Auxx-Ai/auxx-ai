@@ -13,9 +13,8 @@ import {
   text,
   timestamp,
 } from './_shared'
-
+import { Credential } from './credential'
 import { Organization } from './organization'
-import { WorkflowCredentials } from './workflow-credentials'
 
 /** Drizzle table for storageLocation */
 export const StorageLocation = pgTable(
@@ -33,7 +32,7 @@ export const StorageLocation = pgTable(
       onUpdate: 'cascade',
       onDelete: 'cascade',
     }),
-    credentialId: text().references((): AnyPgColumn => WorkflowCredentials.id, {
+    credentialId: text().references((): AnyPgColumn => Credential.id, {
       onUpdate: 'cascade',
     }),
     // You can use { mode: "bigint" } if numbers are exceeding js number limitations

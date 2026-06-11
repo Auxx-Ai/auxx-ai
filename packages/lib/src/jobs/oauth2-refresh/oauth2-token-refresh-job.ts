@@ -2,100 +2,57 @@
 
 import { createScopedLogger } from '@auxx/logger'
 import type { Job } from 'bullmq'
-import { OAuth2WorkflowService } from '../../workflows/oauth2-workflow.service'
+import { refreshCredentialTokens } from '../../workflows/oauth2-workflow'
 
 const logger = createScopedLogger('oauth2-token-refresh-job')
 
-/** Individual refresh job payload */
+/** Individual refresh job payload. Routing now derives from the credential record itself. */
 interface OAuth2TokenRefreshJobData {
   credentialId: string
-  appId: string
-  mcpServerId?: string
   organizationId: string
-  credentialType: string
-  previousFailureCount: number
+  previousFailureCount?: number
   attemptNumber?: number
 }
 
 /**
  * OAuth2 Token Refresh Job
  *
- * Refreshes a single OAuth2 connection's access token.
- * Handles success/failure states and updates circuit breaker fields.
+ * Refreshes a single OAuth2 connection's access token via the credential store.
+ * `refreshCredentialTokens` handles routing (by kind), secret rotation, and the circuit breaker.
  *
- * On success:
- * - Updates lastTokenRefreshAt to current time
- * - Updates expiresAt from new token data
- * - Resets consecutiveRefreshFailures to 0
- * - Clears lastRefreshFailureAt
- *
- * On failure:
- * - Increments consecutiveRefreshFailures
- * - Updates lastRefreshFailureAt to current time
- * - Circuit breaker opens after 5 consecutive failures
+ * On success: resets the breaker, stamps lastRefreshAt, updates expiresAt.
+ * On failure: increments the breaker (a permanent failure opens it immediately) and throws so
+ * BullMQ retries with backoff.
  */
 export const oauth2TokenRefreshJob = async (job: Job<OAuth2TokenRefreshJobData>) => {
-  const {
-    credentialId,
-    appId,
-    mcpServerId,
-    organizationId,
-    credentialType,
-    previousFailureCount,
-    attemptNumber = 1,
-  } = job.data
+  const { credentialId, organizationId, previousFailureCount = 0, attemptNumber = 1 } = job.data
 
   logger.info('Starting OAuth2 token refresh', {
     credentialId,
-    credentialType,
     previousFailureCount,
     attemptNumber,
   })
 
-  try {
-    await job.updateProgress(30)
+  await job.updateProgress(30)
 
-    // Call OAuth service - it handles EVERYTHING (queries, updates, circuit breaker)
-    const oauth2Service = OAuth2WorkflowService.getInstance()
+  const result = await refreshCredentialTokens(credentialId, organizationId)
 
-    const result = await oauth2Service.refreshTokensWithMetadata({
+  await job.updateProgress(100)
+
+  if (result.success) {
+    logger.info('OAuth2 token refresh succeeded', {
       credentialId,
-      organizationId,
-      appId,
-      mcpServerId,
-      credentialType,
-      previousFailureCount,
+      expiresAt: result.expiresAt,
+      circuitBreakerReset: previousFailureCount > 0,
     })
-
-    await job.updateProgress(100)
-
-    if (result.success) {
-      logger.info('OAuth2 token refresh succeeded', {
-        credentialId,
-        expiresAt: result.expiresAt,
-        circuitBreakerReset: previousFailureCount > 0,
-      })
-
-      return {
-        success: true,
-        credentialId,
-        expiresAt: result.expiresAt,
-      }
-    } else {
-      logger.error('OAuth2 token refresh failed', {
-        credentialId,
-        error: result.error,
-        consecutiveFailures: result.newFailureCount,
-        circuitOpened: result.circuitOpened,
-      })
-
-      throw new Error(result.error)
-    }
-  } catch (error) {
-    logger.error('OAuth2 token refresh job error', {
-      credentialId,
-      error: error instanceof Error ? error.message : String(error),
-    })
-    throw error
+    return { success: true, credentialId, expiresAt: result.expiresAt }
   }
+
+  logger.error('OAuth2 token refresh failed', {
+    credentialId,
+    error: result.error,
+    consecutiveFailures: result.newFailureCount,
+    circuitOpened: result.circuitOpened,
+  })
+  throw new Error(result.error)
 }

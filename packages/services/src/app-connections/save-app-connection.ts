@@ -1,15 +1,30 @@
 // packages/services/src/app-connections/save-app-connection.ts
 
-import { CredentialService } from '@auxx/credentials'
-import { database, schema } from '@auxx/database'
-import { and, eq } from 'drizzle-orm'
-import { err, ok, type Result } from 'neverthrow'
+import {
+  insertCredential,
+  listCredentials,
+  rotateSecrets,
+  updateCredential,
+} from '@auxx/credentials/store'
+import { err, ok } from 'neverthrow'
 import { triggerAppEvent } from '../app-events'
 import { resolveActiveInstallationId } from '../app-installations/resolve-active-installation'
 import { getInstallationCatalog, provisionAppFields } from '../custom-fields/app-field-provisioning'
-import { fromDatabase } from '../shared/utils'
 import { renameAppConnection } from './rename-app-connection'
 import { logger, safeSerializeMetadata } from './utils'
+
+/** Pick the secret keys (present only) out of an app-connection's credential data. */
+function pickSecrets(data: {
+  accessToken?: string
+  refreshToken?: string
+  secret?: string
+}): Record<string, unknown> {
+  const secrets: Record<string, unknown> = {}
+  if (data.accessToken !== undefined) secrets.accessToken = data.accessToken
+  if (data.refreshToken !== undefined) secrets.refreshToken = data.refreshToken
+  if (data.secret !== undefined) secrets.secret = data.secret
+  return secrets
+}
 
 /**
  * Save app connection (OAuth callback or manual secret)
@@ -22,8 +37,9 @@ import { logger, safeSerializeMetadata } from './utils'
  * 1. OAuth2 flow completion: Saves access_token, refresh_token, and expiry from OAuth callback
  * 2. Manual secret entry: Saves API keys or secrets entered directly by the user
  *
- * All sensitive credential data is encrypted using the CredentialService before being
- * stored in the database. The function also triggers a 'connection-added' app event
+ * Secret credential data is encrypted via the credential store (insertCredential/rotateSecrets)
+ * before being stored; non-secret data goes in plaintext `metadata`. The function also triggers
+ * a 'connection-added' app event
  * (for new connections) to notify any registered event handlers in the app.
  *
  * Connection scoping:
@@ -107,8 +123,8 @@ export async function saveAppConnection(
   }
 ) {
   const credentialName = `${appName} Connection`
-  const encrypted = CredentialService.encrypt(connectionData as any)
-  const now = new Date()
+  const secrets = pickSecrets(connectionData)
+  const metadata = (connectionData.metadata ?? {}) as Record<string, unknown>
 
   // Resolve the current active installation ID server-side to guard against
   // stale frontend caches that may reference a previous (soft-deleted) installation.
@@ -154,25 +170,17 @@ export async function saveAppConnection(
 
     const expiresAt = connectionData.expiresAt ? new Date(connectionData.expiresAt) : null
 
-    const updateResult = await fromDatabase(
-      database
-        .update(schema.WorkflowCredentials)
-        .set({
-          encryptedData: encrypted,
-          expiresAt: expiresAt,
-          updatedAt: now,
-        })
-        .where(
-          and(
-            eq(schema.WorkflowCredentials.id, options.connectionId),
-            eq(schema.WorkflowCredentials.organizationId, organizationId)
-          )
-        ),
-      'reconnect-connection'
-    )
+    const rotated = await rotateSecrets(options.connectionId, organizationId, secrets, {
+      expiresAt,
+    })
+    if (rotated.isErr()) {
+      return err(rotated.error)
+    }
 
-    if (updateResult.isErr()) {
-      return updateResult
+    // Refresh the plaintext companion metadata alongside the rotated secrets.
+    const metaUpdated = await updateCredential(options.connectionId, organizationId, { metadata })
+    if (metaUpdated.isErr()) {
+      return err(metaUpdated.error)
     }
 
     logger.info('Successfully reconnected app connection:', { credentialId: options.connectionId })
@@ -189,44 +197,28 @@ export async function saveAppConnection(
     options?.label ||
     (await dedupeLabel(appName, { organizationId, appId, appInstallationId, userId }))
 
-  // Parse expiresAt for database field (duplicate from encrypted data for querying)
+  // expiresAt lives only as a column (the secrets blob holds secrets only).
   const expiresAt = connectionData.expiresAt ? new Date(connectionData.expiresAt) : null
 
-  const createResult = await fromDatabase(
-    database
-      .insert(schema.WorkflowCredentials)
-      .values({
-        organizationId,
-        createdById,
-        userId,
-        appId,
-        appInstallationId,
-        name: credentialName,
-        label,
-        type: 'app-connection',
-        encryptedData: encrypted,
-        expiresAt: expiresAt,
-        createdAt: now,
-        updatedAt: now,
-      })
-      .returning({ id: schema.WorkflowCredentials.id }),
-    'create-connection'
-  )
+  const createResult = await insertCredential({
+    organizationId,
+    createdById,
+    kind: 'app',
+    userId,
+    appId,
+    appInstallationId,
+    name: credentialName,
+    label,
+    secrets,
+    metadata,
+    expiresAt,
+  })
 
   if (createResult.isErr()) {
-    return createResult
+    return err(createResult.error)
   }
 
-  const [created] = createResult.value
-
-  if (!created) {
-    return err({
-      code: 'CONNECTION_CREATE_FAILED',
-      message: 'Failed to create app connection',
-      appId,
-      organizationId,
-    })
-  }
+  const created = createResult.value
 
   logger.info('Successfully created app connection:', { credentialId: created.id })
 
@@ -338,24 +330,17 @@ async function dedupeLabel(
   },
   excludeId?: string
 ): Promise<string> {
-  const existingResult = await fromDatabase(
-    database.query.WorkflowCredentials.findMany({
-      where: (creds, { eq, and, isNull, ne }) =>
-        and(
-          eq(creds.organizationId, scope.organizationId),
-          eq(creds.appId, scope.appId),
-          eq(creds.appInstallationId, scope.appInstallationId),
-          eq(creds.type, 'app-connection'),
-          scope.userId === null ? isNull(creds.userId) : eq(creds.userId, scope.userId),
-          excludeId ? ne(creds.id, excludeId) : undefined
-        ),
-      columns: { label: true },
-    }),
-    'dedupe-connection-label'
-  )
+  const existingResult = await listCredentials({
+    organizationId: scope.organizationId,
+    kind: 'app',
+    appId: scope.appId,
+    appInstallationId: scope.appInstallationId,
+    userId: scope.userId, // null → org-scoped rows; a string → that user
+  })
 
   const taken = new Set(
     (existingResult.isOk() ? existingResult.value : [])
+      .filter((row) => row.id !== excludeId)
       .map((row) => row.label)
       .filter((l): l is string => !!l)
   )

@@ -1,8 +1,8 @@
 // packages/lib/src/ai/mcp/connections/types.ts
 
 /**
- * Decrypted MCP connection payload (mirrors the app-connection shape).
- * Stored encrypted in WorkflowCredentials.encryptedData with type 'mcp-connection'.
+ * Decrypted MCP connection payload (mirrors the app connection shape).
+ * Stored encrypted in Credential.encryptedSecrets with kind 'mcp'.
  */
 export interface DecryptedConnectionData {
   accessToken?: string

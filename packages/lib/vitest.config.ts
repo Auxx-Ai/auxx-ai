@@ -75,6 +75,10 @@ export default defineConfig(({ mode }) => {
     resolve: {
       alias: {
         '@auxx/database': path.resolve(__dirname, '../database/src'),
+        // The credentials store/crypto subpaths have no built `dist` (added post-build);
+        // resolve them to source so cross-package imports work under Vitest.
+        '@auxx/credentials/store': path.resolve(__dirname, '../credentials/src/store'),
+        '@auxx/credentials/crypto': path.resolve(__dirname, '../credentials/src/crypto'),
         '@auxx/lib': path.resolve(__dirname, './src'),
         '@auxx/utils': path.resolve(__dirname, '../utils/src'),
         '@auxx/logger': path.resolve(__dirname, '../logger/src'),

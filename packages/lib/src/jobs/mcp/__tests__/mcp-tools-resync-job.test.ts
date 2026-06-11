@@ -28,7 +28,7 @@ vi.mock('@auxx/database', () => ({
       }),
     }),
   },
-  schema: { McpInstallation: {}, ConnectionDefinition: {}, WorkflowCredentials: {} },
+  schema: { McpInstallation: {}, ConnectionDefinition: {}, Credential: {} },
 }))
 
 vi.mock('../../../ai/mcp/sync', () => ({

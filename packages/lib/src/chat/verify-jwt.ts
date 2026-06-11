@@ -1,7 +1,7 @@
 // packages/lib/src/chat/verify-jwt.ts
 
 import { createHash } from 'node:crypto'
-import { CredentialService } from '@auxx/credentials'
+import { decryptSecrets } from '@auxx/credentials/crypto'
 import { database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq } from 'drizzle-orm'
@@ -96,7 +96,7 @@ export async function verifyChannelUserJwt(
 
     let secret: string
     try {
-      const decrypted = CredentialService.decrypt(row.encryptedSecret)
+      const decrypted = decryptSecrets<{ value?: unknown }>(row.encryptedSecret)
       const value = decrypted.value
       if (typeof value !== 'string' || !value) {
         log.warn('Chat ApiKey decrypted payload missing value', { keyId: row.id, channelId })

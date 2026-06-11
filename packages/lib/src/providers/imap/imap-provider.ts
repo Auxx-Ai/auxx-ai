@@ -1,6 +1,6 @@
 // packages/lib/src/providers/imap/imap-provider.ts
 
-import { CredentialService } from '@auxx/credentials'
+import { revealSecrets } from '@auxx/credentials/store'
 import { database as db, schema } from '@auxx/database'
 import { IntegrationProviderType } from '@auxx/database/enums'
 import { createScopedLogger } from '@auxx/logger'
@@ -89,27 +89,24 @@ export class ImapProvider extends BaseMessageProvider implements ChannelProvider
 
     this.integration = integration
 
-    // Decrypt full credential data (NOT ChannelTokenAccessor — that only returns OAuth tokens)
+    // Reveal the full credential bag (not channel tokens — IMAP stores host/port/auth config).
+    // Post-backfill these rows are `kind: 'integration'`, `type: 'imap'`: secrets hold the
+    // connection objects (authMode/imap/smtp/ldap), metadata holds `{ provider }`. Reconstruct
+    // the legacy shape as `{ ...metadata, ...secrets }`. The store's org filter is the cross-org guard.
     if (!integration.credentialId) {
       throw new Error(`IMAP integration ${integrationId} has no linked credentials`)
     }
 
-    const [credRow] = await db
-      .select({ encryptedData: schema.WorkflowCredentials.encryptedData })
-      .from(schema.WorkflowCredentials)
-      .where(
-        and(
-          eq(schema.WorkflowCredentials.id, integration.credentialId),
-          eq(schema.WorkflowCredentials.organizationId, this.organizationId)
-        )
-      )
-      .limit(1)
-
-    if (!credRow?.encryptedData) {
+    const revealed = await revealSecrets<Partial<ImapCredentialData>>(
+      integration.credentialId,
+      this.organizationId
+    )
+    if (revealed.isErr()) {
       throw new Error(`Credentials not found for IMAP integration ${integrationId}`)
     }
 
-    this.credentials = CredentialService.decrypt(credRow.encryptedData) as ImapCredentialData
+    const { record, secrets } = revealed.value
+    this.credentials = { ...record.metadata, ...secrets } as ImapCredentialData
 
     // Optional LDAP verification
     if (this.credentials.authMode === 'ldap' && this.credentials.ldap) {

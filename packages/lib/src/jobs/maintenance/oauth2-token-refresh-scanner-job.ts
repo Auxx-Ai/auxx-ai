@@ -1,6 +1,6 @@
 // packages/lib/src/jobs/maintenance/oauth2-token-refresh-scanner-job.ts
 
-import { CredentialService } from '@auxx/credentials'
+import { revealSecrets } from '@auxx/credentials/store'
 import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import type { Job } from 'bullmq'
@@ -37,7 +37,7 @@ interface ScannerStats {
  *
  * Strategy:
  * - Query ConnectionDefinitions with oauth2RefreshTokenIntervalSeconds set
- * - Find active WorkflowCredentials (app-connections) for each definition
+ * - Find active Credential (app-connections) for each definition
  * - Validate credentials have refresh tokens (decrypt and check)
  * - Check circuit breaker state (skip if open)
  * - Calculate if refresh is due based on schedule or expiration
@@ -84,59 +84,57 @@ export const oauth2TokenRefreshScannerJob = async (job: Job<OAuth2TokenRefreshSc
 
     await job.updateProgress(30)
 
-    // For each definition, find active WorkflowCredentials
+    // For each definition, find active Credential
     for (const definition of connectionDefinitions) {
       try {
-        // MCP definitions own their credentials via mcpServerId + type 'mcp-connection';
-        // app definitions via appId + type 'app-connection'.
+        // MCP definitions own their credentials via mcpServerId + kind 'mcp';
+        // app definitions via appId + kind 'app'.
         const isMcp = !!definition.mcpServerId
-        const credentials = await db.query.WorkflowCredentials.findMany({
+        const credentials = await db.query.Credential.findMany({
           columns: {
             id: true,
             organizationId: true,
             appId: true,
             mcpServerId: true,
-            type: true,
             expiresAt: true,
-            lastTokenRefreshAt: true,
+            lastRefreshAt: true,
             lastRefreshFailureAt: true,
             consecutiveRefreshFailures: true,
             createdAt: true,
-            encryptedData: true,
           },
           where: isMcp
             ? and(
-                eq(schema.WorkflowCredentials.mcpServerId, definition.mcpServerId!),
-                eq(schema.WorkflowCredentials.type, 'mcp-connection')
+                eq(schema.Credential.mcpServerId, definition.mcpServerId!),
+                eq(schema.Credential.kind, 'mcp')
               )
             : and(
-                eq(schema.WorkflowCredentials.appId, definition.appId!),
-                eq(schema.WorkflowCredentials.type, 'app-connection')
+                eq(schema.Credential.appId, definition.appId!),
+                eq(schema.Credential.kind, 'app')
               ),
         })
 
         for (const credential of credentials) {
           stats.connectionsScanned++
 
-          // Validate credential has refresh token
-          try {
-            const decryptedData = CredentialService.decrypt(credential.encryptedData)
-            const hasRefreshToken = 'refreshToken' in decryptedData && !!decryptedData.refreshToken
-
-            if (!hasRefreshToken) {
-              stats.skippedNoRefreshToken++
-              logger.debug('Skipping credential - no refresh token available', {
-                credentialId: credential.id,
-                organizationId: credential.organizationId,
-                note: 'OAuth2 requires offline_access or offline scope for refresh tokens',
-              })
-              continue
-            }
-          } catch (error) {
+          // Validate credential has a refresh token (reveal via the store — N is small).
+          const revealed = await revealSecrets<{ refreshToken?: string }>(
+            credential.id,
+            credential.organizationId
+          )
+          if (revealed.isErr()) {
             stats.errors++
-            logger.error('Error decrypting credential', {
+            logger.error('Error revealing credential', {
               credentialId: credential.id,
-              error: error instanceof Error ? error.message : String(error),
+              error: revealed.error.message,
+            })
+            continue
+          }
+          if (!revealed.value.secrets.refreshToken) {
+            stats.skippedNoRefreshToken++
+            logger.debug('Skipping credential - no refresh token available', {
+              credentialId: credential.id,
+              organizationId: credential.organizationId,
+              note: 'OAuth2 requires offline_access or offline scope for refresh tokens',
             })
             continue
           }
@@ -162,7 +160,7 @@ export const oauth2TokenRefreshScannerJob = async (job: Job<OAuth2TokenRefreshSc
           const refreshIntervalMs = refreshIntervalSeconds * 1000
 
           // Strategy A: Time-based (use refresh schedule with 90% threshold)
-          const lastRefresh = credential.lastTokenRefreshAt || credential.createdAt
+          const lastRefresh = credential.lastRefreshAt || credential.createdAt
           const timeSinceLastRefresh = now.getTime() - lastRefresh.getTime()
           const shouldRefreshBySchedule = timeSinceLastRefresh >= refreshIntervalMs * 0.9
 
@@ -193,10 +191,7 @@ export const oauth2TokenRefreshScannerJob = async (job: Job<OAuth2TokenRefreshSc
               'oauth2TokenRefreshJob',
               {
                 credentialId: credential.id,
-                appId: credential.appId ?? '',
-                mcpServerId: credential.mcpServerId ?? undefined,
                 organizationId: credential.organizationId,
-                credentialType: credential.type,
                 previousFailureCount: credential.consecutiveRefreshFailures,
                 attemptNumber: 1,
               },

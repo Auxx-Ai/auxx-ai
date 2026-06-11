@@ -3,7 +3,9 @@
 import type { KeyValuePairEntity } from '@auxx/database'
 import { database as db, schema, type Transaction } from '@auxx/database'
 import { and, eq, isNull, sql } from 'drizzle-orm'
-import { CredentialService } from '../service/credential-service'
+// Static import is safe: config-service reaches ConfigStorage only via lazy
+// dynamic import, so crypto → config-service → config-storage never cycles.
+import { decryptSecrets, encryptSecrets } from '../crypto'
 import { getConfigDefinition } from './config-registry'
 
 const CONFIG_TYPE = 'CONFIG_VARIABLE'
@@ -69,7 +71,7 @@ export class ConfigStorage {
     const definition = getConfigDefinition(key)
     const shouldEncrypt = definition?.isSensitive ?? false
 
-    const storedValue = shouldEncrypt ? CredentialService.encrypt({ value } as any) : value
+    const storedValue = shouldEncrypt ? encryptSecrets({ value }) : value
 
     await db
       .insert(schema.KeyValuePair)
@@ -124,7 +126,7 @@ export class ConfigStorage {
   ): Promise<void> {
     const definition = getConfigDefinition(key)
     const shouldEncrypt = definition?.isSensitive ?? false
-    const storedValue = shouldEncrypt ? CredentialService.encrypt({ value } as any) : value
+    const storedValue = shouldEncrypt ? encryptSecrets({ value }) : value
 
     await (tx ?? db)
       .insert(schema.KeyValuePair)
@@ -172,8 +174,7 @@ export class ConfigStorage {
   private decryptIfNeeded(row: KeyValuePairEntity): unknown {
     if (row.isEncrypted === 'true' && typeof row.value === 'string') {
       try {
-        const decrypted = CredentialService.decrypt(row.value)
-        return (decrypted as any).value
+        return decryptSecrets<{ value?: unknown }>(row.value).value
       } catch {
         return null // Decryption failed — treat as missing
       }

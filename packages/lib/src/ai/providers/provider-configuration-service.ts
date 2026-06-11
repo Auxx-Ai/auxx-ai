@@ -1,6 +1,7 @@
 // packages/lib/src/ai/providers/provider-configuration-service.ts
-import { CredentialService } from '@auxx/credentials'
+
 import { configService } from '@auxx/credentials/config'
+import { decryptSecrets, encryptSecrets } from '@auxx/credentials/crypto'
 import { type Database, schema } from '@auxx/database'
 import type {
   LoadBalancingConfigEntity as LoadBalancingConfigModel,
@@ -1792,7 +1793,7 @@ export class ProviderConfigurationService {
   private async _encryptCredentials(
     credentials: Record<string, any>
   ): Promise<Record<string, any>> {
-    return { _encrypted: CredentialService.encrypt(credentials) }
+    return { _encrypted: encryptSecrets(credentials) }
   }
 
   /**
@@ -1804,7 +1805,7 @@ export class ProviderConfigurationService {
   private async _decryptCredentials(encryptedCredentials: any): Promise<Record<string, any>> {
     if (!encryptedCredentials) return {}
     if (encryptedCredentials._encrypted) {
-      return CredentialService.decrypt(encryptedCredentials._encrypted) as Record<string, any>
+      return decryptSecrets<Record<string, any>>(encryptedCredentials._encrypted)
     }
     // Legacy plaintext fallback
     return encryptedCredentials

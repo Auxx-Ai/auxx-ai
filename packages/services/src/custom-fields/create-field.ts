@@ -100,7 +100,7 @@ export interface CreateCustomFieldInput {
   // --- App ownership (app-registered custom fields) ---
   /** Owning app installation. Set => app-owned: user-read-only, removed on uninstall. */
   appInstallationId?: string
-  /** Owning connection (WorkflowCredentials.id / credId) for scope:'connection' fields. */
+  /** Owning connection (Credential.id / credId) for scope:'connection' fields. */
   connectionId?: string
   /** App-stable field key for idempotent provisioning + reverse lookup (e.g. 'customerId'). */
   appFieldKey?: string

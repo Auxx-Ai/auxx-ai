@@ -10,15 +10,10 @@ export {
   getConfigDefinition,
   getConfigDefinitionsByGroup,
 } from './config-registry'
-export { ConfigService } from './config-service'
+export { ConfigService, configService } from './config-service'
 export { convertEnvValue, valueToString } from './config-value-converter'
 export type {
   ConfigVariableDefinition,
   ConfigVariableGroupData,
   ResolvedConfigVariable,
 } from './types'
-
-import { ConfigService } from './config-service'
-
-/** Singleton config service instance */
-export const configService = new ConfigService()

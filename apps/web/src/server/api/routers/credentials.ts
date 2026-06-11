@@ -1,8 +1,17 @@
 // apps/web/src/server/api/routers/credentials.ts
 
 import { CredentialTypeRegistry } from '@auxx/credentials'
-import { CredentialService, CredentialTestingService } from '@auxx/lib/workflow-engine'
-import { OAuth2WorkflowService } from '@auxx/lib/workflows'
+import {
+  deleteCredential,
+  getCredential,
+  insertCredential,
+  listCredentials,
+  mergeSecrets,
+  splitSensitiveFields,
+  updateCredential,
+} from '@auxx/credentials/store'
+import { CredentialTestingService, isCredentialInUse } from '@auxx/lib/workflow-engine'
+import { handleOAuth2Callback, initiateOAuth, refreshCredentialTokens } from '@auxx/lib/workflows'
 import { hasOAuth2Config } from '@auxx/workflow-nodes/types'
 import { TRPCError } from '@trpc/server'
 import { z } from 'zod'
@@ -32,22 +41,25 @@ export const credentialsRouter = createTRPCRouter({
         })
       }
 
-      try {
-        const credentialId = await CredentialService.saveCredential(
-          ctx.session.user.defaultOrganizationId,
-          ctx.session.user.id,
-          input.type,
-          input.name,
-          input.data
-        )
+      const { secrets, metadata } = splitSensitiveFields(input.data)
+      const result = await insertCredential({
+        organizationId: ctx.session.user.defaultOrganizationId,
+        createdById: ctx.session.user.id,
+        kind: 'workflow',
+        type: input.type,
+        name: input.name,
+        secrets,
+        metadata,
+      })
 
-        return { id: credentialId }
-      } catch (error) {
+      if (result.isErr()) {
         throw new TRPCError({
           code: 'INTERNAL_SERVER_ERROR',
-          message: error instanceof Error ? error.message : 'Failed to create credential',
+          message: result.error.message,
         })
       }
+
+      return { id: result.value.id }
     }),
 
   /**
@@ -69,19 +81,27 @@ export const credentialsRouter = createTRPCRouter({
         })
       }
 
-      try {
-        const credentials = await CredentialService.listCredentials(
-          ctx.session.user.defaultOrganizationId,
-          input?.type
-        )
+      const result = await listCredentials({
+        organizationId: ctx.session.user.defaultOrganizationId,
+        kind: 'workflow',
+        type: input?.type,
+        withCreatedBy: true,
+      })
 
-        return credentials
-      } catch (error) {
+      if (result.isErr()) {
         throw new TRPCError({
           code: 'INTERNAL_SERVER_ERROR',
-          message: error instanceof Error ? error.message : 'Failed to list credentials',
+          message: result.error.message,
         })
       }
+
+      return result.value.map((record) => ({
+        id: record.id,
+        name: record.name,
+        type: record.type ?? '',
+        createdAt: record.createdAt,
+        createdBy: { name: record.createdByName },
+      }))
     }),
 
   /**
@@ -101,27 +121,23 @@ export const credentialsRouter = createTRPCRouter({
         })
       }
 
-      try {
-        const credentialInfo = await CredentialService.getCredentialInfo(
-          input.id,
-          ctx.session.user.defaultOrganizationId
-        )
+      const result = await getCredential(input.id, ctx.session.user.defaultOrganizationId)
 
-        if (!credentialInfo) {
-          throw new TRPCError({
-            code: 'NOT_FOUND',
-            message: 'Credential not found',
-          })
-        }
-
-        return credentialInfo
-      } catch (error) {
-        if (error instanceof TRPCError) throw error
-
+      if (result.isErr()) {
         throw new TRPCError({
-          code: 'INTERNAL_SERVER_ERROR',
-          message: error instanceof Error ? error.message : 'Failed to get credential info',
+          code:
+            result.error.code === 'CREDENTIAL_NOT_FOUND' ? 'NOT_FOUND' : 'INTERNAL_SERVER_ERROR',
+          message:
+            result.error.code === 'CREDENTIAL_NOT_FOUND'
+              ? 'Credential not found'
+              : result.error.message,
         })
+      }
+
+      return {
+        id: result.value.id,
+        name: result.value.name,
+        type: result.value.type ?? '',
       }
     }),
 
@@ -142,27 +158,30 @@ export const credentialsRouter = createTRPCRouter({
         })
       }
 
-      try {
-        const result = await CredentialService.getNonSensitiveCredentialData(
-          input.id,
-          ctx.session.user.defaultOrganizationId
-        )
+      const result = await getCredential(input.id, ctx.session.user.defaultOrganizationId)
 
-        if (!result) {
-          throw new TRPCError({
-            code: 'NOT_FOUND',
-            message: 'Credential not found',
-          })
-        }
-
-        return result
-      } catch (error) {
-        if (error instanceof TRPCError) throw error
-
+      if (result.isErr()) {
         throw new TRPCError({
-          code: 'INTERNAL_SERVER_ERROR',
-          message: error instanceof Error ? error.message : 'Failed to get credential data',
+          code:
+            result.error.code === 'CREDENTIAL_NOT_FOUND' ? 'NOT_FOUND' : 'INTERNAL_SERVER_ERROR',
+          message:
+            result.error.code === 'CREDENTIAL_NOT_FOUND'
+              ? 'Credential not found'
+              : result.error.message,
         })
+      }
+
+      const record = result.value
+      return {
+        info: {
+          id: record.id,
+          name: record.name,
+          type: record.type ?? '',
+          createdAt: record.createdAt,
+          updatedAt: record.updatedAt,
+        },
+        // The plaintext metadata column IS the non-sensitive half of the credential.
+        nonSensitiveData: record.metadata,
       }
     }),
 
@@ -193,24 +212,35 @@ export const credentialsRouter = createTRPCRouter({
         })
       }
 
-      try {
-        await CredentialService.updateCredential(
-          input.id,
-          ctx.session.user.defaultOrganizationId,
-          ctx.session.user.id,
-          {
-            name: input.name,
-            data: input.data,
-          }
-        )
+      const organizationId = ctx.session.user.defaultOrganizationId
+      const { secrets, metadata } = input.data
+        ? splitSensitiveFields(input.data)
+        : { secrets: {}, metadata: undefined }
 
-        return { success: true }
-      } catch (error) {
+      const updateResult = await updateCredential(input.id, organizationId, {
+        name: input.name,
+        metadata,
+      })
+      if (updateResult.isErr()) {
         throw new TRPCError({
           code: 'INTERNAL_SERVER_ERROR',
-          message: error instanceof Error ? error.message : 'Failed to update credential',
+          message: updateResult.error.message,
         })
       }
+
+      // mergeSecrets keeps existing values for blank fields, so an edit form
+      // that leaves a password empty never wipes the stored secret.
+      if (Object.keys(secrets).length > 0) {
+        const mergeResult = await mergeSecrets(input.id, organizationId, secrets)
+        if (mergeResult.isErr()) {
+          throw new TRPCError({
+            code: 'INTERNAL_SERVER_ERROR',
+            message: mergeResult.error.message,
+          })
+        }
+      }
+
+      return { success: true }
     }),
 
   /**
@@ -231,20 +261,24 @@ export const credentialsRouter = createTRPCRouter({
         })
       }
 
-      try {
-        await CredentialService.deleteCredential(
-          input.id,
-          ctx.session.user.defaultOrganizationId,
-          ctx.session.user.id
-        )
+      const organizationId = ctx.session.user.defaultOrganizationId
 
-        return { success: true }
-      } catch (error) {
+      if (await isCredentialInUse(input.id, organizationId)) {
         throw new TRPCError({
-          code: 'INTERNAL_SERVER_ERROR',
-          message: error instanceof Error ? error.message : 'Failed to delete credential',
+          code: 'CONFLICT',
+          message: 'Cannot delete credential: it is currently being used in workflows',
         })
       }
+
+      const result = await deleteCredential(input.id, organizationId)
+      if (result.isErr()) {
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: result.error.message,
+        })
+      }
+
+      return { success: true }
     }),
 
   /**
@@ -343,9 +377,7 @@ export const credentialsRouter = createTRPCRouter({
           })
         }
 
-        const oauth2Service = OAuth2WorkflowService.getInstance()
-
-        const result = await oauth2Service.initiateOAuth(
+        const result = await initiateOAuth(
           credentialTypeClass.oauth2Config,
           ctx.session.user.defaultOrganizationId,
           ctx.session.user.id,
@@ -377,8 +409,7 @@ export const credentialsRouter = createTRPCRouter({
     .use(notDemo('complete OAuth connection'))
     .mutation(async ({ input }) => {
       try {
-        const oauth2Service = OAuth2WorkflowService.getInstance()
-        const result = await oauth2Service.handleCallback(input.code, input.state)
+        const result = await handleOAuth2Callback(input.code, input.state)
 
         if (!result.success) {
           throw new TRPCError({
@@ -417,13 +448,12 @@ export const credentialsRouter = createTRPCRouter({
       }
 
       try {
-        const oauth2Service = OAuth2WorkflowService.getInstance()
-        const success = await oauth2Service.refreshTokens(
+        const result = await refreshCredentialTokens(
           input.credentialId,
           ctx.session.user.defaultOrganizationId
         )
 
-        if (!success) {
+        if (!result.success) {
           throw new TRPCError({
             code: 'INTERNAL_SERVER_ERROR',
             message: 'Failed to refresh tokens',

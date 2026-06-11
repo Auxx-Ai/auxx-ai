@@ -22,7 +22,7 @@ type UnwrapOk<T> = Awaited<T> extends Result<infer O, any> ? O : never
  * Decrypted connection data structure
  *
  * This interface represents the decrypted credential data that is stored in the
- * WorkflowCredentials table. The data is encrypted at rest using the CredentialService,
+ * Credential table. Secrets are encrypted at rest via the credential store (crypto v2),
  * and this interface describes the structure after decryption.
  *
  * @interface DecryptedConnectionData
@@ -76,7 +76,7 @@ export type ConnectionDefinitionSummary = UnwrapOk<ReturnType<typeof getAppConne
  *
  * @interface AppConnection
  *
- * @property {string} id - Unique identifier for the connection (WorkflowCredentials.id).
+ * @property {string} id - Unique identifier for the connection (Credential.id).
  * @property {string} appId - The ID of the app this connection belongs to.
  * @property {string} appName - Human-readable name of the app (e.g., "Gmail", "Shopify").
  * @property {'connected' | 'not_connected' | 'expired'} connectionStatus - Current status of the connection:
@@ -112,7 +112,7 @@ export interface AppConnection {
  *
  * @interface RuntimeConnectionData
  *
- * @property {string} id - Unique identifier for the connection (WorkflowCredentials.id).
+ * @property {string} id - Unique identifier for the connection (Credential.id).
  * @property {'oauth2-code' | 'secret'} type - The authentication method used by this connection.
  * @property {string} value - The actual credential value (access token or API secret).
  *                            This is the decrypted sensitive data.

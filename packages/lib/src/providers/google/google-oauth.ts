@@ -9,7 +9,12 @@ import { type Common, google } from 'googleapis'
 import { InboxService } from '../../inboxes/inbox-service'
 import { SettingsService } from '../../settings/settings-service'
 import { AuthErrorHandler } from '../auth-error-handler'
-import { ChannelTokenAccessor, type ChannelTokens } from '../channel-token-accessor'
+import {
+  type ChannelTokens,
+  deleteChannelTokens,
+  getChannelTokens,
+  setChannelTokens,
+} from '../channel-token-accessor'
 import { PROVIDER_CREDENTIAL_CONFIG } from '../provider-credentials-config'
 
 type GaxiosError = Common.GaxiosError
@@ -108,7 +113,7 @@ export class GoogleOAuthService {
 
     if (!integration) throw new Error('Integration not found')
 
-    const tokens = await ChannelTokenAccessor.getTokens(integrationId)
+    const tokens = await getChannelTokens(integrationId)
     if (!tokens.refreshToken) throw new Error('Missing refresh token')
 
     return GoogleOAuthService.getAuthenticatedClientForOrg(integration.organizationId, tokens)
@@ -135,7 +140,7 @@ export class GoogleOAuthService {
       throw new Error('No active Google integration found for this organization')
     }
 
-    const tokens = await ChannelTokenAccessor.getTokens(integration.id)
+    const tokens = await getChannelTokens(integration.id)
     if (!tokens.refreshToken) {
       throw new Error('No active Google integration found for this organization')
     }
@@ -241,7 +246,7 @@ export class GoogleOAuthService {
 
       // Resolve refresh token (new from Google, or existing from prior auth)
       const existingTokens = integrationId
-        ? await ChannelTokenAccessor.getTokens(integrationId).catch(() => null)
+        ? await getChannelTokens(integrationId).catch(() => null)
         : null
       const refreshToken = tokens.refresh_token ?? existingTokens?.refreshToken ?? null
       if (!refreshToken) {
@@ -453,7 +458,7 @@ export class GoogleOAuthService {
         })
         .returning()
 
-      await ChannelTokenAccessor.setTokens(integration!.id, tokenSet, { createdById: userId })
+      await setChannelTokens(integration!.id, tokenSet, { createdById: userId })
     }
 
     const inboxService = new InboxService(db, orgId, userId)
@@ -544,7 +549,7 @@ export class GoogleOAuthService {
         throw new Error('OAuth credentials were rotated. Channel requires reconnection.')
       }
 
-      const tokens = await ChannelTokenAccessor.getTokens(integrationId)
+      const tokens = await getChannelTokens(integrationId)
       if (!tokens.refreshToken) {
         throw new Error('Integration not found or missing refresh token')
       }
@@ -556,7 +561,7 @@ export class GoogleOAuthService {
 
       const { credentials } = await oauth2Client.refreshAccessToken()
 
-      const tokenUpdate: Parameters<typeof ChannelTokenAccessor.setTokens>[1] = {
+      const tokenUpdate: Parameters<typeof setChannelTokens>[1] = {
         accessToken: credentials.access_token ?? null,
         expiresAt: credentials.expiry_date ? new Date(credentials.expiry_date) : null,
       }
@@ -566,7 +571,7 @@ export class GoogleOAuthService {
         tokenUpdate.refreshToken = credentials.refresh_token
       }
 
-      await ChannelTokenAccessor.setTokens(integrationId, tokenUpdate)
+      await setChannelTokens(integrationId, tokenUpdate)
       await AuthErrorHandler.resetFailureCounter(integrationId)
 
       const [updatedIntegration] = await db
@@ -596,7 +601,7 @@ export class GoogleOAuthService {
 
       if (!integration) throw new Error('Integration not found')
 
-      const tokens = await ChannelTokenAccessor.getTokens(integrationId)
+      const tokens = await getChannelTokens(integrationId)
 
       // Disable inbox watching first
       if (tokens.refreshToken) {
@@ -630,7 +635,7 @@ export class GoogleOAuthService {
       }
 
       // Delete encrypted credentials and disable integration
-      await ChannelTokenAccessor.deleteTokens(integrationId)
+      await deleteChannelTokens(integrationId)
       await db
         .update(schema.Integration)
         .set({ enabled: false, updatedAt: new Date() })
@@ -743,7 +748,7 @@ async function saveTokensAndUpdateIntegration(
   tokenSet: TokenSet,
   updates: Record<string, unknown>
 ) {
-  await ChannelTokenAccessor.setTokens(integrationId, tokenSet, { createdById: userId })
+  await setChannelTokens(integrationId, tokenSet, { createdById: userId })
   await db
     .update(schema.Integration)
     .set({ ...updates, updatedAt: new Date() })

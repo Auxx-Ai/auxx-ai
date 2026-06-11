@@ -1,5 +1,5 @@
-import { CredentialService } from '@auxx/credentials'
 import { generateSecureToken, hashApiKey } from '@auxx/credentials/api-key'
+import { encryptSecrets } from '@auxx/credentials/crypto'
 import { schema } from '@auxx/database'
 import { isAdminOrOwner } from '@auxx/lib/members'
 import { createScopedLogger } from '@auxx/logger'
@@ -186,10 +186,9 @@ export const apiKeyRouter = createTRPCRouter({
 
       // Chat keys sign customer JWTs — verification needs the original plaintext,
       // which the one-way `hashedKey` cannot recover. Store the secret encrypted
-      // (AES-256-GCM via CredentialService) so phase 3's verify-jwt can decrypt
-      // and re-derive HS256. Other key types stay hash-only.
-      const encryptedSecret =
-        input.type === 'chat' ? CredentialService.encrypt({ value: secretKey }) : null
+      // (v2 secret box) so verify-jwt can decrypt and re-derive HS256. Other key
+      // types stay hash-only.
+      const encryptedSecret = input.type === 'chat' ? encryptSecrets({ value: secretKey }) : null
 
       const [created] = await ctx.db
         .insert(schema.ApiKey)

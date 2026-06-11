@@ -426,3 +426,6 @@ export class ConfigService {
     this.cache.clear()
   }
 }
+
+/** Singleton config service instance */
+export const configService = new ConfigService()

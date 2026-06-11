@@ -4,10 +4,10 @@
 import { relations } from 'drizzle-orm/relations'
 import {
   ConnectionDefinition,
+  Credential,
   McpInstallation,
   McpServer,
   Organization,
-  WorkflowCredentials,
 } from '../schema'
 
 /** Relations for McpServer */
@@ -18,7 +18,7 @@ export const mcpServerRelations = relations(McpServer, ({ one, many }) => ({
   }),
   installations: many(McpInstallation),
   connectionDefinitions: many(ConnectionDefinition),
-  credentials: many(WorkflowCredentials),
+  credentials: many(Credential),
 }))
 
 /** Relations for McpInstallation */

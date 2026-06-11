@@ -1,6 +1,7 @@
 // src/server/api/routers/channel.ts
 
-import { ConfigStorage, CredentialService, configService } from '@auxx/credentials'
+import { ConfigStorage, configService } from '@auxx/credentials'
+import { insertCredential, splitSensitiveFields } from '@auxx/credentials/store'
 import { type Database, database, schema } from '@auxx/database'
 import { getCachedAgentById, onCacheEvent, storeOAuthCsrfToken } from '@auxx/lib/cache'
 import {
@@ -826,14 +827,23 @@ export const channelRouter = createTRPCRouter({
         if (!ldapResult.success) throw new Error(`LDAP: ${ldapResult.message}`)
       }
 
-      // Encrypt and store credentials
-      const credentialId = await CredentialService.saveCredential(
+      // Encrypt and store credentials. Object-valued fields (imap/smtp/ldap
+      // bags) land in secrets wholesale; scalar non-secrets in metadata.
+      const created = await insertCredential({
         organizationId,
-        userId,
-        'imap',
-        `IMAP - ${input.email}`,
-        credentialData as any
-      )
+        createdById: userId,
+        kind: 'integration',
+        type: 'imap',
+        name: `IMAP - ${input.email}`,
+        ...splitSensitiveFields(credentialData as Record<string, unknown>),
+      })
+      if (created.isErr()) {
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: `Failed to save IMAP credentials: ${created.error.message}`,
+        })
+      }
+      const credentialId = created.value.id
 
       // Create integration record
       const [integration] = await ctx.db

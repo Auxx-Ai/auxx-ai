@@ -32,7 +32,7 @@ export const ApiKey = pgTable(
     /** Reference ID (workflowAppId when type='workflow', channelId/integrationId when type='chat', null for 'app') */
     referenceId: text(),
     /**
-     * AES-256-GCM encrypted plaintext secret (via `CredentialService.encrypt`).
+     * AES-256-GCM encrypted plaintext secret (via `@auxx/credentials/crypto`).
      * Set for `type='chat'` only — HS256 JWT verification needs the original
      * secret, which a one-way `hashedKey` cannot recover. Null for other types
      * where bearer-token comparison against `hashedKey` is sufficient.

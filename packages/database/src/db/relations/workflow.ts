@@ -9,6 +9,7 @@ import {
   AppInstallation,
   ApprovalRequest,
   ApprovalResponse,
+  Credential,
   EndUser,
   Event,
   File,
@@ -24,7 +25,6 @@ import {
   WebhookEvent,
   Workflow,
   WorkflowApp,
-  WorkflowCredentials,
   WorkflowFile,
   WorkflowJoinState,
   WorkflowNodeExecution,
@@ -248,32 +248,32 @@ export const workflowFileRelations = relations(WorkflowFile, ({ one }) => ({
   }),
 }))
 
-export const workflowCredentialsRelations = relations(WorkflowCredentials, ({ one, many }) => ({
+export const workflowCredentialsRelations = relations(Credential, ({ one, many }) => ({
   createdBy: one(User, {
-    fields: [WorkflowCredentials.createdById],
+    fields: [Credential.createdById],
     references: [User.id],
     relationName: 'workflowCredentials_createdBy',
   }),
   organization: one(Organization, {
-    fields: [WorkflowCredentials.organizationId],
+    fields: [Credential.organizationId],
     references: [Organization.id],
   }),
   // App connection relations
   user: one(User, {
-    fields: [WorkflowCredentials.userId],
+    fields: [Credential.userId],
     references: [User.id],
     relationName: 'workflowCredentials_user',
   }),
   app: one(App, {
-    fields: [WorkflowCredentials.appId],
+    fields: [Credential.appId],
     references: [App.id],
   }),
   appInstallation: one(AppInstallation, {
-    fields: [WorkflowCredentials.appInstallationId],
+    fields: [Credential.appInstallationId],
     references: [AppInstallation.id],
   }),
   mcpServer: one(McpServer, {
-    fields: [WorkflowCredentials.mcpServerId],
+    fields: [Credential.mcpServerId],
     references: [McpServer.id],
   }),
   storageLocations: many(StorageLocation),

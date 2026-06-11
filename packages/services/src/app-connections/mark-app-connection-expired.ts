@@ -1,15 +1,13 @@
 // packages/services/src/app-connections/mark-app-connection-expired.ts
 
-import { database, schema } from '@auxx/database'
-import { and, eq } from 'drizzle-orm'
-import { ok } from 'neverthrow'
-import { fromDatabase } from '../shared/utils'
+import { recordRefreshFailure } from '@auxx/credentials/store'
+import { err, ok } from 'neverthrow'
 import { logger } from './utils'
 
 /**
  * Number of consecutive failures at which the refresh circuit breaker is
- * considered "open" — mirrors `OAuth2WorkflowService` (a permanent failure
- * jumps straight to this value). A connection at or above this count is
+ * considered "open" — mirrors the OAuth2 token-refresh path (a permanent
+ * failure jumps straight to this value). A connection at or above this count is
  * surfaced as `expired` by {@link listAppConnections}.
  */
 export const CONNECTION_CIRCUIT_OPEN_THRESHOLD = 5
@@ -31,25 +29,12 @@ export async function markAppConnectionExpired(params: {
 }) {
   const { credentialId, organizationId } = params
 
-  const result = await fromDatabase(
-    database
-      .update(schema.WorkflowCredentials)
-      .set({
-        consecutiveRefreshFailures: CONNECTION_CIRCUIT_OPEN_THRESHOLD,
-        lastRefreshFailureAt: new Date(),
-        updatedAt: new Date(),
-      })
-      .where(
-        and(
-          eq(schema.WorkflowCredentials.id, credentialId),
-          eq(schema.WorkflowCredentials.organizationId, organizationId)
-        )
-      ),
-    'mark-app-connection-expired'
-  )
+  // A `permanent` failure jumps the breaker straight to the open threshold + stamps the
+  // failure time — the same fields the OAuth2 refresh path writes.
+  const result = await recordRefreshFailure(credentialId, organizationId, { permanent: true })
 
   if (result.isErr()) {
-    return result
+    return err(result.error)
   }
 
   logger.info('Marked app connection expired', { credentialId })

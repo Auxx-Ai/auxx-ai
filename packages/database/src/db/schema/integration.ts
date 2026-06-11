@@ -18,9 +18,8 @@ import {
   timestamp,
   uniqueIndex,
 } from './_shared'
-
+import { Credential } from './credential'
 import { Organization } from './organization'
-import { WorkflowCredentials } from './workflow-credentials'
 
 /** Drizzle table for integration */
 export const Integration = pgTable(
@@ -34,7 +33,7 @@ export const Integration = pgTable(
       .notNull()
       .references((): AnyPgColumn => Organization.id, { onUpdate: 'cascade', onDelete: 'cascade' }),
     name: text(),
-    credentialId: text().references((): AnyPgColumn => WorkflowCredentials.id, {
+    credentialId: text().references((): AnyPgColumn => Credential.id, {
       onUpdate: 'cascade',
       onDelete: 'set null',
     }),

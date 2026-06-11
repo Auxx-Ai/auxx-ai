@@ -102,7 +102,7 @@ export async function uninstallApp(input: UninstallAppInput) {
 
   const transactionResult = await fromDatabase(
     database.transaction(async (tx: Transaction) => {
-      // Preserve AppSettings and WorkflowCredentials on uninstall so they survive
+      // Preserve AppSettings and Credential on uninstall so they survive
       // reinstall (Approach A: stable installation identity). OAuth tokens may expire
       // but refresh logic or re-auth flow handles that without destroying the row.
 

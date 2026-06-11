@@ -8,7 +8,7 @@ import { err, ok } from 'neverthrow'
 import { getCachedEntityDefId } from '../../cache'
 import { getOrgCache } from '../../cache/singletons'
 import { getOwnDomains } from '../../ingest/domain/classifier'
-import { ChannelTokenAccessor } from '../../providers/channel-token-accessor'
+import { getChannelTokens } from '../../providers/channel-token-accessor'
 import { GoogleOAuthService } from '../../providers/google/google-oauth'
 import { upsertCalendarEvents } from './calendar-event-service'
 import {
@@ -40,7 +40,7 @@ export async function syncCalendarForIntegration(ctx: {
   userId: string
 }): RecordingResult<CalendarSyncResult> {
   try {
-    const tokens = await ChannelTokenAccessor.getTokens(ctx.integrationId)
+    const tokens = await getChannelTokens(ctx.integrationId)
     if (!tokens.refreshToken) {
       return err(new Error(`Missing refresh token for integration ${ctx.integrationId}`))
     }
