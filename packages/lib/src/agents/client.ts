@@ -402,7 +402,7 @@ export function buildCatalogTreeFromInstallations(
 
     const isBuiltin = inst.app.id === BUILTIN_APP_ID
     // Apps store an avatar URL on the App row. Pass it through verbatim to
-    // <AppIcon> — parseIconString routes `https://...` and `url:/...`
+    // <AppIcon> — parseVisualRef routes `https://...` and `url:/...`
     // through the <img> branch. Lucide fallback when no avatarUrl.
     const appIconId = inst.app.avatarUrl ?? 'package'
 

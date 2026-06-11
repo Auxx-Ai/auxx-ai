@@ -15,7 +15,7 @@ export const BUILTIN_APP = {
   slug: 'auxx',
   title: 'Auxx.ai',
   description: null,
-  /** `parseIconString` routes `url:/…` through the `<img>` branch. */
+  /** `parseVisualRef` routes `url:/…` through the `<img>` branch. */
   avatarUrl: 'url:/auxx-logo.svg',
   category: null,
 } as const satisfies CachedInstalledApp['app']

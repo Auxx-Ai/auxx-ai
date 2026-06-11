@@ -116,6 +116,17 @@ const nextConfig = {
         source: '/embed/:path*',
         headers: baselineHeaders,
       },
+      // Brand icons and other static icon assets change ~never; let browsers
+      // cache for a day and serve stale while revalidating for a week.
+      {
+        source: '/icons/:path*',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'public, max-age=86400, stale-while-revalidate=604800',
+          },
+        ],
+      },
       // Same-origin framing for the chat-widget live preview pane.
       {
         source: '/preview/widget/:integrationId/embed',
