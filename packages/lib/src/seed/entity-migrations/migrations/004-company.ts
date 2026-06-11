@@ -61,8 +61,10 @@ for (const field of Object.values(COMPANY_FIELDS)) {
  * and `ensureCustomFields` will recognize matched fields by their systemAttribute.
  */
 async function upgradeExistingCompanyEntity(db: Database, organizationId: string): Promise<void> {
-  // Find a non-system company entity by slug or name
-  const [existing] = await db
+  // Find non-system company entities by slug or name. An org can hold several
+  // matches (e.g. a duplicate "companies-2"), so prefer the def already holding
+  // the canonical slug — upgrading any other one would rename it onto a taken slug.
+  const candidates = await db
     .select({
       id: schema.EntityDefinition.id,
       apiSlug: schema.EntityDefinition.apiSlug,
@@ -80,9 +82,28 @@ async function upgradeExistingCompanyEntity(db: Database, organizationId: string
         )
       )
     )
-    .limit(1)
+    .orderBy(schema.EntityDefinition.createdAt)
 
+  const existing = candidates.find((c) => c.apiSlug === 'companies') ?? candidates[0]
   if (!existing) return
+
+  // Keep the current slug when 'companies' is held by a def outside the candidate
+  // set (e.g. an already-system def) — the partial unique index would reject the rename.
+  let targetSlug = 'companies'
+  if (existing.apiSlug !== 'companies') {
+    const [slugHolder] = await db
+      .select({ id: schema.EntityDefinition.id })
+      .from(schema.EntityDefinition)
+      .where(
+        and(
+          eq(schema.EntityDefinition.organizationId, organizationId),
+          eq(schema.EntityDefinition.apiSlug, 'companies'),
+          isNull(schema.EntityDefinition.archivedAt)
+        )
+      )
+      .limit(1)
+    if (slugHolder) targetSlug = existing.apiSlug
+  }
 
   logger.info('Found pre-existing company entity, upgrading to system entity', {
     organizationId,
@@ -97,7 +118,7 @@ async function upgradeExistingCompanyEntity(db: Database, organizationId: string
     .update(schema.EntityDefinition)
     .set({
       entityType: 'company',
-      apiSlug: 'companies',
+      apiSlug: targetSlug,
       singular: 'Company',
       plural: 'Companies',
       icon: 'building-2',
