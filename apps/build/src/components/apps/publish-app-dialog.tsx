@@ -279,8 +279,8 @@ export function PublishAppDialog({
     label: c.label,
     oauth2AuthorizeUrl: c.oauth2AuthorizeUrl,
     oauth2AccessTokenUrl: c.oauth2AccessTokenUrl,
-    oauth2ClientId: c.oauth2ClientId,
-    oauth2ClientSecret: c.oauth2ClientSecret,
+    hasClientId: c.hasClientId,
+    hasClientSecret: c.hasClientSecret,
     oauth2Scopes: c.oauth2Scopes,
   }))
 

@@ -4,6 +4,7 @@
 // curated servers, refresh, rename, delete). Kept out of the router per the >20-line rule.
 
 import { WEBAPP_URL } from '@auxx/config/urls'
+import { encryptValue, isMaskEcho } from '@auxx/credentials/crypto'
 import { findCredential } from '@auxx/credentials/store'
 import { database as db, type McpServerIcon, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
@@ -48,6 +49,11 @@ async function uniqueSlug(organizationId: string, base: string): Promise<string>
   let n = 2
   while (taken.has(`${base}-${n}`)) n++
   return `${base}-${n}`
+}
+
+/** Encrypt non-empty client creds; empty/null pass through so presence semantics survive. */
+function encryptCred(value: string | null): string | null {
+  return value ? encryptValue(value) : value
 }
 
 function authorizeUrlFor(serverId: string, returnTo?: string): string {
@@ -135,11 +141,15 @@ export async function createCustomMcpServer(input: {
       await db
         .update(schema.ConnectionDefinition)
         .set({
-          ...(input.oauth.clientId !== undefined && { oauth2ClientId: input.oauth.clientId }),
-          // Blank/omitted secret keeps the stored (possibly DCR-minted) one.
-          ...(input.oauth.clientSecret !== undefined && {
-            oauth2ClientSecret: input.oauth.clientSecret,
+          ...(input.oauth.clientId !== undefined && {
+            oauth2ClientId: encryptCred(input.oauth.clientId),
           }),
+          // Blank/omitted secret keeps the stored (possibly DCR-minted) one; so does a
+          // masked-prefill echo (HIDDEN_VALUE or mask-shaped) — never persist the mask.
+          ...(input.oauth.clientSecret !== undefined &&
+            !isMaskEcho(input.oauth.clientSecret) && {
+              oauth2ClientSecret: encryptCred(input.oauth.clientSecret),
+            }),
           ...(input.oauth.authorizeUrl !== undefined && {
             oauth2AuthorizeUrl: input.oauth.authorizeUrl,
           }),
@@ -158,6 +168,10 @@ export async function createCustomMcpServer(input: {
       existingClientId = def?.oauth2ClientId ?? null
     }
   } else {
+    // New server — there is no stored secret a mask echo could "keep"; reject it outright.
+    if (input.oauth?.clientSecret && isMaskEcho(input.oauth.clientSecret)) {
+      throw new Error('Client secret looks like a masked placeholder — paste the real secret.')
+    }
     slug = await uniqueSlug(input.organizationId, slugify(input.name))
     const [server] = await db
       .insert(schema.McpServer)
@@ -193,8 +207,8 @@ export async function createCustomMcpServer(input: {
       oauth2AuthorizeUrl: input.oauth?.authorizeUrl ?? oauthMeta?.authorizeUrl ?? null,
       oauth2AccessTokenUrl: input.oauth?.tokenUrl ?? oauthMeta?.tokenUrl ?? null,
       oauth2Scopes: input.oauth?.scopes ?? oauthMeta?.scopesSupported ?? [],
-      oauth2ClientId: input.oauth?.clientId ?? null,
-      oauth2ClientSecret: input.oauth?.clientSecret ?? null,
+      oauth2ClientId: encryptCred(input.oauth?.clientId ?? null),
+      oauth2ClientSecret: encryptCred(input.oauth?.clientSecret ?? null),
       oauth2Features: { pkce: true },
     })
     await db.insert(schema.McpInstallation).values({
@@ -446,8 +460,8 @@ async function ensureOAuthClient(input: {
   await db
     .update(schema.ConnectionDefinition)
     .set({
-      oauth2ClientId: dcr.value.clientId,
-      oauth2ClientSecret: dcr.value.clientSecret ?? null,
+      oauth2ClientId: encryptCred(dcr.value.clientId),
+      oauth2ClientSecret: encryptCred(dcr.value.clientSecret ?? null),
     })
     .where(eq(schema.ConnectionDefinition.mcpServerId, input.serverId))
   return { needsOAuth: true, authorizeUrl: authorizeUrlFor(input.serverId, input.returnTo) }
@@ -535,11 +549,15 @@ async function applyAuthUpdate(input: {
       .update(schema.ConnectionDefinition)
       .set({
         connectionType: 'oauth2-code',
-        ...(input.oauth?.clientId !== undefined && { oauth2ClientId: input.oauth.clientId }),
-        // Blank/omitted secret keeps the stored (possibly DCR-minted) one.
-        ...(input.oauth?.clientSecret !== undefined && {
-          oauth2ClientSecret: input.oauth.clientSecret,
+        ...(input.oauth?.clientId !== undefined && {
+          oauth2ClientId: encryptCred(input.oauth.clientId),
         }),
+        // Blank/omitted secret keeps the stored (possibly DCR-minted) one; so does a
+        // masked-prefill echo (HIDDEN_VALUE or mask-shaped) — never persist the mask.
+        ...(input.oauth?.clientSecret !== undefined &&
+          !isMaskEcho(input.oauth.clientSecret) && {
+            oauth2ClientSecret: encryptCred(input.oauth.clientSecret),
+          }),
         ...(input.oauth?.authorizeUrl !== undefined && {
           oauth2AuthorizeUrl: input.oauth.authorizeUrl,
         }),

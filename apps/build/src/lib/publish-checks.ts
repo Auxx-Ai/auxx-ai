@@ -78,8 +78,9 @@ export interface ConnectionForPublishCheck {
   label: string
   oauth2AuthorizeUrl: string | null
   oauth2AccessTokenUrl: string | null
-  oauth2ClientId: string | null
-  oauth2ClientSecret: string | null
+  // Presence-only — credential values never ship on the list path
+  hasClientId: boolean
+  hasClientSecret: boolean
   oauth2Scopes: string[] | null
 }
 
@@ -96,8 +97,8 @@ export function isConnectionsConfigComplete(connections: ConnectionForPublishChe
     const checks = {
       oauth2AuthorizeUrl: isValidStringField(c.oauth2AuthorizeUrl),
       oauth2AccessTokenUrl: isValidStringField(c.oauth2AccessTokenUrl),
-      oauth2ClientId: isValidStringField(c.oauth2ClientId),
-      oauth2ClientSecret: isValidStringField(c.oauth2ClientSecret),
+      oauth2ClientId: c.hasClientId,
+      oauth2ClientSecret: c.hasClientSecret,
       oauth2Scopes: (c.oauth2Scopes ?? []).length > 0,
     }
     return Object.values(checks).every((check) => check)

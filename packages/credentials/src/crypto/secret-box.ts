@@ -3,6 +3,7 @@
 import { createScopedLogger } from '@auxx/logger'
 import crypto from 'crypto'
 import { configService } from '../config/config-service'
+import { HIDDEN_VALUE } from './client'
 
 const logger = createScopedLogger('credential-secret-box')
 
@@ -56,6 +57,50 @@ export function encryptSecrets(secrets: Record<string, unknown>): string {
     logger.error('Failed to encrypt credential secrets')
     throw new Error('Failed to encrypt credential secrets')
   }
+}
+
+/** Fixed mask for short secrets — constant length so it never leaks that the secret is short. */
+const FULL_MASK = '********'
+
+/** Encrypt a single string value to the v2 format (wraps the object box). */
+export function encryptValue(value: string): string {
+  return encryptSecrets({ v: value })
+}
+
+/**
+ * Decrypt a single string value produced by encryptValue.
+ *
+ * Lenient policy (ConnectionDefinition columns): non-`v2:` payloads are returned
+ * unchanged so deploy-then-backfill ordering is safe and plaintext dev rows keep
+ * working. Distinct from the strict `decryptSecrets`, which rejects them.
+ */
+export function decryptValue(payload: string | null): string | null {
+  if (payload === null) return null
+  if (!isV2Payload(payload)) return payload
+  return decryptSecrets<{ v: string }>(payload).v
+}
+
+/**
+ * Mask a secret for display: up to 4 chars revealed per side, with at least
+ * 6 chars always hidden (`revealPerSide = min(4, floor((length - 6) / 2))`).
+ * Secrets shorter than 10 chars return a fixed-length full mask.
+ */
+export function maskValue(value: string): string {
+  const revealPerSide = Math.min(4, Math.floor((value.length - 6) / 2))
+  if (revealPerSide < 2) return FULL_MASK
+  const stars = '*'.repeat(Math.min(value.length - 2 * revealPerSide, 20))
+  return value.slice(0, revealPerSide) + stars + value.slice(-revealPerSide)
+}
+
+/** Mask-shaped values, as produced by `maskValue` (the full mask included). */
+const MASK_SHAPE = /^.{2,4}\*+.{2,4}$/
+
+/**
+ * True when a submitted value is a client echoing a masked prefill back — the
+ * `HIDDEN_VALUE` sentinel or a `maskValue`-shaped string. Never persist it.
+ */
+export function isMaskEcho(value: string): boolean {
+  return value === HIDDEN_VALUE || MASK_SHAPE.test(value)
 }
 
 /** Decrypt a payload produced by encryptSecrets. */

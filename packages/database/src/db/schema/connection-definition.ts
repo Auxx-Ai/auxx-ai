@@ -86,8 +86,8 @@ export const ConnectionDefinition = pgTable(
     oauth2AuthorizeUrl: text(),
     oauth2AccessTokenUrl: text(),
     oauth2Scopes: jsonb().$type<string[]>().default([]),
-    oauth2ClientId: text(),
-    oauth2ClientSecret: text(), // Encrypted
+    oauth2ClientId: text(), // v2 secret-box ciphertext (see @auxx/credentials/crypto decryptValue policy)
+    oauth2ClientSecret: text(), // v2 secret-box ciphertext (see @auxx/credentials/crypto decryptValue policy)
     oauth2TokenRequestAuthMethod: text().default('request-body'), // request-body, basic-auth
     oauth2RefreshTokenIntervalSeconds: integer(),
     oauth2Features: jsonb().$type<OAuth2Features>().default({}),

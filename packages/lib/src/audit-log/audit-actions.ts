@@ -28,6 +28,7 @@ export const AUDIT_ACTIONS = {
   twoFactorDisabled: '2fa.disabled',
   passkeyAdded: 'passkey.added',
   passkeyRemoved: 'passkey.removed',
+  connectionClientSecretRevealed: 'connection.client_secret_revealed',
   // super-admin actions on a user (internal)
   userDeleted: 'user.deleted',
   userEmailVerifiedByAdmin: 'user.email_verified_by_admin',

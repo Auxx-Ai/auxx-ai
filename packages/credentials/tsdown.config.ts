@@ -14,6 +14,7 @@ export default defineConfig({
     'src/config/index.ts',
     'src/config/client.ts',
     'src/crypto/index.ts',
+    'src/crypto/client.ts',
     'src/store/index.ts',
     'src/lambda-auth/index.ts',
   ],

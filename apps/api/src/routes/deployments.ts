@@ -2,7 +2,7 @@
 // Deployment management routes
 
 import { database, schema } from '@auxx/database'
-import { invalidateAppCatalog, invalidateOrgsByDeploymentId, onCacheEvent } from '@auxx/lib/cache'
+import { onCacheEvent } from '@auxx/lib/cache'
 import { calculateNextVersion } from '@auxx/services/app-versions'
 import { verifyAppAccess } from '@auxx/services/developer-accounts'
 import { and, eq } from 'drizzle-orm'
@@ -249,60 +249,66 @@ deployments.get('/:appId/deployments', requireScope(['developer', 'apps:read']),
 /**
  * PATCH /api/v1/apps/:appId/deployments/:id/status
  * Update deployment status (prod only).
+ *
+ * Disabled: no callers (SDK and apps/build both go through the
+ * updateDeploymentStatus service), and this raw write bypasses autoApprove,
+ * the single-review guard, and reconcileAppReviewState. If a CLI-facing
+ * status endpoint is needed, reimplement it on top of
+ * @auxx/services/app-versions updateDeploymentStatus.
  */
-deployments.patch(
-  '/:appId/deployments/:id/status',
-  requireScope(['developer', 'apps:write']),
-  async (c) => {
-    const appId = c.req.param('appId')
-    const deploymentId = c.req.param('id')
-    const userId = c.get('userId')
-    const body = await c.req.json()
-    const { status } = body
-
-    const accessResult = await verifyAppAccess({ appId, userId })
-    if (accessResult.isErr()) {
-      const error = accessResult.error
-      const statusCode = ERROR_STATUS_MAP[error.code] ?? 500
-      return c.json(errorResponse('INTERNAL_ERROR', error.message), statusCode)
-    }
-
-    const deployment = await database.query.AppDeployment.findFirst({
-      where: and(eq(schema.AppDeployment.id, deploymentId), eq(schema.AppDeployment.appId, appId)),
-    })
-
-    if (!deployment) {
-      return c.json(errorResponse('DEPLOYMENT_NOT_FOUND', 'Deployment not found'), 404)
-    }
-
-    // Validate status transition (developer actions only)
-    const validTransitions: Record<string, string[]> = {
-      active: ['pending-review'],
-      'pending-review': ['withdrawn'],
-    }
-
-    const allowed = validTransitions[deployment.status]
-    if (!allowed || !allowed.includes(status)) {
-      return c.json(
-        errorResponse(
-          'INVALID_STATUS_TRANSITION',
-          `Cannot transition from '${deployment.status}' to '${status}'`
-        ),
-        400
-      )
-    }
-
-    const [updated] = await database
-      .update(schema.AppDeployment)
-      .set({ status })
-      .where(eq(schema.AppDeployment.id, deploymentId))
-      .returning()
-
-    await invalidateOrgsByDeploymentId(deploymentId, database)
-    await invalidateAppCatalog()
-
-    return c.json({ deployment: updated })
-  }
-)
+// deployments.patch(
+//   '/:appId/deployments/:id/status',
+//   requireScope(['developer', 'apps:write']),
+//   async (c) => {
+//     const appId = c.req.param('appId')
+//     const deploymentId = c.req.param('id')
+//     const userId = c.get('userId')
+//     const body = await c.req.json()
+//     const { status } = body
+//
+//     const accessResult = await verifyAppAccess({ appId, userId })
+//     if (accessResult.isErr()) {
+//       const error = accessResult.error
+//       const statusCode = ERROR_STATUS_MAP[error.code] ?? 500
+//       return c.json(errorResponse('INTERNAL_ERROR', error.message), statusCode)
+//     }
+//
+//     const deployment = await database.query.AppDeployment.findFirst({
+//       where: and(eq(schema.AppDeployment.id, deploymentId), eq(schema.AppDeployment.appId, appId)),
+//     })
+//
+//     if (!deployment) {
+//       return c.json(errorResponse('DEPLOYMENT_NOT_FOUND', 'Deployment not found'), 404)
+//     }
+//
+//     // Validate status transition (developer actions only)
+//     const validTransitions: Record<string, string[]> = {
+//       active: ['pending-review'],
+//       'pending-review': ['withdrawn'],
+//     }
+//
+//     const allowed = validTransitions[deployment.status]
+//     if (!allowed || !allowed.includes(status)) {
+//       return c.json(
+//         errorResponse(
+//           'INVALID_STATUS_TRANSITION',
+//           `Cannot transition from '${deployment.status}' to '${status}'`
+//         ),
+//         400
+//       )
+//     }
+//
+//     const [updated] = await database
+//       .update(schema.AppDeployment)
+//       .set({ status })
+//       .where(eq(schema.AppDeployment.id, deploymentId))
+//       .returning()
+//
+//     await invalidateOrgsByDeploymentId(deploymentId, database)
+//     await invalidateAppCatalog()
+//
+//     return c.json({ deployment: updated })
+//   }
+// )
 
 export default deployments

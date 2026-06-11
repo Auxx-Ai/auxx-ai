@@ -2,7 +2,7 @@
 // Throwaway: report credential blob shapes + ConnectionDefinition secret-var flags. Keys only, no values.
 
 import { database as db, schema } from '@auxx/database'
-import { decryptSecrets } from '../src/crypto'
+import { decryptSecrets, isV2Payload } from '../src/crypto'
 
 function keys(o: unknown): string[] {
   return o && typeof o === 'object' ? Object.keys(o as object) : []
@@ -53,6 +53,31 @@ async function main() {
   console.log('\n=== ConnectionDefinitions with secret-flagged connectionVariables ===')
   for (const [appId, set] of secretVarsByApp) {
     if (set.size) console.log(`  appId=${appId} secretVars=[${[...set].join(',')}]`)
+  }
+
+  // Phase 7 post-backfill verification: every non-null cred column should be v2 ciphertext.
+  console.log('\n=== ConnectionDefinition cred columns (v2 vs plaintext) ===')
+  const tally = { clientId: { v2: 0, plaintext: 0 }, clientSecret: { v2: 0, plaintext: 0 } }
+  for (const d of defs) {
+    if (d.oauth2ClientId !== null)
+      tally.clientId[isV2Payload(d.oauth2ClientId) ? 'v2' : 'plaintext']++
+    if (d.oauth2ClientSecret !== null)
+      tally.clientSecret[isV2Payload(d.oauth2ClientSecret) ? 'v2' : 'plaintext']++
+  }
+  console.log(`  oauth2ClientId:     v2=${tally.clientId.v2} plaintext=${tally.clientId.plaintext}`)
+  console.log(
+    `  oauth2ClientSecret: v2=${tally.clientSecret.v2} plaintext=${tally.clientSecret.plaintext}`
+  )
+  for (const d of defs) {
+    const plainCols = [
+      d.oauth2ClientId !== null && !isV2Payload(d.oauth2ClientId) && 'clientId',
+      d.oauth2ClientSecret !== null && !isV2Payload(d.oauth2ClientSecret) && 'clientSecret',
+    ].filter(Boolean)
+    if (plainCols.length) {
+      console.log(
+        `  ⚠ PLAINTEXT id=${d.id} label=${JSON.stringify(d.label)} cols=[${plainCols.join(',')}]`
+      )
+    }
   }
   console.log('(end)')
   process.exit(0)
