@@ -7,35 +7,14 @@ import type { DocJSON } from '@auxx/lib/kb/markdown'
 import type { SystemTemplateGalleryItem } from '@auxx/lib/prompt-templates'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
-import { Dialog, DialogContent } from '@auxx/ui/components/dialog'
-import { DialogNav } from '@auxx/ui/components/dialog-nav'
-import {
-  Empty,
-  EmptyDescription,
-  EmptyHeader,
-  EmptyMedia,
-  EmptyTitle,
-} from '@auxx/ui/components/empty'
 import { EntityIcon } from '@auxx/ui/components/icons'
-import { InputSearch } from '@auxx/ui/components/input-search'
-import { RadioGroup } from '@auxx/ui/components/radio-group'
-import { RadioGroupItemCard } from '@auxx/ui/components/radio-group-item'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
-import {
-  Check,
-  Handshake,
-  Headphones,
-  LayoutGrid,
-  Loader2,
-  type LucideIcon,
-  Search,
-  ShoppingBag,
-  Sparkles,
-} from 'lucide-react'
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { Check } from 'lucide-react'
+import { useState } from 'react'
 import { DEFAULT_TABS } from '~/components/editor/inline-picker'
 import type { ReferenceTab } from '~/components/editor/inline-picker/nodes/reference-picker-node'
 import { PromptEditor } from '~/components/editor/prompt-editor'
+import { TemplateGalleryDialog } from '~/components/templates/ui'
 import { usePromptTemplateMutations } from '../../hooks/use-prompt-template-mutations'
 import { useSystemTemplates } from '../../hooks/use-prompt-templates'
 
@@ -52,344 +31,157 @@ function deepEqualDoc(a: DocJSON, b: DocJSON): boolean {
   return JSON.stringify(a) === JSON.stringify(b)
 }
 
-/** Map icon names from constants to Lucide components */
-const categoryIcons: Record<string, LucideIcon> = {
-  LayoutGrid,
-  Headphones,
-  ShoppingBag,
-  Handshake,
-  Sparkles,
-}
-
 interface PromptTemplateDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
 }
 
-type PromptCategory = (typeof constants.promptTemplateCategories)[number]['value']
-
 export function PromptTemplateDialog({ open, onOpenChange }: PromptTemplateDialogProps) {
   const { templates, isLoading } = useSystemTemplates()
   const { install } = usePromptTemplateMutations()
-  const searchInputRef = useRef<HTMLInputElement>(null)
 
-  const [viewMode, setViewMode] = useState<'list' | 'detail'>('list')
-  const [searchQuery, setSearchQuery] = useState('')
-  const [selectedCategory, setSelectedCategory] = useState<PromptCategory>('all')
-  const [selectedTemplate, setSelectedTemplate] = useState<SystemTemplateGalleryItem | null>(null)
   const [editedPrompt, setEditedPrompt] = useState<DocJSON>(emptyPromptDoc)
   const [editorKey, setEditorKey] = useState(0)
   const [isCustomizing, setIsCustomizing] = useState(false)
 
-  const filteredTemplates = useMemo(() => {
-    let filtered = templates
-
-    if (selectedCategory !== 'all') {
-      filtered = filtered.filter((t) => t.categories.includes(selectedCategory))
-    }
-
-    if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase()
-      filtered = filtered.filter(
-        (t) => t.name.toLowerCase().includes(query) || t.description.toLowerCase().includes(query)
-      )
-    }
-
-    return filtered
-  }, [templates, selectedCategory, searchQuery])
-
-  const handleSelectTemplate = useCallback((template: SystemTemplateGalleryItem) => {
-    setSelectedTemplate(template)
-    setEditedPrompt(template.prompt)
-    setEditorKey((k) => k + 1)
-    setViewMode('detail')
-  }, [])
-
-  const handleInstall = useCallback(() => {
-    if (!selectedTemplate) return
-
+  function handleInstall(template: SystemTemplateGalleryItem, onDone: () => void) {
     install.mutate(
       {
-        systemTemplateId: selectedTemplate.id,
-        prompt: deepEqualDoc(editedPrompt, selectedTemplate.prompt) ? undefined : editedPrompt,
+        systemTemplateId: template.id,
+        prompt: deepEqualDoc(editedPrompt, template.prompt) ? undefined : editedPrompt,
       },
-      {
-        onSuccess: () => {
-          setViewMode('list')
-          setSelectedTemplate(null)
-          setEditedPrompt(emptyPromptDoc())
-          setIsCustomizing(false)
-        },
-      }
+      { onSuccess: onDone }
     )
-  }, [selectedTemplate, editedPrompt, install])
-
-  const handleBack = useCallback(() => {
-    setViewMode('list')
-    setSelectedTemplate(null)
-    setEditedPrompt(emptyPromptDoc())
-    setIsCustomizing(false)
-  }, [])
+  }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent
-        className='h-[550px]'
-        innerClassName='p-0'
-        position='tc'
-        size='3xl'
-        onOpenAutoFocus={(e) => {
-          e.preventDefault()
-          searchInputRef.current?.focus()
-        }}>
-        <div className='flex flex-col flex-1 min-h-0'>
-          {viewMode === 'list' ? (
-            <>
-              {/* LIST VIEW */}
-              <DialogNav
-                title='Prompt Templates'
-                description='Browse and install prompt templates'
-                crumbs={[{ label: 'Prompt templates' }]}
+    <TemplateGalleryDialog<SystemTemplateGalleryItem>
+      open={open}
+      onOpenChange={onOpenChange}
+      title='Prompt Templates'
+      description='Browse and install prompt templates'
+      crumbLabel='Prompt templates'
+      itemNoun='prompt'
+      layout='cards'
+      items={templates}
+      isLoading={isLoading}
+      categories={constants.promptTemplateCategories}
+      renderIcon={(template) => (
+        <EntityIcon
+          iconId={template.icon.iconId}
+          color={template.icon.color}
+          size='lg'
+          variant='muted'
+        />
+      )}
+      renderNameBadge={(template) =>
+        template.installed ? (
+          <Badge variant='outline' className='shrink-0 text-[10px]'>
+            <Check className='size-3' />
+            Installed
+          </Badge>
+        ) : null
+      }
+      // Seed the editor with the template prompt, then fall through to the detail page.
+      onSelectItem={(template) => {
+        setEditedPrompt(template.prompt)
+        setIsCustomizing(false)
+        setEditorKey((k) => k + 1)
+      }}
+      detailCrumb={(template) => template.name}
+      detailBusy={install.isPending}
+      onDetailExit={() => {
+        setEditedPrompt(emptyPromptDoc())
+        setIsCustomizing(false)
+        setEditorKey((k) => k + 1)
+      }}
+      renderDetail={(template) => (
+        <ScrollArea className='h-[460px]'>
+          <div className='space-y-4 p-6'>
+            <div className='flex items-start gap-3'>
+              <EntityIcon
+                iconId={template.icon.iconId}
+                color={template.icon.color}
+                size='xl'
+                variant='muted'
               />
-
-              <div className='flex flex-1 flex-row justify-start w-full min-h-0'>
-                {/* Sidebar */}
-                <div className='w-64 border-r bg-muted/30 flex-col rounded-bl-[16px] hidden sm:flex'>
-                  <ScrollArea>
-                    <h3 className='p-3 pb-0 text-sm font-semibold text-muted-foreground sticky top-0'>
-                      Categories
-                    </h3>
-                    <div className='p-3'>
-                      <RadioGroup
-                        value={selectedCategory}
-                        onValueChange={(value) => setSelectedCategory(value as PromptCategory)}>
-                        {constants.promptTemplateCategories.map((category) => {
-                          const templateCount =
-                            category.value === 'all'
-                              ? templates.length
-                              : templates.filter((t) => t.categories.includes(category.value))
-                                  .length
-
-                          const Icon = categoryIcons[category.icon]
-
-                          return (
-                            <RadioGroupItemCard
-                              key={category.value}
-                              label={category.label}
-                              value={category.value}
-                              description={
-                                isLoading
-                                  ? 'Loading...'
-                                  : `${templateCount} prompt${templateCount !== 1 ? 's' : ''}`
-                              }
-                              icon={Icon ? <Icon /> : undefined}
-                            />
-                          )
-                        })}
-                      </RadioGroup>
-                    </div>
-                  </ScrollArea>
-                </div>
-
-                {/* Template Grid */}
-                <div className='flex-1 overflow-hidden flex flex-col'>
-                  <div className='py-3 px-6'>
-                    <InputSearch
-                      ref={searchInputRef}
-                      placeholder='Search prompts by name or description...'
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      onClear={() => setSearchQuery('')}
-                    />
-                  </div>
-
-                  {isLoading ? (
-                    <Empty>
-                      <EmptyHeader>
-                        <EmptyMedia variant='icon'>
-                          <Loader2 className='animate-spin' />
-                        </EmptyMedia>
-                        <EmptyTitle>Loading...</EmptyTitle>
-                        <EmptyDescription>Fetching prompt templates</EmptyDescription>
-                      </EmptyHeader>
-                    </Empty>
-                  ) : filteredTemplates.length > 0 ? (
-                    <ScrollArea className='flex-1'>
-                      <div className='p-6 grid sm:grid-cols-2 gap-3'>
-                        {filteredTemplates.map((template) => (
-                          <div
-                            key={template.id}
-                            onClick={() => handleSelectTemplate(template)}
-                            className='group flex flex-col gap-2 rounded-2xl border p-3 hover:bg-primary-50 transition-colors duration-200 cursor-pointer'>
-                            <div className='flex items-start gap-3'>
-                              <EntityIcon
-                                iconId={template.icon.iconId}
-                                color={template.icon.color}
-                                size='lg'
-                                variant='muted'
-                              />
-                              <div className='flex flex-col flex-1 min-w-0'>
-                                <div className='flex items-center gap-2'>
-                                  <span className='text-sm font-semibold truncate'>
-                                    {template.name}
-                                  </span>
-                                </div>
-                                <span className='text-xs text-muted-foreground line-clamp-2 mt-0.5'>
-                                  {template.description}
-                                </span>
-                              </div>
-                            </div>
-                            {template.installed && (
-                              <div className='flex items-center gap-1.5'>
-                                <Badge variant='outline' className='text-[10px]'>
-                                  <Check className='size-3' />
-                                  Installed
-                                </Badge>
-                              </div>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    </ScrollArea>
-                  ) : (
-                    <Empty>
-                      <EmptyHeader>
-                        <EmptyMedia variant='icon'>
-                          <Search />
-                        </EmptyMedia>
-                        <EmptyTitle>No prompts found</EmptyTitle>
-                        <EmptyDescription>
-                          {searchQuery
-                            ? 'No prompts match your search. Try adjusting your query or browse different categories.'
-                            : 'No prompts available in this category yet.'}
-                        </EmptyDescription>
-                      </EmptyHeader>
-                    </Empty>
+              <div>
+                <h2 className='text-lg font-semibold'>{template.name}</h2>
+                <p className='mt-0.5 text-sm text-muted-foreground'>{template.description}</p>
+                <div className='mt-2 flex items-center gap-1.5'>
+                  {template.installed && (
+                    <Badge variant='outline' className='text-xs'>
+                      <Check className='size-3' />
+                      Installed
+                    </Badge>
                   )}
-
-                  {!isLoading && filteredTemplates.length > 0 && (
-                    <div className='border-t px-6 py-3 bg-muted/30'>
-                      <p className='text-sm text-muted-foreground'>
-                        Showing {filteredTemplates.length} prompt
-                        {filteredTemplates.length !== 1 ? 's' : ''}
-                      </p>
-                    </div>
-                  )}
+                  {template.categories.map((cat) => (
+                    <Badge key={cat} variant='secondary' className='text-xs'>
+                      {constants.promptTemplateCategories.find((c) => c.value === cat)?.label ??
+                        cat}
+                    </Badge>
+                  ))}
                 </div>
               </div>
-            </>
-          ) : (
-            <>
-              {/* DETAIL VIEW */}
-              <DialogNav
-                title={selectedTemplate?.name ?? 'Prompt template'}
-                description='Prompt template details'
-                onBack={handleBack}
-                crumbs={[
-                  { label: 'Prompt templates', onClick: handleBack },
-                  { label: selectedTemplate?.name ?? 'Template' },
-                ]}
-              />
+            </div>
 
-              {selectedTemplate && (
-                <div className='flex flex-col flex-1 min-h-0'>
-                  <ScrollArea className='flex-1'>
-                    <div className='space-y-4 p-6'>
-                      <div className='flex items-start gap-3'>
-                        <EntityIcon
-                          iconId={selectedTemplate.icon.iconId}
-                          color={selectedTemplate.icon.color}
-                          size='xl'
-                          variant='muted'
-                        />
-                        <div>
-                          <h2 className='text-lg font-semibold'>{selectedTemplate.name}</h2>
-                          <p className='text-sm text-muted-foreground mt-0.5'>
-                            {selectedTemplate.description}
-                          </p>
-                          <div className='flex items-center gap-1.5 mt-2'>
-                            {selectedTemplate.installed && (
-                              <Badge variant='outline' className='text-xs'>
-                                <Check className='size-3' />
-                                Installed
-                              </Badge>
-                            )}
-                            {selectedTemplate.categories.map((cat) => (
-                              <Badge key={cat} variant='secondary' className='text-xs'>
-                                {constants.promptTemplateCategories.find((c) => c.value === cat)
-                                  ?.label ?? cat}
-                              </Badge>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className='space-y-2'>
-                        <div className='flex items-center justify-between'>
-                          <h3 className='text-sm font-medium'>Prompt</h3>
-                          {!selectedTemplate.installed && (
-                            <Button
-                              variant='ghost'
-                              size='xs'
-                              onClick={() => {
-                                if (isCustomizing) {
-                                  setIsCustomizing(false)
-                                  setEditedPrompt(selectedTemplate.prompt)
-                                  setEditorKey((k) => k + 1)
-                                } else {
-                                  setIsCustomizing(true)
-                                  setEditorKey((k) => k + 1)
-                                }
-                              }}>
-                              {isCustomizing ? 'Cancel' : 'Customize'}
-                            </Button>
-                          )}
-                        </div>
-                        {isCustomizing ? (
-                          <div className='rounded-xl border bg-background p-4'>
-                            <PromptEditor
-                              key={editorKey}
-                              initialContent={selectedTemplate.prompt.content as never}
-                              onChange={({ json }) => setEditedPrompt(json as DocJSON)}
-                              referenceTabs={TEMPLATE_REFERENCE_TABS}
-                            />
-                          </div>
-                        ) : (
-                          <div className='rounded-xl border bg-muted/30 p-4'>
-                            <PromptEditor
-                              key={`preview-${selectedTemplate.id}`}
-                              initialContent={selectedTemplate.prompt.content as never}
-                              onChange={() => {}}
-                              editable={false}
-                              referenceTabs={TEMPLATE_REFERENCE_TABS}
-                            />
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </ScrollArea>
-
-                  <div className='flex justify-end gap-2 pt-4 border-t px-6 pb-6'>
-                    <Button variant='ghost' size='sm' onClick={handleBack}>
-                      Back
-                    </Button>
-                    {!selectedTemplate.installed && (
-                      <Button
-                        variant='outline'
-                        size='sm'
-                        onClick={handleInstall}
-                        loading={install.isPending}
-                        loadingText='Installing...'>
-                        Install prompt
-                      </Button>
-                    )}
-                  </div>
+            <div className='space-y-2'>
+              <div className='flex items-center justify-between'>
+                <h3 className='text-sm font-medium'>Prompt</h3>
+                {!template.installed && (
+                  <Button
+                    variant='ghost'
+                    size='xs'
+                    onClick={() => {
+                      if (isCustomizing) {
+                        setIsCustomizing(false)
+                        setEditedPrompt(template.prompt)
+                        setEditorKey((k) => k + 1)
+                      } else {
+                        setIsCustomizing(true)
+                        setEditorKey((k) => k + 1)
+                      }
+                    }}>
+                    {isCustomizing ? 'Cancel' : 'Customize'}
+                  </Button>
+                )}
+              </div>
+              {isCustomizing ? (
+                <div className='rounded-xl border bg-background p-4'>
+                  <PromptEditor
+                    key={editorKey}
+                    initialContent={template.prompt.content as never}
+                    onChange={({ json }) => setEditedPrompt(json as DocJSON)}
+                    referenceTabs={TEMPLATE_REFERENCE_TABS}
+                  />
+                </div>
+              ) : (
+                <div className='rounded-xl border bg-muted/30 p-4'>
+                  <PromptEditor
+                    key={`preview-${template.id}`}
+                    initialContent={template.prompt.content as never}
+                    onChange={() => {}}
+                    editable={false}
+                    referenceTabs={TEMPLATE_REFERENCE_TABS}
+                  />
                 </div>
               )}
-            </>
-          )}
-        </div>
-      </DialogContent>
-    </Dialog>
+            </div>
+          </div>
+        </ScrollArea>
+      )}
+      renderDetailFooter={(template, { back }) =>
+        template.installed ? null : (
+          <Button
+            variant='outline'
+            size='sm'
+            onClick={() => handleInstall(template, back)}
+            loading={install.isPending}
+            loadingText='Installing...'>
+            Install prompt
+          </Button>
+        )
+      }
+    />
   )
 }

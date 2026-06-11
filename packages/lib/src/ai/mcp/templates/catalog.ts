@@ -18,7 +18,7 @@ export type McpTemplateCategory =
 export interface McpTemplateCategoryDef {
   value: McpTemplateCategory | 'all'
   label: string
-  /** Lucide icon name, resolved via the dialog's icon registry (agent-template-dialog pattern). */
+  /** ICON_DATA iconId, rendered via EntityIcon in the gallery sidebar. */
   icon: string
 }
 
@@ -41,12 +41,12 @@ export interface McpTemplate {
 }
 
 export const mcpTemplateCategories: McpTemplateCategoryDef[] = [
-  { value: 'all', label: 'All templates', icon: 'LayoutGrid' },
-  { value: 'dev-tools', label: 'Developer tools', icon: 'Code' },
-  { value: 'project-management', label: 'Project management', icon: 'ListTodo' },
-  { value: 'commerce', label: 'Commerce', icon: 'ShoppingCart' },
-  { value: 'data-search', label: 'Data & search', icon: 'Search' },
-  { value: 'productivity', label: 'Productivity', icon: 'Zap' },
+  { value: 'all', label: 'All templates', icon: 'layout-grid' },
+  { value: 'dev-tools', label: 'Developer tools', icon: 'code' },
+  { value: 'project-management', label: 'Project management', icon: 'list-todo' },
+  { value: 'commerce', label: 'Commerce', icon: 'shopping-cart' },
+  { value: 'data-search', label: 'Data & search', icon: 'search' },
+  { value: 'productivity', label: 'Productivity', icon: 'zap' },
 ]
 
 /**
