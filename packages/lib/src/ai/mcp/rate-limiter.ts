@@ -1,6 +1,6 @@
 // packages/lib/src/ai/mcp/rate-limiter.ts
 
-import { getRedisClient } from '@auxx/redis'
+import { checkFixedWindowLimit } from '../../utils/rate-limiter/fixed-window'
 
 /** Max MCP tool calls per agent turn. */
 export const MCP_TURN_CALL_LIMIT = 20
@@ -16,33 +16,49 @@ export interface McpRateLimitResult {
   reason?: 'turn' | 'org'
 }
 
+/** Max smart-paste snippet resolutions per org per minute (each makes outbound fetches). */
+export const MCP_RESOLVE_LIMIT = 10
+const MCP_RESOLVE_TTL_SECONDS = 120
+
 /**
- * INCR + EXPIRE per-turn and per-org-minute MCP call counters. Fails open if Redis is down
- * (an MCP call should not be blocked by a cache outage). Enforced by the tool adapter.
+ * Per-org-minute limit for `mcp.resolveSnippet`. Fails open if Redis is down.
+ * Returns false when the org is over the limit for the current minute bucket.
+ */
+export async function checkMcpResolveRateLimit(organizationId: string): Promise<boolean> {
+  const minuteBucket = Math.floor(Date.now() / 60_000)
+  const { allowed } = await checkFixedWindowLimit({
+    key: `mcp:resolve:${organizationId}:${minuteBucket}`,
+    limit: MCP_RESOLVE_LIMIT,
+    windowMs: MCP_RESOLVE_TTL_SECONDS * 1000,
+  })
+  return allowed
+}
+
+/**
+ * Counts the call against the per-turn and per-org-minute MCP limits. Fails open if
+ * Redis is down (an MCP call should not be blocked by a cache outage). Enforced by
+ * the tool adapter.
  */
 export async function checkAndCountMcpCall(opts: {
   organizationId: string
   turnId?: string
 }): Promise<McpRateLimitResult> {
-  const redis = await getRedisClient(false)
-  if (!redis) return { allowed: true }
-
-  try {
-    if (opts.turnId) {
-      const turnKey = `mcp:calls:turn:${opts.turnId}`
-      const turnCount = await redis.incr(turnKey)
-      if (turnCount === 1) await redis.expire(turnKey, MCP_TURN_TTL_SECONDS)
-      if (turnCount > MCP_TURN_CALL_LIMIT) return { allowed: false, reason: 'turn' }
-    }
-
-    const minuteBucket = Math.floor(Date.now() / 60_000)
-    const orgKey = `mcp:calls:org:${opts.organizationId}:${minuteBucket}`
-    const orgCount = await redis.incr(orgKey)
-    if (orgCount === 1) await redis.expire(orgKey, MCP_ORG_TTL_SECONDS)
-    if (orgCount > MCP_ORG_CALL_LIMIT) return { allowed: false, reason: 'org' }
-
-    return { allowed: true }
-  } catch {
-    return { allowed: true }
+  if (opts.turnId) {
+    const turn = await checkFixedWindowLimit({
+      key: `mcp:calls:turn:${opts.turnId}`,
+      limit: MCP_TURN_CALL_LIMIT,
+      windowMs: MCP_TURN_TTL_SECONDS * 1000,
+    })
+    if (!turn.allowed) return { allowed: false, reason: 'turn' }
   }
+
+  const minuteBucket = Math.floor(Date.now() / 60_000)
+  const org = await checkFixedWindowLimit({
+    key: `mcp:calls:org:${opts.organizationId}:${minuteBucket}`,
+    limit: MCP_ORG_CALL_LIMIT,
+    windowMs: MCP_ORG_TTL_SECONDS * 1000,
+  })
+  if (!org.allowed) return { allowed: false, reason: 'org' }
+
+  return { allowed: true }
 }

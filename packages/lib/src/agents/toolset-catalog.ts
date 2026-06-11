@@ -20,7 +20,7 @@ function toClientMcpServers(servers: CachedMcpServer[]): ClientMcpServer[] {
     slug: s.slug,
     name: s.name,
     description: s.description,
-    iconUrl: s.iconUrl,
+    iconUrl: s.icon?.iconId ?? null,
     toolsetSlug: s.toolsetSlug,
     connectionPresent: s.connectionPresent,
     needsReconnect: s.needsReconnect,

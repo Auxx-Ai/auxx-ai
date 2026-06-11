@@ -91,7 +91,7 @@ export function ExtensionsProvider({ children }: ExtensionsProviderProps) {
         slug: server.slug,
         name: server.name,
         description: server.description,
-        iconUrl: server.iconUrl,
+        iconUrl: server.icon?.iconId ?? null,
         toolsetSlug: server.toolsetSlug,
         connectionPresent: server.connectionPresent,
         needsReconnect: server.needsReconnect,

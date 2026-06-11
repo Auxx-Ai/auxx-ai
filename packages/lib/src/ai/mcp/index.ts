@@ -31,9 +31,17 @@ export {
 export type { McpRateLimitResult } from './rate-limiter'
 export {
   checkAndCountMcpCall,
+  checkMcpResolveRateLimit,
   MCP_ORG_CALL_LIMIT,
+  MCP_RESOLVE_LIMIT,
   MCP_TURN_CALL_LIMIT,
 } from './rate-limiter'
+export type {
+  McpSnippetAuthKind,
+  McpSnippetCandidate,
+  ResolvedMcpSnippet,
+} from './snippet'
+export { parseMcpSnippet, resolveMcpSnippet } from './snippet'
 export type { SyncMcpToolsResult } from './sync'
 export { syncMcpTools } from './sync'
 export { buildMcpAgentTools, mcpToolName, wrapMcpOutput } from './tool-adapter'

@@ -11,6 +11,7 @@ import type {
   CatalogToolset,
   CatalogTriggerProjection,
   KnowledgeEntry,
+  McpServerIcon,
   ToolsetEntry,
 } from '@auxx/database'
 import type {
@@ -391,7 +392,7 @@ export interface CachedMcpServer {
   slug: string
   name: string
   description: string | null
-  iconUrl: string | null
+  icon: McpServerIcon | null
   isCustom: boolean // organizationId != null
   toolsetSlug: string // `mcp:<serverId>`
   connectionType: 'oauth2-code' | 'secret' | 'none' | null // null = no definition yet

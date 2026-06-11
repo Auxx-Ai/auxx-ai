@@ -9,7 +9,8 @@ const redis = {
     store.set(key, next)
     return next
   }),
-  expire: vi.fn(async () => 1),
+  pexpire: vi.fn(async () => 1),
+  pttl: vi.fn(async () => 60_000),
 }
 
 vi.mock('@auxx/redis', () => ({

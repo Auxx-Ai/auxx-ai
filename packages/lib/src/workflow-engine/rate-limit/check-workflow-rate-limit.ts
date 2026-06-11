@@ -1,7 +1,7 @@
 // packages/lib/src/workflow-engine/rate-limit/check-workflow-rate-limit.ts
 
-import { getRedisClient } from '@auxx/redis'
 import { ok, type Result } from 'neverthrow'
+import { checkFixedWindowLimit } from '../../utils/rate-limiter/fixed-window'
 
 /**
  * Rate limit configuration
@@ -33,7 +33,7 @@ export interface RateLimitCheckResult {
 }
 
 /**
- * Check if workflow run should be rate limited
+ * Check if workflow run should be rate limited. Fails open when Redis is unavailable.
  *
  * @param options - Rate limit options
  * @returns Result with rate limit status
@@ -56,34 +56,16 @@ export async function checkWorkflowRateLimit(
     ? `ratelimit:workflow:${workflowAppId}:${endUserId}`
     : `ratelimit:workflow:${workflowAppId}`
 
-  try {
-    const redis = getRedisClient()
-    const current = await redis.incr(key)
+  const result = await checkFixedWindowLimit({
+    key,
+    limit: rateLimit.maxRequests,
+    windowMs: rateLimit.windowMs,
+  })
 
-    if (current === 1) {
-      // First request in window, set expiry
-      await redis.pexpire(key, rateLimit.windowMs)
-    }
-
-    const isLimited = current > rateLimit.maxRequests
-
-    let remainingMs: number | undefined
-    if (isLimited) {
-      remainingMs = await redis.pttl(key)
-    }
-
-    return ok({
-      isLimited,
-      current,
-      limit: rateLimit.maxRequests,
-      remainingMs,
-    })
-  } catch {
-    // If Redis fails, allow the request (fail open)
-    return ok({
-      isLimited: false,
-      current: 0,
-      limit: rateLimit.maxRequests,
-    })
-  }
+  return ok({
+    isLimited: !result.allowed,
+    current: result.count,
+    limit: rateLimit.maxRequests,
+    remainingMs: result.remainingMs,
+  })
 }

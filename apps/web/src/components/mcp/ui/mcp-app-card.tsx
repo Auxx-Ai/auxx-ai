@@ -27,8 +27,8 @@ export function McpAppCard({ server }: { server: McpServerListEntry }) {
       description={server.description}
       href={`/app/settings/apps/mcp/${server.slug}`}
       icon={
-        server.iconUrl ? (
-          <AppIcon iconId={server.iconUrl} size='sm' />
+        server.icon?.iconId ? (
+          <AppIcon iconId={server.icon.iconId} color={server.icon.color} size='sm' />
         ) : (
           <Plug className='size-4 text-muted-foreground' />
         )

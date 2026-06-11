@@ -1443,6 +1443,13 @@
       "when": 1781130883442,
       "tag": "0205_add_mcp_server_domain",
       "breakpoints": true
+    },
+    {
+      "idx": 206,
+      "version": "7",
+      "when": 1781139215447,
+      "tag": "0206_mcp_server_icon_config_user_fk",
+      "breakpoints": true
     }
   ]
 }
