@@ -6,15 +6,12 @@ import { Button } from '@auxx/ui/components/button'
 import { AlertCircle, CheckCircle, Key, Settings } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { api } from '~/trpc/react'
+import { CredentialDialog } from './credential-dialog'
 import { getCredentialType } from './credential-registry'
-import { NodeCredentialConnectionDialog } from './node-credential-connection-dialog'
 
 interface NodeCredentialButtonProps {
   /** Array of credential type IDs allowed for this node */
   allowedCredentialTypes: string[]
-
-  /** Current node ID */
-  nodeId: string
 
   /** Currently connected credential ID */
   currentCredentialId?: string | null
@@ -44,7 +41,6 @@ interface NodeCredentialButtonProps {
  */
 export function NodeCredentialButton({
   allowedCredentialTypes,
-  nodeId,
   currentCredentialId,
   onCredentialConnected,
   onCredentialDisconnected,
@@ -164,10 +160,10 @@ export function NodeCredentialButton({
         )}
       </div>
 
-      <NodeCredentialConnectionDialog
+      <CredentialDialog
+        mode='connect'
         open={dialogOpen}
         onOpenChange={setDialogOpen}
-        nodeId={nodeId}
         allowedCredentialTypes={allowedCredentialTypes}
         currentCredentialId={currentCredentialId}
         onCredentialConnected={onCredentialConnected}

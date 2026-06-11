@@ -21,6 +21,7 @@ import {
 } from '@auxx/ui/components/table'
 import { Copy, Edit, MoreHorizontal, TestTube, Trash } from 'lucide-react'
 import { useState } from 'react'
+import { CredentialDialog } from '~/components/workflow/credentials/credential-dialog'
 import { useConfirm } from '~/hooks/use-confirm'
 import {
   getCredentialCategory,
@@ -29,7 +30,6 @@ import {
   getCredentialStyling,
 } from '../../../../../../components/workflow/credentials/credential-styling'
 import { useCredentials } from '../../../../../../components/workflow/credentials/credentials-provider'
-import { EditCredentialDialog } from '../../../../../../components/workflow/credentials/edit-credential-dialog'
 
 /**
  * Credentials table view component
@@ -194,7 +194,8 @@ export function CredentialsTableView() {
         </Table>
       </div>
 
-      <EditCredentialDialog
+      <CredentialDialog
+        mode='edit'
         open={editDialogOpen}
         onOpenChange={handleEditDialogClose}
         credentialId={editingCredentialId}
