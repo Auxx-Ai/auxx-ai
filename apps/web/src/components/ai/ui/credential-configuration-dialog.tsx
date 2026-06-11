@@ -8,6 +8,7 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -28,6 +29,7 @@ import {
   InputGroupButton,
   InputGroupInput,
 } from '@auxx/ui/components/input-group'
+import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { Label } from '@auxx/ui/components/label'
 import { RadioGroup, RadioGroupItem } from '@auxx/ui/components/radio-group'
 import {
@@ -41,7 +43,7 @@ import { Separator } from '@auxx/ui/components/separator'
 import { Textarea } from '@auxx/ui/components/textarea'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
-import { Eye, EyeOff, PlusIcon } from 'lucide-react'
+import { Eye, EyeOff, PlusIcon, Trash2 } from 'lucide-react'
 import type React from 'react'
 import { useEffect, useMemo, useState } from 'react'
 import { useForm } from 'react-hook-form'
@@ -676,23 +678,21 @@ export function CredentialConfigurationDialog({
                             <RadioGroup
                               value={field.value}
                               onValueChange={field.onChange}
-                              className='flex flex-wrap gap-3 grid-cols-4'>
+                              className='flex flex-wrap gap-2'>
                               {availableModelTypes.map((option) => (
                                 <div
                                   key={option.value}
-                                  className='relative flex flex-col flex-1 gap-3 rounded-md border border-input p-4 shadow-xs outline-none has-[&_[data-state=checked]]:border-info'>
-                                  <div className='flex items-center gap-2'>
-                                    <RadioGroupItem
-                                      id={`modelType-${option.value}`}
-                                      value={option.value}
-                                      className='peer after:absolute after:inset-0'
-                                    />
-                                    <Label
-                                      htmlFor={`modelType-${option.value}`}
-                                      className='font-medium cursor-pointer peer-data-[state=checked]:text-info'>
-                                      {option.label}
-                                    </Label>
-                                  </div>
+                                  className='relative flex items-center gap-2 rounded-md border border-input px-3 py-2 shadow-xs outline-none has-[&_[data-state=checked]]:border-info'>
+                                  <RadioGroupItem
+                                    id={`modelType-${option.value}`}
+                                    value={option.value}
+                                    className='peer after:absolute after:inset-0'
+                                  />
+                                  <Label
+                                    htmlFor={`modelType-${option.value}`}
+                                    className='font-medium whitespace-nowrap cursor-pointer peer-data-[state=checked]:text-info'>
+                                    {option.label}
+                                  </Label>
                                 </div>
                               ))}
                             </RadioGroup>
@@ -720,47 +720,45 @@ export function CredentialConfigurationDialog({
                   </>
                 )}
 
-                {/* Action Buttons */}
-                <div className='flex justify-between pt-4'>
-                  {/* Delete button (for provider edit mode OR custom-model edit mode) */}
+                <DialogFooter className='mt-0'>
                   {operation === 'edit' && (
                     <Button
                       type='button'
                       size='sm'
-                      variant='destructive'
+                      variant='destructive-hover'
                       onClick={mode === 'provider' ? handleDeleteProvider : handleDeleteCustomModel}
                       loading={deleteProvider.isPending || deleteCustomModel.isPending}
-                      loadingText='Removing...'>
+                      loadingText='Removing...'
+                      className='mr-auto'>
+                      <Trash2 />
                       {mode === 'provider' ? 'Remove API Key' : 'Remove Model'}
                     </Button>
                   )}
-
-                  <div className='flex gap-2 ml-auto'>
-                    <Button
-                      type='button'
-                      variant='ghost'
-                      size='sm'
-                      onClick={() => onOpenChange(false)}>
-                      Cancel
-                    </Button>
-                    <Button
-                      type='submit'
-                      size='sm'
-                      variant='outline'
-                      loading={saveProviderConfiguration.isPending || saveCustomModel.isPending}
-                      loadingText={
-                        mode === 'provider'
-                          ? 'Saving...'
-                          : operation === 'create'
-                            ? 'Creating...'
-                            : 'Updating...'
-                      }>
-                      {mode === 'provider'
-                        ? `${operation === 'create' ? 'Save' : 'Update'} Provider`
-                        : `${operation === 'create' ? 'Create' : 'Update'} Custom Model`}
-                    </Button>
-                  </div>
-                </div>
+                  <Button
+                    type='button'
+                    variant='ghost'
+                    size='sm'
+                    onClick={() => onOpenChange(false)}>
+                    Cancel <Kbd shortcut='esc' variant='ghost' size='sm' />
+                  </Button>
+                  <Button
+                    type='submit'
+                    size='sm'
+                    variant='outline'
+                    loading={saveProviderConfiguration.isPending || saveCustomModel.isPending}
+                    loadingText={
+                      mode === 'provider'
+                        ? 'Saving...'
+                        : operation === 'create'
+                          ? 'Creating...'
+                          : 'Updating...'
+                    }>
+                    {mode === 'provider'
+                      ? `${operation === 'create' ? 'Save' : 'Update'} Provider`
+                      : `${operation === 'create' ? 'Create' : 'Update'} Custom Model`}{' '}
+                    <KbdSubmit variant='outline' size='sm' />
+                  </Button>
+                </DialogFooter>
               </>
             )}
 

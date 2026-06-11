@@ -70,13 +70,18 @@ export function McpServerDetail({ initialServer }: { initialServer: McpDetailSer
   return (
     <SettingsPage
       icon={
-        <div className='size-10 rounded-xl border flex items-center justify-center overflow-hidden'>
-          {current.icon?.iconId ? (
-            <AppIcon iconId={current.icon.iconId} color={current.icon.color} size='md' />
-          ) : (
+        current.icon?.iconId ? (
+          <AppIcon
+            iconId={current.icon.iconId}
+            color={current.icon.color}
+            size='xl'
+            className='rounded-xl border overflow-hidden [&_img]:size-6'
+          />
+        ) : (
+          <div className='size-10 rounded-xl border flex items-center justify-center'>
             <Plug className='size-5 text-muted-foreground' />
-          )}
-        </div>
+          </div>
+        )
       }
       title={
         <div className='flex items-center gap-2'>
