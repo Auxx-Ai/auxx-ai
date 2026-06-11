@@ -80,6 +80,11 @@ vi.mock('../connections', () => ({
 const syncMcpTools = vi.fn(async () => ({ ok: true, toolCount: 1 }))
 vi.mock('../sync', () => ({ syncMcpTools: (...a: unknown[]) => syncMcpTools(...a) }))
 
+const ensureCuratedMcpServer = vi.fn(async () => ({ serverId: 'srv-curated' }))
+vi.mock('../templates/ensure', () => ({
+  ensureCuratedMcpServer: (...a: unknown[]) => ensureCuratedMcpServer(...a),
+}))
+
 vi.mock('../../../cache/invalidate', () => ({ onCacheEvent: async () => undefined }))
 
 vi.mock('@auxx/credentials/store', async () => {
@@ -88,7 +93,7 @@ vi.mock('@auxx/credentials/store', async () => {
 })
 
 import { ok } from 'neverthrow'
-import { connectCuratedMcpServer, createCustomMcpServer } from '../manage'
+import { connectCuratedMcpServer, connectMcpTemplate, createCustomMcpServer } from '../manage'
 
 const OAUTH_DISCOVERY = ok({
   kind: 'oauth' as const,
@@ -110,6 +115,7 @@ beforeEach(() => {
   registerDcrClient.mockReset()
   saveMcpConnection.mockClear()
   syncMcpTools.mockClear()
+  ensureCuratedMcpServer.mockClear()
 })
 
 describe('createCustomMcpServer (auth: auto → oauth)', () => {
@@ -149,6 +155,121 @@ describe('createCustomMcpServer (auth: auto → oauth)', () => {
       auth: 'auto',
     })
     expect(result).toMatchObject({ needsClientCredentials: true })
+  })
+})
+
+describe('createCustomMcpServer (explicit auth modes)', () => {
+  it('oauth with manual authorize/token URLs skips discovery entirely', async () => {
+    const result = await createCustomMcpServer({
+      organizationId: 'org-1',
+      createdById: 'user-1',
+      name: 'Manual OAuth',
+      endpoint: 'https://server.example.com/mcp',
+      auth: 'oauth',
+      oauth: {
+        clientId: 'pasted-cid',
+        clientSecret: 'pasted-secret',
+        authorizeUrl: 'https://as.example.com/authorize',
+        tokenUrl: 'https://as.example.com/token',
+        scopes: ['read', 'write'],
+      },
+    })
+
+    expect(discoverMcpAuth).not.toHaveBeenCalled()
+    expect(result).toMatchObject({ needsOAuth: true })
+    const defInsert = state.inserts.find((i) => i.table === 'ConnectionDefinition')
+    expect(defInsert?.values).toMatchObject({
+      connectionType: 'oauth2-code',
+      oauth2AuthorizeUrl: 'https://as.example.com/authorize',
+      oauth2AccessTokenUrl: 'https://as.example.com/token',
+      oauth2Scopes: ['read', 'write'],
+      oauth2ClientId: 'pasted-cid',
+      oauth2ClientSecret: 'pasted-secret',
+    })
+  })
+
+  it('oauth without overrides throws when discovery finds no OAuth metadata', async () => {
+    discoverMcpAuth.mockResolvedValue(
+      (await import('neverthrow')).err({ code: 'DISCOVERY_FAILED', message: 'no metadata' })
+    )
+
+    await expect(
+      createCustomMcpServer({
+        organizationId: 'org-1',
+        createdById: 'user-1',
+        name: 'Broken OAuth',
+        endpoint: 'https://server.example.com/mcp',
+        auth: 'oauth',
+        oauth: { clientId: 'cid' },
+      })
+    ).rejects.toThrow(/OAuth discovery failed/)
+  })
+
+  it('headers mode stores the header map as secrets and the names in metadata', async () => {
+    const result = await createCustomMcpServer({
+      organizationId: 'org-1',
+      createdById: 'user-1',
+      name: 'Header Server',
+      endpoint: 'https://server.example.com/mcp',
+      auth: 'headers',
+      headers: [
+        { name: 'X-API-Key', value: 'secret-1' },
+        { name: 'X-Api-Version', value: '2026-01' },
+      ],
+    })
+
+    expect(result).toMatchObject({ connected: true })
+    const defInsert = state.inserts.find((i) => i.table === 'ConnectionDefinition')
+    expect(defInsert?.values).toMatchObject({ connectionType: 'secret' })
+    expect(saveMcpConnection).toHaveBeenCalledTimes(1)
+    const arg = saveMcpConnection.mock.calls[0]![0] as {
+      connectionData: { headers?: Record<string, string>; metadata?: { headerNames?: string[] } }
+    }
+    expect(arg.connectionData.headers).toEqual({
+      'X-API-Key': 'secret-1',
+      'X-Api-Version': '2026-01',
+    })
+    expect(arg.connectionData.metadata?.headerNames).toEqual(['X-API-Key', 'X-Api-Version'])
+    expect(syncMcpTools).toHaveBeenCalled()
+  })
+})
+
+describe('connectMcpTemplate', () => {
+  it('throws on an unknown template id', async () => {
+    await expect(
+      connectMcpTemplate({
+        organizationId: 'org-1',
+        createdById: 'user-1',
+        templateId: 'not-a-template',
+      })
+    ).rejects.toThrow(/Unknown MCP template/)
+    expect(ensureCuratedMcpServer).not.toHaveBeenCalled()
+  })
+
+  it('upserts the curated row from the catalog, then runs the curated connect flow', async () => {
+    // `shopify` is a none-auth template; the curated row + def come from the upsert.
+    ensureCuratedMcpServer.mockResolvedValue({ serverId: 'srv-curated' })
+    state.servers = [
+      {
+        id: 'srv-curated',
+        name: 'Shopify Storefront',
+        endpoint: 'https://{shop}.myshopify.com/api/mcp',
+        authDiscovery: null,
+      },
+    ]
+    state.connectionDef = { connectionType: 'none', oauth2ClientId: null }
+
+    const result = await connectMcpTemplate({
+      organizationId: 'org-1',
+      createdById: 'user-1',
+      templateId: 'shopify',
+      connectionVariables: { shop: 'my-store' },
+    })
+
+    expect(result).toMatchObject({ connected: true, serverId: 'srv-curated', slug: 'shopify' })
+    const ensureArg = ensureCuratedMcpServer.mock.calls[0]![0] as { id: string }
+    expect(ensureArg.id).toBe('shopify')
+    expect(saveMcpConnection).toHaveBeenCalledTimes(1)
   })
 })
 

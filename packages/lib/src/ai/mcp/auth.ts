@@ -65,7 +65,10 @@ export async function buildMcpRequestContext(opts: {
   const endpoint = interpolateEndpoint(server.endpoint, variables)
 
   const headers: Record<string, string> = {}
-  if (connection.type !== 'none' && connection.value) {
+  if (connection.headers && Object.keys(connection.headers).length > 0) {
+    // Custom-header auth: the connection carries a full name → value map.
+    Object.assign(headers, connection.headers)
+  } else if (connection.type !== 'none' && connection.value) {
     // Custom-header escape hatch: pasted remotes are often `X-API-Key: <secret>` rather than
     // `Authorization: Bearer`. `metadata.authHeader` overrides the default header name/prefix.
     const authHeader = connection.metadata?.authHeader as

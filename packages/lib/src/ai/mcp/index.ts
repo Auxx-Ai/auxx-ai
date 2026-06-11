@@ -21,9 +21,10 @@ export type { McpAuthDiscoveryResult, McpDiscoveryError } from './discovery'
 export { discoverMcpAuth, registerDcrClient } from './discovery'
 export type { MappedMcpError } from './errors'
 export { McpAuthError, mapMcpError } from './errors'
-export type { McpConnectOutcome } from './manage'
+export type { McpConnectOutcome, McpOAuthConfigInput } from './manage'
 export {
   connectCuratedMcpServer,
+  connectMcpTemplate,
   createCustomMcpServer,
   deleteMcpServer,
   updateMcpServer,
@@ -44,5 +45,7 @@ export type {
 export { parseMcpSnippet, resolveMcpSnippet } from './snippet'
 export type { SyncMcpToolsResult } from './sync'
 export { syncMcpTools } from './sync'
+export type { McpTemplate, McpTemplateCategory, McpTemplateCategoryDef } from './templates'
+export { ensureCuratedMcpServer, mcpTemplateCategories, mcpTemplates } from './templates'
 export { buildMcpAgentTools, mcpToolName, wrapMcpOutput } from './tool-adapter'
 export type { CachedMcpServer, McpCallResult, McpToolDescriptor, McpTrustConfig } from './types'

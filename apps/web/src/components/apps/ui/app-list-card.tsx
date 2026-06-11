@@ -2,10 +2,26 @@
 
 'use client'
 
-import { BadgeCheck, Mail } from 'lucide-react'
+import { Button } from '@auxx/ui/components/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@auxx/ui/components/dropdown-menu'
+import { BadgeCheck, Mail, MoreVertical } from 'lucide-react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import type React from 'react'
 import { Tooltip } from '~/components/global/tooltip'
+
+export interface AppListCardMenuItem {
+  label: string
+  icon?: React.ReactNode
+  onClick: () => void
+  destructive?: boolean
+  disabled?: boolean
+}
 
 interface AppListCardProps {
   title: string
@@ -17,12 +33,16 @@ interface AppListCardProps {
   subtitle?: string
   verified?: boolean
   badges?: { label?: string; icon?: React.ReactNode }[]
+  /** Optional actions shown in a hover-revealed three-dot dropdown in the top-right. */
+  menuItems?: AppListCardMenuItem[]
 }
 
 /**
  * AppListCard component
  * Displays a card with icon, title, description, and optional badges. Pass
  * either `href` (renders as a link) or `onClick` (renders as a button).
+ * Pass `menuItems` to add a three-dot dropdown; the card then renders as a
+ * clickable div so the trigger isn't nested inside a link/button.
  */
 export function AppListCard({
   title,
@@ -34,7 +54,11 @@ export function AppListCard({
   subtitle,
   verified,
   badges,
+  menuItems,
 }: AppListCardProps) {
+  const router = useRouter()
+  const hasMenu = !!menuItems?.length
+
   const cardClass =
     'rounded-2xl bg-primary-50 hover:bg-primary-50/50 hover:outline-5 hover:outline-primary-50 flex flex-col p-3 gap-2 border text-left disabled:opacity-60 disabled:cursor-not-allowed'
 
@@ -75,6 +99,45 @@ export function AppListCard({
       <div className='text-sm text-muted-foreground line-clamp-2'>{description}</div>
     </>
   )
+
+  if (hasMenu) {
+    return (
+      <div
+        className={`${cardClass} cursor-pointer group/app-card relative`}
+        onClick={() => {
+          if (disabled) return
+          if (onClick) onClick()
+          else if (href) router.push(href)
+        }}>
+        {body}
+        <div className='absolute bottom-2 right-2'>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                className='opacity-0 group-hover/app-card:opacity-100 duration-300 data-[state=open]:opacity-100! data-[state=open]:bg-muted! transition-opacity rounded-lg'
+                variant='ghost'
+                size='icon-xs'
+                onClick={(e) => e.stopPropagation()}>
+                <MoreVertical />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align='end' onClick={(e) => e.stopPropagation()}>
+              {menuItems?.map((item) => (
+                <DropdownMenuItem
+                  key={item.label}
+                  onClick={item.onClick}
+                  disabled={item.disabled}
+                  variant={item.destructive ? 'destructive' : undefined}>
+                  {item.icon}
+                  {item.label}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </div>
+    )
+  }
 
   if (onClick) {
     return (

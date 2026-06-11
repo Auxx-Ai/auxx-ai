@@ -1,12 +1,16 @@
 // apps/web/src/server/api/routers/mcp.ts
 
+import { findCredential } from '@auxx/credentials/store'
 import type { ConnectionVariable } from '@auxx/database'
 import { database as db, schema } from '@auxx/database'
 import {
   checkMcpResolveRateLimit,
   connectCuratedMcpServer,
+  connectMcpTemplate,
   createCustomMcpServer,
   deleteMcpServer,
+  mcpTemplateCategories,
+  mcpTemplates,
   resolveMcpSnippet,
   syncMcpTools,
   updateMcpServer,
@@ -28,13 +32,41 @@ const mcpAdminProcedure = adminProcedure.use(async ({ ctx, next }) => {
   return next()
 })
 
-/** Fetch the connection-variable defs (for the curated connect dialog) for a server. */
-async function getConnectionVariables(serverId: string): Promise<ConnectionVariable[]> {
+/**
+ * Fetch the connection-definition data the detail page + edit dialog need: connection-variable
+ * defs (curated connect dialog) and the OAuth config prefill (client SECRET intentionally
+ * excluded — it never leaves the server).
+ */
+async function getConnectionDefinitionInfo(serverId: string): Promise<{
+  connectionVariables: ConnectionVariable[]
+  oauth: {
+    clientId: string | null
+    authorizeUrl: string | null
+    tokenUrl: string | null
+    scopes: string[]
+  } | null
+}> {
   const def = await db.query.ConnectionDefinition.findFirst({
     where: eq(schema.ConnectionDefinition.mcpServerId, serverId),
-    columns: { oauth2Features: true },
+    columns: {
+      oauth2Features: true,
+      oauth2ClientId: true,
+      oauth2AuthorizeUrl: true,
+      oauth2AccessTokenUrl: true,
+      oauth2Scopes: true,
+    },
   })
-  return def?.oauth2Features?.connectionVariables ?? []
+  return {
+    connectionVariables: def?.oauth2Features?.connectionVariables ?? [],
+    oauth: def
+      ? {
+          clientId: def.oauth2ClientId,
+          authorizeUrl: def.oauth2AuthorizeUrl,
+          tokenUrl: def.oauth2AccessTokenUrl,
+          scopes: def.oauth2Scopes ?? [],
+        }
+      : null,
+  }
 }
 
 /** Fetch the raw endpoint (shown on the detail page's About tab for custom servers). */
@@ -44,6 +76,45 @@ async function getServerEndpoint(serverId: string): Promise<string | null> {
     columns: { endpoint: true },
   })
   return server?.endpoint ?? null
+}
+
+/**
+ * Derive the edit dialog's auth posture + prefill data from the credential's plaintext metadata
+ * (no decryption). `connectionType` alone can't distinguish bearer from custom headers — both
+ * store as `'secret'`; headers-auth connections carry their header NAMES in metadata.
+ */
+async function getAuthPosture(
+  serverId: string,
+  organizationId: string,
+  connectionType: 'oauth2-code' | 'secret' | 'none' | null
+): Promise<{
+  authPosture: 'oauth' | 'bearer' | 'headers' | 'none' | null
+  authHeaderName: string | null
+  headerNames: string[]
+}> {
+  if (connectionType === 'oauth2-code') {
+    return { authPosture: 'oauth', authHeaderName: null, headerNames: [] }
+  }
+  if (connectionType === 'none') {
+    return { authPosture: 'none', authHeaderName: null, headerNames: [] }
+  }
+  if (connectionType !== 'secret') {
+    return { authPosture: null, authHeaderName: null, headerNames: [] }
+  }
+  const credential = await findCredential({
+    organizationId,
+    kind: 'mcp',
+    mcpServerId: serverId,
+    userId: null,
+  })
+  const metadata = credential.isOk() ? (credential.value?.metadata ?? {}) : {}
+  const headerNames = Array.isArray(metadata.headerNames) ? (metadata.headerNames as string[]) : []
+  const authHeaderName = (metadata.authHeader as { name?: string } | undefined)?.name ?? null
+  return {
+    authPosture: headerNames.length > 0 ? 'headers' : 'bearer',
+    authHeaderName,
+    headerNames,
+  }
 }
 
 /**
@@ -78,11 +149,46 @@ export const mcpRouter = createTRPCRouter({
       const servers = await getOrgCache().get(ctx.session.organizationId, 'mcpServers')
       const server = servers.find((s) => s.slug === input.slug)
       if (!server) return null
-      const [connectionVariables, endpoint] = await Promise.all([
-        getConnectionVariables(server.serverId),
+      const [defInfo, endpoint, posture] = await Promise.all([
+        getConnectionDefinitionInfo(server.serverId),
         getServerEndpoint(server.serverId),
+        getAuthPosture(server.serverId, ctx.session.organizationId, server.connectionType),
       ])
-      return { ...server, connectionVariables, endpoint }
+      return { ...server, ...defInfo, endpoint, ...posture }
+    }),
+
+  /**
+   * Static template catalog from `@auxx/lib/ai/mcp` — the "Connect from template" dialog's data
+   * source (the catalog never ships in the client bundle). Mirrors `list`'s gate-to-empty shape.
+   */
+  listTemplates: protectedProcedure.query(async ({ ctx }) => {
+    const hasAccess = await new FeaturePermissionService().hasAccess(
+      ctx.session.organizationId,
+      FeatureKey.mcp
+    )
+    if (!hasAccess) return { templates: [], categories: [] }
+    return { templates: mcpTemplates, categories: mcpTemplateCategories }
+  }),
+
+  /**
+   * Connect a catalog template: upserts the curated/global row from the lib definition, then
+   * runs the curated connect flow.
+   */
+  connectTemplate: mcpAdminProcedure
+    .input(
+      z.object({
+        templateId: z.string(),
+        connectionVariables: z.record(z.string(), z.string()).optional(),
+        token: z.string().optional(),
+        returnTo: z.string().optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      return connectMcpTemplate({
+        organizationId: ctx.session.organizationId,
+        createdById: ctx.session.user.id,
+        ...input,
+      })
     }),
 
   /**
@@ -106,9 +212,21 @@ export const mcpRouter = createTRPCRouter({
       z.object({
         name: z.string().min(1).max(120),
         endpoint: z.string().url(),
-        auth: z.enum(['auto', 'bearer', 'none']),
+        auth: z.enum(['auto', 'oauth', 'bearer', 'headers', 'none']),
         token: z.string().optional(),
         authHeaderName: z.string().optional(),
+        headers: z
+          .array(z.object({ name: z.string().min(1), value: z.string().min(1) }))
+          .optional(),
+        oauth: z
+          .object({
+            clientId: z.string().optional(),
+            clientSecret: z.string().optional(),
+            authorizeUrl: z.string().url().optional(),
+            tokenUrl: z.string().url().optional(),
+            scopes: z.array(z.string()).optional(),
+          })
+          .optional(),
         description: z.string().optional(),
         icon: z
           .object({
@@ -117,8 +235,6 @@ export const mcpRouter = createTRPCRouter({
             iconId: z.string().optional(),
           })
           .optional(),
-        clientId: z.string().optional(),
-        clientSecret: z.string().optional(),
         returnTo: z.string().optional(),
       })
     )
@@ -162,16 +278,28 @@ export const mcpRouter = createTRPCRouter({
       return result
     }),
 
-  /** Edit a custom server (name / endpoint / bearer auth) and/or update trust config. */
+  /** Edit a custom server (name / endpoint / auth) and/or update trust config. */
   update: mcpAdminProcedure
     .input(
       z.object({
         serverId: z.string(),
         name: z.string().min(1).max(120).optional(),
         endpoint: z.string().url().optional(),
-        auth: z.enum(['auto', 'bearer', 'none']).optional(),
+        auth: z.enum(['auto', 'oauth', 'bearer', 'headers', 'none']).optional(),
         token: z.string().optional(),
         authHeaderName: z.string().optional(),
+        headers: z
+          .array(z.object({ name: z.string().min(1), value: z.string().min(1) }))
+          .optional(),
+        oauth: z
+          .object({
+            clientId: z.string().optional(),
+            clientSecret: z.string().optional(),
+            authorizeUrl: z.string().url().optional(),
+            tokenUrl: z.string().url().optional(),
+            scopes: z.array(z.string()).optional(),
+          })
+          .optional(),
         trust: z
           .object({ allTools: z.boolean().optional(), tools: z.array(z.string()).optional() })
           .optional(),

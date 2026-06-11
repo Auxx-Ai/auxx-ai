@@ -2,7 +2,6 @@
 'use client'
 
 import type { ConnectionVariable } from '@auxx/database'
-import { FieldType } from '@auxx/database/enums'
 import { Button } from '@auxx/ui/components/button'
 import {
   Dialog,
@@ -14,11 +13,10 @@ import {
 } from '@auxx/ui/components/dialog'
 import { toastError } from '@auxx/ui/components/toast'
 import { useState } from 'react'
-import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
-import { BaseType } from '~/components/workflow/types'
-import { VarEditorField, VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
+import { VarEditorField } from '~/components/workflow/ui/input-editor/var-editor'
 import { api } from '~/trpc/react'
 import { useMcpOAuthPopup } from '../hooks/use-mcp-oauth-popup'
+import { ConnectionVariableFields } from './connection-variable-fields'
 
 interface ConnectCuratedDialogProps {
   open: boolean
@@ -130,43 +128,16 @@ export function ConnectCuratedDialog({
         <VarEditorField
           orientation='responsive'
           className='p-0 sm:[&_[data-slot=field-row-label]]:w-40'>
-          {connectionVariables.map((variable) => (
-            <VarEditorFieldRow
-              key={variable.key}
-              title={variable.label}
-              description={variable.description}
-              type={BaseType.STRING}
-              showIcon
-              isRequired={variable.required !== false}
-              validationError={errors[variable.key]}>
-              <FieldInputAdapter
-                fieldType={FieldType.TEXT}
-                value={values[variable.key] ?? ''}
-                onChange={(v) =>
-                  setValues((prev) => ({ ...prev, [variable.key]: (v as string) ?? '' }))
-                }
-                placeholder={variable.placeholder}
-                disabled={isPending}
-              />
-            </VarEditorFieldRow>
-          ))}
-
-          {isSecret && (
-            <VarEditorFieldRow
-              title='Token'
-              type={BaseType.STRING}
-              showIcon
-              isRequired
-              validationError={errors.__token}>
-              <FieldInputAdapter
-                fieldType={FieldType.TEXT}
-                value={token}
-                onChange={(v) => setToken((v as string) ?? '')}
-                placeholder='Bearer token'
-                disabled={isPending}
-              />
-            </VarEditorFieldRow>
-          )}
+          <ConnectionVariableFields
+            variables={connectionVariables}
+            values={values}
+            onValueChange={(key, value) => setValues((prev) => ({ ...prev, [key]: value }))}
+            showToken={isSecret}
+            token={token}
+            onTokenChange={setToken}
+            errors={errors}
+            disabled={isPending}
+          />
         </VarEditorField>
 
         <DialogFooter>
