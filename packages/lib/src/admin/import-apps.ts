@@ -1,5 +1,6 @@
 // packages/lib/src/admin/import-apps.ts
 
+import { encryptValue } from '@auxx/credentials/crypto'
 import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { eq } from 'drizzle-orm'
@@ -298,7 +299,7 @@ export async function importApps(
           global: cd.global,
           oauth2AuthorizeUrl: cd.oauth2AuthorizeUrl,
           oauth2AccessTokenUrl: cd.oauth2AccessTokenUrl,
-          oauth2ClientId: cd.oauth2ClientId,
+          oauth2ClientId: cd.oauth2ClientId ? encryptValue(cd.oauth2ClientId) : cd.oauth2ClientId,
           oauth2Scopes: cd.oauth2Scopes,
           oauth2TokenRequestAuthMethod: cd.oauth2TokenRequestAuthMethod,
           oauth2RefreshTokenIntervalSeconds: cd.oauth2RefreshTokenIntervalSeconds,

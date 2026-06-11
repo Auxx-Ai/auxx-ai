@@ -92,8 +92,19 @@ vi.mock('@auxx/credentials/store', async () => {
   return { findCredential: async () => ok(null) }
 })
 
+import { decryptValue, HIDDEN_VALUE, isV2Payload } from '@auxx/credentials/crypto'
 import { ok } from 'neverthrow'
-import { connectCuratedMcpServer, connectMcpTemplate, createCustomMcpServer } from '../manage'
+import {
+  connectCuratedMcpServer,
+  connectMcpTemplate,
+  createCustomMcpServer,
+  updateMcpServer,
+} from '../manage'
+
+/** Decrypt a recorded write value (client creds are persisted as v2 ciphertext). */
+function decryptWrite(value: unknown): string | null {
+  return decryptValue((value as string | undefined) ?? null)
+}
 
 const OAUTH_DISCOVERY = ok({
   kind: 'oauth' as const,
@@ -106,6 +117,7 @@ const OAUTH_DISCOVERY = ok({
 })
 
 beforeEach(() => {
+  vi.stubEnv('CREDENTIAL_ENCRYPTION_KEY', 'a'.repeat(64))
   state.servers = []
   state.connectionDef = undefined
   state.installation = undefined
@@ -135,9 +147,12 @@ describe('createCustomMcpServer (auth: auto → oauth)', () => {
     if ('authorizeUrl' in result) {
       expect(result.authorizeUrl).toBe('/api/mcp/srv-new/oauth2/authorize')
     }
-    // DCR-minted client id persisted onto the connection definition.
-    const clientUpdate = state.updates.find((u) => u.values.oauth2ClientId === 'dcr-cid')
+    // DCR-minted client id persisted onto the connection definition (encrypted).
+    const clientUpdate = state.updates.find(
+      (u) => decryptWrite(u.values.oauth2ClientId) === 'dcr-cid'
+    )
     expect(clientUpdate).toBeDefined()
+    expect(isV2Payload(clientUpdate?.values.oauth2ClientId as string)).toBe(true)
     expect(syncMcpTools).not.toHaveBeenCalled()
   })
 
@@ -183,9 +198,12 @@ describe('createCustomMcpServer (explicit auth modes)', () => {
       oauth2AuthorizeUrl: 'https://as.example.com/authorize',
       oauth2AccessTokenUrl: 'https://as.example.com/token',
       oauth2Scopes: ['read', 'write'],
-      oauth2ClientId: 'pasted-cid',
-      oauth2ClientSecret: 'pasted-secret',
     })
+    // Pasted creds are persisted as v2 ciphertext, never plaintext.
+    expect(isV2Payload(defInsert?.values.oauth2ClientId as string)).toBe(true)
+    expect(isV2Payload(defInsert?.values.oauth2ClientSecret as string)).toBe(true)
+    expect(decryptWrite(defInsert?.values.oauth2ClientId)).toBe('pasted-cid')
+    expect(decryptWrite(defInsert?.values.oauth2ClientSecret)).toBe('pasted-secret')
   })
 
   it('oauth without overrides throws when discovery finds no OAuth metadata', async () => {
@@ -231,6 +249,80 @@ describe('createCustomMcpServer (explicit auth modes)', () => {
     })
     expect(arg.connectionData.metadata?.headerNames).toEqual(['X-API-Key', 'X-Api-Version'])
     expect(syncMcpTools).toHaveBeenCalled()
+  })
+})
+
+describe('masked-prefill echoes are never persisted', () => {
+  const oauthEcho = (clientSecret: string) => ({
+    clientId: 'cid-1',
+    clientSecret,
+    authorizeUrl: 'https://as.example.com/authorize',
+    tokenUrl: 'https://as.example.com/token',
+  })
+
+  it.each([
+    HIDDEN_VALUE,
+    'past****cret',
+    '********',
+  ])('createCustomMcpServer on an existing server drops %s from the definition update', async (echo) => {
+    state.servers = [{ id: 'srv-1', slug: 'my-server' }]
+
+    await createCustomMcpServer({
+      organizationId: 'org-1',
+      createdById: 'user-1',
+      name: 'My Server',
+      endpoint: 'https://server.example.com/mcp',
+      auth: 'oauth',
+      oauth: oauthEcho(echo),
+    })
+
+    const defUpdate = state.updates.find((u) => u.table === 'ConnectionDefinition')
+    expect(defUpdate).toBeDefined()
+    expect(decryptWrite(defUpdate?.values.oauth2ClientId)).toBe('cid-1')
+    expect(defUpdate?.values).not.toHaveProperty('oauth2ClientSecret')
+  })
+
+  it.each([
+    HIDDEN_VALUE,
+    'past****cret',
+  ])('updateMcpServer (oauth) drops %s from the definition update', async (echo) => {
+    await updateMcpServer({
+      organizationId: 'org-1',
+      serverId: 'srv-1',
+      auth: 'oauth',
+      oauth: { clientSecret: echo },
+    })
+
+    const defUpdate = state.updates.find((u) => u.table === 'ConnectionDefinition')
+    expect(defUpdate).toBeDefined()
+    expect(defUpdate?.values).toMatchObject({ connectionType: 'oauth2-code' })
+    expect(defUpdate?.values).not.toHaveProperty('oauth2ClientSecret')
+  })
+
+  it('updateMcpServer (oauth) still persists a real replacement secret', async () => {
+    await updateMcpServer({
+      organizationId: 'org-1',
+      serverId: 'srv-1',
+      auth: 'oauth',
+      oauth: { clientSecret: 'brand-new-real-secret' },
+    })
+
+    const defUpdate = state.updates.find((u) => u.table === 'ConnectionDefinition')
+    expect(decryptWrite(defUpdate?.values.oauth2ClientSecret)).toBe('brand-new-real-secret')
+  })
+
+  it('createCustomMcpServer rejects a mask echo for a brand-new server', async () => {
+    await expect(
+      createCustomMcpServer({
+        organizationId: 'org-1',
+        createdById: 'user-1',
+        name: 'New Server',
+        endpoint: 'https://server.example.com/mcp',
+        auth: 'oauth',
+        oauth: oauthEcho(HIDDEN_VALUE),
+      })
+    ).rejects.toThrow(/masked placeholder/)
+    expect(state.inserts).toHaveLength(0)
   })
 })
 
@@ -328,8 +420,10 @@ describe('connectCuratedMcpServer', () => {
       (u) => u.values.oauth2AuthorizeUrl === 'https://as.example.com/authorize'
     )
     expect(urlUpdate).toBeDefined()
-    // DCR client persisted too.
-    expect(state.updates.some((u) => u.values.oauth2ClientId === 'linear-cid')).toBe(true)
+    // DCR client persisted too (encrypted).
+    expect(state.updates.some((u) => decryptWrite(u.values.oauth2ClientId) === 'linear-cid')).toBe(
+      true
+    )
   })
 
   it('skips DCR when the curated OAuth def already has a client id', async () => {

@@ -1,7 +1,16 @@
 // packages/credentials/src/crypto/__tests__/secret-box.test.ts
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { decryptSecrets, encryptSecrets, isV2Payload } from '../secret-box'
+import { HIDDEN_VALUE } from '../client'
+import {
+  decryptSecrets,
+  decryptValue,
+  encryptSecrets,
+  encryptValue,
+  isMaskEcho,
+  isV2Payload,
+  maskValue,
+} from '../secret-box'
 
 const V2_KEY = 'a'.repeat(64) // 64 hex chars → 32 bytes
 
@@ -71,6 +80,88 @@ describe('tamper detection', () => {
     raw[12] ^= 0x01 // first auth-tag byte (after 12-byte IV)
     const tampered = `v2:${raw.toString('base64')}`
     expect(() => decryptSecrets(tampered)).toThrow('Failed to decrypt credential secrets')
+  })
+})
+
+describe('encryptValue / decryptValue', () => {
+  it('round-trips a string value', () => {
+    expect(decryptValue(encryptValue('shpss_abc123'))).toBe('shpss_abc123')
+  })
+
+  it('produces a v2 payload', () => {
+    expect(isV2Payload(encryptValue('x'))).toBe(true)
+  })
+
+  it('passes through plaintext unchanged (lenient policy)', () => {
+    expect(decryptValue('plain-client-secret')).toBe('plain-client-secret')
+    expect(decryptValue('{client_secret}')).toBe('{client_secret}')
+    expect(decryptValue('')).toBe('')
+  })
+
+  it('handles null', () => {
+    expect(decryptValue(null)).toBeNull()
+  })
+})
+
+describe('maskValue', () => {
+  it('reveals 4+4 for 16+ char secrets', () => {
+    expect(maskValue('abcdefghijklmnop')).toBe('abcd********mnop')
+  })
+
+  it('reveals 3+3 at 12 chars and 2+2 at 10 chars', () => {
+    expect(maskValue('abcdefghijkl')).toBe('abc******jkl')
+    expect(maskValue('abcdefghij')).toBe('ab******ij')
+  })
+
+  it('returns the fixed full mask under 10 chars', () => {
+    for (const len of [0, 1, 5, 8, 9]) {
+      expect(maskValue('x'.repeat(len))).toBe('********')
+    }
+  })
+
+  it('caps the star run at 20', () => {
+    const masked = maskValue('a'.repeat(100))
+    expect(masked).toBe(`aaaa${'*'.repeat(20)}aaaa`)
+  })
+
+  it('always hides at least 6 chars (property)', () => {
+    for (let len = 0; len <= 64; len++) {
+      const value = Array.from({ length: len }, (_, i) => String.fromCharCode(97 + (i % 26))).join(
+        ''
+      )
+      const masked = maskValue(value)
+      // Count revealed original chars: prefix + suffix that match the source value
+      let prefix = 0
+      while (prefix < masked.length && masked[prefix] !== '*') prefix++
+      let suffix = 0
+      while (suffix < masked.length && masked[masked.length - 1 - suffix] !== '*') suffix++
+      if (masked === '********') {
+        expect(value.length).toBeLessThan(10)
+      } else {
+        expect(value.length - prefix - suffix).toBeGreaterThanOrEqual(6)
+        expect(value.startsWith(masked.slice(0, prefix))).toBe(true)
+        expect(value.endsWith(masked.slice(masked.length - suffix))).toBe(true)
+      }
+    }
+  })
+})
+
+describe('isMaskEcho', () => {
+  it('catches the HIDDEN_VALUE sentinel', () => {
+    expect(isMaskEcho(HIDDEN_VALUE)).toBe(true)
+  })
+
+  it('catches maskValue output across lengths (full mask included)', () => {
+    for (const len of [0, 5, 9, 10, 12, 16, 40, 100]) {
+      expect(isMaskEcho(maskValue('x'.repeat(len)))).toBe(true)
+    }
+    expect(isMaskEcho('ab****yz')).toBe(true)
+  })
+
+  it('passes real values through', () => {
+    expect(isMaskEcho('{client_secret}')).toBe(false)
+    expect(isMaskEcho('shpss_real_secret_no_star_runs')).toBe(false)
+    expect(isMaskEcho('')).toBe(false)
   })
 })
 

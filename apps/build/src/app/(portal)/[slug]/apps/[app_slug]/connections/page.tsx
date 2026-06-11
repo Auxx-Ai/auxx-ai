@@ -1,6 +1,7 @@
 // apps/build/src/app/(portal)/[slug]/apps/[app_slug]/connections/page.tsx
 'use client'
 
+import { HIDDEN_VALUE } from '@auxx/credentials/crypto/client'
 import type { ConnectionVariable } from '@auxx/database'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
@@ -20,7 +21,12 @@ import {
   FieldSet,
 } from '@auxx/ui/components/field'
 import { Input } from '@auxx/ui/components/input'
-import { InputGroup, InputGroupAddon, InputGroupInput } from '@auxx/ui/components/input-group'
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupButton,
+  InputGroupInput,
+} from '@auxx/ui/components/input-group'
 import {
   Select,
   SelectContent,
@@ -33,7 +39,7 @@ import { Switch } from '@auxx/ui/components/switch'
 import { Textarea } from '@auxx/ui/components/textarea'
 import { TooltipError, TooltipExplanation } from '@auxx/ui/components/tooltip'
 import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
-import { AlertTriangle, Loader2, Settings2, X } from 'lucide-react'
+import { AlertTriangle, Eye, EyeOff, Loader2, Settings2, X } from 'lucide-react'
 import { useParams } from 'next/navigation'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Controller, useForm } from 'react-hook-form'
@@ -190,6 +196,9 @@ export default function ConnectionsPage() {
   const { app_slug } = useParams<{ app_slug: string }>()
   const utils = api.useUtils()
   const hasLoadedConnection = useRef(false)
+  // The server prefills a *masked* secret — if it's submitted unchanged, send the sentinel so
+  // the stored value is kept (the mask itself must never be persisted).
+  const maskedSecretPrefill = useRef('')
 
   // Get app data
   const { data: app, isLoading: isLoadingApp } = api.apps.get.useQuery({
@@ -238,12 +247,17 @@ export default function ConnectionsPage() {
     reset,
     control,
     watch,
+    setValue,
   } = form
 
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [connectionVariables, setConnectionVariables] = useState<ConnectionVariable[]>([])
   const [variableDialogOpen, setVariableDialogOpen] = useState(false)
   const [variablesDirty, setVariablesDirty] = useState(false)
+  // Eye toggle flips the input type; it only ever exposes the mask (or what the user typed).
+  // The real secret comes back exclusively via the audited reveal mutation below.
+  const [secretVisible, setSecretVisible] = useState(false)
+  const revealedSecret = useRef<string | null>(null)
 
   // Watch form fields - using watch instead of useWatch to avoid timing issues with reset
   const connectionType = watch('connectionType') || 'none'
@@ -254,6 +268,8 @@ export default function ConnectionsPage() {
       const scheduleValue = convertSecondsToSchedule(connection.oauth2RefreshTokenIntervalSeconds)
       const connectionTypeValue = connection.connectionType as 'none' | 'secret' | 'oauth2-code'
       const features = (connection.oauth2Features as Record<string, unknown>) ?? {}
+
+      maskedSecretPrefill.current = connection.oauth2ClientSecret || ''
 
       reset({
         connectionType: connectionTypeValue,
@@ -319,6 +335,22 @@ export default function ConnectionsPage() {
     },
   })
 
+  // Reveal-on-demand ("dev lost the secret" recovery) — server audits every reveal.
+  const revealClientSecret = api.connections.revealClientSecret.useMutation({
+    onSuccess: ({ clientSecret: revealed }) => {
+      if (!revealed) return
+      revealedSecret.current = revealed
+      setValue('oauth2ClientSecret', revealed)
+      setSecretVisible(true)
+    },
+    onError: (error) => {
+      toastError({
+        title: 'Failed to reveal client secret',
+        description: error.message,
+      })
+    },
+  })
+
   // Computed value for conditional rendering
   const isOAuth2 = connectionType === 'oauth2-code'
 
@@ -327,6 +359,11 @@ export default function ConnectionsPage() {
   const tokenUrl = watch('oauth2AccessTokenUrl') || ''
   const clientId = watch('oauth2ClientId') || ''
   const clientSecret = watch('oauth2ClientSecret') || ''
+
+  // Reveal only applies while the field still shows the untouched masked prefill.
+  const canReveal = !!maskedSecretPrefill.current && clientSecret === maskedSecretPrefill.current
+
+  const secretRegister = register('oauth2ClientSecret')
 
   const detectedPlaceholders = useMemo(() => {
     const allFields = [authorizeUrl, tokenUrl, clientId, clientSecret].join(' ')
@@ -365,7 +402,10 @@ export default function ConnectionsPage() {
         oauth2AuthorizeUrl: data.oauth2AuthorizeUrl,
         oauth2AccessTokenUrl: data.oauth2AccessTokenUrl,
         oauth2ClientId: data.oauth2ClientId,
-        oauth2ClientSecret: data.oauth2ClientSecret,
+        oauth2ClientSecret:
+          maskedSecretPrefill.current && data.oauth2ClientSecret === maskedSecretPrefill.current
+            ? HIDDEN_VALUE
+            : data.oauth2ClientSecret,
         oauth2Scopes: scopesArray,
         oauth2TokenRequestAuthMethod: data.oauth2TokenRequestAuthMethod,
         oauth2RefreshTokenIntervalSeconds: refreshSeconds,
@@ -591,12 +631,43 @@ export default function ConnectionsPage() {
                   </Field>
                   <Field>
                     <FieldLabel htmlFor='app-organization-client-secret'>Client secret</FieldLabel>
-                    <Input
-                      id='app-organization-client-secret'
-                      placeholder=''
-                      type='password'
-                      {...register('oauth2ClientSecret')}
-                    />
+                    <InputGroup>
+                      <InputGroupInput
+                        id='app-organization-client-secret'
+                        placeholder=''
+                        type={secretVisible ? 'text' : 'password'}
+                        {...secretRegister}
+                        onBlur={(e) => {
+                          // Re-mask after a reveal unless the user edited the value.
+                          if (revealedSecret.current && e.target.value === revealedSecret.current) {
+                            setValue('oauth2ClientSecret', maskedSecretPrefill.current)
+                            revealedSecret.current = null
+                            setSecretVisible(false)
+                          }
+                          return secretRegister.onBlur(e)
+                        }}
+                      />
+                      <InputGroupAddon align='inline-end'>
+                        {canReveal && (
+                          <InputGroupButton
+                            onClick={() =>
+                              app &&
+                              revealClientSecret.mutate({ appId: app.id, version: 1, global: true })
+                            }
+                            disabled={revealClientSecret.isPending}>
+                            {revealClientSecret.isPending ? 'Revealing...' : 'Reveal'}
+                          </InputGroupButton>
+                        )}
+                        <InputGroupButton
+                          className='mr-1'
+                          aria-label={secretVisible ? 'Hide secret' : 'Show secret'}
+                          aria-pressed={secretVisible}
+                          size='icon-xs'
+                          onClick={() => setSecretVisible((v) => !v)}>
+                          {secretVisible ? <EyeOff /> : <Eye />}
+                        </InputGroupButton>
+                      </InputGroupAddon>
+                    </InputGroup>
                     {errors.oauth2ClientSecret && (
                       <p className='text-sm text-red-600 mt-1'>
                         {errors.oauth2ClientSecret.message}

@@ -1,5 +1,6 @@
 // packages/lib/src/admin/export-apps.ts
 
+import { decryptValue } from '@auxx/credentials/crypto'
 import type { Database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 
@@ -81,7 +82,7 @@ export async function exportByDeveloperAccount(db: Database, developerAccountId:
           major: cd.major,
           oauth2AuthorizeUrl: cd.oauth2AuthorizeUrl,
           oauth2AccessTokenUrl: cd.oauth2AccessTokenUrl,
-          oauth2ClientId: cd.oauth2ClientId,
+          oauth2ClientId: decryptValue(cd.oauth2ClientId),
           // oauth2ClientSecret intentionally excluded
           oauth2Scopes: cd.oauth2Scopes,
           oauth2TokenRequestAuthMethod: cd.oauth2TokenRequestAuthMethod,

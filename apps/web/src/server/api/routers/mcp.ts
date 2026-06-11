@@ -1,5 +1,6 @@
 // apps/web/src/server/api/routers/mcp.ts
 
+import { decryptValue, maskValue } from '@auxx/credentials/crypto'
 import { findCredential } from '@auxx/credentials/store'
 import type { ConnectionVariable } from '@auxx/database'
 import { database as db, schema } from '@auxx/database'
@@ -17,6 +18,7 @@ import {
 } from '@auxx/lib/ai/mcp'
 import { getOrgCache } from '@auxx/lib/cache'
 import { RateLimitError } from '@auxx/lib/errors'
+import { isAdminOrOwner } from '@auxx/lib/members'
 import { FeaturePermissionService } from '@auxx/lib/permissions'
 import { FeatureKey } from '@auxx/lib/permissions/client'
 import { createScopedLogger } from '@auxx/logger'
@@ -34,13 +36,18 @@ const mcpAdminProcedure = adminProcedure.use(async ({ ctx, next }) => {
 
 /**
  * Fetch the connection-definition data the detail page + edit dialog need: connection-variable
- * defs (curated connect dialog) and the OAuth config prefill (client SECRET intentionally
- * excluded — it never leaves the server).
+ * defs (curated connect dialog) and the OAuth config prefill. Only the MASK of the client
+ * secret leaves the server, and only for admins — the edit dialog is admin-only, so members
+ * (read-only viewers) get null.
  */
-async function getConnectionDefinitionInfo(serverId: string): Promise<{
+async function getConnectionDefinitionInfo(
+  serverId: string,
+  includeSecretMask: boolean
+): Promise<{
   connectionVariables: ConnectionVariable[]
   oauth: {
     clientId: string | null
+    clientSecret: string | null
     authorizeUrl: string | null
     tokenUrl: string | null
     scopes: string[]
@@ -51,16 +58,19 @@ async function getConnectionDefinitionInfo(serverId: string): Promise<{
     columns: {
       oauth2Features: true,
       oauth2ClientId: true,
+      oauth2ClientSecret: true,
       oauth2AuthorizeUrl: true,
       oauth2AccessTokenUrl: true,
       oauth2Scopes: true,
     },
   })
+  const secret = includeSecretMask ? decryptValue(def?.oauth2ClientSecret ?? null) : null
   return {
     connectionVariables: def?.oauth2Features?.connectionVariables ?? [],
     oauth: def
       ? {
-          clientId: def.oauth2ClientId,
+          clientId: decryptValue(def.oauth2ClientId),
+          clientSecret: secret ? maskValue(secret) : null,
           authorizeUrl: def.oauth2AuthorizeUrl,
           tokenUrl: def.oauth2AccessTokenUrl,
           scopes: def.oauth2Scopes ?? [],
@@ -150,7 +160,9 @@ export const mcpRouter = createTRPCRouter({
       const server = servers.find((s) => s.slug === input.slug)
       if (!server) return null
       const [defInfo, endpoint, posture] = await Promise.all([
-        getConnectionDefinitionInfo(server.serverId),
+        isAdminOrOwner(ctx.session.organizationId, ctx.session.userId).then((isAdmin) =>
+          getConnectionDefinitionInfo(server.serverId, isAdmin)
+        ),
         getServerEndpoint(server.serverId),
         getAuthPosture(server.serverId, ctx.session.organizationId, server.connectionType),
       ])

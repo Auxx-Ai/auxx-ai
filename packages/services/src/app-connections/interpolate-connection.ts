@@ -1,8 +1,11 @@
 // packages/services/src/app-connections/interpolate-connection.ts
 
+import { decryptValue } from '@auxx/credentials/crypto'
+
 /**
  * Resolve {key} placeholders across all OAuth connection fields.
  * URL values are URI-encoded; credential values are used as-is.
+ * Client id/secret are stored as v2 ciphertext — decrypted before interpolation.
  */
 export function interpolateConnectionFields(
   connDef: {
@@ -21,8 +24,8 @@ export function interpolateConnectionFields(
   return {
     authorizeUrl: interpolateUrl(connDef.oauth2AuthorizeUrl ?? '', variables),
     accessTokenUrl: interpolateUrl(connDef.oauth2AccessTokenUrl ?? '', variables),
-    clientId: interpolateValue(connDef.oauth2ClientId ?? '', variables),
-    clientSecret: interpolateValue(connDef.oauth2ClientSecret ?? '', variables),
+    clientId: interpolateValue(decryptValue(connDef.oauth2ClientId) ?? '', variables),
+    clientSecret: interpolateValue(decryptValue(connDef.oauth2ClientSecret) ?? '', variables),
   }
 }
 

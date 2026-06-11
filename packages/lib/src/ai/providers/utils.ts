@@ -1,5 +1,6 @@
 // packages/lib/src/ai/providers/utils.ts
 
+import { maskValue } from '@auxx/credentials/crypto'
 import { createScopedLogger } from '../../logger'
 import { providerPositions } from './provider-registry'
 import {
@@ -180,18 +181,11 @@ export function obfuscateCredentials(
 }
 
 /**
- * Obfuscate a token/API key for display
+ * Obfuscate a token/API key for display. Delegates to the shared `maskValue` rule
+ * (at least 6 chars always hidden; short tokens get a fixed full mask).
  */
 export function obfuscateToken(token: string): string {
-  if (!token || token.length < 8) {
-    return HIDDEN_VALUE
-  }
-
-  const start = token.slice(0, 4)
-  const end = token.slice(-4)
-  const middle = '*'.repeat(Math.min(token.length - 8, 20))
-
-  return `${start}${middle}${end}`
+  return maskValue(token)
 }
 
 /**

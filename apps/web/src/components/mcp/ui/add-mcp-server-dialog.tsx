@@ -1,6 +1,7 @@
 // apps/web/src/components/mcp/ui/add-mcp-server-dialog.tsx
 'use client'
 
+import { HIDDEN_VALUE } from '@auxx/credentials/crypto/client'
 import { FieldType } from '@auxx/database/enums'
 import { Button } from '@auxx/ui/components/button'
 import { Checkbox } from '@auxx/ui/components/checkbox'
@@ -46,9 +47,10 @@ export interface McpServerEditTarget {
   authHeaderName: string | null
   /** Header names of a headers-auth connection — prefills rows (values stay blank = keep). */
   headerNames: string[]
-  /** OAuth config prefill from the ConnectionDefinition (client secret never leaves the server). */
+  /** OAuth config prefill from the ConnectionDefinition (only the MASK of the secret leaves the server). */
   oauth: {
     clientId: string | null
+    clientSecret: string | null
     authorizeUrl: string | null
     tokenUrl: string | null
     scopes: string[]
@@ -106,8 +108,11 @@ export function AddMcpServerDialog({
   const [token, setToken] = useState('')
   const [headerName, setHeaderName] = useState(server?.authHeaderName ?? '')
   const [headerRows, setHeaderRows] = useState<HeaderRow[]>(initialHeaderRows)
+  // The secret prefill is a MASK — submitting it unchanged sends the HIDDEN_VALUE sentinel
+  // so the server keeps the stored ciphertext.
+  const secretPrefill = server?.oauth?.clientSecret ?? ''
   const [clientId, setClientId] = useState(server?.oauth?.clientId ?? '')
-  const [clientSecret, setClientSecret] = useState('')
+  const [clientSecret, setClientSecret] = useState(secretPrefill)
   const [authorizeUrl, setAuthorizeUrl] = useState(server?.oauth?.authorizeUrl ?? '')
   const [tokenUrl, setTokenUrl] = useState(server?.oauth?.tokenUrl ?? '')
   const [scopes, setScopes] = useState((server?.oauth?.scopes ?? []).join(' '))
@@ -140,7 +145,7 @@ export function AddMcpServerDialog({
     setHeaderName(server?.authHeaderName ?? '')
     setHeaderRows(initialHeaderRows())
     setClientId(server?.oauth?.clientId ?? '')
-    setClientSecret('')
+    setClientSecret(secretPrefill)
     setAuthorizeUrl(server?.oauth?.authorizeUrl ?? '')
     setTokenUrl(server?.oauth?.tokenUrl ?? '')
     setScopes((server?.oauth?.scopes ?? []).join(' '))
@@ -263,7 +268,10 @@ export function AddMcpServerDialog({
       .filter(Boolean)
     return {
       clientId: clientId.trim() || undefined,
-      clientSecret: clientSecret.trim() || undefined,
+      clientSecret:
+        secretPrefill && clientSecret === secretPrefill
+          ? HIDDEN_VALUE
+          : clientSecret.trim() || undefined,
       authorizeUrl: authorizeUrl.trim() || undefined,
       tokenUrl: tokenUrl.trim() || undefined,
       scopes: scopeList.length > 0 ? scopeList : undefined,

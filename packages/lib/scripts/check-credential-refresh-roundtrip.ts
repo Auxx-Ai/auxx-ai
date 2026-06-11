@@ -22,6 +22,7 @@ loadEnv({ path: path.resolve(here, '../../../.env') })
 const { database, schema } = await import('@auxx/database')
 const { eq } = await import('drizzle-orm')
 const { getCredential, revealSecrets, updateCredential } = await import('@auxx/credentials/store')
+const { encryptValue } = await import('@auxx/credentials/crypto')
 const { saveMcpConnection, resolveMcpConnectionForRuntime } = await import('../src/ai/mcp')
 const { refreshCredentialTokens } = await import('../src/workflows/oauth2-workflow')
 
@@ -97,8 +98,8 @@ async function main() {
     global: true,
     createdById,
     oauth2AccessTokenUrl: mock.tokenUrl,
-    oauth2ClientId: 'client-id',
-    oauth2ClientSecret: 'client-secret',
+    oauth2ClientId: encryptValue('client-id'),
+    oauth2ClientSecret: encryptValue('client-secret'),
     oauth2TokenRequestAuthMethod: 'request-body',
   })
 
