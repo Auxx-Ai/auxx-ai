@@ -69,7 +69,9 @@ export function DialogNav({
   return (
     <DialogHeader
       className={cn(
-        'mb-0 flex h-10 flex-row items-center justify-between border-b px-3',
+        // space-y-0 cancels DialogHeader's space-y-1.5, which would otherwise
+        // push the actions slot down (margin-top on the second flex-row child).
+        'mb-0 flex h-10 flex-row items-center justify-between space-y-0 border-b px-3',
         className
       )}>
       <div className='flex items-center gap-1'>

@@ -1,4 +1,4 @@
-// apps/web/src/app/(protected)/app/workflows/_components/providers/credentials-provider.tsx
+// apps/web/src/components/workflow/credentials/credentials-provider.tsx
 'use client'
 
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
@@ -91,7 +91,6 @@ export function CredentialsProvider({ children }: CredentialsProviderProps) {
 
   const createMutation = api.credentials.create.useMutation({
     onSuccess: () => {
-      toastSuccess({ description: 'Credential created successfully' })
       refetch()
     },
     onError: (error) => {
@@ -104,7 +103,6 @@ export function CredentialsProvider({ children }: CredentialsProviderProps) {
 
   const updateMutation = api.credentials.update.useMutation({
     onSuccess: () => {
-      toastSuccess({ description: 'Credential updated successfully' })
       refetch()
     },
     onError: (error) => {

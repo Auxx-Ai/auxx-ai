@@ -13,6 +13,7 @@ import {
 import { LastUpdated } from '@auxx/ui/components/last-updated'
 import { Copy, Edit, MoreVertical, TestTube, Trash } from 'lucide-react'
 import { useState } from 'react'
+import { CredentialDialog } from '~/components/workflow/credentials/credential-dialog'
 import {
   getCredentialCategory,
   getCredentialDisplayName,
@@ -20,7 +21,6 @@ import {
   getCredentialStyling,
 } from '~/components/workflow/credentials/credential-styling'
 import { useCredentials } from '~/components/workflow/credentials/credentials-provider'
-import { EditCredentialDialog } from '~/components/workflow/credentials/edit-credential-dialog'
 import { useConfirm } from '~/hooks/use-confirm'
 
 interface CredentialCardProps {
@@ -209,7 +209,8 @@ export function CredentialsGridView() {
         ))}
       </div>
 
-      <EditCredentialDialog
+      <CredentialDialog
+        mode='edit'
         open={editDialogOpen}
         onOpenChange={handleEditDialogClose}
         credentialId={editingCredentialId}

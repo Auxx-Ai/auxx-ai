@@ -13,6 +13,13 @@ interface ScrollAreaProps {
   viewportRef?: React.Ref<HTMLDivElement>
   /** Additional classes for the root container */
   className?: string
+  /**
+   * Additional classes for the scroll viewport. Put `max-h-*` here rather than on
+   * the root: the viewport's `h-full` only resolves against the root's max-height
+   * in stretched flex layouts — elsewhere the viewport grows to its content and
+   * the root clips it without ever scrolling.
+   */
+  viewportClassName?: string
   /** Additional classes for the scrollbar */
   scrollbarClassName?: string
   /** Custom fade classes applied to root pseudo-elements. When set, uses absolute-positioned gradient overlays instead of the default mask-image fade. */
@@ -28,6 +35,7 @@ function ScrollArea({
   orientation = 'vertical',
   viewportRef,
   className,
+  viewportClassName,
   scrollbarClassName,
   fadeClassName,
   noFade,
@@ -50,7 +58,8 @@ function ScrollArea({
         className={cn(
           'h-full w-full outline-none',
           !allowScrollChaining && 'overscroll-contain',
-          !noFade && !fadeClassName && 'scroll-area-fade'
+          !noFade && !fadeClassName && 'scroll-area-fade',
+          viewportClassName
         )}
         style={
           orientation !== 'both'

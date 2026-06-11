@@ -5,7 +5,7 @@ import { Button } from '@auxx/ui/components/button'
 import { Key, SearchX } from 'lucide-react'
 import { useState } from 'react'
 import { EmptyState } from '~/components/global/empty-state'
-import { CreateCredentialDialog } from '~/components/workflow/credentials/create-credential-dialog'
+import { CredentialDialog } from '~/components/workflow/credentials/credential-dialog'
 
 interface CredentialsEmptyStateProps {
   searchQuery?: string
@@ -113,7 +113,7 @@ export function CredentialsEmptyState({
       />
 
       {/* Create Credential Dialog */}
-      <CreateCredentialDialog open={createDialogOpen} onOpenChange={setCreateDialogOpen} />
+      <CredentialDialog mode='create' open={createDialogOpen} onOpenChange={setCreateDialogOpen} />
     </div>
   )
 }

@@ -14,7 +14,7 @@ import {
 import { Tabs, TabsList, TabsTrigger } from '@auxx/ui/components/tabs'
 import { LayoutGrid, List } from 'lucide-react'
 import { useState } from 'react'
-import { CreateCredentialDialog } from '~/components/workflow/credentials/create-credential-dialog'
+import { CredentialDialog } from '~/components/workflow/credentials/credential-dialog'
 import { CREDENTIAL_REGISTRY } from '~/components/workflow/credentials/credential-registry'
 import { useCredentials } from '~/components/workflow/credentials/credentials-provider'
 
@@ -85,7 +85,7 @@ export function CredentialsFilterBar() {
       </div>
 
       {/* Create Credential Dialog */}
-      <CreateCredentialDialog open={createDialogOpen} onOpenChange={setCreateDialogOpen} />
+      <CredentialDialog mode='create' open={createDialogOpen} onOpenChange={setCreateDialogOpen} />
     </>
   )
 }
