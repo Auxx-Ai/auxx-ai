@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.161](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.160...auxx-v0.1.161) (2026-06-11)
+
+
+### Features
+
+* **mcp:** manual OAuth setup flow for non-DCR providers ([#814](https://github.com/Auxx-Ai/auxx-ai/issues/814)) ([759ba47](https://github.com/Auxx-Ai/auxx-ai/commit/759ba47112f3397928bcbf1ac49d0555be99c340))
+
 ## [0.1.160](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.159...auxx-v0.1.160) (2026-06-11)
 
 
