@@ -21,6 +21,8 @@ export interface ToolSelectRowProps {
   toolNames?: string[]
   /** Subtitle line shown below the label — used by the Apps tab to show installed counts. */
   subtitle?: string
+  /** Renders a small "MCP" badge next to the label, marking MCP-origin toolsets/servers. */
+  isMcp?: boolean
   installed: boolean
   /**
    * Source of the installed state, when known. `'manual'` = removable;
@@ -55,6 +57,7 @@ export function ToolSelectRow({
   badge,
   toolNames,
   subtitle,
+  isMcp,
   installed,
   source,
   onSelect,
@@ -67,10 +70,17 @@ export function ToolSelectRow({
       : 'Required'
 
   return (
-    <button
-      type='button'
+    <div
+      role='button'
+      tabIndex={0}
       onClick={onSelect}
-      className='group/tree-row flex w-full items-center gap-3 rounded-lg px-1 py-1 text-left hover:bg-primary-100/80'>
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          onSelect()
+        }
+      }}
+      className='group/tree-row flex w-full cursor-pointer items-center gap-3 rounded-lg px-1 py-1 text-left hover:bg-primary-100/80'>
       <div className='relative shrink-0'>
         <AppIcon
           iconId={iconId}
@@ -88,6 +98,11 @@ export function ToolSelectRow({
       <div className='flex min-w-0 flex-1 flex-col'>
         <div className='flex items-center gap-2'>
           <span className='truncate text-sm font-medium'>{label}</span>
+          {isMcp && (
+            <Badge variant='teal' size='xs' className='text-[10px]'>
+              MCP
+            </Badge>
+          )}
           {badge &&
             (toolNames && toolNames.length > 0 ? (
               <Tooltip
@@ -140,7 +155,7 @@ export function ToolSelectRow({
             </span>
           </Tooltip>
         ))}
-    </button>
+    </div>
   )
 }
 

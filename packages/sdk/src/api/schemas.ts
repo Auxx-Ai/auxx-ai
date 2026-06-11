@@ -93,6 +93,10 @@ export const confirmBundlesResponseSchema = z.object({
 export const createDeploymentResponseSchema = z.object({
   deploymentId: z.string(),
   version: z.string().nullable(),
+  status: z.string().optional(),
+  publishError: z.string().optional(),
+  /** True when the server skipped a no-op release and returned the existing deployment. */
+  unchanged: z.boolean().optional(),
 })
 
 /** Individual deployment item */

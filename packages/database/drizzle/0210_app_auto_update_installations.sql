@@ -1,0 +1,1 @@
+ALTER TABLE "App" ADD COLUMN "autoUpdateInstallations" boolean DEFAULT false NOT NULL;

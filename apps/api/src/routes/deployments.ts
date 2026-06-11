@@ -2,9 +2,10 @@
 // Deployment management routes
 
 import { database, schema } from '@auxx/database'
-import { onCacheEvent } from '@auxx/lib/cache'
-import { calculateNextVersion } from '@auxx/services/app-versions'
+import { invalidateAppCatalog, invalidateOrgsByDeploymentId, onCacheEvent } from '@auxx/lib/cache'
+import { calculateNextVersion, updateDeploymentStatus } from '@auxx/services/app-versions'
 import { verifyAppAccess } from '@auxx/services/developer-accounts'
+import { stableStringify } from '@auxx/utils/json'
 import { and, eq } from 'drizzle-orm'
 import { Hono } from 'hono'
 import { type ErrorStatusCode, errorResponse } from '../lib/response'
@@ -44,6 +45,7 @@ deployments.post('/:appId/deployments', requireScope(['developer', 'apps:write']
     environmentVariables,
     version,
     metadata,
+    publish,
   } = body
 
   if (!clientBundleSha || !serverBundleSha || !deploymentType) {
@@ -52,6 +54,13 @@ deployments.post('/:appId/deployments', requireScope(['developer', 'apps:write']
         'BAD_REQUEST',
         'clientBundleSha, serverBundleSha, and deploymentType are required'
       ),
+      400
+    )
+  }
+
+  if (publish && deploymentType !== 'production') {
+    return c.json(
+      errorResponse('BAD_REQUEST', 'publish is only supported for production deployments'),
       400
     )
   }
@@ -93,6 +102,45 @@ deployments.post('/:appId/deployments', requireScope(['developer', 'apps:write']
       errorResponse('BUNDLE_NOT_UPLOADED', 'Server bundle not found or not uploaded'),
       400
     )
+  }
+
+  // Idempotency: skip no-op production releases. Re-running create (e.g. the
+  // batch push-all loop) with identical bundles + catalog + settingsSchema
+  // returns the existing deployment instead of bumping a new version. jsonb does
+  // NOT preserve object key order on round-trip, so compare canonical
+  // serializations — never raw JSON.stringify.
+  if (deploymentType === 'production') {
+    const latest = await database.query.AppDeployment.findFirst({
+      where: and(
+        eq(schema.AppDeployment.appId, appId),
+        eq(schema.AppDeployment.deploymentType, 'production')
+      ),
+      orderBy: (d, { desc }) => [desc(d.createdAt)],
+    })
+
+    // Dead-end statuses (rejected/withdrawn/deprecated) never count as a match —
+    // a re-run should produce a fresh deployment. When publishing, the existing
+    // deployment must already be in the publish pipeline; an unpublished
+    // 'active' match still needs the publish chain to run.
+    const liveStatuses = publish
+      ? ['pending-review', 'in-review', 'approved', 'published']
+      : ['active', 'pending-review', 'in-review', 'approved', 'published']
+
+    if (
+      latest &&
+      latest.clientBundleId === clientBundle.id &&
+      latest.serverBundleId === serverBundle.id &&
+      liveStatuses.includes(latest.status) &&
+      stableStringify(latest.catalog ?? null) === stableStringify(catalog ?? null) &&
+      stableStringify(latest.settingsSchema ?? null) === stableStringify(settingsSchema ?? null)
+    ) {
+      return c.json({
+        deploymentId: latest.id,
+        version: latest.version,
+        status: latest.status,
+        unchanged: true,
+      })
+    }
   }
 
   // Auto-calculate version for production deployments when not provided
@@ -198,7 +246,58 @@ deployments.post('/:appId/deployments', requireScope(['developer', 'apps:write']
     return c.json(errorResponse('INTERNAL_ERROR', 'Failed to create deployment'), 500)
   }
 
-  return c.json({ deploymentId: deployment.id, version: deployment.version })
+  let status = deployment.status
+
+  // Publish chain: submit-for-review (→ approved via autoApprove) → publish.
+  // Without autoApprove the deployment stops at pending-review. The deployment
+  // already exists at this point, so chain failures are reported alongside it
+  // rather than as a request error.
+  if (publish) {
+    let publishError: string | undefined
+
+    const submitResult = await updateDeploymentStatus({
+      deploymentId: deployment.id,
+      action: 'submit-for-review',
+      userId,
+    })
+
+    if (submitResult.isErr()) {
+      publishError = submitResult.error.message
+    } else {
+      status = submitResult.value.deployment.status
+
+      if (submitResult.value.autoApproved) {
+        const publishResult = await updateDeploymentStatus({
+          deploymentId: deployment.id,
+          action: 'publish',
+          userId,
+        })
+        if (publishResult.isErr()) {
+          publishError = publishResult.error.message
+        } else {
+          status = publishResult.value.deployment.status
+        }
+      }
+    }
+
+    // Invalidate caches (mirrors the build portal's versions router; covers
+    // rolled-forward installations, which now reference this deployment)
+    const app = await database.query.App.findFirst({ where: eq(schema.App.id, appId) })
+    if (app) {
+      await onCacheEvent('build.app.updated', { developerAccountId: app.developerAccountId })
+    }
+    await invalidateOrgsByDeploymentId(deployment.id, database)
+    await invalidateAppCatalog()
+
+    return c.json({
+      deploymentId: deployment.id,
+      version: deployment.version,
+      status,
+      publishError,
+    })
+  }
+
+  return c.json({ deploymentId: deployment.id, version: deployment.version, status })
 })
 
 /**
@@ -245,70 +344,5 @@ deployments.get('/:appId/deployments', requireScope(['developer', 'apps:read']),
     })),
   })
 })
-
-/**
- * PATCH /api/v1/apps/:appId/deployments/:id/status
- * Update deployment status (prod only).
- *
- * Disabled: no callers (SDK and apps/build both go through the
- * updateDeploymentStatus service), and this raw write bypasses autoApprove,
- * the single-review guard, and reconcileAppReviewState. If a CLI-facing
- * status endpoint is needed, reimplement it on top of
- * @auxx/services/app-versions updateDeploymentStatus.
- */
-// deployments.patch(
-//   '/:appId/deployments/:id/status',
-//   requireScope(['developer', 'apps:write']),
-//   async (c) => {
-//     const appId = c.req.param('appId')
-//     const deploymentId = c.req.param('id')
-//     const userId = c.get('userId')
-//     const body = await c.req.json()
-//     const { status } = body
-//
-//     const accessResult = await verifyAppAccess({ appId, userId })
-//     if (accessResult.isErr()) {
-//       const error = accessResult.error
-//       const statusCode = ERROR_STATUS_MAP[error.code] ?? 500
-//       return c.json(errorResponse('INTERNAL_ERROR', error.message), statusCode)
-//     }
-//
-//     const deployment = await database.query.AppDeployment.findFirst({
-//       where: and(eq(schema.AppDeployment.id, deploymentId), eq(schema.AppDeployment.appId, appId)),
-//     })
-//
-//     if (!deployment) {
-//       return c.json(errorResponse('DEPLOYMENT_NOT_FOUND', 'Deployment not found'), 404)
-//     }
-//
-//     // Validate status transition (developer actions only)
-//     const validTransitions: Record<string, string[]> = {
-//       active: ['pending-review'],
-//       'pending-review': ['withdrawn'],
-//     }
-//
-//     const allowed = validTransitions[deployment.status]
-//     if (!allowed || !allowed.includes(status)) {
-//       return c.json(
-//         errorResponse(
-//           'INVALID_STATUS_TRANSITION',
-//           `Cannot transition from '${deployment.status}' to '${status}'`
-//         ),
-//         400
-//       )
-//     }
-//
-//     const [updated] = await database
-//       .update(schema.AppDeployment)
-//       .set({ status })
-//       .where(eq(schema.AppDeployment.id, deploymentId))
-//       .returning()
-//
-//     await invalidateOrgsByDeploymentId(deploymentId, database)
-//     await invalidateAppCatalog()
-//
-//     return c.json({ deployment: updated })
-//   }
-// )
 
 export default deployments

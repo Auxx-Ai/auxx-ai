@@ -256,6 +256,7 @@ class ApiImpl {
     environmentVariables,
     version,
     metadata,
+    publish,
   }: {
     appId: string
     clientBundleSha: string
@@ -267,6 +268,7 @@ class ApiImpl {
     environmentVariables?: Record<string, string>
     version?: string
     metadata?: Record<string, unknown>
+    publish?: boolean
   }) {
     const result = await this.fetcher.post({
       path: `/api/v1/apps/${appId}/deployments`,
@@ -280,6 +282,7 @@ class ApiImpl {
         environmentVariables,
         version,
         metadata,
+        publish,
       },
       schema: createDeploymentResponseSchema,
     })

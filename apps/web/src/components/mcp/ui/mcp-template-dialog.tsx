@@ -1,16 +1,21 @@
 // apps/web/src/components/mcp/ui/mcp-template-dialog.tsx
 'use client'
 
+import { FieldType } from '@auxx/database/enums'
+import { buildCreateOAuthAppUrl } from '@auxx/lib/ai/mcp/templates/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
+import { CopyButton } from '@auxx/ui/components/button-copy'
 import { KbdSubmit } from '@auxx/ui/components/kbd'
 import { toastError } from '@auxx/ui/components/toast'
 import { Plug } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useMemo, useState } from 'react'
 import { AppIcon } from '~/components/apps/ui/app-icon'
+import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { TemplateGalleryDialog } from '~/components/templates/ui'
-import { VarEditorField } from '~/components/workflow/ui/input-editor/var-editor'
+import { BaseType } from '~/components/workflow/types'
+import { VarEditorField, VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
 import type { RouterOutputs } from '~/trpc/react'
 import { api } from '~/trpc/react'
 import { useMcpOAuthPopup } from '../hooks/use-mcp-oauth-popup'
@@ -40,6 +45,11 @@ export function McpTemplateDialog({ open, onOpenChange, onConnected }: McpTempla
   const [values, setValues] = useState<Record<string, string>>({})
   const [token, setToken] = useState('')
   const [errors, setErrors] = useState<Record<string, string>>({})
+  // Manual (non-DCR) template setup: set once the org server is eagerly saved so its
+  // per-server callback URL exists to register at the provider.
+  const [manualSetup, setManualSetup] = useState<{ redirectUri: string; slug: string } | null>(null)
+  const [manualClientId, setManualClientId] = useState('')
+  const [manualClientSecret, setManualClientSecret] = useState('')
 
   const catalog = api.mcp.listTemplates.useQuery(undefined, { enabled: open })
   const connectTemplate = api.mcp.connectTemplate.useMutation()
@@ -60,6 +70,9 @@ export function McpTemplateDialog({ open, onOpenChange, onConnected }: McpTempla
     setValues({})
     setToken('')
     setErrors({})
+    setManualSetup(null)
+    setManualClientId('')
+    setManualClientSecret('')
   }
 
   function close() {
@@ -125,14 +138,8 @@ export function McpTemplateDialog({ open, onOpenChange, onConnected }: McpTempla
     }
 
     if (template.clientRegistration === 'manual') {
-      // Saved-but-unconnected manual server → back to its pending setup page instead of a
-      // second create; otherwise fall through to the gallery's manual setup step. Only org-owned
-      // servers count — a stray curated row at the same slug must not swallow the manual flow.
-      if (existing?.isCustom) {
-        close()
-        router.push(`/app/settings/apps/mcp/${existing.slug}`)
-        return 'handled'
-      }
+      // The detail step hosts the whole setup (generate callback URL → register app → creds →
+      // connect). A pending half-done server is picked back up by the idempotent generate.
       return
     }
 
@@ -166,25 +173,35 @@ export function McpTemplateDialog({ open, onOpenChange, onConnected }: McpTempla
     await connect(template, values, token)
   }
 
+  /** Create payload for a manual (non-DCR) template's org-owned custom server. */
+  function manualCreateInput(template: McpTemplate) {
+    return {
+      name: template.name,
+      endpoint: template.endpoint,
+      auth: 'oauth' as const,
+      description: template.description,
+      icon: template.icon ?? undefined,
+      returnTo: `/app/settings/apps/mcp/${template.id}`,
+    }
+  }
+
   /**
-   * Manual (non-DCR) templates: save an org-owned custom server prefilled from the template —
-   * `needsClientCredentials` is the expected success-pending outcome (the callback URL the user
-   * must register at the provider contains the new serverId), so route to the server page where
-   * the setup steps + credential entry live.
+   * Manual templates, stage 1: eagerly save the org server (no creds) so its per-server
+   * callback URL exists — the provider needs it to register an OAuth app. Idempotent per
+   * endpoint, so a half-done setup is picked back up with the same URL.
    */
-  async function handleSaveManual(template: McpTemplate) {
+  async function handleGenerateManual(template: McpTemplate) {
     setConnectingId(template.id)
     try {
-      const result = await createServer.mutateAsync({
-        name: template.name,
-        endpoint: template.endpoint,
-        auth: 'oauth',
-        description: template.description,
-        icon: template.icon ?? undefined,
-        returnTo: `/app/settings/apps/mcp/${template.id}`,
-      })
+      const result = await createServer.mutateAsync(manualCreateInput(template))
+      if ('needsClientCredentials' in result && result.needsClientCredentials) {
+        setManualSetup({ redirectUri: result.redirectUri, slug: result.slug })
+        onConnected() // the saved server is now visible in the list
+        setConnectingId(null)
+        return
+      }
       if ('needsOAuth' in result && result.needsOAuth) {
-        // Re-save of a server that already has client creds → straight to the popup.
+        // The reused server already has client creds → straight to the popup.
         oauth.open({
           authorizeUrl: result.authorizeUrl,
           onDone: (ok) => {
@@ -199,6 +216,45 @@ export function McpTemplateDialog({ open, onOpenChange, onConnected }: McpTempla
       setConnectingId(null)
       toastError({
         title: 'Failed to save server',
+        description: err instanceof Error ? err.message : 'Unknown error',
+      })
+    }
+  }
+
+  /** Manual templates, stage 2: pasted creds → connect (reuses the saved server) → popup. */
+  async function handleConnectManual(template: McpTemplate) {
+    const next: Record<string, string> = {}
+    if (!manualClientId.trim()) next.manualClientId = 'Client ID is required'
+    if (template.clientSecretRequired && !manualClientSecret.trim()) {
+      next.manualClientSecret = `${template.name} requires a client secret`
+    }
+    setErrors(next)
+    if (Object.keys(next).length > 0) return
+
+    setConnectingId(template.id)
+    try {
+      const result = await createServer.mutateAsync({
+        ...manualCreateInput(template),
+        oauth: {
+          clientId: manualClientId.trim(),
+          clientSecret: manualClientSecret.trim() || undefined,
+        },
+      })
+      if ('needsOAuth' in result && result.needsOAuth) {
+        oauth.open({
+          authorizeUrl: result.authorizeUrl,
+          onDone: (ok) => {
+            if (ok) handleConnected(result.slug)
+            else setConnectingId(null)
+          },
+        })
+        return
+      }
+      handleConnected(result.slug)
+    } catch (err) {
+      setConnectingId(null)
+      toastError({
+        title: 'Failed to connect',
         description: err instanceof Error ? err.message : 'Unknown error',
       })
     }
@@ -245,38 +301,33 @@ export function McpTemplateDialog({ open, onOpenChange, onConnected }: McpTempla
       detailBusy={isSubmitting}
       onDetailExit={resetFields}
       renderDetail={(template) =>
-        template.clientRegistration === 'manual' ? (
-          <div className='flex flex-col gap-2 p-3 text-sm'>
-            {template.setupHint && <p>{template.setupHint}</p>}
-            <p className='text-muted-foreground'>
-              Save first — the callback URL you'll need for the OAuth app is shown on the next
-              screen.
-            </p>
-            {template.docsUrl && (
-              <a
-                href={template.docsUrl}
-                target='_blank'
-                rel='noreferrer'
-                className='self-start text-xs text-muted-foreground underline-offset-2 hover:underline'>
-                View the {template.name} docs
-              </a>
-            )}
-          </div>
-        ) : (
-          renderVariableFields(template)
-        )
+        template.clientRegistration === 'manual'
+          ? renderManualSetup(template)
+          : renderVariableFields(template)
       }
       renderDetailFooter={(template) =>
         template.clientRegistration === 'manual' ? (
-          <Button
-            size='sm'
-            variant='outline'
-            onClick={() => handleSaveManual(template)}
-            loading={isSubmitting}
-            loadingText='Saving...'
-            data-dialog-submit>
-            Save <KbdSubmit variant='outline' size='sm' />
-          </Button>
+          manualSetup ? (
+            <Button
+              size='sm'
+              variant='outline'
+              onClick={() => handleConnectManual(template)}
+              loading={isSubmitting}
+              loadingText='Connecting...'
+              data-dialog-submit>
+              Connect <KbdSubmit variant='outline' size='sm' />
+            </Button>
+          ) : (
+            <Button
+              size='sm'
+              variant='outline'
+              onClick={() => handleGenerateManual(template)}
+              loading={isSubmitting}
+              loadingText='Saving...'
+              data-dialog-submit>
+              Generate callback URL <KbdSubmit variant='outline' size='sm' />
+            </Button>
+          )
         ) : (
           <Button
             size='sm'
@@ -291,6 +342,91 @@ export function McpTemplateDialog({ open, onOpenChange, onConnected }: McpTempla
       }
     />
   )
+
+  /**
+   * Manual (non-DCR) template setup, all in the detail step: generate the callback URL (saves
+   * the server), register an OAuth app at the provider with it, paste the creds, connect.
+   */
+  function renderManualSetup(template: McpTemplate) {
+    return (
+      <div className='flex flex-col gap-3 p-3 text-sm'>
+        {template.setupHint && <p>{template.setupHint}</p>}
+        {!manualSetup ? (
+          <p className='text-muted-foreground'>
+            Generate the callback URL first — you'll need it to register the OAuth app.
+          </p>
+        ) : (
+          <>
+            <div className='flex flex-col gap-1'>
+              <span className='text-muted-foreground text-xs'>
+                Set this as the OAuth app's authorization callback URL:
+              </span>
+              <div className='flex items-center gap-1'>
+                <code className='break-all rounded-md border bg-muted px-2 py-1 font-mono text-xs'>
+                  {manualSetup.redirectUri}
+                </code>
+                <CopyButton text={manualSetup.redirectUri} />
+              </div>
+              {template.createOAuthAppUrl && (
+                <a
+                  href={buildCreateOAuthAppUrl(template.createOAuthAppUrl, manualSetup.redirectUri)}
+                  target='_blank'
+                  rel='noreferrer'
+                  className='self-start text-xs underline underline-offset-2'>
+                  Create the OAuth app on {template.name}
+                </a>
+              )}
+            </div>
+            <VarEditorField
+              orientation='responsive'
+              className='p-0 sm:[&_[data-slot=field-row-label]]:w-40'>
+              <VarEditorFieldRow
+                title='Client ID'
+                type={BaseType.STRING}
+                showIcon
+                isRequired
+                validationError={errors.manualClientId}>
+                <FieldInputAdapter
+                  fieldType={FieldType.TEXT}
+                  value={manualClientId}
+                  onChange={(v) => setManualClientId((v as string) ?? '')}
+                  placeholder='From your OAuth app'
+                  disabled={isSubmitting}
+                />
+              </VarEditorFieldRow>
+              <VarEditorFieldRow
+                title='Client Secret'
+                type={BaseType.STRING}
+                showIcon
+                isRequired={template.clientSecretRequired}
+                validationError={errors.manualClientSecret}>
+                <FieldInputAdapter
+                  fieldType={FieldType.TEXT}
+                  value={manualClientSecret}
+                  onChange={(v) => setManualClientSecret((v as string) ?? '')}
+                  placeholder={
+                    template.clientSecretRequired
+                      ? 'Required by this provider'
+                      : 'Optional for public clients'
+                  }
+                  disabled={isSubmitting}
+                />
+              </VarEditorFieldRow>
+            </VarEditorField>
+          </>
+        )}
+        {template.docsUrl && (
+          <a
+            href={template.docsUrl}
+            target='_blank'
+            rel='noreferrer'
+            className='self-start text-xs text-muted-foreground underline-offset-2 hover:underline'>
+            View the {template.name} docs
+          </a>
+        )}
+      </div>
+    )
+  }
 
   function renderVariableFields(template: McpTemplate) {
     return (

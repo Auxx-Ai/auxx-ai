@@ -4,6 +4,7 @@
 import { HIDDEN_VALUE } from '@auxx/credentials/crypto/client'
 import { FieldType } from '@auxx/database/enums'
 import { Button } from '@auxx/ui/components/button'
+import { CopyButton } from '@auxx/ui/components/button-copy'
 import { Checkbox } from '@auxx/ui/components/checkbox'
 import { Dialog, DialogContent, DialogFooter } from '@auxx/ui/components/dialog'
 import { DialogNav, DialogNavPage, DialogNavPages } from '@auxx/ui/components/dialog-nav'
@@ -55,6 +56,8 @@ export interface McpServerEditTarget {
     tokenUrl: string | null
     scopes: string[]
   } | null
+  /** Server-computed OAuth callback URL (CALLBACK_BASE can be ngrok — the browser can't derive it). */
+  redirectUri?: string | null
 }
 
 interface AddMcpServerDialogProps {
@@ -120,6 +123,12 @@ export function AddMcpServerDialog({
   const [tokenUrl, setTokenUrl] = useState(server?.oauth?.tokenUrl ?? '')
   const [scopes, setScopes] = useState((server?.oauth?.scopes ?? []).join(' '))
   const [showOAuthAdvanced, setShowOAuthAdvanced] = useState(false)
+  // Set once the server is eagerly saved to mint its per-server callback URL (keyed to the
+  // endpoint it was generated for — editing the endpoint invalidates it back to the button).
+  const [generatedCallback, setGeneratedCallback] = useState<{
+    redirectUri: string
+    endpoint: string
+  } | null>(null)
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [placeholders, setPlaceholders] = useState<string[]>([])
   const [placeholderValues, setPlaceholderValues] = useState<Record<string, string>>({})
@@ -153,6 +162,7 @@ export function AddMcpServerDialog({
     setTokenUrl(server?.oauth?.tokenUrl ?? '')
     setScopes((server?.oauth?.scopes ?? []).join(' '))
     setShowOAuthAdvanced(false)
+    setGeneratedCallback(null)
     setErrors({})
     setPlaceholders([])
     setPlaceholderValues({})
@@ -224,12 +234,18 @@ export function AddMcpServerDialog({
 
   // ── Submit (create / update) ─────────────────────────────────────────────────
 
-  function validate(): boolean {
+  function validate(nameValue: string = name): boolean {
     const next: Record<string, string> = {}
-    if (!name.trim()) next.name = 'Name is required'
+    if (!nameValue.trim()) next.name = 'Name is required'
     if (!endpoint.trim()) next.endpoint = 'Endpoint URL is required'
     if (auth === 'bearer' && !token.trim() && !isUpdate) next.token = 'Token is required'
     if (auth === 'oauth') {
+      // A generated callback URL for this endpoint means DCR already failed or is unavailable —
+      // connecting without pasted creds can only bounce, so catch it client-side.
+      if (!isUpdate && generatedCallback?.endpoint === resolvedEndpoint() && !clientId.trim()) {
+        next.clientId =
+          'Register an OAuth app with the callback URL below, then paste its Client ID'
+      }
       if (clientSecret.trim() && !clientId.trim()) {
         next.clientId = 'Client ID is required when a secret is set'
       }
@@ -332,9 +348,9 @@ export function AddMcpServerDialog({
     }
   }
 
-  function createInput() {
+  function createInput(nameValue: string = name) {
     return {
-      name: name.trim(),
+      name: nameValue.trim(),
       endpoint: resolvedEndpoint(),
       auth,
       token: auth === 'bearer' ? token.trim() : undefined,
@@ -343,7 +359,7 @@ export function AddMcpServerDialog({
       oauth: oauthInput(),
       description: enrichment.description,
       icon: enrichment.iconId ? { iconId: enrichment.iconId } : undefined,
-      returnTo: `/app/settings/apps/mcp/${slugifyName(name)}`,
+      returnTo: `/app/settings/apps/mcp/${slugifyName(nameValue)}`,
     }
   }
 
@@ -366,11 +382,45 @@ export function AddMcpServerDialog({
       return
     }
     if ('needsClientCredentials' in result && result.needsClientCredentials) {
-      // Flip to OAuth mode so the client-cred fields are visible for the retry.
+      // The server is saved at this point — flip to OAuth mode and surface its callback URL so
+      // the user can register an OAuth app, then paste the creds and resubmit (the create is
+      // idempotent per endpoint and updates creds in place).
       setAuth('oauth')
+      setShowOAuthAdvanced(true)
+      setGeneratedCallback({ redirectUri: result.redirectUri, endpoint: resolvedEndpoint() })
+      onConnected()
       toastError({
         title: 'Automatic registration unavailable',
-        description: 'Paste an OAuth Client ID (and Secret) from the provider to continue.',
+        description:
+          'Register an OAuth app with the callback URL shown below, then paste its Client ID and Secret.',
+      })
+    }
+  }
+
+  /**
+   * Eagerly save the server (sans creds) so its per-server callback URL exists — most providers
+   * require that URL to register an OAuth app, which is a chicken-and-egg with the serverId.
+   * The saved server shows as "Not connected" in the list; resubmitting reuses it by endpoint.
+   */
+  async function handleGenerateCallback() {
+    // Only the endpoint is truly required here — a blank name defaults to the endpoint host
+    // (the state update lands async, so the derived value is passed through explicitly).
+    const effectiveName = name.trim() || deriveNameFromEndpoint(resolvedEndpoint())
+    if (effectiveName !== name) setName(effectiveName)
+    if (!validate(effectiveName)) return
+    try {
+      const result = await createServer.mutateAsync(createInput(effectiveName))
+      if ('needsClientCredentials' in result && result.needsClientCredentials) {
+        setGeneratedCallback({ redirectUri: result.redirectUri, endpoint: resolvedEndpoint() })
+        onConnected()
+        return
+      }
+      // Endpoint reuse with stored creds, or a non-OAuth posture — same as a normal submit.
+      handleConnectOutcome(result)
+    } catch (err) {
+      toastError({
+        title: 'Failed to save server',
+        description: err instanceof Error ? err.message : 'Unknown error',
       })
     }
   }
@@ -788,11 +838,61 @@ export function AddMcpServerDialog({
                     disabled={isSubmitting}
                   />
                 </VarEditorFieldRow>
+                <VarEditorFieldRow title='Callback URL' type={BaseType.STRING} showIcon>
+                  {renderCallbackUrl()}
+                </VarEditorFieldRow>
               </VarEditorField>
             )}
           </div>
         )}
       </>
+    )
+  }
+
+  /**
+   * Callback URL row: in update mode the server-computed URL; in create mode the generated one
+   * (only while the endpoint still matches what it was generated for), else the generate button.
+   */
+  function renderCallbackUrl() {
+    const callbackUrl = isUpdate
+      ? server?.redirectUri
+      : generatedCallback && generatedCallback.endpoint === resolvedEndpoint()
+        ? generatedCallback.redirectUri
+        : null
+    if (callbackUrl) {
+      return (
+        <div className='flex flex-col gap-1 pe-1'>
+          <div className='flex items-center gap-1'>
+            <code className='break-all  py-1 font-mono text-xs'>{callbackUrl}</code>
+            <CopyButton text={callbackUrl} />
+          </div>
+          {!isUpdate && (
+            <p className='text-muted-foreground text-xs'>
+              Server saved. Register this callback URL with your OAuth provider, then paste the
+              Client ID and Secret above and connect.
+            </p>
+          )}
+        </div>
+      )
+    }
+    return (
+      <div className='flex flex-col gap-1 my-0.5'>
+        <Button
+          variant='outline'
+          size='xs'
+          className='self-start'
+          onClick={handleGenerateCallback}
+          disabled={!endpoint.trim()}
+          loading={createServer.isPending}
+          loadingText='Saving...'>
+          Generate callback URL
+        </Button>
+        <p className='text-primary-400 text-xs'>
+          {endpoint.trim()
+            ? 'Saves the server first — providers need this URL to register an OAuth app.'
+            : 'Enter the endpoint URL first — generating saves the server.'}
+        </p>
+      </div>
     )
   }
 
@@ -833,6 +933,15 @@ function referencesPlaceholder(text: string, name: string): boolean {
 
 function escapeRe(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+/** Default server name from the endpoint host (e.g. https://mcp.linear.app/mcp → "mcp.linear.app"). */
+function deriveNameFromEndpoint(endpoint: string): string {
+  try {
+    return new URL(endpoint.trim()).hostname
+  } catch {
+    return ''
+  }
 }
 
 /** Best-effort slug for the OAuth returnTo (server slugifies authoritatively). */

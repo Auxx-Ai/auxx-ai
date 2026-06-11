@@ -17,6 +17,7 @@ import {
   syncMcpTools,
   updateMcpServer,
 } from '@auxx/lib/ai/mcp'
+import { buildCreateOAuthAppUrl } from '@auxx/lib/ai/mcp/templates/client'
 import { getOrgCache } from '@auxx/lib/cache'
 import { RateLimitError } from '@auxx/lib/errors'
 import { isAdminOrOwner } from '@auxx/lib/members'
@@ -82,8 +83,8 @@ async function getConnectionDefinitionInfo(
 
 /**
  * Setup guidance for custom servers created from a `clientRegistration: 'manual'` template,
- * matched by endpoint (custom servers carry no template FK). When the provider's "create OAuth
- * app" form supports prefill query params (GitHub), the callback URL is baked into the link.
+ * matched by endpoint (custom servers carry no template FK). The provider's "create OAuth app"
+ * link gets the callback URL interpolated into its catalog-authored placeholders.
  */
 function getTemplateSetup(endpoint: string | null, redirectUri: string | null) {
   if (!endpoint) return null
@@ -91,17 +92,12 @@ function getTemplateSetup(endpoint: string | null, redirectUri: string | null) {
     (t) => t.clientRegistration === 'manual' && t.endpoint === endpoint
   )
   if (!template) return null
-  let createOAuthAppUrl = template.createOAuthAppUrl ?? null
-  if (createOAuthAppUrl && redirectUri && new URL(createOAuthAppUrl).hostname === 'github.com') {
-    const url = new URL(createOAuthAppUrl)
-    url.searchParams.set('oauth_application[name]', `Auxx — ${template.name}`)
-    url.searchParams.set('oauth_application[url]', new URL(redirectUri).origin)
-    url.searchParams.set('oauth_application[callback_url]', redirectUri)
-    createOAuthAppUrl = url.toString()
-  }
   return {
     setupHint: template.setupHint ?? null,
-    createOAuthAppUrl,
+    createOAuthAppUrl:
+      template.createOAuthAppUrl && redirectUri
+        ? buildCreateOAuthAppUrl(template.createOAuthAppUrl, redirectUri)
+        : (template.createOAuthAppUrl ?? null),
     docsUrl: template.docsUrl ?? null,
     clientSecretRequired: template.clientSecretRequired ?? false,
   }

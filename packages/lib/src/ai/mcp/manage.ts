@@ -23,7 +23,8 @@ const CALLBACK_BASE = process.env.NGROK_URL || WEBAPP_URL
 export type McpConnectOutcome =
   | { connected: true }
   | { needsOAuth: true; authorizeUrl: string }
-  | { needsClientCredentials: true }
+  /** No DCR and no pasted creds — the UI shows `redirectUri` so the user can register an OAuth app. */
+  | { needsClientCredentials: true; redirectUri: string }
 
 function slugify(name: string): string {
   return (
@@ -460,10 +461,10 @@ async function ensureOAuthClient(input: {
   if (input.pastedClientId || input.existingClientId) {
     return { needsOAuth: true, authorizeUrl: authorizeUrlFor(input.serverId, input.returnTo) }
   }
-  if (!input.registrationEndpoint) {
-    return { needsClientCredentials: true }
-  }
   const redirectUri = mcpRedirectUri(input.serverId)
+  if (!input.registrationEndpoint) {
+    return { needsClientCredentials: true, redirectUri }
+  }
   const dcr = await registerDcrClient({
     registrationEndpoint: input.registrationEndpoint,
     redirectUri,
@@ -471,7 +472,7 @@ async function ensureOAuthClient(input: {
   })
   if (dcr.isErr()) {
     logger.warn('DCR failed; falling back to pasted creds', { error: dcr.error.message })
-    return { needsClientCredentials: true }
+    return { needsClientCredentials: true, redirectUri }
   }
   await db
     .update(schema.ConnectionDefinition)

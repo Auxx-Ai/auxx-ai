@@ -157,6 +157,7 @@ export interface AppDetails {
   publicationStatus: string
   reviewStatus: string | null
   autoApprove: boolean
+  autoUpdateInstallations: boolean
   verified: boolean
   websiteUrl: string | null
   documentationUrl: string | null
@@ -1056,6 +1057,7 @@ export class AdminService {
       publicationStatus: app.publicationStatus,
       reviewStatus: app.reviewStatus,
       autoApprove: app.autoApprove,
+      autoUpdateInstallations: app.autoUpdateInstallations,
       verified: app.verified,
       websiteUrl: app.websiteUrl,
       documentationUrl: app.documentationUrl,
@@ -1121,6 +1123,36 @@ export class AdminService {
     await invalidateAppSlugMap()
 
     logger.info(`Successfully toggled auto-approve for app ${appId}`)
+    return app
+  }
+
+  /**
+   * Toggle auto-update-installations for an app (publishing rolls existing
+   * production installations forward to the new deployment)
+   * @param appId - App ID
+   * @param autoUpdateInstallations - New value
+   * @returns Updated app
+   * @throws Error if app not found
+   */
+  async toggleAutoUpdateInstallations(appId: string, autoUpdateInstallations: boolean) {
+    logger.info(
+      `Admin toggling auto-update-installations to ${autoUpdateInstallations} for app ${appId}`
+    )
+
+    const [app] = await this.db
+      .update(schema.App)
+      .set({
+        autoUpdateInstallations,
+        updatedAt: new Date(),
+      })
+      .where(eq(schema.App.id, appId))
+      .returning()
+
+    if (!app) {
+      throw new Error('App not found')
+    }
+
+    logger.info(`Successfully toggled auto-update-installations for app ${appId}`)
     return app
   }
 

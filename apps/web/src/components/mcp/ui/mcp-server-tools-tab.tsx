@@ -7,6 +7,7 @@ import { Switch } from '@auxx/ui/components/switch'
 import { toastError } from '@auxx/ui/components/toast'
 import { ToggleCard } from '@auxx/ui/components/toggle-card'
 import { TreeRow } from '@auxx/ui/components/tree-row'
+import { cn } from '@auxx/ui/lib/utils'
 import { AlertTriangle, Pencil, RefreshCw, ShieldCheck, Wrench } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { api } from '~/trpc/react'
@@ -33,6 +34,10 @@ export function McpServerToolsTab({ server, onChanged }: McpServerToolsTabProps)
   )
   const [trusted, setTrusted] = useState<Set<string>>(initialTrusted)
   const allTrusted = server.tools.length > 0 && server.tools.every((t) => trusted.has(t.name))
+
+  // Which tool's description shows in the right column; defaults to the first tool.
+  const [selectedTool, setSelectedTool] = useState<string | null>(server.tools[0]?.name ?? null)
+  const selected = server.tools.find((t) => t.name === selectedTool)
 
   async function persist(next: { allTools?: boolean; tools?: string[] }) {
     try {
@@ -126,45 +131,62 @@ export function McpServerToolsTab({ server, onChanged }: McpServerToolsTabProps)
         className='bg-primary-50'
       />
 
-      <div className='flex flex-col gap-0.5'>
-        {server.tools.length === 0 ? (
-          <div className='p-4 text-center text-sm text-muted-foreground'>
-            No tools — connect and refresh to populate the list.
+      {server.tools.length === 0 ? (
+        <div className='p-4 text-center text-sm text-muted-foreground'>
+          No tools — connect and refresh to populate the list.
+        </div>
+      ) : (
+        <div className='grid grid-cols-2 items-start gap-3'>
+          <div className='flex flex-col gap-0.5'>
+            {server.tools.map((tool) => (
+              <TreeRow
+                rowClassName={cn(
+                  'bg-primary-100/50 hover:bg-primary-100',
+                  selectedTool === tool.name && 'bg-primary-100 ring-1 ring-primary-200'
+                )}
+                key={tool.name}
+                icon={<Wrench className='size-4 text-muted-foreground' />}
+                title={tool.title ?? tool.name}
+                onToggleOpen={() => setSelectedTool(tool.name)}
+                secondary={
+                  <Badge
+                    variant='outline'
+                    size='xs'
+                    title={
+                      tool.readOnlyHint
+                        ? 'Read-only tool'
+                        : 'Write tool — requires approval unless trusted'
+                    }>
+                    {tool.readOnlyHint ? 'Read' : <Pencil className='size-2.5' />}
+                    {tool.readOnlyHint ? '' : 'Write'}
+                  </Badge>
+                }
+                actions={
+                  <Switch
+                    size='xs'
+                    checked={trusted.has(tool.name)}
+                    onCheckedChange={(on) => toggleTool(tool.name, on)}
+                    disabled={update.isPending}
+                  />
+                }
+              />
+            ))}
           </div>
-        ) : (
-          server.tools.map((tool) => (
-            <TreeRow
-              rowClassName='bg-primary-100/50 hover:bg-primary-100'
-              key={tool.name}
-              icon={<Wrench className='size-4 text-muted-foreground' />}
-              title={tool.title ?? tool.name}
-              description={tool.description}
-              onToggleOpen={() => toggleTool(tool.name, !trusted.has(tool.name))}
-              secondary={
-                <Badge
-                  variant='outline'
-                  size='xs'
-                  title={
-                    tool.readOnlyHint
-                      ? 'Read-only tool'
-                      : 'Write tool — requires approval unless trusted'
-                  }>
-                  {tool.readOnlyHint ? 'Read' : <Pencil className='size-2.5' />}
-                  {tool.readOnlyHint ? '' : 'Write'}
-                </Badge>
-              }
-              actions={
-                <Switch
-                  size='xs'
-                  checked={trusted.has(tool.name)}
-                  onCheckedChange={(on) => toggleTool(tool.name, on)}
-                  disabled={update.isPending}
-                />
-              }
-            />
-          ))
-        )}
-      </div>
+
+          <div className='sticky top-0 self-start rounded-lg border bg-background p-3 text-sm'>
+            {selected ? (
+              <>
+                <div className='font-medium text-foreground'>{selected.title ?? selected.name}</div>
+                <p className='mt-1 whitespace-pre-wrap break-words text-muted-foreground'>
+                  {selected.description ?? 'No description provided.'}
+                </p>
+              </>
+            ) : (
+              <div className='text-muted-foreground'>Select a tool to view its description.</div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

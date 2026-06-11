@@ -103,6 +103,7 @@ export default function AppDetailPage({ params }: { params: Promise<{ id: string
   const deprecateDeployment = api.admin.apps.deprecateDeployment.useMutation()
   const deleteDeployment = api.admin.apps.deleteDeployment.useMutation()
   const toggleAutoApprove = api.admin.apps.toggleAutoApprove.useMutation()
+  const toggleAutoUpdateInstallations = api.admin.apps.toggleAutoUpdateInstallations.useMutation()
   const toggleVerified = api.admin.apps.toggleVerified.useMutation()
 
   /**
@@ -241,6 +242,25 @@ export default function AppDetailPage({ params }: { params: Promise<{ id: string
       await utils.admin.apps.getApp.invalidate({ id })
     } catch (error: any) {
       toastError({ title: 'Failed to update auto-approve', description: error.message })
+    }
+  }
+
+  /**
+   * Handle toggle auto-update-installations
+   */
+  const handleToggleAutoUpdateInstallations = async (checked: boolean) => {
+    try {
+      await toggleAutoUpdateInstallations.mutateAsync({
+        appId: id,
+        autoUpdateInstallations: checked,
+      })
+      router.refresh()
+      await utils.admin.apps.getApp.invalidate({ id })
+    } catch (error: any) {
+      toastError({
+        title: 'Failed to update auto-update installations',
+        description: error.message,
+      })
     }
   }
 
@@ -490,6 +510,23 @@ export default function AppDetailPage({ params }: { params: Promise<{ id: string
                                 />
                                 <span className='text-sm text-muted-foreground'>
                                   {app.autoApprove ? 'Enabled' : 'Disabled'}
+                                </span>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                          <TableRow className='*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r'>
+                            <TableCell className='bg-muted/50 py-2 font-medium'>
+                              Auto-Update Installs
+                            </TableCell>
+                            <TableCell className='py-2'>
+                              <div className='flex items-center gap-2'>
+                                <Switch
+                                  checked={app.autoUpdateInstallations || false}
+                                  onCheckedChange={handleToggleAutoUpdateInstallations}
+                                  disabled={toggleAutoUpdateInstallations.isPending}
+                                />
+                                <span className='text-sm text-muted-foreground'>
+                                  {app.autoUpdateInstallations ? 'Enabled' : 'Disabled'}
                                 </span>
                               </div>
                             </TableCell>

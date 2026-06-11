@@ -321,6 +321,23 @@ export const adminAppsRouter = createTRPCRouter({
     }),
 
   /**
+   * Toggle auto-update-installations for an app
+   */
+  toggleAutoUpdateInstallations: superAdminProcedure
+    .input(
+      z.object({
+        appId: z.string(),
+        autoUpdateInstallations: z.boolean(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const adminService = new AdminService(ctx.db)
+      await adminService.toggleAutoUpdateInstallations(input.appId, input.autoUpdateInstallations)
+
+      return { success: true }
+    }),
+
+  /**
    * Toggle verified badge for an app
    */
   toggleVerified: superAdminProcedure
