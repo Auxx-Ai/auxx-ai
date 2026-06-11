@@ -1,6 +1,7 @@
 // apps/web/src/providers/extensions/extensions-context.tsx
 'use client'
 
+import type { ClientMcpServer } from '@auxx/lib/agents/client'
 import { createContext, type ReactNode, useContext } from 'react'
 import type { Expand } from '~/lib/types'
 import type { RouterOutputs } from '~/trpc/react'
@@ -45,10 +46,18 @@ export type AppConnection = NonNullable<RouterOutputs['apps']['listConnections']
 interface ExtensionsContextValue {
   appInstallations: AppInstallation[]
   appConnections: AppConnection[]
+  /**
+   * Connected MCP servers (separate from app installations — they share none of the
+   * per-installation infrastructure). Consumers opt in explicitly; see the builder catalog
+   * and tool-meta resolver hooks.
+   */
+  mcpServers: ClientMcpServer[]
   isLoading: boolean
   isError: boolean
   /** Refetch installed apps. Call after installing/uninstalling an app. */
   refreshInstallations: () => Promise<void>
+  /** Refetch MCP servers. Call after connecting/disconnecting/refreshing a server. */
+  refreshMcpServers: () => Promise<void>
 }
 
 /**
@@ -63,21 +72,33 @@ const ExtensionsContext = createContext<ExtensionsContextValue | null>(null)
 export function ExtensionsContextProvider({
   appInstallations,
   appConnections,
+  mcpServers,
   isLoading,
   isError,
   refreshInstallations,
+  refreshMcpServers,
   children,
 }: {
   appInstallations: AppInstallation[]
   appConnections: AppConnection[]
+  mcpServers: ClientMcpServer[]
   isLoading: boolean
   isError: boolean
   refreshInstallations: () => Promise<void>
+  refreshMcpServers: () => Promise<void>
   children: ReactNode
 }) {
   return (
     <ExtensionsContext.Provider
-      value={{ appInstallations, appConnections, isLoading, isError, refreshInstallations }}>
+      value={{
+        appInstallations,
+        appConnections,
+        mcpServers,
+        isLoading,
+        isError,
+        refreshInstallations,
+        refreshMcpServers,
+      }}>
       {children}
     </ExtensionsContext.Provider>
   )

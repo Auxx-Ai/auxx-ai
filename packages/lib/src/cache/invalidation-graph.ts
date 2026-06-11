@@ -80,6 +80,11 @@ export const INVALIDATION_GRAPH: Record<string, InvalidationMapping> = {
   'app-connection.deleted': ['installedApps'],
   'app-connection.refreshed': ['installedApps'],
 
+  // MCP server lifecycle events
+  'mcp.server.changed': ['mcpServers'], // create/update/delete of McpServer or its ConnectionDefinition
+  'mcp.tools.synced': ['mcpServers'], // sync + trust updates
+  'mcp.connection.changed': ['mcpServers'], // credential created/deleted/refreshed
+
   // ── AI provider events ──
   'ai-provider.configured': ['aiProviderConfigs', 'aiCredentials'],
   'ai-provider.deleted': ['aiProviderConfigs', 'aiCredentials'],

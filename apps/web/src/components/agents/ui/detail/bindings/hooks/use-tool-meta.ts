@@ -1,6 +1,7 @@
 // apps/web/src/components/agents/ui/detail/bindings/hooks/use-tool-meta.ts
 'use client'
 
+import { buildMcpToolMetaEntries } from '@auxx/lib/agents/client'
 import { useMemo } from 'react'
 import { useExtensionsContext } from '~/providers/extensions/extensions-context'
 import type { AgentDetail } from '../../../../store/agent-store'
@@ -44,7 +45,7 @@ export interface UseToolMetaResult {
  * schema keyed by that one name. See plans/kopilot/agents/tool-chip-registered-name.md.
  */
 export function useToolMeta(agent: AgentDetail): UseToolMetaResult {
-  const { appInstallations, isLoading } = useExtensionsContext()
+  const { appInstallations, mcpServers, isLoading } = useExtensionsContext()
 
   return useMemo(() => {
     const enabledToolsetSlugs = new Set(
@@ -70,6 +71,20 @@ export function useToolMeta(agent: AgentDetail): UseToolMetaResult {
       }
     }
 
+    // MCP tools resolve too (no parameter schema in the client projection → empty schema).
+    for (const entry of buildMcpToolMetaEntries(mcpServers)) {
+      const enabled = enabledToolsetSlugs.has(entry.toolsetSlug)
+      byRegisteredName.set(entry.name, {
+        registeredName: entry.name,
+        displayName: entry.displayName,
+        iconId: entry.iconId,
+        toolsetSlug: entry.toolsetSlug,
+        inputsJsonSchema: {},
+        enabled,
+      })
+      if (enabled) enabledToolNames.add(entry.name)
+    }
+
     return { byRegisteredName, enabledToolNames, isLoading }
-  }, [appInstallations, agent.toolsets, isLoading])
+  }, [appInstallations, mcpServers, agent.toolsets, isLoading])
 }

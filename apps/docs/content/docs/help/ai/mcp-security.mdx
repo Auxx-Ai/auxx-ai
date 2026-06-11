@@ -1,0 +1,56 @@
+---
+title: MCP security model
+description: How Auxx.ai handles MCP connections, encrypted credentials, untrusted tool output, and rate limits.
+---
+
+MCP servers run outside Auxx.ai and return data you do not control. Auxx.ai applies several safeguards so that connecting a server cannot compromise your workspace or your agents.
+
+## Organization-wide connections
+
+MCP connections belong to the **organization**, not to individual users. An admin connects a server once and the whole workspace shares it. Only admins can add, connect, reconfigure, or remove servers; members see connected servers read-only.
+
+## Encrypted credentials
+
+Tokens and client secrets for MCP connections are stored **encrypted at rest**. Credentials are never returned to the browser and are never written to logs. When a connection's credential expires or its refresh fails repeatedly, the server is flagged for **reconnect** rather than silently retrying forever.
+
+## Tool output is untrusted
+
+Output returned by an MCP tool is treated as **untrusted external data**. Auxx.ai wraps each tool result in a boundary and instructs the model to read it as data only — never to follow instructions, commands, or links contained inside it. This protects against prompt-injection attempts hidden in third-party content.
+
+## Approval and trust gates
+
+Write actions require explicit authorization before they run:
+
+- Tools that are not marked read-only require approval by default.
+- A tool runs without an approval card only if an admin has **trusted** it.
+- In autonomous runs, untrusted write tools are excluded entirely.
+
+These gates mean a connected server cannot take actions on your behalf without a person — or a deliberate trust decision — authorizing it.
+
+## Rate limits
+
+MCP tool calls are rate-limited to prevent a runaway agent or a misbehaving server from generating excessive traffic:
+
+- A per-turn cap limits how many MCP calls a single agent turn can make.
+- A per-organization, per-minute cap limits total MCP traffic across the workspace.
+
+When a limit is reached, further calls fail gracefully and the agent is told to try again later.
+
+## Transport
+
+Auxx.ai connects to MCP servers over **Streamable HTTP** only, using short-lived per-call sessions. There is no long-lived process or local command execution involved in a connection.
+
+## Self-hosting
+
+On self-hosted deployments, the MCP feature is enabled automatically. On the managed cloud, availability depends on your plan.
+
+## Next steps
+
+<Cards>
+  <Card title="Connect MCP servers" href="/help/ai/mcp-connect">
+    Add curated or custom MCP servers to your workspace.
+  </Card>
+  <Card title="Using MCP tools with agents" href="/help/ai/mcp-agents">
+    Enable toolsets and manage approvals and trust.
+  </Card>
+</Cards>

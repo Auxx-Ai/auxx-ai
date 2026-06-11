@@ -103,4 +103,16 @@ describe('filterToolsByToolsets', () => {
     )
     expect(result.map((t) => t.name)).toEqual(['find_threads'])
   })
+
+  it('keeps MCP tools when the agent enables the mcp:<serverId> toolset', () => {
+    // The agent path passes arbitrary enabled slugs through unvalidated, so an
+    // `mcp:<serverId>` toolset enables its tools with zero special-casing.
+    const mcpEcho = tool('mcp__demo__echo', 'mcp:srv-1')
+    const mcpWrite = tool('mcp__demo__do_write', 'mcp:srv-1')
+    const result = filterToolsByToolsets(
+      [mcpEcho, mcpWrite, findThreads],
+      agent([{ slug: 'mcp:srv-1', disabledTools: ['mcp__demo__do_write'] }])
+    )
+    expect(result.map((t) => t.name)).toEqual(['mcp__demo__echo'])
+  })
 })

@@ -166,7 +166,12 @@ function buildMasterToolsets(
   appAccounts: Record<string, { credId: string }>,
   catalog: ToolsetCatalogEntry[]
 ): Array<{ slug: string; disabledTools: ReadonlySet<string> }> {
-  const nativeRegistered = catalog.filter((c) => !c.slug.startsWith('app:')).map((c) => c.slug)
+  // Native = neither app nor MCP. App slugs enable via appAccounts pins (below); MCP slugs
+  // (`mcp:<serverId>`) are exact-match only (no wildcard expansion) and arrive as enabled
+  // `stored` entries, kept by the loop below. Connections are org-wide — no pin required.
+  const nativeRegistered = catalog
+    .filter((c) => !c.slug.startsWith('app:') && !c.slug.startsWith('mcp:'))
+    .map((c) => c.slug)
   const expanded = expandStoredToolsets(stored, nativeRegistered)
 
   const result: Array<{ slug: string; disabledTools: ReadonlySet<string> }> = []

@@ -1,9 +1,18 @@
 // apps/web/src/providers/extensions/extensions-provider.tsx
 'use client'
 
+import type { ClientMcpServer } from '@auxx/lib/agents/client'
 import { toastError } from '@auxx/ui/components/toast'
 import { usePathname } from 'next/navigation'
-import { Fragment, type ReactNode, Suspense, useCallback, useEffect, useState } from 'react'
+import {
+  Fragment,
+  type ReactNode,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react'
 import { ConnectionExpiredDialog } from '~/components/apps/ui/connection-expired-dialog'
 import { AssetsDataHandler } from '~/components/extensions/data-handlers/assets-data-handler'
 import { DialogDataHandler } from '~/components/extensions/data-handlers/dialog-data-handler'
@@ -72,6 +81,35 @@ export function ExtensionsProvider({ children }: ExtensionsProviderProps) {
   const { data: connectionsResult } = api.apps.listConnections.useQuery()
   const connections = connectionsResult ?? []
 
+  // MCP servers — pure data, mapped to the client-safe `ClientMcpServer` shape the builder
+  // catalog + tool-meta resolvers consume. They never enter the per-installation infrastructure.
+  const { data: mcpResult } = api.mcp.list.useQuery()
+  const mcpServers = useMemo<ClientMcpServer[]>(
+    () =>
+      (mcpResult ?? []).map((server) => ({
+        serverId: server.serverId,
+        slug: server.slug,
+        name: server.name,
+        description: server.description,
+        iconUrl: server.iconUrl,
+        toolsetSlug: server.toolsetSlug,
+        connectionPresent: server.connectionPresent,
+        needsReconnect: server.needsReconnect,
+        lastSyncError: server.lastSyncError,
+        tools: server.tools.map((tool) => ({
+          name: tool.name,
+          description: tool.description,
+          readOnlyHint: tool.readOnlyHint,
+          trusted: tool.trusted,
+        })),
+      })),
+    [mcpResult]
+  )
+
+  const refreshMcpServers = useCallback(async () => {
+    await utils.mcp.list.invalidate()
+  }, [utils])
+
   // Show error toast if loading failed
   if (error) {
     toastError({
@@ -97,9 +135,11 @@ export function ExtensionsProvider({ children }: ExtensionsProviderProps) {
       <ExtensionsContextProvider
         appInstallations={installations}
         appConnections={connections}
+        mcpServers={mcpServers}
         isLoading={isLoading}
         isError={!!error}
-        refreshInstallations={refreshInstallations}>
+        refreshInstallations={refreshInstallations}
+        refreshMcpServers={refreshMcpServers}>
         {/* Set up infrastructure for each extension - only when loaded */}
         {!isLoading &&
           !error &&

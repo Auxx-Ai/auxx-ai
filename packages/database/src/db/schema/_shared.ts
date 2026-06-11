@@ -700,6 +700,7 @@ export {
   bigint,
   bigserial,
   boolean,
+  check,
   date,
   doublePrecision,
   foreignKey,

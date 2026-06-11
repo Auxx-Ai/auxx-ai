@@ -27,6 +27,7 @@ import {
   type GetToolDeps,
 } from '../ai/kopilot/capabilities'
 import { enrichEntitiesWithFieldValues } from '../ai/kopilot/capabilities/entities/enrich-entity-fields'
+import { createMcpCapabilities } from '../ai/mcp'
 import { findCachedResource } from '../cache/org-cache-helpers'
 import { Result, type TypedResult } from '../result'
 import { createTaskService } from '../tasks/task-service'
@@ -125,6 +126,11 @@ export async function runHeadlessSuggestion(
       sessionId: headlessTraceId,
       getToolDeps: getDeps,
     })
+  )
+  // MCP-backed tools — capture mode never pauses, so keep the autonomous filter (untrusted
+  // write tools shouldn't be capturable-by-default).
+  registry.register(
+    await createMcpCapabilities({ organizationId: input.organizationId, autonomous: true })
   )
   const tools = registry.getTools('mail')
 

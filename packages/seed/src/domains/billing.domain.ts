@@ -127,6 +127,7 @@ const BOOLEAN_GATES = {
     todayInbox: false,
     agents: true,
     agentProcedures: false,
+    mcp: false,
   },
   free: {
     knowledgeBase: true,
@@ -146,6 +147,7 @@ const BOOLEAN_GATES = {
     todayInbox: false,
     agents: true,
     agentProcedures: false,
+    mcp: false,
   },
   starter: {
     knowledgeBase: true,
@@ -165,6 +167,7 @@ const BOOLEAN_GATES = {
     todayInbox: false,
     agents: true,
     agentProcedures: false,
+    mcp: false,
   },
   growth: {
     knowledgeBase: true,
@@ -184,6 +187,7 @@ const BOOLEAN_GATES = {
     todayInbox: false,
     agents: true,
     agentProcedures: false,
+    mcp: false,
   },
   enterprise: {
     knowledgeBase: true,
@@ -203,6 +207,7 @@ const BOOLEAN_GATES = {
     todayInbox: false,
     agents: true,
     agentProcedures: false,
+    mcp: false,
   },
 } as const
 

@@ -12,6 +12,7 @@ import {
   EndUser,
   Event,
   File,
+  McpServer,
   Organization,
   ShopifyIntegration,
   StorageLocation,
@@ -270,6 +271,10 @@ export const workflowCredentialsRelations = relations(WorkflowCredentials, ({ on
   appInstallation: one(AppInstallation, {
     fields: [WorkflowCredentials.appInstallationId],
     references: [AppInstallation.id],
+  }),
+  mcpServer: one(McpServer, {
+    fields: [WorkflowCredentials.mcpServerId],
+    references: [McpServer.id],
   }),
   storageLocations: many(StorageLocation),
 }))

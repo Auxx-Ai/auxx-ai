@@ -49,6 +49,7 @@ import { kopilotRouter } from './routers/kopilot'
 import { labelRouter } from './routers/label'
 import { mailDomainsRouter } from './routers/mailDomain'
 import { mailViewRouter } from './routers/mailView'
+import { mcpRouter } from './routers/mcp'
 import { mediaAssetRouter } from './routers/mediaAsset'
 import { memberRouter } from './routers/member'
 import { messageRouter } from './routers/message'
@@ -141,6 +142,7 @@ export const appRouter = createTRPCRouter({
   label: labelRouter,
   mailDomain: mailDomainsRouter,
   mailView: mailViewRouter,
+  mcp: mcpRouter,
   member: memberRouter,
   message: messageRouter,
   notification: notificationRouter,

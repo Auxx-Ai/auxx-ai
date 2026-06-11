@@ -1436,6 +1436,13 @@
       "when": 1781126982759,
       "tag": "0204_agent_versions",
       "breakpoints": true
+    },
+    {
+      "idx": 205,
+      "version": "7",
+      "when": 1781130883442,
+      "tag": "0205_add_mcp_server_domain",
+      "breakpoints": true
     }
   ]
 }

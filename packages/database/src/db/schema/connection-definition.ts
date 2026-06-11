@@ -5,15 +5,18 @@ import { createId } from '@paralleldrive/cuid2'
 import {
   type AnyPgColumn,
   boolean,
+  check,
   index,
   integer,
   jsonb,
   pgTable,
+  sql,
   text,
   timestamp,
 } from './_shared'
 import { App } from './app'
 import { DeveloperAccount } from './developer-account'
+import { McpServer } from './mcp-server'
 
 /** A dynamic variable that organizations must provide when connecting */
 export type ConnectionVariable = {
@@ -57,15 +60,20 @@ export const ConnectionDefinition = pgTable(
       .$defaultFn(() => createId())
       .primaryKey()
       .notNull(),
-    developerAccountId: text()
-      .notNull()
-      .references((): AnyPgColumn => DeveloperAccount.id, {
-        onUpdate: 'cascade',
-        onDelete: 'cascade',
-      }),
-    appId: text()
-      .notNull()
-      .references((): AnyPgColumn => App.id, { onUpdate: 'cascade', onDelete: 'cascade' }),
+    // Nullable now that MCP-owned definitions exist (mcpServerId owner instead).
+    developerAccountId: text().references((): AnyPgColumn => DeveloperAccount.id, {
+      onUpdate: 'cascade',
+      onDelete: 'cascade',
+    }),
+    appId: text().references((): AnyPgColumn => App.id, {
+      onUpdate: 'cascade',
+      onDelete: 'cascade',
+    }),
+    // MCP server owner (mutually exclusive with appId — see owner check below).
+    mcpServerId: text().references((): AnyPgColumn => McpServer.id, {
+      onUpdate: 'cascade',
+      onDelete: 'cascade',
+    }),
     major: integer().notNull(), // Version major
 
     // Connection type: oauth2-code, secret, none
@@ -95,6 +103,15 @@ export const ConnectionDefinition = pgTable(
       'btree',
       table.appId.asc().nullsLast(),
       table.major.asc().nullsLast()
+    ),
+    index('ConnectionDefinition_mcpServerId_idx').using(
+      'btree',
+      table.mcpServerId.asc().nullsLast()
+    ),
+    // Exactly one owner: an App definition or an MCP-server definition.
+    check(
+      'ConnectionDefinition_owner_check',
+      sql`(("appId" IS NOT NULL)::int + ("mcpServerId" IS NOT NULL)::int) = 1`
     ),
   ]
 )

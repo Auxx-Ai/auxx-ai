@@ -1,15 +1,38 @@
 // packages/lib/src/agents/toolset-catalog.ts
 
 import { getOrgCache } from '../cache'
+import type { CachedMcpServer } from '../cache/org-cache-keys'
 import {
   type AgentSurface,
   buildCatalogTreeFromInstallations,
+  buildMcpCatalogNodes,
   type CatalogContainerNode,
   type CatalogNode,
-  type CatalogToolsetNode,
+  type ClientMcpServer,
   filterCatalogToSurface,
   type ToolCatalogEntry,
 } from './client'
+
+/** Project cached MCP servers into the client-safe shape `buildMcpCatalogNodes` consumes. */
+function toClientMcpServers(servers: CachedMcpServer[]): ClientMcpServer[] {
+  return servers.map((s) => ({
+    serverId: s.serverId,
+    slug: s.slug,
+    name: s.name,
+    description: s.description,
+    iconUrl: s.iconUrl,
+    toolsetSlug: s.toolsetSlug,
+    connectionPresent: s.connectionPresent,
+    needsReconnect: s.needsReconnect,
+    lastSyncError: s.lastSyncError,
+    tools: s.tools.map((t) => ({
+      name: t.name,
+      description: t.description,
+      readOnlyHint: t.readOnlyHint,
+      trusted: t.trusted,
+    })),
+  }))
+}
 
 export type {
   CatalogContainerNode,
@@ -40,6 +63,8 @@ export interface FlatToolCatalogEntry {
    * flat third-party toolset it's `['Google Calendar']`.
    */
   path: string[]
+  /** Provenance — `'app'` (absent ⇒ app) or `'mcp'`. Flat pickers partition/group on this. */
+  origin?: 'app' | 'mcp'
 }
 
 /**
@@ -65,8 +90,14 @@ export interface ToolsetCatalogEntry {
  * use `getOrgToolsetCatalog` / `getOrgToolCatalog` for flat projections.
  */
 export async function getOrgCatalogTree(organizationId: string): Promise<CatalogNode[]> {
-  const installedApps = await getOrgCache().get(organizationId, 'installedApps')
-  return buildCatalogTreeFromInstallations(installedApps)
+  const [installedApps, mcpServers] = await Promise.all([
+    getOrgCache().get(organizationId, 'installedApps'),
+    getOrgCache().get(organizationId, 'mcpServers'),
+  ])
+  return [
+    ...buildCatalogTreeFromInstallations(installedApps),
+    ...buildMcpCatalogNodes(toClientMcpServers(mcpServers)),
+  ]
 }
 
 /**
@@ -113,8 +144,13 @@ function flattenToolsets(roots: CatalogNode[]): ToolsetCatalogEntry[] {
   }
   for (const root of roots) {
     if (root.kind === 'toolset') continue
-    // Strip the `app:` prefix so callers get the raw app id they expect.
-    const appId = root.id.startsWith('app:') ? root.id.slice('app:'.length) : root.id
+    // MCP roots use the full `mcp:<serverId>` id (do NOT strip); app roots strip `app:`.
+    const appId =
+      root.origin === 'mcp'
+        ? root.id
+        : root.id.startsWith('app:')
+          ? root.id.slice('app:'.length)
+          : root.id
     for (const child of (root as CatalogContainerNode).children) visit(child, appId)
   }
   return flat
@@ -135,10 +171,12 @@ export async function getOrgToolCatalog(organizationId: string): Promise<FlatToo
     node: CatalogNode,
     pathLabels: string[],
     inheritedIconId: string,
-    inheritedColor: string
+    inheritedColor: string,
+    inheritedOrigin: 'app' | 'mcp'
   ) {
     const iconId = node.iconId ?? inheritedIconId
     const color = node.color ?? inheritedColor
+    const origin = node.origin ?? inheritedOrigin
 
     if (node.kind === 'toolset') {
       for (const tool of node.tools) {
@@ -151,17 +189,18 @@ export async function getOrgToolCatalog(organizationId: string): Promise<FlatToo
           toolsetIconId: iconId,
           toolsetColor: color,
           path: pathLabels,
+          origin,
         })
       }
       return
     }
     for (const child of node.children) {
-      visit(child, [...pathLabels, node.label], iconId, color)
+      visit(child, [...pathLabels, node.label], iconId, color, origin)
     }
   }
 
   for (const root of roots) {
-    visit(root, [], root.iconId ?? 'package', root.color ?? '')
+    visit(root, [], root.iconId ?? 'package', root.color ?? '', root.origin ?? 'app')
   }
   flat.sort((a, b) => a.displayName.localeCompare(b.displayName))
   return flat

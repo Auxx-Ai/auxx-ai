@@ -2,6 +2,7 @@
 
 'use client'
 
+import { buildMcpToolMetaEntries } from '@auxx/lib/agents/client'
 import { useMemo } from 'react'
 import {
   type AppInstallation,
@@ -11,7 +12,10 @@ import {
 export interface ResolvedTool {
   /** Snake-case tool name as streamed in `ToolCallPart.name`. */
   toolName: string
-  installation: AppInstallation
+  /** Stable owner id — `installation.app.id` for apps, the toolset slug for MCP servers. */
+  appId: string
+  /** The owning app installation; absent for MCP-server tools (which have no installation). */
+  installation?: AppInstallation
   /** Ready-to-pass into `<AppIcon iconId={...} />`. */
   iconId: string
   /** Apps don't carry a color token today; reserved for future use. */
@@ -41,7 +45,7 @@ export interface ResolvedTool {
  * `plans/kopilot/agents/tools/project-builtin-auxx-into-installations.md`.
  */
 export function useToolAppResolver() {
-  const { appInstallations } = useExtensionsContext()
+  const { appInstallations, mcpServers } = useExtensionsContext()
 
   const toolMap = useMemo(() => {
     const map = new Map<string, ResolvedTool>()
@@ -49,6 +53,7 @@ export function useToolAppResolver() {
       for (const tool of installation.agentTools ?? []) {
         map.set(tool.registeredName, {
           toolName: tool.registeredName,
+          appId: installation.app.id,
           installation,
           iconId: tool.iconId,
           color: undefined,
@@ -57,8 +62,19 @@ export function useToolAppResolver() {
         })
       }
     }
+    // MCP tool calls resolve to the server's icon + name (no installation).
+    for (const entry of buildMcpToolMetaEntries(mcpServers)) {
+      map.set(entry.name, {
+        toolName: entry.name,
+        appId: entry.toolsetSlug,
+        iconId: entry.iconId,
+        color: undefined,
+        displayName: entry.displayName,
+        appTitle: entry.serverName,
+      })
+    }
     return map
-  }, [appInstallations])
+  }, [appInstallations, mcpServers])
 
   return {
     toolMap,

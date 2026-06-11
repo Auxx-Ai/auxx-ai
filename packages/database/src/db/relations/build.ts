@@ -15,6 +15,7 @@ import {
   DeveloperAccount,
   DeveloperAccountInvite,
   DeveloperAccountMember,
+  McpServer,
   Organization,
   oauthApplication,
   User,
@@ -167,6 +168,10 @@ export const connectionDefinitionRelations = relations(ConnectionDefinition, ({ 
   app: one(App, {
     fields: [ConnectionDefinition.appId],
     references: [App.id],
+  }),
+  mcpServer: one(McpServer, {
+    fields: [ConnectionDefinition.mcpServerId],
+    references: [McpServer.id],
   }),
 }))
 

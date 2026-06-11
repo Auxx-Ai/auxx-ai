@@ -81,6 +81,7 @@ export const installedAppsProvider: CacheProvider<CachedInstalledApp[]> = {
       { user?: (typeof connectionDefs)[0]; organization?: (typeof connectionDefs)[0] }
     >()
     for (const def of connectionDefs) {
+      if (!def.appId) continue
       const existing = connDefsByAppId.get(def.appId) ?? {}
       if (def.global) existing.organization = def
       else existing.user = def

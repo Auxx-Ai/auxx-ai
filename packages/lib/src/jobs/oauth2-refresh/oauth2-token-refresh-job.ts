@@ -10,6 +10,7 @@ const logger = createScopedLogger('oauth2-token-refresh-job')
 interface OAuth2TokenRefreshJobData {
   credentialId: string
   appId: string
+  mcpServerId?: string
   organizationId: string
   credentialType: string
   previousFailureCount: number
@@ -37,6 +38,7 @@ export const oauth2TokenRefreshJob = async (job: Job<OAuth2TokenRefreshJobData>)
   const {
     credentialId,
     appId,
+    mcpServerId,
     organizationId,
     credentialType,
     previousFailureCount,
@@ -60,6 +62,7 @@ export const oauth2TokenRefreshJob = async (job: Job<OAuth2TokenRefreshJobData>)
       credentialId,
       organizationId,
       appId,
+      mcpServerId,
       credentialType,
       previousFailureCount,
     })

@@ -24,6 +24,7 @@ import {
   createToolDepsFactory,
 } from '../kopilot'
 import type { TriggerContext } from '../kopilot/prompts/trigger-context'
+import { createMcpCapabilities } from '../mcp'
 import { BUILDER_MODEL } from './builder-model'
 import type { AgentDomainConfig, AgentEngineConfig, AgentToolDefinition } from './types'
 
@@ -175,6 +176,9 @@ export async function buildEffectiveAgentRuntime(
       getToolDeps,
     })
   )
+  // MCP-backed tools — autonomous (background/eval runs, userId: null here): untrusted
+  // write tools are filtered out by the adapter.
+  registry.register(await createMcpCapabilities({ organizationId, autonomous: true }))
 
   const agentConfig = await resolveAgentConfig(organizationId, agentId, undefined, { source })
   const resolvedPage = args.page ?? '__none__'

@@ -128,6 +128,7 @@ export class DrizzleSeeder {
    */
   private async executeDirectInserts(context: SeedingContext): Promise<unknown> {
     const { BillingDomain } = await import('../domains/billing.domain')
+    const { McpDomain } = await import('../domains/mcp.domain')
     const { CommerceDomain } = await import('../domains/commerce.domain')
     const { CommunicationDomain } = await import('../domains/communication.domain')
     const { AiDomain } = await import('../domains/ai.domain')
@@ -150,6 +151,14 @@ export class DrizzleSeeder {
         console.log('✅ Billing data inserted')
       } else {
         console.log('⏭️  Skipping billing domain (preserving existing subscriptions)')
+      }
+
+      // Curated MCP servers (global, org-less) — seed once per database, not per org.
+      if (!this.config.organizationId) {
+        console.log('💾 Inserting curated MCP servers directly...')
+        const mcp = new McpDomain()
+        await mcp.insertDirectly(this.db)
+        console.log('✅ Curated MCP servers inserted')
       }
 
       // CRM inserts (Contacts & Participants) - Must come first as other domains depend on them

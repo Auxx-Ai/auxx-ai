@@ -75,6 +75,7 @@ export type {
   CachedAgentTrigger,
   CachedGroup,
   CachedInstalledApp,
+  CachedMcpServer,
   CachedSubscription,
   CachedSystemModelDefault,
   DehydratedOrgProfile,

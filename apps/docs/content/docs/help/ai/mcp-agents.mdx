@@ -1,0 +1,60 @@
+---
+title: Using MCP tools with agents
+description: Enable MCP toolsets on agents, manage approvals and trust, and understand autonomous-run behavior.
+---
+
+Once an MCP server is connected, its tools become available to your AI agents as a **toolset**. You enable the toolset on the agents that should use it, then control which tools run automatically and which require approval.
+
+## Enable an MCP toolset
+
+MCP servers appear in the tool catalog wherever you pick tools:
+
+- **Agent builder** — open an agent, go to its tools, and enable the MCP server's toolset. The server shows an **MCP** badge and a connection-status indicator.
+- **Master Kopilot** — MCP toolsets appear in the same catalog and can be enabled for the workspace assistant.
+
+Enabling the toolset gives the agent access to every tool the server currently exposes. New tools added on a later refresh are included automatically.
+
+## Approvals
+
+By default, MCP tools follow an **approve-unless-read-only** rule:
+
+| Tool kind | Behavior |
+|-----------|----------|
+| **Read-only** | Runs automatically — no approval card |
+| **Write / action** | Shows an approval card in chat; the user approves before it runs |
+
+A tool is treated as read-only only when the server marks it that way. When in doubt, Auxx.ai asks for approval.
+
+## Trust
+
+You can mark individual write tools — or all of a server's tools — as **trusted** so they run without an approval card. Manage trust on the server's detail page, under the **Tools** tab:
+
+- Toggle trust on a single tool.
+- Use **Trust all** to trust every tool the server exposes.
+
+Trust is a deliberate authorization. Only trust tools whose effects you understand and accept running automatically.
+
+## Autonomous runs
+
+When an agent runs autonomously (without a person in the loop to approve actions), Auxx.ai is stricter:
+
+- Read-only tools are available as normal.
+- Write tools are available **only if they are trusted**.
+- Untrusted write tools are excluded from the run entirely.
+
+This means a tool needs both an enabled toolset and explicit trust before an autonomous agent can use it to make changes.
+
+## Tool output
+
+MCP tools return third-party data. Auxx.ai wraps that output and instructs the model to treat it strictly as data — never as instructions to follow. See the [security model](/help/ai/mcp-security) for details.
+
+## Next steps
+
+<Cards>
+  <Card title="Connect MCP servers" href="/help/ai/mcp-connect">
+    Add curated or custom MCP servers to your workspace.
+  </Card>
+  <Card title="MCP security model" href="/help/ai/mcp-security">
+    How trust, tokens, and untrusted output are handled.
+  </Card>
+</Cards>

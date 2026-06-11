@@ -16,6 +16,7 @@ import {
   demoCleanupJob,
   expiredTrialAccountCleanupJob,
   type JobHandler,
+  mcpToolsResyncJob,
   nextActionStaleScannerJob,
   type OrgSeedJobData,
   oauth2TokenRefreshScannerJob,
@@ -126,6 +127,9 @@ const jobMappings = {
 
   // OAuth2 token refresh scanner
   oauth2TokenRefreshScannerJob,
+
+  // Nightly MCP tool snapshot re-sync
+  mcpToolsResyncJob,
 
   // Integration OAuth2 token refresh (for Integration table)
   integrationTokenRefreshScannerJob: channelTokenRefreshScannerJob,
