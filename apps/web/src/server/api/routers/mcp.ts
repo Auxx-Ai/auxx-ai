@@ -10,6 +10,7 @@ import {
   connectMcpTemplate,
   createCustomMcpServer,
   deleteMcpServer,
+  mcpRedirectUri,
   mcpTemplateCategories,
   mcpTemplates,
   resolveMcpSnippet,
@@ -76,6 +77,33 @@ async function getConnectionDefinitionInfo(
           scopes: def.oauth2Scopes ?? [],
         }
       : null,
+  }
+}
+
+/**
+ * Setup guidance for custom servers created from a `clientRegistration: 'manual'` template,
+ * matched by endpoint (custom servers carry no template FK). When the provider's "create OAuth
+ * app" form supports prefill query params (GitHub), the callback URL is baked into the link.
+ */
+function getTemplateSetup(endpoint: string | null, redirectUri: string | null) {
+  if (!endpoint) return null
+  const template = mcpTemplates.find(
+    (t) => t.clientRegistration === 'manual' && t.endpoint === endpoint
+  )
+  if (!template) return null
+  let createOAuthAppUrl = template.createOAuthAppUrl ?? null
+  if (createOAuthAppUrl && redirectUri && new URL(createOAuthAppUrl).hostname === 'github.com') {
+    const url = new URL(createOAuthAppUrl)
+    url.searchParams.set('oauth_application[name]', `Auxx — ${template.name}`)
+    url.searchParams.set('oauth_application[url]', new URL(redirectUri).origin)
+    url.searchParams.set('oauth_application[callback_url]', redirectUri)
+    createOAuthAppUrl = url.toString()
+  }
+  return {
+    setupHint: template.setupHint ?? null,
+    createOAuthAppUrl,
+    docsUrl: template.docsUrl ?? null,
+    clientSecretRequired: template.clientSecretRequired ?? false,
   }
 }
 
@@ -166,7 +194,13 @@ export const mcpRouter = createTRPCRouter({
         getServerEndpoint(server.serverId),
         getAuthPosture(server.serverId, ctx.session.organizationId, server.connectionType),
       ])
-      return { ...server, ...defInfo, endpoint, ...posture }
+      // Computed server-side: CALLBACK_BASE can be an ngrok URL the browser can't derive.
+      const redirectUri =
+        server.isCustom && server.connectionType === 'oauth2-code'
+          ? mcpRedirectUri(server.serverId)
+          : null
+      const templateSetup = getTemplateSetup(endpoint, redirectUri)
+      return { ...server, ...defInfo, endpoint, ...posture, redirectUri, templateSetup }
     }),
 
   /**

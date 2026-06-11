@@ -393,6 +393,8 @@ export interface CachedMcpServer {
   name: string
   description: string | null
   icon: McpServerIcon | null
+  /** Lets the template gallery match an org server back to its template when slugs dedupe. */
+  endpoint: string
   isCustom: boolean // organizationId != null
   toolsetSlug: string // `mcp:<serverId>`
   connectionType: 'oauth2-code' | 'secret' | 'none' | null // null = no definition yet

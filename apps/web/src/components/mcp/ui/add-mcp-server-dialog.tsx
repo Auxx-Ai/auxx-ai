@@ -66,6 +66,8 @@ interface AddMcpServerDialogProps {
   mode?: 'create' | 'update'
   /** Required for `update` — the server being edited. */
   server?: McpServerEditTarget
+  /** Provider requires a client secret on token exchange (no public-client PKCE), e.g. GitHub. */
+  secretRequired?: boolean
 }
 
 /**
@@ -84,6 +86,7 @@ export function AddMcpServerDialog({
   onConnected,
   mode = 'create',
   server,
+  secretRequired = false,
 }: AddMcpServerDialogProps) {
   const router = useRouter()
   const isUpdate = mode === 'update'
@@ -229,6 +232,10 @@ export function AddMcpServerDialog({
     if (auth === 'oauth') {
       if (clientSecret.trim() && !clientId.trim()) {
         next.clientId = 'Client ID is required when a secret is set'
+      }
+      // Only enforced once creds are being entered — a credless save (rename etc.) stays valid.
+      if (secretRequired && clientId.trim() && !clientSecret.trim()) {
+        next.clientSecret = 'This provider requires a client secret'
       }
       if (authorizeUrl.trim() && !isValidUrl(authorizeUrl)) {
         next.authorizeUrl = 'Must be a valid https URL'
@@ -685,13 +692,22 @@ export function AddMcpServerDialog({
                   disabled={isSubmitting}
                 />
               </VarEditorFieldRow>
-              <VarEditorFieldRow title='Client Secret' type={BaseType.STRING} showIcon>
+              <VarEditorFieldRow
+                title='Client Secret'
+                type={BaseType.STRING}
+                showIcon
+                isRequired={secretRequired}
+                validationError={errors.clientSecret}>
                 <FieldInputAdapter
                   fieldType={FieldType.TEXT}
                   value={clientSecret}
                   onChange={(v) => setClientSecret((v as string) ?? '')}
                   placeholder={
-                    isUpdate ? 'Leave blank to keep current secret' : 'Optional for public clients'
+                    secretRequired && !secretPrefill
+                      ? 'Required by this provider'
+                      : isUpdate
+                        ? 'Leave blank to keep current secret'
+                        : 'Optional for public clients'
                   }
                   disabled={isSubmitting}
                 />

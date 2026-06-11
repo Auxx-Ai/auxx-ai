@@ -38,6 +38,18 @@ export interface McpTemplate {
   connectionVariables?: ConnectionVariable[]
   /** Provider docs for the connect step (e.g. where to find the API key). */
   docsUrl?: string
+  /**
+   * How the OAuth client is obtained (absent = `'dcr'`). `'manual'` = the provider has no
+   * Dynamic Client Registration; the template routes through the custom-server flow and the
+   * user registers an OAuth app themselves.
+   */
+  clientRegistration?: 'dcr' | 'manual'
+  /** Shown in the manual setup step (e.g. "GitHub does not support automatic registration…"). */
+  setupHint?: string
+  /** Deep link to the provider's "create OAuth app" form. */
+  createOAuthAppUrl?: string
+  /** Provider requires a client secret on token exchange (no public-client PKCE). */
+  clientSecretRequired?: boolean
 }
 
 export const mcpTemplateCategories: McpTemplateCategoryDef[] = [
@@ -102,7 +114,13 @@ export const mcpTemplates: McpTemplate[] = [
     categories: ['dev-tools'],
     endpoint: 'https://api.githubcopilot.com/mcp/',
     connectionType: 'oauth2-code',
-    docsUrl: 'https://github.com/github/github-mcp-server',
+    // github.com/login/oauth publishes no registration_endpoint — DCR can never work.
+    clientRegistration: 'manual',
+    clientSecretRequired: true,
+    setupHint:
+      'GitHub does not support automatic client registration. Create an OAuth app on GitHub and paste its Client ID and Client Secret.',
+    createOAuthAppUrl: 'https://github.com/settings/applications/new',
+    docsUrl: 'https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/creating-an-oauth-app',
   },
   {
     id: 'sentry',

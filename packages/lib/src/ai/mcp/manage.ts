@@ -61,6 +61,15 @@ function authorizeUrlFor(serverId: string, returnTo?: string): string {
   return `/api/mcp/${serverId}/oauth2/authorize${qs}`
 }
 
+/**
+ * The OAuth redirect URI for a server — what the user registers at the provider when DCR
+ * isn't available. Server-side only: `CALLBACK_BASE` can be an ngrok URL in dev, which the
+ * browser can't derive.
+ */
+export function mcpRedirectUri(serverId: string): string {
+  return `${CALLBACK_BASE}/api/mcp/${serverId}/oauth2/callback`
+}
+
 /** Manual OAuth client config + endpoint overrides pasted in the create/edit dialog. */
 export interface McpOAuthConfigInput {
   clientId?: string
@@ -284,6 +293,13 @@ export async function connectMcpTemplate(input: {
 }): Promise<McpConnectOutcome & { serverId: string; slug: string }> {
   const template = mcpTemplates.find((t) => t.id === input.templateId)
   if (!template) throw new Error(`Unknown MCP template '${input.templateId}'`)
+  // Non-DCR providers must go through the custom-server flow (org-owned server + pasted
+  // OAuth app creds) — running the curated upsert here would only strand a global row.
+  if (template.clientRegistration === 'manual') {
+    throw new Error(
+      `The ${template.name} template requires manual OAuth setup — save it from the template gallery and finish setup on its server page.`
+    )
+  }
 
   const { serverId } = await ensureCuratedMcpServer(template)
   await onCacheEvent('mcp.server.changed', { orgId: input.organizationId })
@@ -447,7 +463,7 @@ async function ensureOAuthClient(input: {
   if (!input.registrationEndpoint) {
     return { needsClientCredentials: true }
   }
-  const redirectUri = `${CALLBACK_BASE}/api/mcp/${input.serverId}/oauth2/callback`
+  const redirectUri = mcpRedirectUri(input.serverId)
   const dcr = await registerDcrClient({
     registrationEndpoint: input.registrationEndpoint,
     redirectUri,
