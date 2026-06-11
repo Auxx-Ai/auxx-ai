@@ -1,6 +1,7 @@
 import { constants } from '@auxx/config'
 import { database } from '@auxx/database'
 import { isSelfHosted } from '@auxx/deployment'
+import { enqueueDataMigrationsRun } from '@auxx/lib/jobs'
 import { getQueue, Queues } from '@auxx/lib/jobs/queues'
 import { reconcileSourceSchedulers } from '@auxx/lib/knowledge-sources'
 import { startAiAgentWorker } from './worker-definitions/ai-agent-worker'
@@ -715,6 +716,13 @@ export async function setupSchedules() {
   // stop them firing. Idempotent (upsert by source-sync-{id}), so re-running on
   // every boot is a no-op when Redis already holds them.
   await reconcileSourceSchedulers(database)
+
+  // ── Data Migrations ──────────────────────────────────────────
+  // Enqueue a one-shot pending-data-migrations run at boot (NOT a repeatable
+  // scheduler). Boot never blocks on it; exactly-once across replicas/services is
+  // enforced by the advisory lock + ledger inside the runner. Replaces the local
+  // "Run Entity Migrations" button habit in dev too.
+  await enqueueDataMigrationsRun()
 }
 
 //   // Every 10 minutes

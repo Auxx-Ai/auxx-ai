@@ -1474,4 +1474,72 @@ export const adminRouter = createTRPCRouter({
       })
       return { migrations, results }
     }),
+
+  /**
+   * List all data migrations (the code registry joined with the ledger) plus the
+   * current run state of the boot/panel job. Powers the Data Migrations panel.
+   */
+  listDataMigrations: superAdminProcedure.query(async ({ ctx }) => {
+    const { listDataMigrationStatuses } = await import('@auxx/lib/data-migrations')
+    const migrations = await listDataMigrationStatuses(ctx.db)
+
+    const { getQueue } = await import('@auxx/lib/jobs/queues')
+    const { Queues } = await import('@auxx/lib/jobs/queues/types')
+    const queue = getQueue(Queues.maintenanceQueue)
+    const job = await queue.getJob('data-migrations-run')
+
+    let runState: 'idle' | 'queued' | 'active' = 'idle'
+    if (job) {
+      const state = await job.getState()
+      if (state === 'active') runState = 'active'
+      else if (state !== 'completed' && state !== 'failed' && state !== 'unknown')
+        runState = 'queued'
+    }
+
+    return { migrations, runState }
+  }),
+
+  /**
+   * Enqueue a pending-data-migrations run on the worker. Returns at enqueue, not
+   * completion — the panel polls `listDataMigrations` to watch rows flip.
+   */
+  runDataMigrations: superAdminProcedure.mutation(async ({ ctx }) => {
+    const { enqueueDataMigrationsRun } = await import('@auxx/lib/jobs')
+    await enqueueDataMigrationsRun()
+    await recordAuditFromCtx(ctx, {
+      organizationId: null,
+      category: 'settings',
+      action: 'org.migrations_run',
+      actorType: 'admin',
+      visibility: 'internal',
+      targetType: 'Organization',
+      targetId: null,
+      metadata: { scope: 'all', trigger: 'data-migrations' },
+    })
+    return { success: true }
+  }),
+
+  /**
+   * Clear a failed migration's ledger row and re-enqueue a run. Migrations after it
+   * run too once it succeeds (fail-stop is lifted).
+   */
+  rerunDataMigration: superAdminProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const { rerunDataMigration } = await import('@auxx/lib/data-migrations')
+      const { enqueueDataMigrationsRun } = await import('@auxx/lib/jobs')
+      await rerunDataMigration(ctx.db, input.id)
+      await enqueueDataMigrationsRun()
+      await recordAuditFromCtx(ctx, {
+        organizationId: null,
+        category: 'settings',
+        action: 'org.migrations_run',
+        actorType: 'admin',
+        visibility: 'internal',
+        targetType: 'Organization',
+        targetId: null,
+        metadata: { scope: 'all', trigger: 'data-migrations', rerun: input.id },
+      })
+      return { success: true }
+    }),
 })
