@@ -4,26 +4,36 @@ import { getIcon as getIconData } from '@auxx/ui/components/icons'
 import { cn } from '@auxx/ui/lib/utils'
 import { Circle } from 'lucide-react'
 import type React from 'react'
-import { parseIconString } from '~/components/apps/ui/app-icon'
+import { brandIconSrc, parseVisualRef } from '~/components/icons/ui/visual-icon'
 import { BaseType } from '../types/unified-types'
 
 /**
  * Get an icon component by name.
- * Supports Lucide icon IDs, prefixed URLs, prefixed base64, and emojis.
+ * Supports Lucide icon IDs, prefixed URLs, prefixed base64, brand marks, and emojis.
  */
 export const getIcon = (
   iconName: string,
   className: string = 'size-4',
   style?: React.CSSProperties
 ): React.ReactElement => {
-  const parsed = parseIconString(iconName)
+  const parsed = parseVisualRef(iconName)
 
-  switch (parsed.type) {
+  switch (parsed?.type) {
     case 'url':
     case 'base64':
       return (
         <img
           src={parsed.value}
+          alt=''
+          className={className}
+          style={{ objectFit: 'contain', ...style }}
+          draggable={false}
+        />
+      )
+    case 'brand':
+      return (
+        <img
+          src={brandIconSrc(parsed.slug)}
           alt=''
           className={className}
           style={{ objectFit: 'contain', ...style }}
@@ -36,15 +46,19 @@ export const getIcon = (
           {parsed.value}
         </span>
       )
+    case 'icon':
     case 'lucide': {
-      const iconData = getIconData(parsed.value)
+      const iconId = parsed.type === 'icon' ? parsed.iconId : parsed.value
+      const iconData = getIconData(iconId)
       if (!iconData) {
-        console.warn(`Icon not found: ${parsed.value}, using fallback`)
+        console.warn(`Icon not found: ${iconId}, using fallback`)
         return <Circle className={className} style={style} />
       }
       const IconComponent = iconData.icon
       return <IconComponent className={className} style={style} />
     }
+    default:
+      return <Circle className={className} style={style} />
   }
 }
 

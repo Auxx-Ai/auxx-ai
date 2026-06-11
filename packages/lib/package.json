@@ -118,6 +118,12 @@
       "import": "./dist/ai/mcp/index.mjs",
       "default": "./src/ai/mcp/index.ts"
     },
+    "./ai/mcp/templates/catalog": {
+      "types": "./src/ai/mcp/templates/catalog.ts",
+      "source": "./src/ai/mcp/templates/catalog.ts",
+      "import": "./dist/ai/mcp/templates/catalog.mjs",
+      "default": "./src/ai/mcp/templates/catalog.ts"
+    },
     "./ai/providers/types": {
       "types": "./src/ai/providers/types.ts",
       "source": "./src/ai/providers/types.ts",
