@@ -6,7 +6,7 @@ import { type ActorId, getActorRawId, getActorType, toActorId } from '@auxx/type
 import type { RecordId } from '@auxx/types/resource'
 import type { Deadline, RelativeDate } from '@auxx/types/task'
 import { TRPCError } from '@trpc/server'
-import { and, eq, gte, ilike, inArray, isNull, lt, lte } from 'drizzle-orm'
+import { and, eq, gte, ilike, inArray, isNull, lt, lte, sql } from 'drizzle-orm'
 import { parseRecordId, toRecordId } from '../field-values/relationship-field'
 import { hasDefinedProps, pickDefined } from '../utils/pick-defined'
 import type {
@@ -14,6 +14,7 @@ import type {
   GroupedTasksResponse,
   TaskFilterOptions,
   TaskListResponse,
+  TaskStats,
   TaskWithRelations,
   UpdateTaskInput,
 } from './types'
@@ -732,6 +733,34 @@ export class TaskService {
       upcoming: await loadRelations(upcomingTasks),
       overdue: await loadRelations(overdueTasks),
       completed: await loadRelations(completedTasks),
+    }
+  }
+
+  /**
+   * Get aggregate task counts for the overview header.
+   *
+   * Org-wide and excludes archived tasks. Computed in a single scan via
+   * conditional aggregates rather than separate COUNT queries per stat.
+   */
+  async getTaskStats(organizationId: string): Promise<TaskStats> {
+    const startOfToday = getStartOfToday()
+    const endOfToday = getEndOfToday()
+
+    const [row] = await this.db
+      .select({
+        open: sql<number>`count(*) filter (where ${schema.Task.completedAt} is null)`,
+        dueToday: sql<number>`count(*) filter (where ${schema.Task.completedAt} is null and ${schema.Task.deadline} >= ${startOfToday} and ${schema.Task.deadline} <= ${endOfToday})`,
+        overdue: sql<number>`count(*) filter (where ${schema.Task.completedAt} is null and ${schema.Task.deadline} is not null and ${schema.Task.deadline} < ${startOfToday})`,
+        unassigned: sql<number>`count(*) filter (where ${schema.Task.completedAt} is null and ${schema.Task.assignedUserCount} = 0)`,
+      })
+      .from(schema.Task)
+      .where(and(eq(schema.Task.organizationId, organizationId), isNull(schema.Task.archivedAt)))
+
+    return {
+      open: Number(row?.open ?? 0),
+      dueToday: Number(row?.dueToday ?? 0),
+      overdue: Number(row?.overdue ?? 0),
+      unassigned: Number(row?.unassigned ?? 0),
     }
   }
 }

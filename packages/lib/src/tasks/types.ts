@@ -74,6 +74,21 @@ export interface UpdateTaskInput {
 }
 
 /**
+ * Aggregate task counts for the tasks overview header.
+ * All counts are org-wide and exclude archived tasks.
+ */
+export interface TaskStats {
+  /** Active (not completed, not archived) tasks */
+  open: number
+  /** Open tasks whose deadline falls within today */
+  dueToday: number
+  /** Open tasks whose deadline is in the past */
+  overdue: number
+  /** Open tasks with no assignee */
+  unassigned: number
+}
+
+/**
  * Filter options for listing tasks
  */
 export interface TaskFilterOptions {
