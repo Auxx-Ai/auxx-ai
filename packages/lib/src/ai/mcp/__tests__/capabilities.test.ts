@@ -26,6 +26,7 @@ function server(overrides: Partial<CachedMcpServer> = {}): CachedMcpServer {
     name: 'Demo',
     description: null,
     icon: null,
+    endpoint: 'https://demo.example.com/mcp',
     isCustom: true,
     toolsetSlug: 'mcp:srv-1',
     connectionType: 'secret',

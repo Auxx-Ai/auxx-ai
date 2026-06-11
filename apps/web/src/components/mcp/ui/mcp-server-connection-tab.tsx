@@ -2,8 +2,9 @@
 'use client'
 
 import { Button } from '@auxx/ui/components/button'
+import { CopyButton } from '@auxx/ui/components/button-copy'
 import { toastError } from '@auxx/ui/components/toast'
-import { Plug } from 'lucide-react'
+import { KeyRound, Plug } from 'lucide-react'
 import { useState } from 'react'
 import { ConnectionList } from '~/components/apps/ui/connection-list'
 import { ConnectionRow, type ConnectionStatus } from '~/components/apps/ui/connection-row'
@@ -31,6 +32,8 @@ const MCP_ROW_STATUS: Record<keyof typeof MCP_STATUS_LABEL, ConnectionStatus> = 
 interface McpServerConnectionTabProps {
   server: McpDetailServer
   onChanged: () => void
+  /** Opens the edit dialog hosted by the detail page (the one creds-entry surface). */
+  onRequestEdit?: () => void
 }
 
 /**
@@ -39,7 +42,11 @@ interface McpServerConnectionTabProps {
  * (variables/secret/OAuth); zero-variable OAuth servers connect + open the popup directly. Custom
  * OAuth servers reconnect via the authorize popup. Uninstall lives in the page header.
  */
-export function McpServerConnectionTab({ server, onChanged }: McpServerConnectionTabProps) {
+export function McpServerConnectionTab({
+  server,
+  onChanged,
+  onRequestEdit,
+}: McpServerConnectionTabProps) {
   const [dialogOpen, setDialogOpen] = useState(false)
   const oauth = useMcpOAuthPopup()
 
@@ -48,6 +55,11 @@ export function McpServerConnectionTab({ server, onChanged }: McpServerConnectio
   const isOAuth = server.connectionType === 'oauth2-code'
   const hasVariables = server.connectionVariables.length > 0
   const isSecret = server.connectionType === 'secret'
+
+  // Custom OAuth server with no client creds (the provider has no DCR, e.g. GitHub) — the
+  // authorize popup can only fail, so a setup walkthrough replaces the Connect row.
+  const needsManualSetup =
+    server.isCustom && isOAuth && !server.oauth?.clientId && !server.connectionPresent
 
   async function handleConnect() {
     // Curated OAuth with no variables, or any reconnect of an OAuth server → straight to the popup.
@@ -77,6 +89,8 @@ export function McpServerConnectionTab({ server, onChanged }: McpServerConnectio
     }
     // Custom OAuth reconnect → authorize popup directly (no curated connect endpoint for custom).
     if (server.isCustom && isOAuth) {
+      // No stored client creds — the authorize route can only fail; the setup block handles this.
+      if (needsManualSetup) return
       oauth.open({
         authorizeUrl: `/api/mcp/${server.serverId}/oauth2/authorize?returnTo=${encodeURIComponent(
           `/app/settings/apps/mcp/${server.slug}`
@@ -120,30 +134,74 @@ export function McpServerConnectionTab({ server, onChanged }: McpServerConnectio
           <Plug className='size-4' />
           Connection
         </div>
-        <ConnectionList>
-          <ConnectionRow
-            status={MCP_ROW_STATUS[status]}
-            title={server.name}
-            subtitle={
-              <>
-                {MCP_STATUS_LABEL[status]}
-                {server.connectionExpiresAt &&
-                  ` · Token expires ${new Date(server.connectionExpiresAt).toLocaleString()}`}
-              </>
-            }
-            actions={() => (
-              <Button
-                variant='outline'
-                size='sm'
-                onClick={handleConnect}
-                loading={connect.isPending || oauth.pending}
-                loadingText='Connecting...'>
-                <Plug />
-                {connectLabel}
-              </Button>
+        {needsManualSetup ? (
+          <div className='flex flex-col gap-3 rounded-lg border p-4 text-sm'>
+            <div className='font-medium'>Finish OAuth setup</div>
+            {server.templateSetup?.setupHint && (
+              <p className='text-muted-foreground'>{server.templateSetup.setupHint}</p>
             )}
-          />
-        </ConnectionList>
+            <ol className='list-decimal space-y-1 ps-4 text-muted-foreground'>
+              <li>
+                {server.templateSetup?.createOAuthAppUrl || server.templateSetup?.docsUrl ? (
+                  <a
+                    href={
+                      server.templateSetup.createOAuthAppUrl ?? server.templateSetup.docsUrl ?? '#'
+                    }
+                    target='_blank'
+                    rel='noreferrer'
+                    className='underline underline-offset-2 hover:text-foreground'>
+                    Create an OAuth app with the provider
+                  </a>
+                ) : (
+                  'Create an OAuth app with the provider'
+                )}
+              </li>
+              <li>Set its authorization callback URL to the one below</li>
+              <li>
+                Paste the app's Client ID
+                {server.templateSetup?.clientSecretRequired ? ' and Client Secret' : ''} here and
+                connect
+              </li>
+            </ol>
+            {server.redirectUri && (
+              <div className='flex items-center gap-1'>
+                <code className='break-all rounded-md border bg-muted px-2 py-1 font-mono text-xs'>
+                  {server.redirectUri}
+                </code>
+                <CopyButton text={server.redirectUri} />
+              </div>
+            )}
+            <Button variant='outline' size='sm' className='self-start' onClick={onRequestEdit}>
+              <KeyRound />
+              Add credentials
+            </Button>
+          </div>
+        ) : (
+          <ConnectionList>
+            <ConnectionRow
+              status={MCP_ROW_STATUS[status]}
+              title={server.name}
+              subtitle={
+                <>
+                  {MCP_STATUS_LABEL[status]}
+                  {server.connectionExpiresAt &&
+                    ` · Token expires ${new Date(server.connectionExpiresAt).toLocaleString()}`}
+                </>
+              }
+              actions={() => (
+                <Button
+                  variant='outline'
+                  size='sm'
+                  onClick={handleConnect}
+                  loading={connect.isPending || oauth.pending}
+                  loadingText='Connecting...'>
+                  <Plug />
+                  {connectLabel}
+                </Button>
+              )}
+            />
+          </ConnectionList>
+        )}
       </div>
 
       <ConnectCuratedDialog

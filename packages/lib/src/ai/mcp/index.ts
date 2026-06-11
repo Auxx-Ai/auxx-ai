@@ -27,6 +27,7 @@ export {
   connectMcpTemplate,
   createCustomMcpServer,
   deleteMcpServer,
+  mcpRedirectUri,
   updateMcpServer,
 } from './manage'
 export type { McpRateLimitResult } from './rate-limiter'

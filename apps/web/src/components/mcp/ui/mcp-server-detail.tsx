@@ -119,7 +119,11 @@ export function McpServerDetail({ initialServer }: { initialServer: McpDetailSer
         </div>
       }>
       <div className='flex flex-col flex-1 gap-8 p-6'>
-        <McpServerConnectionTab server={current} onChanged={onChanged} />
+        <McpServerConnectionTab
+          server={current}
+          onChanged={onChanged}
+          onRequestEdit={() => setEditOpen(true)}
+        />
         <McpServerToolsTab server={current} onChanged={onChanged} />
       </div>
       {current.isCustom && (
@@ -137,6 +141,7 @@ export function McpServerDetail({ initialServer }: { initialServer: McpDetailSer
             headerNames: current.headerNames,
             oauth: current.oauth,
           }}
+          secretRequired={current.templateSetup?.clientSecretRequired}
           onConnected={onChanged}
         />
       )}

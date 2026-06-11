@@ -43,15 +43,17 @@ export function McpTemplateDialog({ open, onOpenChange, onConnected }: McpTempla
 
   const catalog = api.mcp.listTemplates.useQuery(undefined, { enabled: open })
   const connectTemplate = api.mcp.connectTemplate.useMutation()
+  const createServer = api.mcp.create.useMutation()
   const oauth = useMcpOAuthPopup()
   const { servers } = useMcpServers()
 
   const templates = useMemo(() => catalog.data?.templates ?? [], [catalog.data])
   const categories = catalog.data?.categories ?? []
-  const isSubmitting = connectTemplate.isPending || oauth.pending
+  const isSubmitting = connectTemplate.isPending || createServer.isPending || oauth.pending
 
-  /** Connected (or browsable) server matching a template, by slug. */
-  const serverFor = (template: McpTemplate) => servers.find((s) => s.slug === template.id)
+  /** Server matching a template — by slug, or by endpoint when the slug was deduped. */
+  const serverFor = (template: McpTemplate) =>
+    servers.find((s) => s.slug === template.id || s.endpoint === template.endpoint)
 
   function resetFields() {
     setConnectingId(null)
@@ -122,6 +124,18 @@ export function McpTemplateDialog({ open, onOpenChange, onConnected }: McpTempla
       return 'handled'
     }
 
+    if (template.clientRegistration === 'manual') {
+      // Saved-but-unconnected manual server → back to its pending setup page instead of a
+      // second create; otherwise fall through to the gallery's manual setup step. Only org-owned
+      // servers count — a stray curated row at the same slug must not swallow the manual flow.
+      if (existing?.isCustom) {
+        close()
+        router.push(`/app/settings/apps/mcp/${existing.slug}`)
+        return 'handled'
+      }
+      return
+    }
+
     const needsFields =
       (template.connectionVariables?.length ?? 0) > 0 || template.connectionType === 'secret'
     if (needsFields) {
@@ -150,6 +164,44 @@ export function McpTemplateDialog({ open, onOpenChange, onConnected }: McpTempla
     if (!validateFields(template)) return
     setConnectingId(template.id)
     await connect(template, values, token)
+  }
+
+  /**
+   * Manual (non-DCR) templates: save an org-owned custom server prefilled from the template —
+   * `needsClientCredentials` is the expected success-pending outcome (the callback URL the user
+   * must register at the provider contains the new serverId), so route to the server page where
+   * the setup steps + credential entry live.
+   */
+  async function handleSaveManual(template: McpTemplate) {
+    setConnectingId(template.id)
+    try {
+      const result = await createServer.mutateAsync({
+        name: template.name,
+        endpoint: template.endpoint,
+        auth: 'oauth',
+        description: template.description,
+        icon: template.icon ?? undefined,
+        returnTo: `/app/settings/apps/mcp/${template.id}`,
+      })
+      if ('needsOAuth' in result && result.needsOAuth) {
+        // Re-save of a server that already has client creds → straight to the popup.
+        oauth.open({
+          authorizeUrl: result.authorizeUrl,
+          onDone: (ok) => {
+            if (ok) handleConnected(result.slug)
+            else setConnectingId(null)
+          },
+        })
+        return
+      }
+      handleConnected(result.slug)
+    } catch (err) {
+      setConnectingId(null)
+      toastError({
+        title: 'Failed to save server',
+        description: err instanceof Error ? err.message : 'Unknown error',
+      })
+    }
   }
 
   return (
@@ -192,44 +244,81 @@ export function McpTemplateDialog({ open, onOpenChange, onConnected }: McpTempla
       detailCrumb={(template) => `Connect ${template.name}`}
       detailBusy={isSubmitting}
       onDetailExit={resetFields}
-      renderDetail={(template) => (
-        <div className='flex flex-col gap-2 p-3'>
-          <VarEditorField
-            orientation='responsive'
-            className='p-0 sm:[&_[data-slot=field-row-label]]:w-40'>
-            <ConnectionVariableFields
-              variables={template.connectionVariables ?? []}
-              values={values}
-              onValueChange={(key, value) => setValues((prev) => ({ ...prev, [key]: value }))}
-              showToken={template.connectionType === 'secret'}
-              token={token}
-              onTokenChange={setToken}
-              errors={errors}
-              disabled={isSubmitting}
-            />
-          </VarEditorField>
-          {template.docsUrl && (
-            <a
-              href={template.docsUrl}
-              target='_blank'
-              rel='noreferrer'
-              className='self-start text-xs text-muted-foreground underline-offset-2 hover:underline'>
-              Where do I find this? View the {template.name} docs
-            </a>
-          )}
-        </div>
-      )}
-      renderDetailFooter={(template) => (
-        <Button
-          size='sm'
-          variant='outline'
-          onClick={() => handleSubmitFields(template)}
-          loading={isSubmitting}
-          loadingText='Connecting...'
-          data-dialog-submit>
-          Connect <KbdSubmit variant='outline' size='sm' />
-        </Button>
-      )}
+      renderDetail={(template) =>
+        template.clientRegistration === 'manual' ? (
+          <div className='flex flex-col gap-2 p-3 text-sm'>
+            {template.setupHint && <p>{template.setupHint}</p>}
+            <p className='text-muted-foreground'>
+              Save first — the callback URL you'll need for the OAuth app is shown on the next
+              screen.
+            </p>
+            {template.docsUrl && (
+              <a
+                href={template.docsUrl}
+                target='_blank'
+                rel='noreferrer'
+                className='self-start text-xs text-muted-foreground underline-offset-2 hover:underline'>
+                View the {template.name} docs
+              </a>
+            )}
+          </div>
+        ) : (
+          renderVariableFields(template)
+        )
+      }
+      renderDetailFooter={(template) =>
+        template.clientRegistration === 'manual' ? (
+          <Button
+            size='sm'
+            variant='outline'
+            onClick={() => handleSaveManual(template)}
+            loading={isSubmitting}
+            loadingText='Saving...'
+            data-dialog-submit>
+            Save <KbdSubmit variant='outline' size='sm' />
+          </Button>
+        ) : (
+          <Button
+            size='sm'
+            variant='outline'
+            onClick={() => handleSubmitFields(template)}
+            loading={isSubmitting}
+            loadingText='Connecting...'
+            data-dialog-submit>
+            Connect <KbdSubmit variant='outline' size='sm' />
+          </Button>
+        )
+      }
     />
   )
+
+  function renderVariableFields(template: McpTemplate) {
+    return (
+      <div className='flex flex-col gap-2 p-3'>
+        <VarEditorField
+          orientation='responsive'
+          className='p-0 sm:[&_[data-slot=field-row-label]]:w-40'>
+          <ConnectionVariableFields
+            variables={template.connectionVariables ?? []}
+            values={values}
+            onValueChange={(key, value) => setValues((prev) => ({ ...prev, [key]: value }))}
+            showToken={template.connectionType === 'secret'}
+            token={token}
+            onTokenChange={setToken}
+            errors={errors}
+            disabled={isSubmitting}
+          />
+        </VarEditorField>
+        {template.docsUrl && (
+          <a
+            href={template.docsUrl}
+            target='_blank'
+            rel='noreferrer'
+            className='self-start text-xs text-muted-foreground underline-offset-2 hover:underline'>
+            Where do I find this? View the {template.name} docs
+          </a>
+        )}
+      </div>
+    )
+  }
 }

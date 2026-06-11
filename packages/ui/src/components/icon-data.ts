@@ -380,6 +380,7 @@ export const ICON_DATA: IconItem[] = [
   { id: 'columns', label: 'Columns', icon: Columns3 },
   { id: 'layout', label: 'Layout', icon: Layout },
   { id: 'layout-dashboard', label: 'Layout Dashboard', icon: LayoutDashboard },
+  { id: 'layout-grid', label: 'Layout Grid', icon: LayoutGrid },
   { id: 'book-open', label: 'Book Open', icon: BookOpen },
   { id: 'code', label: 'Code', icon: Code },
   { id: 'terminal', label: 'Terminal', icon: Terminal },
