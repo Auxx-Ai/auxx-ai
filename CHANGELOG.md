@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.159](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.158...auxx-v0.1.159) (2026-06-11)
+
+
+### Bug Fixes
+
+* **entity-migrations:** make 004-company upgrade deterministic with duplicate defs ([#803](https://github.com/Auxx-Ai/auxx-ai/issues/803)) ([bc355c8](https://github.com/Auxx-Ai/auxx-ai/commit/bc355c8d288f1d04a4e750e2da7a28dd06fef7a7))
+
 ## [0.1.158](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.157...auxx-v0.1.158) (2026-06-11)
 
 
