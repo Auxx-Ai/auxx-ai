@@ -72,6 +72,7 @@ export const oauth2TokenRefreshScannerJob = async (job: Job<OAuth2TokenRefreshSc
       columns: {
         id: true,
         appId: true,
+        mcpServerId: true,
         oauth2RefreshTokenIntervalSeconds: true,
       },
       where: isNotNull(schema.ConnectionDefinition.oauth2RefreshTokenIntervalSeconds),
@@ -86,12 +87,15 @@ export const oauth2TokenRefreshScannerJob = async (job: Job<OAuth2TokenRefreshSc
     // For each definition, find active WorkflowCredentials
     for (const definition of connectionDefinitions) {
       try {
-        // Get all active app-connection credentials for this app
+        // MCP definitions own their credentials via mcpServerId + type 'mcp-connection';
+        // app definitions via appId + type 'app-connection'.
+        const isMcp = !!definition.mcpServerId
         const credentials = await db.query.WorkflowCredentials.findMany({
           columns: {
             id: true,
             organizationId: true,
             appId: true,
+            mcpServerId: true,
             type: true,
             expiresAt: true,
             lastTokenRefreshAt: true,
@@ -100,10 +104,15 @@ export const oauth2TokenRefreshScannerJob = async (job: Job<OAuth2TokenRefreshSc
             createdAt: true,
             encryptedData: true,
           },
-          where: and(
-            eq(schema.WorkflowCredentials.appId, definition.appId),
-            eq(schema.WorkflowCredentials.type, 'app-connection')
-          ),
+          where: isMcp
+            ? and(
+                eq(schema.WorkflowCredentials.mcpServerId, definition.mcpServerId!),
+                eq(schema.WorkflowCredentials.type, 'mcp-connection')
+              )
+            : and(
+                eq(schema.WorkflowCredentials.appId, definition.appId!),
+                eq(schema.WorkflowCredentials.type, 'app-connection')
+              ),
         })
 
         for (const credential of credentials) {
@@ -184,7 +193,8 @@ export const oauth2TokenRefreshScannerJob = async (job: Job<OAuth2TokenRefreshSc
               'oauth2TokenRefreshJob',
               {
                 credentialId: credential.id,
-                appId: credential.appId,
+                appId: credential.appId ?? '',
+                mcpServerId: credential.mcpServerId ?? undefined,
                 organizationId: credential.organizationId,
                 credentialType: credential.type,
                 previousFailureCount: credential.consecutiveRefreshFailures,
@@ -219,6 +229,7 @@ export const oauth2TokenRefreshScannerJob = async (job: Job<OAuth2TokenRefreshSc
         logger.error('Error processing connection definition', {
           definitionId: definition.id,
           appId: definition.appId,
+          mcpServerId: definition.mcpServerId,
           error: error instanceof Error ? error.message : String(error),
         })
       }

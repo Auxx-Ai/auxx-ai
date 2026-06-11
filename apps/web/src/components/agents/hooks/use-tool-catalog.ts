@@ -4,6 +4,7 @@
 import {
   type AgentSurface,
   buildCatalogTreeFromInstallations,
+  buildMcpCatalogNodes,
   type CatalogNode,
   filterCatalogToSurface,
 } from '@auxx/lib/agents/client'
@@ -32,10 +33,14 @@ export function useToolCatalog(options: UseToolCatalogOptions = {}): {
   isLoading: boolean
 } {
   const { surface } = options
-  const { appInstallations, isLoading } = useExtensionsContext()
+  const { appInstallations, mcpServers, isLoading } = useExtensionsContext()
   const catalog = useMemo(() => {
-    const tree = buildCatalogTreeFromInstallations(appInstallations)
+    // Same builder the server uses for the catalog merge, so names + nodes agree.
+    const tree = [
+      ...buildCatalogTreeFromInstallations(appInstallations),
+      ...buildMcpCatalogNodes(mcpServers),
+    ]
     return surface ? filterCatalogToSurface(tree, surface) : tree
-  }, [appInstallations, surface])
+  }, [appInstallations, mcpServers, surface])
   return { catalog, isLoading }
 }

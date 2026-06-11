@@ -11,7 +11,9 @@ import {
 import { cn } from '@auxx/ui/lib/utils'
 import { Check, CheckCircle, Clock, X, XCircle } from 'lucide-react'
 import { type ReactNode, useState } from 'react'
-import type { AppConnection } from '~/providers/extensions/extensions-context'
+
+/** Drives the default leading status icon. */
+export type ConnectionStatus = 'connected' | 'expired' | 'disconnected'
 
 export interface ConnectionRowActionControls {
   /** Put the row into inline-rename mode. Wire this to the caller's "Rename" menu item. */
@@ -19,7 +21,14 @@ export interface ConnectionRowActionControls {
 }
 
 interface ConnectionRowProps {
-  connection: AppConnection
+  /** Primary line (account/connection name, or any node). */
+  title: ReactNode
+  /** Secondary line under the title (status text, owner, expiry…). */
+  subtitle?: ReactNode
+  /** Status for the default leading icon. Ignored when `statusIcon` is provided. */
+  status?: ConnectionStatus
+  /** Override the leading icon entirely (e.g. an app avatar). */
+  statusIcon?: ReactNode
   /**
    * Right-hand slot — settings-dialog passes its dropdown, picker passes nothing
    * (uses `onSelect`). Receives `{ beginRename }` so the caller's menu can flip
@@ -35,26 +44,33 @@ interface ConnectionRowProps {
    * failure. Anything else closes the editor.
    */
   onRename?: (label: string) => boolean | Promise<boolean>
+  /** Seed value for the inline rename editor (the current label). */
+  renameValue?: string
 }
 
 /**
- * One row in a connection list. Used by both `AppConnections`
- * (workflow / installed-apps surfaces) and `AppAccountPicker` (agent editor).
+ * One row in a connection list. Generic over its content: pass `title`/`subtitle`
+ * and either a `status` (default icon) or a custom `statusIcon`. Used by
+ * `AppConnections` (workflow / installed-apps) and the MCP server detail.
  * Owns its inline-rename UI; the caller only provides the commit handler.
  * See plans/kopilot/apps/app-settings-dialog-refactor.md §5.1.
  */
 export function ConnectionRow({
-  connection,
+  title,
+  subtitle,
+  status,
+  statusIcon,
   actions,
   onSelect,
   selected,
   onRename,
+  renameValue = '',
 }: ConnectionRowProps) {
   const [isEditing, setIsEditing] = useState(false)
   const [editLabel, setEditLabel] = useState('')
 
   const beginRename = () => {
-    setEditLabel(connection.label || '')
+    setEditLabel(renameValue)
     setIsEditing(true)
   }
 
@@ -67,17 +83,10 @@ export function ConnectionRow({
     if (ok !== false) setIsEditing(false)
   }
 
-  const statusText =
-    connection.connectionStatus === 'connected'
-      ? 'Connected'
-      : connection.connectionStatus === 'expired'
-        ? 'Token expired'
-        : 'Not connected'
-
   const body = (
     <>
       <div className='flex items-center gap-3 min-w-0'>
-        <StatusIcon status={connection.connectionStatus} />
+        {statusIcon ?? <StatusIcon status={status ?? 'disconnected'} />}
         <div className='min-w-0'>
           {isEditing ? (
             <InlineRenameForm
@@ -87,14 +96,9 @@ export function ConnectionRow({
               onCancel={() => setIsEditing(false)}
             />
           ) : (
-            <div className='text-sm font-medium truncate'>
-              {connection.label || connection.appName}
-            </div>
+            <div className='text-sm font-medium truncate'>{title}</div>
           )}
-          <div className='text-xs text-muted-foreground truncate'>
-            {statusText}
-            {connection.connectedBy && ` by ${connection.connectedBy}`}
-          </div>
+          {subtitle && <div className='text-xs text-muted-foreground truncate'>{subtitle}</div>}
         </div>
       </div>
       <div className='flex items-center gap-2 shrink-0'>
@@ -123,7 +127,7 @@ export function ConnectionRow({
   )
 }
 
-function StatusIcon({ status }: { status: string }) {
+function StatusIcon({ status }: { status: ConnectionStatus }) {
   if (status === 'connected') return <CheckCircle className='h-4 w-4 text-green-500' />
   if (status === 'expired') return <Clock className='h-4 w-4 text-yellow-500' />
   return <XCircle className='h-4 w-4 text-gray-400' />

@@ -19,6 +19,7 @@ import {
   createTaskCapabilities,
   type GetToolDeps,
 } from '../ai/kopilot/capabilities'
+import { createMcpCapabilities } from '../ai/mcp'
 import { ConflictError, NotFoundError } from '../errors'
 import {
   createScheduledMessage,
@@ -441,6 +442,11 @@ async function buildKopilotToolMap(ctx: ToolContext): Promise<Map<string, AgentT
       sessionId: ctx.sessionId ?? ctx.traceId ?? 'approval',
       getToolDeps: getDeps,
     })
+  )
+  // MCP-backed tools — apply-time runs execute a previously human-approved plan; approval mode
+  // here pauses normally, so non-autonomous is safe and consistent with the live chat path.
+  registry.register(
+    await createMcpCapabilities({ organizationId: ctx.organizationId, autonomous: false })
   )
   return new Map(registry.getTools('mail').map((t) => [t.name, t]))
 }

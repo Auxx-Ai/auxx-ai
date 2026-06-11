@@ -34,7 +34,7 @@ const globalForCache = globalThis as unknown as {
  * Bump this whenever `register-providers.ts` adds a new cache key/provider.
  * The next access to a singleton sees the mismatch and re-runs registration.
  */
-const PROVIDERS_VERSION = 2
+const PROVIDERS_VERSION = 3
 
 /** Initialize all cache services (lazily called on first access) */
 function initCaches(): void {

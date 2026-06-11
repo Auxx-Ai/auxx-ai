@@ -37,6 +37,10 @@ export interface ToolCatalogEntry {
    * Not a gate. See plans/chat/v6/chat-tool-availability.md.
    */
   externalSafe?: boolean
+  /** MCP-only: tool's `readOnlyHint`. Drives the per-tool lock/check icon. */
+  readOnly?: boolean
+  /** MCP-only: admin-trusted (runs without approval). Drives the per-tool icon. */
+  trusted?: boolean
 }
 
 /**
@@ -52,6 +56,11 @@ interface CatalogNodeBase {
   label: string
   iconId: string | null
   color: string | null
+  /**
+   * Provenance of this node — `'app'` (default) or `'mcp'`. Render code
+   * discriminates on this, never on slug prefixes. Set by `buildMcpCatalogNodes`.
+   */
+  origin?: 'app' | 'mcp'
 }
 
 export interface CatalogContainerNode extends CatalogNodeBase {
@@ -101,6 +110,8 @@ export interface FlatToolsetCatalogEntry {
   isDefault: boolean
   /** Curated for the Tool-Select dialog's "Popular tools" group. */
   isPopular: boolean
+  /** Provenance — `'app'` (absent ⇒ app) or `'mcp'`. Pickers group/badge on this. */
+  origin?: 'app' | 'mcp'
   tools: ToolCatalogEntry[]
 }
 
@@ -116,10 +127,12 @@ export function flattenCatalogToToolsets(roots: CatalogNode[]): FlatToolsetCatal
     node: CatalogNode,
     pathLabels: string[],
     inheritedIconId: string,
-    inheritedColor: string
+    inheritedColor: string,
+    inheritedOrigin: 'app' | 'mcp'
   ) {
     const iconId = node.iconId ?? inheritedIconId
     const color = node.color ?? inheritedColor
+    const origin = node.origin ?? inheritedOrigin
 
     if (node.kind === 'toolset') {
       flat.push({
@@ -132,17 +145,18 @@ export function flattenCatalogToToolsets(roots: CatalogNode[]): FlatToolsetCatal
         path: pathLabels,
         isDefault: node.isDefault,
         isPopular: node.isPopular,
+        origin,
         tools: node.tools,
       })
       return
     }
     for (const child of node.children) {
-      visit(child, [...pathLabels, node.label], iconId, color)
+      visit(child, [...pathLabels, node.label], iconId, color, origin)
     }
   }
 
   for (const root of roots) {
-    visit(root, [], root.iconId ?? 'wrench', root.color ?? '')
+    visit(root, [], root.iconId ?? 'wrench', root.color ?? '', root.origin ?? 'app')
   }
   return flat
 }
@@ -419,6 +433,143 @@ export function buildCatalogTreeFromInstallations(
 
   apps.sort(compareAppNodes)
   return apps
+}
+
+// ===== MCP catalog (client-safe) =====
+
+const MCP_MAX_TOOL_NAME_LENGTH = 60
+const MCP_HASH_SUFFIX_LENGTH = 6
+
+/**
+ * Deterministic FNV-1a 32-bit hash → hex. Portable (no node:crypto) so the SAME
+ * `mcpToolName` runs in the browser catalog and the server runtime — registered
+ * names must match exactly or an agent's disable-list stops matching the tool.
+ */
+function fnv1aHex(input: string): string {
+  let hash = 0x811c9dc5
+  for (let i = 0; i < input.length; i++) {
+    hash ^= input.charCodeAt(i)
+    hash = Math.imul(hash, 0x01000193)
+  }
+  return (hash >>> 0).toString(16).padStart(8, '0')
+}
+
+/**
+ * Registered tool name: `mcp__<serverSlug>__<toolName>`. If it would exceed 60 chars, truncate
+ * the tool part and append a deterministic 6-char suffix (collision-safe, stable across syncs).
+ * Defined here (client-safe) and re-exported from `@auxx/lib/ai/mcp` so runtime + catalog agree.
+ */
+export function mcpToolName(serverSlug: string, toolName: string): string {
+  const full = `mcp__${serverSlug}__${toolName}`
+  if (full.length <= MCP_MAX_TOOL_NAME_LENGTH) return full
+  const prefix = `mcp__${serverSlug}__`
+  const hash = fnv1aHex(full).slice(0, MCP_HASH_SUFFIX_LENGTH)
+  const room = Math.max(1, MCP_MAX_TOOL_NAME_LENGTH - prefix.length - 1 - MCP_HASH_SUFFIX_LENGTH)
+  return `${prefix}${toolName.slice(0, room)}_${hash}`
+}
+
+/**
+ * Client-safe projection of a connected MCP server, mirrored from `CachedMcpServer`. Carries the
+ * fields the builder catalog + tool-meta resolvers need; excludes server-only data (input schemas,
+ * sync errors used only by settings). Built in the extensions provider (phase 5) from `mcp.list`.
+ */
+export interface ClientMcpServer {
+  serverId: string
+  slug: string
+  name: string
+  description: string | null
+  iconUrl: string | null
+  toolsetSlug: string
+  connectionPresent: boolean
+  /** Circuit-open / token dead — drives the tree status icon. */
+  needsReconnect?: boolean
+  lastSyncError: string | null
+  tools: Array<{
+    name: string
+    description: string | null
+    readOnlyHint: boolean
+    trusted: boolean
+  }>
+}
+
+/**
+ * Build catalog nodes for connected MCP servers — one `CatalogContainerNode` (kind `'app'`,
+ * `origin: 'mcp'`) per server with ≥1 tool, holding one `CatalogToolsetNode` (`mcp:<serverId>`).
+ * Tool entries use the **registered** name via `mcpToolName` so disable-lists match runtime names.
+ * The same builder runs server-side (catalog merge) and client-side (builder tree).
+ */
+export function buildMcpCatalogNodes(servers: ClientMcpServer[]): CatalogNode[] {
+  const nodes: CatalogContainerNode[] = []
+  for (const server of servers) {
+    if (!server.connectionPresent || server.tools.length === 0) continue
+    const tools: ToolCatalogEntry[] = server.tools.map((t) => ({
+      name: mcpToolName(server.slug, t.name),
+      displayName: t.name,
+      description: t.description ?? '',
+      readOnly: t.readOnlyHint,
+      trusted: t.trusted,
+    }))
+    const toolsetNode: CatalogToolsetNode = {
+      kind: 'toolset',
+      origin: 'mcp',
+      id: server.toolsetSlug,
+      slug: server.toolsetSlug,
+      label: server.name,
+      fullLabel: `${server.name} — MCP`,
+      description: server.description ?? '',
+      isDefault: false,
+      isPopular: false,
+      iconId: server.iconUrl ?? null,
+      color: null,
+      tools: [...tools].sort((a, b) => a.name.localeCompare(b.name)),
+    }
+    nodes.push({
+      kind: 'app',
+      origin: 'mcp',
+      id: server.toolsetSlug, // `mcp:<serverId>` — NOT `app:`-prefixed
+      label: server.name,
+      iconId: server.iconUrl ?? 'plug',
+      color: null,
+      children: [toolsetNode],
+    })
+  }
+  nodes.sort((a, b) => a.label.localeCompare(b.label))
+  return nodes
+}
+
+/** One resolver entry per MCP tool — `registeredName → display metadata`. */
+export interface McpToolMetaEntry {
+  /** Registered tool name (`mcp__<slug>__<tool>`) — the join key in chat/eval/bindings maps. */
+  name: string
+  displayName: string
+  description: string
+  /** Server icon (URL) or the `plug` fallback id. */
+  iconId: string
+  serverName: string
+  toolsetSlug: string
+}
+
+/**
+ * Flatten connected MCP servers to one display-meta entry per tool, keyed by the **registered**
+ * name (`mcpToolName`), so the kopilot tool pill, bindings rows, and eval transcripts can resolve
+ * MCP tool calls the same way they resolve app tools. Mirrors `buildMcpCatalogNodes`' naming.
+ */
+export function buildMcpToolMetaEntries(servers: ClientMcpServer[]): McpToolMetaEntry[] {
+  const entries: McpToolMetaEntry[] = []
+  for (const server of servers) {
+    if (!server.connectionPresent) continue
+    for (const tool of server.tools) {
+      entries.push({
+        name: mcpToolName(server.slug, tool.name),
+        displayName: tool.name,
+        description: tool.description ?? '',
+        iconId: server.iconUrl ?? 'plug',
+        serverName: server.name,
+        toolsetSlug: server.toolsetSlug,
+      })
+    }
+  }
+  return entries
 }
 
 export { getTriggerLabel } from './agent-trigger-label'

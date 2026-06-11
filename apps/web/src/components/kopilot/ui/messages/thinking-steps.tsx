@@ -83,10 +83,10 @@ export function ThinkingSteps({
     for (const step of steps) {
       const r = resolve(step.toolCall.name)
       if (!r) continue
-      if (seen.has(r.installation.app.id)) continue
-      seen.add(r.installation.app.id)
+      if (seen.has(r.appId)) continue
+      seen.add(r.appId)
       out.push({
-        appId: r.installation.app.id,
+        appId: r.appId,
         iconId: r.iconId,
         title: r.appTitle,
       })

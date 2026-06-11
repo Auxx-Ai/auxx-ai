@@ -380,6 +380,37 @@ export interface CachedInstalledApp {
   orgConnectionExpiresAt: string | null
 }
 
+/**
+ * Cached MCP server shape (JSON-serializable). One entry per server visible to the org —
+ * curated/global rows plus the org's own custom rows. Curated rows with no installation for
+ * this org are still included (with `tools: []`) so the settings page can list them as
+ * connectable.
+ */
+export interface CachedMcpServer {
+  serverId: string
+  slug: string
+  name: string
+  description: string | null
+  iconUrl: string | null
+  isCustom: boolean // organizationId != null
+  toolsetSlug: string // `mcp:<serverId>`
+  connectionType: 'oauth2-code' | 'secret' | 'none' | null // null = no definition yet
+  connectionPresent: boolean
+  connectionExpiresAt: string | null
+  /** Circuit breaker tripped (consecutiveRefreshFailures >= 5) — surfaces a reconnect pill. */
+  needsReconnect: boolean
+  tools: Array<{
+    name: string // raw server-side name
+    title: string | null // annotations.title, if any
+    description: string | null
+    readOnlyHint: boolean
+    trusted: boolean // derived: trust.allTools || trust.tools includes name
+    inputSchema: Record<string, unknown> // needed by the adapter
+  }>
+  lastSyncedAt: string | null
+  lastSyncError: string | null
+}
+
 /** All org-scoped cache keys and their data types */
 export interface OrgCacheDataMap {
   // Near-immutable
@@ -405,6 +436,7 @@ export interface OrgCacheDataMap {
   overages: Overage[]
   orgSettings: Record<string, SettingValue> // key → value (org defaults only)
   installedApps: CachedInstalledApp[]
+  mcpServers: CachedMcpServer[]
   workflowApps: CachedWorkflowApp[]
 
   // AI provider data (15-min TTL, invalidated via ai-provider/model events)
@@ -447,6 +479,7 @@ export const ORG_CACHE_KEY_CONFIG: Record<
   orgSettings: { prefix: 'org:settings', ttlSeconds: ONE_DAY },
   // v2: connectionDefinition (singular) → connectionDefinitions (pair). Bump on shape changes.
   installedApps: { prefix: 'org:installed-apps:v2', ttlSeconds: 900 },
+  mcpServers: { prefix: 'org:mcpServers', ttlSeconds: ONE_DAY },
   workflowApps: { prefix: 'org:workflow-apps', ttlSeconds: ONE_DAY },
 
   // AI provider data (15-min TTL)

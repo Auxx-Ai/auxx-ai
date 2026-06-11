@@ -222,12 +222,13 @@ export class OAuth2WorkflowService {
    */
   public async refreshTokens(credentialId: string, organizationId: string): Promise<boolean> {
     try {
-      // Query for type + appId (needed for routing)
+      // Query for type + appId/mcpServerId (needed for routing)
       const credential = await db.query.WorkflowCredentials.findFirst({
         columns: {
           id: true,
           type: true,
           appId: true,
+          mcpServerId: true,
           consecutiveRefreshFailures: true,
         },
         where: eq(schema.WorkflowCredentials.id, credentialId),
@@ -242,6 +243,7 @@ export class OAuth2WorkflowService {
         credentialId,
         organizationId,
         appId: credential.appId || '',
+        mcpServerId: credential.mcpServerId || undefined,
         credentialType: credential.type,
         previousFailureCount: credential.consecutiveRefreshFailures,
       })
@@ -264,6 +266,7 @@ export class OAuth2WorkflowService {
     credentialId: string
     organizationId: string
     appId: string
+    mcpServerId?: string
     credentialType: string
     previousFailureCount: number
   }): Promise<{
@@ -507,6 +510,7 @@ export class OAuth2WorkflowService {
     credentialId: string
     organizationId: string
     appId: string
+    mcpServerId?: string
     credentialType: string
     previousFailureCount: number
   }): Promise<{
@@ -516,7 +520,14 @@ export class OAuth2WorkflowService {
     newFailureCount?: number
     circuitOpened?: boolean
   }> {
-    const { credentialId, organizationId, appId, credentialType, previousFailureCount } = params
+    const {
+      credentialId,
+      organizationId,
+      appId,
+      mcpServerId,
+      credentialType,
+      previousFailureCount,
+    } = params
 
     try {
       // QUERY 1: Get credential data (single query with all needed columns)
@@ -548,13 +559,15 @@ export class OAuth2WorkflowService {
       // QUERY 2: Get OAuth config based on credential type
       let tokenData: any
 
-      if (credentialType === 'app-connection') {
-        // Get ConnectionDefinition for app-connections
+      if (credentialType === 'app-connection' || credentialType === 'mcp-connection') {
+        // Get ConnectionDefinition for app- or mcp-connections. Both share the same
+        // oauth2 columns + circuit-breaker path; only the owner key differs.
+        const ownerFilter =
+          credentialType === 'mcp-connection'
+            ? eq(schema.ConnectionDefinition.mcpServerId, mcpServerId ?? '')
+            : eq(schema.ConnectionDefinition.appId, appId)
         const connDef = await db.query.ConnectionDefinition.findFirst({
-          where: and(
-            eq(schema.ConnectionDefinition.appId, appId),
-            eq(schema.ConnectionDefinition.connectionType, 'oauth2-code')
-          ),
+          where: and(ownerFilter, eq(schema.ConnectionDefinition.connectionType, 'oauth2-code')),
           columns: {
             id: true,
             oauth2AuthorizeUrl: true,

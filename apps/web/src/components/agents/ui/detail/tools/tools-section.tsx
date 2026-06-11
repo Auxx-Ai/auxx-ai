@@ -10,6 +10,7 @@ import { Plus, Wrench } from 'lucide-react'
 import { useCallback, useMemo, useState } from 'react'
 import { useToolCatalog } from '~/components/agents/hooks/use-tool-catalog'
 import { AppAccountDialog } from '~/components/apps/ui/app-account-dialog'
+import { useExtensionsContext } from '~/providers/extensions/extensions-context'
 import { api } from '~/trpc/react'
 import type { AgentDetail } from '../../../store/agent-store'
 import type { AutosaveState } from '../../shared/autosave-indicator'
@@ -121,6 +122,13 @@ export function ToolsSection({ agent, onAutosaveChange }: ToolsSectionProps) {
   }, [agent.appAccounts])
 
   const [accountPickerAppId, setAccountPickerAppId] = useState<string | null>(null)
+
+  // MCP toolset slugs whose org-wide connection needs reconnecting — drives the tree status dot.
+  const { mcpServers } = useExtensionsContext()
+  const mcpReconnectSlugs = useMemo(
+    () => new Set(mcpServers.filter((s) => s.needsReconnect).map((s) => s.toolsetSlug)),
+    [mcpServers]
+  )
 
   const utils = api.useUtils()
   const updateAgent = api.agent.update.useMutation()
@@ -239,6 +247,7 @@ export function ToolsSection({ agent, onAutosaveChange }: ToolsSectionProps) {
                 onOpenAccountPicker={setAccountPickerAppId}
                 boundCredIdByApp={boundCredIdByApp}
                 warnNotExternalSafe={agent.kind === 'chat'}
+                mcpReconnectSlugs={mcpReconnectSlugs}
               />
             ))}
             <AppAccountDialog

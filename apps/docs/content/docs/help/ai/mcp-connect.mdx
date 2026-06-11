@@ -1,0 +1,68 @@
+---
+title: Connect MCP servers
+description: Connect curated or custom Model Context Protocol servers to bring external tools into Auxx.ai agents.
+---
+
+Model Context Protocol (MCP) servers expose external tools — like creating issues, reading documents, or querying a store — that your agents can call during a conversation. Auxx.ai connects to MCP servers over Streamable HTTP and registers their tools alongside your built-in app tools.
+
+Connections are **organization-wide**: once an admin connects a server, every agent in the workspace can use its tools (subject to enabling the toolset). There are no per-user connections.
+
+## Curated vs. custom servers
+
+| Type | What it is | Setup |
+|------|-----------|-------|
+| **Curated** | First-party hosted servers Auxx.ai ships with a verified endpoint and auth method | Pick from the list and connect |
+| **Custom** | Any MCP server you have a Streamable HTTP URL for | Paste the URL and choose an auth mode |
+
+Find both in **Settings > Apps**, under the **MCP servers** section.
+
+## Connect a curated server
+
+1. Go to **Settings > Apps**.
+2. In the **MCP servers** section, choose a server from the curated list.
+3. If the server needs connection details (for example, a store domain), fill in the fields in the connect dialog.
+4. For servers that require sign-in, an authorization popup opens. Approve access and the popup closes automatically.
+5. The server appears as a connected row and its tools are synced.
+
+## Add a custom server
+
+1. Go to **Settings > Apps > MCP servers** and select **Add custom MCP server**.
+2. Enter a name and the server's Streamable HTTP endpoint URL.
+3. Choose an auth mode:
+
+| Auth mode | When to use |
+|-----------|-------------|
+| **Auto** | Let Auxx.ai detect the server's auth requirements (recommended for OAuth servers) |
+| **Bearer token** | The server accepts a static token you paste in |
+| **None** | The server is public and needs no credentials |
+
+4. Click **Connect**. If the server uses OAuth, an authorization popup completes the sign-in.
+
+## What auto-detection does
+
+When you choose **Auto**, Auxx.ai probes the server to discover how it authenticates:
+
+- It reads the server's protected-resource metadata to find the authorization server.
+- It fetches the authorization server's metadata for the sign-in and token endpoints.
+- If the server supports **Dynamic Client Registration**, Auxx.ai registers a client automatically on first connect — you never paste a client ID or secret.
+
+This means most OAuth MCP servers connect with nothing more than the endpoint URL and a sign-in approval.
+
+## Tools and refreshing
+
+Each connected server stores a snapshot of the tools it offers. Auxx.ai refreshes these snapshots nightly. To pull the latest tools immediately, open the server's detail page and choose **Refresh** on the **Tools** tab.
+
+## Reconnecting
+
+If a server's credentials expire or sign-in is revoked, the connected row shows a **reconnect** state. An admin reopens the server and re-authorizes it. Until reconnected, the server's tools are unavailable to agents but the configuration is preserved.
+
+## Next steps
+
+<Cards>
+  <Card title="Using MCP tools with agents" href="/help/ai/mcp-agents">
+    Enable MCP toolsets and control approvals and trust.
+  </Card>
+  <Card title="MCP security model" href="/help/ai/mcp-security">
+    How connections, tokens, and tool output are handled.
+  </Card>
+</Cards>

@@ -1,5 +1,6 @@
 'use client'
 import { constants } from '@auxx/config/client'
+import { FeatureKey } from '@auxx/lib/permissions/client'
 import { Button } from '@auxx/ui/components/button'
 import { Input } from '@auxx/ui/components/input'
 import {
@@ -21,7 +22,9 @@ import { dedupeInstallationsByApp } from '~/components/apps/dedupe-installations
 import { AppIcon } from '~/components/apps/ui/app-icon'
 import { AppListCard } from '~/components/apps/ui/app-list-card'
 import SettingsPage from '~/components/global/settings-page'
+import { McpAppsSection } from '~/components/mcp/ui/mcp-apps-section'
 import { useUser } from '~/hooks/use-user'
+import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { api } from '~/trpc/react'
 
 /** Icon mapping for app categories */
@@ -45,6 +48,8 @@ const SHOW_EMPTY_CATEGORIES = false
  */
 export default function IntegrationList() {
   const { isAdminOrOwner } = useUser()
+  const { hasAccess } = useFeatureFlags()
+  const hasMcpAccess = hasAccess(FeatureKey.mcp)
   const { data: results } = api.apps.list.useQuery({}, { enabled: isAdminOrOwner })
   const { data: installedResult } = api.apps.listInstalled.useQuery({
     // type filter is optional - omitting it returns all installations (both dev and production)
@@ -293,6 +298,11 @@ export default function IntegrationList() {
             )}
           </div>
         </div>
+        {/* MCP servers — connected (installed) + curated browse + add custom. */}
+        {hasMcpAccess && (
+          <McpAppsSection isAdminOrOwner={isAdminOrOwner} searchQuery={searchQuery} />
+        )}
+
         {isAdminOrOwner && (
           <div className='space-y-6'>
             <div className='space-y-1'>

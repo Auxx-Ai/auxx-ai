@@ -65,6 +65,12 @@ interface CatalogNodeRowProps {
    * plans/chat/v6/chat-tool-availability.md.
    */
   warnNotExternalSafe?: boolean
+  /**
+   * Toolset slugs (`mcp:<serverId>`) whose MCP connection needs reconnecting
+   * (circuit open / token dead) — drives the amber status dot on the server's
+   * tree icon. Other slugs render `connected`.
+   */
+  mcpReconnectSlugs?: Set<string>
 }
 
 /**
@@ -88,6 +94,7 @@ export function CatalogNodeRow({
   onOpenAccountPicker,
   boundCredIdByApp,
   warnNotExternalSafe,
+  mcpReconnectSlugs,
 }: CatalogNodeRowProps) {
   const iconId = node.iconId ?? inheritedIconId
   const color = node.color ?? inheritedColor
@@ -115,7 +122,10 @@ export function CatalogNodeRow({
   const restrictionCount = countRestrictions(node, restrictionCountBySlug)
   const containerWarn = Boolean(warnNotExternalSafe) && hasUnverifiedTool(node)
   const isApp = node.kind === 'app'
-  const isInstalledApp = isApp && !node.isBuiltin
+  const isMcp = node.origin === 'mcp'
+  // MCP servers render as `app`-kind containers but use an org-wide connection — they get
+  // none of the per-agent credential/account-picker affordances.
+  const isInstalledApp = isApp && !node.isBuiltin && !isMcp
   // App container nodes carry the prefixed id `app:<appId>` so the tree can
   // disambiguate app vs. subGroup ids. Strip the prefix when handing the id
   // off to anything keyed by raw appId (bound-cred lookup, picker, etc.).
@@ -126,7 +136,14 @@ export function CatalogNodeRow({
     <TreeRow
       depth={depth}
       icon={
-        isInstalledApp ? (
+        isMcp ? (
+          <AppWithStatusIcon
+            iconId={iconId}
+            color={color ?? undefined}
+            size='sm'
+            status={mcpReconnectSlugs?.has(node.id) ? 'expired' : 'connected'}
+          />
+        ) : isInstalledApp ? (
           <AppRowIcon iconId={iconId} color={color} credId={boundCredId} />
         ) : (
           <AppIcon iconId={iconId} color={color ?? undefined} size='sm' />
@@ -134,7 +151,16 @@ export function CatalogNodeRow({
       }
       title={node.label}
       secondary={
-        isInstalledApp ? (
+        isMcp ? (
+          <span className='inline-flex items-center gap-2'>
+            <span>
+              {stats.enabled} {pluralize(stats.enabled, 'tool')}
+            </span>
+            {restrictionCount > 0 ? <RestrictionLockBadge count={restrictionCount} /> : null}
+            {containerWarn ? <ChatWarnBadge /> : null}
+            <McpBadge />
+          </span>
+        ) : isInstalledApp ? (
           <span className='inline-flex items-center gap-2'>
             <span>
               {stats.enabled} {pluralize(stats.enabled, 'tool')}
@@ -186,9 +212,19 @@ export function CatalogNodeRow({
           onOpenAccountPicker={onOpenAccountPicker}
           boundCredIdByApp={boundCredIdByApp}
           warnNotExternalSafe={warnNotExternalSafe}
+          mcpReconnectSlugs={mcpReconnectSlugs}
         />
       ))}
     </TreeRow>
+  )
+}
+
+/** Small "MCP" provenance tag shown in an MCP server container row's secondary slot. */
+function McpBadge() {
+  return (
+    <span className='inline-flex items-center rounded border border-border px-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground'>
+      MCP
+    </span>
   )
 }
 

@@ -24,8 +24,8 @@ interface IBradcrumbItem {
 type Props = {
   icon?: React.ReactNode
   children: React.ReactNode
-  title: string
-  description?: string
+  title: React.ReactNode
+  description?: React.ReactNode
   breadcrumbs?: IBradcrumbItem[]
   button?: React.ReactNode
   backLink?: string

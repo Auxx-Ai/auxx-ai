@@ -5,6 +5,7 @@ import { createId } from '@paralleldrive/cuid2'
 import { type AnyPgColumn, index, integer, pgTable, text, timestamp } from './_shared'
 import { App } from './app'
 import { AppInstallation } from './app-installation'
+import { McpServer } from './mcp-server'
 import { Organization } from './organization'
 import { User } from './user'
 
@@ -34,6 +35,12 @@ export const WorkflowCredentials = pgTable(
       onDelete: 'cascade',
     }),
     appInstallationId: text().references((): AnyPgColumn => AppInstallation.id, {
+      onUpdate: 'cascade',
+      onDelete: 'cascade',
+    }),
+    // MCP connection owner (type 'mcp-connection'). Generic workflow credentials
+    // legitimately have no owner, so no check constraint here.
+    mcpServerId: text().references((): AnyPgColumn => McpServer.id, {
       onUpdate: 'cascade',
       onDelete: 'cascade',
     }),
@@ -79,6 +86,11 @@ export const WorkflowCredentials = pgTable(
     index('WorkflowCredentials_appInstallationId_idx').using(
       'btree',
       table.appInstallationId.asc().nullsLast()
+    ),
+    index('WorkflowCredentials_mcpServerId_idx').using(
+      'btree',
+      table.mcpServerId.asc().nullsLast(),
+      table.organizationId.asc().nullsLast()
     ),
     // OAuth2 refresh indexes
     index('WorkflowCredentials_expiresAt_idx').using('btree', table.expiresAt.asc().nullsLast()),

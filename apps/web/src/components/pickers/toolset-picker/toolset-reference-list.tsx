@@ -58,33 +58,44 @@ export function ToolsetReferenceList({
   const showEmpty = !isLoading && filtered.length === 0 && flat.length > 0
   const showEmptyInitial = !isLoading && flat.length === 0
 
+  // Partition app toolsets from MCP servers into separate group headings.
+  const appToolsets = filtered.filter((e) => e.origin !== 'mcp')
+  const mcpToolsets = filtered.filter((e) => e.origin === 'mcp')
+
+  const renderItem = (entry: FlatToolsetCatalogEntry) => {
+    const id = `toolset:${entry.slug}`
+    return (
+      <CommandItem
+        key={entry.slug}
+        value={id}
+        onSelect={() => onSelectSingle(id)}
+        className='flex items-center gap-2'>
+        <AppIcon iconId={entry.iconId} color={entry.color || undefined} size='sm' />
+        <div className='flex min-w-0 flex-col'>
+          <span className='text-sm truncate'>{entry.fullLabel}</span>
+          <span className='text-[10px] text-muted-foreground'>
+            {entry.tools.length} {entry.tools.length === 1 ? 'tool' : 'tools'}
+            {entry.path.length > 0 ? ` · ${entry.path.join(' · ')}` : ''}
+          </span>
+        </div>
+      </CommandItem>
+    )
+  }
+
   return (
     <Command shouldFilter={false} className={cn('rounded-lg', className)}>
       <CommandList>
         {isLoading && <CommandPlaceholder>Loading…</CommandPlaceholder>}
         {showEmpty && <CommandPlaceholder>No toolsets match</CommandPlaceholder>}
         {showEmptyInitial && <CommandPlaceholder>No toolsets available</CommandPlaceholder>}
-        {filtered.length > 0 && (
-          <CommandGroup aria-label='Toolsets'>
-            {filtered.map((entry) => {
-              const id = `toolset:${entry.slug}`
-              return (
-                <CommandItem
-                  key={entry.slug}
-                  value={id}
-                  onSelect={() => onSelectSingle(id)}
-                  className='flex items-center gap-2'>
-                  <AppIcon iconId={entry.iconId} color={entry.color || undefined} size='sm' />
-                  <div className='flex min-w-0 flex-col'>
-                    <span className='text-sm truncate'>{entry.fullLabel}</span>
-                    <span className='text-[10px] text-muted-foreground'>
-                      {entry.tools.length} {entry.tools.length === 1 ? 'tool' : 'tools'} ·{' '}
-                      {entry.path.join(' · ')}
-                    </span>
-                  </div>
-                </CommandItem>
-              )
-            })}
+        {appToolsets.length > 0 && (
+          <CommandGroup heading='Toolsets' aria-label='Toolsets'>
+            {appToolsets.map(renderItem)}
+          </CommandGroup>
+        )}
+        {mcpToolsets.length > 0 && (
+          <CommandGroup heading='MCP servers' aria-label='MCP servers'>
+            {mcpToolsets.map(renderItem)}
           </CommandGroup>
         )}
       </CommandList>

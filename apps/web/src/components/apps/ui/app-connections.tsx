@@ -202,7 +202,22 @@ function ConnectionSection({
         {rows.map((conn) => (
           <ConnectionRow
             key={conn.id}
-            connection={conn}
+            status={
+              conn.connectionStatus === 'connected'
+                ? 'connected'
+                : conn.connectionStatus === 'expired'
+                  ? 'expired'
+                  : 'disconnected'
+            }
+            title={conn.label || conn.appName}
+            subtitle={`${
+              conn.connectionStatus === 'connected'
+                ? 'Connected'
+                : conn.connectionStatus === 'expired'
+                  ? 'Token expired'
+                  : 'Not connected'
+            }${conn.connectedBy ? ` by ${conn.connectedBy}` : ''}`}
+            renameValue={conn.label || ''}
             onRename={(label) => rowActions.rename(conn.id, label)}
             actions={
               canEdit

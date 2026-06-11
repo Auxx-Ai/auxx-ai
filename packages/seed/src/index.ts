@@ -2,6 +2,7 @@
 // Public exports for the seeding package, exposing orchestrators and utilities
 
 export { BillingDomain } from './domains/billing.domain'
+export { McpDomain } from './domains/mcp.domain'
 export { WorkflowTemplateDomain } from './domains/workflow-template.domain'
 export { AuthSeeder } from './engine/auth-seeder'
 export { DrizzleSeeder } from './engine/drizzle-seeder'

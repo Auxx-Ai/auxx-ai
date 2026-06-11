@@ -142,6 +142,11 @@ export {
   sendTrialConversionEmailsJob,
   type TrialConversionStats,
 } from './maintenance/trial-conversion-job'
+// MCP
+export {
+  type McpToolsResyncJobData,
+  mcpToolsResyncJob,
+} from './mcp/mcp-tools-resync-job'
 // Messages
 export {
   MONITOR_RECHECK_DELAY_MS,

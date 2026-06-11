@@ -45,6 +45,7 @@ export enum FeatureKey {
   todayInbox = 'todayInbox',
   agents = 'agents',
   agentProcedures = 'agentProcedures',
+  mcp = 'mcp',
 
   // ── Static limits (count of things, not time-based) ──
   teammates = 'teammates',
@@ -161,6 +162,13 @@ export const FEATURE_REGISTRY: FeatureMetadata[] = [
     type: 'boolean',
     label: 'Agent Procedures',
     description: 'Step-by-step agent playbooks (beta).',
+    group: 'AI',
+  },
+  {
+    key: FeatureKey.mcp,
+    type: 'boolean',
+    label: 'MCP Servers',
+    description: 'Connect external MCP servers and expose their tools to agents.',
     group: 'AI',
   },
 

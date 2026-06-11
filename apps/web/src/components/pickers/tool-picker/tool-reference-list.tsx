@@ -65,33 +65,44 @@ export function ToolReferenceList({
   const showEmpty = !isLoading && filtered.length === 0 && (catalogQuery.data?.length ?? 0) > 0
   const showEmptyInitial = !isLoading && (catalogQuery.data?.length ?? 0) === 0
 
+  // Partition app tools from MCP-server tools so each gets its own group heading.
+  const appTools = filtered.filter((e) => e.origin !== 'mcp')
+  const mcpTools = filtered.filter((e) => e.origin === 'mcp')
+
+  const renderItem = (entry: FlatToolCatalogEntry) => {
+    const id = `tool:${entry.name}`
+    return (
+      <CommandItem
+        key={entry.name}
+        value={id}
+        onSelect={() => onSelectSingle(id)}
+        className='flex items-center gap-2'>
+        <AppIcon
+          iconId={entry.toolsetIconId || 'wrench'}
+          color={entry.toolsetColor || undefined}
+          size='sm'
+        />
+        <div className='flex min-w-0 flex-col'>
+          <span className='text-sm truncate'>{entry.displayName}</span>
+        </div>
+      </CommandItem>
+    )
+  }
+
   return (
     <Command shouldFilter={false} className={cn('rounded-lg', className)}>
       <CommandList>
         {isLoading && <CommandPlaceholder>Loading…</CommandPlaceholder>}
         {showEmpty && <CommandPlaceholder>No tools match</CommandPlaceholder>}
         {showEmptyInitial && <CommandPlaceholder>No tools available</CommandPlaceholder>}
-        {filtered.length > 0 && (
-          <CommandGroup aria-label='Tools'>
-            {filtered.map((entry) => {
-              const id = `tool:${entry.name}`
-              return (
-                <CommandItem
-                  key={entry.name}
-                  value={id}
-                  onSelect={() => onSelectSingle(id)}
-                  className='flex items-center gap-2'>
-                  <AppIcon
-                    iconId={entry.toolsetIconId || 'wrench'}
-                    color={entry.toolsetColor || undefined}
-                    size='sm'
-                  />
-                  <div className='flex min-w-0 flex-col'>
-                    <span className='text-sm truncate'>{entry.displayName}</span>
-                  </div>
-                </CommandItem>
-              )
-            })}
+        {appTools.length > 0 && (
+          <CommandGroup heading='Tools' aria-label='Tools'>
+            {appTools.map(renderItem)}
+          </CommandGroup>
+        )}
+        {mcpTools.length > 0 && (
+          <CommandGroup heading='MCP' aria-label='MCP'>
+            {mcpTools.map(renderItem)}
           </CommandGroup>
         )}
       </CommandList>

@@ -545,6 +545,14 @@ export async function setupSchedules() {
     }
   )
 
+  // Nightly MCP tool snapshot re-sync (every day at 4 AM) — re-snapshots tools/list for
+  // every connected MCP installation so stale tool definitions self-heal.
+  await maintenanceQueue.upsertJobScheduler(
+    'mcpToolsResyncJob',
+    { pattern: '0 0 4 * * *' },
+    { opts: { attempts: 1, removeOnComplete: { count: 7 }, removeOnFail: { count: 30 } } }
+  )
+
   // Integration token refresh scanner (for Integration table - Gmail/Outlook)
 
   // Every 15 minutes - Scan for integration tokens that need refreshing

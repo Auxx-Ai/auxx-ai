@@ -1,6 +1,7 @@
 // apps/web/src/components/evals/hooks/use-tool-groups.ts
 'use client'
 
+import { buildMcpToolMetaEntries } from '@auxx/lib/agents/client'
 import { useMemo } from 'react'
 import { useExtensionsContext } from '~/providers/extensions/extensions-context'
 import type { RouterOutputs } from '~/trpc/react'
@@ -51,7 +52,7 @@ export function useToolGroups(agentId: string): {
   index: Map<string, ToolMetaEntry>
   isLoading: boolean
 } {
-  const { appInstallations, isLoading: appsLoading } = useExtensionsContext()
+  const { appInstallations, mcpServers, isLoading: appsLoading } = useExtensionsContext()
   const toolsetQuery = api.eval.agentToolset.useQuery({ agentId })
 
   return useMemo(() => {
@@ -72,6 +73,19 @@ export function useToolGroups(agentId: string): {
             iconId: tool.iconId,
           })
         }
+      }
+    }
+
+    // MCP servers: one toolset header per server + each tool's owning slug/icon, so eval
+    // transcripts containing MCP tool calls group + render with the server icon.
+    for (const server of mcpServers) {
+      if (!toolsetMeta.has(server.toolsetSlug)) {
+        toolsetMeta.set(server.toolsetSlug, { fullLabel: server.name, color: '' })
+      }
+    }
+    for (const entry of buildMcpToolMetaEntries(mcpServers)) {
+      if (!toolMeta.has(entry.name)) {
+        toolMeta.set(entry.name, { toolsetSlug: entry.toolsetSlug, iconId: entry.iconId })
       }
     }
 
@@ -124,5 +138,5 @@ export function useToolGroups(agentId: string): {
       index,
       isLoading: appsLoading || toolsetQuery.isLoading,
     }
-  }, [appInstallations, appsLoading, toolsetQuery.data, toolsetQuery.isLoading])
+  }, [appInstallations, mcpServers, appsLoading, toolsetQuery.data, toolsetQuery.isLoading])
 }

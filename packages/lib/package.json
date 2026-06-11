@@ -112,6 +112,12 @@
       "import": "./dist/ai/kopilot/task-notifications/index.mjs",
       "default": "./src/ai/kopilot/task-notifications/index.ts"
     },
+    "./ai/mcp": {
+      "types": "./src/ai/mcp/index.ts",
+      "source": "./src/ai/mcp/index.ts",
+      "import": "./dist/ai/mcp/index.mjs",
+      "default": "./src/ai/mcp/index.ts"
+    },
     "./ai/providers/types": {
       "types": "./src/ai/providers/types.ts",
       "source": "./src/ai/providers/types.ts",
@@ -971,10 +977,12 @@
     "@google/generative-ai": "^0.24.0",
     "@langchain/openai": "^0.5.1",
     "@microsoft/microsoft-graph-client": "^3.0.7",
+    "@modelcontextprotocol/sdk": "1.29.0",
     "@shopify/admin-api-client": "catalog:",
     "@shopify/shopify-api": "catalog:",
     "@trpc/server": "catalog:",
     "addressparser": "^1.0.1",
+    "ajv": "^8",
     "bullmq": "catalog:",
     "cheerio": "^1.1.2",
     "cohere-ai": "^7.18.1",
