@@ -8,9 +8,9 @@ import {
 import { renderReferenceBadge } from './render-reference-badge'
 
 export interface BuildReferencePickerExtensionsOptions {
-  /** Called when Enter is pressed inside the open picker chip. */
+  /** Called when Enter is pressed inside the open `@` picker chip. */
   onPickerEnter?: () => boolean
-  /** Called when ArrowUp/Down is pressed inside the open picker chip. */
+  /** Called when ArrowUp/Down is pressed inside the open `@` picker chip. */
   onPickerArrowVertical?: (direction: 1 | -1) => boolean
   /**
    * Tabs the picker exposes. Defaults to `DEFAULT_TABS`. Pass
@@ -19,6 +19,14 @@ export interface BuildReferencePickerExtensionsOptions {
    * must be passed the same list.
    */
   referenceTabs?: ReferenceTab[]
+  /** Mount the `/` trigger on the same chip node (slash command picker). */
+  slash?: boolean
+  /** Enter inside an open `/` chip — confirm the highlighted slash item. */
+  onSlashEnter?: () => boolean
+  /** ArrowUp/Down inside an open `/` chip — move the slash list highlight. */
+  onSlashArrowVertical?: (direction: 1 | -1) => boolean
+  /** Backspace on an empty, drilled `/` chip — pop a drill level. */
+  onSlashBackspacePop?: () => boolean
 }
 
 /**
@@ -62,6 +70,10 @@ export function buildReferencePickerExtensions(
       onEnter: options.onPickerEnter,
       onArrowVertical: options.onPickerArrowVertical,
       ...(options.referenceTabs ? { tabs: options.referenceTabs } : {}),
+      slash: options.slash ?? false,
+      onSlashEnter: options.onSlashEnter,
+      onSlashArrowVertical: options.onSlashArrowVertical,
+      onSlashBackspacePop: options.onSlashBackspacePop,
     }),
   ]
 }

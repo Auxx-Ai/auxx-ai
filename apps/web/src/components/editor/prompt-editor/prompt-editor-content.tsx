@@ -21,14 +21,17 @@ import {
   LinkButton,
   TurnIntoSection,
 } from '~/components/editor/bubble-menu'
+import { InlinePickerPopover, useActivePicker } from '~/components/editor/inline-picker'
 import {
-  InlinePickerPopover,
-  useActivePicker,
-  useSlashCommand,
-} from '~/components/editor/inline-picker'
-import type { ReferenceTab } from '~/components/editor/inline-picker/nodes/reference-picker-node'
+  getOpenPickerRange,
+  type ReferenceTab,
+} from '~/components/editor/inline-picker/nodes/reference-picker-node'
 import { useRichTextEditor } from '~/components/editor/rich-text/use-rich-text-editor'
-import { BasicSlashCommandPicker } from '~/components/editor/slash-commands/basic-slash-command-picker'
+import {
+  BlocksSlashContent,
+  type SlashContentProps,
+} from '~/components/editor/slash-commands/slash-content'
+import type { SlashContentHandle } from '~/components/editor/slash-commands/slash-list'
 import type { ReferencePickerHandle } from '~/components/pickers/reference-picker/reference-picker-content'
 import { ReferencePickerContent } from '~/components/pickers/reference-picker/reference-picker-content'
 import styles from './prompt-editor.module.css'
@@ -70,10 +73,16 @@ interface PromptEditorContentProps {
    */
   allowedBlocks?: EditorBlock[]
   /**
-   * Mount the slash (`/`) command menu. Defaults to `true`. Set `false` on
-   * surfaces where `@` is the only insertion affordance (procedures).
+   * Mount the slash (`/`) command picker — the same chip node as `@`, with
+   * `trigger: '/'`. Defaults to `true`.
    */
   slash?: boolean
+  /**
+   * Override the slash popover content. Defaults to `BlocksSlashContent`
+   * (basic block commands filtered by `allowedBlocks`). Procedures pass
+   * their Steps + Blocks content here.
+   */
+  slashContent?: (props: SlashContentProps) => React.ReactNode
   /**
    * Show the gutter line numbers at rest instead of only on hover/focus.
    * Defaults to `false`. Forwarded to `useRichTextEditor`.
@@ -87,6 +96,10 @@ interface LinkPopoverState {
   initialHref: string
   selectedText: string
 }
+
+// Render-prop (NOT a direct component call) so the content's hooks live in
+// their own component instance, matching custom `slashContent` overrides.
+const defaultSlashContent = (props: SlashContentProps) => <BlocksSlashContent {...props} />
 
 /**
  * Owns a single TipTap editor instance. The parent (`PersonaEditor`)
@@ -113,14 +126,13 @@ export const PromptEditorContent = memo(function PromptEditorContent({
   inlineExtensions,
   allowedBlocks = DEFAULT_BLOCKS,
   slash = true,
+  slashContent,
   alwaysShowLineNumbers = false,
 }: PromptEditorContentProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [linkPopover, setLinkPopover] = useState<LinkPopoverState | null>(null)
 
-  // `useSlashCommand` is a hook — always called — but only wired into the
-  // editor / mounted as a popover when `slash` is on.
-  const slashCommand = useSlashCommand()
+  const slashRef = useRef<SlashContentHandle | null>(null)
 
   const onPickerEnter = useCallback(
     () => referencePickerRef.current?.confirmHighlighted() ?? false,
@@ -130,11 +142,20 @@ export const PromptEditorContent = memo(function PromptEditorContent({
     (dir: 1 | -1) => referencePickerRef.current?.moveHighlight(dir) ?? false,
     [referencePickerRef]
   )
+  const onSlashEnter = useCallback(() => slashRef.current?.confirmHighlighted() ?? false, [])
+  const onSlashArrowVertical = useCallback(
+    (dir: 1 | -1) => slashRef.current?.moveHighlight(dir) ?? false,
+    []
+  )
+  const onSlashBackspacePop = useCallback(() => slashRef.current?.popLevel() ?? false, [])
 
   const { editor } = useRichTextEditor({
     initialContent,
     onChange,
-    slashCommand: slash ? slashCommand : undefined,
+    slash,
+    onSlashEnter,
+    onSlashArrowVertical,
+    onSlashBackspacePop,
     enableReferencePicker: true,
     onPickerEnter,
     onPickerArrowVertical,
@@ -169,6 +190,36 @@ export const PromptEditorContent = memo(function PromptEditorContent({
       editor.off('blur', onBlurEvt)
     }
   }, [editor, onFocusChange, onUserActivity])
+
+  // Run a slash executor with the open chip's range — the executor's chain
+  // deletes the chip and applies the command in one transaction.
+  const executeSlashCommand = useCallback(
+    (cmd: (editor: Editor, range: { from: number; to: number }) => void) => {
+      if (!editor) return
+      const range = getOpenPickerRange(editor.state)
+      if (!range) return
+      cmd(editor, range)
+    },
+    [editor]
+  )
+
+  const insertSlashReference = useCallback(
+    (id: string) => {
+      editor?.commands.confirmReferencePicker(id)
+    },
+    [editor]
+  )
+
+  const changeSlashScope = useCallback(
+    (scope: string | null) => {
+      editor?.commands.setPickerScope(scope, { clearQuery: true })
+    },
+    [editor]
+  )
+
+  const closeSlash = useCallback(() => {
+    editor?.commands.closeReferencePicker({ keepText: true })
+  }, [editor])
 
   const handleLinkRequest = useCallback(() => {
     if (!editor) return
@@ -232,6 +283,18 @@ export const PromptEditorContent = memo(function PromptEditorContent({
     [editor]
   )
 
+  const referenceOpen = !!activePicker && activePicker.trigger === '@'
+  const slashOpen = slash && !!activePicker && activePicker.trigger === '/'
+
+  // Prevent the popover's interact-outside from closing the chip when the
+  // click lands on the chip itself (clicking the pill keeps the picker open).
+  const onChipInteractOutside = useCallback((e: Event) => {
+    const target = e.target as HTMLElement | null
+    if (target?.closest('[data-type="reference-picker"]')) {
+      e.preventDefault()
+    }
+  }, [])
+
   return (
     <div
       ref={containerRef}
@@ -250,22 +313,37 @@ export const PromptEditorContent = memo(function PromptEditorContent({
         renderInlineMarks={({ editor }) => <InlineMarksSection editor={editor} />}
         renderLink={({ editor }) => <LinkButton editor={editor} onRequest={handleLinkRequest} />}
       />
-      {slash && (
+      {slash && editor && (
         <InlinePickerPopover
-          state={slashCommand.suggestionState}
-          onClose={slashCommand.closePicker}
-          width={288}>
-          <BasicSlashCommandPicker
-            query={slashCommand.suggestionState.query}
-            onExecute={slashCommand.executeCommand}
-            onClose={slashCommand.closePicker}
-            allowedBlocks={allowedBlocks}
-          />
+          state={{
+            isOpen: slashOpen,
+            query: activePicker?.query ?? '',
+            range: null,
+            clientRect: activePicker?.clientRect ?? null,
+          }}
+          containerRef={containerRef}
+          width={288}
+          side='bottom'
+          align='start'
+          autoFocus={false}
+          onInteractOutside={onChipInteractOutside}
+          onClose={closeSlash}>
+          {(slashContent ?? defaultSlashContent)({
+            ref: slashRef,
+            query: activePicker?.query ?? '',
+            scope: activePicker?.scope ?? null,
+            editor,
+            allowedBlocks,
+            onExecute: executeSlashCommand,
+            onInsertReference: insertSlashReference,
+            onScopeChange: changeSlashScope,
+            onClose: closeSlash,
+          })}
         </InlinePickerPopover>
       )}
       <InlinePickerPopover
         state={{
-          isOpen: !!activePicker,
+          isOpen: referenceOpen,
           query: activePicker?.query ?? '',
           range: null,
           clientRect: activePicker?.clientRect ?? null,
@@ -275,12 +353,7 @@ export const PromptEditorContent = memo(function PromptEditorContent({
         side='bottom'
         align='start'
         autoFocus={false}
-        onInteractOutside={(e) => {
-          const target = e.target as HTMLElement | null
-          if (target?.closest('[data-type="reference-picker"]')) {
-            e.preventDefault()
-          }
-        }}
+        onInteractOutside={onChipInteractOutside}
         onClose={() => editor?.commands.closeReferencePicker({ keepText: true })}>
         <ReferencePickerContent
           ref={referencePickerRef}

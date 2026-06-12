@@ -77,12 +77,18 @@ export const KB_BLOCKS: EditorBlock[] = [
 export const PERSONA_BLOCKS: EditorBlock[] = PLAIN_PROSE
 
 /**
- * Procedure canvas — only `text` lines plus the `conditionBlock` IF/ELSE
- * construct. Step "nodes" (tool / code / routing / sub-procedure) and the
- * `condition` reference tag are inline `@` badges, governed separately by
- * `referenceTabs`, not by this block list.
+ * Procedure canvas — `text` lines, light prose structure (headings, lists)
+ * plus the `conditionBlock` IF/ELSE construct. Step "nodes" (tool / code /
+ * routing / sub-procedure) are inline badges inserted via `/` (see
+ * `ProcedureSlashContent`); references via `@` (`referenceTabs`).
  */
-export const PROCEDURE_BLOCKS: EditorBlock[] = ['text', 'conditionBlock']
+export const PROCEDURE_BLOCKS: EditorBlock[] = [
+  'text',
+  'heading',
+  'bulletListItem',
+  'numberedListItem',
+  'conditionBlock',
+]
 
 /**
  * Default when a surface doesn't restrict — the full KB set (the historical

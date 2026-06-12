@@ -11,10 +11,13 @@ import {
   NodeViewWrapper,
   ReactNodeViewRenderer,
 } from '@tiptap/react'
-import { AtSign } from 'lucide-react'
+import { AtSign, Slash } from 'lucide-react'
 import { useEffect, useReducer } from 'react'
 
 export const REFERENCE_PICKER_NODE = 'referencePicker'
+
+/** The characters that can open a picker chip. */
+export type PickerTrigger = '@' | '/'
 
 /**
  * Zero-width space seeded inside a freshly-opened chip so ProseMirror has a
@@ -38,12 +41,6 @@ export type ReferenceTab =
   | 'tools'
   | 'resources'
   | 'fields'
-  // v9 procedure step tabs — opt-in, only the procedure editor passes these.
-  | 'routing'
-  | 'code'
-  | 'subprocedure'
-  | 'condition'
-  | 'attribute'
 
 /**
  * Default tab set rendered by `@`-pickers. Opt-in tabs (currently just
@@ -62,11 +59,6 @@ export const TAB_LABEL: Record<ReferenceTab, string> = {
   tools: 'Tools',
   resources: 'Resources',
   fields: 'Fields',
-  routing: 'Routing',
-  code: 'Code',
-  subprocedure: 'Sub-procedure',
-  condition: 'Condition',
-  attribute: 'Attribute',
 }
 
 /** Resolve digit (1–9) → tab from the configured tab list. */
@@ -80,25 +72,40 @@ const pickerPluginKey = new PluginKey('reference-picker-keys')
 
 interface ReferencePickerOptions {
   /**
-   * Called when Enter is pressed inside the chip. The handler decides whether
-   * to confirm a selection (in which case it should return true) or fall
-   * through (false). The picker UI is responsible for tracking the active
-   * highlight and dispatching `confirmPicker` on the editor.
+   * Called when Enter is pressed inside an `@` chip. The handler decides
+   * whether to confirm a selection (in which case it should return true) or
+   * fall through (false). The picker UI is responsible for tracking the
+   * active highlight and dispatching `confirmReferencePicker` on the editor.
    */
   onEnter?: () => boolean
   /**
-   * Called when ArrowUp/ArrowDown is pressed inside the chip. Returning true
-   * stops the event so it doesn't move the document cursor.
+   * Called when ArrowUp/ArrowDown is pressed inside an `@` chip. Returning
+   * true stops the event so it doesn't move the document cursor.
    */
   onArrowVertical?: (direction: 1 | -1) => boolean
   /**
-   * Tabs this picker exposes. Drives the initial chip tab, digit shortcuts
+   * Tabs the `@` picker exposes. Drives the initial chip tab, digit shortcuts
    * (1–N), and Tab/Shift+Tab cycling. The popover (`ReferencePickerContent`)
    * must be passed the same list — they're paired but not auto-synced
    * because the popover lives in React and this node lives in ProseMirror.
    * Defaults to `DEFAULT_TABS`.
    */
   tabs?: ReferenceTab[]
+  /**
+   * Mount the `/` trigger. The same chip node then also opens for slash
+   * commands: `trigger: '/'`, `tab` holds the drill scope label (null = root).
+   */
+  slash?: boolean
+  /** Enter inside a `/` chip — confirm the highlighted slash item. */
+  onSlashEnter?: () => boolean
+  /** ArrowUp/Down inside a `/` chip — move the slash list highlight. */
+  onSlashArrowVertical?: (direction: 1 | -1) => boolean
+  /**
+   * Backspace on an EMPTY, drilled `/` chip (`tab !== null`). Return true if
+   * a drill level was popped (the popover owns the drill stack); false falls
+   * through to deleting the chip.
+   */
+  onSlashBackspacePop?: () => boolean
 }
 
 function findPickerNode(state: import('@tiptap/pm/state').EditorState) {
@@ -111,6 +118,28 @@ function findPickerNode(state: import('@tiptap/pm/state').EditorState) {
     return undefined
   })
   return found
+}
+
+/**
+ * Range covering the currently-open picker chip, or null. Slash executors
+ * receive this range and `deleteRange(range)` it inside their own chain so
+ * chip removal + the command's edit land in ONE transaction (one undo step).
+ */
+export function getOpenPickerRange(
+  state: import('@tiptap/pm/state').EditorState
+): { from: number; to: number } | null {
+  const picker = findPickerNode(state)
+  return picker ? { from: picker.pos, to: picker.pos + picker.node.nodeSize } : null
+}
+
+/** True when the resolved position sits inside a code block. */
+function insideCodeBlock($pos: import('@tiptap/pm/model').ResolvedPos): boolean {
+  for (let d = $pos.depth; d >= 0; d--) {
+    const node = $pos.node(d)
+    if (node.type.name === 'block' && node.attrs.blockType === 'codeBlock') return true
+    if (node.type.name === 'codeBlock') return true
+  }
+  return false
 }
 
 function ReferencePickerNodeView({ selected, editor, getPos }: NodeViewProps) {
@@ -130,7 +159,8 @@ function ReferencePickerNodeView({ selected, editor, getPos }: NodeViewProps) {
   const pos = typeof getPos === 'function' ? getPos() : null
   const liveNode = typeof pos === 'number' ? editor.state.doc.nodeAt(pos) : null
   const isCurrentPicker = liveNode?.type.name === REFERENCE_PICKER_NODE
-  const tab = (isCurrentPicker ? (liveNode.attrs.tab ?? 'people') : 'people') as ReferenceTab
+  const trigger = (isCurrentPicker ? (liveNode.attrs.trigger ?? '@') : '@') as PickerTrigger
+  const scope = (isCurrentPicker ? (liveNode.attrs.tab ?? null) : null) as string | null
   const isEmpty = !isCurrentPicker || pickerQueryText(liveNode).length === 0
 
   const handleTabClick = (e: React.MouseEvent) => {
@@ -149,31 +179,42 @@ function ReferencePickerNodeView({ selected, editor, getPos }: NodeViewProps) {
       .run()
   }
 
+  // Sublabel: `@` chips always show the active tab; `/` chips show the drill
+  // scope only once drilled (root renders symbol + query alone).
+  const sublabel = trigger === '@' ? (TAB_LABEL[scope as ReferenceTab] ?? scope ?? 'People') : scope
+
   return (
     <NodeViewWrapper
       as='span'
       data-type='reference-picker'
-      data-tab={tab}
+      data-trigger={trigger}
+      data-tab={scope ?? undefined}
       data-selected={selected ? 'true' : undefined}
       className={cn(
         'inline-flex items-center gap-0.5 align-baseline rounded-md px-1 py-0 text-sm',
         'bg-primary-100 text-primary-700 ring-1 ring-primary-200',
         selected && 'ring-primary-400'
       )}>
-      <AtSign className='size-3 shrink-0 opacity-70' />
-      <button
-        type='button'
-        tabIndex={-1}
-        contentEditable={false}
-        onMouseDown={handleTabClick}
-        className={cn(
-          'shrink-0 rounded-sm px-1 text-[10px] font-medium uppercase tracking-wide leading-4',
-          'bg-primary-200/60 text-primary-800',
-          selected && 'bg-primary-300 text-primary-900'
-        )}
-        title={`${TAB_LABEL[tab]} — press 1–4 or click to change`}>
-        {TAB_LABEL[tab]}
-      </button>
+      {trigger === '@' ? (
+        <AtSign className='size-3 shrink-0 opacity-70' />
+      ) : (
+        <Slash className='size-3 shrink-0 opacity-70' />
+      )}
+      {sublabel && (
+        <button
+          type='button'
+          tabIndex={-1}
+          contentEditable={false}
+          onMouseDown={trigger === '@' ? handleTabClick : (e) => e.preventDefault()}
+          className={cn(
+            'shrink-0 rounded-sm px-1 text-[10px] font-medium uppercase tracking-wide leading-4',
+            'bg-primary-200/60 text-primary-800',
+            selected && 'bg-primary-300 text-primary-900'
+          )}
+          title={trigger === '@' ? `${sublabel} — press 1–4 or click to change` : sublabel}>
+          {sublabel}
+        </button>
+      )}
       {/*
        * Placeholder is a React-controlled sibling, not a CSS `:before`. The
        * global `.ProseMirror .is-empty::before` rule in prosemirror.css fights
@@ -198,7 +239,7 @@ function ReferencePickerNodeView({ selected, editor, getPos }: NodeViewProps) {
             contentEditable={false}
             aria-hidden='true'
             className='pointer-events-none select-none whitespace-nowrap text-muted-foreground/60'>
-            Search…
+            {trigger === '@' ? 'Search…' : 'Filter…'}
           </span>
         )}
       </span>
@@ -207,14 +248,18 @@ function ReferencePickerNodeView({ selected, editor, getPos }: NodeViewProps) {
 }
 
 /**
- * Inline TipTap node for the in-progress `@` mention picker chip.
+ * Inline TipTap node for the in-progress picker chip — both the `@` mention
+ * picker and (opt-in via `slash`) the `/` command picker.
  *
  * The chip is **transient** — it represents an open picker. On selection it
- * collapses into a `reference` badge node (the persisted form); on
- * cancel/blur-with-empty it collapses to nothing or plain text.
+ * collapses into a `reference` badge node / runs the picked command; on
+ * cancel it collapses to literal `<trigger><query>` text or nothing.
  *
  * Schema: `content: 'text*'` so ProseMirror owns the cursor + selection
  * inside the search hole. Spaces, IME, undo, etc. all Just Work.
+ *
+ * Attrs: `trigger` ('@' | '/') and `tab` — the chip's scope. For `@` that's
+ * the active reference tab; for `/` it's the drill label (null = root).
  */
 export const ReferencePickerNode = Node.create<ReferencePickerOptions>({
   name: REFERENCE_PICKER_NODE,
@@ -233,15 +278,24 @@ export const ReferencePickerNode = Node.create<ReferencePickerOptions>({
       onEnter: undefined,
       onArrowVertical: undefined,
       tabs: DEFAULT_TABS,
+      slash: false,
+      onSlashEnter: undefined,
+      onSlashArrowVertical: undefined,
+      onSlashBackspacePop: undefined,
     }
   },
 
   addAttributes() {
     return {
+      trigger: {
+        default: '@' as PickerTrigger,
+        parseHTML: (el) => (el.getAttribute('data-trigger') as PickerTrigger) ?? '@',
+        renderHTML: (attrs) => ({ 'data-trigger': attrs.trigger }),
+      },
       tab: {
-        default: 'people' as ReferenceTab,
-        parseHTML: (el) => (el.getAttribute('data-tab') as ReferenceTab) ?? 'people',
-        renderHTML: (attrs) => ({ 'data-tab': attrs.tab }),
+        default: 'people' as string | null,
+        parseHTML: (el) => el.getAttribute('data-tab'),
+        renderHTML: (attrs) => (attrs.tab ? { 'data-tab': attrs.tab } : {}),
       },
     }
   },
@@ -260,11 +314,12 @@ export const ReferencePickerNode = Node.create<ReferencePickerOptions>({
 
   addInputRules() {
     const options = this.options
-    return [
+
+    const makeRule = (trigger: PickerTrigger) =>
       new InputRule({
-        // `@` at start-of-block or after whitespace. Capture preceding char so
-        // we know how much to delete.
-        find: /(^|\s)@$/,
+        // Trigger at start-of-block or after whitespace. Capture preceding
+        // char so we know how much to delete.
+        find: new RegExp(`(^|\\s)\\${trigger}$`),
         handler: ({ state, range, match }) => {
           // The InputRule shares the plugin's pending transaction via
           // `state.tr` (createChainableState wraps it). Mutating `state.tr`
@@ -279,9 +334,13 @@ export const ReferencePickerNode = Node.create<ReferencePickerOptions>({
           const nodeType = state.schema.nodes[REFERENCE_PICKER_NODE]
           if (!nodeType) return
 
-          // For `@` after whitespace, the match starts at the whitespace; for
-          // `@` at start-of-block, the match starts at the `@` itself. Keep
-          // any preceding whitespace untouched.
+          // `/` is literal syntax inside code blocks — never open the picker
+          // there. (`@` keeps its historical fire-anywhere behavior.)
+          if (trigger === '/' && insideCodeBlock(state.doc.resolve(range.from))) return
+
+          // For a trigger after whitespace, the match starts at the
+          // whitespace; at start-of-block it starts at the trigger itself.
+          // Keep any preceding whitespace untouched.
           const prefixLen = match[1]?.length ?? 0
           const atFrom = range.from + prefixLen
           const atTo = range.to
@@ -293,15 +352,16 @@ export const ReferencePickerNode = Node.create<ReferencePickerOptions>({
           // browser produces no `beforeinput` events when the user types →
           // PM never dispatches a textInput transaction → keystrokes are
           // silently dropped (confirmed via diagnostic logs).
-          const initialTab = options.tabs?.[0] ?? 'people'
-          const node = nodeType.create({ tab: initialTab }, state.schema.text(ZWSP))
+          const initialTab = trigger === '@' ? (options.tabs?.[0] ?? 'people') : null
+          const node = nodeType.create({ trigger, tab: initialTab }, state.schema.text(ZWSP))
           tr.replaceRangeWith(atFrom, atTo, node)
           // Place the cursor after the seed ZWSP (inside the chip, offset 2:
           // 1 to enter the chip + 1 to skip the ZWSP).
           tr.setSelection(TextSelection.create(tr.doc, atFrom + 2))
         },
-      }),
-    ]
+      })
+
+    return [makeRule('@'), ...(options.slash ? [makeRule('/')] : [])]
   },
 
   addCommands() {
@@ -331,7 +391,8 @@ export const ReferencePickerNode = Node.create<ReferencePickerOptions>({
         },
       /**
        * Remove the open picker chip. If `keepText` is true, replace it with
-       * plain `@<query>` so typing context isn't lost (used by Escape).
+       * plain `<trigger><query>` so typing context isn't lost (used by
+       * Escape / click-outside).
        */
       closeReferencePicker:
         (opts?: { keepText?: boolean }) =>
@@ -342,7 +403,7 @@ export const ReferencePickerNode = Node.create<ReferencePickerOptions>({
           const to = picker.pos + picker.node.nodeSize
           if (opts?.keepText) {
             const text = pickerQueryText(picker.node)
-            const replacement = `@${text}`
+            const replacement = `${picker.node.attrs.trigger ?? '@'}${text}`
             chain()
               .command(({ tr }) => {
                 tr.replaceRangeWith(from, to, state.schema.text(replacement))
@@ -362,17 +423,33 @@ export const ReferencePickerNode = Node.create<ReferencePickerOptions>({
           }
           return true
         },
-      /** Set the active tab on the open picker chip. */
+      /** Set the active tab on the open `@` picker chip. */
       setReferencePickerTab:
         (tab: ReferenceTab) =>
+        ({ commands }) =>
+          commands.setPickerScope(tab),
+      /**
+       * Set the open chip's scope (`tab` attr) — the `@` tab or the `/`
+       * drill label. `clearQuery` resets the chip's text to the ZWSP seed so
+       * a drilled list starts with a fresh filter.
+       */
+      setPickerScope:
+        (scope: string | null, opts?: { clearQuery?: boolean }) =>
         ({ state, chain }) => {
           const picker = findPickerNode(state)
           if (!picker) return false
           chain()
             .command(({ tr }) => {
-              tr.setNodeMarkup(picker.pos, undefined, { ...picker.node.attrs, tab })
+              tr.setNodeMarkup(picker.pos, undefined, { ...picker.node.attrs, tab: scope })
+              if (opts?.clearQuery) {
+                const contentFrom = picker.pos + 1
+                const contentTo = contentFrom + picker.node.content.size
+                tr.replaceWith(contentFrom, contentTo, state.schema.text(ZWSP))
+                tr.setSelection(TextSelection.create(tr.doc, picker.pos + 2))
+              }
               return true
             })
+            .focus()
             .run()
           return true
         },
@@ -437,6 +514,8 @@ export const ReferencePickerNode = Node.create<ReferencePickerOptions>({
 
             if (pickerPos === null || !pickerNode) return false
 
+            const trigger = (pickerNode.attrs.trigger ?? '@') as PickerTrigger
+            const isSlash = trigger === '/'
             const chipFrom = pickerPos
             const chipTo = pickerPos + pickerNode.nodeSize
             const contentStart = pickerPos + 1
@@ -445,10 +524,10 @@ export const ReferencePickerNode = Node.create<ReferencePickerOptions>({
             const realQuery = pickerQueryText(pickerNode)
             const realQueryLen = realQuery.length
 
-            // --- Escape: collapse to plain `@<query>` text ---
+            // --- Escape: collapse to plain `<trigger><query>` text ---
             if (event.key === 'Escape') {
               event.preventDefault()
-              const replacement = realQuery ? `@${realQuery}` : ''
+              const replacement = realQuery ? `${trigger}${realQuery}` : ''
               const tr = state.tr
               if (replacement) {
                 tr.replaceRangeWith(chipFrom, chipTo, state.schema.text(replacement))
@@ -462,7 +541,8 @@ export const ReferencePickerNode = Node.create<ReferencePickerOptions>({
 
             // --- Enter: hand to consumer (selection of highlighted item) ---
             if (event.key === 'Enter') {
-              if (options.onEnter?.()) {
+              const handler = isSlash ? options.onSlashEnter : options.onEnter
+              if (handler?.()) {
                 event.preventDefault()
                 return true
               }
@@ -475,7 +555,8 @@ export const ReferencePickerNode = Node.create<ReferencePickerOptions>({
             // --- ArrowUp / ArrowDown: forward to list nav ---
             if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
               const dir = event.key === 'ArrowDown' ? 1 : -1
-              if (options.onArrowVertical?.(dir)) {
+              const handler = isSlash ? options.onSlashArrowVertical : options.onArrowVertical
+              if (handler?.(dir)) {
                 event.preventDefault()
                 return true
               }
@@ -528,6 +609,12 @@ export const ReferencePickerNode = Node.create<ReferencePickerOptions>({
                 return true
               }
               if (realQueryLen === 0) {
+                // Drilled `/` chip: pop a drill level instead of closing —
+                // the popover owns the stack; it also resets the chip scope.
+                if (isSlash && pickerNode.attrs.tab !== null && options.onSlashBackspacePop?.()) {
+                  event.preventDefault()
+                  return true
+                }
                 // Chip holds only the seed ZWSP (or is genuinely empty) →
                 // backspace closes the chip in one press.
                 const tr = state.tr.delete(chipFrom, chipTo)
@@ -537,28 +624,33 @@ export const ReferencePickerNode = Node.create<ReferencePickerOptions>({
               return false
             }
 
-            // --- Digit 1–N: tab quick-access (where N = configured tabs) ---
-            const tabs = options.tabs ?? DEFAULT_TABS
-            const digitTab = digitToTab(event.key, tabs)
-            if (digitTab) {
-              const canSwitch = isNodeSelected || realQueryLen === 0
-              if (canSwitch) {
-                event.preventDefault()
-                const tr = state.tr.setNodeMarkup(chipFrom, undefined, {
-                  ...pickerNode.attrs,
-                  tab: digitTab,
-                })
-                // Land cursor inside (after the seed ZWSP if present).
-                const hasZwsp = pickerNode.textContent.startsWith(ZWSP)
-                tr.setSelection(TextSelection.create(tr.doc, chipFrom + 1 + (hasZwsp ? 1 : 0)))
-                view.dispatch(tr)
-                return true
+            // --- Digit 1–N: tab quick-access (`@` chips only) ---
+            if (!isSlash) {
+              const tabs = options.tabs ?? DEFAULT_TABS
+              const digitTab = digitToTab(event.key, tabs)
+              if (digitTab) {
+                const canSwitch = isNodeSelected || realQueryLen === 0
+                if (canSwitch) {
+                  event.preventDefault()
+                  const tr = state.tr.setNodeMarkup(chipFrom, undefined, {
+                    ...pickerNode.attrs,
+                    tab: digitTab,
+                  })
+                  // Land cursor inside (after the seed ZWSP if present).
+                  const hasZwsp = pickerNode.textContent.startsWith(ZWSP)
+                  tr.setSelection(TextSelection.create(tr.doc, chipFrom + 1 + (hasZwsp ? 1 : 0)))
+                  view.dispatch(tr)
+                  return true
+                }
               }
             }
 
-            // --- Tab / Shift+Tab: cycle tabs ---
+            // --- Tab / Shift+Tab: cycle tabs (`@`); swallow on `/` so focus
+            // never escapes the editor while a chip is open ---
             if (event.key === 'Tab') {
               event.preventDefault()
+              if (isSlash) return true
+              const tabs = options.tabs ?? DEFAULT_TABS
               const currentTab = (pickerNode.attrs.tab ?? tabs[0] ?? 'people') as ReferenceTab
               const idx = Math.max(0, tabs.indexOf(currentTab))
               const dir = event.shiftKey ? -1 : 1
@@ -585,6 +677,7 @@ declare module '@tiptap/core' {
       confirmReferencePicker: (recordId: string) => ReturnType
       closeReferencePicker: (opts?: { keepText?: boolean }) => ReturnType
       setReferencePickerTab: (tab: ReferenceTab) => ReturnType
+      setPickerScope: (scope: string | null, opts?: { clearQuery?: boolean }) => ReturnType
     }
   }
 }

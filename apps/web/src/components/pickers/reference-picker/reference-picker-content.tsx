@@ -4,14 +4,7 @@
 
 import type { RecordId } from '@auxx/lib/resources/client'
 import { cn } from '@auxx/ui/lib/utils'
-import { useEffect, useImperativeHandle, useMemo, useRef } from 'react'
-import {
-  AttributePickerList,
-  CodePickerList,
-  ConditionPickerList,
-  RoutingPickerList,
-  SubProcedurePickerList,
-} from '~/components/agents/procedures/ui/procedure-picker-lists'
+import { useImperativeHandle, useMemo, useRef } from 'react'
 import {
   DEFAULT_TABS,
   type ReferenceTab,
@@ -24,6 +17,7 @@ import { RecordPickerContent } from '../record-picker/record-picker-content'
 import { ResourceReferenceList } from '../resource-picker/resource-reference-list'
 import { ThreadReferenceList } from '../thread-picker/thread-reference-list'
 import { ToolReferenceList } from '../tool-picker/tool-reference-list'
+import { useCmdkRemote } from '../use-cmdk-remote'
 
 export type { ReferenceTab }
 
@@ -74,70 +68,15 @@ export function ReferencePickerContent({
   const noop = useMemo(() => () => {}, [])
   const containerRef = useRef<HTMLDivElement>(null)
 
-  // Each picker child (`ActorPickerContent`, `RecordPickerContent`, …) renders
-  // its own `<Command>` internally — so we must NOT wrap them with another
-  // one. To drive selection in that inner cmdk root from arrow keys, we
-  // dispatch native `pointermove` events on the target item; cmdk's
-  // CommandItem reacts to pointer-over by setting itself as selected. This
-  // path doesn't require focus on a CommandInput (which would steal focus
-  // from the tiptap chip).
-  const getEnabledItems = () => {
-    const root = containerRef.current?.querySelector('[cmdk-root]')
-    if (!root) return [] as HTMLElement[]
-    return Array.from(root.querySelectorAll<HTMLElement>('[cmdk-item]:not([aria-disabled="true"])'))
-  }
-
-  const selectItemByPointer = (el: HTMLElement) => {
-    el.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, cancelable: true }))
-    el.scrollIntoView({ block: 'nearest' })
-  }
-
-  // Auto-highlight the first visible item whenever the list might have
-  // changed. We use a microtask + MutationObserver because the picker
-  // children load items asynchronously (react-query).
-  useEffect(() => {
-    const root = containerRef.current
-    if (!root) return
-    const tryHighlight = () => {
-      const items = getEnabledItems()
-      if (items.length === 0) return
-      // Only paint if nothing's selected yet.
-      const cmdkRoot = root.querySelector('[cmdk-root]')
-      const alreadySelected = cmdkRoot?.querySelector('[cmdk-item][data-selected="true"]')
-      if (alreadySelected) return
-      selectItemByPointer(items[0]!)
-    }
-    tryHighlight()
-    const mo = new MutationObserver(tryHighlight)
-    mo.observe(root, { childList: true, subtree: true })
-    return () => mo.disconnect()
-  }, [tab, query])
+  const remote = useCmdkRemote(containerRef, `${tab}:${query}`)
 
   useImperativeHandle(
     ref,
     () => ({
-      moveHighlight: (direction: 1 | -1) => {
-        const items = getEnabledItems()
-        if (items.length === 0) return false
-        const currentEl = items.find((el) => el.getAttribute('data-selected') === 'true')
-        const currentIdx = currentEl ? items.indexOf(currentEl) : -1
-        const nextIdx = (currentIdx + direction + items.length) % items.length
-        const next = items[nextIdx]
-        if (!next) return false
-        selectItemByPointer(next)
-        return true
-      },
-      confirmHighlighted: () => {
-        const root = containerRef.current?.querySelector('[cmdk-root]')
-        if (!root) return false
-        const current = root.querySelector<HTMLElement>('[cmdk-item][data-selected="true"]')
-        if (!current) return false
-        // cmdk's CommandItem wires onSelect to a click handler internally.
-        current.click()
-        return true
-      },
+      moveHighlight: remote.moveHighlight,
+      confirmHighlighted: remote.confirmHighlighted,
     }),
-    []
+    [remote.moveHighlight, remote.confirmHighlighted]
   )
 
   const emptyValue = useMemo(() => [] as RecordId[], [])
@@ -231,21 +170,6 @@ export function ReferencePickerContent({
             onSelectSingle={(id) => onSelect(id as unknown as RecordId)}
           />
         )}
-        {/* v9 procedure step tabs — insertion via the same `@` picker (plan §5). */}
-        {tab === 'routing' && (
-          <RoutingPickerList query={query} onSelect={(id) => onSelect(id as unknown as RecordId)} />
-        )}
-        {tab === 'subprocedure' && (
-          <SubProcedurePickerList
-            query={query}
-            onSelect={(id) => onSelect(id as unknown as RecordId)}
-          />
-        )}
-        {tab === 'code' && (
-          <CodePickerList query={query} onSelect={(id) => onSelect(id as unknown as RecordId)} />
-        )}
-        {tab === 'condition' && <ConditionPickerList />}
-        {tab === 'attribute' && <AttributePickerList query={query} />}
       </div>
     </div>
   )
