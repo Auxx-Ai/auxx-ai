@@ -10,17 +10,17 @@ export type McpServerListEntry = RouterOutputs['mcp']['list'][number]
 
 /**
  * Loads the org's MCP servers (curated + custom, connected + browsable) and exposes a
- * `refresh` that re-fetches `mcp.list` AND the ExtensionsContext projection so the builder
- * catalog updates the same beat the settings UI does.
+ * `refresh` that re-fetches `mcp.list` — one invalidation covers both this query and the
+ * ExtensionsContext projection (the builder catalog derives from the same query), so the
+ * builder updates the same beat the settings UI does.
  */
 export function useMcpServers() {
   const query = api.mcp.list.useQuery()
-  const utils = api.useUtils()
   const { refreshMcpServers } = useExtensionsContext()
 
   const refresh = useCallback(async () => {
-    await Promise.all([utils.mcp.list.invalidate(), refreshMcpServers()])
-  }, [utils, refreshMcpServers])
+    await refreshMcpServers()
+  }, [refreshMcpServers])
 
   return {
     servers: query.data ?? [],

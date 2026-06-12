@@ -174,7 +174,7 @@ export function McpServerToolsTab({ server, onChanged }: McpServerToolsTabProps)
             ))}
           </div>
 
-          <div className='sticky top-0 self-start rounded-lg border bg-background p-3 text-sm'>
+          <div className='sticky top-0 self-start rounded-lg border bg-background p-3 text-sm mb-[300px]'>
             {selected ? (
               <McpToolDetailPanel
                 key={selected.name}

@@ -22,32 +22,30 @@ function isValidReturnTo(value: string | undefined | null): value is string {
   return !!value && value.startsWith('/') && !value.startsWith('//')
 }
 
-/** Popup termination page — postMessage to opener + BroadcastChannel('oauth-mcp-connect'), close. */
-function renderPopupTerminationPage(payload: {
+/** Origins allowed to host the popup termination page (the app window's own origin). */
+const TERMINATION_ORIGINS = [WEBAPP_URL, process.env.NGROK_URL].filter(Boolean) as string[]
+
+/**
+ * Redirect the popup to the termination page on the *opener's* origin.
+ *
+ * The callback runs on the public tunnel origin (NGROK_URL) so providers like Stripe can reach
+ * it, but a cross-origin popup can't notify the app window — `BroadcastChannel` is origin-scoped
+ * and `window.opener` is often severed by the provider's COOP header. Bouncing the popup back to
+ * the app origin (`/api/mcp/oauth-complete`) lets both channels deliver the result. `originOfOpener`
+ * is validated against an allowlist to avoid an open redirect.
+ */
+function popupTerminationRedirect(payload: {
   ok: boolean
   error?: string | null
   originOfOpener: string
 }): NextResponse {
-  const message = { type: 'oauth_done', ok: payload.ok, error: payload.error ?? null }
-  const serializedMessage = JSON.stringify(message).replace(/</g, '\\u003c')
-  const serializedOrigin = JSON.stringify(payload.originOfOpener).replace(/</g, '\\u003c')
-  const heading = payload.ok ? 'Connected' : 'Connection failed'
-  const body = payload.ok
-    ? 'You can close this window.'
-    : `Something went wrong: ${payload.error ?? 'Unknown error'}. You can close this window.`
-  const html = `<!doctype html>
-<html><head><title>${heading}</title></head>
-<body style="font-family: -apple-system, sans-serif; padding: 2rem; text-align: center;">
-<h1>${heading}</h1><p>${body}</p>
-<script>(function(){var p=${serializedMessage};var o=${serializedOrigin};
-try{if(window.opener){window.opener.postMessage(p,o);}}catch(_){}
-try{var bc=new BroadcastChannel('oauth-mcp-connect');bc.postMessage(p);bc.close();}catch(_){}
-try{window.close();}catch(_){}})();</script>
-</body></html>`
-  return new NextResponse(html, {
-    status: payload.ok ? 200 : 400,
-    headers: { 'Content-Type': 'text/html' },
-  })
+  const origin = TERMINATION_ORIGINS.includes(payload.originOfOpener)
+    ? payload.originOfOpener
+    : WEBAPP_URL
+  const url = new URL('/api/mcp/oauth-complete', origin)
+  url.searchParams.set('ok', String(payload.ok))
+  if (!payload.ok && payload.error) url.searchParams.set('error', payload.error)
+  return NextResponse.redirect(url.toString())
 }
 
 export async function GET(
@@ -58,6 +56,7 @@ export async function GET(
   const code = searchParams.get('code')
   const state = searchParams.get('state')
   const providerError = searchParams.get('error')
+  const providerErrorDescription = searchParams.get('error_description')
   const { serverId } = await params
 
   let metadata: Record<string, unknown> | null = null
@@ -74,7 +73,11 @@ export async function GET(
   const originOfOpener = (metadata?.originOfOpener as string) || WEBAPP_URL
 
   if (providerError) {
-    logger.error('MCP OAuth provider error', { providerError, serverId })
+    logger.error('MCP OAuth provider error', {
+      providerError,
+      providerErrorDescription,
+      serverId,
+    })
     if (state) {
       try {
         const redis = await getRedisClient()
@@ -82,7 +85,7 @@ export async function GET(
       } catch {}
     }
     if (isPopup)
-      return renderPopupTerminationPage({ ok: false, error: providerError, originOfOpener })
+      return popupTerminationRedirect({ ok: false, error: providerError, originOfOpener })
     return new NextResponse(`OAuth error: ${providerError}`, { status: 400 })
   }
 
@@ -172,9 +175,13 @@ export async function GET(
       })
     }
     await onCacheEvent('mcp.connection.changed', { orgId: metadata.organizationId as string })
+    logger.info('MCP connect complete', {
+      serverId,
+      organizationId: metadata.organizationId as string,
+    })
 
     if (isPopup) {
-      const res = renderPopupTerminationPage({ ok: true, originOfOpener })
+      const res = popupTerminationRedirect({ ok: true, originOfOpener })
       res.cookies.delete('oauth_return_to')
       return res
     }
@@ -189,7 +196,7 @@ export async function GET(
       error: error instanceof Error ? error.message : String(error),
     })
     if (isPopup) {
-      return renderPopupTerminationPage({
+      return popupTerminationRedirect({
         ok: false,
         error: error instanceof Error ? error.message : 'Unknown error',
         originOfOpener,

@@ -40,11 +40,9 @@ export function McpServerDetail({ initialServer }: { initialServer: McpDetailSer
   const remove = api.mcp.delete.useMutation()
 
   const onChanged = useCallback(async () => {
-    await Promise.all([
-      utils.mcp.getBySlug.invalidate({ slug: current.slug }),
-      utils.mcp.list.invalidate(),
-      refreshMcpServers(),
-    ])
+    // refreshMcpServers() already invalidates `mcp.list` (the ExtensionsContext catalog derives
+    // from the same query) — invalidating it here too would double-fetch.
+    await Promise.all([utils.mcp.getBySlug.invalidate({ slug: current.slug }), refreshMcpServers()])
   }, [utils, current.slug, refreshMcpServers])
 
   async function handleRemove() {

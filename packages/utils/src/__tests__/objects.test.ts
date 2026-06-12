@@ -1,7 +1,29 @@
 // packages/utils/src/__tests__/objects.test.ts
 
 import { describe, expect, it } from 'vitest'
-import { deepEqual } from '../objects'
+import { deepEqual, isEmpty } from '../objects'
+
+describe('isEmpty', () => {
+  it('is true for undefined, null, empty string, and empty array', () => {
+    expect(isEmpty(undefined)).toBe(true)
+    expect(isEmpty(null)).toBe(true)
+    expect(isEmpty('')).toBe(true)
+    expect(isEmpty([])).toBe(true)
+  })
+
+  it('is false for falsy-but-present values', () => {
+    expect(isEmpty(0)).toBe(false)
+    expect(isEmpty(false)).toBe(false)
+    expect(isEmpty(Number.NaN)).toBe(false)
+  })
+
+  it('is false for whitespace strings, empty objects, and populated values', () => {
+    expect(isEmpty(' ')).toBe(false)
+    expect(isEmpty({})).toBe(false)
+    expect(isEmpty([0])).toBe(false)
+    expect(isEmpty('a')).toBe(false)
+  })
+})
 
 describe('deepEqual', () => {
   it('compares object keys order-independently', () => {

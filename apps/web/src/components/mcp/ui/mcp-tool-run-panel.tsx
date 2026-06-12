@@ -6,10 +6,13 @@ import { Button } from '@auxx/ui/components/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@auxx/ui/components/tabs'
 import { Textarea } from '@auxx/ui/components/textarea'
 import { toastError } from '@auxx/ui/components/toast'
+import { safeJsonParse, safeJsonStringify } from '@auxx/utils/json'
+import { isEmpty } from '@auxx/utils/objects'
 import { AlertTriangle, Braces, Play } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { type ReactNode, useMemo, useState } from 'react'
 import { topLevelArgs } from '~/components/agents/ui/detail/bindings/tool-args'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
+import { CodeEditor, CodeLanguage } from '~/components/workflow/ui/code-editor'
 import { VarEditorField, VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
 import { argToFieldType } from '~/lib/agents/bindings/arg-to-field-type'
 import type { RouterOutputs } from '~/trpc/react'
@@ -27,16 +30,6 @@ interface McpToolRunPanelProps {
   onResult?: (result: McpToolRunSuccess | null) => void
 }
 
-/** Pull a top-level arg's JSON-Schema `default`, if it declares one. */
-function argDefault(schema: { default?: unknown }): unknown {
-  return schema.default
-}
-
-/** Is a value "empty" for the purpose of omitting an optional arg from the call? */
-function isEmpty(v: unknown): boolean {
-  return v === undefined || v === null || v === ''
-}
-
 /**
  * Test-run UI for a single MCP tool: a typed args form (reusing the bindings stack's
  * `topLevelArgs` + `argToFieldType` + `FieldInputAdapter`, minus the const/var toggle), a raw-JSON
@@ -50,8 +43,7 @@ export function McpToolRunPanel({ serverId, tool, onResult }: McpToolRunPanelPro
   const initialValues = useMemo(() => {
     const out: Record<string, unknown> = {}
     for (const arg of toolArgs) {
-      const d = argDefault(arg.schema)
-      if (d !== undefined) out[arg.name] = d
+      if (arg.schema.default !== undefined) out[arg.name] = arg.schema.default
     }
     return out
   }, [toolArgs])
@@ -59,12 +51,12 @@ export function McpToolRunPanel({ serverId, tool, onResult }: McpToolRunPanelPro
   const [values, setValues] = useState<Record<string, unknown>>(initialValues)
   const [mode, setMode] = useState<'form' | 'json'>('form')
   const [rawJson, setRawJson] = useState('{}')
-  const [result, setResult] = useState<TestResult | null>(null)
+  const [result, setResult] = useState<McpToolRunSuccess | null>(null)
 
   const testTool = api.mcp.testTool.useMutation()
 
   const requiredMissing = toolArgs.some((a) => a.required && isEmpty(values[a.name]))
-  const rawParsed = mode === 'json' ? safeParseObject(rawJson) : null
+  const rawParsed = useMemo(() => safeParseObject(rawJson), [rawJson])
   const canRun = mode === 'form' ? !requiredMissing : rawParsed.ok
 
   const setArg = (name: string, value: unknown) => setValues((prev) => ({ ...prev, [name]: value }))
@@ -75,7 +67,10 @@ export function McpToolRunPanel({ serverId, tool, onResult }: McpToolRunPanelPro
     const out: Record<string, unknown> = {}
     for (const arg of toolArgs) {
       const v = values[arg.name]
-      if (!isEmpty(v)) out[arg.name] = v
+      if (isEmpty(v)) continue
+      // Select widgets (string-enum args) emit `string[]`; tool args are scalar
+      // (v6 scalar-only) → unwrap the single selection back to its scalar value.
+      out[arg.name] = Array.isArray(v) ? v[0] : v
     }
     return out
   }
@@ -107,14 +102,11 @@ export function McpToolRunPanel({ serverId, tool, onResult }: McpToolRunPanelPro
   /** Switch modes, carrying the current args across so neither view loses work. */
   function toggleMode() {
     if (mode === 'form') {
-      setRawJson(JSON.stringify(buildArgs() ?? {}, null, 2))
-      setMode('json')
+      setRawJson(safeJsonStringify(buildArgs() ?? {}, 2))
     } else if (rawParsed.ok) {
       setValues(rawParsed.value)
-      setMode('form')
-    } else {
-      setMode('form')
     }
+    setMode(mode === 'form' ? 'json' : 'form')
   }
 
   return (
@@ -143,6 +135,7 @@ export function McpToolRunPanel({ serverId, tool, onResult }: McpToolRunPanelPro
                   {mapped.supported ? (
                     <FieldInputAdapter
                       fieldType={mapped.fieldType}
+                      triggerProps={{ className: 'ps-0 w-full pe-1' }}
                       fieldOptions={mapped.options}
                       value={values[arg.name]}
                       onChange={(v) => setArg(arg.name, v)}
@@ -162,11 +155,11 @@ export function McpToolRunPanel({ serverId, tool, onResult }: McpToolRunPanelPro
           </VarEditorField>
         )
       ) : (
-        <Textarea
-          className='min-h-40 font-mono text-xs'
+        <CodeEditor
+          language={CodeLanguage.json}
           value={rawJson}
-          onChange={(e) => setRawJson(e.target.value)}
-          spellCheck={false}
+          onChange={setRawJson}
+          minHeight={160}
         />
       )}
 
@@ -190,14 +183,47 @@ export function McpToolRunPanel({ serverId, tool, onResult }: McpToolRunPanelPro
         )}
       </div>
 
-      {result?.ok && <McpToolResultView result={result} />}
+      {result && <McpToolResultView result={result} />}
     </div>
   )
 }
 
-/** Result viewer: Result/JSON tabs, duration badge, isError banner. */
-function McpToolResultView({ result }: { result: Extract<TestResult, { ok: true }> }) {
-  const hasJson = result.structuredContent !== undefined
+/**
+ * Result viewer: duration badge, isError banner, and a content area that adapts to what the tool
+ * returned. A tool can carry plain `text`, a stringified-JSON `text`, and/or `structuredContent` —
+ * we render a JSON view when there's JSON and a Text view when there's plain text, and only split
+ * into tabs when both genuinely exist (so a JSON-only result isn't shown twice under two labels).
+ */
+function McpToolResultView({ result }: { result: McpToolRunSuccess }) {
+  // `structuredContent` is already JSON; `text` is JSON only when it parses as one. When `text` is
+  // JSON we treat it as the JSON view (and drop the redundant text view), else it's the plain view.
+  const textAsJson = useMemo(() => formatJson(result.text), [result.text])
+  const json =
+    result.structuredContent !== undefined
+      ? safeJsonStringify(result.structuredContent, 2)
+      : textAsJson
+  const plainText = textAsJson ? null : result.text
+
+  const views: { value: string; label: string; node: ReactNode }[] = []
+  if (json) {
+    views.push({
+      value: 'json',
+      label: 'JSON',
+      node: <CodeEditor language={CodeLanguage.json} value={json} readOnly minHeight={120} />,
+    })
+  }
+  if (plainText || views.length === 0) {
+    views.push({
+      value: 'text',
+      label: 'Text',
+      node: (
+        <pre className='max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-md bg-background p-2 font-mono text-xs'>
+          {plainText || '(empty)'}
+        </pre>
+      ),
+    })
+  }
+
   return (
     <div className='mt-1 flex flex-col gap-2 rounded-lg border bg-primary-50/40 p-2'>
       <div className='flex items-center justify-between'>
@@ -214,24 +240,24 @@ function McpToolResultView({ result }: { result: Extract<TestResult, { ok: true 
         </div>
       )}
 
-      <Tabs defaultValue={hasJson ? 'json' : 'text'}>
-        <TabsList size='sm'>
-          <TabsTrigger value='text'>Result</TabsTrigger>
-          {hasJson && <TabsTrigger value='json'>JSON</TabsTrigger>}
-        </TabsList>
-        <TabsContent value='text'>
-          <pre className='max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-md bg-background p-2 font-mono text-xs'>
-            {result.text || '(empty)'}
-          </pre>
-        </TabsContent>
-        {hasJson && (
-          <TabsContent value='json'>
-            <pre className='max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-md bg-background p-2 font-mono text-xs'>
-              {JSON.stringify(result.structuredContent, null, 2)}
-            </pre>
-          </TabsContent>
-        )}
-      </Tabs>
+      {views.length === 1 ? (
+        views[0].node
+      ) : (
+        <Tabs defaultValue={views[0].value}>
+          <TabsList>
+            {views.map((v) => (
+              <TabsTrigger key={v.value} value={v.value} size='sm'>
+                {v.label}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+          {views.map((v) => (
+            <TabsContent key={v.value} value={v.value}>
+              {v.node}
+            </TabsContent>
+          ))}
+        </Tabs>
+      )}
     </div>
   )
 }
@@ -239,29 +265,31 @@ function McpToolResultView({ result }: { result: Extract<TestResult, { ok: true 
 function safeParseObject(
   text: string
 ): { ok: true; value: Record<string, unknown> } | { ok: false } {
-  try {
-    const parsed = JSON.parse(text)
-    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed))
-      return { ok: true, value: parsed }
-    return { ok: false }
-  } catch {
-    return { ok: false }
-  }
+  const parsed = safeJsonParse(text)
+  if (parsed && typeof parsed === 'object' && !Array.isArray(parsed))
+    return { ok: true, value: parsed as Record<string, unknown> }
+  return { ok: false }
+}
+
+/**
+ * Pretty-print `text` if it's a JSON object/array string, else null. Used to render
+ * tool results that ship their payload as a stringified JSON blob with proper formatting.
+ */
+function formatJson(text: string | undefined): string | null {
+  if (!text || (text[0] !== '{' && text[0] !== '[')) return null
+  const parsed = safeJsonParse(text)
+  return parsed && typeof parsed === 'object' ? safeJsonStringify(parsed, 2) : null
 }
 
 /** Render an arbitrary value as editable text for the per-arg JSON fallback. */
 function asText(v: unknown): string {
   if (v === undefined) return ''
   if (typeof v === 'string') return v
-  return JSON.stringify(v, null, 2)
+  return safeJsonStringify(v, 2)
 }
 
 /** Parse a per-arg JSON value, falling back to the raw string when it isn't valid JSON. */
 function parseLooseJson(text: string): unknown {
   if (text.trim() === '') return undefined
-  try {
-    return JSON.parse(text)
-  } catch {
-    return text
-  }
+  return safeJsonParse<unknown>(text, text)
 }
