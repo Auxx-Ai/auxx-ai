@@ -22,6 +22,13 @@ interface UseToolsetMutationsReturn {
    * caller computes the next deny-list from the tool checkboxes.
    */
   updateToolset: (slug: string, patch: ToolsetPatch) => Promise<void>
+  /**
+   * Toggle one tool inside a toolset's deny-list. Reads the toolset's current
+   * state from the live `agent.getById` cache at click time — not from
+   * memoized props — so rapid clicks chain on each other instead of
+   * overwriting from the same stale base array.
+   */
+  toggleTool: (slug: string, toolName: string, allToolNames: string[]) => Promise<void>
   isPending: boolean
 }
 
@@ -137,6 +144,48 @@ export function useToolsetMutations(
   )
 
   /**
+   * Per-tool toggle with the deny-list read-modify-write done against the
+   * fresh cache. Edge rules match the MCP drill-in UX: checking the first
+   * tool of a disabled toolset installs it denying the rest; unchecking the
+   * last enabled tool disables the toolset and clears the deny-list. Locked
+   * toolsets (`mention` / `auto_default`) are no-ops.
+   */
+  const toggleTool = useCallback(
+    async (slug: string, toolName: string, allToolNames: string[]) => {
+      const agent = utils.agent.getById.getData({ agentId: agentSlug })
+      const entry = agent?.toolsets.find((t) => t.slug === slug)
+      const enabled = entry?.enabled ?? false
+      const installed = enabled || entry?.source === 'mention'
+      if (installed && entry && entry.source !== 'manual') return
+      const disabledTools =
+        (entry?.config as { disabledTools?: string[] } | undefined)?.disabledTools ?? []
+
+      if (installed && !disabledTools.includes(toolName)) {
+        // Tool currently enabled — add it to the deny-list.
+        const nextDisabled = [...disabledTools, toolName]
+        if (allToolNames.every((n) => nextDisabled.includes(n))) {
+          await updateToolset(slug, { enabled: false, disabledTools: [] })
+        } else {
+          await updateToolset(slug, { disabledTools: nextDisabled })
+        }
+        return
+      }
+
+      if (enabled) {
+        // Toolset already on — just lift this tool out of the deny-list.
+        await updateToolset(slug, { disabledTools: disabledTools.filter((n) => n !== toolName) })
+      } else {
+        // Toolset off/absent — install it with only this tool enabled.
+        await updateToolset(slug, {
+          enabled: true,
+          disabledTools: allToolNames.filter((n) => n !== toolName),
+        })
+      }
+    },
+    [agentSlug, updateToolset, utils.agent.getById]
+  )
+
+  /**
    * Bulk variant. Applies one combined optimistic write and fires all
    * mutations in parallel. No invalidate — the optimistic write already
    * mirrors the server response.
@@ -175,5 +224,5 @@ export function useToolsetMutations(
     [agentId, agentSlug, onSavingChange, update, utils.agent.getById]
   )
 
-  return { toggleToolset, toggleToolsets, updateToolset, isPending: update.isPending }
+  return { toggleToolset, toggleToolsets, updateToolset, toggleTool, isPending: update.isPending }
 }

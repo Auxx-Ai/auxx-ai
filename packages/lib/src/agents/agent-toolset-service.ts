@@ -173,11 +173,16 @@ async function clearOrphanedAppAccounts(
  * No restriction auto-create: v8 tool bindings are intrinsic to the tool
  * (author `inputBindings`), so enabling a toolset yields its scoped behavior
  * with zero extra writes. See plans/chat/v8 phase-6 §1.
+ *
+ * `options.excludeSocketId` keeps the `agent:updated` broadcast away from the
+ * originating browser so it doesn't clobber its own optimistic cache —
+ * server-originated writes (no socket) still broadcast to everyone.
  */
 export async function updateAgentToolset(
   organizationId: string,
   agentId: string,
   patch: AgentToolsetPatch,
+  options: { excludeSocketId?: string } = {},
   db: Database = defaultDb as Database
 ): Promise<void> {
   await db.transaction(async (tx) => {
@@ -210,18 +215,28 @@ export async function updateAgentToolset(
       error: err instanceof Error ? err.message : String(err),
     })
   }
-  await publishAgentUpdated(getRealtimeService(), organizationId, { agentId })
+  await publishAgentUpdated(
+    getRealtimeService(),
+    organizationId,
+    { agentId },
+    {
+      excludeSocketId: options.excludeSocketId,
+    }
+  )
 }
 
 /**
  * Apply many toolset patches for an agent in one transaction. Entries not in
  * the patch list are left untouched — callers send the full set they want to
  * enable, plus explicit `enabled: false` for ones they unchecked.
+ *
+ * `options.excludeSocketId`: see {@link updateAgentToolset}.
  */
 export async function batchUpdateAgentToolsets(
   organizationId: string,
   agentId: string,
   patches: AgentToolsetPatch[],
+  options: { excludeSocketId?: string } = {},
   db: Database = defaultDb as Database
 ): Promise<void> {
   await db.transaction(async (tx) => {
@@ -257,5 +272,12 @@ export async function batchUpdateAgentToolsets(
       error: err instanceof Error ? err.message : String(err),
     })
   }
-  await publishAgentUpdated(getRealtimeService(), organizationId, { agentId })
+  await publishAgentUpdated(
+    getRealtimeService(),
+    organizationId,
+    { agentId },
+    {
+      excludeSocketId: options.excludeSocketId,
+    }
+  )
 }

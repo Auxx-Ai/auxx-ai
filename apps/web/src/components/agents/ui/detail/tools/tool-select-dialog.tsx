@@ -34,15 +34,22 @@ interface ToolSelectDialogProps {
   /** Bulk-toggle multiple toolsets ("Add all tools"). */
   onToggleToolsets: (changes: Array<{ slug: string; enabled: boolean }>) => void | Promise<void>
   /**
-   * Patch a toolset's `enabled` flag and/or `disabledTools` deny-list. When
-   * supplied, MCP servers gain per-tool selection in their detail view; when
-   * omitted, MCP servers fall back to a single whole-server toggle (used by
-   * surfaces whose storage doesn't honor `disabledTools`).
+   * Patch a toolset's `enabled` flag and/or `disabledTools` deny-list. In the
+   * MCP per-tool detail view this backs only the non-racy "Add all tools"
+   * button; per-tool clicks go through `onToggleTool`.
    */
   onUpdateToolset?: (
     slug: string,
     patch: { enabled?: boolean; disabledTools?: string[] }
   ) => void | Promise<void>
+  /**
+   * Toggle one tool inside an MCP toolset's deny-list. The handler owns the
+   * read-modify-write against fresh state (see `useToolsetMutations.toggleTool`)
+   * so rapid clicks chain correctly. When this or `onUpdateToolset` is omitted,
+   * MCP servers fall back to a single whole-server toggle (used by surfaces
+   * whose storage doesn't honor `disabledTools`).
+   */
+  onToggleTool?: (slug: string, toolName: string, allToolNames: string[]) => void | Promise<void>
   open: boolean
   onOpenChange: (open: boolean) => void
   /**
@@ -83,6 +90,7 @@ export function ToolSelectDialog({
   onToggleToolset,
   onToggleToolsets,
   onUpdateToolset,
+  onToggleTool,
   open,
   onOpenChange,
   initialAppId,
@@ -155,43 +163,6 @@ export function ToolSelectDialog({
   function isToolEnabled(slug: string, toolName: string): boolean {
     if (!isInstalled(slug)) return false
     return !disabledToolsOf(slug).includes(toolName)
-  }
-
-  /**
-   * Toggle one tool inside an MCP toolset. Edits the `disabledTools` deny-list,
-   * enabling/disabling the parent toolset at the edges:
-   *  - first tool checked on a not-yet-enabled toolset installs it, denying the rest;
-   *  - unchecking the last enabled tool disables the toolset and clears the deny-list.
-   */
-  const handleToolClick = (slug: string, toolName: string, allToolNames: string[]) => {
-    if (!onUpdateToolset) return
-    const source = sourceOf(slug)
-    // Locked toolset (mention/auto_default): per-tool edits are no-ops, mirroring `handleToolsetClick`.
-    if (isInstalled(slug) && source && source !== 'manual') return
-
-    if (isToolEnabled(slug, toolName)) {
-      const nextDisabled = [...disabledToolsOf(slug), toolName]
-      const allDisabled = allToolNames.every((n) => nextDisabled.includes(n))
-      if (allDisabled) {
-        void onUpdateToolset(slug, { enabled: false, disabledTools: [] })
-      } else {
-        void onUpdateToolset(slug, { disabledTools: nextDisabled })
-      }
-      return
-    }
-
-    if (installedState.get(slug)?.enabled) {
-      // Toolset already on — just lift this tool out of the deny-list.
-      void onUpdateToolset(slug, {
-        disabledTools: disabledToolsOf(slug).filter((n) => n !== toolName),
-      })
-    } else {
-      // Toolset off/absent — install it with only this tool enabled.
-      void onUpdateToolset(slug, {
-        enabled: true,
-        disabledTools: allToolNames.filter((n) => n !== toolName),
-      })
-    }
   }
 
   const handleToolsetClick = (slug: string) => {
@@ -280,7 +251,7 @@ export function ToolSelectDialog({
                   sourceOf={sourceOf}
                   isToolEnabled={isToolEnabled}
                   onToggle={handleToolsetClick}
-                  onToolClick={handleToolClick}
+                  onToggleTool={onToggleTool}
                   onRemove={handleRemove}
                   onUpdateToolset={onUpdateToolset}
                   onAddAll={(slugs) => {
@@ -495,7 +466,7 @@ interface AppDetailViewProps {
   sourceOf: (slug: string) => InstalledState['source'] | undefined
   isToolEnabled: (slug: string, toolName: string) => boolean
   onToggle: (slug: string) => void
-  onToolClick: (slug: string, toolName: string, allToolNames: string[]) => void
+  onToggleTool?: (slug: string, toolName: string, allToolNames: string[]) => void | Promise<void>
   onRemove: (slug: string) => void
   onUpdateToolset?: (
     slug: string,
@@ -510,7 +481,7 @@ function AppDetailView(props: AppDetailViewProps) {
   // MCP servers carry a single toolset whose tools have no further grouping —
   // drill into the individual tools instead of the one toolset row. Falls back
   // to the toolset view when the surface can't persist per-tool deny-lists.
-  return props.app.origin === 'mcp' && props.onUpdateToolset ? (
+  return props.app.origin === 'mcp' && props.onToggleTool && props.onUpdateToolset ? (
     <McpToolDetailView {...props} />
   ) : (
     <AppToolsetDetailView {...props} />
@@ -575,7 +546,7 @@ function McpToolDetailView({
   app,
   sourceOf,
   isToolEnabled,
-  onToolClick,
+  onToggleTool,
   onUpdateToolset,
 }: AppDetailViewProps) {
   const leaves = useMemo(() => flattenCatalogToToolsets([app]), [app])
@@ -630,8 +601,8 @@ function McpToolDetailView({
               description={tool.description || undefined}
               installed={isToolEnabled(slug, tool.name)}
               source={sourceOf(slug)}
-              onSelect={() => onToolClick(slug, tool.name, allNames)}
-              onRemove={() => onToolClick(slug, tool.name, allNames)}
+              onSelect={() => void onToggleTool?.(slug, tool.name, allNames)}
+              onRemove={() => void onToggleTool?.(slug, tool.name, allNames)}
             />
           ))}
         </div>
