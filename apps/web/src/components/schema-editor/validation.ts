@@ -33,14 +33,26 @@ export function parseSchemaText(text: string):
     return { ok: false, error: `Invalid JSON: ${(err as Error).message}` }
   }
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-    return { ok: false, error: 'Schema must be a JSON object' }
+    // A JSON Schema *document* is always an object — a raw array/primitive here is
+    // almost always a pasted sample value, so point at Import (which infers one).
+    return {
+      ok: false,
+      error: 'This looks like a sample value, not a schema. Use “Import” to infer one.',
+    }
   }
   return { ok: true, schema: parsed as Record<string, unknown> }
 }
 
-/** Run the full structural pipeline over a parsed schema object. */
-export function validateSchema(schema: Record<string, unknown>): SchemaValidationResult {
-  const pre = preValidateSchema(schema)
+/**
+ * Run the full structural pipeline over a parsed schema object. `root` controls
+ * whether a non-object root is rejected (`'object'`, the workflow contract) or
+ * allowed (`'any'`, MCP).
+ */
+export function validateSchema(
+  schema: Record<string, unknown>,
+  root: 'object' | 'any' = 'object'
+): SchemaValidationResult {
+  const pre = preValidateSchema(schema, root)
   if (!pre.ok) return pre
 
   if (checkJsonSchemaDepth(schema) > JSON_SCHEMA_MAX_DEPTH) {
@@ -52,12 +64,19 @@ export function validateSchema(schema: Record<string, unknown>): SchemaValidatio
   return { ok: true }
 }
 
-/** The root must be an object schema — that is the editor's contract. */
-export function preValidateSchema(schema: Record<string, unknown>): SchemaValidationResult {
+/**
+ * Structural root check. Under `root: 'object'` (the default / workflow contract)
+ * the root must be an object schema; under `root: 'any'` (MCP) any root passes —
+ * array/scalar result schemas are first-class there.
+ */
+export function preValidateSchema(
+  schema: Record<string, unknown>,
+  root: 'object' | 'any' = 'object'
+): SchemaValidationResult {
   if (typeof schema !== 'object' || schema === null) {
     return { ok: false, error: 'Schema must be an object' }
   }
-  if (schema.type !== 'object') {
+  if (root === 'object' && schema.type !== 'object') {
     return { ok: false, error: 'Root schema type must be "object"' }
   }
   return { ok: true }

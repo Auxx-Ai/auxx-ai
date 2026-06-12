@@ -241,6 +241,11 @@ export async function createAppCapabilities(deps: {
         displayName: tool.name || registeredName,
         description: tool.description,
         parameters: tool.inputsJsonSchema,
+        // JSON-Schema read currency for the discoverability / binding surface,
+        // carried verbatim from the catalog (empty `{}` ⇒ no schema → omit).
+        ...(tool.outputsJsonSchema && Object.keys(tool.outputsJsonSchema).length > 0
+          ? { outputsJsonSchema: tool.outputsJsonSchema }
+          : {}),
         exampleOutput,
         // App tools have no native captureMint; fall back to the declared
         // example (args-agnostic) so capture mode can predict output. The

@@ -28,6 +28,22 @@ export interface ToolExecResult {
   error?: string
   /** Display projection of the tool output, computed via `buildDigest`. */
   digest?: unknown
+  /**
+   * Carried from the tool's `outputBoundary` — set only for tools whose `output`
+   * is untrusted external data (MCP). The query loop copies it onto the
+   * `ToolCallPart` so the wire layer can re-fence the output for the model.
+   */
+  outputBoundary?: { server: string; tool: string }
+}
+
+/**
+ * Wrap untrusted external tool output (MCP results) in a prompt-injection
+ * boundary the model is told to treat as data. The fence is re-applied here, at
+ * the wire layer, so the stored `ToolCallPart.output` stays a raw, walkable
+ * structured value while the model only ever sees the fenced form.
+ */
+export function wrapMcpOutput(serverSlug: string, toolName: string, text: string): string {
+  return `<mcp_tool_output server="${serverSlug}" tool="${toolName}">\n${text}\n</mcp_tool_output>`
 }
 
 /**
@@ -231,12 +247,24 @@ export function partsToWireFormat(parts: ContentPart[]): Message[] {
       // awaiting-approval). The assistant's tool_calls[] still references the
       // id; on resume we splice the tool message in.
       if (part.status === 'completed' || part.status === 'error' || part.status === 'rejected') {
+        // Untrusted MCP output is re-fenced here (the stored value is the raw,
+        // walkable structured output). Pretty-print inside the fence to match the
+        // model-facing format the adapter used to emit before the wrap moved here.
+        const wireOutput = part.outputBoundary
+          ? wrapMcpOutput(
+              part.outputBoundary.server,
+              part.outputBoundary.tool,
+              JSON.stringify(part.output ?? null, null, 2)
+            )
+          : (part.output ?? null)
         const toolContent =
           part.status === 'completed'
-            ? JSON.stringify(part.output ?? null)
+            ? part.outputBoundary
+              ? (wireOutput as string)
+              : JSON.stringify(part.output ?? null)
             : JSON.stringify({
                 error: part.error ?? 'Unknown error',
-                output: part.output ?? null,
+                output: wireOutput,
               })
         toolMessages.push({
           role: 'tool',

@@ -191,6 +191,69 @@ describe('partsToWireFormat — in-flight / awaiting / errored tools', () => {
   })
 })
 
+describe('partsToWireFormat — untrusted MCP output boundary', () => {
+  it('re-fences a completed part carrying an outputBoundary, output stays walkable', () => {
+    const parts: ContentPart[] = [
+      {
+        type: 'tool_call',
+        toolCallId: 'tc_1',
+        name: 'mcp__demo__list',
+        args: {},
+        status: 'completed',
+        output: [{ id: 1 }, { id: 2 }],
+        outputBoundary: { server: 'demo', tool: 'list' },
+      },
+    ]
+    const wire = partsToWireFormat(parts, messageId)
+    const toolMsg = wire.find((m) => m.role === 'tool')
+    expect(toolMsg).toBeDefined()
+    const content = toolMsg?.content as string
+    expect(content).toContain('<mcp_tool_output server="demo" tool="list">')
+    expect(content).toContain('</mcp_tool_output>')
+    // The JSON output is embedded inside the fence.
+    expect(content).toContain('"id": 1')
+  })
+
+  it('does NOT fence a completed part without an outputBoundary (pre-change part)', () => {
+    const parts: ContentPart[] = [
+      {
+        type: 'tool_call',
+        toolCallId: 'tc_1',
+        name: 'mcp__demo__list',
+        args: {},
+        status: 'completed',
+        // Pre-change parts hold an already-embedded fence string + no marker.
+        output: '<mcp_tool_output server="demo" tool="list">\n[]\n</mcp_tool_output>',
+      },
+    ]
+    const wire = partsToWireFormat(parts, messageId)
+    const toolMsg = wire.find((m) => m.role === 'tool')
+    const content = toolMsg?.content as string
+    // Exactly one fence — JSON.stringify of the already-fenced string, never double-wrapped.
+    expect(content.match(/<mcp_tool_output/g)).toHaveLength(1)
+  })
+
+  it('fences the output of an errored MCP part', () => {
+    const parts: ContentPart[] = [
+      {
+        type: 'tool_call',
+        toolCallId: 'tc_1',
+        name: 'mcp__demo__list',
+        args: {},
+        status: 'error',
+        error: 'nope',
+        output: { message: 'nope' },
+        outputBoundary: { server: 'demo', tool: 'list' },
+      },
+    ]
+    const wire = partsToWireFormat(parts, messageId)
+    const toolMsg = wire.find((m) => m.role === 'tool')
+    const parsed = JSON.parse(toolMsg?.content as string)
+    expect(parsed.error).toBe('nope')
+    expect(parsed.output).toContain('<mcp_tool_output server="demo" tool="list">')
+  })
+})
+
 describe('partsToWireFormat — thinking parts', () => {
   it('drops thinking parts from assistant content (or surfaces them via reasoning_content)', () => {
     const parts: ContentPart[] = [

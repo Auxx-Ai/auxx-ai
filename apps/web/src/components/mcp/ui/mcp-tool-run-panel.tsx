@@ -169,7 +169,7 @@ export function McpToolRunPanel({ serverId, tool, onResult }: McpToolRunPanelPro
           variant='outline'
           className='self-start'
           onClick={handleRun}
-          disabled={!canRun}
+          disabled={!canRun || testTool.isPending}
           loading={testTool.isPending}
           loadingText='Running...'>
           <Play />

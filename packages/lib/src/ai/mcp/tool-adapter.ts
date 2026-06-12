@@ -6,6 +6,10 @@ import Ajv, { type ValidateFunction } from 'ajv'
 // identical names (disable-lists must match exactly).
 import { mcpToolName } from '../../agents/client'
 import type { AgentToolDefinition } from '../agent-framework/types'
+// The injection-boundary fence now lives at the wire layer (`partsToWireFormat`):
+// the adapter returns raw, walkable output and the boundary is re-applied on
+// model replay. Re-exported here for the MCP barrel + tests.
+import { wrapMcpOutput } from '../agent-framework/utils'
 import { buildMcpRequestContext } from './auth'
 import { mcpCallTool } from './client'
 import { markMcpConnectionFailed } from './connections'
@@ -13,19 +17,30 @@ import { McpAuthError, mapMcpError } from './errors'
 import { checkAndCountMcpCall } from './rate-limiter'
 import type { CachedMcpServer } from './types'
 
-export { mcpToolName }
+export { mcpToolName, wrapMcpOutput }
 
 const logger = createScopedLogger('mcp-tool-adapter')
 
 // Ajv tolerant of nonstandard MCP schemas — never brick a tool on an exotic schema.
 const ajv = new Ajv({ allErrors: true, strict: false, validateSchema: false })
 
-/** Wrap MCP tool output in a prompt-injection boundary the model is told to treat as data. */
-export function wrapMcpOutput(serverSlug: string, toolName: string, text: string): string {
-  return `<mcp_tool_output server="${serverSlug}" tool="${toolName}">\n${text}\n</mcp_tool_output>`
-}
-
 type CachedTool = CachedMcpServer['tools'][number]
+
+/**
+ * Parse MCP text output into a structured value when it is a JSON object/array;
+ * otherwise return `undefined` so the caller falls back to the raw string. Only
+ * objects/arrays are walkable (`tool:<name>.path`); scalars stay strings.
+ */
+function tryParseJson(text: string): Record<string, unknown> | unknown[] | undefined {
+  try {
+    const value = JSON.parse(text)
+    return value !== null && typeof value === 'object'
+      ? (value as Record<string, unknown> | unknown[])
+      : undefined
+  } catch {
+    return undefined
+  }
+}
 
 /**
  * Build `AgentToolDefinition`s for one connected MCP server's snapshot.
@@ -34,8 +49,10 @@ type CachedTool = CachedMcpServer['tools'][number]
  * - `requiresApproval` = not readOnly and not trusted.
  * - `validateInputs` lazily compiles ajv against the tool's inputSchema; an uncompilable schema
  *   means "no validation" rather than a dead tool.
- * - `execute` enforces the per-turn/org rate limit, calls the tool, wraps output, and maps errors
- *   to tool-result failures (never throws); a 401 also flags the connection for reconnect.
+ * - `execute` enforces the per-turn/org rate limit, calls the tool, returns the structured
+ *   (walkable) output, and maps errors to tool-result failures (never throws); a 401 also flags the
+ *   connection for reconnect. The prompt-injection boundary is re-applied at the wire layer via the
+ *   `outputBoundary` marker — see `partsToWireFormat`.
  */
 export function buildMcpAgentTools(opts: {
   server: CachedMcpServer
@@ -72,6 +89,12 @@ function buildOne(server: CachedMcpServer, tool: CachedTool): AgentToolDefinitio
     displayName: tool.title ?? tool.name,
     description: `${tool.description ?? tool.name}\n(via ${server.name} MCP server)`,
     parameters: tool.inputSchema,
+    // The stored result schema (server/inferred/manual) as the JSON-Schema read
+    // currency for the discoverability / binding surface. One line, no conversion.
+    ...(tool.outputSchema ? { outputsJsonSchema: tool.outputSchema } : {}),
+    // Marks this tool's output as untrusted external data: the wire layer fences
+    // it for model replay while the stored value stays raw and walkable.
+    outputBoundary: { server: server.slug, tool: tool.name },
     requiresApproval,
     toolsetSlug: server.toolsetSlug,
     validateInputs: async (args) => {
@@ -86,7 +109,12 @@ function buildOne(server: CachedMcpServer, tool: CachedTool): AgentToolDefinitio
     buildDigest: (output) => ({
       server: server.name,
       tool: tool.name,
-      preview: typeof output === 'string' ? output.slice(0, 200) : undefined,
+      preview:
+        typeof output === 'string'
+          ? output.slice(0, 200)
+          : output != null
+            ? JSON.stringify(output).slice(0, 200)
+            : undefined,
     }),
     execute: async (args, ctx) => {
       // Per-call telemetry — server/tool/duration/outcome only. Never args, results, or tokens.
@@ -128,25 +156,22 @@ function buildOne(server: CachedMcpServer, tool: CachedTool): AgentToolDefinitio
           tool.name,
           args
         )
-        // When the server returns a typed result, the serialized JSON is the canonical
-        // model-facing string (per spec the text block SHOULD already be this JSON).
-        const body =
+        // Return the structured value (or parsed JSON text) so `tool:<name>.path`
+        // resolves at runtime; the injection boundary is re-applied at the wire
+        // layer from the tool's `outputBoundary` marker. Genuinely textual tools
+        // stay a scalar string — correct, just not walkable.
+        const value =
           result.structuredContent !== undefined
-            ? JSON.stringify(result.structuredContent, null, 2)
-            : result.text
+            ? result.structuredContent
+            : (tryParseJson(result.text) ?? result.text)
         if (result.isError) {
           logCall(false, 'tool_error')
-          return {
-            success: false,
-            output: null,
-            error: wrapMcpOutput(server.slug, tool.name, body),
-          }
+          // Keep the structured value on `output` (still wire-fenced) and a
+          // human-readable error string alongside it.
+          return { success: false, output: value, error: result.text }
         }
         logCall(true)
-        return {
-          success: true,
-          output: wrapMcpOutput(server.slug, tool.name, body),
-        }
+        return { success: true, output: value }
       } catch (error) {
         const mapped = mapMcpError(error)
         if (error instanceof McpAuthError) {

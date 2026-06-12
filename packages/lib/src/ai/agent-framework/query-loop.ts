@@ -968,6 +968,8 @@ export async function* agentQueryLoop(
         part.error = r.error ?? 'Unknown error'
         if (r.output !== undefined) part.output = r.output
       }
+      // Untrusted-output marker (MCP) — drives the wire-layer injection fence.
+      if (r.outputBoundary) part.outputBoundary = r.outputBoundary
     }
 
     currentState = upsertAssistantMessage()
@@ -1371,6 +1373,7 @@ async function* executeToolCalls(
           success: cached.success,
           error: cached.error,
           digest: cached.digest,
+          ...(cached.outputBoundary ? { outputBoundary: cached.outputBoundary } : {}),
         })
         continue
       }
@@ -1446,6 +1449,7 @@ async function* executeToolCalls(
         success: result.success,
         error: result.error,
         digest,
+        ...(tool.outputBoundary ? { outputBoundary: tool.outputBoundary } : {}),
       }
       results.push(execResult)
       if (cacheKey && result.success) idempotentCache.set(cacheKey, execResult)
