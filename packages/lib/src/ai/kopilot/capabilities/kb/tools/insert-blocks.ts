@@ -16,6 +16,14 @@ export function createInsertBlocksTool(getDeps: GetToolDeps): AgentToolDefinitio
     name: 'insert_blocks',
     displayName: 'Insert article blocks',
     toolsetSlug: 'auxx:kb:write',
+    exampleOutput: {
+      ok: true,
+      op: 'insert',
+      articleId: 'art_4Kp9wZ',
+      preHash: 'a1b2c3d4e5f60718',
+      postHash: 'c9d8e7f6a5b40312',
+      affectedBlockIds: ['b14', 'b15'],
+    },
     description:
       "Insert content at the given anchor in the active article. Pass the content as Auxx markdown — it expands to one or more blocks.\n\nAnchors:\n  { at: 'start' | 'end' } — top/bottom of doc\n  { at: 'before' | 'after', blockId } — relative to any block id (top-level or inside a panel/cell)\n  { at: 'startOf' | 'endOf', containerId } — inside a panel by panel id\n\nMarkdown supports rich blocks via fences: callouts (`:::info … :::`), tabs (`::::tabs` / `:::tab{label=\"…\"}`), accordions (`::::accordion` / `:::item{label=\"…\"}`), cards (`:::cards` / `::card{title=\"…\"}`), images (`![](url){width= align=}`), embeds (`::embed{url=\"…\"}`), and GFM tables. Containers (table/tabs/accordion) can ONLY be inserted at top-level anchors (start/end, or before/after a top-level block) — panels and table cells hold leaf blocks only. Block ids are stamped server-side.",
     parameters: {

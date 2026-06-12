@@ -10,6 +10,14 @@ export function createDeleteBlocksTool(getDeps: GetToolDeps): AgentToolDefinitio
     name: 'delete_blocks',
     displayName: 'Delete article blocks',
     toolsetSlug: 'auxx:kb:write',
+    exampleOutput: {
+      ok: true,
+      op: 'delete',
+      articleId: 'art_4Kp9wZ',
+      preHash: 'a1b2c3d4e5f60718',
+      postHash: 'f0e1d2c3b4a59687',
+      affectedBlockIds: ['b7', 'b8'],
+    },
     description:
       'Delete one or more blocks by id. Operates wherever each block lives (top-level, inside a panel, or inside a table cell). Throws if any id is missing — partial deletes never happen.',
     parameters: {

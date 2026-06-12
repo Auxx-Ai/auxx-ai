@@ -63,6 +63,22 @@ export function createStartNewConversationTool(getDeps: GetToolDeps): AgentToolD
     requiresApproval: true,
     inputAmendmentSchema: StartAmendmentSchema,
     outputSchema: StartNewConversationOutput,
+    exampleOutput: {
+      draftId: 'draft_9pQ4wH',
+      subject: 'Your June invoice is ready',
+      body: 'Hi Sarah, your invoice for June is now available in your account. Let us know if you have any questions.',
+      mode: 'draft',
+      resolvedRecipients: [
+        {
+          participantId: 'ptcpnt_5kRm9x',
+          identifier: 'sarah.lee@example.com',
+          identifierType: 'email',
+          role: 'to',
+          displayName: 'Sarah Lee',
+        },
+      ],
+      status: 'draft_saved',
+    } satisfies z.output<typeof StartNewConversationOutput>,
     buildDigest: (output) => {
       const out = (output ?? {}) as {
         threadId?: string

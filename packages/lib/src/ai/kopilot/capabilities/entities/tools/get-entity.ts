@@ -33,6 +33,19 @@ export function createGetEntityTool(getDeps: GetToolDeps): AgentToolDefinition {
     category: 'system',
     idempotent: true,
     outputSchema: GetEntityOutput,
+    exampleOutput: {
+      recordId: 'contact:9aB3xY',
+      displayName: 'Jane Cooper',
+      secondaryInfo: 'jane@example.com',
+      avatarUrl: null,
+      fields: {
+        Email: { text: 'jane@example.com', type: 'email' },
+        Phone: { text: '+1 555 0142', type: 'phone' },
+        Status: { text: 'Active', type: 'tags', tags: [{ label: 'Active', color: 'green' }] },
+      },
+      createdAt: new Date('2026-01-12T08:30:00.000Z'),
+      updatedAt: new Date('2026-06-05T14:22:00.000Z'),
+    } satisfies z.output<typeof GetEntityOutput>,
     buildDigest: (output) => {
       const out = (output ?? {}) as {
         recordId?: string

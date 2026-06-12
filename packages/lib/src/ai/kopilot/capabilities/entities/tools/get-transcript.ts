@@ -41,6 +41,13 @@ export function createGetTranscriptTool(getDeps: GetToolDeps): AgentToolDefiniti
     category: 'system',
     idempotent: true,
     outputSchema: GetTranscriptOutput,
+    exampleOutput: {
+      transcriptId: 'transcript_1pQ4sW',
+      truncated: false,
+      fullText:
+        'Alex: Thanks for joining the onboarding call. Jane: Happy to be here — excited to get started.',
+      totalWords: 18,
+    } satisfies z.output<typeof GetTranscriptOutput>,
     buildDigest: (output) => {
       const out = (output ?? {}) as { transcriptId?: string }
       return {

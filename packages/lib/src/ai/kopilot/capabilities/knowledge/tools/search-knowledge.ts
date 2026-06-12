@@ -72,6 +72,37 @@ export function createSearchKnowledgeTool(getDeps: GetToolDeps): AgentToolDefini
     // plans/chat/v6/chat-tool-availability.md.
     externalSafe: true,
     outputSchema: SearchKnowledgeOutput,
+    exampleOutput: {
+      results: [
+        {
+          id: 'seg_4hT9kP',
+          source: 'kb',
+          content:
+            'Refunds are issued to the original payment method within 5-7 business days once the returned item is received and inspected.',
+          score: 0.92,
+          documentTitle: 'Refund policy',
+          datasetName: 'Help Center',
+          datasetId: 'ds_kb_help',
+          articleId: 'art_refunds',
+          articleSlug: 'refund-policy',
+          articleSlugPath: 'policies/refund-policy',
+          kbId: 'kb_public',
+          kbSlug: 'help',
+          docSlug: 'help/policies/refund-policy',
+          searchType: 'hybrid',
+        },
+      ],
+      count: 1,
+      total: 1,
+      docs: [
+        {
+          slug: 'help/policies/refund-policy',
+          title: 'Refund policy',
+          description:
+            'Refunds are issued to the original payment method within 5-7 business days once the returned item is received and inspected.',
+        },
+      ],
+    } satisfies z.output<typeof SearchKnowledgeOutput>,
     buildDigest: (output) => {
       const out = (output ?? {}) as {
         results?: Array<Record<string, unknown>>

@@ -22,6 +22,9 @@ export function createCreateEntityTool(getDeps: GetToolDeps): AgentToolDefinitio
     displayName: 'Create record',
     toolsetSlug: 'auxx:entities:write',
     outputSchema: CreateEntityOutput,
+    exampleOutput: {
+      recordId: 'contact:7kP2mQ',
+    } satisfies z.output<typeof CreateEntityOutput>,
     buildDigest: (output) => {
       const out = (output ?? {}) as { recordId?: string }
       const recordId = String(out.recordId ?? '')

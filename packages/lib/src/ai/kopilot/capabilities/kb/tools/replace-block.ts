@@ -10,6 +10,14 @@ export function createReplaceBlockTool(getDeps: GetToolDeps): AgentToolDefinitio
     name: 'replace_block',
     displayName: 'Replace article block',
     toolsetSlug: 'auxx:kb:write',
+    exampleOutput: {
+      ok: true,
+      op: 'replace',
+      articleId: 'art_4Kp9wZ',
+      preHash: 'a1b2c3d4e5f60718',
+      postHash: 'd3e4f5061728a9bc',
+      affectedBlockIds: ['b6'],
+    },
     description:
       'Rewrite a block by id. Pass the new content as markdown — the block\'s id is preserved (the agent does not need to repeat it). The markdown may expand to several blocks: the first keeps the original id, the rest are inserted right after it. Use this for any rewrite — text, formatting, or changing the block\'s kind (e.g. paragraph → callout, or one paragraph → a list). Pass empty markdown ("") to remove the block entirely. Preserve any `@[…]` reference tokens verbatim.',
     parameters: {

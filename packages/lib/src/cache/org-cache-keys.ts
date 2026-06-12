@@ -20,6 +20,7 @@ import type {
   OrganizationRole,
 } from '@auxx/database/types'
 import type { CompiledProcedure, TriggerExample } from '../agents/procedures/types'
+import type { ToolCategory } from '../ai/agent-framework/types'
 import type { CredentialsResponse, ProviderConfiguration } from '../ai/providers/types'
 import type { ConditionGroup } from '../conditions/types'
 import type { DehydratedOrganization } from '../dehydration/types'
@@ -277,6 +278,12 @@ export interface CachedSystemModelDefault {
 export interface CachedAgentTool extends CatalogAgentTool {
   registeredName: string
   iconId: string
+  /**
+   * Platform visibility class (`agents/tool-visibility.ts`). Stamped by the
+   * synthetic built-in row so the eval mock editor can collapse `system`
+   * reads; app tools leave it absent (⇒ `'capability'`).
+   */
+  category?: ToolCategory
   // `surfaces` + `externalSafe` are inherited from `CatalogAgentTool` (carried
   // through from the SDK / built-in tool defs). See
   // plans/chat/v6/chat-tool-availability.md.

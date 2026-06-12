@@ -19,6 +19,11 @@ export function createResolveBlockByHeadingTool(getDeps: GetToolDeps): AgentTool
     displayName: 'Find article section',
     toolsetSlug: 'auxx:knowledge',
     idempotent: true,
+    exampleOutput: {
+      blockId: 'b3',
+      level: 2,
+      text: 'Finding your tracking number',
+    },
     description:
       "Resolves a heading's text to its block id in the active article. Returns null if no heading matches. Use this when the user references a section by name and you need a stable block id to operate on.",
     parameters: {

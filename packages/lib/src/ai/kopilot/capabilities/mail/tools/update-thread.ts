@@ -26,6 +26,16 @@ export function createUpdateThreadTool(getDeps: GetToolDeps): AgentToolDefinitio
     displayName: 'Update thread',
     toolsetSlug: 'auxx:mail:threads',
     outputSchema: UpdateThreadOutput,
+    exampleOutput: {
+      threadId: 'thread_8fK2pQ',
+      updated: true,
+      changes: {
+        status: 'ARCHIVED',
+        assigneeId: 'user_7Hd2',
+        addedTags: ['tag_shipping'],
+        removedTags: ['tag_urgent'],
+      },
+    } satisfies z.output<typeof UpdateThreadOutput>,
     buildDigest: (output) => {
       const out = (output ?? {}) as { threadId?: string; changes?: Record<string, unknown> }
       const changes: string[] = []

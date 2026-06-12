@@ -27,6 +27,25 @@ export function createListMembersTool(getDeps: GetToolDeps): AgentToolDefinition
     toolsetSlug: 'auxx:actors',
     idempotent: true,
     outputSchema: ListMembersOutput,
+    exampleOutput: {
+      members: [
+        {
+          actorId: 'user:7Hd2aK',
+          name: 'Maya Chen',
+          email: 'maya@acme.com',
+          role: 'OWNER',
+          avatarUrl: 'https://cdn.auxx.ai/avatars/7Hd2aK.png',
+        },
+        {
+          actorId: 'user:9rLpQ3',
+          name: 'Tom Rivera',
+          email: 'tom@acme.com',
+          role: 'USER',
+          avatarUrl: null,
+        },
+      ],
+      count: 2,
+    } satisfies z.output<typeof ListMembersOutput>,
     buildDigest: (output) => {
       const out = (output ?? {}) as {
         members?: Array<{ name?: string | null }>

@@ -22,6 +22,13 @@ export function createGetArticleSectionTool(getDeps: GetToolDeps): AgentToolDefi
     displayName: 'Get article section',
     toolsetSlug: 'auxx:knowledge',
     idempotent: true,
+    exampleOutput: {
+      headingText: 'Finding your tracking number',
+      startBlockId: 'b3',
+      markdown:
+        '## Finding your tracking number\n\nOpen the shipping confirmation email and click **Track package**.',
+      blockCount: 2,
+    },
     description:
       'Returns the markdown for one section of the active article identified by its heading text. Use after get_article reports the body was truncated. Section boundaries: from the heading text (case-insensitive prefix match) to the next heading at the same-or-shallower level, or end of doc.',
     parameters: {

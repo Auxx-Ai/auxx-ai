@@ -532,6 +532,7 @@ function EvalCaseForm({
         {/* Tool responses */}
         <EvalToolResponses
           agentId={agentId}
+          target={target}
           mocks={config.connectorMocks}
           onChange={(mocks) => setConfigField('connectorMocks', mocks)}
         />

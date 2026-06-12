@@ -6,6 +6,8 @@
  * components should import from.
  */
 
+import type { ToolCategory } from '../ai/agent-framework/types'
+
 export type AgentScopeMode = 'include_descendants' | 'include_one' | 'exclude'
 
 /**
@@ -41,6 +43,21 @@ export interface ToolCatalogEntry {
   readOnly?: boolean
   /** MCP-only: admin-trusted (runs without approval). Drives the per-tool icon. */
   trusted?: boolean
+  /**
+   * Platform visibility class. Absent ⇒ `'capability'`. Drives the eval mock
+   * editor's system-group collapse (control tools never reach the catalog).
+   */
+  category?: ToolCategory
+  /** Read-only — may run live under `passthrough_readonly`; drives the read-only badge. */
+  idempotent?: boolean
+  /**
+   * JSON Schema of the tool's success output. Absent/empty ⇒ no declared
+   * schema (free-form mock). The eval editor derives its scaffold seed from
+   * this via {@link scaffoldFromJsonSchema} — never persisted.
+   */
+  outputsJsonSchema?: Record<string, unknown>
+  /** One realistic sample output — the preferred mock seed AND the runtime live-default. */
+  exampleOutput?: unknown
 }
 
 /**
@@ -118,6 +135,14 @@ export interface CatalogToolNode extends CatalogNodeBase {
   readOnly?: boolean
   /** MCP-only: admin-trusted (runs without approval). */
   trusted?: boolean
+  /** Mirrors {@link ToolCatalogEntry.category}. */
+  category?: ToolCategory
+  /** Mirrors {@link ToolCatalogEntry.idempotent}. */
+  idempotent?: boolean
+  /** Mirrors {@link ToolCatalogEntry.outputsJsonSchema}. */
+  outputsJsonSchema?: Record<string, unknown>
+  /** Mirrors {@link ToolCatalogEntry.exampleOutput}. */
+  exampleOutput?: unknown
 }
 
 /** Implicit-toolset slug for an app's ungrouped native tools. Stable across builds (derived from the app id); MCP keeps `mcp:<serverId>`. */
@@ -135,6 +160,10 @@ export function toolNodeToEntry(node: CatalogToolNode): ToolCatalogEntry {
     externalSafe: node.externalSafe,
     readOnly: node.readOnly,
     trusted: node.trusted,
+    category: node.category,
+    idempotent: node.idempotent,
+    outputsJsonSchema: node.outputsJsonSchema,
+    exampleOutput: node.exampleOutput,
   }
 }
 
@@ -158,6 +187,10 @@ export function toolEntryToNode(
     externalSafe: entry.externalSafe,
     readOnly: entry.readOnly,
     trusted: entry.trusted,
+    category: entry.category,
+    idempotent: entry.idempotent,
+    outputsJsonSchema: entry.outputsJsonSchema,
+    exampleOutput: entry.exampleOutput,
   }
 }
 
@@ -259,6 +292,40 @@ export function matchesToolsetSearch(entry: FlatToolsetCatalogEntry, query: stri
   )
 }
 
+/** One enabled toolset on an agent — the client mirror of `ResolvedAgentConfig.toolsets[*]`. */
+export interface AgentToolsetSelection {
+  slug: string
+  /**
+   * Per-tool allow-list of registered names (implicit toolsets only).
+   * `null`/absent ⇒ no per-tool config — every member tool passes.
+   */
+  enabledTools?: readonly string[] | null
+}
+
+/**
+ * Client mirror of the runtime `filterToolsByToolsets` (`agents/filter-tools.ts`):
+ * keep a toolset iff its slug is enabled for the agent; within it keep a tool iff
+ * the entry has no allow-list (`null`) or the list includes the tool's registered
+ * name (fail-closed otherwise). Toolsets left with zero tools are dropped. Used
+ * by the eval case editor to derive the agent's baseline tool set from the full
+ * catalog without a server round trip. Pure.
+ */
+export function filterCatalogToAgentToolsets(
+  entries: FlatToolsetCatalogEntry[],
+  toolsets: AgentToolsetSelection[]
+): FlatToolsetCatalogEntry[] {
+  const bySlug = new Map(toolsets.map((t) => [t.slug, t.enabledTools ?? null]))
+  return entries
+    .filter((entry) => bySlug.has(entry.slug))
+    .map((entry) => {
+      const enabled = bySlug.get(entry.slug) ?? null
+      return enabled === null
+        ? entry
+        : { ...entry, tools: entry.tools.filter((t) => enabled.includes(t.name)) }
+    })
+    .filter((entry) => entry.tools.length > 0)
+}
+
 /**
  * Prune a catalog tree to the tools offered on `surface`, dropping any toolset
  * left with zero tools and any container left with no children. A tool with no
@@ -332,6 +399,14 @@ export interface CachedInstalledAppLike {
     surfaces?: AgentSurface[]
     /** Mirrors `AgentToolDefinition.externalSafe` — drives the chat/email warning. */
     externalSafe?: boolean
+    /** Mirrors {@link ToolCatalogEntry.category}. Absent ⇒ `'capability'`. */
+    category?: ToolCategory
+    /** Mirrors {@link ToolCatalogEntry.idempotent}. */
+    idempotent?: boolean
+    /** Mirrors {@link ToolCatalogEntry.outputsJsonSchema}. Empty `{}` ⇒ no schema. */
+    outputsJsonSchema?: Record<string, unknown>
+    /** Mirrors {@link ToolCatalogEntry.exampleOutput}. */
+    exampleOutput?: unknown
   }>
 }
 
@@ -493,6 +568,10 @@ export function buildCatalogTreeFromInstallations(
         description: shortDescription(tool.description),
         surfaces: tool.surfaces,
         externalSafe: tool.externalSafe,
+        category: tool.category,
+        idempotent: tool.idempotent,
+        outputsJsonSchema: tool.outputsJsonSchema,
+        exampleOutput: tool.exampleOutput,
       })
       toolsBySlug.set(slug, arr)
     }
@@ -627,6 +706,10 @@ export function buildMcpCatalogNodes(servers: ClientMcpServer[]): CatalogNode[] 
       description: t.description ?? '',
       readOnly: t.readOnlyHint,
       trusted: t.trusted,
+      // MCP tools are ordinary capabilities; readOnlyHint is the idempotence
+      // signal. Output schema + example land with plans/mcp/v5 (until then the
+      // eval editor renders "no schema — author freely").
+      idempotent: t.readOnlyHint,
     }))
     const toolsetNode: CatalogToolsetNode = {
       kind: 'toolset',
@@ -722,10 +805,22 @@ export {
   walkPromptDoc,
   walkPromptDocs,
 } from './prompt-mention-reconciler'
+/**
+ * Derive the eval mock editor's empty-but-correctly-shaped seed from a tool's
+ * `outputsJsonSchema`. Computed at render time client-side — never stored.
+ */
+export { scaffoldFromJsonSchema } from './scaffold-from-json-schema'
 export { AGENT_SLUG_MAX, AGENT_SLUG_REGEX, agentSlugSchema } from './slug-schema'
 export {
   type AgentTemplate,
   type AgentTemplateCategory,
   agentTemplates,
 } from './templates'
+/**
+ * Visibility-policy helpers — pure (they only read `category`), re-exported
+ * here so client code (eval editor grouping) shares the one policy table with
+ * the server barrel.
+ */
+export { isToolVisibleOn, type ToolVisibilitySurface, toolCategory } from './tool-visibility'
 export type { FlatToolCatalogEntry } from './toolset-catalog'
+export type { ToolCategory }

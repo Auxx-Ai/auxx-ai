@@ -25,6 +25,36 @@ export function createGetArticleTool(getDeps: GetToolDeps): AgentToolDefinition 
     displayName: 'Get article',
     toolsetSlug: 'auxx:knowledge',
     idempotent: true,
+    exampleOutput: {
+      recordId: 'entdef_article:art_4Kp9wZ',
+      displayName: 'How to track your order',
+      secondaryInfo: 'how-to-track-your-order',
+      articleId: 'art_4Kp9wZ',
+      knowledgeBaseId: 'kb_2Lm8xR',
+      title: 'How to track your order',
+      slug: 'how-to-track-your-order',
+      description: 'Step-by-step guide to finding your order tracking number and status.',
+      status: 'PUBLISHED',
+      hasUnpublishedChanges: false,
+      contentHash: 'a1b2c3d4e5f60718',
+      bodyMarkdown:
+        '# How to track your order\n\nOnce your order ships, you will receive a confirmation email with a tracking number.\n\n## Finding your tracking number\n\nOpen the shipping confirmation email and click **Track package**.',
+      bodyTruncated: false,
+      outline: [
+        { id: 'b1', type: 'heading', level: 1, preview: 'How to track your order' },
+        {
+          id: 'b2',
+          type: 'paragraph',
+          preview: 'Once your order ships, you will receive a confirm',
+        },
+        { id: 'b3', type: 'heading', level: 2, preview: 'Finding your tracking number' },
+        {
+          id: 'b4',
+          type: 'paragraph',
+          preview: 'Open the shipping confirmation email and click Tr',
+        },
+      ],
+    },
     description:
       'Read a KB article — title, body markdown, outline, hash, recordId. Three lookup modes: (1) pass `articleId` (bare or `article:<id>` recordId form), (2) pass `slug` (optionally with `knowledgeBaseId`), or (3) pass nothing to load the article currently in focus (from a `@`-mention or the active KB editor). Use this first whenever the user references "this article", "the article", or `@`-mentions one.',
     parameters: {

@@ -44,6 +44,31 @@ export function createListEntityFieldsTool(_getDeps: GetToolDeps): AgentToolDefi
     // caller. See plans/chat/v6/chat-tool-availability.md.
     externalSafe: true,
     outputSchema: ListEntityFieldsOutput,
+    exampleOutput: {
+      entityDefinitionId: 'contact',
+      requiredOnCreate: ['contact_name'],
+      autoFilled: ['created_by_id'],
+      fields: [
+        { id: 'contact_name', label: 'Name', fieldType: 'NAME', required: true },
+        { id: 'contact_email', label: 'Email', fieldType: 'EMAIL', unique: true },
+        {
+          id: 'contact_status',
+          label: 'Status',
+          fieldType: 'SINGLE_SELECT',
+          options: [
+            { value: 'LEAD', label: 'Lead' },
+            { value: 'ACTIVE', label: 'Active' },
+            { value: 'CHURNED', label: 'Churned' },
+          ],
+        },
+        {
+          id: 'contact_company',
+          label: 'Company',
+          fieldType: 'RELATIONSHIP',
+          relationship: { targetEntityDefinitionId: 'company', relationshipType: 'many-to-one' },
+        },
+      ],
+    } satisfies z.output<typeof ListEntityFieldsOutput>,
     buildDigest: (output) => {
       const out = (output ?? {}) as { entityDefinitionId?: string; fields?: unknown[] }
       return {

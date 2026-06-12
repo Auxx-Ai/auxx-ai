@@ -15,6 +15,7 @@ import {
 } from '../../agents/bindings'
 import { PROCEDURE_CONTROL_TOOLS } from '../../agents/procedures'
 import {
+  type CapabilityRegistry,
   createAppCapabilities,
   createCapabilityRegistry,
   createEntityCapabilities,
@@ -134,6 +135,48 @@ async function resolveModelDefaults(
 }
 
 /**
+ * Construct the capability registry every agent runtime resolves tools from:
+ * native (entity/mail/kopilot) + app-backed + MCP capabilities. Exported for
+ * consumers that need the UNFILTERED installed-tool universe — the eval mock
+ * validator looks tools up here so a mock authored for a tool the agent doesn't
+ * have *yet* still validates against its real `outputSchema` — without paying
+ * for config resolution, binding projection, or domain-config assembly.
+ * `buildEffectiveAgentRuntime` builds from this too, so the two views can
+ * never drift.
+ */
+export async function buildAgentCapabilityRegistry(args: {
+  organizationId: string
+  userId: string
+  sessionId: string
+  agentId: string | null
+  signal?: AbortSignal
+}): Promise<CapabilityRegistry> {
+  const { organizationId, userId, sessionId, agentId, signal } = args
+  const getToolDeps = createToolDepsFactory({ organizationId, userId, sessionId, signal })
+
+  const registry = createCapabilityRegistry()
+  registry.register(createEntityCapabilities(getToolDeps))
+  registry.register(createMailCapabilities(getToolDeps))
+  registry.register(createKopilotCapabilities(getToolDeps))
+  registry.register(
+    await createAppCapabilities({
+      organizationId,
+      // Background/eval agent runs are autonomous — no human in the loop.
+      // User-scope tools are hidden by the bridge (decision A2).
+      userId: null,
+      agentId,
+      triggerId: null,
+      sessionId,
+      getToolDeps,
+    })
+  )
+  // MCP-backed tools — autonomous (background/eval runs, userId: null here): untrusted
+  // write tools are filtered out by the adapter.
+  registry.register(await createMcpCapabilities({ organizationId, autonomous: true }))
+  return registry
+}
+
+/**
  * Build the effective agent runtime: registry + capabilities, toolset-filtered
  * and binding-projected tools, the domain config, and the binding clamp. Used by
  * the production job and the eval Simulation executor alike.
@@ -158,27 +201,13 @@ export async function buildEffectiveAgentRuntime(
     source,
   })
 
-  const getToolDeps = createToolDepsFactory({ organizationId, userId, sessionId, signal })
-
-  const registry = createCapabilityRegistry()
-  registry.register(createEntityCapabilities(getToolDeps))
-  registry.register(createMailCapabilities(getToolDeps))
-  registry.register(createKopilotCapabilities(getToolDeps))
-  registry.register(
-    await createAppCapabilities({
-      organizationId,
-      // Background/eval agent runs are autonomous — no human in the loop.
-      // User-scope tools are hidden by the bridge (decision A2).
-      userId: null,
-      agentId,
-      triggerId: null,
-      sessionId,
-      getToolDeps,
-    })
-  )
-  // MCP-backed tools — autonomous (background/eval runs, userId: null here): untrusted
-  // write tools are filtered out by the adapter.
-  registry.register(await createMcpCapabilities({ organizationId, autonomous: true }))
+  const registry = await buildAgentCapabilityRegistry({
+    organizationId,
+    userId,
+    sessionId,
+    agentId,
+    signal,
+  })
 
   const agentConfig = await resolveAgentConfig(organizationId, agentId, undefined, { source })
   const resolvedPage = args.page ?? '__none__'

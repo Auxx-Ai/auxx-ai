@@ -63,6 +63,29 @@ export function createListNotesTool(getDeps: GetToolDeps): AgentToolDefinition {
     category: 'system',
     idempotent: true,
     outputSchema: ListNotesOutput,
+    exampleOutput: {
+      notes: [
+        {
+          id: 'comment_5tR8wK',
+          content: 'Customer requested a callback on Friday afternoon.',
+          by: { userId: 'user_7Hd2', name: 'Alex Morgan' },
+          at: '2026-06-04T10:15:00.000Z',
+          parentId: null,
+          isPinned: true,
+          replies: [
+            {
+              id: 'comment_8nM3vC',
+              content: 'Called back — left a voicemail.',
+              by: { userId: 'user_9Kp4', name: 'Sam Rivera' },
+              at: '2026-06-04T16:40:00.000Z',
+              parentId: 'comment_5tR8wK',
+              isPinned: false,
+            },
+          ],
+        },
+      ],
+      hasMore: false,
+    } satisfies z.output<typeof ListNotesOutput>,
     buildDigest: (output) => {
       const out = (output ?? {}) as { notes?: unknown[] }
       return { count: Array.isArray(out.notes) ? out.notes.length : 0 }

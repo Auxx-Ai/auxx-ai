@@ -32,6 +32,38 @@ export function createListEntitiesTool(_getDeps: GetToolDeps): AgentToolDefiniti
     // caller. See plans/chat/v6/chat-tool-availability.md.
     externalSafe: true,
     outputSchema: ListEntitiesOutput,
+    exampleOutput: {
+      entities: [
+        {
+          id: 'contact',
+          apiSlug: 'contact',
+          label: 'Contact',
+          plural: 'Contacts',
+          entityType: 'PERSON',
+          icon: 'user',
+          color: 'blue',
+        },
+        {
+          id: 'company',
+          apiSlug: 'company',
+          label: 'Company',
+          plural: 'Companies',
+          entityType: 'COMPANY',
+          icon: 'building',
+          color: 'purple',
+        },
+        {
+          id: 'ticket',
+          apiSlug: 'ticket',
+          label: 'Ticket',
+          plural: 'Tickets',
+          entityType: null,
+          icon: 'ticket',
+          color: 'orange',
+        },
+      ],
+      count: 3,
+    } satisfies z.output<typeof ListEntitiesOutput>,
     buildDigest: (output) => {
       const out = (output ?? {}) as { entities?: Array<{ apiSlug?: string; label?: string }> }
       return {

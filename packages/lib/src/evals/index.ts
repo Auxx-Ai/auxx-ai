@@ -27,7 +27,6 @@ export {
 } from './diff'
 export {
   type EditorToolEntry,
-  listAgentEffectiveTools,
   projectEditorToolEntries,
   validateAgentToolMock,
 } from './editor-support'

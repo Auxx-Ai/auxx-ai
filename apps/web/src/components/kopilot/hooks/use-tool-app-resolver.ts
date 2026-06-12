@@ -2,7 +2,11 @@
 
 'use client'
 
-import { buildMcpToolMetaEntries } from '@auxx/lib/agents/client'
+import {
+  buildCatalogTreeFromInstallations,
+  buildMcpCatalogNodes,
+  flattenCatalogToToolsets,
+} from '@auxx/lib/agents/client'
 import { useMemo } from 'react'
 import {
   type AppInstallation,
@@ -27,51 +31,48 @@ export interface ResolvedTool {
 }
 
 /**
- * Resolves a kopilot `ToolCallPart.name` to the installed app that owns it,
- * so the tool-status pill can render `<AppIcon>` instead of a generic
- * Lucide fallback.
+ * Resolves a kopilot `ToolCallPart.name` to the installed app (or MCP server)
+ * that owns it, so the tool-status pill can render `<AppIcon>` instead of a
+ * generic Lucide fallback.
  *
- * The map is built over `useExtensionsContext().appInstallations`, which is
- * already loaded once per session by `ExtensionsProvider` (a hard
- * dependency of `(protected)/app` layout). Each cached tool carries a
- * pre-resolved `registeredName` and `iconId` — see
- * `packages/lib/src/cache/providers/installed-apps-provider.ts` — so this
- * hook performs no string manipulation and has no knowledge of the
- * bridge's encoding (decision D1).
- *
- * Built-in tools (find_threads, search_kb, …) resolve through the synthetic
- * Auxx.ai row prepended by `installedAppsProvider`; the pill renders them
- * with the toolset's iconKey (falling back to the auxx logo). See
- * `plans/kopilot/agents/tools/project-builtin-auxx-into-installations.md`.
+ * Indexes the SAME unified catalog tree the Tools tab and pickers render
+ * (`buildCatalogTreeFromInstallations` + `buildMcpCatalogNodes` over
+ * `useExtensionsContext()`), so the pill resolves exactly the entries the
+ * catalog produces — no bespoke merge, no MCP special-casing here. Tool keys
+ * are the registered names (`registeredName` / `mcpToolName`), matching what
+ * the LLM actually invokes; icons are the flattened catalog's pre-cascaded
+ * per-toolset icon (toolset icon → app avatar → fallback glyph).
  */
 export function useToolAppResolver() {
   const { appInstallations, mcpServers } = useExtensionsContext()
 
   const toolMap = useMemo(() => {
+    const byAppId = new Map(appInstallations.map((inst) => [inst.app.id, inst]))
     const map = new Map<string, ResolvedTool>()
-    for (const installation of appInstallations) {
-      for (const tool of installation.agentTools ?? []) {
-        map.set(tool.registeredName, {
-          toolName: tool.registeredName,
-          appId: installation.app.id,
-          installation,
-          iconId: tool.iconId,
-          color: undefined,
-          displayName: tool.name,
-          appTitle: installation.app.title,
-        })
+    const roots = [
+      ...buildCatalogTreeFromInstallations(appInstallations),
+      ...buildMcpCatalogNodes(mcpServers),
+    ]
+    for (const root of roots) {
+      if (root.kind !== 'app') continue
+      // App roots are `app:<appId>`; MCP roots use the toolset slug (`mcp:<serverId>`)
+      // verbatim, which doubles as the pill's stable owner id.
+      const isMcp = root.origin === 'mcp'
+      const appId = isMcp ? root.id : root.id.slice('app:'.length)
+      const installation = isMcp ? undefined : byAppId.get(appId)
+      for (const toolset of flattenCatalogToToolsets([root])) {
+        for (const tool of toolset.tools) {
+          map.set(tool.name, {
+            toolName: tool.name,
+            appId,
+            installation,
+            iconId: toolset.iconId,
+            color: undefined,
+            displayName: tool.displayName,
+            appTitle: root.label,
+          })
+        }
       }
-    }
-    // MCP tool calls resolve to the server's icon + name (no installation).
-    for (const entry of buildMcpToolMetaEntries(mcpServers)) {
-      map.set(entry.name, {
-        toolName: entry.name,
-        appId: entry.toolsetSlug,
-        iconId: entry.iconId,
-        color: undefined,
-        displayName: entry.displayName,
-        appTitle: entry.serverName,
-      })
     }
     return map
   }, [appInstallations, mcpServers])
