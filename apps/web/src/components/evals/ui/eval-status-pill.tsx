@@ -104,10 +104,10 @@ export function EvalDraftBadge({ contentHash, className }: EvalDraftBadgeProps) 
   const badge = (
     <span
       className={cn(
-        'inline-flex items-center rounded border border-violet-300 bg-violet-50 px-1 py-px text-[10px] font-medium uppercase tracking-wide text-violet-700',
+        'shrink-0 inline-flex items-center rounded border border-violet-300 bg-violet-50 px-1 py-px text-[10px] font-medium uppercase tracking-wide text-violet-700',
         className
       )}>
-      Draft
+      D
     </span>
   )
   if (!contentHash) return badge
