@@ -7,16 +7,17 @@ import {
   Command,
   CommandEmpty,
   CommandInput,
-  CommandItem,
   CommandList,
+  CommandRadioGroup,
+  CommandRadioItem,
 } from '@auxx/ui/components/command'
 import { Label } from '@auxx/ui/components/label'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { Switch } from '@auxx/ui/components/switch'
 import { cn } from '@auxx/ui/lib/utils'
-import { Check, ChevronDown } from 'lucide-react'
+import { ChevronDown } from 'lucide-react'
 import type React from 'react'
-import { useMemo, useState } from 'react'
+import { type ReactNode, useMemo, useState } from 'react'
 import { BaseType } from '~/components/workflow/types/unified-types'
 import { getVarTypeName, VarTypeIcon } from '~/components/workflow/utils/icon-helper'
 
@@ -57,6 +58,13 @@ export interface VariableTypePickerProps {
   showIcons?: boolean // Default: true
   showSearch?: boolean // Default: true
   compact?: boolean // Use smaller trigger button
+
+  /**
+   * Custom trigger. When provided, replaces the default outline combobox button
+   * — the popover renders it via `asChild`, so it must forward a ref / accept
+   * DOM props (e.g. a shadcn `Button` or `PopoverTrigger`-friendly element).
+   */
+  children?: ReactNode
 }
 
 /**
@@ -80,6 +88,7 @@ export const VariableTypePicker: React.FC<VariableTypePickerProps> = ({
   showIcons = true,
   showSearch = true,
   compact = false,
+  children,
 }) => {
   const [internalOpen, setInternalOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
@@ -119,19 +128,21 @@ export const VariableTypePicker: React.FC<VariableTypePickerProps> = ({
   return (
     <Popover open={open} onOpenChange={onOpenChange}>
       <PopoverTrigger asChild>
-        <Button
-          variant='outline'
-          role='combobox'
-          size='xs'
-          aria-expanded={open}
-          className={cn('justify-between', className)}
-          disabled={disabled}>
-          <div className='flex items-center gap-1.5'>
-            {showIcons && <VarTypeIcon type={value.baseType} className='size-3.5' />}
-            {displayValue}
-          </div>
-          <ChevronDown className='ml-2 h-4 w-4 shrink-0 opacity-50' />
-        </Button>
+        {children ?? (
+          <Button
+            variant='outline'
+            role='combobox'
+            size='xs'
+            aria-expanded={open}
+            className={cn('justify-between', className)}
+            disabled={disabled}>
+            <div className='flex items-center gap-1.5'>
+              {showIcons && <VarTypeIcon type={value.baseType} className='size-3.5' />}
+              {displayValue}
+            </div>
+            <ChevronDown className='shrink-0 opacity-50' />
+          </Button>
+        )}
       </PopoverTrigger>
       <PopoverContent
         className='p-0'
@@ -150,24 +161,22 @@ export const VariableTypePicker: React.FC<VariableTypePickerProps> = ({
             <CommandEmpty>No type found.</CommandEmpty>
 
             {/* Flat list of all available types */}
-            {availableTypes.map((type) => (
-              <CommandItem key={type} value={type} onSelect={() => handleTypeSelect(type)}>
-                <div className='flex items-center gap-2 flex-1'>
-                  {showIcons && (
-                    <div className='rounded-full ring-1 shrink-0 ring-ring bg-secondary flex items-center justify-center size-4'>
-                      <VarTypeIcon type={type} className='size-3! text-blue-500' />
-                    </div>
-                  )}
-                  {getVarTypeName(type)}
-                </div>
-                <Check
-                  className={cn(
-                    'ml-auto h-4 w-4',
-                    value.baseType === type ? 'opacity-100' : 'opacity-0'
-                  )}
-                />
-              </CommandItem>
-            ))}
+            <CommandRadioGroup
+              value={value.baseType}
+              onValueChange={(next) => handleTypeSelect(next as BaseType)}>
+              {availableTypes.map((type) => (
+                <CommandRadioItem key={type} value={type} variant='check'>
+                  <div className='flex items-center gap-2 flex-1'>
+                    {showIcons && (
+                      <div className='rounded-full ring-1 shrink-0 ring-ring bg-secondary flex items-center justify-center size-4'>
+                        <VarTypeIcon type={type} className='size-3! text-blue-500' />
+                      </div>
+                    )}
+                    {getVarTypeName(type)}
+                  </div>
+                </CommandRadioItem>
+              ))}
+            </CommandRadioGroup>
           </CommandList>
 
           {/* Array Toggle */}

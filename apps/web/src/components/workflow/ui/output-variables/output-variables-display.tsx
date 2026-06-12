@@ -9,7 +9,7 @@ import type { DisplayVariable, OutputVariablesDisplayProps } from '../../types/o
 import { BaseType, type UnifiedVariable } from '../../types/variable-types'
 import Section from '../section'
 // import Section from '../section'
-import { VarItem } from '../structured-output-generator/output-vars'
+import { VarItem } from './output-vars'
 
 /**
  * Converts a UnifiedVariable to a DisplayVariable structure for the VarItem component

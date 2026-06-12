@@ -1,0 +1,361 @@
+// apps/web/src/components/schema-editor/schema-draft.ts
+
+import { FieldType } from '@auxx/database/enums'
+import type { SelectOption } from '@auxx/types/custom-field'
+import { generateId } from '@auxx/utils'
+
+/**
+ * The authoring model for the shared schema editor. Rows speak the platform
+ * `FieldType` language; the persisted format is plain JSON Schema. `x-auxx`
+ * vendor keywords bridge the two on leaf nodes (labels/colors a bare `enum`
+ * can't carry), and any construct the FieldType mapping can't represent is
+ * preserved verbatim as a `JSON` leaf via `raw` — the losslessness invariant
+ * that makes it safe to open a server-declared schema in the field UI.
+ *
+ * See `plans/mcp/v5/structured-output-unification.md` and
+ * `plans/mcp/v5/schema-editor-dialog.md`.
+ */
+
+/** Concrete value type of the `FieldType` enum object. */
+export type FieldTypeValue = (typeof FieldType)[keyof typeof FieldType]
+
+export interface SchemaFieldDraft {
+  /** Local row key (stable across edits). */
+  id: string
+  name: string
+  description?: string
+  nullable: boolean
+  /** Read/emitted only when `policy.emitRequired` (workflow mode). */
+  required?: boolean
+  kind: 'field' | 'object' | 'array'
+  /** `kind: 'field'` — the picker FieldType (incl. `JSON` for `raw` leaves). */
+  fieldType?: FieldTypeValue
+  /** SINGLE_SELECT / MULTI_SELECT — resource-style options. */
+  options?: SelectOption[]
+  /** `kind: 'object'` children. */
+  children?: SchemaFieldDraft[]
+  /** `kind: 'array'` element schema (arrays of objects). */
+  items?: SchemaFieldDraft
+  /** Unrepresentable construct, re-emitted verbatim by `draftToJsonSchema`. */
+  raw?: Record<string, unknown>
+}
+
+/** Editor policy — the only fork between MCP and workflow modes. */
+export interface SchemaPolicy {
+  /** Workflow mode emits the `required` array; MCP mode never does. */
+  emitRequired: boolean
+}
+
+/** The vendor-extension keyword carrying FieldType metadata on leaf nodes. */
+const VENDOR_KEYWORD = 'x-auxx'
+
+/**
+ * FieldTypes the field editor can author. A pasted schema using anything else
+ * opens as a `JSON` (`raw`) leaf and is edited in the JSON tab.
+ */
+export const PICKER_FIELD_TYPES: FieldTypeValue[] = [
+  FieldType.TEXT,
+  FieldType.NUMBER,
+  FieldType.CHECKBOX,
+  FieldType.DATE,
+  FieldType.DATETIME,
+  FieldType.EMAIL,
+  FieldType.URL,
+  FieldType.SINGLE_SELECT,
+  FieldType.MULTI_SELECT,
+  FieldType.TAGS,
+  FieldType.JSON,
+]
+
+type JsonNode = Record<string, unknown>
+
+// ---------------------------------------------------------------------------
+// Read: JSON Schema → draft rows
+// ---------------------------------------------------------------------------
+
+/**
+ * Convert a root JSON Schema (`type: 'object'`) into editor rows. Non-object
+ * roots and missing `properties` yield an empty list — the dialog only edits
+ * object-rooted schemas (the validation pipeline blocks others).
+ */
+export function jsonSchemaToDraft(schema: Record<string, unknown>): SchemaFieldDraft[] {
+  if (!isObjectNode(schema)) return []
+  return objectChildren(schema)
+}
+
+function objectChildren(node: JsonNode): SchemaFieldDraft[] {
+  const properties = (node.properties ?? {}) as Record<string, JsonNode>
+  const requiredSet = new Set(asStringArray(node.required))
+  return Object.entries(properties).map(([name, child]) =>
+    nodeToDraft(name, child, requiredSet.has(name))
+  )
+}
+
+function nodeToDraft(name: string, node: JsonNode, isRequired: boolean): SchemaFieldDraft {
+  const draft = convertNode(node)
+  draft.name = name
+  draft.required = isRequired
+  return draft
+}
+
+/** Build a draft (sans name/required) for a single JSON Schema node. */
+function convertNode(node: JsonNode): SchemaFieldDraft {
+  const base: SchemaFieldDraft = { id: generateId(), name: '', nullable: false, kind: 'field' }
+  if (typeof node.description === 'string') base.description = node.description
+
+  // 1. Trust an explicit FieldType from a prior editor save.
+  const vendored = fromVendorKeyword(node, base)
+  if (vendored) return vendored
+
+  // 2. Infer from structure.
+  const { type, nullable, exotic } = normalizeType(node.type)
+  base.nullable = nullable
+  if (exotic) return rawLeaf(node, base)
+
+  // The only enums we can author are string enums (SINGLE_SELECT) and string
+  // array-item enums (MULTI_SELECT). A numeric or mixed enum stays a raw leaf.
+  if (node.enum !== undefined && type !== 'array' && !stringEnumOptions(node)) {
+    return rawLeaf(node, base)
+  }
+
+  switch (type) {
+    case 'object':
+      base.kind = 'object'
+      base.children = objectChildren(node)
+      return base
+    case 'array':
+      return arrayToDraft(node, base)
+    case 'string':
+      return stringToDraft(node, base)
+    case 'number':
+    case 'integer':
+      base.fieldType = FieldType.NUMBER
+      return base
+    case 'boolean':
+      base.fieldType = FieldType.CHECKBOX
+      return base
+    default:
+      // bare null, missing type, or anything else → preserve verbatim.
+      return rawLeaf(node, base)
+  }
+}
+
+function fromVendorKeyword(node: JsonNode, base: SchemaFieldDraft): SchemaFieldDraft | null {
+  const vendor = node[VENDOR_KEYWORD]
+  if (!vendor || typeof vendor !== 'object') return null
+  const fieldType = (vendor as { fieldType?: unknown }).fieldType
+  if (typeof fieldType !== 'string' || !PICKER_FIELD_TYPES.includes(fieldType as FieldTypeValue)) {
+    return null
+  }
+  if (fieldType === FieldType.JSON) return null // JSON leaves are raw-driven, not vendored.
+
+  const { nullable } = normalizeType(node.type)
+  base.nullable = nullable
+  base.fieldType = fieldType as FieldTypeValue
+
+  const options = (vendor as { options?: unknown }).options
+  if (Array.isArray(options)) base.options = options as SelectOption[]
+  return base
+}
+
+function arrayToDraft(node: JsonNode, base: SchemaFieldDraft): SchemaFieldDraft {
+  const items = node.items
+  if (!items || typeof items !== 'object' || Array.isArray(items)) return rawLeaf(node, base)
+  const itemNode = items as JsonNode
+  const { type: itemType, exotic } = normalizeType(itemNode.type)
+
+  if (!exotic && itemType === 'object') {
+    base.kind = 'array'
+    base.items = convertNode(itemNode)
+    base.items.name = 'item'
+    return base
+  }
+
+  const enumOptions = stringEnumOptions(itemNode)
+  if (!exotic && itemType === 'string' && enumOptions) {
+    base.fieldType = FieldType.MULTI_SELECT
+    base.options = enumOptions
+    return base
+  }
+  if (!exotic && itemType === 'string') {
+    base.fieldType = FieldType.TAGS
+    return base
+  }
+  return rawLeaf(node, base)
+}
+
+function stringToDraft(node: JsonNode, base: SchemaFieldDraft): SchemaFieldDraft {
+  const enumOptions = stringEnumOptions(node)
+  if (node.enum !== undefined && !enumOptions) return rawLeaf(node, base) // numeric/mixed enum
+  if (enumOptions) {
+    base.fieldType = FieldType.SINGLE_SELECT
+    base.options = enumOptions
+    return base
+  }
+  switch (node.format) {
+    case 'date-time':
+      base.fieldType = FieldType.DATETIME
+      return base
+    case 'date':
+      base.fieldType = FieldType.DATE
+      return base
+    case 'email':
+      base.fieldType = FieldType.EMAIL
+      return base
+    case 'uri':
+      base.fieldType = FieldType.URL
+      return base
+    default:
+      base.fieldType = FieldType.TEXT
+      return base
+  }
+}
+
+function rawLeaf(node: JsonNode, base: SchemaFieldDraft): SchemaFieldDraft {
+  base.kind = 'field'
+  base.fieldType = FieldType.JSON
+  base.nullable = false
+  base.raw = structuredClone(node)
+  return base
+}
+
+// ---------------------------------------------------------------------------
+// Write: draft rows → JSON Schema
+// ---------------------------------------------------------------------------
+
+/**
+ * Serialize editor rows back to a root JSON Schema. `additionalProperties` is
+ * never emitted (the OpenAI client re-adds it in strict mode); `required` is
+ * emitted only under `policy.emitRequired`.
+ */
+export function draftToJsonSchema(
+  rows: SchemaFieldDraft[],
+  policy: SchemaPolicy
+): Record<string, unknown> {
+  return objectNode(rows, policy)
+}
+
+function objectNode(rows: SchemaFieldDraft[], policy: SchemaPolicy): JsonNode {
+  const properties: Record<string, unknown> = {}
+  for (const row of rows) {
+    properties[row.name] = draftNodeToJson(row, policy)
+  }
+  const node: JsonNode = { type: 'object', properties }
+  if (policy.emitRequired) {
+    const required = rows.filter((r) => r.required).map((r) => r.name)
+    if (required.length > 0) node.required = required
+  }
+  return node
+}
+
+function draftNodeToJson(draft: SchemaFieldDraft, policy: SchemaPolicy): JsonNode {
+  if (draft.raw) return structuredClone(draft.raw)
+
+  let node: JsonNode
+  if (draft.kind === 'object') {
+    node = objectNode(draft.children ?? [], policy)
+  } else if (draft.kind === 'array') {
+    node = { type: 'array', items: draft.items ? draftNodeToJson(draft.items, policy) : {} }
+  } else {
+    node = fieldNodeToJson(draft)
+  }
+
+  if (draft.description) node.description = draft.description
+  return applyNullable(node, draft.nullable)
+}
+
+function fieldNodeToJson(draft: SchemaFieldDraft): JsonNode {
+  switch (draft.fieldType) {
+    case FieldType.TEXT:
+      return { type: 'string' }
+    case FieldType.NUMBER:
+      return { type: 'number' }
+    case FieldType.CHECKBOX:
+      return { type: 'boolean' }
+    case FieldType.DATE:
+      return { type: 'string', format: 'date' }
+    case FieldType.DATETIME:
+      return { type: 'string', format: 'date-time' }
+    case FieldType.EMAIL:
+      return { type: 'string', format: 'email' }
+    case FieldType.URL:
+      return { type: 'string', format: 'uri' }
+    case FieldType.SINGLE_SELECT:
+      return withVendor(
+        { type: 'string', enum: optionValues(draft.options) },
+        FieldType.SINGLE_SELECT,
+        draft.options
+      )
+    case FieldType.MULTI_SELECT:
+      return withVendor(
+        { type: 'array', items: { type: 'string', enum: optionValues(draft.options) } },
+        FieldType.MULTI_SELECT,
+        draft.options
+      )
+    case FieldType.TAGS:
+      return { type: 'array', items: { type: 'string' } }
+    default:
+      // JSON leaf with no `raw` — an explicit, empty "anything goes" node.
+      return {}
+  }
+}
+
+function withVendor(
+  node: JsonNode,
+  fieldType: FieldTypeValue,
+  options: SelectOption[] | undefined
+): JsonNode {
+  node[VENDOR_KEYWORD] = { fieldType, options: options ?? [] }
+  return node
+}
+
+/** Convert a string `type` into a `['type', 'null']` union when nullable. */
+function applyNullable(node: JsonNode, nullable: boolean): JsonNode {
+  if (!nullable) return node
+  if (typeof node.type === 'string') return { ...node, type: [node.type, 'null'] }
+  return node
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/** Normalize a JSON Schema `type` (string | array) into a primary type. */
+function normalizeType(type: unknown): { type?: string; nullable: boolean; exotic: boolean } {
+  if (typeof type === 'string') return { type, nullable: false, exotic: false }
+  if (Array.isArray(type)) {
+    const rest = type.filter((t) => t !== 'null')
+    const nullable = type.includes('null')
+    if (rest.length === 1 && typeof rest[0] === 'string') {
+      return { type: rest[0], nullable, exotic: false }
+    }
+    // `['string','number']` and friends can't map to one FieldType.
+    return { nullable, exotic: true }
+  }
+  return { nullable: false, exotic: true }
+}
+
+/** Read a string `enum` into SelectOptions, or null if absent / non-string. */
+function stringEnumOptions(node: JsonNode): SelectOption[] | null {
+  const values = node.enum
+  if (!Array.isArray(values) || values.length === 0) return null
+  if (!values.every((v) => typeof v === 'string')) return null
+  return (values as string[]).map((value) => ({ id: generateId(), label: value, value }))
+}
+
+function optionValues(options: SelectOption[] | undefined): string[] {
+  return (options ?? []).map((o) => o.value)
+}
+
+function isObjectNode(node: unknown): node is JsonNode {
+  return (
+    !!node &&
+    typeof node === 'object' &&
+    !Array.isArray(node) &&
+    (node as JsonNode).type === 'object'
+  )
+}
+
+function asStringArray(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string') : []
+}

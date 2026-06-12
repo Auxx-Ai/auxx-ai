@@ -18,14 +18,12 @@ import type React from 'react'
 import { memo, useCallback, useEffect, useState } from 'react'
 import { DEFAULT_TABS } from '~/components/editor/inline-picker'
 import type { ReferenceTab } from '~/components/editor/inline-picker/nodes/reference-picker-node'
+import { SchemaEditorDialog } from '~/components/schema-editor/ui/schema-editor-dialog'
 import { useNodeCrud, useReadOnly } from '~/components/workflow/hooks'
 import { BaseType } from '~/components/workflow/types'
 import { VarEditor, VarEditorField } from '~/components/workflow/ui/input-editor/var-editor'
 import { OutputVariablesDisplay } from '~/components/workflow/ui/output-variables'
 import { Editor } from '~/components/workflow/ui/prompt-editor'
-import StructuredOutputGenerator, {
-  type SchemaRoot,
-} from '~/components/workflow/ui/structured-output-generator'
 import ModelParameterModal from '../../../ui/model-parameter'
 import Section from '../../../ui/section'
 import { BasePanel } from '../../shared/base/base-panel'
@@ -52,7 +50,7 @@ interface AiPanelProps {
 const AiPanelComponent: React.FC<AiPanelProps> = ({ nodeId, data }) => {
   const { isReadOnly } = useReadOnly()
   const [isOpen, setIsOpen] = useState(false)
-  const [schema, setSchema] = useState<SchemaRoot | undefined>()
+  const [schema, setSchema] = useState<Record<string, unknown> | undefined>()
 
   // Use CRUD operations for the node data
   const { inputs: nodeData, setInputs: setNodeData } = useNodeCrud<AiNodeData>(nodeId, data)
@@ -61,7 +59,7 @@ const AiPanelComponent: React.FC<AiPanelProps> = ({ nodeId, data }) => {
   // biome-ignore lint/correctness/useExhaustiveDependencies: schema is intentionally excluded to only set once when not already set
   useEffect(() => {
     if (nodeData.structured_output?.schema && !schema) {
-      setSchema(nodeData.structured_output.schema as SchemaRoot)
+      setSchema(nodeData.structured_output.schema as Record<string, unknown>)
     }
   }, [nodeData.structured_output?.schema])
 
@@ -300,7 +298,8 @@ const AiPanelComponent: React.FC<AiPanelProps> = ({ nodeId, data }) => {
                   <Label className='text-xs mb-0'>Schema Configuration</Label>
                   {schema && (
                     <span className='text-xs text-muted-foreground'>
-                      ({Object.keys(schema.properties || {}).length} fields)
+                      ({Object.keys((schema.properties as Record<string, unknown>) || {}).length}{' '}
+                      fields)
                     </span>
                   )}
                 </div>
@@ -309,12 +308,16 @@ const AiPanelComponent: React.FC<AiPanelProps> = ({ nodeId, data }) => {
                 </Button>
               </div>
 
-              {/* Use the updated StructuredOutputGenerator that supports both */}
-              <StructuredOutputGenerator
-                isShow={isOpen}
-                defaultSchema={schema}
+              <SchemaEditorDialog
+                open={isOpen}
+                onOpenChange={setIsOpen}
+                title='Structured Output'
+                initial={{
+                  schema: schema ?? { type: 'object', properties: {} },
+                  seededFrom: schema ? 'existing' : 'empty',
+                }}
+                policy={{ emitRequired: true }}
                 onSave={(newSchema) => {
-                  console.log('save', newSchema)
                   setSchema(newSchema)
                   // Update the config with schema only
                   const newData = produce(nodeData, (draft: AiNodeData) => {
@@ -322,11 +325,11 @@ const AiPanelComponent: React.FC<AiPanelProps> = ({ nodeId, data }) => {
                       draft.structured_output = { enabled: false }
                     }
                     draft.structured_output.enabled = true
-                    draft.structured_output.schema = newSchema
+                    draft.structured_output.schema =
+                      newSchema as AiNodeData['structured_output']['schema']
                   })
                   setNodeData(newData)
                 }}
-                onClose={() => setIsOpen(false)}
               />
             </div>
           )}

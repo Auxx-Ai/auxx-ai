@@ -1,4 +1,4 @@
-// apps/web/src/components/workflow/ui/structured-output-generator/output-vars.tsx
+// apps/web/src/components/workflow/ui/output-variables/output-vars.tsx
 'use client'
 import {
   Collapsible,

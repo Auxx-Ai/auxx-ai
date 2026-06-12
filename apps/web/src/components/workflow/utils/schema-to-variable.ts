@@ -1,30 +1,47 @@
 // apps/web/src/components/workflow/utils/schema-to-variable.ts
 
+import { mapFieldTypeToBaseType } from '@auxx/lib/workflow-engine/client'
 import type { WorkflowBlockField } from '~/lib/workflow/types'
 import { BaseType, type UnifiedVariable } from '../types/variable-types'
-import { type Field, type SchemaRoot, Type } from '../ui/structured-output-generator/types'
+import type { Field, SchemaRoot } from '../ui/json-schema-types'
 import { createUnifiedOutputVariable } from './variable-conversion'
 
 /**
- * This file contains utilities for converting between different schema and variable formats:
+ * Resolve a schema node's `BaseType`, enriched by the schema editor's vendor
+ * metadata. `x-auxx.fieldType` (authored FieldType) wins, then a string
+ * `format` (`date-time`/`date`/`email`/`uri`), falling back to the bare JSON
+ * Schema `type`. Lets downstream bindings see EMAIL / DATETIME / URL vars
+ * instead of a flat STRING.
+ */
+function deriveBaseType(schema: any): BaseType {
+  const fieldType = schema?.['x-auxx']?.fieldType
+  if (typeof fieldType === 'string') return mapFieldTypeToBaseType(fieldType) as BaseType
+
+  switch (schema?.format) {
+    case 'date-time':
+      return BaseType.DATETIME
+    case 'date':
+      return BaseType.DATE
+    case 'email':
+      return BaseType.EMAIL
+    case 'uri':
+      return BaseType.URL
+  }
+  return schemaTypeToBaseType(schema?.type || 'string')
+}
+
+/**
+ * Utilities for converting between plain JSON Schema (the persisted node-config
+ * format) and the workflow's `UnifiedVariable` tree:
  *
- * 1. SchemaRoot (StructuredOutputGenerator format) - JSON Schema-like structure
- *    - Used by the StructuredOutputGenerator UI component
- *    - Contains type, properties, required fields, etc.
+ * - SchemaRoot → UnifiedVariable (`schemaToUnifiedVariable`,
+ *   `schemaRootToUnifiedVariables`) — variable types are enriched from the
+ *   schema editor's `x-auxx.fieldType` / `format` metadata via `deriveBaseType`.
+ * - Schema validation (`validateAgainstSchema`)
+ * - Sample generation (`generateSampleFromSchema`)
  *
- * 2. UnifiedVariable - The standard variable format used throughout the workflow
- *    - Used for input/output variables in nodes
- *    - Contains id, nodeId, path, type, properties, etc.
- *
- * 3. JSON data - Raw JSON objects from webhook bodies or other sources
- *    - Can be converted to SchemaRoot using jsonToSchema()
- *    - Can be validated against schemas
- *
- * Key conversion flows:
- * - JSON → SchemaRoot (jsonToSchema)
- * - SchemaRoot → UnifiedVariable (schemaToUnifiedVariable, schemaRootToUnifiedVariables)
- * - Schema validation (validateAgainstSchema)
- * - Sample generation (generateSampleFromSchema)
+ * To infer a JSON Schema from a runtime value, use `inferJsonSchema` from
+ * `@auxx/lib/json-schema/client`.
  */
 
 /**
@@ -63,7 +80,7 @@ export function schemaToUnifiedVariable(
   const variable = createUnifiedOutputVariable({
     nodeId,
     path: basePath, // Use 'path' instead of 'name'
-    type: schemaTypeToBaseType(schema.type || 'string'),
+    type: deriveBaseType(schema),
     description: schema.description,
   })
 
@@ -96,8 +113,8 @@ export function schemaToUnifiedVariable(
 }
 
 /**
- * Convert a SchemaRoot (from StructuredOutputGenerator) to UnifiedVariables
- * This generates output variables for nodes that have structured outputs
+ * Convert a SchemaRoot (a node's structured-output JSON Schema) to
+ * UnifiedVariables — the output variables for nodes that have structured output.
  */
 export function schemaRootToUnifiedVariables(
   schemaRoot: SchemaRoot,
@@ -303,80 +320,4 @@ function formatLabel(name: string): string {
     .replace(/[_-]/g, ' ')
     .replace(/\b\w/g, (c) => c.toUpperCase())
     .trim()
-}
-
-/**
- * Convert a JSON object to a JSON Schema (SchemaRoot)
- * This is used when converting webhook body data to a schema
- */
-export function jsonToSchema(json: any): SchemaRoot {
-  const convertValue = (value: any): any => {
-    if (value === null || value === undefined) {
-      return { type: Type.string }
-    }
-
-    if (Array.isArray(value)) {
-      if (value.length === 0) {
-        return { type: Type.array, items: { type: Type.string } }
-      }
-
-      const firstItem = value[0]
-      if (typeof firstItem === 'object' && firstItem !== null) {
-        return {
-          type: Type.array,
-          items: convertValue(firstItem),
-        }
-      }
-
-      const itemType =
-        typeof firstItem === 'number'
-          ? Type.number
-          : typeof firstItem === 'boolean'
-            ? Type.boolean
-            : Type.string
-      return { type: Type.array, items: { type: itemType } }
-    }
-
-    if (typeof value === 'object') {
-      const properties: Record<string, any> = {}
-      const required: string[] = []
-
-      for (const [key, val] of Object.entries(value)) {
-        properties[key] = convertValue(val)
-        required.push(key)
-      }
-
-      return {
-        type: Type.object,
-        properties,
-        required,
-        additionalProperties: false,
-      }
-    }
-
-    switch (typeof value) {
-      case 'number':
-        return { type: Type.number }
-      case 'boolean':
-        return { type: Type.boolean }
-      default:
-        return { type: Type.string }
-    }
-  }
-
-  const schema = convertValue(json)
-
-  // Ensure root is always an object
-  if (schema.type !== Type.object) {
-    return {
-      type: Type.object,
-      properties: {
-        value: schema,
-      },
-      required: ['value'],
-      additionalProperties: false,
-    }
-  }
-
-  return schema as SchemaRoot
 }

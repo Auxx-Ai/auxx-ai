@@ -2,6 +2,7 @@
 
 'use client'
 
+import { inferJsonSchema } from '@auxx/lib/json-schema/client'
 import { Button } from '@auxx/ui/components/button'
 import {
   InputGroup,
@@ -21,14 +22,13 @@ import { cn } from '@auxx/ui/lib/utils'
 import { produce } from 'immer'
 import { Copy, FileJson, Trash2 } from 'lucide-react'
 import React, { useEffect, useState } from 'react'
+import { SchemaEditorDialog } from '~/components/schema-editor/ui/schema-editor-dialog'
 import { useNodeCrud, useReadOnly, useWebhookTestListener } from '~/components/workflow/hooks'
 import { BasePanel } from '~/components/workflow/nodes/shared/base/base-panel'
 import { useWorkflowStore } from '~/components/workflow/store/workflow-store'
+import type { SchemaRoot } from '~/components/workflow/ui/json-schema-types'
 import { OutputVariablesDisplay } from '~/components/workflow/ui/output-variables'
 import Section from '~/components/workflow/ui/section'
-import StructuredOutputGenerator from '~/components/workflow/ui/structured-output-generator'
-import type { SchemaRoot } from '~/components/workflow/ui/structured-output-generator/types'
-import { jsonToSchema } from '~/components/workflow/utils/schema-to-variable'
 import { webhookDefinition } from './schema'
 import type { WebhookNodeData } from './types'
 import { WebhookTestEvents } from './webhook-test-events'
@@ -82,9 +82,9 @@ const WebhookPanelComponent: React.FC<WebhookPanelProps> = ({ nodeId, data }) =>
     setIsSchemaEditorOpen(true)
   }
 
-  const handleSaveSchema = (schema: SchemaRoot) => {
+  const handleSaveSchema = (schema: Record<string, unknown>) => {
     const newData = produce(nodeData, (draft) => {
-      draft.bodySchema = { enabled: true, schema: schema }
+      draft.bodySchema = { enabled: true, schema: schema as SchemaRoot }
     })
     setNodeData(newData)
     setIsSchemaEditorOpen(false)
@@ -295,16 +295,28 @@ const WebhookPanelComponent: React.FC<WebhookPanelProps> = ({ nodeId, data }) =>
       />
 
       {/* Schema Editor Dialog */}
-      <StructuredOutputGenerator
-        isShow={isSchemaEditorOpen}
-        defaultSchema={
-          selectedEventBody ? jsonToSchema(selectedEventBody) : nodeData.bodySchema?.schema
-        }
-        onSave={handleSaveSchema}
-        onClose={() => {
-          setIsSchemaEditorOpen(false)
-          setSelectedEventBody(null)
+      <SchemaEditorDialog
+        open={isSchemaEditorOpen}
+        onOpenChange={(open) => {
+          setIsSchemaEditorOpen(open)
+          if (!open) setSelectedEventBody(null)
         }}
+        title='Structured Output'
+        initial={{
+          schema: selectedEventBody
+            ? inferJsonSchema(selectedEventBody)
+            : ((nodeData.bodySchema?.schema as Record<string, unknown> | undefined) ?? {
+                type: 'object',
+                properties: {},
+              }),
+          seededFrom: selectedEventBody
+            ? 'inferred'
+            : nodeData.bodySchema?.schema
+              ? 'existing'
+              : 'empty',
+        }}
+        policy={{ emitRequired: true }}
+        onSave={handleSaveSchema}
       />
     </BasePanel>
   )

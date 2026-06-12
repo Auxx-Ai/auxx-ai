@@ -5,7 +5,7 @@
 import type React from 'react'
 import { createContext, useCallback, useContext, useMemo } from 'react'
 import { useAvailableVariables } from '~/components/workflow/hooks'
-import type { SchemaRoot } from '~/components/workflow/ui/structured-output-generator/types'
+import type { SchemaRoot } from '~/components/workflow/ui/json-schema-types'
 import type { UnifiedVariable } from '../if-else'
 import { informationExtractorDefinition } from './schema'
 import type {
