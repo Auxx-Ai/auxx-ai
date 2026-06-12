@@ -7,7 +7,7 @@ import {
   useCommandNavigation,
 } from '@auxx/ui/components/command'
 import { EntityIcon } from '@auxx/ui/components/icons'
-import { generateId } from '@auxx/utils'
+import { buildAuxxArticleUrl, generateId } from '@auxx/utils'
 import { TextSelection } from '@tiptap/pm/state'
 import type { Editor } from '@tiptap/react'
 import { useCallback, useImperativeHandle, useMemo, useRef, useState } from 'react'
@@ -22,8 +22,11 @@ import type {
   SlashCommandSection,
 } from '~/components/editor/slash-commands/slash-command-picker'
 import { type SlashContentHandle, SlashList } from '~/components/editor/slash-commands/slash-list'
+import { useArticleList } from '~/components/kb/hooks/use-article-list'
+import { ArticlePicker } from '~/components/kb/ui/articles/article-picker'
 import { useCmdkRemote } from '~/components/pickers/use-cmdk-remote'
 import { api } from '~/trpc/react'
+import { useKBEditorContext } from './editor-context'
 
 type Range = { from: number; to: number }
 
@@ -39,9 +42,6 @@ interface KBSlashContentProps {
    * Called on every drill push/pop so the pill reads `/ SNIPPETS …`.
    */
   onScopeChange: (scope: string | null) => void
-  /** Open the article-link dialog. The picker deletes the slash range first
-   * and passes the resulting cursor position to the host. */
-  onLinkArticle?: (editor: Editor, insertPos: number) => void
   /** Live editor instance — used to filter container blocks (`tabs`,
    * `accordion`) out of the menu when the cursor is inside a panel. */
   editor?: Editor | null
@@ -258,6 +258,7 @@ const TOOL_COMMANDS: SlashCommandItem[] = [
     description: 'Insert a link to another KB article',
     keywords: ['link', 'article', 'reference', 'href', 'url'],
     iconId: 'link',
+    drillDown: true,
   },
 ]
 
@@ -331,9 +332,9 @@ interface SnippetItem extends SlashCommandItem {
  * level starts with a fresh filter.
  */
 export function KBSlashContent(props: KBSlashContentProps) {
-  const [mode, setMode] = useState<'default' | 'placeholder'>('default')
+  const [mode, setMode] = useState<'default' | 'placeholder' | 'articleLink'>('default')
 
-  const exitPlaceholderMode = useCallback(() => {
+  const exitMode = useCallback(() => {
     setMode('default')
     props.onScopeChange(null)
   }, [props.onScopeChange])
@@ -342,7 +343,7 @@ export function KBSlashContent(props: KBSlashContentProps) {
     return (
       <PlaceholderMode
         ref={props.ref}
-        onBack={exitPlaceholderMode}
+        onBack={exitMode}
         onClose={props.onClose}
         onSelect={(id) => {
           props.onExecute((editor, range) => {
@@ -359,6 +360,17 @@ export function KBSlashContent(props: KBSlashContentProps) {
     )
   }
 
+  if (mode === 'articleLink') {
+    return (
+      <ArticleLinkMode
+        ref={props.ref}
+        onBack={exitMode}
+        onClose={props.onClose}
+        onExecute={props.onExecute}
+      />
+    )
+  }
+
   return (
     <CommandNavigation<SlashCommandNavItem>>
       <KBSlashContentInner
@@ -366,6 +378,10 @@ export function KBSlashContent(props: KBSlashContentProps) {
         onEnterPlaceholderMode={() => {
           setMode('placeholder')
           props.onScopeChange('Placeholder')
+        }}
+        onEnterArticleLinkMode={() => {
+          setMode('articleLink')
+          props.onScopeChange('Link article')
         }}
       />
     </CommandNavigation>
@@ -416,16 +432,92 @@ function PlaceholderMode({
   )
 }
 
+/**
+ * Article-link mode embeds `ArticlePicker` (the same form the bubble-menu
+ * link flow uses) as a drilled level — no separate popover. Like placeholder
+ * mode it's an input-driven picker whose own search takes real focus; the
+ * chip goes inert for the duration. Picking deletes the chip and inserts the
+ * linked title in one transaction.
+ */
+function ArticleLinkMode({
+  ref,
+  onBack,
+  onClose,
+  onExecute,
+}: {
+  ref?: React.Ref<SlashContentHandle>
+  onBack: () => void
+  onClose: () => void
+  onExecute: KBSlashContentProps['onExecute']
+}) {
+  const { knowledgeBaseId } = useKBEditorContext()
+  const articles = useArticleList(knowledgeBaseId)
+  const containerRef = useRef<HTMLDivElement>(null)
+  const remote = useCmdkRemote(containerRef, 'article-link')
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      ...remote,
+      popLevel: () => {
+        onBack()
+        return true
+      },
+    }),
+    [remote, onBack]
+  )
+
+  return (
+    <div ref={containerRef} className='w-72 overflow-hidden'>
+      <ArticlePicker
+        knowledgeBaseId={knowledgeBaseId}
+        allowedKinds={['page', 'link']}
+        drillableKinds={['tab', 'category', 'header']}
+        rootLabel='Link to article'
+        searchPlaceholder='Search articles…'
+        flattenSearch
+        autoFocusSearch
+        onBack={onBack}
+        backLabel='Commands'
+        onPick={(articleId) => {
+          const found = articles.find((a) => a.id === articleId)
+          const href = buildAuxxArticleUrl(articleId)
+          const text = found?.title || 'article'
+          onExecute((editor, range) => {
+            editor
+              .chain()
+              .focus()
+              .deleteRange(range)
+              .insertContent({
+                type: 'text',
+                text,
+                marks: [{ type: 'link', attrs: { href, target: null } }],
+              })
+              // Strip the stored link mark so the next typed character isn't linked.
+              .command(({ tr }) => {
+                tr.removeStoredMark(editor.schema.marks.link)
+                return true
+              })
+              .run()
+          })
+        }}
+        onClose={onClose}
+      />
+    </div>
+  )
+}
+
 function KBSlashContentInner({
   ref,
   query,
   onExecute,
   onScopeChange,
-  onLinkArticle,
   editor,
   onEnterPlaceholderMode,
+  onEnterArticleLinkMode,
 }: KBSlashContentProps & {
   onEnterPlaceholderMode: () => void
+  onEnterArticleLinkMode: () => void
 }) {
   const { push, pop, isAtRoot, current, stack } = useCommandNavigation<SlashCommandNavItem>()
   const containerRef = useRef<HTMLDivElement>(null)
@@ -494,9 +586,6 @@ function KBSlashContentInner({
   // and rendering as a single CommandGroup.
   const suggestionItems: SlashCommandItem[] = useMemo(() => {
     if (isInSnippets) return []
-    const tools = onLinkArticle
-      ? TOOL_COMMANDS
-      : TOOL_COMMANDS.filter((c) => c.id !== 'article-link')
     let blocks: BlockCommandDef[] = [...BASIC_BLOCK_COMMANDS, ...KB_BLOCK_COMMANDS]
     // Containers can't nest inside a panel — ProseMirror's schema would
     // reject the insert, but hiding from the menu keeps it tidy.
@@ -508,8 +597,8 @@ function KBSlashContentInner({
     if (editor && selectionIsInsideTableCell(editor)) {
       blocks = blocks.filter((c) => !CELL_RESTRICTED_COMMAND_IDS.has(c.id))
     }
-    return [...tools, ...blocks]
-  }, [isInSnippets, onLinkArticle, editor])
+    return [...TOOL_COMMANDS, ...blocks]
+  }, [isInSnippets, editor])
 
   const enterSnippetsDrillDown = useCallback(() => {
     push({ id: 'snippets', label: 'Snippets', type: 'snippets' })
@@ -553,18 +642,15 @@ function KBSlashContentInner({
         onEnterPlaceholderMode()
         return
       }
-      if (item.id === 'article-link' && onLinkArticle) {
-        onExecute((editor, range) => {
-          editor.chain().focus().deleteRange(range).run()
-          onLinkArticle(editor, range.from)
-        })
+      if (item.id === 'article-link') {
+        onEnterArticleLinkMode()
         return
       }
       // Anything left is a block command.
       if (TOOL_IDS.has(item.id)) return
       onExecute(runBlockCommand(item as BlockCommandDef))
     },
-    [enterSnippetsDrillDown, onEnterPlaceholderMode, onLinkArticle, onExecute]
+    [enterSnippetsDrillDown, onEnterPlaceholderMode, onEnterArticleLinkMode, onExecute]
   )
 
   const sections: SlashCommandSection<SlashCommandItem>[] = useMemo(() => {

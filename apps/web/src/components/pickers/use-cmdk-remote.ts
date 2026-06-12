@@ -9,6 +9,12 @@ export interface CmdkRemoteHandle {
   moveHighlight: (direction: 1 | -1) => boolean
   /** Confirm the currently-highlighted item. Returns whether handled. */
   confirmHighlighted: () => boolean
+  /**
+   * Drill into the highlighted item if it's drillable (ArrowRight). Only
+   * items stamped with `data-drilldown` are confirmed; anything else returns
+   * false so the caller can fall through to caret movement.
+   */
+  drillHighlighted: () => boolean
 }
 
 /**
@@ -90,5 +96,15 @@ export function useCmdkRemote(
     return true
   }, [containerRef])
 
-  return { moveHighlight, confirmHighlighted }
+  const drillHighlighted = useCallback(() => {
+    const root = containerRef.current?.querySelector('[cmdk-root]')
+    if (!root) return false
+    const current = root.querySelector<HTMLElement>('[cmdk-item][data-selected="true"]')
+    if (!current || !current.hasAttribute('data-drilldown')) return false
+    // For drillable items, selecting IS drilling — onSelect pushes the level.
+    current.click()
+    return true
+  }, [containerRef])
+
+  return { moveHighlight, confirmHighlighted, drillHighlighted }
 }

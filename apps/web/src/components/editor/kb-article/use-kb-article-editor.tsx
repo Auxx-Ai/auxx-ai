@@ -15,6 +15,7 @@ interface UseKBArticleEditorOptions {
   onSlashEnter?: () => boolean
   onSlashArrowVertical?: (direction: 1 | -1) => boolean
   onSlashBackspacePop?: () => boolean
+  onSlashArrowRight?: () => boolean
 }
 
 /**
@@ -30,6 +31,7 @@ export function useKBArticleEditor({
   onSlashEnter,
   onSlashArrowVertical,
   onSlashBackspacePop,
+  onSlashArrowRight,
 }: UseKBArticleEditorOptions) {
   const { editor, gutterCharWidth } = useRichTextEditor({
     initialContent,
@@ -38,6 +40,7 @@ export function useKBArticleEditor({
     onSlashEnter,
     onSlashArrowVertical,
     onSlashBackspacePop,
+    onSlashArrowRight,
     enableReferencePicker: true,
     onPickerEnter,
     onPickerArrowVertical,

@@ -148,6 +148,7 @@ export const PromptEditorContent = memo(function PromptEditorContent({
     []
   )
   const onSlashBackspacePop = useCallback(() => slashRef.current?.popLevel() ?? false, [])
+  const onSlashArrowRight = useCallback(() => slashRef.current?.drillHighlighted() ?? false, [])
 
   const { editor } = useRichTextEditor({
     initialContent,
@@ -156,6 +157,7 @@ export const PromptEditorContent = memo(function PromptEditorContent({
     onSlashEnter,
     onSlashArrowVertical,
     onSlashBackspacePop,
+    onSlashArrowRight,
     enableReferencePicker: true,
     onPickerEnter,
     onPickerArrowVertical,

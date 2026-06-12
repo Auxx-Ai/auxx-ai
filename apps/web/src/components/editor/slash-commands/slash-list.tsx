@@ -95,6 +95,7 @@ export function SlashList({
                       key={item.id}
                       value={value}
                       onSelect={() => section.onSelect(item)}
+                      data-drilldown={item.drillDown ? '' : undefined}
                       className='flex items-center justify-between'>
                       {section.renderItem ? (
                         section.renderItem(item)

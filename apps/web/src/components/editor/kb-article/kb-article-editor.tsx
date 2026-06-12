@@ -56,8 +56,8 @@ interface KBArticleEditorProps {
 
 interface LinkPopoverState {
   rect: DOMRect
-  /** When set, replaces this range; otherwise inserts at the cursor. */
-  range?: { from: number; to: number }
+  /** Selection / existing-link range the picked link replaces. */
+  range: { from: number; to: number }
   /** Prefill values when editing an existing link. */
   edit?: ArticleLinkEditMode
 }
@@ -92,6 +92,7 @@ export function KBArticleEditor({
     []
   )
   const onSlashBackspacePop = useCallback(() => slashRef.current?.popLevel() ?? false, [])
+  const onSlashArrowRight = useCallback(() => slashRef.current?.drillHighlighted() ?? false, [])
 
   const { editor, gutterCharWidth } = useKBArticleEditor({
     initialContent,
@@ -101,6 +102,7 @@ export function KBArticleEditor({
     onSlashEnter,
     onSlashArrowVertical,
     onSlashBackspacePop,
+    onSlashArrowRight,
   })
   const activePicker = useActivePicker(editor)
   const [linkPopover, setLinkPopover] = useState<LinkPopoverState | null>(null)
@@ -156,17 +158,6 @@ export function KBArticleEditor({
     })
   }
 
-  const handleLinkArticle = useCallback((editorInstance: Editor, insertPos: number) => {
-    const coords = editorInstance.view.coordsAtPos(insertPos)
-    const rect = new DOMRect(
-      coords.left,
-      coords.top,
-      Math.max(1, coords.right - coords.left),
-      Math.max(1, coords.bottom - coords.top)
-    )
-    setLinkPopover({ rect })
-  }, [])
-
   const handleBubbleLinkRequest = useCallback(() => {
     if (!editor) return
     const { from, to } = editor.state.selection
@@ -199,12 +190,7 @@ export function KBArticleEditor({
         attrs: { href: pick.href, target: isInternal ? null : '_blank' },
       }
       const node = { type: 'text', text: pick.text, marks: [mark] }
-      const chain = editor.chain().focus()
-      if (linkPopover.range) {
-        chain.insertContentAt(linkPopover.range, node)
-      } else {
-        chain.insertContent(node)
-      }
+      const chain = editor.chain().focus().insertContentAt(linkPopover.range, node)
       // Strip the stored link mark so the next typed character isn't linked.
       chain
         .command(({ tr }) => {
@@ -300,7 +286,6 @@ export function KBArticleEditor({
             }}
             onClose={() => editor?.commands.closeReferencePicker({ keepText: true })}
             onScopeChange={(scope) => editor?.commands.setPickerScope(scope, { clearQuery: true })}
-            onLinkArticle={handleLinkArticle}
             editor={editor}
           />
         </InlinePickerPopover>

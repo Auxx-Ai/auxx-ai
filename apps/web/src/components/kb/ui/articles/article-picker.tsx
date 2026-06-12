@@ -16,6 +16,7 @@ import {
 import { EntityIcon } from '@auxx/ui/components/icons'
 import { ChevronRight, CornerDownRight, Loader2 } from 'lucide-react'
 import { type KeyboardEvent, useCallback, useMemo, useState } from 'react'
+import { ParentBackHeader } from '~/components/editor/placeholders/placeholder-picker-content'
 import { api } from '~/trpc/react'
 import { useArticleList } from '../../hooks/use-article-list'
 import { useKnowledgeBases } from '../../hooks/use-knowledge-bases'
@@ -62,6 +63,14 @@ export interface ArticlePickerProps {
   knowledgeBasesOverride?: { id: string; name: string }[]
   /** Focus the search input on mount (e.g. when embedded in a morphing dropdown). */
   autoFocusSearch?: boolean
+  /**
+   * Embedded use (e.g. inside the slash-command drill): shows a back-to-parent
+   * header at the root and routes Backspace/ArrowLeft on an empty root search
+   * to it instead of closing.
+   */
+  onBack?: () => void
+  /** Label for the back header — the parent picker's name (e.g. 'Commands'). */
+  backLabel?: string
   onPick: (articleId: string) => void
   onClose: () => void
 }
@@ -88,6 +97,8 @@ function ArticlePickerContent({
   flattenSearch,
   knowledgeBasesOverride,
   autoFocusSearch,
+  onBack,
+  backLabel = 'Back',
   onPick,
   onClose,
 }: ArticlePickerProps) {
@@ -183,13 +194,29 @@ function ArticlePickerContent({
           pop()
           return
         }
+        if (onBack) {
+          e.preventDefault()
+          onBack()
+          return
+        }
         if (e.key === 'Backspace') {
           e.preventDefault()
           onClose()
         }
+        return
+      }
+      if (e.key === 'ArrowRight') {
+        // Drill into the highlighted entry (KB / tab / category) — same
+        // DOM-query pattern as `useCmdkRemote.drillHighlighted`.
+        const selected = (e.currentTarget as HTMLElement).querySelector<HTMLElement>(
+          '[cmdk-item][data-selected="true"][data-drilldown]'
+        )
+        if (!selected) return
+        e.preventDefault()
+        selected.click()
       }
     },
-    [isAtRoot, onClose, pop, search]
+    [isAtRoot, onBack, onClose, pop, search]
   )
 
   const placeholder =
@@ -202,6 +229,7 @@ function ArticlePickerContent({
 
   return (
     <Command className='w-72 overflow-hidden' shouldFilter={false} onKeyDown={handleKeyDown}>
+      {onBack && isAtRoot && <ParentBackHeader label={backLabel} onBack={onBack} />}
       <CommandBreadcrumb rootLabel={rootLabel} />
       <CommandInput
         placeholder={placeholder}
@@ -222,6 +250,7 @@ function ArticlePickerContent({
                   push({ id: kb.id, label: kb.name || 'Untitled', kind: 'kb' })
                   setSearch('')
                 }}
+                data-drilldown=''
                 className='flex items-center justify-between'>
                 <div className='flex items-center gap-2'>
                   <EntityIcon iconId='book-open' size='xs' className='text-muted-foreground' />
@@ -274,6 +303,7 @@ function ArticlePickerContent({
                   value={a.title || a.id}
                   onSelect={onSelect}
                   data-current={currentParentId === a.id || undefined}
+                  data-drilldown={drill ? '' : undefined}
                   className='flex items-center justify-between'>
                   <div className='flex items-center gap-2'>
                     <EntityIcon
