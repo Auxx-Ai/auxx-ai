@@ -47,7 +47,7 @@ export function ToolsSection({ agent, onAutosaveChange }: ToolsSectionProps) {
     [onAutosaveChange]
   )
 
-  const { toggleToolset, toggleToolsets, updateToolset } = useToolsetMutations(
+  const { toggleToolset, toggleToolsets, updateToolset, toggleTool } = useToolsetMutations(
     agent.id,
     agent.slug,
     handleSavingChange
@@ -285,6 +285,7 @@ export function ToolsSection({ agent, onAutosaveChange }: ToolsSectionProps) {
         onToggleToolset={toggleToolset}
         onToggleToolsets={toggleToolsets}
         onUpdateToolset={updateToolset}
+        onToggleTool={toggleTool}
         open={dialogOpen}
         onOpenChange={(next) => {
           setDialogOpen(next)

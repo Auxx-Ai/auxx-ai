@@ -52,11 +52,19 @@ export const agentToolsetRouter = createTRPCRouter({
       const { organizationId } = ctx.session
       await ensureAgentInOrg(organizationId, input.agentId)
 
-      await updateAgentToolset(organizationId, input.agentId, {
-        slug: input.slug,
-        enabled: input.enabled,
-        disabledTools: input.disabledTools,
-      })
+      // Exclude the writer's own socket from the `agent:updated` broadcast so
+      // the realtime self-echo doesn't refetch over its optimistic cache.
+      const excludeSocketId = ctx.headers.get('x-realtime-socket-id') ?? undefined
+      await updateAgentToolset(
+        organizationId,
+        input.agentId,
+        {
+          slug: input.slug,
+          enabled: input.enabled,
+          disabledTools: input.disabledTools,
+        },
+        { excludeSocketId }
+      )
 
       logger.info('Agent toolset updated', {
         organizationId,
@@ -76,7 +84,10 @@ export const agentToolsetRouter = createTRPCRouter({
       const { organizationId } = ctx.session
       await ensureAgentInOrg(organizationId, input.agentId)
 
-      await batchUpdateAgentToolsets(organizationId, input.agentId, input.toolsets)
+      const excludeSocketId = ctx.headers.get('x-realtime-socket-id') ?? undefined
+      await batchUpdateAgentToolsets(organizationId, input.agentId, input.toolsets, {
+        excludeSocketId,
+      })
 
       logger.info('Agent toolsets batch-updated', {
         organizationId,
