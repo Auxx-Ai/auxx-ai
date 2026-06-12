@@ -16,7 +16,8 @@ export interface ToolsetRowProps {
   /** Optional one-line tooltip; rendered by `<TreeRow>` as a help-icon. */
   description?: string
   toolCount: number
-  source: 'manual' | 'mention' | 'auto_default'
+  /** Mention-locked — the prompt/procedure pins this row; trash disables with a tooltip. */
+  locked: boolean
   /** Read-only restriction count for this toolset; ≥1 shows a lock badge. */
   restrictionCount?: number
   /**
@@ -31,9 +32,10 @@ export interface ToolsetRowProps {
 
 /**
  * One toolset rendered as a single-line TreeRow: icon + short label + tool
- * count + trash button. Only mention-locked rows render a disabled trash;
- * `manual` and `auto_default` are both freely removable. The toolset is the
- * atomic unit of control — there are no per-tool sub-rows.
+ * count + trash button. Only mention-locked rows (`ToolsetEntry.mentions`
+ * non-empty) render a disabled trash; manually-added and seeded rows are both
+ * freely removable. The toolset is the atomic unit of control — there are no
+ * per-tool sub-rows (explicit bundles only; implicit sets inline their tools).
  */
 export function ToolsetRow({
   label,
@@ -41,13 +43,13 @@ export function ToolsetRow({
   color,
   description,
   toolCount,
-  source,
+  locked,
   restrictionCount = 0,
   warn = false,
   depth = 0,
   onRemove,
 }: ToolsetRowProps) {
-  const removable = source !== 'mention'
+  const removable = !locked
   const tooltip = removable
     ? 'Remove toolset'
     : "This tool is referenced in your agent's prompt. To remove it, first edit your prompt."

@@ -48,7 +48,7 @@ interface AiModelConfig extends BaseAiModelConfig {
 export interface AiToolsetEntry {
   slug: string
   enabled: boolean
-  config?: { disabledTools?: string[] }
+  config?: { enabledTools?: string[] }
   source: 'manual'
 }
 
@@ -516,15 +516,18 @@ export class AIProcessorV2 extends BaseAiNodeProcessor {
   /**
    * Adapt the flat `nodeData` shape into the minimal `ResolvedAgentConfig`
    * surface `filterToolsByToolsets` reads — `toolsets[].slug` +
-   * `toolsets[].disabledTools`. Other `ResolvedAgentConfig` fields are
-   * unused by the filter and are cast away.
+   * `toolsets[].enabledTools` (null = no per-tool list, every member tool
+   * passes). Other `ResolvedAgentConfig` fields are unused by the filter and
+   * are cast away.
    */
   private buildResolvedAgentShim(config: AiNodeConfig): ResolvedAgentConfig | undefined {
     const entries = (config.toolsets ?? []).filter((t) => t.enabled)
     if (entries.length === 0) return undefined
     const toolsets = entries.map((t) => ({
       slug: t.slug,
-      disabledTools: new Set<string>(t.config?.disabledTools ?? []),
+      enabledTools: Array.isArray(t.config?.enabledTools)
+        ? new Set<string>(t.config.enabledTools)
+        : null,
     }))
     return {
       agentId: null,

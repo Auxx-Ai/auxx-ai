@@ -508,23 +508,25 @@ describe('AIProcessorV2', () => {
       expect(shim).toBeUndefined()
     })
 
-    it('builds a ResolvedAgentConfig-shaped value with disabledTools as a Set', () => {
+    it('builds a ResolvedAgentConfig-shaped value with enabledTools as a Set (null when absent)', () => {
       const shim = (processor as any).buildResolvedAgentShim({
         toolsets: [
           {
             slug: 'workflow.variable',
             enabled: true,
             source: 'manual',
-            config: { disabledTools: ['assign_variable'] },
+            config: { enabledTools: ['assign_variable'] },
           },
+          { slug: 'auxx:mail:threads', enabled: true, source: 'manual' },
           { slug: 'mail.compose', enabled: false, source: 'manual' },
         ],
         appAccounts: { mailgun: { credId: 'cred_1' } },
       })
 
-      expect(shim.toolsets).toHaveLength(1)
+      expect(shim.toolsets).toHaveLength(2)
       expect(shim.toolsets[0]).toMatchObject({ slug: 'workflow.variable' })
-      expect(shim.toolsets[0].disabledTools.has('assign_variable')).toBe(true)
+      expect(shim.toolsets[0].enabledTools.has('assign_variable')).toBe(true)
+      expect(shim.toolsets[1]).toMatchObject({ slug: 'auxx:mail:threads', enabledTools: null })
       expect(shim.appAccounts).toEqual({ mailgun: { credId: 'cred_1' } })
     })
   })

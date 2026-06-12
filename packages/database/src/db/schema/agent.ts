@@ -24,6 +24,18 @@ import { User } from './user'
 export type MentionSource = 'prompt' | 'procedure'
 
 /**
+ * One mention lock on a {@link ToolsetEntry}. `target: '*'` locks the whole
+ * toolset (explicit bundles, `toolset:<slug>` chips); a registered tool name
+ * locks just that tool (implicit toolsets). Written by the prompt/procedure
+ * reconcilers; replaced per-`source` on every reconcile pass. See
+ * plans/mcp/v4/tool-first-catalog.md Phase 3.
+ */
+export interface ToolsetMention {
+  target: string
+  source: MentionSource
+}
+
+/**
  * One entry inside `Agent.toolsets`. Replaces the old `AgentToolset` join
  * table. See plans/kopilot/agents/ui/single-row-agent.md §1.
  */
@@ -31,16 +43,26 @@ export interface ToolsetEntry {
   slug: string
   /** Optional AppInstallation id for app toolsets. Null/absent for native toolsets. */
   appInstallationId?: string | null
-  /** Toolset-shaped overrides — `{ disabledTools?: string[] }`. */
+  /**
+   * Toolset-shaped overrides — `{ enabledTools?: string[] }` (per-tool
+   * allow-list, implicit toolsets only) plus the reconciler-private
+   * `mentionOverrides` pre-image (`{ enabledWas?: false, addedNames?: string[] }`):
+   * what mention passes overrode on this entry, applied back when the mentions
+   * covering a target empty. Never read outside the reconcilers.
+   */
   config: Record<string, unknown>
   enabled: boolean
+  /**
+   * Pure creation provenance — how this entry came to exist. The reconcilers
+   * never mutate it; lock state lives in {@link ToolsetEntry.mentions}.
+   */
   source: 'manual' | 'mention' | 'auto_default'
   /**
-   * When `source === 'mention'`, the inputs that lock this toolset. Non-empty ⇒
-   * mention-locked + enabled. Cleared per-source by the matching reconciler; the
-   * row drops when it empties. Absent on manual/auto_default rows.
+   * Mention locks on this entry. Non-empty ⇒ the row is forced `enabled: true`
+   * and the locked targets are frozen in the UI. Replaced per-source by the
+   * matching reconciler. Replaces the old `mentionedBy` tag list.
    */
-  mentionedBy?: MentionSource[]
+  mentions?: ToolsetMention[]
 }
 
 /**

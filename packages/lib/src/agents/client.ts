@@ -44,12 +44,13 @@ export interface ToolCatalogEntry {
 }
 
 /**
- * Recursive catalog node mirrored from the server. App, sub-group, and toolset
- * all share this shape; `kind` discriminates visual treatment. See
+ * Recursive catalog node mirrored from the server. App, sub-group, toolset,
+ * and tool all share this shape; `kind` discriminates visual treatment. See
  * `toolset-catalog.ts` for the canonical shape and
- * `plans/kopilot/agents/tools/recursive-catalog-node.md` for the model.
+ * `plans/mcp/v4/tool-first-catalog.md` for the model (tools as first-class
+ * nodes; toolsets as optional groupings).
  */
-export type CatalogNode = CatalogContainerNode | CatalogToolsetNode
+export type CatalogNode = CatalogContainerNode | CatalogToolsetNode | CatalogToolNode
 
 interface CatalogNodeBase {
   id: string
@@ -85,7 +86,79 @@ export interface CatalogToolsetNode extends CatalogNodeBase {
   isDefault: boolean
   /** Curated for the Tool-Select dialog's "Popular tools" group. */
   isPopular: boolean
-  tools: ToolCatalogEntry[]
+  /**
+   * `true` when this toolset was **synthesized** rather than author-declared:
+   * MCP servers (`mcp:<serverId>`) and the per-app group holding ungrouped
+   * native tools (`app:<appId>`). Implicit toolsets are per-tool selectable
+   * (`config.enabledTools`) and never render their own row — their children
+   * contribute directly to the parent's row list. Explicit (`false`) toolsets
+   * are atomic authored bundles: one row, no per-tool UI.
+   */
+  implicit: boolean
+  children: CatalogToolNode[]
+}
+
+/** A tool as a first-class catalog node — the unit users see and select. */
+export interface CatalogToolNode extends CatalogNodeBase {
+  kind: 'tool'
+  /**
+   * Registered name (`mcp__<slug>__<tool>` for MCP, `getRegisteredToolName`
+   * for app tools) — what `enabledTools` and restrictions key on. `label`
+   * carries the human-friendly `displayName`.
+   */
+  name: string
+  /** Slug of the owning toolset — the persistence join key. */
+  toolsetSlug: string
+  description: string
+  /** Mirrors {@link ToolCatalogEntry.surfaces}. */
+  surfaces?: AgentSurface[]
+  /** Mirrors {@link ToolCatalogEntry.externalSafe}. */
+  externalSafe?: boolean
+  /** MCP-only: tool's `readOnlyHint`. */
+  readOnly?: boolean
+  /** MCP-only: admin-trusted (runs without approval). */
+  trusted?: boolean
+}
+
+/** Implicit-toolset slug for an app's ungrouped native tools. Stable across builds (derived from the app id); MCP keeps `mcp:<serverId>`. */
+export function implicitAppToolsetSlug(appId: string): string {
+  return `app:${appId}`
+}
+
+/** Project a {@link CatalogToolNode} back to the flat {@link ToolCatalogEntry} data shape. */
+export function toolNodeToEntry(node: CatalogToolNode): ToolCatalogEntry {
+  return {
+    name: node.name,
+    displayName: node.label,
+    description: node.description,
+    surfaces: node.surfaces,
+    externalSafe: node.externalSafe,
+    readOnly: node.readOnly,
+    trusted: node.trusted,
+  }
+}
+
+/** Lift a flat {@link ToolCatalogEntry} into a {@link CatalogToolNode} under `toolsetSlug`. */
+export function toolEntryToNode(
+  entry: ToolCatalogEntry,
+  toolsetSlug: string,
+  origin?: 'app' | 'mcp'
+): CatalogToolNode {
+  return {
+    kind: 'tool',
+    id: entry.name,
+    name: entry.name,
+    label: entry.displayName,
+    toolsetSlug,
+    description: entry.description,
+    iconId: null,
+    color: null,
+    origin,
+    surfaces: entry.surfaces,
+    externalSafe: entry.externalSafe,
+    readOnly: entry.readOnly,
+    trusted: entry.trusted,
+  }
 }
 
 /**
@@ -112,6 +185,8 @@ export interface FlatToolsetCatalogEntry {
   isPopular: boolean
   /** Provenance — `'app'` (absent ⇒ app) or `'mcp'`. Pickers group/badge on this. */
   origin?: 'app' | 'mcp'
+  /** Mirrors {@link CatalogToolsetNode.implicit} — implicit sets get per-tool selection. */
+  implicit: boolean
   tools: ToolCatalogEntry[]
 }
 
@@ -134,6 +209,7 @@ export function flattenCatalogToToolsets(roots: CatalogNode[]): FlatToolsetCatal
     const color = node.color ?? inheritedColor
     const origin = node.origin ?? inheritedOrigin
 
+    if (node.kind === 'tool') return
     if (node.kind === 'toolset') {
       flat.push({
         slug: node.slug,
@@ -146,7 +222,8 @@ export function flattenCatalogToToolsets(roots: CatalogNode[]): FlatToolsetCatal
         isDefault: node.isDefault,
         isPopular: node.isPopular,
         origin,
-        tools: node.tools,
+        implicit: node.implicit,
+        tools: node.children.map(toolNodeToEntry),
       })
       return
     }
@@ -192,9 +269,12 @@ export function matchesToolsetSearch(entry: FlatToolsetCatalogEntry, query: stri
  */
 export function filterCatalogToSurface(roots: CatalogNode[], surface: AgentSurface): CatalogNode[] {
   const pruneNode = (node: CatalogNode): CatalogNode | null => {
+    if (node.kind === 'tool') {
+      return (node.surfaces ?? ALL_SURFACES).includes(surface) ? node : null
+    }
     if (node.kind === 'toolset') {
-      const tools = node.tools.filter((t) => (t.surfaces ?? ALL_SURFACES).includes(surface))
-      return tools.length > 0 ? { ...node, tools } : null
+      const children = node.children.filter((t) => (t.surfaces ?? ALL_SURFACES).includes(surface))
+      return children.length > 0 ? { ...node, children } : null
     }
     const children = node.children.map(pruneNode).filter((n): n is CatalogNode => n !== null)
     return children.length > 0 ? { ...node, children } : null
@@ -242,7 +322,12 @@ export interface CachedInstalledAppLike {
      */
     registeredName: string
     description: string
-    toolsetSlug: string
+    /**
+     * Optional — grouping is an authoring choice. Tools without a slug land
+     * in the app's synthesized implicit toolset ({@link implicitAppToolsetSlug})
+     * and get per-tool selection. See plans/mcp/v4/tool-first-catalog.md.
+     */
+    toolsetSlug?: string
     /** Mirrors `AgentToolDefinition.surfaces` — where the tool is offered. Absent ⇒ all. */
     surfaces?: AgentSurface[]
     /** Mirrors `AgentToolDefinition.externalSafe` — drives the chat/email warning. */
@@ -276,6 +361,8 @@ interface ToolsetInput {
   subGroup: string | null
   subGroupIconId: string | null
   subGroupColor: string | null
+  /** Synthesized (ungrouped tools) rather than author-declared. */
+  implicit?: boolean
   tools: ToolCatalogEntry[]
 }
 
@@ -291,7 +378,10 @@ function toToolsetNode(ts: ToolsetInput): CatalogToolsetNode {
     description: ts.description,
     isDefault: ts.isDefault,
     isPopular: ts.isPopular,
-    tools: [...ts.tools].sort((a, b) => a.name.localeCompare(b.name)),
+    implicit: ts.implicit ?? false,
+    children: [...ts.tools]
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map((tool) => toolEntryToNode(tool, ts.slug)),
   }
 }
 
@@ -384,12 +474,19 @@ export function buildCatalogTreeFromInstallations(
 
   for (const inst of installations) {
     const agentToolsets = inst.agentToolsets ?? []
-    if (agentToolsets.length === 0) continue
-
     const agentTools = inst.agentTools ?? []
+
+    // Grouping is optional: tools whose `toolsetSlug` names a declared toolset
+    // join it; the rest (no slug, or a slug no toolset declares) land in the
+    // app's synthesized implicit toolset and get per-tool selection. An app
+    // may mix grouped and bare tools.
+    const declaredSlugs = new Set(agentToolsets.map((ts) => ts.slug))
+    const implicitSlug = implicitAppToolsetSlug(inst.app.id)
     const toolsBySlug = new Map<string, ToolCatalogEntry[]>()
     for (const tool of agentTools) {
-      const arr = toolsBySlug.get(tool.toolsetSlug) ?? []
+      const slug =
+        tool.toolsetSlug && declaredSlugs.has(tool.toolsetSlug) ? tool.toolsetSlug : implicitSlug
+      const arr = toolsBySlug.get(slug) ?? []
       arr.push({
         name: tool.registeredName,
         displayName: tool.name,
@@ -397,14 +494,49 @@ export function buildCatalogTreeFromInstallations(
         surfaces: tool.surfaces,
         externalSafe: tool.externalSafe,
       })
-      toolsBySlug.set(tool.toolsetSlug, arr)
+      toolsBySlug.set(slug, arr)
     }
+
+    const ungrouped = toolsBySlug.get(implicitSlug) ?? []
+    if (agentToolsets.length === 0 && ungrouped.length === 0) continue
 
     const isBuiltin = inst.app.id === BUILTIN_APP_ID
     // Apps store an avatar URL on the App row. Pass it through verbatim to
     // <AppIcon> — parseVisualRef routes `https://...` and `url:/...`
     // through the <img> branch. Lucide fallback when no avatarUrl.
     const appIconId = inst.app.avatarUrl ?? 'package'
+
+    const toolsets: ToolsetInput[] = agentToolsets.map((ts) => ({
+      slug: ts.slug,
+      fullLabel: ts.name,
+      shortLabel: ts.shortLabel ?? ts.name,
+      iconId: ts.iconKey,
+      color: ts.color ?? null,
+      isDefault: ts.isDefault ?? false,
+      isPopular: ts.isPopular ?? false,
+      description: ts.description ?? '',
+      subGroup: ts.subGroup ?? null,
+      subGroupIconId: ts.subGroupIconId ?? null,
+      subGroupColor: ts.subGroupColor ?? null,
+      tools: toolsBySlug.get(ts.slug) ?? [],
+    }))
+    if (ungrouped.length > 0) {
+      toolsets.push({
+        slug: implicitSlug,
+        fullLabel: inst.app.title,
+        shortLabel: inst.app.title,
+        iconId: null,
+        color: null,
+        isDefault: false,
+        isPopular: false,
+        description: '',
+        subGroup: null,
+        subGroupIconId: null,
+        subGroupColor: null,
+        implicit: true,
+        tools: ungrouped,
+      })
+    }
 
     apps.push(
       buildAppNode({
@@ -413,20 +545,7 @@ export function buildCatalogTreeFromInstallations(
         iconId: appIconId,
         color: null,
         isBuiltin: isBuiltin || undefined,
-        toolsets: agentToolsets.map((ts) => ({
-          slug: ts.slug,
-          fullLabel: ts.name,
-          shortLabel: ts.shortLabel ?? ts.name,
-          iconId: ts.iconKey,
-          color: ts.color ?? null,
-          isDefault: ts.isDefault ?? false,
-          isPopular: ts.isPopular ?? false,
-          description: ts.description ?? '',
-          subGroup: ts.subGroup ?? null,
-          subGroupIconId: ts.subGroupIconId ?? null,
-          subGroupColor: ts.subGroupColor ?? null,
-          tools: toolsBySlug.get(ts.slug) ?? [],
-        })),
+        toolsets,
       })
     )
   }
@@ -521,7 +640,10 @@ export function buildMcpCatalogNodes(servers: ClientMcpServer[]): CatalogNode[] 
       isPopular: false,
       iconId: server.iconUrl ?? null,
       color: null,
-      tools: [...tools].sort((a, b) => a.name.localeCompare(b.name)),
+      implicit: true,
+      children: [...tools]
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .map((tool) => toolEntryToNode(tool, server.toolsetSlug, 'mcp')),
     }
     nodes.push({
       kind: 'app',
@@ -577,9 +699,11 @@ export type {
   KnowledgeEntry,
   KnowledgeMode,
   KnowledgeSource,
+  MentionOverrides,
   ReconcileMentionsInput,
   ReconcileMentionsOutput,
   ToolsetEntry,
+  ToolsetMention,
   ToolsetSource,
 } from './prompt-mention-reconciler'
 

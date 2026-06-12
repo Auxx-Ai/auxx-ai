@@ -16,7 +16,7 @@ const logger = createScopedLogger('agent-toolset-router')
 const toolsetPatchSchema = z.object({
   slug: z.string().min(1).max(120),
   enabled: z.boolean().optional(),
-  disabledTools: z.array(z.string().min(1).max(120)).optional(),
+  enabledTools: z.array(z.string().min(1).max(120)).max(500).optional(),
 })
 
 async function ensureAgentInOrg(organizationId: string, agentId: string): Promise<void> {
@@ -26,9 +26,10 @@ async function ensureAgentInOrg(organizationId: string, agentId: string): Promis
 }
 
 /**
- * Per-agent toolset CRUD. Mention-sourced rows (`source='mention'`) are
- * managed by the prompt reconciler and not mutable through this router; this
- * router writes `manual` (or promotes `auto_default` → `manual`). All
+ * Per-agent toolset CRUD. Mention-locked rows/targets (`mentions` non-empty)
+ * are managed by the prompt/procedure reconcilers — the UI blocks edits to
+ * them and the reconcilers self-heal out-of-band writes on the next pass.
+ * This router writes `manual` (or promotes `auto_default` → `manual`). All
  * persistence lives in `@auxx/lib/agents/agent-toolset-service`; the router
  * just validates input, enforces org scope via the cache, and delegates.
  */
@@ -61,7 +62,7 @@ export const agentToolsetRouter = createTRPCRouter({
         {
           slug: input.slug,
           enabled: input.enabled,
-          disabledTools: input.disabledTools,
+          enabledTools: input.enabledTools,
         },
         { excludeSocketId }
       )

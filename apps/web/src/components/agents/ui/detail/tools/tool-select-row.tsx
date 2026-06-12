@@ -25,10 +25,12 @@ export interface ToolSelectRowProps {
   isMcp?: boolean
   installed: boolean
   /**
-   * Source of the installed state, when known. `'manual'` = removable;
-   * `'mention'` / `'auto_default'` = locked (trash disabled with tooltip).
+   * Lock state of the row, when locked. `'mention'` = pinned by a prompt or
+   * procedure chip (lock state lives in `ToolsetEntry.mentions`, not
+   * `source`); `'auto_default'` = seeded default. Locked rows render a
+   * disabled trash with the matching tooltip.
    */
-  source?: 'manual' | 'mention' | 'auto_default'
+  locked?: 'mention' | 'auto_default'
   /**
    * Click handler for the row body. Toggles add/remove for toolsets; opens
    * the app-detail view for apps.
@@ -47,7 +49,7 @@ export interface ToolSelectRowProps {
  * spans two lines, title + description on the right, optional badge on the
  * far right. When `installed`, a green check overlays the avatar and a
  * hover-only trash button appears (or a disabled trash with tooltip when
- * `source` indicates the row is locked).
+ * `locked`).
  */
 export function ToolSelectRow({
   iconId,
@@ -59,13 +61,13 @@ export function ToolSelectRow({
   subtitle,
   isMcp,
   installed,
-  source,
+  locked,
   onSelect,
   onRemove,
 }: ToolSelectRowProps) {
-  const removable = source === undefined || source === 'manual'
+  const removable = locked === undefined
   const lockedTooltip =
-    source === 'mention'
+    locked === 'mention'
       ? "This tool is referenced in your agent's prompt. To remove it, first edit your prompt."
       : 'Required'
 

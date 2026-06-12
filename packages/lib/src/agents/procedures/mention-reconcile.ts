@@ -57,7 +57,7 @@ export async function reconcileAgentProcedureMentions(
 
   const docs = rows.map((r) => (r.doc ?? {}) as Record<string, unknown>)
   const catalog = await getOrgToolCatalog(organizationId)
-  const { toolsetSlugs, recordIds } = walkPromptDocs(docs, catalog)
+  const { toolsetLocks, recordIds } = walkPromptDocs(docs, catalog)
 
   await database.transaction(async (tx) => {
     const [agent] = await tx
@@ -72,7 +72,7 @@ export async function reconcileAgentProcedureMentions(
       .limit(1)
     if (!agent) return
 
-    const toolsets = reconcileToolsetMentions(agent.toolsets ?? [], toolsetSlugs, 'procedure')
+    const toolsets = reconcileToolsetMentions(agent.toolsets ?? [], toolsetLocks, 'procedure')
     const knowledge = reconcileKnowledgeMentions(agent.knowledge ?? [], recordIds, 'procedure')
     // No dirty flag: the same derived change lands on BOTH the row and the active
     // version, so row-vs-active equality (and the no-op-publish hash) is preserved.
@@ -93,7 +93,7 @@ export async function reconcileAgentProcedureMentions(
       if (active) {
         const versionToolsets = reconcileToolsetMentions(
           (active.toolsets ?? []) as ToolsetEntry[],
-          toolsetSlugs,
+          toolsetLocks,
           'procedure'
         )
         const versionKnowledge = reconcileKnowledgeMentions(

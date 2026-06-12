@@ -57,6 +57,7 @@ export function useMasterKopilotToolsets(catalog: CatalogNode[]) {
 function collectAllToolsetSlugs(nodes: CatalogNode[]): string[] {
   const out: string[] = []
   const walk = (n: CatalogNode) => {
+    if (n.kind === 'tool') return
     if (n.kind === 'toolset') {
       out.push(n.slug)
       return
@@ -126,6 +127,7 @@ export function upsertToggle(list: ToolsetEntry[], slug: string, enabled: boolea
 export function _collectToolsetNodesForTest(nodes: CatalogNode[]): CatalogToolsetNode[] {
   const out: CatalogToolsetNode[] = []
   const walk = (n: CatalogNode) => {
+    if (n.kind === 'tool') return
     if (n.kind === 'toolset') {
       out.push(n)
       return

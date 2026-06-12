@@ -9,21 +9,21 @@ import type { AgentDetail } from '../../../store/agent-store'
 /** Patch shape mirroring the server's `AgentToolsetPatch` — both fields optional. */
 export interface ToolsetPatch {
   enabled?: boolean
-  /** Registered tool names disabled inside this toolset (full replace). */
-  disabledTools?: string[]
+  /** Allow-list of registered tool names enabled inside this toolset (full replace). */
+  enabledTools?: string[]
 }
 
 interface UseToolsetMutationsReturn {
   toggleToolset: (slug: string, enabled: boolean) => Promise<void>
   toggleToolsets: (changes: Array<{ slug: string; enabled: boolean }>) => Promise<void>
   /**
-   * Patch a single toolset's `enabled` flag and/or its `config.disabledTools`
-   * deny-list in one optimistic mutation. Backs per-tool MCP selection — the
-   * caller computes the next deny-list from the tool checkboxes.
+   * Patch a single toolset's `enabled` flag and/or its `config.enabledTools`
+   * allow-list in one optimistic mutation. Backs per-tool MCP selection — the
+   * caller computes the next allow-list from the tool checkboxes.
    */
   updateToolset: (slug: string, patch: ToolsetPatch) => Promise<void>
   /**
-   * Toggle one tool inside a toolset's deny-list. Reads the toolset's current
+   * Toggle one tool inside a toolset's allow-list. Reads the toolset's current
    * state from the live `agent.getById` cache at click time — not from
    * memoized props — so rapid clicks chain on each other instead of
    * overwriting from the same stale base array.
@@ -66,8 +66,8 @@ export function useToolsetMutations(
         enabled: patch.enabled ?? current.enabled,
         source: current.source === 'auto_default' ? 'manual' : current.source,
         config:
-          patch.disabledTools !== undefined
-            ? { ...current.config, disabledTools: patch.disabledTools }
+          patch.enabledTools !== undefined
+            ? { ...current.config, enabledTools: patch.enabledTools }
             : current.config,
       }
       return next
@@ -78,7 +78,7 @@ export function useToolsetMutations(
         slug,
         enabled: patch.enabled ?? true,
         source: 'manual',
-        config: patch.disabledTools !== undefined ? { disabledTools: patch.disabledTools } : {},
+        config: patch.enabledTools !== undefined ? { enabledTools: patch.enabledTools } : {},
       },
     ]
   }
@@ -112,7 +112,7 @@ export function useToolsetMutations(
   )
 
   /**
-   * Patch one toolset's `enabled` flag and/or `disabledTools` deny-list. One
+   * Patch one toolset's `enabled` flag and/or `enabledTools` allow-list. One
    * optimistic write mirroring the server's `applyToolsetPatch`, then a single
    * mutation — no invalidate on success.
    */
@@ -144,42 +144,46 @@ export function useToolsetMutations(
   )
 
   /**
-   * Per-tool toggle with the deny-list read-modify-write done against the
-   * fresh cache. Edge rules match the MCP drill-in UX: checking the first
-   * tool of a disabled toolset installs it denying the rest; unchecking the
-   * last enabled tool disables the toolset and clears the deny-list. Locked
-   * toolsets (`mention` / `auto_default`) are no-ops.
+   * Per-tool toggle with the allow-list read-modify-write done against the
+   * fresh cache. Edge rules match the drill-in UX: checking the first tool of
+   * a disabled toolset installs it with just that tool; unchecking the last
+   * enabled tool disables the toolset and clears the allow-list. Locks are
+   * per-target: a `'*'` mention or `auto_default` source freezes every tool;
+   * a tool-name mention freezes only that name — siblings stay editable. An
+   * enabled entry without a list (legacy pass-all rows) is treated as
+   * all-enabled.
    */
   const toggleTool = useCallback(
     async (slug: string, toolName: string, allToolNames: string[]) => {
       const agent = utils.agent.getById.getData({ agentId: agentSlug })
       const entry = agent?.toolsets.find((t) => t.slug === slug)
       const enabled = entry?.enabled ?? false
-      const installed = enabled || entry?.source === 'mention'
-      if (installed && entry && entry.source !== 'manual') return
-      const disabledTools =
-        (entry?.config as { disabledTools?: string[] } | undefined)?.disabledTools ?? []
+      const mentions = entry?.mentions ?? []
+      const installed = enabled || mentions.length > 0
+      const targetLocked =
+        entry?.source === 'auto_default' ||
+        mentions.some((m) => m.target === '*' || m.target === toolName)
+      if (installed && entry && targetLocked) return
+      const stored = (entry?.config as { enabledTools?: string[] } | undefined)?.enabledTools
+      const enabledTools = Array.isArray(stored) ? stored : installed ? allToolNames : []
 
-      if (installed && !disabledTools.includes(toolName)) {
-        // Tool currently enabled — add it to the deny-list.
-        const nextDisabled = [...disabledTools, toolName]
-        if (allToolNames.every((n) => nextDisabled.includes(n))) {
-          await updateToolset(slug, { enabled: false, disabledTools: [] })
+      if (installed && enabledTools.includes(toolName)) {
+        // Tool currently enabled — drop it from the allow-list.
+        const nextEnabled = enabledTools.filter((n) => n !== toolName)
+        if (nextEnabled.length === 0) {
+          await updateToolset(slug, { enabled: false, enabledTools: [] })
         } else {
-          await updateToolset(slug, { disabledTools: nextDisabled })
+          await updateToolset(slug, { enabledTools: nextEnabled })
         }
         return
       }
 
       if (enabled) {
-        // Toolset already on — just lift this tool out of the deny-list.
-        await updateToolset(slug, { disabledTools: disabledTools.filter((n) => n !== toolName) })
+        // Toolset already on — add this tool to the allow-list.
+        await updateToolset(slug, { enabledTools: [...enabledTools, toolName] })
       } else {
         // Toolset off/absent — install it with only this tool enabled.
-        await updateToolset(slug, {
-          enabled: true,
-          disabledTools: allToolNames.filter((n) => n !== toolName),
-        })
+        await updateToolset(slug, { enabled: true, enabledTools: [toolName] })
       }
     },
     [agentSlug, updateToolset, utils.agent.getById]

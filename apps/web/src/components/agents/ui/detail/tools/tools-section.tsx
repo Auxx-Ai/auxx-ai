@@ -65,18 +65,20 @@ export function ToolsSection({ agent, onAutosaveChange }: ToolsSectionProps) {
   const stateBySlug = useMemo<Map<string, ToolsetRowState>>(() => {
     const map = new Map<string, ToolsetRowState>()
     for (const row of agent.toolsets) {
-      map.set(row.slug, { enabled: row.enabled, source: row.source })
+      map.set(row.slug, { enabled: row.enabled, source: row.source, mentions: row.mentions })
     }
     return map
   }, [agent.toolsets])
 
-  // Per-toolset disabled-tool deny-lists, so MCP server rows can show an
-  // enabled-tool count (`N of M`) instead of a toolset count.
-  const disabledToolsBySlug = useMemo<Map<string, Set<string>>>(() => {
+  // Per-toolset allow-lists, so MCP server rows can show an enabled-tool
+  // count (`N of M`) instead of a toolset count. Presence in the map means
+  // "the entry carries a list" — an empty list counts as 0 enabled; an entry
+  // without a list (legacy pass-all) stays out of the map.
+  const enabledToolsBySlug = useMemo<Map<string, Set<string>>>(() => {
     const map = new Map<string, Set<string>>()
     for (const row of agent.toolsets) {
-      const disabled = (row.config as { disabledTools?: string[] })?.disabledTools
-      if (disabled && disabled.length > 0) map.set(row.slug, new Set(disabled))
+      const enabled = (row.config as { enabledTools?: string[] })?.enabledTools
+      if (Array.isArray(enabled)) map.set(row.slug, new Set(enabled))
     }
     return map
   }, [agent.toolsets])
@@ -110,7 +112,7 @@ export function ToolsSection({ agent, onAutosaveChange }: ToolsSectionProps) {
   const defaultCollapsed = useMemo(() => {
     const ids = new Set<string>()
     const walk = (n: CatalogNode) => {
-      if (n.kind === 'toolset') return
+      if (n.kind === 'toolset' || n.kind === 'tool') return
       ids.add(n.id)
       n.children.forEach(walk)
     }
@@ -184,7 +186,8 @@ export function ToolsSection({ agent, onAutosaveChange }: ToolsSectionProps) {
       const changes: Array<{ slug: string; enabled: boolean }> = []
       for (const leaf of collectLeaves(node)) {
         const state = stateBySlug.get(leaf.slug)
-        if (state?.source === 'mention') continue
+        // Mention-locked rows can't be removed — the prompt/procedure pins them.
+        if (state?.mentions?.length) continue
         if (!state?.enabled) continue
         changes.push({ slug: leaf.slug, enabled: false })
       }
@@ -247,11 +250,12 @@ export function ToolsSection({ agent, onAutosaveChange }: ToolsSectionProps) {
                 inheritedIconId={root.iconId ?? 'package'}
                 inheritedColor={root.color}
                 stateBySlug={stateBySlug}
-                disabledToolsBySlug={disabledToolsBySlug}
+                enabledToolsBySlug={enabledToolsBySlug}
                 restrictionCountBySlug={restrictionCountBySlug}
                 collapsed={collapsed}
                 onToggleCollapsed={toggleCollapsed}
                 onRemove={handleRemove}
+                onToggleTool={toggleTool}
                 onAddToApp={(appId) => {
                   setPendingAppId(appId)
                   setDialogOpen(true)

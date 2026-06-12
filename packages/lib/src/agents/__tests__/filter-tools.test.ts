@@ -27,7 +27,9 @@ const masterEmpty: ResolvedAgentConfig = {
   modelId: null,
 }
 
-function agent(toolsets: Array<{ slug: string; disabledTools?: string[] }>): ResolvedAgentConfig {
+function agent(
+  toolsets: Array<{ slug: string; enabledTools?: string[] | null }>
+): ResolvedAgentConfig {
   return {
     agentId: 'agent_1',
     name: 'Test Agent',
@@ -36,7 +38,8 @@ function agent(toolsets: Array<{ slug: string; disabledTools?: string[] }>): Res
     description: null,
     toolsets: toolsets.map((t) => ({
       slug: t.slug,
-      disabledTools: new Set(t.disabledTools ?? []),
+      enabledTools:
+        t.enabledTools === undefined || t.enabledTools === null ? null : new Set(t.enabledTools),
     })),
     appAccounts: {},
     toolRestrictions: {},
@@ -75,23 +78,48 @@ describe('filterToolsByToolsets', () => {
     expect(result.map((t) => t.name)).toEqual(['plan_create'])
   })
 
-  it('honors per-tool disable inside an enabled toolset', () => {
+  it('passes every member tool when the entry carries no list (explicit bundle)', () => {
     const result = filterToolsByToolsets(
       [findThreads, getThread],
-      agent([{ slug: 'auxx:mail:threads', disabledTools: ['find_threads'] }])
+      agent([{ slug: 'auxx:mail:threads', enabledTools: null }])
+    )
+    expect(result.map((t) => t.name)).toEqual(['find_threads', 'get_thread_detail'])
+  })
+
+  it('keeps exactly the allow-listed tools inside an enabled toolset', () => {
+    const result = filterToolsByToolsets(
+      [findThreads, getThread],
+      agent([{ slug: 'auxx:mail:threads', enabledTools: ['get_thread_detail'] }])
     )
     expect(result.map((t) => t.name)).toEqual(['get_thread_detail'])
   })
 
-  it('disables an app tool by its registered name', () => {
-    // Runtime app tools are named by the registered name (`<slug>_<id>`); now
-    // that the catalog/builder persist that same name into `disabledTools`,
-    // per-tool disable lands instead of silently no-op'ing on the manifest id.
+  it('drops every tool of an entry with an empty allow-list', () => {
+    const result = filterToolsByToolsets(
+      [findThreads, getThread],
+      agent([{ slug: 'auxx:mail:threads', enabledTools: [] }])
+    )
+    expect(result).toEqual([])
+  })
+
+  it('fails closed for a tool the server shipped after the list was written', () => {
+    // The allow-list predates `get_thread_detail` — the new tool stays off.
+    const result = filterToolsByToolsets(
+      [findThreads, getThread],
+      agent([{ slug: 'auxx:mail:threads', enabledTools: ['find_threads'] }])
+    )
+    expect(result.map((t) => t.name)).toEqual(['find_threads'])
+  })
+
+  it('gates an app tool by its registered name', () => {
+    // Runtime app tools are named by the registered name (`<slug>_<id>`); the
+    // catalog/builder persist that same name into `enabledTools`, so per-tool
+    // selection lands instead of silently no-op'ing on the manifest id.
     const findOrder = tool('shopify_find_shopify_order', 'app:shopify:orders.read')
     const cancelOrder = tool('shopify_cancel_shopify_order', 'app:shopify:orders.read')
     const result = filterToolsByToolsets(
       [findOrder, cancelOrder],
-      agent([{ slug: 'app:shopify:orders.read', disabledTools: ['shopify_find_shopify_order'] }])
+      agent([{ slug: 'app:shopify:orders.read', enabledTools: ['shopify_cancel_shopify_order'] }])
     )
     expect(result.map((t) => t.name)).toEqual(['shopify_cancel_shopify_order'])
   })
@@ -111,7 +139,7 @@ describe('filterToolsByToolsets', () => {
     const mcpWrite = tool('mcp__demo__do_write', 'mcp:srv-1')
     const result = filterToolsByToolsets(
       [mcpEcho, mcpWrite, findThreads],
-      agent([{ slug: 'mcp:srv-1', disabledTools: ['mcp__demo__do_write'] }])
+      agent([{ slug: 'mcp:srv-1', enabledTools: ['mcp__demo__echo'] }])
     )
     expect(result.map((t) => t.name)).toEqual(['mcp__demo__echo'])
   })

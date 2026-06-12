@@ -11,6 +11,7 @@ import {
   type ClientMcpServer,
   filterCatalogToSurface,
   type ToolCatalogEntry,
+  toolNodeToEntry,
 } from './client'
 
 /** Project cached MCP servers into the client-safe shape `buildMcpCatalogNodes` consumes. */
@@ -37,6 +38,7 @@ function toClientMcpServers(servers: CachedMcpServer[]): ClientMcpServer[] {
 export type {
   CatalogContainerNode,
   CatalogNode,
+  CatalogToolNode,
   CatalogToolsetNode,
   ToolCatalogEntry,
 } from './client'
@@ -65,6 +67,12 @@ export interface FlatToolCatalogEntry {
   path: string[]
   /** Provenance — `'app'` (absent ⇒ app) or `'mcp'`. Flat pickers partition/group on this. */
   origin?: 'app' | 'mcp'
+  /**
+   * Mirrors the parent toolset's `implicit` flag — drives `tool:<name>` chip
+   * resolution: a tool of an implicit set locks just itself; one of an
+   * explicit bundle pins the whole bundle (`'*'`).
+   */
+  toolsetImplicit: boolean
 }
 
 /**
@@ -78,6 +86,10 @@ export interface ToolsetCatalogEntry {
   label: string
   appId: string
   isDefault: boolean
+  /** Provenance — `'app'` (absent ⇒ app) or `'mcp'`. */
+  origin?: 'app' | 'mcp'
+  /** Synthesized set (MCP server, ungrouped app tools) — per-tool selectable. The toolset service keys the allow-list snapshot rule on this. */
+  implicit: boolean
   tools: ToolCatalogEntry[]
 }
 
@@ -129,18 +141,21 @@ export async function getOrgToolsetCatalogForSurface(
 
 function flattenToolsets(roots: CatalogNode[]): ToolsetCatalogEntry[] {
   const flat: ToolsetCatalogEntry[] = []
-  function visit(node: CatalogNode, appId: string) {
+  function visit(node: CatalogNode, appId: string, origin: 'app' | 'mcp') {
+    if (node.kind === 'tool') return
     if (node.kind === 'toolset') {
       flat.push({
         slug: node.slug,
         label: node.fullLabel,
         appId,
         isDefault: node.isDefault,
-        tools: node.tools,
+        origin: node.origin ?? origin,
+        implicit: node.implicit,
+        tools: node.children.map(toolNodeToEntry),
       })
       return
     }
-    for (const child of node.children) visit(child, appId)
+    for (const child of node.children) visit(child, appId, origin)
   }
   for (const root of roots) {
     if (root.kind === 'toolset') continue
@@ -151,7 +166,8 @@ function flattenToolsets(roots: CatalogNode[]): ToolsetCatalogEntry[] {
         : root.id.startsWith('app:')
           ? root.id.slice('app:'.length)
           : root.id
-    for (const child of (root as CatalogContainerNode).children) visit(child, appId)
+    for (const child of (root as CatalogContainerNode).children)
+      visit(child, appId, root.origin ?? 'app')
   }
   return flat
 }
@@ -178,11 +194,12 @@ export async function getOrgToolCatalog(organizationId: string): Promise<FlatToo
     const color = node.color ?? inheritedColor
     const origin = node.origin ?? inheritedOrigin
 
+    if (node.kind === 'tool') return
     if (node.kind === 'toolset') {
-      for (const tool of node.tools) {
+      for (const tool of node.children) {
         flat.push({
           name: tool.name,
-          displayName: tool.displayName,
+          displayName: tool.label,
           description: tool.description,
           toolsetSlug: node.slug,
           toolsetLabel: node.fullLabel,
@@ -190,6 +207,7 @@ export async function getOrgToolCatalog(organizationId: string): Promise<FlatToo
           toolsetColor: color,
           path: pathLabels,
           origin,
+          toolsetImplicit: node.implicit,
         })
       }
       return

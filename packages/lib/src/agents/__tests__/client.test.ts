@@ -20,6 +20,7 @@ const entry = (over: Partial<FlatToolsetCatalogEntry>): FlatToolsetCatalogEntry 
   path: ['Auxx.ai'],
   isDefault: false,
   isPopular: false,
+  implicit: false,
   tools: [],
   ...over,
 })
@@ -78,8 +79,62 @@ describe('buildCatalogTreeFromInstallations', () => {
     const tree = buildCatalogTreeFromInstallations([installation()])
     const app = tree.find((n) => n.id === 'app:shopify') as CatalogContainerNode
     const toolset = app.children[0] as CatalogToolsetNode
-    const [entry] = toolset.tools
-    expect(entry.name).toBe('shopify_find_shopify_order')
-    expect(entry.displayName).toBe('Find Shopify order')
+    expect(toolset.implicit).toBe(false)
+    const [node] = toolset.children
+    expect(node.kind).toBe('tool')
+    expect(node.name).toBe('shopify_find_shopify_order')
+    expect(node.label).toBe('Find Shopify order')
+    expect(node.toolsetSlug).toBe('app:shopify:orders.read')
+  })
+
+  it('lands ungrouped tools in the synthesized implicit toolset (app:<appId>)', () => {
+    const tree = buildCatalogTreeFromInstallations([
+      installation({
+        agentTools: [
+          {
+            id: 'find_shopify_order',
+            name: 'Find Shopify order',
+            registeredName: 'shopify_find_shopify_order',
+            description: 'Look up an order.',
+            toolsetSlug: 'app:shopify:orders.read',
+          },
+          {
+            id: 'cancel_shopify_order',
+            name: 'Cancel Shopify order',
+            registeredName: 'shopify_cancel_shopify_order',
+            description: 'Cancel an order.',
+            // no toolsetSlug — grouping is optional
+          },
+        ],
+      }),
+    ])
+    const app = tree.find((n) => n.id === 'app:shopify') as CatalogContainerNode
+    const leaves = app.children.filter((c): c is CatalogToolsetNode => c.kind === 'toolset')
+    const implicit = leaves.find((l) => l.implicit)
+    const explicit = leaves.find((l) => !l.implicit)
+    expect(explicit?.slug).toBe('app:shopify:orders.read')
+    expect(implicit?.slug).toBe('app:shopify')
+    expect(implicit?.children.map((t) => t.name)).toEqual(['shopify_cancel_shopify_order'])
+  })
+
+  it('builds an app node from bare tools alone (no declared toolsets)', () => {
+    const tree = buildCatalogTreeFromInstallations([
+      installation({
+        agentToolsets: [],
+        agentTools: [
+          {
+            id: 'find_shopify_order',
+            name: 'Find Shopify order',
+            registeredName: 'shopify_find_shopify_order',
+            description: 'Look up an order.',
+          },
+        ],
+      }),
+    ])
+    const app = tree.find((n) => n.id === 'app:shopify') as CatalogContainerNode
+    expect(app).toBeDefined()
+    const [leaf] = app.children
+    expect(leaf.kind).toBe('toolset')
+    expect((leaf as CatalogToolsetNode).implicit).toBe(true)
   })
 })

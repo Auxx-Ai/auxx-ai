@@ -28,10 +28,14 @@ export interface ResolvedAgentConfig {
    * master.
    */
   description: string | null
-  /** Toolset slugs enabled + their per-tool overrides. */
+  /**
+   * Toolset slugs enabled + their per-tool allow-list. `enabledTools === null`
+   * means the entry carries no per-tool config (explicit bundle) — every
+   * member tool passes; a set keeps exactly the listed registered names.
+   */
   toolsets: Array<{
     slug: string
-    disabledTools: ReadonlySet<string>
+    enabledTools: ReadonlySet<string> | null
   }>
   /**
    * Per-app explicit credential pin. For agents this comes from
@@ -129,10 +133,11 @@ export async function resolveAgentConfig(
     .filter((t) => t.enabled)
     .map((t) => {
       const config = (t.config ?? {}) as AgentToolsetConfig
-      const disabled = Array.isArray(config.disabledTools) ? config.disabledTools : []
       return {
         slug: t.slug,
-        disabledTools: new Set(disabled) as ReadonlySet<string>,
+        enabledTools: Array.isArray(config.enabledTools)
+          ? (new Set(config.enabledTools) as ReadonlySet<string>)
+          : null,
       }
     })
 
@@ -165,7 +170,7 @@ function buildMasterToolsets(
   stored: ToolsetEntry[],
   appAccounts: Record<string, { credId: string }>,
   catalog: ToolsetCatalogEntry[]
-): Array<{ slug: string; disabledTools: ReadonlySet<string> }> {
+): Array<{ slug: string; enabledTools: ReadonlySet<string> | null }> {
   // Native = neither app nor MCP. App slugs enable via appAccounts pins (below); MCP slugs
   // (`mcp:<serverId>`) are exact-match only (no wildcard expansion) and arrive as enabled
   // `stored` entries, kept by the loop below. Connections are org-wide — no pin required.
@@ -174,17 +179,18 @@ function buildMasterToolsets(
     .map((c) => c.slug)
   const expanded = expandStoredToolsets(stored, nativeRegistered)
 
-  const result: Array<{ slug: string; disabledTools: ReadonlySet<string> }> = []
+  const result: Array<{ slug: string; enabledTools: ReadonlySet<string> | null }> = []
   const seen = new Set<string>()
   for (const entry of expanded) {
     if (!entry.enabled) continue
     if (seen.has(entry.slug)) continue
     seen.add(entry.slug)
     const config = (entry.config ?? {}) as AgentToolsetConfig
-    const disabled = Array.isArray(config.disabledTools) ? config.disabledTools : []
     result.push({
       slug: entry.slug,
-      disabledTools: new Set(disabled) as ReadonlySet<string>,
+      enabledTools: Array.isArray(config.enabledTools)
+        ? (new Set(config.enabledTools) as ReadonlySet<string>)
+        : null,
     })
   }
 
@@ -193,7 +199,7 @@ function buildMasterToolsets(
     if (!appAccounts[cat.appId]) continue
     if (seen.has(cat.slug)) continue
     seen.add(cat.slug)
-    result.push({ slug: cat.slug, disabledTools: new Set() })
+    result.push({ slug: cat.slug, enabledTools: null })
   }
 
   return result
