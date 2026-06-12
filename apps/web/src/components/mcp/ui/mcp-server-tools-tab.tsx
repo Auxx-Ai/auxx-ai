@@ -12,6 +12,7 @@ import { AlertTriangle, Pencil, RefreshCw, ShieldCheck, Wrench } from 'lucide-re
 import { useMemo, useState } from 'react'
 import { api } from '~/trpc/react'
 import type { McpDetailServer } from './mcp-server-detail'
+import { McpToolDetailPanel } from './mcp-tool-detail-panel'
 
 interface McpServerToolsTabProps {
   server: McpDetailServer
@@ -175,12 +176,12 @@ export function McpServerToolsTab({ server, onChanged }: McpServerToolsTabProps)
 
           <div className='sticky top-0 self-start rounded-lg border bg-background p-3 text-sm'>
             {selected ? (
-              <>
-                <div className='font-medium text-foreground'>{selected.title ?? selected.name}</div>
-                <p className='mt-1 whitespace-pre-wrap break-words text-muted-foreground'>
-                  {selected.description ?? 'No description provided.'}
-                </p>
-              </>
+              <McpToolDetailPanel
+                key={selected.name}
+                serverId={server.serverId}
+                tool={selected}
+                onChanged={onChanged}
+              />
             ) : (
               <div className='text-muted-foreground'>Select a tool to view its description.</div>
             )}

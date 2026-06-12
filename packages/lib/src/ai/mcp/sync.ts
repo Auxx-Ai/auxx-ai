@@ -1,6 +1,6 @@
 // packages/lib/src/ai/mcp/sync.ts
 
-import { database as db, schema } from '@auxx/database'
+import { database as db, type McpToolDescriptor, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq } from 'drizzle-orm'
 import { onCacheEvent } from '../../cache/invalidate'
@@ -13,6 +13,42 @@ export interface SyncMcpToolsResult {
   ok: boolean
   toolCount?: number
   error?: string
+}
+
+/**
+ * Merge an incoming `tools/list` snapshot with the existing one, per tool by name. Pure.
+ *
+ * - **Server wins, manual is sticky.** A server-declared schema replaces an `inferred` one but is
+ *   held back when the local schema is `manual` (the user reset it to take the server schema).
+ * - If the server declares nothing, the existing local schema (inferred or manual) survives.
+ * - `exampleOutput` always carries over by tool name.
+ * - New tools are taken as-is; tools dropped from the incoming list are not carried over.
+ */
+export function mergeToolSnapshots(
+  incoming: McpToolDescriptor[],
+  existing: McpToolDescriptor[] | undefined
+): McpToolDescriptor[] {
+  const prev = new Map((existing ?? []).map((t) => [t.name, t]))
+  return incoming.map((next) => {
+    const old = prev.get(next.name)
+    if (!old) return next
+
+    const merged: McpToolDescriptor = { ...next }
+    if (old.exampleOutput !== undefined) merged.exampleOutput = old.exampleOutput
+
+    if (next.outputSchema && next.outputSchemaSource === 'server') {
+      // Server declares a schema — keep a sticky manual override, otherwise the server wins.
+      if (old.outputSchemaSource === 'manual') {
+        merged.outputSchema = old.outputSchema
+        merged.outputSchemaSource = old.outputSchemaSource
+      }
+    } else if (old.outputSchema) {
+      // Server declares nothing — keep whatever was inferred/edited locally.
+      merged.outputSchema = old.outputSchema
+      merged.outputSchemaSource = old.outputSchemaSource
+    }
+    return merged
+  })
 }
 
 /**
@@ -47,19 +83,22 @@ export async function syncMcpTools(opts: {
         eq(schema.McpInstallation.organizationId, organizationId),
         eq(schema.McpInstallation.mcpServerId, mcpServerId)
       ),
-      columns: { id: true },
+      columns: { id: true, tools: true },
     })
+
+    // Preserve inferred/manual output schemas + captured examples across the re-snapshot.
+    const merged = mergeToolSnapshots(tools, existing?.tools)
 
     if (existing) {
       await db
         .update(schema.McpInstallation)
-        .set({ tools, serverInfo, protocolVersion, lastSyncedAt: now, lastSyncError: null })
+        .set({ tools: merged, serverInfo, protocolVersion, lastSyncedAt: now, lastSyncError: null })
         .where(eq(schema.McpInstallation.id, existing.id))
     } else {
       await db.insert(schema.McpInstallation).values({
         organizationId,
         mcpServerId,
-        tools,
+        tools: merged,
         serverInfo,
         protocolVersion,
         lastSyncedAt: now,

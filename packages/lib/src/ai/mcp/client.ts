@@ -80,6 +80,14 @@ export async function mcpListTools(opts: McpSessionOpts): Promise<{
             title: t.annotations.title,
           }
         : undefined,
+      // Well-behaved servers (MCP 2025-06-18+) declare an output JSON Schema; persist it as
+      // `source: 'server'` so syncs can let a server schema replace an inferred one (sync.ts).
+      ...(t.outputSchema
+        ? {
+            outputSchema: t.outputSchema as Record<string, unknown>,
+            outputSchemaSource: 'server' as const,
+          }
+        : {}),
     }))
     const serverVersion = client.getServerVersion()
     return {
@@ -92,12 +100,16 @@ export async function mcpListTools(opts: McpSessionOpts): Promise<{
   })
 }
 
-/** Call a tool and normalize its content to a single string (text concatenated; non-text JSON). */
+/**
+ * Call a tool and normalize its content to a single string (text concatenated; non-text JSON).
+ * `structuredContent` is the server's typed JSON result, passed through when present (servers that
+ * declare an output schema return it alongside the text block).
+ */
 export async function mcpCallTool(
   opts: McpSessionOpts,
   name: string,
   args: Record<string, unknown>
-): Promise<{ text: string; isError: boolean }> {
+): Promise<{ text: string; structuredContent?: unknown; isError: boolean }> {
   return withMcpSession(opts, async (client) => {
     const result = await client.callTool({ name, arguments: args })
     const content = Array.isArray(result.content) ? result.content : []
@@ -108,6 +120,10 @@ export async function mcpCallTool(
           : JSON.stringify(part)
       )
       .join('\n')
-    return { text, isError: result.isError === true }
+    return {
+      text,
+      structuredContent: result.structuredContent,
+      isError: result.isError === true,
+    }
   })
 }

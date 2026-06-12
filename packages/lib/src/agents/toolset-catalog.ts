@@ -31,6 +31,7 @@ function toClientMcpServers(servers: CachedMcpServer[]): ClientMcpServer[] {
       description: t.description,
       readOnlyHint: t.readOnlyHint,
       trusted: t.trusted,
+      outputsJsonSchema: t.outputSchema,
     })),
   }))
 }

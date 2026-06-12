@@ -15,7 +15,9 @@ import {
   mcpTemplates,
   resolveMcpSnippet,
   syncMcpTools,
+  testMcpTool,
   updateMcpServer,
+  updateMcpToolSchema,
 } from '@auxx/lib/ai/mcp'
 import { buildCreateOAuthAppUrl } from '@auxx/lib/ai/mcp/templates/client'
 import { getOrgCache } from '@auxx/lib/cache'
@@ -318,6 +320,56 @@ export const mcpRouter = createTRPCRouter({
         logger.warn('Manual refresh failed', { serverId: input.serverId, error: result.error })
       }
       return result
+    }),
+
+  /**
+   * Test-run a single tool with admin-supplied args. All tools are allowed (write tools carry an
+   * inline caution in the UI); the org-minute rate ceiling still applies. Returns the raw result
+   * plus an inferred schema for the "Generate from result" editor.
+   */
+  testTool: mcpAdminProcedure
+    .input(
+      z.object({
+        serverId: z.string(),
+        toolName: z.string(),
+        args: z.record(z.string(), z.unknown()).default({}),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      return testMcpTool({
+        organizationId: ctx.session.organizationId,
+        userId: ctx.session.user.id,
+        serverId: input.serverId,
+        toolName: input.toolName,
+        args: input.args,
+      })
+    }),
+
+  /**
+   * Persist a tool's output schema / example on the org's installation. `outputSchema: null`
+   * resets to none (un-sticks a manual schema); `clearExampleOutput` removes the stored example.
+   */
+  updateToolSchema: mcpAdminProcedure
+    .input(
+      z.object({
+        serverId: z.string(),
+        toolName: z.string(),
+        outputSchema: z.record(z.string(), z.unknown()).nullish(),
+        source: z.enum(['inferred', 'manual']).optional(),
+        exampleOutput: z.unknown().optional(),
+        clearExampleOutput: z.boolean().optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      return updateMcpToolSchema({
+        organizationId: ctx.session.organizationId,
+        serverId: input.serverId,
+        toolName: input.toolName,
+        outputSchema: input.outputSchema,
+        source: input.source,
+        exampleOutput: input.exampleOutput,
+        clearExampleOutput: input.clearExampleOutput,
+      })
     }),
 
   /** Edit a custom server (name / endpoint / auth) and/or update trust config. */

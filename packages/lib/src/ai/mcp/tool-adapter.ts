@@ -128,18 +128,24 @@ function buildOne(server: CachedMcpServer, tool: CachedTool): AgentToolDefinitio
           tool.name,
           args
         )
+        // When the server returns a typed result, the serialized JSON is the canonical
+        // model-facing string (per spec the text block SHOULD already be this JSON).
+        const body =
+          result.structuredContent !== undefined
+            ? JSON.stringify(result.structuredContent, null, 2)
+            : result.text
         if (result.isError) {
           logCall(false, 'tool_error')
           return {
             success: false,
             output: null,
-            error: wrapMcpOutput(server.slug, tool.name, result.text),
+            error: wrapMcpOutput(server.slug, tool.name, body),
           }
         }
         logCall(true)
         return {
           success: true,
-          output: wrapMcpOutput(server.slug, tool.name, result.text),
+          output: wrapMcpOutput(server.slug, tool.name, body),
         }
       } catch (error) {
         const mapped = mapMcpError(error)

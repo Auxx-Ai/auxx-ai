@@ -12,6 +12,12 @@ export type McpToolDescriptor = {
   description?: string
   inputSchema: Record<string, unknown> // JSON Schema from tools/list
   annotations?: { readOnlyHint?: boolean; destructiveHint?: boolean; title?: string }
+  /** JSON Schema for the tool result. Source tracked separately so syncs can merge. */
+  outputSchema?: Record<string, unknown>
+  /** 'server' = declared in tools/list; 'inferred' = generated from a test run; 'manual' = user-edited. */
+  outputSchemaSource?: 'server' | 'inferred' | 'manual'
+  /** Captured/authored example result — the eval editor's preferred mock seed. */
+  exampleOutput?: unknown
 }
 
 /** Admin trust overrides per server: trust all tools, or a named subset. */

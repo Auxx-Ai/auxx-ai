@@ -416,6 +416,9 @@ export interface CachedMcpServer {
     readOnlyHint: boolean
     trusted: boolean // derived: trust.allTools || trust.tools includes name
     inputSchema: Record<string, unknown> // needed by the adapter
+    outputSchema?: Record<string, unknown> // server/inferred/manual JSON Schema for the result
+    outputSchemaSource?: 'server' | 'inferred' | 'manual'
+    hasExampleOutput: boolean // example payload stays out of the hot cache; tools tab loads it on demand
   }>
   lastSyncedAt: string | null
   lastSyncError: string | null
