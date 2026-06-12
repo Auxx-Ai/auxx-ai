@@ -1,17 +1,75 @@
-// packages/services/src/app-connections/resolve-app-connection-for-runtime.ts
+// packages/lib/src/apps/connections/resolve-app-connection-for-runtime.ts
 
 import { findCredential, revealSecrets } from '@auxx/credentials/store'
 import { database } from '@auxx/database'
+import { type DecryptedConnectionData, logger } from '@auxx/services/app-connections'
+import { fromDatabase } from '@auxx/services/shared/utils'
 import { err, ok } from 'neverthrow'
-import { fromDatabase } from '../shared/utils'
-import type { DecryptedConnectionData, RuntimeConnectionData } from './types'
-import { logger } from './utils'
+import { ensureFreshCredentialToken } from '../../credentials/ensure-fresh-credential-token'
 
 /** Secrets no longer carry expiry/metadata — those come from the record columns. */
 type ConnectionSecrets = Pick<DecryptedConnectionData, 'accessToken' | 'refreshToken' | 'secret'>
 
+/** The reveal-call value, narrowed to the record fields this resolver reads. */
+interface RevealedConnection {
+  record: {
+    id: string
+    userId?: string | null
+    kind: string
+    metadata: any
+    expiresAt?: Date | null
+    lastRefreshAt?: Date | null
+    createdAt?: Date
+  }
+  secrets: ConnectionSecrets
+}
+
+/**
+ * Connection data passed to the app runtime executor — the decrypted credential value plus the
+ * non-secret metadata/expiry the SDK needs. `value` is the access token (oauth2-code) or API
+ * secret (secret).
+ */
+export interface RuntimeConnectionData {
+  id: string
+  type: 'oauth2-code' | 'secret'
+  value: string
+  metadata?: any
+  expiresAt?: string
+}
+
 function secretValue(secrets: ConnectionSecrets): string {
   return secrets.accessToken || secrets.secret || ''
+}
+
+/**
+ * Lazy refresh, mirroring `resolveMcpConnectionForRuntime`: for an `oauth2-code` connection with a
+ * stored refresh token, refresh the access token if it is at/near expiry (single-flight, never
+ * throws) and re-reveal the rotated secrets. The hot path (fresh token, or `secret`-type, or
+ * `ensureFresh: false`) stays at the single reveal the caller already did.
+ */
+async function refreshIfNeeded(
+  revealed: RevealedConnection,
+  organizationId: string,
+  connectionType: 'oauth2-code' | 'secret',
+  ensureFresh: boolean
+): Promise<RevealedConnection> {
+  const { record, secrets } = revealed
+  if (!ensureFresh || connectionType !== 'oauth2-code' || !secrets.refreshToken) {
+    return revealed
+  }
+
+  const changed = await ensureFreshCredentialToken({
+    credentialId: record.id,
+    organizationId,
+    expiresAt: record.expiresAt,
+    lastRefreshAt: record.lastRefreshAt,
+    createdAt: record.createdAt,
+    hasRefreshToken: true,
+  })
+  if (!changed) return revealed
+
+  const refreshed = await revealSecrets<ConnectionSecrets>(record.id, organizationId)
+  return refreshed.isOk() ? refreshed.value : revealed
 }
 
 /**
@@ -20,14 +78,20 @@ function secretValue(secrets: ConnectionSecrets): string {
  * Fetches and decrypts both user-scoped and organization-scoped connections for an app,
  * preparing them for use in the runtime execution environment. Non-secret fields (scopes,
  * account email, …) come from `record.metadata`; `expiresAt` from the column.
+ *
+ * For `oauth2-code` connections with a refresh token, the access token is refreshed inline when
+ * it is at/near expiry (see {@link refreshIfNeeded}). Pass `ensureFresh: false` to skip the
+ * refresh — used by the reconnect/authorize route, which only reads `metadata.connectionVariables`.
  */
 export async function resolveAppConnectionForRuntime(input: {
   appId: string
   organizationId: string
   userId: string
   connectionId?: string
+  /** Skip the lazy OAuth refresh (default `true`). */
+  ensureFresh?: boolean
 }) {
-  const { appId, organizationId, userId, connectionId } = input
+  const { appId, organizationId, userId, connectionId, ensureFresh = true } = input
 
   logger.info('resolveAppConnectionForRuntime', { appId, organizationId, userId, connectionId })
 
@@ -48,8 +112,7 @@ export async function resolveAppConnectionForRuntime(input: {
       return err({ code: 'DECRYPTION_ERROR', message: 'Failed to decrypt credential' })
     }
 
-    const { record, secrets } = revealed.value
-    if (record.kind !== 'app') {
+    if (revealed.value.record.kind !== 'app') {
       return err({ code: 'CONNECTION_NOT_FOUND', message: `Connection ${connectionId} not found` })
     }
 
@@ -65,9 +128,16 @@ export async function resolveAppConnectionForRuntime(input: {
     const connectionType =
       connDefResult.isOk() && connDefResult.value
         ? (connDefResult.value.connectionType as 'oauth2-code' | 'secret')
-        : secrets.accessToken
+        : revealed.value.secrets.accessToken
           ? 'oauth2-code'
           : 'secret'
+
+    const { record, secrets } = await refreshIfNeeded(
+      revealed.value,
+      organizationId,
+      connectionType,
+      ensureFresh
+    )
 
     const resolved: RuntimeConnectionData = {
       id: record.id,
@@ -147,15 +217,23 @@ export async function resolveAppConnectionForRuntime(input: {
         return err({ code: 'DECRYPTION_ERROR', message: 'Failed to decrypt user credential' })
       }
 
+      const connectionType = userConnDef.connectionType as 'oauth2-code' | 'secret'
+      const { record, secrets } = await refreshIfNeeded(
+        revealed.value,
+        organizationId,
+        connectionType,
+        ensureFresh
+      )
+
       userConnection = {
-        id: userRecord.id,
-        type: userConnDef.connectionType as 'oauth2-code' | 'secret',
-        value: secretValue(revealed.value.secrets),
-        metadata: userRecord.metadata,
-        expiresAt: userRecord.expiresAt?.toISOString(),
+        id: record.id,
+        type: connectionType,
+        value: secretValue(secrets),
+        metadata: record.metadata,
+        expiresAt: record.expiresAt?.toISOString(),
       }
 
-      logger.info('User connection resolved', { credentialId: userRecord.id })
+      logger.info('User connection resolved', { credentialId: record.id })
     }
   }
 
@@ -180,15 +258,23 @@ export async function resolveAppConnectionForRuntime(input: {
         })
       }
 
+      const connectionType = orgConnDef.connectionType as 'oauth2-code' | 'secret'
+      const { record, secrets } = await refreshIfNeeded(
+        revealed.value,
+        organizationId,
+        connectionType,
+        ensureFresh
+      )
+
       organizationConnection = {
-        id: orgRecord.id,
-        type: orgConnDef.connectionType as 'oauth2-code' | 'secret',
-        value: secretValue(revealed.value.secrets),
-        metadata: orgRecord.metadata,
-        expiresAt: orgRecord.expiresAt?.toISOString(),
+        id: record.id,
+        type: connectionType,
+        value: secretValue(secrets),
+        metadata: record.metadata,
+        expiresAt: record.expiresAt?.toISOString(),
       }
 
-      logger.info('Organization connection resolved', { credentialId: orgRecord.id })
+      logger.info('Organization connection resolved', { credentialId: record.id })
     }
   }
 

@@ -4,7 +4,7 @@ import { findCredential, revealSecrets } from '@auxx/credentials/store'
 import { database as db } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { err, ok, type Result } from 'neverthrow'
-import { ensureFreshMcpToken } from './ensure-fresh-mcp-token'
+import { ensureFreshCredentialToken } from '../../../credentials/ensure-fresh-credential-token'
 import type { McpConnectionError, McpRuntimeConnection } from './types'
 
 const logger = createScopedLogger('resolve-mcp-connection-for-runtime')
@@ -84,7 +84,7 @@ export async function resolveMcpConnectionForRuntime(input: {
   // credentials proactively. If the token is at/near expiry, refresh and re-reveal the rotated
   // secrets. The hot path (fresh token) stays at a single reveal.
   if (connectionType === 'oauth2-code' && secrets.refreshToken) {
-    const maybeRotated = await ensureFreshMcpToken({
+    const maybeRotated = await ensureFreshCredentialToken({
       credentialId: record.id,
       organizationId,
       expiresAt: record.expiresAt,

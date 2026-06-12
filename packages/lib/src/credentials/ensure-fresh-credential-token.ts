@@ -1,9 +1,9 @@
-// packages/lib/src/ai/mcp/connections/ensure-fresh-mcp-token.ts
+// packages/lib/src/credentials/ensure-fresh-credential-token.ts
 
 import { createScopedLogger } from '@auxx/logger'
 import { getRedisClient } from '@auxx/redis'
 
-const logger = createScopedLogger('ensure-fresh-mcp-token')
+const logger = createScopedLogger('ensure-fresh-credential-token')
 
 /** Hard ceiling on the refresh-ahead window. */
 const MAX_SKEW_MS = 120_000
@@ -14,7 +14,8 @@ const LOCK_TTL_SECONDS = 30
 const LOCK_POLLS = 3
 const LOCK_POLL_DELAY_MS = 500
 
-const lockKey = (credentialId: string) => `mcp:token-refresh:${credentialId}`
+/** One lock space for all credential kinds — the refresh path (`refreshCredentialTokens`) is shared. */
+const lockKey = (credentialId: string) => `credential:token-refresh:${credentialId}`
 
 /**
  * Refresh-ahead window: `min(120s, 25% of token lifetime)`. A fixed window would make any token
@@ -36,13 +37,14 @@ function expirySkewMs(input: {
 /**
  * If the credential's access token is expired or within the refresh-ahead window of expiry and a
  * refresh token exists, refresh it — single-flight per credential via a Redis NX lock (refresh
- * tokens may rotate; concurrent refreshes would persist a dead rotation). Returns `true` when the
- * stored secrets may have changed (a refresh ran here, or another process held the lock) so the
- * caller knows to re-reveal; `false` means the token was fresh and nothing happened. Never throws:
- * a failed refresh leaves the stored token in place for the caller's 401 path, and
- * `refreshCredentialTokens` already stamps the breaker.
+ * tokens may rotate; concurrent refreshes would persist a dead rotation). Kind-agnostic: routes
+ * through `refreshCredentialTokens`, which branches on `record.kind` (`mcp` / `app`) itself.
+ * Returns `true` when the stored secrets may have changed (a refresh ran here, or another process
+ * held the lock) so the caller knows to re-reveal; `false` means the token was fresh and nothing
+ * happened. Never throws: a failed refresh leaves the stored token in place for the caller's 401
+ * path, and `refreshCredentialTokens` already stamps the breaker.
  */
-export async function ensureFreshMcpToken(input: {
+export async function ensureFreshCredentialToken(input: {
   credentialId: string
   organizationId: string
   expiresAt?: Date | null
@@ -91,14 +93,14 @@ export async function ensureFreshMcpToken(input: {
 
   try {
     // Lazy import: oauth2-workflow pulls in the heavy workflow-nodes/services graph, which a
-    // low-level connections module must not load statically (breaks test mock interception too).
-    const { refreshCredentialTokens } = await import('../../../workflows/oauth2-workflow')
+    // low-level credentials module must not load statically (breaks test mock interception too).
+    const { refreshCredentialTokens } = await import('../workflows/oauth2-workflow')
     const result = await refreshCredentialTokens(credentialId, organizationId)
     if (!result.success) {
-      logger.warn('MCP token refresh failed', { credentialId, error: result.error })
+      logger.warn('Credential token refresh failed', { credentialId, error: result.error })
     }
   } catch (error) {
-    logger.warn('MCP token refresh threw', {
+    logger.warn('Credential token refresh threw', {
       credentialId,
       error: error instanceof Error ? error.message : String(error),
     })

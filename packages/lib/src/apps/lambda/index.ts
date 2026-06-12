@@ -1,11 +1,11 @@
-// packages/services/src/lambda-execution/index.ts
+// packages/lib/src/apps/lambda/index.ts
 
 export type {
   ConsoleLog,
   LambdaExecutionError,
   LambdaExecutionResult,
 } from './invoke-lambda-executor'
-export { invokeLambdaExecutor } from './invoke-lambda-executor'
+export { invokeLambdaExecutor, KNOWN_ERROR_STATUS } from './invoke-lambda-executor'
 export {
   invokeLambdaExecutorStreaming,
   type StreamEvent,

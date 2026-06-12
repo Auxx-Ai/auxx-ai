@@ -1,4 +1,4 @@
-// packages/services/src/lambda-execution/prepare-lambda-context.ts
+// packages/lib/src/apps/lambda/prepare-lambda-context.ts
 
 import { INTERNAL_API_URL } from '@auxx/config/urls'
 import { type CallbackScope, createCallbackToken } from '@auxx/credentials/lambda-auth'

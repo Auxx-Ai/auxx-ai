@@ -1,4 +1,4 @@
-// packages/services/src/lambda-execution/invoke-lambda-executor.ts
+// packages/lib/src/apps/lambda/invoke-lambda-executor.ts
 
 import { INTERNAL_LAMBDA_URL, LAMBDA_URL } from '@auxx/config/server'
 import { signInboundRequest } from '@auxx/credentials/lambda-auth'
@@ -21,7 +21,8 @@ export const KNOWN_ERROR_STATUS: Record<string, number> = {
 }
 
 /**
- * Console log entry from Lambda execution
+ * Console log entry from Lambda / app execution (server function, workflow block, or tool).
+ * The single canonical definition shared across the app-runtime cluster.
  */
 export interface ConsoleLog {
   level: 'log' | 'warn' | 'error'

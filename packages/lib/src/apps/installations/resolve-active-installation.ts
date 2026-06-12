@@ -1,4 +1,4 @@
-// packages/services/src/app-installations/resolve-active-installation.ts
+// packages/lib/src/apps/installations/resolve-active-installation.ts
 
 import { database, schema } from '@auxx/database'
 import { and, eq, isNull } from 'drizzle-orm'

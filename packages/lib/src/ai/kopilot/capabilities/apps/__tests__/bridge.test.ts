@@ -20,12 +20,21 @@ vi.mock('../../../../../cache', () => ({
   getCachedAgentById: vi.fn(async () => null),
 }))
 
-vi.mock('@auxx/services/app-connections', () => ({
+vi.mock('../../../../../apps/connections/resolve-app-connection-for-runtime', () => ({
   resolveAppConnectionForRuntime: vi.fn(),
 }))
 
-vi.mock('@auxx/services/lambda-execution', () => ({
+vi.mock('../../../../../apps/connections/mark-app-connection-expired', () => ({
+  markAppConnectionExpired: vi.fn(),
+}))
+
+vi.mock('../../../../../apps/execution-log', () => ({
+  logAppExecution: vi.fn(),
+}))
+
+vi.mock('../../../../../apps/lambda', () => ({
   invokeLambdaExecutor: vi.fn(),
+  invokeLambdaExecutorStreaming: vi.fn(),
   prepareLambdaContext: vi.fn((params) => ({ ...params })),
 }))
 
@@ -33,8 +42,8 @@ vi.mock('@auxx/services/lambda-execution', () => ({
 let MOCK_INSTALLED_APPS: any[] = []
 let MOCK_ORG_SETTINGS: Record<string, unknown> = {}
 
-import { resolveAppConnectionForRuntime } from '@auxx/services/app-connections'
-import { invokeLambdaExecutor } from '@auxx/services/lambda-execution'
+import { resolveAppConnectionForRuntime } from '../../../../../apps/connections/resolve-app-connection-for-runtime'
+import { invokeLambdaExecutor } from '../../../../../apps/lambda'
 import { createAppCapabilities } from '../index'
 
 const SAMPLE_TOOL = {

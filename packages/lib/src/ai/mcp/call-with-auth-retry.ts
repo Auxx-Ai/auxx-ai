@@ -1,9 +1,10 @@
 // packages/lib/src/ai/mcp/call-with-auth-retry.ts
 
 import { createScopedLogger } from '@auxx/logger'
+import { ensureFreshCredentialToken } from '../../credentials/ensure-fresh-credential-token'
 import { buildMcpRequestContext } from './auth'
 import { mcpCallTool } from './client'
-import { ensureFreshMcpToken, markMcpConnectionFailed } from './connections'
+import { markMcpConnectionFailed } from './connections'
 import { McpAuthError } from './errors'
 import type { McpCallResult } from './types'
 
@@ -54,7 +55,7 @@ export async function callMcpToolWithAuthRetry(opts: {
     const { connectionType, hasRefreshToken, connectionId } = ctxResult.value
     if (connectionType === 'oauth2-code' && hasRefreshToken && connectionId) {
       logger.info('MCP call got 401 — refreshing token and retrying', { mcpServerId, toolName })
-      await ensureFreshMcpToken({
+      await ensureFreshCredentialToken({
         credentialId: connectionId,
         organizationId,
         hasRefreshToken: true,

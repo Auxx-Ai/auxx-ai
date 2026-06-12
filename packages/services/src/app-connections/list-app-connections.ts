@@ -5,8 +5,16 @@ import { database, schema } from '@auxx/database'
 import { inArray } from 'drizzle-orm'
 import { err, ok } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
-import { CONNECTION_CIRCUIT_OPEN_THRESHOLD } from './mark-app-connection-expired'
 import type { AppConnection } from './types'
+
+/**
+ * Number of consecutive failures at which the refresh circuit breaker is
+ * considered "open" — mirrors the OAuth2 token-refresh path (a permanent
+ * failure jumps straight to this value). A connection at or above this count is
+ * surfaced as `expired` below. Also stamped by `markAppConnectionExpired`
+ * (now in `@auxx/lib/apps`) when a tool call hits a 401/403.
+ */
+const CONNECTION_CIRCUIT_OPEN_THRESHOLD = 5
 
 /**
  * List active connections for an organization

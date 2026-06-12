@@ -1,5 +1,16 @@
 // packages/lib/src/apps/index.ts
 
+export { deleteAppConnection } from './connections/delete-app-connection'
+export { markAppConnectionExpired } from './connections/mark-app-connection-expired'
+export {
+  type RuntimeConnectionData,
+  resolveAppConnectionForRuntime,
+} from './connections/resolve-app-connection-for-runtime'
+export { saveAppConnection } from './connections/save-app-connection'
+export type { AppEventError, EventConnectionData } from './events'
+export { triggerAppEvent } from './events'
+export type { ExecutionContext } from './execution-log'
+export { logAppExecution, logServerFunctionExecution } from './execution-log'
 export type {
   AppDeploymentDetail,
   GetAppDeploymentsInput,
@@ -15,3 +26,19 @@ export type {
 } from './get-available-apps'
 export { getAvailableApps } from './get-available-apps'
 export { getDeveloperApp } from './get-developer-app'
+export { getInstallationDeployment } from './installations/get-installation-deployment'
+export { resolveActiveInstallationId } from './installations/resolve-active-installation'
+export type {
+  ConsoleLog,
+  LambdaExecutionError,
+  LambdaExecutionResult,
+  StreamEvent,
+  StreamingInvocationError,
+  StreamingInvocationResult,
+} from './lambda'
+export {
+  invokeLambdaExecutor,
+  invokeLambdaExecutorStreaming,
+  KNOWN_ERROR_STATUS,
+  prepareLambdaContext,
+} from './lambda'

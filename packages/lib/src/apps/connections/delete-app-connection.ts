@@ -1,10 +1,13 @@
-// packages/services/src/app-connections/delete-app-connection.ts
+// packages/lib/src/apps/connections/delete-app-connection.ts
 
 import { deleteCredential, revealSecrets } from '@auxx/credentials/store'
+import {
+  type DecryptedConnectionData,
+  logger,
+  safeSerializeMetadata,
+} from '@auxx/services/app-connections'
 import { err, ok } from 'neverthrow'
-import { triggerAppEvent } from '../app-events'
-import type { DecryptedConnectionData } from './types'
-import { logger, safeSerializeMetadata } from './utils'
+import { triggerAppEvent } from '../events'
 
 /**
  * Delete app connection
