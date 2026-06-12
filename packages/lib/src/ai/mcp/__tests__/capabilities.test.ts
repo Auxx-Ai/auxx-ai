@@ -43,6 +43,7 @@ function server(overrides: Partial<CachedMcpServer> = {}): CachedMcpServer {
         readOnlyHint: true,
         trusted: false,
         inputSchema: { type: 'object' },
+        hasExampleOutput: false,
       },
     ],
     ...overrides,

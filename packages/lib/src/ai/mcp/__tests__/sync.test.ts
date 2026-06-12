@@ -52,7 +52,8 @@ vi.mock('../../../cache/invalidate', () => ({
   onCacheEvent: (...a: unknown[]) => onCacheEvent(...a),
 }))
 
-import { syncMcpTools } from '../sync'
+import type { McpToolDescriptor } from '@auxx/database'
+import { mergeToolSnapshots, syncMcpTools } from '../sync'
 
 beforeEach(() => {
   updates.length = 0
@@ -60,6 +61,69 @@ beforeEach(() => {
   stubs.existingInstallation = undefined
   stubs.listToolsImpl = undefined
   onCacheEvent.mockClear()
+})
+
+describe('mergeToolSnapshots', () => {
+  const serverSchema = { type: 'object', properties: { a: { type: 'string' } } }
+  const localSchema = { type: 'object', properties: { b: { type: 'number' } } }
+  const tool = (over: Partial<McpToolDescriptor> = {}): McpToolDescriptor => ({
+    name: 'echo',
+    inputSchema: { type: 'object' },
+    ...over,
+  })
+
+  it('takes a server-declared schema when none exists locally', () => {
+    const incoming = [tool({ outputSchema: serverSchema, outputSchemaSource: 'server' })]
+    const [merged] = mergeToolSnapshots(incoming, [tool()])
+    expect(merged?.outputSchema).toEqual(serverSchema)
+    expect(merged?.outputSchemaSource).toBe('server')
+  })
+
+  it('server schema replaces an inferred one', () => {
+    const incoming = [tool({ outputSchema: serverSchema, outputSchemaSource: 'server' })]
+    const existing = [tool({ outputSchema: localSchema, outputSchemaSource: 'inferred' })]
+    const [merged] = mergeToolSnapshots(incoming, existing)
+    expect(merged?.outputSchema).toEqual(serverSchema)
+    expect(merged?.outputSchemaSource).toBe('server')
+  })
+
+  it('keeps a manual schema sticky against an incoming server schema', () => {
+    const incoming = [tool({ outputSchema: serverSchema, outputSchemaSource: 'server' })]
+    const existing = [tool({ outputSchema: localSchema, outputSchemaSource: 'manual' })]
+    const [merged] = mergeToolSnapshots(incoming, existing)
+    expect(merged?.outputSchema).toEqual(localSchema)
+    expect(merged?.outputSchemaSource).toBe('manual')
+  })
+
+  it('keeps the existing local schema when the server declares none', () => {
+    const incoming = [tool()]
+    const existing = [tool({ outputSchema: localSchema, outputSchemaSource: 'inferred' })]
+    const [merged] = mergeToolSnapshots(incoming, existing)
+    expect(merged?.outputSchema).toEqual(localSchema)
+    expect(merged?.outputSchemaSource).toBe('inferred')
+  })
+
+  it('drops tools removed from the incoming list and carries exampleOutput by name', () => {
+    const incoming = [tool({ name: 'echo' })]
+    const existing = [
+      tool({ name: 'echo', exampleOutput: { ok: true } }),
+      tool({ name: 'gone', outputSchema: localSchema, outputSchemaSource: 'manual' }),
+    ]
+    const merged = mergeToolSnapshots(incoming, existing)
+    expect(merged).toHaveLength(1)
+    expect(merged[0]?.name).toBe('echo')
+    expect(merged[0]?.exampleOutput).toEqual({ ok: true })
+  })
+
+  it('takes new tools as-is', () => {
+    const incoming = [
+      tool({ name: 'fresh', outputSchema: serverSchema, outputSchemaSource: 'server' }),
+    ]
+    const merged = mergeToolSnapshots(incoming, [tool({ name: 'echo' })])
+    expect(merged).toHaveLength(1)
+    expect(merged[0]?.name).toBe('fresh')
+    expect(merged[0]?.outputSchemaSource).toBe('server')
+  })
 })
 
 describe('syncMcpTools', () => {

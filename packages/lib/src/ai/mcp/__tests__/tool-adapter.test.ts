@@ -41,6 +41,7 @@ function makeServer(overrides: Partial<CachedMcpServer> = {}): CachedMcpServer {
         readOnlyHint: true,
         trusted: false,
         inputSchema: { type: 'object', properties: { message: { type: 'string' } } },
+        hasExampleOutput: false,
       },
       {
         name: 'do_write',
@@ -49,6 +50,7 @@ function makeServer(overrides: Partial<CachedMcpServer> = {}): CachedMcpServer {
         readOnlyHint: false,
         trusted: false,
         inputSchema: { type: 'object', properties: { value: { type: 'string' } } },
+        hasExampleOutput: false,
       },
     ],
     ...overrides,
@@ -132,6 +134,22 @@ describe('execute output wrapping', () => {
     expect(result).toMatchObject({ success: true })
     expect(String((result as { output: string }).output)).toBe(
       wrapMcpOutput('demo', 'echo', 'tool said hi')
+    )
+  })
+
+  it('serializes structuredContent as the canonical model-facing string', async () => {
+    callToolMock.mockResolvedValueOnce({
+      text: 'ignored when structured present',
+      structuredContent: { count: 2, items: ['a'] },
+      isError: false,
+    })
+    const [echo] = buildMcpAgentTools({ server: makeServer(), autonomous: false })
+    const result = await echo!.execute({ message: 'x' }, {
+      organizationId: 'org-1',
+      turnId: 't1',
+    } as never)
+    expect(String((result as { output: string }).output)).toBe(
+      wrapMcpOutput('demo', 'echo', JSON.stringify({ count: 2, items: ['a'] }, null, 2))
     )
   })
 })

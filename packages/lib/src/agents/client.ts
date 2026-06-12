@@ -687,6 +687,8 @@ export interface ClientMcpServer {
     description: string | null
     readOnlyHint: boolean
     trusted: boolean
+    /** Result JSON Schema (server/inferred/manual) — feeds the catalog entry's outputsJsonSchema. */
+    outputsJsonSchema?: Record<string, unknown>
   }>
 }
 
@@ -706,10 +708,11 @@ export function buildMcpCatalogNodes(servers: ClientMcpServer[]): CatalogNode[] 
       description: t.description ?? '',
       readOnly: t.readOnlyHint,
       trusted: t.trusted,
-      // MCP tools are ordinary capabilities; readOnlyHint is the idempotence
-      // signal. Output schema + example land with plans/mcp/v5 (until then the
-      // eval editor renders "no schema — author freely").
+      // MCP tools are ordinary capabilities; readOnlyHint is the idempotence signal.
       idempotent: t.readOnlyHint,
+      // Output schema (server-declared/inferred/manual) flows into the eval editor's mock
+      // scaffolding; absent ⇒ the editor renders "no schema — author freely".
+      outputsJsonSchema: t.outputsJsonSchema,
     }))
     const toolsetNode: CatalogToolsetNode = {
       kind: 'toolset',

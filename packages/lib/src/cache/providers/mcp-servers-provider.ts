@@ -85,6 +85,9 @@ export const mcpServersProvider: CacheProvider<CachedMcpServer[]> = {
         readOnlyHint: tool.annotations?.readOnlyHint ?? false,
         trusted: !!(trust.allTools || trust.tools?.includes(tool.name)),
         inputSchema: tool.inputSchema,
+        outputSchema: tool.outputSchema,
+        outputSchemaSource: tool.outputSchemaSource,
+        hasExampleOutput: tool.exampleOutput !== undefined,
       }))
 
       return {

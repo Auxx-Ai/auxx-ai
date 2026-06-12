@@ -101,6 +101,7 @@ export function ExtensionsProvider({ children }: ExtensionsProviderProps) {
           description: tool.description,
           readOnlyHint: tool.readOnlyHint,
           trusted: tool.trusted,
+          outputsJsonSchema: tool.outputSchema,
         })),
       })),
     [mcpResult]

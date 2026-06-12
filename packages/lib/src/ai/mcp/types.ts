@@ -8,5 +8,7 @@ export type { McpToolDescriptor, McpTrustConfig, CachedMcpServer }
 /** Normalized result of a single `tools/call`. */
 export interface McpCallResult {
   text: string
+  /** Server's typed JSON result, present when the tool declares an output schema. */
+  structuredContent?: unknown
   isError: boolean
 }
