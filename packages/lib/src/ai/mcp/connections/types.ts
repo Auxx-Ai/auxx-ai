@@ -25,6 +25,8 @@ export interface McpRuntimeConnection {
   headers?: Record<string, string>
   metadata?: Record<string, unknown>
   expiresAt?: string
+  /** True when a refresh token is stored — the 401 retry path is worth attempting. */
+  hasRefreshToken?: boolean
 }
 
 /** Error shape for the neverthrow connection results. */

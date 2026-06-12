@@ -196,6 +196,8 @@ export async function refreshCredentialTokens(
       refresh_token?: string
       expires_in?: number
     }
+    // For MCP: re-stamped from `expires_in` after a successful refresh (TTLs drift server-side).
+    let mcpConnDef: { id: string; oauth2RefreshTokenIntervalSeconds: number | null } | null = null
 
     if (record.kind === 'app' || record.kind === 'mcp') {
       // App- and mcp-connections share the oauth2 columns + circuit-breaker path; only the owner
@@ -213,6 +215,7 @@ export async function refreshCredentialTokens(
           oauth2ClientId: true,
           oauth2ClientSecret: true,
           oauth2TokenRequestAuthMethod: true,
+          oauth2RefreshTokenIntervalSeconds: true,
         },
       })
 
@@ -223,12 +226,26 @@ export async function refreshCredentialTokens(
       const variables = (record.metadata.connectionVariables as Record<string, string>) ?? {}
       const resolved = interpolateConnectionFields(connDef, variables)
 
+      // RFC 8707 resource indicator — the MCP spec requires it on every token request, and it
+      // must match the value the authorize/code-exchange steps sent (the raw endpoint).
+      let resource: string | undefined
+      if (record.kind === 'mcp' && record.mcpServerId) {
+        const server = await db.query.McpServer.findFirst({
+          where: eq(schema.McpServer.id, record.mcpServerId),
+          columns: { endpoint: true },
+        })
+        resource = server?.endpoint
+      }
+
+      if (record.kind === 'mcp') mcpConnDef = connDef
+
       tokenData = await makeTokenRefreshRequest(
         resolved.accessTokenUrl,
         resolved.clientId,
         resolved.clientSecret,
         secrets.refreshToken,
-        connDef.oauth2TokenRequestAuthMethod || 'request-body'
+        connDef.oauth2TokenRequestAuthMethod || 'request-body',
+        resource
       )
     } else {
       // Workflow credentials — resolve the OAuth2 config from the registry.
@@ -261,6 +278,18 @@ export async function refreshCredentialTokens(
 
     // Reset the breaker + stamp lastRefreshAt + new expiry.
     await recordRefreshSuccess(credentialId, organizationId, { expiresAt: newExpiresAt })
+
+    // Keep the scanner's cadence tracking the actual MCP token TTL (30-min floor — the 15-min
+    // scanner can't keep shorter tokens warm; the lazy/401 paths carry those).
+    if (mcpConnDef && tokenData.expires_in) {
+      const intervalSeconds = Math.max(tokenData.expires_in, 1800)
+      if (intervalSeconds !== mcpConnDef.oauth2RefreshTokenIntervalSeconds) {
+        await db
+          .update(schema.ConnectionDefinition)
+          .set({ oauth2RefreshTokenIntervalSeconds: intervalSeconds })
+          .where(eq(schema.ConnectionDefinition.id, mcpConnDef.id))
+      }
+    }
 
     logger.info('Token refresh succeeded', {
       credentialId,
@@ -475,15 +504,19 @@ function validateState(state: OAuth2State): void {
 async function makeTokenRefreshRequest(
   tokenUrl: string,
   clientId: string,
-  clientSecret: string,
+  clientSecret: string | null | undefined,
   refreshToken: string,
-  authMethod: string
+  authMethod: string,
+  resource?: string
 ): Promise<{ access_token: string; refresh_token?: string; expires_in?: number }> {
   const tokenRequestBody: Record<string, string> = {
     grant_type: 'refresh_token',
     refresh_token: refreshToken,
     client_id: clientId,
-    client_secret: clientSecret,
+    // Public clients (e.g. DCR-minted MCP clients, PKCE-only) have no secret — omit the field
+    // rather than sending an empty value some ASes reject.
+    ...(clientSecret ? { client_secret: clientSecret } : {}),
+    ...(resource ? { resource } : {}),
   }
 
   const headers: Record<string, string> = {
@@ -492,7 +525,7 @@ async function makeTokenRefreshRequest(
   }
 
   if (authMethod === 'basic-auth') {
-    const basicAuth = Buffer.from(`${clientId}:${clientSecret}`).toString('base64')
+    const basicAuth = Buffer.from(`${clientId}:${clientSecret ?? ''}`).toString('base64')
     headers.Authorization = `Basic ${basicAuth}`
     delete tokenRequestBody.client_id
     delete tokenRequestBody.client_secret

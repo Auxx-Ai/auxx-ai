@@ -1,14 +1,16 @@
 // packages/lib/src/ai/mcp/auth.ts
 
-import { database as db, schema } from '@auxx/database'
-import { eq } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
+import { getOrgCache } from '../../cache'
 import { resolveMcpConnectionForRuntime } from './connections'
 
 export interface McpRequestContext {
   endpoint: string
   headers: Record<string, string>
   connectionId?: string
+  connectionType?: 'oauth2-code' | 'secret' | 'none'
+  /** True when a stored refresh token makes a refresh-and-retry on 401 worthwhile. */
+  hasRefreshToken?: boolean
 }
 
 export interface McpAuthErrorResult {
@@ -35,8 +37,10 @@ function interpolateEndpoint(endpoint: string, variables: Record<string, string>
 
 /**
  * Build the per-call request context (endpoint + auth headers) for an MCP server:
- * 1. Load the McpServer row → endpoint.
- * 2. Resolve the org-wide connection (none / secret / oauth2-code).
+ * 1. Resolve the server's endpoint + connection type from the org cache (the same snapshot the
+ *    tool adapter runs against — no per-call DB roundtrips for static server data).
+ * 2. Resolve the org-wide connection (none / secret / oauth2-code) — credential secrets always
+ *    come fresh from the DB, never the cache.
  * 3. `none` → no header; `secret`/`oauth2-code` → `Authorization: Bearer <value>`.
  * 4. Interpolate `{placeholders}` in the endpoint from `metadata.connectionVariables`.
  */
@@ -44,10 +48,8 @@ export async function buildMcpRequestContext(opts: {
   mcpServerId: string
   organizationId: string
 }): Promise<Result<McpRequestContext, McpAuthErrorResult>> {
-  const server = await db.query.McpServer.findFirst({
-    where: eq(schema.McpServer.id, opts.mcpServerId),
-    columns: { endpoint: true },
-  })
+  const servers = await getOrgCache().get(opts.organizationId, 'mcpServers')
+  const server = servers.find((s) => s.serverId === opts.mcpServerId)
   if (!server) {
     return err({ code: 'SERVER_NOT_FOUND', message: `MCP server ${opts.mcpServerId} not found` })
   }
@@ -55,6 +57,7 @@ export async function buildMcpRequestContext(opts: {
   const resolved = await resolveMcpConnectionForRuntime({
     mcpServerId: opts.mcpServerId,
     organizationId: opts.organizationId,
+    connectionType: server.connectionType ?? 'none',
   })
   if (resolved.isErr()) {
     return err({ code: 'CONNECTION_ERROR', message: resolved.error.message })
@@ -81,5 +84,11 @@ export async function buildMcpRequestContext(opts: {
     }
   }
 
-  return ok({ endpoint, headers, connectionId: connection.id || undefined })
+  return ok({
+    endpoint,
+    headers,
+    connectionId: connection.id || undefined,
+    connectionType: connection.type,
+    hasRefreshToken: connection.hasRefreshToken,
+  })
 }

@@ -1,12 +1,13 @@
 // apps/web/src/app/api/mcp/[serverId]/oauth2/callback/route.ts
 
 import { WEBAPP_URL } from '@auxx/config/urls'
-import { database as db } from '@auxx/database'
+import { database as db, schema } from '@auxx/database'
 import { saveMcpConnection, syncMcpTools } from '@auxx/lib/ai/mcp'
 import { onCacheEvent } from '@auxx/lib/cache'
 import { createScopedLogger } from '@auxx/logger'
 import { getRedisClient } from '@auxx/redis'
 import { interpolateConnectionFields } from '@auxx/services/app-connections'
+import { eq } from 'drizzle-orm'
 import { type NextRequest, NextResponse } from 'next/server'
 
 const OAUTH_REDIRECT_BASE = process.env.NGROK_URL || WEBAPP_URL
@@ -161,6 +162,19 @@ export async function GET(
       connectionId: metadata.connectionId as string | undefined,
     })
     if (saved.isErr()) throw saved.error
+
+    // Enroll the credential in the proactive refresh scanner: stamp the refresh cadence from the
+    // token TTL (30-min floor — the 15-min scanner can't keep shorter tokens warm; the lazy
+    // refresh-on-expiry and 401-retry paths carry those).
+    if (tokens.expires_in && tokens.refresh_token) {
+      const intervalSeconds = Math.max(Number(tokens.expires_in), 1800)
+      if (intervalSeconds !== connDef.oauth2RefreshTokenIntervalSeconds) {
+        await db
+          .update(schema.ConnectionDefinition)
+          .set({ oauth2RefreshTokenIntervalSeconds: intervalSeconds })
+          .where(eq(schema.ConnectionDefinition.id, connDef.id))
+      }
+    }
 
     // First snapshot needs the token — best effort, never fail the connect on a sync error.
     try {

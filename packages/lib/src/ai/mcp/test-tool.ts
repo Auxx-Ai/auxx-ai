@@ -7,10 +7,8 @@ import { createScopedLogger } from '@auxx/logger'
 import Ajv from 'ajv'
 import { getOrgCache } from '../../cache'
 import { inferJsonSchema, type JsonSchema } from '../../json-schema'
-import { buildMcpRequestContext } from './auth'
-import { mcpCallTool } from './client'
-import { markMcpConnectionFailed } from './connections'
-import { McpAuthError, mapMcpError } from './errors'
+import { callMcpToolWithAuthRetry } from './call-with-auth-retry'
+import { mapMcpError } from './errors'
 import { checkAndCountMcpCall } from './rate-limiter'
 
 const logger = createScopedLogger('mcp-test-tool')
@@ -101,40 +99,38 @@ export async function testMcpTool(opts: {
     }
   }
 
-  const ctxResult = await buildMcpRequestContext({ mcpServerId: serverId, organizationId })
-  if (ctxResult.isErr()) {
-    logCall(false, 'context_unavailable')
-    return { ok: false, code: 'server_unavailable', error: ctxResult.error.message }
-  }
+  // Handles context build, the call, and 401 refresh-and-retry; an unrecoverable
+  // auth failure is already flagged for reconnect when it comes back here.
+  const outcome = await callMcpToolWithAuthRetry({
+    mcpServerId: serverId,
+    organizationId,
+    toolName,
+    args,
+  })
 
-  try {
-    const result = await mcpCallTool(
-      { endpoint: ctxResult.value.endpoint, headers: ctxResult.value.headers },
-      toolName,
-      args
-    )
-    logCall(!result.isError, result.isError ? 'tool_error' : undefined)
-    return {
-      ok: true,
-      isError: result.isError,
-      text: result.text,
-      structuredContent: result.structuredContent,
-      durationMs: Date.now() - startedAt,
-      inferredSchema: inferResultSchema(result),
+  if (!outcome.ok) {
+    if (outcome.kind === 'context') {
+      logCall(false, 'context_unavailable')
+      return { ok: false, code: 'server_unavailable', error: outcome.message }
     }
-  } catch (error) {
-    if (error instanceof McpAuthError) {
-      void markMcpConnectionFailed({ mcpServerId: serverId, organizationId })
+    if (outcome.kind === 'auth') {
       logCall(false, 'auth')
-      return {
-        ok: false,
-        code: 'auth',
-        error: 'MCP server auth failed — an admin may need to reconnect.',
-      }
+      return { ok: false, code: 'auth', error: outcome.message }
     }
-    const mapped = mapMcpError(error)
+    const mapped = mapMcpError(outcome.error)
     logCall(false, mapped.code)
     return { ok: false, code: 'error', error: mapped.message }
+  }
+
+  const result = outcome.result
+  logCall(!result.isError, result.isError ? 'tool_error' : undefined)
+  return {
+    ok: true,
+    isError: result.isError,
+    text: result.text,
+    structuredContent: result.structuredContent,
+    durationMs: Date.now() - startedAt,
+    inferredSchema: inferResultSchema(result),
   }
 }
 
