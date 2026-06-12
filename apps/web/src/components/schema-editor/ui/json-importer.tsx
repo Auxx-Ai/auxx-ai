@@ -12,6 +12,12 @@ import { CodeEditor } from './code-editor'
 interface JsonImporterProps {
   /** Receives the JSON Schema inferred from the pasted sample value. */
   onImport: (schema: Record<string, unknown>) => void
+  /**
+   * Root types the editor accepts. `'object'` (default) rejects array/scalar
+   * samples; `'any'` (MCP) accepts any JSON sample — `inferJsonSchema` already
+   * handles array/scalar roots by design.
+   */
+  root?: 'object' | 'any'
 }
 
 /**
@@ -20,7 +26,7 @@ interface JsonImporterProps {
  * importer; the inference policy (no `required`, no `additionalProperties`) now
  * matches the rest of the editor.
  */
-export function JsonImporter({ onImport }: JsonImporterProps) {
+export function JsonImporter({ onImport, root = 'object' }: JsonImporterProps) {
   const [open, setOpen] = useState(false)
   const [json, setJson] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -35,7 +41,7 @@ export function JsonImporter({ onImport }: JsonImporterProps) {
       setError('Invalid JSON')
       return
     }
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    if (root === 'object' && (!parsed || typeof parsed !== 'object' || Array.isArray(parsed))) {
       setError('Paste a sample object, not an array or primitive value.')
       return
     }
@@ -47,7 +53,7 @@ export function JsonImporter({ onImport }: JsonImporterProps) {
     onImport(schema)
     setError(null)
     setOpen(false)
-  }, [json, onImport])
+  }, [json, onImport, root])
 
   return (
     <Popover open={open} onOpenChange={setOpen}>

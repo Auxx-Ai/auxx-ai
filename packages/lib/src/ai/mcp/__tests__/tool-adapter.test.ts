@@ -123,21 +123,25 @@ describe('buildMcpAgentTools — validateInputs (ajv)', () => {
   })
 })
 
-describe('execute output wrapping', () => {
-  it('wraps successful output in the injection boundary', async () => {
+describe('execute structured (walkable) output', () => {
+  it('declares the injection-boundary marker on the tool definition', () => {
+    const [echo] = buildMcpAgentTools({ server: makeServer(), autonomous: false })
+    expect(echo!.outputBoundary).toEqual({ server: 'demo', tool: 'echo' })
+    // The fence helper is still exported (re-exported from the wire layer).
+    expect(wrapMcpOutput('demo', 'echo', 'x')).toContain('<mcp_tool_output')
+  })
+
+  it('returns a plain-text result as a raw string (not walkable, no fence)', async () => {
     callToolMock.mockResolvedValueOnce({ text: 'tool said hi', isError: false })
     const [echo] = buildMcpAgentTools({ server: makeServer(), autonomous: false })
     const result = await echo!.execute({ message: 'x' }, {
       organizationId: 'org-1',
       turnId: 't1',
     } as never)
-    expect(result).toMatchObject({ success: true })
-    expect(String((result as { output: string }).output)).toBe(
-      wrapMcpOutput('demo', 'echo', 'tool said hi')
-    )
+    expect(result).toEqual({ success: true, output: 'tool said hi' })
   })
 
-  it('serializes structuredContent as the canonical model-facing string', async () => {
+  it('returns structuredContent verbatim as the walkable output', async () => {
     callToolMock.mockResolvedValueOnce({
       text: 'ignored when structured present',
       structuredContent: { count: 2, items: ['a'] },
@@ -148,8 +152,37 @@ describe('execute output wrapping', () => {
       organizationId: 'org-1',
       turnId: 't1',
     } as never)
-    expect(String((result as { output: string }).output)).toBe(
-      wrapMcpOutput('demo', 'echo', JSON.stringify({ count: 2, items: ['a'] }, null, 2))
-    )
+    expect(result).toEqual({ success: true, output: { count: 2, items: ['a'] } })
+  })
+
+  it('parses a JSON-text result (incl. top-level arrays) into structured output', async () => {
+    callToolMock.mockResolvedValueOnce({
+      text: JSON.stringify([{ id: 1 }, { id: 2 }]),
+      isError: false,
+    })
+    const [echo] = buildMcpAgentTools({ server: makeServer(), autonomous: false })
+    const result = await echo!.execute({ message: 'x' }, {
+      organizationId: 'org-1',
+      turnId: 't1',
+    } as never)
+    expect(result).toEqual({ success: true, output: [{ id: 1 }, { id: 2 }] })
+  })
+
+  it('keeps the structured value on output for an isError result, with a readable error', async () => {
+    callToolMock.mockResolvedValueOnce({
+      text: JSON.stringify({ message: 'nope' }),
+      structuredContent: { message: 'nope' },
+      isError: true,
+    })
+    const [echo] = buildMcpAgentTools({ server: makeServer(), autonomous: false })
+    const result = await echo!.execute({ message: 'x' }, {
+      organizationId: 'org-1',
+      turnId: 't1',
+    } as never)
+    expect(result).toMatchObject({
+      success: false,
+      output: { message: 'nope' },
+      error: JSON.stringify({ message: 'nope' }),
+    })
   })
 })

@@ -5,7 +5,7 @@ import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { toastError } from '@auxx/ui/components/toast'
 import { FileCheck2, Pencil, RotateCcw, Sparkles, X } from 'lucide-react'
-import { useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Tooltip } from '~/components/global/tooltip'
 import {
   SchemaEditorDialog,
@@ -36,8 +36,9 @@ const SOURCE_LABEL: Record<NonNullable<McpTool['outputSchemaSource']>, string> =
 /**
  * Output-schema section of the tool panel: a provenance badge (Server / Inferred / Manual / None),
  * Edit + Reset, and — after a test run — "Generate from result" and "Save as example output".
- * Editing opens the shared `SchemaEditorDialog` (`policy.emitRequired: false`); saves persist via
- * `mcp.updateToolSchema`.
+ * A successful run on a tool with NO schema auto-sets the inferred schema (`source: 'inferred'`) +
+ * example silently. Editing opens the shared `SchemaEditorDialog` (`emitRequired: false`,
+ * `root: 'any'` so array/scalar result roots are editable); saves persist via `mcp.updateToolSchema`.
  */
 export function McpToolSchemaSection({
   serverId,
@@ -56,36 +57,66 @@ export function McpToolSchemaSection({
     ? (SOURCE_LABEL[tool.outputSchemaSource ?? 'manual'] ?? 'Manual')
     : 'None'
 
-  // "Generate from result" only makes sense for an object-rooted inference (the editor's root must
-  // be an object); scalar/array results stay hand-authored via Edit.
-  const canGenerate =
-    (lastResult?.inferredSchema as { type?: unknown } | undefined)?.type === 'object'
+  // The editor now accepts any root (MCP passes `root: 'any'`), so "Generate from
+  // result" is offered whenever a run produced an inferred schema — object, array,
+  // or scalar.
+  const canGenerate = !!lastResult?.inferredSchema
 
-  async function persist(
-    args: Parameters<typeof updateSchema.mutateAsync>[0],
-    failTitle: string
-  ): Promise<boolean> {
-    try {
-      const res = await updateSchema.mutateAsync(args)
-      if (!res.ok) {
-        toastError({ title: failTitle, description: res.error ?? 'Unknown error' })
+  const persist = useCallback(
+    async (
+      args: Parameters<typeof updateSchema.mutateAsync>[0],
+      failTitle: string
+    ): Promise<boolean> => {
+      try {
+        const res = await updateSchema.mutateAsync(args)
+        if (!res.ok) {
+          toastError({ title: failTitle, description: res.error ?? 'Unknown error' })
+          return false
+        }
+        onChanged()
+        return true
+      } catch (err) {
+        toastError({
+          title: failTitle,
+          description: err instanceof Error ? err.message : 'Unknown error',
+        })
         return false
       }
-      onChanged()
-      return true
-    } catch (err) {
-      toastError({
-        title: failTitle,
-        description: err instanceof Error ? err.message : 'Unknown error',
-      })
-      return false
-    }
-  }
+    },
+    [updateSchema, onChanged]
+  )
+
+  // Auto-set on test run: when a run produces a result and the tool has NO schema
+  // yet, silently persist the inferred schema (`source: 'inferred'`) + the example
+  // in one call. Only when none exists — never touches server/manual/inferred. The
+  // ref guards against re-firing for the same result across re-renders.
+  const autoSetFor = useRef<McpToolRunSuccess | null>(null)
+  useEffect(() => {
+    if (!lastResult || hasSchema || !lastResult.inferredSchema) return
+    if (autoSetFor.current === lastResult) return
+    autoSetFor.current = lastResult
+    void persist(
+      {
+        serverId,
+        toolName: tool.name,
+        outputSchema: lastResult.inferredSchema as Record<string, unknown>,
+        source: 'inferred',
+        exampleOutput: exampleFromResult(lastResult),
+      },
+      'Failed to save inferred schema'
+    )
+  }, [lastResult, hasSchema, serverId, tool.name, persist])
 
   function openEdit() {
     setSeed({
       schema: (tool.outputSchema as Record<string, unknown>) ?? EMPTY_SCHEMA,
-      seededFrom: hasSchema ? 'existing' : 'empty',
+      // Seed as 'inferred' when the stored schema is the unmodified inference, so a
+      // no-op edit-save round-trips back to `inferred` instead of flipping to manual.
+      seededFrom: hasSchema
+        ? tool.outputSchemaSource === 'inferred'
+          ? 'inferred'
+          : 'existing'
+        : 'empty',
     })
   }
 
@@ -191,7 +222,7 @@ export function McpToolSchemaSection({
         onOpenChange={(open) => !open && setSeed(null)}
         title={tool.title ?? tool.name}
         initial={seed ?? { schema: EMPTY_SCHEMA, seededFrom: 'empty' }}
-        policy={{ emitRequired: false }}
+        policy={{ emitRequired: false, root: 'any' }}
         onSave={handleSave}
       />
     </div>

@@ -44,6 +44,28 @@ export interface SchemaFieldDraft {
 export interface SchemaPolicy {
   /** Workflow mode emits the `required` array; MCP mode never does. */
   emitRequired: boolean
+  /**
+   * Root JSON Schema type the editor accepts. `'object'` (the default) keeps the
+   * load-bearing object-root contract that workflow LLM structured-output needs
+   * (the provider APIs and output-variable mapping require an object root). `'any'`
+   * lets MCP edit array/scalar-rooted result schemas — list tools commonly produce
+   * top-level arrays.
+   */
+  root?: 'object' | 'any'
+}
+
+/**
+ * The shape of a schema's root, as far as the visual editor can author it. An
+ * object root or an array-of-objects root both seed the row tree; anything else
+ * (scalar root, array of scalars) is JSON-tab only.
+ */
+export type SchemaRootKind = 'object' | 'array-of-objects' | 'other'
+
+/** Classify a root JSON Schema into a {@link SchemaRootKind}. */
+export function jsonSchemaRootKind(schema: Record<string, unknown>): SchemaRootKind {
+  if (isObjectNode(schema)) return 'object'
+  if (isArrayOfObjectsNode(schema)) return 'array-of-objects'
+  return 'other'
 }
 
 /** The vendor-extension keyword carrying FieldType metadata on leaf nodes. */
@@ -74,13 +96,15 @@ type JsonNode = Record<string, unknown>
 // ---------------------------------------------------------------------------
 
 /**
- * Convert a root JSON Schema (`type: 'object'`) into editor rows. Non-object
- * roots and missing `properties` yield an empty list — the dialog only edits
- * object-rooted schemas (the validation pipeline blocks others).
+ * Convert a root JSON Schema into editor rows. An object root seeds rows from its
+ * `properties`; an **array-of-objects** root seeds them from `items.properties`
+ * (the rows describe one element — the dialog re-wraps on save). Any other root
+ * (scalar, array of scalars) yields an empty list and is JSON-tab only.
  */
 export function jsonSchemaToDraft(schema: Record<string, unknown>): SchemaFieldDraft[] {
-  if (!isObjectNode(schema)) return []
-  return objectChildren(schema)
+  if (isObjectNode(schema)) return objectChildren(schema)
+  if (isArrayOfObjectsNode(schema)) return objectChildren(schema.items as JsonNode)
+  return []
 }
 
 function objectChildren(node: JsonNode): SchemaFieldDraft[] {
@@ -230,9 +254,12 @@ function rawLeaf(node: JsonNode, base: SchemaFieldDraft): SchemaFieldDraft {
  */
 export function draftToJsonSchema(
   rows: SchemaFieldDraft[],
-  policy: SchemaPolicy
+  policy: SchemaPolicy,
+  rootKind: SchemaRootKind = 'object'
 ): Record<string, unknown> {
-  return objectNode(rows, policy)
+  const obj = objectNode(rows, policy)
+  // An array-of-objects root re-wraps the row object as the element schema.
+  return rootKind === 'array-of-objects' ? { type: 'array', items: obj } : obj
 }
 
 function objectNode(rows: SchemaFieldDraft[], policy: SchemaPolicy): JsonNode {
@@ -354,6 +381,13 @@ function isObjectNode(node: unknown): node is JsonNode {
     !Array.isArray(node) &&
     (node as JsonNode).type === 'object'
   )
+}
+
+/** An `{ type: 'array', items: { type: 'object', … } }` root — editable as rows. */
+function isArrayOfObjectsNode(node: unknown): node is JsonNode {
+  if (!node || typeof node !== 'object' || Array.isArray(node)) return false
+  if ((node as JsonNode).type !== 'array') return false
+  return isObjectNode((node as JsonNode).items)
 }
 
 function asStringArray(value: unknown): string[] {

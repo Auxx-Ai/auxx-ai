@@ -2,7 +2,12 @@
 
 import { FieldType } from '@auxx/database/enums'
 import { describe, expect, it } from 'vitest'
-import { draftToJsonSchema, jsonSchemaToDraft, type SchemaPolicy } from '../schema-draft'
+import {
+  draftToJsonSchema,
+  jsonSchemaRootKind,
+  jsonSchemaToDraft,
+  type SchemaPolicy,
+} from '../schema-draft'
 
 const MCP: SchemaPolicy = { emitRequired: false }
 const WORKFLOW: SchemaPolicy = { emitRequired: true }
@@ -188,6 +193,36 @@ describe('round-trip losslessness', () => {
       properties: { name: { type: 'string' } },
     })
     expect(draftToJsonSchema(draft, MCP)).not.toHaveProperty('required')
+  })
+})
+
+describe('non-object roots (MCP root: any)', () => {
+  it('classifies root kinds', () => {
+    expect(jsonSchemaRootKind({ type: 'object', properties: {} })).toBe('object')
+    expect(
+      jsonSchemaRootKind({ type: 'array', items: { type: 'object', properties: { id: {} } } })
+    ).toBe('array-of-objects')
+    expect(jsonSchemaRootKind({ type: 'array', items: { type: 'string' } })).toBe('other')
+    expect(jsonSchemaRootKind({ type: 'string' })).toBe('other')
+  })
+
+  it('seeds rows from an array-of-objects root and re-wraps on save (no clobber)', () => {
+    const schema = {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: { id: { type: 'number' }, name: { type: 'string' } },
+      },
+    }
+    const rows = jsonSchemaToDraft(schema)
+    expect(rows.map((r) => r.name)).toEqual(['id', 'name'])
+    const out = draftToJsonSchema(rows, MCP, 'array-of-objects')
+    expect(normalize(out, { keepRequired: false })).toEqual(schema)
+  })
+
+  it('yields zero rows for a non-representable root (handled as JSON-only)', () => {
+    expect(jsonSchemaToDraft({ type: 'array', items: { type: 'string' } })).toEqual([])
+    expect(jsonSchemaToDraft({ type: 'string' })).toEqual([])
   })
 })
 

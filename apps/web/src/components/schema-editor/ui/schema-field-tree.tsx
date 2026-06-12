@@ -17,6 +17,9 @@ interface SchemaFieldTreeProps {
   rows: SchemaFieldDraft[]
   onChange: (rows: SchemaFieldDraft[]) => void
   policy: SchemaPolicy
+  /** Type annotation on the synthetic root (e.g. `array of objects` for an
+   *  array-of-objects root). Defaults to `object`. */
+  rootTypeLabel?: string
 }
 
 /**
@@ -28,7 +31,12 @@ interface SchemaFieldTreeProps {
  * row-to-row moves make exactly one transition — no timers. A field actively
  * being typed in stays open via `focusedId` regardless of the pointer.
  */
-export function SchemaFieldTree({ rows, onChange, policy }: SchemaFieldTreeProps) {
+export function SchemaFieldTree({
+  rows,
+  onChange,
+  policy,
+  rootTypeLabel = 'object',
+}: SchemaFieldTreeProps) {
   const [hoveredId, setHoveredId] = useState<string | null>(null)
   const [focusedId, setFocusedId] = useState<string | null>(null)
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set())
@@ -140,7 +148,7 @@ export function SchemaFieldTree({ rows, onChange, policy }: SchemaFieldTreeProps
             <span className='border border-transparent px-1 py-px font-semibold text-sm text-primary-800'>
               structured_output
             </span>
-            <span className='px-1 py-0.5 text-xs text-muted-foreground'>object</span>
+            <span className='px-1 py-0.5 text-xs text-muted-foreground'>{rootTypeLabel}</span>
           </div>
         </div>
         <div className='absolute top-7 z-0 flex h-[calc(100%-1.75rem)] w-5 justify-center left-0'>

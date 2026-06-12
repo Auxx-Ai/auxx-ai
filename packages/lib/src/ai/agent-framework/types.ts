@@ -41,6 +41,16 @@ export interface ToolCallPart {
   output?: unknown
   /** Display projection of `output` produced by the tool's `buildDigest`. */
   digest?: unknown
+  /**
+   * Present when `output` is untrusted external data (MCP tool results). The
+   * stored value stays the raw, walkable structured output so `tool:<name>.path`
+   * resolves at runtime; `partsToWireFormat` re-fences it as
+   * `<mcp_tool_output server tool>…</mcp_tool_output>` for model replay. Absent on
+   * parts persisted before this field existed → never re-wrapped (the fence is
+   * already embedded in their string `output`). Copied from the tool's
+   * `outputBoundary` by the query loop when the result is stamped.
+   */
+  outputBoundary?: { server: string; tool: string }
   /** Error message when status === 'error'. */
   error?: string
   agent?: string
@@ -265,6 +275,25 @@ export interface AgentToolDefinition {
    * schema*, not a competing one. Optional so migration is incremental.
    */
   outputSchema?: z.ZodType
+  /**
+   * The tool's output shape as a **JSON Schema** — the serializable read currency
+   * for the discoverability / output→input binding surface (the catalog field of
+   * the same name, `ToolCatalogEntry.outputsJsonSchema`, carries this verbatim).
+   * Distinct from `outputSchema` (Zod, the native authoring source used for
+   * `.infer` typing): consumers that need a document — the client-side binding
+   * picker, a future server-side enumerator — read this. MCP tools set it from
+   * their stored result schema; app tools carry it from the catalog; native tools
+   * may derive it from `z.toJSONSchema(outputSchema)` only if a consumer needs it.
+   * Declarative and optional. See plans/chat/v9/OUTPUT-SCHEMAS.md.
+   */
+  outputsJsonSchema?: Record<string, unknown>
+  /**
+   * Declares this tool's success `output` as untrusted external data: the query
+   * loop stamps the matching `ToolCallPart.outputBoundary` and the wire layer
+   * fences it for model replay. MCP tools set `{ server, tool }`; native/app tools
+   * leave it unset (their output is trusted, walkable as-is).
+   */
+  outputBoundary?: { server: string; tool: string }
   /**
    * One realistic example of this tool's success `output` — the same shape as
    * `outputSchema` describes. Authored once by the tool owner; consumed by eval

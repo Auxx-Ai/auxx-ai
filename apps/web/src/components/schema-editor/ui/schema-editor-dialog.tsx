@@ -15,9 +15,11 @@ import { AlertTriangle, Braces, GitBranch } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import {
   draftToJsonSchema,
+  jsonSchemaRootKind,
   jsonSchemaToDraft,
   type SchemaFieldDraft,
   type SchemaPolicy,
+  type SchemaRootKind,
 } from '../schema-draft'
 import { parseSchemaText, validateSchema } from '../validation'
 import { CodeEditor } from './code-editor'
@@ -91,7 +93,22 @@ function SchemaEditorBody({
   const [tab, setTab] = useState<Tab>('visual')
   const [rows, setRows] = useState<SchemaFieldDraft[]>(() => jsonSchemaToDraft(initial.schema))
   const [jsonText, setJsonText] = useState(() => JSON.stringify(initial.schema, null, 2))
+  const [rootKind, setRootKind] = useState<SchemaRootKind>(() => jsonSchemaRootKind(initial.schema))
   const [error, setError] = useState<string | null>(null)
+
+  const rootPolicy = policy.root ?? 'object'
+
+  // Serialize the current visual-tab state to a JSON Schema document.
+  //  - object / array-of-objects roots round-trip through the row model;
+  //  - an 'other' root (scalar, array of scalars) can't be represented as rows,
+  //    so the JSON-tab document passes through UNCHANGED (never an empty object).
+  const serializeVisual = useCallback((): Record<string, unknown> => {
+    if (rootKind === 'object' || rootKind === 'array-of-objects') {
+      return draftToJsonSchema(rows, policy, rootKind)
+    }
+    const parsed = parseSchemaText(jsonText)
+    return parsed.ok ? parsed.schema : initial.schema
+  }, [rootKind, rows, policy, jsonText, initial.schema])
 
   // Keyboard submit (Enter / ⌘↵) on the dialog — handled here so it works from
   // either tab without a real <form>.
@@ -113,33 +130,35 @@ function SchemaEditorBody({
       const next = value as Tab
       if (next === tab) return
       if (next === 'json') {
-        setJsonText(JSON.stringify(draftToJsonSchema(rows, policy), null, 2))
+        setJsonText(JSON.stringify(serializeVisual(), null, 2))
         setError(null)
         setTab('json')
         return
       }
-      // json → visual: validate before leaving the JSON tab.
+      // json → visual: validate before leaving the JSON tab, then re-derive the
+      // root kind (a JSON edit can change object ⇄ array ⇄ scalar root).
       const parsed = parseSchemaText(jsonText)
       if (!parsed.ok) {
         setError(parsed.error)
         return
       }
-      const result = validateSchema(parsed.schema)
+      const result = validateSchema(parsed.schema, rootPolicy)
       if (!result.ok) {
         setError(result.error ?? 'Invalid schema')
         return
       }
       setRows(jsonSchemaToDraft(parsed.schema))
+      setRootKind(jsonSchemaRootKind(parsed.schema))
       setError(null)
       setTab('visual')
     },
-    [tab, rows, jsonText, policy]
+    [tab, serializeVisual, jsonText, rootPolicy]
   )
 
   const handleImport = useCallback(
     (schema: Record<string, unknown>) => {
-      const imported = jsonSchemaToDraft(schema)
-      setRows(imported)
+      setRows(jsonSchemaToDraft(schema))
+      setRootKind(jsonSchemaRootKind(schema))
       if (tab === 'json') setJsonText(JSON.stringify(schema, null, 2))
       setError(null)
     },
@@ -154,20 +173,20 @@ function SchemaEditorBody({
         setError(parsed.error)
         return
       }
-      const result = validateSchema(parsed.schema)
+      const result = validateSchema(parsed.schema, rootPolicy)
       if (!result.ok) {
         setError(result.error ?? 'Invalid schema')
         return
       }
       schema = parsed.schema
     } else {
-      schema = draftToJsonSchema(rows, policy)
+      schema = serializeVisual()
     }
     const source: SaveSource =
       initial.seededFrom === 'inferred' && deepEqual(schema, initial.schema) ? 'inferred' : 'manual'
     onSave(schema, source)
     onClose()
-  }, [tab, jsonText, rows, policy, initial, onSave, onClose])
+  }, [tab, jsonText, serializeVisual, rootPolicy, initial, onSave, onClose])
 
   return (
     <div className='relative flex h-full flex-1 flex-col overflow-hidden'>
@@ -191,12 +210,21 @@ function SchemaEditorBody({
             JSON
           </RadioTabItem>
         </RadioTab>
-        <JsonImporter onImport={handleImport} />
+        <JsonImporter onImport={handleImport} root={rootPolicy} />
       </div>
 
       <div className='flex grow flex-col gap-y-1 overflow-hidden'>
         {tab === 'visual' ? (
-          <SchemaFieldTree rows={rows} onChange={setRows} policy={policy} />
+          rootKind === 'other' ? (
+            <NonObjectRootNotice />
+          ) : (
+            <SchemaFieldTree
+              rows={rows}
+              onChange={setRows}
+              policy={policy}
+              rootTypeLabel={rootKind === 'array-of-objects' ? 'array of objects' : 'object'}
+            />
+          )
         ) : (
           <CodeEditor
             className='grow rounded-xl'
@@ -223,6 +251,25 @@ function SchemaEditorBody({
           Save <KbdSubmit variant='outline' size='sm' />
         </Button>
       </DialogFooter>
+    </div>
+  )
+}
+
+/**
+ * Visual-tab placeholder for a root the row model can't represent (a scalar root,
+ * or an array of scalars). The JSON tab edits it directly; saving from the visual
+ * tab passes the JSON document through unchanged.
+ */
+function NonObjectRootNotice() {
+  return (
+    <div className='flex h-full items-center justify-center rounded-xl bg-primary-100 p-6'>
+      <div className='flex max-w-sm items-start gap-x-2 text-center'>
+        <Braces className='mt-0.5 size-4 shrink-0 text-muted-foreground' />
+        <p className='text-muted-foreground text-sm'>
+          This schema's root isn't an object, so it can't be edited as fields. Switch to the JSON
+          tab to edit it.
+        </p>
+      </div>
     </div>
   )
 }
