@@ -47,7 +47,7 @@ export function ToolsSection({ agent, onAutosaveChange }: ToolsSectionProps) {
     [onAutosaveChange]
   )
 
-  const { toggleToolset, toggleToolsets } = useToolsetMutations(
+  const { toggleToolset, toggleToolsets, updateToolset } = useToolsetMutations(
     agent.id,
     agent.slug,
     handleSavingChange
@@ -66,6 +66,17 @@ export function ToolsSection({ agent, onAutosaveChange }: ToolsSectionProps) {
     const map = new Map<string, ToolsetRowState>()
     for (const row of agent.toolsets) {
       map.set(row.slug, { enabled: row.enabled, source: row.source })
+    }
+    return map
+  }, [agent.toolsets])
+
+  // Per-toolset disabled-tool deny-lists, so MCP server rows can show an
+  // enabled-tool count (`N of M`) instead of a toolset count.
+  const disabledToolsBySlug = useMemo<Map<string, Set<string>>>(() => {
+    const map = new Map<string, Set<string>>()
+    for (const row of agent.toolsets) {
+      const disabled = (row.config as { disabledTools?: string[] })?.disabledTools
+      if (disabled && disabled.length > 0) map.set(row.slug, new Set(disabled))
     }
     return map
   }, [agent.toolsets])
@@ -236,6 +247,7 @@ export function ToolsSection({ agent, onAutosaveChange }: ToolsSectionProps) {
                 inheritedIconId={root.iconId ?? 'package'}
                 inheritedColor={root.color}
                 stateBySlug={stateBySlug}
+                disabledToolsBySlug={disabledToolsBySlug}
                 restrictionCountBySlug={restrictionCountBySlug}
                 collapsed={collapsed}
                 onToggleCollapsed={toggleCollapsed}
@@ -272,6 +284,7 @@ export function ToolsSection({ agent, onAutosaveChange }: ToolsSectionProps) {
         surface={agent.kind === 'chat' ? 'chat' : undefined}
         onToggleToolset={toggleToolset}
         onToggleToolsets={toggleToolsets}
+        onUpdateToolset={updateToolset}
         open={dialogOpen}
         onOpenChange={(next) => {
           setDialogOpen(next)
