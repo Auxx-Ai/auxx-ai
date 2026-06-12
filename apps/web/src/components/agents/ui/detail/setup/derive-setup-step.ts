@@ -47,11 +47,12 @@ function isEmptyTiptapDoc(doc: Record<string, unknown> | null | undefined): bool
 
 // Every agent is born with default toolsets (`source: 'auto_default'`, seeded by
 // `createAgent` → `resolveDefaultToolsets`), so mere presence means nothing.
-// Capabilities count as configured only once the builder deliberately picks
+// Capabilities count as configured once the builder deliberately picks
 // toolsets — `set_agent_toolsets` inserts/promotes entries to `source: 'manual'`
-// (and prompt `@[tool:…]` chips add `source: 'mention'`). Both are non-default.
+// — or a prompt/procedure `@[tool:…]` chip locks one (`mentions` non-empty;
+// the reconciler no longer rewrites `source`, so check the locks directly).
 const hasToolsets = (a: AgentDetail): boolean =>
-  (a.toolsets ?? []).some((t) => t.source !== 'auto_default')
+  (a.toolsets ?? []).some((t) => t.source !== 'auto_default' || (t.mentions?.length ?? 0) > 0)
 const hasPrompt = (a: AgentDetail): boolean => !isEmptyTiptapDoc(a.prompt)
 const hasName = (a: AgentDetail): boolean => Boolean(a.name?.trim())
 

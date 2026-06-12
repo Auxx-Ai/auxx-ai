@@ -28,8 +28,10 @@ export function createSetAgentToolsetsTool(getDeps: GetToolDeps): AgentToolDefin
 
 Each row patches the agent's record for one toolset slug:
 - enabled: true|false — turn the toolset on/off
-- disabledTools: optional list of tool names to hide from the agent even
-  when the toolset is enabled
+- enabledTools: for MCP server toolsets only — the exact list of tool names
+  the agent may use (an allow-list; tools not listed stay off). Omit it to
+  leave the current selection unchanged, or to enable all current tools when
+  turning the toolset on for the first time.
 
 The full toolset catalog is in your persona prompt. Pass the slugs you want
 to change; omitted slugs are left alone.`,
@@ -44,11 +46,11 @@ to change; omitted slugs are left alone.`,
             properties: {
               slug: { type: 'string', description: 'Toolset slug from the catalog' },
               enabled: { type: 'boolean' },
-              disabledTools: {
+              enabledTools: {
                 type: 'array',
                 items: { type: 'string' },
                 description:
-                  'Tool names within the toolset to hide. Must match the catalog. Omit to leave the per-tool disable list unchanged.',
+                  'Allow-list of tool names within the toolset (MCP servers). Must match the catalog. Omit to leave the current selection unchanged.',
               },
             },
             required: ['slug', 'enabled'],
@@ -73,7 +75,7 @@ to change; omitted slugs are left alone.`,
       const toolsets = (args.toolsets ?? []) as Array<{
         slug: string
         enabled: boolean
-        disabledTools?: string[]
+        enabledTools?: string[]
       }>
 
       if (!Array.isArray(toolsets) || toolsets.length === 0) {
@@ -103,9 +105,9 @@ to change; omitted slugs are left alone.`,
             error: `Unknown toolset slug "${row.slug}". Pick from the catalog in your persona prompt.`,
           }
         }
-        if (row.disabledTools && row.disabledTools.length > 0) {
+        if (row.enabledTools && row.enabledTools.length > 0) {
           const validNames = new Set(entry.tools.map((t) => t.name))
-          for (const name of row.disabledTools) {
+          for (const name of row.enabledTools) {
             if (!validNames.has(name)) {
               return {
                 success: false,
@@ -123,7 +125,7 @@ to change; omitted slugs are left alone.`,
         toolsets.map((row) => ({
           slug: row.slug,
           enabled: row.enabled,
-          ...(row.disabledTools !== undefined ? { disabledTools: row.disabledTools } : {}),
+          ...(row.enabledTools !== undefined ? { enabledTools: row.enabledTools } : {}),
         }))
       )
 
@@ -133,8 +135,7 @@ to change; omitted slugs are left alone.`,
         .reduce((sum, t) => {
           const entry = catalogBySlug.get(t.slug)
           if (!entry) return sum
-          const disabledCount = t.disabledTools?.length ?? 0
-          return sum + Math.max(0, entry.tools.length - disabledCount)
+          return sum + (t.enabledTools !== undefined ? t.enabledTools.length : entry.tools.length)
         }, 0)
 
       return {

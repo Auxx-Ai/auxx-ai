@@ -1,7 +1,7 @@
 // apps/web/src/components/agents/ui/detail/tools/catalog-node-row.tsx
 'use client'
 
-import type { CatalogNode, CatalogToolsetNode } from '@auxx/lib/agents/client'
+import type { CatalogNode, CatalogToolNode, CatalogToolsetNode } from '@auxx/lib/agents/client'
 import { TreeRow } from '@auxx/ui/components/tree-row'
 import { pluralize } from '@auxx/utils/strings'
 import { AlertTriangle, Lock, Plus, Settings } from 'lucide-react'
@@ -15,7 +15,17 @@ import { ToolsetRow } from './toolset-row'
 
 export type ToolsetRowState = {
   enabled: boolean
+  /** Pure creation provenance — lock state lives in `mentions`. */
   source: 'manual' | 'mention' | 'auto_default'
+  /** Mention locks (`target: '*' | toolName`); non-empty pins the row. */
+  mentions?: Array<{ target: string; source: string }>
+}
+
+/** Per-target lock for a tool row: `'*'` mentions and `auto_default` freeze every tool; a tool-name mention freezes only itself. */
+function isToolTargetLocked(state: ToolsetRowState | undefined, toolName: string): boolean {
+  if (!state) return false
+  if (state.source === 'auto_default') return true
+  return (state.mentions ?? []).some((m) => m.target === '*' || m.target === toolName)
 }
 
 interface CatalogNodeRowProps {
@@ -27,10 +37,12 @@ interface CatalogNodeRowProps {
   inheritedColor: string | null
   stateBySlug: Map<string, ToolsetRowState>
   /**
-   * Per-toolset deny-list (registered tool names). MCP server rows use it to
-   * show an enabled-tool count (`N of M`) instead of a toolset count.
+   * Per-toolset allow-list (registered tool names). MCP server rows use it to
+   * show an enabled-tool count (`N of M`) instead of a toolset count. A slug
+   * absent from the map carries no list (legacy pass-all — all tools count
+   * as enabled).
    */
-  disabledToolsBySlug?: Map<string, Set<string>>
+  enabledToolsBySlug?: Map<string, Set<string>>
   /**
    * Read-only restriction count per toolset slug. When a leaf has ≥1, a lock
    * badge renders; container rows roll up descendant counts into `secondary`.
@@ -48,6 +60,13 @@ interface CatalogNodeRowProps {
    * is locked.
    */
   onRemove?: (node: CatalogNode) => void
+  /**
+   * Per-tool toggle for MCP servers' inlined tool rows — removes/restores one
+   * registered name in the toolset's `enabledTools` allow-list (see
+   * `useToolsetMutations.toggleTool`). When omitted, MCP tool rows render
+   * without remove/restore affordances.
+   */
+  onToggleTool?: (slug: string, toolName: string, allToolNames: string[]) => void | Promise<void>
   /**
    * Optional — when supplied, app-kind container rows render an "Add" button
    * next to their tools count that invokes this with the app's node id.
@@ -91,11 +110,12 @@ export function CatalogNodeRow({
   inheritedIconId,
   inheritedColor,
   stateBySlug,
-  disabledToolsBySlug,
+  enabledToolsBySlug,
   restrictionCountBySlug,
   collapsed,
   onToggleCollapsed,
   onRemove,
+  onToggleTool,
   onAddToApp,
   onOpenAccountPicker,
   boundCredIdByApp,
@@ -105,8 +125,47 @@ export function CatalogNodeRow({
   const iconId = node.iconId ?? inheritedIconId
   const color = node.color ?? inheritedColor
 
+  if (node.kind === 'tool') {
+    return (
+      <ToolNodeRow
+        depth={depth}
+        tool={node}
+        allToolNames={[node.name]}
+        iconId={iconId}
+        color={color}
+        enabled={isToolNodeEnabled(node, stateBySlug, enabledToolsBySlug)}
+        locked={isToolTargetLocked(stateBySlug.get(node.toolsetSlug), node.name)}
+        onToggleTool={onToggleTool}
+      />
+    )
+  }
+
   if (node.kind === 'toolset') {
-    const state = stateBySlug.get(node.slug) ?? { enabled: false, source: 'manual' as const }
+    // Implicit toolsets never render their own row — their tools contribute
+    // directly to the parent (normally inlined there; this branch covers a
+    // toolset reaching the renderer directly).
+    if (node.implicit) {
+      const allToolNames = node.children.map((t) => t.name)
+      const state = stateBySlug.get(node.slug)
+      return (
+        <>
+          {node.children.map((tool) => (
+            <ToolNodeRow
+              key={tool.id}
+              depth={depth}
+              tool={tool}
+              allToolNames={allToolNames}
+              iconId={tool.iconId ?? iconId}
+              color={tool.color ?? color}
+              enabled={isToolNodeEnabled(tool, stateBySlug, enabledToolsBySlug)}
+              locked={isToolTargetLocked(state, tool.name)}
+              onToggleTool={onToggleTool}
+            />
+          ))}
+        </>
+      )
+    }
+    const state = stateBySlug.get(node.slug)
     return (
       <ToolsetRow
         depth={depth}
@@ -114,8 +173,8 @@ export function CatalogNodeRow({
         iconId={iconId}
         color={color}
         description={node.description}
-        toolCount={node.tools.length}
-        source={state.source}
+        toolCount={node.children.length}
+        locked={(state?.mentions?.length ?? 0) > 0}
         restrictionCount={restrictionCountBySlug?.get(node.slug) ?? 0}
         warn={Boolean(warnNotExternalSafe) && hasUnverifiedTool(node)}
         onRemove={onRemove ? () => onRemove(node) : undefined}
@@ -125,7 +184,7 @@ export function CatalogNodeRow({
 
   const isOpen = !collapsed.has(node.id)
   const stats = summarizeContainer(node, stateBySlug)
-  const mcpTools = node.origin === 'mcp' ? mcpToolStats(node, disabledToolsBySlug) : null
+  const toolCounts = containerToolStats(node, stateBySlug, enabledToolsBySlug)
   const restrictionCount = countRestrictions(node, restrictionCountBySlug)
   const containerWarn = Boolean(warnNotExternalSafe) && hasUnverifiedTool(node)
   const isApp = node.kind === 'app'
@@ -161,8 +220,7 @@ export function CatalogNodeRow({
         isMcp ? (
           <span className='inline-flex items-center gap-2'>
             <span>
-              {mcpTools ? `${mcpTools.enabled} of ${mcpTools.total}` : stats.enabled}{' '}
-              {pluralize(mcpTools?.total ?? stats.enabled, 'tool')}
+              {toolCounts.enabled} of {toolCounts.total} {pluralize(toolCounts.total, 'tool')}
             </span>
             {restrictionCount > 0 ? <RestrictionLockBadge count={restrictionCount} /> : null}
             {containerWarn ? <ChatWarnBadge /> : null}
@@ -171,7 +229,7 @@ export function CatalogNodeRow({
         ) : isInstalledApp ? (
           <span className='inline-flex items-center gap-2'>
             <span>
-              {stats.enabled} {pluralize(stats.enabled, 'tool')}
+              {toolCounts.enabled} {pluralize(toolCounts.enabled, 'tool')}
             </span>
             {restrictionCount > 0 ? <RestrictionLockBadge count={restrictionCount} /> : null}
             {containerWarn ? <ChatWarnBadge /> : null}
@@ -184,7 +242,7 @@ export function CatalogNodeRow({
         ) : (
           <span className='inline-flex items-center gap-2'>
             <span>
-              {stats.enabled} {pluralize(stats.enabled, 'tool')}
+              {toolCounts.enabled} {pluralize(toolCounts.enabled, 'tool')}
             </span>
             {restrictionCount > 0 ? <RestrictionLockBadge count={restrictionCount} /> : null}
             {containerWarn ? <ChatWarnBadge /> : null}
@@ -204,27 +262,150 @@ export function CatalogNodeRow({
           onRemove={onRemove ? () => onRemove(node) : undefined}
         />
       }>
-      {node.children.map((child) => (
-        <CatalogNodeRow
-          key={child.id}
-          node={child}
-          depth={depth + 1}
-          inheritedIconId={iconId}
-          inheritedColor={color}
-          stateBySlug={stateBySlug}
-          disabledToolsBySlug={disabledToolsBySlug}
-          restrictionCountBySlug={restrictionCountBySlug}
-          collapsed={collapsed}
-          onToggleCollapsed={onToggleCollapsed}
-          onRemove={onRemove}
-          onAddToApp={onAddToApp}
-          onOpenAccountPicker={onOpenAccountPicker}
-          boundCredIdByApp={boundCredIdByApp}
-          warnNotExternalSafe={warnNotExternalSafe}
-          mcpReconnectSlugs={mcpReconnectSlugs}
-        />
-      ))}
+      {inlineImplicitChildren(node.children).map((child) =>
+        child.kind === 'tool' ? (
+          <ToolNodeRow
+            key={child.tool.id}
+            depth={depth + 1}
+            tool={child.tool}
+            allToolNames={child.allToolNames}
+            iconId={child.tool.iconId ?? iconId}
+            color={child.tool.color ?? color}
+            enabled={isToolNodeEnabled(child.tool, stateBySlug, enabledToolsBySlug)}
+            locked={isToolTargetLocked(stateBySlug.get(child.tool.toolsetSlug), child.tool.name)}
+            onToggleTool={onToggleTool}
+          />
+        ) : (
+          <CatalogNodeRow
+            key={child.node.id}
+            node={child.node}
+            depth={depth + 1}
+            inheritedIconId={iconId}
+            inheritedColor={color}
+            stateBySlug={stateBySlug}
+            enabledToolsBySlug={enabledToolsBySlug}
+            restrictionCountBySlug={restrictionCountBySlug}
+            collapsed={collapsed}
+            onToggleCollapsed={onToggleCollapsed}
+            onRemove={onRemove}
+            onToggleTool={onToggleTool}
+            onAddToApp={onAddToApp}
+            onOpenAccountPicker={onOpenAccountPicker}
+            boundCredIdByApp={boundCredIdByApp}
+            warnNotExternalSafe={warnNotExternalSafe}
+            mcpReconnectSlugs={mcpReconnectSlugs}
+          />
+        )
+      )}
     </TreeRow>
+  )
+}
+
+type InlinedChild =
+  | { kind: 'node'; node: CatalogNode }
+  | { kind: 'tool'; tool: CatalogToolNode; allToolNames: string[] }
+
+/**
+ * Implicit toolsets don't render their own row — their tools contribute
+ * directly to the parent's child list (the doubling fix, applied generically:
+ * MCP servers and ungrouped native tools alike). Explicit toolsets and
+ * containers pass through as nodes.
+ */
+function inlineImplicitChildren(children: CatalogNode[]): InlinedChild[] {
+  const out: InlinedChild[] = []
+  for (const child of children) {
+    if (child.kind === 'toolset' && child.implicit) {
+      const allToolNames = child.children.map((t) => t.name)
+      for (const tool of child.children) out.push({ kind: 'tool', tool, allToolNames })
+    } else {
+      out.push({ kind: 'node', node: child })
+    }
+  }
+  return out
+}
+
+/**
+ * Effective enabled state of one tool node: its toolset entry must be
+ * installed and the registered name must be in the entry's `enabledTools`
+ * allow-list (no list = legacy pass-all / explicit bundle).
+ */
+function isToolNodeEnabled(
+  tool: CatalogToolNode,
+  stateBySlug: Map<string, ToolsetRowState>,
+  enabledToolsBySlug: Map<string, Set<string>> | undefined
+): boolean {
+  const state = stateBySlug.get(tool.toolsetSlug)
+  if (!state || !(state.enabled || state.mentions?.length)) return false
+  const allowed = enabledToolsBySlug?.get(tool.toolsetSlug)
+  return allowed ? allowed.has(tool.name) : true
+}
+
+/**
+ * One tool of an implicit toolset, inlined under its parent row. Enabled
+ * tools render normally with a hover trash (drops the name from the
+ * allow-list); disabled ones render dimmed with a hover plus (restores it).
+ * Tools of a locked toolset (`source !== 'manual'`) are read-only.
+ */
+function ToolNodeRow({
+  depth,
+  tool,
+  allToolNames,
+  iconId,
+  color,
+  enabled,
+  locked,
+  onToggleTool,
+}: {
+  depth: number
+  tool: CatalogToolNode
+  allToolNames: string[]
+  iconId: string
+  color: string | null
+  enabled: boolean
+  locked: boolean
+  onToggleTool?: (slug: string, toolName: string, allToolNames: string[]) => void | Promise<void>
+}) {
+  const canToggle = Boolean(onToggleTool) && !locked
+  return (
+    <TreeRow
+      depth={depth}
+      icon={<AppIcon iconId={iconId} color={color ?? undefined} size='sm' />}
+      title={tool.label}
+      description={tool.description || undefined}
+      rowClassName={enabled ? undefined : 'opacity-60'}
+      actions={
+        canToggle ? (
+          enabled ? (
+            <RemoveButton
+              enabled
+              tooltip='Remove tool'
+              onClick={() => void onToggleTool?.(tool.toolsetSlug, tool.name, allToolNames)}
+            />
+          ) : (
+            <Tooltip side='left' content='Enable tool' allowInteraction>
+              <button
+                type='button'
+                onClick={(e) => {
+                  e.stopPropagation()
+                  void onToggleTool?.(tool.toolsetSlug, tool.name, allToolNames)
+                }}
+                className='p-1 rounded-md hover:bg-primary-100 opacity-0 group-hover/tree-row:opacity-100'
+                aria-label='Enable tool'>
+                <Plus className='size-4 text-muted-foreground hover:text-foreground' />
+              </button>
+            </Tooltip>
+          )
+        ) : locked ? (
+          <Tooltip
+            side='left'
+            content="This tool is referenced in your agent's prompt. To change it, first edit your prompt.">
+            <span className='inline-flex p-1 opacity-0 group-hover/tree-row:opacity-100'>
+              <Lock className='size-3 text-muted-foreground' />
+            </span>
+          </Tooltip>
+        ) : undefined
+      }
+    />
   )
 }
 
@@ -240,7 +421,7 @@ function McpBadge() {
 /** True when any toolset leaf under `node` has a tool that isn't `externalSafe`. */
 function hasUnverifiedTool(node: CatalogNode): boolean {
   for (const leaf of collectLeaves(node)) {
-    if (leaf.tools.some((t) => t.externalSafe !== true)) return true
+    if (leaf.children.some((t) => t.externalSafe !== true)) return true
   }
   return false
 }
@@ -279,9 +460,9 @@ function AppRowIcon({
 interface ContainerStats {
   total: number
   enabled: number
-  /** Count of leaves not pinned by a prompt @-mention — these can be removed. */
+  /** Count of leaves not pinned by a prompt/procedure mention — these can be removed. */
   removable: number
-  /** Count of `source === 'mention'` leaves — locked by prompt @-mentions. */
+  /** Count of mention-locked leaves (`mentions` non-empty). */
   locked: number
 }
 
@@ -296,33 +477,38 @@ function summarizeContainer(
   for (const leaf of collectLeaves(node)) {
     total++
     const state = stateBySlug.get(leaf.slug)
-    const source = state?.source ?? 'manual'
     if (state?.enabled) enabled++
-    if (source === 'mention') locked++
+    if (state?.mentions?.length) locked++
     else removable++
   }
   return { total, enabled, removable, locked }
 }
 
 /**
- * Enabled-vs-total tool count for an MCP server node. MCP servers hold a single
- * toolset whose `tools[]` are gated per-agent by the `disabledTools` deny-list,
- * so `enabled = total − disabled`.
+ * Enabled-vs-total **tool** count for a container — everything counts tools,
+ * toolset counts were always a proxy. An installed explicit bundle counts all
+ * of its members; an installed implicit toolset counts its `enabledTools`
+ * allow-list (no list = legacy pass-all); uninstalled leaves count zero.
  */
-function mcpToolStats(
+function containerToolStats(
   node: CatalogNode,
-  disabledToolsBySlug: Map<string, Set<string>> | undefined
+  stateBySlug: Map<string, ToolsetRowState>,
+  enabledToolsBySlug: Map<string, Set<string>> | undefined
 ): { enabled: number; total: number } {
   let total = 0
-  let disabled = 0
+  let enabled = 0
   for (const leaf of collectLeaves(node)) {
-    total += leaf.tools.length
-    const denied = disabledToolsBySlug?.get(leaf.slug)
-    if (denied) {
-      for (const tool of leaf.tools) if (denied.has(tool.name)) disabled++
+    total += leaf.children.length
+    const state = stateBySlug.get(leaf.slug)
+    if (!state || !(state.enabled || state.mentions?.length)) continue
+    const allowed = leaf.implicit ? enabledToolsBySlug?.get(leaf.slug) : undefined
+    if (allowed) {
+      for (const tool of leaf.children) if (allowed.has(tool.name)) enabled++
+    } else {
+      enabled += leaf.children.length
     }
   }
-  return { enabled: total - disabled, total }
+  return { enabled, total }
 }
 
 /** Sum the restriction counts of every toolset leaf under a node. */
@@ -349,6 +535,7 @@ function RestrictionLockBadge({ count }: { count: number }) {
 }
 
 export function* collectLeaves(node: CatalogNode): IterableIterator<CatalogToolsetNode> {
+  if (node.kind === 'tool') return
   if (node.kind === 'toolset') {
     yield node
     return
@@ -364,7 +551,7 @@ export function* collectLeaves(node: CatalogNode): IterableIterator<CatalogTools
 function isInstalledLeaf(node: CatalogToolsetNode, stateBySlug: Map<string, ToolsetRowState>) {
   const state = stateBySlug.get(node.slug)
   if (!state) return false
-  return state.enabled || state.source === 'mention'
+  return state.enabled || (state.mentions?.length ?? 0) > 0
 }
 
 /**
@@ -389,6 +576,7 @@ function pruneNode(
   node: CatalogNode,
   stateBySlug: Map<string, ToolsetRowState>
 ): CatalogNode | null {
+  if (node.kind === 'tool') return node
   if (node.kind === 'toolset') {
     return isInstalledLeaf(node, stateBySlug) ? node : null
   }

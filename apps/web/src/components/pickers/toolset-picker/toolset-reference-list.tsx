@@ -36,7 +36,7 @@ export interface ToolsetReferenceListProps {
  * granularity: an admin pins a whole toolset to the persona prompt and the
  * agent gets all of its tools. Individual tool pinning (`tool:<name>`) is
  * not exposed in v1 — the catalog has no per-tool selection surface and
- * per-tool gating already lives on the Tools tab via `disabledTools`.
+ * per-tool gating already lives on the Tools tab via `enabledTools`.
  */
 export function ToolsetReferenceList({
   externalSearch = '',

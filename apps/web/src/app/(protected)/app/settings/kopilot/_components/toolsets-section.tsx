@@ -61,7 +61,7 @@ export function ToolsetsSection() {
   const defaultCollapsed = useMemo(() => {
     const ids = new Set<string>()
     const walk = (n: CatalogNode) => {
-      if (n.kind === 'toolset') return
+      if (n.kind === 'toolset' || n.kind === 'tool') return
       ids.add(n.id)
       n.children.forEach(walk)
     }

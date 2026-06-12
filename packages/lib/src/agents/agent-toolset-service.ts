@@ -28,13 +28,14 @@ const logger = createScopedLogger('agent-toolset-service')
 
 /**
  * Patch shape applied to a single `(agentId, toolsetSlug)` entry. Both
- * `enabled` and `disabledTools` are independently optional so callers can
+ * `enabled` and `enabledTools` are independently optional so callers can
  * patch just what changed.
  */
 export interface AgentToolsetPatch {
   slug: string
   enabled?: boolean
-  disabledTools?: string[]
+  /** Per-tool allow-list (full replace). Implicit toolsets only — see `AgentToolsetConfig`. */
+  enabledTools?: string[]
 }
 
 /**
@@ -67,7 +68,7 @@ export function applyToolsetPatch(
   const idx = current.findIndex((t) => t.slug === patch.slug)
   if (idx === -1) {
     const config: AgentToolsetConfig = {}
-    if (patch.disabledTools !== undefined) config.disabledTools = patch.disabledTools
+    if (patch.enabledTools !== undefined) config.enabledTools = patch.enabledTools
     return [
       ...current,
       {
@@ -80,8 +81,8 @@ export function applyToolsetPatch(
   }
   const existing = current[idx]!
   const nextConfig: AgentToolsetConfig = { ...(existing.config as AgentToolsetConfig) }
-  if (patch.disabledTools !== undefined) {
-    nextConfig.disabledTools = patch.disabledTools
+  if (patch.enabledTools !== undefined) {
+    nextConfig.enabledTools = patch.enabledTools
   }
   const next: ToolsetEntry = {
     ...existing,
@@ -90,6 +91,48 @@ export function applyToolsetPatch(
     source: existing.source === 'auto_default' ? 'manual' : existing.source,
   }
   return current.map((t, i) => (i === idx ? next : t))
+}
+
+/**
+ * Safety net for the allow-list invariant: an **enabled implicit** entry (MCP
+ * server or ungrouped app tools) must always carry an explicit `enabledTools`
+ * list — an absent list means pass-all at runtime, which would silently arm
+ * tools the server ships later (the exact hole the allow-list exists to
+ * close). UI writers send the snapshot themselves (so their optimistic cache
+ * matches); this catches every other caller (Kopilot, server-originated
+ * enables). Only entries touched by `patches` are considered. Returns the
+ * same array reference when nothing needs fixing. See
+ * plans/mcp/v4/tool-first-catalog.md ("Row toggle = snapshot").
+ */
+async function ensureImplicitSnapshots(
+  organizationId: string,
+  next: ToolsetEntry[],
+  patches: AgentToolsetPatch[]
+): Promise<ToolsetEntry[]> {
+  const patchedSlugs = new Set(patches.map((p) => p.slug))
+  const needsSnapshot = (t: ToolsetEntry) =>
+    patchedSlugs.has(t.slug) &&
+    t.enabled &&
+    !Array.isArray((t.config as AgentToolsetConfig | undefined)?.enabledTools)
+  if (!next.some(needsSnapshot)) return next
+
+  const catalog = await getOrgToolsetCatalog(organizationId)
+  const catalogBySlug = new Map(catalog.map((c) => [c.slug, c]))
+  let changed = false
+  const result = next.map((t) => {
+    if (!needsSnapshot(t)) return t
+    const entry = catalogBySlug.get(t.slug)
+    if (!entry?.implicit) return t
+    changed = true
+    return {
+      ...t,
+      config: {
+        ...(t.config as AgentToolsetConfig),
+        enabledTools: entry.tools.map((tool) => tool.name),
+      },
+    }
+  })
+  return changed ? result : next
 }
 
 interface AgentToolsetRow {
@@ -187,7 +230,11 @@ export async function updateAgentToolset(
 ): Promise<void> {
   await db.transaction(async (tx) => {
     const row = await loadAgentForToolsetUpdate(tx, agentId)
-    const next = applyToolsetPatch(row.toolsets, patch)
+    const next = await ensureImplicitSnapshots(
+      organizationId,
+      applyToolsetPatch(row.toolsets, patch),
+      [patch]
+    )
     const nextAppAccounts = await clearOrphanedAppAccounts(
       organizationId,
       row.toolsets,
@@ -245,6 +292,7 @@ export async function batchUpdateAgentToolsets(
     for (const patch of patches) {
       next = applyToolsetPatch(next, patch)
     }
+    next = await ensureImplicitSnapshots(organizationId, next, patches)
     const nextAppAccounts = await clearOrphanedAppAccounts(
       organizationId,
       row.toolsets,

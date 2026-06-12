@@ -1,8 +1,29 @@
 // packages/lib/src/agents/__tests__/filter-catalog-to-surface.test.ts
 
 import { describe, expect, it } from 'vitest'
-import type { CatalogNode } from '../client'
-import { filterCatalogToSurface } from '../client'
+import type { CatalogNode, CatalogToolsetNode } from '../client'
+import { filterCatalogToSurface, toolEntryToNode } from '../client'
+
+function toolset(
+  slug: string,
+  label: string,
+  tools: Array<Parameters<typeof toolEntryToNode>[0]>
+): CatalogToolsetNode {
+  return {
+    kind: 'toolset',
+    id: slug,
+    slug,
+    label,
+    fullLabel: label,
+    description: '',
+    iconId: null,
+    color: null,
+    isDefault: false,
+    isPopular: false,
+    implicit: false,
+    children: tools.map((t) => toolEntryToNode(t, slug)),
+  }
+}
 
 /** Minimal app → toolset tree with three tools of varying `surfaces`/`externalSafe`. */
 function fixture(): CatalogNode[] {
@@ -15,45 +36,25 @@ function fixture(): CatalogNode[] {
       color: null,
       isBuiltin: true,
       children: [
-        {
-          kind: 'toolset',
-          id: 'auxx:entities:search',
-          slug: 'auxx:entities:search',
-          label: 'Search',
-          fullLabel: 'Records · Search',
-          description: '',
-          isDefault: false,
-          isPopular: false,
-          tools: [
-            // default surfaces (absent ⇒ all), not externalSafe
-            { name: 'search_entities', displayName: 'Search records', description: '' },
-            // schema read, externalSafe
-            {
-              name: 'list_entities',
-              displayName: 'List entity types',
-              description: '',
-              externalSafe: true,
-            },
-          ],
-        },
-        {
-          kind: 'toolset',
-          id: 'auxx:builder',
-          slug: 'auxx:builder',
-          label: 'Builder',
-          fullLabel: 'Agent builder',
-          description: '',
-          isDefault: false,
-          isPopular: false,
-          tools: [
-            {
-              name: 'set_agent_prompt',
-              displayName: 'Set prompt',
-              description: '',
-              surfaces: ['builder'],
-            },
-          ],
-        },
+        toolset('auxx:entities:search', 'Search', [
+          // default surfaces (absent ⇒ all), not externalSafe
+          { name: 'search_entities', displayName: 'Search records', description: '' },
+          // schema read, externalSafe
+          {
+            name: 'list_entities',
+            displayName: 'List entity types',
+            description: '',
+            externalSafe: true,
+          },
+        ]),
+        toolset('auxx:builder', 'Builder', [
+          {
+            name: 'set_agent_prompt',
+            displayName: 'Set prompt',
+            description: '',
+            surfaces: ['builder'],
+          },
+        ]),
       ],
     },
   ]
@@ -89,6 +90,7 @@ describe('filterCatalogToSurface', () => {
 function collectToolsetSlugs(nodes: CatalogNode[]): string[] {
   const out: string[] = []
   const walk = (n: CatalogNode) => {
+    if (n.kind === 'tool') return
     if (n.kind === 'toolset') out.push(n.slug)
     else n.children.forEach(walk)
   }
@@ -99,8 +101,9 @@ function collectToolsetSlugs(nodes: CatalogNode[]): string[] {
 function toolNames(nodes: CatalogNode[], slug: string): string[] {
   const out: string[] = []
   const walk = (n: CatalogNode) => {
+    if (n.kind === 'tool') return
     if (n.kind === 'toolset') {
-      if (n.slug === slug) out.push(...n.tools.map((t) => t.name))
+      if (n.slug === slug) out.push(...n.children.map((t) => t.name))
     } else n.children.forEach(walk)
   }
   nodes.forEach(walk)
@@ -110,8 +113,9 @@ function toolNames(nodes: CatalogNode[], slug: string): string[] {
 function findTool(nodes: CatalogNode[], name: string) {
   let found: { name: string; externalSafe?: boolean } | undefined
   const walk = (n: CatalogNode) => {
+    if (n.kind === 'tool') return
     if (n.kind === 'toolset') {
-      const t = n.tools.find((x) => x.name === name)
+      const t = n.children.find((x) => x.name === name)
       if (t) found = t
     } else n.children.forEach(walk)
   }

@@ -19,8 +19,14 @@ import { ToolSelectRow, toolCountBadge } from './tool-select-row'
 export interface InstalledToolsetEntry {
   slug: string
   enabled: boolean
+  /** Pure creation provenance — `auto_default` rows render locked. */
   source: 'manual' | 'mention' | 'auto_default'
-  /** Toolset-shaped overrides — `{ disabledTools?: string[] }`. Drives per-tool MCP selection. */
+  /**
+   * Mention locks (`target: '*' | toolName`). A `'*'` lock freezes the row; a
+   * tool-name lock freezes just that tool's row. Mirrors `ToolsetEntry.mentions`.
+   */
+  mentions?: Array<{ target: string; source: string }>
+  /** Toolset-shaped overrides — `{ enabledTools?: string[] }`. Drives per-tool selection. */
   config?: Record<string, unknown>
 }
 
@@ -34,20 +40,21 @@ interface ToolSelectDialogProps {
   /** Bulk-toggle multiple toolsets ("Add all tools"). */
   onToggleToolsets: (changes: Array<{ slug: string; enabled: boolean }>) => void | Promise<void>
   /**
-   * Patch a toolset's `enabled` flag and/or `disabledTools` deny-list. In the
-   * MCP per-tool detail view this backs only the non-racy "Add all tools"
-   * button; per-tool clicks go through `onToggleTool`.
+   * Patch a toolset's `enabled` flag and/or `enabledTools` allow-list. Backs
+   * the MCP detail view's "Add all tools" button and the row-level MCP enable
+   * (which writes the full allow-list snapshot); per-tool clicks go through
+   * `onToggleTool`.
    */
   onUpdateToolset?: (
     slug: string,
-    patch: { enabled?: boolean; disabledTools?: string[] }
+    patch: { enabled?: boolean; enabledTools?: string[] }
   ) => void | Promise<void>
   /**
-   * Toggle one tool inside an MCP toolset's deny-list. The handler owns the
+   * Toggle one tool inside an MCP toolset's allow-list. The handler owns the
    * read-modify-write against fresh state (see `useToolsetMutations.toggleTool`)
    * so rapid clicks chain correctly. When this or `onUpdateToolset` is omitted,
    * MCP servers fall back to a single whole-server toggle (used by surfaces
-   * whose storage doesn't honor `disabledTools`).
+   * whose storage doesn't honor `enabledTools`).
    */
   onToggleTool?: (slug: string, toolName: string, allToolNames: string[]) => void | Promise<void>
   open: boolean
@@ -70,8 +77,21 @@ type ListTab = 'all' | 'apps' | 'mcps'
 interface InstalledState {
   enabled: boolean
   source: InstalledToolsetEntry['source']
-  /** Registered tool names disabled inside this toolset. */
-  disabledTools: string[]
+  mentions: Array<{ target: string; source: string }>
+  /**
+   * Allow-list of registered tool names enabled inside this toolset. `null`
+   * when the entry carries no list — explicit bundles, or legacy rows from
+   * before the allow-list flip — which means every tool passes.
+   */
+  enabledTools: string[] | null
+}
+
+/** Row-level lock: any mention pins the row (disabling it would kill the mentioned tool); seeded defaults are locked too. */
+function rowLockOf(state: InstalledState | undefined): 'mention' | 'auto_default' | undefined {
+  if (!state) return undefined
+  if (state.mentions.length > 0) return 'mention'
+  if (state.source === 'auto_default') return 'auto_default'
+  return undefined
 }
 
 /**
@@ -130,8 +150,14 @@ export function ToolSelectDialog({
   const installedState = useMemo<Map<string, InstalledState>>(() => {
     const map = new Map<string, InstalledState>()
     for (const row of installedToolsets) {
-      const disabledTools = (row.config?.disabledTools as string[] | undefined) ?? []
-      map.set(row.slug, { enabled: row.enabled, source: row.source, disabledTools })
+      const stored = row.config?.enabledTools
+      const enabledTools = Array.isArray(stored) ? (stored as string[]) : null
+      map.set(row.slug, {
+        enabled: row.enabled,
+        source: row.source,
+        mentions: row.mentions ?? [],
+        enabledTools,
+      })
     }
     return map
   }, [installedToolsets])
@@ -147,35 +173,56 @@ export function ToolSelectDialog({
   function isInstalled(slug: string): boolean {
     const state = installedState.get(slug)
     if (!state) return false
-    return state.enabled || state.source === 'mention'
+    return state.enabled || state.mentions.length > 0
   }
 
-  function sourceOf(slug: string): InstalledState['source'] | undefined {
-    return installedState.get(slug)?.source
+  function lockOf(slug: string): 'mention' | 'auto_default' | undefined {
+    return rowLockOf(installedState.get(slug))
   }
 
-  function disabledToolsOf(slug: string): string[] {
-    return installedState.get(slug)?.disabledTools ?? []
+  // Per-tool lock: a '*' mention freezes every tool; a tool-name mention
+  // freezes only that name. Seeded defaults freeze all (open question 4).
+  function toolLockOf(slug: string, toolName: string): 'mention' | 'auto_default' | undefined {
+    const state = installedState.get(slug)
+    if (!state) return undefined
+    if (state.mentions.some((m) => m.target === '*' || m.target === toolName)) return 'mention'
+    if (state.source === 'auto_default') return 'auto_default'
+    return undefined
   }
 
   // A tool is enabled when its toolset is installed AND the tool's registered
-  // name is not in the toolset's deny-list.
+  // name is in the toolset's allow-list (no list = legacy pass-all).
   function isToolEnabled(slug: string, toolName: string): boolean {
     if (!isInstalled(slug)) return false
-    return !disabledToolsOf(slug).includes(toolName)
+    const list = installedState.get(slug)?.enabledTools
+    return list === null || list === undefined || list.includes(toolName)
   }
 
   const handleToolsetClick = (slug: string) => {
     const installed = isInstalled(slug)
-    const source = sourceOf(slug)
     // Locked rows: clicking is a no-op (the row still shows the green check).
-    if (installed && source && source !== 'manual') return
+    if (installed && lockOf(slug)) return
+    // Enabling an implicit toolset (MCP server, ungrouped app tools) at row
+    // level persists the full allow-list snapshot — "enable everything it has
+    // today", never a standing subscription to future tools. Mirrors the
+    // server's implicit-snapshot rule so the optimistic cache matches the
+    // persisted row. A re-enable keeps an existing selection.
+    if (!installed && onUpdateToolset) {
+      const entry = flat.find((e) => e.slug === slug)
+      if (entry?.implicit) {
+        const existing = installedState.get(slug)?.enabledTools
+        void onUpdateToolset(slug, {
+          enabled: true,
+          ...(existing ? {} : { enabledTools: entry.tools.map((t) => t.name) }),
+        })
+        return
+      }
+    }
     void onToggleToolset(slug, !installed)
   }
 
   const handleRemove = (slug: string) => {
-    const source = sourceOf(slug)
-    if (source && source !== 'manual') return
+    if (lockOf(slug)) return
     void onToggleToolset(slug, false)
   }
 
@@ -236,7 +283,8 @@ export function ToolSelectDialog({
                 flat={flat}
                 isLoading={catalogIsLoading}
                 isInstalled={isInstalled}
-                sourceOf={sourceOf}
+                isToolEnabled={isToolEnabled}
+                lockOf={lockOf}
                 onToggle={handleToolsetClick}
                 onRemove={handleRemove}
                 onOpenApp={handleOpenApp}
@@ -248,7 +296,8 @@ export function ToolSelectDialog({
                 <AppDetailView
                   app={selectedApp}
                   isInstalled={isInstalled}
-                  sourceOf={sourceOf}
+                  lockOf={lockOf}
+                  toolLockOf={toolLockOf}
                   isToolEnabled={isToolEnabled}
                   onToggle={handleToolsetClick}
                   onToggleTool={onToggleTool}
@@ -283,7 +332,8 @@ interface ListViewProps {
   flat: ReturnType<typeof flattenCatalogToToolsets>
   isLoading: boolean
   isInstalled: (slug: string) => boolean
-  sourceOf: (slug: string) => InstalledState['source'] | undefined
+  isToolEnabled: (slug: string, toolName: string) => boolean
+  lockOf: (slug: string) => 'mention' | 'auto_default' | undefined
   onToggle: (slug: string) => void
   onRemove: (slug: string) => void
   onOpenApp: (appNode: CatalogContainerNode) => void
@@ -299,7 +349,8 @@ function ListView({
   flat,
   isLoading,
   isInstalled,
-  sourceOf,
+  isToolEnabled,
+  lockOf,
   onToggle,
   onRemove,
   onOpenApp,
@@ -381,7 +432,7 @@ function ListView({
                           badge={toolCountBadge(entry.tools.length) ?? undefined}
                           toolNames={entry.tools.map((t) => t.displayName)}
                           installed={isInstalled(entry.slug)}
-                          source={sourceOf(entry.slug)}
+                          locked={lockOf(entry.slug)}
                           onSelect={() => onToggle(entry.slug)}
                           onRemove={() => onRemove(entry.slug)}
                         />
@@ -402,7 +453,7 @@ function ListView({
                         badge={toolCountBadge(entry.tools.length) ?? undefined}
                         toolNames={entry.tools.map((t) => t.displayName)}
                         installed={isInstalled(entry.slug)}
-                        source={sourceOf(entry.slug)}
+                        locked={lockOf(entry.slug)}
                         onSelect={() => onToggle(entry.slug)}
                         onRemove={() => onRemove(entry.slug)}
                       />
@@ -423,7 +474,7 @@ function ListView({
                         toolNames={entry.tools.map((t) => t.displayName)}
                         isMcp
                         installed={isInstalled(entry.slug)}
-                        source={sourceOf(entry.slug)}
+                        locked={lockOf(entry.slug)}
                         onSelect={() => onToggle(entry.slug)}
                         onRemove={() => onRemove(entry.slug)}
                       />
@@ -437,7 +488,7 @@ function ListView({
           ) : (
             <div className='space-y-1'>
               {(tab === 'mcps' ? mcpServers : apps).map((appNode) => {
-                const counts = countLeaves(appNode, isInstalled)
+                const counts = countTools(appNode, isInstalled, isToolEnabled)
                 return (
                   <ToolSelectRow
                     key={appNode.id}
@@ -463,148 +514,135 @@ function ListView({
 interface AppDetailViewProps {
   app: CatalogContainerNode
   isInstalled: (slug: string) => boolean
-  sourceOf: (slug: string) => InstalledState['source'] | undefined
+  lockOf: (slug: string) => 'mention' | 'auto_default' | undefined
+  /** Per-tool lock — `'*'` mentions freeze every tool, tool-name mentions just theirs. */
+  toolLockOf: (slug: string, toolName: string) => 'mention' | 'auto_default' | undefined
   isToolEnabled: (slug: string, toolName: string) => boolean
   onToggle: (slug: string) => void
   onToggleTool?: (slug: string, toolName: string, allToolNames: string[]) => void | Promise<void>
   onRemove: (slug: string) => void
   onUpdateToolset?: (
     slug: string,
-    patch: { enabled?: boolean; disabledTools?: string[] }
+    patch: { enabled?: boolean; enabledTools?: string[] }
   ) => void | Promise<void>
   onAddAll: (slugs: string[]) => void
   /** When false, an inline hint appears prompting the admin to pick a credential. */
   hasBoundAccount: boolean
 }
 
-function AppDetailView(props: AppDetailViewProps) {
-  // MCP servers carry a single toolset whose tools have no further grouping —
-  // drill into the individual tools instead of the one toolset row. Falls back
-  // to the toolset view when the surface can't persist per-tool deny-lists.
-  return props.app.origin === 'mcp' && props.onToggleTool && props.onUpdateToolset ? (
-    <McpToolDetailView {...props} />
-  ) : (
-    <AppToolsetDetailView {...props} />
-  )
-}
-
-/** Native-app detail — one selectable row per toolset (unchanged behavior). */
-function AppToolsetDetailView({
+/**
+ * App detail — one row per **selection unit**. Explicit toolsets render as
+ * atomic bundle rows (click toggles the bundle); implicit toolsets (MCP
+ * servers, ungrouped app tools) contribute one selectable row per tool. An
+ * app may mix both. Falls back to whole-toolset rows for implicit sets when
+ * the surface can't persist per-tool allow-lists (`onToggleTool` /
+ * `onUpdateToolset` omitted).
+ */
+function AppDetailView({
   app,
   isInstalled,
-  sourceOf,
+  lockOf,
+  toolLockOf,
+  isToolEnabled,
   onToggle,
+  onToggleTool,
   onRemove,
+  onUpdateToolset,
   onAddAll,
 }: AppDetailViewProps) {
   const leaves = useMemo(() => flattenCatalogToToolsets([app]), [app])
-  const installedCount = leaves.reduce((n, l) => (isInstalled(l.slug) ? n + 1 : n), 0)
-  const total = leaves.length
-  const allInstalled = installedCount === total && total > 0
+  const perToolCapable = Boolean(onToggleTool && onUpdateToolset)
+
+  const counts = useMemo(() => {
+    let total = 0
+    let installed = 0
+    for (const leaf of leaves) {
+      total += leaf.tools.length
+      if (leaf.implicit && perToolCapable) {
+        for (const tool of leaf.tools) if (isToolEnabled(leaf.slug, tool.name)) installed++
+      } else if (isInstalled(leaf.slug)) {
+        installed += leaf.tools.length
+      }
+    }
+    return { total, installed }
+  }, [leaves, perToolCapable, isInstalled, isToolEnabled])
+  const allInstalled = counts.installed === counts.total && counts.total > 0
+
+  const handleAddAll = () => {
+    const wholeToggleSlugs: string[] = []
+    for (const leaf of leaves) {
+      if (leaf.implicit && perToolCapable) {
+        // Implicit sets persist the full allow-list snapshot — "everything it
+        // has today", never a standing subscription to future tools.
+        void onUpdateToolset?.(leaf.slug, {
+          enabled: true,
+          enabledTools: leaf.tools.map((t) => t.name),
+        })
+      } else if (!isInstalled(leaf.slug)) {
+        wholeToggleSlugs.push(leaf.slug)
+      }
+    }
+    onAddAll(wholeToggleSlugs)
+  }
 
   return (
     <>
       <div className='flex items-center justify-between border-b ps-3 pe-2 py-1'>
         <span className='text-xs text-muted-foreground'>
-          {installedCount}/{total} {pluralize(total, 'tool')} installed
+          {counts.installed}/{counts.total} {pluralize(counts.total, 'tool')} installed
         </span>
-        <Button
-          size='sm'
-          variant='ghost'
-          disabled={allInstalled}
-          onClick={() => onAddAll(leaves.map((l) => l.slug))}>
+        <Button size='sm' variant='ghost' disabled={allInstalled} onClick={handleAddAll}>
           {allInstalled ? 'All installed' : 'Add all tools'}
         </Button>
       </div>
 
       <ScrollArea viewportClassName='max-h-[32rem]' scrollbarClassName='w-1!'>
         <div className='p-3'>
-          {leaves.map((entry) => (
-            <ToolSelectRow
-              key={entry.slug}
-              id={entry.slug}
-              iconId={entry.iconId}
-              color={entry.color || null}
-              label={entry.fullLabel}
-              description={entry.description || undefined}
-              badge={toolCountBadge(entry.tools.length) ?? undefined}
-              toolNames={entry.tools.map((t) => t.displayName)}
-              installed={isInstalled(entry.slug)}
-              source={sourceOf(entry.slug)}
-              onSelect={() => onToggle(entry.slug)}
-              onRemove={() => onRemove(entry.slug)}
-            />
-          ))}
-        </div>
-      </ScrollArea>
-    </>
-  )
-}
-
-/** MCP detail — one selectable `ToolSelectRow` per individual tool. */
-function McpToolDetailView({
-  app,
-  sourceOf,
-  isToolEnabled,
-  onToggleTool,
-  onUpdateToolset,
-}: AppDetailViewProps) {
-  const leaves = useMemo(() => flattenCatalogToToolsets([app]), [app])
-  // MCP apps hold exactly one toolset; flatten its tools, tagging each with its slug.
-  const tools = useMemo(
-    () =>
-      leaves.flatMap((leaf) =>
-        leaf.tools.map((tool) => ({
-          tool,
-          slug: leaf.slug,
-          iconId: leaf.iconId,
-          color: leaf.color || null,
-          allNames: leaf.tools.map((t) => t.name),
-        }))
-      ),
-    [leaves]
-  )
-
-  const enabledCount = tools.reduce((n, t) => (isToolEnabled(t.slug, t.tool.name) ? n + 1 : n), 0)
-  const total = tools.length
-  const allEnabled = enabledCount === total && total > 0
-
-  return (
-    <>
-      <div className='flex items-center justify-between border-b ps-3 pe-2 py-1'>
-        <span className='text-xs text-muted-foreground'>
-          {enabledCount}/{total} {pluralize(total, 'tool')} enabled
-        </span>
-        <Button
-          size='sm'
-          variant='ghost'
-          disabled={allEnabled}
-          onClick={() => {
-            if (!onUpdateToolset) return
-            for (const slug of new Set(leaves.map((l) => l.slug))) {
-              void onUpdateToolset(slug, { enabled: true, disabledTools: [] })
-            }
-          }}>
-          {allEnabled ? 'All enabled' : 'Add all tools'}
-        </Button>
-      </div>
-
-      <ScrollArea viewportClassName='max-h-[32rem]' scrollbarClassName='w-1!'>
-        <div className='p-3'>
-          {tools.map(({ tool, slug, iconId, color, allNames }) => (
-            <ToolSelectRow
-              key={tool.name}
-              id={tool.name}
-              iconId={iconId}
-              color={color}
-              label={tool.displayName}
-              description={tool.description || undefined}
-              installed={isToolEnabled(slug, tool.name)}
-              source={sourceOf(slug)}
-              onSelect={() => void onToggleTool?.(slug, tool.name, allNames)}
-              onRemove={() => void onToggleTool?.(slug, tool.name, allNames)}
-            />
-          ))}
+          {leaves.map((leaf) =>
+            leaf.implicit && perToolCapable ? (
+              leaf.tools.map((tool) => (
+                <ToolSelectRow
+                  key={tool.name}
+                  id={tool.name}
+                  iconId={leaf.iconId}
+                  color={leaf.color || null}
+                  label={tool.displayName}
+                  description={tool.description || undefined}
+                  installed={isToolEnabled(leaf.slug, tool.name)}
+                  locked={toolLockOf(leaf.slug, tool.name)}
+                  onSelect={() =>
+                    void onToggleTool?.(
+                      leaf.slug,
+                      tool.name,
+                      leaf.tools.map((t) => t.name)
+                    )
+                  }
+                  onRemove={() =>
+                    void onToggleTool?.(
+                      leaf.slug,
+                      tool.name,
+                      leaf.tools.map((t) => t.name)
+                    )
+                  }
+                />
+              ))
+            ) : (
+              <ToolSelectRow
+                key={leaf.slug}
+                id={leaf.slug}
+                iconId={leaf.iconId}
+                color={leaf.color || null}
+                label={leaf.fullLabel}
+                description={leaf.description || undefined}
+                badge={toolCountBadge(leaf.tools.length) ?? undefined}
+                toolNames={leaf.tools.map((t) => t.displayName)}
+                installed={isInstalled(leaf.slug)}
+                locked={lockOf(leaf.slug)}
+                onSelect={() => onToggle(leaf.slug)}
+                onRemove={() => onRemove(leaf.slug)}
+              />
+            )
+          )}
         </div>
       </ScrollArea>
     </>
@@ -632,17 +670,30 @@ function EmptySearchResult({ search }: { search: string }) {
   )
 }
 
-function countLeaves(
+/** Tool-granular counts for an app row — everything counts tools, not toolsets. */
+function countTools(
   node: CatalogNode,
-  isInstalled: (slug: string) => boolean
+  isInstalled: (slug: string) => boolean,
+  isToolEnabled: (slug: string, toolName: string) => boolean
 ): { total: number; installed: number } {
+  if (node.kind === 'tool') {
+    return { total: 1, installed: isToolEnabled(node.toolsetSlug, node.name) ? 1 : 0 }
+  }
   if (node.kind === 'toolset') {
-    return { total: 1, installed: isInstalled(node.slug) ? 1 : 0 }
+    if (node.implicit) {
+      let installed = 0
+      for (const tool of node.children) if (isToolEnabled(node.slug, tool.name)) installed++
+      return { total: node.children.length, installed }
+    }
+    return {
+      total: node.children.length,
+      installed: isInstalled(node.slug) ? node.children.length : 0,
+    }
   }
   let total = 0
   let installed = 0
   for (const child of node.children) {
-    const sub = countLeaves(child, isInstalled)
+    const sub = countTools(child, isInstalled, isToolEnabled)
     total += sub.total
     installed += sub.installed
   }
