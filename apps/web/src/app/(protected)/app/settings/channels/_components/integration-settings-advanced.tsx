@@ -7,6 +7,7 @@ import { RadioGroupItemCard } from '@auxx/ui/components/radio-group-item'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { Ban, MailMinus, MailPlus, ShieldCheck, UserCheck, Users, UserX } from 'lucide-react'
 import { useEffect, useState } from 'react'
+import { SettingsSection } from '~/components/global/settings-page'
 import { api } from '~/trpc/react'
 import { EmailFilterSection } from './email-list-dialog'
 
@@ -77,14 +78,10 @@ export default function IntegrationSettingsAdvanced({
   return (
     <div className='space-y-4 sm:space-y-10 p-3 sm:p-6'>
       {/* Record Creation */}
-      <div className='space-y-4'>
-        <div className='space-y-1'>
-          <div className='flex items-center gap-2 text-base font-semibold tracking-tight text-foreground'>
-            <MailPlus className='size-4' /> Record Creation
-          </div>
-          <p className='text-sm text-muted-foreground'>Manage how records will be created.</p>
-        </div>
-
+      <SettingsSection
+        icon={MailPlus}
+        title='Record Creation'
+        description='Manage how records will be created.'>
         <RadioGroup
           value={recordCreationMode}
           onValueChange={handleRecordCreationChange}
@@ -108,7 +105,7 @@ export default function IntegrationSettingsAdvanced({
             description='No records will automatically be created. Message events will still be associated with records created manually.'
           />
         </RadioGroup>
-      </div>
+      </SettingsSection>
 
       {/* Email Filtering Rules */}
       <EmailFilterSection

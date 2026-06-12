@@ -20,6 +20,7 @@ import { AlertTriangle, Cloud, Code, Database, Server, Settings } from 'lucide-r
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
+import { SettingsSection } from '~/components/global/settings-page'
 import { api } from '~/trpc/react'
 
 interface VectorDbSettingsSectionProps {
@@ -159,105 +160,99 @@ export function VectorDbSettingsSection({
         <div className='flex flex-col lg:flex-row'>
           {/* Left Column - Database Type Selection */}
           <div className='flex-1 p-6 lg:pr-6'>
-            <div className='space-y-1 mb-6'>
-              <div className='flex items-center gap-2 text-base font-semibold tracking-tight text-foreground'>
-                <Database className='size-4' /> Vector Database
-              </div>
-              <p className='text-sm text-muted-foreground'>
-                Select the vector database for storing embeddings.
-              </p>
-            </div>
-
-            <FormField
-              control={form.control}
-              name='vectorDbType'
-              render={({ field }) => (
-                <FormItem>
-                  <FormControl>
-                    <RadioGroup
-                      value={field.value}
-                      onValueChange={(value) => handleDbTypeChange(value as VectorDbType)}
-                      disabled={readOnly || updateDataset.isPending}>
-                      {Object.entries(VECTOR_DB_INFO).map(([dbType, info]) => {
-                        const Icon = info.icon
-                        return (
-                          <RadioGroupItemCard
-                            key={dbType}
-                            label={info.label}
-                            sublabel={info.badge}
-                            value={dbType}
-                            icon={<Icon />}
-                            description={info.description}
-                          />
-                        )
-                      })}
-                    </RadioGroup>
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-          </div>
-
-          {/* Right Column - Database Configuration */}
-          <div className='flex-1 border-t lg:border-t-0 lg:border-l p-6 lg:pl-6'>
-            <div className='space-y-1 mb-6'>
-              <div className='flex items-center gap-2 text-base font-semibold tracking-tight text-foreground'>
-                <DbIcon className='size-4' /> {dbInfo?.label} Configuration
-              </div>
-              <p className='text-sm text-muted-foreground'>
-                Configure connection and index settings.
-              </p>
-            </div>
-
-            <div className='space-y-4'>
+            <SettingsSection
+              className='space-y-6'
+              icon={Database}
+              title='Vector Database'
+              description='Select the vector database for storing embeddings.'>
               <FormField
                 control={form.control}
-                name='vectorDbConfig'
+                name='vectorDbType'
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Configuration (JSON)</FormLabel>
                     <FormControl>
-                      <Textarea
-                        placeholder={`{\n  "example": "configuration"\n}`}
-                        rows={6}
-                        className='font-mono text-sm'
-                        {...field}
-                        onChange={(e) => {
-                          field.onChange(e.target.value)
-                          validateJsonConfig(e.target.value)
-                        }}
-                        disabled={readOnly}
-                      />
+                      <RadioGroup
+                        value={field.value}
+                        onValueChange={(value) => handleDbTypeChange(value as VectorDbType)}
+                        disabled={readOnly || updateDataset.isPending}>
+                        {Object.entries(VECTOR_DB_INFO).map(([dbType, info]) => {
+                          const Icon = info.icon
+                          return (
+                            <RadioGroupItemCard
+                              key={dbType}
+                              label={info.label}
+                              sublabel={info.badge}
+                              value={dbType}
+                              icon={<Icon />}
+                              description={info.description}
+                            />
+                          )
+                        })}
+                      </RadioGroup>
                     </FormControl>
-                    <FormDescription className='flex items-start gap-2'>
-                      <Code className='size-3 mt-0.5 flex-shrink-0' />
-                      <span>Leave empty to use defaults.</span>
-                    </FormDescription>
-                    {configError && (
-                      <div className='flex items-center gap-2 text-red-600 text-sm'>
-                        <AlertTriangle className='size-4' />
-                        {configError}
-                      </div>
-                    )}
                     <FormMessage />
                   </FormItem>
                 )}
               />
+            </SettingsSection>
+          </div>
 
-              {/* Configuration Example */}
-              {dbInfo?.defaultConfig && (
-                <div className='p-3 rounded-lg bg-muted/50 border'>
-                  <div className='flex items-center gap-2 mb-2'>
-                    <Settings className='size-3' />
-                    <span className='font-medium text-xs'>Default Example</span>
+          {/* Right Column - Database Configuration */}
+          <div className='flex-1 border-t lg:border-t-0 lg:border-l p-6 lg:pl-6'>
+            <SettingsSection
+              className='space-y-6'
+              icon={DbIcon}
+              title={<>{dbInfo?.label} Configuration</>}
+              description='Configure connection and index settings.'>
+              <div className='space-y-4'>
+                <FormField
+                  control={form.control}
+                  name='vectorDbConfig'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Configuration (JSON)</FormLabel>
+                      <FormControl>
+                        <Textarea
+                          placeholder={`{\n  "example": "configuration"\n}`}
+                          rows={6}
+                          className='font-mono text-sm'
+                          {...field}
+                          onChange={(e) => {
+                            field.onChange(e.target.value)
+                            validateJsonConfig(e.target.value)
+                          }}
+                          disabled={readOnly}
+                        />
+                      </FormControl>
+                      <FormDescription className='flex items-start gap-2'>
+                        <Code className='size-3 mt-0.5 flex-shrink-0' />
+                        <span>Leave empty to use defaults.</span>
+                      </FormDescription>
+                      {configError && (
+                        <div className='flex items-center gap-2 text-red-600 text-sm'>
+                          <AlertTriangle className='size-4' />
+                          {configError}
+                        </div>
+                      )}
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                {/* Configuration Example */}
+                {dbInfo?.defaultConfig && (
+                  <div className='p-3 rounded-lg bg-muted/50 border'>
+                    <div className='flex items-center gap-2 mb-2'>
+                      <Settings className='size-3' />
+                      <span className='font-medium text-xs'>Default Example</span>
+                    </div>
+                    <pre className='text-xs font-mono bg-background p-2 rounded border overflow-auto'>
+                      {JSON.stringify(dbInfo.defaultConfig, null, 2)}
+                    </pre>
                   </div>
-                  <pre className='text-xs font-mono bg-background p-2 rounded border overflow-auto'>
-                    {JSON.stringify(dbInfo.defaultConfig, null, 2)}
-                  </pre>
-                </div>
-              )}
-            </div>
+                )}
+              </div>
+            </SettingsSection>
           </div>
         </div>
 

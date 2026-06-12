@@ -2,6 +2,7 @@
 'use client'
 
 import { Wallet } from 'lucide-react'
+import { SettingsSection } from '~/components/global/settings-page'
 import { ShopifyAdminBillingBanner } from '~/components/subscriptions/shopify-admin-billing-banner'
 import { api } from '~/trpc/react'
 
@@ -17,16 +18,14 @@ export function ShopifyAdminBillingBannerWrapper() {
   if (subscription?.billingProvider !== 'shopify') return null
 
   return (
-    <div id='billing-details' className='space-y-3'>
-      <div className='space-y-1'>
-        <div className='flex items-center gap-2 leading-none tracking-tight font-semibold text-foreground'>
-          <Wallet className='size-4' /> Billing Details
-        </div>
-        <div className='text-sm text-muted-foreground mb-4'>
-          Manage your payment methods and billing information
-        </div>
-      </div>
-      <ShopifyAdminBillingBanner shopDomain={subscription.shopifyShopDomain} />
+    <div id='billing-details'>
+      <SettingsSection
+        className='space-y-3'
+        icon={Wallet}
+        title='Billing Details'
+        description='Manage your payment methods and billing information'>
+        <ShopifyAdminBillingBanner shopDomain={subscription.shopifyShopDomain} />
+      </SettingsSection>
     </div>
   )
 }

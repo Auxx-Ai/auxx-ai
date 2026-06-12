@@ -11,6 +11,7 @@ import { LayoutGrid, MessageSquare, Moon, Palette, Smartphone, Sun, SunMoon } fr
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
+import { SettingsSection } from '~/components/global/settings-page'
 import { ColorField } from '~/components/ui/color-field'
 import { BaseType } from '~/components/workflow/types'
 import { VarEditorField, VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
@@ -131,296 +132,282 @@ export function AppearanceSection({ widget, channelId }: AppearanceSectionProps)
       <form onSubmit={form.handleSubmit(onSubmit)}>
         <div className='p-6 space-y-8'>
           <div>
-            <div className='space-y-1 mb-6'>
-              <div className='flex items-center gap-2 text-base font-semibold tracking-tight text-foreground'>
-                <Palette className='size-4' /> Branding
-              </div>
-              <p className='text-sm text-muted-foreground'>
-                The color and logo shown on the widget header.
-              </p>
-            </div>
-
-            <VarEditorField
-              orientation='responsive'
-              className='p-0 **:data-[slot=field-row-label]:w-[12rem]! @sm:**:data-[slot=field-row-label]:w-[12rem]!'>
-              <FormField
-                control={form.control}
-                name='defaultTheme'
-                render={({ field, fieldState }) => (
-                  <VarEditorFieldRow
-                    title='Theme'
-                    description='Default color scheme. The embed script can override this per-page via data-theme.'
-                    type={BaseType.ENUM}
-                    icon={<SunMoon className='size-3.5' />}
-                    showIcon
-                    validationError={fieldState.error?.message}>
-                    <FieldInputAdapter
-                      fieldType={FieldType.SINGLE_SELECT}
-                      fieldOptions={{ options: THEME_OPTIONS }}
-                      value={field.value}
-                      onChange={(v) => {
-                        const next = Array.isArray(v) ? v[0] : v
-                        if (typeof next === 'string') {
-                          field.onChange(next as AppearanceForm['defaultTheme'])
-                        }
-                      }}
-                      placeholder='Choose theme'
-                      triggerProps={{ className: 'w-full ps-0 pe-1' }}
-                    />
-                  </VarEditorFieldRow>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name='primaryColor'
-                render={({ field, fieldState }) => (
-                  <VarEditorFieldRow
-                    title='Primary Color'
-                    description='Used for the launcher button, send buttons, and accent UI.'
-                    type={BaseType.STRING}
-                    icon={<Palette className='size-3.5' />}
-                    showIcon
-                    isRequired
-                    validationError={fieldState.error?.message}>
-                    <ColorField
-                      value={field.value || ''}
-                      onChange={field.onChange}
-                      placeholder='Pick a color'
-                    />
-                  </VarEditorFieldRow>
-                )}
-              />
-
-              {showDarkColors ? (
+            <SettingsSection
+              className='mb-6'
+              icon={Palette}
+              title='Branding'
+              description='The color and logo shown on the widget header.'>
+              <VarEditorField
+                orientation='responsive'
+                className='p-0 **:data-[slot=field-row-label]:w-[12rem]! @sm:**:data-[slot=field-row-label]:w-[12rem]!'>
                 <FormField
                   control={form.control}
-                  name='primaryColorDark'
+                  name='defaultTheme'
                   render={({ field, fieldState }) => (
                     <VarEditorFieldRow
-                      title='Primary Color (dark)'
-                      description='Primary color in dark mode. Optional — falls back to the light primary color.'
-                      type={BaseType.STRING}
-                      icon={<Moon className='size-3.5' />}
+                      title='Theme'
+                      description='Default color scheme. The embed script can override this per-page via data-theme.'
+                      type={BaseType.ENUM}
+                      icon={<SunMoon className='size-3.5' />}
                       showIcon
                       validationError={fieldState.error?.message}>
-                      <ColorField
-                        value={field.value || ''}
-                        onChange={field.onChange}
-                        placeholder='Same as light'
-                      />
-                    </VarEditorFieldRow>
-                  )}
-                />
-              ) : null}
-
-              <FormField
-                control={form.control}
-                name='headerColor'
-                render={({ field, fieldState }) => (
-                  <VarEditorFieldRow
-                    title='Header Color'
-                    description='Background of the Home greeting band. Leave empty to derive from the brand color. Text color is auto-picked for contrast.'
-                    type={BaseType.STRING}
-                    icon={<Palette className='size-3.5' />}
-                    showIcon
-                    validationError={fieldState.error?.message}>
-                    <ColorField
-                      value={field.value || ''}
-                      onChange={field.onChange}
-                      placeholder='Auto (brand)'
-                      clearable
-                    />
-                  </VarEditorFieldRow>
-                )}
-              />
-
-              {showDarkColors ? (
-                <FormField
-                  control={form.control}
-                  name='headerColorDark'
-                  render={({ field, fieldState }) => (
-                    <VarEditorFieldRow
-                      title='Header Color (dark)'
-                      description='Home greeting band color in dark mode. Optional — falls back to the light header color.'
-                      type={BaseType.STRING}
-                      icon={<Moon className='size-3.5' />}
-                      showIcon
-                      validationError={fieldState.error?.message}>
-                      <ColorField
-                        value={field.value || ''}
-                        onChange={field.onChange}
-                        placeholder='Same as light'
-                      />
-                    </VarEditorFieldRow>
-                  )}
-                />
-              ) : null}
-
-              <FormField
-                control={form.control}
-                name='logoLight'
-                render={({ field, fieldState }) => (
-                  <VarEditorFieldRow
-                    title='Light mode logo'
-                    description='Shown on the dark primary-colored header band.'
-                    icon={<Sun className='size-3.5' />}
-                    showIcon
-                    validationError={fieldState.error?.message}>
-                    <LogoUploadCell
-                      variant='light'
-                      value={field.value ?? ''}
-                      onChange={(v) => field.onChange(v)}
-                      chatWidgetId={chatWidgetId}
-                    />
-                  </VarEditorFieldRow>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name='logoDark'
-                render={({ field, fieldState }) => (
-                  <VarEditorFieldRow
-                    title='Dark mode logo'
-                    description='Used when the resolved theme is dark. Falls back to the light logo if unset.'
-                    icon={<Moon className='size-3.5' />}
-                    showIcon
-                    validationError={fieldState.error?.message}>
-                    <LogoUploadCell
-                      variant='dark'
-                      value={field.value ?? ''}
-                      onChange={(v) => field.onChange(v)}
-                      chatWidgetId={chatWidgetId}
-                    />
-                  </VarEditorFieldRow>
-                )}
-              />
-            </VarEditorField>
-
-            <div className='space-y-1 mt-6 mb-4'>
-              <div className='flex items-center gap-2 text-base font-semibold tracking-tight text-foreground'>
-                <LayoutGrid className='size-4' /> Layout
-              </div>
-              <p className='text-sm text-muted-foreground'>
-                Where and how the widget appears on the page.
-              </p>
-            </div>
-
-            <VarEditorField orientation='responsive' className='p-0'>
-              <FormField
-                control={form.control}
-                name='position'
-                render={({ field, fieldState }) => (
-                  <VarEditorFieldRow
-                    title='Position'
-                    description='Corner of the page where the widget anchors.'
-                    type={BaseType.ENUM}
-                    icon={<LayoutGrid className='size-3.5' />}
-                    showIcon
-                    validationError={fieldState.error?.message}>
-                    <FieldInputAdapter
-                      fieldType={FieldType.SINGLE_SELECT}
-                      fieldOptions={{ options: POSITION_OPTIONS }}
-                      value={field.value}
-                      onChange={(v) => {
-                        const next = Array.isArray(v) ? v[0] : v
-                        if (typeof next === 'string') {
-                          field.onChange(next as AppearanceForm['position'])
-                        }
-                      }}
-                      placeholder='Choose position'
-                      triggerProps={{ className: 'w-full' }}
-                    />
-                  </VarEditorFieldRow>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name='mobileFullScreen'
-                render={({ field, fieldState }) => (
-                  <VarEditorFieldRow
-                    title='Mobile Full Screen'
-                    description='Expand the widget to fill the screen on small devices.'
-                    type={BaseType.BOOLEAN}
-                    icon={<Smartphone className='size-3.5' />}
-                    showIcon
-                    validationError={fieldState.error?.message}>
-                    <div className='ps-3'>
                       <FieldInputAdapter
-                        fieldType={FieldType.CHECKBOX}
-                        fieldOptions={{ variant: 'switch' }}
+                        fieldType={FieldType.SINGLE_SELECT}
+                        fieldOptions={{ options: THEME_OPTIONS }}
                         value={field.value}
-                        onChange={(v) => field.onChange(Boolean(v))}
+                        onChange={(v) => {
+                          const next = Array.isArray(v) ? v[0] : v
+                          if (typeof next === 'string') {
+                            field.onChange(next as AppearanceForm['defaultTheme'])
+                          }
+                        }}
+                        placeholder='Choose theme'
+                        triggerProps={{ className: 'w-full ps-0 pe-1' }}
                       />
-                    </div>
-                  </VarEditorFieldRow>
-                )}
-              />
-            </VarEditorField>
+                    </VarEditorFieldRow>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name='primaryColor'
+                  render={({ field, fieldState }) => (
+                    <VarEditorFieldRow
+                      title='Primary Color'
+                      description='Used for the launcher button, send buttons, and accent UI.'
+                      type={BaseType.STRING}
+                      icon={<Palette className='size-3.5' />}
+                      showIcon
+                      isRequired
+                      validationError={fieldState.error?.message}>
+                      <ColorField
+                        value={field.value || ''}
+                        onChange={field.onChange}
+                        placeholder='Pick a color'
+                      />
+                    </VarEditorFieldRow>
+                  )}
+                />
+
+                {showDarkColors ? (
+                  <FormField
+                    control={form.control}
+                    name='primaryColorDark'
+                    render={({ field, fieldState }) => (
+                      <VarEditorFieldRow
+                        title='Primary Color (dark)'
+                        description='Primary color in dark mode. Optional — falls back to the light primary color.'
+                        type={BaseType.STRING}
+                        icon={<Moon className='size-3.5' />}
+                        showIcon
+                        validationError={fieldState.error?.message}>
+                        <ColorField
+                          value={field.value || ''}
+                          onChange={field.onChange}
+                          placeholder='Same as light'
+                        />
+                      </VarEditorFieldRow>
+                    )}
+                  />
+                ) : null}
+
+                <FormField
+                  control={form.control}
+                  name='headerColor'
+                  render={({ field, fieldState }) => (
+                    <VarEditorFieldRow
+                      title='Header Color'
+                      description='Background of the Home greeting band. Leave empty to derive from the brand color. Text color is auto-picked for contrast.'
+                      type={BaseType.STRING}
+                      icon={<Palette className='size-3.5' />}
+                      showIcon
+                      validationError={fieldState.error?.message}>
+                      <ColorField
+                        value={field.value || ''}
+                        onChange={field.onChange}
+                        placeholder='Auto (brand)'
+                        clearable
+                      />
+                    </VarEditorFieldRow>
+                  )}
+                />
+
+                {showDarkColors ? (
+                  <FormField
+                    control={form.control}
+                    name='headerColorDark'
+                    render={({ field, fieldState }) => (
+                      <VarEditorFieldRow
+                        title='Header Color (dark)'
+                        description='Home greeting band color in dark mode. Optional — falls back to the light header color.'
+                        type={BaseType.STRING}
+                        icon={<Moon className='size-3.5' />}
+                        showIcon
+                        validationError={fieldState.error?.message}>
+                        <ColorField
+                          value={field.value || ''}
+                          onChange={field.onChange}
+                          placeholder='Same as light'
+                        />
+                      </VarEditorFieldRow>
+                    )}
+                  />
+                ) : null}
+
+                <FormField
+                  control={form.control}
+                  name='logoLight'
+                  render={({ field, fieldState }) => (
+                    <VarEditorFieldRow
+                      title='Light mode logo'
+                      description='Shown on the dark primary-colored header band.'
+                      icon={<Sun className='size-3.5' />}
+                      showIcon
+                      validationError={fieldState.error?.message}>
+                      <LogoUploadCell
+                        variant='light'
+                        value={field.value ?? ''}
+                        onChange={(v) => field.onChange(v)}
+                        chatWidgetId={chatWidgetId}
+                      />
+                    </VarEditorFieldRow>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name='logoDark'
+                  render={({ field, fieldState }) => (
+                    <VarEditorFieldRow
+                      title='Dark mode logo'
+                      description='Used when the resolved theme is dark. Falls back to the light logo if unset.'
+                      icon={<Moon className='size-3.5' />}
+                      showIcon
+                      validationError={fieldState.error?.message}>
+                      <LogoUploadCell
+                        variant='dark'
+                        value={field.value ?? ''}
+                        onChange={(v) => field.onChange(v)}
+                        chatWidgetId={chatWidgetId}
+                      />
+                    </VarEditorFieldRow>
+                  )}
+                />
+              </VarEditorField>
+            </SettingsSection>
+
+            <SettingsSection
+              className='mt-6 mb-4'
+              icon={LayoutGrid}
+              title='Layout'
+              description='Where and how the widget appears on the page.'>
+              <VarEditorField orientation='responsive' className='p-0'>
+                <FormField
+                  control={form.control}
+                  name='position'
+                  render={({ field, fieldState }) => (
+                    <VarEditorFieldRow
+                      title='Position'
+                      description='Corner of the page where the widget anchors.'
+                      type={BaseType.ENUM}
+                      icon={<LayoutGrid className='size-3.5' />}
+                      showIcon
+                      validationError={fieldState.error?.message}>
+                      <FieldInputAdapter
+                        fieldType={FieldType.SINGLE_SELECT}
+                        fieldOptions={{ options: POSITION_OPTIONS }}
+                        value={field.value}
+                        onChange={(v) => {
+                          const next = Array.isArray(v) ? v[0] : v
+                          if (typeof next === 'string') {
+                            field.onChange(next as AppearanceForm['position'])
+                          }
+                        }}
+                        placeholder='Choose position'
+                        triggerProps={{ className: 'w-full' }}
+                      />
+                    </VarEditorFieldRow>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name='mobileFullScreen'
+                  render={({ field, fieldState }) => (
+                    <VarEditorFieldRow
+                      title='Mobile Full Screen'
+                      description='Expand the widget to fill the screen on small devices.'
+                      type={BaseType.BOOLEAN}
+                      icon={<Smartphone className='size-3.5' />}
+                      showIcon
+                      validationError={fieldState.error?.message}>
+                      <div className='ps-3'>
+                        <FieldInputAdapter
+                          fieldType={FieldType.CHECKBOX}
+                          fieldOptions={{ variant: 'switch' }}
+                          value={field.value}
+                          onChange={(v) => field.onChange(Boolean(v))}
+                        />
+                      </div>
+                    </VarEditorFieldRow>
+                  )}
+                />
+              </VarEditorField>
+            </SettingsSection>
           </div>
 
           <div>
-            <div className='space-y-1 mb-6'>
-              <div className='flex items-center gap-2 text-base font-semibold tracking-tight text-foreground'>
-                <MessageSquare className='size-4' /> Greeting
-              </div>
-              <p className='text-sm text-muted-foreground'>
-                Personalised message shown on the widget's Home screen.
-              </p>
-            </div>
+            <SettingsSection
+              className='mb-6'
+              icon={MessageSquare}
+              title='Greeting'
+              description="Personalised message shown on the widget's Home screen.">
+              <FormField
+                control={form.control}
+                name='homeGreetingTemplate'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormControl>
+                      <GreetingEditor
+                        value={(field.value as JSONContent | null) ?? null}
+                        onChange={field.onChange}
+                        placeholder='Hi {visitor:name} 👋'
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      Type <code className='rounded bg-muted px-1'>{'{'}</code> to insert a visitor
+                      field. Click the badge to set a fallback for when the value isn't available.
+                    </FormDescription>
+                  </FormItem>
+                )}
+              />
+            </SettingsSection>
 
-            <FormField
-              control={form.control}
-              name='homeGreetingTemplate'
-              render={({ field }) => (
-                <FormItem>
-                  <FormControl>
-                    <GreetingEditor
-                      value={(field.value as JSONContent | null) ?? null}
-                      onChange={field.onChange}
-                      placeholder='Hi {visitor:name} 👋'
-                    />
-                  </FormControl>
-                  <FormDescription>
-                    Type <code className='rounded bg-muted px-1'>{'{'}</code> to insert a visitor
-                    field. Click the badge to set a fallback for when the value isn't available.
-                  </FormDescription>
-                </FormItem>
-              )}
-            />
-
-            <div className='space-y-1 mt-6 mb-4'>
-              <div className='flex items-center gap-2 text-base font-semibold tracking-tight text-foreground'>
-                <MessageSquare className='size-4' /> Welcome message
-              </div>
-              <p className='text-sm text-muted-foreground'>
-                Synthetic first bubble shown inside a new conversation, before the visitor types
-                anything. Sender is the configured AI agent (or your org name when no agent is
-                bound).
-              </p>
-            </div>
-
-            <FormField
-              control={form.control}
-              name='welcomeMessageTemplate'
-              render={({ field }) => (
-                <FormItem>
-                  <FormControl>
-                    <GreetingEditor
-                      value={(field.value as JSONContent | null) ?? null}
-                      onChange={field.onChange}
-                      placeholder='Hi {visitor:name}, how can I help today?'
-                    />
-                  </FormControl>
-                  <FormDescription>
-                    Type <code className='rounded bg-muted px-1'>{'{'}</code> to insert a visitor
-                    field. The bubble disappears the moment the visitor sends their first message.
-                  </FormDescription>
-                </FormItem>
-              )}
-            />
+            <SettingsSection
+              className='mt-6 mb-4'
+              icon={MessageSquare}
+              title='Welcome message'
+              description='Synthetic first bubble shown inside a new conversation, before the visitor types anything. Sender is the configured AI agent (or your org name when no agent is bound).'>
+              <FormField
+                control={form.control}
+                name='welcomeMessageTemplate'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormControl>
+                      <GreetingEditor
+                        value={(field.value as JSONContent | null) ?? null}
+                        onChange={field.onChange}
+                        placeholder='Hi {visitor:name}, how can I help today?'
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      Type <code className='rounded bg-muted px-1'>{'{'}</code> to insert a visitor
+                      field. The bubble disappears the moment the visitor sends their first message.
+                    </FormDescription>
+                  </FormItem>
+                )}
+              />
+            </SettingsSection>
 
             <div className='mt-6 mb-2 text-sm font-medium text-foreground'>Suggested replies</div>
             <p className='mb-3 text-sm text-muted-foreground'>

@@ -9,9 +9,11 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
+import type { LucideIcon } from 'lucide-react'
 import { MoreHorizontal, Pencil, Plus, RefreshCw, Unplug, User, Users } from 'lucide-react'
 import { useSearchParams } from 'next/navigation'
 import { useEffect } from 'react'
+import { SettingsSection } from '~/components/global/settings-page'
 import { useUser } from '~/hooks/use-user'
 import type { RouterOutputs } from '~/trpc/react'
 import { api } from '~/trpc/react'
@@ -111,7 +113,7 @@ function AppConnections({ app, returnTo, scope, onConnectionCreated }: Props) {
           rows={personalRows}
           returnTo={returnTo}
           canEdit
-          icon={<User className='size-4' />}
+          icon={User}
           title='Personal'
           isLoading={isLoadingConnections}
           onConnectionCreated={onConnectionCreated}
@@ -125,7 +127,7 @@ function AppConnections({ app, returnTo, scope, onConnectionCreated }: Props) {
           rows={workspaceRows}
           returnTo={returnTo}
           canEdit={isAdminOrOwner}
-          icon={<Users className='size-4' />}
+          icon={Users}
           title='Workspace'
           isLoading={isLoadingConnections}
           onConnectionCreated={onConnectionCreated}
@@ -144,7 +146,7 @@ type ConnectionSectionProps = {
   rows: ConnectionRowType[]
   returnTo?: string
   canEdit: boolean
-  icon: React.ReactNode
+  icon: LucideIcon
   title: string
   isLoading: boolean
   onConnectionCreated?: (credId: string, scope: Scope) => void
@@ -175,13 +177,12 @@ function ConnectionSection({
   const showAddButton = canEdit && (isOAuth || isSecret)
 
   return (
-    <div className='space-y-2'>
-      <div className='flex items-end justify-between'>
-        <div className='flex items-center gap-2 tracking-tight font-semibold text-foreground text-base'>
-          {icon}
-          {title}
-        </div>
-        {showAddButton && (
+    <SettingsSection
+      className='space-y-2'
+      icon={icon}
+      title={title}
+      action={
+        showAddButton ? (
           <Button
             variant='outline'
             size='sm'
@@ -189,8 +190,8 @@ function ConnectionSection({
             <Plus />
             Add Connection
           </Button>
-        )}
-      </div>
+        ) : undefined
+      }>
       <ConnectionList
         isLoading={isLoading}
         emptyMessage={
@@ -260,6 +261,6 @@ function ConnectionSection({
       </ConnectionList>
       {flow.Dialogs}
       <rowActions.ConfirmDialog />
-    </div>
+    </SettingsSection>
   )
 }

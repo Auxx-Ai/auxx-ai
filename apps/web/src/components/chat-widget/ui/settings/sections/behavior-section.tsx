@@ -28,6 +28,7 @@ import {
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
+import { SettingsSection } from '~/components/global/settings-page'
 import { BaseType } from '~/components/workflow/types'
 import { VarEditorField, VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
 import { api } from '~/trpc/react'
@@ -91,16 +92,10 @@ export function BehaviorSection({ widget, channelId }: BehaviorSectionProps) {
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)}>
         <div className='p-6 space-y-8'>
-          <div>
-            <div className='space-y-1 mb-6'>
-              <div className='flex items-center gap-2 text-base font-semibold tracking-tight text-foreground'>
-                <SlidersHorizontal className='size-4' /> Engagement
-              </div>
-              <p className='text-sm text-muted-foreground'>
-                How and when the widget engages visitors.
-              </p>
-            </div>
-
+          <SettingsSection
+            icon={SlidersHorizontal}
+            title='Engagement'
+            description='How and when the widget engages visitors.'>
             <VarEditorField
               orientation='responsive'
               className='p-0 **:data-[slot=field-row-label]:w-auto! @sm:**:data-[slot=field-row-label]:w-auto! **:data-[slot=field-row-content]:flex **:data-[slot=field-row-content]:justify-end **:data-[slot=field-row-content]:pe-3'>
@@ -232,18 +227,12 @@ export function BehaviorSection({ widget, channelId }: BehaviorSectionProps) {
                 )}
               />
             </VarEditorField>
-          </div>
+          </SettingsSection>
 
-          <div>
-            <div className='space-y-1 mb-6'>
-              <div className='flex items-center gap-2 text-base font-semibold tracking-tight text-foreground'>
-                <MessageSquareOff className='size-4' /> Offline
-              </div>
-              <p className='text-sm text-muted-foreground'>
-                Message shown when chats start outside of operating hours.
-              </p>
-            </div>
-
+          <SettingsSection
+            icon={MessageSquareOff}
+            title='Offline'
+            description='Message shown when chats start outside of operating hours.'>
             <FormField
               control={form.control}
               name='offlineMessage'
@@ -260,7 +249,7 @@ export function BehaviorSection({ widget, channelId }: BehaviorSectionProps) {
                 </FormItem>
               )}
             />
-          </div>
+          </SettingsSection>
         </div>
 
         <div className='flex justify-end gap-2 border-t px-4 py-4'>

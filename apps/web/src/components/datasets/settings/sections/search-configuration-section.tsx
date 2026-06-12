@@ -12,6 +12,7 @@ import { FileText, Lightbulb, Search, Sparkles, Zap } from 'lucide-react'
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
+import { SettingsSection } from '~/components/global/settings-page'
 import { ConstantInputAdapter } from '~/components/workflow/ui/input-editor/constant-input-adapter'
 import { VarEditorField, VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
 import { api } from '~/trpc/react'
@@ -401,57 +402,50 @@ export function SearchConfigurationSection({
         <div className='flex flex-col lg:flex-row'>
           {/* Left Column - Search Type Selection */}
           <div className='lg:max-w-[400px] p-6 lg:pr-6'>
-            <div className='space-y-1 mb-6'>
-              <div className='flex items-center gap-2 text-base font-semibold tracking-tight text-foreground'>
-                <Search className='size-4' /> Search Type
-              </div>
-              <p className='text-sm text-muted-foreground'>
-                Choose how your dataset will be searched.
-              </p>
-            </div>
-
-            <FormField
-              control={form.control}
-              name='searchType'
-              render={({ field }) => (
-                <FormItem>
-                  <FormControl>
-                    <RadioGroup
-                      value={field.value}
-                      onValueChange={field.onChange}
-                      disabled={readOnly || updateDataset.isPending}>
-                      {Object.entries(SEARCH_TYPE_INFO).map(([type, info]) => {
-                        const Icon = info.icon
-                        return (
-                          <RadioGroupItemCard
-                            key={type}
-                            label={info.label}
-                            sublabel={info.badge}
-                            value={type}
-                            icon={<Icon />}
-                            description={info.description}
-                          />
-                        )
-                      })}
-                    </RadioGroup>
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+            <SettingsSection
+              icon={Search}
+              title='Search Type'
+              description='Choose how your dataset will be searched.'>
+              <FormField
+                control={form.control}
+                name='searchType'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormControl>
+                      <RadioGroup
+                        value={field.value}
+                        onValueChange={field.onChange}
+                        disabled={readOnly || updateDataset.isPending}>
+                        {Object.entries(SEARCH_TYPE_INFO).map(([type, info]) => {
+                          const Icon = info.icon
+                          return (
+                            <RadioGroupItemCard
+                              key={type}
+                              label={info.label}
+                              sublabel={info.badge}
+                              value={type}
+                              icon={<Icon />}
+                              description={info.description}
+                            />
+                          )
+                        })}
+                      </RadioGroup>
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </SettingsSection>
           </div>
 
           {/* Right Column - Search Type Specific Options */}
           <div className='flex-1 border-t lg:border-t-0 lg:border-l p-6 lg:pl-6'>
-            <div className='space-y-1 mb-6'>
-              <div className='flex items-center gap-2 text-base font-semibold tracking-tight text-foreground'>
-                <CurrentIcon className='size-4' /> {currentTypeInfo?.label} Options
-              </div>
-              <p className='text-sm text-muted-foreground'>
-                Configure settings specific to {currentTypeInfo?.label?.toLowerCase()}.
-              </p>
-            </div>
-            {renderSearchTypeOptions()}
+            <SettingsSection
+              icon={CurrentIcon}
+              title={`${currentTypeInfo?.label} Options`}
+              description={`Configure settings specific to ${currentTypeInfo?.label?.toLowerCase()}.`}>
+              {renderSearchTypeOptions()}
+            </SettingsSection>
           </div>
         </div>
 

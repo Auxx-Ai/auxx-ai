@@ -11,6 +11,7 @@ import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Separator } from '@auxx/ui/components/separator'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { cn } from '@auxx/ui/lib/utils'
+import type { LucideIcon } from 'lucide-react'
 import Link from 'next/link'
 import React, { useEffect, useRef, useState } from 'react'
 
@@ -143,5 +144,69 @@ export default function SettingsPage({
       <div ref={sentinelRef} className='h-px shrink-0' aria-hidden='true' />
       {children}
     </ScrollArea>
+  )
+}
+
+type SettingsSectionProps = {
+  /**
+   * Section icon. From client components pass a bare lucide icon (icon={Globe}); the
+   * component renders it as <Icon className='size-4' />. From server components pass a
+   * rendered element (icon={<Globe className='size-4' />}) — component references can't
+   * cross the server/client boundary.
+   */
+  icon?: LucideIcon | React.ReactNode
+  /** ReactNode so the title can include inline badges, counts, etc. */
+  title: React.ReactNode
+  /** Optional supporting copy under the title. */
+  description?: React.ReactNode
+  /** Optional right-aligned action (button/link/dropdown). */
+  action?: React.ReactNode
+  /** Section body. */
+  children?: React.ReactNode
+  /** Override classes on the root wrapper. */
+  className?: string
+}
+
+/** Render the icon prop: a rendered element passes through; a bare component gets sized. */
+function renderSectionIcon(icon: SettingsSectionProps['icon']) {
+  if (!icon) return null
+  if (React.isValidElement(icon)) return icon
+  const Icon = icon as LucideIcon
+  return <Icon className='size-4' />
+}
+
+/**
+ * A settings section: a titled header (icon + title + optional description/action)
+ * bound to its content. Pairs with {@link SettingsPage} — where SettingsPage wraps a
+ * page, SettingsSection wraps one section within it. The `section-header` and
+ * `section-content` data-slots are exposed for later styling/behavior overrides.
+ */
+export function SettingsSection({
+  icon,
+  title,
+  description,
+  action,
+  children,
+  className,
+}: SettingsSectionProps) {
+  return (
+    <div className={cn('space-y-4', className)}>
+      <div data-slot='section-header' className='space-y-1'>
+        <div className='flex items-center justify-between gap-2'>
+          <div className='flex items-center gap-2 text-base font-semibold tracking-tight text-foreground'>
+            {renderSectionIcon(icon)}
+            {title}
+          </div>
+          {action && <div className='shrink-0'>{action}</div>}
+        </div>
+        {description && <p className='text-sm text-muted-foreground'>{description}</p>}
+      </div>
+      {/* space-y-4 stacks multiple content children; a no-op when content is a single wrapper. */}
+      {children && (
+        <div data-slot='section-content' className='space-y-4'>
+          {children}
+        </div>
+      )}
+    </div>
   )
 }

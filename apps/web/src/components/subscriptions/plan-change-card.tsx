@@ -11,6 +11,7 @@ import { CreditCard, X } from 'lucide-react'
 import dynamic from 'next/dynamic'
 import Link from 'next/link'
 import { useState } from 'react'
+import { SettingsSection } from '~/components/global/settings-page'
 import { useDemo } from '~/hooks/use-demo'
 import { useUser } from '~/hooks/use-user'
 import { api } from '~/trpc/react'
@@ -89,11 +90,7 @@ export function PlanChangeCard() {
 
   return (
     <>
-      <div className='space-y-3'>
-        <div className='flex items-center gap-2 leading-none tracking-tight font-semibold text-foreground'>
-          <CreditCard className='size-4' /> Your Plan
-        </div>
-
+      <SettingsSection className='space-y-3' icon={CreditCard} title='Your Plan'>
         {subscriptionLoading ? (
           <div className='rounded-2xl border py-2 px-3'>
             <div className='flex items-center justify-between'>
@@ -188,7 +185,7 @@ export function PlanChangeCard() {
             </AlertDescription>
           </Alert>
         ) : null}
-      </div>
+      </SettingsSection>
 
       {dialogOpen ? <PlanChangeSummary open={dialogOpen} onOpenChange={setDialogOpen} /> : null}
     </>

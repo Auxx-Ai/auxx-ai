@@ -4,6 +4,7 @@
 import { ModelType } from '@auxx/lib/ai/providers/types'
 import { Button } from '@auxx/ui/components/button'
 import { X } from 'lucide-react'
+import { SettingsSection } from '~/components/global/settings-page'
 import { AiModelPicker } from '~/components/pickers/ai-model-picker'
 import { useSettings } from '~/hooks/use-settings'
 
@@ -20,14 +21,10 @@ export function ModelSection() {
   const modelId = getSetting('kopilot.modelId') as string | null
 
   return (
-    <section className='space-y-3'>
-      <div className='space-y-1'>
-        <h2 className='text-base font-semibold tracking-tight text-foreground'>Model</h2>
-        <p className='text-sm text-muted-foreground'>
-          Default model for Kopilot. Per-session and per-turn picks override this. Leave unset to
-          use the system default.
-        </p>
-      </div>
+    <SettingsSection
+      className='space-y-3'
+      title='Model'
+      description='Default model for Kopilot. Per-session and per-turn picks override this. Leave unset to use the system default.'>
       <div className='flex items-center gap-2'>
         <AiModelPicker
           value={modelId}
@@ -50,6 +47,6 @@ export function ModelSection() {
           </Button>
         )}
       </div>
-    </section>
+    </SettingsSection>
   )
 }
