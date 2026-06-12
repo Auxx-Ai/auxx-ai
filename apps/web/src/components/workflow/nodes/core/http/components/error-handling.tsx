@@ -18,10 +18,10 @@ import {
   SelectValue,
 } from '@auxx/ui/components/select'
 import { useCallback } from 'react'
+import { CodeEditor } from '~/components/schema-editor/ui/code-editor'
 import { useEdgeInteractions } from '~/components/workflow/hooks'
 import { Editor } from '~/components/workflow/ui/prompt-editor'
 import Section from '~/components/workflow/ui/section'
-import CodeEditor from '~/components/workflow/ui/structured-output-generator/code-editor'
 import { type DefaultValueItem, ErrorStrategy, type HttpNodeData } from '../types'
 
 interface ErrorHandlingProps {

@@ -1,4 +1,4 @@
-// apps/web/src/components/workflow/ui/structured-output-generator/code-editor.tsx
+// apps/web/src/components/schema-editor/ui/code-editor.tsx
 
 import { Spinner } from '@auxx/ui/components/spinner'
 import { useCopy } from '@auxx/ui/hooks/use-copy'
@@ -6,8 +6,7 @@ import { cn } from '@auxx/ui/lib/utils'
 import { Check, Clipboard, IndentIncrease } from 'lucide-react'
 import dynamic from 'next/dynamic'
 import { useTheme } from 'next-themes'
-import React, { type FC, useCallback, useEffect, useRef } from 'react'
-// import copy from 'copy-to-clipboard'
+import { type HTMLAttributes, useCallback, useEffect, useRef, useState } from 'react'
 import { Tooltip } from '~/components/global/tooltip'
 
 const Editor = dynamic(() => import('@monaco-editor/react').then((m) => m.Editor), {
@@ -19,16 +18,21 @@ const Editor = dynamic(() => import('@monaco-editor/react').then((m) => m.Editor
   ),
 })
 
-type CodeEditorProps = {
+interface CodeEditorProps extends HTMLAttributes<HTMLDivElement> {
   value: string
   onUpdate?: (value: string) => void
   showFormatButton?: boolean
   editorWrapperClassName?: string
   readOnly?: boolean
   hideTopMenu?: boolean
-} & React.HTMLAttributes<HTMLDivElement>
+}
 
-const CodeEditor: FC<CodeEditorProps> = ({
+/**
+ * Monaco-backed JSON editor (dynamically imported, SSR-disabled). Moved
+ * verbatim from the old StructuredOutputGenerator — the look/behavior is
+ * unchanged; only the module style was modernized to a named export.
+ */
+export function CodeEditor({
   value,
   onUpdate,
   showFormatButton = true,
@@ -36,10 +40,10 @@ const CodeEditor: FC<CodeEditorProps> = ({
   readOnly = false,
   hideTopMenu = false,
   className,
-}) => {
+}: CodeEditorProps) {
   const monacoRef = useRef<any>(null)
   const editorRef = useRef<any>(null)
-  const [isMounted, setIsMounted] = React.useState(false)
+  const [isMounted, setIsMounted] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
   const { theme } = useTheme()
   const { copy, copied } = useCopy({ toastMessage: 'Copied to clipboard' })
@@ -55,7 +59,6 @@ const CodeEditor: FC<CodeEditorProps> = ({
         colors: {
           'editor.background': '#00000000',
           'editor.lineHighlightBackground': '#00000000',
-
           focusBorder: '#00000000',
         },
       })
@@ -69,7 +72,6 @@ const CodeEditor: FC<CodeEditorProps> = ({
           focusBorder: '#00000000',
         },
       })
-      // Set initial theme based on current theme
       const currentTheme = theme === 'dark' ? 'dark-theme' : 'light-theme'
       monaco.editor.setTheme(currentTheme)
       setIsMounted(true)
@@ -92,15 +94,12 @@ const CodeEditor: FC<CodeEditorProps> = ({
     const resizeObserver = new ResizeObserver(() => {
       editorRef.current?.layout()
     })
-
     if (containerRef.current) resizeObserver.observe(containerRef.current)
-
     return () => {
       resizeObserver.disconnect()
     }
   }, [])
 
-  // Handle theme changes after editor is mounted
   useEffect(() => {
     if (isMounted && monacoRef.current) {
       const currentTheme = theme === 'dark' ? 'dark-theme' : 'light-theme'
@@ -171,7 +170,6 @@ const CodeEditor: FC<CodeEditorProps> = ({
             hideCursorInOverviewRuler: true,
             renderLineHighlightOnlyWhenFocus: false,
             renderLineHighlight: 'none',
-            // Hide scrollbar borders
             scrollbar: {
               vertical: 'hidden',
               horizontal: 'hidden',
@@ -185,5 +183,3 @@ const CodeEditor: FC<CodeEditorProps> = ({
     </div>
   )
 }
-
-export default React.memo(CodeEditor)

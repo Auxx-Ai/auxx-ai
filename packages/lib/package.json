@@ -520,6 +520,12 @@
       "import": "./dist/jobs/queues/types.mjs",
       "default": "./src/jobs/queues/types.ts"
     },
+    "./json-schema/client": {
+      "types": "./src/json-schema/client.ts",
+      "source": "./src/json-schema/client.ts",
+      "import": "./dist/json-schema/client.mjs",
+      "default": "./src/json-schema/client.ts"
+    },
     "./kb": {
       "types": "./src/kb/index.ts",
       "source": "./src/kb/index.ts",

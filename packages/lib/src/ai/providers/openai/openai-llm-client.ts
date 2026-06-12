@@ -2,6 +2,7 @@
 
 import type { Logger } from '@auxx/logger'
 import type OpenAI from 'openai'
+import { sanitizeFormatsForOpenAiStrict, stripVendorKeywords } from '../../../json-schema/vendor'
 import { LLMClient } from '../../clients/base/llm-client'
 import {
   type ClientConfig,
@@ -531,7 +532,11 @@ export class OpenAILLMClient extends LLMClient {
           // support JSON mode (`json_object`) but not strict Structured Outputs (`json_schema`).
           // Downgrade so recording/AI features still return parseable JSON on those models.
           if (!this.modelSupportsStrictJsonSchema(params.model)) {
-            processed.messages = this.injectSchemaIntoSystemPrompt(processed.messages, innerSchema)
+            // Strip editor-only `x-auxx` metadata before the schema reaches the prompt.
+            processed.messages = this.injectSchemaIntoSystemPrompt(
+              processed.messages,
+              stripVendorKeywords(innerSchema)
+            )
             processed.response_format = { type: 'json_object' }
             delete processed.json_schema
             this.logger.info(
@@ -543,8 +548,13 @@ export class OpenAILLMClient extends LLMClient {
             return processed
           }
 
+          // Drop editor-only `x-auxx` metadata and any `format` value strict
+          // mode rejects (e.g. `uri`) before handing the schema to OpenAI.
+          const schemaForOpenAI = sanitizeFormatsForOpenAiStrict(
+            stripVendorKeywords(innerSchema)
+          ) as Record<string, any>
+
           // OpenAI strict mode requires all properties to be in the required array
-          const schemaForOpenAI = { ...innerSchema }
           if (schemaForOpenAI.properties && typeof schemaForOpenAI.properties === 'object') {
             // For strict mode, ensure all properties are required
             schemaForOpenAI.required = Object.keys(schemaForOpenAI.properties)

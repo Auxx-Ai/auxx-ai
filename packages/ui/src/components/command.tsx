@@ -894,7 +894,13 @@ function CommandRadioItem({
   const renderIndicator = () => {
     switch (variant) {
       case 'check':
-        return isSelected ? <Check className='size-4 text-info' /> : <span className='size-4' />
+        return isSelected ? (
+          <div className='flex size-4 items-center justify-center rounded-full border border-blue-800 bg-info'>
+            <Check className='size-2.5! text-white' strokeWidth={4} />
+          </div>
+        ) : (
+          <span className='size-4' />
+        )
       case 'radio':
       default:
         return (

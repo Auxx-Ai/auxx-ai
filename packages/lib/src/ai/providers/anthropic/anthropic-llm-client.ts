@@ -1,6 +1,7 @@
 // packages/lib/src/ai/providers/anthropic/anthropic-llm-client.ts
 
 import type Anthropic from '@anthropic-ai/sdk'
+import { stripVendorKeywords } from '../../../json-schema/vendor'
 import type { Logger } from '../../../logger'
 import { LLMClient } from '../../clients/base/llm-client'
 import type {
@@ -392,7 +393,9 @@ export class AnthropicLLMClient extends LLMClient {
   /**
    * Create comprehensive JSON instruction based on schema
    */
-  private createSchemaBasedInstruction(schema: any): string {
+  private createSchemaBasedInstruction(rawSchema: any): string {
+    // Strip editor-only `x-auxx` metadata so it never reaches the prompt text.
+    const schema = stripVendorKeywords(rawSchema) as any
     let instruction = '\n\nIMPORTANT RESPONSE FORMAT REQUIREMENTS:\n'
     instruction += '- Respond with valid JSON only, no other text before or after\n'
     instruction += '- Follow this exact JSON schema:\n\n'

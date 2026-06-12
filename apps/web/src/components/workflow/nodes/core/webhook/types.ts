@@ -1,7 +1,7 @@
 // apps/web/src/components/workflow/nodes/core/webhook/types.ts
 
 import type { BaseNodeData, SpecificNode } from '~/components/workflow/types/node-base'
-import type { SchemaRoot } from '~/components/workflow/ui/structured-output-generator/types'
+import type { SchemaRoot } from '~/components/workflow/ui/json-schema-types'
 
 /**
  * Represents a webhook test event that is captured and stored for debugging

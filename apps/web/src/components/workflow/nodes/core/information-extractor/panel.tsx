@@ -13,12 +13,12 @@ import { Label } from '@auxx/ui/components/label'
 import { Switch } from '@auxx/ui/components/switch'
 import { BookText, FileJson, Pencil } from 'lucide-react'
 import React, { useState } from 'react'
+import { SchemaEditorDialog } from '~/components/schema-editor/ui/schema-editor-dialog'
 import { useNodeCrud, useReadOnly } from '~/components/workflow/hooks'
+import type { SchemaRoot } from '~/components/workflow/ui/json-schema-types'
 import ModelParameterModal from '~/components/workflow/ui/model-parameter'
 import { OutputVariablesDisplay } from '~/components/workflow/ui/output-variables'
 import { Editor } from '~/components/workflow/ui/prompt-editor'
-import StructuredOutputGenerator from '~/components/workflow/ui/structured-output-generator'
-import type { SchemaRoot } from '~/components/workflow/ui/structured-output-generator/types'
 import Section from '../../../ui/section'
 import { BasePanel } from '../../shared/base/base-panel'
 import { getTemplatesArray } from './constants'
@@ -190,15 +190,22 @@ const InformationExtractorPanelContentComponent: React.FC<
             </div>
           </div>
 
-          {/* Structured Output Generator Modal */}
-          <StructuredOutputGenerator
-            isShow={isSchemaOpen}
-            defaultSchema={config.structured_output?.schema}
-            onSave={(newSchema) => {
-              updateStructuredOutput(true, newSchema)
-              setIsSchemaOpen(false)
+          {/* Structured Output Editor */}
+          <SchemaEditorDialog
+            open={isSchemaOpen}
+            onOpenChange={setIsSchemaOpen}
+            title='Structured Output'
+            initial={{
+              schema: (config.structured_output?.schema as Record<string, unknown> | undefined) ?? {
+                type: 'object',
+                properties: {},
+              },
+              seededFrom: config.structured_output?.schema ? 'existing' : 'empty',
             }}
-            onClose={() => setIsSchemaOpen(false)}
+            policy={{ emitRequired: true }}
+            onSave={(newSchema) => {
+              updateStructuredOutput(true, newSchema as SchemaRoot)
+            }}
           />
         </div>
       </Section>

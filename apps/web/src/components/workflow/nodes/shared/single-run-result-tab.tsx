@@ -1,6 +1,7 @@
 // apps/web/src/components/workflow/nodes/shared/single-run-result-tab.tsx
 
 import type { WorkflowNodeExecutionEntity as WorkflowNodeExecution } from '@auxx/database/types'
+import { inferJsonSchema } from '@auxx/lib/json-schema/client'
 import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
@@ -15,12 +16,11 @@ import {
   XCircle,
 } from 'lucide-react'
 import { memo, useState } from 'react'
+import { SchemaEditorDialog } from '~/components/schema-editor/ui/schema-editor-dialog'
 import { LimitReachedDialog } from '~/components/subscriptions/limit-reached-dialog'
 import CodeEditor, { CodeLanguage } from '~/components/workflow/ui/code-editor'
+import type { SchemaRoot } from '~/components/workflow/ui/json-schema-types'
 import Section from '~/components/workflow/ui/section'
-import StructuredOutputGenerator from '~/components/workflow/ui/structured-output-generator'
-import type { SchemaRoot } from '~/components/workflow/ui/structured-output-generator/types'
-import { jsonToSchema } from '~/components/workflow/utils/schema-to-variable'
 import { useDemo } from '~/hooks/use-demo'
 import { useRunSingleNode } from '../../hooks'
 import { useRunStore } from '../../store/run-store'
@@ -306,7 +306,7 @@ export const SingleRunResultTab = memo(function SingleRunResultTab({
                 <Button
                   variant='outline'
                   size='sm'
-                  onClick={() => onApplySchema(jsonToSchema(outputData))}>
+                  onClick={() => onApplySchema(inferJsonSchema(outputData) as SchemaRoot)}>
                   Apply as Output Schema
                 </Button>
                 {inferredSchema && (
@@ -324,14 +324,21 @@ export const SingleRunResultTab = memo(function SingleRunResultTab({
 
       {/* Schema editor dialog */}
       {onApplySchema && (
-        <StructuredOutputGenerator
-          isShow={isSchemaEditorOpen}
-          defaultSchema={inferredSchema}
-          onSave={(newSchema) => {
-            onApplySchema(newSchema)
-            setIsSchemaEditorOpen(false)
+        <SchemaEditorDialog
+          open={isSchemaEditorOpen}
+          onOpenChange={setIsSchemaEditorOpen}
+          title='Structured Output'
+          initial={{
+            schema: (inferredSchema as Record<string, unknown> | undefined) ?? {
+              type: 'object',
+              properties: {},
+            },
+            seededFrom: inferredSchema ? 'existing' : 'empty',
           }}
-          onClose={() => setIsSchemaEditorOpen(false)}
+          policy={{ emitRequired: true }}
+          onSave={(newSchema) => {
+            onApplySchema(newSchema as SchemaRoot)
+          }}
         />
       )}
     </>

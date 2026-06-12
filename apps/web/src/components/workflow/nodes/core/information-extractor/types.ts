@@ -1,7 +1,7 @@
 // apps/web/src/components/workflow/nodes/core/information-extractor/types.ts
 
 import type { BaseNodeData, SpecificNode } from '~/components/workflow/types'
-import type { SchemaRoot } from '~/components/workflow/ui/structured-output-generator/types'
+import type { SchemaRoot } from '~/components/workflow/ui/json-schema-types'
 import type { UnifiedVariable } from '../if-else'
 
 /**
