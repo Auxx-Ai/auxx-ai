@@ -630,8 +630,10 @@ type AuthoringSuggestion = z.infer<typeof authoringSuggestionSchema>
  * `null` → the item is dropped.
  */
 function resolveToolName(name: string, toolMap: Map<string, AgentToolDefinition>): string | null {
-  if (toolMap.has(name)) return name
-  const matches = [...toolMap.keys()].filter((n) => n.endsWith(`_${name}`))
+  // Small models copy the prompt's backticks into the JSON value (`mcp__…`).
+  const cleaned = name.trim().replace(/^`+|`+$/g, '')
+  if (toolMap.has(cleaned)) return cleaned
+  const matches = [...toolMap.keys()].filter((n) => n.endsWith(`_${cleaned}`))
   return matches.length === 1 ? (matches[0] ?? null) : null
 }
 

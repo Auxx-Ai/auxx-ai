@@ -10,10 +10,8 @@ import type { AgentToolDefinition } from '../agent-framework/types'
 // the adapter returns raw, walkable output and the boundary is re-applied on
 // model replay. Re-exported here for the MCP barrel + tests.
 import { wrapMcpOutput } from '../agent-framework/utils'
-import { buildMcpRequestContext } from './auth'
-import { mcpCallTool } from './client'
-import { markMcpConnectionFailed } from './connections'
-import { McpAuthError, mapMcpError } from './errors'
+import { callMcpToolWithAuthRetry } from './call-with-auth-retry'
+import { mapMcpError } from './errors'
 import { checkAndCountMcpCall } from './rate-limiter'
 import type { CachedMcpServer } from './types'
 
@@ -141,56 +139,47 @@ function buildOne(server: CachedMcpServer, tool: CachedTool): AgentToolDefinitio
         }
       }
 
-      const ctxResult = await buildMcpRequestContext({
+      // Handles context build, the call, and 401 refresh-and-retry; an unrecoverable
+      // auth failure is already flagged for reconnect when it comes back here.
+      const outcome = await callMcpToolWithAuthRetry({
         mcpServerId: server.serverId,
         organizationId: ctx.organizationId,
+        toolName: tool.name,
+        args,
       })
-      if (ctxResult.isErr()) {
-        logCall(false, 'context_unavailable')
-        return { success: false, output: null, error: ctxResult.error.message }
-      }
 
-      try {
-        const result = await mcpCallTool(
-          { endpoint: ctxResult.value.endpoint, headers: ctxResult.value.headers },
-          tool.name,
-          args
-        )
-        // Return the structured value (or parsed JSON text) so `tool:<name>.path`
-        // resolves at runtime; the injection boundary is re-applied at the wire
-        // layer from the tool's `outputBoundary` marker. Genuinely textual tools
-        // stay a scalar string — correct, just not walkable.
-        const value =
-          result.structuredContent !== undefined
-            ? result.structuredContent
-            : (tryParseJson(result.text) ?? result.text)
-        if (result.isError) {
-          logCall(false, 'tool_error')
-          // Keep the structured value on `output` (still wire-fenced) and a
-          // human-readable error string alongside it.
-          return { success: false, output: value, error: result.text }
+      if (!outcome.ok) {
+        if (outcome.kind === 'context') {
+          logCall(false, 'context_unavailable')
+          return { success: false, output: null, error: outcome.message }
         }
-        logCall(true)
-        return { success: true, output: value }
-      } catch (error) {
-        const mapped = mapMcpError(error)
-        if (error instanceof McpAuthError) {
-          // Fire-and-forget: flag the connection so the settings UI shows "reconnect".
-          void markMcpConnectionFailed({
-            mcpServerId: server.serverId,
-            organizationId: ctx.organizationId,
-          })
+        if (outcome.kind === 'auth') {
           logCall(false, 'auth')
-          return {
-            success: false,
-            output: null,
-            error: 'MCP server auth failed — an admin may need to reconnect.',
-          }
+          return { success: false, output: null, error: outcome.message }
         }
+        const mapped = mapMcpError(outcome.error)
         logCall(false, mapped.code)
         logger.warn('MCP tool execute failed', { server: server.slug, tool: tool.name, mapped })
         return { success: false, output: null, error: mapped.message }
       }
+
+      const result = outcome.result
+      // Return the structured value (or parsed JSON text) so `tool:<name>.path`
+      // resolves at runtime; the injection boundary is re-applied at the wire
+      // layer from the tool's `outputBoundary` marker. Genuinely textual tools
+      // stay a scalar string — correct, just not walkable.
+      const value =
+        result.structuredContent !== undefined
+          ? result.structuredContent
+          : (tryParseJson(result.text) ?? result.text)
+      if (result.isError) {
+        logCall(false, 'tool_error')
+        // Keep the structured value on `output` (still wire-fenced) and a
+        // human-readable error string alongside it.
+        return { success: false, output: value, error: result.text }
+      }
+      logCall(true)
+      return { success: true, output: value }
     },
   }
 }

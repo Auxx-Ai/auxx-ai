@@ -4,6 +4,8 @@
 
 export type { McpRequestContext } from './auth'
 export { buildMcpRequestContext } from './auth'
+export type { McpCallOutcome } from './call-with-auth-retry'
+export { callMcpToolWithAuthRetry } from './call-with-auth-retry'
 export { createMcpCapabilities } from './capabilities'
 export { mcpCallTool, mcpListTools, withMcpSession } from './client'
 export type {

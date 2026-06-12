@@ -327,6 +327,24 @@ describe('suggestAgentSimulations — drop pipeline', () => {
     })
   })
 
+  it('rescues a toolName wrapped in backticks copied from the prompt', async () => {
+    const result = await run(
+      envelope([
+        validItem({
+          mocks: [{ toolName: '`get_order`', output: JSON.stringify({ status: 'shipped' }) }],
+          assertions: [{ type: 'tool_called', toolName: '`shopify_find_shopify_order`' }],
+        }),
+      ])
+    )
+    const value = result._unsafeUnwrap()
+    expect(value.dropped).toBe(0)
+    expect(value.suggestions[0]?.config.connectorMocks[0]?.toolName).toBe('get_order')
+    expect(value.suggestions[0]?.assertions[0]).toMatchObject({
+      type: 'tool_called',
+      data: { toolName: 'shopify_find_shopify_order' },
+    })
+  })
+
   it('drops an ambiguous tail name instead of guessing', async () => {
     // Both get_order and shopify_find_shopify_order end with `_order`.
     await dropCase(validItem({ mocks: [{ toolName: 'order', output: '{}' }] }))

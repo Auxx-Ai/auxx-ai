@@ -82,10 +82,10 @@ export function EvalCaseRow({
         isOpen={isOpen}
         onToggleOpen={() => setIsOpen((o) => !o)}
         secondary={
-          <span className='flex items-center gap-1.5'>
+          <span className='flex items-center gap-1.5 shrink-0'>
             <EvalStatusPill status={primary?.status ?? null} />
             {draft ? (
-              <span className='flex items-center gap-1'>
+              <span className='flex items-center gap-1 shrink-0'>
                 <EvalDraftBadge />
                 <EvalStatusDot status={draft.status} />
               </span>
