@@ -44,6 +44,7 @@ import {
 import { useRouter } from 'next/navigation'
 // src/app/(auth)/app/settings/members/_components/member-list.tsx
 import { useState } from 'react'
+import { SettingsSection } from '~/components/global/settings-page'
 import { useUser } from '~/hooks/use-user'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { api } from '~/trpc/react'
@@ -280,10 +281,7 @@ export function MemberList({
   }
   return (
     <div className='p-3 sm:p-6'>
-      <div className='space-y-4'>
-        <div className='flex items-center gap-2 tracking-tight font-semibold text-foreground text-base'>
-          <Users className='size-4' /> Members
-        </div>
+      <SettingsSection className='space-y-4' icon={Users} title='Members'>
         {displayList.map((item) => {
           const isCopyingThisLink =
             getAndCopyLinkMutation.isPending &&
@@ -453,7 +451,7 @@ export function MemberList({
             </div>
           )
         })}
-      </div>
+      </SettingsSection>
 
       {/* Remove member confirmation dialog */}
       <Dialog open={isRemoveDialogOpen} onOpenChange={setIsRemoveDialogOpen}>

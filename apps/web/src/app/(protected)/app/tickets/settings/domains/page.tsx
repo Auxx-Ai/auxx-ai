@@ -40,7 +40,7 @@ import {
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { EmptyState } from '~/components/global/empty-state'
-import SettingsPage from '~/components/global/settings-page'
+import SettingsPage, { SettingsSection } from '~/components/global/settings-page'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
 import DomainTestingTab from '../../_components/domain-testing-tab'
@@ -388,17 +388,14 @@ function DomainsListView({
   }
 
   return (
-    <div className='space-y-4'>
-      {/* Header with Add Button */}
-      <div className='flex items-center justify-between'>
-        <div className='flex items-center gap-2 leading-none tracking-tight font-semibold text-foreground'>
-          <Globe className='size-4' /> Email Domains
-        </div>
+    <SettingsSection
+      icon={Globe}
+      title='Email Domains'
+      action={
         <Button size='sm' onClick={onAddDomain}>
           <Plus /> Add Domain
         </Button>
-      </div>
-
+      }>
       {/* Domain List */}
       <div className='space-y-2'>
         {domains.map((domain) => (
@@ -465,6 +462,6 @@ function DomainsListView({
       </div>
 
       <ConfirmDialog />
-    </div>
+    </SettingsSection>
   )
 }

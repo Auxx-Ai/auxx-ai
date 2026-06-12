@@ -8,6 +8,7 @@ import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { Building, Loader2, MailPlus } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useMemo, useState } from 'react'
+import { SettingsSection } from '~/components/global/settings-page'
 import {
   LeaveOrganizationDialog,
   OrganizationItem,
@@ -115,50 +116,47 @@ export function ProfileMemberships() {
 
       {/* Pending Invitations Section */}
       {!isLoading && pendingInvites && pendingInvites.length > 0 && (
-        <div className='space-y-4'>
-          <div className='flex items-center gap-2 leading-none tracking-tight font-semibold text-foreground'>
-            <MailPlus className='size-4' /> Pending Invitations
+        <SettingsSection icon={MailPlus} title='Pending Invitations'>
+          <div className='space-y-4'>
+            {pendingInvites.map((invite) => (
+              <PendingInvitationItem
+                key={invite.id}
+                invitation={invite}
+                onAccept={() => acceptInvite.mutate({ invitationId: invite.id })}
+                isAccepting={
+                  acceptInvite.isPending && acceptInvite.variables?.invitationId === invite.id
+                }
+              />
+            ))}
+            <Separator />
           </div>
-          {pendingInvites.map((invite) => (
-            <PendingInvitationItem
-              key={invite.id}
-              invitation={invite}
-              onAccept={() => acceptInvite.mutate({ invitationId: invite.id })}
-              isAccepting={
-                acceptInvite.isPending && acceptInvite.variables?.invitationId === invite.id
-              }
-            />
-          ))}
-          <Separator />
-        </div>
+        </SettingsSection>
       )}
 
       {/* Existing Memberships Section */}
       {organizations.length > 0 && (
-        <div className='space-y-4'>
-          <div className='flex items-center gap-2 leading-none tracking-tight font-semibold text-foreground'>
-            <Building className='size-4' /> Your Organizations
+        <SettingsSection icon={Building} title='Your Organizations'>
+          <div className='space-y-4'>
+            {organizations.map((org) => {
+              const isOwner = org.role === OrganizationRoleEnum.OWNER
+              const canLeave = !isOwner || organizations.length > 1
+
+              return (
+                <OrganizationItem
+                  key={org.id}
+                  organization={org}
+                  isDefault={org.id === defaultOrganizationId}
+                  canLeave={canLeave}
+                  onLeave={() => {
+                    setSelectedOrgToLeave(org)
+                    setIsLeaveDialogOpen(true)
+                  }}
+                  isLeaving={leaveOrganization.isPending}
+                />
+              )
+            })}
           </div>
-
-          {organizations.map((org) => {
-            const isOwner = org.role === OrganizationRoleEnum.OWNER
-            const canLeave = !isOwner || organizations.length > 1
-
-            return (
-              <OrganizationItem
-                key={org.id}
-                organization={org}
-                isDefault={org.id === defaultOrganizationId}
-                canLeave={canLeave}
-                onLeave={() => {
-                  setSelectedOrgToLeave(org)
-                  setIsLeaveDialogOpen(true)
-                }}
-                isLeaving={leaveOrganization.isPending}
-              />
-            )
-          })}
-        </div>
+        </SettingsSection>
       )}
 
       {/* No Memberships and No Invites */}

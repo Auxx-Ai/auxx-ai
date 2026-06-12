@@ -21,6 +21,7 @@ import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
 import { Activity, Calendar, Database, FileText, Hash, Settings } from 'lucide-react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
+import { SettingsSection } from '~/components/global/settings-page'
 import { api } from '~/trpc/react'
 
 interface GeneralSettingsSectionProps {
@@ -100,16 +101,11 @@ export function GeneralSettingsSection({
         <div className='flex flex-col lg:flex-row'>
           {/* Left Column - Form Fields */}
           <div className='flex-1 p-6 lg:pr-6'>
-            <div className='space-y-1 mb-6'>
-              <div className='flex items-center gap-2 text-base font-semibold tracking-tight text-foreground'>
-                <Settings className='size-4' /> General Settings
-              </div>
-              <p className='text-sm text-muted-foreground'>
-                Configure the basic information for your dataset.
-              </p>
-            </div>
-
-            <div className='space-y-4'>
+            <SettingsSection
+              className='space-y-4'
+              icon={Settings}
+              title='General Settings'
+              description='Configure the basic information for your dataset.'>
               <FormField
                 control={form.control}
                 name='name'
@@ -158,103 +154,104 @@ export function GeneralSettingsSection({
                   />
                 )}
               />
-            </div>
+            </SettingsSection>
           </div>
 
           {/* Right Column - Dataset Information */}
           <div className='flex-1 border-t lg:border-t-0 lg:border-l p-6 lg:pl-6'>
-            <div className='space-y-1 mb-6'>
-              <div className='flex items-center gap-2 text-base font-semibold tracking-tight text-foreground'>
-                <Database className='size-4' /> Dataset Information
-              </div>
-              <p className='text-sm text-muted-foreground'>
-                Read-only metadata about your dataset.
-              </p>
-            </div>
+            <SettingsSection
+              className='space-y-4'
+              icon={Database}
+              title='Dataset Information'
+              description='Read-only metadata about your dataset.'>
+              <div className='overflow-hidden rounded-md border bg-background'>
+                <Table>
+                  <TableBody>
+                    <TableRow className='*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r'>
+                      <TableCell className='bg-muted/50 py-2 font-medium'>
+                        <div className='flex items-center gap-1'>
+                          <FileText className='size-3.5 text-muted-foreground' />
+                          Documents
+                        </div>
+                      </TableCell>
+                      <TableCell className='py-2'>
+                        {dataset.documentCount.toLocaleString()}
+                      </TableCell>
+                    </TableRow>
 
-            <div className='overflow-hidden rounded-md border bg-background'>
-              <Table>
-                <TableBody>
-                  <TableRow className='*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r'>
-                    <TableCell className='bg-muted/50 py-2 font-medium'>
-                      <div className='flex items-center gap-1'>
-                        <FileText className='size-3.5 text-muted-foreground' />
-                        Documents
-                      </div>
-                    </TableCell>
-                    <TableCell className='py-2'>{dataset.documentCount.toLocaleString()}</TableCell>
-                  </TableRow>
+                    <TableRow className='*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r'>
+                      <TableCell className='bg-muted/50 py-2 font-medium'>
+                        <div className='flex items-center gap-1'>
+                          <Database className='size-3.5 text-muted-foreground' />
+                          Total Size
+                        </div>
+                      </TableCell>
+                      <TableCell className='py-2'>
+                        {formatBytes(Number(dataset.totalSize))}
+                      </TableCell>
+                    </TableRow>
 
-                  <TableRow className='*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r'>
-                    <TableCell className='bg-muted/50 py-2 font-medium'>
-                      <div className='flex items-center gap-1'>
-                        <Database className='size-3.5 text-muted-foreground' />
-                        Total Size
-                      </div>
-                    </TableCell>
-                    <TableCell className='py-2'>{formatBytes(Number(dataset.totalSize))}</TableCell>
-                  </TableRow>
-
-                  <TableRow className='*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r'>
-                    <TableCell className='bg-muted/50 py-2 font-medium'>
-                      <div className='flex items-center gap-1'>
-                        <Calendar className='size-3.5 text-muted-foreground' />
-                        Created
-                      </div>
-                    </TableCell>
-                    <TableCell className='py-2'>{formatDate(dataset.createdAt)}</TableCell>
-                  </TableRow>
-
-                  <TableRow className='*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r'>
-                    <TableCell className='bg-muted/50 py-2 font-medium'>
-                      <div className='flex items-center gap-1'>
-                        <Calendar className='size-3.5 text-muted-foreground' />
-                        Last Updated
-                      </div>
-                    </TableCell>
-                    <TableCell className='py-2'>{formatDate(dataset.updatedAt)}</TableCell>
-                  </TableRow>
-
-                  {dataset.lastIndexedAt && (
                     <TableRow className='*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r'>
                       <TableCell className='bg-muted/50 py-2 font-medium'>
                         <div className='flex items-center gap-1'>
                           <Calendar className='size-3.5 text-muted-foreground' />
-                          Last Indexed
+                          Created
                         </div>
                       </TableCell>
-                      <TableCell className='py-2'>{formatDate(dataset.lastIndexedAt)}</TableCell>
+                      <TableCell className='py-2'>{formatDate(dataset.createdAt)}</TableCell>
                     </TableRow>
-                  )}
 
-                  <TableRow className='*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r'>
-                    <TableCell className='bg-muted/50 py-2 font-medium'>
-                      <div className='flex items-center gap-1'>
-                        <Hash className='size-3.5 text-muted-foreground' />
-                        ID
-                      </div>
-                    </TableCell>
-                    <TableCell className='py-2'>
-                      <code className='text-xs bg-muted px-2 py-1 rounded'>{dataset.id}</code>
-                    </TableCell>
-                  </TableRow>
+                    <TableRow className='*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r'>
+                      <TableCell className='bg-muted/50 py-2 font-medium'>
+                        <div className='flex items-center gap-1'>
+                          <Calendar className='size-3.5 text-muted-foreground' />
+                          Last Updated
+                        </div>
+                      </TableCell>
+                      <TableCell className='py-2'>{formatDate(dataset.updatedAt)}</TableCell>
+                    </TableRow>
 
-                  <TableRow className='*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r'>
-                    <TableCell className='bg-muted/50 py-2 font-medium'>
-                      <div className='flex items-center gap-1'>
-                        <Activity className='size-3.5 text-muted-foreground' />
-                        Status
-                      </div>
-                    </TableCell>
-                    <TableCell className='py-2'>
-                      <Badge variant={STATUS_INFO[dataset.status].variant}>
-                        {STATUS_INFO[dataset.status].label}
-                      </Badge>
-                    </TableCell>
-                  </TableRow>
-                </TableBody>
-              </Table>
-            </div>
+                    {dataset.lastIndexedAt && (
+                      <TableRow className='*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r'>
+                        <TableCell className='bg-muted/50 py-2 font-medium'>
+                          <div className='flex items-center gap-1'>
+                            <Calendar className='size-3.5 text-muted-foreground' />
+                            Last Indexed
+                          </div>
+                        </TableCell>
+                        <TableCell className='py-2'>{formatDate(dataset.lastIndexedAt)}</TableCell>
+                      </TableRow>
+                    )}
+
+                    <TableRow className='*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r'>
+                      <TableCell className='bg-muted/50 py-2 font-medium'>
+                        <div className='flex items-center gap-1'>
+                          <Hash className='size-3.5 text-muted-foreground' />
+                          ID
+                        </div>
+                      </TableCell>
+                      <TableCell className='py-2'>
+                        <code className='text-xs bg-muted px-2 py-1 rounded'>{dataset.id}</code>
+                      </TableCell>
+                    </TableRow>
+
+                    <TableRow className='*:border-border hover:bg-transparent [&>:not(:last-child)]:border-r'>
+                      <TableCell className='bg-muted/50 py-2 font-medium'>
+                        <div className='flex items-center gap-1'>
+                          <Activity className='size-3.5 text-muted-foreground' />
+                          Status
+                        </div>
+                      </TableCell>
+                      <TableCell className='py-2'>
+                        <Badge variant={STATUS_INFO[dataset.status].variant}>
+                          {STATUS_INFO[dataset.status].label}
+                        </Badge>
+                      </TableCell>
+                    </TableRow>
+                  </TableBody>
+                </Table>
+              </div>
+            </SettingsSection>
           </div>
         </div>
 

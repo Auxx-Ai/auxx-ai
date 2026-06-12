@@ -21,6 +21,7 @@ import { AlertTriangle, Brain, CheckCircle, Info, Lightbulb } from 'lucide-react
 import { useMemo } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
+import { SettingsSection } from '~/components/global/settings-page'
 import { AiModelPicker, type ModelPickerItem } from '~/components/pickers/ai-model-picker'
 import { VarEditorField, VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
 import { api } from '~/trpc/react'
@@ -168,106 +169,105 @@ export function EmbeddingSettingsSection({
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)}>
         <div className='p-6'>
-          {/* Header */}
-          <div className='space-y-1 mb-6'>
-            <div className='flex items-center gap-2 text-base font-semibold tracking-tight text-foreground'>
-              <Brain className='size-4' /> Embedding Model
-              {dataset.embeddingModel ? (
-                <Badge variant='default' className='flex items-center gap-1 ml-2'>
-                  <CheckCircle className='size-3' />
-                  Configured
-                </Badge>
-              ) : (
-                <Badge variant='destructive' className='flex items-center gap-1 ml-2'>
-                  <AlertTriangle className='size-3' />
-                  Not Configured
-                </Badge>
-              )}
-              {isUsingSystemDefault && (
-                <Badge variant='secondary' className='flex items-center gap-1'>
-                  <Info className='size-3' />
-                  System Default
-                </Badge>
-              )}
-            </div>
-            <p className='text-sm text-muted-foreground'>
-              Select an embedding model for vector search.
-            </p>
-          </div>
-
-          {/* Model Selection */}
-          <VarEditorField className='p-0 [&_[data-slot=field-row-label]]:w-60'>
-            <VarEditorFieldRow
-              title='Embedding Model'
-              description='Select a text embedding model from your configured providers'>
-              <FormField
-                control={form.control}
-                name='embeddingModel'
-                render={({ field }) => (
-                  <FormItem className='flex-1'>
-                    <AiModelPicker
-                      data={unifiedModelData.data}
-                      value={field.value ?? null}
-                      onChange={handleModelChange}
-                      modelTypes={[ModelType.TEXT_EMBEDDING]}
-                      showUnconfigured={false}
-                      placeholder='Select embedding model...'
-                      triggerVariant='transparent'
-                      triggerClassName='w-full justify-between'
-                      isUpdating={unifiedModelData.isLoading}
-                    />
-                    <FormMessage />
-                  </FormItem>
+          <SettingsSection
+            icon={Brain}
+            title={
+              <>
+                Embedding Model
+                {dataset.embeddingModel ? (
+                  <Badge variant='default' className='flex items-center gap-1 ml-2'>
+                    <CheckCircle className='size-3' />
+                    Configured
+                  </Badge>
+                ) : (
+                  <Badge variant='destructive' className='flex items-center gap-1 ml-2'>
+                    <AlertTriangle className='size-3' />
+                    Not Configured
+                  </Badge>
                 )}
-              />
-            </VarEditorFieldRow>
-
-            {/* Dimension selector - only show if model supports configurable dimensions */}
-            {hasConfigurableDimensions && (
+                {isUsingSystemDefault && (
+                  <Badge variant='secondary' className='flex items-center gap-1'>
+                    <Info className='size-3' />
+                    System Default
+                  </Badge>
+                )}
+              </>
+            }
+            description='Select an embedding model for vector search.'>
+            {/* Model Selection */}
+            <VarEditorField className='p-0 [&_[data-slot=field-row-label]]:w-60'>
               <VarEditorFieldRow
-                title='Embedding Dimensions'
-                description={
-                  dimensionRule?.help ||
-                  'Smaller dimensions use less storage but may reduce accuracy.'
-                }>
+                title='Embedding Model'
+                description='Select a text embedding model from your configured providers'>
                 <FormField
                   control={form.control}
-                  name='vectorDimension'
-                  className='space-y-0'
+                  name='embeddingModel'
                   render={({ field }) => (
-                    <FormItem className='flex-1 mb-0 space-y-0!'>
-                      <Select
-                        value={field.value?.toString() ?? defaultDimension.toString()}
-                        onValueChange={(v) => field.onChange(parseInt(v, 10))}>
-                        <SelectTrigger className='w-full ' size='sm' variant='transparent'>
-                          <SelectValue placeholder='Select dimension' />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {availableDimensions.map((dim) => (
-                            <SelectItem key={dim} value={dim.toString()}>
-                              {dim} dimensions {dim === defaultDimension && '(default)'}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                    <FormItem className='flex-1'>
+                      <AiModelPicker
+                        data={unifiedModelData.data}
+                        value={field.value ?? null}
+                        onChange={handleModelChange}
+                        modelTypes={[ModelType.TEXT_EMBEDDING]}
+                        showUnconfigured={false}
+                        placeholder='Select embedding model...'
+                        triggerVariant='transparent'
+                        triggerClassName='w-full justify-between'
+                        isUpdating={unifiedModelData.isLoading}
+                      />
                       <FormMessage />
                     </FormItem>
                   )}
                 />
               </VarEditorFieldRow>
-            )}
-          </VarEditorField>
 
-          {/* Warning for dimension changes on existing datasets */}
-          {dimensionChanged && (
-            <Alert variant='destructive' className='mt-4'>
-              <AlertTriangle className='h-4 w-4' />
-              <AlertDescription>
-                Changing dimensions from {dataset.vectorDimension} to {currentDimension} will
-                require re-indexing all document segments in this dataset.
-              </AlertDescription>
-            </Alert>
-          )}
+              {/* Dimension selector - only show if model supports configurable dimensions */}
+              {hasConfigurableDimensions && (
+                <VarEditorFieldRow
+                  title='Embedding Dimensions'
+                  description={
+                    dimensionRule?.help ||
+                    'Smaller dimensions use less storage but may reduce accuracy.'
+                  }>
+                  <FormField
+                    control={form.control}
+                    name='vectorDimension'
+                    className='space-y-0'
+                    render={({ field }) => (
+                      <FormItem className='flex-1 mb-0 space-y-0!'>
+                        <Select
+                          value={field.value?.toString() ?? defaultDimension.toString()}
+                          onValueChange={(v) => field.onChange(parseInt(v, 10))}>
+                          <SelectTrigger className='w-full ' size='sm' variant='transparent'>
+                            <SelectValue placeholder='Select dimension' />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {availableDimensions.map((dim) => (
+                              <SelectItem key={dim} value={dim.toString()}>
+                                {dim} dimensions {dim === defaultDimension && '(default)'}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </VarEditorFieldRow>
+              )}
+            </VarEditorField>
+
+            {/* Warning for dimension changes on existing datasets */}
+            {dimensionChanged && (
+              <Alert variant='destructive' className='mt-4'>
+                <AlertTriangle className='h-4 w-4' />
+                <AlertDescription>
+                  Changing dimensions from {dataset.vectorDimension} to {currentDimension} will
+                  require re-indexing all document segments in this dataset.
+                </AlertDescription>
+              </Alert>
+            )}
+          </SettingsSection>
         </div>
 
         {/* Action Buttons */}

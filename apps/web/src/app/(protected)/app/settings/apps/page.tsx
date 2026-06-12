@@ -23,7 +23,7 @@ import { dedupeInstallationsByApp } from '~/components/apps/dedupe-installations
 import { useUninstallApp } from '~/components/apps/hooks/use-uninstall-app'
 import { AppIcon } from '~/components/apps/ui/app-icon'
 import { AppListCard } from '~/components/apps/ui/app-list-card'
-import SettingsPage from '~/components/global/settings-page'
+import SettingsPage, { SettingsSection } from '~/components/global/settings-page'
 import { McpAppsSection } from '~/components/mcp/ui/mcp-apps-section'
 import { useUser } from '~/hooks/use-user'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
@@ -241,20 +241,19 @@ export default function IntegrationList() {
       button={<></>}>
       <ConfirmDialog />
       <div className='flex flex-col flex-1 p-3 sm:p-6 space-y-8'>
-        <div className='space-y-2'>
-          <div className='flex items-center justify-between gap-2'>
-            <div className='flex items-center gap-2 tracking-tight font-semibold text-foreground text-base'>
-              <Globe className='size-4' />
-              Installed apps
-            </div>
-            {isAdminOrOwner && hasMoreInstalled && (
+        <SettingsSection
+          className='space-y-2'
+          icon={Globe}
+          title='Installed apps'
+          action={
+            isAdminOrOwner && hasMoreInstalled ? (
               <Link href='/app/settings/apps/installed'>
                 <Button variant='ghost' size='sm'>
                   View all
                 </Button>
               </Link>
-            )}
-          </div>
+            ) : undefined
+          }>
           <div className='w-full @container'>
             {isAdminOrOwner ? (
               installedAppsToShow.length > 0 ? (
@@ -309,23 +308,18 @@ export default function IntegrationList() {
               </div>
             )}
           </div>
-        </div>
+        </SettingsSection>
         {/* MCP servers — connected (installed) + curated browse + add custom. */}
         {hasMcpAccess && (
           <McpAppsSection isAdminOrOwner={isAdminOrOwner} searchQuery={searchQuery} />
         )}
 
         {isAdminOrOwner && (
-          <div className='space-y-6'>
-            <div className='space-y-1'>
-              <div className='flex items-center gap-2 tracking-tight font-semibold text-foreground text-base'>
-                <Globe className='size-4' />
-                Browse apps
-              </div>
-              <div className='text-sm text-muted-foreground'>
-                Discover new apps to help you work better
-              </div>
-            </div>
+          <SettingsSection
+            className='space-y-6'
+            icon={Globe}
+            title='Browse apps'
+            description='Discover new apps to help you work better'>
             <div className='flex flex-col gap-6 justify-start w-full'>
               <div className='sticky pt-20 -mt-20  top-0'>
                 <div className='grid sm:grid-cols-3 pb-4 sm:pb-0'>
@@ -429,7 +423,7 @@ export default function IntegrationList() {
                 </div>
               </div>
             </div>
-          </div>
+          </SettingsSection>
         )}
       </div>
     </SettingsPage>

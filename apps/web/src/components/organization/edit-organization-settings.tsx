@@ -24,6 +24,7 @@ import { Building, Check, Copy } from 'lucide-react'
 import { useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
+import { SettingsSection } from '~/components/global/settings-page'
 import { useDemo } from '~/hooks/use-demo'
 import { useOrganization } from '~/hooks/use-organization'
 import { useDehydratedStateContext } from '~/providers/dehydrated-state-provider'
@@ -76,10 +77,7 @@ export function EditOrganizationSettings() {
   if (!organization) return null
 
   return (
-    <div className='space-y-4'>
-      <div className='flex items-center gap-2 leading-none tracking-tight font-semibold text-foreground'>
-        <Building className='size-4' /> General Settings
-      </div>
+    <SettingsSection icon={Building} title='General Settings'>
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)} className='max-w-xl space-y-4'>
           <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
@@ -138,6 +136,6 @@ export function EditOrganizationSettings() {
           </Button>
         </form>
       </Form>
-    </div>
+    </SettingsSection>
   )
 }

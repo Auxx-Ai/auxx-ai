@@ -5,6 +5,7 @@ import { Button } from '@auxx/ui/components/button'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { MapPin, Pencil } from 'lucide-react'
 import { useState } from 'react'
+import { SettingsSection } from '~/components/global/settings-page'
 import { useDemo } from '~/hooks/use-demo'
 import { api } from '~/trpc/react'
 import { BillingAddressDialog } from './billing-address-dialog'
@@ -35,14 +36,12 @@ export function BillingAddressCard() {
 
   return (
     <>
-      <div className='rounded-2xl border p-3 space-y-4'>
-        <div className='flex items-center justify-between'>
-          <div className='space-y-1'>
-            <div className='flex items-center gap-2 leading-none tracking-tight font-semibold text-foreground'>
-              <MapPin className='size-4' /> Address
-            </div>
-            <p className='text-sm text-muted-foreground'>Update your billing address</p>
-          </div>
+      <SettingsSection
+        className='rounded-2xl border p-3 space-y-4'
+        icon={MapPin}
+        title='Address'
+        description='Update your billing address'
+        action={
           <Button
             variant='outline'
             size='icon-sm'
@@ -51,8 +50,7 @@ export function BillingAddressCard() {
             disabled={isLoading || isDemo}>
             <Pencil />
           </Button>
-        </div>
-
+        }>
         {isLoading ? (
           <div className='space-y-3'>
             <div className='grid grid-cols-[100px_1fr] gap-4'>
@@ -90,7 +88,7 @@ export function BillingAddressCard() {
             </div>
           </div>
         )}
-      </div>
+      </SettingsSection>
 
       <BillingAddressDialog
         open={dialogOpen}

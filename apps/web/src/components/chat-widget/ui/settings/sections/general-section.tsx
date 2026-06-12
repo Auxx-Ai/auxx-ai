@@ -27,6 +27,7 @@ import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
+import { SettingsSection } from '~/components/global/settings-page'
 import { InboxDialog } from '~/components/inbox/inbox-dialog'
 import { useResource } from '~/components/resources/hooks/use-resource'
 import { MultiRelationInput } from '~/components/shared/multi-relation-input'
@@ -126,213 +127,205 @@ export function GeneralSection({ widget, channelId, onDelete }: GeneralSectionPr
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)}>
         <div className='p-6'>
-          <div className='space-y-1 mb-6'>
-            <div className='flex items-center gap-2 text-base font-semibold tracking-tight text-foreground'>
-              <Settings className='size-4' /> General
-            </div>
-            <p className='text-sm text-muted-foreground'>
-              Internal name, header text, and active status.
-            </p>
-          </div>
-
-          <VarEditorField orientation='responsive' className='p-0'>
-            <FormField
-              control={form.control}
-              name='name'
-              render={({ field, fieldState }) => (
-                <VarEditorFieldRow
-                  title='Widget Name'
-                  description='Shown only to your team.'
-                  type={BaseType.STRING}
-                  icon={<Tag className='size-3.5' />}
-                  showIcon
-                  isRequired
-                  validationError={fieldState.error?.message}>
-                  <FieldInputAdapter
-                    fieldType={FieldType.TEXT}
-                    value={field.value}
-                    onChange={(v) => field.onChange((v as string) ?? '')}
-                    placeholder='Internal name'
-                  />
-                </VarEditorFieldRow>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name='title'
-              render={({ field, fieldState }) => (
-                <VarEditorFieldRow
-                  title='Header Title'
-                  description='Appears at the top of the widget.'
-                  type={BaseType.STRING}
-                  icon={<TypeIcon className='size-3.5' />}
-                  showIcon
-                  isRequired
-                  validationError={fieldState.error?.message}>
-                  <FieldInputAdapter
-                    fieldType={FieldType.TEXT}
-                    value={field.value}
-                    onChange={(v) => field.onChange((v as string) ?? '')}
-                    placeholder='Chat'
-                  />
-                </VarEditorFieldRow>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name='subtitle'
-              render={({ field, fieldState }) => (
-                <VarEditorFieldRow
-                  title='Subtitle'
-                  description='Shown under the header title.'
-                  type={BaseType.STRING}
-                  icon={<TypeIcon className='size-3.5' />}
-                  showIcon
-                  validationError={fieldState.error?.message}>
-                  <FieldInputAdapter
-                    fieldType={FieldType.TEXT}
-                    value={field.value ?? ''}
-                    onChange={(v) => field.onChange((v as string) ?? '')}
-                    placeholder='We typically reply in minutes'
-                  />
-                </VarEditorFieldRow>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name='isActive'
-              render={({ field, fieldState }) => (
-                <VarEditorFieldRow
-                  title='Active'
-                  description='When off, the widget will not render or accept new chats.'
-                  type={BaseType.BOOLEAN}
-                  icon={<Power className='size-3.5' />}
-                  showIcon
-                  validationError={fieldState.error?.message}>
-                  <FieldInputAdapter
-                    fieldType={FieldType.CHECKBOX}
-                    fieldOptions={{ variant: 'switch' }}
-                    value={field.value}
-                    onChange={(v) => field.onChange(Boolean(v))}
-                  />
-                </VarEditorFieldRow>
-              )}
-            />
-
-            <VarEditorFieldRow
-              title='Inbox'
-              description='Where new chat conversations land.'
-              type={BaseType.RELATION}
-              icon={<InboxIcon className='size-3.5' />}
-              showIcon>
-              <MultiRelationInput
-                entityDefinitionId='inbox'
-                value={inboxRecordId ? [inboxRecordId] : []}
-                onChange={handleInboxChange}
-                multi={false}
-                placeholder='Pick an inbox'
-                disabled={update.isPending}
-                triggerProps={{ className: 'w-full ps-0 pe-1', badgeHoverCard: false }}
-                onCreate={() => setInboxDialogOpen(true)}
-                createLabel='Create inbox'
+          <SettingsSection
+            className='space-y-6'
+            icon={Settings}
+            title='General'
+            description='Internal name, header text, and active status.'>
+            <VarEditorField orientation='responsive' className='p-0'>
+              <FormField
+                control={form.control}
+                name='name'
+                render={({ field, fieldState }) => (
+                  <VarEditorFieldRow
+                    title='Widget Name'
+                    description='Shown only to your team.'
+                    type={BaseType.STRING}
+                    icon={<Tag className='size-3.5' />}
+                    showIcon
+                    isRequired
+                    validationError={fieldState.error?.message}>
+                    <FieldInputAdapter
+                      fieldType={FieldType.TEXT}
+                      value={field.value}
+                      onChange={(v) => field.onChange((v as string) ?? '')}
+                      placeholder='Internal name'
+                    />
+                  </VarEditorFieldRow>
+                )}
               />
-            </VarEditorFieldRow>
 
-            <VarEditorFieldRow
-              title='Privacy URL'
-              description='When set, the widget shows a consent banner under the composer linking to this URL. Leave blank to hide.'
-              type={BaseType.STRING}
-              icon={<LinkIcon className='size-3.5' />}
-              isRequired
-              showIcon>
-              <div
-                onBlur={() => {
-                  const next = privacyUrlDraft.trim()
-                  const current = widget.chatWidget?.privacyPolicyUrl ?? ''
-                  if (next === current) return
-                  update.mutate({
-                    integrationId: channelId,
-                    privacyPolicyUrl: next === '' ? null : next,
-                  })
-                }}>
-                <FieldInputAdapter
-                  fieldType={FieldType.URL}
-                  value={privacyUrlDraft}
-                  onChange={(v) => setPrivacyUrlDraft((v as string) ?? '')}
-                  placeholder='https://example.com/privacy'
+              <FormField
+                control={form.control}
+                name='title'
+                render={({ field, fieldState }) => (
+                  <VarEditorFieldRow
+                    title='Header Title'
+                    description='Appears at the top of the widget.'
+                    type={BaseType.STRING}
+                    icon={<TypeIcon className='size-3.5' />}
+                    showIcon
+                    isRequired
+                    validationError={fieldState.error?.message}>
+                    <FieldInputAdapter
+                      fieldType={FieldType.TEXT}
+                      value={field.value}
+                      onChange={(v) => field.onChange((v as string) ?? '')}
+                      placeholder='Chat'
+                    />
+                  </VarEditorFieldRow>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name='subtitle'
+                render={({ field, fieldState }) => (
+                  <VarEditorFieldRow
+                    title='Subtitle'
+                    description='Shown under the header title.'
+                    type={BaseType.STRING}
+                    icon={<TypeIcon className='size-3.5' />}
+                    showIcon
+                    validationError={fieldState.error?.message}>
+                    <FieldInputAdapter
+                      fieldType={FieldType.TEXT}
+                      value={field.value ?? ''}
+                      onChange={(v) => field.onChange((v as string) ?? '')}
+                      placeholder='We typically reply in minutes'
+                    />
+                  </VarEditorFieldRow>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name='isActive'
+                render={({ field, fieldState }) => (
+                  <VarEditorFieldRow
+                    title='Active'
+                    description='When off, the widget will not render or accept new chats.'
+                    type={BaseType.BOOLEAN}
+                    icon={<Power className='size-3.5' />}
+                    showIcon
+                    validationError={fieldState.error?.message}>
+                    <FieldInputAdapter
+                      fieldType={FieldType.CHECKBOX}
+                      fieldOptions={{ variant: 'switch' }}
+                      value={field.value}
+                      onChange={(v) => field.onChange(Boolean(v))}
+                    />
+                  </VarEditorFieldRow>
+                )}
+              />
+
+              <VarEditorFieldRow
+                title='Inbox'
+                description='Where new chat conversations land.'
+                type={BaseType.RELATION}
+                icon={<InboxIcon className='size-3.5' />}
+                showIcon>
+                <MultiRelationInput
+                  entityDefinitionId='inbox'
+                  value={inboxRecordId ? [inboxRecordId] : []}
+                  onChange={handleInboxChange}
+                  multi={false}
+                  placeholder='Pick an inbox'
                   disabled={update.isPending}
+                  triggerProps={{ className: 'w-full ps-0 pe-1', badgeHoverCard: false }}
+                  onCreate={() => setInboxDialogOpen(true)}
+                  createLabel='Create inbox'
                 />
-              </div>
-            </VarEditorFieldRow>
-          </VarEditorField>
+              </VarEditorFieldRow>
+
+              <VarEditorFieldRow
+                title='Privacy URL'
+                description='When set, the widget shows a consent banner under the composer linking to this URL. Leave blank to hide.'
+                type={BaseType.STRING}
+                icon={<LinkIcon className='size-3.5' />}
+                isRequired
+                showIcon>
+                <div
+                  onBlur={() => {
+                    const next = privacyUrlDraft.trim()
+                    const current = widget.chatWidget?.privacyPolicyUrl ?? ''
+                    if (next === current) return
+                    update.mutate({
+                      integrationId: channelId,
+                      privacyPolicyUrl: next === '' ? null : next,
+                    })
+                  }}>
+                  <FieldInputAdapter
+                    fieldType={FieldType.URL}
+                    value={privacyUrlDraft}
+                    onChange={(v) => setPrivacyUrlDraft((v as string) ?? '')}
+                    placeholder='https://example.com/privacy'
+                    disabled={update.isPending}
+                  />
+                </div>
+              </VarEditorFieldRow>
+            </VarEditorField>
+          </SettingsSection>
         </div>
 
         <div className='border-t p-6'>
-          <div className='space-y-1 mb-4'>
-            <div className='flex items-center gap-2 text-base font-semibold tracking-tight text-foreground'>
-              <Users className='size-4' /> Audience
-            </div>
-            <p className='text-sm text-muted-foreground'>Who is this widget for?</p>
-          </div>
+          <SettingsSection icon={Users} title='Audience' description='Who is this widget for?'>
+            <FormField
+              control={form.control}
+              name='chatAudience'
+              render={({ field }) => (
+                <>
+                  <RadioTab
+                    value={field.value}
+                    onValueChange={(v) => {
+                      const next = v as ChatAudience
+                      field.onChange(next)
+                      // Persist immediately (like inbox/privacy/domains) so the
+                      // Identity tab unlocks without a separate "Save Changes".
+                      update.mutate({ integrationId: channelId, chatAudience: next })
+                    }}
+                    size='sm'
+                    radioGroupClassName='grid w-full grid-cols-3'
+                    className='border border-primary-200 flex w-full mb-3'>
+                    <RadioTabItem value='visitors' size='sm'>
+                      <UserRound />
+                      Visitors only
+                    </RadioTabItem>
+                    <RadioTabItem value='both' size='sm'>
+                      <Users />
+                      Both
+                    </RadioTabItem>
+                    <RadioTabItem value='users' size='sm'>
+                      <ShieldCheck />
+                      Users only
+                    </RadioTabItem>
+                  </RadioTab>
 
-          <FormField
-            control={form.control}
-            name='chatAudience'
-            render={({ field }) => (
-              <>
-                <RadioTab
-                  value={field.value}
-                  onValueChange={(v) => {
-                    const next = v as ChatAudience
-                    field.onChange(next)
-                    // Persist immediately (like inbox/privacy/domains) so the
-                    // Identity tab unlocks without a separate "Save Changes".
-                    update.mutate({ integrationId: channelId, chatAudience: next })
-                  }}
-                  size='sm'
-                  radioGroupClassName='grid w-full grid-cols-3'
-                  className='border border-primary-200 flex w-full mb-3'>
-                  <RadioTabItem value='visitors' size='sm'>
-                    <UserRound />
-                    Visitors only
-                  </RadioTabItem>
-                  <RadioTabItem value='both' size='sm'>
-                    <Users />
-                    Both
-                  </RadioTabItem>
-                  <RadioTabItem value='users' size='sm'>
-                    <ShieldCheck />
-                    Users only
-                  </RadioTabItem>
-                </RadioTab>
+                  <p className='text-xs text-muted-foreground'>
+                    {AUDIENCE_DESCRIPTIONS[field.value]}
+                  </p>
 
-                <p className='text-xs text-muted-foreground'>
-                  {AUDIENCE_DESCRIPTIONS[field.value]}
-                </p>
-
-                {field.value === 'users' && identityVerification === 'off' && (
-                  <Alert variant='warning' className='mt-3'>
-                    <AlertTriangle />
-                    <div className='flex items-center gap-2'>
-                      <span className='flex-1'>
-                        Rollout is off. Anonymous visitors can still chat. Start rollout on the
-                        Identity tab to lock down.
-                      </span>
-                      <button
-                        type='button'
-                        onClick={() => setActiveSection('identity')}
-                        className='shrink-0 font-medium underline'>
-                        Open Identity
-                      </button>
-                    </div>
-                  </Alert>
-                )}
-              </>
-            )}
-          />
+                  {field.value === 'users' && identityVerification === 'off' && (
+                    <Alert variant='warning' className='mt-3'>
+                      <AlertTriangle />
+                      <div className='flex items-center gap-2'>
+                        <span className='flex-1'>
+                          Rollout is off. Anonymous visitors can still chat. Start rollout on the
+                          Identity tab to lock down.
+                        </span>
+                        <button
+                          type='button'
+                          onClick={() => setActiveSection('identity')}
+                          className='shrink-0 font-medium underline'>
+                          Open Identity
+                        </button>
+                      </div>
+                    </Alert>
+                  )}
+                </>
+              )}
+            />
+          </SettingsSection>
         </div>
 
         <div className='flex flex-wrap items-center justify-between gap-3 border-t p-6'>

@@ -4,6 +4,7 @@
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { Wallet } from 'lucide-react'
 import { Suspense } from 'react'
+import { SettingsSection } from '~/components/global/settings-page'
 import { BillingAddressCard } from '~/components/subscriptions/billing-address-card'
 import { PaymentMethodsCard } from '~/components/subscriptions/payment-methods-card'
 import { api } from '~/trpc/react'
@@ -20,23 +21,21 @@ export function BillingDetailsSection() {
   if (subscription && !subscription.capabilities?.managedPaymentMethods) return null
 
   return (
-    <div id='billing-details' className='@container space-y-3'>
-      <div className='space-y-1'>
-        <div className='flex items-center gap-2 leading-none tracking-tight font-semibold text-foreground'>
-          <Wallet className='size-4' /> Billing Details
+    <div id='billing-details' className='@container'>
+      <SettingsSection
+        className='space-y-3'
+        icon={Wallet}
+        title='Billing Details'
+        description='Manage your payment methods and billing information'>
+        <div className='grid grid-cols-1 @lg:grid-cols-2 gap-6'>
+          <Suspense fallback={<BillingCardSkeleton />}>
+            <BillingAddressCard />
+          </Suspense>
+          <Suspense fallback={<BillingCardSkeleton />}>
+            <PaymentMethodsCard />
+          </Suspense>
         </div>
-        <div className='text-sm text-muted-foreground mb-4'>
-          Manage your payment methods and billing information
-        </div>
-      </div>
-      <div className='grid grid-cols-1 @lg:grid-cols-2 gap-6'>
-        <Suspense fallback={<BillingCardSkeleton />}>
-          <BillingAddressCard />
-        </Suspense>
-        <Suspense fallback={<BillingCardSkeleton />}>
-          <PaymentMethodsCard />
-        </Suspense>
-      </div>
+      </SettingsSection>
     </div>
   )
 }

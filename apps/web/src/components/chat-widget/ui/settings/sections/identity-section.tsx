@@ -33,6 +33,7 @@ import {
 import { useQueryState } from 'nuqs'
 import { useCallback, useState } from 'react'
 import { EmailFilterSection } from '~/app/(protected)/app/settings/channels/_components/email-list-dialog'
+import { SettingsSection } from '~/components/global/settings-page'
 import { Tooltip } from '~/components/global/tooltip'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
@@ -133,17 +134,10 @@ export function IdentitySection({ widget, channelId }: IdentitySectionProps) {
     <>
       <ConfirmDialog />
       <div className='p-6 space-y-8'>
-        <div>
-          <div className='space-y-1 mb-4'>
-            <div className='flex items-center gap-2 text-base font-semibold tracking-tight text-foreground'>
-              <ShieldCheck className='size-4' /> Identity verification
-            </div>
-            <p className='text-sm text-muted-foreground'>
-              Sign a short-lived JWT on your server with one of these per-channel secrets so the
-              widget can prove who the visitor is.
-            </p>
-          </div>
-
+        <SettingsSection
+          icon={ShieldCheck}
+          title='Identity verification'
+          description='Sign a short-lived JWT on your server with one of these per-channel secrets so the widget can prove who the visitor is.'>
           <EnforcementCard
             state={state}
             stateLabel={stateLabel}
@@ -233,7 +227,7 @@ export function IdentitySection({ widget, channelId }: IdentitySectionProps) {
               </div>
             )}
           </div>
-        </div>
+        </SettingsSection>
 
         <div>
           <EmailFilterSection

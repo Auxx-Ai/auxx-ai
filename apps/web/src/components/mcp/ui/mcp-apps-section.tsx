@@ -11,6 +11,7 @@ import {
 } from '@auxx/ui/components/dropdown-menu'
 import { LayoutTemplate, Plug } from 'lucide-react'
 import { type ReactNode, useState } from 'react'
+import { SettingsSection } from '~/components/global/settings-page'
 import { useMcpServers } from '../hooks/use-mcp-servers'
 import { AddMcpServerDialog } from './add-mcp-server-dialog'
 import { McpAppCard } from './mcp-app-card'
@@ -107,13 +108,12 @@ export function McpAppsSection({ isAdminOrOwner, searchQuery = '' }: McpAppsSect
   if (!isAdminOrOwner && installed.length === 0) return null
 
   return (
-    <div className='space-y-2'>
-      <div className='flex items-center justify-between gap-2'>
-        <div className='flex items-center gap-2 tracking-tight font-semibold text-foreground text-base'>
-          <Plug className='size-4' />
-          MCP servers
-        </div>
-        {isAdminOrOwner && (
+    <SettingsSection
+      className='space-y-2'
+      icon={Plug}
+      title='MCP servers'
+      action={
+        isAdminOrOwner ? (
           <ConnectServerDropdown
             align='end'
             onCustom={() => setAddOpen(true)}
@@ -122,8 +122,8 @@ export function McpAppsSection({ isAdminOrOwner, searchQuery = '' }: McpAppsSect
               Connect server
             </Button>
           </ConnectServerDropdown>
-        )}
-      </div>
+        ) : undefined
+      }>
       {(installed.length > 0 || isAdminOrOwner) && (
         <div className='w-full @container'>
           <div className='grid w-full gap-2 @sm:grid-cols-1 @md:grid-cols-2 @2xl:grid-cols-3'>
@@ -170,6 +170,6 @@ export function McpAppsSection({ isAdminOrOwner, searchQuery = '' }: McpAppsSect
           />
         </>
       )}
-    </div>
+    </SettingsSection>
   )
 }

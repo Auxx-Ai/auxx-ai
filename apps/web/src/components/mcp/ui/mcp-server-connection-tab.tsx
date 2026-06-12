@@ -8,6 +8,7 @@ import { KeyRound, Plug } from 'lucide-react'
 import { useState } from 'react'
 import { ConnectionList } from '~/components/apps/ui/connection-list'
 import { ConnectionRow, type ConnectionStatus } from '~/components/apps/ui/connection-row'
+import { SettingsSection } from '~/components/global/settings-page'
 import { api } from '~/trpc/react'
 import { useMcpOAuthPopup } from '../hooks/use-mcp-oauth-popup'
 import { ConnectCuratedDialog } from './connect-curated-dialog'
@@ -134,11 +135,7 @@ export function McpServerConnectionTab({
         )}
       </div>
 
-      <div className='space-y-2'>
-        <div className='flex items-center gap-2 tracking-tight font-semibold text-foreground text-base'>
-          <Plug className='size-4' />
-          Connection
-        </div>
+      <SettingsSection className='space-y-2' icon={Plug} title='Connection'>
         {needsManualSetup ? (
           <div className='flex flex-col gap-3 rounded-lg border p-4 text-sm'>
             <div className='font-medium'>Finish OAuth setup</div>
@@ -207,7 +204,7 @@ export function McpServerConnectionTab({
             />
           </ConnectionList>
         )}
-      </div>
+      </SettingsSection>
 
       <ConnectCuratedDialog
         open={dialogOpen}

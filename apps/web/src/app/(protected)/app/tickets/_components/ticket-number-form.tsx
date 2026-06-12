@@ -11,6 +11,7 @@ import { Hash } from 'lucide-react'
 import { useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
+import { SettingsSection } from '~/components/global/settings-page'
 import { ConstantInputAdapter } from '~/components/workflow/ui/input-editor/constant-input-adapter'
 import { VarEditorField, VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
 import { api } from '~/trpc/react'
@@ -170,164 +171,162 @@ export default function TicketNumberingSettings() {
 
   return (
     <div className='container mx-auto max-w-2xl overflow-y-auto pb-10 pt-4'>
-      {/* Title Header */}
-      <div className='mb-6 space-y-1'>
-        <div className='flex items-center gap-2 text-base font-semibold tracking-tight text-foreground'>
-          <Hash className='size-4' /> Ticket Numbering
-        </div>
-        <p className='text-sm text-muted-foreground'>Configure how ticket numbers are generated.</p>
-      </div>
+      <SettingsSection
+        className='mb-6'
+        icon={Hash}
+        title='Ticket Numbering'
+        description='Configure how ticket numbers are generated.'>
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(onSubmit)}>
+            <VarEditorField className='p-0 [&_[data-slot=field-row-label]]:w-60'>
+              {/* Prefix Settings */}
+              <VarEditorFieldRow
+                title='Use Prefix'
+                description='Enable to use a prefix for ticket numbers (e.g., SUP-0001)'
+                type={BaseType.BOOLEAN}
+                showIcon>
+                <ConstantInputAdapter
+                  value={form.watch('usePrefix')}
+                  onChange={(_, val) => form.setValue('usePrefix', val)}
+                  varType={BaseType.BOOLEAN}
+                  fieldOptions={{ variant: 'switch' }}
+                />
+              </VarEditorFieldRow>
 
-      <Form {...form}>
-        <form onSubmit={form.handleSubmit(onSubmit)}>
-          <VarEditorField className='p-0 [&_[data-slot=field-row-label]]:w-60'>
-            {/* Prefix Settings */}
-            <VarEditorFieldRow
-              title='Use Prefix'
-              description='Enable to use a prefix for ticket numbers (e.g., SUP-0001)'
-              type={BaseType.BOOLEAN}
-              showIcon>
-              <ConstantInputAdapter
-                value={form.watch('usePrefix')}
-                onChange={(_, val) => form.setValue('usePrefix', val)}
-                varType={BaseType.BOOLEAN}
-                fieldOptions={{ variant: 'switch' }}
-              />
-            </VarEditorFieldRow>
+              {form.watch('usePrefix') && (
+                <>
+                  <VarEditorFieldRow
+                    title='Prefix Text'
+                    description='Short text to prefix the ticket number (e.g., SUP)'
+                    type={BaseType.STRING}
+                    showIcon>
+                    <ConstantInputAdapter
+                      value={form.watch('prefix') ?? ''}
+                      onChange={(_, val) => form.setValue('prefix', val)}
+                      varType={BaseType.STRING}
+                      placeholder='SUP'
+                    />
+                  </VarEditorFieldRow>
 
-            {form.watch('usePrefix') && (
-              <>
+                  <VarEditorFieldRow
+                    title='Include Date'
+                    description='Add date component to prefix (e.g., SUP2403-0001)'
+                    type={BaseType.BOOLEAN}
+                    showIcon>
+                    <ConstantInputAdapter
+                      value={form.watch('useDateInPrefix')}
+                      onChange={(_, val) => form.setValue('useDateInPrefix', val)}
+                      varType={BaseType.BOOLEAN}
+                      fieldOptions={{ variant: 'switch' }}
+                    />
+                  </VarEditorFieldRow>
+
+                  {form.watch('useDateInPrefix') && (
+                    <VarEditorFieldRow
+                      title='Date Format'
+                      description='Format of the date component in the prefix'
+                      type={BaseType.ENUM}
+                      showIcon>
+                      <ConstantInputAdapter
+                        value={form.watch('dateFormat')}
+                        onChange={(_, val) => form.setValue('dateFormat', val)}
+                        varType={BaseType.ENUM}
+                        fieldOptions={{ enum: DATE_FORMAT_OPTIONS }}
+                      />
+                    </VarEditorFieldRow>
+                  )}
+                </>
+              )}
+
+              {/* Suffix Settings */}
+              <VarEditorFieldRow
+                title='Use Suffix'
+                description='Enable to use a suffix for ticket numbers (e.g., 0001-SUP)'
+                type={BaseType.BOOLEAN}
+                showIcon>
+                <ConstantInputAdapter
+                  value={form.watch('useSuffix')}
+                  onChange={(_, val) => form.setValue('useSuffix', val)}
+                  varType={BaseType.BOOLEAN}
+                  fieldOptions={{ variant: 'switch' }}
+                />
+              </VarEditorFieldRow>
+
+              {form.watch('useSuffix') && (
                 <VarEditorFieldRow
-                  title='Prefix Text'
-                  description='Short text to prefix the ticket number (e.g., SUP)'
+                  title='Suffix Text'
+                  description='Text to append after the ticket number'
                   type={BaseType.STRING}
                   showIcon>
                   <ConstantInputAdapter
-                    value={form.watch('prefix') ?? ''}
-                    onChange={(_, val) => form.setValue('prefix', val)}
+                    value={form.watch('suffix') ?? ''}
+                    onChange={(_, val) => form.setValue('suffix', val)}
                     varType={BaseType.STRING}
                     placeholder='SUP'
                   />
                 </VarEditorFieldRow>
+              )}
 
-                <VarEditorFieldRow
-                  title='Include Date'
-                  description='Add date component to prefix (e.g., SUP2403-0001)'
-                  type={BaseType.BOOLEAN}
-                  showIcon>
-                  <ConstantInputAdapter
-                    value={form.watch('useDateInPrefix')}
-                    onChange={(_, val) => form.setValue('useDateInPrefix', val)}
-                    varType={BaseType.BOOLEAN}
-                    fieldOptions={{ variant: 'switch' }}
-                  />
-                </VarEditorFieldRow>
-
-                {form.watch('useDateInPrefix') && (
-                  <VarEditorFieldRow
-                    title='Date Format'
-                    description='Format of the date component in the prefix'
-                    type={BaseType.ENUM}
-                    showIcon>
-                    <ConstantInputAdapter
-                      value={form.watch('dateFormat')}
-                      onChange={(_, val) => form.setValue('dateFormat', val)}
-                      varType={BaseType.ENUM}
-                      fieldOptions={{ enum: DATE_FORMAT_OPTIONS }}
-                    />
-                  </VarEditorFieldRow>
-                )}
-              </>
-            )}
-
-            {/* Suffix Settings */}
-            <VarEditorFieldRow
-              title='Use Suffix'
-              description='Enable to use a suffix for ticket numbers (e.g., 0001-SUP)'
-              type={BaseType.BOOLEAN}
-              showIcon>
-              <ConstantInputAdapter
-                value={form.watch('useSuffix')}
-                onChange={(_, val) => form.setValue('useSuffix', val)}
-                varType={BaseType.BOOLEAN}
-                fieldOptions={{ variant: 'switch' }}
-              />
-            </VarEditorFieldRow>
-
-            {form.watch('useSuffix') && (
+              {/* Number Format */}
               <VarEditorFieldRow
-                title='Suffix Text'
-                description='Text to append after the ticket number'
+                title='Padding Length'
+                description='Number of digits to pad the numeric part (e.g., 4 for 0001)'
+                type={BaseType.NUMBER}
+                showIcon>
+                <ConstantInputAdapter
+                  value={form.watch('paddingLength')}
+                  onChange={(_, val) => form.setValue('paddingLength', val)}
+                  varType={BaseType.NUMBER}
+                  placeholder='4'
+                />
+              </VarEditorFieldRow>
+
+              <VarEditorFieldRow
+                title='Separator'
+                description='Character(s) to separate parts (e.g., -, ., _)'
                 type={BaseType.STRING}
                 showIcon>
                 <ConstantInputAdapter
-                  value={form.watch('suffix') ?? ''}
-                  onChange={(_, val) => form.setValue('suffix', val)}
+                  value={form.watch('separator')}
+                  onChange={(_, val) => form.setValue('separator', val)}
                   varType={BaseType.STRING}
-                  placeholder='SUP'
+                  placeholder='-'
                 />
               </VarEditorFieldRow>
-            )}
+            </VarEditorField>
 
-            {/* Number Format */}
-            <VarEditorFieldRow
-              title='Padding Length'
-              description='Number of digits to pad the numeric part (e.g., 4 for 0001)'
-              type={BaseType.NUMBER}
-              showIcon>
-              <ConstantInputAdapter
-                value={form.watch('paddingLength')}
-                onChange={(_, val) => form.setValue('paddingLength', val)}
-                varType={BaseType.NUMBER}
-                placeholder='4'
-              />
-            </VarEditorFieldRow>
-
-            <VarEditorFieldRow
-              title='Separator'
-              description='Character(s) to separate parts (e.g., -, ., _)'
-              type={BaseType.STRING}
-              showIcon>
-              <ConstantInputAdapter
-                value={form.watch('separator')}
-                onChange={(_, val) => form.setValue('separator', val)}
-                varType={BaseType.STRING}
-                placeholder='-'
-              />
-            </VarEditorFieldRow>
-          </VarEditorField>
-
-          {/* Preview Section */}
-          <div className='mt-6 rounded-xl border bg-primary-100/30 p-4'>
-            <div className='mb-2 text-sm font-medium'>Preview</div>
-            <div className='grid grid-cols-2 gap-4'>
-              <div>
-                <div className='text-xs text-muted-foreground'>Current sequence</div>
-                <div className='text-lg font-bold'>{currentNumber}</div>
-              </div>
-              <div>
-                <div className='text-xs text-muted-foreground'>Next ticket</div>
-                <div className='font-mono text-lg font-bold'>{sampleSequence}</div>
+            {/* Preview Section */}
+            <div className='mt-6 rounded-xl border bg-primary-100/30 p-4'>
+              <div className='mb-2 text-sm font-medium'>Preview</div>
+              <div className='grid grid-cols-2 gap-4'>
+                <div>
+                  <div className='text-xs text-muted-foreground'>Current sequence</div>
+                  <div className='text-lg font-bold'>{currentNumber}</div>
+                </div>
+                <div>
+                  <div className='text-xs text-muted-foreground'>Next ticket</div>
+                  <div className='font-mono text-lg font-bold'>{sampleSequence}</div>
+                </div>
               </div>
             </div>
-          </div>
 
-          {/* Action Buttons */}
-          <div className='mt-6 flex justify-end gap-2'>
-            <Button type='button' variant='ghost' size='sm' onClick={() => form.reset()}>
-              Reset
-            </Button>
-            <Button
-              type='submit'
-              size='sm'
-              variant='outline'
-              loading={updateSequence.isPending}
-              loadingText='Saving...'>
-              Save Settings
-            </Button>
-          </div>
-        </form>
-      </Form>
+            {/* Action Buttons */}
+            <div className='mt-6 flex justify-end gap-2'>
+              <Button type='button' variant='ghost' size='sm' onClick={() => form.reset()}>
+                Reset
+              </Button>
+              <Button
+                type='submit'
+                size='sm'
+                variant='outline'
+                loading={updateSequence.isPending}
+                loadingText='Saving...'>
+                Save Settings
+              </Button>
+            </div>
+          </form>
+        </Form>
+      </SettingsSection>
     </div>
   )
 }

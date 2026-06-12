@@ -18,6 +18,7 @@ import { BookOpen, Bot, Home, Sparkles } from 'lucide-react'
 import { useCallback, useMemo } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
+import { SettingsSection } from '~/components/global/settings-page'
 import { ActorPicker } from '~/components/pickers/actor-picker'
 import { MultiRelationInput } from '~/components/shared/multi-relation-input'
 import { BaseType } from '~/components/workflow/types'
@@ -113,47 +114,37 @@ export function AiSection({ widget, channelId }: AiSectionProps) {
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)}>
         <div className='p-6'>
-          <div className='space-y-1 mb-4'>
-            <div className='flex items-center gap-2 text-base font-semibold tracking-tight text-foreground'>
-              <Bot className='size-4' /> Agent
-            </div>
-            <p className='text-sm text-muted-foreground'>
-              The AI agent that replies to incoming chat messages.
-            </p>
-          </div>
-
-          <VarEditorField orientation='responsive' className='p-0'>
-            <VarEditorFieldRow
-              title='AI Auto-Reply'
-              description='Pick an Agent that responds automatically to new chat messages. Leave unset to require a human reply.'
-              type={BaseType.ACTOR}
-              icon={<Sparkles className='size-3.5' />}
-              showIcon>
-              <ActorPicker
-                value={agentActorIds}
-                onChange={handleAgentChange}
-                multi={false}
-                target='agent'
-                agentFilter={agentFilter}
-                emptyLabel='Choose an agent…'
-                disabled={update.isPending}
-                triggerProps={{ className: 'w-full ps-0 pe-1' }}
-              />
-            </VarEditorFieldRow>
-          </VarEditorField>
+          <SettingsSection
+            icon={Bot}
+            title='Agent'
+            description='The AI agent that replies to incoming chat messages.'>
+            <VarEditorField orientation='responsive' className='p-0'>
+              <VarEditorFieldRow
+                title='AI Auto-Reply'
+                description='Pick an Agent that responds automatically to new chat messages. Leave unset to require a human reply.'
+                type={BaseType.ACTOR}
+                icon={<Sparkles className='size-3.5' />}
+                showIcon>
+                <ActorPicker
+                  value={agentActorIds}
+                  onChange={handleAgentChange}
+                  multi={false}
+                  target='agent'
+                  agentFilter={agentFilter}
+                  emptyLabel='Choose an agent…'
+                  disabled={update.isPending}
+                  triggerProps={{ className: 'w-full ps-0 pe-1' }}
+                />
+              </VarEditorFieldRow>
+            </VarEditorField>
+          </SettingsSection>
         </div>
 
         <div className='border-t p-6 space-y-4'>
-          <div>
-            <div className='space-y-1 mb-4'>
-              <div className='flex items-center gap-2 text-base font-semibold tracking-tight text-foreground'>
-                <BookOpen className='size-4' /> Knowledge base
-              </div>
-              <p className='text-sm text-muted-foreground'>
-                Source articles for the widget's Home and Browse screens.
-              </p>
-            </div>
-
+          <SettingsSection
+            icon={BookOpen}
+            title='Knowledge base'
+            description="Source articles for the widget's Home and Browse screens.">
             <VarEditorField orientation='responsive' className='p-0'>
               <FormField
                 control={form.control}
@@ -191,7 +182,7 @@ export function AiSection({ widget, channelId }: AiSectionProps) {
                 }}
               />
             </VarEditorField>
-          </div>
+          </SettingsSection>
 
           <div>
             <FormField

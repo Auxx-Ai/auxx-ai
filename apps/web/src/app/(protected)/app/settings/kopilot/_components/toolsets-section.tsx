@@ -16,6 +16,7 @@ import {
 } from '~/components/agents/ui/detail/tools/catalog-node-row'
 import { ToolSelectDialog } from '~/components/agents/ui/detail/tools/tool-select-dialog'
 import { AppAccountDialog } from '~/components/apps/ui/app-account-dialog'
+import { SettingsSection } from '~/components/global/settings-page'
 import { useMasterKopilotToolsets } from './use-master-kopilot-toolsets'
 
 /**
@@ -108,9 +109,11 @@ export function ToolsetsSection() {
   )
 
   return (
-    <section className='space-y-3'>
-      <div className='flex items-start justify-between gap-3'>
-        <SectionHeading />
+    <SettingsSection
+      className='space-y-3'
+      title='Toolsets'
+      description='Native Auxx tools available to Kopilot. App-backed tools require a workspace credential pin.'
+      action={
         <Button
           size='sm'
           variant='ghost'
@@ -121,7 +124,7 @@ export function ToolsetsSection() {
           <Plus />
           Add tools
         </Button>
-      </div>
+      }>
       <div className='flex flex-col pe-4'>
         {catalogIsLoading ? (
           <div className='flex flex-col gap-1'>
@@ -183,17 +186,6 @@ export function ToolsetsSection() {
           if (!open) setAccountPickerAppId(null)
         }}
       />
-    </section>
-  )
-}
-
-function SectionHeading() {
-  return (
-    <div className='space-y-1'>
-      <h2 className='text-base font-semibold tracking-tight text-foreground'>Toolsets</h2>
-      <p className='text-sm text-muted-foreground'>
-        Native Auxx tools available to Kopilot. App-backed tools require a workspace credential pin.
-      </p>
-    </div>
+    </SettingsSection>
   )
 }

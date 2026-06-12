@@ -17,6 +17,7 @@ import { Switch } from '@auxx/ui/components/switch'
 import { toastError } from '@auxx/ui/components/toast'
 import { Edit, FolderSync, RefreshCw } from 'lucide-react'
 import { useMemo, useState } from 'react'
+import { SettingsSection } from '~/components/global/settings-page'
 import { api } from '~/trpc/react'
 
 interface IntegrationLabelsProps {
@@ -70,14 +71,10 @@ export default function IntegrationLabels({ integration }: IntegrationLabelsProp
   }, [labels, search])
 
   return (
-    <div className='space-y-4'>
-      <div className='space-y-1'>
-        <div className='flex items-center gap-2 tracking-tight font-semibold text-foreground text-base'>
-          <FolderSync className='size-4' /> Synced Folders
-        </div>
-        <p className='text-sm text-muted-foreground'>Choose which folders to sync messages from.</p>
-      </div>
-
+    <SettingsSection
+      icon={FolderSync}
+      title='Synced Folders'
+      description='Choose which folders to sync messages from.'>
       <div className='group flex items-center justify-between rounded-2xl border py-2 px-3 hover:bg-muted transition-colors duration-200'>
         <div className='flex items-center gap-3'>
           <div className='size-8 border bg-muted rounded-lg flex items-center justify-center group-hover:bg-secondary transition-colors overflow-hidden shrink-0'>
@@ -184,6 +181,6 @@ export default function IntegrationLabels({ integration }: IntegrationLabelsProp
           </DialogContent>
         </Dialog>
       ) : null}
-    </div>
+    </SettingsSection>
   )
 }

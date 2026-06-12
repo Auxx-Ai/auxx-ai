@@ -23,6 +23,7 @@ import { cn } from '@auxx/ui/lib/utils'
 import { Edit, Plus, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { client } from '~/auth/auth-client'
+import { SettingsSection } from '~/components/global/settings-page'
 
 /** Validates an email address or a bare domain. */
 function isValidEntry(value: string): boolean {
@@ -215,13 +216,13 @@ export function EmailFilterSection({
   const hiddenCount = entries.length - 4
 
   return (
-    <div className='space-y-4'>
-      <div className='space-y-1'>
-        <div className='flex items-center gap-2 text-base font-semibold tracking-tight text-foreground'>
+    <SettingsSection
+      title={
+        <>
           {icon} {title}
-        </div>
-        <p className='text-sm text-muted-foreground'>{description}</p>
-      </div>
+        </>
+      }
+      description={description}>
       <div
         className={cn(
           'group flex items-start justify-between gap-3 rounded-2xl border px-3 py-2 transition-colors duration-200 hover:bg-muted',
@@ -281,6 +282,6 @@ export function EmailFilterSection({
           onClose={() => setDialogOpen(false)}
         />
       )}
-    </div>
+    </SettingsSection>
   )
 }

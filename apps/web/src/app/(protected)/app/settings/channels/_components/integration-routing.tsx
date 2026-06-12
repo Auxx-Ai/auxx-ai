@@ -41,6 +41,7 @@ import {
 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useMemo, useState } from 'react'
+import { SettingsSection } from '~/components/global/settings-page'
 import { toRecordId, useRecord, useRecordList, useResource } from '~/components/resources'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
@@ -185,16 +186,11 @@ export default function IntegrationRouting({ integration }: IntegrationRoutingPr
 
       {/* Data Sync — hidden for forwarding integrations */}
       {!isForwarding && (
-        <div className='space-y-1'>
-          <div className='flex items-center justify-between'>
-            <div className='space-y-1'>
-              <div className='flex items-center gap-2 tracking-tight font-semibold text-foreground text-base'>
-                <CloudDownload className='size-4' /> Data Sync
-              </div>
-              <p className='text-sm text-muted-foreground'>
-                Configure how data from this integration is synced to your inboxes.
-              </p>
-            </div>
+        <SettingsSection
+          icon={CloudDownload}
+          title='Data Sync'
+          description='Configure how data from this integration is synced to your inboxes.'
+          action={
             <Button
               variant='outline'
               size='sm'
@@ -205,30 +201,32 @@ export default function IntegrationRouting({ integration }: IntegrationRoutingPr
               <RefreshCw />
               Sync Messages
             </Button>
-          </div>
-          <div className='flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-start'>
-            <div className='text-sm text-muted-foreground'>Last synced</div>
-            <Badge variant='green' size='sm'>
-              {lastSynced}
-            </Badge>
-          </div>
-          {integration.syncStatus && (
+          }>
+          <div className='space-y-2'>
             <div className='flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-start'>
-              <div className='text-sm text-muted-foreground'>Sync status</div>
-              <SyncStatusBadge syncStatus={integration.syncStatus} />
+              <div className='text-sm text-muted-foreground'>Last synced</div>
+              <Badge variant='green' size='sm'>
+                {lastSynced}
+              </Badge>
             </div>
-          )}
-          {isThrottled && (
-            <Alert>
-              <Clock className='h-4 w-4' />
-              <AlertTitle>Rate limited</AlertTitle>
-              <AlertDescription>
-                This integration is temporarily throttled. Sync will resume after{' '}
-                {new Date(integration.throttleRetryAfter).toLocaleString()}.
-              </AlertDescription>
-            </Alert>
-          )}
-        </div>
+            {integration.syncStatus && (
+              <div className='flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-start'>
+                <div className='text-sm text-muted-foreground'>Sync status</div>
+                <SyncStatusBadge syncStatus={integration.syncStatus} />
+              </div>
+            )}
+            {isThrottled && (
+              <Alert>
+                <Clock className='h-4 w-4' />
+                <AlertTitle>Rate limited</AlertTitle>
+                <AlertDescription>
+                  This integration is temporarily throttled. Sync will resume after{' '}
+                  {new Date(integration.throttleRetryAfter).toLocaleString()}.
+                </AlertDescription>
+              </Alert>
+            )}
+          </div>
+        </SettingsSection>
       )}
 
       {/* Forwarding Address — only for forwarding integrations */}
@@ -245,15 +243,10 @@ export default function IntegrationRouting({ integration }: IntegrationRoutingPr
         <IntegrationLabels integration={integration} />
       )}
 
-      <div className='space-y-4'>
-        <div className='space-y-1'>
-          <div className='flex items-center gap-2 tracking-tight font-semibold text-foreground text-base'>
-            <MailPlus className='size-4' /> Message Routing
-          </div>
-          <p className='text-sm text-muted-foreground'>
-            Configure how messages from this integration are routed to your inboxes.
-          </p>
-        </div>
+      <SettingsSection
+        icon={MailPlus}
+        title='Message Routing'
+        description='Configure how messages from this integration are routed to your inboxes.'>
         <div>
           {connectedInbox || isLoadingConnectedInbox ? (
             <div className='space-y-4'>
@@ -355,13 +348,10 @@ export default function IntegrationRouting({ integration }: IntegrationRoutingPr
             </DialogContent>
           </Dialog>
         ) : null}
-      </div>
+      </SettingsSection>
 
       {!isForwarding && (
-        <div className='space-y-2'>
-          <div className='flex items-center gap-2 tracking-tight font-semibold text-foreground text-base'>
-            <AlertTriangle className='size-4' /> Danger Zone
-          </div>
+        <SettingsSection className='space-y-2' icon={AlertTriangle} title='Danger Zone'>
           <div className='group flex items-center border py-2 px-3 hover:bg-destructive/2 transition-colors duration-200 rounded-2xl border-destructive/50'>
             <div className='flex flex-col justify-between gap-4 w-full md:flex-row md:items-center'>
               <div className='flex items-center gap-3'>
@@ -387,7 +377,7 @@ export default function IntegrationRouting({ integration }: IntegrationRoutingPr
               <ConfirmDialog />
             </div>
           </div>
-        </div>
+        </SettingsSection>
       )}
     </div>
   )
@@ -405,15 +395,10 @@ function ForwardingAddressSection({
   const hasAllowedSenders = allowedSenders.length > 0
 
   return (
-    <div className='space-y-4'>
-      <div className='space-y-1'>
-        <div className='flex items-center gap-2 tracking-tight font-semibold text-foreground text-base'>
-          <Mail className='size-4' /> Forwarding Address
-        </div>
-        <p className='text-sm text-muted-foreground'>
-          Forward emails to this address to create tickets.
-        </p>
-      </div>
+    <SettingsSection
+      icon={Mail}
+      title='Forwarding Address'
+      description='Forward emails to this address to create tickets.'>
       <div
         className={`group flex items-center justify-between rounded-2xl border py-2 px-3 transition-colors duration-200 ${
           hasAllowedSenders ? 'hover:bg-muted' : 'border-destructive/50 hover:bg-destructive/2'
@@ -443,7 +428,7 @@ function ForwardingAddressSection({
           {copied ? 'Copied' : 'Copy'}
         </Button>
       </div>
-    </div>
+    </SettingsSection>
   )
 }
 
@@ -459,15 +444,10 @@ function AllowedSendersSection({
   const hasEntries = allowedSenders.length > 0
 
   return (
-    <div className='space-y-4'>
-      <div className='space-y-1'>
-        <div className='flex items-center gap-2 tracking-tight font-semibold text-foreground text-base'>
-          <Shield className='size-4' /> Allowed Senders
-        </div>
-        <p className='text-sm text-muted-foreground'>
-          Only emails from these addresses will be accepted.
-        </p>
-      </div>
+    <SettingsSection
+      icon={Shield}
+      title='Allowed Senders'
+      description='Only emails from these addresses will be accepted.'>
       <div
         className={`group flex items-center justify-between rounded-2xl border py-2 px-3 transition-colors duration-200 ${
           hasEntries ? 'hover:bg-muted' : 'border-destructive/50 hover:bg-destructive/2'
@@ -515,7 +495,7 @@ function AllowedSendersSection({
           onClose={() => setDialogOpen(false)}
         />
       )}
-    </div>
+    </SettingsSection>
   )
 }
 

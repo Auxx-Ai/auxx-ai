@@ -9,6 +9,7 @@ import { RadioTab, RadioTabItem } from '@auxx/ui/components/radio-tab'
 import { ArrowUpRight, Code, ExternalLink } from 'lucide-react'
 import { parseAsStringLiteral, useQueryState } from 'nuqs'
 import { useMemo } from 'react'
+import { SettingsSection } from '~/components/global/settings-page'
 import CodeEditor from '~/components/workflow/ui/code-editor'
 import { CodeLanguage } from '~/components/workflow/ui/code-editor/types'
 import { useEnv } from '~/providers/dehydrated-state-provider'
@@ -77,16 +78,10 @@ export function SetupSection({ widget, channelId }: SetupSectionProps) {
 
   return (
     <div className='p-6 space-y-8'>
-      <div>
-        <div className='space-y-1 mb-4'>
-          <div className='flex items-center gap-2 text-base font-semibold tracking-tight text-foreground'>
-            <Code className='size-4' /> Install
-          </div>
-          <p className='text-sm text-muted-foreground'>
-            Choose your stack. The snippet below is ready to paste.
-          </p>
-        </div>
-
+      <SettingsSection
+        icon={Code}
+        title='Install'
+        description='Choose your stack. The snippet below is ready to paste.'>
         <p className='mb-3 text-xs text-muted-foreground'>
           {verified
             ? 'Your server signs a short-lived JWT so the widget knows exactly which logged-in user it’s talking to. Messages can’t be spoofed and chats link back to the real account.'
@@ -192,7 +187,7 @@ export function SetupSection({ widget, channelId }: SetupSectionProps) {
             <ExternalLink className='size-3.5' />
           </button>
         </div>
-      </div>
+      </SettingsSection>
     </div>
   )
 }

@@ -13,6 +13,7 @@ import {
   SelectValue,
 } from '@auxx/ui/components/select'
 import { AlertTriangle, Check, Palette } from 'lucide-react'
+import { SettingsSection } from '~/components/global/settings-page'
 import { useEntityDefinitionMutations } from '~/components/resources/hooks'
 import { VarEditorField, VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
 
@@ -91,142 +92,139 @@ export function EntityAppearanceEditor({
 
   return (
     <div className='p-4 border-b'>
-      <h3 className='flex items-center gap-2 tracking-tight font-semibold text-foreground text-base mb-4'>
-        <Palette className='size-4' />
-        Appearance
-      </h3>
+      <SettingsSection className='mb-4' icon={Palette} title='Appearance'>
+        {disabled && (
+          <div className='text-xs text-muted-foreground italic mb-4'>
+            System entities cannot be customized. Display fields are predefined.
+          </div>
+        )}
 
-      {disabled && (
-        <div className='text-xs text-muted-foreground italic mb-4'>
-          System entities cannot be customized. Display fields are predefined.
-        </div>
-      )}
-
-      <div className='grid grid-cols-1 sm:grid-cols-2 gap-6'>
-        {/* Left column: Select fields */}
-        <div>
-          <VarEditorField className='p-0 dark:bg-primary-50'>
-            <VarEditorFieldRow
-              title='Display Field'
-              description='Shown as the main name in pickers'>
-              {disabled ? (
-                <span className='text-sm text-muted-foreground h-7.5 flex items-center'>
-                  {primaryField?.name ?? 'None'}
-                </span>
-              ) : (
-                <Select
-                  value={primaryDisplayFieldId ?? 'none'}
-                  onValueChange={(v) =>
-                    handleChange('primaryDisplayFieldId', v === 'none' ? null : v)
-                  }>
-                  <SelectTrigger variant='transparent' size='sm'>
-                    <SelectValue placeholder='Select field' />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value='none'>None</SelectItem>
-                    {selectableFields
-                      .filter(
-                        (f) =>
-                          f.fieldType &&
-                          PRIMARY_DISPLAY_ELIGIBLE_TYPES.includes(f.fieldType as FieldType)
-                      )
-                      .map((field) => (
-                        <SelectItem key={field.id} value={field.id}>
-                          {field.name ?? field.label}
-                        </SelectItem>
-                      ))}
-                  </SelectContent>
-                </Select>
-              )}
-            </VarEditorFieldRow>
-            <VarEditorFieldRow
-              title='Subtitle Field'
-              description='Optional subtitle below the name'>
-              {disabled ? (
-                <span className='text-sm text-muted-foreground h-7.5 flex items-center'>
-                  {secondaryField?.name ?? secondaryField?.label ?? 'None'}
-                </span>
-              ) : (
-                <Select
-                  value={secondaryDisplayFieldId ?? 'none'}
-                  onValueChange={(v) =>
-                    handleChange('secondaryDisplayFieldId', v === 'none' ? null : v)
-                  }>
-                  <SelectTrigger variant='transparent' size='sm'>
-                    <SelectValue placeholder='Select field' />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value='none'>None</SelectItem>
-                    {selectableFields.map((field) => (
-                      <SelectItem key={field.id} value={field.id}>
-                        {field.name ?? field.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
-            </VarEditorFieldRow>
-            <VarEditorFieldRow title='Avatar Field' description='Image field for avatar'>
-              {disabled ? (
-                <span className='text-sm text-muted-foreground h-7.5 flex items-center'>
-                  {avatarField?.name ?? avatarField?.label ?? 'None'}
-                </span>
-              ) : (
-                <Select
-                  value={avatarFieldId ?? 'none'}
-                  onValueChange={(v) => handleChange('avatarFieldId', v === 'none' ? null : v)}>
-                  <SelectTrigger variant='transparent' size='sm'>
-                    <SelectValue placeholder='Select field' />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value='none'>None</SelectItem>
-                    {selectableFields
-                      .filter((f) => f.fieldType === 'URL' || f.fieldType === 'FILE')
-                      .map((field) => (
-                        <SelectItem key={field.id} value={field.id}>
-                          {field.name ?? field.label}
-                        </SelectItem>
-                      ))}
-                  </SelectContent>
-                </Select>
-              )}
-            </VarEditorFieldRow>
-            {avatarWarnings.length > 0 && (
-              <div className='flex gap-2 px-3 py-2 text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 rounded-md mx-2 mb-2'>
-                <AlertTriangle className='size-3.5 shrink-0 mt-0.5' />
-                <div className='space-y-0.5'>
-                  {avatarWarnings.map((w) => (
-                    <p key={w}>{w}</p>
-                  ))}
-                </div>
-              </div>
-            )}
-          </VarEditorField>
-        </div>
-
-        {/* Right column: Preview */}
-        <div className='flex items-center justify-center border rounded-2xl p-4 bg-muted dark:bg-primary-50 min-h-[120px]'>
-          <div className='max-w-[300px] w-full'>
-            <div className='flex items-center gap-2 rounded-2xl border bg-background py-2 ps-1 pe-2'>
-              <Avatar className='size-6'>
-                <AvatarFallback className='text-xs'>
-                  {(primaryField?.name || singular || 'D')[0]}
-                </AvatarFallback>
-              </Avatar>
-              <div className='flex flex-1 flex-col'>
-                <span className='truncate text-sm'>
-                  {primaryField?.name || singular || 'Display Name'}
-                </span>
-                {secondaryField && (
-                  <span className='text-xs text-muted-foreground'>{secondaryField.name}</span>
+        <div className='grid grid-cols-1 sm:grid-cols-2 gap-6'>
+          {/* Left column: Select fields */}
+          <div>
+            <VarEditorField className='p-0 dark:bg-primary-50'>
+              <VarEditorFieldRow
+                title='Display Field'
+                description='Shown as the main name in pickers'>
+                {disabled ? (
+                  <span className='text-sm text-muted-foreground h-7.5 flex items-center'>
+                    {primaryField?.name ?? 'None'}
+                  </span>
+                ) : (
+                  <Select
+                    value={primaryDisplayFieldId ?? 'none'}
+                    onValueChange={(v) =>
+                      handleChange('primaryDisplayFieldId', v === 'none' ? null : v)
+                    }>
+                    <SelectTrigger variant='transparent' size='sm'>
+                      <SelectValue placeholder='Select field' />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value='none'>None</SelectItem>
+                      {selectableFields
+                        .filter(
+                          (f) =>
+                            f.fieldType &&
+                            PRIMARY_DISPLAY_ELIGIBLE_TYPES.includes(f.fieldType as FieldType)
+                        )
+                        .map((field) => (
+                          <SelectItem key={field.id} value={field.id}>
+                            {field.name ?? field.label}
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
                 )}
+              </VarEditorFieldRow>
+              <VarEditorFieldRow
+                title='Subtitle Field'
+                description='Optional subtitle below the name'>
+                {disabled ? (
+                  <span className='text-sm text-muted-foreground h-7.5 flex items-center'>
+                    {secondaryField?.name ?? secondaryField?.label ?? 'None'}
+                  </span>
+                ) : (
+                  <Select
+                    value={secondaryDisplayFieldId ?? 'none'}
+                    onValueChange={(v) =>
+                      handleChange('secondaryDisplayFieldId', v === 'none' ? null : v)
+                    }>
+                    <SelectTrigger variant='transparent' size='sm'>
+                      <SelectValue placeholder='Select field' />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value='none'>None</SelectItem>
+                      {selectableFields.map((field) => (
+                        <SelectItem key={field.id} value={field.id}>
+                          {field.name ?? field.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              </VarEditorFieldRow>
+              <VarEditorFieldRow title='Avatar Field' description='Image field for avatar'>
+                {disabled ? (
+                  <span className='text-sm text-muted-foreground h-7.5 flex items-center'>
+                    {avatarField?.name ?? avatarField?.label ?? 'None'}
+                  </span>
+                ) : (
+                  <Select
+                    value={avatarFieldId ?? 'none'}
+                    onValueChange={(v) => handleChange('avatarFieldId', v === 'none' ? null : v)}>
+                    <SelectTrigger variant='transparent' size='sm'>
+                      <SelectValue placeholder='Select field' />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value='none'>None</SelectItem>
+                      {selectableFields
+                        .filter((f) => f.fieldType === 'URL' || f.fieldType === 'FILE')
+                        .map((field) => (
+                          <SelectItem key={field.id} value={field.id}>
+                            {field.name ?? field.label}
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              </VarEditorFieldRow>
+              {avatarWarnings.length > 0 && (
+                <div className='flex gap-2 px-3 py-2 text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 rounded-md mx-2 mb-2'>
+                  <AlertTriangle className='size-3.5 shrink-0 mt-0.5' />
+                  <div className='space-y-0.5'>
+                    {avatarWarnings.map((w) => (
+                      <p key={w}>{w}</p>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </VarEditorField>
+          </div>
+
+          {/* Right column: Preview */}
+          <div className='flex items-center justify-center border rounded-2xl p-4 bg-muted dark:bg-primary-50 min-h-[120px]'>
+            <div className='max-w-[300px] w-full'>
+              <div className='flex items-center gap-2 rounded-2xl border bg-background py-2 ps-1 pe-2'>
+                <Avatar className='size-6'>
+                  <AvatarFallback className='text-xs'>
+                    {(primaryField?.name || singular || 'D')[0]}
+                  </AvatarFallback>
+                </Avatar>
+                <div className='flex flex-1 flex-col'>
+                  <span className='truncate text-sm'>
+                    {primaryField?.name || singular || 'Display Name'}
+                  </span>
+                  {secondaryField && (
+                    <span className='text-xs text-muted-foreground'>{secondaryField.name}</span>
+                  )}
+                </div>
+                <Check className='size-4 opacity-100' />
               </div>
-              <Check className='size-4 opacity-100' />
+              <p className='text-xs text-muted-foreground mt-2 text-center'>Preview</p>
             </div>
-            <p className='text-xs text-muted-foreground mt-2 text-center'>Preview</p>
           </div>
         </div>
-      </div>
+      </SettingsSection>
     </div>
   )
 }

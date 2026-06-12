@@ -5,7 +5,7 @@ import { Skeleton } from '@auxx/ui/components/skeleton'
 import { Receipt } from 'lucide-react'
 import { redirect } from 'next/navigation'
 import { Suspense } from 'react'
-import SettingsPage from '~/components/global/settings-page'
+import SettingsPage, { SettingsSection } from '~/components/global/settings-page'
 import {
   BillingCycleAlert,
   BillingCycleAlertSkeleton,
@@ -45,21 +45,17 @@ export default function PlansPage() {
 
         <BillingDetailsSection />
 
-        <div className='space-y-3'>
-          <div className='space-y-1'>
-            <div className='flex items-center gap-2 leading-none tracking-tight font-semibold text-foreground'>
-              <Receipt className='size-4' /> History
-            </div>
-            <div className='text-sm text-muted-foreground mb-4'>
-              View and track your past invoices
-            </div>
-          </div>
+        <SettingsSection
+          className='space-y-3'
+          icon={<Receipt className='size-4' />}
+          title='History'
+          description='View and track your past invoices'>
           <div className='rounded-2xl border'>
             <Suspense fallback={<InvoiceListSkeleton />}>
               <InvoiceList />
             </Suspense>
           </div>
-        </div>
+        </SettingsSection>
         <div className='space-y-4'>
           <CancelSubscriptionDialog />
         </div>

@@ -7,6 +7,7 @@ import { Skeleton } from '@auxx/ui/components/skeleton'
 import { toastError } from '@auxx/ui/components/toast'
 import { CreditCard, Plus, Trash2 } from 'lucide-react'
 import { useState } from 'react'
+import { SettingsSection } from '~/components/global/settings-page'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useDemo } from '~/hooks/use-demo'
 import { api } from '~/trpc/react'
@@ -72,14 +73,12 @@ export function PaymentMethodsCard() {
 
   return (
     <>
-      <div className='rounded-2xl border p-3 space-y-4'>
-        <div className='flex items-center justify-between'>
-          <div className='space-y-1'>
-            <div className='flex items-center gap-2 leading-none tracking-tight font-semibold text-foreground'>
-              <CreditCard className='size-4' /> Payment
-            </div>
-            <p className='text-sm text-muted-foreground'>Manage your payment methods</p>
-          </div>
+      <SettingsSection
+        className='rounded-2xl border p-3 space-y-4'
+        icon={CreditCard}
+        title='Payment'
+        description='Manage your payment methods'
+        action={
           <Button
             variant='outline'
             size='icon-sm'
@@ -88,8 +87,7 @@ export function PaymentMethodsCard() {
             disabled={isLoading || isDemo}>
             <Plus />
           </Button>
-        </div>
-
+        }>
         {isLoading ? (
           <div className='space-y-3'>
             {[1, 2].map((i) => (
@@ -158,7 +156,7 @@ export function PaymentMethodsCard() {
             No payment methods added yet
           </div>
         )}
-      </div>
+      </SettingsSection>
 
       <AddPaymentMethodDialog open={dialogOpen} onOpenChange={setDialogOpen} />
       <ConfirmDialog />

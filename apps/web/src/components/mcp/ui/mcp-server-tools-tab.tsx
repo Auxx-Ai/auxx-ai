@@ -10,6 +10,7 @@ import { TreeRow } from '@auxx/ui/components/tree-row'
 import { cn } from '@auxx/ui/lib/utils'
 import { AlertTriangle, Pencil, RefreshCw, ShieldCheck, Wrench } from 'lucide-react'
 import { useMemo, useState } from 'react'
+import { SettingsSection } from '~/components/global/settings-page'
 import { api } from '~/trpc/react'
 import type { McpDetailServer } from './mcp-server-detail'
 import { McpToolDetailPanel } from './mcp-tool-detail-panel'
@@ -87,12 +88,18 @@ export function McpServerToolsTab({ server, onChanged }: McpServerToolsTabProps)
   }
 
   return (
-    <div className='flex flex-col gap-3'>
-      <div className='flex items-center justify-between'>
-        <div className='flex items-center gap-2 tracking-tight font-semibold text-foreground text-base'>
-          <Wrench className='size-4' />
-          Tools
-        </div>
+    <SettingsSection
+      icon={Wrench}
+      title='Tools'
+      description={
+        <>
+          {server.tools.length} {server.tools.length === 1 ? 'tool' : 'tools'}
+          {server.lastSyncedAt
+            ? ` · synced ${new Date(server.lastSyncedAt).toLocaleString()}`
+            : ' · not synced yet'}
+        </>
+      }
+      action={
         <Button
           variant='outline'
           size='sm'
@@ -102,92 +109,86 @@ export function McpServerToolsTab({ server, onChanged }: McpServerToolsTabProps)
           <RefreshCw />
           Refresh
         </Button>
+      }>
+      <div className='flex flex-col gap-3'>
+        {server.lastSyncError && (
+          <div className='flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700'>
+            <AlertTriangle className='mt-0.5 size-4 shrink-0' />
+            <div>
+              <div className='font-medium'>Last sync failed</div>
+              <div className='text-red-600'>{server.lastSyncError}</div>
+            </div>
+          </div>
+        )}
+
+        <ToggleCard
+          title='Trust all tools'
+          description='Trusted tools run without approval. Which agents get the tools is configured per agent.'
+          icon={<ShieldCheck className='size-3.5' />}
+          checked={allTrusted}
+          onCheckedChange={toggleAll}
+          disabled={update.isPending || server.tools.length === 0}
+          switchSize='sm'
+          className='bg-primary-50'
+        />
+
+        {server.tools.length === 0 ? (
+          <div className='p-4 text-center text-sm text-muted-foreground'>
+            No tools — connect and refresh to populate the list.
+          </div>
+        ) : (
+          <div className='grid grid-cols-2 items-start gap-3'>
+            <div className='flex flex-col gap-0.5'>
+              {server.tools.map((tool) => (
+                <TreeRow
+                  rowClassName={cn(
+                    'bg-primary-100/50 hover:bg-primary-100',
+                    selectedTool === tool.name && 'bg-primary-100 ring-1 ring-primary-200'
+                  )}
+                  key={tool.name}
+                  icon={<Wrench className='size-4 text-muted-foreground' />}
+                  title={tool.title ?? tool.name}
+                  onToggleOpen={() => setSelectedTool(tool.name)}
+                  secondary={
+                    <Badge
+                      variant='outline'
+                      size='xs'
+                      title={
+                        tool.readOnlyHint
+                          ? 'Read-only tool'
+                          : 'Write tool — requires approval unless trusted'
+                      }>
+                      {tool.readOnlyHint ? 'Read' : <Pencil className='size-2.5' />}
+                      {tool.readOnlyHint ? '' : 'Write'}
+                    </Badge>
+                  }
+                  actions={
+                    <Switch
+                      size='xs'
+                      checked={trusted.has(tool.name)}
+                      onCheckedChange={(on) => toggleTool(tool.name, on)}
+                      disabled={update.isPending}
+                    />
+                  }
+                />
+              ))}
+            </div>
+
+            <div className='sticky top-0 self-start rounded-lg border bg-background p-3 text-sm mb-[300px]'>
+              {selected ? (
+                <McpToolDetailPanel
+                  key={selected.name}
+                  serverId={server.serverId}
+                  tool={selected}
+                  onChanged={onChanged}
+                />
+              ) : (
+                <div className='text-muted-foreground'>Select a tool to view its description.</div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
-
-      <div className='text-sm text-muted-foreground'>
-        {server.tools.length} {server.tools.length === 1 ? 'tool' : 'tools'}
-        {server.lastSyncedAt
-          ? ` · synced ${new Date(server.lastSyncedAt).toLocaleString()}`
-          : ' · not synced yet'}
-      </div>
-
-      {server.lastSyncError && (
-        <div className='flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700'>
-          <AlertTriangle className='mt-0.5 size-4 shrink-0' />
-          <div>
-            <div className='font-medium'>Last sync failed</div>
-            <div className='text-red-600'>{server.lastSyncError}</div>
-          </div>
-        </div>
-      )}
-
-      <ToggleCard
-        title='Trust all tools'
-        description='Trusted tools run without approval. Which agents get the tools is configured per agent.'
-        icon={<ShieldCheck className='size-3.5' />}
-        checked={allTrusted}
-        onCheckedChange={toggleAll}
-        disabled={update.isPending || server.tools.length === 0}
-        switchSize='sm'
-        className='bg-primary-50'
-      />
-
-      {server.tools.length === 0 ? (
-        <div className='p-4 text-center text-sm text-muted-foreground'>
-          No tools — connect and refresh to populate the list.
-        </div>
-      ) : (
-        <div className='grid grid-cols-2 items-start gap-3'>
-          <div className='flex flex-col gap-0.5'>
-            {server.tools.map((tool) => (
-              <TreeRow
-                rowClassName={cn(
-                  'bg-primary-100/50 hover:bg-primary-100',
-                  selectedTool === tool.name && 'bg-primary-100 ring-1 ring-primary-200'
-                )}
-                key={tool.name}
-                icon={<Wrench className='size-4 text-muted-foreground' />}
-                title={tool.title ?? tool.name}
-                onToggleOpen={() => setSelectedTool(tool.name)}
-                secondary={
-                  <Badge
-                    variant='outline'
-                    size='xs'
-                    title={
-                      tool.readOnlyHint
-                        ? 'Read-only tool'
-                        : 'Write tool — requires approval unless trusted'
-                    }>
-                    {tool.readOnlyHint ? 'Read' : <Pencil className='size-2.5' />}
-                    {tool.readOnlyHint ? '' : 'Write'}
-                  </Badge>
-                }
-                actions={
-                  <Switch
-                    size='xs'
-                    checked={trusted.has(tool.name)}
-                    onCheckedChange={(on) => toggleTool(tool.name, on)}
-                    disabled={update.isPending}
-                  />
-                }
-              />
-            ))}
-          </div>
-
-          <div className='sticky top-0 self-start rounded-lg border bg-background p-3 text-sm mb-[300px]'>
-            {selected ? (
-              <McpToolDetailPanel
-                key={selected.name}
-                serverId={server.serverId}
-                tool={selected}
-                onChanged={onChanged}
-              />
-            ) : (
-              <div className='text-muted-foreground'>Select a tool to view its description.</div>
-            )}
-          </div>
-        </div>
-      )}
-    </div>
+    </SettingsSection>
   )
 }

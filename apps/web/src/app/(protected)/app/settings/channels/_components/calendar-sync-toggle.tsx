@@ -5,6 +5,7 @@ import { Button } from '@auxx/ui/components/button'
 import { Switch } from '@auxx/ui/components/switch'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { CalendarDays, RefreshCw } from 'lucide-react'
+import { SettingsSection } from '~/components/global/settings-page'
 import { api } from '~/trpc/react'
 
 interface CalendarSyncToggleProps {
@@ -71,32 +72,24 @@ export function CalendarSyncToggle({ integrationId }: CalendarSyncToggleProps) {
   }
 
   return (
-    <div className='space-y-4'>
-      <div className='space-y-1'>
-        <div className='flex items-center justify-between'>
-          <div className='space-y-1'>
-            <div className='flex items-center gap-2 tracking-tight font-semibold text-foreground text-base'>
-              <CalendarDays className='size-4' /> Calendar Sync
-            </div>
-            <p className='text-sm text-muted-foreground'>
-              Sync Google Calendar events, meeting links, and CRM-ready Meeting records.
-            </p>
-          </div>
-          {isEnabled && (
-            <Button
-              variant='outline'
-              size='sm'
-              onClick={handleManualSync}
-              disabled={triggerSync.isPending}
-              loading={triggerSync.isPending}
-              loadingText='Syncing...'>
-              <RefreshCw />
-              Sync now
-            </Button>
-          )}
-        </div>
-      </div>
-
+    <SettingsSection
+      icon={CalendarDays}
+      title='Calendar Sync'
+      description='Sync Google Calendar events, meeting links, and CRM-ready Meeting records.'
+      action={
+        isEnabled ? (
+          <Button
+            variant='outline'
+            size='sm'
+            onClick={handleManualSync}
+            disabled={triggerSync.isPending}
+            loading={triggerSync.isPending}
+            loadingText='Syncing...'>
+            <RefreshCw />
+            Sync now
+          </Button>
+        ) : undefined
+      }>
       <div className='group flex items-center justify-between rounded-2xl border py-2 px-3 hover:bg-muted transition-colors duration-200'>
         <div className='flex items-center gap-3'>
           <div className='size-8 border bg-muted rounded-lg flex items-center justify-center group-hover:bg-secondary transition-colors overflow-hidden shrink-0'>
@@ -122,6 +115,6 @@ export function CalendarSyncToggle({ integrationId }: CalendarSyncToggleProps) {
           disabled={enableSync.isPending || disableSync.isPending}
         />
       </div>
-    </div>
+    </SettingsSection>
   )
 }
