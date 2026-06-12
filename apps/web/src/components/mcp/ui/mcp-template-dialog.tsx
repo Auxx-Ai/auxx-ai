@@ -100,6 +100,7 @@ export function McpTemplateDialog({ open, onOpenChange, onConnected }: McpTempla
       if ('needsOAuth' in result && result.needsOAuth) {
         oauth.open({
           authorizeUrl: result.authorizeUrl,
+          verifyServer: { serverId: result.serverId, endpoint: template.endpoint },
           onDone: (ok) => {
             if (ok) handleConnected(result.slug)
             else setConnectingId(null)
@@ -204,6 +205,7 @@ export function McpTemplateDialog({ open, onOpenChange, onConnected }: McpTempla
         // The reused server already has client creds → straight to the popup.
         oauth.open({
           authorizeUrl: result.authorizeUrl,
+          verifyServer: { serverId: result.serverId, endpoint: template.endpoint },
           onDone: (ok) => {
             if (ok) handleConnected(result.slug)
             else setConnectingId(null)
@@ -243,6 +245,7 @@ export function McpTemplateDialog({ open, onOpenChange, onConnected }: McpTempla
       if ('needsOAuth' in result && result.needsOAuth) {
         oauth.open({
           authorizeUrl: result.authorizeUrl,
+          verifyServer: { serverId: result.serverId, endpoint: template.endpoint },
           onDone: (ok) => {
             if (ok) handleConnected(result.slug)
             else setConnectingId(null)

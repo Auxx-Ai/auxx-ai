@@ -127,7 +127,7 @@ export {
 // OAuth utilities
 export { validateRedirectPath } from './oauth'
 // Object utilities
-export { cloneDeep, deepMerge, getByPath } from './objects'
+export { cloneDeep, deepMerge, getByPath, isEmpty } from './objects'
 // Parse utilities
 export { parseBoolean, toNumeric } from './parse'
 // Relationship utilities

@@ -108,6 +108,23 @@ export function deepMerge<T extends Record<string, unknown>>(target: T, source: 
 }
 
 /**
+ * Is a value "empty": `undefined`, `null`, the empty string, or an empty array.
+ *
+ * The canonical predicate for omitting optional args/fields and "has the user
+ * provided a value" checks. Deliberately NOT empty: `{}`, whitespace-only
+ * strings, `0`, and `false` — callers that need those have different semantics
+ * and should say so locally. PURE.
+ */
+export function isEmpty(value: unknown): boolean {
+  return (
+    value === undefined ||
+    value === null ||
+    value === '' ||
+    (Array.isArray(value) && value.length === 0)
+  )
+}
+
+/**
  * Shallow equality check for objects.
  * Compares top-level properties only (reference equality for nested objects).
  */

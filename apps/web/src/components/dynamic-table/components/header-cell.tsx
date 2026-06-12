@@ -29,6 +29,7 @@ import { type BreadcrumbSegment, SmartBreadcrumb } from '@auxx/ui/components/sma
 import { toastInfo } from '@auxx/ui/components/toast'
 import { cn } from '@auxx/ui/lib/utils'
 import { generateId } from '@auxx/utils/generateId'
+import { isEmpty } from '@auxx/utils/objects'
 import type { Header, Row, Table } from '@tanstack/react-table'
 import {
   ArrowUpDown,
@@ -88,12 +89,7 @@ interface HeaderCellProps<TData> {
  * previous AI error counts as missing — retrying is the expected behavior.
  */
 function isMissingCell(value: unknown, aiStatus: string | undefined): boolean {
-  const isEmpty =
-    value === undefined ||
-    value === null ||
-    value === '' ||
-    (Array.isArray(value) && value.length === 0)
-  return isEmpty && aiStatus !== 'generating' && aiStatus !== 'result'
+  return isEmpty(value) && aiStatus !== 'generating' && aiStatus !== 'result'
 }
 
 /**
@@ -121,17 +117,11 @@ function collectAiTargetRowIds<TData>(
     // server would dedupe but this saves a wasted quota attempt.
     if (status === 'generating') continue
 
-    const isEmpty =
-      value === undefined ||
-      value === null ||
-      value === '' ||
-      (Array.isArray(value) && value.length === 0)
-
     if (mode === 'fill-missing') {
       if (isMissingCell(value, status)) rowIds.push(row.id)
     } else {
       rowIds.push(row.id)
-      if (!isEmpty) nonEmptyCount++
+      if (!isEmpty(value)) nonEmptyCount++
     }
   }
 

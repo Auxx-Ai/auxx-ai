@@ -1,5 +1,6 @@
 // packages/lib/src/conditions/evaluate.ts
 
+import { isEmpty } from '@auxx/utils/objects'
 import type { Operator } from './operator-definitions'
 import type { ConditionContext } from './resolve-context'
 import type { Condition, ConditionGroup } from './types'
@@ -362,16 +363,6 @@ function isEqual(a: unknown, b: unknown): boolean {
   }
 
   return aStr === bStr
-}
-
-/**
- * Check if value is empty (null, undefined, empty string, empty array).
- */
-function isEmpty(value: unknown): boolean {
-  if (value == null) return true
-  if (value === '') return true
-  if (Array.isArray(value) && value.length === 0) return true
-  return false
 }
 
 /**

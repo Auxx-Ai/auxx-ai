@@ -72,7 +72,11 @@ export function McpServerConnectionTab({
           return
         }
         if ('needsOAuth' in result && result.needsOAuth) {
-          oauth.open({ authorizeUrl: result.authorizeUrl, onDone: (ok) => ok && onChanged() })
+          oauth.open({
+            authorizeUrl: result.authorizeUrl,
+            verifyServer: { serverId: server.serverId },
+            onDone: (ok) => ok && onChanged(),
+          })
           return
         }
         toastError({
@@ -95,6 +99,7 @@ export function McpServerConnectionTab({
         authorizeUrl: `/api/mcp/${server.serverId}/oauth2/authorize?returnTo=${encodeURIComponent(
           `/app/settings/apps/mcp/${server.slug}`
         )}`,
+        verifyServer: { serverId: server.serverId },
         onDone: (ok) => ok && onChanged(),
       })
       return

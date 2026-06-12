@@ -372,6 +372,7 @@ export function AddMcpServerDialog({
     if ('needsOAuth' in result && result.needsOAuth) {
       oauth.open({
         authorizeUrl: result.authorizeUrl,
+        verifyServer: { serverId: result.serverId },
         onDone: (ok) => {
           if (ok) {
             onConnected()
@@ -442,7 +443,11 @@ export function AddMcpServerDialog({
         })
         if ('needsOAuth' in result && result.needsOAuth) {
           await new Promise<void>((resolve) =>
-            oauth.open({ authorizeUrl: result.authorizeUrl, onDone: () => resolve() })
+            oauth.open({
+              authorizeUrl: result.authorizeUrl,
+              verifyServer: { serverId: result.serverId },
+              onDone: () => resolve(),
+            })
           )
         }
       }

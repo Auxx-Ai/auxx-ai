@@ -14,6 +14,7 @@ import {
 import { Button } from '@auxx/ui/components/button'
 import { Label } from '@auxx/ui/components/label'
 import { cn } from '@auxx/ui/lib/utils'
+import { isEmpty } from '@auxx/utils/objects'
 import { useMemo, useState } from 'react'
 import { v4 as generateId } from 'uuid'
 import ConditionOperator from '~/components/conditions/components/condition-operator'
@@ -64,14 +65,8 @@ function setConditionValue(
   operator: Operator,
   value: any
 ): SearchCondition[] {
-  const isEmpty =
-    value === undefined ||
-    value === null ||
-    value === '' ||
-    (Array.isArray(value) && value.length === 0)
-
   // For no-value operators, keep the condition even without a value
-  if (isEmpty && operatorRequiresValue(operator)) {
+  if (isEmpty(value) && operatorRequiresValue(operator)) {
     return conditions.filter((c) => c.fieldId !== fieldId)
   }
 

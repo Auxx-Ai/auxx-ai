@@ -90,6 +90,7 @@ export function ConnectCuratedDialog({
       if ('needsOAuth' in result && result.needsOAuth) {
         oauth.open({
           authorizeUrl: result.authorizeUrl,
+          verifyServer: { serverId },
           onDone: (ok) => {
             if (ok) {
               onConnected()

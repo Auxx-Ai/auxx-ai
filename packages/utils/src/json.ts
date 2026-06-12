@@ -1,6 +1,39 @@
 // packages/utils/src/json.ts
 
 /**
+ * `JSON.parse` that returns `fallback` (default `undefined`) instead of throwing
+ * on invalid input. Generic over the expected shape — the caller asserts the
+ * type; no runtime validation is performed, so pair it with a schema when the
+ * input is untrusted. PURE.
+ */
+export function safeJsonParse<T = unknown>(value: string, fallback?: T): T | undefined {
+  try {
+    return JSON.parse(value) as T
+  } catch {
+    return fallback
+  }
+}
+
+/**
+ * `JSON.stringify` replacer that renders `BigInt` as a (lossless) string, so
+ * payloads carrying bigint — e.g. Postgres `bigserial` ids — don't throw
+ * "Do not know how to serialize a BigInt". Strings, not numbers: `Number`
+ * conversion silently loses precision past `2^53`. PURE.
+ */
+export function bigIntReplacer(_key: string, value: unknown): unknown {
+  return typeof value === 'bigint' ? value.toString() : value
+}
+
+/**
+ * `JSON.stringify` that tolerates `BigInt` (rendered as a string via
+ * {@link bigIntReplacer}). `space` pretty-prints exactly like the native arg.
+ * PURE.
+ */
+export function safeJsonStringify(value: unknown, space?: number | string): string {
+  return JSON.stringify(value, bigIntReplacer, space)
+}
+
+/**
  * Deterministic, key-order-independent JSON serialization. Recursively sorts
  * object keys (bytewise) and drops `undefined` object values, so two
  * structurally-equal values serialize to the identical string regardless of key
