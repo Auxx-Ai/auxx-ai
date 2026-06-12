@@ -99,6 +99,28 @@ export function createQueryRecordsTool(getDeps: GetToolDeps): AgentToolDefinitio
     category: 'system',
     idempotent: true,
     outputSchema: QueryRecordsOutput,
+    exampleOutput: {
+      entityType: 'Contact',
+      items: [
+        {
+          recordId: 'contact:9aB3xY',
+          displayName: 'Jane Cooper',
+          secondaryInfo: 'jane@example.com',
+          Status: 'ACTIVE',
+          createdAt: '2026-01-12T08:30:00.000Z',
+        },
+        {
+          recordId: 'contact:4dF7mN',
+          displayName: 'Alex Morgan',
+          secondaryInfo: 'alex@acme.com',
+          Status: 'ACTIVE',
+          createdAt: '2026-02-03T11:45:00.000Z',
+        },
+      ],
+      returned_count: 2,
+      total_matching: 2,
+      hasMore: false,
+    } satisfies z.output<typeof QueryRecordsOutput>,
     buildDigest: (output) => {
       const out = (output ?? {}) as {
         items?: Array<Record<string, unknown>>

@@ -29,6 +29,12 @@ export function createBulkUpdateEntityTool(getDeps: GetToolDeps): AgentToolDefin
     displayName: 'Bulk update records',
     toolsetSlug: 'auxx:entities:write',
     outputSchema: BulkUpdateEntityOutput,
+    exampleOutput: {
+      total: 3,
+      approved: 3,
+      updated: 3,
+      updatedFields: ['Status'],
+    } satisfies z.output<typeof BulkUpdateEntityOutput>,
     buildDigest: (output) => {
       const out = (output ?? {}) as { updated?: number; updatedFields?: string[] }
       return {

@@ -1,50 +1,119 @@
 // apps/web/src/components/evals/ui/eval-tool-responses.tsx
 'use client'
 
-import type { SimulationToolMock } from '@auxx/types/evals'
+import { scaffoldFromJsonSchema, type ToolCatalogEntry } from '@auxx/lib/agents/client'
+import type { AgentEvalTarget, SimulationToolMock } from '@auxx/types/evals'
 import { Alert, AlertDescription } from '@auxx/ui/components/alert'
 import { Button } from '@auxx/ui/components/button'
 import { EmptySection, Section } from '@auxx/ui/components/section'
 import { TreeRow, TreeRowButton } from '@auxx/ui/components/tree-row'
 import { cn } from '@auxx/ui/lib/utils'
 import { generateId } from '@auxx/utils'
-import { Sparkles, Trash2, Wand2, Wrench } from 'lucide-react'
+import { Plus, Sparkles, Trash2, Wand2, Wrench } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { AppIcon } from '~/components/apps/ui/app-icon'
 import { CodeEditor, CodeLanguage } from '~/components/workflow/ui/code-editor'
-import type { RouterOutputs } from '~/trpc/react'
 import { api } from '~/trpc/react'
 import { type EditorToolGroup, useToolGroups } from '../hooks/use-tool-groups'
+import { ToolSelect } from './tool-select'
 
 /**
- * The load-bearing case-editor section: per-tool mock responses over the agent's
- * EFFECTIVE toolset, grouped by toolset. The catalog defines icons per toolset
- * (never per tool), so the icon belongs to a group header and the rows beneath
- * read as members — entity-read tools no longer render the same icon N times.
- * A tool with a declared `exampleOutput` is on its live default (the runtime
- * returns the example when no literal mock matches — see
- * plans/evals/live-tool-default-mocks-plan.md): the row shows a read-only
- * preview with an Override button that pins an editable literal seeded from the
- * current live value, and Reset to default drops the literal again. Tools
- * without an example seed from a schema scaffold. Literal output validates
- * against `outputSchema` on edit. One `repeat` response per tool in v1
- * (arg-matched multi-response is a follow-up).
+ * The load-bearing case-editor section: per-tool mock responses, grouped by
+ * toolset. The displayed set is **baseline ∪ added ∪ mocked**, drawn from the
+ * enriched unified catalog (`useToolGroups`): the baseline is the agent's draft
+ * toolsets, "Add tool" surfaces any installed tool so a mock can be authored
+ * for a tool the agent doesn't have YET (forward-looking — the row persists
+ * once a response is authored, since mocks key by `toolName`), and a mocked
+ * tool outside the baseline always renders its row. The catalog defines icons
+ * per toolset (never per tool), so the icon belongs to a group header and the
+ * rows beneath read as members. A tool with a declared `exampleOutput` is on
+ * its live default (the runtime returns the example when no literal mock
+ * matches — see plans/evals/live-tool-default-mocks-plan.md): the row shows a
+ * read-only preview with an Override button that pins an editable literal
+ * seeded from the current live value, and Reset to default drops the literal
+ * again. Tools without an example seed from a client-side JSON-Schema scaffold
+ * (`scaffoldFromJsonSchema` over `outputsJsonSchema`). Literal output validates
+ * against the server's Zod `outputSchema` on edit. One `repeat` response per
+ * tool in v1 (arg-matched multi-response is a follow-up).
  *
- * `control` tools are dropped server-side; `system` (platform read) toolsets sort
- * to the bottom and collapse by default. See plans/evals/tool-responses-grouping.md
- * and tool-visibility-plan.md.
+ * `control` tools never reach the catalog; `system` (platform read) toolsets
+ * sort to the bottom and collapse by default. See
+ * plans/mcp/v4/tool-catalog-unification.md and tool-visibility-plan.md.
  */
 
-type ToolEntry = RouterOutputs['eval']['agentToolset']['tools'][number]
+type ToolEntry = ToolCatalogEntry
+
+/**
+ * Tool names referenced by `tool:<name>` chips anywhere in a procedure's draft.
+ * A generic deep walk over every nested value — NOT just `content` — because the
+ * persisted draft keeps subprocedures (and code blocks / local attrs) in sibling
+ * top-level keys, so a content-only walk would miss tool chips authored inside a
+ * subprocedure. Visiting every object value + array element catches references
+ * regardless of where they nest. Pure; non-object leaves are ignored.
+ */
+function collectDocToolNames(doc: unknown): string[] {
+  const names = new Set<string>()
+  const visit = (node: unknown): void => {
+    if (Array.isArray(node)) {
+      for (const child of node) visit(child)
+      return
+    }
+    if (!node || typeof node !== 'object') return
+    const n = node as { type?: unknown; attrs?: { id?: unknown } }
+    if (
+      n.type === 'reference' &&
+      typeof n.attrs?.id === 'string' &&
+      n.attrs.id.startsWith('tool:')
+    ) {
+      const name = n.attrs.id.slice('tool:'.length)
+      if (name) names.add(name)
+    }
+    for (const value of Object.values(node as Record<string, unknown>)) visit(value)
+  }
+  visit(doc)
+  return [...names]
+}
 
 interface EvalToolResponsesProps {
   agentId: string
+  /** Drives the baseline: a procedure case scopes the list to that procedure's
+   * referenced tools; an agent case shows the full toolset. */
+  target: AgentEvalTarget
   mocks: SimulationToolMock[]
   onChange: (mocks: SimulationToolMock[]) => void
 }
 
-export function EvalToolResponses({ agentId, mocks, onChange }: EvalToolResponsesProps) {
-  const { groups, ungroupedTools, isLoading } = useToolGroups(agentId)
+export function EvalToolResponses({ agentId, target, mocks, onChange }: EvalToolResponsesProps) {
+  // Session-only "Add tool" rows. An added tool with no authored response
+  // vanishes on reload; once a response is authored it persists as a normal
+  // mock and re-renders via the mocked branch of the display union.
+  const [addedTools, setAddedTools] = useState<string[]>([])
+  const extraToolNames = useMemo(
+    () => [...addedTools, ...mocks.map((m) => m.toolName)],
+    [addedTools, mocks]
+  )
+  // Procedure-scoped cases mock only the tools that procedure (and its
+  // subprocedures) reference; agent-scoped cases keep the full toolset. The
+  // live draft doc comes from `procedure.getById` — React Query serves it from
+  // cache when the builder already has this procedure loaded (no extra round
+  // trip) and it reflects the autosaved draft the user is editing.
+  const procedureId = target.scope === 'procedure' ? target.procedureId : null
+  const procedureQuery = api.procedure.getById.useQuery(
+    { id: procedureId ?? '' },
+    { enabled: procedureId !== null }
+  )
+  const procedureToolNames = useMemo(
+    () => (procedureId === null ? null : collectDocToolNames(procedureQuery.data?.draftDoc)),
+    [procedureId, procedureQuery.data?.draftDoc]
+  )
+
+  const {
+    groups,
+    ungroupedTools,
+    allTools,
+    isLoading: isLoadingGroups,
+  } = useToolGroups(agentId, { extraToolNames, procedureToolNames })
+  const isLoading = isLoadingGroups || (procedureId !== null && procedureQuery.isLoading)
   // `null` ⇒ uninitialized: fall back to the default-open group. Once the user
   // toggles anything, the explicit set takes over.
   const [openGroups, setOpenGroups] = useState<Set<string> | null>(null)
@@ -53,7 +122,7 @@ export function EvalToolResponses({ agentId, mocks, onChange }: EvalToolResponse
   const hasMock = (toolName: string) => mocks.some((m) => m.toolName === toolName)
   // On its live default: no literal mock, but the tool declares an example the
   // runtime will return.
-  const isDefault = (tool: ToolEntry) => !hasMock(tool.name) && tool.example !== undefined
+  const isDefault = (tool: ToolEntry) => !hasMock(tool.name) && tool.exampleOutput !== undefined
 
   const upsert = (toolName: string, output: unknown) => {
     const existing = mocks.find((m) => m.toolName === toolName)
@@ -81,6 +150,37 @@ export function EvalToolResponses({ agentId, mocks, onChange }: EvalToolResponse
     })
   }
 
+  // "Add tool": the full catalog minus already-displayed rows. Selecting adds
+  // the row, expands its group, and opens the response editor.
+  const displayedNames = useMemo(() => {
+    const names = new Set(ungroupedTools.map((t) => t.name))
+    for (const group of groups) for (const t of group.tools) names.add(t.name)
+    return names
+  }, [groups, ungroupedTools])
+  const addOptions = useMemo(
+    () =>
+      allTools
+        .filter((t) => !displayedNames.has(t.name))
+        .map((t) => ({
+          value: t.name,
+          label: t.displayName,
+          icon: t.iconId,
+          iconColor: t.color || undefined,
+        })),
+    [allTools, displayedNames]
+  )
+  const addTool = (name: string) => {
+    setAddedTools((prev) => (prev.includes(name) ? prev : [...prev, name]))
+    const slug = allTools.find((t) => t.name === name)?.toolsetSlug
+    if (slug) {
+      setOpenGroups((prev) => {
+        const base = prev ?? new Set(defaultOpenSlug ? [defaultOpenSlug] : [])
+        return new Set([...base, slug])
+      })
+    }
+    setOpenTool(name)
+  }
+
   const renderTool = (tool: ToolEntry) => (
     <ToolResponseRow
       key={tool.name}
@@ -97,12 +197,24 @@ export function EvalToolResponses({ agentId, mocks, onChange }: EvalToolResponse
   const isEmpty = !isLoading && groups.length === 0 && ungroupedTools.length === 0
 
   return (
-    <Section title='Tool responses' icon={<Wrench className='size-4' />}>
+    <Section
+      title='Tool responses'
+      icon={<Wrench className='size-4' />}
+      actions={
+        addOptions.length > 0 ? (
+          <ToolSelect options={addOptions} value='' onChange={addTool}>
+            <Button variant='ghost' size='xs'>
+              <Plus />
+              Add tool
+            </Button>
+          </ToolSelect>
+        ) : undefined
+      }>
       {isLoading || isEmpty ? (
         <EmptySection
           icon={<Wrench className='size-4' />}
           title={isLoading ? 'Loading tools…' : 'No tools to mock'}
-          description={isLoading ? undefined : 'This agent has no tools.'}
+          description={isLoading ? undefined : 'This agent has no tools — add one to mock it.'}
           loading={isLoading}
         />
       ) : (
@@ -210,8 +322,14 @@ function ToolResponseRow({
   const [validation, setValidation] = useState<{ error?: string; warning?: string } | null>(null)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const hasExample = tool.example !== undefined
-  const seedScaffold = tool.scaffold !== undefined && tool.scaffold !== null
+  const hasExample = tool.exampleOutput !== undefined
+  // Empty-but-correctly-shaped seed, derived at render time from the entry's
+  // JSON Schema — never stored. Tools without a schema author freely.
+  const scaffold = useMemo(
+    () => (hasExample ? undefined : scaffoldFromJsonSchema(tool.outputsJsonSchema)),
+    [hasExample, tool.outputsJsonSchema]
+  )
+  const seedScaffold = scaffold !== undefined && scaffold !== null
   // No literal mock + a declared example ⇒ the runtime serves the live default.
   const onDefault = !mock && hasExample
 
@@ -305,14 +423,14 @@ function ToolResponseRow({
               <span className='text-xs text-muted-foreground'>
                 Tool default (live) — stays in sync with the tool's example
               </span>
-              <Button variant='outline' size='xs' onClick={() => seed(tool.example)}>
+              <Button variant='outline' size='xs' onClick={() => seed(tool.exampleOutput)}>
                 <Sparkles />
                 Override
               </Button>
             </div>
             <CodeEditor
               language={CodeLanguage.json}
-              value={JSON.stringify(tool.example, null, 2)}
+              value={JSON.stringify(tool.exampleOutput, null, 2)}
               readOnly
               minHeight={120}
             />
@@ -322,7 +440,7 @@ function ToolResponseRow({
             {!mock && draft.trim() === '' ? (
               <div className='flex flex-wrap items-center gap-2'>
                 {seedScaffold ? (
-                  <Button variant='outline' size='xs' onClick={() => seed(tool.scaffold)}>
+                  <Button variant='outline' size='xs' onClick={() => seed(scaffold)}>
                     <Wand2 />
                     Scaffold
                   </Button>

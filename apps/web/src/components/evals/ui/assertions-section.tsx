@@ -34,23 +34,22 @@ interface AssertionsSectionProps {
 }
 
 export function AssertionsSection({ agentId, assertions, onChange }: AssertionsSectionProps) {
-  // The agent's effective toolset, grouped by toolset (shared with the Tool
-  // responses section via one `useToolGroups` hook — the `agentToolset` query is
-  // deduped on its key). We show only the tool's display name; the catalog icon
-  // (resolved via `index`) carries the toolset context.
-  const { groups, ungroupedTools, index } = useToolGroups(agentId)
-  const toolOptions = useMemo(() => {
-    const all = [...groups.flatMap((g) => g.tools), ...ungroupedTools]
-    return all.map((t) => {
-      const meta = index.get(t.name)
-      return {
+  // The FULL unified tool catalog (shared with the Tool responses section via
+  // `useToolGroups`) — assertions may target any installed tool, matching the
+  // editor's "Add tool" forward-authoring (e.g. assert `tool_not_called` on a
+  // tool outside the agent's current toolset). We show only the tool's display
+  // name; the catalog icon carries the toolset context.
+  const { allTools } = useToolGroups(agentId)
+  const toolOptions = useMemo(
+    () =>
+      allTools.map((t) => ({
         value: t.name,
         label: t.displayName,
-        icon: meta?.iconId,
-        iconColor: meta?.color || undefined,
-      }
-    })
-  }, [groups, ungroupedTools, index])
+        icon: t.iconId,
+        iconColor: t.color || undefined,
+      })),
+    [allTools]
+  )
 
   const add = (a: AgentEvalAssertion) => onChange([...assertions, a])
   const remove = (id: string) => onChange(assertions.filter((a) => a.id !== id))

@@ -11,6 +11,14 @@ export function createMoveBlocksTool(getDeps: GetToolDeps): AgentToolDefinition 
     name: 'move_blocks',
     displayName: 'Move article blocks',
     toolsetSlug: 'auxx:kb:write',
+    exampleOutput: {
+      ok: true,
+      op: 'move',
+      articleId: 'art_4Kp9wZ',
+      preHash: 'a1b2c3d4e5f60718',
+      postHash: 'b2c3d4e5f6071829',
+      affectedBlockIds: ['b3', 'b4'],
+    },
     description:
       'Move one or more blocks (by id) to a new anchor. Plucks the blocks from wherever they are (top-level, panels, or cells) and inserts them at the anchor in the requested order. Anchor shape matches insert_blocks.',
     parameters: {

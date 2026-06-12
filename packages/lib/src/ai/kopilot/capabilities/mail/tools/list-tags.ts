@@ -31,6 +31,35 @@ export function createListTagsTool(getDeps: GetToolDeps): AgentToolDefinition {
     toolsetSlug: 'auxx:mail:threads',
     idempotent: true,
     outputSchema: ListTagsOutput,
+    exampleOutput: {
+      tags: [
+        {
+          id: 'tag_shipping',
+          name: 'Shipping',
+          color: 'blue',
+          emoji: null,
+          isSystemTag: false,
+          parentId: null,
+        },
+        {
+          id: 'tag_refund',
+          name: 'Refund',
+          color: 'red',
+          emoji: '💸',
+          isSystemTag: false,
+          parentId: null,
+        },
+        {
+          id: 'tag_urgent',
+          name: 'Urgent',
+          color: 'orange',
+          emoji: null,
+          isSystemTag: true,
+          parentId: null,
+        },
+      ],
+      count: 3,
+    } satisfies z.output<typeof ListTagsOutput>,
     buildDigest: (output) => {
       const out = (output ?? {}) as {
         tags?: Array<{ name?: string | null }>

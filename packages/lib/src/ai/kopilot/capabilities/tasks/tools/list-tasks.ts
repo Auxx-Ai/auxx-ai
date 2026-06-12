@@ -30,6 +30,30 @@ export function createListTasksTool(getDeps: GetToolDeps): AgentToolDefinition {
     toolsetSlug: 'auxx:tasks:read',
     idempotent: true,
     outputSchema: ListTasksOutput,
+    exampleOutput: {
+      tasks: [
+        {
+          id: 'task_5Wm8Lq',
+          title: 'Follow up on order #1042 refund',
+          deadline: '2026-06-13T17:00:00.000Z',
+          priority: 'high',
+          completedAt: null,
+          assignees: ['user:7Hd2aK'],
+          referenceCount: 1,
+        },
+        {
+          id: 'task_2Bn4Xr',
+          title: 'Review weekly support backlog',
+          deadline: null,
+          priority: 'medium',
+          completedAt: null,
+          assignees: ['group:supp7Hd2'],
+          referenceCount: 0,
+        },
+      ],
+      count: 2,
+      hasMore: false,
+    } satisfies z.output<typeof ListTasksOutput>,
     buildDigest: (output) => {
       const out = (output ?? {}) as {
         tasks?: Array<{

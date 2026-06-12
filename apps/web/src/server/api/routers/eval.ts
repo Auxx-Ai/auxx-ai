@@ -14,7 +14,6 @@ import {
   getEvalRunCredits,
   getEvalSuiteRun,
   getLatestRunsByCaseIds,
-  listAgentEffectiveTools,
   listEvalCasesByAgent,
   listEvalRuns,
   listEvalSuiteRuns,
@@ -188,17 +187,8 @@ export const evalRouter = createTRPCRouter({
     }),
 
   // ── Editor support (tool responses) ───────────────────────────────────────
-  agentToolset: protectedProcedure
-    .input(z.object({ agentId: z.string().min(1) }))
-    .query(async ({ ctx, input }) => {
-      const tools = await listAgentEffectiveTools({
-        organizationId: ctx.session.organizationId,
-        userId: ctx.session.userId,
-        agentId: input.agentId,
-      })
-      return { tools }
-    }),
-
+  // The displayed tool list is derived client-side from the unified catalog
+  // (`useToolGroups`); only mock validation needs the server's Zod schemas.
   validateMock: protectedProcedure
     .input(
       z.object({

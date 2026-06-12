@@ -52,6 +52,26 @@ export function createSearchDocsTool(_getDeps: GetToolDeps): AgentToolDefinition
     toolsetSlug: 'auxx:docs',
     idempotent: true,
     outputSchema: SearchDocsOutput,
+    exampleOutput: {
+      count: 2,
+      query: 'connect gmail, gmail setup',
+      articles:
+        '### Connecting your Gmail inbox\nSlug: help/inboxes/connect-gmail\nURL: https://docs.auxx.ai/help/inboxes/connect-gmail\nStep-by-step guide to authorize Gmail and start syncing threads.\n\nGo to Settings → Inboxes → Add inbox, choose Gmail, and complete the OAuth consent screen.\n\n---\n\n### Troubleshooting inbox sync\nSlug: help/inboxes/sync-troubleshooting\nURL: https://docs.auxx.ai/help/inboxes/sync-troubleshooting\nFix common sync delays and reconnect a disconnected inbox.\n\nIf threads stop arriving, re-run the OAuth flow from the inbox settings page.',
+      docs: [
+        {
+          slug: 'help/inboxes/connect-gmail',
+          title: 'Connecting your Gmail inbox',
+          url: 'https://docs.auxx.ai/help/inboxes/connect-gmail',
+          description: 'Step-by-step guide to authorize Gmail and start syncing threads.',
+        },
+        {
+          slug: 'help/inboxes/sync-troubleshooting',
+          title: 'Troubleshooting inbox sync',
+          url: 'https://docs.auxx.ai/help/inboxes/sync-troubleshooting',
+          description: 'Fix common sync delays and reconnect a disconnected inbox.',
+        },
+      ],
+    } satisfies z.output<typeof SearchDocsOutput>,
     buildDigest: (output) => {
       const out = (output ?? {}) as { articles?: string; count?: number }
       const titles =

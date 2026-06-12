@@ -42,11 +42,15 @@ export function ToolSelect({
   value,
   onChange,
   placeholder = 'Pick a tool',
+  children,
 }: {
   options: ToolSelectOption[]
   value: string
   onChange: (value: string) => void
   placeholder?: string
+  /** Custom trigger (e.g. a section-header Button). Defaults to a combobox
+   * field showing the selected tool. */
+  children?: React.ReactNode
 }) {
   const [open, setOpen] = useState(false)
   const selected = options.find((o) => o.value === value)
@@ -54,15 +58,17 @@ export function ToolSelect({
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <PickerTrigger
-          open={open}
-          hasValue={!!selected}
-          placeholder={placeholder}
-          asCombobox
-          className='ps-0 pe-1 w-full'>
-          <OptionIcon icon={selected?.icon} iconColor={selected?.iconColor} />
-          <span className='truncate text-sm'>{selected?.label}</span>
-        </PickerTrigger>
+        {children ?? (
+          <PickerTrigger
+            open={open}
+            hasValue={!!selected}
+            placeholder={placeholder}
+            asCombobox
+            className='ps-0 pe-1 w-full'>
+            <OptionIcon icon={selected?.icon} iconColor={selected?.iconColor} />
+            <span className='truncate text-sm'>{selected?.label}</span>
+          </PickerTrigger>
+        )}
       </PopoverTrigger>
       <PopoverContent className='min-w-[var(--radix-popover-trigger-width)] p-0' align='start'>
         <Command>

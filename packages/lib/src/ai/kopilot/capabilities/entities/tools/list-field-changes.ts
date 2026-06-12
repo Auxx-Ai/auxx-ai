@@ -95,6 +95,24 @@ export function createListFieldChangesTool(getDeps: GetToolDeps): AgentToolDefin
     toolsetSlug: 'auxx:entities:search',
     category: 'system',
     outputSchema: ListFieldChangesOutput,
+    exampleOutput: {
+      changes: [
+        {
+          fieldSystemAttribute: 'status',
+          oldDisplay: 'Lead',
+          newDisplay: 'Active',
+          at: '2026-06-03T09:00:00.000Z',
+          by: { actorType: 'user', userId: 'user_7Hd2', name: 'Alex Morgan' },
+        },
+        {
+          fieldSystemAttribute: 'owner',
+          oldDisplay: null,
+          newDisplay: 'Alex Morgan',
+          at: '2026-05-20T13:45:00.000Z',
+          by: { actorType: 'user', userId: 'user_7Hd2', name: 'Alex Morgan' },
+        },
+      ],
+    } satisfies z.output<typeof ListFieldChangesOutput>,
     buildDigest: (output) => {
       const out = (output ?? {}) as {
         changes?: Array<{

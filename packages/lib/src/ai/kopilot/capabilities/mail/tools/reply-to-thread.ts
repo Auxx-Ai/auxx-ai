@@ -63,6 +63,23 @@ export function createReplyToThreadTool(getDeps: GetToolDeps): AgentToolDefiniti
     requiresApproval: true,
     inputAmendmentSchema: ReplyAmendmentSchema,
     outputSchema: ReplyToThreadOutput,
+    exampleOutput: {
+      draftId: 'draft_2mB7vT',
+      threadId: 'thread_8fK2pQ',
+      subject: 'Re: Where is my order #1042?',
+      body: "Hi Sarah, thanks for reaching out. Your order #1042 shipped yesterday and is expected to arrive by June 9. Here's your tracking link: https://track.example.com/1042.",
+      mode: 'draft',
+      resolvedRecipients: [
+        {
+          participantId: 'ptcpnt_5kRm9x',
+          identifier: 'sarah.lee@example.com',
+          identifierType: 'email',
+          role: 'to',
+          displayName: 'Sarah Lee',
+        },
+      ],
+      status: 'draft_saved',
+    } satisfies z.output<typeof ReplyToThreadOutput>,
     buildDigest: (output) => {
       const out = (output ?? {}) as {
         threadId?: string

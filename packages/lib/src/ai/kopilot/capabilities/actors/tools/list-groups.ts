@@ -27,6 +27,25 @@ export function createListGroupsTool(getDeps: GetToolDeps): AgentToolDefinition 
     toolsetSlug: 'auxx:actors',
     idempotent: true,
     outputSchema: ListGroupsOutput,
+    exampleOutput: {
+      groups: [
+        {
+          actorId: 'group:supp7Hd2',
+          name: 'Support',
+          description: 'Front-line customer support team',
+          memberCount: 6,
+          visibility: 'public',
+        },
+        {
+          actorId: 'group:billQ9rL',
+          name: 'Billing',
+          description: null,
+          memberCount: 2,
+          visibility: 'private',
+        },
+      ],
+      count: 2,
+    } satisfies z.output<typeof ListGroupsOutput>,
     buildDigest: (output) => {
       const out = (output ?? {}) as {
         groups?: Array<{ name?: string | null }>

@@ -37,6 +37,24 @@ export function createListTranscriptsForEntityTool(getDeps: GetToolDeps): AgentT
     category: 'system',
     idempotent: true,
     outputSchema: ListTranscriptsForEntityOutput,
+    exampleOutput: {
+      transcripts: [
+        {
+          transcriptId: 'transcript_1pQ4sW',
+          callRecordingId: 'rec_6vH1tB',
+          meetingId: 'meeting_3aZ9rL',
+          meetingTitle: 'Onboarding call',
+          at: '2026-05-28T15:00:00.000Z',
+          durationMin: 32,
+          participantNames: ['Jane Cooper', 'Alex Morgan'],
+          speakerCount: 2,
+          wordCount: 4280,
+          status: 'completed',
+          snippet:
+            "Thanks for joining today — let's start by walking through your account setup and",
+        },
+      ],
+    } satisfies z.output<typeof ListTranscriptsForEntityOutput>,
     buildDigest: (output) => {
       const out = (output ?? {}) as { transcripts?: Array<{ transcriptId?: string }> }
       const transcripts = Array.isArray(out.transcripts) ? out.transcripts : []

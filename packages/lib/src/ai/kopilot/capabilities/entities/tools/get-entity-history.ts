@@ -166,6 +166,84 @@ export function createGetEntityHistoryTool(getDeps: GetToolDeps): AgentToolDefin
     category: 'system',
     idempotent: true,
     outputSchema: GetEntityHistoryOutput,
+    exampleOutput: {
+      entity: {
+        id: '9aB3xY',
+        entityDefinitionId: 'contact',
+        primaryDisplay: 'Jane Cooper',
+        secondaryDisplay: 'jane@example.com',
+        createdAt: '2026-01-12T08:30:00.000Z',
+        lastActivityAt: '2026-06-05T14:22:00.000Z',
+      },
+      threads: [
+        {
+          id: 'thread_8fK2pQ',
+          subject: 'Where is my order #1042?',
+          lastMessageAt: '2026-06-05T14:22:00.000Z',
+          messageCount: 3,
+          lastMessageSnippet: 'Thanks for the update — looking forward to the tracking link.',
+          role: 'primary',
+        },
+      ],
+      recentComments: [
+        {
+          id: 'comment_5tR8wK',
+          content: 'Customer is a repeat buyer — prioritise the refund.',
+          by: 'Alex Morgan',
+          byUserId: 'user_7Hd2',
+          at: '2026-06-04T10:15:00.000Z',
+          parentId: null,
+        },
+      ],
+      recentTimelineEvents: [
+        {
+          type: 'contact:field:updated',
+          at: '2026-06-03T09:00:00.000Z',
+          by: 'Alex Morgan',
+          byUserId: 'user_7Hd2',
+          payloadSummary: '{"field":"status","newDisplay":"Active"}',
+        },
+      ],
+      openTasks: [
+        {
+          id: 'task_2xL9pD',
+          title: 'Follow up on refund request',
+          deadline: '2026-06-12T17:00:00.000Z',
+          assignees: ['user_7Hd2'],
+        },
+      ],
+      recentFieldChanges: [
+        {
+          fieldSystemAttribute: 'status',
+          oldDisplay: 'Lead',
+          newDisplay: 'Active',
+          at: '2026-06-03T09:00:00.000Z',
+          by: 'Alex Morgan',
+          byUserId: 'user_7Hd2',
+        },
+      ],
+      relatedEntities: [
+        {
+          id: '4dF7mN',
+          entityDefinitionId: 'company',
+          primaryDisplay: 'Acme Inc',
+          relationship: 'shares-thread',
+        },
+      ],
+      meetings: [
+        {
+          id: 'meeting_3aZ9rL',
+          callRecordingId: 'rec_6vH1tB',
+          title: 'Onboarding call',
+          at: '2026-05-28T15:00:00.000Z',
+          durationMin: 32,
+          participantNames: ['Jane Cooper', 'Alex Morgan'],
+          transcriptAvailable: true,
+          transcriptId: 'transcript_1pQ4sW',
+        },
+      ],
+      truncated: false,
+    } satisfies z.output<typeof GetEntityHistoryOutput>,
     buildDigest: (output) => {
       const out = (output ?? {}) as {
         entity?: { id?: string }

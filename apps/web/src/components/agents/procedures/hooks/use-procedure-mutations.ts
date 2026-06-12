@@ -155,8 +155,14 @@ export function useProcedureMutations({
         getProcedureStoreState().applyMetadataFromServer(id, {
           hasUnpublishedChanges: !!server.hasUnpublishedChanges,
         })
+        // Splice the just-saved doc into the cache alongside the authoritative
+        // meta (the server projection omits draftDoc). Keeps `draftDoc` consumers
+        // that aren't the editor — the eval case editor's procedure-scoped tool
+        // list — in sync with added/removed `tool:` chips without a reload.
+        // setData (not invalidate) is safe: the uncontrolled editor seeds once
+        // via loadedRef and ignores later cache writes, so it isn't clobbered.
         utilsRef.current.procedure.getById.setData({ id }, (prev) =>
-          prev ? { ...prev, ...server } : prev
+          prev ? { ...prev, ...server, draftDoc: doc } : prev
         )
         utilsRef.current.agentProcedure.list.invalidate()
         setAutosaveAndNotify({ kind: 'saved', at: Date.now() })

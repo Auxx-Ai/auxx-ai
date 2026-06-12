@@ -66,6 +66,31 @@ export function createListDraftsTool(getDeps: GetToolDeps): AgentToolDefinition 
     toolsetSlug: 'auxx:mail:drafts',
     idempotent: true,
     outputSchema: ListDraftsOutput,
+    exampleOutput: {
+      drafts: [
+        {
+          id: 'thread_8fK2pQ',
+          kind: 'reply',
+          subject: 'Where is my order #1042?',
+          snippet: null,
+          recipientSummary: null,
+          updatedAt: '2026-06-05T14:22:00.000Z',
+          scheduledAt: null,
+          threadId: 'thread_8fK2pQ',
+        },
+        {
+          id: 'draft_2mB7vT',
+          kind: 'standalone',
+          subject: 'Quick follow-up on your return',
+          snippet: 'Hi Sarah, just checking in to see if the replacement arrived…',
+          recipientSummary: 'sarah.lee@example.com',
+          updatedAt: '2026-06-04T09:10:00.000Z',
+          scheduledAt: '2026-06-06T08:00:00.000Z',
+          threadId: null,
+        },
+      ],
+      count: 2,
+    } satisfies z.output<typeof ListDraftsOutput>,
     buildDigest: (output) => {
       const out = (output ?? {}) as { drafts?: DraftDigestSnapshot[]; count?: number }
       const drafts = Array.isArray(out.drafts) ? out.drafts : []

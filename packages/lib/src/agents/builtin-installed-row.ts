@@ -1,5 +1,6 @@
 // packages/lib/src/agents/builtin-installed-row.ts
 
+import { z } from 'zod'
 import type { AgentToolDefinition } from '../ai/agent-framework/types'
 import {
   createActorCapabilities,
@@ -14,6 +15,7 @@ import {
 } from '../ai/kopilot/capabilities'
 import type { CachedAgentTool, CachedInstalledApp } from '../cache/org-cache-keys'
 import { BUILTIN_APP, BUILTIN_TOOLSETS } from './builtin-app'
+import { toolCategory } from './tool-visibility'
 
 /**
  * Stub `getDeps` for catalog enumeration. Tool factories capture `getDeps` in
@@ -44,6 +46,25 @@ function lookupIconForSlug(slug: string): string {
   return BUILTIN_TOOLSET_ICON_BY_SLUG.get(slug) ?? BUILTIN_APP.avatarUrl
 }
 
+/**
+ * Serialize a native tool's Zod `outputSchema` to JSON Schema for the cache
+ * projection — the same `z.toJSONSchema` emission the SDK publish path uses
+ * for app catalogs (`zod-to-provider-tool-schema.ts`), minus the `auxxRef`
+ * mining only app schemas need. `{}` ⇒ no declared schema (the eval editor
+ * renders a free-form mock).
+ */
+function serializeOutputSchema(schema: z.ZodType | undefined): Record<string, unknown> {
+  if (!schema) return {}
+  try {
+    const raw = z.toJSONSchema(schema, { unrepresentable: 'any' }) as Record<string, unknown>
+    delete raw.$schema
+    delete raw.id
+    return raw
+  } catch {
+    return {}
+  }
+}
+
 function buildBuiltinAgentTools(): CachedAgentTool[] {
   const out: CachedAgentTool[] = []
   for (const cap of collectNativeCapabilities()) {
@@ -54,7 +75,8 @@ function buildBuiltinAgentTools(): CachedAgentTool[] {
         name: tool.displayName,
         description: tool.description,
         inputsJsonSchema: tool.parameters ?? {},
-        outputsJsonSchema: {},
+        outputsJsonSchema: serializeOutputSchema(tool.outputSchema),
+        exampleOutput: tool.exampleOutput,
         requiresConnection: false,
         timeoutMs: 30_000,
         streaming: false,
@@ -62,7 +84,8 @@ function buildBuiltinAgentTools(): CachedAgentTool[] {
         agentName: tool.name,
         agentDescription: tool.description,
         toolsetSlug: tool.toolsetSlug,
-        idempotent: tool.idempotent,
+        idempotent: tool.idempotent ?? false,
+        category: toolCategory(tool),
         // Built-in tools register under their bare snake_case name (no
         // `<slug>_` prefix that third-party tools get from
         // `getRegisteredToolName`). The kopilot `useToolAppResolver` keys off
