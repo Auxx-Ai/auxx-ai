@@ -104,7 +104,7 @@ export function SchemaFieldEditCard({
             <button
               type='button'
               aria-label='Add child field'
-              className='flex size-6 items-center justify-center rounded text-tertiary hover:text-accent'
+              className='flex size-6 items-center justify-center rounded text-tertiary hover:text-primary-500'
               onClick={onAddChild}>
               <Plus className='size-3.5' />
             </button>
