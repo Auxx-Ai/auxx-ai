@@ -1,6 +1,7 @@
 // apps/build/src/server/api/root.ts
 // Root tRPC router for developer portal
 
+import { apiKeysRouter } from './routers/api-keys'
 import { appsRouter } from './routers/apps'
 import { connectionsRouter } from './routers/connections'
 import { developerAccountsRouter } from './routers/developer-accounts'
@@ -20,6 +21,7 @@ export const appRouter = createTRPCRouter({
   connections: connectionsRouter,
   versions: versionsRouter,
   logs: logsRouter,
+  apiKeys: apiKeysRouter,
 })
 
 /** Export type for use in client */

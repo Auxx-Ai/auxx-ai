@@ -6,6 +6,7 @@ import { createMiddleware } from 'hono/factory'
 import { extractBearerToken, validateBetterAuthToken } from '../lib/jwt-validator'
 import { errorResponse } from '../lib/response'
 import type { AppContext } from '../types/context'
+import { developerKeyAuth } from './developer-key-auth'
 import { internalAuthMiddleware } from './internal-auth'
 
 /**
@@ -28,6 +29,12 @@ export const authMiddleware = createMiddleware<AppContext>(async (c, next) => {
 
   if (!token) {
     return c.json(errorResponse('UNAUTHORIZED', 'Missing authentication token'), 401)
+  }
+
+  // Developer API keys (headless CI publishing) — resolved by hash lookup, no
+  // better-auth round-trip. Recognized by the `auxx_dev_` prefix.
+  if (token.startsWith('auxx_dev_')) {
+    return developerKeyAuth(c, next, token)
   }
 
   // Validate token with better-auth

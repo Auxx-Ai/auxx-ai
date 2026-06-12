@@ -27,9 +27,9 @@ export const ApiKey = pgTable(
       onUpdate: 'cascade',
       onDelete: 'cascade',
     }),
-    /** Type of API key: 'app' for traditional org-level, 'workflow' for workflow-scoped, 'chat' for chat-widget JWT signing */
+    /** Type of API key: 'app' for traditional org-level, 'workflow' for workflow-scoped, 'chat' for chat-widget JWT signing, 'developer' for headless CLI publishing (CI) */
     type: text().default('app').notNull(),
-    /** Reference ID (workflowAppId when type='workflow', channelId/integrationId when type='chat', null for 'app') */
+    /** Reference ID (workflowAppId when type='workflow', channelId/integrationId when type='chat', developerAccountId when type='developer', null for 'app') */
     referenceId: text(),
     /**
      * AES-256-GCM encrypted plaintext secret (via `@auxx/credentials/crypto`).

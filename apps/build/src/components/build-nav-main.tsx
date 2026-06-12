@@ -8,7 +8,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from '@auxx/ui/components/sidebar'
-import { Building2, NotebookText, Package, Plus, Users } from 'lucide-react'
+import { Building2, KeyRound, NotebookText, Package, Plus, Users } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { CreateAppDialog } from './apps/create-app-dialog'
@@ -95,6 +95,13 @@ export function BuildNavMain({ accountSlug }: Props) {
             <SidebarMenuButton className='text-muted-foreground' asChild>
               <Link href={`/${accountSlug}/settings/members`}>
                 <Users /> Members
+              </Link>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+          <SidebarMenuItem>
+            <SidebarMenuButton className='text-muted-foreground' asChild>
+              <Link href={`/${accountSlug}/settings/api-keys`}>
+                <KeyRound /> API Keys
               </Link>
             </SidebarMenuButton>
           </SidebarMenuItem>
