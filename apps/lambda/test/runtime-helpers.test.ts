@@ -26,6 +26,7 @@ function createTestContext(): RuntimeContext {
     user: {
       id: 'user_test456',
       email: 'test@example.com',
+      name: 'Test User',
     },
     app: {
       id: 'app_test789',
@@ -33,13 +34,14 @@ function createTestContext(): RuntimeContext {
     },
     fetch: globalThis.fetch,
     env: 'test',
+    apiUrl: 'https://api.test',
   }
 }
 
 Deno.test('registerSettingsSchema - stores schema', () => {
   const schema = {
     user: { name: 'string' },
-    config: { enabled: 'boolean' },
+    organization: { enabled: 'boolean' },
   }
 
   registerSettingsSchema(schema)
@@ -55,7 +57,7 @@ Deno.test('getRegisteredSettingsSchema - returns null when no schema registered'
 })
 
 Deno.test('resetSettingsSchema - clears registered schema', () => {
-  const schema = { test: 'value' }
+  const schema = { user: { test: 'value' } }
   registerSettingsSchema(schema)
   assertEquals(getRegisteredSettingsSchema(), schema)
 
@@ -100,7 +102,7 @@ Deno.test('cleanupServerRuntimeHelpers - removes globals', () => {
 })
 
 Deno.test('cleanupServerRuntimeHelpers - resets settings schema', () => {
-  const schema = { test: 'value' }
+  const schema = { user: { test: 'value' } }
   registerSettingsSchema(schema)
   assertEquals(getRegisteredSettingsSchema(), schema)
 
@@ -116,7 +118,7 @@ Deno.test('Server SDK - getCurrentUser returns context user', async () => {
 
   assertEquals(user.id, 'user_test456')
   assertEquals(user.email, 'test@example.com')
-  assertEquals(user.name, 'test') // Email prefix
+  assertEquals(user.name, 'Test User') // context.user.name takes precedence over the email prefix
   assertEquals(user.avatar, undefined)
   assertEquals(user.role, undefined)
 
@@ -154,50 +156,10 @@ Deno.test('Server SDK - query throws not implemented', async () => {
   cleanupServerRuntimeHelpers()
 })
 
-Deno.test('Server SDK - storage.get throws not implemented', async () => {
-  const context = createTestContext()
-  injectServerRuntimeHelpers(context)
-
-  try {
-    await (globalThis as any).AUXX_SERVER_SDK.storage.get('test-key')
-    throw new Error('Should have thrown')
-  } catch (error: any) {
-    assertEquals(error.message, 'Storage not yet implemented')
-  }
-
-  // Cleanup
-  cleanupServerRuntimeHelpers()
-})
-
-Deno.test('Server SDK - storage.set throws not implemented', async () => {
-  const context = createTestContext()
-  injectServerRuntimeHelpers(context)
-
-  try {
-    await (globalThis as any).AUXX_SERVER_SDK.storage.set('test-key', 'test-value')
-    throw new Error('Should have thrown')
-  } catch (error: any) {
-    assertEquals(error.message, 'Storage not yet implemented')
-  }
-
-  // Cleanup
-  cleanupServerRuntimeHelpers()
-})
-
-Deno.test('Server SDK - storage.delete throws not implemented', async () => {
-  const context = createTestContext()
-  injectServerRuntimeHelpers(context)
-
-  try {
-    await (globalThis as any).AUXX_SERVER_SDK.storage.delete('test-key')
-    throw new Error('Should have thrown')
-  } catch (error: any) {
-    assertEquals(error.message, 'Storage not yet implemented')
-  }
-
-  // Cleanup
-  cleanupServerRuntimeHelpers()
-})
+// The storage host is now implemented (see #833). Its behaviour — scope
+// resolution, HTTP plumbing, the `{ value }` wrapper — is covered by
+// `src/runtime-helpers/__tests__/server-sdk-storage.test.ts`. The old
+// "throws not implemented" stub tests were removed when the stub was replaced.
 
 Deno.test('Server SDK context is injected correctly', () => {
   const context = createTestContext()

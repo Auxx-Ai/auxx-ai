@@ -1,0 +1,7 @@
+# Local SDK provisioning for `deno test` — populated from packages/sdk/lib by
+# the `pretest` step. The dist build (build.sh) copies it into its own BUILD_DIR.
+packages/
+
+# Build / runtime artifacts
+dist/
+.deno/

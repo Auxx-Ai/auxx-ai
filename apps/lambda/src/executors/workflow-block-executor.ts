@@ -12,8 +12,10 @@ import {
 } from '../runtime-helpers/index.ts'
 import {
   cleanupWorkflowSDK,
+  clearToolRegistry,
   createWorkflowExecutionContext,
   injectWorkflowSDK,
+  setToolRegistry,
 } from '../runtime-helpers/workflow-sdk.ts'
 import type {
   // WorkflowExecutionInput,
@@ -51,18 +53,22 @@ export async function executeWorkflowBlock(
   // Execute with timeout
   const executionPromise = executeInSandbox(bundleCode, blockId, workflowInput, executionContext)
 
+  let timeoutId: ReturnType<typeof setTimeout> | undefined
   const timeoutPromise = new Promise<never>((_, reject) => {
-    setTimeout(
+    timeoutId = setTimeout(
       () => reject(new Error(`Workflow block execution timeout after ${timeout}ms`)),
       timeout
     )
   })
 
-  const result = await Promise.race([executionPromise, timeoutPromise])
-
-  console.log('[WorkflowBlockExecutor] Execution complete:', { blockId })
-
-  return result
+  try {
+    const result = await Promise.race([executionPromise, timeoutPromise])
+    console.log('[WorkflowBlockExecutor] Execution complete:', { blockId })
+    return result
+  } finally {
+    // Clear the timeout timer so it doesn't leak past a fast execution.
+    if (timeoutId !== undefined) clearTimeout(timeoutId)
+  }
 }
 
 /**
@@ -81,8 +87,12 @@ async function executeInSandbox(
     // 2. Inject Workflow SDK (extends Server SDK)
     injectWorkflowSDK(context)
 
-    // 3. Execute bundle to register workflow blocks
-    const codeWithReturn = bundleCode + '\nreturn { __AUXX_WORKFLOW_BLOCKS__ };'
+    // 3. Execute bundle to register workflow blocks and the tool registry.
+    // Both are function-local consts in the bundle; we lift them out via the
+    // appended return. `__AUXX_TOOLS__` must reach `globalThis` so router-style
+    // blocks can dispatch to internal tools via `ctx.runTool` (which resolves
+    // off `globalThis.__AUXX_TOOLS__`). Cleared in the `finally` below.
+    const codeWithReturn = bundleCode + '\nreturn { __AUXX_WORKFLOW_BLOCKS__, __AUXX_TOOLS__ };'
     const fn = new Function(codeWithReturn)
     const result = fn()
     const workflowBlocks = result.__AUXX_WORKFLOW_BLOCKS__
@@ -90,6 +100,8 @@ async function executeInSandbox(
     if (!workflowBlocks) {
       throw new Error('Server bundle does not export workflow blocks')
     }
+
+    setToolRegistry(result.__AUXX_TOOLS__)
 
     // 4. Get the specific workflow block
     const workflowBlock = workflowBlocks[blockId]
@@ -195,6 +207,7 @@ async function executeInSandbox(
     throw error
   } finally {
     // 9. Clean up
+    clearToolRegistry()
     cleanupWorkflowSDK()
     cleanupServerRuntimeHelpers()
   }

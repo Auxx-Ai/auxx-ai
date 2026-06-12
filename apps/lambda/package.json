@@ -10,6 +10,7 @@
     "dev:restart": "docker compose restart lambda-dev",
     "dev:bash": "docker compose exec lambda-dev bash",
     "build": "pnpm --filter @auxx/sdk build && ./build.sh",
+    "pretest": "pnpm --filter @auxx/sdk build && mkdir -p packages/sdk && ln -sfn ../../../../packages/sdk/lib packages/sdk/lib",
     "test": "deno test --allow-all",
     "typecheck": "deno check src/index.ts",
     "clean": "docker compose down -v && rm -rf .deno dist"
