@@ -4,7 +4,8 @@ export { createInlineNode } from './core/inline-node'
 export { createInlineNodeView } from './core/inline-node-view'
 // Core factories
 export { createInlinePickerExtension } from './core/inline-picker-extension'
-export { type ActivePickerState, useActivePicker } from './hooks/use-active-picker'
+export { stripOpenChips } from './core/strip-open-chips'
+export { type ActivePickerState, useActivePicker, useHasOpenChip } from './hooks/use-active-picker'
 // Hooks
 export {
   type ContentApplier,
@@ -26,6 +27,8 @@ export { createPromptNode } from './nodes/prompt-node'
 export { PromptTemplateBadge } from './nodes/prompt-node-view'
 export {
   DEFAULT_TABS,
+  getOpenPickerRange,
+  type PickerTrigger,
   REFERENCE_PICKER_NODE,
   ReferencePickerNode,
   type ReferenceTab,

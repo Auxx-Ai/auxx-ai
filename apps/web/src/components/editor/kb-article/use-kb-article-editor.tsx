@@ -1,8 +1,7 @@
-// apps/web/src/components/editor/kb-article/use-kb-article-editor.ts
+// apps/web/src/components/editor/kb-article/use-kb-article-editor.tsx
 'use client'
 
 import type { JSONContent } from '@tiptap/core'
-import { useSlashCommand } from '../inline-picker'
 import { useRichTextEditor } from '../rich-text/use-rich-text-editor'
 
 interface UseKBArticleEditorOptions {
@@ -12,30 +11,37 @@ interface UseKBArticleEditorOptions {
   /** Forwarded to the inline `@`-mention picker chip — typically delegates to the popover's keyboard handle. */
   onPickerEnter?: () => boolean
   onPickerArrowVertical?: (direction: 1 | -1) => boolean
+  /** Forwarded to the `/` command picker chip — delegates to `KBSlashContent`'s handle. */
+  onSlashEnter?: () => boolean
+  onSlashArrowVertical?: (direction: 1 | -1) => boolean
+  onSlashBackspacePop?: () => boolean
 }
 
 /**
- * Thin shim over `useRichTextEditor` that wires the KB-specific slash
- * command picker and exposes its state for the consumer to mount the
- * picker popover. The `@`-mention picker is enabled by default; the
- * consumer mounts that popover via `useActivePicker(editor)`.
+ * Thin shim over `useRichTextEditor` that enables the `/` command chip for
+ * the KB article surface. Both pickers (`@` and `/`) ride the same chip
+ * node; the consumer mounts the popovers via `useActivePicker(editor)`.
  */
 export function useKBArticleEditor({
   initialContent,
   onChange,
   onPickerEnter,
   onPickerArrowVertical,
+  onSlashEnter,
+  onSlashArrowVertical,
+  onSlashBackspacePop,
 }: UseKBArticleEditorOptions) {
-  const slashCommand = useSlashCommand()
-
   const { editor, gutterCharWidth } = useRichTextEditor({
     initialContent,
     onChange,
-    slashCommand,
+    slash: true,
+    onSlashEnter,
+    onSlashArrowVertical,
+    onSlashBackspacePop,
     enableReferencePicker: true,
     onPickerEnter,
     onPickerArrowVertical,
   })
 
-  return { editor, gutterCharWidth, slashCommand }
+  return { editor, gutterCharWidth }
 }

@@ -4,20 +4,28 @@
 
 import type { Editor } from '@tiptap/react'
 import { useEffect, useState } from 'react'
-import { REFERENCE_PICKER_NODE, type ReferenceTab } from '../nodes/reference-picker-node'
+import {
+  type PickerTrigger,
+  REFERENCE_PICKER_NODE,
+  type ReferenceTab,
+} from '../nodes/reference-picker-node'
 
 const ZWSP_RE = /​/g
 
 export interface ActivePickerState {
   /** Document position of the picker chip's opening token. */
   pos: number
-  /** Current tab attribute on the chip. */
+  /** Which character opened the chip — `@` (references) or `/` (commands). */
+  trigger: PickerTrigger
+  /** Current tab attribute on an `@` chip. */
   tab: ReferenceTab
+  /** Raw scope attr — the `@` tab, or the `/` drill label (null = root). */
+  scope: string | null
   /** Plain-text content inside the chip's search hole. */
   query: string
   /** Bounding rect of the chip DOM, used to anchor the popover. */
   clientRect: DOMRect | null
-  /** Stable id that changes whenever the chip's pos/tab/query changes. */
+  /** Stable id that changes whenever the chip's pos/scope/query changes. */
   signature: string
 }
 
@@ -32,7 +40,9 @@ function readActivePicker(editor: Editor): ActivePickerState | null {
   })
   if (!found) return null
   const { pos, node } = found as { pos: number; node: import('@tiptap/pm/model').Node }
-  const tab = (node.attrs.tab ?? 'people') as ReferenceTab
+  const trigger = (node.attrs.trigger ?? '@') as PickerTrigger
+  const scope = (node.attrs.tab ?? null) as string | null
+  const tab = (scope ?? 'people') as ReferenceTab
   // Strip the seed ZWSP (used to give PM a real DOM text node to anchor
   // beforeinput on) from the user-visible query.
   const query = node.textContent.replace(ZWSP_RE, '')
@@ -45,18 +55,20 @@ function readActivePicker(editor: Editor): ActivePickerState | null {
         : null
   return {
     pos,
+    trigger,
     tab,
+    scope,
     query,
     clientRect: rect,
-    signature: `${pos}:${tab}:${query}`,
+    signature: `${pos}:${trigger}:${scope ?? ''}:${query}`,
   }
 }
 
 /**
- * Reactive view of the active reference-picker chip (at most one per doc).
+ * Reactive view of the active picker chip (at most one per doc) — `@` or `/`.
  *
  * Returns `null` when no chip is open. Subscribes to editor transactions so
- * React renders whenever the chip's tab attribute or query content changes.
+ * React renders whenever the chip's scope attribute or query content changes.
  *
  * NOTE: also subscribes to `update` (TipTap fires this when doc content
  * changes, including text-only inserts inside an inline `text*` node — the
@@ -92,4 +104,39 @@ export function useActivePicker(editor: Editor | null): ActivePickerState | null
   }, [editor])
 
   return state
+}
+
+/**
+ * Lean boolean: is ANY picker chip currently open in the doc? Used to gate
+ * external content sync (an inbound apply would destroy the open chip).
+ * Cheaper consumer than `useActivePicker` — re-renders only on open/close,
+ * not per keystroke.
+ */
+export function useHasOpenChip(editor: Editor | null): boolean {
+  const [hasChip, setHasChip] = useState(false)
+
+  useEffect(() => {
+    if (!editor) {
+      setHasChip(false)
+      return
+    }
+    const update = () => {
+      let found = false
+      editor.state.doc.descendants((node) => {
+        if (node.type.name === REFERENCE_PICKER_NODE) {
+          found = true
+          return false
+        }
+        return !found
+      })
+      setHasChip(found)
+    }
+    update()
+    editor.on('transaction', update)
+    return () => {
+      editor.off('transaction', update)
+    }
+  }, [editor])
+
+  return hasChip
 }

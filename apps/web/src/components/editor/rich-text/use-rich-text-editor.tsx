@@ -3,7 +3,7 @@
 'use client'
 
 import type { JSONContent } from '@tiptap/core'
-import { Extension, Node } from '@tiptap/core'
+import { Extension, generateHTML, Node } from '@tiptap/core'
 import Color from '@tiptap/extension-color'
 import Highlight from '@tiptap/extension-highlight'
 import Link from '@tiptap/extension-link'
@@ -32,8 +32,9 @@ import {
   createPlaceholderNode,
   PlaceholderBadge,
   stableStringify,
+  stripOpenChips,
   useExternalContentSync,
-  type useSlashCommand,
+  useHasOpenChip,
 } from '../inline-picker'
 import type { ReferenceTab } from '../inline-picker/nodes/reference-picker-node'
 import { Accordion } from '../kb-article/accordion-node'
@@ -86,27 +87,34 @@ const emptyBody: JSONContent[] = [{ type: 'block', attrs: { blockType: 'text' },
 export interface UseRichTextEditorOptions {
   initialContent: JSONContent[] | null
   /**
-   * Fired on every doc change. `html` is a LAZY getter — TipTap's HTML
-   * serialization is skipped unless a consumer actually calls it (only KB's
-   * article autosave does). Procedure / persona surfaces read `json` only, so
-   * they never pay the per-keystroke serialize cost.
+   * Fired on every doc change. The emitted `json` has any open picker chip
+   * stripped to its literal text (`@query` / `/query`) — saves never contain
+   * the transient chip node. `html` is a LAZY getter — HTML serialization
+   * (from the same stripped json) is skipped unless a consumer actually
+   * calls it (only KB's article autosave does).
    */
   onChange: (content: { json: JSONContent; getHTML: () => string }) => void
   /**
-   * Optional slash-command bundle from `useSlashCommand()`. When set, mounts
-   * the slash extension and wires open-state guards into onUpdate so typing
-   * inside the slash picker doesn't fire onChange.
+   * Mount the `/` command picker on the chip node. The consumer mounts the
+   * popover separately via `useActivePicker(editor)` (trigger `'/'`) and
+   * forwards keyboard via the `onSlash*` callbacks. Defaults to `false`.
    */
-  slashCommand?: ReturnType<typeof useSlashCommand>
+  slash?: boolean
+  /** Enter inside an open `/` chip — confirm the highlighted slash item. */
+  onSlashEnter?: () => boolean
+  /** ArrowUp/Down inside an open `/` chip — move the slash list highlight. */
+  onSlashArrowVertical?: (direction: 1 | -1) => boolean
+  /** Backspace on an empty, drilled `/` chip — pop a drill level. */
+  onSlashBackspacePop?: () => boolean
   /**
    * Default `true`. When set, mounts the `@`-mention picker extensions
    * (referenceBadgeNode + ReferencePickerNode). The consumer mounts the
    * popover separately via `useActivePicker(editor)` + `InlinePickerPopover`.
    */
   enableReferencePicker?: boolean
-  /** Forwarded to the reference picker chip. */
+  /** Forwarded to the `@` picker chip. */
   onPickerEnter?: () => boolean
-  /** Forwarded to the reference picker chip. */
+  /** Forwarded to the `@` picker chip. */
   onPickerArrowVertical?: (direction: 1 | -1) => boolean
   /**
    * Tabs the reference picker exposes. Defaults to `DEFAULT_TABS`. Pass
@@ -156,18 +164,21 @@ export interface UseRichTextEditorOptions {
 /**
  * Generic rich-text editor hook for the KB block schema. Used by:
  * - `useKBArticleEditor` (thin shim — adds KB-specific picker / link popover)
- * - `PersonaEditor` (agent persona prompt, no slash menu)
+ * - `PersonaEditor` (agent persona prompt)
  *
  * Mounts StarterKit + the `block` node, the markdown input/paste rules, the
  * focus decoration plugin, and — by default — the inline reference picker.
  * The separate structural nodes (Panel / Tabs / Accordion / Table / procedure
- * condition nodes) mount only when their kind is in `allowedBlocks`. Slash
- * command is opt-in.
+ * condition nodes) mount only when their kind is in `allowedBlocks`. The `/`
+ * command picker (same chip node, `trigger: '/'`) is opt-in via `slash`.
  */
 export function useRichTextEditor({
   initialContent,
   onChange,
-  slashCommand,
+  slash = false,
+  onSlashEnter,
+  onSlashArrowVertical,
+  onSlashBackspacePop,
   enableReferencePicker = true,
   onPickerEnter,
   onPickerArrowVertical,
@@ -196,9 +207,22 @@ export function useRichTextEditor({
             onPickerEnter,
             onPickerArrowVertical,
             referenceTabs,
+            slash,
+            onSlashEnter,
+            onSlashArrowVertical,
+            onSlashBackspacePop,
           })
         : [],
-    [enableReferencePicker, onPickerEnter, onPickerArrowVertical, referenceTabs]
+    [
+      enableReferencePicker,
+      onPickerEnter,
+      onPickerArrowVertical,
+      referenceTabs,
+      slash,
+      onSlashEnter,
+      onSlashArrowVertical,
+      onSlashBackspacePop,
+    ]
   )
 
   const onChangeRef = useRef(onChange)
@@ -210,9 +234,6 @@ export function useRichTextEditor({
     markLocalEdit: () => {},
   })
 
-  const slashCommandRef = useRef(slashCommand)
-  slashCommandRef.current = slashCommand
-
   // Presentation classes on the `.ProseMirror` root — each flips a CSS custom
   // property consumed by the block renderer. Set on the root (not a wrapper) so
   // they reach blocks in both the inline card and the portaled expand dialog.
@@ -223,87 +244,88 @@ export function useRichTextEditor({
     .filter(Boolean)
     .join(' ')
 
+  const extensions = [
+    createDoc(allowedBlocks),
+    StarterKit.configure({
+      document: false,
+      heading: false,
+      paragraph: false,
+      bulletList: false,
+      orderedList: false,
+      listItem: false,
+      blockquote: false,
+      codeBlock: false,
+      horizontalRule: false,
+      history: undefined,
+      // Marks stay enabled (bold, italic, strike, code).
+    }),
+    // Hierarchical gutter numbering rides on the same `conditionBlock`
+    // opt-in as the procedure nodes; every other surface keeps the default
+    // flat formatter (set in BlockOptions). placeholderText merges in too.
+    Block.configure({
+      ...(placeholderText ? { placeholderText } : {}),
+      ...(allowsConditions(allowedBlocks)
+        ? {
+            lineNumberFormatter: procedureLineNumberFormatter,
+            numberPolicy: procedureNumberPolicy,
+          }
+        : {}),
+    }),
+    // Container nodes (Panel/Tabs/Accordion) and Table are separate PM
+    // nodes — mounting them is the enforcement. Not in `allowedBlocks` →
+    // not in the schema → unreachable from paste / drag / programmatic.
+    // Panel is the child of Tabs/Accordion, so it rides along whenever any
+    // container is allowed.
+    ...(allowsContainers(allowedBlocks) ? [Panel, Tabs, Accordion] : []),
+    MarkdownInputRules.configure({ allowed: allowedBlocks }),
+    MarkdownPaste.configure({ allowed: allowedBlocks }),
+    // Column resizing is disabled — the React NodeView (TableNodeView)
+    // owns the table chrome and column resize is a follow-up. Reorder +
+    // add/remove are handled via table-helpers.ts.
+    ...(allowsTable(allowedBlocks) ? [Table, TableRow, TableHeader, TableCell] : []),
+    Underline,
+    TextStyle,
+    Color,
+    TextAlign.configure({ types: ['block'] }),
+    Highlight.configure({ multicolor: true }),
+    Link.configure({ openOnClick: false, autolink: true, defaultProtocol: 'https' }),
+    FocusClasses,
+    // Placeholder renders as a real DOM sibling inside BlockNodeView, not
+    // via the Placeholder extension's CSS pseudo-element (which would
+    // overlap the line gutter). See block-node-view.tsx `showPlaceholder`.
+    ...(allowsConditions(allowedBlocks)
+      ? [ConditionBlock, ConditionCase, ConditionElse, ConditionPredicate]
+      : []),
+    ...referencePickerExtensions,
+    ...(inlineExtensions ?? []),
+    placeholderNodeExtension,
+  ]
+
+  // For the lazy `getHTML` — `generateHTML` from the STRIPPED json (see
+  // onUpdate) instead of `editor.getHTML()`, which would serialize an open
+  // chip's markup (+ ZWSP seed) into saved article HTML.
+  const extensionsRef = useRef(extensions)
+  extensionsRef.current = extensions
+
   const editor = useEditor(
     {
       immediatelyRender: false,
       editable,
       ...(rootClass ? { editorProps: { attributes: { class: rootClass } } } : {}),
-      extensions: [
-        createDoc(allowedBlocks),
-        StarterKit.configure({
-          document: false,
-          heading: false,
-          paragraph: false,
-          bulletList: false,
-          orderedList: false,
-          listItem: false,
-          blockquote: false,
-          codeBlock: false,
-          horizontalRule: false,
-          history: undefined,
-          // Marks stay enabled (bold, italic, strike, code).
-        }),
-        // Hierarchical gutter numbering rides on the same `conditionBlock`
-        // opt-in as the procedure nodes; every other surface keeps the default
-        // flat formatter (set in BlockOptions). placeholderText merges in too.
-        Block.configure({
-          ...(placeholderText ? { placeholderText } : {}),
-          ...(allowsConditions(allowedBlocks)
-            ? {
-                lineNumberFormatter: procedureLineNumberFormatter,
-                numberPolicy: procedureNumberPolicy,
-              }
-            : {}),
-        }),
-        // Container nodes (Panel/Tabs/Accordion) and Table are separate PM
-        // nodes — mounting them is the enforcement. Not in `allowedBlocks` →
-        // not in the schema → unreachable from paste / drag / programmatic.
-        // Panel is the child of Tabs/Accordion, so it rides along whenever any
-        // container is allowed.
-        ...(allowsContainers(allowedBlocks) ? [Panel, Tabs, Accordion] : []),
-        MarkdownInputRules.configure({ allowed: allowedBlocks }),
-        MarkdownPaste.configure({ allowed: allowedBlocks }),
-        // Column resizing is disabled — the React NodeView (TableNodeView)
-        // owns the table chrome and column resize is a follow-up. Reorder +
-        // add/remove are handled via table-helpers.ts.
-        ...(allowsTable(allowedBlocks) ? [Table, TableRow, TableHeader, TableCell] : []),
-        Underline,
-        TextStyle,
-        Color,
-        TextAlign.configure({ types: ['block'] }),
-        Highlight.configure({ multicolor: true }),
-        Link.configure({ openOnClick: false, autolink: true, defaultProtocol: 'https' }),
-        FocusClasses,
-        // Placeholder renders as a real DOM sibling inside BlockNodeView, not
-        // via the Placeholder extension's CSS pseudo-element (which would
-        // overlap the line gutter). See block-node-view.tsx `showPlaceholder`.
-        ...(slashCommand ? [slashCommand.slashCommandExtension] : []),
-        ...(allowsConditions(allowedBlocks)
-          ? [ConditionBlock, ConditionCase, ConditionElse, ConditionPredicate]
-          : []),
-        ...referencePickerExtensions,
-        ...(inlineExtensions ?? []),
-        placeholderNodeExtension,
-      ],
+      extensions,
       content: normalizedInitialContent,
       shouldRerenderOnTransaction: false,
-      onCreate: ({ editor }) => {
-        slashCommandRef.current?.setEditor(editor)
-      },
-      onDestroy: () => {
-        slashCommandRef.current?.setEditor(null)
-      },
       onUpdate: ({ editor, transaction }) => {
         if (!transaction.docChanged) return
-        if (slashCommandRef.current?.isOpenRef.current) return
-        const json = editor.getJSON()
-        // Defer one tick so Suggestion plugin's onStart can mark isOpenRef
-        // before we propagate the change.
-        setTimeout(() => {
-          if (slashCommandRef.current?.isOpenRef.current) return
-          externalSyncRef.current.markLocalEdit(stableStringify(json))
-          onChangeRef.current({ json, getHTML: () => editor.getHTML() })
-        }, 0)
+        // Any open picker chip is emitted as its literal text — onChange
+        // consumers (autosave, dirty marking, echo detection) never see the
+        // transient node, so no open/closed gating is needed.
+        const json = stripOpenChips(editor.getJSON())
+        externalSyncRef.current.markLocalEdit(stableStringify(json))
+        onChangeRef.current({
+          json,
+          getHTML: () => generateHTML(json, extensionsRef.current),
+        })
       },
     },
     []
@@ -311,10 +333,15 @@ export function useRichTextEditor({
 
   // `useEditor` is created once with `editable` from the first render. Sync
   // subsequent toggles via `setEditable` so a "View ↔ Customize" swap on the
-  // same editor instance flips read-only state without remounting.
+  // same editor instance flips read-only state without remounting. Collapse
+  // any open chip first — input rules stop firing in read-only mode, but an
+  // already-open chip would otherwise linger as an inert pill.
   useEffect(() => {
     if (!editor) return
-    if (editor.isEditable !== editable) editor.setEditable(editable)
+    if (editor.isEditable !== editable) {
+      if (!editable) editor.commands.closeReferencePicker({ keepText: true })
+      editor.setEditable(editable)
+    }
   }, [editor, editable])
 
   const gutterCharWidth = useEditorState({
@@ -342,27 +369,21 @@ export function useRichTextEditor({
 
   const canonicalKey = useCallback((content: JSONContent) => stableStringify(content), [])
 
+  // An inbound content apply while ANY chip (`@` or `/`) is open would
+  // destroy it — defer until the chip closes. (`useExternalContentSync`
+  // stashes the incoming doc and flushes it on the open → closed edge.)
+  const hasOpenChip = useHasOpenChip(editor)
+
   const syncHandle = useExternalContentSync<JSONContent>({
     editor,
     incoming: normalizedInitialContent,
-    isPickerOpen: slashCommand?.suggestionState.isOpen ?? false,
+    isPickerOpen: hasOpenChip,
     applyContent,
     canonicalKey,
   })
 
   // Wire the imperative handle into the editor's onUpdate closure.
   externalSyncRef.current = syncHandle.current
-
-  // Flush deferred onChange when the slash picker closes — the hook handles
-  // the *inbound* flush; this handles the *outbound* one.
-  const prevOpen = useRef(false)
-  useEffect(() => {
-    const isOpen = slashCommand?.suggestionState.isOpen ?? false
-    if (prevOpen.current && !isOpen && editor) {
-      onChangeRef.current({ json: editor.getJSON(), getHTML: () => editor.getHTML() })
-    }
-    prevOpen.current = isOpen
-  }, [slashCommand?.suggestionState.isOpen, editor])
 
   return { editor, gutterCharWidth: gutterCharWidth ?? 2 }
 }

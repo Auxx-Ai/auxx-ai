@@ -15,28 +15,24 @@ import {
   PromptEditorContent,
   PromptEditorHeader,
 } from '~/components/editor/prompt-editor'
+import type { SlashContentProps } from '~/components/editor/slash-commands/slash-content'
 import type { ReferencePickerHandle } from '~/components/pickers/reference-picker/reference-picker-content'
+import { ProcedureSlashContent } from './procedure-slash-content'
 
-// Procedures opt into the admin tabs (Tools, Resources, Fields) exactly like the
-// persona editor, PLUS the procedure step tabs (Routing, Code, Sub-procedure,
-// Condition, Attribute) — the `@` picker is the only insertion surface (plan §5).
-// The CRM/inbox tabs from DEFAULT_TABS (people, records, messages) are dropped —
-// they're meaningless inside a procedure; only `articles` carries over.
-export const PROCEDURE_REFERENCE_TABS: ReferenceTab[] = [
-  'articles',
-  'tools',
-  'resources',
-  'fields',
-  'routing',
-  'code',
-  'subprocedure',
-  'condition',
-  'attribute',
-]
+// `@` is references only (plan: plans/prose/build-plan.md): the admin tabs
+// (Tools, Resources, Fields) plus `articles`. The CRM/inbox tabs from
+// DEFAULT_TABS (people, records, messages) are dropped — they're meaningless
+// inside a procedure. Step insertion (routing / code / sub-procedure /
+// condition / attribute) lives in `/` — see `ProcedureSlashContent`.
+export const PROCEDURE_REFERENCE_TABS: ReferenceTab[] = ['articles', 'tools', 'resources', 'fields']
 
-// Empty-block hint. Slash is dropped in procedures (`@` is the only insertion
-// surface), so the default "Press '/' for commands" placeholder would be wrong.
-export const PROCEDURE_PLACEHOLDER = 'Write a step, or type @ to add a tool, condition, or field…'
+// Empty-block hint — both insertion surfaces.
+export const PROCEDURE_PLACEHOLDER =
+  "Write a step, '/' to add a condition or code, '@' to reference a tool or field…"
+
+// Module-scope render prop — an inline arrow would defeat PromptEditorContent's
+// memo() on every ProseEditorCard render (focus state flips re-render the card).
+const procedureSlashContent = (props: SlashContentProps) => <ProcedureSlashContent {...props} />
 
 interface ProseEditorCardProps {
   /** Header label — 'Procedure' at the root, the sub-procedure name when drilled. */
@@ -106,7 +102,7 @@ export function ProseEditorCard({
       referencePickerRef={referencePickerRef}
       referenceTabs={PROCEDURE_REFERENCE_TABS}
       allowedBlocks={PROCEDURE_BLOCKS}
-      slash={false}
+      slashContent={procedureSlashContent}
       placeholderText={PROCEDURE_PLACEHOLDER}
       alwaysShowLineNumbers
     />

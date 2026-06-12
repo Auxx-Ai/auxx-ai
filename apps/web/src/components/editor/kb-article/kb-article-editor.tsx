@@ -22,7 +22,8 @@ import {
   MoreMenuSection,
   TurnIntoSection,
 } from '../bubble-menu'
-import { InlinePickerPopover, useActivePicker } from '../inline-picker'
+import { getOpenPickerRange, InlinePickerPopover, useActivePicker } from '../inline-picker'
+import type { SlashContentHandle } from '../slash-commands/slash-list'
 import {
   type ArticleLinkEditMode,
   type ArticleLinkPick,
@@ -30,7 +31,7 @@ import {
 } from './article-link-popover'
 import { KBEditorContextProvider } from './editor-context'
 import styles from './kb-article-editor.module.css'
-import { KBSlashCommandPicker } from './kb-slash-command-picker'
+import { KBSlashContent } from './kb-slash-content'
 import { LinkContextMenu, type LinkContextMenuTarget } from './link-context-menu'
 import { useKBArticleEditor } from './use-kb-article-editor'
 
@@ -76,6 +77,7 @@ export function KBArticleEditor({
 }: KBArticleEditorProps) {
   const wrapperRef = useRef<HTMLDivElement>(null)
   const referencePickerRef = useRef<ReferencePickerHandle | null>(null)
+  const slashRef = useRef<SlashContentHandle | null>(null)
   const onPickerEnter = useCallback(
     () => referencePickerRef.current?.confirmHighlighted() ?? false,
     []
@@ -84,12 +86,21 @@ export function KBArticleEditor({
     (dir: 1 | -1) => referencePickerRef.current?.moveHighlight(dir) ?? false,
     []
   )
+  const onSlashEnter = useCallback(() => slashRef.current?.confirmHighlighted() ?? false, [])
+  const onSlashArrowVertical = useCallback(
+    (dir: 1 | -1) => slashRef.current?.moveHighlight(dir) ?? false,
+    []
+  )
+  const onSlashBackspacePop = useCallback(() => slashRef.current?.popLevel() ?? false, [])
 
-  const { editor, gutterCharWidth, slashCommand } = useKBArticleEditor({
+  const { editor, gutterCharWidth } = useKBArticleEditor({
     initialContent,
     onChange,
     onPickerEnter,
     onPickerArrowVertical,
+    onSlashEnter,
+    onSlashArrowVertical,
+    onSlashBackspacePop,
   })
   const activePicker = useActivePicker(editor)
   const [linkPopover, setLinkPopover] = useState<LinkPopoverState | null>(null)
@@ -260,20 +271,42 @@ export function KBArticleEditor({
           renderMore={({ editor }) => <MoreMenuSection editor={editor} />}
         />
         <InlinePickerPopover
-          state={slashCommand.suggestionState}
-          onClose={slashCommand.closePicker}
-          width={288}>
-          <KBSlashCommandPicker
-            query={slashCommand.suggestionState.query}
-            onExecute={slashCommand.executeCommand}
-            onClose={slashCommand.closePicker}
+          state={{
+            isOpen: !!activePicker && activePicker.trigger === '/',
+            query: activePicker?.query ?? '',
+            range: null,
+            clientRect: activePicker?.clientRect ?? null,
+          }}
+          containerRef={wrapperRef}
+          width={288}
+          side='bottom'
+          align='start'
+          autoFocus={false}
+          onInteractOutside={(e) => {
+            const target = e.target as HTMLElement | null
+            if (target?.closest('[data-type="reference-picker"]')) {
+              e.preventDefault()
+            }
+          }}
+          onClose={() => editor?.commands.closeReferencePicker({ keepText: true })}>
+          <KBSlashContent
+            ref={slashRef}
+            query={activePicker?.query ?? ''}
+            onExecute={(command) => {
+              if (!editor) return
+              const range = getOpenPickerRange(editor.state)
+              if (!range) return
+              command(editor, range)
+            }}
+            onClose={() => editor?.commands.closeReferencePicker({ keepText: true })}
+            onScopeChange={(scope) => editor?.commands.setPickerScope(scope, { clearQuery: true })}
             onLinkArticle={handleLinkArticle}
             editor={editor}
           />
         </InlinePickerPopover>
         <InlinePickerPopover
           state={{
-            isOpen: !!activePicker,
+            isOpen: !!activePicker && activePicker.trigger === '@',
             query: activePicker?.query ?? '',
             range: null,
             clientRect: activePicker?.clientRect ?? null,

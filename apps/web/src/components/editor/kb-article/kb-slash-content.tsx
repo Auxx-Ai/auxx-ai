@@ -1,4 +1,4 @@
-// apps/web/src/components/editor/kb-article/kb-slash-command-picker.tsx
+// apps/web/src/components/editor/kb-article/kb-slash-content.tsx
 'use client'
 
 import {
@@ -10,26 +10,35 @@ import { EntityIcon } from '@auxx/ui/components/icons'
 import { generateId } from '@auxx/utils'
 import { TextSelection } from '@tiptap/pm/state'
 import type { Editor } from '@tiptap/react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useImperativeHandle, useMemo, useRef, useState } from 'react'
 import { PlaceholderPickerContent } from '~/components/editor/placeholders/placeholder-picker-content'
 import {
   BASIC_BLOCK_COMMANDS,
   type BlockCommandDef,
   runBlockCommand,
 } from '~/components/editor/slash-commands/block-commands'
-import {
-  type SlashCommandItem,
-  SlashCommandPicker,
-  type SlashCommandSection,
+import type {
+  SlashCommandItem,
+  SlashCommandSection,
 } from '~/components/editor/slash-commands/slash-command-picker'
+import { type SlashContentHandle, SlashList } from '~/components/editor/slash-commands/slash-list'
+import { useCmdkRemote } from '~/components/pickers/use-cmdk-remote'
 import { api } from '~/trpc/react'
 
 type Range = { from: number; to: number }
 
-interface KBSlashCommandPickerProps {
+interface KBSlashContentProps {
+  /** Keyboard handle — the `/` chip forwards Enter / arrows / Backspace-empty here. */
+  ref?: React.Ref<SlashContentHandle>
+  /** Live filter — the `/` chip's text content. */
   query: string
   onExecute: (command: (editor: Editor, range: Range) => void) => void
   onClose: () => void
+  /**
+   * Update the chip's drill scope (sublabel) — also clears the chip query.
+   * Called on every drill push/pop so the pill reads `/ SNIPPETS …`.
+   */
+  onScopeChange: (scope: string | null) => void
   /** Open the article-link dialog. The picker deletes the slash range first
    * and passes the resulting cursor position to the host. */
   onLinkArticle?: (editor: Editor, insertPos: number) => void
@@ -308,69 +317,133 @@ interface SlashCommandNavItem {
 }
 
 // Snippet-mode items reuse `SlashCommandItem` plus a `kind` tag so the
-// section's `onSelect` / `onArrowRight` can dispatch without scanning data.
+// section's `onSelect` can dispatch without scanning data.
 interface SnippetItem extends SlashCommandItem {
   kind: 'folder' | 'snippet'
   folderCount?: number
 }
 
-export function KBSlashCommandPicker(props: KBSlashCommandPickerProps) {
-  const [searchQuery, setSearchQuery] = useState(props.query)
+/**
+ * KB slash content, chip-driven: the `/` chip owns the query (typed inline
+ * in the editor) and forwards keyboard via the imperative handle. Drill
+ * scope (snippets / folders / placeholder mode) is mirrored onto the chip's
+ * sublabel via `onScopeChange`, which also clears the chip query so each
+ * level starts with a fresh filter.
+ */
+export function KBSlashContent(props: KBSlashContentProps) {
   const [mode, setMode] = useState<'default' | 'placeholder'>('default')
+
+  const exitPlaceholderMode = useCallback(() => {
+    setMode('default')
+    props.onScopeChange(null)
+  }, [props.onScopeChange])
 
   if (mode === 'placeholder') {
     return (
-      <div className='w-72 overflow-hidden'>
-        <PlaceholderPickerContent
-          onBack={() => setMode('default')}
-          backLabel='Commands'
-          onClose={props.onClose}
-          onSelect={(id) => {
-            props.onExecute((editor, range) => {
-              editor
-                .chain()
-                .focus()
-                .deleteRange(range)
-                .insertContent({ type: 'placeholder', attrs: { id } })
-                .insertContent(' ')
-                .run()
-            })
-          }}
-        />
-      </div>
+      <PlaceholderMode
+        ref={props.ref}
+        onBack={exitPlaceholderMode}
+        onClose={props.onClose}
+        onSelect={(id) => {
+          props.onExecute((editor, range) => {
+            editor
+              .chain()
+              .focus()
+              .deleteRange(range)
+              .insertContent({ type: 'placeholder', attrs: { id } })
+              .insertContent(' ')
+              .run()
+          })
+        }}
+      />
     )
   }
 
   return (
-    <CommandNavigation<SlashCommandNavItem> onNavigationChange={() => setSearchQuery('')}>
-      <KBSlashCommandPickerContent
+    <CommandNavigation<SlashCommandNavItem>>
+      <KBSlashContentInner
         {...props}
-        searchQuery={searchQuery}
-        setSearchQuery={setSearchQuery}
-        onEnterPlaceholderMode={() => setMode('placeholder')}
+        onEnterPlaceholderMode={() => {
+          setMode('placeholder')
+          props.onScopeChange('Placeholder')
+        }}
       />
     </CommandNavigation>
   )
 }
 
-function KBSlashCommandPickerContent({
+/**
+ * Placeholder mode keeps `PlaceholderPickerContent` as-is — it's an
+ * input-driven picker (entity roots → field search) whose own CommandInput
+ * takes real focus. The chip goes inert for the duration; Backspace-pop
+ * still works if the user clicks back into the editor.
+ */
+function PlaceholderMode({
+  ref,
+  onBack,
+  onClose,
+  onSelect,
+}: {
+  ref?: React.Ref<SlashContentHandle>
+  onBack: () => void
+  onClose: () => void
+  onSelect: (id: string) => void
+}) {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const remote = useCmdkRemote(containerRef, 'placeholder')
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      ...remote,
+      popLevel: () => {
+        onBack()
+        return true
+      },
+    }),
+    [remote, onBack]
+  )
+
+  return (
+    <div ref={containerRef} className='w-72 overflow-hidden'>
+      <PlaceholderPickerContent
+        onBack={onBack}
+        backLabel='Commands'
+        onClose={onClose}
+        onSelect={onSelect}
+      />
+    </div>
+  )
+}
+
+function KBSlashContentInner({
+  ref,
   query,
   onExecute,
-  onClose,
+  onScopeChange,
   onLinkArticle,
   editor,
-  searchQuery,
-  setSearchQuery,
   onEnterPlaceholderMode,
-}: KBSlashCommandPickerProps & {
-  searchQuery: string
-  setSearchQuery: (q: string) => void
+}: KBSlashContentProps & {
   onEnterPlaceholderMode: () => void
 }) {
   const { push, pop, isAtRoot, current, stack } = useCommandNavigation<SlashCommandNavItem>()
+  const containerRef = useRef<HTMLDivElement>(null)
 
   const isInSnippets = stack.length > 0
   const currentFolderId = current?.type === 'folder' ? current.id : null
+
+  const remote = useCmdkRemote(containerRef, `${stack.map((s) => s.id).join('/')}:${query}`)
+
+  const popDrill = useCallback(() => {
+    if (isAtRoot) return false
+    pop()
+    const parent = stack.length > 1 ? stack[stack.length - 2] : null
+    onScopeChange(parent ? parent.label : null)
+    return true
+  }, [isAtRoot, pop, stack, onScopeChange])
+
+  useImperativeHandle(ref, () => ({ ...remote, popLevel: popDrill }), [remote, popDrill])
 
   const incrementUsage = api.snippet.incrementUsage.useMutation({
     onError: (error) => console.error('Failed to update snippet usage count', error),
@@ -387,15 +460,7 @@ function KBSlashCommandPickerContent({
   })
   const allFolders = foldersData?.folders ?? []
 
-  // Mirror the external query into the local controlled input *only at root*.
-  // While drilled into a snippets folder the input doubles as a folder
-  // search field and we don't want the picker plugin (which still receives
-  // typed characters from outside the input) to clobber it.
-  useEffect(() => {
-    if (isAtRoot) setSearchQuery(query)
-  }, [query, isAtRoot, setSearchQuery])
-
-  const q = searchQuery.toLowerCase()
+  const q = query.toLowerCase()
 
   const currentSnippets = useMemo(
     () =>
@@ -448,15 +513,15 @@ function KBSlashCommandPickerContent({
 
   const enterSnippetsDrillDown = useCallback(() => {
     push({ id: 'snippets', label: 'Snippets', type: 'snippets' })
-    setSearchQuery('')
-  }, [push, setSearchQuery])
+    onScopeChange('Snippets')
+  }, [push, onScopeChange])
 
   const enterFolder = useCallback(
     (id: string, label: string) => {
       push({ id, label, type: 'folder' })
-      setSearchQuery('')
+      onScopeChange(label)
     },
-    [push, setSearchQuery]
+    [push, onScopeChange]
   )
 
   const insertSnippet = useCallback(
@@ -502,21 +567,6 @@ function KBSlashCommandPickerContent({
     [enterSnippetsDrillDown, onEnterPlaceholderMode, onLinkArticle, onExecute]
   )
 
-  const handleSuggestionArrowRight = useCallback(
-    (item: SlashCommandItem) => {
-      if (item.id === 'snippet') {
-        enterSnippetsDrillDown()
-        return true
-      }
-      if (item.id === 'placeholder') {
-        onEnterPlaceholderMode()
-        return true
-      }
-      return false
-    },
-    [enterSnippetsDrillDown, onEnterPlaceholderMode]
-  )
-
   const sections: SlashCommandSection<SlashCommandItem>[] = useMemo(() => {
     if (isInSnippets) {
       const snippetItems: SnippetItem[] = [
@@ -545,14 +595,6 @@ function KBSlashCommandPickerContent({
           }
           insertSnippet(item.id.replace(/^snippet-/, ''))
         },
-        onArrowRight: (item) => {
-          if (item.kind === 'folder') {
-            const folderId = item.id.replace(/^folder-/, '')
-            enterFolder(folderId, item.title)
-            return true
-          }
-          return false
-        },
         itemValue: (item) => item.id,
         renderItem: (item) => (
           <div className='flex items-center gap-2'>
@@ -576,7 +618,6 @@ function KBSlashCommandPickerContent({
       heading: 'Suggestions',
       items: suggestionItems,
       onSelect: handleSuggestionSelect,
-      onArrowRight: handleSuggestionArrowRight,
     }
 
     const out: SlashCommandSection<SlashCommandItem>[] = [suggestionsSection]
@@ -610,37 +651,20 @@ function KBSlashCommandPickerContent({
     current,
     suggestionItems,
     handleSuggestionSelect,
-    handleSuggestionArrowRight,
     rootSnippetResults,
     enterFolder,
     insertSnippet,
   ])
 
-  const onBackspaceEmpty = useCallback(() => {
-    if (isAtRoot) return false
-    pop()
-    return true
-  }, [isAtRoot, pop])
-
-  const onArrowLeftEmpty = useCallback(() => {
-    if (isAtRoot) return false
-    pop()
-    return true
-  }, [isAtRoot, pop])
-
   return (
-    <SlashCommandPicker
-      query={query}
-      searchQuery={searchQuery}
-      setSearchQuery={setSearchQuery}
-      onClose={onClose}
-      sections={sections}
-      header={<CommandBreadcrumb rootLabel='Commands' />}
-      placeholder={isInSnippets ? 'Search snippets...' : 'Type a command or search...'}
-      emptyMessage={isInSnippets ? 'No snippets found.' : 'No results found.'}
-      onBackspaceEmpty={onBackspaceEmpty}
-      onArrowLeftEmpty={onArrowLeftEmpty}
-      loading={snippetsLoading}
-    />
+    <div ref={containerRef} className='w-72 overflow-hidden'>
+      <SlashList
+        query={query}
+        sections={sections}
+        header={<CommandBreadcrumb rootLabel='Commands' />}
+        emptyMessage={isInSnippets ? 'No snippets found.' : 'No results found.'}
+        loading={snippetsLoading}
+      />
+    </div>
   )
 }
