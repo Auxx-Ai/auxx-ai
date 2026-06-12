@@ -6,9 +6,22 @@ import { useCallback, useRef } from 'react'
 import { api } from '~/trpc/react'
 import type { AgentDetail } from '../../../store/agent-store'
 
+/** Patch shape mirroring the server's `AgentToolsetPatch` — both fields optional. */
+export interface ToolsetPatch {
+  enabled?: boolean
+  /** Registered tool names disabled inside this toolset (full replace). */
+  disabledTools?: string[]
+}
+
 interface UseToolsetMutationsReturn {
   toggleToolset: (slug: string, enabled: boolean) => Promise<void>
   toggleToolsets: (changes: Array<{ slug: string; enabled: boolean }>) => Promise<void>
+  /**
+   * Patch a single toolset's `enabled` flag and/or its `config.disabledTools`
+   * deny-list in one optimistic mutation. Backs per-tool MCP selection — the
+   * caller computes the next deny-list from the tool checkboxes.
+   */
+  updateToolset: (slug: string, patch: ToolsetPatch) => Promise<void>
   isPending: boolean
 }
 
@@ -31,10 +44,10 @@ export function useToolsetMutations(
   const update = api.agentToolset.update.useMutation()
   const savingTimerRef = useRef<ReturnType<typeof setTimeout>>()
 
-  const applyOptimisticChange = (
+  const applyOptimisticPatch = (
     toolsets: AgentDetail['toolsets'],
     slug: string,
-    enabled: boolean
+    patch: ToolsetPatch
   ): AgentDetail['toolsets'] => {
     const idx = toolsets.findIndex((t) => t.slug === slug)
     if (idx >= 0) {
@@ -43,8 +56,12 @@ export function useToolsetMutations(
       const next = [...toolsets]
       next[idx] = {
         ...current,
-        enabled,
+        enabled: patch.enabled ?? current.enabled,
         source: current.source === 'auto_default' ? 'manual' : current.source,
+        config:
+          patch.disabledTools !== undefined
+            ? { ...current.config, disabledTools: patch.disabledTools }
+            : current.config,
       }
       return next
     }
@@ -52,9 +69,9 @@ export function useToolsetMutations(
       ...toolsets,
       {
         slug,
-        enabled,
+        enabled: patch.enabled ?? true,
         source: 'manual',
-        config: {},
+        config: patch.disabledTools !== undefined ? { disabledTools: patch.disabledTools } : {},
       },
     ]
   }
@@ -68,11 +85,43 @@ export function useToolsetMutations(
 
       utils.agent.getById.setData({ agentId: agentSlug }, (old) => {
         if (!old) return old
-        return { ...old, toolsets: applyOptimisticChange(old.toolsets, slug, enabled) }
+        return { ...old, toolsets: applyOptimisticPatch(old.toolsets, slug, { enabled }) }
       })
 
       try {
         await update.mutateAsync({ agentId, slug, enabled })
+      } catch (err) {
+        utils.agent.getById.setData({ agentId: agentSlug }, previous)
+        toastError({
+          title: 'Failed to update toolset',
+          description: err instanceof Error ? err.message : 'Unknown error',
+        })
+      } finally {
+        clearTimeout(savingTimerRef.current)
+        onSavingChange?.(false)
+      }
+    },
+    [agentId, agentSlug, onSavingChange, update, utils.agent.getById]
+  )
+
+  /**
+   * Patch one toolset's `enabled` flag and/or `disabledTools` deny-list. One
+   * optimistic write mirroring the server's `applyToolsetPatch`, then a single
+   * mutation — no invalidate on success.
+   */
+  const updateToolset = useCallback(
+    async (slug: string, patch: ToolsetPatch) => {
+      savingTimerRef.current = setTimeout(() => onSavingChange?.(true), 400)
+
+      const previous = utils.agent.getById.getData({ agentId: agentSlug })
+
+      utils.agent.getById.setData({ agentId: agentSlug }, (old) => {
+        if (!old) return old
+        return { ...old, toolsets: applyOptimisticPatch(old.toolsets, slug, patch) }
+      })
+
+      try {
+        await update.mutateAsync({ agentId, slug, ...patch })
       } catch (err) {
         utils.agent.getById.setData({ agentId: agentSlug }, previous)
         toastError({
@@ -103,7 +152,7 @@ export function useToolsetMutations(
         if (!old) return old
         let toolsets = old.toolsets
         for (const { slug, enabled } of changes) {
-          toolsets = applyOptimisticChange(toolsets, slug, enabled)
+          toolsets = applyOptimisticPatch(toolsets, slug, { enabled })
         }
         return { ...old, toolsets }
       })
@@ -126,5 +175,5 @@ export function useToolsetMutations(
     [agentId, agentSlug, onSavingChange, update, utils.agent.getById]
   )
 
-  return { toggleToolset, toggleToolsets, isPending: update.isPending }
+  return { toggleToolset, toggleToolsets, updateToolset, isPending: update.isPending }
 }

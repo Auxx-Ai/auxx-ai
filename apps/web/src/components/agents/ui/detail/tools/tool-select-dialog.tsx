@@ -20,6 +20,8 @@ export interface InstalledToolsetEntry {
   slug: string
   enabled: boolean
   source: 'manual' | 'mention' | 'auto_default'
+  /** Toolset-shaped overrides — `{ disabledTools?: string[] }`. Drives per-tool MCP selection. */
+  config?: Record<string, unknown>
 }
 
 interface ToolSelectDialogProps {
@@ -31,6 +33,16 @@ interface ToolSelectDialogProps {
   onToggleToolset: (slug: string, enabled: boolean) => void | Promise<void>
   /** Bulk-toggle multiple toolsets ("Add all tools"). */
   onToggleToolsets: (changes: Array<{ slug: string; enabled: boolean }>) => void | Promise<void>
+  /**
+   * Patch a toolset's `enabled` flag and/or `disabledTools` deny-list. When
+   * supplied, MCP servers gain per-tool selection in their detail view; when
+   * omitted, MCP servers fall back to a single whole-server toggle (used by
+   * surfaces whose storage doesn't honor `disabledTools`).
+   */
+  onUpdateToolset?: (
+    slug: string,
+    patch: { enabled?: boolean; disabledTools?: string[] }
+  ) => void | Promise<void>
   open: boolean
   onOpenChange: (open: boolean) => void
   /**
@@ -48,7 +60,12 @@ interface ToolSelectDialogProps {
 type ViewMode = 'list' | 'app-detail'
 type ListTab = 'all' | 'apps' | 'mcps'
 
-type InstalledState = Pick<InstalledToolsetEntry, 'enabled' | 'source'>
+interface InstalledState {
+  enabled: boolean
+  source: InstalledToolsetEntry['source']
+  /** Registered tool names disabled inside this toolset. */
+  disabledTools: string[]
+}
 
 /**
  * Multi-view dialog used to add toolsets to an agent. Three surfaces:
@@ -65,6 +82,7 @@ export function ToolSelectDialog({
   boundAppIds,
   onToggleToolset,
   onToggleToolsets,
+  onUpdateToolset,
   open,
   onOpenChange,
   initialAppId,
@@ -104,7 +122,8 @@ export function ToolSelectDialog({
   const installedState = useMemo<Map<string, InstalledState>>(() => {
     const map = new Map<string, InstalledState>()
     for (const row of installedToolsets) {
-      map.set(row.slug, { enabled: row.enabled, source: row.source })
+      const disabledTools = (row.config?.disabledTools as string[] | undefined) ?? []
+      map.set(row.slug, { enabled: row.enabled, source: row.source, disabledTools })
     }
     return map
   }, [installedToolsets])
@@ -125,6 +144,54 @@ export function ToolSelectDialog({
 
   function sourceOf(slug: string): InstalledState['source'] | undefined {
     return installedState.get(slug)?.source
+  }
+
+  function disabledToolsOf(slug: string): string[] {
+    return installedState.get(slug)?.disabledTools ?? []
+  }
+
+  // A tool is enabled when its toolset is installed AND the tool's registered
+  // name is not in the toolset's deny-list.
+  function isToolEnabled(slug: string, toolName: string): boolean {
+    if (!isInstalled(slug)) return false
+    return !disabledToolsOf(slug).includes(toolName)
+  }
+
+  /**
+   * Toggle one tool inside an MCP toolset. Edits the `disabledTools` deny-list,
+   * enabling/disabling the parent toolset at the edges:
+   *  - first tool checked on a not-yet-enabled toolset installs it, denying the rest;
+   *  - unchecking the last enabled tool disables the toolset and clears the deny-list.
+   */
+  const handleToolClick = (slug: string, toolName: string, allToolNames: string[]) => {
+    if (!onUpdateToolset) return
+    const source = sourceOf(slug)
+    // Locked toolset (mention/auto_default): per-tool edits are no-ops, mirroring `handleToolsetClick`.
+    if (isInstalled(slug) && source && source !== 'manual') return
+
+    if (isToolEnabled(slug, toolName)) {
+      const nextDisabled = [...disabledToolsOf(slug), toolName]
+      const allDisabled = allToolNames.every((n) => nextDisabled.includes(n))
+      if (allDisabled) {
+        void onUpdateToolset(slug, { enabled: false, disabledTools: [] })
+      } else {
+        void onUpdateToolset(slug, { disabledTools: nextDisabled })
+      }
+      return
+    }
+
+    if (installedState.get(slug)?.enabled) {
+      // Toolset already on — just lift this tool out of the deny-list.
+      void onUpdateToolset(slug, {
+        disabledTools: disabledToolsOf(slug).filter((n) => n !== toolName),
+      })
+    } else {
+      // Toolset off/absent — install it with only this tool enabled.
+      void onUpdateToolset(slug, {
+        enabled: true,
+        disabledTools: allToolNames.filter((n) => n !== toolName),
+      })
+    }
   }
 
   const handleToolsetClick = (slug: string) => {
@@ -211,8 +278,11 @@ export function ToolSelectDialog({
                   app={selectedApp}
                   isInstalled={isInstalled}
                   sourceOf={sourceOf}
+                  isToolEnabled={isToolEnabled}
                   onToggle={handleToolsetClick}
+                  onToolClick={handleToolClick}
                   onRemove={handleRemove}
+                  onUpdateToolset={onUpdateToolset}
                   onAddAll={(slugs) => {
                     if (slugs.length === 0) return
                     void onToggleToolsets(slugs.map((slug) => ({ slug, enabled: true })))
@@ -423,21 +493,38 @@ interface AppDetailViewProps {
   app: CatalogContainerNode
   isInstalled: (slug: string) => boolean
   sourceOf: (slug: string) => InstalledState['source'] | undefined
+  isToolEnabled: (slug: string, toolName: string) => boolean
   onToggle: (slug: string) => void
+  onToolClick: (slug: string, toolName: string, allToolNames: string[]) => void
   onRemove: (slug: string) => void
+  onUpdateToolset?: (
+    slug: string,
+    patch: { enabled?: boolean; disabledTools?: string[] }
+  ) => void | Promise<void>
   onAddAll: (slugs: string[]) => void
   /** When false, an inline hint appears prompting the admin to pick a credential. */
   hasBoundAccount: boolean
 }
 
-function AppDetailView({
+function AppDetailView(props: AppDetailViewProps) {
+  // MCP servers carry a single toolset whose tools have no further grouping —
+  // drill into the individual tools instead of the one toolset row. Falls back
+  // to the toolset view when the surface can't persist per-tool deny-lists.
+  return props.app.origin === 'mcp' && props.onUpdateToolset ? (
+    <McpToolDetailView {...props} />
+  ) : (
+    <AppToolsetDetailView {...props} />
+  )
+}
+
+/** Native-app detail — one selectable row per toolset (unchanged behavior). */
+function AppToolsetDetailView({
   app,
   isInstalled,
   sourceOf,
   onToggle,
   onRemove,
   onAddAll,
-  hasBoundAccount,
 }: AppDetailViewProps) {
   const leaves = useMemo(() => flattenCatalogToToolsets([app]), [app])
   const installedCount = leaves.reduce((n, l) => (isInstalled(l.slug) ? n + 1 : n), 0)
@@ -475,6 +562,76 @@ function AppDetailView({
               source={sourceOf(entry.slug)}
               onSelect={() => onToggle(entry.slug)}
               onRemove={() => onRemove(entry.slug)}
+            />
+          ))}
+        </div>
+      </ScrollArea>
+    </>
+  )
+}
+
+/** MCP detail — one selectable `ToolSelectRow` per individual tool. */
+function McpToolDetailView({
+  app,
+  sourceOf,
+  isToolEnabled,
+  onToolClick,
+  onUpdateToolset,
+}: AppDetailViewProps) {
+  const leaves = useMemo(() => flattenCatalogToToolsets([app]), [app])
+  // MCP apps hold exactly one toolset; flatten its tools, tagging each with its slug.
+  const tools = useMemo(
+    () =>
+      leaves.flatMap((leaf) =>
+        leaf.tools.map((tool) => ({
+          tool,
+          slug: leaf.slug,
+          iconId: leaf.iconId,
+          color: leaf.color || null,
+          allNames: leaf.tools.map((t) => t.name),
+        }))
+      ),
+    [leaves]
+  )
+
+  const enabledCount = tools.reduce((n, t) => (isToolEnabled(t.slug, t.tool.name) ? n + 1 : n), 0)
+  const total = tools.length
+  const allEnabled = enabledCount === total && total > 0
+
+  return (
+    <>
+      <div className='flex items-center justify-between border-b ps-3 pe-2 py-1'>
+        <span className='text-xs text-muted-foreground'>
+          {enabledCount}/{total} {pluralize(total, 'tool')} enabled
+        </span>
+        <Button
+          size='sm'
+          variant='ghost'
+          disabled={allEnabled}
+          onClick={() => {
+            if (!onUpdateToolset) return
+            for (const slug of new Set(leaves.map((l) => l.slug))) {
+              void onUpdateToolset(slug, { enabled: true, disabledTools: [] })
+            }
+          }}>
+          {allEnabled ? 'All enabled' : 'Add all tools'}
+        </Button>
+      </div>
+
+      <ScrollArea viewportClassName='max-h-[32rem]' scrollbarClassName='w-1!'>
+        <div className='p-3'>
+          {tools.map(({ tool, slug, iconId, color, allNames }) => (
+            <ToolSelectRow
+              key={tool.name}
+              id={tool.name}
+              iconId={iconId}
+              color={color}
+              label={tool.displayName}
+              description={tool.description || undefined}
+              installed={isToolEnabled(slug, tool.name)}
+              source={sourceOf(slug)}
+              onSelect={() => onToolClick(slug, tool.name, allNames)}
+              onRemove={() => onToolClick(slug, tool.name, allNames)}
             />
           ))}
         </div>

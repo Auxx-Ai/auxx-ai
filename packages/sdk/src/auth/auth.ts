@@ -42,6 +42,13 @@ class Authenticator {
    * Ensure user is authenticated, prompting for login if needed
    */
   async ensureAuthed(): Promise<Result<string, AuthError | any>> {
+    // Headless auth for CI: when AUXX_API_KEY is set, send it directly as the
+    // bearer token and skip the keychain + OAuth refresh entirely. The
+    // `auxx_dev_` prefix routes it to the developer-key path on the API.
+    if (process.env.AUXX_API_KEY) {
+      return { success: true, value: process.env.AUXX_API_KEY }
+    }
+
     const existingTokenResult = await getKeychain().load()
 
     if (isError(existingTokenResult)) {

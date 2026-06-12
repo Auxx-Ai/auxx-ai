@@ -27,6 +27,11 @@ interface CatalogNodeRowProps {
   inheritedColor: string | null
   stateBySlug: Map<string, ToolsetRowState>
   /**
+   * Per-toolset deny-list (registered tool names). MCP server rows use it to
+   * show an enabled-tool count (`N of M`) instead of a toolset count.
+   */
+  disabledToolsBySlug?: Map<string, Set<string>>
+  /**
    * Read-only restriction count per toolset slug. When a leaf has ≥1, a lock
    * badge renders; container rows roll up descendant counts into `secondary`.
    * Managing restrictions happens in the Restrictions section. See
@@ -86,6 +91,7 @@ export function CatalogNodeRow({
   inheritedIconId,
   inheritedColor,
   stateBySlug,
+  disabledToolsBySlug,
   restrictionCountBySlug,
   collapsed,
   onToggleCollapsed,
@@ -119,6 +125,7 @@ export function CatalogNodeRow({
 
   const isOpen = !collapsed.has(node.id)
   const stats = summarizeContainer(node, stateBySlug)
+  const mcpTools = node.origin === 'mcp' ? mcpToolStats(node, disabledToolsBySlug) : null
   const restrictionCount = countRestrictions(node, restrictionCountBySlug)
   const containerWarn = Boolean(warnNotExternalSafe) && hasUnverifiedTool(node)
   const isApp = node.kind === 'app'
@@ -154,7 +161,8 @@ export function CatalogNodeRow({
         isMcp ? (
           <span className='inline-flex items-center gap-2'>
             <span>
-              {stats.enabled} {pluralize(stats.enabled, 'tool')}
+              {mcpTools ? `${mcpTools.enabled} of ${mcpTools.total}` : stats.enabled}{' '}
+              {pluralize(mcpTools?.total ?? stats.enabled, 'tool')}
             </span>
             {restrictionCount > 0 ? <RestrictionLockBadge count={restrictionCount} /> : null}
             {containerWarn ? <ChatWarnBadge /> : null}
@@ -204,6 +212,7 @@ export function CatalogNodeRow({
           inheritedIconId={iconId}
           inheritedColor={color}
           stateBySlug={stateBySlug}
+          disabledToolsBySlug={disabledToolsBySlug}
           restrictionCountBySlug={restrictionCountBySlug}
           collapsed={collapsed}
           onToggleCollapsed={onToggleCollapsed}
@@ -293,6 +302,27 @@ function summarizeContainer(
     else removable++
   }
   return { total, enabled, removable, locked }
+}
+
+/**
+ * Enabled-vs-total tool count for an MCP server node. MCP servers hold a single
+ * toolset whose `tools[]` are gated per-agent by the `disabledTools` deny-list,
+ * so `enabled = total − disabled`.
+ */
+function mcpToolStats(
+  node: CatalogNode,
+  disabledToolsBySlug: Map<string, Set<string>> | undefined
+): { enabled: number; total: number } {
+  let total = 0
+  let disabled = 0
+  for (const leaf of collectLeaves(node)) {
+    total += leaf.tools.length
+    const denied = disabledToolsBySlug?.get(leaf.slug)
+    if (denied) {
+      for (const tool of leaf.tools) if (denied.has(tool.name)) disabled++
+    }
+  }
+  return { enabled: total - disabled, total }
 }
 
 /** Sum the restriction counts of every toolset leaf under a node. */

@@ -42,3 +42,10 @@ export const USE_SETTINGS = process.env.USE_SETTINGS !== 'false'
 
 /** SDK OAuth Client ID - this will be registered in better-auth */
 export const SDK_CLIENT_ID = process.env.AUXX_SDK_CLIENT_ID || 'auxx-sdk-cli'
+
+/**
+ * Developer API key for headless authentication (CI). When set, the CLI sends
+ * this as the bearer token and skips the interactive OAuth/keychain flow.
+ * Mint one in the build portal under settings/api-keys.
+ */
+export const AUXX_API_KEY = process.env.AUXX_API_KEY
