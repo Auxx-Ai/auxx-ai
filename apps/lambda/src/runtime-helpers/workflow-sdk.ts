@@ -159,6 +159,30 @@ export function cleanupWorkflowSDK(): void {
   delete g.__AUXX_WORKFLOW_SDK__
 }
 
+/** Shape of the bundle's `__AUXX_TOOLS__` registry, keyed by tool id. */
+type ToolRegistry = Record<string, { execute: (input: any, ctx?: any) => unknown }>
+
+/**
+ * Expose the bundle's tool registry on `globalThis.__AUXX_TOOLS__`.
+ *
+ * Router-style workflow blocks dispatch to internal tools via `ctx.runTool`,
+ * which resolves the tool off `globalThis.__AUXX_TOOLS__` (see `runTool` above).
+ * The generated bundle keeps `__AUXX_TOOLS__` as a function-local const, so the
+ * executor must lift it onto the global after running the bundle and before
+ * invoking the block — mirroring the `__AUXX_WORKFLOW_SDK__` inject/cleanup
+ * lifecycle. Always pair with `clearToolRegistry()` in a `finally`.
+ */
+export function setToolRegistry(tools: ToolRegistry | undefined): void {
+  const g = globalThis as typeof globalThis & { __AUXX_TOOLS__?: ToolRegistry }
+  g.__AUXX_TOOLS__ = tools ?? {}
+}
+
+/** Remove the tool registry from global scope. */
+export function clearToolRegistry(): void {
+  const g = globalThis as typeof globalThis & { __AUXX_TOOLS__?: ToolRegistry }
+  delete g.__AUXX_TOOLS__
+}
+
 /**
  * Create workflow execution context from Lambda event and runtime context
  */
