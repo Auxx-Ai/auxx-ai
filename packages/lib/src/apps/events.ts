@@ -1,12 +1,11 @@
-// packages/services/src/app-events/index.ts
+// packages/lib/src/apps/events.ts
 
 import { database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
+import type { DatabaseError } from '@auxx/services'
+import { fromDatabase } from '@auxx/services/shared/utils'
 import { err, ok } from 'neverthrow'
-import { getBundleS3Key } from '../app-bundles/s3-key'
-import { invokeLambdaExecutor, prepareLambdaContext } from '../lambda-execution'
-import type { DatabaseError } from '../shared/errors'
-import { fromDatabase } from '../shared/utils'
+import { invokeLambdaExecutor, prepareLambdaContext } from './lambda'
 
 const logger = createScopedLogger('app-events')
 

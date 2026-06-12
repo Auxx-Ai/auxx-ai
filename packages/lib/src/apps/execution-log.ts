@@ -1,18 +1,9 @@
-// packages/services/src/apps/log-server-function-execution.ts
+// packages/lib/src/apps/execution-log.ts
 
 import { AppEventLog, database } from '@auxx/database'
+import { fromDatabase } from '@auxx/services/shared/utils'
 import { ok } from 'neverthrow'
-import { fromDatabase } from '../shared/utils'
-
-/**
- * Console log from app execution (server function or workflow block)
- */
-export interface ConsoleLog {
-  level: 'log' | 'warn' | 'error'
-  message: string
-  args: any[]
-  timestamp: number
-}
+import type { ConsoleLog } from './lambda'
 
 /**
  * Execution context discriminated union

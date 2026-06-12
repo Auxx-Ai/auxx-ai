@@ -124,7 +124,7 @@ export class CodeProcessor extends BaseNodeProcessor {
     // 2. Invoke Lambda via shared helper
     // IMPORTANT: Pass ALL variables (including sys.*, env.*, node.*)
     // The variables object already contains all context (sys.workflowId, sys.userId, etc.)
-    const { invokeLambdaExecutor } = await import('@auxx/services/lambda-execution')
+    const { invokeLambdaExecutor } = await import('../../../apps/lambda')
 
     const lambdaResult = await invokeLambdaExecutor({
       caller: 'workflow-engine',

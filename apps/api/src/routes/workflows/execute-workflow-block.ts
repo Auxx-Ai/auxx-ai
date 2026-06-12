@@ -4,10 +4,13 @@
  * API endpoint for executing workflow blocks from apps
  */
 
-import { resolveAppConnectionForRuntime } from '@auxx/services/app-connections'
-import { getInstallationDeployment } from '@auxx/services/app-installations'
-import { logAppExecution } from '@auxx/services/apps'
-import { invokeLambdaExecutor, prepareLambdaContext } from '@auxx/services/lambda-execution'
+import {
+  getInstallationDeployment,
+  invokeLambdaExecutor,
+  logAppExecution,
+  prepareLambdaContext,
+  resolveAppConnectionForRuntime,
+} from '@auxx/lib/apps'
 import { createWorkflowNodeExecution, getWorkflowRun } from '@auxx/services/workflows'
 import { Hono } from 'hono'
 import { ERROR_STATUS_MAP, errorResponse } from '../../lib/response'

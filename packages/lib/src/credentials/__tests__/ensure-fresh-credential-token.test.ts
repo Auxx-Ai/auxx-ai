@@ -1,4 +1,4 @@
-// packages/lib/src/ai/mcp/connections/__tests__/ensure-fresh-mcp-token.test.ts
+// packages/lib/src/credentials/__tests__/ensure-fresh-credential-token.test.ts
 //
 // Redis and the (lazily imported) oauth2-workflow are mocked wholesale; the tests assert the
 // skip/refresh/lock decisions and the adaptive expiry skew.
@@ -33,14 +33,14 @@ vi.mock('@auxx/redis', () => ({
   },
 }))
 
-vi.mock('../../../../workflows/oauth2-workflow', () => ({
+vi.mock('../../workflows/oauth2-workflow', () => ({
   refreshCredentialTokens: async (credentialId: string, organizationId: string) => {
     refreshCalls.push({ credentialId, organizationId })
     return { success: true, expiresAt: new Date(Date.now() + 3600_000) }
   },
 }))
 
-import { ensureFreshMcpToken } from '../ensure-fresh-mcp-token'
+import { ensureFreshCredentialToken } from '../ensure-fresh-credential-token'
 
 const base = {
   credentialId: 'cred-1',
@@ -57,9 +57,9 @@ beforeEach(() => {
   redisState.delCalls = []
 })
 
-describe('ensureFreshMcpToken', () => {
+describe('ensureFreshCredentialToken', () => {
   it('skips when there is no refresh token', async () => {
-    const changed = await ensureFreshMcpToken({
+    const changed = await ensureFreshCredentialToken({
       ...base,
       hasRefreshToken: false,
       expiresAt: new Date(Date.now() - 1000),
@@ -69,13 +69,13 @@ describe('ensureFreshMcpToken', () => {
   })
 
   it('skips when no expiresAt is stored (401 path owns it)', async () => {
-    const changed = await ensureFreshMcpToken({ ...base, expiresAt: null })
+    const changed = await ensureFreshCredentialToken({ ...base, expiresAt: null })
     expect(changed).toBe(false)
     expect(refreshCalls).toHaveLength(0)
   })
 
   it('skips when the token is comfortably fresh', async () => {
-    const changed = await ensureFreshMcpToken({
+    const changed = await ensureFreshCredentialToken({
       ...base,
       expiresAt: new Date(Date.now() + 3600_000),
       createdAt: new Date(),
@@ -85,19 +85,19 @@ describe('ensureFreshMcpToken', () => {
   })
 
   it('refreshes an expired token and releases the lock', async () => {
-    const changed = await ensureFreshMcpToken({
+    const changed = await ensureFreshCredentialToken({
       ...base,
       expiresAt: new Date(Date.now() - 1000),
       createdAt: new Date(Date.now() - 3600_000),
     })
     expect(changed).toBe(true)
     expect(refreshCalls).toEqual([{ credentialId: 'cred-1', organizationId: 'org-1' }])
-    expect(redisState.setCalls[0]?.[0]).toBe('mcp:token-refresh:cred-1')
-    expect(redisState.delCalls).toEqual(['mcp:token-refresh:cred-1'])
+    expect(redisState.setCalls[0]?.[0]).toBe('credential:token-refresh:cred-1')
+    expect(redisState.delCalls).toEqual(['credential:token-refresh:cred-1'])
   })
 
   it('refreshes a 1h token inside the 120s window', async () => {
-    const changed = await ensureFreshMcpToken({
+    const changed = await ensureFreshCredentialToken({
       ...base,
       expiresAt: new Date(Date.now() + 60_000),
       lastRefreshAt: new Date(Date.now() - 3540_000), // 1h lifetime → 120s skew applies
@@ -107,7 +107,7 @@ describe('ensureFreshMcpToken', () => {
   })
 
   it('adapts the skew for short-lived tokens — a fresh 60s token is NOT "expiring"', async () => {
-    const changed = await ensureFreshMcpToken({
+    const changed = await ensureFreshCredentialToken({
       ...base,
       expiresAt: new Date(Date.now() + 50_000),
       lastRefreshAt: new Date(Date.now() - 10_000), // 60s lifetime → 15s skew, 50s left
@@ -117,7 +117,7 @@ describe('ensureFreshMcpToken', () => {
   })
 
   it('force bypasses the expiry check entirely', async () => {
-    const changed = await ensureFreshMcpToken({ ...base, force: true })
+    const changed = await ensureFreshCredentialToken({ ...base, force: true })
     expect(changed).toBe(true)
     expect(refreshCalls).toHaveLength(1)
   })
@@ -125,7 +125,7 @@ describe('ensureFreshMcpToken', () => {
   it('waits out a held lock without refreshing, and reports a possible rotation', async () => {
     redisState.setResult = null // lock held elsewhere
     redisState.getResults = ['1', null] // released on the second poll
-    const changed = await ensureFreshMcpToken({
+    const changed = await ensureFreshCredentialToken({
       ...base,
       expiresAt: new Date(Date.now() - 1000),
       createdAt: new Date(Date.now() - 3600_000),
@@ -137,7 +137,7 @@ describe('ensureFreshMcpToken', () => {
 
   it('still refreshes when Redis is unavailable', async () => {
     redisState.available = false
-    const changed = await ensureFreshMcpToken({
+    const changed = await ensureFreshCredentialToken({
       ...base,
       expiresAt: new Date(Date.now() - 1000),
       createdAt: new Date(Date.now() - 3600_000),

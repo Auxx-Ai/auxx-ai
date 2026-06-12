@@ -358,7 +358,7 @@ export class WorkflowService {
               // (writing null would silently disable dispatch since the filter matches on exact equality)
               if (triggerNode.data.appId) {
                 const { resolveActiveInstallationId } = await import(
-                  '@auxx/services/app-installations'
+                  '../apps/installations/resolve-active-installation'
                 )
                 const instResult = await resolveActiveInstallationId(
                   triggerNode.data.appId,

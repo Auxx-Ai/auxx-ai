@@ -1,11 +1,11 @@
 // apps/api/src/routes/webhooks.ts
 
 import { database } from '@auxx/database'
+import { invokeLambdaExecutor, prepareLambdaContext } from '@auxx/lib/apps'
 import { getQueue, Queues } from '@auxx/lib/jobs/queues'
 import { createScopedLogger } from '@auxx/logger'
 import { getRedisClient } from '@auxx/redis'
 import { getWebhookHandler } from '@auxx/services/app-webhook-handlers'
-import { invokeLambdaExecutor, prepareLambdaContext } from '@auxx/services/lambda-execution'
 import { randomUUID, timingSafeEqual } from 'crypto'
 import { Hono } from 'hono'
 import { errorResponse } from '../lib/response'

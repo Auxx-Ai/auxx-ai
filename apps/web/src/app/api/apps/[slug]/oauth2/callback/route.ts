@@ -2,10 +2,11 @@
 
 import { WEBAPP_URL } from '@auxx/config/urls'
 import { database as db } from '@auxx/database'
+import { saveAppConnection } from '@auxx/lib/apps'
 import { resolveAppSlug } from '@auxx/lib/cache'
 import { createScopedLogger } from '@auxx/logger'
 import { getRedisClient } from '@auxx/redis'
-import { interpolateConnectionFields, saveAppConnection } from '@auxx/services/app-connections'
+import { interpolateConnectionFields } from '@auxx/services/app-connections'
 
 const OAUTH_REDIRECT_BASE = process.env.NGROK_URL || WEBAPP_URL
 

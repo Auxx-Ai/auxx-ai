@@ -1,15 +1,16 @@
 // apps/web/src/server/api/routers/apps.ts
 
-import { getAppDeployments, getAppWithInstallationStatus, getAvailableApps } from '@auxx/lib/apps'
+import {
+  deleteAppConnection,
+  getAppDeployments,
+  getAppWithInstallationStatus,
+  getAvailableApps,
+  saveAppConnection,
+} from '@auxx/lib/apps'
 import { getCachedAppBySlug, getOrgCache, onCacheEvent } from '@auxx/lib/cache'
 import { FeatureKey, FeaturePermissionService } from '@auxx/lib/permissions'
 import { createScopedLogger } from '@auxx/logger'
-import {
-  deleteAppConnection,
-  listAppConnections,
-  renameAppConnection,
-  saveAppConnection,
-} from '@auxx/services/app-connections'
+import { listAppConnections, renameAppConnection } from '@auxx/services/app-connections'
 import { getAppSettings, saveAppSettings, schemaToZod } from '@auxx/services/app-settings'
 import {
   installApp,

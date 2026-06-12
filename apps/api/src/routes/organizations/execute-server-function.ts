@@ -1,9 +1,12 @@
 // apps/api/src/routes/organizations/execute-server-function.ts
 
-import { resolveAppConnectionForRuntime } from '@auxx/services/app-connections'
-import { getInstallationDeployment } from '@auxx/services/app-installations'
-import { logServerFunctionExecution } from '@auxx/services/apps'
-import { invokeLambdaExecutor, prepareLambdaContext } from '@auxx/services/lambda-execution'
+import {
+  getInstallationDeployment,
+  invokeLambdaExecutor,
+  logServerFunctionExecution,
+  prepareLambdaContext,
+  resolveAppConnectionForRuntime,
+} from '@auxx/lib/apps'
 import { Hono } from 'hono'
 import { ERROR_STATUS_MAP, errorResponse } from '../../lib/response'
 import type { AppContext } from '../../types/context'

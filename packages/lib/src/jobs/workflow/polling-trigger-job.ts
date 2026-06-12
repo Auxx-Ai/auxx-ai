@@ -177,11 +177,14 @@ export async function executePollingTrigger(job: Job<PollingTriggerJobData>) {
   let pollResult: { events: Record<string, unknown>[]; state: Record<string, unknown> }
 
   try {
-    const { getInstallationDeployment } = await import('@auxx/services/app-installations')
-    const { resolveAppConnectionForRuntime } = await import('@auxx/services/app-connections')
-    const { prepareLambdaContext, invokeLambdaExecutor } = await import(
-      '@auxx/services/lambda-execution'
+    // Lazy import keeps the app-runtime cluster out of this module's static graph.
+    const { getInstallationDeployment } = await import(
+      '../../apps/installations/get-installation-deployment'
     )
+    const { resolveAppConnectionForRuntime } = await import(
+      '../../apps/connections/resolve-app-connection-for-runtime'
+    )
+    const { prepareLambdaContext, invokeLambdaExecutor } = await import('../../apps/lambda')
 
     const installationResult = await getInstallationDeployment({
       installationId,

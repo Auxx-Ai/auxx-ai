@@ -3,13 +3,11 @@
 import { WEBAPP_URL } from '@auxx/config/urls'
 import type { OAuth2Features } from '@auxx/database'
 import { database as db } from '@auxx/database'
+import { resolveAppConnectionForRuntime } from '@auxx/lib/apps'
 import { resolveAppSlug } from '@auxx/lib/cache'
 import { createScopedLogger } from '@auxx/logger'
 import { getRedisClient } from '@auxx/redis'
-import {
-  interpolateConnectionFields,
-  resolveAppConnectionForRuntime,
-} from '@auxx/services/app-connections'
+import { interpolateConnectionFields } from '@auxx/services/app-connections'
 import crypto from 'crypto'
 
 const OAUTH_REDIRECT_BASE = process.env.NGROK_URL || WEBAPP_URL
@@ -145,6 +143,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         organizationId,
         userId: session.user.id,
         connectionId,
+        // Reconnect only reads metadata.connectionVariables — skip the OAuth refresh.
+        ensureFresh: false,
       })
       if (resolved.isOk()) {
         const conn = resolved.value.userConnection ?? resolved.value.organizationConnection

@@ -28,11 +28,14 @@ export class QuickActionExecutor {
     })
 
     try {
-      const { getInstallationDeployment } = await import('@auxx/services/app-installations')
-      const { resolveAppConnectionForRuntime } = await import('@auxx/services/app-connections')
-      const { prepareLambdaContext, invokeLambdaExecutor } = await import(
-        '@auxx/services/lambda-execution'
+      // Lazy import keeps the app-runtime cluster out of this module's static graph.
+      const { getInstallationDeployment } = await import(
+        '../apps/installations/get-installation-deployment'
       )
+      const { resolveAppConnectionForRuntime } = await import(
+        '../apps/connections/resolve-app-connection-for-runtime'
+      )
+      const { prepareLambdaContext, invokeLambdaExecutor } = await import('../apps/lambda')
 
       // 1. Get app installation and deployment
       const installationResult = await getInstallationDeployment({
@@ -120,7 +123,7 @@ export class QuickActionExecutor {
       const consoleLogs = result.metadata?.consoleLogs || result.metadata?.console_logs || []
       if (consoleLogs.length > 0) {
         try {
-          const { logAppExecution } = await import('@auxx/services/apps')
+          const { logAppExecution } = await import('../apps/execution-log')
           await logAppExecution({
             appId: action.appId,
             organizationId: context.organizationId,

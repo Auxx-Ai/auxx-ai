@@ -230,7 +230,8 @@ export function buildStepperDeps(args: BuildStepperDepsArgs): StepperDeps {
  */
 const runCode: StepperDeps['runCode'] = async (block, codeInput) => {
   try {
-    const { invokeLambdaExecutor } = await import('@auxx/services/lambda-execution')
+    // Lazy import keeps the app-runtime/lambda cluster out of this module's static graph.
+    const { invokeLambdaExecutor } = await import('../../apps/lambda')
     const result = await invokeLambdaExecutor({
       caller: 'procedure-stepper',
       payload: {

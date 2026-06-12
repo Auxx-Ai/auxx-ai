@@ -141,7 +141,9 @@ export class AppWorkflowBlockProcessor extends BaseNodeProcessor {
     // Resolve installationId at runtime — always resolve from appId to ensure freshness.
     // This handles missing (new nodes), stale (reinstalled app), or deleted installations.
     if (appId) {
-      const { resolveActiveInstallationId } = await import('@auxx/services/app-installations')
+      const { resolveActiveInstallationId } = await import(
+        '../../apps/installations/resolve-active-installation'
+      )
       const orgId = contextManager.getContext().organizationId
       const result = await resolveActiveInstallationId(appId, orgId)
       if (result.isOk()) {
@@ -631,12 +633,14 @@ export class AppWorkflowBlockProcessor extends BaseNodeProcessor {
     let deployment: any
 
     try {
-      // Import services dynamically to avoid circular dependencies
-      const { getInstallationDeployment } = await import('@auxx/services/app-installations')
-      const { resolveAppConnectionForRuntime } = await import('@auxx/services/app-connections')
-      const { prepareLambdaContext, invokeLambdaExecutor } = await import(
-        '@auxx/services/lambda-execution'
+      // Lazy import keeps the app-runtime cluster out of this module's static graph.
+      const { getInstallationDeployment } = await import(
+        '../../apps/installations/get-installation-deployment'
       )
+      const { resolveAppConnectionForRuntime } = await import(
+        '../../apps/connections/resolve-app-connection-for-runtime'
+      )
+      const { prepareLambdaContext, invokeLambdaExecutor } = await import('../../apps/lambda')
 
       // 1. Get app installation and deployment
       const installationResult = await getInstallationDeployment({
@@ -742,7 +746,7 @@ export class AppWorkflowBlockProcessor extends BaseNodeProcessor {
       // Persist console logs to AppEventLog
       if (consoleLogs.length > 0) {
         try {
-          const { logAppExecution } = await import('@auxx/services/apps')
+          const { logAppExecution } = await import('../../apps/execution-log')
           await logAppExecution({
             appId,
             organizationId: workflowContext.organization.id,
@@ -786,7 +790,7 @@ export class AppWorkflowBlockProcessor extends BaseNodeProcessor {
         const consoleLogs = (error as any).consoleLogs
         if (Array.isArray(consoleLogs) && consoleLogs.length > 0) {
           try {
-            const { logAppExecution } = await import('@auxx/services/apps')
+            const { logAppExecution } = await import('../../apps/execution-log')
             await logAppExecution({
               appId,
               organizationId: workflowContext.organization.id,

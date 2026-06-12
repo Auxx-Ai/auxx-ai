@@ -1,6 +1,6 @@
 // apps/api/src/routes/organizations/bundles.ts
 
-import { getInstallationDeployment } from '@auxx/services/app-installations'
+import { getInstallationDeployment } from '@auxx/lib/apps'
 import { Hono } from 'hono'
 import { ERROR_STATUS_MAP, errorResponse } from '../../lib/response'
 import type { AppContext } from '../../types/context'

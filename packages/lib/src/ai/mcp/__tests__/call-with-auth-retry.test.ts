@@ -46,11 +46,14 @@ vi.mock('../client', () => ({
   },
 }))
 
-vi.mock('../connections', () => ({
-  ensureFreshMcpToken: async (input: { credentialId: string; force?: boolean }) => {
+vi.mock('../../../credentials/ensure-fresh-credential-token', () => ({
+  ensureFreshCredentialToken: async (input: { credentialId: string; force?: boolean }) => {
     state.refreshCalls.push(input)
     return true
   },
+}))
+
+vi.mock('../connections', () => ({
   markMcpConnectionFailed: async (input: { mcpServerId: string }) => {
     state.markedFailed.push(input.mcpServerId)
   },

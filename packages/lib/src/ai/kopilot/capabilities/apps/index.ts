@@ -1,15 +1,13 @@
 // packages/lib/src/ai/kopilot/capabilities/apps/index.ts
 
+import { markAppConnectionExpired } from '../../../../apps/connections/mark-app-connection-expired'
+import { resolveAppConnectionForRuntime } from '../../../../apps/connections/resolve-app-connection-for-runtime'
 import {
-  markAppConnectionExpired,
-  resolveAppConnectionForRuntime,
-} from '@auxx/services/app-connections'
-import type { ConsoleLog } from '@auxx/services/apps'
-import {
+  type ConsoleLog,
   invokeLambdaExecutor,
   invokeLambdaExecutorStreaming,
   prepareLambdaContext,
-} from '@auxx/services/lambda-execution'
+} from '../../../../apps/lambda'
 import { getCachedAgentById, getOrgCache } from '../../../../cache'
 import type {
   AgentToolDefinition,
@@ -104,7 +102,7 @@ export async function createAppCapabilities(deps: {
     const persistAppLogs = async (toolId: string, consoleLogs: unknown, durationMs?: number) => {
       if (!Array.isArray(consoleLogs) || consoleLogs.length === 0) return
       try {
-        const { logAppExecution } = await import('@auxx/services/apps')
+        const { logAppExecution } = await import('../../../../apps/execution-log')
         await logAppExecution({
           appId,
           organizationId,

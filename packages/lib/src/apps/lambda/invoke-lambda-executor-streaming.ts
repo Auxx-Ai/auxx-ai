@@ -1,4 +1,4 @@
-// packages/services/src/lambda-execution/invoke-lambda-executor-streaming.ts
+// packages/lib/src/apps/lambda/invoke-lambda-executor-streaming.ts
 
 /**
  * Streaming-aware lambda invocation. Mirrors `invokeLambdaExecutor` but reads

@@ -1,16 +1,8 @@
-// packages/services/src/app-connections/mark-app-connection-expired.ts
+// packages/lib/src/apps/connections/mark-app-connection-expired.ts
 
 import { recordRefreshFailure } from '@auxx/credentials/store'
+import { logger } from '@auxx/services/app-connections'
 import { err, ok } from 'neverthrow'
-import { logger } from './utils'
-
-/**
- * Number of consecutive failures at which the refresh circuit breaker is
- * considered "open" — mirrors the OAuth2 token-refresh path (a permanent
- * failure jumps straight to this value). A connection at or above this count is
- * surfaced as `expired` by {@link listAppConnections}.
- */
-export const CONNECTION_CIRCUIT_OPEN_THRESHOLD = 5
 
 /**
  * Mark an app connection as expired/broken.

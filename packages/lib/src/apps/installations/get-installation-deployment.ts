@@ -1,8 +1,8 @@
-// packages/services/src/app-installations/get-installation-deployment.ts
+// packages/lib/src/apps/installations/get-installation-deployment.ts
 
 import { database } from '@auxx/database'
+import { fromDatabase } from '@auxx/services/shared/utils'
 import { err, ok } from 'neverthrow'
-import { fromDatabase } from '../shared/utils'
 
 /**
  * Get the current deployment for an installation.

@@ -1,4 +1,4 @@
-// packages/services/src/app-connections/save-app-connection.ts
+// packages/lib/src/apps/connections/save-app-connection.ts
 
 import {
   insertCredential,
@@ -6,12 +6,11 @@ import {
   rotateSecrets,
   updateCredential,
 } from '@auxx/credentials/store'
+import { logger, renameAppConnection, safeSerializeMetadata } from '@auxx/services/app-connections'
+import { getInstallationCatalog, provisionAppFields } from '@auxx/services/custom-fields'
 import { err, ok } from 'neverthrow'
-import { triggerAppEvent } from '../app-events'
-import { resolveActiveInstallationId } from '../app-installations/resolve-active-installation'
-import { getInstallationCatalog, provisionAppFields } from '../custom-fields/app-field-provisioning'
-import { renameAppConnection } from './rename-app-connection'
-import { logger, safeSerializeMetadata } from './utils'
+import { triggerAppEvent } from '../events'
+import { resolveActiveInstallationId } from '../installations/resolve-active-installation'
 
 /** Pick the secret keys (present only) out of an app-connection's credential data. */
 function pickSecrets(data: {
