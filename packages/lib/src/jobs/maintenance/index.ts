@@ -1,6 +1,7 @@
 // packages/lib/src/jobs/maintenance/index.ts
 
 export { type AgentDraftCleanupStats, agentDraftCleanupJob } from './agent-draft-cleanup-job'
+export { type AppStorageSweepStats, appStorageSweepJob } from './app-storage-sweep-job'
 export {
   type ChannelTokenRefreshJobData,
   channelTokenRefreshJob,

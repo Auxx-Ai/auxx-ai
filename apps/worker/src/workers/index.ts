@@ -510,6 +510,17 @@ export async function setupSchedules() {
     }
   )
 
+  // Every hour at :20 - Sweep expired app KV storage rows. Lazy expiry on read
+  // makes cadence non-critical; this is hygiene (reclaims dead rows).
+  await maintenanceQueue.upsertJobScheduler(
+    'appStorageSweepJob',
+    { pattern: '20 * * * *' },
+    {
+      data: { batchSize: 1000, dryRun: false },
+      opts: { attempts: 3, backoff: { type: 'exponential', delay: 60000 }, priority: 10 },
+    }
+  )
+
   // Dataset maintenance schedules
 
   // Every day at 3 AM - Clean up orphaned dataset data

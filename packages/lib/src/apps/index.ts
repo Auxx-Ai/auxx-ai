@@ -1,5 +1,15 @@
 // packages/lib/src/apps/index.ts
 
+export type { AppStorageEntry, AppStorageItem } from './app-storage'
+export {
+  countExpiredAppStorage,
+  deleteAppStorageValue,
+  deleteExpiredAppStorage,
+  getAppStorageValue,
+  listAppStorageValues,
+  setAppStorageValue,
+  setAppStorageValueIfAbsent,
+} from './app-storage'
 export { deleteAppConnection } from './connections/delete-app-connection'
 export { markAppConnectionExpired } from './connections/mark-app-connection-expired'
 export {

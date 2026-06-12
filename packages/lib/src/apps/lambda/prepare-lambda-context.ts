@@ -42,8 +42,8 @@ export function prepareLambdaContext(params: {
 
   if (secret) {
     const scopes: CallbackScope[] = params.includeEntitiesScope
-      ? ['webhooks', 'settings', 'entities']
-      : ['webhooks', 'settings']
+      ? ['webhooks', 'settings', 'storage', 'entities']
+      : ['webhooks', 'settings', 'storage']
     callbackTokens = {} as Record<CallbackScope, string>
     for (const scope of scopes) {
       callbackTokens[scope] = createCallbackToken({
