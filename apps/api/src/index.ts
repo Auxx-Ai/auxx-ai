@@ -34,6 +34,7 @@ import me from './routes/me'
 import organizations from './routes/organizations'
 import recordingWebhooks from './routes/recording-webhooks'
 import settings from './routes/settings'
+import storage from './routes/storage'
 import webhookHandlers from './routes/webhook-handlers'
 import webhooks from './routes/webhooks'
 import workflows from './routes/workflows'
@@ -83,6 +84,7 @@ async function main() {
   app.route('/api/v1/app-runtime', appRuntime) // Platform runtime files (shared by all extensions)
   app.route('/api/v1/sdk/webhooks', webhookHandlers) // SDK callback: Lambda → API
   app.route('/api/v1/sdk/settings', settings) // SDK callback: Lambda → API
+  app.route('/api/v1/sdk/storage', storage) // SDK callback: Lambda → API (app KV)
   app.route('/api/v1/sdk/entities', entitiesFindByIntegrationId) // SDK callback: Lambda → API (AI tools)
   app.route('/api/v1/sdk/entities', entitiesFindContactByEmail) // SDK callback: Lambda → API (AI tools, slack)
   app.route('/api/v1/sdk/entities', entitiesFindContactByPhone) // SDK callback: Lambda → API (AI tools, whatsapp)

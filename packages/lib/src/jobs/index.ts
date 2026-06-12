@@ -101,6 +101,10 @@ export {
 } from './maintenance/agent-draft-cleanup-job'
 export { orphanedAppBundleCleanupJob } from './maintenance/app-bundle-cleanup-job'
 export {
+  type AppStorageSweepStats,
+  appStorageSweepJob,
+} from './maintenance/app-storage-sweep-job'
+export {
   type ChannelTokenRefreshJobData,
   channelTokenRefreshJob,
 } from './maintenance/channel-token-refresh-job'

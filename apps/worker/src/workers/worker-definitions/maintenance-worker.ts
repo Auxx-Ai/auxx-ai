@@ -9,6 +9,7 @@ import {
 import {
   agentDraftCleanupJob,
   applyScheduledSubscriptionChangesJob,
+  appStorageSweepJob,
   channelTokenRefreshJob,
   channelTokenRefreshScannerJob,
   cleanupExpiredMediaAssetsJob,
@@ -157,6 +158,9 @@ const jobMappings = {
 
   // Agent draft cleanup (daily; archives stale builder drafts with no chat)
   agentDraftCleanupJob,
+
+  // App KV storage TTL sweep (hourly; lazy expiry on read makes cadence non-critical)
+  appStorageSweepJob,
 
   // Data migrations runner (enqueued at boot + from the superadmin panel)
   dataMigrationsJob,

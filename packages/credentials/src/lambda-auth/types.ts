@@ -19,8 +19,11 @@ export interface InboundAuthHeaders {
  * `entities` is minted only for AI tool invocations and authorizes the
  * `find-by-integration-id` lookup. See
  * plans/kopilot/apps/credentials.md §3.6.
+ *
+ * `storage` authorizes the app KV routes (`/api/v1/sdk/storage`) and is minted
+ * for every lambda invocation (tools, triggers, blocks, webhooks all use it).
  */
-export type CallbackScope = 'webhooks' | 'settings' | 'entities'
+export type CallbackScope = 'webhooks' | 'settings' | 'storage' | 'entities'
 
 /**
  * Result of verifying an inbound request signature.

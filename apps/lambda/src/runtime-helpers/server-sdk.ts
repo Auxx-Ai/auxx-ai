@@ -214,6 +214,45 @@ export interface WebhookHandler {
 }
 
 /**
+ * App KV storage host interface (matches @auxx/sdk/server `storage`).
+ *
+ * Flat methods taking `collection`/`scope` as arguments — the SDK's
+ * `collection()` accessor is pure sugar on the sandbox side. Backed by the
+ * `/api/v1/sdk/storage` routes.
+ *
+ * @interface StorageHost
+ */
+export interface StorageHost {
+  get: (args: {
+    collection: string
+    key: string
+    scope: StorageScope
+  }) => Promise<{ value: unknown } | null>
+  set: (args: {
+    collection: string
+    key: string
+    value: unknown
+    scope: StorageScope
+    ttlSeconds?: number
+  }) => Promise<void>
+  setIfAbsent: (args: {
+    collection: string
+    key: string
+    value: unknown
+    scope: StorageScope
+    ttlSeconds?: number
+  }) => Promise<boolean>
+  remove: (args: { collection: string; key: string; scope: StorageScope }) => Promise<void>
+  list: (args: {
+    collection: string
+    scope: StorageScope
+    limit?: number
+  }) => Promise<{ entries: Array<{ key: string; value: unknown }> }>
+}
+
+type StorageScope = 'installation' | 'connection'
+
+/**
  * Server SDK interface injected into global scope
  *
  * Main SDK interface providing runtime functions for extensions.
@@ -232,11 +271,7 @@ export interface ServerSDK {
   getApiToken: () => never
   query: (options: { sql: string; params?: unknown[] }) => never
   fetch: (options: ServerSDKFetchOptions) => Promise<ServerSDKFetchResponse>
-  storage: {
-    get: (key: string) => never
-    set: (key: string, value: unknown) => never
-    delete: (key: string) => never
-  }
+  storage: StorageHost
   workflow: Record<string, unknown>
   getUserConnection: () => Connection | undefined
   getOrganizationConnection: () => Connection | undefined
@@ -405,7 +440,9 @@ export function createServerSDK(context: RuntimeContext): ServerSDK {
    * Build callback headers for SDK → API requests.
    * Uses scoped callback tokens when available, falls back to installation ID only.
    */
-  function getCallbackHeaders(scope: 'webhooks' | 'settings' | 'entities'): Record<string, string> {
+  function getCallbackHeaders(
+    scope: 'webhooks' | 'settings' | 'storage' | 'entities'
+  ): Record<string, string> {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       'X-App-Installation-Id': context.app.installationId,
@@ -503,23 +540,12 @@ export function createServerSDK(context: RuntimeContext): ServerSDK {
     fetch: sdkFetch,
 
     /**
-     * Store data in extension storage.
-     * Maps to storage functions from @auxx/sdk/server
+     * App KV storage.
+     * Maps to the `storage` namespace from @auxx/sdk/server. Backed by the
+     * `/api/v1/sdk/storage` routes; `connection` scope resolves the bound
+     * connection from the runtime context.
      */
-    storage: {
-      get: (_key: string) => {
-        // TODO Phase 2: Implement storage via platform API
-        throw new Error('Storage not yet implemented')
-      },
-      set: (_key: string, _value: unknown) => {
-        // TODO Phase 2: Implement storage via platform API
-        throw new Error('Storage not yet implemented')
-      },
-      delete: (_key: string) => {
-        // TODO Phase 2: Implement storage via platform API
-        throw new Error('Storage not yet implemented')
-      },
-    },
+    storage: createStorageHost(context, sdkFetch, getCallbackHeaders),
 
     /**
      * Workflow functions (for workflow block handlers).
@@ -1033,5 +1059,106 @@ export function createServerSDK(context: RuntimeContext): ServerSDK {
     InvalidInputError,
     NotFoundError,
     ConflictError,
+  }
+}
+
+/**
+ * Build the app KV storage host. Flat methods over the `/api/v1/sdk/storage`
+ * routes; `connection` scope resolves the bound connection from the runtime
+ * context and throws (before any HTTP) when the invocation carries none.
+ */
+function createStorageHost(
+  context: RuntimeContext,
+  sdkFetch: (options: ServerSDKFetchOptions) => Promise<ServerSDKFetchResponse>,
+  getCallbackHeaders: (
+    scope: 'webhooks' | 'settings' | 'storage' | 'entities'
+  ) => Record<string, string>
+): StorageHost {
+  const baseUrl = `${context.apiUrl}/api/v1/sdk/storage`
+
+  /**
+   * Storage callback headers. For `connection` scope, resolve the bound
+   * connection (the invocation carries exactly one — the agent-bound one for
+   * tools, the trigger's for polling) and add `X-App-Connection-Id`.
+   */
+  function headersForScope(scope: StorageScope): Record<string, string> {
+    const headers = getCallbackHeaders('storage')
+    if (scope === 'connection') {
+      const connectionId = context.userConnection?.id ?? context.organizationConnection?.id
+      if (!connectionId) {
+        throw new Error(
+          "storage scope 'connection' requires a connection — this app has none in the current context"
+        )
+      }
+      headers['X-App-Connection-Id'] = connectionId
+    }
+    return headers
+  }
+
+  return {
+    get: async ({ collection, key, scope }) => {
+      const response = await sdkFetch({
+        method: 'GET',
+        url: `${baseUrl}/item/${encodeURIComponent(key)}?collection=${encodeURIComponent(collection)}`,
+        headers: headersForScope(scope),
+      })
+      if (response.status !== 200) {
+        throw new Error(`Failed to get storage item: ${response.status}`)
+      }
+      const data = response.data as { data: { item: { value: unknown } | null } }
+      return data.data.item
+    },
+
+    set: async ({ collection, key, value, scope, ttlSeconds }) => {
+      const response = await sdkFetch({
+        method: 'PUT',
+        url: `${baseUrl}/item/${encodeURIComponent(key)}`,
+        headers: headersForScope(scope),
+        body: { value, collection, ttlSeconds },
+      })
+      if (response.status !== 200) {
+        throw new Error(`Failed to set storage item: ${response.status}`)
+      }
+    },
+
+    setIfAbsent: async ({ collection, key, value, scope, ttlSeconds }) => {
+      const response = await sdkFetch({
+        method: 'PUT',
+        url: `${baseUrl}/item/${encodeURIComponent(key)}`,
+        headers: headersForScope(scope),
+        body: { value, collection, ttlSeconds, ifAbsent: true },
+      })
+      if (response.status !== 200) {
+        throw new Error(`Failed to set storage item: ${response.status}`)
+      }
+      const data = response.data as { data: { created: boolean } }
+      return data.data.created
+    },
+
+    remove: async ({ collection, key, scope }) => {
+      const response = await sdkFetch({
+        method: 'DELETE',
+        url: `${baseUrl}/item/${encodeURIComponent(key)}?collection=${encodeURIComponent(collection)}`,
+        headers: headersForScope(scope),
+      })
+      if (response.status !== 200) {
+        throw new Error(`Failed to remove storage item: ${response.status}`)
+      }
+    },
+
+    list: async ({ collection, scope, limit }) => {
+      const params = new URLSearchParams({ collection })
+      if (limit !== undefined) params.set('limit', String(limit))
+      const response = await sdkFetch({
+        method: 'GET',
+        url: `${baseUrl}/list?${params.toString()}`,
+        headers: headersForScope(scope),
+      })
+      if (response.status !== 200) {
+        throw new Error(`Failed to list storage: ${response.status}`)
+      }
+      const data = response.data as { data: { entries: Array<{ key: string; value: unknown }> } }
+      return { entries: data.data.entries }
+    },
   }
 }

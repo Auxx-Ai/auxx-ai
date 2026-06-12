@@ -81,6 +81,9 @@ export interface RuntimeContext {
   callbackTokens?: {
     webhooks: string
     settings: string
+    // Authorizes the app KV routes (`@auxx/sdk/server` storage.*). Minted for
+    // every invocation.
+    storage: string
     // Minted only for AI tool invocations — authorizes the entity value-I/O
     // routes (`@auxx/sdk/server` setFieldValues/getFieldValue/...).
     entities?: string

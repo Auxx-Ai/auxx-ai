@@ -712,6 +712,7 @@ export {
   primaryKey,
   text,
   timestamp,
+  unique,
   uniqueIndex,
   varchar,
   vector,

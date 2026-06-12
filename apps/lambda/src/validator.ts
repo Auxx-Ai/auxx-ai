@@ -32,6 +32,9 @@ export const ExecutionContextSchema = z.object({
     .object({
       webhooks: z.string(),
       settings: z.string(),
+      // Authorizes the app KV routes (`@auxx/sdk/server` storage.*). Minted for
+      // every invocation.
+      storage: z.string(),
       // Tool executions get an additional `entities` scope authorizing the
       // `@auxx/sdk/server` entity value-I/O functions (setFieldValues,
       // getFieldValue, findByIntegrationId, …). May carry a signed bound
