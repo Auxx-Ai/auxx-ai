@@ -72,7 +72,7 @@ export const Block = Node.create<BlockOptions>({
   defining: true,
 
   addOptions() {
-    return { placeholderText: "Press '/' for commands" }
+    return { placeholderText: "Press '/' for commands, '@' for mentions" }
   },
 
   addAttributes() {

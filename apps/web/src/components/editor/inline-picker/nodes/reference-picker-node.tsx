@@ -101,11 +101,18 @@ interface ReferencePickerOptions {
   /** ArrowUp/Down inside a `/` chip — move the slash list highlight. */
   onSlashArrowVertical?: (direction: 1 | -1) => boolean
   /**
-   * Backspace on an EMPTY, drilled `/` chip (`tab !== null`). Return true if
-   * a drill level was popped (the popover owns the drill stack); false falls
-   * through to deleting the chip.
+   * Backspace or ArrowLeft on an EMPTY, drilled `/` chip (`tab !== null`).
+   * Return true if a drill level was popped (the popover owns the drill
+   * stack); false falls through (Backspace deletes the chip, ArrowLeft moves
+   * the caret).
    */
   onSlashBackspacePop?: () => boolean
+  /**
+   * ArrowRight inside a `/` chip — drill into the highlighted slash item if
+   * it's drillable. Return true to consume the key (drill-first: takes
+   * priority over caret movement); false falls through to caret movement.
+   */
+  onSlashArrowRight?: () => boolean
 }
 
 function findPickerNode(state: import('@tiptap/pm/state').EditorState) {
@@ -282,6 +289,7 @@ export const ReferencePickerNode = Node.create<ReferencePickerOptions>({
       onSlashEnter: undefined,
       onSlashArrowVertical: undefined,
       onSlashBackspacePop: undefined,
+      onSlashArrowRight: undefined,
     }
   },
 
@@ -571,6 +579,16 @@ export const ReferencePickerNode = Node.create<ReferencePickerOptions>({
                 view.dispatch(tr.scrollIntoView())
                 return true
               }
+              // Empty drilled `/` chip: pop a drill level (mirrors Backspace).
+              if (
+                isSlash &&
+                realQueryLen === 0 &&
+                pickerNode.attrs.tab !== null &&
+                options.onSlashBackspacePop?.()
+              ) {
+                event.preventDefault()
+                return true
+              }
               // Effective content start sits AFTER the seed ZWSP — don't let
               // the user park the cursor before it.
               const hasZwsp = pickerNode.textContent.startsWith(ZWSP)
@@ -589,6 +607,12 @@ export const ReferencePickerNode = Node.create<ReferencePickerOptions>({
                 // Enter the chip from the badge
                 const tr = state.tr.setSelection(TextSelection.create(state.doc, contentStart))
                 view.dispatch(tr.scrollIntoView())
+                return true
+              }
+              // `/` chip: drill into the highlighted item if it's drillable —
+              // drill-first, so it wins over caret movement.
+              if (isSlash && options.onSlashArrowRight?.()) {
+                event.preventDefault()
                 return true
               }
               if (parentOffset === parentContentSize) {

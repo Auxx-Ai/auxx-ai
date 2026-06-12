@@ -104,8 +104,10 @@ export interface UseRichTextEditorOptions {
   onSlashEnter?: () => boolean
   /** ArrowUp/Down inside an open `/` chip — move the slash list highlight. */
   onSlashArrowVertical?: (direction: 1 | -1) => boolean
-  /** Backspace on an empty, drilled `/` chip — pop a drill level. */
+  /** Backspace/ArrowLeft on an empty, drilled `/` chip — pop a drill level. */
   onSlashBackspacePop?: () => boolean
+  /** ArrowRight inside an open `/` chip — drill into the highlighted item. */
+  onSlashArrowRight?: () => boolean
   /**
    * Default `true`. When set, mounts the `@`-mention picker extensions
    * (referenceBadgeNode + ReferencePickerNode). The consumer mounts the
@@ -133,7 +135,7 @@ export interface UseRichTextEditorOptions {
   /**
    * Overrides the default-branch placeholder rendered inside an empty text
    * `Block`. Heading and table-cell branches still use their own placeholders.
-   * Defaults to `"Press '/' for commands"`.
+   * Defaults to `"Press '/' for commands, '@' for mentions"`.
    */
   placeholderText?: string
   /**
@@ -179,6 +181,7 @@ export function useRichTextEditor({
   onSlashEnter,
   onSlashArrowVertical,
   onSlashBackspacePop,
+  onSlashArrowRight,
   enableReferencePicker = true,
   onPickerEnter,
   onPickerArrowVertical,
@@ -211,6 +214,7 @@ export function useRichTextEditor({
             onSlashEnter,
             onSlashArrowVertical,
             onSlashBackspacePop,
+            onSlashArrowRight,
           })
         : [],
     [
@@ -222,6 +226,7 @@ export function useRichTextEditor({
       onSlashEnter,
       onSlashArrowVertical,
       onSlashBackspacePop,
+      onSlashArrowRight,
     ]
   )
 

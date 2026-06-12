@@ -336,14 +336,14 @@ function FieldPickerForRoot({
 }
 
 /**
- * Small back-to-parent-picker header shown at the root level of the
- * placeholder picker when it's embedded inside a larger picker (e.g.
- * slash-command). Mirrors `CommandBreadcrumb`'s visual language (ghost
- * back icon + ghost-button label) rather than being a full-width clickable
- * row — the old `BackBar` looked like a `CommandItem` because it had
- * `hover:bg-accent w-full`, which confused users.
+ * Small back-to-parent-picker header shown at the root level of a picker
+ * embedded inside a larger picker (e.g. slash-command). Mirrors
+ * `CommandBreadcrumb`'s visual language (ghost back icon + ghost-button
+ * label) rather than being a full-width clickable row — the old `BackBar`
+ * looked like a `CommandItem` because it had `hover:bg-accent w-full`,
+ * which confused users.
  */
-function ParentBackHeader({ label, onBack }: { label: string; onBack: () => void }) {
+export function ParentBackHeader({ label, onBack }: { label: string; onBack: () => void }) {
   return (
     <div className='flex items-center border-b px-2 py-1 text-sm shrink-0'>
       <Button variant='ghost' size='icon-xs' onClick={onBack}>

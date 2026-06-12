@@ -25,8 +25,10 @@ export interface BuildReferencePickerExtensionsOptions {
   onSlashEnter?: () => boolean
   /** ArrowUp/Down inside an open `/` chip — move the slash list highlight. */
   onSlashArrowVertical?: (direction: 1 | -1) => boolean
-  /** Backspace on an empty, drilled `/` chip — pop a drill level. */
+  /** Backspace/ArrowLeft on an empty, drilled `/` chip — pop a drill level. */
   onSlashBackspacePop?: () => boolean
+  /** ArrowRight inside an open `/` chip — drill into the highlighted item. */
+  onSlashArrowRight?: () => boolean
 }
 
 /**
@@ -74,6 +76,7 @@ export function buildReferencePickerExtensions(
       onSlashEnter: options.onSlashEnter,
       onSlashArrowVertical: options.onSlashArrowVertical,
       onSlashBackspacePop: options.onSlashBackspacePop,
+      onSlashArrowRight: options.onSlashArrowRight,
     }),
   ]
 }
