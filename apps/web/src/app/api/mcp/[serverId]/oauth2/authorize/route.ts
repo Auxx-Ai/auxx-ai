@@ -88,7 +88,7 @@ export async function GET(
       }
     }
     const connectionVariables: Record<string, string> = {}
-    for (const varDef of features.connectionVariables ?? []) {
+    for (const varDef of connDef.connectionVariables ?? []) {
       const value = searchParams.get(`var_${varDef.key}`) ?? storedVariables[varDef.key]
       if (!value && varDef.required !== false) {
         return NextResponse.json({ error: `Missing variable: ${varDef.label}` }, { status: 400 })

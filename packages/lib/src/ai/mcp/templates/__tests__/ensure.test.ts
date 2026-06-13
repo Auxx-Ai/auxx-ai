@@ -94,7 +94,8 @@ describe('ensureCuratedMcpServer', () => {
       mcpServerId: 'srv-new',
       connectionType: 'oauth2-code',
       global: true,
-      oauth2Features: { pkce: true, connectionVariables: [] },
+      oauth2Features: { pkce: true },
+      connectionVariables: [],
     })
     expect(state.updates).toHaveLength(0)
   })
@@ -119,12 +120,13 @@ describe('ensureCuratedMcpServer', () => {
     const defUpdate = state.updates.find((u) => u.table === 'ConnectionDefinition')
     expect(Object.keys(defUpdate?.values ?? {}).sort()).toEqual([
       'connectionType',
+      'connectionVariables',
       'label',
       'oauth2Features',
     ])
   })
 
-  it('carries connection variables into oauth2Features', async () => {
+  it('writes connection variables to the top-level column, not oauth2Features', async () => {
     await ensureCuratedMcpServer(
       {
         ...TEMPLATE,
@@ -136,9 +138,9 @@ describe('ensureCuratedMcpServer', () => {
     )
 
     const defInsert = state.inserts.find((i) => i.table === 'ConnectionDefinition')
-    expect(defInsert?.values.oauth2Features).toEqual({
-      pkce: false,
-      connectionVariables: [{ key: 'shop', label: 'Shop subdomain', required: true }],
-    })
+    expect(defInsert?.values.oauth2Features).toEqual({ pkce: false })
+    expect(defInsert?.values.connectionVariables).toEqual([
+      { key: 'shop', label: 'Shop subdomain', required: true },
+    ])
   })
 })

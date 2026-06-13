@@ -168,6 +168,8 @@ export interface Connection {
   id: string
   type: 'oauth2-code' | 'secret'
   value: string
+  /** Connection variables (plain + decrypted secret-flagged), keyed by variable key. */
+  fields?: Record<string, string>
   metadata?: {
     scope?: string
     externalUserId?: string
@@ -589,6 +591,7 @@ export function createServerSDK(context: RuntimeContext): ServerSDK {
         id: context.userConnection.id,
         type: context.userConnection.type,
         value: context.userConnection.value,
+        fields: context.userConnection.fields,
         metadata: context.userConnection.metadata,
         expiresAt: context.userConnection.expiresAt
           ? new Date(context.userConnection.expiresAt)
@@ -629,6 +632,7 @@ export function createServerSDK(context: RuntimeContext): ServerSDK {
         id: context.organizationConnection.id,
         type: context.organizationConnection.type,
         value: context.organizationConnection.value,
+        fields: context.organizationConnection.fields,
         metadata: context.organizationConnection.metadata,
         expiresAt: context.organizationConnection.expiresAt
           ? new Date(context.organizationConnection.expiresAt)
@@ -664,6 +668,7 @@ export function createServerSDK(context: RuntimeContext): ServerSDK {
         id: conn.id,
         type: conn.type,
         value: conn.value,
+        fields: conn.fields,
         metadata: conn.metadata,
         expiresAt: conn.expiresAt ? new Date(conn.expiresAt) : undefined,
       }

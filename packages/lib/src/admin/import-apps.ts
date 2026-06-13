@@ -1,7 +1,7 @@
 // packages/lib/src/admin/import-apps.ts
 
 import { encryptValue } from '@auxx/credentials/crypto'
-import { type Database, schema } from '@auxx/database'
+import { type ConnectionVariable, type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { eq } from 'drizzle-orm'
 import { getCachedAppBySlug } from '../cache/app-cache-helpers'
@@ -60,6 +60,7 @@ export interface ExportData {
       oauth2TokenRequestAuthMethod: string | null
       oauth2RefreshTokenIntervalSeconds: number | null
       oauth2Features: Record<string, unknown> | null
+      connectionVariables?: ConnectionVariable[] | null
     }>
     latestDeployment: unknown | null
   }>
@@ -304,6 +305,7 @@ export async function importApps(
           oauth2TokenRequestAuthMethod: cd.oauth2TokenRequestAuthMethod,
           oauth2RefreshTokenIntervalSeconds: cd.oauth2RefreshTokenIntervalSeconds,
           oauth2Features: cd.oauth2Features,
+          connectionVariables: cd.connectionVariables ?? [],
           updatedAt: new Date(),
         }
 

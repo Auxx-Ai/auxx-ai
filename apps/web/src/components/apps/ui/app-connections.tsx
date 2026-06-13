@@ -236,10 +236,17 @@ function ConnectionSection({
                         </DropdownMenuItem>
                         {(conn.connectionStatus === 'expired' ||
                           conn.connectionStatus === 'connected') &&
-                          isOAuth && (
+                          (isOAuth || isSecret) && (
                             <DropdownMenuItem
                               onClick={() =>
-                                flow.start({ target, scope, returnTo, connectionId: conn.id })
+                                flow.start({
+                                  target,
+                                  scope,
+                                  returnTo,
+                                  connectionId: conn.id,
+                                  // Secret reconnect prefills plain variables; secrets are re-entered.
+                                  prefillVariables: conn.connectionVariables ?? undefined,
+                                })
                               }>
                               <RefreshCw />
                               Reconnect

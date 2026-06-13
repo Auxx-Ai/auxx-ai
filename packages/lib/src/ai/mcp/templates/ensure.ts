@@ -53,8 +53,8 @@ export async function ensureCuratedMcpServer(
 
   const oauth2Features = {
     pkce: template.connectionType === 'oauth2-code',
-    connectionVariables: template.connectionVariables ?? [],
   }
+  const connectionVariables = template.connectionVariables ?? []
 
   const existingDef = await db
     .select({ id: schema.ConnectionDefinition.id })
@@ -69,6 +69,7 @@ export async function ensureCuratedMcpServer(
         connectionType: template.connectionType,
         label: `${template.name} Connection`,
         oauth2Features,
+        connectionVariables,
       })
       .where(eq(schema.ConnectionDefinition.id, existingDef[0]!.id))
   } else {
@@ -80,6 +81,7 @@ export async function ensureCuratedMcpServer(
       global: true,
       createdById: 'system',
       oauth2Features,
+      connectionVariables,
     })
   }
 

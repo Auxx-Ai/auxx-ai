@@ -9,12 +9,26 @@ import { Download } from 'lucide-react'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNodeCrud } from '~/components/workflow/hooks/use-node-data-update'
 import { BaseNode } from '~/components/workflow/nodes/shared/base/base-node'
+import { unifiedNodeRegistry } from '~/components/workflow/nodes/unified-registry'
 import type { BaseNodeData } from '~/components/workflow/types'
 import { NodeSourceHandle } from '~/components/workflow/ui/node-handle/source-handle'
 import { NodeTargetHandle } from '~/components/workflow/ui/node-handle/target-handle'
 import { reconstructReactTree } from '~/lib/extensions/reconstruct-react-tree'
 import { useOptionalMessageClient } from '~/lib/extensions/use-optional-message-client'
 import { useExtensionsContext } from '~/providers/extensions/extensions-context'
+
+/**
+ * Recursively check a serialized component tree for connection handles.
+ * Trees without any WorkflowNodeHandle (e.g. the SDK's default text-only
+ * node for blocks/triggers lacking a custom node component) need
+ * platform-rendered handles or the node can never be connected.
+ */
+function treeHasHandles(component: any): boolean {
+  if (!component || typeof component !== 'object') return false
+  if (component.component === 'WorkflowNodeHandle') return true
+  if (!Array.isArray(component.children)) return false
+  return component.children.some(treeHasHandles)
+}
 
 /**
  * Node props from ReactFlow
@@ -220,16 +234,21 @@ export const AppWorkflowNode = memo<AppWorkflowNodeProps>((props) => {
   }, [data._connectedTargetHandleIds, data._connectedSourceHandleIds])
 
   /**
-   * Render fallback handles when app is not loaded.
-   * Uses edge connection data from node data to render the necessary handles.
+   * Render fallback handles when the iframe component is unavailable or
+   * doesn't declare its own handles.
+   * Uses edge connection data when present; never-connected nodes get the
+   * standard handle pair (source only for triggers) so they can be connected.
    */
+  const isTriggerNode = unifiedNodeRegistry.isTrigger(data.type)
   const renderFallbackHandles = useCallback(() => {
     const { targetHandles, sourceHandles } = uniqueHandles
+    const targets = targetHandles.length > 0 ? targetHandles : isTriggerNode ? [] : ['target']
+    const sources = sourceHandles.length > 0 ? sourceHandles : ['source']
 
     return (
       <>
         {/* Render target handles (left side) */}
-        {targetHandles.map((handleId) => (
+        {targets.map((handleId) => (
           <NodeTargetHandle
             key={`target-${handleId}`}
             id={id}
@@ -240,19 +259,18 @@ export const AppWorkflowNode = memo<AppWorkflowNodeProps>((props) => {
         ))}
 
         {/* Render source handles (right side) */}
-        {sourceHandles.map((handleId) => (
+        {sources.map((handleId) => (
           <NodeSourceHandle
             key={`source-${handleId}`}
             id={id}
             data={data}
             handleId={handleId}
             position='right'
-            showAdd={false}
           />
         ))}
       </>
     )
-  }, [uniqueHandles, id, data])
+  }, [uniqueHandles, id, data, isTriggerNode])
 
   // Derive display error from local error or init error — keep short for node display
   const displayError = error || initError ? 'Extension failed to load' : null
@@ -307,10 +325,12 @@ export const AppWorkflowNode = memo<AppWorkflowNodeProps>((props) => {
 
   return (
     <BaseNode id={id} data={data} selected={selected}>
-      {/* Render fallback handles when iframe component hasn't loaded yet.
-          Uses _connectedSourceHandleIds/_connectedTargetHandleIds from edge data
-          so React Flow can position edges before the iframe renders its own handles. */}
-      {(displayError || isNotInstalled || !nodeComponent) && renderFallbackHandles()}
+      {/* Render fallback handles when the iframe component hasn't loaded yet,
+          or when it loaded but declares no handles of its own (the SDK's
+          default text-only node). Without this, such nodes have no handles
+          and can never be connected. */}
+      {(displayError || isNotInstalled || !nodeComponent || !treeHasHandles(nodeComponent)) &&
+        renderFallbackHandles()}
 
       <div className='space-y-1 pb-2'>
         {isLoading ? (

@@ -10,7 +10,11 @@ import {
 import { getCachedAppBySlug, getOrgCache, onCacheEvent } from '@auxx/lib/cache'
 import { FeatureKey, FeaturePermissionService } from '@auxx/lib/permissions'
 import { createScopedLogger } from '@auxx/logger'
-import { listAppConnections, renameAppConnection } from '@auxx/services/app-connections'
+import {
+  getAppConnectionDefinition,
+  listAppConnections,
+  renameAppConnection,
+} from '@auxx/services/app-connections'
 import { getAppSettings, saveAppSettings, schemaToZod } from '@auxx/services/app-settings'
 import {
   installApp,
@@ -324,7 +328,9 @@ export const appsRouter = createTRPCRouter({
     }),
 
   /**
-   * Save secret-based connection (API key)
+   * Save secret-based connection. Definitions without connection variables take a single
+   * `secret` (API key); definitions with variables take `values` keyed by variable key —
+   * secret-flagged values are encrypted under `secrets.fields`, plain ones ride in metadata.
    */
   saveSecretConnection: protectedProcedure
     .input(
@@ -333,17 +339,67 @@ export const appsRouter = createTRPCRouter({
         installationId: z.string(),
         appName: z.string(),
         connectionType: z.enum(['user', 'organization']),
-        secret: z.string().min(1, 'Secret is required'),
+        secret: z.string().min(1).optional(),
+        values: z.record(z.string(), z.string()).optional(),
         connectionId: z.string().optional(),
       })
     )
     .use(notDemo('save app credentials'))
     .mutation(async ({ ctx, input }) => {
       const { organizationId, userId } = ctx.session
-      const { appId, installationId, appName, connectionType, secret, connectionId } = input
+      const { appId, installationId, appName, connectionType, secret, values, connectionId } = input
 
       // userId is null for organization-wide, userId for user-specific
       const userIdField = connectionType === 'organization' ? null : userId
+
+      // Validate against the definition server-side — the client form is convenience, not a gate.
+      const defResult = await getAppConnectionDefinition(appId, connectionType === 'organization')
+      if (defResult.isErr()) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Connection definition not found' })
+      }
+      const variableDefs = defResult.value.connectionVariables ?? []
+
+      let connectionData: {
+        secret?: string
+        secretFields?: Record<string, string>
+        metadata?: Record<string, any>
+      }
+      if (variableDefs.length === 0) {
+        if (!secret) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'Secret is required' })
+        }
+        connectionData = { secret }
+      } else {
+        const provided = values ?? {}
+        const knownKeys = new Set(variableDefs.map((v) => v.key))
+        for (const key of Object.keys(provided)) {
+          if (!knownKeys.has(key)) {
+            throw new TRPCError({ code: 'BAD_REQUEST', message: `Unknown field: ${key}` })
+          }
+        }
+        const secretFields: Record<string, string> = {}
+        const plainValues: Record<string, string> = {}
+        for (const varDef of variableDefs) {
+          const value = provided[varDef.key]?.trim()
+          if (!value) {
+            if (varDef.required !== false) {
+              throw new TRPCError({
+                code: 'BAD_REQUEST',
+                message: `Missing required field: ${varDef.label}`,
+              })
+            }
+            continue
+          }
+          if (varDef.secret) secretFields[varDef.key] = value
+          else plainValues[varDef.key] = value
+        }
+        connectionData = {
+          secretFields,
+          ...(Object.keys(plainValues).length > 0 && {
+            metadata: { connectionVariables: plainValues },
+          }),
+        }
+      }
 
       const result = await saveAppConnection(
         appId,
@@ -352,7 +408,7 @@ export const appsRouter = createTRPCRouter({
         organizationId,
         userId, // createdById
         userIdField, // userId field for scoping
-        { secret },
+        connectionData,
         { connectionId }
       )
 

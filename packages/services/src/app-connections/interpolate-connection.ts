@@ -52,3 +52,16 @@ export function extractPlaceholders(template: string): string[] {
   const matches = template.match(/\{([^}]+)\}/g)
   return matches ? matches.map((m) => m.slice(1, -1)) : []
 }
+
+/**
+ * Merge a connection's stored variables into one map: plain variables from
+ * `metadata.connectionVariables` + secret-flagged ones from the decrypted
+ * `secrets.fields`. Secrets win on key collision.
+ */
+export function mergeConnectionVariables(
+  metadata: Record<string, unknown> | null | undefined,
+  secrets: { fields?: Record<string, string> } | null | undefined
+): Record<string, string> {
+  const plain = (metadata?.connectionVariables ?? {}) as Record<string, string>
+  return { ...plain, ...(secrets?.fields ?? {}) }
+}

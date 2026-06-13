@@ -11,7 +11,10 @@ import {
 } from '@auxx/credentials/store'
 import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { interpolateConnectionFields } from '@auxx/services/app-connections'
+import {
+  interpolateConnectionFields,
+  mergeConnectionVariables,
+} from '@auxx/services/app-connections'
 import { URLTemplateService } from '@auxx/workflow-nodes/server'
 import type {
   OAuth2CallbackResult,
@@ -32,6 +35,8 @@ interface OAuth2Secrets {
   accessToken?: string
   refreshToken?: string
   secret?: string
+  /** Secret-flagged connection variables (encrypted alongside the tokens). */
+  fields?: Record<string, string>
 }
 
 /** Result of a token refresh attempt (shared by the tRPC endpoint and the refresh job). */
@@ -223,7 +228,9 @@ export async function refreshCredentialTokens(
         return { success: false, error: 'ConnectionDefinition not found' }
       }
 
-      const variables = (record.metadata.connectionVariables as Record<string, string>) ?? {}
+      // Merged map: plain variables from metadata + secret-flagged ones from the
+      // already-revealed secrets blob (secrets win on collision).
+      const variables = mergeConnectionVariables(record.metadata, secrets)
       const resolved = interpolateConnectionFields(connDef, variables)
 
       // RFC 8707 resource indicator — the MCP spec requires it on every token request, and it

@@ -43,9 +43,11 @@ export const installedAppsProvider: CacheProvider<CachedInstalledApp[]> = {
             columns: {
               appId: true,
               label: true,
+              description: true,
               global: true,
               connectionType: true,
               oauth2Features: true,
+              connectionVariables: true,
             },
           })
         : []
@@ -139,9 +141,11 @@ export const installedAppsProvider: CacheProvider<CachedInstalledApp[]> = {
             def
               ? {
                   label: def.label,
+                  description: def.description,
                   global: def.global,
                   connectionType: def.connectionType,
                   oauth2Features: def.oauth2Features as Record<string, unknown> | null,
+                  connectionVariables: def.connectionVariables ?? [],
                 }
               : undefined
           return {

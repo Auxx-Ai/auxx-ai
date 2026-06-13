@@ -534,7 +534,8 @@ async function renderWorkflowNode(
     throw new Error(`Workflow block not found: ${blockId}`)
   }
 
-  const NodeComponent = block.node
+  // Blocks declare `node` at the top level; defineTrigger nests it under `workflow.node`
+  const NodeComponent = block.node ?? (block as any).workflow?.node
 
   if (!NodeComponent) {
     // Use default visualization based on schema
@@ -600,7 +601,8 @@ async function renderWorkflowPanel(
     throw new Error(`Workflow block not found: ${blockId}`)
   }
 
-  const PanelComponent = block.panel
+  // Blocks declare `panel` at the top level; defineTrigger nests it under `workflow.panel`
+  const PanelComponent = block.panel ?? (block as any).workflow?.panel
 
   if (!PanelComponent) {
     // Generate default panel from schema

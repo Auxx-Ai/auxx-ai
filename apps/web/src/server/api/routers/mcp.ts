@@ -60,7 +60,7 @@ async function getConnectionDefinitionInfo(
   const def = await db.query.ConnectionDefinition.findFirst({
     where: eq(schema.ConnectionDefinition.mcpServerId, serverId),
     columns: {
-      oauth2Features: true,
+      connectionVariables: true,
       oauth2ClientId: true,
       oauth2ClientSecret: true,
       oauth2AuthorizeUrl: true,
@@ -70,7 +70,7 @@ async function getConnectionDefinitionInfo(
   })
   const secret = includeSecretMask ? decryptValue(def?.oauth2ClientSecret ?? null) : null
   return {
-    connectionVariables: def?.oauth2Features?.connectionVariables ?? [],
+    connectionVariables: def?.connectionVariables ?? [],
     oauth: def
       ? {
           clientId: decryptValue(def.oauth2ClientId),

@@ -3,6 +3,7 @@
 import { cn } from '@auxx/ui/lib/utils'
 import { useReactFlow } from '@xyflow/react'
 import React from 'react'
+import { unifiedNodeRegistry } from '~/components/workflow/nodes/unified-registry'
 import { WorkflowNodeProvider } from './workflow-node-context'
 import { WorkflowNodeHandle } from './workflow-node-handle'
 
@@ -196,8 +197,11 @@ export const WorkflowNode = ({
   // Analyze existing handles
   const handleAnalysis = analyzeHandles(children)
 
-  // Determine auto-handle configuration
-  const nodeType = node?.type || 'unknown'
+  // Determine auto-handle configuration. The React Flow node type is always
+  // 'standard' for app nodes — use the semantic type from node data to detect
+  // triggers so they don't get a target handle auto-injected.
+  const semanticType = (node?.data?.type as string) || node?.type || 'unknown'
+  const nodeType = unifiedNodeRegistry.isTrigger(semanticType) ? 'trigger' : semanticType
   const handleConfig = mergeHandleConfig(nodeType, __blockConfig)
 
   // Inject missing handles

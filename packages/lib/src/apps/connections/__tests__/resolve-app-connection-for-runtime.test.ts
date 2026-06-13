@@ -25,6 +25,11 @@ vi.mock('@auxx/credentials/store', () => ({
 
 vi.mock('@auxx/services/app-connections', () => ({
   logger: { info: () => {}, warn: () => {}, error: () => {} },
+  // Mirrors the real merge: plain metadata variables, secret fields win on collision.
+  mergeConnectionVariables: (
+    metadata: { connectionVariables?: Record<string, string> } | null | undefined,
+    secrets: { fields?: Record<string, string> } | null | undefined
+  ) => ({ ...(metadata?.connectionVariables ?? {}), ...(secrets?.fields ?? {}) }),
 }))
 
 vi.mock('@auxx/services/shared/utils', () => ({
@@ -105,5 +110,49 @@ describe('resolveAppConnectionForRuntime — lazy refresh', () => {
 
     expect(ensureFresh).not.toHaveBeenCalled()
     expect(revealCalls).toEqual(['c'])
+  })
+})
+
+describe('resolveAppConnectionForRuntime — connection fields', () => {
+  it('merges plain metadata variables with decrypted secret fields (secrets win)', async () => {
+    connDef.value = { connectionType: 'secret' }
+    revealQueue = [
+      ok({
+        record: record({
+          metadata: { connectionVariables: { account: 'acc-1', client_id: 'meta' } },
+        }),
+        secrets: { fields: { client_id: 'cid', client_secret: 'cs' } },
+      }),
+    ]
+
+    const res = await resolveAppConnectionForRuntime(base)
+
+    const conn = res._unsafeUnwrap().organizationConnection
+    expect(conn?.fields).toEqual({ account: 'acc-1', client_id: 'cid', client_secret: 'cs' })
+    expect(conn?.value).toBe('') // multi-field connections carry no single value
+  })
+
+  it('leaves fields undefined when the connection has no variables', async () => {
+    connDef.value = { connectionType: 'secret' }
+    revealQueue = [ok({ record: record(), secrets: { secret: 'sk' } })]
+
+    const res = await resolveAppConnectionForRuntime(base)
+
+    const conn = res._unsafeUnwrap().organizationConnection
+    expect(conn?.fields).toBeUndefined()
+    expect(conn?.value).toBe('sk')
+  })
+
+  it('a secret field literally named "secret" stays isolated from the reserved key', async () => {
+    connDef.value = { connectionType: 'secret' }
+    revealQueue = [
+      ok({ record: record(), secrets: { secret: 'top-level', fields: { secret: 'nested' } } }),
+    ]
+
+    const res = await resolveAppConnectionForRuntime(base)
+
+    const conn = res._unsafeUnwrap().organizationConnection
+    expect(conn?.value).toBe('top-level')
+    expect(conn?.fields).toEqual({ secret: 'nested' })
   })
 })

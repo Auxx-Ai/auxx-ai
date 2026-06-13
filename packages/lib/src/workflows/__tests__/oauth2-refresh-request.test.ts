@@ -84,6 +84,10 @@ vi.mock('@auxx/services/app-connections', () => ({
     clientId: 'client-123',
     clientSecret: interpolated.clientSecret,
   }),
+  mergeConnectionVariables: (
+    metadata: { connectionVariables?: Record<string, string> } | null | undefined,
+    secrets: { fields?: Record<string, string> } | null | undefined
+  ) => ({ ...(metadata?.connectionVariables ?? {}), ...(secrets?.fields ?? {}) }),
 }))
 
 import { refreshCredentialTokens } from '../oauth2-workflow'

@@ -316,6 +316,18 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       }
     }
 
+    // Split stored variables by the definition's secret flag: secret-flagged values are
+    // encrypted under `secrets.fields`; only plain ones persist in plaintext metadata.
+    const secretVariableKeys = new Set(
+      (connDef.connectionVariables ?? []).filter((v) => v.secret).map((v) => v.key)
+    )
+    const secretFields: Record<string, string> = {}
+    const plainVariables: Record<string, string> = {}
+    for (const [key, value] of Object.entries(connectionVariables)) {
+      if (secretVariableKeys.has(key)) secretFields[key] = value
+      else plainVariables[key] = value
+    }
+
     // Save connection to Credential
     const result = await saveAppConnection(
       metadata.appId,
@@ -327,6 +339,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       {
         accessToken: tokens.access_token,
         refreshToken: tokens.refresh_token,
+        ...(Object.keys(secretFields).length > 0 && { secretFields }),
         expiresAt: tokens.expires_in
           ? new Date(Date.now() + tokens.expires_in * 1000).toISOString()
           : undefined,
@@ -334,7 +347,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           scope: tokens.scope,
           tokenType: tokens.token_type,
           ...callbackMetadata,
-          ...(Object.keys(connectionVariables).length > 0 && { connectionVariables }),
+          ...(Object.keys(plainVariables).length > 0 && {
+            connectionVariables: plainVariables,
+          }),
         },
       },
       metadata.connectionId ? { connectionId: metadata.connectionId } : undefined

@@ -9,6 +9,44 @@ describe('textToDoc', () => {
     expect(textToDoc('   ')).toEqual({ type: 'doc', content: [{ type: 'paragraph' }] })
   })
 
+  it('returns an empty paragraph doc for null/undefined input', () => {
+    expect(textToDoc(null)).toEqual({ type: 'doc', content: [{ type: 'paragraph' }] })
+    expect(textToDoc(undefined)).toEqual({ type: 'doc', content: [{ type: 'paragraph' }] })
+  })
+
+  it('coerces non-string input instead of throwing', () => {
+    // Empty array (e.g. a FILE-typed multi-value workflow field) → empty doc
+    expect(textToDoc([] as never)).toEqual({ type: 'doc', content: [{ type: 'paragraph' }] })
+
+    // Populated array → comma-joined, variable markers still parsed
+    expect(textToDoc(['{{a}}', '{{b}}'] as never, { parseVariables: true })).toEqual({
+      type: 'doc',
+      content: [
+        {
+          type: 'paragraph',
+          content: [
+            { type: 'variable-node', attrs: { variableId: 'a' } },
+            { type: 'text', text: ',' },
+            { type: 'variable-node', attrs: { variableId: 'b' } },
+          ],
+        },
+      ],
+    })
+
+    expect(textToDoc(42 as never)).toEqual({
+      type: 'doc',
+      content: [{ type: 'paragraph', content: [{ type: 'text', text: '42' }] }],
+    })
+  })
+
+  it('passes a Tiptap doc object through unchanged', () => {
+    const doc = {
+      type: 'doc' as const,
+      content: [{ type: 'paragraph', content: [{ type: 'text', text: 'kept' }] }],
+    }
+    expect(textToDoc(doc)).toBe(doc)
+  })
+
   it('wraps a single line in one paragraph', () => {
     expect(textToDoc('hello')).toEqual({
       type: 'doc',

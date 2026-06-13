@@ -301,8 +301,12 @@ export type WorkflowExecuteFunction<TSchema extends WorkflowSchema = WorkflowSch
 export interface PollingState {
   /** Persisted state from the previous poll (cursor, timestamp, page token, etc.) */
   state: Record<string, unknown>
-  /** Organization connection credentials */
-  connection: { value: string; metadata?: Record<string, unknown> } | null
+  /** Organization connection credentials. `fields` is the merged connection-variable map. */
+  connection: {
+    value: string
+    fields?: Record<string, string>
+    metadata?: Record<string, unknown>
+  } | null
 }
 
 /**

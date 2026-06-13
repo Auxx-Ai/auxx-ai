@@ -6,22 +6,33 @@ import {
   rotateSecrets,
   updateCredential,
 } from '@auxx/credentials/store'
-import { logger, renameAppConnection, safeSerializeMetadata } from '@auxx/services/app-connections'
+import {
+  logger,
+  mergeConnectionVariables,
+  renameAppConnection,
+  safeSerializeMetadata,
+} from '@auxx/services/app-connections'
 import { getInstallationCatalog, provisionAppFields } from '@auxx/services/custom-fields'
 import { err, ok } from 'neverthrow'
 import { triggerAppEvent } from '../events'
 import { resolveActiveInstallationId } from '../installations/resolve-active-installation'
 
-/** Pick the secret keys (present only) out of an app-connection's credential data. */
+/**
+ * Pick the secret keys (present only) out of an app-connection's credential data.
+ * Secret-flagged connection variables nest under `fields` so user-defined keys can
+ * never collide with the reserved `accessToken`/`refreshToken`/`secret` keys.
+ */
 function pickSecrets(data: {
   accessToken?: string
   refreshToken?: string
   secret?: string
+  secretFields?: Record<string, string>
 }): Record<string, unknown> {
   const secrets: Record<string, unknown> = {}
   if (data.accessToken !== undefined) secrets.accessToken = data.accessToken
   if (data.refreshToken !== undefined) secrets.refreshToken = data.refreshToken
   if (data.secret !== undefined) secrets.secret = data.secret
+  if (data.secretFields !== undefined) secrets.fields = data.secretFields
   return secrets
 }
 
@@ -62,6 +73,10 @@ function pickSecrets(data: {
  * @param {string} [connectionData.refreshToken] - OAuth2 refresh token (for OAuth connections).
  * @param {string} [connectionData.expiresAt] - ISO 8601 timestamp when access token expires.
  * @param {string} [connectionData.secret] - API key or secret (for secret-based connections).
+ * @param {Record<string, string>} [connectionData.secretFields] - Secret-flagged connection
+ *                                                                 variables, encrypted under
+ *                                                                 `secrets.fields`. Plain variables
+ *                                                                 ride in `metadata.connectionVariables`.
  * @param {Record<string, any>} [connectionData.metadata] - Additional metadata like scopes,
  *                                                          token type, user info, etc.
  *
@@ -114,6 +129,7 @@ export async function saveAppConnection(
     refreshToken?: string
     expiresAt?: string
     secret?: string
+    secretFields?: Record<string, string>
     metadata?: Record<string, any>
   },
   options?: {
@@ -252,6 +268,9 @@ export async function saveAppConnection(
     ? 'oauth2-code'
     : 'secret'
   const connectionValue = connectionData.accessToken || connectionData.secret || ''
+  // Merged connection variables (plain + secret-flagged) — apps validate credentials
+  // in their connection-added handler (e.g. mint a token, return `{ label }`).
+  const fields = mergeConnectionVariables(metadata, { fields: connectionData.secretFields })
 
   const eventResult = await triggerAppEvent({
     appInstallationId,
@@ -261,6 +280,7 @@ export async function saveAppConnection(
         id: created.id,
         type: connectionType,
         value: connectionValue,
+        ...(Object.keys(fields).length > 0 && { fields }),
         metadata: safeSerializeMetadata(connectionData.metadata),
       },
     },

@@ -125,6 +125,10 @@ export async function listAppConnections(organizationId: string, userId?: string
       expiresAt,
       global: !cred.userId, // If no userId, it's organization-scoped
       userId: cred.userId,
+      // Plain variables only — secret-flagged values live in encryptedSecrets and never list.
+      connectionVariables: (cred.metadata?.connectionVariables ?? undefined) as
+        | Record<string, string>
+        | undefined,
     }
   })
 

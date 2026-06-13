@@ -15,9 +15,8 @@ async function main() {
   const allVarsByApp = new Map<string, Set<string>>()
   for (const d of defs) {
     if (!d.appId) continue
-    const vars = (d.oauth2Features as { connectionVariables?: { key: string; secret?: boolean }[] })
-      ?.connectionVariables
-    if (!vars) continue
+    const vars = d.connectionVariables
+    if (!vars?.length) continue
     const secretSet = secretVarsByApp.get(d.appId) ?? new Set<string>()
     const allSet = allVarsByApp.get(d.appId) ?? new Set<string>()
     for (const v of vars) {

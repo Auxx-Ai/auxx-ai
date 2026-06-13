@@ -144,19 +144,19 @@ export const connectionsRouter = createTRPCRouter({
             additionalTokenParams: z.record(z.string(), z.string()).optional(),
             scopeSeparator: z.string().optional(),
             callbackMetadataParams: z.array(z.string()).optional(),
-            connectionVariables: z
-              .array(
-                z.object({
-                  key: z.string(),
-                  label: z.string(),
-                  description: z.string().optional(),
-                  placeholder: z.string().optional(),
-                  required: z.boolean().optional(),
-                  secret: z.boolean().optional(),
-                })
-              )
-              .optional(),
           })
+          .optional(),
+        connectionVariables: z
+          .array(
+            z.object({
+              key: z.string(),
+              label: z.string(),
+              description: z.string().optional(),
+              placeholder: z.string().optional(),
+              required: z.boolean().optional(),
+              secret: z.boolean().optional(),
+            })
+          )
           .optional(),
       })
     )
@@ -215,6 +215,7 @@ export const connectionsRouter = createTRPCRouter({
         oauth2TokenRequestAuthMethod: input.oauth2TokenRequestAuthMethod || 'request-body',
         oauth2RefreshTokenIntervalSeconds: input.oauth2RefreshTokenIntervalSeconds,
         oauth2Features: input.oauth2Features ?? {},
+        connectionVariables: input.connectionVariables ?? [],
         createdById: ctx.session.userId,
       }
 
