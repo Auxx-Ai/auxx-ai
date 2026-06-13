@@ -12,6 +12,7 @@ const ConnectionDataSchema = z.object({
   id: z.string(),
   type: z.enum(['oauth2-code', 'secret']),
   value: z.string(),
+  fields: z.record(z.string(), z.string()).optional(),
   metadata: z.record(z.string(), z.any()).optional(),
   expiresAt: z.string().optional(), // ISO date string
 })
