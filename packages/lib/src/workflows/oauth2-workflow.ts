@@ -217,6 +217,7 @@ export async function refreshCredentialTokens(
           id: true,
           oauth2AuthorizeUrl: true,
           oauth2AccessTokenUrl: true,
+          oauth2RefreshUrl: true,
           oauth2ClientId: true,
           oauth2ClientSecret: true,
           oauth2TokenRequestAuthMethod: true,
@@ -247,7 +248,9 @@ export async function refreshCredentialTokens(
       if (record.kind === 'mcp') mcpConnDef = connDef
 
       tokenData = await makeTokenRefreshRequest(
-        resolved.accessTokenUrl,
+        // Providers with a dedicated refresh endpoint (the token URL rejects the refresh grant)
+        // set oauth2RefreshUrl; everyone else refreshes against the access-token URL.
+        resolved.refreshUrl || resolved.accessTokenUrl,
         resolved.clientId,
         resolved.clientSecret,
         secrets.refreshToken,

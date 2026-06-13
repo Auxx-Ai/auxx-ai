@@ -75,12 +75,14 @@ vi.mock('@auxx/database', () => ({
 
 const interpolated = {
   clientSecret: undefined as string | undefined,
+  refreshUrl: '' as string,
 }
 
 vi.mock('@auxx/services/app-connections', () => ({
   interpolateConnectionFields: () => ({
     authorizeUrl: 'https://as.example.com/authorize',
     accessTokenUrl: 'https://as.example.com/token',
+    refreshUrl: interpolated.refreshUrl,
     clientId: 'client-123',
     clientSecret: interpolated.clientSecret,
   }),
@@ -100,6 +102,7 @@ beforeEach(() => {
   storeCalls.refreshSuccess.length = 0
   dbState.updates.length = 0
   interpolated.clientSecret = undefined
+  interpolated.refreshUrl = ''
   storeState.record = {
     id: 'cred-1',
     kind: 'mcp',
@@ -180,5 +183,17 @@ describe('refreshCredentialTokens (mcp)', () => {
     await refreshCredentialTokens('cred-1', 'org-1')
     expect(fetchCalls[0]?.body.has('resource')).toBe(false)
     expect(dbState.updates).toHaveLength(0)
+  })
+
+  it('refreshes against the dedicated refresh URL when one is configured', async () => {
+    interpolated.refreshUrl = 'https://as.example.com/refresh'
+    await refreshCredentialTokens('cred-1', 'org-1')
+    expect(fetchCalls[0]?.url).toBe('https://as.example.com/refresh')
+  })
+
+  it('falls back to the access-token URL when no refresh URL is set', async () => {
+    interpolated.refreshUrl = ''
+    await refreshCredentialTokens('cred-1', 'org-1')
+    expect(fetchCalls[0]?.url).toBe('https://as.example.com/token')
   })
 })

@@ -306,10 +306,14 @@ export function AppUpdateForm({ appSlug }: AppUpdateFormProps) {
                 <Field>
                   <FieldLabel htmlFor='app-category'>Category</FieldLabel>
                   <Select
-                    value={watch('category')}
-                    onValueChange={(value) =>
+                    value={watch('category') ?? ''}
+                    onValueChange={(value) => {
+                      // Radix can emit a spurious empty value on mount (notably under
+                      // StrictMode's double-mount), which would clobber the loaded
+                      // category. Ignore empty emissions — a real selection is never ''.
+                      if (!value) return
                       setValue('category', value as any, { shouldDirty: true })
-                    }>
+                    }}>
                     <SelectTrigger id='app-category'>
                       <SelectValue placeholder='Select a category...' />
                     </SelectTrigger>

@@ -87,6 +87,9 @@ export const ConnectionDefinition = pgTable(
     // OAuth2 config
     oauth2AuthorizeUrl: text(),
     oauth2AccessTokenUrl: text(),
+    // Optional dedicated refresh endpoint. Refresh defaults to the access-token URL when null
+    // (some providers — e.g. UPS — expose a separate /refresh endpoint that rejects the token URL).
+    oauth2RefreshUrl: text(),
     oauth2Scopes: jsonb().$type<string[]>().default([]),
     oauth2ClientId: text(), // v2 secret-box ciphertext (see @auxx/credentials/crypto decryptValue policy)
     oauth2ClientSecret: text(), // v2 secret-box ciphertext (see @auxx/credentials/crypto decryptValue policy)
