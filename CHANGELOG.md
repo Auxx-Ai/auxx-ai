@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.1.163](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.162...auxx-v0.1.163) (2026-06-13)
+
+
+### Features
+
+* **agents:** per-tool allow-lists and targeted mention locks on toolsets ([#821](https://github.com/Auxx-Ai/auxx-ai/issues/821)) ([a5f5403](https://github.com/Auxx-Ai/auxx-ai/commit/a5f54032e1df3f94bec2be62977ef7dc9557b08c))
+* **apps:** app KV storage (AppStorage + SDK storage namespace) ([#833](https://github.com/Auxx-Ai/auxx-ai/issues/833)) ([de5ca57](https://github.com/Auxx-Ai/auxx-ai/commit/de5ca574868c5cde1675f959c9185b393c693612))
+* **apps:** configurable OAuth refresh endpoint URL for connections ([#836](https://github.com/Auxx-Ai/auxx-ai/issues/836)) ([96d9f79](https://github.com/Auxx-Ai/auxx-ai/commit/96d9f798c33b699322bc94d92cfa7ca0e40df447))
+* **apps:** lazy OAuth token refresh for app connections ([#832](https://github.com/Auxx-Ai/auxx-ai/issues/832)) ([28495d6](https://github.com/Auxx-Ai/auxx-ai/commit/28495d6cb00a34582cb8e848d62d75cbe2612455))
+* **apps:** top-level connectionVariables + multi-field secret connections ([#835](https://github.com/Auxx-Ai/auxx-ai/issues/835)) ([2139a1d](https://github.com/Auxx-Ai/auxx-ai/commit/2139a1d70c7246ab4061a86ec0cb5499c6d56ebe))
+* developer API keys for headless publishing + per-tool MCP selection ([#818](https://github.com/Auxx-Ai/auxx-ai/issues/818)) ([cfdfca0](https://github.com/Auxx-Ai/auxx-ai/commit/cfdfca079ef36f9163edbdf259a6eb43a38c065c))
+* **editor:** arrow-key drilling + inline article-link drill in the slash menu ([#831](https://github.com/Auxx-Ai/auxx-ai/issues/831)) ([81ab044](https://github.com/Auxx-Ai/auxx-ai/commit/81ab0440e5636df2811511514066f55625114607))
+* **evals:** native tool output schemas + example outputs for mock editor ([#822](https://github.com/Auxx-Ai/auxx-ai/issues/822)) ([70bbb0e](https://github.com/Auxx-Ai/auxx-ai/commit/70bbb0e8b11acaeba34f4bc0c5d2d4e75f7c64b8))
+* **mcp:** output schemas with non-object roots + untrusted-output fencing ([#828](https://github.com/Auxx-Ai/auxx-ai/issues/828)) ([8728b2f](https://github.com/Auxx-Ai/auxx-ai/commit/8728b2fc4e3ca47ef943e5f618e7cb4cdd9c30bd))
+* **mcp:** tool test-run + output schemas for MCP tools ([#824](https://github.com/Auxx-Ai/auxx-ai/issues/824)) ([ba28fb9](https://github.com/Auxx-Ai/auxx-ai/commit/ba28fb90259748bdf3b950b981d9be6f47b21cac))
+
+
+### Bug Fixes
+
+* **agents:** fix rapid per-tool MCP click race + suppress realtime self-echo on toolset writes ([#820](https://github.com/Auxx-Ai/auxx-ai/issues/820)) ([23b4d04](https://github.com/Auxx-Ai/auxx-ai/commit/23b4d047b7dd39825790fbb0c59d91009e9a0fe6))
+* **lambda:** wire workflow-block tool dispatch (__AUXX_TOOLS__ → global) ([#834](https://github.com/Auxx-Ai/auxx-ai/issues/834)) ([bfb05e9](https://github.com/Auxx-Ai/auxx-ai/commit/bfb05e929712f010df448212e5076a7f3fdbeda5))
+* **mcp:** auto-refresh OAuth tokens (lazy refresh + 401 retry + scanner enrollment) ([#829](https://github.com/Auxx-Ai/auxx-ai/issues/829)) ([9d4103c](https://github.com/Auxx-Ai/auxx-ai/commit/9d4103ccf42c5a3d4e239889c9a98f83921d746b))
+* **mcp:** reliable OAuth popup completion + shared utils ([#826](https://github.com/Auxx-Ai/auxx-ai/issues/826)) ([d221dfe](https://github.com/Auxx-Ai/auxx-ai/commit/d221dfef27294e199c294829c823b2c75319bfb0))
+
 ## [0.1.162](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.161...auxx-v0.1.162) (2026-06-11)
 
 
