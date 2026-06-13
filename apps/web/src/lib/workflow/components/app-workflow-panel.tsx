@@ -9,6 +9,7 @@ import { useNodeCrud } from '~/components/workflow/hooks'
 import { AppTriggerTestSection } from '~/components/workflow/nodes/core/app-trigger/app-trigger-test-section'
 import { BasePanel } from '~/components/workflow/nodes/shared/base/base-panel'
 import { OutputVariablesDisplay } from '~/components/workflow/ui/output-variables'
+import { suppressConnectionDialog } from '~/lib/extensions/connection-dialog-suppression'
 import { reconstructReactTree } from '~/lib/extensions/reconstruct-react-tree'
 import { useOptionalMessageClient } from '~/lib/extensions/use-optional-message-client'
 import { useExtensionsContext } from '~/providers/extensions/extensions-context'
@@ -89,6 +90,12 @@ export const AppWorkflowPanel = memo<AppWorkflowPanelProps>(
     useEffect(() => {
       nodeDataRef.current = nodeData
     }, [nodeData])
+
+    // Suppress the global connection-expired modal while editing this app node's
+    // config. The panel auto-loads field options via server functions; an
+    // expired connection shouldn't pop an unprompted dialog here. Status is
+    // still shown via the App Settings dot, and run/test use a separate path.
+    useEffect(() => suppressConnectionDialog(resolvedInstallationId), [resolvedInstallationId])
 
     /**
      * Handle field value changes from VarEditor-backed input components.
