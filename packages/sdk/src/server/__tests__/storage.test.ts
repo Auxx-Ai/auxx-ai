@@ -3,12 +3,28 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { storage } from '../storage'
 
-/** Capture every host call so we can assert what the sugar forwarded. */
+/**
+ * The wrapper is a thin passthrough to `AUXX_SERVER_SDK.storage` — in an app
+ * build `@auxx/sdk/server` is externalized to that global, so the wrapper code
+ * never runs in the sandbox and the host owns the real implementation. These
+ * tests assert the wrapper forwards positional calls verbatim and that the host
+ * it forwards to exposes the public surface (positional args + `collection()`),
+ * which is the contract production actually relies on.
+ */
 function installHost() {
-  const calls: Array<{ method: string; args: unknown }> = []
-  const record = (method: string, ret: unknown) => async (args: unknown) => {
-    calls.push({ method, args })
-    return ret
+  const calls: Array<{ method: string; args: unknown[] }> = []
+  const record =
+    (method: string, ret: unknown) =>
+    (...args: unknown[]) => {
+      calls.push({ method, args })
+      return Promise.resolve(ret)
+    }
+  const collectionApi = {
+    get: record('collection.get', { value: 7 }),
+    set: record('collection.set', undefined),
+    setIfAbsent: record('collection.setIfAbsent', true),
+    remove: record('collection.remove', undefined),
+    list: record('collection.list', { entries: [{ key: 'a', value: 1 }] }),
   }
   ;(global as { AUXX_SERVER_SDK?: unknown }).AUXX_SERVER_SDK = {
     storage: {
@@ -16,7 +32,10 @@ function installHost() {
       set: record('set', undefined),
       setIfAbsent: record('setIfAbsent', true),
       remove: record('remove', undefined),
-      list: record('list', { entries: [{ key: 'a', value: 1 }] }),
+      collection: (name: string, defaults?: unknown) => {
+        calls.push({ method: 'collection', args: [name, defaults] })
+        return collectionApi
+      },
     },
   }
   return calls
@@ -27,70 +46,49 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-describe('storage sugar', () => {
+describe('storage wrapper (passthrough)', () => {
   let calls: ReturnType<typeof installHost>
   beforeEach(() => {
     calls = installHost()
   })
 
-  it('plain key defaults to installation scope and collection ""', async () => {
+  it('forwards get positionally', async () => {
     await storage.get('k')
-    expect(calls[0]).toEqual({
-      method: 'get',
-      args: { collection: '', key: 'k', scope: 'installation' },
-    })
+    expect(calls[0]).toEqual({ method: 'get', args: ['k', undefined] })
   })
 
-  it('forwards explicit scope + ttl on set', async () => {
+  it('forwards set with value + opts positionally', async () => {
     await storage.set('k', { a: 1 }, { scope: 'connection', ttlSeconds: 60 })
-    expect(calls[0].args).toEqual({
-      collection: '',
-      key: 'k',
-      value: { a: 1 },
-      scope: 'connection',
-      ttlSeconds: 60,
+    expect(calls[0]).toEqual({
+      method: 'set',
+      args: ['k', { a: 1 }, { scope: 'connection', ttlSeconds: 60 }],
     })
   })
 
-  it('get returns the host wrapper verbatim (a stored null is { value: null })', async () => {
+  it('returns the host get wrapper verbatim (a stored null is { value: null })', async () => {
     ;(global as any).AUXX_SERVER_SDK.storage.get = async () => ({ value: null })
     await expect(storage.get('k')).resolves.toEqual({ value: null })
     ;(global as any).AUXX_SERVER_SDK.storage.get = async () => null
     await expect(storage.get('k')).resolves.toBeNull()
   })
 
-  it('collection() binds the name and applies defaults to every call', async () => {
+  it('forwards collection() to the host and uses the host-bound collection api', async () => {
     const watches = storage.collection('watch', { scope: 'connection' })
     await watches.set('1Z', { status: 'in_transit' }, { ttlSeconds: 100 })
     await watches.get('1Z')
     await watches.remove('1Z')
-    expect(calls.map((c) => c.args)).toEqual([
-      {
-        collection: 'watch',
-        key: '1Z',
-        value: { status: 'in_transit' },
-        scope: 'connection',
-        ttlSeconds: 100,
-      },
-      { collection: 'watch', key: '1Z', scope: 'connection' },
-      { collection: 'watch', key: '1Z', scope: 'connection' },
+    expect(calls).toEqual([
+      { method: 'collection', args: ['watch', { scope: 'connection' }] },
+      { method: 'collection.set', args: ['1Z', { status: 'in_transit' }, { ttlSeconds: 100 }] },
+      { method: 'collection.get', args: ['1Z'] },
+      { method: 'collection.remove', args: ['1Z'] },
     ])
   })
 
-  it('per-call scope overrides the collection default', async () => {
-    const c = storage.collection('watch', { scope: 'connection' })
-    await c.get('k', { scope: 'installation' })
-    expect(calls[0].args).toMatchObject({ scope: 'installation' })
-  })
-
-  it('list exists only on a collection and forwards the bound scope + limit', async () => {
-    const c = storage.collection('watch', { scope: 'connection' })
-    const out = await c.list({ limit: 10 })
+  it('list lives on the bound collection and forwards opts', async () => {
+    const out = await storage.collection('watch', { scope: 'connection' }).list({ limit: 10 })
     expect(out).toEqual({ entries: [{ key: 'a', value: 1 }] })
-    expect(calls[0]).toEqual({
-      method: 'list',
-      args: { collection: 'watch', scope: 'connection', limit: 10 },
-    })
+    expect(calls.at(-1)).toEqual({ method: 'collection.list', args: [{ limit: 10 }] })
     // No `list` on the top-level handle.
     expect((storage as unknown as { list?: unknown }).list).toBeUndefined()
   })

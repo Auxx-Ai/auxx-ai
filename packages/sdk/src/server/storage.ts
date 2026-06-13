@@ -80,41 +80,17 @@ export interface Storage extends StorageItemApi {
 }
 
 /**
- * Host-side storage implementation injected on the `AUXX_SERVER_SDK` global.
- * Flat methods taking `collection` as an argument — `collection()` is pure
- * client-side sugar over these.
+ * Resolve the host `storage` implementation or throw the standard SDK error.
+ *
+ * In an app build `@auxx/sdk/server` is externalized to the `AUXX_SERVER_SDK`
+ * global, so the `storage` export below is replaced wholesale by
+ * `AUXX_SERVER_SDK.storage` and this passthrough never runs. It exists only for
+ * non-externalized consumers (and tests). The host therefore owns the real
+ * implementation and MUST expose this exact public surface — see
+ * `apps/lambda/src/runtime-helpers/server-sdk.ts` `createStorageHost`.
  */
-interface StorageHost {
-  get(args: {
-    collection: string
-    key: string
-    scope: StorageScope
-  }): Promise<{ value: unknown } | null>
-  set(args: {
-    collection: string
-    key: string
-    value: unknown
-    scope: StorageScope
-    ttlSeconds?: number
-  }): Promise<void>
-  setIfAbsent(args: {
-    collection: string
-    key: string
-    value: unknown
-    scope: StorageScope
-    ttlSeconds?: number
-  }): Promise<boolean>
-  remove(args: { collection: string; key: string; scope: StorageScope }): Promise<void>
-  list(args: {
-    collection: string
-    scope: StorageScope
-    limit?: number
-  }): Promise<{ entries: Array<{ key: string; value: unknown }> }>
-}
-
-/** Resolve the host storage implementation or throw the standard SDK error. */
-function host(): StorageHost {
-  const sdk = (global as { AUXX_SERVER_SDK?: { storage?: StorageHost } }).AUXX_SERVER_SDK
+function host(): Storage {
+  const sdk = (global as { AUXX_SERVER_SDK?: { storage?: Storage } }).AUXX_SERVER_SDK
   if (sdk?.storage && typeof sdk.storage.get === 'function') {
     return sdk.storage
   }
@@ -123,35 +99,10 @@ function host(): StorageHost {
   )
 }
 
-/** Build the item-level API for a (collection, defaults) pair — used for both plain keys and collections. */
-function itemApi(collection: string, defaults: StorageSetOptions): StorageItemApi {
-  const scopeOf = (opts?: StorageOptions): StorageScope =>
-    opts?.scope ?? defaults.scope ?? 'installation'
-  const ttlOf = (opts?: StorageSetOptions): number | undefined =>
-    opts?.ttlSeconds ?? defaults.ttlSeconds
-
-  return {
-    get: (key, opts) =>
-      host().get({ collection, key, scope: scopeOf(opts) }) as Promise<{ value: never } | null>,
-    set: (key, value, opts) =>
-      host().set({ collection, key, value, scope: scopeOf(opts), ttlSeconds: ttlOf(opts) }),
-    setIfAbsent: (key, value, opts) =>
-      host().setIfAbsent({ collection, key, value, scope: scopeOf(opts), ttlSeconds: ttlOf(opts) }),
-    remove: (key, opts) => host().remove({ collection, key, scope: scopeOf(opts) }),
-  }
-}
-
 export const storage: Storage = {
-  ...itemApi('', {}),
-  collection(name: string, defaults: StorageSetOptions = {}): StorageCollectionApi {
-    return {
-      ...itemApi(name, defaults),
-      list: (opts) =>
-        host().list({
-          collection: name,
-          scope: defaults.scope ?? 'installation',
-          limit: opts?.limit,
-        }) as Promise<{ entries: Array<{ key: string; value: never }> }>,
-    }
-  },
+  get: <T = unknown>(key: string, opts?: StorageOptions) => host().get<T>(key, opts),
+  set: (key, value, opts) => host().set(key, value, opts),
+  setIfAbsent: (key, value, opts) => host().setIfAbsent(key, value, opts),
+  remove: (key, opts) => host().remove(key, opts),
+  collection: (name, defaults) => host().collection(name, defaults),
 }

@@ -1,6 +1,7 @@
 // apps/web/src/lib/extensions/server-function-handler.ts
 
 import { toastError } from '@auxx/ui/components/toast'
+import { isConnectionDialogSuppressed } from './connection-dialog-suppression'
 import { connectionExpiredEmitter } from './connection-expired-emitter'
 import type { MessageClient } from './message-client'
 
@@ -86,6 +87,15 @@ export function setupServerFunctionHandler(
               const isExpired = errorData.error.message?.toLowerCase().includes('expired')
 
               if (context.connectionDefinition) {
+                // Suppressed surfaces (e.g. the workflow builder editing an app
+                // node) auto-load options via server functions — an expired
+                // connection there shouldn't pop an unprompted modal. The App
+                // Settings status dot already surfaces it. Run/test use a
+                // different path and keep the dialog.
+                if (isConnectionDialogSuppressed(context.appInstallationId)) {
+                  return { error: 'connection-expired-awaiting-reauth' }
+                }
+
                 // Show inline reconnect dialog for both expired and missing connections
                 connectionExpiredEmitter.emit({
                   appId: context.appId,

@@ -215,44 +215,47 @@ export interface WebhookHandler {
   metadata?: Record<string, unknown>
 }
 
+type StorageScope = 'installation' | 'connection'
+
+interface StorageOptions {
+  scope?: StorageScope
+}
+interface StorageSetOptions extends StorageOptions {
+  ttlSeconds?: number
+}
+interface StorageListOptions {
+  limit?: number
+}
+
+/** Item-level operations, available on both `storage` and a bound collection. */
+interface StorageItemApi {
+  get: <T = unknown>(key: string, opts?: StorageOptions) => Promise<{ value: T } | null>
+  set: (key: string, value: unknown, opts?: StorageSetOptions) => Promise<void>
+  setIfAbsent: (key: string, value: unknown, opts?: StorageSetOptions) => Promise<boolean>
+  remove: (key: string, opts?: StorageOptions) => Promise<void>
+}
+
+/** A bound collection adds enumeration over its keys. */
+interface StorageCollectionApi extends StorageItemApi {
+  list: <T = unknown>(
+    opts?: StorageListOptions
+  ) => Promise<{ entries: Array<{ key: string; value: T }> }>
+}
+
 /**
- * App KV storage host interface (matches @auxx/sdk/server `storage`).
+ * App KV storage host — the object exposed at `AUXX_SERVER_SDK.storage`.
  *
- * Flat methods taking `collection`/`scope` as arguments — the SDK's
- * `collection()` accessor is pure sugar on the sandbox side. Backed by the
- * `/api/v1/sdk/storage` routes.
+ * This MUST mirror the public `@auxx/sdk/server` `storage` surface exactly
+ * (positional args + a stateful `collection()` accessor). `@auxx/sdk/server` is
+ * externalized to this global at app build time, so the SDK's wrapper code is
+ * never bundled into the sandbox — the app calls these methods directly. A
+ * signature mismatch silently turns every argument into `undefined`.
  *
  * @interface StorageHost
  */
-export interface StorageHost {
-  get: (args: {
-    collection: string
-    key: string
-    scope: StorageScope
-  }) => Promise<{ value: unknown } | null>
-  set: (args: {
-    collection: string
-    key: string
-    value: unknown
-    scope: StorageScope
-    ttlSeconds?: number
-  }) => Promise<void>
-  setIfAbsent: (args: {
-    collection: string
-    key: string
-    value: unknown
-    scope: StorageScope
-    ttlSeconds?: number
-  }) => Promise<boolean>
-  remove: (args: { collection: string; key: string; scope: StorageScope }) => Promise<void>
-  list: (args: {
-    collection: string
-    scope: StorageScope
-    limit?: number
-  }) => Promise<{ entries: Array<{ key: string; value: unknown }> }>
+export interface StorageHost extends StorageItemApi {
+  collection: (name: string, defaults?: StorageSetOptions) => StorageCollectionApi
 }
-
-type StorageScope = 'installation' | 'connection'
 
 /**
  * Server SDK interface injected into global scope
@@ -1068,9 +1071,11 @@ export function createServerSDK(context: RuntimeContext): ServerSDK {
 }
 
 /**
- * Build the app KV storage host. Flat methods over the `/api/v1/sdk/storage`
- * routes; `connection` scope resolves the bound connection from the runtime
- * context and throws (before any HTTP) when the invocation carries none.
+ * Build the app KV storage host — the public `storage` surface (positional
+ * `get`/`set`/`setIfAbsent`/`remove` + a `collection()` accessor) over the
+ * `/api/v1/sdk/storage` routes. `connection` scope resolves the bound
+ * connection from the runtime context and throws (before any HTTP) when the
+ * invocation carries none.
  */
 function createStorageHost(
   context: RuntimeContext,
@@ -1100,70 +1105,102 @@ function createStorageHost(
     return headers
   }
 
+  // Low-level HTTP calls against the storage routes. The positional public
+  // surface below is pure sugar over these — `collection()` binding and the
+  // `installation`/`''` defaults all resolve here, on the object the sandbox
+  // actually touches (the SDK wrapper is externalized away at app build time).
+  async function fetchGet(collection: string, key: string, scope: StorageScope) {
+    const response = await sdkFetch({
+      method: 'GET',
+      url: `${baseUrl}/item/${encodeURIComponent(key)}?collection=${encodeURIComponent(collection)}`,
+      headers: headersForScope(scope),
+    })
+    if (response.status !== 200) {
+      throw new Error(`Failed to get storage item: ${response.status}`)
+    }
+    const data = response.data as { data: { item: { value: unknown } | null } }
+    return data.data.item
+  }
+
+  async function fetchSet(
+    collection: string,
+    key: string,
+    value: unknown,
+    scope: StorageScope,
+    ttlSeconds: number | undefined,
+    ifAbsent: boolean
+  ): Promise<ServerSDKFetchResponse> {
+    const response = await sdkFetch({
+      method: 'PUT',
+      url: `${baseUrl}/item/${encodeURIComponent(key)}`,
+      headers: headersForScope(scope),
+      body: ifAbsent
+        ? { value, collection, ttlSeconds, ifAbsent: true }
+        : { value, collection, ttlSeconds },
+    })
+    if (response.status !== 200) {
+      throw new Error(`Failed to set storage item: ${response.status}`)
+    }
+    return response
+  }
+
+  async function fetchRemove(collection: string, key: string, scope: StorageScope) {
+    const response = await sdkFetch({
+      method: 'DELETE',
+      url: `${baseUrl}/item/${encodeURIComponent(key)}?collection=${encodeURIComponent(collection)}`,
+      headers: headersForScope(scope),
+    })
+    if (response.status !== 200) {
+      throw new Error(`Failed to remove storage item: ${response.status}`)
+    }
+  }
+
+  async function fetchList(collection: string, scope: StorageScope, limit: number | undefined) {
+    const params = new URLSearchParams({ collection })
+    if (limit !== undefined) params.set('limit', String(limit))
+    const response = await sdkFetch({
+      method: 'GET',
+      url: `${baseUrl}/list?${params.toString()}`,
+      headers: headersForScope(scope),
+    })
+    if (response.status !== 200) {
+      throw new Error(`Failed to list storage: ${response.status}`)
+    }
+    const data = response.data as { data: { entries: Array<{ key: string; value: unknown }> } }
+    return { entries: data.data.entries }
+  }
+
+  /** Build the positional item API for a (collection, defaults) pair. */
+  function itemApi(collection: string, defaults: StorageSetOptions): StorageItemApi {
+    const scopeOf = (opts?: StorageOptions): StorageScope =>
+      opts?.scope ?? defaults.scope ?? 'installation'
+    const ttlOf = (opts?: StorageSetOptions): number | undefined =>
+      opts?.ttlSeconds ?? defaults.ttlSeconds
+    return {
+      get: (key, opts) =>
+        fetchGet(collection, key, scopeOf(opts)) as Promise<{ value: never } | null>,
+      set: async (key, value, opts) => {
+        await fetchSet(collection, key, value, scopeOf(opts), ttlOf(opts), false)
+      },
+      setIfAbsent: async (key, value, opts) => {
+        const response = await fetchSet(collection, key, value, scopeOf(opts), ttlOf(opts), true)
+        const data = response.data as { data: { created: boolean } }
+        return data.data.created
+      },
+      remove: (key, opts) => fetchRemove(collection, key, scopeOf(opts)),
+    }
+  }
+
   return {
-    get: async ({ collection, key, scope }) => {
-      const response = await sdkFetch({
-        method: 'GET',
-        url: `${baseUrl}/item/${encodeURIComponent(key)}?collection=${encodeURIComponent(collection)}`,
-        headers: headersForScope(scope),
-      })
-      if (response.status !== 200) {
-        throw new Error(`Failed to get storage item: ${response.status}`)
+    ...itemApi('', {}),
+    collection(name: string, defaults: StorageSetOptions = {}): StorageCollectionApi {
+      return {
+        ...itemApi(name, defaults),
+        list: (opts) =>
+          fetchList(name, defaults.scope ?? 'installation', opts?.limit) as Promise<{
+            entries: Array<{ key: string; value: never }>
+          }>,
       }
-      const data = response.data as { data: { item: { value: unknown } | null } }
-      return data.data.item
-    },
-
-    set: async ({ collection, key, value, scope, ttlSeconds }) => {
-      const response = await sdkFetch({
-        method: 'PUT',
-        url: `${baseUrl}/item/${encodeURIComponent(key)}`,
-        headers: headersForScope(scope),
-        body: { value, collection, ttlSeconds },
-      })
-      if (response.status !== 200) {
-        throw new Error(`Failed to set storage item: ${response.status}`)
-      }
-    },
-
-    setIfAbsent: async ({ collection, key, value, scope, ttlSeconds }) => {
-      const response = await sdkFetch({
-        method: 'PUT',
-        url: `${baseUrl}/item/${encodeURIComponent(key)}`,
-        headers: headersForScope(scope),
-        body: { value, collection, ttlSeconds, ifAbsent: true },
-      })
-      if (response.status !== 200) {
-        throw new Error(`Failed to set storage item: ${response.status}`)
-      }
-      const data = response.data as { data: { created: boolean } }
-      return data.data.created
-    },
-
-    remove: async ({ collection, key, scope }) => {
-      const response = await sdkFetch({
-        method: 'DELETE',
-        url: `${baseUrl}/item/${encodeURIComponent(key)}?collection=${encodeURIComponent(collection)}`,
-        headers: headersForScope(scope),
-      })
-      if (response.status !== 200) {
-        throw new Error(`Failed to remove storage item: ${response.status}`)
-      }
-    },
-
-    list: async ({ collection, scope, limit }) => {
-      const params = new URLSearchParams({ collection })
-      if (limit !== undefined) params.set('limit', String(limit))
-      const response = await sdkFetch({
-        method: 'GET',
-        url: `${baseUrl}/list?${params.toString()}`,
-        headers: headersForScope(scope),
-      })
-      if (response.status !== 200) {
-        throw new Error(`Failed to list storage: ${response.status}`)
-      }
-      const data = response.data as { data: { entries: Array<{ key: string; value: unknown }> } }
-      return { entries: data.data.entries }
     },
   }
 }
