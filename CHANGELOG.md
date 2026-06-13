@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.165](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.164...auxx-v0.1.165) (2026-06-13)
+
+
+### Bug Fixes
+
+* **sdk:** app KV storage host signature + connection-dialog suppression ([#839](https://github.com/Auxx-Ai/auxx-ai/issues/839)) ([2bb1173](https://github.com/Auxx-Ai/auxx-ai/commit/2bb117383a07b385cfb75226cd3f30d5de201cda))
+
 ## [0.1.164](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.163...auxx-v0.1.164) (2026-06-13)
 
 
