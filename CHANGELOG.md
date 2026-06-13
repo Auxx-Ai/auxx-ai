@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.166](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.165...auxx-v0.1.166) (2026-06-13)
+
+
+### Bug Fixes
+
+* **lambda:** add --allow-sys to dev-server deno compile ([#841](https://github.com/Auxx-Ai/auxx-ai/issues/841)) ([0171829](https://github.com/Auxx-Ai/auxx-ai/commit/0171829523fa9996d50e0a3e98b1c7a4d9477a78))
+
 ## [0.1.165](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.164...auxx-v0.1.165) (2026-06-13)
 
 
