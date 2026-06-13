@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.164](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.163...auxx-v0.1.164) (2026-06-13)
+
+
+### Bug Fixes
+
+* **lambda:** add fields to ConnectionData type + validator ([#837](https://github.com/Auxx-Ai/auxx-ai/issues/837)) ([1b6729c](https://github.com/Auxx-Ai/auxx-ai/commit/1b6729c2e1c2b1720447ae29626f396c1a8c1dd7))
+
 ## [0.1.163](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.162...auxx-v0.1.163) (2026-06-13)
 
 
