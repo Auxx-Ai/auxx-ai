@@ -12,9 +12,17 @@ export interface Connection {
 
   /**
    * The credential value (access token, API key, or secret)
-   * Use this to authenticate with external services
+   * Use this to authenticate with external services.
+   * Empty for multi-field secret connections — read `fields` instead.
    */
   value: string
+
+  /**
+   * Connection variables, merged: plain variables + decrypted secret-flagged ones,
+   * keyed by the variable key declared on the connection definition.
+   * e.g. `connection.fields.client_id`, `connection.fields.client_secret`
+   */
+  fields?: Record<string, string>
 
   /** Additional metadata about the connection */
   metadata?: {

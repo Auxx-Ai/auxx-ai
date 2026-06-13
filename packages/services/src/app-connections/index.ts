@@ -9,7 +9,11 @@ export { getAppConnection } from './get-app-connection'
 // Export service functions
 export { getAppConnectionDefinition } from './get-app-connection-definition'
 // Export interpolation utilities
-export { extractPlaceholders, interpolateConnectionFields } from './interpolate-connection'
+export {
+  extractPlaceholders,
+  interpolateConnectionFields,
+  mergeConnectionVariables,
+} from './interpolate-connection'
 export { listAppConnections } from './list-app-connections'
 export { renameAppConnection } from './rename-app-connection'
 // Export types

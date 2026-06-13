@@ -18,7 +18,11 @@ import { App } from './app'
 import { DeveloperAccount } from './developer-account'
 import { McpServer } from './mcp-server'
 
-/** A dynamic variable that organizations must provide when connecting */
+/**
+ * A dynamic variable that organizations must provide when connecting.
+ * `oauth2-code`: interpolated into {key} placeholders in URLs/credentials.
+ * `secret`: rendered as one input of the multi-field connect form.
+ */
 export type ConnectionVariable = {
   /** Variable key matching {placeholder} in fields (e.g., "shop", "client_id") */
   key: string
@@ -48,8 +52,6 @@ export type OAuth2Features = {
   scopeSeparator?: string
   /** Callback query param names to capture and store as connection metadata */
   callbackMetadataParams?: string[]
-  /** Dynamic variables the org must provide before OAuth redirect */
-  connectionVariables?: ConnectionVariable[]
 }
 
 /** Drizzle table for ConnectionDefinition */
@@ -91,6 +93,10 @@ export const ConnectionDefinition = pgTable(
     oauth2TokenRequestAuthMethod: text().default('request-body'), // request-body, basic-auth
     oauth2RefreshTokenIntervalSeconds: integer(),
     oauth2Features: jsonb().$type<OAuth2Features>().default({}),
+
+    // Dynamic variables the org provides at connect time. oauth2-code: interpolated
+    // into {key} placeholders. secret: rendered as the multi-field connect form.
+    connectionVariables: jsonb().$type<ConnectionVariable[]>().default([]),
 
     // Creator
     createdById: text().notNull(), // { id, type: 'developer-account-member' }

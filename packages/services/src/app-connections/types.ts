@@ -33,6 +33,9 @@ type UnwrapOk<T> = Awaited<T> extends Result<infer O, any> ? O : never
  *                                     Present when connectionType is 'oauth2-code'.
  * @property {string} [secret] - API key or secret for authentication.
  *                               Present when connectionType is 'secret'.
+ * @property {Record<string, string>} [fields] - Secret-flagged connection variables, keyed by
+ *                                               variable key. Nested so user-defined keys can't
+ *                                               collide with the reserved secret keys.
  * @property {Record<string, unknown>} [metadata] - Additional connection-specific metadata
  *                                                  such as scopes, token type, user info, etc.
  * @property {string} [expiresAt] - ISO 8601 timestamp indicating when the access token expires.
@@ -42,6 +45,7 @@ export interface DecryptedConnectionData {
   accessToken?: string
   refreshToken?: string
   secret?: string
+  fields?: Record<string, string>
   metadata?: Record<string, unknown>
   expiresAt?: string
 }
@@ -88,6 +92,9 @@ export type ConnectionDefinitionSummary = UnwrapOk<ReturnType<typeof getAppConne
  * @property {Date} [expiresAt] - Timestamp when the connection expires (for OAuth2 connections).
  * @property {boolean} global - Whether this is an organization-scoped (true) or user-scoped (false) connection.
  * @property {string | null} userId - The user id this connection belongs to (null for org-scoped rows).
+ * @property {Record<string, string>} [connectionVariables] - Plain (non-secret) connection
+ *                                                            variables, used to prefill the
+ *                                                            variable form on reconnect.
  */
 export interface AppConnection {
   id: string
@@ -101,30 +108,5 @@ export interface AppConnection {
   expiresAt?: Date
   global: boolean
   userId: string | null
-}
-
-/**
- * Connection data for runtime context
- *
- * This interface represents connection data that is passed to the app runtime executor.
- * It contains the decrypted authentication credentials needed for the app to make
- * API calls on behalf of the user or organization.
- *
- * @interface RuntimeConnectionData
- *
- * @property {string} id - Unique identifier for the connection (Credential.id).
- * @property {'oauth2-code' | 'secret'} type - The authentication method used by this connection.
- * @property {string} value - The actual credential value (access token or API secret).
- *                            This is the decrypted sensitive data.
- * @property {any} [metadata] - Additional connection metadata such as OAuth2 scopes,
- *                              token type, user information, etc.
- * @property {string} [expiresAt] - ISO 8601 timestamp indicating when the access token expires.
- *                                  Used for OAuth2 connections to determine if token refresh is needed.
- */
-export interface RuntimeConnectionData {
-  id: string
-  type: 'oauth2-code' | 'secret'
-  value: string
-  metadata?: any
-  expiresAt?: string
+  connectionVariables?: Record<string, string>
 }

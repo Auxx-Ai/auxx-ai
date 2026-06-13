@@ -45,6 +45,7 @@ export async function executePollingTrigger(
     const connection = context.organizationConnection
       ? {
           value: context.organizationConnection.value,
+          fields: context.organizationConnection.fields,
           metadata: context.organizationConnection.metadata,
         }
       : null

@@ -2,13 +2,20 @@
 
 import { findCredential, revealSecrets } from '@auxx/credentials/store'
 import { database } from '@auxx/database'
-import { type DecryptedConnectionData, logger } from '@auxx/services/app-connections'
+import {
+  type DecryptedConnectionData,
+  logger,
+  mergeConnectionVariables,
+} from '@auxx/services/app-connections'
 import { fromDatabase } from '@auxx/services/shared/utils'
 import { err, ok } from 'neverthrow'
 import { ensureFreshCredentialToken } from '../../credentials/ensure-fresh-credential-token'
 
 /** Secrets no longer carry expiry/metadata — those come from the record columns. */
-type ConnectionSecrets = Pick<DecryptedConnectionData, 'accessToken' | 'refreshToken' | 'secret'>
+type ConnectionSecrets = Pick<
+  DecryptedConnectionData,
+  'accessToken' | 'refreshToken' | 'secret' | 'fields'
+>
 
 /** The reveal-call value, narrowed to the record fields this resolver reads. */
 interface RevealedConnection {
@@ -27,18 +34,29 @@ interface RevealedConnection {
 /**
  * Connection data passed to the app runtime executor — the decrypted credential value plus the
  * non-secret metadata/expiry the SDK needs. `value` is the access token (oauth2-code) or API
- * secret (secret).
+ * secret (secret); `fields` is the merged connection-variable map (plain metadata variables +
+ * decrypted secret-flagged ones).
  */
 export interface RuntimeConnectionData {
   id: string
   type: 'oauth2-code' | 'secret'
   value: string
+  fields?: Record<string, string>
   metadata?: any
   expiresAt?: string
 }
 
 function secretValue(secrets: ConnectionSecrets): string {
   return secrets.accessToken || secrets.secret || ''
+}
+
+/** The merged connection-variable map, or undefined when the connection has none. */
+function connectionFields(
+  record: { metadata: any },
+  secrets: ConnectionSecrets
+): Record<string, string> | undefined {
+  const fields = mergeConnectionVariables(record.metadata, secrets)
+  return Object.keys(fields).length > 0 ? fields : undefined
 }
 
 /**
@@ -143,6 +161,7 @@ export async function resolveAppConnectionForRuntime(input: {
       id: record.id,
       type: connectionType,
       value: secretValue(secrets),
+      fields: connectionFields(record, secrets),
       metadata: record.metadata,
       expiresAt: record.expiresAt?.toISOString(),
     }
@@ -229,6 +248,7 @@ export async function resolveAppConnectionForRuntime(input: {
         id: record.id,
         type: connectionType,
         value: secretValue(secrets),
+        fields: connectionFields(record, secrets),
         metadata: record.metadata,
         expiresAt: record.expiresAt?.toISOString(),
       }
@@ -270,6 +290,7 @@ export async function resolveAppConnectionForRuntime(input: {
         id: record.id,
         type: connectionType,
         value: secretValue(secrets),
+        fields: connectionFields(record, secrets),
         metadata: record.metadata,
         expiresAt: record.expiresAt?.toISOString(),
       }

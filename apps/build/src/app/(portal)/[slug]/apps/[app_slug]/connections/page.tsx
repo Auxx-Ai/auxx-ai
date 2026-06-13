@@ -297,8 +297,8 @@ export default function ConnectionsPage() {
           (features.callbackMetadataParams as string[])?.join(', ') ?? '',
       })
 
-      // Load connection variables from features
-      setConnectionVariables((features.connectionVariables as ConnectionVariable[]) ?? [])
+      // Connection variables are a top-level column (shared by oauth2-code and secret)
+      setConnectionVariables((connection.connectionVariables as ConnectionVariable[]) ?? [])
 
       // Auto-open advanced section if any advanced field has a value
       if (
@@ -351,8 +351,9 @@ export default function ConnectionsPage() {
     },
   })
 
-  // Computed value for conditional rendering
+  // Computed values for conditional rendering
   const isOAuth2 = connectionType === 'oauth2-code'
+  const isSecret = connectionType === 'secret'
 
   // Watch URL fields for placeholder auto-detection
   const authorizeUrl = watch('oauth2AuthorizeUrl') || ''
@@ -397,6 +398,11 @@ export default function ConnectionsPage() {
       label: data.label,
       description: data.description,
 
+      // Connection variables apply to both oauth2-code (interpolation) and secret (connect form)
+      ...((data.connectionType === 'oauth2-code' || data.connectionType === 'secret') && {
+        connectionVariables,
+      }),
+
       // Only include OAuth2 fields if connectionType is oauth2-code
       ...(data.connectionType === 'oauth2-code' && {
         oauth2AuthorizeUrl: data.oauth2AuthorizeUrl,
@@ -410,7 +416,6 @@ export default function ConnectionsPage() {
         oauth2TokenRequestAuthMethod: data.oauth2TokenRequestAuthMethod,
         oauth2RefreshTokenIntervalSeconds: refreshSeconds,
         oauth2Features: {
-          ...(connectionVariables.length > 0 && { connectionVariables }),
           ...(data.oauth2Pkce && { pkce: true }),
           ...(data.oauth2CallbackBaseUrl && { callbackBaseUrl: data.oauth2CallbackBaseUrl }),
           ...(data.oauth2ScopeSeparator && { scopeSeparator: data.oauth2ScopeSeparator }),
@@ -521,13 +526,17 @@ export default function ConnectionsPage() {
                 </Field>
               </FieldGroup>
 
-              {isOAuth2 && (
+              {(isOAuth2 || isSecret) && (
                 <FieldGroup>
                   <Field>
                     <FieldLabel className='flex items-center gap-1'>
                       Dynamic Variables
                       <TooltipExplanation
-                        text='Define variables that organizations must provide when connecting. Use {variable_name} placeholders in the Authorize URL, Token URL, Client ID, or Client Secret fields below.'
+                        text={
+                          isOAuth2
+                            ? 'Define variables that organizations must provide when connecting. Use {variable_name} placeholders in the Authorize URL, Token URL, Client ID, or Client Secret fields below.'
+                            : 'Define the fields organizations fill in when connecting (e.g. client ID, client secret, account number). Secret-flagged fields are masked and stored encrypted.'
+                        }
                         side='right'
                       />
                     </FieldLabel>
@@ -546,23 +555,32 @@ export default function ConnectionsPage() {
                           <div className='flex flex-wrap items-center gap-1'>
                             {connectionVariables.map((v) => (
                               <Badge key={v.key} variant='zinc' size='sm'>
-                                {`{${v.key}}`}
+                                {isOAuth2 ? `{${v.key}}` : v.key}
                               </Badge>
                             ))}
                           </div>
                         </>
                       )}
                     </div>
-                    <FieldDescription>
-                      Use these as placeholders in the fields below (e.g.{' '}
-                      <code className='text-xs'>
-                        {'https://{shop}.myshopify.com/admin/oauth/authorize'}
-                      </code>
-                      )
-                    </FieldDescription>
+                    {isOAuth2 && (
+                      <FieldDescription>
+                        Use these as placeholders in the fields below (e.g.{' '}
+                        <code className='text-xs'>
+                          {'https://{shop}.myshopify.com/admin/oauth/authorize'}
+                        </code>
+                        )
+                      </FieldDescription>
+                    )}
+                    {isSecret && (
+                      <FieldDescription>
+                        When defined, the connect dialog shows one input per variable instead of the
+                        single API-key field. Apps read the values via{' '}
+                        <code className='text-xs'>connection.fields</code>.
+                      </FieldDescription>
+                    )}
                   </Field>
 
-                  {detectedPlaceholders.length > 0 && (
+                  {isOAuth2 && detectedPlaceholders.length > 0 && (
                     <div className='flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800'>
                       <AlertTriangle className='size-4 shrink-0' />
                       <span>
@@ -577,7 +595,11 @@ export default function ConnectionsPage() {
                       </span>
                     </div>
                   )}
+                </FieldGroup>
+              )}
 
+              {isOAuth2 && (
+                <FieldGroup>
                   <Field>
                     <FieldLabel htmlFor='app-organization-authorize-url'>Authorize URL</FieldLabel>
                     <InputGroup>

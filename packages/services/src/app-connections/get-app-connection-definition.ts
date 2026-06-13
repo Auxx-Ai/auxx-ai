@@ -21,9 +21,11 @@ export async function getAppConnectionDefinition(appId: string, global: boolean)
       where: (connDef, { eq, and }) => and(eq(connDef.appId, appId), eq(connDef.global, global)),
       columns: {
         label: true,
+        description: true,
         global: true,
         connectionType: true,
         oauth2Features: true,
+        connectionVariables: true,
       },
     }),
     'get-connection-definition'

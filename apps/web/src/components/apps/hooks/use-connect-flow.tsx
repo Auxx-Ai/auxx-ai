@@ -2,7 +2,7 @@
 
 'use client'
 
-import type { ConnectionVariable, OAuth2Features } from '@auxx/database'
+import type { ConnectionVariable } from '@auxx/database'
 import { toastError } from '@auxx/ui/components/toast'
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '~/trpc/react'
@@ -28,7 +28,8 @@ type Scope = 'user' | 'organization'
  */
 export interface ConnectFlowDefinition {
   connectionType: string
-  oauth2Features?: unknown
+  description?: string | null
+  connectionVariables?: ConnectionVariable[] | null
 }
 
 export interface ConnectTarget {
@@ -47,6 +48,11 @@ export interface ConnectFlowArgs {
   scope: Scope
   /** Existing credId when reconnecting; absent for fresh connects. */
   connectionId?: string
+  /**
+   * Plain connection-variable values to prefill the variable form on reconnect.
+   * Secret-flagged values are never prefilled — the admin re-enters them.
+   */
+  prefillVariables?: Record<string, string>
   /** Optional return URL for full-redirect fallback. */
   returnTo?: string
 }
@@ -102,6 +108,7 @@ export function useConnectFlow(options: UseConnectFlowOptions = {}): UseConnectF
   const saveSecret = api.apps.saveSecretConnection.useMutation({
     onSuccess: (data) => {
       setSecretOpen(false)
+      setVariableOpen(false)
       void utils.apps.listConnections.invalidate()
       void utils.apps.listInstalled.invalidate()
       const credId = data?.credentialId ?? null
@@ -220,12 +227,17 @@ export function useConnectFlow(options: UseConnectFlowOptions = {}): UseConnectF
       }
       setArgs(next)
       if (def.connectionType === 'secret') {
-        setSecretOpen(true)
+        // Definitions with connection variables collect one input per variable;
+        // without them, the single API-key field.
+        if ((def.connectionVariables?.length ?? 0) > 0) {
+          setVariableOpen(true)
+        } else {
+          setSecretOpen(true)
+        }
         return
       }
       if (def.connectionType === 'oauth2-code') {
-        const vars: ConnectionVariable[] =
-          (def.oauth2Features as OAuth2Features | null)?.connectionVariables ?? []
+        const vars = def.connectionVariables ?? []
         // Reconnect reuses the stored variables (e.g. the Shopify shop) server-side,
         // so only prompt for them on a fresh connect.
         if (vars.length > 0 && !next.connectionId) {
@@ -240,13 +252,31 @@ export function useConnectFlow(options: UseConnectFlowOptions = {}): UseConnectF
     [kickOauth]
   )
 
+  const activeDef = useMemo(() => {
+    if (!args) return null
+    return args.scope === 'user'
+      ? args.target.connectionDefinitions?.user
+      : args.target.connectionDefinitions?.organization
+  }, [args])
+
   const handleVariableSubmit = useCallback(
     (values: Record<string, string>) => {
       if (!args) return
+      if (activeDef?.connectionType === 'secret') {
+        saveSecret.mutate({
+          appId: args.target.appId,
+          installationId: args.target.installationId,
+          appName: args.target.appTitle,
+          connectionType: args.scope,
+          values,
+          connectionId: args.connectionId,
+        })
+        return
+      }
       setVariableOpen(false)
       kickOauth(args, values)
     },
-    [args, kickOauth]
+    [args, activeDef, kickOauth, saveSecret]
   )
 
   const handleSecretSubmit = useCallback(
@@ -264,14 +294,10 @@ export function useConnectFlow(options: UseConnectFlowOptions = {}): UseConnectF
     [args, saveSecret]
   )
 
-  const variableDefs: ConnectionVariable[] = useMemo(() => {
-    if (!args) return []
-    const def =
-      args.scope === 'user'
-        ? args.target.connectionDefinitions?.user
-        : args.target.connectionDefinitions?.organization
-    return (def?.oauth2Features as OAuth2Features | null)?.connectionVariables ?? []
-  }, [args])
+  const variableDefs: ConnectionVariable[] = useMemo(
+    () => activeDef?.connectionVariables ?? [],
+    [activeDef]
+  )
 
   const Dialogs = args ? (
     <>
@@ -293,7 +319,10 @@ export function useConnectFlow(options: UseConnectFlowOptions = {}): UseConnectF
           if (!open) setArgs(null)
         }}
         appTitle={args.target.appTitle}
+        description={activeDef?.description ?? undefined}
         variables={variableDefs}
+        prefill={args.prefillVariables}
+        pending={saveSecret.isPending}
         onSubmit={handleVariableSubmit}
       />
     </>

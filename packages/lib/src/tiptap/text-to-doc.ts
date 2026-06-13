@@ -33,14 +33,25 @@ const VARIABLE_MARKER = /\{\{([^}]+)\}\}/g
  * `parseReferences: true`, `@[<recordId>]` substrings become inline
  * `reference` nodes.
  *
- * Yields an empty paragraph doc for empty input — never throws.
+ * Yields an empty paragraph doc for empty input — never throws. Runtime
+ * values from workflow node data aren't guaranteed to be strings: multi-value
+ * fields hand us arrays and older node configs stored Tiptap docs as objects,
+ * so non-strings are coerced (objects pass through as docs, arrays join with
+ * commas — the same behavior as the old apps/web `stringToTiptap`).
  */
-export function textToDoc(text: string, options: TextToDocOptions = {}): TiptapDoc {
-  if (!text || !text.trim()) {
+export function textToDoc(
+  text: string | TiptapDoc | null | undefined,
+  options: TextToDocOptions = {}
+): TiptapDoc {
+  if (text && typeof text === 'object' && !Array.isArray(text)) {
+    return text as TiptapDoc
+  }
+  const str = typeof text === 'string' ? text : text == null ? '' : String(text)
+  if (!str.trim()) {
     return { type: 'doc', content: [{ type: 'paragraph' }] }
   }
 
-  const paragraphs = text.split(/\n\n+/)
+  const paragraphs = str.split(/\n\n+/)
   const content: TiptapNode[] = paragraphs.map((paragraph) => ({
     type: 'paragraph',
     content: buildInline(paragraph, options),

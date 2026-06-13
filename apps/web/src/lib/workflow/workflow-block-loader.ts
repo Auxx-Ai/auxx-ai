@@ -2,7 +2,7 @@
 
 import type { AppInstallation } from '~/providers/extensions/extensions-context'
 import type { AppStore } from '../extensions/app-store'
-import type { WorkflowBlock } from './types'
+import type { WorkflowBlock, WorkflowBlockField } from './types'
 
 /**
  * Responsible for loading workflow blocks from installed apps.
@@ -37,18 +37,78 @@ export interface SerializedQuickAction {
   installationId?: string
 }
 
+/**
+ * Convert one catalog `inputsJsonSchema` field node — the SDK field `toJSON()`
+ * shape `{ type, acceptsVariables, variableTypes, items, fields, _metadata }` —
+ * into the flat `WorkflowBlockField` shape consumers read (label / options /
+ * required at the top level). Mirrors `serializeFieldsFromJSON` in
+ * `@auxx/sdk` `runtime/workflow.ts`, which produces the same shape on the
+ * iframe RPC path.
+ */
+function catalogFieldToBlockField(name: string, fieldJson: any): WorkflowBlockField {
+  const metadata = fieldJson?._metadata || {}
+
+  const field: WorkflowBlockField = {
+    name,
+    label: metadata.label || name,
+    type: fieldJson?.type || 'any',
+    description: metadata.description,
+    required: metadata.required ?? false,
+    default: metadata.defaultValue,
+    format: metadata.format,
+    placeholder: metadata.placeholder,
+    acceptsVariables: fieldJson?.acceptsVariables,
+    variableTypes: fieldJson?.variableTypes,
+    min: metadata.min,
+    max: metadata.max,
+    minLength: metadata.minLength,
+    maxLength: metadata.maxLength,
+    pattern: metadata.pattern,
+    integer: metadata.integer,
+    precision: metadata.precision,
+    options: metadata.options,
+    multi: metadata.multi,
+    canAdd: metadata.canAdd,
+    canManage: metadata.canManage,
+    _fieldKind: 'input',
+  }
+
+  if (fieldJson?.type === 'array' && fieldJson.items) {
+    field.items = catalogFieldToBlockField('item', fieldJson.items)
+  }
+
+  if ((fieldJson?.type === 'object' || fieldJson?.type === 'struct') && fieldJson.fields) {
+    field.properties = catalogInputsToSchemaInputs(fieldJson.fields)
+  }
+
+  return field
+}
+
+/** Convert a catalog `inputsJsonSchema` map into `WorkflowBlock['schema']['inputs']`. */
+function catalogInputsToSchemaInputs(
+  inputsJsonSchema: Record<string, unknown> | undefined
+): Record<string, WorkflowBlockField> {
+  const inputs: Record<string, WorkflowBlockField> = {}
+  for (const [name, fieldJson] of Object.entries(inputsJsonSchema || {})) {
+    inputs[name] = catalogFieldToBlockField(name, fieldJson)
+  }
+  return inputs
+}
+
 /** Convert a `CatalogBlock` projection into the runtime `WorkflowBlock` shape.
  *
- * The catalog projection is a strict subset of the iframe RPC payload —
- * `inputsJsonSchema` rather than the rich `schema.inputs/outputs`, and no
- * `polling`/`category`/`hasPanel` data. Producing a degraded `WorkflowBlock`
- * here lets the picker render label / icon / color synchronously; the iframe
- * fallback (if it ever fires) registers an upgraded definition.
+ * The catalog projection is a subset of the iframe RPC payload — it carries
+ * `inputsJsonSchema` (hydrated into `schema.inputs` here) but no outputs,
+ * `polling`, `category`, or `hasPanel` data. `schema.inputs` must be
+ * populated: the single-run Input tab (`extractAppBlockVariables`) and field
+ * label/type resolution both read it. Outputs stay empty — they're computed
+ * per-node by the app's `computeOutputs` and merged from `_computedOutputs`.
  */
 function catalogBlockToWorkflowBlock(
   block: NonNullable<AppInstallation['workflowBlocks']>[number],
   appId: string,
-  installationId: string
+  installationId: string,
+  appAvatarUrl?: string | null
 ): WorkflowBlock {
   return {
     id: block.id,
@@ -57,10 +117,12 @@ function catalogBlockToWorkflowBlock(
     label: block.label,
     description: block.description,
     category: 'integration',
-    icon: block.iconKey ?? undefined,
+    // iconKey is currently always null in the catalog projection — fall back
+    // to the app's avatar (same cascade as installed-apps-provider's agent tools)
+    icon: block.iconKey ?? appAvatarUrl ?? undefined,
     color: block.color,
     schema: {
-      inputs: {},
+      inputs: catalogInputsToSchemaInputs(block.inputsJsonSchema),
       outputs: {},
     },
   }
@@ -69,7 +131,8 @@ function catalogBlockToWorkflowBlock(
 function catalogTriggerToWorkflowBlock(
   trigger: NonNullable<AppInstallation['workflowTriggers']>[number],
   appId: string,
-  installationId: string
+  installationId: string,
+  appAvatarUrl?: string | null
 ): WorkflowBlock {
   return {
     id: trigger.triggerId,
@@ -78,8 +141,10 @@ function catalogTriggerToWorkflowBlock(
     label: trigger.label,
     description: trigger.description,
     category: 'integration',
+    icon: trigger.iconKey ?? appAvatarUrl ?? undefined,
+    color: trigger.color,
     schema: {
-      inputs: {},
+      inputs: catalogInputsToSchemaInputs(trigger.inputsJsonSchema),
       outputs: {},
     },
   }
@@ -141,11 +206,13 @@ export class WorkflowBlockLoader {
     }
     const loadKey = `${appId}:${installationId}`
 
+    const appAvatarUrl = installation.app.avatarUrl
+
     const blocks = installation.workflowBlocks ?? []
     if (blocks.length > 0) {
       this.loadedBlocks.set(
         loadKey,
-        blocks.map((b) => catalogBlockToWorkflowBlock(b, appId, installationId))
+        blocks.map((b) => catalogBlockToWorkflowBlock(b, appId, installationId, appAvatarUrl))
       )
     }
 
@@ -153,7 +220,7 @@ export class WorkflowBlockLoader {
     if (triggers.length > 0) {
       this.loadedTriggers.set(
         loadKey,
-        triggers.map((t) => catalogTriggerToWorkflowBlock(t, appId, installationId))
+        triggers.map((t) => catalogTriggerToWorkflowBlock(t, appId, installationId, appAvatarUrl))
       )
     }
   }

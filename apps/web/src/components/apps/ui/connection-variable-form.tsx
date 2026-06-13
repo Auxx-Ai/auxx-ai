@@ -17,29 +17,43 @@ import { Input } from '@auxx/ui/components/input'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { toastError } from '@auxx/ui/components/toast'
 import type React from 'react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 interface ConnectionVariableFormProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   appTitle: string
+  /** Definition description shown under the title; falls back to a generic line. */
+  description?: string
   variables: ConnectionVariable[]
+  /** Values to prefill (reconnect) — plain variables only, secrets are re-entered. */
+  prefill?: Record<string, string>
+  /** Disables the submit button while a save mutation is in flight. */
+  pending?: boolean
   onSubmit: (values: Record<string, string>) => void
 }
 
 /**
- * Dialog form for the per-app variable-input step before OAuth (Shopify-style
- * shop domain, etc.). Returns the gathered values to the caller; does not
- * navigate or mutate. See plans/kopilot/apps/app-settings-dialog-refactor.md §5.4.
+ * Dialog form for per-connection variable input: the pre-OAuth step (Shopify-style
+ * shop domain) and the multi-field secret connect form (FedEx-style API credentials).
+ * Returns the gathered values to the caller; does not navigate or mutate.
  */
 export function ConnectionVariableForm({
   open,
   onOpenChange,
   appTitle,
+  description,
   variables,
+  prefill,
+  pending,
   onSubmit,
 }: ConnectionVariableFormProps) {
   const [values, setValues] = useState<Record<string, string>>({})
+
+  // Seed the form each time the dialog opens (reconnect prefills plain values).
+  useEffect(() => {
+    if (open) setValues(prefill ?? {})
+  }, [open, prefill])
 
   const handleClose = () => {
     onOpenChange(false)
@@ -58,7 +72,6 @@ export function ConnectionVariableForm({
       }
     }
     onSubmit(values)
-    setValues({})
   }
 
   return (
@@ -71,9 +84,9 @@ export function ConnectionVariableForm({
       <DialogContent position='tc' size='sm'>
         <form onSubmit={handleSubmit}>
           <DialogHeader>
-            <DialogTitle>Connection Details</DialogTitle>
+            <DialogTitle>Connect {appTitle}</DialogTitle>
             <DialogDescription>
-              Provide the following details to connect {appTitle}.
+              {description || `Provide the following details to connect ${appTitle}.`}
             </DialogDescription>
           </DialogHeader>
           <div className='space-y-4'>
@@ -97,7 +110,7 @@ export function ConnectionVariableForm({
             <Button type='button' variant='ghost' size='sm' onClick={handleClose}>
               Cancel <Kbd shortcut='esc' variant='ghost' size='sm' />
             </Button>
-            <Button type='submit' variant='outline' size='sm'>
+            <Button type='submit' variant='outline' size='sm' loading={pending}>
               Connect <KbdSubmit variant='outline' size='sm' />
             </Button>
           </DialogFooter>

@@ -10,6 +10,7 @@ import type {
   CatalogBlock,
   CatalogToolset,
   CatalogTriggerProjection,
+  ConnectionVariable,
   KnowledgeEntry,
   McpServerIcon,
   ToolsetEntry,
@@ -349,15 +350,19 @@ export interface CachedInstalledApp {
   connectionDefinitions: {
     user?: {
       label: string | null
+      description: string | null
       global: boolean | null
       connectionType: string
       oauth2Features: Record<string, unknown> | null
+      connectionVariables: ConnectionVariable[]
     }
     organization?: {
       label: string | null
+      description: string | null
       global: boolean | null
       connectionType: string
       oauth2Features: Record<string, unknown> | null
+      connectionVariables: ConnectionVariable[]
     }
   }
 

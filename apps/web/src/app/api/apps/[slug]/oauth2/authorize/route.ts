@@ -136,6 +136,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     // On reconnect, reuse the variables saved with the existing connection (e.g. the
     // Shopify shop) so the user isn't asked for them again. Explicit query params still win.
+    // `fields` is the merged map (plain metadata variables + decrypted secret-flagged ones).
     let storedVariables: Record<string, string> = {}
     if (connectionId) {
       const resolved = await resolveAppConnectionForRuntime({
@@ -143,21 +144,18 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         organizationId,
         userId: session.user.id,
         connectionId,
-        // Reconnect only reads metadata.connectionVariables — skip the OAuth refresh.
+        // Reconnect only reads the stored connection variables — skip the OAuth refresh.
         ensureFresh: false,
       })
       if (resolved.isOk()) {
         const conn = resolved.value.userConnection ?? resolved.value.organizationConnection
-        const vars = conn?.metadata?.connectionVariables
-        if (vars && typeof vars === 'object') {
-          storedVariables = vars as Record<string, string>
-        }
+        if (conn?.fields) storedVariables = conn.fields
       }
     }
 
     // Extract connection variables from query params (allowlisted by definitions)
     const connectionVariables: Record<string, string> = {}
-    const connectionVarDefs = features.connectionVariables ?? []
+    const connectionVarDefs = connDef.connectionVariables ?? []
     for (const varDef of connectionVarDefs) {
       const value = searchParams.get(`var_${varDef.key}`) ?? storedVariables[varDef.key]
       if (!value && varDef.required !== false) {

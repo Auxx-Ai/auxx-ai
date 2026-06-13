@@ -88,6 +88,7 @@ export async function exportByDeveloperAccount(db: Database, developerAccountId:
           oauth2TokenRequestAuthMethod: cd.oauth2TokenRequestAuthMethod,
           oauth2RefreshTokenIntervalSeconds: cd.oauth2RefreshTokenIntervalSeconds,
           oauth2Features: cd.oauth2Features,
+          connectionVariables: cd.connectionVariables,
         })),
         latestDeployment: latestProdDeployment
           ? {
