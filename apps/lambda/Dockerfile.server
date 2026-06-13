@@ -31,7 +31,7 @@ RUN deno cache src/dev-server.ts
 
 # Compile to standalone binary
 RUN deno compile \
-  --allow-net --allow-env --allow-read --allow-write=/tmp \
+  --allow-net --allow-env --allow-read --allow-write=/tmp --allow-sys \
   --output dist/server \
   src/dev-server.ts
 
