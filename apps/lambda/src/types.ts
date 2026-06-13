@@ -43,6 +43,8 @@ export interface ConnectionData {
   id: string
   type: 'oauth2-code' | 'secret'
   value: string // Decrypted token/key/secret
+  /** Merged connection-variable map (plain + decrypted secret-flagged), keyed by variable key. */
+  fields?: Record<string, string>
   metadata?: {
     scope?: string
     externalUserId?: string
