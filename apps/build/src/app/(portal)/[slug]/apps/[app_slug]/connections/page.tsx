@@ -80,6 +80,18 @@ const connectionFormSchema = z
       )
       .optional()
       .or(z.literal('')),
+    oauth2RefreshUrl: z
+      .string()
+      .refine(
+        (val) => {
+          if (!val || val === '') return true
+          if (/\{[^}]+\}/.test(val)) return true
+          return z.string().url().safeParse(val).success
+        },
+        { message: 'Must be a valid URL or contain {variable} placeholders' }
+      )
+      .optional()
+      .or(z.literal('')),
     oauth2ClientId: z.string().optional().or(z.literal('')),
     oauth2ClientSecret: z.string().optional().or(z.literal('')),
     oauth2Scopes: z.string().optional().or(z.literal('')), // Comma-separated, optional
@@ -226,6 +238,7 @@ export default function ConnectionsPage() {
       description: '',
       oauth2AuthorizeUrl: '',
       oauth2AccessTokenUrl: '',
+      oauth2RefreshUrl: '',
       oauth2ClientId: '',
       oauth2ClientSecret: '',
       oauth2Scopes: '',
@@ -277,6 +290,7 @@ export default function ConnectionsPage() {
         description: connection.description || '',
         oauth2AuthorizeUrl: connection.oauth2AuthorizeUrl || '',
         oauth2AccessTokenUrl: connection.oauth2AccessTokenUrl || '',
+        oauth2RefreshUrl: connection.oauth2RefreshUrl || '',
         oauth2ClientId: connection.oauth2ClientId || '',
         oauth2ClientSecret: connection.oauth2ClientSecret || '',
         oauth2Scopes: formatScopesArray(connection.oauth2Scopes as string[]),
@@ -302,6 +316,7 @@ export default function ConnectionsPage() {
 
       // Auto-open advanced section if any advanced field has a value
       if (
+        connection.oauth2RefreshUrl ||
         features.pkce ||
         features.callbackBaseUrl ||
         features.scopeSeparator ||
@@ -407,6 +422,7 @@ export default function ConnectionsPage() {
       ...(data.connectionType === 'oauth2-code' && {
         oauth2AuthorizeUrl: data.oauth2AuthorizeUrl,
         oauth2AccessTokenUrl: data.oauth2AccessTokenUrl,
+        oauth2RefreshUrl: data.oauth2RefreshUrl,
         oauth2ClientId: data.oauth2ClientId,
         oauth2ClientSecret:
           maskedSecretPrefill.current && data.oauth2ClientSecret === maskedSecretPrefill.current
@@ -811,6 +827,25 @@ export default function ConnectionsPage() {
                           {errors.oauth2CallbackBaseUrl && (
                             <p className='text-sm text-red-600 mt-1'>
                               {errors.oauth2CallbackBaseUrl.message}
+                            </p>
+                          )}
+                        </Field>
+                        <Field>
+                          <FieldLabel htmlFor='app-organization-refresh-url'>
+                            Refresh URL
+                          </FieldLabel>
+                          <Input
+                            id='app-organization-refresh-url'
+                            placeholder='https://auth-server.com/oauth/refresh'
+                            {...register('oauth2RefreshUrl')}
+                          />
+                          <FieldDescription>
+                            Endpoint used to refresh the access token. Defaults to the Access token
+                            URL when empty. Supports {'{variable}'} placeholders.
+                          </FieldDescription>
+                          {errors.oauth2RefreshUrl && (
+                            <p className='text-sm text-red-600 mt-1'>
+                              {errors.oauth2RefreshUrl.message}
                             </p>
                           )}
                         </Field>

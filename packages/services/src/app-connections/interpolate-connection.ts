@@ -11,6 +11,7 @@ export function interpolateConnectionFields(
   connDef: {
     oauth2AuthorizeUrl: string | null
     oauth2AccessTokenUrl: string | null
+    oauth2RefreshUrl: string | null
     oauth2ClientId: string | null
     oauth2ClientSecret: string | null
   },
@@ -18,12 +19,14 @@ export function interpolateConnectionFields(
 ): {
   authorizeUrl: string
   accessTokenUrl: string
+  refreshUrl: string
   clientId: string
   clientSecret: string
 } {
   return {
     authorizeUrl: interpolateUrl(connDef.oauth2AuthorizeUrl ?? '', variables),
     accessTokenUrl: interpolateUrl(connDef.oauth2AccessTokenUrl ?? '', variables),
+    refreshUrl: interpolateUrl(connDef.oauth2RefreshUrl ?? '', variables),
     clientId: interpolateValue(decryptValue(connDef.oauth2ClientId) ?? '', variables),
     clientSecret: interpolateValue(decryptValue(connDef.oauth2ClientSecret) ?? '', variables),
   }

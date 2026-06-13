@@ -1120,6 +1120,36 @@ export const adminRouter = createTRPCRouter({
     }),
 
   /**
+   * Change a member's role on a developer account
+   */
+  updateDeveloperAccountMemberRole: superAdminProcedure
+    .input(
+      z.object({
+        memberId: z.string(),
+        developerAccountId: z.string(),
+        accessLevel: z.enum(['admin', 'member']),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const [member] = await ctx.db
+        .update(schema.DeveloperAccountMember)
+        .set({ accessLevel: input.accessLevel })
+        .where(eq(schema.DeveloperAccountMember.id, input.memberId))
+        .returning()
+
+      if (!member) {
+        throw new Error('Member not found')
+      }
+
+      // Invalidate build cache for all members (accessLevel is cached per-member)
+      await onCacheEvent('build.developer-account.member-role-changed', {
+        developerAccountId: input.developerAccountId,
+      })
+
+      return member
+    }),
+
+  /**
    * Apps management router
    */
   apps: adminAppsRouter,

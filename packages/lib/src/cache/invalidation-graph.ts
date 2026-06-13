@@ -147,6 +147,7 @@ export const INVALIDATION_GRAPH: Record<string, InvalidationMapping> = {
 
   'build.developer-account.member-added': { build: ['buildDeveloperAccounts'] },
   'build.developer-account.member-removed': { build: ['buildDeveloperAccounts'] },
+  'build.developer-account.member-role-changed': { build: ['buildDeveloperAccounts'] },
 
   'build.app.created': { build: ['buildApps'] },
   'build.app.updated': { build: ['buildApps'] },

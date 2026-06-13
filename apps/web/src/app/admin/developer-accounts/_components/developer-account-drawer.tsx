@@ -25,7 +25,17 @@ import {
 } from '@auxx/ui/components/table'
 import { toastError } from '@auxx/ui/components/toast'
 import { formatDistanceToNow } from 'date-fns'
-import { Ban, Code, Copy, Download, MoreHorizontal, Trash2, Upload, UserPlus } from 'lucide-react'
+import {
+  Ban,
+  Code,
+  Copy,
+  Download,
+  MoreHorizontal,
+  ShieldCheck,
+  Trash2,
+  Upload,
+  UserPlus,
+} from 'lucide-react'
 import Link from 'next/link'
 import { useState } from 'react'
 import { DockToggleButton } from '~/components/global/dock-toggle-button'
@@ -124,6 +134,15 @@ export function DeveloperAccountDrawer({
     },
   })
 
+  const updateMemberRole = api.admin.updateDeveloperAccountMemberRole.useMutation({
+    onSuccess: () => {
+      utils.admin.getDeveloperAccountMembers.invalidate()
+    },
+    onError: (error) => {
+      toastError({ title: 'Failed to update role', description: error.message })
+    },
+  })
+
   const unpublishApp = api.admin.apps.unpublishApp.useMutation({
     onSuccess: () => {
       utils.admin.apps.getApps.invalidate()
@@ -174,6 +193,14 @@ export function DeveloperAccountDrawer({
     if (confirmed) {
       await removeMember.mutateAsync({ memberId, developerAccountId: account!.id })
     }
+  }
+
+  const handleChangeRole = async (memberId: string, accessLevel: 'admin' | 'member') => {
+    await updateMemberRole.mutateAsync({
+      memberId,
+      developerAccountId: account!.id,
+      accessLevel,
+    })
   }
 
   const handleExport = async () => {
@@ -403,6 +430,16 @@ export function DeveloperAccountDrawer({
                                   onClick={() => navigator.clipboard.writeText(member.userId)}>
                                   <Copy />
                                   Copy User ID
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() =>
+                                    handleChangeRole(
+                                      member.id,
+                                      member.accessLevel === 'admin' ? 'member' : 'admin'
+                                    )
+                                  }>
+                                  <ShieldCheck />
+                                  {member.accessLevel === 'admin' ? 'Make Member' : 'Make Admin'}
                                 </DropdownMenuItem>
                                 <DropdownMenuItem
                                   variant='destructive'

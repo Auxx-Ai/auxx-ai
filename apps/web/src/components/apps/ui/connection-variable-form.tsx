@@ -14,8 +14,15 @@ import {
 } from '@auxx/ui/components/dialog'
 import { Field, FieldDescription, FieldLabel } from '@auxx/ui/components/field'
 import { Input } from '@auxx/ui/components/input'
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupButton,
+  InputGroupInput,
+} from '@auxx/ui/components/input-group'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { toastError } from '@auxx/ui/components/toast'
+import { EyeIcon, EyeOffIcon } from 'lucide-react'
 import type React from 'react'
 import { useEffect, useState } from 'react'
 
@@ -49,15 +56,20 @@ export function ConnectionVariableForm({
   onSubmit,
 }: ConnectionVariableFormProps) {
   const [values, setValues] = useState<Record<string, string>>({})
+  const [revealed, setRevealed] = useState<Record<string, boolean>>({})
 
   // Seed the form each time the dialog opens (reconnect prefills plain values).
   useEffect(() => {
-    if (open) setValues(prefill ?? {})
+    if (open) {
+      setValues(prefill ?? {})
+      setRevealed({})
+    }
   }, [open, prefill])
 
   const handleClose = () => {
     onOpenChange(false)
     setValues({})
+    setRevealed({})
   }
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -90,21 +102,53 @@ export function ConnectionVariableForm({
             </DialogDescription>
           </DialogHeader>
           <div className='space-y-4'>
-            {variables.map((v) => (
-              <Field key={v.key}>
-                <FieldLabel>
-                  {v.label}
-                  {v.required !== false && <span className='text-destructive ml-1'>*</span>}
-                </FieldLabel>
-                <Input
-                  type={v.secret ? 'password' : 'text'}
-                  placeholder={v.placeholder}
-                  value={values[v.key] ?? ''}
-                  onChange={(e) => setValues((prev) => ({ ...prev, [v.key]: e.target.value }))}
-                />
-                {v.description && <FieldDescription>{v.description}</FieldDescription>}
-              </Field>
-            ))}
+            {variables.map((v) => {
+              const isVisible = revealed[v.key] ?? false
+              return (
+                <Field key={v.key}>
+                  <FieldLabel>
+                    {v.label}
+                    {v.required !== false && <span className='text-destructive ml-1'>*</span>}
+                  </FieldLabel>
+                  {v.secret ? (
+                    <InputGroup>
+                      <InputGroupInput
+                        type={isVisible ? 'text' : 'password'}
+                        placeholder={v.placeholder}
+                        value={values[v.key] ?? ''}
+                        onChange={(e) =>
+                          setValues((prev) => ({ ...prev, [v.key]: e.target.value }))
+                        }
+                      />
+                      <InputGroupAddon align='inline-end'>
+                        <InputGroupButton
+                          type='button'
+                          aria-label={isVisible ? 'Hide value' : 'Show value'}
+                          aria-pressed={isVisible}
+                          size='icon-xs'
+                          onClick={() =>
+                            setRevealed((prev) => ({ ...prev, [v.key]: !prev[v.key] }))
+                          }>
+                          {isVisible ? (
+                            <EyeOffIcon size={16} aria-hidden='true' />
+                          ) : (
+                            <EyeIcon size={16} aria-hidden='true' />
+                          )}
+                        </InputGroupButton>
+                      </InputGroupAddon>
+                    </InputGroup>
+                  ) : (
+                    <Input
+                      type='text'
+                      placeholder={v.placeholder}
+                      value={values[v.key] ?? ''}
+                      onChange={(e) => setValues((prev) => ({ ...prev, [v.key]: e.target.value }))}
+                    />
+                  )}
+                  {v.description && <FieldDescription>{v.description}</FieldDescription>}
+                </Field>
+              )
+            })}
           </div>
           <DialogFooter>
             <Button type='button' variant='ghost' size='sm' onClick={handleClose}>
