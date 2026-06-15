@@ -20,6 +20,10 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 1,
   userScalable: false,
+  // Render edge-to-edge so the iOS notch / Dynamic Island / home-indicator
+  // insets become available via env(safe-area-inset-*). See the `*-safe`
+  // utilities in @auxx/ui/global.css that consume them.
+  viewportFit: 'cover',
 }
 
 export const metadata: Metadata = {

@@ -1020,6 +1020,29 @@ input[data-variant='translucent']:-webkit-autofill:active {
   }
 }
 
+/*
+ * Safe-area utilities — pad an element by the iOS notch / Dynamic Island /
+ * home-indicator insets. Require `viewportFit: 'cover'` on the viewport to
+ * resolve to non-zero values; they fall back to 0 everywhere else, so they
+ * are safe to apply unconditionally (no-op on desktop/Android).
+ *
+ * Apply to a full-bleed element that also paints its own background (the bg
+ * extends under the padding, so the notch area stays filled while content
+ * sits inside the safe area).
+ */
+@utility pt-safe {
+  padding-top: env(safe-area-inset-top);
+}
+@utility pr-safe {
+  padding-right: env(safe-area-inset-right);
+}
+@utility pb-safe {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+@utility pl-safe {
+  padding-left: env(safe-area-inset-left);
+}
+
 @layer components {
   .timeline-events .emphasis {
     color: rgb(var(--primary-700));

@@ -177,7 +177,7 @@ function Sidebar({
           className='w-(--sidebar-width) bg-sidebar p-0 text-sidebar-foreground [&>button]:hidden'
           style={{ '--sidebar-width': SIDEBAR_WIDTH_MOBILE } as React.CSSProperties}
           side={side}>
-          <div className='flex h-full w-full flex-col select-none'>{children}</div>
+          <div className='flex h-full w-full flex-col select-none pt-safe pb-safe'>{children}</div>
         </SheetContent>
       </Sheet>
     )
