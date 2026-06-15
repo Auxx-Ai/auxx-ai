@@ -1,0 +1,215 @@
+---
+title: "Building an AI Agent Engine, Part 2: Tools, Approval & Determinism"
+description: "A read-only chat loop is easy. An agent that sends emails, mutates records, and can still be replayed deterministically in a test suite is where the engineering lives. Part two of three."
+date: "2026-05-26"
+slug: "agent-engine-part-2-tools-approval-determinism"
+category:
+  slug: "coding"
+  title: "Coding"
+authors:
+  - name: "Markus Klooth"
+    image: "/images/avatars/markus.jpg"
+tags: ["ai", "agents", "tools", "human-in-the-loop", "evals", "typescript", "open-source"]
+published: true
+---
+
+[Part 1](/blog/agent-engine-part-1-domain-agnostic-harness) covered the generic engine: the loop, parts-based messages, async-generator streaming, and the safety valves that keep a model from running away. That engine could only read. It called tools and looked at the results.
+
+This post is about the harder part, making an agent act. There are three problems to solve.
+
+Acting safely. Some actions cannot be undone, like sending a reply to a customer or mutating a record. Those need a human's confirmation.
+
+Acting headlessly. An autonomous run triggered by a schedule or an event has no human to confirm anything. It needs a different way to handle the same dangerous tools.
+
+Testing the untestable. An agent that calls real APIs cannot be unit-tested in the normal sense. We need to run the same agent against mocked tools and make assertions about how it behaves.
+
+All three turn out to share the same handful of abstractions. Here they are.
+
+## A tool is a contract, not a function
+
+The naive mental model of a tool is a function the model can call. Ours is a richer object, because the function is the least interesting part of it:
+
+```typescript
+interface AgentToolDefinition {
+  name: string
+  description: string
+  inputSchema: ZodSchema          // projected to the model's tool schema
+  outputSchema?: ZodSchema        // typed .infer for consumers
+  outputsJsonSchema?: JsonSchema  // discoverable in catalogs and eval mocks
+
+  execute(args, ctx): Promise<unknown> | AsyncGenerator<ToolProgress, unknown>
+  validateInputs?(args): ParseResult<unknown>
+  buildDigest?(output): ToolDigest
+
+  requiresApproval?: boolean
+  endsTurn?: boolean
+  category?: 'control' | 'system' | 'capability'
+  inputBindings?: InputBinding[]
+  inputAmendmentSchema?: ZodSchema
+  captureMint?(args, ctx): unknown
+}
+```
+
+A few of these matter right away. `buildDigest` produces the small projection of an output that renders as a status pill or an approval card, because you do not want a 4KB raw JSON output in the UI. `captureMint` predicts an output without executing, which we will get to. `inputAmendmentSchema` describes which arguments a human can edit on an approval card.
+
+`validateInputs` does something specific. It is lenient. The model emits fuzzy arguments, sometimes a bare id, sometimes a `slug:id`, sometimes a fully qualified `defId:instId`. A strict schema rejects all but one form and forces a retry, which wastes a round-trip. Our normalizers accept every form and canonicalize it, returning a result type that carries an actionable error on failure and silent warnings on success:
+
+```typescript
+type ParseResult<T> =
+  | { ok: true; value: T; warnings?: string[] }
+  | { ok: false; error: string } // surfaced back to the model
+```
+
+Meeting the model where it is beats forcing it to guess your exact schema.
+
+## What happens on every tool call
+
+When the loop dispatches a tool call, it runs an ordered pipeline. None of the steps are optional, and the order matters:
+
+1. **Parse** the model's JSON arguments.
+2. **Transform** with a domain hook that injects defaults and pre-fills from session context.
+3. **Bind** any argument wired to a context source, clamping it to that source.
+4. **Validate** with the tool's own `validateInputs` and the lenient normalization above.
+5. **Cache check** against the idempotent cache from Part 1.
+6. **Execute** the handler, or drain its async generator if it streams progress.
+7. **Digest** the output into the small UI projection.
+8. **Capture** the result in the execution-context store.
+9. **Domain hooks** run: `onToolResult` mines the output for state, `transformToolResult` rewrites what the model sees versus what gets stored.
+10. **Stamp** status, output, and digest onto the tool-call part.
+
+Every handler receives a single `ToolContext`, the dependency bundle with the database handle, the org and user, the shared context store, and the current subject. One type, threaded everywhere, so a tool never reaches for an ambient global.
+
+## Human-in-the-loop: pause, approve, resume
+
+A tool marked `requiresApproval` does not execute when the model calls it. The loop flips its part to `awaiting-approval` and yields an `approval-required` event.
+
+What makes this robust rather than flaky is that the approval card is persisted as a message, not held in memory as a live event. It is stored as a `system` message with an approval payload:
+
+```typescript
+type ApprovalCard = {
+  role: 'system'
+  approval: {
+    toolName: string
+    toolCallId: string
+    args: unknown
+    status: 'pending' | 'approved' | 'rejected'
+  }
+}
+```
+
+Because it is persisted, a page refresh re-renders the same card from storage. The user can close the tab, come back an hour later, and the decision point is still there. An approval that only exists as a live SSE event evaporates the moment the connection drops. This one does not.
+
+When the user decides, `engine.resume()` picks up. It re-validates the arguments in case they changed, re-applies bindings, runs `validateInputs` again, and only then executes. The result is captured and the loop re-enters at the same `messageId`:
+
+```typescript
+async *resume(decision): AsyncGenerator<AgentEvent> {
+  if (decision.action === 'reject') {
+    // record the rejection, let the model acknowledge it
+    yield* this.continueTurn({ rejected: decision.toolCallId })
+    return
+  }
+
+  const finalArgs = decision.amendment
+    ? { ...pending.args, ...decision.amendment }
+    : pending.args
+
+  const result = await tool.execute(finalArgs, ctx) // no model re-call
+  yield* this.continueTurn({ resumeFrom: pending, result })
+}
+```
+
+That `resumeFrom` hint keeps the experience clean. The turn does not split into two bubbles across the pause. It is one assistant message that grows: the same `messageId`, with more parts appended after the human says yes.
+
+Input amendment is the feature people like. `inputAmendmentSchema` declares which fields are editable, and the approval card renders them. To fix a recipient or tweak a reply body before it sends, you edit it on the card. The amended arguments flow back through validation like any other input, so they do not bypass it.
+
+The budget ties in too. `maxApprovalsPerTurn` from Part 1 bounds how many times a single turn can stop for a human, so a misbehaving agent cannot wear you down with prompts.
+
+## Capture mode: acting without a human
+
+Now the second problem. An autonomous run fired by a schedule, an inbound event, or a workflow has no human to approve anything, and an eval simulation must never send a real email. Pausing is not an option in either case.
+
+The answer is capture mode, an alternate dispatch for approval-required tools. Instead of executing, we call the tool's `captureMint` to predict its output, wrap it as captured, and record the action:
+
+```typescript
+const minted = tool.captureMint?.(args, { localIndex })
+  ?? { status: 'queued_for_approval' }
+
+state.capturedActions.push({
+  toolCallId,
+  toolName,
+  args,
+  localIndex,
+  predictedOutput: minted, // e.g. { id: 'temp_0', ... }
+})
+```
+
+The reason to predict an output rather than return a stub is chaining. If `create_task` returns `{ id: 'temp_0' }`, the model can immediately call another tool that references `temp_0`, which produces `temp_1`, and so on. The agent builds up a whole sequence of dependent actions, none of which have actually run. A later apply phase substitutes the real ids for the temp ones when the actions are performed for real, or surfaced for a single batch approval.
+
+Two constraints make this work. `localIndex` is monotonic across the entire run, so the temp ids stay stable even when several agent invocations chain together. And `captureMint` must be pure and cheap, with no database or network access. That purity is exactly what makes eval simulations deterministic and fast. A mint that did IO would reintroduce the non-determinism we are trying to remove.
+
+Read-only tools still execute for real in capture mode. Only the mutating, approval-gated ones get minted. So an eval exercises your real lookup logic and only fakes the parts with side effects.
+
+## The execution-context store
+
+Tools need to share state within a turn. A single `ContextManager` interface is threaded onto every `ToolContext` as `ctx.context`, so a tool reads and writes turn state the same way whether it runs in chat, in internal Kopilot, or inside a [workflow node](/blog/workflows-part-2-execution-engine). Two different stores implement the interface behind thin adapters.
+
+Values are addressed by a typed string grammar, parsed once into `(kind, root, path)`:
+
+```
+var:cart.total          // scratch namespace, persists across turns
+tool:search_entities    // latest call of that tool, turn-scoped
+tool:search_entities[]  // all calls of that tool, turn-scoped
+call:<toolCallId>        // one exact call, turn-scoped
+sys:userId              // read-only system value
+```
+
+The paths are walked by one shared path walker: dotted descent, array indexing like `items[0]` and `items[-1]`, splat like `items[*]`, and `.first` and `.last`. The fact that there is only one walker is the point. The same code backs both the Kopilot store and the workflow store, so they cannot drift into subtly different behavior. Separate implementations would produce bugs that only reproduce on one surface.
+
+Tools wire arguments to context with input bindings:
+
+```typescript
+inputBindings: [{ name: 'cartId', default: 'var:cart.id' }]
+```
+
+If the model omits `cartId`, the pipeline fills it from `var:cart.id` before dispatch. The store persists onto the session. The `var:` namespace survives across turns, while captured tool outputs are turn-scoped. They survive an approval pause, so a resumed turn still sees what it found before pausing, but they get wiped when a new user message starts a fresh turn. A size cap drops the turn slice on overflow, so a runaway cannot bloat the session row.
+
+## One agent, three execution modes
+
+Count the ways the same agent has to run. Live, in production chat. Captured, in an autonomous job. Mocked, in an eval. Three slightly different assemblies would inevitably drift, and then "it passed in evals" would stop meaning anything.
+
+So there is exactly one builder. `effective-runtime.ts` assembles the runtime for all three from a single function. It resolves the model with a per-turn override, then the agent config, then the org default. It builds the capability registry, filters the toolset, projects the effective input bindings, and exposes an optional `wrapTools` hook that evals use to swap in mocks:
+
+```typescript
+const runtime = buildEffectiveRuntime({
+  agentConfig,
+  page,
+  modelOverride,
+  wrapTools, // evals pass a mock wrapper; production passes nothing
+})
+```
+
+Because production and evals build from the same function, the eval harness is not a parallel reimplementation that is subtly wrong. It is the real runtime with mocked leaves. This consolidation has already caught real bugs. A pre-extraction path that read the tool list from the wrong place worked in chat and crashed only on autonomous runs, because chat happened to populate the field and autonomous runs did not. One runtime, one code path, no divergence.
+
+## Determinism, paid off
+
+Put the three pieces together, pure minting, a deterministic context store, and one runtime with a mock hook, and an agent becomes replayable. That is what our evals framework runs on.
+
+An eval suite is a set of assertion-graded simulations. You give the agent a scenario, mock its tools, run it through the effective runtime, and assert on the captured actions and the final output. It supports comparing a draft procedure against the pinned one, and diffing a run against a baseline to catch regressions. When a suite finishes it reports back into chat, though how it does that, by kicking off long work and resuming the conversation when it completes, is a mechanism that belongs in Part 3.
+
+Evals deserve their own write-up, so I will stop there. The lesson for this post is narrower and more useful. Determinism was not bolted on afterward. It fell out of decisions we made for other reasons: pure capture minting, a single shared context store, one runtime builder. Build those right and testability is a consequence, not a separate project.
+
+## Next up
+
+We now have an agent that acts safely, acts headlessly, and can be pinned down in a test suite. What we do not have yet is a product. The engine still knows nothing about pages, cards, or the actual shape of a support conversation.
+
+[Part 3](/blog/agent-engine-part-3-kopilot-domain-layer) is the domain layer: how this generic engine becomes Kopilot, with page-aware tools, prompt assembly built for caching, the reference cards the model renders into the UI, and autonomous runs on a trigger.
+
+The files for this post:
+
+- `packages/lib/src/ai/agent-framework/types.ts`, the tool contract
+- `packages/lib/src/ai/agent-framework/query-loop.ts`, the execution pipeline
+- `packages/lib/src/ai/agent-framework/capture-mode.ts`, minting for headless and eval runs
+- `packages/lib/src/ai/agent-framework/context/`, the execution-context store
+- `packages/lib/src/ai/agent-framework/effective-runtime.ts`, one runtime for all three modes
+
+Auxx.ai is [open source](https://github.com/auxxai/auxx). PRs welcome.

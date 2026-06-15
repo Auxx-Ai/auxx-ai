@@ -1,0 +1,228 @@
+---
+title: "Building an AI Agent Engine, Part 1: A Domain-Agnostic Harness"
+description: "How we built the runtime that powers Kopilot: parts-based messages, async-generator streaming, and the safety valves that keep a model from running away. The first of a three-part deep dive."
+date: "2026-05-12"
+slug: "agent-engine-part-1-domain-agnostic-harness"
+category:
+  slug: "coding"
+  title: "Coding"
+authors:
+  - name: "Markus Klooth"
+    image: "/images/avatars/markus.jpg"
+tags: ["ai", "agents", "architecture", "typescript", "open-source"]
+published: true
+---
+
+The interesting part of an AI agent isn't the prompt. It's the runtime around it: the loop that takes a message, streams a model response, runs tools, decides when to stop, and refuses to spin forever when the model gets confused.
+
+We [wrote about this harness once before](/blog/how-we-built-kopilot-agent-loop). Since then we rebuilt it. The old version routed every message through a pipeline of specialized agents: a supervisor that classified intent, then a planner, an executor, and a responder. The new version runs a single agent instead of a pipeline, and does far more with it. This is the first of three posts on how it works.
+
+The plan for the series:
+
+1. **This post** covers the generic engine: the loop, how messages are stored, how everything streams, and the guardrails.
+2. **[Part 2](/blog/agent-engine-part-2-tools-approval-determinism)** is about making the agent act: tools, human-in-the-loop approval, and how you test a system built on a non-deterministic model.
+3. **[Part 3](/blog/agent-engine-part-3-kopilot-domain-layer)** is the domain layer: how this generic engine becomes Kopilot, the copilot embedded in the app.
+
+One idea runs through all three. The engine knows nothing about CRMs, email, or tickets. It speaks one interface, and domains plug into it. Kopilot is one such domain. So are our workflow AI nodes and our autonomous, triggered runs. This post is where that claim gets earned.
+
+The code lives in `packages/lib/src/ai/agent-framework/`. Auxx.ai is [open source](https://github.com/auxxai/auxx), so you can read along.
+
+## The loop is the product
+
+An agent, stripped down, is three things: a model, a set of tools, and a loop that decides when to call them and when to stop. The model is a commodity you can swap out. The tools are domain-specific. The loop is the part you own, and it holds every hard decision.
+
+Our loop has two layers.
+
+`AgentEngine` owns a *turn*. It takes a user message, runs the agent to completion, enforces budgets, accumulates usage, persists the result, and knows how to pause and resume. It is the orchestrator.
+
+`agentQueryLoop` is the inner loop. It builds the prompt, calls the model, collects tool calls, executes them, appends the results, and goes around again until the model stops asking for tools. It is the executor.
+
+Keeping these two separate is what lets the same inner loop run under interactive chat, inside a workflow step, and in a headless eval simulation. The orchestration around it changes. The loop itself does not.
+
+```
+User message
+  → Engine.submitMessage
+    → buildMessages (system prompt + history)
+    → callModel (stream)
+    → tool calls?
+        yes → execute → append results → loop
+        no  → finalize
+  → persist
+```
+
+## One message, many parts
+
+The first decision shaped everything downstream: how do you store a turn?
+
+The obvious answer is a flat list of role-tagged messages. User, assistant, tool, tool, assistant, and so on. It maps cleanly to the chat-completions API, but it is painful to render. A single turn, where the model thinks, calls two tools, then writes a reply, becomes four or five rows that the UI has to stitch back together every time.
+
+We went the other way. A turn is one assistant message holding an ordered array of *parts*:
+
+```typescript
+type ContentPart = TextPart | ThinkingPart | ToolCallPart
+
+type AssistantSessionMessage = {
+  role: 'assistant'
+  parts: ContentPart[] // [thinking, tool_call, text, tool_call, text, ...]
+  metadata: { usage: IterationUsage[] }
+}
+```
+
+Text, reasoning, and tool calls interleave in the exact order they happened. The important property is that the persisted shape matches the streamed shape exactly. What the UI renders live as the turn unfolds is byte-for-byte what gets saved, so there is no reconciliation step between the streaming view and the reloaded view. That gap is the source of a whole category of chat-UI bugs, and parts close it.
+
+Each tool-call part carries its own status, which drives the UI directly:
+
+```typescript
+type ToolCallStatus =
+  | 'running'
+  | 'awaiting-approval'
+  | 'completed'
+  | 'error'
+  | 'rejected'
+```
+
+There is no separate state machine for "is this tool waiting on the user." It is a field on the part.
+
+We pay for this in one place: replay. The model's API still wants the classic assistant-then-tool-result shape, so when we build the prompt for the next call we expand each `tool_call` part back into the message pair the API expects:
+
+```typescript
+// utils.ts: parts become wire format only at call time
+const wire = sessionMessagesToWire(messages)
+```
+
+A single bubble for humans, a spec-compliant transcript for the model. The conversion happens once, at the boundary, and nowhere else.
+
+## Async generators all the way down
+
+The whole pipeline streams, and it streams using async generators. The engine is a generator. The inner loop is a generator. The model adapter is a generator. They compose with `yield*`:
+
+```typescript
+async *submitMessage(message): AsyncGenerator<AgentEvent> {
+  yield* this.runTurn(message)
+}
+```
+
+Every meaningful thing that happens is an `AgentEvent`. There are around twenty of them:
+
+```typescript
+type AgentEvent =
+  | { type: 'turn-started' }
+  | { type: 'agent-started'; agent: string }
+  | { type: 'text-delta'; delta: string }
+  | { type: 'thinking-delta'; delta: string }
+  | { type: 'tool-call-started'; toolCallId: string; name: string }
+  | { type: 'tool-call-completed'; toolCallId: string; digest: unknown }
+  | { type: 'tool-call-failed'; toolCallId: string; error: string }
+  | { type: 'approval-required'; toolCallId: string; args: unknown }
+  | { type: 'assistant-message-finished'; parts: ContentPart[] }
+  | { type: 'turn-completed' }
+  // ...and more
+```
+
+These events bubble up out of the engine, get written to the SSE endpoint, fan out over Redis pub/sub, and land in a Zustand store on the frontend that turns them into thinking steps, streaming text, and tool-status pills.
+
+Generators beat callbacks or an event emitter here for four reasons. Events flow upstream the moment they are produced, with no buffering. Backpressure is free, so a slow consumer pauses the producer and nothing overflows. `yield*` delegates into a sub-generator without the parent knowing its internals. And cancellation is clean: an `AbortController` threads through every layer, so when the user hits stop the signal fires and each layer bails on its next iteration.
+
+One detail is worth pulling out. The terminal `assistant-message-finished` event carries the complete parts array. It acts as a checksum. Even if a delta got dropped or the client reconnected mid-stream, that final event reconciles the rendered message to the truth before it is persisted. Streaming and storage never disagree.
+
+## The safety valves
+
+This is the least glamorous and most important part of an agent harness. A model that can call tools in a loop can also get stuck in one. Here is what keeps it honest.
+
+A three-part turn budget, enforced at the engine level so it spans every iteration:
+
+```typescript
+const TURN_BUDGET = {
+  maxTokensPerTurn: 200_000,
+  maxTotalIterations: 50,
+  maxApprovalsPerTurn: 5,
+}
+```
+
+Idempotent tool caching. If the model calls the same tool with the same arguments twice in a turn, which happens more than you would expect, we serve the first result instead of hitting the database again. The cache key is the tool name plus a stable serialization of the arguments:
+
+```typescript
+const cacheKey = `${toolName}::${stableStringify(args)}`
+```
+
+Streak detection. A raw iteration cap is a blunt instrument that lets a stuck model burn forty iterations before giving up. Streak detection catches the two failure modes much earlier. On a failure streak, where the same tool fails the same way three times in a row, the turn aborts with an error, because the model is looping on something that will not work. On a success streak, where the same tool succeeds with identical arguments and the model keeps emitting the same surrounding text, the turn finalizes gracefully, because the model is done and only repeating itself.
+
+```typescript
+if (sameToolFailedIdentically(history, 3)) {
+  yield { type: 'turn-aborted', reason: 'tool-failure-streak' }
+  return
+}
+```
+
+Terminal tools. Some tool calls are themselves the answer. A tool marked `endsTurn: true` is a UI directive, like one that hands the user a set of suggested replies. When every tool call in an iteration is one of these and they all succeed, the loop finalizes immediately without calling the model again, and the prose the model already wrote becomes the reply. That saves a full round-trip on a common path.
+
+The `minToolCalls` nudge. Sometimes the model writes the answer as prose when it should have looked something up first. An agent can require a minimum number of tool calls before a text-only exit. If the model tries to skip ahead, we inject a synthetic nudge and let it try again.
+
+Text de-duplication. Models like to restate themselves. A normalized containment check drops an earlier text part when a later one repeats it verbatim, so the user does not read the same sentence twice.
+
+None of these are exotic. Together they are the difference between a demo and something you can leave running.
+
+## The adapter is the only provider-aware file
+
+Everything above the model is provider-agnostic. The one file that knows the difference between Anthropic and OpenAI is `llm-adapter.ts`, which exposes a single `callModel` generator. (We covered the provider routing underneath it in our [multi-provider AI system](/blog/multi-provider-ai-system-part-1) write-up.)
+
+It does three jobs worth mentioning.
+
+It buffers deltas. Token-level deltas are batched by a small character threshold and a short timer before they go out as events, which cuts SSE event volume sharply with no visible hit to how fast text appears.
+
+It detects truncation. If the model stops because it hit its output limit, the adapter flags it. Without that you get a half-emitted tool call that fails to parse downstream with no explanation.
+
+It captures cost. Every call records actual usage, including prompt-cache reads and writes. There is a provider quirk here: OpenAI folds cached-read tokens into `prompt_tokens` while Anthropic reports them separately, so the adapter normalizes both and the billing math upstream stays provider-neutral. How that becomes credits is its own topic. The point for now is that the adapter is the single place where the truth about cost is captured.
+
+## Keeping the conversation in budget
+
+Long conversations eventually exceed the model's window. A context manager keeps the system prompt and the most recent messages intact, and when a turn runs over budget it summarizes everything in between with a single model call:
+
+```typescript
+return [systemMessage, summaryMessage, ...recentMessages]
+```
+
+Token counts come from a four-characters-per-token estimate, not a real tokenizer. The number only has to be good enough to stay under a ceiling. The manager also drops chain-of-thought from older turns: reasoning earns its tokens on the turn that produces it and never again.
+
+## What the engine refuses to know
+
+Notice what never appeared in this post: tickets, emails, contacts, pages. The engine does not know they exist. It speaks exactly two interfaces:
+
+```typescript
+interface AgentDefinition<TDomainState> {
+  buildMessages(state, deps): Promise<WireMessage[]>
+  processResult(content, toolCalls, state, deps): Promise<AgentState>
+  tools: AgentToolDefinition[]
+  model?: string
+}
+
+interface AgentDomainConfig<TDomainState> {
+  agents: Record<string, AgentDefinition<TDomainState>>
+  routes: Route[]
+  createInitialState(context): TDomainState
+  // lifecycle hooks...
+}
+```
+
+The generic `TDomainState` lets a domain thread its own shape through the engine without the framework caring what is in it. Kopilot fills this in with everything that makes it a product, which is the subject of Part 3.
+
+## What we'd do differently
+
+Tighter token counting. The four-characters estimate has never caused a real incident, but as we push longer contexts that imprecision will eventually bite. A real tokenizer is on the list.
+
+Parallel tool execution within an iteration. When the model asks for two independent tools in one step, we still run them in sequence. The loop is structured to support running them concurrently, we just have not wired it up. Most iterations call only one tool, so the payoff is narrow, but it is there.
+
+## Next up
+
+We have a loop that streams, stores turns cleanly, and will not run away. So far it can only read. The harder engineering is in making an agent take actions you cannot undo, like sending an email or mutating a record, and then making that same agent deterministically testable, which sounds impossible for a system built on a non-deterministic model.
+
+That is [Part 2](/blog/agent-engine-part-2-tools-approval-determinism).
+
+If you want to read ahead, the entry points are:
+
+- `packages/lib/src/ai/agent-framework/engine.ts`, the orchestrator
+- `packages/lib/src/ai/agent-framework/query-loop.ts`, the inner loop
+- `packages/lib/src/ai/agent-framework/types.ts`, the core types
+- `packages/lib/src/ai/agent-framework/llm-adapter.ts`, the provider boundary
+
+Auxx.ai is [open source](https://github.com/auxxai/auxx). PRs welcome.

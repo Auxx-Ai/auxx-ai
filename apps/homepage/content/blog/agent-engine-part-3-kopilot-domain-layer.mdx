@@ -1,0 +1,165 @@
+---
+title: "Building an AI Agent Engine, Part 3: The Domain Layer"
+description: "A generic engine is a runtime, not a product. This is how ours becomes Kopilot: page-scoped tools, prompt assembly built for caching, reference cards the model renders into the UI, and autonomous runs. The final part."
+date: "2026-06-09"
+slug: "agent-engine-part-3-kopilot-domain-layer"
+category:
+  slug: "coding"
+  title: "Coding"
+authors:
+  - name: "Markus Klooth"
+    image: "/images/avatars/markus.jpg"
+tags: ["ai", "agents", "prompt-caching", "ui", "typescript", "open-source"]
+published: true
+---
+
+[Part 1](/blog/agent-engine-part-1-domain-agnostic-harness) built a generic engine, a streaming loop with safety valves. [Part 2](/blog/agent-engine-part-2-tools-approval-determinism) made it act, with tools, approval, capture mode, and deterministic evals. Both posts insisted on the same thing: the engine knows nothing about CRMs, email, pages, or cards.
+
+This post is about everything it deliberately does not know. The gap between "it can call tools in a loop" and "it is a copilot embedded in your app that renders interactive cards, caches prompts efficiently, and runs on a schedule" is the domain layer. For us that layer is Kopilot, and it plugs into the engine through a single interface, `AgentDomainConfig`.
+
+The code is in `packages/lib/src/ai/kopilot/`.
+
+## A single agent, not a pipeline
+
+Start with the biggest change from our earlier design, because it frames everything else.
+
+The original Kopilot was a pipeline. A supervisor agent classified each message into a route, and the route ran a sequence of specialized agents: a planner, then an executor, then a responder. It worked, but it had many moving parts, and the hand-offs between agents were a steady source of subtle state bugs.
+
+It is now a single agent on a single route. No supervisor, no planner, no separate responder. One agent owns the whole turn. It calls tools in a loop and writes the reply.
+
+Multi-step planning did not disappear, it became a tool. The agent calls `plan_create` to publish a list of steps and `plan_update_step` to advance them. The plan lives in the context store under `var:plan` and persists across turns. This fits better, because planning is something the agent does when a task warrants it, not a stage every message is forced through. A quick question no longer pays for a planner it never needed.
+
+```typescript
+// The entire routing table now
+routes: [{ name: 'default', agents: ['agent'] }]
+// no supervisorAgent, so the engine skips classification and runs the route directly
+```
+
+## The domain config
+
+`createKopilotDomainConfig()` returns the object the engine consumes. It is almost entirely hooks:
+
+```typescript
+{
+  agents: { agent: kopilotAgent },
+  routes: [{ name: 'default', agents: ['agent'] }],
+  createInitialState(context) { /* per-turn UI context */ },
+  applyContext(state, context) { /* refresh it each message */ },
+
+  transformToolInput(name, args, state) { /* pre-fill from context */ },
+  onToolResult(name, result, state) { /* mine snapshots */ },
+  onTurnEnd(state, outcome) { /* fan cleanup to capabilities */ },
+  postProcessFinalContent(content, state) { /* inject snapshots */ },
+  resetTurnDomainState(domainState) { /* drop turn captures, keep var:* */ },
+}
+```
+
+The config never inspects an individual tool. It does not sniff "is this the mail tool" anywhere. Tool behavior lives with the tool, and the config only wires generic lifecycle hooks. You add a tool, register it in a capability, and the config runs unchanged. That discipline is what has kept this file small while the tool count grew into the dozens.
+
+## Page-scoped capabilities
+
+A generic engine cannot answer one question: which tools should the agent even have? All of them is wrong. A model handed eighty tools picks worse than one handed eight, and half of them do not apply to where the user is.
+
+So tools are grouped into capabilities, and capabilities are scoped to pages. A `CapabilityRegistry` maps a page to its tools, its prompt fragments, a human-readable summary of what it can do there, and any turn-lifecycle hooks:
+
+```typescript
+interface PageCapability {
+  page: string
+  tools: AgentToolDefinition[]
+  systemPromptAddition?: string | ((ctx) => string)
+  excludeGlobalTools?: string[]
+  lifecycle?: CapabilityLifecycle
+}
+```
+
+Mail tools, such as find threads, reply, and manage drafts and tags, exist only on the mail page. Entity, knowledge, task, and plan tools are global. Some pages exclude globals to stay focused. The agent-builder page drops mail and entity-write tools because they would only distract.
+
+One detail turned out to matter. A capability's prompt fragment can be a function of which tools actually survived filtering. Tools get filtered at runtime for many reasons: a per-agent toolset, approval mode, the invoker's scope. If the prompt mentions a tool that got filtered out, the model tries to call something it does not have and fails in a confusing way. So the fragment receives the surviving tool names and gates its bullets on them:
+
+```typescript
+systemPromptAddition: (ctx) =>
+  ctx.toolNames.has('reply_to_thread')
+    ? '- You can reply directly to a thread with reply_to_thread.'
+    : ''
+```
+
+Never tell the model about a tool it cannot call.
+
+## Prompt assembly built for caching
+
+Prompt caching pays off only when the prompt is laid out for it, and most are not. The usual pattern is one large template string with stable and volatile content interleaved, which breaks the cache on nearly every call and pays full price every time.
+
+Our system prompt is composed from ordered sections, and every section declares a stability tier. Static sections are identical across every org and turn and change only on deploy, such as the persona, the house rules, and the block catalog. Org sections are stable until an admin edits something, such as the entity catalog, the integration catalog, and the available tools. Turn sections are rebuilt on every call, such as the active references, the current plan step, and the caller preamble.
+
+Sections are emitted static, then org, then turn, so the cache breakpoints line up exactly with what changes and when. The stable prefix stays cached across turns, and only the cheap tail at the end is ever re-billed. A dev-mode check enforces the ordering, so a careless edit cannot drop a turn-volatile section into the middle of the stable prefix and bust the whole cache.
+
+The run mode selects sections too. An interactive chat turn and an autonomous, triggered turn get different prompts. The autonomous one carries a banner that tells the model no human is reading this turn, that approval-gated tools will execute via capture mode, and that it should end with an audit summary rather than a question to a caller who is not there.
+
+## Reference cards: rich UI without coupling
+
+This is the part you see. When Kopilot shows an entity card, a list of threads, or a task, that did not come from a tool emitting HTML. It came from the model writing a fenced reference in its prose:
+
+````
+```auxx:entity-list
+{ "ids": ["contacts:abc", "contacts:def"] }
+```
+````
+
+The frontend resolves that fence into interactive cards. The question is where the card data comes from, and the answer is the interesting part.
+
+Snapshot mining is generic. Rather than every tool emitting card payloads, one shape-based walker inspects every tool output, recursively and at bounded depth, and harvests ids by shape. It recognizes a record id like `defId:instId`, a thread signature, a task signature, and the common container shapes such as `{ items }`, `{ threads }`, and `{ results }`. It mines them into a per-turn snapshot map. Doing it by shape means it works for tools written long after the walker shipped, so nobody has to remember to register a new tool's outputs.
+
+Injection happens at the end. After the turn, `postProcessFinalContent` finds each `auxx:*` fence, looks up its ids in the snapshot map, and embeds the display data, normalizing the over-prefixed ids the model sometimes writes. The model never sees snapshot data. It only ever writes ids. Snapshots are strictly a view-layer concern.
+
+The model gets a cheaper view. On each call, those same fences render to the model as compact numbered text, like "Showed entity-list (2 records): 1. ACME Corp, 2. Globex," so a smaller model can refer to result two without parsing JSON. The persisted message keeps the rich fence, the model sees the cheap version, and the two are deliberately different representations of the same thing.
+
+There is a smaller cousin for inline links. A reference dropped into prose like `[ACME](auxx://entity/companies/abc)` gets a per-message snapshot lookup, so the hover card still works after a reload with no tool replay needed. The knowledge tools draw on the same [dataset and vector search](/blog/datasets-part-2-embeddings-and-vector-search) layer we wrote about separately.
+
+## Knowing when not to auto-fill
+
+The composer's chips, the current page and any `@`-mention, flow in as session references, and the agent pre-fills tool arguments from them. Mentions win over page context, and that precedence is consistent across the prompt, the pre-fill step, and direct tool access.
+
+The interesting decision is what we do not auto-fill. A page often has several record-ish things live at once: an open drawer, a filtered list, a highlighted row. So `record` is deliberately not auto-bound. Silently routing the wrong record into a tool is worse than asking which one you meant. Most of the time the right move for an agent is to be helpful. Sometimes it is to know the limits of what it can safely infer.
+
+Approval-resume and notification turns posed a related problem. They post back without a page, which used to strip the page-scoped tools mid-conversation. So a continuation turn restores the page context it was on, but only a continuation. A fresh message stays page-less on purpose, and a live page value always wins. Statefulness by exception, not by default.
+
+## Fire and continue: async task notifications
+
+Some tools kick off work that takes minutes, such as an eval suite or a long background job. Blocking the loop on that is wrong. The agent should hand off and move on.
+
+So those tools return immediately with a notification reference:
+
+```typescript
+return { ok: true, taskNotification: { kind: 'eval-suite', ref: runId } }
+```
+
+The client watches that reference. When the task reaches a terminal state, the server builds a `<task-notification>` message and injects it, which automatically starts a new Kopilot turn that summarizes the outcome. From the user's point of view, the conversation picks back up on its own once the work is done. The background jobs themselves run on the [BullMQ queue](/blog/bullmq-job-queue-architecture-part-1) we use across the platform.
+
+Each kind of task has a small handler that knows how to load it, decide whether it is terminal, and summarize it. The eval suite from Part 2 was the first kind. A new kind is a new handler file and a registry entry, and the conversational machinery does not change. This is how long-running platform work closes the loop back into the chat without polling hacks or a blocked agent.
+
+## The same engine, everywhere
+
+The payoff of all that domain-agnostic discipline from Parts 1 and 2 is that the same engine runs far outside of chat.
+
+[Workflow AI nodes](/blog/workflows-part-3-ai-nodes-tools-public-workflows) reuse the engine through a minimal domain config, with pre-built messages, no persona assembly, and the workflow's own execution context threaded in as `ctx.context`, so the agent's context tools read and write the run's variables directly. Structured extraction runs a single pass through the same machinery to pull typed data out of text. Autonomous runs, triggered by a schedule, an event, a mention, or an assignment, run the same agent headlessly on the job queue, using the capture mode and autonomous prompt from earlier in the series.
+
+Session management rounds it out. There is one long-lived session per thread per agent, serialized per thread so two messages cannot race, and a catch-up replay that hydrates a session from the message history. It maps inbound messages to the user role, the agent's own past replies to assistant, and a teammate's messages to system context, so the model reads those as background rather than as its own prior output.
+
+All of it, the messages, the domain state, the context slice, and the link snapshots, persists as a single JSONB row per session. Conversations are read and written as a unit and never queried field by field, so one row, one read, one write is the right shape. Schema tweaks to the message format do not need migrations either.
+
+## From runtime to product
+
+That is the whole arc. Part 1 built a loop that streams and will not run away. Part 2 made it act safely and made it testable. Part 3 turned it into Kopilot, page-aware, cache-efficient, rendering real cards, and running on triggers, all through one `AgentDomainConfig` seam without the engine learning a single thing about support tickets.
+
+The lesson I would take from building it is that the leverage is in the boundary. We spent the effort to make the engine genuinely domain-agnostic, and the reward is that chat, workflow nodes, structured extraction, and autonomous agents are all the same engine with a different config bolted on. Write the hard part once, and plug in domains forever.
+
+The files for this post:
+
+- `packages/lib/src/ai/kopilot/domain-config.ts`, the config and its hooks
+- `packages/lib/src/ai/kopilot/capabilities/`, page-scoped tools
+- `packages/lib/src/ai/kopilot/prompts/`, tiered prompt assembly
+- `packages/lib/src/ai/kopilot/blocks/`, snapshot mining and reference fences
+- `packages/lib/src/ai/kopilot/task-notifications/`, async continuation
+- `packages/lib/src/ai/kopilot/runners/`, reuse beyond chat
+
+Auxx.ai is [open source](https://github.com/auxxai/auxx). PRs welcome, and if you build something on top of the engine, I would love to see it.
