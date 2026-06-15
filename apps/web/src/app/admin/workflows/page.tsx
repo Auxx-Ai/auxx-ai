@@ -202,6 +202,7 @@ export default function WorkflowTemplatesPage() {
                   <TableHead>Categories</TableHead>
                   <TableHead>Popularity</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead>Source</TableHead>
                   <TableHead>Updated</TableHead>
                   <TableHead className='text-right'>Actions</TableHead>
                 </TableRow>
@@ -225,6 +226,9 @@ export default function WorkflowTemplatesPage() {
                       </TableCell>
                       <TableCell>
                         <Skeleton className='h-4 w-24' />
+                      </TableCell>
+                      <TableCell>
+                        <Skeleton className='h-4 w-16' />
                       </TableCell>
                       <TableCell>
                         <Skeleton className='h-4 w-24' />
@@ -276,19 +280,28 @@ export default function WorkflowTemplatesPage() {
                         </Badge>
                       </TableCell>
                       <TableCell
+                        className='cursor-pointer'
+                        onClick={() => handleRowClick(template.id)}>
+                        <Badge variant={template.source === 'file' ? 'outline' : 'secondary'}>
+                          {template.source === 'file' ? 'File' : 'Admin'}
+                        </Badge>
+                      </TableCell>
+                      <TableCell
                         className='text-sm text-muted-foreground cursor-pointer'
                         onClick={() => handleRowClick(template.id)}>
                         {formatDistanceToNow(template.updatedAt, { addSuffix: true })}
                       </TableCell>
                       <TableCell className='text-right' onClick={(e) => e.stopPropagation()}>
                         <div className='flex gap-1 justify-end'>
-                          <Button
-                            variant='ghost'
-                            size='sm'
-                            onClick={() => handleToggleVisibility(template.id, template.status)}
-                            loading={updateTemplate.isPending}>
-                            {template.status === 'public' ? <EyeOff /> : <Eye />}
-                          </Button>
+                          {template.source !== 'file' && (
+                            <Button
+                              variant='ghost'
+                              size='sm'
+                              onClick={() => handleToggleVisibility(template.id, template.status)}
+                              loading={updateTemplate.isPending}>
+                              {template.status === 'public' ? <EyeOff /> : <Eye />}
+                            </Button>
+                          )}
                           <Button
                             variant='ghost'
                             size='sm'
@@ -296,20 +309,22 @@ export default function WorkflowTemplatesPage() {
                             loading={duplicateTemplate.isPending}>
                             <Copy />
                           </Button>
-                          <Button
-                            variant='ghost'
-                            size='sm'
-                            onClick={() => handleDelete(template.id, template.name)}
-                            loading={deleteTemplate.isPending}>
-                            <Trash2 />
-                          </Button>
+                          {template.source !== 'file' && (
+                            <Button
+                              variant='ghost'
+                              size='sm'
+                              onClick={() => handleDelete(template.id, template.name)}
+                              loading={deleteTemplate.isPending}>
+                              <Trash2 />
+                            </Button>
+                          )}
                         </div>
                       </TableCell>
                     </TableRow>
                   ))
                 ) : (
                   <TableRow>
-                    <TableCell colSpan={7} className='text-center text-muted-foreground py-8'>
+                    <TableCell colSpan={8} className='text-center text-muted-foreground py-8'>
                       {search || statusFilter !== 'all'
                         ? 'No templates found matching your filters'
                         : 'No templates'}

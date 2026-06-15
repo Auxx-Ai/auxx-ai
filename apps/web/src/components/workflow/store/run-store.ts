@@ -69,6 +69,8 @@ export interface RunState {
   graphSnapshot: { nodes: FlowNode[]; edges: FlowEdge[] } | null // Stored graph for refreshing tree
   // Loop iteration tracking
   loopIterations: Map<string, LoopIterationData[]> // keyed by loop nodeId
+  // Test-run input values (lives here so it survives InputTab portal remounts)
+  runInputs: Record<string, any>
 }
 export interface RunActions {
   // Reset state for a new run (called by hooks before starting)
@@ -125,6 +127,10 @@ export interface RunActions {
     totalIterations: number,
     outputs?: Record<string, any>
   ) => void
+  // Set test-run input values (accepts a value or an updater function)
+  setRunInputs: (
+    inputs: Record<string, any> | ((prev: Record<string, any>) => Record<string, any>)
+  ) => void
 }
 export const useRunStore = create<RunState & RunActions>()(
   immer((set, get) => ({
@@ -141,6 +147,13 @@ export const useRunStore = create<RunState & RunActions>()(
     displayExecutions: [],
     graphSnapshot: null,
     loopIterations: new Map(),
+    runInputs: {},
+    // Set test-run input values (value or updater)
+    setRunInputs: (inputs) => {
+      set((state) => {
+        state.runInputs = typeof inputs === 'function' ? inputs(state.runInputs) : inputs
+      })
+    },
     // Reset state for a new run (called by hooks)
     resetForNewRun: (nodes: FlowNode[], edges: FlowEdge[]) => {
       // Set canvas to read-only when starting new run

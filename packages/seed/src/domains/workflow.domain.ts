@@ -1,16 +1,15 @@
 // packages/seed/src/domains/workflow.domain.ts
-// Instantiates one workflow per example org from a public WorkflowTemplate row.
+// Instantiates one workflow per example org from a bundled file template.
 
 import type { Database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { EXAMPLE_WORKFLOW_TEMPLATE_NAME } from '../scenarios/example.scenario'
+import { EXAMPLE_WORKFLOW_TEMPLATE_ID } from '../scenarios/example.scenario'
 import type { SeedingScenario } from '../types'
-import { WorkflowTemplateDomain } from './workflow-template.domain'
 
 const logger = createScopedLogger('workflow-domain')
 
 /**
- * WorkflowDomain instantiates a single workflow from the bundled public template
+ * WorkflowDomain instantiates a single workflow from the bundled file template
  * for each seeded example organization. Mirrors the user-facing `workflow.create`
  * mutation: transform graph → resolve app slugs → resolve entity refs → WorkflowService.create.
  */
@@ -27,47 +26,27 @@ export class WorkflowDomain {
   ) {}
 
   /**
-   * Instantiates the "Shopify Order Lookup & Reply" workflow into the org.
-   * Self-healing: if the template row is missing (e.g. on first deploy), upserts it.
+   * Instantiates the "Shopify Order Lookup & Reply" workflow into the org from
+   * the bundled file template registry (file templates are not stored in the DB).
    * @param db - Drizzle database instance.
    */
   async insertDirectly(db: Database): Promise<void> {
-    const { schema } = await import('@auxx/database')
-    const { eq } = await import('drizzle-orm')
-
-    let [template] = await db
-      .select()
-      .from(schema.WorkflowTemplate)
-      .where(eq(schema.WorkflowTemplate.name, EXAMPLE_WORKFLOW_TEMPLATE_NAME))
-      .limit(1)
-
-    if (!template) {
-      logger.info('Template row missing, upserting bundled templates', {
-        name: EXAMPLE_WORKFLOW_TEMPLATE_NAME,
-      })
-      const templateDomain = new WorkflowTemplateDomain()
-      await templateDomain.insertDirectly(db)
-      ;[template] = await db
-        .select()
-        .from(schema.WorkflowTemplate)
-        .where(eq(schema.WorkflowTemplate.name, EXAMPLE_WORKFLOW_TEMPLATE_NAME))
-        .limit(1)
-    }
-
-    if (!template) {
-      logger.warn('Template still missing after upsert, skipping workflow instantiation', {
-        name: EXAMPLE_WORKFLOW_TEMPLATE_NAME,
-      })
-      return
-    }
-
     const {
+      getFileTemplateById,
       TemplateGraphTransformer,
       resolveAllAppSlugs,
       checkEntityReadiness,
       resolveEntityRefsInGraph,
       WorkflowService,
     } = await import('@auxx/lib/workflows')
+
+    const template = getFileTemplateById(EXAMPLE_WORKFLOW_TEMPLATE_ID)
+    if (!template) {
+      logger.warn('Example file template missing, skipping workflow instantiation', {
+        id: EXAMPLE_WORKFLOW_TEMPLATE_ID,
+      })
+      return
+    }
 
     const transformer = new TemplateGraphTransformer()
     const transformed = transformer.transformTemplate(
@@ -115,7 +94,7 @@ export class WorkflowDomain {
       icon: (template.icon ?? undefined) as any,
     })
 
-    logger.info('Example workflow created from template', {
+    logger.info('Example workflow created from file template', {
       organizationId: this.organizationId,
       templateName: template.name,
     })

@@ -1,0 +1,610 @@
+{
+  "slug": "kb-auto-responder",
+  "name": "Knowledge Base Auto-Responder",
+  "description": "When a customer emails, searches your knowledge base for relevant articles and generates a grounded AI reply. If no KB results are found, the ticket is escalated to a human reviewer. Showcases the knowledge-retrieval node for RAG-powered support.",
+  "categories": ["customer-service", "ai", "knowledge-base"],
+  "icon": {
+    "iconId": "book-open",
+    "color": "purple"
+  },
+  "status": "public",
+  "popularity": 85,
+  "triggerType": "message-received",
+  "triggerConfig": null,
+  "requiredApps": [],
+  "requiredEntities": [],
+  "envVars": [],
+  "graph": {
+    "nodes": [
+      {
+        "id": "note_setup",
+        "type": "note",
+        "position": {
+          "x": 350,
+          "y": 50
+        },
+        "data": {
+          "id": "note_setup",
+          "type": "note",
+          "title": "Setup Required",
+          "desc": "",
+          "text": "<p><span style=\"font-size: 14px;\">After creating this workflow, open the Knowledge Retrieval node and select your dataset(s).</span></p><p><span style=\"font-size: 14px;\">The AI reply quality depends on your knowledge base content.</span></p>",
+          "theme": "blue",
+          "author": "",
+          "errors": [],
+          "isValid": true,
+          "disabled": false,
+          "fontSize": 14,
+          "isInLoop": false,
+          "showAuthor": false
+        },
+        "width": 244,
+        "height": 100
+      },
+      {
+        "id": "trigger_1",
+        "type": "standard",
+        "position": {
+          "x": 100,
+          "y": 300
+        },
+        "data": {
+          "id": "trigger_1",
+          "type": "message-received",
+          "title": "Customer Email",
+          "desc": "Triggered when a new customer email arrives",
+          "variables": [],
+          "filters": {
+            "from": [],
+            "subject_contains": [],
+            "body_contains": []
+          }
+        },
+        "width": 244,
+        "height": 48
+      },
+      {
+        "id": "kb_search",
+        "type": "standard",
+        "position": {
+          "x": 450,
+          "y": 300
+        },
+        "data": {
+          "id": "kb_search",
+          "type": "knowledge-retrieval",
+          "title": "Search Knowledge Base",
+          "desc": "Search KB for articles relevant to the customer's question",
+          "query": "{{trigger_1.message.subject}} {{trigger_1.message.body}}",
+          "datasets": [],
+          "searchType": "hybrid",
+          "limit": 5,
+          "similarityThreshold": 0.7,
+          "fieldModes": {
+            "query": false,
+            "searchType": true,
+            "limit": true,
+            "similarityThreshold": true
+          }
+        },
+        "width": 244,
+        "height": 100
+      },
+      {
+        "id": "ifelse_results",
+        "type": "standard",
+        "position": {
+          "x": 800,
+          "y": 300
+        },
+        "data": {
+          "id": "ifelse_results",
+          "type": "if-else",
+          "title": "KB Results Found?",
+          "desc": "Check if the knowledge base returned relevant results",
+          "cases": [
+            {
+              "id": "case_found",
+              "case_id": "true",
+              "logical_operator": "and",
+              "conditions": [
+                {
+                  "id": "cond_total",
+                  "variableId": "kb_search.total",
+                  "comparison_operator": ">",
+                  "value": 0,
+                  "isConstant": true,
+                  "logical_operator": "and"
+                }
+              ]
+            }
+          ],
+          "_targetBranches": [
+            {
+              "id": "true",
+              "name": "Results Found",
+              "type": "default"
+            },
+            {
+              "id": "false",
+              "name": "No Results",
+              "type": "default"
+            }
+          ]
+        },
+        "width": 244,
+        "height": 100
+      },
+      {
+        "id": "ai_kb_reply",
+        "type": "standard",
+        "position": {
+          "x": 1150,
+          "y": 175
+        },
+        "data": {
+          "id": "ai_kb_reply",
+          "type": "ai",
+          "title": "AI: KB-Grounded Reply",
+          "desc": "Generate a reply using knowledge base context",
+          "model": {
+            "useDefault": true,
+            "provider": "",
+            "name": "",
+            "mode": "chat",
+            "completion_params": {
+              "temperature": 0.5
+            }
+          },
+          "prompt_template": [
+            {
+              "role": "system",
+              "json": {
+                "type": "doc",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "You are a friendly, professional customer support agent. Answer the customer's question using ONLY the knowledge base articles provided below. If the articles don't fully answer the question, say what you can and let the customer know you'll follow up."
+                      }
+                    ]
+                  },
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "Knowledge Base Results:"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "variable-node",
+                        "attrs": {
+                          "variableId": "kb_search.results"
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "Rules:"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "- Only use information from the KB articles above"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "- Be specific — reference relevant details from the articles"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "- Keep the reply concise and actionable"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "- If the articles partially answer the question, address what you can"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "- Use a warm, helpful tone"
+                      }
+                    ]
+                  }
+                ]
+              }
+            },
+            {
+              "role": "user",
+              "json": {
+                "type": "doc",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "Customer email:"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "Subject: "
+                      },
+                      {
+                        "type": "variable-node",
+                        "attrs": {
+                          "variableId": "trigger_1.message.subject"
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "variable-node",
+                        "attrs": {
+                          "variableId": "trigger_1.message.body"
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "context": {
+            "enabled": false,
+            "variable_selector": []
+          },
+          "vision": {
+            "enabled": false
+          },
+          "structured_output": {
+            "enabled": false
+          }
+        },
+        "width": 244,
+        "height": 100
+      },
+      {
+        "id": "answer_kb",
+        "type": "standard",
+        "position": {
+          "x": 1500,
+          "y": 175
+        },
+        "data": {
+          "id": "answer_kb",
+          "type": "answer",
+          "title": "Send KB Reply",
+          "desc": "Reply with knowledge base-grounded answer",
+          "messageType": "reply",
+          "recordId": "trigger_1.thread",
+          "text": "{{ai_kb_reply.text}}",
+          "to": [],
+          "toModes": [],
+          "cc": [],
+          "ccModes": [],
+          "bcc": [],
+          "bccModes": [],
+          "subject": "",
+          "attachments": [],
+          "attachmentFiles": [],
+          "attachmentFilesModes": []
+        },
+        "width": 244,
+        "height": 100
+      },
+      {
+        "id": "human_review",
+        "type": "standard",
+        "position": {
+          "x": 1150,
+          "y": 425
+        },
+        "data": {
+          "id": "human_review",
+          "type": "human-confirmation",
+          "title": "Escalate to Human",
+          "description": "No KB results found — human review required",
+          "message": "No knowledge base articles matched this customer's question. Please review and respond manually.\n\nCustomer email:\nSubject: {{trigger_1.message.subject}}\n\n{{trigger_1.message.body}}",
+          "assignees": {
+            "actorIds": []
+          },
+          "notification_methods": {
+            "in_app": true,
+            "email": true
+          },
+          "timeout": {
+            "enabled": true,
+            "duration": 24,
+            "unit": "hours"
+          },
+          "require_login": true,
+          "include_workflow_context": true,
+          "test_behavior": "always_approve",
+          "_targetBranches": [
+            {
+              "id": "approved",
+              "name": "Approved",
+              "type": "default"
+            },
+            {
+              "id": "denied",
+              "name": "Denied",
+              "type": "default"
+            }
+          ]
+        },
+        "width": 244,
+        "height": 100
+      },
+      {
+        "id": "ai_fallback",
+        "type": "standard",
+        "position": {
+          "x": 1500,
+          "y": 350
+        },
+        "data": {
+          "id": "ai_fallback",
+          "type": "ai",
+          "title": "AI: General Reply",
+          "desc": "Generate a general response after human approval",
+          "model": {
+            "useDefault": true,
+            "provider": "",
+            "name": "",
+            "mode": "chat",
+            "completion_params": {
+              "temperature": 0.7
+            }
+          },
+          "prompt_template": [
+            {
+              "role": "system",
+              "json": {
+                "type": "doc",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "You are a friendly, professional customer support agent. The customer's question couldn't be answered from the knowledge base, but a human reviewer has approved sending a general response."
+                      }
+                    ]
+                  },
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "Guidelines:"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "- Acknowledge the customer's question"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "- Provide a helpful general response"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "- Let them know you're looking into it further if needed"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "- Keep it concise and warm"
+                      }
+                    ]
+                  }
+                ]
+              }
+            },
+            {
+              "role": "user",
+              "json": {
+                "type": "doc",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "Customer email:"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "Subject: "
+                      },
+                      {
+                        "type": "variable-node",
+                        "attrs": {
+                          "variableId": "trigger_1.message.subject"
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "variable-node",
+                        "attrs": {
+                          "variableId": "trigger_1.message.body"
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "context": {
+            "enabled": false,
+            "variable_selector": []
+          },
+          "vision": {
+            "enabled": false
+          },
+          "structured_output": {
+            "enabled": false
+          }
+        },
+        "width": 244,
+        "height": 100
+      },
+      {
+        "id": "answer_fallback",
+        "type": "standard",
+        "position": {
+          "x": 1850,
+          "y": 350
+        },
+        "data": {
+          "id": "answer_fallback",
+          "type": "answer",
+          "title": "Send Fallback Reply",
+          "desc": "Send the general response to the customer",
+          "messageType": "reply",
+          "recordId": "trigger_1.thread",
+          "text": "{{ai_fallback.text}}",
+          "to": [],
+          "toModes": [],
+          "cc": [],
+          "ccModes": [],
+          "bcc": [],
+          "bccModes": [],
+          "subject": "",
+          "attachments": [],
+          "attachmentFiles": [],
+          "attachmentFilesModes": []
+        },
+        "width": 244,
+        "height": 100
+      },
+      {
+        "id": "end_denied",
+        "type": "standard",
+        "position": {
+          "x": 1500,
+          "y": 500
+        },
+        "data": {
+          "id": "end_denied",
+          "type": "end",
+          "title": "End",
+          "desc": "Workflow ends — ticket left for manual handling"
+        },
+        "width": 244,
+        "height": 48
+      }
+    ],
+    "edges": [
+      {
+        "id": "e_trigger_kb",
+        "source": "trigger_1",
+        "target": "kb_search",
+        "sourceHandle": "source",
+        "targetHandle": "target"
+      },
+      {
+        "id": "e_kb_ifelse",
+        "source": "kb_search",
+        "target": "ifelse_results",
+        "sourceHandle": "source",
+        "targetHandle": "target"
+      },
+      {
+        "id": "e_ifelse_ai_kb",
+        "source": "ifelse_results",
+        "target": "ai_kb_reply",
+        "sourceHandle": "true",
+        "targetHandle": "target"
+      },
+      {
+        "id": "e_ai_kb_answer",
+        "source": "ai_kb_reply",
+        "target": "answer_kb",
+        "sourceHandle": "source",
+        "targetHandle": "target"
+      },
+      {
+        "id": "e_ifelse_human",
+        "source": "ifelse_results",
+        "target": "human_review",
+        "sourceHandle": "false",
+        "targetHandle": "target"
+      },
+      {
+        "id": "e_human_ai_fallback",
+        "source": "human_review",
+        "target": "ai_fallback",
+        "sourceHandle": "approved",
+        "targetHandle": "target"
+      },
+      {
+        "id": "e_ai_fallback_answer",
+        "source": "ai_fallback",
+        "target": "answer_fallback",
+        "sourceHandle": "source",
+        "targetHandle": "target"
+      },
+      {
+        "id": "e_human_end",
+        "source": "human_review",
+        "target": "end_denied",
+        "sourceHandle": "denied",
+        "targetHandle": "target"
+      }
+    ],
+    "viewport": {
+      "x": 0,
+      "y": 0,
+      "zoom": 0.7
+    }
+  }
+}

@@ -48,10 +48,14 @@ export function InputTab({ workflowId, workflowAppId }: InputTabProps) {
   const { hasTrigger, triggerType, triggerConfig, validateTriggerInputs, getDefaultInputs } =
     useWorkflowTrigger()
 
-  const [inputs, setInputs] = useState<Record<string, any>>({})
+  // Inputs live in the run store so they survive InputTab remounts (the run
+  // panel re-portals to a different slot when the property panel opens).
+  const inputs = useRunStore((state) => state.runInputs)
+  const setInputs = useRunStore((state) => state.setRunInputs)
   const [errors, setErrors] = useState<Record<string, string>>({})
 
-  // Initialize inputs based on workflow and trigger
+  // Seed default inputs for any keys the user hasn't provided yet.
+  // Only fills missing keys — never overwrites existing (user-typed) values.
   useEffect(() => {
     const workflowWithEnvVars = workflow as any
     const defaultInputs: Record<string, any> = {}
@@ -79,16 +83,18 @@ export function InputTab({ workflowId, workflowAppId }: InputTabProps) {
       })
     }
 
-    // Only set inputs if they're different to prevent infinite loops
     setInputs((currentInputs) => {
-      // Check if inputs have changed
-      const hasChanged =
-        Object.keys(defaultInputs).length !== Object.keys(currentInputs).length ||
-        Object.keys(defaultInputs).some((key) => defaultInputs[key] !== currentInputs[key])
+      // Only add defaults for keys not already present, preserving user edits
+      const missingKeys = Object.keys(defaultInputs).filter((key) => !(key in currentInputs))
+      if (missingKeys.length === 0) return currentInputs
 
-      return hasChanged ? defaultInputs : currentInputs
+      const next = { ...currentInputs }
+      missingKeys.forEach((key) => {
+        next[key] = defaultInputs[key]
+      })
+      return next
     })
-  }, [workflow, hasTrigger, triggerConfig, getDefaultInputs])
+  }, [workflow, hasTrigger, triggerConfig, getDefaultInputs, setInputs])
 
   const handleInputChange = useCallback(
     (name: string, value: any) => {

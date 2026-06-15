@@ -90,6 +90,9 @@ jobs:
       - name: Run tests
         run: npx vitest run --project billing --project workflow-nodes
 
+      - name: Validate workflow templates
+        run: npx vitest run --project lib src/workflows/templates
+
   ci-ok:
     name: CI
     if: always()

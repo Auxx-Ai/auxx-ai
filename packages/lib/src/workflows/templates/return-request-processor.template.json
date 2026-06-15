@@ -1,0 +1,1070 @@
+{
+  "slug": "return-request-processor",
+  "name": "Return Request Processor",
+  "description": "When a customer emails about a return, this workflow extracts the order number, looks up the order in Shopify, runs a return policy check (30-day window, fulfillment status), and routes to the appropriate path. Eligible returns go to human approval before confirming. Ineligible returns get a polite explanation. If no order number is found, the customer is asked to provide one.",
+  "categories": ["customer-service", "shopify", "e-commerce", "ai"],
+  "icon": {
+    "iconId": "rotate-ccw",
+    "color": "amber"
+  },
+  "status": "public",
+  "popularity": 85,
+  "triggerType": "message-received",
+  "triggerConfig": null,
+  "requiredApps": [
+    {
+      "appSlug": "shopify",
+      "appTitle": "Shopify",
+      "blockIds": ["shopify"],
+      "triggerIds": [],
+      "required": true
+    }
+  ],
+  "requiredEntities": [],
+  "envVars": [],
+  "graph": {
+    "nodes": [
+      {
+        "id": "trigger_1",
+        "type": "standard",
+        "position": {
+          "x": 100,
+          "y": 350
+        },
+        "data": {
+          "id": "trigger_1",
+          "type": "message-received",
+          "title": "Customer Email",
+          "desc": "Triggered when a new customer email arrives",
+          "variables": [],
+          "filters": {
+            "from": [],
+            "subject_contains": [],
+            "body_contains": []
+          }
+        },
+        "width": 244,
+        "height": 48
+      },
+      {
+        "id": "extractor_1",
+        "type": "standard",
+        "position": {
+          "x": 450,
+          "y": 350
+        },
+        "data": {
+          "id": "extractor_1",
+          "type": "information-extractor",
+          "title": "Extract Return Details",
+          "desc": "Extract order number, item, and return reason from the email",
+          "model": {
+            "useDefault": true,
+            "provider": "",
+            "name": "",
+            "mode": "chat",
+            "completion_params": {
+              "temperature": 0.2
+            }
+          },
+          "text": "Subject: {{trigger_1.message.subject}}\n\nBody: {{trigger_1.message.body}}",
+          "structured_output": {
+            "enabled": true,
+            "schema": {
+              "type": "object",
+              "properties": {
+                "order_number": {
+                  "type": "string",
+                  "description": "The Shopify order number (digits only, no '#' prefix). Empty string if not found."
+                },
+                "item_name": {
+                  "type": "string",
+                  "description": "The product or item the customer wants to return. Empty string if not specified."
+                },
+                "return_reason": {
+                  "type": "string",
+                  "description": "Why the customer wants to return: defective, wrong-item, not-as-described, changed-mind, sizing-issue, or other"
+                },
+                "customer_name": {
+                  "type": "string",
+                  "description": "The customer's name if mentioned"
+                }
+              },
+              "required": ["order_number", "return_reason"]
+            }
+          },
+          "vision": {
+            "enabled": false
+          },
+          "instruction": {
+            "enabled": true,
+            "text": "Extract return request details from the customer email. Look for the order number (patterns like #1042, order 1042, order number 1042) and return only the numeric part. Identify which item they want to return and why. Categorize the reason as: defective, wrong-item, not-as-described, changed-mind, sizing-issue, or other."
+          }
+        },
+        "width": 244,
+        "height": 100
+      },
+      {
+        "id": "ifelse_has_order",
+        "type": "standard",
+        "position": {
+          "x": 800,
+          "y": 350
+        },
+        "data": {
+          "id": "ifelse_has_order",
+          "type": "if-else",
+          "title": "Has Order Number?",
+          "desc": "Check if an order number was found in the email",
+          "cases": [
+            {
+              "id": "case_has_order",
+              "case_id": "true",
+              "logical_operator": "and",
+              "conditions": [
+                {
+                  "id": "cond_order",
+                  "variableId": "extractor_1.extracted_data.order_number",
+                  "comparison_operator": "not empty",
+                  "logical_operator": "and"
+                }
+              ]
+            }
+          ],
+          "_targetBranches": [
+            {
+              "id": "true",
+              "name": "Found",
+              "type": "default"
+            },
+            {
+              "id": "false",
+              "name": "Not Found",
+              "type": "default"
+            }
+          ]
+        },
+        "width": 244,
+        "height": 100
+      },
+      {
+        "id": "shopify_get_order",
+        "type": "standard",
+        "position": {
+          "x": 1150,
+          "y": 200
+        },
+        "data": {
+          "id": "shopify_get_order",
+          "type": "@shopify:shopify",
+          "appSlug": "shopify",
+          "blockId": "shopify",
+          "title": "Shopify: Get Order",
+          "desc": "Look up the order in Shopify to check fulfillment and dates",
+          "resource": "order",
+          "operation": "get",
+          "getOrderId": "{{extractor_1.extracted_data.order_number}}",
+          "getFields": [],
+          "fieldModes": {
+            "getOrderId": false
+          },
+          "_connectedSourceHandleIds": ["source"],
+          "_connectedTargetHandleIds": ["target"]
+        },
+        "width": 244,
+        "height": 100
+      },
+      {
+        "id": "code_check_policy",
+        "type": "standard",
+        "position": {
+          "x": 1500,
+          "y": 200
+        },
+        "data": {
+          "id": "code_check_policy",
+          "type": "code",
+          "title": "Check Return Policy",
+          "desc": "Verify return eligibility: fulfillment status and 30-day window",
+          "code_language": "javascript",
+          "code": "const main = async (inputs) => {\n  const fulfillmentStatus = (inputs.fulfillmentStatus || '').toLowerCase()\n  const createdAt = inputs.createdAt || ''\n  const returnWindowDays = 30\n\n  const isDelivered = fulfillmentStatus === 'fulfilled'\n\n  let withinWindow = false\n  let daysSinceOrder = 0\n  if (createdAt) {\n    const orderDate = new Date(createdAt)\n    const now = new Date()\n    daysSinceOrder = Math.floor((now - orderDate) / (1000 * 60 * 60 * 24))\n    withinWindow = daysSinceOrder <= returnWindowDays\n  }\n\n  const eligible = isDelivered && withinWindow\n  let reason = ''\n  if (!isDelivered) {\n    reason = 'Order has not been fulfilled or delivered yet'\n  } else if (!withinWindow) {\n    reason = `Order is outside the ${returnWindowDays}-day return window (${daysSinceOrder} days ago)`\n  } else {\n    reason = 'Order is eligible for return'\n  }\n\n  return {\n    eligible: eligible ? 'yes' : 'no',\n    reason: reason,\n    daysSinceOrder: String(daysSinceOrder)\n  }\n}",
+          "inputs": [
+            {
+              "name": "fulfillmentStatus",
+              "variableId": "shopify_get_order.fulfillmentStatus"
+            },
+            {
+              "name": "createdAt",
+              "variableId": "shopify_get_order.createdAt"
+            }
+          ],
+          "outputs": [
+            {
+              "name": "eligible",
+              "type": "string",
+              "description": "Whether the return is eligible: 'yes' or 'no'"
+            },
+            {
+              "name": "reason",
+              "type": "string",
+              "description": "Human-readable explanation of eligibility"
+            },
+            {
+              "name": "daysSinceOrder",
+              "type": "string",
+              "description": "Number of days since the order was placed"
+            }
+          ]
+        },
+        "width": 244,
+        "height": 100
+      },
+      {
+        "id": "ifelse_eligible",
+        "type": "standard",
+        "position": {
+          "x": 1850,
+          "y": 200
+        },
+        "data": {
+          "id": "ifelse_eligible",
+          "type": "if-else",
+          "title": "Return Eligible?",
+          "desc": "Check if the order meets return policy requirements",
+          "cases": [
+            {
+              "id": "case_eligible",
+              "case_id": "true",
+              "logical_operator": "and",
+              "conditions": [
+                {
+                  "id": "cond_eligible",
+                  "variableId": "code_check_policy.eligible",
+                  "comparison_operator": "is",
+                  "value": "yes",
+                  "isConstant": true,
+                  "logical_operator": "and"
+                }
+              ]
+            }
+          ],
+          "_targetBranches": [
+            {
+              "id": "true",
+              "name": "Eligible",
+              "type": "default"
+            },
+            {
+              "id": "false",
+              "name": "Not Eligible",
+              "type": "default"
+            }
+          ]
+        },
+        "width": 244,
+        "height": 100
+      },
+      {
+        "id": "human_approve",
+        "type": "standard",
+        "position": {
+          "x": 2200,
+          "y": 75
+        },
+        "data": {
+          "id": "human_approve",
+          "type": "human-confirmation",
+          "title": "Approve Return",
+          "description": "Return request meets policy — approve to proceed",
+          "message": "A customer has requested a return that meets policy requirements.\n\nOrder: #{{shopify_get_order.name}}\nItem: {{extractor_1.extracted_data.item_name}}\nReason: {{extractor_1.extracted_data.return_reason}}\nFulfillment: {{shopify_get_order.fulfillmentStatus}}\nDays since order: {{code_check_policy.daysSinceOrder}}\n\nApprove to send the return confirmation to the customer.",
+          "assignees": {
+            "actorIds": []
+          },
+          "notification_methods": {
+            "in_app": true,
+            "email": true
+          },
+          "timeout": {
+            "enabled": true,
+            "duration": 48,
+            "unit": "hours"
+          },
+          "require_login": true,
+          "include_workflow_context": true,
+          "test_behavior": "always_approve",
+          "_targetBranches": [
+            {
+              "id": "approved",
+              "name": "Approved",
+              "type": "default"
+            },
+            {
+              "id": "denied",
+              "name": "Denied",
+              "type": "default"
+            }
+          ]
+        },
+        "width": 244,
+        "height": 100
+      },
+      {
+        "id": "ai_approve_reply",
+        "type": "standard",
+        "position": {
+          "x": 2550,
+          "y": 0
+        },
+        "data": {
+          "id": "ai_approve_reply",
+          "type": "ai",
+          "title": "AI: Return Approved",
+          "desc": "Generate return confirmation with instructions",
+          "model": {
+            "useDefault": true,
+            "provider": "",
+            "name": "",
+            "mode": "chat",
+            "completion_params": {
+              "temperature": 0.7
+            }
+          },
+          "prompt_template": [
+            {
+              "role": "system",
+              "json": {
+                "type": "doc",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "You are a friendly, professional customer support agent for a Shopify store. The customer's return request has been APPROVED. Generate a return confirmation email."
+                      }
+                    ]
+                  },
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "Order: #"
+                      },
+                      {
+                        "type": "variable-node",
+                        "attrs": {
+                          "variableId": "shopify_get_order.name"
+                        }
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "Item: "
+                      },
+                      {
+                        "type": "variable-node",
+                        "attrs": {
+                          "variableId": "extractor_1.extracted_data.item_name"
+                        }
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "Return reason: "
+                      },
+                      {
+                        "type": "variable-node",
+                        "attrs": {
+                          "variableId": "extractor_1.extracted_data.return_reason"
+                        }
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "Total: "
+                      },
+                      {
+                        "type": "variable-node",
+                        "attrs": {
+                          "variableId": "shopify_get_order.totalPrice"
+                        }
+                      },
+                      {
+                        "type": "text",
+                        "text": " "
+                      },
+                      {
+                        "type": "variable-node",
+                        "attrs": {
+                          "variableId": "shopify_get_order.currency"
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "Guidelines:"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "- Confirm the return is approved"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "- Provide clear next steps (e.g., ship the item back, include order number)"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "- Set expectations for refund timeline"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "- Be warm and helpful"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "- Keep it concise"
+                      }
+                    ]
+                  }
+                ]
+              }
+            },
+            {
+              "role": "user",
+              "json": {
+                "type": "doc",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "Customer email:"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "Subject: "
+                      },
+                      {
+                        "type": "variable-node",
+                        "attrs": {
+                          "variableId": "trigger_1.message.subject"
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "variable-node",
+                        "attrs": {
+                          "variableId": "trigger_1.message.body"
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "context": {
+            "enabled": false,
+            "variable_selector": []
+          },
+          "vision": {
+            "enabled": false
+          },
+          "structured_output": {
+            "enabled": false
+          }
+        },
+        "width": 244,
+        "height": 100
+      },
+      {
+        "id": "answer_approved",
+        "type": "standard",
+        "position": {
+          "x": 2900,
+          "y": 0
+        },
+        "data": {
+          "id": "answer_approved",
+          "type": "answer",
+          "title": "Send Return Confirmation",
+          "desc": "Reply with return approval and instructions",
+          "messageType": "reply",
+          "recordId": "trigger_1.thread",
+          "text": "{{ai_approve_reply.text}}",
+          "to": [],
+          "toModes": [],
+          "cc": [],
+          "ccModes": [],
+          "bcc": [],
+          "bccModes": [],
+          "subject": "",
+          "attachments": [],
+          "attachmentFiles": [],
+          "attachmentFilesModes": []
+        },
+        "width": 244,
+        "height": 100
+      },
+      {
+        "id": "end_denied",
+        "type": "standard",
+        "position": {
+          "x": 2550,
+          "y": 150
+        },
+        "data": {
+          "id": "end_denied",
+          "type": "end",
+          "title": "End (Denied)",
+          "desc": "Return denied by reviewer — handle manually"
+        },
+        "width": 244,
+        "height": 48
+      },
+      {
+        "id": "ai_decline_reply",
+        "type": "standard",
+        "position": {
+          "x": 2200,
+          "y": 325
+        },
+        "data": {
+          "id": "ai_decline_reply",
+          "type": "ai",
+          "title": "AI: Return Not Eligible",
+          "desc": "Generate a polite decline with the reason",
+          "model": {
+            "useDefault": true,
+            "provider": "",
+            "name": "",
+            "mode": "chat",
+            "completion_params": {
+              "temperature": 0.7
+            }
+          },
+          "prompt_template": [
+            {
+              "role": "system",
+              "json": {
+                "type": "doc",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "You are a friendly, professional customer support agent for a Shopify store. The customer's return request does NOT meet the return policy. Generate a polite, empathetic decline."
+                      }
+                    ]
+                  },
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "Order: #"
+                      },
+                      {
+                        "type": "variable-node",
+                        "attrs": {
+                          "variableId": "shopify_get_order.name"
+                        }
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "Item: "
+                      },
+                      {
+                        "type": "variable-node",
+                        "attrs": {
+                          "variableId": "extractor_1.extracted_data.item_name"
+                        }
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "Return reason: "
+                      },
+                      {
+                        "type": "variable-node",
+                        "attrs": {
+                          "variableId": "extractor_1.extracted_data.return_reason"
+                        }
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "Policy check result: "
+                      },
+                      {
+                        "type": "variable-node",
+                        "attrs": {
+                          "variableId": "code_check_policy.reason"
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "Guidelines:"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "- Be empathetic — the customer is disappointed"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "- Clearly explain why the return isn't eligible (use the policy check reason)"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "- Offer alternatives if possible (exchange, store credit, contact for special cases)"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "- Don't be robotic — show you understand their frustration"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "- Keep it concise"
+                      }
+                    ]
+                  }
+                ]
+              }
+            },
+            {
+              "role": "user",
+              "json": {
+                "type": "doc",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "Customer email:"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "Subject: "
+                      },
+                      {
+                        "type": "variable-node",
+                        "attrs": {
+                          "variableId": "trigger_1.message.subject"
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "variable-node",
+                        "attrs": {
+                          "variableId": "trigger_1.message.body"
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "context": {
+            "enabled": false,
+            "variable_selector": []
+          },
+          "vision": {
+            "enabled": false
+          },
+          "structured_output": {
+            "enabled": false
+          }
+        },
+        "width": 244,
+        "height": 100
+      },
+      {
+        "id": "answer_decline",
+        "type": "standard",
+        "position": {
+          "x": 2550,
+          "y": 325
+        },
+        "data": {
+          "id": "answer_decline",
+          "type": "answer",
+          "title": "Send Decline Reply",
+          "desc": "Reply explaining why the return isn't eligible",
+          "messageType": "reply",
+          "recordId": "trigger_1.thread",
+          "text": "{{ai_decline_reply.text}}",
+          "to": [],
+          "toModes": [],
+          "cc": [],
+          "ccModes": [],
+          "bcc": [],
+          "bccModes": [],
+          "subject": "",
+          "attachments": [],
+          "attachmentFiles": [],
+          "attachmentFilesModes": []
+        },
+        "width": 244,
+        "height": 100
+      },
+      {
+        "id": "ai_ask_order",
+        "type": "standard",
+        "position": {
+          "x": 1150,
+          "y": 525
+        },
+        "data": {
+          "id": "ai_ask_order",
+          "type": "ai",
+          "title": "AI: Ask for Order #",
+          "desc": "Ask the customer to provide their order number",
+          "model": {
+            "useDefault": true,
+            "provider": "",
+            "name": "",
+            "mode": "chat",
+            "completion_params": {
+              "temperature": 0.7
+            }
+          },
+          "prompt_template": [
+            {
+              "role": "system",
+              "json": {
+                "type": "doc",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "You are a friendly, professional customer support agent for a Shopify store. The customer wants to return something but didn't include their order number."
+                      }
+                    ]
+                  },
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "Return reason mentioned: "
+                      },
+                      {
+                        "type": "variable-node",
+                        "attrs": {
+                          "variableId": "extractor_1.extracted_data.return_reason"
+                        }
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "Item mentioned: "
+                      },
+                      {
+                        "type": "variable-node",
+                        "attrs": {
+                          "variableId": "extractor_1.extracted_data.item_name"
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "Guidelines:"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "- Acknowledge their return request warmly"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "- Politely ask for their order number (explain where to find it — confirmation email, account page)"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "- Reassure them you'll process the return once you have the order details"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "- Keep it concise"
+                      }
+                    ]
+                  }
+                ]
+              }
+            },
+            {
+              "role": "user",
+              "json": {
+                "type": "doc",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "Customer email:"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "Subject: "
+                      },
+                      {
+                        "type": "variable-node",
+                        "attrs": {
+                          "variableId": "trigger_1.message.subject"
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "variable-node",
+                        "attrs": {
+                          "variableId": "trigger_1.message.body"
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "context": {
+            "enabled": false,
+            "variable_selector": []
+          },
+          "vision": {
+            "enabled": false
+          },
+          "structured_output": {
+            "enabled": false
+          }
+        },
+        "width": 244,
+        "height": 100
+      },
+      {
+        "id": "answer_ask_order",
+        "type": "standard",
+        "position": {
+          "x": 1500,
+          "y": 525
+        },
+        "data": {
+          "id": "answer_ask_order",
+          "type": "answer",
+          "title": "Send Order # Request",
+          "desc": "Ask customer for their order number",
+          "messageType": "reply",
+          "recordId": "trigger_1.thread",
+          "text": "{{ai_ask_order.text}}",
+          "to": [],
+          "toModes": [],
+          "cc": [],
+          "ccModes": [],
+          "bcc": [],
+          "bccModes": [],
+          "subject": "",
+          "attachments": [],
+          "attachmentFiles": [],
+          "attachmentFilesModes": []
+        },
+        "width": 244,
+        "height": 100
+      }
+    ],
+    "edges": [
+      {
+        "id": "e_trigger_extractor",
+        "source": "trigger_1",
+        "target": "extractor_1",
+        "sourceHandle": "source",
+        "targetHandle": "target"
+      },
+      {
+        "id": "e_extractor_ifelse",
+        "source": "extractor_1",
+        "target": "ifelse_has_order",
+        "sourceHandle": "source",
+        "targetHandle": "target"
+      },
+      {
+        "id": "e_ifelse_shopify",
+        "source": "ifelse_has_order",
+        "target": "shopify_get_order",
+        "sourceHandle": "true",
+        "targetHandle": "target"
+      },
+      {
+        "id": "e_shopify_code",
+        "source": "shopify_get_order",
+        "target": "code_check_policy",
+        "sourceHandle": "source",
+        "targetHandle": "target"
+      },
+      {
+        "id": "e_code_ifelse_eligible",
+        "source": "code_check_policy",
+        "target": "ifelse_eligible",
+        "sourceHandle": "source",
+        "targetHandle": "target"
+      },
+      {
+        "id": "e_eligible_human",
+        "source": "ifelse_eligible",
+        "target": "human_approve",
+        "sourceHandle": "true",
+        "targetHandle": "target"
+      },
+      {
+        "id": "e_human_ai_approve",
+        "source": "human_approve",
+        "target": "ai_approve_reply",
+        "sourceHandle": "approved",
+        "targetHandle": "target"
+      },
+      {
+        "id": "e_ai_approve_answer",
+        "source": "ai_approve_reply",
+        "target": "answer_approved",
+        "sourceHandle": "source",
+        "targetHandle": "target"
+      },
+      {
+        "id": "e_human_end",
+        "source": "human_approve",
+        "target": "end_denied",
+        "sourceHandle": "denied",
+        "targetHandle": "target"
+      },
+      {
+        "id": "e_not_eligible_ai",
+        "source": "ifelse_eligible",
+        "target": "ai_decline_reply",
+        "sourceHandle": "false",
+        "targetHandle": "target"
+      },
+      {
+        "id": "e_ai_decline_answer",
+        "source": "ai_decline_reply",
+        "target": "answer_decline",
+        "sourceHandle": "source",
+        "targetHandle": "target"
+      },
+      {
+        "id": "e_ifelse_no_order",
+        "source": "ifelse_has_order",
+        "target": "ai_ask_order",
+        "sourceHandle": "false",
+        "targetHandle": "target"
+      },
+      {
+        "id": "e_ai_ask_answer",
+        "source": "ai_ask_order",
+        "target": "answer_ask_order",
+        "sourceHandle": "source",
+        "targetHandle": "target"
+      }
+    ],
+    "viewport": {
+      "x": 0,
+      "y": 0,
+      "zoom": 0.7
+    }
+  }
+}

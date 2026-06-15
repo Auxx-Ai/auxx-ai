@@ -24,7 +24,6 @@ import {
   WorkflowStatsService,
   WorkflowVersionService,
 } from '@auxx/lib/workflows'
-import { getTemplateById } from '@auxx/services/workflow-templates'
 import { getWorkflowAppsByTrigger } from '@auxx/services/workflows'
 import { type RecordId, recordIdSchema } from '@auxx/types/resource'
 import { generateId } from '@auxx/utils/generateId'
@@ -33,6 +32,7 @@ import { and, count, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { recordAuditFromCtx } from '~/server/api/audit-context'
 import { createTRPCRouter, notDemo, protectedProcedure } from '~/server/api/trpc'
+import { resolveTemplateById } from '~/server/api/workflow-template-resolver'
 import { workflowTemplatesRouter } from './workflow-templates'
 
 /**
@@ -343,13 +343,11 @@ export const workflowRouter = createTRPCRouter({
       let templateData: any
 
       if (input.templateId) {
-        const templateResult = await getTemplateById(input.templateId)
+        const template = await resolveTemplateById(input.templateId)
 
-        if (templateResult.isErr()) {
+        if (!template) {
           throw new TRPCError({ code: 'NOT_FOUND', message: 'Template not found' })
         }
-
-        const template = templateResult.value
 
         // Transform the template graph and data
         const transformer = new TemplateGraphTransformer()

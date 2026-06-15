@@ -1,0 +1,359 @@
+{
+  "slug": "information-extraction-auto-reply",
+  "name": "Information Extraction + Auto-Reply",
+  "description": "Extracts key information from customer emails (order number, issue type, urgency, sentiment) using AI, then generates a contextual reply based on the extracted data.",
+  "categories": ["customer-service", "ai", "automation"],
+  "status": "public",
+  "popularity": 80,
+  "graph": {
+    "nodes": [
+      {
+        "id": "trigger_1",
+        "type": "standard",
+        "position": {
+          "x": 100,
+          "y": 150
+        },
+        "data": {
+          "id": "trigger_1",
+          "type": "message-received",
+          "title": "Message Received",
+          "desc": "Triggered when a new customer email arrives",
+          "variables": [],
+          "filters": {
+            "from": [],
+            "subject_contains": [],
+            "body_contains": []
+          }
+        },
+        "width": 244,
+        "height": 48
+      },
+      {
+        "id": "extractor_1",
+        "type": "standard",
+        "position": {
+          "x": 450,
+          "y": 150
+        },
+        "data": {
+          "id": "extractor_1",
+          "type": "information-extractor",
+          "title": "Extract Email Info",
+          "desc": "Extract order number, issue type, urgency, and sentiment",
+          "model": {
+            "useDefault": true,
+            "provider": "",
+            "name": "",
+            "mode": "chat",
+            "completion_params": {
+              "temperature": 0.3
+            }
+          },
+          "text": "Subject: {{trigger_1.message.subject}}\n\nBody: {{trigger_1.message.body}}",
+          "structured_output": {
+            "enabled": true,
+            "schema": {
+              "type": "object",
+              "properties": {
+                "order_number": {
+                  "type": "string",
+                  "description": "The order number mentioned by the customer, or empty if not mentioned"
+                },
+                "issue_type": {
+                  "type": "string",
+                  "description": "The type of issue: order-status, refund, shipping, product-question, complaint, or other"
+                },
+                "urgency": {
+                  "type": "string",
+                  "description": "Urgency level: low, medium, or high"
+                },
+                "customer_sentiment": {
+                  "type": "string",
+                  "description": "Customer sentiment: positive, neutral, or negative"
+                },
+                "summary": {
+                  "type": "string",
+                  "description": "One-sentence summary of the customer's request"
+                }
+              },
+              "required": ["issue_type", "urgency", "customer_sentiment", "summary"]
+            }
+          },
+          "vision": {
+            "enabled": false
+          },
+          "instruction": {
+            "enabled": true,
+            "text": "Extract the following from the customer email: order number (if mentioned), issue type, urgency level, customer sentiment, and a brief summary. Be precise and consistent with the enum values."
+          }
+        },
+        "width": 244,
+        "height": 100
+      },
+      {
+        "id": "ai_reply",
+        "type": "standard",
+        "position": {
+          "x": 800,
+          "y": 150
+        },
+        "data": {
+          "id": "ai_reply",
+          "type": "ai",
+          "title": "Generate Contextual Reply",
+          "desc": "Craft a reply using extracted information",
+          "model": {
+            "useDefault": true,
+            "provider": "",
+            "name": "",
+            "mode": "chat",
+            "completion_params": {
+              "temperature": 0.7
+            }
+          },
+          "prompt_template": [
+            {
+              "role": "system",
+              "json": {
+                "type": "doc",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "You are a helpful Shopify customer support agent. Use the extracted information to craft a personalized, contextual reply."
+                      }
+                    ]
+                  },
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "Extracted info:"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "- Issue type: "
+                      },
+                      {
+                        "type": "variable-node",
+                        "attrs": {
+                          "variableId": "extractor_1.extracted_data.issue_type"
+                        }
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "- Urgency: "
+                      },
+                      {
+                        "type": "variable-node",
+                        "attrs": {
+                          "variableId": "extractor_1.extracted_data.urgency"
+                        }
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "- Sentiment: "
+                      },
+                      {
+                        "type": "variable-node",
+                        "attrs": {
+                          "variableId": "extractor_1.extracted_data.customer_sentiment"
+                        }
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "- Order #: "
+                      },
+                      {
+                        "type": "variable-node",
+                        "attrs": {
+                          "variableId": "extractor_1.extracted_data.order_number"
+                        }
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "- Summary: "
+                      },
+                      {
+                        "type": "variable-node",
+                        "attrs": {
+                          "variableId": "extractor_1.extracted_data.summary"
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "Guidelines:"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "- If urgency is high, acknowledge it and prioritize resolution"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "- If sentiment is negative, be extra empathetic"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "- If an order number is provided, reference it"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "- Keep the reply professional and concise"
+                      }
+                    ]
+                  }
+                ]
+              }
+            },
+            {
+              "role": "user",
+              "json": {
+                "type": "doc",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "Original email:"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "Subject: "
+                      },
+                      {
+                        "type": "variable-node",
+                        "attrs": {
+                          "variableId": "trigger_1.message.subject"
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "variable-node",
+                        "attrs": {
+                          "variableId": "trigger_1.message.body"
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "context": {
+            "enabled": false,
+            "variable_selector": []
+          },
+          "vision": {
+            "enabled": false
+          },
+          "structured_output": {
+            "enabled": false
+          }
+        },
+        "width": 244,
+        "height": 100
+      },
+      {
+        "id": "answer_1",
+        "type": "standard",
+        "position": {
+          "x": 1150,
+          "y": 150
+        },
+        "data": {
+          "id": "answer_1",
+          "type": "answer",
+          "title": "Send Reply",
+          "desc": "Send the contextual reply to the customer",
+          "messageType": "reply",
+          "recordId": "trigger_1.thread",
+          "text": "{{ai_reply.text}}",
+          "to": [],
+          "toModes": [],
+          "cc": [],
+          "ccModes": [],
+          "bcc": [],
+          "bccModes": [],
+          "subject": "",
+          "attachments": [],
+          "attachmentFiles": [],
+          "attachmentFilesModes": []
+        },
+        "width": 244,
+        "height": 100
+      }
+    ],
+    "edges": [
+      {
+        "id": "e_trigger_extractor",
+        "source": "trigger_1",
+        "target": "extractor_1",
+        "sourceHandle": "source",
+        "targetHandle": "target"
+      },
+      {
+        "id": "e_extractor_ai",
+        "source": "extractor_1",
+        "target": "ai_reply",
+        "sourceHandle": "source",
+        "targetHandle": "target"
+      },
+      {
+        "id": "e_ai_answer",
+        "source": "ai_reply",
+        "target": "answer_1",
+        "sourceHandle": "source",
+        "targetHandle": "target"
+      }
+    ],
+    "viewport": {
+      "x": 0,
+      "y": 0,
+      "zoom": 0.85
+    }
+  }
+}

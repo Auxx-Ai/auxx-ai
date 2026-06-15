@@ -81,6 +81,33 @@ export class UsageCounter {
   }
 
   /**
+   * Refund a previously-consumed quantity — e.g. an upstream job failed after
+   * `consumeIfAllowed` already incremented. Decrements the Redis counter
+   * (clamped at 0) and records a compensating negative UsageEvent so a Redis
+   * rebuild from Postgres stays consistent.
+   */
+  async refund(params: {
+    orgId: string
+    metric: string
+    quantity?: number
+    userId?: string
+    metadata?: Record<string, unknown>
+  }): Promise<void> {
+    const periodKey = this.getMonthKey()
+    const redisKey = `usage:${params.orgId}:${params.metric}:${periodKey}`
+    const quantity = params.quantity ?? 1
+
+    const newTotal = await this.redis.decrby(redisKey, quantity)
+    // Guard against drifting negative (counter was evicted, then refunded).
+    if (newTotal < 0) {
+      await this.redis.set(redisKey, '0', 'EX', this.getMonthTTL())
+    }
+
+    // Compensating negative event keeps the Postgres-derived sum correct.
+    this.enqueueRecordEvent(params, periodKey, -quantity)
+  }
+
+  /**
    * Get current usage for a metric in the current month.
    * Falls back to Postgres if Redis key is missing (eviction/restart).
    */

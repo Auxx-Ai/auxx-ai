@@ -1,0 +1,340 @@
+{
+  "slug": "manual-ticket-triage",
+  "name": "Manual Ticket Triage with AI",
+  "description": "Manually triggered workflow that uses AI to analyze a support ticket and draft a response. Includes human approval before sending — rejected drafts are discarded.",
+  "categories": ["customer-service", "ai"],
+  "status": "public",
+  "popularity": 70,
+  "graph": {
+    "nodes": [
+      {
+        "id": "form_subject",
+        "type": "standard",
+        "position": {
+          "x": -200,
+          "y": 225
+        },
+        "data": {
+          "id": "form_subject",
+          "type": "form-input",
+          "title": "Ticket Subject",
+          "desc": "Collect the email subject line",
+          "label": "Ticket Subject",
+          "inputType": "string",
+          "placeholder": "Enter the email subject",
+          "required": true
+        },
+        "width": 244,
+        "height": 48
+      },
+      {
+        "id": "form_body",
+        "type": "standard",
+        "position": {
+          "x": -200,
+          "y": 325
+        },
+        "data": {
+          "id": "form_body",
+          "type": "form-input",
+          "title": "Ticket Body",
+          "desc": "Collect the customer email content",
+          "label": "Ticket Body",
+          "inputType": "string",
+          "placeholder": "Paste the customer email content",
+          "required": true
+        },
+        "width": 244,
+        "height": 48
+      },
+      {
+        "id": "trigger_1",
+        "type": "standard",
+        "position": {
+          "x": 100,
+          "y": 300
+        },
+        "data": {
+          "id": "trigger_1",
+          "type": "manual",
+          "title": "Manual Trigger",
+          "desc": "Run this workflow on a specific ticket",
+          "inputNodes": ["form_subject", "form_body"]
+        },
+        "width": 244,
+        "height": 48
+      },
+      {
+        "id": "ai_1",
+        "type": "standard",
+        "position": {
+          "x": 450,
+          "y": 300
+        },
+        "data": {
+          "id": "ai_1",
+          "type": "ai",
+          "title": "Analyze & Draft Reply",
+          "desc": "AI analyzes the ticket and drafts a response",
+          "model": {
+            "useDefault": true,
+            "provider": "",
+            "name": "",
+            "mode": "chat",
+            "completion_params": {
+              "temperature": 0.7
+            }
+          },
+          "prompt_template": [
+            {
+              "role": "system",
+              "json": {
+                "type": "doc",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "You are an experienced Shopify customer support agent. Analyze the support ticket below and draft a professional, helpful reply."
+                      }
+                    ]
+                  },
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "Guidelines:"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "- Address the customer's specific concern"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "- Be empathetic and solution-oriented"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "- If an order number is mentioned, reference it"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "- Keep the response concise but thorough"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "- End with a clear next step or offer of further help"
+                      }
+                    ]
+                  }
+                ]
+              }
+            },
+            {
+              "role": "user",
+              "json": {
+                "type": "doc",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "Subject: "
+                      },
+                      {
+                        "type": "variable-node",
+                        "attrs": {
+                          "variableId": "form_subject.value"
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "variable-node",
+                        "attrs": {
+                          "variableId": "form_body.value"
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "context": {
+            "enabled": false,
+            "variable_selector": []
+          },
+          "vision": {
+            "enabled": false
+          },
+          "structured_output": {
+            "enabled": false
+          }
+        },
+        "width": 244,
+        "height": 100
+      },
+      {
+        "id": "human_1",
+        "type": "standard",
+        "position": {
+          "x": 800,
+          "y": 300
+        },
+        "data": {
+          "id": "human_1",
+          "type": "human-confirmation",
+          "title": "Approve Draft",
+          "description": "Review the AI-drafted reply before sending",
+          "message": "AI has drafted a reply for this ticket:\n\nSubject: {{form_subject.value}}\n\n--- Draft Reply ---\n{{ai_1.text}}\n---\n\nApprove to send this reply, or reject to discard.",
+          "assignees": {
+            "actorIds": []
+          },
+          "notification_methods": {
+            "in_app": true,
+            "email": false
+          },
+          "timeout": {
+            "enabled": true,
+            "duration": 4,
+            "unit": "hours"
+          },
+          "require_login": true,
+          "include_workflow_context": true,
+          "test_behavior": "always_approve",
+          "_targetBranches": [
+            {
+              "id": "approved",
+              "name": "Approved",
+              "type": "default"
+            },
+            {
+              "id": "denied",
+              "name": "Denied",
+              "type": "default"
+            }
+          ]
+        },
+        "width": 244,
+        "height": 100
+      },
+      {
+        "id": "answer_1",
+        "type": "standard",
+        "position": {
+          "x": 1150,
+          "y": 225
+        },
+        "data": {
+          "id": "answer_1",
+          "type": "answer",
+          "title": "Send Approved Reply",
+          "desc": "Send the approved AI-drafted reply",
+          "messageType": "new",
+          "text": "{{ai_1.text}}",
+          "to": [],
+          "toModes": [],
+          "cc": [],
+          "ccModes": [],
+          "bcc": [],
+          "bccModes": [],
+          "subject": "Re: {{form_subject.value}}",
+          "attachments": [],
+          "attachmentFiles": [],
+          "attachmentFilesModes": []
+        },
+        "width": 244,
+        "height": 100
+      },
+      {
+        "id": "end_denied",
+        "type": "standard",
+        "position": {
+          "x": 1150,
+          "y": 375
+        },
+        "data": {
+          "id": "end_denied",
+          "type": "end",
+          "title": "Draft Rejected",
+          "description": "The AI draft was rejected",
+          "message": "Draft reply for ticket '{{form_subject.value}}' was rejected and discarded.",
+          "status": "success"
+        },
+        "width": 244,
+        "height": 80
+      }
+    ],
+    "edges": [
+      {
+        "id": "e_subject_trigger",
+        "source": "form_subject",
+        "target": "trigger_1",
+        "sourceHandle": "input-output",
+        "targetHandle": "input"
+      },
+      {
+        "id": "e_body_trigger",
+        "source": "form_body",
+        "target": "trigger_1",
+        "sourceHandle": "input-output",
+        "targetHandle": "input"
+      },
+      {
+        "id": "e_trigger_ai",
+        "source": "trigger_1",
+        "target": "ai_1",
+        "sourceHandle": "source",
+        "targetHandle": "target"
+      },
+      {
+        "id": "e_ai_human",
+        "source": "ai_1",
+        "target": "human_1",
+        "sourceHandle": "source",
+        "targetHandle": "target"
+      },
+      {
+        "id": "e_human_answer",
+        "source": "human_1",
+        "target": "answer_1",
+        "sourceHandle": "approved",
+        "targetHandle": "target"
+      },
+      {
+        "id": "e_human_end",
+        "source": "human_1",
+        "target": "end_denied",
+        "sourceHandle": "denied",
+        "targetHandle": "target"
+      }
+    ],
+    "viewport": {
+      "x": 0,
+      "y": 0,
+      "zoom": 0.85
+    }
+  }
+}

@@ -41,13 +41,17 @@ const ConditionValueDisplay = memo(
     }, [notHasValue, value])
 
     return (
-      <div className='flex h-6 items-center gap-1 rounded-md bg-muted px-1'>
-        {variableId && <VariableTag variableId={variableId} nodeId={nodeId} isShort />}
+      <div className='flex h-6 items-center gap-1 overflow-hidden rounded-md bg-muted px-1'>
+        {variableId && (
+          <div className='flex min-w-0 shrink'>
+            <VariableTag variableId={variableId} nodeId={nodeId} isShort />
+          </div>
+        )}
         <div className='shrink-0 text-xs font-medium text-primary-500' title={operatorName}>
           {operatorName}
         </div>
         {!notHasValue && (
-          <div className='shrink-[3] truncate text-xs text-primary-500' title={formatValue}>
+          <div className='min-w-0 shrink-[3] truncate text-xs text-primary-500' title={formatValue}>
             {formatValue}
           </div>
         )}

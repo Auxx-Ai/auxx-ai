@@ -1,5 +1,6 @@
 // packages/lib/src/workflows/index.ts
 
+export { normalizeTemplateGraph } from './normalize-template-graph'
 export {
   handleOAuth2Callback,
   initiateOAuth,
@@ -19,6 +20,16 @@ export {
   resolveEntityRefsInGraph,
   resolveFieldsFromInstallerResult,
 } from './template-resolution'
+export {
+  FILE_TEMPLATE_ID_PREFIX,
+  FILE_TEMPLATES,
+  type FileWorkflowTemplate,
+  type FileWorkflowTemplateListItem,
+  getFileTemplateById,
+  isFileTemplateId,
+  type ListFileTemplatesOptions,
+  listFileTemplates,
+} from './templates'
 // Export all types
 export * from './types'
 export {

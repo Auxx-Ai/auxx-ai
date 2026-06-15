@@ -1,10 +1,12 @@
 // apps/web/src/server/api/routers/workflow-templates.ts
 
 import { getAppCache } from '@auxx/lib/cache'
-import { checkEntityReadiness, type RequiredEntity } from '@auxx/lib/workflows'
-import { getAllTemplates, getTemplateById } from '@auxx/services/workflow-templates'
+import { checkEntityReadiness, listFileTemplates, type RequiredEntity } from '@auxx/lib/workflows'
+import { getAllTemplates } from '@auxx/services/workflow-templates'
+import { TRPCError } from '@trpc/server'
 import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
+import { resolveTemplateById } from '~/server/api/workflow-template-resolver'
 
 /** Zod schema for RequiredEntity */
 const requiredEntitySchema = z.object({
@@ -39,7 +41,8 @@ export const workflowTemplatesRouter = createTRPCRouter({
     .query(async ({ input }) => {
       const hasFilters = input.search || (input.categories && input.categories.length > 0)
 
-      // Filtered queries hit DB directly for accurate search/category matching
+      // Filtered queries hit DB directly for accurate search/category matching.
+      // File templates are merged in (they aren't stored in the DB).
       if (hasFilters) {
         const result = await getAllTemplates({
           ...input,
@@ -48,25 +51,28 @@ export const workflowTemplatesRouter = createTRPCRouter({
         if (result.isErr()) {
           throw new Error(result.error.message)
         }
-        return result.value
+        const fileItems = listFileTemplates({
+          search: input.search,
+          categories: input.categories,
+          status: 'public',
+        })
+        return [...fileItems, ...result.value].slice(0, input.limit)
       }
 
-      // Unfiltered listing served from cache
+      // Unfiltered listing served from cache (already includes file templates)
       const templates = await getAppCache().get('workflowTemplates')
       return templates.slice(0, input.limit)
     }),
 
   /**
-   * Get a specific template by ID
+   * Get a specific template by ID (file registry or DB).
    */
   getById: protectedProcedure.input(z.object({ id: z.string() })).query(async ({ input }) => {
-    const result = await getTemplateById(input.id)
-
-    if (result.isErr()) {
-      throw new Error(result.error.message)
+    const template = await resolveTemplateById(input.id)
+    if (!template) {
+      throw new TRPCError({ code: 'NOT_FOUND', message: 'Workflow template not found' })
     }
-
-    return result.value
+    return template
   }),
 
   /**

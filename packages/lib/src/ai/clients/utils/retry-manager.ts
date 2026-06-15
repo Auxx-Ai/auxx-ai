@@ -78,8 +78,32 @@ export class RetryManager {
           model: context?.model,
         })
 
+        // Fail fast on permanent errors (auth, quota, bad request). Retrying
+        // burns the full backoff schedule on something that can never succeed —
+        // e.g. an OpenAI `insufficient_quota` 429 is a billing state, not a
+        // transient rate limit.
+        if (RetryManager.isNonRetryableError(error)) {
+          this.logger.warn('Error is not retryable — aborting retries', {
+            error: lastError.message,
+            operation: context?.operation,
+            model: context?.model,
+          })
+          break
+        }
+
         // If this was the last attempt, don't delay
         if (attempt > maxRetries) {
+          break
+        }
+
+        // Stop early if the circuit breaker opened during this run. Without
+        // this, the remaining attempts keep hammering a dependency we already
+        // know is failing — the breaker is otherwise only checked at entry.
+        if (circuitBreaker && !circuitBreaker.canExecute()) {
+          this.logger.warn('Circuit breaker opened mid-retry — aborting remaining attempts', {
+            operation: context?.operation,
+            model: context?.model,
+          })
           break
         }
 
@@ -139,27 +163,24 @@ export class RetryManager {
   }
 
   /**
-   * Check if an error is retryable
+   * Whether an error will never succeed on retry. These can share status codes
+   * with transient failures (notably 429) but are permanent until an operator
+   * intervenes: `insufficient_quota` (billing), auth failures, and 4xx client
+   * errors other than 429 (the transient rate-limit signal we *do* retry).
    */
-  static isRetryableError(error: any): boolean {
-    // Network errors
-    if (error.code === 'ENOTFOUND' || error.code === 'ECONNREFUSED') {
+  static isNonRetryableError(error: any): boolean {
+    const code = error?.code ?? error?.error?.code
+    if (
+      typeof code === 'string' &&
+      ['insufficient_quota', 'invalid_api_key', 'account_deactivated'].includes(code)
+    ) {
       return true
     }
 
-    // HTTP status codes that are typically retryable
-    const retryableStatusCodes = [429, 500, 502, 503, 504]
-    if (error.status && retryableStatusCodes.includes(error.status)) {
-      return true
-    }
-
-    // OpenAI specific retryable errors
-    if (error.type === 'server_error' || error.type === 'timeout') {
-      return true
-    }
-
-    // Rate limiting
-    if (error.message?.includes('rate limit') || error.message?.includes('quota')) {
+    // 4xx client errors won't change on retry — except 429, which is the
+    // transient rate-limit signal we want to back off and retry.
+    const status = error?.status
+    if (typeof status === 'number' && status >= 400 && status < 500 && status !== 429) {
       return true
     }
 

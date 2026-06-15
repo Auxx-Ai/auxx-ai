@@ -62,7 +62,7 @@ export class OpenAILLMClient extends LLMClient {
     })
 
     try {
-      return await this.withRetryAndCircuitBreaker(
+      const response = await this.withRetryAndCircuitBreaker(
         async () => {
           if (processedParams.stream) {
             return await this.handleStreamingToCompletion(processedParams)
@@ -75,12 +75,14 @@ export class OpenAILLMClient extends LLMClient {
           model: params.model,
         }
       )
-    } catch (error) {
-      this.handleApiError(error, 'invoke')
-    } finally {
+      // Only log success on the success path — a `finally` here would log
+      // "completed successfully" even when handleApiError re-throws.
       this.logOperationSuccess('LLM invoke', this.getTimestamp() - startTime, {
         model: params.model,
       })
+      return response
+    } catch (error) {
+      this.handleApiError(error, 'invoke')
     }
   }
 

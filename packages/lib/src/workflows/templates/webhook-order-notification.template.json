@@ -1,0 +1,242 @@
+{
+  "slug": "webhook-order-notification",
+  "name": "Webhook-Triggered Order Notification",
+  "description": "Receives a webhook payload from an external system, transforms the data with custom code, sends an HTTP notification, and handles success/error outcomes.",
+  "categories": ["shopify", "automation"],
+  "status": "public",
+  "popularity": 75,
+  "graph": {
+    "nodes": [
+      {
+        "id": "trigger_1",
+        "type": "standard",
+        "position": {
+          "x": 100,
+          "y": 200
+        },
+        "data": {
+          "id": "trigger_1",
+          "type": "webhook",
+          "title": "Webhook Trigger",
+          "desc": "Receives webhook payload from external system",
+          "method": "POST",
+          "bodySchema": {
+            "enabled": false
+          }
+        },
+        "width": 244,
+        "height": 48
+      },
+      {
+        "id": "code_1",
+        "type": "standard",
+        "position": {
+          "x": 450,
+          "y": 200
+        },
+        "data": {
+          "id": "code_1",
+          "type": "code",
+          "title": "Format Payload",
+          "desc": "Transform webhook data into notification format",
+          "code_language": "javascript",
+          "code": "const main = async (inputs) => {\n  const payload = inputs.webhookData\n\n  // Format the notification message\n  const message = {\n    title: `New Order: ${payload.order_number || 'Unknown'}`,\n    text: `Customer: ${payload.customer_name || 'N/A'}\\nTotal: ${payload.total || '0.00'}\\nItems: ${payload.line_items?.length || 0}`,\n    timestamp: new Date().toISOString()\n  }\n\n  return {\n    notification: JSON.stringify(message),\n    orderNumber: payload.order_number || 'Unknown'\n  }\n}",
+          "inputs": [
+            {
+              "name": "webhookData",
+              "variableId": "trigger_1.body"
+            }
+          ],
+          "outputs": [
+            {
+              "name": "notification",
+              "type": "string",
+              "description": "Formatted notification JSON"
+            },
+            {
+              "name": "orderNumber",
+              "type": "string",
+              "description": "Extracted order number"
+            }
+          ]
+        },
+        "width": 244,
+        "height": 100
+      },
+      {
+        "id": "http_1",
+        "type": "standard",
+        "position": {
+          "x": 800,
+          "y": 200
+        },
+        "data": {
+          "id": "http_1",
+          "type": "http",
+          "title": "Send Notification",
+          "desc": "POST notification to configured endpoint",
+          "method": "post",
+          "url": "",
+          "authorization": {
+            "type": "none"
+          },
+          "headers": "Content-Type: application/json",
+          "params": "",
+          "body": {
+            "type": "raw-text",
+            "data": [
+              {
+                "type": "text",
+                "value": "{{code_1.notification}}"
+              }
+            ]
+          },
+          "timeout": {
+            "connect": 10,
+            "read": 30,
+            "write": 60
+          },
+          "retry_config": {
+            "retry_enabled": true,
+            "max_retries": 3,
+            "retry_interval": 1000
+          },
+          "ssl_verify": true,
+          "error_strategy": "default",
+          "default_value": [],
+          "_targetBranches": [
+            {
+              "id": "source",
+              "name": "",
+              "type": "default"
+            }
+          ]
+        },
+        "width": 244,
+        "height": 100
+      },
+      {
+        "id": "ifelse_1",
+        "type": "standard",
+        "position": {
+          "x": 1150,
+          "y": 200
+        },
+        "data": {
+          "id": "ifelse_1",
+          "type": "if-else",
+          "title": "Check Response",
+          "desc": "Check if HTTP request was successful",
+          "cases": [
+            {
+              "id": "case_success",
+              "case_id": "true",
+              "logical_operator": "and",
+              "conditions": [
+                {
+                  "id": "cond_1",
+                  "variableId": "http_1.success",
+                  "comparison_operator": "is",
+                  "value": true,
+                  "logical_operator": "and"
+                }
+              ]
+            }
+          ],
+          "_targetBranches": [
+            {
+              "id": "true",
+              "name": "Success",
+              "type": "default"
+            },
+            {
+              "id": "false",
+              "name": "Failed",
+              "type": "default"
+            }
+          ]
+        },
+        "width": 244,
+        "height": 100
+      },
+      {
+        "id": "end_success",
+        "type": "standard",
+        "position": {
+          "x": 1500,
+          "y": 125
+        },
+        "data": {
+          "id": "end_success",
+          "type": "end",
+          "title": "Success",
+          "description": "Notification sent successfully",
+          "message": "Notification sent for order {{code_1.orderNumber}}",
+          "status": "success"
+        },
+        "width": 244,
+        "height": 80
+      },
+      {
+        "id": "end_error",
+        "type": "standard",
+        "position": {
+          "x": 1500,
+          "y": 275
+        },
+        "data": {
+          "id": "end_error",
+          "type": "end",
+          "title": "Error",
+          "description": "Notification failed",
+          "message": "Failed to send notification: {{http_1.error}}",
+          "status": "error"
+        },
+        "width": 244,
+        "height": 80
+      }
+    ],
+    "edges": [
+      {
+        "id": "e_trigger_code",
+        "source": "trigger_1",
+        "target": "code_1",
+        "sourceHandle": "source",
+        "targetHandle": "target"
+      },
+      {
+        "id": "e_code_http",
+        "source": "code_1",
+        "target": "http_1",
+        "sourceHandle": "source",
+        "targetHandle": "target"
+      },
+      {
+        "id": "e_http_ifelse",
+        "source": "http_1",
+        "target": "ifelse_1",
+        "sourceHandle": "source",
+        "targetHandle": "target"
+      },
+      {
+        "id": "e_ifelse_success",
+        "source": "ifelse_1",
+        "target": "end_success",
+        "sourceHandle": "true",
+        "targetHandle": "target"
+      },
+      {
+        "id": "e_ifelse_error",
+        "source": "ifelse_1",
+        "target": "end_error",
+        "sourceHandle": "false",
+        "targetHandle": "target"
+      }
+    ],
+    "viewport": {
+      "x": 0,
+      "y": 0,
+      "zoom": 0.8
+    }
+  }
+}

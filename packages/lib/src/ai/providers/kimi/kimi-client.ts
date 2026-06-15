@@ -129,6 +129,8 @@ export class KimiClient extends ProviderClient {
     return new OpenAI({
       apiKey: credentials.kimi_api_key as string,
       baseURL: KIMI_BASE_URL,
+      // Retry policy lives in RetryManager — don't stack the SDK's 2 internal retries.
+      maxRetries: 0,
       fetch: createObservingFetch('kimi'),
     })
   }

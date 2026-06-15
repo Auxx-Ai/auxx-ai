@@ -164,6 +164,10 @@ export class OpenAIClient extends ProviderClient {
   getApiClient(credentials: ProviderCredentials): OpenAI {
     const config: any = {
       apiKey: this.requireApiKey(credentials, 'openai_api_key'),
+      // Retry policy lives in RetryManager (one place). The SDK defaults to 2
+      // internal retries, which would stack multiplicatively on top — one
+      // logical attempt became 3 HTTP calls.
+      maxRetries: 0,
       // Tee every HTTP attempt (status, latency, rate-limit/retry-after/auth
       // headers) into the agent-session trace. See createObservingFetch.
       fetch: createObservingFetch('openai'),

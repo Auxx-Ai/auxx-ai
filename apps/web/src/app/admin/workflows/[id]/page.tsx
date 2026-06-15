@@ -23,11 +23,14 @@ import {
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { Textarea } from '@auxx/ui/components/textarea'
 import { toastError } from '@auxx/ui/components/toast'
-import { ArrowLeft, Save, ScanSearch, Trash2 } from 'lucide-react'
+import { ArrowLeft, Copy, Download, Save, ScanSearch, Trash2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { use, useEffect, useState } from 'react'
 import CodeEditor, { CodeLanguage } from '~/components/workflow/ui/code-editor'
 import { api } from '~/trpc/react'
+
+/** File templates are repo-managed (id prefixed `file:`) and read-only in admin. */
+const FILE_TEMPLATE_ID_PREFIX = 'file:'
 
 interface RequiredApp {
   appSlug: string
@@ -145,9 +148,13 @@ export default function WorkflowTemplateEditorPage({
 }: {
   params: Promise<{ id: string }>
 }) {
-  const { id } = use(params)
+  const { id: rawId } = use(params)
+  // The id is a URL path segment, so `file:`-prefixed ids arrive percent-encoded
+  // (`file%3A...`). Decode so the file/DB checks and tRPC lookups see the real id.
+  const id = decodeURIComponent(rawId)
   const router = useRouter()
   const isNew = id === 'new'
+  const isFileTemplate = !isNew && id.startsWith(FILE_TEMPLATE_ID_PREFIX)
 
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
@@ -197,6 +204,73 @@ export default function WorkflowTemplateEditorPage({
       })
     },
   })
+
+  const duplicateTemplate = api.admin.workflowTemplates.duplicate.useMutation({
+    onSuccess: (data) => {
+      utils.admin.workflowTemplates.getAll.invalidate()
+      router.push(`/admin/workflows/${data.id}`)
+    },
+    onError: (error) => {
+      toastError({
+        title: 'Failed to duplicate template',
+        description: error.message,
+      })
+    },
+  })
+
+  /**
+   * Export the current template as a `*.template.json` file definition that a
+   * developer can commit into `packages/lib/src/workflows/templates/`.
+   */
+  const handleExport = () => {
+    let parsedGraph: unknown = {}
+    try {
+      parsedGraph = JSON.parse(graphJson)
+    } catch {
+      toastError({ title: 'Invalid JSON', description: 'Fix the graph JSON before exporting' })
+      return
+    }
+    let parsedEnvVars: unknown[] = []
+    try {
+      parsedEnvVars = JSON.parse(envVarsJson)
+    } catch {
+      parsedEnvVars = []
+    }
+
+    const slug =
+      name
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/(^-|-$)/g, '') || 'template'
+
+    const fileTemplate = {
+      slug,
+      name,
+      description,
+      categories: categories
+        .split(',')
+        .map((c) => c.trim())
+        .filter(Boolean),
+      status,
+      popularity,
+      ...(imgUrl ? { imgUrl } : {}),
+      icon: { iconId: iconValue.icon, color: iconValue.color },
+      triggerType: (parsedGraph as { triggerType?: string })?.triggerType ?? null,
+      requiredApps,
+      requiredEntities,
+      envVars: parsedEnvVars,
+      variables: [],
+      graph: parsedGraph,
+    }
+
+    const blob = new Blob([JSON.stringify(fileTemplate, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const anchor = document.createElement('a')
+    anchor.href = url
+    anchor.download = `${slug}.template.json`
+    anchor.click()
+    URL.revokeObjectURL(url)
+  }
 
   /**
    * Load template data into form
@@ -515,15 +589,32 @@ export default function WorkflowTemplateEditorPage({
               <ArrowLeft />
               Back
             </Button>
-            <Button
-              size='sm'
-              onClick={handleSave}
-              disabled={!canSave}
-              loading={isSaving}
-              loadingText='Saving...'>
-              <Save />
-              Save
-            </Button>
+            {!isNew && (
+              <Button variant='outline' size='sm' onClick={handleExport}>
+                <Download />
+                Export to file
+              </Button>
+            )}
+            {isFileTemplate ? (
+              <Button
+                size='sm'
+                onClick={() => duplicateTemplate.mutateAsync({ id })}
+                loading={duplicateTemplate.isPending}
+                loadingText='Duplicating...'>
+                <Copy />
+                Duplicate to edit
+              </Button>
+            ) : (
+              <Button
+                size='sm'
+                onClick={handleSave}
+                disabled={!canSave}
+                loading={isSaving}
+                loadingText='Saving...'>
+                <Save />
+                Save
+              </Button>
+            )}
           </div>
         }>
         <MainPageBreadcrumb>
@@ -537,6 +628,14 @@ export default function WorkflowTemplateEditorPage({
           <div className='grid grid-cols-2 flex-1 '>
             {/* Left Column - Form Fields */}
             <div className='space-y-6 overflow-y-auto p-6'>
+              {isFileTemplate && (
+                <div className='rounded-lg border border-dashed bg-muted/50 p-3 text-sm text-muted-foreground'>
+                  This template is defined in the repo (
+                  <code className='font-mono text-xs'>packages/lib/src/workflows/templates/</code>)
+                  and is read-only here. Use <span className='font-medium'>Duplicate to edit</span>{' '}
+                  to create an editable copy.
+                </div>
+              )}
               {/* Name & Icon */}
               <div className='space-y-2'>
                 <Label htmlFor='name'>Template Name</Label>
@@ -548,6 +647,7 @@ export default function WorkflowTemplateEditorPage({
                     placeholder='e.g., Order Status Inquiry Handler'
                     value={name}
                     onChange={(e) => setName(e.target.value)}
+                    disabled={isFileTemplate}
                   />
                 </div>
               </div>
@@ -561,6 +661,7 @@ export default function WorkflowTemplateEditorPage({
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
                   rows={4}
+                  disabled={isFileTemplate}
                 />
               </div>
 
@@ -572,6 +673,7 @@ export default function WorkflowTemplateEditorPage({
                   placeholder='e.g., customer-service, shopify (comma-separated)'
                   value={categories}
                   onChange={(e) => setCategories(e.target.value)}
+                  disabled={isFileTemplate}
                 />
                 <p className='text-xs text-muted-foreground'>
                   Separate multiple categories with commas
@@ -586,13 +688,17 @@ export default function WorkflowTemplateEditorPage({
                   placeholder='https://example.com/image.png'
                   value={imgUrl}
                   onChange={(e) => setImgUrl(e.target.value)}
+                  disabled={isFileTemplate}
                 />
               </div>
 
               {/* Status */}
               <div className='space-y-2'>
                 <Label htmlFor='status'>Status</Label>
-                <Select value={status} onValueChange={(v) => setStatus(v as 'public' | 'private')}>
+                <Select
+                  value={status}
+                  onValueChange={(v) => setStatus(v as 'public' | 'private')}
+                  disabled={isFileTemplate}>
                   <SelectTrigger id='status'>
                     <SelectValue />
                   </SelectTrigger>
@@ -612,6 +718,7 @@ export default function WorkflowTemplateEditorPage({
                   min='0'
                   value={popularity}
                   onChange={(e) => setPopularity(parseInt(e.target.value, 10) || 0)}
+                  disabled={isFileTemplate}
                 />
                 <p className='text-xs text-muted-foreground'>
                   Higher scores appear first in template lists
@@ -622,7 +729,11 @@ export default function WorkflowTemplateEditorPage({
               <div className='space-y-2'>
                 <div className='flex items-center justify-between'>
                   <Label>Required Apps</Label>
-                  <Button variant='outline' size='sm' onClick={handleScanGraph}>
+                  <Button
+                    variant='outline'
+                    size='sm'
+                    onClick={handleScanGraph}
+                    disabled={isFileTemplate}>
                     <ScanSearch />
                     Scan Graph
                   </Button>
@@ -673,7 +784,11 @@ export default function WorkflowTemplateEditorPage({
               <div className='space-y-2'>
                 <div className='flex items-center justify-between'>
                   <Label>Required Entities</Label>
-                  <Button variant='outline' size='sm' onClick={handleScanEntities}>
+                  <Button
+                    variant='outline'
+                    size='sm'
+                    onClick={handleScanEntities}
+                    disabled={isFileTemplate}>
                     <ScanSearch />
                     Scan Entities
                   </Button>
@@ -717,6 +832,7 @@ export default function WorkflowTemplateEditorPage({
                       title='Required Entities'
                       minHeight={200}
                       enableWorkflowCompletions={false}
+                      readOnly={isFileTemplate}
                     />
                     {entitiesJsonError && (
                       <span className='text-xs text-destructive'>{entitiesJsonError}</span>
@@ -746,6 +862,7 @@ export default function WorkflowTemplateEditorPage({
                   title='envVars JSON'
                   minHeight={150}
                   enableWorkflowCompletions={false}
+                  readOnly={isFileTemplate}
                 />
                 {envVarsError && <span className='text-xs text-destructive'>{envVarsError}</span>}
               </div>
@@ -766,6 +883,7 @@ export default function WorkflowTemplateEditorPage({
                   title='Graph JSON'
                   minHeight={600}
                   enableWorkflowCompletions={false}
+                  readOnly={isFileTemplate}
                 />
               </div>
             </div>

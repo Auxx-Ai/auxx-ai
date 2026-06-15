@@ -1,0 +1,1052 @@
+{
+  "slug": "fulfillment-follow-up",
+  "name": "Fulfillment Notification with Delivery Follow-Up",
+  "description": "When a customer asks about their order, extracts the order number, looks it up in Shopify, and checks fulfillment status. If fulfilled, sends a shipping notification with tracking details, then waits 3 days and automatically sends a delivery check-in follow-up. If not yet fulfilled, sends a processing status update. Showcases the wait node for delayed follow-up actions.",
+  "categories": ["customer-service", "shopify", "e-commerce", "ai"],
+  "icon": {
+    "iconId": "truck",
+    "color": "green"
+  },
+  "status": "public",
+  "popularity": 80,
+  "triggerType": "message-received",
+  "triggerConfig": null,
+  "requiredApps": [
+    {
+      "appSlug": "shopify",
+      "appTitle": "Shopify",
+      "blockIds": ["shopify"],
+      "triggerIds": [],
+      "required": true
+    }
+  ],
+  "requiredEntities": [],
+  "envVars": [],
+  "graph": {
+    "nodes": [
+      {
+        "id": "trigger_1",
+        "type": "standard",
+        "position": {
+          "x": 100,
+          "y": 325
+        },
+        "data": {
+          "id": "trigger_1",
+          "type": "message-received",
+          "title": "Customer Email",
+          "desc": "Triggered when a new customer email arrives",
+          "variables": [],
+          "filters": {
+            "from": [],
+            "subject_contains": [],
+            "body_contains": []
+          }
+        },
+        "width": 244,
+        "height": 48
+      },
+      {
+        "id": "extractor_1",
+        "type": "standard",
+        "position": {
+          "x": 450,
+          "y": 325
+        },
+        "data": {
+          "id": "extractor_1",
+          "type": "information-extractor",
+          "title": "Extract Order Details",
+          "desc": "Extract the order number from the customer email",
+          "model": {
+            "useDefault": true,
+            "provider": "",
+            "name": "",
+            "mode": "chat",
+            "completion_params": {
+              "temperature": 0.2
+            }
+          },
+          "text": "Subject: {{trigger_1.message.subject}}\n\nBody: {{trigger_1.message.body}}",
+          "structured_output": {
+            "enabled": true,
+            "schema": {
+              "type": "object",
+              "properties": {
+                "order_number": {
+                  "type": "string",
+                  "description": "The Shopify order number (digits only, no '#' prefix). Empty string if not found."
+                },
+                "customer_concern": {
+                  "type": "string",
+                  "description": "What the customer is asking about: shipping-status, delivery-eta, tracking, general"
+                }
+              },
+              "required": ["order_number", "customer_concern"]
+            }
+          },
+          "vision": {
+            "enabled": false
+          },
+          "instruction": {
+            "enabled": true,
+            "text": "Extract the Shopify order number from the customer email. Look for patterns like #1042, order 1042, order number 1042, etc. Return only the numeric part. Also identify what the customer is asking about."
+          }
+        },
+        "width": 244,
+        "height": 100
+      },
+      {
+        "id": "shopify_get_order",
+        "type": "standard",
+        "position": {
+          "x": 800,
+          "y": 325
+        },
+        "data": {
+          "id": "shopify_get_order",
+          "type": "@shopify:shopify",
+          "appSlug": "shopify",
+          "blockId": "shopify",
+          "title": "Shopify: Get Order",
+          "desc": "Look up the order in Shopify for fulfillment and tracking data",
+          "resource": "order",
+          "operation": "get",
+          "getOrderId": "{{extractor_1.extracted_data.order_number}}",
+          "getFields": [],
+          "fieldModes": {
+            "getOrderId": false
+          },
+          "_connectedSourceHandleIds": ["source"],
+          "_connectedTargetHandleIds": ["target"]
+        },
+        "width": 244,
+        "height": 100
+      },
+      {
+        "id": "ifelse_fulfilled",
+        "type": "standard",
+        "position": {
+          "x": 1150,
+          "y": 325
+        },
+        "data": {
+          "id": "ifelse_fulfilled",
+          "type": "if-else",
+          "title": "Order Fulfilled?",
+          "desc": "Check if the order has been fulfilled/shipped",
+          "cases": [
+            {
+              "id": "case_fulfilled",
+              "case_id": "true",
+              "logical_operator": "and",
+              "conditions": [
+                {
+                  "id": "cond_status",
+                  "variableId": "shopify_get_order.fulfillmentStatus",
+                  "comparison_operator": "is",
+                  "value": "fulfilled",
+                  "isConstant": true,
+                  "logical_operator": "and"
+                }
+              ]
+            }
+          ],
+          "_targetBranches": [
+            {
+              "id": "true",
+              "name": "Fulfilled",
+              "type": "default"
+            },
+            {
+              "id": "false",
+              "name": "Not Fulfilled",
+              "type": "default"
+            }
+          ]
+        },
+        "width": 244,
+        "height": 100
+      },
+      {
+        "id": "ai_shipped_reply",
+        "type": "standard",
+        "position": {
+          "x": 1500,
+          "y": 125
+        },
+        "data": {
+          "id": "ai_shipped_reply",
+          "type": "ai",
+          "title": "AI: Shipping Update",
+          "desc": "Generate a shipping notification with tracking details",
+          "model": {
+            "useDefault": true,
+            "provider": "",
+            "name": "",
+            "mode": "chat",
+            "completion_params": {
+              "temperature": 0.7
+            }
+          },
+          "prompt_template": [
+            {
+              "role": "system",
+              "json": {
+                "type": "doc",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "You are a friendly, professional customer support agent for a Shopify store. The customer's order has been shipped. Generate a helpful shipping update."
+                      }
+                    ]
+                  },
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "Order details:"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "- Order: #"
+                      },
+                      {
+                        "type": "variable-node",
+                        "attrs": {
+                          "variableId": "shopify_get_order.name"
+                        }
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "- Status: "
+                      },
+                      {
+                        "type": "variable-node",
+                        "attrs": {
+                          "variableId": "shopify_get_order.fulfillmentStatus"
+                        }
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "- Total: "
+                      },
+                      {
+                        "type": "variable-node",
+                        "attrs": {
+                          "variableId": "shopify_get_order.totalPrice"
+                        }
+                      },
+                      {
+                        "type": "text",
+                        "text": " "
+                      },
+                      {
+                        "type": "variable-node",
+                        "attrs": {
+                          "variableId": "shopify_get_order.currency"
+                        }
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "- Items: "
+                      },
+                      {
+                        "type": "variable-node",
+                        "attrs": {
+                          "variableId": "shopify_get_order.lineItems"
+                        }
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "- Tracking: "
+                      },
+                      {
+                        "type": "variable-node",
+                        "attrs": {
+                          "variableId": "shopify_get_order.orderStatusUrl"
+                        }
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "- Created: "
+                      },
+                      {
+                        "type": "variable-node",
+                        "attrs": {
+                          "variableId": "shopify_get_order.createdAt"
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "Customer concern: "
+                      },
+                      {
+                        "type": "variable-node",
+                        "attrs": {
+                          "variableId": "extractor_1.extracted_data.customer_concern"
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "Guidelines:"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "- Confirm the order has shipped"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "- Include tracking information and order status URL"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "- Set expectations for delivery timeline"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "- Address their specific concern"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "- Mention that you'll follow up in a few days to confirm delivery"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "- Keep it concise and warm"
+                      }
+                    ]
+                  }
+                ]
+              }
+            },
+            {
+              "role": "user",
+              "json": {
+                "type": "doc",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "Customer email:"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "Subject: "
+                      },
+                      {
+                        "type": "variable-node",
+                        "attrs": {
+                          "variableId": "trigger_1.message.subject"
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "variable-node",
+                        "attrs": {
+                          "variableId": "trigger_1.message.body"
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "context": {
+            "enabled": false,
+            "variable_selector": []
+          },
+          "vision": {
+            "enabled": false
+          },
+          "structured_output": {
+            "enabled": false
+          }
+        },
+        "width": 244,
+        "height": 100
+      },
+      {
+        "id": "answer_shipped",
+        "type": "standard",
+        "position": {
+          "x": 1850,
+          "y": 125
+        },
+        "data": {
+          "id": "answer_shipped",
+          "type": "answer",
+          "title": "Send Shipping Update",
+          "desc": "Reply with shipping details and tracking info",
+          "messageType": "reply",
+          "recordId": "trigger_1.thread",
+          "text": "{{ai_shipped_reply.text}}",
+          "to": [],
+          "toModes": [],
+          "cc": [],
+          "ccModes": [],
+          "bcc": [],
+          "bccModes": [],
+          "subject": "",
+          "attachments": [],
+          "attachmentFiles": [],
+          "attachmentFilesModes": []
+        },
+        "width": 244,
+        "height": 100
+      },
+      {
+        "id": "wait_3days",
+        "type": "standard",
+        "position": {
+          "x": 2200,
+          "y": 125
+        },
+        "data": {
+          "id": "wait_3days",
+          "type": "wait",
+          "title": "Wait 3 Days",
+          "description": "Wait 3 days before sending delivery follow-up",
+          "waitType": "duration",
+          "durationAmount": 3,
+          "isDurationConstant": true,
+          "durationUnit": "days",
+          "isTimeConstant": true
+        },
+        "width": 244,
+        "height": 100
+      },
+      {
+        "id": "ai_checkin",
+        "type": "standard",
+        "position": {
+          "x": 2550,
+          "y": 125
+        },
+        "data": {
+          "id": "ai_checkin",
+          "type": "ai",
+          "title": "AI: Delivery Check-In",
+          "desc": "Generate a follow-up asking about delivery",
+          "model": {
+            "useDefault": true,
+            "provider": "",
+            "name": "",
+            "mode": "chat",
+            "completion_params": {
+              "temperature": 0.7
+            }
+          },
+          "prompt_template": [
+            {
+              "role": "system",
+              "json": {
+                "type": "doc",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "You are a friendly customer support agent for a Shopify store. You sent the customer a shipping update 3 days ago. Now you're following up to check if they received their order."
+                      }
+                    ]
+                  },
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "Order: #"
+                      },
+                      {
+                        "type": "variable-node",
+                        "attrs": {
+                          "variableId": "shopify_get_order.name"
+                        }
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "Items: "
+                      },
+                      {
+                        "type": "variable-node",
+                        "attrs": {
+                          "variableId": "shopify_get_order.lineItems"
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "Guidelines:"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "- Ask if they received their order"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "- Be warm and brief — this is a follow-up, not a first contact"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "- Invite them to reply if there are any issues"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "- Offer to help with anything else"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "- Keep it short (2-3 sentences)"
+                      }
+                    ]
+                  }
+                ]
+              }
+            },
+            {
+              "role": "user",
+              "json": {
+                "type": "doc",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "Generate a delivery check-in follow-up for order #"
+                      },
+                      {
+                        "type": "variable-node",
+                        "attrs": {
+                          "variableId": "shopify_get_order.name"
+                        }
+                      },
+                      {
+                        "type": "text",
+                        "text": "."
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "context": {
+            "enabled": false,
+            "variable_selector": []
+          },
+          "vision": {
+            "enabled": false
+          },
+          "structured_output": {
+            "enabled": false
+          }
+        },
+        "width": 244,
+        "height": 100
+      },
+      {
+        "id": "answer_checkin",
+        "type": "standard",
+        "position": {
+          "x": 2900,
+          "y": 125
+        },
+        "data": {
+          "id": "answer_checkin",
+          "type": "answer",
+          "title": "Send Follow-Up",
+          "desc": "Send the delivery check-in 3 days after shipping update",
+          "messageType": "reply",
+          "recordId": "trigger_1.thread",
+          "text": "{{ai_checkin.text}}",
+          "to": [],
+          "toModes": [],
+          "cc": [],
+          "ccModes": [],
+          "bcc": [],
+          "bccModes": [],
+          "subject": "",
+          "attachments": [],
+          "attachmentFiles": [],
+          "attachmentFilesModes": []
+        },
+        "width": 244,
+        "height": 100
+      },
+      {
+        "id": "ai_processing_reply",
+        "type": "standard",
+        "position": {
+          "x": 1500,
+          "y": 500
+        },
+        "data": {
+          "id": "ai_processing_reply",
+          "type": "ai",
+          "title": "AI: Processing Update",
+          "desc": "Generate a status update for unfulfilled orders",
+          "model": {
+            "useDefault": true,
+            "provider": "",
+            "name": "",
+            "mode": "chat",
+            "completion_params": {
+              "temperature": 0.7
+            }
+          },
+          "prompt_template": [
+            {
+              "role": "system",
+              "json": {
+                "type": "doc",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "You are a friendly, professional customer support agent for a Shopify store. The customer's order has NOT been shipped yet."
+                      }
+                    ]
+                  },
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "Order details:"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "- Order: #"
+                      },
+                      {
+                        "type": "variable-node",
+                        "attrs": {
+                          "variableId": "shopify_get_order.name"
+                        }
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "- Financial status: "
+                      },
+                      {
+                        "type": "variable-node",
+                        "attrs": {
+                          "variableId": "shopify_get_order.financialStatus"
+                        }
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "- Fulfillment status: "
+                      },
+                      {
+                        "type": "variable-node",
+                        "attrs": {
+                          "variableId": "shopify_get_order.fulfillmentStatus"
+                        }
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "- Total: "
+                      },
+                      {
+                        "type": "variable-node",
+                        "attrs": {
+                          "variableId": "shopify_get_order.totalPrice"
+                        }
+                      },
+                      {
+                        "type": "text",
+                        "text": " "
+                      },
+                      {
+                        "type": "variable-node",
+                        "attrs": {
+                          "variableId": "shopify_get_order.currency"
+                        }
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "- Items: "
+                      },
+                      {
+                        "type": "variable-node",
+                        "attrs": {
+                          "variableId": "shopify_get_order.lineItems"
+                        }
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "- Ordered: "
+                      },
+                      {
+                        "type": "variable-node",
+                        "attrs": {
+                          "variableId": "shopify_get_order.createdAt"
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "Customer concern: "
+                      },
+                      {
+                        "type": "variable-node",
+                        "attrs": {
+                          "variableId": "extractor_1.extracted_data.customer_concern"
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "Guidelines:"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "- Acknowledge they're waiting"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "- Explain the order is still being processed"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "- Set expectations for shipping timeline"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "- Reassure them they'll be notified when it ships"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "- Address their specific concern"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "- Keep it concise and empathetic"
+                      }
+                    ]
+                  }
+                ]
+              }
+            },
+            {
+              "role": "user",
+              "json": {
+                "type": "doc",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "Customer email:"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "Subject: "
+                      },
+                      {
+                        "type": "variable-node",
+                        "attrs": {
+                          "variableId": "trigger_1.message.subject"
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "variable-node",
+                        "attrs": {
+                          "variableId": "trigger_1.message.body"
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "context": {
+            "enabled": false,
+            "variable_selector": []
+          },
+          "vision": {
+            "enabled": false
+          },
+          "structured_output": {
+            "enabled": false
+          }
+        },
+        "width": 244,
+        "height": 100
+      },
+      {
+        "id": "answer_processing",
+        "type": "standard",
+        "position": {
+          "x": 1850,
+          "y": 500
+        },
+        "data": {
+          "id": "answer_processing",
+          "type": "answer",
+          "title": "Send Processing Update",
+          "desc": "Reply with order processing status",
+          "messageType": "reply",
+          "recordId": "trigger_1.thread",
+          "text": "{{ai_processing_reply.text}}",
+          "to": [],
+          "toModes": [],
+          "cc": [],
+          "ccModes": [],
+          "bcc": [],
+          "bccModes": [],
+          "subject": "",
+          "attachments": [],
+          "attachmentFiles": [],
+          "attachmentFilesModes": []
+        },
+        "width": 244,
+        "height": 100
+      },
+      {
+        "id": "note_wait",
+        "type": "note",
+        "position": {
+          "x": 2100,
+          "y": -25
+        },
+        "data": {
+          "id": "note_wait",
+          "type": "note",
+          "title": "Wait Node",
+          "desc": "",
+          "text": "<p><span style=\"font-size: 14px;\">The Wait node pauses the workflow for 3 days.</span></p><p><span style=\"font-size: 14px;\">After 3 days, it automatically resumes and sends a delivery check-in.</span></p>",
+          "theme": "purple",
+          "author": "",
+          "errors": [],
+          "isValid": true,
+          "disabled": false,
+          "fontSize": 14,
+          "isInLoop": false,
+          "showAuthor": false
+        },
+        "width": 244,
+        "height": 100
+      }
+    ],
+    "edges": [
+      {
+        "id": "e_trigger_extractor",
+        "source": "trigger_1",
+        "target": "extractor_1",
+        "sourceHandle": "source",
+        "targetHandle": "target"
+      },
+      {
+        "id": "e_extractor_shopify",
+        "source": "extractor_1",
+        "target": "shopify_get_order",
+        "sourceHandle": "source",
+        "targetHandle": "target"
+      },
+      {
+        "id": "e_shopify_ifelse",
+        "source": "shopify_get_order",
+        "target": "ifelse_fulfilled",
+        "sourceHandle": "source",
+        "targetHandle": "target"
+      },
+      {
+        "id": "e_ifelse_shipped",
+        "source": "ifelse_fulfilled",
+        "target": "ai_shipped_reply",
+        "sourceHandle": "true",
+        "targetHandle": "target"
+      },
+      {
+        "id": "e_ai_shipped_answer",
+        "source": "ai_shipped_reply",
+        "target": "answer_shipped",
+        "sourceHandle": "source",
+        "targetHandle": "target"
+      },
+      {
+        "id": "e_answer_wait",
+        "source": "answer_shipped",
+        "target": "wait_3days",
+        "sourceHandle": "source",
+        "targetHandle": "target"
+      },
+      {
+        "id": "e_wait_ai_checkin",
+        "source": "wait_3days",
+        "target": "ai_checkin",
+        "sourceHandle": "source",
+        "targetHandle": "target"
+      },
+      {
+        "id": "e_ai_checkin_answer",
+        "source": "ai_checkin",
+        "target": "answer_checkin",
+        "sourceHandle": "source",
+        "targetHandle": "target"
+      },
+      {
+        "id": "e_ifelse_processing",
+        "source": "ifelse_fulfilled",
+        "target": "ai_processing_reply",
+        "sourceHandle": "false",
+        "targetHandle": "target"
+      },
+      {
+        "id": "e_ai_processing_answer",
+        "source": "ai_processing_reply",
+        "target": "answer_processing",
+        "sourceHandle": "source",
+        "targetHandle": "target"
+      }
+    ],
+    "viewport": {
+      "x": 0,
+      "y": 0,
+      "zoom": 0.7
+    }
+  }
+}
