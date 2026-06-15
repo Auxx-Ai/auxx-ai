@@ -1,0 +1,56 @@
+---
+title: Assertions
+description: Define the checks that decide whether a simulation passes — from how the conversation ends to which tools the agent must and must not call.
+---
+
+An **assertion** is a check that runs after a simulation completes and decides whether it passed. Every simulation needs at least one.
+
+## The assertion types
+
+| Type | Checks | Example |
+|------|--------|---------|
+| **Terminal outcome** | How the conversation should end | Should **finish**, not hand off to a human |
+| **Response criteria** | Natural-language checks on the reply | "Mentioned the order number," "stayed empathetic" |
+| **Tool called** | The agent must call a specific tool | Must call **find order** with the order number |
+| **Tool not called** | The agent must **not** call a tool | Must **not** issue a refund for an ineligible item |
+
+**Terminal outcome** can expect the conversation to finish, hand off, or switch to another procedure.
+
+**Response criteria** is a list of independent statements — each one is checked separately, and the assertion fails if any of them isn't met.
+
+**Tool called / not called** can optionally match the tool's inputs, using **exact** or **subset** matching just like [mocks](/help/agents/simulations/mocks).
+
+## How grading works
+
+Assertions are graded two ways:
+
+- **Deterministic checks** — terminal outcome and tool called/not called are checked instantly and exactly.
+- **AI-judged checks** — response criteria are judged by a model, one statement at a time, because they involve understanding language.
+
+## Verdicts
+
+Each run ends with one of three verdicts:
+
+| Verdict | Meaning |
+|---------|---------|
+| **Passed** | Every assertion passed |
+| **Failed** | The run completed, but at least one assertion failed |
+| **Error** | The run couldn't complete cleanly |
+
+<Callout type="warn" title="Errors override a pass">
+  If the run hits an error — such as the agent calling an
+  [unmocked tool](/help/agents/simulations/mocks) or exceeding the turn limit —
+  the verdict is **error**, even if the assertions would have passed. The run is
+  incomplete, so the result can't be trusted.
+</Callout>
+
+## Next steps
+
+<Cards>
+  <Card title="Running & results" href="/help/agents/simulations/running-and-results" icon="Play">
+    Run the simulation and read each assertion's result.
+  </Card>
+  <Card title="Suggested simulations" href="/help/agents/simulations/suggestions" icon="Sparkles">
+    Get ready-made cases with assertions already filled in.
+  </Card>
+</Cards>

@@ -1,0 +1,47 @@
+---
+title: Tool mocks
+description: Replace real tool and API calls with fake responses so simulations run offline, stay deterministic, and never cause real side effects.
+---
+
+A **mock** is a fake response that stands in for a real tool call during a simulation. Mocks are what make simulations safe and repeatable — the agent thinks it called Shopify or sent an email, but nothing real happens.
+
+## Why mock
+
+- **Offline** — no real calls to Shopify, Stripe, email, or any app.
+- **Deterministic** — the same mock returns the same result every run, so tests are stable.
+- **Fast and safe** — no API latency and no side effects.
+
+## Defining a mock
+
+Each mock specifies:
+
+| Field | What it does |
+|-------|--------------|
+| **Tool name** | Which tool to intercept |
+| **Output** | The fake response to return (as JSON) |
+| **Usage** | `repeat` returns the output every time; `once` returns it a single time |
+
+You can also add an optional **argument matcher** so a mock only applies to specific calls — for example, only mocking a lookup for `orderId: "1234"`. Matching can be **exact** (the whole input matches) or **subset** (the keys you specify match, others are ignored).
+
+## When a tool isn't mocked
+
+If the agent calls a tool you didn't mock, the simulation follows its **unmatched-tool policy**:
+
+- **Error** (default) — the run fails immediately, so you notice the missing mock.
+- **Read-only passthrough** — read-only tools are allowed to run for real; anything that writes still fails.
+
+<Callout type="info" title="Control signals aren't mocked">
+  Procedures use internal control signals (like advancing a step or handing off).
+  Those aren't external tool calls, so you never need to mock them.
+</Callout>
+
+## Next steps
+
+<Cards>
+  <Card title="Assertions" href="/help/agents/simulations/assertions" icon="CircleCheck">
+    Decide what counts as a pass.
+  </Card>
+  <Card title="Running & results" href="/help/agents/simulations/running-and-results" icon="Play">
+    See how unmatched mocks show up in results.
+  </Card>
+</Cards>

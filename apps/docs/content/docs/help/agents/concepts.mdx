@@ -1,0 +1,54 @@
+---
+title: Core concepts
+description: A glossary of the key terms used across agents, procedures, and simulations so the rest of the guides make sense at a glance.
+---
+
+These are the terms used throughout the agent guides. Skim them once and the rest of the documentation will read more easily.
+
+## Agent
+
+The AI teammate you configure. An agent has a persona, a set of tools, a knowledge scope, optional procedures, and triggers. When it's set up, it becomes a real member of your workspace that you can @mention, assign, and message.
+
+## Persona prompt
+
+The agent's core instructions — its personality, tone, rules, and what it should and shouldn't do. You write the persona in the **Prompt** tab. See [The persona prompt](/help/agents/persona).
+
+## Tool
+
+A single action an agent can take, such as "send email," "create ticket," or "find Shopify order." Tools come from Auxx, from installed apps, or from connected MCP servers.
+
+## Toolset
+
+A bundle of related tools you enable as a unit — for example the email toolset, or all the tools from one installed app. See [Tools & app accounts](/help/agents/tools).
+
+## Knowledge scope
+
+The set of records and knowledge bases an agent is allowed to read and reason about. You control it on the **Knowledge** tab. See [Knowledge scope](/help/agents/knowledge).
+
+## Procedure
+
+A reusable, step-by-step playbook an agent follows for a specific situation — like processing a refund or verifying a customer's identity. An agent picks the right procedure automatically based on the customer's message. See [Procedures](/help/agents/procedures).
+
+## Trigger
+
+What makes an agent run on its own: a mention, an assignment, a direct message, a schedule, a record change, or an app event. See [Triggers](/help/agents/triggers).
+
+## Version
+
+An immutable, numbered snapshot of an agent's behavior. The agent you edit is a **draft**; **publishing** captures the draft as a version that production runs use. See [Versions & publishing](/help/agents/versions).
+
+## Simulation
+
+A repeatable, offline test of an agent or procedure — a synthetic customer scenario plus checks on what the agent should do. See [Simulations](/help/agents/simulations).
+
+## Approval
+
+A confirmation gate before a sensitive tool runs. The agent proposes the action, and a person approves or rejects it before it executes. See [Tool approvals](/help/agents/approvals).
+
+## The build panel
+
+On the agent detail page, the docked panel on the right has three tabs:
+
+- **Build** — an AI assistant that helps you configure the agent by chatting.
+- **Chat** — talk to the agent yourself to test it informally.
+- **Simulations** — your saved, repeatable test cases.

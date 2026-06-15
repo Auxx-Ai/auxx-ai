@@ -1,0 +1,39 @@
+---
+title: Suggested simulations
+description: Let Auxx propose ready-to-run test cases for a procedure — happy paths, branches, and edge cases — so you can build coverage with one click.
+---
+
+You don't have to write every simulation from scratch. Auxx can read a [procedure](/help/agents/procedures) and propose **suggested simulations** — ready-to-run cases that cover the scenarios worth testing.
+
+## What gets suggested
+
+Suggestions aim for good coverage of a procedure, including:
+
+- The **happy path** — the procedure succeeds normally.
+- **Each major branch** — the different ways a [condition](/help/agents/procedures/steps-and-conditions) can go.
+- **Missing information** — the customer doesn't provide something the procedure needs.
+- **Edge and refusal cases** — unusual or out-of-scope requests.
+
+Each suggestion arrives complete with a scenario, mocks, and assertions.
+
+## Using a suggestion
+
+- **Add** — one click creates the case and opens it in the editor, where you can refine it.
+- **Dismiss** — hide a suggestion you don't want.
+
+<Callout type="info" title="Suggestions are temporary until you add them">
+  A suggestion only becomes a saved simulation when you add it. Some proposed
+  cases may be dropped automatically if they don't pass validation — that's
+  expected, and the rest are still good to use.
+</Callout>
+
+## Next steps
+
+<Cards>
+  <Card title="Running & results" href="/help/agents/simulations/running-and-results" icon="Play">
+    Run your new cases and read the verdicts.
+  </Card>
+  <Card title="Procedures" href="/help/agents/procedures" icon="ListChecks">
+    Suggestions are generated from a procedure's steps.
+  </Card>
+</Cards>

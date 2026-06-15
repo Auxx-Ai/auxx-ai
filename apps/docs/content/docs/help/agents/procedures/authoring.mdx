@@ -1,0 +1,47 @@
+---
+title: Authoring a procedure
+description: Write a procedure as a rich-text document with inline step badges, then reuse blocks, declare variables, and reference tools as you go.
+---
+
+You author procedures from an agent's **Procedures** tab. Click **Add procedure** to open the editor.
+
+## The editor
+
+A procedure is written like a document — prose interleaved with **step badges** — not a drag-and-drop flowchart. You describe what the agent should do in plain language, and drop in special steps where you need branching, routing, or logic.
+
+The editor works like the [persona editor](/help/agents/persona): rich text, a character count, and the ability to expand into a full-screen dialog. Your changes **autosave** as a draft and don't go live until you [publish](/help/agents/procedures/versions).
+
+## Building blocks
+
+A **Building blocks** popover gives you the pieces you'll assemble:
+
+| Block | What it's for |
+|-------|---------------|
+| **Sub-procedures** | Named, reusable blocks inside this procedure |
+| **Code blocks** | Small scripts that run deterministically |
+| **Local attributes** | Variables you reuse across steps |
+
+Sub-procedures and code blocks are covered in [Code & variables](/help/agents/procedures/code-and-variables) and [Steps & conditions](/help/agents/procedures/steps-and-conditions).
+
+## Mentioning tools and data
+
+Type `@` anywhere in the procedure to reference a **tool**, **field**, **entity**, or **variable**. For example, an instruction might read: "Look up the order with `@find order`, then confirm the shipping address."
+
+Mentioning a tool in a procedure enables and locks it on the agent the same way [prompt mentions](/help/agents/persona) do.
+
+## Writing good instructions
+
+- **One goal per instruction step** — keep each step focused on a single thing to accomplish.
+- **Be explicit about tools** — name the tool the agent should use rather than hoping it picks the right one.
+- **Say what "done" looks like** — describe the condition that means the step is complete.
+
+## Next steps
+
+<Cards>
+  <Card title="Steps & conditions" href="/help/agents/procedures/steps-and-conditions" icon="GitBranch">
+    Add branching and routing to your procedure.
+  </Card>
+  <Card title="Code & variables" href="/help/agents/procedures/code-and-variables" icon="Code">
+    Compute values and pass data between steps.
+  </Card>
+</Cards>

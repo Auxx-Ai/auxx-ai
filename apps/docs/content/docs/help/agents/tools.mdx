@@ -1,0 +1,52 @@
+---
+title: Tools & app accounts
+description: Give your agent actions to take by enabling toolsets and tools, and pin it to specific connected accounts with app accounts.
+---
+
+**Tools** are the actions an agent can take — sending an email, creating a ticket, looking up a Shopify order, or anything a custom app exposes. You manage them in the **Tools** tab on the agent detail page.
+
+## Toolsets vs. tools
+
+A **tool** is a single action. A **toolset** is a bundle of related tools you can enable as a unit. Toolsets come from three sources:
+
+| Source | Examples |
+|--------|----------|
+| **Native** — built into Auxx | Core, email, knowledge, entities |
+| **Apps** — one per installed app | Shopify, Slack, and other [installed apps](/help/apps/overview) |
+| **MCP servers** — your connected servers | Any tool exposed by a [connected MCP server](/help/ai/mcp-connect) |
+
+You can enable an entire toolset, or open it and pick individual tools with a per-tool allow-list.
+
+## How a tool becomes enabled
+
+A tool can be turned on three ways:
+
+1. **Manually** — you add it from the **Add tools** dialog.
+2. **By default** — a starter set of toolsets is added when the agent is created.
+3. **By mention** — referencing a tool in the [persona prompt](/help/agents/persona) or a [procedure](/help/agents/procedures) automatically enables and **locks** it on.
+
+Locked tools show a lock badge. To remove one, delete the mention that locked it first.
+
+## App accounts
+
+When an app is connected to more than one account — say two Shopify stores — you can pin the agent to a specific one with an **app account**. This makes sure the agent always acts on the right store, workspace, or inbox.
+
+## Chat agents get a filtered set
+
+[Chat agents](/help/agents) that serve customers only see tools marked safe for untrusted callers. Sensitive actions are hidden from the chat surface automatically, even if the same tool is available to internal agents.
+
+<Callout type="info" title="Tools that need approval">
+  Some tools require a person to confirm before they run. See
+  [Tool approvals](/help/agents/approvals).
+</Callout>
+
+## Next steps
+
+<Cards>
+  <Card title="Knowledge scope" href="/help/agents/knowledge" icon="BookOpen">
+    Control which records the agent can read.
+  </Card>
+  <Card title="Connect an MCP server" href="/help/ai/mcp-connect" icon="Plug">
+    Bring external tools into your agents.
+  </Card>
+</Cards>

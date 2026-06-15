@@ -1,0 +1,52 @@
+---
+title: Running & reading results
+description: Run one simulation or a whole suite, choose draft or published behavior, and read the verdict, assertion results, and full conversation trace.
+---
+
+Once a simulation is saved, you can run it as often as you like and inspect the results in detail.
+
+## Run one, or run all
+
+- **Run one** — execute a single simulation to check a specific scenario.
+- **Run all** — execute every simulation as a **suite**. This is how you catch regressions: one click confirms a change didn't break anything else.
+
+## Draft or published behavior
+
+You choose what the simulation runs against:
+
+| Mode | Runs against | Use for |
+|------|--------------|---------|
+| **Pinned** | The published version | The authoritative result |
+| **Draft** | Your current working draft | Checking edits before you publish |
+
+A draft run never becomes the official status of a simulation — the **pinned** result is always the verdict of record. This lets you experiment freely while keeping a trustworthy history.
+
+## Reading a run
+
+A completed run shows:
+
+- **The verdict** — passed, failed, or error (see [Assertions](/help/agents/simulations/assertions)).
+- **Assertion results** — one row per assertion, with what was expected versus what actually happened.
+- **The conversation trace** — the full back-and-forth, every tool call, and the procedure steps the agent took.
+- **AI credits used** — what the run cost.
+
+## History and comparison
+
+Suite runs are kept over time so you can compare results across changes and spot when something regressed. A pulse indicator on the **Simulations** tab shows when a suite is currently running.
+
+<Callout type="info" title="A green suite before publishing">
+  Make it a habit to get your simulation suite passing before you
+  [publish a version](/help/agents/versions). It's the cheapest way to keep a
+  reliable agent reliable.
+</Callout>
+
+## Next steps
+
+<Cards>
+  <Card title="Suggested simulations" href="/help/agents/simulations/suggestions" icon="Sparkles">
+    Grow your suite with AI-proposed cases.
+  </Card>
+  <Card title="Versions & publishing" href="/help/agents/versions" icon="GitBranch">
+    Publish once your suite is green.
+  </Card>
+</Cards>

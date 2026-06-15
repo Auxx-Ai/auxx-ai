@@ -1,0 +1,51 @@
+---
+title: The persona prompt
+description: Write the instructions that define your agent's personality, tone, and rules, and reference tools directly from the prompt to lock them on.
+---
+
+The **persona** is your agent's core instructions — its personality, tone, the rules it follows, and what it should and shouldn't do. You write it in the **Prompt** tab on the agent detail page.
+
+Think of the persona as the agent's character and standing orders. For precise, repeatable workflows like refunds, pair the persona with a [procedure](/help/agents/procedures) instead of cramming every step into the prompt.
+
+## Writing the prompt
+
+The Prompt tab is a rich editor. You can use paragraphs, lists, and formatting to structure your instructions, and expand it into a full-screen dialog for longer prompts. A character count is shown as you write.
+
+Your changes **autosave** as you type — there's no save button. The prompt doesn't go live until you [publish a version](/help/agents/versions).
+
+A good persona usually covers:
+
+- **Role and scope** — what the agent handles, and what it should hand off.
+- **Tone** — how it should sound (friendly, concise, formal).
+- **Rules** — hard limits, like "never promise a refund without checking eligibility."
+- **Escalation** — when to bring in a human.
+
+## Mentioning tools and knowledge
+
+Type `@` in the prompt to reference a specific **tool**, **toolset**, **field**, or **record** directly inside your instructions. For example, you might write: "When a customer asks about delivery, use `@find order` to look up their order."
+
+Mentioning a capability inline makes your instructions concrete and keeps the agent's behavior tied to the tools you actually want it to use.
+
+## Auto-locking
+
+When you mention a tool or toolset in the prompt, Auxx automatically **enables and locks it on**. This prevents you from accidentally turning off a tool your instructions depend on. Locked tools show a lock badge in the [Tools](/help/agents/tools) tab.
+
+<Callout type="info" title="To remove a locked tool">
+  Delete the mention from the prompt first. Once nothing references the tool,
+  it unlocks and you can disable it normally.
+</Callout>
+
+## Chat agents
+
+For [chat agents](/help/agents) that answer customers in the chat widget, the persona is where you set tone, escalation rules, and guardrails. Their tools are configured separately and filtered to a customer-safe set.
+
+## Next steps
+
+<Cards>
+  <Card title="Tools & app accounts" href="/help/agents/tools" icon="Wrench">
+    Choose which actions the agent can take.
+  </Card>
+  <Card title="Versions & publishing" href="/help/agents/versions" icon="GitBranch">
+    Make your prompt changes live.
+  </Card>
+</Cards>

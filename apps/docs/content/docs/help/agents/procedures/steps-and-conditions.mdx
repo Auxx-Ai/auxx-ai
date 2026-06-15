@@ -1,0 +1,53 @@
+---
+title: Steps, conditions & routing
+description: The building blocks of a procedure — instruction steps where the agent acts, conditions that branch, and routing that ends or redirects the flow.
+---
+
+A procedure is made of steps. Most are **instruction steps**; the rest control the flow with **conditions** and **routing**.
+
+## Instruction steps
+
+An instruction step is prose telling the agent what to do at this point — "Ask the customer for their order number," or "Confirm the refund amount." This is where the agent does its work: it reads the instruction, talks to the customer, and calls tools as needed.
+
+When the step's goal is met, the procedure moves on to the next step automatically.
+
+## Conditions
+
+A **condition** branches the procedure with if / else-if / else logic. Conditions come in two modes:
+
+| Mode | How the branch is decided | Use when |
+|------|---------------------------|----------|
+| **Text** | The agent judges it in natural language | The decision needs understanding — "the order has shipped" |
+| **Structured** | Exact rules over CRM fields and variables | The decision is a precise data check — "order total > $100" |
+
+Text mode is flexible and reads like a human instruction. Structured mode is deterministic and uses the same condition builder you'll find elsewhere in Auxx.
+
+## Routing
+
+**Routing** steps decide where the procedure goes next:
+
+| Routing | What it does |
+|---------|--------------|
+| **Finished** | Ends the procedure successfully |
+| **Handoff** | Escalates to a human and leaves the procedure |
+| **Switch** | Jumps to a different procedure with no return |
+
+## Sub-procedures
+
+A **sub-procedure** is a named, reusable block *inside* a procedure — for example "Validate refund eligibility." Unlike a switch, calling a sub-procedure **returns** to where it was called, and it **shares the same variables** as the rest of the procedure. Use sub-procedures to avoid repeating the same steps in multiple branches.
+
+<Callout type="info" title="Switch vs. sub-procedure">
+  Use **switch** to permanently hand off to another standalone procedure. Use a
+  **sub-procedure** when you want to do some work and then come back.
+</Callout>
+
+## Next steps
+
+<Cards>
+  <Card title="Code & variables" href="/help/agents/procedures/code-and-variables" icon="Code">
+    Compute values and reuse data across steps.
+  </Card>
+  <Card title="Selection & runtime" href="/help/agents/procedures/selection-and-runtime" icon="Workflow">
+    How the agent runs through these steps.
+  </Card>
+</Cards>
