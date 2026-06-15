@@ -112,6 +112,40 @@ jobs:
         working-directory: packages/chat
         run: pnpm pack
 
+      # Publish the built widget bundle to the CDN (auxx-public S3, served by
+      # cdn.auxx.ai). Runs before the npm publish so the CDN is current the
+      # moment the version is public. The deploy role already grants s3:*.
+      - name: Configure AWS credentials
+        if: ${{ !inputs.dry-run }}
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: arn:aws:iam::716542960845:role/AuxxGithubDeployRole
+          aws-region: us-west-1
+
+      - name: Upload widget bundle to CDN
+        if: ${{ !inputs.dry-run }}
+        env:
+          BUCKET: auxx-public
+          BUNDLE: packages/chat/dist/widget-bundle/auxx-chat.js
+        run: |
+          # Immutable, version-pinned artifact — safe to cache forever.
+          aws s3 cp "$BUNDLE" "s3://$BUCKET/scripts/chat-widget-${CHAT_VERSION}.js" \
+            --content-type 'application/javascript; charset=utf-8' \
+            --cache-control 'public, max-age=31536000, immutable'
+          # Stable alias the embed snippet points at — short TTL, purged below.
+          aws s3 cp "$BUNDLE" "s3://$BUCKET/scripts/chat-widget.js" \
+            --content-type 'application/javascript; charset=utf-8' \
+            --cache-control 'public, max-age=300, stale-while-revalidate=86400'
+
+      - name: Purge CDN edge cache for stable alias
+        if: ${{ !inputs.dry-run }}
+        run: |
+          curl -fsS -X POST \
+            "https://api.cloudflare.com/client/v4/zones/${{ secrets.CF_ZONE_ID }}/purge_cache" \
+            -H "Authorization: Bearer ${{ secrets.CF_API_TOKEN }}" \
+            -H 'Content-Type: application/json' \
+            --data '{"files":["https://cdn.auxx.ai/scripts/chat-widget.js"]}'
+
       - name: Publish to npm
         if: ${{ !inputs.dry-run }}
         working-directory: packages/chat

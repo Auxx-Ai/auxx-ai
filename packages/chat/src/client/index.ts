@@ -11,7 +11,7 @@
  *     Auxx.update({ plan: 'pro' })
  *     Auxx.shutdown()
  *
- * Defaults to the hosted bundle at `app.auxx.ai/scripts/chat-widget.js`.
+ * Defaults to the hosted bundle at `cdn.auxx.ai/scripts/chat-widget.js`.
  * Customers self-hosting can pass `widgetBase` (or set `AUXX_WIDGET_URL` at
  * build time). `apiBase` is propagated to the bundle via
  * `window.__AUXX_CONFIG__` *before* the script tag is injected, so the same
