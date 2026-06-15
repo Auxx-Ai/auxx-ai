@@ -28,6 +28,7 @@ import { useQueryState } from 'nuqs'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { AGENT_TABS, type AgentTab, DEFAULT_AGENT_TAB } from '../../constant'
+import { usePersonaRealtime } from '../../hooks/use-persona-realtime'
 import { useProcedureRealtime } from '../../procedures/hooks/use-procedure-realtime'
 import { ProcedureDetailBar } from '../../procedures/ui/procedure-detail-bar'
 import { ProcedureDraftProvider } from '../../procedures/ui/procedure-draft-provider'
@@ -100,6 +101,15 @@ export function AgentDetailTabs({ agent, onAutosaveChange }: AgentDetailTabsProp
   useProcedureRealtime({
     selectedProcedureId,
     onExternalDraftChange: useCallback(() => setProcedureReloadKey((k) => k + 1), []),
+  })
+
+  // Same pattern for the seed-once persona editor: Kopilot's `set_agent_prompt`
+  // writes the prompt server-side, so remount it onto the fresh doc once the
+  // refetch resolves. The author's own autosave is socket-excluded server-side.
+  const [personaReloadKey, setPersonaReloadKey] = useState(0)
+  usePersonaRealtime({
+    agentId: agent.id,
+    onExternalPromptChange: useCallback(() => setPersonaReloadKey((k) => k + 1), []),
   })
   const scrollContainerRef = useRef<HTMLDivElement | null>(null)
   const sectionRefs = useRef<Record<AgentTab, HTMLDivElement | null>>({
@@ -269,7 +279,11 @@ export function AgentDetailTabs({ agent, onAutosaveChange }: AgentDetailTabsProp
                     icon={<FileText className='size-4' />}
                     initialOpen
                     collapsible={false}>
-                    <PersonaEditor agent={agent} onAutosaveChange={onAutosaveChange} />
+                    <PersonaEditor
+                      key={personaReloadKey}
+                      agent={agent}
+                      onAutosaveChange={onAutosaveChange}
+                    />
                   </Section>
                 </div>
 

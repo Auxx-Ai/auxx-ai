@@ -10,12 +10,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const insertCredential = vi.fn()
 const rotateSecrets = vi.fn()
 const updateCredential = vi.fn()
+const recordRefreshSuccess = vi.fn()
 const triggerAppEvent = vi.fn()
 
 vi.mock('@auxx/credentials/store', () => ({
   insertCredential: (input: unknown) => insertCredential(input),
   rotateSecrets: (...args: unknown[]) => rotateSecrets(...args),
   updateCredential: (...args: unknown[]) => updateCredential(...args),
+  recordRefreshSuccess: (...args: unknown[]) => recordRefreshSuccess(...args),
   listCredentials: async () => ok([]),
 }))
 
@@ -50,6 +52,7 @@ beforeEach(() => {
   insertCredential.mockReset().mockResolvedValue(ok({ id: 'cred-1' }))
   rotateSecrets.mockReset().mockResolvedValue(ok(undefined))
   updateCredential.mockReset().mockResolvedValue(ok(undefined))
+  recordRefreshSuccess.mockReset().mockResolvedValue(ok(undefined))
   triggerAppEvent.mockReset().mockResolvedValue(ok({ result: undefined }))
 })
 
@@ -102,6 +105,9 @@ describe('saveAppConnection — secret/plain split', () => {
     expect(updateCredential).toHaveBeenCalledWith('cred-1', 'org-1', {
       metadata: { connectionVariables: { account_number: 'acc-2' } },
     })
+    // A successful re-auth clears the refresh circuit breaker so the connection no
+    // longer surfaces as "expired" (see recordRefreshSuccess: consecutiveRefreshFailures → 0).
+    expect(recordRefreshSuccess).toHaveBeenCalledWith('cred-1', 'org-1', { expiresAt: null })
   })
 
   it('hands the merged fields map to the connection-added handler', async () => {

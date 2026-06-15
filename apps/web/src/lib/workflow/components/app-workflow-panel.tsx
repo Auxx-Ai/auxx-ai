@@ -16,7 +16,6 @@ import { useExtensionsContext } from '~/providers/extensions/extensions-context'
 import type { WorkflowBlock } from '../types'
 import { computeOutputSignature, resolveAppBlockOutputFields } from '../utils/resolve-app-outputs'
 import { convertOutputFieldsToVariables } from '../utils/type-mapping'
-import { AppConnectionPicker } from './app-connection-picker'
 import { AppPollingSection } from './app-polling-section'
 import { AppWorkflowFieldContext } from './app-workflow-field-context'
 
@@ -135,6 +134,21 @@ export const AppWorkflowPanel = memo<AppWorkflowPanelProps>(
         })
       },
       [setInputs]
+    )
+
+    // App context for BasePanel's App Settings account popover — extends the
+    // resolved installation with the node's bound connection so picking an
+    // account writes back to node data.
+    const basePanelAppContext = useMemo(
+      () =>
+        appContext
+          ? {
+              ...appContext,
+              connectionId: nodeData.connectionId as string | undefined,
+              onConnectionChange: handleConnectionChange,
+            }
+          : undefined,
+      [appContext, nodeData.connectionId, handleConnectionChange]
     )
 
     /** Context value for AppWorkflowFieldContext */
@@ -358,15 +372,11 @@ export const AppWorkflowPanel = memo<AppWorkflowPanelProps>(
     }
 
     return (
-      <BasePanel title={block.label} nodeId={nodeId} data={nodeData} appContext={appContext}>
-        {block.config?.requiresConnection && (
-          <AppConnectionPicker
-            appId={appId}
-            installationId={resolvedInstallationId}
-            connectionId={nodeData.connectionId}
-            onChange={handleConnectionChange}
-          />
-        )}
+      <BasePanel
+        title={block.label}
+        nodeId={nodeId}
+        data={nodeData}
+        appContext={basePanelAppContext}>
         {isTrigger && block.config?.polling && (
           <AppPollingSection
             nodeId={nodeId}

@@ -248,6 +248,7 @@ export async function updateAgent(
   agentId: string,
   organizationId: string,
   input: UpdateAgentInput,
+  options: { excludeSocketId?: string } = {},
   db: Database = defaultDb as Database
 ): Promise<void> {
   // `kind` is chosen once at creation and immutable thereafter — it changes
@@ -376,7 +377,12 @@ export async function updateAgent(
       error: err instanceof Error ? err.message : String(err),
     })
   }
-  await publishAgentUpdated(getRealtimeService(), organizationId, { agentId })
+  // `options.excludeSocketId` keeps the `agent:updated` broadcast away from the
+  // originating browser so it doesn't clobber/remount over its own optimistic
+  // edit (e.g. the persona editor's autosave). Server-originated writes (Kopilot
+  // tools — no socket) omit it and still broadcast to everyone. Mirrors the
+  // toolset write path; see `updateAgentToolset`.
+  await publishAgentUpdated(getRealtimeService(), organizationId, { agentId }, options)
 }
 
 /**
@@ -646,7 +652,7 @@ export async function archiveAgent(
   organizationId: string,
   db: Database = defaultDb as Database
 ): Promise<void> {
-  await updateAgent(agentId, organizationId, { archivedAt: new Date() }, db)
+  await updateAgent(agentId, organizationId, { archivedAt: new Date() }, {}, db)
 }
 
 /**

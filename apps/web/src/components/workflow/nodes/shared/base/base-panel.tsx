@@ -41,8 +41,8 @@ import React, {
   useRef,
   useState,
 } from 'react'
+import { AppAccountPopover } from '~/components/apps/ui/app-account-popover'
 import { AppIcon } from '~/components/apps/ui/app-icon'
-import { AppSettingsDialog } from '~/components/apps/ui/app-settings-dialog'
 import { AppWithStatusIcon } from '~/components/apps/ui/app-with-status-icon'
 import { DockToggleButton } from '~/components/global/dock-toggle-button'
 import { Tooltip } from '~/components/global/tooltip'
@@ -85,6 +85,10 @@ interface BasePanelProps {
     installationId: string
     installationType: 'development' | 'production'
     appName: string
+    /** Currently-bound connection for this node. */
+    connectionId?: string
+    /** Writes the picked connection back to node data. */
+    onConnectionChange?: (connectionId: string | undefined) => void
   }
 }
 
@@ -118,12 +122,15 @@ function AppPanelIcon({ appId, iconId, color }: { appId: string; iconId: string;
   )
 }
 
-function AppSettingsTrigger({
-  appId,
-  ...props
-}: React.ComponentPropsWithoutRef<typeof Button> & {
-  appId: string
-}) {
+/**
+ * Trigger for the App Settings account popover. The wrapper `div` is the root so
+ * Radix's `PopoverTrigger asChild` can forward its `ref`/`onClick` here; the inner
+ * `Button` is presentational. A status dot reflects the app's connection state.
+ */
+const AppSettingsTrigger = React.forwardRef<
+  HTMLDivElement,
+  React.ComponentPropsWithoutRef<'div'> & { appId: string }
+>(({ appId, ...props }, ref) => {
   const { appInstallations, appConnections } = useExtensionsContext()
 
   const installation = appInstallations.find((i) => i.app.id === appId)
@@ -143,8 +150,8 @@ function AppSettingsTrigger({
         : 'bg-red-500'
 
   return (
-    <div className='relative'>
-      <Button variant='ghost' size='xs' {...props}>
+    <div ref={ref} className='relative' {...props}>
+      <Button variant='ghost' size='xs' tabIndex={-1}>
         <Settings2 /> App Settings
       </Button>
       {dotColor && (
@@ -154,7 +161,8 @@ function AppSettingsTrigger({
       )}
     </div>
   )
-}
+})
+AppSettingsTrigger.displayName = 'AppSettingsTrigger'
 
 /**
  * Base panel component that provides common structure for node nodeDatauration panels
@@ -537,11 +545,19 @@ export const BasePanel = memo<BasePanelProps>(
               )}
               {appContext && (
                 <div className='ml-auto'>
-                  <AppSettingsDialog
-                    appSlug={appContext.appSlug}
-                    installationType={appContext.installationType}
-                    returnTo={pathname}
+                  <AppAccountPopover
+                    appId={appContext.appId}
+                    value={appContext.connectionId}
+                    onPick={(credId) => appContext.onConnectionChange?.(credId)}
+                    onConnected={(credId) => appContext.onConnectionChange?.(credId)}
+                    onRemove={() => appContext.onConnectionChange?.(undefined)}
+                    allowPersonal={false}
                     trigger={<AppSettingsTrigger appId={appContext.appId} />}
+                    appSettings={{
+                      appSlug: appContext.appSlug,
+                      installationType: appContext.installationType,
+                      returnTo: pathname,
+                    }}
                   />
                 </div>
               )}
