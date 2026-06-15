@@ -128,9 +128,12 @@ export const Dashboard = ({
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}>
         <DndStateProvider activeDndItem={activeDndItem}>
-          <div className='flex h-screen overflow-hidden w-full pt-safe pb-safe pl-safe pr-safe'>
+          <div className='flex h-screen overflow-hidden w-full'>
             <AppSidebar className='min-w-0' user={user} />
-            <SidebarInset className='min-h-0'>
+            {/* Safe-area insets live on the content surface (not the bare
+                shell) so its bg paints full-bleed to the screen edges while
+                content stays clear of the notch / home indicator. */}
+            <SidebarInset className='min-h-0 pt-safe pb-safe pl-safe pr-safe'>
               <DemoBanner />
               <OverageBanner overages={overages} />
               {children}
