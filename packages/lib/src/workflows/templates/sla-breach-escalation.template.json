@@ -1,0 +1,525 @@
+{
+  "slug": "sla-breach-escalation",
+  "name": "SLA Breach Escalation",
+  "description": "Runs on a schedule (e.g., hourly), calculates the SLA cutoff time using the date-time node, finds all open tickets, and if any are found, uses AI to identify SLA-breaching tickets and posts an alert to Slack via webhook. Showcases the date-time and HTTP nodes.",
+  "categories": ["customer-service", "automation", "operations"],
+  "icon": {
+    "iconId": "alarm-clock",
+    "color": "red"
+  },
+  "status": "public",
+  "popularity": 80,
+  "triggerType": "scheduled",
+  "triggerConfig": null,
+  "requiredApps": [],
+  "requiredEntities": [
+    {
+      "entityTemplateId": "__system:ticket",
+      "name": "Ticket",
+      "apiSlug": "ticket",
+      "fieldMapping": {
+        "ticket_status": "ticket_status",
+        "ticket_priority": "ticket_priority"
+      },
+      "requiredFields": ["ticket_status"],
+      "required": true
+    }
+  ],
+  "envVars": [
+    {
+      "id": "env.SLA_THRESHOLD_HOURS",
+      "name": "SLA_THRESHOLD_HOURS",
+      "value": 24,
+      "type": "number"
+    },
+    {
+      "id": "env.SLACK_WEBHOOK_URL",
+      "name": "SLACK_WEBHOOK_URL",
+      "value": "",
+      "type": "secret"
+    }
+  ],
+  "graph": {
+    "nodes": [
+      {
+        "id": "trigger_1",
+        "type": "standard",
+        "position": {
+          "x": 100,
+          "y": 250
+        },
+        "data": {
+          "id": "trigger_1",
+          "type": "scheduled",
+          "title": "Hourly SLA Check",
+          "desc": "Runs every hour to check for SLA breaches",
+          "config": {
+            "triggerInterval": "hours",
+            "timeBetweenTriggers": {
+              "hours": 1,
+              "isConstant": true
+            },
+            "timezone": "UTC"
+          },
+          "isEnabled": true
+        },
+        "width": 244,
+        "height": 48
+      },
+      {
+        "id": "datetime_cutoff",
+        "type": "standard",
+        "position": {
+          "x": 450,
+          "y": 250
+        },
+        "data": {
+          "id": "datetime_cutoff",
+          "type": "date-time",
+          "title": "Calculate SLA Cutoff",
+          "desc": "Subtract SLA threshold hours from now to get the cutoff time",
+          "operation": "add_subtract",
+          "inputDate": "{{trigger_1.triggered_at}}",
+          "isInputDateConstant": false,
+          "addSubtract": {
+            "action": "subtract",
+            "duration": 24,
+            "unit": "hours"
+          },
+          "timezone": "UTC",
+          "fieldModes": {
+            "inputDate": false
+          }
+        },
+        "width": 244,
+        "height": 100
+      },
+      {
+        "id": "find_tickets",
+        "type": "standard",
+        "position": {
+          "x": 800,
+          "y": 250
+        },
+        "data": {
+          "id": "find_tickets",
+          "type": "find",
+          "title": "Find Open Tickets",
+          "desc": "Search for all tickets with open or pending status",
+          "resourceType": "@entity:ticket",
+          "findMode": "findMany",
+          "conditions": [],
+          "conditionGroups": [
+            {
+              "id": "grp_open",
+              "order": 0,
+              "metadata": {
+                "name": "Open Tickets",
+                "subtext": "",
+                "collapsed": false,
+                "description": ""
+              },
+              "conditions": [
+                {
+                  "id": "cond_status",
+                  "fieldId": "@field:ticket_status",
+                  "operator": "in",
+                  "value": ["open", "pending"],
+                  "isConstant": true
+                }
+              ],
+              "logicalOperator": "AND"
+            }
+          ],
+          "limit": 100,
+          "fieldModes": {
+            "limit": true
+          }
+        },
+        "width": 244,
+        "height": 100
+      },
+      {
+        "id": "ifelse_found",
+        "type": "standard",
+        "position": {
+          "x": 1150,
+          "y": 250
+        },
+        "data": {
+          "id": "ifelse_found",
+          "type": "if-else",
+          "title": "Any Open Tickets?",
+          "desc": "Check if any open tickets were found",
+          "cases": [
+            {
+              "id": "case_found",
+              "case_id": "true",
+              "logical_operator": "and",
+              "conditions": [
+                {
+                  "id": "cond_count",
+                  "variableId": "find_tickets.count",
+                  "comparison_operator": ">",
+                  "value": 0,
+                  "isConstant": true,
+                  "logical_operator": "and"
+                }
+              ]
+            }
+          ],
+          "_targetBranches": [
+            {
+              "id": "true",
+              "name": "Tickets Found",
+              "type": "default"
+            },
+            {
+              "id": "false",
+              "name": "All Clear",
+              "type": "default"
+            }
+          ]
+        },
+        "width": 244,
+        "height": 100
+      },
+      {
+        "id": "ai_summary",
+        "type": "standard",
+        "position": {
+          "x": 1500,
+          "y": 125
+        },
+        "data": {
+          "id": "ai_summary",
+          "type": "ai",
+          "title": "AI: SLA Breach Report",
+          "desc": "Analyze tickets and identify SLA breaches",
+          "model": {
+            "useDefault": true,
+            "provider": "",
+            "name": "",
+            "mode": "chat",
+            "completion_params": {
+              "temperature": 0.3
+            }
+          },
+          "prompt_template": [
+            {
+              "role": "system",
+              "json": {
+                "type": "doc",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "You are an operations analyst. Analyze the open tickets below and generate a concise SLA breach alert for Slack."
+                      }
+                    ]
+                  },
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "SLA Policy: Tickets must be resolved within "
+                      },
+                      {
+                        "type": "variable-node",
+                        "attrs": {
+                          "variableId": "env.SLA_THRESHOLD_HOURS"
+                        }
+                      },
+                      {
+                        "type": "text",
+                        "text": " hours."
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "Current time: "
+                      },
+                      {
+                        "type": "variable-node",
+                        "attrs": {
+                          "variableId": "trigger_1.triggered_at"
+                        }
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "SLA cutoff time: "
+                      },
+                      {
+                        "type": "variable-node",
+                        "attrs": {
+                          "variableId": "datetime_cutoff.result"
+                        }
+                      },
+                      {
+                        "type": "text",
+                        "text": " (tickets created before this time are breaching SLA)"
+                      }
+                    ]
+                  },
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "Open tickets:"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "variable-node",
+                        "attrs": {
+                          "variableId": "find_tickets.tickets"
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "Format the output as a Slack-friendly message:"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "- Start with a summary line (e.g., '🚨 SLA Alert: X tickets breaching SLA')"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "- List each breaching ticket with: title, status, and how long it's been open"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "- Group by severity if possible"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "- End with a recommended action"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "- Keep it concise — this goes to a Slack channel"
+                      }
+                    ]
+                  }
+                ]
+              }
+            },
+            {
+              "role": "user",
+              "json": {
+                "type": "doc",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "Generate the SLA breach report for the "
+                      },
+                      {
+                        "type": "variable-node",
+                        "attrs": {
+                          "variableId": "find_tickets.count"
+                        }
+                      },
+                      {
+                        "type": "text",
+                        "text": " open tickets."
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "context": {
+            "enabled": false,
+            "variable_selector": []
+          },
+          "vision": {
+            "enabled": false
+          },
+          "structured_output": {
+            "enabled": false
+          }
+        },
+        "width": 244,
+        "height": 100
+      },
+      {
+        "id": "http_slack",
+        "type": "standard",
+        "position": {
+          "x": 1850,
+          "y": 125
+        },
+        "data": {
+          "id": "http_slack",
+          "type": "http",
+          "title": "Post to Slack",
+          "desc": "Send SLA breach alert to Slack webhook",
+          "method": "post",
+          "url": "{{env.SLACK_WEBHOOK_URL}}",
+          "authorization": {
+            "type": "none"
+          },
+          "headers": "Content-Type: application/json",
+          "params": "",
+          "body": {
+            "type": "raw-text",
+            "data": [
+              {
+                "type": "text",
+                "value": "{\"text\": \"{{ai_summary.text}}\"}"
+              }
+            ]
+          },
+          "timeout": {
+            "connect": 10,
+            "read": 30,
+            "write": 30
+          },
+          "retry_config": {
+            "retry_enabled": true,
+            "max_retries": 3,
+            "retry_interval": 2000
+          },
+          "ssl_verify": true,
+          "error_strategy": "default",
+          "default_value": [],
+          "_targetBranches": [
+            {
+              "id": "source",
+              "name": "",
+              "type": "default"
+            }
+          ]
+        },
+        "width": 244,
+        "height": 100
+      },
+      {
+        "id": "end_clear",
+        "type": "standard",
+        "position": {
+          "x": 1500,
+          "y": 375
+        },
+        "data": {
+          "id": "end_clear",
+          "type": "end",
+          "title": "All Clear",
+          "description": "No open tickets found — SLA is healthy",
+          "message": "SLA check passed — no open tickets found",
+          "status": "success"
+        },
+        "width": 244,
+        "height": 48
+      },
+      {
+        "id": "note_setup",
+        "type": "note",
+        "position": {
+          "x": 100,
+          "y": 50
+        },
+        "data": {
+          "id": "note_setup",
+          "type": "note",
+          "title": "Setup",
+          "desc": "",
+          "text": "<p><span style=\"font-size: 14px;\">Configure the environment variables:</span></p><p><span style=\"font-size: 14px;\">• SLA_THRESHOLD_HOURS: hours before a ticket breaches SLA (default: 24)</span></p><p><span style=\"font-size: 14px;\">• SLACK_WEBHOOK_URL: your Slack incoming webhook URL</span></p>",
+          "theme": "blue",
+          "author": "",
+          "errors": [],
+          "isValid": true,
+          "disabled": false,
+          "fontSize": 14,
+          "isInLoop": false,
+          "showAuthor": false
+        },
+        "width": 244,
+        "height": 100
+      }
+    ],
+    "edges": [
+      {
+        "id": "e_trigger_datetime",
+        "source": "trigger_1",
+        "target": "datetime_cutoff",
+        "sourceHandle": "source",
+        "targetHandle": "target"
+      },
+      {
+        "id": "e_datetime_find",
+        "source": "datetime_cutoff",
+        "target": "find_tickets",
+        "sourceHandle": "source",
+        "targetHandle": "target"
+      },
+      {
+        "id": "e_find_ifelse",
+        "source": "find_tickets",
+        "target": "ifelse_found",
+        "sourceHandle": "source",
+        "targetHandle": "target"
+      },
+      {
+        "id": "e_ifelse_ai",
+        "source": "ifelse_found",
+        "target": "ai_summary",
+        "sourceHandle": "true",
+        "targetHandle": "target"
+      },
+      {
+        "id": "e_ai_http",
+        "source": "ai_summary",
+        "target": "http_slack",
+        "sourceHandle": "source",
+        "targetHandle": "target"
+      },
+      {
+        "id": "e_ifelse_end",
+        "source": "ifelse_found",
+        "target": "end_clear",
+        "sourceHandle": "false",
+        "targetHandle": "target"
+      }
+    ],
+    "viewport": {
+      "x": 0,
+      "y": 0,
+      "zoom": 0.7
+    }
+  }
+}

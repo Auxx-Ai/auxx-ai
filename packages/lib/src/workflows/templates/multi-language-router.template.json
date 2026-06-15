@@ -1,0 +1,883 @@
+{
+  "slug": "multi-language-router",
+  "name": "Multi-Language Support Router",
+  "description": "Detects the language of incoming customer emails using a text classifier and routes them to language-specific AI responders. Each language branch has a tailored system prompt ensuring the reply is fluent and culturally appropriate. Supports English, Spanish, French, and a catch-all for other languages.",
+  "categories": ["customer-service", "ai", "routing"],
+  "icon": {
+    "iconId": "languages",
+    "color": "blue"
+  },
+  "status": "public",
+  "popularity": 75,
+  "triggerType": "message-received",
+  "triggerConfig": null,
+  "requiredApps": [],
+  "requiredEntities": [],
+  "envVars": [],
+  "graph": {
+    "nodes": [
+      {
+        "id": "trigger_1",
+        "type": "standard",
+        "position": {
+          "x": 100,
+          "y": 350
+        },
+        "data": {
+          "id": "trigger_1",
+          "type": "message-received",
+          "title": "Customer Email",
+          "desc": "Triggered when a new customer email arrives",
+          "variables": [],
+          "filters": {
+            "from": [],
+            "subject_contains": [],
+            "body_contains": []
+          }
+        },
+        "width": 244,
+        "height": 48
+      },
+      {
+        "id": "classifier_lang",
+        "type": "standard",
+        "position": {
+          "x": 450,
+          "y": 350
+        },
+        "data": {
+          "id": "classifier_lang",
+          "type": "text-classifier",
+          "title": "Detect Language",
+          "desc": "Classify the email by language",
+          "model": {
+            "useDefault": true,
+            "provider": "",
+            "name": "",
+            "mode": "chat",
+            "completion_params": {
+              "temperature": 0.1
+            }
+          },
+          "text": "Subject: {{trigger_1.message.subject}}\n\nBody: {{trigger_1.message.body}}",
+          "categories": [
+            {
+              "id": "cat_en",
+              "name": "english",
+              "description": "The email is written in English"
+            },
+            {
+              "id": "cat_es",
+              "name": "spanish",
+              "description": "The email is written in Spanish (Español)"
+            },
+            {
+              "id": "cat_fr",
+              "name": "french",
+              "description": "The email is written in French (Français)"
+            },
+            {
+              "id": "cat_other",
+              "name": "other",
+              "description": "The email is written in any other language not listed above"
+            }
+          ],
+          "vision": {
+            "enabled": false
+          },
+          "instruction": {
+            "enabled": true,
+            "text": "Detect the primary language of this customer email. Classify as english, spanish, french, or other. Base your classification on the body text, not just the subject line."
+          },
+          "_targetBranches": [
+            {
+              "id": "cat_en",
+              "name": "english"
+            },
+            {
+              "id": "cat_es",
+              "name": "spanish"
+            },
+            {
+              "id": "cat_fr",
+              "name": "french"
+            },
+            {
+              "id": "cat_other",
+              "name": "other"
+            }
+          ]
+        },
+        "width": 244,
+        "height": 100
+      },
+      {
+        "id": "ai_en",
+        "type": "standard",
+        "position": {
+          "x": 800,
+          "y": 100
+        },
+        "data": {
+          "id": "ai_en",
+          "type": "ai",
+          "title": "AI: English Reply",
+          "desc": "Generate a reply in English",
+          "model": {
+            "useDefault": true,
+            "provider": "",
+            "name": "",
+            "mode": "chat",
+            "completion_params": {
+              "temperature": 0.7
+            }
+          },
+          "prompt_template": [
+            {
+              "role": "system",
+              "json": {
+                "type": "doc",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "You are a friendly, professional customer support agent. Reply to the customer's email in English."
+                      }
+                    ]
+                  },
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "Guidelines:"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "- Be helpful, warm, and professional"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "- Address their question or concern directly"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "- Keep the reply concise and actionable"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "- Use a conversational but professional tone"
+                      }
+                    ]
+                  }
+                ]
+              }
+            },
+            {
+              "role": "user",
+              "json": {
+                "type": "doc",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "Customer email:"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "Subject: "
+                      },
+                      {
+                        "type": "variable-node",
+                        "attrs": {
+                          "variableId": "trigger_1.message.subject"
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "variable-node",
+                        "attrs": {
+                          "variableId": "trigger_1.message.body"
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "context": {
+            "enabled": false,
+            "variable_selector": []
+          },
+          "vision": {
+            "enabled": false
+          },
+          "structured_output": {
+            "enabled": false
+          }
+        },
+        "width": 244,
+        "height": 100
+      },
+      {
+        "id": "answer_en",
+        "type": "standard",
+        "position": {
+          "x": 1150,
+          "y": 100
+        },
+        "data": {
+          "id": "answer_en",
+          "type": "answer",
+          "title": "Send English Reply",
+          "desc": "Reply in English",
+          "messageType": "reply",
+          "recordId": "trigger_1.thread",
+          "text": "{{ai_en.text}}",
+          "to": [],
+          "toModes": [],
+          "cc": [],
+          "ccModes": [],
+          "bcc": [],
+          "bccModes": [],
+          "subject": "",
+          "attachments": [],
+          "attachmentFiles": [],
+          "attachmentFilesModes": []
+        },
+        "width": 244,
+        "height": 100
+      },
+      {
+        "id": "ai_es",
+        "type": "standard",
+        "position": {
+          "x": 800,
+          "y": 275
+        },
+        "data": {
+          "id": "ai_es",
+          "type": "ai",
+          "title": "AI: Spanish Reply",
+          "desc": "Generate a reply in Spanish",
+          "model": {
+            "useDefault": true,
+            "provider": "",
+            "name": "",
+            "mode": "chat",
+            "completion_params": {
+              "temperature": 0.7
+            }
+          },
+          "prompt_template": [
+            {
+              "role": "system",
+              "json": {
+                "type": "doc",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "Eres un agente de atención al cliente amable y profesional. Responde al correo del cliente en español."
+                      }
+                    ]
+                  },
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "Directrices:"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "- Sé servicial, cálido y profesional"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "- Responde directamente a su pregunta o inquietud"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "- Mantén la respuesta concisa y práctica"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "- Usa un tono conversacional pero profesional"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "- IMPORTANT: Your entire reply MUST be in Spanish (Español)"
+                      }
+                    ]
+                  }
+                ]
+              }
+            },
+            {
+              "role": "user",
+              "json": {
+                "type": "doc",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "Customer email:"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "Subject: "
+                      },
+                      {
+                        "type": "variable-node",
+                        "attrs": {
+                          "variableId": "trigger_1.message.subject"
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "variable-node",
+                        "attrs": {
+                          "variableId": "trigger_1.message.body"
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "context": {
+            "enabled": false,
+            "variable_selector": []
+          },
+          "vision": {
+            "enabled": false
+          },
+          "structured_output": {
+            "enabled": false
+          }
+        },
+        "width": 244,
+        "height": 100
+      },
+      {
+        "id": "answer_es",
+        "type": "standard",
+        "position": {
+          "x": 1150,
+          "y": 275
+        },
+        "data": {
+          "id": "answer_es",
+          "type": "answer",
+          "title": "Send Spanish Reply",
+          "desc": "Reply in Spanish",
+          "messageType": "reply",
+          "recordId": "trigger_1.thread",
+          "text": "{{ai_es.text}}",
+          "to": [],
+          "toModes": [],
+          "cc": [],
+          "ccModes": [],
+          "bcc": [],
+          "bccModes": [],
+          "subject": "",
+          "attachments": [],
+          "attachmentFiles": [],
+          "attachmentFilesModes": []
+        },
+        "width": 244,
+        "height": 100
+      },
+      {
+        "id": "ai_fr",
+        "type": "standard",
+        "position": {
+          "x": 800,
+          "y": 450
+        },
+        "data": {
+          "id": "ai_fr",
+          "type": "ai",
+          "title": "AI: French Reply",
+          "desc": "Generate a reply in French",
+          "model": {
+            "useDefault": true,
+            "provider": "",
+            "name": "",
+            "mode": "chat",
+            "completion_params": {
+              "temperature": 0.7
+            }
+          },
+          "prompt_template": [
+            {
+              "role": "system",
+              "json": {
+                "type": "doc",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "Vous êtes un agent de support client amical et professionnel. Répondez à l'email du client en français."
+                      }
+                    ]
+                  },
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "Directives:"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "- Soyez serviable, chaleureux et professionnel"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "- Répondez directement à leur question ou préoccupation"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "- Gardez la réponse concise et pratique"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "- Utilisez un ton conversationnel mais professionnel"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "- IMPORTANT: Your entire reply MUST be in French (Français)"
+                      }
+                    ]
+                  }
+                ]
+              }
+            },
+            {
+              "role": "user",
+              "json": {
+                "type": "doc",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "Customer email:"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "Subject: "
+                      },
+                      {
+                        "type": "variable-node",
+                        "attrs": {
+                          "variableId": "trigger_1.message.subject"
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "variable-node",
+                        "attrs": {
+                          "variableId": "trigger_1.message.body"
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "context": {
+            "enabled": false,
+            "variable_selector": []
+          },
+          "vision": {
+            "enabled": false
+          },
+          "structured_output": {
+            "enabled": false
+          }
+        },
+        "width": 244,
+        "height": 100
+      },
+      {
+        "id": "answer_fr",
+        "type": "standard",
+        "position": {
+          "x": 1150,
+          "y": 450
+        },
+        "data": {
+          "id": "answer_fr",
+          "type": "answer",
+          "title": "Send French Reply",
+          "desc": "Reply in French",
+          "messageType": "reply",
+          "recordId": "trigger_1.thread",
+          "text": "{{ai_fr.text}}",
+          "to": [],
+          "toModes": [],
+          "cc": [],
+          "ccModes": [],
+          "bcc": [],
+          "bccModes": [],
+          "subject": "",
+          "attachments": [],
+          "attachmentFiles": [],
+          "attachmentFilesModes": []
+        },
+        "width": 244,
+        "height": 100
+      },
+      {
+        "id": "ai_other",
+        "type": "standard",
+        "position": {
+          "x": 800,
+          "y": 625
+        },
+        "data": {
+          "id": "ai_other",
+          "type": "ai",
+          "title": "AI: Auto-Detect Reply",
+          "desc": "Generate a reply in the customer's detected language",
+          "model": {
+            "useDefault": true,
+            "provider": "",
+            "name": "",
+            "mode": "chat",
+            "completion_params": {
+              "temperature": 0.7
+            }
+          },
+          "prompt_template": [
+            {
+              "role": "system",
+              "json": {
+                "type": "doc",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "You are a friendly, professional customer support agent. The customer wrote in a language other than English, Spanish, or French. Detect their language and reply in the SAME language they used."
+                      }
+                    ]
+                  },
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "Guidelines:"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "- Identify the customer's language from their email"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "- Reply entirely in that language"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "- Be helpful, warm, and professional"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "- Address their question or concern directly"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "- Keep the reply concise and actionable"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "- If you cannot determine the language with confidence, reply in English and ask what language they prefer"
+                      }
+                    ]
+                  }
+                ]
+              }
+            },
+            {
+              "role": "user",
+              "json": {
+                "type": "doc",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "Customer email:"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "Subject: "
+                      },
+                      {
+                        "type": "variable-node",
+                        "attrs": {
+                          "variableId": "trigger_1.message.subject"
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "variable-node",
+                        "attrs": {
+                          "variableId": "trigger_1.message.body"
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "context": {
+            "enabled": false,
+            "variable_selector": []
+          },
+          "vision": {
+            "enabled": false
+          },
+          "structured_output": {
+            "enabled": false
+          }
+        },
+        "width": 244,
+        "height": 100
+      },
+      {
+        "id": "answer_other",
+        "type": "standard",
+        "position": {
+          "x": 1150,
+          "y": 625
+        },
+        "data": {
+          "id": "answer_other",
+          "type": "answer",
+          "title": "Send Detected-Language Reply",
+          "desc": "Reply in the customer's language",
+          "messageType": "reply",
+          "recordId": "trigger_1.thread",
+          "text": "{{ai_other.text}}",
+          "to": [],
+          "toModes": [],
+          "cc": [],
+          "ccModes": [],
+          "bcc": [],
+          "bccModes": [],
+          "subject": "",
+          "attachments": [],
+          "attachmentFiles": [],
+          "attachmentFilesModes": []
+        },
+        "width": 244,
+        "height": 100
+      },
+      {
+        "id": "note_languages",
+        "type": "note",
+        "position": {
+          "x": 100,
+          "y": 75
+        },
+        "data": {
+          "id": "note_languages",
+          "type": "note",
+          "title": "Language Routing",
+          "desc": "",
+          "text": "<p><span style=\"font-size: 14px;\">Add more language branches by editing the classifier categories.</span></p><p><span style=\"font-size: 14px;\">Each branch can have its own AI prompt, tone, and knowledge base.</span></p>",
+          "theme": "blue",
+          "author": "",
+          "errors": [],
+          "isValid": true,
+          "disabled": false,
+          "fontSize": 14,
+          "isInLoop": false,
+          "showAuthor": false
+        },
+        "width": 244,
+        "height": 100
+      }
+    ],
+    "edges": [
+      {
+        "id": "e_trigger_classifier",
+        "source": "trigger_1",
+        "target": "classifier_lang",
+        "sourceHandle": "source",
+        "targetHandle": "target"
+      },
+      {
+        "id": "e_classifier_en",
+        "source": "classifier_lang",
+        "target": "ai_en",
+        "sourceHandle": "cat_en",
+        "targetHandle": "target"
+      },
+      {
+        "id": "e_ai_en_answer",
+        "source": "ai_en",
+        "target": "answer_en",
+        "sourceHandle": "source",
+        "targetHandle": "target"
+      },
+      {
+        "id": "e_classifier_es",
+        "source": "classifier_lang",
+        "target": "ai_es",
+        "sourceHandle": "cat_es",
+        "targetHandle": "target"
+      },
+      {
+        "id": "e_ai_es_answer",
+        "source": "ai_es",
+        "target": "answer_es",
+        "sourceHandle": "source",
+        "targetHandle": "target"
+      },
+      {
+        "id": "e_classifier_fr",
+        "source": "classifier_lang",
+        "target": "ai_fr",
+        "sourceHandle": "cat_fr",
+        "targetHandle": "target"
+      },
+      {
+        "id": "e_ai_fr_answer",
+        "source": "ai_fr",
+        "target": "answer_fr",
+        "sourceHandle": "source",
+        "targetHandle": "target"
+      },
+      {
+        "id": "e_classifier_other",
+        "source": "classifier_lang",
+        "target": "ai_other",
+        "sourceHandle": "cat_other",
+        "targetHandle": "target"
+      },
+      {
+        "id": "e_ai_other_answer",
+        "source": "ai_other",
+        "target": "answer_other",
+        "sourceHandle": "source",
+        "targetHandle": "target"
+      }
+    ],
+    "viewport": {
+      "x": 0,
+      "y": 0,
+      "zoom": 0.7
+    }
+  }
+}

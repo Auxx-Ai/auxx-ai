@@ -129,6 +129,8 @@ export class DeepSeekClient extends ProviderClient {
     return new OpenAI({
       apiKey: this.requireApiKey(credentials, 'deepseek_api_key'),
       baseURL: DEEPSEEK_BASE_URL,
+      // Retry policy lives in RetryManager — don't stack the SDK's 2 internal retries.
+      maxRetries: 0,
       fetch: createObservingFetch('deepseek'),
     })
   }

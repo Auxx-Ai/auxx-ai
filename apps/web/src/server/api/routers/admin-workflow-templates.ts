@@ -1,17 +1,30 @@
 // apps/web/src/server/api/routers/admin-workflow-templates.ts
 
 import { getAppCache } from '@auxx/lib/cache'
+import { isFileTemplateId, listFileTemplates, normalizeTemplateGraph } from '@auxx/lib/workflows'
 import {
   createTemplate,
   deleteTemplate,
   duplicateTemplate,
   getAllTemplates,
-  getTemplateById,
   updateTemplate,
 } from '@auxx/services/workflow-templates'
+import { TRPCError } from '@trpc/server'
 import { z } from 'zod'
 import { recordAuditFromCtx } from '~/server/api/audit-context'
 import { createTRPCRouter, superAdminProcedure } from '~/server/api/trpc'
+import { resolveTemplateById } from '~/server/api/workflow-template-resolver'
+
+/** Guard: file templates are repo-managed and cannot be mutated via the admin API. */
+function assertNotFileTemplate(id: string): void {
+  if (isFileTemplateId(id)) {
+    throw new TRPCError({
+      code: 'FORBIDDEN',
+      message:
+        'File-defined templates are managed in the repo. Duplicate it to make an editable copy.',
+    })
+  }
+}
 
 /**
  * tRPC router for admin workflow template management
@@ -35,11 +48,18 @@ export const adminWorkflowTemplatesRouter = createTRPCRouter({
       if (result.isErr()) {
         throw new Error(result.error.message)
       }
-      return result.value
+      // Merge bundled file templates (read-only) with DB rows.
+      const fileItems = listFileTemplates({
+        search: input.search,
+        categories: input.categories,
+        status: input.status === 'all' || !input.status ? 'all' : input.status,
+      })
+      const dbItems = result.value.map((t) => ({ ...t, source: 'admin' as const }))
+      return [...fileItems, ...dbItems]
     }),
 
   /**
-   * Get single workflow template
+   * Get single workflow template (file registry or DB)
    */
   getById: superAdminProcedure
     .input(
@@ -48,11 +68,11 @@ export const adminWorkflowTemplatesRouter = createTRPCRouter({
       })
     )
     .query(async ({ input }) => {
-      const result = await getTemplateById(input.id)
-      if (result.isErr()) {
-        throw new Error(result.error.message)
+      const template = await resolveTemplateById(input.id)
+      if (!template) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Workflow template not found' })
       }
-      return result.value
+      return template
     }),
 
   /**
@@ -98,7 +118,10 @@ export const adminWorkflowTemplatesRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const result = await createTemplate(input)
+      const result = await createTemplate({
+        ...input,
+        graph: normalizeTemplateGraph(input.graph),
+      })
       if (result.isErr()) {
         throw new Error(result.error.message)
       }
@@ -160,7 +183,11 @@ export const adminWorkflowTemplatesRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const result = await updateTemplate(input)
+      assertNotFileTemplate(input.id)
+      const result = await updateTemplate({
+        ...input,
+        graph: input.graph === undefined ? undefined : normalizeTemplateGraph(input.graph),
+      })
       if (result.isErr()) {
         throw new Error(result.error.message)
       }
@@ -187,6 +214,7 @@ export const adminWorkflowTemplatesRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      assertNotFileTemplate(input.id)
       const result = await deleteTemplate(input.id)
       if (result.isErr()) {
         throw new Error(result.error.message)
@@ -214,6 +242,35 @@ export const adminWorkflowTemplatesRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ input }) => {
+      // File templates aren't DB rows — fork them into an editable admin copy.
+      if (isFileTemplateId(input.id)) {
+        const source = await resolveTemplateById(input.id)
+        if (!source) {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'Workflow template not found' })
+        }
+        const created = await createTemplate({
+          name: `${source.name} (Copy)`,
+          description: source.description,
+          categories: source.categories,
+          imgUrl: source.imgUrl ?? undefined,
+          icon: source.icon ?? undefined,
+          graph: source.graph,
+          status: 'private',
+          triggerType: source.triggerType ?? undefined,
+          triggerConfig: source.triggerConfig ?? undefined,
+          envVars: source.envVars ?? undefined,
+          variables: source.variables ?? undefined,
+          requiredApps: source.requiredApps,
+          requiredEntities: source.requiredEntities,
+          popularity: 0,
+        })
+        if (created.isErr()) {
+          throw new Error(created.error.message)
+        }
+        await getAppCache().invalidateAndRecompute(['workflowTemplates'])
+        return created.value
+      }
+
       const result = await duplicateTemplate(input.id)
       if (result.isErr()) {
         throw new Error(result.error.message)

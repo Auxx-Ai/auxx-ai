@@ -1,0 +1,225 @@
+{
+  "slug": "scheduled-report-webhook",
+  "name": "Scheduled Report via Webhook",
+  "description": "Runs on a schedule to generate an AI-powered summary and sends it to a webhook endpoint (e.g., Slack incoming webhook). Configure the prompt and webhook URL to customize.",
+  "categories": ["automation", "ai"],
+  "status": "public",
+  "popularity": 65,
+  "graph": {
+    "nodes": [
+      {
+        "id": "trigger_1",
+        "type": "standard",
+        "position": {
+          "x": 100,
+          "y": 150
+        },
+        "data": {
+          "id": "trigger_1",
+          "type": "scheduled",
+          "title": "Daily Schedule",
+          "desc": "Runs daily to generate a summary report",
+          "config": {
+            "triggerInterval": "days",
+            "timeBetweenTriggers": {
+              "days": 1,
+              "isConstant": true
+            },
+            "timezone": "UTC"
+          },
+          "isEnabled": true
+        },
+        "width": 244,
+        "height": 48
+      },
+      {
+        "id": "ai_1",
+        "type": "standard",
+        "position": {
+          "x": 450,
+          "y": 150
+        },
+        "data": {
+          "id": "ai_1",
+          "type": "ai",
+          "title": "Generate Summary",
+          "desc": "Generate a daily summary report using AI",
+          "model": {
+            "useDefault": true,
+            "provider": "",
+            "name": "",
+            "mode": "chat",
+            "completion_params": {
+              "temperature": 0.7
+            }
+          },
+          "prompt_template": [
+            {
+              "role": "system",
+              "json": {
+                "type": "doc",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "You are a helpful assistant that generates concise daily summary reports. Format the output as a clear, readable message suitable for a Slack notification."
+                      }
+                    ]
+                  }
+                ]
+              }
+            },
+            {
+              "role": "user",
+              "json": {
+                "type": "doc",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "Generate a daily summary report for today ("
+                      },
+                      {
+                        "type": "variable-node",
+                        "attrs": {
+                          "variableId": "trigger_1.triggered_at"
+                        }
+                      },
+                      {
+                        "type": "text",
+                        "text": "). Include a brief greeting and any relevant highlights."
+                      }
+                    ]
+                  },
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "Note: Customize this prompt with your specific data sources and report requirements."
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "context": {
+            "enabled": false,
+            "variable_selector": []
+          },
+          "vision": {
+            "enabled": false
+          },
+          "structured_output": {
+            "enabled": false
+          }
+        },
+        "width": 244,
+        "height": 100
+      },
+      {
+        "id": "http_1",
+        "type": "standard",
+        "position": {
+          "x": 800,
+          "y": 150
+        },
+        "data": {
+          "id": "http_1",
+          "type": "http",
+          "title": "Send to Webhook",
+          "desc": "POST summary to a webhook (e.g., Slack)",
+          "method": "post",
+          "url": "",
+          "authorization": {
+            "type": "none"
+          },
+          "headers": "Content-Type: application/json",
+          "params": "",
+          "body": {
+            "type": "raw-text",
+            "data": [
+              {
+                "type": "text",
+                "value": "{\"text\": \"{{ai_1.text}}\"}"
+              }
+            ]
+          },
+          "timeout": {
+            "connect": 10,
+            "read": 30,
+            "write": 60
+          },
+          "retry_config": {
+            "retry_enabled": true,
+            "max_retries": 2,
+            "retry_interval": 2000
+          },
+          "ssl_verify": true,
+          "error_strategy": "default",
+          "default_value": [],
+          "_targetBranches": [
+            {
+              "id": "source",
+              "name": "",
+              "type": "default"
+            }
+          ]
+        },
+        "width": 244,
+        "height": 100
+      },
+      {
+        "id": "end_1",
+        "type": "standard",
+        "position": {
+          "x": 1150,
+          "y": 150
+        },
+        "data": {
+          "id": "end_1",
+          "type": "end",
+          "title": "Done",
+          "description": "Report sent",
+          "message": "Daily summary sent successfully",
+          "status": "success"
+        },
+        "width": 244,
+        "height": 80
+      }
+    ],
+    "edges": [
+      {
+        "id": "e_trigger_ai",
+        "source": "trigger_1",
+        "target": "ai_1",
+        "sourceHandle": "source",
+        "targetHandle": "target"
+      },
+      {
+        "id": "e_ai_http",
+        "source": "ai_1",
+        "target": "http_1",
+        "sourceHandle": "source",
+        "targetHandle": "target"
+      },
+      {
+        "id": "e_http_end",
+        "source": "http_1",
+        "target": "end_1",
+        "sourceHandle": "source",
+        "targetHandle": "target"
+      }
+    ],
+    "viewport": {
+      "x": 0,
+      "y": 0,
+      "zoom": 0.85
+    }
+  }
+}

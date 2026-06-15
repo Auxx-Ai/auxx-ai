@@ -1,0 +1,1403 @@
+{
+  "slug": "order-issue-triage",
+  "name": "Order Issue Triage & Resolution",
+  "description": "When a customer message arrives, extract order details, look up or create the contact and order records, classify the issue type, and route to the appropriate resolution path. Demonstrates system entity refs, custom entity refs, CRUD create/update/find modes, optional entities, companion templates, app nodes, and variable references.",
+  "categories": ["customer-service", "e-commerce", "shopify"],
+  "status": "public",
+  "version": 1,
+  "popularity": 50,
+  "imgUrl": null,
+  "icon": {
+    "iconId": "shopping-cart",
+    "color": "green"
+  },
+  "triggerType": "message-received",
+  "triggerConfig": {
+    "channel": "email"
+  },
+  "requiredApps": [
+    {
+      "appSlug": "shopify",
+      "appTitle": "Shopify",
+      "blockIds": ["shopify"],
+      "triggerIds": [],
+      "required": true
+    },
+    {
+      "appSlug": "slack",
+      "appTitle": "Slack",
+      "blockIds": ["send-message"],
+      "triggerIds": [],
+      "required": false
+    }
+  ],
+  "requiredEntities": [
+    {
+      "$comment": "TECHNIQUE 1: System entity — always exists, fields resolved via systemAttribute matching. No installation needed. Keys are the systemAttribute names used both as @field: refs in CRUD nodes and as the lookup value.",
+      "entityTemplateId": "__system:contact",
+      "name": "Contact",
+      "apiSlug": "contact",
+      "fieldMapping": {
+        "primary_email": "primary_email",
+        "first_name": "first_name",
+        "last_name": "last_name",
+        "phone": "phone"
+      },
+      "requiredFields": ["primary_email"],
+      "required": true
+    },
+    {
+      "$comment": "TECHNIQUE 2: System entity (ticket) — systemAttribute values from TICKET_FIELDS: ticket_status, ticket_priority, ticket_title.",
+      "entityTemplateId": "__system:ticket",
+      "name": "Ticket",
+      "apiSlug": "ticket",
+      "fieldMapping": {
+        "ticket_status": "ticket_status",
+        "ticket_priority": "ticket_priority"
+      },
+      "requiredFields": ["ticket_status"],
+      "required": true
+    },
+    {
+      "$comment": "TECHNIQUE 3: Custom entity from built-in template — requires installation if not present. All fields mapped 1:1 to templateFieldIds from order.json.",
+      "entityTemplateId": "order",
+      "name": "Order",
+      "apiSlug": "orders",
+      "icon": "shopping-cart",
+      "color": "green",
+      "fieldMapping": {
+        "orderNumber": "orderNumber",
+        "orderTotal": "orderTotal",
+        "status": "status",
+        "priority": "priority",
+        "orderDate": "orderDate",
+        "shippingAddress": "shippingAddress",
+        "trackingUrl": "trackingUrl",
+        "itemsOrdered": "itemsOrdered",
+        "requiresFollowUp": "requiresFollowUp",
+        "internalNotes": "internalNotes",
+        "assignedTo": "assignedTo"
+      },
+      "requiredFields": ["orderNumber", "status"],
+      "companionTemplateIds": ["company", "return-request", "shipment"],
+      "required": true
+    },
+    {
+      "$comment": "TECHNIQUE 4: Custom entity — required, with a subset of fields. Not every template field needs to be in fieldMapping — only those referenced by CRUD/Find nodes in this workflow.",
+      "entityTemplateId": "company",
+      "name": "Company",
+      "apiSlug": "companies",
+      "icon": "building-2",
+      "color": "blue",
+      "fieldMapping": {
+        "companyName": "companyName",
+        "website": "website",
+        "industry": "industry"
+      },
+      "requiredFields": ["companyName"],
+      "companionTemplateIds": ["deal"],
+      "required": true
+    },
+    {
+      "$comment": "TECHNIQUE 5: Optional custom entity — workflow degrades gracefully if not installed. The CRUD node referencing this will be left unresolved (user can configure manually).",
+      "entityTemplateId": "deal",
+      "name": "Deal",
+      "apiSlug": "deals",
+      "icon": "handshake",
+      "color": "green",
+      "fieldMapping": {
+        "dealName": "dealName",
+        "value": "value",
+        "stage": "stage",
+        "probability": "probability",
+        "expectedCloseDate": "expectedCloseDate"
+      },
+      "requiredFields": ["dealName", "stage"],
+      "required": false
+    }
+  ],
+  "envVars": [
+    {
+      "id": "env.ESCALATION_SLACK_CHANNEL",
+      "name": "ESCALATION_SLACK_CHANNEL",
+      "value": "#order-escalations",
+      "type": "string"
+    },
+    {
+      "id": "env.HIGH_VALUE_THRESHOLD",
+      "name": "HIGH_VALUE_THRESHOLD",
+      "value": 500,
+      "type": "number"
+    },
+    {
+      "id": "env.AUTO_RESOLVE_ENABLED",
+      "name": "AUTO_RESOLVE_ENABLED",
+      "value": true,
+      "type": "boolean"
+    },
+    {
+      "id": "env.WEBHOOK_SECRET",
+      "name": "WEBHOOK_SECRET",
+      "value": "",
+      "type": "secret"
+    }
+  ],
+  "graph": {
+    "viewport": {
+      "x": 0,
+      "y": 0,
+      "zoom": 0.75
+    },
+    "nodes": [
+      {
+        "$comment": "── TRIGGER ── message-received trigger node",
+        "id": "trigger-001",
+        "type": "standard",
+        "position": {
+          "x": 0,
+          "y": 300
+        },
+        "data": {
+          "id": "trigger-001",
+          "type": "message-received",
+          "title": "Customer Message Received",
+          "desc": "Triggered when a new customer email arrives",
+          "variables": [],
+          "filters": {
+            "from": [],
+            "subject_contains": [],
+            "body_contains": []
+          }
+        },
+        "width": 244,
+        "height": 48
+      },
+      {
+        "$comment": "── INFORMATION EXTRACTOR ── Extract structured data from the incoming message",
+        "id": "extractor-002",
+        "type": "standard",
+        "position": {
+          "x": 350,
+          "y": 300
+        },
+        "data": {
+          "id": "extractor-002",
+          "type": "information-extractor",
+          "title": "Extract Order & Customer Info",
+          "desc": "Extract order number, customer details, and urgency from the email",
+          "model": {
+            "useDefault": true,
+            "provider": "",
+            "name": "",
+            "mode": "chat",
+            "completion_params": {
+              "temperature": 0.2
+            }
+          },
+          "text": "Subject: {{trigger-001.message.subject}}\n\nBody: {{trigger-001.message.body}}",
+          "structured_output": {
+            "enabled": true,
+            "schema": {
+              "type": "object",
+              "properties": {
+                "orderNumber": {
+                  "type": "string",
+                  "description": "The Shopify order number. Extract digits only. Empty string if not found."
+                },
+                "firstName": {
+                  "type": "string",
+                  "description": "Customer's first name"
+                },
+                "lastName": {
+                  "type": "string",
+                  "description": "Customer's last name"
+                },
+                "email": {
+                  "type": "string",
+                  "description": "Customer's email address"
+                },
+                "issueDescription": {
+                  "type": "string",
+                  "description": "Brief description of the customer's issue"
+                },
+                "urgency": {
+                  "type": "string",
+                  "enum": ["low", "normal", "high", "urgent"],
+                  "description": "Urgency level of the issue"
+                }
+              },
+              "required": ["orderNumber", "email", "issueDescription"]
+            }
+          },
+          "vision": {
+            "enabled": false
+          },
+          "instruction": {
+            "enabled": true,
+            "text": "Extract the following from the customer message:\n- Order number\n- Customer name (first and last)\n- Customer email\n- Issue description\n- Urgency level (low, normal, high, urgent)"
+          }
+        },
+        "width": 244,
+        "height": 100
+      },
+      {
+        "$comment": "── APP NODE (Shopify) ── Fetch order from Shopify using @slug:blockId format. The appSlug 'shopify' will be resolved to actual appId at creation time. NOTE: getOrderId expects the internal Shopify numeric order ID (e.g. 5678901234567), not the display order number (#1001). If the customer provides only the display number, a getMany with name filter would be needed instead.",
+        "id": "shopify-order-003",
+        "type": "standard",
+        "position": {
+          "x": 700,
+          "y": 200
+        },
+        "data": {
+          "id": "shopify-order-003",
+          "type": "@shopify:shopify",
+          "appSlug": "shopify",
+          "blockId": "shopify",
+          "title": "Shopify: Get Order",
+          "desc": "Look up the customer's order in Shopify",
+          "resource": "order",
+          "operation": "get",
+          "getOrderId": "{{extractor-002.extracted_data.orderNumber}}",
+          "getFields": [],
+          "fieldModes": {
+            "getOrderId": false
+          },
+          "_connectedSourceHandleIds": ["source"],
+          "_connectedTargetHandleIds": ["target"]
+        },
+        "width": 244,
+        "height": 100
+      },
+      {
+        "$comment": "── APP NODE (Shopify) ── Search for customer by email. Uses operation 'search' because customer.get requires a numeric Shopify ID, not an email. searchQuery uses Shopify search syntax: 'email:address@example.com'. Output is customers[] array + count.",
+        "id": "shopify-customer-004",
+        "type": "standard",
+        "position": {
+          "x": 700,
+          "y": 400
+        },
+        "data": {
+          "id": "shopify-customer-004",
+          "type": "@shopify:shopify",
+          "appSlug": "shopify",
+          "blockId": "shopify",
+          "title": "Shopify: Search Customer",
+          "desc": "Look up the customer in Shopify by email",
+          "resource": "customer",
+          "operation": "search",
+          "searchQuery": "email:{{extractor-002.extracted_data.email}}",
+          "searchLimit": "10",
+          "fieldModes": {
+            "searchQuery": false,
+            "searchLimit": true
+          },
+          "_connectedSourceHandleIds": ["source"],
+          "_connectedTargetHandleIds": ["target"]
+        },
+        "width": 244,
+        "height": 100
+      },
+      {
+        "$comment": "── FIND NODE (system entity: contact) ── TECHNIQUE 1: @entity:contact resolves to system type 'contact'. @field:primary_email resolves via systemAttribute 'primary_email' in customFields cache.",
+        "id": "find-contact-005",
+        "type": "standard",
+        "position": {
+          "x": 1050,
+          "y": 400
+        },
+        "data": {
+          "id": "find-contact-005",
+          "type": "find",
+          "title": "Find Existing Contact",
+          "desc": "Search for an existing contact by email",
+          "resourceType": "@entity:contact",
+          "findMode": "findOne",
+          "conditions": [],
+          "conditionGroups": [
+            {
+              "id": "grp-contact-email",
+              "order": 0,
+              "metadata": {
+                "name": "Group",
+                "subtext": "",
+                "collapsed": false,
+                "description": ""
+              },
+              "conditions": [
+                {
+                  "id": "cond-contact-email",
+                  "fieldId": "@field:primary_email",
+                  "operator": "is",
+                  "value": "{{extractor-002.extracted_data.email}}",
+                  "isConstant": false
+                }
+              ],
+              "logicalOperator": "AND"
+            }
+          ],
+          "limit": 1,
+          "fieldModes": {
+            "limit": true
+          }
+        },
+        "width": 244,
+        "height": 100
+      },
+      {
+        "$comment": "── IF-ELSE ── Check if contact was found",
+        "id": "check-contact-006",
+        "type": "standard",
+        "position": {
+          "x": 1400,
+          "y": 400
+        },
+        "data": {
+          "id": "check-contact-006",
+          "type": "if-else",
+          "title": "Contact Exists?",
+          "desc": "Check if a matching contact was found",
+          "cases": [
+            {
+              "id": "case-contact-found",
+              "case_id": "case-contact-found",
+              "logical_operator": "and",
+              "conditions": [
+                {
+                  "id": "cond-found",
+                  "variableId": "find-contact-005.count",
+                  "comparison_operator": ">",
+                  "value": 0,
+                  "isConstant": true,
+                  "logical_operator": "and"
+                }
+              ]
+            }
+          ],
+          "_targetBranches": [
+            {
+              "id": "case-contact-found",
+              "name": "Found",
+              "type": "default"
+            },
+            {
+              "id": "false",
+              "name": "Not Found",
+              "type": "default"
+            }
+          ]
+        },
+        "width": 244,
+        "height": 100
+      },
+      {
+        "$comment": "── CRUD CREATE (system entity: contact) ── TECHNIQUE 1 continued: Create new contact using system entity. @entity:contact → 'contact' type string. @field: refs resolved to actual field IDs via systemAttribute matching.",
+        "id": "create-contact-007",
+        "type": "standard",
+        "position": {
+          "x": 1750,
+          "y": 550
+        },
+        "data": {
+          "id": "create-contact-007",
+          "type": "crud",
+          "title": "Create Contact",
+          "desc": "Create a new contact record from extracted data",
+          "resourceType": "@entity:contact",
+          "mode": "create",
+          "data": {
+            "@field:primary_email": "{{extractor-002.extracted_data.email}}",
+            "@field:first_name": "{{extractor-002.extracted_data.firstName}}",
+            "@field:last_name": "{{extractor-002.extracted_data.lastName}}",
+            "@field:phone": "{{shopify-customer-004.customers[0].phone}}"
+          },
+          "fieldModes": {
+            "@field:primary_email": false,
+            "@field:first_name": false,
+            "@field:last_name": false,
+            "@field:phone": false
+          },
+          "error_strategy": "fail",
+          "default_values": [],
+          "errors": [],
+          "isValid": true,
+          "disabled": false
+        },
+        "width": 244,
+        "height": 100
+      },
+      {
+        "$comment": "── CRUD UPDATE (system entity: contact) ── TECHNIQUE 2: Update existing contact. Same system entity resolution as create, but mode is 'update'. Uses find result's ID.",
+        "id": "update-contact-008",
+        "type": "standard",
+        "position": {
+          "x": 1750,
+          "y": 300
+        },
+        "data": {
+          "id": "update-contact-008",
+          "type": "crud",
+          "title": "Update Contact Info",
+          "desc": "Update existing contact with latest data",
+          "resourceType": "@entity:contact",
+          "mode": "update",
+          "resourceId": "{{find-contact-005.contact}}",
+          "data": {
+            "@field:first_name": "{{extractor-002.extracted_data.firstName}}",
+            "@field:last_name": "{{extractor-002.extracted_data.lastName}}",
+            "@field:phone": "{{shopify-customer-004.customers[0].phone}}"
+          },
+          "fieldModes": {
+            "resourceId": false,
+            "@field:first_name": false,
+            "@field:last_name": false,
+            "@field:phone": false
+          },
+          "error_strategy": "fail",
+          "default_values": [],
+          "errors": [],
+          "isValid": true,
+          "disabled": false
+        },
+        "width": 244,
+        "height": 100
+      },
+      {
+        "$comment": "── FIND NODE (custom entity: order) ── TECHNIQUE 3: @entity:orders resolves to entity definition ID via entityDefSlugs cache (apiSlug 'orders'). @field:orderNumber resolves via entity template's templateFieldId.",
+        "id": "find-order-009",
+        "type": "standard",
+        "position": {
+          "x": 1050,
+          "y": 100
+        },
+        "data": {
+          "id": "find-order-009",
+          "type": "find",
+          "title": "Find Existing Order",
+          "desc": "Search for an existing order record by order number",
+          "resourceType": "@entity:orders",
+          "findMode": "findOne",
+          "conditions": [],
+          "conditionGroups": [
+            {
+              "id": "grp-order-number",
+              "order": 0,
+              "metadata": {
+                "name": "Group",
+                "subtext": "",
+                "collapsed": false,
+                "description": ""
+              },
+              "conditions": [
+                {
+                  "id": "cond-order-number",
+                  "fieldId": "@field:orderNumber",
+                  "operator": "is",
+                  "value": "{{extractor-002.extracted_data.orderNumber}}",
+                  "isConstant": false
+                }
+              ],
+              "logicalOperator": "AND"
+            }
+          ],
+          "limit": 1,
+          "fieldModes": {
+            "limit": true
+          }
+        },
+        "width": 244,
+        "height": 100
+      },
+      {
+        "$comment": "── IF-ELSE ── Check if order record exists in our system",
+        "id": "check-order-010",
+        "type": "standard",
+        "position": {
+          "x": 1400,
+          "y": 100
+        },
+        "data": {
+          "id": "check-order-010",
+          "type": "if-else",
+          "title": "Order Record Exists?",
+          "desc": "Check if a matching order record was found",
+          "cases": [
+            {
+              "id": "case-order-found",
+              "case_id": "case-order-found",
+              "logical_operator": "and",
+              "conditions": [
+                {
+                  "id": "cond-order-found",
+                  "variableId": "find-order-009.count",
+                  "comparison_operator": ">",
+                  "value": 0,
+                  "isConstant": true,
+                  "logical_operator": "and"
+                }
+              ]
+            }
+          ],
+          "_targetBranches": [
+            {
+              "id": "case-order-found",
+              "name": "Found",
+              "type": "default"
+            },
+            {
+              "id": "false",
+              "name": "Not Found",
+              "type": "default"
+            }
+          ]
+        },
+        "width": 244,
+        "height": 100
+      },
+      {
+        "$comment": "── CRUD CREATE (custom entity: order) ── TECHNIQUE 3 continued: Create order record from Shopify data. @entity:orders → entity definition ID. @field: refs → custom field IDs via templateFieldId matching after template installation.",
+        "id": "create-order-011",
+        "type": "standard",
+        "position": {
+          "x": 1750,
+          "y": 0
+        },
+        "data": {
+          "id": "create-order-011",
+          "type": "crud",
+          "title": "Create Order Record",
+          "desc": "Create a new order record from Shopify data",
+          "resourceType": "@entity:orders",
+          "mode": "create",
+          "data": {
+            "@field:orderNumber": "{{shopify-order-003.name}}",
+            "@field:orderTotal": "{{shopify-order-003.totalPrice}}",
+            "@field:status": "Processing",
+            "@field:priority": "Normal",
+            "@field:orderDate": "{{shopify-order-003.createdAt}}",
+            "@field:shippingAddress": "",
+            "@field:trackingUrl": "{{shopify-order-003.orderStatusUrl}}",
+            "@field:itemsOrdered": "",
+            "@field:requiresFollowUp": true,
+            "@field:internalNotes": "Auto-created from customer support message"
+          },
+          "fieldModes": {
+            "@field:orderNumber": false,
+            "@field:orderTotal": false,
+            "@field:status": true,
+            "@field:priority": true,
+            "@field:orderDate": false,
+            "@field:shippingAddress": true,
+            "@field:trackingUrl": false,
+            "@field:itemsOrdered": true,
+            "@field:requiresFollowUp": true,
+            "@field:internalNotes": true
+          },
+          "error_strategy": "fail",
+          "default_values": [],
+          "errors": [],
+          "isValid": true,
+          "disabled": false
+        },
+        "width": 244,
+        "height": 100
+      },
+      {
+        "$comment": "── CRUD UPDATE (custom entity: order) ── TECHNIQUE 3 with update mode: Update existing order's follow-up flag and notes.",
+        "id": "update-order-012",
+        "type": "standard",
+        "position": {
+          "x": 1750,
+          "y": 150
+        },
+        "data": {
+          "id": "update-order-012",
+          "type": "crud",
+          "title": "Flag Order for Follow-Up",
+          "desc": "Update existing order with follow-up flag and priority",
+          "resourceType": "@entity:orders",
+          "mode": "update",
+          "resourceId": "{{find-order-009.order}}",
+          "data": {
+            "@field:requiresFollowUp": true,
+            "@field:priority": "{{extractor-002.extracted_data.urgency}}",
+            "@field:internalNotes": "Customer reported issue: {{extractor-002.extracted_data.issueDescription}}"
+          },
+          "fieldModes": {
+            "resourceId": false,
+            "@field:requiresFollowUp": true,
+            "@field:priority": false,
+            "@field:internalNotes": false
+          },
+          "error_strategy": "fail",
+          "default_values": [],
+          "errors": [],
+          "isValid": true,
+          "disabled": false
+        },
+        "width": 244,
+        "height": 100
+      },
+      {
+        "$comment": "── TEXT CLASSIFIER ── Classify the issue type to determine routing",
+        "id": "classifier-013",
+        "type": "standard",
+        "position": {
+          "x": 2100,
+          "y": 300
+        },
+        "data": {
+          "id": "classifier-013",
+          "type": "text-classifier",
+          "title": "Classify Issue Type",
+          "desc": "Classify the customer issue to determine routing",
+          "model": {
+            "useDefault": true,
+            "provider": "",
+            "name": "",
+            "mode": "chat",
+            "completion_params": {
+              "temperature": 0.3
+            }
+          },
+          "text": "{{extractor-002.extracted_data.issueDescription}}",
+          "categories": [
+            {
+              "id": "cat-shipping",
+              "name": "Shipping Issue",
+              "description": "Lost, delayed, or damaged shipment",
+              "text": ""
+            },
+            {
+              "id": "cat-return",
+              "name": "Return/Refund",
+              "description": "Customer wants to return or get refund",
+              "text": ""
+            },
+            {
+              "id": "cat-product",
+              "name": "Product Issue",
+              "description": "Defective, wrong item, quality concern",
+              "text": ""
+            },
+            {
+              "id": "cat-billing",
+              "name": "Billing Issue",
+              "description": "Overcharged, double charge, payment failed",
+              "text": ""
+            },
+            {
+              "id": "cat-other",
+              "name": "General Inquiry",
+              "description": "Everything else",
+              "text": ""
+            }
+          ],
+          "vision": {
+            "enabled": false
+          },
+          "instruction": {
+            "enabled": false,
+            "text": ""
+          },
+          "_targetBranches": [
+            {
+              "id": "cat-shipping",
+              "name": "Shipping Issue"
+            },
+            {
+              "id": "cat-return",
+              "name": "Return/Refund"
+            },
+            {
+              "id": "cat-product",
+              "name": "Product Issue"
+            },
+            {
+              "id": "cat-billing",
+              "name": "Billing Issue"
+            },
+            {
+              "id": "cat-other",
+              "name": "General Inquiry"
+            }
+          ]
+        },
+        "width": 244,
+        "height": 100
+      },
+      {
+        "$comment": "── CRUD UPDATE (system entity: ticket) ── TECHNIQUE 2: Update the ticket with classification result. @entity:ticket → system type. @field: keys use systemAttribute names (ticket_priority, ticket_status).",
+        "id": "update-ticket-014",
+        "type": "standard",
+        "position": {
+          "x": 2450,
+          "y": 300
+        },
+        "data": {
+          "id": "update-ticket-014",
+          "type": "crud",
+          "title": "Update Ticket Priority",
+          "desc": "Update the ticket with urgency and open status",
+          "resourceType": "@entity:ticket",
+          "mode": "update",
+          "resourceId": "{{trigger-001.output.ticketId}}",
+          "data": {
+            "@field:ticket_priority": "{{extractor-002.extracted_data.urgency}}",
+            "@field:ticket_status": "open"
+          },
+          "fieldModes": {
+            "resourceId": false,
+            "@field:ticket_priority": false,
+            "@field:ticket_status": true
+          },
+          "error_strategy": "fail",
+          "default_values": [],
+          "errors": [],
+          "isValid": true,
+          "disabled": false
+        },
+        "width": 244,
+        "height": 100
+      },
+      {
+        "$comment": "── CRUD CREATE (custom entity: company) ── TECHNIQUE 4: Create company record with subset of fields. Only 3 of company template's many fields are mapped — that's fine, only mapped fields need resolution.",
+        "id": "create-company-015",
+        "type": "standard",
+        "position": {
+          "x": 2450,
+          "y": 0
+        },
+        "data": {
+          "id": "create-company-015",
+          "type": "crud",
+          "title": "Create Company Record",
+          "desc": "Create a company record from Shopify customer data",
+          "resourceType": "@entity:companies",
+          "mode": "create",
+          "data": {
+            "@field:companyName": "",
+            "@field:industry": "E-commerce"
+          },
+          "fieldModes": {
+            "@field:companyName": true,
+            "@field:industry": true
+          },
+          "error_strategy": "fail",
+          "default_values": [],
+          "errors": [],
+          "isValid": true,
+          "disabled": false
+        },
+        "width": 244,
+        "height": 100
+      },
+      {
+        "$comment": "── CRUD CREATE (optional custom entity: deal) ── TECHNIQUE 5: Optional entity. If 'deal' entity template is not installed, this node will be left unresolved (resourceType='') and the user can configure it manually or ignore it.",
+        "id": "create-deal-016",
+        "type": "standard",
+        "position": {
+          "x": 3150,
+          "y": 500
+        },
+        "data": {
+          "id": "create-deal-016",
+          "type": "crud",
+          "title": "Create Upsell Deal (Optional)",
+          "desc": "Create a deal record for upsell tracking — skipped if deal entity not installed",
+          "resourceType": "@entity:deals",
+          "mode": "create",
+          "data": {
+            "@field:dealName": "Upsell: {{extractor-002.extracted_data.firstName}} {{extractor-002.extracted_data.lastName}} — {{extractor-002.extracted_data.orderNumber}}",
+            "@field:value": "{{shopify-order-003.totalPrice}}",
+            "@field:stage": "Discovery",
+            "@field:probability": 25,
+            "@field:expectedCloseDate": ""
+          },
+          "fieldModes": {
+            "@field:dealName": false,
+            "@field:value": false,
+            "@field:stage": true,
+            "@field:probability": true,
+            "@field:expectedCloseDate": true
+          },
+          "error_strategy": "fail",
+          "default_values": [],
+          "errors": [],
+          "isValid": true,
+          "disabled": false
+        },
+        "width": 244,
+        "height": 100
+      },
+      {
+        "$comment": "── VAR ASSIGN ── Store classification and order value for downstream use",
+        "id": "set-vars-017",
+        "type": "standard",
+        "position": {
+          "x": 2450,
+          "y": 450
+        },
+        "data": {
+          "id": "set-vars-017",
+          "type": "var-assign",
+          "title": "Set Workflow Variables",
+          "desc": "Store classification category and order value for downstream use",
+          "variables": [
+            {
+              "id": "set-vars-017-1",
+              "name": "issueCategory",
+              "type": "STRING",
+              "value": "{{classifier-013.output.category}}",
+              "isConstantMode": false
+            },
+            {
+              "id": "set-vars-017-2",
+              "name": "orderValue",
+              "type": "NUMBER",
+              "value": "{{shopify-order-003.totalPrice}}",
+              "isConstantMode": false
+            }
+          ],
+          "ignoreTypeError": false,
+          "isValid": true,
+          "errors": [],
+          "disabled": false
+        },
+        "width": 244,
+        "height": 100
+      },
+      {
+        "$comment": "── IF-ELSE ── High-value order check using env var threshold",
+        "id": "check-value-018",
+        "type": "standard",
+        "position": {
+          "x": 2800,
+          "y": 300
+        },
+        "data": {
+          "id": "check-value-018",
+          "type": "if-else",
+          "title": "High-Value Order?",
+          "desc": "Check if order value exceeds the escalation threshold",
+          "cases": [
+            {
+              "id": "case-high-value",
+              "case_id": "case-high-value",
+              "logical_operator": "and",
+              "conditions": [
+                {
+                  "id": "cond-high-value",
+                  "variableId": "shopify-order-003.totalPrice",
+                  "comparison_operator": ">",
+                  "value": "{{env.HIGH_VALUE_THRESHOLD}}",
+                  "isConstant": false,
+                  "logical_operator": "and"
+                }
+              ]
+            }
+          ],
+          "_targetBranches": [
+            {
+              "id": "case-high-value",
+              "name": "High Value",
+              "type": "default"
+            },
+            {
+              "id": "false",
+              "name": "Normal Value",
+              "type": "default"
+            }
+          ]
+        },
+        "width": 244,
+        "height": 100
+      },
+      {
+        "$comment": "── APP NODE (Slack, optional) ── Send escalation to Slack. Uses @slug:blockId. Since Slack is required:false in requiredApps, this node may be left unresolved.",
+        "id": "slack-escalation-019",
+        "type": "standard",
+        "position": {
+          "x": 3150,
+          "y": 200
+        },
+        "data": {
+          "id": "slack-escalation-019",
+          "type": "@slack:send-message",
+          "appSlug": "slack",
+          "blockId": "send-message",
+          "title": "Escalate to Slack",
+          "desc": "Send high-value order alert to the escalation Slack channel",
+          "channel": "{{env.ESCALATION_SLACK_CHANNEL}}",
+          "message": "High-value order issue from {{extractor-002.extracted_data.firstName}} {{extractor-002.extracted_data.lastName}} (Order: {{extractor-002.extracted_data.orderNumber}}, Value: ${{shopify-order-003.totalPrice}})\n\nIssue: {{extractor-002.extracted_data.issueDescription}}\nCategory: {{classifier-013.output.category}}",
+          "fieldModes": {
+            "channel": false,
+            "message": false
+          },
+          "_connectedSourceHandleIds": ["source"],
+          "_connectedTargetHandleIds": ["target"]
+        },
+        "width": 244,
+        "height": 100
+      },
+      {
+        "$comment": "── AI NODE ── Generate response using full context",
+        "id": "ai-response-020",
+        "type": "standard",
+        "position": {
+          "x": 3150,
+          "y": 350
+        },
+        "data": {
+          "id": "ai-response-020",
+          "type": "ai",
+          "title": "Draft Customer Response",
+          "desc": "Generate an empathetic, solution-oriented reply using order and issue context",
+          "model": {
+            "useDefault": true,
+            "provider": "",
+            "name": "",
+            "mode": "chat",
+            "completion_params": {
+              "temperature": 0.3,
+              "max_tokens": 2048
+            }
+          },
+          "prompt_template": [
+            {
+              "role": "system",
+              "json": {
+                "type": "doc",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "You are a helpful customer support agent. Draft a response based on the issue classification and order details. Be empathetic and solution-oriented."
+                      }
+                    ]
+                  }
+                ]
+              }
+            },
+            {
+              "role": "user",
+              "json": {
+                "type": "doc",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "Customer: "
+                      },
+                      {
+                        "type": "variable-node",
+                        "attrs": {
+                          "variableId": "extractor-002.extracted_data.firstName"
+                        }
+                      },
+                      {
+                        "type": "text",
+                        "text": " "
+                      },
+                      {
+                        "type": "variable-node",
+                        "attrs": {
+                          "variableId": "extractor-002.extracted_data.lastName"
+                        }
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "Order: "
+                      },
+                      {
+                        "type": "variable-node",
+                        "attrs": {
+                          "variableId": "extractor-002.extracted_data.orderNumber"
+                        }
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "Issue Category: "
+                      },
+                      {
+                        "type": "variable-node",
+                        "attrs": {
+                          "variableId": "classifier-013.output.category"
+                        }
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "Issue: "
+                      },
+                      {
+                        "type": "variable-node",
+                        "attrs": {
+                          "variableId": "extractor-002.extracted_data.issueDescription"
+                        }
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "Order Status: "
+                      },
+                      {
+                        "type": "variable-node",
+                        "attrs": {
+                          "variableId": "shopify-order-003.fulfillmentStatus"
+                        }
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "Order URL: "
+                      },
+                      {
+                        "type": "variable-node",
+                        "attrs": {
+                          "variableId": "shopify-order-003.orderStatusUrl"
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "context": {
+            "enabled": false,
+            "variable_selector": []
+          },
+          "vision": {
+            "enabled": false
+          },
+          "structured_output": {
+            "enabled": false
+          }
+        },
+        "width": 244,
+        "height": 100
+      },
+      {
+        "$comment": "── ANSWER NODE ── Return the drafted response",
+        "id": "answer-021",
+        "type": "standard",
+        "position": {
+          "x": 3500,
+          "y": 350
+        },
+        "data": {
+          "id": "answer-021",
+          "type": "answer",
+          "title": "Send Response",
+          "desc": "Send the AI-drafted reply to the customer",
+          "messageType": "reply",
+          "text": "{{ai-response-020.text}}",
+          "to": [],
+          "toModes": [],
+          "cc": [],
+          "ccModes": [],
+          "bcc": [],
+          "bccModes": [],
+          "subject": "",
+          "attachments": [],
+          "attachmentFiles": [],
+          "attachmentFilesModes": []
+        },
+        "width": 244,
+        "height": 100
+      },
+      {
+        "$comment": "── NOTE NODE ── Visual annotation for workflow builders. Note nodes use type 'note' (not 'standard') and content goes in 'text' as HTML.",
+        "id": "note-022",
+        "type": "note",
+        "position": {
+          "x": 0,
+          "y": 0
+        },
+        "data": {
+          "id": "note-022",
+          "type": "note",
+          "title": "Workflow Overview",
+          "desc": "",
+          "text": "<p><span style=\"font-size: 14px;\">This workflow processes incoming order-related customer messages.</span></p><p><span style=\"font-size: 14px;\">1. Extract customer &amp; order info from message</span></p><p><span style=\"font-size: 14px;\">2. Look up records in Shopify + internal entities</span></p><p><span style=\"font-size: 14px;\">3. Create/update contact, order, and company records</span></p><p><span style=\"font-size: 14px;\">4. Classify the issue and route accordingly</span></p><p><span style=\"font-size: 14px;\">5. Escalate high-value orders to Slack</span></p><p><span style=\"font-size: 14px;\">6. Draft and send AI-powered response</span></p><p><span style=\"font-size: 14px;\">Required: Shopify app, Order entity, Company entity</span></p><p><span style=\"font-size: 14px;\">Optional: Slack app (for escalation), Deal entity (for upsell tracking)</span></p>",
+          "theme": "yellow",
+          "author": "",
+          "errors": [],
+          "isValid": true,
+          "disabled": false,
+          "fontSize": 14,
+          "isInLoop": false,
+          "showAuthor": false
+        },
+        "width": 244,
+        "height": 100
+      }
+    ],
+    "edges": [
+      {
+        "$comment": "Trigger → Extractor",
+        "id": "edge-001",
+        "source": "trigger-001",
+        "target": "extractor-002",
+        "sourceHandle": "source",
+        "targetHandle": "target"
+      },
+      {
+        "$comment": "Extractor → Shopify Order (parallel branch 1)",
+        "id": "edge-002",
+        "source": "extractor-002",
+        "target": "shopify-order-003",
+        "sourceHandle": "source",
+        "targetHandle": "target"
+      },
+      {
+        "$comment": "Extractor → Shopify Customer (parallel branch 2)",
+        "id": "edge-003",
+        "source": "extractor-002",
+        "target": "shopify-customer-004",
+        "sourceHandle": "source",
+        "targetHandle": "target"
+      },
+      {
+        "$comment": "Shopify Customer → Find Contact",
+        "id": "edge-004",
+        "source": "shopify-customer-004",
+        "target": "find-contact-005",
+        "sourceHandle": "source",
+        "targetHandle": "target"
+      },
+      {
+        "$comment": "Find Contact → Contact Exists?",
+        "id": "edge-005",
+        "source": "find-contact-005",
+        "target": "check-contact-006",
+        "sourceHandle": "source",
+        "targetHandle": "target"
+      },
+      {
+        "$comment": "Contact Exists? YES → Update Contact",
+        "id": "edge-006",
+        "source": "check-contact-006",
+        "target": "update-contact-008",
+        "sourceHandle": "case-contact-found",
+        "targetHandle": "target"
+      },
+      {
+        "$comment": "Contact Exists? NO → Create Contact",
+        "id": "edge-007",
+        "source": "check-contact-006",
+        "target": "create-contact-007",
+        "sourceHandle": "false",
+        "targetHandle": "target"
+      },
+      {
+        "$comment": "Shopify Order → Find Order",
+        "id": "edge-008",
+        "source": "shopify-order-003",
+        "target": "find-order-009",
+        "sourceHandle": "source",
+        "targetHandle": "target"
+      },
+      {
+        "$comment": "Find Order → Order Exists?",
+        "id": "edge-009",
+        "source": "find-order-009",
+        "target": "check-order-010",
+        "sourceHandle": "source",
+        "targetHandle": "target"
+      },
+      {
+        "$comment": "Order Exists? YES → Update Order",
+        "id": "edge-010",
+        "source": "check-order-010",
+        "target": "update-order-012",
+        "sourceHandle": "case-order-found",
+        "targetHandle": "target"
+      },
+      {
+        "$comment": "Order Exists? NO → Create Order",
+        "id": "edge-011",
+        "source": "check-order-010",
+        "target": "create-order-011",
+        "sourceHandle": "false",
+        "targetHandle": "target"
+      },
+      {
+        "$comment": "Create Contact → Classifier (converge)",
+        "id": "edge-012",
+        "source": "create-contact-007",
+        "target": "classifier-013",
+        "sourceHandle": "source",
+        "targetHandle": "target"
+      },
+      {
+        "$comment": "Update Contact → Classifier (converge)",
+        "id": "edge-013",
+        "source": "update-contact-008",
+        "target": "classifier-013",
+        "sourceHandle": "source",
+        "targetHandle": "target"
+      },
+      {
+        "$comment": "Create Order → Create Company",
+        "id": "edge-014",
+        "source": "create-order-011",
+        "target": "create-company-015",
+        "sourceHandle": "source",
+        "targetHandle": "target"
+      },
+      {
+        "$comment": "Update Order → Update Ticket",
+        "id": "edge-015",
+        "source": "update-order-012",
+        "target": "update-ticket-014",
+        "sourceHandle": "source",
+        "targetHandle": "target"
+      },
+      {
+        "$comment": "Classifier (Shipping) → Update Ticket",
+        "id": "edge-016a",
+        "source": "classifier-013",
+        "target": "update-ticket-014",
+        "sourceHandle": "cat-shipping",
+        "targetHandle": "target"
+      },
+      {
+        "$comment": "Classifier (Return) → Update Ticket",
+        "id": "edge-016b",
+        "source": "classifier-013",
+        "target": "update-ticket-014",
+        "sourceHandle": "cat-return",
+        "targetHandle": "target"
+      },
+      {
+        "$comment": "Classifier (Product) → Update Ticket",
+        "id": "edge-016c",
+        "source": "classifier-013",
+        "target": "update-ticket-014",
+        "sourceHandle": "cat-product",
+        "targetHandle": "target"
+      },
+      {
+        "$comment": "Classifier (Billing) → Update Ticket",
+        "id": "edge-016d",
+        "source": "classifier-013",
+        "target": "update-ticket-014",
+        "sourceHandle": "cat-billing",
+        "targetHandle": "target"
+      },
+      {
+        "$comment": "Classifier (Other) → Update Ticket",
+        "id": "edge-016e",
+        "source": "classifier-013",
+        "target": "update-ticket-014",
+        "sourceHandle": "cat-other",
+        "targetHandle": "target"
+      },
+      {
+        "$comment": "Classifier (Shipping) → Set Variables",
+        "id": "edge-017a",
+        "source": "classifier-013",
+        "target": "set-vars-017",
+        "sourceHandle": "cat-shipping",
+        "targetHandle": "target"
+      },
+      {
+        "$comment": "Classifier (Return) → Set Variables",
+        "id": "edge-017b",
+        "source": "classifier-013",
+        "target": "set-vars-017",
+        "sourceHandle": "cat-return",
+        "targetHandle": "target"
+      },
+      {
+        "$comment": "Classifier (Product) → Set Variables",
+        "id": "edge-017c",
+        "source": "classifier-013",
+        "target": "set-vars-017",
+        "sourceHandle": "cat-product",
+        "targetHandle": "target"
+      },
+      {
+        "$comment": "Classifier (Billing) → Set Variables",
+        "id": "edge-017d",
+        "source": "classifier-013",
+        "target": "set-vars-017",
+        "sourceHandle": "cat-billing",
+        "targetHandle": "target"
+      },
+      {
+        "$comment": "Classifier (Other) → Set Variables",
+        "id": "edge-017e",
+        "source": "classifier-013",
+        "target": "set-vars-017",
+        "sourceHandle": "cat-other",
+        "targetHandle": "target"
+      },
+      {
+        "$comment": "Update Ticket → High-Value Check",
+        "id": "edge-018",
+        "source": "update-ticket-014",
+        "target": "check-value-018",
+        "sourceHandle": "source",
+        "targetHandle": "target"
+      },
+      {
+        "$comment": "High-Value? YES → Slack Escalation",
+        "id": "edge-019",
+        "source": "check-value-018",
+        "target": "slack-escalation-019",
+        "sourceHandle": "case-high-value",
+        "targetHandle": "target"
+      },
+      {
+        "$comment": "High-Value? YES → also create upsell deal (optional)",
+        "id": "edge-020",
+        "source": "check-value-018",
+        "target": "create-deal-016",
+        "sourceHandle": "case-high-value",
+        "targetHandle": "target"
+      },
+      {
+        "$comment": "High-Value? NO → Draft AI Response directly",
+        "id": "edge-021",
+        "source": "check-value-018",
+        "target": "ai-response-020",
+        "sourceHandle": "false",
+        "targetHandle": "target"
+      },
+      {
+        "$comment": "Slack Escalation → AI Response (converge)",
+        "id": "edge-022",
+        "source": "slack-escalation-019",
+        "target": "ai-response-020",
+        "sourceHandle": "source",
+        "targetHandle": "target"
+      },
+      {
+        "$comment": "AI Response → Answer",
+        "id": "edge-023",
+        "source": "ai-response-020",
+        "target": "answer-021",
+        "sourceHandle": "source",
+        "targetHandle": "target"
+      }
+    ]
+  }
+}

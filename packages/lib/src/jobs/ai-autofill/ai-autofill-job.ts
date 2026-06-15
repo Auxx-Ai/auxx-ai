@@ -10,9 +10,27 @@ import { generateFieldValue } from '../../field-values/ai-autofill/generation-se
 import { writeAiError } from '../../field-values/ai-commit'
 import { createFieldValueContext } from '../../field-values/field-value-helpers'
 import { setValueWithBuiltIn } from '../../field-values/field-value-mutations'
+import { createUsageGuard } from '../../usage/create-usage-guard'
 import type { JobContext } from '../types/job-context'
 
 const logger = createScopedLogger('job:ai-autofill')
+
+/**
+ * Refund the upfront `aiCompletions` consumption when a generation never
+ * produced a committed value. No-op when quota wasn't consumed (Redis
+ * fail-open at enqueue time) or the guard is currently unavailable.
+ */
+async function refundAiCompletion(data: AiAutofillJobData): Promise<void> {
+  if (!data.quotaConsumed) return
+  const guard = await createUsageGuard(database)
+  if (!guard) return
+  await guard.refund(data.orgId, 'aiCompletions', { userId: data.userId }).catch((err) =>
+    logger.warn('Failed to refund AI completion quota', {
+      jobId: data.jobId,
+      error: err instanceof Error ? err.message : String(err),
+    })
+  )
+}
 
 export interface AiAutofillJobData {
   orgId: string
@@ -22,6 +40,12 @@ export interface AiAutofillJobData {
   /** Our own correlation id, echoed back to the commit path for override check */
   jobId: string
   requestedAt: string
+  /**
+   * Whether `aiCompletions` quota was consumed upfront in `shortCircuitAiGenerate`.
+   * When true, a failed generation/commit refunds the credit so we don't bill
+   * for work that produced no value.
+   */
+  quotaConsumed?: boolean
 }
 
 /**
@@ -77,6 +101,7 @@ export async function aiAutofillJob(ctx: JobContext<AiAutofillJobData>) {
     const errorMessage = err instanceof Error ? err.message : String(err)
     logger.warn('AI autofill generation failed', { jobId, recordId, fieldId, errorMessage })
     await writeAiError(fvCtx, { recordId, fieldId, errorMessage })
+    await refundAiCompletion(ctx.data)
     return { error: errorMessage }
   }
 
@@ -93,6 +118,7 @@ export async function aiAutofillJob(ctx: JobContext<AiAutofillJobData>) {
     const errorMessage = err instanceof Error ? err.message : String(err)
     logger.warn('AI autofill commit failed', { jobId, recordId, fieldId, errorMessage })
     await writeAiError(fvCtx, { recordId, fieldId, errorMessage })
+    await refundAiCompletion(ctx.data)
     return { error: errorMessage }
   }
 

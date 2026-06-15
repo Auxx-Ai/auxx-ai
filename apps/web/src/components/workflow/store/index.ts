@@ -118,4 +118,6 @@ export function resetStores() {
   stores.panelStore.closeModal()
   stores.panelStore.closeRunPanel()
   useRunStore.getState().clearRun()
+  // Clear test-run inputs when tearing down / switching workflows
+  useRunStore.getState().setRunInputs({})
 }

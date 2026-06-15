@@ -82,6 +82,32 @@ export class UsageGuard {
   }
 
   /**
+   * Refund a previously-consumed metric. Use when an action was metered
+   * upfront (to enforce hard limits before enqueuing) but later failed, so
+   * the org should not be charged.
+   *
+   * @example
+   * await usageGuard.refund(orgId, 'aiCompletions', { userId })
+   */
+  async refund(
+    orgId: string,
+    metric: UsageMetric,
+    opts?: {
+      quantity?: number
+      userId?: string
+      metadata?: Record<string, unknown>
+    }
+  ): Promise<void> {
+    await this.counter.refund({
+      orgId,
+      metric,
+      quantity: opts?.quantity,
+      userId: opts?.userId,
+      metadata: opts?.metadata,
+    })
+  }
+
+  /**
    * Check usage without consuming. Useful for UI display.
    */
   async check(orgId: string, metric: UsageMetric): Promise<UsageStatus> {

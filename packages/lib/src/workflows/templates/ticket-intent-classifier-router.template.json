@@ -1,0 +1,1094 @@
+{
+  "slug": "ticket-intent-classifier-router",
+  "name": "Ticket Intent Classifier & Router",
+  "description": "Classifies incoming emails by intent (order status, refund, complaint, general question) and routes them through different AI-powered response paths. Each reply is confidence-checked before sending — low-confidence replies are escalated to human review. Complaints always require human approval.",
+  "categories": ["customer-service", "routing", "ai"],
+  "status": "public",
+  "popularity": 90,
+  "graph": {
+    "nodes": [
+      {
+        "id": "trigger_1",
+        "type": "standard",
+        "position": {
+          "x": 100,
+          "y": 525
+        },
+        "data": {
+          "id": "trigger_1",
+          "type": "message-received",
+          "title": "Message Received",
+          "desc": "Triggered when a new customer email arrives",
+          "variables": [],
+          "filters": {
+            "from": [],
+            "subject_contains": [],
+            "body_contains": []
+          }
+        },
+        "width": 244,
+        "height": 48
+      },
+      {
+        "id": "classifier_1",
+        "type": "standard",
+        "position": {
+          "x": 450,
+          "y": 525
+        },
+        "data": {
+          "id": "classifier_1",
+          "type": "text-classifier",
+          "title": "Classify Intent",
+          "desc": "Classify the email by customer intent",
+          "model": {
+            "useDefault": true,
+            "provider": "",
+            "name": "",
+            "mode": "chat",
+            "completion_params": {
+              "temperature": 0.3
+            }
+          },
+          "text": "Subject: {{trigger_1.message.subject}}\n\nBody: {{trigger_1.message.body}}",
+          "categories": [
+            {
+              "id": "cat_order",
+              "name": "order-status",
+              "description": "Customer is asking about the status of their order, shipping, tracking, or delivery",
+              "text": ""
+            },
+            {
+              "id": "cat_refund",
+              "name": "refund",
+              "description": "Customer is requesting a refund, return, exchange, or credit",
+              "text": ""
+            },
+            {
+              "id": "cat_complaint",
+              "name": "complaint",
+              "description": "Customer is unhappy, frustrated, or filing a complaint about service or product quality",
+              "text": ""
+            },
+            {
+              "id": "cat_general",
+              "name": "general",
+              "description": "General question about products, policies, store hours, or anything else",
+              "text": ""
+            },
+            {
+              "id": "cat_irrelevant",
+              "name": "not-support",
+              "description": "Not a customer support request — spam, newsletters, promotional emails from other companies, internal notifications, or emails not directed at this store",
+              "text": ""
+            }
+          ],
+          "vision": {
+            "enabled": false
+          },
+          "instruction": {
+            "enabled": false,
+            "text": ""
+          },
+          "_targetBranches": [
+            {
+              "id": "cat_order",
+              "name": "order-status"
+            },
+            {
+              "id": "cat_refund",
+              "name": "refund"
+            },
+            {
+              "id": "cat_complaint",
+              "name": "complaint"
+            },
+            {
+              "id": "cat_general",
+              "name": "general"
+            },
+            {
+              "id": "cat_irrelevant",
+              "name": "not-support"
+            }
+          ]
+        },
+        "width": 244,
+        "height": 100
+      },
+      {
+        "id": "ai_order",
+        "type": "standard",
+        "position": {
+          "x": 850,
+          "y": 50
+        },
+        "data": {
+          "id": "ai_order",
+          "type": "ai",
+          "title": "AI: Order Status Reply",
+          "desc": "Generate reply for order status inquiries",
+          "model": {
+            "useDefault": true,
+            "provider": "",
+            "name": "",
+            "mode": "chat",
+            "completion_params": {
+              "temperature": 0.5
+            }
+          },
+          "prompt_template": [
+            {
+              "role": "system",
+              "json": {
+                "type": "doc",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "You are a helpful Shopify customer support agent. The customer is asking about their order status. Respond professionally and helpfully. If you don't have specific order details, ask for their order number and let them know you'll look into it."
+                      }
+                    ]
+                  },
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "IMPORTANT: Only respond to questions that are relevant to this store's customer support. If the email is not a genuine support request, reply with exactly: NOT_APPLICABLE"
+                      }
+                    ]
+                  }
+                ]
+              }
+            },
+            {
+              "role": "user",
+              "json": {
+                "type": "doc",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "Customer email:"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "Subject: "
+                      },
+                      {
+                        "type": "variable-node",
+                        "attrs": {
+                          "variableId": "trigger_1.message.subject"
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "variable-node",
+                        "attrs": {
+                          "variableId": "trigger_1.message.body"
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "context": {
+            "enabled": false,
+            "variable_selector": []
+          },
+          "vision": {
+            "enabled": false
+          },
+          "structured_output": {
+            "enabled": false
+          }
+        },
+        "width": 244,
+        "height": 100
+      },
+      {
+        "id": "confidence_order",
+        "type": "standard",
+        "position": {
+          "x": 1200,
+          "y": 50
+        },
+        "data": {
+          "id": "confidence_order",
+          "type": "text-classifier",
+          "title": "Check Order Reply",
+          "desc": "Verify the AI reply is specific and relevant",
+          "model": {
+            "useDefault": true,
+            "provider": "",
+            "name": "",
+            "mode": "chat",
+            "completion_params": {
+              "temperature": 0.1
+            }
+          },
+          "text": "Original customer email:\nSubject: {{trigger_1.message.subject}}\n{{trigger_1.message.body}}\n\n---\n\nProposed AI reply:\n{{ai_order.text}}",
+          "categories": [
+            {
+              "id": "conf_high",
+              "name": "confident",
+              "description": "The reply directly addresses the customer's specific question, is relevant to this store, and provides useful information or a clear next step. The reply does not contain NOT_APPLICABLE.",
+              "text": ""
+            },
+            {
+              "id": "conf_low",
+              "name": "needs-review",
+              "description": "The reply is generic, off-topic, does not address the customer's actual question, talks about unrelated products or companies, contains NOT_APPLICABLE, or seems uncertain and unhelpful.",
+              "text": ""
+            }
+          ],
+          "vision": {
+            "enabled": false
+          },
+          "instruction": {
+            "enabled": false,
+            "text": ""
+          },
+          "_targetBranches": [
+            {
+              "id": "conf_high",
+              "name": "confident"
+            },
+            {
+              "id": "conf_low",
+              "name": "needs-review"
+            }
+          ]
+        },
+        "width": 244,
+        "height": 100
+      },
+      {
+        "id": "answer_order",
+        "type": "standard",
+        "position": {
+          "x": 1550,
+          "y": 50
+        },
+        "data": {
+          "id": "answer_order",
+          "type": "answer",
+          "title": "Send Order Reply",
+          "desc": "Reply to order status inquiry",
+          "messageType": "reply",
+          "recordId": "trigger_1.thread",
+          "text": "{{ai_order.text}}",
+          "to": [],
+          "toModes": [],
+          "cc": [],
+          "ccModes": [],
+          "bcc": [],
+          "bccModes": [],
+          "subject": "",
+          "attachments": [],
+          "attachmentFiles": [],
+          "attachmentFilesModes": []
+        },
+        "width": 244,
+        "height": 100
+      },
+      {
+        "id": "ai_refund",
+        "type": "standard",
+        "position": {
+          "x": 850,
+          "y": 350
+        },
+        "data": {
+          "id": "ai_refund",
+          "type": "ai",
+          "title": "AI: Refund Reply",
+          "desc": "Generate reply for refund requests",
+          "model": {
+            "useDefault": true,
+            "provider": "",
+            "name": "",
+            "mode": "chat",
+            "completion_params": {
+              "temperature": 0.5
+            }
+          },
+          "prompt_template": [
+            {
+              "role": "system",
+              "json": {
+                "type": "doc",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "You are a helpful Shopify customer support agent. The customer is requesting a refund or return. Be empathetic and outline the return/refund process. Ask for their order number if not provided."
+                      }
+                    ]
+                  },
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "IMPORTANT: Only respond to questions that are relevant to this store's customer support. If the email is not a genuine support request, reply with exactly: NOT_APPLICABLE"
+                      }
+                    ]
+                  }
+                ]
+              }
+            },
+            {
+              "role": "user",
+              "json": {
+                "type": "doc",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "Customer email:"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "Subject: "
+                      },
+                      {
+                        "type": "variable-node",
+                        "attrs": {
+                          "variableId": "trigger_1.message.subject"
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "variable-node",
+                        "attrs": {
+                          "variableId": "trigger_1.message.body"
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "context": {
+            "enabled": false,
+            "variable_selector": []
+          },
+          "vision": {
+            "enabled": false
+          },
+          "structured_output": {
+            "enabled": false
+          }
+        },
+        "width": 244,
+        "height": 100
+      },
+      {
+        "id": "confidence_refund",
+        "type": "standard",
+        "position": {
+          "x": 1200,
+          "y": 350
+        },
+        "data": {
+          "id": "confidence_refund",
+          "type": "text-classifier",
+          "title": "Check Refund Reply",
+          "desc": "Verify the AI reply is specific and relevant",
+          "model": {
+            "useDefault": true,
+            "provider": "",
+            "name": "",
+            "mode": "chat",
+            "completion_params": {
+              "temperature": 0.1
+            }
+          },
+          "text": "Original customer email:\nSubject: {{trigger_1.message.subject}}\n{{trigger_1.message.body}}\n\n---\n\nProposed AI reply:\n{{ai_refund.text}}",
+          "categories": [
+            {
+              "id": "conf_high",
+              "name": "confident",
+              "description": "The reply directly addresses the customer's specific question, is relevant to this store, and provides useful information or a clear next step. The reply does not contain NOT_APPLICABLE.",
+              "text": ""
+            },
+            {
+              "id": "conf_low",
+              "name": "needs-review",
+              "description": "The reply is generic, off-topic, does not address the customer's actual question, talks about unrelated products or companies, contains NOT_APPLICABLE, or seems uncertain and unhelpful.",
+              "text": ""
+            }
+          ],
+          "vision": {
+            "enabled": false
+          },
+          "instruction": {
+            "enabled": false,
+            "text": ""
+          },
+          "_targetBranches": [
+            {
+              "id": "conf_high",
+              "name": "confident"
+            },
+            {
+              "id": "conf_low",
+              "name": "needs-review"
+            }
+          ]
+        },
+        "width": 244,
+        "height": 100
+      },
+      {
+        "id": "answer_refund",
+        "type": "standard",
+        "position": {
+          "x": 1550,
+          "y": 350
+        },
+        "data": {
+          "id": "answer_refund",
+          "type": "answer",
+          "title": "Send Refund Reply",
+          "desc": "Reply to refund request",
+          "messageType": "reply",
+          "recordId": "trigger_1.thread",
+          "text": "{{ai_refund.text}}",
+          "to": [],
+          "toModes": [],
+          "cc": [],
+          "ccModes": [],
+          "bcc": [],
+          "bccModes": [],
+          "subject": "",
+          "attachments": [],
+          "attachmentFiles": [],
+          "attachmentFilesModes": []
+        },
+        "width": 244,
+        "height": 100
+      },
+      {
+        "id": "human_complaint",
+        "type": "standard",
+        "position": {
+          "x": 850,
+          "y": 650
+        },
+        "data": {
+          "id": "human_complaint",
+          "type": "human-confirmation",
+          "title": "Review Complaint",
+          "description": "Human review required before responding to complaints",
+          "message": "A customer complaint needs review before an AI-generated response is sent.\n\nSubject: {{trigger_1.message.subject}}\n\n{{trigger_1.message.body}}",
+          "assignees": {
+            "actorIds": []
+          },
+          "notification_methods": {
+            "in_app": true,
+            "email": true
+          },
+          "timeout": {
+            "enabled": true,
+            "duration": 24,
+            "unit": "hours"
+          },
+          "require_login": true,
+          "include_workflow_context": true,
+          "test_behavior": "always_approve",
+          "_targetBranches": [
+            {
+              "id": "approved",
+              "name": "Approved",
+              "type": "default"
+            },
+            {
+              "id": "denied",
+              "name": "Denied",
+              "type": "default"
+            }
+          ]
+        },
+        "width": 244,
+        "height": 100
+      },
+      {
+        "id": "ai_complaint",
+        "type": "standard",
+        "position": {
+          "x": 1200,
+          "y": 650
+        },
+        "data": {
+          "id": "ai_complaint",
+          "type": "ai",
+          "title": "AI: Complaint Reply",
+          "desc": "Generate empathetic reply for complaints",
+          "model": {
+            "useDefault": true,
+            "provider": "",
+            "name": "",
+            "mode": "chat",
+            "completion_params": {
+              "temperature": 0.5
+            }
+          },
+          "prompt_template": [
+            {
+              "role": "system",
+              "json": {
+                "type": "doc",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "You are a senior Shopify customer support agent handling a complaint. Be extremely empathetic, apologize sincerely, and offer a concrete resolution. Never be dismissive."
+                      }
+                    ]
+                  }
+                ]
+              }
+            },
+            {
+              "role": "user",
+              "json": {
+                "type": "doc",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "Customer complaint:"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "Subject: "
+                      },
+                      {
+                        "type": "variable-node",
+                        "attrs": {
+                          "variableId": "trigger_1.message.subject"
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "variable-node",
+                        "attrs": {
+                          "variableId": "trigger_1.message.body"
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "context": {
+            "enabled": false,
+            "variable_selector": []
+          },
+          "vision": {
+            "enabled": false
+          },
+          "structured_output": {
+            "enabled": false
+          }
+        },
+        "width": 244,
+        "height": 100
+      },
+      {
+        "id": "answer_complaint",
+        "type": "standard",
+        "position": {
+          "x": 1550,
+          "y": 650
+        },
+        "data": {
+          "id": "answer_complaint",
+          "type": "answer",
+          "title": "Send Complaint Reply",
+          "desc": "Reply to complaint after approval",
+          "messageType": "reply",
+          "recordId": "trigger_1.thread",
+          "text": "{{ai_complaint.text}}",
+          "to": [],
+          "toModes": [],
+          "cc": [],
+          "ccModes": [],
+          "bcc": [],
+          "bccModes": [],
+          "subject": "",
+          "attachments": [],
+          "attachmentFiles": [],
+          "attachmentFilesModes": []
+        },
+        "width": 244,
+        "height": 100
+      },
+      {
+        "id": "ai_general",
+        "type": "standard",
+        "position": {
+          "x": 850,
+          "y": 950
+        },
+        "data": {
+          "id": "ai_general",
+          "type": "ai",
+          "title": "AI: General Reply",
+          "desc": "Generate reply for general questions",
+          "model": {
+            "useDefault": true,
+            "provider": "",
+            "name": "",
+            "mode": "chat",
+            "completion_params": {
+              "temperature": 0.5
+            }
+          },
+          "prompt_template": [
+            {
+              "role": "system",
+              "json": {
+                "type": "doc",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "You are a friendly Shopify customer support agent. The customer has a general question. Answer helpfully and concisely. If you're unsure, let them know you'll follow up."
+                      }
+                    ]
+                  },
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "IMPORTANT: Only respond to questions that are relevant to this store's customer support. If the email is not a genuine support request, reply with exactly: NOT_APPLICABLE"
+                      }
+                    ]
+                  }
+                ]
+              }
+            },
+            {
+              "role": "user",
+              "json": {
+                "type": "doc",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "Customer email:"
+                      },
+                      {
+                        "type": "hardBreak"
+                      },
+                      {
+                        "type": "text",
+                        "text": "Subject: "
+                      },
+                      {
+                        "type": "variable-node",
+                        "attrs": {
+                          "variableId": "trigger_1.message.subject"
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "variable-node",
+                        "attrs": {
+                          "variableId": "trigger_1.message.body"
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "context": {
+            "enabled": false,
+            "variable_selector": []
+          },
+          "vision": {
+            "enabled": false
+          },
+          "structured_output": {
+            "enabled": false
+          }
+        },
+        "width": 244,
+        "height": 100
+      },
+      {
+        "id": "confidence_general",
+        "type": "standard",
+        "position": {
+          "x": 1200,
+          "y": 950
+        },
+        "data": {
+          "id": "confidence_general",
+          "type": "text-classifier",
+          "title": "Check General Reply",
+          "desc": "Verify the AI reply is specific and relevant",
+          "model": {
+            "useDefault": true,
+            "provider": "",
+            "name": "",
+            "mode": "chat",
+            "completion_params": {
+              "temperature": 0.1
+            }
+          },
+          "text": "Original customer email:\nSubject: {{trigger_1.message.subject}}\n{{trigger_1.message.body}}\n\n---\n\nProposed AI reply:\n{{ai_general.text}}",
+          "categories": [
+            {
+              "id": "conf_high",
+              "name": "confident",
+              "description": "The reply directly addresses the customer's specific question, is relevant to this store, and provides useful information or a clear next step. The reply does not contain NOT_APPLICABLE.",
+              "text": ""
+            },
+            {
+              "id": "conf_low",
+              "name": "needs-review",
+              "description": "The reply is generic, off-topic, does not address the customer's actual question, talks about unrelated products or companies, contains NOT_APPLICABLE, or seems uncertain and unhelpful.",
+              "text": ""
+            }
+          ],
+          "vision": {
+            "enabled": false
+          },
+          "instruction": {
+            "enabled": false,
+            "text": ""
+          },
+          "_targetBranches": [
+            {
+              "id": "conf_high",
+              "name": "confident"
+            },
+            {
+              "id": "conf_low",
+              "name": "needs-review"
+            }
+          ]
+        },
+        "width": 244,
+        "height": 100
+      },
+      {
+        "id": "answer_general",
+        "type": "standard",
+        "position": {
+          "x": 1550,
+          "y": 950
+        },
+        "data": {
+          "id": "answer_general",
+          "type": "answer",
+          "title": "Send General Reply",
+          "desc": "Reply to general question",
+          "messageType": "reply",
+          "recordId": "trigger_1.thread",
+          "text": "{{ai_general.text}}",
+          "to": [],
+          "toModes": [],
+          "cc": [],
+          "ccModes": [],
+          "bcc": [],
+          "bccModes": [],
+          "subject": "",
+          "attachments": [],
+          "attachmentFiles": [],
+          "attachmentFilesModes": []
+        },
+        "width": 244,
+        "height": 100
+      },
+      {
+        "id": "human_review",
+        "type": "standard",
+        "position": {
+          "x": 1550,
+          "y": 200
+        },
+        "data": {
+          "id": "human_review",
+          "type": "human-confirmation",
+          "title": "Review Low-Confidence Reply",
+          "description": "AI reply flagged as low-confidence — human review required before sending",
+          "message": "The AI-generated reply was flagged as potentially generic or off-topic. Please review before sending.\n\nOriginal email:\nSubject: {{trigger_1.message.subject}}\n{{trigger_1.message.body}}",
+          "assignees": {
+            "actorIds": []
+          },
+          "notification_methods": {
+            "in_app": true,
+            "email": true
+          },
+          "timeout": {
+            "enabled": true,
+            "duration": 24,
+            "unit": "hours"
+          },
+          "require_login": true,
+          "include_workflow_context": true,
+          "test_behavior": "always_approve",
+          "_targetBranches": [
+            {
+              "id": "approved",
+              "name": "Approved",
+              "type": "default"
+            },
+            {
+              "id": "denied",
+              "name": "Denied",
+              "type": "default"
+            }
+          ]
+        },
+        "width": 244,
+        "height": 100
+      },
+      {
+        "id": "end_reviewed",
+        "type": "standard",
+        "position": {
+          "x": 1900,
+          "y": 250
+        },
+        "data": {
+          "id": "end_reviewed",
+          "type": "end",
+          "title": "Discarded",
+          "description": "Reply rejected after review",
+          "message": "Low-confidence reply was reviewed and discarded."
+        },
+        "width": 244,
+        "height": 48
+      },
+      {
+        "id": "end_irrelevant",
+        "type": "standard",
+        "position": {
+          "x": 850,
+          "y": 1250
+        },
+        "data": {
+          "id": "end_irrelevant",
+          "type": "end",
+          "title": "Ignored",
+          "description": "Email is not a support request",
+          "message": "Email classified as not a support request — no reply sent."
+        },
+        "width": 244,
+        "height": 48
+      },
+      {
+        "id": "end_complaint_denied",
+        "type": "standard",
+        "position": {
+          "x": 1200,
+          "y": 800
+        },
+        "data": {
+          "id": "end_complaint_denied",
+          "type": "end",
+          "title": "Complaint Rejected",
+          "description": "Complaint reply was denied",
+          "message": "Complaint reply was reviewed and rejected."
+        },
+        "width": 244,
+        "height": 48
+      }
+    ],
+    "edges": [
+      {
+        "id": "e_trigger_classifier",
+        "source": "trigger_1",
+        "target": "classifier_1",
+        "sourceHandle": "source",
+        "targetHandle": "target"
+      },
+      {
+        "id": "e_class_order",
+        "source": "classifier_1",
+        "target": "ai_order",
+        "sourceHandle": "cat_order",
+        "targetHandle": "target"
+      },
+      {
+        "id": "e_order_confidence",
+        "source": "ai_order",
+        "target": "confidence_order",
+        "sourceHandle": "source",
+        "targetHandle": "target"
+      },
+      {
+        "id": "e_order_confident",
+        "source": "confidence_order",
+        "target": "answer_order",
+        "sourceHandle": "conf_high",
+        "targetHandle": "target"
+      },
+      {
+        "id": "e_order_review",
+        "source": "confidence_order",
+        "target": "human_review",
+        "sourceHandle": "conf_low",
+        "targetHandle": "target"
+      },
+      {
+        "id": "e_class_refund",
+        "source": "classifier_1",
+        "target": "ai_refund",
+        "sourceHandle": "cat_refund",
+        "targetHandle": "target"
+      },
+      {
+        "id": "e_refund_confidence",
+        "source": "ai_refund",
+        "target": "confidence_refund",
+        "sourceHandle": "source",
+        "targetHandle": "target"
+      },
+      {
+        "id": "e_refund_confident",
+        "source": "confidence_refund",
+        "target": "answer_refund",
+        "sourceHandle": "conf_high",
+        "targetHandle": "target"
+      },
+      {
+        "id": "e_refund_review",
+        "source": "confidence_refund",
+        "target": "human_review",
+        "sourceHandle": "conf_low",
+        "targetHandle": "target"
+      },
+      {
+        "id": "e_class_complaint",
+        "source": "classifier_1",
+        "target": "human_complaint",
+        "sourceHandle": "cat_complaint",
+        "targetHandle": "target"
+      },
+      {
+        "id": "e_human_ai",
+        "source": "human_complaint",
+        "target": "ai_complaint",
+        "sourceHandle": "approved",
+        "targetHandle": "target"
+      },
+      {
+        "id": "e_complaint_answer",
+        "source": "ai_complaint",
+        "target": "answer_complaint",
+        "sourceHandle": "source",
+        "targetHandle": "target"
+      },
+      {
+        "id": "e_complaint_denied",
+        "source": "human_complaint",
+        "target": "end_complaint_denied",
+        "sourceHandle": "denied",
+        "targetHandle": "target"
+      },
+      {
+        "id": "e_class_general",
+        "source": "classifier_1",
+        "target": "ai_general",
+        "sourceHandle": "cat_general",
+        "targetHandle": "target"
+      },
+      {
+        "id": "e_general_confidence",
+        "source": "ai_general",
+        "target": "confidence_general",
+        "sourceHandle": "source",
+        "targetHandle": "target"
+      },
+      {
+        "id": "e_general_confident",
+        "source": "confidence_general",
+        "target": "answer_general",
+        "sourceHandle": "conf_high",
+        "targetHandle": "target"
+      },
+      {
+        "id": "e_general_review",
+        "source": "confidence_general",
+        "target": "human_review",
+        "sourceHandle": "conf_low",
+        "targetHandle": "target"
+      },
+      {
+        "id": "e_class_irrelevant",
+        "source": "classifier_1",
+        "target": "end_irrelevant",
+        "sourceHandle": "cat_irrelevant",
+        "targetHandle": "target"
+      },
+      {
+        "id": "e_review_denied",
+        "source": "human_review",
+        "target": "end_reviewed",
+        "sourceHandle": "denied",
+        "targetHandle": "target"
+      }
+    ],
+    "viewport": {
+      "x": 0,
+      "y": 0,
+      "zoom": 0.65
+    }
+  }
+}

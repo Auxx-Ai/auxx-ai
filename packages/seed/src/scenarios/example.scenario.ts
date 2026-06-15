@@ -6,6 +6,9 @@ import type { SeedingScenarioDefinition } from '../types'
 /** EXAMPLE_WORKFLOW_TEMPLATE_NAME identifies the public template instantiated for new orgs. */
 export const EXAMPLE_WORKFLOW_TEMPLATE_NAME = 'Shopify Order Lookup & Reply'
 
+/** File-registry id of the template instantiated for new orgs. */
+export const EXAMPLE_WORKFLOW_TEMPLATE_ID = 'file:shopify-order-lookup'
+
 /**
  * exampleScenario seeds a small, meaningful starter dataset into new real accounts
  * so the product doesn't feel empty on first load. User-visible names get an

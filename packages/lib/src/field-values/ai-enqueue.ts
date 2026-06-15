@@ -79,8 +79,11 @@ export async function shortCircuitAiGenerate(
     }
   }
 
-  // 3. Quota guard — AI completions metric
+  // 3. Quota guard — AI completions metric. Consumed upfront to enforce the
+  //    hard limit before enqueuing; refunded by the job if generation fails
+  //    (see `quotaConsumed` below).
   const guard = await createUsageGuard(database)
+  let quotaConsumed = false
   if (guard) {
     const result = await guard.consume(ctx.organizationId, 'aiCompletions', {
       userId: ctx.userId,
@@ -92,6 +95,7 @@ export async function shortCircuitAiGenerate(
           : 'AI completion quota exhausted for this billing period'
       )
     }
+    quotaConsumed = true
   }
 
   // 4. Upsert generating marker
@@ -113,6 +117,7 @@ export async function shortCircuitAiGenerate(
       fieldId,
       jobId,
       requestedAt,
+      quotaConsumed,
     },
     { jobId, attempts: 1 }
   )
