@@ -11,7 +11,7 @@
 import type { EvalCaseEntity } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { getRedisClient } from '@auxx/redis'
-import type { AgentEvalAssertion, SimulationConfig, SimulationToolMock } from '@auxx/types/evals'
+import type { AgentEvalAssertion, SimulationConfig } from '@auxx/types/evals'
 import { agentEvalAssertionsSchema, simulationConfigSchema } from '@auxx/types/evals/schema'
 import { generateId } from '@auxx/utils'
 import { err, ok, type Result } from 'neverthrow'
@@ -19,15 +19,16 @@ import { z } from 'zod'
 import { docToDsl } from '../agents/procedures/authoring/doc-to-dsl'
 import type { ProcedureDsl, ProcedureDslStep } from '../agents/procedures/authoring/dsl'
 import { getAttachedProcedureDraft } from '../agents/procedures/authoring/queries'
-import { isToolVisibleOn } from '../agents/tool-visibility'
-import { buildEffectiveAgentRuntime } from '../ai/agent-framework/effective-runtime'
 import { createCallModel } from '../ai/agent-framework/llm-adapter'
-import type { AgentToolDefinition, LLMCallParams } from '../ai/agent-framework/types'
+import type { LLMCallParams } from '../ai/agent-framework/types'
 import type { Message } from '../ai/clients/base/types'
-import { getCachedAgentById } from '../cache'
-import { type EditorToolEntry, projectEditorToolEntries } from './editor-support'
+import {
+  type AgentMockToolContext,
+  buildSimulationCaseFromAuthoring,
+  resolveAgentMockToolContext,
+} from './authoring'
+import type { EditorToolEntry } from './editor-support'
 import { listEvalCasesByAgent } from './queries'
-import { validateMockOutput } from './simulation/mock-tools'
 import type { CallModel } from './simulation/persona'
 import type { EvalServiceError } from './types'
 
@@ -99,27 +100,18 @@ export async function suggestAgentSimulations(
   }
 
   // 2. Effective runtime, resolved ONCE — tools + utilityModel come from the same
-  //    build `prepare-run` uses. Runtime build is infra, not user input.
-  let toolMap: Map<string, AgentToolDefinition>
+  //    build `prepare-run` uses. Shared with the `create_eval_case` tool so both
+  //    canonicalize against the identical tool universe. Runtime build is infra.
+  let toolMap: AgentMockToolContext['toolMap']
   let toolEntries: EditorToolEntry[]
   let utilityModel: { provider: string; model: string }
   try {
-    const agent = await getCachedAgentById(organizationId, agentId)
-    const hasProcedures = (agent?.procedures ?? []).length > 0
-    const runtime = await buildEffectiveAgentRuntime({
+    ;({ toolMap, toolEntries, utilityModel } = await resolveAgentMockToolContext({
       organizationId,
       userId,
-      sessionId: `eval-suggest-${agentId}`,
       agentId,
-      domain: 'kopilot',
-      hasProcedures,
-    })
-    // Map over the mockEditor-visible (projected) names only — control tools are
-    // invalid mock/assertion targets by construction.
-    const visibleTools = runtime.tools.filter((t) => isToolVisibleOn(t, 'mockEditor'))
-    toolMap = new Map(visibleTools.map((t) => [t.name, t]))
-    toolEntries = projectEditorToolEntries(runtime.tools)
-    utilityModel = runtime.utilityModel
+      sessionId: `eval-suggest-${agentId}`,
+    }))
   } catch (cause) {
     return err({
       code: 'EVAL_SUGGESTION_FAILED',
@@ -205,9 +197,20 @@ export async function suggestAgentSimulations(
   const suggestions: SimulationSuggestion[] = []
   let dropped = 0
   for (let i = 0; i < rawItems.length; i++) {
-    const mapped = mapAndValidateItem(rawItems[i], toolMap, i)
-    if (mapped) suggestions.push(mapped)
-    else dropped++
+    // Same map+validate path the `create_eval_case` tool uses; a bad item drops.
+    const built = buildSimulationCaseFromAuthoring(rawItems[i], toolMap)
+    if (built.isErr()) {
+      logger.info('dropped suggestion', { index: i, reason: built.error })
+      dropped++
+      continue
+    }
+    suggestions.push({
+      suggestionId: generateId(),
+      name: built.value.name,
+      rationale: built.value.rationale ?? '',
+      config: built.value.config,
+      assertions: built.value.assertions,
+    })
   }
 
   logger.info('suggestions generated', { kept: suggestions.length, dropped, usage })
@@ -452,8 +455,8 @@ function buildUserMessage(
 /**
  * Provider-facing JSON-schema literal (same pattern as `JUDGE_RESPONSE_SCHEMA`).
  * Assertions are ONE object shape with optional per-type fields — provider
- * `oneOf` support is inconsistent. Only a hint: {@link authoringSuggestionSchema}
- * is authoritative.
+ * `oneOf` support is inconsistent. Only a hint: `authoringCaseSchema` in
+ * `./authoring` is authoritative (it parses + maps each emitted item).
  */
 const SUGGESTIONS_RESPONSE_SCHEMA = {
   type: 'json_schema' as const,
@@ -548,223 +551,6 @@ const SUGGESTIONS_RESPONSE_SCHEMA = {
       },
     },
   },
-}
-
-/**
- * Zod twin used to parse each emitted item. The assertion is a single `.strict()`
- * object whose per-type fields are nullable (mirroring the strict provider schema),
- * with a `superRefine` that requires exactly the field each `type` needs — so a
- * `terminal_outcome` without `outcome` fails. `type` is a closed enum (no
- * `crm_field`/`local_variable`/`procedure_selected`) and the suggestion object is
- * `.strict()` (claimed name/email is allowed; no `startingFields`/`subject`/
- * `timeFrozenAt`), so any stray output fails the item's parse and is dropped.
- * This IS the v1 allowlist; no strip pass.
- */
-const authoringAssertionSchema = z
-  .object({
-    type: z.enum(['terminal_outcome', 'response_criteria', 'tool_called', 'tool_not_called']),
-    outcome: z.enum(['finished', 'handoff', 'switch']).nullish(),
-    criteria: z.array(z.string().min(1)).nullish(),
-    toolName: z.string().min(1).nullish(),
-  })
-  .strict()
-  .superRefine((a, ctx) => {
-    if (a.type === 'terminal_outcome' && !a.outcome) {
-      ctx.addIssue({ code: 'custom', message: 'terminal_outcome requires an outcome' })
-    }
-    if (a.type === 'response_criteria' && (!a.criteria || a.criteria.length === 0)) {
-      ctx.addIssue({ code: 'custom', message: 'response_criteria requires criteria' })
-    }
-    if ((a.type === 'tool_called' || a.type === 'tool_not_called') && !a.toolName) {
-      ctx.addIssue({ code: 'custom', message: `${a.type} requires a toolName` })
-    }
-  })
-
-const authoringSuggestionSchema = z
-  .object({
-    name: z.string().min(1),
-    rationale: z.string().min(1),
-    openingMessage: z.string().min(1),
-    customerContext: z.string().nullable(),
-    claimed: z
-      .object({
-        name: z.string().nullish(),
-        email: z.string().nullish(),
-      })
-      .nullish(),
-    channel: z.enum(['chat', 'email']),
-    maxCustomerTurns: z.number().int(),
-    mocks: z.array(
-      z
-        .object({
-          toolName: z.string().min(1),
-          // The model emits the output as a JSON string (provider schema constraint);
-          // parse it here so a malformed string drops the item at this gate.
-          output: z.string().transform((s, ctx): unknown => {
-            try {
-              return JSON.parse(s)
-            } catch {
-              ctx.addIssue({ code: 'custom', message: 'mock output must be a JSON string' })
-              return z.NEVER
-            }
-          }),
-        })
-        .strict()
-    ),
-    assertions: z.array(authoringAssertionSchema).min(1),
-  })
-  .strict()
-
-type AuthoringSuggestion = z.infer<typeof authoringSuggestionSchema>
-
-// ── Per-item mapping + validation (the drop pipeline) ──────────────────────
-
-/**
- * Resolve a model-emitted tool name to a canonical registered name. The
- * procedure text now renders `tool:` chips as their registered names
- * (`shopify_find_shopify_order`), so the exact-match path is the norm. The
- * suffix rescue stays as a belt: small utility models still sometimes "simplify"
- * an app tool to its natural tail (`find_shopify_order`) despite the
- * exactly-as-written prompt rule. An exact hit wins; otherwise a UNIQUE
- * `_`-boundary suffix match rescues the name. Ambiguity (or no match) stays
- * `null` → the item is dropped.
- */
-function resolveToolName(name: string, toolMap: Map<string, AgentToolDefinition>): string | null {
-  // Small models copy the prompt's backticks into the JSON value (`mcp__…`).
-  const cleaned = name.trim().replace(/^`+|`+$/g, '')
-  if (toolMap.has(cleaned)) return cleaned
-  const matches = [...toolMap.keys()].filter((n) => n.endsWith(`_${cleaned}`))
-  return matches.length === 1 ? (matches[0] ?? null) : null
-}
-
-/**
- * Map+validate one raw item into a persisted-shape suggestion. First failure
- * drops the item (returns null) and logs `{ index, reason }`. Order matches
- * phase-3a §3.6.
- */
-function mapAndValidateItem(
-  raw: unknown,
-  toolMap: Map<string, AgentToolDefinition>,
-  index: number
-): SimulationSuggestion | null {
-  // 1. Shape + allowlist.
-  const parsed = authoringSuggestionSchema.safeParse(raw)
-  if (!parsed.success)
-    return drop(index, `invalid shape: ${parsed.error.issues[0]?.message ?? 'parse error'}`)
-  const item: AuthoringSuggestion = parsed.data
-
-  // 2. Tool-name existence + canonicalization (mocks + tool_(not_)called
-  //    assertions) — near-miss names are rescued by `resolveToolName`.
-  const mocks: AuthoringSuggestion['mocks'] = []
-  for (const mock of item.mocks) {
-    const canonical = resolveToolName(mock.toolName, toolMap)
-    if (!canonical) return drop(index, `unknown mock tool "${mock.toolName}"`)
-    mocks.push({ ...mock, toolName: canonical })
-  }
-  const itemAssertions: AuthoringSuggestion['assertions'] = []
-  for (const a of item.assertions) {
-    if (a.type === 'tool_called' || a.type === 'tool_not_called') {
-      // toolName presence is guaranteed by the schema's superRefine.
-      const canonical = a.toolName ? resolveToolName(a.toolName, toolMap) : null
-      if (!canonical) return drop(index, `unknown assertion tool "${a.toolName}"`)
-      itemAssertions.push({ ...a, toolName: canonical })
-    } else {
-      itemAssertions.push(a)
-    }
-  }
-
-  // 3. Mock outputs against each tool's declared outputSchema (warning is fine).
-  for (const mock of mocks) {
-    const tool = toolMap.get(mock.toolName)!
-    const validation = validateMockOutput(tool, mock.output)
-    if (!validation.ok)
-      return drop(index, `bad mock output for "${mock.toolName}": ${validation.error}`)
-  }
-
-  // 4. Dedupe mocks by toolName (first wins — drawer's one-mock-per-tool model).
-  const seenTools = new Set<string>()
-  const connectorMocks: SimulationToolMock[] = []
-  for (const mock of mocks) {
-    if (seenTools.has(mock.toolName)) continue
-    seenTools.add(mock.toolName)
-    connectorMocks.push({
-      id: generateId(),
-      toolName: mock.toolName,
-      output: mock.output,
-      usage: 'repeat',
-    })
-  }
-
-  // 5. Map to persisted shapes. Keep only the claimed fields the model actually
-  //    filled — an unused identity path emits `null` for both.
-  const claimedName = item.claimed?.name ?? undefined
-  const claimedEmail = item.claimed?.email ?? undefined
-  const claimed =
-    claimedName || claimedEmail
-      ? {
-          ...(claimedName ? { name: claimedName } : {}),
-          ...(claimedEmail ? { email: claimedEmail } : {}),
-        }
-      : undefined
-
-  const assertions: AgentEvalAssertion[] = itemAssertions.map((a) => mapAssertion(a))
-  const config: SimulationConfig = {
-    openingMessage: item.openingMessage,
-    customerContext: item.customerContext,
-    channel: item.channel,
-    timeFrozenAt: null,
-    maxCustomerTurns: Math.min(8, Math.max(1, item.maxCustomerTurns)),
-    subject: { recordIds: [], identityVerified: false, ...(claimed ? { claimed } : {}) },
-    startingFields: [],
-    // Mocked-path suggestions should fail loudly on an unexpected tool call.
-    unmatchedToolPolicy: 'error',
-    connectorMocks,
-  }
-
-  // 6. Final gate — the same contracts `eval.create` enforces. Failure here is a
-  //    mapping bug, not a model problem: drop AND warn.
-  const configCheck = simulationConfigSchema.safeParse(config)
-  const assertionsCheck = agentEvalAssertionsSchema.safeParse(assertions)
-  if (!configCheck.success || !assertionsCheck.success) {
-    logger.warn('mapped suggestion failed the final schema gate', {
-      index,
-      config: configCheck.success ? undefined : configCheck.error.issues,
-      assertions: assertionsCheck.success ? undefined : assertionsCheck.error.issues,
-    })
-    return null
-  }
-
-  return {
-    suggestionId: generateId(),
-    name: item.name,
-    rationale: item.rationale,
-    config: configCheck.data,
-    assertions: assertionsCheck.data,
-  }
-}
-
-/**
- * Wrap one authoring assertion into the persisted discriminated-union envelope.
- * The per-type field is guaranteed present by the schema's superRefine, so the
- * non-null assertions here can never fire at runtime.
- */
-function mapAssertion(a: AuthoringSuggestion['assertions'][number]): AgentEvalAssertion {
-  const id = generateId()
-  switch (a.type) {
-    case 'terminal_outcome':
-      return { id, type: 'terminal_outcome', data: { outcome: a.outcome! } }
-    case 'response_criteria':
-      return { id, type: 'response_criteria', data: { criteria: a.criteria! } }
-    case 'tool_called':
-      return { id, type: 'tool_called', data: { toolName: a.toolName! } }
-    case 'tool_not_called':
-      return { id, type: 'tool_not_called', data: { toolName: a.toolName! } }
-  }
-}
-
-function drop(index: number, reason: string): null {
-  logger.info('dropped suggestion', { index, reason })
-  return null
 }
 
 function errorMessage(error: unknown, fallback: string): string {

@@ -18,6 +18,15 @@ export {
   type ResponseJudge,
   type ResponseJudgment,
 } from './agent-grader'
+export {
+  type AgentMockToolContext,
+  type AuthoringCase,
+  authoringCaseSchema,
+  type BuiltSimulationCase,
+  buildSimulationCaseFromAuthoring,
+  resolveAgentMockToolContext,
+  resolveToolName,
+} from './authoring'
 export { type CompareOutcome, evaluateComparator, MISSING } from './comparators'
 export {
   compareSuiteRuns,

@@ -17,6 +17,7 @@ export type {
   AgentUpdatedEvent,
   AiStatus,
   AiValueMetadata,
+  EvalCaseChangedEvent,
   FieldValuesUpdatedEvent,
   FieldValueUpdateEntry,
   MailBatchEvent,
@@ -43,6 +44,7 @@ export type {
 export {
   flushMailBatch,
   publishAgentUpdated,
+  publishEvalCaseChanged,
   publishFieldValueUpdates,
   publishInboxSyncCompleted,
   publishMessageCreated,

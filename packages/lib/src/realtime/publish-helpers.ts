@@ -353,3 +353,32 @@ export async function publishProcedureUpdated(
     )
     .catch(() => {})
 }
+
+/**
+ * Publish `eval:case-changed` on the org channel. Fires when a simulation case
+ * is created / updated / deleted server-side so the Simulations tab re-lists
+ * `eval.list` for the agent. The editor's own tRPC writes pass `excludeSocketId`
+ * (the drawer already self-invalidates); the Kopilot tools omit it (server-
+ * origin) so the author's own tab refreshes — exactly the persona-prompt path.
+ *
+ * Gated on `realtimeSync` — orgs without realtime fall back to React Query's
+ * stale-time / focus-refetch behavior. Fire-and-forget: errors are swallowed
+ * so a Pusher hiccup never blocks the underlying case write.
+ */
+export async function publishEvalCaseChanged(
+  realtimeService: RealtimeService,
+  organizationId: string,
+  args: { agentId: string },
+  options?: { excludeSocketId?: string }
+) {
+  const { features } = await getOrgCache().getOrRecompute(organizationId, ['features'])
+  if (!features?.realtimeSync) return
+  await realtimeService
+    .publish(
+      rooms.orgPresence(organizationId),
+      'eval:case-changed',
+      { agentId: args.agentId },
+      options
+    )
+    .catch(() => {})
+}

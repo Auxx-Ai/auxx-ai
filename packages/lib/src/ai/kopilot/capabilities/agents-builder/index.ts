@@ -10,6 +10,7 @@ import { findRef } from '../../context-refs'
 import type { GetToolDeps, PageCapability } from '../types'
 import { buildBuilderPersonaPrompt, buildChatBuilderPersonaPrompt } from './persona-prompt'
 import { createCompleteAgentSetupTool } from './tools/complete-agent-setup'
+import { createCreateEvalCaseTool } from './tools/create-eval-case'
 import { createGetEvalCaseTool } from './tools/get-eval-case'
 import { createGetEvalRunTool } from './tools/get-eval-run'
 import { createGetSuiteDiffTool } from './tools/get-suite-diff'
@@ -89,17 +90,18 @@ export async function createAgentsBuilderCapabilities(
     createSetProcedureBodyTool(getDeps),
     createReadProcedureTool(getDeps),
     createUpdateProcedureCriteriaTool(getDeps),
-    // Eval improvement loop (phase 5C): read context tools + the async suite
-    // trigger. The ONLY eval write surface is `update_eval_case_mock` —
-    // approval-gated fixture repair on `connectorMocks`; assertions stay
-    // tRPC/editor-only so the model can't grade its own homework. Fixing
-    // otherwise goes through the build-editing tools above; results land as a
-    // <task-notification> message (plans/kopilot/task-notifications/plan.md).
+    // Eval improvement loop (phase 5C/5E): read context tools + the async suite
+    // trigger + two approval-gated write surfaces. `create_eval_case` authors a
+    // whole new case (scenario + mocks + safe-4 assertions); `update_eval_case_mock`
+    // repairs an existing case's `connectorMocks`. Both are approval-gated so a
+    // human owns the grading rubric the model will later be measured against.
+    // Results land as a <task-notification> (plans/kopilot/task-notifications/plan.md).
     createListEvalCasesTool(getDeps),
     createGetEvalCaseTool(getDeps),
     createGetEvalRunTool(getDeps),
     createGetSuiteDiffTool(getDeps),
     createRunEvalSuiteTool(getDeps),
+    createCreateEvalCaseTool(getDeps),
     createUpdateEvalCaseMockTool(getDeps),
     // Triggers + resource-scope stay internal-only: chat agents run on the
     // inbound-message gate, never autonomously, and don't read internal records.

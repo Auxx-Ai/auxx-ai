@@ -6,6 +6,7 @@ import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { useQueryState } from 'nuqs'
 import { useState } from 'react'
 import { api } from '~/trpc/react'
+import { useEvalCasesRealtime } from '../hooks/use-eval-cases-realtime'
 import { EvalCaseDrawer } from './eval-case-drawer'
 import { EvalRunDetail } from './eval-run-detail'
 import { EvalSuiteHistory } from './eval-suite-history'
@@ -38,6 +39,10 @@ export function SimulationsTab({
   // Suggested Simulations section to the procedure-scoped view.
   const [selectedProcedureId] = useQueryState('procedure')
   const utils = api.useUtils()
+
+  // Live-refresh the case list when the Kopilot (or another tab) creates/edits
+  // a case server-side. Invalidation only — never triggers a run.
+  useEvalCasesRealtime(agentId)
 
   // Stack shape: a run can be reached from a case (list→case→run), straight
   // from a list row (list→run), or out of the suite history

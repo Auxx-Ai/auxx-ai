@@ -44,6 +44,26 @@ function denormalizeTarget(target: AgentEvalTarget): {
 
 // ── EvalCase CRUD ───────────────────────────────────────────────────────
 
+/**
+ * Emit the `eval:case-changed` UI-refresh event after a case write so the
+ * Simulations tab re-lists for the agent. Lazily imports the realtime module —
+ * a static import would pull the realtime→cache graph into this module and risk
+ * an import cycle (same pattern as the procedure authoring queries). Best-effort.
+ */
+async function emitEvalCaseChanged(
+  organizationId: string,
+  agentId: string,
+  excludeSocketId?: string
+): Promise<void> {
+  const { getRealtimeService, publishEvalCaseChanged } = await import('../realtime')
+  await publishEvalCaseChanged(
+    getRealtimeService(),
+    organizationId,
+    { agentId },
+    { excludeSocketId }
+  )
+}
+
 export interface CreateEvalCaseInput {
   organizationId: string
   name: string
@@ -52,6 +72,8 @@ export interface CreateEvalCaseInput {
   assertions: AgentEvalAssertion[]
   createdById?: string | null
   suggestionId?: string | null
+  /** Socket id to exclude from the realtime refresh (editor writes; the tool omits it). */
+  excludeSocketId?: string
 }
 
 /** Validate the case payload and insert it, deriving the denormalized listing keys. */
@@ -84,7 +106,9 @@ export async function createEvalCase(input: CreateEvalCaseInput) {
     'create-eval-case'
   )
   if (result.isErr()) return err(result.error)
-  return ok(result.value[0] as EvalCaseEntity)
+  const row = result.value[0] as EvalCaseEntity
+  await emitEvalCaseChanged(input.organizationId, row.agentId, input.excludeSocketId)
+  return ok(row)
 }
 
 export interface UpdateEvalCaseInput {
@@ -96,6 +120,8 @@ export interface UpdateEvalCaseInput {
     config?: SimulationConfig
     assertions?: AgentEvalAssertion[]
   }
+  /** Socket id to exclude from the realtime refresh (editor writes; the tool omits it). */
+  excludeSocketId?: string
 }
 
 /** Patch a case; re-derives denormalized keys when `target` changes. */
@@ -131,10 +157,16 @@ export async function updateEvalCase(input: UpdateEvalCaseInput) {
   const row = result.value[0]
   if (!row)
     return err({ code: 'EVAL_CASE_NOT_FOUND' as const, message: `Eval case not found: ${id}` })
+  await emitEvalCaseChanged(organizationId, (row as EvalCaseEntity).agentId, input.excludeSocketId)
   return ok(row as EvalCaseEntity)
 }
 
-export async function deleteEvalCase(input: { organizationId: string; id: string }) {
+export async function deleteEvalCase(input: {
+  organizationId: string
+  id: string
+  /** Socket id to exclude from the realtime refresh (editor writes; the tool omits it). */
+  excludeSocketId?: string
+}) {
   const result = await fromDatabase(
     database
       .delete(schema.EvalCase)
@@ -143,10 +175,13 @@ export async function deleteEvalCase(input: { organizationId: string; id: string
           eq(schema.EvalCase.id, input.id),
           eq(schema.EvalCase.organizationId, input.organizationId)
         )
-      ),
+      )
+      .returning({ agentId: schema.EvalCase.agentId }),
     'delete-eval-case'
   )
   if (result.isErr()) return err(result.error)
+  const agentId = result.value[0]?.agentId
+  if (agentId) await emitEvalCaseChanged(input.organizationId, agentId, input.excludeSocketId)
   return ok(undefined)
 }
 
