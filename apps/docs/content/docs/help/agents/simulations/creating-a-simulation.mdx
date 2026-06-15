@@ -1,0 +1,49 @@
+---
+title: Create a simulation
+description: Build a simulation by defining a customer scenario, mocking the tools it touches, and adding the assertions that decide whether it passes.
+---
+
+You create simulations from the **Simulations** tab on the agent detail page. Each simulation is built from three parts: a customer scenario, tool mocks, and assertions.
+
+## The customer scenario
+
+The scenario describes the synthetic customer the agent will talk to:
+
+| Field | What it sets |
+|-------|--------------|
+| **Opening message** | The customer's first message, word for word |
+| **Customer context** | The backstory — what the customer wants, knows, or refuses to share |
+| **Claimed identity** | Who the customer says they are (optional, for identity-verification flows) |
+| **Channel** | Whether the conversation is **chat** or **email** |
+| **Max customer turns** | How many times the customer can reply, so the test can't run forever |
+
+A good context gives the simulation realism — for example: "Customer has order #1234, knows the tracking number, but won't share their email."
+
+## Add mocks and assertions
+
+With the scenario set, define:
+
+- **[Tool mocks](/help/agents/simulations/mocks)** — fake responses for any tools the agent will call, so the run stays offline.
+- **[Assertions](/help/agents/simulations/assertions)** — the checks that decide pass or fail. Every simulation needs at least one.
+
+## Saving
+
+Simulations **autosave** as you edit. Once saved, a simulation is reusable — run it as often as you like, including after every change, to catch regressions.
+
+<Callout type="info" title="Let the assistant draft one for you">
+  In the **Build** tab, you can ask the assistant to create a simulation — for
+  example, "Create a simulation where the customer asks for a refund on an
+  out-of-warranty item." It drafts the scenario, mocks, and assertions for you to
+  review before saving.
+</Callout>
+
+## Next steps
+
+<Cards>
+  <Card title="Mocks" href="/help/agents/simulations/mocks" icon="TestTube">
+    Keep the run offline with fake tool responses.
+  </Card>
+  <Card title="Assertions" href="/help/agents/simulations/assertions" icon="CircleCheck">
+    Define what the agent must and must not do.
+  </Card>
+</Cards>

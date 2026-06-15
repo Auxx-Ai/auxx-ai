@@ -1,0 +1,55 @@
+---
+title: Tool approvals
+description: Add a confirmation gate before sensitive tools run, so a person reviews and approves the agent's proposed action before it executes.
+---
+
+Some actions are too sensitive or irreversible to run without a person's say-so. **Tool approvals** add a confirmation gate: the agent proposes the action, and someone approves or rejects it before it runs.
+
+## How approval works
+
+<Steps>
+<Step>
+
+### The agent proposes an action
+
+When the agent decides to call a tool that requires approval, it pauses instead of running it.
+
+</Step>
+<Step>
+
+### An approval card appears
+
+The chat shows a card with the tool name and the exact inputs the agent wants to use.
+
+</Step>
+<Step>
+
+### You approve or reject
+
+- **Approve** — the tool runs and the agent continues with the result.
+- **Reject** — the tool is skipped and the agent continues without it.
+
+</Step>
+</Steps>
+
+## Action states
+
+While an agent is working, each tool call shows its current state:
+
+| State | Meaning |
+|-------|---------|
+| **Running** | The tool is executing |
+| **Awaiting approval** | Paused, waiting for someone to confirm |
+| **Completed** | Finished successfully |
+| **Rejected** | A person declined the action |
+| **Error** | The tool failed to run |
+
+## Approvals and autonomous runs
+
+Approvals are especially useful with [triggers](/help/agents/triggers), where the agent runs on its own. A trigger can do all the analysis automatically and still stop for a human before it sends a reply or changes data.
+
+<Callout type="info" title="Related: workflow approvals">
+  Automation workflows have their own approval step. See
+  [Workflow approvals](/help/ai/workflow-approvals) to build human-in-the-loop
+  automations.
+</Callout>

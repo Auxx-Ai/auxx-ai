@@ -1,0 +1,47 @@
+---
+title: Code blocks & variables
+description: Store and reuse data across a procedure with local attributes, and run deterministic logic with code blocks that produce named outputs.
+---
+
+Procedures can carry data between steps and run small pieces of logic. Two building blocks make this possible: **local attributes** and **code blocks**.
+
+## Local attributes (variables)
+
+A **local attribute** is a variable scoped to the procedure — a piece of scratch data you set in one step and read in another. For example, you might store an order's status, then check it in a later condition.
+
+You declare local attributes from the **Building blocks** popover, giving each one a name and type. Once declared, you can reference it with `@` in instruction prose, in [conditions](/help/agents/procedures/steps-and-conditions), and in code blocks.
+
+## Code blocks
+
+A **code block** is a small JavaScript snippet that runs **deterministically** every time its step is reached. It can read the procedure's inputs and variables, do a calculation or transformation, and write the result to named **outputs** that bind to local attributes.
+
+Use code blocks for things that should happen the same way every time — formatting a value, computing a total, or mapping one value to another.
+
+## Code blocks vs. tools
+
+These look similar but behave differently:
+
+| | Code block | Tool |
+|--|-----------|------|
+| **When it runs** | Always, when its step is reached | Only if the agent chooses to call it |
+| **Decided by** | The procedure (deterministic) | The agent (its judgment) |
+| **Best for** | Logic and computation | Taking actions and fetching data |
+
+In short: **code always runs; tools are options the agent may use.**
+
+<Callout type="info" title="Keep logic in code, judgment in instructions">
+  Put deterministic rules in code blocks and structured conditions. Leave
+  open-ended decisions to instruction steps, where the agent can reason about
+  the conversation.
+</Callout>
+
+## Next steps
+
+<Cards>
+  <Card title="Selection & runtime" href="/help/agents/procedures/selection-and-runtime" icon="Workflow">
+    How variables and code run during a conversation.
+  </Card>
+  <Card title="Versions" href="/help/agents/procedures/versions" icon="GitBranch">
+    Publishing checks that code outputs and variables resolve.
+  </Card>
+</Cards>

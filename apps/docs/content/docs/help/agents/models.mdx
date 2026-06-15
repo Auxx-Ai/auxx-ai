@@ -1,0 +1,38 @@
+---
+title: Models & bring-your-own-key
+description: Choose which AI model powers an agent, override the workspace default per agent, and bill usage to your own provider account with BYOK.
+---
+
+Every agent runs on an AI model. By default it uses your workspace's default model, but you can override the model per agent.
+
+## Choosing a model
+
+Your workspace has a default model set in **Settings → AI Models**. An individual agent can either:
+
+- **Inherit the default** — the agent uses whatever your workspace default is.
+- **Use a per-agent model** — override it for this agent only, for example to use a more capable model for a complex agent and a faster one elsewhere.
+
+Auxx supports models from multiple providers, including Claude and GPT. See [AI models & providers](/help/ai/models-providers) for the full list and how to configure them.
+
+## Bring your own key (BYOK)
+
+If you supply your own provider API key, the agent's usage is billed to **your** provider account instead of counting against your Auxx credits. This is useful if you already have provider capacity or want direct control over model spend.
+
+You connect provider keys at the workspace level, and agents can be pinned to them through [app accounts](/help/agents/tools).
+
+<Callout type="info" title="Model parameters are matched to the model">
+  Each model supports different settings (like temperature or reasoning effort).
+  Auxx automatically applies only the parameters the selected model accepts, so
+  you don't have to track per-model compatibility.
+</Callout>
+
+## Next steps
+
+<Cards>
+  <Card title="AI models & providers" href="/help/ai/models-providers" icon="Cpu">
+    Configure the models available to your workspace.
+  </Card>
+  <Card title="Usage & billing" href="/help/billing/overview" icon="CreditCard">
+    Understand how AI usage is tracked.
+  </Card>
+</Cards>

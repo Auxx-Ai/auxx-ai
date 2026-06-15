@@ -1,0 +1,51 @@
+---
+title: Versions & publishing
+description: Edit an agent safely as a draft, then publish numbered, immutable versions that control exactly what your production agents run.
+---
+
+Agents use a **draft-and-publish** model so you can edit safely without changing live behavior. The agent you edit is the draft; **publishing** captures it as a version that production runs use.
+
+## Draft vs. published
+
+- **Draft** — the agent you see and edit. Every change autosaves, but **none of it goes live** until you publish.
+- **Version** — a numbered, immutable snapshot of the agent's behavior. The active version is what your production agent actually runs.
+
+When your draft differs from the active version, the agent shows an **unpublished changes** indicator.
+
+## What's included in a version
+
+Publishing snapshots the agent's behavior:
+
+| Versioned | Not versioned |
+|-----------|---------------|
+| Persona prompt | Name, avatar, color |
+| Tools and app accounts | Triggers |
+| Knowledge scope | Attached procedures |
+| Tool bindings | |
+| Model | |
+
+[Procedures](/help/agents/procedures) have their own independent versions, so they're not captured inside the agent's version.
+
+## Publishing, reverting, and discarding
+
+- **Publish** — snapshot the current draft as the next numbered version and make it active.
+- **Revert** — restore the active version's behavior back into the draft.
+- **Discard** — throw away draft changes and return to the active version.
+
+You can also label versions (for example "prod" or "v2.1") and browse version history.
+
+<Callout type="info" title="Test before you publish">
+  Run your [simulations](/help/agents/simulations) against the draft and get
+  them passing before you publish. Publishing is what changes live behavior.
+</Callout>
+
+## Next steps
+
+<Cards>
+  <Card title="Simulations" href="/help/agents/simulations" icon="FlaskConical">
+    Validate the draft before publishing.
+  </Card>
+  <Card title="Procedures" href="/help/agents/procedures" icon="ListChecks">
+    Versioned separately from the agent.
+  </Card>
+</Cards>

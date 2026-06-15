@@ -1,0 +1,56 @@
+---
+title: Knowledge scope
+description: Control exactly which records and knowledge bases your agent can read and reason about, so it stays focused, private, and efficient.
+---
+
+**Knowledge scope** controls which records and knowledge bases an agent is allowed to see. You set it in the **Knowledge** tab on the agent detail page.
+
+Scoping matters for three reasons: **privacy** (the agent only sees what it should), **focus** (it reasons over the right data), and **cost** (less irrelevant context to process).
+
+## How scoping works
+
+The Knowledge tab shows a tree of your resource types. For each, you choose how the agent may access it:
+
+| Mode | Meaning |
+|------|---------|
+| **Include** | The agent can read this record type, or a single record |
+| **Include with children** | The agent can read this record and everything beneath it |
+| **Exclude** | The agent explicitly cannot read this — exclusions always win |
+
+You can scope at two levels:
+
+- **A whole type** — for example, all tickets or all contacts.
+- **A single record** — just one specific contact, ticket, or article.
+
+## Resource types you can scope
+
+Scoping covers system resources and your own custom data:
+
+- Knowledge Bases
+- Contacts and Companies
+- Tickets
+- Datasets
+- Any [custom entities](/help/custom-entities/overview) you've defined
+
+## Pinning vs. mentioning
+
+There are two ways to add a record to the scope:
+
+- **Pin it** in the tree — a normal grant you can remove anytime.
+- **Mention it** in the [persona prompt](/help/agents/persona) — this locks it into the scope until you remove the mention, the same way tool mentions work.
+
+<Callout type="info" title="Exclusions take priority">
+  If a record is both included by a broad grant and excluded specifically, the
+  exclusion wins. Use this to carve out exceptions from a wide grant.
+</Callout>
+
+## Next steps
+
+<Cards>
+  <Card title="Triggers" href="/help/agents/triggers" icon="Zap">
+    Let the agent run on its own.
+  </Card>
+  <Card title="Datasets" href="/help/datasets/overview" icon="Database">
+    Build the knowledge your agents read from.
+  </Card>
+</Cards>

@@ -1,0 +1,36 @@
+---
+title: Procedure versions
+description: Edit procedures safely as drafts, publish immutable versions, and rely on version pinning so live conversations are never disrupted mid-run.
+---
+
+Procedures use the same **draft-and-publish** model as agents, with one important addition: **version pinning** keeps in-flight conversations stable.
+
+## Draft vs. published
+
+- **Draft** — the procedure you're editing. Changes autosave but don't affect live conversations.
+- **Published version** — a numbered, immutable snapshot. The active version is what agents run.
+
+When the draft differs from the active version, the procedure shows an unpublished-changes indicator.
+
+## Publishing
+
+Publishing snapshots the draft as the next numbered version and makes it active. Before it publishes, Auxx checks that the procedure is valid — for example:
+
+- **"When to use" is filled in** so the procedure can actually be selected.
+- **Code outputs and variables resolve** — every referenced [code block output and variable](/help/agents/procedures/code-and-variables) exists.
+
+If a check fails, fix the issue and publish again.
+
+## Version pinning
+
+When a conversation starts running a procedure, it pins the active version at that moment. If you publish a change while that conversation is still going, it keeps running the pinned version — the change only affects **new** conversations. This means you can edit and publish anytime without disrupting customers mid-conversation.
+
+## Version history
+
+You can browse published versions, **restore** an older one as your new draft, and **label** versions (for example "before refund rules") to keep track of changes.
+
+<Callout type="info" title="Reused across agents">
+  A procedure can be attached to several agents. Publishing a new version
+  updates it everywhere it's used — so test with
+  [simulations](/help/agents/simulations) before you publish.
+</Callout>

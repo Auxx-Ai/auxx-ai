@@ -1,0 +1,59 @@
+---
+title: Selection & runtime
+description: How an agent picks the right procedure from a conversation and runs through it, including digressions, handoffs, and per-agent overrides.
+---
+
+You don't route procedures manually. The agent **selects** the right one from the conversation, then runs through its steps. This page explains how that works.
+
+## Telling the agent when to use a procedure
+
+Each procedure has selection criteria you set when authoring it:
+
+- **When to use** — a plain-English description of the situation, like "the customer wants to cancel their subscription." This is the main signal.
+- **Trigger examples** — "use when" and "avoid when" phrases that sharpen the choice.
+- **Rulesets** — optional structured conditions that pre-filter candidates cheaply before the agent decides.
+
+<Callout type="warn" title='"When to use" is required'>
+  A procedure with an empty "when to use" can't be selected and won't publish.
+  Describe the situation clearly so the agent knows when it applies.
+</Callout>
+
+## How selection happens
+
+Each turn, the agent:
+
+1. **Pre-filters** candidates using any rulesets (fast, deterministic).
+2. **Picks the best match** among the survivors based on the conversation and each procedure's "when to use" and examples.
+3. **Pins the version** — the selected procedure's active version is locked in for that conversation.
+
+If nothing matches, the agent stays in free-form mode and just uses its [persona](/help/agents/persona) and tools.
+
+## During the conversation
+
+While running a procedure, two things can interrupt the flow:
+
+- **Digression** — the customer asks something off-script. The agent handles it and then returns to where it left off.
+- **Handoff** — the situation needs a person. The agent escalates to a human and leaves the procedure.
+
+## Version pinning
+
+Once a conversation has started running a procedure, it keeps the **pinned version** even if you publish a change mid-conversation. The next conversation that selects the procedure gets the new active version. This means edits never disrupt a conversation that's already in flight. See [Procedure versions](/help/agents/procedures/versions).
+
+## Per-agent overrides
+
+The same procedure can behave differently on different agents. When you attach a procedure to an agent, you can:
+
+- Override its **when to use**, examples, and rulesets for that agent.
+- **Enable or disable** the attachment.
+- Set a **priority** so it's considered before or after others.
+
+## Next steps
+
+<Cards>
+  <Card title="Procedure versions" href="/help/agents/procedures/versions" icon="GitBranch">
+    Draft, publish, and pin procedure versions.
+  </Card>
+  <Card title="Simulations" href="/help/agents/simulations" icon="FlaskConical">
+    Test selection and runtime behavior.
+  </Card>
+</Cards>

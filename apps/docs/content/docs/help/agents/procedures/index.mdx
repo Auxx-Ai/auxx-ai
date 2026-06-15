@@ -1,0 +1,78 @@
+---
+title: Procedures
+description: Give agents reusable, step-by-step playbooks for specific situations like refunds or cancellations, selected automatically from the conversation.
+---
+
+A **procedure** is a reusable, step-by-step playbook an agent follows for a specific situation — processing a refund, cancelling a subscription, or verifying a customer's identity. When a conversation matches, the agent follows the procedure step by step instead of improvising.
+
+<Callout type="info" title="Procedures may require a plan">
+  Procedures are an advanced feature and may not be available on every plan. If
+  you don't see the Procedures tab, check your plan or contact your workspace
+  admin.
+</Callout>
+
+## Persona vs. procedure
+
+The two work together:
+
+- The **[persona](/help/agents/persona)** is the agent's general character — how it thinks and talks across every conversation.
+- A **procedure** is a precise script for one situation, used only when that situation comes up.
+
+Use the persona for tone and broad rules. Use a procedure when you need the agent to follow exact steps every time.
+
+## Why procedures
+
+- **Consistency** — the same situation is handled the same way, every time.
+- **Reusable** — write a procedure once and attach it to multiple agents.
+- **Versioned** — edit safely as a draft and publish when ready.
+- **Automatic** — the agent picks the right procedure from the customer's message; you don't route manually.
+
+## How it fits together
+
+<Steps>
+<Step>
+
+### Author the procedure
+
+Write the steps, conditions, and routing in the [editor](/help/agents/procedures/authoring).
+
+</Step>
+<Step>
+
+### Set when it applies
+
+Describe [when the agent should use it](/help/agents/procedures/selection-and-runtime) so it gets selected at the right moment.
+
+</Step>
+<Step>
+
+### Publish it
+
+[Publish a version](/help/agents/procedures/versions) to make it live.
+
+</Step>
+<Step>
+
+### Test it
+
+Run [simulations](/help/agents/simulations) to confirm it behaves the way you expect.
+
+</Step>
+</Steps>
+
+## In this section
+
+<Cards>
+  <Card title="Authoring" href="/help/agents/procedures/authoring" icon="PencilLine">
+    Write a procedure in the editor.
+  </Card>
+  <Card title="Steps & conditions" href="/help/agents/procedures/steps-and-conditions" icon="GitBranch">
+    Instruction steps, branching, and routing.
+  </Card>
+  <Card title="Code & variables" href="/help/agents/procedures/code-and-variables" icon="Code">
+    Run logic and reuse data across steps.
+  </Card>
+  <Card title="Selection & runtime" href="/help/agents/procedures/selection-and-runtime" icon="Workflow">
+    How procedures get chosen and run.
+  </Card>
+</Cards>

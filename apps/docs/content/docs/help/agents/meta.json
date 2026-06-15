@@ -1,0 +1,21 @@
+{
+  "title": "AI Agents",
+  "icon": "Bot",
+  "pages": [
+    "index",
+    "concepts",
+    "creating-an-agent",
+    "persona",
+    "tools",
+    "knowledge",
+    "triggers",
+    "models",
+    "versions",
+    "approvals",
+    "templates",
+    "---Procedures---",
+    "procedures",
+    "---Simulations---",
+    "simulations"
+  ]
+}

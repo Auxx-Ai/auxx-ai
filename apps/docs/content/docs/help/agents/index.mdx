@@ -1,0 +1,79 @@
+---
+title: AI Agents
+description: Build AI teammates that draft replies, take actions through tools, reason over your CRM, and run on their own from triggers.
+---
+
+An **agent** is an AI teammate you configure once and reuse across your workspace. An agent has a personality, a set of tools it can use, a slice of your knowledge it can read, and rules for when it runs on its own. Once it's set up, you can @mention it in a thread, assign it to a ticket, message it directly, or let it run automatically.
+
+## What an agent can do
+
+- **Draft and send replies** using your knowledge base, conversation history, and connected data.
+- **Take actions through tools** — create a ticket, look up an order, update a record, or call any installed app or MCP server.
+- **Follow procedures** — step-by-step playbooks for specific situations like refunds or cancellations.
+- **Run on its own** from triggers — a mention, an assignment, a schedule, a record change, or an app event.
+
+## Two kinds of agent
+
+| Kind | Who it serves | Where it runs |
+|------|---------------|---------------|
+| **Internal agent** | Your team | Chat, mentions, assignments, and autonomous runs |
+| **Chat agent** | Your customers | The chat widget, with a safety-filtered set of tools |
+
+## The build loop
+
+Building a reliable agent follows a simple loop. Each step has its own article:
+
+<Steps>
+<Step>
+
+### Write the persona
+
+Define the agent's character, tone, and rules in the [persona prompt](/help/agents/persona).
+
+</Step>
+<Step>
+
+### Give it tools and knowledge
+
+Choose which [tools](/help/agents/tools) it can use and which [records](/help/agents/knowledge) it can read.
+
+</Step>
+<Step>
+
+### Add procedures
+
+For repeatable situations, attach a [procedure](/help/agents/procedures) — a precise playbook the agent follows.
+
+</Step>
+<Step>
+
+### Prove it with simulations
+
+Run [simulations](/help/agents/simulations) to test the agent's behavior before it goes live.
+
+</Step>
+<Step>
+
+### Publish
+
+[Publish a version](/help/agents/versions) to make your changes live.
+
+</Step>
+</Steps>
+
+## Where to start
+
+<Cards>
+  <Card title="Core concepts" href="/help/agents/concepts" icon="BookOpen">
+    A glossary of the terms used throughout these guides.
+  </Card>
+  <Card title="Create an agent" href="/help/agents/creating-an-agent" icon="Plus">
+    Build your first agent with the guided setup flow.
+  </Card>
+  <Card title="Procedures" href="/help/agents/procedures" icon="ListChecks">
+    Give agents step-by-step playbooks for specific situations.
+  </Card>
+  <Card title="Simulations" href="/help/agents/simulations" icon="FlaskConical">
+    Test agent behavior with repeatable, offline scenarios.
+  </Card>
+</Cards>

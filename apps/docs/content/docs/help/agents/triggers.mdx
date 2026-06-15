@@ -1,0 +1,53 @@
+---
+title: Triggers
+description: Let agents run on their own — from mentions and assignments to schedules, record events, and app events — without anyone prompting them.
+---
+
+**Triggers** let an agent act without a person prompting it. You manage them in the **Triggers** tab on the agent detail page. (Triggers don't apply to [chat agents](/help/agents), which run from the chat widget instead.)
+
+## Built-in triggers
+
+Every internal agent can respond to three things as soon as it's live:
+
+- **Mention** — someone @mentions the agent in a comment or thread.
+- **Assignment** — the agent is assigned to a ticket.
+- **Direct message** — a user messages the agent directly in chat.
+
+## Autonomous triggers
+
+From the **Add trigger** menu, you can add triggers that fire on their own:
+
+| Trigger | Fires when | Example |
+|---------|-----------|---------|
+| **Scheduled** | A time or interval is reached | Post a metrics digest every morning |
+| **Event** | A record is created, updated, or deleted | Reply when a new ticket comes in |
+| **App** | An installed app emits an event | Act when an order is paid in Shopify |
+
+- **Scheduled** triggers run on a recurring interval or a custom schedule.
+- **Event** triggers can include filters so the agent only runs on records that match a condition.
+- **App** triggers require the app to be installed and pinned to the agent with an [app account](/help/agents/tools).
+
+## Per-trigger settings
+
+Each trigger has its own controls:
+
+- **Enable / disable** — turn the trigger on or off without deleting it.
+- **Instructions** — extra prompt guidance applied only when this trigger fires.
+- **Activity** — see when it last ran and surface the last error if something failed.
+
+<Callout type="info" title="Keep a human in the loop">
+  Pair autonomous triggers with [tool approvals](/help/agents/approvals) or
+  [workflow approvals](/help/ai/workflow-approvals) so a person signs off before
+  sensitive actions are taken.
+</Callout>
+
+## Next steps
+
+<Cards>
+  <Card title="Tool approvals" href="/help/agents/approvals" icon="ShieldCheck">
+    Add confirmation gates to sensitive actions.
+  </Card>
+  <Card title="Models & BYOK" href="/help/agents/models" icon="Cpu">
+    Choose which model powers the agent.
+  </Card>
+</Cards>

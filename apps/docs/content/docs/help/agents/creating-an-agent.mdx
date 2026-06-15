@@ -1,0 +1,84 @@
+---
+title: Create an agent
+description: Build your first agent with the guided setup flow, or start from a template, then complete setup to bring it live in your workspace.
+---
+
+You create agents from the **Agents** list in your workspace. You can start from a blank agent or pick a template that pre-fills a starter prompt.
+
+## Start a new agent
+
+<Steps>
+<Step>
+
+### Open the Agents list
+
+Go to **Agents** in the sidebar and click **Create agent**.
+
+</Step>
+<Step>
+
+### Choose a starting point
+
+Start blank, or pick a [template](/help/agents/templates) such as a support triage assistant or a storefront concierge. A template fills in a starter prompt and a suggested name, avatar, and color — you can change everything later.
+
+</Step>
+<Step>
+
+### Complete setup
+
+A guided flow walks you through the essentials. When you finish, the agent goes live.
+
+</Step>
+</Steps>
+
+## The guided setup flow
+
+When you create an agent, a docked **Build** assistant opens and asks what the agent should do. It walks you through four essentials:
+
+1. **Name** — what the agent is called.
+2. **Persona** — the [prompt](/help/agents/persona) that defines its behavior.
+3. **Tools** — the [actions](/help/agents/tools) it can take.
+4. **Knowledge** — the [records](/help/agents/knowledge) it can read.
+
+You can describe what you want in plain language and let the assistant fill things in, or click **Configure manually** to skip the guided flow and edit each tab yourself.
+
+<Callout type="info" title="You can always change it later">
+  Setup just gets the agent live with sensible defaults. Every part of the agent
+  is fully editable afterward from the detail page tabs.
+</Callout>
+
+## What "complete setup" does
+
+Finishing setup does three things:
+
+- **Brings the agent live** — it becomes a real member of your workspace that you can @mention, assign to tickets, and message directly.
+- **Publishes its first version** — the current configuration is captured as version 1. See [Versions & publishing](/help/agents/versions).
+- **Activates its built-in triggers** — it can respond to mentions, assignments, and direct messages right away. See [Triggers](/help/agents/triggers).
+
+Setup requires a non-empty name, a persona prompt, and at least one tool.
+
+## The agent detail page
+
+Once setup is complete, the detail page opens with configuration tabs across the top:
+
+| Tab | What you configure |
+|-----|--------------------|
+| **Prompt** | The [persona](/help/agents/persona) — personality, tone, and rules |
+| **Procedures** | Attached [playbooks](/help/agents/procedures) for specific situations |
+| **Tools** | The [tools and app accounts](/help/agents/tools) the agent can use |
+| **Bindings** | Advanced overrides for how tool inputs are filled |
+| **Knowledge** | The [records and knowledge](/help/agents/knowledge) the agent can read |
+| **Triggers** | Rules for [running automatically](/help/agents/triggers) |
+
+The docked panel on the right has **Build**, **Chat**, and **Simulations** tabs for configuring, testing, and validating the agent as you work.
+
+## Next steps
+
+<Cards>
+  <Card title="Write the persona" href="/help/agents/persona" icon="FileText">
+    Define how the agent thinks and talks.
+  </Card>
+  <Card title="Add tools" href="/help/agents/tools" icon="Wrench">
+    Give the agent actions it can take.
+  </Card>
+</Cards>

@@ -1,0 +1,76 @@
+---
+title: Simulations
+description: Test agents and procedures with repeatable, offline scenarios that grade behavior, so you can catch problems before changes go live.
+---
+
+A **simulation** is a repeatable, offline test of an agent or procedure. It pairs a synthetic customer scenario with checks on what the agent should do, then grades the result. Run simulations to prove behavior before you publish — without ever touching real customer data, Shopify, or email.
+
+You'll find simulations in the **Simulations** tab of the docked panel on the agent detail page.
+
+## Why simulate
+
+- **Confidence** — verify the agent does the right thing before it goes live.
+- **Regression safety** — re-run your tests after every change to catch breakage.
+- **Safe and fast** — runs are offline, so there are no side effects and no waiting on real APIs.
+
+## A quick note on terms
+
+The feature is called **Simulations**. A few related words you'll see:
+
+| Term | Meaning |
+|------|---------|
+| **Simulation** | The feature, and a single test scenario |
+| **Eval case** | The saved definition of a simulation |
+| **Run** | One execution of a simulation, with its result |
+
+## Two scopes
+
+A simulation tests one of two things:
+
+- **Procedure simulation** — a focused test of a single [procedure](/help/agents/procedures), pinned to a version. Like a unit test.
+- **Agent simulation** — a test of the whole agent, including which procedure it selects. Like an integration test.
+
+## What's in a simulation
+
+Every simulation has three parts:
+
+<Steps>
+<Step>
+
+### A customer scenario
+
+The opening message and context — who the customer is and what they want.
+
+</Step>
+<Step>
+
+### Tool mocks
+
+Fake responses that stand in for real tool and API calls. See [Mocks](/help/agents/simulations/mocks).
+
+</Step>
+<Step>
+
+### Assertions
+
+The pass/fail checks on what the agent should do. See [Assertions](/help/agents/simulations/assertions).
+
+</Step>
+</Steps>
+
+## In this section
+
+<Cards>
+  <Card title="Create a simulation" href="/help/agents/simulations/creating-a-simulation" icon="Plus">
+    Set up a scenario, mocks, and assertions.
+  </Card>
+  <Card title="Mocks" href="/help/agents/simulations/mocks" icon="TestTube">
+    Replace real tool calls with fake responses.
+  </Card>
+  <Card title="Assertions" href="/help/agents/simulations/assertions" icon="CircleCheck">
+    Define what counts as a pass.
+  </Card>
+  <Card title="Running & results" href="/help/agents/simulations/running-and-results" icon="Play">
+    Run simulations and read the verdict.
+  </Card>
+</Cards>
