@@ -16,4 +16,17 @@ describe('instructions', () => {
     expect(out).toContain('## Instructions')
     expect(out).toContain('Do not emit fenced code blocks')
   })
+
+  it('customer-conversation instructions reply to the customer, not an audit trail', () => {
+    const out = instructions.render(
+      makeCtx({
+        runMode: 'autonomous',
+        triggerContext: { kind: 'customer_message', instructions: null, payload: {} },
+      })
+    )
+    expect(out).toContain('## Instructions')
+    expect(out).toContain('reply to the customer')
+    expect(out).not.toContain('audit trail')
+    expect(out).not.toContain('by id')
+  })
 })

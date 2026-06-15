@@ -227,7 +227,12 @@ export const agentRouter = createTRPCRouter({
       if (patch.archivedAt !== undefined) updatePayload.archivedAt = patch.archivedAt
       if (patch.appAccounts !== undefined) updatePayload.appAccounts = patch.appAccounts
 
-      await updateAgentService(agentId, organizationId, updatePayload)
+      // Exclude the writer's own socket from the `agent:updated` broadcast so
+      // the persona editor's autosave doesn't echo back and remount over the
+      // author's in-flight edits. Kopilot writes are server-originated (no
+      // socket) and still reach the open editor.
+      const excludeSocketId = ctx.headers.get('x-realtime-socket-id') ?? undefined
+      await updateAgentService(agentId, organizationId, updatePayload, { excludeSocketId })
     }),
 
   checkSlug: adminProcedure

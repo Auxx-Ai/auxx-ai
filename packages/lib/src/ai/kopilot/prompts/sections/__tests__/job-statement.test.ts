@@ -14,4 +14,16 @@ describe('jobStatement', () => {
     const out = jobStatement.render(makeCtx({ runMode: 'autonomous' }))
     expect(out).toContain('audit trail')
   })
+
+  it('customer-conversation job is a customer reply, not an audit trail', () => {
+    const out = jobStatement.render(
+      makeCtx({
+        runMode: 'autonomous',
+        triggerContext: { kind: 'customer_message', instructions: null, payload: {} },
+      })
+    )
+    expect(out).toContain('customer')
+    expect(out).not.toContain('audit trail')
+    expect(out).not.toContain('by id')
+  })
 })
