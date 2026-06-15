@@ -3,6 +3,7 @@
 import {
   insertCredential,
   listCredentials,
+  recordRefreshSuccess,
   rotateSecrets,
   updateCredential,
 } from '@auxx/credentials/store'
@@ -196,6 +197,17 @@ export async function saveAppConnection(
     const metaUpdated = await updateCredential(options.connectionId, organizationId, { metadata })
     if (metaUpdated.isErr()) {
       return err(metaUpdated.error)
+    }
+
+    // A successful re-auth clears any open refresh circuit breaker. Without this the
+    // connection keeps surfacing as "expired" (consecutiveRefreshFailures >= threshold)
+    // even though it now holds a fresh token — recordRefreshSuccess resets the breaker
+    // and stamps lastRefreshAt alongside the already-rotated expiry.
+    const breakerReset = await recordRefreshSuccess(options.connectionId, organizationId, {
+      expiresAt,
+    })
+    if (breakerReset.isErr()) {
+      return err(breakerReset.error)
     }
 
     logger.info('Successfully reconnected app connection:', { credentialId: options.connectionId })

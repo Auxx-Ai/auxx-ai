@@ -9,7 +9,7 @@ import {
   CommandList,
   CommandSeparator,
 } from '@auxx/ui/components/command'
-import { Check, TriangleAlert, User as UserIcon, Users } from 'lucide-react'
+import { Check, Settings2, TriangleAlert, User as UserIcon, Users, X } from 'lucide-react'
 import { useMemo } from 'react'
 import { useUser } from '~/hooks/use-user'
 import { type AppConnection, useExtensionsContext } from '~/providers/extensions/extensions-context'
@@ -34,6 +34,14 @@ interface AppAccountPickerProps {
    * breaks the agent for every other user (see settings README §4.2).
    */
   allowPersonal?: boolean
+  /** When set, renders a trailing "View App" row that opens full app settings. */
+  onViewApp?: () => void
+  /**
+   * When set, the selected row shows a "Remove" action that unbinds the
+   * connection from the host (e.g. clears a workflow node's binding). Does NOT
+   * delete the connection itself.
+   */
+  onRemove?: (credId: string) => void
 }
 
 /**
@@ -48,6 +56,8 @@ export function AppAccountPicker({
   onPick,
   onConnected,
   allowPersonal = true,
+  onViewApp,
+  onRemove,
 }: AppAccountPickerProps) {
   const { appInstallations } = useExtensionsContext()
   const { isAdminOrOwner } = useUser()
@@ -101,6 +111,7 @@ export function AppAccountPicker({
                   selected={isSelected(c.id)}
                   onSelect={() => onPick(c.id)}
                   onReconnect={reconnectHandler(c.id, 'user')}
+                  onRemove={onRemove ? () => onRemove(c.id) : undefined}
                 />
               ))}
             </CommandGroup>
@@ -116,6 +127,7 @@ export function AppAccountPicker({
                   selected={isSelected(c.id)}
                   onSelect={() => onPick(c.id)}
                   onReconnect={reconnectHandler(c.id, 'organization')}
+                  onRemove={onRemove ? () => onRemove(c.id) : undefined}
                 />
               ))}
             </CommandGroup>
@@ -142,6 +154,17 @@ export function AppAccountPicker({
               </CommandItem>
             )}
           </CommandGroup>
+          {onViewApp && (
+            <>
+              <CommandSeparator />
+              <CommandGroup>
+                <CommandItem onSelect={onViewApp} className='cursor-pointer h-7.5'>
+                  <Settings2 className='text-muted-foreground' />
+                  <span>View App</span>
+                </CommandItem>
+              </CommandGroup>
+            </>
+          )}
         </CommandList>
       </Command>
       {flow.Dialogs}
@@ -155,6 +178,7 @@ function AccountRow({
   selected,
   onSelect,
   onReconnect,
+  onRemove,
 }: {
   cred: AppConnection
   avatarUrl: string | null
@@ -162,6 +186,8 @@ function AccountRow({
   onSelect: () => void
   /** When set, the row shows a "Reconnect" action for expired/disconnected creds. */
   onReconnect?: () => void
+  /** When set, the selected row shows a "Remove" action that unbinds the connection. */
+  onRemove?: () => void
 }) {
   const bound = useBoundCredential(cred.id)
   const status: AppConnectionStatus =
@@ -197,6 +223,20 @@ function AccountRow({
               onReconnect()
             }}>
             Reconnect
+          </Button>
+        )}
+        {selected && onRemove && (
+          <Button
+            type='button'
+            variant='ghost'
+            size='sm'
+            className='h-6 px-2 text-destructive hover:text-destructive'
+            onClick={(e) => {
+              e.stopPropagation()
+              onRemove()
+            }}>
+            <X />
+            Remove
           </Button>
         )}
       </div>

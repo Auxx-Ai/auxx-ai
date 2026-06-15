@@ -105,6 +105,10 @@ export function useConnectFlow(options: UseConnectFlowOptions = {}): UseConnectF
   }, [])
   useEffect(() => () => teardown(), [teardown])
 
+  // Reconnect first tries a silent OAuth refresh (see attemptRefreshThenOAuth); an app
+  // connection is just a credential, so it reuses the credentials refresh mutation.
+  const refreshConnection = api.credentials.refreshOAuthTokens.useMutation()
+
   const saveSecret = api.apps.saveSecretConnection.useMutation({
     onSuccess: (data) => {
       setSecretOpen(false)
@@ -214,6 +218,41 @@ export function useConnectFlow(options: UseConnectFlowOptions = {}): UseConnectF
     [mode, onConnected, teardown, utils.apps.listConnections, utils.apps.listInstalled]
   )
 
+  // Reconnect path: try a silent refresh-token exchange before the full OAuth popup.
+  // When the refresh token is still valid (e.g. the access token merely lapsed while the
+  // dev server was down) this renews the connection — and resets the expiry circuit
+  // breaker server-side — without any user interaction. Only when the refresh fails
+  // (revoked / no refresh token) do we fall back to the full OAuth flow.
+  const attemptRefreshThenOAuth = useCallback(
+    async (a: ConnectFlowArgs) => {
+      if (!a.connectionId) {
+        kickOauth(a)
+        return
+      }
+      setOauthPending(true)
+      try {
+        await refreshConnection.mutateAsync({ credentialId: a.connectionId })
+        void utils.apps.listConnections.invalidate()
+        void utils.apps.listInstalled.invalidate()
+        setOauthPending(false)
+        setLastConnectedCredId(a.connectionId)
+        onConnected?.(a.connectionId, a)
+        setArgs(null)
+      } catch {
+        // Refresh unavailable — fall back to the full OAuth re-authorization.
+        setOauthPending(false)
+        kickOauth(a)
+      }
+    },
+    [
+      kickOauth,
+      refreshConnection,
+      onConnected,
+      utils.apps.listConnections,
+      utils.apps.listInstalled,
+    ]
+  )
+
   const start = useCallback(
     (next: ConnectFlowArgs) => {
       setError(null)
@@ -239,8 +278,11 @@ export function useConnectFlow(options: UseConnectFlowOptions = {}): UseConnectF
       if (def.connectionType === 'oauth2-code') {
         const vars = def.connectionVariables ?? []
         // Reconnect reuses the stored variables (e.g. the Shopify shop) server-side,
-        // so only prompt for them on a fresh connect.
-        if (vars.length > 0 && !next.connectionId) {
+        // so only prompt for them on a fresh connect — and try a silent token refresh
+        // before falling back to the full OAuth flow.
+        if (next.connectionId) {
+          void attemptRefreshThenOAuth(next)
+        } else if (vars.length > 0) {
           setVariableOpen(true)
         } else {
           kickOauth(next)
@@ -249,7 +291,7 @@ export function useConnectFlow(options: UseConnectFlowOptions = {}): UseConnectF
       }
       setError(new Error('App does not support connecting'))
     },
-    [kickOauth]
+    [kickOauth, attemptRefreshThenOAuth]
   )
 
   const activeDef = useMemo(() => {

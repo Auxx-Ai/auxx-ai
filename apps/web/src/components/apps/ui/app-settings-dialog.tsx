@@ -32,8 +32,14 @@ interface AppSettingsDialogProps {
   installationType: 'development' | 'production'
   /** Optional return URL for OAuth redirects (e.g., current workflow URL) */
   returnTo?: string
-  /** Caller provides the trigger button */
-  trigger: ReactNode
+  /**
+   * Caller provides the trigger button. Omit when controlling the dialog via
+   * `open`/`onOpenChange` (e.g. opened from a command item elsewhere).
+   */
+  trigger?: ReactNode
+  /** Controlled open state. Falls back to internal state when undefined. */
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
   /** Open on a specific tab (defaults to `'about'`). */
   initialTab?: Tab
   /**
@@ -58,11 +64,16 @@ export function AppSettingsDialog({
   installationType,
   returnTo,
   trigger,
+  open: controlledOpen,
+  onOpenChange,
   initialTab = 'about',
   initialScope,
   onConnectionCreated,
 }: AppSettingsDialogProps) {
-  const [open, setOpen] = useState(false)
+  const [internalOpen, setInternalOpen] = useState(false)
+  const isControlled = controlledOpen !== undefined
+  const open = isControlled ? controlledOpen : internalOpen
+  const setOpen = isControlled ? (onOpenChange ?? (() => {})) : setInternalOpen
   const [activeTab, setActiveTab] = useState<Tab>(initialTab)
   const { isAdminOrOwner } = useUser()
 
@@ -85,7 +96,7 @@ export function AppSettingsDialog({
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>{trigger}</DialogTrigger>
+      {trigger && <DialogTrigger asChild>{trigger}</DialogTrigger>}
       <DialogContent size='lg' position='tc' innerClassName='p-0'>
         <DialogHeader className='my-2'>
           <DialogTitle className='flex items-center gap-2 px-2 '>

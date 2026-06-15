@@ -278,7 +278,13 @@ export const AppWorkflowNode = memo<AppWorkflowNodeProps>((props) => {
   // Render reconstructed component with error handling
   const renderComponent = () => {
     if (!nodeComponent) {
-      return <div className='text-xs text-muted-foreground'>Loading...</div>
+      return (
+        <div className='px-3'>
+          <div className='flex items-center h-6 rounded-md bg-muted px-2'>
+            <div className='text-xs text-muted-foreground'>Loading...</div>
+          </div>
+        </div>
+      )
     }
     if (!nodeComponent.children || !Array.isArray(nodeComponent.children)) {
       return <div className='text-xs text-destructive'>Error: Invalid component structure</div>
@@ -334,7 +340,11 @@ export const AppWorkflowNode = memo<AppWorkflowNodeProps>((props) => {
 
       <div className='space-y-1 pb-2'>
         {isLoading ? (
-          <div className='text-xs text-muted-foreground'>Loading extensions...</div>
+          <div className='px-3'>
+            <div className='flex items-center h-6 rounded-md bg-muted px-2'>
+              <div className='text-xs text-muted-foreground'>Loading...</div>
+            </div>
+          </div>
         ) : isNotInstalled ? (
           <div className='flex flex-col items-center gap-2 p-3'>
             <span className='text-sm font-medium'>{data.title || appSlug}</span>
