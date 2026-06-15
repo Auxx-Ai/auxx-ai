@@ -137,15 +137,6 @@ jobs:
             --content-type 'application/javascript; charset=utf-8' \
             --cache-control 'public, max-age=300, stale-while-revalidate=86400'
 
-      - name: Purge CDN edge cache for stable alias
-        if: ${{ !inputs.dry-run }}
-        run: |
-          curl -fsS -X POST \
-            "https://api.cloudflare.com/client/v4/zones/${{ secrets.CF_ZONE_ID }}/purge_cache" \
-            -H "Authorization: Bearer ${{ secrets.CF_API_TOKEN }}" \
-            -H 'Content-Type: application/json' \
-            --data '{"files":["https://cdn.auxx.ai/scripts/chat-widget.js"]}'
-
       - name: Publish to npm
         if: ${{ !inputs.dry-run }}
         working-directory: packages/chat
@@ -178,3 +169,20 @@ jobs:
             --target "${{ github.sha }}"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Best-effort: the npm + CDN artifacts are already live by now, so a purge
+      # failure must never fail the release. The Worker forces its own edge TTL,
+      # so the stable alias needs purging to update promptly; the immutable
+      # versioned URL is unaffected either way. Logs the CF response on failure.
+      - name: Purge CDN edge cache for stable alias
+        if: ${{ !inputs.dry-run }}
+        continue-on-error: true
+        run: |
+          resp=$(curl -sS -X POST \
+            "https://api.cloudflare.com/client/v4/zones/${{ secrets.CF_ZONE_ID }}/purge_cache" \
+            -H "Authorization: Bearer ${{ secrets.CF_API_TOKEN }}" \
+            -H 'Content-Type: application/json' \
+            --data '{"files":["https://cdn.auxx.ai/scripts/chat-widget.js"]}') || true
+          echo "$resp"
+          echo "$resp" | grep -q '"success":true' \
+            || echo "::warning::Cloudflare purge did not succeed (see response above). Stable alias self-heals within the edge TTL; the immutable versioned URL is unaffected."
