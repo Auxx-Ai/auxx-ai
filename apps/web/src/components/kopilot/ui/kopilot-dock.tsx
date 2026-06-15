@@ -47,7 +47,7 @@ export function KopilotDock() {
       <AnimatePresence initial={false}>
         {panelOpen && (
           <motion.div
-            className='fixed inset-0 z-50 bg-background'
+            className='fixed inset-0 z-50 bg-background pt-safe pb-safe pl-safe pr-safe'
             initial={{ opacity: 0, y: '100%' }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: '100%' }}

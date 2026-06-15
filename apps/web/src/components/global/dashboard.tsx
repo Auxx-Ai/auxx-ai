@@ -128,7 +128,7 @@ export const Dashboard = ({
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}>
         <DndStateProvider activeDndItem={activeDndItem}>
-          <div className='flex h-screen overflow-hidden w-full'>
+          <div className='flex h-screen overflow-hidden w-full pt-safe pb-safe pl-safe pr-safe'>
             <AppSidebar className='min-w-0' user={user} />
             <SidebarInset className='min-h-0'>
               <DemoBanner />
