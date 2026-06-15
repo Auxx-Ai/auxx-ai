@@ -146,6 +146,9 @@ export const evalRouter = createTRPCRouter({
           config: input.config,
           assertions: input.assertions,
           suggestionId: input.suggestionId,
+          // The drawer self-invalidates on save — exclude this tab from the
+          // realtime echo so only OTHER open tabs refetch.
+          excludeSocketId: ctx.headers.get('x-realtime-socket-id') ?? undefined,
         }),
         'create eval case'
       )
@@ -170,6 +173,7 @@ export const evalRouter = createTRPCRouter({
           organizationId: ctx.session.organizationId,
           id: input.id,
           patch: input.patch,
+          excludeSocketId: ctx.headers.get('x-realtime-socket-id') ?? undefined,
         }),
         'update eval case'
       )
@@ -180,7 +184,11 @@ export const evalRouter = createTRPCRouter({
     .input(z.object({ id: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
       unwrap(
-        await deleteEvalCase({ organizationId: ctx.session.organizationId, id: input.id }),
+        await deleteEvalCase({
+          organizationId: ctx.session.organizationId,
+          id: input.id,
+          excludeSocketId: ctx.headers.get('x-realtime-socket-id') ?? undefined,
+        }),
         'delete eval case'
       )
       return { ok: true as const }

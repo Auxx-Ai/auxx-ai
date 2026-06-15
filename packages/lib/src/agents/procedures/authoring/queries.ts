@@ -131,6 +131,8 @@ export interface AuthoringProcedureSummary {
   enabled: boolean
   hasUnpublishedChanges: boolean
   activeVersionId: string | null
+  /** The working draft version — pinned by a procedure-scoped eval case when no active version exists yet. */
+  draftVersionId: string | null
 }
 
 /**
@@ -152,6 +154,7 @@ export async function listAgentProceduresForAuthoring(input: {
         enabled: schema.AgentProcedure.enabled,
         hasUnpublishedChanges: schema.Procedure.hasUnpublishedChanges,
         activeVersionId: schema.Procedure.activeVersionId,
+        draftVersionId: schema.Procedure.draftVersionId,
       })
       .from(schema.AgentProcedure)
       .innerJoin(schema.Procedure, eq(schema.Procedure.id, schema.AgentProcedure.procedureId))

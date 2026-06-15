@@ -335,3 +335,15 @@ export interface ProcedureUpdatedEvent {
   event: 'procedure:updated'
   data: { procedureId: string; agentId: string }
 }
+
+/**
+ * An agent's simulation (eval) cases changed server-side — a case was created,
+ * updated, or deleted (today: the Kopilot `create_eval_case` /
+ * `update_eval_case_mock` tools, or the case editor). The Simulations tab uses
+ * this purely as a refresh signal to re-list `eval.list` for the agent; the
+ * payload carries only the agent id to scope which tab refetches.
+ */
+export interface EvalCaseChangedEvent {
+  event: 'eval:case-changed'
+  data: { agentId: string }
+}
