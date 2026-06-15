@@ -64,7 +64,7 @@ export function getSetupSnippets(
               serverBlock,
               {
                 language: CodeLanguage.html,
-                value: `<script src="https://app.auxx.ai/scripts/chat-widget.js" async defer></script>
+                value: `<script src="https://cdn.auxx.ai/scripts/chat-widget.js" async defer></script>
 <script>
   // Replace TOKEN_FROM_SERVER with the JWT minted above
   // (server-render it into the page, or fetch it before booting).
@@ -86,7 +86,7 @@ export function getSetupSnippets(
               {
                 language: CodeLanguage.html,
                 value: `<script
-  src="https://app.auxx.ai/scripts/chat-widget.js"
+  src="https://cdn.auxx.ai/scripts/chat-widget.js"
   data-channel-id="${id}"
   async defer></script>`,
                 title: 'Basic JS',

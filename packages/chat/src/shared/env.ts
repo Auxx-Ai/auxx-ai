@@ -30,5 +30,5 @@ export const API_URL =
 export const WIDGET_URL =
   readEnv('AUXX_WIDGET_URL') ??
   (IS_PROD
-    ? 'https://app.auxx.ai/scripts/chat-widget.js'
+    ? 'https://cdn.auxx.ai/scripts/chat-widget.js'
     : 'http://localhost:3000/scripts/chat-widget.js')
