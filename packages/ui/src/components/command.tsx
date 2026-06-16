@@ -584,6 +584,12 @@ interface CommandNavigableItemProps<T extends NavigationItem> {
   className?: string
   /** Value for the command item */
   value?: string
+  /**
+   * Stamp `data-drilldown` so a focusless host (chip-driven `/` menus) can
+   * ArrowRight-drill this row via `useCmdkRemote.drillHighlighted`. Independent
+   * of `hasChildren`, which only controls the visible chevron.
+   */
+  drillDown?: boolean
 }
 
 /**
@@ -598,13 +604,18 @@ function CommandNavigableItem<T extends NavigationItem>({
   onSelect,
   className,
   value,
+  drillDown,
 }: CommandNavigableItemProps<T>) {
   const handleSelect = React.useCallback(() => {
     onSelect?.(item)
   }, [onSelect, item])
 
   return (
-    <CommandItem value={value || item.id} onSelect={handleSelect} className={cn('', className)}>
+    <CommandItem
+      value={value || item.id}
+      onSelect={handleSelect}
+      className={cn('', className)}
+      data-drilldown={drillDown ? '' : undefined}>
       <div className='flex items-center flex-row gap-1 flex-1'>{children}</div>
       {hasChildren && <ChevronRight className='size-4 text-muted-foreground' />}
     </CommandItem>
