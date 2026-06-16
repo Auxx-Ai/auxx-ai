@@ -3,6 +3,7 @@
 import { createScopedLogger } from '@auxx/logger'
 import { toActorId } from '@auxx/types/actor'
 import { getOrgToolCatalog, getOrgToolsetCatalog, type ResolvedAgentConfig } from '../../../agents'
+import type { AgentSurface } from '../../../agents/client'
 import { PROCEDURE_STEP_KEY } from '../../../agents/procedures/persist'
 import { getCachedIntegrationCatalog } from '../../../cache/integration-catalog'
 import { getCachedMembersByUserIds, getCachedResources } from '../../../cache/org-cache-helpers'
@@ -17,7 +18,7 @@ import type { Message, ToolCall } from '../../clients/base/types'
 import { transformAssistantContentForLLM } from '../blocks/transform-for-llm'
 import { buildKopilotPromptSerialized } from '../prompts/build-kopilot-prompt'
 import { buildInstructionReferenceResolver } from '../prompts/resolve-instruction-references'
-import type { ProcedureStepInput } from '../prompts/sections/types'
+import type { Audience, ProcedureStepInput } from '../prompts/sections/types'
 import type { CurrentUserInfo } from '../prompts/shared-types'
 import type { TriggerContext } from '../prompts/trigger-context'
 import type { KopilotDomainState } from '../types'
@@ -44,6 +45,10 @@ export interface CreateKopilotAgentOptions {
    * agent renders its persona from `prompt` / `name` / `description`.
    */
   agentConfig?: ResolvedAgentConfig
+  /** Rendering medium → formatting. Defaults to `'builder'`. See `buildKopilotPrompt`. */
+  surface?: AgentSurface
+  /** Who reads this turn → semantics. Defaults to `'member'`. See `buildKopilotPrompt`. */
+  audience?: Audience
   /**
    * Present iff this run was kicked off by an AgentTrigger. Threads the
    * autonomous-run prompt section through `buildKopilotPrompt`. Chat runs
@@ -68,6 +73,8 @@ export function createKopilotAgent(
     maxIterations = 15,
     toolsetPromptAdditions = '',
     agentConfig,
+    surface,
+    audience,
     triggerContext,
   } = options
 
@@ -123,6 +130,8 @@ export function createKopilotAgent(
         integrations,
         toolsetPromptAdditions,
         agentConfig,
+        surface,
+        audience,
         triggerContext,
         instructionsReferences,
         procedureStep,

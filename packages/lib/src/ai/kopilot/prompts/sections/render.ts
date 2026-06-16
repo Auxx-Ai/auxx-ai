@@ -14,14 +14,27 @@ export interface PromptBlock {
 }
 
 /**
- * Filter `sections` by ctx.runMode, render each, drop empty results,
- * join with `\n\n`. In dev builds, asserts the whitespace contract on
+ * A section renders this turn iff its mode, surface, and audience gates all
+ * pass. `surfaces`/`audiences` are optional — `undefined` matches every value
+ * (so existing sections that declare neither are untouched). Factored out so
+ * `renderSections` and `renderSectionsToBlocks` can never drift on the gate.
+ */
+export function sectionApplies(section: PromptSection, ctx: PromptCtx): boolean {
+  if (!section.modes.has(ctx.runMode)) return false
+  if (section.surfaces && !section.surfaces.has(ctx.surface)) return false
+  if (section.audiences && !section.audiences.has(ctx.audience)) return false
+  return true
+}
+
+/**
+ * Filter `sections` by ctx.runMode/surface/audience, render each, drop empty
+ * results, join with `\n\n`. In dev builds, asserts the whitespace contract on
  * each section's output: no leading or trailing whitespace.
  */
 export function renderSections(sections: readonly PromptSection[], ctx: PromptCtx): string {
   const parts: string[] = []
   for (const section of sections) {
-    if (!section.modes.has(ctx.runMode)) continue
+    if (!sectionApplies(section, ctx)) continue
     const out = section.render(ctx)
     if (!out) continue
     if (process.env.NODE_ENV !== 'production' && out !== out.trim()) {
@@ -51,7 +64,7 @@ export function renderSectionsToBlocks(
   // Group section outputs by stability tier, preserving registry order.
   const groups: { stability: Stability; parts: string[] }[] = []
   for (const section of sections) {
-    if (!section.modes.has(ctx.runMode)) continue
+    if (!sectionApplies(section, ctx)) continue
     const out = section.render(ctx)
     if (!out) continue
     if (process.env.NODE_ENV !== 'production' && out !== out.trim()) {

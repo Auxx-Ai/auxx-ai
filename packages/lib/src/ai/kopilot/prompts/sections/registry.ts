@@ -6,6 +6,7 @@ import { agentProcedureStep } from './agent-procedure-step'
 import { approval } from './approval'
 import { blockCatalog } from './block-catalog'
 import { callerPreamble } from './caller-preamble'
+import { chatFormatting } from './chat-formatting'
 import { contextSection } from './context'
 import { entityCatalog } from './entity-catalog'
 import { houseRules } from './house-rules'
@@ -45,7 +46,8 @@ export const SYSTEM_PROMPT_SECTIONS: readonly PromptSection[] = [
   jobStatement,
   instructions,
   membersVsContacts,
-  blockCatalog,
+  blockCatalog, // builder surface only
+  chatFormatting, // chat surface only — plain-text rule
   approval,
   runModeBanner,
   houseRules, // last in tier 1 — strongest recency vs persona

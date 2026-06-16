@@ -1,6 +1,9 @@
 // packages/lib/src/ai/kopilot/prompts/sections/block-catalog.ts
 
+import type { AgentSurface } from '../../../../agents/client'
 import { INTERACTIVE_ONLY, type PromptSection } from './types'
+
+const BUILDER_SURFACE: ReadonlySet<AgentSurface> = new Set(['builder'])
 
 /**
  * Rich-block catalog section. Schemas sourced from a specific tool
@@ -8,10 +11,16 @@ import { INTERACTIVE_ONLY, type PromptSection } from './types'
  * `search_docs`/`search_knowledge`) are dropped when those tools aren't
  * resolved for this turn — otherwise the model is invited to emit blocks
  * it can't populate.
+ *
+ * `auxx:*` fences and `auxx://` links only render in the in-app builder
+ * renderer, so this is gated to the `builder` surface — it never reaches a
+ * chat (plain-text) or email turn, where it would contradict the medium's
+ * formatting rule.
  */
 export const blockCatalog: PromptSection = {
   id: 'block-catalog',
   modes: INTERACTIVE_ONLY,
+  surfaces: BUILDER_SURFACE,
   stability: 'static',
   render: (ctx) => {
     const has = (name: string) => ctx.toolNames.has(name)

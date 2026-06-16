@@ -1,6 +1,7 @@
 // packages/lib/src/ai/kopilot/prompts/sections/types.ts
 
 import type { ResolvedAgentConfig } from '../../../../agents'
+import type { AgentSurface } from '../../../../agents/client'
 import type { IntegrationCatalogEntry } from '../../../../cache/integration-catalog'
 import type { AgentToolDefinition } from '../../../agent-framework/types'
 import type { KopilotDomainState } from '../../types'
@@ -12,6 +13,23 @@ export type RunMode = 'interactive' | 'autonomous'
 export const ALL_MODES: ReadonlySet<RunMode> = new Set(['interactive', 'autonomous'])
 export const INTERACTIVE_ONLY: ReadonlySet<RunMode> = new Set(['interactive'])
 export const AUTONOMOUS_ONLY: ReadonlySet<RunMode> = new Set(['autonomous'])
+
+/**
+ * Who reads this turn's output. Orthogonal to {@link RunMode} (human-in-loop vs
+ * not) and to {@link AgentSurface} (the rendering medium):
+ *
+ * - `member`   — a workspace member (in-app Kopilot, background-trigger audit
+ *   trail). Real ids / tool names / error codes are surfaced — they're debugging.
+ * - `customer` — an external person on the other end of a conversation (live
+ *   chat, customer email). Drives plain-language semantics: no internal ids,
+ *   tool names, link syntax, and tool-failure opacity (never name the failing
+ *   integration or quote an error code; ask or hand off).
+ *
+ * Computed per-run at the entry point — NOT a stored column and NOT
+ * `agent.kind === 'chat'` (they coincide today but diverge the moment an
+ * `internal`/`email` agent serves a customer).
+ */
+export type Audience = 'member' | 'customer'
 
 /**
  * Stability tier — drives cache-tier grouping in Phase E.
@@ -61,6 +79,10 @@ export interface ProcedureStepInput {
  */
 export interface PromptCtx {
   readonly runMode: RunMode
+  /** The rendering medium this turn outputs to → drives formatting. */
+  readonly surface: AgentSurface
+  /** Who reads this turn's output → drives semantics (see {@link Audience}). */
+  readonly audience: Audience
   readonly tools: readonly AgentToolDefinition[]
   readonly toolNames: ReadonlySet<string>
   readonly currentUser: CurrentUserInfo | null
@@ -83,6 +105,14 @@ export interface PromptSection {
   readonly id: string
   /** Modes this section may render in. Empty ≡ never (useful for staging). */
   readonly modes: ReadonlySet<RunMode>
+  /**
+   * Surfaces this section may render on. `undefined` ⇒ all surfaces
+   * (back-compat default). Mirrors `modes` — the renderer skips a section
+   * whose set doesn't include `ctx.surface`.
+   */
+  readonly surfaces?: ReadonlySet<AgentSurface>
+  /** Audiences this section may render for. `undefined` ⇒ all audiences. */
+  readonly audiences?: ReadonlySet<Audience>
   /** Cache stability tier — see `Stability`. */
   readonly stability: Stability
   /**

@@ -49,6 +49,7 @@ const runtimeTools: AgentToolDefinition[] = UNIVERSE.flatMap(({ slug, tools }) =
 function agentConfig(selections: AgentToolsetSelection[]): ResolvedAgentConfig {
   return {
     agentId: 'agent_1',
+    kind: 'chat',
     name: 'Test Agent',
     userId: 'user_1',
     prompt: {},

@@ -1,6 +1,6 @@
 // packages/lib/src/agents/resolve-agent-config.ts
 
-import type { Database } from '@auxx/database'
+import type { AgentKind, Database } from '@auxx/database'
 import { database as defaultDb, schema } from '@auxx/database'
 import { and, eq } from 'drizzle-orm'
 import { loadMasterKopilotSettings } from '../ai/kopilot/load-master-settings'
@@ -17,6 +17,13 @@ import { getOrgToolsetCatalog, type ToolsetCatalogEntry } from './toolset-catalo
 export interface ResolvedAgentConfig {
   /** null = master Kopilot session. */
   agentId: string | null
+  /**
+   * Invocation-surface discriminator from the Agent row (`internal | chat`) —
+   * what the agent *is* and where it binds. Master Kopilot is `'internal'`.
+   * NOT the per-run prompt `audience` (a chat-kind agent serves a customer, but
+   * audience is computed at the entry point, never read off `kind`).
+   */
+  kind: AgentKind
   /** Master = 'Kopilot'. */
   name: string
   /** Backing User row id. null for master. */
@@ -80,6 +87,7 @@ export async function resolveAgentConfig(
     const toolsets = buildMasterToolsets(master.toolsets, master.appAccounts, catalog)
     return {
       agentId: null,
+      kind: 'internal',
       name: 'Kopilot',
       userId: null,
       prompt: null,
@@ -143,6 +151,7 @@ export async function resolveAgentConfig(
 
   return {
     agentId: agent.id,
+    kind: agent.kind,
     // Setup-mode drafts may have a null name; the engine just needs *something*
     // for log lines and turn breadcrumbs. The UI's placeholder string is the
     // honest fallback.

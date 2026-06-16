@@ -2,6 +2,7 @@
 
 import { createScopedLogger } from '@auxx/logger'
 import type { ResolvedAgentConfig } from '../../../agents'
+import type { AgentSurface } from '../../../agents/client'
 import type { IntegrationCatalogEntry } from '../../../cache/integration-catalog'
 import type { AgentToolDefinition } from '../../agent-framework/types'
 import type { KopilotDomainState } from '../types'
@@ -13,7 +14,7 @@ import {
   serializePromptBlocks,
   summarizePromptBlocks,
 } from './sections/render'
-import type { ProcedureStepInput, PromptCtx, RunMode } from './sections/types'
+import type { Audience, ProcedureStepInput, PromptCtx, RunMode } from './sections/types'
 
 export type { PromptBlock } from './sections/render'
 export { CACHE_BREAK_SENTINEL, stripCacheBreakSentinels } from './sections/render'
@@ -31,6 +32,17 @@ export interface BuildKopilotPromptArgs {
   toolsetPromptAdditions: string
   /** Master sentinel or undefined → master persona; agent → agent persona. */
   agentConfig?: ResolvedAgentConfig
+  /**
+   * The rendering medium this turn outputs to → drives formatting. Defaults to
+   * `'builder'` (the in-app renderer) so existing callers are unchanged.
+   */
+  surface?: AgentSurface
+  /**
+   * Who reads this turn's output → drives semantics. Defaults to `'member'`,
+   * except a `customer_message` trigger implies `'customer'` (so the eval
+   * envelope and any caller that only sets `triggerContext` stays correct).
+   */
+  audience?: Audience
   /** Present iff this run was fired by an AgentTrigger. */
   triggerContext?: TriggerContext
   /**
@@ -106,6 +118,14 @@ function buildPromptCtx(args: BuildKopilotPromptArgs): PromptCtx {
   const isDmTrigger = args.triggerContext?.kind === 'dm'
   const runMode: RunMode = args.triggerContext && !isDmTrigger ? 'autonomous' : 'interactive'
 
+  // Surface defaults to the in-app builder renderer (today's behavior when
+  // unset). Audience defaults to `member`, except a `customer_message` trigger
+  // implies `customer` — so callers that only set `triggerContext` (the eval
+  // envelope) keep the customer-facing prose without a second flag.
+  const surface: AgentSurface = args.surface ?? 'builder'
+  const audience: Audience =
+    args.audience ?? (args.triggerContext?.kind === 'customer_message' ? 'customer' : 'member')
+
   // Any triggerContext (autonomous or DM) is always backed by a user-authored
   // agent; the master Kopilot never runs on a trigger. Fail fast if they ever
   // contradict.
@@ -115,6 +135,8 @@ function buildPromptCtx(args: BuildKopilotPromptArgs): PromptCtx {
 
   return {
     runMode,
+    surface,
+    audience,
     tools: args.tools,
     toolNames: new Set(args.tools.map((t) => t.name)),
     currentUser: args.currentUser,

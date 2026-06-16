@@ -2,6 +2,7 @@
 
 import { createScopedLogger } from '@auxx/logger'
 import type { ResolvedAgentConfig } from '../../agents'
+import type { AgentSurface } from '../../agents/client'
 import { PROCEDURE_SLICE_KEY } from '../../agents/procedures/persist'
 import { CONTEXT_SLICE_KEY, readContextSlice } from '../agent-framework/context'
 import type {
@@ -52,6 +53,17 @@ export interface KopilotDomainConfigOptions {
    */
   agentConfig?: ResolvedAgentConfig
   /**
+   * The rendering medium this turn outputs to → drives prompt formatting
+   * (chat = plain text, builder = `auxx:*` rich blocks). Defaults to
+   * `'builder'`. Chat leaves `triggerContext` undefined but sets `surface: 'chat'`.
+   */
+  surface?: AgentSurface
+  /**
+   * Who reads this turn's output → drives prompt semantics (customer-facing
+   * opacity vs member debugging). Defaults to `'member'`.
+   */
+  audience?: 'member' | 'customer'
+  /**
    * Present iff this run was kicked off by an AgentTrigger. Threaded into
    * `createKopilotAgent` so the autonomous-run section renders in the system
    * prompt. Chat runs leave this undefined.
@@ -78,6 +90,8 @@ export function createKopilotDomainConfig(
     defaultProvider = 'openai',
     maxIterations = 30,
     agentConfig,
+    surface,
+    audience,
     triggerContext,
   } = options
 
@@ -120,6 +134,8 @@ export function createKopilotDomainConfig(
     maxIterations,
     toolsetPromptAdditions,
     agentConfig,
+    surface,
+    audience,
     triggerContext,
   })
 

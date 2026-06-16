@@ -1,11 +1,12 @@
 // packages/lib/src/ai/kopilot/prompts/core-runtime-prompt.ts
 
+import type { AgentSurface } from '../../../agents/client'
 import type { IntegrationCatalogEntry } from '../../../cache/integration-catalog'
 import type { AgentToolDefinition } from '../../agent-framework/types'
 import type { KopilotDomainState } from '../types'
 import { CORE_SECTIONS } from './sections/registry'
 import { renderSections } from './sections/render'
-import type { PromptCtx, RunMode } from './sections/types'
+import type { Audience, PromptCtx, RunMode } from './sections/types'
 import type { CurrentUserInfo, EntityCatalogEntry } from './shared-types'
 
 export type { RunMode } from './sections/types'
@@ -26,9 +27,15 @@ export function buildCoreRuntimePrompt(args: {
   integrations: IntegrationCatalogEntry[]
   toolsetPromptAdditions: string
   runMode: RunMode
+  /** Rendering medium → formatting. Defaults to the in-app `'builder'` surface. */
+  surface?: AgentSurface
+  /** Who reads the output → semantics. Defaults to `'member'`. */
+  audience?: Audience
 }): string {
   const ctx: PromptCtx = {
     runMode: args.runMode,
+    surface: args.surface ?? 'builder',
+    audience: args.audience ?? 'member',
     tools: args.tools,
     toolNames: new Set(args.tools.map((t) => t.name)),
     currentUser: args.currentUser,

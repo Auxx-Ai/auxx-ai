@@ -15,15 +15,18 @@ describe('jobStatement', () => {
     expect(out).toContain('audit trail')
   })
 
-  it('customer-conversation job is a customer reply, not an audit trail', () => {
-    const out = jobStatement.render(
-      makeCtx({
-        runMode: 'autonomous',
-        triggerContext: { kind: 'customer_message', instructions: null, payload: {} },
-      })
-    )
+  it('customer audience is a customer reply, not an audit trail (autonomous email)', () => {
+    const out = jobStatement.render(makeCtx({ runMode: 'autonomous', audience: 'customer' }))
     expect(out).toContain('customer')
     expect(out).not.toContain('audit trail')
     expect(out).not.toContain('by id')
+  })
+
+  it('customer audience on the interactive chat surface is also a customer reply', () => {
+    const out = jobStatement.render(
+      makeCtx({ runMode: 'interactive', surface: 'chat', audience: 'customer' })
+    )
+    expect(out).toContain('customer')
+    expect(out).not.toContain('rich UI blocks')
   })
 })
