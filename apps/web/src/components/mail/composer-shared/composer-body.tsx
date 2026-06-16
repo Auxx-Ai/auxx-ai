@@ -23,6 +23,8 @@ interface ComposerBodyProps {
   editorMinHeightClassName?: string
   /** Optional AI-tools wiring — surfaces the "Ask AI" item in the `/` menu. */
   aiSlash?: MailAiSlashConfig
+  /** Formatting profile. `'rich'` (default, email) or `'plain'` (chat). */
+  variant?: 'rich' | 'plain'
 
   // interaction
   onWrapperClick: React.MouseEventHandler<HTMLDivElement>
@@ -62,6 +64,7 @@ export function ComposerBody({
   contentClassName,
   editorMinHeightClassName = 'min-h-[150px]',
   aiSlash,
+  variant,
   onWrapperClick,
   onKeyDown,
   dropzone,
@@ -129,6 +132,7 @@ export function ComposerBody({
           popoverClassName={popoverClassName}
           contentClassName={contentClassName}
           aiSlash={aiSlash}
+          variant={variant}
         />
         {belowEditor}
       </div>

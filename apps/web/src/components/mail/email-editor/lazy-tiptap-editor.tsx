@@ -22,6 +22,8 @@ interface LazyTiptapEditorProps {
   onEnter?: () => void
   /** Optional AI-tools wiring — surfaces the "Ask AI" item in the `/` menu. */
   aiSlash?: MailAiSlashConfig
+  /** Formatting profile. `'rich'` (default, email) or `'plain'` (chat). */
+  variant?: 'rich' | 'plain'
 }
 
 /**

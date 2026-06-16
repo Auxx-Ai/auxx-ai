@@ -16,6 +16,7 @@ import StarterKit from '@tiptap/starter-kit'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import '~/styles/prosemirror.css'
 import {
+  MAIL_BLOCK_COMMANDS,
   type MailAiSlashConfig,
   MailSlashContent,
 } from '~/components/mail/email-editor/mail-slash-content'
@@ -50,6 +51,13 @@ type TiptapEditorProps = {
   onEnter?: () => void
   /** Optional AI-tools wiring — surfaces the "Ask AI" item in the `/` menu. */
   aiSlash?: MailAiSlashConfig
+  /**
+   * Formatting profile. `'rich'` (default) = full StarterKit + block commands
+   * in the `/` menu (email). `'plain'` = a compact composer with headings /
+   * lists / blockquote / code blocks removed from the schema (so markdown
+   * shortcuts can't create them) and no block commands in the menu (chat).
+   */
+  variant?: 'rich' | 'plain'
 }
 
 const TiptapEditor = ({
@@ -62,7 +70,9 @@ const TiptapEditor = ({
   popoverClassName,
   onEnter,
   aiSlash,
+  variant = 'rich',
 }: TiptapEditorProps) => {
+  const isPlain = variant === 'plain'
   const { setEditor } = useEditorContext()
   const externalSyncRef = useRef<{ markLocalEdit: (key: string) => void }>({
     markLocalEdit: () => {},
@@ -88,9 +98,21 @@ const TiptapEditor = ({
 
   const extensions = useMemo(
     () => [
-      StarterKit.configure({
-        heading: { levels: [1, 2, 3] },
-      }),
+      StarterKit.configure(
+        isPlain
+          ? {
+              // Plain composer (chat): strip block-level nodes so neither the
+              // toolbar, the `/` menu, nor markdown input shortcuts can create
+              // them. Inline marks (bold/italic/…) stay.
+              heading: false,
+              bulletList: false,
+              orderedList: false,
+              listItem: false,
+              blockquote: false,
+              codeBlock: false,
+            }
+          : { heading: { levels: [1, 2, 3] } }
+      ),
       Indent,
       TextStyle,
       FontFamily,
@@ -114,6 +136,7 @@ const TiptapEditor = ({
       placeholderNodeExtension,
     ],
     [
+      isPlain,
       placeholder,
       placeholderNodeExtension,
       onSlashEnter,
@@ -271,6 +294,7 @@ const TiptapEditor = ({
             onScopeChange={changeSlashScope}
             onClose={closeSlash}
             aiSlash={aiSlash}
+            blockCommands={isPlain ? [] : MAIL_BLOCK_COMMANDS}
           />
         </InlinePickerPopover>
       )}
