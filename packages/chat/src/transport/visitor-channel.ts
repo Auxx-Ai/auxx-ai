@@ -8,7 +8,7 @@
 import { getAllReadMap } from '~/persistence/unread'
 import type { ChatConfig } from './config'
 import { getChatPassport } from './passport'
-import { connectPrivatePusher, type PusherConnection } from './pusher'
+import { getRealtimeClient } from './realtime-client'
 
 export interface ThreadUpdatedEvent {
   threadId: string
@@ -41,20 +41,18 @@ export async function connectVisitorChannel(
   const { visitorParticipantId } = await getChatPassport(channelId)
   const channelName = `private-visitor-${visitorParticipantId}`
 
-  const conn: PusherConnection = connectPrivatePusher({
-    key: config.realtime.key,
-    cluster: config.realtime.cluster,
-    channelName,
-    channelId,
-  })
+  // Rides the widget's single shared socket. Refcounting means this is the
+  // same channel object the open conversation binds lifecycle events on — no
+  // second subscription.
+  const sub = getRealtimeClient(channelId, config.realtime).channel(channelName)
 
   const updatedListeners = new Set<Listener<ThreadUpdatedEvent>>()
   const createdListeners = new Set<Listener<ThreadCreatedEvent>>()
 
-  conn.channel.bind('thread-updated', (data: ThreadUpdatedEvent) => {
+  sub.bind('thread-updated', (data: ThreadUpdatedEvent) => {
     updatedListeners.forEach((l) => l(data))
   })
-  conn.channel.bind('thread-created', (data: ThreadCreatedEvent) => {
+  sub.bind('thread-created', (data: ThreadCreatedEvent) => {
     createdListeners.forEach((l) => l(data))
   })
 
@@ -67,7 +65,7 @@ export async function connectVisitorChannel(
       createdListeners.add(cb)
       return () => createdListeners.delete(cb)
     },
-    disconnect: conn.disconnect,
+    disconnect: () => sub.release(),
   }
 }
 

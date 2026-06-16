@@ -23,6 +23,7 @@
  */
 
 import { API_URL, WIDGET_URL } from '../shared/env'
+import { dispatchIdentityChanged } from '../shared/identity'
 import { clearStoredPassport } from '../transport/passport'
 
 export interface BootOptions {
@@ -89,6 +90,7 @@ function boot(options: BootOptions): void {
         // freezes the old user onto the new session.
         if (state.userJwt !== options.userJwt) {
           clearStoredPassport(options.channelId)
+          dispatchIdentityChanged(options.channelId)
         }
         state.userJwt = options.userJwt
         const cfg = (window.__AUXX_CONFIG__ ??= {})
@@ -178,6 +180,7 @@ function logout(): void {
   if (typeof window === 'undefined') return
   if (!state) return
   clearStoredPassport(state.channelId)
+  dispatchIdentityChanged(state.channelId)
   state.userJwt = undefined
   const cfg = (window.__AUXX_CONFIG__ ??= {})
   delete cfg.userJwt
