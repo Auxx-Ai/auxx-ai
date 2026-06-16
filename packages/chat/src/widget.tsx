@@ -19,6 +19,7 @@ import type { NavFrame, NavView } from './navigation/use-navigation-stack'
 import { type TabId, useTabRouter } from './navigation/use-tab-router'
 import { getLastReadAt } from './persistence/unread'
 import { useShadowRoot } from './shadow-root'
+import { IDENTITY_CHANGED_EVENT } from './shared/identity'
 import {
   getPreviewBypassAudience,
   getPreviewRounded,
@@ -29,6 +30,7 @@ import { hexToOklchHue } from './theme/hex-to-oklch-hue'
 import { useResolvedTheme } from './theme/use-resolved-theme'
 import { chatApi } from './transport/chat-api'
 import { type ChatConfig, fetchChatConfig } from './transport/config'
+import { getRealtimeClient } from './transport/realtime-client'
 import {
   connectVisitorChannel,
   type ThreadCreatedEvent,
@@ -180,6 +182,9 @@ export function Widget({ channelId, cacheBust = null, scriptTheme }: WidgetProps
   ])
 
   const router = useTabRouter(channelId)
+  // Bumped on identity rotation (logout / userJwt change) to force the
+  // identity-scoped visitor subscription to re-mint the passport and resubscribe.
+  const [identityEpoch, setIdentityEpoch] = useState(0)
   const subscribeRef = useRef<{
     onThreadUpdated: (cb: (e: ThreadUpdatedEvent) => void) => () => void
     onThreadCreated: (cb: (e: ThreadCreatedEvent) => void) => () => void
@@ -244,6 +249,32 @@ export function Widget({ channelId, cacheBust = null, scriptTheme }: WidgetProps
       handle?.disconnect()
       subscribeRef.current = null
     }
+  }, [channelId, config, identityEpoch])
+
+  // Identity rotation (logout / userJwt change) is broadcast by the npm
+  // bootstrap as a window event. Bump the epoch so the visitor-channel effect
+  // re-runs: it releases the previous participant's channel and resubscribes
+  // under the freshly-minted passport.
+  useEffect(() => {
+    const onIdentityChanged = (e: Event) => {
+      const detail = (e as CustomEvent<{ channelId: string }>).detail
+      if (detail?.channelId !== channelId) return
+      setIdentityEpoch((n) => n + 1)
+    }
+    window.addEventListener(IDENTITY_CHANGED_EVENT, onIdentityChanged)
+    return () => window.removeEventListener(IDENTITY_CHANGED_EVENT, onIdentityChanged)
+  }, [channelId])
+
+  // Own the single shared realtime socket. Individual channel handles release
+  // on their own effect cleanups; this tears down the underlying Pusher
+  // connection when the widget itself unmounts so no idle socket lingers.
+  // Capture the instance — `getRealtimeClient` is a factory, so calling it in
+  // cleanup would re-create a client (and socket) just to destroy it if the
+  // registry was already cleared.
+  useEffect(() => {
+    if (!config) return
+    const client = getRealtimeClient(channelId, config.realtime)
+    return () => client.destroy()
   }, [channelId, config])
 
   // When the widget opens or the active tab changes to Messages, refresh

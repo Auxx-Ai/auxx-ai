@@ -10,7 +10,7 @@ import { dismissPrivacyBanner, isPrivacyBannerDismissed } from '~/persistence/pr
 import { markThreadRead } from '~/persistence/unread'
 import { type ChatAttachment, type ChatMessage, chatApi } from '~/transport/chat-api'
 import type { ChatConfig } from '~/transport/config'
-import { connectPrivatePusher, connectPusher } from '~/transport/pusher'
+import { getRealtimeClient } from '~/transport/realtime-client'
 import {
   THREAD_EVENT_TYPES,
   type ThreadEvent,
@@ -158,11 +158,7 @@ export function ConversationView({ channelId, threadId, config }: ConversationVi
   // Subscribe to the per-session channel for live transcript updates.
   useEffect(() => {
     if (!init) return
-    const conn = connectPusher({
-      key: config.realtime.key,
-      cluster: config.realtime.cluster,
-      channelName: init.pusherChannel,
-    })
+    const sub = getRealtimeClient(channelId, config.realtime).channel(init.pusherChannel)
     const handler = (data: {
       id: string
       threadId: string
@@ -210,16 +206,12 @@ export function ConversationView({ channelId, threadId, config }: ConversationVi
         ]
       })
     }
-    conn.channel.bind('new-message', handler)
+    sub.bind('new-message', handler)
     return () => {
-      try {
-        conn.channel.unbind('new-message', handler)
-      } catch {
-        /* ignore */
-      }
-      conn.disconnect()
+      sub.unbind('new-message', handler)
+      sub.release()
     }
-  }, [init, threadId, config.realtime.key, config.realtime.cluster])
+  }, [init, threadId, channelId, config.realtime.key, config.realtime.cluster])
 
   // Subscribe to live lifecycle events (taken_over / returned_to_ai /
   // archived / reopened / …) on BOTH the per-thread room AND the per-visitor
@@ -234,32 +226,24 @@ export function ConversationView({ channelId, threadId, config }: ConversationVi
       init.visitorPusherChannel,
     ].filter((c): c is string => !!c)
 
-    const conns = channels.map((channelName) => {
-      const conn = connectPrivatePusher({
-        key: config.realtime.key,
-        cluster: config.realtime.cluster,
-        channelName,
-        channelId,
-      })
+    const client = getRealtimeClient(channelId, config.realtime)
+    const subs = channels.map((channelName) => {
+      const sub = client.channel(channelName)
       const handlers = THREAD_EVENT_TYPES.map((type) => {
         const handler = (payload: { id?: string; createdAt?: string } & ThreadEventData) =>
           ingestThreadEvent(type, payload)
-        conn.channel.bind(type, handler)
+        sub.bind(type, handler)
         return { type, handler }
       })
-      return { conn, handlers }
+      return { sub, handlers }
     })
 
     return () => {
-      for (const { conn, handlers } of conns) {
+      for (const { sub, handlers } of subs) {
         for (const { type, handler } of handlers) {
-          try {
-            conn.channel.unbind(type, handler)
-          } catch {
-            /* ignore */
-          }
+          sub.unbind(type, handler)
         }
-        conn.disconnect()
+        sub.release()
       }
     }
   }, [init, threadId, channelId, config.realtime.key, config.realtime.cluster, ingestThreadEvent])

@@ -1,6 +1,6 @@
 'use client'
 import type { NotificationType } from '@auxx/database/types'
-import { getPusherClient } from '@auxx/lib/realtime/client'
+import { rooms } from '@auxx/lib/realtime/client'
 import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
@@ -26,7 +26,7 @@ import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { HumanConfirmationDialog } from '~/components/workflow/dialogs/human-confirmation-dialog'
 import { useIsMobile } from '~/hooks/use-mobile'
-import { useEnv } from '~/providers/dehydrated-state-provider'
+import { useRealtimeRoom } from '~/realtime/hooks'
 import { api } from '~/trpc/react'
 
 /** Icon config for each notification type */
@@ -427,19 +427,13 @@ export const NotificationCenter = () => {
 }
 export function useNotificationSubscription(userId: string) {
   const utils = api.useUtils()
-  const { pusher: pusherEnv } = useEnv()
-  useEffect(() => {
-    const pusher = getPusherClient(pusherEnv.key, pusherEnv.cluster)
-    if (!pusher) return
-    const channel = pusher.subscribe(`private-user-${userId}`)
-    channel.bind('notification', () => {
-      // Invalidate notifications query to refresh the data
+  // Rides the shared realtime adapter (one multiplexed socket) instead of
+  // opening its own Pusher connection.
+  useRealtimeRoom(userId ? rooms.user(userId) : null, {
+    onEvent: (event) => {
+      if (event !== 'notification') return
       utils.notification.getNotifications.invalidate()
       utils.notification.getUnreadCount.invalidate()
-    })
-    return () => {
-      channel.unbind_all()
-      pusher.unsubscribe(`private-user-${userId}`)
-    }
-  }, [userId, utils, pusherEnv.key, pusherEnv.cluster])
+    },
+  })
 }
