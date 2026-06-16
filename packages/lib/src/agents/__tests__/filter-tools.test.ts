@@ -17,6 +17,7 @@ function tool(name: string, slug?: string): AgentToolDefinition {
 
 const masterEmpty: ResolvedAgentConfig = {
   agentId: null,
+  kind: 'internal',
   name: 'Kopilot',
   userId: null,
   prompt: null,
@@ -32,6 +33,7 @@ function agent(
 ): ResolvedAgentConfig {
   return {
     agentId: 'agent_1',
+    kind: 'chat',
     name: 'Test Agent',
     userId: 'user_1',
     prompt: {},

@@ -695,6 +695,10 @@ async function runInProcessPath(params: {
     defaultProvider,
     maxIterations: 30,
     agentConfig,
+    // In-app Kopilot/builder renders to the rich in-app surface for a workspace
+    // member (incl. DM triggers — a member is still the reader/author).
+    surface: 'builder',
+    audience: 'member',
     triggerContext,
   })
 

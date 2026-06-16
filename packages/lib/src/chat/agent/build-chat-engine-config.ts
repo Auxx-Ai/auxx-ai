@@ -164,8 +164,14 @@ export async function buildChatEngineConfig(
     defaultModel: model,
     defaultProvider: provider,
     agentConfig,
-    // No `triggerContext` — chat is not an AgentTrigger run; the autonomous-run
-    // prompt section stays off (escalation guidance lives in the persona).
+    // A chat turn renders to the plain-text widget (surface) for an external
+    // visitor (audience). These drive the prompt's formatting + opacity rules;
+    // chat ALWAYS serves a customer, so we never consult `agent.kind` here.
+    surface: 'chat',
+    audience: 'customer',
+    // No `triggerContext` — chat is not an AgentTrigger run; it stays
+    // `runMode: 'interactive'` (the visitor is in the loop). The surface/audience
+    // gates do the customer-facing work the trigger envelope used to.
   })
 
   const callModel = createCallModel({

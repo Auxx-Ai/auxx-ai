@@ -2,10 +2,12 @@
 //
 // The synthetic trigger context that gives a Simulation run the production
 // customer-conversation envelope. Threading it through the shared runtime
-// builder flips `runMode` to `autonomous` (no caller preamble, no internal
-// block catalog) and renders the `customer_message` trigger block + run-mode
-// banner — the same prompt shape a real inbound customer message produces.
-// See plans/evals/sim-fidelity-and-agent-quality-plan.md §1.1.
+// builder renders the `customer_message` trigger block + run-mode banner, and
+// `buildEffectiveAgentRuntime` derives `audience: 'customer'` from the kind plus
+// `surface` from `payload.channel` (`chat` → plain-text chat surface, else
+// `email`) — so the eval's formatting + opacity rules match what production
+// chat/email actually run. See plans/evals/sim-fidelity-and-agent-quality-plan.md
+// §1.1 and plans/chat/v10/chat-agent-system-prompt.md.
 
 import type { TriggerContext } from '../../ai/kopilot/prompts/trigger-context'
 

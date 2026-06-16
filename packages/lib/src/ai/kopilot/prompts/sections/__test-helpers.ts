@@ -9,6 +9,9 @@ import type { PromptCtx, RunMode } from './types'
 export function makeCtx(overrides: Partial<PromptCtx> & { runMode: RunMode }): PromptCtx {
   return {
     runMode: overrides.runMode,
+    // Defaults reproduce the in-app member path; tests override as needed.
+    surface: overrides.surface ?? 'builder',
+    audience: overrides.audience ?? 'member',
     tools: overrides.tools ?? [],
     toolNames: overrides.toolNames ?? new Set((overrides.tools ?? []).map((t) => t.name)),
     currentUser: overrides.currentUser ?? null,

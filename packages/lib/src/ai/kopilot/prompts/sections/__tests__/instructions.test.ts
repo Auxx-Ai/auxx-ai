@@ -17,16 +17,17 @@ describe('instructions', () => {
     expect(out).toContain('Do not emit fenced code blocks')
   })
 
-  it('customer-conversation instructions reply to the customer, not an audit trail', () => {
-    const out = instructions.render(
-      makeCtx({
-        runMode: 'autonomous',
-        triggerContext: { kind: 'customer_message', instructions: null, payload: {} },
-      })
-    )
+  it('customer audience replies to the customer, not an audit trail', () => {
+    const out = instructions.render(makeCtx({ runMode: 'autonomous', audience: 'customer' }))
     expect(out).toContain('## Instructions')
     expect(out).toContain('reply to the customer')
     expect(out).not.toContain('audit trail')
     expect(out).not.toContain('by id')
+  })
+
+  it('customer audience forbids naming a failed tool/integration or error code', () => {
+    const out = instructions.render(makeCtx({ runMode: 'interactive', audience: 'customer' }))
+    expect(out).toContain('do not tell the customer a tool/integration failed')
+    expect(out).toContain('quote an error code')
   })
 })

@@ -13,6 +13,7 @@ import {
   computeEffectiveBindings,
   projectBindingSchemas,
 } from '../../agents/bindings'
+import type { AgentSurface } from '../../agents/client'
 import { PROCEDURE_CONTROL_TOOLS } from '../../agents/procedures'
 import {
   type CapabilityRegistry,
@@ -59,6 +60,18 @@ export interface BuildEffectiveAgentRuntimeArgs {
   page?: string
   /** Present iff kicked off by an AgentTrigger — renders the autonomous-run prompt section. */
   triggerContext?: TriggerContext
+  /**
+   * Rendering medium → prompt formatting. When unset, derived: `builder` domain
+   * → `'builder'`; a `customer_message` trigger on the `chat` channel → `'chat'`;
+   * otherwise → `'email'`. The Simulation sets it from the eval channel so
+   * sim↔prod formatting matches (a chat eval renders the chat plain-text rule).
+   */
+  surface?: AgentSurface
+  /**
+   * Who reads the output → prompt semantics. When unset, derived: a
+   * `customer_message` trigger → `'customer'`; otherwise → `'member'`.
+   */
+  audience?: 'member' | 'customer'
   /**
    * Which agent behavior view to run (build-plan §4.2). `'active'` (default) is
    * the published version production runs; `'draft'` resolves the live Agent row
@@ -227,6 +240,23 @@ export async function buildEffectiveAgentRuntime(
   // binding clamp below and snapshot digests are unaffected. No-op in production.
   const tools = args.wrapTools ? args.wrapTools(projected) : projected
 
+  // Surface/audience: explicit override wins; otherwise derive from the run's
+  // domain + trigger envelope. A `customer_message` trigger is the customer
+  // envelope (live-chat eval or a customer email); its `payload.channel`
+  // distinguishes the plain-text chat surface from the email surface, so a chat
+  // eval renders the same formatting rule production chat does.
+  const isCustomerTrigger = args.triggerContext?.kind === 'customer_message'
+  const triggerChannel = (args.triggerContext?.payload as { channel?: unknown } | undefined)
+    ?.channel
+  const audience = args.audience ?? (isCustomerTrigger ? 'customer' : 'member')
+  const surface: AgentSurface =
+    args.surface ??
+    (domain === 'builder'
+      ? 'builder'
+      : isCustomerTrigger && triggerChannel === 'chat'
+        ? 'chat'
+        : 'email')
+
   const domainConfig = createKopilotDomainConfig({
     capabilityRegistry: registry,
     page: resolvedPage,
@@ -234,6 +264,8 @@ export async function buildEffectiveAgentRuntime(
     defaultModel: defaults.model,
     defaultProvider: defaults.provider,
     agentConfig,
+    surface,
+    audience,
     triggerContext: args.triggerContext,
     // Long-running plans (≥30 steps × ~1–2 LLM rounds each) need headroom past
     // the framework's small-loop default.
