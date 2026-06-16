@@ -16,13 +16,13 @@ import {
 } from '@auxx/ui/components/command'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { cn } from '@auxx/ui/lib/utils'
-import { Download, File, FolderOpen, RotateCw, Trash2, Upload } from 'lucide-react'
+import { Download, File, FolderOpen, Loader2, RotateCw, Trash2, Upload } from 'lucide-react'
 import type React from 'react'
-import { useMemo, useState } from 'react'
-import { FileSelectDialog } from '~/components/file-select/file-select-dialog'
+import { useCallback, useMemo, useState } from 'react'
 import { useFileSelect } from '~/components/file-select/hooks/use-file-select'
 import type { UseFileSelectReturn } from '~/components/file-select/types'
 import type { FileItem as FileItemType } from '~/components/files/files-store'
+import { FileBrowseLevel } from '~/components/pickers/file-browse-level'
 
 /**
  * Props for FileSelectPicker component
@@ -146,8 +146,8 @@ function downloadUrlFor(item: FileItemType): string | undefined {
  *
  * Mirrors the dynamic-view `FilePicker` look — a searchable Command list with
  * hover-reveal row actions and Upload / Browse rows — but driven by the
- * composer's `useFileSelect` data model. "Browse files" opens the shared
- * `FileSelectDialog`.
+ * composer's `useFileSelect` data model. "Browse files" drills inline into the
+ * shared {@link FileBrowseLevel} (same popover) rather than opening a modal.
  */
 function FileSelectPickerContent({
   fileSelect,
@@ -165,7 +165,20 @@ function FileSelectPickerContent({
   children,
 }: FileSelectPickerContentProps) {
   const [search, setSearch] = useState('')
-  const [browseOpen, setBrowseOpen] = useState(false)
+  // 'menu' = tray + actions; 'browse' = the inline filesystem drill-in.
+  const [mode, setMode] = useState<'menu' | 'browse'>('menu')
+  const [internalOpen, setInternalOpen] = useState(false)
+
+  // Support both controlled and uncontrolled open state so content actions
+  // (single-select close, Escape) can dismiss the popover either way.
+  const resolvedOpen = open !== undefined ? open : internalOpen
+  const handleOpenChange = useCallback(
+    (next: boolean) => {
+      if (!next) setMode('menu')
+      ;(onOpenChange ?? setInternalOpen)(next)
+    },
+    [onOpenChange]
+  )
 
   const { selectedItems } = fileSelect
 
@@ -180,6 +193,20 @@ function FileSelectPickerContent({
     [selectedItems]
   )
 
+  // Library files already in the tray — echoed as checked in the browse list.
+  const selectedLibraryFileIds = useMemo(
+    () => selectedItems.filter((it) => it.source === 'filesystem').map((it) => it.id),
+    [selectedItems]
+  )
+
+  const handleBrowseSelect = useCallback(
+    (item: FileItemType) => {
+      fileSelect.addExistingFiles([item])
+      if (!allowMultiple) handleOpenChange(false)
+    },
+    [fileSelect, allowMultiple, handleOpenChange]
+  )
+
   const filteredReady = useMemo(() => {
     if (!search) return readyFiles
     const q = search.toLowerCase()
@@ -189,7 +216,6 @@ function FileSelectPickerContent({
   const hasAnyFiles = selectedItems.length > 0
   const hasVisibleFiles = filteredReady.length > 0 || inProgressFiles.length > 0
   const canAddMore = maxFiles ? selectedItems.length < maxFiles : true
-  const remainingSlots = maxFiles ? Math.max(0, maxFiles - selectedItems.length) : undefined
 
   const openNativeFilePicker = () => {
     const input = document.createElement('input')
@@ -204,16 +230,41 @@ function FileSelectPickerContent({
   }
 
   return (
-    <>
-      <Popover open={open} onOpenChange={onOpenChange}>
-        <PopoverTrigger asChild>{children}</PopoverTrigger>
+    <Popover open={resolvedOpen} onOpenChange={handleOpenChange}>
+      <PopoverTrigger asChild>{children}</PopoverTrigger>
 
-        <PopoverContent
-          className={cn('w-96 p-0', className)}
-          align={align}
-          side={side}
-          sideOffset={sideOffset}
-          disabled={disabled}>
+      <PopoverContent
+        className={cn('w-96 p-0', className)}
+        align={align}
+        side={side}
+        sideOffset={sideOffset}
+        disabled={disabled}>
+        {mode === 'browse' ? (
+          <>
+            {inProgressFiles.length > 0 && (
+              <button
+                type='button'
+                onClick={() => setMode('menu')}
+                className='flex w-full items-center gap-2 border-b px-3 py-2 text-xs text-muted-foreground hover:bg-accent/50'>
+                <Loader2 className='size-3.5 animate-spin' />
+                {inProgressFiles.length} uploading…
+              </button>
+            )}
+            <FileBrowseLevel
+              selectedFiles={selectedLibraryFileIds}
+              onSelectItem={handleBrowseSelect}
+              allowMultiple={allowMultiple}
+              allowFiles
+              allowFolders={false}
+              fileExtensions={fileTypes}
+              enableGlobalSearch
+              showPath
+              onBack={() => setMode('menu')}
+              backLabel='Attach'
+              onRequestClose={() => handleOpenChange(false)}
+            />
+          </>
+        ) : (
           <Command shouldFilter={false}>
             {hasAnyFiles && (
               <CommandInput
@@ -265,7 +316,7 @@ function FileSelectPickerContent({
                       Upload file
                     </CommandItem>
                     {!hideBrowseExisting && (
-                      <CommandItem onSelect={() => setBrowseOpen(true)}>
+                      <CommandItem onSelect={() => setMode('browse')}>
                         <FolderOpen className='size-4' />
                         Browse files
                       </CommandItem>
@@ -277,24 +328,9 @@ function FileSelectPickerContent({
               </CommandGroup>
             </CommandList>
           </Command>
-        </PopoverContent>
-      </Popover>
-
-      {browseOpen && (
-        <FileSelectDialog
-          open={browseOpen}
-          onOpenChange={setBrowseOpen}
-          onFilesSelected={(files) => {
-            fileSelect.addExistingFiles(files)
-            setBrowseOpen(false)
-          }}
-          allowMultiple={allowMultiple}
-          maxSelection={remainingSlots}
-          title='Select files'
-          confirmText='Attach'
-        />
-      )}
-    </>
+        )}
+      </PopoverContent>
+    </Popover>
   )
 }
 

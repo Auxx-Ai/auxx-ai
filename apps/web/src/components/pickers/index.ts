@@ -23,6 +23,8 @@ export {
   FieldPickerContent,
   FieldPickerInnerContent,
 } from './field-picker'
+export type { FileBrowseLevelProps, FileNavigationItem } from './file-browse-level'
+export { FileBrowseLevel } from './file-browse-level'
 export type { FileSelection } from './files-picker'
 export { FilesPicker } from './files-picker'
 export type { MultiSelectPickerProps } from './multi-select-picker'
