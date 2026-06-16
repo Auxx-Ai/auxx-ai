@@ -1007,7 +1007,7 @@ function ReplyComposeEditorComponent({
         <ComposerBody
           content={content}
           onContentChange={handleContentChange}
-          placeholder='Type / to insert a snippet.'
+          placeholder='Write a reply…  press / for commands'
           editable={!aiToolsState.isProcessing}
           popoverClassName={popoverZIndex}
           aiSlash={{ onRunAI: handleAIOperation, hasPreviousMessages }}

@@ -15,6 +15,7 @@ import type {
   SlashCommandSection,
 } from '~/components/editor/slash-commands/slash-command-picker'
 import { type SlashContentHandle, SlashList } from '~/components/editor/slash-commands/slash-list'
+import { SparkleIcon } from '~/components/kopilot/ui/sparkle-icon'
 import { useCmdkRemote } from '~/components/pickers/use-cmdk-remote'
 import { api } from '~/trpc/react'
 import { AI_LANG_TYPE, AI_OPERATION, AI_TONE_TYPE, type AIOperation } from '~/types/ai-tools'
@@ -63,6 +64,12 @@ export interface MailSlashContentProps {
   onClose: () => void
   /** Optional AI-tools wiring — when present, adds the "Ask AI" drill-in item. */
   aiSlash?: MailAiSlashConfig
+  /**
+   * Block commands offered at the root (Heading / lists / blockquote).
+   * Defaults to {@link MAIL_BLOCK_COMMANDS}. Chat passes `[]` — it's a plain,
+   * compact composer with formatting disabled, so block commands don't belong.
+   */
+  blockCommands?: MailBlockCommand[]
 }
 
 // --- Curated mail block commands (StarterKit executors) -------------------
@@ -70,11 +77,11 @@ export interface MailSlashContentProps {
 // target the mail editor's StarterKit schema (heading / lists / blockquote),
 // distinct from the block-schema `BASIC_BLOCK_COMMANDS`.
 
-interface MailBlockCommand extends SlashCommandItem {
+export interface MailBlockCommand extends SlashCommandItem {
   run: (editor: Editor, range: Range) => void
 }
 
-const MAIL_BLOCK_COMMANDS: MailBlockCommand[] = [
+export const MAIL_BLOCK_COMMANDS: MailBlockCommand[] = [
   {
     id: 'h1',
     title: 'Heading 1',
@@ -153,12 +160,13 @@ const TOOL_COMMANDS: SlashCommandItem[] = [
 // AI ops don't insert at the chip range — they rewrite the whole body async.
 // The leaf `onSelect` strips the chip then calls `onRunAI` (see `runAI` below).
 
+// Icon is supplied by the section's `renderItem` (branded SparkleIcon), so no
+// `iconId` here.
 const AI_ROOT_COMMAND: SlashCommandItem = {
   id: 'ask-ai',
   title: 'Ask AI',
   description: 'Compose or rewrite with AI',
   keywords: ['ai', 'compose', 'rewrite', 'grammar', 'tone', 'translate', 'expand', 'shorten'],
-  iconId: 'sparkles',
   drillDown: true,
 }
 
@@ -284,6 +292,7 @@ function MailSlashContentInner({
   onScopeChange,
   onEnterPlaceholderMode,
   aiSlash,
+  blockCommands = MAIL_BLOCK_COMMANDS,
 }: MailSlashContentProps & { onEnterPlaceholderMode: () => void }) {
   const { push, pop, isAtRoot, current, stack } = useCommandNavigation<NavItem>()
   const containerRef = useRef<HTMLDivElement>(null)
@@ -425,10 +434,10 @@ function MailSlashContentInner({
         onEnterPlaceholderMode()
         return
       }
-      const cmd = MAIL_BLOCK_COMMANDS.find((c) => c.id === item.id)
+      const cmd = blockCommands.find((c) => c.id === item.id)
       if (cmd) onExecute(cmd.run)
     },
-    [enterAiScope, enterSnippetsDrillDown, onEnterPlaceholderMode, onExecute]
+    [blockCommands, enterAiScope, enterSnippetsDrillDown, onEnterPlaceholderMode, onExecute]
   )
 
   // Dispatch for the AI ops list (root of the "Ask AI" drill).
@@ -537,8 +546,24 @@ function MailSlashContentInner({
     const suggestionsSection: SlashCommandSection<SlashCommandItem> = {
       id: 'suggestions',
       heading: 'Suggestions',
-      items: [...(showAskAI ? [AI_ROOT_COMMAND] : []), ...TOOL_COMMANDS, ...MAIL_BLOCK_COMMANDS],
+      items: [...(showAskAI ? [AI_ROOT_COMMAND] : []), ...TOOL_COMMANDS, ...blockCommands],
       onSelect: handleSuggestionSelect,
+      // "Ask AI" gets the branded gradient sparkle + purple label; all other
+      // suggestion rows keep the default EntityIcon + title layout.
+      renderItem: (item) =>
+        item.id === 'ask-ai' ? (
+          <div className='flex items-center gap-2'>
+            <SparkleIcon className='shrink-0' />
+            <span className='font-medium text-purple-500 dark:text-purple-400'>{item.title}</span>
+          </div>
+        ) : (
+          <div className='flex items-center gap-2'>
+            {item.iconId && (
+              <EntityIcon iconId={item.iconId} size='xs' className='text-muted-foreground' />
+            )}
+            <span>{item.title}</span>
+          </div>
+        ),
     }
 
     const out: SlashCommandSection<SlashCommandItem>[] = [suggestionsSection]
@@ -576,6 +601,7 @@ function MailSlashContentInner({
     insertSnippet,
     bodyHasContent,
     showAskAI,
+    blockCommands,
     handleAiOpSelect,
     runAI,
   ])

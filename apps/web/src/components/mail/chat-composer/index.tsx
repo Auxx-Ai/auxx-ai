@@ -154,6 +154,8 @@ function ChatComposerInner({
           onRunAI: handleAIOperation,
           hasPreviousMessages: (thread.messageCount ?? thread.messages?.length ?? 0) > 0,
         }}
+        // Plain compact composer — no block formatting in the schema or `/` menu.
+        variant='plain'
         onWrapperClick={handleWrapperClick}
         onKeyDown={handleKeyDown}
         dropzone={dropzone}
