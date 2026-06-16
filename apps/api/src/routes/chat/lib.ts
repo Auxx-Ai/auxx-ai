@@ -415,6 +415,27 @@ export function hostnameFromHeader(value: string | undefined | null): string | n
 }
 
 /**
+ * Resolve the visitor's client IP from the standard proxy headers.
+ *
+ * In production the load balancer / CDN sets `x-forwarded-for`, so this
+ * returns the real public IP that geo lookup + the thread `visit_ip` field
+ * depend on. In local dev nothing sets those headers, so the IP — and the
+ * MaxMind/ipapi geo lookup keyed off it — is always empty. Set
+ * `CHAT_DEV_FAKE_IP` (e.g. `8.8.8.8`) to exercise the full
+ * IP → geo → visit-field path with the real widget; the fallback is ignored
+ * outside development so it can never leak a spoofed IP into prod.
+ */
+export function resolveClientIp(c: Context): string | undefined {
+  const fromHeader =
+    c.req.header('x-forwarded-for')?.split(',')[0]?.trim() || c.req.header('x-real-ip') || undefined
+  if (fromHeader) return fromHeader
+  if (process.env.NODE_ENV !== 'production' && process.env.CHAT_DEV_FAKE_IP) {
+    return process.env.CHAT_DEV_FAKE_IP
+  }
+  return undefined
+}
+
+/**
  * Return true if `host` is allowed by `allowedDomains`. An empty allowlist
  * matches everything.
  */

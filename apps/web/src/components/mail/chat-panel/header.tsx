@@ -7,7 +7,7 @@ import { cn } from '@auxx/ui/lib/utils'
 import { ArrowDownLeft, ArrowUpRight, MessageCircle, Minus, X } from 'lucide-react'
 import type React from 'react'
 import { useMessage, useMessageParticipants, useThread } from '~/components/threads/hooks'
-import { asChatThreadMetadata } from '../chat-visitor-sidebar'
+import { asChatThreadMetadata } from '../chat-thread-metadata'
 
 interface ChatPanelHeaderProps {
   threadId: string

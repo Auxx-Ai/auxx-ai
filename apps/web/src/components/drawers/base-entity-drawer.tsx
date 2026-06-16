@@ -35,6 +35,7 @@ import {
   useDehydratedUser,
 } from '~/providers/dehydrated-state-provider'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
+import { ThreadVisitCard } from './cards/thread-visit-card'
 import { getTabCardComponent, getTabComponent } from './drawer-tab-registry'
 
 interface BaseEntityDrawerProps {
@@ -284,6 +285,12 @@ export function BaseEntityDrawer({
                       icon={<HouseIcon className='size-4' />}>
                       <EntityFields recordId={recordId} />
                     </Section>
+                    {/* Context card: visit facts when opened over a chat thread */}
+                    <ThreadVisitCard
+                      contactInstanceId={
+                        entityType === 'contact' ? (entityInstanceId ?? undefined) : undefined
+                      }
+                    />
                     <TabCards
                       tab='overview'
                       position='after'

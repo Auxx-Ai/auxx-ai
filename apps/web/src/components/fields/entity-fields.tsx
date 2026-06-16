@@ -39,6 +39,12 @@ interface EntityFieldsProps {
   showTitle?: boolean
   /** Array of field keys to exclude from display (e.g., ['createdAt', 'updatedAt']) */
   excludeFields?: string[]
+  /**
+   * Array of field keys to exclusively include — the complement of
+   * `excludeFields`. When set, only these fields render (e.g. a context card
+   * showing a field subset). Applied after `excludeFields`.
+   */
+  includeFields?: string[]
 }
 
 /**
@@ -56,6 +62,7 @@ function EntityFields({
   readOnly = false,
   showTitle = true,
   excludeFields,
+  includeFields,
 }: EntityFieldsProps) {
   // Parse recordId to get entityDefinitionId
   const { entityDefinitionId } = parseRecordId(recordId)
@@ -139,14 +146,18 @@ function EntityFields({
   // Use enriched fields directly - optimistic updates are handled by fieldMap in the store
   const sortedFields = enrichedFields
 
-  // Apply field exclusion filter
+  // Apply field exclusion/inclusion filters (exclude first, then include subset)
   const filteredFields = useMemo(() => {
-    if (!excludeFields || excludeFields.length === 0) {
-      return sortedFields
+    let fields = sortedFields
+    if (excludeFields?.length) {
+      fields = fields.filter((field) => !excludeFields.includes(field.key))
     }
-
-    return sortedFields.filter((field) => !excludeFields.includes(field.key))
-  }, [sortedFields, excludeFields])
+    if (includeFields?.length) {
+      const include = new Set(includeFields)
+      fields = fields.filter((field) => include.has(field.key))
+    }
+    return fields
+  }, [sortedFields, excludeFields, includeFields])
 
   // Note: Field value mutations are handled internally by PropertyProvider via storeConfig
 

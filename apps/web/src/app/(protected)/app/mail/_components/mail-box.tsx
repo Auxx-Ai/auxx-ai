@@ -40,6 +40,7 @@ import {
   useState,
 } from 'react'
 import { ContactDrawer } from '~/components/contacts/drawer/contact-drawer'
+import { DrawerContextProvider } from '~/components/drawers/drawer-context'
 import { EmptyState } from '~/components/global/empty-state'
 import { KopilotContext } from '~/components/kopilot/context'
 import { KopilotSuggestion } from '~/components/kopilot/suggestions'
@@ -527,217 +528,223 @@ function MailboxInner({
 
   return (
     <MailFilterProvider value={mailFilterContextValue}>
-      {kopilotEnabled && (
-        <>
-          <KopilotContext page='mail' />
-          <KopilotSuggestion text='What tickets came in today?' icon='mail' autoSubmit />
-          <KopilotSuggestion text='Show high-priority unresolved tickets' icon='list' autoSubmit />
-          <KopilotSuggestion text='Summarize my open tickets' icon='sparkle' autoSubmit />
-        </>
-      )}
-      <MainPage>
-        <MainPageHeader
-          action={
-            <div className='flex items-center gap-1'>
-              <Button
-                variant='info'
-                size='sm'
-                className='h-7 rounded-lg'
-                onClick={() => openCompose()}>
-                Compose{' '}
-                <Kbd size='sm' shortcut='c'>
-                  c
-                </Kbd>
-              </Button>
-            </div>
-          }>
-          <MainPageBreadcrumb>
-            <MainPageBreadcrumbItem title='Mail' href='/app/mail' />
-            {(contextType === InternalFilterContextType.DRAFTS ||
-              contextType === InternalFilterContextType.SENT) && (
-              <MainPageBreadcrumbItem
-                title={breadcrumbTitle}
-                href={
-                  contextType === InternalFilterContextType.DRAFTS
-                    ? '/app/mail/drafts'
-                    : '/app/mail/sent'
-                }
-                last
-              />
-            )}
-            {isPersonalContext(contextType) &&
-              contextType !== InternalFilterContextType.DRAFTS &&
-              contextType !== InternalFilterContextType.SENT && (
+      <DrawerContextProvider threadId={activeThreadId}>
+        {kopilotEnabled && (
+          <>
+            <KopilotContext page='mail' />
+            <KopilotSuggestion text='What tickets came in today?' icon='mail' autoSubmit />
+            <KopilotSuggestion
+              text='Show high-priority unresolved tickets'
+              icon='list'
+              autoSubmit
+            />
+            <KopilotSuggestion text='Summarize my open tickets' icon='sparkle' autoSubmit />
+          </>
+        )}
+        <MainPage>
+          <MainPageHeader
+            action={
+              <div className='flex items-center gap-1'>
+                <Button
+                  variant='info'
+                  size='sm'
+                  className='h-7 rounded-lg'
+                  onClick={() => openCompose()}>
+                  Compose{' '}
+                  <Kbd size='sm' shortcut='c'>
+                    c
+                  </Kbd>
+                </Button>
+              </div>
+            }>
+            <MainPageBreadcrumb>
+              <MainPageBreadcrumbItem title='Mail' href='/app/mail' />
+              {(contextType === InternalFilterContextType.DRAFTS ||
+                contextType === InternalFilterContextType.SENT) && (
+                <MainPageBreadcrumbItem
+                  title={breadcrumbTitle}
+                  href={
+                    contextType === InternalFilterContextType.DRAFTS
+                      ? '/app/mail/drafts'
+                      : '/app/mail/sent'
+                  }
+                  last
+                />
+              )}
+              {isPersonalContext(contextType) &&
+                contextType !== InternalFilterContextType.DRAFTS &&
+                contextType !== InternalFilterContextType.SENT && (
+                  <MainPageBreadcrumbItem title={breadcrumbTitle} last />
+                )}
+              {isSharedContext(contextType) && (
                 <MainPageBreadcrumbItem title={breadcrumbTitle} last />
               )}
-            {isSharedContext(contextType) && (
-              <MainPageBreadcrumbItem title={breadcrumbTitle} last />
-            )}
-          </MainPageBreadcrumb>
-        </MainPageHeader>
-        <MainPageContent dockedPanels={dockedPanels}>
-          <div
-            data-search-expanded={mobileSearchOpen || undefined}
-            className='group/toolbar flex items-center justify-between bg-primary-150 border-b w-full rounded-t-lg px-2 h-10.5 shrink-0'>
-            {/* Status Dropdown and Search Bar */}
-            <div className='w-full flex flex-1 justify-between overflow-x-auto no-scrollbar gap-2'>
-              <div className='flex flex-1 items-center gap-2'>
-                {displayTabs.length > 0 && (
-                  <div className='group-data-search-expanded/toolbar:hidden'>
-                    <MailboxStatusDropdown
-                      availableStatuses={displayTabs}
-                      selectedStatus={activeStatusSlug}
-                      onStatusChange={handleTabChange}
+            </MainPageBreadcrumb>
+          </MainPageHeader>
+          <MainPageContent dockedPanels={dockedPanels}>
+            <div
+              data-search-expanded={mobileSearchOpen || undefined}
+              className='group/toolbar flex items-center justify-between bg-primary-150 border-b w-full rounded-t-lg px-2 h-10.5 shrink-0'>
+              {/* Status Dropdown and Search Bar */}
+              <div className='w-full flex flex-1 justify-between overflow-x-auto no-scrollbar gap-2'>
+                <div className='flex flex-1 items-center gap-2'>
+                  {displayTabs.length > 0 && (
+                    <div className='group-data-search-expanded/toolbar:hidden'>
+                      <MailboxStatusDropdown
+                        availableStatuses={displayTabs}
+                        selectedStatus={activeStatusSlug}
+                        onStatusChange={handleTabChange}
+                      />
+                    </div>
+                  )}
+
+                  {/* Mobile search toggle — visible only on small screens when search is collapsed */}
+                  <Button
+                    variant='ghost'
+                    size='sm'
+                    className='sm:hidden group-data-search-expanded/toolbar:hidden'
+                    onClick={() => setMobileSearchOpen(true)}>
+                    <Search />
+                  </Button>
+
+                  {/* Search bar — hidden on mobile until expanded */}
+                  <div className='hidden sm:flex flex-1 group-data-search-expanded/toolbar:flex'>
+                    <Button
+                      variant='ghost'
+                      size='icon-xs'
+                      className='hidden group-data-search-expanded/toolbar:flex sm:hidden shrink-0 mt-0.5'
+                      onClick={() => {
+                        setMobileSearchOpen(false)
+                        setSearchQuery('')
+                      }}>
+                      <ChevronLeft />
+                    </Button>
+                    <MailSearchBar
+                      onSearch={handleSearch}
+                      initialQuery={searchQuery}
+                      isLoading={isListLoading}
+                    />
+                  </div>
+                </div>
+                <div className='flex items-center shrink-0 gap-2 max-sm:group-data-search-expanded/toolbar:hidden'>
+                  <RadioTab
+                    value={layoutMode}
+                    onValueChange={handleLayoutModeChange}
+                    size='sm'
+                    className='border border-primary-200 bg-background/30'>
+                    <RadioTabItem value='split' size='sm'>
+                      {/* Mobile: density metaphor (relaxed rows). Desktop: two-column layout */}
+                      <Rows2 className='sm:hidden' />
+                      <Columns2 className='hidden sm:block' />
+                      <span className='hidden sm:inline'>Split</span>
+                    </RadioTabItem>
+                    <RadioTabItem value='list' size='sm'>
+                      {/* Mobile: compact rows. Desktop: list layout */}
+                      <Rows4 className='sm:hidden' />
+                      <Rows3 className='hidden sm:block' />
+                      <span className='hidden sm:inline'>List</span>
+                    </RadioTabItem>
+                  </RadioTab>
+                </div>
+              </div>
+            </div>
+            {/* Unified responsive tree: viewport differences driven by Tailwind
+              media queries (sm = 640px). Only layoutMode drives JS branching. */}
+            <div
+              className={cn(
+                'flex flex-row h-full flex-1 overflow-hidden bg-secondary',
+                'max-sm:dark:bg-primary-100 sm:dark:bg-muted-50'
+              )}>
+              {/* ThreadList panel */}
+              <div
+                style={layoutMode === 'split' ? { width: threadListWidth } : undefined}
+                className={cn(
+                  'flex flex-col overflow-y-hidden min-h-0',
+                  layoutMode === 'split' ? 'sm:shrink-0 max-sm:w-full! max-sm:flex-1' : 'flex-1',
+                  // Hide when a thread is selected, per layoutMode/viewport rules
+                  selectedThreadId && layoutMode === 'list' && 'hidden',
+                  selectedThreadId && layoutMode === 'split' && 'max-sm:hidden'
+                )}>
+                <div className='overflow-hidden flex-1 min-h-0'>
+                  <ThreadList
+                    filter={threadFilterForHook}
+                    basePath={basePathForList}
+                    selectedThreadId={selectedThreadId}
+                    onLoadingChange={setIsListLoading}
+                    variant={layoutMode === 'list' ? 'compact' : 'default'}
+                  />
+                </div>
+              </div>
+
+              {/* Resize handle — split only, hidden on mobile */}
+              {layoutMode === 'split' && (
+                <PanelResizeHandle
+                  side='left'
+                  currentWidth={threadListWidth}
+                  onWidthChange={handleThreadListResize}
+                  minWidth={250}
+                  maxWidth={500}
+                  className='max-sm:hidden'
+                />
+              )}
+
+              {/* ThreadDisplay panel */}
+              <div
+                className={cn(
+                  'flex-1 min-w-0 flex flex-col',
+                  !selectedThreadId && layoutMode === 'list' && 'hidden',
+                  !selectedThreadId && layoutMode === 'split' && 'max-sm:hidden'
+                )}>
+                {selectedThreadId && (
+                  <div className={cn(layoutMode === 'split' && 'sm:hidden')}>
+                    <ThreadNavToolbar
+                      activeThreadId={selectedThreadId}
+                      onBack={handleBackToList}
+                      onNavigate={(id) => void setTid(id)}
+                      hotkeysEnabled={layoutMode !== 'split'}
                     />
                   </div>
                 )}
-
-                {/* Mobile search toggle — visible only on small screens when search is collapsed */}
-                <Button
-                  variant='ghost'
-                  size='sm'
-                  className='sm:hidden group-data-search-expanded/toolbar:hidden'
-                  onClick={() => setMobileSearchOpen(true)}>
-                  <Search />
-                </Button>
-
-                {/* Search bar — hidden on mobile until expanded */}
-                <div className='hidden sm:flex flex-1 group-data-search-expanded/toolbar:flex'>
-                  <Button
-                    variant='ghost'
-                    size='icon-xs'
-                    className='hidden group-data-search-expanded/toolbar:flex sm:hidden shrink-0 mt-0.5'
-                    onClick={() => {
-                      setMobileSearchOpen(false)
-                      setSearchQuery('')
-                    }}>
-                    <ChevronLeft />
-                  </Button>
-                  <MailSearchBar
-                    onSearch={handleSearch}
-                    initialQuery={searchQuery}
-                    isLoading={isListLoading}
+                <div className='flex-1 overflow-hidden'>
+                  <ThreadDisplay
+                    centered={layoutMode === 'list'}
+                    expectedThreadId={selectedThreadId}
                   />
                 </div>
               </div>
-              <div className='flex items-center shrink-0 gap-2 max-sm:group-data-search-expanded/toolbar:hidden'>
-                <RadioTab
-                  value={layoutMode}
-                  onValueChange={handleLayoutModeChange}
-                  size='sm'
-                  className='border border-primary-200 bg-background/30'>
-                  <RadioTabItem value='split' size='sm'>
-                    {/* Mobile: density metaphor (relaxed rows). Desktop: two-column layout */}
-                    <Rows2 className='sm:hidden' />
-                    <Columns2 className='hidden sm:block' />
-                    <span className='hidden sm:inline'>Split</span>
-                  </RadioTabItem>
-                  <RadioTabItem value='list' size='sm'>
-                    {/* Mobile: compact rows. Desktop: list layout */}
-                    <Rows4 className='sm:hidden' />
-                    <Rows3 className='hidden sm:block' />
-                    <span className='hidden sm:inline'>List</span>
-                  </RadioTabItem>
-                </RadioTab>
-              </div>
             </div>
-          </div>
-          {/* Unified responsive tree: viewport differences driven by Tailwind
-              media queries (sm = 640px). Only layoutMode drives JS branching. */}
-          <div
-            className={cn(
-              'flex flex-row h-full flex-1 overflow-hidden bg-secondary',
-              'max-sm:dark:bg-primary-100 sm:dark:bg-muted-50'
-            )}>
-            {/* ThreadList panel */}
-            <div
-              style={layoutMode === 'split' ? { width: threadListWidth } : undefined}
-              className={cn(
-                'flex flex-col overflow-y-hidden min-h-0',
-                layoutMode === 'split' ? 'sm:shrink-0 max-sm:w-full! max-sm:flex-1' : 'flex-1',
-                // Hide when a thread is selected, per layoutMode/viewport rules
-                selectedThreadId && layoutMode === 'list' && 'hidden',
-                selectedThreadId && layoutMode === 'split' && 'max-sm:hidden'
-              )}>
-              <div className='overflow-hidden flex-1 min-h-0'>
-                <ThreadList
-                  filter={threadFilterForHook}
-                  basePath={basePathForList}
-                  selectedThreadId={selectedThreadId}
-                  onLoadingChange={setIsListLoading}
-                  variant={layoutMode === 'list' ? 'compact' : 'default'}
-                />
-              </div>
-            </div>
+          </MainPageContent>
+        </MainPage>
 
-            {/* Resize handle — split only, hidden on mobile */}
-            {layoutMode === 'split' && (
-              <PanelResizeHandle
-                side='left'
-                currentWidth={threadListWidth}
-                onWidthChange={handleThreadListResize}
-                minWidth={250}
-                maxWidth={500}
-                className='max-sm:hidden'
-              />
-            )}
-
-            {/* ThreadDisplay panel */}
-            <div
-              className={cn(
-                'flex-1 min-w-0 flex flex-col',
-                !selectedThreadId && layoutMode === 'list' && 'hidden',
-                !selectedThreadId && layoutMode === 'split' && 'max-sm:hidden'
-              )}>
-              {selectedThreadId && (
-                <div className={cn(layoutMode === 'split' && 'sm:hidden')}>
-                  <ThreadNavToolbar
-                    activeThreadId={selectedThreadId}
-                    onBack={handleBackToList}
-                    onNavigate={(id) => void setTid(id)}
-                    hotkeysEnabled={layoutMode !== 'split'}
-                  />
-                </div>
-              )}
-              <div className='flex-1 overflow-hidden'>
-                <ThreadDisplay
-                  centered={layoutMode === 'list'}
-                  expectedThreadId={selectedThreadId}
-                />
-              </div>
-            </div>
-          </div>
-        </MainPageContent>
-      </MainPage>
-
-      {/* Overlay contact drawer when NOT docked */}
-      {!isDocked && (
-        <ContactDrawer
-          contactId={contactId}
-          open={isContactDrawerOpen}
-          onOpenChange={handleContactDrawerClose}
-        />
-      )}
-
-      {/* Overlay ticket drawer when NOT docked */}
-      {!isDocked && isTicketDrawerOpen && (
-        <NestedThreadProvider value={true}>
-          <RecordDrawer
-            recordId={toRecordId('ticket', openTicketId)}
-            open={isTicketDrawerOpen}
-            onOpenChange={handleTicketDrawerClose}
+        {/* Overlay contact drawer when NOT docked */}
+        {!isDocked && (
+          <ContactDrawer
+            contactId={contactId}
+            open={isContactDrawerOpen}
+            onOpenChange={handleContactDrawerClose}
           />
-        </NestedThreadProvider>
-      )}
+        )}
 
-      {/* Overlay participant drawer when NOT docked */}
-      {!isDocked && (
-        <ParticipantDrawer
-          participantId={participantId}
-          open={isParticipantDrawerOpen}
-          onOpenChange={handleParticipantDrawerClose}
-        />
-      )}
+        {/* Overlay ticket drawer when NOT docked */}
+        {!isDocked && isTicketDrawerOpen && (
+          <NestedThreadProvider value={true}>
+            <RecordDrawer
+              recordId={toRecordId('ticket', openTicketId)}
+              open={isTicketDrawerOpen}
+              onOpenChange={handleTicketDrawerClose}
+            />
+          </NestedThreadProvider>
+        )}
+
+        {/* Overlay participant drawer when NOT docked */}
+        {!isDocked && (
+          <ParticipantDrawer
+            participantId={participantId}
+            open={isParticipantDrawerOpen}
+            onOpenChange={handleParticipantDrawerClose}
+          />
+        )}
+      </DrawerContextProvider>
     </MailFilterProvider>
   )
 }

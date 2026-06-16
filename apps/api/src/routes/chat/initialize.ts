@@ -11,7 +11,12 @@ import { createScopedLogger } from '@auxx/logger'
 import { desc, eq } from 'drizzle-orm'
 import { Hono } from 'hono'
 import { parseIdentifyPayload } from './identify'
-import { applyChatCorsHeaders, loadChatAttachmentsForMessages, loadThreadEvents } from './lib'
+import {
+  applyChatCorsHeaders,
+  loadChatAttachmentsForMessages,
+  loadThreadEvents,
+  resolveClientIp,
+} from './lib'
 
 const log = createScopedLogger('chat-initialize-route')
 
@@ -58,10 +63,7 @@ initializeRoute.post('/', async (c) => {
           url: typeof body.url === 'string' ? body.url : undefined,
           referrer: typeof body.referrer === 'string' ? body.referrer : undefined,
           userAgent: typeof body.userAgent === 'string' ? body.userAgent : undefined,
-          ipAddress:
-            c.req.header('x-forwarded-for')?.split(',')[0]?.trim() ||
-            c.req.header('x-real-ip') ||
-            undefined,
+          ipAddress: resolveClientIp(c),
           // Geo was resolved once at mint and stashed on the passport so
           // initialize can write Thread.metadata.visit without re-hitting
           // MaxMind. Re-mints (every 1h) refresh the values.

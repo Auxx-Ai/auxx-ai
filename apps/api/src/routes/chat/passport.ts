@@ -22,6 +22,7 @@ import {
   hostnameFromHeader,
   isHostAllowed,
   loadChatWidgetByChannelId,
+  resolveClientIp,
 } from './lib'
 
 /**
@@ -128,8 +129,7 @@ passportRoute.post('/', async (c) => {
   applyChatCorsHeaders(c, { allowCredentials: true })
   c.header('Cache-Control', 'no-store')
 
-  const clientIp =
-    c.req.header('x-forwarded-for')?.split(',')[0]?.trim() || c.req.header('x-real-ip') || 'unknown'
+  const clientIp = resolveClientIp(c) ?? 'unknown'
 
   const allowed = await passportIssuanceLimiter.acquire(`issue:ip:${clientIp}`)
   if (!allowed) {

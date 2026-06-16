@@ -64,6 +64,15 @@ export const SYSTEM_ATTRIBUTES = [
   'thread_tags',
   'thread_messages',
   'thread_ticket',
+  // Chat visit facts (FieldValue-backed, keyed by thread.id)
+  'visit_ip',
+  'visit_user_agent',
+  'visit_referrer',
+  'visit_url',
+  'visit_city',
+  'visit_region',
+  'visit_country',
+  'visit_timezone',
 
   // ─── Tag fields ─────────────────────────────────────────────────
   'name',
