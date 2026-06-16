@@ -15,9 +15,9 @@ import { Skeleton } from '@auxx/ui/components/skeleton'
 import { cn } from '@auxx/ui/lib/utils'
 import { formatDistanceToNow } from 'date-fns'
 import { Check, CheckCheck, CopyPlusIcon, EllipsisVertical, Mail, Trash } from 'lucide-react'
+import { useQueryState } from 'nuqs'
 import { useMessage, useMessageParticipants, useThreadReadStatus } from '~/components/threads/hooks'
 import type { AttachmentMeta, MessageMeta } from '~/components/threads/store'
-import { ContactHoverCard } from '../contacts/contact-hover-card'
 import { AttachmentDisplay } from '../files/utils/attachment-display'
 import { Tooltip } from '../global/tooltip'
 import type { EmailActions } from './email-actions'
@@ -66,6 +66,8 @@ const ChatMessageDisplay = ({
   const { message, isLoading } = useMessage({ messageId })
   const { markAsUnread } = useThreadReadStatus(message?.threadId ?? null)
   const { from: sender } = useMessageParticipants(message?.participants ?? [])
+  const [, setContactId] = useQueryState('contactId', { defaultValue: '' })
+  const [, setParticipantId] = useQueryState('participantId', { defaultValue: '' })
 
   if (isLoading) return <ChatMessageSkeleton />
   if (!message) return null
@@ -73,8 +75,21 @@ const ChatMessageDisplay = ({
   const isInbound = message.isInbound
   const senderName = sender?.displayName ?? 'Unknown'
   const senderInitials = sender?.initials ?? senderName.charAt(0).toUpperCase()
-  const contactId = sender?.entityInstanceId
   const content = message.textPlain ?? message.snippet ?? ''
+
+  // Open the sender in the shared mail drawer. A linked contact opens the
+  // richer contact drawer; an unlinked participant opens the participant
+  // drawer (which offers "Create Contact"). Mirrors ThreadParticipantButton.
+  const openSenderDrawer = () => {
+    if (!sender) return
+    if (sender.entityInstanceId) {
+      void setParticipantId('')
+      void setContactId(sender.entityInstanceId)
+    } else {
+      void setContactId('')
+      void setParticipantId(sender.id)
+    }
+  }
   const isSending = !!message.sendStatus && message.sendStatus !== 'SENT'
   const nonInlineAttachments = (message.attachments ?? []).filter((a) => !a.inline)
 
@@ -96,17 +111,21 @@ const ChatMessageDisplay = ({
     <div
       className={cn('group/message flex flex-col gap-1', isInbound ? 'items-start' : 'items-end')}>
       {showHeader && (
-        <div className='flex items-center gap-2 pl-1'>
-          <ContactHoverCard contactId={contactId ?? undefined}>
-            <Avatar className='size-4 rounded-full'>
-              <AvatarFallback className='bg-foreground/50 text-[8px] text-background hover:bg-foreground/70'>
-                {senderInitials}
-              </AvatarFallback>
-              <AvatarImage src={sender?.avatarUrl ?? undefined} />
-            </Avatar>
-          </ContactHoverCard>
-          <span className='text-xs font-medium text-foreground'>{senderName}</span>
-        </div>
+        <button
+          type='button'
+          onClick={openSenderDrawer}
+          disabled={!sender}
+          className='group/sender flex items-center gap-2 rounded pl-1 disabled:pointer-events-none'>
+          <Avatar className='size-4 rounded-full'>
+            <AvatarFallback className='bg-foreground/50 text-[8px] text-background group-hover/sender:bg-foreground/70'>
+              {senderInitials}
+            </AvatarFallback>
+            <AvatarImage src={sender?.avatarUrl ?? undefined} />
+          </Avatar>
+          <span className='text-xs font-medium text-foreground group-hover/sender:underline'>
+            {senderName}
+          </span>
+        </button>
       )}
       <div className='relative w-fit max-w-full'>
         <div

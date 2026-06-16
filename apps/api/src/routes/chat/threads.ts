@@ -223,7 +223,7 @@ threadsRoute.get('/:threadId/messages', async (c) => {
 
   try {
     const [thread] = await database
-      .select({ id: schema.Thread.id })
+      .select({ id: schema.Thread.id, status: schema.Thread.status })
       .from(schema.Thread)
       .where(
         and(
@@ -301,7 +301,10 @@ threadsRoute.get('/:threadId/messages', async (c) => {
         ? (recentRows[recentRows.length - 1]?.sentAt?.toISOString() ?? null)
         : null
 
-    return c.json({ success: true, data: { messages, threadEvents, nextCursor } })
+    return c.json({
+      success: true,
+      data: { messages, threadEvents, nextCursor, closed: thread.status !== 'OPEN' },
+    })
   } catch (error) {
     log.error('Failed to load chat history', {
       threadId,

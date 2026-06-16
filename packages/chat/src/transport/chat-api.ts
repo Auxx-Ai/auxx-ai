@@ -35,6 +35,8 @@ export interface InitializeResponse {
   threadId: string
   visitorId: string
   isNewSession: boolean
+  /** True when the thread is no longer OPEN — the composer locks. */
+  closed: boolean
   messages: ChatMessage[]
   /** Cursor for fetching older messages via `getHistory`. Null = no more. */
   nextCursor: string | null
@@ -111,6 +113,7 @@ export function chatApi(channelId: string) {
         messages: ChatMessage[]
         threadEvents: ThreadEvent[]
         nextCursor: string | null
+        closed: boolean
       }>(channelId, `/api/chat/threads/${threadId}/messages`, {
         method: 'GET',
         query,

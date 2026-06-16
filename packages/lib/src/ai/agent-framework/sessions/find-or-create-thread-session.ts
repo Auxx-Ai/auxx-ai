@@ -41,7 +41,7 @@ export interface FindOrCreateThreadSessionInput {
  * kopilot domain config, with `triggerContext.kind === 'chat'` as the
  * distinguisher and `agentTriggerId = null`.
  *
- * Per-thread serialization rides the `chat-turn:{threadId}` BullMQ jobId
+ * Per-thread serialization rides the `chat-turn-{threadId}` BullMQ jobId
  * (only one turn per thread runs at a time), so a find-then-create here can't
  * realistically race. The find is still scoped tightly enough that a
  * pathological double-run would at worst create a second session, never
