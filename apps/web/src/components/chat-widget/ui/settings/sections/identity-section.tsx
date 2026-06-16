@@ -133,7 +133,7 @@ export function IdentitySection({ widget, channelId }: IdentitySectionProps) {
   return (
     <>
       <ConfirmDialog />
-      <div className='p-6 space-y-8'>
+      <div className='p-3 sm:p-6 space-y-8'>
         <SettingsSection
           icon={ShieldCheck}
           title='Identity verification'

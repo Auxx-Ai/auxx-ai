@@ -1,6 +1,7 @@
 // apps/web/src/components/chat-widget/ui/settings/preview-pane.tsx
 'use client'
 import { Button } from '@auxx/ui/components/button'
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@auxx/ui/components/sheet'
 import { cn } from '@auxx/ui/lib/utils'
 import { Moon, Smartphone, Sun, SunMoon } from 'lucide-react'
 import { useState } from 'react'
@@ -77,44 +78,62 @@ function ThemeToggle({
 }
 
 /**
- * Floating button + sheet for the mobile/tablet breakpoint where the
- * persistent preview pane is hidden. Renders the same iframe at full width
- * inside a slide-up sheet.
+ * Compact trigger that opens the mobile preview sheet. Pair it with
+ * {@link MobilePreviewSheet} and a shared open-state in the parent. The
+ * `className` controls which breakpoint it shows at (e.g. next to the mobile
+ * tab dropdown vs. floating on tablet).
  */
-export function MobilePreviewLauncher({ channelId }: { channelId: string; intent: PreviewIntent }) {
-  const [open, setOpen] = useState(false)
-  const src = `/preview/widget/${channelId}/embed?theme=system`
+export function MobilePreviewTrigger({
+  onOpen,
+  className,
+}: {
+  onOpen: () => void
+  className?: string
+}) {
+  return (
+    <Button type='button' variant='outline' size='sm' onClick={onOpen} className={className}>
+      <Smartphone className='size-3.5' />
+      Preview
+    </Button>
+  )
+}
+
+/**
+ * Full-screen slide-up sheet showing the widget preview at the mobile/tablet
+ * breakpoint where the persistent {@link PreviewPane} is hidden. Controlled —
+ * the parent owns the open state so multiple triggers can share one sheet.
+ *
+ * Uses the Radix-backed {@link Sheet}, which portals to `document.body`. That
+ * matters here: an ancestor `transform` (framer-motion in the page shell) plus
+ * the settings card's `overflow-hidden` would otherwise re-root and clip a
+ * plain `position: fixed` overlay to the settings window instead of the screen.
+ */
+export function MobilePreviewSheet({
+  channelId,
+  open,
+  onClose,
+}: {
+  channelId: string
+  open: boolean
+  onClose: () => void
+}) {
+  // `rounded=0` — full-screen sheet wants the widget edge-to-edge, not the
+  // rounded phone shell the desktop pane uses.
+  const src = `/preview/widget/${channelId}/embed?theme=system&rounded=0`
 
   return (
-    <>
-      <Button
-        type='button'
-        variant='outline'
-        size='sm'
-        onClick={() => setOpen(true)}
-        className='fixed bottom-4 right-4 z-50 shadow-lg lg:hidden'>
-        <Smartphone className='size-3.5' />
-        Preview
-      </Button>
-      {open ? (
-        <div
-          role='dialog'
-          aria-modal='true'
-          className='fixed inset-0 z-50 flex flex-col bg-background/95 backdrop-blur-sm lg:hidden'>
-          <div className='flex items-center justify-between border-b px-4 py-3'>
-            <div className='text-sm font-semibold'>Preview</div>
-            <Button type='button' variant='ghost' size='sm' onClick={() => setOpen(false)}>
-              Close
-            </Button>
-          </div>
-          <iframe
-            title='Chat widget preview'
-            src={src}
-            className='flex-1 w-full'
-            style={{ border: 'none', background: 'transparent' }}
-          />
-        </div>
-      ) : null}
-    </>
+    <Sheet open={open} onOpenChange={(next) => !next && onClose()}>
+      <SheetContent side='bottom' className='flex h-[100dvh] flex-col gap-0 p-0 lg:hidden'>
+        <SheetHeader className='flex-none border-b px-4 py-3 text-left'>
+          <SheetTitle className='text-sm font-semibold'>Preview</SheetTitle>
+        </SheetHeader>
+        <iframe
+          title='Chat widget preview'
+          src={src}
+          className='w-full flex-1'
+          style={{ border: 'none', background: 'transparent' }}
+        />
+      </SheetContent>
+    </Sheet>
   )
 }

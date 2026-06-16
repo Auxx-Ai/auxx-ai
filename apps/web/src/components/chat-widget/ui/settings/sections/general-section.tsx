@@ -126,7 +126,7 @@ export function GeneralSection({ widget, channelId, onDelete }: GeneralSectionPr
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)}>
-        <div className='p-6'>
+        <div className='p-3 sm:p-6'>
           <SettingsSection
             className='space-y-6'
             icon={Settings}
@@ -268,7 +268,7 @@ export function GeneralSection({ widget, channelId, onDelete }: GeneralSectionPr
           </SettingsSection>
         </div>
 
-        <div className='border-t p-6'>
+        <div className='border-t p-3 sm:p-6'>
           <SettingsSection icon={Users} title='Audience' description='Who is this widget for?'>
             <FormField
               control={form.control}
@@ -328,7 +328,7 @@ export function GeneralSection({ widget, channelId, onDelete }: GeneralSectionPr
           </SettingsSection>
         </div>
 
-        <div className='flex flex-wrap items-center justify-between gap-3 border-t p-6'>
+        <div className='flex flex-wrap items-center justify-between gap-3 border-t p-3 sm:p-6'>
           <div className='space-y-1'>
             <div className='flex items-center gap-2 text-base font-semibold tracking-tight text-destructive'>
               <Trash2 className='size-4' /> Danger zone

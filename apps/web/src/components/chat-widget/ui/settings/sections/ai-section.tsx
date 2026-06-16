@@ -14,7 +14,7 @@ import {
 } from '@auxx/ui/components/form'
 import { toastError } from '@auxx/ui/components/toast'
 import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
-import { BookOpen, Bot, Home, Sparkles } from 'lucide-react'
+import { BookOpen, Bot, Sparkles } from 'lucide-react'
 import { useCallback, useMemo } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
@@ -113,7 +113,7 @@ export function AiSection({ widget, channelId }: AiSectionProps) {
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)}>
-        <div className='p-6'>
+        <div className='p-3 sm:p-6'>
           <SettingsSection
             icon={Bot}
             title='Agent'
@@ -140,7 +140,7 @@ export function AiSection({ widget, channelId }: AiSectionProps) {
           </SettingsSection>
         </div>
 
-        <div className='border-t p-6 space-y-4'>
+        <div className='border-t p-3 sm:p-6 space-y-4'>
           <SettingsSection
             icon={BookOpen}
             title='Knowledge base'
@@ -161,6 +161,7 @@ export function AiSection({ widget, channelId }: AiSectionProps) {
                       validationError={fieldState.error?.message}>
                       <MultiRelationInput
                         entityDefinitionId='kb'
+                        triggerProps={{ className: 'w-full ps-0 pe-1' }}
                         value={recordId ? [recordId] : []}
                         multi={false}
                         placeholder='Link a knowledge base…'

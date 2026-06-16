@@ -77,7 +77,7 @@ export function SetupSection({ widget, channelId }: SetupSectionProps) {
           : snippets.angular
 
   return (
-    <div className='p-6 space-y-8'>
+    <div className='p-3 sm:p-6 space-y-8'>
       <SettingsSection
         icon={Code}
         title='Install'

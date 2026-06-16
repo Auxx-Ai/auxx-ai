@@ -130,7 +130,7 @@ export function AppearanceSection({ widget, channelId }: AppearanceSectionProps)
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)}>
-        <div className='p-6 space-y-8'>
+        <div className='p-3 sm:p-6 space-y-8'>
           <div>
             <SettingsSection
               className='mb-6'
