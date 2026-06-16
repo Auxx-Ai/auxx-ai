@@ -5,7 +5,7 @@ type Props = {}
 
 export default function GeneralPage({}: Props) {
   return (
-    <SettingsPage title='General' description='Manage your organization and user preferences'>
+    <SettingsPage title='General' description='Manage your profile and preferences'>
       <div className='p-3 sm:p-8'>
         <EditUserProfileForm />
       </div>

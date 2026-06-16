@@ -24,6 +24,7 @@ import { useMessageListStore } from '../store/message-list-store'
 import { useMessageStore } from '../store/message-store'
 import { useParticipantStore } from '../store/participant-store'
 import { useThreadStore } from '../store/thread-store'
+import { useMessageArrivalCue } from './use-message-arrival-cue'
 
 /**
  * Mail-side counterpart to `useResourceSync`. Subscribes to per-inbox channels
@@ -66,6 +67,10 @@ export function useMailSync() {
   const updateParticipant = useParticipantStore((s) => s.updateParticipant)
 
   const utils = api.useUtils()
+
+  // Clickable new-message arrival cue (email + chat). Fed once the inbound
+  // message lands in the store, so sender/preview/direction are available.
+  const cueIncomingMessage = useMessageArrivalCue()
 
   const handleThreadCreated = useCallback(
     (data: ThreadCreatedEvent['data'] | null) => {
@@ -113,6 +118,7 @@ export function useMailSync() {
       if (useMessageStore.getState().messages.has(messageId)) {
         appendMessage(threadId, messageId)
         setThreadPatch(threadId, { latestMessageId: messageId })
+        cueIncomingMessage(messageId, threadId)
         return
       }
 
@@ -127,11 +133,12 @@ export function useMailSync() {
           if (!hasNow) return
           appendMessage(threadId, messageId)
           setThreadPatch(threadId, { latestMessageId: messageId })
+          cueIncomingMessage(messageId, threadId)
           unsub()
         }
       )
     },
-    [requestMessage, appendMessage, setThreadPatch]
+    [requestMessage, appendMessage, setThreadPatch, cueIncomingMessage]
   )
 
   const handleMessageUpdated = useCallback(

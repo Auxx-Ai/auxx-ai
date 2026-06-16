@@ -1,4 +1,4 @@
-// apps/web/src/app/(protected)/app/settings/general/_components/list-passkeys.tsx
+// apps/web/src/app/(protected)/app/settings/account/_components/list-passkeys.tsx
 'use client'
 
 import { Button } from '@auxx/ui/components/button'
@@ -63,7 +63,7 @@ export function ListPasskeys() {
           <span>Passkeys {data?.length ? ` (${data?.length})` : ''}</span>
         </Button>
       </DialogTrigger>
-      <DialogContent className='sm:max-w-[425px] w-11/12'>
+      <DialogContent size='sm' position='tc'>
         <DialogHeader>
           <DialogTitle>Passkeys</DialogTitle>
           <DialogDescription className='sr-only'>List of passkeys</DialogDescription>

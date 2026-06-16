@@ -1,4 +1,4 @@
-// apps/web/src/app/(protected)/app/settings/general/_components/change-password.tsx
+// apps/web/src/app/(protected)/app/settings/account/_components/change-password.tsx
 'use client'
 
 import { Button } from '@auxx/ui/components/button'
@@ -100,7 +100,7 @@ export function ChangePassword() {
           {hasPassword ? 'Change Password' : 'Add Password'}
         </Button>
       </DialogTrigger>
-      <DialogContent className='sm:max-w-[425px] w-11/12'>
+      <DialogContent position='tc' size='sm'>
         <ChangePasswordDialogContent
           hasPassword={hasPassword}
           currentPassword={currentPassword}
