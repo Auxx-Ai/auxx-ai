@@ -152,13 +152,13 @@ export const FileInput = createNodeInput<FileInputProps>(
       selectedFolders: [] as string[],
       onChange: handleSelectionChange,
       allowFiles: true,
-      showPath: true,
+      showPath: false,
       allowFolders: false,
       allowMultiple,
       fileExtensions,
       maxFileSize,
       enableGlobalSearch: true,
-      width: 450,
+      // width: 450,
       maxHeight: 400,
     }
 

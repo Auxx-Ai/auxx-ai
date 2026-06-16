@@ -455,6 +455,22 @@ function CommandPlaceholder({ className, ...props }: React.HTMLAttributes<HTMLDi
   )
 }
 
+/** Centered spinner + message for use inside a CommandList while data is fetching.
+ *  Render it conditionally yourself (it does not auto-show/hide). */
+function CommandLoading({ className, children, ...props }: React.HTMLAttributes<HTMLDivElement>) {
+  return (
+    <div
+      className={cn(
+        'flex items-center justify-center gap-2 py-6 text-sm text-muted-foreground',
+        className
+      )}
+      {...props}>
+      <Loader2 className='size-4 animate-spin' />
+      {children}
+    </div>
+  )
+}
+
 function CommandGroup({
   className,
   ...props
@@ -935,6 +951,7 @@ export {
   CommandList,
   CommandEmpty,
   CommandPlaceholder,
+  CommandLoading,
   CommandGroup,
   CommandGroupLabel,
   CommandItem,

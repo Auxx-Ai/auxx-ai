@@ -20,6 +20,7 @@ import { useCmdkRemote } from '~/components/pickers/use-cmdk-remote'
 import { api } from '~/trpc/react'
 import { AI_LANG_TYPE, AI_OPERATION, AI_TONE_TYPE, type AIOperation } from '~/types/ai-tools'
 import { isBodyEmptyIgnoringChips } from '../composer-shared/content-empty'
+import { useSnippetSearch } from './hooks'
 
 type Range = { from: number; to: number }
 
@@ -318,44 +319,16 @@ function MailSlashContentInner({
     onError: (error) => console.error('Failed to update snippet usage count', error),
   })
 
-  const { data: snippetsData, isLoading: snippetsLoading } = api.snippet.all.useQuery(
-    {},
-    { staleTime: 5 * 60 * 1000 }
-  )
-  const allSnippets = snippetsData?.snippets ?? []
-
-  const { data: foldersData } = api.snippet.getFolders.useQuery(undefined, {
-    staleTime: 5 * 60 * 1000,
-  })
-  const allFolders = foldersData?.folders ?? []
-
   const q = query.toLowerCase()
 
-  const currentSnippets = useMemo(
-    () =>
-      allSnippets.filter((s) => {
-        const matchesFolder = currentFolderId ? s.folderId === currentFolderId : !s.folderId
-        if (q) return matchesFolder && s.title.toLowerCase().includes(q)
-        return matchesFolder
-      }),
-    [allSnippets, currentFolderId, q]
-  )
-
-  const currentFolders = useMemo(
-    () =>
-      allFolders.filter((f) => {
-        const matchesParent = currentFolderId ? f.parentId === currentFolderId : !f.parentId
-        if (q) return matchesParent && f.name.toLowerCase().includes(q)
-        return matchesParent
-      }),
-    [allFolders, currentFolderId, q]
-  )
-
-  // Cross-folder snippet search when typing at root.
-  const rootSnippetResults = useMemo(() => {
-    if (!isAtRoot || !q) return []
-    return allSnippets.filter((s) => s.title.toLowerCase().includes(q))
-  }, [isAtRoot, allSnippets, q])
+  const {
+    allSnippets,
+    loading: snippetsLoading,
+    currentSnippets,
+    currentFolders,
+    subtreeSnippetResults,
+    rootSnippetResults,
+  } = useSnippetSearch({ query, currentFolderId, isAtRoot })
 
   const enterSnippetsDrillDown = useCallback(() => {
     push({ id: 'snippets', label: 'Snippets', type: 'snippets' })
@@ -500,20 +473,29 @@ function MailSlashContentInner({
     }
 
     if (isInSnippets) {
-      const snippetItems: SnippetItem[] = [
-        ...currentFolders.map<SnippetItem>((f) => ({
-          id: `folder-${f.id}`,
-          title: f.name,
-          drillDown: true,
-          kind: 'folder',
-          folderCount: f._count.snippets,
-        })),
-        ...currentSnippets.map<SnippetItem>((s) => ({
-          id: `snippet-${s.id}`,
-          title: s.title,
-          kind: 'snippet',
-        })),
-      ]
+      // While searching, show flattened subtree matches (snippets only) so
+      // snippets nested in subfolders surface. While browsing, show this
+      // level's folders + direct snippets.
+      const snippetItems: SnippetItem[] = q
+        ? subtreeSnippetResults.map<SnippetItem>((s) => ({
+            id: `snippet-${s.id}`,
+            title: s.title,
+            kind: 'snippet',
+          }))
+        : [
+            ...currentFolders.map<SnippetItem>((f) => ({
+              id: `folder-${f.id}`,
+              title: f.name,
+              drillDown: true,
+              kind: 'folder',
+              folderCount: f._count.snippets,
+            })),
+            ...currentSnippets.map<SnippetItem>((s) => ({
+              id: `snippet-${s.id}`,
+              title: s.title,
+              kind: 'snippet',
+            })),
+          ]
       const snippetsSection: SlashCommandSection<SnippetItem> = {
         id: 'snippets',
         heading: current?.type === 'folder' ? current.label : 'Snippets',
@@ -591,9 +573,11 @@ function MailSlashContentInner({
 
     return out
   }, [
+    q,
     isInSnippets,
     currentFolders,
     currentSnippets,
+    subtreeSnippetResults,
     current,
     handleSuggestionSelect,
     rootSnippetResults,
@@ -615,7 +599,9 @@ function MailSlashContentInner({
         emptyMessage={
           isInSnippets ? 'No snippets found.' : isInAi ? 'No options.' : 'No results found.'
         }
-        loading={snippetsLoading}
+        // Only the snippet drill-down needs the snippet fetch; the static root
+        // suggestions (Ask AI, formatting commands, placeholder) render instantly.
+        loading={isInSnippets && snippetsLoading}
       />
     </div>
   )

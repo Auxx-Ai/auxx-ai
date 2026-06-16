@@ -16,6 +16,7 @@ import {
   CommandInput,
   CommandItem,
   CommandList,
+  CommandLoading,
   useCommandNavigation,
 } from '@auxx/ui/components/command'
 import { toastError } from '@auxx/ui/components/toast'
@@ -474,7 +475,7 @@ export function TagPickerContent({
           )}
 
           {isLoading ? (
-            <div className='py-6 text-center text-sm text-muted-foreground'>Loading tags...</div>
+            <CommandLoading>Loading tags…</CommandLoading>
           ) : !Array.isArray(tagsToDisplay) ? (
             <CommandEmpty>Error loading tags or invalid data.</CommandEmpty>
           ) : tagsToDisplay.length === 0 ? (

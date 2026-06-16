@@ -179,7 +179,7 @@ function RootListContent({
           exit()
           return
         }
-        if (e.key === 'Backspace' && !search && exit) {
+        if ((e.key === 'Backspace' || e.key === 'ArrowLeft') && !search && exit) {
           e.preventDefault()
           exit()
           return
