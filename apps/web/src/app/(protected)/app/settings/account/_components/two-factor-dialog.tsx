@@ -1,4 +1,4 @@
-// apps/web/src/app/(protected)/app/settings/general/_components/two-factor-dialog.tsx
+// apps/web/src/app/(protected)/app/settings/account/_components/two-factor-dialog.tsx
 'use client'
 
 import { Button } from '@auxx/ui/components/button'
@@ -14,6 +14,7 @@ import {
 } from '@auxx/ui/components/dialog'
 import { Input } from '@auxx/ui/components/input'
 import { InputOTP, InputOTPGroup, InputOTPSlot } from '@auxx/ui/components/input-otp'
+import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { Label } from '@auxx/ui/components/label'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { QrCode, ShieldCheck, ShieldOff } from 'lucide-react'
@@ -188,7 +189,7 @@ export function TwoFactorDialog(): JSX.Element {
             {session?.user.twoFactorEnabled ? 'Disable 2FA' : 'Enable 2FA'}
           </Button>
         </DialogTrigger>
-        <DialogContent className='sm:max-w-[425px] w-11/12'>
+        <DialogContent size='sm' position='tc'>
           <DialogHeader className='mb-4'>
             <DialogTitle>
               {session?.user.twoFactorEnabled ? 'Disable 2FA' : 'Enable 2FA'}
@@ -250,16 +251,26 @@ export function TwoFactorDialog(): JSX.Element {
           )}
           <DialogFooter>
             <Button
+              variant='ghost'
+              size='sm'
+              onClick={() => setTwoFactorDialog(false)}
+              disabled={isPendingTwoFa}>
+              Cancel <Kbd shortcut='esc' variant='ghost' size='sm' />
+            </Button>
+            <Button
               variant='outline'
+              size='sm'
               disabled={isButtonDisabled()}
               onClick={handleTwoFactorToggle}
               loading={isPendingTwoFa}
-              loadingText='Processing...'>
+              loadingText='Processing...'
+              data-dialog-submit>
               {session?.user.twoFactorEnabled
                 ? 'Disable 2FA'
                 : twoFactorVerifyURI
                   ? 'Verify OTP'
                   : 'Verify Password'}
+              <KbdSubmit variant='outline' size='sm' />
             </Button>
           </DialogFooter>
         </DialogContent>

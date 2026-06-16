@@ -120,6 +120,20 @@ export const SETTINGS_CATALOG: Record<string, SettingConfig> = {
     type: 'boolean',
     description: 'Receive daily email digest',
   },
+  'notification.sound.newMessage': {
+    key: 'notification.sound.newMessage',
+    scope: 'NOTIFICATION',
+    defaultValue: true,
+    type: 'boolean',
+    description: 'Play a sound when a new message arrives (email + chat)',
+  },
+  'notification.sound.bell': {
+    key: 'notification.sound.bell',
+    scope: 'NOTIFICATION',
+    defaultValue: true,
+    type: 'boolean',
+    description: 'Play a sound for notification-bell alerts (mentions, approvals)',
+  },
   'dashboard.defaultView': {
     key: 'dashboard.defaultView',
     scope: 'DASHBOARD',

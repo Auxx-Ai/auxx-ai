@@ -1,4 +1,4 @@
-// apps/web/src/app/(protected)/app/settings/general/_components/edit-email-dialog.tsx
+// apps/web/src/app/(protected)/app/settings/account/_components/edit-email-dialog.tsx
 'use client'
 
 import { Alert, AlertDescription } from '@auxx/ui/components/alert'

@@ -29,6 +29,7 @@ import {
   Sun,
   Tag,
   Trash2,
+  UserCog,
   Users,
   UsersRound,
   Video,
@@ -183,6 +184,7 @@ export const SETTINGS_MENU: SidebarProps[] = [
     type: 'header',
     items: [
       { id: 'settings-general', label: 'General', slug: 'general', icon: <Settings /> },
+      { id: 'settings-account', label: 'My Account', slug: 'account', icon: <UserCog /> },
       {
         id: 'settings-organization',
         label: 'Organization',

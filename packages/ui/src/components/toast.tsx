@@ -52,6 +52,12 @@ interface ToastProps {
     onClick: () => void
   }
   actions?: ToastActions
+  /**
+   * When set, the toast body becomes clickable: clicking it runs this handler
+   * and dismisses the toast. The description renders inline (not behind the
+   * expand chevron) so it reads as a preview. Used for the new-message cue.
+   */
+  onClick?: () => void
 }
 
 /**
@@ -106,7 +112,7 @@ function renderActions(actions: ToastActions | undefined, dismiss: () => void): 
  * Helper to create custom toast with proper type separation
  */
 function toast(options: CustomToastOptions) {
-  const { title, description, icon, button, actions, ...toastOptions } = options
+  const { title, description, icon, button, actions, onClick, ...toastOptions } = options
 
   return sonnerToast.custom(
     (id) => (
@@ -117,6 +123,7 @@ function toast(options: CustomToastOptions) {
         button={button}
         icon={icon}
         actions={actions}
+        onClick={onClick}
       />
     ),
     toastOptions
@@ -127,17 +134,22 @@ function toast(options: CustomToastOptions) {
  * A fully custom toast that still maintains the animations and interactions.
  */
 function Toast(props: ToastProps) {
-  const { title, description, button, id, icon, actions } = props
+  const { title, description, button, id, icon, actions, onClick } = props
   const [isShow, setIsShow] = useState(false)
   const showMore = useCallback((e: React.MouseEvent) => {
     e.stopPropagation()
-    console.log('Toggling isShow from')
     setIsShow((bool) => !bool)
   }, [])
 
   const dismiss = useCallback(() => {
     sonnerToast.dismiss(id)
   }, [id])
+
+  const handleBodyClick = useCallback(() => {
+    if (!onClick) return
+    onClick()
+    dismiss()
+  }, [onClick, dismiss])
 
   return (
     <div
@@ -146,23 +158,30 @@ function Toast(props: ToastProps) {
       className='flex rounded-2xl bg-white dark:bg-primary-400 shadow-lg shadow-black/10 ring-1 ring-black/5 w-full md:max-w-[350px] min-w-[300px] items-start ps-2 p-1.5 gap-2'>
       <div className='mt-[2px]'>{icon}</div>
       <div className='flex flex-1 items-start flex-col gap-2'>
-        <div className='w-full flex items-center justify-start gap-2 mt-[2px]'>
-          <p className='text-[14px]  mb-0 font-medium text-primary-600 dark:text-primary-800'>
-            {title}
-          </p>
-          {description && (
-            <button
-              onClick={showMore}
-              className='size-4.5 bg-black/5 rounded-md flex items-center justify-center shrink-0'>
-              {isShow ? (
-                <ChevronDown className='size-4 text-muted-foreground' />
-              ) : (
-                <ChevronRight className='size-4 text-muted-foreground' />
-              )}
-            </button>
+        <div
+          onClick={onClick ? handleBodyClick : undefined}
+          className={`w-full flex flex-col gap-0.5 mt-[2px]${onClick ? ' cursor-pointer' : ''}`}>
+          <div className='w-full flex items-center justify-start gap-2'>
+            <p className='text-[14px]  mb-0 font-medium text-primary-600 dark:text-primary-800'>
+              {title}
+            </p>
+            {description && !onClick && (
+              <button
+                onClick={showMore}
+                className='size-4.5 bg-black/5 rounded-md flex items-center justify-center shrink-0'>
+                {isShow ? (
+                  <ChevronDown className='size-4 text-muted-foreground' />
+                ) : (
+                  <ChevronRight className='size-4 text-muted-foreground' />
+                )}
+              </button>
+            )}
+          </div>
+          {onClick && description && (
+            <div className='text-xs text-muted-foreground line-clamp-2'>{description}</div>
           )}
         </div>
-        {isShow && <div className=' text-sm text-primary-600'>{description}</div>}
+        {!onClick && isShow && <div className=' text-sm text-primary-600'>{description}</div>}
         {actions && (
           <div className='flex gap-2 w-full flex-wrap'>{renderActions(actions, dismiss)}</div>
         )}
@@ -218,6 +237,28 @@ export function toastError(options: {
     duration: options.duration ?? 10_000,
     action: options.action,
     onDismiss: options.onDismiss,
+  })
+}
+
+/**
+ * Display a clickable message-arrival cue. The whole body navigates on click
+ * (via the provided `onClick`) and the description renders inline as a preview.
+ * Deliberate product exception to the errors-only toast convention.
+ */
+export function toastMessage(options: {
+  title: string
+  description?: string
+  icon?: React.ReactNode
+  onClick?: () => void
+  duration?: number
+}) {
+  return toast({
+    title: options.title,
+    description: options.description,
+    icon: options.icon,
+    onClick: options.onClick,
+    position: 'top-right',
+    duration: options.duration ?? 6000,
   })
 }
 

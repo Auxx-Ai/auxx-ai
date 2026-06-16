@@ -2,313 +2,75 @@
 'use client'
 
 import { Button } from '@auxx/ui/components/button'
-import {
-  Form,
-  FormControl,
-  FormDescription,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from '@auxx/ui/components/form'
 import { Input } from '@auxx/ui/components/input'
-import { toastError } from '@auxx/ui/components/toast'
-import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
-import {
-  AlertCircle,
-  Edit,
-  Fingerprint,
-  Laptop,
-  RectangleEllipsis,
-  ShieldCheck,
-  Smartphone,
-} from 'lucide-react'
-import { useRouter } from 'next/navigation'
-import { useEffect, useState } from 'react'
-import { useForm } from 'react-hook-form'
-import { UAParser } from 'ua-parser-js'
-import { z } from 'zod'
-import { client } from '~/auth/auth-client'
-import { UserRegistrationInfo } from '~/components/auth/user-registration-info'
+import { Label } from '@auxx/ui/components/label'
+import { Edit } from 'lucide-react'
+import { useState } from 'react'
 import { AvatarUpload } from '~/components/file-upload/ui/avatar-upload'
-import { Tooltip } from '~/components/global/tooltip'
-import { useDemo } from '~/hooks/use-demo'
+import { TimezoneSettings } from '~/components/settings/timezone-settings'
 import { useUser } from '~/hooks/use-user'
-import { useDehydratedStateContext } from '~/providers/dehydrated-state-provider'
-import { api } from '~/trpc/react'
-import { ChangePassword } from './change-password'
-import { EditEmailDialog } from './edit-email-dialog'
-import { ListPasskeys } from './list-passkeys'
-import { TwoFactorDialog } from './two-factor-dialog'
-import { UserPreferencesSection } from './user-preferences-section'
-
-const profileFormSchema = z.object({
-  username: z
-    .string()
-    .min(2, { error: 'Username must be at least 2 characters.' })
-    .max(30, { error: 'Username must not be longer than 30 characters.' }),
-  // email: z.email({ message: 'Please enter a valid email address.' }),
-})
-
-type ProfileFormValues = z.infer<typeof profileFormSchema>
-
-// This can come from your database or API.
-const defaultValues: Partial<ProfileFormValues> = {
-  username: '',
-  // email: '',
-}
+import { useDehydratedUser } from '~/providers/dehydrated-state-provider'
+import { EditNameDialog } from './edit-name-dialog'
+import { NotificationPreferences } from './notification-preferences'
 
 export function EditUserProfileForm(): JSX.Element {
-  const router = useRouter()
-  const [isSubmitting, setIsSubmitting] = useState<boolean>(false)
-  const [currentAvatarUrl, setCurrentAvatarUrl] = useState<string | undefined>()
-  const [emailDialogOpen, setEmailDialogOpen] = useState(false)
-
   const { user } = useUser()
-  const { isDemo } = useDemo()
-  const { patchUser } = useDehydratedStateContext()
-  const updateProfile = api.user.updateProfile.useMutation()
-
-  const form = useForm<ProfileFormValues>({
-    resolver: standardSchemaResolver(profileFormSchema),
-    defaultValues,
-    mode: 'onChange',
-  })
-
-  // biome-ignore lint/correctness/useExhaustiveDependencies: form.reset is stable
-  useEffect(() => {
-    if (user) {
-      form.reset({ username: user.name || '' })
-      setCurrentAvatarUrl(user.image || undefined)
-    }
-  }, [user])
-
-  async function onSubmit(data: ProfileFormValues) {
-    setIsSubmitting(true)
-
-    try {
-      if (data.username !== user?.name) {
-        await updateProfile.mutateAsync({ name: data.username })
-        patchUser({ name: data.username })
-      }
-    } catch (error) {
-      toastError({
-        title: 'Update failed',
-        description: 'Failed to update profile information',
-      })
-    } finally {
-      setIsSubmitting(false)
-    }
-  }
-
-  const { data: session } = client.useSession()
+  const dehydratedUser = useDehydratedUser()
+  const [nameDialogOpen, setNameDialogOpen] = useState(false)
 
   /**
    * Handle avatar upload completion
    */
-  const handleAvatarUpload = (assetId: string, url: string) => {
-    setCurrentAvatarUrl(url)
+  const handleAvatarUpload = (_assetId: string, _url: string) => {
     // TODO: Optionally trigger user data refresh or update user context
   }
 
-  /**
-   * Handle sign out - uses the same implementation as nav-user.tsx
-   */
-  const handleSignOut = () => {
-    client.signOut({
-      fetchOptions: {
-        onSuccess: () => {
-          router.push('/') // redirect to login page
-        },
-      },
-    })
-  }
-
-  const canEditEmail = (user?.providers?.length ?? 0) === 0
   return (
-    <div className='max-w-xl'>
-      <Form {...form}>
-        <form onSubmit={form.handleSubmit(onSubmit)} className='space-y-8'>
-          <div className='space-y-2'>
-            <h2 className='text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70'>
-              Photo
-            </h2>
-            <AvatarUpload
-              currentAvatarUrl={currentAvatarUrl}
-              onUploadComplete={handleAvatarUpload}
-              size='sm'
-            />
-          </div>
+    <div className='max-w-xl space-y-8'>
+      <div className='space-y-2'>
+        <h2 className='text-sm font-medium leading-none'>Photo</h2>
+        <AvatarUpload
+          currentAvatarUrl={user?.image || undefined}
+          onUploadComplete={handleAvatarUpload}
+          size='sm'
+        />
+      </div>
 
-          <FormField
-            control={form.control}
-            name='username'
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Name</FormLabel>
-                <FormDescription>
-                  This is your public display name. It can be your real name or a pseudonym.
-                </FormDescription>
-
-                <FormControl>
-                  <Input placeholder='Your name' {...field} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
+      {/* Name */}
+      <div className='space-y-2'>
+        <Label>Name</Label>
+        <p className='text-[0.8rem] text-muted-foreground'>
+          This is your public display name. It can be your real name or a pseudonym.
+        </p>
+        <div className='relative'>
+          <Input
+            value={user?.name || ''}
+            readOnly
+            className='bg-muted flex-1'
+            placeholder='Your name'
           />
-          <div className='space-y-2'>
-            <FormLabel>Email</FormLabel>
-            <FormDescription>
-              {canEditEmail
-                ? 'The email associated with your account'
-                : 'Email is managed by your OAuth provider'}
-            </FormDescription>
-            <div className='relative'>
-              <Input
-                value={user?.email || ''}
-                readOnly
-                className='bg-muted flex-1'
-                placeholder='Your email address'
-              />
-              {canEditEmail && !isDemo && (
-                <Button
-                  type='button'
-                  variant='outline'
-                  size='xs'
-                  onClick={() => setEmailDialogOpen(true)}
-                  className='absolute right-1 top-1/2 -translate-y-1/2'>
-                  <Edit />
-                  Edit
-                </Button>
-              )}
-            </div>
-            {/* Show pending verification status */}
-            {user && !user.emailVerified && user.email && canEditEmail && (
-              <div className='flex items-center gap-2 mt-2 text-sm text-amber-600 dark:text-amber-500'>
-                <AlertCircle className='size-4' />
-                <span>Pending verification - check your email</span>
-              </div>
-            )}
-          </div>
-          {/* User Preferences */}
-          <UserPreferencesSection />
-
-          <UserRegistrationInfo />
-
-          <div className='space-y-2'>
-            <h2 className='text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70'>
-              Change Password
-            </h2>
-            <p className='text-[0.8rem] text-muted-foreground'>
-              Change or add a password to your account. This can be used to sign in to your account.
-            </p>
-            {isDemo ? (
-              <Tooltip content='Sign up for a free account to change your password' side='right'>
-                <span className='inline-block'>
-                  <Button variant='outline' size='sm' disabled>
-                    <RectangleEllipsis />
-                    Change Password
-                  </Button>
-                </span>
-              </Tooltip>
-            ) : (
-              <ChangePassword />
-            )}
-          </div>
-
-          <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
-            <div className='space-y-2'>
-              <h2 className='text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70'>
-                Passkeys
-              </h2>
-              <p className='text-[0.8rem] text-muted-foreground'>Passwordless login.</p>
-              {isDemo ? (
-                <Tooltip side='right' content='Sign up for a free account to manage passkeys'>
-                  <span className='inline-block'>
-                    <Button variant='outline' size='sm' disabled>
-                      <Fingerprint />
-                      Passkeys
-                    </Button>
-                  </span>
-                </Tooltip>
-              ) : (
-                <ListPasskeys />
-              )}
-            </div>
-
-            <div className='space-y-2'>
-              <h2 className='text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70'>
-                Two Factor
-              </h2>
-              {isDemo ? (
-                <>
-                  <p className='text-[0.8rem] text-muted-foreground'>
-                    Adds an extra layer of security.
-                  </p>
-                  <Tooltip
-                    side='right'
-                    content='Sign up for a free account to enable two-factor authentication'>
-                    <span className='inline-block'>
-                      <Button variant='outline' size='sm' disabled>
-                        <ShieldCheck />
-                        Enable 2FA
-                      </Button>
-                    </span>
-                  </Tooltip>
-                </>
-              ) : user?.hasPassword ? (
-                <>
-                  <p className='text-[0.8rem] text-muted-foreground'>
-                    Adds an extra layer of security.
-                  </p>
-
-                  <TwoFactorDialog />
-                </>
-              ) : (
-                <div className='space-y-2'>
-                  <p className='text-[0.8rem] text-muted-foreground'>
-                    Two-factor authentication requires a password to be set up first.
-                  </p>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {session && (
-            <div>
-              <div className='flex items-center gap-2 text-sm  text-black font-medium dark:text-white'>
-                {new UAParser(session.userAgent || '').getDevice().type === 'mobile' ? (
-                  <Smartphone />
-                ) : (
-                  <Laptop />
-                )}
-                {new UAParser(session.userAgent || '').getOS().name},{' '}
-                {new UAParser(session.userAgent || '').getBrowser().name}
-                <button
-                  className='text-red-500 opacity-80 cursor-pointer text-xs underline'
-                  onClick={handleSignOut}>
-                  Sign Out
-                </button>
-              </div>
-            </div>
-          )}
-
-          <Button type='submit' variant='outline' loading={isSubmitting} loadingText='Updating...'>
-            Update profile
+          <Button
+            type='button'
+            variant='outline'
+            size='xs'
+            onClick={() => setNameDialogOpen(true)}
+            className='absolute right-1 top-1/2 -translate-y-1/2'>
+            <Edit />
+            Edit
           </Button>
-        </form>
-      </Form>
+        </div>
+      </div>
 
-      {/* Email Change Dialog */}
-      <EditEmailDialog
-        currentEmail={user?.email || ''}
-        isOpen={emailDialogOpen}
-        onOpenChange={setEmailDialogOpen}
-        onSuccess={() => {
-          // Optionally refresh user data or router
-          router.refresh()
-        }}
+      {/* Timezone */}
+      <TimezoneSettings currentTimezone={dehydratedUser?.preferredTimezone} />
+
+      {/* Notifications */}
+      <NotificationPreferences />
+
+      <EditNameDialog
+        currentName={user?.name || ''}
+        isOpen={nameDialogOpen}
+        onOpenChange={setNameDialogOpen}
       />
     </div>
   )
