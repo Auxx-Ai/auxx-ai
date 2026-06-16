@@ -8,27 +8,15 @@ import { Button } from '@auxx/ui/components/button'
 import { Separator } from '@auxx/ui/components/separator'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { cn } from '@auxx/ui/lib/utils'
-import {
-  ArrowDownLeft,
-  ArrowUpRight,
-  Loader2,
-  Mail,
-  Minus,
-  Plus,
-  Trash2,
-  Upload,
-  X,
-} from 'lucide-react'
+import { ArrowDownLeft, ArrowUpRight, Loader2, Mail, Minus, Plus, Trash2, X } from 'lucide-react'
 import type React from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
-import { useDropzone } from 'react-dropzone'
 import { useChannel } from '~/components/channels/hooks/use-channels'
 import { useDefaultChannelId } from '~/components/channels/hooks/use-default-channel'
 import { EditorToolbar } from '~/components/editor/editor-button'
 import { EditorProvider, useEditorContext } from '~/components/editor/editor-context'
 import { type ContentApplier, makeContentApplier } from '~/components/editor/inline-picker'
-import { useFileSelect } from '~/components/file-select/hooks/use-file-select'
 import { useCountUpdates } from '~/components/mail/hooks'
 import { useComposeStore } from '~/components/mail/store/compose-store'
 import { ChannelPicker } from '~/components/pickers/channel-picker'
@@ -45,26 +33,24 @@ import { useDebouncedCallback } from '~/hooks/use-debounced-value'
 // Local imports
 import { api } from '~/trpc/react'
 import {
-  AI_OPERATION,
-  type AIOperation,
-  COMPOSE_ENTITY_TYPE,
-  OUTPUT_FORMAT,
-} from '~/types/ai-tools'
+  AttachmentStrip,
+  ComposerBody,
+  INTERACTIVE_ELEMENT_SELECTORS,
+  isContentEmpty,
+  useComposerAITools,
+  useComposerAttachments,
+} from '../composer-shared'
 import { AIStatus } from './ai-status'
 import { deriveInitialState, type InitState } from './derive-initial'
 import {
   EditorActiveStateProvider,
   useEditorActiveStateContext,
 } from './editor-active-state-context'
-import { useAIToolsState, useDraftMutations } from './hooks'
-// Editor Imports
-import { LazyTiptapEditor } from './lazy-tiptap-editor'
-import { MessageFile } from './message-file'
+import { useDraftMutations } from './hooks'
 import PrevMessage from './prev-message'
 import { AddActionButton, QuickActionPanel } from './quick-action-panel'
 import { type RecipientField, RecipientInput, type RecipientInputHandle } from './recipient-input'
 import type {
-  FileAttachment,
   ParticipantInputData,
   RecipientState,
   Recipients,
@@ -72,26 +58,6 @@ import type {
 } from './types'
 import { useDraftAutosave } from './use-draft-autosave'
 
-const INTERACTIVE_ELEMENT_SELECTORS = `
-  button, a, input, select, textarea,
-  [role="button"], [role="option"], [role="combobox"], [role="menuitem"], [role="tab"],
-  [data-recipient-row],
-  .ProseMirror, [data-radix-popper-content-wrapper], [data-radix-select-trigger],
-  .tippy-box, .editor-toolbar-wrapper, .signature-picker-popover
-`.trim()
-/**
- * Check if editor content is effectively empty
- */
-const isContentEmpty = (editor: any): boolean => {
-  if (!editor) return true
-  const plainText = editor.getText()?.trim() ?? ''
-  if (plainText === '') {
-    const html = editor.getHTML()
-    const strippedHtml = html.replace(/<([a-z][a-z0-9]*)\s+[^>]*>/gi, '<$1>').replace(/\s+/g, '')
-    return /^(<p>(<br>)*<\/p>)+$/.test(strippedHtml)
-  }
-  return false
-}
 /**
  * Convert recipients array to mutation payload format
  */
@@ -214,10 +180,18 @@ function ReplyComposeEditorComponent({
   const [isDraftSaved, setIsDraftSaved] = useState(!!initialDraft)
   const [showNoToWarning, setShowNoToWarning] = useState(false)
 
-  // Attachments state - persisted attachments from draft
-  const [attachments, setAttachments] = useState<FileAttachment[]>(
-    () => initialDraft?.attachments ?? []
-  )
+  // Mark the draft dirty so autosave picks up changes.
+  const markDraftDirty = useCallback(() => setIsDraftSaved(false), [])
+
+  // Attachments + file uploads + dropzone + persisted/in-progress merge.
+  // Entity id is pinned to the draft id (or a static temp id) so files uploaded
+  // before the draft exists associate correctly.
+  const { attachments, setAttachments, fileSelect, allAttachments, removeAttachment, dropzone } =
+    useComposerAttachments({
+      initialAttachments: initialDraft?.attachments ?? [],
+      entityId: state.draftId ?? undefined,
+      onDirty: markDraftDirty,
+    })
 
   // Quick actions state - persisted in draft content
   const [quickActions, setQuickActions] = useState<DraftActionPayload[]>(
@@ -272,28 +246,6 @@ function ReplyComposeEditorComponent({
     }
   }, [initialDraft?.actions, quickActions.length])
 
-  // Generate temp ID for file uploads before draft exists
-  const tempEntityId = useMemo(
-    () => state.draftId || `temp-message-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-    [state.draftId]
-  )
-  // File selection hook - used ONLY for new uploads
-  const fileSelect = useFileSelect({
-    entityType: 'MESSAGE',
-    entityId: tempEntityId,
-    allowMultiple: true,
-    maxFiles: 10,
-    maxFileSize: 25 * 1024 * 1024, // 25MB
-    autoStart: true,
-    onChange: () => {
-      setIsDraftSaved(false)
-    },
-    onUploadComplete: () => {
-      // Mark draft as unsaved so autosave picks up the completed uploads
-      setIsDraftSaved(false)
-    },
-  })
-
   // Handle preset attachments on initial mount (when no draft exists)
   // biome-ignore lint/correctness/useExhaustiveDependencies: run once on mount
   useEffect(() => {
@@ -301,23 +253,6 @@ function ReplyComposeEditorComponent({
       setAttachments(presetValues.attachments)
     }
   }, []) // Only run on mount
-
-  // Remove attachment handler
-  const removeAttachment = useCallback((id: string) => {
-    setAttachments((prev) => prev.filter((a) => a.id !== id))
-    setIsDraftSaved(false)
-  }, [])
-  // Dropzone configuration
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({
-    onDrop: (acceptedFiles) => {
-      fileSelect.addFiles(acceptedFiles)
-    },
-    noClick: true, // Don't trigger on click (editor handles clicks)
-    noKeyboard: true,
-  })
-  // Handle draft ID update after save
-  // Note: Entity ID is set during initial hook creation and remains static
-  // Files uploaded before draft creation will be associated via tempEntityId
 
   // Track when user requested discard to handle late autosave completions
   const discardAfterSave = useRef(false)
@@ -497,28 +432,9 @@ function ReplyComposeEditorComponent({
     300,
     { leading: true, trailing: false } // fire immediately; ignore rapid subsequent clicks
   )
-  // Prepare payload for autosave - combines persisted attachments + files from fileSelect
+  // Prepare payload for autosave — attachments come from the shared hook's
+  // persisted + ready-upload merge.
   const draftPayload = useMemo(() => {
-    // Get files from fileSelect that are ready to save:
-    // 1. Existing filesystem files (source === 'filesystem') - id is already the server file ID
-    // 2. Completed uploads (serverFileId exists) - use serverFileId
-    const filesFromSelect: FileAttachment[] = fileSelect.selectedItems
-      .filter((item) => item.source === 'filesystem' || item.serverFileId)
-      .map((item) => ({
-        id: item.source === 'filesystem' ? item.id : item.serverFileId!,
-        name: item.name,
-        size: Number(item.size ?? 0),
-        mimeType: item.mimeType || 'application/octet-stream',
-        type: 'file' as const,
-      }))
-
-    // Combine persisted attachments + files from select (avoiding duplicates)
-    const existingIds = new Set(attachments.map((a) => a.id))
-    const allAttachments = [
-      ...attachments,
-      ...filesFromSelect.filter((f) => !existingIds.has(f.id)),
-    ]
-
     return {
       threadId: state.threadId,
       integrationId: state.integrationId,
@@ -534,7 +450,7 @@ function ReplyComposeEditorComponent({
       actions: quickActions.length > 0 ? quickActions : undefined,
       draftId: state.draftId,
     }
-  }, [state, content, recipients, attachments, fileSelect.selectedItems, quickActions])
+  }, [state, content, recipients, allAttachments, quickActions])
   const draftAutosave = useDraftAutosave({
     enabled: !isSending && !!state.integrationId,
     payload: draftPayload,
@@ -666,66 +582,32 @@ function ReplyComposeEditorComponent({
     if (!thread) return false
     return thread.messageCount > 0
   }, [thread])
-  // AI Tools State Management
+  // AI Tools — shared state + compose wiring, with email's posthog analytics
+  // and the contentApplier-backed write-back (so duplicate writes no-op).
+  const aiTicketId = thread?.id || state.threadId || undefined
   const {
     state: aiToolsState,
-    pushToHistory,
     undo,
     redo,
     canUndo,
     canRedo,
-    setProcessing,
-    setCurrentOperation,
-    setError,
-    clearError,
-  } = useAIToolsState(editor)
-
-  // Track AI operation timing
-  const aiStartTimeRef = useRef<number>(0)
-
-  // Process AI operation mutation
-  const processAI = api.aiFeature.compose.useMutation({
-    onSuccess: (response) => {
-      if (!editor) return
-      // Apply new content based on format — routed through the applier so a
-      // duplicate write (same HTML as the user already has) no-ops.
-      if (response.format === OUTPUT_FORMAT.EDITOR) {
-        const tiptapContent = JSON.parse(response.content)
-        contentApplier.apply(tiptapContent)
-      } else if (response.format === OUTPUT_FORMAT.HTML) {
-        contentApplier.apply(response.content)
-      } else {
-        // Plain text - wrap in paragraph
-        contentApplier.apply(`<p>${response.content}</p>`)
-      }
-      // Sync React content state — setContent doesn't emit onUpdate by default
-      handleContentChange(editor.getHTML())
-      // Push the new state to history after applying it
-      pushToHistory(editor.getHTML(), aiToolsState.currentOperation)
-      setProcessing(false)
-      setCurrentOperation(null)
-      clearError()
-
-      // Track AI compose completion
-      posthog?.capture('ai_compose_completed', {
-        ticket_id: thread?.id || state.threadId || undefined,
-        duration_ms: aiStartTimeRef.current ? Date.now() - aiStartTimeRef.current : undefined,
-      })
-    },
-    onError: (error) => {
-      toastError({
-        title: 'AI operation failed',
-        description: error.message,
-      })
-      setError(error.message)
-      setProcessing(false)
-      setCurrentOperation(null)
-
-      // Track AI compose failure
-      posthog?.capture('ai_compose_failed', {
-        ticket_id: thread?.id || state.threadId || undefined,
-        error: error.message,
-      })
+    handleAIOperation,
+  } = useComposerAITools({
+    editor,
+    entityId: thread?.id || state.threadId || '',
+    applyContent: (content) => contentApplier.apply(content),
+    onContentChanged: handleContentChange,
+    analytics: {
+      onComposeStarted: () => posthog?.capture('ai_compose_started', { ticket_id: aiTicketId }),
+      onComposeCompleted: (durationMs) =>
+        posthog?.capture('ai_compose_completed', {
+          ticket_id: aiTicketId,
+          duration_ms: durationMs,
+        }),
+      onComposeFailed: (error) =>
+        posthog?.capture('ai_compose_failed', { ticket_id: aiTicketId, error }),
+      onToolUsed: (operation, tone, language) =>
+        posthog?.capture('ai_tool_used', { operation, tone, language }),
     },
   })
 
@@ -734,67 +616,6 @@ function ReplyComposeEditorComponent({
     undo()
     posthog?.capture('ai_change_undone')
   }, [undo, posthog])
-
-  // Handle AI operation
-  const handleAIOperation = useCallback(
-    async (
-      operation: AIOperation,
-      options?: {
-        tone?: string
-        language?: string
-      }
-    ) => {
-      if (!editor || aiToolsState.isProcessing) return
-      const currentContent = editor.getHTML()
-      // Don't process if content is empty (except for compose)
-      if (operation !== AI_OPERATION.COMPOSE && !currentContent.replace(/<[^>]*>/g, '').trim()) {
-        toastError({
-          title: 'No content',
-          description: 'Please add some content before using AI tools',
-        })
-        return
-      }
-
-      // Track AI events
-      const ticketId = thread?.id || state.threadId || undefined
-      if (operation === AI_OPERATION.COMPOSE) {
-        posthog?.capture('ai_compose_started', { ticket_id: ticketId })
-      } else {
-        posthog?.capture('ai_tool_used', {
-          operation: operation.toLowerCase(),
-          tone: options?.tone,
-          language: options?.language,
-        })
-      }
-
-      // Save current state to history before AI operation
-      // This ensures we can undo back to the state before the operation
-      pushToHistory(currentContent, `before-${operation}`)
-      setProcessing(true)
-      setCurrentOperation(operation)
-      aiStartTimeRef.current = Date.now()
-      await processAI.mutateAsync({
-        operation,
-        messageHtml: currentContent,
-        entityType: COMPOSE_ENTITY_TYPE.THREAD,
-        entityId: thread?.id || state.threadId || '',
-        senderId: 'current-user', // Will be filled by backend
-        output: OUTPUT_FORMAT.HTML,
-        ...options,
-      })
-    },
-    [
-      editor,
-      aiToolsState.isProcessing,
-      thread?.id,
-      state.threadId,
-      processAI,
-      setProcessing,
-      setCurrentOperation,
-      pushToHistory,
-      posthog,
-    ]
-  )
   const handleSendClick = useCallback(async () => {
     if (isSending || !editor?.isEditable) return
     // 0. Commit any pending recipient input before validation
@@ -1176,358 +997,286 @@ function ReplyComposeEditorComponent({
           </div>
         </div>
 
-        {/* Main Editor Body with Dropzone */}
-        <div
-          {...getRootProps()}
-          className={cn(
-            'relative flex flex-col rounded-[12px] m-1 mt-0 border border-transparent  ring-2 ring-transparent bg-white dark:bg-background',
-            'focus-within:ring-blue-500 focus-within:hover:bg-white focus-within:hover:border-transparent dark:hover:bg-background',
-            // 'hover:border-gray-400 dark:hover:border-black/20 hover:bg-gray-50 dark:hover:bg-background',
-            activeState.isActive && 'ring-blue-500 hover:bg-white hover:border-transparent',
-            isDragActive && 'border-transparent bg-white hover:bg-white hover:border-transparent '
-          )}
-          onClick={handleWrapperClick}
+        <ComposerBody
+          content={content}
+          onContentChange={handleContentChange}
+          placeholder='Type / to insert a snippet.'
+          editable={!aiToolsState.isProcessing}
+          popoverClassName={popoverZIndex}
+          onWrapperClick={handleWrapperClick}
           onKeyDown={handleKeyDown}
-          onFocus={(e) => {
-            // Check if focus is within editor content areas
-            if (!e.currentTarget.contains(e.relatedTarget)) {
-              activeState.setHasFocus(true)
-            }
-          }}
-          onBlur={(e) => {
-            // Only blur if focus moves outside editor AND no UI elements are open
-            if (!e.currentTarget.contains(e.relatedTarget)) {
-              // Small delay to allow popovers/selects to register as open
-              setTimeout(() => {
-                activeState.setHasFocus(false)
-              }, 0)
-            }
-          }}>
-          <input {...getInputProps()} />
-
-          {/* Drag overlay */}
-          {isDragActive && (
-            <div className='absolute inset-[-1px] z-50 flex items-center justify-center rounded-[12px] bg-blue-500/10 border-1 border-dashed border-info'>
-              <div className='text-center'>
-                <Upload className='mx-auto size-8 text-blue-500' />
-                <Badge variant='blue' className='cursor-default'>
-                  Drop here
-                </Badge>
-              </div>
-            </div>
-          )}
-          {/* Header Fields */}
-          <div className='flex flex-col border-b border-border'>
-            {/* From Field */}
-            <div className='flex items-center gap-2 px-4 py-2'>
-              <span className='w-10 shrink-0 text-sm text-muted-foreground'>From:</span>
-              <div className='flex-1'>
-                <ChannelPicker
-                  value={state.integrationId}
-                  onChange={handleIntegrationChange}
-                  disabled={isSending}
-                  className={popoverZIndex}
-                />
-              </div>
-            </div>
-            <Separator className='mx-4 w-auto' />
-
-            {/* To Field & Toggles */}
-            {showRecipientField && (
+          dropzone={dropzone}
+          headerFields={
+            <div className='flex flex-col border-b border-border'>
+              {/* From Field */}
               <div className='flex items-center gap-2 px-4 py-2'>
-                <span className='w-10 shrink-0 text-sm text-muted-foreground'>To:</span>
-                <RecipientInput
-                  ref={toInputRef}
-                  field='TO'
-                  recipients={recipients.TO}
-                  onAdd={(r) => upsertRecipient('TO', r)}
-                  onRemove={(id) => removeRecipient('TO', id)}
-                  onMoveTo={(id, target) => handleMoveTo('TO', id, target)}
-                  onContactSelect={(c) => handleContactSelect('TO', c)}
-                  placeholder='Add recipients...'
-                  disabled={isSending}
-                  popoverClassName={popoverZIndex}
-                />
-                <div className='ml-auto flex shrink-0 items-center gap-1'>
-                  {showSubjectField && !showSubject && (
-                    <Button
-                      variant='ghost'
-                      size='sm'
-                      className='h-6 px-1 text-xs text-info'
-                      onClick={() => setShowSubject(true)}
-                      disabled={isSending}>
-                      Subject
-                    </Button>
-                  )}
-                  {showCcBccToggle && !showCc && (
-                    <Button
-                      variant='ghost'
-                      size='sm'
-                      className='h-6 px-1 text-xs text-info'
-                      onClick={() => setShowCc(true)}
-                      disabled={isSending}>
-                      Cc
-                    </Button>
-                  )}
-                  {showCcBccToggle && !showBcc && (
-                    <Button
-                      variant='ghost'
-                      size='sm'
-                      className='h-6 px-1 text-xs text-info'
-                      onClick={() => setShowBcc(true)}
-                      disabled={isSending}>
-                      Bcc
-                    </Button>
-                  )}
+                <span className='w-10 shrink-0 text-sm text-muted-foreground'>From:</span>
+                <div className='flex-1'>
+                  <ChannelPicker
+                    value={state.integrationId}
+                    onChange={handleIntegrationChange}
+                    disabled={isSending}
+                    className={popoverZIndex}
+                  />
                 </div>
               </div>
-            )}
+              <Separator className='mx-4 w-auto' />
 
-            {/* Cc Field */}
-            {showCcBccToggle && showCc && (
-              <>
-                <Separator className='mx-4 w-auto' />
+              {/* To Field & Toggles */}
+              {showRecipientField && (
                 <div className='flex items-center gap-2 px-4 py-2'>
-                  <span className='w-10 shrink-0 text-sm text-muted-foreground'>Cc:</span>
+                  <span className='w-10 shrink-0 text-sm text-muted-foreground'>To:</span>
                   <RecipientInput
-                    ref={ccInputRef}
-                    field='CC'
-                    recipients={recipients.CC}
-                    onAdd={(r) => upsertRecipient('CC', r)}
-                    onRemove={(id) => removeRecipient('CC', id)}
-                    onMoveTo={(id, target) => handleMoveTo('CC', id, target)}
-                    onContactSelect={(c) => handleContactSelect('CC', c)}
-                    placeholder='Add Cc recipients...'
+                    ref={toInputRef}
+                    field='TO'
+                    recipients={recipients.TO}
+                    onAdd={(r) => upsertRecipient('TO', r)}
+                    onRemove={(id) => removeRecipient('TO', id)}
+                    onMoveTo={(id, target) => handleMoveTo('TO', id, target)}
+                    onContactSelect={(c) => handleContactSelect('TO', c)}
+                    placeholder='Add recipients...'
                     disabled={isSending}
                     popoverClassName={popoverZIndex}
                   />
-                  <Button
-                    variant='ghost'
-                    size='sm'
-                    className='ml-auto h-6 px-1 text-xs text-muted-foreground'
-                    onClick={() => {
-                      setShowCc(false)
-                      setRecipients((prev) => ({ ...prev, CC: [] }))
-                    }}
-                    disabled={isSending}>
-                    Remove
-                  </Button>
+                  <div className='ml-auto flex shrink-0 items-center gap-1'>
+                    {showSubjectField && !showSubject && (
+                      <Button
+                        variant='ghost'
+                        size='sm'
+                        className='h-6 px-1 text-xs text-info'
+                        onClick={() => setShowSubject(true)}
+                        disabled={isSending}>
+                        Subject
+                      </Button>
+                    )}
+                    {showCcBccToggle && !showCc && (
+                      <Button
+                        variant='ghost'
+                        size='sm'
+                        className='h-6 px-1 text-xs text-info'
+                        onClick={() => setShowCc(true)}
+                        disabled={isSending}>
+                        Cc
+                      </Button>
+                    )}
+                    {showCcBccToggle && !showBcc && (
+                      <Button
+                        variant='ghost'
+                        size='sm'
+                        className='h-6 px-1 text-xs text-info'
+                        onClick={() => setShowBcc(true)}
+                        disabled={isSending}>
+                        Bcc
+                      </Button>
+                    )}
+                  </div>
                 </div>
-              </>
-            )}
+              )}
 
-            {/* Bcc Field */}
-            {showCcBccToggle && showBcc && (
-              <>
-                <Separator className='mx-4 w-auto' />
-                <div className='flex items-center gap-2 px-4 py-2'>
-                  <span className='w-10 shrink-0 text-sm text-muted-foreground'>Bcc:</span>
-                  <RecipientInput
-                    ref={bccInputRef}
-                    field='BCC'
-                    recipients={recipients.BCC}
-                    onAdd={(r) => upsertRecipient('BCC', r)}
-                    onRemove={(id) => removeRecipient('BCC', id)}
-                    onMoveTo={(id, target) => handleMoveTo('BCC', id, target)}
-                    onContactSelect={(c) => handleContactSelect('BCC', c)}
-                    placeholder='Add Bcc recipients...'
-                    disabled={isSending}
-                    popoverClassName={popoverZIndex}
-                  />
-                  <Button
-                    variant='ghost'
-                    size='sm'
-                    className='ml-auto h-6 px-1 text-xs text-muted-foreground'
-                    onClick={() => {
-                      setShowBcc(false)
-                      setRecipients((prev) => ({ ...prev, BCC: [] }))
-                    }}
-                    disabled={isSending}>
-                    Remove
-                  </Button>
-                </div>
-              </>
-            )}
-
-            {/* Subject Field */}
-            {showSubjectField && showSubject && (
-              <>
-                <Separator className='mx-4 w-auto' />
-                <div className='flex items-center gap-2 px-4 py-2'>
-                  <span className='shrink-0 text-sm text-muted-foreground'>Subject:</span>
-                  <input
-                    type='text'
-                    className='w-full flex-1 bg-transparent text-sm outline-hidden placeholder:text-muted-foreground/60'
-                    value={state.subject}
-                    onChange={(e) => handleSubjectChange(e.target.value)}
-                    placeholder='Enter subject'
-                    disabled={isSending}
-                  />
-                  <Button
-                    variant='ghost'
-                    size='sm'
-                    className='ml-auto h-6 px-1 text-xs text-muted-foreground'
-                    onClick={() => setShowSubject(false)}
-                    disabled={isSending}>
-                    Remove
-                  </Button>
-                </div>
-              </>
-            )}
-          </div>
-
-          {/* Editor Section */}
-          <div className='flex flex-col flex-1 min-h-[150px]'>
-            <LazyTiptapEditor
-              content={content}
-              onChange={handleContentChange}
-              placeholder='Type / to insert a snippet.'
-              editable={!aiToolsState.isProcessing}
-              popoverClassName={popoverZIndex}
-            />
-            <SignatureEditor
-              integrationId={state.integrationId}
-              selectedSignatureId={state.signatureId}
-              onSignatureChange={handleSignatureChange}
-              disabled={isSending}
-              className={popoverZIndex}
-            />
-
-            {/* File Attachments Display - Persisted + In-Progress Uploads */}
-            {(attachments.length > 0 || fileSelect.selectedItems.length > 0) && (
-              <div className='mx-4 mb-3 mt-2'>
-                <div className='text-xs text-muted-foreground mb-2'>
-                  Attachments ({attachments.length + fileSelect.selectedItems.length})
-                </div>
-                <div className='flex flex-wrap gap-2'>
-                  {/* Persisted attachments */}
-                  {attachments.map((attachment) => (
-                    <MessageFile
-                      key={attachment.id}
-                      file={{
-                        id: attachment.id,
-                        name: attachment.name,
-                        mimeType: attachment.mimeType,
-                        size: BigInt(attachment.size || 0),
-                        source: 'existing' as const,
-                      }}
-                      showRemoveButton={true}
-                      onRemove={() => removeAttachment(attachment.id)}
-                      className='group'
+              {/* Cc Field */}
+              {showCcBccToggle && showCc && (
+                <>
+                  <Separator className='mx-4 w-auto' />
+                  <div className='flex items-center gap-2 px-4 py-2'>
+                    <span className='w-10 shrink-0 text-sm text-muted-foreground'>Cc:</span>
+                    <RecipientInput
+                      ref={ccInputRef}
+                      field='CC'
+                      recipients={recipients.CC}
+                      onAdd={(r) => upsertRecipient('CC', r)}
+                      onRemove={(id) => removeRecipient('CC', id)}
+                      onMoveTo={(id, target) => handleMoveTo('CC', id, target)}
+                      onContactSelect={(c) => handleContactSelect('CC', c)}
+                      placeholder='Add Cc recipients...'
+                      disabled={isSending}
+                      popoverClassName={popoverZIndex}
                     />
-                  ))}
-                  {/* In-progress uploads */}
-                  {fileSelect.selectedItems.map((file) => (
-                    <MessageFile
-                      key={file.id}
-                      file={{
-                        id: file.id,
-                        name: file.name,
-                        mimeType: file.mimeType ?? undefined,
-                        size: file.size ?? undefined,
-                        source: 'upload' as const,
+                    <Button
+                      variant='ghost'
+                      size='sm'
+                      className='ml-auto h-6 px-1 text-xs text-muted-foreground'
+                      onClick={() => {
+                        setShowCc(false)
+                        setRecipients((prev) => ({ ...prev, CC: [] }))
                       }}
-                      showRemoveButton={true}
-                      onRemove={() => fileSelect.removeItem(file.id)}
-                      className='group'
+                      disabled={isSending}>
+                      Remove
+                    </Button>
+                  </div>
+                </>
+              )}
+
+              {/* Bcc Field */}
+              {showCcBccToggle && showBcc && (
+                <>
+                  <Separator className='mx-4 w-auto' />
+                  <div className='flex items-center gap-2 px-4 py-2'>
+                    <span className='w-10 shrink-0 text-sm text-muted-foreground'>Bcc:</span>
+                    <RecipientInput
+                      ref={bccInputRef}
+                      field='BCC'
+                      recipients={recipients.BCC}
+                      onAdd={(r) => upsertRecipient('BCC', r)}
+                      onRemove={(id) => removeRecipient('BCC', id)}
+                      onMoveTo={(id, target) => handleMoveTo('BCC', id, target)}
+                      onContactSelect={(c) => handleContactSelect('BCC', c)}
+                      placeholder='Add Bcc recipients...'
+                      disabled={isSending}
+                      popoverClassName={popoverZIndex}
                     />
-                  ))}
-                </div>
-              </div>
-            )}
+                    <Button
+                      variant='ghost'
+                      size='sm'
+                      className='ml-auto h-6 px-1 text-xs text-muted-foreground'
+                      onClick={() => {
+                        setShowBcc(false)
+                        setRecipients((prev) => ({ ...prev, BCC: [] }))
+                      }}
+                      disabled={isSending}>
+                      Remove
+                    </Button>
+                  </div>
+                </>
+              )}
 
-            {/* Quick Actions Panel */}
-            <QuickActionPanel
-              actions={quickActions}
-              onAdd={(action) => setQuickActions((prev) => [...prev, action])}
-              onRemove={(actionId) =>
-                setQuickActions((prev) => prev.filter((a) => a.actionId !== actionId))
-              }
-              onUpdate={(actionId, inputs) =>
-                setQuickActions((prev) =>
-                  prev.map((a) => (a.actionId === actionId ? { ...a, inputs } : a))
-                )
-              }
-              threadId={thread?.id || state.threadId || undefined}
-              disabled={isSending}
-              popoverClassName={popoverZIndex}
-              onPopoverOpenChange={(open) =>
-                open
-                  ? activeState.trackPopoverOpen('quick-action')
-                  : activeState.trackPopoverClose('quick-action')
-              }
-            />
-
-            {/* Add Action Button (always visible when not sending) */}
-            {!isSending && (
-              <div className='px-2'>
-                <AddActionButton
-                  threadId={thread?.id || state.threadId || undefined}
-                  currentActions={quickActions}
-                  onAdd={(action) => setQuickActions((prev) => [...prev, action])}
-                  onRemove={(actionId) =>
-                    setQuickActions((prev) => prev.filter((a) => a.actionId !== actionId))
-                  }
-                  disabled={isSending}
-                  popoverClassName={popoverZIndex}
-                  onOpenChange={(open) =>
-                    open
-                      ? activeState.trackPopoverOpen('add-action')
-                      : activeState.trackPopoverClose('add-action')
-                  }
-                />
-              </div>
-            )}
-
-            {showQuotedReply && state.includePrev && messageForPrevComponent && (
-              <PrevMessage
-                message={messageForPrevComponent}
-                onRemove={() => setState((prev) => ({ ...prev, includePrev: false }))}
-              />
-            )}
-            {showQuotedReply && !state.includePrev && messageForPrevComponent && (
-              <div className='px-2'>
-                <Button
-                  variant='ghost'
-                  size='xs'
-                  onClick={() => setState((prev) => ({ ...prev, includePrev: true }))}
-                  title='Add previous message'
-                  className='text-muted-foreground/50'
-                  disabled={isSending}>
-                  <Plus />
-                  Add previous message
-                </Button>
-              </div>
-            )}
-          </div>
-
-          {/* Toolbar with integrated AI Tools */}
-          <div className='editor-toolbar-wrapper relative px-2 py-1 '>
-            {showRecipientField && showNoToWarning && (
-              <Badge variant='red' size='sm' className='absolute right-3 bottom-full z-10'>
-                Add a To recipient to send
-              </Badge>
-            )}
-            <div className='flex items-center gap-1 shrink-0 no-scrollbar md:gap-2'>
-              <EditorToolbar
-                editor={editor}
-                onSend={handleSendClick}
-                onSchedule={handleScheduleClick}
-                isSending={isSending}
-                disabled={isSending || !editor?.isEditable || aiToolsState.isProcessing}
-                fileSelect={fileSelect}
-                popoverClassName={popoverZIndex}
-                aiToolsProps={{
-                  threadId: thread?.id || state.threadId || undefined,
-                  hasContent,
-                  hasPreviousMessages,
-                  state: aiToolsState,
-                  onOperation: handleAIOperation,
-                }}
-              />
+              {/* Subject Field */}
+              {showSubjectField && showSubject && (
+                <>
+                  <Separator className='mx-4 w-auto' />
+                  <div className='flex items-center gap-2 px-4 py-2'>
+                    <span className='shrink-0 text-sm text-muted-foreground'>Subject:</span>
+                    <input
+                      type='text'
+                      className='w-full flex-1 bg-transparent text-sm outline-hidden placeholder:text-muted-foreground/60'
+                      value={state.subject}
+                      onChange={(e) => handleSubjectChange(e.target.value)}
+                      placeholder='Enter subject'
+                      disabled={isSending}
+                    />
+                    <Button
+                      variant='ghost'
+                      size='sm'
+                      className='ml-auto h-6 px-1 text-xs text-muted-foreground'
+                      onClick={() => setShowSubject(false)}
+                      disabled={isSending}>
+                      Remove
+                    </Button>
+                  </div>
+                </>
+              )}
             </div>
-          </div>
-        </div>
+          }
+          belowEditor={
+            <>
+              <SignatureEditor
+                integrationId={state.integrationId}
+                selectedSignatureId={state.signatureId}
+                onSignatureChange={handleSignatureChange}
+                disabled={isSending}
+                className={popoverZIndex}
+              />
+
+              {/* File Attachments Display - Persisted + In-Progress Uploads */}
+              <AttachmentStrip
+                attachments={attachments}
+                selectedItems={fileSelect.selectedItems}
+                onRemoveAttachment={removeAttachment}
+                onRemoveUpload={fileSelect.removeItem}
+              />
+
+              {/* Quick Actions Panel */}
+              <QuickActionPanel
+                actions={quickActions}
+                onAdd={(action) => setQuickActions((prev) => [...prev, action])}
+                onRemove={(actionId) =>
+                  setQuickActions((prev) => prev.filter((a) => a.actionId !== actionId))
+                }
+                onUpdate={(actionId, inputs) =>
+                  setQuickActions((prev) =>
+                    prev.map((a) => (a.actionId === actionId ? { ...a, inputs } : a))
+                  )
+                }
+                threadId={thread?.id || state.threadId || undefined}
+                disabled={isSending}
+                popoverClassName={popoverZIndex}
+                onPopoverOpenChange={(open) =>
+                  open
+                    ? activeState.trackPopoverOpen('quick-action')
+                    : activeState.trackPopoverClose('quick-action')
+                }
+              />
+
+              {/* Add Action Button (always visible when not sending) */}
+              {!isSending && (
+                <div className='px-2'>
+                  <AddActionButton
+                    threadId={thread?.id || state.threadId || undefined}
+                    currentActions={quickActions}
+                    onAdd={(action) => setQuickActions((prev) => [...prev, action])}
+                    onRemove={(actionId) =>
+                      setQuickActions((prev) => prev.filter((a) => a.actionId !== actionId))
+                    }
+                    disabled={isSending}
+                    popoverClassName={popoverZIndex}
+                    onOpenChange={(open) =>
+                      open
+                        ? activeState.trackPopoverOpen('add-action')
+                        : activeState.trackPopoverClose('add-action')
+                    }
+                  />
+                </div>
+              )}
+
+              {showQuotedReply && state.includePrev && messageForPrevComponent && (
+                <PrevMessage
+                  message={messageForPrevComponent}
+                  onRemove={() => setState((prev) => ({ ...prev, includePrev: false }))}
+                />
+              )}
+              {showQuotedReply && !state.includePrev && messageForPrevComponent && (
+                <div className='px-2'>
+                  <Button
+                    variant='ghost'
+                    size='xs'
+                    onClick={() => setState((prev) => ({ ...prev, includePrev: true }))}
+                    title='Add previous message'
+                    className='text-muted-foreground/50'
+                    disabled={isSending}>
+                    <Plus />
+                    Add previous message
+                  </Button>
+                </div>
+              )}
+            </>
+          }
+          toolbar={
+            <>
+              {showRecipientField && showNoToWarning && (
+                <Badge variant='red' size='sm' className='absolute right-3 bottom-full z-10'>
+                  Add a To recipient to send
+                </Badge>
+              )}
+              <div className='flex items-center gap-1 shrink-0 no-scrollbar md:gap-2'>
+                <EditorToolbar
+                  editor={editor}
+                  onSend={handleSendClick}
+                  onSchedule={handleScheduleClick}
+                  isSending={isSending}
+                  disabled={isSending || !editor?.isEditable || aiToolsState.isProcessing}
+                  fileSelect={fileSelect}
+                  popoverClassName={popoverZIndex}
+                  aiToolsProps={{
+                    threadId: thread?.id || state.threadId || undefined,
+                    hasContent,
+                    hasPreviousMessages,
+                    state: aiToolsState,
+                    onOperation: handleAIOperation,
+                  }}
+                />
+              </div>
+            </>
+          }
+        />
       </div>
     </>
   )
