@@ -5,7 +5,6 @@
 import { Button } from '@auxx/ui/components/button'
 import { EntityIcon } from '@auxx/ui/components/icons'
 import { Skeleton } from '@auxx/ui/components/skeleton'
-import { getFullName } from '@auxx/utils/contact'
 import { formatDistanceToNow } from 'date-fns'
 import { Expand, Mail, MessagesSquare, Trash, User } from 'lucide-react'
 import { useRouter } from 'next/navigation'
@@ -87,7 +86,7 @@ export function ContactDrawer({
           id: contact.id,
           identifier: primaryEmail,
           identifierType: 'EMAIL',
-          name: getFullName(contact) || undefined,
+          name: contact.displayName || undefined,
         },
       ],
     }
@@ -105,7 +104,7 @@ export function ContactDrawer({
 
   if (!open || !contactId) return null
 
-  const contactLabel = contact ? getFullName(contact) : undefined
+  const contactLabel = contact?.displayName
 
   return (
     <>
@@ -185,7 +184,7 @@ export function ContactDrawer({
             </div>
             <div className='flex flex-col align-start w-full'>
               <div className='text-lg font-medium text-neutral-900 dark:text-neutral-400 truncate'>
-                {contact ? getFullName(contact) : <Skeleton className='h-6 w-80 mb-1' />}
+                {contact ? contact.displayName : <Skeleton className='h-6 w-80 mb-1' />}
               </div>
               <div className='text-xs text-neutral-500 truncate'>
                 {contact ? createdAtText : <Skeleton className='h-4 w-40' />}

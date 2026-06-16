@@ -226,6 +226,7 @@ export function PropertyProvider({
   const {
     saveFieldValue: storeSave,
     saveFieldValueAsync: storeSaveAsync,
+    saveMultipleAsync: storeSaveMultiple,
     isPending: isSaving,
   } = useSaveFieldValue({
     getFieldMetadata,
@@ -282,9 +283,25 @@ export function PropertyProvider({
         setIsDirty(false)
         setServerValue(newValue)
 
-        // Fire mutations to both source fields (computed system auto-updates NAME value)
-        storeSave(recordId, firstNameFieldId, nameValue.firstName ?? '', FieldTypeEnum.TEXT)
-        storeSave(recordId, lastNameFieldId, nameValue.lastName ?? '', FieldTypeEnum.TEXT)
+        // Write BOTH source fields in a single batch mutation. Two separate
+        // single-field writes race on the server-side displayName recompute:
+        // each NAME source write recomputes the composed displayName by reading
+        // its sibling from the DB, so concurrent first/last writes can read a
+        // stale sibling and persist an outdated displayName. Batching writes
+        // them sequentially in one request, so the final recompute always sees
+        // the freshly-written sibling. The computed NAME value updates itself.
+        void storeSaveMultiple(recordId, [
+          {
+            fieldId: firstNameFieldId,
+            value: nameValue.firstName ?? '',
+            fieldType: FieldTypeEnum.TEXT,
+          },
+          {
+            fieldId: lastNameFieldId,
+            value: nameValue.lastName ?? '',
+            fieldType: FieldTypeEnum.TEXT,
+          },
+        ])
         return
       }
 
@@ -297,7 +314,7 @@ export function PropertyProvider({
       // Store handles the optimistic update, so also update local serverValue
       setServerValue(newValue)
     },
-    [recordId, serverValue, storeSave, field.id, field.fieldType, field.options]
+    [recordId, serverValue, storeSave, storeSaveMultiple, field.id, field.fieldType, field.options]
   )
 
   /**
