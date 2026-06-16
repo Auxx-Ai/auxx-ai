@@ -1,6 +1,6 @@
 {
   "name": "@auxx/chat",
-  "version": "0.0.5",
+  "version": "0.0.6",
   "description": "Auxx chat widget — npm package with browser bootstrap, server JWT signer, and React wrapper.",
   "type": "module",
   "files": [
