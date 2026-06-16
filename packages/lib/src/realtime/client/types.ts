@@ -14,6 +14,13 @@ export interface PresenceMember {
 /** Event-only handlers (plain rooms). */
 export interface SubscribeHandlers {
   onEvent?(event: string, payload: unknown): void
+  /**
+   * Fired once the channel completes its `pusher:subscription_succeeded`
+   * handshake — and again on every resubscribe (e.g. after a reconnect). Use
+   * it to catch up on anything published while the channel was not yet bound:
+   * Pusher does not replay events sent during the subscribe/reconnect window.
+   */
+  onSubscribed?(): void
 }
 
 /** Presence-room handlers — extend plain handlers with member tracking. */

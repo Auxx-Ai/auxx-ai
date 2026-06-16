@@ -27,6 +27,7 @@ export function useRealtimeRoom(
     if (!roomKey) return
     const sub = realtimeAdapter.subscribe(roomKey, {
       onEvent: (event, payload) => handlersRef.current.onEvent?.(event, payload),
+      onSubscribed: () => handlersRef.current.onSubscribed?.(),
     })
     return () => sub.unsubscribe()
   }, [roomKey])
@@ -148,6 +149,7 @@ export function useInboxChannels(
     const subs = list.map((slug) =>
       realtimeAdapter.subscribe(rooms.orgInbox(organizationId, slug), {
         onEvent: (event, payload) => handlersRef.current?.onEvent?.(event, payload),
+        onSubscribed: () => handlersRef.current?.onSubscribed?.(),
       })
     )
     return () => {

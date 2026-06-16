@@ -14,7 +14,8 @@ import type {
   ThreadDeletedEvent,
   ThreadUpdatedEvent,
 } from '@auxx/lib/realtime/client'
-import { useCallback, useMemo } from 'react'
+import { extractUniqueParticipantIds } from '@auxx/types'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { useUser } from '~/hooks/use-user'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { useInboxChannels, useOrgChannel } from '~/realtime/hooks'
@@ -23,6 +24,7 @@ import { useInboxes } from '../hooks'
 import { useMessageListStore } from '../store/message-list-store'
 import { useMessageStore } from '../store/message-store'
 import { useParticipantStore } from '../store/participant-store'
+import { getThreadSelectionState } from '../store/thread-selection-store'
 import { useThreadStore } from '../store/thread-store'
 import { useMessageArrivalCue } from './use-message-arrival-cue'
 
@@ -61,10 +63,12 @@ export function useMailSync() {
   const removeMessage = useMessageStore((s) => s.removeMessage)
 
   const appendMessage = useMessageListStore((s) => s.appendMessage)
+  const setMessageList = useMessageListStore((s) => s.setList)
   const removeFromMessageList = useMessageListStore((s) => s.removeMessage)
   const invalidateMessageList = useMessageListStore((s) => s.invalidate)
 
   const updateParticipant = useParticipantStore((s) => s.updateParticipant)
+  const requestParticipant = useParticipantStore((s) => s.requestParticipant)
 
   const utils = api.useUtils()
 
@@ -126,11 +130,22 @@ export function useMailSync() {
       // patch until the message data lands. Without this, the id sits in
       // `messageIds` with no entry in `messages` for ~50ms (batch window),
       // and `useMessages` filters it out — visible as a missing message.
+      // Also tear down if the fetch resolves to not-found, so the one-shot
+      // subscription doesn't leak.
       requestMessage(messageId)
       const unsub = useMessageStore.subscribe(
-        (s) => s.messages.has(messageId),
-        (hasNow) => {
-          if (!hasNow) return
+        (s) =>
+          s.messages.has(messageId)
+            ? 'found'
+            : s.notFoundIds.has(messageId)
+              ? 'notfound'
+              : 'pending',
+        (status) => {
+          if (status === 'pending') return
+          if (status === 'notfound') {
+            unsub()
+            return
+          }
           appendMessage(threadId, messageId)
           setThreadPatch(threadId, { latestMessageId: messageId })
           cueIncomingMessage(messageId, threadId)
@@ -280,6 +295,71 @@ export function useMailSync() {
     [realtimeMailEnabled, handleParticipantUpdated]
   )
 
-  useInboxChannels(realtimeMailEnabled ? slugs : [], { onEvent: onInboxEvent })
+  // Catch-up on (re)subscribe. Pusher does NOT replay events published while a
+  // channel was mid-subscribe — and inbox channels bind in two phases (the real
+  // inboxes only after the async `inboxes` query resolves), plus rebind on
+  // every reconnect. Messages sent in those windows never reach
+  // `handleMessageCreated` and only surface on a manual refresh. So when an
+  // inbox channel finishes subscribing, refetch the thread list and the
+  // currently-open thread's messages to recover anything missed.
+  const catchUpTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const runCatchUp = useCallback(() => {
+    utils.thread.listIds.invalidate()
+    const threadId = getThreadSelectionState().activeThreadId
+    if (!threadId) return
+    // Force-fresh fetch (the open thread's `listByThread` query is disabled once
+    // cached, so a normal invalidate wouldn't refetch). Reconcile additively —
+    // append only missing ids so the view doesn't flash.
+    utils.message.listByThread
+      .fetch({ threadId }, { staleTime: 0 })
+      .then((data) => {
+        if (!data?.messages) return
+        useMessageStore.getState().setMessages(data.messages)
+        // Seed the list when it isn't cached yet — our fetch is the freshest
+        // (forced `staleTime: 0`), so it beats `useMessages`' possibly-older
+        // initial fetch and includes any gap messages. `useMessages` only
+        // `setList`s when absent, so it won't clobber this. When the list is
+        // already cached, merge additively (append missing ids) to avoid a
+        // flash and preserve optimistic entries.
+        const existing = useMessageListStore.getState().lists.get(threadId)
+        if (existing) {
+          for (const m of data.messages) appendMessage(threadId, m.id)
+        } else {
+          setMessageList(threadId, {
+            messageIds: data.messages.map((m) => m.id),
+            total: data.total,
+            fetchedAt: Date.now(),
+          })
+        }
+        const ids = extractUniqueParticipantIds(data.messages.flatMap((m) => m.participants))
+        for (const id of ids) requestParticipant(id)
+      })
+      .catch(() => {
+        /* best-effort recovery; next subscribe/refresh retries */
+      })
+  }, [utils, appendMessage, setMessageList, requestParticipant])
+
+  // Coalesce the burst of per-inbox `onSubscribed` callbacks on load into one
+  // catch-up pass.
+  const handleInboxSubscribed = useCallback(() => {
+    if (catchUpTimerRef.current) return
+    catchUpTimerRef.current = setTimeout(() => {
+      catchUpTimerRef.current = null
+      runCatchUp()
+    }, 250)
+  }, [runCatchUp])
+
+  useEffect(
+    () => () => {
+      if (catchUpTimerRef.current) clearTimeout(catchUpTimerRef.current)
+    },
+    []
+  )
+
+  useInboxChannels(realtimeMailEnabled ? slugs : [], {
+    onEvent: onInboxEvent,
+    onSubscribed: handleInboxSubscribed,
+  })
   useOrgChannel({ onEvent: onOrgEvent })
 }
