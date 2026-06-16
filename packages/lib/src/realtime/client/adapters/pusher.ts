@@ -176,6 +176,15 @@ export class PusherRealtimeAdapter implements RealtimeAdapter {
           if (event === 'pusher:subscription_succeeded' || event === 'pusher:subscription_error') {
             console.log('[realtime.sub]', roomKey, event)
           }
+          // Fan out subscribe-success to consumers so they can catch up on any
+          // events published during the subscribe/reconnect window. Fires again
+          // on every resubscribe (Pusher refires this on reconnect).
+          if (event === 'pusher:subscription_succeeded') {
+            const current = this.rooms.get(roomKey)
+            if (current) {
+              for (const h of current.handlers) h.onSubscribed?.()
+            }
+          }
           return
         }
         console.log('[realtime.sub]', roomKey, event, payload)
@@ -245,6 +254,17 @@ export class PusherRealtimeAdapter implements RealtimeAdapter {
     if (entry.refCount === 1) {
       this.refreshRoomsSnapshot()
       this.notifyRooms()
+    }
+
+    // Late-join replay: if the channel already completed its handshake before
+    // this handler attached, `pusher:subscription_succeeded` won't fire again
+    // for it — so replay `onSubscribed` once, async, to match the natural
+    // ordering of a fresh subscription.
+    if (!presence && (entry.channel as Pusher.Channel).subscribed) {
+      const h = handlers as SubscribeHandlers
+      queueMicrotask(() => {
+        if (this.rooms.get(roomKey)?.handlers.has(handlers)) h.onSubscribed?.()
+      })
     }
 
     // Late-join replay: if the channel is already past `subscription_succeeded`

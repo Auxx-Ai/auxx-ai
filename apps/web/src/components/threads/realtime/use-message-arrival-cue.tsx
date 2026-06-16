@@ -98,8 +98,15 @@ export function useMessageArrivalCue() {
       const msg = getMessageStoreState().getMessage(messageId)
       // Incoming only — skip the user's own outbound sends.
       if (!msg || !msg.isInbound) return
-      // Don't cue the thread the user is already reading.
-      if (getThreadSelectionState().activeThreadId === threadId) return
+      // Don't cue the thread the user is actively reading — but only while the
+      // mail view is on screen. `activeThreadId` is global state that is NOT
+      // reset when you leave /app/mail (the mount effect in `mail-box` keeps it
+      // so the last thread can be restored on return), so without the route
+      // check a stale value silently suppresses toasts for the last-opened
+      // thread on every other page. Mirrors the out-of-tab indicator's gate.
+      const onMailRoute =
+        typeof window !== 'undefined' && window.location.pathname.startsWith('/app/mail')
+      if (onMailRoute && getThreadSelectionState().activeThreadId === threadId) return
 
       // Flip the out-of-tab indicator (favicon dot + title prefix) immediately —
       // it doesn't wait for the toast's coalescing window.
