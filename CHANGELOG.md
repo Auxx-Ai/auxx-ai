@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.1.167](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.166...auxx-v0.1.167) (2026-06-16)
+
+
+### Features
+
+* **chat-widget:** mobile-responsive settings + full-screen preview ([#852](https://github.com/Auxx-Ai/auxx-ai/issues/852)) ([124f72f](https://github.com/Auxx-Ai/auxx-ai/commit/124f72fc77362f576567ddd346144fbc24115bc7))
+* **chat:** lock composer on closed threads + visitor-channel event fan-out ([#853](https://github.com/Auxx-Ai/auxx-ai/issues/853)) ([28ec2d5](https://github.com/Auxx-Ai/auxx-ai/commit/28ec2d5de75688a9b64ad6147cdf28e1bbc88340))
+* **chat:** serve widget bundle from cdn.auxx.ai ([#850](https://github.com/Auxx-Ai/auxx-ai/issues/850)) ([45c6fad](https://github.com/Auxx-Ai/auxx-ai/commit/45c6fadda750b0d9abb2a36286388caf5291f710))
+* **chat:** single shared Pusher connection for the widget + admin realtime cleanup ([#855](https://github.com/Auxx-Ai/auxx-ai/issues/855)) ([9a96f12](https://github.com/Auxx-Ai/auxx-ai/commit/9a96f121b6d0604780686be89f126e96a7e37011))
+* **chat:** surface + audience prompt profile for live chat agent ([#854](https://github.com/Auxx-Ai/auxx-ai/issues/854)) ([9e5db77](https://github.com/Auxx-Ai/auxx-ai/commit/9e5db779ffba405ae8a7c2c49c42263ca6252a16))
+* **evals:** Kopilot authors simulation cases + live Simulations tab ([#846](https://github.com/Auxx-Ai/auxx-ai/issues/846)) ([1a89a9d](https://github.com/Auxx-Ai/auxx-ai/commit/1a89a9dc31c58132854fe1bb98e2ee252fd1da3c))
+* file-based workflow templates + AI quota refund ([#845](https://github.com/Auxx-Ai/auxx-ai/issues/845)) ([1f3ec17](https://github.com/Auxx-Ai/auxx-ai/commit/1f3ec17436c13f33f526bee2b8172896af7cd4db))
+* persona editor realtime remount + workflow app connection picker ([#843](https://github.com/Auxx-Ai/auxx-ai/issues/843)) ([3da1328](https://github.com/Auxx-Ai/auxx-ai/commit/3da1328eff850f98091dc9a79de55984e2885289))
+
+
+### Bug Fixes
+
+* **chat:** make CDN purge non-fatal in chat-publish ([#851](https://github.com/Auxx-Ai/auxx-ai/issues/851)) ([cf6ff12](https://github.com/Auxx-Ai/auxx-ai/commit/cf6ff12f82108f6d57d3e33e3cbccdfd70b71403))
+* **ui:** respect iOS safe-area insets on mobile ([#847](https://github.com/Auxx-Ai/auxx-ai/issues/847)) ([0f3713b](https://github.com/Auxx-Ai/auxx-ai/commit/0f3713b431b37694239e9b6a6c715cc1fe169ff7))
+
 ## [0.1.166](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.165...auxx-v0.1.166) (2026-06-13)
 
 
