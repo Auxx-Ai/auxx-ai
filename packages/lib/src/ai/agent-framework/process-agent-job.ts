@@ -225,7 +225,7 @@ async function processAgentMessageInternal(ctx: JobContext<AgentJobPayload>) {
   // between selection + the stepper (`runProcedureTurn`), exactly like the chat
   // path. Internal runs carry an empty-anchors subject, so every procedure field
   // resolves to `undefined` (gate-by-absence) and there's no human queue to flip
-  // (no `onHandoff`). Approval-resume turns skip the sandwich — they continue a
+  // (the `handedOff` return is ignored). Approval-resume turns skip the sandwich — they continue a
   // paused tool, not a fresh customer message (job-path resume verify is §2.2).
   if (hasProcedures && type !== 'approval') {
     const subject: Subject = { anchors: {}, identityVerified: false }

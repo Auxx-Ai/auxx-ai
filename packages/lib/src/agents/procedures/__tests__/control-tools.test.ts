@@ -7,7 +7,6 @@ import {
   awaitCustomer,
   digress,
   endProcedure,
-  handoffToHuman,
   PROC_SIGNAL_KEY,
   PROCEDURE_CONTROL_TOOLS,
 } from '../control-tools'
@@ -46,22 +45,17 @@ describe('control tools record their signal', () => {
     expect(write).toHaveBeenCalledWith(PROC_SIGNAL_KEY, { kind: 'digress', reason: '' })
   })
 
-  it('handoff_to_human writes {kind:handoff}', async () => {
-    const { ctx, write } = makeCtx()
-    await handoffToHuman.execute({}, ctx)
-    expect(write).toHaveBeenCalledWith(PROC_SIGNAL_KEY, { kind: 'handoff' })
-  })
-
   it('end_procedure writes {kind:end}', async () => {
     const { ctx, write } = makeCtx()
     await endProcedure.execute({}, ctx)
     expect(write).toHaveBeenCalledWith(PROC_SIGNAL_KEY, { kind: 'end' })
   })
 
-  it('exposes all five tools with unique names + required AgentToolDefinition fields', () => {
-    expect(PROCEDURE_CONTROL_TOOLS).toHaveLength(5)
+  it('exposes all four tools with unique names + required AgentToolDefinition fields', () => {
+    // Handoff is no longer a control tool — the unified `handoff` tool covers it.
+    expect(PROCEDURE_CONTROL_TOOLS).toHaveLength(4)
     const names = PROCEDURE_CONTROL_TOOLS.map((t) => t.name)
-    expect(new Set(names).size).toBe(5)
+    expect(new Set(names).size).toBe(4)
     for (const t of PROCEDURE_CONTROL_TOOLS) {
       expect(t.name).toBeTruthy()
       expect(t.displayName).toBeTruthy()

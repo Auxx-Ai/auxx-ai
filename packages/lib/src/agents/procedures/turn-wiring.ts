@@ -282,13 +282,6 @@ export interface RunProcedureTurnArgs {
   /** Consume one engine drain (`submitMessage`/`continueTurn`), return the reply text. */
   drain: (gen: AsyncGenerator<AgentEvent>) => Promise<string>
   /**
-   * Invoked once (best-effort) when this turn escalated to a human — a routing
-   * `handoff` step or the `handoff_to_human` control tool. The chat caller flips
-   * the thread to the human queue; internal autonomous runs have no human queue
-   * and omit it. The stack is already cleared by the stepper. See §6 reconciliation.
-   */
-  onHandoff?: () => Promise<void> | void
-  /**
    * Optional eval-only transition observer (no-op in production). Threaded into
    * the stepper deps so a Simulation can derive the explicit terminal outcome.
    */
@@ -301,17 +294,27 @@ export interface RunProcedureTurnArgs {
  * `interpretSignal` (read the control signal → mutate the stack), honouring
  * `reinvoke` (same-turn re-drain via {@link AgentEngine.continueTurn}) and
  * `inlineFallback` (one persona-only drain). Returns the final customer-facing
- * reply (last non-empty across all drains) for the caller to deliver.
+ * reply (last non-empty across all drains) for the caller to deliver, plus
+ * `handedOff` — true when this turn escalated to a human via a procedure origin
+ * (an authored routing `handoff` step or the in-stepper `handoff` signal). The
+ * caller flips the thread; the stack is already cleared by the stepper. The
+ * model-tool origin is detected by the caller's shared `drain` instead (it sees
+ * the `handoff` tool call on every path, including a free-form turn where the
+ * stepper never runs), so the caller ORs the two. See plans/chat/v10 handoff-unify.md.
  *
  * The stack + the turn-local active step ride `domainState` (mutated in place — the
  * engine carries the same object forward), so they persist via the caller's normal
  * `updateSessionDomainState`. See plans/chat/v9/phase-4-wiring.md §1.
  */
-export async function runProcedureTurn(args: RunProcedureTurnArgs): Promise<string> {
+export async function runProcedureTurn(
+  args: RunProcedureTurnArgs
+): Promise<{ reply: string; handedOff: boolean }> {
   const { engine, inboundText, procedures, subject, conversation, classifyDeps, buildCtx, drain } =
     args
   const candidates = resolveCandidatesFromCache(procedures)
   // Set by either handoff path; flips the thread to a human once, after the loop.
+  // True only for procedure-origin handoffs (routing step or in-stepper signal).
+  // The model-tool origin is the caller's concern (drain), so we don't track it here.
   let handedOff = false
   // getState() shallow-clones, so `.domainState` is the live object — mutate in place.
   const liveDomainState = () => engine.getState().domainState as Record<string, unknown>
@@ -385,10 +388,7 @@ export async function runProcedureTurn(args: RunProcedureTurnArgs): Promise<stri
   }
 
   writeProcedureSlice(liveDomainState(), stack)
-  // Escalate once, after the loop, so the turn's closing reply is already computed
-  // (the caller still delivers it — flipping the thread doesn't gate this send).
-  if (handedOff) await args.onHandoff?.()
-  return finalReply
+  return { reply: finalReply, handedOff }
 }
 
 /** Build the `ProcedureStepInput` for an inject result (else `undefined` → section drops out). */

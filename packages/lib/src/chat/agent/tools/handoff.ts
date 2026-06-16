@@ -1,27 +1,37 @@
 // packages/lib/src/chat/agent/tools/handoff.ts
 
-import { parseRecordId } from '@auxx/types/resource'
+import { PROC_SIGNAL_KEY } from '../../../agents/procedures/control-tools'
 import type { AgentToolDefinition } from '../../../ai/agent-framework/types'
-import { flipHandoffState } from '../handoff'
 
 /**
- * `chat_handoff` — the escalation mechanism (plans/chat/v5 escalation.md §1).
- * A chat-safe tool the agent calls to hand the conversation to a human: it
- * flips `Thread.handoffState` to `'human'`, after which the phase-3 gate stops
- * firing the agent and the thread sits in the human queue until a teammate
- * replies or hands it back to `'ai'`.
+ * `handoff` — the single escalation tool (plans/chat/v10 handoff-unify.md). The
+ * one tool a chat agent calls to hand the conversation to a human; it replaces
+ * the old two-tool split (`chat_handoff` + the procedure-control `handoff_to_human`).
+ *
+ * It is **pure intent**: `execute()` records a `{kind:'handoff'}` signal into the
+ * turn-local store ({@link PROC_SIGNAL_KEY}) and returns — it does NOT flip the
+ * thread itself. Two consumers pick the intent up after the turn:
+ *
+ *   - **Procedure path:** the stepper's `interpretSignal` reads the signal and
+ *     clears the procedure stack (frame teardown for free), reporting handoff up
+ *     through `runProcedureTurn`.
+ *   - **Any path:** the shared `drain` in the turn processor sees the `handoff`
+ *     `tool-call-started` event (universal backstop — also covers a tool handoff
+ *     on a free-form turn of a procedure agent, where `interpretSignal` never runs).
+ *
+ * Either way the post-turn applier calls `flipHandoffState` exactly once — the
+ * sole flip + event site. Keeping the tool side-effect-free also lets simulations
+ * detect handoff without mocking `flipHandoffState` (no DB write inside an eval).
  *
  * The "when" is authored in the agent persona prompt (v5 dropped structured
- * guidelines); the chat-kind templates seed escalation guidance as prose.
- *
- * No identity requirement — escalation works for anonymous visitors. The
- * `reason` is the agent's own free-text rationale (not a visitor-supplied
- * identifier, so it doesn't bypass the decision-6 scope clamp); it's recorded
- * on the tool call for inbox/audit context.
+ * guidelines); the chat-kind templates seed escalation guidance as prose. No
+ * identity requirement — escalation works for anonymous visitors. The `reason`
+ * is the agent's free-text rationale, read off the tool-call args by the applier
+ * and recorded for inbox/audit context.
  */
-export function createChatHandoffTool(): AgentToolDefinition {
+export function createHandoffTool(): AgentToolDefinition {
   return {
-    name: 'chat_handoff',
+    name: 'handoff',
     displayName: 'Hand off to a teammate',
     toolsetSlug: 'auxx:chat',
     // The escalation path — only meaningful on a visitor chat turn, and safe for
@@ -44,25 +54,12 @@ export function createChatHandoffTool(): AgentToolDefinition {
       additionalProperties: false,
     },
     execute: async (args, ctx) => {
-      // Only meaningful inside a visitor chat run — the subject's `thread`
-      // anchor carries the thread to escalate. Internal/kopilot runs have no
-      // subject (so no thread to hand off).
-      const threadAnchor = ctx.subject?.anchors.thread
-      if (!threadAnchor) {
-        return {
-          success: false,
-          output: {},
-          error: 'chat_handoff is only available in a chat conversation.',
-        }
-      }
+      // Pure intent: record the signal and return. The post-turn applier flips
+      // the thread (it has the threadId); the procedure stepper consumes the
+      // same signal to tear down any active frame. No thread anchor needed —
+      // the tool no longer touches the thread, so it works in evals too.
       const reason = typeof args.reason === 'string' ? args.reason : undefined
-      await flipHandoffState(
-        {
-          threadId: parseRecordId(threadAnchor).entityInstanceId,
-          organizationId: ctx.organizationId,
-        },
-        ctx.db
-      )
+      await ctx.context.write(PROC_SIGNAL_KEY, { kind: 'handoff' })
       return { success: true, output: { handedOff: true, reason } }
     },
   }

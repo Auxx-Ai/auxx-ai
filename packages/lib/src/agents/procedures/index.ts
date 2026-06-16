@@ -27,7 +27,6 @@ export {
   awaitCustomer,
   digress,
   endProcedure,
-  handoffToHuman,
   PROC_SIGNAL_KEY,
   PROCEDURE_CONTROL_TOOLS,
   type ProcedureSignal,

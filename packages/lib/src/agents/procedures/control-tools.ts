@@ -24,6 +24,9 @@ export type ProcedureSignal =
   | { kind: 'advance' }
   | { kind: 'await' }
   | { kind: 'digress'; reason: string }
+  // Written by the unified `handoff` tool (chat/agent/tools/handoff.ts) — there is
+  // no longer a `handoff_to_human` control tool. `interpretSignal` consumes it to
+  // clear the stack; the post-turn applier does the thread flip. See v10 handoff-unify.
   | { kind: 'handoff' }
   | { kind: 'end' }
 
@@ -78,18 +81,6 @@ export const digress: AgentToolDefinition = {
   },
 }
 
-export const handoffToHuman: AgentToolDefinition = {
-  name: 'handoff_to_human',
-  displayName: 'Hand off to a human',
-  category: 'control',
-  description: 'Call to escalate this conversation to a human agent and stop the procedure.',
-  parameters: emptyParams,
-  execute: async (_args, ctx) => {
-    await ctx.context.write(PROC_SIGNAL_KEY, { kind: 'handoff' })
-    return { success: true, output: { signal: 'handoff' } }
-  },
-}
-
 export const endProcedure: AgentToolDefinition = {
   name: 'end_procedure',
   displayName: 'End procedure',
@@ -108,6 +99,5 @@ export const PROCEDURE_CONTROL_TOOLS: AgentToolDefinition[] = [
   advanceProcedure,
   awaitCustomer,
   digress,
-  handoffToHuman,
   endProcedure,
 ]

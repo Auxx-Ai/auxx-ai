@@ -367,6 +367,10 @@ export async function runAgentSimulation(
         engine.interrupt()
         break
       }
+      // Model-tool handoff origin — the universal detector (also covers a tool
+      // handoff on a free-form turn, where the stepper never runs). Mirrors the
+      // production applier in `process-chat-turn`. See v10 handoff-unify.md.
+      if (event.type === 'tool-call-started' && event.name === 'handoff') handedOff = true
       if (event.type === 'assistant-message-finished') {
         // Paragraph-break between text parts: a turn's parts interleave around
         // tool calls, and joining with '' glues independent passages into one
@@ -440,7 +444,7 @@ export async function runAgentSimulation(
 
       let reply = ''
       if (hasProcedures) {
-        reply = await runProcedureTurn({
+        const proc = await runProcedureTurn({
           engine,
           inboundText: turn.text,
           procedures: candidates,
@@ -450,10 +454,10 @@ export async function runAgentSimulation(
           buildCtx,
           drain,
           observer,
-          onHandoff: () => {
-            handedOff = true
-          },
         })
+        reply = proc.reply
+        // Procedure-origin handoff (the model-tool origin is set by `drain`).
+        if (proc.handedOff) handedOff = true
       } else {
         reply = await drain(engine.submitMessage(turn.text, {}))
       }

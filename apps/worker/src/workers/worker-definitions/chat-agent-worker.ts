@@ -52,7 +52,7 @@ export function startChatAgentWorker() {
           { threadId, agentUserId: agent.userId, content: TERMINAL_FAILURE_REPLY }
         )
       }
-      await flipHandoffState({ threadId, organizationId })
+      await flipHandoffState({ threadId, organizationId, source: 'worker_failure' })
     } catch (escalationError) {
       logger.error('Failed to escalate terminally-failed chat turn', {
         threadId,
