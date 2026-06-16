@@ -41,6 +41,27 @@ export async function getCachedResources(orgId: string): Promise<Resource[]> {
 }
 
 /**
+ * Build a synchronous resolver that normalizes the definition part of a
+ * RecordId (a system slug like 'contact', an apiSlug, or a custom-entity cuid)
+ * to the actual `entityDefinitionId` — the value FKs to `EntityDefinition.id`
+ * expect for entity-definition-backed types, and the slug for old static
+ * system types (thread, user, …) that have no `EntityDefinition` row.
+ *
+ * Reads the `resources` cache once; resolve any number of RecordIds against
+ * the returned closure in memory. Unknown keys pass through unchanged.
+ */
+export async function getEntityDefIdResolver(orgId: string): Promise<(slugOrId: string) => string> {
+  const resources = await getCachedResources(orgId)
+  const defIdByKey = new Map<string, string>()
+  for (const r of resources) {
+    defIdByKey.set(r.id, r.entityDefinitionId)
+    if (r.entityType) defIdByKey.set(r.entityType, r.entityDefinitionId)
+    defIdByKey.set(r.apiSlug, r.entityDefinitionId)
+  }
+  return (slugOrId) => defIdByKey.get(slugOrId) ?? slugOrId
+}
+
+/**
  * Get cached fields for a resource by ID.
  */
 export async function getCachedResourceFields(
