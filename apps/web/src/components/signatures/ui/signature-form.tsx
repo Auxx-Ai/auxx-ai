@@ -28,8 +28,8 @@ import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { EditorToolbar } from '~/components/editor/editor-button'
 import { EditorProvider } from '~/components/editor/editor-context'
-import TiptapEditor from '~/components/editor/tiptap-editor'
 import { type SignatureVisibility, useSignatureMutations } from '../hooks'
+import { SignatureBodyEditor } from './signature-body-editor'
 
 /**
  * Form validation schema for signatures (new visibility model)
@@ -155,7 +155,7 @@ export function SignatureForm({ signature, isAdmin = false, onSuccess }: Signatu
                   <EditorToolbar showSend={false} />
                 </div>
                 <div className=''>
-                  <TiptapEditor
+                  <SignatureBodyEditor
                     content={html}
                     onChange={handleEditorChange}
                     placeholder='Design your signature here...'

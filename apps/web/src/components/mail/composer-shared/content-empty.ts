@@ -18,15 +18,11 @@ export const INTERACTIVE_ELEMENT_SELECTORS = `
 `.trim()
 
 /**
- * Check if editor content is effectively empty (no text, only empty paragraphs).
+ * Check if editor content is effectively empty (no text, only empty blocks).
+ * Schema-agnostic: `getText()` ignores markup, so empty paragraphs / headings /
+ * lists all read as empty without an HTML-regex check.
  */
 export function isContentEmpty(editor: Editor | null): boolean {
   if (!editor) return true
-  const plainText = editor.getText()?.trim() ?? ''
-  if (plainText === '') {
-    const html = editor.getHTML()
-    const strippedHtml = html.replace(/<([a-z][a-z0-9]*)\s+[^>]*>/gi, '<$1>').replace(/\s+/g, '')
-    return /^(<p>(<br>)*<\/p>)+$/.test(strippedHtml)
-  }
-  return false
+  return (editor.getText()?.trim() ?? '') === ''
 }

@@ -1,6 +1,7 @@
 // apps/web/src/components/mail/email-editor/types.ts
 
 import type { IdentifierType } from '@auxx/database/types'
+import type { JSONContent } from '@tiptap/core'
 import type React from 'react'
 import type { RouterOutputs } from '~/trpc/react'
 
@@ -54,6 +55,9 @@ export interface DraftMessageType {
   /** Whether to include previous message in reply (user preference, toggleable) */
   includePreviousMessage: boolean
   subject: string
+  /** Canonical Tiptap JSON body (mail content model). Null/absent on legacy or placeholder drafts. */
+  bodyJson?: JSONContent | null
+  /** @deprecated legacy HTML body — kept for non-mail readers; mail uses `bodyJson`. */
   textHtml: string
   textPlain: string
   signatureId: string | null
@@ -131,7 +135,10 @@ export type DraftPayload = {
   /** Whether to include previous message in reply (user preference, toggleable) */
   includePreviousMessage?: boolean
   subject: string
-  textHtml: string
+  /** Canonical Tiptap JSON body. HTML is derived at send time via `editor.getHTML()`. */
+  bodyJson: JSONContent
+  /** Plain-text body (from `editor.getText()`) — drives draft list/thread snippets. */
+  textPlain: string
   signatureId: string | null
   to: Array<{
     identifier: string

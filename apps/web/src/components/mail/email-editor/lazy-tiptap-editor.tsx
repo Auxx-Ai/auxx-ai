@@ -2,14 +2,15 @@
 'use client'
 
 import { cn } from '@auxx/ui/lib/utils'
+import type { JSONContent } from '@tiptap/core'
 import { Loader2 } from 'lucide-react'
 import React, { Suspense } from 'react'
 
 const TiptapEditor = React.lazy(() => import('~/components/editor/tiptap-editor'))
 
 interface LazyTiptapEditorProps {
-  content: string
-  onChange: (html: string) => void
+  content: JSONContent
+  onChange: (json: JSONContent) => void
   placeholder?: string
   editable?: boolean
   className?: string

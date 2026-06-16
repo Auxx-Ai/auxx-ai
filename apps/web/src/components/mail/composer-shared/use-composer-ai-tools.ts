@@ -2,6 +2,7 @@
 'use client'
 
 import { toastError } from '@auxx/ui/components/toast'
+import type { JSONContent } from '@tiptap/core'
 import type { Editor } from '@tiptap/react'
 import { useCallback, useRef } from 'react'
 import { api } from '~/trpc/react'
@@ -24,8 +25,8 @@ interface UseComposerAIToolsOptions {
    * is a Tiptap JSON object for EDITOR output, otherwise an HTML string.
    */
   applyContent: (content: string | object, format: OutputFormat) => void
-  /** Sync React content state after an AI write (editor.getHTML()). */
-  onContentChanged: (html: string) => void
+  /** Sync React content state after an AI write — the editor's canonical JSON. */
+  onContentChanged: (json: JSONContent) => void
   /** Optional analytics hooks — email wires posthog; chat omits. */
   analytics?: {
     onComposeStarted?: () => void
@@ -63,10 +64,11 @@ export function useComposerAITools({
       } else {
         applyContent(`<p>${response.content}</p>`, response.format)
       }
-      // Sync React state — setContent doesn't emit onUpdate by default.
-      const next = editor.getHTML()
-      onContentChanged(next)
-      pushToHistory(next, state.currentOperation)
+      // Sync React state — setContent doesn't emit onUpdate by default. The
+      // canonical content model is JSON; undo/redo history stays HTML (applied
+      // via setContent, which parses either form).
+      onContentChanged(editor.getJSON())
+      pushToHistory(editor.getHTML(), state.currentOperation)
       setProcessing(false)
       setCurrentOperation(null)
       clearError()

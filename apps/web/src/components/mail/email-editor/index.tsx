@@ -8,6 +8,8 @@ import { Button } from '@auxx/ui/components/button'
 import { Separator } from '@auxx/ui/components/separator'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { cn } from '@auxx/ui/lib/utils'
+import { stableStringify } from '@auxx/utils/json'
+import type { JSONContent } from '@tiptap/core'
 import { ArrowDownLeft, ArrowUpRight, Loader2, Mail, Minus, Plus, Trash2, X } from 'lucide-react'
 import type React from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -171,8 +173,8 @@ function ReplyComposeEditorComponent({
     : true
   const showQuotedReply = isEmailChannel
 
-  // Other UI state
-  const [content, setContent] = useState(state.contentHtml)
+  // Other UI state — canonical content model is Tiptap JSON (HTML at send time).
+  const [content, setContent] = useState<JSONContent>(state.contentJson)
   const [showCc, setShowCc] = useState(state.cc.length > 0)
   const [showBcc, setShowBcc] = useState(state.bcc.length > 0)
   const [showSubject, setShowSubject] = useState(true)
@@ -215,7 +217,7 @@ function ReplyComposeEditorComponent({
       })
 
       setState(newState)
-      setContent(newState.contentHtml)
+      setContent(newState.contentJson)
       setRecipients({
         TO: newState.to,
         CC: newState.cc,
@@ -441,7 +443,8 @@ function ReplyComposeEditorComponent({
       inReplyToMessageId: state.sourceMessageId,
       includePreviousMessage: state.includePrev,
       subject: state.subject,
-      textHtml: content,
+      bodyJson: content,
+      textPlain: editor?.getText() ?? '',
       signatureId: state.signatureId,
       to: toPayload(recipients.TO),
       cc: toPayload(recipients.CC),
@@ -450,7 +453,7 @@ function ReplyComposeEditorComponent({
       actions: quickActions.length > 0 ? quickActions : undefined,
       draftId: state.draftId,
     }
-  }, [state, content, recipients, allAttachments, quickActions])
+  }, [state, content, editor, recipients, allAttachments, quickActions])
   const draftAutosave = useDraftAutosave({
     enabled: !isSending && !!state.integrationId,
     payload: draftPayload,
@@ -501,16 +504,16 @@ function ReplyComposeEditorComponent({
         (e, content) => {
           e.commands.setContent(content as Parameters<typeof e.commands.setContent>[0])
         },
-        (content) => (typeof content === 'string' ? content : JSON.stringify(content))
+        (content) => (typeof content === 'string' ? content : stableStringify(content))
       ),
     [editor]
   )
 
   // Handlers
   const handleContentChange = useCallback(
-    (newContent: string) => {
-      setContent((prev) => (prev === newContent ? prev : newContent))
-      contentApplier.markLocalEdit(newContent)
+    (newContent: JSONContent) => {
+      setContent(newContent)
+      contentApplier.markLocalEdit(stableStringify(newContent))
       setIsDraftSaved(false)
     },
     [contentApplier]
@@ -719,7 +722,7 @@ function ReplyComposeEditorComponent({
         integrationId: state.integrationId,
         draftMessageId: state.draftId, // Will be null if no draft was created
         subject: state.subject,
-        textHtml: content,
+        textHtml: editor?.getHTML() ?? '',
         signatureId: state.signatureId,
         to: toPayload(recipients.TO),
         cc: toPayload(recipients.CC),
@@ -737,7 +740,6 @@ function ReplyComposeEditorComponent({
     editor,
     state,
     recipients,
-    content,
     thread?.id,
     sendMessageMutation,
     draftPayload,
@@ -804,7 +806,7 @@ function ReplyComposeEditorComponent({
           integrationId: state.integrationId,
           draftMessageId: state.draftId,
           subject: state.subject,
-          textHtml: content,
+          textHtml: editor?.getHTML() ?? '',
           signatureId: state.signatureId,
           to: toPayload(recipients.TO),
           cc: toPayload(recipients.CC),
@@ -824,7 +826,6 @@ function ReplyComposeEditorComponent({
       editor,
       state,
       recipients,
-      content,
       thread?.id,
       scheduleMessageMutation,
       draftPayload,
