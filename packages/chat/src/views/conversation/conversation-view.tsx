@@ -15,6 +15,7 @@ import {
   THREAD_EVENT_TYPES,
   type ThreadEvent,
   type ThreadEventData,
+  type ThreadEventType,
 } from '~/transport/thread-events'
 import { Bubble, type MessageGroup } from './bubble'
 import { Composer, type ComposerSendArgs } from './composer/composer'
@@ -33,6 +34,7 @@ interface InitState {
   sessionId: string
   pusherChannel: string
   threadPusherChannel: string
+  visitorPusherChannel: string
 }
 
 export function ConversationView({ channelId, threadId, config }: ConversationViewProps) {
@@ -40,6 +42,9 @@ export function ConversationView({ channelId, threadId, config }: ConversationVi
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [threadEvents, setThreadEvents] = useState<ThreadEvent[]>([])
   const [init, setInit] = useState<InitState | null>(null)
+  // Composer lock: a chat thread only accepts new visitor messages while OPEN.
+  // Seeded from initialize/history and flipped live by archived/reopened events.
+  const [closed, setClosed] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [privacyDismissed, setPrivacyDismissed] = useState(() =>
     isPrivacyBannerDismissed(channelId)
@@ -72,6 +77,33 @@ export function ConversationView({ channelId, threadId, config }: ConversationVi
     []
   )
 
+  // Ingest a thread lifecycle event from either the per-thread room or the
+  // (redundant) per-visitor channel. Deduped by event id so double-delivery is
+  // harmless. `archived` / `reopened` also drive the composer lock so a chat
+  // that ends mid-session locks without a reload.
+  const ingestThreadEvent = useCallback(
+    (type: ThreadEventType, payload: { id?: string; createdAt?: string } & ThreadEventData) => {
+      if ((payload as { threadId?: string }).threadId !== threadId) return
+      if (type === 'thread:archived') setClosed(true)
+      else if (type === 'thread:reopened') setClosed(false)
+      setThreadEvents((prev) => {
+        const id =
+          payload.id ?? `${type}:${threadId}:${payload.createdAt ?? new Date().toISOString()}`
+        if (prev.some((e) => e.id === id)) return prev
+        return [
+          ...prev,
+          {
+            id,
+            type,
+            createdAt: payload.createdAt ?? new Date().toISOString(),
+            data: payload as ThreadEventData,
+          },
+        ]
+      })
+    },
+    [threadId]
+  )
+
   // Bootstrap: call initialize so we always have a sessionId + pusherChannel
   // matched to the visitor's current passport. The endpoint resumes when a
   // thread already exists, so this is cheap on re-open.
@@ -90,10 +122,12 @@ export function ConversationView({ channelId, threadId, config }: ConversationVi
           sessionId: data.sessionId,
           pusherChannel: data.pusherChannel,
           threadPusherChannel: data.threadPusherChannel,
+          visitorPusherChannel: data.visitorPusherChannel,
         })
         if (data.threadId === threadId) {
           setMessages(data.messages)
           setThreadEvents(data.threadEvents ?? [])
+          setClosed(data.closed)
         } else {
           // Defensive: the server now honors `resumeThreadId` so this branch
           // shouldn't fire in practice. If it does, surface the error loudly
@@ -105,6 +139,7 @@ export function ConversationView({ channelId, threadId, config }: ConversationVi
               if (cancelled) return
               setMessages(hist.messages)
               setThreadEvents(hist.threadEvents ?? [])
+              setClosed(hist.closed)
             })
             .catch((e) => {
               if (cancelled) return
@@ -186,55 +221,48 @@ export function ConversationView({ channelId, threadId, config }: ConversationVi
     }
   }, [init, threadId, config.realtime.key, config.realtime.cluster])
 
-  // Subscribe to the per-thread private channel for live lifecycle events
-  // (taken_over / returned_to_ai / archived / reopened / …). The server pushes
-  // these via the shared realtime helper; the widget binds the same set of
-  // type names directly as Pusher event keys.
+  // Subscribe to live lifecycle events (taken_over / returned_to_ai /
+  // archived / reopened / …) on BOTH the per-thread room AND the per-visitor
+  // channel. The server fans out to both; the per-thread room is the primary
+  // path while the per-visitor channel is a redundant one that survives a
+  // per-thread subscription hiccup and catches takeovers that fire before this
+  // view (re)subscribes. `ingestThreadEvent` dedupes the double-delivery by id.
   useEffect(() => {
     if (!init) return
-    const channelName = init.threadPusherChannel
-    const expected = `private-thread-${threadId}`
-    if (channelName !== expected) return
-    const conn = connectPrivatePusher({
-      key: config.realtime.key,
-      cluster: config.realtime.cluster,
-      channelName,
-      channelId,
+    const channels = [
+      init.threadPusherChannel === `private-thread-${threadId}` ? init.threadPusherChannel : null,
+      init.visitorPusherChannel,
+    ].filter((c): c is string => !!c)
+
+    const conns = channels.map((channelName) => {
+      const conn = connectPrivatePusher({
+        key: config.realtime.key,
+        cluster: config.realtime.cluster,
+        channelName,
+        channelId,
+      })
+      const handlers = THREAD_EVENT_TYPES.map((type) => {
+        const handler = (payload: { id?: string; createdAt?: string } & ThreadEventData) =>
+          ingestThreadEvent(type, payload)
+        conn.channel.bind(type, handler)
+        return { type, handler }
+      })
+      return { conn, handlers }
     })
-    const handlers = THREAD_EVENT_TYPES.map((type) => {
-      const handler = (payload: { id?: string; createdAt?: string } & ThreadEventData) => {
-        if ((payload as { threadId?: string }).threadId !== threadId) return
-        setThreadEvents((prev) => {
-          // Dedupe by id when the server provides one; fall back to
-          // (type, threadId, createdAt) for transient payloads.
-          const id =
-            payload.id ?? `${type}:${threadId}:${payload.createdAt ?? new Date().toISOString()}`
-          if (prev.some((e) => e.id === id)) return prev
-          return [
-            ...prev,
-            {
-              id,
-              type,
-              createdAt: payload.createdAt ?? new Date().toISOString(),
-              data: payload as ThreadEventData,
-            },
-          ]
-        })
-      }
-      conn.channel.bind(type, handler)
-      return { type, handler }
-    })
+
     return () => {
-      for (const { type, handler } of handlers) {
-        try {
-          conn.channel.unbind(type, handler)
-        } catch {
-          /* ignore */
+      for (const { conn, handlers } of conns) {
+        for (const { type, handler } of handlers) {
+          try {
+            conn.channel.unbind(type, handler)
+          } catch {
+            /* ignore */
+          }
         }
+        conn.disconnect()
       }
-      conn.disconnect()
     }
-  }, [init, threadId, channelId, config.realtime.key, config.realtime.cluster])
+  }, [init, threadId, channelId, config.realtime.key, config.realtime.cluster, ingestThreadEvent])
 
   // Mark read whenever the last message changes.
   useEffect(() => {
@@ -334,7 +362,9 @@ export function ConversationView({ channelId, threadId, config }: ConversationVi
        * for a muted notice. Suggested replies + privacy banner would have
        * nothing to act on so we drop them too. */}
       <div className='auxx-chat-composer-plinth'>
-        {config.isOffline ? (
+        {closed ? (
+          <ClosedNotice />
+        ) : config.isOffline ? (
           <OfflineNotice message={config.appearance.offlineMessage} />
         ) : (
           <>
@@ -362,6 +392,20 @@ export function ConversationView({ channelId, threadId, config }: ConversationVi
           Powered by Auxx
         </div>
       ) : null}
+    </div>
+  )
+}
+
+/**
+ * Replaces the composer once the thread is closed (archived). The provider
+ * rejects inbound messages on a non-OPEN thread, so locking the input here
+ * keeps the visitor from typing into a send that would fail. Flips back to a
+ * live composer if the thread is reopened (`thread:reopened`).
+ */
+function ClosedNotice() {
+  return (
+    <div className='mx-1 mb-1 rounded-md border border-[color:var(--auxx-chat-hairline)] bg-background/60 px-3 py-3 text-center text-xs text-muted-foreground'>
+      This conversation is closed. Start a new chat to keep talking with us.
     </div>
   )
 }

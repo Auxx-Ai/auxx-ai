@@ -573,6 +573,11 @@ function pickHeaderVariant(view: NavView, isAtRoot: boolean): FrameHeaderVariant
 }
 
 function headerTitle(view: NavView, frame: NavFrame | null, config: ChatConfig): string {
+  // The conversation header answers "who am I talking to?" — always the agent
+  // name, regardless of how the thread was opened (Home passed the thread
+  // subject like "Chat #2892", Messages passed the agent name). KB frames keep
+  // their own pushed label (article/section title).
+  if (frame?.view === 'thread') return config.agent?.name ?? 'Support'
   if (frame) return frame.label
   if (view === 'home') return config.appearance.title
   if (view === 'messages') return 'Messages'

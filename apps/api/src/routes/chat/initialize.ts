@@ -234,6 +234,10 @@ initializeRoute.post('/', async (c) => {
         threadId: thread.id,
         visitorId: chat.sessionId,
         isNewSession: isNew,
+        // A chat thread accepts new visitor messages only while OPEN — the
+        // provider rejects inbound on any other status. Surface that so the
+        // widget can lock the composer instead of letting a send fail opaquely.
+        closed: thread.status !== 'OPEN',
         messages,
         nextCursor,
         threadEvents,

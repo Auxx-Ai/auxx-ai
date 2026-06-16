@@ -25,6 +25,7 @@ import { buildChatEngineConfig } from './build-chat-engine-config'
 import { buildChatSubjectFromPassport } from './build-chat-subject'
 import type { ChatTurnJobPayload } from './enqueue-chat-turn'
 import { flipHandoffState } from './handoff'
+import { withChatRunLog } from './run-log'
 
 const logger = createScopedLogger('process-chat-turn')
 
@@ -32,8 +33,20 @@ const logger = createScopedLogger('process-chat-turn')
  * Worker handler for one visitor chat turn (plans/chat/v5 phase-3b §3). Mirrors
  * `processAgentMessage`, swapping in the per-thread chat session + a Pusher
  * reply sink. Runs on the dedicated `chat-agent` queue.
+ *
+ * Dev only: tees the turn's chat/agent logs to a per-thread file under
+ * `.logs/chat-sessions/`. Gated on `!== 'production'` so the worker dev script
+ * (which doesn't set NODE_ENV) still gets traces — same convention as
+ * `process-agent-job`.
  */
 export async function processChatTurn(ctx: JobContext<ChatTurnJobPayload>): Promise<void> {
+  if (process.env.NODE_ENV !== 'production') {
+    return withChatRunLog(ctx.data.threadId, () => processChatTurnInternal(ctx))
+  }
+  return processChatTurnInternal(ctx)
+}
+
+async function processChatTurnInternal(ctx: JobContext<ChatTurnJobPayload>): Promise<void> {
   const { data, signal } = ctx
   const {
     organizationId,
