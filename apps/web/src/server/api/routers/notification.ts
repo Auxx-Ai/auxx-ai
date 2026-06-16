@@ -67,7 +67,10 @@ export const notificationRouter = createTRPCRouter({
       try {
         const notificationService = new NotificationService(ctx.db)
         const { userId } = ctx.session
-        const updatedCount = await notificationService.markAsRead(userId, input.notificationIds)
+        const excludeSocketId = ctx.headers.get('x-realtime-socket-id') ?? undefined
+        const updatedCount = await notificationService.markAsRead(userId, input.notificationIds, {
+          excludeSocketId,
+        })
         return { success: true, count: updatedCount }
       } catch (error) {
         logger.error('Error marking notifications as read', { error, input })
@@ -82,7 +85,8 @@ export const notificationRouter = createTRPCRouter({
     try {
       const notificationService = new NotificationService(ctx.db)
       const { userId } = ctx.session
-      const updatedCount = await notificationService.markAllAsRead(userId)
+      const excludeSocketId = ctx.headers.get('x-realtime-socket-id') ?? undefined
+      const updatedCount = await notificationService.markAllAsRead(userId, { excludeSocketId })
       return { success: true, count: updatedCount }
     } catch (error) {
       logger.error('Error marking all notifications as read', { error })
@@ -99,9 +103,11 @@ export const notificationRouter = createTRPCRouter({
       try {
         const notificationService = new NotificationService(ctx.db)
         const { userId } = ctx.session
+        const excludeSocketId = ctx.headers.get('x-realtime-socket-id') ?? undefined
         const deletedCount = await notificationService.deleteNotifications(
           userId,
-          input.notificationIds
+          input.notificationIds,
+          { excludeSocketId }
         )
         return { success: true, count: deletedCount }
       } catch (error) {

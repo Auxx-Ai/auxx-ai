@@ -15,6 +15,7 @@ import {
 import { EntityIcon } from '@auxx/ui/components/icons'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { RadioTab, RadioTabItem } from '@auxx/ui/components/radio-tab'
+import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { SidebarMenuBadge, SidebarMenuButton, SidebarMenuItem } from '@auxx/ui/components/sidebar'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
@@ -23,9 +24,10 @@ import { formatDistanceToNow } from 'date-fns'
 import { Bell, Check, Mail as MailIcon, Play, Trash } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 // components/notifications/notification-center.tsx
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { HumanConfirmationDialog } from '~/components/workflow/dialogs/human-confirmation-dialog'
 import { useIsMobile } from '~/hooks/use-mobile'
+import { useUser } from '~/hooks/use-user'
 import { useRealtimeRoom } from '~/realtime/hooks'
 import { api } from '~/trpc/react'
 
@@ -108,22 +110,12 @@ const NotificationItem = ({
       )}
       onClick={handleClick}>
       {/* Header bar */}
-      <div className='flex h-9 items-center px-2 text-xs font-medium text-muted-foreground bg-primary-150/50 rounded-t-lg'>
-        <EntityIcon {...iconConfig} size='sm' className='mr-1.5' />
-        <span className='grow truncate'>{formatNotificationType(type)}</span>
-        {!isRead && <span className='size-2 rounded-full bg-blue-500 shrink-0' />}
-      </div>
-
-      {/* Body */}
-      <div className='px-3 py-2 border-t-[0.5px] border-border'>
-        <p className='text-sm'>{message}</p>
-      </div>
-
-      {/* Footer */}
-      <div className='flex items-center px-3 py-1.5 border-t-[0.5px] border-border rounded-b-lg'>
+      <div className='flex h-9 items-center gap-1.5 px-2 text-xs font-medium text-muted-foreground bg-primary-150/50 rounded-t-lg'>
+        <EntityIcon {...iconConfig} size='sm' />
+        <span className='truncate'>{formatNotificationType(type)}</span>
         {actor && (
-          <div className='mr-2 flex items-center'>
-            <Avatar className='mr-1 size-4'>
+          <div className='flex min-w-0 items-center gap-1'>
+            <Avatar className='size-4'>
               {actor.image ? (
                 <AvatarImage src={actor.image} alt={actor.name || ''} />
               ) : (
@@ -132,12 +124,13 @@ const NotificationItem = ({
                 </AvatarFallback>
               )}
             </Avatar>
-            <span className='text-xs text-muted-foreground'>{actor.name}</span>
+            <span className='truncate'>{actor.name}</span>
           </div>
         )}
-        <span className='text-xs text-muted-foreground grow'>
+        <span className='ml-auto shrink-0 font-normal'>
           {formatDistanceToNow(new Date(createdAt), { addSuffix: true })}
         </span>
+        {!isRead && <span className='size-2 rounded-full bg-blue-500 shrink-0' />}
         <Button
           variant='ghost'
           size='icon-sm'
@@ -149,22 +142,24 @@ const NotificationItem = ({
           <Trash />
         </Button>
       </div>
+
+      {/* Body */}
+      <div className='px-3 py-2 border-t-[0.5px] border-border rounded-b-lg'>
+        <p className='text-sm'>{message}</p>
+      </div>
     </div>
   )
 }
 // Loading skeleton for notifications
 const NotificationSkeleton = () => (
   <div className='mx-2 mb-2 rounded-lg border-[0.5px] border-border bg-secondary/20 shadow-xs'>
-    <div className='flex h-9 items-center px-2 bg-primary-150/50 rounded-t-lg'>
-      <Skeleton className='size-4 rounded-full mr-1.5' />
+    <div className='flex h-9 items-center gap-1.5 px-2 bg-primary-150/50 rounded-t-lg'>
+      <Skeleton className='size-4 rounded-full' />
       <Skeleton className='h-3 w-24' />
+      <Skeleton className='ml-auto h-3 w-16' />
     </div>
-    <div className='px-3 py-2 border-t-[0.5px] border-border'>
+    <div className='px-3 py-2 border-t-[0.5px] border-border rounded-b-lg'>
       <Skeleton className='h-4 w-full' />
-    </div>
-    <div className='flex items-center px-3 py-1.5 border-t-[0.5px] border-border'>
-      <Skeleton className='size-4 rounded-full mr-1' />
-      <Skeleton className='h-3 w-20' />
     </div>
   </div>
 )
@@ -262,26 +257,49 @@ export const NotificationCenter = () => {
   }, [])
   const isMobile = useIsMobile()
 
+  // Briefly pulse the badge whenever the unread count ticks up (a new
+  // notification landed via realtime). Only on increase — marking read or
+  // deleting shouldn't animate.
+  const unreadCount = unreadData?.count ?? 0
+  const prevUnreadRef = useRef(unreadCount)
+  const [badgePulse, setBadgePulse] = useState(false)
+  useEffect(() => {
+    if (unreadCount > prevUnreadRef.current) {
+      setBadgePulse(true)
+      const timer = setTimeout(() => setBadgePulse(false), 500)
+      prevUnreadRef.current = unreadCount
+      return () => clearTimeout(timer)
+    }
+    prevUnreadRef.current = unreadCount
+  }, [unreadCount])
+
   const trigger = (
     <SidebarMenuItem>
       <SidebarMenuButton tooltip='Notifications'>
         <Bell />
         <span>Notifications</span>
       </SidebarMenuButton>
-      {unreadData?.count && unreadData.count > 0 ? (
-        <SidebarMenuBadge>{unreadData.count > 99 ? '99+' : unreadData.count}</SidebarMenuBadge>
+      {unreadCount > 0 ? (
+        <SidebarMenuBadge
+          className={cn(
+            'transition-colors',
+            badgePulse && 'animate-in zoom-in-50 duration-300 text-blue-500'
+          )}>
+          {unreadCount > 99 ? '99+' : unreadCount}
+        </SidebarMenuBadge>
       ) : null}
     </SidebarMenuItem>
   )
 
   const notificationContent = (
     <>
-      <div className='flex items-center justify-between px-3 py-2 border-b sticky top-0 backdrop-blur-sm dark:bg-black/40 bg-white/40 z-1'>
+      <div className='flex flex-wrap items-center gap-2 px-3 py-2 border-b sticky top-0 backdrop-blur-sm dark:bg-black/40 bg-white/40 z-1'>
         <div className='font-medium text-sm'>Notifications</div>
         {unreadData && unreadData?.count > 0 && (
           <Button
             variant='ghost'
             size='sm'
+            className='ml-auto'
             onClick={handleMarkAllAsRead}
             loading={markAllAsRead.isPending || isLoading}
             loadingText='Marking...'
@@ -290,15 +308,12 @@ export const NotificationCenter = () => {
             Mark all read
           </Button>
         )}
-      </div>
-
-      <div className='p-2 pt-3 '>
         <RadioTab
           value={mode}
           onValueChange={setMode}
           size='sm'
-          radioGroupClassName='grid w-full'
-          className='border border-primary-200 flex flex-1 w-full'>
+          radioGroupClassName='grid w-full sm:w-auto'
+          className='order-last w-full sm:order-none sm:ml-auto sm:w-auto border border-primary-200'>
           <RadioTabItem value='all' size='sm'>
             <MailIcon />
             All
@@ -317,11 +332,14 @@ export const NotificationCenter = () => {
 
       <div className='flex flex-col m-0 flex-1'>
         {isLoading ? (
-          <div className='h-[320px] overflow-y-auto py-2'>
+          <ScrollArea
+            className='h-[320px]'
+            viewportClassName='py-2 pb-6 pr-2'
+            scrollbarClassName='w-1'>
             <NotificationSkeleton />
             <NotificationSkeleton />
             <NotificationSkeleton />
-          </div>
+          </ScrollArea>
         ) : mode === 'all' ? (
           data?.notifications.length === 0 ? (
             <div className='h-[320px] flex items-center justify-center'>
@@ -336,7 +354,10 @@ export const NotificationCenter = () => {
               </Empty>
             </div>
           ) : (
-            <div className='h-[320px] overflow-y-auto py-2'>
+            <ScrollArea
+              className='h-[320px]'
+              viewportClassName='py-2 pb-6 pr-2'
+              scrollbarClassName='w-1'>
               {data?.notifications.map((notification) => (
                 <NotificationItem
                   key={notification.id!}
@@ -346,7 +367,7 @@ export const NotificationCenter = () => {
                   onOpenApprovalDialog={openHumanConfirmationDialog}
                 />
               ))}
-            </div>
+            </ScrollArea>
           )
         ) : mode === 'unread' ? (
           data?.notifications.filter((n) => !n.isRead).length === 0 ? (
@@ -362,7 +383,10 @@ export const NotificationCenter = () => {
               </Empty>
             </div>
           ) : (
-            <div className='h-[320px] overflow-y-auto py-2'>
+            <ScrollArea
+              className='h-[320px]'
+              viewportClassName='py-2 pb-6 pr-2'
+              scrollbarClassName='w-1'>
               {data?.notifications
                 .filter((notification) => !notification.isRead)
                 .map((notification) => (
@@ -374,7 +398,7 @@ export const NotificationCenter = () => {
                     onOpenApprovalDialog={openHumanConfirmationDialog}
                   />
                 ))}
-            </div>
+            </ScrollArea>
           )
         ) : null}
 
@@ -427,13 +451,37 @@ export const NotificationCenter = () => {
 }
 export function useNotificationSubscription(userId: string) {
   const utils = api.useUtils()
+  const { organizationId } = useUser()
   // Rides the shared realtime adapter (one multiplexed socket) instead of
   // opening its own Pusher connection.
   useRealtimeRoom(userId ? rooms.user(userId) : null, {
-    onEvent: (event) => {
-      if (event !== 'notification') return
-      utils.notification.getNotifications.invalidate()
-      utils.notification.getUnreadCount.invalidate()
+    onEvent: (event, payload) => {
+      switch (event) {
+        case 'notification': {
+          // The unread badge is org-scoped (getUnreadCount filters by the
+          // active org), so only bump the count when the new notification
+          // belongs to the org currently in view. Optimistic increment keeps
+          // the badge ticking even while the popover is closed — no roundtrip.
+          const orgId = (payload as { organizationId?: string } | undefined)?.organizationId
+          if (!orgId || !organizationId || orgId === organizationId) {
+            utils.notification.getUnreadCount.setData(undefined, (prev) => ({
+              count: (prev?.count ?? 0) + 1,
+            }))
+          }
+          // The dropdown list spans all orgs and only fetches while open, so
+          // invalidate is a no-op when closed and refetches fresh (with the
+          // actor join) when open.
+          utils.notification.getNotifications.invalidate()
+          break
+        }
+        case 'notification:read':
+        case 'notification:deleted': {
+          // Another tab/device marked read or deleted — reconcile from server.
+          utils.notification.getUnreadCount.invalidate()
+          utils.notification.getNotifications.invalidate()
+          break
+        }
+      }
     },
   })
 }

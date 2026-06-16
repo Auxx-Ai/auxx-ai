@@ -152,9 +152,17 @@ export class NotificationService {
     }
   }
   /**
-   * Mark notifications as read
+   * Mark notifications as read.
+   *
+   * Publishes a `notification:read` event to the user's room so other open
+   * tabs/devices reconcile their unread badge + list. `excludeSocketId` skips
+   * the originating tab (which already updates via its mutation).
    */
-  async markAsRead(userId: string, notificationIds: string[]): Promise<number> {
+  async markAsRead(
+    userId: string,
+    notificationIds: string[],
+    options?: { excludeSocketId?: string }
+  ): Promise<number> {
     try {
       const toUpdate = await this.database
         .select({ id: schema.Notification.id })
@@ -166,15 +174,12 @@ export class NotificationService {
           )
         )
       if (!toUpdate.length) return 0
+      const ids = toUpdate.map((r) => r.id)
       await this.database
         .update(schema.Notification)
         .set({ isRead: true as any, readAt: new Date() })
-        .where(
-          inArray(
-            schema.Notification.id,
-            toUpdate.map((r) => r.id)
-          )
-        )
+        .where(inArray(schema.Notification.id, ids))
+      await this.publishUserEvent(userId, 'notification:read', { ids }, options?.excludeSocketId)
       return toUpdate.length
     } catch (error) {
       logger.error('Failed to mark notifications as read', { error, userId, notificationIds })
@@ -182,9 +187,10 @@ export class NotificationService {
     }
   }
   /**
-   * Mark all notifications as read for a user
+   * Mark all notifications as read for a user. Publishes `notification:read`
+   * with the affected ids for cross-tab reconciliation.
    */
-  async markAllAsRead(userId: string): Promise<number> {
+  async markAllAsRead(userId: string, options?: { excludeSocketId?: string }): Promise<number> {
     try {
       const toUpdate = await this.database
         .select({ id: schema.Notification.id })
@@ -193,15 +199,12 @@ export class NotificationService {
           and(eq(schema.Notification.userId, userId), eq(schema.Notification.isRead, false as any))
         )
       if (!toUpdate.length) return 0
+      const ids = toUpdate.map((r) => r.id)
       await this.database
         .update(schema.Notification)
         .set({ isRead: true as any, readAt: new Date() })
-        .where(
-          inArray(
-            schema.Notification.id,
-            toUpdate.map((r) => r.id)
-          )
-        )
+        .where(inArray(schema.Notification.id, ids))
+      await this.publishUserEvent(userId, 'notification:read', { ids }, options?.excludeSocketId)
       return toUpdate.length
     } catch (error) {
       logger.error('Failed to mark all notifications as read', { error, userId })
@@ -231,7 +234,11 @@ export class NotificationService {
   /**
    * Delete notifications
    */
-  async deleteNotifications(userId: string, notificationIds: string[]): Promise<number> {
+  async deleteNotifications(
+    userId: string,
+    notificationIds: string[],
+    options?: { excludeSocketId?: string }
+  ): Promise<number> {
     try {
       const toDelete = await this.database
         .select({ id: schema.Notification.id })
@@ -243,16 +250,35 @@ export class NotificationService {
           )
         )
       if (!toDelete.length) return 0
-      await this.database.delete(schema.Notification).where(
-        inArray(
-          schema.Notification.id,
-          toDelete.map((r) => r.id)
-        )
-      )
+      const ids = toDelete.map((r) => r.id)
+      await this.database.delete(schema.Notification).where(inArray(schema.Notification.id, ids))
+      await this.publishUserEvent(userId, 'notification:deleted', { ids }, options?.excludeSocketId)
       return toDelete.length
     } catch (error) {
       logger.error('Failed to delete notifications', { error, userId, notificationIds })
       throw error
+    }
+  }
+  /**
+   * Fan a notification lifecycle event out to the user's private room. Best
+   * effort — a realtime failure must never fail the underlying DB mutation.
+   */
+  private async publishUserEvent(
+    userId: string,
+    event: string,
+    data: unknown,
+    excludeSocketId?: string
+  ): Promise<void> {
+    if (!this.realTimeService) return
+    try {
+      await this.realTimeService.publish(
+        rooms.user(userId),
+        event,
+        data,
+        excludeSocketId ? { excludeSocketId } : undefined
+      )
+    } catch (error) {
+      logger.warn('Failed to publish notification event', { event, userId, error })
     }
   }
   /**

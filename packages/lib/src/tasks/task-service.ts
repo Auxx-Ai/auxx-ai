@@ -7,6 +7,7 @@ import type { RecordId } from '@auxx/types/resource'
 import type { Deadline, RelativeDate } from '@auxx/types/task'
 import { TRPCError } from '@trpc/server'
 import { and, eq, gte, ilike, inArray, isNull, lt, lte, sql } from 'drizzle-orm'
+import { getEntityDefIdResolver } from '../cache'
 import { parseRecordId, toRecordId } from '../field-values/relationship-field'
 import { hasDefinedProps, pickDefined } from '../utils/pick-defined'
 import type {
@@ -149,6 +150,7 @@ export class TaskService {
 
       // Create references if provided
       if (referencedEntities && referencedEntities.length > 0) {
+        const resolveDefId = await getEntityDefIdResolver(organizationId)
         await tx.insert(schema.TaskReference).values(
           referencedEntities.map((recordId) => {
             const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
@@ -156,7 +158,7 @@ export class TaskService {
               organizationId,
               taskId: task.id,
               referencedEntityInstanceId: entityInstanceId,
-              referencedEntityDefinitionId: entityDefinitionId,
+              referencedEntityDefinitionId: resolveDefId(entityDefinitionId),
               createdById: userId,
             }
           })
@@ -452,12 +454,13 @@ export class TaskService {
     // Add new references (filter by entity instance ID not in current)
     const toAdd = parsedEntities.filter((e) => !currentRefIds.has(e.entityInstanceId))
     if (toAdd.length > 0) {
+      const resolveDefId = await getEntityDefIdResolver(organizationId)
       await tx.insert(schema.TaskReference).values(
         toAdd.map((parsed) => ({
           organizationId,
           taskId,
           referencedEntityInstanceId: parsed.entityInstanceId,
-          referencedEntityDefinitionId: parsed.entityDefinitionId,
+          referencedEntityDefinitionId: resolveDefId(parsed.entityDefinitionId),
           createdById: userId,
         }))
       )
@@ -566,13 +569,15 @@ export class TaskService {
     // Filter by entity reference if needed
     if (recordId) {
       const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
+      const resolveDefId = await getEntityDefIdResolver(organizationId)
+      const referencedEntityDefinitionId = resolveDefId(entityDefinitionId)
       const taskIds = filteredTasks.map((t) => t.id)
       const references = await this.db.query.TaskReference.findMany({
         where: (r, { and, inArray, eq, isNull }) =>
           and(
             inArray(r.taskId, taskIds),
             eq(r.referencedEntityInstanceId, entityInstanceId),
-            eq(r.referencedEntityDefinitionId, entityDefinitionId),
+            eq(r.referencedEntityDefinitionId, referencedEntityDefinitionId),
             isNull(r.deletedAt)
           ),
       })
