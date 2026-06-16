@@ -30,6 +30,7 @@ import {
   sendTrialConversionEmailsJob,
   shopifyBillingSyncJob,
   shopifySeatUsageJob,
+  stalePendingMessageSweeperJob,
   storageCleanupJob,
   stripeSubscriptionSyncJob,
   taskDeadlineScannerJob,
@@ -158,6 +159,10 @@ const jobMappings = {
 
   // Agent draft cleanup (daily; archives stale builder drafts with no chat)
   agentDraftCleanupJob,
+
+  // Stale PENDING message sweeper (every 5 min; flips outbound rows stranded in
+  // PENDING by a mid-send process death to FAILED so they're retryable)
+  stalePendingMessageSweeperJob,
 
   // App KV storage TTL sweep (hourly; lazy expiry on read makes cadence non-critical)
   appStorageSweepJob,

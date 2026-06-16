@@ -17,8 +17,25 @@ import type {
 import { type SlashContentHandle, SlashList } from '~/components/editor/slash-commands/slash-list'
 import { useCmdkRemote } from '~/components/pickers/use-cmdk-remote'
 import { api } from '~/trpc/react'
+import { AI_LANG_TYPE, AI_OPERATION, AI_TONE_TYPE, type AIOperation } from '~/types/ai-tools'
+import { isBodyEmptyIgnoringChips } from '../composer-shared/content-empty'
 
 type Range = { from: number; to: number }
+
+/**
+ * Optional AI-tools wiring for the `/` menu's "Ask AI" drill-in. When absent,
+ * the "Ask AI" item simply doesn't render — keeps `MailSlashContent` usable by
+ * any chip-pipeline consumer without forcing AI wiring. Email and chat pass
+ * `handleAIOperation` from `useComposerAITools`. Note: `hasContent` is computed
+ * inside the component (chip-aware) rather than passed in — the open `/` chip
+ * would otherwise pollute a consumer-side content check (see `bodyHasContent`).
+ */
+export interface MailAiSlashConfig {
+  /** Runs the shared AI entrypoint. Mirrors the toolbar `onOperation` contract. */
+  onRunAI: (operation: AIOperation, options?: { tone?: string; language?: string }) => void
+  /** Compose requires a thread to reply to. Gates the empty-body "Ask AI" item. */
+  hasPreviousMessages: boolean
+}
 
 /**
  * Props for the mail composer's `/` content. Mirrors the chip-driven
@@ -44,6 +61,8 @@ export interface MailSlashContentProps {
   onScopeChange: (scope: string | null) => void
   /** Close the chip (keeps the typed text, mirroring `@`). */
   onClose: () => void
+  /** Optional AI-tools wiring — when present, adds the "Ask AI" drill-in item. */
+  aiSlash?: MailAiSlashConfig
 }
 
 // --- Curated mail block commands (StarterKit executors) -------------------
@@ -130,10 +149,75 @@ const TOOL_COMMANDS: SlashCommandItem[] = [
   },
 ]
 
-interface SnippetNavItem {
+// --- AI "Ask AI" drill items -----------------------------------------------
+// AI ops don't insert at the chip range — they rewrite the whole body async.
+// The leaf `onSelect` strips the chip then calls `onRunAI` (see `runAI` below).
+
+const AI_ROOT_COMMAND: SlashCommandItem = {
+  id: 'ask-ai',
+  title: 'Ask AI',
+  description: 'Compose or rewrite with AI',
+  keywords: ['ai', 'compose', 'rewrite', 'grammar', 'tone', 'translate', 'expand', 'shorten'],
+  iconId: 'sparkles',
+  drillDown: true,
+}
+
+// Shown when the body is empty (compose a fresh reply).
+const AI_COMPOSE_ITEMS: SlashCommandItem[] = [
+  {
+    id: 'ai-compose',
+    title: 'Compose',
+    description: 'Draft a reply from the conversation',
+    keywords: ['write', 'draft', 'generate'],
+    iconId: 'sparkles',
+  },
+]
+
+// Shown when the body has content (transform the existing draft).
+const AI_TRANSFORM_ITEMS: SlashCommandItem[] = [
+  {
+    id: 'ai-fix-grammar',
+    title: 'Fix grammar',
+    description: 'Correct spelling and grammar',
+    keywords: ['spelling', 'grammar', 'proofread'],
+    iconId: 'check-circle',
+  },
+  {
+    id: 'ai-expand',
+    title: 'Expand',
+    description: 'Make it longer',
+    keywords: ['longer', 'elaborate', 'lengthen'],
+    iconId: 'arrows-up-down',
+  },
+  {
+    id: 'ai-shorten',
+    title: 'Shorten',
+    description: 'Make it more concise',
+    keywords: ['shorter', 'concise', 'trim'],
+    iconId: 'chevrons-up-down',
+  },
+  {
+    id: 'ai-tone',
+    title: 'Tone',
+    description: 'Rewrite in a different tone',
+    keywords: ['voice', 'style', 'professional', 'friendly'],
+    iconId: 'pen-tool',
+    drillDown: true,
+  },
+  {
+    id: 'ai-translate',
+    title: 'Translate',
+    description: 'Translate to another language',
+    keywords: ['language', 'localize'],
+    iconId: 'globe',
+    drillDown: true,
+  },
+]
+
+type NavItem = {
   id: string
   label: string
-  type: 'snippets' | 'folder'
+  type: 'snippets' | 'folder' | 'ai' | 'ai-tone' | 'ai-translate'
 }
 
 // Snippet-mode rows reuse `SlashCommandItem` plus a `kind` tag so the section's
@@ -180,7 +264,7 @@ export function MailSlashContent(props: MailSlashContentProps) {
   }
 
   return (
-    <CommandNavigation<SnippetNavItem>>
+    <CommandNavigation<NavItem>>
       <MailSlashContentInner
         {...props}
         onEnterPlaceholderMode={() => {
@@ -195,14 +279,18 @@ export function MailSlashContent(props: MailSlashContentProps) {
 function MailSlashContentInner({
   ref,
   query,
+  editor,
   onExecute,
   onScopeChange,
   onEnterPlaceholderMode,
+  aiSlash,
 }: MailSlashContentProps & { onEnterPlaceholderMode: () => void }) {
-  const { push, pop, isAtRoot, current, stack } = useCommandNavigation<SnippetNavItem>()
+  const { push, pop, isAtRoot, current, stack } = useCommandNavigation<NavItem>()
   const containerRef = useRef<HTMLDivElement>(null)
 
-  const isInSnippets = stack.length > 0
+  const isInSnippets = current?.type === 'snippets' || current?.type === 'folder'
+  const isInAi =
+    current?.type === 'ai' || current?.type === 'ai-tone' || current?.type === 'ai-translate'
   const currentFolderId = current?.type === 'folder' ? current.id : null
 
   const remote = useCmdkRemote(containerRef, `${stack.map((s) => s.id).join('/')}:${query}`)
@@ -273,6 +361,37 @@ function MailSlashContentInner({
     [push, onScopeChange]
   )
 
+  // AI ops rewrite the whole body async — they don't insert at the chip range.
+  // Step 1: strip the typed "/ai…" chip (deleting the range closes the picker).
+  // Step 2: run AI on the now-clean doc (the existing processing UI takes over).
+  const runAI = useCallback(
+    (operation: AIOperation, options?: { tone?: string; language?: string }) => {
+      if (!aiSlash) return
+      onExecute((editor, range) => editor.chain().focus().deleteRange(range).run())
+      aiSlash.onRunAI(operation, options)
+    },
+    [aiSlash, onExecute]
+  )
+
+  const enterAiScope = useCallback(
+    (type: 'ai' | 'ai-tone' | 'ai-translate', label: string) => {
+      push({ id: type, label, type })
+      onScopeChange(label)
+    },
+    [push, onScopeChange]
+  )
+
+  // Whether the body has real content — measured *ignoring the open `/` chip*.
+  // The chip seeds a ZWSP + holds the in-progress query, both of which would
+  // otherwise read as content and wrongly flip us to the transform ops on an
+  // empty body. Recomputed as the query changes (the chip text mutates).
+  // biome-ignore lint/correctness/useExhaustiveDependencies: query drives chip text changes
+  const bodyHasContent = useMemo(() => !isBodyEmptyIgnoringChips(editor ?? null), [editor, query])
+
+  // Empty body + no thread to reply to → the AI submenu would be empty, so hide
+  // the root item entirely rather than drill into a dead list (plan §7).
+  const showAskAI = !!aiSlash && (bodyHasContent || aiSlash.hasPreviousMessages)
+
   const insertSnippet = useCallback(
     (snippetId: string) => {
       const snippet = allSnippets.find((s) => s.id === snippetId)
@@ -294,6 +413,10 @@ function MailSlashContentInner({
 
   const handleSuggestionSelect = useCallback(
     (item: SlashCommandItem) => {
+      if (item.id === 'ask-ai') {
+        enterAiScope('ai', 'Ask AI')
+        return
+      }
       if (item.id === 'snippet') {
         enterSnippetsDrillDown()
         return
@@ -305,10 +428,68 @@ function MailSlashContentInner({
       const cmd = MAIL_BLOCK_COMMANDS.find((c) => c.id === item.id)
       if (cmd) onExecute(cmd.run)
     },
-    [enterSnippetsDrillDown, onEnterPlaceholderMode, onExecute]
+    [enterAiScope, enterSnippetsDrillDown, onEnterPlaceholderMode, onExecute]
+  )
+
+  // Dispatch for the AI ops list (root of the "Ask AI" drill).
+  const handleAiOpSelect = useCallback(
+    (item: SlashCommandItem) => {
+      switch (item.id) {
+        case 'ai-compose':
+          runAI(AI_OPERATION.COMPOSE)
+          break
+        case 'ai-fix-grammar':
+          runAI(AI_OPERATION.FIX_GRAMMAR)
+          break
+        case 'ai-expand':
+          runAI(AI_OPERATION.EXPAND)
+          break
+        case 'ai-shorten':
+          runAI(AI_OPERATION.SHORTEN)
+          break
+        case 'ai-tone':
+          enterAiScope('ai-tone', 'Tone')
+          break
+        case 'ai-translate':
+          enterAiScope('ai-translate', 'Translate')
+          break
+      }
+    },
+    [runAI, enterAiScope]
   )
 
   const sections: SlashCommandSection<SlashCommandItem>[] = useMemo(() => {
+    if (current?.type === 'ai') {
+      return [
+        {
+          id: 'ai-ops',
+          heading: 'Ask AI',
+          items: bodyHasContent ? AI_TRANSFORM_ITEMS : AI_COMPOSE_ITEMS,
+          onSelect: handleAiOpSelect,
+        },
+      ]
+    }
+    if (current?.type === 'ai-tone') {
+      return [
+        {
+          id: 'ai-tone',
+          heading: 'Tone',
+          items: Object.values(AI_TONE_TYPE).map((tone) => ({ id: tone, title: tone })),
+          onSelect: (item) => runAI(AI_OPERATION.TONE, { tone: item.id }),
+        },
+      ]
+    }
+    if (current?.type === 'ai-translate') {
+      return [
+        {
+          id: 'ai-translate',
+          heading: 'Translate',
+          items: Object.values(AI_LANG_TYPE).map((language) => ({ id: language, title: language })),
+          onSelect: (item) => runAI(AI_OPERATION.TRANSLATE, { language: item.id }),
+        },
+      ]
+    }
+
     if (isInSnippets) {
       const snippetItems: SnippetItem[] = [
         ...currentFolders.map<SnippetItem>((f) => ({
@@ -356,7 +537,7 @@ function MailSlashContentInner({
     const suggestionsSection: SlashCommandSection<SlashCommandItem> = {
       id: 'suggestions',
       heading: 'Suggestions',
-      items: [...TOOL_COMMANDS, ...MAIL_BLOCK_COMMANDS],
+      items: [...(showAskAI ? [AI_ROOT_COMMAND] : []), ...TOOL_COMMANDS, ...MAIL_BLOCK_COMMANDS],
       onSelect: handleSuggestionSelect,
     }
 
@@ -393,6 +574,10 @@ function MailSlashContentInner({
     rootSnippetResults,
     enterFolder,
     insertSnippet,
+    bodyHasContent,
+    showAskAI,
+    handleAiOpSelect,
+    runAI,
   ])
 
   return (
@@ -401,7 +586,9 @@ function MailSlashContentInner({
         query={query}
         sections={sections}
         header={<CommandBreadcrumb rootLabel='Commands' />}
-        emptyMessage={isInSnippets ? 'No snippets found.' : 'No results found.'}
+        emptyMessage={
+          isInSnippets ? 'No snippets found.' : isInAi ? 'No options.' : 'No results found.'
+        }
         loading={snippetsLoading}
       />
     </div>

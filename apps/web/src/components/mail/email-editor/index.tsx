@@ -3,6 +3,7 @@
 import type { IdentifierType } from '@auxx/database/types'
 import { PLATFORM_CAPABILITIES, type PlatformCapabilities } from '@auxx/lib/channels/client'
 import type { DraftActionPayload } from '@auxx/lib/quick-actions/client'
+import { type ParticipantRole, toParticipantId } from '@auxx/types'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { Separator } from '@auxx/ui/components/separator'
@@ -349,7 +350,12 @@ function ReplyComposeEditorComponent({
           sentAt,
           receivedAt: null,
           createdAt: sentAt,
-          participants: [],
+          // Tag ids as `<role>:<id>` so the participant store + grouping render
+          // from/to/cc immediately. Without this the optimistic row shows no
+          // participants until the realtime echo / refetch lands.
+          participants: (sentMessage.participants ?? []).map((p) =>
+            toParticipantId(p.role.toLowerCase() as ParticipantRole, p.id)
+          ),
           createdById: null,
           sendStatus: 'SENT',
           providerError: null,
@@ -1004,6 +1010,7 @@ function ReplyComposeEditorComponent({
           placeholder='Type / to insert a snippet.'
           editable={!aiToolsState.isProcessing}
           popoverClassName={popoverZIndex}
+          aiSlash={{ onRunAI: handleAIOperation, hasPreviousMessages }}
           onWrapperClick={handleWrapperClick}
           onKeyDown={handleKeyDown}
           dropzone={dropzone}

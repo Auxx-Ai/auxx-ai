@@ -1,6 +1,7 @@
 // apps/web/src/components/mail/chat-composer/use-chat-send.ts
 'use client'
 
+import { type ParticipantRole, toParticipantId } from '@auxx/types'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { useCallback, useState } from 'react'
 import {
@@ -62,7 +63,11 @@ export function useChatSend({ threadId, integrationId, onSendSuccess }: UseChatS
           sentAt,
           receivedAt: null,
           createdAt: sentAt,
-          participants: [],
+          // Tag ids as `<role>:<id>` so the participant store + grouping render
+          // sender/recipient immediately rather than waiting on the realtime echo.
+          participants: (sentMessage.participants ?? []).map((p) =>
+            toParticipantId(p.role.toLowerCase() as ParticipantRole, p.id)
+          ),
           createdById: null,
           sendStatus: 'SENT',
           providerError: null,
