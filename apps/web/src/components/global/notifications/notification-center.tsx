@@ -28,6 +28,8 @@ import { useEffect, useRef, useState } from 'react'
 import { HumanConfirmationDialog } from '~/components/workflow/dialogs/human-confirmation-dialog'
 import { useIsMobile } from '~/hooks/use-mobile'
 import { useUser } from '~/hooks/use-user'
+import { NEW_NOTIFICATION_SOUND, playNotificationSound } from '~/lib/play-notification-sound'
+import { useDehydratedSettings } from '~/providers/dehydrated-state-provider'
 import { useRealtimeRoom } from '~/realtime/hooks'
 import { api } from '~/trpc/react'
 
@@ -452,6 +454,11 @@ export const NotificationCenter = () => {
 export function useNotificationSubscription(userId: string) {
   const utils = api.useUtils()
   const { organizationId } = useUser()
+  // Bell sound preference (default on), mirrored into a ref so the realtime
+  // event closure reads the latest value without rebinding the channel.
+  const settings = useDehydratedSettings()
+  const bellSoundRef = useRef(true)
+  bellSoundRef.current = settings['notification.sound.bell'] !== false
   // Rides the shared realtime adapter (one multiplexed socket) instead of
   // opening its own Pusher connection.
   useRealtimeRoom(userId ? rooms.user(userId) : null, {
@@ -467,6 +474,8 @@ export function useNotificationSubscription(userId: string) {
             utils.notification.getUnreadCount.setData(undefined, (prev) => ({
               count: (prev?.count ?? 0) + 1,
             }))
+            // Chime in step with the badge tick, gated on the preference.
+            if (bellSoundRef.current) playNotificationSound(NEW_NOTIFICATION_SOUND)
           }
           // The dropdown list spans all orgs and only fetches while open, so
           // invalidate is a no-op when closed and refetches fresh (with the
