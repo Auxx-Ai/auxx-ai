@@ -65,7 +65,15 @@ export interface DraftContent {
   /** Email subject */
   subject?: string | null
 
-  /** HTML body content */
+  /**
+   * Canonical mail body, stored as a Tiptap JSON document. The mail composer
+   * reads/writes this; HTML is produced only at send time via
+   * `editor.getHTML()`. Typed loosely (a Tiptap `JSONContent` doc) so this
+   * tier-1 package doesn't take a `@tiptap/*` dependency.
+   */
+  bodyJson?: Record<string, unknown> | null
+
+  /** HTML body content (legacy mail field; still read by non-mail consumers) */
   bodyHtml?: string | null
 
   /** Plain text body content */

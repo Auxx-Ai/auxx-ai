@@ -3,6 +3,7 @@
 
 import { Badge } from '@auxx/ui/components/badge'
 import { cn } from '@auxx/ui/lib/utils'
+import type { JSONContent } from '@tiptap/core'
 import { Upload } from 'lucide-react'
 import type React from 'react'
 import type { useDropzone } from 'react-dropzone'
@@ -11,8 +12,8 @@ import { LazyTiptapEditor } from '../email-editor/lazy-tiptap-editor'
 
 interface ComposerBodyProps {
   // editor wiring
-  content: string
-  onContentChange: (html: string) => void
+  content: JSONContent
+  onContentChange: (json: JSONContent) => void
   placeholder?: string
   editable: boolean
   popoverClassName?: string

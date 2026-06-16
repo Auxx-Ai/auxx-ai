@@ -61,7 +61,8 @@ const UpsertDraftInputSchema = z.object({
   inReplyToMessageId: z.string().nullish(),
   includePreviousMessage: z.boolean().optional(),
   subject: z.string().nullish(),
-  textHtml: z.string().nullish(),
+  /** Canonical Tiptap JSON body — replaces the legacy `textHtml` field. */
+  bodyJson: z.record(z.string(), z.unknown()).nullish(),
   textPlain: z.string().nullish(),
   signatureId: z.string().nullish(),
   to: z.array(ParticipantInputSchema).optional(),
@@ -126,7 +127,7 @@ export const draftRouter = createTRPCRouter({
       // Build DraftContent from frontend payload
       const content: Partial<DraftContent> = {
         subject: input.subject,
-        bodyHtml: input.textHtml,
+        bodyJson: input.bodyJson,
         bodyText: input.textPlain,
         signatureId: input.signatureId,
         recipients: {
@@ -290,6 +291,7 @@ function transformDraftForFrontend(draft: import('@auxx/types/draft').Draft) {
     includePreviousMessage:
       content.includePreviousMessage ?? !!legacyMetadata.includePreviousMessage,
     subject: content.subject || '',
+    bodyJson: content.bodyJson ?? null,
     textHtml: content.bodyHtml || '',
     textPlain: content.bodyText || '',
     signatureId: content.signatureId || null,

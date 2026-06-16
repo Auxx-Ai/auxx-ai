@@ -3,6 +3,7 @@
 
 import { toastError } from '@auxx/ui/components/toast'
 import { cn } from '@auxx/ui/lib/utils'
+import type { JSONContent } from '@tiptap/core'
 import type React from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { EditorToolbar } from '~/components/editor/editor-button'
@@ -16,6 +17,7 @@ import {
   useComposerAITools,
   useComposerAttachments,
 } from '../composer-shared'
+import { EMPTY_DOC } from '../email-editor/derive-initial'
 import { EditorActiveStateProvider } from '../email-editor/editor-active-state-context'
 import type { ChatComposerProps } from './types'
 import { useChatSend } from './use-chat-send'
@@ -33,7 +35,7 @@ function ChatComposerInner({
   const popoverZIndex = isDialogMode ? 'z-[200]' : undefined
   const { editor } = useEditorContext()
 
-  const [content, setContent] = useState('')
+  const [content, setContent] = useState<JSONContent>(EMPTY_DOC)
 
   const { fileSelect, allAttachments, removeAttachment, dropzone } = useComposerAttachments()
 
@@ -43,7 +45,7 @@ function ChatComposerInner({
     integrationId,
     onSendSuccess: () => {
       editor?.commands.clearContent(true)
-      setContent('')
+      setContent(EMPTY_DOC)
       onSendSuccess()
     },
   })
@@ -63,8 +65,8 @@ function ChatComposerInner({
     wasSendingRef.current = isSending
   }, [isSending, editor])
 
-  const handleContentChange = useCallback((next: string) => {
-    setContent((prev) => (prev === next ? prev : next))
+  const handleContentChange = useCallback((next: JSONContent) => {
+    setContent(next)
   }, [])
 
   const handleSendClick = useCallback(() => {
@@ -82,8 +84,8 @@ function ChatComposerInner({
       })
       return
     }
-    send({ textHtml: content, textPlain: plainContent, attachments: allAttachments })
-  }, [isSending, editor, integrationId, content, allAttachments, send])
+    send({ textHtml: editor.getHTML(), textPlain: plainContent, attachments: allAttachments })
+  }, [isSending, editor, integrationId, allAttachments, send])
 
   const handleKeyDown = useCallback(
     (event: React.KeyboardEvent<HTMLDivElement>) => {

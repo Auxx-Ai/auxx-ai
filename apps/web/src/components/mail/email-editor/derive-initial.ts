@@ -1,4 +1,6 @@
 import { ParticipantRole } from '@auxx/database/enums'
+import { htmlToDoc } from '@auxx/lib/tiptap'
+import type { JSONContent } from '@tiptap/core'
 import type {
   DraftMessageType,
   DraftMetadata,
@@ -63,12 +65,15 @@ function validatePresetValues(presetValues?: EditorPresetValues): EditorPresetVa
   return sanitized
 }
 
+/** Empty Tiptap StarterKit doc — a single empty paragraph. */
+export const EMPTY_DOC: JSONContent = { type: 'doc', content: [{ type: 'paragraph' }] }
+
 export interface InitState {
   to: RecipientState[]
   cc: RecipientState[]
   bcc: RecipientState[]
   subject: string
-  contentHtml: string
+  contentJson: JSONContent
   signatureId: string | null
   includePrev: boolean
   draftId: string | null
@@ -123,7 +128,11 @@ export function deriveInitialState({
       cc,
       bcc,
       subject: draft.subject ?? '',
-      contentHtml: draft.textHtml ?? `<p>${draft.textPlain?.replace(/\n/g, '<br>') ?? ''}</p>`,
+      // Pre-launch: drafts seed from the canonical JSON body. Legacy rows with
+      // only `textHtml` (no `bodyJson`) fall back through htmlToDoc, then to an
+      // empty doc — see plan §3.5.
+      contentJson:
+        draft.bodyJson ?? (draft.textHtml ? (htmlToDoc(draft.textHtml) as JSONContent) : EMPTY_DOC),
       signatureId: draft.signatureId ?? null,
       // Use top-level includePreviousMessage, fallback to legacy metadata
       includePrev: draft.includePreviousMessage ?? !!legacyMetadata.includePreviousMessage,
@@ -184,7 +193,7 @@ export function deriveInitialState({
     cc,
     bcc,
     subject: mode === 'new' ? '' : subject,
-    contentHtml: '<p></p>',
+    contentJson: EMPTY_DOC,
     signatureId: null,
     includePrev: !!(
       sourceMessage &&
@@ -205,7 +214,11 @@ export function deriveInitialState({
       cc: validatedPresets.cc ? deduplicateRecipients(validatedPresets.cc) : baseState.cc,
       bcc: validatedPresets.bcc ? deduplicateRecipients(validatedPresets.bcc) : baseState.bcc,
       subject: validatedPresets.subject ?? baseState.subject,
-      contentHtml: validatedPresets.contentHtml ?? baseState.contentHtml,
+      // Presets arrive as HTML (e.g. quick-action templates) — convert once at
+      // derive time. Font/color are dropped by htmlToDoc; presets are plain.
+      contentJson: validatedPresets.contentHtml
+        ? (htmlToDoc(validatedPresets.contentHtml) as JSONContent)
+        : baseState.contentJson,
       integrationId: validatedPresets.integrationId ?? baseState.integrationId,
       signatureId: validatedPresets.signatureId ?? baseState.signatureId,
       includePrev: validatedPresets.includePreviousMessage ?? baseState.includePrev,

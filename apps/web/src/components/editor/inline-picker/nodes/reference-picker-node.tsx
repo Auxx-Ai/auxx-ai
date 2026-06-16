@@ -92,6 +92,12 @@ interface ReferencePickerOptions {
    */
   tabs?: ReferenceTab[]
   /**
+   * Mount the `@` mention trigger. Defaults to `true` — disable on surfaces
+   * that want `/`-only (e.g. the mail composer) so typing `@` inserts a
+   * literal character instead of opening a dead mention chip.
+   */
+  mention?: boolean
+  /**
    * Mount the `/` trigger. The same chip node then also opens for slash
    * commands: `trigger: '/'`, `tab` holds the drill scope label (null = root).
    */
@@ -285,6 +291,7 @@ export const ReferencePickerNode = Node.create<ReferencePickerOptions>({
       onEnter: undefined,
       onArrowVertical: undefined,
       tabs: DEFAULT_TABS,
+      mention: true,
       slash: false,
       onSlashEnter: undefined,
       onSlashArrowVertical: undefined,
@@ -369,7 +376,10 @@ export const ReferencePickerNode = Node.create<ReferencePickerOptions>({
         },
       })
 
-    return [makeRule('@'), ...(options.slash ? [makeRule('/')] : [])]
+    return [
+      ...(options.mention !== false ? [makeRule('@')] : []),
+      ...(options.slash ? [makeRule('/')] : []),
+    ]
   },
 
   addCommands() {

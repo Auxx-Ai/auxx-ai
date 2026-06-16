@@ -1,16 +1,10 @@
 // apps/web/src/components/mail/email-editor/use-draft-autosave.ts
+import { stableStringify } from '@auxx/utils/json'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { useDebouncedCallback } from '~/hooks/use-debounced-value'
 import type { DraftMessage, DraftPayload } from './types'
 
-type FileAttachment = {
-  id: string
-  name: string
-  size?: number
-  mimeType?: string
-  type: 'file' | 'asset' // 'file' = FolderFile, 'asset' = MediaAsset
-}
-// Remove local DraftPayload type definition since it's now imported from types
+// DraftPayload is imported from types (no local definition).
 /**
  * Full key for post-first-save (includes all fields)
  */
@@ -18,7 +12,9 @@ function buildKey(p: DraftPayload) {
   return JSON.stringify({
     integrationId: p.integrationId,
     subject: p.subject,
-    textHtml: p.textHtml,
+    // Stable, key-order-insensitive — the JSON body round-trips through a JSONB
+    // column that reorders keys; plain JSON.stringify would false-positive.
+    bodyJson: stableStringify(p.bodyJson),
     signatureId: p.signatureId,
     to: p.to,
     cc: p.cc,
@@ -32,7 +28,7 @@ function buildKey(p: DraftPayload) {
  * Content-only key for first save (so subject/recipients changes don't schedule saves yet)
  */
 function buildFirstKey(p: DraftPayload) {
-  return JSON.stringify({ textHtml: p.textHtml })
+  return stableStringify(p.bodyJson)
 }
 export function useDraftAutosave({
   enabled,
