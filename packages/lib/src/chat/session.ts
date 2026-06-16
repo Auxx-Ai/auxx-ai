@@ -11,6 +11,7 @@ import type { ChatThreadMetadata } from '../threads/types'
 import { formatVisitorThreadSubject } from './labels'
 import { patchChatThreadMetadata } from './metadata'
 import type { ServiceContext, VisitInfo } from './types'
+import { writeThreadVisitFields } from './visit-fields'
 import { findOrCreateVisitorParticipant } from './visitor-identity'
 import { buildVisitorThreadOwnership } from './visitor-thread-ownership'
 
@@ -196,6 +197,9 @@ export async function initializeOrResumeChatThread(
           claimedVisitorName: input.visitorName,
           claimedExternalId: input.visitorExternalId,
         })
+        // Mirror the visit snapshot onto the thread's FieldValue-backed visit
+        // fields (last-write-wins). Source of truth for the Details surface.
+        await writeThreadVisitFields(ctx, resumable.id, input.visit)
       }
       logger.info('Resumed chat thread', {
         threadId: resumable.id,
@@ -248,6 +252,10 @@ export async function initializeOrResumeChatThread(
     if (!thread) {
       return Result.error(new Error('Failed to create chat thread'))
     }
+
+    // Persist the visit snapshot as FieldValue-backed thread fields so it
+    // renders through the standard Details surface (best-effort).
+    await writeThreadVisitFields(ctx, thread.id, input.visit)
 
     // Visitor ThreadParticipant — keeps notification / inbox join code happy.
     await ctx.db

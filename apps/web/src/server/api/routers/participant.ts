@@ -59,7 +59,14 @@ export const participantRouter = createTRPCRouter({
    * participant has no contact yet.
    */
   ensureContact: protectedProcedure
-    .input(z.object({ participantId: z.string() }))
+    .input(
+      z.object({
+        participantId: z.string(),
+        /** When promoting from a chat thread, copy the visitor's claimed
+         *  name/email + last-known geo from this thread onto the new contact. */
+        sourceThreadId: z.string().optional(),
+      })
+    )
     .mutation(async ({ ctx, input }) => {
       const organizationId = getUserOrganizationId(ctx.session)
       if (!organizationId) {
@@ -69,7 +76,9 @@ export const participantRouter = createTRPCRouter({
         })
       }
       try {
-        return await ensureContactForParticipant(organizationId, input.participantId, ctx.db)
+        return await ensureContactForParticipant(organizationId, input.participantId, ctx.db, {
+          sourceThreadId: input.sourceThreadId,
+        })
       } catch (error) {
         if (error instanceof NotFoundError) {
           throw new TRPCError({ code: 'NOT_FOUND', message: error.message })

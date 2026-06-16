@@ -26,6 +26,7 @@ import { migration020ArticleNewFields } from './migrations/020-article-new-field
 import { migration021SignatureFieldsPrefix } from './migrations/021-signature-fields-prefix'
 import { migration022InboxVisualRef } from './migrations/022-inbox-visual-ref'
 import { migration023ContactVisitorGeoFields } from './migrations/023-contact-visitor-geo-fields'
+import { migration024ThreadVisitFields } from './migrations/024-thread-visit-fields'
 import type { EntityMigration, MigrationRunResult } from './types'
 
 const logger = createScopedLogger('entity-migrations')
@@ -57,6 +58,7 @@ const ALL_MIGRATIONS: EntityMigration[] = [
   migration021SignatureFieldsPrefix,
   migration022InboxVisualRef,
   migration023ContactVisitorGeoFields,
+  migration024ThreadVisitFields,
 ]
 
 /**

@@ -11,6 +11,8 @@ import { toastError } from '@auxx/ui/components/toast'
 import { Mail, MessageSquare, Phone, UserPlus } from 'lucide-react'
 import { useQueryState } from 'nuqs'
 import * as React from 'react'
+import { ThreadVisitCard } from '~/components/drawers/cards/thread-visit-card'
+import { useDrawerContext } from '~/components/drawers/drawer-context'
 import { DockToggleButton } from '~/components/global/dock-toggle-button'
 import { useParticipant } from '~/components/threads/hooks'
 import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
@@ -38,6 +40,11 @@ export function ParticipantDrawer({ participantId, open, onOpenChange }: Partici
 
   const [, setParticipantIdParam] = useQueryState('participantId', { defaultValue: '' })
   const [, setContactIdParam] = useQueryState('contactId', { defaultValue: '' })
+
+  // When promoting from a chat thread, hand the source thread to the server so
+  // it can copy the visitor's claimed name/email + last-known geo.
+  const drawerContext = useDrawerContext()
+  const sourceThreadId = drawerContext?.kind === 'thread' ? drawerContext.threadId : undefined
 
   const { participant, isLoading, isNotFound } = useParticipant({
     participantId,
@@ -69,8 +76,8 @@ export function ParticipantDrawer({ participantId, open, onOpenChange }: Partici
 
   const handleCreateContact = React.useCallback(() => {
     if (!participantId) return
-    ensureContact.mutate({ participantId })
-  }, [participantId, ensureContact])
+    ensureContact.mutate({ participantId, sourceThreadId })
+  }, [participantId, sourceThreadId, ensureContact])
 
   if (!open || !participantId) return null
 
@@ -123,6 +130,9 @@ export function ParticipantDrawer({ participantId, open, onOpenChange }: Partici
                 conversations across channels.
               </p>
             </div>
+
+            {/* Visit facts when this drawer's participant is the chat visitor */}
+            <ThreadVisitCard participantId={participantId} />
           </div>
         )}
       </div>

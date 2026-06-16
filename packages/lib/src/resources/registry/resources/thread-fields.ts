@@ -380,6 +380,173 @@ export const THREAD_FIELDS: Record<string, ResourceField> = {
   },
 
   // ============================================================================
+  // CHAT VISIT FIELDS (FieldValue-backed, keyed by thread.id — like `tags`)
+  // Machine-captured at chat session init/resume; read-only to users in the
+  // panel. NOTE: no `dbColumn` key at all — an explicit `dbColumn: undefined`
+  // would make `shouldCreateField` skip these (TEXT/URL aren't RELATIONSHIP/NAME).
+  // ============================================================================
+
+  visitIp: {
+    id: toFieldId('visitIp'),
+    key: 'visitIp',
+    label: 'IP address',
+    type: BaseType.STRING,
+    fieldType: FieldType.TEXT,
+    isSystem: true,
+    systemAttribute: 'visit_ip',
+    systemSortOrder: 'c0',
+    nullable: true,
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    description: 'Visitor IP address captured for this conversation',
+  },
+
+  visitUserAgent: {
+    id: toFieldId('visitUserAgent'),
+    key: 'visitUserAgent',
+    label: 'User agent',
+    type: BaseType.STRING,
+    fieldType: FieldType.TEXT,
+    isSystem: true,
+    systemAttribute: 'visit_user_agent',
+    systemSortOrder: 'c1',
+    nullable: true,
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    description: 'Visitor browser/device user agent for this conversation',
+  },
+
+  visitReferrer: {
+    id: toFieldId('visitReferrer'),
+    key: 'visitReferrer',
+    label: 'Referrer',
+    type: BaseType.STRING,
+    fieldType: FieldType.URL,
+    isSystem: true,
+    systemAttribute: 'visit_referrer',
+    systemSortOrder: 'c2',
+    nullable: true,
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    description: 'Where this conversation was started from',
+  },
+
+  visitUrl: {
+    id: toFieldId('visitUrl'),
+    key: 'visitUrl',
+    label: 'Landing page',
+    type: BaseType.STRING,
+    fieldType: FieldType.URL,
+    isSystem: true,
+    systemAttribute: 'visit_url',
+    systemSortOrder: 'c3',
+    nullable: true,
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    description: 'Page the visitor was on when this conversation started',
+  },
+
+  visitCity: {
+    id: toFieldId('visitCity'),
+    key: 'visitCity',
+    label: 'City (this visit)',
+    type: BaseType.STRING,
+    fieldType: FieldType.TEXT,
+    isSystem: true,
+    systemAttribute: 'visit_city',
+    systemSortOrder: 'c4',
+    nullable: true,
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    description: 'City resolved from the visitor IP for this conversation',
+  },
+
+  visitRegion: {
+    id: toFieldId('visitRegion'),
+    key: 'visitRegion',
+    label: 'Region (this visit)',
+    type: BaseType.STRING,
+    fieldType: FieldType.TEXT,
+    isSystem: true,
+    systemAttribute: 'visit_region',
+    systemSortOrder: 'c5',
+    nullable: true,
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    description: 'Region resolved from the visitor IP for this conversation',
+  },
+
+  visitCountry: {
+    id: toFieldId('visitCountry'),
+    key: 'visitCountry',
+    label: 'Country (this visit)',
+    type: BaseType.STRING,
+    fieldType: FieldType.TEXT,
+    isSystem: true,
+    systemAttribute: 'visit_country',
+    systemSortOrder: 'c6',
+    nullable: true,
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    description: 'Country resolved from the visitor IP for this conversation',
+  },
+
+  visitTimezone: {
+    id: toFieldId('visitTimezone'),
+    key: 'visitTimezone',
+    label: 'Timezone (this visit)',
+    type: BaseType.STRING,
+    fieldType: FieldType.TEXT,
+    isSystem: true,
+    systemAttribute: 'visit_timezone',
+    systemSortOrder: 'c7',
+    nullable: true,
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    description: 'IANA timezone resolved from the visitor IP for this conversation',
+  },
+
+  // ============================================================================
   // VIRTUAL COMPUTED FIELDS (for find node — resolved by mail condition builder)
   // ============================================================================
 
