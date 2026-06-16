@@ -19,7 +19,6 @@ export { useMentionEditor } from './hooks/use-mention-editor'
 export { useRecordLinkEditor } from './hooks/use-record-link-editor'
 export { useReferenceEditor } from './hooks/use-reference-editor'
 export { useReferencePickerEditor } from './hooks/use-reference-picker-editor'
-export { useSlashCommand } from './hooks/use-slash-command'
 export { PlaceholderBadge } from './nodes/placeholder-badge'
 // Nodes
 export { createPlaceholderNode } from './nodes/placeholder-node'
@@ -33,6 +32,7 @@ export {
   ReferencePickerNode,
   type ReferenceTab,
   TAB_LABEL,
+  type TriggerConfig,
 } from './nodes/reference-picker-node'
 // Types
 export type {

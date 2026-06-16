@@ -4,18 +4,23 @@
 
 import { Button } from '@auxx/ui/components/button'
 import { cn } from '@auxx/ui/lib/utils'
+import { generateHTML } from '@tiptap/core'
 import Placeholder from '@tiptap/extension-placeholder'
-import { EditorContent, useEditor } from '@tiptap/react'
+import { type Editor, EditorContent, useEditor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import { Braces } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import {
   createPlaceholderNode,
+  getOpenPickerRange,
   InlinePickerPopover,
   PlaceholderBadge,
-  useSlashCommand,
+  ReferencePickerNode,
+  stripOpenChips,
+  useActivePicker,
 } from '~/components/editor/inline-picker'
-import { PlaceholderPickerContent } from '~/components/editor/placeholders/placeholder-picker-content'
+import { PlaceholderSlashContent } from '~/components/editor/slash-commands/placeholder-slash-content'
+import type { SlashContentHandle } from '~/components/editor/slash-commands/slash-list'
 import { Tooltip } from '~/components/global/tooltip'
 
 interface SnippetEditorProps {
@@ -32,8 +37,8 @@ interface SnippetEditorProps {
 
 /**
  * Tiptap-based snippet body editor. Supports the placeholder inline node +
- * a `/`-triggered placeholder picker (no heading / list / snippet commands —
- * those belong to the reply composer's broader slash menu).
+ * a `{`-triggered placeholder picker chip (no heading / list / snippet
+ * commands — those belong to the reply composer's broader slash menu).
  */
 export function SnippetEditor({
   contentHtml,
@@ -42,11 +47,16 @@ export function SnippetEditor({
   wrapperClassName,
   className,
 }: SnippetEditorProps) {
-  // `{` triggers the placeholder picker. allowedPrefixes: null means the
-  // trigger fires mid-word too — snippet authors often type prose like
-  // "Hi {first_name}," where the `{` directly follows non-space text.
-  const slashCommand = useSlashCommand({ trigger: '{', allowedPrefixes: null })
-  const containerRef = useRef<HTMLDivElement>(null)
+  // Keyboard forwarded from the open `{` chip to the placeholder picker
+  // (focus stays in the editor until the picker's own input takes over).
+  const slashRef = useRef<SlashContentHandle | null>(null)
+  const onSlashEnter = useCallback(() => slashRef.current?.confirmHighlighted() ?? false, [])
+  const onSlashArrowVertical = useCallback(
+    (dir: 1 | -1) => slashRef.current?.moveHighlight(dir) ?? false,
+    []
+  )
+  const onSlashBackspacePop = useCallback(() => slashRef.current?.popLevel() ?? false, [])
+  const onSlashArrowRight = useCallback(() => slashRef.current?.drillHighlighted() ?? false, [])
 
   const placeholderNodeExtension = useMemo(
     () => createPlaceholderNode((badgeProps) => <PlaceholderBadge {...badgeProps} />),
@@ -57,11 +67,32 @@ export function SnippetEditor({
     () => [
       StarterKit.configure({ heading: false }),
       Placeholder.configure({ placeholder }),
-      slashCommand.slashCommandExtension,
+      // `{` fires mid-word (allowedPrefixes: null) — snippet authors type prose
+      // like "Hi {first_name}," where the `{` directly follows non-space text.
+      ReferencePickerNode.configure({
+        triggers: [{ char: '{', kind: 'command', allowedPrefixes: null }],
+        onSlashEnter,
+        onSlashArrowVertical,
+        onSlashBackspacePop,
+        onSlashArrowRight,
+      }),
       placeholderNodeExtension,
     ],
-    [placeholder, slashCommand.slashCommandExtension, placeholderNodeExtension]
+    [
+      placeholder,
+      placeholderNodeExtension,
+      onSlashEnter,
+      onSlashArrowVertical,
+      onSlashBackspacePop,
+      onSlashArrowRight,
+    ]
   )
+
+  // For the lazy HTML projection — `generateHTML` from the STRIPPED json
+  // instead of `editor.getHTML()`, which would serialize an open chip's
+  // markup (+ ZWSP seed) into saved snippet HTML.
+  const extensionsRef = useRef(extensions)
+  extensionsRef.current = extensions
 
   const editor = useEditor(
     {
@@ -77,21 +108,18 @@ export function SnippetEditor({
           ),
         },
       },
-      onCreate: ({ editor }) => {
-        slashCommand.setEditor(editor)
-      },
-      onDestroy: () => {
-        slashCommand.setEditor(null)
-      },
-      onUpdate: ({ editor }) => {
-        if (slashCommand.isOpenRef.current) return
-        onChange(editor.getHTML(), editor.getText())
+      onUpdate: ({ editor, transaction }) => {
+        if (!transaction.docChanged) return
+        // Any open `{` chip is emitted as its literal text — saved HTML never
+        // contains the transient node, so no open/closed gating is needed.
+        const json = stripOpenChips(editor.getJSON())
+        onChange(generateHTML(json, extensionsRef.current), editor.getText())
       },
     },
     []
   )
 
-  // Sync external contentHtml changes (e.g. loading an existing snippet)
+  // Sync external contentHtml changes (e.g. loading an existing snippet).
   useEffect(() => {
     if (!editor || editor.isDestroyed) return
     if (editor.getHTML() !== contentHtml) {
@@ -102,12 +130,27 @@ export function SnippetEditor({
   const handleInsertTrigger = useCallback(() => {
     if (!editor) return
     if (!editor.isFocused) editor.commands.focus('end')
-    editor.commands.insertContent('{')
+    editor.commands.openReferencePicker('{')
+  }, [editor])
+
+  const activePicker = useActivePicker(editor)
+  const pickerOpen = !!activePicker && activePicker.trigger === '{'
+
+  const runWithChipRange = useCallback(
+    (cmd: (editor: Editor, range: { from: number; to: number }) => void) => {
+      if (!editor) return
+      const range = getOpenPickerRange(editor.state)
+      if (!range) return
+      cmd(editor, range)
+    },
+    [editor]
+  )
+  const closePicker = useCallback(() => {
+    editor?.commands.closeReferencePicker({ keepText: true })
   }, [editor])
 
   return (
     <div
-      ref={containerRef}
       className={cn(
         'relative rounded-md border focus-within:ring-2 focus-within:ring-info',
         wrapperClassName
@@ -123,8 +166,8 @@ export function SnippetEditor({
             size='icon-sm'
             variant='ghost'
             onMouseDown={(e) => {
-              // Prevent editor blur when clicking — keeps the Suggestion plugin
-              // state alive so inserting "{" opens the picker.
+              // Prevent editor blur when clicking — keeps the cursor in place
+              // so opening the `{` chip lands at the caret.
               e.preventDefault()
               handleInsertTrigger()
             }}>
@@ -132,26 +175,34 @@ export function SnippetEditor({
           </Button>
         </Tooltip>
       </div>
-      <InlinePickerPopover
-        state={slashCommand.suggestionState}
-        width={288}
-        className='z-[200]'
-        onClose={slashCommand.closePicker}>
-        <PlaceholderPickerContent
-          onClose={slashCommand.closePicker}
-          onSelect={(id) => {
-            slashCommand.executeCommand((editor, range) => {
-              editor
-                .chain()
-                .focus()
-                .deleteRange(range)
-                .insertContent({ type: 'placeholder', attrs: { id } })
-                .insertContent(' ')
-                .run()
-            })
+      {editor && (
+        <InlinePickerPopover
+          state={{
+            isOpen: pickerOpen,
+            query: activePicker?.query ?? '',
+            range: null,
+            clientRect: activePicker?.clientRect ?? null,
           }}
-        />
-      </InlinePickerPopover>
+          width={288}
+          className='z-[200]'
+          onClose={closePicker}>
+          <PlaceholderSlashContent
+            ref={slashRef}
+            onClose={closePicker}
+            onSelect={(id) => {
+              runWithChipRange((editor, range) => {
+                editor
+                  .chain()
+                  .focus()
+                  .deleteRange(range)
+                  .insertContent({ type: 'placeholder', attrs: { id } })
+                  .insertContent(' ')
+                  .run()
+              })
+            }}
+          />
+        </InlinePickerPopover>
+      )}
     </div>
   )
 }

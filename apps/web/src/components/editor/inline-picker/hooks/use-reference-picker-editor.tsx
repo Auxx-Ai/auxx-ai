@@ -23,6 +23,16 @@ interface UseReferencePickerEditorOptions {
   onPickerEnter?: () => boolean
   /** Called when ArrowUp/Down is pressed inside the open picker chip. */
   onPickerArrowVertical?: (direction: 1 | -1) => boolean
+  /** Mount the `/` slash trigger on the same chip node. Default: false. */
+  enableSlash?: boolean
+  /** Enter inside an open `/` chip — confirm the highlighted slash item. */
+  onSlashEnter?: () => boolean
+  /** ArrowUp/Down inside an open `/` chip — move the slash list highlight. */
+  onSlashArrowVertical?: (direction: 1 | -1) => boolean
+  /** Backspace/ArrowLeft on an empty, drilled `/` chip — pop a drill level. */
+  onSlashBackspacePop?: () => boolean
+  /** ArrowRight inside an open `/` chip — drill into the highlighted item. */
+  onSlashArrowRight?: () => boolean
 }
 
 /**
@@ -48,14 +58,40 @@ export function useReferencePickerEditor(options: UseReferencePickerEditorOption
     enableReferencePicker = true,
     onPickerEnter,
     onPickerArrowVertical,
+    enableSlash = false,
+    onSlashEnter,
+    onSlashArrowVertical,
+    onSlashBackspacePop,
+    onSlashArrowRight,
   } = options
 
+  // Mount the chip node when EITHER trigger is enabled. `mention` gates the
+  // `@` trigger and `slash` gates `/`, so a slash-only surface (reference
+  // picker off) still gets the `/` chip.
   const referencePickerExtensions = useMemo(
     () =>
-      enableReferencePicker
-        ? buildReferencePickerExtensions({ onPickerEnter, onPickerArrowVertical })
+      enableReferencePicker || enableSlash
+        ? buildReferencePickerExtensions({
+            mention: enableReferencePicker,
+            onPickerEnter,
+            onPickerArrowVertical,
+            slash: enableSlash,
+            onSlashEnter,
+            onSlashArrowVertical,
+            onSlashBackspacePop,
+            onSlashArrowRight,
+          })
         : [],
-    [enableReferencePicker, onPickerEnter, onPickerArrowVertical]
+    [
+      enableReferencePicker,
+      onPickerEnter,
+      onPickerArrowVertical,
+      enableSlash,
+      onSlashEnter,
+      onSlashArrowVertical,
+      onSlashBackspacePop,
+      onSlashArrowRight,
+    ]
   )
 
   const editor = useEditor({
