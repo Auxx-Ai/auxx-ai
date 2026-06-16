@@ -3,7 +3,7 @@
 import type { ChatWidgetWithIntegration } from '@auxx/lib/chat-widget/config'
 import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
 import { Button } from '@auxx/ui/components/button'
-import { RadioTab, RadioTabItem } from '@auxx/ui/components/radio-tab'
+import { ResponsiveTabs } from '@auxx/ui/components/responsive-tabs'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { toastError } from '@auxx/ui/components/toast'
 import {
@@ -18,11 +18,12 @@ import {
 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useQueryState } from 'nuqs'
+import { useState } from 'react'
 import SettingsPage from '~/components/global/settings-page'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
 import { useChatWidget } from '../../hooks/use-chat-widget'
-import { MobilePreviewLauncher, PreviewPane } from './preview-pane'
+import { MobilePreviewSheet, MobilePreviewTrigger, PreviewPane } from './preview-pane'
 import { AiSection } from './sections/ai-section'
 import { AppearanceSection } from './sections/appearance-section'
 import { BehaviorSection } from './sections/behavior-section'
@@ -52,6 +53,7 @@ export function ChatWidgetSettings({ channelId }: ChatWidgetSettingsProps) {
   const [activeSection, setActiveSection] = useQueryState('s', {
     defaultValue: 'general',
   }) as [SectionId, (s: string) => void]
+  const [previewOpen, setPreviewOpen] = useState(false)
 
   const { data, isLoading, error } = useChatWidget(channelId)
   const disconnectChannel = api.channel.disconnect.useMutation()
@@ -113,7 +115,7 @@ export function ChatWidgetSettings({ channelId }: ChatWidgetSettingsProps) {
           { title: 'Channels', href: '/app/settings/channels' },
           { title: 'Chat Widget' },
         ]}>
-        <div className='space-y-4 p-6'>
+        <div className='space-y-4 p-3 sm:p-6'>
           <Skeleton className='h-10 w-full max-w-md' />
           <Skeleton className='h-64 w-full' />
         </div>
@@ -131,7 +133,7 @@ export function ChatWidgetSettings({ channelId }: ChatWidgetSettingsProps) {
           { title: 'Channels', href: '/app/settings/channels' },
           { title: 'Chat Widget' },
         ]}>
-        <div className='p-6'>
+        <div className='p-3 sm:p-6'>
           <Alert variant='destructive'>
             <AlertCircle className='h-4 w-4' />
             <AlertTitle>Error</AlertTitle>
@@ -174,37 +176,51 @@ export function ChatWidgetSettings({ channelId }: ChatWidgetSettingsProps) {
         { title: widgetName },
       ]}
       button={
-        <Button variant='outline' size='sm' onClick={openPreview}>
+        // Popup launcher — desktop only. On smaller screens the in-page
+        // preview sheet is triggered next to the tab dropdown / floating.
+        <Button variant='outline' size='sm' onClick={openPreview} className='hidden lg:inline-flex'>
           <ExternalLink />
           Open preview
         </Button>
+      }
+      subHeader={
+        <div className='flex items-center gap-2'>
+          <div className='min-w-0 flex-1'>
+            <ResponsiveTabs
+              value={activeSection}
+              onValueChange={setActiveSection}
+              size='sm'
+              items={SETTINGS_SECTIONS.map((section) => ({
+                value: section.id,
+                label: section.label,
+                icon: section.icon,
+              }))}
+            />
+          </div>
+          {/* Beside the dropdown on mobile; tablet uses the floating trigger below. */}
+          <MobilePreviewTrigger
+            onOpen={() => setPreviewOpen(true)}
+            className='shrink-0 md:hidden'
+          />
+        </div>
       }>
       <ConfirmDialog />
-      <div className='sticky top-[68px] z-20 border-b border-border bg-background/90 p-3 backdrop-blur-sm'>
-        <RadioTab
-          value={activeSection}
-          onValueChange={setActiveSection}
-          size='sm'
-          radioGroupClassName='grid w-full grid-cols-6'
-          className='border border-primary-200 flex w-full'>
-          {SETTINGS_SECTIONS.map((section) => {
-            const Icon = section.icon
-            return (
-              <RadioTabItem key={section.id} value={section.id} size='sm'>
-                <Icon />
-                {section.label}
-              </RadioTabItem>
-            )
-          })}
-        </RadioTab>
-      </div>
       <div className='grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_420px]'>
         <div className='min-w-0'>{renderActiveSection()}</div>
         <div className='hidden border-l lg:block'>
           <PreviewPane channelId={channelId} intent={activeSection} />
         </div>
       </div>
-      <MobilePreviewLauncher channelId={channelId} intent={activeSection} />
+      {/* Tablet (md–lg): tab strip is shown instead of the dropdown, so float the trigger. */}
+      <MobilePreviewTrigger
+        onOpen={() => setPreviewOpen(true)}
+        className='fixed bottom-4 right-4 z-50 hidden shadow-lg md:flex lg:hidden'
+      />
+      <MobilePreviewSheet
+        channelId={channelId}
+        open={previewOpen}
+        onClose={() => setPreviewOpen(false)}
+      />
     </SettingsPage>
   )
 }

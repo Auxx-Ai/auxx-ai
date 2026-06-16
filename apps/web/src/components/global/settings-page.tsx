@@ -29,6 +29,12 @@ type Props = {
   description?: React.ReactNode
   breadcrumbs?: IBradcrumbItem[]
   button?: React.ReactNode
+  /**
+   * Optional row rendered inside the sticky header, below the title (e.g. a
+   * tab strip). Keeping it in the same sticky block avoids a second sticky bar
+   * with a hardcoded top offset that can overlap the header on tall layouts.
+   */
+  subHeader?: React.ReactNode
   backLink?: string
 }
 
@@ -39,6 +45,7 @@ export default function SettingsPage({
   description,
   breadcrumbs,
   button,
+  subHeader,
   backLink,
 }: Props) {
   breadcrumbs = breadcrumbs || []
@@ -127,6 +134,7 @@ export default function SettingsPage({
           </div>
           {button && <div className='sm:ml-auto shrink-0'>{button}</div>}
         </div>
+        {subHeader && <div className='border-t bg-background/60 px-3 py-2.5'>{subHeader}</div>}
         <Separator className='bg-background' />
         <Separator />
         {/* Shadow that appears on scroll with edge flare */}

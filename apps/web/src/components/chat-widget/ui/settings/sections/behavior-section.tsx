@@ -91,13 +91,13 @@ export function BehaviorSection({ widget, channelId }: BehaviorSectionProps) {
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)}>
-        <div className='p-6 space-y-8'>
+        <div className='p-3 sm:p-6 space-y-8'>
           <SettingsSection
             icon={SlidersHorizontal}
             title='Engagement'
             description='How and when the widget engages visitors.'>
             <VarEditorField
-              orientation='responsive'
+              orientation='horizontal'
               className='p-0 **:data-[slot=field-row-label]:w-auto! @sm:**:data-[slot=field-row-label]:w-auto! **:data-[slot=field-row-content]:flex **:data-[slot=field-row-content]:justify-end **:data-[slot=field-row-content]:pe-3'>
               <FormField
                 control={form.control}

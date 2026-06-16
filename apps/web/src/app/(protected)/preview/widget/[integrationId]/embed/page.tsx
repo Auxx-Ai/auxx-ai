@@ -35,6 +35,10 @@ export default function PreviewWidgetEmbedPage() {
   const v = search?.get('v') ?? null
   const rawTheme = (search?.get('theme') ?? 'system') as PreviewTheme
   const theme: PreviewTheme = VALID_THEMES.includes(rawTheme) ? rawTheme : 'system'
+  // The desktop pane frames the widget in a rounded phone card, so it keeps the
+  // widget's rounded shell. The mobile sheet is genuinely full-screen and wants
+  // the widget edge-to-edge — it passes `rounded=0` to opt out.
+  const rounded = (search?.get('rounded') ?? '1') !== '0'
 
   // `useEnv().apiUrl` is the v1 SDK base (`<origin>/api/v1`). The chat routes
   // live at the bare origin under `/api/chat/*` — strip the v1 suffix so the
@@ -48,14 +52,15 @@ export default function PreviewWidgetEmbedPage() {
 
     // Force the widget open on mount — the preview pane is useless if the
     // tester has to click the launcher every reload.
-    // `previewRounded` keeps the rounded shell in the mobile-fullscreen
-    // layout (the iframe is phone-narrow so the mobile media query fires).
+    // `previewRounded` keeps the rounded shell when the iframe is phone-narrow
+    // (the mobile media query fires) — wanted in the desktop pane's phone card,
+    // opted out of by the full-screen mobile sheet via `rounded=0`.
     // `previewBypassAudience` keeps the launcher visible on `users`-audience
     // channels so admins can preview them without signing a fake JWT.
     const programmaticConfig = {
       apiBase: chatApiBase,
       open: true,
-      previewRounded: true,
+      previewRounded: rounded,
       previewBypassAudience: true,
     }
     const bootHtml = `<script>
@@ -79,7 +84,7 @@ export default function PreviewWidgetEmbedPage() {
     ${bootHtml}
   </body>
 </html>`
-  }, [appUrl, chatApiBase, integrationId, theme, v])
+  }, [appUrl, chatApiBase, integrationId, theme, v, rounded])
 
   if (!integrationId || !srcDoc) {
     return null
