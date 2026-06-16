@@ -7,6 +7,9 @@ import { toastMessage } from '@auxx/ui/components/toast'
 import { MailPlus } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useRef } from 'react'
+import { markUnseenMessages } from '~/components/global/new-message-indicator/store'
+import { NEW_MESSAGE_SOUND, playNotificationSound } from '~/lib/play-notification-sound'
+import { useDehydratedSettings } from '~/providers/dehydrated-state-provider'
 import { getMessageStoreState } from '../store/message-store'
 import { getParticipantStoreState } from '../store/participant-store'
 import { getThreadSelectionState } from '../store/thread-selection-store'
@@ -44,6 +47,12 @@ function resolveSender(messageId: string): string | null {
 export function useMessageArrivalCue() {
   const router = useRouter()
 
+  // Sound preference (default on). Read from dehydrated state and mirrored into
+  // a ref so the non-React flush callback sees the latest value.
+  const settings = useDehydratedSettings()
+  const soundEnabledRef = useRef(true)
+  soundEnabledRef.current = settings['notification.sound.newMessage'] !== false
+
   // threadId -> latest messageId, drained on flush.
   const pendingRef = useRef(new Map<string, string>())
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -60,6 +69,9 @@ export function useMessageArrivalCue() {
     const entries = Array.from(pendingRef.current.entries())
     pendingRef.current.clear()
     if (entries.length === 0) return
+
+    // One chime per cue (after coalescing), gated on the user preference.
+    if (soundEnabledRef.current) playNotificationSound(NEW_MESSAGE_SOUND)
 
     if (entries.length === 1) {
       const [threadId, messageId] = entries[0]
@@ -88,6 +100,10 @@ export function useMessageArrivalCue() {
       if (!msg || !msg.isInbound) return
       // Don't cue the thread the user is already reading.
       if (getThreadSelectionState().activeThreadId === threadId) return
+
+      // Flip the out-of-tab indicator (favicon dot + title prefix) immediately —
+      // it doesn't wait for the toast's coalescing window.
+      markUnseenMessages()
 
       // Warm the sender so its name is resolvable by flush time.
       const fromId = groupParticipantsByRole(msg.participants).from
