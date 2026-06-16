@@ -137,10 +137,10 @@ export interface InterpretResult {
   /** Re-run the loop WITHOUT a procedure section this turn (persona-only) and re-interpret (#9). */
   inlineFallback?: boolean
   /**
-   * Escalate to a human — set by both handoff paths (routing `handoff` outcome in
-   * `prepareTurn`, the `handoff_to_human` control tool in `interpretSignal`). The
-   * caller flips the thread to the human queue; internal runs have no queue and
-   * ignore it. The stack is already cleared. See plans/chat/v9 §6 reconciliation.
+   * Escalate to a human — set by both in-stepper handoff paths (routing `handoff`
+   * outcome in `prepareTurn`, the unified `handoff` tool's signal in `interpretSignal`).
+   * `runProcedureTurn` reports it up; the caller flips the thread (internal runs have
+   * no queue and ignore it). The stack is already cleared. See plans/chat/v10 handoff-unify.
    */
   handoff?: boolean
 }

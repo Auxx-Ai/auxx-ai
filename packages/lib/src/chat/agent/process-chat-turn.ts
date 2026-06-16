@@ -160,6 +160,15 @@ async function processChatTurnInternal(ctx: JobContext<ChatTurnJobPayload>): Pro
     domainState: (session.domainState ?? {}) as Record<string, unknown>,
   })
 
+  // Handoff applier state. The shared `drain` is the universal model-tool-origin
+  // detector — it sees the `handoff` tool call on EVERY drain (non-procedure turn,
+  // free-form turn of a procedure agent, or mid-procedure), so a single flip after
+  // the turn covers it. The procedure origins (routing step / in-stepper signal)
+  // are OR'd in from `runProcedureTurn`'s return. See plans/chat/v10 handoff-unify.md.
+  let handedOff = false
+  let procedureHandoff = false
+  let handoffReason: string | undefined
+
   // Drain one engine pass, accumulating the final assistant text (last responder
   // message wins). Delivery is a single Pusher push on completion — no per-delta
   // streaming for v5.
@@ -169,6 +178,10 @@ async function processChatTurnInternal(ctx: JobContext<ChatTurnJobPayload>): Pro
       if (signal?.aborted) {
         engine.interrupt()
         break
+      }
+      if (event.type === 'tool-call-started' && event.name === 'handoff') {
+        handedOff = true
+        if (typeof event.args.reason === 'string') handoffReason = event.args.reason
       }
       if (event.type === 'assistant-message-finished') {
         const t = event.parts
@@ -208,7 +221,7 @@ async function processChatTurnInternal(ctx: JobContext<ChatTurnJobPayload>): Pro
         }),
       }
     }
-    finalText = await runProcedureTurn({
+    const proc = await runProcedureTurn({
       engine,
       inboundText,
       procedures: agent.procedures,
@@ -229,23 +242,35 @@ async function processChatTurnInternal(ctx: JobContext<ChatTurnJobPayload>): Pro
       },
       buildCtx,
       drain,
-      // Procedure escalation: a routing `handoff` step or the `handoff_to_human`
-      // control tool flips this thread to the human queue (same sink as the
-      // `chat_handoff` persona tool). Best-effort — a flip failure must not drop
-      // the customer's closing reply.
-      onHandoff: async () => {
-        try {
-          await flipHandoffState({ threadId, organizationId })
-        } catch (err) {
-          logger.error('Procedure handoff failed to flip thread', {
-            threadId,
-            error: err instanceof Error ? err.message : String(err),
-          })
-        }
-      },
     })
+    finalText = proc.reply
+    // Procedure-origin handoff: an authored routing `handoff` step (the model
+    // tool origin is already captured by `drain`, which also sets `handedOff`).
+    if (proc.handedOff) procedureHandoff = true
   } else {
     finalText = await drain(engine.submitMessage(inboundText, {}))
+  }
+
+  // Single flip + event site for every handoff origin (see plans/chat/v10
+  // handoff-unify.md). `drain` (`handedOff`) is the model-tool origin; an authored
+  // routing step is the procedure origin. The tool origin wins the `source` label
+  // when both fire (the model explicitly called `handoff`). Best-effort — a flip
+  // failure must not drop the customer's closing reply; the worker terminal-failure
+  // path flips separately.
+  if (handedOff || procedureHandoff) {
+    try {
+      await flipHandoffState({
+        threadId,
+        organizationId,
+        reason: handoffReason,
+        source: handedOff ? 'agent_tool' : 'procedure',
+      })
+    } catch (err) {
+      logger.error('Handoff failed to flip thread', {
+        threadId,
+        error: err instanceof Error ? err.message : String(err),
+      })
+    }
   }
 
   const finalState = engine.getState()

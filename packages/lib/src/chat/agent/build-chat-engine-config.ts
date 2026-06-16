@@ -21,7 +21,7 @@ import {
 } from '../../ai/kopilot'
 import { ModelType } from '../../ai/providers/types'
 import { getCachedDefaultModel } from '../../cache/org-cache-helpers'
-import { createChatHandoffTool } from './tools/handoff'
+import { createHandoffTool } from './tools/handoff'
 
 /** Split a `provider:model` string; null when unset / malformed. */
 function parseProviderModel(
@@ -46,9 +46,10 @@ export interface BuildChatEngineConfigInput {
   signal?: AbortSignal
   /**
    * Mount the v9 procedure control tools (`advance_procedure` / `await_customer` /
-   * `digress` / `handoff_to_human` / `end_procedure`) when this agent has published
-   * procedures. They're inert without an active procedure step in the prompt, so
-   * gating keeps zero-procedure agents on the unchanged tool list.
+   * `digress` / `end_procedure`) when this agent has published procedures. They're
+   * inert without an active procedure step in the prompt, so gating keeps
+   * zero-procedure agents on the unchanged tool list. (Handoff is no longer a
+   * control tool — the always-mounted `handoff` tool covers it; see v10 handoff-unify.)
    */
   hasProcedures?: boolean
 }
@@ -135,13 +136,14 @@ export async function buildChatEngineConfig(
   const enabledTools = filterToolsByToolsets(registry.getTools('__none__'), agentConfig)
   const chatTools = enabledTools.filter((t) => (t.surfaces ?? ALL_SURFACES).includes('chat'))
 
-  // Escalation (`chat_handoff`) is always available to a chat agent — you never
-  // want one unable to hand off to a human — so it's appended unconditionally
-  // rather than gated behind a toolset toggle. The "when" is authored in the
-  // persona. See plans/chat/v5 escalation.md §1.
+  // Escalation (`handoff`) is always available to a chat agent — you never want
+  // one unable to hand off to a human — so it's appended unconditionally rather
+  // than gated behind a toolset toggle. It's the single handoff tool (the old
+  // `handoff_to_human` control tool is gone); the "when" is authored in the
+  // persona. See plans/chat/v10 handoff-unify.md.
   const allTools = [
     ...chatTools,
-    createChatHandoffTool(),
+    createHandoffTool(),
     ...(hasProcedures ? PROCEDURE_CONTROL_TOOLS : []),
   ]
 

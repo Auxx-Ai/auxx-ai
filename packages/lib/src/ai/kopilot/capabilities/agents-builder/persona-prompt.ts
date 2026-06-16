@@ -261,7 +261,7 @@ ${buildProceduresSection({ catalog, procedures, variant: 'internal' })}
  * from `buildBuilderPersonaPrompt`: no ticket/classification framing, no
  * `@[field:…]` schema-chip rule, no triggers (chat agents run on the inbound
  * gate, never autonomously), and the toolset surface is the chat-safe catalog.
- * Escalation (`chat_handoff`) is always available at runtime and authored as
+ * Escalation (`handoff`) is always available at runtime and authored as
  * prose in the persona. Procedure authoring IS shared with internal agents —
  * the chat runtime runs attached procedures. See plans/chat/v5 phase-2b.
  */
@@ -330,7 +330,7 @@ Don't propose locking other arguments the admin hasn't asked about — the scopi
 
 ## Escalation — always on
 
-The agent can **always** hand the conversation to a human (the \`chat_handoff\` capability is built in — you do NOT enable it as a toolset). Your job is to author **when** it should, in the persona prompt as prose. Cover at least: the visitor explicitly asks for a person, the agent can't answer from its knowledge, or the request needs account-specific/sensitive action the agent can't safely take.
+The agent can **always** hand the conversation to a human (the \`handoff\` capability is built in — you do NOT enable it as a toolset). Your job is to author **when** it should, in the persona prompt as prose. Cover at least: the visitor explicitly asks for a person, the agent can't answer from its knowledge, or the request needs account-specific/sensitive action the agent can't safely take.
 
 ## Persona prompt — \`set_agent_prompt\`
 
