@@ -13,17 +13,18 @@ import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/pop
 import { cn } from '@auxx/ui/lib/utils'
 import { generateId } from '@auxx/utils/generateId'
 import { Extension } from '@tiptap/core'
-import { EditorContent } from '@tiptap/react'
+import { type Editor, EditorContent } from '@tiptap/react'
 import { Bot, ChevronsUpDown, CornerDownLeft, Send, SquareSlash, X } from 'lucide-react'
 import { useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
 import {
   createPromptNode,
+  getOpenPickerRange,
   InlinePickerPopover,
   PromptTemplateBadge,
   useActivePicker,
   useReferencePickerEditor,
-  useSlashCommand,
 } from '~/components/editor/inline-picker'
+import type { SlashContentHandle } from '~/components/editor/slash-commands/slash-list'
 import { SubmitOnEnter } from '~/components/global/comments/comment-composer'
 import { Tooltip } from '~/components/global/tooltip'
 import { ActorPickerContent } from '~/components/pickers/actor-picker/actor-picker-content'
@@ -45,7 +46,7 @@ import { applyChipDismissals, selectMergedContext } from '../stores/select-conte
 import { PromptFormDialog } from './dialogs/prompt-form-dialog'
 import { PromptTemplateDialog } from './dialogs/prompt-template-dialog'
 import { KopilotReplyChipStrip } from './kopilot-reply-chip-strip'
-import { PromptTemplatePickerContent } from './pickers/prompt-template-picker/prompt-template-picker-content'
+import { PromptTemplateSlashContent } from './pickers/prompt-template-picker/prompt-template-slash-content'
 
 interface KopilotComposerProps {
   ref?: React.Ref<KopilotComposerHandle>
@@ -229,15 +230,16 @@ export function KopilotComposer({ ref, page, onSend, contentClassName }: Kopilot
   const [browseDialogOpen, setBrowseDialogOpen] = useState(false)
   const [editingTemplate, setEditingTemplate] = useState<PromptTemplateItem | null>(null)
 
-  // Slash command hook — creates extension to add to editor
-  const {
-    suggestionState: slashSuggestionState,
-    isOpenRef: slashIsOpenRef,
-    executeCommand: slashExecuteCommand,
-    closePicker: slashClosePicker,
-    slashCommandExtension,
-    setEditor: slashSetEditor,
-  } = useSlashCommand()
+  // Keyboard forwarded from the open `/` chip to the prompt-template picker
+  // (focus stays in the editor until the picker's own input takes over).
+  const slashRef = useRef<SlashContentHandle | null>(null)
+  const onSlashEnter = useCallback(() => slashRef.current?.confirmHighlighted() ?? false, [])
+  const onSlashArrowVertical = useCallback(
+    (dir: 1 | -1) => slashRef.current?.moveHighlight(dir) ?? false,
+    []
+  )
+  const onSlashBackspacePop = useCallback(() => slashRef.current?.popLevel() ?? false, [])
+  const onSlashArrowRight = useCallback(() => slashRef.current?.drillHighlighted() ?? false, [])
 
   // Stable ref for badge edit handler (avoids recreating TipTap extension)
   const handleBadgeEditRef = useRef<(id: string) => void>(() => {})
@@ -281,16 +283,20 @@ export function KopilotComposer({ ref, page, onSend, contentClassName }: Kopilot
     },
     onPickerEnter: () => referencePickerRef.current?.confirmHighlighted() ?? false,
     onPickerArrowVertical: (dir) => referencePickerRef.current?.moveHighlight(dir) ?? false,
+    enableSlash: allowSlashCommands,
+    onSlashEnter,
+    onSlashArrowVertical,
+    onSlashBackspacePop,
+    onSlashArrowRight,
     extensions: [
       SubmitOnEnter.configure({
         isExpanded: () => false,
         onSubmit: () => {
-          // Don't submit if slash picker is open
-          if (slashIsOpenRef.current) return
+          // An open chip (`@` or `/`) consumes Enter via its own keyboard
+          // plugin, so this only fires with no chip open.
           handleSendRef.current()
         },
       }),
-      ...(allowSlashCommands ? [slashCommandExtension] : []),
       ...(allowSenderPicker
         ? [
             SenderHotkey.configure({
@@ -309,10 +315,20 @@ export function KopilotComposer({ ref, page, onSend, contentClassName }: Kopilot
 
   const activePicker = useActivePicker(editor)
 
-  // Wire slash command to editor once created
-  useEffect(() => {
-    slashSetEditor(editor)
-  }, [editor, slashSetEditor])
+  // Run a slash executor with the open `/` chip's range — the executor's chain
+  // deletes the chip and inserts the prompt-template node in one transaction.
+  const runWithChipRange = useCallback(
+    (cmd: (editor: Editor, range: { from: number; to: number }) => void) => {
+      if (!editor) return
+      const range = getOpenPickerRange(editor.state)
+      if (!range) return
+      cmd(editor, range)
+    },
+    [editor]
+  )
+  const closeSlash = useCallback(() => {
+    editor?.commands.closeReferencePicker({ keepText: true })
+  }, [editor])
 
   useImperativeHandle(
     ref,
@@ -335,9 +351,9 @@ export function KopilotComposer({ ref, page, onSend, contentClassName }: Kopilot
   const handleSend = useCallback(() => {
     if (!editor || isStreaming) return
 
-    // Collapse any open picker chip to plain `@<query>` text so the chip's
-    // transient markup never reaches storage / the LLM.
-    if (allowReferencePicker) {
+    // Collapse any open picker chip (`@` or `/`) to plain `<trigger><query>`
+    // text so the chip's transient markup never reaches storage / the LLM.
+    if (allowReferencePicker || allowSlashCommands) {
       editor.commands.closeReferencePicker({ keepText: true })
     }
 
@@ -433,6 +449,7 @@ export function KopilotComposer({ ref, page, onSend, contentClassName }: Kopilot
     templateDisplayMap,
     selectedModelId,
     allowReferencePicker,
+    allowSlashCommands,
     allowSenderPicker,
     displayActorId,
   ])
@@ -458,17 +475,8 @@ export function KopilotComposer({ ref, page, onSend, contentClassName }: Kopilot
 
   const handleInsertSlash = useCallback(() => {
     if (!editor) return
-    if (editor.isFocused) {
-      editor.commands.insertContent('/')
-      return
-    }
-    // Editor wasn't focused. TipTap's focus() schedules DOM focus via
-    // setTimeout(0); inserting "/" synchronously opens the picker before DOM
-    // focus lands, and the late focus event then bubbles outside the popover
-    // — Radix sees focus leave and closes the picker. Wait one task for DOM
-    // focus to settle before inserting.
-    editor.commands.focus('end')
-    setTimeout(() => editor.commands.insertContent('/'), 0)
+    if (!editor.isFocused) editor.commands.focus('end')
+    editor.commands.openReferencePicker('/')
   }, [editor])
 
   return (
@@ -499,7 +507,7 @@ export function KopilotComposer({ ref, page, onSend, contentClassName }: Kopilot
           {allowReferencePicker && (
             <InlinePickerPopover
               state={{
-                isOpen: !!activePicker,
+                isOpen: !!activePicker && activePicker.trigger === '@',
                 query: activePicker?.query ?? '',
                 range: null,
                 clientRect: activePicker?.clientRect ?? null,
@@ -529,33 +537,34 @@ export function KopilotComposer({ ref, page, onSend, contentClassName }: Kopilot
               />
             </InlinePickerPopover>
           )}
-          {/* Slash command picker (/) */}
+          {/* Slash command picker (/) — prompt templates, chip-driven */}
           {allowSlashCommands && (
             <InlinePickerPopover
-              state={slashSuggestionState}
+              state={{
+                isOpen: !!activePicker && activePicker.trigger === '/',
+                query: activePicker?.query ?? '',
+                range: null,
+                clientRect: activePicker?.clientRect ?? null,
+              }}
               containerRef={containerRef}
               width={280}
-              onClose={slashClosePicker}>
-              <PromptTemplatePickerContent
-                onClose={slashClosePicker}
-                onSelect={(template) => {
-                  slashExecuteCommand((editor, range) => {
-                    editor
-                      .chain()
-                      .focus()
-                      .deleteRange(range)
-                      .insertContent({
-                        type: 'promptTemplate',
-                        attrs: { id: template.id },
-                      })
-                      .insertContent(' ')
-                      .run()
-                  })
-                }}
+              side='top'
+              align='start'
+              onInteractOutside={(e) => {
+                const target = e.target as HTMLElement | null
+                if (target?.closest('[data-type="reference-picker"]')) {
+                  e.preventDefault()
+                }
+              }}
+              onClose={closeSlash}>
+              <PromptTemplateSlashContent
+                ref={slashRef}
+                onExecute={runWithChipRange}
+                onClose={closeSlash}
                 onCreateRequest={() => setPromptDialogOpen(true)}
                 onEditRequest={setEditingTemplate}
                 onBrowseRequest={() => {
-                  slashClosePicker()
+                  closeSlash()
                   setBrowseDialogOpen(true)
                 }}
               />
@@ -597,8 +606,8 @@ export function KopilotComposer({ ref, page, onSend, contentClassName }: Kopilot
                   variant='ghost'
                   className='shrink-0'
                   onMouseDown={(e) => {
-                    // Prevent editor blur — keeps the Suggestion plugin state
-                    // alive so inserting "/" opens the picker.
+                    // Prevent editor blur so the caret stays put and opening
+                    // the `/` chip lands at the cursor.
                     e.preventDefault()
                     handleInsertSlash()
                   }}

@@ -5,18 +5,22 @@
 import { Button } from '@auxx/ui/components/button'
 import { cn } from '@auxx/ui/lib/utils'
 import Placeholder from '@tiptap/extension-placeholder'
-import { EditorContent, type JSONContent, useEditor } from '@tiptap/react'
+import { type Editor, EditorContent, type JSONContent, useEditor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import { Braces } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import {
   createPlaceholderNode,
+  getOpenPickerRange,
   InlinePickerPopover,
   PlaceholderBadge,
-  useSlashCommand,
+  ReferencePickerNode,
+  stripOpenChips,
+  useActivePicker,
 } from '~/components/editor/inline-picker'
+import type { SlashContentHandle } from '~/components/editor/slash-commands/slash-list'
 import { Tooltip } from '~/components/global/tooltip'
-import { VisitorClaimPickerContent } from './visitor-claim-picker-content'
+import { VisitorClaimSlashContent } from './visitor-claim-slash-content'
 
 interface GreetingEditorProps {
   /** Tiptap JSON doc, or null for an empty editor. */
@@ -32,9 +36,9 @@ interface GreetingEditorProps {
 
 /**
  * Tiptap-based greeting editor for the chat widget Home tab. Same shell as
- * `SnippetEditor` (placeholder node + `{`-triggered picker + fallback editor)
- * but the picker is restricted to the three visitor identify claims and the
- * output is Tiptap JSON instead of HTML.
+ * `SnippetEditor` (placeholder node + `{`-triggered picker chip) but the
+ * picker is restricted to the three visitor identify claims and the output
+ * is Tiptap JSON instead of HTML.
  */
 export function GreetingEditor({
   value,
@@ -43,8 +47,14 @@ export function GreetingEditor({
   wrapperClassName,
   className,
 }: GreetingEditorProps) {
-  const slashCommand = useSlashCommand({ trigger: '{', allowedPrefixes: null })
-  const containerRef = useRef<HTMLDivElement>(null)
+  const slashRef = useRef<SlashContentHandle | null>(null)
+  const onSlashEnter = useCallback(() => slashRef.current?.confirmHighlighted() ?? false, [])
+  const onSlashArrowVertical = useCallback(
+    (dir: 1 | -1) => slashRef.current?.moveHighlight(dir) ?? false,
+    []
+  )
+  const onSlashBackspacePop = useCallback(() => slashRef.current?.popLevel() ?? false, [])
+  const onSlashArrowRight = useCallback(() => slashRef.current?.drillHighlighted() ?? false, [])
 
   const placeholderNodeExtension = useMemo(
     () => createPlaceholderNode((badgeProps) => <PlaceholderBadge {...badgeProps} />),
@@ -55,10 +65,23 @@ export function GreetingEditor({
     () => [
       StarterKit.configure({ heading: false }),
       Placeholder.configure({ placeholder }),
-      slashCommand.slashCommandExtension,
+      ReferencePickerNode.configure({
+        triggers: [{ char: '{', kind: 'command', allowedPrefixes: null }],
+        onSlashEnter,
+        onSlashArrowVertical,
+        onSlashBackspacePop,
+        onSlashArrowRight,
+      }),
       placeholderNodeExtension,
     ],
-    [placeholder, slashCommand.slashCommandExtension, placeholderNodeExtension]
+    [
+      placeholder,
+      placeholderNodeExtension,
+      onSlashEnter,
+      onSlashArrowVertical,
+      onSlashBackspacePop,
+      onSlashArrowRight,
+    ]
   )
 
   const editor = useEditor(
@@ -75,15 +98,11 @@ export function GreetingEditor({
           ),
         },
       },
-      onCreate: ({ editor }) => {
-        slashCommand.setEditor(editor)
-      },
-      onDestroy: () => {
-        slashCommand.setEditor(null)
-      },
-      onUpdate: ({ editor }) => {
-        if (slashCommand.isOpenRef.current) return
-        const doc = editor.getJSON()
+      onUpdate: ({ editor, transaction }) => {
+        if (!transaction.docChanged) return
+        // Strip any open `{` chip to its literal text so a doc saved mid-chip
+        // reads back as what's on screen (and never persists the transient node).
+        const doc = stripOpenChips(editor.getJSON())
         onChange(isEmptyDoc(doc) ? null : doc)
       },
     },
@@ -92,7 +111,10 @@ export function GreetingEditor({
 
   useEffect(() => {
     if (!editor || editor.isDestroyed) return
-    const current = editor.getJSON()
+    // Compare against the STRIPPED doc: while a `{` chip is open, onChange has
+    // already pushed the stripped form to `value`, so `editor.getJSON()` (with
+    // the chip) would otherwise look different and clobber the open chip.
+    const current = stripOpenChips(editor.getJSON())
     if (!docsEqual(current, value)) {
       editor.commands.setContent(value ?? '', false)
     }
@@ -101,12 +123,27 @@ export function GreetingEditor({
   const handleInsertTrigger = useCallback(() => {
     if (!editor) return
     if (!editor.isFocused) editor.commands.focus('end')
-    editor.commands.insertContent('{')
+    editor.commands.openReferencePicker('{')
+  }, [editor])
+
+  const activePicker = useActivePicker(editor)
+  const pickerOpen = !!activePicker && activePicker.trigger === '{'
+
+  const runWithChipRange = useCallback(
+    (cmd: (editor: Editor, range: { from: number; to: number }) => void) => {
+      if (!editor) return
+      const range = getOpenPickerRange(editor.state)
+      if (!range) return
+      cmd(editor, range)
+    },
+    [editor]
+  )
+  const closePicker = useCallback(() => {
+    editor?.commands.closeReferencePicker({ keepText: true })
   }, [editor])
 
   return (
     <div
-      ref={containerRef}
       className={cn(
         'relative rounded-md border focus-within:ring-2 focus-within:ring-info',
         wrapperClassName
@@ -129,26 +166,34 @@ export function GreetingEditor({
           </Button>
         </Tooltip>
       </div>
-      <InlinePickerPopover
-        state={slashCommand.suggestionState}
-        width={240}
-        className='z-[200]'
-        onClose={slashCommand.closePicker}>
-        <VisitorClaimPickerContent
-          onClose={slashCommand.closePicker}
-          onSelect={(id) => {
-            slashCommand.executeCommand((editor, range) => {
-              editor
-                .chain()
-                .focus()
-                .deleteRange(range)
-                .insertContent({ type: 'placeholder', attrs: { id } })
-                .insertContent(' ')
-                .run()
-            })
+      {editor && (
+        <InlinePickerPopover
+          state={{
+            isOpen: pickerOpen,
+            query: activePicker?.query ?? '',
+            range: null,
+            clientRect: activePicker?.clientRect ?? null,
           }}
-        />
-      </InlinePickerPopover>
+          width={240}
+          className='z-[200]'
+          onClose={closePicker}>
+          <VisitorClaimSlashContent
+            ref={slashRef}
+            onClose={closePicker}
+            onSelect={(id) => {
+              runWithChipRange((editor, range) => {
+                editor
+                  .chain()
+                  .focus()
+                  .deleteRange(range)
+                  .insertContent({ type: 'placeholder', attrs: { id } })
+                  .insertContent(' ')
+                  .run()
+              })
+            }}
+          />
+        </InlinePickerPopover>
+      )}
     </div>
   )
 }

@@ -9,7 +9,7 @@ import {
 import { EntityIcon } from '@auxx/ui/components/icons'
 import type { Editor } from '@tiptap/react'
 import { useCallback, useImperativeHandle, useMemo, useRef, useState } from 'react'
-import { PlaceholderPickerContent } from '~/components/editor/placeholders/placeholder-picker-content'
+import { PlaceholderSlashContent } from '~/components/editor/slash-commands/placeholder-slash-content'
 import type {
   SlashCommandItem,
   SlashCommandSection,
@@ -159,9 +159,10 @@ export function MailSlashContent(props: MailSlashContentProps) {
 
   if (mode === 'placeholder') {
     return (
-      <PlaceholderMode
+      <PlaceholderSlashContent
         ref={props.ref}
         onBack={exitMode}
+        backLabel='Commands'
         onClose={props.onClose}
         onSelect={(id) => {
           props.onExecute((editor, range) => {
@@ -188,50 +189,6 @@ export function MailSlashContent(props: MailSlashContentProps) {
         }}
       />
     </CommandNavigation>
-  )
-}
-
-/**
- * Placeholder mode keeps `PlaceholderPickerContent` as-is — it's an
- * input-driven picker (entity roots → field search) whose own CommandInput
- * takes real focus. The chip goes inert for the duration; Backspace-pop
- * still works if the user clicks back into the editor.
- */
-function PlaceholderMode({
-  ref,
-  onBack,
-  onClose,
-  onSelect,
-}: {
-  ref?: React.Ref<SlashContentHandle>
-  onBack: () => void
-  onClose: () => void
-  onSelect: (id: string) => void
-}) {
-  const containerRef = useRef<HTMLDivElement>(null)
-  const remote = useCmdkRemote(containerRef, 'placeholder')
-
-  useImperativeHandle(
-    ref,
-    () => ({
-      ...remote,
-      popLevel: () => {
-        onBack()
-        return true
-      },
-    }),
-    [remote, onBack]
-  )
-
-  return (
-    <div ref={containerRef} className='w-72 overflow-hidden'>
-      <PlaceholderPickerContent
-        onBack={onBack}
-        backLabel='Commands'
-        onClose={onClose}
-        onSelect={onSelect}
-      />
-    </div>
   )
 }
 

@@ -11,13 +11,26 @@ import {
   NodeViewWrapper,
   ReactNodeViewRenderer,
 } from '@tiptap/react'
-import { AtSign, Slash } from 'lucide-react'
+import { AtSign, Braces, Slash } from 'lucide-react'
 import { useEffect, useReducer } from 'react'
 
 export const REFERENCE_PICKER_NODE = 'referencePicker'
 
 /** The characters that can open a picker chip. */
-export type PickerTrigger = '@' | '/'
+export type PickerTrigger = '@' | '/' | '{'
+
+/**
+ * One configured trigger on the chip node. `kind` drives keyboard behavior:
+ * `'mention'` = tabs + digit shortcuts (the `@` picker); `'command'` = drill
+ * + list nav (the `/` and `{` pickers). `allowedPrefixes` controls where the
+ * trigger may fire: `null` = anywhere (mid-word, e.g. `Hi {name}`); anything
+ * else = start-of-block or after whitespace (the default for `@`/`/`).
+ */
+export interface TriggerConfig {
+  char: PickerTrigger
+  kind: 'mention' | 'command'
+  allowedPrefixes?: string[] | null
+}
 
 /**
  * Zero-width space seeded inside a freshly-opened chip so ProseMirror has a
@@ -70,6 +83,29 @@ function digitToTab(digit: string, tabs: readonly ReferenceTab[]): ReferenceTab 
 
 const pickerPluginKey = new PluginKey('reference-picker-keys')
 
+/**
+ * Resolve the effective trigger set. An explicit `triggers` option wins;
+ * otherwise fall back to the `mention`/`slash` sugar so existing consumers
+ * (persona / KB / procedures / mail) need no changes.
+ */
+function resolveTriggers(options: ReferencePickerOptions): TriggerConfig[] {
+  if (options.triggers && options.triggers.length > 0) return options.triggers
+  const out: TriggerConfig[] = []
+  if (options.mention !== false) out.push({ char: '@', kind: 'mention' })
+  if (options.slash) out.push({ char: '/', kind: 'command' })
+  return out
+}
+
+/** Keyboard behavior for a trigger char, resolved from the configured set. */
+function kindForTrigger(
+  options: ReferencePickerOptions,
+  trigger: PickerTrigger
+): 'mention' | 'command' {
+  const cfg = resolveTriggers(options).find((t) => t.char === trigger)
+  if (cfg) return cfg.kind
+  return trigger === '@' ? 'mention' : 'command'
+}
+
 interface ReferencePickerOptions {
   /**
    * Called when Enter is pressed inside an `@` chip. The handler decides
@@ -102,6 +138,13 @@ interface ReferencePickerOptions {
    * commands: `trigger: '/'`, `tab` holds the drill scope label (null = root).
    */
   slash?: boolean
+  /**
+   * Explicit trigger set. When provided, overrides the `mention`/`slash`
+   * sugar entirely — use it for non-default triggers (e.g. a mid-word `{`
+   * placeholder picker). Each entry's `kind` selects the keyboard behavior
+   * and `allowedPrefixes` controls where it fires (see `TriggerConfig`).
+   */
+  triggers?: TriggerConfig[]
   /** Enter inside a `/` chip — confirm the highlighted slash item. */
   onSlashEnter?: () => boolean
   /** ArrowUp/Down inside a `/` chip — move the slash list highlight. */
@@ -210,6 +253,8 @@ function ReferencePickerNodeView({ selected, editor, getPos }: NodeViewProps) {
       )}>
       {trigger === '@' ? (
         <AtSign className='size-3 shrink-0 opacity-70' />
+      ) : trigger === '{' ? (
+        <Braces className='size-3 shrink-0 opacity-70' />
       ) : (
         <Slash className='size-3 shrink-0 opacity-70' />
       )}
@@ -330,11 +375,15 @@ export const ReferencePickerNode = Node.create<ReferencePickerOptions>({
   addInputRules() {
     const options = this.options
 
-    const makeRule = (trigger: PickerTrigger) =>
-      new InputRule({
-        // Trigger at start-of-block or after whitespace. Capture preceding
-        // char so we know how much to delete.
-        find: new RegExp(`(^|\\s)\\${trigger}$`),
+    const makeRule = ({ char, kind, allowedPrefixes }: TriggerConfig) => {
+      const esc = `\\${char}`
+      // `allowedPrefixes: null` fires anywhere (mid-word — `Hi {name}`);
+      // otherwise the trigger only fires at start-of-block or after
+      // whitespace. The leading capture group lets the handler keep any
+      // preceding whitespace untouched.
+      const find = allowedPrefixes === null ? new RegExp(`${esc}$`) : new RegExp(`(^|\\s)${esc}$`)
+      return new InputRule({
+        find,
         handler: ({ state, range, match }) => {
           // The InputRule shares the plugin's pending transaction via
           // `state.tr` (createChainableState wraps it). Mutating `state.tr`
@@ -349,13 +398,13 @@ export const ReferencePickerNode = Node.create<ReferencePickerOptions>({
           const nodeType = state.schema.nodes[REFERENCE_PICKER_NODE]
           if (!nodeType) return
 
-          // `/` is literal syntax inside code blocks — never open the picker
-          // there. (`@` keeps its historical fire-anywhere behavior.)
-          if (trigger === '/' && insideCodeBlock(state.doc.resolve(range.from))) return
+          // `/` and `{` are literal syntax inside code blocks — never open the
+          // picker there. (`@` keeps its historical fire-anywhere behavior.)
+          if (kind === 'command' && insideCodeBlock(state.doc.resolve(range.from))) return
 
           // For a trigger after whitespace, the match starts at the
-          // whitespace; at start-of-block it starts at the trigger itself.
-          // Keep any preceding whitespace untouched.
+          // whitespace; at start-of-block (or a mid-word `{`) it starts at the
+          // trigger itself. Keep any preceding whitespace untouched.
           const prefixLen = match[1]?.length ?? 0
           const atFrom = range.from + prefixLen
           const atTo = range.to
@@ -367,23 +416,51 @@ export const ReferencePickerNode = Node.create<ReferencePickerOptions>({
           // browser produces no `beforeinput` events when the user types →
           // PM never dispatches a textInput transaction → keystrokes are
           // silently dropped (confirmed via diagnostic logs).
-          const initialTab = trigger === '@' ? (options.tabs?.[0] ?? 'people') : null
-          const node = nodeType.create({ trigger, tab: initialTab }, state.schema.text(ZWSP))
+          const initialTab = kind === 'mention' ? (options.tabs?.[0] ?? 'people') : null
+          const node = nodeType.create({ trigger: char, tab: initialTab }, state.schema.text(ZWSP))
           tr.replaceRangeWith(atFrom, atTo, node)
           // Place the cursor after the seed ZWSP (inside the chip, offset 2:
           // 1 to enter the chip + 1 to skip the ZWSP).
           tr.setSelection(TextSelection.create(tr.doc, atFrom + 2))
         },
       })
+    }
 
-    return [
-      ...(options.mention !== false ? [makeRule('@')] : []),
-      ...(options.slash ? [makeRule('/')] : []),
-    ]
+    return resolveTriggers(options).map(makeRule)
   },
 
   addCommands() {
+    const options = this.options
     return {
+      /**
+       * Open a fresh picker chip at the cursor for `trigger`. Toolbar buttons
+       * use this — typing the trigger char fires an input rule, but a
+       * programmatic `insertContent` does not, so the button needs an explicit
+       * command. No-op if a chip is already open.
+       */
+      openReferencePicker:
+        (trigger: PickerTrigger = '@') =>
+        ({ state, chain }) => {
+          if (findPickerNode(state)) return false
+          const nodeType = state.schema.nodes[REFERENCE_PICKER_NODE]
+          if (!nodeType) return false
+          const kind = kindForTrigger(options, trigger)
+          const initialTab = kind === 'mention' ? (options.tabs?.[0] ?? 'people') : null
+          const { from, to } = state.selection
+          chain()
+            .command(({ tr }) => {
+              tr.replaceRangeWith(
+                from,
+                to,
+                nodeType.create({ trigger, tab: initialTab }, state.schema.text(ZWSP))
+              )
+              tr.setSelection(TextSelection.create(tr.doc, from + 2))
+              return true
+            })
+            .focus()
+            .run()
+          return true
+        },
       /**
        * Replace the current open picker chip with a `reference` badge node
        * holding `recordId`, followed by a space.
@@ -533,7 +610,9 @@ export const ReferencePickerNode = Node.create<ReferencePickerOptions>({
             if (pickerPos === null || !pickerNode) return false
 
             const trigger = (pickerNode.attrs.trigger ?? '@') as PickerTrigger
-            const isSlash = trigger === '/'
+            // `command` triggers (`/`, `{`) share the slash keyboard path
+            // (drill + list nav); `mention` (`@`) gets tabs + digit shortcuts.
+            const isCommand = kindForTrigger(options, trigger) === 'command'
             const chipFrom = pickerPos
             const chipTo = pickerPos + pickerNode.nodeSize
             const contentStart = pickerPos + 1
@@ -559,7 +638,7 @@ export const ReferencePickerNode = Node.create<ReferencePickerOptions>({
 
             // --- Enter: hand to consumer (selection of highlighted item) ---
             if (event.key === 'Enter') {
-              const handler = isSlash ? options.onSlashEnter : options.onEnter
+              const handler = isCommand ? options.onSlashEnter : options.onEnter
               if (handler?.()) {
                 event.preventDefault()
                 return true
@@ -573,7 +652,7 @@ export const ReferencePickerNode = Node.create<ReferencePickerOptions>({
             // --- ArrowUp / ArrowDown: forward to list nav ---
             if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
               const dir = event.key === 'ArrowDown' ? 1 : -1
-              const handler = isSlash ? options.onSlashArrowVertical : options.onArrowVertical
+              const handler = isCommand ? options.onSlashArrowVertical : options.onArrowVertical
               if (handler?.(dir)) {
                 event.preventDefault()
                 return true
@@ -591,7 +670,7 @@ export const ReferencePickerNode = Node.create<ReferencePickerOptions>({
               }
               // Empty drilled `/` chip: pop a drill level (mirrors Backspace).
               if (
-                isSlash &&
+                isCommand &&
                 realQueryLen === 0 &&
                 pickerNode.attrs.tab !== null &&
                 options.onSlashBackspacePop?.()
@@ -621,7 +700,7 @@ export const ReferencePickerNode = Node.create<ReferencePickerOptions>({
               }
               // `/` chip: drill into the highlighted item if it's drillable —
               // drill-first, so it wins over caret movement.
-              if (isSlash && options.onSlashArrowRight?.()) {
+              if (isCommand && options.onSlashArrowRight?.()) {
                 event.preventDefault()
                 return true
               }
@@ -645,7 +724,7 @@ export const ReferencePickerNode = Node.create<ReferencePickerOptions>({
               if (realQueryLen === 0) {
                 // Drilled `/` chip: pop a drill level instead of closing —
                 // the popover owns the stack; it also resets the chip scope.
-                if (isSlash && pickerNode.attrs.tab !== null && options.onSlashBackspacePop?.()) {
+                if (isCommand && pickerNode.attrs.tab !== null && options.onSlashBackspacePop?.()) {
                   event.preventDefault()
                   return true
                 }
@@ -659,7 +738,7 @@ export const ReferencePickerNode = Node.create<ReferencePickerOptions>({
             }
 
             // --- Digit 1–N: tab quick-access (`@` chips only) ---
-            if (!isSlash) {
+            if (!isCommand) {
               const tabs = options.tabs ?? DEFAULT_TABS
               const digitTab = digitToTab(event.key, tabs)
               if (digitTab) {
@@ -683,7 +762,7 @@ export const ReferencePickerNode = Node.create<ReferencePickerOptions>({
             // never escapes the editor while a chip is open ---
             if (event.key === 'Tab') {
               event.preventDefault()
-              if (isSlash) return true
+              if (isCommand) return true
               const tabs = options.tabs ?? DEFAULT_TABS
               const currentTab = (pickerNode.attrs.tab ?? tabs[0] ?? 'people') as ReferenceTab
               const idx = Math.max(0, tabs.indexOf(currentTab))
@@ -708,6 +787,7 @@ export const ReferencePickerNode = Node.create<ReferencePickerOptions>({
 declare module '@tiptap/core' {
   interface Commands<ReturnType> {
     referencePicker: {
+      openReferencePicker: (trigger?: PickerTrigger) => ReturnType
       confirmReferencePicker: (recordId: string) => ReturnType
       closeReferencePicker: (opts?: { keepText?: boolean }) => ReturnType
       setReferencePickerTab: (tab: ReferenceTab) => ReturnType

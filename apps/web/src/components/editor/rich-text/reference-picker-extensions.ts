@@ -19,6 +19,11 @@ export interface BuildReferencePickerExtensionsOptions {
    * must be passed the same list.
    */
   referenceTabs?: ReferenceTab[]
+  /**
+   * Mount the `@` mention trigger. Defaults to `true` — set `false` to mount
+   * the chip node for `/` only (e.g. a slash-only Kopilot surface).
+   */
+  mention?: boolean
   /** Mount the `/` trigger on the same chip node (slash command picker). */
   slash?: boolean
   /** Enter inside an open `/` chip — confirm the highlighted slash item. */
@@ -72,6 +77,7 @@ export function buildReferencePickerExtensions(
       onEnter: options.onPickerEnter,
       onArrowVertical: options.onPickerArrowVertical,
       ...(options.referenceTabs ? { tabs: options.referenceTabs } : {}),
+      mention: options.mention ?? true,
       slash: options.slash ?? false,
       onSlashEnter: options.onSlashEnter,
       onSlashArrowVertical: options.onSlashArrowVertical,
