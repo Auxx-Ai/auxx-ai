@@ -20,7 +20,6 @@ export type {
   ThreadMeta,
   ThreadUpdatedEvent,
 } from '../events'
-export { getPusherClient } from '../pusher-client'
 export { type RoomKind, rooms } from '../room-keys'
 export { PusherRealtimeAdapter } from './adapters/pusher'
 export type {
