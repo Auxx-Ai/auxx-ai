@@ -5,6 +5,7 @@ import { cn } from '@auxx/ui/lib/utils'
 import type { JSONContent } from '@tiptap/core'
 import { Loader2 } from 'lucide-react'
 import React, { Suspense } from 'react'
+import type { FileItem } from '~/components/files/files-store'
 import type { MailAiSlashConfig } from './mail-slash-content'
 
 const TiptapEditor = React.lazy(() => import('~/components/editor/tiptap-editor'))
@@ -22,6 +23,8 @@ interface LazyTiptapEditorProps {
   onEnter?: () => void
   /** Optional AI-tools wiring — surfaces the "Ask AI" item in the `/` menu. */
   aiSlash?: MailAiSlashConfig
+  /** Optional attachment wiring — surfaces the "Attach file" item in the `/` menu. */
+  onAttachFile?: (file: FileItem) => void
   /** Formatting profile. `'rich'` (default, email) or `'plain'` (chat). */
   variant?: 'rich' | 'plain'
 }

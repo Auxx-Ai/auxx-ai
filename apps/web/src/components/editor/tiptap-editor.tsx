@@ -15,6 +15,7 @@ import { type Editor, EditorContent, useEditor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import '~/styles/prosemirror.css'
+import type { FileItem } from '~/components/files/files-store'
 import {
   MAIL_BLOCK_COMMANDS,
   type MailAiSlashConfig,
@@ -51,6 +52,8 @@ type TiptapEditorProps = {
   onEnter?: () => void
   /** Optional AI-tools wiring — surfaces the "Ask AI" item in the `/` menu. */
   aiSlash?: MailAiSlashConfig
+  /** Optional attachment wiring — surfaces the "Attach file" item in the `/` menu. */
+  onAttachFile?: (file: FileItem) => void
   /**
    * Formatting profile. `'rich'` (default) = full StarterKit + block commands
    * in the `/` menu (email). `'plain'` = a compact composer with headings /
@@ -70,6 +73,7 @@ const TiptapEditor = ({
   popoverClassName,
   onEnter,
   aiSlash,
+  onAttachFile,
   variant = 'rich',
 }: TiptapEditorProps) => {
   const isPlain = variant === 'plain'
@@ -294,6 +298,7 @@ const TiptapEditor = ({
             onScopeChange={changeSlashScope}
             onClose={closeSlash}
             aiSlash={aiSlash}
+            onAttachFile={onAttachFile}
             blockCommands={isPlain ? [] : MAIL_BLOCK_COMMANDS}
           />
         </InlinePickerPopover>

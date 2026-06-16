@@ -1011,6 +1011,7 @@ function ReplyComposeEditorComponent({
           editable={!aiToolsState.isProcessing}
           popoverClassName={popoverZIndex}
           aiSlash={{ onRunAI: handleAIOperation, hasPreviousMessages }}
+          onAttachFile={(file) => fileSelect.addExistingFiles([file])}
           onWrapperClick={handleWrapperClick}
           onKeyDown={handleKeyDown}
           dropzone={dropzone}

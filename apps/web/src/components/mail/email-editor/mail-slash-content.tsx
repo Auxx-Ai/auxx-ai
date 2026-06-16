@@ -15,11 +15,13 @@ import type {
   SlashCommandSection,
 } from '~/components/editor/slash-commands/slash-command-picker'
 import { type SlashContentHandle, SlashList } from '~/components/editor/slash-commands/slash-list'
+import type { FileItem } from '~/components/files/files-store'
 import { SparkleIcon } from '~/components/kopilot/ui/sparkle-icon'
 import { useCmdkRemote } from '~/components/pickers/use-cmdk-remote'
 import { api } from '~/trpc/react'
 import { AI_LANG_TYPE, AI_OPERATION, AI_TONE_TYPE, type AIOperation } from '~/types/ai-tools'
 import { isBodyEmptyIgnoringChips } from '../composer-shared/content-empty'
+import { FileSlashContent } from './file-slash-content'
 import { useSnippetSearch } from './hooks'
 
 type Range = { from: number; to: number }
@@ -65,6 +67,12 @@ export interface MailSlashContentProps {
   onClose: () => void
   /** Optional AI-tools wiring — when present, adds the "Ask AI" drill-in item. */
   aiSlash?: MailAiSlashConfig
+  /**
+   * Optional attachment wiring — when present, adds the "Attach file" drill-in
+   * item. Receives the chosen library file; the composer routes it into its own
+   * attachment tray (`useFileSelect.addExistingFiles`). Absent → no file item.
+   */
+  onAttachFile?: (file: FileItem) => void
   /**
    * Block commands offered at the root (Heading / lists / blockquote).
    * Defaults to {@link MAIL_BLOCK_COMMANDS}. Chat passes `[]` — it's a plain,
@@ -157,6 +165,16 @@ const TOOL_COMMANDS: SlashCommandItem[] = [
   },
 ]
 
+// Added to the suggestions only when the composer supplies `onAttachFile`.
+const ATTACH_FILE_COMMAND: SlashCommandItem = {
+  id: 'attach-file',
+  title: 'Attach file',
+  description: 'Attach a file from your library',
+  keywords: ['file', 'attachment', 'upload', 'document', 'image'],
+  iconId: 'paperclip',
+  drillDown: true,
+}
+
 // --- AI "Ask AI" drill items -----------------------------------------------
 // AI ops don't insert at the chip range — they rewrite the whole body async.
 // The leaf `onSelect` strips the chip then calls `onRunAI` (see `runAI` below).
@@ -243,7 +261,7 @@ interface SnippetItem extends SlashCommandItem {
  * block schema and article-link mode.
  */
 export function MailSlashContent(props: MailSlashContentProps) {
-  const [mode, setMode] = useState<'default' | 'placeholder'>('default')
+  const [mode, setMode] = useState<'default' | 'placeholder' | 'file'>('default')
 
   const exitMode = useCallback(() => {
     setMode('default')
@@ -272,6 +290,22 @@ export function MailSlashContent(props: MailSlashContentProps) {
     )
   }
 
+  if (mode === 'file' && props.onAttachFile) {
+    return (
+      <FileSlashContent
+        ref={props.ref}
+        query={props.query}
+        onBack={exitMode}
+        backLabel='Commands'
+        onClose={props.onClose}
+        onAttachFile={(file) => {
+          props.onAttachFile?.(file)
+          exitMode()
+        }}
+      />
+    )
+  }
+
   return (
     <CommandNavigation<NavItem>>
       <MailSlashContentInner
@@ -279,6 +313,10 @@ export function MailSlashContent(props: MailSlashContentProps) {
         onEnterPlaceholderMode={() => {
           setMode('placeholder')
           props.onScopeChange('Placeholder')
+        }}
+        onEnterFileMode={() => {
+          setMode('file')
+          props.onScopeChange('Files')
         }}
       />
     </CommandNavigation>
@@ -292,9 +330,14 @@ function MailSlashContentInner({
   onExecute,
   onScopeChange,
   onEnterPlaceholderMode,
+  onEnterFileMode,
+  onAttachFile,
   aiSlash,
   blockCommands = MAIL_BLOCK_COMMANDS,
-}: MailSlashContentProps & { onEnterPlaceholderMode: () => void }) {
+}: MailSlashContentProps & {
+  onEnterPlaceholderMode: () => void
+  onEnterFileMode: () => void
+}) {
   const { push, pop, isAtRoot, current, stack } = useCommandNavigation<NavItem>()
   const containerRef = useRef<HTMLDivElement>(null)
 
@@ -407,10 +450,21 @@ function MailSlashContentInner({
         onEnterPlaceholderMode()
         return
       }
+      if (item.id === 'attach-file') {
+        onEnterFileMode()
+        return
+      }
       const cmd = blockCommands.find((c) => c.id === item.id)
       if (cmd) onExecute(cmd.run)
     },
-    [blockCommands, enterAiScope, enterSnippetsDrillDown, onEnterPlaceholderMode, onExecute]
+    [
+      blockCommands,
+      enterAiScope,
+      enterSnippetsDrillDown,
+      onEnterPlaceholderMode,
+      onEnterFileMode,
+      onExecute,
+    ]
   )
 
   // Dispatch for the AI ops list (root of the "Ask AI" drill).
@@ -528,7 +582,12 @@ function MailSlashContentInner({
     const suggestionsSection: SlashCommandSection<SlashCommandItem> = {
       id: 'suggestions',
       heading: 'Suggestions',
-      items: [...(showAskAI ? [AI_ROOT_COMMAND] : []), ...TOOL_COMMANDS, ...blockCommands],
+      items: [
+        ...(showAskAI ? [AI_ROOT_COMMAND] : []),
+        ...TOOL_COMMANDS,
+        ...(onAttachFile ? [ATTACH_FILE_COMMAND] : []),
+        ...blockCommands,
+      ],
       onSelect: handleSuggestionSelect,
       // "Ask AI" gets the branded gradient sparkle + purple label; all other
       // suggestion rows keep the default EntityIcon + title layout.
@@ -588,6 +647,7 @@ function MailSlashContentInner({
     blockCommands,
     handleAiOpSelect,
     runAI,
+    onAttachFile,
   ])
 
   return (

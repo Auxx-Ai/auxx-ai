@@ -7,6 +7,7 @@ import type { JSONContent } from '@tiptap/core'
 import { Upload } from 'lucide-react'
 import type React from 'react'
 import type { useDropzone } from 'react-dropzone'
+import type { FileItem } from '~/components/files/files-store'
 import { useEditorActiveStateContext } from '../email-editor/editor-active-state-context'
 import { LazyTiptapEditor } from '../email-editor/lazy-tiptap-editor'
 import type { MailAiSlashConfig } from '../email-editor/mail-slash-content'
@@ -23,6 +24,8 @@ interface ComposerBodyProps {
   editorMinHeightClassName?: string
   /** Optional AI-tools wiring — surfaces the "Ask AI" item in the `/` menu. */
   aiSlash?: MailAiSlashConfig
+  /** Optional attachment wiring — surfaces the "Attach file" item in the `/` menu. */
+  onAttachFile?: (file: FileItem) => void
   /** Formatting profile. `'rich'` (default, email) or `'plain'` (chat). */
   variant?: 'rich' | 'plain'
 
@@ -64,6 +67,7 @@ export function ComposerBody({
   contentClassName,
   editorMinHeightClassName = 'min-h-[150px]',
   aiSlash,
+  onAttachFile,
   variant,
   onWrapperClick,
   onKeyDown,
@@ -132,6 +136,7 @@ export function ComposerBody({
           popoverClassName={popoverClassName}
           contentClassName={contentClassName}
           aiSlash={aiSlash}
+          onAttachFile={onAttachFile}
           variant={variant}
         />
         {belowEditor}

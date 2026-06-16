@@ -75,6 +75,18 @@ export interface FileBrowseLevelProps {
   onRequestClose?: () => void
 
   /**
+   * Focusless mode for chip-driven `/` slash hosts. The host's `/` chip owns
+   * focus and the query, driving the list through `useCmdkRemote` — so this
+   * level renders NO `CommandInput`, no keyboard footer, and no internal key
+   * handling, and reads its filter from {@link query} instead. Folder rows are
+   * stamped `data-drilldown` for ArrowRight drill-in.
+   */
+  remote?: boolean
+  /** External filter text (controlled). Used in {@link remote} mode in place of
+   *  the internal search input. */
+  query?: string
+
+  /**
    * When provided, the browse root shows a back affordance (and ←/Backspace on
    * an empty search returns) to the parent menu — for embedded drill-in hosts.
    */
@@ -97,13 +109,16 @@ function SelectionIndicator({
   if (allowMultiple) {
     return <Checkbox checked={selected} className='pointer-events-none' />
   }
+  // Single-select: only render the radio dot when selected; otherwise a bare
+  // size-4 spacer keeps row layout stable without showing an empty circle.
+  if (!selected) return <span className='size-4' />
   return (
     <span
       className={cn(
         radioGroupVariants({ variant: 'outline', size: 'default' }),
         'pointer-events-none flex items-center justify-center'
       )}>
-      {selected && <Circle className='size-2!' />}
+      <Circle className='size-2!' />
     </span>
   )
 }
@@ -124,6 +139,7 @@ function FileRow({
   allowMultiple,
   pathText,
   hint,
+  drillDown,
   onSelect,
 }: {
   id: string
@@ -136,12 +152,14 @@ function FileRow({
   allowMultiple: boolean
   pathText?: string
   hint?: string
+  drillDown?: boolean
   onSelect: () => void
 }) {
   return (
     <CommandNavigableItem
       item={{ id, name, label: name }}
       hasChildren={isNavigable}
+      drillDown={drillDown}
       onSelect={onSelect}
       className={cn('px-2', isKeyboardSelected && 'bg-accent text-accent-foreground')}>
       <span className='shrink-0 text-muted-foreground'>{isFolder ? <Folder /> : <File />}</span>
@@ -174,6 +192,7 @@ function FilesList({
   search,
   selectedIndex,
   enableKeyboardNavigation,
+  remote,
   onToggleFile,
   onNavigateFolder,
 }: {
@@ -186,6 +205,7 @@ function FilesList({
   search: string
   selectedIndex: number
   enableKeyboardNavigation: boolean
+  remote: boolean
   onToggleFile: (item: FileItem) => void
   onNavigateFolder: (item: FileItem) => void
 }) {
@@ -227,6 +247,7 @@ function FilesList({
               isKeyboardSelected={isKeyboardSelected}
               allowMultiple={allowMultiple}
               pathText={pathText || undefined}
+              drillDown={remote && isFolder}
               onSelect={() => (isFolder ? onNavigateFolder(item) : onToggleFile(item))}
             />
           )
@@ -258,6 +279,7 @@ function FileBrowseInner({
   onRequestClose,
   onBack,
   backLabel,
+  remote,
   search,
   setSearch,
   isGlobalSearchActive,
@@ -285,6 +307,7 @@ function FileBrowseInner({
     | 'onBack'
     | 'backLabel'
   > & {
+    remote: boolean
     search: string
     setSearch: (search: string) => void
     isGlobalSearchActive: boolean
@@ -445,17 +468,19 @@ function FileBrowseInner({
     allowFolders && !onlyLeafSelection && !!current && !isGlobalSearchActive
 
   return (
-    <Command shouldFilter={false} onKeyDown={handleKeyDown}>
+    <Command shouldFilter={false} onKeyDown={remote ? undefined : handleKeyDown}>
       {onBack && isAtRoot && <ParentBackHeader label={backLabel ?? 'Back'} onBack={onBack} />}
       <CommandList>
-        <CommandInput
-          placeholder={enableGlobalSearch ? `Search ${totalFiles} files...` : searchPlaceholder}
-          value={search}
-          onValueChange={setSearch}
-          loading={isLoading}
-          className='h-9'
-          autoFocus
-        />
+        {!remote && (
+          <CommandInput
+            placeholder={enableGlobalSearch ? `Search ${totalFiles} files...` : searchPlaceholder}
+            value={search}
+            onValueChange={setSearch}
+            loading={isLoading}
+            className='h-9'
+            autoFocus
+          />
+        )}
 
         {isGlobalSearchActive && (
           <div className='px-3 py-1 text-xs text-muted-foreground bg-muted/50 border-b'>
@@ -499,13 +524,14 @@ function FileBrowseInner({
             search={search}
             selectedIndex={selectedIndex}
             enableKeyboardNavigation={enableKeyboardNavigation}
+            remote={remote}
             onToggleFile={handleToggleFile}
             onNavigateFolder={handleNavigateFolder}
           />
         )}
       </CommandList>
 
-      {enableKeyboardNavigation && (
+      {!remote && enableKeyboardNavigation && (
         <div className='border-t px-3 py-2 text-xs text-muted-foreground bg-neutral-50/50 rounded-b-xl dark:bg-primary-50'>
           <div className='flex items-center gap-3'>
             <span className='flex items-center gap-1'>
@@ -547,10 +573,16 @@ export function FileBrowseLevel({
   searchPlaceholder = 'Search files and folders...',
   showPath = false,
   enableKeyboardNavigation = true,
+  remote = false,
+  query,
   ...props
 }: FileBrowseLevelProps) {
   const parentNav = useCommandNavigationOptional<FileNavigationItem>()
-  const [search, setSearch] = useState('')
+  const [internalSearch, setInternalSearch] = useState('')
+  // In remote mode the host's `/` chip owns the query; otherwise the internal
+  // CommandInput does.
+  const search = remote ? (query ?? '') : internalSearch
+  const setSearch = remote ? () => {} : setInternalSearch
   const isGlobalSearchActive = enableGlobalSearch && !!search.trim()
 
   const inner = (
@@ -564,6 +596,7 @@ export function FileBrowseLevel({
       searchPlaceholder={searchPlaceholder}
       showPath={showPath}
       enableKeyboardNavigation={enableKeyboardNavigation}
+      remote={remote}
       search={search}
       setSearch={setSearch}
       isGlobalSearchActive={isGlobalSearchActive}
