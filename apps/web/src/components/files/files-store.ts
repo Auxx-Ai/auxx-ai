@@ -135,7 +135,6 @@ export interface FileSystemStore {
 
   // Navigation state
   currentFolderId: string | null
-  breadcrumbs: BreadcrumbItem[]
 
   // Selection (optimized with Set)
   selectedItemIds: Set<string> // Selected item IDs only
@@ -202,7 +201,6 @@ export interface FileSystemStore {
 
   // Loading state
   setIsLoading: (isLoading: boolean) => void
-  setBreadcrumbs: (breadcrumbs: BreadcrumbItem[]) => void
 
   // Tree operations (O(1) or O(log n))
   getItemPath: (itemId: string) => FileItem[] // Get full path to item
@@ -229,7 +227,6 @@ export const useFileSystemStore = create<FileSystemStore>()(
 
     // State
     currentFolderId: null,
-    breadcrumbs: [{ id: null, name: 'Files', path: '/' }],
     selectedItemIds: new Set(),
     viewMode: 'list',
     sortBy: 'name',
@@ -613,7 +610,6 @@ export const useFileSystemStore = create<FileSystemStore>()(
     setSorting: (sortBy, sortOrder) => set({ sortBy, sortOrder }),
     setFilterSettings: (settings) => set({ filterSettings: settings }),
     setIsLoading: (isLoading) => set({ isLoading }),
-    setBreadcrumbs: (breadcrumbs) => set({ breadcrumbs }),
 
     // Tree operations - O(1) or O(log n) with Maps
     getItemPath: (itemId) => {
@@ -685,7 +681,6 @@ export const useFileSystemStore = create<FileSystemStore>()(
         filesNextCursor: null,
         hasMoreFiles: false,
         lastSync: null,
-        breadcrumbs: [{ id: null, name: 'Files', path: '/' }],
       }),
   }))
 )

@@ -196,15 +196,25 @@ export function useFileUpload(options: UseFileUploadOptions): UseFileUploadRetur
 
   // LAZY SESSION CREATION - Only create when actually needed
   const ensureSession = React.useCallback(async (): Promise<string> => {
-    // Return existing session if available
-    if (sessionRef.current && sessions[sessionRef.current]) {
-      return sessionRef.current
-    }
+    // Find a reusable session for this uploader, if one is still alive.
+    const reusableId =
+      (sessionRef.current && sessions[sessionRef.current] && sessionRef.current) ||
+      (uploaderSession && sessions[uploaderSession] && uploaderSession) ||
+      null
 
-    // Check if uploader already has a session
-    if (uploaderSession && sessions[uploaderSession]) {
-      sessionRef.current = uploaderSession
-      return uploaderSession
+    if (reusableId) {
+      // Only reuse it if it still targets the same entity. When entityId changes
+      // (e.g. navigating between folders in the file manager) the session is stale:
+      // its entityId — sent to the server at presign time — would route uploads to
+      // the folder the session was born with, not the current one. Discard it so a
+      // fresh session is created for the current entity. For consumers with a fixed
+      // entityId (avatars, ticket attachments, ...) this branch never fires.
+      if (sessions[reusableId].entityId === entityId) {
+        sessionRef.current = reusableId
+        return reusableId
+      }
+      closeSession(reusableId)
+      sessionRef.current = null
     }
 
     // Create session on-demand with proper entity type
@@ -248,6 +258,7 @@ export function useFileUpload(options: UseFileUploadOptions): UseFileUploadRetur
     uploaderSession,
     sessions,
     createSessionWithGuard,
+    closeSession,
     entityType,
     entityId,
     maxFiles,

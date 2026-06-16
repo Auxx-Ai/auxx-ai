@@ -70,7 +70,6 @@ export function useFilesystem() {
 
   // Use specific selectors to avoid unnecessary re-renders
   const setFileSystemData = useFileSystemStore((state) => state.setFileSystemData)
-  const setBreadcrumbs = useFileSystemStore((state) => state.setBreadcrumbs)
   const getItemPath = useFileSystemStore((state) => state.getItemPath)
   const setCurrentFolder = useFileSystemStore((state) => state.setCurrentFolder)
   const getItemChildren = useFileSystemStore((state) => state.getItemChildren)
@@ -118,12 +117,19 @@ export function useFilesystem() {
     }
   )
 
-  // Update store when filesystem data changes - idempotent write to avoid render loops
+  // Update store when filesystem data changes - idempotent write to avoid render loops.
+  // The key includes `isOptimisticMove` so the store re-syncs when an optimistic move
+  // settles: onMutate pre-applies the final parentId, so the post-settle refetch has the
+  // same id:parentId — without the flag in the key, the update would be skipped and the
+  // row would stay stuck on the "moving" style after landing in the target folder.
   const flatIds = useMemo(() => {
     if (!fileSystemData?.pages?.length) return ''
     return fileSystemData.pages
       .flatMap((p) => p.items || [])
-      .map((i) => `${i.id}:${i.parentId ?? ''}`)
+      .map(
+        (i) =>
+          `${i.id}:${i.parentId ?? ''}:${(i as { isOptimisticMove?: boolean }).isOptimisticMove ? 1 : 0}`
+      )
       .join('|')
   }, [fileSystemData?.pages])
 
@@ -141,26 +147,7 @@ export function useFilesystem() {
     setFileSystemData(allItems)
   }, [fileSystemData?.pages, flatIds, setFileSystemData])
 
-  // Update breadcrumbs when current folder changes - O(log n) with Maps
   const currentFolderId = useFileSystemStore((state) => state.currentFolderId)
-  useEffect(() => {
-    if (!currentFolderId) {
-      setBreadcrumbs([{ id: null, name: 'Files', path: '/' }])
-      return
-    }
-
-    // O(log n) path traversal instead of O(n) search
-    const path = getItemPath(currentFolderId)
-    const breadcrumbs = [
-      { id: null, name: 'Files', path: '/' },
-      ...path.map((item) => ({
-        id: item.id,
-        name: item.name,
-        path: item.path,
-      })),
-    ]
-    setBreadcrumbs(breadcrumbs)
-  }, [currentFolderId, getItemPath, setBreadcrumbs])
 
   // Get store state that affects item computation
   const itemsById = useFileSystemStore((state) => state.itemsById)
@@ -168,7 +155,6 @@ export function useFilesystem() {
   const foldersByParent = useFileSystemStore((state) => state.foldersByParent)
   const showUploading = useFileSystemStore((state) => state.showUploading)
   const selectedItemIds = useFileSystemStore((state) => state.selectedItemIds)
-  const breadcrumbs = useFileSystemStore((state) => state.breadcrumbs)
   const folderTreeById = useFileSystemStore((state) => state.folderTreeById)
   // Don't use store's hierarchicalItems directly - need to integrate uploads
   // const hierarchicalItems = useFileSystemStore((state) => state.hierarchicalItems)
@@ -201,10 +187,36 @@ export function useFilesystem() {
     return Array.from(folderTreeById.values())
   }, [folderTreeById])
 
+  // Breadcrumbs derived from the current folder + loaded items. Keyed on `itemsById`
+  // so it self-heals once the filesystem data arrives — important on a hard refresh
+  // into ?folder=<id>, where currentFolderId is set before the data has loaded.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: getItemPath reads itemsById via the store internally, so itemsById must stay in the deps to recompute when data loads
+  const breadcrumbs = useMemo(() => {
+    const root = { id: null as string | null, name: 'Files', path: '/' }
+    if (!currentFolderId) return [root]
+    return [
+      root,
+      ...getItemPath(currentFolderId).map((item) => ({
+        id: item.id,
+        name: item.name,
+        path: item.path,
+      })),
+    ]
+  }, [currentFolderId, getItemPath, itemsById])
+
+  // Target folder for uploads, forwarded to the server in the session metadata.
+  // The FILE upload processor reads `session.metadata.folderId` (NOT entityId) to decide
+  // where the file lands — without this every upload silently goes to the root folder.
+  const uploadSessionMetadata = useMemo(
+    () => ({ folderId: currentFolderId ?? null }),
+    [currentFolderId]
+  )
+
   // File upload integration for FILE entity type
   const upload = useFileUpload({
     entityType: 'FILE',
     entityId: currentFolderId || undefined, // Current folder or undefined for root
+    sessionMetadata: uploadSessionMetadata,
     autoStart: false, // Manual control
     onComplete: async (results) => {
       // Refresh file system to show new server files
