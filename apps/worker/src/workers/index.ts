@@ -197,6 +197,26 @@ export async function setupSchedules() {
     }
   )
 
+  // Stale PENDING message sweeper — every 5 minutes. The synchronous send path
+  // creates a PENDING row then sends/reconciles in-request; a process death
+  // between the two strands the row in PENDING forever (retry rejects it, UI
+  // shows a permanent "being sent" spinner). This flips rows older than the
+  // threshold to FAILED so they're retryable.
+  await maintenanceQueue.upsertJobScheduler(
+    'stalePendingMessageSweeperJob',
+    { pattern: '*/5 * * * *' },
+    {
+      data: { dryRun: false },
+      opts: {
+        attempts: 2,
+        backoff: { type: 'exponential', delay: 60000 },
+        priority: 7,
+        removeOnComplete: { count: 60 },
+        removeOnFail: { count: 100 },
+      },
+    }
+  )
+
   // Eval-run watchdog — every 5 minutes. Times out runs whose heartbeat went
   // stale (worker died mid-run) or that were never claimed off the queue.
   await maintenanceQueue.upsertJobScheduler(

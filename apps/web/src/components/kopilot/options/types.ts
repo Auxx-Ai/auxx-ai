@@ -10,7 +10,8 @@ import type { ReactNode } from 'react'
  */
 export interface KopilotChatOptions {
   /**
-   * Composer placeholder. Defaults to 'Ask Kopilot…'. Computed lazily so callers
+   * Composer placeholder. Defaults to 'Ask anything.  / for prompts, @ to reference'.
+   * Computed lazily so callers
    * can inject `{{agent.name}}` etc.
    */
   placeholder?: string

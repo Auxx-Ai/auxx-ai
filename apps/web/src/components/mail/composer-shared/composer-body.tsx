@@ -9,6 +9,7 @@ import type React from 'react'
 import type { useDropzone } from 'react-dropzone'
 import { useEditorActiveStateContext } from '../email-editor/editor-active-state-context'
 import { LazyTiptapEditor } from '../email-editor/lazy-tiptap-editor'
+import type { MailAiSlashConfig } from '../email-editor/mail-slash-content'
 
 interface ComposerBodyProps {
   // editor wiring
@@ -20,6 +21,8 @@ interface ComposerBodyProps {
   contentClassName?: string
   /** Min-height for the editor region. Email 'min-h-[150px]', chat 'min-h-[60px]'. */
   editorMinHeightClassName?: string
+  /** Optional AI-tools wiring — surfaces the "Ask AI" item in the `/` menu. */
+  aiSlash?: MailAiSlashConfig
 
   // interaction
   onWrapperClick: React.MouseEventHandler<HTMLDivElement>
@@ -58,6 +61,7 @@ export function ComposerBody({
   popoverClassName,
   contentClassName,
   editorMinHeightClassName = 'min-h-[150px]',
+  aiSlash,
   onWrapperClick,
   onKeyDown,
   dropzone,
@@ -124,6 +128,7 @@ export function ComposerBody({
           editable={editable}
           popoverClassName={popoverClassName}
           contentClassName={contentClassName}
+          aiSlash={aiSlash}
         />
         {belowEditor}
       </div>

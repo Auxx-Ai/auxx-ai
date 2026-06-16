@@ -81,7 +81,11 @@ export function buildChatTimeline(
 }
 
 function messageTimestamp(m: MessageMeta): number {
+  // Unsent / in-flight rows (PENDING send, or a stranded send) have no `sentAt`.
+  // Falling back to `createdAt` keeps them in chronological position instead of
+  // sorting them to the epoch and pinning them to the top of the thread.
   if (m.sentAt) return new Date(m.sentAt).getTime()
+  if (m.createdAt) return new Date(m.createdAt).getTime()
   return 0
 }
 
@@ -89,8 +93,8 @@ function canGroupChat(a: MessageMeta, b: MessageMeta): boolean {
   if (b.messageType !== 'CHAT') return false
   if (a.isInbound !== b.isInbound) return false
   if (fromParticipant(a) !== fromParticipant(b)) return false
-  const aT = a.sentAt ? new Date(a.sentAt).getTime() : null
-  const bT = b.sentAt ? new Date(b.sentAt).getTime() : null
+  const aT = messageTimestamp(a) || null
+  const bT = messageTimestamp(b) || null
   if (aT === null || bT === null) return true
   return Math.abs(bT - aT) <= CHAT_GROUP_WINDOW_MS
 }

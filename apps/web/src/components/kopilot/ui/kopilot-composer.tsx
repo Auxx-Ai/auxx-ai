@@ -273,7 +273,7 @@ export function KopilotComposer({ ref, page, onSend, contentClassName }: Kopilot
   senderHotkeyOpenRef.current = () => setIsSenderPickerOpen(true)
 
   const { editor, confirmReference, closePicker } = useReferencePickerEditor({
-    placeholder: placeholder ?? 'Ask Kopilot...',
+    placeholder: placeholder ?? 'Ask anything.  / for prompts, @ to reference',
     editable: true,
     enableReferencePicker: allowReferencePicker,
     className: cn('prose prose-sm prose-p:my-0 focus:outline-hidden max-w-none dark:prose-invert'),

@@ -23,6 +23,10 @@ export { type MidTrialStats, sendMidTrialEmailsJob } from './mid-trial-job'
 export { oauth2TokenRefreshScannerJob } from './oauth2-token-refresh-scanner-job'
 export { type QuotaResetStats, quotaResetJob } from './quota-reset-job'
 export {
+  type StalePendingMessageSweeperStats,
+  stalePendingMessageSweeperJob,
+} from './stale-pending-message-sweeper-job'
+export {
   enqueueStorageCleanupJob,
   type StorageCleanupJobData,
   storageCleanupJob,

@@ -118,6 +118,12 @@ export interface SentMessage {
   sendStatus: SendStatus
   sentAt: Date | null
   error?: string | null
+  /**
+   * Resolved participants (id + role) for the sent message, so the client can
+   * render the optimistic row with correct from/to/cc immediately instead of a
+   * participant-less row that waits on the realtime echo / refetch.
+   */
+  participants?: { id: string; role: ParticipantRole }[]
 }
 /**
  * Reconciliation input

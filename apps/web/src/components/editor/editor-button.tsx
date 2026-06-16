@@ -13,7 +13,7 @@ import {
 } from '@auxx/ui/components/dropdown-menu'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { cn } from '@auxx/ui/lib/utils'
-import type { Editor } from '@tiptap/react'
+import { type Editor, useEditorState } from '@tiptap/react'
 import {
   Bold,
   File,
@@ -98,13 +98,18 @@ interface EditorButtonsProps {
 
 // Font Selector Button
 export const FontSelectorButton = ({ editor, disabled, popoverClassName }: EditorButtonsProps) => {
+  const fontFamily = useEditorState({
+    editor,
+    selector: ({ editor }) => editor?.getAttributes('textStyle').fontFamily || '',
+  })
+
   if (!editor) return null
 
   return (
     <EditorSelector
       id='font-selector'
       options={fontOptions}
-      value={editor.getAttributes('textStyle').fontFamily || ''}
+      value={fontFamily}
       onChange={(value) => editor.chain().focus().setFontFamily(value).run()}
       placeholder='Font'
       disabled={disabled}
@@ -116,13 +121,18 @@ export const FontSelectorButton = ({ editor, disabled, popoverClassName }: Edito
 
 // Font Size Selector Button
 export const FontSizeButton = ({ editor, disabled, popoverClassName }: EditorButtonsProps) => {
+  const fontSize = useEditorState({
+    editor,
+    selector: ({ editor }) => editor?.getAttributes('textStyle').fontSize || '',
+  })
+
   if (!editor) return null
 
   return (
     <EditorSelector
       id='font-size-selector'
       options={fontSizeOptions}
-      value={editor.getAttributes('textStyle').fontSize || ''}
+      value={fontSize}
       onChange={(value) => editor.chain().focus().setFontSize(value).run()}
       placeholder='Size'
       disabled={disabled}
@@ -134,6 +144,11 @@ export const FontSizeButton = ({ editor, disabled, popoverClassName }: EditorBut
 
 // Color Picker Button
 export const ColorPickerButton = ({ editor, disabled, popoverClassName }: EditorButtonsProps) => {
+  const color = useEditorState({
+    editor,
+    selector: ({ editor }) => editor?.getAttributes('textStyle').color || '',
+  })
+
   if (!editor) return null
 
   // Try to get active state context if available
@@ -167,7 +182,7 @@ export const ColorPickerButton = ({ editor, disabled, popoverClassName }: Editor
               <div className='flex size-4 items-center justify-center rounded-full border border-gray-300'>
                 <div
                   className='size-3 rounded-full'
-                  style={{ backgroundColor: editor.getAttributes('textStyle').color || '#000000' }}
+                  style={{ backgroundColor: color || '#000000' }}
                 />
               </div>
             </Button>
@@ -176,15 +191,15 @@ export const ColorPickerButton = ({ editor, disabled, popoverClassName }: Editor
       </PopoverTrigger>
       <PopoverContent className={cn('w-64 p-2', popoverClassName)}>
         <div className='grid grid-cols-5 gap-1'>
-          {colorOptions.map((color) => (
+          {colorOptions.map((c) => (
             <button
-              key={color.value}
+              key={c.value}
               type='button'
               className='size-6 rounded-md border p-0.5'
-              style={{ backgroundColor: color.value }}
-              onClick={() => editor.chain().focus().setColor(color.value).run()}
-              title={color.label}>
-              {editor.getAttributes('textStyle').color === color.value && (
+              style={{ backgroundColor: c.value }}
+              onClick={() => editor.chain().focus().setColor(c.value).run()}
+              title={c.label}>
+              {color === c.value && (
                 <div className='flex h-full w-full items-center justify-center rounded-sm bg-black/10'>
                   <div className='size-3 rounded-full bg-white' />
                 </div>
@@ -199,6 +214,14 @@ export const ColorPickerButton = ({ editor, disabled, popoverClassName }: Editor
 
 // Bold Button
 export const BoldButton = ({ editor, disabled }: EditorButtonsProps) => {
+  // Subscribe to mark state so the button reflects/toggles active formatting —
+  // the editor runs with shouldRerenderOnTransaction: false, so selection
+  // changes won't re-render this button otherwise.
+  const isActive = useEditorState({
+    editor,
+    selector: ({ editor }) => editor?.isActive('bold') ?? false,
+  })
+
   if (!editor) return null
 
   return (
@@ -207,7 +230,7 @@ export const BoldButton = ({ editor, disabled }: EditorButtonsProps) => {
         variant='ghost'
         type='button'
         size='icon-sm'
-        className={`rounded-full ${editor.isActive('bold') ? 'bg-muted' : ''}`}
+        className={`rounded-full ${isActive ? 'bg-muted' : ''}`}
         onClick={() => editor.chain().focus().toggleBold().run()}
         disabled={disabled}>
         <Bold />
@@ -218,6 +241,11 @@ export const BoldButton = ({ editor, disabled }: EditorButtonsProps) => {
 
 // Italic Button
 export const ItalicButton = ({ editor, disabled }: EditorButtonsProps) => {
+  const isActive = useEditorState({
+    editor,
+    selector: ({ editor }) => editor?.isActive('italic') ?? false,
+  })
+
   if (!editor) return null
 
   return (
@@ -226,7 +254,7 @@ export const ItalicButton = ({ editor, disabled }: EditorButtonsProps) => {
         variant='ghost'
         type='button'
         size='icon-sm'
-        className={`rounded-full ${editor.isActive('italic') ? 'bg-muted' : ''}`}
+        className={`rounded-full ${isActive ? 'bg-muted' : ''}`}
         onClick={() => editor.chain().focus().toggleItalic().run()}
         disabled={disabled}>
         <Italic />
@@ -237,6 +265,11 @@ export const ItalicButton = ({ editor, disabled }: EditorButtonsProps) => {
 
 // Underline Button
 export const UnderlineButton = ({ editor, disabled }: EditorButtonsProps) => {
+  const isActive = useEditorState({
+    editor,
+    selector: ({ editor }) => editor?.isActive('underline') ?? false,
+  })
+
   if (!editor) return null
 
   return (
@@ -245,7 +278,7 @@ export const UnderlineButton = ({ editor, disabled }: EditorButtonsProps) => {
         variant='ghost'
         type='button'
         size='icon-sm'
-        className={`rounded-full ${editor.isActive('underline') ? 'bg-muted' : ''}`}
+        className={`rounded-full ${isActive ? 'bg-muted' : ''}`}
         onClick={() => editor.chain().focus().toggleUnderline().run()}
         disabled={disabled}>
         <Underline />
@@ -256,6 +289,11 @@ export const UnderlineButton = ({ editor, disabled }: EditorButtonsProps) => {
 
 // Strikethrough Button
 export const StrikethroughButton = ({ editor, disabled }: EditorButtonsProps) => {
+  const isActive = useEditorState({
+    editor,
+    selector: ({ editor }) => editor?.isActive('strike') ?? false,
+  })
+
   if (!editor) return null
 
   return (
@@ -264,7 +302,7 @@ export const StrikethroughButton = ({ editor, disabled }: EditorButtonsProps) =>
         variant='ghost'
         type='button'
         size='icon-sm'
-        className={`rounded-full ${editor.isActive('strike') ? 'bg-muted' : ''}`}
+        className={`rounded-full ${isActive ? 'bg-muted' : ''}`}
         onClick={() => editor.chain().focus().toggleStrike().run()}
         disabled={disabled}>
         <Strikethrough />
@@ -275,6 +313,17 @@ export const StrikethroughButton = ({ editor, disabled }: EditorButtonsProps) =>
 
 // List Button
 export const ListButton = ({ editor, disabled, popoverClassName }: EditorButtonsProps) => {
+  const listState = useEditorState({
+    editor,
+    selector: ({ editor }) => ({
+      bullet: editor?.isActive('bulletList') ?? false,
+      ordered: editor?.isActive('orderedList') ?? false,
+    }),
+  })
+
+  // Track auto-formatting state
+  const [autoFormatting, setAutoFormatting] = useState(false)
+
   if (!editor) return null
 
   // Try to get active state context if available
@@ -284,9 +333,6 @@ export const ListButton = ({ editor, disabled, popoverClassName }: EditorButtons
   } catch {
     // Context not available, component used outside email editor
   }
-
-  // Track auto-formatting state
-  const [autoFormatting, setAutoFormatting] = useState(false)
 
   return (
     <DropdownMenu
@@ -304,21 +350,19 @@ export const ListButton = ({ editor, disabled, popoverClassName }: EditorButtons
           variant='ghost'
           size='icon-sm'
           type='button'
-          className={`rounded-full ${
-            editor.isActive('bulletList') || editor.isActive('orderedList') ? 'bg-muted' : ''
-          }`}
+          className={`rounded-full ${listState.bullet || listState.ordered ? 'bg-muted' : ''}`}
           disabled={disabled}>
           <List />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent className={cn('w-56', popoverClassName)} align='start' side='bottom'>
         <DropdownMenuItem
-          className={editor.isActive('bulletList') ? 'bg-muted' : ''}
+          className={listState.bullet ? 'bg-muted' : ''}
           onClick={() => editor.chain().focus().toggleBulletList().run()}>
           Bulleted List
         </DropdownMenuItem>
         <DropdownMenuItem
-          className={editor.isActive('orderedList') ? 'bg-muted' : ''}
+          className={listState.ordered ? 'bg-muted' : ''}
           onClick={() => editor.chain().focus().toggleOrderedList().run()}>
           Numbered List
         </DropdownMenuItem>
@@ -339,6 +383,11 @@ export const ListButton = ({ editor, disabled, popoverClassName }: EditorButtons
 
 // Link Button
 export const LinkButton = ({ editor, disabled }: EditorButtonsProps) => {
+  const isActive = useEditorState({
+    editor,
+    selector: ({ editor }) => editor?.isActive('link') ?? false,
+  })
+
   if (!editor || disabled) return null
 
   const setLink = () => {
@@ -362,7 +411,7 @@ export const LinkButton = ({ editor, disabled }: EditorButtonsProps) => {
         variant='ghost'
         type='button'
         size='icon-sm'
-        className={`rounded-full ${editor.isActive('link') ? 'bg-muted' : ''}`}
+        className={`rounded-full ${isActive ? 'bg-muted' : ''}`}
         onClick={setLink}>
         <LinkIcon />
       </Button>
@@ -372,6 +421,11 @@ export const LinkButton = ({ editor, disabled }: EditorButtonsProps) => {
 
 // Quote Button
 export const QuoteButton = ({ editor, disabled }: EditorButtonsProps) => {
+  const isActive = useEditorState({
+    editor,
+    selector: ({ editor }) => editor?.isActive('blockquote') ?? false,
+  })
+
   if (!editor) return null
 
   return (
@@ -380,7 +434,7 @@ export const QuoteButton = ({ editor, disabled }: EditorButtonsProps) => {
         variant='ghost'
         type='button'
         size='icon-sm'
-        className={`rounded-full ${editor.isActive('blockquote') ? 'bg-muted' : ''}`}
+        className={`rounded-full ${isActive ? 'bg-muted' : ''}`}
         onClick={() => editor.chain().focus().toggleBlockquote().run()}
         disabled={disabled}>
         <Quote />

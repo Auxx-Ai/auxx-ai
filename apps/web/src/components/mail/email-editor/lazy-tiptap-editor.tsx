@@ -5,6 +5,7 @@ import { cn } from '@auxx/ui/lib/utils'
 import type { JSONContent } from '@tiptap/core'
 import { Loader2 } from 'lucide-react'
 import React, { Suspense } from 'react'
+import type { MailAiSlashConfig } from './mail-slash-content'
 
 const TiptapEditor = React.lazy(() => import('~/components/editor/tiptap-editor'))
 
@@ -19,6 +20,8 @@ interface LazyTiptapEditorProps {
   popoverClassName?: string
   /** When provided, plain Enter (no shift/cmd/ctrl) calls this instead of inserting a paragraph break. */
   onEnter?: () => void
+  /** Optional AI-tools wiring — surfaces the "Ask AI" item in the `/` menu. */
+  aiSlash?: MailAiSlashConfig
 }
 
 /**

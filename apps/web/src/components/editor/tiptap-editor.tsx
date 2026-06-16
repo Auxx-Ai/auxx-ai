@@ -15,7 +15,10 @@ import { type Editor, EditorContent, useEditor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import '~/styles/prosemirror.css'
-import { MailSlashContent } from '~/components/mail/email-editor/mail-slash-content'
+import {
+  type MailAiSlashConfig,
+  MailSlashContent,
+} from '~/components/mail/email-editor/mail-slash-content'
 import { useEditorContext } from './editor-context'
 import { FontSize } from './extensions'
 import { Indent } from './extensions/indent'
@@ -45,6 +48,8 @@ type TiptapEditorProps = {
   popoverClassName?: string
   /** When provided, plain Enter (no shift) calls this handler instead of inserting a paragraph break. */
   onEnter?: () => void
+  /** Optional AI-tools wiring — surfaces the "Ask AI" item in the `/` menu. */
+  aiSlash?: MailAiSlashConfig
 }
 
 const TiptapEditor = ({
@@ -56,6 +61,7 @@ const TiptapEditor = ({
   editable = true,
   popoverClassName,
   onEnter,
+  aiSlash,
 }: TiptapEditorProps) => {
   const { setEditor } = useEditorContext()
   const externalSyncRef = useRef<{ markLocalEdit: (key: string) => void }>({
@@ -264,6 +270,7 @@ const TiptapEditor = ({
             onExecute={runWithChipRange}
             onScopeChange={changeSlashScope}
             onClose={closeSlash}
+            aiSlash={aiSlash}
           />
         </InlinePickerPopover>
       )}

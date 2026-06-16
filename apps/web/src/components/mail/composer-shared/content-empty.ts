@@ -1,7 +1,12 @@
 // apps/web/src/components/mail/composer-shared/content-empty.ts
 'use client'
 
+import type { JSONContent } from '@tiptap/core'
 import type { Editor } from '@tiptap/react'
+import { REFERENCE_PICKER_NODE } from '~/components/editor/inline-picker'
+
+/** Seed ZWSP an open picker chip holds so ProseMirror can keep its cursor. */
+const ZWSP = /​/g
 
 /**
  * Selectors for elements that should not steal focus into the editor when the
@@ -25,4 +30,24 @@ export const INTERACTIVE_ELEMENT_SELECTORS = `
 export function isContentEmpty(editor: Editor | null): boolean {
   if (!editor) return true
   return (editor.getText()?.trim() ?? '') === ''
+}
+
+/** Concatenate text content, skipping open picker chips. A chip's text is the
+ *  transient `/` or `@` query (plus a seed ZWSP) — not body content. */
+function textIgnoringChips(node: JSONContent): string {
+  if (node.type === REFERENCE_PICKER_NODE) return ''
+  if (node.type === 'text') return node.text ?? ''
+  return (node.content ?? []).map(textIgnoringChips).join('')
+}
+
+/**
+ * Like {@link isContentEmpty} but ignores any open `/`/`@` picker chip. Use
+ * where the chip is expected to be open while measuring emptiness — e.g. the
+ * `/` menu deciding whether to offer Compose (empty body) or transform ops.
+ * Without this, the chip's seed ZWSP (which `.trim()` doesn't strip) and its
+ * in-progress query both read as "content".
+ */
+export function isBodyEmptyIgnoringChips(editor: Editor | null): boolean {
+  if (!editor) return true
+  return textIgnoringChips(editor.getJSON()).replace(ZWSP, '').trim() === ''
 }

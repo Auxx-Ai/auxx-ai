@@ -244,6 +244,53 @@ export class ParticipantService {
   }
 
   /**
+   * Finds or creates the Participant that represents an Integration's sending
+   * mailbox (e.g. `markus@auxx.ai`). This is the correct FROM identity for an
+   * outbound message — not the operator's login email, which may differ from
+   * the mailbox and would otherwise collapse onto a recipient participant.
+   *
+   * Returns `null` for integrations without a mailbox address (e.g. `chat`),
+   * letting the caller fall back to the user-based participant.
+   *
+   * @param integrationId - The integration the message is being sent from.
+   * @returns The mailbox Participant, or null if the integration has no email.
+   */
+  async findOrCreateParticipantForIntegration(
+    integrationId: string
+  ): Promise<ParticipantEntity | null> {
+    const [integration] = await this.db
+      .select({
+        email: schema.Integration.email,
+        name: schema.Integration.name,
+        organizationId: schema.Integration.organizationId,
+      })
+      .from(schema.Integration)
+      .where(
+        and(
+          eq(schema.Integration.id, integrationId),
+          eq(schema.Integration.organizationId, this.organizationId)
+        )
+      )
+      .limit(1)
+
+    if (!integration) {
+      logger.warn('Integration not found when resolving FROM participant', {
+        integrationId,
+        organizationId: this.organizationId,
+      })
+      return null
+    }
+    // Providers without a mailbox address (e.g. chat) — caller falls back.
+    if (!integration.email) return null
+
+    return this.findOrCreateParticipant({
+      identifier: integration.email,
+      identifierType: 'EMAIL' as IdentifierType,
+      name: integration.name,
+    })
+  }
+
+  /**
    * Batch fetch participants by ID.
    * Returns participants in same order as input IDs (missing IDs are excluded).
    */

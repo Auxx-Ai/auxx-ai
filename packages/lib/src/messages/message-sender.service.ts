@@ -1,6 +1,6 @@
 // packages/lib/src/messages/message-sender.service.ts
 import { type Database, database as db, schema } from '@auxx/database'
-import { ParticipantRole } from '@auxx/database/enums'
+import { ParticipantRole, SendStatus } from '@auxx/database/enums'
 import type { ParticipantRole as ParticipantRoleType } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
 import { getRedisClient } from '@auxx/redis'
@@ -102,6 +102,8 @@ export class MessageSenderService {
       }
     }
     let threadContext: ThreadContext | undefined
+    // Hoisted so the catch can mark a freshly-composed-but-unsent row FAILED.
+    let composed: ComposedMessage | undefined
     try {
       // Step 1: Prepare thread
       threadContext = await this.threadManager.getOrCreateThreadForSending({
@@ -118,7 +120,7 @@ export class MessageSenderService {
       // Step 2: Process participants
       const participants = await this.processParticipants(input)
       // Step 3: Compose message
-      const composed = await this.composer.composeMessage({
+      composed = await this.composer.composeMessage({
         threadId: threadContext.id,
         userId: input.userId,
         organizationId: input.organizationId,
@@ -222,8 +224,11 @@ export class MessageSenderService {
       if (input.attachmentIds && input.attachmentIds.length > 0 && sendResult.success) {
         await this.convertAttachmentsToPermanent(input.attachmentIds)
       }
-      // Step 11: Return result
-      return this.getUpdatedMessage(composed.id)
+      // Step 11: Return result, carrying the resolved participants so the
+      // client can render the optimistic row with correct from/to immediately.
+      const sent = await this.getUpdatedMessage(composed.id)
+      sent.participants = participants.all.map((p) => ({ id: p.id, role: p.role }))
+      return sent
     } catch (error) {
       logger.error('Failed to send message', {
         error,
@@ -233,6 +238,32 @@ export class MessageSenderService {
           threadId: input.threadId,
         },
       })
+
+      // Mark the composed-but-unsent row FAILED so it doesn't strand as PENDING
+      // forever. The send runs synchronously in the request, so a throw between
+      // row creation (Step 3) and reconciliation (Step 7) leaves a PENDING row
+      // that retry rejects and the UI shows as a permanent "being sent" spinner.
+      // Marking FAILED makes it retryable. (A hard process death can't run this
+      // — the stale-PENDING sweeper covers that case.)
+      if (composed?.id) {
+        try {
+          await (this.db ?? db)
+            .update(schema.Message)
+            .set({
+              sendStatus: SendStatus.FAILED,
+              providerError: error instanceof Error ? error.message : String(error),
+              lastAttemptAt: new Date(),
+              attempts: sql`${schema.Message.attempts} + 1`,
+              updatedAt: new Date(),
+            })
+            .where(eq(schema.Message.id, composed.id))
+        } catch (markError) {
+          logger.warn('Failed to mark message FAILED after send error', {
+            messageId: composed.id,
+            error: markError instanceof Error ? markError.message : String(markError),
+          })
+        }
+      }
 
       // Clean up orphaned thread if we created a new one during this send attempt
       if (threadContext?.isPending) {
@@ -314,12 +345,17 @@ export class MessageSenderService {
    * Processes participants and ensures they exist in the database
    */
   private async processParticipants(input: SendMessageInput): Promise<ProcessedParticipants> {
-    // Get sender
-    const fromParticipant = await this.participantService.findOrCreateParticipantForUser(
-      input.userId
-    )
+    // FROM is the sending mailbox (e.g. markus@auxx.ai), not the operator's
+    // login email — those can differ, and keying FROM off the user collapses it
+    // onto a recipient when the operator's email matches a recipient. Providers
+    // without a mailbox address (e.g. chat) fall back to the user identity.
+    const fromParticipant =
+      (await this.participantService.findOrCreateParticipantForIntegration(input.integrationId)) ??
+      (await this.participantService.findOrCreateParticipantForUser(input.userId))
     if (!fromParticipant) {
-      throw new Error(`Could not find or create participant for user ${input.userId}`)
+      throw new Error(
+        `Could not resolve FROM participant for integration ${input.integrationId} / user ${input.userId}`
+      )
     }
     // Process recipients
     const processParticipant = async (p: (typeof input.to)[0], role: ParticipantRoleType) => {
