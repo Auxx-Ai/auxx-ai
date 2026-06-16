@@ -3,7 +3,7 @@
 import { FieldType as FieldTypeEnum } from '@auxx/database/enums'
 import type { FieldType } from '@auxx/database/types'
 import { formatToRawValue } from '@auxx/lib/field-values/client'
-import type { RecordId } from '@auxx/lib/resources/client'
+import { parseRecordId, type RecordId } from '@auxx/lib/resources/client'
 import {
   createContext,
   type ReactNode,
@@ -17,6 +17,8 @@ import {
 import { useFieldValue } from '~/components/resources/hooks/use-field-values'
 import { useSaveFieldValue } from '~/components/resources/hooks/use-save-field-value'
 import type { StoredFieldValue } from '~/components/resources/store/field-value-store'
+import { useRecordStore } from '~/components/resources/store/record-store'
+import { useResourceStore } from '~/components/resources/store/resource-store'
 
 /**
  * property-provider.tsx
@@ -302,6 +304,21 @@ export function PropertyProvider({
             fieldType: FieldTypeEnum.TEXT,
           },
         ])
+
+        // Optimistically mirror the server-side displayName recompute into the
+        // record store so surfaces reading `record.displayName` (e.g. the drawer
+        // header) update instantly. The editing tab is excluded from the
+        // `record:updated` realtime echo, so without this it would stay stale
+        // until a refetch. Only when this NAME field actually drives the
+        // entity's primary displayName — mirrors the backend gate.
+        const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
+        const resource = useResourceStore.getState().getResourceById(entityDefinitionId)
+        if (resource?.display.primaryDisplayField?.id === field.id) {
+          const composed = `${nameValue.firstName ?? ''} ${nameValue.lastName ?? ''}`.trim()
+          useRecordStore
+            .getState()
+            .updateRecord(entityDefinitionId, entityInstanceId, { displayName: composed })
+        }
         return
       }
 
