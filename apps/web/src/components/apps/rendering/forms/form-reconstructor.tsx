@@ -212,7 +212,7 @@ export const Form = React.memo(function Form({
               <Button
                 key={index}
                 type='submit'
-                variant={child.attributes.variant || 'default'}
+                variant={child.attributes.variant || 'outline'}
                 disabled={child.attributes.disabled}
                 loading={isSubmitting}
                 loadingText={child.attributes.loadingText}>

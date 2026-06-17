@@ -10,9 +10,11 @@ import { ViewStoreProvider } from '~/components/dynamic-table/context/view-store
 import { AuxxAppProviders } from '~/components/global/auxx-app-providers'
 import { Dashboard } from '~/components/global/dashboard'
 import { GlobalCreateRoot } from '~/components/global-create/global-create-root'
-import KBar from '~/components/kbar'
+import { CommandPalette } from '~/components/kbar'
 import { SimpleLayout } from '~/components/layouts/simple-layout'
 import { FloatingComposeRoot } from '~/components/mail/email-editor/floating-compose-root'
+import { SignatureDialogRoot } from '~/components/signatures/ui/signature-dialog-root'
+import { SnippetDialogRoot } from '~/components/snippets/snippet-dialog-root'
 import { SubscriptionEnded } from '~/components/subscriptions/subscription-ended'
 import { FloatingTaskRoot } from '~/components/tasks/ui/floating-task-root'
 import { ThreadDataProvider } from '~/components/threads'
@@ -81,12 +83,13 @@ export function AppLayoutWrapper({ children, user }: AppLayoutWrapperProps) {
       <AuxxAppProviders>
         <ChannelProvider>
           <ThreadDataProvider>
-            <KBar>
-              <Dashboard user={user}>{children}</Dashboard>
-              <FloatingComposeRoot />
-              <FloatingTaskRoot />
-              <GlobalCreateRoot />
-            </KBar>
+            <Dashboard user={user}>{children}</Dashboard>
+            <FloatingComposeRoot />
+            <FloatingTaskRoot />
+            <GlobalCreateRoot />
+            <SignatureDialogRoot />
+            <SnippetDialogRoot />
+            <CommandPalette />
           </ThreadDataProvider>
         </ChannelProvider>
       </AuxxAppProviders>

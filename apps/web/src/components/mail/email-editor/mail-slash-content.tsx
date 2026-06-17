@@ -11,6 +11,8 @@ import { EntityIcon } from '@auxx/ui/components/icons'
 import type { Editor } from '@tiptap/react'
 import { Check } from 'lucide-react'
 import { useCallback, useImperativeHandle, useMemo, useRef, useState } from 'react'
+import { useActionCatalog } from '~/components/apps/hooks/use-action-catalog'
+import { AppIcon } from '~/components/apps/ui/app-icon'
 import type { PickerTrigger } from '~/components/editor/inline-picker'
 import { PlaceholderSlashContent } from '~/components/editor/slash-commands/placeholder-slash-content'
 import type {
@@ -23,7 +25,6 @@ import { SparkleIcon } from '~/components/kopilot/ui/sparkle-icon'
 import { useCmdkRemote } from '~/components/pickers/use-cmdk-remote'
 import { useSignatures } from '~/components/signatures/hooks'
 import type { SerializedQuickAction } from '~/components/workflow/apps/workflow-block-loader'
-import { useQuickActions } from '~/hooks/use-quick-actions'
 import { api } from '~/trpc/react'
 import type { AIOperation } from '~/types/ai-tools'
 import { AiSlashContent } from './ai-slash-content'
@@ -403,9 +404,11 @@ function MailSlashContentInner({
   // `@` reference data — fetched inside the component (like snippets). Hooks
   // run unconditionally; the lists only render under the `@` trigger.
   const { signatures } = useSignatures()
-  const { actions: availableActions, isLoading: actionsLoading } = useQuickActions(
-    references?.threadId
-  )
+  const {
+    actions: availableActions,
+    groups: actionGroups,
+    isLoading: actionsLoading,
+  } = useActionCatalog()
 
   // Signature/action selections are draft-level state, not body insertions, so
   // (like the AI ops) the executor only strips the chip; the actual mutation
@@ -557,15 +560,18 @@ function MailSlashContentInner({
       }
 
       if (current?.type === 'actions') {
-        const actionItems: SlashCommandItem[] = availableActions.map((a) => ({
-          id: a.id,
-          title: a.label,
-          description: a.description,
-        }))
-        const actionsSection: SlashCommandSection<SlashCommandItem> = {
-          id: 'actions',
-          heading: 'Actions',
-          items: actionItems,
+        // One section per app — heading is the app title, each row shows the
+        // resolved action icon (its own `iconKey`, falling back to the app
+        // avatar). `AppIcon` (not `EntityIcon`) so URL avatars render.
+        return actionGroups.map<SlashCommandSection<SlashCommandItem>>((group) => ({
+          id: `actions:${group.app.id}`,
+          heading: group.app.title,
+          items: group.actions.map((a) => ({
+            id: a.id,
+            title: a.label,
+            description: a.description,
+            iconId: a.iconId,
+          })),
           itemValue: (item) => item.id,
           onSelect: (item) => {
             const action = availableActions.find((a) => a.id === item.id)
@@ -573,15 +579,14 @@ function MailSlashContentInner({
           },
           renderItem: (item) => (
             <div className='flex w-full items-center gap-2'>
-              <EntityIcon iconId='zap' size='sm' className='text-muted-foreground' />
+              <AppIcon iconId={item.iconId ?? 'zap'} size='sm' />
               <span className='flex-1 truncate'>{item.title}</span>
               {references.actionIds.includes(item.id) && (
                 <Check className='size-3.5 shrink-0 text-primary-600' />
               )}
             </div>
           ),
-        }
-        return [actionsSection]
+        }))
       }
 
       return [
@@ -717,6 +722,7 @@ function MailSlashContentInner({
     references,
     signatures,
     availableActions,
+    actionGroups,
     selectSignature,
     toggleAction,
     handleReferenceRootSelect,
