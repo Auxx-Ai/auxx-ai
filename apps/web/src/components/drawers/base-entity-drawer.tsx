@@ -24,8 +24,10 @@ import {
 } from 'lucide-react'
 import { useQueryState } from 'nuqs'
 import * as React from 'react'
+import { AppRecordActions } from '~/components/detail-view/components/app-record-actions'
 import EntityFields from '~/components/fields/entity-fields'
 import DrawerComments from '~/components/global/comments/drawer-comments'
+import { DockToggleButton } from '~/components/global/dock-toggle-button'
 import { useRecord, useResource } from '~/components/resources'
 import { TasksSection } from '~/components/tasks/ui/tasks-section'
 import { TimelineTab } from '~/components/timeline'
@@ -245,7 +247,13 @@ export function BaseEntityDrawer({
         icon={headerIcon ?? resource?.icon}
         title={headerTitle ?? resource?.label ?? 'Record'}
         onClose={handleClose}
-        actions={headerActions}
+        actions={
+          <>
+            {headerActions}
+            <AppRecordActions recordId={recordId} recordType={entityType} compact />
+            <DockToggleButton />
+          </>
+        }
       />
 
       <div className='flex-1 overflow-y-auto'>

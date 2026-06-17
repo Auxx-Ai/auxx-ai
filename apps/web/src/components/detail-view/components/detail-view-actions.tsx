@@ -7,6 +7,7 @@ import { useState } from 'react'
 import { MergeDialog } from '~/components/merge'
 import { useConfirm } from '~/hooks/use-confirm'
 import type { DetailViewActionsProps } from '../types'
+import { AppRecordActions } from './app-record-actions'
 
 /**
  * DetailViewActions - action buttons for the detail view header
@@ -116,6 +117,8 @@ export function DetailViewActions({
             <Trash2 /> Delete
           </Button>
         )}
+
+        <AppRecordActions recordId={recordId} recordType={entityType} />
       </div>
 
       <ConfirmDialog />

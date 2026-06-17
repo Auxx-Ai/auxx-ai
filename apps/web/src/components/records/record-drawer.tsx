@@ -31,7 +31,6 @@ import { EntityInstanceDialog } from '~/components/custom-fields/ui/entity-insta
 import { BaseEntityDrawer } from '~/components/drawers/base-entity-drawer'
 import { getHeaderActions } from '~/components/drawers/drawer-action-registry'
 import { FavoriteToggleMenuItem } from '~/components/favorites/ui/favorite-toggle-menu-item'
-import { DockToggleButton } from '~/components/global/dock-toggle-button'
 import { Tooltip } from '~/components/global/tooltip'
 import { KopilotContext } from '~/components/kopilot/context'
 import { KopilotSuggestion } from '~/components/kopilot/suggestions'
@@ -391,8 +390,6 @@ export const RecordDrawer = React.memo(function RecordDrawer({
                 <Expand />
               </Button>
             </Tooltip>
-
-            <DockToggleButton />
           </>
         }
         cardContent={
