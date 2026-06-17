@@ -39,8 +39,6 @@ import { WorkflowFieldDivider } from './components/workflow/fields/field-divider
 import { WorkflowFieldRow } from './components/workflow/fields/field-row'
 import { WorkflowVarField } from './components/workflow/fields/var-field'
 import { WorkflowVarFieldGroup } from './components/workflow/fields/var-field-group'
-// Note: Old input components (StringInput, NumberInput, etc.) are still available from
-// './components/workflow/inputs' for settings panels where VarEditor isn't needed.
 import { ArrayInputInternal } from './components/workflow/inputs/array-input-internal'
 import { VarInputInternal } from './components/workflow/inputs/var-input'
 import {
@@ -304,18 +302,4 @@ export type ComponentName = keyof typeof componentRegistry
  */
 export function getComponent(name: string): React.ComponentType<any> | undefined {
   return componentRegistry[name as ComponentName]
-}
-
-/**
- * Check if a component exists in the registry.
- */
-export function hasComponent(name: string): boolean {
-  return name in componentRegistry
-}
-
-/**
- * Get all registered component names.
- */
-export function getAllComponentNames(): string[] {
-  return Object.keys(componentRegistry)
 }

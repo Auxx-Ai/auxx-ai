@@ -1,6 +1,5 @@
 // apps/web/src/lib/extensions/components/workflow/index.ts
 
-export * from './inputs'
 export * from './layout'
 export * from './utility'
 export * from './variables'

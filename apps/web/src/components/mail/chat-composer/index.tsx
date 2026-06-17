@@ -148,8 +148,9 @@ function ChatComposerInner({
         placeholder='Type your reply...'
         editable={!aiToolsState.isProcessing && !isSending}
         popoverClassName={popoverZIndex}
-        contentClassName='sm:min-h-[60px] py-2 text-sm'
-        editorMinHeightClassName='min-h-[60px]'
+        contentClassName='sm:min-h-[108px] py-2 text-sm [&_.ProseMirror]:pb-12'
+        editorMinHeightClassName='min-h-[108px]'
+        toolbarWrapperClassName='absolute inset-x-0 bottom-0 px-2 py-1'
         aiSlash={{ onRunAI: handleAIOperation }}
         onAttachFile={(file) => fileSelect.addExistingFiles([file])}
         // Plain compact composer — no block formatting in the schema or `/` menu.

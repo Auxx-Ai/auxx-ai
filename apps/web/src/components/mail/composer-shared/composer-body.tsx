@@ -47,6 +47,8 @@ interface ComposerBodyProps {
   frameClassName?: string
   /** Fully-wired toolbar content rendered inside `.editor-toolbar-wrapper`. */
   toolbar: React.ReactNode
+  /** Classes for the toolbar wrapper. Email flows in-line ('relative px-2 py-1'); chat floats it ('absolute ...'). */
+  toolbarWrapperClassName?: string
   /** Email: From/To/Cc/Bcc/Subject — rendered inside the frame, above the editor. */
   headerFields?: React.ReactNode
   /**
@@ -81,6 +83,7 @@ export function ComposerBody({
   rounded = 'sm',
   frameClassName,
   toolbar,
+  toolbarWrapperClassName = 'relative px-2 py-1',
   headerFields,
   belowEditor,
 }: ComposerBodyProps) {
@@ -151,7 +154,7 @@ export function ComposerBody({
       </div>
 
       {/* Toolbar row */}
-      <div className='editor-toolbar-wrapper relative px-2 py-1'>{toolbar}</div>
+      <div className={cn('editor-toolbar-wrapper', toolbarWrapperClassName)}>{toolbar}</div>
     </div>
   )
 }
