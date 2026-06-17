@@ -17,12 +17,7 @@ import {
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
 import { RadioTab, RadioTabItem } from '@auxx/ui/components/radio-tab'
-import {
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
-  useSidebar,
-} from '@auxx/ui/components/sidebar'
+import { SidebarMenuButton, SidebarMenuItem, useSidebar } from '@auxx/ui/components/sidebar'
 import { Switch } from '@auxx/ui/components/switch'
 import { toastError } from '@auxx/ui/components/toast'
 import { getInitialsFromName } from '@auxx/utils'
@@ -145,222 +140,220 @@ export function NavUser({ user }: Prop) {
     <>
       <CreateOrganizationDialog open={showNewOrgDialog} onOpenChange={setShowNewOrgDialog} />
 
-      <SidebarMenu>
-        <SidebarMenuItem className='flex items-center justify-between gap-1'>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <SidebarMenuButton
-                size='lg'
-                className='ps-1 w-auto pe-1.5  h-8 rounded-2xl ring-0 ring-ring/20  data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground group-data-[collapsible=icon]:pe-0'>
-                <span className='relative inline-flex shrink-0 group-data-[collapsible=icon]:mx-auto'>
-                  <Avatar className='size-6 rounded-full ring-1 ring-ring/20'>
+      <SidebarMenuItem className='flex items-center justify-between gap-1'>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <SidebarMenuButton
+              size='lg'
+              className='ps-1 w-auto pe-1.5  h-8 rounded-2xl ring-0 ring-ring/20  data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground group-data-[collapsible=icon]:pe-0'>
+              <span className='relative inline-flex shrink-0 group-data-[collapsible=icon]:mx-auto'>
+                <Avatar className='size-6 rounded-full ring-1 ring-ring/20'>
+                  <AvatarImage src={displayImage!} alt={displayName} />
+                  <AvatarFallback className='rounded-lg'>{initials}</AvatarFallback>
+                </Avatar>
+                <PresenceDot
+                  state={myPresence}
+                  className='absolute -bottom-0.5 -right-0.5 size-2'
+                />
+              </span>
+              <div className='grid flex-1 text-left text-sm leading-tight group-data-[collapsible=icon]:hidden pe-2'>
+                <span className='truncate'>{displayName}</span>
+              </div>
+            </SidebarMenuButton>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent
+            className='w-(--radix-dropdown-menu-trigger-width) min-w-56'
+            // side={isMobile ? 'bottom' : 'right'}
+            align='start'
+            sideOffset={-32}>
+            <DropdownMenuLabel className='p-0 font-normal'>
+              <div className='flex items-center gap-2 px-1 py-1.5 text-left text-sm'>
+                <span className='relative inline-flex shrink-0'>
+                  <Avatar className='size-7 rounded-full ring-1 ring-ring/20'>
                     <AvatarImage src={displayImage!} alt={displayName} />
                     <AvatarFallback className='rounded-lg'>{initials}</AvatarFallback>
                   </Avatar>
                   <PresenceDot
                     state={myPresence}
-                    className='absolute -bottom-0.5 -right-0.5 size-2'
+                    className='absolute -bottom-0.5 -right-0.5 size-2.5'
                   />
                 </span>
-                <div className='grid flex-1 text-left text-sm leading-tight group-data-[collapsible=icon]:hidden pe-2'>
-                  <span className='truncate'>{displayName}</span>
-                </div>
-              </SidebarMenuButton>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent
-              className='w-(--radix-dropdown-menu-trigger-width) min-w-56'
-              // side={isMobile ? 'bottom' : 'right'}
-              align='start'
-              sideOffset={-32}>
-              <DropdownMenuLabel className='p-0 font-normal'>
-                <div className='flex items-center gap-2 px-1 py-1.5 text-left text-sm'>
-                  <span className='relative inline-flex shrink-0'>
-                    <Avatar className='size-7 rounded-full ring-1 ring-ring/20'>
-                      <AvatarImage src={displayImage!} alt={displayName} />
-                      <AvatarFallback className='rounded-lg'>{initials}</AvatarFallback>
-                    </Avatar>
-                    <PresenceDot
-                      state={myPresence}
-                      className='absolute -bottom-0.5 -right-0.5 size-2.5'
-                    />
+                <div className='grid flex-1 text-left text-sm leading-tight'>
+                  <span className='truncate font-semibold'>{displayName}</span>
+                  <span className='truncate text-xs text-muted-foreground'>
+                    {presenceLabel} · {displayEmail}
                   </span>
-                  <div className='grid flex-1 text-left text-sm leading-tight'>
-                    <span className='truncate font-semibold'>{displayName}</span>
-                    <span className='truncate text-xs text-muted-foreground'>
-                      {presenceLabel} · {displayEmail}
-                    </span>
-                  </div>
                 </div>
-              </DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              {!selfHosted && (
-                <>
-                  <DropdownMenuGroup>
-                    <DropdownMenuItem asChild>
-                      <Link href='/app/settings/plans'>
-                        <Sparkles className='text-comparison-500' />
-                        Upgrade to Pro
-                      </Link>
-                    </DropdownMenuItem>
-                  </DropdownMenuGroup>
-                  <DropdownMenuSeparator />
-                </>
-              )}
-              <DropdownMenuGroup>
-                <DropdownMenuSub>
-                  <DropdownMenuSubTrigger>
-                    <Building2 />
-                    Switch Organization
-                  </DropdownMenuSubTrigger>
-                  <DropdownMenuPortal>
-                    <DropdownMenuSubContent className='min-w-56'>
-                      <DropdownMenuLabel className='text-xs text-muted-foreground'>
-                        Organizations
-                      </DropdownMenuLabel>
-
-                      <DropdownMenuRadioGroup
-                        value={activeOrgId!}
-                        onValueChange={handleClickOrganization}>
-                        {isLoading
-                          ? ''
-                          : userData?.memberships.map((membership) => (
-                              <DropdownMenuRadioItem
-                                value={membership.organization.id}
-                                key={membership.organization.id}
-                                className='gap-2 p-1 pr-3'>
-                                <div className='flex size-5 items-center justify-center rounded-full border'>
-                                  <Building2 className='size-3 shrink-0' />
-                                </div>
-                                {membership.organization.name}
-                              </DropdownMenuRadioItem>
-                            ))}
-                      </DropdownMenuRadioGroup>
-                      <DropdownMenuSeparator />
-                      <Link href='/app/settings/organization'>
-                        <DropdownMenuItem>
-                          <div className='flex size-5 -ml-1 items-center justify-center rounded-full border bg-background'>
-                            <Building2 className='size-3' />
-                          </div>
-                          <div className=''>View all</div>
-                        </DropdownMenuItem>
-                      </Link>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem onClick={() => setShowNewOrgDialog(true)}>
-                        <div className='flex size-5 -ml-1 items-center justify-center rounded-full border bg-background'>
-                          <Plus className='size-3' />
-                        </div>
-                        <div className='font-medium text-muted-foreground'>Add Organization</div>
-                      </DropdownMenuItem>
-                    </DropdownMenuSubContent>
-                  </DropdownMenuPortal>
-                </DropdownMenuSub>
-              </DropdownMenuGroup>
-              <DropdownMenuSeparator />
-
-              <DropdownMenuGroup>
-                <Link href='/app/settings/general'>
-                  <DropdownMenuItem>
-                    <BadgeCheck />
-                    Account
-                  </DropdownMenuItem>
-                </Link>
-                <Link
-                  href='/login?callbackApp=build&returnTo=/'
-                  target='_blank'
-                  rel='noopener noreferrer'>
-                  <DropdownMenuItem>
-                    <Code />
-                    Developer Portal
-                  </DropdownMenuItem>
-                </Link>
-                {isSuperAdmin && (
-                  <Link href='/admin' target='_blank' rel='noopener noreferrer'>
-                    <DropdownMenuItem>
-                      <Shield />
-                      Admin
-                    </DropdownMenuItem>
-                  </Link>
-                )}
-                {!selfHosted && (
+              </div>
+            </DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            {!selfHosted && (
+              <>
+                <DropdownMenuGroup>
                   <DropdownMenuItem asChild>
                     <Link href='/app/settings/plans'>
-                      <CreditCard />
-                      Billing
+                      <Sparkles className='text-comparison-500' />
+                      Upgrade to Pro
                     </Link>
                   </DropdownMenuItem>
-                )}
-                {orgHasActiveChatQuery.data && (
-                  <DropdownMenuItem
-                    onSelect={(e) => e.preventDefault()}
-                    onClick={(e) => e.preventDefault()}>
-                    <Headset />
-                    Chat duty
-                    <Switch
-                      className='ml-auto'
-                      checked={isOnDuty}
-                      disabled={setSelfDuty.isPending}
-                      onCheckedChange={handleToggleDuty}
-                    />
-                  </DropdownMenuItem>
-                )}
-                <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
-                  <SunMoon />
-                  Theme
-                  <RadioTab
-                    value={theme}
-                    onValueChange={setTheme}
-                    size='sm'
-                    radioGroupClassName='grid w-16'
-                    className='border h-6 border-primary-200 flex ml-auto '>
-                    <RadioTabItem value='light' size='sm' className=''>
-                      <Sun />
-                    </RadioTabItem>
-                    <RadioTabItem value='dark' size='sm' className=''>
-                      <Moon />
-                    </RadioTabItem>
-                  </RadioTab>
-                </DropdownMenuItem>
+                </DropdownMenuGroup>
+                <DropdownMenuSeparator />
+              </>
+            )}
+            <DropdownMenuGroup>
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger>
+                  <Building2 />
+                  Switch Organization
+                </DropdownMenuSubTrigger>
+                <DropdownMenuPortal>
+                  <DropdownMenuSubContent className='min-w-56'>
+                    <DropdownMenuLabel className='text-xs text-muted-foreground'>
+                      Organizations
+                    </DropdownMenuLabel>
 
-                {/* <DropdownMenuItem>
+                    <DropdownMenuRadioGroup
+                      value={activeOrgId!}
+                      onValueChange={handleClickOrganization}>
+                      {isLoading
+                        ? ''
+                        : userData?.memberships.map((membership) => (
+                            <DropdownMenuRadioItem
+                              value={membership.organization.id}
+                              key={membership.organization.id}
+                              className='gap-2 p-1 pr-3'>
+                              <div className='flex size-5 items-center justify-center rounded-full border'>
+                                <Building2 className='size-3 shrink-0' />
+                              </div>
+                              {membership.organization.name}
+                            </DropdownMenuRadioItem>
+                          ))}
+                    </DropdownMenuRadioGroup>
+                    <DropdownMenuSeparator />
+                    <Link href='/app/settings/organization'>
+                      <DropdownMenuItem>
+                        <div className='flex size-5 -ml-1 items-center justify-center rounded-full border bg-background'>
+                          <Building2 className='size-3' />
+                        </div>
+                        <div className=''>View all</div>
+                      </DropdownMenuItem>
+                    </Link>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={() => setShowNewOrgDialog(true)}>
+                      <div className='flex size-5 -ml-1 items-center justify-center rounded-full border bg-background'>
+                        <Plus className='size-3' />
+                      </div>
+                      <div className='font-medium text-muted-foreground'>Add Organization</div>
+                    </DropdownMenuItem>
+                  </DropdownMenuSubContent>
+                </DropdownMenuPortal>
+              </DropdownMenuSub>
+            </DropdownMenuGroup>
+            <DropdownMenuSeparator />
+
+            <DropdownMenuGroup>
+              <Link href='/app/settings/general'>
+                <DropdownMenuItem>
+                  <BadgeCheck />
+                  Account
+                </DropdownMenuItem>
+              </Link>
+              <Link
+                href='/login?callbackApp=build&returnTo=/'
+                target='_blank'
+                rel='noopener noreferrer'>
+                <DropdownMenuItem>
+                  <Code />
+                  Developer Portal
+                </DropdownMenuItem>
+              </Link>
+              {isSuperAdmin && (
+                <Link href='/admin' target='_blank' rel='noopener noreferrer'>
+                  <DropdownMenuItem>
+                    <Shield />
+                    Admin
+                  </DropdownMenuItem>
+                </Link>
+              )}
+              {!selfHosted && (
+                <DropdownMenuItem asChild>
+                  <Link href='/app/settings/plans'>
+                    <CreditCard />
+                    Billing
+                  </Link>
+                </DropdownMenuItem>
+              )}
+              {orgHasActiveChatQuery.data && (
+                <DropdownMenuItem
+                  onSelect={(e) => e.preventDefault()}
+                  onClick={(e) => e.preventDefault()}>
+                  <Headset />
+                  Chat duty
+                  <Switch
+                    className='ml-auto'
+                    checked={isOnDuty}
+                    disabled={setSelfDuty.isPending}
+                    onCheckedChange={handleToggleDuty}
+                  />
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
+                <SunMoon />
+                Theme
+                <RadioTab
+                  value={theme}
+                  onValueChange={setTheme}
+                  size='sm'
+                  radioGroupClassName='grid w-16'
+                  className='border h-6 border-primary-200 flex ml-auto '>
+                  <RadioTabItem value='light' size='sm' className=''>
+                    <Sun />
+                  </RadioTabItem>
+                  <RadioTabItem value='dark' size='sm' className=''>
+                    <Moon />
+                  </RadioTabItem>
+                </RadioTab>
+              </DropdownMenuItem>
+
+              {/* <DropdownMenuItem>
                   <Bell />
                   Notifications
                 </DropdownMenuItem> */}
-              </DropdownMenuGroup>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                onClick={() => {
-                  client.signOut({
-                    fetchOptions: {
-                      onSuccess: () => {
-                        posthog?.reset()
-                        router.push('/') // redirect to login page
-                      },
+            </DropdownMenuGroup>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              onClick={() => {
+                client.signOut({
+                  fetchOptions: {
+                    onSuccess: () => {
+                      posthog?.reset()
+                      router.push('/') // redirect to login page
                     },
-                  })
-                }}>
-                <LogOut />
-                Sign Out
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-          {kopilotEnabled && (
-            <Tooltip content='Kopilot' shortcut={['⌘', '⇧', 'K']}>
-              <button
-                type='button'
-                className='relative shrink-0 flex items-center justify-center size-8 rounded-2xl text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors group-data-[collapsible=icon]:hidden'
-                onClick={toggleKopilot}>
-                <Sparkles className='size-4' />
-                {hasUnreadNotification && (
-                  <span
-                    aria-label='Unread Kopilot notification'
-                    className='absolute right-1 top-1 size-2 rounded-full bg-primary'
-                  />
-                )}
-              </button>
-            </Tooltip>
-          )}
-        </SidebarMenuItem>
-      </SidebarMenu>
+                  },
+                })
+              }}>
+              <LogOut />
+              Sign Out
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+        {kopilotEnabled && (
+          <Tooltip content='Kopilot' shortcut={['⌘', '⇧', 'K']}>
+            <button
+              type='button'
+              className='relative shrink-0 flex items-center justify-center size-8 rounded-2xl text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors group-data-[collapsible=icon]:hidden'
+              onClick={toggleKopilot}>
+              <Sparkles className='size-4' />
+              {hasUnreadNotification && (
+                <span
+                  aria-label='Unread Kopilot notification'
+                  className='absolute right-1 top-1 size-2 rounded-full bg-primary'
+                />
+              )}
+            </button>
+          </Tooltip>
+        )}
+      </SidebarMenuItem>
     </>
   )
 }

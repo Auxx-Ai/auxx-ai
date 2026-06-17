@@ -6,6 +6,7 @@ import {
   SidebarContent,
   SidebarFooter,
   SidebarHeader,
+  SidebarMenu,
   SidebarRail,
 } from '@auxx/ui/components/sidebar'
 import type * as React from 'react'
@@ -16,6 +17,7 @@ import { EntitySidebarNav } from './entity-sidebar-nav'
 import { FavoritesSidebar } from './favorites-sidebar'
 import { NavMain } from './nav-main'
 import { NavUser } from './nav-user'
+import { QuickActionsNav } from './quick-actions-nav'
 import { useSidebarItemActions } from './sidebar-item-actions'
 import { SidebarStateProvider } from './sidebar-state-context'
 
@@ -40,7 +42,10 @@ export default function AppSidebar({ user, ...props }: Prop) {
     <SidebarStateProvider>
       <Sidebar collapsible='icon' {...props}>
         <SidebarHeader>
-          <NavUser user={user} />
+          <SidebarMenu>
+            <NavUser user={user} />
+            <QuickActionsNav />
+          </SidebarMenu>
         </SidebarHeader>
         <SidebarContent className='gap-0'>
           <MailSidebar />
