@@ -1,62 +1,8 @@
 // apps/web/src/components/mail-views/mail-view-dialog.tsx
 'use client'
 
-import { Button } from '@auxx/ui/components/button'
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@auxx/ui/components/dialog'
-import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
-import { RadioTab, RadioTabItem } from '@auxx/ui/components/radio-tab'
-import { toastError, toastSuccess } from '@auxx/ui/components/toast'
-import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
-import { FileText, Filter, Sliders, Trash2 } from 'lucide-react'
-import { usePathname, useRouter } from 'next/navigation'
-import { useEffect, useState } from 'react'
-import { FormProvider, useForm } from 'react-hook-form'
-import * as z from 'zod'
-import type { ConditionGroup } from '~/components/conditions'
-import { useConfirm } from '~/hooks/use-confirm'
-import { useUnsavedChangesGuard } from '~/hooks/use-unsaved-changes-guard'
-import { api } from '~/trpc/react'
-import { MailViewDetailsForm } from './mail-view-details-form'
-import { MailViewFilterBuilder } from './mail-view-filter-builder'
-import { MailViewSharingOptions } from './mail-view-sharing-options'
-import { MailViewSortOptions } from './mail-view-sort-options'
-
-// Define the form schema using zod
-const mailViewFormSchema = z.object({
-  name: z.string().min(1, 'Name is required').max(100),
-  description: z.string().optional(),
-  isDefault: z.boolean().default(false),
-  isPinned: z.boolean().default(false),
-  isShared: z.boolean().default(false),
-  sortField: z.string().optional(),
-  sortDirection: z.enum(['asc', 'desc']).default('desc'),
-  filterGroups: z.any(), // ConditionGroup[] - complex nested structure handled separately
-})
-
-export type MailViewFormValues = z.infer<typeof mailViewFormSchema>
-
-const createDefaultGroup = (): ConditionGroup => ({
-  id: 'default',
-  conditions: [],
-  logicalOperator: 'AND',
-})
-
-const getCreateDefaults = (): MailViewFormValues => ({
-  name: '',
-  description: '',
-  isDefault: false,
-  isPinned: false,
-  isShared: false,
-  sortField: 'lastMessageAt',
-  sortDirection: 'desc',
-  filterGroups: [createDefaultGroup()],
-})
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@auxx/ui/components/dialog'
+import { MailViewForm } from './mail-view-form'
 
 interface MailViewDialogProps {
   isOpen: boolean
@@ -64,250 +10,26 @@ interface MailViewDialogProps {
   mailViewId?: string // If provided, we're editing an existing view
 }
 
+/**
+ * Thin modal wrapper around {@link MailViewForm}. Supplies the `Dialog` shell and
+ * the header; all form logic lives in the core, which the command palette hosts
+ * directly as a page. Public API is unchanged.
+ */
 export function MailViewDialog({ isOpen, onClose, mailViewId }: MailViewDialogProps) {
-  const [activeTab, setActiveTab] = useState<'details' | 'filters' | 'options'>('details')
-  const [confirm, DeleteConfirmDialog] = useConfirm()
-  const router = useRouter()
-  const pathname = usePathname()
-
-  // Setup form
-  const methods = useForm<MailViewFormValues>({
-    resolver: standardSchemaResolver(mailViewFormSchema),
-    defaultValues: getCreateDefaults(),
-  })
-
-  // Guard against accidental close with unsaved changes
-  const {
-    guardProps,
-    guardedClose,
-    ConfirmDialog: UnsavedChangesDialog,
-  } = useUnsavedChangesGuard({
-    isDirty: methods.formState.isDirty,
-    onConfirmedClose: onClose,
-    confirmOptions: {
-      title: 'Discard changes?',
-      description: 'You have unsaved changes. Are you sure you want to discard them?',
-      confirmText: 'Discard',
-      cancelText: 'Keep editing',
-    },
-  })
-
-  // Get mail view for editing
-  const { data: mailView, isLoading: isLoadingMailView } = api.mailView.getById.useQuery(
-    { id: mailViewId! },
-    { enabled: !!mailViewId, refetchOnWindowFocus: false }
-  )
-
-  // Create and update mutations
-  const createMailView = api.mailView.create.useMutation({
-    onSuccess: () => {
-      toastSuccess({
-        title: 'View created',
-        description: 'Your mail view has been created successfully',
-      })
-      onClose()
-      // Invalidate queries to refresh the list
-      utils.mailView.getUserMailViews.invalidate()
-      utils.mailView.getAllAccessibleMailViews.invalidate()
-    },
-    onError: (error) => {
-      toastError({ title: 'Error creating view', description: error.message })
-    },
-  })
-
-  const updateMailView = api.mailView.update.useMutation({
-    onSuccess: () => {
-      toastSuccess({
-        title: 'View updated',
-        description: 'Your mail view has been updated successfully',
-      })
-      onClose()
-      // Invalidate queries to refresh the list
-      utils.mailView.getUserMailViews.invalidate()
-      utils.mailView.getAllAccessibleMailViews.invalidate()
-      if (mailViewId) {
-        utils.mailView.getById.invalidate({ id: mailViewId })
-      }
-      if (methods.getValues('isShared')) {
-        utils.mailView.getSharedMailViews.invalidate()
-      }
-    },
-    onError: (error) => {
-      toastError({ title: 'Error updating view', description: error.message })
-    },
-  })
-
-  const deleteMailView = api.mailView.delete.useMutation({
-    onSuccess: () => {
-      // Clear dirty state so the unsaved-changes guard doesn't fire on close
-      methods.reset(methods.getValues())
-      // If the user is currently viewing the deleted view, send them back to inbox.
-      if (mailViewId && pathname?.startsWith(`/app/mail/views/${mailViewId}`)) {
-        router.push('/app/mail')
-      }
-      onClose()
-      utils.mailView.getUserMailViews.invalidate()
-      utils.mailView.getAllAccessibleMailViews.invalidate()
-    },
-    onError: (error) => {
-      toastError({ title: 'Error deleting view', description: error.message })
-    },
-  })
-
-  const utils = api.useUtils()
-
-  // Load mail view data when editing
-  useEffect(() => {
-    if (mailView) {
-      const savedGroups = (mailView.filters as ConditionGroup[]) || []
-      methods.reset({
-        name: mailView.name,
-        description: mailView.description || '',
-        isDefault: mailView.isDefault,
-        isPinned: mailView.isPinned,
-        isShared: mailView.isShared,
-        sortField: mailView.sortField || 'lastMessageAt',
-        sortDirection: (mailView.sortDirection as 'asc' | 'desc') || 'desc',
-        // Database stores filterGroups in 'filters' column (backwards compatible)
-        filterGroups: savedGroups.length > 0 ? savedGroups : [createDefaultGroup()],
-      })
-    }
-  }, [mailView, methods])
-
-  // Reset form to fresh defaults whenever the dialog opens in create mode.
-  // Without this, the previously-submitted values stick around when the
-  // user reopens the "New View" dialog after creating one.
-  useEffect(() => {
-    if (!isOpen || mailViewId) return
-    methods.reset(getCreateDefaults())
-    setActiveTab('details')
-  }, [isOpen, mailViewId, methods])
-
-  /** Handles the delete action with confirmation */
-  const handleDelete = async () => {
-    if (!mailViewId) return
-
-    const confirmed = await confirm({
-      title: 'Delete this view?',
-      description: 'This action cannot be undone. The view will be permanently deleted.',
-      confirmText: 'Delete',
-      cancelText: 'Cancel',
-      destructive: true,
-    })
-
-    if (confirmed) {
-      deleteMailView.mutate({ id: mailViewId })
-    }
-  }
-
-  const onSubmit = (data: MailViewFormValues) => {
-    if (mailViewId) {
-      updateMailView.mutate({
-        id: mailViewId,
-        data: {
-          name: data.name,
-          description: data.description,
-          isDefault: data.isDefault,
-          isPinned: data.isPinned,
-          isShared: data.isShared,
-          sortField: data.sortField,
-          sortDirection: data.sortDirection,
-          filterGroups: data.filterGroups,
-        },
-      })
-    } else {
-      createMailView.mutate({
-        name: data.name,
-        description: data.description,
-        isDefault: data.isDefault,
-        isPinned: data.isPinned,
-        isShared: data.isShared,
-        sortField: data.sortField,
-        sortDirection: data.sortDirection,
-        filterGroups: data.filterGroups,
-      })
-    }
-  }
-
-  // Compute disabled state for submit
-  const isSubmitDisabled = isLoadingMailView || createMailView.isPending || updateMailView.isPending
-
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => !open && guardedClose()}>
-      <DialogContent size='xl' variant='default' position='tc' {...guardProps}>
-        <DialogHeader>
-          <DialogTitle>{mailViewId ? 'Edit Mail View' : 'Create Mail View'}</DialogTitle>
-        </DialogHeader>
-
-        <FormProvider {...methods}>
-          <form onSubmit={methods.handleSubmit(onSubmit)}>
-            <RadioTab
-              value={activeTab}
-              onValueChange={setActiveTab}
-              size='sm'
-              radioGroupClassName='grid w-full'
-              className='border border-primary-200 flex flex-1 w-full mb-4'>
-              <RadioTabItem value='details' size='sm'>
-                <FileText />
-                Details
-              </RadioTabItem>
-              <RadioTabItem value='filters' size='sm'>
-                <Filter />
-                Filters
-              </RadioTabItem>
-              <RadioTabItem value='options' size='sm'>
-                <Sliders />
-                Options
-              </RadioTabItem>
-            </RadioTab>
-
-            {activeTab === 'details' && (
-              <div className='space-y-4 '>
-                <MailViewDetailsForm />
-              </div>
-            )}
-
-            {activeTab === 'filters' && <MailViewFilterBuilder />}
-
-            {activeTab === 'options' && (
-              <div className='space-y-4'>
-                <MailViewSortOptions />
-                <MailViewSharingOptions />
-              </div>
-            )}
-
-            <DialogFooter className='mt-0'>
-              {mailViewId && (
-                <Button
-                  type='button'
-                  size='sm'
-                  variant='destructive-hover'
-                  onClick={handleDelete}
-                  loading={deleteMailView.isPending}
-                  loadingText='Deleting...'
-                  className='mr-auto'>
-                  <Trash2 />
-                  Delete View
-                </Button>
-              )}
-              <Button size='sm' variant='ghost' type='button' onClick={guardedClose}>
-                Cancel <Kbd shortcut='esc' variant='ghost' size='sm' />
-              </Button>
-              <Button
-                type='submit'
-                size='sm'
-                variant='outline'
-                loadingText='Saving...'
-                loading={isLoadingMailView || createMailView.isPending || updateMailView.isPending}>
-                {mailViewId ? 'Update View' : 'Create View'}{' '}
-                <KbdSubmit variant='outline' size='sm' />
-              </Button>
-            </DialogFooter>
-          </form>
-        </FormProvider>
+    <Dialog open={isOpen} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent size='xl' variant='default' position='tc'>
+        <MailViewForm
+          open={isOpen}
+          mailViewId={mailViewId}
+          onClose={onClose}
+          header={({ title }) => (
+            <DialogHeader>
+              <DialogTitle>{title}</DialogTitle>
+            </DialogHeader>
+          )}
+        />
       </DialogContent>
-      <DeleteConfirmDialog />
-      <UnsavedChangesDialog />
     </Dialog>
   )
 }

@@ -9,6 +9,13 @@ export type PalettePage =
   | 'create-snippet'
   | 'create-signature'
   | 'create-task'
+  | 'create-api-key'
+  | 'create-webhook'
+  | 'create-inbox'
+  | 'create-mail-view'
+  | 'create-meeting'
+  | 'create-group'
+  | 'create-dataset'
 
 /**
  * A single command-palette entry. The whole palette is built from plain arrays

@@ -2,6 +2,7 @@
 'use client'
 
 import { getDefinitionId, type RecordId, type RecordPickerItem } from '@auxx/lib/resources/client'
+import { Badge, type Variant } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import {
   Command,
@@ -194,9 +195,12 @@ export function SearchPage() {
                         )}
                       </div>
                       {resource && (
-                        <span className='shrink-0 text-xs text-muted-foreground me-2'>
+                        <Badge
+                          variant={(resource.color || 'gray') as Variant}
+                          size='xs'
+                          className='me-2 shrink-0'>
                           {resource.label}
-                        </span>
+                        </Badge>
                       )}
                     </CommandItem>
                   ))}

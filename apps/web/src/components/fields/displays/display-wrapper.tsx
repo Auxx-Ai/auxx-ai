@@ -90,15 +90,17 @@ function DisplayWrapper({
   }, [buttons, copied, handleCopy, resolvedCopyValue])
 
   return (
-    <div className='relative flex-1 overflow-hidden '>
+    <div data-slot='field-display' className='relative flex-1 overflow-hidden '>
       <div className='group-hover/property-row:dark:bg-foreground/8 group-hover/property-row:bg-neutral-100 rounded-md flex items-start w-full gap-2 '>
         <div
+          data-slot='field-display-content'
           className={cn(
             'rounded-md px-1 w-full overflow-hidden h-auto min-h-[28px] flex items-center mask-[linear-gradient(to_right,black_0%,black_calc(100%-40px),transparent_calc(100%-20px),transparent_100%)] mask-size-[160%_100%] mask-position-[60%_0%] group-hover/property-row:mask-position-[100%_0%] transition-[mask-position] duration-200 ease', // group-hover:bg-neutral-200 group-hover:dark:bg-foreground/8
             className
           )}
           {...props}>
           <div
+            data-slot='field-display-value'
             className={cn(
               'content-center items-center h-fit flex  whitespace-nowrap py-[2px] text-ellipsis text-neutral-900 dark:text-neutral-50',
               innerClassName

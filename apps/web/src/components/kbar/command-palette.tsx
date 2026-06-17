@@ -8,16 +8,42 @@ import { useResources } from '~/components/resources/hooks/use-resources'
 import { preventTaskPickerEscape } from '~/components/tasks/ui/task-form'
 import { useUnsavedChangesGuard } from '~/hooks/use-unsaved-changes-guard'
 import { CreatePage } from './pages/create'
+import { CreateApiKeyPage } from './pages/create-api-key'
+import { CreateDatasetPage } from './pages/create-dataset'
+import { CreateGroupPage } from './pages/create-group'
+import { CreateInboxPage } from './pages/create-inbox'
+import { CreateMailViewPage } from './pages/create-mail-view'
+import { CreateMeetingPage } from './pages/create-meeting'
 import { CreateSignaturePage } from './pages/create-signature'
 import { CreateSnippetPage } from './pages/create-snippet'
 import { CreateTaskPage } from './pages/create-task'
+import { CreateWebhookPage } from './pages/create-webhook'
 import { RecordActionsPage } from './pages/record-actions'
 import { RootPage } from './pages/root'
 import { SearchPage } from './pages/search'
 import { useRecentsStore } from './recents-store'
 import { useCommandPaletteStore } from './store'
+import type { PalettePage } from './types'
 import { usePaletteActions } from './use-palette-actions'
 import { usePaletteHotkeys } from './use-palette-hotkeys'
+
+/**
+ * Simple create pages whose breadcrumb is just a single non-interactive crumb
+ * (title === crumb label, back goes to root). The entity `create` page is not
+ * here — it has a dynamic label and a dirty guard on its back button.
+ */
+const SIMPLE_CREATE_TITLES: Partial<Record<PalettePage, string>> = {
+  'create-snippet': 'Create Snippet',
+  'create-signature': 'Create Signature',
+  'create-task': 'Create Task',
+  'create-api-key': 'Create API Key',
+  'create-webhook': 'Create Webhook',
+  'create-inbox': 'Create Inbox',
+  'create-mail-view': 'Create Mail View',
+  'create-meeting': 'Create Meeting',
+  'create-group': 'Create Group',
+  'create-dataset': 'Create Dataset',
+}
 
 /**
  * The command palette (cmd+k). Mounted once at the app root — replaces the old
@@ -100,20 +126,12 @@ export function CommandPalette() {
               crumbs={[{ label: `Create ${createLabel ?? 'record'}` }]}
               onBack={guardedClose}
             />
-          ) : page === 'create-snippet' ? (
+          ) : SIMPLE_CREATE_TITLES[page] ? (
             <DialogNav
-              title='Create Snippet'
-              crumbs={[{ label: 'Create Snippet' }]}
+              title={SIMPLE_CREATE_TITLES[page] as string}
+              crumbs={[{ label: SIMPLE_CREATE_TITLES[page] as string }]}
               onBack={back}
             />
-          ) : page === 'create-signature' ? (
-            <DialogNav
-              title='Create Signature'
-              crumbs={[{ label: 'Create Signature' }]}
-              onBack={back}
-            />
-          ) : page === 'create-task' ? (
-            <DialogNav title='Create Task' crumbs={[{ label: 'Create Task' }]} onBack={back} />
           ) : null}
 
           <DialogNavPages value={page}>
@@ -137,6 +155,27 @@ export function CommandPalette() {
             </DialogNavPage>
             <DialogNavPage value='create-task' size='xl'>
               <CreateTaskPage />
+            </DialogNavPage>
+            <DialogNavPage value='create-api-key' size='md'>
+              <CreateApiKeyPage />
+            </DialogNavPage>
+            <DialogNavPage value='create-webhook' size='lg'>
+              <CreateWebhookPage />
+            </DialogNavPage>
+            <DialogNavPage value='create-inbox' size='lg'>
+              <CreateInboxPage />
+            </DialogNavPage>
+            <DialogNavPage value='create-mail-view' size='xl'>
+              <CreateMailViewPage />
+            </DialogNavPage>
+            <DialogNavPage value='create-meeting' size='lg'>
+              <CreateMeetingPage />
+            </DialogNavPage>
+            <DialogNavPage value='create-group' size='md'>
+              <CreateGroupPage />
+            </DialogNavPage>
+            <DialogNavPage value='create-dataset' size='md'>
+              <CreateDatasetPage />
             </DialogNavPage>
           </DialogNavPages>
         </DialogContent>

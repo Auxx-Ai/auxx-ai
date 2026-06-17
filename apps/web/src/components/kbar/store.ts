@@ -40,6 +40,13 @@ interface CommandPaletteState {
   openCreateSnippet: (folderId?: string) => void
   openCreateSignature: () => void
   openCreateTask: (ref?: RecordId) => void
+  openCreateApiKey: () => void
+  openCreateWebhook: () => void
+  openCreateInbox: () => void
+  openCreateMailView: () => void
+  openCreateMeeting: () => void
+  openCreateGroup: () => void
+  openCreateDataset: () => void
   /** `Meta+K`: open when closed; on the search page open the active record's
    *  actions; otherwise toggle closed. */
   metaK: () => void
@@ -54,6 +61,13 @@ const BACK_TARGET: Record<PalettePage, PalettePage> = {
   'create-snippet': 'root',
   'create-signature': 'root',
   'create-task': 'root',
+  'create-api-key': 'root',
+  'create-webhook': 'root',
+  'create-inbox': 'root',
+  'create-mail-view': 'root',
+  'create-meeting': 'root',
+  'create-group': 'root',
+  'create-dataset': 'root',
 }
 
 /**
@@ -83,6 +97,13 @@ export const useCommandPaletteStore = create<CommandPaletteState>((set, get) => 
     set({ open: true, createSnippetFolderId: folderId ?? null, page: 'create-snippet' }),
   openCreateSignature: () => set({ open: true, page: 'create-signature' }),
   openCreateTask: (ref) => set({ open: true, createTaskRef: ref ?? null, page: 'create-task' }),
+  openCreateApiKey: () => set({ open: true, page: 'create-api-key' }),
+  openCreateWebhook: () => set({ open: true, page: 'create-webhook' }),
+  openCreateInbox: () => set({ open: true, page: 'create-inbox' }),
+  openCreateMailView: () => set({ open: true, page: 'create-mail-view' }),
+  openCreateMeeting: () => set({ open: true, page: 'create-meeting' }),
+  openCreateGroup: () => set({ open: true, page: 'create-group' }),
+  openCreateDataset: () => set({ open: true, page: 'create-dataset' }),
   metaK: () => {
     const s = get()
     if (!s.open) return set({ open: true, page: 'root' })
