@@ -3,27 +3,19 @@
 
 import { Button } from '@auxx/ui/components/button'
 import { PlusIcon } from 'lucide-react'
-import { useState } from 'react'
 import SettingsPage from '~/components/global/settings-page'
-import { SignatureDialog, SignatureList } from '~/components/signatures/ui'
+import { useSignatureDialogStore } from '~/components/signatures/stores/signature-dialog-store'
+import { SignatureList } from '~/components/signatures/ui'
 
 /**
  * Signatures settings page.
- * Lists all signatures with options to create, edit, and delete via a dialog.
+ * Lists all signatures; create/edit run through the global signature dialog
+ * (see {@link useSignatureDialogStore} + SignatureDialogRoot at the app root),
+ * so the same dialog is reachable from the command palette.
  */
 export default function SignaturesPage() {
-  const [dialogOpen, setDialogOpen] = useState(false)
-  const [editingId, setEditingId] = useState<string | null>(null)
-
-  const openCreate = () => {
-    setEditingId(null)
-    setDialogOpen(true)
-  }
-
-  const openEdit = (id: string) => {
-    setEditingId(id)
-    setDialogOpen(true)
-  }
+  const openCreate = useSignatureDialogStore((s) => s.openCreate)
+  const openEdit = useSignatureDialogStore((s) => s.openEdit)
 
   return (
     <SettingsPage
@@ -37,9 +29,6 @@ export default function SignaturesPage() {
       }
       breadcrumbs={[{ title: 'Settings', href: '/app/settings' }, { title: 'Signatures' }]}>
       <SignatureList onCreate={openCreate} onEdit={openEdit} />
-      {dialogOpen && (
-        <SignatureDialog open={dialogOpen} onOpenChange={setDialogOpen} signatureId={editingId} />
-      )}
     </SettingsPage>
   )
 }

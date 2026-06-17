@@ -7,6 +7,7 @@ import { PlusIcon } from 'lucide-react'
 import { useEffect, useRef } from 'react'
 import type { ImperativePanelHandle } from 'react-resizable-panels'
 import SettingsPage from '~/components/global/settings-page'
+import { useSnippetDialogStore } from '~/components/snippets/snippet-dialog-store'
 import { SnippetProvider, useSnippetContext } from '~/contexts/snippet-context'
 import { SnippetFolders } from './_components/snippet-folders'
 import { SnippetForm } from './_components/snippet-form'
@@ -18,14 +19,10 @@ import { SnippetTable } from './_components/snippet-table'
 function SnippetsPageContent() {
   const {
     selectedFolderId,
-    searchTerm,
-    createDialogOpen,
     editDialogOpen,
     editingSnippet,
     folderPanelState,
-    setSearchTerm,
     setSelectedFolderId,
-    openCreateDialog,
     openEditDialog,
     closeDialogs,
     copySnippet,
@@ -34,6 +31,10 @@ function SnippetsPageContent() {
     onFolderPanelExpand,
     breadcrumbs,
   } = useSnippetContext()
+
+  // Create runs through the global dialog so it's reachable from the command
+  // palette too; edit/copy stay page-local.
+  const openCreateSnippet = useSnippetDialogStore((s) => s.openCreate)
 
   // Ref to control the resizable panel
   const folderPanelRef = useRef<ImperativePanelHandle>(null)
@@ -52,10 +53,6 @@ function SnippetsPageContent() {
   // Handle folder selection
   const handleFolderSelect = (newFolderId: string | null) => {
     setSelectedFolderId(newFolderId)
-  }
-
-  const handleSearchChange = (term: string) => {
-    setSearchTerm(term)
   }
 
   // Handle edit snippet
@@ -79,7 +76,7 @@ function SnippetsPageContent() {
       description='Manage all the fields you need for adding and updating contacts.'
       breadcrumbs={breadcrumbs}
       button={
-        <Button variant='outline' size='sm' onClick={() => openCreateDialog()}>
+        <Button variant='outline' size='sm' onClick={() => openCreateSnippet(selectedFolderId)}>
           <PlusIcon />
           New Snippet
         </Button>
@@ -113,23 +110,6 @@ function SnippetsPageContent() {
           </ResizablePanel>
         </ResizablePanelGroup>
       </div>
-
-      {/* Create Dialog */}
-      <Dialog open={createDialogOpen} onOpenChange={(open) => !open && closeDialogs()}>
-        <DialogContent position='tc' size='xxl' innerClassName='max-h-[90vh] overflow-auto'>
-          <DialogHeader className='mb-4'>
-            <DialogTitle>{editingSnippet ? 'Copy Snippet' : 'Create Snippet'}</DialogTitle>
-          </DialogHeader>
-          <SnippetForm
-            initialValues={{
-              ...editingSnippet,
-              folderId: editingSnippet?.folderId || selectedFolderId || undefined,
-            }}
-            onSuccess={closeDialogs}
-            onCancel={closeDialogs}
-          />
-        </DialogContent>
-      </Dialog>
 
       {/* Edit Dialog */}
       <Dialog open={editDialogOpen} onOpenChange={(open) => !open && closeDialogs()}>
