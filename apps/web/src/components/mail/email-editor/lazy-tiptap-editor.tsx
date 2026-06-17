@@ -25,6 +25,8 @@ interface LazyTiptapEditorProps {
   aiSlash?: MailAiSlashConfig
   /** Optional attachment wiring — surfaces the "Attach file" item in the `/` menu. */
   onAttachFile?: (file: FileItem) => void
+  /** Optional upload wiring — pins an "Upload from computer" row in the file drill-in. */
+  onUploadFiles?: (files: File[]) => void
   /** Optional signature/action wiring — registers the `@` menu (email only). */
   references?: MailReferenceConfig
   /** Formatting profile. `'rich'` (default, email) or `'plain'` (chat). */

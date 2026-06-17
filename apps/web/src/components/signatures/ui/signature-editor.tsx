@@ -10,8 +10,8 @@ import { sanitizeHtml } from '~/lib/sanitize'
 import { useDefaultSignature, useSignatures } from '../hooks'
 import { SignaturePicker } from './signature-picker'
 
-/** Props for the SignatureEditor component */
-interface SignatureEditorProps {
+/** Shared props for the signature trigger button and the signature panel. */
+interface SignatureProps {
   integrationId: string
   selectedSignatureId: string | null
   onSignatureChange: (signatureId: string | null) => void
@@ -21,27 +21,11 @@ interface SignatureEditorProps {
 }
 
 /**
- * Component for selecting and displaying an email signature within the editor.
+ * Track the signature picker popover in the editor active-state context, so the
+ * editor doesn't treat itself as blurred while the picker is open.
  */
-function SignatureEditor({
-  selectedSignatureId,
-  onSignatureChange,
-  disabled = false,
-  className,
-}: SignatureEditorProps) {
-  const [isPickerOpen, setIsPickerOpen] = useState(false)
+function usePickerActiveTracking(isPickerOpen: boolean) {
   const { trackPopoverOpen, trackPopoverClose } = useEditorActiveStateContext()
-
-  // Data fetching
-  const { signatures, signatureMap, isLoading: isLoadingSignatures } = useSignatures()
-  const { signature: defaultSignature, isLoading: isLoadingDefault } = useDefaultSignature()
-
-  const isLoading = isLoadingSignatures || isLoadingDefault
-
-  // Get current signature from map (derived state, no useState needed)
-  const currentSignature = selectedSignatureId ? signatureMap.get(selectedSignatureId) : null
-
-  // Track popover state for editor active context
   useEffect(() => {
     if (isPickerOpen) {
       trackPopoverOpen('signature-picker')
@@ -50,6 +34,26 @@ function SignatureEditor({
     }
     return () => trackPopoverClose('signature-picker')
   }, [isPickerOpen, trackPopoverOpen, trackPopoverClose])
+}
+
+/**
+ * The "Add signature" trigger button (with picker). Renders `null` once a
+ * signature is selected — the body then lives in {@link SignaturePanel}.
+ */
+export function SignatureAddButton({
+  selectedSignatureId,
+  onSignatureChange,
+  disabled = false,
+  className,
+}: SignatureProps) {
+  const [isPickerOpen, setIsPickerOpen] = useState(false)
+  usePickerActiveTracking(isPickerOpen)
+
+  const { signatures, signatureMap, isLoading: isLoadingSignatures } = useSignatures()
+  const { signature: defaultSignature, isLoading: isLoadingDefault } = useDefaultSignature()
+  const isLoading = isLoadingSignatures || isLoadingDefault
+
+  const currentSignature = selectedSignatureId ? signatureMap.get(selectedSignatureId) : null
 
   // Add signature (use default if available, otherwise open picker)
   const handleAddClick = useCallback(() => {
@@ -61,16 +65,6 @@ function SignatureEditor({
     }
   }, [disabled, defaultSignature, onSignatureChange])
 
-  // Remove signature
-  const handleRemoveClick = useCallback(
-    (e: React.MouseEvent) => {
-      e.stopPropagation()
-      onSignatureChange(null)
-    },
-    [onSignatureChange]
-  )
-
-  // Select from picker
   const handleSelect = useCallback(
     (signatureId: string | null) => {
       if (!disabled) onSignatureChange(signatureId)
@@ -79,41 +73,69 @@ function SignatureEditor({
   )
 
   if (isLoading) {
-    return (
-      <div className='group relative mx-2 mb-0 rounded-md'>
-        <Skeleton className='h-4 w-26' />
-      </div>
-    )
+    return <Skeleton className='h-6 w-26' />
   }
 
-  // No signature selected - show "Add" button with picker
-  if (!currentSignature) {
-    return (
-      <div className='mx-2'>
-        <SignaturePicker
-          signatures={signatures}
-          selected={null}
-          onChange={handleSelect}
-          open={isPickerOpen}
-          onOpenChange={setIsPickerOpen}
-          disabled={disabled}
-          align='start'
-          className={className}>
-          <Button
-            variant='ghost'
-            size='xs'
-            onClick={handleAddClick}
-            disabled={disabled}
-            className='text-muted-foreground/50'>
-            <Feather className='size-3.5' />
-            Add signature
-          </Button>
-        </SignaturePicker>
-      </div>
-    )
-  }
+  // A signature is selected — the body renders in SignaturePanel, not here.
+  if (currentSignature) return null
 
-  // Signature selected - show body with edit/remove controls
+  return (
+    <SignaturePicker
+      signatures={signatures}
+      selected={null}
+      onChange={handleSelect}
+      open={isPickerOpen}
+      onOpenChange={setIsPickerOpen}
+      disabled={disabled}
+      align='start'
+      className={className}>
+      <Button
+        variant='ghost'
+        size='xs'
+        onClick={handleAddClick}
+        disabled={disabled}
+        className='h-6 gap-1 text-muted-foreground/50'>
+        <Feather className='size-3.5' />
+        Add signature
+      </Button>
+    </SignaturePicker>
+  )
+}
+
+/**
+ * The selected-signature body with hover edit/remove controls. Renders `null`
+ * when no signature is selected — the trigger lives in {@link SignatureAddButton}.
+ */
+export function SignaturePanel({
+  selectedSignatureId,
+  onSignatureChange,
+  disabled = false,
+  className,
+}: SignatureProps) {
+  const [isPickerOpen, setIsPickerOpen] = useState(false)
+  usePickerActiveTracking(isPickerOpen)
+
+  const { signatures, signatureMap, isLoading } = useSignatures()
+  const currentSignature = selectedSignatureId ? signatureMap.get(selectedSignatureId) : null
+
+  const handleRemoveClick = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation()
+      onSignatureChange(null)
+    },
+    [onSignatureChange]
+  )
+
+  const handleSelect = useCallback(
+    (signatureId: string | null) => {
+      if (!disabled) onSignatureChange(signatureId)
+    },
+    [disabled, onSignatureChange]
+  )
+
+  // Skeleton is owned by SignatureAddButton; nothing to show here until selected.
+  if (isLoading || !currentSignature) return null
+
   return (
     <div
       className={`group mx-2 relative rounded-md hover:bg-muted dark:hover:bg-muted ${disabled ? 'pointer-events-none opacity-50' : ''}`}>
@@ -152,5 +174,3 @@ function SignatureEditor({
     </div>
   )
 }
-
-export default SignatureEditor

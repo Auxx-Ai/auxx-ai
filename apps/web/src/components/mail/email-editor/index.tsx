@@ -23,7 +23,7 @@ import { type ContentApplier, makeContentApplier } from '~/components/editor/inl
 import { useCountUpdates } from '~/components/mail/hooks'
 import { useComposeStore } from '~/components/mail/store/compose-store'
 import { ChannelPicker } from '~/components/pickers/channel-picker'
-import { SignatureEditor } from '~/components/signatures/ui'
+import { SignatureAddButton, SignaturePanel } from '~/components/signatures/ui'
 import {
   appendOptimisticMessage,
   toAttachmentMeta,
@@ -43,6 +43,7 @@ import {
   useComposerAITools,
   useComposerAttachments,
 } from '../composer-shared'
+import { AddAttachmentButton } from './add-attachment-button'
 import { AIStatus } from './ai-status'
 import { deriveInitialState, type InitState } from './derive-initial'
 import {
@@ -538,8 +539,8 @@ function ReplyComposeEditorComponent({
     setIsDraftSaved(false)
   }, [])
 
-  // `@` menu wiring — reuses the SAME setters as the belowEditor SignatureEditor
-  // / QuickActionPanel, so the two entry points stay in sync automatically.
+  // `@` menu wiring — reuses the SAME setters as the belowEditor signature /
+  // quick-action panels, so the two entry points stay in sync automatically.
   const references = useMemo<MailReferenceConfig>(
     () => ({
       signatureId: state.signatureId,
@@ -1028,6 +1029,7 @@ function ReplyComposeEditorComponent({
           popoverClassName={popoverZIndex}
           aiSlash={{ onRunAI: handleAIOperation, hasPreviousMessages }}
           onAttachFile={(file) => fileSelect.addExistingFiles([file])}
+          onUploadFiles={(files) => fileSelect.addFiles(files)}
           references={references}
           onWrapperClick={handleWrapperClick}
           onKeyDown={handleKeyDown}
@@ -1194,7 +1196,8 @@ function ReplyComposeEditorComponent({
           }
           belowEditor={
             <>
-              <SignatureEditor
+              {/* Panels render above the action row. Signature is always first. */}
+              <SignaturePanel
                 integrationId={state.integrationId}
                 selectedSignatureId={state.signatureId}
                 onSignatureChange={handleSignatureChange}
@@ -1202,15 +1205,6 @@ function ReplyComposeEditorComponent({
                 className={popoverZIndex}
               />
 
-              {/* File Attachments Display - Persisted + In-Progress Uploads */}
-              <AttachmentStrip
-                attachments={attachments}
-                selectedItems={fileSelect.selectedItems}
-                onRemoveAttachment={removeAttachment}
-                onRemoveUpload={fileSelect.removeItem}
-              />
-
-              {/* Quick Actions Panel */}
               <QuickActionPanel
                 actions={quickActions}
                 onAdd={(action) => setQuickActions((prev) => [...prev, action])}
@@ -1232,9 +1226,18 @@ function ReplyComposeEditorComponent({
                 }
               />
 
-              {/* Add Action Button (always visible when not sending) */}
+              {/* File Attachments Display - Persisted + In-Progress Uploads */}
+              <AttachmentStrip
+                attachments={attachments}
+                selectedItems={fileSelect.selectedItems}
+                onRemoveAttachment={removeAttachment}
+                onRemoveUpload={fileSelect.removeItem}
+              />
+
+              {/* Action row — triggers grouped; signature last so its removal
+                  on select doesn't shift the persistent action/attachment buttons. */}
               {!isSending && (
-                <div className='px-2'>
+                <div className='flex items-center gap-1 px-2'>
                   <AddActionButton
                     threadId={thread?.id || state.threadId || undefined}
                     currentActions={quickActions}
@@ -1249,6 +1252,18 @@ function ReplyComposeEditorComponent({
                         ? activeState.trackPopoverOpen('add-action')
                         : activeState.trackPopoverClose('add-action')
                     }
+                  />
+                  <AddAttachmentButton
+                    fileSelect={fileSelect}
+                    disabled={isSending}
+                    popoverClassName={popoverZIndex}
+                  />
+                  <SignatureAddButton
+                    integrationId={state.integrationId}
+                    selectedSignatureId={state.signatureId}
+                    onSignatureChange={handleSignatureChange}
+                    disabled={isSending}
+                    className={popoverZIndex}
                   />
                 </div>
               )}
@@ -1289,7 +1304,6 @@ function ReplyComposeEditorComponent({
                   onSchedule={handleScheduleClick}
                   isSending={isSending}
                   disabled={isSending || !editor?.isEditable || aiToolsState.isProcessing}
-                  fileSelect={fileSelect}
                   popoverClassName={popoverZIndex}
                   aiToolsProps={{
                     threadId: thread?.id || state.threadId || undefined,

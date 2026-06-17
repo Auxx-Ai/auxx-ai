@@ -8,6 +8,7 @@ import {
   CommandEmpty,
   CommandGroup,
   CommandInput,
+  CommandItem,
   CommandList,
   CommandLoading,
   CommandNavigableItem,
@@ -21,7 +22,7 @@ import { Kbd } from '@auxx/ui/components/kbd'
 import { radioGroupVariants } from '@auxx/ui/components/radio-group'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { cn } from '@auxx/ui/lib/utils'
-import { Circle, File, Folder } from 'lucide-react'
+import { Circle, File, Folder, Upload } from 'lucide-react'
 import type React from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ParentBackHeader } from '~/components/editor/placeholders/placeholder-picker-content'
@@ -85,6 +86,13 @@ export interface FileBrowseLevelProps {
   /** External filter text (controlled). Used in {@link remote} mode in place of
    *  the internal search input. */
   query?: string
+
+  /**
+   * Optional "Upload from computer" action rendered as the first row of the
+   * list. It's a real cmdk item, so it's keyboard-navigable in remote mode. The
+   * host owns the native file dialog and what happens to the chosen files.
+   */
+  uploadAction?: { label: string; onSelect: () => void }
 
   /**
    * When provided, the browse root shows a back affordance (and ←/Backspace on
@@ -277,6 +285,7 @@ function FileBrowseInner({
   showPath,
   enableKeyboardNavigation,
   onRequestClose,
+  uploadAction,
   onBack,
   backLabel,
   remote,
@@ -304,6 +313,7 @@ function FileBrowseInner({
     | 'fileExtensions'
     | 'maxFileSize'
     | 'onRequestClose'
+    | 'uploadAction'
     | 'onBack'
     | 'backLabel'
   > & {
@@ -471,6 +481,10 @@ function FileBrowseInner({
     <Command shouldFilter={false} onKeyDown={remote ? undefined : handleKeyDown}>
       {onBack && isAtRoot && <ParentBackHeader label={backLabel ?? 'Back'} onBack={onBack} />}
       <CommandList>
+        {/* Command nav (breadcrumb) sits above the search input — matches the
+            slash / placeholder / article pickers. */}
+        <CommandBreadcrumb rootLabel='Files' />
+
         {!remote && (
           <CommandInput
             placeholder={enableGlobalSearch ? `Search ${totalFiles} files...` : searchPlaceholder}
@@ -488,7 +502,19 @@ function FileBrowseInner({
           </div>
         )}
 
-        <CommandBreadcrumb rootLabel='Files' />
+        {uploadAction && (
+          <>
+            <CommandGroup>
+              <CommandItem onSelect={uploadAction.onSelect} className='px-2'>
+                <span className='shrink-0 text-muted-foreground'>
+                  <Upload />
+                </span>
+                <span className='min-w-0 truncate'>{uploadAction.label}</span>
+              </CommandItem>
+            </CommandGroup>
+            <CommandSeparator />
+          </>
+        )}
 
         {showCurrentFolderRow && current && (
           <>

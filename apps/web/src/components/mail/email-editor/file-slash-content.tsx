@@ -15,6 +15,13 @@ export interface FileSlashContentProps {
   query: string
   /** Attach the chosen library file into the composer's attachment tray. */
   onAttachFile: (file: FileItem) => void
+  /**
+   * Upload fresh files from the user's computer into the composer's attachment
+   * tray. When provided, an "Upload from computer" row is pinned to the top of
+   * the list. Wired to the composer-level `fileSelect.addFiles`, so the upload
+   * survives the chip closing when the native dialog steals focus.
+   */
+  onUploadFiles?: (files: File[]) => void
   /** Close the chip (keeps the typed text, mirroring `@`). */
   onClose: () => void
   /** Return to the parent `/` command menu. */
@@ -43,6 +50,7 @@ function FileSlashInner({
   ref,
   query,
   onAttachFile,
+  onUploadFiles,
   onClose,
   onBack,
   backLabel,
@@ -72,6 +80,23 @@ function FileSlashInner({
     [onAttachFile, onClose]
   )
 
+  // Opens the native file dialog, then hands the chosen files to the
+  // composer-level uploader and closes the chip. The dialog blurs the editor
+  // (tearing down this chip), but `onUploadFiles` targets state that outlives
+  // it, so the upload completes regardless.
+  const handleUpload = useCallback(() => {
+    if (!onUploadFiles) return
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.multiple = true
+    input.onchange = (e) => {
+      const files = Array.from((e.target as HTMLInputElement).files ?? [])
+      if (files.length > 0) onUploadFiles(files)
+    }
+    input.click()
+    onClose()
+  }, [onUploadFiles, onClose])
+
   return (
     <div ref={containerRef} className='w-72 overflow-hidden'>
       <FileBrowseLevel
@@ -81,7 +106,9 @@ function FileSlashInner({
         allowFiles
         allowFolders={false}
         enableGlobalSearch
-        showPath
+        uploadAction={
+          onUploadFiles ? { label: 'Upload from computer', onSelect: handleUpload } : undefined
+        }
         onSelectItem={handleSelect}
         onBack={onBack}
         backLabel={backLabel ?? 'Commands'}

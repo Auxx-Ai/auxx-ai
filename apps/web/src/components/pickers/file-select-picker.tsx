@@ -16,7 +16,16 @@ import {
 } from '@auxx/ui/components/command'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { cn } from '@auxx/ui/lib/utils'
-import { Download, File, FolderOpen, Loader2, RotateCw, Trash2, Upload } from 'lucide-react'
+import {
+  ChevronRight,
+  Download,
+  File,
+  FolderOpen,
+  Loader2,
+  RotateCw,
+  Trash2,
+  Upload,
+} from 'lucide-react'
 import type React from 'react'
 import { useCallback, useMemo, useState } from 'react'
 import { useFileSelect } from '~/components/file-select/hooks/use-file-select'
@@ -60,6 +69,9 @@ export interface FileSelectPickerProps {
 
   // Hide "Browse files" — restrict picker to fresh uploads only
   hideBrowseExisting?: boolean
+
+  // Show the folder path breadcrumb in the inline browse view (default true)
+  showPath?: boolean
 
   // Display
   children: React.ReactNode
@@ -162,6 +174,7 @@ function FileSelectPickerContent({
   side,
   sideOffset,
   hideBrowseExisting,
+  showPath = true,
   children,
 }: FileSelectPickerContentProps) {
   const [search, setSearch] = useState('')
@@ -170,14 +183,18 @@ function FileSelectPickerContent({
   const [internalOpen, setInternalOpen] = useState(false)
 
   // Support both controlled and uncontrolled open state so content actions
-  // (single-select close, Escape) can dismiss the popover either way.
-  const resolvedOpen = open !== undefined ? open : internalOpen
+  // (single-select close, Escape) can dismiss the popover either way. When
+  // uncontrolled, drive internal state AND still fire onOpenChange as a
+  // side-effect (callers pass it purely to track popover open/close).
+  const isControlled = open !== undefined
+  const resolvedOpen = isControlled ? open : internalOpen
   const handleOpenChange = useCallback(
     (next: boolean) => {
       if (!next) setMode('menu')
-      ;(onOpenChange ?? setInternalOpen)(next)
+      if (!isControlled) setInternalOpen(next)
+      onOpenChange?.(next)
     },
-    [onOpenChange]
+    [isControlled, onOpenChange]
   )
 
   const { selectedItems } = fileSelect
@@ -258,7 +275,7 @@ function FileSelectPickerContent({
               allowFolders={false}
               fileExtensions={fileTypes}
               enableGlobalSearch
-              showPath
+              showPath={showPath}
               onBack={() => setMode('menu')}
               backLabel='Attach'
               onRequestClose={() => handleOpenChange(false)}
@@ -319,6 +336,7 @@ function FileSelectPickerContent({
                       <CommandItem onSelect={() => setMode('browse')}>
                         <FolderOpen className='size-4' />
                         Browse files
+                        <ChevronRight className='ml-auto size-4 text-muted-foreground' />
                       </CommandItem>
                     )}
                   </>
