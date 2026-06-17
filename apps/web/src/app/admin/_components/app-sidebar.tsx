@@ -6,6 +6,7 @@ import {
   SidebarContent,
   SidebarFooter,
   SidebarHeader,
+  SidebarMenu,
   SidebarRail,
 } from '@auxx/ui/components/sidebar'
 import type * as React from 'react'
@@ -47,7 +48,9 @@ export function AdminAppSidebar({ user, ...props }: AdminAppSidebarProps) {
   return (
     <Sidebar collapsible='icon' {...props}>
       <SidebarHeader>
-        <NavUser user={user} />
+        <SidebarMenu>
+          <NavUser user={user} />
+        </SidebarMenu>
       </SidebarHeader>
       <SidebarContent className='gap-0'>
         <AdminNavMain />
