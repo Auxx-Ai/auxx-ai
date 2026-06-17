@@ -26,6 +26,7 @@ const AIComposeInputSchema = z.object({
   senderId: z.string().optional(), // Will be filled from session
   tone: z.enum(AI_TONE_TYPE).optional(),
   language: z.string().optional(), // Allow any string for flexibility
+  instruction: z.string().optional(), // Free-text steering for the CUSTOM op
   output: z.enum(OUTPUT_FORMAT),
 })
 
@@ -198,6 +199,17 @@ function validateOperationInput(input: z.infer<typeof AIComposeInputSchema>) {
         throw new TRPCError({
           code: 'BAD_REQUEST',
           message: 'Either message content or entity ID is required for compose',
+        })
+      }
+      break
+
+    case AI_OPERATION.CUSTOM:
+      // No messageHtml requirement — an empty body is valid (composes a fresh
+      // draft from the instruction). Only the instruction itself is required.
+      if (!input.instruction?.trim()) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'An instruction is required for a custom AI request',
         })
       }
       break

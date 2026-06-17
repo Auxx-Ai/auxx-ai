@@ -150,10 +150,7 @@ function ChatComposerInner({
         popoverClassName={popoverZIndex}
         contentClassName='sm:min-h-[60px] py-2 text-sm'
         editorMinHeightClassName='min-h-[60px]'
-        aiSlash={{
-          onRunAI: handleAIOperation,
-          hasPreviousMessages: (thread.messageCount ?? thread.messages?.length ?? 0) > 0,
-        }}
+        aiSlash={{ onRunAI: handleAIOperation }}
         onAttachFile={(file) => fileSelect.addExistingFiles([file])}
         // Plain compact composer — no block formatting in the schema or `/` menu.
         variant='plain'
