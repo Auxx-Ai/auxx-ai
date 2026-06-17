@@ -2,6 +2,7 @@
 
 import { FormBoolean } from './types/boolean.js'
 import { FormNumber } from './types/number.js'
+import { FormPicker, type PickerConfig } from './types/picker.js'
 import { FormSelect } from './types/select.js'
 import { FormString } from './types/string.js'
 import type { SelectOption } from './types.js'
@@ -9,6 +10,7 @@ import type { SelectOption } from './types.js'
 export * from './base.js'
 export { FormBoolean } from './types/boolean.js'
 export { FormNumber } from './types/number.js'
+export { FormPicker, type PickerConfig } from './types/picker.js'
 export { FormSelect } from './types/select.js'
 export { FormString } from './types/string.js'
 export * from './types.js'
@@ -34,6 +36,7 @@ export const Forms = {
   number: () => FormNumber.create(),
   boolean: () => FormBoolean.create(),
   select: <T extends string>(options: SelectOption<T>[]) => FormSelect.create(options),
+  picker: ((config?: PickerConfig) => FormPicker.create(config as any)) as typeof FormPicker.create,
 }
 
 /**

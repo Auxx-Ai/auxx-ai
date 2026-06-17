@@ -2,6 +2,7 @@
 
 'use client'
 
+import type { SelectOption } from '@auxx/types/custom-field'
 import { Checkbox } from '@auxx/ui/components/checkbox'
 import { Input } from '@auxx/ui/components/input'
 import { Label } from '@auxx/ui/components/label'
@@ -15,6 +16,7 @@ import {
 import { Textarea } from '@auxx/ui/components/textarea'
 import React from 'react'
 import { useFormContext } from 'react-hook-form'
+import { AsyncOptionPicker } from '~/components/pickers/async-option-picker'
 import type { SerializedFormValue } from './types'
 
 interface FieldRendererProps {
@@ -24,6 +26,9 @@ interface FieldRendererProps {
   description?: string
   disabled?: boolean
   fieldSchema: SerializedFormValue
+  /** Form instance id + bridge callback — picker fields resolve options through these. */
+  formInstanceId?: number
+  onCallHandler?: (instanceId: number, eventName: string, ...args: any[]) => Promise<any>
 }
 
 /**
@@ -37,6 +42,8 @@ export const FieldRenderer = React.memo(function FieldRenderer({
   description,
   disabled = false,
   fieldSchema,
+  formInstanceId,
+  onCallHandler,
 }: FieldRendererProps) {
   const {
     register,
@@ -48,6 +55,23 @@ export const FieldRenderer = React.memo(function FieldRenderer({
   const error = errors[name]?.message as string | undefined
   const isOptional =
     'optional' in fieldSchema.metadata ? (fieldSchema.metadata.optional ?? false) : false
+
+  // Picker bridge adapter: resolve options through the form instance's
+  // `loadOptions:<field>` handler (registered by the SDK FormTag), reusing the
+  // proven `call-instance-method` request/response path. Computed unconditionally
+  // to respect rules-of-hooks; only used by the `picker` case.
+  const pickerLoadOptions = React.useMemo(() => {
+    const meta = fieldSchema.metadata as { hasLoadOptions?: boolean }
+    if (!meta.hasLoadOptions || !onCallHandler || formInstanceId == null) return undefined
+    return async (query: string): Promise<SelectOption[]> => {
+      const res = await onCallHandler(formInstanceId, `loadOptions:${name}`, query)
+      if (res && typeof res === 'object' && 'error' in res && res.error) {
+        throw new Error(res.error.message || 'Failed to load options')
+      }
+      const opts = res && typeof res === 'object' && 'result' in res ? res.result : res
+      return Array.isArray(opts) ? opts : []
+    }
+  }, [fieldSchema.metadata, onCallHandler, formInstanceId, name])
 
   // Use placeholder from props or fallback to schema
   const effectivePlaceholder =
@@ -209,6 +233,49 @@ export const FieldRenderer = React.memo(function FieldRenderer({
               ))}
             </SelectContent>
           </Select>
+
+          {description && (
+            <p id={descriptionId} className='text-sm text-muted-foreground'>
+              {description}
+            </p>
+          )}
+
+          {error && (
+            <p id={errorId} role='alert' className='text-sm text-destructive'>
+              {error}
+            </p>
+          )}
+        </div>
+      )
+    }
+
+    case 'picker': {
+      const { metadata } = fieldSchema
+      const multi = metadata.multi ?? false
+      const value = watch(name) ?? (multi ? [] : '')
+
+      return (
+        <div className='space-y-2'>
+          <Label htmlFor={fieldId}>
+            {label}
+            {!isOptional && <span className='text-destructive ml-1'>*</span>}
+          </Label>
+
+          <AsyncOptionPicker
+            loadOptions={pickerLoadOptions}
+            staticOptions={metadata.hasLoadOptions ? undefined : (metadata.options ?? [])}
+            value={value}
+            onChange={(selected) =>
+              setValue(name, multi ? selected : (selected[0] ?? ''), {
+                shouldValidate: true,
+                shouldDirty: true,
+              })
+            }
+            multi={multi}
+            disabled={disabled}
+            placeholder={effectivePlaceholder || 'Select…'}
+            className='w-full'
+          />
 
           {description && (
             <p id={descriptionId} className='text-sm text-muted-foreground'>

@@ -88,6 +88,21 @@ export interface FormSelectMetadata<T extends string = string> {
 }
 
 /**
+ * Picker field metadata (mirrors SDK `FormPickerMetadata`). `loadOptions` is
+ * never serialized — the picker resolves over the bridge when `hasLoadOptions`.
+ */
+export interface FormPickerMetadata {
+  hasLoadOptions?: boolean
+  options?: SelectOption[]
+  multi?: boolean
+  optional?: boolean
+  placeholder?: string
+  errorMessages?: {
+    required?: string
+  }
+}
+
+/**
  * Discriminated union for serialized field types.
  * Ensures type safety when reconstructing schemas on web app side.
  */
@@ -96,6 +111,7 @@ export type SerializedFormValue =
   | { type: 'number'; metadata: FormNumberMetadata }
   | { type: 'boolean'; metadata: FormBooleanMetadata }
   | { type: 'select'; metadata: FormSelectMetadata }
+  | { type: 'picker'; metadata: FormPickerMetadata }
 
 /**
  * Serialized schema format.

@@ -20,8 +20,8 @@ interface FormProps {
   /** Form instance ID */
   __instanceId: number
 
-  /** Callback to call extension's event handlers */
-  __onCallHandler: (instanceId: number, eventName: string, args?: any[]) => Promise<any>
+  /** Callback to call extension's event handlers (request/response over the bridge) */
+  __onCallHandler: (instanceId: number, eventName: string, ...args: any[]) => Promise<any>
 
   /** Whether form has event handlers */
   __hasOnSubmit: boolean
@@ -200,6 +200,8 @@ export const Form = React.memo(function Form({
                 description={child.attributes.description}
                 disabled={child.attributes.disabled}
                 fieldSchema={fieldSchema}
+                formInstanceId={__instanceId}
+                onCallHandler={__onCallHandler}
               />
             )
           }

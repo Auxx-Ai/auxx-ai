@@ -9,6 +9,7 @@ export type SerializedFormValue =
   | { type: 'number'; metadata: FormNumberMetadata }
   | { type: 'boolean'; metadata: FormBooleanMetadata }
   | { type: 'select'; metadata: FormSelectMetadata }
+  | { type: 'picker'; metadata: FormPickerMetadata }
 
 /**
  * String field metadata.
@@ -76,6 +77,36 @@ export interface FormSelectMetadata<T extends string = string> {
   optional?: boolean
   placeholder?: string
   defaultValue?: T
+  errorMessages?: {
+    required?: string
+  }
+}
+
+/**
+ * Async option resolver for {@link FormPickerMetadata}. Called with the live
+ * search string (`''` on open); runs in the app sandbox (may call `.server`
+ * functions) and returns the matching options.
+ */
+export type PickerLoadOptions = (query: string) => Promise<SelectOption[]>
+
+/**
+ * Picker field metadata.
+ *
+ * `loadOptions` is a runtime-only function (kept in `_metadata` so the form tag
+ * can invoke it across the bridge); it is NOT serialized — `toJSON()` emits
+ * `hasLoadOptions` instead. `options` is the static / client-filtered path.
+ */
+export interface FormPickerMetadata {
+  /** Runtime-only resolver; stripped from the serialized form (see `hasLoadOptions`). */
+  loadOptions?: PickerLoadOptions
+  /** Serialized flag: the field resolves options via `loadOptions` over the bridge. */
+  hasLoadOptions?: boolean
+  /** Static options (client-filtered). Mutually exclusive with `loadOptions`. */
+  options?: SelectOption[]
+  /** Multi-select (string[]) vs single (string). Default false. */
+  multi?: boolean
+  optional?: boolean
+  placeholder?: string
   errorMessages?: {
     required?: string
   }

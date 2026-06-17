@@ -1,10 +1,15 @@
 // packages/sdk/src/runtime/reconciler/tags/form-tag.ts
 
-import type { FormSchema } from '../../../client/forms/types.js'
+import type { FormSchema, PickerLoadOptions } from '../../../client/forms/types.js'
 import { serializeSchema } from '../../../client/forms/utils/serialize.js'
 import { validateFormFields } from '../../../client/forms/utils/validation.js'
+import { eventBus } from '../../event-bus.js'
 import { registerEventHandler } from '../../register-event-handler.js'
+import { wrapEventHandler } from '../../wrap-event-handler.js'
 import { BaseTag } from './base-tag.js'
+
+/** Event-name prefix for a picker field's async option resolver (see host `AsyncOptionPicker`). */
+const LOAD_OPTIONS_PREFIX = 'loadOptions:'
 
 /**
  * Tag for Form component.
@@ -22,8 +27,51 @@ export class FormTag extends BaseTag {
     registerEventHandler(this, 'onError')
     registerEventHandler(this, 'onValidationError')
 
+    // Register each picker field's `loadOptions` as an invokable instance method
+    // (`loadOptions:<field>`) so the host's `AsyncOptionPicker` can resolve
+    // options over the existing `call-instance-method` bridge. The resolver is a
+    // runtime-only closure (stripped from the serialized schema), so it lives
+    // here, keyed by the form's instance id.
+    this.registerPickerLoadOptions(props.schema)
+
     // Store internal ref for form control
     this.internalRef = props.__internalRef
+  }
+
+  /** Collect `{ fieldName, loadOptions }` for every picker field with a resolver. */
+  private pickerResolvers(
+    schema: unknown
+  ): Array<{ name: string; loadOptions: PickerLoadOptions }> {
+    if (!schema || typeof schema !== 'object') return []
+    const out: Array<{ name: string; loadOptions: PickerLoadOptions }> = []
+    for (const [name, field] of Object.entries(schema as Record<string, any>)) {
+      if (field?.type === 'picker' && typeof field._metadata?.loadOptions === 'function') {
+        out.push({ name, loadOptions: field._metadata.loadOptions })
+      }
+    }
+    return out
+  }
+
+  private registerPickerLoadOptions(schema: unknown): void {
+    const resolvers = this.pickerResolvers(schema)
+    if (resolvers.length === 0) return
+
+    this.mounted.addListener(({ instance }) => {
+      for (const { name, loadOptions } of resolvers) {
+        const eventName = `${LOAD_OPTIONS_PREFIX}${name}`
+        eventBus.setTagEventListener(
+          eventName,
+          instance.instance_id,
+          wrapEventHandler((query: string) => loadOptions(query ?? ''), { eventName })
+        )
+      }
+    })
+
+    this.destroyed.addListener(({ instance }) => {
+      for (const { name } of resolvers) {
+        eventBus.clearTagEventListener(`${LOAD_OPTIONS_PREFIX}${name}`, instance.instance_id)
+      }
+    })
   }
 
   getTagName(): string {

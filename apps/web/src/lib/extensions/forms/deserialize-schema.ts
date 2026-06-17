@@ -39,9 +39,37 @@ function deserializeField(name: string, field: SerializedFormValue): z.ZodTypeAn
     case 'select':
       return deserializeSelectField(field)
 
+    case 'picker':
+      return deserializePickerField(field)
+
     default:
       handleUnknownFieldType((field as any).type, name)
   }
+}
+
+/**
+ * Deserialize picker field. Values are free-form strings (server-resolved or
+ * static option values), so we validate shape — a string, or string[] when
+ * multi — not membership.
+ */
+function deserializePickerField(
+  field: Extract<SerializedFormValue, { type: 'picker' }>
+): z.ZodTypeAny {
+  const { metadata } = field
+  const errors = metadata.errorMessages || {}
+
+  if (metadata.multi) {
+    let schema: any = z.array(z.string())
+    if (!metadata.optional) {
+      schema = schema.min(1, errors.required || 'Please select at least one option')
+    }
+    return metadata.optional ? schema.optional() : schema
+  }
+
+  const schema = z.string({ message: errors.required || 'Please select an option' })
+  return metadata.optional
+    ? z.preprocess((val) => (val === '' ? undefined : val), schema.optional())
+    : schema.min(1, errors.required || 'Please select an option')
 }
 
 /**
