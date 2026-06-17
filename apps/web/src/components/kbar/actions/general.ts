@@ -3,7 +3,6 @@
 
 import { useMemo } from 'react'
 import { useComposeStore } from '~/components/mail/store/compose-store'
-import { useCreateTaskStore } from '~/components/tasks/stores/create-task-store'
 import { useCommandPaletteStore } from '../store'
 import type { PaletteAction } from '../types'
 
@@ -32,10 +31,7 @@ export function useGeneralActions(): PaletteAction[] {
         subtitle: 'Create a new task',
         icon: 'list-checks',
         keywords: 'task create new to-do',
-        perform: () => {
-          useCreateTaskStore.getState().openDialog()
-          useCommandPaletteStore.getState().close()
-        },
+        perform: () => useCommandPaletteStore.getState().openCreateTask(),
       },
     ],
     []

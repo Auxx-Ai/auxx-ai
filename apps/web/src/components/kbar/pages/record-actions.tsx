@@ -6,7 +6,6 @@ import { Command, CommandGroup, CommandItem, CommandList } from '@auxx/ui/compon
 import { Copy, ExternalLink, Link2, ListChecks, SquareArrowOutUpRight } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useResourceStore } from '~/components/resources/store/resource-store'
-import { useCreateTaskStore } from '~/components/tasks/stores/create-task-store'
 import { recordHref } from '../record-href'
 import { selectOnEnter } from '../select-on-enter'
 import { useCommandPaletteStore } from '../store'
@@ -48,8 +47,8 @@ export function RecordActionsPage() {
   }
 
   const createTask = () => {
-    useCreateTaskStore.getState().openDialog({ referencedEntity: selected.recordId as RecordId })
-    close()
+    // Drill into the embedded task page with the record pre-linked (stays in-palette).
+    useCommandPaletteStore.getState().openCreateTask(selected.recordId as RecordId)
   }
 
   return (

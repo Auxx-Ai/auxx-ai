@@ -1,6 +1,7 @@
 // apps/web/src/components/kbar/store.ts
 'use client'
 
+import type { RecordId } from '@auxx/lib/field-values/client'
 import { create } from 'zustand'
 import type { PalettePage } from './types'
 
@@ -23,6 +24,10 @@ interface CommandPaletteState {
   searchActive: PaletteSelectedRecord | null
   /** Entity definition id for the embedded `create` page. */
   createEntityId: string | null
+  /** Optional folder pre-selection for the embedded `create-snippet` page. */
+  createSnippetFolderId: string | null
+  /** Optional record to pre-link on the embedded `create-task` page. */
+  createTaskRef: RecordId | null
 
   openPalette: () => void
   close: () => void
@@ -32,6 +37,9 @@ interface CommandPaletteState {
   openRecordActions: (record: PaletteSelectedRecord) => void
   setSearchActive: (record: PaletteSelectedRecord | null) => void
   openCreate: (entityDefinitionId: string) => void
+  openCreateSnippet: (folderId?: string) => void
+  openCreateSignature: () => void
+  openCreateTask: (ref?: RecordId) => void
   /** `Meta+K`: open when closed; on the search page open the active record's
    *  actions; otherwise toggle closed. */
   metaK: () => void
@@ -43,6 +51,9 @@ const BACK_TARGET: Record<PalettePage, PalettePage> = {
   search: 'root',
   'record-actions': 'search',
   create: 'root',
+  'create-snippet': 'root',
+  'create-signature': 'root',
+  'create-task': 'root',
 }
 
 /**
@@ -56,9 +67,11 @@ export const useCommandPaletteStore = create<CommandPaletteState>((set, get) => 
   selectedRecord: null,
   searchActive: null,
   createEntityId: null,
+  createSnippetFolderId: null,
+  createTaskRef: null,
 
   openPalette: () => set({ open: true, page: 'root' }),
-  close: () => set({ open: false }),
+  close: () => set({ open: false, createSnippetFolderId: null, createTaskRef: null }),
   toggle: () => (get().open ? set({ open: false }) : set({ open: true, page: 'root' })),
   goTo: (page) => set({ page }),
   back: () => set({ page: BACK_TARGET[get().page] }),
@@ -66,6 +79,10 @@ export const useCommandPaletteStore = create<CommandPaletteState>((set, get) => 
   setSearchActive: (record) => set({ searchActive: record }),
   openCreate: (entityDefinitionId) =>
     set({ open: true, createEntityId: entityDefinitionId, page: 'create' }),
+  openCreateSnippet: (folderId) =>
+    set({ open: true, createSnippetFolderId: folderId ?? null, page: 'create-snippet' }),
+  openCreateSignature: () => set({ open: true, page: 'create-signature' }),
+  openCreateTask: (ref) => set({ open: true, createTaskRef: ref ?? null, page: 'create-task' }),
   metaK: () => {
     const s = get()
     if (!s.open) return set({ open: true, page: 'root' })

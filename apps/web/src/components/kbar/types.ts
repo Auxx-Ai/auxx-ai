@@ -1,7 +1,14 @@
 // apps/web/src/components/kbar/types.ts
 
 /** Pages the command palette can show. */
-export type PalettePage = 'root' | 'search' | 'record-actions' | 'create'
+export type PalettePage =
+  | 'root'
+  | 'search'
+  | 'record-actions'
+  | 'create'
+  | 'create-snippet'
+  | 'create-signature'
+  | 'create-task'
 
 /**
  * A single command-palette entry. The whole palette is built from plain arrays

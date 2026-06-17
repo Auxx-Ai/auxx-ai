@@ -5,8 +5,6 @@ import { useMemo } from 'react'
 import { useCreateEntityStore } from '~/components/global-create/create-entity-store'
 import { SYSTEM_CREATE_HOTKEYS } from '~/components/global-create/system-hotkeys'
 import { useResources } from '~/components/resources/hooks/use-resources'
-import { useSignatureDialogStore } from '~/components/signatures/stores/signature-dialog-store'
-import { useSnippetDialogStore } from '~/components/snippets/snippet-dialog-store'
 import { useCommandPaletteStore } from '../store'
 import type { PaletteAction } from '../types'
 
@@ -36,10 +34,10 @@ export function useCreateActions(): PaletteAction[] {
 }
 
 /**
- * Create actions that aren't entity instances — signatures and snippets — each
- * driven by its own global dialog store ({@link useSignatureDialogStore} /
- * {@link useSnippetDialogStore}). Kept out of the resource loop above since they
- * have no entity definition.
+ * Create actions that aren't entity instances — signatures and snippets. Inside
+ * the palette these drill into their embedded `create-signature` / `create-snippet`
+ * pages (the form renders as a step); the standalone dialog stores stay mounted for
+ * use outside the palette (settings pages).
  */
 export function useNonEntityCreateActions(): PaletteAction[] {
   return useMemo<PaletteAction[]>(
@@ -50,10 +48,7 @@ export function useNonEntityCreateActions(): PaletteAction[] {
         subtitle: 'New email signature',
         icon: 'pen-tool',
         keywords: 'create new signature email',
-        perform: () => {
-          useSignatureDialogStore.getState().openCreate()
-          useCommandPaletteStore.getState().close()
-        },
+        perform: () => useCommandPaletteStore.getState().openCreateSignature(),
       },
       {
         id: 'create.snippet',
@@ -61,10 +56,7 @@ export function useNonEntityCreateActions(): PaletteAction[] {
         subtitle: 'New reusable snippet',
         icon: 'braces',
         keywords: 'create new snippet canned response',
-        perform: () => {
-          useSnippetDialogStore.getState().openCreate()
-          useCommandPaletteStore.getState().close()
-        },
+        perform: () => useCommandPaletteStore.getState().openCreateSnippet(),
       },
     ],
     []
