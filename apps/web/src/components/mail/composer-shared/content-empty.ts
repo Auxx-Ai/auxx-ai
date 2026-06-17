@@ -13,13 +13,18 @@ const ZWSP = /​/g
  * composer body wrapper is clicked. Superset of the email + chat selectors —
  * the extra `[data-recipient-row]` / `.signature-picker-popover` entries are
  * inert in surfaces that don't render those (e.g. chat), so sharing is safe.
+ *
+ * The toolbar wrapper itself is intentionally NOT listed: chat floats it over
+ * the editor's padded bottom, so clicks in the gaps between its buttons must
+ * fall through and focus the editor. The actual controls are still covered by
+ * the `button` / `[role="button"]` entries above.
  */
 export const INTERACTIVE_ELEMENT_SELECTORS = `
   button, a, input, select, textarea,
   [role="button"], [role="option"], [role="combobox"], [role="menuitem"], [role="tab"],
   [data-recipient-row],
   .ProseMirror, [data-radix-popper-content-wrapper], [data-radix-select-trigger],
-  .tippy-box, .editor-toolbar-wrapper, .signature-picker-popover
+  .tippy-box, .signature-picker-popover
 `.trim()
 
 /**
