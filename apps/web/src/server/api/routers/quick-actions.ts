@@ -1,6 +1,6 @@
 // apps/web/src/server/api/routers/quick-actions.ts
 
-import { QuickActionExecutor } from '@auxx/lib/quick-actions'
+import { QuickActionExecutor, resolveQuickActionOptions } from '@auxx/lib/quick-actions'
 import { TicketEventType, TimelineActorType, TimelineEntityType } from '@auxx/lib/timeline'
 import { createScopedLogger } from '@auxx/logger'
 import { createTimelineEvent } from '@auxx/services/timeline'
@@ -104,5 +104,63 @@ export const quickActionRouter = createTRPCRouter({
       }
 
       return results
+    }),
+
+  /**
+   * Resolve the live options for a quick-action `dynamic-select` input (e.g. the
+   * Stripe charges for the thread's contact). Read-only — runs the app's resolver
+   * tool, scoped to `recordId`. See plans/actions/09-dynamic-action-inputs.md.
+   */
+  resolveOptions: protectedProcedure
+    .input(
+      z.object({
+        appId: z.string(),
+        installationId: z.string(),
+        actionId: z.string(),
+        fieldKey: z.string(),
+        recordId: z.string(),
+        query: z.string().optional(),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      const { organizationId, userId } = ctx.session
+
+      // Validate the subject record belongs to the caller's org before binding.
+      const [entityDefinitionId, entityInstanceId] = input.recordId.split(':')
+      if (!entityDefinitionId || !entityInstanceId) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Invalid recordId' })
+      }
+      const instance = await ctx.db.query.EntityInstance.findFirst({
+        where: (rows, { eq, and }) =>
+          and(eq(rows.id, entityInstanceId), eq(rows.organizationId, organizationId)),
+        columns: { id: true },
+      })
+      if (!instance) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Record not found' })
+      }
+
+      const organization = await ctx.db.query.Organization.findFirst({
+        where: (orgs, { eq }) => eq(orgs.id, organizationId),
+      })
+      if (!organization?.handle) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Organization not found' })
+      }
+      const user = await ctx.db.query.User.findFirst({
+        where: (users, { eq }) => eq(users.id, userId),
+      })
+
+      return resolveQuickActionOptions({
+        appId: input.appId,
+        installationId: input.installationId,
+        actionId: input.actionId,
+        fieldKey: input.fieldKey,
+        recordId: input.recordId,
+        query: input.query,
+        organizationId,
+        organizationHandle: organization.handle,
+        userId,
+        userEmail: user?.email ?? '',
+        userName: user?.name ?? '',
+      })
     }),
 })

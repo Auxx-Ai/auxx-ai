@@ -508,7 +508,8 @@ export const ORG_CACHE_KEY_CONFIG: Record<
   overages: { prefix: 'org:overages', ttlSeconds: 900 },
   orgSettings: { prefix: 'org:settings', ttlSeconds: ONE_DAY },
   // v2: connectionDefinition (singular) → connectionDefinitions (pair). Bump on shape changes.
-  installedApps: { prefix: 'org:installed-apps:v3', ttlSeconds: 900 },
+  // v4: CachedAction.inputHints (dynamic-select pickers). See plans/actions/09-dynamic-action-inputs.md.
+  installedApps: { prefix: 'org:installed-apps:v4', ttlSeconds: 900 },
   mcpServers: { prefix: 'org:mcpServers', ttlSeconds: ONE_DAY },
   workflowApps: { prefix: 'org:workflow-apps', ttlSeconds: ONE_DAY },
 

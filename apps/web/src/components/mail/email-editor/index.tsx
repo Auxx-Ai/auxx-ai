@@ -4,6 +4,7 @@ import type { IdentifierType } from '@auxx/database/types'
 import { PLATFORM_CAPABILITIES, type PlatformCapabilities } from '@auxx/lib/channels/client'
 import type { DraftActionPayload } from '@auxx/lib/quick-actions/client'
 import { type ParticipantRole, toParticipantId } from '@auxx/types'
+import { toRecordId } from '@auxx/types/resource'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { Separator } from '@auxx/ui/components/separator'
@@ -29,6 +30,7 @@ import {
   toAttachmentMeta,
 } from '~/components/threads/hooks/append-optimistic-message'
 import type { MessageMeta } from '~/components/threads/store/message-store'
+import { useParticipantStore } from '~/components/threads/store/participant-store'
 import { getThreadStoreState } from '~/components/threads/store/thread-store'
 import { useAnalytics } from '~/hooks/use-analytics'
 import { useConfirm } from '~/hooks/use-confirm'
@@ -930,6 +932,25 @@ function ReplyComposeEditorComponent({
     return null
   }, [sourceMessage, state.sourceMessageId, thread])
 
+  // Resolve the thread's primary contact record for dynamic-select quick-action
+  // inputs — the sender (`from:`) of the message being replied to, mapped to its
+  // linked contact entity instance. Null when unlinked → pickers render disabled.
+  const contactParticipantId = useMemo(() => {
+    const from = messageForPrevComponent?.participants?.find(
+      (p) => p.role?.toUpperCase() === 'FROM'
+    )
+    return from?.participant?.id ?? null
+  }, [messageForPrevComponent])
+  const contactEntityInstanceId = useParticipantStore((s) =>
+    contactParticipantId
+      ? (s.participants.get(contactParticipantId)?.entityInstanceId ?? null)
+      : null
+  )
+  const contactRecordId = useMemo(
+    () => (contactEntityInstanceId ? toRecordId('contact', contactEntityInstanceId) : null),
+    [contactEntityInstanceId]
+  )
+
   return (
     <>
       <ConfirmDialog />
@@ -1217,6 +1238,7 @@ function ReplyComposeEditorComponent({
                   )
                 }
                 threadId={thread?.id || state.threadId || undefined}
+                contactRecordId={contactRecordId}
                 disabled={isSending}
                 popoverClassName={popoverZIndex}
                 onPopoverOpenChange={(open) =>

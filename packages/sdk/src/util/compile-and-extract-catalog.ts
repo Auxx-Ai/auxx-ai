@@ -7,6 +7,7 @@ import { fileURLToPath, pathToFileURL } from 'url'
 import { HIDDEN_AUXX_DIRECTORY } from '../constants/hidden-auxx-directory.js'
 import { complete, errored, type Result } from '../errors.js'
 import type {
+  ActionInputHint,
   AgentSurface,
   ToolActionSurface,
   ToolAgentSurface,
@@ -92,6 +93,12 @@ export interface CatalogAction {
   surface: 'ticket-header' | 'email-editor'
   requiresConfirmation?: boolean
   confirmationMessage?: string
+  /**
+   * Per-input presentation overrides, carried verbatim from `tool.action.inputs`.
+   * Drives dynamic-select pickers in the quick-action form. See
+   * plans/actions/09-dynamic-action-inputs.md.
+   */
+  inputHints?: Record<string, ActionInputHint>
 }
 
 export interface CatalogToolset {
@@ -430,7 +437,31 @@ export async function compileAndExtractCatalog(): Promise<
         surface: tool.action.surface,
         requiresConfirmation: tool.action.requiresConfirmation,
         confirmationMessage: tool.action.confirmationMessage,
+        ...(tool.action.inputs ? { inputHints: tool.action.inputs } : {}),
       })
+    }
+  }
+
+  // Validate dynamic-select hints now that every tool id is known. Each
+  // `optionsFrom` must reference a tool in this same app, and `valuePath` /
+  // `labelTemplate` must be present so the form can render an option.
+  const toolIds = new Set(cataloguedTools.map((t) => t.id))
+  for (const action of cataloguedActions) {
+    for (const [fieldKey, hint] of Object.entries(action.inputHints ?? {})) {
+      if (hint.kind !== 'dynamic-select') continue
+      const ds = hint.dynamicSelect
+      if (!toolIds.has(ds.optionsFrom)) {
+        return errored({
+          code: 'CATALOG_VALIDATION_FAILED',
+          message: `Action "${action.toolId}" input "${fieldKey}": optionsFrom "${ds.optionsFrom}" is not a tool in this app`,
+        })
+      }
+      if (!ds.valuePath || !ds.labelTemplate) {
+        return errored({
+          code: 'CATALOG_VALIDATION_FAILED',
+          message: `Action "${action.toolId}" input "${fieldKey}": dynamic-select requires valuePath and labelTemplate`,
+        })
+      }
     }
   }
 

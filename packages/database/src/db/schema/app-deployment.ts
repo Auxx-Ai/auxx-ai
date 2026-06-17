@@ -78,6 +78,25 @@ export interface CatalogAgentTool extends CatalogTool {
   }>
 }
 
+/**
+ * Per-input presentation override for the quick-action form. Lock-step copy of
+ * the SDK `ActionInputHint` (`packages/sdk/src/root/tools/types.ts`) — the
+ * database package can't depend on the published SDK. See
+ * plans/actions/09-dynamic-action-inputs.md.
+ */
+export type ActionInputHint = { kind: 'dynamic-select'; dynamicSelect: DynamicSelectHint }
+
+export interface DynamicSelectHint {
+  optionsFrom: string
+  bindArgsFrom?: Record<string, string>
+  args?: Record<string, unknown>
+  valuePath: string
+  itemsPath?: string
+  labelTemplate: string
+  sublabelTemplate?: string
+  emptyHint?: string
+}
+
 export interface CatalogAction {
   toolId: string
   label: string
@@ -87,6 +106,8 @@ export interface CatalogAction {
   surface: 'ticket-header' | 'email-editor'
   requiresConfirmation?: boolean
   confirmationMessage?: string
+  /** Per-input presentation overrides, carried verbatim from `tool.action.inputs`. */
+  inputHints?: Record<string, ActionInputHint>
 }
 
 export interface CatalogToolset {
