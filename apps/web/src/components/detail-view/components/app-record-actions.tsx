@@ -10,9 +10,9 @@ import {
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
 import { Blocks, MoreHorizontal } from 'lucide-react'
+import { useInternalAppsContext } from '~/components/apps/providers/internal-apps-context'
+import { useSurfaces } from '~/components/apps/runtime/hooks/use-surfaces'
 import type { RecordId } from '~/components/resources'
-import { useSurfaces } from '~/lib/extensions/use-surfaces'
-import { useInternalAppsContext } from '~/providers/extensions/internal-apps-context'
 
 interface AppRecordActionsProps {
   /** Full record id (`<entityDefinitionId>:<entityInstanceId>`). */
@@ -27,7 +27,7 @@ interface AppRecordActionsProps {
  * Renders record-action surfaces declared by installed apps in an overflow menu
  * on the detail-view header. Triggering an action posts to the app iframe via
  * `store.triggerSurface`; any `showDialog` the app opens is rendered globally by
- * `ExtensionDialog`.
+ * `AppDialog`.
  *
  * v1 shows every installed app's record action on every record type — apps gate
  * applicability inside their own dialog. The overflow menu keeps N installed

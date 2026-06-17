@@ -6,10 +6,10 @@ import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@auxx/ui/components/card'
 import { Loader2 } from 'lucide-react'
-import { useSurfaces } from '~/lib/extensions/use-surfaces'
-import { useInternalAppsContext } from '~/providers/extensions/internal-apps-context'
+import { useInternalAppsContext } from '~/components/apps/providers/internal-apps-context'
+import { useSurfaces } from '~/components/apps/runtime/hooks/use-surfaces'
 
-export default function ExtensionAppsExamplePage() {
+export default function AppsExamplePage() {
   // Get AppStore to trigger surfaces
   const { store } = useInternalAppsContext()
 

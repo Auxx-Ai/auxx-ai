@@ -2,7 +2,7 @@
 'use client'
 
 import { useCallback } from 'react'
-import { useExtensionsContext } from '~/providers/extensions/extensions-context'
+import { useAppsContext } from '~/components/apps/providers/apps-context'
 import type { RouterOutputs } from '~/trpc/react'
 import { api } from '~/trpc/react'
 
@@ -11,12 +11,12 @@ export type McpServerListEntry = RouterOutputs['mcp']['list'][number]
 /**
  * Loads the org's MCP servers (curated + custom, connected + browsable) and exposes a
  * `refresh` that re-fetches `mcp.list` — one invalidation covers both this query and the
- * ExtensionsContext projection (the builder catalog derives from the same query), so the
+ * AppsContext projection (the builder catalog derives from the same query), so the
  * builder updates the same beat the settings UI does.
  */
 export function useMcpServers() {
   const query = api.mcp.list.useQuery()
-  const { refreshMcpServers } = useExtensionsContext()
+  const { refreshMcpServers } = useAppsContext()
 
   const refresh = useCallback(async () => {
     await refreshMcpServers()

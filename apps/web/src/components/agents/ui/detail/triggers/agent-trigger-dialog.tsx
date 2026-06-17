@@ -29,6 +29,7 @@ import { toastError } from '@auxx/ui/components/toast'
 import type { JSONContent } from '@tiptap/core'
 import { ChevronDown, Trash2 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
+import { useAppsContext } from '~/components/apps/providers/apps-context'
 import { AppAccountPicker } from '~/components/apps/ui/app-account-picker'
 import { AppIcon } from '~/components/apps/ui/app-icon'
 import { DEFAULT_TABS } from '~/components/editor/inline-picker'
@@ -38,7 +39,6 @@ import { ResourcePicker } from '~/components/pickers/resource-picker'
 import { useResources } from '~/components/resources/hooks/use-resources'
 import { VarEditorField } from '~/components/workflow/ui/input-editor/var-editor'
 import { useConfirm } from '~/hooks/use-confirm'
-import { useExtensionsContext } from '~/providers/extensions/extensions-context'
 import { api, type RouterOutputs } from '~/trpc/react'
 import { TriggerCronEditor } from './trigger-cron-editor'
 import { type Interval, TriggerIntervalSelector } from './trigger-interval-selector'
@@ -268,7 +268,7 @@ export function AgentTriggerDialog({
     effectiveKind === 'mention' || effectiveKind === 'assignment' || effectiveKind === 'dm'
   const isAppKind = effectiveKind === 'app'
 
-  const { appInstallations, appConnections } = useExtensionsContext()
+  const { appInstallations, appConnections } = useAppsContext()
 
   // For app-kind edit: resolve the installation + trigger projection from the
   // cache envelope so we can render header chip + inputs form.

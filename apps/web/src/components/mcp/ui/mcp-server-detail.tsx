@@ -6,10 +6,10 @@ import { toastError } from '@auxx/ui/components/toast'
 import { Pencil, Plug, Trash2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useCallback, useState } from 'react'
+import { useAppsContext } from '~/components/apps/providers/apps-context'
 import { AppIcon } from '~/components/apps/ui/app-icon'
 import SettingsPage from '~/components/global/settings-page'
 import { useConfirm } from '~/hooks/use-confirm'
-import { useExtensionsContext } from '~/providers/extensions/extensions-context'
 import type { RouterOutputs } from '~/trpc/react'
 import { api } from '~/trpc/react'
 import { AddMcpServerDialog } from './add-mcp-server-dialog'
@@ -23,14 +23,14 @@ export type McpDetailServer = NonNullable<RouterOutputs['mcp']['getBySlug']>
 /**
  * Detail page shell for one MCP server: header (icon, name, status) + a single scrolling page with
  * the connection and tools sections stacked. Hydrated from a server-side `getBySlug` fetch; mutations
- * invalidate both `mcp.getBySlug` and the ExtensionsContext so the builder catalog stays in sync.
+ * invalidate both `mcp.getBySlug` and the AppsContext so the builder catalog stays in sync.
  */
 export function McpServerDetail({ initialServer }: { initialServer: McpDetailServer }) {
   const router = useRouter()
   const utils = api.useUtils()
   const [confirm, ConfirmDialog] = useConfirm()
   const [editOpen, setEditOpen] = useState(false)
-  const { refreshMcpServers } = useExtensionsContext()
+  const { refreshMcpServers } = useAppsContext()
   const { data: server } = api.mcp.getBySlug.useQuery(
     { slug: initialServer.slug },
     { initialData: initialServer }
@@ -40,7 +40,7 @@ export function McpServerDetail({ initialServer }: { initialServer: McpDetailSer
   const remove = api.mcp.delete.useMutation()
 
   const onChanged = useCallback(async () => {
-    // refreshMcpServers() already invalidates `mcp.list` (the ExtensionsContext catalog derives
+    // refreshMcpServers() already invalidates `mcp.list` (the AppsContext catalog derives
     // from the same query) — invalidating it here too would double-fetch.
     await Promise.all([utils.mcp.getBySlug.invalidate({ slug: current.slug }), refreshMcpServers()])
   }, [utils, current.slug, refreshMcpServers])

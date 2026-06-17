@@ -3,8 +3,8 @@
 
 import { Popover, PopoverContentDialogAware, PopoverTrigger } from '@auxx/ui/components/popover'
 import { type ReactNode, useMemo, useState } from 'react'
+import { useAppsContext } from '~/components/apps/providers/apps-context'
 import { PickerTrigger } from '~/components/ui/picker-trigger'
-import { useExtensionsContext } from '~/providers/extensions/extensions-context'
 import { AppAccountPicker } from './app-account-picker'
 import { AppIcon } from './app-icon'
 import { AppSettingsDialog } from './app-settings-dialog'
@@ -67,7 +67,7 @@ export function AppAccountPopover({
 }: AppAccountPopoverProps) {
   const [open, setOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
-  const { appConnections, appInstallations } = useExtensionsContext()
+  const { appConnections, appInstallations } = useAppsContext()
 
   const triggerLabel = useMemo(() => {
     if (!value || Array.isArray(value)) return null

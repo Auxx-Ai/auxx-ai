@@ -13,7 +13,7 @@ import {
 import { Field, FieldLabel } from '@auxx/ui/components/field'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { useEffect, useMemo, useState } from 'react'
-import { useExtensionsContext } from '~/providers/extensions/extensions-context'
+import { useAppsContext } from '~/components/apps/providers/apps-context'
 import { AppAccountPopover } from './app-account-popover'
 import { AppIcon } from './app-icon'
 
@@ -45,7 +45,7 @@ export function AppAccountDialog({
   onOpenChange,
   allowPersonal = true,
 }: AppAccountDialogProps) {
-  const { appInstallations } = useExtensionsContext()
+  const { appInstallations } = useAppsContext()
   const installation = useMemo(
     () => (appId ? appInstallations.find((i) => i.app.id === appId) : null),
     [appInstallations, appId]

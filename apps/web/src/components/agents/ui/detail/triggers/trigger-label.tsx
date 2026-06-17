@@ -2,8 +2,8 @@
 'use client'
 
 import { getTriggerLabel } from '@auxx/lib/agents/client'
+import { useAppsContext } from '~/components/apps/providers/apps-context'
 import { useResource } from '~/components/resources/hooks/use-resource'
-import { useExtensionsContext } from '~/providers/extensions/extensions-context'
 import type { RouterOutputs } from '~/trpc/react'
 
 type Trigger = RouterOutputs['agentTrigger']['list'][number]
@@ -12,14 +12,14 @@ type Trigger = RouterOutputs['agentTrigger']['list'][number]
  * Resolves the human label for an agent trigger row. CRUD-event rows look up
  * the resource client-side so custom entities render their label (e.g.
  * `On Vendor created`). App-kind rows resolve `triggerAppId` /
- * `triggerAppTriggerId` against `useExtensionsContext()` so we surface the
+ * `triggerAppTriggerId` against `useAppsContext()` so we surface the
  * app's display title + the trigger's label rather than raw ids. All other
  * kinds fall back to the server-safe `getTriggerLabel`.
  */
 export function TriggerLabel({ row }: { row: Trigger }) {
   const isCrudEvent = row.kind === 'event' && !!row.entityDefinitionId && !!row.triggerType
   const { resource } = useResource(isCrudEvent ? row.entityDefinitionId : undefined)
-  const { appInstallations } = useExtensionsContext()
+  const { appInstallations } = useAppsContext()
 
   if (isCrudEvent) {
     const base = resource?.label

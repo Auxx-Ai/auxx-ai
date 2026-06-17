@@ -1,7 +1,7 @@
 // apps/web/src/components/workflow/types/output-variables.ts
 
 import type { Resource } from '@auxx/lib/resources/client'
-import type { WorkflowBlockField } from '~/lib/workflow/types'
+import type { WorkflowBlockField } from '~/components/workflow/types/block-types'
 import type { UnifiedVariable } from './variable-types'
 
 /**

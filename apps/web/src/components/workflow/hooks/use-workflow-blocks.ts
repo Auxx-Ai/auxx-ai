@@ -1,12 +1,12 @@
 // apps/web/src/components/workflow/hooks/use-workflow-blocks.ts
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useAppStore } from '~/lib/extensions/use-app-store'
-import { AppWorkflowNode } from '~/lib/workflow/components/app-workflow-node'
-import { WorkflowBlockLoader } from '~/lib/workflow/workflow-block-loader'
-import { WorkflowBlockRegistry } from '~/lib/workflow/workflow-block-registry'
+import { useAppsContext } from '~/components/apps/providers/apps-context'
+import { useAppStore } from '~/components/apps/runtime/hooks/use-app-store'
+import { AppWorkflowNode } from '~/components/workflow/apps/app-workflow-node'
+import { WorkflowBlockLoader } from '~/components/workflow/apps/workflow-block-loader'
+import { WorkflowBlockRegistry } from '~/components/workflow/apps/workflow-block-registry'
 import { useDehydratedOrganizationId } from '~/providers/dehydrated-state-provider'
-import { useExtensionsContext } from '~/providers/extensions/extensions-context'
 import { unifiedNodeRegistry } from '../nodes/unified-registry'
 
 /**
@@ -16,7 +16,7 @@ import { unifiedNodeRegistry } from '../nodes/unified-registry'
 export function useWorkflowBlocks() {
   const organizationId = useDehydratedOrganizationId()
   const appStore = useAppStore()
-  const { appInstallations, isLoading: isLoadingInstallations } = useExtensionsContext()
+  const { appInstallations, isLoading: isLoadingInstallations } = useAppsContext()
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<Error | null>(null)
 

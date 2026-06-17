@@ -3,7 +3,7 @@
 
 import { buildMcpToolMetaEntries } from '@auxx/lib/agents/client'
 import { useMemo } from 'react'
-import { useExtensionsContext } from '~/providers/extensions/extensions-context'
+import { useAppsContext } from '~/components/apps/providers/apps-context'
 import type { AgentDetail } from '../../../../store/agent-store'
 
 /**
@@ -45,7 +45,7 @@ export interface UseToolMetaResult {
  * schema keyed by that one name. See plans/kopilot/agents/tool-chip-registered-name.md.
  */
 export function useToolMeta(agent: AgentDetail): UseToolMetaResult {
-  const { appInstallations, mcpServers, isLoading } = useExtensionsContext()
+  const { appInstallations, mcpServers, isLoading } = useAppsContext()
 
   return useMemo(() => {
     const enabledToolsetSlugs = new Set(

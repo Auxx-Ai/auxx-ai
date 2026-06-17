@@ -2,11 +2,11 @@
 'use client'
 
 import { useMemo } from 'react'
-import { type AppConnection, useExtensionsContext } from '~/providers/extensions/extensions-context'
+import { type AppConnection, useAppsContext } from '~/components/apps/providers/apps-context'
 
 /**
  * Status of an agent's bound credential. Derived from
- * `useExtensionsContext().appConnections` so every callsite gets the same
+ * `useAppsContext().appConnections` so every callsite gets the same
  * answer with no extra queries. See
  * plans/kopilot/apps/agent-credentials.md §3.3.
  *
@@ -29,7 +29,7 @@ export interface BoundCredential {
 }
 
 export function useBoundCredential(credId: string | undefined | null): BoundCredential {
-  const { appConnections } = useExtensionsContext()
+  const { appConnections } = useAppsContext()
 
   return useMemo(() => {
     if (!credId) {

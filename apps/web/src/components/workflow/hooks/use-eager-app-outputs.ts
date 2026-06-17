@@ -3,8 +3,8 @@
 import { useStoreApi } from '@xyflow/react'
 import { produce } from 'immer'
 import { useCallback, useEffect, useRef } from 'react'
-import { useAppStore } from '~/lib/extensions/use-app-store'
-import { useExtensionsContext } from '~/providers/extensions/extensions-context'
+import { useAppsContext } from '~/components/apps/providers/apps-context'
+import { useAppStore } from '~/components/apps/runtime/hooks/use-app-store'
 import { useVarStore } from '../store/use-var-store'
 import type { NodeMeta } from '../store/var-graph'
 
@@ -23,7 +23,7 @@ import type { NodeMeta } from '../store/var-graph'
 export function useEagerAppOutputs() {
   const store = useStoreApi()
   const appStore = useAppStore()
-  const { appInstallations } = useExtensionsContext()
+  const { appInstallations } = useAppsContext()
   const fetchedRef = useRef(new Set<string>())
   const appInstallationsRef = useRef(appInstallations)
   appInstallationsRef.current = appInstallations

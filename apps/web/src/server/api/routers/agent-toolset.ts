@@ -40,7 +40,7 @@ export const agentToolsetRouter = createTRPCRouter({
    *
    * The recursive catalog tree (formerly `list`) is no longer fetched from
    * the server — clients now derive it locally from
-   * `useExtensionsContext().appInstallations` via `useToolCatalog`. See
+   * `useAppsContext().appInstallations` via `useToolCatalog`. See
    * `plans/kopilot/agents/tools/project-builtin-auxx-into-installations.md`.
    */
   listTools: adminProcedure.query(async ({ ctx }) => {

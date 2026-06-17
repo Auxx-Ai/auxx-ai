@@ -23,10 +23,12 @@ import { cn } from '@auxx/ui/lib/utils'
 import { ChevronDown, ChevronRight, X, Zap } from 'lucide-react'
 import type React from 'react'
 import { useCallback, useMemo, useRef, useState } from 'react'
+import { useActionCatalog } from '~/components/apps/hooks/use-action-catalog'
+import { AppIcon } from '~/components/apps/ui/app-icon'
 import { AsyncOptionPicker } from '~/components/pickers/async-option-picker'
 import { MultiSelectPicker } from '~/components/pickers/multi-select-picker'
+import type { SerializedQuickAction } from '~/components/workflow/apps/workflow-block-loader'
 import { useQuickActions } from '~/hooks/use-quick-actions'
-import type { SerializedQuickAction } from '~/lib/workflow/workflow-block-loader'
 import { api } from '~/trpc/react'
 
 interface QuickActionPanelProps {
@@ -263,12 +265,31 @@ function QuickActionPicker({
   onAdd: (action: DraftActionPayload) => void
   onRemove: (actionId: string) => void
 }) {
-  const { actions, isLoading } = useQuickActions(threadId, ticketId)
+  const { actions, groups, isLoading } = useActionCatalog()
 
+  // One option per action; the action's own icon (raw key) sits on the row, the
+  // app icon lands on the group heading. Group headings are keyed by app id.
   const options: SelectOption[] = useMemo(
-    () => actions.map((a) => ({ value: a.id, label: a.label, color: a.color })),
+    () => actions.map((a) => ({ value: a.id, label: a.label, color: a.color, icon: a.icon })),
     [actions]
   )
+
+  const optionGroups = useMemo(
+    () =>
+      groups.map((g) => ({
+        id: g.app.id,
+        heading: (
+          <span className='flex items-center gap-1.5'>
+            <AppIcon iconId={g.app.iconId} color={g.app.color ?? undefined} size='sm' />
+            {g.app.title}
+          </span>
+        ),
+      })),
+    [groups]
+  )
+
+  // Map each option value (toolId) back to its owning app for `groupBy`.
+  const appIdByValue = useMemo(() => new Map(actions.map((a) => [a.id, a.appId])), [actions])
 
   const selectedIds = useMemo(() => currentActions.map((a) => a.actionId), [currentActions])
 
@@ -314,6 +335,8 @@ function QuickActionPicker({
       options={options}
       value={selectedIds}
       onChange={handleChange}
+      groupBy={(opt) => appIdByValue.get(opt.value) ?? ''}
+      groups={optionGroups}
       placeholder='Search actions...'
       canManage={false}
       canAdd={false}

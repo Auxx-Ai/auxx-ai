@@ -12,13 +12,12 @@ import { AlertTriangle, Image as ImageIcon, Sparkles, TrendingUp } from 'lucide-
 import { useRouter } from 'next/navigation'
 import { useTheme } from 'next-themes'
 import { useCallback, useMemo, useState } from 'react'
-
+import { useAppsContext } from '~/components/apps/providers/apps-context'
 import { InlineAppInstallButton } from '~/components/apps/ui/app-install-button'
 import { useResources } from '~/components/resources/hooks'
 import { TemplateDetailLayout, TemplateGalleryDialog } from '~/components/templates/ui'
 import type { WorkflowViewerData } from '~/components/workflow/viewer/hooks/use-workflow-viewer'
 import { WorkflowViewer } from '~/components/workflow/viewer/workflow-viewer'
-import { useExtensionsContext } from '~/providers/extensions/extensions-context'
 import type { RouterOutputs } from '~/trpc/react'
 import { api } from '~/trpc/react'
 import { EntityRequirementsStep } from './entity-requirements-step'
@@ -56,7 +55,7 @@ interface WorkflowTemplateDialogProps {
 export function WorkflowTemplateDialog({ open, onOpenChange }: WorkflowTemplateDialogProps) {
   const router = useRouter()
   const { theme } = useTheme()
-  const { appInstallations } = useExtensionsContext()
+  const { appInstallations } = useAppsContext()
   const { resources, getResourceById } = useResources()
 
   const [selectedTemplate, setSelectedTemplate] = useState<WorkflowTemplate | null>(null)

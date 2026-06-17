@@ -14,8 +14,8 @@ import { toastError } from '@auxx/ui/components/toast'
 import { format } from 'date-fns'
 import { Check, ChevronDown, Code, Download } from 'lucide-react'
 import { useRouter } from 'next/navigation'
+import { useAppsContext } from '~/components/apps/providers/apps-context'
 import { useAnalytics } from '~/hooks/use-analytics'
-import { useExtensionsContext } from '~/providers/extensions/extensions-context'
 import { api } from '~/trpc/react'
 
 /**
@@ -195,7 +195,7 @@ type InlineAppInstallButtonProps = {
  * Use in contexts where you want inline install without navigating away.
  */
 export function InlineAppInstallButton({ appSlug, children }: InlineAppInstallButtonProps) {
-  const { appInstallations, refreshInstallations } = useExtensionsContext()
+  const { appInstallations, refreshInstallations } = useAppsContext()
   const posthog = useAnalytics()
 
   const isInstalled = appInstallations.some((inst) => inst.app.slug === appSlug)
