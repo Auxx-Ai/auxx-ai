@@ -6,7 +6,7 @@ import type { JSONContent } from '@tiptap/core'
 import { Loader2 } from 'lucide-react'
 import React, { Suspense } from 'react'
 import type { FileItem } from '~/components/files/files-store'
-import type { MailAiSlashConfig } from './mail-slash-content'
+import type { MailAiSlashConfig, MailReferenceConfig } from './mail-slash-content'
 
 const TiptapEditor = React.lazy(() => import('~/components/editor/tiptap-editor'))
 
@@ -25,6 +25,8 @@ interface LazyTiptapEditorProps {
   aiSlash?: MailAiSlashConfig
   /** Optional attachment wiring — surfaces the "Attach file" item in the `/` menu. */
   onAttachFile?: (file: FileItem) => void
+  /** Optional signature/action wiring — registers the `@` menu (email only). */
+  references?: MailReferenceConfig
   /** Formatting profile. `'rich'` (default, email) or `'plain'` (chat). */
   variant?: 'rich' | 'plain'
 }

@@ -10,7 +10,7 @@ import type { useDropzone } from 'react-dropzone'
 import type { FileItem } from '~/components/files/files-store'
 import { useEditorActiveStateContext } from '../email-editor/editor-active-state-context'
 import { LazyTiptapEditor } from '../email-editor/lazy-tiptap-editor'
-import type { MailAiSlashConfig } from '../email-editor/mail-slash-content'
+import type { MailAiSlashConfig, MailReferenceConfig } from '../email-editor/mail-slash-content'
 
 interface ComposerBodyProps {
   // editor wiring
@@ -26,6 +26,8 @@ interface ComposerBodyProps {
   aiSlash?: MailAiSlashConfig
   /** Optional attachment wiring — surfaces the "Attach file" item in the `/` menu. */
   onAttachFile?: (file: FileItem) => void
+  /** Optional signature/action wiring — registers the `@` menu (email only). */
+  references?: MailReferenceConfig
   /** Formatting profile. `'rich'` (default, email) or `'plain'` (chat). */
   variant?: 'rich' | 'plain'
 
@@ -68,6 +70,7 @@ export function ComposerBody({
   editorMinHeightClassName = 'min-h-[150px]',
   aiSlash,
   onAttachFile,
+  references,
   variant,
   onWrapperClick,
   onKeyDown,
@@ -137,6 +140,7 @@ export function ComposerBody({
           contentClassName={contentClassName}
           aiSlash={aiSlash}
           onAttachFile={onAttachFile}
+          references={references}
           variant={variant}
         />
         {belowEditor}

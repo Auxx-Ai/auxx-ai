@@ -104,7 +104,8 @@ export function SlashList({
                           {item.iconId && (
                             <EntityIcon
                               iconId={item.iconId}
-                              size='xs'
+                              size='sm'
+                              variant='full'
                               className='text-muted-foreground'
                             />
                           )}

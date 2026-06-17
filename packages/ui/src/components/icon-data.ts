@@ -70,6 +70,7 @@ import {
   ExternalLink,
   Eye,
   EyeOff,
+  Feather,
   File,
   FileAudio,
   FileCode,
@@ -267,6 +268,7 @@ export const ICON_DATA: IconItem[] = [
   { id: 'user-x', label: 'User X', icon: UserX },
   { id: 'circle-user', label: 'Circle User', icon: CircleUser },
   // Files/Documents
+  { id: 'feather', label: 'Feather', icon: Feather },
   { id: 'file', label: 'File', icon: File },
   { id: 'file-text', label: 'File Text', icon: FileText },
   { id: 'file-image', label: 'File Image', icon: FileImage },
