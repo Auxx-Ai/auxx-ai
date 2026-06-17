@@ -1,0 +1,27 @@
+// apps/web/src/components/kbar/pages/create-mail-view.tsx
+'use client'
+
+import { MailViewForm } from '~/components/mail-views/mail-view-form'
+import { useCommandPaletteStore } from '../store'
+
+/**
+ * Hosts the shell-free {@link MailViewForm} as a palette page (create mode only).
+ * The breadcrumb supplies the title (no header slot). On success / cancel the
+ * palette closes; back returns to root.
+ */
+export function CreateMailViewPage() {
+  const page = useCommandPaletteStore((s) => s.page)
+  const close = useCommandPaletteStore((s) => s.close)
+  const goTo = useCommandPaletteStore((s) => s.goTo)
+
+  return (
+    <div className='p-4'>
+      <MailViewForm
+        open={page === 'create-mail-view'}
+        onSuccess={close}
+        onClose={close}
+        onCancel={() => goTo('root')}
+      />
+    </div>
+  )
+}

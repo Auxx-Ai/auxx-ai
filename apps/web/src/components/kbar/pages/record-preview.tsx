@@ -8,6 +8,7 @@ import {
   type RecordPickerItem,
   type ResourceField,
 } from '@auxx/lib/resources/client'
+import { Badge, type Variant } from '@auxx/ui/components/badge'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { useMemo } from 'react'
@@ -112,20 +113,25 @@ export function RecordPreview({ recordId: rawRecordId, item }: RecordPreviewProp
             className='shrink-0 inset-shadow-xs inset-shadow-black/20'
           />
           <div className='min-w-0 flex-1'>
-            <div className='truncate font-medium text-sm'>{item.displayName}</div>
+            <div className='flex items-center gap-2'>
+              <div className='min-w-0 flex-1 truncate font-medium text-sm'>{item.displayName}</div>
+              {resource && (
+                <Badge
+                  variant={(resource.color || 'gray') as Variant}
+                  size='xs'
+                  className='shrink-0 uppercase tracking-wide'>
+                  {resource.label}
+                </Badge>
+              )}
+            </div>
             {item.secondaryInfo && (
               <div className='truncate text-muted-foreground text-xs'>{item.secondaryInfo}</div>
-            )}
-            {resource && (
-              <div className='mt-1 inline-flex rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground uppercase tracking-wide'>
-                {resource.label}
-              </div>
             )}
           </div>
         </div>
 
         {/* Fields */}
-        <div className='flex flex-col gap-3 px-4 pb-4'>
+        <div className='flex flex-col gap-1 px-4 pb-4'>
           {rows.length === 0 ? (
             <div className='space-y-2 pt-1'>
               <Skeleton className='h-3.5 w-2/3' />
@@ -136,7 +142,10 @@ export function RecordPreview({ recordId: rawRecordId, item }: RecordPreviewProp
             rows.map(({ field, value }) => (
               <div key={field.id} className='flex min-w-0 flex-col gap-0.5'>
                 <span className='text-[11px] text-muted-foreground'>{field.label}</span>
-                <div className='min-w-0 text-sm'>
+                {/* Strip the property-row chrome from FieldDisplay: the right-edge
+                    mask and single-line clamp are tuned for editable rows, not a
+                    read-only preview. Let values wrap and align to the top. */}
+                <div className='min-w-0 text-sm [&_[data-slot=field-display-content]]:mask-none [&_[data-slot=field-display-content]]:items-start [&_[data-slot=field-display-value]]:whitespace-normal'>
                   <FieldDisplay field={field} value={value} />
                 </div>
               </div>

@@ -5,6 +5,7 @@ import { useMemo } from 'react'
 import { SIDEBAR_MENU } from '~/constants/menu'
 import { useCreateActions, useNonEntityCreateActions } from './actions/create'
 import { useGeneralActions } from './actions/general'
+import { useLauncherActions } from './actions/launchers'
 import { useNavigationActions } from './actions/navigation'
 import { useSettingsActions } from './actions/settings'
 import { useThemeActions } from './actions/theme'
@@ -75,6 +76,7 @@ export function usePaletteActions(): PaletteActionsResult {
   const navigation = useNavigationActions()
   const create = useCreateActions()
   const nonEntityCreate = useNonEntityCreateActions()
+  const launchers = useLauncherActions()
   const settings = useSettingsActions()
   const theme = useThemeActions()
 
@@ -82,7 +84,7 @@ export function usePaletteActions(): PaletteActionsResult {
     const sections: PaletteSection[] = [
       { label: 'Actions', actions: general },
       { label: 'Navigation', actions: navigation },
-      { label: 'Create', actions: [...create, ...nonEntityCreate] },
+      { label: 'Create', actions: [...create, ...nonEntityCreate, ...launchers] },
       { label: 'Settings', actions: settings },
       { label: 'Theme', actions: theme },
     ]
@@ -97,5 +99,5 @@ export function usePaletteActions(): PaletteActionsResult {
     }
 
     return { sections, byId }
-  }, [general, navigation, create, nonEntityCreate, settings, theme])
+  }, [general, navigation, create, nonEntityCreate, launchers, settings, theme])
 }

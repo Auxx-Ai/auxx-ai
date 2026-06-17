@@ -1,27 +1,48 @@
+// apps/web/src/components/global/copy-input.tsx
 'use client'
 
-import { Button } from '@auxx/ui/components/button'
-import { Input } from '@auxx/ui/components/input'
-import { CopyIcon } from 'lucide-react'
-import { useState } from 'react'
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupButton,
+  InputGroupInput,
+} from '@auxx/ui/components/input-group'
+import { useCopy } from '@auxx/ui/hooks/use-copy'
+import { Check, Copy, KeyRound } from 'lucide-react'
+import { Tooltip } from '~/components/global/tooltip'
 
-export function CopyInput({ value }: { value: string }) {
-  const [copied, setCopied] = useState(false)
+interface CopyInputProps {
+  value: string
+  /** Toast message shown after a successful copy */
+  toastMessage?: string
+}
+
+export function CopyInput({ value, toastMessage = 'Copied to clipboard' }: CopyInputProps) {
+  const { copied, copy } = useCopy({ toastMessage })
 
   return (
-    <div className='flex w-full flex-1 items-center gap-1'>
-      <Input value={value} readOnly className='flex-1' disabled />
-      <Button
-        variant='outline'
-        onClick={() => {
-          if (value) {
-            navigator.clipboard.writeText(value)
-            setCopied(true)
-          }
-        }}>
-        <CopyIcon className='mr-2 size-4' />
-        {copied ? 'Copied!' : 'Copy'}
-      </Button>
-    </div>
+    <InputGroup>
+      <InputGroupAddon align='inline-start'>
+        <KeyRound />
+      </InputGroupAddon>
+      <InputGroupInput
+        type='text'
+        value={value}
+        readOnly
+        className='font-mono text-xs'
+        onFocus={(e) => e.target.select()}
+      />
+      <InputGroupAddon align='inline-end' className='gap-0.5'>
+        <Tooltip content='Copy'>
+          <InputGroupButton
+            aria-label='Copy'
+            className='rounded-full'
+            size='icon-xs'
+            onClick={() => copy(value)}>
+            {copied ? <Check /> : <Copy />}
+          </InputGroupButton>
+        </Tooltip>
+      </InputGroupAddon>
+    </InputGroup>
   )
 }
