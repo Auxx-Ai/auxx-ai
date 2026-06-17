@@ -29,7 +29,7 @@ import { AI_LANG_TYPE, AI_OPERATION, AI_TONE_TYPE, type AIOperation } from '~/ty
 import { isBodyEmptyIgnoringChips } from '../composer-shared/content-empty'
 import { FileSlashContent } from './file-slash-content'
 import { useSnippetSearch } from './hooks'
-import { cacheActionSchema, toDraftActionPayload } from './quick-action-panel'
+import { toDraftActionPayload } from './quick-action-panel'
 
 type Range = { from: number; to: number }
 
@@ -482,7 +482,6 @@ function MailSlashContentInner({
       if (isSelected) {
         references.onRemoveAction(action.id)
       } else {
-        cacheActionSchema(action) // populate the shared cache so the belowEditor form renders
         references.onAddAction(toDraftActionPayload(action))
       }
     },

@@ -27,11 +27,6 @@ import { MultiSelectPicker } from '~/components/pickers/multi-select-picker'
 import { useQuickActions } from '~/hooks/use-quick-actions'
 import type { SerializedQuickAction } from '~/lib/workflow/workflow-block-loader'
 
-// Schema cache for form rendering (populated when actions are loaded).
-// Exported so the mail `@` menu (mail-slash-content.tsx) can populate the SAME
-// cache when it adds an action — the belowEditor chip's inline form keys off it.
-export const quickActionSchemaCache = new Map<string, { inputs: Record<string, any> }>()
-
 interface QuickActionPanelProps {
   actions: DraftActionPayload[]
   onAdd: (action: DraftActionPayload) => void
@@ -49,9 +44,28 @@ export function QuickActionPanel({
   onRemove,
   onUpdate,
   disabled,
+  threadId,
+  ticketId,
   popoverClassName,
   onPopoverOpenChange,
 }: QuickActionPanelProps) {
+  // Resolve each chip's input schema from the LIVE installed-app catalog rather
+  // than a module cache populated at add-time. This survives reloads / restored
+  // drafts: a chip rehydrated from a saved draft still finds its schema here,
+  // keyed by `appId:actionId`, with no dependency on the add flow having run
+  // this session. An uninstalled app's action resolves to `undefined` (no
+  // schema to edit) — correct; the chip just isn't expandable.
+  const { actions: availableActions } = useQuickActions(threadId, ticketId)
+  const schemaByKey = useMemo(() => {
+    const map = new Map<string, { inputs: Record<string, any> }>()
+    for (const a of availableActions) {
+      if (a.inputs && Object.keys(a.inputs).length > 0) {
+        map.set(`${a.appId}:${a.id}`, { inputs: a.inputs })
+      }
+    }
+    return map
+  }, [availableActions])
+
   if (actions.length === 0) return null
 
   return (
@@ -67,6 +81,7 @@ export function QuickActionPanel({
             <QuickActionChip
               key={`${action.appId}:${action.actionId}`}
               action={action}
+              schema={schemaByKey.get(`${action.appId}:${action.actionId}`)}
               onRemove={() => onRemove(action.actionId)}
               onUpdate={onUpdate}
               disabled={disabled}
@@ -82,6 +97,7 @@ export function QuickActionPanel({
 
 function QuickActionChip({
   action,
+  schema,
   onRemove,
   onUpdate,
   disabled,
@@ -89,6 +105,7 @@ function QuickActionChip({
   onPopoverOpenChange,
 }: {
   action: DraftActionPayload
+  schema?: { inputs: Record<string, any> }
   onRemove: () => void
   onUpdate: (actionId: string, inputs: Record<string, unknown>) => void
   disabled?: boolean
@@ -96,7 +113,6 @@ function QuickActionChip({
   onPopoverOpenChange?: (open: boolean) => void
 }) {
   const [expanded, setExpanded] = useState(false)
-  const schema = quickActionSchemaCache.get(`${action.appId}:${action.actionId}`)
 
   return (
     <Collapsible open={expanded} onOpenChange={setExpanded}>
@@ -105,41 +121,49 @@ function QuickActionChip({
           'group inline-flex flex-col rounded-md border bg-muted/50 text-xs',
           disabled && 'opacity-50'
         )}>
-        <CollapsibleTrigger
-          disabled={!schema || disabled}
-          className={cn(
-            'inline-flex items-center gap-1 px-2 py-1',
-            schema && !disabled && 'cursor-pointer'
-          )}>
-          {schema && (
-            <span className='size-3 shrink-0 text-muted-foreground'>
-              {expanded ? <ChevronDown className='size-3' /> : <ChevronRight className='size-3' />}
+        {/* Header row: the trigger and the remove control are siblings. The
+            remove <button> must NOT nest inside the trigger's <button> —
+            that's invalid HTML and triggers a hydration error that kills all
+            chip interactivity (expand + remove both stop working). */}
+        <div className='inline-flex items-center'>
+          <CollapsibleTrigger
+            disabled={!schema || disabled}
+            className={cn(
+              'inline-flex items-center gap-1 py-1 pl-2',
+              disabled ? 'pr-2' : 'pr-1',
+              schema && !disabled && 'cursor-pointer'
+            )}>
+            {schema && (
+              <span className='size-3 shrink-0 text-muted-foreground'>
+                {expanded ? (
+                  <ChevronDown className='size-3' />
+                ) : (
+                  <ChevronRight className='size-3' />
+                )}
+              </span>
+            )}
+
+            {action.display.color && (
+              <span
+                className='size-2 shrink-0 rounded-full'
+                style={{ backgroundColor: action.display.color }}
+              />
+            )}
+
+            <span className='max-w-48 truncate font-medium'>
+              {action.display.summary || action.display.label}
             </span>
-          )}
-
-          {action.display.color && (
-            <span
-              className='size-2 shrink-0 rounded-full'
-              style={{ backgroundColor: action.display.color }}
-            />
-          )}
-
-          <span className='max-w-48 truncate font-medium'>
-            {action.display.summary || action.display.label}
-          </span>
+          </CollapsibleTrigger>
 
           {!disabled && (
             <button
               type='button'
-              className='ml-0.5 opacity-0 transition-opacity group-hover:opacity-100'
-              onClick={(e) => {
-                e.stopPropagation()
-                onRemove()
-              }}>
+              className='mr-2 ml-0.5 opacity-0 transition-opacity group-hover:opacity-100'
+              onClick={() => onRemove()}>
               <X className='size-3' />
             </button>
           )}
-        </CollapsibleTrigger>
+        </div>
 
         {schema && (
           <CollapsibleContent className='overflow-hidden data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down'>
@@ -248,7 +272,6 @@ function QuickActionPicker({
         if (!prevSet.has(id)) {
           const action = actionMap.get(id)
           if (!action) continue
-          cacheActionSchema(action)
           onAdd(toDraftActionPayload(action))
         }
       }
@@ -286,18 +309,11 @@ function QuickActionPicker({
   )
 }
 
-/** Cache action schema for inline form rendering */
-export function cacheActionSchema(action: SerializedQuickAction) {
-  const key = `${action.appId}:${action.id}`
-  if (action.inputs && Object.keys(action.inputs).length > 0) {
-    quickActionSchemaCache.set(key, { inputs: action.inputs })
-  }
-}
-
 /**
  * Build the draft-level payload for a selected quick action. Shared by the
- * belowEditor picker and the mail `@` menu so both mint byte-identical payloads
- * into the same `quickActionSchemaCache`.
+ * belowEditor picker and the mail `@` menu so both mint byte-identical payloads.
+ * Input schemas are resolved at render time from the live catalog (see
+ * `QuickActionPanel`), so adding an action carries no schema-caching step.
  */
 export function toDraftActionPayload(action: SerializedQuickAction): DraftActionPayload {
   return {

@@ -297,6 +297,18 @@ export interface CachedAgentTool extends CatalogAgentTool {
  * `subGroup` and leave the rest `undefined` (the builder falls back
  * to sensible defaults). The synthetic auxx row populates everything.
  */
+/**
+ * Cache-side projection of a quick action. Extends the SDK-defined
+ * `CatalogAction` with the referenced tool's `inputsJsonSchema`, joined from the
+ * full `catalog.tools` registry at projection time. The quick-action form reads
+ * this to render an inline input form. Joining here (rather than client-side
+ * against `agent.tools`) means **action-only** tools — which carry no agent
+ * surface and so are absent from `agent.tools` — still get their inputs.
+ */
+export interface CachedAction extends CatalogAction {
+  inputsJsonSchema: Record<string, unknown>
+}
+
 export interface CachedAgentToolset extends CatalogToolset {
   /** Short header text used inside the app/sub-group render. Falls back to `name`. */
   shortLabel?: string
@@ -382,7 +394,7 @@ export interface CachedInstalledApp {
   agentTriggers?: CatalogTriggerProjection[]
   workflowBlocks?: CatalogBlock[]
   workflowTriggers?: CatalogTriggerProjection[]
-  actions?: CatalogAction[]
+  actions?: CachedAction[]
 
   /**
    * Org-scope connection presence + expiry (decision G2 split path).
@@ -496,7 +508,7 @@ export const ORG_CACHE_KEY_CONFIG: Record<
   overages: { prefix: 'org:overages', ttlSeconds: 900 },
   orgSettings: { prefix: 'org:settings', ttlSeconds: ONE_DAY },
   // v2: connectionDefinition (singular) → connectionDefinitions (pair). Bump on shape changes.
-  installedApps: { prefix: 'org:installed-apps:v2', ttlSeconds: 900 },
+  installedApps: { prefix: 'org:installed-apps:v3', ttlSeconds: 900 },
   mcpServers: { prefix: 'org:mcpServers', ttlSeconds: ONE_DAY },
   workflowApps: { prefix: 'org:workflow-apps', ttlSeconds: ONE_DAY },
 
