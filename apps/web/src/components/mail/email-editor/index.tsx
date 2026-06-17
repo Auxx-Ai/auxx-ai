@@ -1027,7 +1027,7 @@ function ReplyComposeEditorComponent({
           placeholder='Type / for commands or @ for signatures & actions'
           editable={!aiToolsState.isProcessing}
           popoverClassName={popoverZIndex}
-          aiSlash={{ onRunAI: handleAIOperation, hasPreviousMessages }}
+          aiSlash={{ onRunAI: handleAIOperation }}
           onAttachFile={(file) => fileSelect.addExistingFiles([file])}
           onUploadFiles={(files) => fileSelect.addFiles(files)}
           references={references}

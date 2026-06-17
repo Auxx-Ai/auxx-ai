@@ -5,6 +5,7 @@
  */
 export const AI_OPERATION = {
   COMPOSE: 'compose',
+  CUSTOM: 'custom',
   TONE: 'tone',
   TRANSLATE: 'translate',
   FIX_GRAMMAR: 'fix_grammar',
@@ -82,6 +83,8 @@ export interface AIComposeRequest {
   senderId: string
   tone?: AIToneType
   language?: AILangType | string
+  /** Free-text instruction for the CUSTOM operation. */
+  instruction?: string
   output: OutputFormat
 }
 

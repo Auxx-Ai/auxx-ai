@@ -41,6 +41,7 @@ import {
   GripVertical,
   Loader2,
   Search,
+  Send,
   X,
 } from 'lucide-react'
 import type { DialogProps } from 'radix-ui'
@@ -394,6 +395,78 @@ function CommandInput({
           <X className='size-3' />
         </a>
       )}
+    </div>
+  )
+}
+
+interface CommandInputWithSubmitProps
+  extends Omit<
+    React.ComponentProps<typeof CommandPrimitive.Input>,
+    'value' | 'onValueChange' | 'onSubmit'
+  > {
+  value: string
+  onValueChange: (value: string) => void
+  /** Fires on Enter (when non-empty) and on the send button. */
+  onSubmit: (value: string) => void
+  /** Fires on Escape — e.g. to step back a level. */
+  onEscape?: () => void
+  /** Leading icon slot. Defaults to nothing. */
+  leftIcon?: React.ReactNode
+  /** Swap the send icon for a spinner and block submit. */
+  loading?: boolean
+}
+
+/**
+ * A {@link CommandInput} variant with an inline submit button — for prompt-style
+ * inputs where the typed text is an instruction to run, not a filter. Pair with
+ * `<Command shouldFilter={false}>` so the list below stays static. Enter (when
+ * non-empty) and the send button both call `onSubmit`; an empty Enter falls
+ * through to cmdk so the highlighted item is selected instead.
+ */
+function CommandInputWithSubmit({
+  className,
+  value,
+  onValueChange,
+  onSubmit,
+  onEscape,
+  leftIcon,
+  loading = false,
+  ...props
+}: CommandInputWithSubmitProps) {
+  const canSubmit = !!value.trim() && !loading
+  return (
+    <div
+      className='flex items-center gap-2 border-b border-border/50 dark:border-[#323842]/80 ps-3 pe-2'
+      cmdk-input-wrapper=''>
+      {leftIcon}
+      <CommandPrimitive.Input
+        className={cn(
+          'flex h-9 w-full rounded-md bg-transparent py-1 text-sm outline-hidden placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50',
+          className
+        )}
+        onValueChange={onValueChange}
+        value={value}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' && canSubmit) {
+            // Stop cmdk from also selecting the highlighted item.
+            e.preventDefault()
+            e.stopPropagation()
+            onSubmit(value.trim())
+          } else if (e.key === 'Escape' && onEscape) {
+            e.preventDefault()
+            onEscape()
+          }
+        }}
+        {...props}
+      />
+      <button
+        type='button'
+        aria-label='Run'
+        disabled={!canSubmit}
+        onClick={() => canSubmit && onSubmit(value.trim())}
+        className='grid size-6 shrink-0 place-items-center rounded-full bg-primary-500 text-white transition-colors hover:bg-primary-600 disabled:bg-muted disabled:text-muted-foreground'>
+        {loading ? <Loader2 className='size-3 animate-spin' /> : <Send className='size-3' />}
+      </button>
     </div>
   )
 }
@@ -959,6 +1032,7 @@ export {
   Command,
   CommandDialog,
   CommandInput,
+  CommandInputWithSubmit,
   CommandList,
   CommandEmpty,
   CommandPlaceholder,

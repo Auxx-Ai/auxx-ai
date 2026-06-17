@@ -75,9 +75,13 @@ export class AIComposeService {
         hasEntityId: !!request.entityId,
       })
 
-      // Get thread context if needed for compose operation
+      // Get thread context when the operation can compose from the conversation
+      // (COMPOSE always; CUSTOM uses it as reference for a fresh draft).
       let threadContext: ThreadContext | undefined
-      if (request.operation === AI_OPERATION.COMPOSE && request.entityId) {
+      if (
+        (request.operation === AI_OPERATION.COMPOSE || request.operation === AI_OPERATION.CUSTOM) &&
+        request.entityId
+      ) {
         threadContext = await this.getThreadContext(request.entityId, organizationId, userId)
       }
 
@@ -219,6 +223,7 @@ export class AIComposeService {
     const prompts = getPrompt(request.operation, content, {
       tone: request.tone,
       language: request.language,
+      instruction: request.instruction,
       context,
     })
 
@@ -253,6 +258,8 @@ export class AIComposeService {
         return 'Unable to fix grammar'
       case AI_OPERATION.COMPOSE:
         return 'Unable to compose'
+      case AI_OPERATION.CUSTOM:
+        return 'Unable to complete the request'
       default:
         return 'AI operation failed'
     }
@@ -271,6 +278,11 @@ export class AIComposeService {
       [AI_OPERATION.COMPOSE]: {
         ...baseParams,
         temperature: 0.7,
+        max_tokens: 1500,
+      },
+      [AI_OPERATION.CUSTOM]: {
+        ...baseParams,
+        temperature: 0.6,
         max_tokens: 1500,
       },
       [AI_OPERATION.TONE]: {

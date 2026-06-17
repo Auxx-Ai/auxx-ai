@@ -86,11 +86,19 @@ export function useComposerAITools({
   })
 
   const handleAIOperation = useCallback(
-    async (operation: AIOperation, options?: { tone?: string; language?: string }) => {
+    async (
+      operation: AIOperation,
+      options?: { tone?: string; language?: string; instruction?: string }
+    ) => {
       if (!editor || state.isProcessing) return
       const currentContent = editor.getHTML()
-      // Don't process if content is empty (except for compose).
-      if (operation !== AI_OPERATION.COMPOSE && !currentContent.replace(/<[^>]*>/g, '').trim()) {
+      // Don't process if content is empty — except for compose / custom, which
+      // both can generate from scratch (custom uses the typed instruction).
+      if (
+        operation !== AI_OPERATION.COMPOSE &&
+        operation !== AI_OPERATION.CUSTOM &&
+        !currentContent.replace(/<[^>]*>/g, '').trim()
+      ) {
         toastError({
           title: 'No content',
           description: 'Please add some content before using AI tools',

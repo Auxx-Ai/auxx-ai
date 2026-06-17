@@ -46,6 +46,19 @@ IMPORTANT INSTRUCTIONS:
 - Format the response as clean HTML ready for the email body
 ${HTML_FORMATTING_INSTRUCTIONS}`,
 
+  [AI_OPERATION.CUSTOM]: `You are an AI assistant helping with a professional email, following the user's instruction.
+The user will give you an instruction and, when present, the current draft and/or the conversation context.
+
+IMPORTANT INSTRUCTIONS:
+- Follow the user's instruction precisely
+- If a current draft is provided, edit it per the instruction (rewrite/extend/adjust) and preserve its meaning unless the instruction says otherwise
+- If no draft is provided, compose a fresh email body that fulfils the instruction, using the conversation context when available
+- Return ONLY the email body content
+- Do NOT include a subject line
+- Do NOT include any email signature or sign-offs (no "Best regards", "Sincerely", the sender's name, etc.)
+- The response should end with the last sentence of the main content
+${HTML_FORMATTING_INSTRUCTIONS}`,
+
   [AI_OPERATION.TONE]: `You are an AI assistant specialized in adjusting the tone of email messages.
 Rewrite the provided email content to match the requested tone while preserving the original meaning.
 
@@ -122,6 +135,7 @@ export function getUserPrompt(
   options?: {
     tone?: AIToneType
     language?: string
+    instruction?: string
     context?: {
       previousMessages?: string
       subject?: string
@@ -137,7 +151,7 @@ export function getUserPrompt(
     case AI_OPERATION.COMPOSE:
       if (options?.context?.previousMessages) {
         return `Based on the following conversation, compose an appropriate response:
-        
+
 Previous Messages:
 ${options.context.previousMessages}
 
@@ -146,6 +160,34 @@ Original Subject: ${options.context.subject || 'Email Response'}
 Generate a professional response. Remember to return ONLY the email body content without any subject line or signature. Use proper HTML formatting with <p> tags for paragraphs and <ul>/<ol> with <li> tags for any lists.${htmlReminder}`
       }
       return `Compose a professional email body about: ${options?.context?.subject || 'the topic'}. Return ONLY the body content without subject or signature. Use proper HTML formatting.${htmlReminder}`
+
+    case AI_OPERATION.CUSTOM: {
+      const instruction = options?.instruction?.trim() || 'Write an appropriate email body.'
+      // Branch on whether there's a draft to edit. With content → edit it; without
+      // → compose fresh, using thread context when available.
+      if (content) {
+        return `Apply this instruction to the email draft below.
+
+Instruction: ${instruction}
+
+Return ONLY the resulting email body content without any subject line or signature. The following content is in HTML format - preserve its HTML structure including lists:
+
+${content}${htmlReminder}`
+      }
+      const contextBlock = options?.context?.previousMessages
+        ? `\n\nFor reference, here is the conversation so far:
+
+Previous Messages:
+${options.context.previousMessages}
+
+Original Subject: ${options.context.subject || 'Email Response'}`
+        : ''
+      return `Write an email body that fulfils this instruction.
+
+Instruction: ${instruction}${contextBlock}
+
+Return ONLY the email body content without any subject line or signature. Use proper HTML formatting with <p> tags for paragraphs and <ul>/<ol> with <li> tags for any lists.${htmlReminder}`
+    }
 
     case AI_OPERATION.TONE:
       return `Rewrite this email to be ${options?.tone?.toLowerCase()}. Return ONLY the body content without adding any signature. The following content is in HTML format - preserve and maintain all HTML structure including lists:
@@ -211,6 +253,7 @@ export function getPrompt(
   options?: {
     tone?: AIToneType
     language?: string
+    instruction?: string
     context?: {
       previousMessages?: string
       subject?: string

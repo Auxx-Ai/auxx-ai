@@ -4,7 +4,6 @@
 import { getOptionColor, type SelectOptionColor } from '@auxx/lib/custom-fields/client'
 import { Checkbox } from '@auxx/ui/components/checkbox'
 import { CommandGroup, CommandNavigableItem } from '@auxx/ui/components/command'
-import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { cn } from '@auxx/ui/lib/utils'
 import { ManageActions } from './manage-actions'
 import type { Tag } from './types'
@@ -118,34 +117,32 @@ export function TagList({
   onDelete,
 }: TagListProps) {
   return (
-    <ScrollArea className='max-h-[300px]'>
-      <CommandGroup>
-        {tags.map((tag, index) => {
-          if (!tag) return null
-          const isSelected = selectedTags.includes(tag.id)
-          const isIndeterminate = !isSelected && indeterminateTags.includes(tag.id)
-          const hasChildren = (tag.children?.length || 0) > 0
-          const isSelectable = !onlyLeafSelection || !hasChildren
-          const isKeyboardSelected = enableKeyboardNavigation && selectedIndex === index
+    <CommandGroup>
+      {tags.map((tag, index) => {
+        if (!tag) return null
+        const isSelected = selectedTags.includes(tag.id)
+        const isIndeterminate = !isSelected && indeterminateTags.includes(tag.id)
+        const hasChildren = (tag.children?.length || 0) > 0
+        const isSelectable = !onlyLeafSelection || !hasChildren
+        const isKeyboardSelected = enableKeyboardNavigation && selectedIndex === index
 
-          return (
-            <TagListRow
-              key={tag.id}
-              tag={tag}
-              isSelected={isSelected}
-              isIndeterminate={isIndeterminate}
-              hasChildren={hasChildren}
-              isSelectable={isSelectable}
-              isKeyboardSelected={isKeyboardSelected}
-              isManageMode={isManageMode}
-              navigateToTag={navigateToTag}
-              toggleTag={toggleTag}
-              onEdit={onEdit}
-              onDelete={onDelete}
-            />
-          )
-        })}
-      </CommandGroup>
-    </ScrollArea>
+        return (
+          <TagListRow
+            key={tag.id}
+            tag={tag}
+            isSelected={isSelected}
+            isIndeterminate={isIndeterminate}
+            hasChildren={hasChildren}
+            isSelectable={isSelectable}
+            isKeyboardSelected={isKeyboardSelected}
+            isManageMode={isManageMode}
+            navigateToTag={navigateToTag}
+            toggleTag={toggleTag}
+            onEdit={onEdit}
+            onDelete={onDelete}
+          />
+        )
+      })}
+    </CommandGroup>
   )
 }

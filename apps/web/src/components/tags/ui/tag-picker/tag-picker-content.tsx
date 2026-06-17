@@ -378,16 +378,16 @@ export function TagPickerContent({
   return (
     <>
       <Command shouldFilter={false} onKeyDown={handleKeyDown}>
+        <CommandInput
+          placeholder='Search or create tags...'
+          value={search}
+          onValueChange={setSearch}
+          autoFocus
+        />
+
+        <CommandBreadcrumb rootLabel='All Tags' />
+
         <CommandList>
-          <CommandInput
-            placeholder='Search or create tags...'
-            value={search}
-            onValueChange={setSearch}
-            autoFocus
-          />
-
-          <CommandBreadcrumb rootLabel='All Tags' />
-
           {current && isManageMode && tagEntityDefinitionId && (
             <>
               <CommandGroup>
@@ -497,30 +497,29 @@ export function TagPickerContent({
               onDelete={handleDelete}
             />
           )}
-
-          {canShowManageToggle && (
-            <>
-              <div className='-mx-1 h-px bg-border/50' />
-              <CommandGroup>
-                <CommandItem
-                  onSelect={() => setIsManageMode((v) => !v)}
-                  className='cursor-pointer h-7.5'>
-                  {isManageMode ? (
-                    <>
-                      <Check className='text-good-500' />
-                      <span>Done</span>
-                    </>
-                  ) : (
-                    <>
-                      <Settings className='text-muted-foreground' />
-                      <span>Manage tags</span>
-                    </>
-                  )}
-                </CommandItem>
-              </CommandGroup>
-            </>
-          )}
         </CommandList>
+
+        {canShowManageToggle && (
+          <div className='border-t border-border/50'>
+            <CommandGroup>
+              <CommandItem
+                onSelect={() => setIsManageMode((v) => !v)}
+                className='cursor-pointer h-7.5'>
+                {isManageMode ? (
+                  <>
+                    <Check className='text-good-500' />
+                    <span>Done</span>
+                  </>
+                ) : (
+                  <>
+                    <Settings className='text-muted-foreground' />
+                    <span>Manage tags</span>
+                  </>
+                )}
+              </CommandItem>
+            </CommandGroup>
+          </div>
+        )}
       </Command>
 
       {editTagId && (
