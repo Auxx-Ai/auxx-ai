@@ -10,7 +10,6 @@ import { Expand, Mail, MessagesSquare, Trash, User } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import * as React from 'react'
 import { BaseEntityDrawer } from '~/components/drawers/base-entity-drawer'
-import { DockToggleButton } from '~/components/global/dock-toggle-button'
 import { Tooltip } from '~/components/global/tooltip'
 import { KopilotContext } from '~/components/kopilot/context'
 import { KopilotSuggestion } from '~/components/kopilot/suggestions'
@@ -174,7 +173,6 @@ export function ContactDrawer({
                 <Trash className='text-bad-500' />
               </Button>
             </Tooltip>
-            <DockToggleButton />
           </>
         }
         cardContent={

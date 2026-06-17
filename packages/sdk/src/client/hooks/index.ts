@@ -4,18 +4,26 @@
  * React hooks for accessing Auxx platform data and functionality
  */
 
+import { Host } from '../../runtime/host.js'
+import { useAsyncCache } from './use-async-cache.js'
+
 // Export async cache hook
 export { type AsyncCacheConfig, type AsyncFunction, useAsyncCache } from './use-async-cache.js'
 
 /**
- * Record data structure
+ * Record data structure returned by {@link useRecord}.
+ *
+ * `data` is keyed by each field's stable attribute key (e.g. `primary_email`,
+ * `phone`) and carries plain values — a scalar for single-value fields, an
+ * array for multi-value fields.
  */
 export interface AuxxRecord {
   id: string
   type: string
+  displayName?: string
   data: Record<string, any>
-  createdAt: Date
-  updatedAt: Date
+  createdAt?: string | Date
+  updatedAt?: string | Date
 }
 
 /**
@@ -45,24 +53,37 @@ export interface AppSettings {
   [key: string]: any
 }
 
+/** Fetch a record from the host platform (resolved by the record data-handler). */
+function fetchRecordFromHost(recordId: string): Promise<AuxxRecord> {
+  return Host.sendRequest<AuxxRecord>('get-record', { recordId })
+}
+
 /**
- * Hook to access a single record by ID
+ * Hook to access a single record by ID, with its field values.
  *
- * @param _recordId - The ID of the record to fetch
- * @returns The record data
+ * Backed by {@link useAsyncCache}, so it **suspends** until the record loads —
+ * render it under a `<Suspense>` boundary. Results are cached per `recordId`.
+ *
+ * @param recordId - The full record id (`<entityDefinitionId>:<entityInstanceId>`)
+ * @returns The record, with field values keyed under `data` by each field's
+ *   stable attribute key (e.g. the contact email is `data.primary_email`, not
+ *   `data.email`).
  *
  * @example
  * ```typescript
  * import { useRecord } from '@auxx/sdk/client'
  *
- * function MyComponent() {
- *   const record = useRecord('rec_123')
- *   return <div>{record.data.title}</div>
+ * function ContactEmail({ recordId }: { recordId: string }) {
+ *   const record = useRecord(recordId)
+ *   return <TextBlock>{record.data.primary_email}</TextBlock>
  * }
  * ```
  */
-export function useRecord(_recordId: string): AuxxRecord {
-  throw new Error('[auxx/client] useRecord hook not available - must be provided by runtime')
+export function useRecord(recordId: string): AuxxRecord {
+  const {
+    values: { record },
+  } = useAsyncCache({ record: [fetchRecordFromHost, recordId] })
+  return record
 }
 
 /**

@@ -16,6 +16,7 @@ import {
 import { ConnectionExpiredDialog } from '~/components/apps/ui/connection-expired-dialog'
 import { AssetsDataHandler } from '~/components/extensions/data-handlers/assets-data-handler'
 import { DialogDataHandler } from '~/components/extensions/data-handlers/dialog-data-handler'
+import { RecordDataHandler } from '~/components/extensions/data-handlers/record-data-handler'
 import { RenderDataHandler } from '~/components/extensions/data-handlers/render-data-handler'
 import { SurfacesDataHandler } from '~/components/extensions/data-handlers/surfaces-data-handler'
 import { TriggerDataHandler } from '~/components/extensions/data-handlers/trigger-data-handler'
@@ -198,6 +199,9 @@ export function ExtensionsProvider({ children }: ExtensionsProviderProps) {
 
                         {/* Listen for dialog render/unrender */}
                         <DialogDataHandler />
+
+                        {/* Serve record reads for the app `useRecord` hook */}
+                        <RecordDataHandler />
                       </ExtensionDataHandlerContextProvider>
                     </Suspense>
                   </ErrorBoundary>

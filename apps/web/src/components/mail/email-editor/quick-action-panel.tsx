@@ -23,6 +23,7 @@ import { cn } from '@auxx/ui/lib/utils'
 import { ChevronDown, ChevronRight, X, Zap } from 'lucide-react'
 import type React from 'react'
 import { useCallback, useMemo, useRef, useState } from 'react'
+import { AsyncOptionPicker } from '~/components/pickers/async-option-picker'
 import { MultiSelectPicker } from '~/components/pickers/multi-select-picker'
 import { useQuickActions } from '~/hooks/use-quick-actions'
 import type { SerializedQuickAction } from '~/lib/workflow/workflow-block-loader'
@@ -585,14 +586,10 @@ function QuickActionDynamicSelectField({
   )
 
   const resolved = optionsQuery.data?.options ?? []
-  const comboOptions = resolved.map((o) => ({
+  const comboOptions: SelectOption[] = resolved.map((o) => ({
     value: o.value,
     label: o.sublabel ? `${o.label} — ${o.sublabel}` : o.label,
   }))
-  // Keep a previously-picked value visible even before/without a fresh load.
-  if (value && !comboOptions.some((o) => o.value === value)) {
-    comboOptions.unshift({ value, label: value })
-  }
 
   const noOptions = enabled && !optionsQuery.isLoading && resolved.length === 0
   const hintText =
@@ -606,17 +603,22 @@ function QuickActionDynamicSelectField({
   return (
     <div className='flex items-center gap-2'>
       <label className='min-w-16 shrink-0 text-xs text-muted-foreground'>{label}</label>
-      <Combobox
-        options={comboOptions}
-        placeholder={isDisabled ? hintText : placeholder || 'Select...'}
-        emptyText={optionsQuery.isLoading ? 'Loading…' : hintText}
+      <AsyncOptionPicker
+        staticOptions={comboOptions}
+        isLoading={optionsQuery.isLoading}
         value={value}
-        onChangeValue={(v) => onChange(v || undefined)}
-        loading={optionsQuery.isLoading}
+        onChange={(selected) => onChange(selected[0] || undefined)}
+        multi={false}
         disabled={isDisabled}
-        variant='outline'
-        size='sm'
-        className='h-6 text-xs'
+        placeholder={isDisabled ? hintText : placeholder || 'Select...'}
+        searchPlaceholder='Search…'
+        triggerProps={{
+          variant: 'outline',
+          size: 'sm',
+          className: 'h-6 text-xs',
+          showClear: false,
+        }}
+        className='flex-1'
         popoverClassName={popoverClassName}
         onOpenChange={(o) => {
           if (o) setOpened(true)
