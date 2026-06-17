@@ -5,10 +5,10 @@ import type { SelectOption } from '@auxx/types/custom-field'
 import { Button } from '@auxx/ui/components/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { cn } from '@auxx/ui/lib/utils'
-import { useRouter } from 'next/navigation'
 import { type ComponentProps, useCallback, useMemo, useState } from 'react'
 import { MultiSelectPicker } from '~/components/pickers/multi-select-picker'
 import { type SignatureItem, useSignatures } from '../hooks'
+import { SignatureDialog } from './signature-dialog'
 
 /** Props for SignaturePicker component */
 interface SignaturePickerProps
@@ -38,12 +38,13 @@ export function SignaturePicker({
   disabled = false,
   ...popoverContentProps
 }: SignaturePickerProps) {
-  const router = useRouter()
-
   // Internal state for uncontrolled mode
   const [internalOpen, setInternalOpen] = useState(false)
   const isOpen = controlledOpen ?? internalOpen
   const setIsOpen = controlledOnOpenChange ?? setInternalOpen
+
+  // Create-signature dialog state
+  const [createDialogOpen, setCreateDialogOpen] = useState(false)
 
   // Fetch signatures if not provided
   const { signatures: fetchedSignatures } = useSignatures()
@@ -70,10 +71,19 @@ export function SignaturePicker({
     setIsOpen(false)
   }, [setIsOpen])
 
-  // Navigate to create new signature
+  // Open the create-signature dialog
   const handleCreate = useCallback(() => {
-    router.push('/app/settings/signatures/new')
-  }, [router])
+    setCreateDialogOpen(true)
+  }, [])
+
+  // Auto-select the newly created signature and close the picker
+  const handleCreated = useCallback(
+    (signatureId: string) => {
+      onChange?.(signatureId)
+      setIsOpen(false)
+    },
+    [onChange, setIsOpen]
+  )
 
   return (
     <Popover open={isOpen} onOpenChange={setIsOpen}>
@@ -95,6 +105,13 @@ export function SignaturePicker({
           disabled={disabled}
         />
       </PopoverContent>
+      {createDialogOpen && (
+        <SignatureDialog
+          open={createDialogOpen}
+          onOpenChange={setCreateDialogOpen}
+          onSuccess={handleCreated}
+        />
+      )}
     </Popover>
   )
 }

@@ -111,7 +111,6 @@ export const SIGNATURE_FIELDS: Record<string, ResourceField> = {
       options: [
         { value: 'org_members', label: 'All Members' },
         { value: 'private', label: 'Private' },
-        { value: 'custom', label: 'Custom' },
       ],
     },
     capabilities: {
