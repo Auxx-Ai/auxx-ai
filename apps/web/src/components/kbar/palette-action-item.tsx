@@ -40,12 +40,17 @@ export function PaletteActionItem({
   }, [action.label, action.subtitle, action.keywords])
 
   const handleSelect = () => {
+    if (action.disabled) return
     onRun?.(action)
     action.perform()
   }
 
   return (
-    <CommandItem value={action.id} keywords={keywords} onSelect={handleSelect}>
+    <CommandItem
+      value={action.id}
+      keywords={keywords}
+      disabled={action.disabled}
+      onSelect={handleSelect}>
       {action.icon && (
         <EntityIcon
           iconId={action.icon}
