@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.1.168](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.167...auxx-v0.1.168) (2026-06-17)
+
+
+### Features
+
+* **chat:** render visit facts as FieldValue-backed thread fields ([#856](https://github.com/Auxx-Ai/auxx-ai/issues/856)) ([7ae7bc7](https://github.com/Auxx-Ai/auxx-ai/commit/7ae7bc78743cffdf82b21d2522a687ee6e0336f5))
+* **chat:** unify handoff into one tool + one applier ([#862](https://github.com/Auxx-Ai/auxx-ai/issues/862)) ([deff818](https://github.com/Auxx-Ai/auxx-ai/commit/deff8188aae05aabbae4f4ec951239003e86ba6a))
+* **mail:** "@" signature + action picker via the chip pipeline ([#873](https://github.com/Auxx-Ai/auxx-ai/issues/873)) ([2f79b4c](https://github.com/Auxx-Ai/auxx-ai/commit/2f79b4c7b9320b0d63c12678369f12a129161900))
+* **mail:** "/" slash attach-file drill-in ([#870](https://github.com/Auxx-Ai/auxx-ai/issues/870)) ([d35cc87](https://github.com/Auxx-Ai/auxx-ai/commit/d35cc872098b4d240d30a6850f7372fb3010bee0))
+* **mail:** "Ask AI" slash drill-in + stale-pending-message sweeper ([#867](https://github.com/Auxx-Ai/auxx-ai/issues/867)) ([8b01a5e](https://github.com/Auxx-Ai/auxx-ai/commit/8b01a5e9467d19ed00c00bc53893d24e46e32cf5))
+* **mail:** free-text "Ask AI" instruction in the / menu ([#876](https://github.com/Auxx-Ai/auxx-ai/issues/876)) ([15659b2](https://github.com/Auxx-Ai/auxx-ai/commit/15659b2ed350fb766d9821fc831bea1bda9acbc2))
+* **mail:** plain chat composer variant + redesigned file picker ([#868](https://github.com/Auxx-Ai/auxx-ai/issues/868)) ([7573004](https://github.com/Auxx-Ai/auxx-ai/commit/7573004d72d8ce8455eed86274da1e6a52de3d56))
+* **mail:** upload-from-computer in / file picker + consistent picker order ([#874](https://github.com/Auxx-Ai/auxx-ai/issues/874)) ([d4a00f4](https://github.com/Auxx-Ai/auxx-ai/commit/d4a00f4bb500b35a3b8da62be15d04139d2e01c9))
+* **notifications:** cross-tab realtime sync + notification center refresh ([#859](https://github.com/Auxx-Ai/auxx-ai/issues/859)) ([d86443c](https://github.com/Auxx-Ai/auxx-ai/commit/d86443c99475f469896632617f3105132506666e))
+* **settings:** My Account page + notification sound prefs + new-message cue ([#860](https://github.com/Auxx-Ai/auxx-ai/issues/860)) ([ed7a38e](https://github.com/Auxx-Ai/auxx-ai/commit/ed7a38e7f9b4978e233416aa3fdf74688ed809bc))
+* **web:** out-of-tab new-message indicator + notification sounds ([#861](https://github.com/Auxx-Ai/auxx-ai/issues/861)) ([28d4b51](https://github.com/Auxx-Ai/auxx-ai/commit/28d4b5142866f46f7459c8eb2c853ff4bee6186d))
+
+
+### Bug Fixes
+
+* **contacts:** render contact displayName in drawer header + batch NAME field writes ([#858](https://github.com/Auxx-Ai/auxx-ai/issues/858)) ([af149e2](https://github.com/Auxx-Ai/auxx-ai/commit/af149e271643397b6e09fd039ad523886a97be59))
+* **field-values:** resolve created/updated for EntityInstance entities ([#877](https://github.com/Auxx-Ai/auxx-ai/issues/877)) ([8dd3e6f](https://github.com/Auxx-Ai/auxx-ai/commit/8dd3e6f8e0b9fc647092d0bcda0e140bc20bd957))
+* **fields:** optimistically update record displayName on NAME edit ([e2f1fb6](https://github.com/Auxx-Ai/auxx-ai/commit/e2f1fb6b91b9b30a2e89c6499d877c15830c4026))
+* **files:** breadcrumbs on refresh, upload-to-current-folder, stuck "moving" state ([#871](https://github.com/Auxx-Ai/auxx-ai/issues/871)) ([e25ac2d](https://github.com/Auxx-Ai/auxx-ai/commit/e25ac2d9284df4093ce956aabdd7f9ca2fd8b4c7))
+* **mail:** always center ThreadDisplay ([#878](https://github.com/Auxx-Ai/auxx-ai/issues/878)) ([816cb5d](https://github.com/Auxx-Ai/auxx-ai/commit/816cb5d98c72dcaac554a73e8735f44122e97295))
+* **mail:** restore quick-action inline form ([#875](https://github.com/Auxx-Ai/auxx-ai/issues/875)) ([b28a9cb](https://github.com/Auxx-Ai/auxx-ai/commit/b28a9cb88b7144f67a22df2aa2370855b9b2508f))
+* **realtime:** recover chat messages missed during subscribe gaps; fix off-page toasts ([#863](https://github.com/Auxx-Ai/auxx-ai/issues/863)) ([531791f](https://github.com/Auxx-Ai/auxx-ai/commit/531791f4ba4a696b80f9993fc8a402f496b4e0ad))
+
 ## [0.1.167](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.166...auxx-v0.1.167) (2026-06-16)
 
 
