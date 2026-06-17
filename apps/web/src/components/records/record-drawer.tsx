@@ -32,6 +32,7 @@ import { BaseEntityDrawer } from '~/components/drawers/base-entity-drawer'
 import { getHeaderActions } from '~/components/drawers/drawer-action-registry'
 import { FavoriteToggleMenuItem } from '~/components/favorites/ui/favorite-toggle-menu-item'
 import { Tooltip } from '~/components/global/tooltip'
+import { CommandContext, RecordCommandActions } from '~/components/kbar/contextual'
 import { KopilotContext } from '~/components/kopilot/context'
 import { KopilotSuggestion } from '~/components/kopilot/suggestions'
 import { MergeDialog } from '~/components/merge'
@@ -245,6 +246,16 @@ export const RecordDrawer = React.memo(function RecordDrawer({
     <>
       <KopilotContext activeRecordId={recordId} activeRecordLabel={displayName ?? undefined} />
       <KopilotSuggestion text='Summarize this record' icon='sparkle' priority={10} autoSubmit />
+      {/* Command-palette record scope — priority outranks the table scope so the
+          record group leads cmd+k when a drawer is open over the live table. */}
+      <CommandContext
+        kind='record'
+        label={displayName ?? resource?.label ?? 'Record'}
+        recordId={recordId}
+        entityDefinitionId={entityDefinitionId || undefined}
+        priority={10}>
+        <RecordCommandActions recordId={recordId} displayName={displayName ?? undefined} />
+      </CommandContext>
       <KopilotSuggestion text='Show related records' icon='list' autoSubmit />
       <BaseEntityDrawer
         recordId={recordId}

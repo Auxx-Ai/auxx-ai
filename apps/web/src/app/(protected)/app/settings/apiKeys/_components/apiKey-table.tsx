@@ -60,7 +60,7 @@ function ApiKeyTable({ initialData }: Props) {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className='w-[200px]'>Name</TableHead>
+              <TableHead className='min-w-[200px]'>Name</TableHead>
               <TableHead>Created</TableHead>
               <TableHead className='text-right'></TableHead>
             </TableRow>
@@ -73,7 +73,7 @@ function ApiKeyTable({ initialData }: Props) {
                 <TableCell className='text-right'>
                   <RevokeAPIKeyButton
                     id={apiKey.id}
-                    buttonProps={{ variant: 'outline-solid', size: 'sm' }}
+                    buttonProps={{ variant: 'ghost', size: 'sm' }}
                   />
                 </TableCell>
               </TableRow>
@@ -99,7 +99,7 @@ function ApiKeyTable({ initialData }: Props) {
               variant='outline'
               disabled={isLoading}
               onClick={() => setIsOpen(true)}>
-              <PlusIcon className='h-4 w-4' />
+              <PlusIcon />
               Create Api Key
             </Button>
           }

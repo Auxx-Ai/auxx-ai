@@ -36,6 +36,8 @@ export interface PaletteAction {
   keywords?: string
   /** Chord hint, lowercase as displayed (e.g. `['g', 'i']`). */
   shortcut?: string[]
+  /** Render a non-selectable, muted row (e.g. a selection-aware action with nothing selected). */
+  disabled?: boolean
   /** Run the action. */
   perform: () => void
 }

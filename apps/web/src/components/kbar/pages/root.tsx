@@ -9,6 +9,7 @@ import {
   CommandList,
 } from '@auxx/ui/components/command'
 import { useState } from 'react'
+import { useContextualSections } from '../contextual/select-contextual'
 import { PaletteActionItem } from '../palette-action-item'
 import { useRecentsStore } from '../recents-store'
 import { selectOnEnter } from '../select-on-enter'
@@ -32,6 +33,10 @@ export function RootPage({
   const goTo = useCommandPaletteStore((s) => s.goTo)
   const pushRecent = useRecentsStore((s) => s.push)
 
+  // Page-defined contextual groups (from mounted <CommandContext>/<CommandAction>).
+  // Lead the list, above the static "Search" group — page actions come first.
+  const contextualSections = useContextualSections()
+
   const onRun = (action: PaletteAction) => pushRecent(action.id)
   const showRecents = query.trim() === '' && recentActions.length > 0
 
@@ -45,6 +50,17 @@ export function RootPage({
       />
       <CommandList className='max-h-[min(420px,60vh)]'>
         <CommandEmpty>No results found.</CommandEmpty>
+
+        {/* Contextual groups — page-ephemeral, excluded from recents (unstable ids). */}
+        {contextualSections.map((section) =>
+          section.actions.length > 0 ? (
+            <CommandGroup key={`ctx:${section.label}`} heading={section.label}>
+              {section.actions.map((action) => (
+                <PaletteActionItem key={action.id} action={action} />
+              ))}
+            </CommandGroup>
+          ) : null
+        )}
 
         <CommandGroup heading='Search'>
           <PaletteActionItem

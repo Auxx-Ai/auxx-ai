@@ -21,6 +21,7 @@ import {
   MainPageHeader,
 } from '@auxx/ui/components/main-page'
 import { Archive, Combine, Database, FileText, Play, Plus, SquarePen, Trash2 } from 'lucide-react'
+import { useRouter } from 'next/navigation'
 import { parseAsBoolean, parseAsString, useQueryState } from 'nuqs'
 import { useCallback, useMemo, useRef, useState } from 'react'
 import { BulkUpdateEntityInstanceDialog } from '~/components/custom-fields/ui/bulk-update-entity-instance-dialog'
@@ -35,6 +36,8 @@ import { decodeColumnId } from '~/components/dynamic-table/utils/column-id'
 import { FavoriteToggleMenuItem } from '~/components/favorites/ui/favorite-toggle-menu-item'
 import { EmptyState } from '~/components/global/empty-state'
 import { getCreateHotkey } from '~/components/global-create/system-hotkeys'
+import { CommandAction, CommandContext } from '~/components/kbar/contextual'
+import { useCommandPaletteStore } from '~/components/kbar/store'
 import { MergeDialog } from '~/components/merge'
 import { type RecordMeta, toRecordId, useResource } from '~/components/resources'
 import { useRunAiBulkGenerate } from '~/components/resources/hooks/run-ai-bulk-generate'
@@ -89,6 +92,7 @@ export function RecordsView({
   onEditRecord,
 }: RecordsViewProps) {
   const resolvedBasePath = basePath ?? `/app/custom/${slug}`
+  const router = useRouter()
 
   // Dock state
   const isDocked = useEffectiveDockState()
@@ -747,8 +751,87 @@ export function RecordsView({
     />
   )
 
+  const hasSelection = selectedRowIds.size > 0
+  const selectionCount = selectedRowIds.size
+  const selectedRows = () =>
+    Array.from(selectedRowIds).map((id) => ({ id }) as unknown as EntityRow)
+
   return (
     <>
+      {/* Command-palette table scope — surfaces the table's create + bulk
+          operations in cmd+k. Selection-aware rows render only when rows are
+          selected; their subtitles reflect the live count. */}
+      {entityDefinitionId && (
+        <CommandContext
+          kind='table'
+          label={resource.plural}
+          entityDefinitionId={entityDefinitionId}>
+          <CommandAction
+            label={`Create ${resource.label}`}
+            icon={resource.icon ?? 'plus'}
+            keywords='create new add record'
+            priority={10}
+            perform={() => useCommandPaletteStore.getState().openCreate(entityDefinitionId)}
+          />
+          <CommandAction
+            label='Import'
+            icon='database'
+            keywords='import upload csv'
+            priority={1}
+            perform={() => {
+              useCommandPaletteStore.getState().close()
+              router.push(`${resolvedBasePath}/import`)
+            }}
+          />
+          {hasSelection && (
+            <>
+              <CommandAction
+                label='Run workflow'
+                subtitle={`On ${selectionCount} selected`}
+                icon='git-branch'
+                keywords='run workflow trigger automation'
+                priority={9}
+                perform={() => setIsWorkflowDialogOpen(true)}
+              />
+              {selectionCount >= 2 && (
+                <CommandAction
+                  label='Merge'
+                  subtitle={`${selectionCount} selected`}
+                  icon='merge'
+                  keywords='merge combine dedupe'
+                  priority={8}
+                  perform={() => setIsMergeDialogOpen(true)}
+                />
+              )}
+              <CommandAction
+                label='Edit'
+                subtitle={`${selectionCount} selected`}
+                icon='edit'
+                keywords='edit bulk update fields'
+                priority={7}
+                perform={() => setIsBulkUpdateDialogOpen(true)}
+              />
+              <CommandAction
+                label='Archive'
+                subtitle={`${selectionCount} selected`}
+                icon='archive'
+                keywords='archive bulk'
+                priority={6}
+                perform={() => handleBulkArchive(selectedRows())}
+              />
+              <CommandAction
+                label='Delete'
+                subtitle={`${selectionCount} selected`}
+                icon='trash'
+                keywords='delete remove bulk'
+                priority={5}
+                perform={() => handleBulkDelete(selectedRows())}
+              />
+            </>
+          )}
+        </CommandContext>
+      )}
+
       {embedded ? (
         mainContent
       ) : (
