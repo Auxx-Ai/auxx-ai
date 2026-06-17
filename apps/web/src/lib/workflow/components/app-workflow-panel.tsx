@@ -14,6 +14,7 @@ import { reconstructReactTree } from '~/lib/extensions/reconstruct-react-tree'
 import { useOptionalMessageClient } from '~/lib/extensions/use-optional-message-client'
 import { useExtensionsContext } from '~/providers/extensions/extensions-context'
 import type { WorkflowBlock } from '../types'
+import { collectHiddenFields } from '../utils/collect-hidden-fields'
 import { computeOutputSignature, resolveAppBlockOutputFields } from '../utils/resolve-app-outputs'
 import { convertOutputFieldsToVariables } from '../utils/type-mapping'
 import { AppPollingSection } from './app-polling-section'
@@ -328,6 +329,21 @@ export const AppWorkflowPanel = memo<AppWorkflowPanelProps>(
 
       return unsubscribe
     }, [nodeId, messageClient])
+
+    // Track which input fields are currently hidden by a ConditionalRender so
+    // the single-node Input tab and variable extraction can ignore stale values
+    // from fields that don't apply to the active operation. Derived from the
+    // rendered panel tree (the iframe already evaluated each condition) and
+    // stashed under `_hiddenFields` — a `_`-prefixed key, so it's ephemeral and
+    // stripped on save. Absent for nodes whose panel was never opened.
+    useEffect(() => {
+      if (!panelComponent) return
+      const hidden = collectHiddenFields(panelComponent)
+      const prev = (nodeDataRef.current._hiddenFields as string[] | undefined) ?? []
+      // Stable compare (collectHiddenFields returns sorted) to avoid update loops
+      if (hidden.length === prev.length && hidden.every((f, i) => f === prev[i])) return
+      setInputs({ ...nodeDataRef.current, _hiddenFields: hidden })
+    }, [panelComponent, setInputs])
 
     // Send data updates to iframe when React Flow data changes
     // biome-ignore lint/correctness/useExhaustiveDependencies: panelComponent is intentionally excluded - only send when nodeData changes
