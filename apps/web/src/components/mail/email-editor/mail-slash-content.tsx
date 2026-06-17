@@ -1,6 +1,7 @@
 // apps/web/src/components/mail/email-editor/mail-slash-content.tsx
 'use client'
 
+import type { DraftActionPayload } from '@auxx/lib/quick-actions/client'
 import {
   CommandBreadcrumb,
   CommandNavigation,
@@ -8,7 +9,9 @@ import {
 } from '@auxx/ui/components/command'
 import { EntityIcon } from '@auxx/ui/components/icons'
 import type { Editor } from '@tiptap/react'
+import { Check } from 'lucide-react'
 import { useCallback, useImperativeHandle, useMemo, useRef, useState } from 'react'
+import type { PickerTrigger } from '~/components/editor/inline-picker'
 import { PlaceholderSlashContent } from '~/components/editor/slash-commands/placeholder-slash-content'
 import type {
   SlashCommandItem,
@@ -18,11 +21,15 @@ import { type SlashContentHandle, SlashList } from '~/components/editor/slash-co
 import type { FileItem } from '~/components/files/files-store'
 import { SparkleIcon } from '~/components/kopilot/ui/sparkle-icon'
 import { useCmdkRemote } from '~/components/pickers/use-cmdk-remote'
+import { useSignatures } from '~/components/signatures/hooks'
+import { useQuickActions } from '~/hooks/use-quick-actions'
+import type { SerializedQuickAction } from '~/lib/workflow/workflow-block-loader'
 import { api } from '~/trpc/react'
 import { AI_LANG_TYPE, AI_OPERATION, AI_TONE_TYPE, type AIOperation } from '~/types/ai-tools'
 import { isBodyEmptyIgnoringChips } from '../composer-shared/content-empty'
 import { FileSlashContent } from './file-slash-content'
 import { useSnippetSearch } from './hooks'
+import { cacheActionSchema, toDraftActionPayload } from './quick-action-panel'
 
 type Range = { from: number; to: number }
 
@@ -39,6 +46,27 @@ export interface MailAiSlashConfig {
   onRunAI: (operation: AIOperation, options?: { tone?: string; language?: string }) => void
   /** Compose requires a thread to reply to. Gates the empty-body "Ask AI" item. */
   hasPreviousMessages: boolean
+}
+
+/**
+ * Draft-level wiring for the `@` menu. When absent, the `@` root renders no
+ * signature/action items (and the trigger isn't registered — see tiptap-editor).
+ * Data (signatures, available actions) is fetched inside the component; only the
+ * current selection + mutators are passed, since they own the draft state.
+ */
+export interface MailReferenceConfig {
+  /** Currently-selected signature id (instance id), or null when none. */
+  signatureId: string | null
+  /** Set / clear the draft signature. Same setter as the belowEditor editor. */
+  onSignatureChange: (id: string | null) => void
+  /** Currently-selected quick-action ids — drives the checked state. */
+  actionIds: string[]
+  /** Push a quick action onto the draft. */
+  onAddAction: (payload: DraftActionPayload) => void
+  /** Remove a quick action from the draft by action id. */
+  onRemoveAction: (actionId: string) => void
+  /** Scopes `useQuickActions` to the active thread. */
+  threadId?: string
 }
 
 /**
@@ -73,6 +101,10 @@ export interface MailSlashContentProps {
    * attachment tray (`useFileSelect.addExistingFiles`). Absent → no file item.
    */
   onAttachFile?: (file: FileItem) => void
+  /** Which trigger opened the chip. Defaults to `'/'`. `'@'` roots the reference menu. */
+  trigger?: PickerTrigger
+  /** Draft-level signature/action wiring for the `@` menu. */
+  references?: MailReferenceConfig
   /**
    * Block commands offered at the root (Heading / lists / blockquote).
    * Defaults to {@link MAIL_BLOCK_COMMANDS}. Chat passes `[]` — it's a plain,
@@ -91,6 +123,14 @@ export interface MailBlockCommand extends SlashCommandItem {
 }
 
 export const MAIL_BLOCK_COMMANDS: MailBlockCommand[] = [
+  {
+    id: 'text',
+    title: 'Text',
+    description: 'Plain text block',
+    keywords: ['p', 'paragraph', 'body', 'normal'],
+    iconId: 'text',
+    run: (editor, range) => editor.chain().focus().deleteRange(range).setParagraph().run(),
+  },
   {
     id: 'h1',
     title: 'Heading 1',
@@ -244,8 +284,34 @@ const AI_TRANSFORM_ITEMS: SlashCommandItem[] = [
 type NavItem = {
   id: string
   label: string
-  type: 'snippets' | 'folder' | 'ai' | 'ai-tone' | 'ai-translate'
+  type: 'snippets' | 'folder' | 'ai' | 'ai-tone' | 'ai-translate' | 'signatures' | 'actions'
 }
+
+// --- `@` reference root (signature + action drill-ins) --------------------
+// Only rendered when `references` is supplied (email composer). Both items
+// drill into a list; selection is draft-level state, not a body insertion.
+
+const REFERENCE_ROOT_ITEMS: SlashCommandItem[] = [
+  {
+    id: 'use-signature',
+    title: 'Use signature',
+    description: 'Apply a saved signature to this reply',
+    keywords: ['signature', 'sign', 'footer', 'sign-off'],
+    iconId: 'feather',
+    drillDown: true,
+  },
+  {
+    id: 'add-action',
+    title: 'Add action',
+    description: 'Run an app action when you send',
+    keywords: ['action', 'app', 'automation', 'workflow'],
+    iconId: 'zap',
+    drillDown: true,
+  },
+]
+
+// Sentinel row id for clearing the selected signature from the drill list.
+const REMOVE_SIGNATURE_ID = '__remove_signature__'
 
 // Snippet-mode rows reuse `SlashCommandItem` plus a `kind` tag so the section's
 // `onSelect` can dispatch without re-scanning data.
@@ -333,6 +399,8 @@ function MailSlashContentInner({
   onEnterFileMode,
   onAttachFile,
   aiSlash,
+  trigger = '/',
+  references,
   blockCommands = MAIL_BLOCK_COMMANDS,
 }: MailSlashContentProps & {
   onEnterPlaceholderMode: () => void
@@ -372,6 +440,56 @@ function MailSlashContentInner({
     subtreeSnippetResults,
     rootSnippetResults,
   } = useSnippetSearch({ query, currentFolderId, isAtRoot })
+
+  // `@` reference data — fetched inside the component (like snippets). Hooks
+  // run unconditionally; the lists only render under the `@` trigger.
+  const { signatures } = useSignatures()
+  const { actions: availableActions, isLoading: actionsLoading } = useQuickActions(
+    references?.threadId
+  )
+
+  // Signature/action selections are draft-level state, not body insertions, so
+  // (like the AI ops) the executor only strips the chip; the actual mutation
+  // goes through `references`. Both also close the menu by removing the chip.
+  const selectSignature = useCallback(
+    (id: string | null) => {
+      if (!references) return
+      onExecute((editor, range) => editor.chain().focus().deleteRange(range).run())
+      references.onSignatureChange(id)
+    },
+    [references, onExecute]
+  )
+
+  const toggleAction = useCallback(
+    (action: SerializedQuickAction) => {
+      if (!references) return
+      const isSelected = references.actionIds.includes(action.id)
+      onExecute((editor, range) => editor.chain().focus().deleteRange(range).run())
+      if (isSelected) {
+        references.onRemoveAction(action.id)
+      } else {
+        cacheActionSchema(action) // populate the shared cache so the belowEditor form renders
+        references.onAddAction(toDraftActionPayload(action))
+      }
+    },
+    [references, onExecute]
+  )
+
+  const enterReferenceScope = useCallback(
+    (type: 'signatures' | 'actions', label: string) => {
+      push({ id: type, label, type })
+      onScopeChange(label)
+    },
+    [push, onScopeChange]
+  )
+
+  const handleReferenceRootSelect = useCallback(
+    (item: SlashCommandItem) => {
+      if (item.id === 'use-signature') enterReferenceScope('signatures', 'Signature')
+      else if (item.id === 'add-action') enterReferenceScope('actions', 'Add action')
+    },
+    [enterReferenceScope]
+  )
 
   const enterSnippetsDrillDown = useCallback(() => {
     push({ id: 'snippets', label: 'Snippets', type: 'snippets' })
@@ -495,6 +613,77 @@ function MailSlashContentInner({
   )
 
   const sections: SlashCommandSection<SlashCommandItem>[] = useMemo(() => {
+    // `@` reference menu — a focused signature/action surface. Distinct from
+    // the `/` formatting menu; never mixes block commands or Ask AI.
+    if (trigger === '@') {
+      if (!references) return []
+
+      if (current?.type === 'signatures') {
+        const sigItems: SlashCommandItem[] = signatures.map((s) => ({ id: s.id, title: s.name }))
+        if (references.signatureId) {
+          sigItems.push({ id: REMOVE_SIGNATURE_ID, title: 'Remove signature', iconId: 'x' })
+        }
+        const signaturesSection: SlashCommandSection<SlashCommandItem> = {
+          id: 'signatures',
+          heading: 'Signatures',
+          items: sigItems,
+          itemValue: (item) => item.id,
+          onSelect: (item) => selectSignature(item.id === REMOVE_SIGNATURE_ID ? null : item.id),
+          renderItem: (item) => (
+            <div className='flex w-full items-center gap-2'>
+              <EntityIcon
+                iconId={item.iconId ?? 'feather'}
+                size='sm'
+                className='text-muted-foreground'
+              />
+              <span className='flex-1 truncate'>{item.title}</span>
+              {references.signatureId === item.id && (
+                <Check className='size-3.5 shrink-0 text-primary-600' />
+              )}
+            </div>
+          ),
+        }
+        return [signaturesSection]
+      }
+
+      if (current?.type === 'actions') {
+        const actionItems: SlashCommandItem[] = availableActions.map((a) => ({
+          id: a.id,
+          title: a.label,
+          description: a.description,
+        }))
+        const actionsSection: SlashCommandSection<SlashCommandItem> = {
+          id: 'actions',
+          heading: 'Actions',
+          items: actionItems,
+          itemValue: (item) => item.id,
+          onSelect: (item) => {
+            const action = availableActions.find((a) => a.id === item.id)
+            if (action) toggleAction(action)
+          },
+          renderItem: (item) => (
+            <div className='flex w-full items-center gap-2'>
+              <EntityIcon iconId='zap' size='sm' className='text-muted-foreground' />
+              <span className='flex-1 truncate'>{item.title}</span>
+              {references.actionIds.includes(item.id) && (
+                <Check className='size-3.5 shrink-0 text-primary-600' />
+              )}
+            </div>
+          ),
+        }
+        return [actionsSection]
+      }
+
+      return [
+        {
+          id: 'reference-root',
+          heading: 'Insert',
+          items: REFERENCE_ROOT_ITEMS,
+          onSelect: handleReferenceRootSelect,
+        },
+      ]
+    }
+
     if (current?.type === 'ai') {
       return [
         {
@@ -566,7 +755,7 @@ function MailSlashContentInner({
           <div className='flex items-center gap-2'>
             <EntityIcon
               iconId={item.kind === 'folder' ? 'folder' : 'file-text'}
-              size='xs'
+              size='sm'
               className='text-muted-foreground'
             />
             <span>{item.title}</span>
@@ -600,7 +789,7 @@ function MailSlashContentInner({
         ) : (
           <div className='flex items-center gap-2'>
             {item.iconId && (
-              <EntityIcon iconId={item.iconId} size='xs' className='text-muted-foreground' />
+              <EntityIcon iconId={item.iconId} size='sm' className='text-muted-foreground' />
             )}
             <span>{item.title}</span>
           </div>
@@ -622,7 +811,7 @@ function MailSlashContentInner({
         itemValue: (item) => item.id,
         renderItem: (item) => (
           <div className='flex items-center gap-2'>
-            <EntityIcon iconId='file-text' size='xs' className='text-muted-foreground' />
+            <EntityIcon iconId='file-text' size='sm' className='text-muted-foreground' />
             <span>{item.title}</span>
           </div>
         ),
@@ -648,20 +837,35 @@ function MailSlashContentInner({
     handleAiOpSelect,
     runAI,
     onAttachFile,
+    trigger,
+    references,
+    signatures,
+    availableActions,
+    selectSignature,
+    toggleAction,
+    handleReferenceRootSelect,
   ])
+
+  const isInActions = current?.type === 'actions'
 
   return (
     <div ref={containerRef} className='w-72 overflow-hidden'>
       <SlashList
         query={query}
         sections={sections}
-        header={<CommandBreadcrumb rootLabel='Commands' />}
+        header={<CommandBreadcrumb rootLabel={trigger === '@' ? 'Insert' : 'Commands'} />}
         emptyMessage={
-          isInSnippets ? 'No snippets found.' : isInAi ? 'No options.' : 'No results found.'
+          isInSnippets
+            ? 'No snippets found.'
+            : isInAi
+              ? 'No options.'
+              : isInActions
+                ? 'No actions available.'
+                : 'No results found.'
         }
-        // Only the snippet drill-down needs the snippet fetch; the static root
-        // suggestions (Ask AI, formatting commands, placeholder) render instantly.
-        loading={isInSnippets && snippetsLoading}
+        // Only drill-downs that fetch need a loading state — the static root
+        // suggestions render instantly. Snippets and `@`-actions are the two.
+        loading={(isInSnippets && snippetsLoading) || (isInActions && actionsLoading)}
       />
     </div>
   )

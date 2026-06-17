@@ -19,6 +19,7 @@ import type { FileItem } from '~/components/files/files-store'
 import {
   MAIL_BLOCK_COMMANDS,
   type MailAiSlashConfig,
+  type MailReferenceConfig,
   MailSlashContent,
 } from '~/components/mail/email-editor/mail-slash-content'
 import { useEditorContext } from './editor-context'
@@ -55,6 +56,12 @@ type TiptapEditorProps = {
   /** Optional attachment wiring — surfaces the "Attach file" item in the `/` menu. */
   onAttachFile?: (file: FileItem) => void
   /**
+   * Optional signature/action wiring. When present, registers the `@` trigger
+   * (signature + action menu) alongside `/`. Absent (e.g. chat) → `@` types a
+   * literal character.
+   */
+  references?: MailReferenceConfig
+  /**
    * Formatting profile. `'rich'` (default) = full StarterKit + block commands
    * in the `/` menu (email). `'plain'` = a compact composer with headings /
    * lists / blockquote / code blocks removed from the schema (so markdown
@@ -74,9 +81,14 @@ const TiptapEditor = ({
   onEnter,
   aiSlash,
   onAttachFile,
+  references,
   variant = 'rich',
 }: TiptapEditorProps) => {
   const isPlain = variant === 'plain'
+  // Only the *presence* of references gates `@` registration — the live config
+  // (mutators/selection) is read by the popover, not the extension. Depend on a
+  // boolean so a new references object each render doesn't churn the extensions.
+  const hasReferences = !!references
   const { setEditor } = useEditorContext()
   const externalSyncRef = useRef<{ markLocalEdit: (key: string) => void }>({
     markLocalEdit: () => {},
@@ -126,12 +138,17 @@ const TiptapEditor = ({
       TextAlign.configure({ types: ['heading', 'paragraph'] }),
       Link.configure({ openOnClick: false, autolink: true }),
       Placeholder.configure({ placeholder }),
-      // `/`-only chip picker: no `@` mention (mail has no references) — typing
-      // `@` inserts a literal character. The popover is mounted below via
-      // `useActivePicker`; keyboard is forwarded through the `onSlash*` hooks.
+      // Chip picker. `/` is always a command trigger. When `references` is
+      // supplied (email), `@` becomes a SECOND command trigger rooting the
+      // signature/action menu — both share the slash keyboard path. Without
+      // `references` (chat), `@` is unregistered and types a literal character.
       ReferencePickerNode.configure({
-        mention: false,
-        slash: true,
+        triggers: hasReferences
+          ? [
+              { char: '@', kind: 'command' },
+              { char: '/', kind: 'command' },
+            ]
+          : [{ char: '/', kind: 'command' }],
         onSlashEnter,
         onSlashArrowVertical,
         onSlashBackspacePop,
@@ -143,6 +160,7 @@ const TiptapEditor = ({
       isPlain,
       placeholder,
       placeholderNodeExtension,
+      hasReferences,
       onSlashEnter,
       onSlashArrowVertical,
       onSlashBackspacePop,
@@ -235,7 +253,9 @@ const TiptapEditor = ({
 
   // Reactive view of the open chip — drives the slash popover mount + anchor.
   const activePicker = useActivePicker(editorInstance)
-  const slashOpen = !!activePicker && activePicker.trigger === '/'
+  const activeTrigger = activePicker?.trigger ?? null
+  // Both command triggers ('/' formatting, '@' references) open this popover.
+  const pickerOpen = !!activePicker && (activeTrigger === '/' || activeTrigger === '@')
 
   // Run a slash executor with the open chip's range — the executor's chain
   // deletes the chip and applies the command in one transaction.
@@ -278,7 +298,7 @@ const TiptapEditor = ({
       {editorInstance && (
         <InlinePickerPopover
           state={{
-            isOpen: slashOpen,
+            isOpen: pickerOpen,
             query: activePicker?.query ?? '',
             range: null,
             clientRect: activePicker?.clientRect ?? null,
@@ -292,6 +312,7 @@ const TiptapEditor = ({
           onClose={closeSlash}>
           <MailSlashContent
             ref={slashRef}
+            trigger={activeTrigger ?? '/'}
             query={activePicker?.query ?? ''}
             editor={editorInstance}
             onExecute={runWithChipRange}
@@ -299,6 +320,7 @@ const TiptapEditor = ({
             onClose={closeSlash}
             aiSlash={aiSlash}
             onAttachFile={onAttachFile}
+            references={references}
             blockCommands={isPlain ? [] : MAIL_BLOCK_COMMANDS}
           />
         </InlinePickerPopover>

@@ -27,8 +27,10 @@ import { MultiSelectPicker } from '~/components/pickers/multi-select-picker'
 import { useQuickActions } from '~/hooks/use-quick-actions'
 import type { SerializedQuickAction } from '~/lib/workflow/workflow-block-loader'
 
-// Schema cache for form rendering (populated when actions are loaded)
-const quickActionSchemaCache = new Map<string, { inputs: Record<string, any> }>()
+// Schema cache for form rendering (populated when actions are loaded).
+// Exported so the mail `@` menu (mail-slash-content.tsx) can populate the SAME
+// cache when it adds an action — the belowEditor chip's inline form keys off it.
+export const quickActionSchemaCache = new Map<string, { inputs: Record<string, any> }>()
 
 interface QuickActionPanelProps {
   actions: DraftActionPayload[]
@@ -247,18 +249,7 @@ function QuickActionPicker({
           const action = actionMap.get(id)
           if (!action) continue
           cacheActionSchema(action)
-          onAdd({
-            appId: action.appId!,
-            installationId: action.installationId!,
-            actionId: action.id,
-            inputs: action.defaults ?? {},
-            display: {
-              label: action.label,
-              icon: action.icon,
-              color: action.color,
-              summary: action.label,
-            },
-          })
+          onAdd(toDraftActionPayload(action))
         }
       }
 
@@ -296,10 +287,30 @@ function QuickActionPicker({
 }
 
 /** Cache action schema for inline form rendering */
-function cacheActionSchema(action: SerializedQuickAction) {
+export function cacheActionSchema(action: SerializedQuickAction) {
   const key = `${action.appId}:${action.id}`
   if (action.inputs && Object.keys(action.inputs).length > 0) {
     quickActionSchemaCache.set(key, { inputs: action.inputs })
+  }
+}
+
+/**
+ * Build the draft-level payload for a selected quick action. Shared by the
+ * belowEditor picker and the mail `@` menu so both mint byte-identical payloads
+ * into the same `quickActionSchemaCache`.
+ */
+export function toDraftActionPayload(action: SerializedQuickAction): DraftActionPayload {
+  return {
+    appId: action.appId!,
+    installationId: action.installationId!,
+    actionId: action.id,
+    inputs: action.defaults ?? {},
+    display: {
+      label: action.label,
+      icon: action.icon,
+      color: action.color,
+      summary: action.label,
+    },
   }
 }
 

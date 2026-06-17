@@ -50,6 +50,7 @@ import {
   useEditorActiveStateContext,
 } from './editor-active-state-context'
 import { useDraftMutations } from './hooks'
+import type { MailReferenceConfig } from './mail-slash-content'
 import PrevMessage from './prev-message'
 import { AddActionButton, QuickActionPanel } from './quick-action-panel'
 import { type RecipientField, RecipientInput, type RecipientInputHandle } from './recipient-input'
@@ -536,6 +537,21 @@ function ReplyComposeEditorComponent({
     setState((prev) => ({ ...prev, signatureId }))
     setIsDraftSaved(false)
   }, [])
+
+  // `@` menu wiring — reuses the SAME setters as the belowEditor SignatureEditor
+  // / QuickActionPanel, so the two entry points stay in sync automatically.
+  const references = useMemo<MailReferenceConfig>(
+    () => ({
+      signatureId: state.signatureId,
+      onSignatureChange: handleSignatureChange,
+      actionIds: quickActions.map((a) => a.actionId),
+      onAddAction: (action) => setQuickActions((prev) => [...prev, action]),
+      onRemoveAction: (actionId) =>
+        setQuickActions((prev) => prev.filter((a) => a.actionId !== actionId)),
+      threadId: thread?.id || state.threadId || undefined,
+    }),
+    [state.signatureId, state.threadId, handleSignatureChange, quickActions, thread?.id]
+  )
   const handleIntegrationChange = useCallback((integrationId: string) => {
     setState((prev) => ({ ...prev, integrationId }))
     setIsDraftSaved(false)
@@ -1007,11 +1023,12 @@ function ReplyComposeEditorComponent({
         <ComposerBody
           content={content}
           onContentChange={handleContentChange}
-          placeholder='Write a reply…  press / for commands'
+          placeholder='Type / for commands or @ for signatures & actions'
           editable={!aiToolsState.isProcessing}
           popoverClassName={popoverZIndex}
           aiSlash={{ onRunAI: handleAIOperation, hasPreviousMessages }}
           onAttachFile={(file) => fileSelect.addExistingFiles([file])}
+          references={references}
           onWrapperClick={handleWrapperClick}
           onKeyDown={handleKeyDown}
           dropzone={dropzone}
