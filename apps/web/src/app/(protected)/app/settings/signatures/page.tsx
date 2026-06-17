@@ -1,30 +1,45 @@
 // apps/web/src/app/(protected)/app/settings/signatures/page.tsx
+'use client'
 
 import { Button } from '@auxx/ui/components/button'
 import { PlusIcon } from 'lucide-react'
-import Link from 'next/link'
+import { useState } from 'react'
 import SettingsPage from '~/components/global/settings-page'
-import { SignatureList } from '~/components/signatures/ui'
+import { SignatureDialog, SignatureList } from '~/components/signatures/ui'
 
 /**
  * Signatures settings page.
- * Lists all signatures with options to create, edit, and delete.
+ * Lists all signatures with options to create, edit, and delete via a dialog.
  */
 export default function SignaturesPage() {
+  const [dialogOpen, setDialogOpen] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
+
+  const openCreate = () => {
+    setEditingId(null)
+    setDialogOpen(true)
+  }
+
+  const openEdit = (id: string) => {
+    setEditingId(id)
+    setDialogOpen(true)
+  }
+
   return (
     <SettingsPage
       title='Email Signatures'
       description='Give your teammates access to predefined signatures on email channels by creating shared signatures.'
       button={
-        <Link href='/app/settings/signatures/new'>
-          <Button variant='outline' size='sm'>
-            <PlusIcon className='h-4 w-4' />
-            Add Signature
-          </Button>
-        </Link>
+        <Button variant='outline' size='sm' onClick={openCreate}>
+          <PlusIcon className='h-4 w-4' />
+          Add Signature
+        </Button>
       }
       breadcrumbs={[{ title: 'Settings', href: '/app/settings' }, { title: 'Signatures' }]}>
-      <SignatureList />
+      <SignatureList onCreate={openCreate} onEdit={openEdit} />
+      {dialogOpen && (
+        <SignatureDialog open={dialogOpen} onOpenChange={setDialogOpen} signatureId={editingId} />
+      )}
     </SettingsPage>
   )
 }

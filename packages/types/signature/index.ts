@@ -6,7 +6,7 @@ import type { RecordId } from '../resource'
  * Visibility options for signatures (aligned with inbox visibility)
  * Replaces the old SignatureSharingType enum entirely.
  */
-export type SignatureVisibility = 'org_members' | 'private' | 'custom'
+export type SignatureVisibility = 'org_members' | 'private'
 
 /**
  * Signature record type for UI components

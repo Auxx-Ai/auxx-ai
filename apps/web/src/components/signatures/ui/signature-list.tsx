@@ -29,16 +29,16 @@ import {
   Plus,
   StarIcon,
   Trash2Icon,
-  UsersIcon,
 } from 'lucide-react'
-import Link from 'next/link'
-import { useRouter } from 'next/navigation'
 import { EmptyState } from '~/components/global/empty-state'
 import { useConfirm } from '~/hooks/use-confirm'
 import { type SignatureVisibility, useSignatureMutations, useSignatures } from '../hooks'
 
 interface SignatureListProps {
-  isAdmin?: boolean
+  /** Open the signature dialog in create mode */
+  onCreate?: () => void
+  /** Open the signature dialog in edit mode for the given signature id */
+  onEdit?: (signatureId: string) => void
 }
 
 /**
@@ -46,8 +46,7 @@ interface SignatureListProps {
  * Displays all signatures in a table with edit/delete actions.
  * Uses the entity system via useSignatures hook.
  */
-export function SignatureList({ isAdmin = false }: SignatureListProps) {
-  const router = useRouter()
+export function SignatureList({ onCreate, onEdit }: SignatureListProps) {
   const [confirm, ConfirmDialog] = useConfirm()
   const { signatures, isLoading, refresh } = useSignatures()
   const { delete: deleteSignature, update, isDeleting, isUpdating } = useSignatureMutations()
@@ -114,13 +113,6 @@ export function SignatureList({ isAdmin = false }: SignatureListProps) {
           color: 'bg-blue-100 text-blue-800',
           detail: 'All members',
         }
-      case 'custom':
-        return {
-          label: 'Custom',
-          icon: <UsersIcon className='mr-1 h-4 w-4' />,
-          color: 'bg-green-100 text-green-800',
-          detail: 'Selected groups',
-        }
       default:
         return { label: 'Unknown', icon: null, color: 'bg-gray-100 text-gray-800', detail: '' }
     }
@@ -149,11 +141,9 @@ export function SignatureList({ isAdmin = false }: SignatureListProps) {
             </div>
           }
           button={
-            <Button size='sm' variant='outline' asChild>
-              <Link href='/app/settings/signatures/new'>
-                <Plus />
-                Create signature
-              </Link>
+            <Button size='sm' variant='outline' onClick={onCreate}>
+              <Plus />
+              Create signature
             </Button>
           }
         />
@@ -205,10 +195,7 @@ export function SignatureList({ isAdmin = false }: SignatureListProps) {
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align='end'>
-                        <DropdownMenuItem
-                          onClick={() =>
-                            router.push(`/app/settings/signatures/${signature.id}/edit`)
-                          }>
+                        <DropdownMenuItem onClick={() => onEdit?.(signature.id)}>
                           <PencilIcon />
                           Edit
                         </DropdownMenuItem>
