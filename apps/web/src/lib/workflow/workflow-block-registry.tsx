@@ -355,10 +355,18 @@ export class WorkflowBlockRegistry {
    */
   private extractAppBlockVariables(block: WorkflowBlock, data: any): string[] {
     const fieldModes: Record<string, boolean> = data?.fieldModes || {}
+    // Fields hidden by a ConditionalRender for the current operation. Their
+    // stale values must not leak into the Input tab's required variables — e.g.
+    // switching `order` from `get` to `getMany` leaves a `{{var}}` in the now-
+    // hidden `getOrderId`. Populated by AppWorkflowPanel from the rendered panel
+    // tree; absent (→ no filtering) for nodes whose panel was never opened.
+    const hiddenFields = new Set<string>((data?._hiddenFields as string[]) || [])
     const variables = new Set<string>()
     const varPattern = /\{\{([^}]+)\}\}/g
 
     for (const fieldName of Object.keys(block.schema.inputs || {})) {
+      // Skip fields not visible for the current operation/resource
+      if (hiddenFields.has(fieldName)) continue
       // Only extract from fields in variable mode (constant mode = true/undefined)
       if (fieldModes[fieldName] !== false) continue
 
