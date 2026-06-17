@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.169](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.168...auxx-v0.1.169) (2026-06-17)
+
+
+### Bug Fixes
+
+* **workflow:** exclude hidden app-block fields from single-node inputs ([#879](https://github.com/Auxx-Ai/auxx-ai/issues/879)) ([6df3d7f](https://github.com/Auxx-Ai/auxx-ai/commit/6df3d7fe6a7aeee56f9e1c67569ab980dcc4fbe4))
+
 ## [0.1.168](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.167...auxx-v0.1.168) (2026-06-17)
 
 
