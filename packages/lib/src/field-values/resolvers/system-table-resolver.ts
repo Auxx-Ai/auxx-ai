@@ -129,12 +129,50 @@ async function queryWithJoinScoping(
 }
 
 /**
+ * Resolve system fields backed by real columns on the shared `EntityInstance`
+ * table (`id` / `createdAt` / `updatedAt`).
+ *
+ * EntityDefinition-backed resources (contact, ticket, custom entities) are NOT
+ * in `RESOURCE_TABLE_MAP`, so their column-backed system fields can't go through
+ * {@link resolveSystemTableFields} — every such record is a row in
+ * `EntityInstance` instead. One query per batch, org + id scoped.
+ */
+export async function resolveEntityInstanceFields(
+  ctx: FieldValueContext,
+  entityDefId: string,
+  entityIds: string[],
+  fields: SystemFieldDescriptor[]
+): Promise<TypedFieldValueResult[]> {
+  if (entityIds.length === 0 || fields.length === 0) return []
+
+  const table = schema.EntityInstance
+
+  // Build column selection: { fieldKey: drizzleColumn }
+  const selectedColumns: Record<string, any> = {}
+  for (const field of fields) {
+    const col = (table as any)[field.dbColumn]
+    if (col) {
+      selectedColumns[field.fieldKey] = col
+    }
+  }
+
+  if (Object.keys(selectedColumns).length === 0) return []
+
+  const rows = await ctx.db
+    .select({ id: table.id, ...selectedColumns })
+    .from(table)
+    .where(and(inArray(table.id, entityIds), eq(table.organizationId, ctx.organizationId)))
+
+  return mapRowsToResults(rows, fields, entityDefId)
+}
+
+/**
  * Map raw DB rows to TypedFieldValueResult[].
  */
 function mapRowsToResults(
   rows: Record<string, any>[],
   fields: SystemFieldDescriptor[],
-  entityDefId: TableId
+  entityDefId: string
 ): TypedFieldValueResult[] {
   const results: TypedFieldValueResult[] = []
 
