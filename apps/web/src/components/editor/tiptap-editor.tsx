@@ -55,6 +55,8 @@ type TiptapEditorProps = {
   aiSlash?: MailAiSlashConfig
   /** Optional attachment wiring — surfaces the "Attach file" item in the `/` menu. */
   onAttachFile?: (file: FileItem) => void
+  /** Optional upload wiring — pins an "Upload from computer" row in the file drill-in. */
+  onUploadFiles?: (files: File[]) => void
   /**
    * Optional signature/action wiring. When present, registers the `@` trigger
    * (signature + action menu) alongside `/`. Absent (e.g. chat) → `@` types a
@@ -81,6 +83,7 @@ const TiptapEditor = ({
   onEnter,
   aiSlash,
   onAttachFile,
+  onUploadFiles,
   references,
   variant = 'rich',
 }: TiptapEditorProps) => {
@@ -320,6 +323,7 @@ const TiptapEditor = ({
             onClose={closeSlash}
             aiSlash={aiSlash}
             onAttachFile={onAttachFile}
+            onUploadFiles={onUploadFiles}
             references={references}
             blockCommands={isPlain ? [] : MAIL_BLOCK_COMMANDS}
           />

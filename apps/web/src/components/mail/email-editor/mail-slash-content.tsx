@@ -101,6 +101,12 @@ export interface MailSlashContentProps {
    * attachment tray (`useFileSelect.addExistingFiles`). Absent → no file item.
    */
   onAttachFile?: (file: FileItem) => void
+  /**
+   * Optional upload wiring — when present, the file drill-in pins an "Upload from
+   * computer" row that opens the native dialog and routes fresh files into the
+   * composer's attachment tray (`useFileSelect.addFiles`).
+   */
+  onUploadFiles?: (files: File[]) => void
   /** Which trigger opened the chip. Defaults to `'/'`. `'@'` roots the reference menu. */
   trigger?: PickerTrigger
   /** Draft-level signature/action wiring for the `@` menu. */
@@ -368,6 +374,14 @@ export function MailSlashContent(props: MailSlashContentProps) {
           props.onAttachFile?.(file)
           exitMode()
         }}
+        onUploadFiles={
+          props.onUploadFiles
+            ? (files) => {
+                props.onUploadFiles?.(files)
+                exitMode()
+              }
+            : undefined
+        }
       />
     )
   }
