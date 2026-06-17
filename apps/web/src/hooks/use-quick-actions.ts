@@ -41,7 +41,8 @@ function installationToActions(installation: AppInstallation): SerializedQuickAc
     color: action.color,
     // The catalog ships tool inputs as a JSON Schema; the quick-action form
     // reads the SDK field-descriptor map. Bridge here (see comment on the fn).
-    inputs: jsonSchemaToActionFields(action.inputsJsonSchema),
+    // `inputHints` layers dynamic-select pickers over named inputs.
+    inputs: jsonSchemaToActionFields(action.inputsJsonSchema, action.inputHints),
     outputs: {},
     defaults: {},
     appId: installation.app.id,
@@ -62,7 +63,8 @@ function installationToActions(installation: AppInstallation): SerializedQuickAc
  * derived from the field key.
  */
 export function jsonSchemaToActionFields(
-  schema: Record<string, any> | undefined
+  schema: Record<string, any> | undefined,
+  inputHints?: Record<string, any> | null
 ): Record<string, any> {
   const properties = schema?.properties as Record<string, any> | undefined
   if (!properties) return {}
@@ -70,7 +72,15 @@ export function jsonSchemaToActionFields(
 
   const fields: Record<string, any> = {}
   for (const [key, prop] of Object.entries(properties)) {
-    fields[key] = jsonSchemaPropToField(key, prop, required.includes(key))
+    const base = jsonSchemaPropToField(key, prop, required.includes(key))
+    // A dynamic-select hint wins over the JSON-Schema-derived type: the field
+    // renders a live, contact-scoped picker instead of a text/number input.
+    const hint = inputHints?.[key]
+    if (hint?.kind === 'dynamic-select') {
+      fields[key] = { ...base, type: 'dynamic-select', dynamicSelect: hint.dynamicSelect }
+    } else {
+      fields[key] = base
+    }
   }
   return fields
 }

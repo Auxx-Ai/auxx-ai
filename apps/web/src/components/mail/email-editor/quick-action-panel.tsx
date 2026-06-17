@@ -26,6 +26,7 @@ import { useCallback, useMemo, useRef, useState } from 'react'
 import { MultiSelectPicker } from '~/components/pickers/multi-select-picker'
 import { useQuickActions } from '~/hooks/use-quick-actions'
 import type { SerializedQuickAction } from '~/lib/workflow/workflow-block-loader'
+import { api } from '~/trpc/react'
 
 interface QuickActionPanelProps {
   actions: DraftActionPayload[]
@@ -34,6 +35,9 @@ interface QuickActionPanelProps {
   onUpdate: (actionId: string, inputs: Record<string, unknown>) => void
   threadId?: string
   ticketId?: string
+  /** The thread's primary contact record id (`contact:<instanceId>`), if known.
+   * Dynamic-select inputs bind their options against it. */
+  contactRecordId?: string | null
   disabled?: boolean
   popoverClassName?: string
   onPopoverOpenChange?: (open: boolean) => void
@@ -46,6 +50,7 @@ export function QuickActionPanel({
   disabled,
   threadId,
   ticketId,
+  contactRecordId,
   popoverClassName,
   onPopoverOpenChange,
 }: QuickActionPanelProps) {
@@ -82,6 +87,7 @@ export function QuickActionPanel({
               key={`${action.appId}:${action.actionId}`}
               action={action}
               schema={schemaByKey.get(`${action.appId}:${action.actionId}`)}
+              contactRecordId={contactRecordId}
               onRemove={() => onRemove(action.actionId)}
               onUpdate={onUpdate}
               disabled={disabled}
@@ -98,6 +104,7 @@ export function QuickActionPanel({
 function QuickActionChip({
   action,
   schema,
+  contactRecordId,
   onRemove,
   onUpdate,
   disabled,
@@ -106,6 +113,7 @@ function QuickActionChip({
 }: {
   action: DraftActionPayload
   schema?: { inputs: Record<string, any> }
+  contactRecordId?: string | null
   onRemove: () => void
   onUpdate: (actionId: string, inputs: Record<string, unknown>) => void
   disabled?: boolean
@@ -172,6 +180,10 @@ function QuickActionChip({
                 fields={schema.inputs}
                 values={action.inputs}
                 onChange={(inputs) => onUpdate(action.actionId, inputs)}
+                appId={action.appId}
+                installationId={action.installationId}
+                actionId={action.actionId}
+                contactRecordId={contactRecordId}
                 disabled={disabled}
                 popoverClassName={popoverClassName}
                 onPopoverOpenChange={onPopoverOpenChange}
@@ -336,6 +348,10 @@ function QuickActionForm({
   fields,
   values,
   onChange,
+  appId,
+  installationId,
+  actionId,
+  contactRecordId,
   disabled,
   popoverClassName,
   onPopoverOpenChange,
@@ -343,6 +359,10 @@ function QuickActionForm({
   fields: Record<string, any>
   values: Record<string, unknown>
   onChange: (values: Record<string, unknown>) => void
+  appId: string
+  installationId: string
+  actionId: string
+  contactRecordId?: string | null
   disabled?: boolean
   popoverClassName?: string
   onPopoverOpenChange?: (open: boolean) => void
@@ -359,6 +379,10 @@ function QuickActionForm({
           field={field}
           value={values[key]}
           onChange={(v) => onChange({ ...values, [key]: v })}
+          appId={appId}
+          installationId={installationId}
+          actionId={actionId}
+          contactRecordId={contactRecordId}
           disabled={disabled}
           popoverClassName={popoverClassName}
           onPopoverOpenChange={onPopoverOpenChange}
@@ -373,6 +397,10 @@ function QuickActionField({
   field,
   value,
   onChange,
+  appId,
+  installationId,
+  actionId,
+  contactRecordId,
   disabled,
   popoverClassName,
   onPopoverOpenChange,
@@ -381,6 +409,10 @@ function QuickActionField({
   field: any
   value: unknown
   onChange: (value: unknown) => void
+  appId: string
+  installationId: string
+  actionId: string
+  contactRecordId?: string | null
   disabled?: boolean
   popoverClassName?: string
   onPopoverOpenChange?: (open: boolean) => void
@@ -388,6 +420,25 @@ function QuickActionField({
   const label = field.label || fieldKey
 
   switch (field.type) {
+    case 'dynamic-select':
+      return (
+        <QuickActionDynamicSelectField
+          label={label}
+          value={(value as string) ?? ''}
+          onChange={onChange}
+          appId={appId}
+          installationId={installationId}
+          actionId={actionId}
+          fieldKey={fieldKey}
+          contactRecordId={contactRecordId}
+          emptyHint={field.dynamicSelect?.emptyHint}
+          placeholder={field.placeholder}
+          disabled={disabled}
+          popoverClassName={popoverClassName}
+          onPopoverOpenChange={onPopoverOpenChange}
+        />
+      )
+
     case 'string':
       return (
         <div className='flex items-center gap-2'>
@@ -480,6 +531,100 @@ function QuickActionField({
       }
       return null
   }
+}
+
+/**
+ * A select whose options are loaded at open time from `quickAction.resolveOptions`
+ * — the app's resolver tool run against the thread's contact. When no contact is
+ * linked or zero options resolve, the control renders disabled with the hint
+ * (decision 6 — show, don't hide). See plans/actions/09-dynamic-action-inputs.md.
+ */
+function QuickActionDynamicSelectField({
+  label,
+  value,
+  onChange,
+  appId,
+  installationId,
+  actionId,
+  fieldKey,
+  contactRecordId,
+  emptyHint,
+  placeholder,
+  disabled,
+  popoverClassName,
+  onPopoverOpenChange,
+}: {
+  label: string
+  value: string
+  onChange: (value: unknown) => void
+  appId: string
+  installationId: string
+  actionId: string
+  fieldKey: string
+  contactRecordId?: string | null
+  emptyHint?: string
+  placeholder?: string
+  disabled?: boolean
+  popoverClassName?: string
+  onPopoverOpenChange?: (open: boolean) => void
+}) {
+  const [opened, setOpened] = useState(false)
+  // Fetch when the picker is opened, or up-front when a value is already stored
+  // (so we can render its label). Cached for the compose session — charges don't
+  // change mid-compose, so re-opening doesn't re-invoke the lambda.
+  const enabled = !!contactRecordId && (opened || !!value)
+  const optionsQuery = api.quickAction.resolveOptions.useQuery(
+    {
+      appId,
+      installationId,
+      actionId,
+      fieldKey,
+      recordId: contactRecordId ?? '',
+    },
+    { enabled, staleTime: 60_000, refetchOnWindowFocus: false }
+  )
+
+  const resolved = optionsQuery.data?.options ?? []
+  const comboOptions = resolved.map((o) => ({
+    value: o.value,
+    label: o.sublabel ? `${o.label} — ${o.sublabel}` : o.label,
+  }))
+  // Keep a previously-picked value visible even before/without a fresh load.
+  if (value && !comboOptions.some((o) => o.value === value)) {
+    comboOptions.unshift({ value, label: value })
+  }
+
+  const noOptions = enabled && !optionsQuery.isLoading && resolved.length === 0
+  const hintText =
+    (!contactRecordId ? emptyHint : optionsQuery.data?.disabledHint) ??
+    emptyHint ??
+    'No options available'
+  // Disabled when there's nothing to pick (no contact, or resolved empty) and no
+  // value already chosen.
+  const isDisabled = disabled || ((!contactRecordId || noOptions) && !value)
+
+  return (
+    <div className='flex items-center gap-2'>
+      <label className='min-w-16 shrink-0 text-xs text-muted-foreground'>{label}</label>
+      <Combobox
+        options={comboOptions}
+        placeholder={isDisabled ? hintText : placeholder || 'Select...'}
+        emptyText={optionsQuery.isLoading ? 'Loading…' : hintText}
+        value={value}
+        onChangeValue={(v) => onChange(v || undefined)}
+        loading={optionsQuery.isLoading}
+        disabled={isDisabled}
+        variant='outline'
+        size='sm'
+        className='h-6 text-xs'
+        popoverClassName={popoverClassName}
+        onOpenChange={(o) => {
+          if (o) setOpened(true)
+          onPopoverOpenChange?.(o)
+        }}
+      />
+    </div>
+  )
 }
 
 function QuickActionCurrencyField({

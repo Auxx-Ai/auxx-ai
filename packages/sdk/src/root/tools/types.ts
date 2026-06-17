@@ -173,6 +173,52 @@ export interface ToolActionSurface {
   readonly confirmationMessage?: string
   readonly shouldShow?: (ctx: ToolActionContext) => boolean
   readonly getDefaults?: (ctx: ToolActionContext) => Record<string, unknown>
+  /**
+   * Per-input presentation overrides for the quick-action form, keyed by
+   * top-level input name. Does NOT replace the Zod input schema — that stays the
+   * source of truth for validation. The annotation only layers presentation +
+   * option-resolution metadata onto named inputs. Absent inputs render from the
+   * JSON Schema as usual. See plans/actions/09-dynamic-action-inputs.md.
+   */
+  readonly inputs?: Record<string, ActionInputHint>
+}
+
+/**
+ * A presentation override for a single quick-action input. Discriminated by
+ * `kind` so new control flavors (`currency`, `entity-picker`, …) can be added
+ * without breaking existing readers.
+ */
+export type ActionInputHint = { kind: 'dynamic-select'; dynamicSelect: DynamicSelectHint }
+
+/**
+ * Loads a select field's options at form-open time by running an app resolver
+ * tool, scoped to the thread's contact. The human-form analog of
+ * `ToolAgentSurface.inputBindings`. See plans/actions/09-dynamic-action-inputs.md.
+ */
+export interface DynamicSelectHint {
+  /** Local tool id (same app) whose execute() returns the candidate list. */
+  readonly optionsFrom: string
+  /**
+   * Maps the resolver tool's inputs to var refs resolved against the thread's
+   * contact — same ref grammar as `ToolAgentSurface.inputBindings`
+   * (e.g. `{ stripeCustomerId: 'contact:@app:stripe:customerId' }`).
+   */
+  readonly bindArgsFrom?: Record<string, string>
+  /** Constant args merged into the resolver call (e.g. `{ limit: 20 }`). */
+  readonly args?: Record<string, unknown>
+  /**
+   * Path into each output item that becomes the field's stored value. The
+   * resolver output is treated as an array; if it's an object, `itemsPath`
+   * selects the array first.
+   */
+  readonly valuePath: string
+  readonly itemsPath?: string
+  /** `{field}` template over each item for the option label. */
+  readonly labelTemplate: string
+  /** Optional `{field}` template for a dimmer secondary line. */
+  readonly sublabelTemplate?: string
+  /** Text shown disabled when no options resolve. */
+  readonly emptyHint?: string
 }
 
 /**

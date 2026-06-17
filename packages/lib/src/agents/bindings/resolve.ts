@@ -1,5 +1,6 @@
 // packages/lib/src/agents/bindings/resolve.ts
 
+import { type Database, database } from '@auxx/database'
 import { extractValue, type TypedFieldValue } from '@auxx/types'
 import type {
   FieldPath,
@@ -15,7 +16,7 @@ import {
   parseResourceFieldId,
   toResourceFieldId,
 } from '@auxx/types/field'
-import { parseRecordId } from '@auxx/types/resource'
+import { parseRecordId, type RecordId } from '@auxx/types/resource'
 import type { Subject, ToolContext } from '../../ai/agent-framework/tool-context'
 import {
   getCachedEntityDefId,
@@ -132,6 +133,21 @@ function parseAppSegment(fieldPart: string): { slug: string; key: string } | nul
  * pass through unchanged.
  */
 async function resolveAppSegments(ref: VarRef, ctx: ToolContext): Promise<VarRef | null> {
+  return resolveAppSegmentsWith(ref, ctx.organizationId, (slug) => ctx.appAccounts?.[slug]?.credId)
+}
+
+/**
+ * Connection-explicit core of {@link resolveAppSegments}. `credIdForSlug` returns
+ * the bound connection id for an app slug — the agent reads it from
+ * `ctx.appAccounts`, the quick-action picker passes the workspace connection
+ * id (one app, one connection). Returns `null` when any `@app:` segment can't
+ * resolve (no connection, no provisioned field).
+ */
+async function resolveAppSegmentsWith(
+  ref: VarRef,
+  orgId: string,
+  credIdForSlug: (slug: string) => string | undefined
+): Promise<VarRef | null> {
   const segments: ResourceFieldId[] = isFieldPath(ref) ? ref : [ref]
   const rewritten: ResourceFieldId[] = []
 
@@ -142,16 +158,46 @@ async function resolveAppSegments(ref: VarRef, ctx: ToolContext): Promise<VarRef
       rewritten.push(segment)
       continue
     }
-    const credId = ctx.appAccounts?.[app.slug]?.credId
+    const credId = credIdForSlug(app.slug)
     if (!credId) return null // no bound store → "connect a store"
-    const entityDefId = await getCachedEntityDefId(ctx.organizationId, slug)
+    const entityDefId = await getCachedEntityDefId(orgId, slug)
     if (!entityDefId) return null
-    const cfId = await resolveAppFieldId(ctx.organizationId, entityDefId, app.slug, app.key, credId)
+    const cfId = await resolveAppFieldId(orgId, entityDefId, app.slug, app.key, credId)
     if (!cfId) return null
     rewritten.push(toResourceFieldId(entityDefId, cfId))
   }
 
   return isFieldPath(ref) ? (rewritten as FieldPath) : rewritten[0]!
+}
+
+/**
+ * Read a single field value off a known record, resolving `@app:<slug>:<key>`
+ * segments against an explicit connection. The decoupled core shared by the
+ * agent binding resolver and the quick-action `resolveOptions` endpoint — it
+ * needs only `(orgId, recordId, connectionId)`, never a `ToolContext`/`Subject`.
+ *
+ * Returns `undefined` when the ref can't resolve (no provisioned field, empty
+ * value) — the caller treats that as the disabled/empty state. See
+ * plans/actions/09-dynamic-action-inputs.md.
+ */
+export async function resolveAppFieldValue(params: {
+  orgId: string
+  recordId: RecordId
+  ref: string
+  connectionId: string
+  db?: Database
+}): Promise<unknown> {
+  const { orgId, recordId, ref, connectionId, db = database } = params
+  const resolved = await resolveAppSegmentsWith(ref as VarRef, orgId, () => connectionId)
+  if (!resolved) return undefined
+  if (fieldPartOf(resolved) === 'self') return parseRecordId(recordId).entityInstanceId
+
+  const service = new FieldValueService(orgId, undefined, db)
+  const result = await service.batchGetValues({
+    recordIds: [recordId],
+    fieldReferences: [resolved],
+  })
+  return firstScalar(result.values)
 }
 
 /**
