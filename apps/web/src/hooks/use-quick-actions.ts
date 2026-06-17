@@ -33,24 +33,87 @@ function installationToActions(installation: AppInstallation): SerializedQuickAc
   const actions = installation.actions ?? []
   if (actions.length === 0) return []
 
-  // Build a tool-id → agent tool lookup for input schemas. Action-only tools
-  // aren't in `agentTools`, so their inputs render as an empty form until the
-  // envelope is extended with a tools-by-id projection.
-  const toolsById = new Map((installation.agentTools ?? []).map((t) => [t.id, t]))
+  return actions.map((action) => ({
+    id: action.toolId,
+    label: action.label,
+    description: action.description,
+    icon: action.iconKey ?? undefined,
+    color: action.color,
+    // The catalog ships tool inputs as a JSON Schema; the quick-action form
+    // reads the SDK field-descriptor map. Bridge here (see comment on the fn).
+    inputs: jsonSchemaToActionFields(action.inputsJsonSchema),
+    outputs: {},
+    defaults: {},
+    appId: installation.app.id,
+    installationId: installation.installationId,
+  }))
+}
 
-  return actions.map((action) => {
-    const tool = toolsById.get(action.toolId)
+/**
+ * Convert a tool's input JSON Schema — `zodToProviderToolSchema` output, shaped
+ * `{ type: 'object', properties: {…}, required: [...] }` — into the flat
+ * field-descriptor map the quick-action form renders
+ * (`{ fieldKey: { type, label, options, … } }`, keyed by field name).
+ *
+ * Tool inputs ship as JSON Schema since the catalog refactor; the form predates
+ * it and was built against the old iframe SDK descriptor shape, so this bridges
+ * the two. Lossy by design: JSON Schema carries no `currency`-type or label
+ * metadata, so currency inputs fall back to plain number fields and labels are
+ * derived from the field key.
+ */
+export function jsonSchemaToActionFields(
+  schema: Record<string, any> | undefined
+): Record<string, any> {
+  const properties = schema?.properties as Record<string, any> | undefined
+  if (!properties) return {}
+  const required: string[] = Array.isArray(schema?.required) ? schema.required : []
+
+  const fields: Record<string, any> = {}
+  for (const [key, prop] of Object.entries(properties)) {
+    fields[key] = jsonSchemaPropToField(key, prop, required.includes(key))
+  }
+  return fields
+}
+
+function jsonSchemaPropToField(key: string, prop: any, required: boolean): Record<string, any> {
+  const base = { label: titleCaseKey(key), required, description: prop?.description }
+
+  // A fixed value set → single-select, regardless of the underlying scalar type.
+  if (Array.isArray(prop?.enum)) {
     return {
-      id: action.toolId,
-      label: action.label,
-      description: action.description,
-      icon: action.iconKey ?? undefined,
-      color: action.color,
-      inputs: (tool?.inputsJsonSchema as Record<string, any>) ?? {},
-      outputs: (tool?.outputsJsonSchema as Record<string, any>) ?? {},
-      defaults: {},
-      appId: installation.app.id,
-      installationId: installation.installationId,
+      ...base,
+      type: 'select',
+      options: prop.enum.map((value: unknown) => ({ value, label: String(value) })),
     }
-  })
+  }
+
+  switch (prop?.type) {
+    case 'integer':
+    case 'number':
+      return {
+        ...base,
+        type: 'number',
+        integer: prop.type === 'integer',
+        // JSON Schema's exclusiveMinimum (e.g. `> 0`) maps to the input's
+        // inclusive `min` — close enough for the UI; the server re-validates.
+        min:
+          prop.minimum ??
+          (typeof prop.exclusiveMinimum === 'number' ? prop.exclusiveMinimum : undefined),
+        max: prop.maximum,
+      }
+    case 'boolean':
+      return { ...base, type: 'boolean' }
+    default:
+      return { ...base, type: 'string' }
+  }
+}
+
+/** `maxRedemptions` / `duration_in_months` → `Max Redemptions` / `Duration In Months`. */
+function titleCaseKey(key: string): string {
+  return key
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/^\w/, (c) => c.toUpperCase())
 }

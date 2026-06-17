@@ -4,7 +4,7 @@ import { schema } from '@auxx/database'
 import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { getBuiltinAuxxInstalledRow } from '../../agents/builtin-installed-row'
 import { getRegisteredToolName } from '../../ai/kopilot/capabilities/apps/tool-naming'
-import type { CachedAgentTool, CachedInstalledApp } from '../org-cache-keys'
+import type { CachedAction, CachedAgentTool, CachedInstalledApp } from '../org-cache-keys'
 import type { CacheProvider } from '../org-cache-provider'
 
 /**
@@ -112,6 +112,16 @@ export const installedAppsProvider: CacheProvider<CachedInstalledApp[]> = {
           iconId: toolsetIconBySlug.get(t.toolsetSlug) ?? appIconId,
         })) ?? undefined
 
+      // Join action → tool inputs from the FULL tool registry (`catalog.tools`),
+      // not `agent.tools`: action-only tools have no agent surface and so aren't
+      // in `agent.tools`. The quick-action form keys off `inputsJsonSchema`.
+      const toolInputsById = new Map(
+        (inst.currentDeployment?.catalog?.tools ?? []).map((t) => [t.id, t.inputsJsonSchema])
+      )
+      const actions: CachedAction[] | undefined = inst.currentDeployment?.catalog?.actions.map(
+        (a) => ({ ...a, inputsJsonSchema: toolInputsById.get(a.toolId) ?? {} })
+      )
+
       return {
         installationId: inst.id,
         installationType: inst.installationType as 'development' | 'production',
@@ -158,7 +168,7 @@ export const installedAppsProvider: CacheProvider<CachedInstalledApp[]> = {
         agentTriggers: inst.currentDeployment?.catalog?.agent.triggers ?? undefined,
         workflowBlocks: inst.currentDeployment?.catalog?.workflow.blocks ?? undefined,
         workflowTriggers: inst.currentDeployment?.catalog?.workflow.triggers ?? undefined,
-        actions: inst.currentDeployment?.catalog?.actions ?? undefined,
+        actions,
         orgConnectionPresent: orgConnByAppId.get(inst.app.id)?.present ?? false,
         orgConnectionExpiresAt: orgConnByAppId.get(inst.app.id)?.expiresAt?.toISOString() ?? null,
       }
