@@ -41,6 +41,7 @@ import React, {
   useRef,
   useState,
 } from 'react'
+import { useAppsContext } from '~/components/apps/providers/apps-context'
 import { AppAccountPopover } from '~/components/apps/ui/app-account-popover'
 import { AppIcon } from '~/components/apps/ui/app-icon'
 import { AppWithStatusIcon } from '~/components/apps/ui/app-with-status-icon'
@@ -67,7 +68,6 @@ import NextStep from '~/components/workflow/ui/next-step'
 // Specific UI imports
 import { ReplaceTrigger } from '~/components/workflow/ui/replace-trigger'
 import { useDebouncedCallback } from '~/hooks/use-debounced-value'
-import { useExtensionsContext } from '~/providers/extensions/extensions-context'
 import { ALLOW_TRIGGER_DELETE, unifiedNodeRegistry } from '../../unified-registry'
 import { SingleRunInputTab } from '../single-run-input-tab'
 import { SingleRunResultTab } from '../single-run-result-tab'
@@ -106,7 +106,7 @@ const KeyboardShortcut = ({ shortcut }: { shortcut: string }) => (
  * plans/kopilot/apps/agent-credentials.md §5.9.
  */
 function AppPanelIcon({ appId, iconId, color }: { appId: string; iconId: string; color: string }) {
-  const { appConnections } = useExtensionsContext()
+  const { appConnections } = useAppsContext()
   const connection = appConnections.find((c) => c.appId === appId)
   const status = connection
     ? ((connection.connectionStatus as 'connected' | 'expired' | 'not_connected') ??
@@ -131,7 +131,7 @@ const AppSettingsTrigger = React.forwardRef<
   HTMLDivElement,
   React.ComponentPropsWithoutRef<'div'> & { appId: string }
 >(({ appId, ...props }, ref) => {
-  const { appInstallations, appConnections } = useExtensionsContext()
+  const { appInstallations, appConnections } = useAppsContext()
 
   const installation = appInstallations.find((i) => i.app.id === appId)
   const hasConnectionDef = !!(

@@ -17,8 +17,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@auxx/ui/components/ta
 import { toastError } from '@auxx/ui/components/toast'
 import { Code, Globe, LucideGitGraph, Mail } from 'lucide-react'
 import { type ReactNode, Suspense, useMemo, useState } from 'react'
+import { useAppsContext } from '~/components/apps/providers/apps-context'
 import { useUser } from '~/hooks/use-user'
-import { useExtensionsContext } from '~/providers/extensions/extensions-context'
 import { api } from '~/trpc/react'
 import AppConnections from './app-connections'
 import { SettingsFormRenderer } from './settings-form-renderer'
@@ -77,7 +77,7 @@ export function AppSettingsDialog({
   const [activeTab, setActiveTab] = useState<Tab>(initialTab)
   const { isAdminOrOwner } = useUser()
 
-  const { appInstallations } = useExtensionsContext()
+  const { appInstallations } = useAppsContext()
 
   // Find installation by slug + installationType
   const installation = useMemo(

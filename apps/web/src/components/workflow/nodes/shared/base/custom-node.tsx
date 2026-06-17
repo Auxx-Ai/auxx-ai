@@ -2,8 +2,8 @@
 
 import type { NodeProps } from '@xyflow/react'
 import { useMemo } from 'react'
+import { AppWorkflowNode } from '~/components/workflow/apps/app-workflow-node'
 import { useRegistryVersion } from '~/components/workflow/hooks'
-import { AppWorkflowNode } from '~/lib/workflow/components/app-workflow-node'
 import { NoteNode } from '../../core/note'
 import { unifiedNodeRegistry } from '../../unified-registry'
 

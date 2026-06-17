@@ -30,7 +30,7 @@ export interface ToolsetReferenceListProps {
 /**
  * Flat single-list search component for the ReferencePicker Tools tab.
  *
- * Backed by `useExtensionsContext().appInstallations` via `useToolCatalog`,
+ * Backed by `useAppsContext().appInstallations` via `useToolCatalog`,
  * which returns the org catalog tree; this component flattens it to one row
  * per toolset for the picker. The "Tools" tab is one of intentionally-coarse
  * granularity: an admin pins a whole toolset to the persona prompt and the

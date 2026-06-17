@@ -8,10 +8,7 @@ import {
   flattenCatalogToToolsets,
 } from '@auxx/lib/agents/client'
 import { useMemo } from 'react'
-import {
-  type AppInstallation,
-  useExtensionsContext,
-} from '~/providers/extensions/extensions-context'
+import { type AppInstallation, useAppsContext } from '~/components/apps/providers/apps-context'
 
 export interface ResolvedTool {
   /** Snake-case tool name as streamed in `ToolCallPart.name`. */
@@ -37,14 +34,14 @@ export interface ResolvedTool {
  *
  * Indexes the SAME unified catalog tree the Tools tab and pickers render
  * (`buildCatalogTreeFromInstallations` + `buildMcpCatalogNodes` over
- * `useExtensionsContext()`), so the pill resolves exactly the entries the
+ * `useAppsContext()`), so the pill resolves exactly the entries the
  * catalog produces — no bespoke merge, no MCP special-casing here. Tool keys
  * are the registered names (`registeredName` / `mcpToolName`), matching what
  * the LLM actually invokes; icons are the flattened catalog's pre-cascaded
  * per-toolset icon (toolset icon → app avatar → fallback glyph).
  */
 export function useToolAppResolver() {
-  const { appInstallations, mcpServers } = useExtensionsContext()
+  const { appInstallations, mcpServers } = useAppsContext()
 
   const toolMap = useMemo(() => {
     const byAppId = new Map(appInstallations.map((inst) => [inst.app.id, inst]))

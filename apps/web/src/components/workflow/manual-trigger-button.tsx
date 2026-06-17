@@ -13,7 +13,7 @@ import {
 import { toastError } from '@auxx/ui/components/toast'
 import { Play } from 'lucide-react'
 import { type ReactNode, useMemo, useRef } from 'react'
-import { createWorkflowInvalidator } from '~/lib/workflow'
+import { createWorkflowInvalidator } from '~/components/workflow/utils/invalidate-resource'
 import { useWorkflowRunStatusStore } from '~/stores/workflow-run-status-store'
 import { api } from '~/trpc/react'
 import { showWorkflowProgressToast } from './workflow-progress-toast'

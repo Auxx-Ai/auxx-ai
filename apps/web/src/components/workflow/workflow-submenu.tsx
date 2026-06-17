@@ -12,7 +12,7 @@ import {
 import { toastError } from '@auxx/ui/components/toast'
 import { Loader2, Play } from 'lucide-react'
 import { useRef } from 'react'
-import { createWorkflowInvalidator } from '~/lib/workflow'
+import { createWorkflowInvalidator } from '~/components/workflow/utils/invalidate-resource'
 import { useWorkflowRunStatusStore } from '~/stores/workflow-run-status-store'
 import { api } from '~/trpc/react'
 import { showWorkflowProgressToast } from './workflow-progress-toast'

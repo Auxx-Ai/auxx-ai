@@ -11,8 +11,8 @@ import {
 } from '@auxx/ui/components/command'
 import { Check, Settings2, TriangleAlert, User as UserIcon, Users, X } from 'lucide-react'
 import { useMemo } from 'react'
+import { type AppConnection, useAppsContext } from '~/components/apps/providers/apps-context'
 import { useUser } from '~/hooks/use-user'
-import { type AppConnection, useExtensionsContext } from '~/providers/extensions/extensions-context'
 import { useAppCredentialOptions } from '../hooks/use-app-credential-options'
 import { useBoundCredential } from '../hooks/use-bound-credential'
 import { type ConnectTarget, useConnectFlow } from '../hooks/use-connect-flow'
@@ -59,7 +59,7 @@ export function AppAccountPicker({
   onViewApp,
   onRemove,
 }: AppAccountPickerProps) {
-  const { appInstallations } = useExtensionsContext()
+  const { appInstallations } = useAppsContext()
   const { isAdminOrOwner } = useUser()
   const options = useAppCredentialOptions(appId)
 

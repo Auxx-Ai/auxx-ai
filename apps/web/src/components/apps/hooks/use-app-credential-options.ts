@@ -2,8 +2,8 @@
 'use client'
 
 import { useMemo } from 'react'
+import { type AppConnection, useAppsContext } from '~/components/apps/providers/apps-context'
 import { useUser } from '~/hooks/use-user'
-import { type AppConnection, useExtensionsContext } from '~/providers/extensions/extensions-context'
 
 export interface AppCredentialOptions {
   /** Org-singleton (workspace) credentials for this app. */
@@ -21,7 +21,7 @@ export interface AppCredentialOptions {
  * fall out of sync. See plans/kopilot/apps/agent-credentials.md §3.4.
  */
 export function useAppCredentialOptions(appId: string | undefined | null): AppCredentialOptions {
-  const { appConnections } = useExtensionsContext()
+  const { appConnections } = useAppsContext()
   const { userId: currentUserId } = useUser()
 
   return useMemo(() => {

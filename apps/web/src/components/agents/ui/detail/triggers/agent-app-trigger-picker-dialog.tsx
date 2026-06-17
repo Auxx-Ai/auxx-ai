@@ -17,10 +17,7 @@ import { Tabs, TabsList, TabsTrigger } from '@auxx/ui/components/tabs'
 import { pluralize } from '@auxx/utils/strings'
 import { ChevronLeft } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import {
-  type AppInstallation,
-  useExtensionsContext,
-} from '~/providers/extensions/extensions-context'
+import { type AppInstallation, useAppsContext } from '~/components/apps/providers/apps-context'
 import { ToolSelectRow } from '../tools/tool-select-row'
 
 export interface AppTriggerSelection {
@@ -49,7 +46,7 @@ export function AgentAppTriggerPickerDialog({
   onOpenChange,
   onSelect,
 }: AgentAppTriggerPickerDialogProps) {
-  const { appInstallations, isLoading } = useExtensionsContext()
+  const { appInstallations, isLoading } = useAppsContext()
 
   const [viewMode, setViewMode] = useState<ViewMode>('list')
   const [tab, setTab] = useState<ListTab>('all')

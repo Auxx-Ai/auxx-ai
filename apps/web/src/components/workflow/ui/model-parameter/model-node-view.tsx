@@ -6,8 +6,6 @@ import { AiModelMode } from '../../nodes/core/ai'
 import ModelDisplay from './model-display'
 import ModelIcon from './model-icon'
 
-// import { AiModelMode } from '~/lib/workflow/core/nodes/ai/config'
-
 // Schema for completion params
 const completionParamsSchema = z.object({
   temperature: z.number().optional(),

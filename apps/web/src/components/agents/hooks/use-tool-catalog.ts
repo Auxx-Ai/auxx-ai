@@ -9,7 +9,7 @@ import {
   filterCatalogToSurface,
 } from '@auxx/lib/agents/client'
 import { useMemo } from 'react'
-import { useExtensionsContext } from '~/providers/extensions/extensions-context'
+import { useAppsContext } from '~/components/apps/providers/apps-context'
 
 interface UseToolCatalogOptions {
   /**
@@ -33,7 +33,7 @@ export function useToolCatalog(options: UseToolCatalogOptions = {}): {
   isLoading: boolean
 } {
   const { surface } = options
-  const { appInstallations, mcpServers, isLoading } = useExtensionsContext()
+  const { appInstallations, mcpServers, isLoading } = useAppsContext()
   const catalog = useMemo(() => {
     // Same builder the server uses for the catalog merge, so names + nodes agree.
     const tree = [

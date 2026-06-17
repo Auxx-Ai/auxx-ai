@@ -2,19 +2,19 @@
 'use client'
 
 import { toastError } from '@auxx/ui/components/toast'
+import { useAppsContext } from '~/components/apps/providers/apps-context'
 import { useConfirm } from '~/hooks/use-confirm'
-import { useExtensionsContext } from '~/providers/extensions/extensions-context'
 import { api } from '~/trpc/react'
 
 /**
  * Confirm-and-uninstall flow for an installed app, shared by the apps list pages.
- * Invalidates `apps.list` / `apps.listInstalled` and refreshes the ExtensionsContext
+ * Invalidates `apps.list` / `apps.listInstalled` and refreshes the AppsContext
  * projection so every card grid updates without a reload. Render `<ConfirmDialog />`
  * once in the calling page.
  */
 export function useUninstallApp() {
   const utils = api.useUtils()
-  const { refreshInstallations } = useExtensionsContext()
+  const { refreshInstallations } = useAppsContext()
   const [confirm, ConfirmDialog] = useConfirm()
 
   const uninstall = api.apps.uninstall.useMutation({

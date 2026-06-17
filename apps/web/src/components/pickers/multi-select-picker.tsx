@@ -99,6 +99,23 @@ export interface MultiSelectPickerProps {
 
   /** Render a per-row secondary action (e.g., a "favorite" star). Rendered before the selection indicator. */
   renderItemAction?: (opt: SelectOption) => React.ReactNode
+
+  /**
+   * Partition options into headed sections. Returns the group id an option
+   * belongs to; options sharing an id render under one `CommandGroup`. Absent ⇒
+   * a single ungrouped list (default). Search still filters across every group;
+   * groups left empty after filtering are dropped. Selection, create, and manage
+   * are unaffected — they remain keyed by option `value`.
+   */
+  groupBy?: (opt: SelectOption) => string
+
+  /**
+   * Group ordering + headings for {@link groupBy}. Groups render in this order;
+   * `heading` is a node, so callers can render an icon + label (e.g. `<AppIcon>`).
+   * Any group id produced by `groupBy` but missing here is appended after these,
+   * in first-seen order, with its raw id as the heading.
+   */
+  groups?: Array<{ id: string; heading?: React.ReactNode }>
 }
 
 /**
@@ -129,6 +146,8 @@ export function MultiSelectPicker({
   onBrowse,
   browseLabel = 'Browse all',
   renderItemAction,
+  groupBy,
+  groups,
 }: MultiSelectPickerProps) {
   const editInputRef = useRef<HTMLInputElement>(null)
 
@@ -169,6 +188,28 @@ export function MultiSelectPicker({
     const search = searchValue.toLowerCase()
     return localOptions.filter((opt) => opt.label.toLowerCase().includes(search))
   }, [localOptions, searchValue])
+
+  // Partition filtered options into ordered, headed sections when `groupBy` is
+  // set; `null` keeps the single ungrouped list. Group order follows `groups`,
+  // then any ids `groupBy` produces that `groups` omits (first-seen). Empty
+  // groups (all members filtered out by search) are dropped.
+  const groupedOptions = useMemo(() => {
+    if (!groupBy) return null
+    const headingById = new Map((groups ?? []).map((g) => [g.id, g.heading]))
+    const order: string[] = (groups ?? []).map((g) => g.id)
+    const itemsById = new Map<string, SelectOption[]>()
+    for (const opt of filteredOptions) {
+      const id = groupBy(opt)
+      if (!itemsById.has(id)) {
+        itemsById.set(id, [])
+        if (!headingById.has(id)) order.push(id)
+      }
+      itemsById.get(id)?.push(opt)
+    }
+    return order
+      .filter((id) => itemsById.has(id))
+      .map((id) => ({ id, heading: headingById.get(id) ?? id, items: itemsById.get(id) ?? [] }))
+  }, [groupBy, groups, filteredOptions])
 
   // Check if search value matches an existing label (for hiding "Create" option)
   const searchMatchesExisting = useMemo(() => {
@@ -353,6 +394,122 @@ export function MultiSelectPicker({
     setIsManageMode(!isManageMode)
   }, [isManageMode, editingOptionId, cancelEdit])
 
+  // One option row. Extracted so the grouped and ungrouped lists share identical
+  // item markup — only the surrounding `CommandGroup`(s) differ.
+  const renderOption = (opt: SelectOption) => (
+    <CommandItem
+      key={opt.value}
+      value={opt.value}
+      onSelect={() => {
+        if (isManageMode) {
+          if (onEdit) {
+            onEdit(opt.value)
+          } else {
+            startEdit(opt.value)
+          }
+        } else {
+          handleSelect(opt.value)
+        }
+      }}
+      disabled={disabled}
+      className={cn(
+        'group/item cursor-pointer h-7',
+        isManageMode && 'py-0 pe-1',
+        editingOptionId === opt.value && 'bg-primary-200'
+      )}>
+      <div className='flex items-center justify-between w-full'>
+        <div className='flex items-center gap-2'>
+          {/* Selection indicator (checkbox/radio) or manage icon */}
+
+          {/* Avatar + icon fallback (record pickers carry avatarUrl) */}
+          {opt.avatarUrl ? (
+            <RecordIcon
+              avatarUrl={opt.avatarUrl}
+              iconId={opt.icon || 'circle'}
+              color={opt.color ?? 'gray'}
+              size='sm'
+            />
+          ) : (
+            <>
+              {/* Icon (if option has icon) */}
+              {opt.icon && (
+                <EntityIcon
+                  iconId={opt.icon}
+                  size='sm'
+                  {...(opt.color?.startsWith('#')
+                    ? { style: { color: opt.color } }
+                    : { color: opt.color ?? 'gray' })}
+                />
+              )}
+
+              {/* Color dot (if option has color but no icon) */}
+              {opt.color && !opt.icon && (
+                <div
+                  className={cn(
+                    'size-3 rounded-full ring-1 ring-inset ring-black/10 dark:ring-white/10',
+                    getColorSwatch(opt.color)
+                  )}
+                />
+              )}
+            </>
+          )}
+
+          {/* Option label */}
+          <span className='truncate'>{opt.label}</span>
+        </div>
+        <div className='flex items-center gap-1 shrink-0'>
+          {/* Per-row secondary action (e.g., favorite star) */}
+          {!isManageMode && renderItemAction && renderItemAction(opt)}
+          {/* Edit button on hover (normal mode only) */}
+          {!isManageMode && onEdit && (
+            <button
+              type='button'
+              disabled={disabled}
+              className='hidden group-hover/item:flex size-5 items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-primary-200'
+              onClick={(e) => {
+                e.stopPropagation()
+                onEdit(opt.value)
+              }}>
+              <Settings className='size-3' />
+            </button>
+          )}
+          <div className='flex items-center justify-center'>
+            {isManageMode ? (
+              <span className='bg-secondary rounded-sm py-[1px] px-[3px] text-[10px]'>
+                Click to edit
+              </span>
+            ) : multi ? (
+              <Checkbox
+                checked={localSelected.includes(opt.value)}
+                className='pointer-events-none'
+              />
+            ) : (
+              localSelected.includes(opt.value) && (
+                <div className='rounded-full size-4 bg-info flex items-center justify-center border border-blue-800'>
+                  <Check className='size-2.5! text-white' strokeWidth={4} />
+                </div>
+              )
+            )}
+          </div>
+          {/* Delete button in manage mode */}
+          {isManageMode && (
+            <Button
+              variant='destructive-hover'
+              type='button'
+              size='icon-xs'
+              disabled={disabled}
+              onClick={(e) => {
+                e.stopPropagation()
+                deleteOption(opt.value)
+              }}>
+              <Trash2 />
+            </Button>
+          )}
+        </div>
+      </div>
+    </CommandItem>
+  )
+
   return (
     <Command shouldFilter={false} className={cn('rounded-lg', className)}>
       {/* Search/Edit Input Area */}
@@ -427,121 +584,15 @@ export function MultiSelectPicker({
             )}
             {filteredOptions.length > 0 && (
               <>
-                <CommandGroup>
-                  {filteredOptions.map((opt) => (
-                    <CommandItem
-                      key={opt.value}
-                      value={opt.value}
-                      onSelect={() => {
-                        if (isManageMode) {
-                          if (onEdit) {
-                            onEdit(opt.value)
-                          } else {
-                            startEdit(opt.value)
-                          }
-                        } else {
-                          handleSelect(opt.value)
-                        }
-                      }}
-                      disabled={disabled}
-                      className={cn(
-                        'group/item cursor-pointer h-7',
-                        isManageMode && 'py-0 pe-1',
-                        editingOptionId === opt.value && 'bg-primary-200'
-                      )}>
-                      <div className='flex items-center justify-between w-full'>
-                        <div className='flex items-center gap-2'>
-                          {/* Selection indicator (checkbox/radio) or manage icon */}
-
-                          {/* Avatar + icon fallback (record pickers carry avatarUrl) */}
-                          {opt.avatarUrl ? (
-                            <RecordIcon
-                              avatarUrl={opt.avatarUrl}
-                              iconId={opt.icon || 'circle'}
-                              color={opt.color ?? 'gray'}
-                              size='sm'
-                            />
-                          ) : (
-                            <>
-                              {/* Icon (if option has icon) */}
-                              {opt.icon && (
-                                <EntityIcon
-                                  iconId={opt.icon}
-                                  size='sm'
-                                  {...(opt.color?.startsWith('#')
-                                    ? { style: { color: opt.color } }
-                                    : { color: opt.color ?? 'gray' })}
-                                />
-                              )}
-
-                              {/* Color dot (if option has color but no icon) */}
-                              {opt.color && !opt.icon && (
-                                <div
-                                  className={cn(
-                                    'size-3 rounded-full ring-1 ring-inset ring-black/10 dark:ring-white/10',
-                                    getColorSwatch(opt.color)
-                                  )}
-                                />
-                              )}
-                            </>
-                          )}
-
-                          {/* Option label */}
-                          <span className='truncate'>{opt.label}</span>
-                        </div>
-                        <div className='flex items-center gap-1 shrink-0'>
-                          {/* Per-row secondary action (e.g., favorite star) */}
-                          {!isManageMode && renderItemAction && renderItemAction(opt)}
-                          {/* Edit button on hover (normal mode only) */}
-                          {!isManageMode && onEdit && (
-                            <button
-                              type='button'
-                              disabled={disabled}
-                              className='hidden group-hover/item:flex size-5 items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-primary-200'
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                onEdit(opt.value)
-                              }}>
-                              <Settings className='size-3' />
-                            </button>
-                          )}
-                          <div className='flex items-center justify-center'>
-                            {isManageMode ? (
-                              <span className='bg-secondary rounded-sm py-[1px] px-[3px] text-[10px]'>
-                                Click to edit
-                              </span>
-                            ) : multi ? (
-                              <Checkbox
-                                checked={localSelected.includes(opt.value)}
-                                className='pointer-events-none'
-                              />
-                            ) : (
-                              localSelected.includes(opt.value) && (
-                                <div className='rounded-full size-4 bg-info flex items-center justify-center border border-blue-800'>
-                                  <Check className='size-2.5! text-white' strokeWidth={4} />
-                                </div>
-                              )
-                            )}
-                          </div>
-                          {/* Delete button in manage mode */}
-                          {isManageMode && (
-                            <Button
-                              variant='destructive-hover'
-                              type='button'
-                              size='icon-xs'
-                              disabled={disabled}
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                deleteOption(opt.value)
-                              }}>
-                              <Trash2 />
-                            </Button>
-                          )}
-                        </div>
-                      </div>
-                    </CommandItem>
-                  ))}
-                </CommandGroup>
+                {groupedOptions ? (
+                  groupedOptions.map((group) => (
+                    <CommandGroup key={group.id} heading={group.heading}>
+                      {group.items.map(renderOption)}
+                    </CommandGroup>
+                  ))
+                ) : (
+                  <CommandGroup>{filteredOptions.map(renderOption)}</CommandGroup>
+                )}
                 <div className='-mx-1 h-px bg-border/50' />
               </>
             )}

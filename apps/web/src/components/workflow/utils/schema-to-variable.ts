@@ -1,7 +1,7 @@
 // apps/web/src/components/workflow/utils/schema-to-variable.ts
 
 import { mapFieldTypeToBaseType } from '@auxx/lib/workflow-engine/client'
-import type { WorkflowBlockField } from '~/lib/workflow/types'
+import type { WorkflowBlockField } from '~/components/workflow/types/block-types'
 import { BaseType, type UnifiedVariable } from '../types/variable-types'
 import type { Field, SchemaRoot } from '../ui/json-schema-types'
 import { createUnifiedOutputVariable } from './variable-conversion'

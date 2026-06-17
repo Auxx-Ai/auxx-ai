@@ -9,10 +9,10 @@ import { TreeRow } from '@auxx/ui/components/tree-row'
 import { AlertTriangle, Pencil, Trash2 } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { useState } from 'react'
+import { useAppsContext } from '~/components/apps/providers/apps-context'
 import { AppIcon } from '~/components/apps/ui/app-icon'
 import { Tooltip } from '~/components/global/tooltip'
 import { useConfirm } from '~/hooks/use-confirm'
-import { useExtensionsContext } from '~/providers/extensions/extensions-context'
 import { api, type RouterOutputs } from '~/trpc/react'
 import type { AgentDetail } from '../../../store/agent-store'
 import {
@@ -80,7 +80,7 @@ export function TriggersSectionContent({
   const [editingTrigger, setEditingTrigger] = useState<Trigger | null>(null)
   const [creatingBuiltinKind, setCreatingBuiltinKind] = useState<BuiltinKind | null>(null)
   const [pendingAppSelection, setPendingAppSelection] = useState<AppTriggerSelection | null>(null)
-  const { appInstallations } = useExtensionsContext()
+  const { appInstallations } = useAppsContext()
   const utils = api.useUtils()
 
   const triggers = api.agentTrigger.list.useQuery({ agentId: agent.id })

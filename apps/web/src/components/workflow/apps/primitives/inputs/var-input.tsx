@@ -1,0 +1,113 @@
+// apps/web/src/components/workflow/apps/primitives/inputs/var-input.tsx
+
+'use client'
+
+import { useAppWorkflowFieldContext } from '~/components/workflow/apps/app-workflow-field-context'
+import { VarEditor } from '~/components/workflow/ui/input-editor/var-editor'
+import { mapFieldToVarEditorProps } from '~/components/workflow/utils/field-to-var-editor'
+
+/**
+ * Helper to get a nested value from an object using dot notation.
+ */
+function getNestedValue(obj: any, path: string): any {
+  const keys = path.split('.')
+  let result = obj
+  for (const key of keys) {
+    result = result?.[key]
+  }
+  return result
+}
+
+/**
+ * VarInputInternal — the single host-side component for all app workflow input types.
+ *
+ * Renders a VarEditor configured for the appropriate BaseType/VarMode.
+ * Reads/writes through AppWorkflowFieldContext (no iframe round-trip).
+ *
+ * This component is used directly by the component registry for:
+ * - VarInputInternal (base component)
+ * - StringInputInternal, NumberInputInternal, BooleanInputInternal, OptionsInputInternal (aliases)
+ */
+export const VarInputInternal = ({
+  name,
+  type,
+  placeholder,
+  acceptsVariables,
+  variableTypes,
+  format,
+  options,
+  multiline,
+  expand: _expand,
+  variant,
+  loading,
+}: {
+  name: string
+  type?: string
+  placeholder?: string
+  acceptsVariables?: boolean
+  variableTypes?: string[]
+  format?: string
+  options?: readonly (string | { label: string; value: string })[]
+  multiline?: boolean
+  expand?: boolean // consumed by parent WorkflowVarFieldGroup, ignored here
+  variant?: string
+  loading?: boolean
+}) => {
+  const { nodeId, nodeData, handleFieldChange, getFieldMode, schema, isTrigger } =
+    useAppWorkflowFieldContext()
+
+  // Resolve type and format from schema when not explicitly provided
+  const schemaField = schema?.inputs?.[name]
+  const resolvedType = type ?? schemaField?.type ?? 'string'
+  const resolvedFormat = format ?? schemaField?.format
+
+  // Resolve options: explicit prop > schema metadata > empty
+  const resolvedOptions = options ?? schemaField?.options
+
+  // Resolve acceptsVariables: explicit prop > schema metadata (defaults to false when not set)
+  const resolvedAcceptsVariables = acceptsVariables ?? schemaField?.acceptsVariables
+
+  // Resolve multi-select props from schema
+  const resolvedMulti = schemaField?.multi
+  const resolvedCanAdd = schemaField?.canAdd
+  const resolvedCanManage = schemaField?.canManage
+
+  const { varType, mode, allowConstant, allowedTypes, fieldOptions } = mapFieldToVarEditorProps({
+    type: resolvedType,
+    format: resolvedFormat,
+    options: resolvedOptions,
+    acceptsVariables: resolvedAcceptsVariables,
+    variableTypes,
+    variant,
+    loading,
+    multi: resolvedMulti,
+    canAdd: resolvedCanAdd,
+    canManage: resolvedCanManage,
+  })
+
+  // Dot-path access for nested fields
+  const value = getNestedValue(nodeData, name) ?? ''
+  const isConstantMode = getFieldMode(name)
+
+  return (
+    <VarEditor
+      nodeId={nodeId}
+      value={value ?? ''}
+      onChange={(v, isConstant) => handleFieldChange(name, v, isConstant)}
+      varType={varType}
+      mode={mode}
+      allowConstant={allowConstant}
+      allowVariable={!isTrigger}
+      allowedTypes={allowedTypes}
+      fieldOptions={fieldOptions}
+      placeholder={placeholder}
+      placeholderConstant={placeholder}
+      isConstantMode={isConstantMode}
+      onConstantModeChange={(isConstant) => {
+        // When toggling mode, update fieldModes without changing the value
+        handleFieldChange(name, value, isConstant)
+      }}
+      hideClearButton
+    />
+  )
+}
