@@ -706,10 +706,7 @@ function MailboxInner({
                   </div>
                 )}
                 <div className='flex-1 overflow-hidden'>
-                  <ThreadDisplay
-                    centered={layoutMode === 'list'}
-                    expectedThreadId={selectedThreadId}
-                  />
+                  <ThreadDisplay centered expectedThreadId={selectedThreadId} />
                 </div>
               </div>
             </div>
