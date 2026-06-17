@@ -32,6 +32,7 @@ import {
 import {
   batchFetchSystemRelationships,
   isVirtualField,
+  resolveEntityInstanceFields,
   resolveSystemTableFields,
   resolveVirtualFields,
   type SystemFieldDescriptor,
@@ -303,6 +304,17 @@ async function batchGetAllDirectFieldValues(
     results.push(...systemResults)
   }
 
+  // EntityInstance column fields (created_at/updated_at/id on EntityDefinition entities)
+  if (categorized.entityInstanceDbFields.length > 0) {
+    const entityInstanceResults = await resolveEntityInstanceFields(
+      ctx,
+      entityDefinitionId,
+      entityInstanceIds,
+      categorized.entityInstanceDbFields
+    )
+    results.push(...entityInstanceResults)
+  }
+
   // Virtual fields (Layer 2)
   if (categorized.virtualFields.length > 0) {
     const virtualResults = await fetchVirtualFieldResults(
@@ -343,6 +355,13 @@ async function batchGetAllDirectFieldValues(
 
 interface CategorizedFields {
   systemDbFields: SystemFieldDescriptor[]
+  /**
+   * System fields backed by columns on the shared `EntityInstance` table
+   * (`id` / `createdAt` / `updatedAt`). EntityDefinition-backed resources
+   * (contact, ticket, custom entities) are not `isSystemResourceId`, so these
+   * can't go through `systemDbFields` — they resolve from EntityInstance.
+   */
+  entityInstanceDbFields: SystemFieldDescriptor[]
   virtualFields: Array<{
     fieldKey: string
     fieldId: string
@@ -352,6 +371,15 @@ interface CategorizedFields {
   }>
   fieldValueFieldIds: string[]
   fieldIdToKeyMap: Map<string, string>
+}
+
+/**
+ * Whether a dbColumn exists as a real column on the shared EntityInstance table.
+ * Used to route EntityDefinition-backed system fields (created_at/updated_at/id)
+ * to the EntityInstance resolver instead of the (empty) FieldValue query.
+ */
+function isEntityInstanceColumn(dbColumn: string): boolean {
+  return Boolean((schema.EntityInstance as Record<string, unknown>)[dbColumn])
 }
 
 /**
@@ -374,6 +402,7 @@ async function categorizeFields(
   const cachedResource = await findCachedResource(ctx.organizationId, entityDefinitionId)
 
   const systemDbFields: SystemFieldDescriptor[] = []
+  const entityInstanceDbFields: SystemFieldDescriptor[] = []
   const virtualFields: CategorizedFields['virtualFields'] = []
   const fieldValueFieldIds: string[] = []
   const fieldIdToKeyMap = new Map<string, string>()
@@ -411,13 +440,32 @@ async function categorizeFields(
         fieldOptions: fieldOptionsMap.get(fieldId),
       })
       fieldIdToKeyMap.set(cachedField.key, fieldId)
+    } else if (!isSystem && cachedField?.dbColumn && isEntityInstanceColumn(cachedField.dbColumn)) {
+      // EntityDefinition-backed resource (contact/ticket/custom): column-backed
+      // system fields (created_at/updated_at/id) live on the shared EntityInstance
+      // table, not FieldValue. Resolve them directly from EntityInstance.
+      entityInstanceDbFields.push({
+        fieldKey: cachedField.key,
+        fieldId,
+        fieldRef: ref,
+        fieldType,
+        fieldOptions: fieldOptionsMap.get(fieldId),
+        dbColumn: cachedField.dbColumn,
+        relationship: cachedField.relationship,
+      })
     } else {
       // System field stored in FieldValue (e.g. tags), or a custom/non-system field.
       fieldValueFieldIds.push(fieldId)
     }
   }
 
-  return { systemDbFields, virtualFields, fieldValueFieldIds, fieldIdToKeyMap }
+  return {
+    systemDbFields,
+    entityInstanceDbFields,
+    virtualFields,
+    fieldValueFieldIds,
+    fieldIdToKeyMap,
+  }
 }
 
 // =============================================================================
