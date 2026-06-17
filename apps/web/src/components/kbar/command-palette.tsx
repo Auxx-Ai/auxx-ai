@@ -5,8 +5,12 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@auxx/ui/compo
 import { DialogNav, DialogNavPage, DialogNavPages } from '@auxx/ui/components/dialog-nav'
 import { useEffect, useState } from 'react'
 import { useResources } from '~/components/resources/hooks/use-resources'
+import { preventTaskPickerEscape } from '~/components/tasks/ui/task-form'
 import { useUnsavedChangesGuard } from '~/hooks/use-unsaved-changes-guard'
 import { CreatePage } from './pages/create'
+import { CreateSignaturePage } from './pages/create-signature'
+import { CreateSnippetPage } from './pages/create-snippet'
+import { CreateTaskPage } from './pages/create-task'
 import { RecordActionsPage } from './pages/record-actions'
 import { RootPage } from './pages/root'
 import { SearchPage } from './pages/search'
@@ -70,6 +74,8 @@ export function CommandPalette() {
           // The palette pages supply their own titles (DialogNav / sr-only) but
           // no description; opt out explicitly so Radix doesn't warn.
           aria-describedby={undefined}
+          // Keep the @mention picker's Esc from closing the palette on the task page.
+          onEscapeKeyDown={page === 'create-task' ? preventTaskPickerEscape : undefined}
           {...(isCreate ? guardProps : {})}>
           {page === 'root' ? (
             // Root has its own cmdk search input, so it skips the breadcrumb bar —
@@ -94,6 +100,20 @@ export function CommandPalette() {
               crumbs={[{ label: `Create ${createLabel ?? 'record'}` }]}
               onBack={guardedClose}
             />
+          ) : page === 'create-snippet' ? (
+            <DialogNav
+              title='Create Snippet'
+              crumbs={[{ label: 'Create Snippet' }]}
+              onBack={back}
+            />
+          ) : page === 'create-signature' ? (
+            <DialogNav
+              title='Create Signature'
+              crumbs={[{ label: 'Create Signature' }]}
+              onBack={back}
+            />
+          ) : page === 'create-task' ? (
+            <DialogNav title='Create Task' crumbs={[{ label: 'Create Task' }]} onBack={back} />
           ) : null}
 
           <DialogNavPages value={page}>
@@ -108,6 +128,15 @@ export function CommandPalette() {
             </DialogNavPage>
             <DialogNavPage value='create' size='lg'>
               <CreatePage onDirtyChange={setCreateDirty} onRequestClose={guardedClose} />
+            </DialogNavPage>
+            <DialogNavPage value='create-snippet' size='xxl'>
+              <CreateSnippetPage />
+            </DialogNavPage>
+            <DialogNavPage value='create-signature' size='xxl'>
+              <CreateSignaturePage />
+            </DialogNavPage>
+            <DialogNavPage value='create-task' size='xl'>
+              <CreateTaskPage />
             </DialogNavPage>
           </DialogNavPages>
         </DialogContent>
