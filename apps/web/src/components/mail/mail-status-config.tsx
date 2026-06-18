@@ -77,8 +77,11 @@ export const sendStatusConfig = {
     color: 'text-yellow-600',
     bgColor: 'bg-yellow-100',
     borderColor: 'border-yellow-200',
+    // RecordBadge-style classes (ring + bg + text) with dark-mode variants
+    badgeClass:
+      'bg-amber-50 text-amber-700 ring-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:ring-amber-900',
     icon: Clock,
-    label: 'Sending...',
+    label: 'Sending…',
     description: 'Message is being sent',
     animate: true,
   },
@@ -86,6 +89,8 @@ export const sendStatusConfig = {
     color: 'text-green-600',
     bgColor: 'bg-green-100',
     borderColor: 'border-green-200',
+    badgeClass:
+      'bg-emerald-50 text-emerald-700 ring-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:ring-emerald-900',
     icon: CheckCircle,
     label: 'Sent',
     description: 'Message sent successfully',
@@ -95,6 +100,8 @@ export const sendStatusConfig = {
     color: 'text-red-600',
     bgColor: 'bg-red-100',
     borderColor: 'border-red-200',
+    badgeClass:
+      'bg-red-50 text-red-700 ring-red-200 dark:bg-red-950/40 dark:text-red-300 dark:ring-red-900',
     icon: XCircle,
     label: 'Failed to send',
     description: 'Failed to send message',

@@ -4,6 +4,7 @@
 export type PalettePage =
   | 'root'
   | 'search'
+  | 'search-threads'
   | 'record-actions'
   | 'create'
   | 'create-snippet'

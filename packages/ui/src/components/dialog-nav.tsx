@@ -177,7 +177,10 @@ export function DialogNavPages({ value, children, className }: DialogNavPagesPro
       animate={{ width: `${widthRem}rem`, height }}
       transition={{ width: SPRING, height: measuredOnce.current ? SPRING : { duration: 0 } }}
       style={{ maxWidth: '95vw' }}
-      className={cn('relative overflow-hidden', className)}>
+      // On mobile, override the JS-driven rem width / 95vw cap so the body fills
+      // the full-width `content` shell edge-to-edge. The bang beats the inline
+      // `width`/`maxWidth` above; desktop (sm+) keeps the width spring.
+      className={cn('relative overflow-hidden max-sm:w-full! max-sm:max-w-full!', className)}>
       {/* Stable measuring wrapper: the keyed page below remounts on every change,
           so the ResizeObserver can't live on it. The exiting page is positioned
           absolutely, so this wrapper's height tracks the active page. */}

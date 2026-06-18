@@ -24,6 +24,7 @@ import { useQueryState } from 'nuqs'
 import { memo, useCallback, useEffect, useRef, useState } from 'react'
 // import { useAutoAnimate } from '@formkit/auto-animate/react'
 // NEW: Import selection hooks from threads module
+import { useCommandPaletteStore } from '~/components/kbar/store'
 import { ActorPicker } from '~/components/pickers/actor-picker'
 import { useThreadTags } from '~/components/tags/hooks/use-thread-tags'
 import { TagPicker } from '~/components/tags/ui/tag-picker'
@@ -106,9 +107,13 @@ export const ThreadList = memo(function ThreadList({
   }, [threadIds, setListThreadIds])
 
   // Keyboard navigation - handles arrow keys, Home/End, Cmd+A, Escape, etc.
+  // Suspend it while the command palette is open so its own thread reader owns
+  // the arrow keys (otherwise the inbox behind the dialog navigates instead —
+  // the manager listens on `document` and fires regardless of dialog focus).
+  const paletteOpen = useCommandPaletteStore((s) => s.open)
   useThreadKeyboardNav({
     threadIds,
-    enabled: true,
+    enabled: !paletteOpen,
     mode: variant === 'compact' ? 'focus' : 'navigate',
     onNavigateToEnd: () => {
       if (hasNextPage && !isFetchingNextPage) {

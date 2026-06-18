@@ -1,12 +1,14 @@
 // apps/web/src/components/mail/send-status-indicator.tsx
 'use client'
 import { SendStatus } from '@auxx/database/enums'
-import { Button } from '@auxx/ui/components/button'
 import { cn } from '@auxx/ui/lib/utils'
+import type { VariantProps } from 'class-variance-authority'
+import { RotateCw } from 'lucide-react'
 import { Tooltip } from '~/components/global/tooltip'
+import { recordBadgeVariants } from '~/components/resources/ui/record-badge'
 import { sendStatusConfig } from './mail-status-config'
 
-interface SendStatusIndicatorProps {
+interface SendStatusIndicatorProps extends VariantProps<typeof recordBadgeVariants> {
   status?: SendStatus | null
   error?: string | null
   attempts?: number
@@ -14,14 +16,17 @@ interface SendStatusIndicatorProps {
   onRetry?: () => void
 }
 /**
- * Component to display the send status of a message with optional retry functionality
- * Uses the centralized mail status configuration for consistent styling
+ * Displays the send status of a message as a RecordBadge-style chip with an
+ * optional retry button. Reuses `recordBadgeVariants` and the `record-display`
+ * / `record-remove` data-slots so it matches `RecordBadge`/`TicketBadge` and
+ * renders correctly in dark mode.
  */
 export function SendStatusIndicator({
   status,
   error,
   attempts,
   className,
+  size,
   onRetry,
 }: SendStatusIndicatorProps) {
   // Don't show indicator for successfully sent messages
@@ -32,6 +37,7 @@ export function SendStatusIndicator({
   const config = sendStatusConfig[status]
   if (!config) return null
   const Icon = config.icon
+  const canRetry = status === SendStatus.FAILED && !!onRetry
   // Build tooltip content for additional details
   const tooltipContent =
     error || (attempts && attempts > 1) ? (
@@ -43,32 +49,37 @@ export function SendStatusIndicator({
         )}
       </div>
     ) : undefined
-  // Full mode display with status badge and optional retry button
   return (
-    <div className={cn('flex items-center gap-1', className)}>
-      <Tooltip
-        contentComponent={tooltipContent}
-        content={!tooltipContent ? config.description : undefined}>
-        <div
+    <Tooltip
+      contentComponent={tooltipContent}
+      content={!tooltipContent ? config.description : undefined}>
+      <div
+        data-slot='record-badge'
+        className={cn(recordBadgeVariants({ size }), config.badgeClass, className)}>
+        <Icon
           className={cn(
-            'inline-flex items-center ps-2 h-6 rounded-md text-xs',
-            config.bgColor,
-            config.borderColor,
-            'border',
-            !(status === SendStatus.FAILED && onRetry) && 'pe-2'
-          )}>
-          <Icon className={cn('h-3 w-3', config.animate && 'animate-spin')} />
-          {status === SendStatus.FAILED && onRetry && (
-            <Button
-              size='xs'
-              variant='ghost'
-              className='rounded-l-none py-0 hover:bg-black/10'
-              onClick={onRetry}>
-              Retry
-            </Button>
+            'shrink-0',
+            size === 'sm' ? 'size-3' : 'size-3.5',
+            config.animate && 'animate-spin'
           )}
-        </div>
-      </Tooltip>
-    </div>
+        />
+        <span data-slot='record-display' className='truncate'>
+          {config.label}
+        </span>
+        {canRetry && (
+          <button
+            type='button'
+            data-slot='record-remove'
+            aria-label='Retry sending'
+            onClick={(e) => {
+              e.preventDefault()
+              e.stopPropagation()
+              onRetry?.()
+            }}>
+            <RotateCw />
+          </button>
+        )}
+      </div>
+    </Tooltip>
   )
 }

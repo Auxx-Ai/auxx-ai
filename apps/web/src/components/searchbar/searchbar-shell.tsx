@@ -82,6 +82,8 @@ export interface SearchBarShellProps {
   showFilterButton?: boolean
   /** Whether to show the scope badge. Passed through to SearchFilterInput's visibility logic. */
   showScopeBadge?: boolean
+  /** Whether focusing the input opens suggestions immediately. Defaults to true. */
+  openOnFocus?: boolean
 }
 
 /**
@@ -113,9 +115,10 @@ export function SearchBarShell({
   isLoading = false,
   showFilterButton = true,
   showScopeBadge,
+  openOnFocus = true,
 }: SearchBarShellProps) {
   const inputRef = useRef<AutosizeInputRef>(null)
-  const filterButtonRef = useRef<HTMLButtonElement>(null)
+  const filterButtonRef = useRef<HTMLSpanElement>(null)
   const searchBarContainerRef = useRef<HTMLDivElement>(null)
   const searchInputRowRef = useRef<HTMLDivElement>(null)
 
@@ -158,13 +161,15 @@ export function SearchBarShell({
   /** Handle input keydown for suggestion navigation and condition creation */
   const handleInputKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {
-      // Arrow navigation in suggestions
-      if (e.key === 'ArrowDown' && suggestions.length > 0) {
+      // Arrow navigation in suggestions — only while the dropdown is actually
+      // open. When it's closed, let the arrows bubble so a host (e.g. the
+      // palette thread reader) can move focus from the input into its list.
+      if (e.key === 'ArrowDown' && isOpen && suggestions.length > 0) {
         e.preventDefault()
         setHighlightedSuggestionIndex((prev) => Math.min(prev + 1, suggestions.length - 1))
         return
       }
-      if (e.key === 'ArrowUp' && suggestions.length > 0) {
+      if (e.key === 'ArrowUp' && isOpen && suggestions.length > 0) {
         e.preventDefault()
         setHighlightedSuggestionIndex((prev) => Math.max(prev - 1, -1))
         return
@@ -201,6 +206,7 @@ export function SearchBarShell({
       }
     },
     [
+      isOpen,
       suggestions,
       highlightedSuggestionIndex,
       inputValue,
@@ -214,8 +220,21 @@ export function SearchBarShell({
 
   /** Handle input focus */
   const handleInputFocus = useCallback(() => {
-    setIsOpen(true)
-  }, [])
+    if (openOnFocus) {
+      setIsOpen(true)
+    }
+  }, [openOnFocus])
+
+  /** Handle input value changes and optionally open suggestions once the user types. */
+  const handleInputChange = useCallback(
+    (value: string) => {
+      setInputValue(value)
+      if (!openOnFocus && value.trim()) {
+        setIsOpen(true)
+      }
+    },
+    [openOnFocus]
+  )
 
   /** Clear all conditions and input */
   const handleClear = useCallback(
@@ -254,7 +273,14 @@ export function SearchBarShell({
   }, [showAdvanced])
 
   return (
-    <div ref={searchBarContainerRef} className={cn('w-full min-w-[20rem]', className)}>
+    <div
+      ref={searchBarContainerRef}
+      data-searchbar-shell=''
+      data-searchbar-open={isOpen ? 'true' : 'false'}
+      data-searchbar-input-empty={inputValue.trim() ? 'false' : 'true'}
+      data-searchbar-suggestions-count={suggestions.length}
+      data-searchbar-highlighted-index={highlightedSuggestionIndex}
+      className={cn('w-full min-w-[20rem]', className)}>
       {/* Search input row - always visible, outside popover */}
       <div
         ref={searchInputRowRef}
@@ -275,7 +301,7 @@ export function SearchBarShell({
           onHighlightChange={actions.setHighlightedIndex}
           inputRef={inputRef}
           inputValue={inputValue}
-          onInputChange={setInputValue}
+          onInputChange={handleInputChange}
           onInputKeyDown={handleInputKeyDown}
           onFocus={handleInputFocus}
           placeholder={placeholder}
@@ -303,14 +329,15 @@ export function SearchBarShell({
 
         {/* Filter button */}
         {showFilterButton && (
-          <Button
-            ref={filterButtonRef}
-            variant='ghost'
-            aria-selected={showAdvanced ? 'true' : 'false'}
-            className={cn('size-6 rounded-full aria-[selected=true]:bg-primary-200')}
-            onClick={handleFilterClick}>
-            <Filter className='size-4 shrink-0 opacity-50' />
-          </Button>
+          <span ref={filterButtonRef} className='shrink-0'>
+            <Button
+              variant='ghost'
+              aria-selected={showAdvanced ? 'true' : 'false'}
+              className={cn('size-6 rounded-full aria-[selected=true]:bg-primary-200')}
+              onClick={handleFilterClick}>
+              <Filter className='size-4 shrink-0 opacity-50' />
+            </Button>
+          </span>
         )}
       </div>
 

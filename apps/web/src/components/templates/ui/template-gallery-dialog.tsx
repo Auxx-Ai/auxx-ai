@@ -278,7 +278,7 @@ export function TemplateGalleryDialog<T extends TemplateGalleryItem>({
       <div className='flex w-full min-h-0 flex-col justify-start sm:flex-row'>
         {/* Category sidebar */}
         <div className='hidden w-56 flex-col border-r bg-muted/30 sm:flex'>
-          <ScrollArea className='max-h-[440px]'>
+          <ScrollArea viewportClassName='max-h-[440px]'>
             <h3 className='sticky top-0 p-3 pb-0 text-sm font-semibold text-muted-foreground'>
               Categories
             </h3>
@@ -337,7 +337,7 @@ export function TemplateGalleryDialog<T extends TemplateGalleryItem>({
               </div>
             )
           ) : filteredItems.length > 0 ? (
-            <ScrollArea className='max-h-[400px]'>
+            <ScrollArea viewportClassName='max-h-[400px]'>
               {layout === 'cards' ? (
                 <div className='grid gap-3 p-3 pt-0 pb-5 pe-5 sm:grid-cols-2'>
                   {filteredItems.map((item) => renderCard(item))}

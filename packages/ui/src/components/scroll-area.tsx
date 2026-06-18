@@ -5,6 +5,13 @@ import { cn } from '@auxx/ui/lib/utils'
 import { ScrollArea as BaseScrollArea } from '@base-ui-components/react/scroll-area'
 import type * as React from 'react'
 
+interface ScrollElementIntoViewportOptions {
+  /** Smooth or instant scroll. Defaults to `auto`. */
+  behavior?: ScrollBehavior
+  /** Extra room to keep between the element and viewport edges. Defaults to 0. */
+  padding?: number
+}
+
 interface ScrollAreaProps {
   children: React.ReactNode
   /** Scroll orientation: vertical (default), horizontal, or both */
@@ -28,6 +35,32 @@ interface ScrollAreaProps {
   noFade?: boolean
   /** Allow scroll chaining to parent scroll containers. Disables overscroll-contain so events propagate when at scroll boundaries. */
   allowScrollChaining?: boolean
+}
+
+function scrollElementIntoViewport(
+  element: HTMLElement,
+  viewport: HTMLElement,
+  { behavior = 'auto', padding = 0 }: ScrollElementIntoViewportOptions = {}
+) {
+  const elementRect = element.getBoundingClientRect()
+  const viewportRect = viewport.getBoundingClientRect()
+  const topOverflow = elementRect.top - viewportRect.top - padding
+  const bottomOverflow = elementRect.bottom - viewportRect.bottom + padding
+
+  if (topOverflow < 0) {
+    viewport.scrollTo({
+      top: viewport.scrollTop + topOverflow,
+      behavior,
+    })
+    return
+  }
+
+  if (bottomOverflow > 0) {
+    viewport.scrollTo({
+      top: viewport.scrollTop + bottomOverflow,
+      behavior,
+    })
+  }
 }
 
 function ScrollArea({
@@ -111,4 +144,4 @@ function ScrollArea({
   )
 }
 
-export { ScrollArea }
+export { ScrollArea, scrollElementIntoViewport }

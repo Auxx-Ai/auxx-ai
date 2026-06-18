@@ -86,8 +86,10 @@ interface ThreadContextValue {
   contactId: string | null
 }
 
-// Create context
-const ThreadContext = createContext<ThreadContextValue | null>(null)
+// Create context. Exported so the lightweight `ReadOnlyThreadProvider` can
+// supply a minimal value (threadId + no-op actions) without running the full
+// provider's reply-box / mutation machinery on every mount.
+export const ThreadContext = createContext<ThreadContextValue | null>(null)
 
 /**
  * Signals that a `ThreadProvider` subtree is rendered *inside* another view that

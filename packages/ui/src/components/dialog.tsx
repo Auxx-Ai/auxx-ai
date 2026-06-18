@@ -88,7 +88,8 @@ const dialogVariants = cva(
         fullscreen: 'w-screen h-screen',
         // Shrink-wraps to the widest child (capped at 95vw). Use for dialogs whose
         // width is driven by their content — e.g. an animated `DialogNavPages` body.
-        content: 'w-fit max-w-[95vw]',
+        // On mobile it spans full-width (edge-to-edge) like the fixed-size tokens.
+        content: 'w-fit max-w-[95vw] max-sm:w-full! max-sm:max-w-full!',
       },
     },
     defaultVariants: { variant: 'default', position: 'default', size: 'default' },
