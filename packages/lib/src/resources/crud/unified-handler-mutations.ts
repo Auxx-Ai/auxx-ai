@@ -40,6 +40,14 @@ export interface CrudOptions {
   skipEvents?: boolean
   /** Skip snapshot invalidation (caller will invalidate once at end) */
   skipSnapshotInvalidation?: boolean
+  /**
+   * Trusted provenance stamp written onto the `EntityInstance` row at create
+   * time (`integrationSource` + `externalId`). Owned-mode data-connector /
+   * importer use only — links the synced record back to its upstream source
+   * and powers `findByIntegrationId`. Omit for user-driven creates; behavior
+   * is unchanged when absent. Ignored on update (provenance is set once).
+   */
+  provenance?: { integrationSource: string; externalId: string }
 }
 
 /** Inferred type for CustomField select */
@@ -323,11 +331,14 @@ export async function createEntity(
   // Check uniqueness constraints
   await ctx.validateUniqueFields(entityDef.id, processedValues)
 
-  // Create EntityInstance
+  // Create EntityInstance. Stamp upstream provenance when a trusted caller
+  // (owned-mode data connector / importer) supplies it — left null otherwise.
   const instanceResult = await createEntityInstance({
     entityDefinitionId: entityDef.id,
     organizationId: ctx.organizationId,
     createdById: ctx.userId,
+    integrationSource: options.provenance?.integrationSource,
+    externalId: options.provenance?.externalId,
   })
 
   const instance = unwrapResult(instanceResult)

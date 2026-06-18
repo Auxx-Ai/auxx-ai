@@ -3,7 +3,6 @@
 
 import { isNonEmptyDoc, type TiptapDoc } from '@auxx/lib/tiptap'
 import { Button } from '@auxx/ui/components/button'
-import { Checkbox } from '@auxx/ui/components/checkbox'
 import {
   Dialog,
   DialogContent,
@@ -13,10 +12,8 @@ import {
   DialogTitle,
 } from '@auxx/ui/components/dialog'
 import { Field, FieldLabel } from '@auxx/ui/components/field'
-import { Input } from '@auxx/ui/components/input'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
-import { RadioTab, RadioTabItem } from '@auxx/ui/components/radio-tab'
 import { Field as ResourceField } from '@auxx/ui/components/section'
 import {
   Select,
@@ -35,13 +32,24 @@ import { AppIcon } from '~/components/apps/ui/app-icon'
 import { DEFAULT_TABS } from '~/components/editor/inline-picker'
 import type { ReferenceTab } from '~/components/editor/inline-picker/nodes/reference-picker-node'
 import { PromptEditor } from '~/components/editor/prompt-editor'
+import {
+  DEFAULT_SCHEDULED_STATE,
+  type ScheduledState,
+  ScheduleEditor,
+  scheduledConfigFromState,
+  scheduledStateFromConfig,
+} from '~/components/global/schedule'
+import {
+  isMissing,
+  readFieldNodes,
+  SchemaField,
+  seedDefaults,
+} from '~/components/global/schema-form'
 import { ResourcePicker } from '~/components/pickers/resource-picker'
 import { useResources } from '~/components/resources/hooks/use-resources'
 import { VarEditorField } from '~/components/workflow/ui/input-editor/var-editor'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api, type RouterOutputs } from '~/trpc/react'
-import { TriggerCronEditor } from './trigger-cron-editor'
-import { type Interval, TriggerIntervalSelector } from './trigger-interval-selector'
 
 const TEMPLATE_REFERENCE_TABS: ReferenceTab[] = [...DEFAULT_TABS, 'tools', 'resources', 'fields']
 
@@ -83,7 +91,6 @@ function readPromptContent(doc: TiptapDoc | null | undefined): JSONContent[] | n
 type Trigger = RouterOutputs['agentTrigger']['list'][number]
 
 type Kind = 'scheduled' | 'event' | 'app' | 'mention' | 'assignment' | 'dm'
-type ScheduledMode = 'simple' | 'cron'
 type CrudTriggerType = 'created' | 'updated' | 'deleted'
 
 const RESOURCE_OPERATIONS: Record<CrudTriggerType, { operation: CrudTriggerType; label: string }> =
@@ -118,20 +125,6 @@ interface AgentTriggerDialogProps {
   onSuccess?: () => void
 }
 
-interface ScheduledState {
-  mode: ScheduledMode
-  interval: Interval
-  value: number
-  customCron: string
-}
-
-const DEFAULT_SCHEDULED_STATE: ScheduledState = {
-  mode: 'simple',
-  interval: 'hours',
-  value: 1,
-  customCron: '',
-}
-
 interface EventState {
   triggerType: CrudTriggerType
   entityDefinitionId: string
@@ -153,27 +146,6 @@ const DEFAULT_APP_STATE: AppState = {
   userInputs: {},
 }
 
-function scheduledFromTrigger(trigger: Trigger): ScheduledState {
-  const config = (trigger.config as Record<string, unknown> | null) ?? {}
-  const triggerInterval = (config.triggerInterval as Interval | 'custom') ?? 'hours'
-  if (triggerInterval === 'custom') {
-    return {
-      ...DEFAULT_SCHEDULED_STATE,
-      mode: 'cron',
-      customCron: (config.customCron as string) ?? '',
-    }
-  }
-  const timeBetween = (config.timeBetweenTriggers as Record<string, number | string>) ?? {}
-  const rawValue = timeBetween[triggerInterval]
-  const value = typeof rawValue === 'number' ? rawValue : Number(rawValue) || 1
-  return {
-    ...DEFAULT_SCHEDULED_STATE,
-    mode: 'simple',
-    interval: triggerInterval,
-    value,
-  }
-}
-
 function eventStateFromTrigger(trigger: Trigger, fallbackEntityId: string): EventState {
   return {
     triggerType: (trigger.triggerType as CrudTriggerType) ?? 'created',
@@ -188,63 +160,6 @@ function appStateFromTrigger(trigger: Trigger): AppState {
     connectionId: trigger.triggerConnectionId ?? null,
     userInputs: { ...userInputsRaw },
   }
-}
-
-interface SelectOption {
-  value: string
-  label: string
-}
-
-interface FieldNodeMetadata {
-  label?: string
-  description?: string
-  placeholder?: string
-  multi?: boolean
-  defaultValue?: unknown
-  options?: SelectOption[]
-}
-
-interface FieldNode {
-  type: string
-  isOptional?: boolean
-  _metadata?: FieldNodeMetadata
-}
-
-interface FieldEntry {
-  key: string
-  node: FieldNode
-  meta: FieldNodeMetadata
-  required: boolean
-}
-
-function readFieldNodes(schema: Record<string, unknown> | null | undefined): FieldEntry[] {
-  if (!schema) return []
-  const entries: FieldEntry[] = []
-  for (const [key, raw] of Object.entries(schema)) {
-    if (!raw || typeof raw !== 'object') continue
-    const node = raw as FieldNode
-    if (typeof node.type !== 'string') continue
-    const meta = node._metadata ?? {}
-    entries.push({ key, node, meta, required: node.isOptional !== true })
-  }
-  return entries
-}
-
-function isMissing(value: unknown): boolean {
-  if (value == null) return true
-  if (typeof value === 'string') return value.trim() === ''
-  if (Array.isArray(value)) return value.length === 0
-  return false
-}
-
-function seedDefaults(fields: FieldEntry[]): Record<string, unknown> {
-  const out: Record<string, unknown> = {}
-  for (const { key, meta } of fields) {
-    if (meta.defaultValue !== undefined) {
-      out[key] = meta.defaultValue
-    }
-  }
-  return out
 }
 
 /**
@@ -310,7 +225,7 @@ export function AgentTriggerDialog({
   useEffect(() => {
     if (!open) return
     if (trigger?.kind === 'scheduled') {
-      setScheduledState(scheduledFromTrigger(trigger))
+      setScheduledState(scheduledStateFromConfig(trigger.config as Record<string, unknown> | null))
     } else if (trigger?.kind === 'event') {
       setEventState(eventStateFromTrigger(trigger, fallbackEntityId))
     } else if (trigger?.kind === 'app') {
@@ -331,13 +246,6 @@ export function AgentTriggerDialog({
     }
     setEditorKey((k) => k + 1)
   }, [open, trigger, fallbackEntityId, appSelection?.inputsJsonSchema])
-
-  const setScheduledMode = (mode: ScheduledMode) =>
-    setScheduledState((prev) => ({
-      ...prev,
-      mode,
-      customCron: mode === 'cron' ? prev.customCron || '0 * * * *' : prev.customCron,
-    }))
 
   const setEventField = <K extends keyof EventState>(key: K, value: EventState[K]) =>
     setEventState((prev) => ({ ...prev, [key]: value }))
@@ -387,30 +295,12 @@ export function AgentTriggerDialog({
 
   const buildTriggerInput = () => {
     if (effectiveKind === 'scheduled') {
-      if (scheduledState.mode === 'cron') {
-        if (!scheduledState.customCron.trim()) {
-          toastError({ title: 'Custom cron is required' })
-          return null
-        }
-        return {
-          kind: 'scheduled' as const,
-          config: {
-            triggerInterval: 'custom' as const,
-            timeBetweenTriggers: {},
-            customCron: scheduledState.customCron,
-          },
-        }
+      const config = scheduledConfigFromState(scheduledState)
+      if (!config) {
+        toastError({ title: 'Custom cron is required' })
+        return null
       }
-      return {
-        kind: 'scheduled' as const,
-        config: {
-          triggerInterval: scheduledState.interval,
-          timeBetweenTriggers: {
-            [scheduledState.interval]: scheduledState.value,
-            isConstant: true,
-          },
-        },
-      }
+      return { kind: 'scheduled' as const, config }
     }
 
     if (effectiveKind === 'mention') {
@@ -496,40 +386,7 @@ export function AgentTriggerDialog({
 
           <div className='space-y-4'>
             {effectiveKind === 'scheduled' ? (
-              <>
-                <Field orientation='horizontal'>
-                  <FieldLabel>Mode</FieldLabel>
-                  <RadioTab
-                    value={scheduledState.mode}
-                    onValueChange={(v) => setScheduledMode(v as ScheduledMode)}
-                    size='sm'>
-                    <RadioTabItem value='simple' size='sm'>
-                      Simple
-                    </RadioTabItem>
-                    <RadioTabItem value='cron' size='sm'>
-                      Cron
-                    </RadioTabItem>
-                  </RadioTab>
-                </Field>
-
-                {scheduledState.mode === 'cron' ? (
-                  <TriggerCronEditor
-                    value={scheduledState.customCron}
-                    onChange={(customCron) =>
-                      setScheduledState((prev) => ({ ...prev, customCron }))
-                    }
-                  />
-                ) : (
-                  <TriggerIntervalSelector
-                    interval={scheduledState.interval}
-                    value={scheduledState.value}
-                    onIntervalChange={(interval) =>
-                      setScheduledState((prev) => ({ ...prev, interval }))
-                    }
-                    onValueChange={(value) => setScheduledState((prev) => ({ ...prev, value }))}
-                  />
-                )}
-              </>
+              <ScheduleEditor value={scheduledState} onChange={setScheduledState} />
             ) : effectiveKind === 'event' ? (
               <ResourceField
                 title='Resource'
@@ -643,7 +500,7 @@ export function AgentTriggerDialog({
                     <FieldLabel>Inputs</FieldLabel>
                     <div className='space-y-3'>
                       {fieldNodes.map((entry) => (
-                        <AppInputField
+                        <SchemaField
                           key={entry.key}
                           entry={entry}
                           value={appState.userInputs[entry.key]}
@@ -717,163 +574,5 @@ export function AgentTriggerDialog({
       </Dialog>
       <ConfirmDialog />
     </>
-  )
-}
-
-interface AppInputFieldProps {
-  entry: FieldEntry
-  value: unknown
-  onChange: (next: unknown) => void
-}
-
-function AppInputField({ entry, value, onChange }: AppInputFieldProps) {
-  const { key, node, meta, required } = entry
-  const inputId = `app-input-${key}`
-  const label = meta.label ?? key
-
-  const labelEl = (
-    <label className='text-xs text-muted-foreground' htmlFor={inputId}>
-      {label}
-      {required && <span className='text-red-500'>*</span>}
-    </label>
-  )
-
-  if (node.type === 'select') {
-    const options = meta.options ?? []
-    if (meta.multi) {
-      const selected = Array.isArray(value) ? (value as string[]) : []
-      const toggle = (optionValue: string, checked: boolean) => {
-        onChange(checked ? [...selected, optionValue] : selected.filter((v) => v !== optionValue))
-      }
-      return (
-        <div className='flex flex-col gap-1.5'>
-          {labelEl}
-          {options.length === 0 ? (
-            <span className='text-xs text-muted-foreground'>No options available.</span>
-          ) : (
-            <div className='space-y-1.5 rounded-md border bg-background px-3 py-2'>
-              {options.map((option) => {
-                const optionId = `${inputId}-${option.value}`
-                const checked = selected.includes(option.value)
-                return (
-                  <div key={option.value} className='flex items-center gap-2'>
-                    <Checkbox
-                      id={optionId}
-                      checked={checked}
-                      onCheckedChange={(next) => toggle(option.value, next === true)}
-                    />
-                    <label htmlFor={optionId} className='text-sm'>
-                      {option.label}
-                    </label>
-                  </div>
-                )
-              })}
-            </div>
-          )}
-          {meta.description && (
-            <span className='text-xs text-muted-foreground'>{meta.description}</span>
-          )}
-        </div>
-      )
-    }
-    if (options.length === 0) {
-      return (
-        <div className='flex flex-col gap-1'>
-          {labelEl}
-          <Input
-            id={inputId}
-            value={typeof value === 'string' ? value : ''}
-            onChange={(e) => onChange(e.target.value)}
-            placeholder={meta.placeholder}
-          />
-          {meta.description && (
-            <span className='text-xs text-muted-foreground'>{meta.description}</span>
-          )}
-        </div>
-      )
-    }
-    return (
-      <div className='flex flex-col gap-1'>
-        {labelEl}
-        <Select value={typeof value === 'string' ? value : ''} onValueChange={(v) => onChange(v)}>
-          <SelectTrigger id={inputId} size='sm'>
-            <SelectValue placeholder={meta.placeholder ?? 'Select...'} />
-          </SelectTrigger>
-          <SelectContent>
-            {options.map((option) => (
-              <SelectItem key={option.value} value={option.value}>
-                {option.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        {meta.description && (
-          <span className='text-xs text-muted-foreground'>{meta.description}</span>
-        )}
-      </div>
-    )
-  }
-
-  if (node.type === 'boolean') {
-    const checked = value === true
-    return (
-      <div className='flex items-start gap-2'>
-        <Checkbox
-          id={inputId}
-          checked={checked}
-          onCheckedChange={(next) => onChange(next === true)}
-        />
-        <div className='flex flex-col gap-0.5'>
-          <label htmlFor={inputId} className='text-sm'>
-            {label}
-            {required && <span className='text-red-500'>*</span>}
-          </label>
-          {meta.description && (
-            <span className='text-xs text-muted-foreground'>{meta.description}</span>
-          )}
-        </div>
-      </div>
-    )
-  }
-
-  if (node.type === 'number') {
-    return (
-      <div className='flex flex-col gap-1'>
-        {labelEl}
-        <Input
-          id={inputId}
-          type='number'
-          value={typeof value === 'number' || typeof value === 'string' ? String(value) : ''}
-          onChange={(e) => {
-            const raw = e.target.value
-            if (raw === '') {
-              onChange(undefined)
-              return
-            }
-            const parsed = Number(raw)
-            onChange(Number.isNaN(parsed) ? raw : parsed)
-          }}
-          placeholder={meta.placeholder}
-        />
-        {meta.description && (
-          <span className='text-xs text-muted-foreground'>{meta.description}</span>
-        )}
-      </div>
-    )
-  }
-
-  return (
-    <div className='flex flex-col gap-1'>
-      {labelEl}
-      <Input
-        id={inputId}
-        value={typeof value === 'string' ? value : value == null ? '' : String(value)}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={meta.placeholder}
-      />
-      {meta.description && (
-        <span className='text-xs text-muted-foreground'>{meta.description}</span>
-      )}
-    </div>
   )
 }

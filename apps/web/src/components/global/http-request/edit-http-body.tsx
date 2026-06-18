@@ -1,14 +1,14 @@
-// apps/web/src/components/workflow/nodes/core/http/components/edit-http-body.tsx
+// apps/web/src/components/global/http-request/edit-http-body.tsx
 
 'use client'
 
 import { Button } from '@auxx/ui/components/button'
 import { Plus } from 'lucide-react'
 import { memo, useMemo } from 'react'
-import { Editor } from '~/components/workflow/ui/prompt-editor'
-import { VariablePicker } from '~/components/workflow/ui/variables/variable-picker'
-import type { Body, KeyValue } from '../types'
-import { BodyPayloadValueType, BodyType } from '../types'
+import { useHttpRequestField } from './field-editor'
+import KeyValueList from './key-value-list'
+import type { Body, KeyValue } from './types'
+import { BodyPayloadValueType, BodyType } from './types'
 import {
   generateId,
   getBodyContent,
@@ -16,22 +16,20 @@ import {
   parseBodyDataToKeyValue,
   setBodyContent,
   setBodyFileReference,
-} from '../utils'
-import { KeyValueList } from '.'
+} from './utils'
 
 interface EditHttpBodyProps {
   body: Body
   isReadOnly: boolean
-  nodeId: string
   onChange: (body: Body) => void
 }
 
 export const EditHttpBody = memo(function EditHttpBody({
   body,
   isReadOnly,
-  nodeId,
   onChange,
 }: EditHttpBodyProps) {
+  const { FieldEditor, FilePicker } = useHttpRequestField()
   const bodyType = body?.type || BodyType.none
 
   // Parse body data for form-based body types
@@ -110,37 +108,44 @@ export const EditHttpBody = memo(function EditHttpBody({
 
     case BodyType.json:
       return (
-        <Editor
-          title={<label className='text-xs font-medium'>JSON</label>}
-          value={getBodyContent(body)}
-          onChange={handleBodyContentChange}
-          nodeId={nodeId}
-          placeholder='Enter JSON content or use {{variables}}...'
-          minHeight={100}
-          readOnly={isReadOnly}
-        />
+        <div className='space-y-1'>
+          <label className='text-xs font-medium'>JSON</label>
+          <FieldEditor
+            multiline
+            value={getBodyContent(body)}
+            onChange={handleBodyContentChange}
+            placeholder='Enter JSON content or use {{variables}}...'
+            disabled={isReadOnly}
+            className='min-h-[100px] rounded-lg border border-primary-200'
+          />
+        </div>
       )
 
     case BodyType.rawText:
       return (
-        <Editor
-          title={<label className='text-xs font-medium'>Raw Text</label>}
-          value={getBodyContent(body)}
-          onChange={handleBodyContentChange}
-          nodeId={nodeId}
-          placeholder='Enter raw text or use {{variables}}...'
-          minHeight={100}
-          readOnly={isReadOnly}
-        />
+        <div className='space-y-1'>
+          <label className='text-xs font-medium'>Raw Text</label>
+          <FieldEditor
+            multiline
+            value={getBodyContent(body)}
+            onChange={handleBodyContentChange}
+            placeholder='Enter raw text or use {{variables}}...'
+            disabled={isReadOnly}
+            className='min-h-[100px] rounded-lg border border-primary-200'
+          />
+        </div>
       )
 
     case BodyType.binary:
+      // Binary upload bodies require a file picker; hidden when none is injected.
+      if (!FilePicker) {
+        return null
+      }
       return (
         <div className='space-y-2'>
-          <VariablePicker
-            nodeId={nodeId}
+          <FilePicker
             value={body?.data?.[0]?.file || []}
-            onChange={handleBodyFileChange}
+            onSelect={handleBodyFileChange}
             placeholder='Select file variable'
             disabled={isReadOnly}
           />

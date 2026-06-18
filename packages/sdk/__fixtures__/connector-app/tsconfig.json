@@ -1,0 +1,20 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2022", "DOM"],
+    "strict": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "jsx": "react-jsx",
+    "baseUrl": ".",
+    "paths": {
+      "@auxx/sdk/server": ["../../src/server/entities.ts"],
+      "@auxx/sdk/data-connectors": ["../../src/root/data-connectors/index.ts"]
+    }
+  },
+  "include": ["src", ".auxx/**/*"]
+}

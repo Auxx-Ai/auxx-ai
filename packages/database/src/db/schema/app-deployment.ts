@@ -187,6 +187,59 @@ export interface CatalogAppField {
   }
 }
 
+/** One source field declaration projected from a data connector's stream. */
+export interface CatalogConnectorField {
+  fieldKey: string
+  sourcePath: string
+  type: string
+  name: string
+  pii?: boolean
+  capabilities?: { hidden?: boolean; filterable?: boolean }
+}
+
+/** A recommended fan-out mapping projected from a data connector's stream. */
+export interface CatalogConnectorDefaultMapping {
+  rootPath: string
+  linkMode?: 'upsert' | 'reference'
+  relationshipFieldKey?: string
+  target:
+    | {
+        mode: 'owned'
+        entity: { apiSlug: string; singular: string; plural: string; primaryDisplayField?: string }
+      }
+    | {
+        mode: 'contributing'
+        entityKind: string
+        identity: Record<string, unknown>
+      }
+}
+
+/** One stream (fetch) projected from a data connector. */
+export interface CatalogConnectorStream {
+  key: string
+  displayFieldKey: string
+  fields: CatalogConnectorField[]
+  defaultMappings?: CatalogConnectorDefaultMapping[]
+  exampleRecord?: Record<string, unknown>
+}
+
+/**
+ * A data connector projected from the app's `dataConnectors[]` declaration.
+ * Carries the stream/field/mapping declarations + `requiresConnection` so the
+ * UI can list + set up a connector and the platform adapter can resolve streams
+ * without evaluating bundle code. See
+ * plans/data-connectors/claude/03-connectors-and-sources.md §4.
+ */
+export interface CatalogDataConnector {
+  id: string
+  label: string
+  requiresConnection: boolean
+  iconKey: string | null
+  /** Connector-level config schema (JSON Schema, from the `config` zod schema). */
+  configJsonSchema: Record<string, unknown>
+  streams: CatalogConnectorStream[]
+}
+
 export interface CatalogPayload {
   tools: CatalogTool[]
   triggers: CatalogTrigger[]
@@ -203,6 +256,8 @@ export interface CatalogPayload {
   actions: CatalogAction[]
   /** App-registered custom fields (optional — older catalogs omit it). */
   fields?: CatalogAppField[]
+  /** App-declared data connectors (optional — older catalogs omit it). */
+  dataConnectors?: CatalogDataConnector[]
 }
 
 /** Drizzle table for AppDeployment */

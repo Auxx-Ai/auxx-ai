@@ -1,4 +1,4 @@
-// apps/web/src/components/agents/ui/detail/triggers/trigger-cron-editor.tsx
+// apps/web/src/components/global/schedule/cron-editor.tsx
 'use client'
 
 import {
@@ -16,7 +16,7 @@ import { cn } from '@auxx/ui/lib/utils'
 import { BookOpenText } from 'lucide-react'
 import { useState } from 'react'
 
-interface TriggerCronEditorProps {
+interface CronEditorProps {
   value: string
   onChange: (value: string) => void
   placeholder?: string
@@ -40,11 +40,11 @@ const PRESETS: { label: string; value: string; description: string }[] = [
  * Standalone cron expression input with a presets popover. No workflow
  * dependencies — safe to use in dialogs.
  */
-export function TriggerCronEditor({
+export function CronEditor({
   value,
   onChange,
   placeholder = '0 * * * * (every hour)',
-}: TriggerCronEditorProps) {
+}: CronEditorProps) {
   const [presetsOpen, setPresetsOpen] = useState(false)
 
   return (

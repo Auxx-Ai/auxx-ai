@@ -1,4 +1,6 @@
-// apps/web/src/components/workflow/nodes/core/http/components/key-value-item.tsx
+// apps/web/src/components/global/http-request/key-value-item.tsx
+
+'use client'
 
 import { Button } from '@auxx/ui/components/button'
 import {
@@ -11,15 +13,12 @@ import {
 import { cn } from '@auxx/ui/lib/utils'
 import { Trash2 } from 'lucide-react'
 import React, { type FC, useCallback, useEffect, useRef, useState } from 'react'
-import { BaseType } from '~/components/workflow/types/variable-types'
-import { InputEditor } from '~/components/workflow/ui/input-editor'
-import { VariablePicker } from '~/components/workflow/ui/variables/variable-picker'
-import type { KeyValue } from '../types'
+import { useHttpRequestField } from './field-editor'
+import type { KeyValue } from './types'
 
 type Props = {
   instanceId: string
   className?: string
-  nodeId: string
   readonly: boolean
   canRemove: boolean
   payload: KeyValue
@@ -36,7 +35,6 @@ type Props = {
 const KeyValueItem: FC<Props> = ({
   instanceId,
   className,
-  nodeId,
   readonly,
   canRemove,
   payload,
@@ -49,6 +47,11 @@ const KeyValueItem: FC<Props> = ({
   insertVarTipToLeft,
   itemIndex = 0,
 }) => {
+  const { FieldEditor, FilePicker } = useHttpRequestField()
+
+  // File rows only make sense when a FilePicker is injected.
+  const supportFile = isSupportFile && !!FilePicker
+
   // Local state for immediate UI updates
   const [localKey, setLocalKey] = useState(payload.key || '')
   const [localValue, setLocalValue] = useState(payload.value || '')
@@ -160,11 +163,10 @@ const KeyValueItem: FC<Props> = ({
         data-kv-col={0}
         className={cn(
           'shrink-0 border-r border-primary-200 ',
-          isSupportFile ? 'w-[140px]' : 'w-1/2'
+          supportFile ? 'w-[140px]' : 'w-1/2'
         )}>
         {!keyNotSupportVar ? (
-          <InputEditor
-            nodeId={nodeId}
+          <FieldEditor
             value={localKey}
             onChange={handleLocalChange('key')}
             onBlur={syncToParent}
@@ -183,7 +185,7 @@ const KeyValueItem: FC<Props> = ({
           />
         )}
       </div>
-      {isSupportFile && (
+      {supportFile && (
         <div
           data-kv-row={itemIndex}
           data-kv-col={1}
@@ -204,24 +206,18 @@ const KeyValueItem: FC<Props> = ({
       )}
       <div
         data-kv-row={itemIndex}
-        data-kv-col={isSupportFile ? 2 : 1}
-        className={cn('relative', isSupportFile ? 'grow' : 'w-1/2')}>
-        {isSupportFile && payload.type === 'file' ? (
-          <VariablePicker
-            nodeId={nodeId}
+        data-kv-col={supportFile ? 2 : 1}
+        className={cn('relative', supportFile ? 'grow' : 'w-1/2')}>
+        {supportFile && payload.type === 'file' && FilePicker ? (
+          <FilePicker
             value={localFile?.[1] || ''}
-            onSelect={(variable) => {
-              // Convert variable selection to file array format
-              handleImmediateChange('file')(['sys', variable.id])
-            }}
-            allowedTypes={[BaseType.FILE, BaseType.ARRAY]}
+            onSelect={(file) => handleImmediateChange('file')(file)}
             placeholder='Select file variable...'
             disabled={readonly}
             className='rounded-none border-none'
           />
         ) : (
-          <InputEditor
-            nodeId={nodeId}
+          <FieldEditor
             value={localValue}
             onChange={handleLocalChange('value')}
             onBlur={syncToParent}

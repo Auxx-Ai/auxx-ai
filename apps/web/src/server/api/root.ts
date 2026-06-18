@@ -28,6 +28,7 @@ import { contactRouter } from './routers/contact'
 import { credentialsRouter } from './routers/credentials'
 import { customerRouter } from './routers/customer'
 import { customFieldRouter } from './routers/customField'
+import { dataConnectorRouter } from './routers/data-connectors'
 import { dataImportRouter } from './routers/data-import'
 import { datasetRouter } from './routers/dataset'
 import { documentRouter } from './routers/document'
@@ -177,6 +178,7 @@ export const appRouter = createTRPCRouter({
   workflow: workflowRouter,
   webhook: webhookRouters,
   dataImport: dataImportRouter,
+  dataConnector: dataConnectorRouter,
 })
 // inferReactQueryProcedureOptions
 // export type definition of API

@@ -13,6 +13,7 @@ import {
   uniqueIndex,
 } from './_shared'
 import { CustomField } from './custom-field'
+import { DataConnector } from './data-connector'
 import { Organization } from './organization'
 
 /**
@@ -68,6 +69,14 @@ export const EntityDefinition = pgTable(
 
     /** Whether this entity should appear in the sidebar (default: true) */
     isVisible: boolean().notNull().default(true),
+
+    /** Owning DataConnector that provisioned this def (owned-mode only). Stays
+     *  NULL for contributing-mode targets and non-connector defs. `set null` on
+     *  delete — we never auto-delete the user's CRM defs. */
+    dataConnectorId: text().references((): AnyPgColumn => DataConnector.id, {
+      onUpdate: 'cascade',
+      onDelete: 'set null',
+    }),
   },
   (table) => [
     // Unique constraint: apiSlug must be unique per organization (only for non-archived)

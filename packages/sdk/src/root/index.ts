@@ -19,6 +19,23 @@ export type {
   WorkflowOutput,
 } from '../server/workflow/index.js'
 export type { App, AppSettings, Permission } from './app.js'
+export type {
+  ConnectorConnection,
+  ConnectorDefaultMapping,
+  ConnectorEntityDecl,
+  ConnectorExecute,
+  ConnectorExecuteArgs,
+  ConnectorFetchResult,
+  ConnectorFieldCapabilities,
+  ConnectorFieldDecl,
+  ConnectorIdentityStrategy,
+  ConnectorRecord,
+  ConnectorStreamDecl,
+  ConnectorStreamState,
+  DataConnectorDefinition,
+} from './data-connectors/index.js'
+// Data Connectors surface — `import { defineDataConnector } from '@auxx/sdk/data-connectors'`
+export { defineDataConnector } from './data-connectors/index.js'
 // Fields surface — `import { defineField, defineFields } from '@auxx/sdk/fields'`
 export {
   type AppFieldDefinition,

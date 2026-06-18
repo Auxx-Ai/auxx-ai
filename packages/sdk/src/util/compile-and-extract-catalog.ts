@@ -178,6 +178,58 @@ export interface CatalogAppField {
   }
 }
 
+/** One source field declaration projected from a data connector's stream. */
+export interface CatalogConnectorField {
+  fieldKey: string
+  sourcePath: string
+  type: string
+  name: string
+  pii?: boolean
+  capabilities?: { hidden?: boolean; filterable?: boolean }
+}
+
+/** A recommended fan-out mapping projected from a data connector's stream. */
+export interface CatalogConnectorDefaultMapping {
+  rootPath: string
+  linkMode?: 'upsert' | 'reference'
+  relationshipFieldKey?: string
+  target:
+    | {
+        mode: 'owned'
+        entity: { apiSlug: string; singular: string; plural: string; primaryDisplayField?: string }
+      }
+    | {
+        mode: 'contributing'
+        entityKind: string
+        identity: Record<string, unknown>
+      }
+}
+
+/** One stream (fetch) projected from a data connector. */
+export interface CatalogConnectorStream {
+  key: string
+  displayFieldKey: string
+  fields: CatalogConnectorField[]
+  defaultMappings?: CatalogConnectorDefaultMapping[]
+  exampleRecord?: Record<string, unknown>
+}
+
+/**
+ * A data connector projected from the app's `dataConnectors[]` declaration.
+ * Carries the stream/field/mapping declarations + `requiresConnection` so the
+ * UI can list + set up a connector without evaluating bundle code. See
+ * plans/data-connectors/claude/03-connectors-and-sources.md §4.
+ */
+export interface CatalogDataConnector {
+  id: string
+  label: string
+  requiresConnection: boolean
+  iconKey: string | null
+  /** Connector-level config schema (JSON Schema, from the `config` zod schema). */
+  configJsonSchema: Record<string, unknown>
+  streams: CatalogConnectorStream[]
+}
+
 export interface CatalogPayload {
   tools: CatalogTool[]
   triggers: CatalogTrigger[]
@@ -194,6 +246,8 @@ export interface CatalogPayload {
   actions: CatalogAction[]
   /** App-registered custom fields (optional — older catalogs omit it). */
   fields?: CatalogAppField[]
+  /** App-declared data connectors (optional — older catalogs omit it). */
+  dataConnectors?: CatalogDataConnector[]
 }
 
 export type CompileAndExtractCatalogError =
@@ -265,6 +319,7 @@ export async function compileAndExtractCatalog(): Promise<
   const SDK_REAL_TOOLS = path.join(SDK_ROOT, 'lib', 'root', 'tools', 'index.js')
   const SDK_REAL_WORKFLOW = path.join(SDK_ROOT, 'lib', 'root', 'workflow', 'index.js')
   const SDK_REAL_FIELDS = path.join(SDK_ROOT, 'lib', 'root', 'fields', 'index.js')
+  const SDK_REAL_DATA_CONNECTORS = path.join(SDK_ROOT, 'lib', 'root', 'data-connectors', 'index.js')
   const stubSdkSubpaths: esbuild.Plugin = {
     name: 'auxx-stub-sdk-subpaths',
     setup(build) {
@@ -277,6 +332,9 @@ export async function compileAndExtractCatalog(): Promise<
         // keys, so esbuild's CJS→ESM interop drops the named export and the
         // call throws `defineFields is not a function`.
         if (args.path === '@auxx/sdk/fields') return { path: SDK_REAL_FIELDS }
+        // `defineDataConnector` is a validator called at module load too — same
+        // real-runtime requirement as `defineFields`.
+        if (args.path === '@auxx/sdk/data-connectors') return { path: SDK_REAL_DATA_CONNECTORS }
         return { path: args.path, namespace: 'auxx-sdk-stub' }
       })
       // CJS module shape with a Proxy: any named import becomes a no-op
@@ -347,6 +405,7 @@ export async function compileAndExtractCatalog(): Promise<
   const workflowBlocksArr = (app.workflow?.blocks ?? []) as RawBlock[]
   const workflowTriggersArr = (app.workflow?.triggers ?? []) as RawTrigger[]
   const fieldsArr = (app.fields ?? []) as RawAppField[]
+  const dataConnectorsArr = (app.dataConnectors ?? []) as RawDataConnector[]
 
   // Empty app — nothing to publish.
   if (
@@ -354,7 +413,8 @@ export async function compileAndExtractCatalog(): Promise<
     !toolsetsArr.length &&
     !workflowBlocksArr.length &&
     !workflowTriggersArr.length &&
-    !fieldsArr.length
+    !fieldsArr.length &&
+    !dataConnectorsArr.length
   ) {
     return complete(undefined)
   }
@@ -559,6 +619,57 @@ export async function compileAndExtractCatalog(): Promise<
     })
   }
 
+  // Project app-declared data connectors. The stream/field/mapping
+  // declarations + exampleRecord must survive serialization so the connector
+  // setup UI can preview the source schema + recommended fan-out and the
+  // platform adapter can resolve the streams without evaluating bundle code.
+  const cataloguedDataConnectors: CatalogDataConnector[] = []
+  const seenConnectorIds = new Set<string>()
+  for (const connector of dataConnectorsArr) {
+    if (!connector?.id) {
+      return errored({
+        code: 'CATALOG_VALIDATION_FAILED',
+        message: 'Data connector is missing an id',
+      })
+    }
+    if (seenConnectorIds.has(connector.id)) {
+      return errored({
+        code: 'CATALOG_VALIDATION_FAILED',
+        message: `Duplicate data connector id "${connector.id}"`,
+      })
+    }
+    seenConnectorIds.add(connector.id)
+
+    const configJsonSchema = connector.config
+      ? zodToProviderToolSchema(connector.config as never).jsonSchema
+      : {}
+
+    const streams: CatalogConnectorStream[] = (connector.streams ?? []).map((stream) => ({
+      key: stream.key,
+      displayFieldKey: stream.displayFieldKey,
+      // Flatten the `fieldKey → decl` map into an array, carrying the key.
+      fields: Object.entries(stream.fields ?? {}).map(([fieldKey, decl]) => ({
+        fieldKey,
+        sourcePath: decl.sourcePath,
+        type: decl.type,
+        name: decl.name,
+        pii: decl.pii,
+        capabilities: decl.capabilities,
+      })),
+      defaultMappings: stream.defaultMappings,
+      exampleRecord: stream.exampleRecord,
+    }))
+
+    cataloguedDataConnectors.push({
+      id: connector.id,
+      label: connector.label,
+      requiresConnection: Boolean(connector.requiresConnection),
+      iconKey: connector.iconKey ?? null,
+      configJsonSchema,
+      streams,
+    })
+  }
+
   const catalog: CatalogPayload = {
     tools: cataloguedTools,
     triggers: cataloguedTriggers,
@@ -574,6 +685,7 @@ export async function compileAndExtractCatalog(): Promise<
     },
     actions: cataloguedActions,
     fields: cataloguedFields,
+    dataConnectors: cataloguedDataConnectors,
   }
 
   // Roundtrip-serializable check — catches non-serializable values left on
@@ -673,6 +785,32 @@ interface RawAppField {
   capabilities?: CatalogAppField['capabilities']
 }
 
+interface RawConnectorFieldDecl {
+  sourcePath: string
+  type: string
+  name: string
+  pii?: boolean
+  capabilities?: { hidden?: boolean; filterable?: boolean }
+}
+
+interface RawConnectorStream {
+  key: string
+  displayFieldKey: string
+  fields: Record<string, RawConnectorFieldDecl>
+  defaultMappings?: CatalogConnectorDefaultMapping[]
+  exampleRecord?: Record<string, unknown>
+}
+
+interface RawDataConnector {
+  id: string
+  label: string
+  requiresConnection?: boolean
+  iconKey?: string
+  /** zod schema — projected to JSON Schema via zodToProviderToolSchema. */
+  config?: unknown
+  streams: RawConnectorStream[]
+}
+
 interface RawApp {
   tools?: ReadonlyArray<unknown>
   toolsets?: ReadonlyArray<unknown>
@@ -681,4 +819,5 @@ interface RawApp {
     triggers?: ReadonlyArray<unknown>
   }
   fields?: ReadonlyArray<unknown>
+  dataConnectors?: ReadonlyArray<unknown>
 }

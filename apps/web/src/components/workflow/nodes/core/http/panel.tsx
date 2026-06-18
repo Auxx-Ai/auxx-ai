@@ -33,25 +33,30 @@ import {
 import { generateId } from '@auxx/utils/generateId'
 import { produce } from 'immer'
 import { ChevronDown, FileJson, Plus } from 'lucide-react'
-import { memo, useEffect, useRef, useState } from 'react'
+import { memo, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  BodyTypeOptions,
+  EditHttpBody,
+  HttpRequestFieldProvider,
+  KeyValueList,
+  keyValueToHeaders,
+  keyValueToParams,
+  MethodOptions,
+  parseHeadersToKeyValue,
+  parseParamsToKeyValue,
+} from '~/components/global/http-request'
 import { useNodeCrud, useReadOnly } from '~/components/workflow/hooks'
 import { BasePanel } from '~/components/workflow/nodes/shared/base/base-panel'
 import Field from '~/components/workflow/ui/field'
 import { InputEditor } from '~/components/workflow/ui/input-editor'
 import { OutputVariablesDisplay } from '~/components/workflow/ui/output-variables'
 import Section from '~/components/workflow/ui/section'
-import { EditHttpBody, ErrorHandling, KeyValueList } from './components'
+import { ErrorHandling } from './components'
 import { AuthDialog } from './components/auth-dialog'
-import { BodyTypeOptions, MethodOptions } from './constants'
+import { createWorkflowHttpFieldComponents } from './components/workflow-field-adapters'
 import { httpNodeDefinition } from './schema'
 import type { HttpNodeData, KeyValue } from './types'
 import { BodyType } from './types'
-import {
-  keyValueToHeaders,
-  keyValueToParams,
-  parseHeadersToKeyValue,
-  parseParamsToKeyValue,
-} from './utils'
 
 interface HttpPanelProps {
   nodeId: string
@@ -62,6 +67,10 @@ const HttpNodePanelComponent = ({ nodeId, data }: HttpPanelProps) => {
   const { isReadOnly } = useReadOnly()
 
   const { inputs, setInputs } = useNodeCrud<HttpNodeData>(nodeId, data)
+
+  // Bind the workflow variable editor + file picker to this node's id, then feed
+  // them to the shared HTTP builder via context (the only ReactFlow-coupled bit).
+  const httpFieldComponents = useMemo(() => createWorkflowHttpFieldComponents(nodeId), [nodeId])
 
   // Local KV array state — decoupled from the string format to prevent
   // ID regeneration and state loss on every keystroke.
@@ -190,20 +199,21 @@ const HttpNodePanelComponent = ({ nodeId, data }: HttpPanelProps) => {
   return (
     <BasePanel nodeId={nodeId} data={data}>
       <Section title='HTTP Request Configuration' isRequired>
-        <div className='space-y-5'>
-          <Field
-            title='Request'
-            isRequired
-            actions={
-              <>
-                <AuthDialog
-                  nodeId={nodeId}
-                  authorization={inputs.authorization}
-                  onChange={(auth) => {
-                    setInputs({ ...inputs, authorization: auth })
-                  }}
-                />
-                {/* <Button
+        <HttpRequestFieldProvider value={httpFieldComponents}>
+          <div className='space-y-5'>
+            <Field
+              title='Request'
+              isRequired
+              actions={
+                <>
+                  <AuthDialog
+                    nodeId={nodeId}
+                    authorization={inputs.authorization}
+                    onChange={(auth) => {
+                      setInputs({ ...inputs, authorization: auth })
+                    }}
+                  />
+                  {/* <Button
                   variant='ghost'
                   size='xs'
                   onClick={() => {
@@ -213,108 +223,106 @@ const HttpNodePanelComponent = ({ nodeId, data }: HttpPanelProps) => {
                   <FileJson />
                   From cURL
                 </Button> */}
-              </>
-            }>
-            <div className='space-y-2'>
-              <div className='flex flex-row items-center gap-2'>
-                <InputGroup>
-                  <InputGroupAddon align='inline-start'>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <InputGroupButton variant='ghost' className='!pr-1.5 text-xs'>
-                          {(inputs.method || 'get').toUpperCase()}{' '}
-                          <ChevronDown className='size-3' />
-                        </InputGroupButton>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align='end' className='[--radius:0.95rem]'>
-                        <DropdownMenuRadioGroup
-                          value={inputs.method || 'get'}
-                          onValueChange={handleMethodChange}>
-                          {MethodOptions.map((option) => (
-                            <DropdownMenuRadioItem
-                              key={option.value}
-                              value={option.value}
-                              className='pl-3'>
-                              {option.label}
-                            </DropdownMenuRadioItem>
-                          ))}
-                        </DropdownMenuRadioGroup>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </InputGroupAddon>
-                  <div className='flex-1 px-2'>
-                    <InputEditor
-                      nodeId={nodeId}
-                      value={inputs.url}
-                      onBlur={(value) => {
-                        setInputs({ ...inputs, url: value })
-                      }}
-                      placeholder='Enter URL'
-                      className='w-full'
-                    />
-                  </div>
-                </InputGroup>
-              </div>
-            </div>
-          </Field>
-          <Field
-            title='Headers'
-            actions={
-              <Button variant='ghost' size='xs' onClick={handleAddHeader}>
-                <Plus /> Add header
-              </Button>
-            }>
-            <KeyValueList
-              readonly={isReadOnly}
-              list={headersList}
-              onChange={handleHeadersChange}
-              onAdd={handleAddHeader}
-              nodeId={nodeId}
-            />
-          </Field>
-          <Field
-            title='Params'
-            actions={
-              <Button variant='ghost' size='xs' onClick={handleAddParam}>
-                <Plus /> Add param
-              </Button>
-            }>
-            <KeyValueList
-              readonly={isReadOnly}
-              list={paramsList}
-              onChange={handleParamsChange}
-              onAdd={handleAddParam}
-              nodeId={nodeId}
-            />
-          </Field>
-          {inputs.method !== 'get' && inputs.method !== 'head' && (
-            <Field
-              title='Body'
-              actions={
-                <Select
-                  value={inputs.body?.type || BodyType.none}
-                  onValueChange={handleBodyTypeChange}>
-                  <SelectTrigger variant={'default'} size='sm' disabled={isReadOnly}>
-                    <SelectValue placeholder='Type' />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {BodyTypeOptions.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                </>
               }>
-              <EditHttpBody
-                nodeId={nodeId}
-                body={inputs.body}
-                isReadOnly={isReadOnly}
-                onChange={(body) => setInputs({ ...inputs, body })}
+              <div className='space-y-2'>
+                <div className='flex flex-row items-center gap-2'>
+                  <InputGroup>
+                    <InputGroupAddon align='inline-start'>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <InputGroupButton variant='ghost' className='!pr-1.5 text-xs'>
+                            {(inputs.method || 'get').toUpperCase()}{' '}
+                            <ChevronDown className='size-3' />
+                          </InputGroupButton>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align='end' className='[--radius:0.95rem]'>
+                          <DropdownMenuRadioGroup
+                            value={inputs.method || 'get'}
+                            onValueChange={handleMethodChange}>
+                            {MethodOptions.map((option) => (
+                              <DropdownMenuRadioItem
+                                key={option.value}
+                                value={option.value}
+                                className='pl-3'>
+                                {option.label}
+                              </DropdownMenuRadioItem>
+                            ))}
+                          </DropdownMenuRadioGroup>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </InputGroupAddon>
+                    <div className='flex-1 px-2'>
+                      <InputEditor
+                        nodeId={nodeId}
+                        value={inputs.url}
+                        onBlur={(value) => {
+                          setInputs({ ...inputs, url: value })
+                        }}
+                        placeholder='Enter URL'
+                        className='w-full'
+                      />
+                    </div>
+                  </InputGroup>
+                </div>
+              </div>
+            </Field>
+            <Field
+              title='Headers'
+              actions={
+                <Button variant='ghost' size='xs' onClick={handleAddHeader}>
+                  <Plus /> Add header
+                </Button>
+              }>
+              <KeyValueList
+                readonly={isReadOnly}
+                list={headersList}
+                onChange={handleHeadersChange}
+                onAdd={handleAddHeader}
               />
             </Field>
-          )}
-        </div>
+            <Field
+              title='Params'
+              actions={
+                <Button variant='ghost' size='xs' onClick={handleAddParam}>
+                  <Plus /> Add param
+                </Button>
+              }>
+              <KeyValueList
+                readonly={isReadOnly}
+                list={paramsList}
+                onChange={handleParamsChange}
+                onAdd={handleAddParam}
+              />
+            </Field>
+            {inputs.method !== 'get' && inputs.method !== 'head' && (
+              <Field
+                title='Body'
+                actions={
+                  <Select
+                    value={inputs.body?.type || BodyType.none}
+                    onValueChange={handleBodyTypeChange}>
+                    <SelectTrigger variant={'default'} size='sm' disabled={isReadOnly}>
+                      <SelectValue placeholder='Type' />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {BodyTypeOptions.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                }>
+                <EditHttpBody
+                  body={inputs.body}
+                  isReadOnly={isReadOnly}
+                  onChange={(body) => setInputs({ ...inputs, body })}
+                />
+              </Field>
+            )}
+          </div>
+        </HttpRequestFieldProvider>
       </Section>
       <Section title='Timeout' initialOpen={false}>
         <div className='space-y-2'>

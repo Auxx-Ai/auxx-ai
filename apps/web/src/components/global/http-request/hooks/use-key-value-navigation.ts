@@ -1,4 +1,4 @@
-// apps/web/src/components/workflow/nodes/core/http/hooks/use-key-value-navigation.ts
+// apps/web/src/components/global/http-request/hooks/use-key-value-navigation.ts
 
 import { useEffect, useRef } from 'react'
 

@@ -46,6 +46,7 @@ export enum FeatureKey {
   agents = 'agents',
   agentProcedures = 'agentProcedures',
   mcp = 'mcp',
+  dataConnectors = 'dataConnectors',
 
   // ── Static limits (count of things, not time-based) ──
   teammates = 'teammates',
@@ -170,6 +171,13 @@ export const FEATURE_REGISTRY: FeatureMetadata[] = [
     label: 'MCP Servers',
     description: 'Connect external MCP servers and expose their tools to agents.',
     group: 'AI',
+  },
+  {
+    key: FeatureKey.dataConnectors,
+    type: 'boolean',
+    label: 'Data Connectors',
+    description: 'Sync external structured records (REST APIs, apps) into the entity system.',
+    group: 'Data',
   },
 
   // ── Static limits ──

@@ -379,3 +379,68 @@ export async function findToolModules(srcDirAbsolute: string) {
     modules: new Map<string, ModuleInfo>(),
   })
 }
+
+/** A data connector server module — `{ execute: HandlerRef }` per connector id. */
+export interface DataConnectorModule {
+  execute?: HandlerRef | null
+}
+
+/**
+ * Parse the app entry source and extract `app.dataConnectors[].execute` module
+ * references. Reuses the same `id` + `.server.ts execute` discipline as tools
+ * (`visitTool`), keyed by connector id. Consumed by `generate-server-entry.ts`
+ * to emit the `__AUXX_DATA_CONNECTORS__` registry the lambda's
+ * `data-connector-executor.ts` looks up at run time. See
+ * plans/data-connectors/claude/03-connectors-and-sources.md §4.
+ */
+export function findDataConnectorModulesFromSource(
+  source: string,
+  currPath: string,
+  helpers: Helpers
+) {
+  const result = new Map<string, DataConnectorModule>()
+  try {
+    const ast = parse(source, { range: true, jsx: true })
+    const scopeManager = analyze(ast, { sourceType: 'module' })
+    const moduleScope = scopeManager.acquire(ast, true)
+    if (moduleScope === null) {
+      throw new Error('Expected to be able to acquire module scope')
+    }
+    ;(walk as any)(ast, null, {
+      ExportNamedDeclaration(node: ASTNode) {
+        if (!node.declaration || node.declaration.type !== 'VariableDeclaration') return
+        if (node.declaration.declarations.length !== 1) return
+        const declaration = node.declaration.declarations[0]
+        if (declaration.id.type !== 'Identifier' || declaration.id.name !== 'app') return
+        const appValue = declaration.init
+        if (!appValue || appValue.type !== 'ObjectExpression') return
+
+        const connectors = findProperty(appValue, 'dataConnectors', moduleScope)
+        if (connectors?.type !== 'ArrayExpression') return
+
+        for (const element of connectors.elements) {
+          if (element) visitTool(element, moduleScope, result, currPath, helpers)
+        }
+      },
+    })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    return errored({ code: 'DATA_CONNECTOR_RESOLUTION_FAILED', message })
+  }
+  return complete(result)
+}
+
+/**
+ * Discover and parse data connector modules from the app source directory.
+ */
+export async function findDataConnectorModules(srcDirAbsolute: string) {
+  const appEntryPoint = await getAppEntryPoint(srcDirAbsolute)
+  if (!appEntryPoint) {
+    return complete(new Map<string, DataConnectorModule>())
+  }
+  return findDataConnectorModulesFromSource(appEntryPoint.content, appEntryPoint.path, {
+    getModuleSource: (p) => fs.readFileSync(p, 'utf-8'),
+    doesModuleExist: (p) => fs.existsSync(p),
+    modules: new Map<string, ModuleInfo>(),
+  })
+}

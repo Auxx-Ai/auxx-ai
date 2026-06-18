@@ -1,6 +1,7 @@
 import { constants } from '@auxx/config'
 import { database } from '@auxx/database'
 import { isSelfHosted } from '@auxx/deployment'
+import { reconcileConnectorSchedulers } from '@auxx/lib/data-connectors'
 import { enqueueDataMigrationsRun } from '@auxx/lib/jobs'
 import { getQueue, Queues } from '@auxx/lib/jobs/queues'
 import { reconcileSourceSchedulers } from '@auxx/lib/knowledge-sources'
@@ -9,6 +10,7 @@ import { startAiAutofillWorker } from './worker-definitions/ai-autofill-worker'
 import { startAppTriggerWorker } from './worker-definitions/app-trigger-worker'
 import { startCalendarSyncWorker } from './worker-definitions/calendar-sync-worker'
 import { startChatAgentWorker } from './worker-definitions/chat-agent-worker'
+import { startDataConnectorWorker } from './worker-definitions/data-connector-worker'
 import { startDataImportWorker } from './worker-definitions/data-import-worker'
 import { startDatasetEmbeddingWorker } from './worker-definitions/dataset-embedding-worker'
 import { startDatasetMaintenanceWorker } from './worker-definitions/dataset-maintenance-worker'
@@ -109,6 +111,9 @@ export async function startWorkers() {
   // Knowledge Source ingest/re-sync orchestration worker
   const knowledgeSourceWorker = startKnowledgeSourceWorker()
 
+  // Data Connector structured-record sync orchestration worker
+  const dataConnectorWorker = startDataConnectorWorker()
+
   const workers = [
     // defaultWorker,
     eventsWorker,
@@ -139,6 +144,7 @@ export async function startWorkers() {
     recordingProcessingWorker,
     kbSyncWorker,
     knowledgeSourceWorker,
+    dataConnectorWorker,
   ]
 
   return Promise.all(workers)
@@ -747,6 +753,11 @@ export async function setupSchedules() {
   // stop them firing. Idempotent (upsert by source-sync-{id}), so re-running on
   // every boot is a no-op when Redis already holds them.
   await reconcileSourceSchedulers(database)
+
+  // ── Data Connector Schedules ─────────────────────────────────
+  // Re-register per-connector scheduled syncs so a cleared Redis can't silently
+  // stop them firing. Idempotent (upsert by data-connector-sync-{id}).
+  await reconcileConnectorSchedulers(database)
 
   // ── Data Migrations ──────────────────────────────────────────
   // Enqueue a one-shot pending-data-migrations run at boot (NOT a repeatable

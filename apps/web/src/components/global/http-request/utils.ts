@@ -1,4 +1,4 @@
-// apps/web/src/components/workflow/nodes/core/http/utils.ts
+// apps/web/src/components/global/http-request/utils.ts
 
 import { generateId } from '@auxx/utils/generateId'
 import type { Body, BodyPayload, KeyValue } from './types'

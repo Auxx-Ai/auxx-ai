@@ -5,15 +5,36 @@ import type { ImportMappingProperty } from '../types/mapping'
 import type { ValueResolution } from '../types/resolution'
 
 /**
+ * Raw source row keyed either by CSV column index (`Record<number, string>`)
+ * or by source-field key (`Record<string, unknown>`, used by data connectors).
+ * Accepting both lets one coercion path serve CSV and connector sources.
+ */
+export type SourceRow = Record<number, string> | Record<string, unknown>
+
+/**
+ * Read the source value for a mapping, honoring `sourceFieldKey` when present
+ * (connector sources) and falling back to `sourceColumnIndex` (CSV). Coerced to
+ * a string so the downstream hash/resolution path is unchanged for CSV.
+ */
+export function getSourceValue(row: SourceRow, mapping: ImportMappingProperty): string {
+  const raw =
+    mapping.sourceFieldKey !== undefined
+      ? (row as Record<string, unknown>)[mapping.sourceFieldKey]
+      : (row as Record<number, unknown>)[mapping.sourceColumnIndex]
+  if (raw === null || raw === undefined) return ''
+  return typeof raw === 'string' ? raw : String(raw)
+}
+
+/**
  * Build record data from raw row values using mappings and resolutions.
  *
- * @param rowData - Map of columnIndex → rawValue
+ * @param rowData - Source row keyed by column index (CSV) or source-field key (connectors)
  * @param mappings - Column mappings
  * @param resolutions - Map of hash → resolution
  * @returns Object with standard fields and custom fields separated
  */
 export function buildRecordData(
-  rowData: Record<number, string>,
+  rowData: SourceRow,
   mappings: ImportMappingProperty[],
   resolutions: Map<string, ValueResolution>
 ): { standardFields: Record<string, unknown>; customFields: Record<string, unknown> } {
@@ -26,7 +47,7 @@ export function buildRecordData(
       continue
     }
 
-    const rawValue = rowData[mapping.sourceColumnIndex] ?? ''
+    const rawValue = getSourceValue(rowData, mapping)
     const hash = hashValue(rawValue)
 
     // Get resolved value
@@ -64,7 +85,7 @@ export function buildRecordData(
  * @returns Array of { rowIndex, standardFields, customFields }
  */
 export function buildMultipleRecordData(
-  rowsData: Map<number, Record<number, string>>,
+  rowsData: Map<number, SourceRow>,
   mappings: ImportMappingProperty[],
   resolutions: Map<string, ValueResolution>
 ): Array<{

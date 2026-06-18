@@ -169,6 +169,7 @@ export const installedAppsProvider: CacheProvider<CachedInstalledApp[]> = {
         workflowBlocks: inst.currentDeployment?.catalog?.workflow.blocks ?? undefined,
         workflowTriggers: inst.currentDeployment?.catalog?.workflow.triggers ?? undefined,
         actions,
+        dataConnectors: inst.currentDeployment?.catalog?.dataConnectors ?? undefined,
         orgConnectionPresent: orgConnByAppId.get(inst.app.id)?.present ?? false,
         orgConnectionExpiresAt: orgConnByAppId.get(inst.app.id)?.expiresAt?.toISOString() ?? null,
       }

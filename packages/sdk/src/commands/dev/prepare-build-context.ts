@@ -7,7 +7,10 @@
 
 import chalk from 'chalk'
 import path from 'path'
-import { findToolModules } from '../../build/server/find-tool-server-modules.js'
+import {
+  findDataConnectorModules,
+  findToolModules,
+} from '../../build/server/find-tool-server-modules.js'
 import { findWorkflowBlockModules } from '../../build/server/find-workflow-block-server-modules.js'
 import {
   combine,
@@ -121,11 +124,16 @@ export async function prepareBuildContext(
       if (isErrored(toolModulesResult)) {
         return toolModulesResult
       }
+      const dataConnectorModulesResult = await findDataConnectorModules(srcDir)
+      if (isErrored(dataConnectorModulesResult)) {
+        return dataConnectorModulesResult
+      }
       const { blocks: workflowBlockModules } = workflowBlockModulesResult.value
       const toolModules = toolModulesResult.value
+      const dataConnectorModules = dataConnectorModulesResult.value
       return combineAsync({
         client: client.rebuild({ workflowBlockModules }),
-        server: server.rebuild({ workflowBlockModules, toolModules }),
+        server: server.rebuild({ workflowBlockModules, toolModules, dataConnectorModules }),
       })
       // return complete({})
     },

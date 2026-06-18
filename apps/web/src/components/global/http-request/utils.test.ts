@@ -1,4 +1,4 @@
-// apps/web/src/components/workflow/nodes/core/http/utils.test.ts
+// apps/web/src/components/global/http-request/utils.test.ts
 
 import { describe, expect, it } from 'vitest'
 import type { KeyValue } from './types'

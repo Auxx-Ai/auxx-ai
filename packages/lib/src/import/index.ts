@@ -32,9 +32,11 @@ export {
   executePlan,
   executeRow,
   executeStrategy,
+  getSourceValue,
   markJobCompleted,
   markJobExecuting,
   markJobFailed,
+  type SourceRow,
   type StrategyExecutionResult,
   updateJobProgress,
 } from './execution'

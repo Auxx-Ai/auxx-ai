@@ -128,6 +128,7 @@ const BOOLEAN_GATES = {
     agents: true,
     agentProcedures: false,
     mcp: false,
+    dataConnectors: true,
   },
   free: {
     knowledgeBase: true,
@@ -148,6 +149,7 @@ const BOOLEAN_GATES = {
     agents: true,
     agentProcedures: false,
     mcp: false,
+    dataConnectors: true,
   },
   starter: {
     knowledgeBase: true,
@@ -168,6 +170,7 @@ const BOOLEAN_GATES = {
     agents: true,
     agentProcedures: false,
     mcp: false,
+    dataConnectors: true,
   },
   growth: {
     knowledgeBase: true,
@@ -188,6 +191,7 @@ const BOOLEAN_GATES = {
     agents: true,
     agentProcedures: false,
     mcp: false,
+    dataConnectors: true,
   },
   enterprise: {
     knowledgeBase: true,
@@ -208,6 +212,7 @@ const BOOLEAN_GATES = {
     agents: true,
     agentProcedures: false,
     mcp: false,
+    dataConnectors: true,
   },
 } as const
 

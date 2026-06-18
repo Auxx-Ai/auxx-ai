@@ -1,6 +1,7 @@
 // packages/sdk/src/root/app.ts
 
 import type { BulkRecordAction, RecordAction, RecordWidget } from '../client/record-actions.js'
+import type { DataConnectorDefinition } from './data-connectors/types.js'
 import type { AppFieldDefinition } from './fields/index.js'
 import type { ScopedSettingsSchema } from './settings/settings-schema.js'
 import type { ToolDefinition, Toolset } from './tools/types.js'
@@ -113,6 +114,15 @@ export interface App {
    * uninstall. See app-registered custom fields.
    */
   readonly fields?: ReadonlyArray<AppFieldDefinition>
+
+  /**
+   * Data Connectors this app declares — structured-data sources that sync into
+   * the platform's entity model. Declared via `defineDataConnector(...)`. The
+   * build extractor serializes each into `AppDeployment.catalog.dataConnectors`;
+   * the org may set one up to provision owned defs + contribute to existing
+   * ones. See plans/data-connectors/claude/03-connectors-and-sources.md §4.
+   */
+  readonly dataConnectors?: ReadonlyArray<DataConnectorDefinition>
 
   readonly settings?: {
     readonly organization?: ScopedSettingsSchema
