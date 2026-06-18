@@ -11,13 +11,12 @@ import {
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
 import { LastUpdated } from '@auxx/ui/components/last-updated'
-import { toastError } from '@auxx/ui/components/toast'
 import { Cable, FileText, MoreVertical, Pause, Play, RefreshCw, Trash } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { AppIcon } from '~/components/apps/ui/app-icon'
 import { Tooltip } from '~/components/global/tooltip'
 import { useConfirm } from '~/hooks/use-confirm'
-import { api } from '~/trpc/react'
+import { useConnectorMutations } from '../hooks/use-connector-mutations'
 import { asConnectorStatus, CONNECTOR_STATUS_META } from './connector-status'
 
 /** A connector row as returned by `dataConnector.list`. */
@@ -54,24 +53,13 @@ function iconIdForType(type: string): string {
 export function ConnectorCard({ connector, streamCount }: ConnectorCardProps) {
   const router = useRouter()
   const [confirm, ConfirmDialog] = useConfirm()
-  const utils = api.useUtils()
 
   const status = asConnectorStatus(connector.status)
   const meta = CONNECTOR_STATUS_META[status]
   const isSyncing = status === 'syncing' || status === 'provisioning'
   const isPaused = status === 'paused'
 
-  const onSettled = () => void utils.dataConnector.list.invalidate()
-  const onError = (verb: string) => (e: { message: string }) =>
-    toastError({ title: `Could not ${verb} connector`, description: e.message })
-
-  const syncNow = api.dataConnector.syncNow.useMutation({ onSettled, onError: onError('sync') })
-  const pause = api.dataConnector.pause.useMutation({ onSettled, onError: onError('pause') })
-  const resume = api.dataConnector.resume.useMutation({ onSettled, onError: onError('resume') })
-  const deleteConnector = api.dataConnector.delete.useMutation({
-    onSettled,
-    onError: onError('delete'),
-  })
+  const { syncNow, pause, resume, remove } = useConnectorMutations()
 
   const href = `/app/connectors/${connector.id}`
   const open = () => router.push(href)
@@ -91,7 +79,7 @@ export function ConnectorCard({ connector, streamCount }: ConnectorCardProps) {
       cancelText: 'Cancel',
       destructive: true,
     })
-    if (ok) deleteConnector.mutate({ id: connector.id, syncedData: 'keep' })
+    if (ok) void remove(connector.id, 'keep')
   }
 
   return (
@@ -158,19 +146,17 @@ export function ConnectorCard({ connector, streamCount }: ConnectorCardProps) {
                 <FileText />
                 Open
               </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={wrap(() => syncNow.mutate({ id: connector.id }))}
-                disabled={isSyncing}>
+              <DropdownMenuItem onClick={wrap(() => syncNow(connector.id))} disabled={isSyncing}>
                 <RefreshCw />
                 Sync now
               </DropdownMenuItem>
               {isPaused ? (
-                <DropdownMenuItem onClick={wrap(() => resume.mutate({ id: connector.id }))}>
+                <DropdownMenuItem onClick={wrap(() => resume(connector.id))}>
                   <Play />
                   Resume
                 </DropdownMenuItem>
               ) : (
-                <DropdownMenuItem onClick={wrap(() => pause.mutate({ id: connector.id }))}>
+                <DropdownMenuItem onClick={wrap(() => pause(connector.id))}>
                   <Pause />
                   Pause
                 </DropdownMenuItem>

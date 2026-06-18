@@ -1,6 +1,11 @@
 // apps/web/src/components/workflow/nodes/core/scheduled-trigger/validation.ts
 
+import { validateCronExpression } from '~/components/global/schedule/cron-validation'
 import type { ScheduledTriggerUIConfig, ScheduledTriggerValidationResult } from './types'
+
+// Mirrors MIN_SCHEDULE_INTERVAL_MINUTES (packages/lib cron-pattern); the
+// scheduler rejects sub-5-minute simple cadences, so flag them as errors here.
+const MIN_MINUTES = 5
 
 /**
  * Comprehensive validation for scheduled trigger configuration
@@ -33,8 +38,8 @@ export function validateScheduledTriggerConfig(
               'Interval longer than 24 hours (1440 minutes) might be better configured as days'
             )
           }
-          if (intervalValue < 5) {
-            warnings.push('Very frequent schedules (< 5 minutes) may impact system performance')
+          if (intervalValue < MIN_MINUTES) {
+            errors.push(`Minimum interval is ${MIN_MINUTES} minutes`)
           }
           break
         case 'hours':
@@ -98,199 +103,6 @@ export function validateScheduledTriggerConfig(
     errors,
     warnings,
   }
-}
-
-/**
- * Validate cron expression with detailed error reporting
- */
-function validateCronExpression(cron: string): {
-  isValid: boolean
-  errors: string[]
-  warnings: string[]
-} {
-  const errors: string[] = []
-  const warnings: string[] = []
-
-  if (!cron || typeof cron !== 'string') {
-    errors.push('Cron expression cannot be empty')
-    return { isValid: false, errors, warnings }
-  }
-
-  const cronTrimmed = cron.trim()
-  const cronParts = cronTrimmed.split(/\s+/)
-
-  // Must have exactly 5 parts: minute hour day month weekday
-  if (cronParts.length !== 5) {
-    errors.push('Cron expression must have exactly 5 fields: minute hour day month weekday')
-    return { isValid: false, errors, warnings }
-  }
-
-  const [minute, hour, day, month, weekday] = cronParts
-
-  // Validate each field
-  const minuteValidation = validateCronField(minute, 'minute', 0, 59)
-  const hourValidation = validateCronField(hour, 'hour', 0, 23)
-  const dayValidation = validateCronField(day, 'day', 1, 31)
-  const monthValidation = validateCronField(month, 'month', 1, 12, [
-    'JAN',
-    'FEB',
-    'MAR',
-    'APR',
-    'MAY',
-    'JUN',
-    'JUL',
-    'AUG',
-    'SEP',
-    'OCT',
-    'NOV',
-    'DEC',
-  ])
-  const weekdayValidation = validateCronField(weekday, 'weekday', 0, 7, [
-    'SUN',
-    'MON',
-    'TUE',
-    'WED',
-    'THU',
-    'FRI',
-    'SAT',
-  ])
-
-  errors.push(...minuteValidation.errors)
-  errors.push(...hourValidation.errors)
-  errors.push(...dayValidation.errors)
-  errors.push(...monthValidation.errors)
-  errors.push(...weekdayValidation.errors)
-
-  warnings.push(...minuteValidation.warnings)
-  warnings.push(...hourValidation.warnings)
-  warnings.push(...dayValidation.warnings)
-  warnings.push(...monthValidation.warnings)
-  warnings.push(...weekdayValidation.warnings)
-
-  // Check for very frequent executions
-  if (minute === '*' && hour === '*') {
-    warnings.push(
-      'This expression will execute every minute - consider if this frequency is necessary'
-    )
-  }
-
-  return {
-    isValid: errors.length === 0,
-    errors,
-    warnings,
-  }
-}
-
-/**
- * Validate individual cron field
- */
-function validateCronField(
-  field: string,
-  fieldName: string,
-  min: number,
-  max: number,
-  namedValues?: string[]
-): { errors: string[]; warnings: string[] } {
-  const errors: string[] = []
-  const warnings: string[] = []
-
-  if (!field) {
-    errors.push(`${fieldName} field cannot be empty`)
-    return { errors, warnings }
-  }
-
-  // Allow * (any value)
-  if (field === '*') {
-    return { errors, warnings }
-  }
-
-  // Handle comma-separated values
-  const values = field.split(',')
-
-  for (const value of values) {
-    const trimmedValue = value.trim()
-
-    // Handle ranges (e.g., 1-5)
-    if (trimmedValue.includes('-')) {
-      const [start, end] = trimmedValue.split('-')
-      const startNum = parseFieldValue(start, namedValues)
-      const endNum = parseFieldValue(end, namedValues)
-
-      if (startNum === null || endNum === null) {
-        errors.push(`Invalid range in ${fieldName}: ${trimmedValue}`)
-        continue
-      }
-
-      if (startNum < min || startNum > max || endNum < min || endNum > max) {
-        errors.push(`${fieldName} range ${trimmedValue} is outside valid range ${min}-${max}`)
-      }
-
-      if (startNum >= endNum) {
-        errors.push(
-          `Invalid range in ${fieldName}: start (${start}) must be less than end (${end})`
-        )
-      }
-    }
-    // Handle step values (e.g., */5, 1-10/2)
-    else if (trimmedValue.includes('/')) {
-      const [range, step] = trimmedValue.split('/')
-      const stepNum = parseInt(step, 10)
-
-      if (Number.isNaN(stepNum) || stepNum <= 0) {
-        errors.push(`Invalid step value in ${fieldName}: ${step}`)
-        continue
-      }
-
-      if (range !== '*' && !range.includes('-')) {
-        errors.push(`Step values must be used with * or ranges in ${fieldName}: ${trimmedValue}`)
-      }
-
-      // Validate the range part if it's not *
-      if (range !== '*') {
-        const rangeValidation = validateCronField(range, fieldName, min, max, namedValues)
-        errors.push(...rangeValidation.errors)
-        warnings.push(...rangeValidation.warnings)
-      }
-    }
-    // Handle single values
-    else {
-      const numValue = parseFieldValue(trimmedValue, namedValues)
-
-      if (numValue === null) {
-        errors.push(`Invalid value in ${fieldName}: ${trimmedValue}`)
-        continue
-      }
-
-      if (numValue < min || numValue > max) {
-        errors.push(`${fieldName} value ${trimmedValue} is outside valid range ${min}-${max}`)
-      }
-    }
-  }
-
-  return { errors, warnings }
-}
-
-/**
- * Parse cron field value (numeric or named)
- */
-function parseFieldValue(value: string, namedValues?: string[]): number | null {
-  const trimmed = value.trim().toUpperCase()
-
-  // Try to parse as number first
-  const numValue = parseInt(trimmed, 10)
-  if (!Number.isNaN(numValue)) {
-    return numValue
-  }
-
-  // Try named values if provided
-  if (namedValues) {
-    const index = namedValues.indexOf(trimmed)
-    if (index !== -1) {
-      return index + (namedValues.includes('SUN') ? 0 : 1) // Weekdays start at 0, months at 1
-    }
-  }
-
-  return null
 }
 
 /**

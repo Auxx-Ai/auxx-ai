@@ -4,6 +4,7 @@
 import { Button } from '@auxx/ui/components/button'
 import { Section } from '@auxx/ui/components/section'
 import { ChevronRight, Globe, Plug, Settings2 } from 'lucide-react'
+import { useAppsContext } from '~/components/apps/providers/apps-context'
 import { AppAccountPopover } from '~/components/apps/ui/app-account-popover'
 import { ConnectionList } from '~/components/apps/ui/connection-list'
 import { ConnectionRow, type ConnectionStatus } from '~/components/apps/ui/connection-row'
@@ -25,13 +26,27 @@ interface ConnectionSectionProps {
  */
 export function ConnectionSection({ connector, onOpenSource }: ConnectionSectionProps) {
   const utils = api.useUtils()
+  const { appInstallations } = useAppsContext()
   const isGenericRest = !connector.type.startsWith('app:')
-  // app:<slug> connectors bind via the app account; generic-rest binds a secret connection.
-  const appId = connector.type.startsWith('app:') ? connector.type.slice('app:'.length) : null
+  // app:<slug> connectors borrow the installed app's credential; generic-rest binds a
+  // secret connection. The connector type stores the app *slug*, but the account picker
+  // keys off App.id — so resolve the installation by slug and feed the picker its id.
+  const slug = connector.type.startsWith('app:') ? connector.type.slice('app:'.length) : null
+  const installation = slug ? (appInstallations.find((i) => i.app.slug === slug) ?? null) : null
+  const appId = installation?.app.id ?? null
 
   const update = api.dataConnector.update.useMutation({
     onSuccess: () => void utils.dataConnector.getById.invalidate({ id: connector.id }),
   })
+
+  // Borrowing an app credential also records the installation (token refresh + lifecycle
+  // live on the app connection — DataConnector.appInstallationId, 01 §1).
+  const bindCredential = (credentialId: string) =>
+    update.mutate({
+      id: connector.id,
+      credentialId,
+      appInstallationId: installation?.installationId ?? null,
+    })
 
   const connected = !!connector.credentialId
   const status: ConnectionStatus = connected ? 'connected' : 'disconnected'
@@ -51,16 +66,16 @@ export function ConnectionSection({ connector, onOpenSource }: ConnectionSection
             subtitle={
               connected
                 ? 'This connector is using a bound credential.'
-                : appId
-                  ? 'Connect an account to authorize this connector.'
-                  : 'Add an API key / secret to authorize requests.'
+                : isGenericRest
+                  ? 'Add an API key / secret to authorize requests.'
+                  : 'Connect an account to authorize this connector.'
             }
             actions={() => (
               <AppAccountPopover
                 appId={appId}
                 value={connector.credentialId ?? undefined}
-                onPick={(credId) => update.mutate({ id: connector.id, credentialId: credId })}
-                onConnected={(credId) => update.mutate({ id: connector.id, credentialId: credId })}
+                onPick={bindCredential}
+                onConnected={bindCredential}
                 trigger={
                   <Button variant='outline' size='sm'>
                     <Plug />

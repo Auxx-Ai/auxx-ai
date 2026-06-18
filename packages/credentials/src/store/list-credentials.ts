@@ -1,7 +1,7 @@
 // packages/credentials/src/store/list-credentials.ts
 
 import { database, schema } from '@auxx/database'
-import { and, desc, eq, isNull, type SQL } from 'drizzle-orm'
+import { and, desc, eq, inArray, isNull, type SQL } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import { fromDb, toRecord } from './internal'
 import type {
@@ -13,7 +13,8 @@ import type {
 
 export interface ListCredentialsInput {
   organizationId: string
-  kind?: CredentialKind
+  /** A single family or a set of families (matched with `IN`). */
+  kind?: CredentialKind | CredentialKind[]
   type?: string
   appId?: string
   appInstallationId?: string
@@ -37,7 +38,8 @@ export async function listCredentials(
   input: ListCredentialsInput
 ): Promise<Result<CredentialRecord[] | CredentialRecordWithCreator[], CredentialStoreError>> {
   const conditions: SQL[] = [eq(schema.Credential.organizationId, input.organizationId)]
-  if (input.kind !== undefined) conditions.push(eq(schema.Credential.kind, input.kind))
+  if (Array.isArray(input.kind)) conditions.push(inArray(schema.Credential.kind, input.kind))
+  else if (input.kind !== undefined) conditions.push(eq(schema.Credential.kind, input.kind))
   if (input.type !== undefined) conditions.push(eq(schema.Credential.type, input.type))
   if (input.appId !== undefined) conditions.push(eq(schema.Credential.appId, input.appId))
   if (input.appInstallationId !== undefined)

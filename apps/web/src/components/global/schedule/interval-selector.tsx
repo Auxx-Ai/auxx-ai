@@ -18,6 +18,13 @@ import { VarEditorField } from '~/components/workflow/ui/input-editor/var-editor
 
 export type Interval = 'minutes' | 'hours' | 'days' | 'weeks'
 
+// Mirrors MIN_SCHEDULE_INTERVAL_MINUTES (packages/lib cron-pattern). Hardcoded
+// here to keep this client component free of the server-only lib barrel.
+const MIN_MINUTES = 5
+
+/** Lowest allowed value for a given unit — minutes are floored at MIN_MINUTES. */
+export const minIntervalValue = (interval: Interval) => (interval === 'minutes' ? MIN_MINUTES : 1)
+
 interface IntervalSelectorProps {
   interval: Interval
   value: number
@@ -53,8 +60,10 @@ export function IntervalSelector({
         <div className='flex-1'>
           <NumberInput
             value={value}
-            onValueChange={(v) => onValueChange(Math.max(1, v ?? 1))}
-            min={1}>
+            onValueChange={(v) =>
+              onValueChange(Math.max(minIntervalValue(interval), v ?? minIntervalValue(interval)))
+            }
+            min={minIntervalValue(interval)}>
             <InputGroup className='bg-transparent! min-h-8 shadow-none ring-0 border-0 has-[[data-slot=input-group-control]:focus-visible]:ring-[0px]'>
               <NumberInputFieldBase className='text-start ps-0 placeholder:text-primary-400' />
               <NumberInputArrows />

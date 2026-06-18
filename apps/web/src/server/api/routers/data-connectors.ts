@@ -19,10 +19,9 @@ import {
   listMappings,
   listRuns,
   listStreams,
-  pauseConnector,
   provisionConnectorMappings,
   removeMapping,
-  resumeConnector,
+  removeStream,
   setFieldMappings,
   setIdentityStrategy,
   setMappingTarget,
@@ -237,6 +236,8 @@ export const dataConnectorRouter = createTRPCRouter({
         config: connectorConfigSchema.optional(),
         credentialId: z.string().nullish(),
         appInstallationId: z.string().nullish(),
+        // Lifecycle toggle (pause/resume). Other statuses are engine-owned.
+        status: z.enum(['paused', 'live']).optional(),
         ...scheduleFields,
       })
     )
@@ -244,14 +245,6 @@ export const dataConnectorRouter = createTRPCRouter({
       const { id, ...patch } = input
       return updateConnector(ctx.db, ctx.session.organizationId, id, patch)
     }),
-
-  pause: adminProcedure.input(z.object({ id: z.string() })).mutation(async ({ ctx, input }) => {
-    return pauseConnector(ctx.db, ctx.session.organizationId, input.id)
-  }),
-
-  resume: adminProcedure.input(z.object({ id: z.string() })).mutation(async ({ ctx, input }) => {
-    return resumeConnector(ctx.db, ctx.session.organizationId, input.id)
-  }),
 
   delete: adminProcedure
     .input(
@@ -398,6 +391,12 @@ export const dataConnectorRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const { streamId, ...rest } = input
       return setStreamRequestConfig(ctx.db, ctx.session.organizationId, streamId, rest)
+    }),
+
+  removeStream: adminProcedure
+    .input(z.object({ streamId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      return removeStream(ctx.db, ctx.session.organizationId, input.streamId)
     }),
 
   // ── Mapping setup (admin) ─────────────────────────────────────────────────

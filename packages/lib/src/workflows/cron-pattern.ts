@@ -20,6 +20,15 @@ export interface ScheduledTriggerConfig {
 }
 
 /**
+ * Floor for simple-interval cadences, shared by every scheduler that consumes
+ * {@link intervalToCron} (workflow / agent / knowledge-source / data-connector).
+ * Connectors poll third-party APIs — sub-5-minute polling burns rate limits and
+ * worker capacity for data that rarely changes that fast. Raw cron expressions
+ * bypass this (power-user escape hatch).
+ */
+export const MIN_SCHEDULE_INTERVAL_MINUTES = 5
+
+/**
  * Convert a trigger config into a cron pattern (BullMQ-compatible — 6-field).
  * Throws on invalid configuration so callers can surface validation errors
  * before persisting the row.
@@ -55,6 +64,9 @@ export function convertToCronPattern(config: ScheduledTriggerConfig): string {
 export function intervalToCron(interval: string, value: number): string {
   switch (interval) {
     case 'minutes':
+      if (value < MIN_SCHEDULE_INTERVAL_MINUTES) {
+        throw new Error(`Minutes interval must be at least ${MIN_SCHEDULE_INTERVAL_MINUTES}`)
+      }
       if (value >= 60) {
         throw new Error('Minutes interval must be less than 60')
       }

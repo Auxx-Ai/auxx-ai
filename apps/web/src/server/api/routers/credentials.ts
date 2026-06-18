@@ -20,6 +20,9 @@ import { createTRPCRouter, notDemo, protectedProcedure } from '~/server/api/trpc
 // Singleton registry instance
 const credentialRegistry = new CredentialTypeRegistry()
 
+/** The four credential families (mirrors `CredentialKind` in @auxx/credentials). */
+const credentialKindSchema = z.enum(['app', 'mcp', 'integration', 'workflow'])
+
 export const credentialsRouter = createTRPCRouter({
   /**
    * Create a new workflow credential
@@ -70,6 +73,16 @@ export const credentialsRouter = createTRPCRouter({
       z
         .object({
           type: z.string().optional().describe('Filter by credential type'),
+          /**
+           * Credential family/families to list. Single value or a set (matched
+           * with `IN`). Defaults to `workflow` so the workflow-credentials UI
+           * keeps its current scope; pass e.g. `['integration','workflow']` to
+           * widen (data connectors bind `integration`-kind credentials).
+           */
+          kind: z
+            .union([credentialKindSchema, credentialKindSchema.array().min(1)])
+            .optional()
+            .describe('Filter by credential family'),
         })
         .optional()
     )
@@ -83,7 +96,7 @@ export const credentialsRouter = createTRPCRouter({
 
       const result = await listCredentials({
         organizationId: ctx.session.user.defaultOrganizationId,
-        kind: 'workflow',
+        kind: input?.kind ?? 'workflow',
         type: input?.type,
         withCreatedBy: true,
       })

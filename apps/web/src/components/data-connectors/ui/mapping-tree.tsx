@@ -10,12 +10,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@auxx/ui/components/select'
-import { toastError } from '@auxx/ui/components/toast'
 import TreeRow, { TreeRowButton } from '@auxx/ui/components/tree-row'
 import { Fingerprint, FunctionSquare, Hash, Plus, Trash2 } from 'lucide-react'
 import { useMemo } from 'react'
 import { api } from '~/trpc/react'
 import { leafPathsUnder, type SourcePath } from '../hooks/use-source-paths'
+import { useStreamMutations } from '../hooks/use-stream-mutations'
 import { type TargetDef, useTargetDefs } from '../hooks/use-target-defs'
 
 type Mapping = NonNullable<
@@ -31,6 +31,7 @@ const MERGE_OPTIONS: Array<{ value: string; label: string }> = [
 ]
 
 interface MappingTreeProps {
+  connectorId: string
   streamId: string
   sourcePaths: SourcePath[]
   /** Promote a value row to the calc drill (the `field` panel). */
@@ -43,36 +44,24 @@ interface MappingTreeProps {
  * persistent colour-coded mode toggles (link mode · target mode) + an identity
  * chip; value rows carry inline source + merge pickers and a hover `ƒ` promote.
  */
-export function MappingTree({ streamId, sourcePaths, onPromoteField }: MappingTreeProps) {
-  const utils = api.useUtils()
+export function MappingTree({
+  connectorId,
+  streamId,
+  sourcePaths,
+  onPromoteField,
+}: MappingTreeProps) {
   const { defs, byId } = useTargetDefs()
   const mappings = api.dataConnector.listMappings.useQuery({ streamId })
   const rows = mappings.data ?? []
 
-  const invalidate = () => void utils.dataConnector.listMappings.invalidate({ streamId })
-  const onErr = (verb: string) => (e: { message: string }) =>
-    toastError({ title: `Could not ${verb}`, description: e.message })
-
-  const setMappingTarget = api.dataConnector.setMappingTarget.useMutation({
-    onSuccess: invalidate,
-    onError: onErr('change target'),
-  })
-  const removeMapping = api.dataConnector.removeMapping.useMutation({
-    onSuccess: invalidate,
-    onError: onErr('remove mapping'),
-  })
-  const setFieldMappings = api.dataConnector.setFieldMappings.useMutation({
-    onSuccess: invalidate,
-    onError: onErr('save field'),
-  })
-  const setMergeStrategies = api.dataConnector.setMergeStrategies.useMutation({
-    onSuccess: invalidate,
-    onError: onErr('save merge strategy'),
-  })
-  const setIdentityStrategy = api.dataConnector.setIdentityStrategy.useMutation({
-    onSuccess: invalidate,
-    onError: onErr('save identity'),
-  })
+  // Optimistic mapping mutations (instant toggles) with rollback — no refetch.
+  const {
+    setMappingTarget,
+    removeMapping,
+    setFieldMappings,
+    setMergeStrategies,
+    setIdentityStrategy,
+  } = useStreamMutations(connectorId)
 
   // Build the parent→children tree from parentMappingId.
   const childrenOf = useMemo(() => {
@@ -110,14 +99,14 @@ export function MappingTree({ streamId, sourcePaths, onPromoteField }: MappingTr
     const children = childrenOf.get(mapping.id) ?? []
 
     const toggleLinkMode = () =>
-      setMappingTarget.mutate({
+      setMappingTarget(streamId, {
         mappingId: mapping.id,
         entityDefinitionId: mapping.entityDefinitionId,
         targetMode,
         linkMode: linkMode === 'upsert' ? 'reference' : 'upsert',
       })
     const toggleTargetMode = () =>
-      setMappingTarget.mutate({
+      setMappingTarget(streamId, {
         mappingId: mapping.id,
         entityDefinitionId: mapping.entityDefinitionId,
         targetMode: targetMode === 'owned' ? 'contributing' : 'owned',
@@ -141,7 +130,7 @@ export function MappingTree({ streamId, sourcePaths, onPromoteField }: MappingTr
               defs={defs}
               value={mapping.entityDefinitionId}
               onChange={(entityDefinitionId) =>
-                setMappingTarget.mutate({
+                setMappingTarget(streamId, {
                   mappingId: mapping.id,
                   entityDefinitionId,
                   targetMode,
@@ -158,7 +147,7 @@ export function MappingTree({ streamId, sourcePaths, onPromoteField }: MappingTr
               leaves={leaves}
               def={def}
               onSave={(identityStrategy) =>
-                setIdentityStrategy.mutate({ mappingId: mapping.id, identityStrategy })
+                setIdentityStrategy(streamId, mapping.id, identityStrategy)
               }
             />
             <TreeRowButton
@@ -184,7 +173,7 @@ export function MappingTree({ streamId, sourcePaths, onPromoteField }: MappingTr
             <TreeRowButton
               variant='destructive'
               tooltipText='Remove mapping'
-              onClick={() => removeMapping.mutate({ mappingId: mapping.id })}>
+              onClick={() => removeMapping(streamId, mapping.id)}>
               <Trash2 />
             </TreeRowButton>
           </div>
@@ -208,13 +197,10 @@ export function MappingTree({ streamId, sourcePaths, onPromoteField }: MappingTr
                   ...fieldMappings,
                   [fieldKey]: { expression: `{${path}}`, sourceFields: { [path]: path } },
                 }
-                setFieldMappings.mutate({ mappingId: mapping.id, fieldMappings: next })
+                setFieldMappings(streamId, mapping.id, next)
               }}
               onMergeChange={(value) =>
-                setMergeStrategies.mutate({
-                  mappingId: mapping.id,
-                  mergeStrategies: { ...mergeStrategies, [fieldKey]: value },
-                })
+                setMergeStrategies(streamId, mapping.id, { ...mergeStrategies, [fieldKey]: value })
               }
               onPromote={() => onPromoteField(mapping.id, fieldKey)}
             />

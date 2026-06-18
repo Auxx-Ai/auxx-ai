@@ -2,8 +2,8 @@
 // Functional mutation + setup helpers over the Data Connector control tables.
 // Drizzle + neverthrow, no model classes (project convention). The tRPC router
 // (apps/web) consumes these; the engine/orchestrator stays read-only here. Scheduler
-// re-registration is driven from create/update/pause/resume so a cadence change is
-// reflected in BullMQ immediately.
+// re-registration is driven from create/update (pause/resume is a `status` patch
+// through update) so a cadence or lifecycle change is reflected in BullMQ immediately.
 
 import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
@@ -91,9 +91,17 @@ export interface UpdateConnectorInput {
   appInstallationId?: string | null
   syncBehavior?: 'manual' | 'scheduled' | 'webhook'
   scheduleConfig?: ScheduledTriggerConfig | null
+  // Lifecycle toggle. 'paused' stops scheduled fires (cadence retained); 'live'
+  // resumes. Other states are engine-owned and not settable here.
+  status?: 'paused' | 'live'
 }
 
-/** Update a connector; re-register the scheduler to match the new cadence. */
+/**
+ * Update a connector; re-register the scheduler to match the new cadence/status.
+ * `syncConnectorScheduler` keys off the returned row's `status`/`syncBehavior`, so
+ * toggling `status` to 'paused'/'live' transparently removes/re-registers the
+ * BullMQ scheduler — no separate pause/resume path needed.
+ */
 export async function updateConnector(
   db: Database,
   organizationId: string,
@@ -117,45 +125,12 @@ export async function updateConnector(
         : {}),
       ...(patch.syncBehavior !== undefined ? { syncBehavior: patch.syncBehavior } : {}),
       ...(scheduleConfig !== undefined ? { scheduleConfig } : {}),
+      ...(patch.status !== undefined ? { status: patch.status } : {}),
       updatedAt: new Date(),
     })
     .where(eq(schema.DataConnector.id, id))
     .returning()
   if (!row) throw new Error('Failed to update data connector')
-  await syncConnectorScheduler(row)
-  return row
-}
-
-/** Pause a connector: stop scheduled fires without losing the cadence. */
-export async function pauseConnector(
-  db: Database,
-  organizationId: string,
-  id: string
-): Promise<DataConnectorRow> {
-  await loadConnectorRow(db, organizationId, id)
-  const [row] = await db
-    .update(schema.DataConnector)
-    .set({ status: 'paused', updatedAt: new Date() })
-    .where(eq(schema.DataConnector.id, id))
-    .returning()
-  if (!row) throw new Error('Failed to pause data connector')
-  await removeConnectorScheduler(id)
-  return row
-}
-
-/** Resume a paused connector: re-register its scheduler if configured. */
-export async function resumeConnector(
-  db: Database,
-  organizationId: string,
-  id: string
-): Promise<DataConnectorRow> {
-  await loadConnectorRow(db, organizationId, id)
-  const [row] = await db
-    .update(schema.DataConnector)
-    .set({ status: 'live', updatedAt: new Date() })
-    .where(eq(schema.DataConnector.id, id))
-    .returning()
-  if (!row) throw new Error('Failed to resume data connector')
   await syncConnectorScheduler(row)
   return row
 }
@@ -307,6 +282,17 @@ export async function setStreamRequestConfig(
     .returning()
   if (!row) throw new Error('Failed to set stream request config')
   return row
+}
+
+/** Remove a stream (its mappings + items cascade on delete). */
+export async function removeStream(
+  db: Database,
+  organizationId: string,
+  streamId: string
+): Promise<{ success: boolean }> {
+  await loadStreamRow(db, organizationId, streamId)
+  await db.delete(schema.DataConnectorStream).where(eq(schema.DataConnectorStream.id, streamId))
+  return { success: true }
 }
 
 // ── Mappings ──────────────────────────────────────────────────────────────────

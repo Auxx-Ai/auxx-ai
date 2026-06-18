@@ -4,9 +4,10 @@
 import { Button } from '@auxx/ui/components/button'
 import { EmptySection, Section } from '@auxx/ui/components/section'
 import { toastError } from '@auxx/ui/components/toast'
-import TreeRow from '@auxx/ui/components/tree-row'
-import { Layers, Plus, Table2 } from 'lucide-react'
+import TreeRow, { TreeRowButton } from '@auxx/ui/components/tree-row'
+import { Layers, Plus, Table2, Trash2 } from 'lucide-react'
 import { useState } from 'react'
+import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
 import { useTargetDefs } from '../hooks/use-target-defs'
 import { AddStreamDialog } from './add-stream-dialog'
@@ -21,7 +22,15 @@ interface StreamsSectionProps {
 }
 
 /** Row summarizing one fetch + the defs it lands in. */
-function StreamRow({ stream, onSelect }: { stream: Stream; onSelect: () => void }) {
+function StreamRow({
+  stream,
+  onSelect,
+  onDelete,
+}: {
+  stream: Stream
+  onSelect: () => void
+  onDelete: () => void
+}) {
   const { byId } = useTargetDefs()
   const mappings = api.dataConnector.listMappings.useQuery({ streamId: stream.id })
   const defLabels = (mappings.data ?? [])
@@ -35,6 +44,11 @@ function StreamRow({ stream, onSelect }: { stream: Stream; onSelect: () => void 
       secondary={defLabels.length > 0 ? `→ ${defLabels.join(' · ')}` : 'no targets yet'}
       onToggleOpen={onSelect}
       rowClassName='cursor-pointer'
+      trailing={
+        <TreeRowButton variant='destructive' tooltipText='Delete stream' onClick={onDelete}>
+          <Trash2 />
+        </TreeRowButton>
+      }
     />
   )
 }
@@ -47,6 +61,7 @@ function StreamRow({ stream, onSelect }: { stream: Stream; onSelect: () => void 
  */
 export function StreamsSection({ connector, onSelect }: StreamsSectionProps) {
   const [addOpen, setAddOpen] = useState(false)
+  const [confirm, ConfirmDialog] = useConfirm()
   const utils = api.useUtils()
   const streams = api.dataConnector.listStreams.useQuery({ id: connector.id })
   const rows = streams.data ?? []
@@ -58,6 +73,23 @@ export function StreamsSection({ connector, onSelect }: StreamsSectionProps) {
     },
     onError: (e) => toastError({ title: 'Could not add stream', description: e.message }),
   })
+
+  const removeStream = api.dataConnector.removeStream.useMutation({
+    onSuccess: () => void utils.dataConnector.listStreams.invalidate({ id: connector.id }),
+    onError: (e) => toastError({ title: 'Could not delete stream', description: e.message }),
+  })
+
+  const handleDelete = async (stream: Stream) => {
+    const confirmed = await confirm({
+      title: `Delete stream "${stream.streamKey}"?`,
+      description:
+        'This removes the stream and all its mappings. Synced records stay in your entities but stop updating. This cannot be undone.',
+      confirmText: 'Delete',
+      cancelText: 'Cancel',
+      destructive: true,
+    })
+    if (confirmed) removeStream.mutate({ streamId: stream.id })
+  }
 
   return (
     <Section
@@ -86,7 +118,12 @@ export function StreamsSection({ connector, onSelect }: StreamsSectionProps) {
       ) : (
         <div className='flex flex-col ps-2 pe-4'>
           {rows.map((stream) => (
-            <StreamRow key={stream.id} stream={stream} onSelect={() => onSelect(stream.id)} />
+            <StreamRow
+              key={stream.id}
+              stream={stream}
+              onSelect={() => onSelect(stream.id)}
+              onDelete={() => void handleDelete(stream)}
+            />
           ))}
         </div>
       )}
@@ -98,6 +135,7 @@ export function StreamsSection({ connector, onSelect }: StreamsSectionProps) {
         onCreate={(streamKey) => addStream.mutate({ id: connector.id, streamKey })}
         creating={addStream.isPending}
       />
+      <ConfirmDialog />
     </Section>
   )
 }

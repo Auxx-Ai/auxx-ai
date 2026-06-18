@@ -5,7 +5,7 @@
 import { Field, FieldLabel } from '@auxx/ui/components/field'
 import { RadioTab, RadioTabItem } from '@auxx/ui/components/radio-tab'
 import { CronEditor } from './cron-editor'
-import { IntervalSelector } from './interval-selector'
+import { IntervalSelector, minIntervalValue } from './interval-selector'
 import type { ScheduledMode, ScheduledState } from './scheduled-config'
 
 interface ScheduleEditorProps {
@@ -51,7 +51,13 @@ export function ScheduleEditor({ value, onChange }: ScheduleEditorProps) {
         <IntervalSelector
           interval={value.interval}
           value={value.value}
-          onIntervalChange={(interval) => onChange({ ...value, interval })}
+          onIntervalChange={(interval) =>
+            onChange({
+              ...value,
+              interval,
+              value: Math.max(minIntervalValue(interval), value.value),
+            })
+          }
           onValueChange={(v) => onChange({ ...value, value: v })}
         />
       )}
