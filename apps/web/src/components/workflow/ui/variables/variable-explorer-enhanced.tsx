@@ -545,7 +545,7 @@ export const VariableExplorerEnhanced: React.FC<VariableExplorerEnhancedProps> =
         {/* Variable List */}
         <CommandList
           className='flex-1 overflow-y-auto min-h-[200px] outline-none'
-          style={{ maxHeight }}>
+          scrollAreaStyle={{ maxHeight }}>
           {getCurrentLevelItems.length === 0 ? (
             <CommandEmpty className='py-8 flex flex-col items-center'>
               <Search className='size-8 mx-auto mb-2 opacity-50' />

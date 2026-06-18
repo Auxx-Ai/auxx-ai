@@ -97,6 +97,7 @@ export function CommandPalette() {
           size='content'
           position='tc'
           innerClassName='p-0'
+          mobileFullHeight
           showClose={false}
           // The palette pages supply their own titles (DialogNav / sr-only) but
           // no description; opt out explicitly so Radix doesn't warn.
@@ -141,7 +142,7 @@ export function CommandPalette() {
             />
           ) : null}
 
-          <DialogNavPages value={page}>
+          <DialogNavPages value={page} className='max-sm:min-h-0 max-sm:flex-1'>
             <DialogNavPage value='root' size='md'>
               <RootPage sections={sections} recentActions={recentActions} />
             </DialogNavPage>

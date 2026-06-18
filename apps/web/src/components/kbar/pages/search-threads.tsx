@@ -196,12 +196,12 @@ export function SearchThreadsPage() {
   )
 
   return (
-    <div ref={containerRef} className='flex flex-col'>
+    <div ref={containerRef} className='flex min-h-0 flex-col max-sm:h-full'>
       <div className='border-b border-border/50 p-2 dark:border-[#323842]/80'>
         <PaletteThreadSearchBar onSearch={() => {}} isLoading={isLoading} />
       </div>
 
-      <div className='flex h-[min(420px,60vh)]'>
+      <div className='flex h-[min(420px,60vh)] max-sm:h-auto max-sm:min-h-0 max-sm:flex-1'>
         {/* Left: thread results */}
         <div className='flex w-full flex-col overflow-hidden border-border/50 md:w-[22rem] md:flex-none md:border-r dark:border-[#323842]/80'>
           <ScrollArea

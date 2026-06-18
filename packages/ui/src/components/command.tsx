@@ -370,7 +370,7 @@ function CommandInput({
   }, [onValueChange])
   return (
     <div
-      className='flex items-center border-b border-border/50 dark:border-[#323842]/80 ps-3 pe-1'
+      className='flex shrink-0 items-center border-b border-border/50 dark:border-[#323842]/80 ps-3 pe-1'
       cmdk-input-wrapper=''>
       {loading ? (
         <Loader2 className='mr-2 size-4 shrink-0 opacity-50 animate-spin' />
@@ -471,21 +471,40 @@ function CommandInputWithSubmit({
   )
 }
 
-function CommandList({ className, ...props }: React.ComponentProps<typeof CommandPrimitive.List>) {
+interface CommandListProps extends React.ComponentProps<typeof CommandPrimitive.List> {
+  /**
+   * Classes for the ScrollArea Root that owns sizing/clipping. Use this to
+   * override the default `max-h-[300px]` height cap — `className` lands on the
+   * inner cmdk list, where height utilities are a dead letter.
+   */
+  scrollAreaClassName?: string
+  /** Styles for the ScrollArea Root. Use this for dynamic `maxHeight` values. */
+  scrollAreaStyle?: React.CSSProperties
+}
+
+function CommandList({
+  className,
+  scrollAreaClassName,
+  scrollAreaStyle,
+  style,
+  ...props
+}: CommandListProps) {
   // `data-slot='command-list'` is on the outer scroll-area Root so a parent can
   // target it from a Tailwind className with a descendant selector, e.g.
   // `[&_[data-slot=command-list]]:h-[288px]` to pin the list to a fixed height.
+  // The default cap is `max-h-[300px]`; raise/drop it via `scrollAreaClassName`.
   return (
     <BaseScrollArea.Root
       data-slot='command-list'
-      className='relative max-h-[300px] overflow-hidden'>
+      className={cn('relative max-h-[300px] overflow-hidden', scrollAreaClassName)}
+      style={scrollAreaStyle}>
       <BaseScrollArea.Viewport
-        className='h-full max-h-[300px] w-full overscroll-contain scroll-area-fade outline-none'
+        className='h-full max-h-[inherit] w-full overscroll-contain scroll-area-fade outline-none'
         style={{ overflowX: 'hidden' }}>
         <BaseScrollArea.Content style={{ minWidth: undefined }}>
           <CommandPrimitive.List
             className={cn('outline-none', className)}
-            style={{ overflow: 'visible', maxHeight: 'none' }}
+            style={{ overflow: 'visible', maxHeight: 'none', ...style }}
             {...props}
           />
         </BaseScrollArea.Content>

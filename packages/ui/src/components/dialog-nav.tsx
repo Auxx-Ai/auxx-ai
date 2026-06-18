@@ -71,7 +71,8 @@ export function DialogNav({
       className={cn(
         // space-y-0 cancels DialogHeader's space-y-1.5, which would otherwise
         // push the actions slot down (margin-top on the second flex-row child).
-        'mb-0 flex h-10 flex-row items-center justify-between space-y-0 border-b px-3',
+        // shrink-0 keeps the bar from compressing when the body becomes a flex child.
+        'mb-0 flex h-10 shrink-0 flex-row items-center justify-between space-y-0 border-b px-3',
         className
       )}>
       <div className='flex items-center gap-1'>
@@ -178,17 +179,22 @@ export function DialogNavPages({ value, children, className }: DialogNavPagesPro
       transition={{ width: SPRING, height: measuredOnce.current ? SPRING : { duration: 0 } }}
       style={{ maxWidth: '95vw' }}
       // On mobile, override the JS-driven rem width / 95vw cap so the body fills
-      // the full-width `content` shell edge-to-edge. The bang beats the inline
-      // `width`/`maxWidth` above; desktop (sm+) keeps the width spring.
-      className={cn('relative overflow-hidden max-sm:w-full! max-sm:max-w-full!', className)}>
+      // the full-width `content` shell edge-to-edge, and override the animated
+      // height so it fills the full-height shell instead of measuring to content.
+      // The bang beats the inline `width`/`maxWidth`/`height`; desktop (sm+) keeps
+      // the width + height springs.
+      className={cn(
+        'relative overflow-hidden max-sm:w-full! max-sm:max-w-full! max-sm:h-full! max-sm:min-h-0',
+        className
+      )}>
       {/* Stable measuring wrapper: the keyed page below remounts on every change,
           so the ResizeObserver can't live on it. The exiting page is positioned
           absolutely, so this wrapper's height tracks the active page. */}
-      <div ref={ref}>
+      <div ref={ref} className='max-sm:h-full max-sm:min-h-0'>
         <AnimatePresence mode='popLayout' initial={false}>
           <motion.div
             key={value}
-            className='w-full'
+            className='w-full max-sm:flex max-sm:h-full max-sm:min-h-0 max-sm:flex-col'
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0, position: 'absolute', inset: 0 }}

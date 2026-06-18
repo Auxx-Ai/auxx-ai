@@ -15,7 +15,7 @@ export function CreateInboxPage() {
   const goTo = useCommandPaletteStore((s) => s.goTo)
 
   return (
-    <div className='p-4'>
+    <div className='p-4 max-sm:flex max-sm:min-h-0 max-sm:flex-1 max-sm:flex-col max-sm:overflow-y-auto'>
       <InboxForm
         open={page === 'create-inbox'}
         onSuccess={close}

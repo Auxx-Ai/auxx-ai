@@ -121,6 +121,14 @@ export interface DialogContentProps
   /** Whether to show the close button. Defaults to true */
   showClose?: boolean
   innerClassName?: string
+  /**
+   * Opt in to a full-height mobile sheet: on `max-sm` the dialog fills the
+   * viewport (`100dvh`) with the footer pinned to the bottom and the body
+   * scrolling between a fixed header and footer. The opted-in dialog must mark
+   * its own scrolling body `flex-1 min-h-0 overflow-y-auto` (the `{children}`
+   * are arbitrary). Desktop (`sm+`) is unchanged. Defaults to false.
+   */
+  mobileFullHeight?: boolean
 }
 
 function DialogContent({
@@ -130,6 +138,7 @@ function DialogContent({
   size,
   position,
   showClose = true,
+  mobileFullHeight = false,
   children,
   ...props
 }: DialogContentProps) {
@@ -199,12 +208,20 @@ function DialogContent({
     <DialogPortal>
       <DialogOverlay />
       <div
-        className='z-50 pb-6 sm:pb-20 overflow-y-auto absolute inset-0 max-sm:flex max-sm:flex-col max-sm:items-center'
+        className={cn(
+          'z-50 sm:pb-20 overflow-y-auto absolute inset-0 max-sm:flex max-sm:flex-col',
+          // Full-height sheets reach the true bottom edge (no pb) and stretch the
+          // full-width card instead of centering it; otherwise keep the gutter.
+          mobileFullHeight ? 'pb-6 max-sm:pb-0' : 'pb-6 max-sm:items-center'
+        )}
         onWheel={(e) => e.stopPropagation()}>
         <DialogPrimitive.Content
           className={cn(
             dialogVariants({ variant, size, position, className }),
-            'max-sm:inset-auto max-sm:translate-x-0 max-sm:translate-y-0'
+            'max-sm:inset-auto max-sm:translate-x-0 max-sm:translate-y-0',
+            // Flip grid→flex on mobile so the card stretches to a taller container
+            // (a grid child with h-full won't stretch unless the row is 1fr).
+            mobileFullHeight && 'max-sm:h-[100dvh] max-sm:flex max-sm:p-0'
           )}
           {...props}>
           <DialogContext.Provider value={{ isInsideDialog: true, portalContainerRef }}>
@@ -212,7 +229,13 @@ function DialogContent({
               ref={contentRef}
               className={cn(
                 'bg-background ring-1 ring-ring/20 dark:bg-primary-100/80 p-4 relative rounded-[16px] flex flex-col min-h-0',
-                innerClassName
+                mobileFullHeight && 'max-sm:flex-1 max-sm:rounded-none',
+                innerClassName,
+                // Full-height sheet reaches the screen edges, so keep its content
+                // clear of the notch / Dynamic Island / home-indicator. The card
+                // paints its own bg, so it stays filled under the inset. Placed
+                // after innerClassName so the safe insets win over its padding.
+                mobileFullHeight && 'max-sm:pt-safe max-sm:pb-safe max-sm:pl-safe max-sm:pr-safe'
               )}>
               {children}
               {showClose && (
@@ -270,7 +293,9 @@ function DialogFooter({ className, ...props }: React.HTMLAttributes<HTMLDivEleme
   return (
     <div
       className={cn(
-        'pt-4 flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2',
+        // `max-sm:mt-auto` pins the footer to the bottom of a full-height flex
+        // card; in a content-height card there's no free space, so it's a no-op.
+        'pt-4 flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2 max-sm:mt-auto',
         className
       )}
       {...props}

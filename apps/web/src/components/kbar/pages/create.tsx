@@ -28,7 +28,7 @@ export function CreatePage({
   if (!entityDefinitionId) return null
 
   return (
-    <div className='flex flex-col gap-4 p-4'>
+    <div className='flex flex-col gap-4 p-4 max-sm:min-h-0 max-sm:flex-1 max-sm:overflow-y-auto'>
       <EntityInstanceForm
         open={page === 'create'}
         entityDefinitionId={entityDefinitionId}
