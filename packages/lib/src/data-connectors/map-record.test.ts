@@ -24,8 +24,13 @@ function mapping(over: Partial<DecodedMapping> & { id?: string }): DecodedMappin
   }
 }
 
-function source(fields: Record<string, unknown>): ConnectorRecord {
+function source(fields: unknown): ConnectorRecord {
   return { streamKey: 'order', externalId: 'o1', displayName: 'Order', fields }
+}
+
+/** A raw payload with no connector-provided id hint (the generic-rest case). */
+function rawPayload(fields: unknown): ConnectorRecord {
+  return { streamKey: 'order', fields }
 }
 
 describe('mapRecord', () => {
@@ -90,6 +95,49 @@ describe('mapRecord', () => {
     expect(writes[0]?.projected?.identityCandidates).toEqual([
       { targetFieldId: 'contact_email', value: 'a@b.com', normalize: 'email' },
     ])
+  })
+
+  it('fans a top-level array payload out via a `[]` root, deriving ids from each element', () => {
+    // The generic-rest case: the raw response IS the array; the root mapping
+    // selects records with rootPath `[]`, no connector-provided id hint.
+    const m = mapping({
+      rootPath: '[]',
+      fieldMappings: { title: { expression: '{title}', sourceFields: { title: 'title' } } },
+    })
+
+    const writes = mapRecord(
+      [m],
+      rawPayload([
+        { id: 1, title: 'a' },
+        { id: 2, title: 'b' },
+      ])
+    )
+
+    expect(writes).toHaveLength(2)
+    expect(writes.map((w) => w.projected?.fields.title)).toEqual(['a', 'b'])
+    // Each element's own `id` becomes the externalId (no parent hint needed).
+    expect(writes.map((w) => w.projected?.externalId)).toEqual(['1', '2'])
+  })
+
+  it('extracts child subtrees RELATIVE to the parent (orders[] → line_items[])', () => {
+    const root = mapping({ id: 'order', rootPath: '[]' })
+    const child = mapping({
+      id: 'li',
+      rootPath: 'line_items[]',
+      parentMappingId: 'order',
+      relationshipFieldKey: 'line_items',
+      fieldMappings: { sku: { expression: '{sku}', sourceFields: { sku: 'sku' } } },
+    })
+
+    const writes = mapRecord(
+      [root, child],
+      rawPayload([{ id: 'o1', line_items: [{ sku: 'A' }, { sku: 'B' }] }])
+    )
+
+    const lineItems = writes.filter((w) => w.mapping.row.id === 'li')
+    expect(lineItems.map((w) => w.projected?.fields.sku)).toEqual(['A', 'B'])
+    // Children attach to the specific parent instance (o1) they nest under.
+    expect(lineItems.every((w) => w.parentRelation?.parentExternalId === 'o1')).toBe(true)
   })
 
   it('orders the root mapping first and wires child parentRelations', () => {

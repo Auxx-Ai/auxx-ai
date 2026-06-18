@@ -49,4 +49,22 @@ describe('leafPathsUnder', () => {
     const leaves = leafPathsUnder(flattenSourceSchema(SCHEMA), 'line_items[]').map((p) => p.path)
     expect(leaves.sort()).toEqual(['price', 'sku'])
   })
+
+  it('flattens an array-of-objects ROOT and strips the `[]` root prefix', () => {
+    // The generic-rest raw-response case: the source schema IS the array.
+    const arrayRoot = {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: { id: { type: 'number' }, title: { type: 'string' } },
+      },
+    }
+    expect(
+      flattenSourceSchema(arrayRoot)
+        .map((p) => p.path)
+        .sort()
+    ).toEqual(['[].id', '[].title'])
+    const leaves = leafPathsUnder(flattenSourceSchema(arrayRoot), '[]').map((p) => p.path)
+    expect(leaves.sort()).toEqual(['id', 'title'])
+  })
 })

@@ -44,8 +44,6 @@ export interface StreamRequestConfig {
   body?: Record<string, unknown>
   headers?: Record<string, string>
   pagination?: PaginationSpec
-  /** JSON path to the array of records in the response. */
-  recordsPath?: string
 }
 
 // ── Stream state / connector output (03 §1) ───────────────────────────────────
@@ -59,15 +57,28 @@ export interface ConnectorStreamState {
 }
 
 /**
- * One normalized, SOURCE-shaped record produced by a connector. Not pre-mapped
- * to target fields — the mapping layer (04 §1) maps + fans out.
+ * One raw payload produced by a connector fetch. `fields` is the connector's
+ * actual output — the whole HTTP response for generic-rest (so the source schema
+ * mirrors what a test-fetch returns), or a per-record object for connectors that
+ * pre-shape. The mapping layer (04 §1) selects records out of it via the root
+ * mapping's `rootPath` and fans out; it never pre-maps to target fields.
  */
 export interface ConnectorRecord {
   streamKey: string
-  externalId: string
-  displayName: string
-  /** Raw source-shaped values keyed by source path (matches the stream sourceSchema). */
-  fields: Record<string, unknown>
+  /**
+   * Raw source-shaped payload (matches the stream sourceSchema). May be an array
+   * (a collection response) or an object — the root mapping's `rootPath` picks
+   * the record subtree(s) within it.
+   */
+  fields: unknown
+  /**
+   * Optional connector-provided id hint, used only for a whole-record (`rootPath
+   * ''`) mapping the subtree can't self-identify. Fan-out + nested mappings
+   * derive their own external id from the subtree.
+   */
+  externalId?: string
+  /** Optional connector-provided display name hint (same fallback rule as `externalId`). */
+  displayName?: string
   /** Tombstone — explicit delete signal. */
   deleted?: boolean
   /** Optional; the sink computes a sorted-key hash if absent. */

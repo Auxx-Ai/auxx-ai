@@ -40,6 +40,13 @@ export function flattenSourceSchema(
 
   const walk = (node: JsonSchemaNode, prefix: string, depth: number) => {
     const t = typeOf(node)
+    // An array-of-objects ROOT (the raw collection response): descend into its
+    // element shape under `[]` so leaves read `[].title`, picked up by the root
+    // mapping's `[]` rootPath. Named array PROPERTIES are handled below.
+    if (t === 'array' && node.items) {
+      walk(node.items, `${prefix}[]`, depth)
+      return
+    }
     if (t === 'object' && node.properties) {
       for (const [key, child] of Object.entries(node.properties)) {
         const childPath = prefix ? `${prefix}.${key}` : key

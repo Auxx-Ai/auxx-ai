@@ -238,6 +238,12 @@
       "import": "./dist/conditions/client.mjs",
       "default": "./src/conditions/client.ts"
     },
+    "./connections/providers": {
+      "types": "./src/connections/providers/index.ts",
+      "source": "./src/connections/providers/index.ts",
+      "import": "./dist/connections/providers/index.mjs",
+      "default": "./src/connections/providers/index.ts"
+    },
     "./constants/provider-icons": {
       "types": "./src/constants/provider-icons.ts",
       "source": "./src/constants/provider-icons.ts",

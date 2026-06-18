@@ -71,8 +71,8 @@ export interface ConnectorStreamState {
 
 /**
  * Per-stream request config for generic-REST streams (jsonb on
- * {@link DataConnectorStream}). Path/method/params/body/pagination/recordsPath.
- * Refined in sub-plan 05a.
+ * {@link DataConnectorStream}). Path/method/params/body/pagination. Records are
+ * selected by the root mapping's `rootPath`, not here. Refined in sub-plan 05a.
  */
 export interface StreamRequestConfig {
   path?: string
@@ -81,8 +81,6 @@ export interface StreamRequestConfig {
   body?: Record<string, unknown>
   headers?: Record<string, string>
   pagination?: PaginationSpec
-  /** JSON path to the array of records in the response. */
-  recordsPath?: string
 }
 
 /**

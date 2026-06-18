@@ -6,7 +6,7 @@ import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { FlaskConical } from 'lucide-react'
 
 interface StreamDryRunProps {
-  sample: { records: unknown[]; count: number } | null
+  sample: { response: unknown; recordCount: number } | null
   onTestFetch: () => void | Promise<void>
   testing: boolean
 }
@@ -39,15 +39,20 @@ export function StreamDryRun({ sample, onTestFetch, testing }: StreamDryRunProps
       {sample && (
         <div className='flex flex-col gap-1'>
           <span className='text-xs text-muted-foreground'>
-            {sample.count} record{sample.count === 1 ? '' : 's'} returned. Preview:
+            {sample.recordCount} record{sample.recordCount === 1 ? '' : 's'} returned. Raw response:
           </span>
           <ScrollArea className='max-h-72 rounded-md border' scrollbarClassName='w-1.5'>
             <pre className='whitespace-pre-wrap break-all p-3 font-mono text-[11px] leading-relaxed'>
-              {JSON.stringify(sample.records.slice(0, 3), null, 2)}
+              {JSON.stringify(previewResponse(sample.response), null, 2)}
             </pre>
           </ScrollArea>
         </div>
       )}
     </div>
   )
+}
+
+/** Trim a collection response to its first few records for the preview pane. */
+function previewResponse(response: unknown): unknown {
+  return Array.isArray(response) ? response.slice(0, 3) : response
 }

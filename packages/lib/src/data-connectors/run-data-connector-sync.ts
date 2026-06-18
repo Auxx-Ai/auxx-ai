@@ -196,10 +196,16 @@ export async function runDataConnectorSync(
   }
 }
 
+/** Key a projected write by its mapping + instance external id (fan-out safe). */
+function instanceKey(mappingId: string, externalId: string): string {
+  return `${mappingId}::${externalId}`
+}
+
 /**
- * Map one source record across all mappings and sink each projected write.
- * Stamps child→parent relations onto the parent's projected record so the
- * binding carries them into the two-pass. Root mapping is written first.
+ * Map one connector payload across the mapping tree and sink each projected
+ * write. Stamps child→parent relations onto the parent INSTANCE's projected
+ * record so the binding carries them into the two-pass. Parents are written
+ * before their children (walk order) so the edge target exists.
  */
 async function sinkSourceRecord(
   ctx: SyncCtx,
@@ -208,15 +214,19 @@ async function sinkSourceRecord(
 ): Promise<void> {
   const writes = mapRecord(mappings, source)
 
-  // Index projected writes by mappingId so a child can attach its edge to the
-  // parent's pendingRelations before that parent is sunk.
-  const projectedByMapping = new Map<string, ProjectedRecord>()
+  // Index projected writes by (mapping, instance) so a child attaches its edge to
+  // the exact parent instance's pendingRelations before that parent is sunk.
+  const projectedByInstance = new Map<string, ProjectedRecord>()
   for (const w of writes) {
-    if (w.projected) projectedByMapping.set(w.mapping.row.id, w.projected)
+    if (w.projected) {
+      projectedByInstance.set(instanceKey(w.mapping.row.id, w.projected.externalId), w.projected)
+    }
   }
   for (const w of writes) {
     if (!w.parentRelation) continue
-    const parent = projectedByMapping.get(w.parentRelation.parentMappingId)
+    const parent = projectedByInstance.get(
+      instanceKey(w.parentRelation.parentMappingId, w.parentRelation.parentExternalId)
+    )
     if (parent) {
       parent.pendingRelations.push({
         fieldKey: w.parentRelation.fieldKey,
@@ -226,7 +236,7 @@ async function sinkSourceRecord(
     }
   }
 
-  // Write in order (root first → children) so the parent exists for the edge.
+  // Write in order (parents before children) so the parent exists for the edge.
   for (const w of writes) {
     if (!w.projected) continue
     await entitySink.upsertRecord(ctx, w.mapping, w.projected)

@@ -129,6 +129,7 @@ export class DrizzleSeeder {
   private async executeDirectInserts(context: SeedingContext): Promise<unknown> {
     const { BillingDomain } = await import('../domains/billing.domain')
     const { McpDomain } = await import('../domains/mcp.domain')
+    const { ConnectionsDomain } = await import('../domains/connections.domain')
     const { CommerceDomain } = await import('../domains/commerce.domain')
     const { CommunicationDomain } = await import('../domains/communication.domain')
     const { AiDomain } = await import('../domains/ai.domain')
@@ -159,6 +160,12 @@ export class DrizzleSeeder {
         const mcp = new McpDomain()
         await mcp.insertDirectly(this.db)
         console.log('✅ Curated MCP servers inserted')
+
+        // Platform connection providers (global, org-less) — seed once per database.
+        console.log('🔌 Inserting platform connection providers directly...')
+        const connections = new ConnectionsDomain()
+        await connections.insertDirectly(this.db)
+        console.log('✅ Platform connection providers inserted')
       }
 
       // CRM inserts (Contacts & Participants) - Must come first as other domains depend on them

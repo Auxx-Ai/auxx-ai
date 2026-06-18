@@ -11,7 +11,6 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
-import { Input } from '@auxx/ui/components/input'
 import {
   InputGroup,
   InputGroupAddon,
@@ -20,10 +19,10 @@ import {
 } from '@auxx/ui/components/input-group'
 import { RadioTab, RadioTabItem } from '@auxx/ui/components/radio-tab'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
-import { Section } from '@auxx/ui/components/section'
+import { EmptySection, Section } from '@auxx/ui/components/section'
 import { toastError } from '@auxx/ui/components/toast'
-import { ChevronDown, Database, Pencil, Plus, Sparkles } from 'lucide-react'
-import { useState } from 'react'
+import { ChevronDown, Database, Pencil, Plus, RefreshCw, Sparkles, Waypoints } from 'lucide-react'
+import { type ReactNode, useState } from 'react'
 import { Tooltip } from '~/components/global/tooltip'
 import {
   SchemaEditorDialog,
@@ -51,6 +50,24 @@ const METHOD_OPTIONS = [
   { value: 'POST', label: 'POST' },
 ] as const
 
+const SYNC_MODE_COPY: Record<
+  'snapshot' | 'incremental',
+  { icon: ReactNode; title: string; description: string }
+> = {
+  snapshot: {
+    icon: <RefreshCw />,
+    title: 'Full re-fetch every run',
+    description:
+      'Pulls the entire dataset each sync. Records that vanish upstream are treated as deleted and archived.',
+  },
+  incremental: {
+    icon: <Waypoints />,
+    title: 'Only new & changed records',
+    description:
+      'Uses a saved cursor to fetch records added or updated since the last run. Missing records are never archived.',
+  },
+}
+
 interface StreamConfigPanelProps {
   connector: Connector
   stream: Stream
@@ -74,7 +91,7 @@ export function StreamConfigPanel({ connector, stream, onPromoteField }: StreamC
     schema: Record<string, unknown>
     seededFrom: SeededFrom
   } | null>(null)
-  const [sample, setSample] = useState<{ records: unknown[]; count: number } | null>(null)
+  const [sample, setSample] = useState<{ response: unknown; recordCount: number } | null>(null)
 
   const sourcePaths = useSourcePaths(stream.sourceSchema as Record<string, unknown> | null)
   const hasSchema = !!stream.sourceSchema
@@ -97,50 +114,42 @@ export function StreamConfigPanel({ connector, stream, onPromoteField }: StreamC
   const requestConfig = (stream.requestConfig ?? {}) as {
     path?: string
     method?: 'GET' | 'POST'
-    recordsPath?: string
   }
   const request = useBufferedConfig(
     {
       path: requestConfig.path ?? '',
       method: requestConfig.method ?? 'GET',
-      recordsPath: requestConfig.recordsPath ?? '',
     },
-    (draft) =>
-      saveRequestConfig(stream.id, {
-        path: draft.path,
-        method: draft.method,
-        recordsPath: draft.recordsPath || undefined,
-      }),
+    (draft) => saveRequestConfig(stream.id, { path: draft.path, method: draft.method }),
     { mode: 'manual' }
   )
-  const syncMode = (stream.syncMode as 'snapshot' | 'incremental' | 'webhook') ?? 'snapshot'
+  const rawSyncMode = (stream.syncMode as 'snapshot' | 'incremental' | 'webhook') ?? 'snapshot'
+  // The picker only exposes snapshot/incremental; treat webhook as snapshot here.
+  const syncMode: 'snapshot' | 'incremental' =
+    rawSyncMode === 'incremental' ? 'incremental' : 'snapshot'
 
   const handleTestFetch = async () => {
     const result = await sampleFetch({
       id: connector.id,
       streamKey: stream.streamKey,
       requestConfig: isGenericRest
-        ? {
-            path: request.value.path,
-            method: request.value.method,
-            recordsPath: request.value.recordsPath || undefined,
-          }
+        ? { path: request.value.path, method: request.value.method }
         : undefined,
     })
     setSample(result)
-    // Auto-set inferred schema when the stream has none yet.
-    if (!hasSchema && result.records[0]) {
-      const inferred = inferJsonSchema(result.records[0]) as Record<string, unknown>
+    // Auto-set the inferred schema (the raw response shape) when none exists yet.
+    if (!hasSchema && result.response != null) {
+      const inferred = inferJsonSchema(result.response) as Record<string, unknown>
       setStreamSchema(stream.id, inferred, 'inferred')
     }
   }
 
   const handleGenerate = () => {
-    if (!sample?.records[0]) {
+    if (sample?.response == null) {
       void handleTestFetch()
       return
     }
-    const inferred = inferJsonSchema(sample.records[0]) as Record<string, unknown>
+    const inferred = inferJsonSchema(sample.response) as Record<string, unknown>
     setSeed({ schema: inferred, seededFrom: 'inferred' })
   }
 
@@ -166,9 +175,12 @@ export function StreamConfigPanel({ connector, stream, onPromoteField }: StreamC
       })
       return
     }
+    // A collection-response root (array of records) fans out via `[]`; an object
+    // response is one record at the root (`''`).
+    const rootIsArray = (stream.sourceSchema as { type?: string } | null)?.type === 'array'
     addMapping({
       dataConnectorStreamId: stream.id,
-      rootPath: '',
+      rootPath: rootIsArray ? '[]' : '',
       linkMode: 'upsert',
       targetMode: 'contributing',
       entityDefinitionId: firstDef.entityDefinitionId,
@@ -208,7 +220,7 @@ export function StreamConfigPanel({ connector, stream, onPromoteField }: StreamC
             </Badge>
             {sample && (
               <span className='text-xs text-muted-foreground'>
-                Test-fetch returned {sample.count} record{sample.count === 1 ? '' : 's'}
+                Test-fetch returned {sample.recordCount} record{sample.recordCount === 1 ? '' : 's'}
               </span>
             )}
           </div>
@@ -221,7 +233,7 @@ export function StreamConfigPanel({ connector, stream, onPromoteField }: StreamC
             icon={<Database className='size-4' />}
             initialOpen
             collapsible={false}>
-            <div className='flex flex-col gap-3 px-1'>
+            <div className='px-1'>
               <InputGroup>
                 <InputGroupAddon align='inline-start'>
                   <DropdownMenu>
@@ -254,20 +266,18 @@ export function StreamConfigPanel({ connector, stream, onPromoteField }: StreamC
                   onChange={(e) => request.set({ ...request.value, path: e.target.value })}
                   placeholder='/orders or full URL'
                 />
+                <InputGroupAddon align='inline-end'>
+                  <Button
+                    size='xs'
+                    variant='outline'
+                    className='me-0.5'
+                    disabled={!request.isDirty || isSavingRequest}
+                    loading={isSavingRequest}
+                    onClick={() => void request.commit()}>
+                    Save request
+                  </Button>
+                </InputGroupAddon>
               </InputGroup>
-              <Input
-                value={request.value.recordsPath}
-                onChange={(e) => request.set({ ...request.value, recordsPath: e.target.value })}
-                placeholder='Records JSONPath (e.g. data.orders)'
-              />
-              <Button
-                className='self-start'
-                size='sm'
-                disabled={!request.isDirty}
-                loading={isSavingRequest}
-                onClick={() => void request.commit()}>
-                Save request
-              </Button>
             </div>
           </Section>
         )}
@@ -276,15 +286,14 @@ export function StreamConfigPanel({ connector, stream, onPromoteField }: StreamC
           title='Sync mode'
           icon={<Database className='size-4' />}
           initialOpen
-          collapsible={false}>
-          <div className='px-1'>
+          collapsible={false}
+          actions={
             <RadioTab
               value={syncMode}
               onValueChange={(v) =>
                 setSyncMode(stream.id, v as 'snapshot' | 'incremental', {
                   path: request.value.path,
                   method: request.value.method,
-                  recordsPath: request.value.recordsPath || undefined,
                 })
               }
               size='sm'>
@@ -295,6 +304,13 @@ export function StreamConfigPanel({ connector, stream, onPromoteField }: StreamC
                 Incremental
               </RadioTabItem>
             </RadioTab>
+          }>
+          <div className='px-1'>
+            <EmptySection
+              icon={SYNC_MODE_COPY[syncMode].icon}
+              title={SYNC_MODE_COPY[syncMode].title}
+              description={SYNC_MODE_COPY[syncMode].description}
+            />
           </div>
         </Section>
 

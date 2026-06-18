@@ -11,10 +11,7 @@ import {
 } from '@auxx/credentials/store'
 import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import {
-  interpolateConnectionFields,
-  mergeConnectionVariables,
-} from '@auxx/services/app-connections'
+import { mergeConnectionVariables } from '@auxx/services/app-connections'
 import { URLTemplateService } from '@auxx/workflow-nodes/server'
 import type {
   OAuth2CallbackResult,
@@ -23,7 +20,11 @@ import type {
   OAuth2State,
   OAuth2Tokens,
 } from '@auxx/workflow-nodes/types'
-import { and, eq } from 'drizzle-orm'
+import { eq } from 'drizzle-orm'
+import {
+  loadDefinitionForCredential,
+  resolveOAuth2RefreshConfig,
+} from '../connections/resolve-connection-definition'
 
 const logger = createScopedLogger('oauth2-workflow')
 
@@ -174,10 +175,10 @@ export async function handleOAuth2Callback(
 }
 
 /**
- * Refresh a credential's OAuth2 tokens. Routes by `kind` (app/mcp → ConnectionDefinition via
- * appId/mcpServerId; workflow → CredentialTypeRegistry via `metadata.providerConfig`), then
- * rotates the secrets and updates the circuit breaker through the store. Used by both the tRPC
- * endpoint and the scheduled refresh job.
+ * Refresh a credential's OAuth2 tokens. Loads the credential's ConnectionDefinition uniformly
+ * (by connectionDefinitionId or owner — app/mcp/platform), interpolates the stored connection
+ * variables, refreshes, then rotates the secrets and updates the circuit breaker through the
+ * store. Used by both the tRPC endpoint and the scheduled refresh job.
  */
 export async function refreshCredentialTokens(
   credentialId: string,
@@ -196,82 +197,51 @@ export async function refreshCredentialTokens(
   }
 
   try {
-    let tokenData: {
-      access_token: string
-      refresh_token?: string
-      expires_in?: number
+    // Every credential — app, mcp, workflow, integration — now resolves its provider config the
+    // same way: load the ConnectionDefinition (by connectionDefinitionId or owner), interpolate
+    // the stored connection variables, and refresh. No `kind` branch, no registry lookup.
+    const connDef = await loadDefinitionForCredential({
+      connectionDefinitionId: record.connectionDefinitionId,
+      appId: record.appId,
+      mcpServerId: record.mcpServerId,
+      type: record.type,
+    })
+    if (!connDef) {
+      return { success: false, error: 'ConnectionDefinition not found' }
     }
-    // For MCP: re-stamped from `expires_in` after a successful refresh (TTLs drift server-side).
-    let mcpConnDef: { id: string; oauth2RefreshTokenIntervalSeconds: number | null } | null = null
 
-    if (record.kind === 'app' || record.kind === 'mcp') {
-      // App- and mcp-connections share the oauth2 columns + circuit-breaker path; only the owner
-      // key differs. Connection variables (e.g. Shopify's shop subdomain) live in metadata.
-      const ownerFilter =
-        record.kind === 'mcp'
-          ? eq(schema.ConnectionDefinition.mcpServerId, record.mcpServerId ?? '')
-          : eq(schema.ConnectionDefinition.appId, record.appId ?? '')
-      const connDef = await db.query.ConnectionDefinition.findFirst({
-        where: and(ownerFilter, eq(schema.ConnectionDefinition.connectionType, 'oauth2-code')),
-        columns: {
-          id: true,
-          oauth2AuthorizeUrl: true,
-          oauth2AccessTokenUrl: true,
-          oauth2RefreshUrl: true,
-          oauth2ClientId: true,
-          oauth2ClientSecret: true,
-          oauth2TokenRequestAuthMethod: true,
-          oauth2RefreshTokenIntervalSeconds: true,
-        },
+    // Merged map: plain variables from metadata + secret-flagged ones from the
+    // already-revealed secrets blob (secrets win on collision).
+    const variables = mergeConnectionVariables(record.metadata, secrets)
+    const oauth = resolveOAuth2RefreshConfig(connDef, variables)
+    if (!oauth.accessTokenUrl) {
+      return { success: false, error: 'ConnectionDefinition not found' }
+    }
+
+    // RFC 8707 resource indicator — the MCP spec requires it on every token request, and it
+    // must match the value the authorize/code-exchange steps sent (the raw endpoint).
+    let resource: string | undefined
+    if (record.mcpServerId) {
+      const server = await db.query.McpServer.findFirst({
+        where: eq(schema.McpServer.id, record.mcpServerId),
+        columns: { endpoint: true },
       })
-
-      if (!connDef || !connDef.oauth2AccessTokenUrl) {
-        return { success: false, error: 'ConnectionDefinition not found' }
-      }
-
-      // Merged map: plain variables from metadata + secret-flagged ones from the
-      // already-revealed secrets blob (secrets win on collision).
-      const variables = mergeConnectionVariables(record.metadata, secrets)
-      const resolved = interpolateConnectionFields(connDef, variables)
-
-      // RFC 8707 resource indicator — the MCP spec requires it on every token request, and it
-      // must match the value the authorize/code-exchange steps sent (the raw endpoint).
-      let resource: string | undefined
-      if (record.kind === 'mcp' && record.mcpServerId) {
-        const server = await db.query.McpServer.findFirst({
-          where: eq(schema.McpServer.id, record.mcpServerId),
-          columns: { endpoint: true },
-        })
-        resource = server?.endpoint
-      }
-
-      if (record.kind === 'mcp') mcpConnDef = connDef
-
-      tokenData = await makeTokenRefreshRequest(
-        // Providers with a dedicated refresh endpoint (the token URL rejects the refresh grant)
-        // set oauth2RefreshUrl; everyone else refreshes against the access-token URL.
-        resolved.refreshUrl || resolved.accessTokenUrl,
-        resolved.clientId,
-        resolved.clientSecret,
-        secrets.refreshToken,
-        connDef.oauth2TokenRequestAuthMethod || 'request-body',
-        resource
-      )
-    } else {
-      // Workflow credentials — resolve the OAuth2 config from the registry.
-      const oauth2Config = await getOAuth2ConfigForType(record.metadata.providerConfig as string)
-      if (!oauth2Config) {
-        return { success: false, error: 'OAuth2 config not found' }
-      }
-
-      tokenData = await makeTokenRefreshRequest(
-        oauth2Config.tokenUrl,
-        getSystemClientId(oauth2Config)!,
-        getSystemClientSecret(oauth2Config)!,
-        secrets.refreshToken,
-        'request-body'
-      )
+      resource = server?.endpoint
     }
+
+    // For MCP: re-stamped from `expires_in` after a successful refresh (TTLs drift server-side).
+    const mcpConnDef = record.mcpServerId ? connDef : null
+
+    const tokenData = await makeTokenRefreshRequest(
+      // Providers with a dedicated refresh endpoint (the token URL rejects the refresh grant)
+      // set oauth2RefreshUrl; everyone else refreshes against the access-token URL.
+      oauth.refreshUrl || oauth.accessTokenUrl,
+      oauth.clientId,
+      oauth.clientSecret,
+      secrets.refreshToken,
+      oauth.authMethod,
+      resource
+    )
 
     const newExpiresAt = tokenData.expires_in
       ? new Date(Date.now() + tokenData.expires_in * 1000)
