@@ -296,8 +296,12 @@ export const dataConnectorRouter = createTRPCRouter({
   // ── Stream setup (admin) ──────────────────────────────────────────────────
 
   /**
-   * Live test-fetch → raw JSON records for schema inference + mapping preview.
-   * Capped small. App connectors aren't wired yet (phase 4) — guarded.
+   * Live test-fetch → the RAW source records (each `ConnectorRecord.fields`, not
+   * the envelope). The source schema and all mapping paths are expressed against
+   * the raw record, so inference + the picker must see the raw record — the
+   * connector's derived `externalId`/`displayName` are sync-time lineage, not
+   * part of the authored source shape. Capped small. App connectors aren't wired
+   * yet (phase 4) — guarded.
    */
   sampleFetch: adminProcedure
     .input(
@@ -331,7 +335,7 @@ export const dataConnectorRouter = createTRPCRouter({
       const sample: unknown[] = []
       try {
         for await (const record of records) {
-          sample.push(record)
+          sample.push(record.fields)
           if (sample.length >= SAMPLE_FETCH_CAP) break
         }
       } catch (error) {

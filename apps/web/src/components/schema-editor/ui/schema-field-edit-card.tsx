@@ -51,7 +51,7 @@ export function SchemaFieldEditCard({
   onAddChild,
   onFocusEditing,
 }: SchemaFieldEditCardProps) {
-  const nameError = validateFieldName(row.name, siblingNames)
+  const nameError = validateFieldName(row.name, siblingNames, policy.freeformNames)
   const isSelect =
     row.fieldType === FieldType.SINGLE_SELECT || row.fieldType === FieldType.MULTI_SELECT
   const isRaw = !!row.raw
@@ -60,7 +60,7 @@ export function SchemaFieldEditCard({
   return (
     <div className='flex flex-col rounded-lg bg-background py-0.5 shadow-sm'>
       <div className='flex h-7 items-center pl-1 pr-0.5'>
-        <div className='flex grow items-center gap-x-1'>
+        <div className='flex min-w-0 grow items-center gap-x-1'>
           <AutosizeInput
             value={row.name}
             placeholder='Field name'
@@ -87,7 +87,22 @@ export function SchemaFieldEditCard({
             />
           )}
 
-          {nameError && <span className='px-1 text-[10px] text-bad-500'>{nameError}</span>}
+          {/* Description sits inline (same autosize input as the name) so the row
+              stays a single line — hovering never grows it past its read height. */}
+          {!isRaw && (
+            <AutosizeInput
+              value={row.description ?? ''}
+              placeholder='Description'
+              minWidth={80}
+              maxWidth={260}
+              onChange={(e) => onChange({ ...row, description: e.target.value || undefined })}
+              onFocus={() => onFocusEditing(true)}
+              onBlur={() => onFocusEditing(false)}
+              inputClassName='text-xs h-5 rounded-[5px] border border-transparent px-1 py-px text-primary-500 outline-none placeholder:text-primary-400 hover:bg-state-base-hover focus:border-components-input-border-active focus:bg-components-input-bg-active focus:shadow-xs'
+            />
+          )}
+
+          {nameError && <span className='shrink-0 px-1 text-[10px] text-bad-500'>{nameError}</span>}
         </div>
 
         {policy.emitRequired && (
@@ -119,21 +134,9 @@ export function SchemaFieldEditCard({
         </button>
       </div>
 
-      {isRaw ? (
+      {isRaw && (
         <div className='px-2 pb-1 text-[11px] text-muted-foreground italic'>
           Complex schema — edit it in the JSON tab.
-        </div>
-      ) : (
-        <div className='px-2 pb-1'>
-          <input
-            value={row.description ?? ''}
-            placeholder='Description'
-            className='h-4 w-full p-0 text-xs text-primary-500 outline-none placeholder:text-primary-400'
-            onFocus={() => onFocusEditing(true)}
-            onBlur={() => onFocusEditing(false)}
-            onChange={(e) => onChange({ ...row, description: e.target.value || undefined })}
-            onKeyUp={(e) => e.key === 'Enter' && e.currentTarget.blur()}
-          />
         </div>
       )}
 

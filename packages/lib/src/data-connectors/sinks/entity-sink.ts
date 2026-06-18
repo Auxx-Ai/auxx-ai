@@ -23,7 +23,6 @@ import {
   touchItem,
   upsertItem,
 } from '../service'
-import type { IdentityStrategy } from '../types'
 import type { EntitySink, ProjectedRecord, SyncCtx } from './types'
 
 const logger = createScopedLogger('data-connector-entity-sink')
@@ -77,29 +76,13 @@ async function resolveIdentity(
     return { instanceId: null }
   }
 
-  const rules =
-    strategy.kind === 'composite'
-      ? strategy.rules
-      : [
-          {
-            connectorFieldKey: (strategy as Extract<IdentityStrategy, { kind: 'matchField' }>)
-              .connectorFieldKey,
-            targetFieldId: (strategy as Extract<IdentityStrategy, { kind: 'matchField' }>)
-              .targetFieldId,
-            normalize: (strategy as Extract<IdentityStrategy, { kind: 'matchField' }>).normalize,
-          },
-        ]
-
-  // Build lookup candidates from the projected (target-keyed) fields. The
-  // connectorFieldKey/targetFieldId both address a target field key here because
-  // the mapping layer already projected source → target keys.
-  const candidates = rules
-    .map((r) => {
-      const value = record.fields[r.targetFieldId] ?? record.fields[r.connectorFieldKey]
-      if (isBlank(value)) return null
-      // The crud lookup keys candidates by systemAttribute; resolve id → systemAttribute
-      // is unnecessary because lookupByField accepts systemAttribute directly.
-      return { systemAttribute: r.targetFieldId, value: normalizeMatch(value, r.normalize) }
+  // Match values were resolved from the SOURCE record by the mapping layer
+  // (matchField/composite → identityCandidates). The crud lookup keys candidates
+  // by systemAttribute (= the target field), which lookupByField accepts directly.
+  const candidates = record.identityCandidates
+    .map((c) => {
+      if (isBlank(c.value)) return null
+      return { systemAttribute: c.targetFieldId, value: normalizeMatch(c.value, c.normalize) }
     })
     .filter((c): c is { systemAttribute: string; value: string } => c !== null)
 

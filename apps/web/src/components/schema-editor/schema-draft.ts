@@ -40,7 +40,7 @@ export interface SchemaFieldDraft {
   raw?: Record<string, unknown>
 }
 
-/** Editor policy — the only fork between MCP and workflow modes. */
+/** Editor policy — the per-mode fork (workflow / MCP / data source). */
 export interface SchemaPolicy {
   /** Workflow mode emits the `required` array; MCP mode never does. */
   emitRequired: boolean
@@ -52,6 +52,19 @@ export interface SchemaPolicy {
    * top-level arrays.
    */
   root?: 'object' | 'any'
+  /**
+   * Label on the synthetic root row in the Visual tab. Defaults to
+   * `structured_output` (the editor's workflow origin); other consumers pass a
+   * domain term (e.g. data sources use `record`).
+   */
+  rootLabel?: string
+  /**
+   * Allow arbitrary JSON Schema property names. The default (false) requires
+   * identifier-shaped names so workflow variable paths (`structured_output.x`)
+   * stay clean; data sources / general JSON schemas set this to permit any key
+   * (`Total Price`, `line-items`, …).
+   */
+  freeformNames?: boolean
 }
 
 /**

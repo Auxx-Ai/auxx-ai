@@ -101,12 +101,17 @@ export function checkJsonSchemaDepth(schema: unknown, depth = 0): number {
 
 /**
  * Validate a field (property) name against its siblings. Returns an error
- * string, or null when valid. JSON Schema keys can be arbitrary strings, but we
- * require identifier-shaped names so generated variable paths stay clean.
+ * string, or null when valid. JSON Schema keys can be arbitrary strings; the
+ * identifier-shaped rule keeps generated workflow variable paths clean, so it's
+ * skipped under `freeformNames` (data sources / general JSON schemas).
  */
-export function validateFieldName(name: string, siblingNames: string[] = []): string | null {
+export function validateFieldName(
+  name: string,
+  siblingNames: string[] = [],
+  freeformNames = false
+): string | null {
   if (!name || name.trim() === '') return 'Field name is required'
-  if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(name)) {
+  if (!freeformNames && !/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(name)) {
     return 'Use letters, numbers, and underscores; must start with a letter or underscore'
   }
   if (siblingNames.includes(name)) return 'Field name already exists'

@@ -334,7 +334,7 @@ export function StreamConfigPanel({ connector, stream, onPromoteField }: StreamC
         onOpenChange={(open) => !open && setSeed(null)}
         title={stream.streamKey}
         initial={seed ?? { schema: EMPTY_SCHEMA, seededFrom: 'empty' }}
-        policy={{ emitRequired: false, root: 'any' }}
+        policy={{ emitRequired: false, root: 'any', rootLabel: 'record', freeformNames: true }}
         onSave={handleSaveSchema}
       />
     </ScrollArea>

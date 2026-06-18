@@ -80,8 +80,9 @@ export const shopifyCoreDataConnector = defineDataConnector({
             mode: 'contributing',
             entityKind: 'contact',
             identity: {
+              // connectorFieldKey is subtree-relative to rootPath ('customer').
               kind: 'matchField',
-              connectorFieldKey: 'customer.email',
+              connectorFieldKey: 'email',
               targetFieldId: 'email',
               normalize: 'email',
             },

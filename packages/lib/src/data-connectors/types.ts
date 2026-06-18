@@ -161,7 +161,12 @@ export interface DataConnectorDefinition {
 
 /**
  * How an incoming upstream record is matched to an existing entity record.
- * Stored on DataConnectorMapping.identityStrategy (jsonb).
+ * Stored on DataConnectorMapping.identityStrategy (jsonb). `matchField`/
+ * `composite` match a SOURCE field's value against a TARGET field on the entity:
+ *  - `connectorFieldKey` — a subtree-relative source path (like `sourceFields`),
+ *    read straight from the source record.
+ *  - `targetFieldId` — the entity field whose value must equal it (often an
+ *    app-`defineField`'d field, e.g. `email`).
  */
 export type IdentityStrategy =
   | { kind: 'connectorExternalId' }

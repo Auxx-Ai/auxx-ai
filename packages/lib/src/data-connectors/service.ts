@@ -67,9 +67,9 @@ export function decodeMapping(row: DataConnectorMappingRow): DecodedMapping {
     parentMappingId: row.parentMappingId ?? null,
     relationshipFieldKey: row.relationshipFieldKey ?? null,
     orphanBehavior: row.orphanBehavior as OrphanBehavior,
-    identityStrategy: row.identityStrategy as unknown as IdentityStrategy,
-    fieldMappings: (row.fieldMappings as Record<string, FieldMapping>) ?? {},
-    mergeStrategies: (row.mergeStrategies as Record<string, FieldMergeStrategy>) ?? {},
+    identityStrategy: row.identityStrategy,
+    fieldMappings: row.fieldMappings ?? {},
+    mergeStrategies: row.mergeStrategies ?? {},
   }
 }
 

@@ -97,19 +97,42 @@ export interface FieldMapping {
 
 /**
  * Per-field write behavior (jsonb on {@link DataConnectorMapping}, keyed by
- * target field key). Decision #13. Refined in sub-plan 02.
+ * target field key). MUST mirror the engine `FieldMergeStrategy` in
+ * `@auxx/lib/data-connectors/types` (this package can't import tier-3 lib).
  */
-export type FieldMergeStrategy = 'overwrite' | 'fill_if_empty' | 'append' | 'ignore'
+export type FieldMergeStrategy =
+  | 'overwrite'
+  | 'fill_blank'
+  | 'connector_owned_only'
+  | 'manual_review'
+  | 'ignore'
+
+/**
+ * Identity match normalizers — mirror of the engine union.
+ */
+export type IdentityNormalize = 'email' | 'phone' | 'domain' | 'none'
 
 /**
  * How upstream records match existing records (jsonb on
- * {@link DataConnectorMapping}). Decision #12. Refined in sub-plan 02.
+ * {@link DataConnectorMapping}). MUST mirror the engine `IdentityStrategy` in
+ * `@auxx/lib/data-connectors/types` (this package can't import tier-3 lib):
+ *  - `matchField`/`composite` pair a subtree-relative source path
+ *    (`connectorFieldKey`) with the target field it must equal (`targetFieldId`).
  */
-export interface IdentityStrategy {
-  /** 'external-id' (default) | 'field-match' | 'composite'. */
-  kind: 'external-id' | 'field-match' | 'composite'
-  /** Source path(s) forming the upstream stable id / match key. */
-  sourceIdPath?: string
-  /** Target field keys used for field-match / composite identity. */
-  matchFields?: string[]
-}
+export type IdentityStrategy =
+  | { kind: 'connectorExternalId' }
+  | {
+      kind: 'matchField'
+      connectorFieldKey: string
+      targetFieldId: string
+      normalize?: IdentityNormalize
+    }
+  | {
+      kind: 'composite'
+      rules: Array<{
+        connectorFieldKey: string
+        targetFieldId: string
+        normalize?: IdentityNormalize
+      }>
+    }
+  | { kind: 'manualReview' }
