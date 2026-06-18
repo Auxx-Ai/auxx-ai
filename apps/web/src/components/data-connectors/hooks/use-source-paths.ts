@@ -65,12 +65,24 @@ export function useSourcePaths(schema: Record<string, unknown> | null | undefine
   return useMemo(() => flattenSourceSchema(schema), [schema])
 }
 
-/** Leaf (value) paths only, optionally scoped to a `rootPath` subtree. */
+/**
+ * Leaf (value) paths under a mapping's `rootPath`, returned RELATIVE to that
+ * subtree. This matches the sync runtime, which descends into the subtree
+ * (`extractSubtrees(source.fields, rootPath)`) before resolving each field path
+ * (`getByPath(subtree, relativePath)`) — so a `line_items[]` mapping references
+ * `price`, not `line_items[].price`. The root mapping (`''`) returns its leaves
+ * unchanged (relative == absolute).
+ */
 export function leafPathsUnder(paths: SourcePath[], rootPath: string): SourcePath[] {
-  const prefix = rootPath ? `${rootPath.replace(/\[\]$/, '')}` : ''
-  return paths.filter((p) => {
-    if (p.isBranch) return false
-    if (!prefix) return true
-    return p.path === prefix || p.path.startsWith(`${prefix}.`) || p.path.startsWith(`${prefix}[]`)
-  })
+  if (!rootPath) return paths.filter((p) => !p.isBranch)
+  const base = rootPath.replace(/\[\]$/, '')
+  const out: SourcePath[] = []
+  for (const p of paths) {
+    if (p.isBranch) continue
+    let rel: string | null = null
+    if (p.path.startsWith(`${base}[].`)) rel = p.path.slice(base.length + 3)
+    else if (p.path.startsWith(`${base}.`)) rel = p.path.slice(base.length + 1)
+    if (rel) out.push({ ...p, path: rel })
+  }
+  return out
 }

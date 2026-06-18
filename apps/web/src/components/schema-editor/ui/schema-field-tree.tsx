@@ -1,12 +1,22 @@
 // apps/web/src/components/schema-editor/ui/schema-field-tree.tsx
 
+import { BaseType } from '@auxx/lib/workflow-engine/client'
 import { Button } from '@auxx/ui/components/button'
 import { Separator } from '@auxx/ui/components/separator'
 import { cn } from '@auxx/ui/lib/utils'
 import { ChevronDown, ChevronRight, PlusCircle } from 'lucide-react'
 import { type ReactNode, useCallback, useState } from 'react'
-import { addField, removeRow, siblingNames, updateRow } from '../draft-ops'
-import type { SchemaFieldDraft, SchemaPolicy } from '../schema-draft'
+import { VariableTypePicker } from '~/components/workflow/ui/variable-type-picker'
+import {
+  addField,
+  removeRow,
+  STRUCTURAL_ARRAY,
+  STRUCTURAL_OBJECT,
+  siblingNames,
+  typeLabelOf,
+  updateRow,
+} from '../draft-ops'
+import type { SchemaFieldDraft, SchemaPolicy, SchemaRootKind } from '../schema-draft'
 import { SchemaFieldCard } from './schema-field-card'
 import { SchemaFieldEditCard } from './schema-field-edit-card'
 
@@ -17,9 +27,12 @@ interface SchemaFieldTreeProps {
   rows: SchemaFieldDraft[]
   onChange: (rows: SchemaFieldDraft[]) => void
   policy: SchemaPolicy
-  /** Type annotation on the synthetic root (e.g. `array of objects` for an
-   *  array-of-objects root). Defaults to `object`. */
-  rootTypeLabel?: string
+  /** Current root kind — drives the root type label / picker. The tree only
+   *  renders for object / array-of-objects roots ('other' is JSON-tab only). */
+  rootKind?: SchemaRootKind
+  /** When provided, the root type becomes an editable object ⇄ array-of-objects
+   *  picker; omitted (workflow's fixed object root) renders a static label. */
+  onRootKindChange?: (kind: SchemaRootKind) => void
 }
 
 /**
@@ -35,8 +48,10 @@ export function SchemaFieldTree({
   rows,
   onChange,
   policy,
-  rootTypeLabel = 'object',
+  rootKind = 'object',
+  onRootKindChange,
 }: SchemaFieldTreeProps) {
+  const rootLabel = policy.rootLabel ?? 'structured_output'
   const [hoveredId, setHoveredId] = useState<string | null>(null)
   const [focusedId, setFocusedId] = useState<string | null>(null)
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set())
@@ -117,12 +132,10 @@ export function SchemaFieldTree({
           </div>
         </div>
 
-        {/* Vertical connector down the left of this node's subtree. */}
+        {/* Vertical connector down the left of this node's subtree. Rows are a
+            single line (description is inline), so the offset is uniform. */}
         <div
-          className={cn(
-            'absolute z-0 flex w-5 justify-center',
-            row.description ? 'top-12 h-[calc(100%-3rem)]' : 'top-7 h-[calc(100%-1.75rem)]'
-          )}
+          className='absolute top-7 z-0 flex h-[calc(100%-1.75rem)] w-5 justify-center'
           style={{ left: depth * INDENT }}>
           <Separator
             orientation='vertical'
@@ -146,9 +159,17 @@ export function SchemaFieldTree({
         <div className='relative z-10'>
           <div className='flex h-7 items-center gap-x-1 pl-1 pr-0.5'>
             <span className='border border-transparent px-1 py-px font-semibold text-sm text-primary-800'>
-              structured_output
+              {rootLabel}
             </span>
-            <span className='px-1 py-0.5 text-xs text-muted-foreground'>{rootTypeLabel}</span>
+            {onRootKindChange ? (
+              <RootTypeSelector rootKind={rootKind} onChange={onRootKindChange} />
+            ) : (
+              <span className='px-1 py-0.5 text-xs text-muted-foreground'>
+                {typeLabelOf(
+                  rootKind === 'array-of-objects' ? STRUCTURAL_ARRAY : STRUCTURAL_OBJECT
+                )}
+              </span>
+            )}
           </div>
         </div>
         <div className='absolute top-7 z-0 flex h-[calc(100%-1.75rem)] w-5 justify-center left-0'>
@@ -158,6 +179,48 @@ export function SchemaFieldTree({
         <AddField depth={1} onClick={() => handleAdd(null)} />
       </div>
     </div>
+  )
+}
+
+/** Every `BaseType` except `object` — the root picker offers object only,
+ *  with the Array toggle flipping object ⇄ array-of-objects. */
+const ROOT_EXCLUDED_TYPES: BaseType[] = Object.values(BaseType).filter(
+  (type) => type !== BaseType.OBJECT
+)
+
+/**
+ * The root type control — the same `VariableTypePicker` the field edit card uses,
+ * behind the same ghost trigger. The base type is pinned to `object`; the picker's
+ * Array toggle is the real control, mapping to `array-of-objects`. Search is
+ * hidden (a single base type), so the popover is just the toggle.
+ */
+function RootTypeSelector({
+  rootKind,
+  onChange,
+}: {
+  rootKind: SchemaRootKind
+  onChange: (kind: SchemaRootKind) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const isArray = rootKind === 'array-of-objects'
+  return (
+    <VariableTypePicker
+      value={{ baseType: BaseType.OBJECT, isArray }}
+      onChange={(next) => onChange(next.isArray ? 'array-of-objects' : 'object')}
+      excludeTypes={ROOT_EXCLUDED_TYPES}
+      includeArrayToggle
+      showSearch={false}
+      open={open}
+      onOpenChange={setOpen}
+      align='start'
+      popoverWidth={208}>
+      <Button variant='ghost' size='xs' className={cn(open && 'bg-state-base-hover')}>
+        <span className='system-xs-medium text-primary-500'>
+          {typeLabelOf(isArray ? STRUCTURAL_ARRAY : STRUCTURAL_OBJECT)}
+        </span>
+        <ChevronDown className='size-4 text-primary-500' />
+      </Button>
+    </VariableTypePicker>
   )
 }
 

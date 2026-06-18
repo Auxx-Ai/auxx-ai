@@ -329,7 +329,7 @@ export async function addMapping(
       entityDefinitionId: input.entityDefinitionId,
       parentMappingId: input.parentMappingId ?? null,
       relationshipFieldKey: input.relationshipFieldKey ?? null,
-      identityStrategy: input.identityStrategy as unknown as Record<string, unknown>,
+      identityStrategy: input.identityStrategy,
       fieldMappings: input.fieldMappings ?? {},
       mergeStrategies: input.mergeStrategies ?? {},
       orphanBehavior: input.orphanBehavior ?? 'ignore',
@@ -450,7 +450,7 @@ export async function setIdentityStrategy(
   const [row] = await db
     .update(schema.DataConnectorMapping)
     .set({
-      identityStrategy: identityStrategy as unknown as Record<string, unknown>,
+      identityStrategy,
       updatedAt: new Date(),
     })
     .where(eq(schema.DataConnectorMapping.id, mappingId))

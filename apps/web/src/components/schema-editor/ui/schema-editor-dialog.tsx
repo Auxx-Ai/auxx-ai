@@ -222,7 +222,9 @@ function SchemaEditorBody({
               rows={rows}
               onChange={setRows}
               policy={policy}
-              rootTypeLabel={rootKind === 'array-of-objects' ? 'array of objects' : 'object'}
+              rootKind={rootKind}
+              // Editable root only under `root: 'any'`; workflow's object root is fixed.
+              onRootKindChange={rootPolicy === 'any' ? setRootKind : undefined}
             />
           )
         ) : (

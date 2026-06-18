@@ -11,6 +11,17 @@ export interface ProjectedRecord {
   displayName: string
   /** Mapped to TARGET field keys (the mapping layer already evaluated CALC). */
   fields: Record<string, unknown>
+  /**
+   * Identity match values resolved from the SOURCE record (matchField/composite),
+   * each pairing a target field with the source value it must equal. Pre-resolved
+   * by the mapping layer because the sink has no access to the source subtree.
+   * Empty for connectorExternalId / manualReview.
+   */
+  identityCandidates: Array<{
+    targetFieldId: string
+    value: unknown
+    normalize?: 'email' | 'phone' | 'domain' | 'none'
+  }>
   /** Pending relations to register on this record's item (resolved in the two-pass). */
   pendingRelations: PendingRelation[]
   /** Upstream last-modified, if the source carries one. */

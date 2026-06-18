@@ -23,6 +23,14 @@ const credentialRegistry = new CredentialTypeRegistry()
 /** The four credential families (mirrors `CredentialKind` in @auxx/credentials). */
 const credentialKindSchema = z.enum(['app', 'mcp', 'integration', 'workflow'])
 
+/**
+ * Consecutive refresh failures at which a connection's circuit breaker is
+ * "open" — mirrors `CONNECTION_CIRCUIT_OPEN_THRESHOLD` in
+ * `@auxx/services/app-connections`. At or above this, the credential is
+ * surfaced as `expired` so a uniform status applies to every kind.
+ */
+const CONNECTION_CIRCUIT_OPEN_THRESHOLD = 5
+
 export const credentialsRouter = createTRPCRouter({
   /**
    * Create a new workflow credential
@@ -33,6 +41,12 @@ export const credentialsRouter = createTRPCRouter({
         type: z.string().min(1, 'Credential type is required'),
         name: z.string().min(1, 'Credential name is required'),
         data: z.record(z.string(), z.any()).describe('Credential data (API keys, tokens, etc.)'),
+        /**
+         * Credential family to create under. Defaults to `workflow` so the
+         * workflow-credentials UI keeps minting workflow creds; data connectors
+         * pass `integration` for app-less sync secrets.
+         */
+        kind: credentialKindSchema.optional(),
       })
     )
     .use(notDemo('create credentials'))
@@ -48,7 +62,7 @@ export const credentialsRouter = createTRPCRouter({
       const result = await insertCredential({
         organizationId: ctx.session.user.defaultOrganizationId,
         createdById: ctx.session.user.id,
-        kind: 'workflow',
+        kind: input.kind ?? 'workflow',
         type: input.type,
         name: input.name,
         secrets,
@@ -83,6 +97,13 @@ export const credentialsRouter = createTRPCRouter({
             .union([credentialKindSchema, credentialKindSchema.array().min(1)])
             .optional()
             .describe('Filter by credential family'),
+          /**
+           * When true, only org-scoped (workspace) connections are returned —
+           * personal/user-scoped creds are excluded. Background resources like
+           * data connectors must bind org-scoped creds so they don't break for
+           * other users.
+           */
+          orgScopedOnly: z.boolean().optional(),
         })
         .optional()
     )
@@ -98,6 +119,9 @@ export const credentialsRouter = createTRPCRouter({
         organizationId: ctx.session.user.defaultOrganizationId,
         kind: input?.kind ?? 'workflow',
         type: input?.type,
+        // `userId: null` filters to org-scoped rows; omitting the key entirely
+        // leaves user scope unfiltered (the workflow-credentials default).
+        ...(input?.orgScopedOnly ? { userId: null } : {}),
         withCreatedBy: true,
       })
 
@@ -108,13 +132,27 @@ export const credentialsRouter = createTRPCRouter({
         })
       }
 
-      return result.value.map((record) => ({
-        id: record.id,
-        name: record.name,
-        type: record.type ?? '',
-        createdAt: record.createdAt,
-        createdBy: { name: record.createdByName },
-      }))
+      const now = new Date()
+      return result.value.map((record) => {
+        const expired =
+          record.consecutiveRefreshFailures >= CONNECTION_CIRCUIT_OPEN_THRESHOLD ||
+          (record.expiresAt !== null && record.expiresAt < now)
+        return {
+          id: record.id,
+          name: record.name,
+          type: record.type ?? '',
+          kind: record.kind,
+          label: record.label,
+          appId: record.appId,
+          appInstallationId: record.appInstallationId,
+          // user-scoped vs org-scoped — reconnect picks the matching connection
+          // definition by scope (05c §2).
+          scope: record.userId ? ('user' as const) : ('organization' as const),
+          status: expired ? ('expired' as const) : ('connected' as const),
+          createdAt: record.createdAt,
+          createdBy: { name: record.createdByName },
+        }
+      })
     }),
 
   /**

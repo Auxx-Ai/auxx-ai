@@ -376,17 +376,26 @@ function IdentityChip({
       | { kind: 'manualReview' }
   ) => void
 }) {
-  const identity = mapping.identityStrategy as { kind: string; connectorFieldKey?: string }
+  const identity = mapping.identityStrategy as {
+    kind: string
+    connectorFieldKey?: string
+    targetFieldId?: string
+    normalize?: 'email' | 'phone' | 'domain' | 'none'
+  }
+
+  // matchField pairs a SOURCE field (relative leaf) with a TARGET field to match
+  // against — identifier fields first, else any field.
+  const identifierFields = def?.fields.filter((f) => f.isIdentifier) ?? []
+  const targetFields = identifierFields.length > 0 ? identifierFields : (def?.fields ?? [])
+
   const label =
     identity.kind === 'matchField'
-      ? `id: ${identity.connectorFieldKey}`
+      ? `id: ${identity.connectorFieldKey || 'field'}`
       : identity.kind === 'connectorExternalId'
         ? 'id: external'
         : identity.kind === 'manualReview'
           ? 'id: review'
           : 'id'
-
-  const identifierFields = def?.fields.filter((f) => f.isIdentifier) ?? []
 
   return (
     <Popover>
@@ -410,7 +419,7 @@ function IdentityChip({
                 onSave({
                   kind: 'matchField',
                   connectorFieldKey: leaves[0]?.path ?? '',
-                  targetFieldId: identifierFields[0]?.id ?? '',
+                  targetFieldId: targetFields[0]?.id ?? '',
                   normalize: 'none',
                 })
               }
@@ -426,34 +435,56 @@ function IdentityChip({
           </Select>
 
           {identity.kind === 'matchField' && (
-            <div className='flex flex-col gap-2'>
-              <span className='text-xs text-muted-foreground'>Source field</span>
-              <Select
-                value={identity.connectorFieldKey ?? ''}
-                onValueChange={(connectorFieldKey) => {
-                  const current = identity as {
-                    targetFieldId?: string
-                    normalize?: 'email' | 'phone' | 'domain' | 'none'
-                  }
-                  onSave({
-                    kind: 'matchField',
-                    connectorFieldKey,
-                    targetFieldId: current.targetFieldId ?? identifierFields[0]?.id ?? '',
-                    normalize: current.normalize ?? 'none',
-                  })
-                }}>
-                <SelectTrigger size='sm'>
-                  <SelectValue placeholder='Source field…' />
-                </SelectTrigger>
-                <SelectContent>
-                  {leaves.map((p) => (
-                    <SelectItem key={p.path} value={p.path}>
-                      {p.path}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            <>
+              <div className='flex flex-col gap-2'>
+                <span className='text-xs text-muted-foreground'>Source field</span>
+                <Select
+                  value={identity.connectorFieldKey ?? ''}
+                  onValueChange={(connectorFieldKey) =>
+                    onSave({
+                      kind: 'matchField',
+                      connectorFieldKey,
+                      targetFieldId: identity.targetFieldId ?? targetFields[0]?.id ?? '',
+                      normalize: identity.normalize ?? 'none',
+                    })
+                  }>
+                  <SelectTrigger size='sm'>
+                    <SelectValue placeholder='Source field…' />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {leaves.map((p) => (
+                      <SelectItem key={p.path} value={p.path}>
+                        {p.path}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className='flex flex-col gap-2'>
+                <span className='text-xs text-muted-foreground'>Target field</span>
+                <Select
+                  value={identity.targetFieldId ?? ''}
+                  onValueChange={(targetFieldId) =>
+                    onSave({
+                      kind: 'matchField',
+                      connectorFieldKey: identity.connectorFieldKey ?? leaves[0]?.path ?? '',
+                      targetFieldId,
+                      normalize: identity.normalize ?? 'none',
+                    })
+                  }>
+                  <SelectTrigger size='sm'>
+                    <SelectValue placeholder='Target field…' />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {targetFields.map((f) => (
+                      <SelectItem key={f.id} value={f.id}>
+                        {f.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </>
           )}
         </div>
       </PopoverContent>

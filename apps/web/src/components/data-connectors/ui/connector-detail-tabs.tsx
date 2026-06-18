@@ -16,7 +16,7 @@ import { useQueryState } from 'nuqs'
 import { useCallback, useMemo } from 'react'
 import { useScrollSpy } from '~/hooks/use-scroll-spy'
 import { api } from '~/trpc/react'
-import { useSourcePaths } from '../hooks/use-source-paths'
+import { leafPathsUnder, useSourcePaths } from '../hooks/use-source-paths'
 import { useStreamMutations } from '../hooks/use-stream-mutations'
 import { ConnectionSection } from './connection-section'
 import { FieldCalcPanel } from './field-calc-panel'
@@ -242,7 +242,8 @@ export function ConnectorDetailTabs({ connector, mobileRunsPanel }: ConnectorDet
               <FieldCalcPanel
                 fieldLabel={fieldKey}
                 expression={fieldExpression}
-                sourcePaths={sourcePaths}
+                // Scoped + relative to the mapping's subtree, matching the runtime.
+                sourcePaths={leafPathsUnder(sourcePaths, fieldMapping.rootPath)}
                 onSave={(expression, sourceFields) => {
                   const existing = (fieldMapping.fieldMappings ?? {}) as Record<
                     string,
