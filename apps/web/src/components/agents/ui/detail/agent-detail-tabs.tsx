@@ -25,7 +25,8 @@ import {
   Zap,
 } from 'lucide-react'
 import { useQueryState } from 'nuqs'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
+import { useScrollSpy } from '~/hooks/use-scroll-spy'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { AGENT_TABS, type AgentTab, DEFAULT_AGENT_TAB } from '../../constant'
 import { usePersonaRealtime } from '../../hooks/use-persona-realtime'
@@ -111,17 +112,6 @@ export function AgentDetailTabs({ agent, onAutosaveChange }: AgentDetailTabsProp
     agentId: agent.id,
     onExternalPromptChange: useCallback(() => setPersonaReloadKey((k) => k + 1), []),
   })
-  const scrollContainerRef = useRef<HTMLDivElement | null>(null)
-  const sectionRefs = useRef<Record<AgentTab, HTMLDivElement | null>>({
-    prompt: null,
-    tools: null,
-    restrictions: null,
-    knowledge: null,
-    procedures: null,
-    triggers: null,
-  })
-  const isProgrammaticScrollRef = useRef(false)
-
   // Procedures is a beta feature gated per-plan: hide the tab + section outright
   // for orgs without the `agentProcedures` entitlement (backend mutations also
   // enforce it). Self-hosted is unlimited, so the gate is a no-op there.
@@ -139,21 +129,17 @@ export function AgentDetailTabs({ agent, onAutosaveChange }: AgentDetailTabsProp
     [agent.kind, canProcedures]
   )
 
-  const scrollToSection = useCallback((value: string) => {
-    const target = sectionRefs.current[value as AgentTab]
-    const container = scrollContainerRef.current
-    if (!target || !container) return
-    isProgrammaticScrollRef.current = true
-    const targetRect = target.getBoundingClientRect()
-    const containerRect = container.getBoundingClientRect()
-    container.scrollTo({
-      top: container.scrollTop + (targetRect.top - containerRect.top) - SCROLL_BUFFER,
-      behavior: 'smooth',
-    })
-    window.setTimeout(() => {
-      isProgrammaticScrollRef.current = false
-    }, 700)
-  }, [])
+  // Scroll-spy mechanism is shared with other detail pages (see use-scroll-spy).
+  // `remountKey` re-binds the listener after the root ScrollArea remounts on
+  // return from a procedure/drill panel (NavStackPanels only mounts the top panel).
+  const { scrollContainerRef, assignRef, scrollToSection } = useScrollSpy<AgentTab>({
+    sections: tabs,
+    active: (tab as AgentTab) ?? DEFAULT_AGENT_TAB,
+    onActiveChange: setTab,
+    remountKey: `${selectedProcedureId}:${drill}`,
+    spyBuffer: SPY_BUFFER,
+    scrollBuffer: SCROLL_BUFFER,
+  })
 
   const handleTabChange = useCallback(
     (value: string) => {
@@ -162,53 +148,10 @@ export function AgentDetailTabs({ agent, onAutosaveChange }: AgentDetailTabsProp
       void setSelectedProcedureId(null)
       void setDrill(null)
       setTab(value)
-      scrollToSection(value)
+      scrollToSection(value as AgentTab)
     },
     [setTab, setSelectedProcedureId, setDrill, scrollToSection]
   )
-
-  // Scroll-spy: as the user scrolls, switch the active tab to whichever
-  // section is closest to the top of the viewport.
-  useEffect(() => {
-    const container = scrollContainerRef.current
-    if (!container) return
-
-    let raf = 0
-    let lastActive: AgentTab | null = (tab as AgentTab) ?? null
-
-    const onScroll = () => {
-      if (isProgrammaticScrollRef.current) return
-      if (raf) cancelAnimationFrame(raf)
-      raf = requestAnimationFrame(() => {
-        const containerRect = container.getBoundingClientRect()
-        const activationY = containerRect.top + SPY_BUFFER
-        let best: AgentTab | null = null
-        for (const t of tabs) {
-          const el = sectionRefs.current[t]
-          if (!el) continue
-          const rect = el.getBoundingClientRect()
-          if (rect.top <= activationY) best = t
-        }
-        if (best && best !== lastActive) {
-          lastActive = best
-          setTab(best)
-        }
-      })
-    }
-
-    container.addEventListener('scroll', onScroll, { passive: true })
-    return () => {
-      container.removeEventListener('scroll', onScroll)
-      if (raf) cancelAnimationFrame(raf)
-    }
-    // `selectedProcedureId`/`drill` are deps so the listener re-attaches to the root
-    // panel's ScrollArea after it remounts on return from a procedure/drill panel
-    // (NavStackPanels only mounts the top panel, so the root viewport is recreated).
-  }, [setTab, tab, tabs, selectedProcedureId, drill])
-
-  const assignRef = (value: AgentTab) => (el: HTMLDivElement | null) => {
-    sectionRefs.current[value] = el
-  }
 
   const stack = !selectedProcedureId
     ? ['root']

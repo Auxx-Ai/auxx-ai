@@ -8,6 +8,7 @@ import type {
   CatalogAction,
   CatalogAgentTool,
   CatalogBlock,
+  CatalogDataConnector,
   CatalogToolset,
   CatalogTriggerProjection,
   ConnectionVariable,
@@ -395,6 +396,14 @@ export interface CachedInstalledApp {
   workflowBlocks?: CatalogBlock[]
   workflowTriggers?: CatalogTriggerProjection[]
   actions?: CachedAction[]
+  /**
+   * Data connectors this app declares (`catalog.dataConnectors`). Surfaced for
+   * UI discovery so the connector picker + setup view can list an app's
+   * connectors and the app-connector adapter can resolve a connector's streams
+   * without evaluating bundle code. See
+   * plans/data-connectors/claude/03-connectors-and-sources.md §4.
+   */
+  dataConnectors?: CatalogDataConnector[]
 
   /**
    * Org-scope connection presence + expiry (decision G2 split path).

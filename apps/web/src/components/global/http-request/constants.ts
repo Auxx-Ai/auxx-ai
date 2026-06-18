@@ -1,3 +1,5 @@
+// apps/web/src/components/global/http-request/constants.ts
+
 import { BodyType, Method } from './types'
 
 export const MethodOptions = [

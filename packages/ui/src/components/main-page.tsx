@@ -222,12 +222,19 @@ const MainPageBreadcrumbItem: React.FC<MainPageBreadcrumbItemProps> = ({
         ) : onClick ? (
           <BreadcrumbLink
             onClick={onClick}
-            className={cn('rounded py-0.5 px-1.5 hover:bg-primary-200 text-nowrap shrink-0')}>
+            className={cn(
+              'rounded py-0.5 px-1.5 hover:bg-primary-200 text-nowrap shrink-0',
+              icon && 'flex items-center gap-1'
+            )}>
             {icon as any}
             {title}
           </BreadcrumbLink>
         ) : (
-          <BreadcrumbPage className='cursor-default text-nowrap shrink-0'>
+          <BreadcrumbPage
+            className={cn(
+              'cursor-default text-nowrap shrink-0',
+              icon && 'flex items-center gap-1'
+            )}>
             {icon as any}
             {title}
           </BreadcrumbPage>

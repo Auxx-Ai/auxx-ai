@@ -46,6 +46,10 @@
       "types": "./lib/root/fields/index.d.ts",
       "import": "./lib/root/fields/index.js"
     },
+    "./data-connectors": {
+      "types": "./lib/root/data-connectors/index.d.ts",
+      "import": "./lib/root/data-connectors/index.js"
+    },
     "./shared": {
       "types": "./lib/shared/index.d.ts",
       "import": "./lib/shared/index.js"

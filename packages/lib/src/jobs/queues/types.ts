@@ -52,4 +52,6 @@ export enum Queues {
   kbSyncQueue = 'kb-sync',
   // Knowledge Source orchestration (crawl/ingest re-sync) queue
   knowledgeSourceQueue = 'knowledge-source',
+  // Data Connector orchestration (structured-record sync) queue
+  dataConnectorQueue = 'data-connector',
 }

@@ -60,6 +60,25 @@ export const knowledgeSourceStatus = pgEnum('KnowledgeSourceStatus', [
   'error',
   'paused',
 ])
+// Data Connectors — sync external records into the entity system (see
+// plans/data-connectors/). `type`, `targetMode`, `schemaSource`, `syncMode`,
+// `orphanBehavior`, `linkMode`, `definitionKind`, and the DataConnectorRun
+// trigger/mode/status stay text() (cheap to extend, typed in code). Only status
+// + syncBehavior are pgEnums. Decoupled from the knowledgeSource* enums (same
+// values, no cross-domain pgEnum coupling).
+export const dataConnectorStatus = pgEnum('DataConnectorStatus', [
+  'pending',
+  'provisioning',
+  'syncing',
+  'live',
+  'error',
+  'paused',
+])
+export const dataConnectorSyncBehavior = pgEnum('DataConnectorSyncBehavior', [
+  'manual',
+  'scheduled',
+  'webhook',
+])
 export const assetVersionStatus = pgEnum('AssetVersionStatus', [
   'PENDING',
   'PROCESSING',

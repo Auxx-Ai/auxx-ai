@@ -1,4 +1,4 @@
-// apps/web/src/components/agents/ui/detail/triggers/trigger-interval-selector.tsx
+// apps/web/src/components/global/schedule/interval-selector.tsx
 'use client'
 
 import { InputGroup } from '@auxx/ui/components/input-group'
@@ -18,7 +18,7 @@ import { VarEditorField } from '~/components/workflow/ui/input-editor/var-editor
 
 export type Interval = 'minutes' | 'hours' | 'days' | 'weeks'
 
-interface TriggerIntervalSelectorProps {
+interface IntervalSelectorProps {
   interval: Interval
   value: number
   onIntervalChange: (interval: Interval) => void
@@ -30,12 +30,12 @@ interface TriggerIntervalSelectorProps {
  * look. Uses VarEditorField for the container styling and NumberInput +
  * NumberInputArrows for the value input — no ReactFlow context required.
  */
-export function TriggerIntervalSelector({
+export function IntervalSelector({
   interval,
   value,
   onIntervalChange,
   onValueChange,
-}: TriggerIntervalSelectorProps) {
+}: IntervalSelectorProps) {
   return (
     <VarEditorField className='py-0 pe-0 ps-0.5'>
       <div className='flex flex-row items-center gap-2'>

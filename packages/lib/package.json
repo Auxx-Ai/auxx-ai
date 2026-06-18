@@ -268,6 +268,12 @@
       "import": "./dist/custom-fields/types.mjs",
       "default": "./src/custom-fields/types.ts"
     },
+    "./data-connectors": {
+      "types": "./src/data-connectors/index.ts",
+      "source": "./src/data-connectors/index.ts",
+      "import": "./dist/data-connectors/index.mjs",
+      "default": "./src/data-connectors/index.ts"
+    },
     "./data-migrations": {
       "types": "./src/data-migrations/index.ts",
       "source": "./src/data-migrations/index.ts",

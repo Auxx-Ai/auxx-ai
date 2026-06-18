@@ -216,7 +216,9 @@ export class UnifiedCrudHandler {
    *
    * @param entityDefinitionId - 'contact', 'ticket', or UUID for custom entities
    * @param values - Field values to set (map of fieldId -> value)
-   * @param options - Optional CRUD options (skipEvents, skipSnapshotInvalidation)
+   * @param options - Optional CRUD options (skipEvents, skipSnapshotInvalidation,
+   *   provenance — a trusted `{ integrationSource, externalId }` stamp for
+   *   owned-mode connector/importer writes)
    * @returns CreateEntityResult with instance, recordId, and all field values
    */
   async create(

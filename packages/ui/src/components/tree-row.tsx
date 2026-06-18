@@ -193,17 +193,43 @@ export function TreeRow({
  * the text color (so `<Trash2 />` needs no class) and sizes child svgs to 3.5.
  * Fades in on row hover via the `group/tree-row` group. Pass `tooltipText` to
  * wrap it in a left-side tooltip; omit it for no tooltip.
+ *
+ * Two axes:
+ * - `variant` — `default` / `destructive` for pure hover-revealed actions.
+ *   `upsert` / `reference` / `owned` / `contributing` are persistent,
+ *   colour-coded *state* toggles (e.g. the Data Connectors mapping mode chips):
+ *   they show their state at rest, not on hover.
+ * - `persistent` — when true the button is always visible (state toggles), not
+ *   faded until row hover. The mode variants imply it; set it explicitly for a
+ *   default-variant button that must stay visible.
  */
 const treeRowButtonVariants = cva(
-  'inline-flex shrink-0 items-center justify-center rounded-md p-1 text-muted-foreground opacity-0 transition-opacity group-hover/tree-row:opacity-100 [&_svg]:size-3.5',
+  'inline-flex shrink-0 items-center justify-center rounded-md p-1 transition-opacity [&_svg]:size-3.5',
   {
     variants: {
       variant: {
-        default: 'hover:bg-primary/5 hover:text-foreground',
-        destructive: 'hover:bg-destructive/10 hover:text-destructive',
+        default: 'text-muted-foreground hover:bg-primary/5 hover:text-foreground',
+        destructive: 'text-muted-foreground hover:bg-destructive/10 hover:text-destructive',
+        // Persistent, colour-coded mode toggles (link mode · target mode).
+        upsert: 'border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100',
+        reference: 'border border-sky-200 bg-sky-50 text-sky-700 hover:bg-sky-100',
+        owned: 'border border-violet-200 bg-violet-50 text-violet-700 hover:bg-violet-100',
+        contributing: 'border border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100',
+      },
+      // Visibility: hover-revealed (default) vs always-on (state toggles).
+      persistent: {
+        false: 'opacity-0 group-hover/tree-row:opacity-100',
+        true: 'opacity-100',
       },
     },
-    defaultVariants: { variant: 'default' },
+    compoundVariants: [
+      // The colour-coded mode variants are always state toggles → always visible.
+      { variant: 'upsert', persistent: false, class: 'opacity-100' },
+      { variant: 'reference', persistent: false, class: 'opacity-100' },
+      { variant: 'owned', persistent: false, class: 'opacity-100' },
+      { variant: 'contributing', persistent: false, class: 'opacity-100' },
+    ],
+    defaultVariants: { variant: 'default', persistent: false },
   }
 )
 
@@ -216,13 +242,18 @@ export interface TreeRowButtonProps
 
 export function TreeRowButton({
   variant,
+  persistent,
   className,
   tooltipText,
   type = 'button',
   ...props
 }: TreeRowButtonProps) {
   const button = (
-    <button type={type} className={cn(treeRowButtonVariants({ variant }), className)} {...props} />
+    <button
+      type={type}
+      className={cn(treeRowButtonVariants({ variant, persistent }), className)}
+      {...props}
+    />
   )
 
   if (!tooltipText) return button

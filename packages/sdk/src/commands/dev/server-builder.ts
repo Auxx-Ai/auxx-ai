@@ -119,9 +119,11 @@ export class ServerBuilder {
   async rebuild({
     workflowBlockModules,
     toolModules,
+    dataConnectorModules,
   }: {
     workflowBlockModules: Map<string, any>
     toolModules?: Map<string, any>
+    dataConnectorModules?: Map<string, any>
   }): Promise<Result<esbuild.BuildResult, any>> {
     const jsResult = await generateServerEntry({
       appDirAbsolute: path.resolve(this._directories.app),
@@ -130,6 +132,7 @@ export class ServerBuilder {
       eventDirAbsolute: path.resolve(this._directories.events),
       workflowBlockModules,
       toolModules: toolModules ?? new Map(),
+      dataConnectorModules: dataConnectorModules ?? new Map(),
       log: console.log,
     })
     if (isErrored(jsResult)) {

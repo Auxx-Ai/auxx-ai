@@ -21,7 +21,18 @@ export interface ImportMapping {
 export interface ImportMappingProperty {
   id: string
   importMappingId: string
+  /**
+   * Zero-based source column index for the CSV importer (rowData keyed by
+   * number). Kept as the primary CSV identifier.
+   */
   sourceColumnIndex: number
+  /**
+   * String source-field key for non-CSV sources (e.g. data connectors, where
+   * a record is keyed by field path rather than column index). Additive and
+   * optional — when set, the source-value accessor reads `rowData[sourceFieldKey]`
+   * instead of `rowData[sourceColumnIndex]`. Leave undefined for CSV imports.
+   */
+  sourceFieldKey?: string
   sourceColumnName?: string
   targetType: 'particle' | 'relation' | 'skip'
   targetFieldKey: string | null

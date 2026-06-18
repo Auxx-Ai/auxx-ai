@@ -17,6 +17,7 @@ import {
 } from './_shared'
 import { AppInstallation } from './app-installation'
 import { Credential } from './credential'
+import { DataConnector } from './data-connector'
 import { EntityDefinition } from './entity-definition'
 import { Organization } from './organization'
 
@@ -105,6 +106,15 @@ export const CustomField = pgTable(
      *  FieldCapabilities.hidden capability. The capability key stays `hidden`,
      *  bridged by mapCapabilities. Default false. */
     isHidden: boolean().default(false).notNull(),
+
+    /** Owning DataConnector that provisioned this field (owned-mode only).
+     *  Makes provisioned schema attributable + idempotent per
+     *  (dataConnectorId, appFieldKey). NULL for non-connector fields. `set null`
+     *  on delete — we never auto-delete the user's CRM fields. */
+    dataConnectorId: text().references((): AnyPgColumn => DataConnector.id, {
+      onUpdate: 'cascade',
+      onDelete: 'set null',
+    }),
   },
   (table) => [
     index('CustomField_modelType_idx').using('btree', table.modelType.asc().nullsLast()),

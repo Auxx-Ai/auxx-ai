@@ -1,15 +1,17 @@
-// apps/web/src/components/workflow/nodes/core/http/components/key-value-list.tsx
+// apps/web/src/components/global/http-request/key-value-list.tsx
+
+'use client'
 
 import { cn } from '@auxx/ui/lib/utils'
 import { produce } from 'immer'
 import React, { type FC, useCallback, useRef } from 'react'
-import { useKeyValueNavigation } from '../hooks/use-key-value-navigation'
-import type { KeyValue } from '../types'
+import { useHttpRequestField } from './field-editor'
+import { useKeyValueNavigation } from './hooks/use-key-value-navigation'
 import KeyValueItem from './key-value-item'
+import type { KeyValue } from './types'
 
 type Props = {
   readonly: boolean
-  nodeId?: string
   list: KeyValue[]
   onChange: (newList: KeyValue[]) => void
   onAdd: () => void
@@ -20,7 +22,6 @@ type Props = {
 
 const KeyValueList: FC<Props> = ({
   readonly,
-  nodeId,
   list,
   onChange,
   onAdd,
@@ -28,8 +29,12 @@ const KeyValueList: FC<Props> = ({
   keyNotSupportVar,
   insertVarTipToLeft,
 }) => {
+  const { FilePicker } = useHttpRequestField()
   const containerRef = useRef<HTMLDivElement>(null)
-  const colCount = isSupportFile ? 3 : 2
+
+  // File rows (and the Type column) only render when a FilePicker is injected.
+  const supportFile = isSupportFile && !!FilePicker
+  const colCount = supportFile ? 3 : 2
 
   useKeyValueNavigation({
     containerRef,
@@ -72,17 +77,17 @@ const KeyValueList: FC<Props> = ({
         <div
           className={cn(
             'h-full border-r border-primary-200 pl-3',
-            isSupportFile ? 'w-[140px]' : 'w-1/2'
+            supportFile ? 'w-[140px]' : 'w-1/2'
           )}>
           Key
         </div>
-        {isSupportFile && (
+        {supportFile && (
           <div className='h-full w-[70px] shrink-0 border-r border-primary-200 pl-3'>Type</div>
         )}
         <div
           className={cn(
             'h-full items-center justify-between pl-3 pr-1',
-            isSupportFile ? 'grow' : 'w-1/2'
+            supportFile ? 'grow' : 'w-1/2'
           )}>
           Value
         </div>
@@ -91,7 +96,6 @@ const KeyValueList: FC<Props> = ({
         <KeyValueItem
           key={item.id}
           instanceId={item.id!}
-          nodeId={nodeId}
           payload={item}
           onChange={(newItem) => handleChange(index, newItem)}
           onRemove={() => handleRemove(index)}

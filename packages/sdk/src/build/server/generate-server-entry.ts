@@ -25,6 +25,13 @@ type WorkflowBlockModules = Map<string, Record<string, WorkflowHandlerData | und
 type ToolModules = Map<string, { execute?: WorkflowHandlerData | null }>
 
 /**
+ * Map of data connector handlers — `{ execute: WorkflowHandlerData }` per
+ * connector id. Registry consumed by the lambda data-connector executor. See
+ * plans/data-connectors/claude/03-connectors-and-sources.md §4.
+ */
+type DataConnectorModules = Map<string, { execute?: WorkflowHandlerData | null }>
+
+/**
  * Logger function
  */
 type LogFunction = (message: string) => void
@@ -179,6 +186,7 @@ export async function generateServerEntry({
   eventDirAbsolute,
   workflowBlockModules,
   toolModules = new Map(),
+  dataConnectorModules = new Map(),
   log,
 }: {
   appDirAbsolute: string
@@ -187,6 +195,7 @@ export async function generateServerEntry({
   eventDirAbsolute: string
   workflowBlockModules: WorkflowBlockModules
   toolModules?: ToolModules
+  dataConnectorModules?: DataConnectorModules
   log?: LogFunction
 }) {
   const pathsResult = await combineAsync({
@@ -334,6 +343,55 @@ export async function generateServerEntry({
                     }
                     if (typeof func !== "function") {
                         throw new Error(\`Execute export in tool \${toolId} is not a function\`);
+                    }
+                    return await func(...args);
+                }
+            };
+        }
+
+        // Data connector module registry
+        const dataConnectorModulesMap = new Map()
+
+        ${[...dataConnectorModules.entries()]
+          .map(
+            ([connectorId, handlers]) => `dataConnectorModulesMap.set(
+                        ${JSON.stringify(connectorId)},
+                        {
+                        ${[...Object.entries(handlers)]
+                          .map(([handler, data]) =>
+                            data
+                              ? `${JSON.stringify(handler)}: {
+                                        module: () => import(${JSON.stringify(path.join(appDirAbsolute, data.path))}),
+                                        export: ${JSON.stringify(data.export)}
+                                    },`
+                              : ''
+                          )
+                          .join('\n')}
+                        }
+                    )`
+          )
+          .join('\n')}
+
+        // Build __AUXX_DATA_CONNECTORS__ — the connector registry read by the
+        // lambda data-connector-executor. Mirrors __AUXX_TOOLS__: the executor
+        // reads execute({ streamKey, mode, state, connection, config }) off this
+        // global. See plans/data-connectors/claude/03-connectors-and-sources.md §4.
+        const __AUXX_DATA_CONNECTORS__ = {};
+
+        for (const [connectorId, handlers] of dataConnectorModulesMap.entries()) {
+            __AUXX_DATA_CONNECTORS__[connectorId] = {
+                execute: async (...args) => {
+                    const executeHandler = handlers.execute;
+                    if (!executeHandler) {
+                        throw new Error(\`No execute handler for data connector \${connectorId}\`);
+                    }
+                    const module = await executeHandler.module();
+                    const func = module[executeHandler.export];
+                    if (!func) {
+                        throw new Error(\`Execute export not found in data connector \${connectorId}\`);
+                    }
+                    if (typeof func !== "function") {
+                        throw new Error(\`Execute export in data connector \${connectorId} is not a function\`);
                     }
                     return await func(...args);
                 }

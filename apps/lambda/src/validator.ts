@@ -60,6 +60,7 @@ const BaseLambdaEventSchema = z.object({
     'polling-trigger',
     'code',
     'tool',
+    'data-connector',
   ]),
 
   // Common limits with defaults
@@ -200,6 +201,28 @@ const ToolExecutionSchema = AppEventSchema.extend({
   invocationContext: InvocationContextSchema.nullish(),
 })
 
+/**
+ * Data connector fetch schema — extends AppEventSchema.
+ *
+ * Invokes one stream fetch on an app-declared data connector
+ * (`defineDataConnector`). The executor
+ * (`apps/lambda/src/executors/data-connector-executor.ts`) loads the connector
+ * from `__AUXX_DATA_CONNECTORS__`, runs `execute({ streamKey, mode, state,
+ * connection, config })`, and returns `{ records, nextState }`. The platform
+ * validates the source-shaped records, then maps + sinks them — the app never
+ * sees target defs or gets entity write access. See
+ * plans/data-connectors/claude/03-connectors-and-sources.md §4.
+ */
+const DataConnectorExecutionSchema = AppEventSchema.extend({
+  type: z.literal('data-connector'),
+  /** Connector id (e.g. 'shopify.core') — dotted lowercase segments. */
+  connectorId: z.string().regex(/^[a-z][a-z0-9]*(\.[a-z][a-z0-9]*)*$/),
+  streamKey: z.string().min(1),
+  mode: z.enum(['snapshot', 'incremental']),
+  state: z.record(z.string(), z.unknown()),
+  config: z.record(z.string(), z.unknown()),
+})
+
 // ============================================================================
 // EXPORTED TYPES
 // ============================================================================
@@ -213,6 +236,7 @@ export type WorkflowBlockExecutionEvent = z.infer<typeof WorkflowBlockExecutionS
 export type PollingTriggerExecutionEvent = z.infer<typeof PollingTriggerExecutionSchema>
 export type ToolExecutionEvent = z.infer<typeof ToolExecutionSchema>
 export type ToolInvocationContext = z.infer<typeof InvocationContextSchema>
+export type DataConnectorExecutionEvent = z.infer<typeof DataConnectorExecutionSchema>
 
 /** Type-safe union of all validated events */
 export type ValidatedLambdaEvent =
@@ -223,6 +247,7 @@ export type ValidatedLambdaEvent =
   | WorkflowBlockExecutionEvent
   | PollingTriggerExecutionEvent
   | ToolExecutionEvent
+  | DataConnectorExecutionEvent
 
 /** Keep existing exports */
 export type ValidatedExecutionContext = z.infer<typeof ExecutionContextSchema>
@@ -261,6 +286,8 @@ export function validateLambdaEvent(event: unknown) {
       return PollingTriggerExecutionSchema.safeParse(event)
     case 'tool':
       return ToolExecutionSchema.safeParse(event)
+    case 'data-connector':
+      return DataConnectorExecutionSchema.safeParse(event)
     default:
       // Return error in Zod format for unknown type
       return {

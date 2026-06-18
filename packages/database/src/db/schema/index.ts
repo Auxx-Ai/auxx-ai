@@ -41,6 +41,13 @@ export * from './connection-definition'
 export * from './credential'
 export * from './custom-field'
 // CustomFieldValue table dropped — field values now stored in FieldValue
+// Data Connectors — sync external records into the entity system
+export * from './data-connector'
+export * from './data-connector-item'
+export * from './data-connector-mapping'
+export * from './data-connector-run'
+export * from './data-connector-stream'
+export * from './data-connector-types'
 export * from './data-migration'
 export * from './dataset'
 export * from './dataset-metadata'

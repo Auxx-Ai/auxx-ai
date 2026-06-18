@@ -11,6 +11,7 @@ import { verifyInboundRequest } from './auth/verify-inbound.ts'
 import { loadBundle } from './bundle-loader.ts'
 import { createRuntimeContext } from './context-provider.ts'
 import { executeCode } from './executors/code-executor.ts'
+import { executeDataConnector } from './executors/data-connector-executor.ts'
 import { executeEventHandler } from './executors/event-executor.ts'
 import { executePollingTrigger } from './executors/polling-trigger-executor.ts'
 import { executeServerFunction } from './executors/server-function-executor.ts'
@@ -74,6 +75,10 @@ async function executeAppEvent(validatedEvent: ValidatedLambdaEvent) {
       const { context: _, serverBundleSha: __, ...eventData } = validatedEvent
       return executeTool({ ...eventData, bundleCode, context })
     }
+    case 'data-connector': {
+      const { context: _, serverBundleSha: __, ...eventData } = validatedEvent
+      return executeDataConnector({ ...eventData, bundleCode, context })
+    }
   }
 }
 
@@ -97,7 +102,11 @@ const CALLER_TYPE_ALLOWLIST: Record<string, string[]> = {
   'webhook-route': ['webhook'],
   'app-events': ['event'],
   'workflow-engine': ['workflow-block', 'code'],
-  worker: ['workflow-block', 'code', 'event', 'polling-trigger'],
+  worker: ['workflow-block', 'code', 'event', 'polling-trigger', 'data-connector'],
+  // Data connector sync (app-connector adapter) invokes a connector's `execute`
+  // through the unified 'data-connector' event. See
+  // plans/data-connectors/claude/03-connectors-and-sources.md §4.
+  'data-connector': ['data-connector'],
   // Quick-action service (email-editor action chips) invokes tools through the
   // unified 'tool' event with `invocationContext.kind = 'action'`.
   'quick-action': ['tool'],
