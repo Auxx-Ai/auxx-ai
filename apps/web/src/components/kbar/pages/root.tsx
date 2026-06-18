@@ -41,14 +41,14 @@ export function RootPage({
   const showRecents = query.trim() === '' && recentActions.length > 0
 
   return (
-    <Command loop onKeyDown={selectOnEnter}>
+    <Command loop onKeyDown={selectOnEnter} className='min-h-0'>
       <CommandInput
         value={query}
         onValueChange={setQuery}
         autoFocus
         placeholder='Type a command or search…'
       />
-      <CommandList className='max-h-[min(420px,60vh)]'>
+      <CommandList scrollAreaClassName='max-h-[min(420px,60vh)] max-sm:min-h-0 max-sm:flex-1 max-sm:max-h-none'>
         <CommandEmpty>No results found.</CommandEmpty>
 
         {/* Contextual groups — page-ephemeral, excluded from recents (unstable ids). */}

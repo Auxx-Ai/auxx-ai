@@ -15,7 +15,7 @@ export function CreateMailViewPage() {
   const goTo = useCommandPaletteStore((s) => s.goTo)
 
   return (
-    <div className='p-4'>
+    <div className='p-4 max-sm:flex max-sm:min-h-0 max-sm:flex-1 max-sm:flex-col max-sm:overflow-y-auto'>
       <MailViewForm
         open={page === 'create-mail-view'}
         onSuccess={close}

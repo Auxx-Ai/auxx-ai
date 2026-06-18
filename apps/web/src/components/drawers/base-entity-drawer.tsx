@@ -276,7 +276,7 @@ export function BaseEntityDrawer({
               <div className='flex flex-1 overflow-hidden'>
                 {/* Base tabs - static */}
                 <TabsContent value='overview' className='w-full'>
-                  <ScrollArea className='flex-1'>
+                  <ScrollArea className='flex-1' scrollbarClassName='w-1!'>
                     <TabCards
                       tab='overview'
                       position='before'
@@ -288,6 +288,7 @@ export function BaseEntityDrawer({
                     />
                     <Section
                       title='Details'
+                      className='[&>[data-slot=section]>[data-slot=section-content]]:pe-4'
                       initialOpen
                       collapsible={false}
                       icon={<HouseIcon className='size-4' />}>
@@ -312,7 +313,7 @@ export function BaseEntityDrawer({
                 </TabsContent>
 
                 <TabsContent value='timeline' className='w-full h-full mt-0'>
-                  <ScrollArea className='flex-1'>
+                  <ScrollArea className='flex-1' scrollbarClassName='w-1!'>
                     <div className='p-3 flex-1 flex-col flex'>
                       <TimelineTab recordId={recordId} />
                     </div>
@@ -320,7 +321,7 @@ export function BaseEntityDrawer({
                 </TabsContent>
 
                 <TabsContent value='comments' className='w-full h-full mt-0'>
-                  <ScrollArea className='flex-1'>
+                  <ScrollArea className='flex-1' scrollbarClassName='w-1!'>
                     <DrawerComments
                       recordId={recordId}
                       focusComposerTrigger={focusComposerTrigger}

@@ -16,7 +16,7 @@ export function CreateSnippetPage() {
   const goTo = useCommandPaletteStore((s) => s.goTo)
 
   return (
-    <div className='p-4'>
+    <div className='p-4 max-sm:flex max-sm:min-h-0 max-sm:flex-1 max-sm:flex-col max-sm:overflow-y-auto'>
       <SnippetForm
         initialValues={{ folderId: folderId ?? undefined }}
         onSuccess={close}

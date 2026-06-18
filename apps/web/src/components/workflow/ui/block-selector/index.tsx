@@ -185,7 +185,7 @@ export const BlockSelector = memo(
             placeholder={isSearching ? 'Search all...' : `Search ${activeTab}...`}
             onValueChange={setSearchValue}
           />
-          <CommandList className='max-h-[700px]'>
+          <CommandList scrollAreaClassName='max-h-[700px]'>
             {!isSearching && activeTab === 'apps' && appNodes.length === 0 ? (
               <div className='p-6 text-center'>
                 <div className='text-sm text-gray-500 mb-2'>No apps available</div>

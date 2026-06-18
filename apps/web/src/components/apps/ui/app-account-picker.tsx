@@ -100,7 +100,7 @@ export function AppAccountPicker({
   return (
     <>
       <Command className='w-full'>
-        <CommandList className='max-h-none'>
+        <CommandList scrollAreaClassName='max-h-none'>
           {allowPersonal && userDef && options.personal.length > 0 && (
             <CommandGroup heading='Personal'>
               {options.personal.map((c) => (

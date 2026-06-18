@@ -24,8 +24,10 @@ export function RecordActionsPage() {
   if (!selected) return null
 
   return (
-    <Command onKeyDown={selectOnEnter} className='flex flex-col'>
-      <CommandList className='max-h-[min(360px,55vh)] p-1'>
+    <Command onKeyDown={selectOnEnter} className='flex min-h-0 flex-col'>
+      <CommandList
+        className='p-1'
+        scrollAreaClassName='max-h-[min(360px,55vh)] max-sm:min-h-0 max-sm:flex-1 max-sm:max-h-none'>
         <CommandGroup heading={selected.displayName}>
           <CommandItem value='open' onSelect={handlers.open} className='gap-2'>
             <ExternalLink />

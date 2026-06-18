@@ -149,7 +149,7 @@ export function SearchPage() {
       onPointerMoveCapture={() => {
         hoverActiveRef.current = true
       }}
-      className='flex flex-col'>
+      className='flex min-h-0 flex-col'>
       <CommandInput
         value={query}
         onValueChange={setQuery}
@@ -157,9 +157,9 @@ export function SearchPage() {
         loading={isFetching}
         placeholder='Search records…'
       />
-      <div className='grid h-[min(300px,55vh)] grid-cols-1 md:grid-cols-2'>
-        <div className='flex min-w-0 flex-col overflow-hidden border-border/50 md:border-r dark:border-[#323842]/80 [&_[data-slot=command-list]]:h-full [&_[data-slot=command-list]]:max-h-none'>
-          <CommandList className='min-w-0'>
+      <div className='grid h-[min(300px,55vh)] grid-cols-1 md:grid-cols-2 max-sm:h-auto max-sm:min-h-0 max-sm:flex-1'>
+        <div className='flex min-w-0 flex-col overflow-hidden border-border/50 md:border-r dark:border-[#323842]/80'>
+          <CommandList className='min-w-0' scrollAreaClassName='h-full max-h-none'>
             {isFetching && items.length === 0 && <CommandLoading>Searching…</CommandLoading>}
             {!isFetching && items.length === 0 && (
               <CommandPlaceholder>No records found.</CommandPlaceholder>
