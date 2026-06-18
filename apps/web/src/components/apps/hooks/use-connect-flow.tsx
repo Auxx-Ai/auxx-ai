@@ -20,6 +20,16 @@ interface OAuthDonePayload {
 type Scope = 'user' | 'organization'
 
 /**
+ * The connection owner — an installed **app** (routes through `/api/apps/[slug]/oauth2/*` +
+ * `apps.saveSecretConnection`) or a **platform** built-in provider (routes through
+ * `/api/connections/[connectionDefinitionId]/oauth2/*` + `connections.saveSecret`). A platform
+ * provider has no app or installation; it is identified by its definition id / providerKey.
+ */
+export type ConnectOwner =
+  | { kind: 'app'; appId: string; appSlug: string; installationId: string }
+  | { kind: 'platform'; connectionDefinitionId: string; providerKey: string }
+
+/**
  * Connection-definition fields useConnectFlow actually reads. Both the
  * settings-dialog (`AppData` from `apps.getBySlug`) and the picker
  * (`AppInstallation` from `apps.listInstalled`) carry these fields; this
@@ -33,10 +43,14 @@ export interface ConnectFlowDefinition {
 }
 
 export interface ConnectTarget {
-  appId: string
-  appSlug: string
-  appTitle: string
-  installationId: string
+  owner: ConnectOwner
+  /** Display title (the app title, or the platform provider's label). */
+  title: string
+  /**
+   * The scoped definitions. An app may define both a user- and an org-scoped connection; a
+   * platform provider supplies its single definition under the key matching its `global` flag
+   * (`global:true` → `organization`, else → `user`), and the caller passes the matching scope.
+   */
   connectionDefinitions: {
     user?: ConnectFlowDefinition | null
     organization?: ConnectFlowDefinition | null
@@ -80,9 +94,10 @@ export interface UseConnectFlowOptions {
 }
 
 /**
- * Single entry point for "start a connect attempt for app X in scope Y".
- * Absorbs the inline branching from the legacy `AppConnections` flow.
- * See plans/kopilot/apps/app-settings-dialog-refactor.md §3.
+ * Single entry point for "start a connect attempt for owner X in scope Y" — app or platform
+ * provider. Absorbs the inline branching from the legacy `AppConnections` flow.
+ * See plans/kopilot/apps/app-settings-dialog-refactor.md §3 and
+ * plans/connections/unify-connection-definition.md §8.
  */
 export function useConnectFlow(options: UseConnectFlowOptions = {}): UseConnectFlow {
   const { onConnected, mode = 'popup' } = options
@@ -105,40 +120,70 @@ export function useConnectFlow(options: UseConnectFlowOptions = {}): UseConnectF
   }, [])
   useEffect(() => () => teardown(), [teardown])
 
-  // Reconnect first tries a silent OAuth refresh (see attemptRefreshThenOAuth); an app
-  // connection is just a credential, so it reuses the credentials refresh mutation.
+  // Refresh whichever connection lists the owner feeds.
+  const invalidateForOwner = useCallback(
+    (owner: ConnectOwner) => {
+      if (owner.kind === 'app') {
+        void utils.apps.listConnections.invalidate()
+        void utils.apps.listInstalled.invalidate()
+      } else {
+        void utils.credentials.list.invalidate()
+      }
+    },
+    [utils]
+  )
+
+  // Reconnect first tries a silent OAuth refresh (see attemptRefreshThenOAuth); a connection is
+  // just a credential, so it reuses the kind-agnostic credentials refresh mutation.
   const refreshConnection = api.credentials.refreshOAuthTokens.useMutation()
 
-  const saveSecret = api.apps.saveSecretConnection.useMutation({
-    onSuccess: (data) => {
-      setSecretOpen(false)
-      setVariableOpen(false)
-      void utils.apps.listConnections.invalidate()
-      void utils.apps.listInstalled.invalidate()
-      const credId = data?.credentialId ?? null
-      if (credId) {
-        setLastConnectedCredId(credId)
-        if (args) onConnected?.(credId, args)
-      }
-      setArgs(null)
-    },
-    onError: (err) => {
-      setError(err instanceof Error ? err : new Error(err.message))
-      toastError({ title: 'Failed to save connection', description: err.message })
-    },
+  // Secret-save success/error are shared across the app and platform mutations. `args` is read
+  // through the latest render (React Query stores option callbacks in a ref), so it stays current.
+  const onSecretSaved = (credId: string | null) => {
+    setSecretOpen(false)
+    setVariableOpen(false)
+    if (args) invalidateForOwner(args.target.owner)
+    if (credId) {
+      setLastConnectedCredId(credId)
+      if (args) onConnected?.(credId, args)
+    }
+    setArgs(null)
+  }
+  const onSecretError = (err: { message: string }) => {
+    setError(err instanceof Error ? err : new Error(err.message))
+    toastError({ title: 'Failed to save connection', description: err.message })
+  }
+
+  const saveAppSecret = api.apps.saveSecretConnection.useMutation({
+    onSuccess: (data) => onSecretSaved(data?.credentialId ?? null),
+    onError: onSecretError,
   })
+  const savePlatformSecret = api.connections.saveSecret.useMutation({
+    onSuccess: (data) => onSecretSaved(data?.credentialId ?? null),
+    onError: onSecretError,
+  })
+  const savePending = saveAppSecret.isPending || savePlatformSecret.isPending
 
   const kickOauth = useCallback(
     (a: ConnectFlowArgs, vars: Record<string, string> = {}) => {
+      const owner = a.target.owner
       const params = new URLSearchParams()
-      params.set('installation', a.target.installationId)
-      params.set('type', a.scope)
       if (a.connectionId) params.set('connectionId', a.connectionId)
       if (a.returnTo) params.set('returnTo', a.returnTo)
       for (const [key, value] of Object.entries(vars)) {
         if (value) params.set(`var_${key}`, value)
       }
-      const baseUrl = `/api/apps/${a.target.appSlug}/oauth2/authorize`
+
+      let baseUrl: string
+      if (owner.kind === 'app') {
+        params.set('installation', owner.installationId)
+        params.set('type', a.scope)
+        baseUrl = `/api/apps/${owner.appSlug}/oauth2/authorize`
+      } else {
+        // Platform providers have no installation; scope is fixed by the definition's `global`.
+        params.set('name', a.target.title)
+        baseUrl = `/api/connections/${owner.connectionDefinitionId}/oauth2/authorize`
+      }
 
       if (mode === 'redirect') {
         window.location.href = `${baseUrl}?${params}`
@@ -166,8 +211,7 @@ export function useConnectFlow(options: UseConnectFlowOptions = {}): UseConnectF
 
       const handleDone = (payload: OAuthDonePayload) => {
         teardown()
-        void utils.apps.listConnections.invalidate()
-        void utils.apps.listInstalled.invalidate()
+        invalidateForOwner(owner)
         if (payload.ok && payload.credId) {
           setLastConnectedCredId(payload.credId)
           onConnected?.(payload.credId, a)
@@ -215,7 +259,7 @@ export function useConnectFlow(options: UseConnectFlowOptions = {}): UseConnectF
         setArgs(null)
       }
     },
-    [mode, onConnected, teardown, utils.apps.listConnections, utils.apps.listInstalled]
+    [mode, onConnected, teardown, invalidateForOwner]
   )
 
   // Reconnect path: try a silent refresh-token exchange before the full OAuth popup.
@@ -232,8 +276,7 @@ export function useConnectFlow(options: UseConnectFlowOptions = {}): UseConnectF
       setOauthPending(true)
       try {
         await refreshConnection.mutateAsync({ credentialId: a.connectionId })
-        void utils.apps.listConnections.invalidate()
-        void utils.apps.listInstalled.invalidate()
+        invalidateForOwner(a.target.owner)
         setOauthPending(false)
         setLastConnectedCredId(a.connectionId)
         onConnected?.(a.connectionId, a)
@@ -244,13 +287,7 @@ export function useConnectFlow(options: UseConnectFlowOptions = {}): UseConnectF
         kickOauth(a)
       }
     },
-    [
-      kickOauth,
-      refreshConnection,
-      onConnected,
-      utils.apps.listConnections,
-      utils.apps.listInstalled,
-    ]
+    [kickOauth, refreshConnection, onConnected, invalidateForOwner]
   )
 
   const start = useCallback(
@@ -289,7 +326,7 @@ export function useConnectFlow(options: UseConnectFlowOptions = {}): UseConnectF
         }
         return
       }
-      setError(new Error('App does not support connecting'))
+      setError(new Error('This connection cannot be connected'))
     },
     [kickOauth, attemptRefreshThenOAuth]
   )
@@ -301,39 +338,50 @@ export function useConnectFlow(options: UseConnectFlowOptions = {}): UseConnectF
       : args.target.connectionDefinitions?.organization
   }, [args])
 
+  // Persist a secret (multi-field values, or a single API key) for the active owner.
+  const saveSecretForOwner = useCallback(
+    (a: ConnectFlowArgs, payload: { values?: Record<string, string>; secret?: string }) => {
+      const owner = a.target.owner
+      if (owner.kind === 'app') {
+        saveAppSecret.mutate({
+          appId: owner.appId,
+          installationId: owner.installationId,
+          appName: a.target.title,
+          connectionType: a.scope,
+          ...payload,
+          connectionId: a.connectionId,
+        })
+      } else {
+        savePlatformSecret.mutate({
+          connectionDefinitionId: owner.connectionDefinitionId,
+          name: a.target.title,
+          ...payload,
+          connectionId: a.connectionId,
+        })
+      }
+    },
+    [saveAppSecret, savePlatformSecret]
+  )
+
   const handleVariableSubmit = useCallback(
     (values: Record<string, string>) => {
       if (!args) return
       if (activeDef?.connectionType === 'secret') {
-        saveSecret.mutate({
-          appId: args.target.appId,
-          installationId: args.target.installationId,
-          appName: args.target.appTitle,
-          connectionType: args.scope,
-          values,
-          connectionId: args.connectionId,
-        })
+        saveSecretForOwner(args, { values })
         return
       }
       setVariableOpen(false)
       kickOauth(args, values)
     },
-    [args, activeDef, kickOauth, saveSecret]
+    [args, activeDef, kickOauth, saveSecretForOwner]
   )
 
   const handleSecretSubmit = useCallback(
     (secret: string) => {
       if (!args) return
-      saveSecret.mutate({
-        appId: args.target.appId,
-        installationId: args.target.installationId,
-        appName: args.target.appTitle,
-        connectionType: args.scope,
-        secret,
-        connectionId: args.connectionId,
-      })
+      saveSecretForOwner(args, { secret })
     },
-    [args, saveSecret]
+    [args, saveSecretForOwner]
   )
 
   const variableDefs: ConnectionVariable[] = useMemo(
@@ -349,9 +397,9 @@ export function useConnectFlow(options: UseConnectFlowOptions = {}): UseConnectF
           setSecretOpen(open)
           if (!open) setArgs(null)
         }}
-        connectionLabel={args.target.appTitle}
+        connectionLabel={args.target.title}
         connectionType={args.scope}
-        pending={saveSecret.isPending}
+        pending={savePending}
         onSubmit={handleSecretSubmit}
       />
       <ConnectionVariableForm
@@ -360,11 +408,11 @@ export function useConnectFlow(options: UseConnectFlowOptions = {}): UseConnectF
           setVariableOpen(open)
           if (!open) setArgs(null)
         }}
-        appTitle={args.target.appTitle}
+        appTitle={args.target.title}
         description={activeDef?.description ?? undefined}
         variables={variableDefs}
         prefill={args.prefillVariables}
-        pending={saveSecret.isPending}
+        pending={savePending}
         onSubmit={handleVariableSubmit}
       />
     </>
@@ -373,7 +421,7 @@ export function useConnectFlow(options: UseConnectFlowOptions = {}): UseConnectF
   return {
     start,
     Dialogs,
-    pending: saveSecret.isPending || secretOpen || variableOpen || oauthPending,
+    pending: savePending || secretOpen || variableOpen || oauthPending,
     lastConnectedCredId,
     error,
   }

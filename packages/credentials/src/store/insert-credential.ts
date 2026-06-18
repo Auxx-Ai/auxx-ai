@@ -15,6 +15,8 @@ export interface InsertCredentialInput {
   appId?: string | null
   appInstallationId?: string | null
   mcpServerId?: string | null
+  /** Direct FK to the provider blueprint (platform/app/mcp); null when resolved by owner instead. */
+  connectionDefinitionId?: string | null
   name: string
   label?: string | null
   /** Secret values — encrypted (v2) before storage. */
@@ -51,6 +53,7 @@ export async function insertCredential(
         appId: input.appId ?? null,
         appInstallationId: input.appInstallationId ?? null,
         mcpServerId: input.mcpServerId ?? null,
+        connectionDefinitionId: input.connectionDefinitionId ?? null,
         name: input.name,
         label: input.label ?? null,
         encryptedSecrets,

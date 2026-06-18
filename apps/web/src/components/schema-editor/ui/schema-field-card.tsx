@@ -1,6 +1,6 @@
 // apps/web/src/components/schema-editor/ui/schema-field-card.tsx
 
-import { pickerValueOf, typeLabelOf } from '../draft-ops'
+import { typeLabelOf, typeValueOf } from '../draft-ops'
 import type { SchemaFieldDraft } from '../schema-draft'
 
 /**
@@ -10,7 +10,7 @@ import type { SchemaFieldDraft } from '../schema-draft'
  * No chips, no icons — the visual language stays identical to the original editor.
  */
 export function SchemaFieldCard({ row }: { row: SchemaFieldDraft }) {
-  const typeLabel = typeLabelOf(pickerValueOf(row))
+  const typeLabel = typeLabelOf(typeValueOf(row))
 
   return (
     <div className='flex flex-col py-0.5'>

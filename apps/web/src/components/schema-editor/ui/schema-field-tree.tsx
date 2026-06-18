@@ -7,15 +7,7 @@ import { cn } from '@auxx/ui/lib/utils'
 import { ChevronDown, ChevronRight, PlusCircle } from 'lucide-react'
 import { type ReactNode, useCallback, useState } from 'react'
 import { VariableTypePicker } from '~/components/workflow/ui/variable-type-picker'
-import {
-  addField,
-  removeRow,
-  STRUCTURAL_ARRAY,
-  STRUCTURAL_OBJECT,
-  siblingNames,
-  typeLabelOf,
-  updateRow,
-} from '../draft-ops'
+import { addField, removeRow, siblingNames, typeLabelOf, updateRow } from '../draft-ops'
 import type { SchemaFieldDraft, SchemaPolicy, SchemaRootKind } from '../schema-draft'
 import { SchemaFieldCard } from './schema-field-card'
 import { SchemaFieldEditCard } from './schema-field-edit-card'
@@ -165,9 +157,10 @@ export function SchemaFieldTree({
               <RootTypeSelector rootKind={rootKind} onChange={onRootKindChange} />
             ) : (
               <span className='px-1 py-0.5 text-xs text-muted-foreground'>
-                {typeLabelOf(
-                  rootKind === 'array-of-objects' ? STRUCTURAL_ARRAY : STRUCTURAL_OBJECT
-                )}
+                {typeLabelOf({
+                  baseType: BaseType.OBJECT,
+                  isArray: rootKind === 'array-of-objects',
+                })}
               </span>
             )}
           </div>
@@ -216,7 +209,7 @@ function RootTypeSelector({
       popoverWidth={208}>
       <Button variant='ghost' size='xs' className={cn(open && 'bg-state-base-hover')}>
         <span className='system-xs-medium text-primary-500'>
-          {typeLabelOf(isArray ? STRUCTURAL_ARRAY : STRUCTURAL_OBJECT)}
+          {typeLabelOf({ baseType: BaseType.OBJECT, isArray })}
         </span>
         <ChevronDown className='size-4 text-primary-500' />
       </Button>

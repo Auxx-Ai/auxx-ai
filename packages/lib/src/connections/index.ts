@@ -20,3 +20,4 @@ export {
   type RuntimeConnectionData,
   resolveConnectionForRuntime,
 } from './resolve-connection-for-runtime'
+export { type SaveConnectionInput, saveConnection } from './save-connection'

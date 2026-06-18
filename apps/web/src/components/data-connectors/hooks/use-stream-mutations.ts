@@ -45,6 +45,7 @@ export function useStreamMutations(connectorId: string) {
   // Optimistic (instant-toggle) mutations — no invalidate, rollback on error.
   const setStreamRequestConfigM = api.dataConnector.setStreamRequestConfig.useMutation()
   const setMappingTargetM = api.dataConnector.setMappingTarget.useMutation()
+  const updateMappingM = api.dataConnector.updateMapping.useMutation()
   const setFieldMappingsM = api.dataConnector.setFieldMappings.useMutation()
   const setMergeStrategiesM = api.dataConnector.setMergeStrategies.useMutation()
   const setIdentityStrategyM = api.dataConnector.setIdentityStrategy.useMutation()
@@ -151,6 +152,17 @@ export function useStreamMutations(connectorId: string) {
         'Could not change target'
       ),
     [patchMappings, setMappingTargetM]
+  )
+
+  const setRootPath = useCallback(
+    (streamId: string, mappingId: string, rootPath: string) =>
+      patchMappings(
+        streamId,
+        (rows) => rows.map((m) => (m.id === mappingId ? { ...m, rootPath } : m)),
+        () => updateMappingM.mutateAsync({ mappingId, rootPath }),
+        'Could not change root path'
+      ),
+    [patchMappings, updateMappingM]
   )
 
   const setFieldMappings = useCallback(
@@ -271,6 +283,7 @@ export function useStreamMutations(connectorId: string) {
   return {
     // Optimistic instant toggles
     setMappingTarget,
+    setRootPath,
     setFieldMappings,
     setMergeStrategies,
     setIdentityStrategy,

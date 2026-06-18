@@ -1,17 +1,10 @@
 // apps/web/src/components/schema-editor/__tests__/draft-ops.test.ts
 
 import { FieldType } from '@auxx/database/enums'
+import { BaseType } from '@auxx/lib/workflow-engine/client'
 import { describe, expect, it } from 'vitest'
-import {
-  addField,
-  changeRowType,
-  removeRow,
-  STRUCTURAL_ARRAY,
-  STRUCTURAL_OBJECT,
-  siblingNames,
-  updateRow,
-} from '../draft-ops'
-import { jsonSchemaToDraft } from '../schema-draft'
+import { addField, changeRowType, removeRow, siblingNames, updateRow } from '../draft-ops'
+import { draftToJsonSchema, jsonSchemaToDraft } from '../schema-draft'
 
 const nested = () =>
   jsonSchemaToDraft({
@@ -80,7 +73,10 @@ describe('addField', () => {
 describe('changeRowType', () => {
   it('switches a leaf to an object, keeping name/description', () => {
     const row = nested()[0]!
-    const out = changeRowType({ ...row, description: 'hi' }, STRUCTURAL_OBJECT)
+    const out = changeRowType(
+      { ...row, description: 'hi' },
+      { baseType: BaseType.OBJECT, isArray: false }
+    )
     expect(out.kind).toBe('object')
     expect(out.fieldType).toBeUndefined()
     expect(out.description).toBe('hi')
@@ -88,22 +84,63 @@ describe('changeRowType', () => {
   })
 
   it('switches to an array of objects with an items draft', () => {
-    const out = changeRowType(nested()[0]!, STRUCTURAL_ARRAY)
+    const out = changeRowType(nested()[0]!, { baseType: BaseType.OBJECT, isArray: true })
     expect(out.kind).toBe('array')
     expect(out.items?.kind).toBe('object')
   })
 
   it('initializes an options list when switching to a select', () => {
-    const out = changeRowType(nested()[0]!, FieldType.SINGLE_SELECT)
+    const out = changeRowType(nested()[0]!, { baseType: BaseType.ENUM, isArray: false })
     expect(out.kind).toBe('field')
+    expect(out.fieldType).toBe(FieldType.SINGLE_SELECT)
     expect(out.options).toEqual([])
   })
 
   it('drops object children when switching to a leaf', () => {
     const meta = nested()[1]!
-    const out = changeRowType(meta, FieldType.NUMBER)
+    const out = changeRowType(meta, { baseType: BaseType.NUMBER, isArray: false })
     expect(out.children).toBeUndefined()
     expect(out.fieldType).toBe(FieldType.NUMBER)
+  })
+
+  it('builds an array of scalars with a leaf item draft', () => {
+    const out = changeRowType(nested()[0]!, { baseType: BaseType.NUMBER, isArray: true })
+    expect(out.kind).toBe('array')
+    expect(out.items?.kind).toBe('field')
+    expect(out.items?.fieldType).toBe(FieldType.NUMBER)
+  })
+})
+
+describe('scalar arrays round-trip', () => {
+  it('reads array[number] as a non-raw array row', () => {
+    const rows = jsonSchemaToDraft({
+      type: 'object',
+      properties: { scores: { type: 'array', items: { type: 'number' } } },
+    })
+    expect(rows[0]!.kind).toBe('array')
+    expect(rows[0]!.raw).toBeUndefined()
+    expect(rows[0]!.items?.fieldType).toBe(FieldType.NUMBER)
+  })
+
+  it('serializes array[number] back to JSON Schema', () => {
+    const rows = jsonSchemaToDraft({
+      type: 'object',
+      properties: { scores: { type: 'array', items: { type: 'number' } } },
+    })
+    const out = draftToJsonSchema(rows, { emitRequired: false })
+    expect((out.properties as Record<string, unknown>).scores).toEqual({
+      type: 'array',
+      items: { type: 'number' },
+    })
+  })
+
+  it('keeps plain string arrays as TAGS', () => {
+    const rows = jsonSchemaToDraft({
+      type: 'object',
+      properties: { tags: { type: 'array', items: { type: 'string' } } },
+    })
+    expect(rows[0]!.kind).toBe('field')
+    expect(rows[0]!.fieldType).toBe(FieldType.TAGS)
   })
 })
 

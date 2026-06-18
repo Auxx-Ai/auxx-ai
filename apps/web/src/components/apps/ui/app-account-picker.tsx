@@ -73,10 +73,13 @@ export function AppAccountPicker({
   const target: ConnectTarget | null = useMemo(() => {
     if (!installation || !appId) return null
     return {
-      appId,
-      appSlug: installation.app.slug,
-      appTitle: installation.app.title,
-      installationId: installation.installationId,
+      owner: {
+        kind: 'app',
+        appId,
+        appSlug: installation.app.slug,
+        installationId: installation.installationId,
+      },
+      title: installation.app.title,
       connectionDefinitions: installation.connectionDefinitions ?? {},
     }
   }, [installation, appId])
