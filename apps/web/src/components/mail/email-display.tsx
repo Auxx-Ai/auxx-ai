@@ -224,6 +224,11 @@ const EmailDisplay = ({ messageId, messageActions, isOpen, isLastMessage }: Emai
   const isMe = !message.isInbound
   const senderInitials = from?.displayName?.charAt(0)?.toUpperCase() ?? '?'
 
+  // Read-only seam: a populated `messageActions` always carries `onReply`. When
+  // it's empty (e.g. the palette's ReadOnlyThreadProvider) hide every action
+  // affordance — the dropdown and the inline reply/forward buttons.
+  const hasActions = typeof messageActions?.onReply === 'function'
+
   return (
     <div
       className={cn(
@@ -285,17 +290,19 @@ const EmailDisplay = ({ messageId, messageActions, isOpen, isLastMessage }: Emai
           </div>
           <div className='flex shrink-0 grow-0 items-start gap-2'>
             <div className='flex flex-col items-end'>
-              <div className='flex items-center flex-row justify-end'>
-                <DropdownMenuDemo
-                  message={message}
-                  editorMessage={editorMessage}
-                  emailActions={messageActions}
-                  onMarkUnread={markAsUnread}
-                />
-                <Button variant='ghost' size='icon-sm' onClick={handleReply}>
-                  <Reply />
-                </Button>
-              </div>
+              {hasActions && (
+                <div className='flex items-center flex-row justify-end'>
+                  <DropdownMenuDemo
+                    message={message}
+                    editorMessage={editorMessage}
+                    emailActions={messageActions}
+                    onMarkUnread={markAsUnread}
+                  />
+                  <Button variant='ghost' size='icon-sm' onClick={handleReply}>
+                    <Reply />
+                  </Button>
+                </div>
+              )}
               <div className='text-xs text-muted-foreground'>
                 <Tooltip
                   content={message.sentAt ? new Date(message.sentAt).toString() : ''}
@@ -368,29 +375,31 @@ const EmailDisplay = ({ messageId, messageActions, isOpen, isLastMessage }: Emai
                   </div>
                 </div>
               )}
-              <div className='flex items-center flex-row gap-2 p-4'>
-                <Button
-                  variant='info'
-                  className='rounded-full'
-                  size='sm'
-                  onClick={handleDirectReplyClick}>
-                  <Reply className='opacity-70' />
-                  Reply
-                </Button>
-                <Button
-                  variant='info'
-                  className='rounded-full pr-3!'
-                  size='sm'
-                  onClick={handleDirectReplyAllClick}>
-                  <ReplyAll className='opacity-70' />
-                  Reply All
-                  {isLastMessage && (
-                    <Kbd variant='default' size='sm'>
-                      R
-                    </Kbd>
-                  )}
-                </Button>
-              </div>
+              {hasActions && (
+                <div className='flex items-center flex-row gap-2 p-4'>
+                  <Button
+                    variant='info'
+                    className='rounded-full'
+                    size='sm'
+                    onClick={handleDirectReplyClick}>
+                    <Reply className='opacity-70' />
+                    Reply
+                  </Button>
+                  <Button
+                    variant='info'
+                    className='rounded-full pr-3!'
+                    size='sm'
+                    onClick={handleDirectReplyAllClick}>
+                    <ReplyAll className='opacity-70' />
+                    Reply All
+                    {isLastMessage && (
+                      <Kbd variant='default' size='sm'>
+                        R
+                      </Kbd>
+                    )}
+                  </Button>
+                </div>
+              )}
             </div>
           </motion.div>
         )}

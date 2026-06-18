@@ -73,6 +73,16 @@ export function RootPage({
               perform: () => goTo('search'),
             }}
           />
+          <PaletteActionItem
+            action={{
+              id: 'search-threads',
+              label: 'Search threads',
+              subtitle: 'Read mail across every inbox',
+              icon: 'mail',
+              keywords: 'search threads mail email read inbox conversation',
+              perform: () => goTo('search-threads'),
+            }}
+          />
         </CommandGroup>
 
         {showRecents && (

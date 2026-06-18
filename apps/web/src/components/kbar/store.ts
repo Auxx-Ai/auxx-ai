@@ -56,6 +56,7 @@ interface CommandPaletteState {
 const BACK_TARGET: Record<PalettePage, PalettePage> = {
   root: 'root',
   search: 'root',
+  'search-threads': 'root',
   'record-actions': 'search',
   create: 'root',
   'create-snippet': 'root',

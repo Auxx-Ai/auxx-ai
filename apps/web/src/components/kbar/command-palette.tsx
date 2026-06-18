@@ -21,6 +21,7 @@ import { CreateWebhookPage } from './pages/create-webhook'
 import { RecordActionsPage } from './pages/record-actions'
 import { RootPage } from './pages/root'
 import { SearchPage } from './pages/search'
+import { SearchThreadsPage } from './pages/search-threads'
 import { useRecentsStore } from './recents-store'
 import { useCommandPaletteStore } from './store'
 import type { PalettePage } from './types'
@@ -111,6 +112,12 @@ export function CommandPalette() {
             </DialogHeader>
           ) : page === 'search' ? (
             <DialogNav title='Search records' crumbs={[{ label: 'Search' }]} onBack={back} />
+          ) : page === 'search-threads' ? (
+            <DialogNav
+              title='Search threads'
+              crumbs={[{ label: 'Search threads' }]}
+              onBack={back}
+            />
           ) : page === 'record-actions' ? (
             <DialogNav
               title='Record actions'
@@ -140,6 +147,9 @@ export function CommandPalette() {
             </DialogNavPage>
             <DialogNavPage value='search' size='xxl'>
               <SearchPage />
+            </DialogNavPage>
+            <DialogNavPage value='search-threads' size='3xl'>
+              <SearchThreadsPage />
             </DialogNavPage>
             <DialogNavPage value='record-actions' size='sm'>
               <RecordActionsPage />

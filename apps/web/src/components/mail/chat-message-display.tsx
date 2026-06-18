@@ -77,6 +77,10 @@ const ChatMessageDisplay = ({
   const senderInitials = sender?.initials ?? senderName.charAt(0).toUpperCase()
   const content = message.textPlain ?? message.snippet ?? ''
 
+  // Read-only seam: an empty `messageActions` (e.g. the palette's
+  // ReadOnlyThreadProvider) hides the floating action dropdown entirely.
+  const hasActions = typeof messageActions?.onDelete === 'function'
+
   // Open the sender in the shared mail drawer. A linked contact opens the
   // richer contact drawer; an unlinked participant opens the participant
   // drawer (which offers "Create Contact"). Mirrors ThreadParticipantButton.
@@ -172,12 +176,14 @@ const ChatMessageDisplay = ({
             </div>
           ) : null}
         </div>
-        <FloatingDropdown
-          message={message}
-          emailActions={messageActions}
-          onMarkUnread={markAsUnread}
-          popoverClassName={popoverClassName}
-        />
+        {hasActions && (
+          <FloatingDropdown
+            message={message}
+            emailActions={messageActions}
+            onMarkUnread={markAsUnread}
+            popoverClassName={popoverClassName}
+          />
+        )}
       </div>
       {showFooter && (
         <div className='flex items-center gap-2 px-1'>

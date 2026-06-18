@@ -131,6 +131,10 @@ const MessageDisplay = ({ messageId, messageActions, isOpen }: MessageDisplayPro
     return null
   }
 
+  // Read-only seam: an empty `messageActions` (e.g. the palette's
+  // ReadOnlyThreadProvider) hides the action dropdown entirely.
+  const hasActions = typeof messageActions?.onReply === 'function'
+
   const isInbound = message.isInbound
   const senderName = sender?.displayName ?? 'Unknown'
   const senderInitials = sender?.initials ?? senderName.charAt(0).toUpperCase()
@@ -170,15 +174,17 @@ const MessageDisplay = ({ messageId, messageActions, isOpen }: MessageDisplayPro
                   />
                 </div>
               </div>
-              <div className='pr-2 pt-2'>
-                <div className='flex items-center'>
-                  <MessageDropdownMenu
-                    message={message}
-                    emailActions={messageActions}
-                    onMarkUnread={markAsUnread}
-                  />
+              {hasActions && (
+                <div className='pr-2 pt-2'>
+                  <div className='flex items-center'>
+                    <MessageDropdownMenu
+                      message={message}
+                      emailActions={messageActions}
+                      onMarkUnread={markAsUnread}
+                    />
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
 
             <div className='px-4 pb-3'>
