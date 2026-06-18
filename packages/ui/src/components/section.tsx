@@ -240,7 +240,7 @@ export function EmptySection({
     <div
       data-slot='empty-section'
       className={cn(
-        'flex h-24 flex-col items-center justify-center rounded-lg border bg-muted/30 text-center',
+        'flex h-24 flex-col items-center justify-center rounded-lg border bg-muted/30 text-center px-6 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0',
         className
       )}>
       {loading ? (

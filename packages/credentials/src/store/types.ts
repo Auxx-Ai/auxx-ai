@@ -16,6 +16,7 @@ export interface CredentialRecord {
   appId: string | null
   appInstallationId: string | null
   mcpServerId: string | null
+  connectionDefinitionId: string | null
   name: string
   label: string | null
   metadata: Record<string, unknown>

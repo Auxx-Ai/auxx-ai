@@ -1,9 +1,11 @@
 // packages/lib/src/data-connectors/connectors/generic-rest.ts
 // No-code HTTP connector. Reads DataConnector.config.endpoint (baseUrl + auth +
 // pagination) and DataConnectorStream.requestConfig (path/method/params/body/
-// pagination/recordsPath), fetches, paginates, and yields source-shaped
-// ConnectorRecords. Credentials arrive already-decrypted (the orchestrator
-// reveals them via @auxx/credentials) — this connector only reads them.
+// pagination), fetches, paginates, and yields the RAW response body per page as
+// the connector payload — the source schema mirrors the live response, and the
+// root mapping's `rootPath` (e.g. `[]` / `data.orders[]`) selects the records.
+// Credentials arrive already-decrypted (the orchestrator reveals them via
+// @auxx/credentials) — this connector only reads them.
 
 import { createScopedLogger } from '@auxx/logger'
 import type {
@@ -29,6 +31,26 @@ function getByPath(obj: unknown, path?: string): unknown {
   return cur
 }
 
+/**
+ * Best-effort record count in a payload — the first array found (depth-first),
+ * or 1 for a lone object. Used only to detect an empty page for page/offset
+ * pagination (which can't self-terminate the way cursor/link-header does); the
+ * mapping's `rootPath` is the authoritative records selector at sync time.
+ */
+function countRecords(body: unknown, depth = 0): number {
+  if (Array.isArray(body)) return body.length
+  if (body && typeof body === 'object' && depth < 4) {
+    for (const v of Object.values(body as Record<string, unknown>)) {
+      if (Array.isArray(v)) return v.length
+    }
+    for (const v of Object.values(body as Record<string, unknown>)) {
+      const n = countRecords(v, depth + 1)
+      if (n > 0) return n
+    }
+  }
+  return body === null || body === undefined ? 0 : 1
+}
+
 /** Best-effort auth header from a decrypted credential (Bearer / api key). */
 function authHeaders(credential: DecryptedCredential | null): Record<string, string> {
   if (!credential) return {}
@@ -42,18 +64,6 @@ function authHeaders(credential: DecryptedCredential | null): Record<string, str
     return { Authorization: `Bearer ${token}` }
   }
   return {}
-}
-
-/** Derive a stable external id + display name from a raw source record. */
-function identify(raw: Record<string, unknown>): { externalId: string; displayName: string } {
-  const id =
-    raw.id ?? raw.externalId ?? raw._id ?? raw.uuid ?? raw.key ?? raw.name ?? JSON.stringify(raw)
-  const displayName =
-    (raw.name as string | undefined) ??
-    (raw.title as string | undefined) ??
-    (raw.displayName as string | undefined) ??
-    String(id)
-  return { externalId: String(id), displayName: String(displayName) }
 }
 
 /** True when `value` is a full URL (carries its own scheme), not a relative path. */
@@ -167,21 +177,16 @@ async function* fetchRecords(args: ConnectorFetchArgs): AsyncIterable<ConnectorR
       throw new Error(`generic-rest: ${method} ${url} → ${response.status} ${response.statusText}`)
     }
     const body = await response.json()
-    const rawRecords = getByPath(body, request.recordsPath)
-    const list = Array.isArray(rawRecords) ? rawRecords : rawRecords ? [rawRecords] : []
 
-    for (const raw of list) {
-      if (raw === null || typeof raw !== 'object') continue
-      const record = raw as Record<string, unknown>
-      const { externalId, displayName } = identify(record)
-      yield { streamKey: args.streamKey, externalId, displayName, fields: record }
-    }
+    // Yield the raw response body as the payload — the mapping layer selects
+    // records via the root mapping's rootPath and fans out. No envelope stripping.
+    yield { streamKey: args.streamKey, fields: body }
 
     const next = nextPageToken(pagination, body, response.headers, pageIndex)
     // Stop when there's no next token, or a page/offset run returned an empty page.
     if (
       !next ||
-      (list.length === 0 && (pagination?.kind === 'page' || pagination?.kind === 'offset'))
+      (countRecords(body) === 0 && (pagination?.kind === 'page' || pagination?.kind === 'offset'))
     ) {
       break
     }

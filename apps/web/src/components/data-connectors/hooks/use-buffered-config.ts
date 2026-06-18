@@ -21,38 +21,49 @@ export function useBufferedConfig<T>(
 ) {
   const { mode = 'manual', debounceMs = 800 } = opts
   const [draft, setDraft] = useState(serverValue)
-  const [isDirty, setDirty] = useState(false)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const onCommitRef = useRef(onCommit)
   onCommitRef.current = onCommit
 
-  // Re-seed from the server when not mid-edit (e.g. switching connectors/streams).
   // Compared by serialized value, NOT object identity — callers pass an inline
   // object literal (a fresh ref every render), so an identity check would loop.
   const serialized = JSON.stringify(serverValue)
+
+  // `isDirty` is DERIVED — the draft genuinely differs from the saved value. A
+  // manual flag would stay set after the user edits a field and reverts it; this
+  // clears the moment the draft matches the server again.
+  const isDirty = JSON.stringify(draft) !== serialized
+
+  // Re-seed from the server when it changes (switching connectors/streams, an
+  // external update), unless the user has an in-progress edit. `touched` (not
+  // `isDirty`) gates this: a server move shouldn't read as a user edit, and a
+  // revert-to-original clears it so later server changes still land.
+  const touched = useRef(false)
   const lastSeeded = useRef(serialized)
   useEffect(() => {
-    if (isDirty || lastSeeded.current === serialized) return
+    if (serialized === lastSeeded.current || touched.current) return
     lastSeeded.current = serialized
     setDraft(serverValue)
-  }, [serialized, isDirty, serverValue])
+  }, [serialized, serverValue])
 
   const commit = useCallback(async () => {
     if (timer.current) clearTimeout(timer.current)
-    setDirty(false)
+    const snapshot = JSON.stringify(draft)
     await onCommitRef.current(draft)
+    touched.current = false
+    lastSeeded.current = snapshot
   }, [draft])
 
   const set = useCallback(
     (next: T) => {
       setDraft(next)
-      setDirty(true)
+      touched.current = JSON.stringify(next) !== serialized
       if (mode === 'auto') {
         if (timer.current) clearTimeout(timer.current)
         timer.current = setTimeout(() => void commit(), debounceMs)
       }
     },
-    [mode, debounceMs, commit]
+    [mode, debounceMs, commit, serialized]
   )
 
   return { value: draft, set, commit, isDirty }

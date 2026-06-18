@@ -99,7 +99,6 @@ const requestConfigSchema = z.object({
   body: z.record(z.string(), z.unknown()).optional(),
   headers: z.record(z.string(), z.string()).optional(),
   pagination: paginationSchema.optional(),
-  recordsPath: z.string().optional(),
 })
 
 const fieldMappingSchema = z.object({
@@ -135,9 +134,6 @@ const identityStrategySchema = z.union([
   }),
   z.object({ kind: z.literal('manualReview') }),
 ])
-
-/** Max records to pull for a live sampleFetch (schema-inference test fetch). */
-const SAMPLE_FETCH_CAP = 25
 
 export const dataConnectorRouter = createTRPCRouter({
   // ── Reads (protected) ─────────────────────────────────────────────────────
@@ -332,11 +328,15 @@ export const dataConnectorRouter = createTRPCRouter({
         config: connector.config,
         requestConfig: input.requestConfig,
       })
-      const sample: unknown[] = []
+      // The connector yields the RAW response body per page; sample the first one
+      // so schema inference + the field pickers see exactly what the source
+      // returns (an array, an object, whatever). Records are selected downstream
+      // by the root mapping's rootPath — not here.
+      let response: unknown = null
       try {
         for await (const record of records) {
-          sample.push(record.fields)
-          if (sample.length >= SAMPLE_FETCH_CAP) break
+          response = record.fields
+          break
         }
       } catch (error) {
         throw new TRPCError({
@@ -344,7 +344,8 @@ export const dataConnectorRouter = createTRPCRouter({
           message: error instanceof Error ? error.message : 'Test-fetch failed',
         })
       }
-      return { records: sample, count: sample.length }
+      const recordCount = Array.isArray(response) ? response.length : response ? 1 : 0
+      return { response, recordCount }
     }),
 
   addStream: adminProcedure

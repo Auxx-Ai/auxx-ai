@@ -5,6 +5,7 @@ import { createId } from '@paralleldrive/cuid2'
 import { type AnyPgColumn, index, integer, jsonb, pgTable, text, timestamp } from './_shared'
 import { App } from './app'
 import { AppInstallation } from './app-installation'
+import { ConnectionDefinition } from './connection-definition'
 import { McpServer } from './mcp-server'
 import { Organization } from './organization'
 import { User } from './user'
@@ -55,6 +56,13 @@ export const Credential = pgTable(
       onUpdate: 'cascade',
       onDelete: 'cascade',
     }),
+    // Direct link to the provider blueprint (any owner). Lets the resolver and
+    // token refresh load the definition in one lookup instead of inferring it
+    // from (kind, type) / (appId) / (mcpServerId). Nullable during transition.
+    connectionDefinitionId: text().references((): AnyPgColumn => ConnectionDefinition.id, {
+      onUpdate: 'cascade',
+      onDelete: 'set null',
+    }),
 
     name: text().notNull(),
     label: text(), // User-facing label for connection picker (e.g. "Telegram Bot", "Telegram Bot (2)")
@@ -100,6 +108,10 @@ export const Credential = pgTable(
       'btree',
       table.mcpServerId.asc().nullsLast(),
       table.organizationId.asc().nullsLast()
+    ),
+    index('Credential_connectionDefinitionId_idx').using(
+      'btree',
+      table.connectionDefinitionId.asc().nullsLast()
     ),
     // OAuth2 refresh indexes
     index('Credential_expiresAt_idx').using('btree', table.expiresAt.asc().nullsLast()),

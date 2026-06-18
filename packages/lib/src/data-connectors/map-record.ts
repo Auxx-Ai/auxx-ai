@@ -1,7 +1,9 @@
 // packages/lib/src/data-connectors/map-record.ts
-// Mapping layer (04 §1a). Turns one source-shaped ConnectorRecord into N
-// projected writes — one per DataConnectorMapping of the stream — by extracting
-// the mapping's rootPath subtree and evaluating its CALC field mappings. Handles
+// Mapping layer (04 §1a). Turns one raw connector payload into N projected
+// writes by walking the mapping TREE: the root mapping extracts its rootPath
+// subtree(s) out of the payload (e.g. `[]` / `data.orders[]`), and each child
+// mapping extracts RELATIVE to its parent's subtree (so `orders[]` → `line_items[]`
+// nests). Each subtree instance evaluates its CALC field mappings. Handles
 // linkMode (upsert writes / reference registers a pending relation on the parent)
 // and wires embedded relationships as pending relations on the parent's item.
 
@@ -18,10 +20,12 @@ export interface MappedWrite {
   /**
    * Relation this mapping contributes to its PARENT (embedded upsert child or
    * id-only reference). Null for the root mapping. The orchestrator stamps it
-   * onto the parent's item after the parent record is written.
+   * onto the parent INSTANCE's item (keyed by parentMappingId + parentExternalId)
+   * after that parent record is written.
    */
   parentRelation: {
     parentMappingId: string
+    parentExternalId: string
     fieldKey: string
     targetMappingId: string
     targetExternalId: string
@@ -50,7 +54,7 @@ function getByPath(obj: unknown, path: string): unknown {
  * elements for external-id derivation.
  */
 function extractSubtrees(
-  source: Record<string, unknown>,
+  source: unknown,
   rootPath: string
 ): Array<{ value: unknown; index: number | null }> {
   if (!rootPath) return [{ value: source, index: null }]
@@ -158,37 +162,68 @@ function subtreeDisplayName(subtree: unknown, fallback: string): string {
 }
 
 /**
- * Map one source record across all of a stream's mappings (the fan-out).
+ * The external id of a subtree. A whole-record root mapping (`rootPath ''` at the
+ * top level) may use the connector-provided hint when the subtree can't identify
+ * itself; fan-out + nested subtrees always derive from the subtree itself.
+ */
+function resolveExternalId(
+  mapping: DecodedMapping,
+  subtree: unknown,
+  index: number | null,
+  parentExternalId: string | null,
+  rootHintId: string
+): string {
+  if (mapping.rootPath === '' && parentExternalId === null && rootHintId) return rootHintId
+  return subtreeExternalId(parentExternalId ?? rootHintId, subtree, index)
+}
+
+/** The display name of a subtree (connector hint for a whole-record root, else derived). */
+function resolveDisplayName(
+  mapping: DecodedMapping,
+  subtree: unknown,
+  parentExternalId: string | null,
+  rootHintName: string
+): string {
+  if (mapping.rootPath === '' && parentExternalId === null && rootHintName) return rootHintName
+  return subtreeDisplayName(subtree, rootHintName)
+}
+
+/**
+ * Map one raw connector payload across a stream's mapping tree (the fan-out).
  *
- * The ROOT mapping (rootPath '') is always first in the returned list so the
- * orchestrator can write it and learn its externalId before stamping child
- * relations. Child mappings carry a `parentRelation` describing the edge to wire.
+ * Walks parent→child: each root mapping extracts its subtree(s) from the payload,
+ * then recurses into child mappings relative to each parent subtree. A parent
+ * write is always pushed before its children, so the orchestrator writes it and
+ * learns its externalId before stamping child relations. Child mappings carry a
+ * `parentRelation` (with the parent INSTANCE's externalId) describing the edge.
  */
 export function mapRecord(mappings: DecodedMapping[], source: ConnectorRecord): MappedWrite[] {
   const writes: MappedWrite[] = []
-  // Root externalId is the connector record's externalId.
-  const rootExternalId = source.externalId
 
-  // Sort so root (no parent) comes first, then children.
-  const ordered = [...mappings].sort((a, b) => {
-    if (!a.parentMappingId && b.parentMappingId) return -1
-    if (a.parentMappingId && !b.parentMappingId) return 1
-    return 0
-  })
+  // Connector-provided hints — used only for a whole-record (`rootPath ''`) root.
+  const rootHintId = source.externalId ?? ''
+  const rootHintName = source.displayName ?? ''
 
-  for (const mapping of ordered) {
-    const subtrees = extractSubtrees(source.fields, mapping.rootPath)
+  // Group mappings by parent so the walk can descend the tree.
+  const childrenOf = new Map<string | null, DecodedMapping[]>()
+  for (const m of mappings) {
+    const key = m.parentMappingId ?? null
+    const list = childrenOf.get(key) ?? []
+    list.push(m)
+    childrenOf.set(key, list)
+  }
 
-    for (const { value: subtree, index } of subtrees) {
+  const walk = (mapping: DecodedMapping, parent: unknown, parentExternalId: string | null) => {
+    for (const { value: subtree, index } of extractSubtrees(parent, mapping.rootPath)) {
       if (subtree === undefined || subtree === null) continue
 
-      const externalId =
-        mapping.rootPath === '' ? rootExternalId : subtreeExternalId(rootExternalId, subtree, index)
+      const externalId = resolveExternalId(mapping, subtree, index, parentExternalId, rootHintId)
 
       const parentRelation =
-        mapping.parentMappingId && mapping.relationshipFieldKey
+        mapping.parentMappingId && mapping.relationshipFieldKey && parentExternalId !== null
           ? {
               parentMappingId: mapping.parentMappingId,
+              parentExternalId,
               fieldKey: mapping.relationshipFieldKey,
               targetMappingId: mapping.row.id,
               targetExternalId: externalId,
@@ -198,27 +233,29 @@ export function mapRecord(mappings: DecodedMapping[], source: ConnectorRecord): 
       if (mapping.linkMode === 'reference') {
         // Reference: no write — just register the pending relation on the parent.
         writes.push({ mapping, projected: null, parentRelation })
-        continue
+      } else {
+        writes.push({
+          mapping,
+          projected: {
+            externalId,
+            displayName: resolveDisplayName(mapping, subtree, parentExternalId, rootHintName),
+            fields: evaluateFields(mapping, subtree),
+            identityCandidates: identityCandidates(mapping, subtree),
+            pendingRelations: [],
+          },
+          parentRelation,
+        })
       }
 
-      const fields = evaluateFields(mapping, subtree)
-      const displayName =
-        mapping.rootPath === ''
-          ? source.displayName
-          : subtreeDisplayName(subtree, source.displayName)
-
-      writes.push({
-        mapping,
-        projected: {
-          externalId,
-          displayName,
-          fields,
-          identityCandidates: identityCandidates(mapping, subtree),
-          pendingRelations: [],
-        },
-        parentRelation,
-      })
+      // Recurse into children relative to THIS subtree.
+      for (const child of childrenOf.get(mapping.row.id) ?? []) {
+        walk(child, subtree, externalId)
+      }
     }
+  }
+
+  for (const root of childrenOf.get(null) ?? []) {
+    walk(root, source.fields, null)
   }
 
   return writes

@@ -13,6 +13,7 @@ import {
   sql,
   text,
   timestamp,
+  uniqueIndex,
 } from './_shared'
 import { App } from './app'
 import { DeveloperAccount } from './developer-account'
@@ -22,6 +23,11 @@ import { McpServer } from './mcp-server'
  * A dynamic variable that organizations must provide when connecting.
  * `oauth2-code`: interpolated into {key} placeholders in URLs/credentials.
  * `secret`: rendered as one input of the multi-field connect form.
+ *
+ * This is the full field model that subsumes the old workflow-node
+ * `INodeProperty` shape — number/boolean/options/textarea inputs, defaults,
+ * conditional visibility, and validation — so DB/email credentials
+ * (postgres, smtp, imap, …) can be expressed as ConnectionDefinition rows.
  */
 export type ConnectionVariable = {
   /** Variable key matching {placeholder} in fields (e.g., "shop", "client_id") */
@@ -36,7 +42,43 @@ export type ConnectionVariable = {
   required?: boolean
   /** Whether the input should be masked (for secrets like client_secret) */
   secret?: boolean
+  /** Input kind. Default: 'string'. 'password' implies secret rendering. */
+  type?: 'string' | 'password' | 'number' | 'boolean' | 'options' | 'textarea'
+  /** Default value seeded into the form when the field is empty. */
+  default?: string | number | boolean
+  /** Choices for `type: 'options'` (rendered as a dropdown). */
+  options?: { name: string; value: string }[]
+  /** Field-level validation constraints. */
+  validation?: {
+    minLength?: number
+    maxLength?: number
+    min?: number
+    max?: number
+    /** Validate as a TCP port (1–65535). */
+    port?: boolean
+  }
+  /**
+   * Conditional visibility. The field is shown only when every key in `show`
+   * has a current value present in its allowed-values array.
+   */
+  displayOptions?: { show?: Record<string, (string | number | boolean)[]> }
+  /** Row count for `type: 'textarea'`. */
+  rows?: number
 }
+
+/**
+ * Declarative spec for how a resolved credential is applied to an outgoing HTTP
+ * request. Lifted from the workflow HTTP node's hand-rolled `buildAuthHeaders`.
+ * `null` for DB/email/none connection types — those are secret bags the
+ * consuming driver reads via `connection.fields`, not HTTP-request auth.
+ *
+ * `{value}` interpolates the resolved token (oauth2 access token, or the
+ * `secret`); templated header values may also interpolate other `fields`.
+ */
+export type AuthApply =
+  | { in: 'header'; name: string; format?: string }
+  | { in: 'basic' }
+  | { in: 'query'; name: string }
 
 /** OAuth2 feature flags and provider-specific configuration */
 export type OAuth2Features = {
@@ -76,6 +118,10 @@ export const ConnectionDefinition = pgTable(
       onUpdate: 'cascade',
       onDelete: 'cascade',
     }),
+    // Platform built-in owner (third owner, mutually exclusive with appId/mcpServerId).
+    // Equals the old ICredentialType.name (e.g. 'googleOAuth2Api', 'postgres') and
+    // doubles as the lookup key for platform-provider credentials (Credential.type).
+    providerKey: text(),
     major: integer().notNull(), // Version major
 
     // Connection type: oauth2-code, secret, none
@@ -101,6 +147,10 @@ export const ConnectionDefinition = pgTable(
     // into {key} placeholders. secret: rendered as the multi-field connect form.
     connectionVariables: jsonb().$type<ConnectionVariable[]>().default([]),
 
+    // How a resolved credential becomes request auth (§3). NULL for DB/email/none
+    // types — those are read directly from connection.fields by the consuming driver.
+    authApply: jsonb().$type<AuthApply>(),
+
     // Creator
     createdById: text().notNull(), // { id, type: 'developer-account-member' }
 
@@ -117,10 +167,16 @@ export const ConnectionDefinition = pgTable(
       'btree',
       table.mcpServerId.asc().nullsLast()
     ),
-    // Exactly one owner: an App definition or an MCP-server definition.
+    // One row per platform built-in provider, scoped by major for versioning.
+    uniqueIndex('ConnectionDefinition_providerKey_major_idx').using(
+      'btree',
+      table.providerKey.asc().nullsLast(),
+      table.major.asc().nullsLast()
+    ),
+    // Exactly one owner: an App, an MCP-server, or a platform built-in definition.
     check(
       'ConnectionDefinition_owner_check',
-      sql`(("appId" IS NOT NULL)::int + ("mcpServerId" IS NOT NULL)::int) = 1`
+      sql`(("appId" IS NOT NULL)::int + ("mcpServerId" IS NOT NULL)::int + ("providerKey" IS NOT NULL)::int) = 1`
     ),
   ]
 )

@@ -231,7 +231,7 @@ export function useStreamMutations(connectorId: string) {
     (
       streamId: string,
       syncMode: 'snapshot' | 'incremental',
-      requestConfig: { path?: string; method?: 'GET' | 'POST'; recordsPath?: string }
+      requestConfig: { path?: string; method?: 'GET' | 'POST' }
     ) =>
       patchStream(
         streamId,
@@ -244,10 +244,8 @@ export function useStreamMutations(connectorId: string) {
 
   // ── Deliberate / imperative wrappers (invalidate-based) ───────────────────
   const saveRequestConfig = useCallback(
-    (
-      streamId: string,
-      requestConfig: { path?: string; method?: 'GET' | 'POST'; recordsPath?: string }
-    ) => saveRequestConfigM.mutateAsync({ streamId, requestConfig }),
+    (streamId: string, requestConfig: { path?: string; method?: 'GET' | 'POST' }) =>
+      saveRequestConfigM.mutateAsync({ streamId, requestConfig }),
     [saveRequestConfigM]
   )
 
