@@ -4,7 +4,7 @@
 
 import { cn } from '@auxx/ui/lib/utils'
 import type { VariantProps } from 'class-variance-authority'
-import { Check, ChevronRight } from 'lucide-react'
+import { Check, ChevronRight, Circle } from 'lucide-react'
 import { DropdownMenu as DropdownMenuPrimitive } from 'radix-ui'
 import type * as React from 'react'
 import { Checkbox } from './checkbox'
@@ -20,6 +20,7 @@ import {
   menuSubTriggerStyles,
   menuVariants,
 } from './menu-styles'
+import { radioGroupVariants } from './radio-group'
 
 const DropdownMenu = DropdownMenuPrimitive.Root
 
@@ -174,19 +175,43 @@ function DropdownMenuRadioItem({
   className,
   children,
   variant,
+  indicator = 'radio',
   ...props
 }: React.ComponentProps<typeof DropdownMenuPrimitive.RadioItem> & {
   variant?: VariantProps<typeof menuVariants>['variant']
+  /** Visual indicator on the right — outlined radio circle or filled check. Mirrors CommandRadioItem. */
+  indicator?: 'radio' | 'check'
 }) {
   return (
     <DropdownMenuPrimitive.RadioItem
-      className={cn(menuVariants({ variant }), menuRadioItemStyles, className)}
+      className={cn(
+        menuVariants({ variant }),
+        menuRadioItemStyles,
+        'cursor-pointer justify-between pl-2',
+        className
+      )}
       {...props}>
-      {children}
-      <span className='absolute right-2 flex h-3.5 w-3.5 items-center justify-center'>
-        <DropdownMenuPrimitive.ItemIndicator>
-          <Check className='h-5 w-5' />
-        </DropdownMenuPrimitive.ItemIndicator>
+      <span className='truncate'>{children}</span>
+      <span className='pointer-events-none ml-2 flex items-center'>
+        {indicator === 'check' ? (
+          <span className='flex size-4 items-center justify-center'>
+            <DropdownMenuPrimitive.ItemIndicator>
+              <span className='flex size-4 items-center justify-center rounded-full border border-blue-800 bg-info'>
+                <Check className='size-2.5! text-white' strokeWidth={4} />
+              </span>
+            </DropdownMenuPrimitive.ItemIndicator>
+          </span>
+        ) : (
+          <span
+            className={cn(
+              radioGroupVariants({ variant: 'outline', size: 'default' }),
+              'flex items-center justify-center'
+            )}>
+            <DropdownMenuPrimitive.ItemIndicator>
+              <Circle className='size-2!' />
+            </DropdownMenuPrimitive.ItemIndicator>
+          </span>
+        )}
       </span>
     </DropdownMenuPrimitive.RadioItem>
   )

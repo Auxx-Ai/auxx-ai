@@ -4,27 +4,35 @@
 import { inferJsonSchema } from '@auxx/lib/json-schema/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from '@auxx/ui/components/dropdown-menu'
 import { Input } from '@auxx/ui/components/input'
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupButton,
+  InputGroupInput,
+} from '@auxx/ui/components/input-group'
 import { RadioTab, RadioTabItem } from '@auxx/ui/components/radio-tab'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Section } from '@auxx/ui/components/section'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@auxx/ui/components/select'
 import { toastError } from '@auxx/ui/components/toast'
-import { Database, Pencil, Plus, Sparkles } from 'lucide-react'
+import { ChevronDown, Database, Pencil, Plus, Sparkles } from 'lucide-react'
 import { useState } from 'react'
 import { Tooltip } from '~/components/global/tooltip'
 import {
   SchemaEditorDialog,
   type SeededFrom,
 } from '~/components/schema-editor/ui/schema-editor-dialog'
-import { api } from '~/trpc/react'
+import type { api } from '~/trpc/react'
+import { useBufferedConfig } from '../hooks/use-buffered-config'
 import { useSourcePaths } from '../hooks/use-source-paths'
+import { useStreamMutations } from '../hooks/use-stream-mutations'
 import { useTargetDefs } from '../hooks/use-target-defs'
 import { MappingTree } from './mapping-tree'
 import { StreamDryRun } from './stream-dry-run'
@@ -37,6 +45,11 @@ const SCHEMA_SOURCE_LABEL: Record<string, string> = {
   inferred: 'Inferred',
   manual: 'Manual',
 }
+
+const METHOD_OPTIONS = [
+  { value: 'GET', label: 'GET' },
+  { value: 'POST', label: 'POST' },
+] as const
 
 interface StreamConfigPanelProps {
   connector: Connector
@@ -54,7 +67,6 @@ const EMPTY_SCHEMA = { type: 'object', properties: {} }
  * Plus per-stream request (generic-rest) + sync mode + a dry-run preview.
  */
 export function StreamConfigPanel({ connector, stream, onPromoteField }: StreamConfigPanelProps) {
-  const utils = api.useUtils()
   const isGenericRest = !connector.type.startsWith('app:')
   const { defs } = useTargetDefs()
 
@@ -67,52 +79,59 @@ export function StreamConfigPanel({ connector, stream, onPromoteField }: StreamC
   const sourcePaths = useSourcePaths(stream.sourceSchema as Record<string, unknown> | null)
   const hasSchema = !!stream.sourceSchema
 
-  const invalidateStreams = () =>
-    void utils.dataConnector.listStreams.invalidate({ id: connector.id })
-
-  const setStreamSchema = api.dataConnector.setStreamSchema.useMutation({
-    onSuccess: invalidateStreams,
-    onError: (e) => toastError({ title: 'Could not save schema', description: e.message }),
-  })
-  const setStreamRequestConfig = api.dataConnector.setStreamRequestConfig.useMutation({
-    onSuccess: invalidateStreams,
-    onError: (e) => toastError({ title: 'Could not save request', description: e.message }),
-  })
-  const addMapping = api.dataConnector.addMapping.useMutation({
-    onSuccess: () => void utils.dataConnector.listMappings.invalidate({ streamId: stream.id }),
-    onError: (e) => toastError({ title: 'Could not add mapping', description: e.message }),
-  })
-  const sampleFetch = api.dataConnector.sampleFetch.useMutation({
-    onError: (e) => toastError({ title: 'Test-fetch failed', description: e.message }),
-  })
+  // Single mutation surface for the stream: optimistic toggles (setSyncMode,
+  // …) + deliberate/imperative saves (saveRequestConfig, setStreamSchema,
+  // addMapping, sampleFetch). Sync-mode is optimistic; the request form is a
+  // buffered explicit Save (flip mode to 'auto' for autosave — plan §5/§6).
+  const {
+    setSyncMode,
+    saveRequestConfig,
+    setStreamSchema,
+    addMapping,
+    sampleFetch,
+    isSavingRequest,
+    isAddingMapping,
+    isSampling,
+  } = useStreamMutations(connector.id)
 
   const requestConfig = (stream.requestConfig ?? {}) as {
     path?: string
     method?: 'GET' | 'POST'
     recordsPath?: string
   }
-  const [path, setPath] = useState(requestConfig.path ?? '')
-  const [method, setMethod] = useState<'GET' | 'POST'>(requestConfig.method ?? 'GET')
-  const [recordsPath, setRecordsPath] = useState(requestConfig.recordsPath ?? '')
+  const request = useBufferedConfig(
+    {
+      path: requestConfig.path ?? '',
+      method: requestConfig.method ?? 'GET',
+      recordsPath: requestConfig.recordsPath ?? '',
+    },
+    (draft) =>
+      saveRequestConfig(stream.id, {
+        path: draft.path,
+        method: draft.method,
+        recordsPath: draft.recordsPath || undefined,
+      }),
+    { mode: 'manual' }
+  )
   const syncMode = (stream.syncMode as 'snapshot' | 'incremental' | 'webhook') ?? 'snapshot'
 
   const handleTestFetch = async () => {
-    const result = await sampleFetch.mutateAsync({
+    const result = await sampleFetch({
       id: connector.id,
       streamKey: stream.streamKey,
       requestConfig: isGenericRest
-        ? { path, method, recordsPath: recordsPath || undefined }
+        ? {
+            path: request.value.path,
+            method: request.value.method,
+            recordsPath: request.value.recordsPath || undefined,
+          }
         : undefined,
     })
     setSample(result)
     // Auto-set inferred schema when the stream has none yet.
     if (!hasSchema && result.records[0]) {
       const inferred = inferJsonSchema(result.records[0]) as Record<string, unknown>
-      setStreamSchema.mutate({
-        streamId: stream.id,
-        sourceSchema: inferred,
-        schemaSource: 'inferred',
-      })
+      setStreamSchema(stream.id, inferred, 'inferred')
     }
   }
 
@@ -136,13 +155,7 @@ export function StreamConfigPanel({ connector, stream, onPromoteField }: StreamC
     })
 
   const handleSaveSchema = (schema: Record<string, unknown>, source: 'inferred' | 'manual') =>
-    setStreamSchema.mutate({ streamId: stream.id, sourceSchema: schema, schemaSource: source })
-
-  const handleSaveRequest = () =>
-    setStreamRequestConfig.mutate({
-      streamId: stream.id,
-      requestConfig: { path, method, recordsPath: recordsPath || undefined },
-    })
+    setStreamSchema(stream.id, schema, source)
 
   const handleAddMapping = () => {
     const firstDef = defs[0]
@@ -153,7 +166,7 @@ export function StreamConfigPanel({ connector, stream, onPromoteField }: StreamC
       })
       return
     }
-    addMapping.mutate({
+    addMapping({
       dataConnectorStreamId: stream.id,
       rootPath: '',
       linkMode: 'upsert',
@@ -177,11 +190,7 @@ export function StreamConfigPanel({ connector, stream, onPromoteField }: StreamC
           actions={
             <div className='flex items-center gap-1'>
               <Tooltip content='Run a live test-fetch and infer the schema from the result'>
-                <Button
-                  variant='ghost'
-                  size='xs'
-                  loading={sampleFetch.isPending}
-                  onClick={handleGenerate}>
+                <Button variant='ghost' size='xs' loading={isSampling} onClick={handleGenerate}>
                   <Sparkles />
                   Generate from result
                 </Button>
@@ -213,32 +222,50 @@ export function StreamConfigPanel({ connector, stream, onPromoteField }: StreamC
             initialOpen
             collapsible={false}>
             <div className='flex flex-col gap-3 px-1'>
-              <div className='flex items-center gap-2'>
-                <Select value={method} onValueChange={(v) => setMethod(v as 'GET' | 'POST')}>
-                  <SelectTrigger size='sm' className='w-24'>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value='GET'>GET</SelectItem>
-                    <SelectItem value='POST'>POST</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Input
-                  value={path}
-                  onChange={(e) => setPath(e.target.value)}
-                  placeholder='/orders'
+              <InputGroup>
+                <InputGroupAddon align='inline-start'>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <InputGroupButton variant='ghost' className='!pr-1.5 text-xs'>
+                        {request.value.method}
+                        <ChevronDown className='size-3' />
+                      </InputGroupButton>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align='start' className='[--radius:0.95rem]'>
+                      <DropdownMenuRadioGroup
+                        value={request.value.method}
+                        onValueChange={(v) =>
+                          request.set({ ...request.value, method: v as 'GET' | 'POST' })
+                        }>
+                        {METHOD_OPTIONS.map((option) => (
+                          <DropdownMenuRadioItem
+                            key={option.value}
+                            value={option.value}
+                            className='pl-3'>
+                            {option.label}
+                          </DropdownMenuRadioItem>
+                        ))}
+                      </DropdownMenuRadioGroup>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </InputGroupAddon>
+                <InputGroupInput
+                  value={request.value.path}
+                  onChange={(e) => request.set({ ...request.value, path: e.target.value })}
+                  placeholder='/orders or full URL'
                 />
-              </div>
+              </InputGroup>
               <Input
-                value={recordsPath}
-                onChange={(e) => setRecordsPath(e.target.value)}
+                value={request.value.recordsPath}
+                onChange={(e) => request.set({ ...request.value, recordsPath: e.target.value })}
                 placeholder='Records JSONPath (e.g. data.orders)'
               />
               <Button
                 className='self-start'
                 size='sm'
-                loading={setStreamRequestConfig.isPending}
-                onClick={handleSaveRequest}>
+                disabled={!request.isDirty}
+                loading={isSavingRequest}
+                onClick={() => void request.commit()}>
                 Save request
               </Button>
             </div>
@@ -254,10 +281,10 @@ export function StreamConfigPanel({ connector, stream, onPromoteField }: StreamC
             <RadioTab
               value={syncMode}
               onValueChange={(v) =>
-                setStreamRequestConfig.mutate({
-                  streamId: stream.id,
-                  requestConfig: { path, method, recordsPath: recordsPath || undefined },
-                  syncMode: v as 'snapshot' | 'incremental',
+                setSyncMode(stream.id, v as 'snapshot' | 'incremental', {
+                  path: request.value.path,
+                  method: request.value.method,
+                  recordsPath: request.value.recordsPath || undefined,
                 })
               }
               size='sm'>
@@ -279,16 +306,13 @@ export function StreamConfigPanel({ connector, stream, onPromoteField }: StreamC
           collapsible={false}
           description='Project subtrees of the source onto target definitions.'
           actions={
-            <Button
-              variant='ghost'
-              size='xs'
-              loading={addMapping.isPending}
-              onClick={handleAddMapping}>
+            <Button variant='ghost' size='xs' loading={isAddingMapping} onClick={handleAddMapping}>
               <Plus />
               Add mapping
             </Button>
           }>
           <MappingTree
+            connectorId={connector.id}
             streamId={stream.id}
             sourcePaths={sourcePaths}
             onPromoteField={onPromoteField}
@@ -301,11 +325,7 @@ export function StreamConfigPanel({ connector, stream, onPromoteField }: StreamC
           icon={<Database className='size-4' />}
           initialOpen
           collapsible={false}>
-          <StreamDryRun
-            sample={sample}
-            onTestFetch={handleTestFetch}
-            testing={sampleFetch.isPending}
-          />
+          <StreamDryRun sample={sample} onTestFetch={handleTestFetch} testing={isSampling} />
         </Section>
       </div>
 

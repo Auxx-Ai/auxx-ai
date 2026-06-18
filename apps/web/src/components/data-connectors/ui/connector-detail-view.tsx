@@ -15,14 +15,14 @@ import {
   MainPageContent,
   MainPageHeader,
 } from '@auxx/ui/components/main-page'
-import { toastError } from '@auxx/ui/components/toast'
 import { ChevronDown, Pause, Play, RefreshCw, Trash } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { AppIcon } from '~/components/apps/ui/app-icon'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useMedia } from '~/hooks/use-media'
 import { useDockStore } from '~/stores/dock-store'
-import { api } from '~/trpc/react'
+import type { api } from '~/trpc/react'
+import { useConnectorMutations } from '../hooks/use-connector-mutations'
 import { ConnectorDetailTabs } from './connector-detail-tabs'
 import { ConnectorRunsPanel } from './connector-runs-panel'
 import { asConnectorStatus, ConnectorStatusPill } from './connector-status'
@@ -54,39 +54,21 @@ export function ConnectorDetailView({ connector }: ConnectorDetailViewProps) {
   const maxWidth = useDockStore((state) => state.maxWidth)
 
   const [confirm, ConfirmDialog] = useConfirm()
-  const utils = api.useUtils()
 
   const status = asConnectorStatus(connector.status)
   const isSyncing = status === 'syncing' || status === 'provisioning'
   const isPaused = status === 'paused'
 
-  const invalidate = () => {
-    void utils.dataConnector.getById.invalidate({ id: connector.id })
-    void utils.dataConnector.getStatus.invalidate({ id: connector.id })
-    void utils.dataConnector.list.invalidate()
-  }
-  const onError = (verb: string) => (e: { message: string }) =>
-    toastError({ title: `Could not ${verb} connector`, description: e.message })
-
-  const syncNow = api.dataConnector.syncNow.useMutation({
-    onSuccess: invalidate,
-    onError: onError('sync'),
-  })
-  const pause = api.dataConnector.pause.useMutation({
-    onSuccess: invalidate,
-    onError: onError('pause'),
-  })
-  const resume = api.dataConnector.resume.useMutation({
-    onSuccess: invalidate,
-    onError: onError('resume'),
-  })
-  const deleteConnector = api.dataConnector.delete.useMutation({
-    onSuccess: () => {
-      void utils.dataConnector.list.invalidate()
-      router.push('/app/connectors')
-    },
-    onError: onError('delete'),
-  })
+  const {
+    syncNow,
+    pause,
+    resume,
+    remove,
+    isSyncing: isSyncPending,
+    isPausing,
+    isResuming,
+    isDeleting,
+  } = useConnectorMutations()
 
   const handleDelete = async (syncedData: 'keep' | 'archive' | 'delete') => {
     const copy = {
@@ -101,7 +83,7 @@ export function ConnectorDetailView({ connector }: ConnectorDetailViewProps) {
       cancelText: 'Cancel',
       destructive: true,
     })
-    if (ok) deleteConnector.mutate({ id: connector.id, syncedData })
+    if (ok && (await remove(connector.id, syncedData))) router.push('/app/connectors')
   }
 
   const runsPanel = <ConnectorRunsPanel connectorId={connector.id} initialStatus={status} />
@@ -115,10 +97,10 @@ export function ConnectorDetailView({ connector }: ConnectorDetailViewProps) {
             <Button
               variant='outline'
               size='sm'
-              loading={syncNow.isPending}
+              loading={isSyncPending}
               loadingText='Syncing...'
               disabled={isSyncing}
-              onClick={() => syncNow.mutate({ id: connector.id })}>
+              onClick={() => syncNow(connector.id)}>
               <RefreshCw />
               Sync now
             </Button>
@@ -126,8 +108,8 @@ export function ConnectorDetailView({ connector }: ConnectorDetailViewProps) {
               <Button
                 variant='outline'
                 size='sm'
-                loading={resume.isPending}
-                onClick={() => resume.mutate({ id: connector.id })}>
+                loading={isResuming}
+                onClick={() => resume(connector.id)}>
                 <Play />
                 Resume
               </Button>
@@ -135,15 +117,15 @@ export function ConnectorDetailView({ connector }: ConnectorDetailViewProps) {
               <Button
                 variant='outline'
                 size='sm'
-                loading={pause.isPending}
-                onClick={() => pause.mutate({ id: connector.id })}>
+                loading={isPausing}
+                onClick={() => pause(connector.id)}>
                 <Pause />
                 Pause
               </Button>
             )}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant='destructive' size='sm' loading={deleteConnector.isPending}>
+                <Button variant='destructive' size='sm' loading={isDeleting}>
                   <Trash />
                   Delete
                   <ChevronDown />

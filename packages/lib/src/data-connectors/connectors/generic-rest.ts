@@ -56,9 +56,30 @@ function identify(raw: Record<string, unknown>): { externalId: string; displayNa
   return { externalId: String(id), displayName: String(displayName) }
 }
 
-/** Build a URL from baseUrl + path + query params. */
+/** True when `value` is a full URL (carries its own scheme), not a relative path. */
+function isAbsoluteUrl(value: string): boolean {
+  return /^[a-z][a-z0-9+.-]*:\/\//i.test(value)
+}
+
+/**
+ * Build a URL from a connector baseUrl + a stream path. The path is normally
+ * relative and joined onto baseUrl, but a full same-origin URL is also accepted
+ * (handy when pasting straight from API docs). A cross-origin absolute URL is
+ * rejected so a stray host can't receive the connector's credentials.
+ */
 function buildUrl(baseUrl: string, path: string, params?: Record<string, unknown>): string {
-  const url = new URL(path.replace(/^\//, ''), baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`)
+  const base = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`
+  let url: URL
+  if (isAbsoluteUrl(path)) {
+    url = new URL(path)
+    if (url.origin !== new URL(base).origin) {
+      throw new Error(
+        `generic-rest: stream path "${path}" targets ${url.origin}, which differs from the connector base URL ${new URL(base).origin}. Use a relative path or a same-origin URL.`
+      )
+    }
+  } else {
+    url = new URL(path.replace(/^\//, ''), base)
+  }
   if (params) {
     for (const [k, v] of Object.entries(params)) {
       if (v !== undefined && v !== null) url.searchParams.set(k, String(v))

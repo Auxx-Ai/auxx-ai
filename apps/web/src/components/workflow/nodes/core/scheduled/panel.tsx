@@ -13,13 +13,13 @@ import {
 import { produce } from 'immer'
 import { AlertCircle, CheckCircle2 } from 'lucide-react'
 import React, { useState } from 'react'
+import { CronEditor } from '~/components/global/schedule/cron-editor'
 import { TimeZonePicker } from '~/components/pickers/timezone-picker'
 import { useNodeCrud, useReadOnly } from '~/components/workflow/hooks'
 import { BasePanel } from '~/components/workflow/nodes/shared/base/base-panel'
 import Field from '~/components/workflow/ui/field'
 import { OutputVariablesDisplay } from '~/components/workflow/ui/output-variables'
 import Section from '~/components/workflow/ui/section'
-import { CronEditor } from './components/cron-editor'
 import { IntervalSelector } from './components/interval-selector'
 import { scheduledTriggerDefinition } from './schema'
 import type { ScheduledTriggerNodeData } from './types'
@@ -150,7 +150,6 @@ const ScheduledTriggerPanelComponent: React.FC<ScheduledTriggerPanelProps> = ({ 
               value={previewConfig.customCron || ''}
               onChange={handleCronExpressionChange}
               disabled={isReadOnly}
-              config={previewConfig}
             />
           ) : (
             <IntervalSelector

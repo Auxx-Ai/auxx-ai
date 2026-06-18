@@ -4,9 +4,10 @@
 import { Button } from '@auxx/ui/components/button'
 import { Field, FieldLabel } from '@auxx/ui/components/field'
 import { Input } from '@auxx/ui/components/input'
-import { Label } from '@auxx/ui/components/label'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
+import { Section } from '@auxx/ui/components/section'
 import { toastError } from '@auxx/ui/components/toast'
+import { Globe, Plus, Settings2 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { generateId, type KeyValue, KeyValueList } from '~/components/global/http-request'
 import { readFieldNodes, SchemaField, seedDefaults } from '~/components/global/schema-form'
@@ -107,35 +108,49 @@ function GenericRestSource({
 
   return (
     <ScrollArea className='h-full' scrollbarClassName='w-1.5'>
-      <div className='flex flex-col gap-5 p-4'>
-        <Field>
-          <FieldLabel>Base URL</FieldLabel>
-          <Input
-            value={baseUrl}
-            onChange={(e) => setBaseUrl(e.target.value)}
-            placeholder='https://api.example.com/v1'
-          />
-        </Field>
+      <div className='flex flex-col'>
+        <Section
+          title='Endpoint'
+          icon={<Globe className='size-4' />}
+          initialOpen
+          collapsible={false}
+          description='Base URL shared by every stream on this connector.'>
+          <Field className='px-1'>
+            <FieldLabel>Base URL</FieldLabel>
+            <Input
+              value={baseUrl}
+              onChange={(e) => setBaseUrl(e.target.value)}
+              placeholder='https://api.example.com/v1'
+            />
+          </Field>
+        </Section>
 
-        <div className='flex flex-col gap-1.5'>
-          <Label>Shared headers</Label>
-          <p className='text-xs text-muted-foreground'>
-            Non-secret headers sent on every request. Secrets live in the bound credential, never
-            here.
-          </p>
-          <KeyValueList readonly={false} list={headers} onChange={setHeaders} onAdd={addRow} />
-          <Button variant='ghost' size='xs' className='self-start' onClick={addRow}>
-            Add header
+        <Section
+          title='Shared headers'
+          icon={<Globe className='size-4' />}
+          initialOpen
+          collapsible={false}
+          description='Non-secret headers sent on every request. Secrets live in the bound credential, never here.'
+          actions={
+            <Button variant='ghost' size='xs' onClick={addRow}>
+              <Plus />
+              Add header
+            </Button>
+          }>
+          <div className='px-1'>
+            <KeyValueList readonly={false} list={headers} onChange={setHeaders} onAdd={addRow} />
+          </div>
+        </Section>
+
+        <div className='p-3'>
+          <Button
+            className='self-start'
+            loading={saving}
+            loadingText='Saving...'
+            onClick={handleSave}>
+            Save
           </Button>
         </div>
-
-        <Button
-          className='self-start'
-          loading={saving}
-          loadingText='Saving...'
-          onClick={handleSave}>
-          Save
-        </Button>
       </div>
     </ScrollArea>
   )
@@ -174,22 +189,34 @@ function AppConfigSource({
 
   return (
     <ScrollArea className='h-full' scrollbarClassName='w-1.5'>
-      <div className='flex flex-col gap-4 p-4'>
-        {fields.map((entry) => (
-          <SchemaField
-            key={entry.key}
-            entry={entry}
-            value={values[entry.key]}
-            onChange={(next) => setValues((v) => ({ ...v, [entry.key]: next }))}
-          />
-        ))}
-        <Button
-          className='self-start'
-          loading={saving}
-          loadingText='Saving...'
-          onClick={() => onSave({ ...(connector.config ?? {}), ...values })}>
-          Save
-        </Button>
+      <div className='flex flex-col'>
+        <Section
+          title='Connector settings'
+          icon={<Settings2 className='size-4' />}
+          initialOpen
+          collapsible={false}
+          description='Options declared by this connector.'>
+          <div className='flex flex-col gap-4 px-1'>
+            {fields.map((entry) => (
+              <SchemaField
+                key={entry.key}
+                entry={entry}
+                value={values[entry.key]}
+                onChange={(next) => setValues((v) => ({ ...v, [entry.key]: next }))}
+              />
+            ))}
+          </div>
+        </Section>
+
+        <div className='p-3'>
+          <Button
+            className='self-start'
+            loading={saving}
+            loadingText='Saving...'
+            onClick={() => onSave({ ...(connector.config ?? {}), ...values })}>
+            Save
+          </Button>
+        </div>
       </div>
     </ScrollArea>
   )

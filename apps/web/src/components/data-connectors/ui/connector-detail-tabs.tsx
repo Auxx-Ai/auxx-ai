@@ -17,6 +17,7 @@ import { useCallback, useMemo } from 'react'
 import { useScrollSpy } from '~/hooks/use-scroll-spy'
 import { api } from '~/trpc/react'
 import { useSourcePaths } from '../hooks/use-source-paths'
+import { useStreamMutations } from '../hooks/use-stream-mutations'
 import { ConnectionSection } from './connection-section'
 import { FieldCalcPanel } from './field-calc-panel'
 import { ScheduleSection } from './schedule-section'
@@ -155,13 +156,8 @@ export function ConnectorDetailTabs({ connector, mobileRunsPanel }: ConnectorDet
     (fieldMapping?.fieldMappings as Record<string, { expression: string }> | undefined)?.[
       fieldKey ?? ''
     ]?.expression ?? ''
-  const utils = api.useUtils()
-  const setFieldMappings = api.dataConnector.setFieldMappings.useMutation({
-    onSuccess: () => {
-      if (selectedStreamId)
-        void utils.dataConnector.listMappings.invalidate({ streamId: selectedStreamId })
-    },
-  })
+  // Optimistic field-mapping write against listMappings (shared with the tree).
+  const { setFieldMappings } = useStreamMutations(connector.id)
 
   const sourceBar = (
     <DrillBar
@@ -252,10 +248,11 @@ export function ConnectorDetailTabs({ connector, mobileRunsPanel }: ConnectorDet
                     string,
                     { expression: string; sourceFields: Record<string, string> }
                   >
-                  setFieldMappings.mutate({
-                    mappingId: fieldMapping.id,
-                    fieldMappings: { ...existing, [fieldKey]: { expression, sourceFields } },
-                  })
+                  if (selectedStreamId)
+                    void setFieldMappings(selectedStreamId, fieldMapping.id, {
+                      ...existing,
+                      [fieldKey]: { expression, sourceFields },
+                    })
                   void setField(null)
                 }}
               />
