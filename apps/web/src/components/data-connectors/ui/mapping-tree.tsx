@@ -11,12 +11,30 @@ import {
   SelectValue,
 } from '@auxx/ui/components/select'
 import TreeRow, { TreeRowButton } from '@auxx/ui/components/tree-row'
-import { Fingerprint, FunctionSquare, Hash, Plus, Trash2 } from 'lucide-react'
-import { useMemo } from 'react'
+import { Braces, Fingerprint, FunctionSquare, Hash, Plus, Trash2, X } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
 import { api } from '~/trpc/react'
-import { leafPathsUnder, type SourcePath } from '../hooks/use-source-paths'
+import {
+  buildSourceTree,
+  lastSegment,
+  leafPathsUnder,
+  rootPathCandidates,
+  type SourcePath,
+  type SourceTreeNode,
+  subtreeUnder,
+} from '../hooks/use-source-paths'
 import { useStreamMutations } from '../hooks/use-stream-mutations'
-import { type TargetDef, useTargetDefs } from '../hooks/use-target-defs'
+import { type TargetDef, type TargetField, useTargetDefs } from '../hooks/use-target-defs'
+
+/** Sentinel for the whole-payload root (`''`) — Radix Select forbids empty values. */
+const ROOT_SENTINEL = '__root__'
+
+/** Plain-language description of where a mapping's records come from. */
+function describeRootPath(p: string): string {
+  if (p === '') return 'whole payload'
+  const seg = p.replace(/\[\]$/, '').split('.').pop()
+  return seg ? `each ${seg}` : 'each item'
+}
 
 type Mapping = NonNullable<
   ReturnType<typeof api.dataConnector.listMappings.useQuery>['data']
@@ -55,13 +73,24 @@ export function MappingTree({
   const rows = mappings.data ?? []
 
   // Optimistic mapping mutations (instant toggles) with rollback — no refetch.
-  const {
-    setMappingTarget,
-    removeMapping,
-    setFieldMappings,
-    setMergeStrategies,
-    setIdentityStrategy,
-  } = useStreamMutations(connectorId)
+  const mutations = useStreamMutations(connectorId)
+  const { setRootPath } = mutations
+
+  // Valid root-path choices for the root mapping, derived from the source schema.
+  const rootCandidates = useMemo(() => rootPathCandidates(sourcePaths), [sourcePaths])
+
+  // Self-heal: the root mapping's rootPath is dictated by the schema root type, so
+  // a stored value that isn't a valid candidate (e.g. `''` against an array root)
+  // is corrected to the derived default. Guarded on a loaded schema so we never
+  // clobber a real value while the schema is still fetching.
+  useEffect(() => {
+    if (sourcePaths.length === 0 || rootCandidates.length === 0) return
+    for (const m of rows) {
+      if (m.parentMappingId === null && !rootCandidates.includes(m.rootPath)) {
+        setRootPath(streamId, m.id, rootCandidates[0])
+      }
+    }
+  }, [rows, rootCandidates, sourcePaths, streamId, setRootPath])
 
   // Build the parent→children tree from parentMappingId.
   const childrenOf = useMemo(() => {
@@ -86,216 +115,409 @@ export function MappingTree({
     )
   }
 
-  const renderMapping = (mapping: Mapping, depth: number) => {
-    const def = byId.get(mapping.entityDefinitionId)
-    const linkMode = mapping.linkMode as 'upsert' | 'reference'
-    const targetMode = mapping.targetMode as 'owned' | 'contributing'
-    const fieldMappings = (mapping.fieldMappings ?? {}) as Record<
-      string,
-      { expression: string; sourceFields: Record<string, string> }
-    >
-    const mergeStrategies = (mapping.mergeStrategies ?? {}) as Record<string, string>
-    const leaves = leafPathsUnder(sourcePaths, mapping.rootPath)
-    const children = childrenOf.get(mapping.id) ?? []
-
-    const toggleLinkMode = () =>
-      setMappingTarget(streamId, {
-        mappingId: mapping.id,
-        entityDefinitionId: mapping.entityDefinitionId,
-        targetMode,
-        linkMode: linkMode === 'upsert' ? 'reference' : 'upsert',
-      })
-    const toggleTargetMode = () =>
-      setMappingTarget(streamId, {
-        mappingId: mapping.id,
-        entityDefinitionId: mapping.entityDefinitionId,
-        targetMode: targetMode === 'owned' ? 'contributing' : 'owned',
-        linkMode,
-      })
-
-    return (
-      <TreeRow
-        key={mapping.id}
-        depth={depth}
-        expandable
-        isOpen
-        icon={<EntityIcon iconId={def?.icon ?? 'table'} size='xs' />}
-        title={
-          <span className='flex items-center gap-1.5'>
-            <span className='font-mono text-xs text-muted-foreground'>
-              {mapping.rootPath || 'root'}
-            </span>
-            <span className='text-muted-foreground'>→</span>
-            <TargetDefCombobox
-              defs={defs}
-              value={mapping.entityDefinitionId}
-              onChange={(entityDefinitionId) =>
-                setMappingTarget(streamId, {
-                  mappingId: mapping.id,
-                  entityDefinitionId,
-                  targetMode,
-                  linkMode,
-                })
-              }
-            />
-          </span>
-        }
-        trailing={
-          <div className='flex items-center gap-1'>
-            <IdentityChip
-              mapping={mapping}
-              leaves={leaves}
-              def={def}
-              onSave={(identityStrategy) =>
-                setIdentityStrategy(streamId, mapping.id, identityStrategy)
-              }
-            />
-            <TreeRowButton
-              variant={linkMode}
-              tooltipText={
-                linkMode === 'upsert'
-                  ? 'Upsert — create/update the record. Click to switch to reference (link only).'
-                  : 'Reference — link only, no writes. Click to switch to upsert.'
-              }
-              onClick={toggleLinkMode}>
-              <span className='px-1 text-[10px] font-medium'>{linkMode}</span>
-            </TreeRowButton>
-            <TreeRowButton
-              variant={targetMode}
-              tooltipText={
-                targetMode === 'owned'
-                  ? 'Owned — connector manages this def (archive on orphan). Click to switch to contributing.'
-                  : 'Contributing — writes into a pre-existing def per-field, never archives. Click to switch to owned.'
-              }
-              onClick={toggleTargetMode}>
-              <span className='px-1 text-[10px] font-medium'>{targetMode}</span>
-            </TreeRowButton>
-            <TreeRowButton
-              variant='destructive'
-              tooltipText='Remove mapping'
-              onClick={() => removeMapping(streamId, mapping.id)}>
-              <Trash2 />
-            </TreeRowButton>
-          </div>
-        }>
-        {/* Value rows (upsert) or a single reference row (reference). */}
-        {linkMode === 'reference' ? (
-          <ReferenceRow depth={depth + 1} mapping={mapping} def={def} leaves={leaves} />
-        ) : (
-          Object.entries(fieldMappings).map(([fieldKey, fm]) => (
-            <ValueRow
-              key={fieldKey}
-              depth={depth + 1}
-              fieldKey={fieldKey}
-              fieldLabel={def?.fields.find((f) => f.key === fieldKey)?.label ?? fieldKey}
-              expression={fm.expression}
-              isCalc={!isBareToken(fm.expression)}
-              leaves={leaves}
-              mergeStrategy={mergeStrategies[fieldKey] ?? 'overwrite'}
-              onPickSource={(path) => {
-                const next = {
-                  ...fieldMappings,
-                  [fieldKey]: { expression: `{${path}}`, sourceFields: { [path]: path } },
-                }
-                setFieldMappings(streamId, mapping.id, next)
-              }}
-              onMergeChange={(value) =>
-                setMergeStrategies(streamId, mapping.id, { ...mergeStrategies, [fieldKey]: value })
-              }
-              onPromote={() => onPromoteField(mapping.id, fieldKey)}
-            />
-          ))
-        )}
-
-        {/* rels: caption from nested mappings. */}
-        {children.length > 0 && (
-          <div
-            style={{ paddingLeft: `${(depth + 1) * 1.5}rem` }}
-            className='px-1 py-1 text-[11px] text-muted-foreground'>
-            rels:{' '}
-            {children
-              .map(
-                (c) =>
-                  `${c.rootPath || 'child'} → ${byId.get(c.entityDefinitionId)?.label ?? 'def'}`
-              )
-              .join(' · ')}
-          </div>
-        )}
-
-        {/* Recurse nested mappings. */}
-        {children.map((child) => renderMapping(child, depth + 1))}
-      </TreeRow>
-    )
-  }
-
   const roots = childrenOf.get(null) ?? []
-  return <div className='flex flex-col py-1'>{roots.map((m) => renderMapping(m, 0))}</div>
+  return (
+    <div className='flex flex-col py-1'>
+      {roots.map((m) => (
+        <MappingNode
+          key={m.id}
+          mapping={m}
+          depth={0}
+          streamId={streamId}
+          sourcePaths={sourcePaths}
+          rootCandidates={rootCandidates}
+          childrenOf={childrenOf}
+          defs={defs}
+          byId={byId}
+          mutations={mutations}
+          onPromoteField={onPromoteField}
+        />
+      ))}
+    </div>
+  )
 }
 
-// ── Sub-rows ──────────────────────────────────────────────────────────────────
+// ── Mapping node (one per DataConnectorMapping; recurses for child mappings) ────
 
-function ValueRow({
-  depth,
-  fieldKey,
-  fieldLabel,
-  expression,
-  isCalc,
-  leaves,
-  mergeStrategy,
-  onPickSource,
-  onMergeChange,
-  onPromote,
-}: {
+interface MappingNodeProps {
+  mapping: Mapping
   depth: number
-  fieldKey: string
-  fieldLabel: string
-  expression: string
-  isCalc: boolean
-  leaves: SourcePath[]
-  mergeStrategy: string
-  onPickSource: (path: string) => void
-  onMergeChange: (value: string) => void
-  onPromote: () => void
-}) {
-  const currentToken = isCalc ? null : expression.replace(/^\{|\}$/g, '')
+  streamId: string
+  sourcePaths: SourcePath[]
+  rootCandidates: string[]
+  childrenOf: Map<string | null, Mapping[]>
+  defs: TargetDef[]
+  byId: Map<string, TargetDef>
+  mutations: ReturnType<typeof useStreamMutations>
+  onPromoteField: (mappingId: string, fieldKey: string) => void
+}
+
+/**
+ * A single mapping: an expandable/collapsible `TreeRow` (target def + mode
+ * toggles + identity) whose children are the source-schema hierarchy and any
+ * nested child mappings — both rendered in the `children` slot so the tree shows
+ * real containment + connector lines.
+ */
+function MappingNode({
+  mapping,
+  depth,
+  streamId,
+  sourcePaths,
+  rootCandidates,
+  childrenOf,
+  defs,
+  byId,
+  mutations,
+  onPromoteField,
+}: MappingNodeProps) {
+  const [open, setOpen] = useState(true)
+  const {
+    setMappingTarget,
+    setRootPath,
+    removeMapping,
+    setFieldMappings,
+    setMergeStrategies,
+    setIdentityStrategy,
+  } = mutations
+
+  const def = byId.get(mapping.entityDefinitionId)
+  const linkMode = mapping.linkMode as 'upsert' | 'reference'
+  const targetMode = mapping.targetMode as 'owned' | 'contributing'
+  const fieldMappings = (mapping.fieldMappings ?? {}) as Record<
+    string,
+    { expression: string; sourceFields: Record<string, string> }
+  >
+  const mergeStrategies = (mapping.mergeStrategies ?? {}) as Record<string, string>
+  const leaves = leafPathsUnder(sourcePaths, mapping.rootPath)
+  const childMappings = childrenOf.get(mapping.id) ?? []
+
+  // The children ARE the source-schema hierarchy under this mapping's rootPath,
+  // nested into a real tree. Each leaf gets a target field "applied" to it; a
+  // source maps to at most one target, so reverse-index the bare-token mappings.
+  const sourceTree = useMemo(
+    () => buildSourceTree(subtreeUnder(sourcePaths, mapping.rootPath)),
+    [sourcePaths, mapping.rootPath]
+  )
+  const sourceToTarget = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const [targetKey, fm] of Object.entries(fieldMappings)) {
+      if (isBareToken(fm.expression)) map.set(fm.expression.replace(/^\{|\}$/g, ''), targetKey)
+    }
+    return map
+  }, [fieldMappings])
+
+  const assignTarget = (sourcePath: string, targetKey: string) => {
+    const next = { ...fieldMappings }
+    // Drop any prior target bound to this source (1 source → 1 target).
+    for (const [k, fm] of Object.entries(next)) {
+      if (isBareToken(fm.expression) && fm.expression.replace(/^\{|\}$/g, '') === sourcePath) {
+        delete next[k]
+      }
+    }
+    next[targetKey] = { expression: `{${sourcePath}}`, sourceFields: { [sourcePath]: sourcePath } }
+    setFieldMappings(streamId, mapping.id, next)
+  }
+  const clearTarget = (targetKey: string) => {
+    const next = { ...fieldMappings }
+    delete next[targetKey]
+    setFieldMappings(streamId, mapping.id, next)
+  }
+
+  const toggleLinkMode = () =>
+    setMappingTarget(streamId, {
+      mappingId: mapping.id,
+      entityDefinitionId: mapping.entityDefinitionId,
+      targetMode,
+      linkMode: linkMode === 'upsert' ? 'reference' : 'upsert',
+    })
+  const toggleTargetMode = () =>
+    setMappingTarget(streamId, {
+      mappingId: mapping.id,
+      entityDefinitionId: mapping.entityDefinitionId,
+      targetMode: targetMode === 'owned' ? 'contributing' : 'owned',
+      linkMode,
+    })
+
   return (
     <TreeRow
       depth={depth}
-      icon={<Hash className='size-3.5' />}
-      title={<span className='text-sm'>{fieldLabel}</span>}
-      trailing={
-        <div className='flex items-center gap-1'>
-          {isCalc ? (
-            <span className='font-mono text-[11px] text-violet-600'>ƒ {expression}</span>
-          ) : (
-            <Select value={currentToken ?? ''} onValueChange={onPickSource}>
+      expandable
+      isOpen={open}
+      onToggleOpen={() => setOpen((o) => !o)}
+      icon={<EntityIcon iconId={def?.icon ?? 'table'} size='xs' />}
+      title={
+        <span className='flex items-center gap-1.5'>
+          {mapping.parentMappingId === null && rootCandidates.length > 1 ? (
+            <Select
+              value={mapping.rootPath || ROOT_SENTINEL}
+              onValueChange={(v) =>
+                setRootPath(streamId, mapping.id, v === ROOT_SENTINEL ? '' : v)
+              }>
               <SelectTrigger size='sm' className='h-6 min-w-[120px] text-xs'>
-                <SelectValue placeholder='source…' />
+                <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {leaves.map((p) => (
-                  <SelectItem key={p.path} value={p.path}>
-                    {p.path}
+                {rootCandidates.map((p) => (
+                  <SelectItem key={p || ROOT_SENTINEL} value={p || ROOT_SENTINEL}>
+                    {describeRootPath(p)}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
+          ) : (
+            <span className='text-xs text-muted-foreground'>
+              {describeRootPath(mapping.rootPath)}
+            </span>
           )}
-          <Select value={mergeStrategy} onValueChange={onMergeChange}>
-            <SelectTrigger size='sm' className='h-6 min-w-[96px] text-xs'>
-              <SelectValue />
+          <span className='text-muted-foreground'>→</span>
+          <TargetDefCombobox
+            defs={defs}
+            value={mapping.entityDefinitionId}
+            onChange={(entityDefinitionId) =>
+              setMappingTarget(streamId, {
+                mappingId: mapping.id,
+                entityDefinitionId,
+                targetMode,
+                linkMode,
+              })
+            }
+          />
+        </span>
+      }
+      trailing={
+        <div className='flex items-center gap-1'>
+          <IdentityChip
+            mapping={mapping}
+            leaves={leaves}
+            def={def}
+            onSave={(identityStrategy) =>
+              setIdentityStrategy(streamId, mapping.id, identityStrategy)
+            }
+          />
+          <TreeRowButton
+            variant={linkMode}
+            tooltipText={
+              linkMode === 'upsert'
+                ? 'Upsert — create/update the record. Click to switch to reference (link only).'
+                : 'Reference — link only, no writes. Click to switch to upsert.'
+            }
+            onClick={toggleLinkMode}>
+            <span className='px-1 text-[10px] font-medium'>{linkMode}</span>
+          </TreeRowButton>
+          <TreeRowButton
+            variant={targetMode}
+            tooltipText={
+              targetMode === 'owned'
+                ? 'Owned — connector manages this def (archive on orphan). Click to switch to contributing.'
+                : 'Contributing — writes into a pre-existing def per-field, never archives. Click to switch to owned.'
+            }
+            onClick={toggleTargetMode}>
+            <span className='px-1 text-[10px] font-medium'>{targetMode}</span>
+          </TreeRowButton>
+          <TreeRowButton
+            variant='destructive'
+            tooltipText='Remove mapping'
+            onClick={() => removeMapping(streamId, mapping.id)}>
+            <Trash2 />
+          </TreeRowButton>
+        </div>
+      }>
+      {/* Reference: a single resolve row. Upsert: the source-schema hierarchy,
+          each leaf with a target field applied to it. */}
+      {linkMode === 'reference' ? (
+        <ReferenceRow depth={depth + 1} mapping={mapping} def={def} leaves={leaves} />
+      ) : sourceTree.length === 0 ? (
+        <div
+          style={{ paddingLeft: `${(depth + 1) * 1.5}rem` }}
+          className='px-1 py-1 text-[11px] text-muted-foreground'>
+          No source schema yet — generate or edit the schema above to map fields.
+        </div>
+      ) : (
+        sourceTree.map((node) => (
+          <SourceNode
+            key={node.path}
+            node={node}
+            depth={depth + 1}
+            targetFields={def?.fields ?? []}
+            sourceToTarget={sourceToTarget}
+            mergeStrategies={mergeStrategies}
+            onAssign={assignTarget}
+            onClear={clearTarget}
+            onMergeChange={(targetKey, value) =>
+              setMergeStrategies(streamId, mapping.id, { ...mergeStrategies, [targetKey]: value })
+            }
+            onPromote={(targetKey) => onPromoteField(mapping.id, targetKey)}
+          />
+        ))
+      )}
+
+      {/* Nested child mappings (relations / fan-out collections). */}
+      {childMappings.map((child) => (
+        <MappingNode
+          key={child.id}
+          mapping={child}
+          depth={depth + 1}
+          streamId={streamId}
+          sourcePaths={sourcePaths}
+          rootCandidates={rootCandidates}
+          childrenOf={childrenOf}
+          defs={defs}
+          byId={byId}
+          mutations={mutations}
+          onPromoteField={onPromoteField}
+        />
+      ))}
+    </TreeRow>
+  )
+}
+
+// ── Sub-rows ──────────────────────────────────────────────────────────────────
+
+interface SourceNodeProps {
+  node: SourceTreeNode
+  depth: number
+  targetFields: TargetField[]
+  sourceToTarget: Map<string, string>
+  mergeStrategies: Record<string, string>
+  onAssign: (sourcePath: string, targetKey: string) => void
+  onClear: (targetKey: string) => void
+  onMergeChange: (targetKey: string, value: string) => void
+  onPromote: (targetKey: string) => void
+}
+
+/**
+ * One node of the source hierarchy. Object/array branches are expandable
+ * `TreeRow`s holding their fields; scalar leaves are {@link SourceLeafRow}s with
+ * a target-field picker. Recurses so nesting collapses at any level.
+ */
+function SourceNode(props: SourceNodeProps) {
+  const {
+    node,
+    depth,
+    targetFields,
+    sourceToTarget,
+    mergeStrategies,
+    onAssign,
+    onClear,
+    onMergeChange,
+    onPromote,
+  } = props
+  const [open, setOpen] = useState(true)
+
+  if (node.isBranch) {
+    return (
+      <TreeRow
+        depth={depth}
+        expandable
+        isOpen={open}
+        onToggleOpen={() => setOpen((o) => !o)}
+        icon={<Braces className='size-3.5 text-muted-foreground/60' />}
+        title={
+          <span className='flex items-center gap-1.5 text-sm text-muted-foreground'>
+            <span className='font-mono'>{lastSegment(node.path)}</span>
+            <span className='text-[10px] uppercase opacity-60'>{node.type}</span>
+          </span>
+        }>
+        {node.children.map((child) => (
+          <SourceNode key={child.path} {...props} node={child} depth={depth + 1} />
+        ))}
+      </TreeRow>
+    )
+  }
+
+  const assignedTargetKey = sourceToTarget.get(node.path)
+  return (
+    <SourceLeafRow
+      depth={depth}
+      node={node}
+      targetFields={targetFields}
+      assignedTargetKey={assignedTargetKey}
+      mergeStrategy={
+        assignedTargetKey ? (mergeStrategies[assignedTargetKey] ?? 'overwrite') : 'overwrite'
+      }
+      onAssign={(targetKey) => onAssign(node.path, targetKey)}
+      onClear={() => assignedTargetKey && onClear(assignedTargetKey)}
+      onMergeChange={(value) => assignedTargetKey && onMergeChange(assignedTargetKey, value)}
+      onPromote={() => assignedTargetKey && onPromote(assignedTargetKey)}
+    />
+  )
+}
+
+/**
+ * A source-schema leaf. The label is the source field; the trailing picker
+ * "applies" a target field to it. Once applied, the merge picker + `ƒ` (calc)
+ * promote + clear appear. A source value maps to at most one target field.
+ */
+function SourceLeafRow({
+  depth,
+  node,
+  targetFields,
+  assignedTargetKey,
+  mergeStrategy,
+  onAssign,
+  onClear,
+  onMergeChange,
+  onPromote,
+}: {
+  depth: number
+  node: SourcePath
+  targetFields: TargetField[]
+  assignedTargetKey: string | undefined
+  mergeStrategy: string
+  onAssign: (targetKey: string) => void
+  onClear: () => void
+  onMergeChange: (value: string) => void
+  onPromote: () => void
+}) {
+  const isMapped = !!assignedTargetKey
+  return (
+    <TreeRow
+      depth={depth}
+      icon={<Hash className={isMapped ? 'size-3.5' : 'size-3.5 text-muted-foreground/50'} />}
+      title={
+        <span className='flex items-center gap-1.5'>
+          <span className={`font-mono text-sm ${isMapped ? '' : 'text-muted-foreground'}`}>
+            {lastSegment(node.path)}
+          </span>
+          <span className='text-[10px] uppercase text-muted-foreground/60'>{node.type}</span>
+        </span>
+      }
+      trailing={
+        <div className='flex items-center gap-1'>
+          <Select value={assignedTargetKey ?? ''} onValueChange={onAssign}>
+            <SelectTrigger size='sm' className='h-6 min-w-[140px] text-xs'>
+              <SelectValue placeholder='Apply field…' />
             </SelectTrigger>
             <SelectContent>
-              {MERGE_OPTIONS.map((o) => (
-                <SelectItem key={o.value} value={o.value}>
-                  {o.label}
+              {targetFields.map((f) => (
+                <SelectItem key={f.key} value={f.key}>
+                  {f.label}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
-          <TreeRowButton persistent={isCalc} tooltipText='Edit as a formula' onClick={onPromote}>
-            <FunctionSquare />
-          </TreeRowButton>
+          {isMapped && (
+            <>
+              <Select value={mergeStrategy} onValueChange={onMergeChange}>
+                <SelectTrigger size='sm' className='h-6 min-w-[96px] text-xs'>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {MERGE_OPTIONS.map((o) => (
+                    <SelectItem key={o.value} value={o.value}>
+                      {o.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <TreeRowButton tooltipText='Edit as a formula' onClick={onPromote}>
+                <FunctionSquare />
+              </TreeRowButton>
+              <TreeRowButton tooltipText='Clear mapping' onClick={onClear}>
+                <X />
+              </TreeRowButton>
+            </>
+          )}
         </div>
       }
     />

@@ -171,8 +171,15 @@ function convertNode(node: JsonNode): SchemaFieldDraft {
     case 'boolean':
       base.fieldType = FieldType.CHECKBOX
       return base
+    case 'null':
+      // A `null`-only sample carries no real type (a single null value tells us
+      // nothing but "this can be null"). Author it as a nullable text field the
+      // user can retype, rather than an opaque JSON leaf.
+      base.fieldType = FieldType.TEXT
+      base.nullable = true
+      return base
     default:
-      // bare null, missing type, or anything else → preserve verbatim.
+      // missing type, or anything else → preserve verbatim.
       return rawLeaf(node, base)
   }
 }
@@ -200,22 +207,36 @@ function arrayToDraft(node: JsonNode, base: SchemaFieldDraft): SchemaFieldDraft 
   if (!items || typeof items !== 'object' || Array.isArray(items)) return rawLeaf(node, base)
   const itemNode = items as JsonNode
   const { type: itemType, exotic } = normalizeType(itemNode.type)
+  if (exotic) return rawLeaf(node, base)
 
-  if (!exotic && itemType === 'object') {
+  // Array of objects → a row sub-tree.
+  if (itemType === 'object') {
     base.kind = 'array'
     base.items = convertNode(itemNode)
     base.items.name = 'item'
     return base
   }
 
+  // Array of a string enum → MULTI_SELECT.
   const enumOptions = stringEnumOptions(itemNode)
-  if (!exotic && itemType === 'string' && enumOptions) {
+  if (itemType === 'string' && enumOptions) {
     base.fieldType = FieldType.MULTI_SELECT
     base.options = enumOptions
     return base
   }
-  if (!exotic && itemType === 'string') {
+  // Array of plain (formatless) strings → the dedicated TAGS leaf.
+  if (itemType === 'string' && itemNode.format === undefined && itemNode.enum === undefined) {
     base.fieldType = FieldType.TAGS
+    return base
+  }
+
+  // Array of any other representable scalar — number / boolean / formatted string
+  // (date, datetime, email, url) → a generic array with a scalar element draft.
+  const itemDraft = convertNode(itemNode)
+  if (itemDraft.kind === 'field' && !itemDraft.raw && itemDraft.fieldType !== FieldType.JSON) {
+    itemDraft.name = 'item'
+    base.kind = 'array'
+    base.items = itemDraft
     return base
   }
   return rawLeaf(node, base)
@@ -289,7 +310,14 @@ function objectNode(rows: SchemaFieldDraft[], policy: SchemaPolicy): JsonNode {
 }
 
 function draftNodeToJson(draft: SchemaFieldDraft, policy: SchemaPolicy): JsonNode {
-  if (draft.raw) return structuredClone(draft.raw)
+  // A raw leaf re-emits its preserved node verbatim — but its description stays
+  // editable in the row, so sync that one field back onto the clone.
+  if (draft.raw) {
+    const node = structuredClone(draft.raw)
+    if (draft.description) node.description = draft.description
+    else delete node.description
+    return node
+  }
 
   let node: JsonNode
   if (draft.kind === 'object') {

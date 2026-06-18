@@ -93,10 +93,13 @@ export function ConnectionPickerPopover({
     setOpen(false)
     flow.start({
       target: {
-        appId: inst.app.id,
-        appSlug: inst.app.slug,
-        appTitle: inst.app.title,
-        installationId: inst.installationId,
+        owner: {
+          kind: 'app',
+          appId: inst.app.id,
+          appSlug: inst.app.slug,
+          installationId: inst.installationId,
+        },
+        title: inst.app.title,
         connectionDefinitions: inst.connectionDefinitions ?? {},
       },
       scope: row.scope,

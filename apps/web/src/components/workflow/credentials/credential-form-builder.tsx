@@ -20,11 +20,9 @@ import {
 } from '@auxx/ui/components/select'
 import { Switch } from '@auxx/ui/components/switch'
 import { Textarea } from '@auxx/ui/components/textarea'
-import type { ICredentialType } from '@auxx/workflow-nodes/types'
-import { hasOAuth2Config, type INodeProperty, type NodeValue } from '@auxx/workflow-nodes/types'
+import type { INodeProperty, NodeValue } from '@auxx/workflow-nodes/types'
 import { Info } from 'lucide-react'
 import type { UseFormReturn } from 'react-hook-form'
-import { OAuth2Button } from './oauth2-button'
 import { generateFormValidationRules } from './validation-utils'
 
 interface CredentialFormBuilderProps {
@@ -33,8 +31,6 @@ interface CredentialFormBuilderProps {
   values?: Record<string, NodeValue>
   editMode?: boolean
   nonSensitiveValues?: Record<string, NodeValue>
-  credentialType?: ICredentialType
-  onOAuth2Success?: (credentialId: string) => void
 }
 
 /**
@@ -266,60 +262,9 @@ export function CredentialFormBuilder({
   values = {},
   editMode = false,
   nonSensitiveValues = {},
-  credentialType,
-  onOAuth2Success,
 }: CredentialFormBuilderProps) {
   const formValues = form.watch()
 
-  // Check if this is an OAuth2 credential type
-  const isOAuth2Credential = credentialType && hasOAuth2Config(credentialType)
-
-  // If it's an OAuth2 credential, show the OAuth2 button instead of form fields
-  if (isOAuth2Credential && !editMode) {
-    const credentialName = form.getValues('name') || ''
-
-    const handleOAuth2Success = (credentialId: string, userInfo?: any) => {
-      // Set form values to indicate OAuth2 completion
-      form.setValue('oauthComplete', true)
-      form.setValue('oauthCredentialId', credentialId)
-      if (userInfo?.email) {
-        form.setValue('userEmail', userInfo.email)
-      }
-
-      // Call the success callback
-      onOAuth2Success?.(credentialId)
-    }
-
-    const handleOAuth2Error = (error: string) => {
-      // Reset OAuth2 state on error
-      form.setValue('oauthComplete', false)
-      form.setValue('oauthCredentialId', '')
-      form.setValue('userEmail', '')
-    }
-
-    return (
-      <div className='space-y-6'>
-        <OAuth2Button
-          credentialType={credentialType}
-          credentialName={credentialName}
-          onSuccess={handleOAuth2Success}
-          onError={handleOAuth2Error}
-          disabled={!credentialName.trim()}
-        />
-
-        {!credentialName.trim() && (
-          <Alert>
-            <Info className='size-4' />
-            <AlertDescription>
-              Please enter a credential name above to enable authentication.
-            </AlertDescription>
-          </Alert>
-        )}
-      </div>
-    )
-  }
-
-  // Regular form field rendering for non-OAuth2 credentials
   const visibleProperties = properties.filter((property) =>
     shouldDisplayField(property, { ...values, ...formValues })
   )

@@ -84,10 +84,8 @@ function AppConnections({ app, returnTo, scope, onConnectionCreated }: Props) {
   const allConnections = connectionsResult ?? []
   const installationId = app.installation.id!
   const target: ConnectTarget = {
-    appId: app.app.id,
-    appSlug: app.app.slug,
-    appTitle: app.app.title,
-    installationId,
+    owner: { kind: 'app', appId: app.app.id, appSlug: app.app.slug, installationId },
+    title: app.app.title,
     connectionDefinitions: app.installation.connectionDefinitions ?? {},
   }
 

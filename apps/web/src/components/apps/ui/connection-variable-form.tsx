@@ -21,6 +21,15 @@ import {
   InputGroupInput,
 } from '@auxx/ui/components/input-group'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@auxx/ui/components/select'
+import { Switch } from '@auxx/ui/components/switch'
+import { Textarea } from '@auxx/ui/components/textarea'
 import { toastError } from '@auxx/ui/components/toast'
 import { EyeIcon, EyeOffIcon } from 'lucide-react'
 import type React from 'react'
@@ -40,9 +49,68 @@ interface ConnectionVariableFormProps {
   onSubmit: (values: Record<string, string>) => void
 }
 
+/** A masked field: an explicit `secret` flag or a `password` input kind. */
+function isSecretVariable(v: ConnectionVariable): boolean {
+  return v.secret === true || v.type === 'password'
+}
+
 /**
- * Dialog form for per-connection variable input: the pre-OAuth step (Shopify-style
- * shop domain) and the multi-field secret connect form (FedEx-style API credentials).
+ * Conditional visibility (§2.3 `displayOptions.show`): the field shows only when every
+ * referenced key currently holds one of its allowed values. Values are compared as strings
+ * since the form stores everything as strings (booleans as `'true'`/`'false'`).
+ */
+function isFieldVisible(v: ConnectionVariable, values: Record<string, string>): boolean {
+  const show = v.displayOptions?.show
+  if (!show) return true
+  for (const [key, allowed] of Object.entries(show)) {
+    if (!allowed.map(String).includes(values[key] ?? '')) return false
+  }
+  return true
+}
+
+/** Seed a field from its reconnect prefill, else its declared default, else empty. */
+function seedValue(v: ConnectionVariable, prefill?: Record<string, string>): string {
+  const pre = prefill?.[v.key]
+  if (pre !== undefined) return pre
+  if (v.default !== undefined) return String(v.default)
+  // Booleans always need a concrete value so the Switch renders and `required` passes.
+  return v.type === 'boolean' ? 'false' : ''
+}
+
+/** Validate a single value against §2.3 rules. Returns an error message, or null when valid. */
+function validateValue(v: ConnectionVariable, value: string): string | null {
+  if (v.required !== false && !value.trim()) {
+    return `Please provide a value for "${v.label}".`
+  }
+  if (!value) return null
+
+  const rules = v.validation
+  if (!rules) return null
+
+  if (rules.minLength !== undefined && value.length < rules.minLength) {
+    return `${v.label} must be at least ${rules.minLength} characters`
+  }
+  if (rules.maxLength !== undefined && value.length > rules.maxLength) {
+    return `${v.label} must be no more than ${rules.maxLength} characters`
+  }
+  const num = Number(value)
+  if (rules.min !== undefined && num < rules.min) {
+    return `${v.label} must be at least ${rules.min}`
+  }
+  if (rules.max !== undefined && num > rules.max) {
+    return `${v.label} must be no more than ${rules.max}`
+  }
+  if (rules.port && (!Number.isInteger(num) || num < 1 || num > 65535)) {
+    return `${v.label} must be a valid port number (1-65535)`
+  }
+  return null
+}
+
+/**
+ * Dialog form for per-connection variable input. Renders the full §2.3 field model —
+ * string/password (masked), number, boolean, options (dropdown), and textarea — with declared
+ * defaults, conditional `displayOptions.show` visibility, and field validation. Covers both the
+ * pre-OAuth step (Shopify-style shop domain) and multi-field secret connects (FedEx, Postgres).
  * Returns the gathered values to the caller; does not navigate or mutate.
  */
 export function ConnectionVariableForm({
@@ -58,13 +126,17 @@ export function ConnectionVariableForm({
   const [values, setValues] = useState<Record<string, string>>({})
   const [revealed, setRevealed] = useState<Record<string, boolean>>({})
 
-  // Seed the form each time the dialog opens (reconnect prefills plain values).
+  // Seed the form each time the dialog opens (reconnect prefills plain values; defaults fill rest).
   useEffect(() => {
     if (open) {
-      setValues(prefill ?? {})
+      const seeded: Record<string, string> = {}
+      for (const v of variables) seeded[v.key] = seedValue(v, prefill)
+      setValues(seeded)
       setRevealed({})
     }
-  }, [open, prefill])
+  }, [open, prefill, variables])
+
+  const setValue = (key: string, value: string) => setValues((prev) => ({ ...prev, [key]: value }))
 
   const handleClose = () => {
     onOpenChange(false)
@@ -74,16 +146,20 @@ export function ConnectionVariableForm({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    for (const v of variables) {
-      if (v.required !== false && !values[v.key]?.trim()) {
-        toastError({
-          title: 'Missing required field',
-          description: `Please provide a value for "${v.label}".`,
-        })
+    // Only the currently-visible fields are validated and submitted — a hidden conditional
+    // block (e.g. an inactive SSH tunnel) neither blocks the submit nor leaks stale values.
+    const visible = variables.filter((v) => isFieldVisible(v, values))
+    const submitted: Record<string, string> = {}
+    for (const v of visible) {
+      const value = values[v.key] ?? ''
+      const error = validateValue(v, value)
+      if (error) {
+        toastError({ title: 'Invalid field', description: error })
         return
       }
+      submitted[v.key] = value
     }
-    onSubmit(values)
+    onSubmit(submitted)
   }
 
   return (
@@ -102,53 +178,24 @@ export function ConnectionVariableForm({
             </DialogDescription>
           </DialogHeader>
           <div className='space-y-4'>
-            {variables.map((v) => {
-              const isVisible = revealed[v.key] ?? false
-              return (
-                <Field key={v.key}>
-                  <FieldLabel>
-                    {v.label}
-                    {v.required !== false && <span className='text-destructive ml-1'>*</span>}
-                  </FieldLabel>
-                  {v.secret ? (
-                    <InputGroup>
-                      <InputGroupInput
-                        type={isVisible ? 'text' : 'password'}
-                        placeholder={v.placeholder}
-                        value={values[v.key] ?? ''}
-                        onChange={(e) =>
-                          setValues((prev) => ({ ...prev, [v.key]: e.target.value }))
-                        }
-                      />
-                      <InputGroupAddon align='inline-end'>
-                        <InputGroupButton
-                          type='button'
-                          aria-label={isVisible ? 'Hide value' : 'Show value'}
-                          aria-pressed={isVisible}
-                          size='icon-xs'
-                          onClick={() =>
-                            setRevealed((prev) => ({ ...prev, [v.key]: !prev[v.key] }))
-                          }>
-                          {isVisible ? (
-                            <EyeOffIcon size={16} aria-hidden='true' />
-                          ) : (
-                            <EyeIcon size={16} aria-hidden='true' />
-                          )}
-                        </InputGroupButton>
-                      </InputGroupAddon>
-                    </InputGroup>
-                  ) : (
-                    <Input
-                      type='text'
-                      placeholder={v.placeholder}
-                      value={values[v.key] ?? ''}
-                      onChange={(e) => setValues((prev) => ({ ...prev, [v.key]: e.target.value }))}
-                    />
-                  )}
-                  {v.description && <FieldDescription>{v.description}</FieldDescription>}
-                </Field>
-              )
-            })}
+            {variables
+              .filter((v) => isFieldVisible(v, values))
+              .map((v) => {
+                const value = values[v.key] ?? ''
+                const isVisible = revealed[v.key] ?? false
+                return (
+                  <Field key={v.key}>
+                    <FieldLabel>
+                      {v.label}
+                      {v.required !== false && <span className='text-destructive ml-1'>*</span>}
+                    </FieldLabel>
+                    {renderControl(v, value, isVisible, setValue, (key) =>
+                      setRevealed((prev) => ({ ...prev, [key]: !prev[key] }))
+                    )}
+                    {v.description && <FieldDescription>{v.description}</FieldDescription>}
+                  </Field>
+                )
+              })}
           </div>
           <DialogFooter>
             <Button type='button' variant='ghost' size='sm' onClick={handleClose}>
@@ -162,4 +209,92 @@ export function ConnectionVariableForm({
       </DialogContent>
     </Dialog>
   )
+}
+
+/** Render the input control for one variable, switched on its §2.3 `type`. */
+function renderControl(
+  v: ConnectionVariable,
+  value: string,
+  reveal: boolean,
+  setValue: (key: string, value: string) => void,
+  toggleReveal: (key: string) => void
+) {
+  switch (v.type) {
+    case 'boolean':
+      return (
+        <Switch
+          checked={value === 'true'}
+          onCheckedChange={(checked) => setValue(v.key, String(checked))}
+        />
+      )
+    case 'options':
+      return (
+        <Select value={value} onValueChange={(next) => setValue(v.key, next)}>
+          <SelectTrigger>
+            <SelectValue placeholder={v.placeholder ?? 'Select an option'} />
+          </SelectTrigger>
+          <SelectContent>
+            {(v.options ?? []).map((opt) => (
+              <SelectItem key={opt.value} value={opt.value}>
+                {opt.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      )
+    case 'textarea':
+      return (
+        <Textarea
+          rows={v.rows ?? 4}
+          placeholder={v.placeholder}
+          value={value}
+          onChange={(e) => setValue(v.key, e.target.value)}
+        />
+      )
+    case 'number':
+      return (
+        <Input
+          type='number'
+          placeholder={v.placeholder}
+          value={value}
+          onChange={(e) => setValue(v.key, e.target.value)}
+        />
+      )
+    default:
+      // string / password — masked inputs get a reveal toggle.
+      if (isSecretVariable(v)) {
+        return (
+          <InputGroup>
+            <InputGroupInput
+              type={reveal ? 'text' : 'password'}
+              placeholder={v.placeholder}
+              value={value}
+              onChange={(e) => setValue(v.key, e.target.value)}
+            />
+            <InputGroupAddon align='inline-end'>
+              <InputGroupButton
+                type='button'
+                aria-label={reveal ? 'Hide value' : 'Show value'}
+                aria-pressed={reveal}
+                size='icon-xs'
+                onClick={() => toggleReveal(v.key)}>
+                {reveal ? (
+                  <EyeOffIcon size={16} aria-hidden='true' />
+                ) : (
+                  <EyeIcon size={16} aria-hidden='true' />
+                )}
+              </InputGroupButton>
+            </InputGroupAddon>
+          </InputGroup>
+        )
+      }
+      return (
+        <Input
+          type='text'
+          placeholder={v.placeholder}
+          value={value}
+          onChange={(e) => setValue(v.key, e.target.value)}
+        />
+      )
+  }
 }

@@ -93,3 +93,83 @@ export function leafPathsUnder(paths: SourcePath[], rootPath: string): SourcePat
   }
   return out
 }
+
+/**
+ * The full source subtree under a mapping's `rootPath` — branches AND leaves,
+ * returned RELATIVE to the subtree, with `depth` recomputed for relative
+ * rendering (dot-nesting level; `[]` array hops don't add a level). This is the
+ * hierarchy the mapping editor renders so a target field can be applied to each
+ * source node. Pairs with {@link leafPathsUnder} (which returns leaves only).
+ */
+export function subtreeUnder(paths: SourcePath[], rootPath: string): SourcePath[] {
+  const base = rootPath.replace(/\[\]$/, '')
+  const out: SourcePath[] = []
+  for (const p of paths) {
+    let rel: string | null = null
+    if (!base) rel = p.path
+    else if (p.path.startsWith(`${base}[].`)) rel = p.path.slice(base.length + 3)
+    else if (p.path.startsWith(`${base}.`)) rel = p.path.slice(base.length + 1)
+    if (rel === null || rel === '') continue
+    out.push({ ...p, path: rel, depth: (rel.match(/\./g) ?? []).length })
+  }
+  return out
+}
+
+/** Last path segment, for the indented hierarchy label (`customer.email` → `email`). */
+export function lastSegment(path: string): string {
+  const noArray = path.replace(/\[\]$/, '')
+  const seg = noArray.split('.').pop() ?? noArray
+  return path.endsWith('[]') ? `${seg}[]` : seg
+}
+
+/** Parent path of a relative source path (`tags[].name` → `tags`, `a.b` → `a`). */
+function parentPath(path: string): string | null {
+  const idx = path.lastIndexOf('.')
+  if (idx === -1) return null
+  return path.slice(0, idx).replace(/\[\]$/, '')
+}
+
+/** A source node with its nested children — the shape the mapping tree renders. */
+export interface SourceTreeNode extends SourcePath {
+  children: SourceTreeNode[]
+}
+
+/**
+ * Nest the flat {@link subtreeUnder} paths into a real parent→child tree (objects
+ * and arrays hold their fields), so the editor can render an expandable hierarchy
+ * instead of a flat, manually-indented list. Input is assumed depth-first
+ * (parents before children), as {@link flattenSourceSchema} emits.
+ */
+export function buildSourceTree(nodes: SourcePath[]): SourceTreeNode[] {
+  const byPath = new Map<string, SourceTreeNode>()
+  for (const n of nodes) byPath.set(n.path, { ...n, children: [] })
+  const roots: SourceTreeNode[] = []
+  for (const n of nodes) {
+    const node = byPath.get(n.path)
+    if (!node) continue
+    const pp = parentPath(n.path)
+    const parent = pp ? byPath.get(pp) : undefined
+    if (parent) parent.children.push(node)
+    else roots.push(node)
+  }
+  return roots
+}
+
+/**
+ * Where the records live in the payload, derived from the source schema — the
+ * valid `rootPath` choices for the root mapping. The base choice is dictated by
+ * the root type (array → `[]` fan-out; object → `''` single record) and is NOT a
+ * free choice. The only ambiguity is an envelope object that *contains* a
+ * collection (`{ orders: [...] }`): there both `''` (one record) and `orders[]`
+ * (fan out) are valid, so both are offered. Mirrors the runtime's
+ * `extractSubtrees`. A single-element result means "no choice — just resolve it".
+ */
+export function rootPathCandidates(paths: SourcePath[]): string[] {
+  const rootIsArray = paths.some((p) => p.path.startsWith('[]'))
+  const out = new Set<string>([rootIsArray ? '[]' : ''])
+  // Nested array branches (only a real alternative for an object root envelope).
+  for (const p of paths) {
+    if (p.isBranch && p.type === 'array') out.add(`${p.path}[]`)
+  }
+  return [...out]
+}

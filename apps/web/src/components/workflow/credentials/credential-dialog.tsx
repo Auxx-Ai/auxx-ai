@@ -19,7 +19,6 @@ import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Separator } from '@auxx/ui/components/separator'
 import { toastError } from '@auxx/ui/components/toast'
-import { hasOAuth2Config } from '@auxx/workflow-nodes/types'
 import { AlertTriangle, CheckCircle, Loader2, Settings, Trash2 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { type UseFormReturn, useForm } from 'react-hook-form'
@@ -420,11 +419,9 @@ export function CredentialDialog(props: CredentialDialogProps) {
       </span>
     ) : undefined
 
-  // Next is gated on form validity; OAuth types additionally require a completed flow.
+  // Next is gated on form validity + a name.
   const nameValue = form.watch('name')
-  const oauthComplete = form.watch('oauthComplete')
-  const needsOAuth = selectedType ? hasOAuth2Config(selectedType.credentialType) : false
-  const nextDisabled = !form.formState.isValid || !nameValue || (needsOAuth && !oauthComplete)
+  const nextDisabled = !form.formState.isValid || !nameValue
 
   const connectedType = connectedInfo ? getCredentialType(connectedInfo.type) : null
 
@@ -510,8 +507,6 @@ export function CredentialDialog(props: CredentialDialogProps) {
                         <CredentialFormBuilder
                           properties={selectedType.credentialType.properties}
                           form={form}
-                          credentialType={selectedType.credentialType}
-                          onOAuth2Success={finishCreate}
                         />
                       </CredentialConfigForm>
                     )}

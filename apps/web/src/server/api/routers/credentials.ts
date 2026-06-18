@@ -1,6 +1,5 @@
 // apps/web/src/server/api/routers/credentials.ts
 
-import { CredentialTypeRegistry } from '@auxx/credentials'
 import {
   deleteCredential,
   getCredential,
@@ -11,14 +10,10 @@ import {
   updateCredential,
 } from '@auxx/credentials/store'
 import { CredentialTestingService, isCredentialInUse } from '@auxx/lib/workflow-engine'
-import { handleOAuth2Callback, initiateOAuth, refreshCredentialTokens } from '@auxx/lib/workflows'
-import { hasOAuth2Config } from '@auxx/workflow-nodes/types'
+import { refreshCredentialTokens } from '@auxx/lib/workflows'
 import { TRPCError } from '@trpc/server'
 import { z } from 'zod'
 import { createTRPCRouter, notDemo, protectedProcedure } from '~/server/api/trpc'
-
-// Singleton registry instance
-const credentialRegistry = new CredentialTypeRegistry()
 
 /** The four credential families (mirrors `CredentialKind` in @auxx/credentials). */
 const credentialKindSchema = z.enum(['app', 'mcp', 'integration', 'workflow'])
@@ -394,88 +389,6 @@ export const credentialsRouter = createTRPCRouter({
         throw new TRPCError({
           code: 'INTERNAL_SERVER_ERROR',
           message: error instanceof Error ? error.message : 'Failed to test credential data',
-        })
-      }
-    }),
-
-  /**
-   * Initiate OAuth2 flow for a credential type
-   */
-  initiateOAuth: protectedProcedure
-    .input(
-      z.object({
-        credentialType: z.string().min(1, 'Credential type is required'),
-        credentialName: z.string().min(1, 'Credential name is required'),
-      })
-    )
-    .use(notDemo('connect OAuth credentials'))
-    .mutation(async ({ ctx, input }) => {
-      if (!ctx.session.user.defaultOrganizationId) {
-        throw new TRPCError({
-          code: 'BAD_REQUEST',
-          message: 'No organization selected',
-        })
-      }
-
-      try {
-        // Get the credential type class to check if it supports OAuth2
-        const credentialTypeClass = credentialRegistry.getProvider(input.credentialType)
-
-        if (!credentialTypeClass || !hasOAuth2Config(credentialTypeClass)) {
-          throw new TRPCError({
-            code: 'BAD_REQUEST',
-            message: 'Credential type does not support OAuth2',
-          })
-        }
-
-        const result = await initiateOAuth(
-          credentialTypeClass.oauth2Config,
-          ctx.session.user.defaultOrganizationId,
-          ctx.session.user.id,
-          input.credentialType,
-          input.credentialName
-        )
-
-        return result
-      } catch (error) {
-        if (error instanceof TRPCError) throw error
-
-        throw new TRPCError({
-          code: 'INTERNAL_SERVER_ERROR',
-          message: error instanceof Error ? error.message : 'Failed to initiate OAuth flow',
-        })
-      }
-    }),
-
-  /**
-   * Handle OAuth2 callback and create credential
-   */
-  handleOAuthCallback: protectedProcedure
-    .input(
-      z.object({
-        code: z.string().min(1, 'Authorization code is required'),
-        state: z.string().min(1, 'State parameter is required'),
-      })
-    )
-    .use(notDemo('complete OAuth connection'))
-    .mutation(async ({ input }) => {
-      try {
-        const result = await handleOAuth2Callback(input.code, input.state)
-
-        if (!result.success) {
-          throw new TRPCError({
-            code: 'BAD_REQUEST',
-            message: result.error || 'OAuth callback failed',
-          })
-        }
-
-        return result
-      } catch (error) {
-        if (error instanceof TRPCError) throw error
-
-        throw new TRPCError({
-          code: 'INTERNAL_SERVER_ERROR',
-          message: error instanceof Error ? error.message : 'Failed to handle OAuth callback',
         })
       }
     }),
