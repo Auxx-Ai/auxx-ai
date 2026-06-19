@@ -212,7 +212,10 @@ export async function provisionConnectorMappings(
     if (mapping.linkMode === 'reference') continue
 
     const fields: ProvisionFieldSpec[] = []
-    for (const [key, fm] of Object.entries(mapping.fieldMappings)) {
+    for (const fm of mapping.fieldMappings) {
+      // Unassigned draft (no target yet) — nothing to provision, skip.
+      const key = fm.targetFieldKey
+      if (!key) continue
       if (fm.provision) {
         fields.push({
           appFieldKey: key,

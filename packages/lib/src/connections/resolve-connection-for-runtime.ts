@@ -12,6 +12,7 @@ import {
   type DecryptedConnectionData,
   mergeConnectionVariables,
 } from '@auxx/services/app-connections'
+import { interpolateTemplate } from '@auxx/utils'
 import { err, ok, type Result } from 'neverthrow'
 import { ensureFreshCredentialToken } from '../credentials/ensure-fresh-credential-token'
 import { defaultAuthApply } from './auth-apply'
@@ -36,8 +37,18 @@ export interface RuntimeConnectionData {
   fields?: Record<string, string>
   /** Declarative spec for putting this connection on an outgoing HTTP request (§3); null for DB/email/none. */
   authApply?: AuthApply | null
+  /** Request origin the connection contributes (§3), interpolated from value + fields
+   *  (e.g. 'https://acme.myshopify.com'). The HTTP transport prepends it to a relative
+   *  request path. Undefined when the definition declares no `baseUrlTemplate`. */
+  baseUrl?: string
   metadata?: any
   expiresAt?: string
+}
+
+/** The definition fields that shape the runtime request (auth + endpoint origin). */
+interface DefinitionRuntime {
+  authApply?: AuthApply | null
+  baseUrlTemplate?: string | null
 }
 
 export interface ResolveConnectionError {
@@ -110,7 +121,7 @@ async function shapeFromRevealed(
   organizationId: string,
   connectionType: 'oauth2-code' | 'secret',
   ensureFresh: boolean,
-  authApply: AuthApply | null = null
+  def: DefinitionRuntime = {}
 ): Promise<RuntimeConnectionData> {
   const { record, secrets } = await refreshIfNeeded(
     revealed,
@@ -118,15 +129,24 @@ async function shapeFromRevealed(
     connectionType,
     ensureFresh
   )
+  const value = secretValue(secrets)
+  const fields = connectionFields(record, secrets)
+  // Interpolate the connection's base-URL template (e.g. '{shop}' / '{value}') from
+  // the resolved token + fields — no URL-encoding (a value may itself be a URL or a
+  // path-safe token). The transport prepends the result to a relative path.
+  const baseUrl = def.baseUrlTemplate
+    ? interpolateTemplate(def.baseUrlTemplate, { ...(fields ?? {}), value })
+    : undefined
   return {
     id: record.id,
     type: connectionType,
-    value: secretValue(secrets),
-    fields: connectionFields(record, secrets),
+    value,
+    fields,
     // Fall back to the connection type's default application (oauth2-code →
     // Bearer) when the definition declares none — app-authored oauth2 defs often
     // omit `authApply`, but an access token is always a bearer token.
-    authApply: authApply ?? defaultAuthApply(connectionType),
+    authApply: def.authApply ?? defaultAuthApply(connectionType),
+    baseUrl,
     metadata: record.metadata,
     expiresAt: record.expiresAt?.toISOString(),
   }
@@ -138,7 +158,7 @@ async function toRuntimeConnection(
   organizationId: string,
   connectionType: 'oauth2-code' | 'secret',
   ensureFresh: boolean,
-  authApply: AuthApply | null = null
+  def: DefinitionRuntime = {}
 ): Promise<Result<RuntimeConnectionData, ResolveConnectionError>> {
   const revealed = await revealSecrets<ConnectionSecrets>(credentialId, organizationId)
   if (revealed.isErr()) {
@@ -150,7 +170,7 @@ async function toRuntimeConnection(
   }
 
   return ok(
-    await shapeFromRevealed(revealed.value, organizationId, connectionType, ensureFresh, authApply)
+    await shapeFromRevealed(revealed.value, organizationId, connectionType, ensureFresh, def)
   )
 }
 
@@ -177,16 +197,13 @@ async function resolveAppCredential(
   const def = await database.query.ConnectionDefinition.findFirst({
     where: (d, { eq }) =>
       cred.connectionDefinitionId ? eq(d.id, cred.connectionDefinitionId) : eq(d.appId, appId),
-    columns: { connectionType: true, authApply: true },
+    columns: { connectionType: true, authApply: true, baseUrlTemplate: true },
   })
   const connectionType = (def?.connectionType ?? 'secret') as 'oauth2-code' | 'secret'
-  return toRuntimeConnection(
-    cred.id,
-    organizationId,
-    connectionType,
-    ensureFresh,
-    def?.authApply ?? null
-  )
+  return toRuntimeConnection(cred.id, organizationId, connectionType, ensureFresh, {
+    authApply: def?.authApply ?? null,
+    baseUrlTemplate: def?.baseUrlTemplate,
+  })
 }
 
 type OwnerInput =
@@ -234,15 +251,21 @@ export async function resolveConnectionForRuntime(
     const ownerAppId = appId ?? record.appId
     const ownerMcpServerId = mcpServerId ?? record.mcpServerId
     const ownerProviderKey = providerKey ?? record.type
+    // FK-honoring: when the credential names its own definition (`defId`), that row
+    // is authoritative — match it alone. The owner arms (which also match the app's
+    // *sibling* methods) are only a fallback for legacy rows whose FK predates §4,
+    // where `findFirst` over the `or` could otherwise return the wrong method's
+    // connectionType / authApply.
     const def = await database.query.ConnectionDefinition.findFirst({
       where: (d, { eq, or }) =>
-        or(
-          defId ? eq(d.id, defId) : undefined,
-          ownerAppId ? eq(d.appId, ownerAppId) : undefined,
-          ownerMcpServerId ? eq(d.mcpServerId, ownerMcpServerId) : undefined,
-          ownerProviderKey ? eq(d.providerKey, ownerProviderKey) : undefined
-        ),
-      columns: { connectionType: true, authApply: true },
+        defId
+          ? eq(d.id, defId)
+          : or(
+              ownerAppId ? eq(d.appId, ownerAppId) : undefined,
+              ownerMcpServerId ? eq(d.mcpServerId, ownerMcpServerId) : undefined,
+              ownerProviderKey ? eq(d.providerKey, ownerProviderKey) : undefined
+            ),
+      columns: { connectionType: true, authApply: true, baseUrlTemplate: true },
     })
     const connectionType = (def?.connectionType ??
       (revealed.value.secrets.accessToken ? 'oauth2-code' : 'secret')) as 'oauth2-code' | 'secret'
@@ -251,7 +274,7 @@ export async function resolveConnectionForRuntime(
       organizationId,
       connectionType,
       ensureFresh,
-      def?.authApply ?? null
+      { authApply: def?.authApply ?? null, baseUrlTemplate: def?.baseUrlTemplate }
     )
     return ok(
       revealed.value.record.userId
@@ -278,7 +301,7 @@ export async function resolveConnectionForRuntime(
   if (mcpServerId) {
     const def = await database.query.ConnectionDefinition.findFirst({
       where: (d, { eq }) => eq(d.mcpServerId, mcpServerId),
-      columns: { connectionType: true, authApply: true },
+      columns: { connectionType: true, authApply: true, baseUrlTemplate: true },
     })
     const found = await findCredential({ organizationId, kind: 'mcp', mcpServerId, userId: null })
     if (found.isErr())
@@ -289,7 +312,7 @@ export async function resolveConnectionForRuntime(
       organizationId,
       (def?.connectionType ?? 'secret') as 'oauth2-code' | 'secret',
       ensureFresh,
-      def?.authApply ?? null
+      { authApply: def?.authApply ?? null, baseUrlTemplate: def?.baseUrlTemplate }
     )
     if (resolved.isErr()) return err(resolved.error)
     return ok({ organizationConnection: resolved.value })
@@ -299,7 +322,7 @@ export async function resolveConnectionForRuntime(
   if (providerKey) {
     const def = await database.query.ConnectionDefinition.findFirst({
       where: (d, { eq }) => eq(d.providerKey, providerKey),
-      columns: { connectionType: true, global: true, authApply: true },
+      columns: { connectionType: true, global: true, authApply: true, baseUrlTemplate: true },
     })
     if (!def)
       return err({ code: 'CONNECTION_NOT_FOUND', message: `Provider ${providerKey} not found` })
@@ -318,7 +341,7 @@ export async function resolveConnectionForRuntime(
       organizationId,
       def.connectionType as 'oauth2-code' | 'secret',
       ensureFresh,
-      def.authApply
+      { authApply: def.authApply, baseUrlTemplate: def.baseUrlTemplate }
     )
     if (resolved.isErr()) return err(resolved.error)
     return ok(

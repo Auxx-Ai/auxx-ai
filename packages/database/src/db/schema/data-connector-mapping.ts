@@ -8,7 +8,7 @@
 import { createId } from '@paralleldrive/cuid2'
 import { type AnyPgColumn, index, jsonb, pgTable, text, timestamp } from './_shared'
 import { DataConnectorStream } from './data-connector-stream'
-import type { FieldMapping, FieldMergeStrategy } from './data-connector-types'
+import type { FieldMapping } from './data-connector-types'
 import { EntityDefinition } from './entity-definition'
 import { Organization } from './organization'
 
@@ -56,13 +56,14 @@ export const DataConnectorMapping = pgTable(
       onDelete: 'restrict',
     }),
 
-    // targetFieldKey → mapping. Each mapping is the CALC shape; a one-click row is
-    // the degenerate single-token `{source}` expression. Empty for 'reference'.
-    // A field flagged `match` is also a secondary identity key — identity is fully
-    // derived from these flags; the external id is always the primary key.
-    fieldMappings: jsonb().$type<Record<string, FieldMapping>>().default({}).notNull(),
-    // Per-field write behavior. Keyed by target field key.
-    mergeStrategies: jsonb().$type<Record<string, FieldMergeStrategy>>().default({}).notNull(),
+    // Array of binding entries. Each carries a stable `id` (identity) + a nullable
+    // `targetFieldKey` (a null entry is an unassigned draft the runtime skips), the
+    // CALC shape, its `mergeStrategy`, and `match`/`provision` flags. An array (not
+    // a Record) so identity is independent of the target and nothing keys by it;
+    // a one-click row is the degenerate single-token `{source}` expression. Empty
+    // for 'reference'. A field flagged `match` is also a secondary identity key —
+    // the external id is always the primary key.
+    fieldMappings: jsonb().$type<FieldMapping[]>().default([]).notNull(),
     orphanBehavior: text().default('ignore').notNull(), // 'archive' | 'mark_deleted' | 'ignore'
 
     createdAt: timestamp({ precision: 3 }).defaultNow().notNull(),

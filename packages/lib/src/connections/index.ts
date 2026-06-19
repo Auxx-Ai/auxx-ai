@@ -21,3 +21,16 @@ export {
   resolveConnectionForRuntime,
 } from './resolve-connection-for-runtime'
 export { type SaveConnectionInput, saveConnection } from './save-connection'
+export {
+  type HttpMethod,
+  type HttpRequest,
+  type HttpResponse,
+  type HttpTransport,
+  httpTransport,
+  postgresTransport,
+  type SqlRow,
+  type SqlTransport,
+  type Transport,
+  type TransportKind,
+  transportFor,
+} from './transports'

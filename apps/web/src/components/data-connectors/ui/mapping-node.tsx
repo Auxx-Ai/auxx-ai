@@ -3,6 +3,7 @@
 
 import type { ResourceField } from '@auxx/lib/resources/client'
 import { Badge } from '@auxx/ui/components/badge'
+import { Button } from '@auxx/ui/components/button'
 import { EntityIcon } from '@auxx/ui/components/icons'
 import {
   Select,
@@ -13,6 +14,7 @@ import {
 } from '@auxx/ui/components/select'
 import { SimpleTooltip } from '@auxx/ui/components/tooltip'
 import { GridTreeRow, TreeRowButton } from '@auxx/ui/components/tree-row'
+import { generateId } from '@auxx/utils'
 import { ArrowRight, FunctionSquare, Plus, Trash2, X } from 'lucide-react'
 import { useState } from 'react'
 import { ResourcePicker } from '~/components/pickers/resource-picker'
@@ -21,24 +23,19 @@ import type { RouterOutputs } from '~/trpc/react'
 import {
   absolutePrefix,
   buildSourceTree,
+  leafPathsUnder,
   type SourcePath,
   type SourceTreeNode,
   subtreeUnder,
 } from '../hooks/use-source-paths'
-import type { useStreamMutations } from '../hooks/use-stream-mutations'
+import type { FieldMapping, useStreamMutations } from '../hooks/use-stream-mutations'
 import { BranchRow } from './branch-row'
+import { FieldCalcDialog } from './field-calc-dialog'
 import { MAPPING_COLS } from './mapping-columns'
 import { MappingFieldPicker } from './mapping-field-picker'
 import { MERGE_OPTIONS, SourceLeafRow } from './source-leaf-row'
 
 type Mapping = RouterOutputs['dataConnector']['listStreams'][number]['mappings'][number]
-
-/** One target-field binding. `match` flags it as a secondary identity key. */
-type FieldMapping = {
-  expression: string
-  sourceFields: Record<string, string>
-  match?: { normalize?: 'email' | 'phone' | 'domain' | 'none' }
-}
 
 /** Naive singularizer for record nouns (`todos → todo`, `line_items → line item`). */
 function singularize(word: string): string {
@@ -88,7 +85,6 @@ export interface MappingNodeProps {
   byMappingId: Map<string, Mapping>
   childrenOf: Map<string | null, Mapping[]>
   mutations: ReturnType<typeof useStreamMutations>
-  onPromoteField: (mappingId: string, fieldKey: string) => void
 }
 
 /**
@@ -109,11 +105,12 @@ export function MappingNode({
   byMappingId,
   childrenOf,
   mutations,
-  onPromoteField,
 }: MappingNodeProps) {
   const [open, setOpen] = useState(true)
-  const { setMappingTarget, removeMapping, setFieldMappings, setMergeStrategies, fanOut } =
-    mutations
+  // The binding entry whose formula the dialog is editing (null = closed). Set to
+  // a draft entry's id when "Add formula" appends a fresh row.
+  const [calcEntryId, setCalcEntryId] = useState<string | null>(null)
+  const { setMappingTarget, removeMapping, setFieldMappings, fanOut } = mutations
 
   // Target def display + fields, read from the resource store (the same source
   // the ResourcePicker/FieldPicker use) — no parallel projection needed.
@@ -121,15 +118,23 @@ export function MappingNode({
   const { fields: targetFields } = useResourceFields(mapping.entityDefinitionId)
   const linkMode = mapping.linkMode as 'upsert' | 'reference'
   const targetMode = mapping.targetMode as 'owned' | 'contributing'
-  const fieldMappings = (mapping.fieldMappings ?? {}) as Record<string, FieldMapping>
-  const mergeStrategies = (mapping.mergeStrategies ?? {}) as Record<string, string>
+  const fieldMappings = (mapping.fieldMappings ?? []) as FieldMapping[]
+
+  // Persist a new entry array (the single mapping field-write surface).
+  const writeEntries = (next: FieldMapping[]) => setFieldMappings(streamId, mapping.id, next)
+  // Patch one entry in place by its stable id (used by every per-entry mutation).
+  const patchEntry = (id: string, patch: Partial<FieldMapping>) =>
+    writeEntries(fieldMappings.map((e) => (e.id === id ? { ...e, ...patch } : e)))
 
   // Target field keys flagged as secondary identity-match keys (external id is
   // always the primary). The blue "Match" badges on leaves reflect this set.
   const matchKeys = new Set(
-    Object.entries(fieldMappings)
-      .filter(([, fm]) => fm.match)
-      .map(([k]) => k)
+    fieldMappings.filter((e) => e.match && e.targetFieldKey != null).map((e) => e.targetFieldKey!)
+  )
+  // Every target field already bound by SOME entry — the pickers exclude these so
+  // two entries can't fight over one field (an array allows it; the UI forbids it).
+  const usedTargetKeys = new Set(
+    fieldMappings.map((e) => e.targetFieldKey).filter((k): k is string => k != null)
   )
 
   // Slice this mapping's subtree by its FULL absolute prefix (not the bare,
@@ -151,54 +156,38 @@ export function MappingNode({
     (c) => !branchPaths.has(c.rootPath.replace(/\[\]$/, ''))
   )
 
-  // Reverse-index bare-token field mappings: source path → target field key.
-  const sourceToTarget = new Map<string, string>()
-  for (const [targetKey, fm] of Object.entries(fieldMappings)) {
-    if (isBareToken(fm.expression))
-      sourceToTarget.set(fm.expression.replace(/^\{|\}$/g, ''), targetKey)
+  // Reverse-index bare-token entries: source path → the binding entry on it.
+  const sourceToEntry = new Map<string, FieldMapping>()
+  for (const e of fieldMappings) {
+    if (isBareToken(e.expression)) sourceToEntry.set(e.expression.replace(/^\{|\}$/g, ''), e)
   }
 
-  // Non-bare entries are computed target fields — they get their own rows below
-  // the source leaves (a multi-source formula has no single leaf to anchor on).
-  const formulaEntries = Object.entries(fieldMappings).filter(
-    ([, fm]) => !isBareToken(fm.expression)
+  // Formula rows = computed entries (a multi-source formula has no single leaf to
+  // anchor on) PLUS unassigned drafts (`targetFieldKey: null`), which are persisted
+  // half-authored formulas with nowhere to live on the source tree yet.
+  const formulaEntries = fieldMappings.filter(
+    (e) => !isBareToken(e.expression) || e.targetFieldKey == null
   )
 
   const assignTarget = (sourcePath: string, targetKey: string) => {
-    const next = { ...fieldMappings }
-    // Drop any prior target bound to this source (1 source → 1 target).
-    for (const [k, fm] of Object.entries(next)) {
-      if (isBareToken(fm.expression) && fm.expression.replace(/^\{|\}$/g, '') === sourcePath) {
-        delete next[k]
-      }
-    }
-    next[targetKey] = { expression: `{${sourcePath}}`, sourceFields: { [sourcePath]: sourcePath } }
-    setFieldMappings(streamId, mapping.id, next)
+    // Drop any prior bare-token entry bound to this source (1 source → 1 target),
+    // then append a fresh entry with a stable id.
+    const next = fieldMappings.filter(
+      (e) => !(isBareToken(e.expression) && e.expression.replace(/^\{|\}$/g, '') === sourcePath)
+    )
+    next.push({
+      id: generateId(),
+      targetFieldKey: targetKey,
+      expression: `{${sourcePath}}`,
+      sourceFields: { [sourcePath]: sourcePath },
+    })
+    writeEntries(next)
   }
-  const clearTarget = (targetKey: string) => {
-    const next = { ...fieldMappings }
-    delete next[targetKey]
-    setFieldMappings(streamId, mapping.id, next)
-  }
+  const clearEntry = (id: string) => writeEntries(fieldMappings.filter((e) => e.id !== id))
 
-  // Re-point a formula at a different target field — re-keys the entry (and its
-  // merge strategy) under the new field key; the expression is unchanged.
-  const retargetFormula = (oldKey: string, newKey: string) => {
-    if (newKey === oldKey) return
-    const fm = fieldMappings[oldKey]
-    if (!fm) return
-    const next = { ...fieldMappings }
-    delete next[oldKey]
-    next[newKey] = fm
-    setFieldMappings(streamId, mapping.id, next)
-    const ms = mergeStrategies[oldKey]
-    if (ms !== undefined) {
-      const nextMs = { ...mergeStrategies }
-      delete nextMs[oldKey]
-      nextMs[newKey] = ms
-      setMergeStrategies(streamId, mapping.id, nextMs)
-    }
-  }
+  // Re-point a formula at a different target field. Identity is the entry id, so
+  // this is a single field set — merge/match ride along, no re-key.
+  const retargetEntry = (id: string, newKey: string) => patchEntry(id, { targetFieldKey: newKey })
 
   // Normalizer for a match key, derived from the target field's storage type so
   // the toggle stays one-click (no normalize selector).
@@ -209,16 +198,23 @@ export function MappingNode({
     if (ft === 'URL') return 'domain'
     return 'none'
   }
-  // Flip a bound field's secondary-identity-match flag (rides the fieldMappings patch).
-  const toggleMatch = (targetKey: string) => {
-    const fm = fieldMappings[targetKey]
-    if (!fm) return
-    const next = { ...fieldMappings }
-    next[targetKey] = fm.match
-      ? { expression: fm.expression, sourceFields: fm.sourceFields }
-      : { ...fm, match: { normalize: deriveNormalize(targetKey) } }
-    setFieldMappings(streamId, mapping.id, next)
+  // Flip a bound entry's secondary-identity-match flag (by entry id).
+  const toggleMatch = (id: string) => {
+    const e = fieldMappings.find((x) => x.id === id)
+    if (!e) return
+    patchEntry(id, {
+      match: e.match ? undefined : { normalize: deriveNormalize(e.targetFieldKey ?? '') },
+    })
   }
+
+  // Append a persisted draft formula (no target yet) and open the dialog on it.
+  const addFormula = () => {
+    const id = generateId()
+    writeEntries([...fieldMappings, { id, targetFieldKey: null, expression: '', sourceFields: {} }])
+    setCalcEntryId(id)
+  }
+
+  const calcEntry = calcEntryId ? fieldMappings.find((e) => e.id === calcEntryId) : undefined
 
   const toggleTargetMode = () =>
     setMappingTarget(streamId, {
@@ -244,160 +240,201 @@ export function MappingNode({
     })
 
   return (
-    <GridTreeRow
-      columns={MAPPING_COLS}
-      depth={depth}
-      expandable
-      chevronOnHover
-      isOpen={open}
-      onToggleOpen={() => setOpen((o) => !o)}
-      icon={<EntityIcon iconId={resource?.icon ?? 'table'} size='xs' />}
-      title={
-        // The rootPath is fixed by the source row this mapping was created from
-        // (`data` → "each data") — a static label, not a chooser.
-        <span className='text-xs text-muted-foreground'>
-          {describeRootPath(mapping.rootPath, streamKey)}
-        </span>
-      }
-      cells={[
-        <span key='arrow' className='flex w-full justify-center text-muted-foreground'>
-          <ArrowRight className='size-3.5' />
-        </span>,
-        <ResourcePicker
-          key='target'
-          value={mapping.entityDefinitionId ? [mapping.entityDefinitionId] : []}
-          onChange={() => {}}
-          entityDefinedOnly
-          emptyLabel='Target def…'
-          onSelectSingle={(entityDefinitionId) =>
-            setMappingTarget(streamId, {
-              mappingId: mapping.id,
-              entityDefinitionId,
-              targetMode,
-              linkMode,
-            })
-          }
-          triggerProps={{ className: 'h-9 w-full justify-between rounded-none px-2 text-xs' }}
-        />,
-        <div key='actions' className='flex w-full items-center justify-end gap-1 pr-1'>
-          <SimpleTooltip
-            side='left'
-            delayDuration={500}
-            content={
-              targetMode === 'owned'
-                ? 'Owned — connector manages this def (archive on orphan). Click to switch to contributing.'
-                : 'Contributing — writes into a pre-existing def per-field, never archives. Click to switch to owned.'
-            }>
-            <button
-              type='button'
-              onClick={toggleTargetMode}
-              className='inline-flex shrink-0 items-center'>
-              <Badge
-                variant={targetMode === 'owned' ? 'violet' : 'amber'}
-                size='xs'
-                className='cursor-pointer'>
-                {targetMode}
-              </Badge>
-            </button>
-          </SimpleTooltip>
-          {/* Every mapping is removable now — no auto-seeded spine. Deleting a
-              mapping drops back to the passive source row it was created from. */}
-          <TreeRowButton
-            variant='destructive'
-            tooltipText='Remove mapping'
-            onClick={() => removeMapping(streamId, mapping.id)}>
-            <Trash2 />
-          </TreeRowButton>
-        </div>,
-      ]}>
-      {sourceTree.length === 0 ? (
-        <div
-          style={{ paddingLeft: `${(depth + 1) * 1.5}rem` }}
-          className='px-1 py-1 text-[11px] text-muted-foreground'>
-          No source schema yet — generate or edit the schema above to map fields.
-        </div>
-      ) : (
-        sourceTree.map((node) => (
-          <SourceNode
-            key={node.path}
-            node={node}
-            depth={depth + 1}
-            mapping={mapping}
-            targetMode={targetMode}
-            targetFields={targetFields}
-            sourceToTarget={sourceToTarget}
-            mergeStrategies={mergeStrategies}
-            matchKeys={matchKeys}
-            childByNodePath={childByNodePath}
-            onAssign={assignTarget}
-            onClear={clearTarget}
-            onMergeChange={(targetKey, value) =>
-              setMergeStrategies(streamId, mapping.id, { ...mergeStrategies, [targetKey]: value })
+    <>
+      <GridTreeRow
+        columns={MAPPING_COLS}
+        depth={depth}
+        expandable
+        chevronOnHover
+        isOpen={open}
+        onToggleOpen={() => setOpen((o) => !o)}
+        icon={<EntityIcon iconId={resource?.icon ?? 'table'} size='xs' />}
+        title={
+          // The rootPath is fixed by the source row this mapping was created from
+          // (`data` → "each data") — a static label, not a chooser.
+          <span className='text-xs text-muted-foreground'>
+            {describeRootPath(mapping.rootPath, streamKey)}
+          </span>
+        }
+        cells={[
+          <span key='arrow' className='flex w-full justify-center text-muted-foreground'>
+            <ArrowRight className='size-3.5' />
+          </span>,
+          <ResourcePicker
+            key='target'
+            value={mapping.entityDefinitionId ? [mapping.entityDefinitionId] : []}
+            onChange={() => {}}
+            entityDefinedOnly
+            emptyLabel='Target def…'
+            onSelectSingle={(entityDefinitionId) =>
+              setMappingTarget(streamId, {
+                mappingId: mapping.id,
+                entityDefinitionId,
+                targetMode,
+                linkMode,
+              })
             }
-            onToggleMatch={toggleMatch}
-            onFanOut={materializeChild}
-            // Child-mapping recursion context.
+            triggerProps={{ className: 'h-9 w-full justify-between rounded-none px-2 text-xs' }}
+          />,
+          <div key='actions' className='flex w-full items-center justify-end gap-1 pr-1'>
+            <SimpleTooltip
+              side='left'
+              delayDuration={500}
+              content={
+                targetMode === 'owned'
+                  ? 'Owned — connector manages this def (archive on orphan). Click to switch to contributing.'
+                  : 'Contributing — writes into a pre-existing def per-field, never archives. Click to switch to owned.'
+              }>
+              <button
+                type='button'
+                onClick={toggleTargetMode}
+                className='inline-flex shrink-0 items-center'>
+                <Badge
+                  variant={targetMode === 'owned' ? 'violet' : 'amber'}
+                  size='xs'
+                  className='cursor-pointer'>
+                  {targetMode}
+                </Badge>
+              </button>
+            </SimpleTooltip>
+            {/* Every mapping is removable now — no auto-seeded spine. Deleting a
+              mapping drops back to the passive source row it was created from. */}
+            <TreeRowButton
+              variant='destructive'
+              tooltipText='Remove mapping'
+              onClick={() => removeMapping(streamId, mapping.id)}>
+              <Trash2 />
+            </TreeRowButton>
+          </div>,
+        ]}>
+        {sourceTree.length === 0 ? (
+          <div
+            style={{ paddingLeft: `${(depth + 1) * 1.5}rem` }}
+            className='px-1 py-1 text-[11px] text-muted-foreground'>
+            No source schema yet — generate or edit the schema above to map fields.
+          </div>
+        ) : (
+          sourceTree.map((node) => (
+            <SourceNode
+              key={node.path}
+              node={node}
+              depth={depth + 1}
+              mapping={mapping}
+              targetMode={targetMode}
+              targetFields={targetFields}
+              sourceToEntry={sourceToEntry}
+              usedTargetKeys={usedTargetKeys}
+              matchKeys={matchKeys}
+              childByNodePath={childByNodePath}
+              onAssign={assignTarget}
+              onClear={clearEntry}
+              onMergeChange={(id, value) =>
+                patchEntry(id, { mergeStrategy: value as FieldMapping['mergeStrategy'] })
+              }
+              onToggleMatch={toggleMatch}
+              onFanOut={materializeChild}
+              // Child-mapping recursion context.
+              streamId={streamId}
+              streamKey={streamKey}
+              sourcePaths={sourcePaths}
+              byMappingId={byMappingId}
+              childrenOf={childrenOf}
+              mutations={mutations}
+            />
+          ))
+        )}
+
+        {/* Formula rows — one per non-bare field mapping (a computed target field),
+          plus an add row. Reference-mode mappings only link, so no formulas. */}
+        {linkMode !== 'reference' && (
+          <>
+            {formulaEntries.map((e) => (
+              <FormulaRow
+                key={e.id}
+                depth={depth + 1}
+                entityDefinitionId={mapping.entityDefinitionId}
+                targetKey={e.targetFieldKey ?? ''}
+                label={
+                  e.targetFieldKey
+                    ? (targetFields.find((f) => f.key === e.targetFieldKey)?.label ??
+                      e.targetFieldKey)
+                    : ''
+                }
+                expression={e.expression}
+                mergeStrategy={e.mergeStrategy ?? 'overwrite'}
+                // Exclude keys other entries already bind, so a formula can't be
+                // retargeted onto a field already in use.
+                excludeKeys={
+                  e.targetFieldKey
+                    ? new Set([...usedTargetKeys].filter((k) => k !== e.targetFieldKey))
+                    : usedTargetKeys
+                }
+                onEdit={() => setCalcEntryId(e.id)}
+                onRetarget={(newKey) => retargetEntry(e.id, newKey)}
+                onMergeChange={(value) =>
+                  patchEntry(e.id, { mergeStrategy: value as FieldMapping['mergeStrategy'] })
+                }
+                onClear={() => clearEntry(e.id)}
+              />
+            ))}
+            {mapping.entityDefinitionId != null && (
+              <GridTreeRow
+                columns={MAPPING_COLS}
+                depth={depth + 1}
+                icon={<Plus className='size-3.5 text-muted-foreground/50' />}
+                // "Add formula" persists a fresh draft row (no target yet) and opens
+                // the expression dialog on it — you author the formula first and pick
+                // the destination field after (or leave it unassigned for later).
+                title={
+                  <Button
+                    variant='transparent'
+                    onClick={addFormula}
+                    className='h-9 w-full justify-start rounded-none px-1 text-sm text-muted-foreground hover:bg-primary/5'>
+                    Add formula
+                  </Button>
+                }
+              />
+            )}
+          </>
+        )}
+
+        {/* Child mappings whose branch isn't in the current schema — appended so
+          they don't silently disappear (and stay removable). */}
+        {orphanChildren.map((child) => (
+          <MappingNode
+            key={child.id}
+            mapping={child}
+            depth={depth + 1}
             streamId={streamId}
-            streamKey={streamKey}
             sourcePaths={sourcePaths}
             byMappingId={byMappingId}
             childrenOf={childrenOf}
             mutations={mutations}
-            onPromoteField={onPromoteField}
+            streamKey={streamKey}
           />
-        ))
-      )}
+        ))}
+      </GridTreeRow>
 
-      {/* Formula rows — one per non-bare field mapping (a computed target field),
-          plus an add row. Reference-mode mappings only link, so no formulas. */}
-      {linkMode !== 'reference' && (
-        <>
-          {formulaEntries.map(([targetKey, fm]) => (
-            <FormulaRow
-              key={targetKey}
-              depth={depth + 1}
-              entityDefinitionId={mapping.entityDefinitionId}
-              targetKey={targetKey}
-              label={targetFields.find((f) => f.key === targetKey)?.label ?? targetKey}
-              expression={fm.expression}
-              mergeStrategy={mergeStrategies[targetKey] ?? 'overwrite'}
-              onEdit={() => onPromoteField(mapping.id, targetKey)}
-              onRetarget={(newKey) => retargetFormula(targetKey, newKey)}
-              onMergeChange={(value) =>
-                setMergeStrategies(streamId, mapping.id, { ...mergeStrategies, [targetKey]: value })
-              }
-              onClear={() => clearTarget(targetKey)}
-            />
-          ))}
-          {mapping.entityDefinitionId != null && (
-            <GridTreeRow
-              columns={MAPPING_COLS}
-              depth={depth + 1}
-              icon={<Plus className='size-3.5 text-muted-foreground/50' />}
-              title={<span className='text-sm text-muted-foreground'>Add formula</span>}
-              onToggleOpen={() => onPromoteField(mapping.id, '')}
-            />
-          )}
-        </>
-      )}
-
-      {/* Child mappings whose branch isn't in the current schema — appended so
-          they don't silently disappear (and stay removable). */}
-      {orphanChildren.map((child) => (
-        <MappingNode
-          key={child.id}
-          mapping={child}
-          depth={depth + 1}
-          streamId={streamId}
-          sourcePaths={sourcePaths}
-          byMappingId={byMappingId}
-          childrenOf={childrenOf}
-          mutations={mutations}
-          onPromoteField={onPromoteField}
-          streamKey={streamKey}
-        />
-      ))}
-    </GridTreeRow>
+      {/* The formula editor — opened by a formula row's source button or the
+          "Add formula" row. Source paths are scoped to this mapping's subtree
+          (matching the runtime). */}
+      <FieldCalcDialog
+        open={calcEntryId !== null}
+        onOpenChange={(o) => !o && setCalcEntryId(null)}
+        targetLabel={
+          calcEntry?.targetFieldKey
+            ? (targetFields.find((f) => f.key === calcEntry.targetFieldKey)?.label ??
+              calcEntry.targetFieldKey)
+            : ''
+        }
+        expression={calcEntry?.expression ?? ''}
+        sourcePaths={leafPathsUnder(sourcePaths, prefix)}
+        onSave={(expression, sourceFields) => {
+          if (!calcEntryId) return
+          patchEntry(calcEntryId, { expression, sourceFields })
+        }}
+      />
+    </>
   )
 }
 
@@ -410,15 +447,18 @@ interface SourceNodeProps {
   mapping: Mapping
   targetMode: 'owned' | 'contributing'
   targetFields: ResourceField[]
-  sourceToTarget: Map<string, string>
-  mergeStrategies: Record<string, string>
+  /** Reverse index: source path → the bare-token binding entry on it. */
+  sourceToEntry: Map<string, FieldMapping>
+  /** Every target key bound by some entry — leaf pickers exclude the rest. */
+  usedTargetKeys: Set<string>
   /** Target keys flagged as secondary identity-match keys. */
   matchKeys: Set<string>
   childByNodePath: Map<string, Mapping>
   onAssign: (sourcePath: string, targetKey: string) => void
-  onClear: (targetKey: string) => void
-  onMergeChange: (targetKey: string, value: string) => void
-  onToggleMatch: (targetKey: string) => void
+  /** Per-entry mutations operate on the binding's stable id. */
+  onClear: (entryId: string) => void
+  onMergeChange: (entryId: string, value: string) => void
+  onToggleMatch: (entryId: string) => void
   onFanOut: (node: SourceTreeNode, entityDefinitionId: string) => void
   // Child-mapping recursion context (forwarded to a nested MappingNode).
   streamId: string
@@ -427,7 +467,6 @@ interface SourceNodeProps {
   byMappingId: Map<string, Mapping>
   childrenOf: Map<string | null, Mapping[]>
   mutations: ReturnType<typeof useStreamMutations>
-  onPromoteField: (mappingId: string, fieldKey: string) => void
 }
 
 /**
@@ -443,8 +482,8 @@ function SourceNode(props: SourceNodeProps) {
     mapping,
     targetMode,
     targetFields,
-    sourceToTarget,
-    mergeStrategies,
+    sourceToEntry,
+    usedTargetKeys,
     matchKeys,
     childByNodePath,
     onAssign,
@@ -468,7 +507,6 @@ function SourceNode(props: SourceNodeProps) {
         byMappingId={props.byMappingId}
         childrenOf={props.childrenOf}
         mutations={props.mutations}
-        onPromoteField={props.onPromoteField}
       />
     )
   }
@@ -488,10 +526,15 @@ function SourceNode(props: SourceNodeProps) {
     )
   }
 
-  const assignedTargetKey = sourceToTarget.get(node.path)
+  const entry = sourceToEntry.get(node.path)
+  const assignedTargetKey = entry?.targetFieldKey ?? undefined
   const assignedLabel = assignedTargetKey
     ? targetFields.find((f) => f.key === assignedTargetKey)?.label
     : undefined
+  // Exclude target keys bound elsewhere (keep this leaf's own key selectable).
+  const excludeKeys = assignedTargetKey
+    ? new Set([...usedTargetKeys].filter((k) => k !== assignedTargetKey))
+    : usedTargetKeys
   return (
     <SourceLeafRow
       depth={depth}
@@ -499,15 +542,14 @@ function SourceNode(props: SourceNodeProps) {
       entityDefinitionId={mapping.entityDefinitionId}
       assignedLabel={assignedLabel}
       assignedTargetKey={assignedTargetKey}
+      excludeKeys={excludeKeys}
       canCreate={targetMode === 'owned'}
       isMatch={assignedTargetKey ? matchKeys.has(assignedTargetKey) : false}
-      mergeStrategy={
-        assignedTargetKey ? (mergeStrategies[assignedTargetKey] ?? 'overwrite') : 'overwrite'
-      }
+      mergeStrategy={entry?.mergeStrategy ?? 'overwrite'}
       onAssign={(targetKey) => onAssign(node.path, targetKey)}
-      onClear={() => assignedTargetKey && onClear(assignedTargetKey)}
-      onMergeChange={(value) => assignedTargetKey && onMergeChange(assignedTargetKey, value)}
-      onToggleMatch={() => assignedTargetKey && onToggleMatch(assignedTargetKey)}
+      onClear={() => entry && onClear(entry.id)}
+      onMergeChange={(value) => entry && onMergeChange(entry.id, value)}
+      onToggleMatch={() => entry && onToggleMatch(entry.id)}
     />
   )
 }
@@ -522,9 +564,11 @@ interface FormulaRowProps {
   targetKey: string
   /** Resolved label for the target field. */
   label: string
-  /** The calc expression (shown as a preview; click the row to edit). */
+  /** The calc expression (shown on the source button; click it to edit). */
   expression: string
   mergeStrategy: string
+  /** Target keys bound by other entries — excluded from the retarget picker. */
+  excludeKeys?: Set<string>
   onEdit: () => void
   /** Re-point the formula at a different target field key. */
   onRetarget: (newKey: string) => void
@@ -535,9 +579,10 @@ interface FormulaRowProps {
 /**
  * A computed target field (plan 10 §3.2) — a non-bare `fieldMappings` entry that
  * can reference many source fields, so it lives on its own row rather than on a
- * source leaf. The source cell shows the calc expression (click it to edit); the
- * target column is a field picker (a formula produces a scalar — string-typed for
- * the compat filter). No Match toggle (no single source path to match identity on).
+ * source leaf. Mirrors a leaf row: the source cell is a button (showing the calc
+ * expression, or "Set formula…") that opens {@link FieldCalcDialog}; the target
+ * column is a field picker (a formula produces a scalar — string-typed for the
+ * compat filter). No Match toggle (no single source path to match identity on).
  */
 function FormulaRow({
   depth,
@@ -546,6 +591,7 @@ function FormulaRow({
   label,
   expression,
   mergeStrategy,
+  excludeKeys,
   onEdit,
   onRetarget,
   onMergeChange,
@@ -556,9 +602,18 @@ function FormulaRow({
       columns={MAPPING_COLS}
       depth={depth}
       icon={<FunctionSquare className='size-3.5' />}
-      // Source cell = the computed expression; target column = the field it writes.
-      title={<span className='font-mono text-xs'>{expression}</span>}
-      onToggleOpen={onEdit}
+      // Source cell = a button that opens the formula dialog (shows the expression
+      // when set); target column = the field it writes into.
+      title={
+        <Button
+          variant='transparent'
+          onClick={onEdit}
+          className={`h-9 w-full justify-start rounded-none px-1 text-xs hover:bg-primary/5 ${
+            expression ? 'font-mono' : 'text-muted-foreground'
+          }`}>
+          <span className='truncate'>{expression || 'Set formula…'}</span>
+        </Button>
+      }
       cells={[
         <span key='arrow' className='flex w-full justify-center text-muted-foreground'>
           <ArrowRight className='size-3.5' />
@@ -573,6 +628,7 @@ function FormulaRow({
           sourcePath=''
           assignedKey={targetKey || undefined}
           assignedLabel={label}
+          excludeKeys={excludeKeys}
           canCreate={false}
           onAssign={onRetarget}
           onClear={onClear}

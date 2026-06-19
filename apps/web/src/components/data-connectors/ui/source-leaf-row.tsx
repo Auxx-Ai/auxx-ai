@@ -36,6 +36,8 @@ interface SourceLeafRowProps {
   /** Resolved label for the bound key (for the chip). */
   assignedLabel: string | undefined
   assignedTargetKey: string | undefined
+  /** Target keys bound by other entries — excluded from this leaf's picker. */
+  excludeKeys?: Set<string>
   mergeStrategy: string
   /** Owned defs allow inline quick-create (plan decision 3). */
   canCreate: boolean
@@ -60,6 +62,7 @@ export function SourceLeafRow({
   entityDefinitionId,
   assignedLabel,
   assignedTargetKey,
+  excludeKeys,
   mergeStrategy,
   canCreate,
   isMatch,
@@ -102,6 +105,7 @@ export function SourceLeafRow({
           sourcePath={node.path}
           assignedKey={assignedTargetKey}
           assignedLabel={assignedLabel}
+          excludeKeys={excludeKeys}
           canCreate={canCreate}
           onAssign={onAssign}
           onClear={onClear}

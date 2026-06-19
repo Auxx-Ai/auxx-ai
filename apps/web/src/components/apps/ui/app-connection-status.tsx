@@ -6,10 +6,11 @@ import { Button } from '@auxx/ui/components/button'
 import { toastError } from '@auxx/ui/components/toast'
 import { CheckCircle, Clock, XCircle } from 'lucide-react'
 import Link from 'next/link'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
+import { ConnectionDetailDialog } from '~/components/connections/ui/connection-detail-dialog'
+import type { DetailMethod } from '~/components/connections/ui/connection-detail-page'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
-import { SecretConnectionForm } from './secret-connection-form'
 
 interface AppConnectionStatusProps {
   appId: string
@@ -89,20 +90,33 @@ export function AppConnectionStatus({
   const isOAuth = connectionDefinition?.connectionType === 'oauth2-code'
   const isSecret = connectionDefinition?.connectionType === 'secret'
 
+  // Synthetic bare-secret method (single API key, no structured variables) for the unified dialog.
+  const secretMethod = useMemo<DetailMethod>(
+    () => ({
+      id: credentialId ?? installationId,
+      label: connectionLabel,
+      description: null,
+      connectionType: 'secret',
+      global: connectionType === 'organization',
+      connectionVariables: [],
+    }),
+    [credentialId, installationId, connectionLabel, connectionType]
+  )
+
   const secretForm = isSecret ? (
-    <SecretConnectionForm
+    <ConnectionDetailDialog
       open={dialogOpen}
       onOpenChange={setDialogOpen}
-      connectionLabel={connectionLabel}
-      connectionType={connectionType}
+      title={`Connect ${connectionLabel}`}
+      method={secretMethod}
       pending={saveSecret.isPending}
-      onSubmit={(secret) =>
+      onSubmit={(payload) =>
         saveSecret.mutate({
           appId,
           installationId,
           appName: connectionLabel,
           connectionType,
-          secret,
+          secret: payload.secret,
         })
       }
     />

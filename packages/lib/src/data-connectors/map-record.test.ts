@@ -17,8 +17,7 @@ function mapping(over: Partial<DecodedMapping> & { id?: string }): DecodedMappin
     parentMappingId: null,
     relationshipFieldKey: null,
     orphanBehavior: 'ignore',
-    fieldMappings: {},
-    mergeStrategies: {},
+    fieldMappings: [],
     ...rest,
   }
 }
@@ -35,9 +34,14 @@ function rawPayload(fields: unknown): ConnectorRecord {
 describe('mapRecord', () => {
   it('resolves a root mapping field path relative to the whole record', () => {
     const m = mapping({
-      fieldMappings: {
-        total: { expression: '{total_price}', sourceFields: { total_price: 'total_price' } },
-      },
+      fieldMappings: [
+        {
+          id: 'e1',
+          targetFieldKey: 'total',
+          expression: '{total_price}',
+          sourceFields: { total_price: 'total_price' },
+        },
+      ],
     })
 
     const writes = mapRecord([m], source({ total_price: '49.99', customer: { email: 'a@b.com' } }))
@@ -53,7 +57,9 @@ describe('mapRecord', () => {
     const m = mapping({
       id: 'li',
       rootPath: 'line_items[]',
-      fieldMappings: { sku: { expression: '{sku}', sourceFields: { sku: 'sku' } } },
+      fieldMappings: [
+        { id: 'e1', targetFieldKey: 'sku', expression: '{sku}', sourceFields: { sku: 'sku' } },
+      ],
     })
 
     const writes = mapRecord(
@@ -77,15 +83,17 @@ describe('mapRecord', () => {
       id: 'cust',
       rootPath: 'customer',
       targetMode: 'contributing',
-      fieldMappings: {
+      fieldMappings: [
         // The bound field IS the identity match: source path 'email' (relative to
         // rootPath 'customer') → target field 'contact_email', flagged `match`.
-        contact_email: {
+        {
+          id: 'e1',
+          targetFieldKey: 'contact_email',
           expression: '{email}',
           sourceFields: { email: 'email' },
           match: { normalize: 'email' },
         },
-      },
+      ],
     })
 
     const writes = mapRecord([m], source({ customer: { email: 'a@b.com', name: 'Acme' } }))
@@ -101,7 +109,14 @@ describe('mapRecord', () => {
     // selects records with rootPath `[]`, no connector-provided id hint.
     const m = mapping({
       rootPath: '[]',
-      fieldMappings: { title: { expression: '{title}', sourceFields: { title: 'title' } } },
+      fieldMappings: [
+        {
+          id: 'e1',
+          targetFieldKey: 'title',
+          expression: '{title}',
+          sourceFields: { title: 'title' },
+        },
+      ],
     })
 
     const writes = mapRecord(
@@ -125,7 +140,9 @@ describe('mapRecord', () => {
       rootPath: 'line_items[]',
       parentMappingId: 'order',
       relationshipFieldKey: 'line_items',
-      fieldMappings: { sku: { expression: '{sku}', sourceFields: { sku: 'sku' } } },
+      fieldMappings: [
+        { id: 'e1', targetFieldKey: 'sku', expression: '{sku}', sourceFields: { sku: 'sku' } },
+      ],
     })
 
     const writes = mapRecord(

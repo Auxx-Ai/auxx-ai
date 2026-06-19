@@ -63,4 +63,64 @@ describe('applyAuth', () => {
     )
     expect(input.headers).toEqual({})
   })
+
+  describe('superset — multi-insertion + static headers', () => {
+    it('applies multiple insertions in order (Supabase apikey + Authorization)', () => {
+      const out = applyAuth(
+        req(),
+        { value: 'service-key' },
+        {
+          insertions: [
+            { in: 'header', name: 'apikey', format: '{value}' },
+            { in: 'header', name: 'Authorization', format: 'Bearer {value}' },
+          ],
+        }
+      )
+      expect(out.headers.apikey).toBe('service-key')
+      expect(out.headers.Authorization).toBe('Bearer service-key')
+    })
+
+    it('merges constant static headers verbatim (Notion-Version)', () => {
+      const out = applyAuth(
+        req(),
+        { value: 'tok' },
+        {
+          insertions: [{ in: 'header', name: 'Authorization', format: 'Bearer {value}' }],
+          headers: { 'Notion-Version': '2022-06-28' },
+        }
+      )
+      expect(out.headers.Authorization).toBe('Bearer tok')
+      expect(out.headers['Notion-Version']).toBe('2022-06-28')
+    })
+
+    it('does not interpolate static headers (they are constants)', () => {
+      const out = applyAuth(
+        req(),
+        { value: 'tok', fields: { x: 'leak' } },
+        {
+          insertions: [],
+          headers: { 'X-Static': '{value} {x}' },
+        }
+      )
+      expect(out.headers['X-Static']).toBe('{value} {x}')
+    })
+
+    it('basic auth reads custom userField/passwordField', () => {
+      const out = applyAuth(
+        req(),
+        { value: '', fields: { account_sid: 'AC1', auth_token: 'tok' } },
+        { in: 'basic', userField: 'account_sid', passwordField: 'auth_token' }
+      )
+      expect(out.headers.Authorization).toBe(`Basic ${Buffer.from('AC1:tok').toString('base64')}`)
+    })
+
+    it('query insertion supports a format template', () => {
+      const out = applyAuth(
+        req(),
+        { value: 'k', fields: { env: 'prod' } },
+        { in: 'query', name: 'token', format: '{value}-{env}' }
+      )
+      expect(out.url).toBe('https://api.example.com/v1?token=k-prod')
+    })
+  })
 })

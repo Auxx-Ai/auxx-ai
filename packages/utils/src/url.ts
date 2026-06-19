@@ -68,6 +68,40 @@ export function deriveTitleFromUrl(url: string): string {
   }
 }
 
+// ─── {key} template interpolation ────────────────────────────────────
+//
+// The canonical `{key}` placeholder substitution shared across the connection
+// runtime — auth header/query values, base-URL templates — and (eventually) the
+// oauth2 connect flow. One implementation so the encode/no-encode decision is a
+// caller flag, not a fork.
+
+/**
+ * Substitute `{key}` placeholders in `template` from a `vars` map.
+ *
+ * `encode` URI-encodes each substituted value — use it only when a value lands in
+ * a URL query param or path segment where reserved characters must be escaped.
+ * Default `false`: base-URL templates and header values are inserted raw, because
+ * a value that is itself a URL (e.g. a Supabase project URL) or a path-safe token
+ * (e.g. a Telegram bot token) must not be percent-encoded.
+ */
+export function interpolateTemplate(
+  template: string,
+  vars: Record<string, string>,
+  opts: { encode?: boolean } = {}
+): string {
+  let result = template
+  for (const [key, value] of Object.entries(vars)) {
+    const replacement = opts.encode ? encodeURIComponent(value) : value
+    result = result.replaceAll(`{${key}}`, replacement)
+  }
+  return result
+}
+
+/** The `{key}` placeholder names left unresolved in `template` (for validation). */
+export function unresolvedPlaceholders(template: string): string[] {
+  return [...template.matchAll(/\{([^}]+)\}/g)].map((m) => m[1]!)
+}
+
 // ─── auxx:// internal URI scheme ─────────────────────────────────────
 //
 // Internal references inside the product use opaque `auxx://...` URIs that

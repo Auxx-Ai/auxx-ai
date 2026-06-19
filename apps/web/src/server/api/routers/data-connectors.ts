@@ -101,15 +101,6 @@ const requestConfigSchema = z.object({
   pagination: paginationSchema.optional(),
 })
 
-const fieldMappingSchema = z.object({
-  expression: z.string(),
-  sourceFields: z.record(z.string(), z.string()),
-  // Present → this bound field is also a secondary identity-match key.
-  match: z
-    .object({ normalize: z.enum(['email', 'phone', 'domain', 'none']).optional() })
-    .optional(),
-})
-
 const mergeStrategySchema = z.enum([
   'overwrite',
   'fill_blank',
@@ -117,6 +108,21 @@ const mergeStrategySchema = z.enum([
   'manual_review',
   'ignore',
 ])
+
+// One binding entry. Identity is the stable `id`; `targetFieldKey` is nullable
+// (a null entry is an unassigned draft the runtime skips). `mergeStrategy` is
+// folded in (no parallel map).
+const fieldMappingSchema = z.object({
+  id: z.string(),
+  targetFieldKey: z.string().nullable(),
+  expression: z.string(),
+  sourceFields: z.record(z.string(), z.string()),
+  // Present → this bound field is also a secondary identity-match key.
+  match: z
+    .object({ normalize: z.enum(['email', 'phone', 'domain', 'none']).optional() })
+    .optional(),
+  mergeStrategy: mergeStrategySchema.optional(),
+})
 
 export const dataConnectorRouter = createTRPCRouter({
   // ── Reads (protected) ─────────────────────────────────────────────────────
@@ -475,8 +481,7 @@ export const dataConnectorRouter = createTRPCRouter({
         entityDefinitionId: z.string(),
         parentMappingId: z.string().nullish(),
         relationshipFieldKey: z.string().nullish(),
-        fieldMappings: z.record(z.string(), fieldMappingSchema).optional(),
-        mergeStrategies: z.record(z.string(), mergeStrategySchema).optional(),
+        fieldMappings: z.array(fieldMappingSchema).optional(),
         orphanBehavior: z.enum(['archive', 'mark_deleted', 'ignore']).optional(),
       })
     )
@@ -497,8 +502,7 @@ export const dataConnectorRouter = createTRPCRouter({
         orphanBehavior: z.enum(['archive', 'mark_deleted', 'ignore']).optional(),
         entityDefinitionId: z.string().nullish(),
         targetMode: z.enum(['owned', 'contributing']).optional(),
-        fieldMappings: z.record(z.string(), fieldMappingSchema).optional(),
-        mergeStrategies: z.record(z.string(), mergeStrategySchema).optional(),
+        fieldMappings: z.array(fieldMappingSchema).optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {

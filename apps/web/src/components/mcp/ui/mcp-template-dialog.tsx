@@ -12,6 +12,7 @@ import { Plug } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useMemo, useState } from 'react'
 import { AppIcon } from '~/components/apps/ui/app-icon'
+import { ConnectionVariableFields } from '~/components/connections/ui/connection-variable-fields'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { TemplateGalleryDialog } from '~/components/templates/ui'
 import { BaseType } from '~/components/workflow/types'
@@ -20,7 +21,6 @@ import type { RouterOutputs } from '~/trpc/react'
 import { api } from '~/trpc/react'
 import { useMcpOAuthPopup } from '../hooks/use-mcp-oauth-popup'
 import { useMcpServers } from '../hooks/use-mcp-servers'
-import { ConnectionVariableFields } from './connection-variable-fields'
 
 type McpTemplate = RouterOutputs['mcp']['listTemplates']['templates'][number]
 

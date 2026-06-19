@@ -169,8 +169,10 @@ export {
   buildAuxxArticleUrl,
   deriveTitleFromUrl,
   formatUrlForDisplay,
+  interpolateTemplate,
   isAuxxUrl,
   isLikelyUrlInput,
   normalizeUrl,
   parseAuxxArticleUrl,
+  unresolvedPlaceholders,
 } from './url'

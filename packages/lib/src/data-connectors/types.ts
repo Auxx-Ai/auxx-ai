@@ -209,8 +209,18 @@ export type FieldMergeStrategy =
   | 'manual_review'
   | 'ignore'
 
-/** A single target-field mapping (CALC shape, reused from CALC custom fields). */
+/**
+ * One binding entry, stored as an element of the `fieldMappings` ARRAY on a
+ * mapping (CALC shape, reused from CALC custom fields). Identity is the stable
+ * `id`, NOT the target field — so a binding persists before (or without) a
+ * target, and retarget/merge ride along without re-keying. The array gives
+ * ordering; nothing keys by it (the runtime iterates; the UI finds by id).
+ */
 export interface FieldMapping {
+  /** Stable entry id (generateId). React key + dialog/patch handle; never reused. */
+  id: string
+  /** Target field key this binding writes into; `null` = unassigned draft → runtime skips it. */
+  targetFieldKey: string | null
   expression: string
   sourceFields: Record<string, string>
   /**
@@ -222,6 +232,8 @@ export interface FieldMapping {
    * toggle time (email/phone/domain), else 'none'.
    */
   match?: { normalize?: IdentityNormalize }
+  /** Per-field write behavior (folded in from the old parallel map). Absent ⇒ 'overwrite'. */
+  mergeStrategy?: FieldMergeStrategy
   /**
    * Provisioning hint for a connector-introduced target field (05d). Consumed by
    * `provisionConnectorMappings` to create the field with the declared type/name

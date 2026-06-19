@@ -15,6 +15,7 @@ import {
   methodNeedsFields,
 } from './connection-detail-page'
 import { appTarget, type ProviderRow, platformTarget } from './connection-targets'
+import { validateConnectionVariables } from './connection-variable-validation'
 
 export type { ProviderRow }
 
@@ -263,11 +264,12 @@ export function AddConnectionDialog({
   }
 
   function validate(method: Method): boolean {
-    const next: Record<string, string> = {}
-    for (const v of method.connectionVariables ?? []) {
-      if (v.required !== false && !values[v.key]?.trim()) next[v.key] = `${v.label} is required`
-    }
-    if (methodIsBareSecret(method) && !token.trim()) next.__token = 'A value is required'
+    const next = validateConnectionVariables({
+      variables: method.connectionVariables ?? [],
+      values,
+      requireToken: methodIsBareSecret(method),
+      token,
+    })
     setErrors(next)
     return Object.keys(next).length === 0
   }

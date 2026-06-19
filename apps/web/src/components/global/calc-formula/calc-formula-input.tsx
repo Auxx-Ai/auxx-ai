@@ -3,13 +3,24 @@
 'use client'
 
 import { Button } from '@auxx/ui/components/button'
-import { Field, FieldDescription, FieldLabel } from '@auxx/ui/components/field'
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandGroupLabel,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from '@auxx/ui/components/command'
+import { Field, FieldLabel } from '@auxx/ui/components/field'
+import { Kbd } from '@auxx/ui/components/kbd'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
+import { TooltipError } from '@auxx/ui/components/tooltip'
 import { cn } from '@auxx/ui/lib/utils'
 import { getAvailableFunctions } from '@auxx/utils/calc-expression'
 import { EditorContent } from '@tiptap/react'
-import { AlertCircle, HelpCircle } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { HelpCircle } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
 import { InlinePickerPopover, useActivePicker } from '~/components/editor/inline-picker'
 import type { CalcTokenSource } from './token-source'
 import { useCalcFormula } from './use-calc-formula'
@@ -46,12 +57,31 @@ export function CalcFormulaInput({
   const [showFunctions, setShowFunctions] = useState(false)
   const functions = useMemo(() => getAvailableFunctions(), [])
 
-  const { editor, validation, insertField, insertFunction, closePicker } = useCalcFormula({
+  const {
+    editor,
+    expression: liveExpression,
+    validation,
+    insertField,
+    insertFunction,
+    closePicker,
+  } = useCalcFormula({
     initialExpression: expression,
     onExpressionChange: onChange,
     renderBadge: tokenSource.renderBadge,
     placeholder,
   })
+
+  // Debounce error surfacing: while the user is actively typing we don't want to
+  // flash transient parse errors (e.g. "Unexpected end of expression" the moment
+  // they type `concat(`). `settled` only catches up to the live expression after
+  // a typing pause, so errors appear once they stop — not on every keystroke. A
+  // pre-existing invalid expression still shows immediately (settled == live on mount).
+  const [settled, setSettled] = useState(liveExpression)
+  useEffect(() => {
+    const t = setTimeout(() => setSettled(liveExpression), 500)
+    return () => clearTimeout(t)
+  }, [liveExpression])
+  const hasSettled = settled === liveExpression
 
   /** Insert a function from the header help popover (not the `{` picker). */
   const handleInsertFunction = (funcName: string) => {
@@ -70,13 +100,17 @@ export function CalcFormulaInput({
   // hook's validation is live (driven by the editor), and it returns the
   // "required" sentinel for an empty expression — so that one check covers both
   // the empty gate and the live-vs-initial staleness the prop can't.
-  const showError = !validation.isValid && validation.error !== 'Expression is required'
+  const showError =
+    hasSettled && !validation.isValid && validation.error !== 'Expression is required'
 
   return (
     <Field>
-      {(label || showFunctionsHelp) && (
+      {(label || showFunctionsHelp || showError) && (
         <div className='flex items-center justify-between'>
-          {label ? <FieldLabel>{label}</FieldLabel> : <span />}
+          <div className='flex items-center gap-1.5'>
+            {label ? <FieldLabel>{label}</FieldLabel> : <span />}
+            {showError && <TooltipError text={validation.error ?? ''} size='sm' />}
+          </div>
           {showFunctionsHelp && (
             <Popover open={showFunctions} onOpenChange={setShowFunctions}>
               <PopoverTrigger asChild>
@@ -85,25 +119,29 @@ export function CalcFormulaInput({
                   Functions
                 </Button>
               </PopoverTrigger>
-              <PopoverContent className='w-96 max-h-80 overflow-y-auto' align='end'>
-                <div className='space-y-2'>
-                  <h4 className='font-medium text-sm'>Available Functions</h4>
-                  <p className='text-xs text-muted-foreground mb-2'>
-                    Click to insert at cursor position
-                  </p>
-                  {functions.map((fn) => (
-                    <div
-                      key={fn.name}
-                      className='p-2 border rounded hover:bg-muted cursor-pointer'
-                      onClick={() => handleInsertFunction(fn.name)}>
-                      <div className='font-mono text-sm text-primary-900'>{fn.signature}</div>
-                      <div className='text-xs text-muted-foreground'>{fn.description}</div>
-                      <div className='text-xs text-muted-foreground mt-1'>
-                        Example: <code className='bg-muted px-1 rounded'>{fn.example}</code>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+              <PopoverContent className='w-96 p-0' align='end'>
+                <Command>
+                  <CommandInput placeholder='Search functions…' />
+                  <CommandList className='max-h-80'>
+                    <CommandEmpty>No functions found.</CommandEmpty>
+                    <CommandGroup>
+                      <CommandGroupLabel>Available functions</CommandGroupLabel>
+                      {functions.map((fn) => (
+                        <CommandItem
+                          key={fn.name}
+                          value={`${fn.name} ${fn.description}`}
+                          onSelect={() => handleInsertFunction(fn.name)}
+                          className='flex-col items-start gap-0.5 rounded-md'>
+                          <span className='font-mono text-sm text-primary-900'>{fn.signature}</span>
+                          <span className='text-xs text-muted-foreground'>{fn.description}</span>
+                          <span className='text-xs text-muted-foreground'>
+                            Example: <code className='bg-muted px-1 rounded'>{fn.example}</code>
+                          </span>
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
               </PopoverContent>
             </Popover>
           )}
@@ -113,10 +151,16 @@ export function CalcFormulaInput({
       {/* TipTap editor with the `{` picker popover */}
       <div
         className={cn(
-          'relative border rounded-md bg-background',
+          'relative flex flex-col rounded-md border bg-background px-0 py-1',
           showError && 'border-destructive'
         )}>
-        <EditorContent editor={editor} className='min-h-[80px]' />
+        <EditorContent
+          editor={editor}
+          className='flex flex-1 flex-col min-h-[80px] [&_.ProseMirror]:flex-1'
+        />
+        <div className='flex text-sm gap-1 text-muted-foreground px-2 py-1'>
+          Type <Kbd variant='outline'>{'{'}</Kbd> to insert a field, or use functions like concat().
+        </div>
       </div>
 
       {editor && (
@@ -137,18 +181,6 @@ export function CalcFormulaInput({
           })}
         </InlinePickerPopover>
       )}
-
-      {showError && (
-        <div className='flex items-center gap-1 text-sm text-destructive mt-1'>
-          <AlertCircle className='size-4' />
-          {validation.error}
-        </div>
-      )}
-
-      <FieldDescription>
-        Type <kbd className='px-1 bg-muted rounded text-xs'>{'{'}</kbd> to insert a field reference.
-        Use functions like concat(), add(), multiply().
-      </FieldDescription>
     </Field>
   )
 }

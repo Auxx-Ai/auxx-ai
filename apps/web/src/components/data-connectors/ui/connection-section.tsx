@@ -136,7 +136,7 @@ export function ConnectionSection({ connector }: ConnectionSectionProps) {
         installedApps={connectableApps}
         isLoading={providersLoading}
         restrictTo={restrictTo}
-        onConnected={() => void utils.credentials.list.invalidate()}
+        onConnected={() => void utils.connections.list.invalidate()}
         onConnectedCredential={(credentialId) =>
           bindCredential(credentialId, restrictedInstallationId)
         }

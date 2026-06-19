@@ -70,7 +70,6 @@ const SYNC_MODE_COPY: Record<
 interface StreamConfigPanelProps {
   connector: Connector
   stream: Stream
-  onPromoteField: (mappingId: string, fieldKey: string) => void
 }
 
 const EMPTY_SCHEMA = { type: 'object', properties: {} }
@@ -81,7 +80,7 @@ const EMPTY_SCHEMA = { type: 'object', properties: {} }
  * The schema is derived from the sample ("Use this shape as the schema") or
  * hand-edited; the mapping fan-out tree projects subtrees onto target defs.
  */
-export function StreamConfigPanel({ connector, stream, onPromoteField }: StreamConfigPanelProps) {
+export function StreamConfigPanel({ connector, stream }: StreamConfigPanelProps) {
   // Branch on the persisted definitionKind (05c §7), not a `type` prefix sniff.
   const isGenericRest = connector.definitionKind !== 'app'
 
@@ -307,7 +306,6 @@ export function StreamConfigPanel({ connector, stream, onPromoteField }: StreamC
             streamKey={stream.streamKey ?? ''}
             mappings={stream.mappings}
             sourcePaths={sourcePaths}
-            onPromoteField={onPromoteField}
           />
         </Section>
       </div>

@@ -4,9 +4,10 @@
 // node, generic-rest connectors, and future consumers share a single declarative
 // path. DB/email/none connections have authApply: null and never reach here.
 
-import type { AuthApply } from '@auxx/database'
+import type { AuthApply, AuthInsertion } from '@auxx/database'
+import { interpolateTemplate } from '@auxx/utils'
 
-export type { AuthApply }
+export type { AuthApply, AuthInsertion }
 
 /** The canonical bearer-token application: `Authorization: Bearer <token>`. */
 export const BEARER_AUTH: AuthApply = {
@@ -42,21 +43,52 @@ export interface RequestParts {
 
 /** Interpolate {value} (resolved token/secret) and {fieldKey} placeholders. */
 function interpolate(template: string, conn: RuntimeConnectionAuthData): string {
-  const context: Record<string, string> = {
+  return interpolateTemplate(template, {
     ...(conn.fields ?? {}),
     // `value` resolves to the resolved token, falling back to a same-named field.
     value: conn.value || conn.fields?.value || '',
+  })
+}
+
+/** Apply a single credential insertion. Returns a new RequestParts. */
+function applyInsertion(
+  req: RequestParts,
+  conn: RuntimeConnectionAuthData,
+  ins: AuthInsertion
+): RequestParts {
+  const headers = { ...req.headers }
+  let url = req.url
+
+  switch (ins.in) {
+    case 'header': {
+      const name = interpolate(ins.name, conn)
+      const value = ins.format ? interpolate(ins.format, conn) : conn.value
+      if (name) headers[name] = value
+      break
+    }
+    case 'basic': {
+      const user = conn.fields?.[ins.userField ?? 'user'] ?? ''
+      const password = conn.fields?.[ins.passwordField ?? 'password'] ?? ''
+      const encoded = Buffer.from(`${user}:${password}`).toString('base64')
+      headers.Authorization = `Basic ${encoded}`
+      break
+    }
+    case 'query': {
+      const value = ins.format ? interpolate(ins.format, conn) : conn.value
+      const sep = url.includes('?') ? '&' : '?'
+      url = `${url}${sep}${encodeURIComponent(ins.name)}=${encodeURIComponent(value)}`
+      break
+    }
   }
-  let result = template
-  for (const [key, val] of Object.entries(context)) {
-    result = result.replaceAll(`{${key}}`, val)
-  }
-  return result
+
+  return { headers, url }
 }
 
 /**
  * Apply a connection's declarative auth spec to a request. Returns a new
- * RequestParts (does not mutate the input).
+ * RequestParts (does not mutate the input). Supports a single insertion (the
+ * common case) or a multi-insertion spec — each insertion applied in order, then
+ * constant `headers` merged verbatim (no interpolation; they are static).
  */
 export function applyAuth(
   req: RequestParts,
@@ -65,30 +97,16 @@ export function applyAuth(
 ): RequestParts {
   if (!spec) return req
 
-  const headers = { ...req.headers }
-  let url = req.url
-
-  switch (spec.in) {
-    case 'header': {
-      const name = interpolate(spec.name, conn)
-      const value = spec.format ? interpolate(spec.format, conn) : conn.value
-      if (name) headers[name] = value
-      break
-    }
-    case 'basic': {
-      const user = conn.fields?.user ?? ''
-      const password = conn.fields?.password ?? ''
-      const encoded = Buffer.from(`${user}:${password}`).toString('base64')
-      headers.Authorization = `Basic ${encoded}`
-      break
-    }
-    case 'query': {
-      const value = conn.value
-      const sep = url.includes('?') ? '&' : '?'
-      url = `${url}${sep}${encodeURIComponent(spec.name)}=${encodeURIComponent(value)}`
-      break
-    }
+  const insertions = 'insertions' in spec ? spec.insertions : [spec]
+  let out: RequestParts = req
+  for (const ins of insertions) {
+    out = applyInsertion(out, conn, ins)
   }
 
-  return { headers, url }
+  if ('insertions' in spec && spec.headers) {
+    const headers = { ...out.headers, ...spec.headers }
+    out = { headers, url: out.url }
+  }
+
+  return out
 }

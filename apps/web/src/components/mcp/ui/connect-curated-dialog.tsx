@@ -13,10 +13,10 @@ import {
 } from '@auxx/ui/components/dialog'
 import { toastError } from '@auxx/ui/components/toast'
 import { useState } from 'react'
+import { ConnectionVariableFields } from '~/components/connections/ui/connection-variable-fields'
 import { VarEditorField } from '~/components/workflow/ui/input-editor/var-editor'
 import { api } from '~/trpc/react'
 import { useMcpOAuthPopup } from '../hooks/use-mcp-oauth-popup'
-import { ConnectionVariableFields } from './connection-variable-fields'
 
 interface ConnectCuratedDialogProps {
   open: boolean

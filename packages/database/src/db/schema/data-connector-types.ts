@@ -86,30 +86,37 @@ export interface StreamRequestConfig {
 }
 
 /**
- * A single target-field mapping (CALC shape, reused from CALC custom fields —
- * sub-plan 05 §4 Layer B). A one-click row is the degenerate single-token
- * `{source}` expression.
+ * One binding entry (CALC shape, reused from CALC custom fields — sub-plan 05 §4
+ * Layer B). Stored as elements of the `fieldMappings` ARRAY on
+ * {@link DataConnectorMapping}: identity is the stable `id`, NOT the target field,
+ * so a binding can exist before (or without) a target. A one-click row is the
+ * degenerate single-token `{source}` expression. Mirrors the engine `FieldMapping`
+ * in `@auxx/lib/data-connectors/types`.
  */
 export interface FieldMapping {
+  /** Stable entry id (generateId). React key + dialog/patch handle; never reused. */
+  id: string
+  /** Target field key this binding writes into; `null` = unassigned draft → runtime skips it. */
+  targetFieldKey: string | null
   expression: string
   sourceFields: Record<string, string>
   /**
    * When present, this bound field is also a secondary identity-match key (the
-   * external id is the always-on primary). Mirrors the engine `FieldMapping.match`
-   * in `@auxx/lib/data-connectors/types`.
+   * external id is the always-on primary).
    */
   match?: { normalize?: IdentityNormalize }
+  /** Per-field write behavior (folded in from the old parallel map). Absent ⇒ 'overwrite'. */
+  mergeStrategy?: FieldMergeStrategy
   /**
-   * Provisioning hint for a connector-introduced target field (05d). Mirrors the
-   * engine `FieldMapping.provision` in `@auxx/lib/data-connectors/types` — used to
+   * Provisioning hint for a connector-introduced target field (05d) — used to
    * create a missing target field with the declared type/name at sync time.
    */
   provision?: { name: string; type: FieldType; icon?: string; isHidden?: boolean }
 }
 
 /**
- * Per-field write behavior (jsonb on {@link DataConnectorMapping}, keyed by
- * target field key). MUST mirror the engine `FieldMergeStrategy` in
+ * Per-field write behavior (folded into {@link FieldMapping}`.mergeStrategy`).
+ * MUST mirror the engine `FieldMergeStrategy` in
  * `@auxx/lib/data-connectors/types` (this package can't import tier-3 lib).
  */
 export type FieldMergeStrategy =

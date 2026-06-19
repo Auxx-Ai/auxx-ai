@@ -7,7 +7,7 @@ import { api } from '~/trpc/react'
  * Hook for testing credentials and credential data
  */
 export function useCredentialTest() {
-  const testCredential = api.credentials.test.useMutation({
+  const testCredential = api.connections.test.useMutation({
     onSuccess: (result) => {
       if (result.success) {
         toastSuccess({
@@ -29,7 +29,7 @@ export function useCredentialTest() {
     },
   })
 
-  const testCredentialData = api.credentials.testData.useMutation({
+  const testCredentialData = api.connections.test.useMutation({
     onSuccess: (result) => {
       if (result.success) {
         toastSuccess({
@@ -53,10 +53,11 @@ export function useCredentialTest() {
 
   return {
     // Test an existing credential by ID
-    testCredential: testCredential.mutateAsync,
+    testCredential: ({ id }: { id: string }) => testCredential.mutateAsync({ credentialId: id }),
 
     // Test credential data before saving (for validation during creation/editing)
-    testCredentialData: testCredentialData.mutateAsync,
+    testCredentialData: ({ type, data }: { type: string; data: Record<string, unknown> }) =>
+      testCredentialData.mutateAsync({ type, data }),
 
     // Loading states
     isTestingCredential: testCredential.isPending,

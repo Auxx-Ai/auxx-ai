@@ -4,8 +4,9 @@
 import type { ConnectionVariable } from '@auxx/database'
 import { RadioGroup } from '@auxx/ui/components/radio-group'
 import { RadioGroupItemCard } from '@auxx/ui/components/radio-group-item'
+import { cn } from '@auxx/ui/lib/utils'
 import { KeyRound, Plug } from 'lucide-react'
-import { ConnectionVariableFields } from '~/components/mcp/ui/connection-variable-fields'
+import { ConnectionVariableFields } from '~/components/connections/ui/connection-variable-fields'
 import { VarEditorField } from '~/components/workflow/ui/input-editor/var-editor'
 
 /** One connect method an item exposes (the detail page renders + collects input for it). */
@@ -31,6 +32,8 @@ interface ConnectionDetailPageProps {
   onTokenChange: (token: string) => void
   errors: Record<string, string>
   disabled?: boolean
+  /** Override the root padding/layout (e.g. the dialog drops the gallery's `px-4 py-5`). */
+  className?: string
 }
 
 /** Short type label shown in parentheses next to the method name. */
@@ -66,13 +69,14 @@ export function ConnectionDetailPage({
   onTokenChange,
   errors,
   disabled,
+  className,
 }: ConnectionDetailPageProps) {
   // The sole method auto-resolves; >1 requires an explicit pick.
   const chosen =
     methods.find((m) => m.id === selectedMethodId) ?? (methods.length === 1 ? methods[0] : null)
 
   return (
-    <div className='flex flex-col gap-4 px-4 py-5'>
+    <div className={cn('flex flex-col gap-4 px-4 py-5', className)}>
       {methods.length > 1 && (
         <div className='flex flex-col gap-2'>
           <div className='text-xs font-medium text-muted-foreground'>Connection method</div>

@@ -85,7 +85,9 @@ function evaluateFields(mapping: DecodedMapping, subtree: unknown): Record<strin
   const subtreeObj =
     subtree && typeof subtree === 'object' ? (subtree as Record<string, unknown>) : null
 
-  for (const [targetFieldKey, fm] of Object.entries(mapping.fieldMappings)) {
+  for (const fm of mapping.fieldMappings) {
+    // Unassigned draft (no target yet) — projected nowhere, skip.
+    if (fm.targetFieldKey == null) continue
     // Build the placeholder → value context for this expression.
     const ctx: Record<string, unknown> = {}
     for (const [placeholder, sourcePath] of Object.entries(fm.sourceFields ?? {})) {
@@ -97,10 +99,10 @@ function evaluateFields(mapping: DecodedMapping, subtree: unknown): Record<strin
     // Degenerate one-click case: an id-only subtree (e.g. a scalar) with a single
     // {source} token mapping to the whole subtree.
     if (Object.keys(ctx).length === 0 && fm.expression.trim() === '{source}') {
-      out[targetFieldKey] = subtree
+      out[fm.targetFieldKey] = subtree
       continue
     }
-    out[targetFieldKey] = evaluateCalcExpression(fm.expression, ctx)
+    out[fm.targetFieldKey] = evaluateCalcExpression(fm.expression, ctx)
   }
   return out
 }
@@ -118,12 +120,12 @@ function identityCandidates(
   subtree: unknown
 ): ProjectedRecord['identityCandidates'] {
   const candidates: ProjectedRecord['identityCandidates'] = []
-  for (const [targetKey, fm] of Object.entries(mapping.fieldMappings)) {
-    if (!fm.match) continue
+  for (const fm of mapping.fieldMappings) {
+    if (!fm.match || fm.targetFieldKey == null) continue
     const sourcePath = Object.values(fm.sourceFields)[0]
     if (!sourcePath) continue
     candidates.push({
-      targetFieldId: targetKey,
+      targetFieldId: fm.targetFieldKey,
       value: getByPath(subtree, sourcePath),
       normalize: fm.match.normalize,
     })
