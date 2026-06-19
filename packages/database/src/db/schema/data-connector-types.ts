@@ -5,6 +5,8 @@
 // data-connectors sub-plans (02/03/05a); these are structurally-compatible
 // placeholders kept in sync. Drift between the two is reconciled in code review.
 
+import type { FieldType } from '../../types'
+
 /**
  * Connector kind — text-backed (not a pgEnum) so new connectors ship without an
  * enum-alter migration. Built-in ids plus the `app:${slug}` template literal, so
@@ -97,6 +99,12 @@ export interface FieldMapping {
    * in `@auxx/lib/data-connectors/types`.
    */
   match?: { normalize?: IdentityNormalize }
+  /**
+   * Provisioning hint for a connector-introduced target field (05d). Mirrors the
+   * engine `FieldMapping.provision` in `@auxx/lib/data-connectors/types` — used to
+   * create a missing target field with the declared type/name at sync time.
+   */
+  provision?: { name: string; type: FieldType; icon?: string; isHidden?: boolean }
 }
 
 /**

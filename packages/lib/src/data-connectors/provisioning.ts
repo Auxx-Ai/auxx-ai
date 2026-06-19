@@ -187,11 +187,18 @@ async function provisionField(
 
 /**
  * Provision schema for every owned/contributing mapping of a connector. Derives the
- * field specs from each mapping's `fieldMappings` keys (the target field keys the
- * connector writes). `reference` mappings write nothing, so they need no provisioning.
- * Owned-def declarations come from the caller (the tRPC layer, sourced from the
- * connector's catalog declaration); a mapping that already carries an
- * `entityDefinitionId` provisions onto it directly.
+ * field specs from each mapping's `fieldMappings`. `reference` mappings write
+ * nothing, so they need no provisioning. A mapping carrying an `entityDefinitionId`
+ * provisions onto it directly.
+ *
+ * Field-type resolution (05d): a `FieldMapping.provision` hint (set by the template
+ * installer) declares the field's type/name, so connector-introduced fields land
+ * with the right type instead of defaulting to TEXT. Without a hint:
+ *   - owned mode   → create the field with the `fieldTypeFor` type (the def is
+ *                    fresh; manual owned mappings declare no hint). Backward-compat.
+ *   - contributing → SKIP. A no-hint contributing field is one reused from the
+ *                    existing def (email/name) — never re-created (the UI only
+ *                    allows new fields in owned mode), so provisioning leaves it be.
  */
 export async function provisionConnectorMappings(
   db: Database,
@@ -203,16 +210,32 @@ export async function provisionConnectorMappings(
   const results: ProvisionResult[] = []
   for (const mapping of mappings) {
     if (mapping.linkMode === 'reference') continue
-    const fieldKeys = Object.keys(mapping.fieldMappings)
-    if (fieldKeys.length === 0 && mapping.targetMode === 'contributing') continue
 
-    const fields: ProvisionFieldSpec[] = fieldKeys.map((key) => ({
-      appFieldKey: key,
-      name: key,
-      type: fieldTypeFor(mapping.row.id, key),
-      isUpdatable: false,
-      isCreatable: false,
-    }))
+    const fields: ProvisionFieldSpec[] = []
+    for (const [key, fm] of Object.entries(mapping.fieldMappings)) {
+      if (fm.provision) {
+        fields.push({
+          appFieldKey: key,
+          name: fm.provision.name,
+          type: fm.provision.type,
+          icon: fm.provision.icon,
+          isHidden: fm.provision.isHidden,
+          isUpdatable: false,
+          isCreatable: false,
+        })
+      } else if (mapping.targetMode === 'owned') {
+        fields.push({
+          appFieldKey: key,
+          name: key,
+          type: fieldTypeFor(mapping.row.id, key),
+          isUpdatable: false,
+          isCreatable: false,
+        })
+      }
+      // contributing + no hint → reused existing field; skip.
+    }
+    // Contributing needs at least one field to do; owned still creates the def.
+    if (fields.length === 0 && mapping.targetMode === 'contributing') continue
 
     const result = await provisionTarget(db, organizationId, dataConnectorId, {
       targetMode: mapping.targetMode,

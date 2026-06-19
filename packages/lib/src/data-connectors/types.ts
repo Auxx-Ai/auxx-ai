@@ -222,6 +222,14 @@ export interface FieldMapping {
    * toggle time (email/phone/domain), else 'none'.
    */
   match?: { normalize?: IdentityNormalize }
+  /**
+   * Provisioning hint for a connector-introduced target field (05d). Consumed by
+   * `provisionConnectorMappings` to create the field with the declared type/name
+   * when the target def is missing it; ignored when the field already exists
+   * (e.g. `email`/`name` reused from a system def). Absent on hand-authored UI
+   * mappings — those bind to fields that already exist.
+   */
+  provision?: { name: string; type: FieldType; icon?: string; isHidden?: boolean }
 }
 
 export type LinkMode = 'upsert' | 'reference'

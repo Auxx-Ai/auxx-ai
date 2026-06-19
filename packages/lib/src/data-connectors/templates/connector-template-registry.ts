@@ -40,6 +40,33 @@ for (const template of allTemplates) {
         `Connector template "${template.id}": stream "${stream.streamKey}" needs requestConfig.path`
       )
     }
+    // Layer B (05d) — validate declared mappings if present.
+    for (const mapping of stream.mappings ?? []) {
+      if (!mapping.target) {
+        throw new Error(
+          `Connector template "${template.id}": stream "${stream.streamKey}" mapping needs a target`
+        )
+      }
+      if (mapping.target.mode !== 'contributing') {
+        throw new Error(
+          `Connector template "${template.id}": stream "${stream.streamKey}" — only 'contributing' targets are supported (got '${mapping.target.mode}')`
+        )
+      }
+      if (!mapping.target.entityRef?.startsWith('@system:')) {
+        throw new Error(
+          `Connector template "${template.id}": stream "${stream.streamKey}" — entityRef must be '@system:<entityType>' (got '${mapping.target.entityRef}')`
+        )
+      }
+      for (const field of mapping.fields) {
+        const hasSource = field.source != null
+        const hasExpression = field.expression != null
+        if (hasSource === hasExpression) {
+          throw new Error(
+            `Connector template "${template.id}": stream "${stream.streamKey}" field "${field.key}" needs exactly one of source / expression`
+          )
+        }
+      }
+    }
   }
   templateMap.set(template.id, template)
 }
