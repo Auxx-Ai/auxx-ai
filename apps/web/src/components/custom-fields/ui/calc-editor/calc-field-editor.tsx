@@ -5,17 +5,8 @@ import { FieldType } from '@auxx/database/enums'
 import type { FieldType as FieldTypeType } from '@auxx/database/types'
 import type { ResourceField } from '@auxx/lib/resources/client'
 import type { FieldReference } from '@auxx/types/field'
-import { Badge } from '@auxx/ui/components/badge'
-import { Button } from '@auxx/ui/components/button'
-import {
-  CommandGroup,
-  CommandItem,
-  CommandNavigation,
-  CommandSeparator,
-} from '@auxx/ui/components/command'
+import { CommandNavigation } from '@auxx/ui/components/command'
 import { Field, FieldDescription, FieldGroup, FieldLabel } from '@auxx/ui/components/field'
-import { EntityIcon } from '@auxx/ui/components/icons'
-import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import {
   Select,
   SelectContent,
@@ -23,17 +14,19 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@auxx/ui/components/select'
-import { cn } from '@auxx/ui/lib/utils'
-import { getAvailableFunctions } from '@auxx/utils/calc-expression'
-import { EditorContent } from '@tiptap/react'
-import { AlertCircle, HelpCircle } from 'lucide-react'
-import { useCallback, useMemo, useState } from 'react'
-import { InlinePickerPopover, useActivePicker } from '~/components/editor/inline-picker'
+import { useCallback, useMemo } from 'react'
+import {
+  CalcFormulaInput,
+  type CalcTokenSource,
+  CalcTokensUsed,
+  extractFieldIdsFromString,
+  FunctionsPickerGroup,
+} from '~/components/global/calc-formula'
 import {
   FieldPickerInnerContent,
   type FieldPickerNavigationItem,
 } from '~/components/pickers/field-picker'
-import { useCalcFormula } from './use-calc-formula'
+import { FieldBadge } from '~/components/resources/ui'
 
 /** Options for a CALC field stored in field.options.calc */
 export interface CalcEditorOptions {
@@ -59,8 +52,11 @@ interface CalcFieldEditorProps {
 }
 
 /**
- * Editor component for CALC field configuration.
- * Uses TipTap editor with field picker for formula input.
+ * Editor component for CALC field configuration. A thin wrapper over the shared
+ * {@link CalcFormulaInput}: its token source is the entity definition's fields
+ * (badge = {@link FieldBadge}, picker = {@link FieldPickerInnerContent}). Adds
+ * the custom-field-only "Result Format" selector and stores `sourceFields` as
+ * `placeholderKey → field UUID`.
  */
 export function CalcFieldEditor({
   options,
@@ -69,9 +65,6 @@ export function CalcFieldEditor({
   currentFieldId,
   availableFields,
 }: CalcFieldEditorProps) {
-  const [showFunctions, setShowFunctions] = useState(false)
-  const functions = useMemo(() => getAvailableFunctions(), [])
-
   // Build a mapping from field key to field id for storage
   const fieldKeyToId = useMemo(() => {
     const map: Record<string, string> = {}
@@ -80,63 +73,6 @@ export function CalcFieldEditor({
     }
     return map
   }, [availableFields])
-
-  // Use the calc formula hook
-  const { editor, validation, sourceFields, insertField, insertFunction, closePicker } =
-    useCalcFormula({
-      initialExpression: options.expression,
-      onExpressionChange: (expression, extractedFields) => {
-        // Build sourceFields mapping: placeholder key → bare field id (UUID).
-        // Both calc consumers — the client `calc-value-computer` dependency
-        // graph and the server `calc-resolver` (which wraps with
-        // `toResourceFieldId`) — expect the value to be a plain field id, NOT
-        // a `entityDef:fieldId` ResourceFieldId.
-        const sourceFieldsMap: Record<string, string> = {}
-        for (const key of extractedFields) {
-          if (fieldKeyToId[key]) {
-            sourceFieldsMap[key] = fieldKeyToId[key]
-          }
-        }
-
-        onChange({
-          ...options,
-          expression,
-          sourceFields: sourceFieldsMap,
-        })
-      },
-      entityDefinitionId,
-      currentFieldId,
-      availableFields: availableFields.map((f) => ({ key: f.key, label: f.label, type: f.type })),
-      placeholder: 'Type { to insert a field, e.g., concat({firstName}, " ", {lastName})',
-    })
-
-  /** Insert function at cursor */
-  const handleInsertFunction = (funcName: string) => {
-    if (editor) {
-      editor.chain().focus().insertContent(`${funcName}(`).run()
-      setShowFunctions(false)
-    }
-  }
-
-  /** Handle selecting a field from the picker */
-  const handleSelectField = useCallback(
-    (_fieldReference: FieldReference, field: ResourceField) => {
-      // Insert the field's `key` (e.g. `lastName`) — the token the FieldBadge
-      // pill resolves (fieldMap aliases `<entity>:<key>`) and what
-      // `availableFields` / `fieldKeyToId` are keyed by. The output key
-      // (`systemAttribute`, e.g. `last_name`) is NOT fieldMap-resolvable.
-      insertField(field.key || field.id)
-    },
-    [insertField]
-  )
-
-  /** Handle selecting a function from the picker */
-  const handleSelectFunction = useCallback(
-    (funcName: string) => {
-      insertFunction(funcName)
-    },
-    [insertFunction]
-  )
 
   // Build exclude filters: exclude RELATIONSHIP and CALC types, plus current field
   const excludeFilters = useMemo(() => {
@@ -150,152 +86,81 @@ export function CalcFieldEditor({
     return filters
   }, [entityDefinitionId, currentFieldId])
 
-  /** Render functions section filtered by search */
-  const renderFunctionsInPicker = useCallback(
-    (search: string) => {
-      const filteredFunctions = search
-        ? functions.filter(
-            (f) =>
-              f.name.toLowerCase().includes(search.toLowerCase()) ||
-              f.description.toLowerCase().includes(search.toLowerCase())
-          )
-        : functions
-
-      if (filteredFunctions.length === 0) return null
-
-      return (
-        <>
-          <CommandSeparator />
-          <CommandGroup heading='Functions'>
-            {filteredFunctions.map((fn) => (
-              <CommandItem key={fn.name} onSelect={() => handleSelectFunction(fn.name)}>
-                <EntityIcon iconId='function' size='xs' className='text-muted-foreground' />
-                <div className='flex flex-col'>
-                  <span className='font-mono text-sm'>{fn.signature}</span>
-                  <span className='text-xs text-muted-foreground'>{fn.description}</span>
-                </div>
-              </CommandItem>
-            ))}
-          </CommandGroup>
-        </>
-      )
+  /** Handle selecting a field from the picker */
+  const handleSelectField = useCallback(
+    (onSelect: (tokenId: string) => void) => (_ref: FieldReference, field: ResourceField) => {
+      // Insert the field's `key` (e.g. `lastName`) — the token the FieldBadge
+      // pill resolves (fieldMap aliases `<entity>:<key>`) and what
+      // `availableFields` / `fieldKeyToId` are keyed by. The output key
+      // (`systemAttribute`, e.g. `last_name`) is NOT fieldMap-resolvable.
+      onSelect(field.key || field.id)
     },
-    [functions, handleSelectFunction]
+    []
   )
 
-  // Drive the picker popover off the open `{` chip (positioning, query,
-  // outside-click + Escape are all owned by InlinePickerPopover).
-  const activePicker = useActivePicker(editor)
-  const pickerOpen = !!activePicker && activePicker.trigger === '{'
+  // The token source: entity fields. Badge resolves a key against the resource
+  // store; the picker is the self-contained field navigation widget, with the
+  // shared functions group nested via its `renderAdditionalContent` slot.
+  const tokenSource: CalcTokenSource = useMemo(
+    () => ({
+      renderBadge: (id, selected) => (
+        <FieldBadge id={id} entityDefinitionId={entityDefinitionId} selected={selected} />
+      ),
+      renderPickerItems: ({ onSelect, insertFunction, onClose }) => (
+        <CommandNavigation<FieldPickerNavigationItem>>
+          <FieldPickerInnerContent
+            entityDefinitionId={entityDefinitionId}
+            excludeFields={excludeFilters}
+            onSelect={handleSelectField(onSelect)}
+            onClose={onClose}
+            closeOnSelect
+            showBreadcrumb={false}
+            searchPlaceholder='Search fields or functions...'
+            renderAdditionalContent={(search) => (
+              <FunctionsPickerGroup search={search} onSelect={insertFunction} />
+            )}
+          />
+        </CommandNavigation>
+      ),
+    }),
+    [entityDefinitionId, excludeFilters, handleSelectField]
+  )
+
+  // Build sourceFields mapping: placeholder key → bare field id (UUID). Both
+  // calc consumers — the client `calc-value-computer` dependency graph and the
+  // server `calc-resolver` (which wraps with `toResourceFieldId`) — expect a
+  // plain field id, NOT a `entityDef:fieldId` ResourceFieldId.
+  const handleExpressionChange = useCallback(
+    (expression: string, extractedTokens: string[]) => {
+      const sourceFieldsMap: Record<string, string> = {}
+      for (const key of extractedTokens) {
+        if (fieldKeyToId[key]) {
+          sourceFieldsMap[key] = fieldKeyToId[key]
+        }
+      }
+      onChange({ ...options, expression, sourceFields: sourceFieldsMap })
+    },
+    [fieldKeyToId, onChange, options]
+  )
+
+  // Tokens currently referenced, for the "Fields used" strip.
+  const usedTokens = useMemo(
+    () => extractFieldIdsFromString(options.expression),
+    [options.expression]
+  )
 
   return (
     <FieldGroup className='space-y-4'>
-      {/* Formula Expression Editor */}
-      <Field>
-        <div className='flex items-center justify-between'>
-          <FieldLabel>Formula Expression</FieldLabel>
-          <Popover open={showFunctions} onOpenChange={setShowFunctions}>
-            <PopoverTrigger asChild>
-              <Button variant='ghost' size='sm'>
-                <HelpCircle className='size-4 mr-1' />
-                Functions
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className='w-96 max-h-80 overflow-y-auto' align='end'>
-              <div className='space-y-2'>
-                <h4 className='font-medium text-sm'>Available Functions</h4>
-                <p className='text-xs text-muted-foreground mb-2'>
-                  Click to insert at cursor position
-                </p>
-                {functions.map((fn) => (
-                  <div
-                    key={fn.name}
-                    className='p-2 border rounded hover:bg-muted cursor-pointer'
-                    onClick={() => handleInsertFunction(fn.name)}>
-                    <div className='font-mono text-sm text-primary-900'>{fn.signature}</div>
-                    <div className='text-xs text-muted-foreground'>{fn.description}</div>
-                    <div className='text-xs text-muted-foreground mt-1'>
-                      Example: <code className='bg-muted px-1 rounded'>{fn.example}</code>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </PopoverContent>
-          </Popover>
-        </div>
+      <CalcFormulaInput
+        expression={options.expression}
+        onChange={handleExpressionChange}
+        tokenSource={tokenSource}
+        label='Formula Expression'
+        showFunctionsHelp
+        placeholder='Type { to insert a field, e.g., concat({firstName}, " ", {lastName})'
+      />
 
-        {/* TipTap Editor with Field Picker Popover */}
-        <div
-          className={cn(
-            'relative border rounded-md bg-background',
-            !validation.isValid &&
-              options.expression.trim() &&
-              validation.error !== 'Expression is required' &&
-              'border-destructive'
-          )}>
-          <EditorContent editor={editor} className='min-h-[80px]' />
-        </div>
-
-        {/* Field + function picker, anchored at the open `{` chip */}
-        {editor && (
-          <InlinePickerPopover
-            state={{
-              isOpen: pickerOpen,
-              query: activePicker?.query ?? '',
-              range: null,
-              clientRect: activePicker?.clientRect ?? null,
-            }}
-            width={320}
-            onClose={closePicker}>
-            <CommandNavigation<FieldPickerNavigationItem>>
-              <FieldPickerInnerContent
-                entityDefinitionId={entityDefinitionId}
-                excludeFields={excludeFilters}
-                onSelect={handleSelectField}
-                onClose={closePicker}
-                closeOnSelect
-                showBreadcrumb={false}
-                searchPlaceholder='Search fields or functions...'
-                renderAdditionalContent={renderFunctionsInPicker}
-              />
-            </CommandNavigation>
-          </InlinePickerPopover>
-        )}
-
-        {/* Validation Error - only show for actual syntax errors, not empty state */}
-        {!validation.isValid &&
-          options.expression.trim() &&
-          validation.error !== 'Expression is required' && (
-            <div className='flex items-center gap-1 text-sm text-destructive mt-1'>
-              <AlertCircle className='size-4' />
-              {validation.error}
-            </div>
-          )}
-
-        <FieldDescription>
-          Type <kbd className='px-1 bg-muted rounded text-xs'>{'{'}</kbd> to insert a field
-          reference. Use functions like concat(), add(), multiply().
-        </FieldDescription>
-      </Field>
-
-      {/* Source Fields Display - only show when there are actual field references */}
-      {sourceFields.length > 0 && (
-        <Field>
-          <FieldLabel>Fields Used</FieldLabel>
-          <div className='flex flex-wrap gap-1'>
-            {sourceFields.map((fieldKey) => {
-              const field = availableFields.find((f) => f.key === fieldKey)
-              const isMissing = !field
-              return (
-                <Badge key={fieldKey} variant={isMissing ? 'destructive' : 'secondary'}>
-                  {field?.label ?? fieldKey}
-                  {isMissing && ' (not found)'}
-                </Badge>
-              )
-            })}
-          </div>
-        </Field>
-      )}
+      <CalcTokensUsed tokens={usedTokens} tokenSource={tokenSource} />
 
       {/* Result Field Type */}
       <Field>

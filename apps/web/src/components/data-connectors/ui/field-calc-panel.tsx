@@ -2,16 +2,30 @@
 'use client'
 
 import { FieldType } from '@auxx/database/enums'
-import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
-import { Field, FieldDescription, FieldLabel } from '@auxx/ui/components/field'
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from '@auxx/ui/components/command'
+import { Field, FieldLabel } from '@auxx/ui/components/field'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
-import { getAvailableFunctions, validateCalcExpression } from '@auxx/utils/calc-expression'
-import { AlertCircle, ChevronDown, FunctionSquare } from 'lucide-react'
-import { useMemo, useRef, useState } from 'react'
+import { validateCalcExpression } from '@auxx/utils/calc-expression'
+import { ChevronDown, Hash } from 'lucide-react'
+import { useMemo, useState } from 'react'
+import {
+  CalcFormulaInput,
+  type CalcTokenSource,
+  CalcTokensUsed,
+  FunctionsPickerGroup,
+} from '~/components/global/calc-formula'
 import { FieldPicker } from '~/components/pickers/field-picker'
 import type { SourcePath } from '../hooks/use-source-paths'
 import { isSourceTargetCompatible } from './field-type-compat'
+import { SourcePathBadge } from './source-path-badge'
 
 interface FieldCalcPanelProps {
   /** The mapping's def — the source of selectable target fields. Null only if unset. */
@@ -24,7 +38,7 @@ interface FieldCalcPanelProps {
   excludeKeys: string[]
   /** Current calc expression (over source tokens, e.g. `concat({a}," ",{b})`). */
   expression: string
-  /** Source schema paths offered as `{token}` inserts. */
+  /** Source schema paths offered as `{token}` inserts (subtree-relative). */
   sourcePaths: SourcePath[]
   /** Persist the chosen target field + expression + the source fields it references. */
   onSave: (targetKey: string, expression: string, sourceFields: Record<string, string>) => void
@@ -34,15 +48,14 @@ interface FieldCalcPanelProps {
  * The lone mapping drill — the calc expression editor (05 §4). A formula row (or
  * the "+ Add formula" row) opens this. The canonical {@link FieldPicker} picks
  * which target field the expression writes into (so the panel handles both
- * create and retarget), excluding fields already bound by another leaf/formula;
- * the token picker lists SOURCE-schema paths (not target fields), the function
- * set comes from `@auxx/utils/calc-expression`, and output is the target field.
- * Stored uniformly as `{ expression, sourceFields }` keyed by the target field.
+ * create and retarget), excluding fields already bound by another leaf/formula.
  *
- * Implementation note: this uses a plain textarea + insert buttons (not the
- * entity-coupled TipTap `CalcFieldEditor`/`FieldBadge`, which resolves tokens
- * against an entity def). That keeps the connector route free of the entity
- * field-picker coupling while reusing the shared calc function set + validator.
+ * The expression itself uses the shared {@link CalcFormulaInput} (the same TipTap
+ * editor as custom-fields CALC fields) backed by a **source-path** token source:
+ * tokens are subtree-relative schema paths (`customer.email`), not entity fields,
+ * so the chip resolves nothing and the `{` picker lists source paths. Stored
+ * uniformly as `{ expression, sourceFields }` keyed by the target field, with
+ * `sourceFields` an identity `path → path` map.
  */
 export function FieldCalcPanel({
   entityDefinitionId,
@@ -57,34 +70,54 @@ export function FieldCalcPanel({
   const [target, setTarget] = useState(targetKey)
   const [targetChip, setTargetChip] = useState(targetLabel)
   const [pickerOpen, setPickerOpen] = useState(false)
-  const taRef = useRef<HTMLTextAreaElement>(null)
-  const functions = useMemo(() => getAvailableFunctions(), [])
   const excludeSet = useMemo(() => new Set(excludeKeys), [excludeKeys])
 
   const validation = useMemo(() => {
-    if (!value.trim()) return { isValid: true, extractedFields: [] as string[], error: undefined }
+    if (!value.trim()) return { isValid: true, extractedFields: [] as string[] }
     return validateCalcExpression(value)
   }, [value])
 
-  const insertAtCursor = (text: string) => {
-    const ta = taRef.current
-    if (!ta) {
-      setValue((v) => v + text)
-      return
-    }
-    const start = ta.selectionStart
-    const end = ta.selectionEnd
-    const next = value.slice(0, start) + text + value.slice(end)
-    setValue(next)
-    requestAnimationFrame(() => {
-      ta.focus()
-      ta.selectionStart = ta.selectionEnd = start + text.length
-    })
-  }
+  // The token source: source-schema paths. Badge is purely presentational; the
+  // `{` picker is a flat path list followed by the shared functions group.
+  const tokenSource: CalcTokenSource = useMemo(
+    () => ({
+      renderBadge: (id, selected) => <SourcePathBadge path={id} selected={selected} />,
+      renderPickerItems: ({ onSelect, insertFunction, onClose }) => (
+        <Command>
+          <CommandInput placeholder='Search source fields or functions…' />
+          <CommandList>
+            <CommandEmpty>No source fields.</CommandEmpty>
+            {sourcePaths.length > 0 && (
+              <CommandGroup heading='Source fields'>
+                {sourcePaths.map((p) => (
+                  <CommandItem
+                    key={p.path}
+                    value={p.path}
+                    onSelect={() => {
+                      onSelect(p.path)
+                      onClose()
+                    }}>
+                    <Hash className='size-3.5 text-muted-foreground' />
+                    <span className='font-mono text-sm'>{p.path}</span>
+                    <span className='ml-auto text-[10px] uppercase text-muted-foreground/60'>
+                      {p.type}
+                    </span>
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            )}
+            <FunctionsPickerGroup search='' onSelect={insertFunction} />
+          </CommandList>
+        </Command>
+      ),
+    }),
+    [sourcePaths]
+  )
 
   const canSave = !!target && validation.isValid && !!value.trim()
   const handleSave = () => {
     if (!canSave) return
+    // Connectors store sourceFields as an identity map (token path → source path).
     const fields: Record<string, string> = {}
     for (const path of validation.extractedFields) fields[path] = path
     onSave(target, value, fields)
@@ -98,7 +131,7 @@ export function FieldCalcPanel({
           <FieldPicker
             open={pickerOpen}
             onOpenChange={setPickerOpen}
-            entityDefinitionId={entityDefinitionId}
+            entityDefinitionId={entityDefinitionId ?? ''}
             excludeFields={[FieldType.RELATIONSHIP]}
             // A formula yields a scalar (string/number) — exclude already-bound
             // targets and any field type a computed value can't populate.
@@ -123,76 +156,25 @@ export function FieldCalcPanel({
           />
         </Field>
 
-        <Field>
-          <FieldLabel>Expression</FieldLabel>
-          <textarea
-            ref={taRef}
-            value={value}
-            onChange={(e) => setValue(e.target.value)}
-            placeholder='concat({first_name}, " ", {last_name})'
-            className='min-h-[88px] w-full rounded-md border bg-background p-2 font-mono text-sm outline-none focus:ring-1 focus:ring-ring'
-          />
-          {!validation.isValid && value.trim() && (
-            <div className='mt-1 flex items-center gap-1 text-sm text-destructive'>
-              <AlertCircle className='size-4' />
-              {validation.error}
-            </div>
-          )}
-          <FieldDescription>
-            Reference source fields with <code className='rounded bg-muted px-1'>{'{path}'}</code>{' '}
-            and combine them with functions.
-          </FieldDescription>
-        </Field>
+        <CalcFormulaInput
+          expression={expression}
+          onChange={(expr) => setValue(expr)}
+          tokenSource={tokenSource}
+          label='Expression'
+          placeholder='concat({first_name}, " ", {last_name})'
+        />
 
-        <div className='flex flex-col gap-1.5'>
-          <span className='text-xs font-medium uppercase text-muted-foreground'>Source fields</span>
-          <div className='flex flex-wrap gap-1'>
-            {sourcePaths.length === 0 ? (
-              <span className='text-xs text-muted-foreground'>
-                No source schema yet — generate one in the stream first.
-              </span>
-            ) : (
-              sourcePaths.map((p) => (
-                <Button
-                  key={p.path}
-                  variant='outline'
-                  size='xs'
-                  onClick={() => insertAtCursor(`{${p.path}}`)}>
-                  {p.path}
-                </Button>
-              ))
-            )}
-          </div>
-        </div>
-
-        <div className='flex flex-col gap-1.5'>
-          <span className='flex items-center gap-1 text-xs font-medium uppercase text-muted-foreground'>
-            <FunctionSquare className='size-3.5' />
-            Functions
+        {sourcePaths.length === 0 && (
+          <span className='text-xs text-muted-foreground'>
+            No source schema yet — generate one in the stream first.
           </span>
-          <div className='flex flex-wrap gap-1'>
-            {functions.map((fn) => (
-              <Button
-                key={fn.name}
-                variant='ghost'
-                size='xs'
-                title={`${fn.signature} — ${fn.description}`}
-                onClick={() => insertAtCursor(`${fn.name}(`)}>
-                {fn.name}
-              </Button>
-            ))}
-          </div>
-        </div>
-
-        {validation.extractedFields.length > 0 && (
-          <div className='flex flex-wrap gap-1'>
-            {validation.extractedFields.map((f) => (
-              <Badge key={f} variant='secondary'>
-                {f}
-              </Badge>
-            ))}
-          </div>
         )}
+
+        <CalcTokensUsed
+          tokens={validation.extractedFields}
+          tokenSource={tokenSource}
+          label='Source fields used'
+        />
 
         <Button className='self-start' disabled={!canSave} onClick={handleSave}>
           Save expression

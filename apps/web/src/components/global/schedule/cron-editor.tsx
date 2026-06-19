@@ -357,7 +357,7 @@ export const CronEditor: React.FC<CronEditorProps> = ({
               onFocus={() => setIsFocused(true)}
               onBlur={() => setIsFocused(false)}
               disabled={disabled}
-              className='h-[20px] min-h-0 resize-none border-0 bg-transparent px-2 py-0 font-mono text-sm shadow-none focus-visible:outline-none focus-visible:ring-0'
+              className='h-[20px] min-h-0 resize-none border-0 bg-transparent dark:bg-transparent px-2 py-0 font-mono text-sm shadow-none focus-visible:outline-none focus-visible:ring-0'
               rows={2}
             />
             {!localValue && !isFocused && placeholder && (

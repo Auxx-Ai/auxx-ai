@@ -1,4 +1,4 @@
-// apps/web/src/components/custom-fields/ui/calc-editor/formula-converters.ts
+// apps/web/src/components/global/calc-formula/formula-converters.ts
 
 import {
   extractFieldIdsFromString as extractFieldIdsFromStringLib,
