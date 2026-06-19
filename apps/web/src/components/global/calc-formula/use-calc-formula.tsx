@@ -1,4 +1,4 @@
-// apps/web/src/components/custom-fields/ui/calc-editor/use-calc-formula.tsx
+// apps/web/src/components/global/calc-formula/use-calc-formula.tsx
 
 'use client'
 
@@ -12,41 +12,38 @@ import {
   getOpenPickerRange,
   ReferencePickerNode,
 } from '~/components/editor/inline-picker'
-import { FieldBadge } from '~/components/resources/ui'
 import { extractFieldIds, formulaToString, stringToFormula } from './formula-converters'
+import type { CalcTokenSource } from './token-source'
 
 /** Options for the useCalcFormula hook */
 export interface UseCalcFormulaOptions {
   /** Initial expression string */
   initialExpression?: string
   /** Callback when expression changes */
-  onExpressionChange?: (expression: string, sourceFields: string[]) => void
-  /** Entity definition ID for field picker */
-  entityDefinitionId: string
-  /** Current field ID to exclude from picker (prevent self-reference) */
-  currentFieldId?: string
-  /** Available fields for display and validation */
-  availableFields: Array<{ key: string; label: string; type: string }>
+  onExpressionChange?: (expression: string, extractedTokens: string[]) => void
+  /** Renders the token chips inside the editor (the only consumer-specific seam). */
+  renderBadge: CalcTokenSource['renderBadge']
   /** Placeholder text for empty editor */
   placeholder?: string
 }
 
 /**
- * Hook for managing the CALC formula TipTap editor state.
- * Handles expression parsing, validation, and conversion.
+ * Hook for managing the CALC formula TipTap editor state. Token-source-agnostic:
+ * the only thing it knows about a `{token}` is how to render its chip
+ * (`renderBadge`) — custom-fields resolves it against an entity def, connectors
+ * against a source schema. Handles expression parsing, validation, and conversion.
  *
- * The `{`-triggered field/function picker rides on the shared
- * `ReferencePickerNode` chip (the same primitive used by the snippet /
- * greeting editors): typing `{` opens an inert chip and the consumer mounts
- * the picker popover via `useActivePicker` + `InlinePickerPopover`. Selection
- * is committed here through `getOpenPickerRange` — fields collapse to a
- * `field` badge node, functions insert their literal `name(` text.
+ * The `{`-triggered picker rides on the shared `ReferencePickerNode` chip (the
+ * same primitive used by the snippet / greeting editors): typing `{` opens an
+ * inert chip and the consumer mounts the picker popover via `useActivePicker` +
+ * `InlinePickerPopover`. Selection is committed here through `getOpenPickerRange`
+ * — tokens collapse to a `field` badge node, functions insert their literal
+ * `name(` text.
  */
 export function useCalcFormula({
   initialExpression = '',
   onExpressionChange,
-  entityDefinitionId,
-  availableFields,
+  renderBadge,
   placeholder = 'Type { to insert a field or function...',
 }: UseCalcFormulaOptions) {
   const [expression, setExpression] = useState(initialExpression)
@@ -60,7 +57,9 @@ export function useCalcFormula({
   // Convert initial expression to TipTap content
   const initialContent = useMemo(() => stringToFormula(initialExpression), [initialExpression])
 
-  // Create field node with base factory — serializes to `{id}`.
+  // Create field node with base factory — serializes to `{id}`. The input rule
+  // accepts any non-brace token (`[^{}]+`) so hand-typed dotted/`[]` source
+  // paths (`{customer.email}`) auto-chip, not just `[\w-]` field keys.
   const fieldNode = useMemo(
     () =>
       createInlineNode(
@@ -71,13 +70,11 @@ export function useCalcFormula({
             pattern: /\{([^{}]+)\}/,
             getId: (match) => match[1]!,
           },
-          inputRules: [{ find: /\{([\w-]+)\}$/, getId: (match) => match[1]! }],
+          inputRules: [{ find: /\{([^{}]+)\}$/, getId: (match) => match[1]! }],
         },
-        ({ id, selected }) => (
-          <FieldBadge id={id} entityDefinitionId={entityDefinitionId} selected={selected} />
-        )
+        ({ id, selected }) => renderBadge(id, selected)
       ),
-    [entityDefinitionId]
+    [renderBadge]
   )
 
   // Build editor configuration
@@ -140,12 +137,6 @@ export function useCalcFormula({
     return validateCalcExpression(expression)
   }, [expression])
 
-  // Check for missing fields
-  const missingFields = useMemo(() => {
-    const availableKeys = new Set(availableFields.map((f) => f.key))
-    return validation.extractedFields.filter((f) => !availableKeys.has(f))
-  }, [validation.extractedFields, availableFields])
-
   // Set content programmatically
   const setContent = useCallback(
     (newExpression: string) => {
@@ -194,7 +185,6 @@ export function useCalcFormula({
     editor,
     expression,
     validation,
-    missingFields,
     sourceFields: validation.extractedFields,
     setContent,
     insertField,
