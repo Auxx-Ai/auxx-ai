@@ -54,33 +54,48 @@ export async function GET(
   const isTerminal = !['queued', 'running'].includes(run.status)
   const encoder = new TextEncoder()
 
+  // Hoisted so the stream's cancel() handler can tear down the subscription on disconnect.
+  let cleanup: () => Promise<void> = async () => {}
+
   const stream = new ReadableStream({
     async start(controller) {
+      // Once the stream is closed (disconnect, error, completion) we must stop touching the
+      // controller. Without this guard, a flood of trace events each hits a closed controller
+      // and spams error logs (and leaks the Redis subscription).
+      let closed = false
+
       const send = (event: string, data: unknown, id?: number) => {
+        if (closed) return
+
         const lines = [`event: ${event}`]
         if (id !== undefined) lines.push(`id: ${id}`)
         lines.push(`data: ${JSON.stringify(data)}`, '', '')
         try {
           controller.enqueue(encoder.encode(lines.join('\n')))
-        } catch (error) {
-          logger.error('Failed to send SSE message', { error, event })
+        } catch {
+          // Controller closed underneath us (client gone). Tear down once instead of
+          // logging an error for every subsequent event.
+          void cleanup()
         }
       }
 
       const heartbeat = setInterval(() => {
+        if (closed) {
+          clearInterval(heartbeat)
+          return
+        }
         try {
           controller.enqueue(encoder.encode(':heartbeat\n\n'))
         } catch {
-          clearInterval(heartbeat)
+          void cleanup()
         }
       }, 15000)
 
       let handlerId: string | null = null
       let router: RedisEventRouter | null = null
-      let cleaned = false
-      const cleanup = async () => {
-        if (cleaned) return
-        cleaned = true
+      cleanup = async () => {
+        if (closed) return
+        closed = true
         clearInterval(heartbeat)
         if (router && handlerId) {
           try {
@@ -150,6 +165,11 @@ export async function GET(
         logger.error('Eval SSE stream error', { error, runId })
         await cleanup()
       }
+    },
+    // Fires when the consumer cancels the stream (client disconnect). More reliable than
+    // request.signal in some runtimes, and ensures the subscription is removed so events stop.
+    async cancel() {
+      await cleanup()
     },
   })
 

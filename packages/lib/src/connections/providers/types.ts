@@ -7,7 +7,12 @@ import type { AuthApply, ConnectionVariable, OAuth2Features } from '@auxx/databa
 
 /** UI metadata mirrored onto the connect surface (catalog step). */
 export type ProviderUiMetadata = {
-  /** Lucide icon name. */
+  /**
+   * Visual-ref consumed by `AppIcon`/`VisualIcon` (see `parseVisualRef`). Prefer a
+   * brand mark — `brand:<slug>` resolves to `apps/web/public/icons/brands/<slug>.svg`
+   * (registered in `BRAND_ICONS`). Generic, brand-less providers (SMTP, HTTP auth)
+   * use a bare kebab-case `ICON_DATA` lucide id (e.g. `mail`, `key`).
+   */
   icon?: string
   category?:
     | 'ai'

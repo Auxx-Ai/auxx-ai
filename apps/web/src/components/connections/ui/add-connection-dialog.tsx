@@ -43,6 +43,21 @@ const CATEGORY_LABELS: Record<string, string> = {
   other: 'Other',
 }
 
+/** ICON_DATA iconIds for the category sidebar (matches the other template galleries). */
+const CATEGORY_ICONS: Record<string, string> = {
+  all: 'layout-grid',
+  apps: 'box',
+  ai: 'sparkles',
+  database: 'database',
+  data: 'table',
+  email: 'mail',
+  auth: 'key',
+  social: 'share-2',
+  ecommerce: 'shopping-bag',
+  storage: 'folder',
+  other: 'more-horizontal',
+}
+
 /** Stable sidebar order; only categories with items are shown. */
 const CATEGORY_ORDER = [
   'apps',
@@ -119,10 +134,11 @@ export function AddConnectionDialog({
   const categories = useMemo<TemplateGalleryCategory[]>(() => {
     const present = new Set(items.flatMap((i) => i.categories))
     return [
-      { value: 'all', label: 'All' },
+      { value: 'all', label: 'All', icon: CATEGORY_ICONS.all },
       ...CATEGORY_ORDER.filter((c) => present.has(c)).map((c) => ({
         value: c,
         label: CATEGORY_LABELS[c] ?? c,
+        icon: CATEGORY_ICONS[c],
       })),
     ]
   }, [items])
@@ -201,7 +217,7 @@ export function AddConnectionDialog({
             iconId={
               item.kind === 'app'
                 ? (item.app.app.avatarUrl ?? 'package')
-                : (item.provider.icon ?? 'key-round')
+                : (item.provider.icon ?? 'key')
             }
             size='sm'
           />
