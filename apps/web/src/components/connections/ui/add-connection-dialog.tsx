@@ -4,13 +4,16 @@
 import { Button } from '@auxx/ui/components/button'
 import { KbdSubmit } from '@auxx/ui/components/kbd'
 import { Cable } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useConnectFlow } from '~/components/apps/hooks/use-connect-flow'
 import type { AppInstallation } from '~/components/apps/providers/apps-context'
 import { AppIcon } from '~/components/apps/ui/app-icon'
 import { type TemplateGalleryCategory, TemplateGalleryDialog } from '~/components/templates/ui'
-import { ConnectionDetailPage } from './connection-detail-page'
-import { ConnectionMethodPicker } from './connection-method-picker'
+import {
+  ConnectionDetailPage,
+  methodIsBareSecret,
+  methodNeedsFields,
+} from './connection-detail-page'
 import { appTarget, type ProviderRow, platformTarget } from './connection-targets'
 
 export type { ProviderRow }
@@ -82,6 +85,16 @@ const CATEGORY_ORDER = [
   'other',
 ]
 
+/**
+ * Pin the catalog to a single app or platform provider — used when a caller (e.g. a
+ * data connector sourced from an app, or a template that declares its provider) already
+ * knows which connection to make. The gallery is skipped and the dialog opens straight
+ * on that item's detail (its method picker + fields). Omit for the full catalog.
+ */
+export type ConnectionRestriction =
+  | { kind: 'app'; appSlug: string }
+  | { kind: 'provider'; providerKey: string }
+
 interface AddConnectionDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -92,6 +105,10 @@ interface AddConnectionDialogProps {
   isLoading?: boolean
   /** Fired after a connection is created (or its OAuth popup completes). */
   onConnected: () => void
+  /** Scope the catalog to a single app/provider (skips the gallery). */
+  restrictTo?: ConnectionRestriction
+  /** Surfaces the new credentialId so a caller can bind it (e.g. to a data connector). */
+  onConnectedCredential?: (credentialId: string) => void
 }
 
 /**
@@ -108,6 +125,8 @@ export function AddConnectionDialog({
   installedApps,
   isLoading,
   onConnected,
+  restrictTo,
+  onConnectedCredential,
 }: AddConnectionDialogProps) {
   const [values, setValues] = useState<Record<string, string>>({})
   const [token, setToken] = useState('')
@@ -117,8 +136,9 @@ export function AddConnectionDialog({
   const [selectedMethodId, setSelectedMethodId] = useState<string | null>(null)
 
   const flow = useConnectFlow({
-    onConnected: () => {
+    onConnected: (credId) => {
       onConnected()
+      onConnectedCredential?.(credId)
       onOpenChange(false)
     },
   })
@@ -170,6 +190,38 @@ export function AddConnectionDialog({
       },
     ]
   }
+
+  // When pinned to one app/provider, resolve it from the catalog and hide the gallery.
+  // An unresolved restriction (app not installed / provider absent) renders the
+  // gallery's empty state rather than silently widening to the full catalog.
+  const restrictedItem = useMemo<CatalogItem | null>(() => {
+    if (!restrictTo) return null
+    if (restrictTo.kind === 'app') {
+      return items.find((i) => i.kind === 'app' && i.app.app.slug === restrictTo.appSlug) ?? null
+    }
+    return (
+      items.find(
+        (i) => i.kind === 'provider' && i.provider.providerKey === restrictTo.providerKey
+      ) ?? null
+    )
+  }, [restrictTo, items])
+
+  const galleryItems = restrictTo ? (restrictedItem ? [restrictedItem] : []) : items
+
+  // Restricted mode opens straight on the item's detail (controlled selection). Preselect
+  // its sole method so fields render immediately; >1 method still forces an explicit pick.
+  useEffect(() => {
+    if (!open || !restrictedItem) return
+    // Inlined (not methodsFor) so the effect depends only on restrictedItem's identity.
+    const methodIds =
+      restrictedItem.kind === 'app'
+        ? (restrictedItem.app.methods ?? []).map((m) => m.id)
+        : [restrictedItem.provider.providerKey]
+    setSelectedMethodId(methodIds.length === 1 ? methodIds[0] : null)
+    setValues({})
+    setToken('')
+    setErrors({})
+  }, [open, restrictedItem])
 
   /** Resolve a row + chosen method to its connect target, scope, and the chosen method. */
   function resolve(item: CatalogItem, methodId: string | null) {
@@ -239,9 +291,18 @@ export function AddConnectionDialog({
       description='Connect an app or a built-in provider'
       crumbLabel='New connection'
       crumbIcon={<Cable />}
-      items={items}
+      items={galleryItems}
       isLoading={isLoading}
       categories={categories}
+      // Pinned to one item → open on its detail; Back from the only item closes.
+      selectedId={restrictTo ? (restrictedItem?.id ?? null) : undefined}
+      onSelectedIdChange={
+        restrictTo
+          ? (id) => {
+              if (id == null) onOpenChange(false)
+            }
+          : undefined
+      }
       itemNoun='connection'
       renderIcon={(item) => (
         <div className='flex size-8 shrink-0 items-center justify-center rounded-lg border bg-background'>
@@ -261,38 +322,24 @@ export function AddConnectionDialog({
       detailCrumb={(item) => `Connect ${item.name}`}
       detailBusy={flow.pending}
       onDetailExit={resetFields}
-      renderDetail={(item) => {
-        const { methods, chosen } = resolve(item, selectedMethodId)
-        return (
-          <div className='flex flex-col gap-3 p-3'>
-            {methods.length > 1 && (
-              <ConnectionMethodPicker
-                methods={methods}
-                value={selectedMethodId}
-                onChange={(id) => {
-                  setSelectedMethodId(id)
-                  setValues({})
-                  setToken('')
-                  setErrors({})
-                }}
-                disabled={flow.pending}
-              />
-            )}
-            {chosen && methodNeedsFields(chosen) && (
-              <ConnectionDetailPage
-                variables={chosen.connectionVariables ?? []}
-                values={values}
-                onValueChange={(key, value) => setValues((prev) => ({ ...prev, [key]: value }))}
-                showToken={methodIsBareSecret(chosen)}
-                token={token}
-                onTokenChange={setToken}
-                errors={errors}
-                disabled={flow.pending}
-              />
-            )}
-          </div>
-        )
-      }}
+      renderDetail={(item) => (
+        <ConnectionDetailPage
+          methods={resolve(item, selectedMethodId).methods}
+          selectedMethodId={selectedMethodId}
+          onMethodChange={(id) => {
+            setSelectedMethodId(id)
+            setValues({})
+            setToken('')
+            setErrors({})
+          }}
+          values={values}
+          onValueChange={(key, value) => setValues((prev) => ({ ...prev, [key]: value }))}
+          token={token}
+          onTokenChange={setToken}
+          errors={errors}
+          disabled={flow.pending}
+        />
+      )}
       renderDetailFooter={(item) => {
         const { chosen } = resolve(item, selectedMethodId)
         return (
@@ -310,16 +357,6 @@ export function AddConnectionDialog({
       }}
     />
   )
-}
-
-/** A secret/variable method needs the detail step; bare OAuth connects one-click. */
-function methodNeedsFields(method: Method): boolean {
-  return method.connectionType === 'secret' || (method.connectionVariables?.length ?? 0) > 0
-}
-
-/** A single-secret method (API key) with no structured variables. */
-function methodIsBareSecret(method: Method): boolean {
-  return method.connectionType === 'secret' && (method.connectionVariables?.length ?? 0) === 0
 }
 
 /** Fallback copy when a provider def carries no description. */

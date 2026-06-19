@@ -9,7 +9,7 @@ import {
   CommandList,
   CommandSeparator,
 } from '@auxx/ui/components/command'
-import { Check, Pencil, Plus, TriangleAlert } from 'lucide-react'
+import { Check, Plus, TriangleAlert } from 'lucide-react'
 import { useMemo } from 'react'
 import { useAppsContext } from '~/components/apps/providers/apps-context'
 import type { RouterOutputs } from '~/trpc/react'
@@ -24,7 +24,7 @@ export type PickerConnection = RouterOutputs['credentials']['list'][number]
  */
 export type PickerKind = 'app' | 'integration' | 'workflow'
 
-/** Fallback icons when a connection has no app logo to resolve. */
+/** Fallback icons when a connection carries no resolved icon. */
 const APP_FALLBACK_ICON = 'package'
 const KEY_FALLBACK_ICON = 'key-round'
 
@@ -71,11 +71,13 @@ export function ConnectionPicker({
   )
 
   // app row → app logo + title (hydrated client-side; `avatarUrl` isn't a
-  // credential column); non-app row → neutral fallback icon + label/name.
+  // credential column); non-app row → the provider brand mark `credentials.list`
+  // resolved on `icon`, else a neutral key fallback.
   const resolve = (c: PickerConnection) => {
     const inst = c.appId ? appInstallations.find((i) => i.app.id === c.appId) : undefined
+    const fallback = c.kind === 'app' ? APP_FALLBACK_ICON : (c.icon ?? KEY_FALLBACK_ICON)
     return {
-      iconId: inst?.app.avatarUrl ?? (c.kind === 'app' ? APP_FALLBACK_ICON : KEY_FALLBACK_ICON),
+      iconId: inst?.app.avatarUrl ?? fallback,
       title: c.label ?? inst?.app.title ?? c.name,
     }
   }
@@ -158,11 +160,10 @@ function ConnectionItem({
 }) {
   const isApp = connection.kind === 'app'
   const expired = connection.status === 'expired'
-  // App rows re-authorize (covers OAuth + secret re-entry); non-app secret rows
-  // edit the stored key. See 05c §1.
-  const canReconnect = isApp && !!onReconnect
+  // App rows re-authorize (covers OAuth + secret re-entry) only when expired;
+  // non-app secret rows edit the stored key. See 05c §1.
+  const canReconnect = isApp && expired && !!onReconnect
   const canEdit = !isApp && !!onEdit
-
   return (
     <CommandItem value={title} onSelect={onSelect} className='cursor-pointer h-7.5'>
       {/* `status` ('connected' | 'expired') is a subset of AppConnectionStatus. */}
@@ -171,7 +172,7 @@ function ConnectionItem({
       {connection.type && (
         <span className='truncate text-xs text-muted-foreground'>{connection.type}</span>
       )}
-      {expired && canReconnect && <TriangleAlert className='size-3.5 shrink-0 text-amber-600' />}
+      {canReconnect && <TriangleAlert className='size-3.5 shrink-0 text-amber-600' />}
       <div className='ml-auto flex items-center gap-1.5'>
         {selected && (
           <div className='flex size-4 items-center justify-center rounded-full border border-blue-800 bg-info'>
@@ -183,7 +184,7 @@ function ConnectionItem({
             type='button'
             variant='ghost'
             size='sm'
-            className={expired ? 'h-6 px-2 text-amber-600 hover:text-amber-700' : 'h-6 px-2'}
+            className='h-6 px-2 text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-400/10 hover:text-amber-700'
             onClick={(e) => {
               e.stopPropagation()
               onReconnect(connection)
@@ -201,7 +202,6 @@ function ConnectionItem({
               e.stopPropagation()
               onEdit(connection)
             }}>
-            <Pencil />
             Edit
           </Button>
         )}

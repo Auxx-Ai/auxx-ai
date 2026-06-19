@@ -9,6 +9,7 @@ import {
   splitSensitiveFields,
   updateCredential,
 } from '@auxx/credentials/store'
+import { getChannelProviderIcon } from '@auxx/lib/providers'
 import { CredentialTestingService, isCredentialInUse } from '@auxx/lib/workflow-engine'
 import { refreshCredentialTokens } from '@auxx/lib/workflows'
 import { TRPCError } from '@trpc/server'
@@ -138,6 +139,10 @@ export const credentialsRouter = createTRPCRouter({
           type: record.type ?? '',
           kind: record.kind,
           label: record.label,
+          // Visual-ref for non-app rows: channel/integration creds store the
+          // provider as `type` ('google', 'outlook', …) → resolve its brand mark.
+          // App rows leave this null and hydrate the app's avatar client-side.
+          icon: record.type ? getChannelProviderIcon(record.type) : null,
           appId: record.appId,
           appInstallationId: record.appInstallationId,
           // user-scoped vs org-scoped — reconnect picks the matching connection

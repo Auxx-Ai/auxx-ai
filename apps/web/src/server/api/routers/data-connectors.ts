@@ -192,7 +192,14 @@ export const dataConnectorRouter = createTRPCRouter({
     if (result.isErr()) {
       throw new TRPCError({ code: 'NOT_FOUND', message: result.error.message })
     }
-    return result.value
+    const connector = result.value
+    // Surface the template's declared connection hint (05c §8) so the connect UI
+    // can scope its picker to the provider/app the template expects — instead of
+    // the legacy "always mint an API key" path. `null` ⇒ no hint ⇒ open catalog.
+    const connectionHint = connector.templateId
+      ? (getConnectorTemplateById(connector.templateId)?.connection ?? null)
+      : null
+    return { ...connector, connectionHint }
   }),
 
   /** Lightweight status poll (in-flight sync UI). */

@@ -26,11 +26,18 @@ interface ConnectionPickerPopoverProps {
   orgScopedOnly?: boolean
   /**
    * When set, a "+ New connection" footer mints an `integration` secret of this
-   * type and calls `onCreated` with the new credentialId.
+   * type and calls `onCreated` with the new credentialId. Ignored when
+   * {@link onCreateNew} is provided — that takes over the footer.
    */
   createConnection?: { type: string; label: string }
-  /** Fires with the new credentialId after "+ New connection" succeeds. */
+  /** Fires with the new credentialId after the internal `createConnection` mint succeeds. */
   onCreated?: (credentialId: string) => void
+  /**
+   * Override the "+ New connection" footer to defer creation to the parent (e.g. open the
+   * full connection catalog scoped to one app/provider). Takes precedence over
+   * `createConnection`'s inline secret form; the footer shows whenever either is set.
+   */
+  onCreateNew?: () => void
   /**
    * Enable per-row actions: Reconnect (app rows) + Edit (integration secrets).
    * Defaults to true. Set false for a pure read-only picker (05c §4).
@@ -59,6 +66,7 @@ export function ConnectionPickerPopover({
   orgScopedOnly = true,
   createConnection,
   onCreated,
+  onCreateNew,
   enableActions = true,
   placeholder = 'Choose connection',
   trigger,
@@ -188,7 +196,16 @@ export function ConnectionPickerPopover({
               onPick(credentialId, connection)
               setOpen(false)
             }}
-            onCreateNew={createConnection ? () => setFormOpen(true) : undefined}
+            onCreateNew={
+              onCreateNew
+                ? () => {
+                    setOpen(false)
+                    onCreateNew()
+                  }
+                : createConnection
+                  ? () => setFormOpen(true)
+                  : undefined
+            }
             onReconnect={enableActions ? handleReconnect : undefined}
             onEdit={
               enableActions

@@ -9,9 +9,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@auxx/ui/components/select'
-import TreeRow from '@auxx/ui/components/tree-row'
-import { Brackets, Hash } from 'lucide-react'
+import { GridTreeRow } from '@auxx/ui/components/tree-row'
+import { ArrowRight, Brackets, Hash } from 'lucide-react'
 import { lastSegment, type SourcePath } from '../hooks/use-source-paths'
+import { MAPPING_COLS } from './mapping-columns'
 import { MappingFieldPicker } from './mapping-field-picker'
 
 /**
@@ -70,7 +71,8 @@ export function SourceLeafRow({
   const isArray = node.type === 'array'
   const Icon = isArray ? Brackets : Hash
   return (
-    <TreeRow
+    <GridTreeRow
+      columns={MAPPING_COLS}
       depth={depth}
       icon={<Icon className={isMapped ? 'size-3.5' : 'size-3.5 text-muted-foreground/50'} />}
       title={
@@ -81,23 +83,35 @@ export function SourceLeafRow({
           <span className='text-[10px] uppercase text-muted-foreground/60'>{node.type}</span>
         </span>
       }
-      // The target picker reads inline right after the source field name,
-      // followed by the match toggle + merge picker once the leaf is bound.
-      secondary={
-        <span className='flex items-center gap-1'>
-          <MappingFieldPicker
-            entityDefinitionId={entityDefinitionId}
-            sourceType={node.type}
-            sourcePath={node.path}
-            assignedKey={assignedTargetKey}
-            assignedLabel={assignedLabel}
-            canCreate={canCreate}
-            onAssign={onAssign}
-            onClear={onClear}
-          />
-          {isMapped && (
-            <>
-              {/* Secondary identity-match toggle: subtle text → filled blue badge. */}
+      cells={[
+        // The arrow always shows (the field picker is always present, even when
+        // unbound) — dimmed until a target field is bound.
+        <span
+          key='arrow'
+          className={`flex w-full justify-center ${
+            isMapped ? 'text-muted-foreground' : 'text-muted-foreground/40'
+          }`}>
+          <ArrowRight className='size-3.5' />
+        </span>,
+        // Target column — the field picker fills the cell and blends into the row.
+        <MappingFieldPicker
+          key='target'
+          entityDefinitionId={entityDefinitionId}
+          sourceType={node.type}
+          sourcePath={node.path}
+          assignedKey={assignedTargetKey}
+          assignedLabel={assignedLabel}
+          canCreate={canCreate}
+          onAssign={onAssign}
+          onClear={onClear}
+        />,
+        // Actions — match toggle + merge picker, available once the leaf is bound.
+        <div key='actions' className='flex w-full items-center gap-2 px-2'>
+          {/* Secondary identity-match toggle: subtle text → filled blue badge.
+              Reserves its slot whether shown or not, so the merge picker stays at
+              a fixed location across rows. */}
+          <div className='flex w-14 shrink-0 items-center'>
+            {isMapped && (
               <button
                 type='button'
                 onClick={onToggleMatch}
@@ -117,30 +131,27 @@ export function SourceLeafRow({
                   </span>
                 )}
               </button>
-              {/* Merge strategy only matters when the def is shared. An owned
-                  mapping (canCreate) is the sole writer, so every field is an
-                  implicit overwrite — no picker. Contributing mappings choose. */}
-              {!canCreate && (
-                <Select value={mergeStrategy} onValueChange={onMergeChange}>
-                  <SelectTrigger
-                    variant='transparent'
-                    size='sm'
-                    className='h-6 min-w-[96px] text-xs'>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {MERGE_OPTIONS.map((o) => (
-                      <SelectItem key={o.value} value={o.value}>
-                        {o.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
-            </>
+            )}
+          </div>
+          {/* Merge strategy only matters when the def is shared. An owned mapping
+              (canCreate) is the sole writer, so every field is an implicit
+              overwrite — no picker. Fixed width so it sits at a consistent x. */}
+          {isMapped && !canCreate && (
+            <Select value={mergeStrategy} onValueChange={onMergeChange}>
+              <SelectTrigger variant='transparent' size='sm' className='h-9 w-28 text-xs'>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {MERGE_OPTIONS.map((o) => (
+                  <SelectItem key={o.value} value={o.value}>
+                    {o.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           )}
-        </span>
-      }
+        </div>,
+      ]}
     />
   )
 }

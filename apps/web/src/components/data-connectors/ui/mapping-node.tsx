@@ -10,8 +10,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@auxx/ui/components/select'
-import TreeRow, { TreeRowButton } from '@auxx/ui/components/tree-row'
-import { FunctionSquare, Plus, Trash2, X } from 'lucide-react'
+import { GridTreeRow, TreeRowButton } from '@auxx/ui/components/tree-row'
+import { ArrowRight, FunctionSquare, Plus, Trash2, X } from 'lucide-react'
 import { useState } from 'react'
 import { ResourcePicker } from '~/components/pickers/resource-picker'
 import { useResourceFields, useResourceProperty } from '~/components/resources'
@@ -25,6 +25,8 @@ import {
 } from '../hooks/use-source-paths'
 import type { useStreamMutations } from '../hooks/use-stream-mutations'
 import { BranchRow } from './branch-row'
+import { MAPPING_COLS } from './mapping-columns'
+import { MappingFieldPicker } from './mapping-field-picker'
 import { MERGE_OPTIONS, SourceLeafRow } from './source-leaf-row'
 
 /** Sentinel for the whole-payload root (`''`) — Radix Select forbids empty values. */
@@ -189,6 +191,25 @@ export function MappingNode({
     setFieldMappings(streamId, mapping.id, next)
   }
 
+  // Re-point a formula at a different target field — re-keys the entry (and its
+  // merge strategy) under the new field key; the expression is unchanged.
+  const retargetFormula = (oldKey: string, newKey: string) => {
+    if (newKey === oldKey) return
+    const fm = fieldMappings[oldKey]
+    if (!fm) return
+    const next = { ...fieldMappings }
+    delete next[oldKey]
+    next[newKey] = fm
+    setFieldMappings(streamId, mapping.id, next)
+    const ms = mergeStrategies[oldKey]
+    if (ms !== undefined) {
+      const nextMs = { ...mergeStrategies }
+      delete nextMs[oldKey]
+      nextMs[newKey] = ms
+      setMergeStrategies(streamId, mapping.id, nextMs)
+    }
+  }
+
   // Normalizer for a match key, derived from the target field's storage type so
   // the toggle stays one-click (no normalize selector).
   const deriveNormalize = (targetKey: string): 'email' | 'phone' | 'domain' | 'none' => {
@@ -233,61 +254,63 @@ export function MappingNode({
     })
 
   return (
-    <TreeRow
+    <GridTreeRow
+      columns={MAPPING_COLS}
       depth={depth}
       expandable
+      chevronOnHover
       isOpen={open}
       onToggleOpen={() => setOpen((o) => !o)}
       icon={<EntityIcon iconId={resource?.icon ?? 'table'} size='xs' />}
       title={
-        <span className='flex items-center gap-1.5'>
-          {mapping.parentMappingId === null && rootCandidates.length > 1 ? (
-            <span onClick={(e) => e.stopPropagation()}>
-              <Select
-                value={mapping.rootPath || ROOT_SENTINEL}
-                onValueChange={(v) =>
-                  setRootPath(streamId, mapping.id, v === ROOT_SENTINEL ? '' : v)
-                }>
-                <SelectTrigger size='sm' className='h-6 min-w-[120px] text-xs'>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {rootCandidates.map((p) => (
-                    <SelectItem key={p || ROOT_SENTINEL} value={p || ROOT_SENTINEL}>
-                      {describeRootPath(p, streamKey)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </span>
-          ) : (
-            <span className='text-xs text-muted-foreground'>
-              {describeRootPath(mapping.rootPath, streamKey)}
-            </span>
-          )}
-          <span className='text-muted-foreground'>→</span>
-          {/* Stop clicks on the picker from bubbling to the row's toggle handler. */}
+        mapping.parentMappingId === null && rootCandidates.length > 1 ? (
+          // Interactive source cell — guard the row toggle (the chevron stays the
+          // expand affordance).
           <span onClick={(e) => e.stopPropagation()}>
-            <ResourcePicker
-              value={mapping.entityDefinitionId ? [mapping.entityDefinitionId] : []}
-              onChange={() => {}}
-              entityDefinedOnly
-              emptyLabel='Target def…'
-              onSelectSingle={(entityDefinitionId) =>
-                setMappingTarget(streamId, {
-                  mappingId: mapping.id,
-                  entityDefinitionId,
-                  targetMode,
-                  linkMode,
-                })
-              }
-              triggerProps={{ variant: 'outline', className: 'h-6 min-w-[120px] text-xs' }}
-            />
+            <Select
+              value={mapping.rootPath || ROOT_SENTINEL}
+              onValueChange={(v) =>
+                setRootPath(streamId, mapping.id, v === ROOT_SENTINEL ? '' : v)
+              }>
+              <SelectTrigger variant='transparent' size='sm' className='h-9 w-full px-1 text-xs'>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {rootCandidates.map((p) => (
+                  <SelectItem key={p || ROOT_SENTINEL} value={p || ROOT_SENTINEL}>
+                    {describeRootPath(p, streamKey)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </span>
-        </span>
+        ) : (
+          <span className='text-xs text-muted-foreground'>
+            {describeRootPath(mapping.rootPath, streamKey)}
+          </span>
+        )
       }
-      secondary={
-        <div className='flex items-center gap-1'>
+      cells={[
+        <span key='arrow' className='flex w-full justify-center text-muted-foreground'>
+          <ArrowRight className='size-3.5' />
+        </span>,
+        <ResourcePicker
+          key='target'
+          value={mapping.entityDefinitionId ? [mapping.entityDefinitionId] : []}
+          onChange={() => {}}
+          entityDefinedOnly
+          emptyLabel='Target def…'
+          onSelectSingle={(entityDefinitionId) =>
+            setMappingTarget(streamId, {
+              mappingId: mapping.id,
+              entityDefinitionId,
+              targetMode,
+              linkMode,
+            })
+          }
+          triggerProps={{ className: 'h-9 w-full justify-between rounded-none px-2 text-xs' }}
+        />,
+        <div key='actions' className='flex w-full items-center justify-end gap-1 pr-1'>
           <TreeRowButton
             variant={targetMode}
             tooltipText={
@@ -308,8 +331,8 @@ export function MappingNode({
               <Trash2 />
             </TreeRowButton>
           )}
-        </div>
-      }>
+        </div>,
+      ]}>
       {sourceTree.length === 0 ? (
         <div
           style={{ paddingLeft: `${(depth + 1) * 1.5}rem` }}
@@ -357,10 +380,13 @@ export function MappingNode({
             <FormulaRow
               key={targetKey}
               depth={depth + 1}
+              entityDefinitionId={mapping.entityDefinitionId}
+              targetKey={targetKey}
               label={targetFields.find((f) => f.key === targetKey)?.label ?? targetKey}
               expression={fm.expression}
               mergeStrategy={mergeStrategies[targetKey] ?? 'overwrite'}
               onEdit={() => onPromoteField(mapping.id, targetKey)}
+              onRetarget={(newKey) => retargetFormula(targetKey, newKey)}
               onMergeChange={(value) =>
                 setMergeStrategies(streamId, mapping.id, { ...mergeStrategies, [targetKey]: value })
               }
@@ -368,7 +394,8 @@ export function MappingNode({
             />
           ))}
           {mapping.entityDefinitionId != null && (
-            <TreeRow
+            <GridTreeRow
+              columns={MAPPING_COLS}
               depth={depth + 1}
               icon={<Plus className='size-3.5 text-muted-foreground/50' />}
               title={<span className='text-sm text-muted-foreground'>Add formula</span>}
@@ -395,7 +422,7 @@ export function MappingNode({
           streamKey={streamKey}
         />
       ))}
-    </TreeRow>
+    </GridTreeRow>
   )
 }
 
@@ -516,12 +543,18 @@ function SourceNode(props: SourceNodeProps) {
 
 interface FormulaRowProps {
   depth: number
-  /** Target field label this formula writes into. */
+  /** The def whose fields the formula can target. Null until a target def is picked. */
+  entityDefinitionId: string | null
+  /** Target field key this formula currently writes into (`''` if unassigned). */
+  targetKey: string
+  /** Resolved label for the target field. */
   label: string
   /** The calc expression (shown as a preview; click the row to edit). */
   expression: string
   mergeStrategy: string
   onEdit: () => void
+  /** Re-point the formula at a different target field key. */
+  onRetarget: (newKey: string) => void
   onMergeChange: (value: string) => void
   onClear: () => void
 }
@@ -529,30 +562,54 @@ interface FormulaRowProps {
 /**
  * A computed target field (plan 10 §3.2) — a non-bare `fieldMappings` entry that
  * can reference many source fields, so it lives on its own row rather than on a
- * source leaf. Clicking the row opens the calc editor; it carries a merge
- * strategy (it writes a target field) but no Match toggle (no single source path
- * to match identity on).
+ * source leaf. The source cell shows the calc expression (click it to edit); the
+ * target column is a field picker (a formula produces a scalar — string-typed for
+ * the compat filter). No Match toggle (no single source path to match identity on).
  */
 function FormulaRow({
   depth,
+  entityDefinitionId,
+  targetKey,
   label,
   expression,
   mergeStrategy,
   onEdit,
+  onRetarget,
   onMergeChange,
   onClear,
 }: FormulaRowProps) {
   return (
-    <TreeRow
+    <GridTreeRow
+      columns={MAPPING_COLS}
       depth={depth}
       icon={<FunctionSquare className='size-3.5' />}
-      title={<span className='text-sm'>{label}</span>}
-      secondary={<span className='font-mono text-xs'>← {expression}</span>}
+      // Source cell = the computed expression; target column = the field it writes.
+      title={<span className='font-mono text-xs'>{expression}</span>}
       onToggleOpen={onEdit}
-      trailing={
-        <div className='flex items-center gap-1'>
+      cells={[
+        <span key='arrow' className='flex w-full justify-center text-muted-foreground'>
+          <ArrowRight className='size-3.5' />
+        </span>,
+        <MappingFieldPicker
+          key='target'
+          entityDefinitionId={entityDefinitionId}
+          // A formula has no single source type — it yields a scalar; 'string'
+          // drives the (TEXT-compatible) target filter. Quick-create is off; a
+          // formula targets an existing field.
+          sourceType='string'
+          sourcePath=''
+          assignedKey={targetKey || undefined}
+          assignedLabel={label}
+          canCreate={false}
+          onAssign={onRetarget}
+          onClear={onClear}
+        />,
+        <div key='actions' className='flex w-full items-center gap-2 px-2'>
+          {/* Spacer aligns the merge picker with the leaf rows' (which reserve a
+              Match slot here). */}
+          <div className='w-14 shrink-0' />
           <Select value={mergeStrategy} onValueChange={onMergeChange}>
-            <SelectTrigger size='sm' className='h-6 min-w-[96px] text-xs'>
+            <SelectTrigger variant='transparent' size='sm' className='h-9 w-28 text-xs'>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -566,8 +623,8 @@ function FormulaRow({
           <TreeRowButton tooltipText='Remove formula' onClick={onClear}>
             <X />
           </TreeRowButton>
-        </div>
-      }
+        </div>,
+      ]}
     />
   )
 }

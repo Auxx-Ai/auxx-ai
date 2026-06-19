@@ -157,6 +157,33 @@ export function isValidProviderType(provider: string): provider is ChannelProvid
 }
 
 /**
+ * Visual-ref icon per channel provider, rendered client-side by VisualIcon/AppIcon:
+ * `brand:<slug>` resolves to `apps/web/public/icons/brands/<slug>.svg` (registered in
+ * `BRAND_ICONS`); a bare kebab id is a lucide mark. Single source of truth for provider
+ * marks — surfaced on `credentials.list` rows so the connection picker shows the
+ * provider's brand instead of a generic key.
+ */
+export const PROVIDER_ICON_MAP: Record<ChannelProviderType, string> = {
+  [ChannelProviderType.google]: 'brand:google',
+  [ChannelProviderType.outlook]: 'brand:outlook',
+  [ChannelProviderType.facebook]: 'brand:facebook',
+  [ChannelProviderType.instagram]: 'brand:instagram',
+  [ChannelProviderType.shopify]: 'brand:shopify',
+  [ChannelProviderType.openphone]: 'phone',
+  [ChannelProviderType.mailgun]: 'mail',
+  [ChannelProviderType.sms]: 'message-square',
+  [ChannelProviderType.whatsapp]: 'message-circle',
+  [ChannelProviderType.chat]: 'message-square',
+  [ChannelProviderType.email]: 'mail',
+  [ChannelProviderType.imap]: 'mail',
+}
+
+/** Resolve a channel provider's icon visual-ref, or null for an unknown provider string. */
+export function getChannelProviderIcon(provider: string): string | null {
+  return isValidProviderType(provider) ? PROVIDER_ICON_MAP[provider] : null
+}
+
+/**
  * Type guard to check if a provider is a messaging provider
  */
 export function isMessagingProvider(provider: ChannelProviderType): boolean {
