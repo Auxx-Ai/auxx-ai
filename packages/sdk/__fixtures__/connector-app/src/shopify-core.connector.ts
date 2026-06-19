@@ -79,13 +79,9 @@ export const shopifyCoreDataConnector = defineDataConnector({
           target: {
             mode: 'contributing',
             entityKind: 'contact',
-            identity: {
-              // connectorFieldKey is subtree-relative to rootPath ('customer').
-              kind: 'matchField',
-              connectorFieldKey: 'email',
-              targetFieldId: 'email',
-              normalize: 'email',
-            },
+            // Merge into an existing contact by email on first link (external id
+            // stays the primary key). The provisioner flags the bound `email` field.
+            matchFieldKeys: ['email'],
           },
         },
         {

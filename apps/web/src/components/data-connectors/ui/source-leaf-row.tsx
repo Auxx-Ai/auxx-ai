@@ -1,6 +1,7 @@
 // apps/web/src/components/data-connectors/ui/source-leaf-row.tsx
 'use client'
 
+import { Badge } from '@auxx/ui/components/badge'
 import {
   Select,
   SelectContent,
@@ -33,9 +34,12 @@ interface SourceLeafRowProps {
   mergeStrategy: string
   /** Owned defs allow inline quick-create (plan decision 3). */
   canCreate: boolean
+  /** This bound field is a secondary identity-match key (external id stays primary). */
+  isMatch: boolean
   onAssign: (targetKey: string) => void
   onClear: () => void
   onMergeChange: (value: string) => void
+  onToggleMatch: () => void
   onPromote: () => void
 }
 
@@ -53,9 +57,11 @@ export function SourceLeafRow({
   assignedTargetKey,
   mergeStrategy,
   canCreate,
+  isMatch,
   onAssign,
   onClear,
   onMergeChange,
+  onToggleMatch,
   onPromote,
 }: SourceLeafRowProps) {
   const isMapped = !!assignedTargetKey
@@ -73,40 +79,60 @@ export function SourceLeafRow({
           <span className='text-[10px] uppercase text-muted-foreground/60'>{node.type}</span>
         </span>
       }
+      // The target picker reads inline right after the source field name.
+      secondary={
+        <MappingFieldPicker
+          entityDefinitionId={entityDefinitionId}
+          sourceType={node.type}
+          sourcePath={node.path}
+          assignedKey={assignedTargetKey}
+          assignedLabel={assignedLabel}
+          canCreate={canCreate}
+          onAssign={onAssign}
+        />
+      }
       trailing={
-        <div className='flex items-center gap-1'>
-          <MappingFieldPicker
-            entityDefinitionId={entityDefinitionId}
-            sourceType={node.type}
-            sourcePath={node.path}
-            assignedKey={assignedTargetKey}
-            assignedLabel={assignedLabel}
-            canCreate={canCreate}
-            onAssign={onAssign}
-          />
-          {isMapped && (
-            <>
-              <Select value={mergeStrategy} onValueChange={onMergeChange}>
-                <SelectTrigger size='sm' className='h-6 min-w-[96px] text-xs'>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {MERGE_OPTIONS.map((o) => (
-                    <SelectItem key={o.value} value={o.value}>
-                      {o.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <TreeRowButton tooltipText='Edit as a formula' onClick={onPromote}>
-                <FunctionSquare />
-              </TreeRowButton>
-              <TreeRowButton tooltipText='Clear mapping' onClick={onClear}>
-                <X />
-              </TreeRowButton>
-            </>
-          )}
-        </div>
+        isMapped ? (
+          <div className='flex items-center gap-1'>
+            {/* Secondary identity-match toggle: subtle text → filled blue badge. */}
+            <button
+              type='button'
+              onClick={onToggleMatch}
+              title={
+                isMatch
+                  ? 'Used as a secondary identity match. Click to stop matching on this field.'
+                  : 'Also match existing records by this field (external id stays the primary key).'
+              }>
+              {isMatch ? (
+                <Badge variant='blue' className='h-5 px-1.5 text-[10px]'>
+                  Match
+                </Badge>
+              ) : (
+                <span className='px-1 text-[10px] font-medium text-primary-400 hover:text-primary-600'>
+                  Match
+                </span>
+              )}
+            </button>
+            <Select value={mergeStrategy} onValueChange={onMergeChange}>
+              <SelectTrigger size='sm' className='h-6 min-w-[96px] text-xs'>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {MERGE_OPTIONS.map((o) => (
+                  <SelectItem key={o.value} value={o.value}>
+                    {o.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <TreeRowButton tooltipText='Edit as a formula' onClick={onPromote}>
+              <FunctionSquare />
+            </TreeRowButton>
+            <TreeRowButton tooltipText='Clear mapping' onClick={onClear}>
+              <X />
+            </TreeRowButton>
+          </div>
+        ) : undefined
       }
     />
   )

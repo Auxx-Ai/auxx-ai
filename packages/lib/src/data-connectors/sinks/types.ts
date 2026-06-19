@@ -12,10 +12,11 @@ export interface ProjectedRecord {
   /** Mapped to TARGET field keys (the mapping layer already evaluated CALC). */
   fields: Record<string, unknown>
   /**
-   * Identity match values resolved from the SOURCE record (matchField/composite),
-   * each pairing a target field with the source value it must equal. Pre-resolved
-   * by the mapping layer because the sink has no access to the source subtree.
-   * Empty for connectorExternalId / manualReview.
+   * Secondary identity match values resolved from the SOURCE record (each bound
+   * field flagged `match`), pairing a target field with the source value it must
+   * equal. Pre-resolved by the mapping layer because the sink has no access to the
+   * source subtree. Empty when no field is flagged → the record matches by its
+   * external id only.
    */
   identityCandidates: Array<{
     targetFieldId: string

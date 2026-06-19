@@ -11,7 +11,6 @@ import { err, ok, type Result } from 'neverthrow'
 import type {
   FieldMapping,
   FieldMergeStrategy,
-  IdentityStrategy,
   LinkMode,
   OrphanBehavior,
   SyncMode,
@@ -38,7 +37,6 @@ export interface DecodedMapping {
   parentMappingId: string | null
   relationshipFieldKey: string | null
   orphanBehavior: OrphanBehavior
-  identityStrategy: IdentityStrategy
   fieldMappings: Record<string, FieldMapping>
   mergeStrategies: Record<string, FieldMergeStrategy>
 }
@@ -75,7 +73,6 @@ export function decodeMapping(row: DataConnectorMappingRow): DecodedMapping {
     parentMappingId: row.parentMappingId ?? null,
     relationshipFieldKey: row.relationshipFieldKey ?? null,
     orphanBehavior: row.orphanBehavior as OrphanBehavior,
-    identityStrategy: row.identityStrategy,
     fieldMappings: row.fieldMappings ?? {},
     mergeStrategies: row.mergeStrategies ?? {},
   }

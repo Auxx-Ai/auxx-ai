@@ -151,8 +151,8 @@ export function joinPaths(parts: string[]): string {
  * level — `extractSubtrees(parentSubtree, child.rootPath)`). Slicing the right
  * subtree for a nested mapping therefore needs the FULL prefix, not the bare
  * `rootPath`. Feed the result to {@link subtreeUnder}/{@link leafPathsUnder}; the
- * relative paths they return match what gets stored in `fieldMappings` /
- * `identityStrategy.connectorFieldKey`.
+ * relative paths they return match what gets stored in `fieldMappings`
+ * (`sourceFields`, including `match`-flagged identity keys).
  */
 export function absolutePrefix<T extends MappingChainNode>(
   mapping: T,

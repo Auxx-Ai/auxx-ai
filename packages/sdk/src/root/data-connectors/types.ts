@@ -90,28 +90,6 @@ export interface ConnectorEntityDecl {
 }
 
 /**
- * How an incoming upstream record is matched to an existing entity record.
- * Mirrors the engine `IdentityStrategy` union (02).
- */
-export type ConnectorIdentityStrategy =
-  | { kind: 'connectorExternalId' }
-  | {
-      kind: 'matchField'
-      connectorFieldKey: string
-      targetFieldId: string
-      normalize?: 'email' | 'phone' | 'domain' | 'none'
-    }
-  | {
-      kind: 'composite'
-      rules: Array<{
-        connectorFieldKey: string
-        targetFieldId: string
-        normalize?: 'email' | 'phone' | 'domain' | 'none'
-      }>
-    }
-  | { kind: 'manualReview' }
-
-/**
  * A recommended fan-out mapping the connector suggests (05 §4). The user
  * confirms/overrides at setup; branches not declared here are inferred from the
  * schema tree.
@@ -125,7 +103,16 @@ export interface ConnectorDefaultMapping {
   relationshipFieldKey?: string
   target:
     | { mode: 'owned'; entity: ConnectorEntityDecl }
-    | { mode: 'contributing'; entityKind: string; identity: ConnectorIdentityStrategy }
+    | {
+        mode: 'contributing'
+        entityKind: string
+        /**
+         * Target field keys to flag as secondary identity-match keys (e.g.
+         * `['email']`). The external id is always the primary key; these merge an
+         * incoming record into an existing entity on first link.
+         */
+        matchFieldKeys?: string[]
+      }
 }
 
 /** One stream (fetch) declaration. */

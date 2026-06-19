@@ -16,7 +16,6 @@ import type {
   DataConnectorType,
   FieldMapping,
   FieldMergeStrategy,
-  IdentityStrategy,
   LinkMode,
   OrphanBehavior,
   ScheduledTriggerConfig,
@@ -229,7 +228,6 @@ export async function addStream(
     linkMode: 'upsert',
     targetMode: 'contributing',
     entityDefinitionId: null,
-    identityStrategy: { kind: 'connectorExternalId' },
     fieldMappings: {},
     mergeStrategies: {},
     orphanBehavior: 'ignore',
@@ -342,7 +340,6 @@ export interface AddMappingInput {
   entityDefinitionId: string
   parentMappingId?: string | null
   relationshipFieldKey?: string | null
-  identityStrategy: IdentityStrategy
   fieldMappings?: Record<string, FieldMapping>
   mergeStrategies?: Record<string, FieldMergeStrategy>
   orphanBehavior?: OrphanBehavior
@@ -366,7 +363,6 @@ export async function addMapping(
       entityDefinitionId: input.entityDefinitionId,
       parentMappingId: input.parentMappingId ?? null,
       relationshipFieldKey: input.relationshipFieldKey ?? null,
-      identityStrategy: input.identityStrategy,
       fieldMappings: input.fieldMappings ?? {},
       mergeStrategies: input.mergeStrategies ?? {},
       orphanBehavior: input.orphanBehavior ?? 'ignore',
@@ -401,7 +397,6 @@ export interface UpdateMappingInput {
   // Target binding + policy columns (folded in from the old granular setters).
   entityDefinitionId?: string | null
   targetMode?: TargetMode
-  identityStrategy?: IdentityStrategy
   fieldMappings?: Record<string, FieldMapping>
   mergeStrategies?: Record<string, FieldMergeStrategy>
 }
@@ -428,7 +423,6 @@ export async function updateMapping(
         ? { entityDefinitionId: patch.entityDefinitionId }
         : {}),
       ...(patch.targetMode !== undefined ? { targetMode: patch.targetMode } : {}),
-      ...(patch.identityStrategy !== undefined ? { identityStrategy: patch.identityStrategy } : {}),
       ...(patch.fieldMappings !== undefined ? { fieldMappings: patch.fieldMappings } : {}),
       ...(patch.mergeStrategies !== undefined ? { mergeStrategies: patch.mergeStrategies } : {}),
       updatedAt: new Date(),

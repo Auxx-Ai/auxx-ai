@@ -2,6 +2,7 @@
 
 'use client'
 
+import { isSystemResource } from '@auxx/lib/resources/client'
 import {
   Command,
   CommandEmpty,
@@ -42,6 +43,7 @@ export function ResourcePickerContent({
   excludeIds = EMPTY_EXCLUDE_IDS,
   includeSystem = true,
   includeCustom = true,
+  entityDefinedOnly = false,
 }: ResourcePickerContentProps) {
   const [search, setSearch] = useState('')
 
@@ -70,11 +72,13 @@ export function ResourcePickerContent({
   const filteredResources = useMemo(() => {
     return resources.filter((r) => {
       if (excludeIds.includes(r.id)) return false
+      // Registry-only system types (message, dataset…) have no EntityDefinition row.
+      if (entityDefinedOnly && isSystemResource(r)) return false
       if (r.entityType && !includeSystem) return false
       if (!r.entityType && !includeCustom) return false
       return true
     })
-  }, [resources, excludeIds, includeSystem, includeCustom])
+  }, [resources, excludeIds, includeSystem, includeCustom, entityDefinedOnly])
 
   // Initially selected items, filtered by search
   const filteredSelectedItems = useMemo(() => {

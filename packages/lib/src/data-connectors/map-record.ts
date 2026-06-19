@@ -106,33 +106,29 @@ function evaluateFields(mapping: DecodedMapping, subtree: unknown): Record<strin
 }
 
 /**
- * Resolve a mapping's identity match values from the source subtree. matchField/
- * composite read a subtree-relative source path (`connectorFieldKey`) and pair it
- * with the target field it must equal; the sink normalizes + looks up. Other
- * strategies (connectorExternalId / manualReview) contribute no candidates.
+ * Resolve a mapping's identity match values from the source subtree. Every bound
+ * field flagged `match` is a secondary identity key (the external id is always
+ * the primary): read its subtree-relative source path (the bare-token binding's
+ * single `sourceFields` value) and pair it with the target field key it must
+ * equal; the sink normalizes + looks up. No flagged fields → no candidates →
+ * the record creates by external id.
  */
 function identityCandidates(
   mapping: DecodedMapping,
   subtree: unknown
 ): ProjectedRecord['identityCandidates'] {
-  const strategy = mapping.identityStrategy
-  const rules =
-    strategy.kind === 'matchField'
-      ? [
-          {
-            connectorFieldKey: strategy.connectorFieldKey,
-            targetFieldId: strategy.targetFieldId,
-            normalize: strategy.normalize,
-          },
-        ]
-      : strategy.kind === 'composite'
-        ? strategy.rules
-        : []
-  return rules.map((r) => ({
-    targetFieldId: r.targetFieldId,
-    value: getByPath(subtree, r.connectorFieldKey),
-    normalize: r.normalize,
-  }))
+  const candidates: ProjectedRecord['identityCandidates'] = []
+  for (const [targetKey, fm] of Object.entries(mapping.fieldMappings)) {
+    if (!fm.match) continue
+    const sourcePath = Object.values(fm.sourceFields)[0]
+    if (!sourcePath) continue
+    candidates.push({
+      targetFieldId: targetKey,
+      value: getByPath(subtree, sourcePath),
+      normalize: fm.match.normalize,
+    })
+  }
+  return candidates
 }
 
 /** Derive the external id of a subtree (its own id, falling back to index). */

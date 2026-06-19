@@ -1527,6 +1527,13 @@
       "when": 1781826067205,
       "tag": "0217_nullable_mapping_target",
       "breakpoints": true
+    },
+    {
+      "idx": 218,
+      "version": "7",
+      "when": 1781832427962,
+      "tag": "0218_drop_mapping_identity_strategy",
+      "breakpoints": true
     }
   ]
 }

@@ -42,6 +42,14 @@ export interface ResourcePickerContentProps {
 
   /** Filter: include custom resources (default: true) */
   includeCustom?: boolean
+
+  /**
+   * Filter: only resources backed by an `EntityDefinition` row (default: false).
+   * Excludes true registry-only system types (e.g. `message`, `dataset`) that have
+   * no DB row, while keeping DB-backed system entities like contact/ticket. Use
+   * this when a stored `entityDefinitionId` must FK into `EntityDefinition`.
+   */
+  entityDefinedOnly?: boolean
 }
 
 /**

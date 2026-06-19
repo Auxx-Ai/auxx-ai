@@ -1,0 +1,1 @@
+ALTER TABLE "DataConnectorMapping" DROP COLUMN "identityStrategy";

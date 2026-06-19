@@ -28,7 +28,6 @@ export type {
   ConnectorFetchResult,
   ConnectorFieldCapabilities,
   ConnectorFieldDecl,
-  ConnectorIdentityStrategy,
   ConnectorRecord,
   ConnectorStreamDecl,
   ConnectorStreamState,

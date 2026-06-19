@@ -116,7 +116,7 @@ export type {
   DataConnectorType,
   FieldMapping,
   FieldMergeStrategy,
-  IdentityStrategy,
+  IdentityNormalize,
   LinkMode,
   OrphanBehavior,
   ScheduledTriggerConfig,
