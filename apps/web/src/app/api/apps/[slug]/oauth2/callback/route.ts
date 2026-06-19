@@ -352,7 +352,12 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           }),
         },
       },
-      metadata.connectionId ? { connectionId: metadata.connectionId } : undefined
+      {
+        // The method the org chose (stashed in Redis state by the authorize route) →
+        // written to the credential FK so the runtime resolves the exact method.
+        connectionDefinitionId: metadata.connectionDefinitionId,
+        ...(metadata.connectionId && { connectionId: metadata.connectionId }),
+      }
     )
 
     if (result.isErr()) {

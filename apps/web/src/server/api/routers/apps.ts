@@ -1,5 +1,6 @@
 // apps/web/src/server/api/routers/apps.ts
 
+import { setDefaultCredential } from '@auxx/credentials/store'
 import {
   deleteAppConnection,
   getAppDeployments,
@@ -12,6 +13,7 @@ import { FeatureKey, FeaturePermissionService } from '@auxx/lib/permissions'
 import { createScopedLogger } from '@auxx/logger'
 import {
   getAppConnectionDefinition,
+  getConnectionDefinitionById,
   listAppConnections,
   renameAppConnection,
 } from '@auxx/services/app-connections'
@@ -342,22 +344,36 @@ export const appsRouter = createTRPCRouter({
         secret: z.string().min(1).optional(),
         values: z.record(z.string(), z.string()).optional(),
         connectionId: z.string().optional(),
+        // The picked method (ConnectionDefinition.id). Sent by the connect flow when an app
+        // exposes >1 method; the def is then looked up by id and scope derived from it. Omitted
+        // for single-method apps, which fall back to the (appId, connectionType-scope) lookup.
+        connectionDefinitionId: z.string().optional(),
       })
     )
     .use(notDemo('save app credentials'))
     .mutation(async ({ ctx, input }) => {
       const { organizationId, userId } = ctx.session
-      const { appId, installationId, appName, connectionType, secret, values, connectionId } = input
+      const { appId, installationId, appName, secret, values, connectionId } = input
+      const { connectionDefinitionId } = input
 
-      // userId is null for organization-wide, userId for user-specific
-      const userIdField = connectionType === 'organization' ? null : userId
-
-      // Validate against the definition server-side — the client form is convenience, not a gate.
-      const defResult = await getAppConnectionDefinition(appId, connectionType === 'organization')
+      // Validate against the chosen method server-side — the client form is convenience, not a
+      // gate. With a picked method, look it up by id and derive scope from its `global`; without
+      // one (single-method app), fall back to the legacy (appId, scope) lookup.
+      const defResult = connectionDefinitionId
+        ? await getConnectionDefinitionById(appId, connectionDefinitionId)
+        : await getAppConnectionDefinition(appId, input.connectionType === 'organization')
       if (defResult.isErr()) {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Connection definition not found' })
       }
-      const variableDefs = defResult.value.connectionVariables ?? []
+      const def = defResult.value
+
+      // Scope is a property of the method: org-scoped (userId null) vs user-scoped.
+      const isOrgScoped = connectionDefinitionId
+        ? def.global === true
+        : input.connectionType === 'organization'
+      const userIdField = isOrgScoped ? null : userId
+
+      const variableDefs = def.connectionVariables ?? []
 
       let connectionData: {
         secret?: string
@@ -409,7 +425,7 @@ export const appsRouter = createTRPCRouter({
         userId, // createdById
         userIdField, // userId field for scoping
         connectionData,
-        { connectionId }
+        { connectionId, connectionDefinitionId }
       )
 
       if (result.isErr()) {
@@ -426,6 +442,30 @@ export const appsRouter = createTRPCRouter({
       }
 
       return { success: true, credentialId: result.value }
+    }),
+
+  /**
+   * Make an org-scoped connection the primary one record actions use when an app has more than
+   * one connection — by method or by account (§4a). Org decision → admin only.
+   */
+  setDefaultConnection: adminProcedure
+    .input(z.object({ connectionId: z.string() }))
+    .use(notDemo('change the primary connection'))
+    .mutation(async ({ ctx, input }) => {
+      const { organizationId } = ctx.session
+      const result = await setDefaultCredential(input.connectionId, organizationId)
+      if (result.isErr()) {
+        logger.error('Failed to set default connection', {
+          error: result.error,
+          connectionId: input.connectionId,
+          organizationId,
+        })
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: result.error.message || 'Failed to set primary connection',
+        })
+      }
+      return { success: true }
     }),
 
   /**

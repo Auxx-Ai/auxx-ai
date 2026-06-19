@@ -81,6 +81,12 @@ export function AppAccountPicker({
       },
       title: installation.app.title,
       connectionDefinitions: installation.connectionDefinitions ?? {},
+      methods: (installation.methods ?? []).map((m) => ({
+        id: m.id,
+        connectionType: m.connectionType,
+        description: m.description ?? undefined,
+        connectionVariables: m.connectionVariables,
+      })),
     }
   }, [installation, appId])
 

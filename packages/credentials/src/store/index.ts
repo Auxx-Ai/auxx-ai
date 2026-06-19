@@ -10,6 +10,7 @@ export { mergeSecrets } from './merge-secrets'
 export { recordRefreshFailure, recordRefreshSuccess } from './record-refresh'
 export { revealSecrets } from './reveal-secrets'
 export { rotateSecrets } from './rotate-secrets'
+export { setDefaultCredential } from './set-default-credential'
 export { splitSensitiveFields } from './split-sensitive-fields'
 export type {
   CredentialKind,

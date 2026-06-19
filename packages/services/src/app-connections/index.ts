@@ -14,6 +14,11 @@ export {
   interpolateConnectionFields,
   mergeConnectionVariables,
 } from './interpolate-connection'
+export {
+  type ConnectionMethod,
+  getConnectionDefinitionById,
+  listAppConnectionDefinitions,
+} from './list-app-connection-definitions'
 export { listAppConnections } from './list-app-connections'
 export { renameAppConnection } from './rename-app-connection'
 // Export types

@@ -10,16 +10,26 @@ import type { AppInstallation } from '~/components/apps/providers/apps-context'
 import { AppIcon } from '~/components/apps/ui/app-icon'
 import { type TemplateGalleryCategory, TemplateGalleryDialog } from '~/components/templates/ui'
 import { ConnectionDetailPage } from './connection-detail-page'
-import {
-  appScope,
-  appTarget,
-  defForScope,
-  type ProviderRow,
-  platformScope,
-  platformTarget,
-} from './connection-targets'
+import { ConnectionMethodPicker } from './connection-method-picker'
+import { appTarget, type ProviderRow, platformTarget } from './connection-targets'
 
 export type { ProviderRow }
+
+type Scope = 'user' | 'organization'
+
+/**
+ * One selectable connection method. Apps carry these natively (`AppInstallation.methods`);
+ * a platform provider is normalized into a single synthetic method so both flow through the
+ * same resolve/connect path. `global` decides the connect scope (org-wide vs per-user).
+ */
+type Method = {
+  id: string
+  label: string
+  description: string | null
+  connectionType: string
+  global: boolean
+  connectionVariables: AppInstallation['methods'][number]['connectionVariables']
+}
 
 /** A gallery row — either an installed app or a platform provider — carrying its source. */
 type CatalogItem = {
@@ -103,6 +113,8 @@ export function AddConnectionDialog({
   const [token, setToken] = useState('')
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [connectingId, setConnectingId] = useState<string | null>(null)
+  // The method chosen on the detail page when an item exposes >1 (null until picked).
+  const [selectedMethodId, setSelectedMethodId] = useState<string | null>(null)
 
   const flow = useConnectFlow({
     onConnected: () => {
@@ -143,16 +155,31 @@ export function AddConnectionDialog({
     ]
   }, [items])
 
-  /** Resolve a row to its connect target + scope + the definition it connects under. */
-  function resolve(item: CatalogItem) {
-    if (item.kind === 'app') {
-      const scope = appScope(item.app)
-      const target = appTarget(item.app)
-      return { target, scope, def: defForScope(target, scope) }
-    }
-    const scope = platformScope(item.provider)
-    const target = platformTarget(item.provider)
-    return { target, scope, def: defForScope(target, scope) }
+  /** Every connect method an item exposes. Apps carry them natively; a provider is one method. */
+  function methodsFor(item: CatalogItem): Method[] {
+    if (item.kind === 'app') return item.app.methods ?? []
+    const p = item.provider
+    return [
+      {
+        id: p.providerKey,
+        label: p.label,
+        description: p.description ?? null,
+        connectionType: p.connectionType,
+        global: p.global ?? false,
+        connectionVariables: p.connectionVariables ?? [],
+      },
+    ]
+  }
+
+  /** Resolve a row + chosen method to its connect target, scope, and the chosen method. */
+  function resolve(item: CatalogItem, methodId: string | null) {
+    const target = item.kind === 'app' ? appTarget(item.app) : platformTarget(item.provider)
+    const methods = methodsFor(item)
+    // Auto-resolve the single method; require an explicit pick when there are several.
+    const chosen =
+      methods.find((m) => m.id === methodId) ?? (methods.length === 1 ? methods[0] : null)
+    const scope: Scope = chosen?.global ? 'organization' : 'user'
+    return { target, methods, chosen, scope }
   }
 
   function resetFields() {
@@ -160,42 +187,47 @@ export function AddConnectionDialog({
     setToken('')
     setErrors({})
     setConnectingId(null)
+    setSelectedMethodId(null)
   }
 
   /**
-   * Mixed one-click / detail entry (mirrors the MCP template dialog). OAuth rows
-   * with no inputs connect directly and report `'handled'`; rows needing an API key
-   * or variables fall through so the gallery opens its detail page.
+   * Mixed one-click / detail entry (mirrors the MCP template dialog). A single OAuth method
+   * with no inputs connects directly and reports `'handled'`; anything that needs a choice
+   * (>1 method) or input (API key / variables) falls through so the gallery opens its detail page.
    */
   function handleSelect(item: CatalogItem) {
-    const { target, scope, def } = resolve(item)
-    if (defNeedsFields(def)) {
+    const { target, scope, methods } = resolve(item, null)
+    const only = methods.length === 1 ? methods[0] : null
+    // Multi-method, or a single method that needs fields → drill into the detail page.
+    if (!only || methodNeedsFields(only)) {
       resetFields()
+      // Preselect the sole method so its fields render immediately; force a pick when there are many.
+      setSelectedMethodId(only?.id ?? null)
       return undefined
     }
     setConnectingId(item.id)
-    flow.start({ target, scope })
+    flow.start({ target, scope, definitionId: only.id })
     return 'handled' as const
   }
 
-  function validate(item: CatalogItem): boolean {
-    const { def } = resolve(item)
+  function validate(method: Method): boolean {
     const next: Record<string, string> = {}
-    for (const v of def?.connectionVariables ?? []) {
+    for (const v of method.connectionVariables ?? []) {
       if (v.required !== false && !values[v.key]?.trim()) next[v.key] = `${v.label} is required`
     }
-    if (defIsBareSecret(def) && !token.trim()) next.__token = 'A value is required'
+    if (methodIsBareSecret(method) && !token.trim()) next.__token = 'A value is required'
     setErrors(next)
     return Object.keys(next).length === 0
   }
 
   function handleConnect(item: CatalogItem) {
-    if (!validate(item)) return
-    const { target, scope, def } = resolve(item)
+    const { target, scope, chosen } = resolve(item, selectedMethodId)
+    if (!chosen) return
+    if (methodNeedsFields(chosen) && !validate(chosen)) return
     setConnectingId(item.id)
     flow.connectWith(
-      { target, scope },
-      (def?.connectionVariables?.length ?? 0) > 0 ? { values } : { secret: token }
+      { target, scope, definitionId: chosen.id },
+      (chosen.connectionVariables?.length ?? 0) > 0 ? { values } : { secret: token }
     )
   }
 
@@ -230,45 +262,64 @@ export function AddConnectionDialog({
       detailBusy={flow.pending}
       onDetailExit={resetFields}
       renderDetail={(item) => {
-        const { def } = resolve(item)
+        const { methods, chosen } = resolve(item, selectedMethodId)
         return (
-          <ConnectionDetailPage
-            variables={def?.connectionVariables ?? []}
-            values={values}
-            onValueChange={(key, value) => setValues((prev) => ({ ...prev, [key]: value }))}
-            showToken={defIsBareSecret(def)}
-            token={token}
-            onTokenChange={setToken}
-            errors={errors}
-            disabled={flow.pending}
-          />
+          <div className='flex flex-col gap-3 p-3'>
+            {methods.length > 1 && (
+              <ConnectionMethodPicker
+                methods={methods}
+                value={selectedMethodId}
+                onChange={(id) => {
+                  setSelectedMethodId(id)
+                  setValues({})
+                  setToken('')
+                  setErrors({})
+                }}
+                disabled={flow.pending}
+              />
+            )}
+            {chosen && methodNeedsFields(chosen) && (
+              <ConnectionDetailPage
+                variables={chosen.connectionVariables ?? []}
+                values={values}
+                onValueChange={(key, value) => setValues((prev) => ({ ...prev, [key]: value }))}
+                showToken={methodIsBareSecret(chosen)}
+                token={token}
+                onTokenChange={setToken}
+                errors={errors}
+                disabled={flow.pending}
+              />
+            )}
+          </div>
         )
       }}
-      renderDetailFooter={(item) => (
-        <Button
-          size='sm'
-          variant='outline'
-          onClick={() => handleConnect(item)}
-          loading={flow.pending}
-          loadingText='Connecting...'
-          data-dialog-submit>
-          Connect <KbdSubmit variant='outline' size='sm' />
-        </Button>
-      )}
+      renderDetailFooter={(item) => {
+        const { chosen } = resolve(item, selectedMethodId)
+        return (
+          <Button
+            size='sm'
+            variant='outline'
+            onClick={() => handleConnect(item)}
+            disabled={!chosen}
+            loading={flow.pending}
+            loadingText='Connecting...'
+            data-dialog-submit>
+            Connect <KbdSubmit variant='outline' size='sm' />
+          </Button>
+        )
+      }}
     />
   )
 }
 
-type FlowDef = ReturnType<typeof defForScope>
-
-/** A secret/variable connection needs the detail step; bare OAuth connects one-click. */
-function defNeedsFields(def: FlowDef): boolean {
-  return def?.connectionType === 'secret' || (def?.connectionVariables?.length ?? 0) > 0
+/** A secret/variable method needs the detail step; bare OAuth connects one-click. */
+function methodNeedsFields(method: Method): boolean {
+  return method.connectionType === 'secret' || (method.connectionVariables?.length ?? 0) > 0
 }
 
-/** A single-secret connection (API key) with no structured variables. */
-function defIsBareSecret(def: FlowDef): boolean {
-  return def?.connectionType === 'secret' && (def?.connectionVariables?.length ?? 0) === 0
+/** A single-secret method (API key) with no structured variables. */
+function methodIsBareSecret(method: Method): boolean {
+  return method.connectionType === 'secret' && (method.connectionVariables?.length ?? 0) === 0
 }
 
 /** Fallback copy when a provider def carries no description. */

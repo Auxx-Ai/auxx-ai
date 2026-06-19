@@ -356,9 +356,23 @@ export interface CachedInstalledApp {
   } | null
 
   /**
-   * Connection definitions split by scope. Either, both, or neither may be
-   * present per app. Each entry mirrors `ConnectionDefinitionSummary`
-   * (including oauth2Features).
+   * Every connection method the app exposes (one per ConnectionDefinition row). The
+   * authoritative axis for connecting — the connect picker appears when length > 1.
+   */
+  methods: {
+    id: string
+    key: string | null
+    label: string
+    description: string | null
+    connectionType: string
+    global: boolean
+    connectionVariables: ConnectionVariable[]
+  }[]
+
+  /**
+   * Connection definitions split by scope — a derived convenience view (first method per
+   * scope). Either, both, or neither may be present per app. Each entry mirrors
+   * `ConnectionDefinitionSummary` (including oauth2Features).
    */
   connectionDefinitions: {
     user?: {
@@ -518,7 +532,8 @@ export const ORG_CACHE_KEY_CONFIG: Record<
   orgSettings: { prefix: 'org:settings', ttlSeconds: ONE_DAY },
   // v2: connectionDefinition (singular) → connectionDefinitions (pair). Bump on shape changes.
   // v4: CachedAction.inputHints (dynamic-select pickers). See plans/actions/09-dynamic-action-inputs.md.
-  installedApps: { prefix: 'org:installed-apps:v4', ttlSeconds: 900 },
+  // v5: + methods[] (multi-connection-per-app). See plans/connections/multi-connection-per-app.md.
+  installedApps: { prefix: 'org:installed-apps:v5', ttlSeconds: 900 },
   mcpServers: { prefix: 'org:mcpServers', ttlSeconds: ONE_DAY },
   workflowApps: { prefix: 'org:workflow-apps', ttlSeconds: ONE_DAY },
 

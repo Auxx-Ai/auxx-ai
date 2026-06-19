@@ -61,6 +61,9 @@ export async function loadDefinitionForCredential(
   }
 
   if (owner.appId) {
+    // Defensive fallback for legacy app creds whose FK predates the §4 always-write. With
+    // multi-method apps this can only disambiguate by picking the (single) oauth2-code method;
+    // once every app cred carries its FK (pre-launch reseed), this branch is dead for apps.
     return (
       (await db.query.ConnectionDefinition.findFirst({
         where: and(

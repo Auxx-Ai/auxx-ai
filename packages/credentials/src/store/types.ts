@@ -17,6 +17,8 @@ export interface CredentialRecord {
   appInstallationId: string | null
   mcpServerId: string | null
   connectionDefinitionId: string | null
+  /** Primary org-scoped app connection used by unbound (record-action) resolution. */
+  isDefault: boolean
   name: string
   label: string | null
   metadata: Record<string, unknown>

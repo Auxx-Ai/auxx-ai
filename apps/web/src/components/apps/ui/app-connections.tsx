@@ -10,7 +10,7 @@ import {
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
 import type { LucideIcon } from 'lucide-react'
-import { MoreHorizontal, Pencil, Plus, RefreshCw, Unplug, User, Users } from 'lucide-react'
+import { MoreHorizontal, Pencil, Plus, RefreshCw, Star, Unplug, User, Users } from 'lucide-react'
 import { useSearchParams } from 'next/navigation'
 import { useEffect } from 'react'
 import { SettingsSection } from '~/components/global/settings-page'
@@ -25,6 +25,7 @@ import { ConnectionRow } from './connection-row'
 type AppData = RouterOutputs['apps']['getBySlug']
 type ConnectionRowType = RouterOutputs['apps']['listConnections'][number]
 type ConnectionDefinition = NonNullable<AppData['installation']['connectionDefinitions']['user']>
+type ConnectionMethod = NonNullable<AppData['installation']['methods']>[number]
 type Scope = 'user' | 'organization'
 
 type Props = {
@@ -83,11 +84,20 @@ function AppConnections({ app, returnTo, scope, onConnectionCreated }: Props) {
 
   const allConnections = connectionsResult ?? []
   const installationId = app.installation.id!
+  const methods = app.installation.methods ?? []
   const target: ConnectTarget = {
     owner: { kind: 'app', appId: app.app.id, appSlug: app.app.slug, installationId },
     title: app.app.title,
     connectionDefinitions: app.installation.connectionDefinitions ?? {},
+    methods: methods.map((m) => ({
+      id: m.id,
+      connectionType: m.connectionType,
+      description: m.description ?? undefined,
+      connectionVariables: m.connectionVariables,
+    })),
   }
+  const personalMethods = methods.filter((m) => !m.global)
+  const workspaceMethods = methods.filter((m) => m.global)
 
   const personalRows = allConnections.filter(
     (conn) =>
@@ -107,6 +117,7 @@ function AppConnections({ app, returnTo, scope, onConnectionCreated }: Props) {
         <ConnectionSection
           target={target}
           definition={userDef}
+          methods={personalMethods}
           scope='user'
           rows={personalRows}
           returnTo={returnTo}
@@ -121,6 +132,7 @@ function AppConnections({ app, returnTo, scope, onConnectionCreated }: Props) {
         <ConnectionSection
           target={target}
           definition={orgDef}
+          methods={workspaceMethods}
           scope='organization'
           rows={workspaceRows}
           returnTo={returnTo}
@@ -140,6 +152,8 @@ export default AppConnections
 type ConnectionSectionProps = {
   target: ConnectTarget
   definition: ConnectionDefinition
+  /** Every method available in this scope. >1 makes the Add button a method picker. */
+  methods: ConnectionMethod[]
   scope: Scope
   rows: ConnectionRowType[]
   returnTo?: string
@@ -153,6 +167,7 @@ type ConnectionSectionProps = {
 function ConnectionSection({
   target,
   definition,
+  methods,
   scope,
   rows,
   returnTo,
@@ -172,7 +187,18 @@ function ConnectionSection({
   })
   const rowActions = useConnectionRowActions()
 
+  const utils = api.useUtils()
+  const setDefault = api.apps.setDefaultConnection.useMutation({
+    onSuccess: () => void utils.apps.listConnections.invalidate(),
+  })
+
   const showAddButton = canEdit && (isOAuth || isSecret)
+  // The primary pointer only matters when an org has >1 connection in the workspace scope (§4a).
+  const showPrimary = scope === 'organization' && rows.length > 1
+
+  // Connect via a specific method — explicit when the app exposes more than one.
+  const connectMethod = (definitionId?: string) =>
+    flow.start({ target, scope, returnTo, definitionId })
 
   return (
     <SettingsSection
@@ -181,13 +207,28 @@ function ConnectionSection({
       title={title}
       action={
         showAddButton ? (
-          <Button
-            variant='outline'
-            size='sm'
-            onClick={() => flow.start({ target, scope, returnTo })}>
-            <Plus />
-            Add Connection
-          </Button>
+          methods.length > 1 ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant='outline' size='sm'>
+                  <Plus />
+                  Add Connection
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align='end'>
+                {methods.map((m) => (
+                  <DropdownMenuItem key={m.id} onClick={() => connectMethod(m.id)}>
+                    {m.label}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : (
+            <Button variant='outline' size='sm' onClick={() => connectMethod(methods[0]?.id)}>
+              <Plus />
+              Add Connection
+            </Button>
+          )
         ) : undefined
       }>
       <ConnectionList
@@ -215,7 +256,9 @@ function ConnectionSection({
                 : conn.connectionStatus === 'expired'
                   ? 'Token expired'
                   : 'Not connected'
-            }${conn.connectedBy ? ` by ${conn.connectedBy}` : ''}`}
+            }${conn.connectedBy ? ` by ${conn.connectedBy}` : ''}${
+              showPrimary && conn.isDefault ? ' · Primary' : ''
+            }`}
             renameValue={conn.label || ''}
             onRename={(label) => rowActions.rename(conn.id, label)}
             actions={
@@ -242,12 +285,23 @@ function ConnectionSection({
                                   scope,
                                   returnTo,
                                   connectionId: conn.id,
+                                  // Reconnect the same method this connection was made with.
+                                  definitionId: conn.connectionDefinitionId ?? undefined,
                                   // Secret reconnect prefills plain variables; secrets are re-entered.
                                   prefillVariables: conn.connectionVariables ?? undefined,
                                 })
                               }>
                               <RefreshCw />
                               Reconnect
+                            </DropdownMenuItem>
+                          )}
+                        {showPrimary &&
+                          !conn.isDefault &&
+                          conn.connectionStatus === 'connected' && (
+                            <DropdownMenuItem
+                              onClick={() => setDefault.mutate({ connectionId: conn.id })}>
+                              <Star />
+                              Set as primary
                             </DropdownMenuItem>
                           )}
                         <DropdownMenuItem

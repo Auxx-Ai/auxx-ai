@@ -150,6 +150,41 @@ async function toRuntimeConnection(
   )
 }
 
+/**
+ * Resolve a single app credential (org- or user-scoped) into RuntimeConnectionData,
+ * credential-first: `findCredential` is primary-preferring (§4a), so when an app has more
+ * than one connection in this scope — by method OR account — the org's chosen primary wins.
+ * The method's definition is loaded from the credential's own FK, so `type`/`authApply`
+ * always match the connection the org actually made. Returns `ok(undefined)` when the scope
+ * has no credential. The `appId` fallback is defensive for legacy rows whose FK predates
+ * §4 (pre-launch reseed writes the FK, making it dead).
+ */
+async function resolveAppCredential(
+  appId: string,
+  organizationId: string,
+  scopedUserId: string | null,
+  ensureFresh: boolean
+): Promise<Result<RuntimeConnectionData | undefined, ResolveConnectionError>> {
+  const found = await findCredential({ organizationId, kind: 'app', appId, userId: scopedUserId })
+  if (found.isErr()) return err({ code: 'DATABASE_ERROR', message: 'Failed to query credential' })
+  if (!found.value) return ok(undefined)
+  const cred = found.value
+
+  const def = await database.query.ConnectionDefinition.findFirst({
+    where: (d, { eq }) =>
+      cred.connectionDefinitionId ? eq(d.id, cred.connectionDefinitionId) : eq(d.appId, appId),
+    columns: { connectionType: true, authApply: true },
+  })
+  const connectionType = (def?.connectionType ?? 'secret') as 'oauth2-code' | 'secret'
+  return toRuntimeConnection(
+    cred.id,
+    organizationId,
+    connectionType,
+    ensureFresh,
+    def?.authApply ?? null
+  )
+}
+
 type OwnerInput =
   | { appId: string; mcpServerId?: never; providerKey?: never; connectionId?: string }
   | { mcpServerId: string; appId?: never; providerKey?: never; connectionId?: string }
@@ -221,51 +256,18 @@ export async function resolveConnectionForRuntime(
     )
   }
 
-  // App owner: an app may define both a user-scoped and an org-scoped connection.
+  // App owner: resolve the user-scoped and org-scoped credentials directly (credential-first).
+  // The credential's FK names the exact method, and the org-scoped lookup prefers the primary
+  // when an app has >1 connection (method or account) — see resolveAppCredential / §4a.
   if (appId) {
-    const defs = await database.query.ConnectionDefinition.findMany({
-      where: (d, { eq }) => eq(d.appId, appId),
-      columns: { connectionType: true, global: true, authApply: true },
+    const userResolved = await resolveAppCredential(appId, organizationId, userId, ensureFresh)
+    if (userResolved.isErr()) return err(userResolved.error)
+    const orgResolved = await resolveAppCredential(appId, organizationId, null, ensureFresh)
+    if (orgResolved.isErr()) return err(orgResolved.error)
+    return ok({
+      userConnection: userResolved.value,
+      organizationConnection: orgResolved.value,
     })
-    const userDef = defs.find((d) => d.global === false)
-    const orgDef = defs.find((d) => d.global === true)
-
-    let userConnection: RuntimeConnectionData | undefined
-    let organizationConnection: RuntimeConnectionData | undefined
-
-    if (userDef) {
-      const found = await findCredential({ organizationId, kind: 'app', appId, userId })
-      if (found.isErr())
-        return err({ code: 'DATABASE_ERROR', message: 'Failed to query user credential' })
-      if (found.value) {
-        const resolved = await toRuntimeConnection(
-          found.value.id,
-          organizationId,
-          userDef.connectionType as 'oauth2-code' | 'secret',
-          ensureFresh,
-          userDef.authApply
-        )
-        if (resolved.isErr()) return err(resolved.error)
-        userConnection = resolved.value
-      }
-    }
-    if (orgDef) {
-      const found = await findCredential({ organizationId, kind: 'app', appId, userId: null })
-      if (found.isErr())
-        return err({ code: 'DATABASE_ERROR', message: 'Failed to query organization credential' })
-      if (found.value) {
-        const resolved = await toRuntimeConnection(
-          found.value.id,
-          organizationId,
-          orgDef.connectionType as 'oauth2-code' | 'secret',
-          ensureFresh,
-          orgDef.authApply
-        )
-        if (resolved.isErr()) return err(resolved.error)
-        organizationConnection = resolved.value
-      }
-    }
-    return ok({ userConnection, organizationConnection })
   }
 
   // MCP owner: org-scoped only.

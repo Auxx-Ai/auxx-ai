@@ -136,6 +136,12 @@ export async function saveAppConnection(
   options?: {
     label?: string
     connectionId?: string
+    /**
+     * The connection method the org chose (ConnectionDefinition.id). Written to the
+     * credential FK so the runtime resolver loads the exact method's type/authApply
+     * instead of guessing a def by (appId, scope). Required for multi-method apps.
+     */
+    connectionDefinitionId?: string
   }
 ) {
   const credentialName = `${appName} Connection`
@@ -227,6 +233,16 @@ export async function saveAppConnection(
   // expiresAt lives only as a column (the secrets blob holds secrets only).
   const expiresAt = connectionData.expiresAt ? new Date(connectionData.expiresAt) : null
 
+  // First org-scoped connection for an app becomes the primary that record actions
+  // (and other unbound, org-global resolvers) use. Agents/workflows bind a credId and
+  // ignore this. Only org-scoped rows (userId === null) are eligible — record actions
+  // resolve org-scope only. Re-primaries the app if a prior primary was deleted.
+  let isDefault = false
+  if (userId === null) {
+    const existing = await listCredentials({ organizationId, kind: 'app', appId, userId: null })
+    isDefault = !(existing.isOk() && existing.value.some((c) => c.isDefault))
+  }
+
   const createResult = await insertCredential({
     organizationId,
     createdById,
@@ -234,6 +250,8 @@ export async function saveAppConnection(
     userId,
     appId,
     appInstallationId,
+    connectionDefinitionId: options?.connectionDefinitionId ?? null,
+    isDefault,
     name: credentialName,
     label,
     secrets,

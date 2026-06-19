@@ -2,8 +2,8 @@
 
 import { database } from '@auxx/database'
 import { ok } from 'neverthrow'
-import type { ConnectionDefinitionSummary } from '../app-connections'
-import { getAppConnectionDefinition } from '../app-connections'
+import type { ConnectionDefinitionSummary, ConnectionMethod } from '../app-connections'
+import { getAppConnectionDefinition, listAppConnectionDefinitions } from '../app-connections'
 import { fromDatabase } from '../shared/utils'
 
 /**
@@ -45,7 +45,13 @@ export interface InstalledApp {
     createdAt: Date
   } | null
 
-  // Connection definitions, split by scope. Either, both, or neither may be present.
+  // Every connection method the app exposes (one per ConnectionDefinition row). The
+  // authoritative axis for connecting — the connect picker appears when length > 1.
+  methods: ConnectionMethod[]
+
+  // Connection definitions, split by scope — a derived convenience view kept for the many
+  // presence/scope consumers. With >1 method in a scope it shows only the first; use `methods`
+  // when method identity matters (the picker, save).
   connectionDefinitions: {
     user?: ConnectionDefinitionSummary
     organization?: ConnectionDefinitionSummary
@@ -104,11 +110,13 @@ export async function getInstalledApps(input: GetInstalledAppsInput) {
   const installations: InstalledApp[] = []
 
   for (const installation of installationsResult.value) {
-    const [userConnDefResult, orgConnDefResult] = await Promise.all([
+    const [userConnDefResult, orgConnDefResult, methodsResult] = await Promise.all([
       getAppConnectionDefinition(installation.app.id, false),
       getAppConnectionDefinition(installation.app.id, true),
+      listAppConnectionDefinitions(installation.app.id),
     ])
 
+    const methods: ConnectionMethod[] = methodsResult.isOk() ? methodsResult.value : []
     const connectionDefinitions: InstalledApp['connectionDefinitions'] = {
       user: userConnDefResult.isOk() ? (userConnDefResult.value ?? undefined) : undefined,
       organization: orgConnDefResult.isOk() ? (orgConnDefResult.value ?? undefined) : undefined,
@@ -136,6 +144,7 @@ export async function getInstalledApps(input: GetInstalledAppsInput) {
             createdAt: installation.currentDeployment.createdAt,
           }
         : null,
+      methods,
       connectionDefinitions,
     })
   }
