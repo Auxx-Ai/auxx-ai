@@ -2,7 +2,6 @@
 'use client'
 
 import { inferJsonSchema } from '@auxx/lib/json-schema/client'
-import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import {
   DropdownMenu,
@@ -20,9 +19,8 @@ import {
 import { RadioTab, RadioTabItem } from '@auxx/ui/components/radio-tab'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { EmptySection, Section } from '@auxx/ui/components/section'
-import { ChevronDown, Database, Pencil, RefreshCw, Sparkles, Waypoints } from 'lucide-react'
+import { ChevronDown, Database, FlaskConical, Pencil, RefreshCw, Waypoints } from 'lucide-react'
 import { type ReactNode, useState } from 'react'
-import { Tooltip } from '~/components/global/tooltip'
 import {
   SchemaEditorDialog,
   type SeededFrom,
@@ -32,16 +30,19 @@ import { useBufferedConfig } from '../hooks/use-buffered-config'
 import { useSourcePaths } from '../hooks/use-source-paths'
 import { useStreamMutations } from '../hooks/use-stream-mutations'
 import { MappingTree } from './mapping-tree'
-import { StreamDryRun } from './stream-dry-run'
+import { StreamSample } from './stream-sample'
 
 type Connector = NonNullable<ReturnType<typeof api.dataConnector.getById.useQuery>['data']>
 type Stream = NonNullable<ReturnType<typeof api.dataConnector.listStreams.useQuery>['data']>[number]
 
-const SCHEMA_SOURCE_LABEL: Record<string, string> = {
-  catalog: 'Catalog',
-  inferred: 'Inferred',
-  manual: 'Manual',
+// Plain-language explainer of where the source schema came from — replaces the
+// old "Provenance" badge + Catalog/Inferred/Manual jargon.
+const SCHEMA_SOURCE_SENTENCE: Record<string, string> = {
+  catalog: 'Schema came predefined with this connector.',
+  inferred: 'Schema auto-detected from a live response.',
+  manual: 'Schema edited by hand.',
 }
+const SCHEMA_SOURCE_NONE = 'No schema yet — run a test fetch to detect one.'
 
 const METHOD_OPTIONS = [
   { value: 'GET', label: 'GET' },
@@ -75,11 +76,10 @@ interface StreamConfigPanelProps {
 const EMPTY_SCHEMA = { type: 'object', properties: {} }
 
 /**
- * Stream drill (05 §4) — two layers:
- *  - Layer A: the source schema (provenance badge + Edit + Generate-from-result
- *    via live test-fetch → inferJsonSchema + Save-as-example).
- *  - Layer B: the mapping fan-out tree (target/linkMode/identity/fields).
- * Plus per-stream request (generic-rest) + sync mode + a dry-run preview.
+ * Stream drill (05 §4), ordered to follow the setup flow:
+ *  request → sample (single live test-fetch) → schema → sync mode → mappings.
+ * The schema is derived from the sample ("Use this shape as the schema") or
+ * hand-edited; the mapping fan-out tree projects subtrees onto target defs.
  */
 export function StreamConfigPanel({ connector, stream, onPromoteField }: StreamConfigPanelProps) {
   // Branch on the persisted definitionKind (05c §7), not a `type` prefix sniff.
@@ -140,13 +140,12 @@ export function StreamConfigPanel({ connector, stream, onPromoteField }: StreamC
     }
   }
 
-  const handleGenerate = () => {
-    if (sample?.response == null) {
-      void handleTestFetch()
-      return
-    }
+  // Derive the source schema directly from the current sample's shape. Only
+  // offered once a sample exists (the Sample section hides it otherwise).
+  const handleUseShape = () => {
+    if (sample?.response == null) return
     const inferred = inferJsonSchema(sample.response) as Record<string, unknown>
-    setSeed({ schema: inferred, seededFrom: 'inferred' })
+    setStreamSchema(stream.id, inferred, 'inferred')
   }
 
   const openEdit = () =>
@@ -162,51 +161,21 @@ export function StreamConfigPanel({ connector, stream, onPromoteField }: StreamC
   const handleSaveSchema = (schema: Record<string, unknown>, source: 'inferred' | 'manual') =>
     setStreamSchema(stream.id, schema, source)
 
-  const badgeLabel = hasSchema ? (SCHEMA_SOURCE_LABEL[stream.schemaSource] ?? 'Manual') : 'None'
+  const schemaSentence = hasSchema
+    ? (SCHEMA_SOURCE_SENTENCE[stream.schemaSource] ?? SCHEMA_SOURCE_SENTENCE.manual)
+    : SCHEMA_SOURCE_NONE
 
   return (
     <ScrollArea className='h-full' scrollbarClassName='w-1.5'>
       <div className='flex flex-col'>
-        {/* Layer A — source schema */}
-        <Section
-          title='Source schema'
-          icon={<Database className='size-4' />}
-          initialOpen
-          collapsible={false}
-          actions={
-            <div className='flex items-center gap-1'>
-              <Tooltip content='Run a live test-fetch and infer the schema from the result'>
-                <Button variant='ghost' size='xs' loading={isSampling} onClick={handleGenerate}>
-                  <Sparkles />
-                  Generate from result
-                </Button>
-              </Tooltip>
-              <Button variant='ghost' size='xs' onClick={openEdit}>
-                <Pencil />
-                Edit
-              </Button>
-            </div>
-          }>
-          <div className='flex items-center gap-2 px-1 pb-2'>
-            <span className='text-xs text-muted-foreground'>Provenance</span>
-            <Badge variant='outline' size='sm'>
-              {badgeLabel}
-            </Badge>
-            {sample && (
-              <span className='text-xs text-muted-foreground'>
-                Test-fetch returned {sample.recordCount} record{sample.recordCount === 1 ? '' : 's'}
-              </span>
-            )}
-          </div>
-        </Section>
-
-        {/* Per-stream request (generic-rest only) + sync mode */}
+        {/* 1. Request — what to fetch (generic-rest only) */}
         {isGenericRest && (
           <Section
             title='Request'
             icon={<Database className='size-4' />}
             initialOpen
-            collapsible={false}>
+            collapsible={false}
+            description='What to fetch from the source.'>
             <div className='px-1'>
               <InputGroup>
                 <InputGroupAddon align='inline-start'>
@@ -256,6 +225,43 @@ export function StreamConfigPanel({ connector, stream, onPromoteField }: StreamC
           </Section>
         )}
 
+        {/* 2. Sample — the single live test-fetch; feeds the schema below */}
+        <Section
+          title='Sample'
+          icon={<FlaskConical className='size-4' />}
+          initialOpen
+          collapsible={false}
+          description='Pull a few real records to see what the source returns.'
+          actions={
+            <Button
+              variant='outline'
+              size='xs'
+              loading={isSampling}
+              loadingText='Fetching...'
+              onClick={() => void handleTestFetch()}>
+              <FlaskConical />
+              Test fetch
+            </Button>
+          }>
+          <StreamSample sample={sample} onUseShape={handleUseShape} />
+        </Section>
+
+        {/* 3. Schema — derived from the sample or hand-edited */}
+        <Section
+          title='Source schema'
+          icon={<Database className='size-4' />}
+          initialOpen
+          collapsible={false}
+          actions={
+            <Button variant='ghost' size='xs' onClick={openEdit}>
+              <Pencil />
+              Edit
+            </Button>
+          }>
+          <p className='px-1 pb-2 text-xs text-muted-foreground'>{schemaSentence}</p>
+        </Section>
+
+        {/* 4. Sync mode */}
         <Section
           title='Sync mode'
           icon={<Database className='size-4' />}
@@ -288,7 +294,7 @@ export function StreamConfigPanel({ connector, stream, onPromoteField }: StreamC
           </div>
         </Section>
 
-        {/* Layer B — mappings */}
+        {/* 5. Mappings */}
         <Section
           title='Mappings'
           icon={<Database className='size-4' />}
@@ -303,15 +309,6 @@ export function StreamConfigPanel({ connector, stream, onPromoteField }: StreamC
             sourcePaths={sourcePaths}
             onPromoteField={onPromoteField}
           />
-        </Section>
-
-        {/* Sample + dry-run */}
-        <Section
-          title='Test &amp; preview'
-          icon={<Database className='size-4' />}
-          initialOpen
-          collapsible={false}>
-          <StreamDryRun sample={sample} onTestFetch={handleTestFetch} testing={isSampling} />
         </Section>
       </div>
 

@@ -135,7 +135,7 @@ export const StringInput = createNodeInput<StringInputProps>(
           className={cn(
             baseClassName,
             // No focus ring — zero out InputGroup's has-[…]:ring-[1px] focus-within ring.
-            'bg-transparent border-0 shadow-none outline-none text-sm px-0 has-[[data-slot=input-group-control]:focus-visible]:ring-0',
+            'bg-transparent dark:bg-transparent border-0 shadow-none outline-none text-sm px-0 has-[[data-slot=input-group-control]:focus-visible]:ring-0',
             className,
             triggerProps?.className
           )}>

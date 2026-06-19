@@ -103,8 +103,8 @@ export async function createConnector(
  * When a stream declares `mappings` (05d), they're materialized into real
  * `DataConnectorMapping` rows — the same rows the manual editor produces — so the
  * connector is fully wired (target def + field mappings) on install. Streams
- * without declared mappings keep the 05c behaviour (the seeded root stays
- * untargeted; the user authors the mapping). The `templateId` stamp is provenance
+ * without declared mappings install with no mappings — the user authors them in
+ * the editor against the source tree. The `templateId` stamp is provenance
  * — seed-and-forget, no live link back.
  */
 export async function createConnectorFromTemplate(
@@ -136,10 +136,10 @@ export async function createConnectorFromTemplate(
 }
 
 /**
- * Materialize a stream's declared template mappings into rows. `addStream` already
- * seeded one blank root mapping, so the first declared mapping patches that root
- * (avoiding an orphan untargeted row) and the rest are added. v1: contributing
- * targets only — the `@system:*` ref resolves to a real def id at install.
+ * Materialize a stream's declared template mappings into rows. Streams are no
+ * longer auto-seeded with a blank root, so every declared mapping is a fresh
+ * insert. v1: contributing targets only — the `@system:*` ref resolves to a real
+ * def id at install.
  */
 async function seedTemplateMappings(
   db: Database,
@@ -147,28 +147,21 @@ async function seedTemplateMappings(
   streamId: string,
   mappings: ConnectorTemplateMapping[]
 ): Promise<void> {
-  const seededRoot = await db.query.DataConnectorMapping.findFirst({
-    where: eq(schema.DataConnectorMapping.dataConnectorStreamId, streamId),
-  })
-  for (const [i, mapping] of mappings.entries()) {
+  for (const mapping of mappings) {
     const entityDefinitionId = await resolveTemplateEntityRef(
       organizationId,
       mapping.target.entityRef
     )
     const fieldMappings = buildTemplateFieldMappings(mapping.fields)
-    const shared = {
+    await addMapping(db, organizationId, {
+      dataConnectorStreamId: streamId,
       rootPath: mapping.rootPath,
       linkMode: mapping.linkMode ?? ('upsert' as LinkMode),
       targetMode: 'contributing' as TargetMode,
       entityDefinitionId,
       fieldMappings,
       orphanBehavior: mapping.orphanBehavior ?? ('ignore' as OrphanBehavior),
-    }
-    if (i === 0 && seededRoot) {
-      await updateMapping(db, organizationId, seededRoot.id, shared)
-    } else {
-      await addMapping(db, organizationId, { dataConnectorStreamId: streamId, ...shared })
-    }
+    })
   }
 }
 
@@ -348,20 +341,9 @@ export async function addStream(
     .returning()
   if (!row) throw new Error('Failed to add stream')
 
-  // Seed the single root mapping (source-first model — one spine per stream). No
-  // schema yet, so `rootPath: ''`; the UI self-heals it to '[]' for an array root.
-  // No target def yet — the user picks one in the mapping editor.
-  await db.insert(schema.DataConnectorMapping).values({
-    dataConnectorStreamId: row.id,
-    organizationId,
-    rootPath: '',
-    linkMode: 'upsert',
-    targetMode: 'contributing',
-    entityDefinitionId: null,
-    fieldMappings: {},
-    mergeStrategies: {},
-    orphanBehavior: 'ignore',
-  })
+  // No mapping is seeded — the mapping editor renders the source schema as an
+  // always-on tree and the user creates a mapping by picking the source row the
+  // records live under (e.g. `data[]`). The payload root stays unmapped until then.
   return row
 }
 
@@ -569,13 +551,7 @@ export async function removeMapping(
   organizationId: string,
   mappingId: string
 ): Promise<{ success: boolean }> {
-  const row = await loadMappingRow(db, organizationId, mappingId)
-  // The root mapping is the stream's spine (seeded on create) — it's removed only
-  // by deleting the stream, never on its own. The UI hides its delete button; this
-  // guards the API.
-  if (row.parentMappingId === null) {
-    throw new BadRequestError('The root mapping cannot be removed; delete the stream instead.')
-  }
+  await loadMappingRow(db, organizationId, mappingId)
   await db.delete(schema.DataConnectorMapping).where(eq(schema.DataConnectorMapping.id, mappingId))
   return { success: true }
 }

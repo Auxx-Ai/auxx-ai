@@ -20,6 +20,7 @@ import {
 } from '~/components/global/schedule'
 import { api } from '~/trpc/react'
 import { useBufferedConfig } from '../hooks/use-buffered-config'
+import { useRegisterSaver } from '../hooks/use-connector-edits'
 
 type Connector = NonNullable<ReturnType<typeof api.dataConnector.getById.useQuery>['data']>
 
@@ -79,6 +80,9 @@ export function ScheduleSection({ connector }: ScheduleSectionProps) {
   )
   const { behavior, schedule } = draft.value
 
+  // Feeds the connector-wide save bar; no per-section Save button.
+  useRegisterSaver('schedule', draft.isDirty, update.isPending, draft.commit)
+
   return (
     <Section
       title='Schedule'
@@ -128,15 +132,6 @@ export function ScheduleSection({ connector }: ScheduleSectionProps) {
             </p>
           </div>
         )}
-
-        <Button
-          className='self-start'
-          size='sm'
-          disabled={!draft.isDirty}
-          loading={update.isPending}
-          onClick={() => void draft.commit()}>
-          Save schedule
-        </Button>
       </div>
     </Section>
   )

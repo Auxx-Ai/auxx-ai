@@ -49,8 +49,8 @@ export const DataConnectorMapping = pgTable(
     // writes into a pre-existing def (incl. system contact/ticket). For 'reference'
     // the def is the one whose records we resolve against (e.g. Product).
     targetMode: text().notNull(), // 'owned' | 'contributing'
-    // Nullable: a stream is seeded with a root mapping that has no target yet —
-    // the user picks the def in the UI. The runtime skips untargeted mappings.
+    // Nullable: a mapping can exist before a target def is picked (the user picks
+    // it in the UI). The runtime skips untargeted mappings.
     entityDefinitionId: text().references((): AnyPgColumn => EntityDefinition.id, {
       onUpdate: 'cascade',
       onDelete: 'restrict',

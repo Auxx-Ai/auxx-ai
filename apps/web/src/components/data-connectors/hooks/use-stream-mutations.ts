@@ -205,7 +205,8 @@ export function useStreamMutations(connectorId: string) {
     (
       streamId: string,
       input: {
-        parentMappingId: string
+        /** Null for a top-level mapping created straight off a source row. */
+        parentMappingId: string | null
         rootPath: string
         linkMode: 'upsert' | 'reference'
         targetMode: 'owned' | 'contributing'
@@ -217,23 +218,43 @@ export function useStreamMutations(connectorId: string) {
       const key = { id: connectorId }
       const previous = utils.dataConnector.listStreams.getData(key)
       const streamMappings = previous?.find((s) => s.id === streamId)?.mappings
-      // Build the temp row off an existing row so every required column is present.
-      const template =
-        streamMappings?.find((m) => m.id === input.parentMappingId) ?? streamMappings?.[0]
-      if (!template) return
       const tempId = `temp_${generateId()}`
-      const tempRow: Mapping = {
-        ...template,
-        id: tempId,
-        parentMappingId: input.parentMappingId,
-        rootPath: input.rootPath,
-        linkMode: input.linkMode,
-        targetMode: input.targetMode,
-        entityDefinitionId: input.entityDefinitionId,
-        relationshipFieldKey: input.relationshipFieldKey ?? null,
-        fieldMappings: {} as Mapping['fieldMappings'],
-        mergeStrategies: {} as Mapping['mergeStrategies'],
-      }
+      // Prefer cloning an existing row (every column present), but an empty stream
+      // has none — fall back to a literal temp row. Either way it reconciles to the
+      // server row on invalidate.
+      const template =
+        (input.parentMappingId
+          ? streamMappings?.find((m) => m.id === input.parentMappingId)
+          : undefined) ?? streamMappings?.[0]
+      const tempRow: Mapping = template
+        ? {
+            ...template,
+            id: tempId,
+            parentMappingId: input.parentMappingId,
+            rootPath: input.rootPath,
+            linkMode: input.linkMode,
+            targetMode: input.targetMode,
+            entityDefinitionId: input.entityDefinitionId,
+            relationshipFieldKey: input.relationshipFieldKey ?? null,
+            fieldMappings: {} as Mapping['fieldMappings'],
+            mergeStrategies: {} as Mapping['mergeStrategies'],
+          }
+        : {
+            id: tempId,
+            dataConnectorStreamId: streamId,
+            organizationId: '',
+            parentMappingId: input.parentMappingId,
+            rootPath: input.rootPath,
+            linkMode: input.linkMode,
+            relationshipFieldKey: input.relationshipFieldKey ?? null,
+            targetMode: input.targetMode,
+            entityDefinitionId: input.entityDefinitionId,
+            fieldMappings: {} as Mapping['fieldMappings'],
+            mergeStrategies: {} as Mapping['mergeStrategies'],
+            orphanBehavior: 'ignore',
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          }
       utils.dataConnector.listStreams.setData(key, (old) =>
         old?.map((s) => (s.id === streamId ? { ...s, mappings: [...s.mappings, tempRow] } : s))
       )

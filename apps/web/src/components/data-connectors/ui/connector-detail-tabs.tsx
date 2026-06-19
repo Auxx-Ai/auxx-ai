@@ -17,12 +17,13 @@ import { useCallback, useMemo } from 'react'
 import { useResourceFields } from '~/components/resources'
 import { useScrollSpy } from '~/hooks/use-scroll-spy'
 import { api } from '~/trpc/react'
+import { ConnectorEditsProvider } from '../hooks/use-connector-edits'
 import { absolutePrefix, leafPathsUnder, useSourcePaths } from '../hooks/use-source-paths'
 import { useStreamMutations } from '../hooks/use-stream-mutations'
 import { ConnectionSection } from './connection-section'
+import { ConnectorSaveBar } from './connector-save-bar'
 import { FieldCalcPanel } from './field-calc-panel'
 import { ScheduleSection } from './schedule-section'
-import { SourceConfigPanel } from './source-config-panel'
 import { StreamConfigPanel } from './stream-config-panel'
 import { StreamDetailBar } from './stream-detail-bar'
 import { StreamsSection } from './streams-section'
@@ -93,7 +94,6 @@ interface ConnectorDetailTabsProps {
 export function ConnectorDetailTabs({ connector, mobileRunsPanel }: ConnectorDetailTabsProps) {
   const [tab, setTab] = useQueryState('tab', { defaultValue: 'connection' })
   const [selectedStreamId, setSelectedStreamId] = useQueryState('stream')
-  const [sourceOpen, setSourceOpen] = useQueryState('source')
   // The field drill encodes `mappingId:fieldKey`.
   const [field, setField] = useQueryState('field')
 
@@ -104,47 +104,43 @@ export function ConnectorDetailTabs({ connector, mobileRunsPanel }: ConnectorDet
   )
   const sourcePaths = useSourcePaths(selectedStream?.sourceSchema as Record<string, unknown> | null)
 
-  // Stack: root → (source | stream) → field. `source` and `stream` are siblings
-  // at depth 1; only the stream drill nests a `field` drill.
-  const stack = sourceOpen
-    ? ['root', 'source']
-    : !selectedStreamId
-      ? ['root']
-      : !field
-        ? ['root', 'stream']
-        : ['root', 'stream', 'field']
+  // Stack: root → stream → field. Only the stream drill nests a `field` drill;
+  // the connector source config is now inlined in the Connection section.
+  const stack = !selectedStreamId
+    ? ['root']
+    : !field
+      ? ['root', 'stream']
+      : ['root', 'stream', 'field']
 
   const { scrollContainerRef, assignRef, scrollToSection } = useScrollSpy<ConnectorTab>({
     sections: CONNECTOR_TABS,
     active: (tab as ConnectorTab) ?? 'connection',
     onActiveChange: setTab,
-    remountKey: `${sourceOpen}:${selectedStreamId}:${field}`,
+    remountKey: `${selectedStreamId}:${field}`,
     spyBuffer: SPY_BUFFER,
     scrollBuffer: SCROLL_BUFFER,
   })
 
   const handleTabChange = useCallback(
     (value: string) => {
-      void setSourceOpen(null)
       void setSelectedStreamId(null)
       void setField(null)
       setTab(value)
       scrollToSection(value as ConnectorTab)
     },
-    [setTab, setSourceOpen, setSelectedStreamId, setField, scrollToSection]
+    [setTab, setSelectedStreamId, setField, scrollToSection]
   )
 
   const handleStackChange = useCallback(
     (next: string[]) => {
       if (next.length <= 1) {
-        void setSourceOpen(null)
         void setSelectedStreamId(null)
         void setField(null)
       } else if (next.length === 2) {
         void setField(null)
       }
     },
-    [setSourceOpen, setSelectedStreamId, setField]
+    [setSelectedStreamId, setField]
   )
 
   // Field drill target. Mappings come nested in the selected stream (loaded with
@@ -169,11 +165,6 @@ export function ConnectorDetailTabs({ connector, mobileRunsPanel }: ConnectorDet
   // Optimistic field-mapping write against listStreams (shared with the tree).
   const { setFieldMappings } = useStreamMutations(connector.id)
 
-  const sourceBar = (
-    <DrillBar
-      title={connector.definitionKind === 'app' ? 'Connector settings' : 'Request configuration'}
-    />
-  )
   const streamBar = selectedStream ? (
     <StreamDetailBar
       connectorId={connector.id}
@@ -184,106 +175,110 @@ export function ConnectorDetailTabs({ connector, mobileRunsPanel }: ConnectorDet
   const fieldBar = <DrillBar title='Formula' crumb={selectedStream?.streamKey ?? undefined} />
 
   return (
-    <div className='flex min-h-0 flex-1 flex-col'>
-      <NavStack
-        stack={stack}
-        onStackChange={handleStackChange}
-        className='flex min-h-0 flex-1 flex-col'>
-        <NavStackBar className='shrink-0 border-b bg-primary-150' />
-        <NavStackPanels className='min-h-0 flex-1'>
-          <NavStackPanel
-            value='root'
-            className='h-full bg-neutral-100 dark:bg-background'
-            bar={
-              <Tabs value={tab} onValueChange={handleTabChange}>
-                <TabsList className='w-full justify-start rounded-none bg-transparent px-2'>
-                  {CONNECTOR_TABS.map((value) => {
-                    const Icon = TAB_ICONS[value]
-                    return (
-                      <TabsTrigger key={value} value={value} variant='outline'>
-                        <Icon />
-                        {TAB_LABELS[value]}
-                      </TabsTrigger>
-                    )
-                  })}
-                </TabsList>
-              </Tabs>
-            }>
-            <ScrollArea
-              viewportRef={scrollContainerRef}
-              className='h-full'
-              scrollbarClassName='w-1.5 z-20'
-              noFade>
-              <div ref={assignRef('connection')}>
-                <ConnectionSection connector={connector} onOpenSource={() => setSourceOpen('1')} />
+    <ConnectorEditsProvider>
+      <div className='flex min-h-0 flex-1 flex-col'>
+        <NavStack
+          stack={stack}
+          onStackChange={handleStackChange}
+          className='flex min-h-0 flex-1 flex-col'>
+          <NavStackBar className='shrink-0 border-b bg-primary-150' />
+          <NavStackPanels className='min-h-0 flex-1'>
+            <NavStackPanel
+              value='root'
+              className='h-full bg-neutral-100 dark:bg-background'
+              bar={
+                <Tabs value={tab} onValueChange={handleTabChange}>
+                  <TabsList className='w-full justify-start rounded-none bg-transparent px-2'>
+                    {CONNECTOR_TABS.map((value) => {
+                      const Icon = TAB_ICONS[value]
+                      return (
+                        <TabsTrigger key={value} value={value} variant='outline'>
+                          <Icon />
+                          {TAB_LABELS[value]}
+                        </TabsTrigger>
+                      )
+                    })}
+                  </TabsList>
+                </Tabs>
+              }>
+              <div className='relative h-full'>
+                <ScrollArea
+                  viewportRef={scrollContainerRef}
+                  className='h-full'
+                  scrollbarClassName='w-1.5 z-20'
+                  noFade>
+                  <div ref={assignRef('connection')}>
+                    <ConnectionSection connector={connector} />
+                  </div>
+                  <div ref={assignRef('streams')}>
+                    <StreamsSection
+                      connector={connector}
+                      onSelect={(id) => setSelectedStreamId(id)}
+                    />
+                  </div>
+                  <div ref={assignRef('schedule')}>
+                    <ScheduleSection connector={connector} />
+                  </div>
+
+                  {mobileRunsPanel && <div className='h-[60vh]'>{mobileRunsPanel}</div>}
+
+                  <div className='h-[40vh]' />
+                </ScrollArea>
+                <ConnectorSaveBar />
               </div>
-              <div ref={assignRef('streams')}>
-                <StreamsSection connector={connector} onSelect={(id) => setSelectedStreamId(id)} />
-              </div>
-              <div ref={assignRef('schedule')}>
-                <ScheduleSection connector={connector} />
-              </div>
+            </NavStackPanel>
 
-              {mobileRunsPanel && <div className='h-[60vh]'>{mobileRunsPanel}</div>}
+            <NavStackPanel
+              value='stream'
+              className='h-full bg-neutral-100 dark:bg-background'
+              bar={streamBar}>
+              {selectedStream ? (
+                <StreamConfigPanel
+                  connector={connector}
+                  stream={selectedStream}
+                  onPromoteField={(mappingId, key) => setField(`${mappingId}:${key}`)}
+                />
+              ) : null}
+            </NavStackPanel>
 
-              <div className='h-[40vh]' />
-            </ScrollArea>
-          </NavStackPanel>
-
-          <NavStackPanel
-            value='source'
-            className='h-full bg-neutral-100 dark:bg-background'
-            bar={sourceBar}>
-            <SourceConfigPanel connector={connector} />
-          </NavStackPanel>
-
-          <NavStackPanel
-            value='stream'
-            className='h-full bg-neutral-100 dark:bg-background'
-            bar={streamBar}>
-            {selectedStream ? (
-              <StreamConfigPanel
-                connector={connector}
-                stream={selectedStream}
-                onPromoteField={(mappingId, key) => setField(`${mappingId}:${key}`)}
-              />
-            ) : null}
-          </NavStackPanel>
-
-          <NavStackPanel
-            value='field'
-            className='h-full bg-neutral-100 dark:bg-background'
-            bar={fieldBar}>
-            {fieldMapping ? (
-              <FieldCalcPanel
-                entityDefinitionId={fieldMapping.entityDefinitionId ?? null}
-                targetKey={fieldKey ?? ''}
-                targetLabel={targetFields.find((f) => f.key === fieldKey)?.label ?? ''}
-                // Fields already bound (leaf or formula) elsewhere — can't double-map.
-                // The current target stays selectable so editing keeps its own field.
-                excludeKeys={Object.keys(fieldMapping.fieldMappings ?? {}).filter(
-                  (k) => k !== fieldKey
-                )}
-                expression={fieldExpression}
-                // Scoped + relative to the mapping's subtree, matching the runtime.
-                sourcePaths={leafPathsUnder(sourcePaths, absolutePrefix(fieldMapping, mappingById))}
-                onSave={(targetKey, expression, sourceFields) => {
-                  const existing = (fieldMapping.fieldMappings ?? {}) as Record<
-                    string,
-                    { expression: string; sourceFields: Record<string, string> }
-                  >
-                  if (selectedStreamId)
-                    void setFieldMappings(selectedStreamId, fieldMapping.id, {
-                      ...existing,
-                      [targetKey]: { expression, sourceFields },
-                    })
-                  void setField(null)
-                }}
-              />
-            ) : null}
-          </NavStackPanel>
-        </NavStackPanels>
-      </NavStack>
-    </div>
+            <NavStackPanel
+              value='field'
+              className='h-full bg-neutral-100 dark:bg-background'
+              bar={fieldBar}>
+              {fieldMapping ? (
+                <FieldCalcPanel
+                  entityDefinitionId={fieldMapping.entityDefinitionId ?? null}
+                  targetKey={fieldKey ?? ''}
+                  targetLabel={targetFields.find((f) => f.key === fieldKey)?.label ?? ''}
+                  // Fields already bound (leaf or formula) elsewhere — can't double-map.
+                  // The current target stays selectable so editing keeps its own field.
+                  excludeKeys={Object.keys(fieldMapping.fieldMappings ?? {}).filter(
+                    (k) => k !== fieldKey
+                  )}
+                  expression={fieldExpression}
+                  // Scoped + relative to the mapping's subtree, matching the runtime.
+                  sourcePaths={leafPathsUnder(
+                    sourcePaths,
+                    absolutePrefix(fieldMapping, mappingById)
+                  )}
+                  onSave={(targetKey, expression, sourceFields) => {
+                    const existing = (fieldMapping.fieldMappings ?? {}) as Record<
+                      string,
+                      { expression: string; sourceFields: Record<string, string> }
+                    >
+                    if (selectedStreamId)
+                      void setFieldMappings(selectedStreamId, fieldMapping.id, {
+                        ...existing,
+                        [targetKey]: { expression, sourceFields },
+                      })
+                    void setField(null)
+                  }}
+                />
+              ) : null}
+            </NavStackPanel>
+          </NavStackPanels>
+        </NavStack>
+      </div>
+    </ConnectorEditsProvider>
   )
 }

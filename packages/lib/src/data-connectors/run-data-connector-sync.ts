@@ -7,13 +7,9 @@
 import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { eq } from 'drizzle-orm'
-import {
-  type RuntimeConnectionData,
-  resolveConnectionForRuntime,
-} from '../connections/resolve-connection-for-runtime'
 import { UnifiedCrudHandler } from '../resources/crud/unified-handler'
 import { invalidateSnapshots } from '../snapshot'
-import { connectorFor } from './connectors'
+import { prepareConnectorFetch } from './connector-runtime'
 import { mapRecord } from './map-record'
 import { provisionConnectorMappings } from './provisioning'
 import { reconcileOrphans } from './reconciliation'
@@ -45,34 +41,6 @@ const logger = createScopedLogger('run-data-connector-sync')
  * contributed-to system def ever needs a guarded attribute.
  */
 const OWNED_BYPASS: ReadonlySet<never> = new Set<never>()
-
-/**
- * Resolve the connector's borrowed credential through the unified resolver, or
- * null when none/failed. The resolver reveals + lazily refreshes the token and
- * carries the definition's `authApply` spec; the connector applies it via
- * `applyAuth`. A connector binds an org-scoped credential, but a per-user one is
- * accepted too (the resolver classifies scope by the credential's own userId).
- */
-async function resolveConnectorCredential(
-  organizationId: string,
-  credentialId: string | null,
-  userId: string
-): Promise<RuntimeConnectionData | null> {
-  if (!credentialId) return null
-  const resolved = await resolveConnectionForRuntime({
-    connectionId: credentialId,
-    organizationId,
-    userId,
-  })
-  if (resolved.isErr()) {
-    logger.warn('failed to resolve credential — proceeding without', {
-      credentialId,
-      error: resolved.error.code,
-    })
-    return null
-  }
-  return resolved.value.organizationConnection ?? resolved.value.userConnection ?? null
-}
 
 /**
  * Run a full sync for one connector. Loads streams + mappings, claims the
@@ -128,23 +96,14 @@ export async function runDataConnectorSync(
   })
 
   const counters = newRunCounters()
-  const credential = await resolveConnectorCredential(
-    organizationId,
-    connector.credentialId,
-    connector.createdById ?? 'system'
-  )
-  // App connectors fetch through the sandbox (the adapter resolves its own
-  // runtime connection); built-ins ignore the context and use `credential`.
-  const definition = connectorFor(connector.type, {
+  // Resolve the connector definition + credential through the shared seam — the
+  // same one the builder's test-fetch uses, so auth can't drift between them.
+  const { definition, credential } = await prepareConnectorFetch(
     db,
     organizationId,
-    connector: {
-      id: connector.id,
-      type: connector.type,
-      credentialId: connector.credentialId,
-      appInstallationId: connector.appInstallationId,
-    },
-  })
+    connector,
+    connector.createdById ?? 'system'
+  )
 
   const ctx: SyncCtx = {
     db,

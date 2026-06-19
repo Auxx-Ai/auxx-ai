@@ -210,22 +210,3 @@ export function buildSourceTree(nodes: SourcePath[]): SourceTreeNode[] {
   }
   return roots
 }
-
-/**
- * Where the records live in the payload, derived from the source schema — the
- * valid `rootPath` choices for the root mapping. The base choice is dictated by
- * the root type (array → `[]` fan-out; object → `''` single record) and is NOT a
- * free choice. The only ambiguity is an envelope object that *contains* a
- * collection (`{ orders: [...] }`): there both `''` (one record) and `orders[]`
- * (fan out) are valid, so both are offered. Mirrors the runtime's
- * `extractSubtrees`. A single-element result means "no choice — just resolve it".
- */
-export function rootPathCandidates(paths: SourcePath[]): string[] {
-  const rootIsArray = paths.some((p) => p.path.startsWith('[]'))
-  const out = new Set<string>([rootIsArray ? '[]' : ''])
-  // Nested array branches (only a real alternative for an object root envelope).
-  for (const p of paths) {
-    if (p.isBranch && p.type === 'array') out.add(`${p.path}[]`)
-  }
-  return [...out]
-}

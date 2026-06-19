@@ -69,7 +69,7 @@ export function AppWithStatusIcon({
             'absolute top-0 right-0 inline-flex size-2 items-center justify-center rounded-full ring-1 ring-background',
             color
           )}>
-          {status === 'connected' && <StatusIcon className='size-2 text-white' />}
+          {status === 'connected' && <StatusIcon className='size-2! text-white' />}
         </span>
       )}
     </div>
