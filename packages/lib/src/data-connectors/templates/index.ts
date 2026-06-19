@@ -8,6 +8,9 @@ export {
 export type {
   ConnectorTemplate,
   ConnectorTemplateConnection,
+  ConnectorTemplateFieldMapping,
+  ConnectorTemplateMapping,
   ConnectorTemplateStream,
   ConnectorTemplateSummary,
+  ConnectorTemplateTarget,
 } from './types'

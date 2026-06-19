@@ -8,10 +8,15 @@
 import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq } from 'drizzle-orm'
+import { getCachedEntityDefId } from '../cache'
 import { BadRequestError, NotFoundError } from '../errors'
 import { removeConnectorScheduler, syncConnectorScheduler } from './data-connector-scheduler'
 import type { DataConnectorMappingRow, DataConnectorRow, DataConnectorStreamRow } from './service'
-import type { ConnectorTemplate } from './templates'
+import type {
+  ConnectorTemplate,
+  ConnectorTemplateFieldMapping,
+  ConnectorTemplateMapping,
+} from './templates'
 import type {
   DataConnectorConfig,
   DataConnectorType,
@@ -95,9 +100,12 @@ export async function createConnector(
  *   - the connector's `config` (base URL + shared headers + pagination) and
  *   - each stream's source schema + request config, pre-filled and editable.
  *
- * v1 seeds config + streams only; entity mappings stay user-authored (the root
- * mapping `addStream` seeds is the spine, exactly as for a blank connector). The
- * `templateId` stamp is provenance — seed-and-forget, no live link back.
+ * When a stream declares `mappings` (05d), they're materialized into real
+ * `DataConnectorMapping` rows — the same rows the manual editor produces — so the
+ * connector is fully wired (target def + field mappings) on install. Streams
+ * without declared mappings keep the 05c behaviour (the seeded root stays
+ * untargeted; the user authors the mapping). The `templateId` stamp is provenance
+ * — seed-and-forget, no live link back.
  */
 export async function createConnectorFromTemplate(
   db: Database,
@@ -113,15 +121,96 @@ export async function createConnectorFromTemplate(
     config: template.config,
   })
   for (const stream of template.streams) {
-    await addStream(db, organizationId, connector.id, {
+    const s = await addStream(db, organizationId, connector.id, {
       streamKey: stream.streamKey,
       sourceSchema: stream.sourceSchema ?? null,
       schemaSource: 'catalog',
       syncMode: stream.syncMode,
       requestConfig: stream.requestConfig,
     })
+    if (stream.mappings?.length) {
+      await seedTemplateMappings(db, organizationId, s.id, stream.mappings)
+    }
   }
   return connector
+}
+
+/**
+ * Materialize a stream's declared template mappings into rows. `addStream` already
+ * seeded one blank root mapping, so the first declared mapping patches that root
+ * (avoiding an orphan untargeted row) and the rest are added. v1: contributing
+ * targets only — the `@system:*` ref resolves to a real def id at install.
+ */
+async function seedTemplateMappings(
+  db: Database,
+  organizationId: string,
+  streamId: string,
+  mappings: ConnectorTemplateMapping[]
+): Promise<void> {
+  const seededRoot = await db.query.DataConnectorMapping.findFirst({
+    where: eq(schema.DataConnectorMapping.dataConnectorStreamId, streamId),
+  })
+  for (const [i, mapping] of mappings.entries()) {
+    const entityDefinitionId = await resolveTemplateEntityRef(
+      organizationId,
+      mapping.target.entityRef
+    )
+    const fieldMappings = buildTemplateFieldMappings(mapping.fields)
+    const shared = {
+      rootPath: mapping.rootPath,
+      linkMode: mapping.linkMode ?? ('upsert' as LinkMode),
+      targetMode: 'contributing' as TargetMode,
+      entityDefinitionId,
+      fieldMappings,
+      orphanBehavior: mapping.orphanBehavior ?? ('ignore' as OrphanBehavior),
+    }
+    if (i === 0 && seededRoot) {
+      await updateMapping(db, organizationId, seededRoot.id, shared)
+    } else {
+      await addMapping(db, organizationId, { dataConnectorStreamId: streamId, ...shared })
+    }
+  }
+}
+
+/** Resolve a template `@system:<entityType>` ref to a real def id (v1: system only). */
+async function resolveTemplateEntityRef(
+  organizationId: string,
+  entityRef: string
+): Promise<string> {
+  if (!entityRef.startsWith('@system:')) {
+    throw new BadRequestError(`Unsupported connector-template entityRef: ${entityRef}`)
+  }
+  const entityType = entityRef.slice('@system:'.length)
+  const id = await getCachedEntityDefId(organizationId, entityType)
+  if (!id) {
+    throw new NotFoundError(`System entity "${entityType}" not found for organization`)
+  }
+  return id
+}
+
+/**
+ * Build the CALC `fieldMappings` jsonb from a template mapping's field bindings.
+ * Matches the shape the manual mapping editor produces: `sourceFields` is an
+ * identity map (token = source path), and the expression references those tokens
+ * as `{path}` (single-brace) — so `source: 'email'` becomes `{ expression: '{email}',
+ * sourceFields: { email: 'email' } }`. Explicit `expression`/`sourceFields` pass
+ * through verbatim for transforms (e.g. `{created} * 1000`).
+ */
+function buildTemplateFieldMappings(
+  fields: ConnectorTemplateFieldMapping[]
+): Record<string, FieldMapping> {
+  const out: Record<string, FieldMapping> = {}
+  for (const f of fields) {
+    const expression = f.expression ?? (f.source ? `{${f.source}}` : '')
+    const sourceFields = f.sourceFields ?? (f.source ? { [f.source]: f.source } : {})
+    const mapping: FieldMapping = { expression, sourceFields }
+    if (f.match) mapping.match = typeof f.match === 'object' ? f.match : {}
+    // Provisioned field's name = its key (provisioned fields carry no
+    // systemAttribute, so the crud layer resolves writes by name).
+    if (f.provision) mapping.provision = { name: f.key, ...f.provision }
+    out[f.key] = mapping
+  }
+  return out
 }
 
 export interface UpdateConnectorInput {

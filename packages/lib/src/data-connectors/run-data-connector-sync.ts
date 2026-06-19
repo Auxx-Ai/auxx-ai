@@ -15,6 +15,7 @@ import { UnifiedCrudHandler } from '../resources/crud/unified-handler'
 import { invalidateSnapshots } from '../snapshot'
 import { connectorFor } from './connectors'
 import { mapRecord } from './map-record'
+import { provisionConnectorMappings } from './provisioning'
 import { reconcileOrphans } from './reconciliation'
 import { resolveRelationships } from './relationship-pass'
 import {
@@ -98,6 +99,17 @@ export async function runDataConnectorSync(
   if (!claimed) {
     logger.info('runDataConnectorSync: already syncing, skipping', { dataConnectorId })
     return
+  }
+
+  // Provision target schema before fetching so the sink has fields to write into
+  // (05d). Idempotent — runs every sync, self-healing. App connectors provision
+  // their own schema at install (app-field namespace), so we scope this to
+  // non-app connectors to avoid double-provisioning in the connector namespace.
+  if (connector.definitionKind !== 'app') {
+    const targetedMappings = streams.flatMap((s) => s.mappings)
+    if (targetedMappings.length > 0) {
+      await provisionConnectorMappings(db, organizationId, dataConnectorId, targetedMappings)
+    }
   }
 
   // A connector run is incremental if ALL its enabled streams are incremental;

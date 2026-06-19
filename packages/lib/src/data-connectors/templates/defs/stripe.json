@@ -25,6 +25,29 @@
         "params": { "limit": 100 },
         "pagination": { "kind": "none" }
       },
+      "mappings": [
+        {
+          "rootPath": "data[]",
+          "linkMode": "upsert",
+          "target": { "mode": "contributing", "entityRef": "@system:contact" },
+          "fields": [
+            { "key": "primary_email", "source": "email", "match": { "normalize": "email" } },
+            { "key": "full_name", "source": "name" },
+            { "key": "phone", "source": "phone" },
+            {
+              "key": "Stripe Customer ID",
+              "source": "id",
+              "provision": { "type": "TEXT", "isHidden": true }
+            },
+            {
+              "key": "Stripe Created",
+              "expression": "{created} * 1000",
+              "sourceFields": { "created": "created" },
+              "provision": { "type": "DATETIME" }
+            }
+          ]
+        }
+      ],
       "sourceSchema": {
         "type": "object",
         "properties": {
