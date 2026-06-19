@@ -8,6 +8,7 @@
 // the service layer casts at the read/write boundary.
 
 import type { FieldType } from '@auxx/database/types'
+import type { RuntimeConnectionData } from '../connections/resolve-connection-for-runtime'
 
 // ── Connector-level config (jsonb on DataConnector) ───────────────────────────
 
@@ -152,7 +153,13 @@ export interface ConnectorFetchArgs {
   streamKey: string
   mode: 'snapshot' | 'incremental'
   state: ConnectorStreamState
-  credential: DecryptedCredential | null
+  /**
+   * The resolved runtime connection bound to this connector — the unified
+   * resolver reveals + lazily refreshes it and carries the definition's
+   * `authApply` spec, so the connector applies auth via `applyAuth` instead of
+   * hand-rolling headers. `null` when the connector binds no credential.
+   */
+  credential: RuntimeConnectionData | null
   config: DataConnectorConfig
   /** Per-stream request config (generic-rest). */
   requestConfig?: StreamRequestConfig

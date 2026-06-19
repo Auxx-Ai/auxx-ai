@@ -1,7 +1,7 @@
 // packages/credentials/src/store/list-credentials.ts
 
 import { database, schema } from '@auxx/database'
-import { and, desc, eq, inArray, isNull, type SQL } from 'drizzle-orm'
+import { and, desc, eq, inArray, isNull, or, type SQL } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import { fromDb, toRecord } from './internal'
 import type {
@@ -20,6 +20,13 @@ export interface ListCredentialsInput {
   appInstallationId?: string
   /** `null` → org-scoped rows only; string → that user; omitted → don't filter. */
   userId?: string | null
+  /**
+   * Member visibility: return this user's own rows **plus** org-scoped (global)
+   * rows — `OR(userId = X, userId IS NULL)`. Used by the Connections page so a
+   * non-admin sees their personal connections and shared ones, never another
+   * member's personal connection. Ignored when `userId` is set.
+   */
+  ownedByOrOrgScoped?: string
   /** Join the creator's name (for the credentials UI list). */
   withCreatedBy?: boolean
 }
@@ -50,6 +57,12 @@ export async function listCredentials(
         ? isNull(schema.Credential.userId)
         : eq(schema.Credential.userId, input.userId as string)
     )
+  } else if (input.ownedByOrOrgScoped !== undefined) {
+    const ownOrShared = or(
+      eq(schema.Credential.userId, input.ownedByOrOrgScoped),
+      isNull(schema.Credential.userId)
+    )
+    if (ownOrShared) conditions.push(ownOrShared)
   }
 
   if (input.withCreatedBy) {

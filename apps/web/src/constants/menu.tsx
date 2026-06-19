@@ -241,6 +241,12 @@ export const SETTINGS_MENU: SidebarProps[] = [
         icon: <AppWindow />,
       },
       {
+        id: 'settings-connections',
+        label: 'Connections',
+        slug: 'connections',
+        icon: <Cable />,
+      },
+      {
         id: 'settings-webhooks',
         label: 'Webhooks',
         slug: 'webhooks',

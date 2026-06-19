@@ -54,14 +54,11 @@ export {
   deleteConnector,
   removeMapping,
   removeStream,
-  setFieldMappings,
-  setIdentityStrategy,
-  setMappingTarget,
-  setMergeStrategies,
   setStreamRequestConfig,
   setStreamSchema,
   updateConnector,
   updateMapping,
+  updateStream,
 } from './mutations'
 export type {
   ProvisionFieldSpec,
@@ -86,6 +83,7 @@ export type {
   PendingRelation,
   RunCounters,
   StreamWithMappings,
+  StreamWithRawMappings,
   UpsertItemInput,
 } from './service'
 // Service layer
@@ -99,7 +97,6 @@ export {
   listConnectors,
   listItemsForMapping,
   listItemsWithPendingRelations,
-  listMappings,
   listRuns,
   listStreams,
   loadConnector,

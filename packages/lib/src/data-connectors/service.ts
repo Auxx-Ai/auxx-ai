@@ -56,8 +56,16 @@ export interface LoadedConnector {
   streams: StreamWithMappings[]
 }
 
-/** Decode a mapping row's jsonb/text policy columns into canonical lib unions. */
+/**
+ * Decode a mapping row's jsonb/text policy columns into canonical lib unions.
+ * Untargeted mappings (no `entityDefinitionId`, e.g. a freshly-seeded root) are
+ * never synced — callers filter them out before decoding, so a null here is a
+ * programming error.
+ */
 export function decodeMapping(row: DataConnectorMappingRow): DecodedMapping {
+  if (row.entityDefinitionId === null) {
+    throw new Error(`decodeMapping called on untargeted mapping '${row.id}'`)
+  }
   return {
     row,
     rootPath: row.rootPath,
@@ -96,6 +104,7 @@ export async function loadConnector(
   const streamRows = await db.query.DataConnectorStream.findMany({
     where: and(
       eq(schema.DataConnectorStream.dataConnectorId, dataConnectorId),
+      eq(schema.DataConnectorStream.organizationId, organizationId),
       eq(schema.DataConnectorStream.enabled, true)
     ),
   })
@@ -121,9 +130,15 @@ export async function loadConnector(
     .map((stream) => ({
       stream,
       syncMode: stream.syncMode as SyncMode,
-      mappings: (byStream.get(stream.id) ?? []).map(decodeMapping),
+      // Drop untargeted mappings (a seeded root the user hasn't pointed at a def
+      // yet) — a fetch with nowhere to land is a no-op.
+      mappings: (byStream.get(stream.id) ?? [])
+        .filter((m) => m.entityDefinitionId !== null)
+        .map(decodeMapping),
     }))
-    .filter((s) => s.mappings.length > 0)
+    // Skip unconfigured streams: no targeted mappings, or not yet named (a blank
+    // stream has no streamKey, so there's nothing to fetch).
+    .filter((s) => s.mappings.length > 0 && !!s.stream.streamKey)
 
   return { connector, streams }
 }
@@ -470,26 +485,46 @@ export async function listRuns(
   })
 }
 
-/** List streams for a connector. */
-export async function listStreams(
-  db: Database,
-  dataConnectorId: string
-): Promise<DataConnectorStreamRow[]> {
-  return db.query.DataConnectorStream.findMany({
-    where: eq(schema.DataConnectorStream.dataConnectorId, dataConnectorId),
-    orderBy: asc(schema.DataConnectorStream.createdAt),
-  })
+/** A stream row with its raw (undecoded) mapping rows nested. */
+export interface StreamWithRawMappings extends DataConnectorStreamRow {
+  mappings: DataConnectorMappingRow[]
 }
 
-/** List mappings for a stream. */
-export async function listMappings(
+/**
+ * List a connector's streams, each with its mapping rows nested. One batched
+ * mapping query (not N per stream). Org-scoped on both queries as defense-in-depth
+ * — callers also gate via `getConnector`, but the read shouldn't rely on that.
+ */
+export async function listStreams(
   db: Database,
-  streamId: string
-): Promise<DataConnectorMappingRow[]> {
-  return db.query.DataConnectorMapping.findMany({
-    where: eq(schema.DataConnectorMapping.dataConnectorStreamId, streamId),
-    orderBy: asc(schema.DataConnectorMapping.createdAt),
+  organizationId: string,
+  dataConnectorId: string
+): Promise<StreamWithRawMappings[]> {
+  const streamRows = await db.query.DataConnectorStream.findMany({
+    where: and(
+      eq(schema.DataConnectorStream.dataConnectorId, dataConnectorId),
+      eq(schema.DataConnectorStream.organizationId, organizationId)
+    ),
+    orderBy: asc(schema.DataConnectorStream.createdAt),
   })
+  const ids = streamRows.map((s) => s.id)
+  const mappingRows =
+    ids.length === 0
+      ? []
+      : await db.query.DataConnectorMapping.findMany({
+          where: and(
+            eq(schema.DataConnectorMapping.organizationId, organizationId),
+            inArray(schema.DataConnectorMapping.dataConnectorStreamId, ids)
+          ),
+          orderBy: asc(schema.DataConnectorMapping.createdAt),
+        })
+  const byStream = new Map<string, DataConnectorMappingRow[]>()
+  for (const m of mappingRows) {
+    const list = byStream.get(m.dataConnectorStreamId) ?? []
+    list.push(m)
+    byStream.set(m.dataConnectorStreamId, list)
+  }
+  return streamRows.map((s) => ({ ...s, mappings: byStream.get(s.id) ?? [] }))
 }
 
 export { defaultDb, logger as serviceLogger }

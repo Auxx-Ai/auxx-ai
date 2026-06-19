@@ -5,6 +5,7 @@
 // each into a ConnectionDefinition row keyed by providerKey.
 
 import type { AuthApply } from '@auxx/database'
+import { FieldType } from '@auxx/database/enums'
 import type { PlatformProviderDef } from './types'
 
 /** Apply an OAuth access token / bearer API key as `Authorization: Bearer <token>`. */
@@ -16,7 +17,6 @@ const BYO_CLIENT_VARS = [
   {
     key: 'clientSecret',
     label: 'Client Secret',
-    type: 'password' as const,
     secret: true,
     required: true,
   },
@@ -277,7 +277,7 @@ export const PLATFORM_PROVIDER_DEFS: PlatformProviderDef[] = [
     global: true,
     connectionVariables: [
       { key: 'user', label: 'User' },
-      { key: 'password', label: 'Password', type: 'password', secret: true },
+      { key: 'password', label: 'Password', secret: true },
     ],
     authApply: { in: 'basic' },
     uiMetadata: { icon: 'Key', category: 'auth', brandColor: '#6b7280' },
@@ -289,7 +289,7 @@ export const PLATFORM_PROVIDER_DEFS: PlatformProviderDef[] = [
     global: true,
     connectionVariables: [
       { key: 'name', label: 'Name', placeholder: 'X-API-Key' },
-      { key: 'value', label: 'Value', type: 'password', secret: true },
+      { key: 'value', label: 'Value', secret: true },
     ],
     // {name} interpolates the plain field; {value} the resolved secret.
     authApply: { in: 'header', name: '{name}', format: '{value}' },
@@ -333,7 +333,6 @@ export const PLATFORM_PROVIDER_DEFS: PlatformProviderDef[] = [
       {
         key: 'password',
         label: 'Password',
-        type: 'password',
         secret: true,
         required: true,
         placeholder: 'Password',
@@ -341,7 +340,7 @@ export const PLATFORM_PROVIDER_DEFS: PlatformProviderDef[] = [
       {
         key: 'maxConnections',
         label: 'Maximum Number of Connections',
-        type: 'number',
+        type: FieldType.NUMBER,
         default: 100,
         description:
           'Make sure this value times the number of workers you have is lower than the maximum number of connections your postgres instance allows.',
@@ -350,40 +349,40 @@ export const PLATFORM_PROVIDER_DEFS: PlatformProviderDef[] = [
       {
         key: 'allowUnauthorizedCerts',
         label: 'Ignore SSL Issues (Insecure)',
-        type: 'boolean',
+        type: FieldType.CHECKBOX,
         default: false,
         description: 'Whether to connect even if SSL certificate validation is not possible',
       },
       {
         key: 'ssl',
         label: 'SSL',
-        type: 'options',
+        type: FieldType.SINGLE_SELECT,
         default: 'disable',
         displayOptions: { show: { allowUnauthorizedCerts: [false] } },
         options: [
-          { name: 'Allow', value: 'allow' },
-          { name: 'Disable', value: 'disable' },
-          { name: 'Require', value: 'require' },
+          { label: 'Allow', value: 'allow' },
+          { label: 'Disable', value: 'disable' },
+          { label: 'Require', value: 'require' },
         ],
       },
       {
         key: 'port',
         label: 'Port',
-        type: 'number',
+        type: FieldType.NUMBER,
         default: 5432,
         placeholder: '5432',
         validation: { port: true, min: 1, max: 65535 },
       },
-      { key: 'sshTunnel', label: 'SSH Tunnel', type: 'boolean', default: false },
+      { key: 'sshTunnel', label: 'SSH Tunnel', type: FieldType.CHECKBOX, default: false },
       {
         key: 'sshAuthenticateWith',
         label: 'SSH Authenticate with',
-        type: 'options',
+        type: FieldType.SINGLE_SELECT,
         default: 'password',
         required: true,
         options: [
-          { name: 'Password', value: 'password' },
-          { name: 'Private Key', value: 'privateKey' },
+          { label: 'Password', value: 'password' },
+          { label: 'Private Key', value: 'privateKey' },
         ],
         displayOptions: { show: { sshTunnel: [true] } },
       },
@@ -399,7 +398,7 @@ export const PLATFORM_PROVIDER_DEFS: PlatformProviderDef[] = [
       {
         key: 'sshPort',
         label: 'SSH Port',
-        type: 'number',
+        type: FieldType.NUMBER,
         default: 22,
         placeholder: '22',
         displayOptions: { show: { sshTunnel: [true] } },
@@ -417,7 +416,6 @@ export const PLATFORM_PROVIDER_DEFS: PlatformProviderDef[] = [
       {
         key: 'sshPassword',
         label: 'SSH Password',
-        type: 'password',
         secret: true,
         required: true,
         placeholder: 'SSH password',
@@ -426,7 +424,8 @@ export const PLATFORM_PROVIDER_DEFS: PlatformProviderDef[] = [
       {
         key: 'privateKey',
         label: 'Private Key',
-        type: 'textarea',
+        type: FieldType.TEXT,
+        multiline: true,
         rows: 4,
         secret: true,
         required: true,
@@ -437,7 +436,6 @@ export const PLATFORM_PROVIDER_DEFS: PlatformProviderDef[] = [
       {
         key: 'passphrase',
         label: 'Passphrase',
-        type: 'password',
         secret: true,
         description: 'Passphrase used to create the key, if no passphrase was used leave empty',
         displayOptions: { show: { sshTunnel: [true], sshAuthenticateWith: ['privateKey'] } },
@@ -463,7 +461,7 @@ export const PLATFORM_PROVIDER_DEFS: PlatformProviderDef[] = [
       {
         key: 'port',
         label: 'Port',
-        type: 'number',
+        type: FieldType.NUMBER,
         default: 5432,
         placeholder: '5432',
         validation: { port: true, min: 1, max: 65535 },
@@ -487,7 +485,6 @@ export const PLATFORM_PROVIDER_DEFS: PlatformProviderDef[] = [
       {
         key: 'password',
         label: 'Password',
-        type: 'password',
         secret: true,
         required: true,
         placeholder: 'Password',
@@ -495,14 +492,14 @@ export const PLATFORM_PROVIDER_DEFS: PlatformProviderDef[] = [
       {
         key: 'ssl',
         label: 'SSL Mode',
-        type: 'options',
+        type: FieldType.SINGLE_SELECT,
         default: 'prefer',
         description: 'SSL connection mode',
         options: [
-          { name: 'Disable', value: 'disable' },
-          { name: 'Allow', value: 'allow' },
-          { name: 'Prefer', value: 'prefer' },
-          { name: 'Require', value: 'require' },
+          { label: 'Disable', value: 'disable' },
+          { label: 'Allow', value: 'allow' },
+          { label: 'Prefer', value: 'prefer' },
+          { label: 'Require', value: 'require' },
         ],
       },
     ],
@@ -518,19 +515,19 @@ export const PLATFORM_PROVIDER_DEFS: PlatformProviderDef[] = [
       { key: 'host', label: 'Host', default: 'localhost' },
       { key: 'database', label: 'Database', default: 'doc' },
       { key: 'user', label: 'User', default: 'crate' },
-      { key: 'password', label: 'Password', type: 'password', secret: true },
+      { key: 'password', label: 'Password', secret: true },
       {
         key: 'ssl',
         label: 'SSL',
-        type: 'options',
+        type: FieldType.SINGLE_SELECT,
         default: 'disable',
         options: [
-          { name: 'Allow', value: 'allow' },
-          { name: 'Disable', value: 'disable' },
-          { name: 'Require', value: 'require' },
+          { label: 'Allow', value: 'allow' },
+          { label: 'Disable', value: 'disable' },
+          { label: 'Require', value: 'require' },
         ],
       },
-      { key: 'port', label: 'Port', type: 'number', default: 5432 },
+      { key: 'port', label: 'Port', type: FieldType.NUMBER, default: 5432 },
     ],
     uiMetadata: { icon: 'Database', category: 'database', brandColor: '#14b8a6' },
   },
@@ -555,7 +552,7 @@ export const PLATFORM_PROVIDER_DEFS: PlatformProviderDef[] = [
       {
         key: 'port',
         label: 'Port',
-        type: 'number',
+        type: FieldType.NUMBER,
         default: 587,
         required: true,
         placeholder: '587',
@@ -571,7 +568,6 @@ export const PLATFORM_PROVIDER_DEFS: PlatformProviderDef[] = [
       {
         key: 'password',
         label: 'Password',
-        type: 'password',
         secret: true,
         required: true,
         placeholder: 'App password or account password',
@@ -579,14 +575,14 @@ export const PLATFORM_PROVIDER_DEFS: PlatformProviderDef[] = [
       {
         key: 'secure',
         label: 'Use TLS',
-        type: 'boolean',
+        type: FieldType.CHECKBOX,
         default: true,
         description: 'Whether to use TLS encryption (recommended for most providers)',
       },
       {
         key: 'ignoreTLS',
         label: 'Ignore SSL Issues (Insecure)',
-        type: 'boolean',
+        type: FieldType.CHECKBOX,
         default: false,
         description:
           'Whether to ignore SSL certificate validation (not recommended for production)',
@@ -602,14 +598,14 @@ export const PLATFORM_PROVIDER_DEFS: PlatformProviderDef[] = [
     authApply: null,
     connectionVariables: [
       { key: 'user', label: 'User' },
-      { key: 'password', label: 'Password', type: 'password', secret: true },
+      { key: 'password', label: 'Password', secret: true },
       { key: 'host', label: 'Host' },
-      { key: 'port', label: 'Port', type: 'number', default: 993 },
-      { key: 'secure', label: 'SSL/TLS', type: 'boolean', default: true },
+      { key: 'port', label: 'Port', type: FieldType.NUMBER, default: 993 },
+      { key: 'secure', label: 'SSL/TLS', type: FieldType.CHECKBOX, default: true },
       {
         key: 'allowUnauthorizedCerts',
         label: 'Allow Self-Signed Certificates',
-        type: 'boolean',
+        type: FieldType.CHECKBOX,
         default: false,
         description: 'Whether to connect even if SSL certificate validation is not possible',
       },
@@ -638,7 +634,6 @@ export const PLATFORM_PROVIDER_DEFS: PlatformProviderDef[] = [
       {
         key: 'secretAccessKey',
         label: 'Secret Access Key',
-        type: 'password',
         secret: true,
         required: true,
         placeholder: 'Enter your AWS Secret Access Key',
@@ -663,7 +658,6 @@ export const PLATFORM_PROVIDER_DEFS: PlatformProviderDef[] = [
       {
         key: 'sessionToken',
         label: 'Session Token (Optional)',
-        type: 'password',
         secret: true,
         required: false,
         placeholder: 'Enter session token if using temporary credentials',
@@ -693,7 +687,6 @@ export const PLATFORM_PROVIDER_DEFS: PlatformProviderDef[] = [
       {
         key: 'apiKey',
         label: 'API Key',
-        type: 'password',
         secret: true,
         required: true,
         placeholder: 'keyXXXXXXXXXXXXXX',
@@ -717,7 +710,6 @@ export const PLATFORM_PROVIDER_DEFS: PlatformProviderDef[] = [
       {
         key: 'apiKey',
         label: 'API Key',
-        type: 'password',
         secret: true,
         required: true,
         placeholder: 'sk-...',
@@ -752,7 +744,6 @@ export const PLATFORM_PROVIDER_DEFS: PlatformProviderDef[] = [
       {
         key: 'apiKey',
         label: 'API Key',
-        type: 'password',
         secret: true,
         required: true,
         placeholder: 'sk-ant-...',
@@ -772,7 +763,6 @@ export const PLATFORM_PROVIDER_DEFS: PlatformProviderDef[] = [
       {
         key: 'apiKey',
         label: 'API Key',
-        type: 'password',
         secret: true,
         required: true,
         placeholder: 'AIza...',
@@ -792,7 +782,6 @@ export const PLATFORM_PROVIDER_DEFS: PlatformProviderDef[] = [
       {
         key: 'apiKey',
         label: 'API Key',
-        type: 'password',
         secret: true,
         required: true,
         placeholder: 'gsk_...',
@@ -812,7 +801,6 @@ export const PLATFORM_PROVIDER_DEFS: PlatformProviderDef[] = [
       {
         key: 'apiKey',
         label: 'API Key',
-        type: 'password',
         secret: true,
         required: true,
         placeholder: 'sk-...',

@@ -155,4 +155,20 @@ describe('resolveAppConnectionForRuntime — connection fields', () => {
     expect(conn?.value).toBe('top-level')
     expect(conn?.fields).toEqual({ secret: 'nested' })
   })
+
+  it('threads the definition authApply spec onto the resolved connection', async () => {
+    connDef.value = {
+      connectionType: 'secret',
+      authApply: { in: 'header', name: 'Authorization', format: 'Bearer {value}' },
+    }
+    revealQueue = [ok({ record: record(), secrets: { secret: 'sk' } })]
+
+    const res = await resolveAppConnectionForRuntime(base)
+
+    expect(res._unsafeUnwrap().organizationConnection?.authApply).toEqual({
+      in: 'header',
+      name: 'Authorization',
+      format: 'Bearer {value}',
+    })
+  })
 })

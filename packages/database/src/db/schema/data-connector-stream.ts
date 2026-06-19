@@ -27,7 +27,11 @@ export const DataConnectorStream = pgTable(
       .notNull()
       .references((): AnyPgColumn => Organization.id, { onUpdate: 'cascade', onDelete: 'cascade' }),
 
-    streamKey: text().notNull(), // provider resource id / endpoint key, e.g. 'order'
+    // Provider resource id / endpoint key, e.g. 'order'. Nullable: a stream is
+    // created blank (no name) and named inline later; an unnamed stream is never
+    // fetched (the sync loader skips null-key streams). The unique index treats
+    // NULLs as distinct, so multiple unnamed drafts under one connector are fine.
+    streamKey: text(),
     enabled: boolean().default(true).notNull(),
 
     // The expected shape of one fetched record (Layer A) — JSON Schema, seeded by

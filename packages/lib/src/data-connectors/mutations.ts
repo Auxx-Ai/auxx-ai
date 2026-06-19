@@ -8,7 +8,7 @@
 import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq } from 'drizzle-orm'
-import { NotFoundError } from '../errors'
+import { BadRequestError, NotFoundError } from '../errors'
 import { removeConnectorScheduler, syncConnectorScheduler } from './data-connector-scheduler'
 import type { DataConnectorMappingRow, DataConnectorRow, DataConnectorStreamRow } from './service'
 import type {
@@ -187,7 +187,8 @@ export async function deleteConnector(
 // ── Streams ─────────────────────────────────────────────────────────────────
 
 export interface AddStreamInput {
-  streamKey: string
+  /** Omitted for a blank, not-yet-named stream — the user names it inline later. */
+  streamKey?: string | null
   sourceSchema?: Record<string, unknown> | null
   schemaSource?: 'catalog' | 'inferred' | 'manual'
   syncMode?: SyncMode
@@ -208,7 +209,7 @@ export async function addStream(
     .values({
       dataConnectorId,
       organizationId,
-      streamKey: input.streamKey,
+      streamKey: input.streamKey ?? null,
       sourceSchema: input.sourceSchema ?? null,
       schemaSource: input.schemaSource ?? 'catalog',
       syncMode: input.syncMode ?? 'snapshot',
@@ -217,6 +218,42 @@ export async function addStream(
     })
     .returning()
   if (!row) throw new Error('Failed to add stream')
+
+  // Seed the single root mapping (source-first model — one spine per stream). No
+  // schema yet, so `rootPath: ''`; the UI self-heals it to '[]' for an array root.
+  // No target def yet — the user picks one in the mapping editor.
+  await db.insert(schema.DataConnectorMapping).values({
+    dataConnectorStreamId: row.id,
+    organizationId,
+    rootPath: '',
+    linkMode: 'upsert',
+    targetMode: 'contributing',
+    entityDefinitionId: null,
+    identityStrategy: { kind: 'connectorExternalId' },
+    fieldMappings: {},
+    mergeStrategies: {},
+    orphanBehavior: 'ignore',
+  })
+  return row
+}
+
+/** Rename a stream (update its streamKey). */
+export async function updateStream(
+  db: Database,
+  organizationId: string,
+  streamId: string,
+  input: { streamKey?: string }
+): Promise<DataConnectorStreamRow> {
+  await loadStreamRow(db, organizationId, streamId)
+  const [row] = await db
+    .update(schema.DataConnectorStream)
+    .set({
+      ...(input.streamKey !== undefined ? { streamKey: input.streamKey } : {}),
+      updatedAt: new Date(),
+    })
+    .where(eq(schema.DataConnectorStream.id, streamId))
+    .returning()
+  if (!row) throw new Error('Failed to update stream')
   return row
 }
 
@@ -361,9 +398,15 @@ export interface UpdateMappingInput {
   parentMappingId?: string | null
   relationshipFieldKey?: string | null
   orphanBehavior?: OrphanBehavior
+  // Target binding + policy columns (folded in from the old granular setters).
+  entityDefinitionId?: string | null
+  targetMode?: TargetMode
+  identityStrategy?: IdentityStrategy
+  fieldMappings?: Record<string, FieldMapping>
+  mergeStrategies?: Record<string, FieldMergeStrategy>
 }
 
-/** Patch a mapping's structural fields. */
+/** Patch any subset of a mapping's columns. The single mapping write surface. */
 export async function updateMapping(
   db: Database,
   organizationId: string,
@@ -381,6 +424,13 @@ export async function updateMapping(
         ? { relationshipFieldKey: patch.relationshipFieldKey }
         : {}),
       ...(patch.orphanBehavior !== undefined ? { orphanBehavior: patch.orphanBehavior } : {}),
+      ...(patch.entityDefinitionId !== undefined
+        ? { entityDefinitionId: patch.entityDefinitionId }
+        : {}),
+      ...(patch.targetMode !== undefined ? { targetMode: patch.targetMode } : {}),
+      ...(patch.identityStrategy !== undefined ? { identityStrategy: patch.identityStrategy } : {}),
+      ...(patch.fieldMappings !== undefined ? { fieldMappings: patch.fieldMappings } : {}),
+      ...(patch.mergeStrategies !== undefined ? { mergeStrategies: patch.mergeStrategies } : {}),
       updatedAt: new Date(),
     })
     .where(eq(schema.DataConnectorMapping.id, mappingId))
@@ -395,83 +445,13 @@ export async function removeMapping(
   organizationId: string,
   mappingId: string
 ): Promise<{ success: boolean }> {
-  await loadMappingRow(db, organizationId, mappingId)
+  const row = await loadMappingRow(db, organizationId, mappingId)
+  // The root mapping is the stream's spine (seeded on create) — it's removed only
+  // by deleting the stream, never on its own. The UI hides its delete button; this
+  // guards the API.
+  if (row.parentMappingId === null) {
+    throw new BadRequestError('The root mapping cannot be removed; delete the stream instead.')
+  }
   await db.delete(schema.DataConnectorMapping).where(eq(schema.DataConnectorMapping.id, mappingId))
   return { success: true }
-}
-
-/** Set a mapping's target binding (def + targetMode + linkMode). */
-export async function setMappingTarget(
-  db: Database,
-  organizationId: string,
-  mappingId: string,
-  input: { entityDefinitionId: string; targetMode: TargetMode; linkMode: LinkMode }
-): Promise<DataConnectorMappingRow> {
-  await loadMappingRow(db, organizationId, mappingId)
-  const [row] = await db
-    .update(schema.DataConnectorMapping)
-    .set({
-      entityDefinitionId: input.entityDefinitionId,
-      targetMode: input.targetMode,
-      linkMode: input.linkMode,
-      updatedAt: new Date(),
-    })
-    .where(eq(schema.DataConnectorMapping.id, mappingId))
-    .returning()
-  if (!row) throw new Error('Failed to set mapping target')
-  return row
-}
-
-/** Replace a mapping's per-field CALC mappings (Layer B, 05 §4). */
-export async function setFieldMappings(
-  db: Database,
-  organizationId: string,
-  mappingId: string,
-  fieldMappings: Record<string, FieldMapping>
-): Promise<DataConnectorMappingRow> {
-  await loadMappingRow(db, organizationId, mappingId)
-  const [row] = await db
-    .update(schema.DataConnectorMapping)
-    .set({ fieldMappings, updatedAt: new Date() })
-    .where(eq(schema.DataConnectorMapping.id, mappingId))
-    .returning()
-  if (!row) throw new Error('Failed to set field mappings')
-  return row
-}
-
-/** Set a mapping's identity strategy (02 §2). */
-export async function setIdentityStrategy(
-  db: Database,
-  organizationId: string,
-  mappingId: string,
-  identityStrategy: IdentityStrategy
-): Promise<DataConnectorMappingRow> {
-  await loadMappingRow(db, organizationId, mappingId)
-  const [row] = await db
-    .update(schema.DataConnectorMapping)
-    .set({
-      identityStrategy,
-      updatedAt: new Date(),
-    })
-    .where(eq(schema.DataConnectorMapping.id, mappingId))
-    .returning()
-  if (!row) throw new Error('Failed to set identity strategy')
-  return row
-}
-
-/** Replace a mapping's per-field merge strategies (02 §3). */
-export async function setMergeStrategies(
-  db: Database,
-  organizationId: string,
-  mappingId: string,
-  mergeStrategies: Record<string, FieldMergeStrategy>
-): Promise<DataConnectorMappingRow> {
-  await loadMappingRow(db, organizationId, mappingId)
-  const [row] = await db
-    .update(schema.DataConnectorMapping)
-    .set({ mergeStrategies, updatedAt: new Date() })
-    .where(eq(schema.DataConnectorMapping.id, mappingId))
-    .returning()
-  if (!row) throw new Error('Failed to set merge strategies')
-  return row
 }

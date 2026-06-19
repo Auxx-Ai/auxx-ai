@@ -6,7 +6,7 @@
 // credentials get auto-refresh-on-use for free.
 
 import { findCredential, revealSecrets } from '@auxx/credentials/store'
-import { database } from '@auxx/database'
+import { type AuthApply, database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import {
   type DecryptedConnectionData,
@@ -33,6 +33,8 @@ export interface RuntimeConnectionData {
   type: 'oauth2-code' | 'secret'
   value: string
   fields?: Record<string, string>
+  /** Declarative spec for putting this connection on an outgoing HTTP request (§3); null for DB/email/none. */
+  authApply?: AuthApply | null
   metadata?: any
   expiresAt?: string
 }
@@ -47,6 +49,10 @@ interface RevealedConnection {
     id: string
     userId?: string | null
     kind: string
+    type?: string | null
+    appId?: string | null
+    mcpServerId?: string | null
+    connectionDefinitionId?: string | null
     metadata: any
     expiresAt?: Date | null
     lastRefreshAt?: Date | null
@@ -102,7 +108,8 @@ async function shapeFromRevealed(
   revealed: RevealedConnection,
   organizationId: string,
   connectionType: 'oauth2-code' | 'secret',
-  ensureFresh: boolean
+  ensureFresh: boolean,
+  authApply: AuthApply | null = null
 ): Promise<RuntimeConnectionData> {
   const { record, secrets } = await refreshIfNeeded(
     revealed,
@@ -115,6 +122,7 @@ async function shapeFromRevealed(
     type: connectionType,
     value: secretValue(secrets),
     fields: connectionFields(record, secrets),
+    authApply,
     metadata: record.metadata,
     expiresAt: record.expiresAt?.toISOString(),
   }
@@ -125,7 +133,8 @@ async function toRuntimeConnection(
   credentialId: string,
   organizationId: string,
   connectionType: 'oauth2-code' | 'secret',
-  ensureFresh: boolean
+  ensureFresh: boolean,
+  authApply: AuthApply | null = null
 ): Promise<Result<RuntimeConnectionData, ResolveConnectionError>> {
   const revealed = await revealSecrets<ConnectionSecrets>(credentialId, organizationId)
   if (revealed.isErr()) {
@@ -136,13 +145,16 @@ async function toRuntimeConnection(
     return err({ code: 'DECRYPTION_ERROR', message: 'Failed to decrypt credential' })
   }
 
-  return ok(await shapeFromRevealed(revealed.value, organizationId, connectionType, ensureFresh))
+  return ok(
+    await shapeFromRevealed(revealed.value, organizationId, connectionType, ensureFresh, authApply)
+  )
 }
 
 type OwnerInput =
-  | { appId: string; mcpServerId?: never; providerKey?: never }
-  | { mcpServerId: string; appId?: never; providerKey?: never }
-  | { providerKey: string; appId?: never; mcpServerId?: never }
+  | { appId: string; mcpServerId?: never; providerKey?: never; connectionId?: string }
+  | { mcpServerId: string; appId?: never; providerKey?: never; connectionId?: string }
+  | { providerKey: string; appId?: never; mcpServerId?: never; connectionId?: string }
+  | { connectionId: string; appId?: never; mcpServerId?: never; providerKey?: never }
 
 /**
  * Resolve connection(s) for runtime execution against any owner.
@@ -156,7 +168,6 @@ type OwnerInput =
  */
 export async function resolveConnectionForRuntime(
   input: OwnerInput & {
-    connectionId?: string
     organizationId: string
     userId: string
     /** Skip the lazy OAuth refresh (default `true`). */
@@ -172,27 +183,36 @@ export async function resolveConnectionForRuntime(
   const ensureFresh = input.ensureFresh ?? true
 
   // Direct credential binding — resolve that row, classify scope by its userId.
+  // The definition is found from the credential's own link (FK / owner / providerKey),
+  // so a caller (e.g. the HTTP node) can bind by connectionId alone, no owner needed.
   if (connectionId) {
-    const def = await database.query.ConnectionDefinition.findFirst({
-      where: (d, { eq, or }) =>
-        or(
-          appId ? eq(d.appId, appId) : undefined,
-          mcpServerId ? eq(d.mcpServerId, mcpServerId) : undefined,
-          providerKey ? eq(d.providerKey, providerKey) : undefined
-        ),
-      columns: { connectionType: true },
-    })
     const revealed = await revealSecrets<ConnectionSecrets>(connectionId, organizationId)
     if (revealed.isErr()) {
       return err({ code: 'CONNECTION_NOT_FOUND', message: `Connection ${connectionId} not found` })
     }
+    const { record } = revealed.value
+    const defId = record.connectionDefinitionId
+    const ownerAppId = appId ?? record.appId
+    const ownerMcpServerId = mcpServerId ?? record.mcpServerId
+    const ownerProviderKey = providerKey ?? record.type
+    const def = await database.query.ConnectionDefinition.findFirst({
+      where: (d, { eq, or }) =>
+        or(
+          defId ? eq(d.id, defId) : undefined,
+          ownerAppId ? eq(d.appId, ownerAppId) : undefined,
+          ownerMcpServerId ? eq(d.mcpServerId, ownerMcpServerId) : undefined,
+          ownerProviderKey ? eq(d.providerKey, ownerProviderKey) : undefined
+        ),
+      columns: { connectionType: true, authApply: true },
+    })
     const connectionType = (def?.connectionType ??
       (revealed.value.secrets.accessToken ? 'oauth2-code' : 'secret')) as 'oauth2-code' | 'secret'
     const resolved = await shapeFromRevealed(
       revealed.value,
       organizationId,
       connectionType,
-      ensureFresh
+      ensureFresh,
+      def?.authApply ?? null
     )
     return ok(
       revealed.value.record.userId
@@ -205,7 +225,7 @@ export async function resolveConnectionForRuntime(
   if (appId) {
     const defs = await database.query.ConnectionDefinition.findMany({
       where: (d, { eq }) => eq(d.appId, appId),
-      columns: { connectionType: true, global: true },
+      columns: { connectionType: true, global: true, authApply: true },
     })
     const userDef = defs.find((d) => d.global === false)
     const orgDef = defs.find((d) => d.global === true)
@@ -222,7 +242,8 @@ export async function resolveConnectionForRuntime(
           found.value.id,
           organizationId,
           userDef.connectionType as 'oauth2-code' | 'secret',
-          ensureFresh
+          ensureFresh,
+          userDef.authApply
         )
         if (resolved.isErr()) return err(resolved.error)
         userConnection = resolved.value
@@ -237,7 +258,8 @@ export async function resolveConnectionForRuntime(
           found.value.id,
           organizationId,
           orgDef.connectionType as 'oauth2-code' | 'secret',
-          ensureFresh
+          ensureFresh,
+          orgDef.authApply
         )
         if (resolved.isErr()) return err(resolved.error)
         organizationConnection = resolved.value
@@ -250,7 +272,7 @@ export async function resolveConnectionForRuntime(
   if (mcpServerId) {
     const def = await database.query.ConnectionDefinition.findFirst({
       where: (d, { eq }) => eq(d.mcpServerId, mcpServerId),
-      columns: { connectionType: true },
+      columns: { connectionType: true, authApply: true },
     })
     const found = await findCredential({ organizationId, kind: 'mcp', mcpServerId, userId: null })
     if (found.isErr())
@@ -260,7 +282,8 @@ export async function resolveConnectionForRuntime(
       found.value.id,
       organizationId,
       (def?.connectionType ?? 'secret') as 'oauth2-code' | 'secret',
-      ensureFresh
+      ensureFresh,
+      def?.authApply ?? null
     )
     if (resolved.isErr()) return err(resolved.error)
     return ok({ organizationConnection: resolved.value })
@@ -270,7 +293,7 @@ export async function resolveConnectionForRuntime(
   if (providerKey) {
     const def = await database.query.ConnectionDefinition.findFirst({
       where: (d, { eq }) => eq(d.providerKey, providerKey),
-      columns: { connectionType: true, global: true },
+      columns: { connectionType: true, global: true, authApply: true },
     })
     if (!def)
       return err({ code: 'CONNECTION_NOT_FOUND', message: `Provider ${providerKey} not found` })
@@ -288,7 +311,8 @@ export async function resolveConnectionForRuntime(
       found.value.id,
       organizationId,
       def.connectionType as 'oauth2-code' | 'secret',
-      ensureFresh
+      ensureFresh,
+      def.authApply
     )
     if (resolved.isErr()) return err(resolved.error)
     return ok(

@@ -20,8 +20,7 @@ import {
 import { RadioTab, RadioTabItem } from '@auxx/ui/components/radio-tab'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { EmptySection, Section } from '@auxx/ui/components/section'
-import { toastError } from '@auxx/ui/components/toast'
-import { ChevronDown, Database, Pencil, Plus, RefreshCw, Sparkles, Waypoints } from 'lucide-react'
+import { ChevronDown, Database, Pencil, RefreshCw, Sparkles, Waypoints } from 'lucide-react'
 import { type ReactNode, useState } from 'react'
 import { Tooltip } from '~/components/global/tooltip'
 import {
@@ -32,7 +31,6 @@ import type { api } from '~/trpc/react'
 import { useBufferedConfig } from '../hooks/use-buffered-config'
 import { useSourcePaths } from '../hooks/use-source-paths'
 import { useStreamMutations } from '../hooks/use-stream-mutations'
-import { useTargetDefs } from '../hooks/use-target-defs'
 import { MappingTree } from './mapping-tree'
 import { StreamDryRun } from './stream-dry-run'
 
@@ -85,7 +83,6 @@ const EMPTY_SCHEMA = { type: 'object', properties: {} }
  */
 export function StreamConfigPanel({ connector, stream, onPromoteField }: StreamConfigPanelProps) {
   const isGenericRest = !connector.type.startsWith('app:')
-  const { defs } = useTargetDefs()
 
   const [seed, setSeed] = useState<{
     schema: Record<string, unknown>
@@ -98,16 +95,14 @@ export function StreamConfigPanel({ connector, stream, onPromoteField }: StreamC
 
   // Single mutation surface for the stream: optimistic toggles (setSyncMode,
   // …) + deliberate/imperative saves (saveRequestConfig, setStreamSchema,
-  // addMapping, sampleFetch). Sync-mode is optimistic; the request form is a
-  // buffered explicit Save (flip mode to 'auto' for autosave — plan §5/§6).
+  // sampleFetch). Sync-mode is optimistic; the request form is a buffered
+  // explicit Save (flip mode to 'auto' for autosave — plan §5/§6).
   const {
     setSyncMode,
     saveRequestConfig,
     setStreamSchema,
-    addMapping,
     sampleFetch,
     isSavingRequest,
-    isAddingMapping,
     isSampling,
   } = useStreamMutations(connector.id)
 
@@ -165,28 +160,6 @@ export function StreamConfigPanel({ connector, stream, onPromoteField }: StreamC
 
   const handleSaveSchema = (schema: Record<string, unknown>, source: 'inferred' | 'manual') =>
     setStreamSchema(stream.id, schema, source)
-
-  const handleAddMapping = () => {
-    const firstDef = defs[0]
-    if (!firstDef) {
-      toastError({
-        title: 'No entity definitions',
-        description: 'Create an entity definition first.',
-      })
-      return
-    }
-    // A collection-response root (array of records) fans out via `[]`; an object
-    // response is one record at the root (`''`).
-    const rootIsArray = (stream.sourceSchema as { type?: string } | null)?.type === 'array'
-    addMapping({
-      dataConnectorStreamId: stream.id,
-      rootPath: rootIsArray ? '[]' : '',
-      linkMode: 'upsert',
-      targetMode: 'contributing',
-      entityDefinitionId: firstDef.entityDefinitionId,
-      identityStrategy: { kind: 'connectorExternalId' },
-    })
-  }
 
   const badgeLabel = hasSchema ? (SCHEMA_SOURCE_LABEL[stream.schemaSource] ?? 'Manual') : 'None'
 
@@ -320,16 +293,12 @@ export function StreamConfigPanel({ connector, stream, onPromoteField }: StreamC
           icon={<Database className='size-4' />}
           initialOpen
           collapsible={false}
-          description='Project subtrees of the source onto target definitions.'
-          actions={
-            <Button variant='ghost' size='xs' loading={isAddingMapping} onClick={handleAddMapping}>
-              <Plus />
-              Add mapping
-            </Button>
-          }>
+          description='Project subtrees of the source onto target definitions.'>
           <MappingTree
             connectorId={connector.id}
             streamId={stream.id}
+            streamKey={stream.streamKey ?? ''}
+            mappings={stream.mappings}
             sourcePaths={sourcePaths}
             onPromoteField={onPromoteField}
           />
@@ -348,7 +317,7 @@ export function StreamConfigPanel({ connector, stream, onPromoteField }: StreamC
       <SchemaEditorDialog
         open={!!seed}
         onOpenChange={(open) => !open && setSeed(null)}
-        title={stream.streamKey}
+        title={stream.streamKey ?? 'Stream schema'}
         initial={seed ?? { schema: EMPTY_SCHEMA, seededFrom: 'empty' }}
         policy={{ emitRequired: false, root: 'any', rootLabel: 'record', freeformNames: true }}
         onSave={handleSaveSchema}

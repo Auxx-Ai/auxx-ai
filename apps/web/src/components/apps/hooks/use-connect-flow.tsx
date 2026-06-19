@@ -73,6 +73,17 @@ export interface ConnectFlowArgs {
 
 export interface UseConnectFlow {
   start: (args: ConnectFlowArgs) => void
+  /**
+   * Connect with values collected by the caller — skips the hook's own
+   * variable/secret dialog. For `secret` defs it persists `{values}`/`{secret}`;
+   * for `oauth2-code` it kicks the OAuth flow with `values` as interpolation vars.
+   * Lets a host (e.g. the connection catalog) render the fields in its own surface
+   * while reusing the hook's OAuth popup + persistence.
+   */
+  connectWith: (
+    args: ConnectFlowArgs,
+    payload: { values?: Record<string, string>; secret?: string }
+  ) => void
   /** Renders any dialog the hook owns (variable, secret). Mount once per caller. */
   Dialogs: ReactNode
   pending: boolean
@@ -363,6 +374,31 @@ export function useConnectFlow(options: UseConnectFlowOptions = {}): UseConnectF
     [saveAppSecret, savePlatformSecret]
   )
 
+  const connectWith = useCallback(
+    (a: ConnectFlowArgs, payload: { values?: Record<string, string>; secret?: string }) => {
+      setError(null)
+      setArgs(a)
+      const def =
+        a.scope === 'user'
+          ? a.target.connectionDefinitions?.user
+          : a.target.connectionDefinitions?.organization
+      if (!def) {
+        setError(new Error('Connection not available for this scope'))
+        return
+      }
+      if (def.connectionType === 'secret') {
+        saveSecretForOwner(a, payload)
+        return
+      }
+      if (def.connectionType === 'oauth2-code') {
+        kickOauth(a, payload.values ?? {})
+        return
+      }
+      setError(new Error('This connection cannot be connected'))
+    },
+    [kickOauth, saveSecretForOwner]
+  )
+
   const handleVariableSubmit = useCallback(
     (values: Record<string, string>) => {
       if (!args) return
@@ -420,6 +456,7 @@ export function useConnectFlow(options: UseConnectFlowOptions = {}): UseConnectF
 
   return {
     start,
+    connectWith,
     Dialogs,
     pending: savePending || secretOpen || variableOpen || oauthPending,
     lastConnectedCredId,

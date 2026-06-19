@@ -4,7 +4,7 @@
 // `kind`-branch in refreshCredentialTokens — every credential resolves its
 // definition the same way, by connectionDefinitionId or by owner.
 
-import { database as db, schema } from '@auxx/database'
+import { type AuthApply, database as db, schema } from '@auxx/database'
 import { interpolateConnectionFields } from '@auxx/services/app-connections'
 import { and, eq } from 'drizzle-orm'
 
@@ -12,6 +12,7 @@ import { and, eq } from 'drizzle-orm'
 export interface ConnectionDefinitionForRefresh {
   id: string
   connectionType: string
+  authApply: AuthApply | null
   oauth2AuthorizeUrl: string | null
   oauth2AccessTokenUrl: string | null
   oauth2RefreshUrl: string | null
@@ -33,6 +34,7 @@ export interface CredentialOwner {
 const REFRESH_COLUMNS = {
   id: true,
   connectionType: true,
+  authApply: true,
   oauth2AuthorizeUrl: true,
   oauth2AccessTokenUrl: true,
   oauth2RefreshUrl: true,

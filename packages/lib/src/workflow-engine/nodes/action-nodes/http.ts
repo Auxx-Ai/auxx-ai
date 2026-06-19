@@ -16,6 +16,7 @@
  */
 
 import { z } from 'zod'
+import { applyAuth, resolveConnectionForRuntime } from '../../../connections'
 import type { ExecutionContextManager } from '../../core/execution-context'
 import type {
   NodeExecutionResult,
@@ -44,12 +45,14 @@ interface BodyPayloadItem {
 }
 
 interface HttpAuthConfig {
-  type: 'none' | 'basic' | 'bearer' | 'custom' | 'api-key'
+  type: 'none' | 'basic' | 'bearer' | 'custom' | 'api-key' | 'connection'
   username?: string
   password?: string
   token?: string
   header?: string
   api_key?: string
+  /** Bound Credential id when type is 'connection' — resolved + applied at execute time. */
+  connectionId?: string
 }
 
 interface HttpTimeoutConfig {
@@ -98,7 +101,7 @@ const httpNodeConfigSchema = z.object({
     data: z.array(z.any()).default([]),
   }),
   authorization: z
-    .object({ type: z.enum(['none', 'basic', 'bearer', 'custom', 'api-key']) })
+    .object({ type: z.enum(['none', 'basic', 'bearer', 'custom', 'api-key', 'connection']) })
     .passthrough(),
   timeout: z
     .object({
@@ -264,6 +267,16 @@ export class HttpProcessor extends BaseNodeProcessor {
           finalUrl = url.toString()
         }
 
+        // Apply a bound connection's auth (refresh-on-use) over the preprocessed request.
+        const applied = await this.applyBoundConnectionAuth(
+          node,
+          contextManager,
+          requestOptions.headers as Record<string, string>,
+          finalUrl
+        )
+        requestOptions.headers = applied.headers
+        finalUrl = applied.url
+
         // Use existing executeWithRetries method - no duplication!
         const response = await this.executeWithRetries(
           finalUrl,
@@ -365,9 +378,18 @@ export class HttpProcessor extends BaseNodeProcessor {
       // Build the request
       const { url, options } = await this.buildRequest(config, contextManager, node)
 
+      // Apply a bound connection's auth (refresh-on-use) over the built request.
+      const applied = await this.applyBoundConnectionAuth(
+        node,
+        contextManager,
+        options.headers as Record<string, string>,
+        url
+      )
+      options.headers = applied.headers
+
       // Execute with retries if enabled
       const response = await this.executeWithRetries(
-        url,
+        applied.url,
         options,
         config,
         contextManager,
@@ -706,6 +728,53 @@ export class HttpProcessor extends BaseNodeProcessor {
     }
 
     return headers
+  }
+
+  /**
+   * Apply a bound connection's auth to the request. When the node binds a Credential
+   * (authorization.type === 'connection'), resolve it through the unified resolver —
+   * which lazily refreshes oauth2 tokens on use — and apply its declarative `authApply`
+   * spec. No binding → the request passes through untouched.
+   */
+  private async applyBoundConnectionAuth(
+    node: WorkflowNode,
+    contextManager: ExecutionContextManager,
+    headers: Record<string, string>,
+    url: string
+  ): Promise<{ headers: Record<string, string>; url: string }> {
+    const auth = (node.data as unknown as HttpNodeConfig).authorization
+    const connectionId = auth?.connectionId
+    if (!connectionId || auth.type !== 'connection') {
+      return { headers, url }
+    }
+
+    const organizationId = (await contextManager.getVariable('sys.organizationId')) as string
+    const userId = ((await contextManager.getVariable('sys.userId')) as string) ?? ''
+    if (!organizationId) {
+      throw this.createExecutionError(
+        'Organization context required to resolve a connection',
+        node,
+        {
+          connectionId,
+        }
+      )
+    }
+
+    const resolved = await resolveConnectionForRuntime({ connectionId, organizationId, userId })
+    if (resolved.isErr()) {
+      throw this.createExecutionError(
+        `Failed to resolve bound connection: ${resolved.error.message}`,
+        node,
+        { connectionId, error: resolved.error.code }
+      )
+    }
+
+    const conn = resolved.value.userConnection ?? resolved.value.organizationConnection
+    if (!conn) {
+      throw this.createExecutionError('Bound connection is not connected', node, { connectionId })
+    }
+
+    return applyAuth({ headers, url }, { value: conn.value, fields: conn.fields }, conn.authApply)
   }
 
   /**

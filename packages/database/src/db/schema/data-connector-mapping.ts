@@ -49,12 +49,12 @@ export const DataConnectorMapping = pgTable(
     // writes into a pre-existing def (incl. system contact/ticket). For 'reference'
     // the def is the one whose records we resolve against (e.g. Product).
     targetMode: text().notNull(), // 'owned' | 'contributing'
-    entityDefinitionId: text()
-      .notNull()
-      .references((): AnyPgColumn => EntityDefinition.id, {
-        onUpdate: 'cascade',
-        onDelete: 'restrict',
-      }),
+    // Nullable: a stream is seeded with a root mapping that has no target yet —
+    // the user picks the def in the UI. The runtime skips untargeted mappings.
+    entityDefinitionId: text().references((): AnyPgColumn => EntityDefinition.id, {
+      onUpdate: 'cascade',
+      onDelete: 'restrict',
+    }),
 
     // targetFieldKey → mapping. Each mapping is the CALC shape; a one-click row is
     // the degenerate single-token `{source}` expression. Empty for 'reference'.
