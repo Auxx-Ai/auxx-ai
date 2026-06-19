@@ -235,6 +235,12 @@ export interface CatalogDataConnector {
   label: string
   requiresConnection: boolean
   iconKey: string | null
+  /**
+   * Request-authoring surface the connect-a-source catalog advertises (05c §2).
+   * App connectors bake their request into code → 'fixed'. Optional — older
+   * catalogs omit it and consumers default to 'fixed'.
+   */
+  requestModel?: 'builder' | 'fixed'
   /** Connector-level config schema (JSON Schema, from the `config` zod schema). */
   configJsonSchema: Record<string, unknown>
   streams: CatalogConnectorStream[]

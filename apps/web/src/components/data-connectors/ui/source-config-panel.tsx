@@ -37,24 +37,25 @@ interface SourceConfigPanelProps {
 }
 
 /**
- * The `source` drill panel — the connector-level fetch config (05 §3, 05a §5):
- * - generic-rest → an HTTP slice: base URL + shared non-secret headers (per-stream
- *   path/body/pagination lives in the stream drill). Built with the shared
- *   http-request components using the default plain field editor (no TipTap /
- *   variable explorer / ReactFlow in this route).
- * - app/template → a schema-driven config form from the connector's declared
- *   `config` schema (the shared schema-form renderer).
+ * The `source` drill panel — the connector-level fetch config (05 §3, 05a §5).
+ * Branches on the persisted `definitionKind` (05c §7), not a `type` prefix sniff:
+ * - 'builtin' (generic-rest, incl. template instances) → an HTTP slice: base URL
+ *   + shared non-secret headers (per-stream path/body/pagination lives in the
+ *   stream drill). Built with the shared http-request components.
+ * - 'app' → a schema-driven config form from the connector's declared `config`
+ *   schema, fetched via `dataConnector.connectorSchema` (the shared schema-form
+ *   renderer).
  */
 export function SourceConfigPanel({ connector }: SourceConfigPanelProps) {
   const utils = api.useUtils()
-  const isGenericRest = !connector.type.startsWith('app:')
+  const isApp = connector.definitionKind === 'app'
 
   const update = api.dataConnector.update.useMutation({
     onSuccess: () => void utils.dataConnector.getById.invalidate({ id: connector.id }),
     onError: (e) => toastError({ title: 'Could not save', description: e.message }),
   })
 
-  if (isGenericRest) {
+  if (!isApp) {
     return (
       <GenericRestSource
         connector={connector}
@@ -167,10 +168,13 @@ function AppConfigSource({
   onSave: (config: Record<string, unknown>) => void
   saving: boolean
 }) {
-  // The connector's declared config schema isn't exposed via tRPC yet (it lives in
-  // the app catalog / lib registry). When available it would render here; for now
-  // we render whatever schema the config blob carries under `_schema`, else a note.
-  const schema = (connector.config as { _schema?: Record<string, unknown> })?._schema ?? null
+  // The connector's declared config schema, fetched from the app catalog via
+  // tRPC (05c §3). Falls back to a `config._schema` blob if the catalog omits it.
+  const { data } = api.dataConnector.connectorSchema.useQuery({ id: connector.id })
+  const schema =
+    (data?.configJsonSchema as Record<string, unknown> | null) ??
+    (connector.config as { _schema?: Record<string, unknown> })?._schema ??
+    null
   const fields = useMemo(() => readFieldNodes(schema), [schema])
   const [values, setValues] = useState<Record<string, unknown>>(() => ({
     ...seedDefaults(fields),
@@ -181,8 +185,6 @@ function AppConfigSource({
     return (
       <div className='p-6 text-sm text-muted-foreground'>
         This connector has no user-configurable options. Its request is defined in code.
-        {/* TODO: surface the connector's declared `config` schema via tRPC so app/template
-            connectors render their options here (05a §2). */}
       </div>
     )
   }

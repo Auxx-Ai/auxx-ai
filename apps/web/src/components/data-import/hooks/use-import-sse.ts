@@ -60,9 +60,38 @@ export function useImportSSE({
   const [isConnected, setIsConnected] = useState(false)
   const eventSourceRef = useRef<EventSource | null>(null)
   const isCompleteRef = useRef(false)
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Keep the latest callbacks in a ref so the SSE connection does NOT depend on them.
+  // The parent passes inline functions that change identity every render; depending on
+  // them would tear down and reopen the EventSource on every render → reconnect storm.
+  const callbacksRef = useRef({
+    onComplete,
+    onError,
+    onResolutionComplete,
+    onResolutionProgress,
+    onPlanningRow,
+    onPlanningProgress,
+    onPlanningComplete,
+  })
+  callbacksRef.current = {
+    onComplete,
+    onError,
+    onResolutionComplete,
+    onResolutionProgress,
+    onPlanningRow,
+    onPlanningProgress,
+    onPlanningComplete,
+  }
+
+  // Latest progress, readable inside event handlers without making them a dependency.
+  const progressRef = useRef(progress)
+  progressRef.current = progress
 
   const connect = useCallback(() => {
     if (!enabled || !jobId) return
+
+    isCompleteRef.current = false
 
     // Close existing connection
     if (eventSourceRef.current) {
@@ -104,7 +133,7 @@ export function useImportSSE({
         }
         setCurrentResolution(resProgress)
         setProgress((prev) => ({ ...prev, phase: 'resolving' }))
-        onResolutionProgress?.(resProgress)
+        callbacksRef.current.onResolutionProgress?.(resProgress)
       } catch (e) {
         console.error('Failed to parse resolution:progress event:', e)
       }
@@ -114,7 +143,7 @@ export function useImportSSE({
     eventSource.addEventListener('planning:row', (event) => {
       try {
         const data = JSON.parse(event.data)
-        onPlanningRow?.({
+        callbacksRef.current.onPlanningRow?.({
           rowIndex: data.rowIndex,
           strategy: data.strategy,
           existingRecordId: data.existingRecordId,
@@ -136,7 +165,7 @@ export function useImportSSE({
           rowsProcessed: data.processed,
           totalRows: data.total,
         }))
-        onPlanningProgress?.({
+        callbacksRef.current.onPlanningProgress?.({
           phase: data.phase,
           processed: data.processed,
           total: data.total,
@@ -150,7 +179,7 @@ export function useImportSSE({
     eventSource.addEventListener('planning:complete', (event) => {
       try {
         JSON.parse(event.data) // Parse to validate, but we don't use it
-        onPlanningComplete?.()
+        callbacksRef.current.onPlanningComplete?.()
       } catch (e) {
         console.error('Failed to parse planning:complete event:', e)
       }
@@ -164,14 +193,17 @@ export function useImportSSE({
         // Resolution complete - job is ready for planning
         if (data.status === 'waiting') {
           setProgress((prev) => ({ ...prev, phase: 'idle' }))
-          onResolutionComplete?.()
+          callbacksRef.current.onResolutionComplete?.()
         }
 
         // Execution complete
         if (data.status === 'completed') {
           isCompleteRef.current = true
           setProgress((prev) => ({ ...prev, phase: 'complete' }))
-          onComplete?.({ created: progress.created, updated: progress.updated })
+          callbacksRef.current.onComplete?.({
+            created: progressRef.current.created,
+            updated: progressRef.current.updated,
+          })
           eventSource.close()
         }
 
@@ -179,7 +211,7 @@ export function useImportSSE({
         if (data.status === 'failed') {
           isCompleteRef.current = true
           setProgress((prev) => ({ ...prev, phase: 'error' }))
-          onError?.(data.error ?? 'Import failed')
+          callbacksRef.current.onError?.(data.error ?? 'Import failed')
           eventSource.close()
         }
       } catch (e) {
@@ -222,7 +254,7 @@ export function useImportSSE({
           skipped: stats.skipped ?? 0,
           failed: stats.failed ?? 0,
         })
-        onComplete?.({
+        callbacksRef.current.onComplete?.({
           created: stats.created ?? 0,
           updated: stats.updated ?? 0,
         })
@@ -240,7 +272,7 @@ export function useImportSSE({
           const data = JSON.parse(event.data)
           isCompleteRef.current = true
           setProgress((prev) => ({ ...prev, phase: 'error' }))
-          onError?.(data.message ?? 'Unknown error')
+          callbacksRef.current.onError?.(data.message ?? 'Unknown error')
           eventSource.close()
         } catch (e) {
           console.error('Failed to parse error event:', e)
@@ -253,29 +285,25 @@ export function useImportSSE({
       setIsConnected(false)
       // Reconnect after 2 seconds unless complete
       if (!isCompleteRef.current) {
-        setTimeout(connect, 2000)
+        if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current)
+        reconnectTimerRef.current = setTimeout(connect, 2000)
       }
     }
-  }, [
-    enabled,
-    jobId,
-    onComplete,
-    onError,
-    onResolutionComplete,
-    onResolutionProgress,
-    onPlanningRow,
-    onPlanningProgress,
-    onPlanningComplete,
-    progress.created,
-    progress.updated,
-  ])
+    // Depend only on jobId/enabled — callbacks and progress are read via refs so the
+    // connection is established once and not torn down on every parent re-render.
+  }, [enabled, jobId])
 
   useEffect(() => {
     connect()
 
     return () => {
+      if (reconnectTimerRef.current) {
+        clearTimeout(reconnectTimerRef.current)
+        reconnectTimerRef.current = null
+      }
       if (eventSourceRef.current) {
         eventSourceRef.current.close()
+        eventSourceRef.current = null
       }
     }
   }, [connect])

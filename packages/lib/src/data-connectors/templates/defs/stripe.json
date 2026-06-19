@@ -1,0 +1,86 @@
+{
+  "id": "stripe",
+  "name": "Stripe",
+  "description": "Sync Stripe customers and charges into your entity system. Bind a Stripe secret key to authorize requests.",
+  "categories": ["payments"],
+  "iconKey": "credit-card",
+  "requiresConnection": true,
+  "connection": {
+    "authScheme": "bearer",
+    "docsUrl": "https://stripe.com/docs/keys"
+  },
+  "config": {
+    "endpoint": {
+      "baseUrl": "https://api.stripe.com/v1",
+      "auth": "credential"
+    }
+  },
+  "streams": [
+    {
+      "streamKey": "customers",
+      "syncMode": "snapshot",
+      "requestConfig": {
+        "path": "/customers",
+        "method": "GET",
+        "params": { "limit": 100 },
+        "pagination": { "kind": "none" }
+      },
+      "sourceSchema": {
+        "type": "object",
+        "properties": {
+          "object": { "type": "string" },
+          "has_more": { "type": "boolean" },
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": { "type": "string" },
+                "email": { "type": "string" },
+                "name": { "type": "string" },
+                "phone": { "type": "string" },
+                "description": { "type": "string" },
+                "created": { "type": "number" },
+                "currency": { "type": "string" },
+                "delinquent": { "type": "boolean" }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "streamKey": "charges",
+      "syncMode": "snapshot",
+      "requestConfig": {
+        "path": "/charges",
+        "method": "GET",
+        "params": { "limit": 100 },
+        "pagination": { "kind": "none" }
+      },
+      "sourceSchema": {
+        "type": "object",
+        "properties": {
+          "object": { "type": "string" },
+          "has_more": { "type": "boolean" },
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": { "type": "string" },
+                "amount": { "type": "number" },
+                "currency": { "type": "string" },
+                "status": { "type": "string" },
+                "paid": { "type": "boolean" },
+                "created": { "type": "number" },
+                "description": { "type": "string" },
+                "receipt_email": { "type": "string" }
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

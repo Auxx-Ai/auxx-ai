@@ -170,10 +170,26 @@ export interface ConnectorFetchArgs {
   requestConfig?: StreamRequestConfig
 }
 
+/**
+ * How a source's request is authored — the capability the connect-a-source
+ * catalog advertises for an *uninstantiated* source (05c §2).
+ *  - 'builder' → expose the generic-rest HTTP request builder (generic-rest +
+ *    template instances).
+ *  - 'fixed'   → request baked into the connector's code; surface only the
+ *    declared `config` schema (app connectors; future closed templates).
+ *
+ * The detail view itself branches on the persisted `DataConnector.definitionKind`
+ * (`'app'` ⇔ fixed), not on this — `requestModel` exists so the catalog can
+ * describe sources that have no row yet.
+ */
+export type ConnectorRequestModel = 'builder' | 'fixed'
+
 /** A connector only fetches + normalizes; it never writes entities. */
 export interface DataConnectorDefinition {
   type: string
   schemaVersion: number
+  /** Request-authoring surface this connector exposes. Defaults to 'builder'. */
+  requestModel?: ConnectorRequestModel
   streams: ConnectorStreamDecl[]
   fetch(args: ConnectorFetchArgs): Promise<FetchResult>
   /** Map a provider delete event onto a (streamKey, externalId). */

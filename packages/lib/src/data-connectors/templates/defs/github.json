@@ -1,0 +1,53 @@
+{
+  "id": "github",
+  "name": "GitHub",
+  "description": "Sync public repositories from the GitHub REST API. Works without a credential; bind a personal-access token for higher rate limits.",
+  "categories": ["developer"],
+  "iconKey": "github",
+  "requiresConnection": false,
+  "connection": {
+    "authScheme": "bearer",
+    "docsUrl": "https://docs.github.com/rest/authentication/authenticating-to-the-rest-api"
+  },
+  "config": {
+    "endpoint": {
+      "baseUrl": "https://api.github.com",
+      "auth": "none"
+    }
+  },
+  "streams": [
+    {
+      "streamKey": "repositories",
+      "syncMode": "snapshot",
+      "requestConfig": {
+        "path": "/repositories",
+        "method": "GET",
+        "pagination": { "kind": "link-header" }
+      },
+      "sourceSchema": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "id": { "type": "number" },
+            "node_id": { "type": "string" },
+            "name": { "type": "string" },
+            "full_name": { "type": "string" },
+            "html_url": { "type": "string" },
+            "description": { "type": "string" },
+            "fork": { "type": "boolean" },
+            "owner": {
+              "type": "object",
+              "properties": {
+                "login": { "type": "string" },
+                "id": { "type": "number" },
+                "html_url": { "type": "string" },
+                "type": { "type": "string" }
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

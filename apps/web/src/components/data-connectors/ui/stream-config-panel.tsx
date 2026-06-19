@@ -82,7 +82,8 @@ const EMPTY_SCHEMA = { type: 'object', properties: {} }
  * Plus per-stream request (generic-rest) + sync mode + a dry-run preview.
  */
 export function StreamConfigPanel({ connector, stream, onPromoteField }: StreamConfigPanelProps) {
-  const isGenericRest = !connector.type.startsWith('app:')
+  // Branch on the persisted definitionKind (05c §7), not a `type` prefix sniff.
+  const isGenericRest = connector.definitionKind !== 'app'
 
   const [seed, setSeed] = useState<{
     schema: Record<string, unknown>

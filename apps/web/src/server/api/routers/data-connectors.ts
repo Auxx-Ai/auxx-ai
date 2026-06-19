@@ -5,16 +5,20 @@
 // The backend engine (queue/scheduler/orchestrator/provisioning) lives in
 // @auxx/lib/data-connectors — this router is a thin, validated edge over it.
 
+import { getCachedInstalledApps } from '@auxx/lib/cache'
 import {
   addMapping,
   addStream,
   connectorFor,
   createConnector,
+  createConnectorFromTemplate,
   type DataConnectorType,
   decodeMapping,
   deleteConnector,
   enqueueConnectorSync,
+  getAllConnectorTemplates,
   getConnector,
+  getConnectorTemplateById,
   listConnectors,
   listRuns,
   listStreams,
@@ -121,6 +125,68 @@ export const dataConnectorRouter = createTRPCRouter({
     return listConnectors(ctx.db, ctx.session.organizationId)
   }),
 
+  /**
+   * What the "Connect a source" dialog lists (05c §3): the blank built-in, the
+   * first-party templates, and every installed-app connector. The apps section
+   * reads the `installedApps` org-cache (already projected with
+   * `catalog.dataConnectors`) — no bundle eval, no extra query.
+   */
+  catalog: protectedProcedure.query(async ({ ctx }) => {
+    const installedApps = await getCachedInstalledApps(ctx.session.organizationId)
+    const apps = installedApps.flatMap((app) =>
+      (app.dataConnectors ?? []).map((dc) => ({
+        type: `app:${app.app.slug}`,
+        connectorId: dc.id,
+        label: dc.label,
+        iconKey: dc.iconKey,
+        requiresConnection: dc.requiresConnection,
+        requestModel: dc.requestModel ?? ('fixed' as const),
+      }))
+    )
+    return {
+      builtin: [
+        {
+          type: 'generic-rest' as const,
+          label: 'Custom REST API',
+          description: 'Connect any HTTP/JSON endpoint — you define the request and mappings.',
+          iconKey: 'globe',
+          requestModel: 'builder' as const,
+        },
+      ],
+      templates: getAllConnectorTemplates(),
+      apps,
+    }
+  }),
+
+  /**
+   * The bound connector's declared config schema + request model (05c §3). Feeds
+   * the source-config panel's app/template branch real fields instead of the
+   * `config._schema` placeholder. Built-ins expose the request builder, so they
+   * carry no config schema.
+   */
+  connectorSchema: protectedProcedure
+    .input(z.object({ id: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const result = await getConnector(ctx.db, ctx.session.organizationId, input.id)
+      if (result.isErr()) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: result.error.message })
+      }
+      const connector = result.value
+      if (!connector.type.startsWith('app:')) {
+        return { requestModel: 'builder' as const, configJsonSchema: null }
+      }
+      const slug = connector.type.replace(/^app:/, '')
+      const installedApps = await getCachedInstalledApps(ctx.session.organizationId)
+      const app =
+        installedApps.find((a) => a.installationId === connector.appInstallationId) ??
+        installedApps.find((a) => a.app.slug === slug)
+      const dc = app?.dataConnectors?.[0] ?? null
+      return {
+        requestModel: dc?.requestModel ?? ('fixed' as const),
+        configJsonSchema: dc?.configJsonSchema ?? null,
+      }
+    }),
+
   getById: protectedProcedure.input(z.object({ id: z.string() })).query(async ({ ctx, input }) => {
     const result = await getConnector(ctx.db, ctx.session.organizationId, input.id)
     if (result.isErr()) {
@@ -171,6 +237,9 @@ export const dataConnectorRouter = createTRPCRouter({
       z.object({
         name: z.string().min(1),
         type: connectorTypeSchema,
+        // When set, seed the connector from a first-party template (05c). The
+        // `type` is always 'generic-rest' for a template instance.
+        templateId: z.string().nullish(),
         config: connectorConfigSchema.optional(),
         credentialId: z.string().nullish(),
         appInstallationId: z.string().nullish(),
@@ -178,6 +247,28 @@ export const dataConnectorRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      if (input.templateId) {
+        const template = getConnectorTemplateById(input.templateId)
+        if (!template) {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: `Unknown connector template: ${input.templateId}`,
+          })
+        }
+        return createConnectorFromTemplate(
+          ctx.db,
+          ctx.session.organizationId,
+          {
+            name: input.name,
+            credentialId: input.credentialId,
+            appInstallationId: input.appInstallationId,
+            syncBehavior: input.syncBehavior,
+            scheduleConfig: input.scheduleConfig,
+            createdById: ctx.session.userId,
+          },
+          template
+        )
+      }
       return createConnector(ctx.db, ctx.session.organizationId, {
         name: input.name,
         type: input.type as DataConnectorType,
@@ -283,13 +374,20 @@ export const dataConnectorRouter = createTRPCRouter({
         throw new TRPCError({ code: 'NOT_FOUND', message: result.error.message })
       }
       const connector = result.value
-      if (connector.type.startsWith('app:')) {
-        throw new TRPCError({
-          code: 'NOT_IMPLEMENTED',
-          message: 'Test-fetch for app connectors is not wired yet (phase 4).',
-        })
-      }
-      const definition = connectorFor(connector.type)
+      // App connectors resolve their own borrowed credential + streams from the
+      // org cache, so they need the connector context; built-ins ignore it.
+      const definition = connector.type.startsWith('app:')
+        ? connectorFor(connector.type, {
+            db: ctx.db,
+            organizationId: ctx.session.organizationId,
+            connector: {
+              id: connector.id,
+              type: connector.type,
+              credentialId: connector.credentialId,
+              appInstallationId: connector.appInstallationId,
+            },
+          })
+        : connectorFor(connector.type)
       const { records } = await definition.fetch({
         streamKey: input.streamKey ?? '',
         mode: 'snapshot',
