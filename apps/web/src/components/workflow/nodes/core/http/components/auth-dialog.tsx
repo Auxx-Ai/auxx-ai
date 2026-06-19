@@ -14,8 +14,9 @@ import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { Label } from '@auxx/ui/components/label'
 import { RadioGroup } from '@auxx/ui/components/radio-group'
 import { RadioGroupItemCard } from '@auxx/ui/components/radio-group-item'
-import { Key, LockKeyhole, Settings, ShieldOff, UserCheck } from 'lucide-react'
+import { Key, LockKeyhole, Plug, Settings, ShieldOff, UserCheck } from 'lucide-react'
 import { useState } from 'react'
+import { ConnectionPickerPopover } from '~/components/apps/ui/connection-picker-popover'
 import { BaseType, VAR_MODE } from '~/components/workflow/types'
 import { VarEditor, VarEditorField } from '~/components/workflow/ui/input-editor/var-editor'
 import { type Authorization, AuthType } from '../types'
@@ -51,6 +52,12 @@ const authTypeItems = [
     description: 'Custom authorization header',
     icon: Settings,
   },
+  {
+    type: AuthType.connection,
+    title: 'Connection',
+    description: 'Bind a saved connection (auto-refreshes tokens)',
+    icon: Plug,
+  },
 ]
 
 export function AuthDialog({ authorization, nodeId, onChange }: AuthDialogProps) {
@@ -70,6 +77,7 @@ export function AuthDialog({ authorization, nodeId, onChange }: AuthDialogProps)
       token:
         authType === AuthType.bearer || authType === AuthType.custom ? formData.token : undefined,
       header: authType === AuthType.custom ? formData.header : undefined,
+      connectionId: authType === AuthType.connection ? formData.connectionId : undefined,
     })
   }
 
@@ -86,6 +94,8 @@ export function AuthDialog({ authorization, nodeId, onChange }: AuthDialogProps)
         return 'Authentication: Bearer'
       case AuthType.custom:
         return 'Authentication: Custom'
+      case AuthType.connection:
+        return 'Authentication: Connection'
       default:
         return 'Authentication: None'
     }
@@ -186,6 +196,20 @@ export function AuthDialog({ authorization, nodeId, onChange }: AuthDialogProps)
                 />
               </VarEditorField>
             </div>
+          </div>
+        )
+
+      case AuthType.connection:
+        return (
+          <div className='space-y-2 pt-4 flex flex-col'>
+            <Label>Connection</Label>
+            <ConnectionPickerPopover
+              value={formData.connectionId}
+              onPick={(credentialId) => setFormData({ ...formData, connectionId: credentialId })}
+              orgScopedOnly={false}
+              matchTriggerWidth
+              placeholder='Choose connection'
+            />
           </div>
         )
 

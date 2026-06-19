@@ -16,20 +16,16 @@ import {
   enqueueConnectorSync,
   getConnector,
   listConnectors,
-  listMappings,
   listRuns,
   listStreams,
   provisionConnectorMappings,
   removeMapping,
   removeStream,
-  setFieldMappings,
-  setIdentityStrategy,
-  setMappingTarget,
-  setMergeStrategies,
   setStreamRequestConfig,
   setStreamSchema,
   updateConnector,
   updateMapping,
+  updateStream,
 } from '@auxx/lib/data-connectors'
 import { TRPCError } from '@trpc/server'
 import { z } from 'zod'
@@ -176,26 +172,13 @@ export const dataConnectorRouter = createTRPCRouter({
   listStreams: protectedProcedure
     .input(z.object({ id: z.string() }))
     .query(async ({ ctx, input }) => {
-      // Authz: ensures the connector belongs to this org before listing.
+      // Authz: ensures the connector belongs to this org before listing. Each
+      // stream carries its mapping rows nested (no separate listMappings query).
       const result = await getConnector(ctx.db, ctx.session.organizationId, input.id)
       if (result.isErr()) {
         throw new TRPCError({ code: 'NOT_FOUND', message: result.error.message })
       }
-      return listStreams(ctx.db, input.id)
-    }),
-
-  listMappings: protectedProcedure
-    .input(z.object({ streamId: z.string() }))
-    .query(async ({ ctx, input }) => {
-      const stream = await ctx.db.query.DataConnectorStream.findFirst({
-        where: (s, { and, eq }) =>
-          and(eq(s.id, input.streamId), eq(s.organizationId, ctx.session.organizationId)),
-        columns: { id: true },
-      })
-      if (!stream) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Stream not found' })
-      }
-      return listMappings(ctx.db, input.streamId)
+      return listStreams(ctx.db, ctx.session.organizationId, input.id)
     }),
 
   // ── Management (admin) ────────────────────────────────────────────────────
@@ -279,12 +262,14 @@ export const dataConnectorRouter = createTRPCRouter({
     if (result.isErr()) {
       throw new TRPCError({ code: 'NOT_FOUND', message: result.error.message })
     }
-    // Gather decoded mappings across the connector's streams.
-    const streams = await listStreams(ctx.db, input.id)
+    // Gather decoded mappings across the connector's streams (untargeted rows —
+    // a seeded root with no def yet — can't provision, so skip them).
+    const streams = await listStreams(ctx.db, organizationId, input.id)
     const decoded = []
     for (const stream of streams) {
-      const rows = await listMappings(ctx.db, stream.id)
-      for (const row of rows) decoded.push(decodeMapping(row))
+      for (const row of stream.mappings) {
+        if (row.entityDefinitionId !== null) decoded.push(decodeMapping(row))
+      }
     }
     return provisionConnectorMappings(ctx.db, organizationId, input.id, decoded)
   }),
@@ -303,7 +288,9 @@ export const dataConnectorRouter = createTRPCRouter({
     .input(
       z.object({
         id: z.string(),
-        streamKey: z.string().min(1),
+        // Nullish: a blank stream can be test-fetched before it's named (the key
+        // isn't used by generic-rest; app connectors derive their own).
+        streamKey: z.string().min(1).nullish(),
         requestConfig: requestConfigSchema.optional(),
       })
     )
@@ -321,7 +308,7 @@ export const dataConnectorRouter = createTRPCRouter({
       }
       const definition = connectorFor(connector.type)
       const { records } = await definition.fetch({
-        streamKey: input.streamKey,
+        streamKey: input.streamKey ?? '',
         mode: 'snapshot',
         state: {},
         credential: null,
@@ -352,7 +339,8 @@ export const dataConnectorRouter = createTRPCRouter({
     .input(
       z.object({
         id: z.string(),
-        streamKey: z.string().min(1),
+        // Omitted for a blank stream — named inline later via `updateStream`.
+        streamKey: z.string().min(1).nullish(),
         sourceSchema: z.record(z.string(), z.unknown()).nullish(),
         schemaSource: z.enum(['catalog', 'inferred', 'manual']).optional(),
         syncMode: z.enum(['snapshot', 'incremental', 'webhook']).optional(),
@@ -398,6 +386,13 @@ export const dataConnectorRouter = createTRPCRouter({
       return setStreamRequestConfig(ctx.db, ctx.session.organizationId, streamId, rest)
     }),
 
+  updateStream: adminProcedure
+    .input(z.object({ streamId: z.string(), streamKey: z.string().min(1).optional() }))
+    .mutation(async ({ ctx, input }) => {
+      const { streamId, ...rest } = input
+      return updateStream(ctx.db, ctx.session.organizationId, streamId, rest)
+    }),
+
   removeStream: adminProcedure
     .input(z.object({ streamId: z.string() }))
     .mutation(async ({ ctx, input }) => {
@@ -426,6 +421,8 @@ export const dataConnectorRouter = createTRPCRouter({
       return addMapping(ctx.db, ctx.session.organizationId, input)
     }),
 
+  // The single mapping write surface: any subset of a mapping's columns
+  // (structural + target binding + per-field policy) in one patch.
   updateMapping: adminProcedure
     .input(
       z.object({
@@ -435,6 +432,11 @@ export const dataConnectorRouter = createTRPCRouter({
         parentMappingId: z.string().nullish(),
         relationshipFieldKey: z.string().nullish(),
         orphanBehavior: z.enum(['archive', 'mark_deleted', 'ignore']).optional(),
+        entityDefinitionId: z.string().nullish(),
+        targetMode: z.enum(['owned', 'contributing']).optional(),
+        identityStrategy: identityStrategySchema.optional(),
+        fieldMappings: z.record(z.string(), fieldMappingSchema).optional(),
+        mergeStrategies: z.record(z.string(), mergeStrategySchema).optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -446,62 +448,5 @@ export const dataConnectorRouter = createTRPCRouter({
     .input(z.object({ mappingId: z.string() }))
     .mutation(async ({ ctx, input }) => {
       return removeMapping(ctx.db, ctx.session.organizationId, input.mappingId)
-    }),
-
-  setMappingTarget: adminProcedure
-    .input(
-      z.object({
-        mappingId: z.string(),
-        entityDefinitionId: z.string(),
-        targetMode: z.enum(['owned', 'contributing']),
-        linkMode: z.enum(['upsert', 'reference']),
-      })
-    )
-    .mutation(async ({ ctx, input }) => {
-      const { mappingId, ...rest } = input
-      return setMappingTarget(ctx.db, ctx.session.organizationId, mappingId, rest)
-    }),
-
-  setFieldMappings: adminProcedure
-    .input(
-      z.object({
-        mappingId: z.string(),
-        fieldMappings: z.record(z.string(), fieldMappingSchema),
-      })
-    )
-    .mutation(async ({ ctx, input }) => {
-      return setFieldMappings(
-        ctx.db,
-        ctx.session.organizationId,
-        input.mappingId,
-        input.fieldMappings
-      )
-    }),
-
-  setIdentityStrategy: adminProcedure
-    .input(z.object({ mappingId: z.string(), identityStrategy: identityStrategySchema }))
-    .mutation(async ({ ctx, input }) => {
-      return setIdentityStrategy(
-        ctx.db,
-        ctx.session.organizationId,
-        input.mappingId,
-        input.identityStrategy
-      )
-    }),
-
-  setMergeStrategies: adminProcedure
-    .input(
-      z.object({
-        mappingId: z.string(),
-        mergeStrategies: z.record(z.string(), mergeStrategySchema),
-      })
-    )
-    .mutation(async ({ ctx, input }) => {
-      return setMergeStrategies(
-        ctx.db,
-        ctx.session.organizationId,
-        input.mappingId,
-        input.mergeStrategies
-      )
     }),
 })

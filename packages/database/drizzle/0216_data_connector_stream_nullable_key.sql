@@ -1,0 +1,1 @@
+ALTER TABLE "DataConnectorStream" ALTER COLUMN "streamKey" DROP NOT NULL;

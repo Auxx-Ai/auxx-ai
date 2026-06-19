@@ -20,7 +20,6 @@ import { DockedPanelTarget, DockPortalProvider } from '~/components/global/dock-
 import { DockedPanelsContainer } from '~/components/global/docked-panels-container'
 import { Tooltip } from '~/components/global/tooltip'
 import { WorkflowEditor } from '~/components/workflow'
-import { CredentialsProvider } from '~/components/workflow/credentials/credentials-provider'
 import { WorkflowFormDialog } from '~/components/workflow/dialogs/workflow-form-dialog'
 import { usePanelStore } from '~/components/workflow/store/panel-store'
 import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
@@ -147,78 +146,76 @@ export default function EditWorkflowPage({ params }: EditWorkflowPageProps) {
   })()
 
   return (
-    <CredentialsProvider>
-      <DockPortalProvider>
-        <MainPage>
-          <MainPageHeader
-            className='justify-start'
-            action={
-              <div className='flex items-center gap-2 shrink-0'>
-                <RadioTab
-                  value={mode}
-                  onValueChange={setMode}
-                  size='sm'
-                  radioGroupClassName='grid w-full'
-                  className='border border-primary-200 flex flex-1 w-full shrink-0'>
-                  <RadioTabItem value='editor' size='sm'>
-                    <Workflow />
-                    <span className='hidden sm:inline'>Editor</span>
-                  </RadioTabItem>
-                  <RadioTabItem value='analytics' size='sm'>
-                    <ChartColumn />
-                    <span className='hidden sm:inline'>Analytics</span>
-                  </RadioTabItem>
-                  <RadioTabItem value='executions' size='sm'>
-                    <History />
-                    <span className='hidden sm:inline'>Executions</span>
-                  </RadioTabItem>
-                </RadioTab>
-                <Tooltip content='Edit Workflow Details'>
-                  <Button
-                    variant='ghost'
-                    size='icon-sm'
-                    onClick={() => setEditDialogOpen(true)}
-                    disabled={isLoading}>
-                    <Settings />
-                  </Button>
-                </Tooltip>
-              </div>
-            }>
-            <MainPageBreadcrumb>
-              <MainPageBreadcrumbItem title='Workflows' href='/app/workflows' />
-              <MainPageBreadcrumbItem
-                title={isLoading ? <Skeleton className='h-4 w-32' /> : workflow.name}
-                href={`/app/workflows/${workflowId}`}
-                last
-              />
-            </MainPageBreadcrumb>
-          </MainPageHeader>
+    <DockPortalProvider>
+      <MainPage>
+        <MainPageHeader
+          className='justify-start'
+          action={
+            <div className='flex items-center gap-2 shrink-0'>
+              <RadioTab
+                value={mode}
+                onValueChange={setMode}
+                size='sm'
+                radioGroupClassName='grid w-full'
+                className='border border-primary-200 flex flex-1 w-full shrink-0'>
+                <RadioTabItem value='editor' size='sm'>
+                  <Workflow />
+                  <span className='hidden sm:inline'>Editor</span>
+                </RadioTabItem>
+                <RadioTabItem value='analytics' size='sm'>
+                  <ChartColumn />
+                  <span className='hidden sm:inline'>Analytics</span>
+                </RadioTabItem>
+                <RadioTabItem value='executions' size='sm'>
+                  <History />
+                  <span className='hidden sm:inline'>Executions</span>
+                </RadioTabItem>
+              </RadioTab>
+              <Tooltip content='Edit Workflow Details'>
+                <Button
+                  variant='ghost'
+                  size='icon-sm'
+                  onClick={() => setEditDialogOpen(true)}
+                  disabled={isLoading}>
+                  <Settings />
+                </Button>
+              </Tooltip>
+            </div>
+          }>
+          <MainPageBreadcrumb>
+            <MainPageBreadcrumbItem title='Workflows' href='/app/workflows' />
+            <MainPageBreadcrumbItem
+              title={isLoading ? <Skeleton className='h-4 w-32' /> : workflow.name}
+              href={`/app/workflows/${workflowId}`}
+              last
+            />
+          </MainPageBreadcrumb>
+        </MainPageHeader>
 
-          <MainPageContent
-            className={cn(mode !== 'executions' && 'overflow-visible')}
-            dockedPanels={dockedPanels}>
-            {mode === 'editor' && (
-              <WorkflowEditor workflowId={workflowId} className='h-full' readOnly={false} />
-            )}
-            {mode === 'analytics' && <WorkflowAnalytics workflowId={workflowId} />}
+        <MainPageContent
+          className={cn(mode !== 'executions' && 'overflow-visible')}
+          dockedPanels={dockedPanels}>
+          {mode === 'editor' && (
+            <WorkflowEditor workflowId={workflowId} className='h-full' readOnly={false} />
+          )}
+          {mode === 'analytics' && <WorkflowAnalytics workflowId={workflowId} />}
 
-            {mode === 'executions' && <WorkflowExecutions workflowId={workflowId} />}
-          </MainPageContent>
-        </MainPage>
+          {mode === 'executions' && <WorkflowExecutions workflowId={workflowId} />}
+        </MainPageContent>
+      </MainPage>
 
-        {workflow && (
-          <WorkflowFormDialog
-            open={editDialogOpen}
-            onOpenChange={setEditDialogOpen}
-            mode='edit'
-            workflow={{
-              id: workflowId,
-              name: workflow.name,
-              description: workflow.description,
-            }}
-          />
-        )}
-      </DockPortalProvider>
-    </CredentialsProvider>
+      {workflow && (
+        <WorkflowFormDialog
+          open={editDialogOpen}
+          onOpenChange={setEditDialogOpen}
+          mode='edit'
+          workflow={{
+            id: workflowId,
+            name: workflow.name,
+            description: workflow.description,
+          }}
+        />
+      )}
+    </DockPortalProvider>
   )
 }

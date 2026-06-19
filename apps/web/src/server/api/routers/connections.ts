@@ -1,9 +1,20 @@
 // apps/web/src/server/api/routers/connections.ts
 
+import { listCredentials } from '@auxx/credentials/store'
 import { saveConnection } from '@auxx/lib/connections'
+import { getAllProviders } from '@auxx/lib/connections/providers'
+import { isAdminOrOwner } from '@auxx/lib/members'
 import { TRPCError } from '@trpc/server'
 import { z } from 'zod'
 import { createTRPCRouter, notDemo, protectedProcedure } from '~/server/api/trpc'
+
+/**
+ * Consecutive refresh failures at which a connection's circuit breaker is "open"
+ * — mirrors `credentials.list` / `CONNECTION_CIRCUIT_OPEN_THRESHOLD` in
+ * `@auxx/services/app-connections`. At or above this, the credential surfaces as
+ * `expired` so a uniform status applies across every kind.
+ */
+const CONNECTION_CIRCUIT_OPEN_THRESHOLD = 5
 
 /**
  * Platform-provider connections (the third owner). OAuth connects run through the
@@ -12,6 +23,70 @@ import { createTRPCRouter, notDemo, protectedProcedure } from '~/server/api/trpc
  * form — persisting via the unified `saveConnection`.
  */
 export const connectionsRouter = createTRPCRouter({
+  /**
+   * Card source for Settings → Channels → Connections. Lists every bindable
+   * connection across kinds (`app | integration | workflow`). Admins see all org
+   * connections; non-admins see their own user-scoped connections plus org-scoped
+   * (global) ones — never another member's personal connection.
+   */
+  list: protectedProcedure.query(async ({ ctx }) => {
+    const organizationId = ctx.session.user.defaultOrganizationId
+    if (!organizationId) {
+      throw new TRPCError({ code: 'BAD_REQUEST', message: 'No organization selected' })
+    }
+
+    const isAdmin = await isAdminOrOwner(organizationId, ctx.session.user.id)
+    const result = await listCredentials({
+      organizationId,
+      kind: ['app', 'integration', 'workflow'],
+      // Admins see everything; members see their own + org-scoped rows.
+      ...(isAdmin ? {} : { ownedByOrOrgScoped: ctx.session.user.id }),
+      withCreatedBy: true,
+    })
+    if (result.isErr()) {
+      throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: result.error.message })
+    }
+
+    const now = new Date()
+    return result.value.map((record) => {
+      const expired =
+        record.consecutiveRefreshFailures >= CONNECTION_CIRCUIT_OPEN_THRESHOLD ||
+        (record.expiresAt !== null && record.expiresAt < now)
+      return {
+        id: record.id,
+        name: record.name,
+        type: record.type ?? '',
+        kind: record.kind,
+        label: record.label,
+        appId: record.appId,
+        appInstallationId: record.appInstallationId,
+        scope: record.userId ? ('user' as const) : ('organization' as const),
+        status: expired ? ('expired' as const) : ('connected' as const),
+        createdAt: record.createdAt,
+        createdBy: { name: record.createdByName },
+      }
+    })
+  }),
+
+  /**
+   * Client-safe projection of the platform provider catalog (`getAllProviders()`)
+   * for the "+ New connection" dialog. Each entry feeds `useConnectFlow` as a
+   * `platform` owner — its `connectionDefinitionId` is the `providerKey` (the
+   * OAuth route + `saveSecret` resolve a providerKey as the id).
+   */
+  listProviders: protectedProcedure.query(() =>
+    getAllProviders().map((p) => ({
+      providerKey: p.providerKey,
+      label: p.label,
+      description: p.description ?? null,
+      connectionType: p.connectionType,
+      global: p.global ?? false,
+      connectionVariables: p.connectionVariables ?? [],
+      icon: p.uiMetadata?.icon ?? null,
+      category: p.uiMetadata?.category ?? null,
+    }))
+  ),
+
   saveSecret: protectedProcedure
     .input(
       z.object({

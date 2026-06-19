@@ -32,6 +32,7 @@ export enum AuthType {
   basic = 'basic',
   bearer = 'bearer',
   custom = 'custom',
+  connection = 'connection',
 }
 
 // Value selector type (for file references)
@@ -73,4 +74,6 @@ export type Authorization = {
   token?: string
   // For custom only
   header?: string
+  // For connection — bound Credential id, resolved + applied at execute time
+  connectionId?: string
 }

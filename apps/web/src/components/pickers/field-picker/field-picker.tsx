@@ -22,6 +22,7 @@ export function FieldPicker({
   entityDefinitionId,
   fieldReferences,
   excludeFields,
+  filterField,
   onSelect,
   mode = 'single',
   closeOnSelect = mode === 'single',
@@ -67,6 +68,7 @@ export function FieldPicker({
           entityDefinitionId={entityDefinitionId}
           fieldReferences={fieldReferences}
           excludeFields={excludeFields}
+          filterField={filterField}
           onSelect={onSelect}
           mode={mode}
           closeOnSelect={closeOnSelect}

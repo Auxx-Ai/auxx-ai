@@ -307,6 +307,12 @@ export const baseFieldOptionsSchema = z.object({
  */
 export const textFieldOptionsSchema = baseFieldOptionsSchema.extend({
   displayedMaxRows: z.number().int().min(1).max(10).optional(),
+  /** Render the editor as a multiline autosize textarea instead of a single-line input. */
+  multiline: z.boolean().optional(),
+  /** Preferred visible row count for the multiline editor. */
+  rows: z.number().int().min(1).max(20).optional(),
+  /** Mask the value (single-line) and show a reveal toggle. For secrets/passwords. */
+  secret: z.boolean().optional(),
   ai: aiOptionsSchema.optional(),
 })
 export const numberFieldOptionsSchema = baseFieldOptionsSchema.extend({

@@ -1,0 +1,71 @@
+// apps/web/src/components/connections/ui/connection-card.tsx
+'use client'
+
+import { Pencil, RefreshCw, Trash, TriangleAlert } from 'lucide-react'
+import { AppIcon } from '~/components/apps/ui/app-icon'
+import { AppListCard, type AppListCardMenuItem } from '~/components/apps/ui/app-list-card'
+import type { RouterOutputs } from '~/trpc/react'
+
+/** A single connection row as projected by `connections.list`. */
+export type ConnectionRow = RouterOutputs['connections']['list'][number]
+
+interface ConnectionCardProps {
+  connection: ConnectionRow
+  /** Resolved visual-ref icon (app logo, provider lucide icon, or a fallback). */
+  iconId: string
+  /** Human provider/app label shown under the title. */
+  subtitle: string
+  /** Re-authorize (oauth) or re-enter (secret) the connection. Hidden when absent. */
+  onAction?: () => void
+  /** Label for the primary action — "Reconnect" (oauth) or "Edit" (secret). */
+  actionLabel?: string
+  /** Remove the connection. */
+  onDelete: () => void
+}
+
+/**
+ * One connection rendered with the shared {@link AppListCard} — the same card the
+ * apps/MCP grid uses. The three-dot menu carries Reconnect/Edit + Delete; clicking
+ * the card body runs the primary action. See plans/connections/unify-connection-definition.md §15.
+ */
+export function ConnectionCard({
+  connection,
+  iconId,
+  subtitle,
+  onAction,
+  actionLabel = 'Reconnect',
+  onDelete,
+}: ConnectionCardProps) {
+  const title = connection.label ?? connection.name
+  const expired = connection.status === 'expired'
+  const scopeLabel = connection.scope === 'user' ? 'Personal' : 'Workspace'
+  const description = connection.createdBy?.name
+    ? `${scopeLabel} · added by ${connection.createdBy.name}`
+    : `${scopeLabel} connection`
+
+  const menuItems: AppListCardMenuItem[] = []
+  if (onAction) {
+    menuItems.push({
+      label: actionLabel,
+      icon: actionLabel === 'Edit' ? <Pencil /> : <RefreshCw />,
+      onClick: onAction,
+    })
+  }
+  menuItems.push({ label: 'Delete', icon: <Trash />, onClick: onDelete, destructive: true })
+
+  return (
+    <AppListCard
+      title={title}
+      subtitle={subtitle}
+      description={description}
+      icon={<AppIcon iconId={iconId} size='sm' />}
+      badges={
+        expired
+          ? [{ label: 'Expired', icon: <TriangleAlert className='size-3 text-amber-600' /> }]
+          : undefined
+      }
+      onClick={onAction}
+      menuItems={menuItems}
+    />
+  )
+}

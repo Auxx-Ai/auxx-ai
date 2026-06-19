@@ -328,7 +328,13 @@ export function FieldInputAdapter({
     case FieldType.TEXT:
       return (
         <FocusableInputWrapper open={open} onOpenChange={onOpenChange}>
-          <StringInput {...nodeInputProps} autoGrow={autoGrow} triggerProps={triggerProps} />
+          <StringInput
+            {...nodeInputProps}
+            multiline={fieldOptions?.multiline}
+            secret={fieldOptions?.secret}
+            autoGrow={autoGrow}
+            triggerProps={triggerProps}
+          />
         </FocusableInputWrapper>
       )
 

@@ -1513,6 +1513,20 @@
       "when": 1781813316599,
       "tag": "0215_unify_connection_definition_provider_key",
       "breakpoints": true
+    },
+    {
+      "idx": 216,
+      "version": "7",
+      "when": 1781824043283,
+      "tag": "0216_data_connector_stream_nullable_key",
+      "breakpoints": true
+    },
+    {
+      "idx": 217,
+      "version": "7",
+      "when": 1781826067205,
+      "tag": "0217_nullable_mapping_target",
+      "breakpoints": true
     }
   ]
 }

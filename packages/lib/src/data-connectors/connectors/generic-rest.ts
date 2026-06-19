@@ -4,15 +4,16 @@
 // pagination), fetches, paginates, and yields the RAW response body per page as
 // the connector payload — the source schema mirrors the live response, and the
 // root mapping's `rootPath` (e.g. `[]` / `data.orders[]`) selects the records.
-// Credentials arrive already-decrypted (the orchestrator reveals them via
-// @auxx/credentials) — this connector only reads them.
+// The bound credential arrives already resolved + refreshed by the orchestrator
+// (resolveConnectionForRuntime) and carries the definition's `authApply` spec;
+// this connector applies it via the shared `applyAuth` helper.
 
 import { createScopedLogger } from '@auxx/logger'
+import { applyAuth } from '../../connections/auth-apply'
 import type {
   ConnectorFetchArgs,
   ConnectorRecord,
   DataConnectorDefinition,
-  DecryptedCredential,
   FetchResult,
   PaginationSpec,
   StreamRequestConfig,
@@ -49,21 +50,6 @@ function countRecords(body: unknown, depth = 0): number {
     }
   }
   return body === null || body === undefined ? 0 : 1
-}
-
-/** Best-effort auth header from a decrypted credential (Bearer / api key). */
-function authHeaders(credential: DecryptedCredential | null): Record<string, string> {
-  if (!credential) return {}
-  const token =
-    (credential.accessToken as string | undefined) ??
-    (credential.access_token as string | undefined) ??
-    (credential.token as string | undefined) ??
-    (credential.apiKey as string | undefined) ??
-    (credential.api_key as string | undefined)
-  if (typeof token === 'string' && token.length > 0) {
-    return { Authorization: `Bearer ${token}` }
-  }
-  return {}
 }
 
 /** True when `value` is a full URL (carries its own scheme), not a relative path. */
@@ -140,9 +126,9 @@ async function* fetchRecords(args: ConnectorFetchArgs): AsyncIterable<ConnectorR
 
   const baseHeaders: Record<string, string> = {
     Accept: 'application/json',
-    ...(endpoint.auth === 'none' ? {} : authHeaders(args.credential)),
     ...(request.headers ?? {}),
   }
+  const applyCredential = endpoint.auth !== 'none' && args.credential ? args.credential : null
 
   let pageIndex = 0
   let cursor: string | undefined = args.mode === 'incremental' ? args.state.cursor : undefined
@@ -168,13 +154,25 @@ async function* fetchRecords(args: ConnectorFetchArgs): AsyncIterable<ConnectorR
         ? cursor
         : buildUrl(endpoint.baseUrl, path, params)
 
-    const response = await fetch(url, {
+    // Apply the resolved connection's declarative auth (header/basic/query) per
+    // request — query auth appends to the URL, so it must run after the URL is built.
+    const { headers, url: requestUrl } = applyCredential
+      ? applyAuth(
+          { headers: baseHeaders, url },
+          { value: applyCredential.value, fields: applyCredential.fields },
+          applyCredential.authApply
+        )
+      : { headers: baseHeaders, url }
+
+    const response = await fetch(requestUrl, {
       method,
-      headers: baseHeaders,
+      headers,
       body: method === 'POST' && request.body ? JSON.stringify(request.body) : undefined,
     })
     if (!response.ok) {
-      throw new Error(`generic-rest: ${method} ${url} → ${response.status} ${response.statusText}`)
+      throw new Error(
+        `generic-rest: ${method} ${requestUrl} → ${response.status} ${response.statusText}`
+      )
     }
     const body = await response.json()
 

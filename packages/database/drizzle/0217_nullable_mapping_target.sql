@@ -1,0 +1,1 @@
+ALTER TABLE "DataConnectorMapping" ALTER COLUMN "entityDefinitionId" DROP NOT NULL;

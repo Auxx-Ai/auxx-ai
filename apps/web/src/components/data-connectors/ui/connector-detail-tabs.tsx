@@ -16,13 +16,14 @@ import { useQueryState } from 'nuqs'
 import { useCallback, useMemo } from 'react'
 import { useScrollSpy } from '~/hooks/use-scroll-spy'
 import { api } from '~/trpc/react'
-import { leafPathsUnder, useSourcePaths } from '../hooks/use-source-paths'
+import { absolutePrefix, leafPathsUnder, useSourcePaths } from '../hooks/use-source-paths'
 import { useStreamMutations } from '../hooks/use-stream-mutations'
 import { ConnectionSection } from './connection-section'
 import { FieldCalcPanel } from './field-calc-panel'
 import { ScheduleSection } from './schedule-section'
 import { SourceConfigPanel } from './source-config-panel'
 import { StreamConfigPanel } from './stream-config-panel'
+import { StreamDetailBar } from './stream-detail-bar'
 import { StreamsSection } from './streams-section'
 
 type Connector = NonNullable<ReturnType<typeof api.dataConnector.getById.useQuery>['data']>
@@ -145,18 +146,22 @@ export function ConnectorDetailTabs({ connector, mobileRunsPanel }: ConnectorDet
     [setSourceOpen, setSelectedStreamId, setField]
   )
 
-  // Field drill target.
+  // Field drill target. Mappings come nested in the selected stream (loaded with
+  // listStreams — plan 08 §3), no separate query.
   const [fieldMappingId, fieldKey] = (field ?? '').split(':')
-  const fieldMappings = api.dataConnector.listMappings.useQuery(
-    { streamId: selectedStreamId ?? '' },
-    { enabled: !!selectedStreamId && !!field }
+  const fieldMappingRows = selectedStream?.mappings ?? []
+  const fieldMapping = fieldMappingRows.find((m) => m.id === fieldMappingId)
+  // Index all mappings so the calc panel can slice the SAME relative subtree the
+  // runtime sees — by the mapping's full absolute prefix, not its bare rootPath.
+  const mappingById = useMemo(
+    () => new Map(fieldMappingRows.map((m) => [m.id, m])),
+    [fieldMappingRows]
   )
-  const fieldMapping = (fieldMappings.data ?? []).find((m) => m.id === fieldMappingId)
   const fieldExpression =
     (fieldMapping?.fieldMappings as Record<string, { expression: string }> | undefined)?.[
       fieldKey ?? ''
     ]?.expression ?? ''
-  // Optimistic field-mapping write against listMappings (shared with the tree).
+  // Optimistic field-mapping write against listStreams (shared with the tree).
   const { setFieldMappings } = useStreamMutations(connector.id)
 
   const sourceBar = (
@@ -164,8 +169,14 @@ export function ConnectorDetailTabs({ connector, mobileRunsPanel }: ConnectorDet
       title={connector.type.startsWith('app:') ? 'Connector settings' : 'Request configuration'}
     />
   )
-  const streamBar = selectedStream ? <DrillBar title={selectedStream.streamKey} /> : null
-  const fieldBar = <DrillBar title='Formula' crumb={selectedStream?.streamKey} />
+  const streamBar = selectedStream ? (
+    <StreamDetailBar
+      connectorId={connector.id}
+      streamId={selectedStream.id}
+      streamKey={selectedStream.streamKey}
+    />
+  ) : null
+  const fieldBar = <DrillBar title='Formula' crumb={selectedStream?.streamKey ?? undefined} />
 
   return (
     <div className='flex min-h-0 flex-1 flex-col'>
@@ -243,7 +254,7 @@ export function ConnectorDetailTabs({ connector, mobileRunsPanel }: ConnectorDet
                 fieldLabel={fieldKey}
                 expression={fieldExpression}
                 // Scoped + relative to the mapping's subtree, matching the runtime.
-                sourcePaths={leafPathsUnder(sourcePaths, fieldMapping.rootPath)}
+                sourcePaths={leafPathsUnder(sourcePaths, absolutePrefix(fieldMapping, mappingById))}
                 onSave={(expression, sourceFields) => {
                   const existing = (fieldMapping.fieldMappings ?? {}) as Record<
                     string,

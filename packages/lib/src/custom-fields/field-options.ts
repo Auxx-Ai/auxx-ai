@@ -40,6 +40,12 @@ export interface FieldOptions {
   // ─────────────────────────────────────────────────────────────
   truncateLength?: number
   copyValue?: boolean
+  /** Render the editor as a multiline autosize textarea instead of a single-line input. */
+  multiline?: boolean
+  /** Preferred visible row count for the multiline editor. */
+  rows?: number
+  /** Mask the value (single-line) and show a reveal toggle. For secrets/passwords. */
+  secret?: boolean
 
   // ─────────────────────────────────────────────────────────────
   // PHONE (flat)
@@ -208,7 +214,10 @@ export type DateFieldOptions = Pick<
 export type BooleanFieldOptions = Pick<FieldOptions, 'checkboxStyle' | 'trueLabel' | 'falseLabel'>
 
 /** Options for TEXT fields */
-export type TextFieldOptions = Pick<FieldOptions, 'truncateLength' | 'copyValue'>
+export type TextFieldOptions = Pick<
+  FieldOptions,
+  'truncateLength' | 'copyValue' | 'multiline' | 'rows' | 'secret'
+>
 
 /** Options for PHONE fields */
 export type PhoneFieldOptions = Pick<FieldOptions, 'phoneFormat'>

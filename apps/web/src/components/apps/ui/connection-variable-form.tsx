@@ -3,6 +3,7 @@
 'use client'
 
 import type { ConnectionVariable } from '@auxx/database'
+import { FieldType } from '@auxx/database/enums'
 import { Button } from '@auxx/ui/components/button'
 import {
   Dialog,
@@ -49,9 +50,9 @@ interface ConnectionVariableFormProps {
   onSubmit: (values: Record<string, string>) => void
 }
 
-/** A masked field: an explicit `secret` flag or a `password` input kind. */
+/** A masked field — masking is the orthogonal `secret` flag, independent of the field type. */
 function isSecretVariable(v: ConnectionVariable): boolean {
-  return v.secret === true || v.type === 'password'
+  return v.secret === true
 }
 
 /**
@@ -74,7 +75,7 @@ function seedValue(v: ConnectionVariable, prefill?: Record<string, string>): str
   if (pre !== undefined) return pre
   if (v.default !== undefined) return String(v.default)
   // Booleans always need a concrete value so the Switch renders and `required` passes.
-  return v.type === 'boolean' ? 'false' : ''
+  return v.type === FieldType.CHECKBOX ? 'false' : ''
 }
 
 /** Validate a single value against §2.3 rules. Returns an error message, or null when valid. */
@@ -211,7 +212,7 @@ export function ConnectionVariableForm({
   )
 }
 
-/** Render the input control for one variable, switched on its §2.3 `type`. */
+/** Render the input control for one variable, switched on its platform `FieldType`. */
 function renderControl(
   v: ConnectionVariable,
   value: string,
@@ -220,14 +221,14 @@ function renderControl(
   toggleReveal: (key: string) => void
 ) {
   switch (v.type) {
-    case 'boolean':
+    case FieldType.CHECKBOX:
       return (
         <Switch
           checked={value === 'true'}
           onCheckedChange={(checked) => setValue(v.key, String(checked))}
         />
       )
-    case 'options':
+    case FieldType.SINGLE_SELECT:
       return (
         <Select value={value} onValueChange={(next) => setValue(v.key, next)}>
           <SelectTrigger>
@@ -236,22 +237,13 @@ function renderControl(
           <SelectContent>
             {(v.options ?? []).map((opt) => (
               <SelectItem key={opt.value} value={opt.value}>
-                {opt.name}
+                {opt.label}
               </SelectItem>
             ))}
           </SelectContent>
         </Select>
       )
-    case 'textarea':
-      return (
-        <Textarea
-          rows={v.rows ?? 4}
-          placeholder={v.placeholder}
-          value={value}
-          onChange={(e) => setValue(v.key, e.target.value)}
-        />
-      )
-    case 'number':
+    case FieldType.NUMBER:
       return (
         <Input
           type='number'
@@ -261,7 +253,18 @@ function renderControl(
         />
       )
     default:
-      // string / password — masked inputs get a reveal toggle.
+      // TEXT — multiline hint renders a textarea (e.g. an SSH key); otherwise a
+      // single-line input. Masked (`secret`) inputs get a reveal toggle.
+      if (v.multiline) {
+        return (
+          <Textarea
+            rows={v.rows ?? 4}
+            placeholder={v.placeholder}
+            value={value}
+            onChange={(e) => setValue(v.key, e.target.value)}
+          />
+        )
+      }
       if (isSecretVariable(v)) {
         return (
           <InputGroup>

@@ -2,6 +2,7 @@
 // Drizzle table for connection definition
 
 import { createId } from '@paralleldrive/cuid2'
+import type { FieldType } from '../../types'
 import {
   type AnyPgColumn,
   boolean,
@@ -20,14 +21,29 @@ import { DeveloperAccount } from './developer-account'
 import { McpServer } from './mcp-server'
 
 /**
+ * A single choice for a `SINGLE_SELECT` connection variable. Structural mirror
+ * of `@auxx/types`' `SelectOption` (duplicated because `@auxx/types` depends on
+ * `@auxx/database`, not the reverse) so it flows straight into the field
+ * renderer's `fieldOptions.options`.
+ */
+export type ConnectionVariableOption = {
+  /** Stable id (optional — connection options are keyed by value). */
+  id?: string
+  /** Human-readable label shown in the dropdown. */
+  label: string
+  /** Stored/submitted value. */
+  value: string
+}
+
+/**
  * A dynamic variable that organizations must provide when connecting.
  * `oauth2-code`: interpolated into {key} placeholders in URLs/credentials.
  * `secret`: rendered as one input of the multi-field connect form.
  *
- * This is the full field model that subsumes the old workflow-node
- * `INodeProperty` shape — number/boolean/options/textarea inputs, defaults,
- * conditional visibility, and validation — so DB/email credentials
- * (postgres, smtp, imap, …) can be expressed as ConnectionDefinition rows.
+ * Inputs are described with the platform `FieldType` so every renderer picks
+ * the correct control (TEXT, NUMBER, CHECKBOX, SINGLE_SELECT). Masking
+ * (`secret`) and multiline (`multiline`/`rows`) are orthogonal presentation
+ * hints layered on top of the type, not separate types.
  */
 export type ConnectionVariable = {
   /** Variable key matching {placeholder} in fields (e.g., "shop", "client_id") */
@@ -40,14 +56,20 @@ export type ConnectionVariable = {
   placeholder?: string
   /** Whether this variable is required (default: true) */
   required?: boolean
-  /** Whether the input should be masked (for secrets like client_secret) */
+  /** Whether the input should be masked (for secrets like client_secret). Independent of `type`. */
   secret?: boolean
-  /** Input kind. Default: 'string'. 'password' implies secret rendering. */
-  type?: 'string' | 'password' | 'number' | 'boolean' | 'options' | 'textarea'
+  /**
+   * Platform field type. Default: `TEXT`. Only TEXT, NUMBER, CHECKBOX, and
+   * SINGLE_SELECT are produced for connection variables. Masking is the `secret`
+   * flag; multiline is the `multiline` flag — neither is a `type`.
+   */
+  type?: FieldType
   /** Default value seeded into the form when the field is empty. */
   default?: string | number | boolean
-  /** Choices for `type: 'options'` (rendered as a dropdown). */
-  options?: { name: string; value: string }[]
+  /** Choices for `type: 'SINGLE_SELECT'` (rendered as a dropdown). */
+  options?: ConnectionVariableOption[]
+  /** Render a TEXT field as a multiline autosize textarea (e.g. an SSH private key). */
+  multiline?: boolean
   /** Field-level validation constraints. */
   validation?: {
     minLength?: number
@@ -62,7 +84,7 @@ export type ConnectionVariable = {
    * has a current value present in its allowed-values array.
    */
   displayOptions?: { show?: Record<string, (string | number | boolean)[]> }
-  /** Row count for `type: 'textarea'`. */
+  /** Preferred visible row count for a `multiline` TEXT field. */
   rows?: number
 }
 

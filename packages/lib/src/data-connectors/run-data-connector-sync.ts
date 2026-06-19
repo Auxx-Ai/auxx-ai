@@ -4,14 +4,16 @@
 // records (never buffers), persists each stream's cursor after it completes,
 // runs the relationship two-pass + orphan reconciliation, then finalizes.
 
-import { revealSecrets } from '@auxx/credentials/store'
 import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { eq } from 'drizzle-orm'
+import {
+  type RuntimeConnectionData,
+  resolveConnectionForRuntime,
+} from '../connections/resolve-connection-for-runtime'
 import { UnifiedCrudHandler } from '../resources/crud/unified-handler'
 import { invalidateSnapshots } from '../snapshot'
 import { connectorFor } from './connectors'
-import type { DecryptedCredential } from './connectors/types'
 import { mapRecord } from './map-record'
 import { reconcileOrphans } from './reconciliation'
 import { resolveRelationships } from './relationship-pass'
@@ -43,22 +45,32 @@ const logger = createScopedLogger('run-data-connector-sync')
  */
 const OWNED_BYPASS: ReadonlySet<never> = new Set<never>()
 
-/** Decrypt the connector's borrowed credential, or null when none/failed. */
-async function decryptCredential(
+/**
+ * Resolve the connector's borrowed credential through the unified resolver, or
+ * null when none/failed. The resolver reveals + lazily refreshes the token and
+ * carries the definition's `authApply` spec; the connector applies it via
+ * `applyAuth`. A connector binds an org-scoped credential, but a per-user one is
+ * accepted too (the resolver classifies scope by the credential's own userId).
+ */
+async function resolveConnectorCredential(
   organizationId: string,
-  credentialId: string | null
-): Promise<DecryptedCredential | null> {
+  credentialId: string | null,
+  userId: string
+): Promise<RuntimeConnectionData | null> {
   if (!credentialId) return null
-  const result = await revealSecrets<Record<string, unknown>>(credentialId, organizationId)
-  if (result.isErr()) {
-    logger.warn('failed to reveal credential — proceeding without', {
+  const resolved = await resolveConnectionForRuntime({
+    connectionId: credentialId,
+    organizationId,
+    userId,
+  })
+  if (resolved.isErr()) {
+    logger.warn('failed to resolve credential — proceeding without', {
       credentialId,
-      error: result.error.code,
+      error: resolved.error.code,
     })
     return null
   }
-  // Merge non-sensitive metadata with decrypted secrets (secrets win).
-  return { ...result.value.record.metadata, ...result.value.secrets }
+  return resolved.value.organizationConnection ?? resolved.value.userConnection ?? null
 }
 
 /**
@@ -104,7 +116,11 @@ export async function runDataConnectorSync(
   })
 
   const counters = newRunCounters()
-  const credential = await decryptCredential(organizationId, connector.credentialId)
+  const credential = await resolveConnectorCredential(
+    organizationId,
+    connector.credentialId,
+    connector.createdById ?? 'system'
+  )
   // App connectors fetch through the sandbox (the adapter resolves its own
   // runtime connection); built-ins ignore the context and use `credential`.
   const definition = connectorFor(connector.type, {
@@ -147,6 +163,9 @@ export async function runDataConnectorSync(
     }
 
     for (const { stream, syncMode, mappings } of streams) {
+      // Defensive: loadConnector already filters unnamed streams, but the column
+      // is nullable — never fetch without a resource key.
+      if (!stream.streamKey) continue
       const streamMode: 'snapshot' | 'incremental' =
         syncMode === 'incremental' ? 'incremental' : 'snapshot'
       const state = (stream.state as ConnectorStreamState) ?? {}

@@ -2,11 +2,12 @@
 'use client'
 
 import { toastError } from '@auxx/ui/components/toast'
+import { generateId } from '@auxx/utils'
 import { useCallback } from 'react'
 import { api, type RouterOutputs } from '~/trpc/react'
 
 type Stream = RouterOutputs['dataConnector']['listStreams'][number]
-type Mapping = RouterOutputs['dataConnector']['listMappings'][number]
+type Mapping = Stream['mappings'][number]
 
 /** Field-mapping record — `{ targetFieldKey: { expression, sourceFields } }`. */
 export type FieldMappings = Record<
@@ -34,8 +35,13 @@ export type IdentityStrategy =
  * Mirrors `agents/.../use-toolset-mutations.ts` for the instant toggles. For
  * consistency this is the single mutation surface for a stream: it ALSO exposes
  * the deliberate/imperative mutations (`saveRequestConfig`, `setStreamSchema`,
- * `addMapping`, `sampleFetch`) which stay invalidate-on-success rather than
- * optimistic. See plans/data-connectors/claude/06-frontend-update-handling.md §5.
+ * `sampleFetch`) which stay invalidate-on-success rather than optimistic. See
+ * plans/data-connectors/claude/06-frontend-update-handling.md §5.
+ *
+ * Every mapping read lives in the `listStreams` cache (mappings nested per
+ * stream — plan 08 §3), so the optimistic mapping patches target that array, not
+ * a separate per-stream query. All mapping field writes route through the single
+ * `updateMapping` mutation.
  */
 export function useStreamMutations(connectorId: string) {
   const utils = api.useUtils()
@@ -43,12 +49,9 @@ export function useStreamMutations(connectorId: string) {
     void utils.dataConnector.listStreams.invalidate({ id: connectorId })
 
   // Optimistic (instant-toggle) mutations — no invalidate, rollback on error.
+  const updateStreamM = api.dataConnector.updateStream.useMutation()
   const setStreamRequestConfigM = api.dataConnector.setStreamRequestConfig.useMutation()
-  const setMappingTargetM = api.dataConnector.setMappingTarget.useMutation()
   const updateMappingM = api.dataConnector.updateMapping.useMutation()
-  const setFieldMappingsM = api.dataConnector.setFieldMappings.useMutation()
-  const setMergeStrategiesM = api.dataConnector.setMergeStrategies.useMutation()
-  const setIdentityStrategyM = api.dataConnector.setIdentityStrategy.useMutation()
   const removeMappingM = api.dataConnector.removeMapping.useMutation()
 
   // Deliberate / imperative mutations — invalidate-on-success + error toast.
@@ -63,16 +66,12 @@ export function useStreamMutations(connectorId: string) {
     onSuccess: invalidateStreams,
     onError: (e) => toastError({ title: 'Could not save schema', description: e.message }),
   })
-  const addMappingM = api.dataConnector.addMapping.useMutation({
-    onSuccess: (_data, variables) =>
-      void utils.dataConnector.listMappings.invalidate({
-        streamId: variables.dataConnectorStreamId,
-      }),
-    onError: (e) => toastError({ title: 'Could not add mapping', description: e.message }),
-  })
   const sampleFetchM = api.dataConnector.sampleFetch.useMutation({
     onError: (e) => toastError({ title: 'Test-fetch failed', description: e.message }),
   })
+  // Bare instance for the optimistic fan-out — invalidate + rollback are handled
+  // inline in `fanOut` so the temp child row reconciles to the server row.
+  const addChildMappingM = api.dataConnector.addMapping.useMutation()
 
   // ── Stream-cache optimistic runner ────────────────────────────────────────
   const patchStream = useCallback(
@@ -101,6 +100,8 @@ export function useStreamMutations(connectorId: string) {
   )
 
   // ── Mapping-cache optimistic runner ───────────────────────────────────────
+  // Mappings live nested in the `listStreams` cache; patch the matching stream's
+  // `mappings` array and roll the whole snapshot back on error.
   const patchMappings = useCallback(
     async (
       streamId: string,
@@ -108,20 +109,22 @@ export function useStreamMutations(connectorId: string) {
       run: () => Promise<unknown>,
       errorTitle: string
     ) => {
-      const key = { streamId }
-      const previous = utils.dataConnector.listMappings.getData(key)
-      utils.dataConnector.listMappings.setData(key, (old) => (old ? next(old) : old))
+      const key = { id: connectorId }
+      const previous = utils.dataConnector.listStreams.getData(key)
+      utils.dataConnector.listStreams.setData(key, (old) =>
+        old?.map((s) => (s.id === streamId ? { ...s, mappings: next(s.mappings) } : s))
+      )
       try {
         await run()
       } catch (err) {
-        utils.dataConnector.listMappings.setData(key, previous)
+        utils.dataConnector.listStreams.setData(key, previous)
         toastError({
           title: errorTitle,
           description: err instanceof Error ? err.message : 'Unknown error',
         })
       }
     },
-    [utils.dataConnector.listMappings]
+    [connectorId, utils.dataConnector.listStreams]
   )
 
   // ── Mapping toggles ───────────────────────────────────────────────────────
@@ -130,7 +133,7 @@ export function useStreamMutations(connectorId: string) {
       streamId: string,
       input: {
         mappingId: string
-        entityDefinitionId: string
+        entityDefinitionId: string | null
         targetMode: 'owned' | 'contributing'
         linkMode: 'upsert' | 'reference'
       }
@@ -148,10 +151,10 @@ export function useStreamMutations(connectorId: string) {
                 }
               : m
           ),
-        () => setMappingTargetM.mutateAsync(input),
+        () => updateMappingM.mutateAsync(input),
         'Could not change target'
       ),
-    [patchMappings, setMappingTargetM]
+    [patchMappings, updateMappingM]
   )
 
   const setRootPath = useCallback(
@@ -175,10 +178,10 @@ export function useStreamMutations(connectorId: string) {
               ? { ...m, fieldMappings: fieldMappings as Mapping['fieldMappings'] }
               : m
           ),
-        () => setFieldMappingsM.mutateAsync({ mappingId, fieldMappings }),
+        () => updateMappingM.mutateAsync({ mappingId, fieldMappings }),
         'Could not save field'
       ),
-    [patchMappings, setFieldMappingsM]
+    [patchMappings, updateMappingM]
   )
 
   const setMergeStrategies = useCallback(
@@ -191,10 +194,10 @@ export function useStreamMutations(connectorId: string) {
               ? { ...m, mergeStrategies: mergeStrategies as Mapping['mergeStrategies'] }
               : m
           ),
-        () => setMergeStrategiesM.mutateAsync({ mappingId, mergeStrategies }),
+        () => updateMappingM.mutateAsync({ mappingId, mergeStrategies }),
         'Could not save merge strategy'
       ),
-    [patchMappings, setMergeStrategiesM]
+    [patchMappings, updateMappingM]
   )
 
   const setIdentityStrategy = useCallback(
@@ -207,10 +210,75 @@ export function useStreamMutations(connectorId: string) {
               ? { ...m, identityStrategy: identityStrategy as Mapping['identityStrategy'] }
               : m
           ),
-        () => setIdentityStrategyM.mutateAsync({ mappingId, identityStrategy }),
+        () => updateMappingM.mutateAsync({ mappingId, identityStrategy }),
         'Could not save identity'
       ),
-    [patchMappings, setIdentityStrategyM]
+    [patchMappings, updateMappingM]
+  )
+
+  // ── Fan-out / reference (materialize a child mapping) ─────────────────────
+  // Optimistic insert of a temp child row so the branch re-renders as a
+  // MappingNode immediately, reconciled to the server row on settle. Mirrors the
+  // `patchMappings` rollback pattern (plan §5.1, §8.4).
+  const fanOut = useCallback(
+    (
+      streamId: string,
+      input: {
+        parentMappingId: string
+        rootPath: string
+        linkMode: 'upsert' | 'reference'
+        targetMode: 'owned' | 'contributing'
+        entityDefinitionId: string
+        identityStrategy: IdentityStrategy
+        /** Parent→child relation field key; null until provisioning wires it (plan §8.1). */
+        relationshipFieldKey?: string | null
+      }
+    ) => {
+      const key = { id: connectorId }
+      const previous = utils.dataConnector.listStreams.getData(key)
+      const streamMappings = previous?.find((s) => s.id === streamId)?.mappings
+      // Build the temp row off an existing row so every required column is present.
+      const template =
+        streamMappings?.find((m) => m.id === input.parentMappingId) ?? streamMappings?.[0]
+      if (!template) return
+      const tempId = `temp_${generateId()}`
+      const tempRow: Mapping = {
+        ...template,
+        id: tempId,
+        parentMappingId: input.parentMappingId,
+        rootPath: input.rootPath,
+        linkMode: input.linkMode,
+        targetMode: input.targetMode,
+        entityDefinitionId: input.entityDefinitionId,
+        relationshipFieldKey: input.relationshipFieldKey ?? null,
+        identityStrategy: input.identityStrategy as Mapping['identityStrategy'],
+        fieldMappings: {} as Mapping['fieldMappings'],
+        mergeStrategies: {} as Mapping['mergeStrategies'],
+      }
+      utils.dataConnector.listStreams.setData(key, (old) =>
+        old?.map((s) => (s.id === streamId ? { ...s, mappings: [...s.mappings, tempRow] } : s))
+      )
+      addChildMappingM
+        .mutateAsync({
+          dataConnectorStreamId: streamId,
+          parentMappingId: input.parentMappingId,
+          rootPath: input.rootPath,
+          linkMode: input.linkMode,
+          targetMode: input.targetMode,
+          entityDefinitionId: input.entityDefinitionId,
+          relationshipFieldKey: input.relationshipFieldKey ?? null,
+          identityStrategy: input.identityStrategy,
+        })
+        .then(() => void utils.dataConnector.listStreams.invalidate(key))
+        .catch((err) => {
+          utils.dataConnector.listStreams.setData(key, previous)
+          toastError({
+            title: 'Could not add mapping',
+            description: err instanceof Error ? err.message : 'Unknown error',
+          })
+        })
+    },
+    [connectorId, utils.dataConnector.listStreams, addChildMappingM]
   )
 
   const removeMapping = useCallback(
@@ -236,6 +304,18 @@ export function useStreamMutations(connectorId: string) {
         'Could not remove mapping'
       ),
     [patchMappings, removeMappingM]
+  )
+
+  // ── Stream rename (optimistic) ────────────────────────────────────────────
+  const renameStream = useCallback(
+    (streamId: string, streamKey: string) =>
+      patchStream(
+        streamId,
+        { streamKey } as Partial<Stream>,
+        () => updateStreamM.mutateAsync({ streamId, streamKey }),
+        'Could not rename stream'
+      ),
+    [patchStream, updateStreamM]
   )
 
   // ── Stream sync-mode toggle (atomic) ──────────────────────────────────────
@@ -270,11 +350,6 @@ export function useStreamMutations(connectorId: string) {
     [setStreamSchemaM]
   )
 
-  const addMapping = useCallback(
-    (input: Parameters<typeof addMappingM.mutate>[0]) => addMappingM.mutate(input),
-    [addMappingM]
-  )
-
   const sampleFetch = useCallback(
     (input: Parameters<typeof sampleFetchM.mutateAsync>[0]) => sampleFetchM.mutateAsync(input),
     [sampleFetchM]
@@ -287,16 +362,16 @@ export function useStreamMutations(connectorId: string) {
     setFieldMappings,
     setMergeStrategies,
     setIdentityStrategy,
+    fanOut,
     removeMapping,
+    renameStream,
     setSyncMode,
     // Deliberate / imperative (invalidate-based)
     saveRequestConfig,
     setStreamSchema,
-    addMapping,
     sampleFetch,
     // Pending flags
     isSavingRequest: saveRequestConfigM.isPending,
-    isAddingMapping: addMappingM.isPending,
     isSampling: sampleFetchM.isPending,
   }
 }
