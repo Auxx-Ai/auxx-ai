@@ -100,6 +100,10 @@ const requestConfigSchema = z.object({
 const fieldMappingSchema = z.object({
   expression: z.string(),
   sourceFields: z.record(z.string(), z.string()),
+  // Present → this bound field is also a secondary identity-match key.
+  match: z
+    .object({ normalize: z.enum(['email', 'phone', 'domain', 'none']).optional() })
+    .optional(),
 })
 
 const mergeStrategySchema = z.enum([
@@ -108,27 +112,6 @@ const mergeStrategySchema = z.enum([
   'connector_owned_only',
   'manual_review',
   'ignore',
-])
-
-const identityStrategySchema = z.union([
-  z.object({ kind: z.literal('connectorExternalId') }),
-  z.object({
-    kind: z.literal('matchField'),
-    connectorFieldKey: z.string(),
-    targetFieldId: z.string(),
-    normalize: z.enum(['email', 'phone', 'domain', 'none']).optional(),
-  }),
-  z.object({
-    kind: z.literal('composite'),
-    rules: z.array(
-      z.object({
-        connectorFieldKey: z.string(),
-        targetFieldId: z.string(),
-        normalize: z.enum(['email', 'phone', 'domain', 'none']).optional(),
-      })
-    ),
-  }),
-  z.object({ kind: z.literal('manualReview') }),
 ])
 
 export const dataConnectorRouter = createTRPCRouter({
@@ -411,7 +394,6 @@ export const dataConnectorRouter = createTRPCRouter({
         entityDefinitionId: z.string(),
         parentMappingId: z.string().nullish(),
         relationshipFieldKey: z.string().nullish(),
-        identityStrategy: identityStrategySchema,
         fieldMappings: z.record(z.string(), fieldMappingSchema).optional(),
         mergeStrategies: z.record(z.string(), mergeStrategySchema).optional(),
         orphanBehavior: z.enum(['archive', 'mark_deleted', 'ignore']).optional(),
@@ -434,7 +416,6 @@ export const dataConnectorRouter = createTRPCRouter({
         orphanBehavior: z.enum(['archive', 'mark_deleted', 'ignore']).optional(),
         entityDefinitionId: z.string().nullish(),
         targetMode: z.enum(['owned', 'contributing']).optional(),
-        identityStrategy: identityStrategySchema.optional(),
         fieldMappings: z.record(z.string(), fieldMappingSchema).optional(),
         mergeStrategies: z.record(z.string(), mergeStrategySchema).optional(),
       })

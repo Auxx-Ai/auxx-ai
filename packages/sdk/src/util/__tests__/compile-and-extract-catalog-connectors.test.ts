@@ -80,7 +80,7 @@ describe('compileAndExtractCatalog — data connectors', () => {
       target: {
         mode: 'contributing',
         entityKind: 'contact',
-        identity: { kind: 'matchField', connectorFieldKey: 'email', normalize: 'email' },
+        matchFieldKeys: ['email'],
       },
     })
     expect(mappings[3]).toMatchObject({

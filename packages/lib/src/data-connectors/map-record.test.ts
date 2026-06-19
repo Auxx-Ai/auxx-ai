@@ -17,7 +17,6 @@ function mapping(over: Partial<DecodedMapping> & { id?: string }): DecodedMappin
     parentMappingId: null,
     relationshipFieldKey: null,
     orphanBehavior: 'ignore',
-    identityStrategy: { kind: 'connectorExternalId' },
     fieldMappings: {},
     mergeStrategies: {},
     ...rest,
@@ -46,7 +45,7 @@ describe('mapRecord', () => {
     expect(writes).toHaveLength(1)
     expect(writes[0]?.projected?.fields).toEqual({ total: '49.99' })
     expect(writes[0]?.projected?.externalId).toBe('o1')
-    // connectorExternalId contributes no identity candidates.
+    // No field flagged `match` → no identity candidates (external-id only).
     expect(writes[0]?.projected?.identityCandidates).toEqual([])
   })
 
@@ -73,19 +72,19 @@ describe('mapRecord', () => {
     expect(writes.map((w) => w.projected?.externalId)).toEqual(['o1:0', 'o1:1'])
   })
 
-  it('resolves matchField identity from the subtree via a relative connectorFieldKey', () => {
+  it('resolves identity candidates from a `match`-flagged field binding', () => {
     const m = mapping({
       id: 'cust',
       rootPath: 'customer',
       targetMode: 'contributing',
-      identityStrategy: {
-        kind: 'matchField',
-        connectorFieldKey: 'email', // relative to rootPath 'customer'
-        targetFieldId: 'contact_email',
-        normalize: 'email',
-      },
       fieldMappings: {
-        contact_email: { expression: '{email}', sourceFields: { email: 'email' } },
+        // The bound field IS the identity match: source path 'email' (relative to
+        // rootPath 'customer') → target field 'contact_email', flagged `match`.
+        contact_email: {
+          expression: '{email}',
+          sourceFields: { email: 'email' },
+          match: { normalize: 'email' },
+        },
       },
     })
 

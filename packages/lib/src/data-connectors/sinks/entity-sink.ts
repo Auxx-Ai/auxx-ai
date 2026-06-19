@@ -1,6 +1,6 @@
 // packages/lib/src/data-connectors/sinks/entity-sink.ts
 // The entity sink — the ONLY entity writer (04 §1b). Resolves identity against
-// the DataConnectorItem binding (else identityStrategy bootstrap), skips
+// the DataConnectorItem binding (else a match-flag bootstrap), skips
 // unchanged records by a sorted-key content hash, applies per-field merge
 // strategy, and writes via UnifiedCrudHandler reusing the importer's bulk-upsert
 // shape (warmCache once, skipSnapshotInvalidation per record, single
@@ -53,32 +53,18 @@ function isBlank(value: unknown): boolean {
 }
 
 /**
- * Resolve the entity instance an upstream record binds to, per identity strategy.
- * Returns `{ instanceId, isNew }`. `instanceId` null + isNew true ⇒ caller creates.
+ * Resolve the entity instance an upstream record binds to via its SECONDARY
+ * match keys (the external-id binding is resolved first by the caller). Returns
+ * `{ instanceId }`; null ⇒ no match → caller creates. Match candidates were
+ * resolved from the source record by the mapping layer (flagged `match`
+ * bindings → identityCandidates); the crud lookup keys candidates by
+ * systemAttribute (= the target field), which lookupByField accepts directly.
  */
 async function resolveIdentity(
   ctx: SyncCtx,
   mapping: DecodedMapping,
-  record: ProjectedRecord,
-  fieldKeyToId: Map<string, string>
+  record: ProjectedRecord
 ): Promise<{ instanceId: string | null }> {
-  const strategy = mapping.identityStrategy
-
-  // External-id strategy → this stream creates its own records.
-  if (strategy.kind === 'connectorExternalId') return { instanceId: null }
-
-  if (strategy.kind === 'manualReview') {
-    // Deferred UI — skip + log on the run (no silent merge).
-    logger.info('manualReview identity — skipping bootstrap', {
-      mappingId: mapping.row.id,
-      externalId: record.externalId,
-    })
-    return { instanceId: null }
-  }
-
-  // Match values were resolved from the SOURCE record by the mapping layer
-  // (matchField/composite → identityCandidates). The crud lookup keys candidates
-  // by systemAttribute (= the target field), which lookupByField accepts directly.
   const candidates = record.identityCandidates
     .map((c) => {
       if (isBlank(c.value)) return null
@@ -86,7 +72,7 @@ async function resolveIdentity(
     })
     .filter((c): c is { systemAttribute: string; value: string } => c !== null)
 
-  if (candidates.length === 0) return { instanceId: null }
+  if (candidates.length === 0) return { instanceId: null } // external-id only → create
 
   const { items } = await ctx.crud.lookupByField({
     entityDefinitionId: mapping.entityDefinitionId,
@@ -104,7 +90,6 @@ async function resolveIdentity(
   // recordId is `entityDefId:instanceId`.
   const recordId = items[0]!.recordId
   const instanceId = recordId.split(':').slice(1).join(':')
-  void fieldKeyToId
   return { instanceId }
 }
 
@@ -186,7 +171,7 @@ export const entitySink: EntitySink = {
     const bound = await findItem(ctx.db, ctx.connector.id, mapping.row.id, record.externalId)
     let instanceId: string | null = bound?.entityInstanceId ?? null
     if (!instanceId) {
-      const resolved = await resolveIdentity(ctx, mapping, record, fieldKeyToId)
+      const resolved = await resolveIdentity(ctx, mapping, record)
       instanceId = resolved.instanceId
     }
 

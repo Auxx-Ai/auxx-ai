@@ -91,6 +91,12 @@ export interface StreamRequestConfig {
 export interface FieldMapping {
   expression: string
   sourceFields: Record<string, string>
+  /**
+   * When present, this bound field is also a secondary identity-match key (the
+   * external id is the always-on primary). Mirrors the engine `FieldMapping.match`
+   * in `@auxx/lib/data-connectors/types`.
+   */
+  match?: { normalize?: IdentityNormalize }
 }
 
 /**
@@ -106,31 +112,7 @@ export type FieldMergeStrategy =
   | 'ignore'
 
 /**
- * Identity match normalizers — mirror of the engine union.
+ * Identity match normalizers — mirror of the engine `IdentityNormalize`. A
+ * bound field flagged for match (see {@link FieldMapping}`.match`) carries one.
  */
 export type IdentityNormalize = 'email' | 'phone' | 'domain' | 'none'
-
-/**
- * How upstream records match existing records (jsonb on
- * {@link DataConnectorMapping}). MUST mirror the engine `IdentityStrategy` in
- * `@auxx/lib/data-connectors/types` (this package can't import tier-3 lib):
- *  - `matchField`/`composite` pair a subtree-relative source path
- *    (`connectorFieldKey`) with the target field it must equal (`targetFieldId`).
- */
-export type IdentityStrategy =
-  | { kind: 'connectorExternalId' }
-  | {
-      kind: 'matchField'
-      connectorFieldKey: string
-      targetFieldId: string
-      normalize?: IdentityNormalize
-    }
-  | {
-      kind: 'composite'
-      rules: Array<{
-        connectorFieldKey: string
-        targetFieldId: string
-        normalize?: IdentityNormalize
-      }>
-    }
-  | { kind: 'manualReview' }

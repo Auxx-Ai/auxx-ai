@@ -3,7 +3,6 @@
 
 import type { ResourceField } from '@auxx/lib/resources/client'
 import { EntityIcon } from '@auxx/ui/components/icons'
-import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import {
   Select,
   SelectContent,
@@ -12,7 +11,7 @@ import {
   SelectValue,
 } from '@auxx/ui/components/select'
 import TreeRow, { TreeRowButton } from '@auxx/ui/components/tree-row'
-import { Fingerprint, Hash, Trash2 } from 'lucide-react'
+import { Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { ResourcePicker } from '~/components/pickers/resource-picker'
 import { useResourceFields, useResourceProperty } from '~/components/resources'
@@ -20,7 +19,6 @@ import type { RouterOutputs } from '~/trpc/react'
 import {
   absolutePrefix,
   buildSourceTree,
-  leafPathsUnder,
   type SourcePath,
   type SourceTreeNode,
   subtreeUnder,
@@ -33,6 +31,13 @@ import { SourceLeafRow } from './source-leaf-row'
 const ROOT_SENTINEL = '__root__'
 
 type Mapping = RouterOutputs['dataConnector']['listStreams'][number]['mappings'][number]
+
+/** One target-field binding. `match` flags it as a secondary identity key. */
+type FieldMapping = {
+  expression: string
+  sourceFields: Record<string, string>
+  match?: { normalize?: 'email' | 'phone' | 'domain' | 'none' }
+}
 
 /** Naive singularizer for record nouns (`todos → todo`, `line_items → line item`). */
 function singularize(word: string): string {
@@ -89,7 +94,8 @@ export interface MappingNodeProps {
 
 /**
  * One `DataConnectorMapping` rendered as the source-schema subtree it owns (plan
- * §3.3). The header carries the target def + identity + mode toggles; the body
+ * §3.3). The header carries the target def + target mode toggle; identity
+ * is configured per-leaf (the "Match" toggle), not in the header. The body
  * walks the mapping's subtree (sliced by {@link absolutePrefix} — the nesting-bug
  * fix) and, at each node, either binds a leaf, offers a branch action menu, or —
  * when a child mapping exists at that branch — recurses inline as the child
@@ -114,7 +120,6 @@ export function MappingNode({
     removeMapping,
     setFieldMappings,
     setMergeStrategies,
-    setIdentityStrategy,
     fanOut,
   } = mutations
 
@@ -124,16 +129,20 @@ export function MappingNode({
   const { fields: targetFields } = useResourceFields(mapping.entityDefinitionId)
   const linkMode = mapping.linkMode as 'upsert' | 'reference'
   const targetMode = mapping.targetMode as 'owned' | 'contributing'
-  const fieldMappings = (mapping.fieldMappings ?? {}) as Record<
-    string,
-    { expression: string; sourceFields: Record<string, string> }
-  >
+  const fieldMappings = (mapping.fieldMappings ?? {}) as Record<string, FieldMapping>
   const mergeStrategies = (mapping.mergeStrategies ?? {}) as Record<string, string>
+
+  // Target field keys flagged as secondary identity-match keys (external id is
+  // always the primary). The blue "Match" badges on leaves reflect this set.
+  const matchKeys = new Set(
+    Object.entries(fieldMappings)
+      .filter(([, fm]) => fm.match)
+      .map(([k]) => k)
+  )
 
   // Slice this mapping's subtree by its FULL absolute prefix (not the bare,
   // parent-relative rootPath) so nested mappings render the correct subtree.
   const prefix = absolutePrefix(mapping, byMappingId)
-  const leaves = leafPathsUnder(sourcePaths, prefix)
   const relativeSubtree = subtreeUnder(sourcePaths, prefix)
   const sourceTree = buildSourceTree(relativeSubtree)
   const branchPaths = new Set(relativeSubtree.filter((p) => p.isBranch).map((p) => p.path))
@@ -174,13 +183,26 @@ export function MappingNode({
     setFieldMappings(streamId, mapping.id, next)
   }
 
-  const toggleLinkMode = () =>
-    setMappingTarget(streamId, {
-      mappingId: mapping.id,
-      entityDefinitionId: mapping.entityDefinitionId,
-      targetMode,
-      linkMode: linkMode === 'upsert' ? 'reference' : 'upsert',
-    })
+  // Normalizer for a match key, derived from the target field's storage type so
+  // the toggle stays one-click (no normalize selector).
+  const deriveNormalize = (targetKey: string): 'email' | 'phone' | 'domain' | 'none' => {
+    const ft = targetFields.find((f) => f.key === targetKey)?.fieldType
+    if (ft === 'EMAIL') return 'email'
+    if (ft === 'PHONE_INTL') return 'phone'
+    if (ft === 'URL') return 'domain'
+    return 'none'
+  }
+  // Flip a bound field's secondary-identity-match flag (rides the fieldMappings patch).
+  const toggleMatch = (targetKey: string) => {
+    const fm = fieldMappings[targetKey]
+    if (!fm) return
+    const next = { ...fieldMappings }
+    next[targetKey] = fm.match
+      ? { expression: fm.expression, sourceFields: fm.sourceFields }
+      : { ...fm, match: { normalize: deriveNormalize(targetKey) } }
+    setFieldMappings(streamId, mapping.id, next)
+  }
+
   const toggleTargetMode = () =>
     setMappingTarget(streamId, {
       mappingId: mapping.id,
@@ -189,20 +211,16 @@ export function MappingNode({
       linkMode,
     })
 
-  // Materialize a child mapping at a branch (fan out / reference).
-  const materializeChild = (
-    node: SourceTreeNode,
-    childLinkMode: 'upsert' | 'reference',
-    entityDefinitionId: string
-  ) =>
+  // Materialize a child mapping at a branch (fan out → own def, upsert). The
+  // reference (link-only) link mode stays in the schema/runtime but is not yet
+  // exposed in the UI.
+  const materializeChild = (node: SourceTreeNode, entityDefinitionId: string) =>
     fanOut(streamId, {
       parentMappingId: mapping.id,
       rootPath: branchRootPath(node),
-      linkMode: childLinkMode,
-      // Fan-out defaults to an owned def; reference links an existing one.
-      targetMode: childLinkMode === 'reference' ? 'contributing' : 'owned',
+      linkMode: 'upsert',
+      targetMode: 'owned',
       entityDefinitionId,
-      identityStrategy: { kind: 'connectorExternalId' },
       // relationshipFieldKey left null until provisioning wires the parent
       // relation field (plan §8.1).
       relationshipFieldKey: null,
@@ -218,64 +236,52 @@ export function MappingNode({
       title={
         <span className='flex items-center gap-1.5'>
           {mapping.parentMappingId === null && rootCandidates.length > 1 ? (
-            <Select
-              value={mapping.rootPath || ROOT_SENTINEL}
-              onValueChange={(v) =>
-                setRootPath(streamId, mapping.id, v === ROOT_SENTINEL ? '' : v)
-              }>
-              <SelectTrigger size='sm' className='h-6 min-w-[120px] text-xs'>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {rootCandidates.map((p) => (
-                  <SelectItem key={p || ROOT_SENTINEL} value={p || ROOT_SENTINEL}>
-                    {describeRootPath(p, streamKey)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <span onClick={(e) => e.stopPropagation()}>
+              <Select
+                value={mapping.rootPath || ROOT_SENTINEL}
+                onValueChange={(v) =>
+                  setRootPath(streamId, mapping.id, v === ROOT_SENTINEL ? '' : v)
+                }>
+                <SelectTrigger size='sm' className='h-6 min-w-[120px] text-xs'>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {rootCandidates.map((p) => (
+                    <SelectItem key={p || ROOT_SENTINEL} value={p || ROOT_SENTINEL}>
+                      {describeRootPath(p, streamKey)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </span>
           ) : (
             <span className='text-xs text-muted-foreground'>
               {describeRootPath(mapping.rootPath, streamKey)}
             </span>
           )}
           <span className='text-muted-foreground'>→</span>
-          <ResourcePicker
-            value={mapping.entityDefinitionId ? [mapping.entityDefinitionId] : []}
-            onChange={() => {}}
-            emptyLabel='Target def…'
-            onSelectSingle={(entityDefinitionId) =>
-              setMappingTarget(streamId, {
-                mappingId: mapping.id,
-                entityDefinitionId,
-                targetMode,
-                linkMode,
-              })
-            }
-            triggerProps={{ variant: 'outline', className: 'h-6 min-w-[120px] text-xs' }}
-          />
+          {/* Stop clicks on the picker from bubbling to the row's toggle handler. */}
+          <span onClick={(e) => e.stopPropagation()}>
+            <ResourcePicker
+              value={mapping.entityDefinitionId ? [mapping.entityDefinitionId] : []}
+              onChange={() => {}}
+              entityDefinedOnly
+              emptyLabel='Target def…'
+              onSelectSingle={(entityDefinitionId) =>
+                setMappingTarget(streamId, {
+                  mappingId: mapping.id,
+                  entityDefinitionId,
+                  targetMode,
+                  linkMode,
+                })
+              }
+              triggerProps={{ variant: 'outline', className: 'h-6 min-w-[120px] text-xs' }}
+            />
+          </span>
         </span>
       }
       trailing={
         <div className='flex items-center gap-1'>
-          <IdentityChip
-            mapping={mapping}
-            leaves={leaves}
-            fields={targetFields}
-            onSave={(identityStrategy) =>
-              setIdentityStrategy(streamId, mapping.id, identityStrategy)
-            }
-          />
-          <TreeRowButton
-            variant={linkMode}
-            tooltipText={
-              linkMode === 'upsert'
-                ? 'Upsert — create/update the record. Click to switch to reference (link only).'
-                : 'Reference — link only, no writes. Click to switch to upsert.'
-            }
-            onClick={toggleLinkMode}>
-            <span className='px-1 text-[10px] font-medium'>{linkMode}</span>
-          </TreeRowButton>
           <TreeRowButton
             variant={targetMode}
             tooltipText={
@@ -298,9 +304,7 @@ export function MappingNode({
           )}
         </div>
       }>
-      {linkMode === 'reference' ? (
-        <ReferenceRow depth={depth + 1} label={resource?.label} leaves={leaves} />
-      ) : sourceTree.length === 0 ? (
+      {sourceTree.length === 0 ? (
         <div
           style={{ paddingLeft: `${(depth + 1) * 1.5}rem` }}
           className='px-1 py-1 text-[11px] text-muted-foreground'>
@@ -317,12 +321,14 @@ export function MappingNode({
             targetFields={targetFields}
             sourceToTarget={sourceToTarget}
             mergeStrategies={mergeStrategies}
+            matchKeys={matchKeys}
             childByNodePath={childByNodePath}
             onAssign={assignTarget}
             onClear={clearTarget}
             onMergeChange={(targetKey, value) =>
               setMergeStrategies(streamId, mapping.id, { ...mergeStrategies, [targetKey]: value })
             }
+            onToggleMatch={toggleMatch}
             onPromote={(targetKey) => onPromoteField(mapping.id, targetKey)}
             onFanOut={materializeChild}
             // Child-mapping recursion context.
@@ -340,22 +346,21 @@ export function MappingNode({
 
       {/* Child mappings whose branch isn't in the current schema — appended so
           they don't silently disappear (and stay removable). */}
-      {linkMode !== 'reference' &&
-        orphanChildren.map((child) => (
-          <MappingNode
-            key={child.id}
-            mapping={child}
-            depth={depth + 1}
-            streamId={streamId}
-            sourcePaths={sourcePaths}
-            rootCandidates={rootCandidates}
-            byMappingId={byMappingId}
-            childrenOf={childrenOf}
-            mutations={mutations}
-            onPromoteField={onPromoteField}
-            streamKey={streamKey}
-          />
-        ))}
+      {orphanChildren.map((child) => (
+        <MappingNode
+          key={child.id}
+          mapping={child}
+          depth={depth + 1}
+          streamId={streamId}
+          sourcePaths={sourcePaths}
+          rootCandidates={rootCandidates}
+          byMappingId={byMappingId}
+          childrenOf={childrenOf}
+          mutations={mutations}
+          onPromoteField={onPromoteField}
+          streamKey={streamKey}
+        />
+      ))}
     </TreeRow>
   )
 }
@@ -371,16 +376,15 @@ interface SourceNodeProps {
   targetFields: ResourceField[]
   sourceToTarget: Map<string, string>
   mergeStrategies: Record<string, string>
+  /** Target keys flagged as secondary identity-match keys. */
+  matchKeys: Set<string>
   childByNodePath: Map<string, Mapping>
   onAssign: (sourcePath: string, targetKey: string) => void
   onClear: (targetKey: string) => void
   onMergeChange: (targetKey: string, value: string) => void
+  onToggleMatch: (targetKey: string) => void
   onPromote: (targetKey: string) => void
-  onFanOut: (
-    node: SourceTreeNode,
-    linkMode: 'upsert' | 'reference',
-    entityDefinitionId: string
-  ) => void
+  onFanOut: (node: SourceTreeNode, entityDefinitionId: string) => void
   // Child-mapping recursion context (forwarded to a nested MappingNode).
   streamId: string
   streamKey: string
@@ -407,10 +411,12 @@ function SourceNode(props: SourceNodeProps) {
     targetFields,
     sourceToTarget,
     mergeStrategies,
+    matchKeys,
     childByNodePath,
     onAssign,
     onClear,
     onMergeChange,
+    onToggleMatch,
     onPromote,
     onFanOut,
   } = props
@@ -442,8 +448,7 @@ function SourceNode(props: SourceNodeProps) {
         node={node}
         isOpen={open}
         onToggleOpen={() => setOpen((o) => !o)}
-        onFanOut={(entityDefinitionId) => onFanOut(node, 'upsert', entityDefinitionId)}
-        onReference={(entityDefinitionId) => onFanOut(node, 'reference', entityDefinitionId)}>
+        onFanOut={(entityDefinitionId) => onFanOut(node, entityDefinitionId)}>
         {node.children.map((child) => (
           <SourceNode key={child.path} {...props} node={child} depth={depth + 1} />
         ))}
@@ -463,178 +468,15 @@ function SourceNode(props: SourceNodeProps) {
       assignedLabel={assignedLabel}
       assignedTargetKey={assignedTargetKey}
       canCreate={targetMode === 'owned'}
+      isMatch={assignedTargetKey ? matchKeys.has(assignedTargetKey) : false}
       mergeStrategy={
         assignedTargetKey ? (mergeStrategies[assignedTargetKey] ?? 'overwrite') : 'overwrite'
       }
       onAssign={(targetKey) => onAssign(node.path, targetKey)}
       onClear={() => assignedTargetKey && onClear(assignedTargetKey)}
       onMergeChange={(value) => assignedTargetKey && onMergeChange(assignedTargetKey, value)}
+      onToggleMatch={() => assignedTargetKey && onToggleMatch(assignedTargetKey)}
       onPromote={() => assignedTargetKey && onPromote(assignedTargetKey)}
     />
-  )
-}
-
-// ── Shared sub-components ───────────────────────────────────────────────────────
-
-function ReferenceRow({
-  depth,
-  label,
-  leaves,
-}: {
-  depth: number
-  label: string | undefined
-  leaves: SourcePath[]
-}) {
-  // Reference rows resolve inline (no drill): "→ resolve [Resource] by [{source.id}]".
-  const sourceId = leaves[0]?.path ?? 'id'
-  return (
-    <TreeRow
-      depth={depth}
-      icon={<Hash className='size-3.5' />}
-      title={
-        <span className='text-sm text-muted-foreground'>
-          → resolve <span className='font-medium text-foreground'>{label ?? 'record'}</span> by{' '}
-          <span className='font-mono text-xs'>{`{${sourceId}}`}</span>
-        </span>
-      }
-      secondary='if-unresolved: skip'
-    />
-  )
-}
-
-function IdentityChip({
-  mapping,
-  leaves,
-  fields,
-  onSave,
-}: {
-  mapping: Mapping
-  leaves: SourcePath[]
-  fields: ResourceField[]
-  onSave: (
-    identityStrategy:
-      | { kind: 'connectorExternalId' }
-      | {
-          kind: 'matchField'
-          connectorFieldKey: string
-          targetFieldId: string
-          normalize?: 'email' | 'phone' | 'domain' | 'none'
-        }
-      | { kind: 'manualReview' }
-  ) => void
-}) {
-  const identity = mapping.identityStrategy as {
-    kind: string
-    connectorFieldKey?: string
-    targetFieldId?: string
-    normalize?: 'email' | 'phone' | 'domain' | 'none'
-  }
-
-  // matchField pairs a SOURCE field (relative leaf) with a TARGET field to match
-  // against — identifier fields first, else any field.
-  const identifierFields = fields.filter((f) => f.isIdentifier)
-  const targetFields = identifierFields.length > 0 ? identifierFields : fields
-
-  const label =
-    identity.kind === 'matchField'
-      ? `id: ${identity.connectorFieldKey || 'field'}`
-      : identity.kind === 'connectorExternalId'
-        ? 'id: external'
-        : identity.kind === 'manualReview'
-          ? 'id: review'
-          : 'id'
-
-  return (
-    <Popover>
-      <PopoverTrigger asChild>
-        <button
-          type='button'
-          className='inline-flex items-center gap-1 rounded-md border bg-background px-1.5 py-0.5 text-[10px] text-muted-foreground hover:bg-primary-50'>
-          <Fingerprint className='size-3' />
-          {label}
-        </button>
-      </PopoverTrigger>
-      <PopoverContent align='end' className='w-72'>
-        <div className='flex flex-col gap-3'>
-          <div className='text-xs font-medium uppercase text-muted-foreground'>Identity</div>
-          <Select
-            value={identity.kind}
-            onValueChange={(kind) => {
-              if (kind === 'connectorExternalId') onSave({ kind: 'connectorExternalId' })
-              else if (kind === 'manualReview') onSave({ kind: 'manualReview' })
-              else if (kind === 'matchField') {
-                onSave({
-                  kind: 'matchField',
-                  connectorFieldKey: leaves[0]?.path ?? '',
-                  targetFieldId: targetFields[0]?.id ?? '',
-                  normalize: 'none',
-                })
-              }
-            }}>
-            <SelectTrigger size='sm'>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value='matchField'>Match a field</SelectItem>
-              <SelectItem value='connectorExternalId'>By connector id</SelectItem>
-              <SelectItem value='manualReview'>Manual review</SelectItem>
-            </SelectContent>
-          </Select>
-
-          {identity.kind === 'matchField' && (
-            <>
-              <div className='flex flex-col gap-2'>
-                <span className='text-xs text-muted-foreground'>Source field</span>
-                <Select
-                  value={identity.connectorFieldKey ?? ''}
-                  onValueChange={(connectorFieldKey) =>
-                    onSave({
-                      kind: 'matchField',
-                      connectorFieldKey,
-                      targetFieldId: identity.targetFieldId ?? targetFields[0]?.id ?? '',
-                      normalize: identity.normalize ?? 'none',
-                    })
-                  }>
-                  <SelectTrigger size='sm'>
-                    <SelectValue placeholder='Source field…' />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {leaves.map((p) => (
-                      <SelectItem key={p.path} value={p.path}>
-                        {p.path}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className='flex flex-col gap-2'>
-                <span className='text-xs text-muted-foreground'>Target field</span>
-                <Select
-                  value={identity.targetFieldId ?? ''}
-                  onValueChange={(targetFieldId) =>
-                    onSave({
-                      kind: 'matchField',
-                      connectorFieldKey: identity.connectorFieldKey ?? leaves[0]?.path ?? '',
-                      targetFieldId,
-                      normalize: identity.normalize ?? 'none',
-                    })
-                  }>
-                  <SelectTrigger size='sm'>
-                    <SelectValue placeholder='Target field…' />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {targetFields.map((f) => (
-                      <SelectItem key={f.id} value={f.id}>
-                        {f.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </>
-          )}
-        </div>
-      </PopoverContent>
-    </Popover>
   )
 }

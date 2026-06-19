@@ -63,7 +63,7 @@ export function JsonImporter({ onImport, root = 'object' }: JsonImporterProps) {
           size='sm'
           className={cn(open && 'bg-components-button-ghost-bg-hover')}
           onClick={(e: MouseEvent) => e.stopPropagation()}>
-          Import
+          Import from sample
         </Button>
       </PopoverTrigger>
       <PopoverContent className='w-[400px] p-0' align='end' sideOffset={4} alignOffset={16}>

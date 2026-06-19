@@ -9,23 +9,20 @@ import { api, type RouterOutputs } from '~/trpc/react'
 type Stream = RouterOutputs['dataConnector']['listStreams'][number]
 type Mapping = Stream['mappings'][number]
 
-/** Field-mapping record — `{ targetFieldKey: { expression, sourceFields } }`. */
+/**
+ * Field-mapping record — `{ targetFieldKey: { expression, sourceFields, match? } }`.
+ * `match` flags the bound field as a secondary identity key (external id stays primary).
+ */
 export type FieldMappings = Record<
   string,
-  { expression: string; sourceFields: Record<string, string> }
+  {
+    expression: string
+    sourceFields: Record<string, string>
+    match?: { normalize?: 'email' | 'phone' | 'domain' | 'none' }
+  }
 >
 /** Per-field merge strategy — `{ targetFieldKey: strategy }`. */
 export type MergeStrategies = Record<string, string>
-/** Identity resolution strategy for a mapping (mirrors the router's `identityStrategySchema`). */
-export type IdentityStrategy =
-  | { kind: 'connectorExternalId' }
-  | {
-      kind: 'matchField'
-      connectorFieldKey: string
-      targetFieldId: string
-      normalize?: 'email' | 'phone' | 'domain' | 'none'
-    }
-  | { kind: 'manualReview' }
 
 /**
  * Optimistic stream + mapping mutations against the React-Query cache, with
@@ -200,22 +197,6 @@ export function useStreamMutations(connectorId: string) {
     [patchMappings, updateMappingM]
   )
 
-  const setIdentityStrategy = useCallback(
-    (streamId: string, mappingId: string, identityStrategy: IdentityStrategy) =>
-      patchMappings(
-        streamId,
-        (rows) =>
-          rows.map((m) =>
-            m.id === mappingId
-              ? { ...m, identityStrategy: identityStrategy as Mapping['identityStrategy'] }
-              : m
-          ),
-        () => updateMappingM.mutateAsync({ mappingId, identityStrategy }),
-        'Could not save identity'
-      ),
-    [patchMappings, updateMappingM]
-  )
-
   // ── Fan-out / reference (materialize a child mapping) ─────────────────────
   // Optimistic insert of a temp child row so the branch re-renders as a
   // MappingNode immediately, reconciled to the server row on settle. Mirrors the
@@ -229,7 +210,6 @@ export function useStreamMutations(connectorId: string) {
         linkMode: 'upsert' | 'reference'
         targetMode: 'owned' | 'contributing'
         entityDefinitionId: string
-        identityStrategy: IdentityStrategy
         /** Parent→child relation field key; null until provisioning wires it (plan §8.1). */
         relationshipFieldKey?: string | null
       }
@@ -251,7 +231,6 @@ export function useStreamMutations(connectorId: string) {
         targetMode: input.targetMode,
         entityDefinitionId: input.entityDefinitionId,
         relationshipFieldKey: input.relationshipFieldKey ?? null,
-        identityStrategy: input.identityStrategy as Mapping['identityStrategy'],
         fieldMappings: {} as Mapping['fieldMappings'],
         mergeStrategies: {} as Mapping['mergeStrategies'],
       }
@@ -267,7 +246,6 @@ export function useStreamMutations(connectorId: string) {
           targetMode: input.targetMode,
           entityDefinitionId: input.entityDefinitionId,
           relationshipFieldKey: input.relationshipFieldKey ?? null,
-          identityStrategy: input.identityStrategy,
         })
         .then(() => void utils.dataConnector.listStreams.invalidate(key))
         .catch((err) => {
@@ -361,7 +339,6 @@ export function useStreamMutations(connectorId: string) {
     setRootPath,
     setFieldMappings,
     setMergeStrategies,
-    setIdentityStrategy,
     fanOut,
     removeMapping,
     renameStream,

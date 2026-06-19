@@ -201,7 +201,7 @@ export interface CatalogConnectorDefaultMapping {
     | {
         mode: 'contributing'
         entityKind: string
-        identity: Record<string, unknown>
+        matchFieldKeys?: string[]
       }
 }
 

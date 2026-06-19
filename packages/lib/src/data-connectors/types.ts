@@ -121,7 +121,12 @@ export interface ConnectorDefaultMapping {
   relationshipFieldKey?: string
   target:
     | { mode: 'owned'; entity: ConnectorEntityDecl }
-    | { mode: 'contributing'; entityKind: string; identity: IdentityStrategy }
+    | {
+        mode: 'contributing'
+        entityKind: string
+        /** Target field keys to flag as secondary identity-match keys (e.g. `['email']`). */
+        matchFieldKeys?: string[]
+      }
 }
 
 /** Minimal entity declaration for an owned-mode default mapping. */
@@ -177,32 +182,8 @@ export interface DataConnectorDefinition {
 
 // ── Policy types — identity / merge / link (02) ───────────────────────────────
 
-/**
- * How an incoming upstream record is matched to an existing entity record.
- * Stored on DataConnectorMapping.identityStrategy (jsonb). `matchField`/
- * `composite` match a SOURCE field's value against a TARGET field on the entity:
- *  - `connectorFieldKey` — a subtree-relative source path (like `sourceFields`),
- *    read straight from the source record.
- *  - `targetFieldId` — the entity field whose value must equal it (often an
- *    app-`defineField`'d field, e.g. `email`).
- */
-export type IdentityStrategy =
-  | { kind: 'connectorExternalId' }
-  | {
-      kind: 'matchField'
-      connectorFieldKey: string
-      targetFieldId: string
-      normalize?: 'email' | 'phone' | 'domain' | 'none'
-    }
-  | {
-      kind: 'composite'
-      rules: Array<{
-        connectorFieldKey: string
-        targetFieldId: string
-        normalize?: 'email' | 'phone' | 'domain' | 'none'
-      }>
-    }
-  | { kind: 'manualReview' }
+/** How an identity-match value is canonicalized before comparison. */
+export type IdentityNormalize = 'email' | 'phone' | 'domain' | 'none'
 
 /** Per-field write behavior (02 §3). Keyed by target field key. */
 export type FieldMergeStrategy =
@@ -216,6 +197,15 @@ export type FieldMergeStrategy =
 export interface FieldMapping {
   expression: string
   sourceFields: Record<string, string>
+  /**
+   * When present, this bound field is ALSO a secondary identity key. The external
+   * id is always the primary key (the DataConnectorItem binding); on first link
+   * (before a binding exists) the sink looks for an existing entity whose value of
+   * this target field equals the source value and merges into it. Absent = the
+   * field is projected only. `normalize` is derived from the target field type at
+   * toggle time (email/phone/domain), else 'none'.
+   */
+  match?: { normalize?: IdentityNormalize }
 }
 
 export type LinkMode = 'upsert' | 'reference'
