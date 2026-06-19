@@ -14,6 +14,7 @@ import {
 } from '@auxx/services/app-connections'
 import { err, ok, type Result } from 'neverthrow'
 import { ensureFreshCredentialToken } from '../credentials/ensure-fresh-credential-token'
+import { defaultAuthApply } from './auth-apply'
 
 const logger = createScopedLogger('resolve-connection-for-runtime')
 
@@ -122,7 +123,10 @@ async function shapeFromRevealed(
     type: connectionType,
     value: secretValue(secrets),
     fields: connectionFields(record, secrets),
-    authApply,
+    // Fall back to the connection type's default application (oauth2-code →
+    // Bearer) when the definition declares none — app-authored oauth2 defs often
+    // omit `authApply`, but an access token is always a bearer token.
+    authApply: authApply ?? defaultAuthApply(connectionType),
     metadata: record.metadata,
     expiresAt: record.expiresAt?.toISOString(),
   }

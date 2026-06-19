@@ -9,6 +9,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@auxx/ui/components/select'
+import { SimpleTooltip } from '@auxx/ui/components/tooltip'
 import { GridTreeRow } from '@auxx/ui/components/tree-row'
 import { ArrowRight, Brackets, Hash } from 'lucide-react'
 import { lastSegment, type SourcePath } from '../hooks/use-source-paths'
@@ -107,30 +108,34 @@ export function SourceLeafRow({
         />,
         // Actions — match toggle + merge picker, available once the leaf is bound.
         <div key='actions' className='flex w-full items-center gap-2 px-2'>
-          {/* Secondary identity-match toggle: subtle text → filled blue badge.
+          {/* Secondary identifier toggle: subtle text → filled blue badge.
               Reserves its slot whether shown or not, so the merge picker stays at
               a fixed location across rows. */}
-          <div className='flex w-14 shrink-0 items-center'>
+          <div className='flex w-20 shrink-0 items-center'>
             {isMapped && (
-              <button
-                type='button'
-                onClick={onToggleMatch}
-                className='inline-flex shrink-0 items-center'
-                title={
+              <SimpleTooltip
+                side='left'
+                delayDuration={500}
+                content={
                   isMatch
-                    ? 'Used as a secondary identity match. Click to stop matching on this field.'
+                    ? 'Used as a secondary identifier to match existing records. Click to stop matching on this field.'
                     : 'Also match existing records by this field (external id stays the primary key).'
                 }>
-                {isMatch ? (
-                  <Badge variant='blue' size='xs'>
-                    Match
-                  </Badge>
-                ) : (
-                  <span className='px-1 text-[10px] font-medium text-primary-400 hover:text-primary-600'>
-                    Match
-                  </span>
-                )}
-              </button>
+                <button
+                  type='button'
+                  onClick={onToggleMatch}
+                  className='inline-flex shrink-0 items-center'>
+                  {isMatch ? (
+                    <Badge variant='blue' size='xs'>
+                      Identifier
+                    </Badge>
+                  ) : (
+                    <span className='px-1 text-[10px] font-medium text-primary-400 hover:text-primary-600'>
+                      Identifier
+                    </span>
+                  )}
+                </button>
+              </SimpleTooltip>
             )}
           </div>
           {/* Merge strategy only matters when the def is shared. An owned mapping

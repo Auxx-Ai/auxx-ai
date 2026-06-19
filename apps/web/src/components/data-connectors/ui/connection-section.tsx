@@ -3,7 +3,7 @@
 
 import { Button } from '@auxx/ui/components/button'
 import { Section } from '@auxx/ui/components/section'
-import { ChevronRight, Globe, Plug, Settings2 } from 'lucide-react'
+import { Plug } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useAppsContext } from '~/components/apps/providers/apps-context'
 import { ConnectionList } from '~/components/apps/ui/connection-list'
@@ -14,27 +14,26 @@ import {
   type ConnectionRestriction,
 } from '~/components/connections/ui/add-connection-dialog'
 import { api } from '~/trpc/react'
+import { SourceConfigPanel } from './source-config-panel'
 
 type Connector = NonNullable<ReturnType<typeof api.dataConnector.getById.useQuery>['data']>
 
 interface ConnectionSectionProps {
   connector: Connector
-  /** Drill into the `source` NavStackPanel (connector-level fetch config). */
-  onOpenSource: () => void
 }
 
 /**
  * Connection section — two parts (05 §3): (a) the single bound credential
- * (`ConnectionRow` + an account picker), and (b) a source card that drills into
- * the `source` panel hosting the connector-level fetch config (generic-rest HTTP
- * slice / app-template config form). One connector binds exactly one connection.
+ * (`ConnectionRow` + an account picker), and (b) the connector-level fetch config
+ * (generic-rest HTTP slice / app-template config form) rendered inline below it
+ * via `SourceConfigPanel`. One connector binds exactly one connection.
  *
  * "+ New connection" opens the full connection catalog, scoped to what the connector
  * expects: an app connector pins to that app's methods (API key OR OAuth2); a template
  * pins to its declared provider/app (`connectionHint`); a bare generic-rest connector
  * gets the unrestricted catalog. This replaces the legacy always-mint-an-API-key path.
  */
-export function ConnectionSection({ connector, onOpenSource }: ConnectionSectionProps) {
+export function ConnectionSection({ connector }: ConnectionSectionProps) {
   const utils = api.useUtils()
   const { appInstallations } = useAppsContext()
   const [addOpen, setAddOpen] = useState(false)
@@ -88,63 +87,47 @@ export function ConnectionSection({ connector, onOpenSource }: ConnectionSection
   const status: ConnectionStatus = connected ? 'connected' : 'disconnected'
 
   return (
-    <Section
-      title='Connection'
-      icon={<Plug className='size-4' />}
-      initialOpen
-      collapsible={false}
-      description='The credential this connector uses and how it fetches data.'>
-      <div className='flex flex-col gap-4 px-1'>
-        <ConnectionList>
-          <ConnectionRow
-            status={status}
-            title={connected ? 'Connected account' : 'Not connected'}
-            subtitle={
-              connected
-                ? 'This connector is using a bound credential.'
-                : isGenericRest
-                  ? 'Add an API key / secret to authorize requests.'
-                  : 'Connect an account to authorize this connector.'
-            }
-            actions={() => (
-              <ConnectionPickerPopover
-                value={connector.credentialId ?? undefined}
-                onPick={(credentialId, row) => bindCredential(credentialId, row.appInstallationId)}
-                onCreateNew={() => setAddOpen(true)}
-                trigger={
-                  <Button variant='outline' size='sm'>
-                    <Plug />
-                    {connected ? 'Switch connection' : 'Connect'}
-                  </Button>
-                }
-              />
-            )}
-          />
-        </ConnectionList>
+    <>
+      <Section
+        title='Connection'
+        icon={<Plug className='size-4' />}
+        initialOpen
+        collapsible={false}
+        description='The credential this connector uses to authorize requests.'>
+        <div className='flex flex-col gap-4 px-1'>
+          <ConnectionList>
+            <ConnectionRow
+              status={status}
+              title={connected ? 'Connected account' : 'Not connected'}
+              subtitle={
+                connected
+                  ? 'This connector is using a bound credential.'
+                  : isGenericRest
+                    ? 'Add an API key / secret to authorize requests.'
+                    : 'Connect an account to authorize this connector.'
+              }
+              actions={() => (
+                <ConnectionPickerPopover
+                  value={connector.credentialId ?? undefined}
+                  onPick={(credentialId, row) =>
+                    bindCredential(credentialId, row.appInstallationId)
+                  }
+                  onCreateNew={() => setAddOpen(true)}
+                  trigger={
+                    <Button variant='outline' size='sm'>
+                      <Plug />
+                      {connected ? 'Switch connection' : 'Connect'}
+                    </Button>
+                  }
+                />
+              )}
+            />
+          </ConnectionList>
+        </div>
+      </Section>
 
-        {/* Source card → drills the `source` panel. */}
-        <button
-          type='button'
-          onClick={onOpenSource}
-          className='flex items-center justify-between gap-3 rounded-lg border bg-background p-3 text-left hover:bg-primary-50/50'>
-          <div className='flex items-center gap-3'>
-            <span className='flex size-8 items-center justify-center rounded-lg border'>
-              {isGenericRest ? <Globe className='size-4' /> : <Settings2 className='size-4' />}
-            </span>
-            <div className='flex flex-col'>
-              <span className='text-sm font-medium'>
-                {isGenericRest ? 'Request configuration' : 'Connector settings'}
-              </span>
-              <span className='text-xs text-muted-foreground'>
-                {isGenericRest
-                  ? 'Base URL and shared headers for every stream.'
-                  : 'Options declared by this connector.'}
-              </span>
-            </div>
-          </div>
-          <ChevronRight className='size-4 text-muted-foreground' />
-        </button>
-      </div>
+      {/* Connector-level fetch config, inlined below the credential. */}
+      <SourceConfigPanel connector={connector} />
 
       <AddConnectionDialog
         open={addOpen}
@@ -158,6 +141,6 @@ export function ConnectionSection({ connector, onOpenSource }: ConnectionSection
           bindCredential(credentialId, restrictedInstallationId)
         }
       />
-    </Section>
+    </>
   )
 }

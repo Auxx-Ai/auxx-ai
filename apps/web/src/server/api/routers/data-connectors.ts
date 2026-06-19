@@ -9,7 +9,6 @@ import { getCachedInstalledApps } from '@auxx/lib/cache'
 import {
   addMapping,
   addStream,
-  connectorFor,
   createConnector,
   createConnectorFromTemplate,
   type DataConnectorType,
@@ -25,6 +24,7 @@ import {
   provisionConnectorMappings,
   removeMapping,
   removeStream,
+  sampleConnectorFetch,
   setStreamRequestConfig,
   setStreamSchema,
   updateConnector,
@@ -380,47 +380,23 @@ export const dataConnectorRouter = createTRPCRouter({
       if (result.isErr()) {
         throw new TRPCError({ code: 'NOT_FOUND', message: result.error.message })
       }
-      const connector = result.value
-      // App connectors resolve their own borrowed credential + streams from the
-      // org cache, so they need the connector context; built-ins ignore it.
-      const definition = connector.type.startsWith('app:')
-        ? connectorFor(connector.type, {
-            db: ctx.db,
-            organizationId: ctx.session.organizationId,
-            connector: {
-              id: connector.id,
-              type: connector.type,
-              credentialId: connector.credentialId,
-              appInstallationId: connector.appInstallationId,
-            },
-          })
-        : connectorFor(connector.type)
-      const { records } = await definition.fetch({
-        streamKey: input.streamKey ?? '',
-        mode: 'snapshot',
-        state: {},
-        credential: null,
-        config: connector.config,
-        requestConfig: input.requestConfig,
-      })
-      // The connector yields the RAW response body per page; sample the first one
-      // so schema inference + the field pickers see exactly what the source
-      // returns (an array, an object, whatever). Records are selected downstream
-      // by the root mapping's rootPath — not here.
-      let response: unknown = null
+      // Test-fetch reuses the exact fetch path the scheduled sync runs (same
+      // definition + resolved credential), stopping at the first raw page — so
+      // the two can never diverge on auth. All logic lives in lib.
       try {
-        for await (const record of records) {
-          response = record.fields
-          break
-        }
+        return await sampleConnectorFetch(
+          ctx.db,
+          ctx.session.organizationId,
+          ctx.session.userId,
+          result.value,
+          { streamKey: input.streamKey, requestConfig: input.requestConfig }
+        )
       } catch (error) {
         throw new TRPCError({
           code: 'BAD_REQUEST',
           message: error instanceof Error ? error.message : 'Test-fetch failed',
         })
       }
-      const recordCount = Array.isArray(response) ? response.length : response ? 1 : 0
-      return { response, recordCount }
     }),
 
   addStream: adminProcedure

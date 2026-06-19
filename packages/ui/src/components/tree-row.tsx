@@ -434,29 +434,18 @@ export function GridTreeRow({
  * wrap it in a left-side tooltip; omit it for no tooltip.
  *
  * Two axes:
- * - `variant` — `default` / `destructive` for pure hover-revealed actions.
- *   `owned` / `contributing` are persistent, colour-coded *state* toggles (the
- *   Data Connectors mapping target-mode chip): they show their state at rest,
- *   not on hover.
- * - `persistent` — set true to force a hover-revealed (`default`/`destructive`)
- *   button to stay visible. The mode variants are already visible at rest, so
- *   they don't need it.
+ * - `variant` — `default` / `destructive`, both pure hover-revealed actions.
+ * - `persistent` — set true to force a hover-revealed button to stay visible.
  */
 const treeRowButtonVariants = cva(
   'inline-flex shrink-0 items-center justify-center rounded-md p-1 transition-opacity [&_svg]:size-3.5',
   {
     variants: {
-      // default/destructive are hover-revealed; the colour-coded target-mode
-      // toggles (owned/contributing) carry their own opacity-100 to stay visible.
       variant: {
         default:
           'text-muted-foreground hover:bg-primary/5 hover:text-foreground opacity-0 group-hover/tree-row:opacity-100',
         destructive:
           'text-muted-foreground hover:bg-destructive/10 hover:text-destructive opacity-0 group-hover/tree-row:opacity-100',
-        owned:
-          'border border-violet-200 bg-violet-50 text-violet-700 hover:bg-violet-100 opacity-100',
-        contributing:
-          'border border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100 opacity-100',
       },
       // Override to force a hover-revealed button to stay visible. Defined after
       // `variant`, so twMerge lets `true` win over the variant's opacity-0.

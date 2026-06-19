@@ -2,6 +2,7 @@
 'use client'
 
 import type { ResourceField } from '@auxx/lib/resources/client'
+import { Badge } from '@auxx/ui/components/badge'
 import { EntityIcon } from '@auxx/ui/components/icons'
 import {
   Select,
@@ -10,6 +11,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@auxx/ui/components/select'
+import { SimpleTooltip } from '@auxx/ui/components/tooltip'
 import { GridTreeRow, TreeRowButton } from '@auxx/ui/components/tree-row'
 import { ArrowRight, FunctionSquare, Plus, Trash2, X } from 'lucide-react'
 import { useState } from 'react'
@@ -28,9 +30,6 @@ import { BranchRow } from './branch-row'
 import { MAPPING_COLS } from './mapping-columns'
 import { MappingFieldPicker } from './mapping-field-picker'
 import { MERGE_OPTIONS, SourceLeafRow } from './source-leaf-row'
-
-/** Sentinel for the whole-payload root (`''`) — Radix Select forbids empty values. */
-const ROOT_SENTINEL = '__root__'
 
 type Mapping = RouterOutputs['dataConnector']['listStreams'][number]['mappings'][number]
 
@@ -85,8 +84,6 @@ export interface MappingNodeProps {
   streamKey: string
   /** Payload-absolute source paths (Layer A schema), shared by the whole tree. */
   sourcePaths: SourcePath[]
-  /** Root-mapping rootPath choices (only meaningful for the root). */
-  rootCandidates: string[]
   /** All mappings indexed by id — for `absolutePrefix` + child lookup. */
   byMappingId: Map<string, Mapping>
   childrenOf: Map<string | null, Mapping[]>
@@ -109,21 +106,14 @@ export function MappingNode({
   streamId,
   streamKey,
   sourcePaths,
-  rootCandidates,
   byMappingId,
   childrenOf,
   mutations,
   onPromoteField,
 }: MappingNodeProps) {
   const [open, setOpen] = useState(true)
-  const {
-    setMappingTarget,
-    setRootPath,
-    removeMapping,
-    setFieldMappings,
-    setMergeStrategies,
-    fanOut,
-  } = mutations
+  const { setMappingTarget, removeMapping, setFieldMappings, setMergeStrategies, fanOut } =
+    mutations
 
   // Target def display + fields, read from the resource store (the same source
   // the ResourcePicker/FieldPicker use) — no parallel projection needed.
@@ -263,32 +253,11 @@ export function MappingNode({
       onToggleOpen={() => setOpen((o) => !o)}
       icon={<EntityIcon iconId={resource?.icon ?? 'table'} size='xs' />}
       title={
-        mapping.parentMappingId === null && rootCandidates.length > 1 ? (
-          // Interactive source cell — guard the row toggle (the chevron stays the
-          // expand affordance).
-          <span onClick={(e) => e.stopPropagation()}>
-            <Select
-              value={mapping.rootPath || ROOT_SENTINEL}
-              onValueChange={(v) =>
-                setRootPath(streamId, mapping.id, v === ROOT_SENTINEL ? '' : v)
-              }>
-              <SelectTrigger variant='transparent' size='sm' className='h-9 w-full px-1 text-xs'>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {rootCandidates.map((p) => (
-                  <SelectItem key={p || ROOT_SENTINEL} value={p || ROOT_SENTINEL}>
-                    {describeRootPath(p, streamKey)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </span>
-        ) : (
-          <span className='text-xs text-muted-foreground'>
-            {describeRootPath(mapping.rootPath, streamKey)}
-          </span>
-        )
+        // The rootPath is fixed by the source row this mapping was created from
+        // (`data` → "each data") — a static label, not a chooser.
+        <span className='text-xs text-muted-foreground'>
+          {describeRootPath(mapping.rootPath, streamKey)}
+        </span>
       }
       cells={[
         <span key='arrow' className='flex w-full justify-center text-muted-foreground'>
@@ -311,26 +280,34 @@ export function MappingNode({
           triggerProps={{ className: 'h-9 w-full justify-between rounded-none px-2 text-xs' }}
         />,
         <div key='actions' className='flex w-full items-center justify-end gap-1 pr-1'>
-          <TreeRowButton
-            variant={targetMode}
-            tooltipText={
+          <SimpleTooltip
+            side='left'
+            delayDuration={500}
+            content={
               targetMode === 'owned'
                 ? 'Owned — connector manages this def (archive on orphan). Click to switch to contributing.'
                 : 'Contributing — writes into a pre-existing def per-field, never archives. Click to switch to owned.'
-            }
-            onClick={toggleTargetMode}>
-            <span className='px-1 text-[10px] font-medium'>{targetMode}</span>
+            }>
+            <button
+              type='button'
+              onClick={toggleTargetMode}
+              className='inline-flex shrink-0 items-center'>
+              <Badge
+                variant={targetMode === 'owned' ? 'violet' : 'amber'}
+                size='xs'
+                className='cursor-pointer'>
+                {targetMode}
+              </Badge>
+            </button>
+          </SimpleTooltip>
+          {/* Every mapping is removable now — no auto-seeded spine. Deleting a
+              mapping drops back to the passive source row it was created from. */}
+          <TreeRowButton
+            variant='destructive'
+            tooltipText='Remove mapping'
+            onClick={() => removeMapping(streamId, mapping.id)}>
+            <Trash2 />
           </TreeRowButton>
-          {/* The root mapping is the stream's spine (seeded on create) — it can't
-              be removed (delete the stream instead). Only fan-out children are. */}
-          {mapping.parentMappingId !== null && (
-            <TreeRowButton
-              variant='destructive'
-              tooltipText='Remove mapping'
-              onClick={() => removeMapping(streamId, mapping.id)}>
-              <Trash2 />
-            </TreeRowButton>
-          )}
         </div>,
       ]}>
       {sourceTree.length === 0 ? (
@@ -363,7 +340,6 @@ export function MappingNode({
             streamId={streamId}
             streamKey={streamKey}
             sourcePaths={sourcePaths}
-            rootCandidates={rootCandidates}
             byMappingId={byMappingId}
             childrenOf={childrenOf}
             mutations={mutations}
@@ -414,7 +390,6 @@ export function MappingNode({
           depth={depth + 1}
           streamId={streamId}
           sourcePaths={sourcePaths}
-          rootCandidates={rootCandidates}
           byMappingId={byMappingId}
           childrenOf={childrenOf}
           mutations={mutations}
@@ -449,7 +424,6 @@ interface SourceNodeProps {
   streamId: string
   streamKey: string
   sourcePaths: SourcePath[]
-  rootCandidates: string[]
   byMappingId: Map<string, Mapping>
   childrenOf: Map<string | null, Mapping[]>
   mutations: ReturnType<typeof useStreamMutations>
@@ -491,7 +465,6 @@ function SourceNode(props: SourceNodeProps) {
         streamId={props.streamId}
         streamKey={props.streamKey}
         sourcePaths={props.sourcePaths}
-        rootCandidates={props.rootCandidates}
         byMappingId={props.byMappingId}
         childrenOf={props.childrenOf}
         mutations={props.mutations}
@@ -605,9 +578,9 @@ function FormulaRow({
           onClear={onClear}
         />,
         <div key='actions' className='flex w-full items-center gap-2 px-2'>
-          {/* Spacer aligns the merge picker with the leaf rows' (which reserve a
-              Match slot here). */}
-          <div className='w-14 shrink-0' />
+          {/* Spacer aligns the merge picker with the leaf rows' (which reserve an
+              Identifier slot here). */}
+          <div className='w-20 shrink-0' />
           <Select value={mergeStrategy} onValueChange={onMergeChange}>
             <SelectTrigger variant='transparent' size='sm' className='h-9 w-28 text-xs'>
               <SelectValue />

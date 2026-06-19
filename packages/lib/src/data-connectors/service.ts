@@ -56,9 +56,9 @@ export interface LoadedConnector {
 
 /**
  * Decode a mapping row's jsonb/text policy columns into canonical lib unions.
- * Untargeted mappings (no `entityDefinitionId`, e.g. a freshly-seeded root) are
- * never synced — callers filter them out before decoding, so a null here is a
- * programming error.
+ * Untargeted mappings (no `entityDefinitionId` — created before the user picked a
+ * def) are never synced — callers filter them out before decoding, so a null here
+ * is a programming error.
  */
 export function decodeMapping(row: DataConnectorMappingRow): DecodedMapping {
   if (row.entityDefinitionId === null) {
@@ -127,8 +127,8 @@ export async function loadConnector(
     .map((stream) => ({
       stream,
       syncMode: stream.syncMode as SyncMode,
-      // Drop untargeted mappings (a seeded root the user hasn't pointed at a def
-      // yet) — a fetch with nowhere to land is a no-op.
+      // Drop untargeted mappings (created before the user picked a def) — a fetch
+      // with nowhere to land is a no-op.
       mappings: (byStream.get(stream.id) ?? [])
         .filter((m) => m.entityDefinitionId !== null)
         .map(decodeMapping),

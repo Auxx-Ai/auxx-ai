@@ -1,10 +1,22 @@
 // apps/web/src/components/data-connectors/ui/mapping-tree.tsx
 'use client'
 
-import { useEffect, useMemo } from 'react'
+import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
+import { GridTreeRow, TreeRowButton } from '@auxx/ui/components/tree-row'
+import { Braces, Brackets, Hash, Plus } from 'lucide-react'
+import { useMemo, useState } from 'react'
+import { ResourcePickerContent } from '~/components/pickers/resource-picker'
 import type { RouterOutputs } from '~/trpc/react'
-import { rootPathCandidates, type SourcePath } from '../hooks/use-source-paths'
+import {
+  buildSourceTree,
+  lastSegment,
+  type SourcePath,
+  type SourceTreeNode,
+  subtreeUnder,
+} from '../hooks/use-source-paths'
 import { useStreamMutations } from '../hooks/use-stream-mutations'
+import { BranchRow } from './branch-row'
+import { MAPPING_COLS } from './mapping-columns'
 import { MappingNode } from './mapping-node'
 
 type Mapping = RouterOutputs['dataConnector']['listStreams'][number]['mappings'][number]
@@ -21,11 +33,20 @@ interface MappingTreeProps {
   onPromoteField: (mappingId: string, fieldKey: string) => void
 }
 
+/** The fan-out rootPath for a branch node — arrays keep their `[]` suffix. */
+function branchRootPath(node: SourceTreeNode): string {
+  return node.type === 'array' ? `${node.path}[]` : node.path
+}
+
 /**
- * The unified mapping editor (plan 07). A single recursive walk over the source
- * schema: each {@link MappingNode} renders the subtree it owns, binding leaves to
- * target fields and promoting object/array branches into inline child mappings.
- * Replaces the old split source-tree + appended-fan-out model (sub-plan 05 §4).
+ * The unified mapping editor. The source schema (Layer A) is rendered as an
+ * always-on tree — no mapping is seeded on stream create, so the tree is the
+ * skeleton the user builds against. A "whole payload" root row sits at the top
+ * (creating a mapping there treats the entire payload as one record); every
+ * object/array branch beneath it can be promoted into its own mapping (e.g. the
+ * `data[]` collection of a list envelope). A promoted branch re-renders as a
+ * {@link MappingNode} that owns its subtree; un-promoted branches/leaves render
+ * passively so the full payload shape stays visible at all times.
  */
 export function MappingTree({
   connectorId,
@@ -35,25 +56,14 @@ export function MappingTree({
   sourcePaths,
   onPromoteField,
 }: MappingTreeProps) {
-  // Optimistic mapping mutations (instant toggles) with rollback — no refetch.
   const mutations = useStreamMutations(connectorId)
-  const { setRootPath } = mutations
+  const { fanOut } = mutations
+  const [rootOpen, setRootOpen] = useState(true)
 
-  // Valid root-path choices for the root mapping, derived from the source schema.
-  const rootCandidates = useMemo(() => rootPathCandidates(sourcePaths), [sourcePaths])
-
-  // Self-heal: the root mapping's rootPath is dictated by the schema root type, so
-  // a stored value that isn't a valid candidate (e.g. `''` against an array root)
-  // is corrected to the derived default. Guarded on a loaded schema so we never
-  // clobber a real value while the schema is still fetching.
-  useEffect(() => {
-    if (sourcePaths.length === 0 || rootCandidates.length === 0) return
-    for (const m of rows) {
-      if (m.parentMappingId === null && !rootCandidates.includes(m.rootPath)) {
-        setRootPath(streamId, m.id, rootCandidates[0])
-      }
-    }
-  }, [rows, rootCandidates, sourcePaths, streamId, setRootPath])
+  // The payload root type dictates the whole-payload rootPath: an array root fans
+  // out per element (`[]`); an object root is a single record (`''`).
+  const rootIsArray = useMemo(() => sourcePaths.some((p) => p.path.startsWith('[]')), [sourcePaths])
+  const rootBase = rootIsArray ? '[]' : ''
 
   // Index mappings by id (for `absolutePrefix`) and by parent (the tree).
   const { byMappingId, childrenOf } = useMemo(() => {
@@ -69,32 +79,222 @@ export function MappingTree({
     return { byMappingId, childrenOf }
   }, [rows])
 
-  // Every stream is seeded with a root mapping on create, so this is normally
-  // unreachable; keep a quiet guard in case a row is mid-delete.
-  if (rows.length === 0) {
+  // Top-level mappings (no parent). A whole-payload mapping is the one rooted at
+  // `rootBase`; the rest are branch mappings (e.g. `data[]`) keyed by their
+  // array-normalized rootPath so a branch node at `data` matches `data[]`.
+  const topLevel = childrenOf.get(null) ?? []
+  const rootMapping = topLevel.find((m) => m.rootPath === rootBase)
+  const branchMappingByPath = new Map<string, Mapping>()
+  for (const m of topLevel) {
+    if (m === rootMapping) continue
+    branchMappingByPath.set(m.rootPath.replace(/\[\]$/, ''), m)
+  }
+
+  // The full source tree (relative to the payload root) — the always-on skeleton.
+  const topTree = useMemo(
+    () => buildSourceTree(subtreeUnder(sourcePaths, rootBase)),
+    [sourcePaths, rootBase]
+  )
+
+  // Create a mapping straight off a source row: the whole-payload root, or a
+  // branch (`data` → `data[]`). Top-level (no parent) since the root is unmapped;
+  // contributing by default (the primary records sink writes into an existing def).
+  const createMapping = (rootPath: string, entityDefinitionId: string) =>
+    fanOut(streamId, {
+      parentMappingId: null,
+      rootPath,
+      linkMode: 'upsert',
+      targetMode: 'contributing',
+      entityDefinitionId,
+      relationshipFieldKey: null,
+    })
+
+  const recursionCtx = {
+    streamId,
+    streamKey,
+    sourcePaths,
+    byMappingId,
+    childrenOf,
+    mutations,
+    onPromoteField,
+  }
+
+  // A mapped whole-payload root owns the entire subtree (single-record source, or
+  // an envelope the user chose to treat as one record) — render just that node.
+  if (rootMapping) {
     return (
-      <div className='px-3 py-2 text-xs text-muted-foreground'>No mappings for this stream.</div>
+      <div className='flex flex-col py-1'>
+        <MappingNode mapping={rootMapping} depth={0} {...recursionCtx} />
+      </div>
     )
   }
 
-  const roots = childrenOf.get(null) ?? []
   return (
     <div className='flex flex-col py-1'>
-      {roots.map((m) => (
-        <MappingNode
-          key={m.id}
-          mapping={m}
-          depth={0}
-          streamId={streamId}
-          streamKey={streamKey}
-          sourcePaths={sourcePaths}
-          rootCandidates={rootCandidates}
-          byMappingId={byMappingId}
-          childrenOf={childrenOf}
-          mutations={mutations}
-          onPromoteField={onPromoteField}
-        />
-      ))}
+      <GridTreeRow
+        columns={MAPPING_COLS}
+        depth={0}
+        expandable
+        chevronOnHover
+        isOpen={rootOpen}
+        onToggleOpen={() => setRootOpen((o) => !o)}
+        icon={
+          rootIsArray ? (
+            <Brackets className='size-3.5 text-muted-foreground/60' />
+          ) : (
+            <Braces className='size-3.5 text-muted-foreground/60' />
+          )
+        }
+        title={
+          <span className='text-xs text-muted-foreground'>
+            {rootIsArray ? `each ${streamKey || 'item'}` : 'whole payload'}
+          </span>
+        }
+        cells={[
+          <span key='arrow' />,
+          <span key='target' />,
+          <div key='actions' className='flex w-full items-center justify-end pr-1'>
+            <CreateMappingAction
+              tooltip='Map whole payload → own record'
+              onPick={(defId) => createMapping(rootBase, defId)}
+            />
+          </div>,
+        ]}>
+        {topTree.length === 0 ? (
+          <div className='px-3 py-2 text-[11px] text-muted-foreground'>
+            No source schema yet — generate or edit the schema above to map fields.
+          </div>
+        ) : (
+          topTree.map((node) => (
+            <TopSourceNode
+              key={node.path}
+              node={node}
+              depth={1}
+              branchMappingByPath={branchMappingByPath}
+              onCreate={createMapping}
+              {...recursionCtx}
+            />
+          ))
+        )}
+      </GridTreeRow>
     </div>
+  )
+}
+
+// ── Top-level source node (no enclosing mapping) ───────────────────────────────
+
+interface TopSourceNodeProps {
+  node: SourceTreeNode
+  depth: number
+  /** Top-level branch mappings keyed by array-normalized path (`data` → `data[]`). */
+  branchMappingByPath: Map<string, Mapping>
+  /** Create a top-level mapping at the given rootPath against the picked def. */
+  onCreate: (rootPath: string, entityDefinitionId: string) => void
+  // Recursion context forwarded to a promoted MappingNode.
+  streamId: string
+  streamKey: string
+  sourcePaths: SourcePath[]
+  byMappingId: Map<string, Mapping>
+  childrenOf: Map<string | null, Mapping[]>
+  mutations: ReturnType<typeof useStreamMutations>
+  onPromoteField: (mappingId: string, fieldKey: string) => void
+}
+
+/**
+ * One node of the always-on source tree, rendered OUTSIDE any mapping. A branch
+ * with a top-level mapping promotes to a {@link MappingNode}; an un-promoted
+ * branch is a {@link BranchRow} with a create action; a leaf renders passively
+ * (no enclosing mapping to bind it to until its branch is mapped).
+ */
+function TopSourceNode(props: TopSourceNodeProps) {
+  const { node, depth, branchMappingByPath, onCreate } = props
+  const [open, setOpen] = useState(true)
+
+  if (node.isBranch) {
+    const mapping = branchMappingByPath.get(node.path)
+    if (mapping) {
+      return (
+        <MappingNode
+          mapping={mapping}
+          depth={depth}
+          streamId={props.streamId}
+          streamKey={props.streamKey}
+          sourcePaths={props.sourcePaths}
+          byMappingId={props.byMappingId}
+          childrenOf={props.childrenOf}
+          mutations={props.mutations}
+          onPromoteField={props.onPromoteField}
+        />
+      )
+    }
+    return (
+      <BranchRow
+        depth={depth}
+        node={node}
+        isOpen={open}
+        onToggleOpen={() => setOpen((o) => !o)}
+        onFanOut={(defId) => onCreate(branchRootPath(node), defId)}>
+        {node.children.map((child) => (
+          <TopSourceNode key={child.path} {...props} node={child} depth={depth + 1} />
+        ))}
+      </BranchRow>
+    )
+  }
+
+  return <InertLeafRow depth={depth} node={node} />
+}
+
+/** A source leaf shown before its branch is mapped — display only, no binding. */
+function InertLeafRow({ depth, node }: { depth: number; node: SourcePath }) {
+  const Icon = node.type === 'array' ? Brackets : Hash
+  return (
+    <GridTreeRow
+      columns={MAPPING_COLS}
+      depth={depth}
+      icon={<Icon className='size-3.5 text-muted-foreground/40' />}
+      title={
+        <span className='flex items-center gap-1.5'>
+          <span className='font-mono text-sm text-muted-foreground/70'>
+            {lastSegment(node.path)}
+          </span>
+          <span className='text-[10px] uppercase text-muted-foreground/50'>{node.type}</span>
+        </span>
+      }
+    />
+  )
+}
+
+/** The "pick a def → create a mapping here" popover action (shared by root + branch). */
+function CreateMappingAction({
+  tooltip,
+  onPick,
+}: {
+  tooltip: string
+  onPick: (entityDefinitionId: string) => void
+}) {
+  const [open, setOpen] = useState(false)
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <TreeRowButton tooltipText={tooltip}>
+          <Plus />
+        </TreeRowButton>
+      </PopoverTrigger>
+      <PopoverContent align='end' className='w-64 p-0'>
+        <div className='border-b px-2 py-1.5 text-[10px] font-medium uppercase text-muted-foreground'>
+          {tooltip}
+        </div>
+        <ResourcePickerContent
+          value={[]}
+          onChange={() => {}}
+          onSelectSingle={(defId) => {
+            onPick(defId)
+            setOpen(false)
+          }}
+          entityDefinedOnly
+          placeholder='Search entity definitions…'
+        />
+      </PopoverContent>
+    </Popover>
   )
 }

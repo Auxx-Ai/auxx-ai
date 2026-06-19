@@ -3,6 +3,17 @@
 // See plans/data-connectors/. Server-only (BullMQ, crypto): never import this
 // barrel from client code.
 
+// Connector runtime — the shared definition+credential seam + test-fetch
+export type {
+  PreparedConnectorFetch,
+  SampleConnectorFetchInput,
+  SampleConnectorFetchResult,
+} from './connector-runtime'
+export {
+  prepareConnectorFetch,
+  resolveConnectorCredential,
+  sampleConnectorFetch,
+} from './connector-runtime'
 export type {
   AppConnectorContext,
   ConnectorDefaultMapping,
@@ -68,7 +79,6 @@ export type {
 } from './provisioning'
 // Schema provisioning (owned + contributing, 01 §5)
 export { provisionConnectorMappings, provisionTarget } from './provisioning'
-
 // Orchestrator + passes
 export { handleConnectorDelete, reconcileOrphans } from './reconciliation'
 export { resolveRelationships } from './relationship-pass'

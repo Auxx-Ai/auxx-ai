@@ -1084,7 +1084,7 @@ export default function ConnectionsPage() {
                         setEditing(m.id)
                       }
                     }}
-                    className='flex cursor-pointer items-center gap-3 rounded-lg border px-4 py-3 text-left hover:bg-muted/50'>
+                    className='flex cursor-pointer items-center gap-3 rounded-2xl border px-4 py-3 text-left hover:bg-muted/50'>
                     <div className='flex flex-col gap-1 min-w-0'>
                       <div className='flex items-center gap-2'>
                         <span className='font-medium truncate'>{m.label}</span>

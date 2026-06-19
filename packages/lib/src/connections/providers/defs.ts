@@ -4,12 +4,9 @@
 // One entry per registered ICredentialType. `ensure-platform-providers` upserts
 // each into a ConnectionDefinition row keyed by providerKey.
 
-import type { AuthApply } from '@auxx/database'
 import { FieldType } from '@auxx/database/enums'
+import { BEARER_AUTH as BEARER } from '../auth-apply'
 import type { PlatformProviderDef } from './types'
-
-/** Apply an OAuth access token / bearer API key as `Authorization: Bearer <token>`. */
-const BEARER: AuthApply = { in: 'header', name: 'Authorization', format: 'Bearer {value}' }
 
 /** Per-credential OAuth client variables for bring-your-own-client providers (§9.1). */
 const BYO_CLIENT_VARS = [

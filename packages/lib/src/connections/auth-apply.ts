@@ -8,6 +8,24 @@ import type { AuthApply } from '@auxx/database'
 
 export type { AuthApply }
 
+/** The canonical bearer-token application: `Authorization: Bearer <token>`. */
+export const BEARER_AUTH: AuthApply = {
+  in: 'header',
+  name: 'Authorization',
+  format: 'Bearer {value}',
+}
+
+/**
+ * The default auth application for a connection type when none is declared on
+ * its definition. An `oauth2-code` access token is always a bearer token, so app
+ * authors needn't restate it (platform defs set it explicitly; app-authored defs
+ * often omit it). Secret connections have no universal default — they must
+ * declare how their secret is applied.
+ */
+export function defaultAuthApply(connectionType: 'oauth2-code' | 'secret'): AuthApply | null {
+  return connectionType === 'oauth2-code' ? BEARER_AUTH : null
+}
+
 /** A resolved connection, narrowed to what applyAuth reads. */
 export interface RuntimeConnectionAuthData {
   /** The resolved token: oauth2 access token, or the primary secret value. */
