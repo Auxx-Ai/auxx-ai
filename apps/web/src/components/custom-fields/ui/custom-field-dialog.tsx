@@ -218,6 +218,10 @@ export function CustomFieldDialog({
       })
       .map((f) => ({
         id: f.id,
+        // Key by `f.key` (e.g. `lastName`) — the token the calc editor inserts
+        // and the form the FieldBadge pill resolves (fieldMap aliases
+        // `<entity>:<key>`). Falls back to the row id for custom fields whose
+        // key already equals the id.
         key: f.key || f.id,
         label: f.label,
         type: f.fieldType ?? 'TEXT',

@@ -38,7 +38,11 @@ export {
   formulaToString,
   stringToFormula,
 } from './formula-converters'
-export { PRIMARY_DISPLAY_ELIGIBLE_TYPES } from './types'
+export {
+  FIELD_TYPE_COMPATIBILITY_MAP,
+  isFieldTypeCompatible,
+  PRIMARY_DISPLAY_ELIGIBLE_TYPES,
+} from './types'
 
 import type { SelectOptionColor } from '@auxx/types/custom-field'
 

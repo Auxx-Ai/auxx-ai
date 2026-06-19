@@ -9,8 +9,8 @@ import StarterKit from '@tiptap/starter-kit'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   createInlineNode,
-  createInlinePickerExtension,
-  type InlinePickerState,
+  getOpenPickerRange,
+  ReferencePickerNode,
 } from '~/components/editor/inline-picker'
 import { FieldBadge } from '~/components/resources/ui'
 import { extractFieldIds, formulaToString, stringToFormula } from './formula-converters'
@@ -31,17 +31,16 @@ export interface UseCalcFormulaOptions {
   placeholder?: string
 }
 
-/** Initial closed state for suggestion */
-const initialSuggestionState: InlinePickerState = {
-  isOpen: false,
-  query: '',
-  range: null,
-  clientRect: null,
-}
-
 /**
  * Hook for managing the CALC formula TipTap editor state.
  * Handles expression parsing, validation, and conversion.
+ *
+ * The `{`-triggered field/function picker rides on the shared
+ * `ReferencePickerNode` chip (the same primitive used by the snippet /
+ * greeting editors): typing `{` opens an inert chip and the consumer mounts
+ * the picker popover via `useActivePicker` + `InlinePickerPopover`. Selection
+ * is committed here through `getOpenPickerRange` — fields collapse to a
+ * `field` badge node, functions insert their literal `name(` text.
  */
 export function useCalcFormula({
   initialExpression = '',
@@ -51,43 +50,17 @@ export function useCalcFormula({
   placeholder = 'Type { to insert a field or function...',
 }: UseCalcFormulaOptions) {
   const [expression, setExpression] = useState(initialExpression)
-  const [suggestionState, setSuggestionState] = useState<InlinePickerState>(initialSuggestionState)
   const contentRef = useRef(initialExpression)
   const onChangeRef = useRef(onExpressionChange)
-  const suggestionRangeRef = useRef<{ from: number; to: number } | null>(null)
 
-  // Update refs when values change
   useEffect(() => {
     onChangeRef.current = onExpressionChange
   }, [onExpressionChange])
 
-  // Track suggestion range for insertion
-  useEffect(() => {
-    suggestionRangeRef.current = suggestionState.range
-  }, [suggestionState.range])
-
   // Convert initial expression to TipTap content
-  const initialContent = useMemo(() => {
-    return stringToFormula(initialExpression)
-  }, [initialExpression])
+  const initialContent = useMemo(() => stringToFormula(initialExpression), [initialExpression])
 
-  // Memoize onStateChange callback
-  const handleSuggestionStateChange = useCallback((state: InlinePickerState) => {
-    setSuggestionState(state)
-  }, [])
-
-  // Create picker extension
-  const pickerExtension = useMemo(
-    () =>
-      createInlinePickerExtension({
-        type: 'field',
-        trigger: '{',
-        onStateChange: handleSuggestionStateChange,
-      }),
-    [handleSuggestionStateChange]
-  )
-
-  // Create field node with base factory
+  // Create field node with base factory — serializes to `{id}`.
   const fieldNode = useMemo(
     () =>
       createInlineNode(
@@ -121,7 +94,11 @@ export function useCalcFormula({
           horizontalRule: false,
         }),
         fieldNode,
-        pickerExtension,
+        // `{` fires mid-word (allowedPrefixes: null) — formula authors type
+        // `concat({first}, {last})` where `{` directly follows `(` or `,`.
+        ReferencePickerNode.configure({
+          triggers: [{ char: '{', kind: 'command', allowedPrefixes: null }],
+        }),
         Placeholder.configure({
           placeholder,
           showOnlyWhenEditable: true,
@@ -129,6 +106,9 @@ export function useCalcFormula({
       ],
       content: initialContent,
       onUpdate: ({ editor }: { editor: Editor }) => {
+        // Don't emit while the `{` picker chip is open — the trigger char is
+        // transient and would otherwise land an invalid `{` in the expression.
+        if (getOpenPickerRange(editor.state)) return
         const json = editor.getJSON()
         const newExpression = formulaToString(json)
         const sourceFields = extractFieldIds(json)
@@ -147,7 +127,7 @@ export function useCalcFormula({
       immediatelyRender: false,
       shouldRerenderOnTransaction: false,
     }),
-    [initialContent, fieldNode, pickerExtension, placeholder]
+    [initialContent, fieldNode, placeholder]
   )
 
   const editor = useEditor(editorConfig)
@@ -170,8 +150,7 @@ export function useCalcFormula({
   const setContent = useCallback(
     (newExpression: string) => {
       if (editor && newExpression !== expression) {
-        const tiptapContent = stringToFormula(newExpression)
-        editor.commands.setContent(tiptapContent)
+        editor.commands.setContent(stringToFormula(newExpression))
         contentRef.current = newExpression
         setExpression(newExpression)
       }
@@ -179,63 +158,36 @@ export function useCalcFormula({
     [editor, expression]
   )
 
-  /** Insert a field node at the suggestion trigger position */
+  /** Insert a field badge node, replacing the open `{` picker chip. */
   const insertField = useCallback(
     (fieldId: string) => {
-      if (!editor || !suggestionRangeRef.current) return
-
-      const range = suggestionRangeRef.current
-      // Clear the ref immediately to prevent closeSuggestion from deleting again
-      suggestionRangeRef.current = null
-
+      if (!editor) return
+      const range = getOpenPickerRange(editor.state)
+      if (!range) return
       editor
         .chain()
         .focus()
-        .deleteRange({ from: range.from, to: range.to })
-        .insertContent({
-          type: 'field',
-          attrs: { id: fieldId },
-        })
+        .deleteRange(range)
+        .insertContent({ type: 'field', attrs: { id: fieldId } })
         .run()
-
-      // Close the suggestion
-      setSuggestionState(initialSuggestionState)
     },
     [editor]
   )
 
-  /** Insert a function name at the suggestion trigger position */
+  /** Insert a function call (`name(`), replacing the open `{` picker chip. */
   const insertFunction = useCallback(
     (funcName: string) => {
-      if (!editor || !suggestionRangeRef.current) return
-
-      const range = suggestionRangeRef.current
-      // Clear the ref immediately to prevent closeSuggestion from deleting again
-      suggestionRangeRef.current = null
-
-      editor
-        .chain()
-        .focus()
-        .deleteRange({ from: range.from, to: range.to })
-        .insertContent(`${funcName}(`)
-        .run()
-
-      // Close the suggestion
-      setSuggestionState(initialSuggestionState)
+      if (!editor) return
+      const range = getOpenPickerRange(editor.state)
+      if (!range) return
+      editor.chain().focus().deleteRange(range).insertContent(`${funcName}(`).run()
     },
     [editor]
   )
 
-  /** Close the suggestion picker and remove the trigger character */
-  const closeSuggestion = useCallback(() => {
-    // Delete the trigger character and any query text
-    if (editor && suggestionRangeRef.current) {
-      const range = suggestionRangeRef.current
-      suggestionRangeRef.current = null
-      editor.chain().focus().deleteRange({ from: range.from, to: range.to }).run()
-    }
-    setSuggestionState(initialSuggestionState)
-    editor?.commands.focus()
+  /** Close the picker, removing the transient `{` trigger. */
+  const closePicker = useCallback(() => {
+    editor?.commands.closeReferencePicker({ keepText: false })
   }, [editor])
 
   return {
@@ -245,10 +197,8 @@ export function useCalcFormula({
     missingFields,
     sourceFields: validation.extractedFields,
     setContent,
-    // Suggestion state and actions for external picker UI
-    suggestionState,
     insertField,
     insertFunction,
-    closeSuggestion,
+    closePicker,
   }
 }

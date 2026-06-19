@@ -9,18 +9,21 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@auxx/ui/components/select'
-import TreeRow, { TreeRowButton } from '@auxx/ui/components/tree-row'
-import { Brackets, FunctionSquare, Hash, X } from 'lucide-react'
+import TreeRow from '@auxx/ui/components/tree-row'
+import { Brackets, Hash } from 'lucide-react'
 import { lastSegment, type SourcePath } from '../hooks/use-source-paths'
 import { MappingFieldPicker } from './mapping-field-picker'
 
-/** Per-field merge strategies offered once a leaf is bound. */
+/**
+ * Per-field merge strategies offered once a leaf is bound. `manual_review` and
+ * `ignore` stay in the schema/runtime (`FieldMergeStrategy`) but are not yet
+ * surfaced — `manual_review` has no conflict-review queue and `ignore` has no
+ * use until then. Re-add here when those land.
+ */
 export const MERGE_OPTIONS: Array<{ value: string; label: string }> = [
   { value: 'overwrite', label: 'overwrite' },
   { value: 'fill_blank', label: 'fill-blank' },
   { value: 'connector_owned_only', label: 'owned-only' },
-  { value: 'manual_review', label: 'review' },
-  { value: 'ignore', label: 'ignore' },
 ]
 
 interface SourceLeafRowProps {
@@ -40,14 +43,14 @@ interface SourceLeafRowProps {
   onClear: () => void
   onMergeChange: (value: string) => void
   onToggleMatch: () => void
-  onPromote: () => void
 }
 
 /**
  * A source-schema leaf (plan §3.1). The label is the source field; the
  * {@link MappingFieldPicker} "applies" a target field to it. Once bound, the
- * merge picker + `ƒ` (calc) promote + clear appear. A source value maps to at
- * most one target field. Array-of-scalars leaves get the multi-value icon.
+ * merge picker + clear appear. A source value maps to at most one target field
+ * (a strict bare-token bind); computed/multi-source values live on their own
+ * formula rows, not here. Array-of-scalars leaves get the multi-value icon.
  */
 export function SourceLeafRow({
   depth,
@@ -62,7 +65,6 @@ export function SourceLeafRow({
   onClear,
   onMergeChange,
   onToggleMatch,
-  onPromote,
 }: SourceLeafRowProps) {
   const isMapped = !!assignedTargetKey
   const isArray = node.type === 'array'
@@ -89,22 +91,24 @@ export function SourceLeafRow({
           assignedLabel={assignedLabel}
           canCreate={canCreate}
           onAssign={onAssign}
+          onClear={onClear}
         />
       }
       trailing={
         isMapped ? (
-          <div className='flex items-center gap-1'>
+          <div className='flex shrink-0 items-center gap-1'>
             {/* Secondary identity-match toggle: subtle text → filled blue badge. */}
             <button
               type='button'
               onClick={onToggleMatch}
+              className='inline-flex shrink-0 items-center'
               title={
                 isMatch
                   ? 'Used as a secondary identity match. Click to stop matching on this field.'
                   : 'Also match existing records by this field (external id stays the primary key).'
               }>
               {isMatch ? (
-                <Badge variant='blue' className='h-5 px-1.5 text-[10px]'>
+                <Badge variant='blue' size='xs'>
                   Match
                 </Badge>
               ) : (
@@ -113,24 +117,23 @@ export function SourceLeafRow({
                 </span>
               )}
             </button>
-            <Select value={mergeStrategy} onValueChange={onMergeChange}>
-              <SelectTrigger size='sm' className='h-6 min-w-[96px] text-xs'>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {MERGE_OPTIONS.map((o) => (
-                  <SelectItem key={o.value} value={o.value}>
-                    {o.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <TreeRowButton tooltipText='Edit as a formula' onClick={onPromote}>
-              <FunctionSquare />
-            </TreeRowButton>
-            <TreeRowButton tooltipText='Clear mapping' onClick={onClear}>
-              <X />
-            </TreeRowButton>
+            {/* Merge strategy only matters when the def is shared. An owned
+                mapping (canCreate) is the sole writer, so every field is an
+                implicit overwrite — no picker. Contributing mappings choose. */}
+            {!canCreate && (
+              <Select value={mergeStrategy} onValueChange={onMergeChange}>
+                <SelectTrigger variant='transparent' size='sm' className='h-6 min-w-[96px] text-xs'>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {MERGE_OPTIONS.map((o) => (
+                    <SelectItem key={o.value} value={o.value}>
+                      {o.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
           </div>
         ) : undefined
       }

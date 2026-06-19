@@ -11,7 +11,7 @@ import {
   SelectValue,
 } from '@auxx/ui/components/select'
 import TreeRow, { TreeRowButton } from '@auxx/ui/components/tree-row'
-import { Trash2 } from 'lucide-react'
+import { FunctionSquare, Plus, Trash2, X } from 'lucide-react'
 import { useState } from 'react'
 import { ResourcePicker } from '~/components/pickers/resource-picker'
 import { useResourceFields, useResourceProperty } from '~/components/resources'
@@ -25,7 +25,7 @@ import {
 } from '../hooks/use-source-paths'
 import type { useStreamMutations } from '../hooks/use-stream-mutations'
 import { BranchRow } from './branch-row'
-import { SourceLeafRow } from './source-leaf-row'
+import { MERGE_OPTIONS, SourceLeafRow } from './source-leaf-row'
 
 /** Sentinel for the whole-payload root (`''`) — Radix Select forbids empty values. */
 const ROOT_SENTINEL = '__root__'
@@ -165,6 +165,12 @@ export function MappingNode({
     if (isBareToken(fm.expression))
       sourceToTarget.set(fm.expression.replace(/^\{|\}$/g, ''), targetKey)
   }
+
+  // Non-bare entries are computed target fields — they get their own rows below
+  // the source leaves (a multi-source formula has no single leaf to anchor on).
+  const formulaEntries = Object.entries(fieldMappings).filter(
+    ([, fm]) => !isBareToken(fm.expression)
+  )
 
   const assignTarget = (sourcePath: string, targetKey: string) => {
     const next = { ...fieldMappings }
@@ -329,7 +335,6 @@ export function MappingNode({
               setMergeStrategies(streamId, mapping.id, { ...mergeStrategies, [targetKey]: value })
             }
             onToggleMatch={toggleMatch}
-            onPromote={(targetKey) => onPromoteField(mapping.id, targetKey)}
             onFanOut={materializeChild}
             // Child-mapping recursion context.
             streamId={streamId}
@@ -342,6 +347,35 @@ export function MappingNode({
             onPromoteField={onPromoteField}
           />
         ))
+      )}
+
+      {/* Formula rows — one per non-bare field mapping (a computed target field),
+          plus an add row. Reference-mode mappings only link, so no formulas. */}
+      {linkMode !== 'reference' && (
+        <>
+          {formulaEntries.map(([targetKey, fm]) => (
+            <FormulaRow
+              key={targetKey}
+              depth={depth + 1}
+              label={targetFields.find((f) => f.key === targetKey)?.label ?? targetKey}
+              expression={fm.expression}
+              mergeStrategy={mergeStrategies[targetKey] ?? 'overwrite'}
+              onEdit={() => onPromoteField(mapping.id, targetKey)}
+              onMergeChange={(value) =>
+                setMergeStrategies(streamId, mapping.id, { ...mergeStrategies, [targetKey]: value })
+              }
+              onClear={() => clearTarget(targetKey)}
+            />
+          ))}
+          {mapping.entityDefinitionId != null && (
+            <TreeRow
+              depth={depth + 1}
+              icon={<Plus className='size-3.5 text-muted-foreground/50' />}
+              title={<span className='text-sm text-muted-foreground'>Add formula</span>}
+              onToggleOpen={() => onPromoteField(mapping.id, '')}
+            />
+          )}
+        </>
       )}
 
       {/* Child mappings whose branch isn't in the current schema — appended so
@@ -383,7 +417,6 @@ interface SourceNodeProps {
   onClear: (targetKey: string) => void
   onMergeChange: (targetKey: string, value: string) => void
   onToggleMatch: (targetKey: string) => void
-  onPromote: (targetKey: string) => void
   onFanOut: (node: SourceTreeNode, entityDefinitionId: string) => void
   // Child-mapping recursion context (forwarded to a nested MappingNode).
   streamId: string
@@ -417,7 +450,6 @@ function SourceNode(props: SourceNodeProps) {
     onClear,
     onMergeChange,
     onToggleMatch,
-    onPromote,
     onFanOut,
   } = props
   const [open, setOpen] = useState(true)
@@ -476,7 +508,66 @@ function SourceNode(props: SourceNodeProps) {
       onClear={() => assignedTargetKey && onClear(assignedTargetKey)}
       onMergeChange={(value) => assignedTargetKey && onMergeChange(assignedTargetKey, value)}
       onToggleMatch={() => assignedTargetKey && onToggleMatch(assignedTargetKey)}
-      onPromote={() => assignedTargetKey && onPromote(assignedTargetKey)}
+    />
+  )
+}
+
+// ── Formula row (a computed target field) ──────────────────────────────────────
+
+interface FormulaRowProps {
+  depth: number
+  /** Target field label this formula writes into. */
+  label: string
+  /** The calc expression (shown as a preview; click the row to edit). */
+  expression: string
+  mergeStrategy: string
+  onEdit: () => void
+  onMergeChange: (value: string) => void
+  onClear: () => void
+}
+
+/**
+ * A computed target field (plan 10 §3.2) — a non-bare `fieldMappings` entry that
+ * can reference many source fields, so it lives on its own row rather than on a
+ * source leaf. Clicking the row opens the calc editor; it carries a merge
+ * strategy (it writes a target field) but no Match toggle (no single source path
+ * to match identity on).
+ */
+function FormulaRow({
+  depth,
+  label,
+  expression,
+  mergeStrategy,
+  onEdit,
+  onMergeChange,
+  onClear,
+}: FormulaRowProps) {
+  return (
+    <TreeRow
+      depth={depth}
+      icon={<FunctionSquare className='size-3.5' />}
+      title={<span className='text-sm'>{label}</span>}
+      secondary={<span className='font-mono text-xs'>← {expression}</span>}
+      onToggleOpen={onEdit}
+      trailing={
+        <div className='flex items-center gap-1'>
+          <Select value={mergeStrategy} onValueChange={onMergeChange}>
+            <SelectTrigger size='sm' className='h-6 min-w-[96px] text-xs'>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {MERGE_OPTIONS.map((o) => (
+                <SelectItem key={o.value} value={o.value}>
+                  {o.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <TreeRowButton tooltipText='Remove formula' onClick={onClear}>
+            <X />
+          </TreeRowButton>
+        </div>
+      }
     />
   )
 }

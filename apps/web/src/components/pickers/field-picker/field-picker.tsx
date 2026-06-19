@@ -27,6 +27,8 @@ export function FieldPicker({
   mode = 'single',
   closeOnSelect = mode === 'single',
   onCreateField,
+  onSkip,
+  skipLabel,
   searchPlaceholder,
 }: FieldPickerProps) {
   // Support both controlled and uncontrolled modes
@@ -74,6 +76,8 @@ export function FieldPicker({
           closeOnSelect={closeOnSelect}
           onClose={handleClose}
           onCreateField={onCreateField}
+          onSkip={onSkip}
+          skipLabel={skipLabel}
           searchPlaceholder={searchPlaceholder}
         />
       </PopoverContent>

@@ -8,7 +8,8 @@ import { type FieldReference, fieldRefToKey } from '@auxx/types/field'
 import { CommandNavigation } from '@auxx/ui/components/command'
 import { Field, FieldDescription, FieldLabel } from '@auxx/ui/components/field'
 import { EditorContent } from '@tiptap/react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useMemo } from 'react'
+import { InlinePickerPopover, useActivePicker } from '~/components/editor/inline-picker'
 import {
   type ExcludeFilter,
   FieldPickerInnerContent,
@@ -44,15 +45,15 @@ export function AiPromptEditor({
   currentFieldId,
   excludeFieldIds,
 }: AiPromptEditorProps) {
-  const editorContainerRef = useRef<HTMLDivElement>(null)
-  const pickerRef = useRef<HTMLDivElement>(null)
-  const [popoverPosition, setPopoverPosition] = useState<{ top: number; left: number } | null>(null)
-
-  const { editor, suggestionState, insertField, closeSuggestion } = useAiPrompt({
+  const { editor, insertField, closePicker } = useAiPrompt({
     initialPrompt: prompt,
     onChange,
     entityDefinitionId,
   })
+
+  // Drive the picker popover off the open `{` chip.
+  const activePicker = useActivePicker(editor)
+  const pickerOpen = !!activePicker && activePicker.trigger === '{'
 
   // Encode the picker's FieldReference (ResourceFieldId or FieldPath) as a
   // single string key via `fieldRefToKey`. The server's reference-resolver
@@ -76,64 +77,36 @@ export function AiPromptEditor({
     [entityDefinitionId, currentFieldId, excludeFieldIds]
   )
 
-  useEffect(() => {
-    if (suggestionState.isOpen && suggestionState.clientRect && editorContainerRef.current) {
-      const containerRect = editorContainerRef.current.getBoundingClientRect()
-      const cursorRect = suggestionState.clientRect
-      setPopoverPosition({
-        top: cursorRect.bottom - containerRect.top,
-        left: cursorRect.left - containerRect.left,
-      })
-    }
-  }, [suggestionState.isOpen, suggestionState.clientRect])
-
-  useEffect(() => {
-    if (!suggestionState.isOpen) return
-
-    const handleClickOutside = (event: MouseEvent) => {
-      if (pickerRef.current && !pickerRef.current.contains(event.target as Node)) {
-        closeSuggestion()
-      }
-    }
-    document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [suggestionState.isOpen, closeSuggestion])
-
   return (
     <Field>
       <FieldLabel>Prompt</FieldLabel>
-      <div ref={editorContainerRef} className='relative rounded-md border bg-background'>
+      <div className='relative rounded-md border bg-background'>
         <EditorContent editor={editor} className='min-h-[80px]' />
-
-        {suggestionState.isOpen && popoverPosition && (
-          <div
-            ref={pickerRef}
-            className='absolute z-50'
-            style={{ top: popoverPosition.top, left: popoverPosition.left }}>
-            <div
-              className='w-[320px] rounded-lg border bg-popover shadow-lg'
-              onMouseDown={(e) => e.preventDefault()}
-              onKeyDown={(e) => {
-                if (e.key === 'Escape') {
-                  e.stopPropagation()
-                  closeSuggestion()
-                }
-              }}>
-              <CommandNavigation<FieldPickerNavigationItem>>
-                <FieldPickerInnerContent
-                  entityDefinitionId={entityDefinitionId}
-                  excludeFields={excludeFilters}
-                  onSelect={handleSelectField}
-                  onClose={closeSuggestion}
-                  closeOnSelect
-                  showBreadcrumb={false}
-                  searchPlaceholder='Search fields...'
-                />
-              </CommandNavigation>
-            </div>
-          </div>
-        )}
       </div>
+
+      {editor && (
+        <InlinePickerPopover
+          state={{
+            isOpen: pickerOpen,
+            query: activePicker?.query ?? '',
+            range: null,
+            clientRect: activePicker?.clientRect ?? null,
+          }}
+          width={320}
+          onClose={closePicker}>
+          <CommandNavigation<FieldPickerNavigationItem>>
+            <FieldPickerInnerContent
+              entityDefinitionId={entityDefinitionId}
+              excludeFields={excludeFilters}
+              onSelect={handleSelectField}
+              onClose={closePicker}
+              closeOnSelect
+              showBreadcrumb={false}
+              searchPlaceholder='Search fields...'
+            />
+          </CommandNavigation>
+        </InlinePickerPopover>
+      )}
       <FieldDescription>
         Type <kbd className='rounded bg-muted px-1 text-xs'>{'{'}</kbd> to insert a field reference.
       </FieldDescription>
