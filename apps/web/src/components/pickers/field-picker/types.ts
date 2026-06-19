@@ -50,6 +50,16 @@ export interface FieldPickerContentProps {
   /** Optional: Show "Create field" button */
   onCreateField?: () => void
 
+  /**
+   * Optional: show a "skip / don't map" item at the top of the root list (e.g.
+   * to clear a binding from within the picker). Selecting it runs this callback
+   * and closes the picker per {@link closeOnSelect}.
+   */
+  onSkip?: () => void
+
+  /** Optional: label for the {@link onSkip} item (default "Skip"). */
+  skipLabel?: string
+
   /** Optional: Search placeholder */
   searchPlaceholder?: string
 

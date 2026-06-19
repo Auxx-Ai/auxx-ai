@@ -14,6 +14,7 @@ import { Tabs, TabsList, TabsTrigger } from '@auxx/ui/components/tabs'
 import { ChevronLeft, ChevronRight, Clock, Layers, Plug } from 'lucide-react'
 import { useQueryState } from 'nuqs'
 import { useCallback, useMemo } from 'react'
+import { useResourceFields } from '~/components/resources'
 import { useScrollSpy } from '~/hooks/use-scroll-spy'
 import { api } from '~/trpc/react'
 import { absolutePrefix, leafPathsUnder, useSourcePaths } from '../hooks/use-source-paths'
@@ -161,6 +162,10 @@ export function ConnectorDetailTabs({ connector, mobileRunsPanel }: ConnectorDet
     (fieldMapping?.fieldMappings as Record<string, { expression: string }> | undefined)?.[
       fieldKey ?? ''
     ]?.expression ?? ''
+  // Target fields the formula can write into — the same store the mapping tree
+  // reads. Called unconditionally (the hook tolerates a null def id) so it never
+  // trips rules-of-hooks when no field drill is open.
+  const { fields: targetFields } = useResourceFields(fieldMapping?.entityDefinitionId ?? null)
   // Optimistic field-mapping write against listStreams (shared with the tree).
   const { setFieldMappings } = useStreamMutations(connector.id)
 
@@ -249,13 +254,20 @@ export function ConnectorDetailTabs({ connector, mobileRunsPanel }: ConnectorDet
             value='field'
             className='h-full bg-neutral-100 dark:bg-background'
             bar={fieldBar}>
-            {fieldMapping && fieldKey ? (
+            {fieldMapping ? (
               <FieldCalcPanel
-                fieldLabel={fieldKey}
+                entityDefinitionId={fieldMapping.entityDefinitionId ?? null}
+                targetKey={fieldKey ?? ''}
+                targetLabel={targetFields.find((f) => f.key === fieldKey)?.label ?? ''}
+                // Fields already bound (leaf or formula) elsewhere — can't double-map.
+                // The current target stays selectable so editing keeps its own field.
+                excludeKeys={Object.keys(fieldMapping.fieldMappings ?? {}).filter(
+                  (k) => k !== fieldKey
+                )}
                 expression={fieldExpression}
                 // Scoped + relative to the mapping's subtree, matching the runtime.
                 sourcePaths={leafPathsUnder(sourcePaths, absolutePrefix(fieldMapping, mappingById))}
-                onSave={(expression, sourceFields) => {
+                onSave={(targetKey, expression, sourceFields) => {
                   const existing = (fieldMapping.fieldMappings ?? {}) as Record<
                     string,
                     { expression: string; sourceFields: Record<string, string> }
@@ -263,7 +275,7 @@ export function ConnectorDetailTabs({ connector, mobileRunsPanel }: ConnectorDet
                   if (selectedStreamId)
                     void setFieldMappings(selectedStreamId, fieldMapping.id, {
                       ...existing,
-                      [fieldKey]: { expression, sourceFields },
+                      [targetKey]: { expression, sourceFields },
                     })
                   void setField(null)
                 }}

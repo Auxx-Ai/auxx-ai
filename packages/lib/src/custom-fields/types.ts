@@ -45,6 +45,99 @@ export const FIELD_TYPE_GROUPS: Record<string, FieldType[]> = {
 }
 
 /**
+ * Source→target field-type compatibility for value mapping.
+ *
+ * Keyed by the **target** {@link FieldType} → the set of **source** field types
+ * whose values can be written into it (a target always accepts its own type —
+ * that's implicit in {@link isFieldTypeCompatible}, not repeated here). Blocks
+ * the impossible coercions: a boolean can't populate a DATE, an array (TAGS/
+ * MULTI_SELECT) can't populate a scalar TEXT, etc. Targets with an empty list
+ * (RELATIONSHIP, ACTOR, CALC) are never a write sink for another type's value.
+ *
+ * Used by connector mappings and any flow that binds a typed source value to a
+ * field. A raw JSON source type is first reduced to its representative field
+ * type (string→TEXT, number→NUMBER, boolean→CHECKBOX, array→TAGS, object→JSON)
+ * before checking against this map.
+ */
+export const FIELD_TYPE_COMPATIBILITY_MAP: Record<FieldType, FieldType[]> = {
+  // Text-like sinks accept most stringifiable scalars.
+  [FieldTypeEnum.TEXT]: [
+    FieldTypeEnum.NAME,
+    FieldTypeEnum.RICH_TEXT,
+    FieldTypeEnum.EMAIL,
+    FieldTypeEnum.URL,
+    FieldTypeEnum.PHONE_INTL,
+    FieldTypeEnum.NUMBER,
+    FieldTypeEnum.CURRENCY,
+    FieldTypeEnum.CHECKBOX,
+    FieldTypeEnum.SINGLE_SELECT,
+    FieldTypeEnum.DATE,
+    FieldTypeEnum.DATETIME,
+    FieldTypeEnum.TIME,
+  ],
+  [FieldTypeEnum.RICH_TEXT]: [FieldTypeEnum.TEXT, FieldTypeEnum.NAME],
+  [FieldTypeEnum.NAME]: [FieldTypeEnum.TEXT],
+  [FieldTypeEnum.EMAIL]: [FieldTypeEnum.TEXT],
+  [FieldTypeEnum.URL]: [FieldTypeEnum.TEXT],
+  [FieldTypeEnum.PHONE_INTL]: [FieldTypeEnum.TEXT],
+  // Numeric sinks.
+  [FieldTypeEnum.NUMBER]: [FieldTypeEnum.CURRENCY, FieldTypeEnum.TEXT],
+  [FieldTypeEnum.CURRENCY]: [FieldTypeEnum.NUMBER, FieldTypeEnum.TEXT],
+  // Boolean.
+  [FieldTypeEnum.CHECKBOX]: [FieldTypeEnum.TEXT],
+  // Selects.
+  [FieldTypeEnum.SINGLE_SELECT]: [FieldTypeEnum.TEXT, FieldTypeEnum.NUMBER, FieldTypeEnum.CHECKBOX],
+  [FieldTypeEnum.MULTI_SELECT]: [FieldTypeEnum.TAGS],
+  [FieldTypeEnum.TAGS]: [FieldTypeEnum.MULTI_SELECT, FieldTypeEnum.TEXT],
+  // Date/time (numbers accepted as epoch timestamps).
+  [FieldTypeEnum.DATE]: [FieldTypeEnum.DATETIME, FieldTypeEnum.TEXT, FieldTypeEnum.NUMBER],
+  [FieldTypeEnum.DATETIME]: [FieldTypeEnum.DATE, FieldTypeEnum.TEXT, FieldTypeEnum.NUMBER],
+  [FieldTypeEnum.TIME]: [FieldTypeEnum.TEXT],
+  // Complex.
+  [FieldTypeEnum.ADDRESS]: [FieldTypeEnum.ADDRESS_STRUCT, FieldTypeEnum.TEXT],
+  [FieldTypeEnum.ADDRESS_STRUCT]: [FieldTypeEnum.JSON],
+  [FieldTypeEnum.FILE]: [FieldTypeEnum.TEXT],
+  // JSON is an opaque sink — accepts any other type.
+  [FieldTypeEnum.JSON]: [
+    FieldTypeEnum.TEXT,
+    FieldTypeEnum.NAME,
+    FieldTypeEnum.RICH_TEXT,
+    FieldTypeEnum.EMAIL,
+    FieldTypeEnum.URL,
+    FieldTypeEnum.PHONE_INTL,
+    FieldTypeEnum.NUMBER,
+    FieldTypeEnum.CURRENCY,
+    FieldTypeEnum.CHECKBOX,
+    FieldTypeEnum.SINGLE_SELECT,
+    FieldTypeEnum.MULTI_SELECT,
+    FieldTypeEnum.TAGS,
+    FieldTypeEnum.DATE,
+    FieldTypeEnum.DATETIME,
+    FieldTypeEnum.TIME,
+    FieldTypeEnum.ADDRESS,
+    FieldTypeEnum.ADDRESS_STRUCT,
+    FieldTypeEnum.FILE,
+    FieldTypeEnum.RELATIONSHIP,
+    FieldTypeEnum.ACTOR,
+    FieldTypeEnum.CALC,
+  ],
+  // Never a sink for a different type's value.
+  [FieldTypeEnum.RELATIONSHIP]: [],
+  [FieldTypeEnum.ACTOR]: [],
+  [FieldTypeEnum.CALC]: [],
+}
+
+/**
+ * Can a `source` field type's value be written into a `target` field type? A
+ * target always accepts its own type; otherwise it must be listed in
+ * {@link FIELD_TYPE_COMPATIBILITY_MAP}.
+ */
+export function isFieldTypeCompatible(target: FieldType, source: FieldType): boolean {
+  if (target === source) return true
+  return FIELD_TYPE_COMPATIBILITY_MAP[target]?.includes(source) ?? false
+}
+
+/**
  * FieldTypeOption interface
  * Describes the metadata associated with each custom field type option
  */

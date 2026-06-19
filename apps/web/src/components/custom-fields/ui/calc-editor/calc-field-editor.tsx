@@ -3,7 +3,7 @@
 
 import { FieldType } from '@auxx/database/enums'
 import type { FieldType as FieldTypeType } from '@auxx/database/types'
-import { getFieldOutputKey, type ResourceField } from '@auxx/lib/resources/client'
+import type { ResourceField } from '@auxx/lib/resources/client'
 import type { FieldReference } from '@auxx/types/field'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
@@ -27,7 +27,8 @@ import { cn } from '@auxx/ui/lib/utils'
 import { getAvailableFunctions } from '@auxx/utils/calc-expression'
 import { EditorContent } from '@tiptap/react'
 import { AlertCircle, HelpCircle } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
+import { InlinePickerPopover, useActivePicker } from '~/components/editor/inline-picker'
 import {
   FieldPickerInnerContent,
   type FieldPickerNavigationItem,
@@ -37,7 +38,7 @@ import { useCalcFormula } from './use-calc-formula'
 /** Options for a CALC field stored in field.options.calc */
 export interface CalcEditorOptions {
   expression: string
-  sourceFields: Record<string, string> // Record<placeholderKey, ResourceFieldId>
+  sourceFields: Record<string, string> // Record<placeholderKey, FieldId>
   resultFieldType: FieldTypeType
   disabled?: boolean
   disabledReason?: string
@@ -70,8 +71,6 @@ export function CalcFieldEditor({
 }: CalcFieldEditorProps) {
   const [showFunctions, setShowFunctions] = useState(false)
   const functions = useMemo(() => getAvailableFunctions(), [])
-  const editorContainerRef = useRef<HTMLDivElement>(null)
-  const pickerRef = useRef<HTMLDivElement>(null)
 
   // Build a mapping from field key to field id for storage
   const fieldKeyToId = useMemo(() => {
@@ -83,36 +82,33 @@ export function CalcFieldEditor({
   }, [availableFields])
 
   // Use the calc formula hook
-  const {
-    editor,
-    validation,
-    sourceFields,
-    suggestionState,
-    insertField,
-    insertFunction,
-    closeSuggestion,
-  } = useCalcFormula({
-    initialExpression: options.expression,
-    onExpressionChange: (expression, extractedFields) => {
-      // Build sourceFields mapping from field keys to field IDs
-      const sourceFieldsMap: Record<string, string> = {}
-      for (const key of extractedFields) {
-        if (fieldKeyToId[key]) {
-          sourceFieldsMap[key] = `${entityDefinitionId}:${fieldKeyToId[key]}`
+  const { editor, validation, sourceFields, insertField, insertFunction, closePicker } =
+    useCalcFormula({
+      initialExpression: options.expression,
+      onExpressionChange: (expression, extractedFields) => {
+        // Build sourceFields mapping: placeholder key → bare field id (UUID).
+        // Both calc consumers — the client `calc-value-computer` dependency
+        // graph and the server `calc-resolver` (which wraps with
+        // `toResourceFieldId`) — expect the value to be a plain field id, NOT
+        // a `entityDef:fieldId` ResourceFieldId.
+        const sourceFieldsMap: Record<string, string> = {}
+        for (const key of extractedFields) {
+          if (fieldKeyToId[key]) {
+            sourceFieldsMap[key] = fieldKeyToId[key]
+          }
         }
-      }
 
-      onChange({
-        ...options,
-        expression,
-        sourceFields: sourceFieldsMap,
-      })
-    },
-    entityDefinitionId,
-    currentFieldId,
-    availableFields: availableFields.map((f) => ({ key: f.key, label: f.label, type: f.type })),
-    placeholder: 'Type { to insert a field, e.g., concat({firstName}, " ", {lastName})',
-  })
+        onChange({
+          ...options,
+          expression,
+          sourceFields: sourceFieldsMap,
+        })
+      },
+      entityDefinitionId,
+      currentFieldId,
+      availableFields: availableFields.map((f) => ({ key: f.key, label: f.label, type: f.type })),
+      placeholder: 'Type { to insert a field, e.g., concat({firstName}, " ", {lastName})',
+    })
 
   /** Insert function at cursor */
   const handleInsertFunction = (funcName: string) => {
@@ -125,7 +121,11 @@ export function CalcFieldEditor({
   /** Handle selecting a field from the picker */
   const handleSelectField = useCallback(
     (_fieldReference: FieldReference, field: ResourceField) => {
-      insertField(getFieldOutputKey(field))
+      // Insert the field's `key` (e.g. `lastName`) — the token the FieldBadge
+      // pill resolves (fieldMap aliases `<entity>:<key>`) and what
+      // `availableFields` / `fieldKeyToId` are keyed by. The output key
+      // (`systemAttribute`, e.g. `last_name`) is NOT fieldMap-resolvable.
+      insertField(field.key || field.id)
     },
     [insertField]
   )
@@ -183,33 +183,10 @@ export function CalcFieldEditor({
     [functions, handleSelectFunction]
   )
 
-  // Calculate popover position relative to editor container
-  const [popoverPosition, setPopoverPosition] = useState<{ top: number; left: number } | null>(null)
-
-  useEffect(() => {
-    if (suggestionState.isOpen && suggestionState.clientRect && editorContainerRef.current) {
-      const containerRect = editorContainerRef.current.getBoundingClientRect()
-      const cursorRect = suggestionState.clientRect
-      setPopoverPosition({
-        top: cursorRect.bottom - containerRect.top,
-        left: cursorRect.left - containerRect.left,
-      })
-    }
-  }, [suggestionState.isOpen, suggestionState.clientRect])
-
-  // Close picker when clicking outside
-  useEffect(() => {
-    if (!suggestionState.isOpen) return
-
-    const handleClickOutside = (event: MouseEvent) => {
-      if (pickerRef.current && !pickerRef.current.contains(event.target as Node)) {
-        closeSuggestion()
-      }
-    }
-
-    document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [suggestionState.isOpen, closeSuggestion])
+  // Drive the picker popover off the open `{` chip (positioning, query,
+  // outside-click + Escape are all owned by InlinePickerPopover).
+  const activePicker = useActivePicker(editor)
+  const pickerOpen = !!activePicker && activePicker.trigger === '{'
 
   return (
     <FieldGroup className='space-y-4'>
@@ -249,7 +226,6 @@ export function CalcFieldEditor({
 
         {/* TipTap Editor with Field Picker Popover */}
         <div
-          ref={editorContainerRef}
           className={cn(
             'relative border rounded-md bg-background',
             !validation.isValid &&
@@ -258,41 +234,33 @@ export function CalcFieldEditor({
               'border-destructive'
           )}>
           <EditorContent editor={editor} className='min-h-[80px]' />
-
-          {/* Field Picker - positioned at cursor */}
-          {suggestionState.isOpen && popoverPosition && (
-            <div
-              ref={pickerRef}
-              className='absolute z-50'
-              style={{
-                top: popoverPosition.top,
-                left: popoverPosition.left,
-              }}>
-              <div
-                className='rounded-lg border bg-popover shadow-lg w-[320px]'
-                onMouseDown={(e) => e.preventDefault()}
-                onKeyDown={(e) => {
-                  if (e.key === 'Escape') {
-                    e.stopPropagation()
-                    closeSuggestion()
-                  }
-                }}>
-                <CommandNavigation<FieldPickerNavigationItem>>
-                  <FieldPickerInnerContent
-                    entityDefinitionId={entityDefinitionId}
-                    excludeFields={excludeFilters}
-                    onSelect={handleSelectField}
-                    onClose={closeSuggestion}
-                    closeOnSelect
-                    showBreadcrumb={false}
-                    searchPlaceholder='Search fields or functions...'
-                    renderAdditionalContent={renderFunctionsInPicker}
-                  />
-                </CommandNavigation>
-              </div>
-            </div>
-          )}
         </div>
+
+        {/* Field + function picker, anchored at the open `{` chip */}
+        {editor && (
+          <InlinePickerPopover
+            state={{
+              isOpen: pickerOpen,
+              query: activePicker?.query ?? '',
+              range: null,
+              clientRect: activePicker?.clientRect ?? null,
+            }}
+            width={320}
+            onClose={closePicker}>
+            <CommandNavigation<FieldPickerNavigationItem>>
+              <FieldPickerInnerContent
+                entityDefinitionId={entityDefinitionId}
+                excludeFields={excludeFilters}
+                onSelect={handleSelectField}
+                onClose={closePicker}
+                closeOnSelect
+                showBreadcrumb={false}
+                searchPlaceholder='Search fields or functions...'
+                renderAdditionalContent={renderFunctionsInPicker}
+              />
+            </CommandNavigation>
+          </InlinePickerPopover>
+        )}
 
         {/* Validation Error - only show for actual syntax errors, not empty state */}
         {!validation.isValid &&

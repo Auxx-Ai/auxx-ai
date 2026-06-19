@@ -1,31 +1,43 @@
 // apps/web/src/components/data-connectors/ui/field-calc-panel.tsx
 'use client'
 
+import { FieldType } from '@auxx/database/enums'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { Field, FieldDescription, FieldLabel } from '@auxx/ui/components/field'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { getAvailableFunctions, validateCalcExpression } from '@auxx/utils/calc-expression'
-import { AlertCircle, FunctionSquare } from 'lucide-react'
+import { AlertCircle, ChevronDown, FunctionSquare } from 'lucide-react'
 import { useMemo, useRef, useState } from 'react'
+import { FieldPicker } from '~/components/pickers/field-picker'
 import type { SourcePath } from '../hooks/use-source-paths'
+import { isSourceTargetCompatible } from './field-type-compat'
 
 interface FieldCalcPanelProps {
-  /** The target field label this expression produces. */
-  fieldLabel: string
+  /** The mapping's def — the source of selectable target fields. Null only if unset. */
+  entityDefinitionId: string | null
+  /** The target field this expression writes into (`''` while creating). */
+  targetKey: string
+  /** Resolved label for the current target field (for the trigger chip). */
+  targetLabel: string
+  /** Target field keys already bound elsewhere (leaf or formula) — excluded from the picker. */
+  excludeKeys: string[]
   /** Current calc expression (over source tokens, e.g. `concat({a}," ",{b})`). */
   expression: string
   /** Source schema paths offered as `{token}` inserts. */
   sourcePaths: SourcePath[]
-  /** Persist the expression + the source fields it references. */
-  onSave: (expression: string, sourceFields: Record<string, string>) => void
+  /** Persist the chosen target field + expression + the source fields it references. */
+  onSave: (targetKey: string, expression: string, sourceFields: Record<string, string>) => void
 }
 
 /**
- * The lone mapping drill — the calc expression editor (05 §4). A value row's `ƒ`
- * promotes here. The token picker lists SOURCE-schema paths (not target fields),
- * the function set comes from `@auxx/utils/calc-expression`, and output is the
- * target field. Stored uniformly as `{ expression, sourceFields }`.
+ * The lone mapping drill — the calc expression editor (05 §4). A formula row (or
+ * the "+ Add formula" row) opens this. The canonical {@link FieldPicker} picks
+ * which target field the expression writes into (so the panel handles both
+ * create and retarget), excluding fields already bound by another leaf/formula;
+ * the token picker lists SOURCE-schema paths (not target fields), the function
+ * set comes from `@auxx/utils/calc-expression`, and output is the target field.
+ * Stored uniformly as `{ expression, sourceFields }` keyed by the target field.
  *
  * Implementation note: this uses a plain textarea + insert buttons (not the
  * entity-coupled TipTap `CalcFieldEditor`/`FieldBadge`, which resolves tokens
@@ -33,14 +45,21 @@ interface FieldCalcPanelProps {
  * field-picker coupling while reusing the shared calc function set + validator.
  */
 export function FieldCalcPanel({
-  fieldLabel,
+  entityDefinitionId,
+  targetKey,
+  targetLabel,
+  excludeKeys,
   expression,
   sourcePaths,
   onSave,
 }: FieldCalcPanelProps) {
   const [value, setValue] = useState(expression)
+  const [target, setTarget] = useState(targetKey)
+  const [targetChip, setTargetChip] = useState(targetLabel)
+  const [pickerOpen, setPickerOpen] = useState(false)
   const taRef = useRef<HTMLTextAreaElement>(null)
   const functions = useMemo(() => getAvailableFunctions(), [])
+  const excludeSet = useMemo(() => new Set(excludeKeys), [excludeKeys])
 
   const validation = useMemo(() => {
     if (!value.trim()) return { isValid: true, extractedFields: [] as string[], error: undefined }
@@ -63,17 +82,49 @@ export function FieldCalcPanel({
     })
   }
 
+  const canSave = !!target && validation.isValid && !!value.trim()
   const handleSave = () => {
+    if (!canSave) return
     const fields: Record<string, string> = {}
     for (const path of validation.extractedFields) fields[path] = path
-    onSave(value, fields)
+    onSave(target, value, fields)
   }
 
   return (
     <ScrollArea className='h-full' scrollbarClassName='w-1.5'>
       <div className='flex flex-col gap-5 p-4'>
         <Field>
-          <FieldLabel>Expression for “{fieldLabel}”</FieldLabel>
+          <FieldLabel>Writes into</FieldLabel>
+          <FieldPicker
+            open={pickerOpen}
+            onOpenChange={setPickerOpen}
+            entityDefinitionId={entityDefinitionId}
+            excludeFields={[FieldType.RELATIONSHIP]}
+            // A formula yields a scalar (string/number) — exclude already-bound
+            // targets and any field type a computed value can't populate.
+            filterField={(f) =>
+              !excludeSet.has(f.key) && isSourceTargetCompatible(f.fieldType, 'string')
+            }
+            mode='single'
+            searchPlaceholder='Search fields…'
+            onSelect={(_ref, field) => {
+              setTarget(field.key)
+              setTargetChip(field.label)
+            }}
+            trigger={
+              <Button
+                variant='outline'
+                size='sm'
+                className={`justify-between ${target ? '' : 'text-muted-foreground'}`}>
+                <span className='truncate'>{target ? targetChip : 'Pick a target field…'}</span>
+                <ChevronDown className='size-4 opacity-50' />
+              </Button>
+            }
+          />
+        </Field>
+
+        <Field>
+          <FieldLabel>Expression</FieldLabel>
           <textarea
             ref={taRef}
             value={value}
@@ -143,7 +194,7 @@ export function FieldCalcPanel({
           </div>
         )}
 
-        <Button className='self-start' onClick={handleSave}>
+        <Button className='self-start' disabled={!canSave} onClick={handleSave}>
           Save expression
         </Button>
       </div>

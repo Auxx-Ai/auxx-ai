@@ -6,11 +6,11 @@ import { extractFieldIdsFromPrompt, type RichReferencePrompt } from '@auxx/types
 import Placeholder from '@tiptap/extension-placeholder'
 import { type Editor, useEditor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
 import {
   createInlineNode,
-  createInlinePickerExtension,
-  type InlinePickerState,
+  getOpenPickerRange,
+  ReferencePickerNode,
 } from '~/components/editor/inline-picker'
 import { FieldBadge } from '~/components/resources/ui'
 
@@ -34,17 +34,14 @@ export interface UseAiPromptOptions {
   placeholder?: string
 }
 
-const closedSuggestionState: InlinePickerState = {
-  isOpen: false,
-  query: '',
-  range: null,
-  clientRect: null,
-}
-
 /**
  * TipTap hook for the AI prompt editor. Mirrors `useCalcFormula` but drops
  * the calc-expression validation and function-picker affordances: an AI
  * prompt is free text with inline `{fieldId}` references, nothing more.
+ *
+ * The `{`-triggered field picker rides on the shared `ReferencePickerNode`
+ * chip; the consumer mounts the popover via `useActivePicker` +
+ * `InlinePickerPopover` and commits selections through `insertField`.
  */
 export function useAiPrompt({
   initialPrompt,
@@ -52,33 +49,13 @@ export function useAiPrompt({
   entityDefinitionId,
   placeholder = 'Type { to insert a field, e.g., "Write a one-line intro for {fullName} who works at {company}."',
 }: UseAiPromptOptions) {
-  const [suggestionState, setSuggestionState] = useState<InlinePickerState>(closedSuggestionState)
   const onChangeRef = useRef(onChange)
-  const suggestionRangeRef = useRef<{ from: number; to: number } | null>(null)
 
   useEffect(() => {
     onChangeRef.current = onChange
   }, [onChange])
 
-  useEffect(() => {
-    suggestionRangeRef.current = suggestionState.range
-  }, [suggestionState.range])
-
   const initialContent = useMemo(() => initialPrompt ?? emptyPromptDoc(), [initialPrompt])
-
-  const handleSuggestionStateChange = useCallback((state: InlinePickerState) => {
-    setSuggestionState(state)
-  }, [])
-
-  const pickerExtension = useMemo(
-    () =>
-      createInlinePickerExtension({
-        type: 'field',
-        trigger: '{',
-        onStateChange: handleSuggestionStateChange,
-      }),
-    [handleSuggestionStateChange]
-  )
 
   const fieldNode = useMemo(
     () =>
@@ -112,11 +89,18 @@ export function useAiPrompt({
           horizontalRule: false,
         }),
         fieldNode,
-        pickerExtension,
+        // `{` fires mid-word (allowedPrefixes: null) — authors write prose like
+        // "intro for {fullName}" where the `{` follows non-space text.
+        ReferencePickerNode.configure({
+          triggers: [{ char: '{', kind: 'command', allowedPrefixes: null }],
+        }),
         Placeholder.configure({ placeholder, showOnlyWhenEditable: true }),
       ],
       content: initialContent,
       onUpdate: ({ editor }: { editor: Editor }) => {
+        // Skip while the `{` picker chip is open — the transient chip must
+        // never be persisted into the saved prompt doc.
+        if (getOpenPickerRange(editor.state)) return
         const json = editor.getJSON() as RichReferencePrompt
         const referencedFieldIds = extractFieldIdsFromPrompt(json)
         onChangeRef.current?.(json, referencedFieldIds)
@@ -129,44 +113,35 @@ export function useAiPrompt({
       immediatelyRender: false,
       shouldRerenderOnTransaction: false,
     }),
-    [initialContent, fieldNode, pickerExtension, placeholder]
+    [initialContent, fieldNode, placeholder]
   )
 
   const editor = useEditor(editorConfig)
 
+  /** Insert a field badge node, replacing the open `{` picker chip. */
   const insertField = useCallback(
     (fieldId: string) => {
-      if (!editor || !suggestionRangeRef.current) return
-
-      const range = suggestionRangeRef.current
-      suggestionRangeRef.current = null
-
+      if (!editor) return
+      const range = getOpenPickerRange(editor.state)
+      if (!range) return
       editor
         .chain()
         .focus()
-        .deleteRange({ from: range.from, to: range.to })
+        .deleteRange(range)
         .insertContent({ type: 'field', attrs: { id: fieldId } })
         .run()
-
-      setSuggestionState(closedSuggestionState)
     },
     [editor]
   )
 
-  const closeSuggestion = useCallback(() => {
-    if (editor && suggestionRangeRef.current) {
-      const range = suggestionRangeRef.current
-      suggestionRangeRef.current = null
-      editor.chain().focus().deleteRange({ from: range.from, to: range.to }).run()
-    }
-    setSuggestionState(closedSuggestionState)
-    editor?.commands.focus()
+  /** Close the picker, removing the transient `{` trigger. */
+  const closePicker = useCallback(() => {
+    editor?.commands.closeReferencePicker({ keepText: false })
   }, [editor])
 
   return {
     editor,
-    suggestionState,
     insertField,
-    closeSuggestion,
+    closePicker,
   }
 }

@@ -22,7 +22,7 @@ import {
   useCommandNavigation,
 } from '@auxx/ui/components/command'
 import { EntityIcon } from '@auxx/ui/components/icons'
-import { Plus } from 'lucide-react'
+import { Ban, Plus } from 'lucide-react'
 import { useCallback, useMemo, useState } from 'react'
 import { useResourceFields, useResourceProperty } from '~/components/resources'
 import { FieldItem } from './field-item'
@@ -78,6 +78,8 @@ export function FieldPickerInnerContent({
   closeOnSelect = mode === 'single',
   onClose,
   onCreateField,
+  onSkip,
+  skipLabel = 'Skip',
   searchPlaceholder = 'Search fields...',
   onBackFromRoot,
   externalNavigation,
@@ -294,6 +296,24 @@ export function FieldPickerInnerContent({
 
         {/* Header content (e.g. anchor self rows for the binding picker) */}
         {renderHeaderContent?.(search)}
+
+        {/* Skip / don't-map option (root only) */}
+        {onSkip && isAtRoot && (
+          <>
+            <CommandGroup>
+              <CommandItem
+                onSelect={() => {
+                  onSkip()
+                  if (closeOnSelect && onClose) onClose()
+                }}
+                className='text-muted-foreground'>
+                <Ban className='size-4' />
+                <span>{skipLabel}</span>
+              </CommandItem>
+            </CommandGroup>
+            <CommandSeparator />
+          </>
+        )}
 
         {/* When drilled into a relationship, show entity selector first */}
         {!isAtRoot && current && entityProps && (

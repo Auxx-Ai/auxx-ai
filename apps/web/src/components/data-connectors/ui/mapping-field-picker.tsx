@@ -3,7 +3,6 @@
 
 import { FieldType } from '@auxx/database/enums'
 import type { FieldType as FieldTypeType } from '@auxx/database/types'
-import type { ResourceField } from '@auxx/lib/resources/client'
 import { Button } from '@auxx/ui/components/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import {
@@ -18,21 +17,7 @@ import { useState } from 'react'
 import { useCustomFieldMutations } from '~/components/custom-fields/hooks/use-custom-field-mutations'
 import { FieldPicker } from '~/components/pickers/field-picker'
 import { lastSegment } from '../hooks/use-source-paths'
-
-/** Target field types that hold many values — the only valid sink for an array-of-scalars source. */
-const MULTI_VALUE_FIELD_TYPES = new Set<FieldTypeType>([FieldType.TAGS, FieldType.MULTI_SELECT])
-
-/**
- * Permissive source→target type gate (plan §8.2). Block only the impossible
- * bindings: an array-of-scalars source needs a multi-value target; everything
- * else (scalar → any) is allowed and tightened later if real schemas need it.
- */
-function isTypeCompatible(field: ResourceField, sourceType: string): boolean {
-  if (sourceType === 'array') {
-    return field.fieldType ? MULTI_VALUE_FIELD_TYPES.has(field.fieldType) : false
-  }
-  return true
-}
+import { isSourceTargetCompatible } from './field-type-compat'
 
 /** Field types offered by the lightweight quick-create, seeded from the source type. */
 const QUICK_CREATE_TYPES: Array<{ value: FieldTypeType; label: string }> = [
@@ -80,6 +65,8 @@ interface MappingFieldPickerProps {
   canCreate: boolean
   /** Bind this source node to the chosen target field key. */
   onAssign: (fieldKey: string) => void
+  /** Unbind this source node — surfaced as the in-picker "Don't map" option. */
+  onClear: () => void
 }
 
 /**
@@ -96,6 +83,7 @@ export function MappingFieldPicker({
   assignedLabel,
   canCreate,
   onAssign,
+  onClear,
 }: MappingFieldPickerProps) {
   const [pickerOpen, setPickerOpen] = useState(false)
   const [creating, setCreating] = useState(false)
@@ -124,10 +112,14 @@ export function MappingFieldPicker({
         onOpenChange={setPickerOpen}
         entityDefinitionId={entityDefinitionId}
         excludeFields={[FieldType.RELATIONSHIP]}
-        filterField={(f) => isTypeCompatible(f, sourceType)}
+        filterField={(f) => isSourceTargetCompatible(f.fieldType, sourceType)}
         mode='single'
         searchPlaceholder='Search fields…'
         onSelect={(_ref, field) => onAssign(field.key)}
+        // Skip = unbind. Only offered once a field is bound (an unbound source
+        // node is already "not mapped").
+        onSkip={assignedKey ? onClear : undefined}
+        skipLabel="Don't map this field"
         onCreateField={
           canCreate
             ? () => {

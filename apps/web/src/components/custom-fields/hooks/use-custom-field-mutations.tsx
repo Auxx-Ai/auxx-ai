@@ -1,7 +1,10 @@
 // apps/web/src/components/custom-fields/hooks/use-custom-field-mutations.tsx
 
 import type { FieldType, FieldType as FieldTypeEnum } from '@auxx/database/types'
-import { PRIMARY_DISPLAY_ELIGIBLE_TYPES } from '@auxx/lib/custom-fields/client'
+import {
+  getEffectiveFieldType,
+  PRIMARY_DISPLAY_ELIGIBLE_TYPES,
+} from '@auxx/lib/custom-fields/client'
 import type { FieldCapabilities, ResourceField } from '@auxx/lib/resources/client'
 import { mapFieldTypeToBaseType } from '@auxx/lib/workflow-engine/client'
 import {
@@ -60,8 +63,13 @@ export function useCustomFieldMutations({ entityDefinitionId }: UseCustomFieldMu
       const tempId = `temp_${Date.now()}`
       const tempKey = toResourceFieldId(effectiveEntityDefId, toFieldId(tempId))
 
-      // Determine base type from field type
-      const baseType = mapFieldTypeToBaseType(variables.type)
+      // Determine base type from field type. For CALC the workflow base type
+      // follows the result type (CALC itself isn't modeled by
+      // mapFieldTypeToBaseType); getEffectiveFieldType returns resultFieldType
+      // for CALC and the field type itself for everything else.
+      const baseType = mapFieldTypeToBaseType(
+        getEffectiveFieldType({ fieldType: variables.type, options: variables.options })
+      )
 
       // Build capabilities (defaults for custom fields)
       const capabilities: FieldCapabilities = {
@@ -135,8 +143,11 @@ export function useCustomFieldMutations({ entityDefinitionId }: UseCustomFieldMu
       // Build the server field's key
       const serverKey = toResourceFieldId(effectiveEntityDefId, toFieldId(result.id))
 
-      // Determine base type from field type
-      const baseType = mapFieldTypeToBaseType(result.type)
+      // Determine base type from field type — CALC follows its result type
+      // (see the create-onMutate note above).
+      const baseType = mapFieldTypeToBaseType(
+        getEffectiveFieldType({ fieldType: result.type, options: result.options })
+      )
 
       // Build capabilities from server response
       const capabilities: FieldCapabilities = {
