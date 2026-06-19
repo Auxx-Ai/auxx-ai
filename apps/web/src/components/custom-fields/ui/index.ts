@@ -6,6 +6,7 @@ export {
   parseAddressComponents,
 } from './address-component-editor'
 export { CustomFieldDialog } from './custom-field-dialog'
+export { CustomFieldForm, type CustomFieldFormProps } from './custom-field-form'
 export { CustomFieldsList } from './custom-fields-list'
 export { EntityDefinitionDialog } from './entity-definition-dialog'
 export { EntityInstanceDialog } from './entity-instance-dialog'

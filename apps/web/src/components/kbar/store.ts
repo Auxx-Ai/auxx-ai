@@ -24,6 +24,8 @@ interface CommandPaletteState {
   searchActive: PaletteSelectedRecord | null
   /** Entity definition id for the embedded `create` page. */
   createEntityId: string | null
+  /** Entity definition id for the embedded `create-field` page. */
+  createFieldEntityId: string | null
   /** Optional folder pre-selection for the embedded `create-snippet` page. */
   createSnippetFolderId: string | null
   /** Optional record to pre-link on the embedded `create-task` page. */
@@ -37,6 +39,7 @@ interface CommandPaletteState {
   openRecordActions: (record: PaletteSelectedRecord) => void
   setSearchActive: (record: PaletteSelectedRecord | null) => void
   openCreate: (entityDefinitionId: string) => void
+  openCreateField: (entityDefinitionId: string) => void
   openCreateSnippet: (folderId?: string) => void
   openCreateSignature: () => void
   openCreateTask: (ref?: RecordId) => void
@@ -59,6 +62,7 @@ const BACK_TARGET: Record<PalettePage, PalettePage> = {
   'search-threads': 'root',
   'record-actions': 'search',
   create: 'root',
+  'create-field': 'root',
   'create-snippet': 'root',
   'create-signature': 'root',
   'create-task': 'root',
@@ -82,11 +86,18 @@ export const useCommandPaletteStore = create<CommandPaletteState>((set, get) => 
   selectedRecord: null,
   searchActive: null,
   createEntityId: null,
+  createFieldEntityId: null,
   createSnippetFolderId: null,
   createTaskRef: null,
 
   openPalette: () => set({ open: true, page: 'root' }),
-  close: () => set({ open: false, createSnippetFolderId: null, createTaskRef: null }),
+  close: () =>
+    set({
+      open: false,
+      createFieldEntityId: null,
+      createSnippetFolderId: null,
+      createTaskRef: null,
+    }),
   toggle: () => (get().open ? set({ open: false }) : set({ open: true, page: 'root' })),
   goTo: (page) => set({ page }),
   back: () => set({ page: BACK_TARGET[get().page] }),
@@ -94,6 +105,8 @@ export const useCommandPaletteStore = create<CommandPaletteState>((set, get) => 
   setSearchActive: (record) => set({ searchActive: record }),
   openCreate: (entityDefinitionId) =>
     set({ open: true, createEntityId: entityDefinitionId, page: 'create' }),
+  openCreateField: (entityDefinitionId) =>
+    set({ open: true, createFieldEntityId: entityDefinitionId, page: 'create-field' }),
   openCreateSnippet: (folderId) =>
     set({ open: true, createSnippetFolderId: folderId ?? null, page: 'create-snippet' }),
   openCreateSignature: () => set({ open: true, page: 'create-signature' }),
