@@ -81,61 +81,65 @@ export function SourceLeafRow({
           <span className='text-[10px] uppercase text-muted-foreground/60'>{node.type}</span>
         </span>
       }
-      // The target picker reads inline right after the source field name.
+      // The target picker reads inline right after the source field name,
+      // followed by the match toggle + merge picker once the leaf is bound.
       secondary={
-        <MappingFieldPicker
-          entityDefinitionId={entityDefinitionId}
-          sourceType={node.type}
-          sourcePath={node.path}
-          assignedKey={assignedTargetKey}
-          assignedLabel={assignedLabel}
-          canCreate={canCreate}
-          onAssign={onAssign}
-          onClear={onClear}
-        />
-      }
-      trailing={
-        isMapped ? (
-          <div className='flex shrink-0 items-center gap-1'>
-            {/* Secondary identity-match toggle: subtle text → filled blue badge. */}
-            <button
-              type='button'
-              onClick={onToggleMatch}
-              className='inline-flex shrink-0 items-center'
-              title={
-                isMatch
-                  ? 'Used as a secondary identity match. Click to stop matching on this field.'
-                  : 'Also match existing records by this field (external id stays the primary key).'
-              }>
-              {isMatch ? (
-                <Badge variant='blue' size='xs'>
-                  Match
-                </Badge>
-              ) : (
-                <span className='px-1 text-[10px] font-medium text-primary-400 hover:text-primary-600'>
-                  Match
-                </span>
+        <span className='flex items-center gap-1'>
+          <MappingFieldPicker
+            entityDefinitionId={entityDefinitionId}
+            sourceType={node.type}
+            sourcePath={node.path}
+            assignedKey={assignedTargetKey}
+            assignedLabel={assignedLabel}
+            canCreate={canCreate}
+            onAssign={onAssign}
+            onClear={onClear}
+          />
+          {isMapped && (
+            <>
+              {/* Secondary identity-match toggle: subtle text → filled blue badge. */}
+              <button
+                type='button'
+                onClick={onToggleMatch}
+                className='inline-flex shrink-0 items-center'
+                title={
+                  isMatch
+                    ? 'Used as a secondary identity match. Click to stop matching on this field.'
+                    : 'Also match existing records by this field (external id stays the primary key).'
+                }>
+                {isMatch ? (
+                  <Badge variant='blue' size='xs'>
+                    Match
+                  </Badge>
+                ) : (
+                  <span className='px-1 text-[10px] font-medium text-primary-400 hover:text-primary-600'>
+                    Match
+                  </span>
+                )}
+              </button>
+              {/* Merge strategy only matters when the def is shared. An owned
+                  mapping (canCreate) is the sole writer, so every field is an
+                  implicit overwrite — no picker. Contributing mappings choose. */}
+              {!canCreate && (
+                <Select value={mergeStrategy} onValueChange={onMergeChange}>
+                  <SelectTrigger
+                    variant='transparent'
+                    size='sm'
+                    className='h-6 min-w-[96px] text-xs'>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {MERGE_OPTIONS.map((o) => (
+                      <SelectItem key={o.value} value={o.value}>
+                        {o.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               )}
-            </button>
-            {/* Merge strategy only matters when the def is shared. An owned
-                mapping (canCreate) is the sole writer, so every field is an
-                implicit overwrite — no picker. Contributing mappings choose. */}
-            {!canCreate && (
-              <Select value={mergeStrategy} onValueChange={onMergeChange}>
-                <SelectTrigger variant='transparent' size='sm' className='h-6 min-w-[96px] text-xs'>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {MERGE_OPTIONS.map((o) => (
-                    <SelectItem key={o.value} value={o.value}>
-                      {o.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
-          </div>
-        ) : undefined
+            </>
+          )}
+        </span>
       }
     />
   )

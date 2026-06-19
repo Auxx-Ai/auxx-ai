@@ -286,7 +286,7 @@ export function MappingNode({
           </span>
         </span>
       }
-      trailing={
+      secondary={
         <div className='flex items-center gap-1'>
           <TreeRowButton
             variant={targetMode}

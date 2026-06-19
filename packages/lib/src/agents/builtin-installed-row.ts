@@ -122,6 +122,7 @@ export function getBuiltinAuxxInstalledRow(): CachedInstalledApp {
     installedAt: '1970-01-01T00:00:00.000Z',
     app: BUILTIN_APP,
     currentDeployment: null,
+    methods: [],
     connectionDefinitions: {},
     agentToolsets: [...BUILTIN_TOOLSETS],
     agentTools: buildBuiltinAgentTools(),

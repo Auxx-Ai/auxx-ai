@@ -2,7 +2,18 @@
 // Drizzle table: Credential — unified credential store
 
 import { createId } from '@paralleldrive/cuid2'
-import { type AnyPgColumn, index, integer, jsonb, pgTable, text, timestamp } from './_shared'
+import {
+  type AnyPgColumn,
+  boolean,
+  index,
+  integer,
+  jsonb,
+  pgTable,
+  sql,
+  text,
+  timestamp,
+  uniqueIndex,
+} from './_shared'
 import { App } from './app'
 import { AppInstallation } from './app-installation'
 import { ConnectionDefinition } from './connection-definition'
@@ -64,6 +75,12 @@ export const Credential = pgTable(
       onDelete: 'set null',
     }),
 
+    // The org-scoped app connection that record actions (and other unbound,
+    // org-global resolvers) use when an app has more than one connection — by
+    // method OR by account. Agents/workflows bind a specific credId and ignore
+    // this. At most one primary per (org, app) among org-scoped app rows (index below).
+    isDefault: boolean().default(false).notNull(),
+
     name: text().notNull(),
     label: text(), // User-facing label for connection picker (e.g. "Telegram Bot", "Telegram Bot (2)")
 
@@ -113,6 +130,13 @@ export const Credential = pgTable(
       'btree',
       table.connectionDefinitionId.asc().nullsLast()
     ),
+    // At most one primary org-scoped app connection per (org, app). Partial +
+    // userId-IS-NULL-scoped: the record-action path resolves org-scope only, and
+    // Postgres treats NULL-userId rows as distinct, so a plain composite unique
+    // would not enforce a single primary.
+    uniqueIndex('Credential_app_org_default_idx')
+      .on(table.organizationId, table.appId)
+      .where(sql`"isDefault" = true AND "userId" IS NULL AND "kind" = 'app'`),
     // OAuth2 refresh indexes
     index('Credential_expiresAt_idx').using('btree', table.expiresAt.asc().nullsLast()),
     index('Credential_lastRefreshAt_idx').using('btree', table.lastRefreshAt.asc().nullsLast()),

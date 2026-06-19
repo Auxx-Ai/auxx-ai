@@ -1541,6 +1541,13 @@
       "when": 1781844449490,
       "tag": "0219_data_connector_template_id",
       "breakpoints": true
+    },
+    {
+      "idx": 220,
+      "version": "7",
+      "when": 1781851732646,
+      "tag": "0220_connection_method_key_and_default",
+      "breakpoints": true
     }
   ]
 }

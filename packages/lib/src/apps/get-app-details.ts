@@ -3,7 +3,9 @@
 import type { Database } from '@auxx/database'
 import {
   type ConnectionDefinitionSummary,
+  type ConnectionMethod,
   getAppConnectionDefinition,
+  listAppConnectionDefinitions,
 } from '@auxx/services/app-connections'
 import { getCachedAppBySlug } from '../cache/app-cache-helpers'
 
@@ -51,6 +53,9 @@ export interface AppWithStatusOutput {
     installationType?: 'development' | 'production'
     installedAt?: Date
     currentDeploymentId?: string
+    // Every connection method the app exposes — the connect picker appears when length > 1.
+    methods: ConnectionMethod[]
+    // Derived two-slot view (first method per scope) kept for presence/scope consumers.
     connectionDefinitions: {
       user?: ConnectionDefinitionSummary
       organization?: ConnectionDefinitionSummary
@@ -135,17 +140,20 @@ export async function getAppWithInstallationStatus(
     columns: { title: true, logoUrl: true },
   })
 
-  // Fetch connection definitions (both scopes) if app is installed
+  // Fetch connection methods (+ derived two-slot view) if app is installed
   const connectionDefinitions: AppWithStatusOutput['installation']['connectionDefinitions'] = {}
+  let methods: ConnectionMethod[] = []
   if (installation) {
-    const [userConnDef, orgConnDef] = await Promise.all([
+    const [userConnDef, orgConnDef, methodsResult] = await Promise.all([
       getAppConnectionDefinition(cachedApp.id, false),
       getAppConnectionDefinition(cachedApp.id, true),
+      listAppConnectionDefinitions(cachedApp.id),
     ])
     if (userConnDef.isOk() && userConnDef.value) connectionDefinitions.user = userConnDef.value
     if (orgConnDef.isOk() && orgConnDef.value) {
       connectionDefinitions.organization = orgConnDef.value
     }
+    if (methodsResult.isOk()) methods = methodsResult.value
   }
 
   return {
@@ -184,6 +192,7 @@ export async function getAppWithInstallationStatus(
           | undefined,
         installedAt: installation?.installedAt,
         currentDeploymentId: installation?.currentDeploymentId ?? undefined,
+        methods,
         connectionDefinitions,
       },
       availableDeployments: deployments.map((d) => ({

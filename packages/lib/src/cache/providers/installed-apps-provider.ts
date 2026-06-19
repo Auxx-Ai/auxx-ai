@@ -41,6 +41,8 @@ export const installedAppsProvider: CacheProvider<CachedInstalledApp[]> = {
         ? await db.query.ConnectionDefinition.findMany({
             where: (t, { inArray }) => inArray(t.appId, appIds),
             columns: {
+              id: true,
+              key: true,
               appId: true,
               label: true,
               description: true,
@@ -82,12 +84,17 @@ export const installedAppsProvider: CacheProvider<CachedInstalledApp[]> = {
       string,
       { user?: (typeof connectionDefs)[0]; organization?: (typeof connectionDefs)[0] }
     >()
+    // Full method list per app (the authoritative axis — the picker renders from this).
+    const methodsByAppId = new Map<string, (typeof connectionDefs)[0][]>()
     for (const def of connectionDefs) {
       if (!def.appId) continue
       const existing = connDefsByAppId.get(def.appId) ?? {}
       if (def.global) existing.organization = def
       else existing.user = def
       connDefsByAppId.set(def.appId, existing)
+      const list = methodsByAppId.get(def.appId) ?? []
+      list.push(def)
+      methodsByAppId.set(def.appId, list)
     }
 
     // 3. Build serializable output. Prepend the synthetic built-in `auxx`
@@ -145,6 +152,15 @@ export const installedAppsProvider: CacheProvider<CachedInstalledApp[]> = {
               createdAt: inst.currentDeployment.createdAt.toISOString(),
             }
           : null,
+        methods: (methodsByAppId.get(inst.app.id) ?? []).map((def) => ({
+          id: def.id,
+          key: def.key,
+          label: def.label,
+          description: def.description,
+          connectionType: def.connectionType,
+          global: def.global ?? false,
+          connectionVariables: def.connectionVariables ?? [],
+        })),
         connectionDefinitions: (() => {
           const defs = connDefsByAppId.get(inst.app.id) ?? {}
           const toCached = (def: (typeof connectionDefs)[0] | undefined) =>

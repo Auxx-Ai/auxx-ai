@@ -75,6 +75,7 @@ export async function exportByDeveloperAccount(db: Database, developerAccountId:
             }
           : null,
         connectionDefinitions: app.connectionDefinitions.map((cd) => ({
+          key: cd.key,
           connectionType: cd.connectionType,
           label: cd.label,
           description: cd.description,

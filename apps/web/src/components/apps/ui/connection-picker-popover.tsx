@@ -101,6 +101,12 @@ export function ConnectionPickerPopover({
         },
         title: inst.app.title,
         connectionDefinitions: inst.connectionDefinitions ?? {},
+        methods: (inst.methods ?? []).map((m) => ({
+          id: m.id,
+          connectionType: m.connectionType,
+          description: m.description ?? undefined,
+          connectionVariables: m.connectionVariables,
+        })),
       },
       scope: row.scope,
       connectionId: row.id, // reconnect the existing cred, not a fresh connect

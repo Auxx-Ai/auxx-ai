@@ -46,8 +46,11 @@ export async function findCredential(
     database
       .select()
       .from(schema.Credential)
+      // Primary first (record-action resolution prefers the org's chosen primary when an
+      // app has >1 connection — by method or account), newest as tiebreak. `isDefault`
+      // defaults false, so this is a no-op ordering for every non-app/unprimaried lookup.
       .where(and(...conditions))
-      .orderBy(desc(schema.Credential.createdAt))
+      .orderBy(desc(schema.Credential.isDefault), desc(schema.Credential.createdAt))
       .limit(1),
     'find-credential'
   )

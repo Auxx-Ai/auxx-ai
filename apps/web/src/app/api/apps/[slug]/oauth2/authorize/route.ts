@@ -50,6 +50,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const searchParams = request.nextUrl.searchParams
   const installationId = searchParams.get('installation')
   const connectionType = searchParams.get('type') // 'user' or 'organization'
+  const connectionDefinitionId = searchParams.get('connectionDefinitionId') // picked method (multi-method)
   const connectionId = searchParams.get('connectionId') // reconnect mode
   const returnTo = searchParams.get('returnTo')
   const mode = searchParams.get('mode') === 'popup' ? 'popup' : 'redirect'
@@ -111,10 +112,15 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       return NextResponse.json({ error: 'Installation not found' }, { status: 404 })
     }
 
-    // Get connection definition (simplified — no version major needed)
-    const connDef = await db.query.ConnectionDefinition.findFirst({
-      where: (cd, { eq, and }) => and(eq(cd.appId, appId), eq(cd.global, isGlobal)),
-    })
+    // Get connection definition. With a picked method (multi-method app), look it up by id and
+    // let it own the scope; otherwise fall back to the single-method (appId, scope) lookup.
+    const connDef = connectionDefinitionId
+      ? await db.query.ConnectionDefinition.findFirst({
+          where: (cd, { eq, and }) => and(eq(cd.id, connectionDefinitionId), eq(cd.appId, appId)),
+        })
+      : await db.query.ConnectionDefinition.findFirst({
+          where: (cd, { eq, and }) => and(eq(cd.appId, appId), eq(cd.global, isGlobal)),
+        })
 
     if (!connDef || connDef.connectionType !== 'oauth2-code') {
       return NextResponse.json(

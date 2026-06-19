@@ -144,6 +144,10 @@ export const ConnectionDefinition = pgTable(
     // Equals the old ICredentialType.name (e.g. 'googleOAuth2Api', 'postgres') and
     // doubles as the lookup key for platform-provider credentials (Credential.type).
     providerKey: text(),
+    // Method id within an app (e.g. 'oauth2', 'api_key') — the stable, addressable
+    // identity of one connection method. NOT NULL for app rows (owner check below);
+    // null for mcp/platform-owned rows, which use mcpServerId/providerKey as identity.
+    key: text(),
     major: integer().notNull(), // Version major
 
     // Connection type: oauth2-code, secret, none
@@ -195,10 +199,19 @@ export const ConnectionDefinition = pgTable(
       table.providerKey.asc().nullsLast(),
       table.major.asc().nullsLast()
     ),
+    // Distinct methods per app/version. Partial (apps only) — platform/mcp rows use their
+    // own identity. App rows MUST carry `key` (owner check), so the NULL-is-distinct trap
+    // can't insert duplicate app methods.
+    uniqueIndex('ConnectionDefinition_app_key_major_idx')
+      .on(table.appId, table.key, table.major)
+      .where(sql`"appId" IS NOT NULL`),
     // Exactly one owner: an App, an MCP-server, or a platform built-in definition.
+    // App-owned rows additionally require a method `key` (else the partial unique index
+    // above is toothless — Postgres treats NULLs as distinct).
     check(
       'ConnectionDefinition_owner_check',
-      sql`(("appId" IS NOT NULL)::int + ("mcpServerId" IS NOT NULL)::int + ("providerKey" IS NOT NULL)::int) = 1`
+      sql`(("appId" IS NOT NULL)::int + ("mcpServerId" IS NOT NULL)::int + ("providerKey" IS NOT NULL)::int) = 1
+       AND ("appId" IS NULL OR "key" IS NOT NULL)`
     ),
   ]
 )

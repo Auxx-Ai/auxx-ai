@@ -50,6 +50,12 @@ export function appTarget(inst: AppInstallation): ConnectFlowArgs['target'] {
     },
     title: inst.app.title,
     connectionDefinitions: inst.connectionDefinitions ?? {},
+    methods: (inst.methods ?? []).map((m) => ({
+      id: m.id,
+      connectionType: m.connectionType,
+      description: m.description ?? undefined,
+      connectionVariables: m.connectionVariables,
+    })),
   }
 }
 

@@ -37,6 +37,8 @@ export type ConnectOwner =
  * the consumer side.
  */
 export interface ConnectFlowDefinition {
+  /** ConnectionDefinition.id — present for app methods; threaded to the credential FK on save. */
+  id?: string
   connectionType: string
   description?: string | null
   connectionVariables?: ConnectionVariable[] | null
@@ -55,11 +57,19 @@ export interface ConnectTarget {
     user?: ConnectFlowDefinition | null
     organization?: ConnectFlowDefinition | null
   }
+  /**
+   * Every connection method the app exposes. When an app offers more than one method (e.g. API
+   * key OR OAuth), the picker passes the chosen method's id as `ConnectFlowArgs.definitionId` and
+   * the flow resolves the def from here — disambiguating methods that share a scope.
+   */
+  methods?: ConnectFlowDefinition[]
 }
 
 export interface ConnectFlowArgs {
   target: ConnectTarget
   scope: Scope
+  /** The chosen method (ConnectionDefinition.id) when an app exposes >1 method. */
+  definitionId?: string
   /** Existing credId when reconnecting; absent for fresh connects. */
   connectionId?: string
   /**
@@ -110,6 +120,21 @@ export interface UseConnectFlowOptions {
  * See plans/kopilot/apps/app-settings-dialog-refactor.md §3 and
  * plans/connections/unify-connection-definition.md §8.
  */
+/**
+ * Resolve the connection definition an attempt targets. Prefers the explicitly picked method
+ * (`definitionId`, looked up in `target.methods`) so methods sharing a scope are unambiguous;
+ * falls back to the scope's definition for single-method callers that don't pass a definitionId.
+ */
+function pickDef(args: ConnectFlowArgs): ConnectFlowDefinition | null | undefined {
+  if (args.definitionId) {
+    const byId = args.target.methods?.find((m) => m.id === args.definitionId)
+    if (byId) return byId
+  }
+  return args.scope === 'user'
+    ? args.target.connectionDefinitions?.user
+    : args.target.connectionDefinitions?.organization
+}
+
 export function useConnectFlow(options: UseConnectFlowOptions = {}): UseConnectFlow {
   const { onConnected, mode = 'popup' } = options
   const utils = api.useUtils()
@@ -189,6 +214,8 @@ export function useConnectFlow(options: UseConnectFlowOptions = {}): UseConnectF
       if (owner.kind === 'app') {
         params.set('installation', owner.installationId)
         params.set('type', a.scope)
+        // The picked method (multi-method apps) — the authorize route looks the def up by id.
+        if (a.definitionId) params.set('connectionDefinitionId', a.definitionId)
         baseUrl = `/api/apps/${owner.appSlug}/oauth2/authorize`
       } else {
         // Platform providers have no installation; scope is fixed by the definition's `global`.
@@ -304,10 +331,7 @@ export function useConnectFlow(options: UseConnectFlowOptions = {}): UseConnectF
   const start = useCallback(
     (next: ConnectFlowArgs) => {
       setError(null)
-      const def =
-        next.scope === 'user'
-          ? next.target.connectionDefinitions?.user
-          : next.target.connectionDefinitions?.organization
+      const def = pickDef(next)
       if (!def) {
         setError(new Error('Connection not available for this scope'))
         return
@@ -344,9 +368,7 @@ export function useConnectFlow(options: UseConnectFlowOptions = {}): UseConnectF
 
   const activeDef = useMemo(() => {
     if (!args) return null
-    return args.scope === 'user'
-      ? args.target.connectionDefinitions?.user
-      : args.target.connectionDefinitions?.organization
+    return pickDef(args)
   }, [args])
 
   // Persist a secret (multi-field values, or a single API key) for the active owner.
@@ -361,6 +383,7 @@ export function useConnectFlow(options: UseConnectFlowOptions = {}): UseConnectF
           connectionType: a.scope,
           ...payload,
           connectionId: a.connectionId,
+          connectionDefinitionId: a.definitionId,
         })
       } else {
         savePlatformSecret.mutate({
@@ -378,10 +401,7 @@ export function useConnectFlow(options: UseConnectFlowOptions = {}): UseConnectF
     (a: ConnectFlowArgs, payload: { values?: Record<string, string>; secret?: string }) => {
       setError(null)
       setArgs(a)
-      const def =
-        a.scope === 'user'
-          ? a.target.connectionDefinitions?.user
-          : a.target.connectionDefinitions?.organization
+      const def = pickDef(a)
       if (!def) {
         setError(new Error('Connection not available for this scope'))
         return

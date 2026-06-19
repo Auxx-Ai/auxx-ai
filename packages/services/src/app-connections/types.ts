@@ -108,5 +108,9 @@ export interface AppConnection {
   expiresAt?: Date
   global: boolean
   userId: string | null
+  /** The method this connection was made with (ConnectionDefinition.id) — for correct reconnect. */
+  connectionDefinitionId?: string | null
+  /** True when this is the primary org connection record actions resolve to (§4a). */
+  isDefault?: boolean
   connectionVariables?: Record<string, string>
 }

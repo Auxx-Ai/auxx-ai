@@ -125,6 +125,8 @@ export async function listAppConnections(organizationId: string, userId?: string
       expiresAt,
       global: !cred.userId, // If no userId, it's organization-scoped
       userId: cred.userId,
+      connectionDefinitionId: cred.connectionDefinitionId,
+      isDefault: cred.isDefault, // primary org connection used by record actions (§4a)
       // Plain variables only — secret-flagged values live in encryptedSecrets and never list.
       connectionVariables: (cred.metadata?.connectionVariables ?? undefined) as
         | Record<string, string>

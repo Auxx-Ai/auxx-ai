@@ -48,6 +48,7 @@ export interface ExportData {
       type: string
     } | null
     connectionDefinitions: Array<{
+      key: string | null
       connectionType: string
       label: string
       description: string | null
@@ -289,11 +290,15 @@ export async function importApps(
       const connResults: ImportResult['apps'][number]['connectionDefinitions'] = []
 
       for (const cd of appData.connectionDefinitions) {
+        // Methods are keyed per app+version. Match on the full identity
+        // (appId, key, major) so an app's multiple methods upsert independently.
         const existingConn = await tx.query.ConnectionDefinition.findFirst({
-          where: (c, { eq, and }) => and(eq(c.appId, appId), eq(c.major, cd.major)),
+          where: (c, { eq, and }) =>
+            and(eq(c.appId, appId), eq(c.key, cd.key ?? 'default'), eq(c.major, cd.major)),
         })
 
         const connFields = {
+          key: cd.key ?? 'default',
           connectionType: cd.connectionType,
           label: cd.label,
           description: cd.description,
