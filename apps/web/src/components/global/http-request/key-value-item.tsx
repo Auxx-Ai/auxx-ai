@@ -176,7 +176,7 @@ const KeyValueItem: FC<Props> = ({
           />
         ) : (
           <input
-            className='text-sm w-full px-3 py-1.5 appearance-none rounded-none border-none bg-transparent outline-none hover:bg-gray-50 focus:bg-gray-100 focus:ring-0'
+            className='text-sm w-full px-3 py-1.5 appearance-none rounded-none border-none bg-transparent outline-none hover:bg-primary-100  focus:bg-primary-200 focus:ring-0'
             value={localKey}
             onChange={(e) => handleLocalChange('key')(e.target.value)}
             onBlur={syncToParent}

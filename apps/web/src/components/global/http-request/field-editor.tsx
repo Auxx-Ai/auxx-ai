@@ -69,7 +69,7 @@ export const PlainFieldEditor: HttpFieldEditor = ({
     return (
       <textarea
         className={cn(
-          'text-sm w-full px-3 py-1.5 appearance-none rounded-none border-none bg-transparent outline-none resize-y hover:bg-gray-50 focus:bg-gray-100 focus:ring-0',
+          'text-sm w-full px-3 py-1.5 appearance-none rounded-none border-none bg-transparent outline-none resize-y hover:bg-primary-50 focus:bg-primary-100 focus:ring-0',
           className
         )}
         value={value}
@@ -84,7 +84,7 @@ export const PlainFieldEditor: HttpFieldEditor = ({
   return (
     <input
       className={cn(
-        'text-sm w-full px-3 py-1.5 appearance-none rounded-none border-none bg-transparent outline-none hover:bg-gray-50 focus:bg-gray-100 focus:ring-0',
+        'text-sm w-full px-3 py-1.5 appearance-none rounded-none border-none bg-transparent outline-none hover:bg-primary-50 focus:bg-primary-100 focus:ring-0',
         className
       )}
       value={value}

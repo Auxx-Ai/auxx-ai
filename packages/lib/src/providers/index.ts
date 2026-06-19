@@ -43,4 +43,6 @@ export {
   getProvidersForMessages,
   getProvidersForThreads,
 } from './type-utils'
+// Channel provider metadata — single source of truth for provider icons/marks
+export { getChannelProviderIcon, PROVIDER_ICON_MAP } from './types'
 export { WebhookManagerService } from './webhook-manager-service'

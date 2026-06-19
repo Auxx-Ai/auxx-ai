@@ -6,6 +6,7 @@
   "iconKey": "credit-card",
   "requiresConnection": true,
   "connection": {
+    "appSlug": "stripe",
     "authScheme": "bearer",
     "docsUrl": "https://stripe.com/docs/keys"
   },

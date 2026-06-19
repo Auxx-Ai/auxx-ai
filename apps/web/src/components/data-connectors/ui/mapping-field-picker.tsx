@@ -95,10 +95,9 @@ export function MappingFieldPicker({
   if (!entityDefinitionId) {
     return (
       <Button
-        variant='outline'
-        size='xs'
+        variant='transparent'
         disabled
-        className='h-6 min-w-[140px] justify-between text-xs text-muted-foreground'>
+        className='h-9 w-full justify-between rounded-none px-2 text-xs text-muted-foreground'>
         <span className='truncate'>Pick a target def…</span>
         <ChevronDown className='size-3 opacity-50' />
       </Button>
@@ -134,9 +133,8 @@ export function MappingFieldPicker({
         }
         trigger={
           <Button
-            variant='outline'
-            size='xs'
-            className={`h-6 min-w-[140px] justify-between text-xs ${
+            variant='transparent'
+            className={`h-9 w-full justify-between rounded-none px-2 text-xs hover:bg-primary/5 ${
               assignedKey ? '' : 'text-muted-foreground'
             }`}>
             <span className='truncate'>{chipLabel}</span>

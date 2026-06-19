@@ -2,11 +2,12 @@
 'use client'
 
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
-import TreeRow, { TreeRowButton } from '@auxx/ui/components/tree-row'
+import { GridTreeRow, TreeRowButton } from '@auxx/ui/components/tree-row'
 import { Braces, Brackets, Plus } from 'lucide-react'
 import { useState } from 'react'
 import { ResourcePickerContent } from '~/components/pickers/resource-picker'
 import { lastSegment, type SourceTreeNode } from '../hooks/use-source-paths'
+import { MAPPING_COLS } from './mapping-columns'
 
 interface BranchRowProps {
   depth: number
@@ -46,9 +47,11 @@ export function BranchRow({
   }
 
   return (
-    <TreeRow
+    <GridTreeRow
+      columns={MAPPING_COLS}
       depth={depth}
       expandable
+      chevronOnHover
       isOpen={isOpen}
       onToggleOpen={onToggleOpen}
       icon={<Icon className='size-3.5 text-muted-foreground/60' />}
@@ -58,28 +61,34 @@ export function BranchRow({
           <span className='text-[10px] uppercase opacity-60'>{node.type}</span>
         </span>
       }
-      trailing={
-        <Popover open={menuOpen} onOpenChange={setMenuOpen}>
-          <PopoverTrigger asChild>
-            <TreeRowButton tooltipText='Fan out → own def'>
-              <Plus />
-            </TreeRowButton>
-          </PopoverTrigger>
-          <PopoverContent align='end' className='w-64 p-0'>
-            <div className='border-b px-2 py-1.5 text-[10px] font-medium uppercase text-muted-foreground'>
-              Fan out → own def
-            </div>
-            <ResourcePickerContent
-              value={[]}
-              onChange={() => {}}
-              onSelectSingle={handlePick}
-              entityDefinedOnly
-              placeholder='Search entity definitions…'
-            />
-          </PopoverContent>
-        </Popover>
-      }>
+      // A passive container — no arrow/target. The fan-out action sits in the
+      // last column, aligned with the other rows' action clusters.
+      cells={[
+        <span key='arrow' />,
+        <span key='target' />,
+        <div key='actions' className='flex w-full items-center justify-end pr-1'>
+          <Popover open={menuOpen} onOpenChange={setMenuOpen}>
+            <PopoverTrigger asChild>
+              <TreeRowButton tooltipText='Fan out → own def'>
+                <Plus />
+              </TreeRowButton>
+            </PopoverTrigger>
+            <PopoverContent align='end' className='w-64 p-0'>
+              <div className='border-b px-2 py-1.5 text-[10px] font-medium uppercase text-muted-foreground'>
+                Fan out → own def
+              </div>
+              <ResourcePickerContent
+                value={[]}
+                onChange={() => {}}
+                onSelectSingle={handlePick}
+                entityDefinedOnly
+                placeholder='Search entity definitions…'
+              />
+            </PopoverContent>
+          </Popover>
+        </div>,
+      ]}>
       {children}
-    </TreeRow>
+    </GridTreeRow>
   )
 }

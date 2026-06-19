@@ -4,9 +4,15 @@
 import { Button } from '@auxx/ui/components/button'
 import { Section } from '@auxx/ui/components/section'
 import { ChevronRight, Globe, Plug, Settings2 } from 'lucide-react'
+import { useMemo, useState } from 'react'
+import { useAppsContext } from '~/components/apps/providers/apps-context'
 import { ConnectionList } from '~/components/apps/ui/connection-list'
 import { ConnectionPickerPopover } from '~/components/apps/ui/connection-picker-popover'
 import { ConnectionRow, type ConnectionStatus } from '~/components/apps/ui/connection-row'
+import {
+  AddConnectionDialog,
+  type ConnectionRestriction,
+} from '~/components/connections/ui/add-connection-dialog'
 import { api } from '~/trpc/react'
 
 type Connector = NonNullable<ReturnType<typeof api.dataConnector.getById.useQuery>['data']>
@@ -22,20 +28,59 @@ interface ConnectionSectionProps {
  * (`ConnectionRow` + an account picker), and (b) a source card that drills into
  * the `source` panel hosting the connector-level fetch config (generic-rest HTTP
  * slice / app-template config form). One connector binds exactly one connection.
+ *
+ * "+ New connection" opens the full connection catalog, scoped to what the connector
+ * expects: an app connector pins to that app's methods (API key OR OAuth2); a template
+ * pins to its declared provider/app (`connectionHint`); a bare generic-rest connector
+ * gets the unrestricted catalog. This replaces the legacy always-mint-an-API-key path.
  */
 export function ConnectionSection({ connector, onOpenSource }: ConnectionSectionProps) {
   const utils = api.useUtils()
+  const { appInstallations } = useAppsContext()
+  const [addOpen, setAddOpen] = useState(false)
+
   // Branch on the persisted definitionKind (05c §7), not a `type` prefix sniff.
   // Template instances are generic-rest ⇒ 'builtin' ⇒ they get the builder card.
   const isGenericRest = connector.definitionKind !== 'app'
+
+  const { data: providers = [], isLoading: providersLoading } =
+    api.connections.listProviders.useQuery()
+
+  // Installed apps that actually expose a connection (have a scoped definition).
+  const connectableApps = useMemo(
+    () =>
+      appInstallations.filter(
+        (i) => i.connectionDefinitions?.user || i.connectionDefinitions?.organization
+      ),
+    [appInstallations]
+  )
+
+  // What the "+ New connection" catalog is allowed to show: the app this connector
+  // comes from, the provider/app a template declares, or nothing (⇒ full catalog).
+  const restrictTo = useMemo<ConnectionRestriction | undefined>(() => {
+    if (connector.definitionKind === 'app' && connector.type.startsWith('app:')) {
+      return { kind: 'app', appSlug: connector.type.slice('app:'.length) }
+    }
+    const hint = connector.connectionHint
+    if (hint?.appSlug) return { kind: 'app', appSlug: hint.appSlug }
+    if (hint?.providerKey) return { kind: 'provider', providerKey: hint.providerKey }
+    return undefined
+  }, [connector.definitionKind, connector.type, connector.connectionHint])
+
+  // When pinned to an app, bind its installationId so the app cred keeps token refresh
+  // + lifecycle wired (01 §1). Platform/secret creds (or the open catalog) bind none.
+  const restrictedInstallationId = useMemo(() => {
+    if (restrictTo?.kind !== 'app') return null
+    return appInstallations.find((i) => i.app.slug === restrictTo.appSlug)?.installationId ?? null
+  }, [restrictTo, appInstallations])
 
   const update = api.dataConnector.update.useMutation({
     onSuccess: () => void utils.dataConnector.getById.invalidate({ id: connector.id }),
   })
 
   // The picker lists across kinds; the picked row carries `appInstallationId`
-  // (set for app creds so token refresh + lifecycle stay wired — 01 §1). A
-  // freshly-minted "+ New connection" integration secret has none.
+  // (set for app creds so token refresh + lifecycle stay wired — 01 §1). A freshly
+  // created connection carries the installationId we resolved from the restriction.
   const bindCredential = (credentialId: string, appInstallationId: string | null = null) =>
     update.mutate({ id: connector.id, credentialId, appInstallationId })
 
@@ -65,8 +110,7 @@ export function ConnectionSection({ connector, onOpenSource }: ConnectionSection
               <ConnectionPickerPopover
                 value={connector.credentialId ?? undefined}
                 onPick={(credentialId, row) => bindCredential(credentialId, row.appInstallationId)}
-                onCreated={(credentialId) => bindCredential(credentialId, null)}
-                createConnection={{ type: connector.type, label: `${connector.name} API key` }}
+                onCreateNew={() => setAddOpen(true)}
                 trigger={
                   <Button variant='outline' size='sm'>
                     <Plug />
@@ -101,6 +145,19 @@ export function ConnectionSection({ connector, onOpenSource }: ConnectionSection
           <ChevronRight className='size-4 text-muted-foreground' />
         </button>
       </div>
+
+      <AddConnectionDialog
+        open={addOpen}
+        onOpenChange={setAddOpen}
+        providers={providers}
+        installedApps={connectableApps}
+        isLoading={providersLoading}
+        restrictTo={restrictTo}
+        onConnected={() => void utils.credentials.list.invalidate()}
+        onConnectedCredential={(credentialId) =>
+          bindCredential(credentialId, restrictedInstallationId)
+        }
+      />
     </Section>
   )
 }
