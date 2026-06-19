@@ -13,13 +13,12 @@ const fetchMock = vi.fn()
 beforeEach(() => {
   fetchMock.mockReset()
   // One non-paginated JSON page, then stop (no next token).
-  fetchMock.mockResolvedValue({
-    ok: true,
-    status: 200,
-    statusText: 'OK',
-    headers: new Headers(),
-    json: async () => ({ data: [] }),
-  })
+  fetchMock.mockResolvedValue(
+    new Response(JSON.stringify({ data: [] }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    })
+  )
   vi.stubGlobal('fetch', fetchMock)
 })
 

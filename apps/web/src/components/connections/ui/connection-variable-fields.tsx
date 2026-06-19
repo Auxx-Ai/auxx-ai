@@ -1,4 +1,4 @@
-// apps/web/src/components/mcp/ui/connection-variable-fields.tsx
+// apps/web/src/components/connections/ui/connection-variable-fields.tsx
 'use client'
 
 import type { ConnectionVariable } from '@auxx/database'
@@ -7,6 +7,7 @@ import type { FieldOptions } from '@auxx/lib/field-values/client'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { BaseType } from '~/components/workflow/types'
 import { VarEditorFieldRow } from '~/components/workflow/ui/input-editor/var-editor'
+import { isFieldVisible } from './connection-variable-validation'
 
 interface ConnectionVariableFieldsProps {
   /** Connection-variable defs from the server's ConnectionDefinition (or template). */
@@ -19,20 +20,6 @@ interface ConnectionVariableFieldsProps {
   onTokenChange?: (token: string) => void
   errors: Record<string, string>
   disabled?: boolean
-}
-
-/**
- * Conditional visibility (`displayOptions.show`): a field shows only when every referenced
- * key currently holds one of its allowed values. Values compare as strings since the form
- * stores everything as strings (booleans as `'true'`/`'false'`).
- */
-function isFieldVisible(v: ConnectionVariable, values: Record<string, string>): boolean {
-  const show = v.displayOptions?.show
-  if (!show) return true
-  for (const [key, allowed] of Object.entries(show)) {
-    if (!allowed.map(String).includes(values[key] ?? '')) return false
-  }
-  return true
 }
 
 /** Assemble the field renderer's `fieldOptions` from a connection variable. */

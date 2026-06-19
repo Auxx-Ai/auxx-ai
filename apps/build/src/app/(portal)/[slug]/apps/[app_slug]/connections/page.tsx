@@ -2,7 +2,7 @@
 'use client'
 
 import { HIDDEN_VALUE } from '@auxx/credentials/crypto/client'
-import type { ConnectionVariable } from '@auxx/database'
+import type { AuthApply, ConnectionVariable } from '@auxx/database'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import {
@@ -158,6 +158,17 @@ const connectionFormSchema = z
       .optional()
       .or(z.literal('')),
     oauth2CallbackMetadataParams: z.string().optional().or(z.literal('')),
+
+    // How the resolved credential is attached to outgoing requests, + the base-URL
+    // template the connection contributes (both apply to secret + oauth2 methods).
+    authApplyMode: z.enum(['none', 'bearer', 'header', 'query', 'basic', 'advanced']).optional(),
+    authHeaderName: z.string().optional().or(z.literal('')),
+    authHeaderFormat: z.string().optional().or(z.literal('')),
+    authQueryName: z.string().optional().or(z.literal('')),
+    authQueryFormat: z.string().optional().or(z.literal('')),
+    authBasicUserField: z.string().optional().or(z.literal('')),
+    authBasicPasswordField: z.string().optional().or(z.literal('')),
+    baseUrlTemplate: z.string().optional().or(z.literal('')),
   })
   .refine(
     (data) => {
@@ -228,6 +239,82 @@ const TYPE_LABELS: Record<string, string> = {
   none: 'None',
 }
 
+/** The canonical bearer spec — recognized so it round-trips as the 'bearer' preset. */
+function isBearerSpec(spec: AuthApply): boolean {
+  return (
+    'in' in spec &&
+    spec.in === 'header' &&
+    spec.name === 'Authorization' &&
+    spec.format === 'Bearer {value}'
+  )
+}
+
+/** Form-control subset that mirrors a single-insertion `AuthApply`. */
+type AuthApplyFormFields = Pick<
+  ConnectionFormData,
+  | 'authApplyMode'
+  | 'authHeaderName'
+  | 'authHeaderFormat'
+  | 'authQueryName'
+  | 'authQueryFormat'
+  | 'authBasicUserField'
+  | 'authBasicPasswordField'
+>
+
+/** Decompose a stored `AuthApply` into the form's mode + per-mode inputs. */
+function authApplyToForm(spec: AuthApply | null | undefined): AuthApplyFormFields {
+  if (!spec) return { authApplyMode: 'none' }
+  // Multi-insertion specs (e.g. dual-header) aren't editable in this single-insertion
+  // form — surface them read-only and preserve the value verbatim on save.
+  if ('insertions' in spec) return { authApplyMode: 'advanced' }
+  if (isBearerSpec(spec)) return { authApplyMode: 'bearer' }
+  switch (spec.in) {
+    case 'header':
+      return { authApplyMode: 'header', authHeaderName: spec.name, authHeaderFormat: spec.format }
+    case 'query':
+      return { authApplyMode: 'query', authQueryName: spec.name, authQueryFormat: spec.format }
+    case 'basic':
+      return {
+        authApplyMode: 'basic',
+        authBasicUserField: spec.userField,
+        authBasicPasswordField: spec.passwordField,
+      }
+  }
+}
+
+/**
+ * Build the `AuthApply` to persist from the form. `advanced` (a multi-insertion spec the
+ * form can't edit) returns the untouched original so external config isn't clobbered.
+ */
+function formToAuthApply(data: ConnectionFormData, loaded: AuthApply | null): AuthApply | null {
+  switch (data.authApplyMode) {
+    case 'bearer':
+      return { in: 'header', name: 'Authorization', format: 'Bearer {value}' }
+    case 'header':
+      return {
+        in: 'header',
+        name: data.authHeaderName || 'Authorization',
+        format: data.authHeaderFormat || undefined,
+      }
+    case 'query':
+      return {
+        in: 'query',
+        name: data.authQueryName || 'api_key',
+        format: data.authQueryFormat || undefined,
+      }
+    case 'basic':
+      return {
+        in: 'basic',
+        userField: data.authBasicUserField || undefined,
+        passwordField: data.authBasicPasswordField || undefined,
+      }
+    case 'advanced':
+      return loaded
+    default:
+      return null
+  }
+}
+
 /**
  * Editor for a single connection method. `methodId === null` creates a new method (key is
  * editable); otherwise it edits an existing row by id (key is immutable). The form body is the
@@ -276,6 +363,15 @@ function MethodEditor({
       oauth2AdditionalAuthorizeParams: '',
       oauth2AdditionalTokenParams: '',
       oauth2CallbackMetadataParams: '',
+      // A new method defaults to Bearer — correct for OAuth2 and the common API-key case.
+      authApplyMode: 'bearer',
+      authHeaderName: '',
+      authHeaderFormat: '',
+      authQueryName: '',
+      authQueryFormat: '',
+      authBasicUserField: '',
+      authBasicPasswordField: '',
+      baseUrlTemplate: '',
     },
   })
 
@@ -297,6 +393,9 @@ function MethodEditor({
   // The real secret comes back exclusively via the audited reveal mutation below.
   const [secretVisible, setSecretVisible] = useState(false)
   const revealedSecret = useRef<string | null>(null)
+  // The loaded `authApply` verbatim — preserved on save for multi-insertion ('advanced')
+  // specs the single-insertion form can't represent.
+  const loadedAuthApply = useRef<AuthApply | null>(null)
 
   const connectionType = watch('connectionType') || 'none'
 
@@ -308,6 +407,10 @@ function MethodEditor({
       const features = (connection.oauth2Features as Record<string, unknown>) ?? {}
 
       maskedSecretPrefill.current = connection.oauth2ClientSecret || ''
+
+      const storedAuthApply = (connection.authApply as AuthApply | null) ?? null
+      loadedAuthApply.current = storedAuthApply
+      const authForm = authApplyToForm(storedAuthApply)
 
       reset({
         methodKey: connection.key ?? '',
@@ -336,6 +439,14 @@ function MethodEditor({
           : '',
         oauth2CallbackMetadataParams:
           (features.callbackMetadataParams as string[])?.join(', ') ?? '',
+        authApplyMode: authForm.authApplyMode,
+        authHeaderName: authForm.authHeaderName ?? '',
+        authHeaderFormat: authForm.authHeaderFormat ?? '',
+        authQueryName: authForm.authQueryName ?? '',
+        authQueryFormat: authForm.authQueryFormat ?? '',
+        authBasicUserField: authForm.authBasicUserField ?? '',
+        authBasicPasswordField: authForm.authBasicPasswordField ?? '',
+        baseUrlTemplate: connection.baseUrlTemplate ?? '',
       })
 
       // Connection variables are a top-level column (shared by oauth2-code and secret)
@@ -391,6 +502,7 @@ function MethodEditor({
 
   const isOAuth2 = connectionType === 'oauth2-code'
   const isSecret = connectionType === 'secret'
+  const authApplyMode = watch('authApplyMode') || 'none'
 
   const authorizeUrl = watch('oauth2AuthorizeUrl') || ''
   const tokenUrl = watch('oauth2AccessTokenUrl') || ''
@@ -426,9 +538,13 @@ function MethodEditor({
       label: data.label,
       description: data.description,
 
-      // Connection variables apply to both oauth2-code (interpolation) and secret (connect form)
+      // Connection variables, request auth, and base-URL template apply to both
+      // oauth2-code (interpolation) and secret (connect form). `none` methods omit them
+      // → the router stores null.
       ...((data.connectionType === 'oauth2-code' || data.connectionType === 'secret') && {
         connectionVariables,
+        authApply: formToAuthApply(data, loadedAuthApply.current),
+        baseUrlTemplate: data.baseUrlTemplate || undefined,
       }),
 
       // Only include OAuth2 fields if connectionType is oauth2-code
@@ -650,6 +766,148 @@ function MethodEditor({
                     </span>
                   </div>
                 )}
+              </FieldGroup>
+            )}
+
+            {(isOAuth2 || isSecret) && (
+              <FieldGroup>
+                <Field>
+                  <FieldLabel htmlFor='auth-apply-mode' className='flex items-center gap-1'>
+                    Credential application
+                    <TooltipExplanation
+                      text='How the resolved credential is attached to outgoing API requests. Bearer is correct for OAuth2 and most API keys; override for x-api-key headers, query-param keys, or HTTP Basic.'
+                      side='right'
+                    />
+                  </FieldLabel>
+                  <Controller
+                    name='authApplyMode'
+                    control={control}
+                    render={({ field }) => (
+                      <Select value={field.value || 'none'} onValueChange={field.onChange}>
+                        <SelectTrigger id='auth-apply-mode'>
+                          <SelectValue placeholder='Select...' />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value='none'>No auth applied</SelectItem>
+                          <SelectItem value='bearer'>Bearer token</SelectItem>
+                          <SelectItem value='header'>Custom header</SelectItem>
+                          <SelectItem value='query'>Query parameter</SelectItem>
+                          <SelectItem value='basic'>HTTP Basic</SelectItem>
+                          {authApplyMode === 'advanced' && (
+                            <SelectItem value='advanced'>
+                              Advanced (configured externally)
+                            </SelectItem>
+                          )}
+                        </SelectContent>
+                      </Select>
+                    )}
+                  />
+                  <FieldDescription>
+                    Use <code className='text-xs'>{'{value}'}</code> for the resolved token/secret
+                    and <code className='text-xs'>{'{variable}'}</code> for a connection variable.
+                  </FieldDescription>
+                </Field>
+
+                {authApplyMode === 'advanced' && (
+                  <FieldDescription>
+                    This method uses a multi-insertion auth spec set via app transfer. It can't be
+                    edited here and is preserved on save.
+                  </FieldDescription>
+                )}
+
+                {authApplyMode === 'header' && (
+                  <FieldGroup>
+                    <Field>
+                      <FieldLabel htmlFor='auth-header-name'>Header name</FieldLabel>
+                      <Input
+                        id='auth-header-name'
+                        placeholder='Authorization'
+                        {...register('authHeaderName')}
+                      />
+                    </Field>
+                    <Field>
+                      <FieldLabel htmlFor='auth-header-format'>Header value</FieldLabel>
+                      <Input
+                        id='auth-header-format'
+                        placeholder='Bearer {value}'
+                        {...register('authHeaderFormat')}
+                      />
+                      <FieldDescription>
+                        e.g. <code className='text-xs'>Bearer {'{value}'}</code>, or just{' '}
+                        <code className='text-xs'>{'{value}'}</code> for an x-api-key header.
+                      </FieldDescription>
+                    </Field>
+                  </FieldGroup>
+                )}
+
+                {authApplyMode === 'query' && (
+                  <FieldGroup>
+                    <Field>
+                      <FieldLabel htmlFor='auth-query-name'>Query parameter name</FieldLabel>
+                      <Input
+                        id='auth-query-name'
+                        placeholder='api_key'
+                        {...register('authQueryName')}
+                      />
+                    </Field>
+                    <Field>
+                      <FieldLabel htmlFor='auth-query-format'>Query value</FieldLabel>
+                      <Input
+                        id='auth-query-format'
+                        placeholder='{value}'
+                        {...register('authQueryFormat')}
+                      />
+                    </Field>
+                  </FieldGroup>
+                )}
+
+                {authApplyMode === 'basic' && (
+                  <FieldGroup>
+                    <Field>
+                      <FieldLabel htmlFor='auth-basic-user'>Username field</FieldLabel>
+                      <Input
+                        id='auth-basic-user'
+                        placeholder='user'
+                        {...register('authBasicUserField')}
+                      />
+                      <FieldDescription>
+                        Connection-variable key holding the Basic-auth username (default{' '}
+                        <code className='text-xs'>user</code>).
+                      </FieldDescription>
+                    </Field>
+                    <Field>
+                      <FieldLabel htmlFor='auth-basic-password'>Password field</FieldLabel>
+                      <Input
+                        id='auth-basic-password'
+                        placeholder='password'
+                        {...register('authBasicPasswordField')}
+                      />
+                      <FieldDescription>
+                        Connection-variable key holding the Basic-auth password (default{' '}
+                        <code className='text-xs'>password</code>).
+                      </FieldDescription>
+                    </Field>
+                  </FieldGroup>
+                )}
+
+                <Field>
+                  <FieldLabel htmlFor='base-url-template' className='flex items-center gap-1'>
+                    Base URL template
+                    <TooltipExplanation
+                      text='Optional. The request origin the connection contributes, interpolated from {value} + connection variables at runtime. Leave empty for APIs with a fixed base URL.'
+                      side='right'
+                    />
+                  </FieldLabel>
+                  <Input
+                    id='base-url-template'
+                    placeholder='https://{shop}.myshopify.com'
+                    {...register('baseUrlTemplate')}
+                  />
+                  <FieldDescription>
+                    Prepended to relative request paths. e.g.{' '}
+                    <code className='text-xs'>https://api.telegram.org/bot{'{value}'}</code>.
+                  </FieldDescription>
+                </Field>
               </FieldGroup>
             )}
 

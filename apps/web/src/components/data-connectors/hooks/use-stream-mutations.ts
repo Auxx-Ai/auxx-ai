@@ -9,20 +9,31 @@ import { api, type RouterOutputs } from '~/trpc/react'
 type Stream = RouterOutputs['dataConnector']['listStreams'][number]
 type Mapping = Stream['mappings'][number]
 
+/** Per-field merge strategy. Folded into each binding entry (absent ⇒ 'overwrite'). */
+export type FieldMergeStrategy =
+  | 'overwrite'
+  | 'fill_blank'
+  | 'connector_owned_only'
+  | 'manual_review'
+  | 'ignore'
+
 /**
- * Field-mapping record — `{ targetFieldKey: { expression, sourceFields, match? } }`.
- * `match` flags the bound field as a secondary identity key (external id stays primary).
+ * One binding entry. Identity is the stable `id`; `targetFieldKey` is nullable
+ * (`null` = an unassigned draft formula the runtime skips). `match` flags the
+ * bound field as a secondary identity key (external id stays primary).
  */
-export type FieldMappings = Record<
-  string,
-  {
-    expression: string
-    sourceFields: Record<string, string>
-    match?: { normalize?: 'email' | 'phone' | 'domain' | 'none' }
-  }
->
-/** Per-field merge strategy — `{ targetFieldKey: strategy }`. */
-export type MergeStrategies = Record<string, string>
+export type FieldMapping = {
+  id: string
+  targetFieldKey: string | null
+  expression: string
+  sourceFields: Record<string, string>
+  match?: { normalize?: 'email' | 'phone' | 'domain' | 'none' }
+  mergeStrategy?: FieldMergeStrategy
+  /** Provisioning hint (template-seeded only; the UI never sets it, but preserves it). */
+  provision?: { name: string; type: string; icon?: string; isHidden?: boolean }
+}
+/** A mapping's bindings — an ordered array of entries (not keyed by target). */
+export type FieldMappings = FieldMapping[]
 
 /**
  * Optimistic stream + mapping mutations against the React-Query cache, with
@@ -181,22 +192,6 @@ export function useStreamMutations(connectorId: string) {
     [patchMappings, updateMappingM]
   )
 
-  const setMergeStrategies = useCallback(
-    (streamId: string, mappingId: string, mergeStrategies: MergeStrategies) =>
-      patchMappings(
-        streamId,
-        (rows) =>
-          rows.map((m) =>
-            m.id === mappingId
-              ? { ...m, mergeStrategies: mergeStrategies as Mapping['mergeStrategies'] }
-              : m
-          ),
-        () => updateMappingM.mutateAsync({ mappingId, mergeStrategies }),
-        'Could not save merge strategy'
-      ),
-    [patchMappings, updateMappingM]
-  )
-
   // ── Fan-out / reference (materialize a child mapping) ─────────────────────
   // Optimistic insert of a temp child row so the branch re-renders as a
   // MappingNode immediately, reconciled to the server row on settle. Mirrors the
@@ -236,8 +231,7 @@ export function useStreamMutations(connectorId: string) {
             targetMode: input.targetMode,
             entityDefinitionId: input.entityDefinitionId,
             relationshipFieldKey: input.relationshipFieldKey ?? null,
-            fieldMappings: {} as Mapping['fieldMappings'],
-            mergeStrategies: {} as Mapping['mergeStrategies'],
+            fieldMappings: [] as Mapping['fieldMappings'],
           }
         : {
             id: tempId,
@@ -249,8 +243,7 @@ export function useStreamMutations(connectorId: string) {
             relationshipFieldKey: input.relationshipFieldKey ?? null,
             targetMode: input.targetMode,
             entityDefinitionId: input.entityDefinitionId,
-            fieldMappings: {} as Mapping['fieldMappings'],
-            mergeStrategies: {} as Mapping['mergeStrategies'],
+            fieldMappings: [] as Mapping['fieldMappings'],
             orphanBehavior: 'ignore',
             createdAt: new Date(),
             updatedAt: new Date(),
@@ -359,7 +352,6 @@ export function useStreamMutations(connectorId: string) {
     setMappingTarget,
     setRootPath,
     setFieldMappings,
-    setMergeStrategies,
     fanOut,
     removeMapping,
     renameStream,

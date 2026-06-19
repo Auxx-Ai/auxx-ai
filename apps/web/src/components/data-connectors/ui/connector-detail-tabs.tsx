@@ -1,28 +1,17 @@
 // apps/web/src/components/data-connectors/ui/connector-detail-tabs.tsx
 'use client'
 
-import { Button } from '@auxx/ui/components/button'
-import {
-  NavStack,
-  NavStackBar,
-  NavStackPanel,
-  NavStackPanels,
-  useNavStack,
-} from '@auxx/ui/components/nav-stack'
+import { NavStack, NavStackBar, NavStackPanel, NavStackPanels } from '@auxx/ui/components/nav-stack'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Tabs, TabsList, TabsTrigger } from '@auxx/ui/components/tabs'
-import { ChevronLeft, ChevronRight, Clock, Layers, Plug } from 'lucide-react'
+import { Clock, Layers, Plug } from 'lucide-react'
 import { useQueryState } from 'nuqs'
 import { useCallback, useMemo } from 'react'
-import { useResourceFields } from '~/components/resources'
 import { useScrollSpy } from '~/hooks/use-scroll-spy'
 import { api } from '~/trpc/react'
 import { ConnectorEditsProvider } from '../hooks/use-connector-edits'
-import { absolutePrefix, leafPathsUnder, useSourcePaths } from '../hooks/use-source-paths'
-import { useStreamMutations } from '../hooks/use-stream-mutations'
 import { ConnectionSection } from './connection-section'
 import { ConnectorSaveBar } from './connector-save-bar'
-import { FieldCalcPanel } from './field-calc-panel'
 import { ScheduleSection } from './schedule-section'
 import { StreamConfigPanel } from './stream-config-panel'
 import { StreamDetailBar } from './stream-detail-bar'
@@ -47,36 +36,6 @@ const TAB_ICONS: Record<ConnectorTab, React.ComponentType<{ className?: string }
 const SPY_BUFFER = 8
 const SCROLL_BUFFER = 0
 
-/**
- * Shared-bar content for a pushed drill level (`source` / `stream` / `field`).
- * Carries the iOS-style back affordance — a `ChevronLeft` that pops the stack,
- * plus an optional back-crumb to the parent level — mirroring the agent
- * `ProcedureDetailBar`. Rendered by `<NavStackBar>`, so it lives inside the
- * `<NavStack>` provider and can call `useNavStack`.
- */
-function DrillBar({ title, crumb }: { title: string; crumb?: string }) {
-  const { pop } = useNavStack()
-  return (
-    <div className='flex h-9 items-center gap-2 px-2'>
-      <Button variant='ghost' size='icon-xs' className='rounded-md' onClick={() => pop()}>
-        <ChevronLeft />
-      </Button>
-      {crumb && (
-        <>
-          <button
-            type='button'
-            onClick={() => pop()}
-            className='max-w-[140px] shrink-0 truncate text-sm text-muted-foreground hover:text-foreground'>
-            {crumb}
-          </button>
-          <ChevronRight className='size-3.5 shrink-0 text-muted-foreground' />
-        </>
-      )}
-      <span className='truncate text-sm font-medium'>{title}</span>
-    </div>
-  )
-}
-
 interface ConnectorDetailTabsProps {
   connector: Connector
   /** On mobile (no dock) the Runs panel is appended as a tab/section. */
@@ -86,37 +45,32 @@ interface ConnectorDetailTabsProps {
 /**
  * Connector detail body — a `NavStack` whose root is a scroll-spy column of
  * Connection / Streams / Schedule sections under a sticky Tabs strip, and whose
- * drill panels edit the connector source config (`source`), a stream's
- * schema/mappings (`stream`), or a field's calc expression (`field`). Modeled on
- * `agent-detail-tabs` and shares the `useScrollSpy` hook.
+ * `stream` drill edits a stream's schema/mappings. The connector source config is
+ * inlined in the Connection section; a mapping's calc expression is edited in a
+ * dialog (in the mapping tree), not a pushed drill. Modeled on `agent-detail-tabs`
+ * and shares the `useScrollSpy` hook.
  * See plans/data-connectors/claude/05-frontend.md §2.
  */
 export function ConnectorDetailTabs({ connector, mobileRunsPanel }: ConnectorDetailTabsProps) {
   const [tab, setTab] = useQueryState('tab', { defaultValue: 'connection' })
   const [selectedStreamId, setSelectedStreamId] = useQueryState('stream')
-  // The field drill encodes `mappingId:fieldKey`.
-  const [field, setField] = useQueryState('field')
 
   const streams = api.dataConnector.listStreams.useQuery({ id: connector.id })
   const selectedStream = useMemo(
     () => (streams.data ?? []).find((s) => s.id === selectedStreamId) ?? null,
     [streams.data, selectedStreamId]
   )
-  const sourcePaths = useSourcePaths(selectedStream?.sourceSchema as Record<string, unknown> | null)
 
-  // Stack: root → stream → field. Only the stream drill nests a `field` drill;
-  // the connector source config is now inlined in the Connection section.
-  const stack = !selectedStreamId
-    ? ['root']
-    : !field
-      ? ['root', 'stream']
-      : ['root', 'stream', 'field']
+  // Stack: root → stream. The formula editor is now a dialog (in the mapping
+  // tree), not a pushed drill; the connector source config is inlined in the
+  // Connection section.
+  const stack = !selectedStreamId ? ['root'] : ['root', 'stream']
 
   const { scrollContainerRef, assignRef, scrollToSection } = useScrollSpy<ConnectorTab>({
     sections: CONNECTOR_TABS,
     active: (tab as ConnectorTab) ?? 'connection',
     onActiveChange: setTab,
-    remountKey: `${selectedStreamId}:${field}`,
+    remountKey: `${selectedStreamId}`,
     spyBuffer: SPY_BUFFER,
     scrollBuffer: SCROLL_BUFFER,
   })
@@ -124,46 +78,18 @@ export function ConnectorDetailTabs({ connector, mobileRunsPanel }: ConnectorDet
   const handleTabChange = useCallback(
     (value: string) => {
       void setSelectedStreamId(null)
-      void setField(null)
       setTab(value)
       scrollToSection(value as ConnectorTab)
     },
-    [setTab, setSelectedStreamId, setField, scrollToSection]
+    [setTab, setSelectedStreamId, scrollToSection]
   )
 
   const handleStackChange = useCallback(
     (next: string[]) => {
-      if (next.length <= 1) {
-        void setSelectedStreamId(null)
-        void setField(null)
-      } else if (next.length === 2) {
-        void setField(null)
-      }
+      if (next.length <= 1) void setSelectedStreamId(null)
     },
-    [setSelectedStreamId, setField]
+    [setSelectedStreamId]
   )
-
-  // Field drill target. Mappings come nested in the selected stream (loaded with
-  // listStreams — plan 08 §3), no separate query.
-  const [fieldMappingId, fieldKey] = (field ?? '').split(':')
-  const fieldMappingRows = selectedStream?.mappings ?? []
-  const fieldMapping = fieldMappingRows.find((m) => m.id === fieldMappingId)
-  // Index all mappings so the calc panel can slice the SAME relative subtree the
-  // runtime sees — by the mapping's full absolute prefix, not its bare rootPath.
-  const mappingById = useMemo(
-    () => new Map(fieldMappingRows.map((m) => [m.id, m])),
-    [fieldMappingRows]
-  )
-  const fieldExpression =
-    (fieldMapping?.fieldMappings as Record<string, { expression: string }> | undefined)?.[
-      fieldKey ?? ''
-    ]?.expression ?? ''
-  // Target fields the formula can write into — the same store the mapping tree
-  // reads. Called unconditionally (the hook tolerates a null def id) so it never
-  // trips rules-of-hooks when no field drill is open.
-  const { fields: targetFields } = useResourceFields(fieldMapping?.entityDefinitionId ?? null)
-  // Optimistic field-mapping write against listStreams (shared with the tree).
-  const { setFieldMappings } = useStreamMutations(connector.id)
 
   const streamBar = selectedStream ? (
     <StreamDetailBar
@@ -172,7 +98,6 @@ export function ConnectorDetailTabs({ connector, mobileRunsPanel }: ConnectorDet
       streamKey={selectedStream.streamKey}
     />
   ) : null
-  const fieldBar = <DrillBar title='Formula' crumb={selectedStream?.streamKey ?? undefined} />
 
   return (
     <ConnectorEditsProvider>
@@ -233,47 +158,7 @@ export function ConnectorDetailTabs({ connector, mobileRunsPanel }: ConnectorDet
               className='h-full bg-neutral-100 dark:bg-background'
               bar={streamBar}>
               {selectedStream ? (
-                <StreamConfigPanel
-                  connector={connector}
-                  stream={selectedStream}
-                  onPromoteField={(mappingId, key) => setField(`${mappingId}:${key}`)}
-                />
-              ) : null}
-            </NavStackPanel>
-
-            <NavStackPanel
-              value='field'
-              className='h-full bg-neutral-100 dark:bg-background'
-              bar={fieldBar}>
-              {fieldMapping ? (
-                <FieldCalcPanel
-                  entityDefinitionId={fieldMapping.entityDefinitionId ?? null}
-                  targetKey={fieldKey ?? ''}
-                  targetLabel={targetFields.find((f) => f.key === fieldKey)?.label ?? ''}
-                  // Fields already bound (leaf or formula) elsewhere — can't double-map.
-                  // The current target stays selectable so editing keeps its own field.
-                  excludeKeys={Object.keys(fieldMapping.fieldMappings ?? {}).filter(
-                    (k) => k !== fieldKey
-                  )}
-                  expression={fieldExpression}
-                  // Scoped + relative to the mapping's subtree, matching the runtime.
-                  sourcePaths={leafPathsUnder(
-                    sourcePaths,
-                    absolutePrefix(fieldMapping, mappingById)
-                  )}
-                  onSave={(targetKey, expression, sourceFields) => {
-                    const existing = (fieldMapping.fieldMappings ?? {}) as Record<
-                      string,
-                      { expression: string; sourceFields: Record<string, string> }
-                    >
-                    if (selectedStreamId)
-                      void setFieldMappings(selectedStreamId, fieldMapping.id, {
-                        ...existing,
-                        [targetKey]: { expression, sourceFields },
-                      })
-                    void setField(null)
-                  }}
-                />
+                <StreamConfigPanel connector={connector} stream={selectedStream} />
               ) : null}
             </NavStackPanel>
           </NavStackPanels>

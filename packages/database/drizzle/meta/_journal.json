@@ -1548,6 +1548,20 @@
       "when": 1781851732646,
       "tag": "0220_connection_method_key_and_default",
       "breakpoints": true
+    },
+    {
+      "idx": 221,
+      "version": "7",
+      "when": 1781903998956,
+      "tag": "0221_connection_definition_base_url_template",
+      "breakpoints": true
+    },
+    {
+      "idx": 222,
+      "version": "7",
+      "when": 1781905150934,
+      "tag": "0222_data_connector_mapping_entry_array",
+      "breakpoints": true
     }
   ]
 }

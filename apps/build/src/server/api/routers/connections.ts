@@ -22,6 +22,30 @@ const TEMPLATE_ONLY = /^\{[^}]+\}$/
 /** Slugish method key: lowercase letters/digits/underscore, e.g. 'api_key', 'oauth2'. */
 const KEY_PATTERN = /^[a-z0-9_]+$/
 
+/** One credential insertion onto an outgoing HTTP request (mirror of `AuthInsertion`). */
+const authInsertionSchema = z.discriminatedUnion('in', [
+  z.object({ in: z.literal('header'), name: z.string(), format: z.string().optional() }),
+  z.object({
+    in: z.literal('basic'),
+    userField: z.string().optional(),
+    passwordField: z.string().optional(),
+  }),
+  z.object({ in: z.literal('query'), name: z.string(), format: z.string().optional() }),
+])
+
+/**
+ * How a resolved credential is applied to outgoing HTTP requests (mirror of the
+ * `AuthApply` column type): a single insertion (the common case) or a multi-insertion
+ * spec with optional constant `headers`. `null` for methods that aren't HTTP-request auth.
+ */
+const authApplySchema = z.union([
+  authInsertionSchema,
+  z.object({
+    insertions: z.array(authInsertionSchema),
+    headers: z.record(z.string(), z.string()).optional(),
+  }),
+])
+
 /** Fetch the app and assert the caller is a member of its developer account. */
 async function getAppForMember(db: typeof database, appId: string, userId: string) {
   const [app] = await db.select().from(App).where(eq(App.id, appId)).limit(1)
@@ -128,6 +152,11 @@ const methodFields = {
       })
     )
     .optional(),
+  // How the resolved credential becomes request auth (null for `none`/non-HTTP methods).
+  authApply: authApplySchema.nullable().optional(),
+  // Base-URL template the connection contributes to a request origin, interpolated from
+  // value + fields at runtime (e.g. 'https://{shop}.myshopify.com').
+  baseUrlTemplate: z.string().optional(),
 }
 
 const methodFieldsSchema = z.object(methodFields)
@@ -169,6 +198,9 @@ function toColumnValues(input: MethodFieldsInput, oauth2ClientSecret: string | n
     oauth2RefreshTokenIntervalSeconds: input.oauth2RefreshTokenIntervalSeconds,
     oauth2Features: input.oauth2Features ?? {},
     connectionVariables: input.connectionVariables ?? [],
+    // null (not undefined) clears the column on update; `none` methods send null.
+    authApply: input.authApply ?? null,
+    baseUrlTemplate: input.baseUrlTemplate || null,
   }
 }
 

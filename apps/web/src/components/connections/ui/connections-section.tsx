@@ -8,13 +8,14 @@ import { Plug, Plus } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useConnectFlow } from '~/components/apps/hooks/use-connect-flow'
 import { useAppsContext } from '~/components/apps/providers/apps-context'
-import { SecretConnectionForm } from '~/components/apps/ui/secret-connection-form'
 import { SettingsSection } from '~/components/global/settings-page'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useUser } from '~/hooks/use-user'
 import { api } from '~/trpc/react'
 import { AddConnectionDialog } from './add-connection-dialog'
 import { ConnectionCard, type ConnectionRow } from './connection-card'
+import { ConnectionDetailDialog } from './connection-detail-dialog'
+import type { DetailMethod } from './connection-detail-page'
 import { appTarget, platformTarget } from './connection-targets'
 
 /**
@@ -46,8 +47,8 @@ export function ConnectionsSection() {
   const invalidate = () => void utils.connections.list.invalidate()
   const flow = useConnectFlow({ onConnected: invalidate })
 
-  const updateCredential = api.credentials.update.useMutation()
-  const deleteCredential = api.credentials.delete.useMutation()
+  const updateCredential = api.connections.update.useMutation()
+  const deleteCredential = api.connections.delete.useMutation()
 
   // Installed apps that actually expose a connection (have a scoped definition).
   const connectableApps = useMemo(
@@ -103,6 +104,23 @@ export function ConnectionsSection() {
   // Plain integration/workflow secrets with no platform definition edit a single API
   // key in-place; everything else (apps, platform providers) routes through the flow.
   const isPlainSecret = (row: ConnectionRow) => row.kind !== 'app' && !providerByKey.get(row.type)
+
+  // Synthetic bare-secret method backing the in-place edit dialog (stable so the dialog
+  // seeds once per open). The token row is the single API key; no structured variables.
+  const editMethod = useMemo<DetailMethod | null>(
+    () =>
+      editRow
+        ? {
+            id: editRow.id,
+            label: editRow.label ?? editRow.name,
+            description: null,
+            connectionType: 'secret',
+            global: editRow.scope !== 'user',
+            connectionVariables: [],
+          }
+        : null,
+    [editRow]
+  )
 
   const handleEditSubmit = (secret: string) => {
     if (!editRow) return
@@ -211,16 +229,17 @@ export function ConnectionsSection() {
       />
 
       {/* Plain-secret edit (single API key). Multi-field / OAuth rows reconnect via the flow. */}
-      {editRow && (
-        <SecretConnectionForm
+      {editRow && editMethod && (
+        <ConnectionDetailDialog
           open={!!editRow}
           onOpenChange={(next) => {
             if (!next) setEditRow(null)
           }}
-          connectionLabel={editRow.label ?? editRow.name}
-          connectionType={editRow.scope === 'user' ? 'user' : 'organization'}
+          title={`Edit ${editRow.label ?? editRow.name}`}
+          method={editMethod}
           pending={updateCredential.isPending}
-          onSubmit={handleEditSubmit}
+          submitLabel='Save'
+          onSubmit={(payload) => handleEditSubmit(payload.secret ?? '')}
         />
       )}
 

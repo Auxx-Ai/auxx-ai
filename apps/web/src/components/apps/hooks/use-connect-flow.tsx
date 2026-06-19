@@ -5,9 +5,9 @@
 import type { ConnectionVariable } from '@auxx/database'
 import { toastError } from '@auxx/ui/components/toast'
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { ConnectionDetailDialog } from '~/components/connections/ui/connection-detail-dialog'
+import type { DetailMethod } from '~/components/connections/ui/connection-detail-page'
 import { api } from '~/trpc/react'
-import { ConnectionVariableForm } from '../ui/connection-variable-form'
-import { SecretConnectionForm } from '../ui/secret-connection-form'
 
 interface OAuthDonePayload {
   type: 'oauth_done'
@@ -22,7 +22,7 @@ type Scope = 'user' | 'organization'
 /**
  * The connection owner — an installed **app** (routes through `/api/apps/[slug]/oauth2/*` +
  * `apps.saveSecretConnection`) or a **platform** built-in provider (routes through
- * `/api/connections/[connectionDefinitionId]/oauth2/*` + `connections.saveSecret`). A platform
+ * `/api/connections/[connectionDefinitionId]/oauth2/*` + `connections.save`). A platform
  * provider has no app or installation; it is identified by its definition id / providerKey.
  */
 export type ConnectOwner =
@@ -140,8 +140,9 @@ export function useConnectFlow(options: UseConnectFlowOptions = {}): UseConnectF
   const utils = api.useUtils()
 
   const [args, setArgs] = useState<ConnectFlowArgs | null>(null)
-  const [secretOpen, setSecretOpen] = useState(false)
-  const [variableOpen, setVariableOpen] = useState(false)
+  // One dialog for every field-entry case (bare secret, multi-field secret, OAuth-with-vars) —
+  // `ConnectionDetailDialog` renders the token row or the variable rows from the resolved method.
+  const [formOpen, setFormOpen] = useState(false)
   const [oauthPending, setOauthPending] = useState(false)
   const [lastConnectedCredId, setLastConnectedCredId] = useState<string | null>(null)
   const [error, setError] = useState<Error | null>(null)
@@ -163,21 +164,20 @@ export function useConnectFlow(options: UseConnectFlowOptions = {}): UseConnectF
         void utils.apps.listConnections.invalidate()
         void utils.apps.listInstalled.invalidate()
       } else {
-        void utils.credentials.list.invalidate()
+        void utils.connections.list.invalidate()
       }
     },
     [utils]
   )
 
   // Reconnect first tries a silent OAuth refresh (see attemptRefreshThenOAuth); a connection is
-  // just a credential, so it reuses the kind-agnostic credentials refresh mutation.
-  const refreshConnection = api.credentials.refreshOAuthTokens.useMutation()
+  // just a credential, so it reuses the kind-agnostic connection refresh mutation.
+  const refreshConnection = api.connections.refreshTokens.useMutation()
 
   // Secret-save success/error are shared across the app and platform mutations. `args` is read
   // through the latest render (React Query stores option callbacks in a ref), so it stays current.
   const onSecretSaved = (credId: string | null) => {
-    setSecretOpen(false)
-    setVariableOpen(false)
+    setFormOpen(false)
     if (args) invalidateForOwner(args.target.owner)
     if (credId) {
       setLastConnectedCredId(credId)
@@ -194,7 +194,7 @@ export function useConnectFlow(options: UseConnectFlowOptions = {}): UseConnectF
     onSuccess: (data) => onSecretSaved(data?.credentialId ?? null),
     onError: onSecretError,
   })
-  const savePlatformSecret = api.connections.saveSecret.useMutation({
+  const savePlatformSecret = api.connections.save.useMutation({
     onSuccess: (data) => onSecretSaved(data?.credentialId ?? null),
     onError: onSecretError,
   })
@@ -338,13 +338,9 @@ export function useConnectFlow(options: UseConnectFlowOptions = {}): UseConnectF
       }
       setArgs(next)
       if (def.connectionType === 'secret') {
-        // Definitions with connection variables collect one input per variable;
-        // without them, the single API-key field.
-        if ((def.connectionVariables?.length ?? 0) > 0) {
-          setVariableOpen(true)
-        } else {
-          setSecretOpen(true)
-        }
+        // The one dialog handles both shapes — `ConnectionDetailPage` renders the token row for a
+        // bare API key, or one row per connection variable when the def declares them.
+        setFormOpen(true)
         return
       }
       if (def.connectionType === 'oauth2-code') {
@@ -355,7 +351,7 @@ export function useConnectFlow(options: UseConnectFlowOptions = {}): UseConnectF
         if (next.connectionId) {
           void attemptRefreshThenOAuth(next)
         } else if (vars.length > 0) {
-          setVariableOpen(true)
+          setFormOpen(true)
         } else {
           kickOauth(next)
         }
@@ -419,66 +415,60 @@ export function useConnectFlow(options: UseConnectFlowOptions = {}): UseConnectF
     [kickOauth, saveSecretForOwner]
   )
 
-  const handleVariableSubmit = useCallback(
-    (values: Record<string, string>) => {
-      if (!args) return
-      if (activeDef?.connectionType === 'secret') {
-        saveSecretForOwner(args, { values })
+  // Single submit for the unified dialog: a secret def persists (`saveSecretForOwner` keeps the
+  // dialog open until the save resolves, then `onSecretSaved` closes it); an OAuth def closes the
+  // form and hands off to the popup. Mirrors `connectWith`, which the catalog uses to skip the dialog.
+  const saveOrOauth = useCallback(
+    (a: ConnectFlowArgs, payload: { values?: Record<string, string>; secret?: string }) => {
+      const def = pickDef(a)
+      if (def?.connectionType === 'secret') {
+        saveSecretForOwner(a, payload)
         return
       }
-      setVariableOpen(false)
-      kickOauth(args, values)
+      if (def?.connectionType === 'oauth2-code') {
+        setFormOpen(false)
+        kickOauth(a, payload.values ?? {})
+      }
     },
-    [args, activeDef, kickOauth, saveSecretForOwner]
+    [kickOauth, saveSecretForOwner]
   )
 
-  const handleSecretSubmit = useCallback(
-    (secret: string) => {
-      if (!args) return
-      saveSecretForOwner(args, { secret })
-    },
-    [args, saveSecretForOwner]
-  )
+  // The single resolved method backing the dialog — built from the already-resolved activeDef.
+  const method = useMemo<DetailMethod | null>(() => {
+    if (!args || !activeDef) return null
+    return {
+      id: args.definitionId ?? activeDef.id ?? 'method',
+      label: args.target.title,
+      description: activeDef.description ?? null,
+      connectionType: activeDef.connectionType,
+      global: args.scope === 'organization',
+      connectionVariables: activeDef.connectionVariables ?? [],
+    }
+  }, [args, activeDef])
 
-  const variableDefs: ConnectionVariable[] = useMemo(
-    () => activeDef?.connectionVariables ?? [],
-    [activeDef]
-  )
-
-  const Dialogs = args ? (
-    <>
-      <SecretConnectionForm
-        open={secretOpen}
+  const Dialogs =
+    args && method ? (
+      <ConnectionDetailDialog
+        open={formOpen}
         onOpenChange={(open) => {
-          setSecretOpen(open)
+          setFormOpen(open)
           if (!open) setArgs(null)
         }}
-        connectionLabel={args.target.title}
-        connectionType={args.scope}
-        pending={savePending}
-        onSubmit={handleSecretSubmit}
-      />
-      <ConnectionVariableForm
-        open={variableOpen}
-        onOpenChange={(open) => {
-          setVariableOpen(open)
-          if (!open) setArgs(null)
-        }}
-        appTitle={args.target.title}
-        description={activeDef?.description ?? undefined}
-        variables={variableDefs}
+        title={`${args.connectionId ? 'Reconnect' : 'Connect'} ${args.target.title}`}
+        method={method}
         prefill={args.prefillVariables}
         pending={savePending}
-        onSubmit={handleVariableSubmit}
+        submitLabel={args.connectionId ? 'Reconnect' : 'Connect'}
+        onSubmit={(payload) => saveOrOauth(args, payload)}
       />
-    </>
-  ) : null
+    ) : null
 
   return {
     start,
     connectWith,
     Dialogs,
-    pending: savePending || secretOpen || variableOpen || oauthPending,
+    // An open form is not "pending" — only an in-flight save or OAuth popup is.
+    pending: savePending || oauthPending,
     lastConnectedCredId,
     error,
   }

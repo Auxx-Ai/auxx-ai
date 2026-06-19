@@ -26,7 +26,6 @@ import { commentRouter } from './routers/comment'
 import { configVariableRouter } from './routers/config-variable'
 import { connectionsRouter } from './routers/connections'
 import { contactRouter } from './routers/contact'
-import { credentialsRouter } from './routers/credentials'
 import { customerRouter } from './routers/customer'
 import { customFieldRouter } from './routers/customField'
 import { dataConnectorRouter } from './routers/data-connectors'
@@ -118,7 +117,6 @@ export const appRouter = createTRPCRouter({
   configVariable: configVariableRouter,
   connections: connectionsRouter,
   contact: contactRouter,
-  credentials: credentialsRouter,
   customField: customFieldRouter,
   dataset: datasetRouter,
   document: documentRouter,

@@ -29,8 +29,6 @@ interface MappingTreeProps {
   /** The stream's mappings (loaded with the stream — plan 08 §3). */
   mappings: Mapping[]
   sourcePaths: SourcePath[]
-  /** Promote a value row to the calc drill (the `field` panel). */
-  onPromoteField: (mappingId: string, fieldKey: string) => void
 }
 
 /** The fan-out rootPath for a branch node — arrays keep their `[]` suffix. */
@@ -54,7 +52,6 @@ export function MappingTree({
   streamKey,
   mappings: rows,
   sourcePaths,
-  onPromoteField,
 }: MappingTreeProps) {
   const mutations = useStreamMutations(connectorId)
   const { fanOut } = mutations
@@ -116,7 +113,6 @@ export function MappingTree({
     byMappingId,
     childrenOf,
     mutations,
-    onPromoteField,
   }
 
   // A mapped whole-payload root owns the entire subtree (single-record source, or
@@ -197,7 +193,6 @@ interface TopSourceNodeProps {
   byMappingId: Map<string, Mapping>
   childrenOf: Map<string | null, Mapping[]>
   mutations: ReturnType<typeof useStreamMutations>
-  onPromoteField: (mappingId: string, fieldKey: string) => void
 }
 
 /**
@@ -223,7 +218,6 @@ function TopSourceNode(props: TopSourceNodeProps) {
           byMappingId={props.byMappingId}
           childrenOf={props.childrenOf}
           mutations={props.mutations}
-          onPromoteField={props.onPromoteField}
         />
       )
     }

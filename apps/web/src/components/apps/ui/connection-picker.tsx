@@ -15,8 +15,8 @@ import { useAppsContext } from '~/components/apps/providers/apps-context'
 import type { RouterOutputs } from '~/trpc/react'
 import { AppWithStatusIcon } from './app-with-status-icon'
 
-/** A single bindable connection as projected by `credentials.list`. */
-export type PickerConnection = RouterOutputs['credentials']['list'][number]
+/** A single bindable connection as projected by `connections.list`. */
+export type PickerConnection = RouterOutputs['connections']['list'][number]
 
 /**
  * Credential families this picker can bind. `mcp` is intentionally excluded —
@@ -37,10 +37,13 @@ interface ConnectionPickerProps {
   connections: PickerConnection[]
   /** When set, renders a "+ New connection" footer row. */
   onCreateNew?: () => void
-  /** App rows only: re-authorize / re-enter the connection (05c §3). */
-  onReconnect?: (connection: PickerConnection) => void
-  /** Non-app rows only: change the stored secret / rename (05c §3). */
-  onEdit?: (connection: PickerConnection) => void
+  /**
+   * Per-row action (reconnect OR edit) for app + platform rows; the host routes by
+   * `connectionType`. Channel/integration rows get no action (managed in channel settings).
+   */
+  onAction?: (connection: PickerConnection) => void
+  /** Platform provider catalog keyed by `providerKey` (= `Credential.type`) for label/routing. */
+  providerByKey?: Map<string, { connectionType: string }>
   /** Empty-state hint shown when there are no connections to list. */
   emptyHint?: string
 }
@@ -56,8 +59,8 @@ export function ConnectionPicker({
   onPick,
   connections,
   onCreateNew,
-  onReconnect,
-  onEdit,
+  onAction,
+  providerByKey,
   emptyHint,
 }: ConnectionPickerProps) {
   const { appInstallations } = useAppsContext()
@@ -101,8 +104,8 @@ export function ConnectionPicker({
                 connection={c}
                 selected={value === c.id}
                 onSelect={() => onPick(c.id, c)}
-                onReconnect={onReconnect}
-                onEdit={onEdit}
+                onAction={onAction}
+                providerByKey={providerByKey}
                 {...resolve(c)}
               />
             ))}
@@ -117,8 +120,8 @@ export function ConnectionPicker({
                 connection={c}
                 selected={value === c.id}
                 onSelect={() => onPick(c.id, c)}
-                onReconnect={onReconnect}
-                onEdit={onEdit}
+                onAction={onAction}
+                providerByKey={providerByKey}
                 {...resolve(c)}
               />
             ))}
@@ -147,23 +150,24 @@ function ConnectionItem({
   iconId,
   title,
   onSelect,
-  onReconnect,
-  onEdit,
+  onAction,
+  providerByKey,
 }: {
   connection: PickerConnection
   selected: boolean
   iconId: string
   title: string
   onSelect: () => void
-  onReconnect?: (connection: PickerConnection) => void
-  onEdit?: (connection: PickerConnection) => void
+  onAction?: (connection: PickerConnection) => void
+  providerByKey?: Map<string, { connectionType: string }>
 }) {
   const isApp = connection.kind === 'app'
   const expired = connection.status === 'expired'
-  // App rows re-authorize (covers OAuth + secret re-entry) only when expired;
-  // non-app secret rows edit the stored key. See 05c §1.
-  const canReconnect = isApp && expired && !!onReconnect
-  const canEdit = !isApp && !!onEdit
+  // Option A: only app + platform (workflow) rows act; channel/integration rows are bind-only.
+  const actionable = !!onAction && (isApp || connection.kind === 'workflow')
+  // App rows + platform OAuth rows re-authorize ("Reconnect"); platform secrets re-enter ("Edit").
+  const isReconnect = isApp || providerByKey?.get(connection.type)?.connectionType === 'oauth2-code'
+  const actionLabel = isReconnect ? 'Reconnect' : 'Edit'
   return (
     <CommandItem value={title} onSelect={onSelect} className='cursor-pointer h-7.5'>
       {/* `status` ('connected' | 'expired') is a subset of AppConnectionStatus. */}
@@ -172,37 +176,28 @@ function ConnectionItem({
       {connection.type && (
         <span className='truncate text-xs text-muted-foreground'>{connection.type}</span>
       )}
-      {canReconnect && <TriangleAlert className='size-3.5 shrink-0 text-amber-600' />}
+      {actionable && expired && <TriangleAlert className='size-3.5 shrink-0 text-amber-600' />}
       <div className='ml-auto flex items-center gap-1.5'>
         {selected && (
           <div className='flex size-4 items-center justify-center rounded-full border border-blue-800 bg-info'>
             <Check className='size-2.5! text-white' strokeWidth={4} />
           </div>
         )}
-        {canReconnect && (
+        {actionable && (
           <Button
             type='button'
             variant='ghost'
             size='sm'
-            className='h-6 px-2 text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-400/10 hover:text-amber-700'
+            className={
+              isReconnect && expired
+                ? 'h-6 px-2 text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-400/10 hover:text-amber-700'
+                : 'h-6 px-2'
+            }
             onClick={(e) => {
               e.stopPropagation()
-              onReconnect(connection)
+              onAction?.(connection)
             }}>
-            Reconnect
-          </Button>
-        )}
-        {canEdit && (
-          <Button
-            type='button'
-            variant='ghost'
-            size='sm'
-            className='h-6 px-2'
-            onClick={(e) => {
-              e.stopPropagation()
-              onEdit(connection)
-            }}>
-            Edit
+            {actionLabel}
           </Button>
         )}
       </div>

@@ -8,14 +8,7 @@ import { type Database, database as defaultDb, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { and, asc, desc, eq, inArray, ne } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
-import type {
-  FieldMapping,
-  FieldMergeStrategy,
-  LinkMode,
-  OrphanBehavior,
-  SyncMode,
-  TargetMode,
-} from './types'
+import type { FieldMapping, LinkMode, OrphanBehavior, SyncMode, TargetMode } from './types'
 
 const logger = createScopedLogger('data-connector-service')
 
@@ -37,8 +30,7 @@ export interface DecodedMapping {
   parentMappingId: string | null
   relationshipFieldKey: string | null
   orphanBehavior: OrphanBehavior
-  fieldMappings: Record<string, FieldMapping>
-  mergeStrategies: Record<string, FieldMergeStrategy>
+  fieldMappings: FieldMapping[]
 }
 
 /** A stream with its enabled mappings, decoded. */
@@ -73,8 +65,7 @@ export function decodeMapping(row: DataConnectorMappingRow): DecodedMapping {
     parentMappingId: row.parentMappingId ?? null,
     relationshipFieldKey: row.relationshipFieldKey ?? null,
     orphanBehavior: row.orphanBehavior as OrphanBehavior,
-    fieldMappings: row.fieldMappings ?? {},
-    mergeStrategies: row.mergeStrategies ?? {},
+    fieldMappings: row.fieldMappings ?? [],
   }
 }
 

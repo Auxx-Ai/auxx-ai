@@ -6,10 +6,11 @@
 // root mapping's `rootPath` (e.g. `[]` / `data.orders[]`) selects the records.
 // The bound credential arrives already resolved + refreshed by the orchestrator
 // (resolveConnectionForRuntime) and carries the definition's `authApply` spec;
-// this connector applies it via the shared `applyAuth` helper.
+// this connector sends each page through the shared HTTP transport, which applies
+// the auth, sends the request, and normalizes the response.
 
 import { createScopedLogger } from '@auxx/logger'
-import { applyAuth } from '../../connections/auth-apply'
+import { httpTransport } from '../../connections/transports'
 import type {
   ConnectorFetchArgs,
   ConnectorRecord,
@@ -88,7 +89,7 @@ function buildUrl(baseUrl: string, path: string, params?: Record<string, unknown
 function nextPageToken(
   pagination: PaginationSpec | undefined,
   body: unknown,
-  headers: Headers,
+  headers: Record<string, string>,
   pageIndex: number
 ): string | undefined {
   if (!pagination || pagination.kind === 'none') return undefined
@@ -96,7 +97,7 @@ function nextPageToken(
     case 'cursor':
       return getByPath(body, pagination.cursorPath) as string | undefined
     case 'link-header': {
-      const link = headers.get('link') ?? ''
+      const link = headers.link ?? ''
       const match = link.match(/<([^>]+)>;\s*rel="next"/)
       return match?.[1]
     }
@@ -116,11 +117,17 @@ function nextPageToken(
  */
 async function* fetchRecords(args: ConnectorFetchArgs): AsyncIterable<ConnectorRecord> {
   const endpoint = args.config.endpoint
-  if (!endpoint?.baseUrl) {
-    throw new Error('generic-rest: config.endpoint.baseUrl is required')
+  // The base URL comes from the bound connection's `baseUrlTemplate` (resolved into
+  // `credential.baseUrl`, e.g. Shopify `{shop}`) when present, else the connector's
+  // own configured base URL.
+  const baseUrl = args.credential?.baseUrl ?? endpoint?.baseUrl
+  if (!baseUrl) {
+    throw new Error(
+      'generic-rest: a base URL is required (config.endpoint.baseUrl or a connection baseUrlTemplate)'
+    )
   }
   const request: StreamRequestConfig = args.requestConfig ?? {}
-  const pagination = request.pagination ?? endpoint.pagination
+  const pagination = request.pagination ?? endpoint?.pagination
   const method = request.method ?? 'GET'
   const path = request.path ?? ''
 
@@ -128,7 +135,7 @@ async function* fetchRecords(args: ConnectorFetchArgs): AsyncIterable<ConnectorR
     Accept: 'application/json',
     ...(request.headers ?? {}),
   }
-  const applyCredential = endpoint.auth !== 'none' && args.credential ? args.credential : null
+  const applyCredential = endpoint?.auth !== 'none' && args.credential ? args.credential : null
 
   let pageIndex = 0
   let cursor: string | undefined = args.mode === 'incremental' ? args.state.cursor : undefined
@@ -150,31 +157,20 @@ async function* fetchRecords(args: ConnectorFetchArgs): AsyncIterable<ConnectorR
     }
 
     const url =
-      pagination?.kind === 'link-header' && cursor
-        ? cursor
-        : buildUrl(endpoint.baseUrl, path, params)
+      pagination?.kind === 'link-header' && cursor ? cursor : buildUrl(baseUrl, path, params)
 
-    // Apply the resolved connection's declarative auth (header/basic/query) per
-    // request — query auth appends to the URL, so it must run after the URL is built.
-    const { headers, url: requestUrl } = applyCredential
-      ? applyAuth(
-          { headers: baseHeaders, url },
-          { value: applyCredential.value, fields: applyCredential.fields },
-          applyCredential.authApply
-        )
-      : { headers: baseHeaders, url }
-
-    const response = await fetch(requestUrl, {
+    // The HTTP transport applies the resolved connection's declarative auth
+    // (header/basic/query), sends the request, and normalizes the response.
+    const response = await httpTransport.request(applyCredential, {
       method,
-      headers,
-      body: method === 'POST' && request.body ? JSON.stringify(request.body) : undefined,
+      url,
+      headers: baseHeaders,
+      body: method === 'POST' ? request.body : undefined,
     })
     if (!response.ok) {
-      throw new Error(
-        `generic-rest: ${method} ${requestUrl} → ${response.status} ${response.statusText}`
-      )
+      throw new Error(`generic-rest: ${method} ${url} → ${response.status}`)
     }
-    const body = await response.json()
+    const body = response.json()
 
     // Yield the raw response body as the payload — the mapping layer selects
     // records via the root mapping's rootPath and fans out. No envelope stripping.

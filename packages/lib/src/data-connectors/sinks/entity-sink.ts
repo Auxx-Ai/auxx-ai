@@ -23,6 +23,7 @@ import {
   touchItem,
   upsertItem,
 } from '../service'
+import type { FieldMergeStrategy } from '../types'
 import type { EntitySink, ProjectedRecord, SyncCtx } from './types'
 
 const logger = createScopedLogger('data-connector-entity-sink')
@@ -108,9 +109,19 @@ async function buildWriteSet(
   const managedFields = Object.keys(record.fields)
   const writeSet: Record<string, unknown> = {}
 
+  // Per-field merge strategy, derived from the binding entries (folded in from the
+  // old parallel column). Keyed by target field key; unassigned drafts are skipped.
+  const mergeByKey = new Map<string, FieldMergeStrategy>()
+  for (const fm of mapping.fieldMappings) {
+    if (fm.targetFieldKey != null && fm.mergeStrategy) {
+      mergeByKey.set(fm.targetFieldKey, fm.mergeStrategy)
+    }
+  }
+  const strategyFor = (key: string): FieldMergeStrategy => mergeByKey.get(key) ?? 'overwrite'
+
   // Read current values once (only needed for fill_blank / connector_owned_only).
   const needsCurrent = managedFields.some((k) => {
-    const strat = mapping.mergeStrategies[k] ?? 'overwrite'
+    const strat = strategyFor(k)
     return strat === 'fill_blank' || strat === 'connector_owned_only' || strat === 'manual_review'
   })
   let current: Map<string, TypedFieldValue | TypedFieldValue[]> | null = null
@@ -120,7 +131,7 @@ async function buildWriteSet(
   }
 
   for (const [key, value] of Object.entries(record.fields)) {
-    const strategy = mapping.mergeStrategies[key] ?? 'overwrite'
+    const strategy = strategyFor(key)
     if (strategy === 'ignore') continue
 
     if (strategy === 'overwrite') {

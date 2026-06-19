@@ -5,12 +5,14 @@ import { Popover, PopoverContentDialogAware, PopoverTrigger } from '@auxx/ui/com
 import { toastError } from '@auxx/ui/components/toast'
 import { type ReactNode, useMemo, useState } from 'react'
 import { useAppsContext } from '~/components/apps/providers/apps-context'
+import { ConnectionDetailDialog } from '~/components/connections/ui/connection-detail-dialog'
+import type { DetailMethod } from '~/components/connections/ui/connection-detail-page'
+import { appTarget, platformTarget } from '~/components/connections/ui/connection-targets'
 import { PickerTrigger } from '~/components/ui/picker-trigger'
 import { api } from '~/trpc/react'
 import { useConnectFlow } from '../hooks/use-connect-flow'
 import { AppIcon } from './app-icon'
 import { ConnectionPicker, type PickerConnection, type PickerKind } from './connection-picker'
-import { SecretConnectionForm } from './secret-connection-form'
 
 interface ConnectionPickerPopoverProps {
   /** Currently-bound credentialId. */
@@ -25,17 +27,9 @@ interface ConnectionPickerPopoverProps {
    */
   orgScopedOnly?: boolean
   /**
-   * When set, a "+ New connection" footer mints an `integration` secret of this
-   * type and calls `onCreated` with the new credentialId. Ignored when
-   * {@link onCreateNew} is provided — that takes over the footer.
-   */
-  createConnection?: { type: string; label: string }
-  /** Fires with the new credentialId after the internal `createConnection` mint succeeds. */
-  onCreated?: (credentialId: string) => void
-  /**
-   * Override the "+ New connection" footer to defer creation to the parent (e.g. open the
-   * full connection catalog scoped to one app/provider). Takes precedence over
-   * `createConnection`'s inline secret form; the footer shows whenever either is set.
+   * When set, a "+ New connection" footer defers creation to the parent (e.g. open
+   * the full connection catalog scoped to one app/provider). The footer shows only
+   * when this is provided.
    */
   onCreateNew?: () => void
   /**
@@ -54,8 +48,8 @@ interface ConnectionPickerPopoverProps {
 const DEFAULT_KINDS: PickerKind[] = ['app', 'integration', 'workflow']
 
 /**
- * Popover-wrapped {@link ConnectionPicker}. Owns the `credentials.list` query,
- * the trigger label, and the "+ New connection" mint flow. The cross-feature
+ * Popover-wrapped {@link ConnectionPicker}. Owns the `connections.list` query,
+ * the trigger label, and the "+ New connection" flow. The cross-feature
  * replacement for `AppAccountPopover` — see
  * plans/data-connectors/claude/05b-connection-picker.md.
  */
@@ -64,8 +58,6 @@ export function ConnectionPickerPopover({
   onPick,
   kinds = DEFAULT_KINDS,
   orgScopedOnly = true,
-  createConnection,
-  onCreated,
   onCreateNew,
   enableActions = true,
   placeholder = 'Choose connection',
@@ -73,57 +65,85 @@ export function ConnectionPickerPopover({
   matchTriggerWidth = false,
 }: ConnectionPickerPopoverProps) {
   const [open, setOpen] = useState(false)
-  const [formOpen, setFormOpen] = useState(false)
   const [editRow, setEditRow] = useState<PickerConnection | null>(null)
   const utils = api.useUtils()
   const { appInstallations } = useAppsContext()
 
   const listInput = { kind: kinds, orgScopedOnly }
-  const { data: connections = [] } = api.credentials.list.useQuery(listInput, {
+  const { data: connections = [] } = api.connections.list.useQuery(listInput, {
     refetchOnWindowFocus: false,
   })
+
+  // Platform provider catalog, keyed by providerKey (= Credential.type) — drives the
+  // OAuth-vs-secret routing so a platform OAuth row reconnects instead of showing the API form.
+  const { data: providers = [] } = api.connections.listProviders.useQuery()
+  const providerByKey = useMemo(
+    () => new Map(providers.map((p) => [p.providerKey, p])),
+    [providers]
+  )
 
   // Reconnect (app rows): re-authorize via the shared connect flow, which does a
   // silent token refresh → OAuth popup, or the secret/variable re-entry form.
   const flow = useConnectFlow({
-    onConnected: () => void utils.credentials.list.invalidate(listInput),
+    onConnected: () => void utils.connections.list.invalidate(listInput),
   })
 
+  // Reconnect re-authorizes (oauth) or re-enters (secret) the existing credential via the flow —
+  // app rows via their installation, platform rows via the provider catalog. Mirrors connections-section.
   const handleReconnect = (row: PickerConnection) => {
-    const inst = row.appId ? appInstallations.find((i) => i.app.id === row.appId) : undefined
-    if (!inst) {
+    if (row.kind === 'app') {
+      const inst = appInstallations.find((i) => i.app.id === row.appId)
+      if (!inst) {
+        toastError({
+          title: 'App not installed',
+          description: 'Reconnect this account from the app’s settings instead.',
+        })
+        return
+      }
+      flow.start({ target: appTarget(inst), scope: row.scope, connectionId: row.id })
+      return
+    }
+    const provider = providerByKey.get(row.type)
+    if (!provider) {
       toastError({
-        title: 'App not installed',
-        description: 'Reconnect this account from the app’s settings instead.',
+        title: 'Provider unavailable',
+        description: 'This connection’s provider is no longer registered.',
       })
       return
     }
-    setOpen(false)
-    flow.start({
-      target: {
-        owner: {
-          kind: 'app',
-          appId: inst.app.id,
-          appSlug: inst.app.slug,
-          installationId: inst.installationId,
-        },
-        title: inst.app.title,
-        connectionDefinitions: inst.connectionDefinitions ?? {},
-        methods: (inst.methods ?? []).map((m) => ({
-          id: m.id,
-          connectionType: m.connectionType,
-          description: m.description ?? undefined,
-          connectionVariables: m.connectionVariables,
-        })),
-      },
-      scope: row.scope,
-      connectionId: row.id, // reconnect the existing cred, not a fresh connect
-    })
+    flow.start({ target: platformTarget(provider), scope: row.scope, connectionId: row.id })
   }
 
-  // Edit (integration secrets): re-enter the API key. `mergeSecrets` keeps any
+  // Plain integration/workflow secrets with no platform definition edit a single API key in
+  // place; everything else (apps, platform providers) routes through the flow.
+  const isPlainSecret = (row: PickerConnection) =>
+    row.kind !== 'app' && !providerByKey.get(row.type)
+
+  const handleAction = (row: PickerConnection) => {
+    setOpen(false)
+    if (isPlainSecret(row)) setEditRow(row)
+    else handleReconnect(row)
+  }
+
+  // Synthetic bare-secret method backing the in-place edit dialog (stable so it seeds once per open).
+  const editMethod = useMemo<DetailMethod | null>(
+    () =>
+      editRow
+        ? {
+            id: editRow.id,
+            label: editRow.label ?? editRow.name,
+            description: null,
+            connectionType: 'secret',
+            global: editRow.scope !== 'user',
+            connectionVariables: [],
+          }
+        : null,
+    [editRow]
+  )
+
+  // Edit (plain integration/workflow secrets): re-enter the API key. `mergeSecrets` keeps any
   // other stored fields untouched.
-  const updateCredential = api.credentials.update.useMutation()
+  const updateCredential = api.connections.update.useMutation()
   const handleEditSubmit = (secret: string) => {
     if (!editRow) return
     updateCredential.mutate(
@@ -131,7 +151,7 @@ export function ConnectionPickerPopover({
       {
         onSuccess: () => {
           setEditRow(null)
-          void utils.credentials.list.invalidate(listInput)
+          void utils.connections.list.invalidate(listInput)
         },
         onError: (error) =>
           toastError({ title: 'Error updating connection', description: error.message }),
@@ -145,30 +165,6 @@ export function ConnectionPickerPopover({
     return appInstallations.find((i) => i.app.id === selected.appId)?.app.avatarUrl ?? null
   }, [appInstallations, selected])
   const triggerLabel = selected?.label ?? selected?.name ?? null
-
-  const createCredential = api.credentials.create.useMutation()
-
-  const handleCreate = (secret: string) => {
-    if (!createConnection) return
-    createCredential.mutate(
-      {
-        type: createConnection.type,
-        name: createConnection.label,
-        kind: 'integration',
-        data: { apiKey: secret },
-      },
-      {
-        onSuccess: ({ id }) => {
-          setFormOpen(false)
-          setOpen(false)
-          void utils.credentials.list.invalidate(listInput)
-          onCreated?.(id)
-        },
-        onError: (error) =>
-          toastError({ title: 'Error creating connection', description: error.message }),
-      }
-    )
-  }
 
   return (
     <>
@@ -202,44 +198,25 @@ export function ConnectionPickerPopover({
                     setOpen(false)
                     onCreateNew()
                   }
-                : createConnection
-                  ? () => setFormOpen(true)
-                  : undefined
-            }
-            onReconnect={enableActions ? handleReconnect : undefined}
-            onEdit={
-              enableActions
-                ? (row) => {
-                    setOpen(false)
-                    setEditRow(row)
-                  }
                 : undefined
             }
+            onAction={enableActions ? handleAction : undefined}
+            providerByKey={providerByKey}
           />
         </PopoverContentDialogAware>
       </Popover>
 
-      {createConnection && (
-        <SecretConnectionForm
-          open={formOpen}
-          onOpenChange={setFormOpen}
-          connectionLabel={createConnection.label}
-          connectionType='organization'
-          pending={createCredential.isPending}
-          onSubmit={handleCreate}
-        />
-      )}
-
-      {editRow && (
-        <SecretConnectionForm
+      {editRow && editMethod && (
+        <ConnectionDetailDialog
           open={!!editRow}
           onOpenChange={(next) => {
             if (!next) setEditRow(null)
           }}
-          connectionLabel={editRow.label ?? editRow.name}
-          connectionType='organization'
+          title={`Edit ${editRow.label ?? editRow.name}`}
+          method={editMethod}
           pending={updateCredential.isPending}
-          onSubmit={handleEditSubmit}
+          submitLabel='Save'
+          onSubmit={(payload) => handleEditSubmit(payload.secret ?? '')}
         />
       )}
 

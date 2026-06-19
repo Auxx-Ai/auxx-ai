@@ -61,6 +61,8 @@ interface MappingFieldPickerProps {
   assignedKey: string | undefined
   /** Resolved label for the bound key (for the chip), if known. */
   assignedLabel: string | undefined
+  /** Target keys already bound by other entries — hidden from the list (uniqueness). */
+  excludeKeys?: Set<string>
   /** Quick-create is wired only for owned defs (plan decision 3). */
   canCreate: boolean
   /** Bind this source node to the chosen target field key. */
@@ -81,6 +83,7 @@ export function MappingFieldPicker({
   sourcePath,
   assignedKey,
   assignedLabel,
+  excludeKeys,
   canCreate,
   onAssign,
   onClear,
@@ -112,9 +115,12 @@ export function MappingFieldPicker({
         entityDefinitionId={entityDefinitionId}
         excludeFields={[FieldType.RELATIONSHIP]}
         // Only fields the sync can actually write (creatable + updatable, not
-        // computed) AND whose type accepts this source value.
+        // computed), whose type accepts this source value, and that no other entry
+        // already binds (uniqueness — the array allows dupes, the UI forbids them).
         filterField={(f) =>
-          isWritableTarget(f) && isSourceTargetCompatible(f.fieldType, sourceType)
+          !excludeKeys?.has(f.key) &&
+          isWritableTarget(f) &&
+          isSourceTargetCompatible(f.fieldType, sourceType)
         }
         mode='single'
         searchPlaceholder='Search fields…'

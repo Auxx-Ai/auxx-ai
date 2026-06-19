@@ -89,18 +89,33 @@ export type ConnectionVariable = {
 }
 
 /**
+ * One credential insertion onto an outgoing HTTP request.
+ *
+ * `{value}` interpolates the resolved token (oauth2 access token, or the
+ * `secret`); templated `name`/`format` values may also interpolate other `fields`.
+ *  - `header`: set `name` to `format` (default the raw token).
+ *  - `basic`: HTTP Basic from two fields (default `user`/`password`).
+ *  - `query`: append `name=<format>` (default the raw token) to the URL.
+ */
+export type AuthInsertion =
+  | { in: 'header'; name: string; format?: string }
+  | { in: 'basic'; userField?: string; passwordField?: string }
+  | { in: 'query'; name: string; format?: string }
+
+/**
  * Declarative spec for how a resolved credential is applied to an outgoing HTTP
  * request. Lifted from the workflow HTTP node's hand-rolled `buildAuthHeaders`.
  * `null` for DB/email/none connection types — those are secret bags the
  * consuming driver reads via `connection.fields`, not HTTP-request auth.
  *
- * `{value}` interpolates the resolved token (oauth2 access token, or the
- * `secret`); templated header values may also interpolate other `fields`.
+ * Either a single insertion (the common case — e.g. a Bearer header), or a
+ * multi-insertion spec carrying several insertions (e.g. Supabase's `apikey` +
+ * `Authorization`) plus optional `headers` — constant non-auth headers applied
+ * verbatim (e.g. `Notion-Version`, `X-GitHub-Api-Version`).
  */
 export type AuthApply =
-  | { in: 'header'; name: string; format?: string }
-  | { in: 'basic' }
-  | { in: 'query'; name: string }
+  | AuthInsertion
+  | { insertions: AuthInsertion[]; headers?: Record<string, string> }
 
 /** OAuth2 feature flags and provider-specific configuration */
 export type OAuth2Features = {
@@ -176,6 +191,13 @@ export const ConnectionDefinition = pgTable(
     // How a resolved credential becomes request auth (§3). NULL for DB/email/none
     // types — those are read directly from connection.fields by the consuming driver.
     authApply: jsonb().$type<AuthApply>(),
+
+    // Base-URL template the connection contributes to a request's origin (§3).
+    // Interpolated from `value` + `fields` at resolve time (e.g.
+    // 'https://{shop}.myshopify.com', 'https://api.telegram.org/bot{value}') and
+    // prepended to a relative request path by the HTTP transport. NULL for
+    // connections whose endpoint is fixed or supplied by the caller.
+    baseUrlTemplate: text(),
 
     // Creator
     createdById: text().notNull(), // { id, type: 'developer-account-member' }

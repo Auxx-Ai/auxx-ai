@@ -7,6 +7,7 @@
 
 import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
+import { generateId } from '@auxx/utils'
 import { and, eq } from 'drizzle-orm'
 import { getCachedEntityDefId } from '../cache'
 import { BadRequestError, NotFoundError } from '../errors'
@@ -21,7 +22,6 @@ import type {
   DataConnectorConfig,
   DataConnectorType,
   FieldMapping,
-  FieldMergeStrategy,
   LinkMode,
   OrphanBehavior,
   ScheduledTriggerConfig,
@@ -189,21 +189,22 @@ async function resolveTemplateEntityRef(
  * sourceFields: { email: 'email' } }`. Explicit `expression`/`sourceFields` pass
  * through verbatim for transforms (e.g. `{created} * 1000`).
  */
-function buildTemplateFieldMappings(
-  fields: ConnectorTemplateFieldMapping[]
-): Record<string, FieldMapping> {
-  const out: Record<string, FieldMapping> = {}
-  for (const f of fields) {
+function buildTemplateFieldMappings(fields: ConnectorTemplateFieldMapping[]): FieldMapping[] {
+  return fields.map((f) => {
     const expression = f.expression ?? (f.source ? `{${f.source}}` : '')
     const sourceFields = f.sourceFields ?? (f.source ? { [f.source]: f.source } : {})
-    const mapping: FieldMapping = { expression, sourceFields }
+    const mapping: FieldMapping = {
+      id: generateId(),
+      targetFieldKey: f.key,
+      expression,
+      sourceFields,
+    }
     if (f.match) mapping.match = typeof f.match === 'object' ? f.match : {}
     // Provisioned field's name = its key (provisioned fields carry no
     // systemAttribute, so the crud layer resolves writes by name).
     if (f.provision) mapping.provision = { name: f.key, ...f.provision }
-    out[f.key] = mapping
-  }
-  return out
+    return mapping
+  })
 }
 
 export interface UpdateConnectorInput {
@@ -452,8 +453,7 @@ export interface AddMappingInput {
   entityDefinitionId: string
   parentMappingId?: string | null
   relationshipFieldKey?: string | null
-  fieldMappings?: Record<string, FieldMapping>
-  mergeStrategies?: Record<string, FieldMergeStrategy>
+  fieldMappings?: FieldMapping[]
   orphanBehavior?: OrphanBehavior
 }
 
@@ -475,8 +475,7 @@ export async function addMapping(
       entityDefinitionId: input.entityDefinitionId,
       parentMappingId: input.parentMappingId ?? null,
       relationshipFieldKey: input.relationshipFieldKey ?? null,
-      fieldMappings: input.fieldMappings ?? {},
-      mergeStrategies: input.mergeStrategies ?? {},
+      fieldMappings: input.fieldMappings ?? [],
       orphanBehavior: input.orphanBehavior ?? 'ignore',
     })
     .returning()
@@ -509,8 +508,7 @@ export interface UpdateMappingInput {
   // Target binding + policy columns (folded in from the old granular setters).
   entityDefinitionId?: string | null
   targetMode?: TargetMode
-  fieldMappings?: Record<string, FieldMapping>
-  mergeStrategies?: Record<string, FieldMergeStrategy>
+  fieldMappings?: FieldMapping[]
 }
 
 /** Patch any subset of a mapping's columns. The single mapping write surface. */
@@ -536,7 +534,6 @@ export async function updateMapping(
         : {}),
       ...(patch.targetMode !== undefined ? { targetMode: patch.targetMode } : {}),
       ...(patch.fieldMappings !== undefined ? { fieldMappings: patch.fieldMappings } : {}),
-      ...(patch.mergeStrategies !== undefined ? { mergeStrategies: patch.mergeStrategies } : {}),
       updatedAt: new Date(),
     })
     .where(eq(schema.DataConnectorMapping.id, mappingId))
