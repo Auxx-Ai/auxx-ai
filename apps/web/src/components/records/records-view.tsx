@@ -774,6 +774,13 @@ export function RecordsView({
             perform={() => useCommandPaletteStore.getState().openCreate(entityDefinitionId)}
           />
           <CommandAction
+            label='Create field'
+            icon='columns'
+            keywords='create field column custom attribute property'
+            priority={2}
+            perform={() => useCommandPaletteStore.getState().openCreateField(entityDefinitionId)}
+          />
+          <CommandAction
             label='Import'
             icon='database'
             keywords='import upload csv'

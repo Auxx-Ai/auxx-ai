@@ -7,6 +7,7 @@ export type PalettePage =
   | 'search-threads'
   | 'record-actions'
   | 'create'
+  | 'create-field'
   | 'create-snippet'
   | 'create-signature'
   | 'create-task'

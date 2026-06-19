@@ -10,6 +10,7 @@ import { useUnsavedChangesGuard } from '~/hooks/use-unsaved-changes-guard'
 import { CreatePage } from './pages/create'
 import { CreateApiKeyPage } from './pages/create-api-key'
 import { CreateDatasetPage } from './pages/create-dataset'
+import { CreateFieldPage } from './pages/create-field'
 import { CreateGroupPage } from './pages/create-group'
 import { CreateInboxPage } from './pages/create-inbox'
 import { CreateMailViewPage } from './pages/create-mail-view'
@@ -62,6 +63,7 @@ export function CommandPalette() {
   const back = useCommandPaletteStore((s) => s.back)
   const selectedRecord = useCommandPaletteStore((s) => s.selectedRecord)
   const createEntityId = useCommandPaletteStore((s) => s.createEntityId)
+  const createFieldEntityId = useCommandPaletteStore((s) => s.createFieldEntityId)
 
   const { sections, byId } = usePaletteActions()
   usePaletteHotkeys(byId)
@@ -75,20 +77,30 @@ export function CommandPalette() {
 
   const { getResourceById } = useResources()
   const createLabel = createEntityId ? getResourceById(createEntityId)?.label : undefined
+  const createFieldLabel = createFieldEntityId
+    ? getResourceById(createFieldEntityId)?.label
+    : undefined
 
-  // Create-page unsaved-changes guard. Only armed while the create page is shown
-  // — so Esc / outside-click on other pages close normally.
-  const [createDirty, setCreateDirty] = useState(false)
+  // Form-page unsaved-changes guard. Only armed while a guarded create-form page
+  // (record `create` or `create-field`) is shown — so Esc / outside-click on
+  // other pages close normally.
+  const isGuardedPage = page === 'create' || page === 'create-field'
+  const [formDirty, setFormDirty] = useState(false)
   useEffect(() => {
-    if (page !== 'create') setCreateDirty(false)
+    if (!isGuardedPage) setFormDirty(false)
+  }, [isGuardedPage])
+
+  // RELATIONSHIP wants a wider create-field page; the form signals it up so the
+  // DialogNavPage size can spring (no remount → form state preserved).
+  const [createFieldWide, setCreateFieldWide] = useState(false)
+  useEffect(() => {
+    if (page !== 'create-field') setCreateFieldWide(false)
   }, [page])
 
   const { guardProps, guardedClose, ConfirmDialog } = useUnsavedChangesGuard({
-    isDirty: page === 'create' && createDirty,
+    isDirty: isGuardedPage && formDirty,
     onConfirmedClose: () => goTo('root'),
   })
-
-  const isCreate = page === 'create'
 
   return (
     <>
@@ -104,7 +116,7 @@ export function CommandPalette() {
           aria-describedby={undefined}
           // Keep the @mention picker's Esc from closing the palette on the task page.
           onEscapeKeyDown={page === 'create-task' ? preventTaskPickerEscape : undefined}
-          {...(isCreate ? guardProps : {})}>
+          {...(isGuardedPage ? guardProps : {})}>
           {page === 'root' ? (
             // Root has its own cmdk search input, so it skips the breadcrumb bar —
             // this hidden title keeps Radix Dialog accessible.
@@ -134,6 +146,12 @@ export function CommandPalette() {
               crumbs={[{ label: `Create ${createLabel ?? 'record'}` }]}
               onBack={guardedClose}
             />
+          ) : page === 'create-field' ? (
+            <DialogNav
+              title={`Create field${createFieldLabel ? ` on ${createFieldLabel}` : ''}`}
+              crumbs={[{ label: 'Create field' }]}
+              onBack={guardedClose}
+            />
           ) : SIMPLE_CREATE_TITLES[page] ? (
             <DialogNav
               title={SIMPLE_CREATE_TITLES[page] as string}
@@ -156,7 +174,14 @@ export function CommandPalette() {
               <RecordActionsPage />
             </DialogNavPage>
             <DialogNavPage value='create' size='lg'>
-              <CreatePage onDirtyChange={setCreateDirty} onRequestClose={guardedClose} />
+              <CreatePage onDirtyChange={setFormDirty} onRequestClose={guardedClose} />
+            </DialogNavPage>
+            <DialogNavPage value='create-field' size={createFieldWide ? 'xxl' : 'md'}>
+              <CreateFieldPage
+                onDirtyChange={setFormDirty}
+                onRequestClose={guardedClose}
+                onWideChange={setCreateFieldWide}
+              />
             </DialogNavPage>
             <DialogNavPage value='create-snippet' size='xxl'>
               <CreateSnippetPage />
