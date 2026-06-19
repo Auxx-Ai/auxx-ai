@@ -51,7 +51,7 @@ export const PLATFORM_PROVIDER_DEFS: PlatformProviderDef[] = [
       },
     },
     authApply: BEARER,
-    uiMetadata: { icon: 'Chrome', category: 'auth', brandColor: '#db4437' },
+    uiMetadata: { icon: 'brand:google', category: 'auth', brandColor: '#db4437' },
   },
   {
     providerKey: 'outlookOAuth2Api',
@@ -76,7 +76,7 @@ export const PLATFORM_PROVIDER_DEFS: PlatformProviderDef[] = [
       },
     },
     authApply: BEARER,
-    uiMetadata: { icon: 'Mail', category: 'email', brandColor: '#0078d4' },
+    uiMetadata: { icon: 'brand:outlook', category: 'email', brandColor: '#0078d4' },
   },
   {
     providerKey: 'shopifyOAuth2Api',
@@ -109,7 +109,7 @@ export const PLATFORM_PROVIDER_DEFS: PlatformProviderDef[] = [
       },
     ],
     authApply: BEARER,
-    uiMetadata: { icon: 'ShoppingBag', category: 'ecommerce', brandColor: '#5d8a66' },
+    uiMetadata: { icon: 'brand:shopify', category: 'ecommerce', brandColor: '#5d8a66' },
   },
   {
     providerKey: 'facebookOAuth2Api',
@@ -130,7 +130,7 @@ export const PLATFORM_PROVIDER_DEFS: PlatformProviderDef[] = [
     systemClientSecretEnv: 'FACEBOOK_CLIENT_SECRET',
     oauth2Features: { additionalAuthorizeParams: { response_type: 'code', display: 'popup' } },
     authApply: BEARER,
-    uiMetadata: { icon: 'Facebook', category: 'social', brandColor: '#1877f2' },
+    uiMetadata: { icon: 'brand:facebook', category: 'social', brandColor: '#1877f2' },
   },
   {
     providerKey: 'instagramOAuth2Api',
@@ -144,7 +144,7 @@ export const PLATFORM_PROVIDER_DEFS: PlatformProviderDef[] = [
     systemClientSecretEnv: 'INSTAGRAM_CLIENT_SECRET',
     oauth2Features: { additionalAuthorizeParams: { response_type: 'code' } },
     authApply: BEARER,
-    uiMetadata: { icon: 'Instagram', category: 'social', brandColor: '#e4405f' },
+    uiMetadata: { icon: 'brand:instagram', category: 'social', brandColor: '#e4405f' },
   },
 
   // ────────────────────────────────────────────────────────────────────────
@@ -172,7 +172,7 @@ export const PLATFORM_PROVIDER_DEFS: PlatformProviderDef[] = [
       },
     },
     authApply: BEARER,
-    uiMetadata: { icon: 'HardDrive', category: 'storage', brandColor: '#4285f4' },
+    uiMetadata: { icon: 'brand:google-drive', category: 'storage', brandColor: '#4285f4' },
   },
   {
     providerKey: 'DROPBOX',
@@ -188,7 +188,7 @@ export const PLATFORM_PROVIDER_DEFS: PlatformProviderDef[] = [
       additionalAuthorizeParams: { token_access_type: 'offline', force_reapprove: 'false' },
     },
     authApply: BEARER,
-    uiMetadata: { icon: 'Droplets', category: 'storage', brandColor: '#0061FF' },
+    uiMetadata: { icon: 'brand:dropbox', category: 'storage', brandColor: '#0061FF' },
   },
   {
     providerKey: 'ONEDRIVE',
@@ -206,7 +206,7 @@ export const PLATFORM_PROVIDER_DEFS: PlatformProviderDef[] = [
     systemClientSecretEnv: 'ONEDRIVE_CLIENT_SECRET',
     oauth2Features: { additionalAuthorizeParams: { response_mode: 'query' } },
     authApply: BEARER,
-    uiMetadata: { icon: 'Cloud', category: 'storage', brandColor: '#0078d4' },
+    uiMetadata: { icon: 'brand:onedrive', category: 'storage', brandColor: '#0078d4' },
   },
   {
     providerKey: 'BOX',
@@ -219,7 +219,7 @@ export const PLATFORM_PROVIDER_DEFS: PlatformProviderDef[] = [
     systemClientIdEnv: 'BOX_CLIENT_ID',
     systemClientSecretEnv: 'BOX_CLIENT_SECRET',
     authApply: BEARER,
-    uiMetadata: { icon: 'Package', category: 'storage', brandColor: '#0061D5' },
+    uiMetadata: { icon: 'brand:box', category: 'storage', brandColor: '#0061D5' },
   },
 
   // ────────────────────────────────────────────────────────────────────────
@@ -249,7 +249,7 @@ export const PLATFORM_PROVIDER_DEFS: PlatformProviderDef[] = [
       { key: 'scope', label: 'Scope', required: false },
     ],
     authApply: BEARER,
-    uiMetadata: { icon: 'Shield', category: 'auth', brandColor: '#3b82f6' },
+    uiMetadata: { icon: 'shield', category: 'auth', brandColor: '#3b82f6' },
   },
   {
     providerKey: 'airtableOAuth2Api',
@@ -264,7 +264,7 @@ export const PLATFORM_PROVIDER_DEFS: PlatformProviderDef[] = [
     // Airtable is BYO-client (inherited clientId/clientSecret from the old oAuth2Api extends).
     connectionVariables: BYO_CLIENT_VARS,
     authApply: BEARER,
-    uiMetadata: { icon: 'Database', category: 'data', brandColor: '#fcb401' },
+    uiMetadata: { icon: 'brand:airtable', category: 'data', brandColor: '#fcb401' },
   },
 
   // ────────────────────────────────────────────────────────────────────────
@@ -280,7 +280,7 @@ export const PLATFORM_PROVIDER_DEFS: PlatformProviderDef[] = [
       { key: 'password', label: 'Password', secret: true },
     ],
     authApply: { in: 'basic' },
-    uiMetadata: { icon: 'Key', category: 'auth', brandColor: '#6b7280' },
+    uiMetadata: { icon: 'key', category: 'auth', brandColor: '#6b7280' },
   },
   {
     providerKey: 'httpHeaderAuth',
@@ -293,7 +293,7 @@ export const PLATFORM_PROVIDER_DEFS: PlatformProviderDef[] = [
     ],
     // {name} interpolates the plain field; {value} the resolved secret.
     authApply: { in: 'header', name: '{name}', format: '{value}' },
-    uiMetadata: { icon: 'Hash', category: 'auth', brandColor: '#8b5cf6' },
+    uiMetadata: { icon: 'hash', category: 'auth', brandColor: '#8b5cf6' },
   },
 
   // ────────────────────────────────────────────────────────────────────────
@@ -441,7 +441,7 @@ export const PLATFORM_PROVIDER_DEFS: PlatformProviderDef[] = [
         displayOptions: { show: { sshTunnel: [true], sshAuthenticateWith: ['privateKey'] } },
       },
     ],
-    uiMetadata: { icon: 'Database', category: 'database', brandColor: '#336791' },
+    uiMetadata: { icon: 'brand:postgresql', category: 'database', brandColor: '#336791' },
   },
   {
     providerKey: 'postgresWithTesting',
@@ -503,7 +503,7 @@ export const PLATFORM_PROVIDER_DEFS: PlatformProviderDef[] = [
         ],
       },
     ],
-    uiMetadata: { icon: 'Database', category: 'database', brandColor: '#336791' },
+    uiMetadata: { icon: 'brand:postgresql', category: 'database', brandColor: '#336791' },
   },
   {
     providerKey: 'crateDb',
@@ -529,7 +529,7 @@ export const PLATFORM_PROVIDER_DEFS: PlatformProviderDef[] = [
       },
       { key: 'port', label: 'Port', type: FieldType.NUMBER, default: 5432 },
     ],
-    uiMetadata: { icon: 'Database', category: 'database', brandColor: '#14b8a6' },
+    uiMetadata: { icon: 'brand:cratedb', category: 'database', brandColor: '#14b8a6' },
   },
 
   // ────────────────────────────────────────────────────────────────────────
@@ -588,7 +588,7 @@ export const PLATFORM_PROVIDER_DEFS: PlatformProviderDef[] = [
           'Whether to ignore SSL certificate validation (not recommended for production)',
       },
     ],
-    uiMetadata: { icon: 'Mail', category: 'email', brandColor: '#10b981' },
+    uiMetadata: { icon: 'mail', category: 'email', brandColor: '#10b981' },
   },
   {
     providerKey: 'imap',
@@ -610,7 +610,7 @@ export const PLATFORM_PROVIDER_DEFS: PlatformProviderDef[] = [
         description: 'Whether to connect even if SSL certificate validation is not possible',
       },
     ],
-    uiMetadata: { icon: 'Inbox', category: 'email', brandColor: '#3b82f6' },
+    uiMetadata: { icon: 'inbox', category: 'email', brandColor: '#3b82f6' },
   },
 
   // ────────────────────────────────────────────────────────────────────────
@@ -671,7 +671,7 @@ export const PLATFORM_PROVIDER_DEFS: PlatformProviderDef[] = [
         description: 'Default S3 bucket for file operations (can be overridden per operation)',
       },
     ],
-    uiMetadata: { icon: 'Cloud', category: 'data', brandColor: '#FF9900' },
+    uiMetadata: { icon: 'brand:aws', category: 'data', brandColor: '#FF9900' },
   },
 
   // ────────────────────────────────────────────────────────────────────────
@@ -694,7 +694,7 @@ export const PLATFORM_PROVIDER_DEFS: PlatformProviderDef[] = [
       },
     ],
     authApply: BEARER,
-    uiMetadata: { icon: 'Database', category: 'data', brandColor: '#fcb401' },
+    uiMetadata: { icon: 'brand:airtable', category: 'data', brandColor: '#fcb401' },
   },
 
   // ────────────────────────────────────────────────────────────────────────
@@ -732,7 +732,7 @@ export const PLATFORM_PROVIDER_DEFS: PlatformProviderDef[] = [
         description: 'Custom API base URL for OpenAI-compatible endpoints',
       },
     ],
-    uiMetadata: { icon: 'Sparkles', category: 'ai', brandColor: '#10A37F' },
+    uiMetadata: { icon: 'brand:openai', category: 'ai', brandColor: '#10A37F' },
   },
   {
     providerKey: 'anthropicApi',
@@ -751,7 +751,7 @@ export const PLATFORM_PROVIDER_DEFS: PlatformProviderDef[] = [
         validation: { minLength: 20 },
       },
     ],
-    uiMetadata: { icon: 'Bot', category: 'ai', brandColor: '#D4A574' },
+    uiMetadata: { icon: 'brand:anthropic', category: 'ai', brandColor: '#D4A574' },
   },
   {
     providerKey: 'googleAiApi',
@@ -770,7 +770,7 @@ export const PLATFORM_PROVIDER_DEFS: PlatformProviderDef[] = [
         validation: { minLength: 20 },
       },
     ],
-    uiMetadata: { icon: 'Sparkles', category: 'ai', brandColor: '#4285F4' },
+    uiMetadata: { icon: 'brand:gemini', category: 'ai', brandColor: '#4285F4' },
   },
   {
     providerKey: 'groqApi',
@@ -789,7 +789,7 @@ export const PLATFORM_PROVIDER_DEFS: PlatformProviderDef[] = [
         validation: { minLength: 20 },
       },
     ],
-    uiMetadata: { icon: 'Zap', category: 'ai', brandColor: '#F55036' },
+    uiMetadata: { icon: 'brand:groq', category: 'ai', brandColor: '#F55036' },
   },
   {
     providerKey: 'deepseekApi',
@@ -808,6 +808,6 @@ export const PLATFORM_PROVIDER_DEFS: PlatformProviderDef[] = [
         validation: { minLength: 20 },
       },
     ],
-    uiMetadata: { icon: 'Search', category: 'ai', brandColor: '#0EA5E9' },
+    uiMetadata: { icon: 'brand:deepseek', category: 'ai', brandColor: '#0EA5E9' },
   },
 ]

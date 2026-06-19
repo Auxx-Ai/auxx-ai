@@ -57,34 +57,49 @@ export async function GET(
 
   const encoder = new TextEncoder()
 
+  // Hoisted so the stream's cancel() handler can tear down Redis on client disconnect.
+  let cleanup: () => Promise<void> = async () => {}
+
   const stream = new ReadableStream({
     async start(controller) {
+      // Once the stream is closed (disconnect, error, completion) we must stop touching the
+      // controller. Without this guard, a flood of Redis events each hits a closed controller
+      // and spams error logs (and leaks the dedicated Redis client).
+      let closed = false
+
       const send = (event: string, data: unknown) => {
+        if (closed) return
+
         const message = [`event: ${event}`, `data: ${JSON.stringify(data)}`, '', ''].join('\n')
         try {
           controller.enqueue(encoder.encode(message))
-        } catch (error) {
-          logger.error('Failed to send SSE message', { error, event })
+        } catch {
+          // Controller closed underneath us (client gone). Tear down once instead of
+          // logging an error for every subsequent event.
+          void cleanup()
         }
       }
 
       const heartbeat = setInterval(() => {
+        if (closed) {
+          clearInterval(heartbeat)
+          return
+        }
         try {
           controller.enqueue(encoder.encode(':heartbeat\n\n'))
         } catch {
-          clearInterval(heartbeat)
+          void cleanup()
         }
       }, 15000)
 
       let subscriber: Awaited<ReturnType<typeof createDedicatedClient>> | null = null
       const channel = kbArticleChannel(articleId)
 
-      let cleaned = false
       let messageHandler: ((channel: string, message: string) => void) | null = null
 
-      const cleanup = async () => {
-        if (cleaned) return
-        cleaned = true
+      cleanup = async () => {
+        if (closed) return
+        closed = true
 
         clearInterval(heartbeat)
         if (subscriber) {
@@ -138,6 +153,11 @@ export async function GET(
         logger.error('SSE stream error', { error, articleId })
         await cleanup()
       }
+    },
+    // Fires when the consumer cancels the stream (client disconnect). More reliable than
+    // request.signal in some runtimes, and ensures Redis is unsubscribed so events stop.
+    async cancel() {
+      await cleanup()
     },
   })
 
