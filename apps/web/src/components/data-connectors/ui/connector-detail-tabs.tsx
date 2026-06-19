@@ -171,7 +171,7 @@ export function ConnectorDetailTabs({ connector, mobileRunsPanel }: ConnectorDet
 
   const sourceBar = (
     <DrillBar
-      title={connector.type.startsWith('app:') ? 'Connector settings' : 'Request configuration'}
+      title={connector.definitionKind === 'app' ? 'Connector settings' : 'Request configuration'}
     />
   )
   const streamBar = selectedStream ? (

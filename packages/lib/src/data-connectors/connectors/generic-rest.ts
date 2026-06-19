@@ -200,6 +200,7 @@ async function* fetchRecords(args: ConnectorFetchArgs): AsyncIterable<ConnectorR
 export const genericRestConnector: DataConnectorDefinition = {
   type: 'generic-rest',
   schemaVersion: 1,
+  requestModel: 'builder',
   streams: [],
 
   async fetch(args: ConnectorFetchArgs): Promise<FetchResult> {

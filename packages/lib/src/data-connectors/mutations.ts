@@ -11,6 +11,7 @@ import { and, eq } from 'drizzle-orm'
 import { BadRequestError, NotFoundError } from '../errors'
 import { removeConnectorScheduler, syncConnectorScheduler } from './data-connector-scheduler'
 import type { DataConnectorMappingRow, DataConnectorRow, DataConnectorStreamRow } from './service'
+import type { ConnectorTemplate } from './templates'
 import type {
   DataConnectorConfig,
   DataConnectorType,
@@ -32,6 +33,8 @@ export interface CreateConnectorInput {
   name: string
   type: DataConnectorType
   definitionKind?: 'builtin' | 'app'
+  /** Provenance when seeded from a first-party connector template (05c). */
+  templateId?: string | null
   config?: DataConnectorConfig
   credentialId?: string | null
   appInstallationId?: string | null
@@ -69,6 +72,7 @@ export async function createConnector(
       name: input.name,
       type: input.type,
       definitionKind: input.definitionKind ?? (input.type.startsWith('app:') ? 'app' : 'builtin'),
+      templateId: input.templateId ?? null,
       config: input.config ?? {},
       credentialId: input.credentialId ?? null,
       appInstallationId: input.appInstallationId ?? null,
@@ -81,6 +85,43 @@ export async function createConnector(
   if (!row) throw new Error('Failed to create data connector')
   await syncConnectorScheduler(row)
   return row
+}
+
+/**
+ * Create a connector seeded from a first-party connector template (05c §5). A
+ * template instance *is* a `generic-rest` connector — this is pure composition
+ * over the existing write helpers (`createConnector` + `addStream`), the same
+ * sequence the manual setup UI drives, run from declared data:
+ *   - the connector's `config` (base URL + shared headers + pagination) and
+ *   - each stream's source schema + request config, pre-filled and editable.
+ *
+ * v1 seeds config + streams only; entity mappings stay user-authored (the root
+ * mapping `addStream` seeds is the spine, exactly as for a blank connector). The
+ * `templateId` stamp is provenance — seed-and-forget, no live link back.
+ */
+export async function createConnectorFromTemplate(
+  db: Database,
+  organizationId: string,
+  input: Omit<CreateConnectorInput, 'type' | 'definitionKind' | 'templateId' | 'config'>,
+  template: ConnectorTemplate
+): Promise<DataConnectorRow> {
+  const connector = await createConnector(db, organizationId, {
+    ...input,
+    type: 'generic-rest',
+    // definitionKind stays 'builtin' (default) — a template instance is generic-rest.
+    templateId: template.id,
+    config: template.config,
+  })
+  for (const stream of template.streams) {
+    await addStream(db, organizationId, connector.id, {
+      streamKey: stream.streamKey,
+      sourceSchema: stream.sourceSchema ?? null,
+      schemaSource: 'catalog',
+      syncMode: stream.syncMode,
+      requestConfig: stream.requestConfig,
+    })
+  }
+  return connector
 }
 
 export interface UpdateConnectorInput {

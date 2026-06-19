@@ -93,6 +93,7 @@ export function appConnectorAdapter(
     return {
       type,
       schemaVersion: 1,
+      requestModel: 'fixed',
       streams: [],
       async fetch() {
         throw new Error(
@@ -129,6 +130,7 @@ export function appConnectorAdapter(
   return {
     type,
     schemaVersion: 1,
+    requestModel: 'fixed',
     // Synchronously-empty until first fetch warms the cache; the orchestrator
     // reads streams only for reconciliation after a fetch has run.
     get streams(): ConnectorStreamDecl[] {

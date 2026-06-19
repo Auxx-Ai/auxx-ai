@@ -54,39 +54,26 @@ export async function GET(
 
   const encoder = new TextEncoder()
 
+  // Hoisted so the stream's cancel() handler can tear down Redis on client disconnect.
+  let cleanup: () => Promise<void> = async () => {}
+
   const stream = new ReadableStream({
     async start(controller) {
-      /** Helper to send SSE formatted data */
-      const send = (event: string, data: unknown) => {
-        const message = [`event: ${event}`, `data: ${JSON.stringify(data)}`, '', ''].join('\n')
-
-        try {
-          controller.enqueue(encoder.encode(message))
-        } catch (error) {
-          logger.error('Failed to send SSE message', { error, event })
-        }
-      }
-
-      // Send heartbeat to keep connection alive
-      const heartbeat = setInterval(() => {
-        try {
-          controller.enqueue(encoder.encode(':heartbeat\n\n'))
-        } catch {
-          clearInterval(heartbeat)
-        }
-      }, 15000)
+      // Once the stream is closed (client disconnect, error, or completion) we must stop
+      // touching the controller. Without this guard, a flood of Redis events (e.g. import
+      // resolution:progress) each hit a closed controller and spam millions of error logs.
+      let closed = false
 
       // Create dedicated Redis subscriber (each SSE connection gets its own client)
       let subscriber: Awaited<ReturnType<typeof createDedicatedClient>> | null = null
       const channel = `${IMPORT_EVENTS_CHANNEL}:${importJobId}`
 
       // Track cleanup
-      let cleaned = false
       let messageHandler: ((channel: string, message: string) => void) | null = null
 
-      const cleanup = async () => {
-        if (cleaned) return
-        cleaned = true
+      cleanup = async () => {
+        if (closed) return
+        closed = true
 
         clearInterval(heartbeat)
         if (subscriber) {
@@ -106,6 +93,34 @@ export async function GET(
           // Controller may already be closed
         }
       }
+
+      /** Helper to send SSE formatted data */
+      const send = (event: string, data: unknown) => {
+        if (closed) return
+
+        const message = [`event: ${event}`, `data: ${JSON.stringify(data)}`, '', ''].join('\n')
+
+        try {
+          controller.enqueue(encoder.encode(message))
+        } catch {
+          // Controller closed underneath us (client gone). Tear down once instead of
+          // logging an error for every subsequent event.
+          void cleanup()
+        }
+      }
+
+      // Send heartbeat to keep connection alive
+      const heartbeat = setInterval(() => {
+        if (closed) {
+          clearInterval(heartbeat)
+          return
+        }
+        try {
+          controller.enqueue(encoder.encode(':heartbeat\n\n'))
+        } catch {
+          void cleanup()
+        }
+      }, 15000)
 
       try {
         // Get dedicated Redis subscriber client (isolated from other connections)
@@ -177,6 +192,11 @@ export async function GET(
         logger.error('SSE stream error', { error, importJobId })
         await cleanup()
       }
+    },
+    // Fires when the consumer cancels the stream (client disconnect). More reliable than
+    // request.signal in some runtimes, and ensures Redis is unsubscribed so events stop.
+    async cancel() {
+      await cleanup()
     },
   })
 

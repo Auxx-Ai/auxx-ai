@@ -3,6 +3,21 @@
 import { FieldType } from '@auxx/database/enums'
 import type { FieldType as FieldTypeType } from '@auxx/database/types'
 import { isFieldTypeCompatible } from '@auxx/lib/custom-fields/client'
+import type { ResourceField } from '@auxx/lib/resources/client'
+
+/**
+ * Can the connector sink keep this target field in sync? The sink upserts via
+ * `UnifiedCrudHandler`, which silently drops non-creatable values on create and
+ * non-updatable values on update — so a field that isn't BOTH creatable and
+ * updatable (or is computed/derived) can never be reliably written by an ongoing
+ * sync. Such fields (record id, createdAt, ticket number, formula/rollup fields,
+ * …) are filtered out of the mapping target pickers. Normal custom fields are
+ * creatable + updatable, so the common owned/contributing case is unaffected.
+ */
+export function isWritableTarget(field: ResourceField): boolean {
+  const c = field.capabilities
+  return c.creatable && c.updatable && !c.computed
+}
 
 /**
  * A connector source leaf's JSON-schema type → the representative

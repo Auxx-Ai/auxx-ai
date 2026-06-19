@@ -24,7 +24,7 @@ import {
 } from '~/components/global/calc-formula'
 import { FieldPicker } from '~/components/pickers/field-picker'
 import type { SourcePath } from '../hooks/use-source-paths'
-import { isSourceTargetCompatible } from './field-type-compat'
+import { isSourceTargetCompatible, isWritableTarget } from './field-type-compat'
 import { SourcePathBadge } from './source-path-badge'
 
 interface FieldCalcPanelProps {
@@ -136,7 +136,9 @@ export function FieldCalcPanel({
             // A formula yields a scalar (string/number) — exclude already-bound
             // targets and any field type a computed value can't populate.
             filterField={(f) =>
-              !excludeSet.has(f.key) && isSourceTargetCompatible(f.fieldType, 'string')
+              !excludeSet.has(f.key) &&
+              isWritableTarget(f) &&
+              isSourceTargetCompatible(f.fieldType, 'string')
             }
             mode='single'
             searchPlaceholder='Search fields…'

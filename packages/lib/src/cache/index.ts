@@ -58,6 +58,7 @@ export {
   getCachedEntityDefId,
   getCachedFieldMap,
   getCachedGroups,
+  getCachedInstalledApps,
   getCachedMembers,
   getCachedMembersByUserIds,
   getCachedOrgHasActiveChat,

@@ -17,7 +17,7 @@ import { useState } from 'react'
 import { useCustomFieldMutations } from '~/components/custom-fields/hooks/use-custom-field-mutations'
 import { FieldPicker } from '~/components/pickers/field-picker'
 import { lastSegment } from '../hooks/use-source-paths'
-import { isSourceTargetCompatible } from './field-type-compat'
+import { isSourceTargetCompatible, isWritableTarget } from './field-type-compat'
 
 /** Field types offered by the lightweight quick-create, seeded from the source type. */
 const QUICK_CREATE_TYPES: Array<{ value: FieldTypeType; label: string }> = [
@@ -112,7 +112,11 @@ export function MappingFieldPicker({
         onOpenChange={setPickerOpen}
         entityDefinitionId={entityDefinitionId}
         excludeFields={[FieldType.RELATIONSHIP]}
-        filterField={(f) => isSourceTargetCompatible(f.fieldType, sourceType)}
+        // Only fields the sync can actually write (creatable + updatable, not
+        // computed) AND whose type accepts this source value.
+        filterField={(f) =>
+          isWritableTarget(f) && isSourceTargetCompatible(f.fieldType, sourceType)
+        }
         mode='single'
         searchPlaceholder='Search fields…'
         onSelect={(_ref, field) => onAssign(field.key)}

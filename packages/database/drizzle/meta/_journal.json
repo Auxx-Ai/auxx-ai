@@ -1534,6 +1534,13 @@
       "when": 1781832427962,
       "tag": "0218_drop_mapping_identity_strategy",
       "breakpoints": true
+    },
+    {
+      "idx": 219,
+      "version": "7",
+      "when": 1781844449490,
+      "tag": "0219_data_connector_template_id",
+      "breakpoints": true
     }
   ]
 }

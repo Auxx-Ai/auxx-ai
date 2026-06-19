@@ -13,7 +13,6 @@ import {
   pgTable,
   text,
   timestamp,
-  uniqueIndex,
 } from './_shared'
 import { AppInstallation } from './app-installation'
 import { Credential } from './credential'
@@ -47,6 +46,11 @@ export const DataConnector = pgTable(
     // Definition source — lets app + built-in connectors share one engine.
     // 'builtin' resolves from the platform registry; 'app' from AppDeployment.catalog.
     definitionKind: text().notNull().default('builtin'), // 'builtin' | 'app'
+
+    // Provenance for a connector seeded from a first-party connector template
+    // (05c). Stamped at create; the connector is fully user-owned thereafter
+    // (seed-and-forget). Drives the list badge + source icon. Null = hand-built.
+    templateId: text(),
 
     name: text().notNull(),
 
@@ -93,13 +97,9 @@ export const DataConnector = pgTable(
       'btree',
       table.organizationId.asc().nullsLast()
     ),
-    // v1: one connector per type per org. The constraint is on the *connector*,
-    // not the target def — many connectors may contribute to one def (e.g. `contact`).
-    uniqueIndex('DataConnector_organizationId_type_key').using(
-      'btree',
-      table.organizationId.asc().nullsLast(),
-      table.type.asc().nullsLast()
-    ),
+    // No (org, type) uniqueness: template instances all share `type:'generic-rest'`
+    // (05c), so an org can own a blank REST source + several template-seeded ones
+    // at once. Many connectors may also contribute to one def (e.g. `contact`).
   ]
 )
 

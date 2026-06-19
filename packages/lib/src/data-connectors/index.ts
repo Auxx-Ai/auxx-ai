@@ -51,6 +51,7 @@ export {
   addMapping,
   addStream,
   createConnector,
+  createConnectorFromTemplate,
   deleteConnector,
   removeMapping,
   removeStream,
@@ -111,8 +112,16 @@ export {
 // Sink
 export { entitySink } from './sinks/entity-sink'
 export type { EntitySink, ProjectedRecord, SyncCtx } from './sinks/types'
+// Connector templates (05c) — first-party generic-rest presets
+export type {
+  ConnectorTemplate,
+  ConnectorTemplateStream,
+  ConnectorTemplateSummary,
+} from './templates'
+export { getAllConnectorTemplates, getConnectorTemplateById } from './templates'
 // Canonical engine types
 export type {
+  ConnectorRequestModel,
   DataConnectorType,
   FieldMapping,
   FieldMergeStrategy,

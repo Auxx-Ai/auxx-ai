@@ -25,7 +25,9 @@ interface ConnectionSectionProps {
  */
 export function ConnectionSection({ connector, onOpenSource }: ConnectionSectionProps) {
   const utils = api.useUtils()
-  const isGenericRest = !connector.type.startsWith('app:')
+  // Branch on the persisted definitionKind (05c §7), not a `type` prefix sniff.
+  // Template instances are generic-rest ⇒ 'builtin' ⇒ they get the builder card.
+  const isGenericRest = connector.definitionKind !== 'app'
 
   const update = api.dataConnector.update.useMutation({
     onSuccess: () => void utils.dataConnector.getById.invalidate({ id: connector.id }),
